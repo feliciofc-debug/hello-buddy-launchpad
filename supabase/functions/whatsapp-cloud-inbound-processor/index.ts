@@ -4293,8 +4293,36 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "criar_anuncio",
+      description: "🏷️ Monta um ANÚNCIO PROFISSIONAL de produto (arte pronta pra vender) a partir de uma FOTO enviada + os dados que o responsável falar. Use quando ele disser 'faz um anúncio disso', 'monta a arte desse carro/imóvel/produto', 'cria anúncio com esses dados'. Serve pra qualquer nicho: veículo (km, ano, dono), imóvel (m², quartos, vaga), máquina (horas, ano), produto de loja (garantia, parcelas). O texto, o preço e a LOGO do cliente entram por template (exatos, nunca desenhados pela IA); a IA só melhora a foto. NUNCA invente dado que o usuário não falou. Restrito ao responsável da conta.",
+      parameters: {
+        type: "object",
+        properties: {
+          titulo: { type: "string", description: "Nome do produto em destaque (ex: 'HYUNDAI CRETA 1.0 TURBO', 'APARTAMENTO 2 QUARTOS')." },
+          subtitulo: { type: "string", description: "Complemento curto (ex: 'AUTOMÁTICO 2023/2023', 'BAIRRO CENTRO'). Vazio se não souber." },
+          itens: {
+            type: "array",
+            description: "Lista de 4 a 8 destaques EXATAMENTE como o usuário falou (ex: '38 MIL KM', 'ÚNICO DONO', 'PNEUS NOVOS', 'IPVA PAGO'). Não invente.",
+            items: { type: "string" },
+          },
+          preco: { type: "string", description: "Preço formatado (ex: 'R$ 118.900,00'). Vazio se ele não disse o preço." },
+          preco_label: { type: "string", description: "Rótulo acima do preço (ex: 'À VISTA', 'VALOR', 'A PARTIR DE'). Padrão: VALOR." },
+          badge: { type: "string", description: "Selo de destaque, se houver (ex: 'PINTURA 100% ORIGINAL', 'ÚLTIMA UNIDADE')." },
+          telefone: { type: "string", description: "Telefone de contato pra arte, se o usuário informou." },
+          instagram: { type: "string", description: "@ do Instagram pra arte, se o usuário informou. Vazio = uso o do cadastro." },
+          formato: { type: "string", description: "'feed' (quadrado, padrão) ou 'story' (9:16 vertical)." },
+          melhorar_foto: { type: "boolean", description: "true (padrão) = a IA melhora a foto/ambiente antes de montar. false = usa a foto como está." },
+        },
+        required: ["titulo"],
+      },
+    },
+  },
 
 ];
+
 
 
 
@@ -4705,6 +4733,209 @@ async function toolCriarCarrossel(
 }
 
 // ============================================================
+// criar_anuncio — ANÚNCIO PROFISSIONAL DE PRODUTO (multi-nicho)
+// Fluxo: foto (turno atual ou biblioteca 30min) → [IA melhora a foto]
+//        → render-anuncio-produto (texto/preço/logo por template)
+// A logo é SEMPRE a do próprio tenant (bucket tenant-logos / Minha Marca).
+// ============================================================
+const ANUNCIO_MAX_DIA = 20;
+
+async function toolCriarAnuncio(
+  args: {
+    titulo?: string;
+    subtitulo?: string;
+    itens?: string[];
+    preco?: string;
+    preco_label?: string;
+    badge?: string;
+    telefone?: string;
+    instagram?: string;
+    formato?: string;
+    melhorar_foto?: boolean;
+  },
+  ctx: { userId: string; fromNumber: string; media?: MediaExtract[] },
+): Promise<string> {
+  try {
+    if (!isOwner(ctx)) {
+      return JSON.stringify({
+        erro: "acao_restrita_ao_responsavel",
+        mensagem: "Montar anúncio é restrito ao responsável da conta.",
+      });
+    }
+
+    const titulo = (args?.titulo || "").trim();
+    if (titulo.length < 2) {
+      return JSON.stringify({
+        erro: "titulo_ausente",
+        instrucao: "Pergunte em 1 linha qual é o produto (modelo/nome) antes de montar o anúncio.",
+      });
+    }
+
+    const formato = (args?.formato || "").toLowerCase() === "story" ? "story" : "feed";
+
+    // 1) FOTO — turno atual; senão, última foto recente da biblioteca (30 min)
+    let fotoUrl: string | null = null;
+    const imgAtual = (ctx.media || []).slice().reverse().find((m) => m.kind === "image");
+    if (imgAtual?.base64) {
+      try {
+        const bytes = base64Decode(imgAtual.base64);
+        const mime = imgAtual.mime || "image/jpeg";
+        const ext = mime.split("/")[1]?.split(";")[0] || "jpg";
+        const fileName = `anuncios/${ctx.userId}/origem-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const { error: upErr } = await sb.storage.from("produtos").upload(fileName, bytes, { contentType: mime, upsert: true });
+        if (!upErr) {
+          const { data: pub } = sb.storage.from("produtos").getPublicUrl(fileName);
+          fotoUrl = pub?.publicUrl ?? null;
+        }
+      } catch (e) {
+        console.warn("[criar_anuncio] upload da foto do turno falhou:", (e as Error).message);
+      }
+    }
+    if (!fotoUrl) {
+      try {
+        const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+        const { data: rec } = await sb
+          .from("midias_whatsapp")
+          .select("midia_url, created_at")
+          .eq("user_id", ctx.userId)
+          .eq("tipo", "foto")
+          .gte("created_at", cutoff)
+          .order("created_at", { ascending: false })
+          .limit(1);
+        if (rec?.[0]?.midia_url) fotoUrl = rec[0].midia_url as string;
+      } catch (e) {
+        console.warn("[criar_anuncio] fallback midias falhou:", (e as Error).message);
+      }
+    }
+    if (!fotoUrl) {
+      return JSON.stringify({
+        erro: "sem_foto",
+        instrucao: "Peça em 1 linha que ele mande a FOTO do produto (pode ser do celular) e depois repita os dados.",
+      });
+    }
+
+    // 2) Guardrail simples de volume/dia
+    try {
+      const { count } = await sb
+        .from("midias_whatsapp")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", ctx.userId)
+        .eq("origem", "anuncio_produto")
+        .gte("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+      if ((count ?? 0) >= ANUNCIO_MAX_DIA) {
+        return JSON.stringify({
+          erro: "limite_diario_anuncio",
+          mensagem: `Você já montou ${count} anúncios nas últimas 24h (limite ${ANUNCIO_MAX_DIA}).`,
+        });
+      }
+    } catch { /* coluna origem pode não existir — guardrail é best-effort */ }
+
+    // 3) IA melhora SÓ a foto (nada de texto na imagem)
+    let fotoFinal = fotoUrl;
+    if (args?.melhorar_foto !== false) {
+      try {
+        const raw = await toolEditarImagem(
+          `Prepare esta foto de ${titulo} para um anúncio comercial premium: recorte/valorize o produto principal, ambiente elegante de showroom com piso reflexivo, iluminação de estúdio, fundo escuro sofisticado e levemente desfocado. É a MESMA unidade da foto original (mesma cor, mesmos detalhes, mesma placa) — não troque por outro modelo.`,
+          { userId: ctx.userId, media: ctx.media, textos: [], modo: "anuncio", preservarAmbiente: false },
+        );
+        const parsed = JSON.parse(raw);
+        if (parsed?.image_url) fotoFinal = parsed.image_url;
+        else console.warn("[criar_anuncio] melhoria da foto falhou:", parsed?.erro);
+      } catch (e) {
+        console.warn("[criar_anuncio] melhoria da foto exceção:", (e as Error).message);
+      }
+    }
+
+    // 4) Identidade do tenant (nome do negócio / @ / telefone)
+    let businessName: string | null = null;
+    let instagram = (args?.instagram || "").trim() || null;
+    try {
+      const { data: conn } = await sb
+        .from("meta_connections")
+        .select("page_name, ig_username")
+        .eq("user_id", ctx.userId)
+        .eq("is_active", true)
+        .maybeSingle();
+      businessName = conn?.page_name ?? null;
+      if (!instagram && conn?.ig_username) instagram = `@${String(conn.ig_username).replace(/^@/, "")}`;
+    } catch { /* opcional */ }
+
+    let telefone = (args?.telefone || "").trim() || null;
+    if (!telefone) {
+      try {
+        const owner = await resolveTenantOwner(sb, ctx.userId);
+        if (owner?.phone) {
+          const d = String(owner.phone).replace(/\D/g, "").replace(/^55/, "");
+          if (d.length >= 10) telefone = `(${d.slice(0, 2)}) ${d.slice(2, d.length - 4)}-${d.slice(-4)}`;
+        }
+      } catch { /* opcional */ }
+    }
+
+    const itens = (Array.isArray(args?.itens) ? args!.itens! : [])
+      .map((i) => String(i || "").trim())
+      .filter(Boolean)
+      .slice(0, 8);
+
+    // 5) RENDER — texto/preço/logo por template (exatos)
+    const render = await callEdge("render-anuncio-produto", {
+      user_id: ctx.userId,
+      titulo,
+      subtitulo: args?.subtitulo || null,
+      itens,
+      preco: args?.preco || null,
+      preco_label: args?.preco_label || null,
+      badge: args?.badge || null,
+      telefone,
+      instagram,
+      business_name: businessName,
+      foto_url: fotoFinal,
+      formato,
+      incluir_logo: true,
+    }, 120000);
+
+    if (!render?.success || !render?.image_url) {
+      return JSON.stringify({ erro: "falha_no_render", detalhe: String(render?.error || "erro desconhecido").slice(0, 200) });
+    }
+
+    // 6) Salva na biblioteca /midias pra poder publicar depois
+    let midiaId: string | null = null;
+    try {
+      const { data: mid } = await sb
+        .from("midias_whatsapp")
+        .insert({
+          user_id: ctx.userId,
+          telefone_origem: ctx.fromNumber,
+          tipo: "foto",
+          midia_url: render.image_url,
+          descricao: `Anúncio ${formato}: ${titulo}`,
+          origem: "anuncio_produto",
+        })
+        .select("id")
+        .maybeSingle();
+      midiaId = mid?.id ?? null;
+    } catch (e) {
+      console.warn("[criar_anuncio] salvar na biblioteca falhou:", (e as Error).message);
+    }
+
+    return JSON.stringify({
+      ok: true,
+      image_url: render.image_url,
+      formato,
+      logo_aplicada: !!render.logo_aplicada,
+      midia_id: midiaId,
+      itens_usados: itens.length,
+      instrucao: render.logo_aplicada
+        ? "O anúncio já foi ENVIADO ao usuário com a logomarca da empresa. Diga em 1-2 linhas que ficou pronto, pergunte se está aprovado e ofereça publicar no Instagram/story (ele pode dizer 'posta essa imagem')."
+        : "O anúncio foi ENVIADO ao usuário, MAS sem logomarca (nenhuma cadastrada nesta conta). Avise em 1 linha que ele pode cadastrar a logo em Minha Marca no painel e pedir de novo, e ofereça publicar.",
+    });
+  } catch (e) {
+    return JSON.stringify({ erro: String((e as Error).message).slice(0, 250) });
+  }
+}
+
+
+
+// ============================================================
 // FASE 4B.1 — ROTEAMENTO DETERMINÍSTICO DO CARROSSEL
 // O pré-roteador de post social (detectSocialPostIntent) capturava
 // "faz um carrossel ... postar no Instagram" antes do modelo, caindo no
@@ -4905,6 +5136,12 @@ async function runTool(
   if (name === "salvar_midia_biblioteca") return { result: await toolSalvarMidiaBiblioteca(args ?? {}, ctx) };
   if (name === "postar_midia_biblioteca") return { result: await toolPostarMidiaBiblioteca(args ?? {}, ctx) };
   if (name === "criar_carrossel") return { result: await toolCriarCarrossel(args ?? {}, ctx) };
+  if (name === "criar_anuncio") {
+    const r = await toolCriarAnuncio(args ?? {}, ctx);
+    let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}
+    return { result: r, imageUrl: parsed?.image_url };
+  }
+
   if (name === "encaminhar_recado_ao_dono") return { result: await toolEncaminharRecadoAoDono(args ?? {}, ctx) };
   if (name === "registrar_lead_novo") return { result: await toolRegistrarLeadNovo(args ?? {}, ctx) };
 
