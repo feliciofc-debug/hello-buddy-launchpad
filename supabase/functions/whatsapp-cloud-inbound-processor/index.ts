@@ -4312,7 +4312,7 @@ const TOOLS = [
         properties: {
           legenda: { type: "string", description: "Texto/legenda que o cliente falou junto." },
           briefing: { type: "string", description: "TEXTO INTEGRAL escrito pelo dono que deve ser a MENSAGEM CENTRAL do post (argumentos, diferenciais, tema, frase de efeito). Copie literalmente da conversa, sem resumir. Tem prioridade sobre a descrição visual da imagem." },
-          usar_contexto_conversa: { type: "boolean", description: "true quando o dono se referir a um texto que ele já mandou antes ('usa aquele texto que te mandei', 'pega o contexto que escrevi') e você não tiver o texto pra copiar no briefing. O sistema busca o último texto longo dele na conversa." },
+          usar_contexto_conversa: { type: "boolean", description: "Use SOMENTE se o dono, NESTA mensagem, se referir a um texto que ele mandou logo antes junto com essa mídia ('usa aquele texto que te mandei agora', 'pega o contexto que escrevi'). NUNCA passe true quando ele só disser 'posta no feed/story/reels' — nesse caso o post é sobre a FOTO enviada, e puxar assunto antigo gera post errado." },
           nome: { type: "string", description: "Nome do produto/item, se informado." },
           preco: { type: "string", description: "Preço se informado (ex: '29,99')." },
           tom: { type: "string", enum: ["urgencia", "escassez", "black-friday", "prova-social", "beneficio"] },
