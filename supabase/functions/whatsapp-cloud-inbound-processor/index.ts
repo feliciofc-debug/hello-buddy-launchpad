@@ -3937,8 +3937,8 @@ const TOOLS = [
         properties: {
           prompt: { type: "string", description: "Descrição da edição desejada. Ex: 'anúncio profissional desse SUV prata, luz de fim de tarde, fundo elegante desfocado' — mantendo o veículo/pessoa original." },
           textos: { type: "array", items: { type: "string" }, description: "Até 6 frases curtas para APARECEREM escritas na imagem, ao lado do objeto. Ex: ['45.000 km', 'Ano/Modelo 2021/2022', 'Único dono', 'Todas as revisões na concessionária']. Deixe vazio se o usuário não pediu texto na imagem." },
-          modo: { type: "string", enum: ["melhoria", "ficha_tecnica", "figurino"], description: "'ficha_tecnica' = anúncio comercial de produto/veículo com dados ao lado; 'figurino' = trocar roupa/fantasia da pessoa mantendo rosto e ambiente; 'melhoria' = só melhorar a foto." },
-          preservar_ambiente: { type: "boolean", description: "true (padrão) para manter o mesmo cenário/ambiente e as mesmas pessoas. Use false só se ele pedir explicitamente para trocar o cenário." },
+          modo: { type: "string", enum: ["melhoria", "ficha_tecnica", "figurino"], description: "'ficha_tecnica' = anúncio comercial de produto/veículo: o cenário original é DESCARTADO e o produto vai pra um set de estúdio/showroom limpo (use SEMPRE que ele pedir anúncio, arte, 'ambiente bonito', 'fundo profissional', ou quando a foto tiver bagunça de casa: fios, TV, móveis); 'figurino' = trocar roupa/fantasia mantendo rosto e ambiente; 'melhoria' = só melhorar nitidez/luz mantendo a cena." },
+          preservar_ambiente: { type: "boolean", description: "Omita normalmente. Em modo 'ficha_tecnica' o cenário é trocado por padrão — só passe true se ele pedir EXPLICITAMENTE para manter o local original. Em 'melhoria'/'figurino' o padrão já é manter." },
         },
         required: ["prompt"],
       },
@@ -5092,7 +5092,7 @@ async function runTool(
       media: ctx.media,
       textos: Array.isArray(args?.textos) ? args.textos : [],
       modo: args?.modo,
-      preservarAmbiente: args?.preservar_ambiente !== false,
+      preservarAmbiente: typeof args?.preservar_ambiente === "boolean" ? args.preservar_ambiente : undefined,
     });
 
     let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}
