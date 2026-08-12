@@ -4847,7 +4847,14 @@ async function runTool(
     return { result: r, imageUrl: parsed?.image_url };
   }
   if (name === "editar_imagem") {
-    const r = await toolEditarImagem(args?.prompt ?? "", { userId: ctx.userId, media: ctx.media });
+    const r = await toolEditarImagem(args?.prompt ?? "", {
+      userId: ctx.userId,
+      media: ctx.media,
+      textos: Array.isArray(args?.textos) ? args.textos : [],
+      modo: args?.modo,
+      preservarAmbiente: args?.preservar_ambiente !== false,
+    });
+
     let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}
     return { result: r, imageUrl: parsed?.image_url };
   }
