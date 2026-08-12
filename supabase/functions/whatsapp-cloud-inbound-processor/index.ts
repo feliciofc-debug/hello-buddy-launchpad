@@ -905,7 +905,7 @@ ${logoDataUrl ? `- A SEGUNDA IMAGEM ANEXADA É A LOGOMARCA OFICIAL DA EMPRESA. R
 - Aplique a logo de forma NATIVA e discreta (canto superior direito ou inferior direito), tamanho pequeno, integrada à iluminação da cena, sem moldura, sem fundo branco atrás e sem efeito de adesivo colado.
 - PROIBIDO: qualquer outro texto, letras, palavras, números, legendas, marcas d'água ou logos além dessa logomarca.` : `- PROIBIDO: qualquer texto, letras, palavras, números, legendas, marcas d'água, logos artificiais, bordas ou molduras.`}
 - PROIBIDO: aparência de IA/CGI barato, plástico, cartoon (a menos que o usuário peça explicitamente).
-- Resultado final: parece uma foto tirada por um fotógrafo profissional de marketing.`;
+- Resultado final: parece uma foto tirada por um fotógrafo profissional de marketing.${blocoFormatoSocial(clean)}`;
 
     // Conteúdo multimodal: prompt + logo como IMAGEM DE REFERÊNCIA (quando pedida)
     const userContent: any = logoDataUrl
