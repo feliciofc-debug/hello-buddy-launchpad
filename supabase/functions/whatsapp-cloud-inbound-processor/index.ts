@@ -1022,21 +1022,30 @@ async function toolEditarImagem(
 
   const textos = (ctx.textos || []).map((t) => String(t || "").trim()).filter(Boolean).slice(0, 6);
   const modo = (ctx.modo || "").trim().toLowerCase();
-  const preservar = ctx.preservarAmbiente !== false;
+  const isAnuncio = modo === "ficha_tecnica" || modo === "anuncio" || modo === "estudio" || modo === "trocar_ambiente";
+  // Em modo anúncio/ficha técnica o ambiente ORIGINAL deve ser descartado por padrão
+  // (fios, TV, móveis, bagunça de casa nunca podem aparecer numa arte comercial).
+  const preservar = isAnuncio ? ctx.preservarAmbiente === true : ctx.preservarAmbiente !== false;
 
   const blocoTexto = textos.length
     ? `\n\n📝 TEXTOS QUE DEVEM APARECER NA IMAGEM (obrigatório, escreva EXATAMENTE assim, sem inventar nem traduzir):\n${textos.map((t) => `- "${t}"`).join("\n")}\nRegras da tipografia:\n- Posicione as informações AO LADO (ou em faixa lateral/inferior) do objeto principal, em área limpa, NUNCA cobrindo o produto, rostos ou placa.\n- Fonte sans-serif moderna, legível, alinhada, hierarquia clara (destaque no dado mais forte).\n- Fundo sutil atrás do texto (faixa translúcida ou bloco sólido) para garantir contraste.\n- Sem erros de ortografia, sem letras cortadas, sem repetir o mesmo texto duas vezes.\n- Não adicione NENHUM outro texto além dos listados acima.`
     : `\n\nRegras: NÃO inclua texto, palavras, letras, números ou marcas d'água na imagem.`;
 
-  const blocoModo = modo === "ficha_tecnica" || modo === "anuncio"
-    ? `\n\n🎯 MODO ANÚNCIO/FICHA TÉCNICA: resultado publicitário profissional do objeto principal (ex: veículo) — iluminação de estúdio ou golden hour, reflexos limpos, fundo elegante e desfocado, ângulo valorizado. Preserve o modelo, cor, rodas, placa e detalhes reais do objeto: é a MESMA unidade, não um carro genérico.`
+  const blocoModo = isAnuncio
+    ? `\n\n🎯 MODO ANÚNCIO/FICHA TÉCNICA — TROCA TOTAL DE AMBIENTE (obrigatório):
+- RECORTE o produto principal da foto e DESCARTE COMPLETAMENTE o cenário original.
+- É PROIBIDO deixar qualquer resquício do local original: fios, tomadas, televisão, monitor, móveis, mesa, sofá, cortina, parede de casa, chão de casa, rodapé, roupa, pessoas ao fundo, papel, embalagens soltas, objetos de fundo, reflexo do ambiente antigo.
+- SUBSTITUA por um set comercial limpo: fundo de estúdio sólido/gradiente sofisticado (ou showroom, quando for veículo), piso levemente reflexivo, iluminação de estúdio com sombra suave sob o produto, profundidade de campo rasa.
+- O RESULTADO deve parecer foto de catálogo/e-commerce profissional: fundo totalmente controlado, zero bagunça, zero distração.
+- Preserve 100% o PRODUTO em si: mesma marca, mesmo rótulo, mesmas cores, mesmo formato, mesmos textos da embalagem, mesma unidade (não troque por outro modelo, não redesenhe o rótulo).`
     : modo === "figurino" || modo === "fantasia" || modo === "roupa"
     ? `\n\n🎯 MODO FIGURINO: troque APENAS a roupa/fantasia da pessoa conforme o pedido. É OBRIGATÓRIO manter o MESMO rosto, mesma idade, mesmo corte de cabelo, mesma pele, mesma pose e o MESMO AMBIENTE/fundo (mesmos móveis, mesma luz, mesmo enquadramento). Não troque o cenário, não deixe a pessoa parecida com outra criança/adulto, não gere desenho — fotorealista.`
     : `\n\n🎯 MODO MELHORIA: eleve a qualidade (nitidez, cor, luz, composição) mantendo a cena reconhecível.`;
 
   const blocoPreservar = preservar
     ? `\n\n🔒 PRESERVAÇÃO OBRIGATÓRIA: mantenha o mesmo ambiente/cenário, o mesmo enquadramento e as mesmas pessoas (rosto, feições, tom de pele, cabelo) e o mesmo objeto/produto principal identificáveis. Não substitua por outra pessoa/objeto.`
-    : "";
+    : `\n\n🔒 PRESERVE SÓ O PRODUTO: o objeto/produto principal (e rostos, se houver pessoa) deve continuar idêntico e reconhecível. O CENÁRIO pode e DEVE ser recriado do zero.`;
+
 
   try {
     const dataUrlInput = imageInput;
