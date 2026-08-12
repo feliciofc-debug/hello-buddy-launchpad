@@ -873,6 +873,7 @@ function blocoFormatoSocial(pedido?: string): string {
 - Qualidade alta, pronta para publicação direta no Instagram e Facebook.`;
 }
 
+// ---- gerar_imagem: cria imagem por IA (Nano Banana), sobe pro storage e salva em /midias ----
 // Padrão IA Marketing: fotorealista, sem texto/letras/marca d'água, iluminação profissional.
 async function toolGerarImagem(
   prompt: string,
