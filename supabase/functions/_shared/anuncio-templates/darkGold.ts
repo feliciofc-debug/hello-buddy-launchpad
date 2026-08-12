@@ -290,7 +290,9 @@ function precoBloco(d: AnuncioData, compact: boolean): Node[] {
       {
         display: "flex",
         color: "#FFFFFF",
-        fontSize: d.preco.length > 14 ? (compact ? 52 : 62) : compact ? 64 : 78,
+        fontSize: d.preco.length > 13 ? (compact ? 46 : 58) : d.preco.length > 10 ? (compact ? 54 : 66) : compact ? 64 : 78,
+        whiteSpace: "nowrap",
+
         fontWeight: 900,
         letterSpacing: -1,
         lineHeight: 1.05,
