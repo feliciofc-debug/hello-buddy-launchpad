@@ -74,7 +74,8 @@ export async function prepareImageForInstagram(
 
   const isAvif = isAvifUrl(imageUrl) || contentType.includes("avif");
 
-  // 2) Decodificar. AVIF não é suportado pelo imagescript → tenta via re-fetch com Accept que força fallback do CDN
+  // 2) Decodificar (import dinâmico do imagescript). AVIF entra em fallback JPEG.
+  const { decode, Image } = await loadImagescript();
   let decoded: Image;
   try {
     if (isAvif) {
