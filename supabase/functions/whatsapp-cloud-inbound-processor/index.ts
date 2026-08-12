@@ -5128,6 +5128,7 @@ async function runTool(
   if (name === "editar_imagem") {
     const r = await toolEditarImagem(args?.prompt ?? "", {
       userId: ctx.userId,
+      fromNumber: ctx.fromNumber,
       media: ctx.media,
       textos: Array.isArray(args?.textos) ? args.textos : [],
       modo: args?.modo,
