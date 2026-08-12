@@ -983,10 +983,12 @@ async function toolEditarImagem(
   prompt: string,
   ctx: {
     userId: string;
+    fromNumber?: string;
     media?: MediaExtract[];
     textos?: string[];
     modo?: string;
     preservarAmbiente?: boolean;
+    registrarNaBiblioteca?: boolean;
   },
 ): Promise<string> {
   const clean = (prompt || "").trim();
