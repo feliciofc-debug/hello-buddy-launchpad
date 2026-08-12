@@ -4884,7 +4884,7 @@ async function toolCriarAnuncio(
       try {
         const raw = await toolEditarImagem(
           `Prepare esta foto de ${titulo} para um anúncio comercial premium: recorte/valorize o produto principal, ambiente elegante de showroom com piso reflexivo, iluminação de estúdio, fundo escuro sofisticado e levemente desfocado. É a MESMA unidade da foto original (mesma cor, mesmos detalhes, mesma placa) — não troque por outro modelo.`,
-          { userId: ctx.userId, media: ctx.media, textos: [], modo: "anuncio", preservarAmbiente: false },
+          { userId: ctx.userId, fromNumber: ctx.fromNumber, media: ctx.media, textos: [], modo: "anuncio", preservarAmbiente: false, registrarNaBiblioteca: false },
         );
         const parsed = JSON.parse(raw);
         if (parsed?.image_url) fotoFinal = parsed.image_url;
