@@ -3678,9 +3678,10 @@ async function toolSalvarMidiaBiblioteca(
 }
 
 // Recupera o TEXTO SUBSTANCIAL mais recente que o dono escreveu nesta conversa
-// (últimos 90 min) pra usar como briefing do post quando ele disser "usa aquele
-// texto que te mandei". Ignora comandos curtos ("posta no feed", "A", "pode postar").
-async function buscarBriefingRecenteDono(userId: string, fromNumber: string): Promise<string> {
+// SOMENTE quando ele pede explicitamente ("usa aquele texto que te mandei").
+// Janela curta (padrão 20 min) e, se informado, só mensagens POSTERIORES ao envio
+// da mídia — evita pegar assunto antigo e gerar post fora de contexto.
+async function buscarBriefingRecenteDono(userId: string, fromNumber: string, afterISO?: string): Promise<string> {
   try {
     const digits = normalizePhoneBR(fromNumber || "");
     if (!digits) return "";
@@ -3694,7 +3695,8 @@ async function buscarBriefingRecenteDono(userId: string, fromNumber: string): Pr
     const conv = (convs ?? []).find((c: any) => normalizePhoneBR(c.contact_number || "").slice(-8) === tail8);
     if (!conv?.id) return "";
 
-    const since = new Date(Date.now() - 90 * 60 * 1000).toISOString();
+    const janela = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    const since = afterISO && afterISO > janela ? afterISO : janela;
     const { data: msgs } = await sb
       .from("whatsapp_cloud_messages")
       .select("direction, content, created_at")
@@ -3703,6 +3705,7 @@ async function buscarBriefingRecenteDono(userId: string, fromNumber: string): Pr
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(25);
+
 
     const comando = /^(a|b|c|op[cç][aã]o\s*[abc]|sim|ok|pode postar|posta|publica|manda|vai|confirma|feed|story|stories|reels)\b/i;
     for (const m of msgs ?? []) {
