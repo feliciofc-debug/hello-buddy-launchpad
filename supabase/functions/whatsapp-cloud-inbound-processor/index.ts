@@ -978,22 +978,68 @@ ${logoDataUrl ? `- A SEGUNDA IMAGEM ANEXADA É A LOGOMARCA OFICIAL DA EMPRESA. R
   }
 }
 
-// ---- editar_imagem: edita/melhora foto que o usuário mandou (usa última imagem do turno) ----
+// ---- editar_imagem: edita/melhora foto enviada (turno atual ou última foto recente da biblioteca) ----
 async function toolEditarImagem(
   prompt: string,
-  ctx: { userId: string; media?: MediaExtract[] },
+  ctx: {
+    userId: string;
+    media?: MediaExtract[];
+    textos?: string[];
+    modo?: string;
+    preservarAmbiente?: boolean;
+  },
 ): Promise<string> {
   const clean = (prompt || "").trim();
   if (!clean) return JSON.stringify({ erro: "prompt vazio" });
+
+  // 1) imagem do turno atual; 2) fallback: última foto recente da biblioteca (30 min)
+  let imageInput: string | null = null;
   const img = (ctx.media || []).slice().reverse().find((m) => m.kind === "image");
-  if (!img) {
+  if (img) {
+    imageInput = `data:${img.mime};base64,${img.base64}`;
+  } else {
+    try {
+      const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+      const { data: rec } = await sb
+        .from("midias_whatsapp")
+        .select("midia_url, created_at")
+        .eq("user_id", ctx.userId)
+        .eq("tipo", "foto")
+        .gte("created_at", cutoff)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (rec?.[0]?.midia_url) imageInput = rec[0].midia_url as string;
+    } catch (e) {
+      console.warn("[editar_imagem] fallback midias falhou:", (e as Error).message);
+    }
+  }
+  if (!imageInput) {
     return JSON.stringify({
       erro: "sem_imagem",
       instrucao: "Peça ao usuário para enviar a foto no mesmo momento do pedido de edição.",
     });
   }
+
+  const textos = (ctx.textos || []).map((t) => String(t || "").trim()).filter(Boolean).slice(0, 6);
+  const modo = (ctx.modo || "").trim().toLowerCase();
+  const preservar = ctx.preservarAmbiente !== false;
+
+  const blocoTexto = textos.length
+    ? `\n\n📝 TEXTOS QUE DEVEM APARECER NA IMAGEM (obrigatório, escreva EXATAMENTE assim, sem inventar nem traduzir):\n${textos.map((t) => `- "${t}"`).join("\n")}\nRegras da tipografia:\n- Posicione as informações AO LADO (ou em faixa lateral/inferior) do objeto principal, em área limpa, NUNCA cobrindo o produto, rostos ou placa.\n- Fonte sans-serif moderna, legível, alinhada, hierarquia clara (destaque no dado mais forte).\n- Fundo sutil atrás do texto (faixa translúcida ou bloco sólido) para garantir contraste.\n- Sem erros de ortografia, sem letras cortadas, sem repetir o mesmo texto duas vezes.\n- Não adicione NENHUM outro texto além dos listados acima.`
+    : `\n\nRegras: NÃO inclua texto, palavras, letras, números ou marcas d'água na imagem.`;
+
+  const blocoModo = modo === "ficha_tecnica" || modo === "anuncio"
+    ? `\n\n🎯 MODO ANÚNCIO/FICHA TÉCNICA: resultado publicitário profissional do objeto principal (ex: veículo) — iluminação de estúdio ou golden hour, reflexos limpos, fundo elegante e desfocado, ângulo valorizado. Preserve o modelo, cor, rodas, placa e detalhes reais do objeto: é a MESMA unidade, não um carro genérico.`
+    : modo === "figurino" || modo === "fantasia" || modo === "roupa"
+    ? `\n\n🎯 MODO FIGURINO: troque APENAS a roupa/fantasia da pessoa conforme o pedido. É OBRIGATÓRIO manter o MESMO rosto, mesma idade, mesmo corte de cabelo, mesma pele, mesma pose e o MESMO AMBIENTE/fundo (mesmos móveis, mesma luz, mesmo enquadramento). Não troque o cenário, não deixe a pessoa parecida com outra criança/adulto, não gere desenho — fotorealista.`
+    : `\n\n🎯 MODO MELHORIA: eleve a qualidade (nitidez, cor, luz, composição) mantendo a cena reconhecível.`;
+
+  const blocoPreservar = preservar
+    ? `\n\n🔒 PRESERVAÇÃO OBRIGATÓRIA: mantenha o mesmo ambiente/cenário, o mesmo enquadramento e as mesmas pessoas (rosto, feições, tom de pele, cabelo) e o mesmo objeto/produto principal identificáveis. Não substitua por outra pessoa/objeto.`
+    : "";
+
   try {
-    const dataUrlInput = `data:${img.mime};base64,${img.base64}`;
+    const dataUrlInput = imageInput;
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${LOVABLE_API_KEY}` },
@@ -1005,7 +1051,7 @@ async function toolEditarImagem(
             content: [
               {
                 type: "text",
-                text: `Edite esta foto conforme o pedido abaixo, preservando pessoas, rostos e o produto/objeto principal reconhecíveis. Apenas melhore ambiente, iluminação, cores, fundo e composição.\n\nPedido: ${clean}\n\nRegras: sem texto, palavras, letras ou marcas d'água na imagem. Resultado fotorealista de alta qualidade.`,
+                text: `Edite esta foto conforme o pedido abaixo.\n\nPedido: ${clean}${blocoModo}${blocoPreservar}${blocoTexto}\n\nResultado fotorealista de alta qualidade, pronto para publicação.`,
               },
               { type: "image_url", image_url: { url: dataUrlInput } },
             ],
@@ -1015,6 +1061,7 @@ async function toolEditarImagem(
       }),
       signal: AbortSignal.timeout(90000),
     });
+
     if (!res.ok) {
       const t = await res.text();
       return JSON.stringify({ erro: `image_edit ${res.status}`, detalhe: t.slice(0, 200) });
@@ -3875,12 +3922,18 @@ const TOOLS = [
     type: "function",
     function: {
       name: "editar_imagem",
-      description: "Edita/melhora uma FOTO que o usuário acabou de enviar no WhatsApp (mesma mensagem ou anterior recente). Use quando ele pedir 'melhora essa foto', 'deixa o ambiente mais bonito', 'troca o fundo', 'coloca luz natural', 'transforma em profissional', 'remove X'. NÃO use pra criar imagem do zero (use gerar_imagem). A imagem editada é enviada automaticamente — responda com legenda curta descrevendo o que ajustou.",
+      description: "Edita/melhora uma FOTO enviada no WhatsApp (mesma mensagem ou foto recente dos últimos 30 min). Use quando pedirem 'melhora essa foto', 'deixa mais bonita/profissional', 'troca o fundo', 'coloca luz natural', 'monta um anúncio dessa foto', 'coloca os dados do carro na imagem', 'coloca meu filho com a roupa do Homem-Aranha'. NÃO use pra criar imagem do zero (use gerar_imagem). IMPORTANTE: quando o usuário citar dados (quilometragem, ano/modelo, 'único dono', 'mais conservado', preço, etc.), coloque cada dado como um item do array 'textos' — assim eles aparecem escritos na imagem. Quando ele pedir troca de roupa/fantasia mantendo o local, use modo='figurino'. A imagem editada é enviada automaticamente — responda com legenda curta descrevendo o que ajustou.",
       parameters: {
         type: "object",
-        properties: { prompt: { type: "string", description: "Descrição da edição desejada. Ex: 'deixa a cafeteria mais aconchegante, luz quente de fim de tarde, mais plantas, mesa de madeira rústica' — mantendo as pessoas/produto originais." } },
+        properties: {
+          prompt: { type: "string", description: "Descrição da edição desejada. Ex: 'anúncio profissional desse SUV prata, luz de fim de tarde, fundo elegante desfocado' — mantendo o veículo/pessoa original." },
+          textos: { type: "array", items: { type: "string" }, description: "Até 6 frases curtas para APARECEREM escritas na imagem, ao lado do objeto. Ex: ['45.000 km', 'Ano/Modelo 2021/2022', 'Único dono', 'Todas as revisões na concessionária']. Deixe vazio se o usuário não pediu texto na imagem." },
+          modo: { type: "string", enum: ["melhoria", "ficha_tecnica", "figurino"], description: "'ficha_tecnica' = anúncio comercial de produto/veículo com dados ao lado; 'figurino' = trocar roupa/fantasia da pessoa mantendo rosto e ambiente; 'melhoria' = só melhorar a foto." },
+          preservar_ambiente: { type: "boolean", description: "true (padrão) para manter o mesmo cenário/ambiente e as mesmas pessoas. Use false só se ele pedir explicitamente para trocar o cenário." },
+        },
         required: ["prompt"],
       },
+
     },
   },
   {
@@ -4794,7 +4847,14 @@ async function runTool(
     return { result: r, imageUrl: parsed?.image_url };
   }
   if (name === "editar_imagem") {
-    const r = await toolEditarImagem(args?.prompt ?? "", { userId: ctx.userId, media: ctx.media });
+    const r = await toolEditarImagem(args?.prompt ?? "", {
+      userId: ctx.userId,
+      media: ctx.media,
+      textos: Array.isArray(args?.textos) ? args.textos : [],
+      modo: args?.modo,
+      preservarAmbiente: args?.preservar_ambiente !== false,
+    });
+
     let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}
     return { result: r, imageUrl: parsed?.image_url };
   }
@@ -6669,7 +6729,7 @@ Regras:
     const inboundFromOwner = fromIsOwner;
     const mediaBlock = media.length > 0
       ? inboundFromOwner
-        ? `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- O DONO/RESPONSÁVEL ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Foto/vídeo/áudio recebido é MÍDIA LIVRE da biblioteca — NÃO é um produto do catálogo.\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE. Passe em "contexto" o que ele falou (ou "sem contexto" se só mandou o arquivo).\n- É PROIBIDO chamar postar_redes_sociais quando há mídia nova enviada nesta mensagem — aquela tool é SÓ pra produtos do catálogo, nunca pra mídia recém-enviada.\n- Depois de salvar, responda curto. Só fale de publicar/reusar porque o remetente é o responsável da conta.`
+        ? `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- O DONO/RESPONSÁVEL ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Foto/vídeo/áudio recebido é MÍDIA LIVRE da biblioteca — NÃO é um produto do catálogo.\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE. Passe em "contexto" o que ele falou (ou "sem contexto" se só mandou o arquivo).\n- É PROIBIDO chamar postar_redes_sociais quando há mídia nova enviada nesta mensagem — aquela tool é SÓ pra produtos do catálogo, nunca pra mídia recém-enviada.\n- 🎨 EDIÇÃO: se ele pedir para MELHORAR a foto, montar ANÚNCIO, escrever dados na imagem (km, ano/modelo, "único dono", preço) ou trocar roupa/fantasia mantendo o ambiente, chame editar_imagem DEPOIS de salvar. Coloque cada dado citado por ele em "textos" (exatamente como ele escreveu) e escolha modo='ficha_tecnica' (produto/veículo) ou modo='figurino' (troca de roupa mantendo rosto e cenário).\n- Depois de salvar, responda curto. Só fale de publicar/reusar porque o remetente é o responsável da conta.`
         : `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- Um CLIENTE/CONTATO ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Esse remetente NÃO é o dono/responsável da conta — trate como cliente, NUNCA como "chefe"/"dono".\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE para arquivar a mídia (uso interno, não comente com o cliente).\n- DEPOIS: OLHE a foto/vídeo, IDENTIFIQUE o teor (o que aparece — produto, documento, print, situação, etc.) e responda naturalmente comentando o que viu. Se o cliente fez uma pergunta ou pedido junto (ex: "esse produto tem?", "quanto custa?", "vocês fazem isso?"), TIRE A DÚVIDA dele com base no que dá pra ver + contexto do negócio.\n- É PROIBIDO perguntar onde postar, oferecer preparar legenda/post, publicar/reusar em redes ou pedir confirmação de rede/formato.\n- Só DEPOIS de comentar a foto e responder a dúvida, PERGUNTE se ele quer que você encaminhe essa foto/recado pro responsável (Marcelo). Só chame encaminhar_recado_ao_dono se ele CONFIRMAR que quer encaminhar (ou já pediu explicitamente na mesma mensagem).`
       : "";
 
