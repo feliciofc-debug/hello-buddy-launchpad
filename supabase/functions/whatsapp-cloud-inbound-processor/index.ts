@@ -856,7 +856,23 @@ async function toolBuscarLugaresNominatim(locRow: any, query: string, radiusMete
   }
 }
 
-// ---- gerar_imagem: cria imagem por IA (Nano Banana), sobe pro storage e salva em /midias ----
+// 📐 FORMATO SOCIAL OBRIGATÓRIO — toda imagem do Jarvis já sai pronta pra Instagram
+// (e por consequência serve pro Facebook, que é menos exigente).
+// Padrão: 1:1 quadrado 1080x1080. Só vira 9:16 vertical quando o pedido fala de story/reels.
+function blocoFormatoSocial(pedido?: string): string {
+  const vertical = /\bstor(y|ies)\b|\breels?\b|\bvertical\b|9:16|tela cheia/i.test(pedido || "");
+  return vertical
+    ? `\n\n📐 FORMATO OBRIGATÓRIO — STORY/REELS:
+- Proporção EXATA 9:16 (vertical, 1080x1920 px). Não entregue quadrado nem paisagem.
+- Composição pensada para tela de celular: produto/assunto centralizado, respiro no topo e na base (áreas seguras), nada essencial nos 15% superiores e inferiores.
+- Preencha todo o quadro: sem bordas brancas, sem barras laterais, sem moldura, sem letterbox.`
+    : `\n\n📐 FORMATO OBRIGATÓRIO — FEED INSTAGRAM/FACEBOOK:
+- Proporção EXATA 1:1 (quadrado, 1080x1080 px). Não entregue 16:9, 4:3, panorâmica nem vertical.
+- Enquadre o assunto de forma que nada importante fique cortado no quadrado.
+- Preencha todo o quadro: sem bordas brancas, sem barras laterais, sem moldura, sem letterbox, sem fundo transparente.
+- Qualidade alta, pronta para publicação direta no Instagram e Facebook.`;
+}
+
 // Padrão IA Marketing: fotorealista, sem texto/letras/marca d'água, iluminação profissional.
 async function toolGerarImagem(
   prompt: string,
