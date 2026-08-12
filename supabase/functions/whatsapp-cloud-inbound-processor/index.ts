@@ -3922,12 +3922,18 @@ const TOOLS = [
     type: "function",
     function: {
       name: "editar_imagem",
-      description: "Edita/melhora uma FOTO que o usuário acabou de enviar no WhatsApp (mesma mensagem ou anterior recente). Use quando ele pedir 'melhora essa foto', 'deixa o ambiente mais bonito', 'troca o fundo', 'coloca luz natural', 'transforma em profissional', 'remove X'. NÃO use pra criar imagem do zero (use gerar_imagem). A imagem editada é enviada automaticamente — responda com legenda curta descrevendo o que ajustou.",
+      description: "Edita/melhora uma FOTO enviada no WhatsApp (mesma mensagem ou foto recente dos últimos 30 min). Use quando pedirem 'melhora essa foto', 'deixa mais bonita/profissional', 'troca o fundo', 'coloca luz natural', 'monta um anúncio dessa foto', 'coloca os dados do carro na imagem', 'coloca meu filho com a roupa do Homem-Aranha'. NÃO use pra criar imagem do zero (use gerar_imagem). IMPORTANTE: quando o usuário citar dados (quilometragem, ano/modelo, 'único dono', 'mais conservado', preço, etc.), coloque cada dado como um item do array 'textos' — assim eles aparecem escritos na imagem. Quando ele pedir troca de roupa/fantasia mantendo o local, use modo='figurino'. A imagem editada é enviada automaticamente — responda com legenda curta descrevendo o que ajustou.",
       parameters: {
         type: "object",
-        properties: { prompt: { type: "string", description: "Descrição da edição desejada. Ex: 'deixa a cafeteria mais aconchegante, luz quente de fim de tarde, mais plantas, mesa de madeira rústica' — mantendo as pessoas/produto originais." } },
+        properties: {
+          prompt: { type: "string", description: "Descrição da edição desejada. Ex: 'anúncio profissional desse SUV prata, luz de fim de tarde, fundo elegante desfocado' — mantendo o veículo/pessoa original." },
+          textos: { type: "array", items: { type: "string" }, description: "Até 6 frases curtas para APARECEREM escritas na imagem, ao lado do objeto. Ex: ['45.000 km', 'Ano/Modelo 2021/2022', 'Único dono', 'Todas as revisões na concessionária']. Deixe vazio se o usuário não pediu texto na imagem." },
+          modo: { type: "string", enum: ["melhoria", "ficha_tecnica", "figurino"], description: "'ficha_tecnica' = anúncio comercial de produto/veículo com dados ao lado; 'figurino' = trocar roupa/fantasia da pessoa mantendo rosto e ambiente; 'melhoria' = só melhorar a foto." },
+          preservar_ambiente: { type: "boolean", description: "true (padrão) para manter o mesmo cenário/ambiente e as mesmas pessoas. Use false só se ele pedir explicitamente para trocar o cenário." },
+        },
         required: ["prompt"],
       },
+
     },
   },
   {
