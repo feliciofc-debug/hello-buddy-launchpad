@@ -1091,7 +1091,44 @@ async function toolEditarImagem(
     if (upErr) return JSON.stringify({ erro: `upload_falhou: ${upErr.message}` });
     const { data: pub } = sb.storage.from("produtos").getPublicUrl(fileName);
     if (!pub?.publicUrl) return JSON.stringify({ erro: "sem_url_publica" });
-    return JSON.stringify({ ok: true, image_url: pub.publicUrl, prompt: clean });
+
+    // 🔒 BLINDAGEM: a imagem MELHORADA precisa entrar na biblioteca /midias como a
+    // mídia MAIS RECENTE. Sem isso, "posta essa imagem" pegava a FOTO ORIGINAL
+    // (salva por salvar_midia_biblioteca) em vez da versão tratada.
+    let midiaId: string | null = null;
+    if (ctx.registrarNaBiblioteca !== false) {
+      try {
+        const { data: novo } = await sb
+          .from("midias_whatsapp")
+          .insert({
+            user_id: ctx.userId,
+            origem: "ia_edicao",
+            telefone_origem: ctx.fromNumber ?? null,
+            tipo: "foto",
+            midia_url: pub.publicUrl,
+            mime_type: mime,
+            tamanho_bytes: bytes.length,
+            contexto_original: [clean, textos.length ? `Dados: ${textos.join(" | ")}` : ""].filter(Boolean).join("\n").slice(0, 1500),
+            status: "pendente",
+          })
+          .select("id")
+          .maybeSingle();
+        midiaId = novo?.id ?? null;
+      } catch (e) {
+        console.warn("[editar_imagem] falhou ao salvar em midias_whatsapp:", (e as Error).message);
+      }
+    }
+
+    return JSON.stringify({
+      ok: true,
+      image_url: pub.publicUrl,
+      prompt: clean,
+      midia_id: midiaId,
+      salvo_em_midias: !!midiaId,
+      instrucao: midiaId
+        ? `A imagem TRATADA foi enviada ao usuário e salva na biblioteca /midias com midia_id="${midiaId}". Se ele pedir pra publicar, chame postar_midia_biblioteca SEMPRE passando midia_id="${midiaId}" — é PROIBIDO publicar a foto original.`
+        : "A imagem tratada foi enviada ao usuário. Se ele pedir pra publicar, use a versão tratada (não a foto original).",
+    });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
   }
