@@ -2767,13 +2767,23 @@ async function publicarEmRede(
     if (rede === "facebook") {
       // FB aceita vídeo direto no feed via meta-publish-post (video_url).
       const body: any = { user_id: userId, message: script };
-      if (isVideo) body.video_url = mediaUrl; else { body.image_url = mediaUrl; body.link_url = produto.link; }
+      if (isVideo) body.video_url = mediaUrl;
+      else {
+        // 📐 O feed do Facebook é otimizado para PAISAGEM 1.91:1. Como o Jarvis gera tudo
+        // em 1:1 (ideal do Instagram), aqui geramos a VARIANTE paisagem por outpainting.
+        // Falha => segue com a quadrada (FB aceita, só fica menos bonita).
+        const variante = await gerarVarianteFacebookFeed(sb, mediaUrl, userId, LOVABLE_API_KEY);
+        console.log(`[social-router] rede=facebook formato=feed variante_paisagem=${variante.convertida} motivo=${variante.motivo ?? "ok"}`);
+        body.image_url = variante.url;
+        body.link_url = produto.link;
+      }
       const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-post`, {
         method: "POST", headers: commonHeaders, body: JSON.stringify(body),
       });
       const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
       return { rede, ok: res.ok && j?.success !== false, status: res.status, resposta: j };
     }
+
     if (rede === "instagram") {
       if (isVideo) {
         // ⚠️ IG feed de vídeo ≡ Reels na Graph API desde 2022. Redirecionamos internamente pra Reels com aviso.
