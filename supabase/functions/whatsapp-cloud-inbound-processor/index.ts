@@ -2368,6 +2368,21 @@ async function gerarTresOpcoesRedeSocial(
     ? `\n⚠️ ESTE PRODUTO É CONSÓRCIO. PROIBIDO: "estoque limitado", "últimas unidades", "peças", "pronta-entrega". PERMITIDO: carta de crédito, contemplação, parcelas, planejamento, sonho realizado.`
     : "";
 
+  const ehVeiculo = !ehConsorcio && /(ve[ií]culo|carro|autom[oó]vel|seminovo|semi-novo|0km|zero\s*km|hatch|sedan|suv|picape|caminhonete|moto(cicleta)?|c[aâ]mbio|automat[ií]co|flex|turbo|km\s*rodados?|[0-9]{2}\s*mil\s*km|honda|toyota|hyundai|chevrolet|volkswagen|fiat|ford|renault|nissan|jeep|bmw|mercedes|audi|peugeot|citro[eë]n|kia|mitsubishi|civic|corolla|creta|onix|hb20|gol|polo|compass|tracker|t-cross|argo|strada|hilux|ranger|s10)/i.test(descLower)
+    ? `
+========================================
+🚗 ESTE POST É DE VEÍCULO — REGRAS ESPECIAIS (PRIORIDADE ALTA):
+- O PROTAGONISTA É O CARRO. Nunca o dono da loja, nunca o cliente, nunca a AMZ.
+- PROIBIDO citar nome de pessoa (ex: "Felicio", "João"), tratar o leitor pelo nome ou escrever "seu Honda Civic", "seu carro" como se ele já fosse dele. O carro está À VENDA para um novo dono.
+- GLAMOUR: descreva o veículo com desejo e sofisticação — design, presença, conservação, procedência, conforto, performance, detalhes (rodas, iluminação, acabamento, interior impecável).
+- PERSUASÃO: crie desejo real e sensação de oportunidade honesta ("carro assim não fica parado", "raridade nesse estado") — sem inventar estoque ou prazo.
+- Use os dados técnicos informados (ano/modelo, km, câmbio, único dono, chaves, revisões, preço se houver) como PROVA de qualidade, em bullets curtos.
+- CTA OBRIGATÓRIO EM CONVITE PRESENCIAL: convide para conhecer de perto — test-drive, visita à loja, "vem tomar um café com a gente e conhecer esse carro de perto", agendar horário pelo WhatsApp/direct.
+- Linguagem de vitrine automotiva premium, frases curtas, sem clichê batido ("imperdível!!!").
+========================================\n`
+    : "";
+
+
   const brief = (briefing || "").toString().trim().slice(0, 2500);
   const blocoBriefing = brief
     ? `\n========================================
@@ -2383,7 +2398,7 @@ COMO USAR:
     : "";
 
   const prompt = `Você é copywriter sênior de redes sociais. Crie 3 VARIAÇÕES CURTAS de post para ${rede.toUpperCase()} sobre o produto/tema abaixo.
-${guiaTom}${regraConsorcio}
+${guiaTom}${regraConsorcio}${ehVeiculo}
 ${blocoBriefing}
 DADOS:
 - Nome/tema: ${produto.nome}
@@ -2400,6 +2415,7 @@ REGRAS DURAS (valem pra TODAS as 3 opções):
 - 5-8 hashtags no fim, relevantes, separadas por espaço.
 - NUNCA invente: preço, desconto, "%", "só hoje", "estoque", "últimas unidades", "vagas limitadas", depoimentos, números de clientes.
 - NUNCA escreva "Conteúdo da imagem", "Nesta imagem", "A arte mostra" ou qualquer descrição do visual.
+- NUNCA cite o nome do dono/anunciante nem trate o leitor pelo nome próprio (nada de "Felicio, ...") — o post é público, para desconhecidos. O protagonista é o PRODUTO.
 - Se briefing cita PESSOA nomeada (consultor/atleta/cliente), use essa pessoa nas 3 opções.
 - Sem markdown, sem "Aqui está:", sem aspas envolvendo o post.
 
