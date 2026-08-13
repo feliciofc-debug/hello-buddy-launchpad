@@ -2368,6 +2368,21 @@ async function gerarTresOpcoesRedeSocial(
     ? `\n⚠️ ESTE PRODUTO É CONSÓRCIO. PROIBIDO: "estoque limitado", "últimas unidades", "peças", "pronta-entrega". PERMITIDO: carta de crédito, contemplação, parcelas, planejamento, sonho realizado.`
     : "";
 
+  const ehVeiculo = !ehConsorcio && /(ve[ií]culo|carro|autom[oó]vel|seminovo|semi-novo|0km|zero\s*km|hatch|sedan|suv|picape|caminhonete|moto(cicleta)?|c[aâ]mbio|automat[ií]co|flex|turbo|km\s*rodados?|[0-9]{2}\s*mil\s*km|honda|toyota|hyundai|chevrolet|volkswagen|fiat|ford|renault|nissan|jeep|bmw|mercedes|audi|peugeot|citro[eë]n|kia|mitsubishi|civic|corolla|creta|onix|hb20|gol|polo|compass|tracker|t-cross|argo|strada|hilux|ranger|s10)/i.test(descLower)
+    ? `
+========================================
+🚗 ESTE POST É DE VEÍCULO — REGRAS ESPECIAIS (PRIORIDADE ALTA):
+- O PROTAGONISTA É O CARRO. Nunca o dono da loja, nunca o cliente, nunca a AMZ.
+- PROIBIDO citar nome de pessoa (ex: "Felicio", "João"), tratar o leitor pelo nome ou escrever "seu Honda Civic", "seu carro" como se ele já fosse dele. O carro está À VENDA para um novo dono.
+- GLAMOUR: descreva o veículo com desejo e sofisticação — design, presença, conservação, procedência, conforto, performance, detalhes (rodas, iluminação, acabamento, interior impecável).
+- PERSUASÃO: crie desejo real e sensação de oportunidade honesta ("carro assim não fica parado", "raridade nesse estado") — sem inventar estoque ou prazo.
+- Use os dados técnicos informados (ano/modelo, km, câmbio, único dono, chaves, revisões, preço se houver) como PROVA de qualidade, em bullets curtos.
+- CTA OBRIGATÓRIO EM CONVITE PRESENCIAL: convide para conhecer de perto — test-drive, visita à loja, "vem tomar um café com a gente e conhecer esse carro de perto", agendar horário pelo WhatsApp/direct.
+- Linguagem de vitrine automotiva premium, frases curtas, sem clichê batido ("imperdível!!!").
+========================================\n`
+    : "";
+
+
   const brief = (briefing || "").toString().trim().slice(0, 2500);
   const blocoBriefing = brief
     ? `\n========================================
