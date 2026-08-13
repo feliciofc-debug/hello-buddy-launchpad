@@ -2398,7 +2398,7 @@ COMO USAR:
     : "";
 
   const prompt = `Você é copywriter sênior de redes sociais. Crie 3 VARIAÇÕES CURTAS de post para ${rede.toUpperCase()} sobre o produto/tema abaixo.
-${guiaTom}${regraConsorcio}
+${guiaTom}${regraConsorcio}${ehVeiculo}
 ${blocoBriefing}
 DADOS:
 - Nome/tema: ${produto.nome}
