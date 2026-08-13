@@ -7229,7 +7229,10 @@ Regras:
       console.warn("[ebook][prompt-block] falhou:", (e as Error).message);
     }
 
-    const systemPromptWithDate = systemPrompt + dateBlock + ownerHintBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock + ebookBlock;
+    // ⛔ ANTI-PROMESSA: o agente não pode dizer que vai fazer e não chamar a tool no mesmo turno.
+    const antiPromessaBlock = `\n\nENTREGA NO MESMO TURNO (REGRA ABSOLUTA):\n- É PROIBIDO prometer trabalho futuro. Frases como "já estou preparando", "fica pronto em um instante", "vou montar e te mando", "aguarde uns minutos" são PROIBIDAS se você não chamou a ferramenta correspondente NESTA MESMA RESPOSTA.\n- Você NÃO tem fila nem execução em segundo plano: se não chamar a tool agora, NADA acontece e o pedido se perde.\n- Pedido de arte/anúncio/imagem/post ⇒ chame a tool (criar_anuncio, editar_imagem, gerar_imagem, criar_carrossel, postar_midia_biblioteca) AGORA e só depois responda.\n- Se faltar UM dado essencial, faça UMA pergunta curta em vez de prometer. Se os dados já vieram, execute sem perguntar.`;
+
+    const systemPromptWithDate = systemPrompt + dateBlock + antiPromessaBlock + ownerHintBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock + ebookBlock;
     console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPromptWithDate.length}`);
 
     // Histórico
