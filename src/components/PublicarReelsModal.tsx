@@ -76,6 +76,13 @@ export function PublicarReelsModal({
   const [savingWhatsapp, setSavingWhatsapp] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // ===== Legenda queimada no vídeo (pt-BR) =====
+  const [legendaAtiva, setLegendaAtiva] = useState(false);
+  const [gerandoLegenda, setGerandoLegenda] = useState(false);
+  const [segmentos, setSegmentos] = useState<LegendaSegmento[]>([]);
+  const [textoLegenda, setTextoLegenda] = useState("");
+  const [progressoLegenda, setProgressoLegenda] = useState<ProgressoLegenda | null>(null);
+
   const hasPreloadedVideo = !!videoUrl;
   const productName = produto?.nome || produto?.titulo || "";
   const productLink = produto?.link || produto?.link_afiliado || produto?.link_marketplace || "";
