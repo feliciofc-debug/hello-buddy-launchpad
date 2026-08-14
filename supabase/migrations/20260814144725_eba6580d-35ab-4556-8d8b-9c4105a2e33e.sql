@@ -1,0 +1,1 @@
+UPDATE public.profiles SET nome='Paulo Camarin', nome_fantasia='Ademicon', tipo='empresa', plano='premium' WHERE id='d6159ef4-f0bd-4935-a335-c5e8964e4f17';
