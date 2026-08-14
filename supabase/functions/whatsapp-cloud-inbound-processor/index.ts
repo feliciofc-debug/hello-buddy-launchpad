@@ -3194,6 +3194,28 @@ function detectSocialPostConfirmation(text: string): { token: string; cancelar?:
   return null;
 }
 
+// Detecta se o briefing escrito/recuperado fala de uma CATEGORIA de produto
+// diferente da que aparece na imagem (causa clássica de "post de veículo em foto
+// de garrafa d'água" quando um assunto antigo da conversa vaza pro briefing).
+const CATEGORIAS_ASSUNTO: Array<{ nome: string; re: RegExp }> = [
+  { nome: "veiculo", re: /\b(ve[ií]culo|carro|autom[oó]vel|seminovo|semi-novo|0km|zero\s*km|hatch|sedan|sed[aã]|suv|picape|caminhonete|moto(cicleta)?|c[aâ]mbio|flex|turbo|km\s*rodados?|honda|toyota|hyundai|chevrolet|volkswagen|fiat|ford|renault|nissan|jeep|bmw|mercedes|audi|peugeot|citro[eë]n|civic|corolla|creta|onix|hb20|compass|tracker|hilux|ranger)\b/i },
+  { nome: "imovel", re: /\b(im[oó]vel|apartamento|casa\s+(?:à|a)\s+venda|terreno|lote|condom[ií]nio|metros\s+quadrados|m²|quartos?|su[ií]tes?)\b/i },
+  { nome: "consorcio", re: /\b(cons[oó]rcio|carta\s+de\s+cr[eé]dito|ademicon|parcelas?\s+mensais|lance)\b/i },
+];
+
+function categoriaAssunto(texto: string): string | null {
+  for (const c of CATEGORIAS_ASSUNTO) if (c.re.test(texto || "")) return c.nome;
+  return null;
+}
+
+function categoriaConflitante(descricaoVisual: string, briefing: string): boolean {
+  const catBrief = categoriaAssunto(briefing);
+  if (!catBrief) return false;
+  const catVisual = categoriaAssunto(descricaoVisual);
+  // Briefing fala de veículo/imóvel/consórcio e a imagem NÃO é disso → conflito.
+  return catVisual !== catBrief;
+}
+
 function detectSocialVariantChoice(text: string): "A" | "B" | "C" | null {
   const normalized = normalizePt(text || "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
   const compact = normalized.replace(/\s+/g, "");
