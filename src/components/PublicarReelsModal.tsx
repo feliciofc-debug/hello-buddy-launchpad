@@ -9,7 +9,14 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Upload, Video, Facebook, Instagram, Loader2, X, Sparkles, Check, Clock, CalendarClock, Save } from "lucide-react";
+import { Upload, Video, Facebook, Instagram, Loader2, X, Sparkles, Check, Clock, CalendarClock, Save, Subtitles } from "lucide-react";
+import {
+  queimarLegendas,
+  segmentosParaTexto,
+  textoParaSegmentos,
+  type LegendaSegmento,
+  type ProgressoLegenda,
+} from "@/lib/legendarVideo";
 
 interface PublishResult {
   facebook?: { ok: boolean; postId?: string; error?: string };
