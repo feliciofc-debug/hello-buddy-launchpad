@@ -9,7 +9,14 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Upload, Video, Facebook, Instagram, Loader2, X, Sparkles, Check, Clock, CalendarClock, Save } from "lucide-react";
+import { Upload, Video, Facebook, Instagram, Loader2, X, Sparkles, Check, Clock, CalendarClock, Save, Subtitles } from "lucide-react";
+import {
+  queimarLegendas,
+  segmentosParaTexto,
+  textoParaSegmentos,
+  type LegendaSegmento,
+  type ProgressoLegenda,
+} from "@/lib/legendarVideo";
 
 interface PublishResult {
   facebook?: { ok: boolean; postId?: string; error?: string };
@@ -69,6 +76,13 @@ export function PublicarReelsModal({
   const [savingWhatsapp, setSavingWhatsapp] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // ===== Legenda queimada no vídeo (pt-BR) =====
+  const [legendaAtiva, setLegendaAtiva] = useState(false);
+  const [gerandoLegenda, setGerandoLegenda] = useState(false);
+  const [segmentos, setSegmentos] = useState<LegendaSegmento[]>([]);
+  const [textoLegenda, setTextoLegenda] = useState("");
+  const [progressoLegenda, setProgressoLegenda] = useState<ProgressoLegenda | null>(null);
+
   const hasPreloadedVideo = !!videoUrl;
   const productName = produto?.nome || produto?.titulo || "";
   const productLink = produto?.link || produto?.link_afiliado || produto?.link_marketplace || "";
@@ -126,11 +140,78 @@ export function PublicarReelsModal({
       setDescricaoVideo("");
       setWhatsappLink("");
       setCaption("");
+      setLegendaAtiva(false);
+      setSegmentos([]);
+      setTextoLegenda("");
+      setProgressoLegenda(null);
       if (!hasPreloadedVideo) {
         handleRemoveVideo();
       }
     }
   }, [open, publicadoFacebook, publicadoInstagram, videoId, videoSource]);
+
+  // Garante uma URL pública do vídeo (sobe o arquivo se ainda for local)
+  const garantirUrlDoVideo = async (): Promise<string> => {
+    if (hasPreloadedVideo) return videoUrl!;
+    if (!videoFile) throw new Error("Selecione um vídeo primeiro");
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Usuário não autenticado");
+    const ext = videoFile.name.split(".").pop() || "mp4";
+    const filePath = `reels/${user.id}/${Date.now()}.${ext}`;
+    const { data, error } = await supabase.storage
+      .from("videos")
+      .upload(filePath, videoFile, { contentType: videoFile.type, upsert: false });
+    if (error) throw new Error(`Erro no upload: ${error.message}`);
+    return supabase.storage.from("videos").getPublicUrl(data.path).data.publicUrl;
+  };
+
+  const handleGerarLegendas = async () => {
+    setGerandoLegenda(true);
+    setProgressoLegenda(null);
+    try {
+      const url = await garantirUrlDoVideo();
+      toast.info("🎧 Ouvindo o vídeo e transcrevendo em português...");
+      const { data, error } = await supabase.functions.invoke("video-transcrever-legendas", {
+        body: { video_url: url },
+      });
+      if (error) throw new Error(error.message);
+      if (!data?.success) throw new Error(data?.error || "Não consegui transcrever o vídeo");
+
+      const segs: LegendaSegmento[] = data.segments || [];
+      if (segs.length === 0) {
+        toast.error("Não encontrei fala neste vídeo. Confira se ele tem áudio.");
+        return;
+      }
+      setSegmentos(segs);
+      setTextoLegenda(segmentosParaTexto(segs));
+      setLegendaAtiva(true);
+      toast.success(`✅ ${segs.length} legendas geradas — revise antes de publicar`);
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao gerar legendas");
+    } finally {
+      setGerandoLegenda(false);
+    }
+  };
+
+  // Queima as legendas e devolve a URL do vídeo legendado no Storage
+  const gerarVideoLegendado = async (): Promise<string> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Usuário não autenticado");
+
+    const segsFinais = textoParaSegmentos(textoLegenda, segmentos);
+    if (segsFinais.length === 0) throw new Error("Nenhuma legenda válida para aplicar");
+
+    const fonte: File | string = hasPreloadedVideo ? videoUrl! : videoFile!;
+    const blob = await queimarLegendas(fonte, segsFinais, (p) => setProgressoLegenda(p));
+
+    const path = `reels/${user.id}/${Date.now()}-legendado.mp4`;
+    const { data, error } = await supabase.storage
+      .from("videos")
+      .upload(path, blob, { contentType: "video/mp4", upsert: false });
+    if (error) throw new Error(`Erro ao salvar vídeo legendado: ${error.message}`);
+    return supabase.storage.from("videos").getPublicUrl(data.path).data.publicUrl;
+  };
+
 
   const handleSalvarDescricao = async () => {
     setSavingDescricao(true);
@@ -381,7 +462,15 @@ export function PublicarReelsModal({
 
       let publishVideoUrl = finalVideoUrl;
 
-      if (!hasPreloadedVideo && videoFile) {
+      // Legenda queimada: gera o MP4 com legendas e publica ESSE vídeo
+      const usarLegenda = legendaAtiva && textoLegenda.trim().length > 0;
+      if (usarLegenda) {
+        toast.info("🎬 Gravando as legendas no vídeo...");
+        publishVideoUrl = await gerarVideoLegendado();
+        setProgressoLegenda(null);
+      }
+
+      if (!usarLegenda && !hasPreloadedVideo && videoFile) {
         const ext = videoFile.name.split(".").pop() || "mp4";
         const filePath = `reels/${user.id}/${Date.now()}.${ext}`;
 
@@ -582,6 +671,77 @@ export function PublicarReelsModal({
               </>
             )}
           </div>
+
+          {/* Legenda queimada no vídeo (pt-BR) */}
+          {hasVideo && (
+            <Card className="p-3 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-2">
+                  <Subtitles className="h-4 w-4 mt-0.5 text-primary" />
+                  <div>
+                    <p className="text-sm font-medium">Legenda no vídeo (português)</p>
+                    <p className="text-xs text-muted-foreground">
+                      A IA ouve o áudio e grava a legenda na imagem do vídeo.
+                    </p>
+                  </div>
+                </div>
+                <Checkbox
+                  checked={legendaAtiva}
+                  onCheckedChange={(v) => setLegendaAtiva(!!v)}
+                  disabled={segmentos.length === 0}
+                />
+              </div>
+
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="w-full"
+                onClick={handleGerarLegendas}
+                disabled={gerandoLegenda || uploading}
+              >
+                {gerandoLegenda ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Transcrevendo...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    {segmentos.length > 0 ? "Gerar legenda de novo" : "Gerar legenda automática"}
+                  </>
+                )}
+              </Button>
+
+              {segmentos.length > 0 && (
+                <div>
+                  <Label className="text-xs text-muted-foreground">
+                    Revise o texto (formato: [início-fim] texto). Use " / " para quebrar em 2 linhas.
+                  </Label>
+                  <Textarea
+                    value={textoLegenda}
+                    onChange={(e) => setTextoLegenda(e.target.value)}
+                    className="mt-1 font-mono text-xs min-h-[120px]"
+                    rows={6}
+                  />
+                </div>
+              )}
+
+              {progressoLegenda && (
+                <div className="space-y-1">
+                  <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-primary transition-all"
+                      style={{ width: `${progressoLegenda.pct}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">{progressoLegenda.mensagem}</p>
+                </div>
+              )}
+            </Card>
+          )}
+
+
 
           {/* Descrição do vídeo para IA */}
           <div>

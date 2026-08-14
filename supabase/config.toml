@@ -336,3 +336,6 @@ verify_jwt = true
 [functions.test-multi-tenant-owner]
 verify_jwt = false
 
+
+[functions.video-transcrever-legendas]
+verify_jwt = true
