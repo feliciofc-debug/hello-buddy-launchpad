@@ -3822,6 +3822,17 @@ async function toolPostarMidiaBiblioteca(
     }
     briefing = briefing.slice(0, 2500);
 
+    // 🛡️ BLINDAGEM ANTI-ASSUNTO-TROCADO: se a IA (ou o contexto recuperado) trouxer um
+    // briefing que fala de um produto de OUTRA categoria que não a mostrada na foto
+    // (ex: ficha técnica de veículo em cima da foto de uma garrafa d'água), o briefing
+    // é DESCARTADO — o assunto do post é sempre o item da imagem.
+    if (briefing && !isVideo && descricaoVisual.trim().length >= 40) {
+      if (categoriaConflitante(descricaoVisual, briefing)) {
+        console.warn("[pietro][postar_midia] briefing DESCARTADO por conflito de assunto com a imagem");
+        briefing = "";
+      }
+    }
+
     // VÍDEO precisa de contexto do dono (não temos visão de vídeo — não inventar descrição).
     const legendaDono = (legendaArg || contextoUsuario || briefing || "").toString().trim();
     if (isVideo && !legendaDono) {
