@@ -146,6 +146,69 @@ export function PublicarReelsModal({
     }
   }, [open, publicadoFacebook, publicadoInstagram, videoId, videoSource]);
 
+  // Garante uma URL pública do vídeo (sobe o arquivo se ainda for local)
+  const garantirUrlDoVideo = async (): Promise<string> => {
+    if (hasPreloadedVideo) return videoUrl!;
+    if (!videoFile) throw new Error("Selecione um vídeo primeiro");
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Usuário não autenticado");
+    const ext = videoFile.name.split(".").pop() || "mp4";
+    const filePath = `reels/${user.id}/${Date.now()}.${ext}`;
+    const { data, error } = await supabase.storage
+      .from("videos")
+      .upload(filePath, videoFile, { contentType: videoFile.type, upsert: false });
+    if (error) throw new Error(`Erro no upload: ${error.message}`);
+    return supabase.storage.from("videos").getPublicUrl(data.path).data.publicUrl;
+  };
+
+  const handleGerarLegendas = async () => {
+    setGerandoLegenda(true);
+    setProgressoLegenda(null);
+    try {
+      const url = await garantirUrlDoVideo();
+      toast.info("🎧 Ouvindo o vídeo e transcrevendo em português...");
+      const { data, error } = await supabase.functions.invoke("video-transcrever-legendas", {
+        body: { video_url: url },
+      });
+      if (error) throw new Error(error.message);
+      if (!data?.success) throw new Error(data?.error || "Não consegui transcrever o vídeo");
+
+      const segs: LegendaSegmento[] = data.segments || [];
+      if (segs.length === 0) {
+        toast.error("Não encontrei fala neste vídeo. Confira se ele tem áudio.");
+        return;
+      }
+      setSegmentos(segs);
+      setTextoLegenda(segmentosParaTexto(segs));
+      setLegendaAtiva(true);
+      toast.success(`✅ ${segs.length} legendas geradas — revise antes de publicar`);
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao gerar legendas");
+    } finally {
+      setGerandoLegenda(false);
+    }
+  };
+
+  // Queima as legendas e devolve a URL do vídeo legendado no Storage
+  const gerarVideoLegendado = async (): Promise<string> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Usuário não autenticado");
+
+    const segsFinais = textoParaSegmentos(textoLegenda, segmentos);
+    if (segsFinais.length === 0) throw new Error("Nenhuma legenda válida para aplicar");
+
+    const fonte: File | string = hasPreloadedVideo ? videoUrl! : videoFile!;
+    const blob = await queimarLegendas(fonte, segsFinais, (p) => setProgressoLegenda(p));
+
+    const path = `reels/${user.id}/${Date.now()}-legendado.mp4`;
+    const { data, error } = await supabase.storage
+      .from("videos")
+      .upload(path, blob, { contentType: "video/mp4", upsert: false });
+    if (error) throw new Error(`Erro ao salvar vídeo legendado: ${error.message}`);
+    return supabase.storage.from("videos").getPublicUrl(data.path).data.publicUrl;
+  };
+
+
   const handleSalvarDescricao = async () => {
     setSavingDescricao(true);
     try {
