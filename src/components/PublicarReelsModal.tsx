@@ -140,6 +140,10 @@ export function PublicarReelsModal({
       setDescricaoVideo("");
       setWhatsappLink("");
       setCaption("");
+      setLegendaAtiva(false);
+      setSegmentos([]);
+      setTextoLegenda("");
+      setProgressoLegenda(null);
       if (!hasPreloadedVideo) {
         handleRemoveVideo();
       }
