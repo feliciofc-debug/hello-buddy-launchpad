@@ -3216,6 +3216,16 @@ function categoriaConflitante(descricaoVisual: string, briefing: string): boolea
   return catVisual !== catBrief;
 }
 
+function copyConflitaComImagem(descricaoVisual: string, opcoes: { A: string; B: string; C: string }): boolean {
+  const catVisual = categoriaAssunto(descricaoVisual);
+  const categoriasCopy = [opcoes.A, opcoes.B, opcoes.C]
+    .map((texto) => categoriaAssunto(texto))
+    .filter((categoria): categoria is string => !!categoria);
+
+  // Uma copy não pode introduzir categoria especializada ausente da foto.
+  return categoriasCopy.some((categoria) => categoria !== catVisual);
+}
+
 function detectSocialVariantChoice(text: string): "A" | "B" | "C" | null {
   const normalized = normalizePt(text || "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
   const compact = normalized.replace(/\s+/g, "");
@@ -3907,7 +3917,26 @@ async function toolPostarMidiaBiblioteca(
     // a função encerrava antes de responder ("pedi a copy e não chegou nada").
     const redeBase: "facebook" | "instagram" = redes.includes("instagram") ? "instagram" : "facebook";
     console.log(`[pietro][postar_midia] gerando copy redes=${redes.join(",")} base=${redeBase} formato=${formato}`);
-    const opcoesBase = await gerarTresOpcoesRedeSocial(produtoLike, tom, redeBase, undefined, brandCtx, briefing || undefined);
+    let opcoesBase = await gerarTresOpcoesRedeSocial(produtoLike, tom, redeBase, undefined, brandCtx, briefing || undefined);
+
+    // Última barreira contra contaminação de contexto: mesmo que o modelo ignore as
+    // instruções, uma copy automotiva nunca é exibida para uma foto de outro produto.
+    if (!isVideo && descricaoVisual && copyConflitaComImagem(descricaoVisual, opcoesBase)) {
+      console.error("[pietro][postar_midia] copy REJEITADA por conflito com a imagem; regenerando sem contexto");
+      const produtoVisual = {
+        ...produtoLike,
+        nome: descricaoVisual.slice(0, 120),
+        descricao: `O produto mostrado na foto é: ${descricaoVisual}`,
+      };
+      opcoesBase = await gerarTresOpcoesRedeSocial(
+        produtoVisual,
+        "beneficio",
+        redeBase,
+        "Fale exclusivamente sobre o produto identificado nesta foto. Não mencione veículos, carros, concessionária, test-drive, quilometragem, ano ou modelo.",
+        undefined,
+        undefined,
+      );
+    }
     console.log(`[pietro][postar_midia] copy gerada lenA=${opcoesBase.A.length}`);
     let variantes: Record<string, PostVariantes> = Object.fromEntries(redes.map((r) => [r, { ...opcoesBase }]));
     let scripts: Record<string, string> = Object.fromEntries(redes.map((r) => [r, opcoesBase.A]));
