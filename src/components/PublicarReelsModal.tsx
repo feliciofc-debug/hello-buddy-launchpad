@@ -458,7 +458,15 @@ export function PublicarReelsModal({
 
       let publishVideoUrl = finalVideoUrl;
 
-      if (!hasPreloadedVideo && videoFile) {
+      // Legenda queimada: gera o MP4 com legendas e publica ESSE vídeo
+      const usarLegenda = legendaAtiva && textoLegenda.trim().length > 0;
+      if (usarLegenda) {
+        toast.info("🎬 Gravando as legendas no vídeo...");
+        publishVideoUrl = await gerarVideoLegendado();
+        setProgressoLegenda(null);
+      }
+
+      if (!usarLegenda && !hasPreloadedVideo && videoFile) {
         const ext = videoFile.name.split(".").pop() || "mp4";
         const filePath = `reels/${user.id}/${Date.now()}.${ext}`;
 
