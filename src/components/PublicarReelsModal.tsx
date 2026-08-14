@@ -668,6 +668,77 @@ export function PublicarReelsModal({
             )}
           </div>
 
+          {/* Legenda queimada no vídeo (pt-BR) */}
+          {hasVideo && (
+            <Card className="p-3 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-2">
+                  <Subtitles className="h-4 w-4 mt-0.5 text-primary" />
+                  <div>
+                    <p className="text-sm font-medium">Legenda no vídeo (português)</p>
+                    <p className="text-xs text-muted-foreground">
+                      A IA ouve o áudio e grava a legenda na imagem do vídeo.
+                    </p>
+                  </div>
+                </div>
+                <Checkbox
+                  checked={legendaAtiva}
+                  onCheckedChange={(v) => setLegendaAtiva(!!v)}
+                  disabled={segmentos.length === 0}
+                />
+              </div>
+
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="w-full"
+                onClick={handleGerarLegendas}
+                disabled={gerandoLegenda || uploading}
+              >
+                {gerandoLegenda ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Transcrevendo...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    {segmentos.length > 0 ? "Gerar legenda de novo" : "Gerar legenda automática"}
+                  </>
+                )}
+              </Button>
+
+              {segmentos.length > 0 && (
+                <div>
+                  <Label className="text-xs text-muted-foreground">
+                    Revise o texto (formato: [início-fim] texto). Use " / " para quebrar em 2 linhas.
+                  </Label>
+                  <Textarea
+                    value={textoLegenda}
+                    onChange={(e) => setTextoLegenda(e.target.value)}
+                    className="mt-1 font-mono text-xs min-h-[120px]"
+                    rows={6}
+                  />
+                </div>
+              )}
+
+              {progressoLegenda && (
+                <div className="space-y-1">
+                  <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-primary transition-all"
+                      style={{ width: `${progressoLegenda.pct}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">{progressoLegenda.mensagem}</p>
+                </div>
+              )}
+            </Card>
+          )}
+
+
+
           {/* Descrição do vídeo para IA */}
           <div>
             <Label className="text-sm font-medium">Sobre o que é esse vídeo? (opcional)</Label>
