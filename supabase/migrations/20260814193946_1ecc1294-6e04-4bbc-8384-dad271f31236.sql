@@ -1,0 +1,1 @@
+UPDATE public.social_posts_queue SET status='cancelado', error_message='cancelado_briefing_incoerente', updated_at=now() WHERE status='aguardando_confirmacao';
