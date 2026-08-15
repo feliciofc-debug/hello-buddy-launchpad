@@ -79,6 +79,7 @@ REGRAS:
 - Cada bloco dura entre 1 e 3.5 segundos e acompanha exatamente o que é falado.
 - Não invente conteúdo. Se não houver fala, devolva uma lista vazia.
 - Sem emojis, sem marcações, apenas o texto falado com pontuação natural.
+- Transcreva com capitalização natural: primeira letra de cada frase em maiúscula, nomes próprios e marcas com a grafia correta (ex.: WhatsApp, TikTok, Tramontina, AMZ Ofertas). Não escreva em caixa alta.
 
 Responda SOMENTE com JSON válido no formato:
 {"segments":[{"start":0.0,"end":2.4,"text":"texto da legenda"}]}`;
