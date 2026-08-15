@@ -41,14 +41,11 @@ Deno.serve(async (req) => {
     //    quando a Meta não envia o postMessage WA_EMBEDDED_SIGNUP, resolvemos
     //    os IDs pelo próprio token (debug_token + /phone_numbers).
     const body = await req.json();
-    const { code, pin, redirect_uri } = body;
+    const { code, pin } = body;
     let waba_id: string | null = body.waba_id ?? null;
     let phone_number_id: string | null = body.phone_number_id ?? null;
     if (!code) {
       return json({ error: "missing_fields", required: ["code"] }, 400);
-    }
-    if (typeof redirect_uri !== "string" || !/^https?:\/\//.test(redirect_uri)) {
-      return json({ success: false, step: "code_exchange", error: "redirect_uri ausente ou inválido" }, 200);
     }
 
     const registerPin = typeof pin === "string" && /^\d{6}$/.test(pin) ? pin : "000000";
@@ -59,7 +56,6 @@ Deno.serve(async (req) => {
         client_id: META_APP_ID,
         client_secret: META_APP_SECRET,
         code,
-         redirect_uri,
       }),
     );
     const shortJson = await shortRes.json();
@@ -68,33 +64,33 @@ Deno.serve(async (req) => {
     }
     const shortToken = shortJson.access_token as string;
 
-    // 4) Trocar por long-lived token (60d)
-    const longRes = await fetch(
-      `${GRAPH}/oauth/access_token?` + new URLSearchParams({
-        grant_type: "fb_exchange_token",
-        client_id: META_APP_ID,
-        client_secret: META_APP_SECRET,
-        fb_exchange_token: shortToken,
-      }),
-    );
-    const longJson = await longRes.json();
-    if (!longRes.ok || !longJson.access_token) {
-      return json({ success: false, step: "long_lived_exchange", error: longJson }, 200);
-    }
-    const accessToken = longJson.access_token as string;
-    const expiresInSec = (longJson.expires_in as number) ?? 60 * 24 * 60 * 60; // fallback 60d
-    const tokenExpiresAt = new Date(Date.now() + expiresInSec * 1000).toISOString();
+    // 4) O token devolvido pela troca do code JÁ é o token final
+    //    (Business Integration System User token com escopo no WABA do
+    //    cliente). NÃO existe fb_exchange_token aqui.
+    const accessToken = shortToken;
 
-    // 4.1) Resolver waba_id / phone_number_id quando o frontend não recebeu o
-    //      postMessage da Meta. debug_token traz os target_ids concedidos
-    //      (granular_scopes) para whatsapp_business_management/messaging.
+    // 4.1) debug_token: validade real + granular_scopes (uma única chamada)
+    let dbgData: any = null;
+    try {
+      const dbgRes = await fetch(
+        `${GRAPH}/debug_token?input_token=${accessToken}&access_token=${META_APP_ID}|${META_APP_SECRET}`,
+      );
+      const dbgJson = await dbgRes.json();
+      dbgData = dbgJson?.data ?? null;
+    } catch (e) {
+      return json({ success: false, step: "debug_token", error: String(e) }, 200);
+    }
+
+    const expiresAtSec = typeof dbgData?.expires_at === "number" ? dbgData.expires_at : 0;
+    const tokenExpiresAt = expiresAtSec > 0
+      ? new Date(expiresAtSec * 1000).toISOString()
+      : null; // 0 = token permanente
+
+    // 4.2) Resolver waba_id / phone_number_id quando o frontend não recebeu o
+    //      postMessage da Meta, reaproveitando o debug_token acima.
     if (!waba_id || !phone_number_id) {
       try {
-        const dbgRes = await fetch(
-          `${GRAPH}/debug_token?input_token=${accessToken}&access_token=${META_APP_ID}|${META_APP_SECRET}`,
-        );
-        const dbgJson = await dbgRes.json();
-        const scopes: any[] = dbgJson?.data?.granular_scopes ?? [];
+        const scopes: any[] = dbgData?.granular_scopes ?? [];
         const waScope = scopes.find((s) =>
           s?.scope === "whatsapp_business_management" || s?.scope === "whatsapp_business_messaging"
         );
@@ -104,7 +100,7 @@ Deno.serve(async (req) => {
             success: false,
             step: "resolve_waba",
             error: "Não foi possível identificar a conta WhatsApp Business concedida. Refaça a conexão concluindo todas as etapas do assistente da Meta (criar conta do WhatsApp Business e adicionar o número).",
-            debug: dbgJson?.data?.granular_scopes ?? null,
+            debug: dbgData?.granular_scopes ?? null,
           }, 200);
         }
         waba_id = candidateWaba;
@@ -128,8 +124,6 @@ Deno.serve(async (req) => {
         return json({ success: false, step: "resolve_ids_exception", error: String(e) }, 200);
       }
     }
-
-
 
     // 5) Buscar metadados do phone_number (display_phone, verified_name)
     let displayPhone: string | null = null;
