@@ -153,9 +153,13 @@ export async function iniciarFluxoLegendaVideo(params: {
     return null;
   }
 
+  // Nome da empresa entra no prompt da transcrição para não sair "Ademicom".
+  const nomeEmpresa =
+    (params.nomeEmpresa || "").trim() || (await resolverNomeEmpresa(params.userId));
+
   let segmentos: SegmentoLegenda[] = [];
   try {
-    segmentos = await transcrever(params.videoUrl);
+    segmentos = await transcrever(params.videoUrl, nomeEmpresa);
   } catch (e) {
     console.error("[video-legenda-flow] transcrição falhou:", (e as Error).message);
     return null;
@@ -172,8 +176,9 @@ export async function iniciarFluxoLegendaVideo(params: {
     opcoes = await gerarTresCopies(
       transcricao,
       params.contexto || "",
-      params.nomeEmpresa || "Sua empresa",
+      nomeEmpresa || "Sua empresa",
     );
+
   } catch (e) {
     console.error("[video-legenda-flow] copies falharam:", (e as Error).message);
     return null;
