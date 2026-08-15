@@ -6625,7 +6625,9 @@ async function processOne(queueId: string) {
         console.log(`[processor][owner-forward-direct-media] enviado para ${tenantOwnerPhone} com_foto=${!!imageUrlToOwner} wamid=${sentOwnerId}`);
       }
       const protoOwner = ownerForwarded ? buildForwardProof(ownerForwardWamid) : "";
-      const reply = ownerForwarded
+      const reply = videoFlowReply
+        ? videoFlowReply
+        : ownerForwarded
         ? `Recebi ${salvos.length === 1 ? "a foto" : "as mídias"}${descricaoVisual ? `. A imagem mostra: ${descricaoVisual.trim()}` : ""}\n\nCerto, já encaminhei para ${ownerFirstName(_tenantOwner?.name)}. ${protoOwner}`
         : respostaMidiaSalva(salvos, descricaoVisual);
 
