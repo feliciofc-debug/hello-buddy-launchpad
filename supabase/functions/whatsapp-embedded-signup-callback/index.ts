@@ -34,10 +34,11 @@ Deno.serve(async (req) => {
     const userId = claims.claims.sub as string;
 
     // 2) Validar payload
-    const { code, waba_id, phone_number_id } = await req.json();
+    const { code, waba_id, phone_number_id, pin } = await req.json();
     if (!code || !waba_id || !phone_number_id) {
       return json({ error: "missing_fields", required: ["code", "waba_id", "phone_number_id"] }, 400);
     }
+    const registerPin = typeof pin === "string" && /^\d{6}$/.test(pin) ? pin : "000000";
 
     // 3) Trocar code → access_token de curta duração
     const shortRes = await fetch(
