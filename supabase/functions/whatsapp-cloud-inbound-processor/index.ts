@@ -6600,6 +6600,24 @@ async function processOne(queueId: string) {
       } catch (e) {
         console.warn("[processor][fresh_media_visao] falhou:", (e as Error).message);
       }
+      // VÍDEO do dono → transcreve, gera 3 copies e abre o fluxo de legenda queimada.
+      // A queima acontece no worker da VPS (fila video_render_jobs), não no navegador.
+      let videoFlowReply: string | null = null;
+      const videoSalvo = salvos.find((s) => s.tipo === "video");
+      if (fromIsOwner && videoSalvo?.url) {
+        try {
+          videoFlowReply = await iniciarFluxoLegendaVideo({
+            userId,
+            telefone: row.from_number,
+            videoUrl: videoSalvo.url,
+            contexto,
+            midiaId: videoSalvo.id,
+          });
+        } catch (e) {
+          console.warn("[processor][video_legenda_flow] início falhou:", (e as Error).message);
+        }
+      }
+
       const pendingForwardRequest = !fromIsOwner
         ? await recentForwardRequestFromConversation(conv.id, _tenantOwner?.name)
         : null;
