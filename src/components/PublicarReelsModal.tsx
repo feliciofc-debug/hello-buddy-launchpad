@@ -758,6 +758,16 @@ export function PublicarReelsModal({
                 />
               </div>
 
+              {isMobile && (
+                <Alert>
+                  <Smartphone className="h-4 w-4" />
+                  <AlertDescription className="text-xs">
+                    A legenda é processada no seu aparelho e pode falhar em celulares. Para vídeos
+                    com legenda, use o computador.
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <Button
                 type="button"
                 size="sm"
@@ -787,9 +797,14 @@ export function PublicarReelsModal({
                   <Textarea
                     value={textoLegenda}
                     onChange={(e) => setTextoLegenda(e.target.value)}
+                    onBlur={salvarTranscricaoEditada}
                     className="mt-1 font-mono text-xs min-h-[120px]"
                     rows={6}
                   />
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    A gravação da legenda no vídeo acontece no seu navegador e pode levar alguns
+                    minutos. Mantenha esta aba aberta e em foco durante o processo.
+                  </p>
                 </div>
               )}
 
