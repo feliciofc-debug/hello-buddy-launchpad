@@ -206,6 +206,33 @@ export function PublicarReelsModal({
     }
   };
 
+  /**
+   * Nome da empresa do cliente (dado que já existe na plataforma) para a IA
+   * escrever a marca com a grafia certa na legenda.
+   */
+  const buscarNomeEmpresa = async (): Promise<string> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return "";
+      const { data: cfg } = await supabase
+        .from("empresa_config")
+        .select("nome_empresa")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      const doCfg = String((cfg as any)?.nome_empresa || "").trim();
+      if (doCfg) return doCfg;
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("nome_fantasia, nome")
+        .eq("id", user.id)
+        .maybeSingle();
+      return String((prof as any)?.nome_fantasia || (prof as any)?.nome || "").trim();
+    } catch {
+      return "";
+    }
+  };
+
+
   const handleGerarLegendas = async () => {
     setGerandoLegenda(true);
     setProgressoLegenda(null);
