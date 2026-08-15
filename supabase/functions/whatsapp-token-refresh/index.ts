@@ -10,8 +10,12 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
-const META_APP_ID = Deno.env.get("META_APP_ID")!;
-const META_APP_SECRET = Deno.env.get("WHATSAPP_APP_SECRET") ?? Deno.env.get("META_APP_SECRET")!;
+// App do WhatsApp e app do Meta podem ser DIFERENTES: o par id/secret tem
+// que ser coerente, nunca cruzado.
+const WA_APP_ID = Deno.env.get("WHATSAPP_APP_ID");
+const WA_APP_SECRET = Deno.env.get("WHATSAPP_APP_SECRET");
+const META_APP_ID = WA_APP_ID && WA_APP_SECRET ? WA_APP_ID : Deno.env.get("META_APP_ID")!;
+const META_APP_SECRET = WA_APP_ID && WA_APP_SECRET ? WA_APP_SECRET : Deno.env.get("META_APP_SECRET")!;
 const GRAPH = "https://graph.facebook.com/v25.0";
 
 Deno.serve(async (req) => {
@@ -32,6 +36,7 @@ Deno.serve(async (req) => {
     .from("whatsapp_config")
     .select("id, user_id, access_token, token_expires_at, refresh_attempts")
     .eq("is_active", true)
+    .not("token_expires_at", "is", null) // token permanente não precisa refresh
     .lt("token_expires_at", in15d);
 
   if (error) {
@@ -98,6 +103,7 @@ Deno.serve(async (req) => {
     .update({ alert_status: "reconnect_soon", updated_at: new Date().toISOString() })
     .eq("is_active", true)
     .eq("alert_status", "none")
+    .not("token_expires_at", "is", null)
     .lt("token_expires_at", in5d);
 
   return new Response(JSON.stringify({ ok: true, stats }), {
