@@ -37,11 +37,17 @@ Deno.serve(async (req) => {
     if (claimsErr || !claims?.claims?.sub) return json({ error: "Unauthorized" }, 401);
     const userId = claims.claims.sub as string;
 
-    // 2) Validar payload
-    const { code, waba_id, phone_number_id, pin } = await req.json();
-    if (!code || !waba_id || !phone_number_id) {
-      return json({ error: "missing_fields", required: ["code", "waba_id", "phone_number_id"] }, 400);
+    // 2) Validar payload — waba_id/phone_number_id são opcionais:
+    //    quando a Meta não envia o postMessage WA_EMBEDDED_SIGNUP, resolvemos
+    //    os IDs pelo próprio token (debug_token + /phone_numbers).
+    const body = await req.json();
+    const { code, pin } = body;
+    let waba_id: string | null = body.waba_id ?? null;
+    let phone_number_id: string | null = body.phone_number_id ?? null;
+    if (!code) {
+      return json({ error: "missing_fields", required: ["code"] }, 400);
     }
+
     const registerPin = typeof pin === "string" && /^\d{6}$/.test(pin) ? pin : "000000";
 
     // 3) Trocar code → access_token de curta duração
@@ -74,6 +80,52 @@ Deno.serve(async (req) => {
     const accessToken = longJson.access_token as string;
     const expiresInSec = (longJson.expires_in as number) ?? 60 * 24 * 60 * 60; // fallback 60d
     const tokenExpiresAt = new Date(Date.now() + expiresInSec * 1000).toISOString();
+
+    // 4.1) Resolver waba_id / phone_number_id quando o frontend não recebeu o
+    //      postMessage da Meta. debug_token traz os target_ids concedidos
+    //      (granular_scopes) para whatsapp_business_management/messaging.
+    if (!waba_id || !phone_number_id) {
+      try {
+        const dbgRes = await fetch(
+          `${GRAPH}/debug_token?input_token=${accessToken}&access_token=${META_APP_ID}|${META_APP_SECRET}`,
+        );
+        const dbgJson = await dbgRes.json();
+        const scopes: any[] = dbgJson?.data?.granular_scopes ?? [];
+        const waScope = scopes.find((s) =>
+          s?.scope === "whatsapp_business_management" || s?.scope === "whatsapp_business_messaging"
+        );
+        const candidateWaba = waba_id ?? waScope?.target_ids?.[0] ?? null;
+        if (!candidateWaba) {
+          return json({
+            success: false,
+            step: "resolve_waba",
+            error: "Não foi possível identificar a conta WhatsApp Business concedida. Refaça a conexão concluindo todas as etapas do assistente da Meta (criar conta do WhatsApp Business e adicionar o número).",
+            debug: dbgJson?.data?.granular_scopes ?? null,
+          }, 200);
+        }
+        waba_id = candidateWaba;
+        if (!phone_number_id) {
+          const pnRes = await fetch(
+            `${GRAPH}/${waba_id}/phone_numbers?fields=id,display_phone_number,verified_name&access_token=${accessToken}`,
+          );
+          const pnJson = await pnRes.json();
+          const first = Array.isArray(pnJson?.data) ? pnJson.data[0] : null;
+          if (!first?.id) {
+            return json({
+              success: false,
+              step: "resolve_phone_number",
+              error: "A conta WhatsApp Business foi criada, mas nenhum número foi adicionado/verificado. Refaça a conexão e conclua a verificação do número por SMS.",
+              detail: pnJson,
+            }, 200);
+          }
+          phone_number_id = first.id as string;
+        }
+      } catch (e) {
+        return json({ success: false, step: "resolve_ids_exception", error: String(e) }, 200);
+      }
+    }
+
+
 
     // 5) Buscar metadados do phone_number (display_phone, verified_name)
     let displayPhone: string | null = null;

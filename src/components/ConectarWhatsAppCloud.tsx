@@ -125,10 +125,17 @@ export default function ConectarWhatsAppCloud() {
         void (async () => {
         try {
           const code = response?.authResponse?.code;
-          const payload = (window as any).__waEmbeddedPayload;
-          if (!code || !payload?.waba_id || !payload?.phone_number_id) {
-            toast.error("Conexão cancelada ou incompleta");
+          if (!code) {
+            toast.error("Login do Facebook cancelado — nenhuma permissão foi concedida.");
             return;
+          }
+          // O postMessage WA_EMBEDDED_SIGNUP pode chegar depois do callback
+          // (ou nem chegar). Esperamos até 8s e seguimos mesmo sem ele:
+          // a edge function resolve waba_id/phone_number_id pelo token.
+          let payload = (window as any).__waEmbeddedPayload;
+          for (let i = 0; i < 16 && !payload?.waba_id; i++) {
+            await new Promise((r) => setTimeout(r, 500));
+            payload = (window as any).__waEmbeddedPayload;
           }
           const { data: { session } } = await supabase.auth.getSession();
           const { data, error } = await supabase.functions.invoke(
@@ -136,17 +143,18 @@ export default function ConectarWhatsAppCloud() {
             {
               body: {
                 code,
-                waba_id: payload.waba_id,
-                phone_number_id: payload.phone_number_id,
+                waba_id: payload?.waba_id ?? null,
+                phone_number_id: payload?.phone_number_id ?? null,
                 pin,
               },
               headers: { Authorization: `Bearer ${session?.access_token}` },
             },
           );
           if (error || !data?.success) {
-            toast.error("Falha ao conectar: " + (data?.error?.message || data?.step || "erro desconhecido"));
+            toast.error("Falha ao conectar: " + (data?.error?.message || data?.error || data?.step || "erro desconhecido"));
             return;
           }
+
           toast.success(`Conectado: ${data.display_phone || ""}`);
           if (data.register_warning) {
             toast.warning("Número conectado, mas o registro na Cloud API retornou aviso — se o número já tinha PIN de 2FA, informe o PIN correto e reconecte.");
