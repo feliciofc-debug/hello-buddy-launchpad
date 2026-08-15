@@ -97,6 +97,12 @@ export function PublicarReelsModal({
   const [progressoLegenda, setProgressoLegenda] = useState<ProgressoLegenda | null>(null);
   const [isMobile, setIsMobile] = useState(detectarMobile);
 
+  useEffect(() => {
+    const onResize = () => setIsMobile(detectarMobile());
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   const hasPreloadedVideo = !!videoUrl;
   const productName = produto?.nome || produto?.titulo || "";
   const productLink = produto?.link || produto?.link_afiliado || produto?.link_marketplace || "";
