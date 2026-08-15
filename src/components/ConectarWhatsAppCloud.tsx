@@ -101,11 +101,19 @@ export default function ConectarWhatsAppCloud() {
   }, []);
 
   const handleConnect = () => {
-    if (!window.FB) { toast.error("SDK do Facebook ainda carregando…"); return; }
+    if (sdkStatus === "blocked" || !window.FB) {
+      toast.error(
+        "Não foi possível carregar o login do Facebook. Desative o bloqueador de anúncios/rastreamento (ou use uma aba sem extensões) e tente novamente.",
+      );
+      return;
+    }
+    if (sdkStatus === "loading") { toast.info("SDK do Facebook ainda carregando…"); return; }
     if (!metaCfg?.embedded_config_id) {
       toast.error("WHATSAPP_EMBEDDED_CONFIG_ID não configurado nos secrets");
       return;
     }
+    if (!/^\d{6}$/.test(pin)) { toast.error("O PIN deve ter exatamente 6 dígitos"); return; }
+
     setConnecting(true);
     window.FB.login(
       async (response: any) => {
