@@ -3,22 +3,27 @@
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
 const APP_ID = Deno.env.get("META_APP_ID")!;
-const APP_SECRET = Deno.env.get("WHATSAPP_APP_SECRET") ?? Deno.env.get("META_APP_SECRET")!;
 const GRAPH = "https://graph.facebook.com/v25.0";
+
+const CANDIDATES: Array<[string, string | undefined]> = [
+  ["META_APP_SECRET", Deno.env.get("META_APP_SECRET")],
+  ["WHATSAPP_APP_SECRET", Deno.env.get("WHATSAPP_APP_SECRET")],
+  ["FACEBOOK_APP_SECRET", Deno.env.get("FACEBOOK_APP_SECRET")],
+];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  const appToken = `${APP_ID}|${APP_SECRET}`;
-  const out: Record<string, unknown> = { app_id: APP_ID };
-  try {
-    const r = await fetch(`${GRAPH}/${APP_ID}/permissions?access_token=${appToken}`);
-    out.permissions = await r.json();
-  } catch (e) { out.permissions_error = String(e); }
-  try {
-    const r = await fetch(`${GRAPH}/${APP_ID}?fields=id,name,app_type,link&access_token=${appToken}`);
-    out.app = await r.json();
-  } catch (e) { out.app_error = String(e); }
-  return new Response(JSON.stringify(out), {
+  const results: Record<string, unknown> = { app_id: APP_ID };
+  for (const [name, secret] of CANDIDATES) {
+    if (!secret) { results[name] = "absent"; continue; }
+    const appToken = `${APP_ID}|${secret}`;
+    try {
+      const r = await fetch(`${GRAPH}/${APP_ID}/permissions?access_token=${appToken}`);
+      const j = await r.json();
+      results[name] = j;
+    } catch (e) { results[name] = String(e); }
+  }
+  return new Response(JSON.stringify(results), {
     status: 200,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
