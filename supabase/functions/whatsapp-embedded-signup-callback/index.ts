@@ -41,11 +41,14 @@ Deno.serve(async (req) => {
     //    quando a Meta não envia o postMessage WA_EMBEDDED_SIGNUP, resolvemos
     //    os IDs pelo próprio token (debug_token + /phone_numbers).
     const body = await req.json();
-    const { code, pin } = body;
+    const { code, pin, redirect_uri } = body;
     let waba_id: string | null = body.waba_id ?? null;
     let phone_number_id: string | null = body.phone_number_id ?? null;
     if (!code) {
       return json({ error: "missing_fields", required: ["code"] }, 400);
+    }
+    if (typeof redirect_uri !== "string" || !/^https?:\/\//.test(redirect_uri)) {
+      return json({ success: false, step: "code_exchange", error: "redirect_uri ausente ou inválido" }, 200);
     }
 
     const registerPin = typeof pin === "string" && /^\d{6}$/.test(pin) ? pin : "000000";
@@ -56,6 +59,7 @@ Deno.serve(async (req) => {
         client_id: META_APP_ID,
         client_secret: META_APP_SECRET,
         code,
+         redirect_uri,
       }),
     );
     const shortJson = await shortRes.json();
