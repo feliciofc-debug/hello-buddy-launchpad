@@ -38,16 +38,83 @@ function normalizarSegmentos(raw: any[]): Segmento[] {
   return segs.filter((s) => s.end - s.start >= 0.3);
 }
 
+// ============================================================
+// Rede de segurança do nome da empresa
+// O modelo pode ignorar a instrução de grafia e escrever "Ademicom".
+// Corrigimos apenas quando a palavra transcrita é MUITO parecida com o
+// nome cadastrado (1 ou 2 letras de diferença), para nunca trocar uma
+// palavra legítima por engano.
+// ============================================================
+function distanciaLevenshtein(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const atual = [i, ...new Array(n).fill(0)];
+    for (let j = 1; j <= n; j++) {
+      const custo = a[i - 1] === b[j - 1] ? 0 : 1;
+      atual[j] = Math.min(prev[j] + 1, atual[j - 1] + 1, prev[j - 1] + custo);
+    }
+    prev = atual;
+  }
+  return prev[n];
+}
+
+const semAcento = (s: string) =>
+  s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+/** Corrige grafias quase idênticas ao nome da empresa dentro dos segmentos. */
+function corrigirNomeEmpresa(segs: Segmento[], nomeEmpresa?: string): Segmento[] {
+  const nome = (nomeEmpresa || "").trim();
+  if (!nome) return segs;
+
+  // Só palavras únicas com 5+ letras (evita "Casa", "Auto", nomes compostos genéricos)
+  const alvos = nome
+    .split(/\s+/)
+    .map((p) => p.replace(/[^\p{L}\p{N}]/gu, ""))
+    .filter((p) => p.length >= 5);
+  if (alvos.length === 0) return segs;
+
+  let trocas = 0;
+  const corrigidos = segs.map((s) => ({
+    ...s,
+    text: s.text.replace(/[\p{L}\p{N}]{4,}/gu, (palavra) => {
+      for (const alvo of alvos) {
+        const a = semAcento(palavra);
+        const b = semAcento(alvo);
+        if (a === b) return palavra === alvo ? palavra : (trocas++, alvo);
+        const dist = distanciaLevenshtein(a, b);
+        const limite = b.length >= 8 ? 2 : 1;
+        if (dist > 0 && dist <= limite && Math.abs(a.length - b.length) <= 2) {
+          trocas++;
+          return alvo;
+        }
+      }
+      return palavra;
+    }),
+  }));
+
+  if (trocas > 0) {
+    console.log(`[legendas] grafia da empresa corrigida em ${trocas} ocorrência(s)`);
+  }
+  return corrigidos;
+}
+
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { video_url } = await req.json();
+    const { video_url, nome_empresa } = await req.json();
     if (!video_url || !/^https?:\/\//i.test(String(video_url))) {
       throw new Error("video_url é obrigatório");
     }
+    const nomeEmpresa = String(nome_empresa || "").trim().slice(0, 80);
+
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY não configurada");
@@ -80,9 +147,11 @@ REGRAS:
 - Não invente conteúdo. Se não houver fala, devolva uma lista vazia.
 - Sem emojis, sem marcações, apenas o texto falado com pontuação natural.
 - Transcreva com capitalização natural: primeira letra de cada frase em maiúscula, nomes próprios e marcas com a grafia correta (ex.: WhatsApp, TikTok, Tramontina, AMZ Ofertas). Não escreva em caixa alta.
+${nomeEmpresa ? `- O vídeo é de uma empresa chamada "${nomeEmpresa}". Sempre que esse nome aparecer na fala, escreva exatamente com essa grafia.` : ""}
 
 Responda SOMENTE com JSON válido no formato:
 {"segments":[{"start":0.0,"end":2.4,"text":"texto da legenda"}]}`;
+
 
     const res = await fetch(
       "https://ai.gateway.lovable.dev/v1/chat/completions",
@@ -135,7 +204,11 @@ Responda SOMENTE com JSON válido no formato:
       if (m) parsed = JSON.parse(m[0]);
     }
 
-    const segments = normalizarSegmentos(parsed?.segments || parsed?.segmentos || []);
+    const segments = corrigirNomeEmpresa(
+      normalizarSegmentos(parsed?.segments || parsed?.segmentos || []),
+      nomeEmpresa,
+    );
+
 
     return new Response(
       JSON.stringify({ success: true, segments }),

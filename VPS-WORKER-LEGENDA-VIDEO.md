@@ -1,29 +1,35 @@
-# Worker de legenda de vídeo na VPS (Contabo 38.242.146.217)
+# Worker de legenda de vídeo na VPS
 
-O worker **não expõe porta nenhuma**. Ele só faz chamadas de saída para a plataforma.
-Sem Nginx, sem subdomínio, sem certificado.
+Especificação completa para quem for instalar. O worker **não expõe porta nenhuma**:
+só faz chamadas de saída para a plataforma. Sem Nginx, sem subdomínio, sem certificado.
 
 ## 1. O que ele faz
 
-Em loop, a cada 10 segundos:
+Em loop, a cada 30 segundos:
 
 1. `POST /video-render-claim` → recebe (ou não) 1 job
 2. Baixa o vídeo original pela URL assinada
-3. Queima a legenda com FFmpeg
+3. Queima a legenda com FFmpeg (`-threads 3`)
 4. Sobe o MP4 pela URL de upload assinada
 5. `POST /video-render-complete` com o resultado (ou o erro)
+6. Limpa os temporários do job e varre órfãos com mais de 3 horas
 
-Concorrência: **1 job por vez**.
+Concorrência: **1 job por vez**. Teto de CPU do container: **3 de 6 vCPU**.
 
 ## 2. Endpoints da plataforma (já no ar)
 
 Base: `https://jibpvpqgplmahjhswiza.supabase.co/functions/v1`
 
-Header obrigatório em todas as chamadas: `x-render-token: <VPS_RENDER_TOKEN>`
+Header obrigatório em todas as chamadas: `x-render-token: <RENDER_TOKEN>`
+Token errado ou ausente → `401 {"success":false,"error":"token inválido"}`.
 
 ### `POST /video-render-claim`  (body `{}`)
 
-Sem job: `{"success":true,"job":null}`
+Sem job na fila:
+
+```json
+{ "success": true, "job": null }
+```
 
 Com job:
 
@@ -32,9 +38,9 @@ Com job:
   "success": true,
   "job": {
     "id": "uuid",
-    "video_download_url": "https://...assinada (1h)",
+    "video_download_url": "https://... URL assinada, validade 1h",
     "upload": {
-      "url": "https://...signed upload url",
+      "url": "https://... signed upload url",
       "token": "...",
       "bucket": "videos",
       "path": "legendados/<user>/<job>.mp4",
@@ -43,11 +49,21 @@ Com job:
     "segmentos": [{ "start": 0.0, "end": 2.4, "text": "texto da legenda" }],
     "formato": "reels",
     "estilo": {
-      "font": "DejaVu Sans", "bold": true,
-      "fontsize_ratio": 0.052, "fontsize_min": 28,
-      "cor_texto": "#FFFFFF", "contorno": "#000000", "contorno_ratio": 0.11,
-      "caixa": true, "caixa_cor": "black@0.62", "caixa_padding_ratio": 0.35,
-      "pos_y_ratio": 0.8, "max_linhas": 3, "max_chars_linha": 42
+      "font": "DejaVu Sans",
+      "fontfile": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+      "bold": true,
+      "fontsize_ratio": 0.052,
+      "fontsize_min": 28,
+      "cor_texto": "#FFFFFF",
+      "contorno": "#000000",
+      "contorno_ratio": 0.11,
+      "caixa": true,
+      "caixa_cor": "black@0.62",
+      "caixa_padding_ratio": 0.35,
+      "pos_y_ratio": 0.8,
+      "max_linhas": 3,
+      "max_chars_linha": 42,
+      "threads": 3
     },
     "tentativa": 1
   }
@@ -56,14 +72,15 @@ Com job:
 
 ### Upload do resultado
 
-`PUT` na `upload.url` com `Content-Type: video/mp4` e o arquivo no corpo.
+`PUT` na `upload.url`, header `Content-Type: video/mp4`, arquivo no corpo.
 
 ### `POST /video-render-complete`
 
 Sucesso:
 
 ```json
-{ "job_id": "uuid", "success": true, "resultado_bucket": "videos", "resultado_path": "legendados/.../x.mp4", "duracao_segundos": 47.2 }
+{ "job_id": "uuid", "success": true, "resultado_bucket": "videos",
+  "resultado_path": "legendados/.../x.mp4", "duracao_segundos": 47.2 }
 ```
 
 Erro:
@@ -72,20 +89,49 @@ Erro:
 { "job_id": "uuid", "success": false, "erro": "mensagem curta do ffmpeg" }
 ```
 
-A plataforma cuida de retentativa (até 3), publicação nas redes e aviso ao cliente no WhatsApp.
+A plataforma cuida de retentativa (até 3), publicação nas redes e aviso ao cliente
+no WhatsApp. O worker nunca precisa reenfileirar nada.
 
-## 3. Instalação
+## 3. Comando FFmpeg
 
-```bash
-mkdir -p /opt/render-worker && cd /opt/render-worker
+Fonte: **DejaVu Sans Bold** (`fonts-dejavu-core`) — licença livre, redistribuível em
+imagem Docker, com acentuação completa do português (á à ã â é ê í ó õ ô ú ç).
+Nunca usar fonte proprietária.
+
+Para cada linha de cada segmento é gerado um `drawtext` com `enable=between(t,start,end)`:
+
+```
+ffmpeg -y -i in.mp4 \
+  -vf "drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:\
+text='LINHA':fontsize=FS:fontcolor=white:borderw=BW:bordercolor=black:\
+box=1:boxcolor=black@0.62:boxborderw=PAD:x=(w-text_w)/2:y=Y:\
+enable='between(t,0.00,2.40)', ... " \
+  -threads 3 -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p \
+  -c:a aac -b:a 128k -movflags +faststart out.mp4
 ```
 
-`.env` (600, nunca versionar):
+Onde: `FS = max(fontsize_min, largura * fontsize_ratio)`,
+`BW = max(3, FS * contorno_ratio)`, `PAD = FS * caixa_padding_ratio`,
+`Y = altura * pos_y_ratio` deslocado por linha em `FS * 1.28`.
+Máximo de 80 segmentos e 3 linhas por segmento.
+
+## 4. Variáveis do `.env`
 
 ```
 API_BASE=https://jibpvpqgplmahjhswiza.supabase.co/functions/v1
-RENDER_TOKEN=<mesmo valor combinado com a plataforma>
-POLL_SECONDS=10
+RENDER_TOKEN=<o mesmo valor guardado na plataforma>
+POLL_SECONDS=30
+TMP_DIR=/var/lib/render-worker/tmp
+TMP_MAX_HORAS=3
+FFMPEG_THREADS=3
+```
+
+Arquivo com permissão `600`, fora de qualquer repositório.
+
+## 5. Instalação
+
+```bash
+mkdir -p /opt/render-worker /var/lib/render-worker/tmp && cd /opt/render-worker
 ```
 
 `docker-compose.yml`:
@@ -99,7 +145,7 @@ services:
     env_file: .env
     volumes:
       - ./worker.py:/app/worker.py:ro
-      - ./tmp:/tmp/render
+      - /var/lib/render-worker/tmp:/var/lib/render-worker/tmp
     working_dir: /app
     command: >
       bash -lc "apt-get update &&
@@ -116,11 +162,14 @@ services:
 `worker.py`:
 
 ```python
-import os, time, json, subprocess, tempfile, textwrap, requests
+import os, time, json, glob, shutil, subprocess, tempfile, textwrap, requests
 
 API = os.environ["API_BASE"].rstrip("/")
 TOKEN = os.environ["RENDER_TOKEN"]
-POLL = int(os.environ.get("POLL_SECONDS", "10"))
+POLL = int(os.environ.get("POLL_SECONDS", "30"))
+TMP = os.environ.get("TMP_DIR", "/var/lib/render-worker/tmp")
+TMP_MAX_H = float(os.environ.get("TMP_MAX_HORAS", "3"))
+THREADS = os.environ.get("FFMPEG_THREADS", "3")
 H = {"x-render-token": TOKEN, "Content-Type": "application/json"}
 
 def esc(t):
@@ -130,6 +179,7 @@ def esc(t):
 def filtros(segs, estilo, w, h):
     fs = max(int(estilo["fontsize_min"]), int(w * estilo["fontsize_ratio"]))
     y = int(h * estilo["pos_y_ratio"])
+    fontfile = estilo.get("fontfile", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
     out = []
     for s in segs[:80]:
         linhas = textwrap.wrap(s["text"].replace("\n", " "),
@@ -137,7 +187,7 @@ def filtros(segs, estilo, w, h):
         for i, linha in enumerate(linhas):
             dy = y + (i - (len(linhas) - 1) / 2) * int(fs * 1.28)
             out.append(
-                "drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+                f"drawtext=fontfile={fontfile}"
                 f":text='{esc(linha)}':fontsize={fs}:fontcolor=white"
                 f":borderw={max(3, int(fs * estilo['contorno_ratio']))}:bordercolor=black"
                 f":box=1:boxcolor={estilo['caixa_cor']}:boxborderw={int(fs * estilo['caixa_padding_ratio'])}"
@@ -153,8 +203,19 @@ def dimensoes(path):
     st = json.loads(r.stdout)["streams"][0]
     return int(st["width"]), int(st["height"])
 
+def limpar_orfaos():
+    """Se o worker morreu no meio de um encode, os temporários ficam para trás."""
+    limite = time.time() - TMP_MAX_H * 3600
+    for p in glob.glob(os.path.join(TMP, "*")):
+        try:
+            if os.path.getmtime(p) < limite:
+                shutil.rmtree(p, ignore_errors=True) if os.path.isdir(p) else os.remove(p)
+                print("orfao removido:", p, flush=True)
+        except Exception:
+            pass
+
 def processar(job):
-    with tempfile.TemporaryDirectory(dir="/tmp/render") as d:
+    with tempfile.TemporaryDirectory(dir=TMP) as d:
         src, dst = f"{d}/in.mp4", f"{d}/out.mp4"
         with requests.get(job["video_download_url"], stream=True, timeout=600) as r:
             r.raise_for_status()
@@ -163,7 +224,9 @@ def processar(job):
                     f.write(chunk)
         w, h = dimensoes(src)
         vf = filtros(job["segmentos"], job["estilo"], w, h)
+        threads = str(job["estilo"].get("threads", THREADS))
         subprocess.run(["ffmpeg", "-y", "-i", src, "-vf", vf,
+                        "-threads", threads,
                         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
                         "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
                         "-movflags", "+faststart", dst],
@@ -178,10 +241,14 @@ def processar(job):
                              capture_output=True, text=True).stdout.strip()
         return up["bucket"], up["path"], float(dur or 0)
 
-os.makedirs("/tmp/render", exist_ok=True)
+os.makedirs(TMP, exist_ok=True)
 print("render-worker iniciado", flush=True)
+ultima_limpeza = 0.0
 while True:
     try:
+        if time.time() - ultima_limpeza > 3600:
+            limpar_orfaos()
+            ultima_limpeza = time.time()
         r = requests.post(f"{API}/video-render-claim", headers=H, json={}, timeout=60)
         job = (r.json() or {}).get("job")
         if not job:
@@ -208,11 +275,11 @@ Subir:
 docker compose up -d && docker logs -f render-worker
 ```
 
-Teste rápido de conectividade (deve devolver `{"success":true,"job":null}`):
+Teste de conectividade (deve devolver `{"success":true,"job":null}`):
 
 ```bash
 curl -s -X POST -H "x-render-token: $RENDER_TOKEN" \
   https://jibpvpqgplmahjhswiza.supabase.co/functions/v1/video-render-claim -d '{}'
 ```
 
-Se devolver `401 token inválido`, o valor do `.env` não é o mesmo guardado na plataforma.
+`401 token inválido` = o valor do `.env` não é o mesmo guardado na plataforma.
