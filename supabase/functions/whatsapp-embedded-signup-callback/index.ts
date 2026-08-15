@@ -220,8 +220,13 @@ Deno.serve(async (req) => {
 });
 
 function json(body: unknown, status: number) {
+  const b = body as any;
+  if (b && b.success === false) {
+    console.error("[embedded-signup] FALHA", JSON.stringify(b));
+  }
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
+
