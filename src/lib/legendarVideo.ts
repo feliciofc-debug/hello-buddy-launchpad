@@ -118,7 +118,7 @@ async function pngDoSegmento(
 
   const medidor = document.createElement("canvas").getContext("2d")!;
   medidor.font = `700 ${fontSize}px Arial, Helvetica, sans-serif`;
-  const linhas = quebrarLinhas(medidor, texto.toUpperCase(), videoW - padX * 2);
+  const linhas = quebrarLinhas(medidor, texto, videoW - padX * 2);
 
   const altura = linhas.length * lineHeight + Math.round(fontSize * 0.8);
   const canvas = document.createElement("canvas");
