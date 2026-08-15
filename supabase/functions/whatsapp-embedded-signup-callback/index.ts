@@ -37,11 +37,17 @@ Deno.serve(async (req) => {
     if (claimsErr || !claims?.claims?.sub) return json({ error: "Unauthorized" }, 401);
     const userId = claims.claims.sub as string;
 
-    // 2) Validar payload
-    const { code, waba_id, phone_number_id, pin } = await req.json();
-    if (!code || !waba_id || !phone_number_id) {
-      return json({ error: "missing_fields", required: ["code", "waba_id", "phone_number_id"] }, 400);
+    // 2) Validar payload — waba_id/phone_number_id são opcionais:
+    //    quando a Meta não envia o postMessage WA_EMBEDDED_SIGNUP, resolvemos
+    //    os IDs pelo próprio token (debug_token + /phone_numbers).
+    const body = await req.json();
+    const { code, pin } = body;
+    let waba_id: string | null = body.waba_id ?? null;
+    let phone_number_id: string | null = body.phone_number_id ?? null;
+    if (!code) {
+      return json({ error: "missing_fields", required: ["code"] }, 400);
     }
+
     const registerPin = typeof pin === "string" && /^\d{6}$/.test(pin) ? pin : "000000";
 
     // 3) Trocar code → access_token de curta duração
