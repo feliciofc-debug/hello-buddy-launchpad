@@ -204,7 +204,11 @@ Responda SOMENTE com JSON válido no formato:
       if (m) parsed = JSON.parse(m[0]);
     }
 
-    const segments = normalizarSegmentos(parsed?.segments || parsed?.segmentos || []);
+    const segments = corrigirNomeEmpresa(
+      normalizarSegmentos(parsed?.segments || parsed?.segmentos || []),
+      nomeEmpresa,
+    );
+
 
     return new Response(
       JSON.stringify({ success: true, segments }),
