@@ -92,9 +92,13 @@ export default function ConectarWhatsAppCloud() {
       if (event.origin !== "https://www.facebook.com" && event.origin !== "https://web.facebook.com") return;
       try {
         const data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
-        if (data?.type === "WA_EMBEDDED_SIGNUP" && data?.event === "FINISH") {
+        if (data?.type !== "WA_EMBEDDED_SIGNUP") return;
+        if (data.event === "FINISH" || data.event === "FINISH_ONLY_WABA") {
           // data.data = { waba_id, phone_number_id, business_id, ... }
           (window as any).__waEmbeddedPayload = data.data;
+        }
+        if (data.event === "CANCEL" || data.event === "ERROR") {
+          (window as any).__waEmbeddedCancel = data.data ?? { reason: data.event };
         }
       } catch (_) { /* ignore */ }
     };
@@ -116,10 +120,6 @@ export default function ConectarWhatsAppCloud() {
     }
     if (!/^\d{6}$/.test(pin)) { toast.error("O PIN deve ter exatamente 6 dígitos"); return; }
 
-    // A Meta exige que a troca do code repita exatamente o redirect_uri
-    // usado pelo diálogo OAuth. Fixamos a URL da página, sem query/hash, e
-    // enviamos o mesmo valor ao backend.
-    const redirectUri = `${window.location.origin}${window.location.pathname}`;
     setConnecting(true);
     // IMPORTANTE: o SDK do Facebook rejeita callbacks async
     // ("Expression is of type asyncfunction, not function").
@@ -138,6 +138,7 @@ export default function ConectarWhatsAppCloud() {
           // a edge function resolve waba_id/phone_number_id pelo token.
           let payload = (window as any).__waEmbeddedPayload;
           for (let i = 0; i < 16 && !payload?.waba_id; i++) {
+            if ((window as any).__waEmbeddedCancel) break;
             await new Promise((r) => setTimeout(r, 500));
             payload = (window as any).__waEmbeddedPayload;
           }
@@ -150,7 +151,6 @@ export default function ConectarWhatsAppCloud() {
                 waba_id: payload?.waba_id ?? null,
                 phone_number_id: payload?.phone_number_id ?? null,
                 pin,
-                 redirect_uri: redirectUri,
               },
               headers: { Authorization: `Bearer ${session?.access_token}` },
             },
@@ -186,12 +186,13 @@ export default function ConectarWhatsAppCloud() {
         } finally {
           setConnecting(false);
           (window as any).__waEmbeddedPayload = null;
+          (window as any).__waEmbeddedCancel = null;
+    (window as any).__waEmbeddedCancel = null;
         }
         })();
       },
       {
         config_id: metaCfg.embedded_config_id,
-         redirect_uri: redirectUri,
         response_type: "code",
         override_default_response_type: true,
         extras: { setup: {}, featureType: "", sessionInfoVersion: "3" },
