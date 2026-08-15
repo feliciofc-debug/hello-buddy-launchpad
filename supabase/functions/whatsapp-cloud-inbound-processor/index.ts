@@ -6663,6 +6663,45 @@ async function processOne(queueId: string) {
       return { ok: true, saved_to_midias: true, midia_ids: salvos.map((s) => s.id), reply_preview: reply.slice(0, 120) };
     }
 
+    // ============================================================
+    // Fluxo determinístico do VÍDEO LEGENDADO (dono respondendo A/B/C ou SIM).
+    // A queima da legenda roda no worker da VPS — nada depende do navegador.
+    // ============================================================
+    if (fromIsOwner && userText.trim()) {
+      const fluxoReply = await tratarRespostaFluxoLegenda({
+        userId,
+        telefone: row.from_number,
+        texto: userText,
+      });
+      if (fluxoReply) {
+        console.log("[processor][video_legenda_flow] resposta determinística do fluxo de legenda");
+        const { data: outMsg } = await sb
+          .from("whatsapp_cloud_messages")
+          .insert({
+            conversation_id: conv.id,
+            user_id: userId,
+            direction: "outbound",
+            sender: "agent",
+            content: fluxoReply,
+            message_type: "text",
+          })
+          .select("id")
+          .single();
+
+        const sentFlowId = await sendWhatsApp(userId, row.from_number, fluxoReply);
+        if (sentFlowId && outMsg?.id) {
+          await sb.from("whatsapp_cloud_messages").update({ wamid: sentFlowId }).eq("id", outMsg.id);
+        }
+        await sb
+          .from("whatsapp_cloud_conversations")
+          .update({ last_message_at: new Date().toISOString() })
+          .eq("id", conv.id);
+        await doneQueue(row.id);
+        return { ok: true, video_legenda_flow: true, reply_preview: fluxoReply.slice(0, 120) };
+      }
+    }
+
+
     // Atalho determinístico: quando cliente pede equipe/responsável/Marcelo ou faz
     // pergunta comercial que exige retorno humano, NÃO deixa a IA procurar contato.
     // Encaminha direto para owner_phone do tenant (Marcelo: número diferente do agente).
