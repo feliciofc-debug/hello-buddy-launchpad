@@ -31,6 +31,10 @@ import { getTenantLogoDataUrl } from "../_shared/tenant-logo.ts";
 import { carouselColorRows, resolveCarouselColor } from "../_shared/carousel-colors.ts";
 import { logOutboundMessage } from "../_shared/cloud-log.ts";
 import { gerarVarianteFacebookFeed } from "../_shared/varianteFacebookFeed.ts";
+import {
+  iniciarFluxoLegendaVideo,
+  tratarRespostaFluxoLegenda,
+} from "../_shared/video-legenda-flow.ts";
 
 import {
   entregarEbookTenant,
@@ -6600,6 +6604,24 @@ async function processOne(queueId: string) {
       } catch (e) {
         console.warn("[processor][fresh_media_visao] falhou:", (e as Error).message);
       }
+      // VÍDEO do dono → transcreve, gera 3 copies e abre o fluxo de legenda queimada.
+      // A queima acontece no worker da VPS (fila video_render_jobs), não no navegador.
+      let videoFlowReply: string | null = null;
+      const videoSalvo = salvos.find((s) => s.tipo === "video");
+      if (fromIsOwner && videoSalvo?.url) {
+        try {
+          videoFlowReply = await iniciarFluxoLegendaVideo({
+            userId,
+            telefone: row.from_number,
+            videoUrl: videoSalvo.url,
+            contexto,
+            midiaId: videoSalvo.id,
+          });
+        } catch (e) {
+          console.warn("[processor][video_legenda_flow] início falhou:", (e as Error).message);
+        }
+      }
+
       const pendingForwardRequest = !fromIsOwner
         ? await recentForwardRequestFromConversation(conv.id, _tenantOwner?.name)
         : null;
@@ -6625,7 +6647,9 @@ async function processOne(queueId: string) {
         console.log(`[processor][owner-forward-direct-media] enviado para ${tenantOwnerPhone} com_foto=${!!imageUrlToOwner} wamid=${sentOwnerId}`);
       }
       const protoOwner = ownerForwarded ? buildForwardProof(ownerForwardWamid) : "";
-      const reply = ownerForwarded
+      const reply = videoFlowReply
+        ? videoFlowReply
+        : ownerForwarded
         ? `Recebi ${salvos.length === 1 ? "a foto" : "as mídias"}${descricaoVisual ? `. A imagem mostra: ${descricaoVisual.trim()}` : ""}\n\nCerto, já encaminhei para ${ownerFirstName(_tenantOwner?.name)}. ${protoOwner}`
         : respostaMidiaSalva(salvos, descricaoVisual);
 
@@ -6662,6 +6686,45 @@ async function processOne(queueId: string) {
       await doneQueue(row.id);
       return { ok: true, saved_to_midias: true, midia_ids: salvos.map((s) => s.id), reply_preview: reply.slice(0, 120) };
     }
+
+    // ============================================================
+    // Fluxo determinístico do VÍDEO LEGENDADO (dono respondendo A/B/C ou SIM).
+    // A queima da legenda roda no worker da VPS — nada depende do navegador.
+    // ============================================================
+    if (fromIsOwner && userText.trim()) {
+      const fluxoReply = await tratarRespostaFluxoLegenda({
+        userId,
+        telefone: row.from_number,
+        texto: userText,
+      });
+      if (fluxoReply) {
+        console.log("[processor][video_legenda_flow] resposta determinística do fluxo de legenda");
+        const { data: outMsg } = await sb
+          .from("whatsapp_cloud_messages")
+          .insert({
+            conversation_id: conv.id,
+            user_id: userId,
+            direction: "outbound",
+            sender: "agent",
+            content: fluxoReply,
+            message_type: "text",
+          })
+          .select("id")
+          .single();
+
+        const sentFlowId = await sendWhatsApp(userId, row.from_number, fluxoReply);
+        if (sentFlowId && outMsg?.id) {
+          await sb.from("whatsapp_cloud_messages").update({ wamid: sentFlowId }).eq("id", outMsg.id);
+        }
+        await sb
+          .from("whatsapp_cloud_conversations")
+          .update({ last_message_at: new Date().toISOString() })
+          .eq("id", conv.id);
+        await doneQueue(row.id);
+        return { ok: true, video_legenda_flow: true, reply_preview: fluxoReply.slice(0, 120) };
+      }
+    }
+
 
     // Atalho determinístico: quando cliente pede equipe/responsável/Marcelo ou faz
     // pergunta comercial que exige retorno humano, NÃO deixa a IA procurar contato.
