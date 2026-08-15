@@ -212,9 +212,33 @@ export default function ConectarWhatsAppCloud() {
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
               Conecte seu próprio número WhatsApp Business pela Meta — sem digitar tokens.
+              A conta de negócio e a cobrança ficam no seu próprio cadastro do Meta.
             </p>
+            <div className="space-y-1.5 max-w-[220px]">
+              <Label htmlFor="wa-pin">PIN de 6 dígitos</Label>
+              <Input
+                id="wa-pin"
+                inputMode="numeric"
+                maxLength={6}
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Padrão 000000. Se o número já tem verificação em duas etapas, informe o PIN existente.
+              </p>
+            </div>
+            {sdkStatus === "blocked" && (
+              <div className="flex items-start gap-2 text-sm text-red-700">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>
+                  O login do Facebook não carregou. Isso costuma ser bloqueador de anúncios/rastreamento
+                  ou extensão de privacidade. Desative para este site e recarregue a página.
+                </span>
+              </div>
+            )}
             <Button onClick={handleConnect} disabled={connecting}>
               {connecting ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : null}
+
               Conectar WhatsApp
             </Button>
           </div>
