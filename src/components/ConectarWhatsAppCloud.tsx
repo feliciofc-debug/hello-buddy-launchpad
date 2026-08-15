@@ -163,6 +163,7 @@ export default function ConectarWhatsAppCloud() {
           setConnecting(false);
           (window as any).__waEmbeddedPayload = null;
         }
+        })();
       },
       {
         config_id: metaCfg.embedded_config_id,
