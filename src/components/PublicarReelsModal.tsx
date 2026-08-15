@@ -211,10 +211,12 @@ export function PublicarReelsModal({
     setProgressoLegenda(null);
     try {
       const url = await garantirUrlDoVideo();
+      const nomeEmpresa = await buscarNomeEmpresa();
       toast.info("🎧 Ouvindo o vídeo e transcrevendo em português...");
       const { data, error } = await supabase.functions.invoke("video-transcrever-legendas", {
-        body: { video_url: url },
+        body: { video_url: url, nome_empresa: nomeEmpresa || undefined },
       });
+
       if (error) throw new Error(error.message);
       if (!data?.success) throw new Error(data?.error || "Não consegui transcrever o vídeo");
 
