@@ -156,6 +156,7 @@ Deno.serve(async (req) => {
       display_phone: displayPhone,
       business_name: businessName,
       token_expires_at: tokenExpiresAt,
+      register_warning: registerWarning,
     }, 200);
   } catch (e) {
     return json({ success: false, error: String(e) }, 200);
