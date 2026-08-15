@@ -151,9 +151,20 @@ export default function ConectarWhatsAppCloud() {
             },
           );
           if (error || !data?.success) {
-            toast.error("Falha ao conectar: " + (data?.error?.message || data?.error || data?.step || "erro desconhecido"));
+            console.error("[embedded-signup] falha", { error, data });
+            const raw = data?.error;
+            const detalhe =
+              typeof raw === "string" ? raw
+              : raw?.error?.message || raw?.message
+              || (raw ? JSON.stringify(raw) : null)
+              || error?.message
+              || "erro desconhecido";
+            toast.error(`Falha ao conectar${data?.step ? ` (${data.step})` : ""}: ${detalhe}`, {
+              duration: 15000,
+            });
             return;
           }
+
 
           toast.success(`Conectado: ${data.display_phone || ""}`);
           if (data.register_warning) {
