@@ -95,6 +95,7 @@ export function PublicarReelsModal({
   const [segmentos, setSegmentos] = useState<LegendaSegmento[]>([]);
   const [textoLegenda, setTextoLegenda] = useState("");
   const [progressoLegenda, setProgressoLegenda] = useState<ProgressoLegenda | null>(null);
+  const [isMobile, setIsMobile] = useState(detectarMobile);
 
   const hasPreloadedVideo = !!videoUrl;
   const productName = produto?.nome || produto?.titulo || "";
