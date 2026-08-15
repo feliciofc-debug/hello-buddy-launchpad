@@ -2,3 +2,4 @@
 - [Dashboard do cliente final](mem://features/dashboard/dashboard-cliente-final-metricas) — Fontes das métricas + fase futura de delivered/read no historico_envios
 - [TikTok duas client_keys](mem://integrations/tiktok/dual-client-keys-sandbox-producao) — Sandbox sbawx08s3trep7gfvg (teste privado) vs Produção aw2ouo90dyp4ju9w (review); redirect URI nos dois
 - [Anuncio Produto Template Engine](mem://features/marketing/anuncio-produto-template-engine) — Foto por IA + texto/preco/logo por template Satori (feed e story)
+- [Paulo Canarim Owner Recognition](mem://features/pj/paulo-canarim-owner-recognition) — Agente 5521975141829 vs dono 5521997208854; owner por tenant, nunca hardcoded
