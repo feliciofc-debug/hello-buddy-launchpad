@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Upload, Video, Facebook, Instagram, Loader2, X, Sparkles, Check, Clock, CalendarClock, Save, Subtitles } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Upload, Video, Facebook, Instagram, Loader2, X, Sparkles, Check, Clock, CalendarClock, Save, Subtitles, Smartphone } from "lucide-react";
 import {
   queimarLegendas,
   segmentosParaTexto,
@@ -17,6 +18,18 @@ import {
   type LegendaSegmento,
   type ProgressoLegenda,
 } from "@/lib/legendarVideo";
+
+/**
+ * Detecção simples de celular: largura de viewport + user agent.
+ * Objetivo é pegar o caso comum (não classificar todo aparelho do mundo).
+ */
+function detectarMobile(): boolean {
+  if (typeof window === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const uaMobile = /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|Mobile Safari/i.test(ua);
+  const telaPequena = window.innerWidth <= 820;
+  return uaMobile || telaPequena;
+}
 
 interface PublishResult {
   facebook?: { ok: boolean; postId?: string; error?: string };
