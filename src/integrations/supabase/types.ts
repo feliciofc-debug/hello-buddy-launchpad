@@ -8397,6 +8397,9 @@ export type Database = {
           thumbnail_url: string | null
           tipo: string | null
           titulo: string | null
+          transcricao_em: string | null
+          transcricao_segmentos: Json | null
+          transcricao_texto: string | null
           updated_at: string | null
           user_id: string
           video_url: string
@@ -8419,6 +8422,9 @@ export type Database = {
           thumbnail_url?: string | null
           tipo?: string | null
           titulo?: string | null
+          transcricao_em?: string | null
+          transcricao_segmentos?: Json | null
+          transcricao_texto?: string | null
           updated_at?: string | null
           user_id: string
           video_url: string
@@ -8441,6 +8447,9 @@ export type Database = {
           thumbnail_url?: string | null
           tipo?: string | null
           titulo?: string | null
+          transcricao_em?: string | null
+          transcricao_segmentos?: Json | null
+          transcricao_texto?: string | null
           updated_at?: string | null
           user_id?: string
           video_url?: string
