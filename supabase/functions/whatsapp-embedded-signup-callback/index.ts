@@ -9,8 +9,12 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
-const META_APP_ID = Deno.env.get("META_APP_ID")!;
-const META_APP_SECRET = Deno.env.get("WHATSAPP_APP_SECRET") ?? Deno.env.get("META_APP_SECRET")!;
+// App do WhatsApp e app do Meta (Instagram/Facebook) podem ser DIFERENTES.
+// Nunca misturar app_id de um com app_secret do outro: o par tem que ser coerente.
+const WA_APP_ID = Deno.env.get("WHATSAPP_APP_ID");
+const WA_APP_SECRET = Deno.env.get("WHATSAPP_APP_SECRET");
+const META_APP_ID = WA_APP_ID && WA_APP_SECRET ? WA_APP_ID : Deno.env.get("META_APP_ID")!;
+const META_APP_SECRET = WA_APP_ID && WA_APP_SECRET ? WA_APP_SECRET : Deno.env.get("META_APP_SECRET")!;
 const GRAPH = "https://graph.facebook.com/v25.0";
 
 Deno.serve(async (req) => {
@@ -34,10 +38,11 @@ Deno.serve(async (req) => {
     const userId = claims.claims.sub as string;
 
     // 2) Validar payload
-    const { code, waba_id, phone_number_id } = await req.json();
+    const { code, waba_id, phone_number_id, pin } = await req.json();
     if (!code || !waba_id || !phone_number_id) {
       return json({ error: "missing_fields", required: ["code", "waba_id", "phone_number_id"] }, 400);
     }
+    const registerPin = typeof pin === "string" && /^\d{6}$/.test(pin) ? pin : "000000";
 
     // 3) Trocar code → access_token de curta duração
     const shortRes = await fetch(
@@ -84,15 +89,20 @@ Deno.serve(async (req) => {
       // não crítico — segue
     }
 
-    // 6) Registrar o número na Cloud API (idempotente)
+    // 6) Registrar o número na Cloud API (idempotente) — PIN configurável
+    let registerWarning: unknown = null;
     try {
-      await fetch(`${GRAPH}/${phone_number_id}/register`, {
+      const regRes = await fetch(`${GRAPH}/${phone_number_id}/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-        body: JSON.stringify({ messaging_product: "whatsapp", pin: "000000" }),
+        body: JSON.stringify({ messaging_product: "whatsapp", pin: registerPin }),
       });
-      // Não tratamos como erro fatal: se já estiver registrado, a Meta devolve erro idempotente.
-    } catch (_) { /* segue */ }
+      if (!regRes.ok) {
+        // Não é fatal: número já registrado devolve erro idempotente.
+        // Mas PIN incorreto (2FA já definido) precisa ser visível pro cliente.
+        registerWarning = await regRes.json().catch(() => null);
+      }
+    } catch (e) { registerWarning = String(e); }
 
     // 7) Subscribed_apps: GET primeiro, só POST se ainda não subscrito
     try {
@@ -150,6 +160,7 @@ Deno.serve(async (req) => {
       display_phone: displayPhone,
       business_name: businessName,
       token_expires_at: tokenExpiresAt,
+      register_warning: registerWarning,
     }, 200);
   } catch (e) {
     return json({ success: false, error: String(e) }, 200);

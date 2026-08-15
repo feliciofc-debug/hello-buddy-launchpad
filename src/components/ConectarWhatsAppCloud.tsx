@@ -7,6 +7,8 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Loader2, CheckCircle2, AlertCircle, MessageCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -33,14 +35,18 @@ export default function ConectarWhatsAppCloud() {
   const [config, setConfig] = useState<ConfigRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
+  const [pin, setPin] = useState("000000");
+  const [sdkStatus, setSdkStatus] = useState<"loading" | "ready" | "blocked">("loading");
   const [metaCfg, setMetaCfg] = useState<{ app_id: string | null; embedded_config_id: string | null } | null>(null);
 
   // 1) Carrega config pública do Meta (APP_ID + embedded_config_id) e SDK do Facebook
   useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout>;
     (async () => {
       const { data } = await supabase.functions.invoke("get-meta-public-config", { method: "GET" });
       setMetaCfg(data ?? { app_id: null, embedded_config_id: null });
-      if (!data?.app_id || window.FB) return;
+      if (!data?.app_id) { setSdkStatus("blocked"); return; }
+      if (window.FB) { setSdkStatus("ready"); return; }
       window.fbAsyncInit = function () {
         window.FB.init({
           appId: data.app_id,
@@ -48,14 +54,22 @@ export default function ConectarWhatsAppCloud() {
           xfbml: true,
           version: "v25.0",
         });
+        setSdkStatus("ready");
       };
       const s = document.createElement("script");
       s.src = "https://connect.facebook.net/en_US/sdk.js";
       s.async = true;
       s.defer = true;
+      s.onerror = () => setSdkStatus("blocked");
       document.body.appendChild(s);
+      // Bloqueadores de anúncio costumam silenciar o script sem disparar onerror
+      timeout = setTimeout(() => {
+        setSdkStatus((prev) => (prev === "ready" ? prev : "blocked"));
+      }, 8000);
     })();
+    return () => clearTimeout(timeout);
   }, []);
+
 
   // 2) Lê config atual
   useEffect(() => {
@@ -89,11 +103,19 @@ export default function ConectarWhatsAppCloud() {
   }, []);
 
   const handleConnect = () => {
-    if (!window.FB) { toast.error("SDK do Facebook ainda carregando…"); return; }
+    if (sdkStatus === "blocked" || !window.FB) {
+      toast.error(
+        "Não foi possível carregar o login do Facebook. Desative o bloqueador de anúncios/rastreamento (ou use uma aba sem extensões) e tente novamente.",
+      );
+      return;
+    }
+    if (sdkStatus === "loading") { toast.info("SDK do Facebook ainda carregando…"); return; }
     if (!metaCfg?.embedded_config_id) {
       toast.error("WHATSAPP_EMBEDDED_CONFIG_ID não configurado nos secrets");
       return;
     }
+    if (!/^\d{6}$/.test(pin)) { toast.error("O PIN deve ter exatamente 6 dígitos"); return; }
+
     setConnecting(true);
     window.FB.login(
       async (response: any) => {
@@ -112,6 +134,7 @@ export default function ConectarWhatsAppCloud() {
                 code,
                 waba_id: payload.waba_id,
                 phone_number_id: payload.phone_number_id,
+                pin,
               },
               headers: { Authorization: `Bearer ${session?.access_token}` },
             },
@@ -121,6 +144,9 @@ export default function ConectarWhatsAppCloud() {
             return;
           }
           toast.success(`Conectado: ${data.display_phone || ""}`);
+          if (data.register_warning) {
+            toast.warning("Número conectado, mas o registro na Cloud API retornou aviso — se o número já tinha PIN de 2FA, informe o PIN correto e reconecte.");
+          }
           // recarrega config
           const { data: u } = await supabase.auth.getUser();
           const { data: cfg } = await supabase
@@ -188,9 +214,33 @@ export default function ConectarWhatsAppCloud() {
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
               Conecte seu próprio número WhatsApp Business pela Meta — sem digitar tokens.
+              A conta de negócio e a cobrança ficam no seu próprio cadastro do Meta.
             </p>
+            <div className="space-y-1.5 max-w-[220px]">
+              <Label htmlFor="wa-pin">PIN de 6 dígitos</Label>
+              <Input
+                id="wa-pin"
+                inputMode="numeric"
+                maxLength={6}
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Padrão 000000. Se o número já tem verificação em duas etapas, informe o PIN existente.
+              </p>
+            </div>
+            {sdkStatus === "blocked" && (
+              <div className="flex items-start gap-2 text-sm text-red-700">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>
+                  O login do Facebook não carregou. Isso costuma ser bloqueador de anúncios/rastreamento
+                  ou extensão de privacidade. Desative para este site e recarregue a página.
+                </span>
+              </div>
+            )}
             <Button onClick={handleConnect} disabled={connecting}>
               {connecting ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : null}
+
               Conectar WhatsApp
             </Button>
           </div>
