@@ -18,7 +18,10 @@ const STALE_MINUTOS = 15;
 
 /** Estilo da legenda queimada — equivalente ao Canvas do navegador. */
 const ESTILO_LEGENDA = {
+  // Fonte livre (Bitstream Vera/DejaVu) — redistribuível em imagem Docker e
+  // com acentuação completa do português (á à ã â é ê í ó õ ô ú ç).
   font: "DejaVu Sans",
+  fontfile: "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
   bold: true,
   fontsize_ratio: 0.052, // sobre a largura do vídeo
   fontsize_min: 28,
@@ -31,7 +34,10 @@ const ESTILO_LEGENDA = {
   pos_y_ratio: 0.8, // centro do bloco a 80% da altura
   max_linhas: 3,
   max_chars_linha: 42,
+  // Teto de núcleos do encode — a VPS roda outros dois projetos em produção.
+  threads: 3,
 };
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: renderCors });
