@@ -85,15 +85,20 @@ Deno.serve(async (req) => {
       // não crítico — segue
     }
 
-    // 6) Registrar o número na Cloud API (idempotente)
+    // 6) Registrar o número na Cloud API (idempotente) — PIN configurável
+    let registerWarning: unknown = null;
     try {
-      await fetch(`${GRAPH}/${phone_number_id}/register`, {
+      const regRes = await fetch(`${GRAPH}/${phone_number_id}/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-        body: JSON.stringify({ messaging_product: "whatsapp", pin: "000000" }),
+        body: JSON.stringify({ messaging_product: "whatsapp", pin: registerPin }),
       });
-      // Não tratamos como erro fatal: se já estiver registrado, a Meta devolve erro idempotente.
-    } catch (_) { /* segue */ }
+      if (!regRes.ok) {
+        // Não é fatal: número já registrado devolve erro idempotente.
+        // Mas PIN incorreto (2FA já definido) precisa ser visível pro cliente.
+        registerWarning = await regRes.json().catch(() => null);
+      }
+    } catch (e) { registerWarning = String(e); }
 
     // 7) Subscribed_apps: GET primeiro, só POST se ainda não subscrito
     try {
