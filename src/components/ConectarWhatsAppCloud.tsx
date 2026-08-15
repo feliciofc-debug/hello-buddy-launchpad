@@ -117,8 +117,12 @@ export default function ConectarWhatsAppCloud() {
     if (!/^\d{6}$/.test(pin)) { toast.error("O PIN deve ter exatamente 6 dígitos"); return; }
 
     setConnecting(true);
+    // IMPORTANTE: o SDK do Facebook rejeita callbacks async
+    // ("Expression is of type asyncfunction, not function").
+    // O callback precisa ser síncrono e disparar o trabalho assíncrono internamente.
     window.FB.login(
-      async (response: any) => {
+      (response: any) => {
+        void (async () => {
         try {
           const code = response?.authResponse?.code;
           const payload = (window as any).__waEmbeddedPayload;
@@ -159,6 +163,7 @@ export default function ConectarWhatsAppCloud() {
           setConnecting(false);
           (window as any).__waEmbeddedPayload = null;
         }
+        })();
       },
       {
         config_id: metaCfg.embedded_config_id,
