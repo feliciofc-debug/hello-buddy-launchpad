@@ -109,10 +109,12 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { video_url } = await req.json();
+    const { video_url, nome_empresa } = await req.json();
     if (!video_url || !/^https?:\/\//i.test(String(video_url))) {
       throw new Error("video_url é obrigatório");
     }
+    const nomeEmpresa = String(nome_empresa || "").trim().slice(0, 80);
+
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY não configurada");
