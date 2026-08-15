@@ -185,6 +185,27 @@ export function PublicarReelsModal({
     return supabase.storage.from("videos").getPublicUrl(data.path).data.publicUrl;
   };
 
+  /**
+   * Persiste a transcrição no banco (vídeos enviados pelo usuário).
+   * Vale por si só: se a queima falhar ou o usuário desistir, o texto fica salvo.
+   */
+  const salvarTranscricao = async (segs: LegendaSegmento[]) => {
+    if (!videoId || videoSource !== "videos_produtos" || segs.length === 0) return;
+    try {
+      const { error } = await supabase
+        .from("videos_produtos")
+        .update({
+          transcricao_texto: segs.map((s) => s.text).join(" ").trim(),
+          transcricao_segmentos: segs as any,
+          transcricao_em: new Date().toISOString(),
+        })
+        .eq("id", videoId);
+      if (error) console.warn("[LEGENDA] não salvou a transcrição:", error.message);
+    } catch (e) {
+      console.warn("[LEGENDA] erro ao salvar transcrição:", e);
+    }
+  };
+
   const handleGerarLegendas = async () => {
     setGerandoLegenda(true);
     setProgressoLegenda(null);
@@ -205,12 +226,25 @@ export function PublicarReelsModal({
       setSegmentos(segs);
       setTextoLegenda(segmentosParaTexto(segs));
       setLegendaAtiva(true);
+      // grava assim que transcreve (antes de qualquer queima)
+      await salvarTranscricao(segs);
       toast.success(`✅ ${segs.length} legendas geradas — revise antes de publicar`);
     } catch (err: any) {
       toast.error(err.message || "Erro ao gerar legendas");
     } finally {
       setGerandoLegenda(false);
     }
+  };
+
+  // Salva a versão revisada pelo usuário (é a mais fiel ao vídeo)
+  const salvarTranscricaoEditada = async () => {
+    if (segmentos.length === 0) return;
+    const segsFinais = textoParaSegmentos(textoLegenda, segmentos);
+    if (segsFinais.length === 0) return;
+    const original = segmentos.map((s) => s.text).join(" ").trim();
+    const editado = segsFinais.map((s) => s.text).join(" ").trim();
+    if (original === editado) return;
+    await salvarTranscricao(segsFinais);
   };
 
   // Queima as legendas e devolve a URL do vídeo legendado no Storage
@@ -221,8 +255,20 @@ export function PublicarReelsModal({
     const segsFinais = textoParaSegmentos(textoLegenda, segmentos);
     if (segsFinais.length === 0) throw new Error("Nenhuma legenda válida para aplicar");
 
+    // garante que a versão revisada está salva antes de encodar
+    await salvarTranscricao(segsFinais);
+
     const fonte: File | string = hasPreloadedVideo ? videoUrl! : videoFile!;
-    const blob = await queimarLegendas(fonte, segsFinais, (p) => setProgressoLegenda(p));
+
+    let blob: Blob;
+    try {
+      toast.info("⏳ Isso pode levar alguns minutos. Mantenha esta aba aberta e em foco.");
+      blob = await queimarLegendas(fonte, segsFinais, (p) => setProgressoLegenda(p));
+    } catch (err: any) {
+      console.error("[LEGENDA] falha na queima:", err);
+      setProgressoLegenda(null);
+      throw new Error("Não foi possível gerar a legenda neste dispositivo. Tente pelo computador.");
+    }
 
     const path = `reels/${user.id}/${Date.now()}-legendado.mp4`;
     const { data, error } = await supabase.storage
