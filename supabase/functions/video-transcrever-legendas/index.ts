@@ -147,9 +147,11 @@ REGRAS:
 - Não invente conteúdo. Se não houver fala, devolva uma lista vazia.
 - Sem emojis, sem marcações, apenas o texto falado com pontuação natural.
 - Transcreva com capitalização natural: primeira letra de cada frase em maiúscula, nomes próprios e marcas com a grafia correta (ex.: WhatsApp, TikTok, Tramontina, AMZ Ofertas). Não escreva em caixa alta.
+${nomeEmpresa ? `- O vídeo é de uma empresa chamada "${nomeEmpresa}". Sempre que esse nome aparecer na fala, escreva exatamente com essa grafia.` : ""}
 
 Responda SOMENTE com JSON válido no formato:
 {"segments":[{"start":0.0,"end":2.4,"text":"texto da legenda"}]}`;
+
 
     const res = await fetch(
       "https://ai.gateway.lovable.dev/v1/chat/completions",
