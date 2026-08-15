@@ -132,6 +132,7 @@ export default function ConectarWhatsAppCloud() {
                 code,
                 waba_id: payload.waba_id,
                 phone_number_id: payload.phone_number_id,
+                pin,
               },
               headers: { Authorization: `Bearer ${session?.access_token}` },
             },
