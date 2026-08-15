@@ -30,14 +30,41 @@ export function bucketPathDeUrl(url: string): { bucket: string; path: string } |
   return { bucket: m[1], path: decodeURIComponent(m[2]) };
 }
 
-async function transcrever(videoUrl: string): Promise<SegmentoLegenda[]> {
+/**
+ * Nome da empresa do cliente, usando o dado que já existe na plataforma.
+ * Ordem: empresa_config.nome_empresa → profiles.nome_fantasia → profiles.nome.
+ */
+export async function resolverNomeEmpresa(userId: string): Promise<string> {
+  try {
+    const { data: cfg } = await sb
+      .from("empresa_config")
+      .select("nome_empresa")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const doCfg = String((cfg as any)?.nome_empresa || "").trim();
+    if (doCfg) return doCfg;
+
+    const { data: prof } = await sb
+      .from("profiles")
+      .select("nome_fantasia, nome")
+      .eq("id", userId)
+      .maybeSingle();
+    return String((prof as any)?.nome_fantasia || (prof as any)?.nome || "").trim();
+  } catch (e) {
+    console.warn("[video-legenda-flow] nome da empresa indisponível:", (e as Error).message);
+    return "";
+  }
+}
+
+async function transcrever(videoUrl: string, nomeEmpresa?: string): Promise<SegmentoLegenda[]> {
   const { data, error } = await sb.functions.invoke("video-transcrever-legendas", {
-    body: { video_url: videoUrl },
+    body: { video_url: videoUrl, nome_empresa: nomeEmpresa || undefined },
   });
   if (error) throw error;
   if (!data?.success) throw new Error(data?.error || "transcrição falhou");
   return (data.segments || []) as SegmentoLegenda[];
 }
+
 
 function textoDaTranscricao(segs: SegmentoLegenda[]): string {
   return segs.map((s) => s.text.replace(/\n/g, " ")).join(" ").trim();
