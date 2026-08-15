@@ -142,6 +142,9 @@ export default function ConectarWhatsAppCloud() {
             return;
           }
           toast.success(`Conectado: ${data.display_phone || ""}`);
+          if (data.register_warning) {
+            toast.warning("Número conectado, mas o registro na Cloud API retornou aviso — se o número já tinha PIN de 2FA, informe o PIN correto e reconecte.");
+          }
           // recarrega config
           const { data: u } = await supabase.auth.getUser();
           const { data: cfg } = await supabase
