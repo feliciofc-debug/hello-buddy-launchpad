@@ -31,6 +31,10 @@ import { getTenantLogoDataUrl } from "../_shared/tenant-logo.ts";
 import { carouselColorRows, resolveCarouselColor } from "../_shared/carousel-colors.ts";
 import { logOutboundMessage } from "../_shared/cloud-log.ts";
 import { gerarVarianteFacebookFeed } from "../_shared/varianteFacebookFeed.ts";
+import {
+  iniciarFluxoLegendaVideo,
+  tratarRespostaFluxoLegenda,
+} from "../_shared/video-legenda-flow.ts";
 
 import {
   entregarEbookTenant,
