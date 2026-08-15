@@ -116,6 +116,10 @@ export default function ConectarWhatsAppCloud() {
     }
     if (!/^\d{6}$/.test(pin)) { toast.error("O PIN deve ter exatamente 6 dígitos"); return; }
 
+    // A Meta exige que a troca do code repita exatamente o redirect_uri
+    // usado pelo diálogo OAuth. Fixamos a URL da página, sem query/hash, e
+    // enviamos o mesmo valor ao backend.
+    const redirectUri = `${window.location.origin}${window.location.pathname}`;
     setConnecting(true);
     // IMPORTANTE: o SDK do Facebook rejeita callbacks async
     // ("Expression is of type asyncfunction, not function").
@@ -146,6 +150,7 @@ export default function ConectarWhatsAppCloud() {
                 waba_id: payload?.waba_id ?? null,
                 phone_number_id: payload?.phone_number_id ?? null,
                 pin,
+                 redirect_uri: redirectUri,
               },
               headers: { Authorization: `Bearer ${session?.access_token}` },
             },
@@ -186,6 +191,7 @@ export default function ConectarWhatsAppCloud() {
       },
       {
         config_id: metaCfg.embedded_config_id,
+         redirect_uri: redirectUri,
         response_type: "code",
         override_default_response_type: true,
         extras: { setup: {}, featureType: "", sessionInfoVersion: "3" },
