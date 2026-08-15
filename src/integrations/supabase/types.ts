@@ -8267,6 +8267,81 @@ export type Database = {
         }
         Relationships: []
       }
+      video_render_jobs: {
+        Row: {
+          avisado_demora_at: string | null
+          caption: string | null
+          claimed_at: string | null
+          concluido_at: string | null
+          created_at: string
+          duracao_segundos: number | null
+          erro_mensagem: string | null
+          formato: string
+          id: string
+          metadata: Json
+          origem: string
+          plataformas: string[]
+          resultado_bucket: string | null
+          resultado_path: string | null
+          segmentos: Json
+          status: string
+          telefone: string | null
+          tentativas: number
+          updated_at: string
+          user_id: string
+          video_bucket: string
+          video_path: string
+        }
+        Insert: {
+          avisado_demora_at?: string | null
+          caption?: string | null
+          claimed_at?: string | null
+          concluido_at?: string | null
+          created_at?: string
+          duracao_segundos?: number | null
+          erro_mensagem?: string | null
+          formato?: string
+          id?: string
+          metadata?: Json
+          origem?: string
+          plataformas?: string[]
+          resultado_bucket?: string | null
+          resultado_path?: string | null
+          segmentos?: Json
+          status?: string
+          telefone?: string | null
+          tentativas?: number
+          updated_at?: string
+          user_id: string
+          video_bucket: string
+          video_path: string
+        }
+        Update: {
+          avisado_demora_at?: string | null
+          caption?: string | null
+          claimed_at?: string | null
+          concluido_at?: string | null
+          created_at?: string
+          duracao_segundos?: number | null
+          erro_mensagem?: string | null
+          formato?: string
+          id?: string
+          metadata?: Json
+          origem?: string
+          plataformas?: string[]
+          resultado_bucket?: string | null
+          resultado_path?: string | null
+          segmentos?: Json
+          status?: string
+          telefone?: string | null
+          tentativas?: number
+          updated_at?: string
+          user_id?: string
+          video_bucket?: string
+          video_path?: string
+        }
+        Relationships: []
+      }
       videos: {
         Row: {
           created_at: string | null
