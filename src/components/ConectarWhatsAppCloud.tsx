@@ -33,14 +33,18 @@ export default function ConectarWhatsAppCloud() {
   const [config, setConfig] = useState<ConfigRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
+  const [pin, setPin] = useState("000000");
+  const [sdkStatus, setSdkStatus] = useState<"loading" | "ready" | "blocked">("loading");
   const [metaCfg, setMetaCfg] = useState<{ app_id: string | null; embedded_config_id: string | null } | null>(null);
 
   // 1) Carrega config pública do Meta (APP_ID + embedded_config_id) e SDK do Facebook
   useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout>;
     (async () => {
       const { data } = await supabase.functions.invoke("get-meta-public-config", { method: "GET" });
       setMetaCfg(data ?? { app_id: null, embedded_config_id: null });
-      if (!data?.app_id || window.FB) return;
+      if (!data?.app_id) { setSdkStatus("blocked"); return; }
+      if (window.FB) { setSdkStatus("ready"); return; }
       window.fbAsyncInit = function () {
         window.FB.init({
           appId: data.app_id,
@@ -48,14 +52,22 @@ export default function ConectarWhatsAppCloud() {
           xfbml: true,
           version: "v25.0",
         });
+        setSdkStatus("ready");
       };
       const s = document.createElement("script");
       s.src = "https://connect.facebook.net/en_US/sdk.js";
       s.async = true;
       s.defer = true;
+      s.onerror = () => setSdkStatus("blocked");
       document.body.appendChild(s);
+      // Bloqueadores de anúncio costumam silenciar o script sem disparar onerror
+      timeout = setTimeout(() => {
+        setSdkStatus((prev) => (prev === "ready" ? prev : "blocked"));
+      }, 8000);
     })();
+    return () => clearTimeout(timeout);
   }, []);
+
 
   // 2) Lê config atual
   useEffect(() => {
