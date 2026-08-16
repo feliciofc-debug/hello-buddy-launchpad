@@ -6930,7 +6930,7 @@ Regras:
       if (deveEncaminhar) {
         try {
           const linhas: string[] = [];
-          linhas.push(`👋 Oi ${primeiroNome}, aqui é o Silvester.`);
+          linhas.push(`👋 Oi ${primeiroNome}, aqui é o ${String(agent.agent_name || "seu assistente").trim()}.`);
           linhas.push(`Novo cliente interessado em consórcio, pré-atendimento concluído:`);
           linhas.push("");
           linhas.push(`👤 *Nome:* ${dossieAtual.nome_completo}`);
