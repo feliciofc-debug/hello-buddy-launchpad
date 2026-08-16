@@ -3,6 +3,8 @@ name: Paulo Canarim Owner Recognition
 description: Numeros do tenant Paulo Canarim (Ademicon) - agente vs dono, reconhecimento por tenant
 type: feature
 ---
+Nome do agente do tenant: **BART** (`agent_name = 'BART'` em `whatsapp_cloud_agent_config`).
+
 CRÍTICO — NÃO INVERTER:
 
 - `+5521975141829` = número **DO AGENTE** do Paulo na Meta Cloud API (WhatsApp Business oficial). É o número que RECEBE mensagens dos clientes. NÃO é o dono.
