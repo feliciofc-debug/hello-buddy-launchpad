@@ -6799,7 +6799,9 @@ async function processOne(queueId: string) {
       const doc = docMedia[0];
       const label = doc.filename || `arquivo ${doc.mime}`;
 
-      const clientVisionPrompt = `Você é o Silvester, pré-atendente do consultor de consórcio Marcelo. O cliente acabou de mandar um documento por WhatsApp. LEIA o documento (imagem/PDF) e devolva JSON PURO (sem markdown) neste formato:
+      const _agentNomeDoc = String(agent.agent_name || "assistente").trim();
+      const _donoNomeDoc = ownerFirstName(_tenantOwner?.name) || "o responsável";
+      const clientVisionPrompt = `Você é o ${_agentNomeDoc}, pré-atendente do consultor de consórcio ${_donoNomeDoc}. O cliente acabou de mandar um documento por WhatsApp. LEIA o documento (imagem/PDF) e devolva JSON PURO (sem markdown) neste formato:
 
 {
   "tipo": "rg" | "cnh" | "comprovante_residencia" | "comprovante_renda" | "ir" | "foto_bem" | "outro",
