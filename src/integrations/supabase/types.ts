@@ -8296,6 +8296,7 @@ export type Database = {
           concluido_at: string | null
           created_at: string
           duracao_segundos: number | null
+          enfileirado_at: string | null
           erro_mensagem: string | null
           formato: string
           id: string
@@ -8320,6 +8321,7 @@ export type Database = {
           concluido_at?: string | null
           created_at?: string
           duracao_segundos?: number | null
+          enfileirado_at?: string | null
           erro_mensagem?: string | null
           formato?: string
           id?: string
@@ -8344,6 +8346,7 @@ export type Database = {
           concluido_at?: string | null
           created_at?: string
           duracao_segundos?: number | null
+          enfileirado_at?: string | null
           erro_mensagem?: string | null
           formato?: string
           id?: string
@@ -9718,6 +9721,40 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      claim_video_render_job: {
+        Args: { p_stale_minutos?: number }
+        Returns: {
+          avisado_demora_at: string | null
+          caption: string | null
+          claimed_at: string | null
+          concluido_at: string | null
+          created_at: string
+          duracao_segundos: number | null
+          enfileirado_at: string | null
+          erro_mensagem: string | null
+          formato: string
+          id: string
+          metadata: Json
+          origem: string
+          plataformas: string[]
+          resultado_bucket: string | null
+          resultado_path: string | null
+          segmentos: Json
+          status: string
+          telefone: string | null
+          tentativas: number
+          updated_at: string
+          user_id: string
+          video_bucket: string
+          video_path: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "video_render_jobs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       delete_email: {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
@@ -9923,6 +9960,7 @@ export type Database = {
         Args: { p_phone: string }
         Returns: number
       }
+      video_render_fila_posicao: { Args: { p_job_id: string }; Returns: number }
     }
     Enums: {
       app_role: "admin" | "empresa" | "afiliado"
