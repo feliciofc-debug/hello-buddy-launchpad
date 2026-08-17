@@ -344,7 +344,7 @@ export async function tratarRespostaFluxoLegenda(params: {
         })
         .eq("id", job.id);
       return publicar
-        ? "Perfeito! 🎬 Estou gravando a legenda no vídeo e publico em seguida. Te aviso aqui quando estiver no ar — pode fechar o WhatsApp, isso roda no servidor."
+        ? "Perfeito! 🎬 Estou gravando a legenda no vídeo. Quando terminar, *te mando o vídeo aqui para você aprovar* — só publico depois do seu OK. Pode fechar o WhatsApp, isso roda no servidor."
         : "Fechado! 🎬 Estou gravando a legenda no vídeo e te devolvo o arquivo aqui no WhatsApp. *Não vou publicar nada* — você confere e posta quando quiser. Pode fechar o WhatsApp, isso roda no servidor.";
     }
     return null;
