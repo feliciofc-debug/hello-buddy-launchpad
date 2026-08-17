@@ -262,12 +262,35 @@ export async function tratarRespostaFluxoLegenda(params: {
     .from("video_render_jobs")
     .select("*")
     .eq("user_id", params.userId)
-    .in("status", ["aguardando_escolha", "aguardando_confirmacao"])
+    .in("status", ["aguardando_escolha", "aguardando_confirmacao", "aguardando_aprovacao"])
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
   if (!job) return null;
+
+  // ---- vídeo já renderizado, esperando APROVAÇÃO do dono para publicar ----
+  if (job.status === "aguardando_aprovacao") {
+    const t = params.texto || "";
+    const aprovou = /\b(aprovar|aprovado|aprovo|publica(r)?|posta(r)?|pode\s+publicar|libera(do)?|ok|sim)\b/i.test(t) &&
+      !/\bn[ãa]o\b/i.test(t);
+    if (aprovou) {
+      await sb.from("video_render_jobs").update({ status: "aprovado" }).eq("id", job.id);
+      sb.functions
+        .invoke("video-publicar-aprovado", { body: { job_id: job.id } })
+        .catch((e: any) => console.error("[video-legenda-flow] publicação falhou:", e?.message));
+      return "Aprovado ✅ Estou publicando agora e te aviso aqui quando estiver no ar.";
+    }
+    if (ehNegativa(t) || /\bcancela/i.test(t)) {
+      await sb
+        .from("video_render_jobs")
+        .update({ status: "cancelado", plataformas: [] })
+        .eq("id", job.id);
+      return "Beleza, *não publiquei nada*. O vídeo legendado já está com você — se quiser tentar outra legenda, me manda o vídeo de novo.";
+    }
+    return null; // não é resposta do fluxo — o agente segue normalmente
+  }
+
 
   // ---- aguardando escolha da copy ----
   if (job.status === "aguardando_escolha") {
@@ -288,7 +311,7 @@ export async function tratarRespostaFluxoLegenda(params: {
       .update({ caption, status: "aguardando_confirmacao" })
       .eq("id", job.id);
 
-    return `Escolha registrada ✅\n\n*Legenda do post:*\n${caption}\n\nA legenda também vai aparecer *na tela do vídeo*, acompanhando a fala.\n\nComo você quer seguir?\n• Responda *ENVIAR* que eu só gravo a legenda e te devolvo o vídeo aqui (sem publicar).\n• Responda *PUBLICAR* que eu gravo e publico no Instagram e no Facebook.`;
+    return `Escolha registrada ✅\n\n*Legenda do post:*\n${caption}\n\nA legenda também vai aparecer *na tela do vídeo*, acompanhando a fala.\n\nComo você quer seguir?\n• Responda *ENVIAR* que eu só gravo a legenda e te devolvo o vídeo aqui (sem publicar).\n• Responda *PUBLICAR* que eu gravo, te mando o vídeo para *você aprovar* e só publico no Instagram/Facebook depois do seu OK.`;
   }
 
   // ---- aguardando confirmação de publicação ----
@@ -321,7 +344,7 @@ export async function tratarRespostaFluxoLegenda(params: {
         })
         .eq("id", job.id);
       return publicar
-        ? "Perfeito! 🎬 Estou gravando a legenda no vídeo e publico em seguida. Te aviso aqui quando estiver no ar — pode fechar o WhatsApp, isso roda no servidor."
+        ? "Perfeito! 🎬 Estou gravando a legenda no vídeo. Quando terminar, *te mando o vídeo aqui para você aprovar* — só publico depois do seu OK. Pode fechar o WhatsApp, isso roda no servidor."
         : "Fechado! 🎬 Estou gravando a legenda no vídeo e te devolvo o arquivo aqui no WhatsApp. *Não vou publicar nada* — você confere e posta quando quiser. Pode fechar o WhatsApp, isso roda no servidor.";
     }
     return null;
