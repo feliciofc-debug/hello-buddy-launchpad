@@ -200,6 +200,8 @@ export async function iniciarFluxoLegendaVideo(params: {
     segmentos,
     status: "aguardando_escolha",
     formato: "reels",
+    // Padrão seguro: NÃO publica. Só publica se o dono pedir "PUBLICAR".
+    plataformas: [],
     metadata: {
       opcoes,
       transcricao,
