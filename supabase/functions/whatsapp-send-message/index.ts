@@ -194,8 +194,8 @@ serve(async (req) => {
     await logOutboundMessage(supabase, {
       userId: user_id,
       phone: String(to),
-      content: message || (interactive_list ? `🎨 ${interactive_list.body || 'lista de opções'}` : (document_url ? `📄 ${document_filename || 'documento'}` : (image_url ? '🖼️ imagem' : (contact_card ? '📇 cartão de contato' : '')))),
-      messageType: interactive_list ? 'interactive' : document_url ? 'document' : image_url ? 'image' : contact_card ? 'contacts' : template_name ? 'template' : 'text',
+      content: message || (interactive_list ? `🎨 ${interactive_list.body || 'lista de opções'}` : (document_url ? `📄 ${document_filename || 'documento'}` : (video_url ? '🎬 vídeo' : (image_url ? '🖼️ imagem' : (contact_card ? '📇 cartão de contato' : ''))))),
+      messageType: interactive_list ? 'interactive' : document_url ? 'document' : video_url ? 'video' : image_url ? 'image' : contact_card ? 'contacts' : template_name ? 'template' : 'text',
 
       wamid: result.messages?.[0]?.id ?? null,
       sender: 'campanha',
