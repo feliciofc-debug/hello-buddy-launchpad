@@ -144,20 +144,32 @@ Deno.serve(async (req) => {
       })
       .eq("id", job.id);
 
-    await avisarCliente(
-      supabase,
-      job,
-      publicados.length > 0
-        ? `✅ Seu vídeo foi publicado com a legenda na tela em: ${publicados
-            .map((p) => (p === "instagram" ? "Instagram" : "Facebook"))
-            .join(" e ")}.`
-        : `Consegui gerar a legenda no vídeo, mas a publicação falhou: ${erros.join(
-            " | ",
-          )}\n\nMe avise que eu tento publicar novamente.`,
-    );
+    if (plataformas.length === 0) {
+      // Modo "só me devolve": manda o MP4 legendado no WhatsApp, sem publicar nada.
+      await avisarCliente(
+        supabase,
+        job,
+        `🎬 Pronto! Vídeo com a legenda queimada na tela. *Não publiquei em lugar nenhum* — confira e poste quando quiser.${
+          job.caption ? `\n\nLegenda sugerida para o post:\n${job.caption}` : ""
+        }`,
+        videoUrl,
+      );
+    } else {
+      await avisarCliente(
+        supabase,
+        job,
+        publicados.length > 0
+          ? `✅ Seu vídeo foi publicado com a legenda na tela em: ${publicados
+              .map((p) => (p === "instagram" ? "Instagram" : "Facebook"))
+              .join(" e ")}.`
+          : `Consegui gerar a legenda no vídeo, mas a publicação falhou: ${erros.join(
+              " | ",
+            )}\n\nMe avise que eu tento publicar novamente.`,
+      );
+    }
 
     return respJson({
-      success: publicados.length > 0,
+      success: plataformas.length === 0 ? true : publicados.length > 0,
       plataformas: publicados,
       erros: erros.length ? erros : undefined,
       video_url: videoUrl,
