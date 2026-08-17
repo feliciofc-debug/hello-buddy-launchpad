@@ -340,13 +340,18 @@ export async function tratarRespostaFluxoLegenda(params: {
           status: "pendente",
           tentativas: 0,
           erro_mensagem: null,
+          enfileirado_at: new Date().toISOString(),
           plataformas: publicar ? ["instagram", "facebook"] : [],
         })
         .eq("id", job.id);
-      return publicar
+
+      const espera = await avisoDeFila(job.id);
+      return (publicar
         ? "Perfeito! 🎬 Estou gravando a legenda no vídeo. Quando terminar, *te mando o vídeo aqui para você aprovar* — só publico depois do seu OK. Pode fechar o WhatsApp, isso roda no servidor."
-        : "Fechado! 🎬 Estou gravando a legenda no vídeo e te devolvo o arquivo aqui no WhatsApp. *Não vou publicar nada* — você confere e posta quando quiser. Pode fechar o WhatsApp, isso roda no servidor.";
+        : "Fechado! 🎬 Estou gravando a legenda no vídeo e te devolvo o arquivo aqui no WhatsApp. *Não vou publicar nada* — você confere e posta quando quiser. Pode fechar o WhatsApp, isso roda no servidor.") +
+        espera;
     }
+
     return null;
   }
 
