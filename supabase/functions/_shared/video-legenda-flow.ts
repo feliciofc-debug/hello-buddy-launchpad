@@ -144,6 +144,9 @@ async function avisoDeFila(jobId: string): Promise<string> {
     console.warn("[video-legenda-flow] posição na fila indisponível:", (e as Error).message);
     return "";
   }
+}
+
+
 
 
 function montarMensagemOpcoes(opcoes: string[]): string {
