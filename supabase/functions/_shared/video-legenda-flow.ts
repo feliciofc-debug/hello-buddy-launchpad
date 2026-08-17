@@ -127,6 +127,28 @@ Responda SOMENTE com JSON válido:
   return opcoes;
 }
 
+/**
+ * Aviso honesto de espera. A VPS processa 1 vídeo por vez (concurrency=1),
+ * então se houver fila o cliente precisa saber antes de achar que quebrou.
+ * Referência real medida: ~40 s de encode para um vídeo de ~83 s.
+ */
+const SEGUNDOS_POR_JOB = 60;
+async function avisoDeFila(jobId: string): Promise<string> {
+  try {
+    const { data } = await sb.rpc("video_render_fila_posicao", { p_job_id: jobId });
+    const pos = Number(data || 1);
+    if (pos <= 1) return "";
+    const minutos = Math.max(1, Math.ceil(((pos - 1) * SEGUNDOS_POR_JOB) / 60));
+    return `\n\n⏳ Tem ${pos - 1} vídeo${pos - 1 > 1 ? "s" : ""} na frente do seu na fila de renderização — a previsão é começar o seu em cerca de ${minutos} min. Eu te aviso aqui quando ficar pronto, não precisa perguntar.`;
+  } catch (e) {
+    console.warn("[video-legenda-flow] posição na fila indisponível:", (e as Error).message);
+    return "";
+  }
+}
+
+
+
+
 function montarMensagemOpcoes(opcoes: string[]): string {
   const letras = ["A", "B", "C"];
   const blocos = opcoes
@@ -340,13 +362,18 @@ export async function tratarRespostaFluxoLegenda(params: {
           status: "pendente",
           tentativas: 0,
           erro_mensagem: null,
+          enfileirado_at: new Date().toISOString(),
           plataformas: publicar ? ["instagram", "facebook"] : [],
         })
         .eq("id", job.id);
-      return publicar
+
+      const espera = await avisoDeFila(job.id);
+      return (publicar
         ? "Perfeito! 🎬 Estou gravando a legenda no vídeo. Quando terminar, *te mando o vídeo aqui para você aprovar* — só publico depois do seu OK. Pode fechar o WhatsApp, isso roda no servidor."
-        : "Fechado! 🎬 Estou gravando a legenda no vídeo e te devolvo o arquivo aqui no WhatsApp. *Não vou publicar nada* — você confere e posta quando quiser. Pode fechar o WhatsApp, isso roda no servidor.";
+        : "Fechado! 🎬 Estou gravando a legenda no vídeo e te devolvo o arquivo aqui no WhatsApp. *Não vou publicar nada* — você confere e posta quando quiser. Pode fechar o WhatsApp, isso roda no servidor.") +
+        espera;
     }
+
     return null;
   }
 

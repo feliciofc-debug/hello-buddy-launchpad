@@ -51,41 +51,18 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // 1. Recicla jobs travados (worker morreu no meio do encode)
-    const limite = new Date(Date.now() - STALE_MINUTOS * 60_000).toISOString();
-    await supabase
-      .from("video_render_jobs")
-      .update({ status: "pendente", claimed_at: null })
-      .eq("status", "processando")
-      .lt("claimed_at", limite);
-
-    // 2. Pega o próximo pendente (FIFO)
-    const { data: candidatos, error: selErr } = await supabase
-      .from("video_render_jobs")
-      .select("*")
-      .eq("status", "pendente")
-      .lt("tentativas", 3)
-      .order("created_at", { ascending: true })
-      .limit(1);
-
-    if (selErr) throw selErr;
-    if (!candidatos || candidatos.length === 0) {
-      return respJson({ success: true, job: null });
-    }
-
-    const job = candidatos[0];
-
-    // 3. Claim otimista (só assume se ainda estiver pendente)
-    const { data: claimed, error: upErr } = await supabase
-      .from("video_render_jobs")
-      .update({ status: "processando", claimed_at: new Date().toISOString() })
-      .eq("id", job.id)
-      .eq("status", "pendente")
-      .select()
+    // 1+2+3. Reciclagem de travados + escolha do próximo job + claim atômico.
+    // A ordem é JUSTA entre clientes (round-robin por user_id): um tenant que
+    // manda 5 vídeos não empurra os outros para o fim da fila.
+    const { data: claimed, error: claimErr } = await supabase
+      .rpc("claim_video_render_job", { p_stale_minutos: STALE_MINUTOS })
       .maybeSingle();
 
-    if (upErr) throw upErr;
-    if (!claimed) return respJson({ success: true, job: null }); // outro claim ganhou
+    if (claimErr) throw claimErr;
+    if (!claimed || !(claimed as any).id) return respJson({ success: true, job: null });
+
+    const job = claimed as any;
+
 
     // 4. URL assinada de download do original
     const { data: dl, error: dlErr } = await supabase.storage

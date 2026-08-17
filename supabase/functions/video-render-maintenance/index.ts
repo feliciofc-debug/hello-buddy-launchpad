@@ -58,14 +58,18 @@ Deno.serve(async (req) => {
       .lt("claimed_at", new Date(agora - STALE_MINUTOS * 60_000).toISOString())
       .select("id");
 
-    // 2. Aviso de demora (uma única vez por job)
+    // 2. Aviso de demora (uma única vez por job).
+    // Conta do momento em que o job ENTROU NA FILA (enfileirado_at), não da
+    // criação — senão dispararia enquanto o dono ainda escolhe a copy A/B/C.
     const { data: demorados } = await supabase
       .from("video_render_jobs")
       .select("id, user_id, telefone")
       .in("status", ["pendente", "processando"])
       .is("avisado_demora_at", null)
-      .lt("created_at", new Date(agora - AVISO_DEMORA_MINUTOS * 60_000).toISOString())
+      .not("enfileirado_at", "is", null)
+      .lt("enfileirado_at", new Date(agora - AVISO_DEMORA_MINUTOS * 60_000).toISOString())
       .limit(20);
+
 
     for (const job of demorados || []) {
       if (job.telefone) {
@@ -93,7 +97,9 @@ Deno.serve(async (req) => {
       .from("video_render_jobs")
       .select("id", { count: "exact", head: true })
       .eq("status", "pendente")
-      .lt("created_at", new Date(agora - FILA_PARADA_MINUTOS * 60_000).toISOString());
+      .not("enfileirado_at", "is", null)
+      .lt("enfileirado_at", new Date(agora - FILA_PARADA_MINUTOS * 60_000).toISOString());
+
 
     const filaParada = (paradosCount || 0) > 0;
     if (filaParada) {
