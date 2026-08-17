@@ -343,3 +343,12 @@ verify_jwt = true
 [functions.get-meta-public-config]
 verify_jwt = false
 
+
+[functions.video-render-claim]
+verify_jwt = false
+
+[functions.video-render-complete]
+verify_jwt = false
+
+[functions.video-render-maintenance]
+verify_jwt = false
