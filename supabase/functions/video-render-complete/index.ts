@@ -17,11 +17,17 @@ async function avisarCliente(
   supabase: any,
   job: any,
   message: string,
+  videoUrl?: string,
 ) {
   if (!job.telefone) return;
   try {
     await supabase.functions.invoke("whatsapp-send-message", {
-      body: { user_id: job.user_id, to: job.telefone, message },
+      body: {
+        user_id: job.user_id,
+        to: job.telefone,
+        message,
+        ...(videoUrl ? { video_url: videoUrl } : {}),
+      },
     });
   } catch (e) {
     console.error("[video-render-complete] aviso WhatsApp falhou:", e);
