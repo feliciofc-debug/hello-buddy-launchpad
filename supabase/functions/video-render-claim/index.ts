@@ -106,7 +106,9 @@ Deno.serve(async (req) => {
     const nome = `legendados/${job.user_id}/${job.id}.mp4`;
     const { data: up, error: upSignErr } = await supabase.storage
       .from(BUCKET_SAIDA)
-      .createSignedUploadUrl(nome);
+      // upsert: retentativa após o worker morrer entre o upload e o /complete
+      // reencontraria o objeto já existente e a URL falharia sem isto.
+      .createSignedUploadUrl(nome, { upsert: true });
     if (upSignErr || !up?.signedUrl) throw upSignErr || new Error("upload url falhou");
 
     return respJson({
