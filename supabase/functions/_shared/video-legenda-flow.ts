@@ -226,9 +226,22 @@ function detectarEscolha(texto: string): number | null {
 }
 
 function ehConfirmacao(texto: string): boolean {
-  return /\b(sim|pode|publica(r)?|manda(r)?|autorizo|confirmo|vai|bora|ok)\b/i.test(
+  return /\b(sim|pode|publica(r)?|posta(r)?|manda(r)?|envia(r)?|autorizo|confirmo|vai|bora|ok)\b/i.test(
     texto || "",
   );
+}
+
+/**
+ * Decide se a confirmação autoriza PUBLICAR ou apenas ENVIAR o vídeo pronto.
+ * Padrão seguro: enviar (sem publicar) — só publica se o dono pedir explicitamente.
+ */
+function querPublicar(texto: string): boolean {
+  const t = texto || "";
+  if (/\bn[ãa]o\s+publica/i.test(t) || /\bsem\s+publicar\b/i.test(t)) return false;
+  if (/\b(s[óo]\s+(me\s+)?(manda|mandar|envia|enviar)|conferir|confiro|revisar)\b/i.test(t)) {
+    return false;
+  }
+  return /\b(publica(r)?|posta(r)?|publique|no\s+ar|instagram|facebook)\b/i.test(t);
 }
 
 function ehNegativa(texto: string): boolean {
