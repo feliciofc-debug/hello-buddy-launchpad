@@ -23,7 +23,7 @@ serve(async (req) => {
     const body = await req.json()
     const {
       user_id, to, message, template_name, template_language,
-      image_url, document_url, document_filename,
+      image_url, video_url, document_url, document_filename,
       // vCard (cartão de contato clicável) — Meta Cloud API type:contacts
       contact_card, // { nome: string, telefone: string }
       // Lista interativa (1 toque) — usada p/ escolher cor do carrossel, etc.
