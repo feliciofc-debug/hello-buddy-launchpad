@@ -3876,6 +3876,27 @@ export type Database = {
         }
         Relationships: []
       }
+      internal_cron_keys: {
+        Row: {
+          chave: string
+          created_at: string
+          id: string
+          nome: string
+        }
+        Insert: {
+          chave: string
+          created_at?: string
+          id?: string
+          nome: string
+        }
+        Update: {
+          chave?: string
+          created_at?: string
+          id?: string
+          nome?: string
+        }
+        Relationships: []
+      }
       jarvis_alerts_state: {
         Row: {
           alert_key: string
