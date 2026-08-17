@@ -123,6 +123,17 @@ serve(async (req) => {
           phones: [{ phone: `+${telCartao}`, type: 'CELL', wa_id: telCartao }],
         }],
       }
+    } else if (video_url) {
+      // VÍDEO (type:video) — usado para devolver o vídeo com legenda queimada.
+      messagePayload = {
+        messaging_product: 'whatsapp',
+        to: to.replace(/\D/g, ''),
+        type: 'video',
+        video: {
+          link: video_url,
+          caption: (message || '').slice(0, 1024),
+        }
+      }
     } else if (document_url) {
       messagePayload = {
         messaging_product: 'whatsapp',
