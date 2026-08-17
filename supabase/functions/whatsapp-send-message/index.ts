@@ -23,7 +23,7 @@ serve(async (req) => {
     const body = await req.json()
     const {
       user_id, to, message, template_name, template_language,
-      image_url, document_url, document_filename,
+      image_url, video_url, document_url, document_filename,
       // vCard (cartão de contato clicável) — Meta Cloud API type:contacts
       contact_card, // { nome: string, telefone: string }
       // Lista interativa (1 toque) — usada p/ escolher cor do carrossel, etc.
@@ -123,6 +123,17 @@ serve(async (req) => {
           phones: [{ phone: `+${telCartao}`, type: 'CELL', wa_id: telCartao }],
         }],
       }
+    } else if (video_url) {
+      // VÍDEO (type:video) — usado para devolver o vídeo com legenda queimada.
+      messagePayload = {
+        messaging_product: 'whatsapp',
+        to: to.replace(/\D/g, ''),
+        type: 'video',
+        video: {
+          link: video_url,
+          caption: (message || '').slice(0, 1024),
+        }
+      }
     } else if (document_url) {
       messagePayload = {
         messaging_product: 'whatsapp',
@@ -183,8 +194,8 @@ serve(async (req) => {
     await logOutboundMessage(supabase, {
       userId: user_id,
       phone: String(to),
-      content: message || (interactive_list ? `🎨 ${interactive_list.body || 'lista de opções'}` : (document_url ? `📄 ${document_filename || 'documento'}` : (image_url ? '🖼️ imagem' : (contact_card ? '📇 cartão de contato' : '')))),
-      messageType: interactive_list ? 'interactive' : document_url ? 'document' : image_url ? 'image' : contact_card ? 'contacts' : template_name ? 'template' : 'text',
+      content: message || (interactive_list ? `🎨 ${interactive_list.body || 'lista de opções'}` : (document_url ? `📄 ${document_filename || 'documento'}` : (video_url ? '🎬 vídeo' : (image_url ? '🖼️ imagem' : (contact_card ? '📇 cartão de contato' : ''))))),
+      messageType: interactive_list ? 'interactive' : document_url ? 'document' : video_url ? 'video' : image_url ? 'image' : contact_card ? 'contacts' : template_name ? 'template' : 'text',
 
       wamid: result.messages?.[0]?.id ?? null,
       sender: 'campanha',

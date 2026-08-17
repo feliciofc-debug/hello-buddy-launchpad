@@ -200,6 +200,8 @@ export async function iniciarFluxoLegendaVideo(params: {
     segmentos,
     status: "aguardando_escolha",
     formato: "reels",
+    // Padrão seguro: NÃO publica. Só publica se o dono pedir "PUBLICAR".
+    plataformas: [],
     metadata: {
       opcoes,
       transcricao,
@@ -224,9 +226,22 @@ function detectarEscolha(texto: string): number | null {
 }
 
 function ehConfirmacao(texto: string): boolean {
-  return /\b(sim|pode|publica(r)?|manda(r)?|autorizo|confirmo|vai|bora|ok)\b/i.test(
+  return /\b(sim|pode|publica(r)?|posta(r)?|manda(r)?|envia(r)?|autorizo|confirmo|vai|bora|ok)\b/i.test(
     texto || "",
   );
+}
+
+/**
+ * Decide se a confirmação autoriza PUBLICAR ou apenas ENVIAR o vídeo pronto.
+ * Padrão seguro: enviar (sem publicar) — só publica se o dono pedir explicitamente.
+ */
+function querPublicar(texto: string): boolean {
+  const t = texto || "";
+  if (/\bn[ãa]o\s+publica/i.test(t) || /\bsem\s+publicar\b/i.test(t)) return false;
+  if (/\b(s[óo]\s+(me\s+)?(manda|mandar|envia|enviar)|conferir|confiro|revisar)\b/i.test(t)) {
+    return false;
+  }
+  return /\b(publica(r)?|posta(r)?|publique|no\s+ar|instagram|facebook)\b/i.test(t);
 }
 
 function ehNegativa(texto: string): boolean {
@@ -273,7 +288,7 @@ export async function tratarRespostaFluxoLegenda(params: {
       .update({ caption, status: "aguardando_confirmacao" })
       .eq("id", job.id);
 
-    return `Escolha registrada ✅\n\n*Legenda do post:*\n${caption}\n\nA legenda também vai aparecer *na tela do vídeo*, acompanhando a fala.\n\nPosso publicar no Instagram e no Facebook agora? Responda *SIM*.`;
+    return `Escolha registrada ✅\n\n*Legenda do post:*\n${caption}\n\nA legenda também vai aparecer *na tela do vídeo*, acompanhando a fala.\n\nComo você quer seguir?\n• Responda *ENVIAR* que eu só gravo a legenda e te devolvo o vídeo aqui (sem publicar).\n• Responda *PUBLICAR* que eu gravo e publico no Instagram e no Facebook.`;
   }
 
   // ---- aguardando confirmação de publicação ----
@@ -287,19 +302,27 @@ export async function tratarRespostaFluxoLegenda(params: {
           .from("video_render_jobs")
           .update({ caption: opcoes[idx] })
           .eq("id", job.id);
-        return `Troquei para a opção escolhida ✅\n\n${opcoes[idx]}\n\nPosso publicar agora? Responda *SIM*.`;
+        return `Troquei para a opção escolhida ✅\n\n${opcoes[idx]}\n\nResponda *ENVIAR* (só me devolve o vídeo) ou *PUBLICAR* (posta no Instagram e Facebook).`;
       }
     }
-    if (ehNegativa(params.texto)) {
+    if (ehNegativa(params.texto) && !querPublicar(params.texto)) {
       await sb.from("video_render_jobs").update({ status: "cancelado" }).eq("id", job.id);
       return "Sem problema, não publiquei nada. Quando quiser, me avise.";
     }
     if (ehConfirmacao(params.texto)) {
+      const publicar = querPublicar(params.texto);
       await sb
         .from("video_render_jobs")
-        .update({ status: "pendente", tentativas: 0, erro_mensagem: null })
+        .update({
+          status: "pendente",
+          tentativas: 0,
+          erro_mensagem: null,
+          plataformas: publicar ? ["instagram", "facebook"] : [],
+        })
         .eq("id", job.id);
-      return "Perfeito! 🎬 Estou gravando a legenda no vídeo e publico em seguida. Te aviso aqui quando estiver no ar — pode fechar o WhatsApp, isso roda no servidor.";
+      return publicar
+        ? "Perfeito! 🎬 Estou gravando a legenda no vídeo e publico em seguida. Te aviso aqui quando estiver no ar — pode fechar o WhatsApp, isso roda no servidor."
+        : "Fechado! 🎬 Estou gravando a legenda no vídeo e te devolvo o arquivo aqui no WhatsApp. *Não vou publicar nada* — você confere e posta quando quiser. Pode fechar o WhatsApp, isso roda no servidor.";
     }
     return null;
   }
