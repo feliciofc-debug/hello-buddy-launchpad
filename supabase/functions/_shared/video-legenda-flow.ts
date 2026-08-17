@@ -311,7 +311,7 @@ export async function tratarRespostaFluxoLegenda(params: {
       .update({ caption, status: "aguardando_confirmacao" })
       .eq("id", job.id);
 
-    return `Escolha registrada ✅\n\n*Legenda do post:*\n${caption}\n\nA legenda também vai aparecer *na tela do vídeo*, acompanhando a fala.\n\nComo você quer seguir?\n• Responda *ENVIAR* que eu só gravo a legenda e te devolvo o vídeo aqui (sem publicar).\n• Responda *PUBLICAR* que eu gravo e publico no Instagram e no Facebook.`;
+    return `Escolha registrada ✅\n\n*Legenda do post:*\n${caption}\n\nA legenda também vai aparecer *na tela do vídeo*, acompanhando a fala.\n\nComo você quer seguir?\n• Responda *ENVIAR* que eu só gravo a legenda e te devolvo o vídeo aqui (sem publicar).\n• Responda *PUBLICAR* que eu gravo, te mando o vídeo para *você aprovar* e só publico no Instagram/Facebook depois do seu OK.`;
   }
 
   // ---- aguardando confirmação de publicação ----
