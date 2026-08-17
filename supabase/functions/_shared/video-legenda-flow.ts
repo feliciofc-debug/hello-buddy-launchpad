@@ -262,12 +262,35 @@ export async function tratarRespostaFluxoLegenda(params: {
     .from("video_render_jobs")
     .select("*")
     .eq("user_id", params.userId)
-    .in("status", ["aguardando_escolha", "aguardando_confirmacao"])
+    .in("status", ["aguardando_escolha", "aguardando_confirmacao", "aguardando_aprovacao"])
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
   if (!job) return null;
+
+  // ---- vídeo já renderizado, esperando APROVAÇÃO do dono para publicar ----
+  if (job.status === "aguardando_aprovacao") {
+    const t = params.texto || "";
+    const aprovou = /\b(aprovar|aprovado|aprovo|publica(r)?|posta(r)?|pode\s+publicar|libera(do)?|ok|sim)\b/i.test(t) &&
+      !/\bn[ãa]o\b/i.test(t);
+    if (aprovou) {
+      await sb.from("video_render_jobs").update({ status: "aprovado" }).eq("id", job.id);
+      sb.functions
+        .invoke("video-publicar-aprovado", { body: { job_id: job.id } })
+        .catch((e: any) => console.error("[video-legenda-flow] publicação falhou:", e?.message));
+      return "Aprovado ✅ Estou publicando agora e te aviso aqui quando estiver no ar.";
+    }
+    if (ehNegativa(t) || /\bcancela/i.test(t)) {
+      await sb
+        .from("video_render_jobs")
+        .update({ status: "cancelado", plataformas: [] })
+        .eq("id", job.id);
+      return "Beleza, *não publiquei nada*. O vídeo legendado já está com você — se quiser tentar outra legenda, me manda o vídeo de novo.";
+    }
+    return null; // não é resposta do fluxo — o agente segue normalmente
+  }
+
 
   // ---- aguardando escolha da copy ----
   if (job.status === "aguardando_escolha") {
