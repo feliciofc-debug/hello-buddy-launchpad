@@ -12,7 +12,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, x-render-token, x-cron-key",
 };
 
 const STALE_MINUTOS = 15;
@@ -27,6 +27,26 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+
+    // Auth: chave do cron (tabela interna) OU token do worker da VPS.
+    const cronKey = req.headers.get("x-cron-key") || "";
+    const workerToken = req.headers.get("x-render-token") || "";
+    const esperadoWorker = Deno.env.get("VPS_RENDER_TOKEN") || "";
+    let autorizado = !!esperadoWorker && workerToken === esperadoWorker;
+    if (!autorizado && cronKey) {
+      const { data: keyRow } = await supabase
+        .from("internal_cron_keys")
+        .select("chave")
+        .eq("nome", "video-render-maintenance")
+        .maybeSingle();
+      autorizado = !!keyRow?.chave && keyRow.chave === cronKey;
+    }
+    if (!autorizado) {
+      return new Response(JSON.stringify({ success: false, error: "não autorizado" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const agora = Date.now();
 
