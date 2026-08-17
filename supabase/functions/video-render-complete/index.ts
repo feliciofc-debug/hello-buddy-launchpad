@@ -124,7 +124,12 @@ Deno.serve(async (req) => {
     await supabase
       .from("video_render_jobs")
       .update({
-        status: publicados.length > 0 ? "publicado" : "erro_publicacao",
+        status:
+          plataformas.length === 0
+            ? "concluido"
+            : publicados.length > 0
+              ? "publicado"
+              : "erro_publicacao",
         resultado_bucket: bucket,
         resultado_path,
         duracao_segundos: duracao_segundos ?? null,
