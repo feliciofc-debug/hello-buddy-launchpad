@@ -99,52 +99,23 @@ Deno.serve(async (req) => {
     const videoUrl = pub?.publicUrl;
     if (!videoUrl) throw new Error("não consegui montar a URL pública do vídeo");
 
-    const plataformas: string[] = Array.isArray(job.plataformas)
-      ? job.plataformas
-      : ["instagram", "facebook"];
-    const publicados: string[] = [];
-    const erros: string[] = [];
+    const plataformas: string[] = Array.isArray(job.plataformas) ? job.plataformas : [];
+    const querPublicar = plataformas.length > 0;
 
-    for (const plataforma of plataformas) {
-      try {
-        const { data: res, error: pErr } = await supabase.functions.invoke(
-          "meta-publish-reels",
-          {
-            body: {
-              platform: plataforma,
-              video_url: videoUrl,
-              caption: job.caption || " ",
-              user_id: job.user_id,
-            },
-          },
-        );
-        if (pErr) throw pErr;
-        if (res?.success) publicados.push(plataforma);
-        else erros.push(`${plataforma}: ${res?.error || "falhou"}`);
-      } catch (e: any) {
-        console.error(`[video-render-complete] ${plataforma} erro:`, e);
-        erros.push(`${plataforma}: ${e?.message || "erro"}`);
-      }
-    }
-
+    // NUNCA publicamos direto após o encode: o dono precisa ver o vídeo e aprovar.
     await supabase
       .from("video_render_jobs")
       .update({
-        status:
-          plataformas.length === 0
-            ? "concluido"
-            : publicados.length > 0
-              ? "publicado"
-              : "erro_publicacao",
+        status: querPublicar ? "aguardando_aprovacao" : "concluido",
         resultado_bucket: bucket,
         resultado_path,
         duracao_segundos: duracao_segundos ?? null,
         concluido_at: new Date().toISOString(),
-        erro_mensagem: erros.length ? erros.join(" | ") : null,
+        erro_mensagem: null,
       })
       .eq("id", job.id);
 
-    if (plataformas.length === 0) {
+    if (!querPublicar) {
       // Modo "só me devolve": manda o MP4 legendado no WhatsApp, sem publicar nada.
       await avisarCliente(
         supabase,
@@ -155,25 +126,25 @@ Deno.serve(async (req) => {
         videoUrl,
       );
     } else {
+      const nomes = plataformas
+        .map((p) => (p === "instagram" ? "Instagram" : p === "facebook" ? "Facebook" : p))
+        .join(" e ");
       await avisarCliente(
         supabase,
         job,
-        publicados.length > 0
-          ? `✅ Seu vídeo foi publicado com a legenda na tela em: ${publicados
-              .map((p) => (p === "instagram" ? "Instagram" : "Facebook"))
-              .join(" e ")}.`
-          : `Consegui gerar a legenda no vídeo, mas a publicação falhou: ${erros.join(
-              " | ",
-            )}\n\nMe avise que eu tento publicar novamente.`,
+        `🎬 Vídeo pronto com a legenda na tela. *Ainda não publiquei nada.*${
+          job.caption ? `\n\nLegenda do post:\n${job.caption}` : ""
+        }\n\nConfira o vídeo acima. Se estiver aprovado, responda *APROVAR* que eu publico em ${nomes}.\nSe não quiser, responda *CANCELAR* e nada vai ao ar.`,
+        videoUrl,
       );
     }
 
     return respJson({
-      success: plataformas.length === 0 ? true : publicados.length > 0,
-      plataformas: publicados,
-      erros: erros.length ? erros : undefined,
+      success: true,
+      aguardando_aprovacao: querPublicar,
       video_url: videoUrl,
     });
+
   } catch (e) {
     console.error("[video-render-complete] erro:", e);
     return respJson({
