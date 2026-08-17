@@ -97,7 +97,9 @@ Deno.serve(async (req) => {
       .from("video_render_jobs")
       .select("id", { count: "exact", head: true })
       .eq("status", "pendente")
-      .lt("created_at", new Date(agora - FILA_PARADA_MINUTOS * 60_000).toISOString());
+      .not("enfileirado_at", "is", null)
+      .lt("enfileirado_at", new Date(agora - FILA_PARADA_MINUTOS * 60_000).toISOString());
+
 
     const filaParada = (paradosCount || 0) > 0;
     if (filaParada) {
