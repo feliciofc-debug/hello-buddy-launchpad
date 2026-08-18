@@ -897,6 +897,7 @@ export type Database = {
           descricao: string | null
           id: string
           nome: string
+          prompt_template: string | null
           slug: string
           updated_at: string
         }
@@ -906,6 +907,7 @@ export type Database = {
           descricao?: string | null
           id?: string
           nome: string
+          prompt_template?: string | null
           slug: string
           updated_at?: string
         }
@@ -915,6 +917,7 @@ export type Database = {
           descricao?: string | null
           id?: string
           nome?: string
+          prompt_template?: string | null
           slug?: string
           updated_at?: string
         }
@@ -8788,6 +8791,7 @@ export type Database = {
         Row: {
           agent_mode: string
           agent_name: string | null
+          cargo: string | null
           created_at: string
           greeting: string | null
           handoff_rules: Json | null
@@ -8795,16 +8799,20 @@ export type Database = {
           is_active: boolean
           knowledge_base: string | null
           knowledge_segment_id: string | null
+          nome_consultor: string | null
           owner_name: string | null
           owner_phone: string | null
           persona: string | null
+          primeiro_nome: string | null
           tone: string | null
           updated_at: string
           user_id: string
+          whatsapp_consultor: string | null
         }
         Insert: {
           agent_mode?: string
           agent_name?: string | null
+          cargo?: string | null
           created_at?: string
           greeting?: string | null
           handoff_rules?: Json | null
@@ -8812,16 +8820,20 @@ export type Database = {
           is_active?: boolean
           knowledge_base?: string | null
           knowledge_segment_id?: string | null
+          nome_consultor?: string | null
           owner_name?: string | null
           owner_phone?: string | null
           persona?: string | null
+          primeiro_nome?: string | null
           tone?: string | null
           updated_at?: string
           user_id: string
+          whatsapp_consultor?: string | null
         }
         Update: {
           agent_mode?: string
           agent_name?: string | null
+          cargo?: string | null
           created_at?: string
           greeting?: string | null
           handoff_rules?: Json | null
@@ -8829,12 +8841,15 @@ export type Database = {
           is_active?: boolean
           knowledge_base?: string | null
           knowledge_segment_id?: string | null
+          nome_consultor?: string | null
           owner_name?: string | null
           owner_phone?: string | null
           persona?: string | null
+          primeiro_nome?: string | null
           tone?: string | null
           updated_at?: string
           user_id?: string
+          whatsapp_consultor?: string | null
         }
         Relationships: [
           {
