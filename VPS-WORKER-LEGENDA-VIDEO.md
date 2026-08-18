@@ -62,7 +62,7 @@ Com job:
       "caixa_padding_ratio": 0.2,
       "pos_y_ratio": 0.8,
       "max_linhas": 3,
-      "max_chars_linha": 32,
+      "max_chars_linha": 24,
       "threads": 3
     },
     "tentativa": 1

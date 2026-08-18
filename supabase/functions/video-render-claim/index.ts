@@ -35,7 +35,9 @@ const ESTILO_LEGENDA = {
   caixa_padding_ratio: 0.2,
   pos_y_ratio: 0.8, // centro do bloco a 80% da altura
   max_linhas: 3,
-  max_chars_linha: 32,
+  // Limite conservador que também protege workers antigos, ainda sem medição
+  // real por Pillow, contra palavras largas e caixas fora do quadro.
+  max_chars_linha: 24,
   // Teto de núcleos do encode — a VPS roda outros dois projetos em produção.
   threads: 3,
 };
