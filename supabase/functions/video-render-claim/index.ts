@@ -23,17 +23,21 @@ const ESTILO_LEGENDA = {
   font: "DejaVu Sans",
   fontfile: "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
   bold: true,
-  fontsize_ratio: 0.052, // sobre a largura do vídeo
-  fontsize_min: 28,
+  // Tamanho deliberadamente contido: em 1080px resulta em 38px. O valor
+  // anterior (5,2% = 56px) ficava publicitário demais e ampliava a caixa.
+  fontsize_ratio: 0.035, // sobre a largura do vídeo
+  fontsize_min: 22,
   cor_texto: "#FFFFFF",
   contorno: "#000000",
-  contorno_ratio: 0.11,
+  contorno_ratio: 0.07,
   caixa: true,
   caixa_cor: "black@0.62",
-  caixa_padding_ratio: 0.35,
-  pos_y_ratio: 0.8, // centro do bloco a 80% da altura
-  max_linhas: 3,
-  max_chars_linha: 42,
+  caixa_padding_ratio: 0.15,
+  pos_y_ratio: 0.75, // centro do bloco em área segura, longe da borda inferior
+  max_linhas: 2,
+  // Limite conservador que também protege workers antigos, ainda sem medição
+  // real por Pillow, contra palavras largas e caixas fora do quadro.
+  max_chars_linha: 20,
   // Teto de núcleos do encode — a VPS roda outros dois projetos em produção.
   threads: 3,
 };

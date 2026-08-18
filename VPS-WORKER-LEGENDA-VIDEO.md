@@ -52,17 +52,17 @@ Com job:
       "font": "DejaVu Sans",
       "fontfile": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
       "bold": true,
-      "fontsize_ratio": 0.052,
-      "fontsize_min": 28,
+      "fontsize_ratio": 0.035,
+      "fontsize_min": 22,
       "cor_texto": "#FFFFFF",
       "contorno": "#000000",
-      "contorno_ratio": 0.11,
+      "contorno_ratio": 0.07,
       "caixa": true,
       "caixa_cor": "black@0.62",
-      "caixa_padding_ratio": 0.35,
-      "pos_y_ratio": 0.8,
-      "max_linhas": 3,
-      "max_chars_linha": 42,
+      "caixa_padding_ratio": 0.15,
+      "pos_y_ratio": 0.75,
+      "max_linhas": 2,
+      "max_chars_linha": 20,
       "threads": 3
     },
     "tentativa": 1
@@ -113,6 +113,8 @@ enable='between(t,0.00,2.40)', ... " \
 Onde: `FS = max(fontsize_min, largura * fontsize_ratio)`,
 `BW = max(3, FS * contorno_ratio)`, `PAD = FS * caixa_padding_ratio`,
 `Y = altura * pos_y_ratio` deslocado por linha em `FS * 1.28`.
+Cada linha é medida pela largura real da fonte com Pillow e só é aceita quando
+`largura_do_texto + 2 * padding + 2 * contorno <= 84% da largura do vídeo`.
 Máximo de 80 segmentos e 3 linhas por segmento.
 
 ## 4. Variáveis do `.env`
@@ -150,7 +152,7 @@ services:
     command: >
       bash -lc "apt-get update &&
       apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core &&
-      pip install --no-cache-dir requests &&
+      pip install --no-cache-dir requests pillow &&
       python -u worker.py"
     deploy:
       resources:
@@ -162,7 +164,8 @@ services:
 `worker.py`:
 
 ```python
-import os, time, json, glob, shutil, subprocess, tempfile, textwrap, requests
+import os, time, json, glob, shutil, subprocess, tempfile, requests
+from PIL import ImageFont
 
 API = os.environ["API_BASE"].rstrip("/")
 TOKEN = os.environ["RENDER_TOKEN"]
@@ -180,17 +183,40 @@ def filtros(segs, estilo, w, h):
     fs = max(int(estilo["fontsize_min"]), int(w * estilo["fontsize_ratio"]))
     y = int(h * estilo["pos_y_ratio"])
     fontfile = estilo.get("fontfile", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
-    pad = int(fs * estilo["caixa_padding_ratio"])
+    pad = min(15, int(fs * estilo["caixa_padding_ratio"]))
     borda = max(3, int(fs * estilo["contorno_ratio"]))
-    # 8% de margem de cada lado, descontando padding da caixa e contorno
-    util = w * 0.84 - 2 * pad - 2 * borda
-    # largura media de caractere no DejaVu Sans Bold ~ 0.60 * fontsize
-    max_ch = max(12, int(util / (fs * 0.60)))
-    max_ch = min(max_ch, int(estilo["max_chars_linha"]))
+    # Mede a fonte de verdade. Não estima por quantidade de caracteres.
+    # A caixa completa nunca pode ocupar mais de 84% do quadro.
+    fonte = ImageFont.truetype(fontfile, fs)
+    largura_texto_max = max(1, int(w * 0.84) - 2 * pad - 2 * borda)
+
+    def quebrar(texto):
+        linhas, atual = [], ""
+        for palavra in texto.replace("\n", " ").split():
+            teste = f"{atual} {palavra}".strip()
+            if atual and fonte.getlength(teste) > largura_texto_max:
+                linhas.append(atual)
+                atual = palavra
+            else:
+                atual = teste
+        if atual:
+            linhas.append(atual)
+        # Segurança para uma palavra excepcionalmente longa.
+        seguras = []
+        for linha in linhas:
+            while fonte.getlength(linha) > largura_texto_max and len(linha) > 1:
+                corte = len(linha) - 1
+                while corte > 1 and fonte.getlength(linha[:corte]) > largura_texto_max:
+                    corte -= 1
+                seguras.append(linha[:corte])
+                linha = linha[corte:]
+            if linha:
+                seguras.append(linha)
+        return seguras[:int(estilo["max_linhas"])]
+
     out = []
     for s in segs[:80]:
-        linhas = textwrap.wrap(s["text"].replace("\n", " "), width=max_ch,
-                               break_long_words=True)[:estilo["max_linhas"]]
+        linhas = quebrar(s["text"])
         for i, linha in enumerate(linhas):
             dy = y + (i - (len(linhas) - 1) / 2) * int(fs * 1.28)
             out.append(
