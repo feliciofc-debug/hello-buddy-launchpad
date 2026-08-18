@@ -19,6 +19,10 @@ export type CopyStyle = {
   link: string | null;
   /** regras de tom/conteúdo específicas do tenant (empresa_config.regras_copy) */
   regras: string | null;
+  /** template de copy COMPARTILHADO do segmento (rede), já com variáveis trocadas */
+  template: string | null;
+  /** quando true, a copy leva assinatura "— Nome" no fim */
+  assinar: boolean;
   /** bloco pronto para injetar no prompt da IA */
   promptBlock: string;
 };
@@ -28,6 +32,8 @@ export const COPY_STYLE_PADRAO: CopyStyle = {
   assinatura: null,
   link: null,
   regras: null,
+  template: null,
+  assinar: false,
   promptBlock: "",
 };
 
@@ -48,12 +54,38 @@ export function userIdDoRequest(req: Request): string | null {
   }
 }
 
+/** Troca as variáveis do template compartilhado pelos valores DESTE tenant. */
+export function renderCopyTemplate(
+  tpl: string,
+  vars: { link: string | null; assinatura: string | null },
+): string {
+  return tpl
+    .replace(/\{\{\s*LINK\s*\}\}/g, vars.link || "")
+    .replace(/\{\{\s*ASSINATURA\s*\}\}/g, vars.assinatura || "")
+    .replace(/\{\{\s*NOME_CONSULTOR\s*\}\}/g, vars.assinatura || "");
+}
+
 function montarPromptBlock(
   voz: VozCopy,
   assinatura: string | null,
   link: string | null,
   regras: string | null,
+  template: string | null,
 ): string {
+  // Template COMPARTILHADO do segmento: substitui as regras genéricas de voz.
+  if (template && template.trim()) {
+    const bloco: string[] = ["", template.trim()];
+    if (regras && regras.trim()) {
+      bloco.push(
+        "",
+        "=== AJUSTES DESTE CONSULTOR (complementam o padrão da rede) ===",
+        regras.trim(),
+      );
+    }
+    bloco.push("");
+    return bloco.join("\n");
+  }
+
   const linhas: string[] = ["", "=== VOZ E FORMATO DA COPY (OBRIGATÓRIO) ==="];
 
   if (voz === "pessoa") {
@@ -128,6 +160,29 @@ export async function getCopyStyle(sb: any, userId: string | null | undefined): 
     console.warn("⚠️ getCopyStyle: empresa_config indisponível:", (e as Error).message);
   }
 
+  let template: string | null = null;
+  try {
+    const { data: agent } = await sb
+      .from("whatsapp_cloud_agent_config")
+      .select("knowledge_segment_id, nome_consultor")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (!assinatura && agent?.nome_consultor) assinatura = String(agent.nome_consultor).trim() || null;
+
+    if (agent?.knowledge_segment_id) {
+      const { data: seg } = await sb
+        .from("agent_knowledge_segments")
+        .select("copy_template")
+        .eq("id", agent.knowledge_segment_id)
+        .maybeSingle();
+      const t = (seg?.copy_template || "").trim();
+      if (t) template = t;
+    }
+  } catch (e) {
+    console.warn("⚠️ getCopyStyle: template de segmento indisponível:", (e as Error).message);
+  }
+
   if (!link) {
     try {
       const { data } = await sb
@@ -142,12 +197,16 @@ export async function getCopyStyle(sb: any, userId: string | null | undefined): 
     }
   }
 
+  if (template) template = renderCopyTemplate(template, { link, assinatura });
+
   return {
     voz,
     assinatura,
     link,
     regras,
-    promptBlock: montarPromptBlock(voz, assinatura, link, regras),
+    template,
+    assinar: Boolean(template && assinatura),
+    promptBlock: montarPromptBlock(voz, assinatura, link, regras, template),
   };
 }
 
@@ -165,7 +224,20 @@ export function aplicarEstiloCopy(texto: string | null | undefined, style: CopyS
   }
 
 
-  // Assinatura removida por decisão do cliente: posts não levam nome nem empresa.
+  // Assinatura só quando o template compartilhado da rede pede (ex: Ademicon).
+  if (style.assinar && style.assinatura) {
+    const assin = `— ${style.assinatura}`;
+    if (!base.includes(assin) && !base.includes(style.assinatura)) {
+      const linhas = base.split("\n");
+      const iHash = linhas.findIndex((l) => /^\s*#\S/.test(l));
+      if (iHash > 0) {
+        linhas.splice(iHash, 0, assin, "");
+        base = linhas.join("\n").replace(/\n{3,}/g, "\n\n");
+      } else {
+        base = `${base}\n\n${assin}`;
+      }
+    }
+  }
 
   return base;
 }
