@@ -58,12 +58,9 @@ function montarPromptBlock(
 
   if (voz === "pessoa") {
     linhas.push(
-      "- Escreva em PRIMEIRA PESSOA DO SINGULAR, como um consultor autônomo falando com o cliente:",
-      '  "me chama", "eu te ajudo", "eu te mostro", "fale comigo". ',
+      "- Escreva em PRIMEIRA PESSOA DO SINGULAR, como um consultor falando com o cliente, sem vitrine.",
       '- É PROIBIDO usar plural de empresa: "nós", "nossa equipe", "fale com a gente", "ajudamos você", "aqui na <empresa>".',
-      assinatura
-        ? `- Assine a copy no final com "— ${assinatura}" (antes das hashtags).`
-        : "- Não assine com nome de empresa.",
+      "- NÃO assine a copy com nome de pessoa nem de empresa.",
     );
   } else {
     linhas.push(
@@ -81,6 +78,10 @@ function montarPromptBlock(
 
   linhas.push(
     "- Ordem da copy: 1) link sozinho na primeira linha, 2) corpo que termina no raciocínio (sem convite/CTA no fim), 3) hashtags.",
+    "- LINGUAGEM SIMPLES, NÃO FORMAL: proibido tom de relatório bancário. Diga \"comprar\" em vez de \"estruturar a aquisição\", \"apertar o orçamento\" em vez de \"desequilibrar as finanças\", \"não mexer na reserva\" em vez de \"preservar a liquidez\", \"comprar melhor\" em vez de \"potencializar o poder de compra\", \"parcelas\" em vez de \"aportes programados\", \"juntar dinheiro\" em vez de \"formação de capital\", \"crescer\" em vez de \"expansão patrimonial\", \"custo que compensa\" em vez de \"custo eficiente\", \"vale olhar\" em vez de \"demanda um olhar atento\", \"explicar\" em vez de \"desmistificar\", \"construir patrimônio\" em vez de \"consolidar patrimônio\".",
+    "- Frases curtas, uma ideia por frase, 2 a 3 frases no total. Nunca duas palavras técnicas na mesma frase.",
+    "- Comece pela situação concreta do leitor (gente comprando coisa), não pelo conceito.",
+    "- 3 hashtags (máximo 4), simples e reais. Proibido inventar termo tipo #GestãoDeAtivos.",
   );
 
 
