@@ -893,6 +893,7 @@ export type Database = {
       agent_knowledge_segments: {
         Row: {
           ativo: boolean
+          copy_template: string | null
           created_at: string
           descricao: string | null
           id: string
@@ -903,6 +904,7 @@ export type Database = {
         }
         Insert: {
           ativo?: boolean
+          copy_template?: string | null
           created_at?: string
           descricao?: string | null
           id?: string
@@ -913,6 +915,7 @@ export type Database = {
         }
         Update: {
           ativo?: boolean
+          copy_template?: string | null
           created_at?: string
           descricao?: string | null
           id?: string

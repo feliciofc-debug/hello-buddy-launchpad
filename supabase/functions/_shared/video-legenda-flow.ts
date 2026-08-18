@@ -103,28 +103,23 @@ function textoDaTranscricao(segs: SegmentoLegenda[]): string {
   return segs.map((s) => s.text.replace(/\n/g, " ")).join(" ").trim();
 }
 
-/** Gera 3 opções de copy a partir da transcrição do vídeo. */
-async function gerarTresCopies(
-  transcricao: string,
-  contexto: string,
-  nomeEmpresa: string,
-  style: CopyStyle = COPY_STYLE_PADRAO,
-): Promise<string[]> {
-  const key = Deno.env.get("LOVABLE_API_KEY");
-  if (!key) throw new Error("LOVABLE_API_KEY ausente");
+const BLOCO_ACOMPANHA_FALA = `=== A COPY ACOMPANHA A FALA, MAS NÃO A TRANSCREVE ===
+1. Identifique o assunto real tratado (ex: lance, FGTS, contemplação, taxa de administração, um caso de cliente, uma dúvida respondida).
+2. Escreva sobre ESSE MESMO assunto, com palavras de quem escreve — não de quem falou.
+3. Se a fala tiver um argumento bom, é ele que vira a copy.
+4. A legenda precisa fazer sentido lida sozinha, antes do play.
 
-  const prompt = `Você escreve as legendas de "${nomeEmpresa}".
+NUNCA:
+- Repetir frases do vídeo ou parafrasear a transcrição.
+- Citar dia da semana, local, "estou aqui", "nesse vídeo", "gravando".
+- Escrever "assista", "dá o play", "veja no vídeo".
 
-FALA DO VÍDEO (transcrição real — use apenas para identificar o ASSUNTO e os argumentos):
-"""
-${transcricao}
-"""
+=== FORMATO ===
+- Máximo 500 caracteres por opção.
+- Não invente produto, preço ou promessa. Não cite nomes da equipe nem se dirija ao dono.
+- As 3 opções tratam do MESMO assunto, cada uma atacando um EIXO diferente (A, B e C), conforme as regras de voz abaixo.`;
 
-${contexto ? `CONTEXTO EXTRA DO DONO: "${contexto}"` : ""}
-
-Crie 3 opções de legenda para publicar esse vídeo em Instagram/Facebook.
-
-=== A COPY ACOMPANHA A FALA, MAS NÃO A TRANSCREVE ===
+const BLOCO_GENERICO = `=== A COPY ACOMPANHA A FALA, MAS NÃO A TRANSCREVE ===
 1. Identifique o assunto real tratado (ex: lance, FGTS, contemplação, taxa de administração, um caso de cliente, uma dúvida respondida).
 2. Escreva sobre ESSE MESMO assunto, com palavras de quem escreve — não de quem falou.
 3. Se a fala tiver um argumento bom, é ele que vira a copy.
@@ -165,6 +160,31 @@ NUNCA:
 - 3 hashtags (no máximo 4), simples e reais: #Consórcio #Ademicon + uma do tema (ex: #Patrimônio, #Planejamento). PROIBIDAS: #Investimento, #Renda, #Rentabilidade, #Crédito, #Juros, #Financiamento e inventadas tipo #GestãoDeAtivos.
 - As 3 opções tratam do MESMO assunto, com 3 entradas diferentes — não a mesma frase reescrita.
 
+
+`;
+
+/** Gera 3 opções de copy a partir da transcrição do vídeo. */
+async function gerarTresCopies(
+  transcricao: string,
+  contexto: string,
+  nomeEmpresa: string,
+  style: CopyStyle = COPY_STYLE_PADRAO,
+): Promise<string[]> {
+  const key = Deno.env.get("LOVABLE_API_KEY");
+  if (!key) throw new Error("LOVABLE_API_KEY ausente");
+
+  const prompt = `Você escreve as legendas de "${nomeEmpresa}".
+
+FALA DO VÍDEO (transcrição real — use apenas para identificar o ASSUNTO e os argumentos):
+"""
+${transcricao}
+"""
+
+${contexto ? `CONTEXTO EXTRA DO DONO: "${contexto}"` : ""}
+
+Crie 3 opções de legenda para publicar esse vídeo em Instagram/Facebook.
+
+${style.template ? BLOCO_ACOMPANHA_FALA : BLOCO_GENERICO}
 
 ${style.promptBlock}
 Responda SOMENTE com JSON válido:
