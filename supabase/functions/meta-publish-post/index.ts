@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { appendLinkPost } from '../_shared/link-post.ts'
+
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -77,7 +79,7 @@ serve(async (req) => {
 
     const body = await req.json()
     const isScheduler = body.source === 'scheduler'
-    const sanitizedBodyMessage = sanitizePublishText(body.message)
+    const sanitizedBodyMessage = await appendLinkPost(supabase, body.user_id, sanitizePublishText(body.message))
 
     let posts: any[] = []
 
@@ -121,7 +123,7 @@ serve(async (req) => {
 
     for (const post of posts) {
       try {
-        const sanitizedPostText = sanitizePublishText(post.post_text)
+        const sanitizedPostText = await appendLinkPost(supabase, post.user_id, sanitizePublishText(post.post_text))
 
         await supabase.from('social_posts_queue')
           .update({ status: 'publicando', post_text: sanitizedPostText, updated_at: new Date().toISOString() })

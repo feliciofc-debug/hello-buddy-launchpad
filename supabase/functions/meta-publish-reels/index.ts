@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { appendLinkPost } from '../_shared/link-post.ts'
+
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -95,7 +97,7 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
     const { platform, video_url, caption, user_id } = await req.json()
-    const sanitizedCaption = sanitizePublishText(caption)
+    const sanitizedCaption = await appendLinkPost(supabase, user_id, sanitizePublishText(caption))
 
     if (!video_url) throw new Error('video_url é obrigatório')
     if (!caption) throw new Error('caption é obrigatório')

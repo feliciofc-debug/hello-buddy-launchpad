@@ -3,6 +3,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { appendLinkPost } from '../_shared/link-post.ts'
+
 
 /**
  * Instagram Graph API NÃO aceita AVIF. Se a URL termina em .avif (ex: Shopee),
@@ -89,7 +91,7 @@ Deno.serve(async (req) => {
 
   try {
     const { user_id, image_urls, caption } = await req.json()
-    const sanitizedCaption = sanitizePublishText(caption)
+    let sanitizedCaption = sanitizePublishText(caption)
     if (!user_id || !image_urls?.length) {
       return new Response(JSON.stringify({ error: 'user_id e image_urls são obrigatórios' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -99,6 +101,7 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
+    sanitizedCaption = await appendLinkPost(supabase, user_id, sanitizedCaption)
 
     // Resolve IG account credentials with fallback chain (same as meta-publish-instagram)
     const { igId, token } = await getIgCredentials(supabase, user_id)
