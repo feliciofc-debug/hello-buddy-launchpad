@@ -37,7 +37,7 @@ const ESTILO_LEGENDA = {
   max_linhas: 3,
   // Limite conservador que também protege workers antigos, ainda sem medição
   // real por Pillow, contra palavras largas e caixas fora do quadro.
-  max_chars_linha: 24,
+  max_chars_linha: 20,
   // Teto de núcleos do encode — a VPS roda outros dois projetos em produção.
   threads: 3,
 };
