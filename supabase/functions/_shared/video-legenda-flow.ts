@@ -119,9 +119,7 @@ NUNCA:
 - Não invente produto, preço ou promessa. Não cite nomes da equipe nem se dirija ao dono.
 - As 3 opções tratam do MESMO assunto, cada uma atacando um EIXO diferente (A, B e C), conforme as regras de voz abaixo.`;
 
-const BLOCO_GENERICO = `Crie 3 opções de legenda para publicar esse vídeo em Instagram/Facebook.
-
-=== A COPY ACOMPANHA A FALA, MAS NÃO A TRANSCREVE ===
+const BLOCO_GENERICO = `=== A COPY ACOMPANHA A FALA, MAS NÃO A TRANSCREVE ===
 1. Identifique o assunto real tratado (ex: lance, FGTS, contemplação, taxa de administração, um caso de cliente, uma dúvida respondida).
 2. Escreva sobre ESSE MESMO assunto, com palavras de quem escreve — não de quem falou.
 3. Se a fala tiver um argumento bom, é ele que vira a copy.
