@@ -117,6 +117,13 @@ export default function WhatsAppPainel() {
           display_phone: (config as any).display_phone || '',
         });
       }
+
+      const { data: empresaCfg } = await supabase
+        .from('empresa_config' as any)
+        .select('link_post')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      setLinkPost(((empresaCfg as any)?.link_post) || '');
     } catch (err) {
       console.error(err);
     } finally {
