@@ -2696,6 +2696,7 @@ export type Database = {
           created_at: string | null
           diferenciais: string | null
           id: string
+          link_post: string | null
           nome_empresa: string | null
           publico_alvo: string | null
           segmento: string | null
@@ -2708,6 +2709,7 @@ export type Database = {
           created_at?: string | null
           diferenciais?: string | null
           id?: string
+          link_post?: string | null
           nome_empresa?: string | null
           publico_alvo?: string | null
           segmento?: string | null
@@ -2720,6 +2722,7 @@ export type Database = {
           created_at?: string | null
           diferenciais?: string | null
           id?: string
+          link_post?: string | null
           nome_empresa?: string | null
           publico_alvo?: string | null
           segmento?: string | null
