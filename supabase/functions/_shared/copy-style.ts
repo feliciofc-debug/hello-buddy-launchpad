@@ -17,6 +17,8 @@ export type CopyStyle = {
   assinatura: string | null;
   /** link de atendimento do tenant (https://wa.me/... ou link_post salvo) */
   link: string | null;
+  /** regras de tom/conteúdo específicas do tenant (empresa_config.regras_copy) */
+  regras: string | null;
   /** bloco pronto para injetar no prompt da IA */
   promptBlock: string;
 };
@@ -25,6 +27,7 @@ export const COPY_STYLE_PADRAO: CopyStyle = {
   voz: "empresa",
   assinatura: null,
   link: null,
+  regras: null,
   promptBlock: "",
 };
 
@@ -45,7 +48,12 @@ export function userIdDoRequest(req: Request): string | null {
   }
 }
 
-function montarPromptBlock(voz: VozCopy, assinatura: string | null, link: string | null): string {
+function montarPromptBlock(
+  voz: VozCopy,
+  assinatura: string | null,
+  link: string | null,
+  regras: string | null,
+): string {
   const linhas: string[] = ["", "=== VOZ E FORMATO DA COPY (OBRIGATÓRIO) ==="];
 
   if (voz === "pessoa") {
@@ -71,7 +79,18 @@ function montarPromptBlock(voz: VozCopy, assinatura: string | null, link: string
     );
   }
 
-  linhas.push("- Ordem da copy: 1) chamada curta com o link, 2) corpo, 3) hashtags.", "");
+  linhas.push("- Ordem da copy: 1) chamada curta com o link, 2) corpo, 3) hashtags.");
+
+  if (regras && regras.trim()) {
+    linhas.push(
+      "",
+      "=== REGRAS DE TOM E CONTEÚDO DESTE CLIENTE (PRIORIDADE MÁXIMA) ===",
+      regras.trim(),
+      "Estas regras se sobrepõem a qualquer instrução genérica de copy acima.",
+    );
+  }
+
+  linhas.push("");
   return linhas.join("\n");
 }
 
@@ -81,17 +100,19 @@ export async function getCopyStyle(sb: any, userId: string | null | undefined): 
   let voz: VozCopy = "empresa";
   let assinatura: string | null = null;
   let link: string | null = null;
+  let regras: string | null = null;
 
   try {
     const { data } = await sb
       .from("empresa_config")
-      .select("voz_copy, nome_assinatura, link_post")
+      .select("voz_copy, nome_assinatura, link_post, regras_copy")
       .eq("user_id", userId)
       .maybeSingle();
 
     if (data) {
       voz = data.voz_copy === "pessoa" ? "pessoa" : "empresa";
       assinatura = (data.nome_assinatura || "").trim() || null;
+      regras = (data.regras_copy || "").trim() || null;
       const lp = (data.link_post || "").trim();
       if (/^https?:\/\//i.test(lp)) link = lp;
     }
@@ -113,7 +134,13 @@ export async function getCopyStyle(sb: any, userId: string | null | undefined): 
     }
   }
 
-  return { voz, assinatura, link, promptBlock: montarPromptBlock(voz, assinatura, link) };
+  return {
+    voz,
+    assinatura,
+    link,
+    regras,
+    promptBlock: montarPromptBlock(voz, assinatura, link, regras),
+  };
 }
 
 /**
