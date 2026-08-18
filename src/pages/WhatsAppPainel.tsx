@@ -133,6 +133,39 @@ export default function WhatsAppPainel() {
     }
   };
 
+  const handleSaveLinkPost = async () => {
+    const valor = linkPost.trim();
+    if (valor) {
+      try {
+        const u = new URL(valor);
+        if (!['http:', 'https:'].includes(u.protocol)) throw new Error('protocolo');
+      } catch {
+        toast.error('Informe uma URL válida começando com https://');
+        return;
+      }
+    }
+
+    setSavingLinkPost(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('empresa_config' as any)
+        .upsert({ user_id: user.id, link_post: valor || null } as any, { onConflict: 'user_id' });
+
+      if (error) throw error;
+      setLinkPost(valor);
+      toast.success(valor ? 'Link do post salvo' : 'Link do post removido');
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err?.message || 'Erro ao salvar o link');
+    } finally {
+      setSavingLinkPost(false);
+    }
+  };
+
+
   const handleSaveConfig = async () => {
     if (!configForm.phone_number_id || !configForm.access_token) {
       toast.error(t('whatsapp.required_fields'));
