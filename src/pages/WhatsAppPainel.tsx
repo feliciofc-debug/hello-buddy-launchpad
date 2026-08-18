@@ -54,6 +54,8 @@ export default function WhatsAppPainel() {
   const [showConfig, setShowConfig] = useState(false);
   const [saving, setSaving] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [linkPost, setLinkPost] = useState('');
+  const [savingLinkPost, setSavingLinkPost] = useState(false);
   const qrWrapperRef = useRef<HTMLDivElement>(null);
   const [configForm, setConfigForm] = useState({
     phone_number_id: '',
