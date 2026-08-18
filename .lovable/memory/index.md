@@ -4,3 +4,4 @@
 - [Anuncio Produto Template Engine](mem://features/marketing/anuncio-produto-template-engine) — Foto por IA + texto/preco/logo por template Satori (feed e story)
 - [Paulo Canarim Owner Recognition](mem://features/pj/paulo-canarim-owner-recognition) — Agente 5521975141829 vs dono 5521997208854; owner por tenant, nunca hardcoded
 - [BART Base Consórcio Ademicon](mem://features/pj/bart-base-consorcio-ademicon) — Mesma base do Silvester; playbook de consórcio tenant-agnóstico
+- [Voz Copy e Link no Início](mem://features/marketing/voz-copy-e-link-no-inicio) — voz_copy por tenant (empresa/pessoa) + link de WhatsApp no começo da legenda
