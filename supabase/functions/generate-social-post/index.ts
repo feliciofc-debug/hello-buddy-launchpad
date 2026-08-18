@@ -1,4 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { getCopyStyle, userIdDoRequest } from '../_shared/copy-style.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -52,7 +54,13 @@ serve(async (req) => {
   }
 
   try {
-    const { lead, produto, objetivo, redeSocial } = await req.json()
+    const { lead, produto, objetivo, redeSocial, user_id: userIdBody } = await req.json()
+
+    const sbAdmin = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    )
+    const copyStyle = await getCopyStyle(sbAdmin, userIdBody || userIdDoRequest(req))
 
     console.log('🤖 [POST] Gerando post para:', redeSocial)
 
@@ -108,6 +116,7 @@ CRIE UM POST que:
 ${redeSocial === 'Instagram' ? '5. Use emojis e 3-5 hashtags relevantes no final' : ''}
 ${redeSocial === 'LinkedIn' ? '5. Cite dados/estatísticas se possível' : ''}
 
+${copyStyle.promptBlock}
 FORMATO:
 Retorne APENAS o texto do post, pronto para copiar e colar.
 Sem "Post:" ou qualquer introdução.

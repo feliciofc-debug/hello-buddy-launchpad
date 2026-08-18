@@ -1,6 +1,9 @@
-// Anexa o "Link do post" configurado pelo tenant (empresa_config.link_post)
-// ao final da legenda. Multi-tenant: SEMPRE filtrado por user_id.
-// Se não houver link salvo, retorna o texto original sem alterações.
+// Aplica o estilo de copy do tenant na legenda no momento da publicação:
+//  - link de atendimento no INÍCIO da legenda (Instagram corta em ~125 chars)
+//  - assinatura pessoal no fim, quando voz_copy = 'pessoa'
+// Multi-tenant: SEMPRE filtrado por user_id. Sem link salvo → texto original.
+
+import { aplicarEstiloCopy, getCopyStyle } from "./copy-style.ts";
 
 export async function appendLinkPost(
   supabase: any,
@@ -11,18 +14,8 @@ export async function appendLinkPost(
   if (!userId) return base
 
   try {
-    const { data } = await supabase
-      .from('empresa_config')
-      .select('link_post')
-      .eq('user_id', userId)
-      .maybeSingle()
-
-    const link = (data?.link_post || '').trim()
-    if (!link) return base
-    if (!/^https?:\/\//i.test(link)) return base
-    if (base.includes(link)) return base
-
-    return base ? `${base}\n\n${link}` : link
+    const style = await getCopyStyle(supabase, userId)
+    return aplicarEstiloCopy(base, style)
   } catch (e) {
     console.warn('⚠️ appendLinkPost falhou, publicando sem link:', e)
     return base

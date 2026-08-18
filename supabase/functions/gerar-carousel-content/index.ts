@@ -1,3 +1,6 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { getCopyStyle, userIdDoRequest } from '../_shared/copy-style.ts'
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -9,7 +12,13 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { prompt, tema } = await req.json()
+    const { prompt, tema, user_id: userIdBody } = await req.json()
+
+    const sbAdmin = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    )
+    const copyStyle = await getCopyStyle(sbAdmin, userIdBody || userIdDoRequest(req))
     if (!prompt || !tema) {
       return new Response(JSON.stringify({ error: 'prompt e tema são obrigatórios' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
@@ -27,7 +36,7 @@ Deno.serve(async (req) => {
         model: 'google/gemini-2.5-flash',
         messages: [
           { role: 'system', content: 'Você gera conteúdo JSON para carrosséis de Instagram. Responda APENAS JSON válido, sem markdown, sem ```.' },
-          { role: 'user', content: prompt }
+          { role: 'user', content: `${prompt}\n${copyStyle.promptBlock}` }
         ],
         temperature: 0.7,
         max_tokens: 4096,

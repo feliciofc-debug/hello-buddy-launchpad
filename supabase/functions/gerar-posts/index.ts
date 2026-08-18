@@ -1,5 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getCopyStyle, userIdDoRequest } from "../_shared/copy-style.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -13,6 +15,11 @@ serve(async (req) => {
 
   try {
     const { produto } = await req.json();
+    const sbAdmin = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    );
+    const copyStyle = await getCopyStyle(sbAdmin, produto?.user_id || userIdDoRequest(req));
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
     if (!LOVABLE_API_KEY) {
@@ -49,6 +56,7 @@ serve(async (req) => {
     const blocoAntiInvencao = `\n🚫 PROIBIDO INVENTAR (regra dura, vale para TODAS as 9 variações):\n- Preços, descontos, "de/por", % OFF, cupom, frete grátis que não estejam nos campos do produto.\n- Prazos artificiais: "só hoje", "últimas horas", "acaba meia-noite", "contagem regressiva" — a menos que o briefing explicitamente peça.\n- Escassez de estoque: "estoque limitado", "últimas unidades", "poucas peças", "vagas limitadas", "restam X" — NUNCA usar.\n${ehConsorcio ? '- Este produto é CONSÓRCIO: é PROIBIDO qualquer linguagem de estoque, unidades, peças, "compre agora que acaba", pronta-entrega. Consórcio trabalha com carta de crédito, assembleias mensais, contemplação por sorteio/lance, parcelas — use APENAS esse vocabulário. Fale de planejamento, poder de compra, parcela que cabe no bolso, sonho do imóvel/veículo, contemplação.\n' : ''}- Depoimentos, números de clientes, prêmios, garantias que não estejam no briefing.\n- Nomes de pessoas que não estejam no briefing. Se o briefing cita um nome, use EXATAMENTE esse nome.\n`;
 
     const prompt = `Crie posts para o seguinte produto:
+${copyStyle.promptBlock}
 ${blocoBriefing}${blocoAntiInvencao}
 Produto: ${produto.nome}
 ${produto.preco ? `Preço: R$ ${produto.preco}` : ''}

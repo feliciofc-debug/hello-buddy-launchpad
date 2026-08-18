@@ -15,6 +15,7 @@
 // ============================================================================
 
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { getCopyStyle } from "./copy-style.ts";
 
 // Hardcoded: único user_id autorizado a operar no modo AMZ.
 // Mudar isto requer redeploy — propositalmente friccional.
@@ -586,8 +587,23 @@ REGRAS GERAIS:
     blocks.push(await buildTenantContext(sb, cfg, userText));
   }
 
+  // Voz da copy + link de atendimento do tenant (multi-tenant, por user_id).
+  try {
+    const style = await getCopyStyle(sb, cfg.user_id);
+    if (style.promptBlock.trim()) {
+      blocks.push(
+        "",
+        "QUANDO VOCÊ ESCREVER COPY/LEGENDA PARA REDES SOCIAIS:",
+        style.promptBlock.trim(),
+      );
+    }
+  } catch (e) {
+    console.warn("[agent-soul] estilo de copy indisponível:", (e as Error).message);
+  }
+
   return { systemPrompt: blocks.join("\n"), mode };
 }
+
 
 // Helper: cria client service-role (usado pelo processor).
 export function createServiceClient(): SupabaseClient {

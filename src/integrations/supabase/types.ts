@@ -2697,6 +2697,7 @@ export type Database = {
           diferenciais: string | null
           id: string
           link_post: string | null
+          nome_assinatura: string | null
           nome_empresa: string | null
           publico_alvo: string | null
           segmento: string | null
@@ -2704,12 +2705,14 @@ export type Database = {
           sobre_negocio: string | null
           updated_at: string | null
           user_id: string
+          voz_copy: string
         }
         Insert: {
           created_at?: string | null
           diferenciais?: string | null
           id?: string
           link_post?: string | null
+          nome_assinatura?: string | null
           nome_empresa?: string | null
           publico_alvo?: string | null
           segmento?: string | null
@@ -2717,12 +2720,14 @@ export type Database = {
           sobre_negocio?: string | null
           updated_at?: string | null
           user_id: string
+          voz_copy?: string
         }
         Update: {
           created_at?: string | null
           diferenciais?: string | null
           id?: string
           link_post?: string | null
+          nome_assinatura?: string | null
           nome_empresa?: string | null
           publico_alvo?: string | null
           segmento?: string | null
@@ -2730,6 +2735,7 @@ export type Database = {
           sobre_negocio?: string | null
           updated_at?: string | null
           user_id?: string
+          voz_copy?: string
         }
         Relationships: []
       }
