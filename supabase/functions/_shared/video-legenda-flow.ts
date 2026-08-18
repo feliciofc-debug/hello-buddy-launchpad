@@ -307,6 +307,21 @@ function ehNegativa(texto: string): boolean {
  * Retorna a mensagem a enviar, ou null se a mensagem não pertence a este fluxo
  * (aí o roteador normal do agente segue).
  */
+/** Formato pedido no meio da frase ("no story", "reels"). Padrão: feed. */
+function detectarFormato(texto: string): "feed" | "story" | "reels" | null {
+  const t = texto || "";
+  if (/\bstor(y|ies|ie)\b/i.test(t)) return "story";
+  if (/\breels?\b/i.test(t)) return "reels";
+  if (/\bfeed\b/i.test(t)) return "feed";
+  return null;
+}
+
+/** Só ecoa a letra da copy — nunca o texto inteiro. */
+function letraDaCopy(job: any): string {
+  const l = String(job?.metadata?.copy_letra || "").toUpperCase();
+  return l ? `legenda *${l}*` : "a legenda que você escolheu";
+}
+
 export async function tratarRespostaFluxoLegenda(params: {
   userId: string;
   telefone: string;
@@ -316,12 +331,27 @@ export async function tratarRespostaFluxoLegenda(params: {
     .from("video_render_jobs")
     .select("*")
     .eq("user_id", params.userId)
-    .in("status", ["aguardando_escolha", "aguardando_confirmacao", "aguardando_aprovacao"])
+    .in("status", [
+      "aguardando_escolha",
+      "aguardando_confirmacao",
+      "aguardando_aprovacao",
+      "pendente",
+      "processando",
+    ])
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
   if (!job) return null;
+
+  // ---- job já na fila / renderizando: nada de reabrir escolhas ----
+  if (job.status === "pendente" || job.status === "processando") {
+    const ehSobreOFluxo =
+      detectarEscolha(params.texto) !== null || detectarFormato(params.texto) !== null;
+    if (!ehSobreOFluxo) return null;
+    return `Já estou gravando ${letraDaCopy(job)} no vídeo (formato *${job.formato || "feed"}*). Te aviso aqui assim que ficar pronto — a escolha já está fechada.`;
+  }
+
 
   // ---- vídeo já renderizado, esperando APROVAÇÃO do dono para publicar ----
   if (job.status === "aguardando_aprovacao") {
