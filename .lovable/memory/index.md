@@ -8,3 +8,4 @@
 - [Copy do vídeo acompanha a fala](mem://features/marketing/copy-video-acompanha-fala) — 3 copies do vídeo legendado: mesmo assunto reescrito, link sozinho na 1ª linha, termina no raciocínio (sem CTA)
 - [Copy simples, não formal](mem://features/marketing/copy-linguagem-simples) — Vocabulário falado (não relatório bancário), 2-3 frases curtas, 3-4 hashtags, posts sem assinatura
 - [Copy sem consultor na frase](mem://features/marketing/copy-sem-consultor-na-frase) — Consultor nunca é sujeito, fechamento com consequência prática, consórcio não é crédito/investimento, hashtags proibidas
+- [Prompt template compartilhado](mem://features/pj/prompt-template-compartilhado-segmento) — Corpo do prompt por segmento; tenant guarda só variáveis (rede Ademicon)
