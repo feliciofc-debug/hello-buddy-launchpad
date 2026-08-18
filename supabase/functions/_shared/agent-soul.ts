@@ -15,6 +15,7 @@
 // ============================================================================
 
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { getCopyStyle } from "./copy-style.ts";
 
 // Hardcoded: único user_id autorizado a operar no modo AMZ.
 // Mudar isto requer redeploy — propositalmente friccional.
