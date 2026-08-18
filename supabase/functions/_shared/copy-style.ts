@@ -155,9 +155,10 @@ export function aplicarEstiloCopy(texto: string | null | undefined, style: CopyS
   if (!base) return style.link || "";
 
   if (style.link && !base.includes(style.link)) {
-    const chamada = style.voz === "pessoa" ? "Me chama no WhatsApp" : "Fale com a gente no WhatsApp";
-    base = `${chamada}: ${style.link}\n\n${base}`;
+    // Link sozinho na primeira linha — sem frase de chamada/CTA.
+    base = `${style.link}\n\n${base}`;
   }
+
 
   if (style.voz === "pessoa" && style.assinatura && !base.includes(style.assinatura)) {
     base = `${base}\n\n— ${style.assinatura}`;
