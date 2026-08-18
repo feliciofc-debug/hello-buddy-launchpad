@@ -347,7 +347,13 @@ async function loadKnowledgeSegment(
           }),
         ].join("\n");
 
-    return { segmentName: segRes.data.nome, rulesBlock, topicsBlock };
+    return {
+      segmentName: segRes.data.nome,
+      rulesBlock,
+      topicsBlock,
+      promptTemplate: (segRes.data as any).prompt_template ?? null,
+    };
+
   } catch (err) {
     console.error("[agent-soul] loadKnowledgeSegment falhou:", err);
     return null;
