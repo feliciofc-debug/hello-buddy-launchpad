@@ -8297,6 +8297,7 @@ export type Database = {
           caption: string | null
           claimed_at: string | null
           concluido_at: string | null
+          copy_escolhida: string | null
           created_at: string
           duracao_segundos: number | null
           enfileirado_at: string | null
@@ -8322,6 +8323,7 @@ export type Database = {
           caption?: string | null
           claimed_at?: string | null
           concluido_at?: string | null
+          copy_escolhida?: string | null
           created_at?: string
           duracao_segundos?: number | null
           enfileirado_at?: string | null
@@ -8347,6 +8349,7 @@ export type Database = {
           caption?: string | null
           claimed_at?: string | null
           concluido_at?: string | null
+          copy_escolhida?: string | null
           created_at?: string
           duracao_segundos?: number | null
           enfileirado_at?: string | null
@@ -9731,6 +9734,7 @@ export type Database = {
           caption: string | null
           claimed_at: string | null
           concluido_at: string | null
+          copy_escolhida: string | null
           created_at: string
           duracao_segundos: number | null
           enfileirado_at: string | null

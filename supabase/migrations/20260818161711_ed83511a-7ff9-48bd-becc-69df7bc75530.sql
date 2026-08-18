@@ -1,0 +1,1 @@
+ALTER TABLE public.video_render_jobs ADD COLUMN IF NOT EXISTS copy_escolhida TEXT;

@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
           body: {
             platform: plataforma,
             video_url: videoUrl,
-            caption: job.caption || " ",
+            caption: job.copy_escolhida || job.caption || " ",
             user_id: job.user_id,
           },
         });

@@ -115,14 +115,16 @@ Deno.serve(async (req) => {
       })
       .eq("id", job.id);
 
+    // Única mensagem do fluxo que mostra a legenda completa.
+    const legenda = job.copy_escolhida || job.caption;
+    const blocoLegenda = legenda ? `\n\n*Legenda escolhida:*\n${legenda}` : "";
+
     if (!querPublicar) {
       // Modo "só me devolve": manda o MP4 legendado no WhatsApp, sem publicar nada.
       await avisarCliente(
         supabase,
         job,
-        `🎬 Pronto! Vídeo com a legenda queimada na tela. *Não publiquei em lugar nenhum* — confira e poste quando quiser.${
-          job.caption ? `\n\nLegenda sugerida para o post:\n${job.caption}` : ""
-        }`,
+        `🎬 Pronto! Legenda queimada na tela. *Não publiquei em lugar nenhum.*${blocoLegenda}`,
         videoUrl,
       );
     } else {
@@ -132,12 +134,11 @@ Deno.serve(async (req) => {
       await avisarCliente(
         supabase,
         job,
-        `🎬 Vídeo pronto com a legenda na tela. *Ainda não publiquei nada.*${
-          job.caption ? `\n\nLegenda do post:\n${job.caption}` : ""
-        }\n\nConfira o vídeo acima. Se estiver aprovado, responda *APROVAR* que eu publico em ${nomes}.\nSe não quiser, responda *CANCELAR* e nada vai ao ar.`,
+        `🎬 Vídeo pronto com a legenda na tela. *Ainda não publiquei nada.*${blocoLegenda}\n\nResponda *APROVAR* que eu publico em ${nomes}, ou *CANCELAR* e nada vai ao ar.`,
         videoUrl,
       );
     }
+
 
     return respJson({
       success: true,
