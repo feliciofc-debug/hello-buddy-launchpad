@@ -54,6 +54,8 @@ export default function WhatsAppPainel() {
   const [showConfig, setShowConfig] = useState(false);
   const [saving, setSaving] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [linkPost, setLinkPost] = useState('');
+  const [savingLinkPost, setSavingLinkPost] = useState(false);
   const qrWrapperRef = useRef<HTMLDivElement>(null);
   const [configForm, setConfigForm] = useState({
     phone_number_id: '',
@@ -117,12 +119,52 @@ export default function WhatsAppPainel() {
           display_phone: (config as any).display_phone || '',
         });
       }
+
+      const { data: empresaCfg } = await supabase
+        .from('empresa_config' as any)
+        .select('link_post')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      setLinkPost(((empresaCfg as any)?.link_post) || '');
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
     }
   };
+
+  const handleSaveLinkPost = async () => {
+    const valor = linkPost.trim();
+    if (valor) {
+      try {
+        const u = new URL(valor);
+        if (!['http:', 'https:'].includes(u.protocol)) throw new Error('protocolo');
+      } catch {
+        toast.error('Informe uma URL válida começando com https://');
+        return;
+      }
+    }
+
+    setSavingLinkPost(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('empresa_config' as any)
+        .upsert({ user_id: user.id, link_post: valor || null } as any, { onConflict: 'user_id' });
+
+      if (error) throw error;
+      setLinkPost(valor);
+      toast.success(valor ? 'Link do post salvo' : 'Link do post removido');
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err?.message || 'Erro ao salvar o link');
+    } finally {
+      setSavingLinkPost(false);
+    }
+  };
+
 
   const handleSaveConfig = async () => {
     if (!configForm.phone_number_id || !configForm.access_token) {
@@ -494,6 +536,46 @@ export default function WhatsAppPainel() {
               </Button>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Link do post */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Link2 className="h-5 w-5" />
+            Link do post
+          </CardTitle>
+          <CardDescription>
+            Link anexado automaticamente ao final da legenda dos posts publicados. Pode ser o WhatsApp do agente, seu site, catálogo ou landing page. Se ficar vazio, o post é publicado sem link.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor="link-post">URL</Label>
+            <Input
+              id="link-post"
+              placeholder="https://..."
+              value={linkPost}
+              onChange={(e) => setLinkPost(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {onlyDigits(whatsappConfig?.display_phone) && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setLinkPost(`https://wa.me/${onlyDigits(whatsappConfig?.display_phone)}`)}
+              >
+                <MessageCircle className="h-4 w-4 mr-1" />
+                Usar WhatsApp do agente
+              </Button>
+            )}
+            <Button size="sm" onClick={handleSaveLinkPost} disabled={savingLinkPost}>
+              {savingLinkPost ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Check className="h-4 w-4 mr-1" />}
+              Salvar
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
