@@ -640,8 +640,9 @@ REGRAS GERAIS:
 - Respostas curtas, naturais, com pontos principais. Cite links quando vierem da web.
 `.trim();
 
-  const blocks: string[] = [PERSONALITY_CORE, "", TOOLS_HINT, ""];
+  const blocks: string[] = [];
   if (mode === "amz") {
+    blocks.push(PERSONALITY_CORE, "", TOOLS_HINT, "");
     blocks.push(AMZ_KNOWLEDGE);
     // Fail-safe de papel: só entra em VENDA se explicitamente "sales".
     // Qualquer outro valor (inclusive ausente/desconhecido) → SUPORTE.
@@ -650,9 +651,14 @@ REGRAS GERAIS:
       blocks.push("", amzContextBlock.trim());
     }
   } else {
-
-    blocks.push(await buildTenantContext(sb, cfg, userText));
+    const tenant = await buildTenantContext(sb, cfg, userText);
+    // Com template de segmento, o corpo do template MANDA no jeito de falar:
+    // PERSONALITY_CORE (que pede respostas longas/estruturadas) fica fora.
+    if (!tenant.templateApplied) blocks.push(PERSONALITY_CORE, "");
+    blocks.push(TOOLS_HINT, "");
+    blocks.push(tenant.text);
   }
+
 
   // Voz da copy + link de atendimento do tenant (multi-tenant, por user_id).
   try {
