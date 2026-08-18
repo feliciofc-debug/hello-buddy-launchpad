@@ -389,6 +389,113 @@ export default function WhatsAppPainel() {
         </CardContent>
       </Card>
 
+      {/* Link do WhatsApp do Agente */}
+      <Card className="border-green-200 dark:border-green-800">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Link2 className="h-5 w-5" />
+            Link do WhatsApp do Agente
+          </CardTitle>
+          <CardDescription>
+            Link direto para iniciar uma conversa no WhatsApp do número conectado.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {whatsappConfig?.is_active && onlyDigits(whatsappConfig.display_phone) ? (
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center gap-2 text-foreground">
+                    <Smartphone className="h-4 w-4 text-green-600" />
+                    <span className="font-semibold">{formatPhoneReadable(whatsappConfig.display_phone)}</span>
+                  </div>
+                  <a
+                    href={`https://wa.me/${onlyDigits(whatsappConfig.display_phone)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-primary hover:underline break-all"
+                  >
+                    https://wa.me/{onlyDigits(whatsappConfig.display_phone)}
+                  </a>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`https://wa.me/${onlyDigits(whatsappConfig.display_phone)}`);
+                      setCopiedLink(true);
+                      setTimeout(() => setCopiedLink(false), 2000);
+                    }}
+                  >
+                    {copiedLink ? <Check className="h-4 w-4 mr-1" /> : <Copy className="h-4 w-4 mr-1" />}
+                    {copiedLink ? "Copiado" : "Copiar link"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => window.open(`https://wa.me/${onlyDigits(whatsappConfig.display_phone)}`, "_blank", "noopener,noreferrer")}
+                  >
+                    <ExternalLink className="h-4 w-4 mr-1" />
+                    Abrir conversa
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex flex-col md:flex-row items-center gap-6 p-4 bg-muted/30 rounded-lg">
+                <div ref={qrWrapperRef} className="p-2 bg-white rounded-lg">
+                  <QRCodeCanvas
+                    value={`https://wa.me/${onlyDigits(whatsappConfig.display_phone)}`}
+                    size={160}
+                    level="M"
+                    bgColor="#FFFFFF"
+                    fgColor="#1a2332"
+                    includeMargin={false}
+                  />
+                </div>
+                <div className="flex-1 text-center md:text-left space-y-3">
+                  <div className="flex items-center justify-center md:justify-start gap-2 text-foreground">
+                    <QrCode className="h-4 w-4 text-primary" />
+                    <p className="font-medium">QR Code do link</p>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Escaneie com a câmera do celular ou baixe o PNG para usar em cartões, flyers e redes sociais.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const canvas = qrWrapperRef.current?.querySelector("canvas");
+                      if (!canvas) return;
+                      const url = canvas.toDataURL("image/png");
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `whatsapp-${onlyDigits(whatsappConfig.display_phone)}.png`;
+                      a.click();
+                    }}
+                  >
+                    <Download className="h-4 w-4 mr-1" />
+                    Baixar QR Code (PNG)
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-6 space-y-4">
+              <Smartphone className="h-12 w-12 mx-auto text-muted-foreground" />
+              <div>
+                <p className="font-medium text-foreground">Nenhum WhatsApp conectado</p>
+                <p className="text-sm text-muted-foreground">
+                  Conecte um número oficial para gerar o link direto do agente.
+                </p>
+              </div>
+              <Button onClick={() => setShowConfig(true)} className="gap-2">
+                <PlugZap className="h-4 w-4" />
+                Conectar WhatsApp
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
