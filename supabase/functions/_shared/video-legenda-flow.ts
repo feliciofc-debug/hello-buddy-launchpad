@@ -113,28 +113,47 @@ async function gerarTresCopies(
   const key = Deno.env.get("LOVABLE_API_KEY");
   if (!key) throw new Error("LOVABLE_API_KEY ausente");
 
-  const prompt = `Você é o social media da empresa "${nomeEmpresa}".
+  const prompt = `Você escreve as legendas de "${nomeEmpresa}".
 
-FALA DO VÍDEO (transcrição real, use como fonte principal):
+FALA DO VÍDEO (transcrição real — use apenas para identificar o ASSUNTO e os argumentos):
 """
 ${transcricao}
 """
 
 ${contexto ? `CONTEXTO EXTRA DO DONO: "${contexto}"` : ""}
 
-Crie 3 opções de legenda (copy) para publicar esse vídeo em Instagram/Facebook.
+Crie 3 opções de legenda para publicar esse vídeo em Instagram/Facebook.
 
-REGRAS:
-- Baseie-se SOMENTE no que é dito no vídeo. Não invente produto, preço ou promessa.
-- Cada opção com no máximo 500 caracteres, tom natural, sem clichê corporativo.
-- Termine cada opção com um convite claro (CTA).
-- Inclua de 6 a 10 hashtags relevantes no fim de cada opção.
-- Não cite nomes de pessoas da equipe nem se dirija ao dono.
-- Sem emojis em excesso (no máximo 3 por opção).
+=== A COPY ACOMPANHA A FALA, MAS NÃO A TRANSCREVE ===
+1. Identifique o assunto real tratado (ex: lance, FGTS, contemplação, taxa de administração, um caso de cliente, uma dúvida respondida).
+2. Escreva sobre ESSE MESMO assunto, com palavras de quem escreve — não de quem falou.
+3. Se a fala tiver um argumento bom, é ele que vira a copy.
+4. A legenda precisa fazer sentido lida sozinha, antes do play.
+
+NUNCA:
+- Repetir frases do vídeo ou parafrasear a transcrição.
+- Citar dia da semana, local, "estou aqui", "nesse vídeo", "gravando".
+- Escrever "assista", "dá o play", "veja no vídeo".
+
+=== TOM ===
+- Elegante, profissional, envolvente: alguém que domina o assunto e não precisa convencer ninguém.
+- REGRA CENTRAL: a copy TERMINA NO RACIOCÍNIO, nunca em convite. Proibido "me chama", "clica no link", "fale comigo", "chama no direct" e pergunta final para provocar resposta.
+- O link fica sozinho na primeira linha. Quem se interessou procura.
+- Primeira pessoa sem vitrine: use "o que eu mais vejo", "a pergunta que eu sempre faço", "aprendi que". Nunca "eu tenho a solução", "eu sou especialista", "estou aqui pra".
+- O centro da frase é a situação do leitor, nunca o consultor.
+- PALAVRAS PROIBIDAS: financiamento, empréstimo, crédito barato, juros, banco, realizar sonhos, parcela que cabe no bolso, o melhor, imperdível.
+- No máximo 1 emoji (e quase sempre nenhum).
+
+=== FORMATO ===
+- Máximo 500 caracteres por opção.
+- Não invente produto, preço ou promessa. Não cite nomes da equipe nem se dirija ao dono.
+- 3 a 6 hashtags relevantes no fim.
+- As 3 opções tratam do MESMO assunto, com 3 entradas diferentes — não a mesma frase reescrita.
 
 ${style.promptBlock}
 Responda SOMENTE com JSON válido:
 {"opcoes":["copy A","copy B","copy C"]}`;
+
 
   const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
