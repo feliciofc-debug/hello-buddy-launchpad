@@ -372,7 +372,11 @@ export async function tratarRespostaFluxoLegenda(params: {
         .eq("id", job.id);
       return "Beleza, *não publiquei nada*. O vídeo legendado já está com você — se quiser tentar outra legenda, me manda o vídeo de novo.";
     }
+    if (detectarEscolha(t) !== null || detectarFormato(t) !== null) {
+      return `O vídeo já está pronto com a ${letraDaCopy(job)}. Responda *APROVAR* para publicar ou *CANCELAR* para não publicar.`;
+    }
     return null; // não é resposta do fluxo — o agente segue normalmente
+
   }
 
 
