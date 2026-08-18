@@ -56,6 +56,9 @@ export default function WhatsAppPainel() {
   const [copiedLink, setCopiedLink] = useState(false);
   const [linkPost, setLinkPost] = useState('');
   const [savingLinkPost, setSavingLinkPost] = useState(false);
+  const [vozCopy, setVozCopy] = useState<'empresa' | 'pessoa'>('empresa');
+  const [nomeAssinatura, setNomeAssinatura] = useState('');
+  const [savingVoz, setSavingVoz] = useState(false);
   const qrWrapperRef = useRef<HTMLDivElement>(null);
   const [configForm, setConfigForm] = useState({
     phone_number_id: '',
@@ -122,10 +125,12 @@ export default function WhatsAppPainel() {
 
       const { data: empresaCfg } = await supabase
         .from('empresa_config' as any)
-        .select('link_post')
+        .select('link_post, voz_copy, nome_assinatura')
         .eq('user_id', user.id)
         .maybeSingle();
       setLinkPost(((empresaCfg as any)?.link_post) || '');
+      setVozCopy(((empresaCfg as any)?.voz_copy === 'pessoa') ? 'pessoa' : 'empresa');
+      setNomeAssinatura(((empresaCfg as any)?.nome_assinatura) || '');
     } catch (err) {
       console.error(err);
     } finally {
@@ -165,6 +170,35 @@ export default function WhatsAppPainel() {
     }
   };
 
+
+  const handleSaveVozCopy = async () => {
+    if (vozCopy === 'pessoa' && !nomeAssinatura.trim()) {
+      toast.error('Informe o nome que vai assinar as legendas');
+      return;
+    }
+
+    setSavingVoz(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('empresa_config' as any)
+        .upsert({
+          user_id: user.id,
+          voz_copy: vozCopy,
+          nome_assinatura: vozCopy === 'pessoa' ? nomeAssinatura.trim() : null,
+        } as any, { onConflict: 'user_id' });
+
+      if (error) throw error;
+      toast.success('Voz das legendas salva');
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err?.message || 'Erro ao salvar a voz das legendas');
+    } finally {
+      setSavingVoz(false);
+    }
+  };
 
   const handleSaveConfig = async () => {
     if (!configForm.phone_number_id || !configForm.access_token) {
