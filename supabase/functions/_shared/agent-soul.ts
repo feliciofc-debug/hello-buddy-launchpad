@@ -284,13 +284,14 @@ REGRAS EM MODO SEGURO (SEM EXCEÇÃO):
 async function loadKnowledgeSegment(
   sb: SupabaseClient,
   segmentId: string,
-): Promise<{ segmentName: string; rulesBlock: string; topicsBlock: string } | null> {
+): Promise<{ segmentName: string; rulesBlock: string; topicsBlock: string; promptTemplate: string | null } | null> {
   try {
     const [segRes, rulesRes, topicsRes] = await Promise.all([
-      sb.from("agent_knowledge_segments").select("nome, ativo").eq("id", segmentId).maybeSingle(),
+      sb.from("agent_knowledge_segments").select("nome, ativo, prompt_template").eq("id", segmentId).maybeSingle(),
       sb.from("agent_knowledge_rules").select("ordem, regra, motivo").eq("segment_id", segmentId).eq("ativa", true).order("ordem"),
       sb.from("agent_knowledge_topics").select("titulo, tags, conteudo_tecnico, traducao_leve, exemplo").eq("segment_id", segmentId).eq("ativa", true),
     ]);
+
 
     if (segRes.error || !segRes.data || segRes.data.ativo === false) return null;
     if (rulesRes.error) return null;
