@@ -146,19 +146,25 @@ NUNCA:
   consolidar patrimônio → construir patrimônio
 - RITMO: frases curtas, uma ideia por frase. 2 a 3 frases no total (não 4 longas). Nunca duas palavras técnicas na mesma frase. Se travar ao ler em voz alta, está errado.
 - Comece pela situação concreta do leitor, não pelo conceito. Fale de gente comprando coisa, não de "aquisição de ativos".
-- REGRA CENTRAL: a copy TERMINA NO RACIOCÍNIO, nunca em convite. Proibido "me chama", "clica no link", "fale comigo", "chama no direct" e pergunta final para provocar resposta.
-- Engajamento vem de reconhecimento, não de pergunta: "quase todo mundo que me procura", "o que eu mais vejo" fazem o leitor pensar "é o meu caso".
+- O CONSULTOR NÃO APARECE NA FRASE. Proibido qualquer construção em que quem escreve é o sujeito: "quero te ajudar", "falo sobre", "explico", "meu foco é", "posso te mostrar", "trabalho com", "eu ajudo", "vale olhar". A copy é OBSERVAÇÃO SOBRE O ASSUNTO, não apresentação de serviço.
+  - Errado: "Explico as possibilidades de usar essa ferramenta."
+  - Certo: "Existe uma diferença entre comprar rápido e comprar bem."
+- Sem "eu", sem "você" no imperativo, sem conselho de vendedor. Frases que descrevem uma realidade.
+- REGRA CENTRAL: a copy TERMINA NO RACIOCÍNIO, nunca em convite nem promessa. O último período fecha com a CONSEQUÊNCIA PRÁTICA do que foi dito.
+  - Errado: "Falo sobre as melhores estratégias para você." / "Chegar lá com tranquilidade." (vago, frase de para-choque)
+  - Certo: "No fim, o que muda não é o valor da parcela. É o que sobra depois."
 - O link fica sozinho na primeira linha. Quem se interessou procura.
-- Primeira pessoa sem vitrine. Nunca "eu tenho a solução", "eu sou especialista", "estou aqui pra".
-- PALAVRAS PROIBIDAS: financiamento, empréstimo, crédito barato, juros, banco, realizar sonhos, parcela que cabe no bolso, o melhor, imperdível.
+- CONSÓRCIO NÃO É CRÉDITO E NÃO É INVESTIMENTO. Proibido dizer "crédito com custo mais baixo", "crédito barato" ou sugerir que rende/valoriza (produto regulado pelo Banco Central).
+- PALAVRAS PROIBIDAS: financiamento, empréstimo, crédito barato, juros, banco, investimento, rendimento, rentabilidade, realizar sonhos, parcela que cabe no bolso, o melhor, imperdível.
 - No máximo 1 emoji (e quase sempre nenhum).
 
 === FORMATO ===
 - Máximo 500 caracteres por opção.
 - Não invente produto, preço ou promessa. Não cite nomes da equipe nem se dirija ao dono.
 - NÃO assine a copy com nome de pessoa nem de empresa.
-- 3 hashtags (no máximo 4), simples e reais: #Consórcio #Ademicon + uma do tema. Proibido inventar termo como #GestãoDeAtivos ou #CapitalInteligente.
+- 3 hashtags (no máximo 4), simples e reais: #Consórcio #Ademicon + uma do tema (ex: #Patrimônio, #Planejamento). PROIBIDAS: #Investimento, #Renda, #Rentabilidade, #Crédito, #Juros, #Financiamento e inventadas tipo #GestãoDeAtivos.
 - As 3 opções tratam do MESMO assunto, com 3 entradas diferentes — não a mesma frase reescrita.
+
 
 ${style.promptBlock}
 Responda SOMENTE com JSON válido:
