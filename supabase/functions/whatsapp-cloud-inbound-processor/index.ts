@@ -7191,6 +7191,15 @@ Regras:
         knowledge_base: agent.knowledge_base,
         handoff_rules: agent.handoff_rules,
         is_active: agent.is_active,
+        // Template COMPARTILHADO de segmento + variáveis DESTE tenant
+        knowledge_segment_id: (agent as any).knowledge_segment_id,
+        nome_consultor: (agent as any).nome_consultor,
+        primeiro_nome: (agent as any).primeiro_nome,
+        cargo: (agent as any).cargo,
+        whatsapp_consultor: (agent as any).whatsapp_consultor,
+        owner_phone: (agent as any).owner_phone,
+        owner_name: (agent as any).owner_name,
+
       },
       userText || "",
       amzContextBlock,
