@@ -2700,6 +2700,7 @@ export type Database = {
           nome_assinatura: string | null
           nome_empresa: string | null
           publico_alvo: string | null
+          regras_copy: string | null
           segmento: string | null
           site: string | null
           sobre_negocio: string | null
@@ -2715,6 +2716,7 @@ export type Database = {
           nome_assinatura?: string | null
           nome_empresa?: string | null
           publico_alvo?: string | null
+          regras_copy?: string | null
           segmento?: string | null
           site?: string | null
           sobre_negocio?: string | null
@@ -2730,6 +2732,7 @@ export type Database = {
           nome_assinatura?: string | null
           nome_empresa?: string | null
           publico_alvo?: string | null
+          regras_copy?: string | null
           segmento?: string | null
           site?: string | null
           sobre_negocio?: string | null
