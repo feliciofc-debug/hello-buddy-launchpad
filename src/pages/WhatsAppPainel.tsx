@@ -506,6 +506,46 @@ export default function WhatsAppPainel() {
         </CardContent>
       </Card>
 
+      {/* Link do post */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Link2 className="h-5 w-5" />
+            Link do post
+          </CardTitle>
+          <CardDescription>
+            Link anexado automaticamente ao final da legenda dos posts publicados. Pode ser o WhatsApp do agente, seu site, catálogo ou landing page. Se ficar vazio, o post é publicado sem link.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor="link-post">URL</Label>
+            <Input
+              id="link-post"
+              placeholder="https://..."
+              value={linkPost}
+              onChange={(e) => setLinkPost(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {onlyDigits(whatsappConfig?.display_phone) && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setLinkPost(`https://wa.me/${onlyDigits(whatsappConfig?.display_phone)}`)}
+              >
+                <MessageCircle className="h-4 w-4 mr-1" />
+                Usar WhatsApp do agente
+              </Button>
+            )}
+            <Button size="sm" onClick={handleSaveLinkPost} disabled={savingLinkPost}>
+              {savingLinkPost ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Check className="h-4 w-4 mr-1" />}
+              Salvar
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
