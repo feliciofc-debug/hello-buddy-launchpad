@@ -216,7 +216,40 @@ export type TenantAgentConfig = {
   handoff_rules?: any;
   is_active?: boolean | null;
   knowledge_segment_id?: string | null;
+  // Variáveis do template COMPARTILHADO de segmento (uma linha por consultor).
+  nome_consultor?: string | null;
+  primeiro_nome?: string | null;
+  cargo?: string | null;
+  whatsapp_consultor?: string | null;
+  owner_phone?: string | null;
+  owner_name?: string | null;
 };
+
+// ----------------------------------------------------------------------------
+// TEMPLATE COMPARTILHADO DE SEGMENTO
+// O corpo do prompt vive UMA vez em agent_knowledge_segments.prompt_template.
+// Cada tenant guarda só as variáveis em whatsapp_cloud_agent_config.
+// Ajuste de regra = 1 update no segmento, vale pra rede inteira.
+// ----------------------------------------------------------------------------
+export function renderSegmentPromptTemplate(
+  template: string,
+  cfg: TenantAgentConfig,
+): string {
+  const nomeConsultor = (cfg.nome_consultor || cfg.owner_name || "").trim();
+  const primeiroNome =
+    (cfg.primeiro_nome || "").trim() || nomeConsultor.split(/\s+/)[0] || "o consultor";
+  const vars: Record<string, string> = {
+    NOME_AGENTE: (cfg.agent_name || "").trim() || "assistente",
+    NOME_CONSULTOR: nomeConsultor || "o consultor",
+    PRIMEIRO_NOME: primeiroNome,
+    CARGO: (cfg.cargo || "").trim() || "consultor",
+    WHATSAPP_CONSULTOR: (cfg.whatsapp_consultor || cfg.owner_phone || "").trim(),
+  };
+  return template.replace(/\{\{\s*([A-Z_]+)\s*\}\}/g, (m, key: string) =>
+    key in vars ? vars[key] : m,
+  );
+}
+
 
 // ----------------------------------------------------------------------------
 // SEGMENT_FAILSAFE_BLOCK — MODO SEGURO quando a base de conhecimento
