@@ -161,9 +161,7 @@ export function aplicarEstiloCopy(texto: string | null | undefined, style: CopyS
   }
 
 
-  if (style.voz === "pessoa" && style.assinatura && !base.includes(style.assinatura)) {
-    base = `${base}\n\n— ${style.assinatura}`;
-  }
+  // Assinatura removida por decisão do cliente: posts não levam nome nem empresa.
 
   return base;
 }
