@@ -547,7 +547,7 @@ export default function WhatsAppPainel() {
             Link do post
           </CardTitle>
           <CardDescription>
-            Link anexado automaticamente ao final da legenda dos posts publicados. Pode ser o WhatsApp do agente, seu site, catálogo ou landing page. Se ficar vazio, o post é publicado sem link.
+            Link colocado no <strong>início</strong> da legenda dos posts publicados (o Instagram corta a legenda em ~125 caracteres). Pode ser o WhatsApp do agente, seu site, catálogo ou landing page. Se ficar vazio, o post é publicado sem link.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -578,6 +578,53 @@ export default function WhatsAppPainel() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Voz das legendas */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <MessageCircle className="h-5 w-5" />
+            Voz das legendas
+          </CardTitle>
+          <CardDescription>
+            Define como a IA escreve as copies: como empresa ("fale com a gente") ou como pessoa ("me chama", "eu te ajudo"), assinando com o seu nome.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant={vozCopy === 'empresa' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setVozCopy('empresa')}
+            >
+              Empresa (nós)
+            </Button>
+            <Button
+              variant={vozCopy === 'pessoa' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setVozCopy('pessoa')}
+            >
+              Pessoa (eu)
+            </Button>
+          </div>
+          {vozCopy === 'pessoa' && (
+            <div className="space-y-2">
+              <Label htmlFor="nome-assinatura">Nome da assinatura</Label>
+              <Input
+                id="nome-assinatura"
+                placeholder="Ex.: Paulo Canarim"
+                value={nomeAssinatura}
+                onChange={(e) => setNomeAssinatura(e.target.value)}
+              />
+            </div>
+          )}
+          <Button size="sm" onClick={handleSaveVozCopy} disabled={savingVoz}>
+            {savingVoz ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Check className="h-4 w-4 mr-1" />}
+            Salvar
+          </Button>
+        </CardContent>
+      </Card>
+
 
       {/* Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
