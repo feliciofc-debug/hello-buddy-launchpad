@@ -180,21 +180,29 @@ def filtros(segs, estilo, w, h):
     fs = max(int(estilo["fontsize_min"]), int(w * estilo["fontsize_ratio"]))
     y = int(h * estilo["pos_y_ratio"])
     fontfile = estilo.get("fontfile", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
+    pad = int(fs * estilo["caixa_padding_ratio"])
+    borda = max(3, int(fs * estilo["contorno_ratio"]))
+    # 8% de margem de cada lado, descontando padding da caixa e contorno
+    util = w * 0.84 - 2 * pad - 2 * borda
+    # largura media de caractere no DejaVu Sans Bold ~ 0.60 * fontsize
+    max_ch = max(12, int(util / (fs * 0.60)))
+    max_ch = min(max_ch, int(estilo["max_chars_linha"]))
     out = []
     for s in segs[:80]:
-        linhas = textwrap.wrap(s["text"].replace("\n", " "),
-                               width=estilo["max_chars_linha"])[:estilo["max_linhas"]]
+        linhas = textwrap.wrap(s["text"].replace("\n", " "), width=max_ch,
+                               break_long_words=True)[:estilo["max_linhas"]]
         for i, linha in enumerate(linhas):
             dy = y + (i - (len(linhas) - 1) / 2) * int(fs * 1.28)
             out.append(
                 f"drawtext=fontfile={fontfile}"
                 f":text='{esc(linha)}':fontsize={fs}:fontcolor=white"
-                f":borderw={max(3, int(fs * estilo['contorno_ratio']))}:bordercolor=black"
-                f":box=1:boxcolor={estilo['caixa_cor']}:boxborderw={int(fs * estilo['caixa_padding_ratio'])}"
+                f":borderw={borda}:bordercolor=black"
+                f":box=1:boxcolor={estilo['caixa_cor']}:boxborderw={pad}"
                 f":x=(w-text_w)/2:y={int(dy)}"
                 f":enable='between(t,{s['start']:.2f},{s['end']:.2f})'"
             )
     return ",".join(out)
+
 
 def dimensoes(path):
     r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0",
