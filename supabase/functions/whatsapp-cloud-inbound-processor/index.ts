@@ -34,6 +34,7 @@ import { gerarVarianteFacebookFeed } from "../_shared/varianteFacebookFeed.ts";
 import {
   iniciarFluxoLegendaVideo,
   tratarRespostaFluxoLegenda,
+  resolverVideoLegendado,
 } from "../_shared/video-legenda-flow.ts";
 
 import {
