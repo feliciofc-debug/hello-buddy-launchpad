@@ -56,6 +56,38 @@ export async function resolverNomeEmpresa(userId: string): Promise<string> {
   }
 }
 
+/**
+ * Dado o vídeo ORIGINAL (URL do Storage), devolve a URL do vídeo LEGENDADO
+ * (resultado_bucket/resultado_path) quando já existe render concluído para
+ * aquele user_id. Nunca devolve o original — se não houver legendado, é null.
+ */
+export async function resolverVideoLegendado(
+  userId: string,
+  videoUrl: string,
+): Promise<string | null> {
+  try {
+    const loc = bucketPathDeUrl(videoUrl);
+    if (!loc) return null;
+    const { data: job } = await sb
+      .from("video_render_jobs")
+      .select("resultado_bucket, resultado_path")
+      .eq("user_id", userId)
+      .eq("video_path", loc.path)
+      .not("resultado_path", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!job?.resultado_path) return null;
+    const { data: pub } = sb.storage
+      .from(job.resultado_bucket || "videos")
+      .getPublicUrl(job.resultado_path);
+    return pub?.publicUrl || null;
+  } catch (e) {
+    console.warn("[video-legenda-flow] legendado indisponível:", (e as Error).message);
+    return null;
+  }
+}
+
 async function transcrever(videoUrl: string, nomeEmpresa?: string): Promise<SegmentoLegenda[]> {
   const { data, error } = await sb.functions.invoke("video-transcrever-legendas", {
     body: { video_url: videoUrl, nome_empresa: nomeEmpresa || undefined },
