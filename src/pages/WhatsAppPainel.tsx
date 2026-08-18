@@ -53,6 +53,8 @@ export default function WhatsAppPainel() {
   const [whatsappConfig, setWhatsappConfig] = useState<WhatsAppConfig | null>(null);
   const [showConfig, setShowConfig] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const qrWrapperRef = useRef<HTMLDivElement>(null);
   const [configForm, setConfigForm] = useState({
     phone_number_id: '',
     waba_id: '',
