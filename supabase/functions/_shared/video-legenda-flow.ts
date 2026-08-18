@@ -11,6 +11,7 @@
 // ============================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { COPY_STYLE_PADRAO, type CopyStyle, getCopyStyle } from "./copy-style.ts";
 
 const sb = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -107,6 +108,7 @@ async function gerarTresCopies(
   transcricao: string,
   contexto: string,
   nomeEmpresa: string,
+  style: CopyStyle = COPY_STYLE_PADRAO,
 ): Promise<string[]> {
   const key = Deno.env.get("LOVABLE_API_KEY");
   if (!key) throw new Error("LOVABLE_API_KEY ausente");
@@ -130,6 +132,7 @@ REGRAS:
 - Não cite nomes de pessoas da equipe nem se dirija ao dono.
 - Sem emojis em excesso (no máximo 3 por opção).
 
+${style.promptBlock}
 Responda SOMENTE com JSON válido:
 {"opcoes":["copy A","copy B","copy C"]}`;
 
@@ -225,12 +228,15 @@ export async function iniciarFluxoLegendaVideo(params: {
     return null;
   }
 
+  const style = await getCopyStyle(sb, params.userId);
+
   let opcoes: string[];
   try {
     opcoes = await gerarTresCopies(
       transcricao,
       params.contexto || "",
       nomeEmpresa || "Sua empresa",
+      style,
     );
 
   } catch (e) {
