@@ -5,3 +5,4 @@
 - [Paulo Canarim Owner Recognition](mem://features/pj/paulo-canarim-owner-recognition) — Agente 5521975141829 vs dono 5521997208854; owner por tenant, nunca hardcoded
 - [BART Base Consórcio Ademicon](mem://features/pj/bart-base-consorcio-ademicon) — Mesma base do Silvester; playbook de consórcio tenant-agnóstico
 - [Voz Copy e Link no Início](mem://features/marketing/voz-copy-e-link-no-inicio) — voz_copy por tenant (empresa/pessoa) + link de WhatsApp no começo da legenda
+- [Copy do vídeo acompanha a fala](mem://features/marketing/copy-video-acompanha-fala) — 3 copies do vídeo legendado: mesmo assunto reescrito, link sozinho na 1ª linha, termina no raciocínio (sem CTA)

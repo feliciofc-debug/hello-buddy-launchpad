@@ -73,13 +73,16 @@ function montarPromptBlock(
 
   if (link) {
     linhas.push(
-      `- Comece a copy com uma chamada CURTA já com o link de WhatsApp: ${link}`,
+      `- A PRIMEIRA LINHA da copy é o link, sozinho, sem frase de chamada: ${link}`,
       "- O link tem que estar nos primeiros ~120 caracteres (o Instagram corta a legenda com \"... mais\").",
-      "- Nunca deixe o link só no fim do texto.",
+      "- Nunca deixe o link só no fim do texto e nunca escreva \"clica no link\" / \"me chama\".",
     );
   }
 
-  linhas.push("- Ordem da copy: 1) chamada curta com o link, 2) corpo, 3) hashtags.");
+  linhas.push(
+    "- Ordem da copy: 1) link sozinho na primeira linha, 2) corpo que termina no raciocínio (sem convite/CTA no fim), 3) hashtags.",
+  );
+
 
   if (regras && regras.trim()) {
     linhas.push(
@@ -152,9 +155,10 @@ export function aplicarEstiloCopy(texto: string | null | undefined, style: CopyS
   if (!base) return style.link || "";
 
   if (style.link && !base.includes(style.link)) {
-    const chamada = style.voz === "pessoa" ? "Me chama no WhatsApp" : "Fale com a gente no WhatsApp";
-    base = `${chamada}: ${style.link}\n\n${base}`;
+    // Link sozinho na primeira linha — sem frase de chamada/CTA.
+    base = `${style.link}\n\n${base}`;
   }
+
 
   if (style.voz === "pessoa" && style.assinatura && !base.includes(style.assinatura)) {
     base = `${base}\n\n— ${style.assinatura}`;
