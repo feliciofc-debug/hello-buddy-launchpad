@@ -142,7 +142,7 @@ Deno.serve(async (req) => {
     const prompt = `Transcreva a FALA deste vídeo em português do Brasil e devolva legendas curtas, prontas para leitura na tela.
 
 REGRAS:
-- Divida em blocos curtos de no máximo 42 caracteres (1 linha) ou 2 linhas separadas por \\n.
+- Divida em blocos de no máximo 40 caracteres no total, usando no máximo 20 caracteres por linha e no máximo 2 linhas separadas por \\n.
 - Cada bloco dura entre 1 e 3.5 segundos e acompanha exatamente o que é falado.
 - Não invente conteúdo. Se não houver fala, devolva uma lista vazia.
 - Sem emojis, sem marcações, apenas o texto falado com pontuação natural.

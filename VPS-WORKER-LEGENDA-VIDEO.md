@@ -59,9 +59,9 @@ Com job:
       "contorno_ratio": 0.07,
       "caixa": true,
       "caixa_cor": "black@0.62",
-      "caixa_padding_ratio": 0.2,
-      "pos_y_ratio": 0.8,
-      "max_linhas": 3,
+      "caixa_padding_ratio": 0.15,
+      "pos_y_ratio": 0.75,
+      "max_linhas": 2,
       "max_chars_linha": 20,
       "threads": 3
     },
@@ -183,7 +183,7 @@ def filtros(segs, estilo, w, h):
     fs = max(int(estilo["fontsize_min"]), int(w * estilo["fontsize_ratio"]))
     y = int(h * estilo["pos_y_ratio"])
     fontfile = estilo.get("fontfile", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
-    pad = int(fs * estilo["caixa_padding_ratio"])
+    pad = min(15, int(fs * estilo["caixa_padding_ratio"]))
     borda = max(3, int(fs * estilo["contorno_ratio"]))
     # Mede a fonte de verdade. Não estima por quantidade de caracteres.
     # A caixa completa nunca pode ocupar mais de 84% do quadro.

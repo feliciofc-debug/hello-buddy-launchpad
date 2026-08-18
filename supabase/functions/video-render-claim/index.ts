@@ -32,9 +32,9 @@ const ESTILO_LEGENDA = {
   contorno_ratio: 0.07,
   caixa: true,
   caixa_cor: "black@0.62",
-  caixa_padding_ratio: 0.2,
-  pos_y_ratio: 0.8, // centro do bloco a 80% da altura
-  max_linhas: 3,
+  caixa_padding_ratio: 0.15,
+  pos_y_ratio: 0.75, // centro do bloco em área segura, longe da borda inferior
+  max_linhas: 2,
   // Limite conservador que também protege workers antigos, ainda sem medição
   // real por Pillow, contra palavras largas e caixas fora do quadro.
   max_chars_linha: 20,
