@@ -389,28 +389,29 @@ export async function tratarRespostaFluxoLegenda(params: {
     const opcoes: string[] = job.metadata?.opcoes || [];
     const caption = opcoes[idx];
     if (!caption) return null;
+    const letra = ["A", "B", "C"][idx];
+    const formatoPedido = detectarFormato(params.texto) || "feed";
 
     await sb
       .from("video_render_jobs")
-      .update({ caption, status: "aguardando_confirmacao" })
+      .update({
+        caption,
+        copy_escolhida: caption,
+        formato: formatoPedido,
+        status: "aguardando_confirmacao",
+        metadata: { ...(job.metadata || {}), copy_letra: letra },
+      })
       .eq("id", job.id);
 
-    return `Escolha registrada ✅\n\n*Legenda do post:*\n${caption}\n\nA legenda também vai aparecer *na tela do vídeo*, acompanhando a fala.\n\nComo você quer seguir?\n• Responda *ENVIAR* que eu só gravo a legenda e te devolvo o vídeo aqui (sem publicar).\n• Responda *PUBLICAR* que eu gravo, te mando o vídeo para *você aprovar* e só publico no Instagram/Facebook depois do seu OK.`;
+    // Uma linha curta + UMA pergunta. Sem reimprimir a copy.
+    return `Legenda *${letra}* registrada ✅ (formato *${formatoPedido}*)\n\nResponda *ENVIAR* (só te devolvo o vídeo legendado) ou *PUBLICAR* (te mando pra aprovar e só então publico no Instagram/Facebook).`;
   }
 
   // ---- aguardando confirmação de publicação ----
   if (job.status === "aguardando_confirmacao") {
-    // troca de opção depois de escolher
-    const idx = detectarEscolha(params.texto);
-    if (idx !== null) {
-      const opcoes: string[] = job.metadata?.opcoes || [];
-      if (opcoes[idx]) {
-        await sb
-          .from("video_render_jobs")
-          .update({ caption: opcoes[idx] })
-          .eq("id", job.id);
-        return `Troquei para a opção escolhida ✅\n\n${opcoes[idx]}\n\nResponda *ENVIAR* (só me devolve o vídeo) ou *PUBLICAR* (posta no Instagram e Facebook).`;
-      }
+    // A escolha é definitiva: A/B/C aqui não reabre nada.
+    if (detectarEscolha(params.texto) !== null && !ehConfirmacao(params.texto)) {
+      return `Já está fechado com a ${letraDaCopy(job)}. Responda *ENVIAR* ou *PUBLICAR*.`;
     }
     if (ehNegativa(params.texto) && !querPublicar(params.texto)) {
       await sb.from("video_render_jobs").update({ status: "cancelado" }).eq("id", job.id);
@@ -418,12 +419,14 @@ export async function tratarRespostaFluxoLegenda(params: {
     }
     if (ehConfirmacao(params.texto)) {
       const publicar = querPublicar(params.texto);
+      const formatoPedido = detectarFormato(params.texto) || job.formato || "feed";
       await sb
         .from("video_render_jobs")
         .update({
           status: "pendente",
           tentativas: 0,
           erro_mensagem: null,
+          formato: formatoPedido,
           enfileirado_at: new Date().toISOString(),
           plataformas: publicar ? ["instagram", "facebook"] : [],
         })
@@ -431,13 +434,14 @@ export async function tratarRespostaFluxoLegenda(params: {
 
       const espera = await avisoDeFila(job.id);
       return (publicar
-        ? "Perfeito! 🎬 Estou gravando a legenda no vídeo. Quando terminar, *te mando o vídeo aqui para você aprovar* — só publico depois do seu OK. Pode fechar o WhatsApp, isso roda no servidor."
-        : "Fechado! 🎬 Estou gravando a legenda no vídeo e te devolvo o arquivo aqui no WhatsApp. *Não vou publicar nada* — você confere e posta quando quiser. Pode fechar o WhatsApp, isso roda no servidor.") +
+        ? `Fechado 🎬 Gravando a ${letraDaCopy(job)} no vídeo. Quando terminar, te mando aqui para você aprovar — só publico depois do seu OK.`
+        : `Fechado 🎬 Gravando a ${letraDaCopy(job)} no vídeo e te devolvo o arquivo aqui. *Não vou publicar nada.*`) +
         espera;
     }
 
     return null;
   }
+
 
   return null;
 }
