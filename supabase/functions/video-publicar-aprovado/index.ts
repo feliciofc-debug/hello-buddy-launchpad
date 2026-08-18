@@ -36,15 +36,28 @@ Deno.serve(async (req) => {
       .eq("id", job_id)
       .maybeSingle();
     if (!job) throw new Error("job não encontrado");
-    if (!job.resultado_path) throw new Error("job sem vídeo renderizado");
     if (!["aguardando_aprovacao", "aprovado", "erro_publicacao"].includes(job.status)) {
       throw new Error(`job em status inválido para publicar: ${job.status}`);
     }
 
-    const bucket = job.resultado_bucket || "videos";
+    // 🚫 NUNCA publicar o vídeo de entrada (video_bucket/video_path).
+    // Só o resultado do encode (com legenda queimada) pode ir ao ar.
+    if (!job.resultado_path || !job.resultado_bucket) {
+      await supabase
+        .from("video_render_jobs")
+        .update({
+          status: "erro_publicacao",
+          erro_mensagem: "sem vídeo legendado (resultado_bucket/resultado_path nulos) — publicação bloqueada",
+        })
+        .eq("id", job.id);
+      return resp({ success: false, error: "job sem vídeo legendado — nada foi publicado" });
+    }
+
+    const bucket = job.resultado_bucket;
     const { data: pub } = supabase.storage.from(bucket).getPublicUrl(job.resultado_path);
     const videoUrl = pub?.publicUrl;
-    if (!videoUrl) throw new Error("URL pública indisponível");
+    if (!videoUrl) throw new Error("URL pública do vídeo legendado indisponível");
+    console.log(`[video-publicar-aprovado] publicando LEGENDADO ${bucket}/${job.resultado_path}`);
 
     const plataformas: string[] = Array.isArray(job.plataformas) && job.plataformas.length
       ? job.plataformas

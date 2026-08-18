@@ -34,6 +34,7 @@ import { gerarVarianteFacebookFeed } from "../_shared/varianteFacebookFeed.ts";
 import {
   iniciarFluxoLegendaVideo,
   tratarRespostaFluxoLegenda,
+  resolverVideoLegendado,
 } from "../_shared/video-legenda-flow.ts";
 
 import {
@@ -2719,7 +2720,15 @@ async function publicarEmRede(
 ): Promise<{ rede: string; ok: boolean; status: number; resposta: any; nota?: string }> {
   try {
     const isVideo = produto.midia_tipo === "video";
-    const mediaUrl = produto.imagem_url; // pode ser URL de vídeo quando isVideo
+    let mediaUrl = produto.imagem_url; // pode ser URL de vídeo quando isVideo
+    // Se esse vídeo já passou pelo encode de legenda, publica SEMPRE a versão legendada.
+    if (isVideo) {
+      const legendado = await resolverVideoLegendado(userId, mediaUrl);
+      if (legendado) {
+        console.log("[social-router] usando vídeo LEGENDADO em vez do original");
+        mediaUrl = legendado;
+      }
+    }
     const commonHeaders = { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY } as const;
 
     // === REELS (vídeo em IG/FB) ===
