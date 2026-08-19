@@ -109,10 +109,8 @@ export default function LinkedInPainel() {
       if (data.comentario_publicado) {
         toast.success("Publicado no LinkedIn com o link no primeiro comentário");
       } else if (data.link_no_corpo) {
-        toast.warning(
-          `Post publicado, mas não consegui criar o comentário — o link foi colocado no corpo do post. Motivo: ${data.comentario_erro}`,
-          { duration: 12000 }
-        );
+        toast.success("Publicado no LinkedIn com o link no fim do post");
+      
       } else if (data.link_ausente) {
         toast.error(
           `Post publicado SEM o link. Não consegui adicionar o comentário nem editar o post. Motivo: ${data.comentario_erro}`,
