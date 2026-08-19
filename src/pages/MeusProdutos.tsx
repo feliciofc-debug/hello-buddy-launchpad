@@ -1604,6 +1604,8 @@ export default function MeusProdutos() {
             <TabsTrigger value="produtos">{t('products.product_tab')}</TabsTrigger>
             <TabsTrigger value="videos">{t('products.video_tab')}</TabsTrigger>
             <TabsTrigger value="midia">Mídia</TabsTrigger>
+            <TabsTrigger value="linkedin">LinkedIn</TabsTrigger>
+
           </TabsList>
 
           <TabsContent value="produtos">
