@@ -304,17 +304,10 @@ export default function Marketplace() {
             </p>
           </div>
           <div>
-            <h4 className="font-bold mb-4">Empresa</h4>
+            <h4 className="font-bold mb-4">Legal</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
-              <li><a href="#" className="hover:text-foreground transition">Sobre Nós</a></li>
-              <li><a href="#" className="hover:text-foreground transition">Blog</a></li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="font-bold mb-4">Suporte</h4>
-            <ul className="space-y-2 text-sm text-muted-foreground">
-              <li><a href="#" className="hover:text-foreground transition">Central de Ajuda</a></li>
-              <li><a href="#" className="hover:text-foreground transition">FAQ</a></li>
+              <li><a href="/terms" className="hover:text-foreground transition">Termos de Uso</a></li>
+              <li><a href="/privacy" className="hover:text-foreground transition">Privacidade</a></li>
             </ul>
           </div>
           <div>
