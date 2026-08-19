@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Upload, X, Send, Sparkles } from 'lucide-react';
+import { Loader2, Upload, X, Send, Sparkles, CalendarClock } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Props {
@@ -338,10 +338,35 @@ export default function LinkedInComposer({ midia, conectado, onPublicado, initia
           </div>
         )}
 
-        <Button onClick={publicar} disabled={!conectado || !texto.trim() || publicando || uploading}>
-          {publicando ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
-          Publicar no LinkedIn
-        </Button>
+        <div className="space-y-2 rounded-md border p-3">
+          <Label className="flex items-center gap-2">
+            <CalendarClock className="h-4 w-4 text-primary" /> Agendar publicação (opcional)
+          </Label>
+          <Input
+            type="datetime-local"
+            value={agendarEm}
+            onChange={(e) => setAgendarEm(e.target.value)}
+            disabled={!conectado}
+          />
+          <p className="text-xs text-muted-foreground">
+            Se preencher a data, o post entra na fila e é publicado automaticamente no horário.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={publicar} disabled={!conectado || !texto.trim() || publicando || uploading || agendando}>
+            {publicando ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+            Publicar agora
+          </Button>
+          <Button
+            variant="outline"
+            onClick={agendar}
+            disabled={!conectado || !texto.trim() || !agendarEm || agendando || publicando || uploading}
+          >
+            {agendando ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CalendarClock className="h-4 w-4 mr-2" />}
+            Agendar
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
