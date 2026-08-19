@@ -200,7 +200,7 @@ export default function LinkedInPainel() {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Novo post</CardTitle>
-          <CardDescription>Tom profissional, sem emojis em excesso. O link vai no primeiro comentário para não reduzir o alcance.</CardDescription>
+          <CardDescription>Tom profissional, sem emojis em excesso. Estrutura: observação, um argumento técnico, fecho sem convite, link e 2-3 hashtags. O link entra no fim do post — assim que a permissão de parceiro do LinkedIn for aprovada, ele volta para o primeiro comentário automaticamente.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
