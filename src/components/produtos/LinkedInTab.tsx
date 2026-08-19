@@ -8,6 +8,7 @@ import { Linkedin, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatSaoPauloDateTime } from '@/lib/sao-paulo-time';
 import LinkedInComposer from '@/components/produtos/LinkedInComposer';
+import LinkedInProdutosGrid from '@/components/produtos/LinkedInProdutosGrid';
 
 interface LinkedInConn {
   id: string;
