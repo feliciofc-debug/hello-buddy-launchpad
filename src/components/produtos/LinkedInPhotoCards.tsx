@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { ImagePlus, Linkedin, Loader2, Plus, Trash2, Upload } from 'lucide-react';
+import { ImagePlus, Linkedin, Loader2, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import LinkedInComposer from '@/components/produtos/LinkedInComposer';
 
@@ -100,7 +100,7 @@ export default function LinkedInPhotoCards({ conectado, onPublicado }: Props) {
     if (!user) return;
     const { error } = await supabase
       .from('social_posts_queue')
-      .delete()
+      .update({ status: 'cancelado' })
       .eq('id', id)
       .eq('user_id', user.id)
       .eq('status', 'rascunho');

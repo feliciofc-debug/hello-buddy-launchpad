@@ -13,6 +13,8 @@ interface Props {
   midia: 'foto' | 'video';
   conectado: boolean;
   onPublicado: () => void;
+  initialMediaUrl?: string;
+  draftId?: string;
 }
 
 interface ProdutoOpcao {
@@ -24,12 +26,12 @@ const MAX_IMAGE = 8 * 1024 * 1024;
 const MAX_VIDEO = 100 * 1024 * 1024;
 const LIMITE_LINKEDIN = 3000;
 
-export default function LinkedInComposer({ midia, conectado, onPublicado }: Props) {
+export default function LinkedInComposer({ midia, conectado, onPublicado, initialMediaUrl, draftId }: Props) {
   const ehFoto = midia === 'foto';
 
   const [texto, setTexto] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
-  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+  const [mediaUrl, setMediaUrl] = useState<string | null>(initialMediaUrl || null);
   const [uploading, setUploading] = useState(false);
   const [publicando, setPublicando] = useState(false);
 
@@ -116,20 +118,20 @@ export default function LinkedInComposer({ midia, conectado, onPublicado }: Prop
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Não autenticado');
 
-      const { data: fila, error: filaErr } = await supabase
-        .from('social_posts_queue')
-        .insert({
-          user_id: user.id,
-          platform: 'linkedin',
-          post_text: texto,
-          post_text_linkedin: texto,
-          image_url: ehFoto ? mediaUrl : null,
-          video_url: ehFoto ? null : mediaUrl,
-          link_url: linkUrl || null,
-          status: 'pendente',
-        })
-        .select('id')
-        .single();
+      const payload = {
+        user_id: user.id,
+        platform: 'linkedin',
+        post_text: texto,
+        post_text_linkedin: texto,
+        image_url: ehFoto ? mediaUrl : null,
+        video_url: ehFoto ? null : mediaUrl,
+        link_url: linkUrl || null,
+        status: 'pendente',
+      };
+      const filaQuery = draftId
+        ? supabase.from('social_posts_queue').update(payload).eq('id', draftId).eq('user_id', user.id)
+        : supabase.from('social_posts_queue').insert(payload);
+      const { data: fila, error: filaErr } = await filaQuery.select('id').single();
       if (filaErr) throw filaErr;
 
       const { data, error } = await supabase.functions.invoke('linkedin-publish', {

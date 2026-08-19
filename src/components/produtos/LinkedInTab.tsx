@@ -8,6 +8,7 @@ import { Linkedin, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatSaoPauloDateTime } from '@/lib/sao-paulo-time';
 import LinkedInComposer from '@/components/produtos/LinkedInComposer';
+import LinkedInPhotoCards from '@/components/produtos/LinkedInPhotoCards';
 
 interface LinkedInConn {
   id: string;
@@ -135,7 +136,7 @@ export default function LinkedInTab() {
         </TabsList>
 
         <TabsContent value="fotos" className="mt-4">
-          <LinkedInComposer midia="foto" conectado={conectado} onPublicado={carregarHistorico} />
+          <LinkedInPhotoCards conectado={conectado} onPublicado={carregarHistorico} />
         </TabsContent>
 
         <TabsContent value="videos" className="mt-4">
