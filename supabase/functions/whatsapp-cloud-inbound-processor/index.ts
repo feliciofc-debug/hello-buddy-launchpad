@@ -3298,6 +3298,59 @@ async function updatePendingSocialPostMarker(token: string, pending: PendingSoci
   }
 }
 
+// LinkedIn (perfil pessoal): tom profissional e link no 1º comentário.
+async function toolPublicarLinkedin(
+  args: { texto?: string; link?: string; comentario?: string; image_url?: string },
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  try {
+    if (!isOwner(ctx)) {
+      return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Publicar no LinkedIn é restrito ao responsável da conta." });
+    }
+    const texto = (args?.texto || "").trim();
+    if (!texto) return JSON.stringify({ erro: "informe o texto do post" });
+
+    const { data: conn } = await sb
+      .from("linkedin_connections")
+      .select("id, is_active")
+      .eq("user_id", ctx.userId)
+      .maybeSingle();
+    if (!conn || !(conn as any).is_active) {
+      return JSON.stringify({ erro: "linkedin_nao_conectado", mensagem: "O LinkedIn ainda não está conectado. Conecte em Configurações → LinkedIn." });
+    }
+
+    // tom LinkedIn: sem emojis, sem hashtags em excesso, link fora do corpo
+    const corpo = texto
+      .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/linkedin-publish`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: ctx.userId,
+        texto: corpo,
+        link_url: args?.link || undefined,
+        comentario: args?.comentario || undefined,
+        image_url: args?.image_url || undefined,
+        link_no_primeiro_comentario: true,
+      }),
+    });
+    const out = await res.json();
+    if (!out?.success) return JSON.stringify({ erro: out?.error || "falha ao publicar no LinkedIn" });
+
+    return JSON.stringify({
+      ok: true,
+      post_urn: out.post_urn,
+      link_no_primeiro_comentario: !!out.comentario_publicado,
+      instrucao: "Confirme em 1-2 linhas que o post foi publicado no LinkedIn e diga se o link entrou no primeiro comentário.",
+    });
+  } catch (e) {
+    return JSON.stringify({ erro: (e as Error).message });
+  }
+}
+
 async function toolPostarRedesSociais(
   args: { produto: string; tom?: string; redes?: string[]; incluir_cta_whatsapp?: boolean },
   ctx: { userId: string; fromNumber: string },
