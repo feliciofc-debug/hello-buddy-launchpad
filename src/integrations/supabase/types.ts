@@ -5058,6 +5058,78 @@ export type Database = {
         }
         Relationships: []
       }
+      linkedin_connections: {
+        Row: {
+          access_token: string
+          alert_status: string | null
+          avatar_url: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          member_urn: string
+          nome: string | null
+          refresh_expires_at: string | null
+          refresh_token: string | null
+          scopes: string | null
+          token_expires_at: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          access_token: string
+          alert_status?: string | null
+          avatar_url?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          member_urn: string
+          nome?: string | null
+          refresh_expires_at?: string | null
+          refresh_token?: string | null
+          scopes?: string | null
+          token_expires_at?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          access_token?: string
+          alert_status?: string | null
+          avatar_url?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          member_urn?: string
+          nome?: string | null
+          refresh_expires_at?: string | null
+          refresh_token?: string | null
+          scopes?: string | null
+          token_expires_at?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      linkedin_oauth_states: {
+        Row: {
+          created_at: string | null
+          redirect_to: string | null
+          state: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          redirect_to?: string | null
+          state: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          redirect_to?: string | null
+          state?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       logs_analise_ia: {
         Row: {
           confianca: number | null
@@ -7333,10 +7405,13 @@ export type Database = {
           fb_post_id: string | null
           id: string
           image_url: string | null
+          link_no_primeiro_comentario: boolean | null
           link_url: string | null
-          page_id: string
+          linkedin_post_urn: string | null
+          page_id: string | null
           platform: string
           post_text: string | null
+          post_text_linkedin: string | null
           produto_id: string | null
           produto_source: string | null
           published_at: string | null
@@ -7352,10 +7427,13 @@ export type Database = {
           fb_post_id?: string | null
           id?: string
           image_url?: string | null
+          link_no_primeiro_comentario?: boolean | null
           link_url?: string | null
-          page_id?: string
+          linkedin_post_urn?: string | null
+          page_id?: string | null
           platform?: string
           post_text?: string | null
+          post_text_linkedin?: string | null
           produto_id?: string | null
           produto_source?: string | null
           published_at?: string | null
@@ -7371,10 +7449,13 @@ export type Database = {
           fb_post_id?: string | null
           id?: string
           image_url?: string | null
+          link_no_primeiro_comentario?: boolean | null
           link_url?: string | null
-          page_id?: string
+          linkedin_post_urn?: string | null
+          page_id?: string | null
           platform?: string
           post_text?: string | null
+          post_text_linkedin?: string | null
           produto_id?: string | null
           produto_source?: string | null
           published_at?: string | null
