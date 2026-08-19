@@ -12,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, X, Play, Pause, Plug, Megaphone, Copy, Clock, Calendar, Facebook, Instagram, Video, Download, Send } from 'lucide-react';
+import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, X, Play, Pause, Plug, Megaphone, Copy, Clock, Calendar, Facebook, Instagram, Video, Download, Send, Linkedin } from 'lucide-react';
 import { ProductImageCarousel } from '@/components/ProductImageCarousel';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -28,6 +28,7 @@ import { EngagementModeSelector } from '@/components/produtos/EngagementModeSele
 import StockIntegrations from '@/components/StockIntegrations';
 import { PostarFacebookModal } from '@/components/PostarFacebookModal';
 import { PostarInstagramModal } from '@/components/PostarInstagramModal';
+import { PostarLinkedInModal } from '@/components/PostarLinkedInModal';
 import { AutopilotModal } from '@/components/AutopilotModal';
 import { AutopilotWhatsAppConfig } from '@/components/AutopilotWhatsAppConfig';
 import { PublicarReelsModal } from '@/components/PublicarReelsModal';
@@ -799,6 +800,8 @@ export default function MeusProdutos() {
   const [facebookProduct, setFacebookProduct] = useState<Product | null>(null);
   const [isInstagramModalOpen, setIsInstagramModalOpen] = useState(false);
   const [instagramProduct, setInstagramProduct] = useState<Product | null>(null);
+  const [isLinkedInModalOpen, setIsLinkedInModalOpen] = useState(false);
+  const [linkedinProduct, setLinkedinProduct] = useState<Product | null>(null);
   const [isAutopilotOpen, setIsAutopilotOpen] = useState(false);
   const [isAutopilotWppOpen, setIsAutopilotWppOpen] = useState(false);
   const [isReelsModalOpen, setIsReelsModalOpen] = useState(false);
@@ -1942,6 +1945,15 @@ export default function MeusProdutos() {
                         <Button
                           variant="outline"
                           size="sm"
+                          className="w-full gap-2 text-[#0A66C2] border-[#0A66C2]/40 hover:bg-[#0A66C2]/10"
+                          onClick={() => { setLinkedinProduct(product); setIsLinkedInModalOpen(true); }}
+                        >
+                          <Linkedin className="w-4 h-4" />
+                          Post on LinkedIn
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
                           className="w-full gap-2 text-pink-700 dark:text-pink-300 border-pink-500/40 hover:bg-pink-500/10"
                           onClick={() => { setStoryFotoProduct(product); setStoryFotoOpen(true); }}
                         >
@@ -2053,6 +2065,15 @@ export default function MeusProdutos() {
                         >
                           <Instagram className="w-4 h-4" />
                           {t('products.post_instagram')}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full gap-2 text-[#0A66C2] border-[#0A66C2]/40 hover:bg-[#0A66C2]/10"
+                          onClick={() => { setLinkedinProduct(product); setIsLinkedInModalOpen(true); }}
+                        >
+                          <Linkedin className="w-4 h-4" />
+                          Post on LinkedIn
                         </Button>
                         <Button
                           variant="outline"
@@ -2257,6 +2278,16 @@ export default function MeusProdutos() {
           produto={facebookProduct}
           modo_postagem_fb={(facebookProduct as any).modo_postagem_fb ?? null}
           engajamento_estilos={(facebookProduct as any).engajamento_estilos ?? null}
+        />
+      )}
+      {linkedinProduct && (
+        <PostarLinkedInModal
+          open={isLinkedInModalOpen}
+          onOpenChange={(open) => {
+            setIsLinkedInModalOpen(open);
+            if (!open) setLinkedinProduct(null);
+          }}
+          produto={linkedinProduct as any}
         />
       )}
       {instagramProduct && (
