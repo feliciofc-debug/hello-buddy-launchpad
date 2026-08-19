@@ -200,6 +200,10 @@ const App = () => (
             <Route path="/recados-responsavel" element={<RecadosResponsavel />} />
             <Route path="/dossies" element={<Dossies />} />
             <Route path="/silvester-dossies" element={<Dossies />} />
+
+            {/* LinkedIn */}
+            <Route path="/linkedin" element={<LinkedInPainel />} />
+            
             
             {/* TikTok OAuth Callback */}
             <Route path="/tiktok/callback" element={<TikTokCallback />} />
