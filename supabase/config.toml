@@ -29,6 +29,11 @@ verify_jwt = false
 [functions.gerar-posts]
 verify_jwt = false
 
+[functions.gerar-post-linkedin]
+verify_jwt = false
+
+
+
 [functions.gerar-posts-whatsapp]
 verify_jwt = false
 
