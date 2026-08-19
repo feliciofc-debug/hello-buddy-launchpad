@@ -10,3 +10,4 @@
 - [Copy sem consultor na frase](mem://features/marketing/copy-sem-consultor-na-frase) — Consultor nunca é sujeito, fechamento com consequência prática, consórcio não é crédito/investimento, hashtags proibidas
 - [Prompt template compartilhado](mem://features/pj/prompt-template-compartilhado-segmento) — Corpo do prompt por segmento; tenant guarda só variáveis (rede Ademicon)
 - [Copy template da rede Ademicon](mem://features/marketing/copy-template-rede-ademicon) — Voz das copies em copy_template do segmento; consórcio não é crédito, sem CTA, assinatura com nome
+- [LinkedIn Fase 1](mem://integrations/linkedin/fase-1-perfil-pessoal) — OAuth perfil pessoal, publicação e link sempre no 1º comentário
