@@ -34,6 +34,8 @@ export default function LinkedInComposer({ midia, conectado, onPublicado, initia
   const [mediaUrl, setMediaUrl] = useState<string | null>(initialMediaUrl || null);
   const [uploading, setUploading] = useState(false);
   const [publicando, setPublicando] = useState(false);
+  const [agendarEm, setAgendarEm] = useState('');
+  const [agendando, setAgendando] = useState(false);
 
   const [tema, setTema] = useState('');
   const [produtoId, setProdutoId] = useState<string>('');
