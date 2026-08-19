@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
-import { adicionarLinkNoCorpo, comentarNoPost, criarPost, posicionarLinkLinkedIn, separarLink } from '../_shared/linkedin.ts';
+import { comentarNoPost, criarPost, posicionarLinkLinkedIn, separarLink } from '../_shared/linkedin.ts';
 
 
 /**
