@@ -3345,7 +3345,8 @@ async function toolPublicarLinkedin(
       ok: true,
       post_urn: out.post_urn,
       link_no_primeiro_comentario: !!out.comentario_publicado,
-      instrucao: "Confirme em 1-2 linhas que o post foi publicado no LinkedIn e diga se o link entrou no primeiro comentário.",
+      link_no_corpo: !!out.link_no_corpo,
+      instrucao: "Confirme em 1-2 linhas que o post foi publicado no LinkedIn e diga onde ficou o link (fim do post ou primeiro comentário).",
     });
   } catch (e) {
     return JSON.stringify({ erro: (e as Error).message });
