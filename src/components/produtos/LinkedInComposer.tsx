@@ -169,6 +169,54 @@ export default function LinkedInComposer({ midia, conectado, onPublicado, initia
     }
   };
 
+  const agendar = async () => {
+    if (!texto.trim() || !agendarEm) return;
+    const quando = new Date(agendarEm);
+    if (Number.isNaN(quando.getTime())) {
+      toast.error('Data de agendamento inválida');
+      return;
+    }
+    if (quando.getTime() < Date.now()) {
+      toast.error('Escolha uma data futura');
+      return;
+    }
+
+    setAgendando(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Não autenticado');
+
+      const payload = {
+        user_id: user.id,
+        platform: 'linkedin',
+        post_text: texto,
+        post_text_linkedin: texto,
+        image_url: ehFoto ? mediaUrl : null,
+        video_url: ehFoto ? null : mediaUrl,
+        link_url: linkUrl || null,
+        status: 'pendente',
+        scheduled_at: quando.toISOString(),
+      };
+
+      const query = draftId
+        ? supabase.from('social_posts_queue').update(payload).eq('id', draftId).eq('user_id', user.id)
+        : supabase.from('social_posts_queue').insert(payload);
+      const { error } = await query;
+      if (error) throw error;
+
+      toast.success(`Post agendado para ${quando.toLocaleString('pt-BR')}`);
+      setTexto('');
+      setLinkUrl('');
+      setMediaUrl(null);
+      setAgendarEm('');
+      onPublicado();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao agendar');
+    } finally {
+      setAgendando(false);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
