@@ -148,22 +148,11 @@ export async function comentarNoPost(
   });
 }
 
-/**
- * Fallback: quando a API de comentários não é liberada para o app
- * (403 ACCESS_DENIED em partnerApiSocialActions.CREATE), reescreve o corpo do
- * post já publicado acrescentando o link no final.
- */
-export async function adicionarLinkNoCorpo(
-  accessToken: string,
-  postUrn: string,
-  textoCompleto: string,
-) {
-  await liFetch(`/rest/posts/${encodeURIComponent(postUrn)}`, accessToken, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-RestLi-Method': 'PARTIAL_UPDATE' },
-    body: JSON.stringify({ patch: { $set: { commentary: textoCompleto } } }),
-  });
-}
+// NOTA: não existe edição de post (PARTIAL_UPDATE) neste fluxo. O escopo
+// w_member_social só permite CRIAR post — editar ou comentar retorna
+// 403 ACCESS_DENIED. Por isso o link é montado no commentary antes do POST.
+
+
 
 
 /** Separa o link do corpo da copy (usado na tentativa de 1º comentário). */
