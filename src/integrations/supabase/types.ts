@@ -1056,6 +1056,7 @@ export type Database = {
           nome: string
           postar_facebook: boolean | null
           postar_instagram: boolean | null
+          postar_linkedin: boolean
           postar_videos: boolean
           posts_por_dia: number
           produto_fonte: string
@@ -1086,6 +1087,7 @@ export type Database = {
           nome?: string
           postar_facebook?: boolean | null
           postar_instagram?: boolean | null
+          postar_linkedin?: boolean
           postar_videos?: boolean
           posts_por_dia?: number
           produto_fonte?: string
@@ -1116,6 +1118,7 @@ export type Database = {
           nome?: string
           postar_facebook?: boolean | null
           postar_instagram?: boolean | null
+          postar_linkedin?: boolean
           postar_videos?: boolean
           posts_por_dia?: number
           produto_fonte?: string
