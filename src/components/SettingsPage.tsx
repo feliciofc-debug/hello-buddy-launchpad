@@ -202,9 +202,10 @@ const SettingsPage = () => {
         <h1 className="text-3xl font-bold mb-6 text-gray-900 dark:text-white">{t('settings.api_settings_title')}</h1>
 
         <Tabs defaultValue="meta" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-8">
+          <TabsList className="grid w-full grid-cols-4 mb-8">
             <TabsTrigger value="meta">{t('settings.meta_tab')}</TabsTrigger>
             <TabsTrigger value="tiktok">{t('settings.tiktok_tab')}</TabsTrigger>
+            <TabsTrigger value="linkedin">LinkedIn</TabsTrigger>
             <TabsTrigger value="marca">🎨 {t('settings.brand_tab')}</TabsTrigger>
           </TabsList>
 
