@@ -2126,7 +2126,12 @@ export default function MeusProdutos() {
           <TabsContent value="midia">
             <MidiaWhatsAppTab />
           </TabsContent>
+
+          <TabsContent value="linkedin">
+            <LinkedInTab />
+          </TabsContent>
         </Tabs>
+
       </div>
 
       {/* Modals */}
