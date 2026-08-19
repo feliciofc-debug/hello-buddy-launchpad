@@ -3319,9 +3319,10 @@ async function toolPublicarLinkedin(
       return JSON.stringify({ erro: "linkedin_nao_conectado", mensagem: "O LinkedIn ainda não está conectado. Conecte em Configurações → LinkedIn." });
     }
 
-    // tom LinkedIn: sem emojis, sem hashtags em excesso, link fora do corpo
+    // tom LinkedIn: sem emojis; link posicionado no fim do texto (antes das hashtags)
     const corpo = texto
       .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "")
+      .replace(/\b(deixo o )?link (nos coment[áa]rios|no primeiro coment[áa]rio|abaixo)\b\.?/gi, "")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
 
