@@ -64,6 +64,7 @@ import SeguidoresConcorrentes from "./pages/SeguidoresConcorrentes";
 import PietroDashboard from "./pages/PietroDashboard";
 import PainelAfiliado from "./pages/PainelAfiliado";
 import TikTokCallback from "./pages/TikTokCallback";
+import LinkedInPainel from "./pages/LinkedInPainel";
 import Termos from "./pages/Termos";
 import Privacidade from "./pages/Privacidade";
 import WhatsAppAutomacaoPJ from "./pages/pj/WhatsAppAutomacaoPJ";
@@ -200,6 +201,10 @@ const App = () => (
             <Route path="/recados-responsavel" element={<RecadosResponsavel />} />
             <Route path="/dossies" element={<Dossies />} />
             <Route path="/silvester-dossies" element={<Dossies />} />
+
+            {/* LinkedIn */}
+            <Route path="/linkedin" element={<LinkedInPainel />} />
+            
             
             {/* TikTok OAuth Callback */}
             <Route path="/tiktok/callback" element={<TikTokCallback />} />

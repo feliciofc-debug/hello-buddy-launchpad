@@ -3298,6 +3298,59 @@ async function updatePendingSocialPostMarker(token: string, pending: PendingSoci
   }
 }
 
+// LinkedIn (perfil pessoal): tom profissional e link no 1º comentário.
+async function toolPublicarLinkedin(
+  args: { texto?: string; link?: string; comentario?: string; image_url?: string },
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  try {
+    if (!isOwner(ctx)) {
+      return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Publicar no LinkedIn é restrito ao responsável da conta." });
+    }
+    const texto = (args?.texto || "").trim();
+    if (!texto) return JSON.stringify({ erro: "informe o texto do post" });
+
+    const { data: conn } = await sb
+      .from("linkedin_connections")
+      .select("id, is_active")
+      .eq("user_id", ctx.userId)
+      .maybeSingle();
+    if (!conn || !(conn as any).is_active) {
+      return JSON.stringify({ erro: "linkedin_nao_conectado", mensagem: "O LinkedIn ainda não está conectado. Conecte em Configurações → LinkedIn." });
+    }
+
+    // tom LinkedIn: sem emojis, sem hashtags em excesso, link fora do corpo
+    const corpo = texto
+      .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/linkedin-publish`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: ctx.userId,
+        texto: corpo,
+        link_url: args?.link || undefined,
+        comentario: args?.comentario || undefined,
+        image_url: args?.image_url || undefined,
+        link_no_primeiro_comentario: true,
+      }),
+    });
+    const out = await res.json();
+    if (!out?.success) return JSON.stringify({ erro: out?.error || "falha ao publicar no LinkedIn" });
+
+    return JSON.stringify({
+      ok: true,
+      post_urn: out.post_urn,
+      link_no_primeiro_comentario: !!out.comentario_publicado,
+      instrucao: "Confirme em 1-2 linhas que o post foi publicado no LinkedIn e diga se o link entrou no primeiro comentário.",
+    });
+  } catch (e) {
+    return JSON.stringify({ erro: (e as Error).message });
+  }
+}
+
 async function toolPostarRedesSociais(
   args: { produto: string; tom?: string; redes?: string[]; incluir_cta_whatsapp?: boolean },
   ctx: { userId: string; fromNumber: string },
@@ -4457,6 +4510,23 @@ const TOOLS = [
   {
     type: "function",
     function: {
+      name: "publicar_linkedin",
+      description: "💼 Publica um post no LINKEDIN (perfil pessoal) do responsável. Use quando ele disser 'publica no LinkedIn', 'poste isso no meu LinkedIn'. Tom profissional: sem emojis, sem gírias, frases diretas. NUNCA coloque link no corpo do texto — o link vai no PRIMEIRO COMENTÁRIO (campo link) para não reduzir o alcance. Restrito ao responsável da conta.",
+      parameters: {
+        type: "object",
+        properties: {
+          texto: { type: "string", description: "Texto do post em tom profissional, sem link e sem emojis." },
+          link: { type: "string", description: "Link que deve ir no primeiro comentário. Vazio se não houver." },
+          comentario: { type: "string", description: "Texto do primeiro comentário com o link. Vazio = eu monto automaticamente." },
+          image_url: { type: "string", description: "URL pública de uma imagem para acompanhar o post, se houver." },
+        },
+        required: ["texto"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
 
       name: "criar_carrossel",
       description: "🎠 Cria um CARROSSEL de Instagram (vários cards com texto) sobre um TEMA e PUBLICA no Instagram da conta. Use quando o responsável pedir 'faz um carrossel sobre X', 'monta um carrossel de dicas', 'cria um carrossel'. NÃO use para post de imagem única (use gerar_imagem/postar_redes_sociais). FLUXO: 1) na PRIMEIRA chamada passe só o tema, SEM cor — eu envio automaticamente uma lista de cores pro usuário tocar; 2) quando ele responder a cor (ex: 'Azul', 'Dourado'), chame de novo com tema + cor e publicar=true. Nunca invente a cor: se ele não disse, deixe o campo cor vazio. Restrito ao responsável da conta.",
@@ -5316,6 +5386,7 @@ async function runTool(
   if (name === "salvar_midia_biblioteca") return { result: await toolSalvarMidiaBiblioteca(args ?? {}, ctx) };
   if (name === "postar_midia_biblioteca") return { result: await toolPostarMidiaBiblioteca(args ?? {}, ctx) };
   if (name === "criar_carrossel") return { result: await toolCriarCarrossel(args ?? {}, ctx) };
+  if (name === "publicar_linkedin") return { result: await toolPublicarLinkedin(args ?? {}, ctx) };
   if (name === "criar_anuncio") {
     const r = await toolCriarAnuncio(args ?? {}, ctx);
     let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}

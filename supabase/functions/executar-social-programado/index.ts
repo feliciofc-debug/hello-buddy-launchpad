@@ -127,6 +127,28 @@ serve(async (req) => {
               })
             })
             publishResult = await response.json()
+          } else if (post.platform === 'linkedin') {
+            const response = await fetch(`${SUPABASE_URL}/functions/v1/linkedin-publish`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                user_id: post.user_id,
+                texto: post.post_text_linkedin || post.post_text,
+                image_url: post.image_url || undefined,
+                video_url: post.video_url || undefined,
+                link_url: post.link_url || undefined,
+                link_no_primeiro_comentario: post.link_no_primeiro_comentario !== false,
+              })
+            })
+            publishResult = await response.json()
+            if (publishResult?.success && publishResult?.post_urn) {
+              await supabase.from('social_posts_queue')
+                .update({ linkedin_post_urn: publishResult.post_urn })
+                .eq('id', post.id)
+            }
           }
 
           if (publishResult?.success || publishResult?.post_id) {

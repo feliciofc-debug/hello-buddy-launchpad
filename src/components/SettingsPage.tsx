@@ -1,4 +1,4 @@
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2, Linkedin } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -17,6 +17,59 @@ const SettingsPage = () => {
   const [tiktokConnection, setTiktokConnection] = useState<any>(null);
   const [loadingTiktok, setLoadingTiktok] = useState(true);
   const [disconnectingTiktok, setDisconnectingTiktok] = useState(false);
+  const [linkedinConnection, setLinkedinConnection] = useState<any>(null);
+  const [loadingLinkedin, setLoadingLinkedin] = useState(true);
+  const [connectingLinkedin, setConnectingLinkedin] = useState(false);
+  const [disconnectingLinkedin, setDisconnectingLinkedin] = useState(false);
+
+  const fetchLinkedinConnection = async () => {
+    setLoadingLinkedin(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from('linkedin_connections' as any)
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      setLinkedinConnection(data);
+    } finally {
+      setLoadingLinkedin(false);
+    }
+  };
+
+  const handleConnectLinkedin = async () => {
+    setConnectingLinkedin(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('linkedin-oauth-start', {
+        body: { redirect_to: '/configuracoes' },
+      });
+      if (error) throw error;
+      if (!data?.auth_url) throw new Error(data?.error || 'Não foi possível iniciar a conexão');
+      window.location.href = data.auth_url;
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao conectar o LinkedIn');
+      setConnectingLinkedin(false);
+    }
+  };
+
+  const handleDisconnectLinkedin = async () => {
+    if (!window.confirm('Tem certeza que deseja desconectar a conta do LinkedIn?')) return;
+    setDisconnectingLinkedin(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { error } = await supabase.from('linkedin_connections' as any).delete().eq('user_id', user.id);
+      if (error) throw error;
+      setLinkedinConnection(null);
+      toast.success('Conta do LinkedIn desconectada.');
+    } catch {
+      toast.error('Erro ao desconectar. Tente novamente.');
+    } finally {
+      setDisconnectingLinkedin(false);
+    }
+  };
+
 
   const fetchTiktokConnection = async () => {
     setLoadingTiktok(true);
@@ -54,8 +107,16 @@ const SettingsPage = () => {
     };
     fetchMetaConnection();
     fetchTiktokConnection();
+    fetchLinkedinConnection();
 
     const params = new URLSearchParams(window.location.search);
+    if (params.get('linkedin') === 'conectado') {
+      toast.success('✅ LinkedIn conectado com sucesso!');
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (params.get('linkedin') === 'erro') {
+      toast.error(`Falha ao conectar o LinkedIn: ${params.get('motivo') || 'erro'}`);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
     const urlMessage = params.get('message');
     if (params.get('success') === 'true' && params.get('platform') === 'meta') {
       toast.success('✅ Meta Business conectado com sucesso!');
@@ -149,9 +210,10 @@ const SettingsPage = () => {
         <h1 className="text-3xl font-bold mb-6 text-gray-900 dark:text-white">{t('settings.api_settings_title')}</h1>
 
         <Tabs defaultValue="meta" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-8">
+          <TabsList className="grid w-full grid-cols-4 mb-8">
             <TabsTrigger value="meta">{t('settings.meta_tab')}</TabsTrigger>
             <TabsTrigger value="tiktok">{t('settings.tiktok_tab')}</TabsTrigger>
+            <TabsTrigger value="linkedin">LinkedIn</TabsTrigger>
             <TabsTrigger value="marca">🎨 {t('settings.brand_tab')}</TabsTrigger>
           </TabsList>
 
@@ -312,6 +374,75 @@ const SettingsPage = () => {
                     className="bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-bold py-2 px-4 rounded transition-colors"
                   >
                     {t('settings.connect_tiktok')}
+                  </button>
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="linkedin">
+            <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+              <h2 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white flex items-center gap-2">
+                <Linkedin className="w-5 h-5 text-[#0A66C2]" /> LinkedIn (perfil pessoal)
+              </h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+                Publique no seu perfil com o link no primeiro comentário, para não reduzir o alcance.
+              </p>
+
+              {loadingLinkedin ? (
+                <div className="flex items-center gap-2 text-gray-500">
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>{t('settings.loading_connection')}</span>
+                </div>
+              ) : linkedinConnection ? (
+                <div className="space-y-4">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                    ✅ {t('settings.connected')}
+                  </span>
+                  <div className="flex items-center gap-4">
+                    {linkedinConnection.avatar_url && (
+                      <img src={linkedinConnection.avatar_url} alt="" className="w-16 h-16 rounded-full border border-gray-200 dark:border-gray-700"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    )}
+                    <div className="text-sm text-gray-700 dark:text-gray-300">
+                      <p className="text-lg font-semibold text-gray-900 dark:text-white">{linkedinConnection.nome || 'Perfil conectado'}</p>
+                      {linkedinConnection.token_expires_at && (
+                        <p>Token válido até {new Date(linkedinConnection.token_expires_at).toLocaleDateString(i18n.language === 'en' ? 'en-US' : 'pt-BR')}</p>
+                      )}
+                      {linkedinConnection.alert_status === 'reconectar' && (
+                        <p className="text-yellow-700 dark:text-yellow-400 font-medium">⚠️ Reconecte a conta para continuar publicando.</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex gap-3 pt-2">
+                    <button onClick={handleConnectLinkedin} disabled={connectingLinkedin}
+                      className="bg-[#0A66C2] hover:bg-[#08529b] disabled:opacity-50 text-white font-bold py-2 px-4 rounded transition-colors flex items-center gap-2">
+                      {connectingLinkedin && <Loader2 className="w-4 h-4 animate-spin" />}
+                      🔄 {t('settings.reconnect')}
+                    </button>
+                    <button onClick={() => navigate('/linkedin')}
+                      className="bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-900 dark:text-white font-bold py-2 px-4 rounded transition-colors">
+                      Abrir painel
+                    </button>
+                    <button onClick={handleDisconnectLinkedin} disabled={disconnectingLinkedin}
+                      className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold py-2 px-4 rounded transition-colors flex items-center gap-2">
+                      {disconnectingLinkedin && <Loader2 className="w-4 h-4 animate-spin" />}
+                      🗑️ {t('settings.disconnect')}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 mb-4">
+                    {t('settings.not_connected')}
+                  </span>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 mt-3">
+                    Conecte seu perfil do LinkedIn para publicar textos, imagens e vídeos direto da plataforma.
+                  </p>
+                  <button onClick={handleConnectLinkedin} disabled={connectingLinkedin}
+                    className="bg-[#0A66C2] hover:bg-[#08529b] disabled:opacity-50 text-white font-bold py-2 px-4 rounded transition-colors flex items-center gap-2">
+                    {connectingLinkedin && <Loader2 className="w-4 h-4 animate-spin" />}
+                    Conectar LinkedIn
                   </button>
                 </div>
               )}
