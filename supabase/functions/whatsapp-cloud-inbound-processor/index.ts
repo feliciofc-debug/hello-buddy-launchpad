@@ -4510,6 +4510,23 @@ const TOOLS = [
   {
     type: "function",
     function: {
+      name: "publicar_linkedin",
+      description: "💼 Publica um post no LINKEDIN (perfil pessoal) do responsável. Use quando ele disser 'publica no LinkedIn', 'poste isso no meu LinkedIn'. Tom profissional: sem emojis, sem gírias, frases diretas. NUNCA coloque link no corpo do texto — o link vai no PRIMEIRO COMENTÁRIO (campo link) para não reduzir o alcance. Restrito ao responsável da conta.",
+      parameters: {
+        type: "object",
+        properties: {
+          texto: { type: "string", description: "Texto do post em tom profissional, sem link e sem emojis." },
+          link: { type: "string", description: "Link que deve ir no primeiro comentário. Vazio se não houver." },
+          comentario: { type: "string", description: "Texto do primeiro comentário com o link. Vazio = eu monto automaticamente." },
+          image_url: { type: "string", description: "URL pública de uma imagem para acompanhar o post, se houver." },
+        },
+        required: ["texto"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
 
       name: "criar_carrossel",
       description: "🎠 Cria um CARROSSEL de Instagram (vários cards com texto) sobre um TEMA e PUBLICA no Instagram da conta. Use quando o responsável pedir 'faz um carrossel sobre X', 'monta um carrossel de dicas', 'cria um carrossel'. NÃO use para post de imagem única (use gerar_imagem/postar_redes_sociais). FLUXO: 1) na PRIMEIRA chamada passe só o tema, SEM cor — eu envio automaticamente uma lista de cores pro usuário tocar; 2) quando ele responder a cor (ex: 'Azul', 'Dourado'), chame de novo com tema + cor e publicar=true. Nunca invente a cor: se ele não disse, deixe o campo cor vazio. Restrito ao responsável da conta.",
