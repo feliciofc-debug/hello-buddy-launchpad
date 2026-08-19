@@ -11,3 +11,4 @@
 - [Prompt template compartilhado](mem://features/pj/prompt-template-compartilhado-segmento) — Corpo do prompt por segmento; tenant guarda só variáveis (rede Ademicon)
 - [Copy template da rede Ademicon](mem://features/marketing/copy-template-rede-ademicon) — Voz das copies em copy_template do segmento; consórcio não é crédito, sem CTA, assinatura com nome
 - [LinkedIn Fase 1](mem://integrations/linkedin/fase-1-perfil-pessoal) — OAuth perfil pessoal, publicação e link sempre no 1º comentário
+- [LinkedIn comentários bloqueados](mem://constraints/linkedin-comentarios-nao-liberados) — 403 ACCESS_DENIED em socialActions; fallback põe o link no corpo do post

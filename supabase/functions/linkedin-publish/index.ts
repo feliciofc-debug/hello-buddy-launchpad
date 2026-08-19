@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
-import { comentarNoPost, criarPost, separarLink } from '../_shared/linkedin.ts';
+import { adicionarLinkNoCorpo, comentarNoPost, criarPost, separarLink } from '../_shared/linkedin.ts';
+
 
 /**
  * Publica no perfil pessoal do LinkedIn do tenant.
@@ -62,6 +63,7 @@ Deno.serve(async (req) => {
 
     let comentarioOk = false;
     let comentarioErro: string | null = null;
+    let linkNoCorpo = false;
     const linkFinal = link || (typeof body.link_url === 'string' ? body.link_url : null);
     if (linkNoComentario && linkFinal) {
       const mensagem = (body.comentario && String(body.comentario).trim())
@@ -73,6 +75,17 @@ Deno.serve(async (req) => {
       } catch (e) {
         comentarioErro = e instanceof Error ? e.message : 'erro no comentário';
         console.error('Comentário falhou:', comentarioErro);
+        // Fallback: nunca deixar o post sem o link. Reescreve o corpo do post.
+        try {
+          const corpoFinal = `${(corpo || texto).trim()}\n\n${linkFinal}`;
+          await adicionarLinkNoCorpo(conn.access_token, postUrn, corpoFinal);
+          linkNoCorpo = true;
+          console.log('Link adicionado ao corpo do post (fallback)');
+        } catch (e2) {
+          const msg2 = e2 instanceof Error ? e2.message : 'erro ao editar o post';
+          console.error('Fallback de link no corpo falhou:', msg2);
+          comentarioErro = `${comentarioErro} | fallback (link no corpo) também falhou: ${msg2}`;
+        }
       }
     }
 
@@ -82,13 +95,23 @@ Deno.serve(async (req) => {
         linkedin_post_urn: postUrn,
         published_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        error_message: comentarioErro ? `post ok, comentário falhou: ${comentarioErro}` : null,
+        error_message: comentarioErro
+          ? (linkNoCorpo
+            ? `post ok, comentário falhou (link movido para o corpo): ${comentarioErro}`
+            : `post ok SEM LINK, comentário falhou: ${comentarioErro}`)
+          : null,
       }).eq('id', body.queue_id).eq('user_id', userId);
     }
 
     return new Response(JSON.stringify({
-      success: true, post_urn: postUrn, comentario_publicado: comentarioOk, comentario_erro: comentarioErro,
+      success: true,
+      post_urn: postUrn,
+      comentario_publicado: comentarioOk,
+      comentario_erro: comentarioErro,
+      link_no_corpo: linkNoCorpo,
+      link_ausente: Boolean(linkFinal) && !comentarioOk && !linkNoCorpo,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erro desconhecido';
     console.error('linkedin-publish:', msg);
