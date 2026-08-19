@@ -5369,6 +5369,7 @@ async function runTool(
   if (name === "salvar_midia_biblioteca") return { result: await toolSalvarMidiaBiblioteca(args ?? {}, ctx) };
   if (name === "postar_midia_biblioteca") return { result: await toolPostarMidiaBiblioteca(args ?? {}, ctx) };
   if (name === "criar_carrossel") return { result: await toolCriarCarrossel(args ?? {}, ctx) };
+  if (name === "publicar_linkedin") return { result: await toolPublicarLinkedin(args ?? {}, ctx) };
   if (name === "criar_anuncio") {
     const r = await toolCriarAnuncio(args ?? {}, ctx);
     let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}
