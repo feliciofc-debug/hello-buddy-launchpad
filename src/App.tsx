@@ -22,7 +22,6 @@ import Prospects from "./pages/Prospects";
 import Configuracoes from "./pages/Configuracoes";
 
 import SettingsPage from "./components/SettingsPage";
-import ReviewerLogin from "./pages/ReviewerLogin";
 import AuthCallbackMetaPage from "./pages/AuthCallbackMetaPage";
 import IAMarketing from "./pages/IAMarketing";
 import RedesSociais from "./pages/RedesSociais";
@@ -154,7 +153,6 @@ const App = () => (
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/meus-produtos" element={<MeusProdutos />} />
           <Route path="/midias" element={<Midias />} />
-            <Route path="/reviewer" element={<ReviewerLogin />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/data-deletion" element={<DataDeletion />} />

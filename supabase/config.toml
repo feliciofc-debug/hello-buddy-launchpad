@@ -76,9 +76,6 @@ verify_jwt = false
 [functions.shopee-product-search]
 verify_jwt = false
 
-[functions.create-reviewer-user]
-verify_jwt = false
-
 [functions.generate-tesmann-content]
 verify_jwt = false
 
