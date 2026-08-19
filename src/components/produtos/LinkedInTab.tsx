@@ -127,12 +127,11 @@ export default function LinkedInTab() {
         </Card>
       )}
 
-      {/* Sub-abas Fotos / Vídeos / Produtos */}
-      <Tabs value={subAba} onValueChange={(v) => setSubAba(v as 'fotos' | 'videos' | 'produtos')}>
+      {/* Sub-abas Fotos / Vídeos */}
+      <Tabs value={subAba} onValueChange={(v) => setSubAba(v as 'fotos' | 'videos')}>
         <TabsList>
           <TabsTrigger value="fotos">Fotos</TabsTrigger>
           <TabsTrigger value="videos">Vídeos</TabsTrigger>
-          <TabsTrigger value="produtos">Produtos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="fotos" className="mt-4">
@@ -141,10 +140,6 @@ export default function LinkedInTab() {
 
         <TabsContent value="videos" className="mt-4">
           <LinkedInComposer midia="video" conectado={conectado} onPublicado={carregarHistorico} />
-        </TabsContent>
-
-        <TabsContent value="produtos" className="mt-4">
-          <LinkedInProdutosGrid />
         </TabsContent>
       </Tabs>
 
