@@ -880,6 +880,23 @@ export default function MeusProdutos() {
     fetchUserId();
   }, []);
 
+  // Retorno do OAuth do LinkedIn (?linkedin=conectado | ?linkedin=erro&motivo=...)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get('linkedin');
+    if (!status) return;
+    if (status === 'conectado') {
+      toast.success('LinkedIn conectado com sucesso');
+    } else if (status === 'erro') {
+      toast.error(params.get('motivo') || 'Erro ao conectar o LinkedIn');
+    }
+    params.delete('linkedin');
+    params.delete('motivo');
+    const query = params.toString();
+    window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
+  }, []);
+
+
   const fetchUserId = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
