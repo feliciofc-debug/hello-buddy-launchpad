@@ -51,6 +51,7 @@ export default function LinkedInTab() {
           .select('*')
           .eq('user_id', user.id)
           .eq('platform', 'linkedin')
+          .neq('status', 'rascunho')
           .order('created_at', { ascending: false })
           .limit(20),
       ]);
@@ -72,6 +73,7 @@ export default function LinkedInTab() {
       .select('*')
       .eq('user_id', user.id)
       .eq('platform', 'linkedin')
+      .neq('status', 'rascunho')
       .order('created_at', { ascending: false })
       .limit(20);
     setHistorico((data as HistoricoItem[]) || []);
