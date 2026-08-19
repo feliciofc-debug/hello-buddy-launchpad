@@ -612,6 +612,42 @@ serve(async (req) => {
             } else if (config.postar_instagram) {
               console.log(`⚠️ [AUTOPILOT] Instagram pulado para ${produto.nome}: cliente sem Instagram conectado`)
             }
+
+            if (canPostLinkedin) {
+              const horarioLi = new Date(horarioPost.getTime() + 10 * 60 * 1000)
+              const linkedinInsert = await supabase
+                .from('social_posts_queue')
+                .insert({
+                  user_id: config.user_id,
+                  produto_id: produto.id,
+                  produto_source: 'produtos',
+                  platform: 'linkedin',
+                  post_text: textoFacebook,
+                  post_text_linkedin: textoFacebook,
+                  image_url: imagemUrl,
+                  link_url: linkProduto,
+                  status: 'pendente',
+                  scheduled_at: horarioLi.toISOString(),
+                })
+                .select('id')
+                .single()
+
+              if (linkedinInsert.error) {
+                console.error('❌ [AUTOPILOT] Erro insert LinkedIn:', linkedinInsert.error)
+                throw new Error(`Erro ao inserir LinkedIn na fila: ${linkedinInsert.error.message}`)
+              }
+
+              postsAgendadosComSucesso++
+
+              console.log('💼 [AUTOPILOT] LinkedIn agendado com sucesso', {
+                queue_id: linkedinInsert.data?.id,
+                produto_id: produto.id,
+                horario_utc: horarioLi.toISOString(),
+                horario_sp: formatSaoPauloIso(horarioLi),
+              })
+            } else if (config.postar_linkedin) {
+              console.log(`⚠️ [AUTOPILOT] LinkedIn pulado para ${produto.nome}: cliente sem LinkedIn conectado`)
+            }
           } catch (produtoError) {
             const errMsg = produtoError instanceof Error ? produtoError.message : 'Erro desconhecido'
             console.error(`❌ [AUTOPILOT] Erro no produto ${produto.nome} (${produto.id}), CONTINUANDO com próximo produto:`, errMsg)
