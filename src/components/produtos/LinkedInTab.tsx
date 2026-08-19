@@ -31,7 +31,7 @@ export default function LinkedInTab() {
   const [loading, setLoading] = useState(true);
   const [conn, setConn] = useState<LinkedInConn | null>(null);
   const [historico, setHistorico] = useState<HistoricoItem[]>([]);
-  const [subAba, setSubAba] = useState<'fotos' | 'videos'>('fotos');
+  const [subAba, setSubAba] = useState<'fotos' | 'videos' | 'produtos'>('fotos');
 
   const conectado = Boolean(conn && conn.is_active);
 
