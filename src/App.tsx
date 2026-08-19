@@ -64,6 +64,7 @@ import SeguidoresConcorrentes from "./pages/SeguidoresConcorrentes";
 import PietroDashboard from "./pages/PietroDashboard";
 import PainelAfiliado from "./pages/PainelAfiliado";
 import TikTokCallback from "./pages/TikTokCallback";
+import LinkedInPainel from "./pages/LinkedInPainel";
 import Termos from "./pages/Termos";
 import Privacidade from "./pages/Privacidade";
 import WhatsAppAutomacaoPJ from "./pages/pj/WhatsAppAutomacaoPJ";
