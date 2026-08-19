@@ -352,3 +352,9 @@ verify_jwt = false
 
 [functions.video-render-maintenance]
 verify_jwt = false
+
+[functions.linkedin-oauth-callback]
+verify_jwt = false
+
+[functions.linkedin-token-refresh]
+verify_jwt = false
