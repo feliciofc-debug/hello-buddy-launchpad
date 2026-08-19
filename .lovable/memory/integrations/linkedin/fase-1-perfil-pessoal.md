@@ -11,7 +11,7 @@ Arquitetura:
 - Edge functions: `linkedin-oauth-start` (gera state), `linkedin-oauth-callback` (verify_jwt=false, redirect_uri = URL da própria função), `linkedin-publish`, `linkedin-token-refresh` (cron diário 04:10; access ~60d, refresh ~365d; marca `alert_status='reconectar'`).
 - Header obrigatório `LinkedIn-Version: 202601` + `X-Restli-Protocol-Version: 2.0.0`.
 
-REGRA DE ALCANCE (atualizada): a API de comentários está bloqueada (403 partnerApiSocialActions.CREATE), então o link vai no CORPO, posicionado pelo helper `posicionarLinkLinkedIn` — nunca na primeira linha, sempre depois do raciocínio e ANTES das hashtags. O toggle e a tentativa de comentário permanecem: quando a permissão de parceiro sair, volta ao 1º comentário sem refazer nada.
+REGRA DE ALCANCE (definitiva): comentário e edição de post são bloqueados (403) no escopo atual. O link é montado no `commentary` ANTES da criação, via `posicionarLinkLinkedIn` — nunca na primeira linha, sempre depois do raciocínio e ANTES das hashtags. Uma única chamada POST /rest/posts, nada depois. Toggle e tentativa de comentário ficam em try/catch silencioso para o futuro.
 
 ESTRUTURA DA COPY LINKEDIN: (1) observação/raciocínio, (2) um argumento técnico, (3) fecho sem convite/CTA, (4) link, (5) 2-3 hashtags. Proibido escrever "link nos comentários", "link abaixo" e variações.
 
