@@ -8,7 +8,6 @@ import { Linkedin, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatSaoPauloDateTime } from '@/lib/sao-paulo-time';
 import LinkedInComposer from '@/components/produtos/LinkedInComposer';
-import LinkedInProdutosGrid from '@/components/produtos/LinkedInProdutosGrid';
 
 interface LinkedInConn {
   id: string;
@@ -31,7 +30,7 @@ export default function LinkedInTab() {
   const [loading, setLoading] = useState(true);
   const [conn, setConn] = useState<LinkedInConn | null>(null);
   const [historico, setHistorico] = useState<HistoricoItem[]>([]);
-  const [subAba, setSubAba] = useState<'fotos' | 'videos' | 'produtos'>('fotos');
+  const [subAba, setSubAba] = useState<'fotos' | 'videos'>('fotos');
 
   const conectado = Boolean(conn && conn.is_active);
 
@@ -128,12 +127,11 @@ export default function LinkedInTab() {
         </Card>
       )}
 
-      {/* Sub-abas Fotos / Vídeos / Produtos */}
-      <Tabs value={subAba} onValueChange={(v) => setSubAba(v as 'fotos' | 'videos' | 'produtos')}>
+      {/* Sub-abas Fotos / Vídeos */}
+      <Tabs value={subAba} onValueChange={(v) => setSubAba(v as 'fotos' | 'videos')}>
         <TabsList>
           <TabsTrigger value="fotos">Fotos</TabsTrigger>
           <TabsTrigger value="videos">Vídeos</TabsTrigger>
-          <TabsTrigger value="produtos">Produtos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="fotos" className="mt-4">
@@ -142,10 +140,6 @@ export default function LinkedInTab() {
 
         <TabsContent value="videos" className="mt-4">
           <LinkedInComposer midia="video" conectado={conectado} onPublicado={carregarHistorico} />
-        </TabsContent>
-
-        <TabsContent value="produtos" className="mt-4">
-          <LinkedInProdutosGrid />
         </TabsContent>
       </Tabs>
 
