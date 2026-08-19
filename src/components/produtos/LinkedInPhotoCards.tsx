@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { ImagePlus, Linkedin, Loader2, Trash2, Upload } from 'lucide-react';
+import { CalendarClock, ImagePlus, Linkedin, Loader2, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import LinkedInComposer from '@/components/produtos/LinkedInComposer';
 
@@ -26,6 +27,47 @@ export default function LinkedInPhotoCards({ conectado, onPublicado }: Props) {
   const [carregando, setCarregando] = useState(true);
   const [enviando, setEnviando] = useState(false);
   const [selecionado, setSelecionado] = useState<CriativoLinkedIn | null>(null);
+  const [datas, setDatas] = useState<Record<string, string>>({});
+  const [agendandoId, setAgendandoId] = useState<string | null>(null);
+
+  const agendarCard = async (criativo: CriativoLinkedIn) => {
+    const valor = datas[criativo.id];
+    if (!valor) return;
+    const quando = new Date(valor);
+    if (Number.isNaN(quando.getTime()) || quando.getTime() < Date.now()) {
+      toast.error('Escolha uma data e hora futuras');
+      return;
+    }
+    if (!criativo.post_text_linkedin?.trim()) {
+      toast.error('Escreva a copy antes de agendar: clique em "Postar no LinkedIn" e gere o texto');
+      return;
+    }
+
+    setAgendandoId(criativo.id);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Não autenticado');
+
+      const { error } = await supabase
+        .from('social_posts_queue')
+        .update({
+          status: 'pendente',
+          post_text: criativo.post_text_linkedin,
+          scheduled_at: quando.toISOString(),
+        })
+        .eq('id', criativo.id)
+        .eq('user_id', user.id);
+      if (error) throw error;
+
+      toast.success(`Agendado para ${quando.toLocaleString('pt-BR')}`);
+      setCriativos((atual) => atual.filter((item) => item.id !== criativo.id));
+      onPublicado();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao agendar');
+    } finally {
+      setAgendandoId(null);
+    }
+  };
 
   const carregar = async () => {
     const { data: { user } } = await supabase.auth.getUser();
