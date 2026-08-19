@@ -97,8 +97,6 @@ export default function LinkedInPainel() {
           texto,
           image_url: imageUrl || undefined,
           link_url: linkUrl || undefined,
-          comentario: comentario || undefined,
-          link_no_primeiro_comentario: linkNoComentario,
         },
       });
       if (error) throw error;
@@ -111,18 +109,13 @@ export default function LinkedInPainel() {
       }
 
 
-      setTexto(""); setImageUrl(""); setLinkUrl(""); setComentario("");
+      setTexto(""); setImageUrl(""); setLinkUrl("");
       carregar();
     } catch (err: any) {
       toast.error(err?.message || "Erro ao publicar");
     } finally {
       setPublicando(false);
     }
-  };
-
-  const preencherComentarioSugerido = () => {
-    const link = linkUrl.trim();
-    setComentario(link ? `Deixo o link aqui para quem quiser ver os detalhes: ${link}` : "");
   };
 
   if (loading) {
