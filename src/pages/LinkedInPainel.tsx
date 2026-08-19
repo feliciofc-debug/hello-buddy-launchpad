@@ -227,8 +227,8 @@ export default function LinkedInPainel() {
 
           <div className="flex items-center justify-between rounded-lg border p-3">
             <div>
-              <p className="text-sm font-medium text-foreground">Link no primeiro comentário</p>
-              <p className="text-xs text-muted-foreground">Recomendado: o LinkedIn reduz o alcance de posts com link no corpo.</p>
+              <p className="text-sm font-medium text-foreground">Tentar link no primeiro comentário</p>
+              <p className="text-xs text-muted-foreground">Hoje o LinkedIn ainda não libera comentários para o app, então o link entra no fim do post. Deixe ligado: quando a permissão de parceiro sair, ele volta para o comentário sozinho.</p>
             </div>
             <Switch checked={linkNoComentario} onCheckedChange={setLinkNoComentario} />
           </div>
