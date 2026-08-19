@@ -1,11 +1,11 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
-import { comentarNoPost, criarPost, posicionarLinkLinkedIn, separarLink } from '../_shared/linkedin.ts';
+import { criarPost, posicionarLinkLinkedIn, separarLink } from '../_shared/linkedin.ts';
 
 
 /**
  * Publica no perfil pessoal do LinkedIn do tenant.
- * Body: { user_id?, texto, image_url?, video_url?, link_no_primeiro_comentario?, comentario?, queue_id? }
+ * Body: { user_id?, texto, image_url?, video_url?, link_url?, queue_id? }
  * Se não vier user_id, usa o usuário do JWT.
  */
 Deno.serve(async (req) => {
@@ -54,7 +54,10 @@ Deno.serve(async (req) => {
     // publicação: PARTIAL_UPDATE e comentário são bloqueados (403) no escopo
     // w_member_social, que só permite CRIAR post.
     const { corpo, link } = separarLink(texto);
-    const linkFinal = link || (typeof body.link_url === 'string' && body.link_url.trim() ? body.link_url.trim() : null);
+    const linkExplicito = typeof body.link_url === 'string' && body.link_url.trim()
+      ? body.link_url.trim()
+      : null;
+    const linkFinal = linkExplicito || link;
     const textoFinal = linkFinal ? posicionarLinkLinkedIn(corpo || texto, linkFinal) : texto;
 
     const postUrn = await criarPost({
@@ -64,22 +67,6 @@ Deno.serve(async (req) => {
       imageUrl: body.image_url || null,
       videoUrl: body.video_url || null,
     });
-
-    // Tentativa opcional de comentário — mantida apenas para quando a permissão
-    // de parceiro (Community Management API) for liberada. Falha em silêncio e
-    // nunca é o caminho do link.
-    let comentarioOk = false;
-    if (body.link_no_primeiro_comentario !== false && linkFinal) {
-      try {
-        const mensagem = (body.comentario && String(body.comentario).trim())
-          ? String(body.comentario).trim()
-          : `Link: ${linkFinal}`;
-        await comentarNoPost(conn.access_token, conn.member_urn, postUrn, mensagem);
-        comentarioOk = true;
-      } catch (_e) {
-        // silencioso por design: o link já está no corpo do post
-      }
-    }
 
     if (body.queue_id) {
       await admin.from('social_posts_queue').update({
@@ -94,7 +81,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({
       success: true,
       post_urn: postUrn,
-      comentario_publicado: comentarioOk,
+      comentario_publicado: false,
       comentario_erro: null,
       link_no_corpo: Boolean(linkFinal),
       link_ausente: false,

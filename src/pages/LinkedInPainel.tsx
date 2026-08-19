@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { ArrowLeft, Linkedin, Loader2, CheckCircle, XCircle, RefreshCw, Send } from "lucide-react";
@@ -24,8 +24,6 @@ export default function LinkedInPainel() {
   const [texto, setTexto] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
-  const [comentario, setComentario] = useState("");
-  const [linkNoComentario, setLinkNoComentario] = useState(true);
 
   useEffect(() => {
     const status = searchParams.get("linkedin");
@@ -99,8 +97,6 @@ export default function LinkedInPainel() {
           texto,
           image_url: imageUrl || undefined,
           link_url: linkUrl || undefined,
-          comentario: comentario || undefined,
-          link_no_primeiro_comentario: linkNoComentario,
         },
       });
       if (error) throw error;
@@ -113,18 +109,13 @@ export default function LinkedInPainel() {
       }
 
 
-      setTexto(""); setImageUrl(""); setLinkUrl(""); setComentario("");
+      setTexto(""); setImageUrl(""); setLinkUrl("");
       carregar();
     } catch (err: any) {
       toast.error(err?.message || "Erro ao publicar");
     } finally {
       setPublicando(false);
     }
-  };
-
-  const preencherComentarioSugerido = () => {
-    const link = linkUrl.trim();
-    setComentario(link ? `Deixo o link aqui para quem quiser ver os detalhes: ${link}` : "");
   };
 
   if (loading) {
@@ -191,7 +182,7 @@ export default function LinkedInPainel() {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Novo post</CardTitle>
-          <CardDescription>Tom profissional, sem emojis em excesso. Estrutura: observação, um argumento técnico, fecho sem convite, link e 2-3 hashtags. O link entra no fim do post — assim que a permissão de parceiro do LinkedIn for aprovada, ele volta para o primeiro comentário automaticamente.</CardDescription>
+          <CardDescription>Tom profissional, sem emojis em excesso. Estrutura: observação, um argumento técnico, fecho sem convite, link e 2-3 hashtags. O link entra no fim do post.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -216,25 +207,9 @@ export default function LinkedInPainel() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between rounded-lg border p-3">
-            <div>
-              <p className="text-sm font-medium text-foreground">Tentar link no primeiro comentário</p>
-              <p className="text-xs text-muted-foreground">Hoje o LinkedIn ainda não libera comentários para o app, então o link entra no fim do post. Deixe ligado: quando a permissão de parceiro sair, ele volta para o comentário sozinho.</p>
-            </div>
-            <Switch checked={linkNoComentario} onCheckedChange={setLinkNoComentario} />
-          </div>
-
-          {linkNoComentario && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="li-coment">Comentário sugerido</Label>
-                <Button type="button" size="sm" variant="ghost" onClick={preencherComentarioSugerido}>
-                  Sugerir texto
-                </Button>
-              </div>
-              <Input id="li-coment" value={comentario} onChange={(e) => setComentario(e.target.value)} placeholder="Link: https://…" />
-            </div>
-          )}
+          <p className="text-sm text-muted-foreground">
+            O link entra no fim do post, antes das hashtags. Comentário automático só depois da aprovação do Community Management API.
+          </p>
 
           <Button onClick={publicar} disabled={publicando || !conn} className="w-full">
             {publicando ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
