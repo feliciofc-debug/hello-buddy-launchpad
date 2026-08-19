@@ -65,7 +65,7 @@ export function PostarLinkedInModal({ open, onOpenChange, produto }: PostarLinke
   // LinkedIn não tem carrossel: apenas a primeira imagem do produto.
   useEffect(() => {
     if (!open) return;
-    const imgs = getAllProductImages(produto as any) || [];
+    const imgs = getAllProductImages(produto.imagem_url ?? null, (produto as any).imagens) || [];
     setImagem(imgs[0] || produto.imagem_url || null);
   }, [open, produto]);
 
