@@ -17,6 +17,59 @@ const SettingsPage = () => {
   const [tiktokConnection, setTiktokConnection] = useState<any>(null);
   const [loadingTiktok, setLoadingTiktok] = useState(true);
   const [disconnectingTiktok, setDisconnectingTiktok] = useState(false);
+  const [linkedinConnection, setLinkedinConnection] = useState<any>(null);
+  const [loadingLinkedin, setLoadingLinkedin] = useState(true);
+  const [connectingLinkedin, setConnectingLinkedin] = useState(false);
+  const [disconnectingLinkedin, setDisconnectingLinkedin] = useState(false);
+
+  const fetchLinkedinConnection = async () => {
+    setLoadingLinkedin(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from('linkedin_connections' as any)
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      setLinkedinConnection(data);
+    } finally {
+      setLoadingLinkedin(false);
+    }
+  };
+
+  const handleConnectLinkedin = async () => {
+    setConnectingLinkedin(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('linkedin-oauth-start', {
+        body: { redirect_to: '/configuracoes' },
+      });
+      if (error) throw error;
+      if (!data?.auth_url) throw new Error(data?.error || 'Não foi possível iniciar a conexão');
+      window.location.href = data.auth_url;
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao conectar o LinkedIn');
+      setConnectingLinkedin(false);
+    }
+  };
+
+  const handleDisconnectLinkedin = async () => {
+    if (!window.confirm('Tem certeza que deseja desconectar a conta do LinkedIn?')) return;
+    setDisconnectingLinkedin(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { error } = await supabase.from('linkedin_connections' as any).delete().eq('user_id', user.id);
+      if (error) throw error;
+      setLinkedinConnection(null);
+      toast.success('Conta do LinkedIn desconectada.');
+    } catch {
+      toast.error('Erro ao desconectar. Tente novamente.');
+    } finally {
+      setDisconnectingLinkedin(false);
+    }
+  };
+
 
   const fetchTiktokConnection = async () => {
     setLoadingTiktok(true);
