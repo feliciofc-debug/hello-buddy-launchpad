@@ -473,16 +473,30 @@ serve(async (req) => {
             const canPostFacebook = Boolean(config.postar_facebook && metaConn?.page_id)
             const canPostInstagram = Boolean(config.postar_instagram && metaConn?.ig_account_id)
 
-            console.log('🔐 [AUTOPILOT] Canais Meta do cliente', {
+            let canPostLinkedin = false
+            if (config.postar_linkedin) {
+              const { data: liConn } = await supabase
+                .from('linkedin_connections')
+                .select('id, is_active, token_expires_at')
+                .eq('user_id', config.user_id)
+                .maybeSingle()
+              canPostLinkedin = Boolean(
+                liConn?.is_active &&
+                (!liConn.token_expires_at || new Date(liConn.token_expires_at).getTime() > Date.now()),
+              )
+            }
+
+            console.log('🔐 [AUTOPILOT] Canais do cliente', {
               user_id: config.user_id,
               facebook: canPostFacebook,
               instagram: canPostInstagram,
+              linkedin: canPostLinkedin,
               page_id: clientPageId || null,
               ig_account_id: metaConn?.ig_account_id || null,
             })
 
-            if (!canPostFacebook && !canPostInstagram) {
-              throw new Error('Cliente sem conexão Meta ativa para os canais configurados')
+            if (!canPostFacebook && !canPostInstagram && !canPostLinkedin) {
+              throw new Error('Cliente sem conexão ativa para os canais configurados')
             }
 
             // 🛡️ ANTI-DUPLICAÇÃO: Não agendar se o produto já tem post recente (pendente/publicado nas últimas 12h)
