@@ -50,42 +50,34 @@ Deno.serve(async (req) => {
       throw new Error('Token do LinkedIn expirado — reconecte a conta');
     }
 
-    const linkNoComentario = body.link_no_primeiro_comentario !== false;
-    const { corpo, link } = linkNoComentario ? separarLink(texto) : { corpo: texto, link: null };
+    // O link faz parte do texto DESDE O INÍCIO. Nada é acrescentado depois da
+    // publicação: PARTIAL_UPDATE e comentário são bloqueados (403) no escopo
+    // w_member_social, que só permite CRIAR post.
+    const { corpo, link } = separarLink(texto);
+    const linkFinal = link || (typeof body.link_url === 'string' && body.link_url.trim() ? body.link_url.trim() : null);
+    const textoFinal = linkFinal ? posicionarLinkLinkedIn(corpo || texto, linkFinal) : texto;
 
     const postUrn = await criarPost({
       accessToken: conn.access_token,
       authorUrn: conn.member_urn,
-      texto: corpo || texto,
+      texto: textoFinal,
       imageUrl: body.image_url || null,
       videoUrl: body.video_url || null,
     });
 
+    // Tentativa opcional de comentário — mantida apenas para quando a permissão
+    // de parceiro (Community Management API) for liberada. Falha em silêncio e
+    // nunca é o caminho do link.
     let comentarioOk = false;
-    let comentarioErro: string | null = null;
-    let linkNoCorpo = false;
-    const linkFinal = link || (typeof body.link_url === 'string' ? body.link_url : null);
-    if (linkNoComentario && linkFinal) {
-      const mensagem = (body.comentario && String(body.comentario).trim())
-        ? String(body.comentario).trim()
-        : `Link: ${linkFinal}`;
+    if (body.link_no_primeiro_comentario !== false && linkFinal) {
       try {
+        const mensagem = (body.comentario && String(body.comentario).trim())
+          ? String(body.comentario).trim()
+          : `Link: ${linkFinal}`;
         await comentarNoPost(conn.access_token, conn.member_urn, postUrn, mensagem);
         comentarioOk = true;
-      } catch (e) {
-        comentarioErro = e instanceof Error ? e.message : 'erro no comentário';
-        console.error('Comentário falhou:', comentarioErro);
-        // Fallback: nunca deixar o post sem o link. Reescreve o corpo do post.
-        try {
-          const corpoFinal = posicionarLinkLinkedIn(corpo || texto, linkFinal);
-          await adicionarLinkNoCorpo(conn.access_token, postUrn, corpoFinal);
-          linkNoCorpo = true;
-          console.log('Link adicionado ao corpo do post (fallback)');
-        } catch (e2) {
-          const msg2 = e2 instanceof Error ? e2.message : 'erro ao editar o post';
-          console.error('Fallback de link no corpo falhou:', msg2);
-          comentarioErro = `${comentarioErro} | fallback (link no corpo) também falhou: ${msg2}`;
-        }
+      } catch (_e) {
+        // silencioso por design: o link já está no corpo do post
       }
     }
 
@@ -95,11 +87,7 @@ Deno.serve(async (req) => {
         linkedin_post_urn: postUrn,
         published_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        error_message: comentarioErro
-          ? (linkNoCorpo
-            ? `post ok, comentário falhou (link movido para o corpo): ${comentarioErro}`
-            : `post ok SEM LINK, comentário falhou: ${comentarioErro}`)
-          : null,
+        error_message: null,
       }).eq('id', body.queue_id).eq('user_id', userId);
     }
 
@@ -107,10 +95,11 @@ Deno.serve(async (req) => {
       success: true,
       post_urn: postUrn,
       comentario_publicado: comentarioOk,
-      comentario_erro: comentarioErro,
-      link_no_corpo: linkNoCorpo,
-      link_ausente: Boolean(linkFinal) && !comentarioOk && !linkNoCorpo,
+      comentario_erro: null,
+      link_no_corpo: Boolean(linkFinal),
+      link_ausente: false,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erro desconhecido';
