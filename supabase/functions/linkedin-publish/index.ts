@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
         console.error('Comentário falhou:', comentarioErro);
         // Fallback: nunca deixar o post sem o link. Reescreve o corpo do post.
         try {
-          const corpoFinal = `${(corpo || texto).trim()}\n\n${linkFinal}`;
+          const corpoFinal = posicionarLinkLinkedIn(corpo || texto, linkFinal);
           await adicionarLinkNoCorpo(conn.access_token, postUrn, corpoFinal);
           linkNoCorpo = true;
           console.log('Link adicionado ao corpo do post (fallback)');
