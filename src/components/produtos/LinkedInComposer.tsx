@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Upload, X, Send, Sparkles } from 'lucide-react';
+import { Loader2, Upload, X, Send, Sparkles, CalendarClock } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Props {
@@ -34,6 +34,8 @@ export default function LinkedInComposer({ midia, conectado, onPublicado, initia
   const [mediaUrl, setMediaUrl] = useState<string | null>(initialMediaUrl || null);
   const [uploading, setUploading] = useState(false);
   const [publicando, setPublicando] = useState(false);
+  const [agendarEm, setAgendarEm] = useState('');
+  const [agendando, setAgendando] = useState(false);
 
   const [tema, setTema] = useState('');
   const [produtoId, setProdutoId] = useState<string>('');
@@ -167,6 +169,54 @@ export default function LinkedInComposer({ midia, conectado, onPublicado, initia
     }
   };
 
+  const agendar = async () => {
+    if (!texto.trim() || !agendarEm) return;
+    const quando = new Date(agendarEm);
+    if (Number.isNaN(quando.getTime())) {
+      toast.error('Data de agendamento inválida');
+      return;
+    }
+    if (quando.getTime() < Date.now()) {
+      toast.error('Escolha uma data futura');
+      return;
+    }
+
+    setAgendando(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Não autenticado');
+
+      const payload = {
+        user_id: user.id,
+        platform: 'linkedin',
+        post_text: texto,
+        post_text_linkedin: texto,
+        image_url: ehFoto ? mediaUrl : null,
+        video_url: ehFoto ? null : mediaUrl,
+        link_url: linkUrl || null,
+        status: 'pendente',
+        scheduled_at: quando.toISOString(),
+      };
+
+      const query = draftId
+        ? supabase.from('social_posts_queue').update(payload).eq('id', draftId).eq('user_id', user.id)
+        : supabase.from('social_posts_queue').insert(payload);
+      const { error } = await query;
+      if (error) throw error;
+
+      toast.success(`Post agendado para ${quando.toLocaleString('pt-BR')}`);
+      setTexto('');
+      setLinkUrl('');
+      setMediaUrl(null);
+      setAgendarEm('');
+      onPublicado();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao agendar');
+    } finally {
+      setAgendando(false);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -288,10 +338,35 @@ export default function LinkedInComposer({ midia, conectado, onPublicado, initia
           </div>
         )}
 
-        <Button onClick={publicar} disabled={!conectado || !texto.trim() || publicando || uploading}>
-          {publicando ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
-          Publicar no LinkedIn
-        </Button>
+        <div className="space-y-2 rounded-md border p-3">
+          <Label className="flex items-center gap-2">
+            <CalendarClock className="h-4 w-4 text-primary" /> Agendar publicação (opcional)
+          </Label>
+          <Input
+            type="datetime-local"
+            value={agendarEm}
+            onChange={(e) => setAgendarEm(e.target.value)}
+            disabled={!conectado}
+          />
+          <p className="text-xs text-muted-foreground">
+            Se preencher a data, o post entra na fila e é publicado automaticamente no horário.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={publicar} disabled={!conectado || !texto.trim() || publicando || uploading || agendando}>
+            {publicando ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+            Publicar agora
+          </Button>
+          <Button
+            variant="outline"
+            onClick={agendar}
+            disabled={!conectado || !texto.trim() || !agendarEm || agendando || publicando || uploading}
+          >
+            {agendando ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CalendarClock className="h-4 w-4 mr-2" />}
+            Agendar
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );

@@ -1,0 +1,1 @@
+ALTER TABLE public.autopilot_config ADD COLUMN IF NOT EXISTS postar_linkedin boolean NOT NULL DEFAULT false;

@@ -473,16 +473,30 @@ serve(async (req) => {
             const canPostFacebook = Boolean(config.postar_facebook && metaConn?.page_id)
             const canPostInstagram = Boolean(config.postar_instagram && metaConn?.ig_account_id)
 
-            console.log('🔐 [AUTOPILOT] Canais Meta do cliente', {
+            let canPostLinkedin = false
+            if (config.postar_linkedin) {
+              const { data: liConn } = await supabase
+                .from('linkedin_connections')
+                .select('id, is_active, token_expires_at')
+                .eq('user_id', config.user_id)
+                .maybeSingle()
+              canPostLinkedin = Boolean(
+                liConn?.is_active &&
+                (!liConn.token_expires_at || new Date(liConn.token_expires_at).getTime() > Date.now()),
+              )
+            }
+
+            console.log('🔐 [AUTOPILOT] Canais do cliente', {
               user_id: config.user_id,
               facebook: canPostFacebook,
               instagram: canPostInstagram,
+              linkedin: canPostLinkedin,
               page_id: clientPageId || null,
               ig_account_id: metaConn?.ig_account_id || null,
             })
 
-            if (!canPostFacebook && !canPostInstagram) {
-              throw new Error('Cliente sem conexão Meta ativa para os canais configurados')
+            if (!canPostFacebook && !canPostInstagram && !canPostLinkedin) {
+              throw new Error('Cliente sem conexão ativa para os canais configurados')
             }
 
             // 🛡️ ANTI-DUPLICAÇÃO: Não agendar se o produto já tem post recente (pendente/publicado nas últimas 12h)
@@ -597,6 +611,42 @@ serve(async (req) => {
               console.log(`⚠️ [AUTOPILOT] Instagram pulado para ${produto.nome}: sem imagem`)
             } else if (config.postar_instagram) {
               console.log(`⚠️ [AUTOPILOT] Instagram pulado para ${produto.nome}: cliente sem Instagram conectado`)
+            }
+
+            if (canPostLinkedin) {
+              const horarioLi = new Date(horarioPost.getTime() + 10 * 60 * 1000)
+              const linkedinInsert = await supabase
+                .from('social_posts_queue')
+                .insert({
+                  user_id: config.user_id,
+                  produto_id: produto.id,
+                  produto_source: 'produtos',
+                  platform: 'linkedin',
+                  post_text: textoFacebook,
+                  post_text_linkedin: textoFacebook,
+                  image_url: imagemUrl,
+                  link_url: linkProduto,
+                  status: 'pendente',
+                  scheduled_at: horarioLi.toISOString(),
+                })
+                .select('id')
+                .single()
+
+              if (linkedinInsert.error) {
+                console.error('❌ [AUTOPILOT] Erro insert LinkedIn:', linkedinInsert.error)
+                throw new Error(`Erro ao inserir LinkedIn na fila: ${linkedinInsert.error.message}`)
+              }
+
+              postsAgendadosComSucesso++
+
+              console.log('💼 [AUTOPILOT] LinkedIn agendado com sucesso', {
+                queue_id: linkedinInsert.data?.id,
+                produto_id: produto.id,
+                horario_utc: horarioLi.toISOString(),
+                horario_sp: formatSaoPauloIso(horarioLi),
+              })
+            } else if (config.postar_linkedin) {
+              console.log(`⚠️ [AUTOPILOT] LinkedIn pulado para ${produto.nome}: cliente sem LinkedIn conectado`)
             }
           } catch (produtoError) {
             const errMsg = produtoError instanceof Error ? produtoError.message : 'Erro desconhecido'

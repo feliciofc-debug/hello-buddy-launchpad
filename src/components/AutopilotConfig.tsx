@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Loader2, Rocket, Facebook, Instagram, Calendar, Clock, Package, Sparkles, Play, Pause, Brain, Video } from "lucide-react";
+import { Loader2, Rocket, Facebook, Instagram, Linkedin, Calendar, Clock, Package, Sparkles, Play, Pause, Brain, Video } from "lucide-react";
 
 export const AutopilotConfig = () => {
   const [loading, setLoading] = useState(true);
@@ -22,6 +22,7 @@ export const AutopilotConfig = () => {
     categoria_filtro: "",
     postar_facebook: true,
     postar_instagram: true,
+    postar_linkedin: false,
     posts_por_dia: 3,
     dias_semana: [1, 2, 3, 4, 5, 6],
     horario_inicio: "08:00",
@@ -133,6 +134,7 @@ export const AutopilotConfig = () => {
         categoria_filtro: config.produto_fonte === "categoria" ? (config.categoria_filtro || null) : null,
         postar_facebook: config.postar_facebook,
         postar_instagram: config.postar_instagram,
+        postar_linkedin: config.postar_linkedin,
         posts_por_dia: config.posts_por_dia,
         dias_semana: config.dias_semana,
         horario_inicio: config.horario_inicio,
@@ -437,6 +439,13 @@ export const AutopilotConfig = () => {
                   <span className="text-sm">Instagram (requer imagem)</span>
                 </div>
                 <Switch checked={config.postar_instagram} onCheckedChange={(v) => setConfig(prev => ({ ...prev, postar_instagram: v }))} />
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Linkedin className="h-4 w-4 text-sky-700" />
+                  <span className="text-sm">LinkedIn</span>
+                </div>
+                <Switch checked={config.postar_linkedin} onCheckedChange={(v) => setConfig(prev => ({ ...prev, postar_linkedin: v }))} />
               </div>
             </div>
 
