@@ -8,6 +8,7 @@ import { Linkedin, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatSaoPauloDateTime } from '@/lib/sao-paulo-time';
 import LinkedInComposer from '@/components/produtos/LinkedInComposer';
+import LinkedInPhotoCards from '@/components/produtos/LinkedInPhotoCards';
 
 interface LinkedInConn {
   id: string;
@@ -50,6 +51,7 @@ export default function LinkedInTab() {
           .select('*')
           .eq('user_id', user.id)
           .eq('platform', 'linkedin')
+          .neq('status', 'rascunho')
           .order('created_at', { ascending: false })
           .limit(20),
       ]);
@@ -71,6 +73,7 @@ export default function LinkedInTab() {
       .select('*')
       .eq('user_id', user.id)
       .eq('platform', 'linkedin')
+      .neq('status', 'rascunho')
       .order('created_at', { ascending: false })
       .limit(20);
     setHistorico((data as HistoricoItem[]) || []);
@@ -135,7 +138,7 @@ export default function LinkedInTab() {
         </TabsList>
 
         <TabsContent value="fotos" className="mt-4">
-          <LinkedInComposer midia="foto" conectado={conectado} onPublicado={carregarHistorico} />
+          <LinkedInPhotoCards conectado={conectado} onPublicado={carregarHistorico} />
         </TabsContent>
 
         <TabsContent value="videos" className="mt-4">
