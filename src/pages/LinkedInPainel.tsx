@@ -109,10 +109,8 @@ export default function LinkedInPainel() {
       if (data.comentario_publicado) {
         toast.success("Publicado no LinkedIn com o link no primeiro comentário");
       } else if (data.link_no_corpo) {
-        toast.warning(
-          `Post publicado, mas não consegui criar o comentário — o link foi colocado no corpo do post. Motivo: ${data.comentario_erro}`,
-          { duration: 12000 }
-        );
+        toast.success("Publicado no LinkedIn com o link no fim do post");
+      
       } else if (data.link_ausente) {
         toast.error(
           `Post publicado SEM o link. Não consegui adicionar o comentário nem editar o post. Motivo: ${data.comentario_erro}`,
@@ -153,7 +151,7 @@ export default function LinkedInPainel() {
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
           <Linkedin className="h-6 w-6 text-[#0A66C2]" /> LinkedIn
         </h1>
-        <p className="text-muted-foreground">Publique no seu perfil pessoal com o link no primeiro comentário</p>
+        <p className="text-muted-foreground">Publique no seu perfil pessoal com o link no fim do post</p>
       </div>
 
       {/* Conexão */}
@@ -200,7 +198,7 @@ export default function LinkedInPainel() {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Novo post</CardTitle>
-          <CardDescription>Tom profissional, sem emojis em excesso. O link vai no primeiro comentário para não reduzir o alcance.</CardDescription>
+          <CardDescription>Tom profissional, sem emojis em excesso. Estrutura: observação, um argumento técnico, fecho sem convite, link e 2-3 hashtags. O link entra no fim do post — assim que a permissão de parceiro do LinkedIn for aprovada, ele volta para o primeiro comentário automaticamente.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -227,8 +225,8 @@ export default function LinkedInPainel() {
 
           <div className="flex items-center justify-between rounded-lg border p-3">
             <div>
-              <p className="text-sm font-medium text-foreground">Link no primeiro comentário</p>
-              <p className="text-xs text-muted-foreground">Recomendado: o LinkedIn reduz o alcance de posts com link no corpo.</p>
+              <p className="text-sm font-medium text-foreground">Tentar link no primeiro comentário</p>
+              <p className="text-xs text-muted-foreground">Hoje o LinkedIn ainda não libera comentários para o app, então o link entra no fim do post. Deixe ligado: quando a permissão de parceiro sair, ele volta para o comentário sozinho.</p>
             </div>
             <Switch checked={linkNoComentario} onCheckedChange={setLinkNoComentario} />
           </div>

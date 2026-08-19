@@ -386,7 +386,7 @@ const SettingsPage = () => {
                 <Linkedin className="w-5 h-5 text-[#0A66C2]" /> LinkedIn (perfil pessoal)
               </h2>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
-                Publique no seu perfil com o link no primeiro comentário, para não reduzir o alcance.
+                Publique no seu perfil pessoal. O link entra no fim do post; assim que a permissão de parceiro do LinkedIn for aprovada, ele volta para o primeiro comentário automaticamente.
               </p>
 
               {loadingLinkedin ? (

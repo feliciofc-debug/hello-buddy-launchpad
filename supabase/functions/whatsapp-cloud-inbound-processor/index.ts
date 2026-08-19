@@ -3319,9 +3319,10 @@ async function toolPublicarLinkedin(
       return JSON.stringify({ erro: "linkedin_nao_conectado", mensagem: "O LinkedIn ainda não está conectado. Conecte em Configurações → LinkedIn." });
     }
 
-    // tom LinkedIn: sem emojis, sem hashtags em excesso, link fora do corpo
+    // tom LinkedIn: sem emojis; link posicionado no fim do texto (antes das hashtags)
     const corpo = texto
       .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "")
+      .replace(/\b(deixo o )?link (nos coment[áa]rios|no primeiro coment[áa]rio|abaixo)\b\.?/gi, "")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
 
@@ -3344,7 +3345,8 @@ async function toolPublicarLinkedin(
       ok: true,
       post_urn: out.post_urn,
       link_no_primeiro_comentario: !!out.comentario_publicado,
-      instrucao: "Confirme em 1-2 linhas que o post foi publicado no LinkedIn e diga se o link entrou no primeiro comentário.",
+      link_no_corpo: !!out.link_no_corpo,
+      instrucao: "Confirme em 1-2 linhas que o post foi publicado no LinkedIn e diga onde ficou o link (fim do post ou primeiro comentário).",
     });
   } catch (e) {
     return JSON.stringify({ erro: (e as Error).message });
@@ -4511,13 +4513,13 @@ const TOOLS = [
     type: "function",
     function: {
       name: "publicar_linkedin",
-      description: "💼 Publica um post no LINKEDIN (perfil pessoal) do responsável. Use quando ele disser 'publica no LinkedIn', 'poste isso no meu LinkedIn'. Tom profissional: sem emojis, sem gírias, frases diretas. NUNCA coloque link no corpo do texto — o link vai no PRIMEIRO COMENTÁRIO (campo link) para não reduzir o alcance. Restrito ao responsável da conta.",
+      description: "💼 Publica um post no LINKEDIN (perfil pessoal) do responsável. Use quando ele disser 'publica no LinkedIn', 'poste isso no meu LinkedIn'. Tom profissional: sem emojis, sem gírias, frases diretas. ESTRUTURA OBRIGATÓRIA da copy: (1) observação ou raciocínio que prenda o leitor; (2) um argumento técnico; (3) fecho que conclui a ideia, sem convite e sem CTA; (4) o link; (5) duas a três hashtags. O link NUNCA na primeira linha — ele entra no FIM do texto, depois do raciocínio e antes das hashtags (mande o link no campo 'link' e eu posiciono). PROIBIDO escrever 'link nos comentários', 'link abaixo', 'deixo o link nos comentários' ou qualquer variação. Restrito ao responsável da conta.",
       parameters: {
         type: "object",
         properties: {
-          texto: { type: "string", description: "Texto do post em tom profissional, sem link e sem emojis." },
-          link: { type: "string", description: "Link que deve ir no primeiro comentário. Vazio se não houver." },
-          comentario: { type: "string", description: "Texto do primeiro comentário com o link. Vazio = eu monto automaticamente." },
+          texto: { type: "string", description: "Texto do post em tom profissional, sem emojis, sem link e sem frases do tipo 'link nos comentários'. Termine no raciocínio e, se houver, deixe as hashtags na última linha." },
+          link: { type: "string", description: "Link do post. Ele será posicionado no fim do texto, antes das hashtags. Vazio se não houver." },
+          comentario: { type: "string", description: "Opcional. Texto do primeiro comentário, usado apenas se a permissão de parceiro do LinkedIn estiver liberada." },
           image_url: { type: "string", description: "URL pública de uma imagem para acompanhar o post, se houver." },
         },
         required: ["texto"],

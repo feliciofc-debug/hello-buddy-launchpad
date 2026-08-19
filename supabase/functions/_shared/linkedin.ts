@@ -166,7 +166,7 @@ export async function adicionarLinkNoCorpo(
 }
 
 
-/** Separa o link do corpo da copy — LinkedIn penaliza link no corpo do post. */
+/** Separa o link do corpo da copy (usado na tentativa de 1º comentário). */
 export function separarLink(texto: string): { corpo: string; link: string | null } {
   const match = texto.match(/https?:\/\/[^\s]+/);
   if (!match) return { corpo: texto.trim(), link: null };
@@ -174,3 +174,18 @@ export function separarLink(texto: string): { corpo: string; link: string | null
   const corpo = texto.split(link).join('').replace(/\n{3,}/g, '\n\n').trim();
   return { corpo, link };
 }
+
+/**
+ * Coloca o link no FIM do texto, depois do raciocínio e ANTES das hashtags.
+ * Regra do LinkedIn Fase 1: link nunca na primeira linha e nunca depois das hashtags.
+ */
+export function posicionarLinkLinkedIn(texto: string, link: string): string {
+  const base = texto.replace(link, '').replace(/\n{3,}/g, '\n\n').trim();
+  const linhas = base.split('\n');
+  const hashtagsIdx = linhas.findIndex((l) => /^\s*#[^\s]/.test(l.trim()));
+  if (hashtagsIdx === -1) return `${base}\n\n${link}`.trim();
+  const antes = linhas.slice(0, hashtagsIdx).join('\n').trim();
+  const hashtags = linhas.slice(hashtagsIdx).join('\n').trim();
+  return `${antes}\n\n${link}\n\n${hashtags}`.trim();
+}
+
