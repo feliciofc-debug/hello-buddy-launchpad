@@ -107,8 +107,16 @@ const SettingsPage = () => {
     };
     fetchMetaConnection();
     fetchTiktokConnection();
+    fetchLinkedinConnection();
 
     const params = new URLSearchParams(window.location.search);
+    if (params.get('linkedin') === 'conectado') {
+      toast.success('✅ LinkedIn conectado com sucesso!');
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (params.get('linkedin') === 'erro') {
+      toast.error(`Falha ao conectar o LinkedIn: ${params.get('motivo') || 'erro'}`);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
     const urlMessage = params.get('message');
     if (params.get('success') === 'true' && params.get('platform') === 'meta') {
       toast.success('✅ Meta Business conectado com sucesso!');
