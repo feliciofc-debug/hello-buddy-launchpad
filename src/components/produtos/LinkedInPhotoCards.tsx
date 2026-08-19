@@ -193,6 +193,29 @@ export default function LinkedInPhotoCards({ conectado, onPublicado }: Props) {
               <Button className="w-full gap-2" onClick={() => setSelecionado(criativo)} disabled={!conectado}>
                 <Linkedin className="h-4 w-4" /> Postar no LinkedIn
               </Button>
+              <div className="space-y-2 rounded-md border p-2">
+                <p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                  <CalendarClock className="h-3.5 w-3.5 text-primary" /> Agendar / Autopilot
+                </p>
+                <Input
+                  type="datetime-local"
+                  value={datas[criativo.id] || ''}
+                  onChange={(e) => setDatas((atual) => ({ ...atual, [criativo.id]: e.target.value }))}
+                  disabled={!conectado}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full gap-2"
+                  disabled={!conectado || !datas[criativo.id] || agendandoId === criativo.id}
+                  onClick={() => void agendarCard(criativo)}
+                >
+                  {agendandoId === criativo.id
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <CalendarClock className="h-4 w-4" />}
+                  Agendar publicação
+                </Button>
+              </div>
               <Button variant="ghost" size="sm" className="w-full gap-2 text-destructive" onClick={() => void excluir(criativo.id)}>
                 <Trash2 className="h-4 w-4" /> Excluir
               </Button>
