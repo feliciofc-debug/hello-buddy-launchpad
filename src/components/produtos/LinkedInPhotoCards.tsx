@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { ImagePlus, Linkedin, Loader2, Trash2, Upload } from 'lucide-react';
+import { CalendarClock, ImagePlus, Linkedin, Loader2, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import LinkedInComposer from '@/components/produtos/LinkedInComposer';
 
@@ -26,6 +27,47 @@ export default function LinkedInPhotoCards({ conectado, onPublicado }: Props) {
   const [carregando, setCarregando] = useState(true);
   const [enviando, setEnviando] = useState(false);
   const [selecionado, setSelecionado] = useState<CriativoLinkedIn | null>(null);
+  const [datas, setDatas] = useState<Record<string, string>>({});
+  const [agendandoId, setAgendandoId] = useState<string | null>(null);
+
+  const agendarCard = async (criativo: CriativoLinkedIn) => {
+    const valor = datas[criativo.id];
+    if (!valor) return;
+    const quando = new Date(valor);
+    if (Number.isNaN(quando.getTime()) || quando.getTime() < Date.now()) {
+      toast.error('Escolha uma data e hora futuras');
+      return;
+    }
+    if (!criativo.post_text_linkedin?.trim()) {
+      toast.error('Escreva a copy antes de agendar: clique em "Postar no LinkedIn" e gere o texto');
+      return;
+    }
+
+    setAgendandoId(criativo.id);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Não autenticado');
+
+      const { error } = await supabase
+        .from('social_posts_queue')
+        .update({
+          status: 'pendente',
+          post_text: criativo.post_text_linkedin,
+          scheduled_at: quando.toISOString(),
+        })
+        .eq('id', criativo.id)
+        .eq('user_id', user.id);
+      if (error) throw error;
+
+      toast.success(`Agendado para ${quando.toLocaleString('pt-BR')}`);
+      setCriativos((atual) => atual.filter((item) => item.id !== criativo.id));
+      onPublicado();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao agendar');
+    } finally {
+      setAgendandoId(null);
+    }
+  };
 
   const carregar = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -151,6 +193,29 @@ export default function LinkedInPhotoCards({ conectado, onPublicado }: Props) {
               <Button className="w-full gap-2" onClick={() => setSelecionado(criativo)} disabled={!conectado}>
                 <Linkedin className="h-4 w-4" /> Postar no LinkedIn
               </Button>
+              <div className="space-y-2 rounded-md border p-2">
+                <p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                  <CalendarClock className="h-3.5 w-3.5 text-primary" /> Agendar / Autopilot
+                </p>
+                <Input
+                  type="datetime-local"
+                  value={datas[criativo.id] || ''}
+                  onChange={(e) => setDatas((atual) => ({ ...atual, [criativo.id]: e.target.value }))}
+                  disabled={!conectado}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full gap-2"
+                  disabled={!conectado || !datas[criativo.id] || agendandoId === criativo.id}
+                  onClick={() => void agendarCard(criativo)}
+                >
+                  {agendandoId === criativo.id
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <CalendarClock className="h-4 w-4" />}
+                  Agendar publicação
+                </Button>
+              </div>
               <Button variant="ghost" size="sm" className="w-full gap-2 text-destructive" onClick={() => void excluir(criativo.id)}>
                 <Trash2 className="h-4 w-4" /> Excluir
               </Button>
