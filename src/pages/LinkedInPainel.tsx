@@ -153,7 +153,7 @@ export default function LinkedInPainel() {
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
           <Linkedin className="h-6 w-6 text-[#0A66C2]" /> LinkedIn
         </h1>
-        <p className="text-muted-foreground">Publique no seu perfil pessoal com o link no primeiro comentário</p>
+        <p className="text-muted-foreground">Publique no seu perfil pessoal com o link no fim do post</p>
       </div>
 
       {/* Conexão */}
