@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
-import { comentarNoPost, criarPost, separarLink } from '../_shared/linkedin.ts';
+import { adicionarLinkNoCorpo, comentarNoPost, criarPost, separarLink } from '../_shared/linkedin.ts';
+
 
 /**
  * Publica no perfil pessoal do LinkedIn do tenant.

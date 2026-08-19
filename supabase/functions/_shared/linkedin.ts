@@ -148,6 +148,24 @@ export async function comentarNoPost(
   });
 }
 
+/**
+ * Fallback: quando a API de comentários não é liberada para o app
+ * (403 ACCESS_DENIED em partnerApiSocialActions.CREATE), reescreve o corpo do
+ * post já publicado acrescentando o link no final.
+ */
+export async function adicionarLinkNoCorpo(
+  accessToken: string,
+  postUrn: string,
+  textoCompleto: string,
+) {
+  await liFetch(`/rest/posts/${encodeURIComponent(postUrn)}`, accessToken, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-RestLi-Method': 'PARTIAL_UPDATE' },
+    body: JSON.stringify({ patch: { $set: { commentary: textoCompleto } } }),
+  });
+}
+
+
 /** Separa o link do corpo da copy — LinkedIn penaliza link no corpo do post. */
 export function separarLink(texto: string): { corpo: string; link: string | null } {
   const match = texto.match(/https?:\/\/[^\s]+/);
