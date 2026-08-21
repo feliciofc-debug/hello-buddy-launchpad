@@ -2292,7 +2292,7 @@ TECNOLOGIAS/ENTREGAS REAIS (use só o que couber, não invente):
 • LGPD compliant, backup diário, suporte direto com o fundador.
 DIFERENCIAIS: IA própria (não depende só de OpenAI), atendimento IA + marketing IA na MESMA plataforma, implantação sem time técnico.
 PLANO: R$ 597/mês (fundador) — trial mediante contato. Agência (white-label): negociação caso a caso.
-CTA padrão: "Chama no WhatsApp (21) 99537-9550 pra testar" ou "Agenda uma demo".`;
+CTA padrão: "Chama no WhatsApp (21) 98080-4901 pra testar" ou "Agenda uma demo".`;
 
 // ---- CTA de WhatsApp opt-in (Feature A) ----
 // Busca o número do agente DO TENANT (multi-tenant) — nunca hardcodar.

@@ -680,8 +680,8 @@ Encontrou um produto na Amazon, Shopee ou Mercado Livre que não foi ofertado no
 ✨ Bônus: Ganhe um novo eBook + seu cashback garantido!
 
 📱 SUPORTE E ENVIO DE COMPROVANTES
-WhatsApp Pietro Eugenio: (21) 99537-9550
-👉 https://wa.me/5521995379550
+WhatsApp Pietro Eugenio: (21) 98080-4901
+👉 https://wa.me/5521980804901
 
 Envie seus comprovantes e tire qualquer dúvida sobre a plataforma!`
 

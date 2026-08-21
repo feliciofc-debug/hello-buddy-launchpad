@@ -190,7 +190,7 @@ export default function PoliticaPrivacidade() {
             </p>
             <div className="bg-primary/10 p-6 rounded-lg">
               <p><strong>E-mail:</strong> amzofertas@amzofertas.com.br</p>
-              <p><strong>WhatsApp:</strong> (21) 99537-9550</p>
+              <p><strong>WhatsApp:</strong> (21) 98080-4901</p>
               <p><strong>Site:</strong> amzofertas.com.br</p>
             </div>
           </section>

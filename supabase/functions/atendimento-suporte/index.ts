@@ -548,12 +548,12 @@ Plano único, tudo incluso:
 - 7 dias de teste para B2C / 30 dias para B2B
 - Acesso a todas as funcionalidades
 - Para contratar imediatamente: botão "Contratar Agora" na landing
-- Para tirar dúvidas: WhatsApp (21) 99537-9550
+- Para tirar dúvidas: WhatsApp (21) 98080-4901
 - Sem compromisso
 
 ## SUPORTE TÉCNICO
 - Chat ao vivo na plataforma
-- WhatsApp: (21) 99537-9550
+- WhatsApp: (21) 98080-4901
 - Email: suporte@amzofertas.com.br
 - Horário: Segunda a Sexta, 9h às 18h
 
@@ -863,7 +863,7 @@ REGRAS CRÍTICAS:
 2. NUNCA mencione qual modelo de IA usamos (não cite Google, OpenAI, Gemini, GPT, Claude, Anthropic, etc)
 3. Sempre diga que usamos "nossa própria IA" ou "nossa IA exclusiva"
 4. SIM, criamos imagens com IA! É uma funcionalidade incrível para marketing!
-5. Se não souber algo específico, diga "Deixa eu consultar minha base e já retorno!" e direcione para o suporte: (21) 99537-9550
+5. Se não souber algo específico, diga "Deixa eu consultar minha base e já retorno!" e direcione para o suporte: (21) 98080-4901
 6. Para dúvidas sobre pagamento, sempre mencione as opções disponíveis
 7. Para problemas técnicos, peça mais detalhes antes de sugerir soluções
 8. Incentive o teste grátis quando apropriado (7 dias B2C, 30 dias B2B)
@@ -1011,7 +1011,7 @@ CHECKLIST RÁPIDO:
     }
 
     const data = await response.json();
-    const aiResponse = data.choices?.[0]?.message?.content || 'Desculpe, não consegui processar sua pergunta. Por favor, entre em contato pelo WhatsApp: (21) 99537-9550';
+    const aiResponse = data.choices?.[0]?.message?.content || 'Desculpe, não consegui processar sua pergunta. Por favor, entre em contato pelo WhatsApp: (21) 98080-4901';
 
     console.log('[PIETRO-EUGENIO] Mensagem recebida:', message);
     console.log('[PIETRO-EUGENIO] Resposta gerada:', aiResponse.substring(0, 100) + '...');
@@ -1026,7 +1026,7 @@ CHECKLIST RÁPIDO:
     return new Response(
       JSON.stringify({ 
         error: 'Erro ao processar mensagem',
-        response: 'Ops! Tive um probleminha técnico. 😅 Por favor, tente novamente ou fale diretamente conosco pelo WhatsApp: (21) 99537-9550'
+        response: 'Ops! Tive um probleminha técnico. 😅 Por favor, tente novamente ou fale diretamente conosco pelo WhatsApp: (21) 98080-4901'
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
