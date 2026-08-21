@@ -102,7 +102,7 @@ const DataDeletion = () => {
                     <li>Sua conta e dados de perfil</li>
                     <li>Catálogo de produtos e imagens</li>
                     <li>Posts criados e agendados</li>
-                    <li>Conexões com Facebook, Instagram e outras redes</li>
+                    <li>Conexões com Facebook, Instagram, TikTok e outras redes</li>
                     <li>Histórico de uso e configurações</li>
                   </ul>
                 </div>
@@ -190,7 +190,7 @@ const DataDeletion = () => {
                 <ul className="space-y-2 text-sm text-muted-foreground ml-7">
                   <li>✓ Informações de perfil (nome, email, telefone)</li>
                   <li>✓ IDs de afiliados (Amazon, Shopee, Lomadee, etc.)</li>
-                  <li>✓ Tokens de acesso às redes sociais</li>
+                  <li>✓ Tokens de acesso às redes sociais (Meta, LinkedIn, TikTok)</li>
                   <li>✓ Catálogo completo de produtos e imagens</li>
                   <li>✓ Posts criados, agendados e histórico</li>
                   <li>✓ Campanhas e configurações</li>
