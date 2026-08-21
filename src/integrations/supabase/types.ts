@@ -6238,6 +6238,57 @@ export type Database = {
         }
         Relationships: []
       }
+      planos: {
+        Row: {
+          agentes_whatsapp: number
+          ativo: boolean
+          created_at: string
+          id: string
+          imagens_ia_mes: number
+          nome: string
+          ordem: number
+          perfis_sociais: number
+          preco_mensal: number | null
+          slug: string
+          updated_at: string
+          usuarios_painel: number
+          videos_legenda_mes: number
+          white_label: boolean
+        }
+        Insert: {
+          agentes_whatsapp?: number
+          ativo?: boolean
+          created_at?: string
+          id?: string
+          imagens_ia_mes?: number
+          nome: string
+          ordem?: number
+          perfis_sociais?: number
+          preco_mensal?: number | null
+          slug: string
+          updated_at?: string
+          usuarios_painel?: number
+          videos_legenda_mes?: number
+          white_label?: boolean
+        }
+        Update: {
+          agentes_whatsapp?: number
+          ativo?: boolean
+          created_at?: string
+          id?: string
+          imagens_ia_mes?: number
+          nome?: string
+          ordem?: number
+          perfis_sociais?: number
+          preco_mensal?: number | null
+          slug?: string
+          updated_at?: string
+          usuarios_painel?: number
+          videos_legenda_mes?: number
+          white_label?: boolean
+        }
+        Relationships: []
+      }
       posts: {
         Row: {
           created_at: string
@@ -8166,6 +8217,66 @@ export type Database = {
         }
         Relationships: []
       }
+      user_planos: {
+        Row: {
+          billing_subscription_id: string | null
+          created_at: string
+          created_by: string | null
+          expira_em: string | null
+          id: string
+          inicia_em: string
+          observacao: string | null
+          origem: Database["public"]["Enums"]["plano_origem"]
+          plano_id: string
+          status: Database["public"]["Enums"]["plano_status"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          billing_subscription_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          expira_em?: string | null
+          id?: string
+          inicia_em?: string
+          observacao?: string | null
+          origem?: Database["public"]["Enums"]["plano_origem"]
+          plano_id: string
+          status?: Database["public"]["Enums"]["plano_status"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          billing_subscription_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          expira_em?: string | null
+          id?: string
+          inicia_em?: string
+          observacao?: string | null
+          origem?: Database["public"]["Enums"]["plano_origem"]
+          plano_id?: string
+          status?: Database["public"]["Enums"]["plano_status"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_planos_billing_subscription_id_fkey"
+            columns: ["billing_subscription_id"]
+            isOneToOne: false
+            referencedRelation: "billing_subscriptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_planos_plano_id_fkey"
+            columns: ["plano_id"]
+            isOneToOne: false
+            referencedRelation: "planos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string | null
@@ -10030,6 +10141,24 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      plano_efetivo: {
+        Args: { p_user_id: string }
+        Returns: {
+          agentes_whatsapp: number
+          expira_em: string
+          imagens_ia_mes: number
+          nome: string
+          origem: Database["public"]["Enums"]["plano_origem"]
+          perfis_sociais: number
+          plano_id: string
+          preco_mensal: number
+          slug: string
+          user_plano_id: string
+          usuarios_painel: number
+          videos_legenda_mes: number
+          white_label: boolean
+        }[]
+      }
       read_email_batch: {
         Args: { batch_size: number; queue_name: string; vt: number }
         Returns: {
@@ -10082,6 +10211,8 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "empresa" | "afiliado"
+      plano_origem: "pagamento" | "cortesia" | "parceria" | "teste"
+      plano_status: "ativo" | "expirado" | "cancelado"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -10210,6 +10341,8 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "empresa", "afiliado"],
+      plano_origem: ["pagamento", "cortesia", "parceria", "teste"],
+      plano_status: ["ativo", "expirado", "cancelado"],
     },
   },
 } as const
