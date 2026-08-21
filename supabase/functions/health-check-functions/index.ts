@@ -11,17 +11,13 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Funções críticas a serem monitoradas
+// Funções críticas a serem monitoradas (canal oficial Meta Cloud API)
 const CRITICAL_FUNCTIONS = [
   'executar-envio-programado',
-  'processar-fila-afiliado',
-  'send-wuzapi-message-afiliado',
-  'send-wuzapi-group-message',
-  'wuzapi-webhook-afiliados',
-  'wuzapi-webhook-pj',
-  'send-wuzapi-message-pj',
   'executar-campanhas-agendadas',
-  'send-wuzapi-group-message-pj'
+  'processar-fila-pj',
+  'whatsapp-send-message',
+  'whatsapp-cloud-inbound-processor',
 ];
 
 serve(async (req) => {
