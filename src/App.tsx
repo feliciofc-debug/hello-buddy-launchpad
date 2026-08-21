@@ -51,6 +51,8 @@ import ConfiguracaoEmpresa from "./pages/ConfiguracaoEmpresa";
 import IAConversas from "./pages/IAConversas";
 import Plataforma from "./pages/site/Plataforma";
 import Integracoes from "./pages/site/Integracoes";
+import Sobre from "./pages/site/Sobre";
+import Contato from "./pages/site/Contato";
 import DashboardMetricas from "./pages/DashboardMetricas";
 import LeadsFunil from "./pages/LeadsFunil";
 import Vendedores from "./pages/Vendedores";
@@ -131,6 +133,8 @@ const App = () => (
             <Route path="/planos" element={<Planos />} />
             <Route path="/plataforma" element={<Plataforma />} />
             <Route path="/integracoes" element={<Integracoes />} />
+            <Route path="/sobre" element={<Sobre />} />
+            <Route path="/contato" element={<Contato />} />
             <Route path="/test-payment" element={<TestPayment />} />
             <Route path="/pagar/:subscriptionId" element={<PagarMensalidade />} />
             <Route path="/dashboard" element={<DashboardMetricas />} />

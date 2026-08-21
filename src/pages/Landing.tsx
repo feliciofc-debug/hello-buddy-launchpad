@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { WhatsAppSupportButton } from "@/components/WhatsAppSupportButton";
 import { WhatsAppFloatingButton } from "@/components/WhatsAppFloatingButton";
 import FooterOptIn from "@/components/FooterOptIn";
+import SiteLayout from "@/components/site/SiteLayout";
 
 function Landing() {
   const navigate = useNavigate();
@@ -32,58 +33,8 @@ function Landing() {
   };
 
   return (
-    <div className="bg-slate-900 text-white">
-      {/* HEADER */}
-      <header className="fixed w-full top-0 z-50 bg-slate-900/95 backdrop-blur-lg border-b border-purple-500/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            {/* Logo */}
-            <div className="flex items-center gap-2 shrink-0">
-              <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-1.5 sm:p-2 rounded-lg">
-                <svg className="w-6 h-6 sm:w-8 sm:h-8" fill="white" viewBox="0 0 24 24">
-                  <path d="M20 7h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zM10 4h4v3h-4V4zm10 16H4V9h16v11z"/>
-                </svg>
-              </div>
-              <div className="leading-tight">
-                <h1 className="text-lg sm:text-2xl font-bold">AMZ Ofertas</h1>
-                <p className="text-[10px] sm:text-xs text-orange-300">Marketing Digital com IA</p>
-              </div>
-            </div>
-
-            {/* Ações */}
-            <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-end">
-              {/* Esses dois somem em telas menores (celular/tablet) */}
-              <button
-                onClick={() => scrollToSection('planos')}
-                className="hidden lg:inline-flex bg-gray-700 hover:bg-gray-600 text-white px-3 sm:px-4 py-2 rounded-lg font-semibold transition text-sm sm:text-base"
-              >
-                Planos
-              </button>
-              <button
-                onClick={() => navigate('/marketplace')}
-                className="hidden lg:inline-flex bg-gray-700 hover:bg-gray-600 text-white px-3 sm:px-4 py-2 rounded-lg font-semibold transition text-sm sm:text-base"
-              >
-                Marketplace
-              </button>
-
-              {/* Esses dois SEMPRE ficam visíveis */}
-              <button
-                onClick={() => navigate('/vendedor-login')}
-                className="bg-orange-500 hover:bg-orange-600 text-white px-3 sm:px-4 py-2 rounded-lg font-semibold transition text-sm sm:text-base"
-              >
-                Portal Vendedor
-              </button>
-              <button
-                onClick={() => navigate('/login')}
-                className="bg-gradient-to-r from-purple-500 to-pink-500 px-4 sm:px-6 py-2 rounded-lg font-semibold hover:shadow-lg transition text-sm sm:text-base"
-              >
-                Entrar
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
+    <SiteLayout>
+      <div className="bg-slate-900 text-white">
       {/* HERO SECTION */}
       <section className="pt-32 pb-20 px-6 bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
         <div className="max-w-7xl mx-auto">
@@ -471,85 +422,10 @@ function Landing() {
 
       {/* OPT-IN NEWSLETTER WHATSAPP */}
       <FooterOptIn />
-
-      {/* FOOTER */}
-      <footer className="py-12 px-6 bg-slate-950 border-t border-purple-500/20">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid md:grid-cols-4 gap-8 mb-8">
-            <div>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-2 rounded-lg">
-                  <svg className="w-6 h-6" fill="white" viewBox="0 0 24 24">
-                    <path d="M20 7h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zM10 4h4v3h-4V4zm10 16H4V9h16v11z"/>
-                  </svg>
-                </div>
-                <h3 className="text-xl font-bold">AMZ Ofertas</h3>
-              </div>
-              <p className="text-sm text-slate-400">
-                Plataforma SaaS de gestão de marketing digital com inteligência artificial.
-              </p>
-            </div>
-
-            <div>
-              <h4 className="font-bold mb-4">Produto</h4>
-              <ul className="space-y-2 text-sm text-slate-400">
-                <li><button onClick={() => scrollToSection('como-funciona')} className="hover:text-white transition">Como Funciona</button></li>
-                <li><button onClick={() => scrollToSection('planos')} className="hover:text-white transition">Planos</button></li>
-                <li><button onClick={() => navigate('/cadastro')} className="hover:text-white transition">Solicitar Demonstração</button></li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="font-bold mb-4">Empresa</h4>
-              <ul className="space-y-2 text-sm text-slate-400">
-                <li><button onClick={() => navigate('/terms')} className="hover:text-white transition">Termos de Uso</button></li>
-                <li><button onClick={() => navigate('/privacy')} className="hover:text-white transition">Política de Privacidade</button></li>
-                <li><button onClick={() => navigate('/data-deletion')} className="hover:text-white transition">Exclusão de Dados</button></li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="font-bold mb-4">Segurança</h4>
-              <ul className="space-y-2 text-sm text-slate-400">
-                <li>
-                  <button onClick={() => navigate('/security')} className="hover:text-white transition flex items-center gap-2">
-                    🔒 Reportar Vulnerabilidade
-                  </button>
-                </li>
-                <li><a href="mailto:amzofertas@amzofertas.com.br" className="hover:text-white transition">amzofertas@amzofertas.com.br</a></li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-8 mb-8">
-            <div>
-              <h4 className="font-bold mb-4">Suporte</h4>
-              <ul className="space-y-2 text-sm text-slate-400">
-                <li><a href="mailto:amzofertas@amzofertas.com.br" className="hover:text-white transition">amzofertas@amzofertas.com.br</a></li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="border-t border-slate-800 pt-8 text-center text-sm text-slate-400">
-            <p>&copy; 2024 AMZ Ofertas. Todos os direitos reservados.</p>
-            <p className="mt-3">
-              Plataforma proprietária e desenvolvida por{' '}
-              <a 
-                href="https://atombrasildigital.com" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-purple-400 hover:text-purple-300 transition font-semibold"
-              >
-                ATOM BRASIL DIGITAL LTDA
-              </a>
-            </p>
-            <p className="mt-1">CNPJ: 22.003.550/0001-05</p>
-          </div>
-        </div>
-      </footer>
+      </div>
       <WhatsAppSupportButton />
       <WhatsAppFloatingButton />
-    </div>
+    </SiteLayout>
   );
 }
 
