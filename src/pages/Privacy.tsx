@@ -63,6 +63,34 @@ const Privacy = () => {
               <li><strong>Redes sociais:</strong> dados públicos do Instagram, Facebook, TikTok (quando conectado)</li>
               <li><strong>Google Analytics e Google Ads:</strong> métricas de campanhas publicitárias</li>
             </ul>
+
+            <h3 className="text-xl font-semibold mb-3 mt-6">2.4. Integração com TikTok</h3>
+            <p className="text-foreground/80 leading-relaxed mb-4">
+              Ao conectar sua conta TikTok à plataforma, acessamos apenas as informações estritamente necessárias para publicação de vídeos:
+            </p>
+            <ul className="list-disc list-inside space-y-2 text-foreground/80 ml-4">
+              <li><strong>Identificador público do perfil</strong></li>
+              <li><strong>Nome de exibição e foto do perfil</strong></li>
+              <li><strong>Status das publicações enviadas</strong> (rascunho, em revisão, publicado)</li>
+            </ul>
+            <p className="text-foreground/80 leading-relaxed mt-4 mb-4">
+              <strong>Uso:</strong> esses dados são usados para exibir a conta conectada no painel e para enviar vídeos ao seu próprio perfil do TikTok, sempre por ação explícita sua.
+            </p>
+            <p className="text-foreground/80 leading-relaxed mb-4">
+              <strong>O que NÃO acessamos:</strong> mensagens diretas, lista de seguidores, conteúdo de terceiros e dados de outros usuários.
+            </p>
+            <p className="text-foreground/80 leading-relaxed mb-4">
+              <strong>Retenção:</strong> o token de acesso é armazenado de forma criptografada enquanto a conta estiver conectada e é removido imediatamente na desconexão.
+            </p>
+            <p className="text-foreground/80 leading-relaxed mb-4">
+              <strong>Revogação:</strong> você pode desconectar sua conta TikTok a qualquer momento nas <strong>Configurações</strong> da plataforma ou revogar o acesso diretamente nas configurações de apps conectados da sua conta TikTok.
+            </p>
+            <p className="text-foreground/80 leading-relaxed">
+              Para saber como solicitamos a exclusão completa dos dados da integração, consulte a página{" "}
+              <Link to="/data-deletion" className="text-primary hover:underline font-semibold">
+                Exclusão de Dados
+              </Link>.
+            </p>
           </section>
 
           {/* Seção 3 */}
