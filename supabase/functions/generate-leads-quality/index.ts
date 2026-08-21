@@ -119,7 +119,7 @@ serve(async (req) => {
 
     console.log(`📊 Total bruto: ${allLeads.length} leads`)
 
-    // 3. VALIDAR WHATSAPP DE CADA LEAD
+    // 3. NORMALIZAR TELEFONE (sem validação de existência no WhatsApp)
     const leadsValidados: any[] = []
 
     for (const lead of allLeads) {
@@ -140,7 +140,7 @@ serve(async (req) => {
       })
     }
 
-    console.log(`📊 Leads com WhatsApp válido: ${leadsValidados.length}`)
+    console.log(`📊 Leads com telefone: ${leadsValidados.length}`)
 
     // 4. CALCULAR SCORE REAL
     const leadsComScore = leadsValidados.map(lead => {
