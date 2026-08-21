@@ -6,9 +6,6 @@ verify_jwt = false
 
 [functions.ebook-airfryer]
 verify_jwt = false
-[functions.send-wuzapi-message]
-verify_jwt = false
-
 [functions.analisar-produto]
 verify_jwt = false
 
@@ -144,9 +141,6 @@ verify_jwt = false
 [functions.enrich-lead]
 verify_jwt = false
 
-[functions.validate-whatsapp]
-verify_jwt = false
-
 [functions.apify-linkedin-scraper]
 verify_jwt = false
 
@@ -216,28 +210,16 @@ verify_jwt = false
 
 [functions.gerar-video]
 verify_jwt = false
-[functions.send-wuzapi-message-afiliado]
-verify_jwt = false
-
 [functions.insert-produto-afiliado]
 verify_jwt = false
 
 [functions.insert-produto-shopee]
 verify_jwt = false
 
-[functions.wuzapi-webhook-afiliados]
-verify_jwt = false
 [functions.processar-fila-pj]
 verify_jwt = false
 
-[functions.send-wuzapi-message-pj]
-verify_jwt = false
-
-[functions.send-wuzapi-group-message-pj]
-verify_jwt = false
 [functions.executar-envio-programado-pj]
-verify_jwt = false
-[functions.wuzapi-webhook-pj]
 verify_jwt = false
 [functions.elevenlabs-tts-pj]
 verify_jwt = false
@@ -256,10 +238,6 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.processar-videos-agendados]
-verify_jwt = false
-
-
-[functions.pietro-cobranca-cron]
 verify_jwt = false
 
 

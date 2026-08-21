@@ -112,9 +112,12 @@ Fique ligado! Em breve você receberá ofertas imperdíveis! 🔥
 
 _Para sair da lista, responda SAIR a qualquer momento._`;
       
-      const { error: sendError } = await supabase.functions.invoke('send-wuzapi-message', {
+      // Canal oficial Meta Cloud API
+      const AMZ_TENANT_USER_ID = 'b7af0118-c506-4f87-8ac3-a0a11fd621fe';
+      const { error: sendError } = await supabase.functions.invoke('whatsapp-send-message', {
         body: {
-          phoneNumber: telefoneFormatado,
+          user_id: AMZ_TENANT_USER_ID,
+          to: telefoneFormatado,
           message: mensagemBoasVindas
         }
       });
