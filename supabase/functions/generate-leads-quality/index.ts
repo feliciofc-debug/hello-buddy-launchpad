@@ -17,12 +17,11 @@ serve(async (req) => {
   )
 
   try {
-    const { campanha_id, icp_config_id, fontes = ['linkedin', 'instagram'], validarWhatsApp = true, scoreMinimo = 50 } = await req.json()
+    const { campanha_id, icp_config_id, fontes = ['linkedin', 'instagram'], scoreMinimo = 50 } = await req.json()
 
     console.log(`🚀 Iniciando geração de leads de QUALIDADE`)
     console.log(`📋 Campanha: ${campanha_id}`)
     console.log(`🎯 Fontes: ${fontes.join(', ')}`)
-    console.log(`✅ Validar WhatsApp: ${validarWhatsApp}`)
 
     // Buscar configuração ICP
     const { data: icpConfig, error: icpError } = await supabase
@@ -48,8 +47,6 @@ serve(async (req) => {
     const stats = {
       linkedin_encontrados: 0,
       instagram_encontrados: 0,
-      whatsapp_validos: 0,
-      whatsapp_invalidos: 0,
       salvos: 0,
       descartados: 0
     }
@@ -134,46 +131,13 @@ serve(async (req) => {
         continue
       }
 
-      if (validarWhatsApp) {
-        try {
-          const validateResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/validate-whatsapp`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
-            },
-            body: JSON.stringify({ phone: telefone })
-          })
-
-          const validation = await validateResponse.json()
-
-          if (validation.valid) {
-            stats.whatsapp_validos++
-            leadsValidados.push({
-              ...lead,
-              telefone: validation.phone,
-              whatsapp: validation.phone,
-              whatsapp_verificado: true
-            })
-            console.log(`✅ WhatsApp válido: ${validation.phone}`)
-          } else {
-            stats.whatsapp_invalidos++
-            console.log(`❌ WhatsApp inválido: ${telefone}`)
-          }
-        } catch (e) {
-          console.error(`❌ Erro validando ${telefone}:`, e)
-          stats.whatsapp_invalidos++
-        }
-
-        // Delay para não sobrecarregar a API
-        await new Promise(resolve => setTimeout(resolve, 500))
-      } else {
-        // Sem validação, adiciona direto
-        leadsValidados.push({
-          ...lead,
-          whatsapp_verificado: false
-        })
-      }
+      // Nota: a Cloud API oficial da Meta não oferece verificação de existência
+      // de número no WhatsApp. A etapa de validação foi removida (sem substituto).
+      leadsValidados.push({
+        ...lead,
+        whatsapp: telefone,
+        whatsapp_verificado: false
+      })
     }
 
     console.log(`📊 Leads com WhatsApp válido: ${leadsValidados.length}`)
