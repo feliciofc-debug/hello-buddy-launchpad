@@ -2,7 +2,7 @@ import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import WhatsAppConnection from '@/components/WhatsAppConnection'
+
 import ConectarWhatsAppCloud from '@/components/ConectarWhatsAppCloud'
 
 export default function ConfiguracoesWhatsApp() {
