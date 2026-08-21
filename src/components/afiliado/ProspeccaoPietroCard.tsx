@@ -165,7 +165,7 @@ export default function ProspeccaoPietroCard() {
             <span>Prospecção Pietro Eugenio</span>
           </div>
           <Badge variant="outline" className="text-xs font-mono">
-            21 99537-9550
+            21 98080-4901
           </Badge>
         </CardTitle>
       </CardHeader>

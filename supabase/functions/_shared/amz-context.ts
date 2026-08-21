@@ -376,5 +376,5 @@ export const STRANGER_MSG =
   "Oi! Sou o Pietro, assistente da AMZ Ofertas Pro 👋\n\n" +
   "Vejo que você ainda não é nosso cliente. Se quiser conhecer a plataforma " +
   "(marketing automatizado + WhatsApp com IA), chama o Felicio direto:\n\n" +
-  "📱 wa.me/5521995379550\n\n" +
+  "📱 wa.me/5521980804901\n\n" +
   "Um abraço!";

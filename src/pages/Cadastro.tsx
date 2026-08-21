@@ -6,7 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 const WHATSAPP_URL =
-  'https://wa.me/5521995379550?text=Ol%C3%A1!%20Tenho%20interesse%20em%20conhecer%20a%20AMZ%20Ofertas.%20Minha%20vitrine%20Shopee:%20';
+  'https://wa.me/5521980804901?text=Ol%C3%A1!%20Tenho%20interesse%20em%20conhecer%20a%20AMZ%20Ofertas.%20Minha%20vitrine%20Shopee:%20';
 
 const cadastroSchema = z.object({
   email: z.string().trim().email({ message: 'E-mail inválido' }).max(255),

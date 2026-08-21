@@ -54,7 +54,7 @@ function Landing() {
                   🚀 Fale com um Consultor
                 </button>
                 <a
-                  href="https://wa.me/5521995379550?text=Ol%C3%A1!%20Tenho%20interesse%20em%20conhecer%20a%20AMZ%20Ofertas.%20Minha%20vitrine%20Shopee:%20"
+                  href="https://wa.me/5521980804901?text=Ol%C3%A1!%20Tenho%20interesse%20em%20conhecer%20a%20AMZ%20Ofertas.%20Minha%20vitrine%20Shopee:%20"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center justify-center gap-2 bg-transparent border-2 border-green-500 text-green-400 hover:bg-green-500 hover:text-white text-lg px-8 py-6 rounded-lg font-semibold transition"
@@ -255,7 +255,7 @@ function Landing() {
               <p className="text-center mt-4 text-sm text-slate-400">
                 Prefere conversar antes?{' '}
                 <a
-                  href="https://wa.me/5521995379550?text=Ol%C3%A1!%20Tenho%20interesse%20em%20conhecer%20a%20AMZ%20Ofertas.%20Minha%20vitrine%20Shopee:%20"
+                  href="https://wa.me/5521980804901?text=Ol%C3%A1!%20Tenho%20interesse%20em%20conhecer%20a%20AMZ%20Ofertas.%20Minha%20vitrine%20Shopee:%20"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-green-400 hover:text-green-300 font-semibold underline"
@@ -406,7 +406,7 @@ function Landing() {
               🚀 Contratar Agora
             </button>
             <a
-              href="https://wa.me/5521995379550?text=Ol%C3%A1!%20Tenho%20interesse%20em%20conhecer%20a%20AMZ%20Ofertas.%20Minha%20vitrine%20Shopee:%20"
+              href="https://wa.me/5521980804901?text=Ol%C3%A1!%20Tenho%20interesse%20em%20conhecer%20a%20AMZ%20Ofertas.%20Minha%20vitrine%20Shopee:%20"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center gap-2 bg-transparent border-2 border-green-500 text-green-400 hover:bg-green-500 hover:text-white text-xl px-12 py-8 rounded-lg font-bold transition"

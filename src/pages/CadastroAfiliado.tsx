@@ -348,7 +348,7 @@ export default function CadastroAfiliado() {
                 </div>
                 <div className="flex flex-col gap-3">
                   <a
-                    href="https://wa.me/5521995379550?text=Olá! Tenho interesse no Plano Empresarial AMZ Ofertas para minha empresa."
+                    href="https://wa.me/5521980804901?text=Olá! Tenho interesse no Plano Empresarial AMZ Ofertas para minha empresa."
                     target="_blank"
                     rel="noopener noreferrer"
                     className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-8 py-4 rounded-xl font-bold text-lg hover:shadow-2xl transition transform hover:scale-105 text-center"
