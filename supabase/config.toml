@@ -6,11 +6,6 @@ verify_jwt = false
 
 [functions.ebook-airfryer]
 verify_jwt = false
-
-
-[functions.wuzapi-webhook]
-verify_jwt = false
-
 [functions.send-wuzapi-message]
 verify_jwt = false
 
@@ -126,10 +121,6 @@ verify_jwt = false
 
 [functions.voice-ai-callback]
 verify_jwt = false
-
-[functions.test-wuzapi-direct]
-verify_jwt = false
-
 [functions.google-ads-auth]
 verify_jwt = false
 
@@ -147,10 +138,6 @@ verify_jwt = false
 
 [functions.create-approach-strategy]
 verify_jwt = false
-
-[functions.send-whatsapp-prospeccao]
-verify_jwt = false
-
 [functions.gerar-mensagem-ia]
 verify_jwt = false
 
@@ -195,10 +182,6 @@ verify_jwt = false
 
 [functions.enrich-leads-cnpj]
 verify_jwt = false
-
-[functions.wuzapi-qrcode]
-verify_jwt = false
-
 [functions.sync-stock]
 verify_jwt = false
 
@@ -213,10 +196,6 @@ verify_jwt = false
 
 [functions.sincronizar-optins-retroativo]
 verify_jwt = false
-
-[functions.trocar-numero-whatsapp]
-verify_jwt = false
-
 [functions.buscar-leads-enriquecidos]
 verify_jwt = false
 
@@ -237,10 +216,6 @@ verify_jwt = false
 
 [functions.gerar-video]
 verify_jwt = false
-
-[functions.criar-instancia-wuzapi-afiliado]
-verify_jwt = false
-
 [functions.send-wuzapi-message-afiliado]
 verify_jwt = false
 
@@ -252,29 +227,6 @@ verify_jwt = false
 
 [functions.wuzapi-webhook-afiliados]
 verify_jwt = false
-
-[functions.diagnostico-wuzapi]
-verify_jwt = false
-
-[functions.verificar-webhook-wuzapi]
-verify_jwt = false
-
-[functions.verificar-contabo-wuzapi]
-verify_jwt = false
-
-[functions.corrigir-webhook-contabo]
-verify_jwt = false
-
-[functions.enviar-extensoes-afiliado]
-verify_jwt = false
-
-# =====================================================
-# SISTEMA WHATSAPP PJ - FUNÇÕES
-# =====================================================
-
-[functions.criar-instancia-wuzapi-pj]
-verify_jwt = false
-
 [functions.processar-fila-pj]
 verify_jwt = false
 
@@ -283,22 +235,10 @@ verify_jwt = false
 
 [functions.send-wuzapi-group-message-pj]
 verify_jwt = false
-
-[functions.list-whatsapp-groups-pj]
-verify_jwt = false
-
 [functions.executar-envio-programado-pj]
 verify_jwt = false
-
-[functions.group-settings-pj]
-verify_jwt = false
-
 [functions.wuzapi-webhook-pj]
 verify_jwt = false
-
-[functions.wuzapi-webhook-cobranca]
-verify_jwt = false
-
 [functions.elevenlabs-tts-pj]
 verify_jwt = false
 

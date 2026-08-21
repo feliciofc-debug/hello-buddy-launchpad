@@ -2,7 +2,7 @@ import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import WhatsAppConnection from '@/components/WhatsAppConnection'
+
 import ConectarWhatsAppCloud from '@/components/ConectarWhatsAppCloud'
 
 export default function ConfiguracoesWhatsApp() {
@@ -21,8 +21,8 @@ export default function ConfiguracoesWhatsApp() {
 
       <div className="space-y-6">
         <ConectarWhatsAppCloud />
-        <WhatsAppConnection />
       </div>
+
 
 
       <div className="mt-6 bg-muted/50 rounded-lg p-4 text-sm text-muted-foreground">
