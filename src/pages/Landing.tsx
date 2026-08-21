@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { WhatsAppSupportButton } from "@/components/WhatsAppSupportButton";
 import { WhatsAppFloatingButton } from "@/components/WhatsAppFloatingButton";
 import FooterOptIn from "@/components/FooterOptIn";
+import SiteLayout from "@/components/site/SiteLayout";
 
 function Landing() {
   const navigate = useNavigate();
@@ -32,58 +33,8 @@ function Landing() {
   };
 
   return (
-    <div className="bg-slate-900 text-white">
-      {/* HEADER */}
-      <header className="fixed w-full top-0 z-50 bg-slate-900/95 backdrop-blur-lg border-b border-purple-500/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            {/* Logo */}
-            <div className="flex items-center gap-2 shrink-0">
-              <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-1.5 sm:p-2 rounded-lg">
-                <svg className="w-6 h-6 sm:w-8 sm:h-8" fill="white" viewBox="0 0 24 24">
-                  <path d="M20 7h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zM10 4h4v3h-4V4zm10 16H4V9h16v11z"/>
-                </svg>
-              </div>
-              <div className="leading-tight">
-                <h1 className="text-lg sm:text-2xl font-bold">AMZ Ofertas</h1>
-                <p className="text-[10px] sm:text-xs text-orange-300">Marketing Digital com IA</p>
-              </div>
-            </div>
-
-            {/* Ações */}
-            <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-end">
-              {/* Esses dois somem em telas menores (celular/tablet) */}
-              <button
-                onClick={() => scrollToSection('planos')}
-                className="hidden lg:inline-flex bg-gray-700 hover:bg-gray-600 text-white px-3 sm:px-4 py-2 rounded-lg font-semibold transition text-sm sm:text-base"
-              >
-                Planos
-              </button>
-              <button
-                onClick={() => navigate('/marketplace')}
-                className="hidden lg:inline-flex bg-gray-700 hover:bg-gray-600 text-white px-3 sm:px-4 py-2 rounded-lg font-semibold transition text-sm sm:text-base"
-              >
-                Marketplace
-              </button>
-
-              {/* Esses dois SEMPRE ficam visíveis */}
-              <button
-                onClick={() => navigate('/vendedor-login')}
-                className="bg-orange-500 hover:bg-orange-600 text-white px-3 sm:px-4 py-2 rounded-lg font-semibold transition text-sm sm:text-base"
-              >
-                Portal Vendedor
-              </button>
-              <button
-                onClick={() => navigate('/login')}
-                className="bg-gradient-to-r from-purple-500 to-pink-500 px-4 sm:px-6 py-2 rounded-lg font-semibold hover:shadow-lg transition text-sm sm:text-base"
-              >
-                Entrar
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
+    <SiteLayout>
+      <div className="bg-slate-900 text-white">
       {/* HERO SECTION */}
       <section className="pt-32 pb-20 px-6 bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
         <div className="max-w-7xl mx-auto">
