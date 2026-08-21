@@ -21,8 +21,8 @@ export default function ConfiguracoesWhatsApp() {
 
       <div className="space-y-6">
         <ConectarWhatsAppCloud />
-        <WhatsAppConnection />
       </div>
+
 
 
       <div className="mt-6 bg-muted/50 rounded-lg p-4 text-sm text-muted-foreground">
