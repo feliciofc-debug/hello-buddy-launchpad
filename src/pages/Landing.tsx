@@ -422,85 +422,10 @@ function Landing() {
 
       {/* OPT-IN NEWSLETTER WHATSAPP */}
       <FooterOptIn />
-
-      {/* FOOTER */}
-      <footer className="py-12 px-6 bg-slate-950 border-t border-purple-500/20">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid md:grid-cols-4 gap-8 mb-8">
-            <div>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-2 rounded-lg">
-                  <svg className="w-6 h-6" fill="white" viewBox="0 0 24 24">
-                    <path d="M20 7h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zM10 4h4v3h-4V4zm10 16H4V9h16v11z"/>
-                  </svg>
-                </div>
-                <h3 className="text-xl font-bold">AMZ Ofertas</h3>
-              </div>
-              <p className="text-sm text-slate-400">
-                Plataforma SaaS de gestão de marketing digital com inteligência artificial.
-              </p>
-            </div>
-
-            <div>
-              <h4 className="font-bold mb-4">Produto</h4>
-              <ul className="space-y-2 text-sm text-slate-400">
-                <li><button onClick={() => scrollToSection('como-funciona')} className="hover:text-white transition">Como Funciona</button></li>
-                <li><button onClick={() => scrollToSection('planos')} className="hover:text-white transition">Planos</button></li>
-                <li><button onClick={() => navigate('/cadastro')} className="hover:text-white transition">Solicitar Demonstração</button></li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="font-bold mb-4">Empresa</h4>
-              <ul className="space-y-2 text-sm text-slate-400">
-                <li><button onClick={() => navigate('/terms')} className="hover:text-white transition">Termos de Uso</button></li>
-                <li><button onClick={() => navigate('/privacy')} className="hover:text-white transition">Política de Privacidade</button></li>
-                <li><button onClick={() => navigate('/data-deletion')} className="hover:text-white transition">Exclusão de Dados</button></li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="font-bold mb-4">Segurança</h4>
-              <ul className="space-y-2 text-sm text-slate-400">
-                <li>
-                  <button onClick={() => navigate('/security')} className="hover:text-white transition flex items-center gap-2">
-                    🔒 Reportar Vulnerabilidade
-                  </button>
-                </li>
-                <li><a href="mailto:amzofertas@amzofertas.com.br" className="hover:text-white transition">amzofertas@amzofertas.com.br</a></li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-8 mb-8">
-            <div>
-              <h4 className="font-bold mb-4">Suporte</h4>
-              <ul className="space-y-2 text-sm text-slate-400">
-                <li><a href="mailto:amzofertas@amzofertas.com.br" className="hover:text-white transition">amzofertas@amzofertas.com.br</a></li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="border-t border-slate-800 pt-8 text-center text-sm text-slate-400">
-            <p>&copy; 2024 AMZ Ofertas. Todos os direitos reservados.</p>
-            <p className="mt-3">
-              Plataforma proprietária e desenvolvida por{' '}
-              <a 
-                href="https://atombrasildigital.com" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-purple-400 hover:text-purple-300 transition font-semibold"
-              >
-                ATOM BRASIL DIGITAL LTDA
-              </a>
-            </p>
-            <p className="mt-1">CNPJ: 22.003.550/0001-05</p>
-          </div>
-        </div>
-      </footer>
+      </div>
       <WhatsAppSupportButton />
       <WhatsAppFloatingButton />
-    </div>
+    </SiteLayout>
   );
 }
 
