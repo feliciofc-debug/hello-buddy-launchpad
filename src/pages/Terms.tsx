@@ -177,7 +177,20 @@ const Terms = () => {
 
           {/* Seção 13 */}
           <section>
-            <h2 className="text-2xl font-semibold mb-4">13. Contato</h2>
+            <h2 className="text-2xl font-semibold mb-4">13. Integrações com Plataformas de Terceiros (Third-Party Platform Integrations)</h2>
+            <p className="text-foreground/80 leading-relaxed mb-4">
+              A plataforma permite integração com redes sociais e serviços de terceiros, incluindo TikTok, Meta (Facebook/Instagram) e LinkedIn.
+            </p>
+            <ul className="list-disc list-inside space-y-2 text-foreground/80 ml-4">
+              <li>O uso dessas integrações está sujeito aos termos de serviço, políticas de privacidade e diretrizes de comunidade de cada plataforma.</li>
+              <li>O usuário é o único responsável pelo conteúdo que publica através dessas integrações.</li>
+              <li>A AMZ Ofertas não se responsabiliza por modificações, suspensões ou bloqueios realizados pelas plataformas de terceiros.</li>
+            </ul>
+          </section>
+
+          {/* Seção 14 */}
+          <section>
+            <h2 className="text-2xl font-semibold mb-4">14. Contato</h2>
             <p className="text-foreground/80 leading-relaxed mb-4">
               Para dúvidas, sugestões ou suporte relacionado a estes termos, entre em contato:
             </p>
