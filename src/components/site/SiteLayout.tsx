@@ -15,6 +15,8 @@ const navItems = [
   { label: "Plataforma", href: "/plataforma" },
   { label: "Integrações", href: "/integracoes" },
   { label: "Planos", href: "/planos" },
+  { label: "Sobre", href: "/sobre" },
+  { label: "Contato", href: "/contato" },
 ];
 
 interface SiteLayoutProps {
@@ -198,6 +200,16 @@ export default function SiteLayout({ children }: SiteLayoutProps) {
             <div>
               <h4 className="font-semibold mb-4 text-foreground">Empresa</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
+                <li>
+                  <Link to="/sobre" className="hover:text-foreground transition">
+                    Sobre
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/contato" className="hover:text-foreground transition">
+                    Contato
+                  </Link>
+                </li>
                 <li>AMZ Ofertas</li>
                 <li>Plataforma desenvolvida pela Atom Brasil</li>
                 <li>CNPJ 22.003.550/0001-05</li>
@@ -216,7 +228,7 @@ export default function SiteLayout({ children }: SiteLayoutProps) {
           </div>
 
           <div className="mt-12 pt-8 border-t text-center text-sm text-muted-foreground">
-            © {new Date().getFullYear()} AMZ Ofertas. Todos os direitos reservados.
+            © {new Date().getFullYear()} ATOM BRASIL DIGITAL LTDA — CNPJ 22.003.550/0001-05
           </div>
         </div>
       </footer>
