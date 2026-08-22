@@ -436,6 +436,81 @@ function detectarFormato(texto: string): "feed" | "story" | "reels" | null {
   return null;
 }
 
+/** Redes pedidas na frase. [] = nada dito. */
+function detectarPlataformas(texto: string): string[] {
+  const t = texto || "";
+  const ambos = /\b(ambos|as\s+duas|nos\s+dois|todas\s+as\s+redes)\b/i.test(t);
+  const ig = /\b(instagram|insta|ig)\b/i.test(t) || /\bstor(y|ies|ie)\b/i.test(t) && ambos === false && /\binstagram\b/i.test(t);
+  const fb = /\b(facebook|face|fb)\b/i.test(t);
+  if (ambos) return ["instagram", "facebook"];
+  const out: string[] = [];
+  if (/\b(instagram|insta|ig)\b/i.test(t)) out.push("instagram");
+  if (fb) out.push("facebook");
+  return out;
+}
+
+function nomeRede(p: string): string {
+  return p === "instagram" ? "Instagram" : p === "facebook" ? "Facebook" : p;
+}
+
+function nomeFormato(f?: string | null): string {
+  const x = (f || "feed").toLowerCase();
+  if (x === "story") return "STORY";
+  if (x === "reels") return "REELS";
+  return "FEED";
+}
+
+/**
+ * A ÚLTIMA instrução vale: sempre que o dono citar formato ou rede,
+ * o marcador do job é reescrito.
+ */
+async function aplicarPedidoDeFormato(
+  job: any,
+  texto: string,
+): Promise<{ formato: string; plataformas_pedidas: string[] }> {
+  const fmt = detectarFormato(texto);
+  const redes = detectarPlataformas(texto);
+  const atual = {
+    formato: job.formato || "feed",
+    plataformas_pedidas: (job.metadata?.plataformas_pedidas || []) as string[],
+  };
+  if (!fmt && redes.length === 0) return atual;
+
+  const novo = {
+    formato: fmt || atual.formato,
+    plataformas_pedidas: redes.length ? redes : atual.plataformas_pedidas,
+  };
+  const patch: Record<string, unknown> = {
+    formato: novo.formato,
+    metadata: { ...(job.metadata || {}), plataformas_pedidas: novo.plataformas_pedidas },
+  };
+  // Se o job já tem destino definido, o destino também segue a última instrução.
+  if (Array.isArray(job.plataformas) && job.plataformas.length && novo.plataformas_pedidas.length) {
+    patch.plataformas = novo.plataformas_pedidas;
+  }
+  await sb.from("video_render_jobs").update(patch).eq("id", job.id);
+  job.formato = novo.formato;
+  job.metadata = { ...(job.metadata || {}), plataformas_pedidas: novo.plataformas_pedidas };
+  if (patch.plataformas) job.plataformas = novo.plataformas_pedidas;
+  console.log("[video-legenda-flow][formato-atualizado]", {
+    job_id: job.id,
+    formato: novo.formato,
+    plataformas: novo.plataformas_pedidas,
+    frase: (texto || "").slice(0, 160),
+  });
+  return novo;
+}
+
+/** Declaração obrigatória do que vai ao ar. */
+export function declararDestino(formato?: string | null, plataformas?: string[] | null): string {
+  const redes = (plataformas && plataformas.length ? plataformas : ["instagram", "facebook"]).map(
+    nomeRede,
+  ).join(" e ");
+  return `como *${nomeFormato(formato)}* no ${redes}`;
+}
+
+
+
 /** Só ecoa a letra da copy — nunca o texto inteiro. */
 function letraDaCopy(job: any): string {
   const l = String(job?.metadata?.copy_letra || "").toUpperCase();
