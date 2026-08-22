@@ -5673,12 +5673,21 @@ async function callGemini(
         const { result, imageUrl } = await runTool(name, args, toolCtx);
         if (imageUrl) pendingImageUrl = imageUrl;
         if (name === "postar_midia_biblioteca" || name === "postar_redes_sociais" || name === "revisar_post_pendente" || name === "escolher_variante_post") captureSocialToken(result);
+        // Comprovante de encaminhamento: só existe se a tool realmente entregou (ok: true).
+        if (name === "encaminhar_recado_ao_dono" || name === "enviar_mensagem_contato_comercial") {
+          forwardAttempted = true;
+          try {
+            const p = JSON.parse(result);
+            if (p?.ok === true) forwardProof = String(p?.protocolo || buildForwardProof(p?.message_id));
+            else console.warn("[processor][handoff][tool_failed]", String(p?.erro ?? "desconhecido"));
+          } catch { /* ignore */ }
+        }
         // Short-circuit determinístico do fluxo A/B/C — evita a IA reescrever/repetir textos.
         try {
           const parsed = JSON.parse(result);
           const st = parsed?.status;
           if (st === "aguardando_escolha_variante" || st === "variante_selecionada") {
-            return { text: formatSocialPostToolResult(result), imageUrl: pendingImageUrl };
+            return { text: formatSocialPostToolResult(result), imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
           }
         } catch { /* ignore */ }
         messages.push({ role: "tool", tool_call_id: tc.id, content: result });
@@ -5686,9 +5695,9 @@ async function callGemini(
       continue;
     }
 
-    return { text: appendConfirmCommand(msg?.content ?? ""), imageUrl: pendingImageUrl };
+    return { text: appendConfirmCommand(msg?.content ?? ""), imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
   }
-  return { text: appendConfirmCommand("Desculpa, não consegui concluir a pesquisa agora."), imageUrl: pendingImageUrl };
+  return { text: appendConfirmCommand("Desculpa, não consegui concluir a pesquisa agora."), imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
 }
 
 
