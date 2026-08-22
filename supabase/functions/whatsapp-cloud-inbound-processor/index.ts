@@ -7006,6 +7006,12 @@ async function processOne(queueId: string) {
         console.log(`[processor][owner-forward-direct-text] enviado para ${tenantOwnerPhone} com_foto=${!!imageUrlToOwner} reason=${explicitForward ? "explicit" : "human_needed"}`);
 
         const proto = buildForwardProof(sentOwnerId);
+        try {
+          const stPrev = await loadAgentState(sb, conv.id);
+          await saveAgentState(sb, conv.id, {
+            forward: { protocolo: proto, destinatario: tenantOwnerPhone, wamid: sentOwnerId ?? null, at: new Date().toISOString() },
+          }, stPrev);
+        } catch (_e) { /* não bloqueia */ }
         const reply = humanNeeded && !explicitForward
           ? `Vou confirmar isso com ${ownerFirstName(_tenantOwner?.name)} e pedir para ele te retornar. ${proto}`
           : `Certo, já encaminhei para ${ownerFirstName(_tenantOwner?.name)}. ${proto}`;
