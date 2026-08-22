@@ -9061,6 +9061,7 @@ export type Database = {
       }
       whatsapp_cloud_conversations: {
         Row: {
+          agent_state: Json
           contact_name: string | null
           contact_number: string
           created_at: string
@@ -9071,6 +9072,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          agent_state?: Json
           contact_name?: string | null
           contact_number: string
           created_at?: string
@@ -9081,6 +9083,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          agent_state?: Json
           contact_name?: string | null
           contact_number?: string
           created_at?: string
