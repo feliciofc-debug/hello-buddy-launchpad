@@ -440,7 +440,7 @@ function detectarFormato(texto: string): "feed" | "story" | "reels" | null {
 function detectarPlataformas(texto: string): string[] {
   const t = texto || "";
   const ambos = /\b(ambos|as\s+duas|nos\s+dois|todas\s+as\s+redes)\b/i.test(t);
-  const ig = /\b(instagram|insta|ig)\b/i.test(t) || /\bstor(y|ies|ie)\b/i.test(t) && ambos === false && /\binstagram\b/i.test(t);
+  
   const fb = /\b(facebook|face|fb)\b/i.test(t);
   if (ambos) return ["instagram", "facebook"];
   const out: string[] = [];
