@@ -5409,7 +5409,9 @@ async function callGemini(
   userContent: any,
   hasMedia: boolean,
   toolCtx: { userId: string; fromNumber: string; media?: MediaExtract[] },
-): Promise<{ text: string; imageUrl?: string }> {
+): Promise<{ text: string; imageUrl?: string; forwardProof?: string; forwardAttempted?: boolean }> {
+  let forwardProof: string | undefined;
+  let forwardAttempted = false;
   const nowSP = new Date().toLocaleString("pt-BR", {
     timeZone: "America/Sao_Paulo",
     weekday: "long", day: "2-digit", month: "2-digit", year: "numeric",
