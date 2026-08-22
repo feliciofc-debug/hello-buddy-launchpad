@@ -1487,21 +1487,89 @@ function buildForwardProof(wamid?: string | null): string {
   return `(protocolo #${proto} · ${hh}:${mm})`;
 }
 
+// ---- Estado persistente da conversa (comprovantes + decisões) -------------
+type AgentConvState = {
+  forward?: { protocolo?: string; destinatario?: string; wamid?: string | null; at?: string };
+  decisao?: { valor?: string; at?: string };
+  [k: string]: unknown;
+};
+
+async function loadAgentState(sb: any, convId: string): Promise<AgentConvState> {
+  try {
+    const { data } = await sb
+      .from("whatsapp_cloud_conversations")
+      .select("agent_state")
+      .eq("id", convId)
+      .maybeSingle();
+    const st = (data?.agent_state ?? {}) as AgentConvState;
+    return st && typeof st === "object" ? st : {};
+  } catch (e) {
+    console.warn("[processor][agent_state][load_failed]", (e as Error).message);
+    return {};
+  }
+}
+
+async function saveAgentState(sb: any, convId: string, patch: AgentConvState, current: AgentConvState = {}) {
+  try {
+    await sb
+      .from("whatsapp_cloud_conversations")
+      .update({ agent_state: { ...current, ...patch } })
+      .eq("id", convId);
+  } catch (e) {
+    console.warn("[processor][agent_state][save_failed]", (e as Error).message);
+  }
+}
+
+// Extrai o código do protocolo de um comprovante "(protocolo #ABC123 · 17:03)"
+function extractProtocolCode(proof?: string | null): string {
+  const m = String(proof || "").match(/#([A-Za-z0-9]{4,10})/);
+  return m ? m[1].toUpperCase() : "";
+}
+
+// O protocolo só pode aparecer UMA vez, no fim da linha, no turno em que foi gerado.
+// Remove qualquer protocolo copiado do histórico (inclusive solto no início da frase).
+function sanitizeProtocolLeaks(text: string, currentProof?: string): { text: string; cleaned: boolean } {
+  let out = String(text || "");
+  const before = out;
+  const currentCode = extractProtocolCode(currentProof);
+  const placeholder = "\u0000PROOF\u0000";
+  if (currentProof && out.includes(currentProof)) {
+    out = out.split(currentProof).join(placeholder);
+  }
+  // Remove comprovantes completos e protocolos soltos que não sejam o do turno atual
+  out = out.replace(/\(\s*protocolo\s*#[A-Za-z0-9]{4,10}[^)]*\)/gi, "");
+  out = out.replace(/protocolo\s*#[A-Za-z0-9]{4,10}/gi, "");
+  out = out.replace(/(^|[\s\n>*_—-])#[A-Za-z0-9]{4,10}\b/g, (m, p1) => {
+    const code = m.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+    if (currentCode && code === currentCode) return m;
+    return p1;
+  });
+  out = out.split(placeholder).join(currentProof ?? "");
+  out = out
+    .split("<<SPLIT>>")
+    .map((b) => b.replace(/[ \t]{2,}/g, " ").replace(/\s+([.,!?])/g, "$1").replace(/^[\s·,-]+/, "").trim())
+    .filter((b) => b.length > 0)
+    .join("<<SPLIT>>");
+  return { text: out, cleaned: out !== before };
+}
+
 // ---- Anti "encaminhamento fantasma" -------------------------------------
 // A confirmação de encaminhamento SÓ pode existir se a tool retornou ok:true
-// (ou seja, se houver comprovante gerado por buildForwardProof).
+// (ou seja, se houver comprovante gerado por buildForwardProof) OU se já existe
+// comprovante registrado no estado da conversa (turno anterior).
 const FORWARD_CLAIM_RE = /(encaminhei|encaminhando|já (mandei|enviei|passei|repassei)|acabei de (mandar|enviar|passar)|vou (já )?(mandar|enviar|passar|encaminhar|repassar)|estou (mandando|enviando|passando|encaminhando)|passei (o|seu) (recado|contato)|te retorna|vai te retornar|entra em contato com você|ele (te )?(liga|retorna|responde))/i;
 
 function splitSentences(text: string): string[] {
   return String(text || "").split(/(?<=[.!?…\n])\s+/);
 }
 
-// Remove qualquer frase que afirme encaminhamento quando NÃO existe comprovante.
-// Quando existe comprovante, garante que ele apareça na mensagem.
+// Remove qualquer frase que afirme encaminhamento quando NÃO existe comprovante
+// (nem neste turno, nem registrado na conversa).
 function enforceForwardTruth(
   text: string,
   forwardProof: string | undefined,
   ownerFirst: string,
+  persistedProof?: { protocolo?: string; at?: string } | null,
 ): { text: string; scrubbed: boolean } {
   const raw = String(text || "");
   if (forwardProof) {
@@ -1509,6 +1577,12 @@ function enforceForwardTruth(
     const parts = raw.split("<<SPLIT>>");
     parts[0] = `${parts[0].trimEnd()} ${forwardProof}`;
     return { text: parts.join("<<SPLIT>>"), scrubbed: false };
+  }
+
+  // Já existe encaminhamento confirmado nesta conversa (turno anterior):
+  // a afirmação do agente é VERDADEIRA — não apaga nada e não injeta aviso.
+  if (persistedProof?.protocolo) {
+    return { text: raw, scrubbed: false };
   }
 
   const blocks = raw.split("<<SPLIT>>");
@@ -1536,12 +1610,36 @@ function pedeAtencaoDoDono(text: string): boolean {
 }
 
 // Cliente encerrou o atendimento / optou por esperar o dono?
+// Inclui variações de 1ª pessoa ("aguardo ele", "fico no aguardo", "prefiro esperar").
 function clienteEncerrouAtendimento(text: string): boolean {
   const low = normalizeContactLookupText(text);
   if (!low) return false;
   if (low.length > 120) return false;
-  return /(^|\b)(aguardar( ele| o| dele)?|vou aguardar|prefiro aguardar|espero ele|vou esperar|prefiro esperar|prefiro falar com ele|falo com ele|so com ele|valeu|obrigad[oa]|ta bom|tudo bem entao|depois eu vejo|vou pensar|qualquer coisa te falo|ok|blz|beleza)(\b|$)/.test(low);
+  if (/\b(aguardo|espero|aguardarei|esperarei)\b/.test(low)) return true;
+  if (/\b(fico|ficarei)\s+(no\s+)?aguard(o|ando)\b/.test(low)) return true;
+  if (/\b(prefiro|vou|melhor)\s+(aguardar|esperar)\b/.test(low)) return true;
+  return /(^|\b)(aguardar( ele| o| dele| entao)?|aguardando|vou aguardar|prefiro aguardar|espero ele|vou esperar|prefiro esperar|prefiro falar com ele|falo com ele|so com ele|valeu|obrigad[oa]|ta bom|tudo bem entao|depois eu vejo|vou pensar|qualquer coisa te falo|ok|blz|beleza)(\b|$)/.test(low);
 }
+
+// Sentenças que re-oferecem a mesma escolha (adiantar x aguardar) após o cliente decidir.
+const REOFERTA_RE = /(prefere\s+(assim|aguardar|esperar|adiantar)|quer\s+que\s+eu\s+(v[áa]|vou)?\s*(te\s+)?adiantar|posso\s+(ir\s+)?te\s+adiantando|prefere\s+assim\s+ou|ou\s+prefere\s+aguardar)/i;
+
+function removerReoferta(text: string): { text: string; removed: boolean } {
+  let removed = false;
+  const out = String(text || "")
+    .split("<<SPLIT>>")
+    .map((block) => {
+      const kept = splitSentences(block).filter((s) => {
+        if (REOFERTA_RE.test(s)) { removed = true; return false; }
+        return true;
+      });
+      return kept.join(" ").replace(/\s{2,}/g, " ").trim();
+    })
+    .filter((b) => b.length > 0)
+    .join("<<SPLIT>>");
+  return { text: out, removed };
+}
+
 
 
 function isExplicitOwnerForwardIntent(raw: string, ownerName?: string | null): boolean {
