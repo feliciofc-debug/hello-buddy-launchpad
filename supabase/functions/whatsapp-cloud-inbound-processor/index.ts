@@ -7086,6 +7086,56 @@ async function processOne(queueId: string) {
       }
     }
 
+    // ---- Captura de NOME do lead (a qualquer momento) -----------------------
+    // Grava em contact_name, completa o registro do lead e, se o encaminhamento
+    // já foi feito, manda ao dono UM complemento curto com o nome.
+    let nomeLeadConhecido: string | null = ((conv as any)?.contact_name ?? contactName ?? null) as string | null;
+    let nomePerguntado = false;
+    if (!fromIsOwner && userText.trim()) {
+      try {
+        const stNome = await loadAgentState(sb, conv.id);
+        const pendente = (stNome as any)?.nome_pergunta === true;
+        nomePerguntado = pendente || (stNome as any)?.nome_pergunta === "feita";
+        const nomeCap = nomeLeadConhecido ? null : extrairNomeInformado(userText, pendente);
+        if (nomeCap) {
+          nomeLeadConhecido = nomeCap;
+          await sb.from("whatsapp_cloud_conversations").update({ contact_name: nomeCap }).eq("id", conv.id);
+          (conv as any).contact_name = nomeCap;
+          await sb
+            .from("lead_encaminhamentos")
+            .update({ nome: nomeCap })
+            .eq("user_id", userId)
+            .eq("telefone", row.from_number)
+            .is("nome", null);
+          console.log(`[processor][lead_nome][capturado] tel=${row.from_number} nome=${nomeCap}`);
+
+          const proofPersistido = (stNome as any)?.forward?.protocolo as string | undefined;
+          const complementoJa = (stNome as any)?.complemento_nome === true;
+          if (proofPersistido && !complementoJa && tenantOwnerPhone) {
+            const okComp = await enviarComplementoNomeAoDono({
+              userId,
+              ownerPhone: tenantOwnerPhone,
+              protocolo: proofPersistido,
+              nome: nomeCap,
+            });
+            await saveAgentState(sb, conv.id, { nome: nomeCap, nome_pergunta: "feita", complemento_nome: okComp }, stNome);
+            if (okComp) {
+              await sb
+                .from("lead_encaminhamentos")
+                .update({ complemento_nome_enviado: true })
+                .eq("user_id", userId)
+                .eq("telefone", row.from_number)
+                .eq("protocolo", extractProtocolCode(proofPersistido));
+            }
+          } else {
+            await saveAgentState(sb, conv.id, { nome: nomeCap, nome_pergunta: "feita" }, stNome);
+          }
+        }
+      } catch (e) {
+        console.warn("[processor][lead_nome][falhou]", (e as Error).message);
+      }
+    }
+
 
     // Atalho determinístico: quando cliente pede equipe/responsável/Marcelo ou faz
     // pergunta comercial que exige retorno humano, NÃO deixa a IA procurar contato.
