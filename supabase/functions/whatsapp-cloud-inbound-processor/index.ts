@@ -1520,6 +1520,122 @@ async function saveAgentState(sb: any, convId: string, patch: AgentConvState, cu
   }
 }
 
+// ---- Registro de lead encaminhado (não depende do WhatsApp do dono) -------
+async function registrarLeadEncaminhamento(params: {
+  userId: string;
+  telefone: string;
+  nome?: string | null;
+  mensagem?: string | null;
+  protocolo?: string | null;
+  wamid?: string | null;
+}): Promise<string | null> {
+  try {
+    const { data, error } = await sb
+      .from("lead_encaminhamentos")
+      .insert({
+        user_id: params.userId,
+        telefone: params.telefone,
+        nome: (params.nome || "").trim() || null,
+        mensagem: (params.mensagem || "").slice(0, 2000) || null,
+        protocolo: extractProtocolCode(params.protocolo) || null,
+        wamid_dono: params.wamid ?? null,
+        enviado_em: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+    if (error) throw error;
+    console.log(`[processor][lead_encaminhado][registrado] id=${data?.id} tel=${params.telefone} nome=${params.nome ?? "-"}`);
+    return data?.id ?? null;
+  } catch (e) {
+    console.warn("[processor][lead_encaminhado][falhou]", (e as Error).message);
+    return null;
+  }
+}
+
+const NOME_STOPWORDS = new Set([
+  "sim","nao","não","ok","okay","obrigado","obrigada","valeu","bom","boa","dia","tarde","noite","oi","ola","olá",
+  "consorcio","consórcio","orcamento","orçamento","quanto","quero","preciso","aguardo","espero","certo","beleza",
+  "tudo","bem","pode","ser","claro","talvez","depois","agora","isso","nada","ainda","legal","perfeito","entendi",
+]);
+
+// Captura o nome quando o cliente informa espontaneamente ("meu nome é X", "sou o X")
+// ou quando responde só o nome depois de a gente ter perguntado (pendente=true).
+function extrairNomeInformado(texto: string, pendente = false): string | null {
+  const t = String(texto || "").trim();
+  if (!t) return null;
+  const cap = (s: string) =>
+    s
+      .split(/\s+/)
+      .map((w) => (w.length > 2 ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w.toLowerCase()))
+      .join(" ")
+      .trim();
+
+  const m = t.match(
+    /(?:meu nome (?:é|eh|e)|me chamo|pode me chamar de|aqui (?:é|eh|e) (?:o |a )?|sou (?:o |a )?|nome:)\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’]{1,}(?:\s+(?:d[aeoi]s?\s+)?[A-Za-zÀ-ÿ'’]{2,}){0,2})/i,
+  );
+  if (m?.[1]) {
+    const cand = m[1].trim();
+    const first = cand.split(/\s+/)[0].toLowerCase();
+    if (!NOME_STOPWORDS.has(first)) return cap(cand);
+  }
+
+  if (pendente) {
+    const limpo = t.replace(/[^A-Za-zÀ-ÿ'’\s]/g, " ").replace(/\s+/g, " ").trim();
+    const palavras = limpo.split(" ").filter(Boolean);
+    if (palavras.length >= 1 && palavras.length <= 3 && palavras.every((p) => p.length >= 2 && !NOME_STOPWORDS.has(p.toLowerCase()))) {
+      return cap(limpo);
+    }
+  }
+  return null;
+}
+
+// Segunda mensagem curta ao dono, referenciando o protocolo do encaminhamento.
+async function enviarComplementoNomeAoDono(params: {
+  userId: string;
+  ownerPhone: string;
+  protocolo: string;
+  nome: string;
+}): Promise<boolean> {
+  const code = extractProtocolCode(params.protocolo);
+  const texto = code
+    ? `Complemento do #${code}: o cliente é ${params.nome}.`
+    : `Complemento: o cliente é ${params.nome}.`;
+  try {
+    const wamid = await sendWhatsApp(params.userId, params.ownerPhone, texto);
+    await logOwnerHeadsup(params.userId, texto, wamid);
+    console.log(`[processor][lead_encaminhado][complemento_enviado] proto=${code} nome=${params.nome}`);
+    return true;
+  } catch (e) {
+    console.warn("[processor][lead_encaminhado][complemento_falhou]", (e as Error).message);
+    return false;
+  }
+}
+
+// ---- Voz: a resposta termina no raciocínio, sem convite no fim -------------
+const CONVITE_FINAL_RE =
+  /^(?:(?:e\s+)?(?:é|eh)\s+só\s+me\s+chamar|qualquer\s+(?:coisa|d[úu]vida)[^.!?]*|fico\s+(?:à|a)\s+disposi[çc][ãa]o[^.!?]*|estou\s+(?:à|a)\s+disposi[çc][ãa]o[^.!?]*|me\s+chama[^.!?]*|se\s+precisar[^.!?]*|posso\s+(?:te\s+)?ajudar\s+(?:em\s+)?mais[^.!?]*|precisa\s+de\s+mais\s+alguma\s+coisa[^.!?]*|estou\s+(?:aqui|por\s+aqui)[^.!?]*|(?:quer|deseja)\s+que\s+eu\s+(?:te\s+)?(?:ajude|adiante|explique)[^.!?]*|conte\s+comigo[^.!?]*)[.!?…]*$/i;
+
+function removerConviteFinal(text: string): { text: string; removed: boolean } {
+  const blocos = String(text || "").split("<<SPLIT>>");
+  let removed = false;
+  const out = blocos.map((bloco) => {
+    let frases = splitSentences(bloco);
+    while (frases.length > 1) {
+      const ultima = frases[frases.length - 1].trim();
+      if (CONVITE_FINAL_RE.test(ultima.replace(/^[\s,;·-]+/, ""))) {
+        frases = frases.slice(0, -1);
+        removed = true;
+      } else break;
+    }
+    return frases.join(" ").replace(/\s+([.,!?])/g, "$1").trim();
+  });
+  const joined = out.filter((b) => b.length > 0).join("<<SPLIT>>");
+  return { text: joined || String(text || ""), removed };
+}
+
+const PERGUNTA_NOME = "Só pra eu completar o recado: qual seu nome?";
+
+
 // Extrai o código do protocolo de um comprovante "(protocolo #ABC123 · 17:03)"
 function extractProtocolCode(proof?: string | null): string {
   const m = String(proof || "").match(/#([A-Za-z0-9]{4,10})/);
