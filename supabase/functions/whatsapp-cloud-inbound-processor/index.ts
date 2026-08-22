@@ -4915,6 +4915,19 @@ async function toolEncaminharRecadoAoDono(
     const messageId = await sendWhatsApp(ctx.userId, owner.phone, recado, imageUrl);
     await logOwnerHeadsup(ctx.userId, imageUrl ? `${recado}\n\n[foto anexada]` : recado, messageId);
     const proof = buildForwardProof(messageId);
+    const nomeNoRecado = (() => {
+      const m = String(recado || "").match(/^\s*Nome:\s*(.+)$/im);
+      const v = (m?.[1] || "").trim();
+      return v && !/^n[ãa]o informado$/i.test(v) && !/^cliente$/i.test(v) ? v : null;
+    })();
+    await registrarLeadEncaminhamento({
+      userId: ctx.userId,
+      telefone: ctx.fromNumber,
+      nome: nomeNoRecado,
+      mensagem: recado,
+      protocolo: proof,
+      wamid: messageId,
+    });
     return JSON.stringify({
       ok: true,
       enviado_para: owner.name || "dono",
