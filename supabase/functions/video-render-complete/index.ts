@@ -131,10 +131,12 @@ Deno.serve(async (req) => {
       const nomes = plataformas
         .map((p) => (p === "instagram" ? "Instagram" : p === "facebook" ? "Facebook" : p))
         .join(" e ");
+      const fmt = String(job.formato || "feed").toLowerCase();
+      const nomeFormato = fmt === "story" ? "STORY" : fmt === "reels" ? "REELS" : "FEED";
       await avisarCliente(
         supabase,
         job,
-        `🎬 Vídeo pronto com a legenda na tela. *Ainda não publiquei nada.*${blocoLegenda}\n\nResponda *APROVAR* que eu publico em ${nomes}, ou *CANCELAR* e nada vai ao ar.`,
+        `🎬 Vídeo pronto com a legenda na tela. *Ainda não publiquei nada.*${blocoLegenda}\n\nResponda *APROVAR* que eu publico como *${nomeFormato}* no ${nomes}, ou *CANCELAR* e nada vai ao ar.`,
         videoUrl,
       );
     }
