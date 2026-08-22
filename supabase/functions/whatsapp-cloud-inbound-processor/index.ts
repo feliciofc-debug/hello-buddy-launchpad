@@ -1531,7 +1531,7 @@ function extractProtocolCode(proof?: string | null): string {
 function sanitizeProtocolLeaks(text: string, currentProof?: string): { text: string; cleaned: boolean } {
   let out = String(text || "");
   const before = out;
-  const currentCode = extractProtocolCode(currentProof);
+  void extractProtocolCode;
   const placeholder = "\u0000PROOF\u0000";
   if (currentProof && out.includes(currentProof)) {
     out = out.split(currentProof).join(placeholder);
