@@ -592,10 +592,14 @@ export async function tratarRespostaFluxoLegenda(params: {
     if (detectarEscolha(params.texto) !== null && !ehConfirmacao(params.texto)) {
       return `Já está fechado com a ${letraDaCopy(job)}. Responda *ENVIAR* ou *PUBLICAR*.`;
     }
-    if (ehNegativa(params.texto) && !querPublicar(params.texto)) {
-      await sb.from("video_render_jobs").update({ status: "cancelado" }).eq("id", job.id);
+    if (ehCancelamentoExplicito(params.texto) && !querPublicar(params.texto)) {
+      await cancelarJob(job, params.texto, "cancelamento_explicito_confirmacao");
       return "Sem problema, não publiquei nada. Quando quiser, me avise.";
     }
+    if (ehDuvidaDeCancelamento(params.texto)) {
+      return `Esse vídeo continua fechado com a ${letraDaCopy(job)}. Responda *ENVIAR* ou *PUBLICAR* — ou ${PERGUNTA_CANCELAR}`;
+    }
+
     if (ehConfirmacao(params.texto)) {
       const publicar = querPublicar(params.texto);
       const formatoPedido = detectarFormato(params.texto) || job.formato || "feed";
