@@ -7632,8 +7632,21 @@ Regras:
     // ⛔ ANTI-PROMESSA: o agente não pode dizer que vai fazer e não chamar a tool no mesmo turno.
     const antiPromessaBlock = `\n\nENTREGA NO MESMO TURNO (REGRA ABSOLUTA):\n- É PROIBIDO prometer trabalho futuro. Frases como "já estou preparando", "fica pronto em um instante", "vou montar e te mando", "aguarde uns minutos" são PROIBIDAS se você não chamou a ferramenta correspondente NESTA MESMA RESPOSTA.\n- Você NÃO tem fila nem execução em segundo plano: se não chamar a tool agora, NADA acontece e o pedido se perde.\n- Pedido de arte/anúncio/imagem/post ⇒ chame a tool (criar_anuncio, editar_imagem, gerar_imagem, criar_carrossel, postar_midia_biblioteca) AGORA e só depois responda.\n- Se faltar UM dado essencial, faça UMA pergunta curta em vez de prometer. Se os dados já vieram, execute sem perguntar.`;
 
-    const systemPromptWithDate = systemPrompt + dateBlock + antiPromessaBlock + ownerHintBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock + ebookBlock;
-    console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPromptWithDate.length}`);
+    // === ESTADO PERSISTENTE DA CONVERSA (comprovante de encaminhamento + decisões) ===
+    const agentState = await loadAgentState(sb, conv.id);
+    const persistedForward = (agentState.forward ?? null) as { protocolo?: string; destinatario?: string; wamid?: string | null; at?: string } | null;
+    const decisaoAnterior = (agentState.decisao ?? null) as { valor?: string; at?: string } | null;
+
+    let estadoBlock = "";
+    if (persistedForward?.protocolo) {
+      estadoBlock += `\n\n=== ENCAMINHAMENTO JÁ CONFIRMADO NESTA CONVERSA ===\n- O recado deste cliente JÁ foi entregue ao responsável (protocolo registrado internamente${persistedForward.at ? `, em ${persistedForward.at}` : ""}).\n- Você pode afirmar com segurança que o recado foi entregue e que o responsável vai retornar.\n- NUNCA escreva o código do protocolo no texto. Ele já foi informado uma única vez, no momento do envio. É PROIBIDO repetir códigos como "#XXXXXX" em qualquer resposta.\n- NÃO encaminhe de novo, a menos que exista FATO NOVO relevante.`;
+    }
+    if (decisaoAnterior?.valor) {
+      estadoBlock += `\n\n=== DECISÃO JÁ TOMADA PELO CLIENTE (NÃO OFEREÇA DE NOVO) ===\n- O cliente já escolheu: "${decisaoAnterior.valor}".\n- REGRA DO PRODUTO: nenhuma opção é oferecida duas vezes. É PROIBIDO perguntar novamente se ele prefere adiantar com você ou aguardar o responsável.\n- Apenas respeite a escolha e se coloque à disposição, sem repetir a pergunta.`;
+    }
+
+    const systemPromptWithDate = systemPrompt + dateBlock + antiPromessaBlock + ownerHintBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock + ebookBlock + estadoBlock;
+    console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPromptWithDate.length} forwardState=${!!persistedForward?.protocolo} decisao=${decisaoAnterior?.valor ?? "-"}`);
 
     // Histórico
     const { data: histRows } = await sb
