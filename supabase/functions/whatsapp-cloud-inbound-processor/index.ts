@@ -7695,7 +7695,8 @@ Regras:
         const pediuDono = pedeAtencaoDoDono(userText);
         const encerrou = clienteEncerrouAtendimento(userText);
 
-        if (!forwardProof && ownerInfo?.phone && ownerInfo.phone !== row.from_number && (pediuDono || encerrou)) {
+        const jaEncaminhado = !!persistedForward?.protocolo;
+        if (!forwardProof && ownerInfo?.phone && ownerInfo.phone !== row.from_number && (pediuDono || encerrou) && !(jaEncaminhado && encerrou && !pediuDono)) {
           console.warn(`[processor][handoff][miss] tool não executada com sucesso (pediu_dono=${pediuDono} encerrou=${encerrou} tentou=${forwardAttempted}) from=${row.from_number} → handoff determinístico`);
           const recadoAuto = [
             `Nome: ${(conv as any)?.contact_name ?? "não informado"}`,
@@ -7714,11 +7715,41 @@ Regras:
           }
         }
 
-        const guard = enforceForwardTruth(reply, forwardProof, ownerFirst);
+        const guard = enforceForwardTruth(reply, forwardProof, ownerFirst, persistedForward);
         if (guard.scrubbed) {
           console.warn(`[processor][handoff][claim_scrubbed] afirmação de encaminhamento sem comprovante removida from=${row.from_number}`);
         }
         reply = guard.text;
+
+        // Protocolo só pode aparecer no turno em que foi gerado, no fim da linha.
+        const proto = sanitizeProtocolLeaks(reply, forwardProof);
+        if (proto.cleaned) console.warn(`[processor][protocol][leak_scrubbed] protocolo copiado do histórico removido from=${row.from_number}`);
+        reply = proto.text;
+
+        // Cliente já decidiu? Não oferecer a mesma escolha duas vezes.
+        if (decisaoAnterior?.valor || encerrou) {
+          const dedupe = removerReoferta(reply);
+          if (dedupe.removed) console.warn(`[processor][oferta][reoferta_removida] from=${row.from_number}`);
+          reply = dedupe.text || reply;
+        }
+
+        // Persiste comprovante e decisão no estado da conversa
+        const patch: AgentConvState = {};
+        if (forwardProof && !persistedForward?.protocolo) {
+          patch.forward = {
+            protocolo: forwardProof,
+            destinatario: ownerInfo?.phone ?? null as any,
+            wamid: null,
+            at: new Date().toISOString(),
+          };
+        }
+        if (encerrou && !decisaoAnterior?.valor) {
+          patch.decisao = { valor: "aguardar o responsável", at: new Date().toISOString() };
+        }
+        if (Object.keys(patch).length > 0) {
+          await saveAgentState(sb, conv.id, patch, agentState);
+          console.log(`[processor][agent_state][saved] forward=${!!patch.forward} decisao=${patch.decisao?.valor ?? "-"}`);
+        }
       } catch (e) {
         console.warn("[processor][handoff][guard_failed]", (e as Error).message);
       }
