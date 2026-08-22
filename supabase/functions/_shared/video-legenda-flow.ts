@@ -269,18 +269,23 @@ export async function iniciarFluxoLegendaVideo(params: {
   const nomeEmpresa =
     (params.nomeEmpresa || "").trim() || (await resolverNomeEmpresa(params.userId));
 
+  // Sem transcrição válida NUNCA se gera copy: o fluxo pergunta do que se trata.
+  const SEM_TRANSCRICAO =
+    "Recebi seu vídeo, mas não consegui identificar a fala nele. Do que se trata? " +
+    "Me escreva o tema (uma frase basta) que eu gero as 3 legendas — sem isso eu não invento copy.";
+
   let segmentos: SegmentoLegenda[] = [];
   try {
     segmentos = await transcrever(params.videoUrl, nomeEmpresa);
   } catch (e) {
     console.error("[video-legenda-flow] transcrição falhou:", (e as Error).message);
-    return null;
+    return SEM_TRANSCRICAO;
   }
 
   const transcricao = textoDaTranscricao(segmentos);
   if (!transcricao) {
-    console.log("[video-legenda-flow] vídeo sem fala — fluxo de legenda não se aplica");
-    return null;
+    console.log("[video-legenda-flow] vídeo sem fala — pedindo tema ao dono");
+    return SEM_TRANSCRICAO;
   }
 
   const style = await getCopyStyle(sb, params.userId);
@@ -296,8 +301,9 @@ export async function iniciarFluxoLegendaVideo(params: {
 
   } catch (e) {
     console.error("[video-legenda-flow] copies falharam:", (e as Error).message);
-    return null;
+    return "Recebi seu vídeo e transcrevi a fala, mas falhou a geração das legendas. Me responda *TENTAR DE NOVO* que eu refaço.";
   }
+
 
   // Descarta fluxos antigos ainda abertos deste usuário (evita ambiguidade no "A/B/C")
   await sb
