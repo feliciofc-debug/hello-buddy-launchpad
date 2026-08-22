@@ -7170,15 +7170,27 @@ async function processOne(queueId: string) {
         console.log(`[processor][owner-forward-direct-text] enviado para ${tenantOwnerPhone} com_foto=${!!imageUrlToOwner} reason=${explicitForward ? "explicit" : "human_needed"}`);
 
         const proto = buildForwardProof(sentOwnerId);
+        await registrarLeadEncaminhamento({
+          userId,
+          telefone: row.from_number,
+          nome: nomeLeadConhecido,
+          mensagem: userText,
+          protocolo: proto,
+          wamid: sentOwnerId,
+        });
+        let pedirNomeAgora = false;
         try {
           const stPrev = await loadAgentState(sb, conv.id);
+          pedirNomeAgora = !nomeLeadConhecido && !(stPrev as any)?.nome_pergunta;
           await saveAgentState(sb, conv.id, {
             forward: { protocolo: proto, destinatario: tenantOwnerPhone, wamid: sentOwnerId ?? null, at: new Date().toISOString() },
+            ...(pedirNomeAgora ? { nome_pergunta: true } : {}),
           }, stPrev);
         } catch (_e) { /* não bloqueia */ }
-        const reply = humanNeeded && !explicitForward
+        const confirmacao = humanNeeded && !explicitForward
           ? `Vou confirmar isso com ${ownerFirstName(_tenantOwner?.name)} e pedir para ele te retornar. ${proto}`
           : `Certo, já encaminhei para ${ownerFirstName(_tenantOwner?.name)}. ${proto}`;
+        const reply = pedirNomeAgora ? `${confirmacao}\n\n${PERGUNTA_NOME}` : confirmacao;
 
         const { data: outMsg } = await sb
           .from("whatsapp_cloud_messages")
