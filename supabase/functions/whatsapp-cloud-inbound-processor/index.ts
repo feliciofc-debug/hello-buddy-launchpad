@@ -1487,6 +1487,62 @@ function buildForwardProof(wamid?: string | null): string {
   return `(protocolo #${proto} · ${hh}:${mm})`;
 }
 
+// ---- Anti "encaminhamento fantasma" -------------------------------------
+// A confirmação de encaminhamento SÓ pode existir se a tool retornou ok:true
+// (ou seja, se houver comprovante gerado por buildForwardProof).
+const FORWARD_CLAIM_RE = /(encaminhei|encaminhando|já (mandei|enviei|passei|repassei)|acabei de (mandar|enviar|passar)|vou (já )?(mandar|enviar|passar|encaminhar|repassar)|estou (mandando|enviando|passando|encaminhando)|passei (o|seu) (recado|contato)|te retorna|vai te retornar|entra em contato com você|ele (te )?(liga|retorna|responde))/i;
+
+function splitSentences(text: string): string[] {
+  return String(text || "").split(/(?<=[.!?…\n])\s+/);
+}
+
+// Remove qualquer frase que afirme encaminhamento quando NÃO existe comprovante.
+// Quando existe comprovante, garante que ele apareça na mensagem.
+function enforceForwardTruth(
+  text: string,
+  forwardProof: string | undefined,
+  ownerFirst: string,
+): { text: string; scrubbed: boolean } {
+  const raw = String(text || "");
+  if (forwardProof) {
+    if (raw.includes(forwardProof)) return { text: raw, scrubbed: false };
+    const parts = raw.split("<<SPLIT>>");
+    parts[0] = `${parts[0].trimEnd()} ${forwardProof}`;
+    return { text: parts.join("<<SPLIT>>"), scrubbed: false };
+  }
+
+  const blocks = raw.split("<<SPLIT>>");
+  let scrubbed = false;
+  const cleanedBlocks = blocks.map((block) => {
+    const kept = splitSentences(block).filter((s) => {
+      if (FORWARD_CLAIM_RE.test(s)) { scrubbed = true; return false; }
+      return true;
+    });
+    return kept.join(" ").replace(/\s{2,}/g, " ").trim();
+  }).filter((b) => b.length > 0);
+
+  if (!scrubbed) return { text: raw, scrubbed: false };
+
+  const aviso = `Só pra ser transparente: ainda não consegui entregar seu recado pro ${ownerFirst} agora — deu um problema no envio. Me confirma seu nome e o melhor telefone que eu garanto o retorno dele.`;
+  const finalText = cleanedBlocks.length > 0 ? `${cleanedBlocks.join("<<SPLIT>>")}<<SPLIT>>${aviso}` : aviso;
+  return { text: finalText, scrubbed: true };
+}
+
+// Cliente pediu algo que exige o dono (orçamento/simulação/valores/negociação)?
+function pedeAtencaoDoDono(text: string): boolean {
+  const low = normalizeContactLookupText(text);
+  if (!low) return false;
+  return /(orcamento|simulacao|simular|simule|proposta|valores|valor da|quanto custa|quanto fica|preco|desconto|negociar|negociacao|parcela|financiamento|carta de credito)/.test(low);
+}
+
+// Cliente encerrou o atendimento / optou por esperar o dono?
+function clienteEncerrouAtendimento(text: string): boolean {
+  const low = normalizeContactLookupText(text);
+  if (!low) return false;
+  if (low.length > 120) return false;
+  return /(^|\b)(aguardar( ele| o| dele)?|vou aguardar|prefiro aguardar|espero ele|vou esperar|prefiro esperar|prefiro falar com ele|falo com ele|so com ele|valeu|obrigad[oa]|ta bom|tudo bem entao|depois eu vejo|vou pensar|qualquer coisa te falo|ok|blz|beleza)(\b|$)/.test(low);
+}
+
 
 function isExplicitOwnerForwardIntent(raw: string, ownerName?: string | null): boolean {
   const low = normalizeContactLookupText(raw);
