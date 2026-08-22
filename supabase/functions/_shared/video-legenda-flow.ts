@@ -269,18 +269,23 @@ export async function iniciarFluxoLegendaVideo(params: {
   const nomeEmpresa =
     (params.nomeEmpresa || "").trim() || (await resolverNomeEmpresa(params.userId));
 
+  // Sem transcrição válida NUNCA se gera copy: o fluxo pergunta do que se trata.
+  const SEM_TRANSCRICAO =
+    "Recebi seu vídeo, mas não consegui identificar a fala nele. Do que se trata? " +
+    "Me escreva o tema (uma frase basta) que eu gero as 3 legendas — sem isso eu não invento copy.";
+
   let segmentos: SegmentoLegenda[] = [];
   try {
     segmentos = await transcrever(params.videoUrl, nomeEmpresa);
   } catch (e) {
     console.error("[video-legenda-flow] transcrição falhou:", (e as Error).message);
-    return null;
+    return SEM_TRANSCRICAO;
   }
 
   const transcricao = textoDaTranscricao(segmentos);
   if (!transcricao) {
-    console.log("[video-legenda-flow] vídeo sem fala — fluxo de legenda não se aplica");
-    return null;
+    console.log("[video-legenda-flow] vídeo sem fala — pedindo tema ao dono");
+    return SEM_TRANSCRICAO;
   }
 
   const style = await getCopyStyle(sb, params.userId);
@@ -296,8 +301,9 @@ export async function iniciarFluxoLegendaVideo(params: {
 
   } catch (e) {
     console.error("[video-legenda-flow] copies falharam:", (e as Error).message);
-    return null;
+    return "Recebi seu vídeo e transcrevi a fala, mas falhou a geração das legendas. Me responda *TENTAR DE NOVO* que eu refaço.";
   }
+
 
   // Descarta fluxos antigos ainda abertos deste usuário (evita ambiguidade no "A/B/C")
   await sb
@@ -359,9 +365,58 @@ function querPublicar(texto: string): boolean {
   return /\b(publica(r)?|posta(r)?|publique|no\s+ar|instagram|facebook)\b/i.test(t);
 }
 
-function ehNegativa(texto: string): boolean {
-  return /\b(n[ãa]o|nao|cancela(r)?|espera|depois|para)\b/i.test(texto || "");
+/** Termos que indicam que a frase é sobre o fluxo do vídeo (não desistência). */
+const PALAVRAS_FLUXO =
+  /(legenda|queimad|caption|story|stories|reels|feed|formato|v[íi]deo|video|copy|vertical|horizontal|9:16|1:1|publica|posta)/i;
+
+function contaPalavras(texto: string): number {
+  return (texto || "").trim().split(/\s+/).filter(Boolean).length;
 }
+
+/**
+ * Cancelamento só é aceito em frase CURTA e INEQUÍVOCA.
+ * "Não precisa de legenda porque quero publicar no story com legenda queimada"
+ * NUNCA pode virar cancelamento.
+ */
+function ehCancelamentoExplicito(texto: string): boolean {
+  const t = (texto || "").trim().toLowerCase();
+  if (!t) return false;
+  if (contaPalavras(t) > 6) return false;
+  const temTermoDeCancelar =
+    /\b(cancela|cancelar|cancelado|descarta(r)?|esquece(r)?|desisto|deixa\s+pra\s+l[áa]|deixa\s+pra\s+la|n[ãa]o\s+quero\s+mais|nao\s+quero\s+mais)\b/
+      .test(t);
+  if (!temTermoDeCancelar) return false;
+  // Menciona o fluxo (legenda/story/formato) → é correção de pedido, não desistência.
+  if (PALAVRAS_FLUXO.test(t) && !/\b(cancela|cancelar|descarta|esquece)\b/.test(t)) return false;
+  return true;
+}
+
+/** Frase com "não/espera/depois" mas ambígua: perguntar em vez de descartar. */
+function ehDuvidaDeCancelamento(texto: string): boolean {
+  const t = (texto || "").toLowerCase();
+  if (ehCancelamentoExplicito(t)) return false;
+  if (PALAVRAS_FLUXO.test(t)) return false; // correção de pedido
+  return /\b(n[ãa]o|nao|espera|depois|para)\b/.test(t);
+}
+
+const PERGUNTA_CANCELAR =
+  "Quer cancelar esse vídeo ou só mudar alguma coisa? Se for cancelar, responda *CANCELAR*.";
+
+async function cancelarJob(
+  job: any,
+  frase: string,
+  motivo: string,
+  extra: Record<string, unknown> = {},
+): Promise<void> {
+  await sb.from("video_render_jobs").update({ status: "cancelado", ...extra }).eq("id", job.id);
+  console.log("[video-legenda-flow][cancelado]", {
+    job_id: job.id,
+    status_anterior: job.status,
+    motivo,
+    frase: (frase || "").slice(0, 160),
+  });
+}
+
 
 /**
  * Passos 3 e 4: interpreta a resposta do dono para um fluxo já aberto.
@@ -381,6 +436,56 @@ function detectarFormato(texto: string): "feed" | "story" | "reels" | null {
 function letraDaCopy(job: any): string {
   const l = String(job?.metadata?.copy_letra || "").toUpperCase();
   return l ? `legenda *${l}*` : "a legenda que você escolheu";
+}
+
+/** Janela em que um vídeo recente (mesmo cancelado) ainda "pertence" à conversa. */
+const JANELA_RETOMADA_MIN = 30;
+
+/**
+ * Sem fluxo aberto: se existe um vídeo recente (inclusive cancelado) e o dono
+ * fala de vídeo/legenda/publicação, o fluxo responde de forma determinística.
+ * Nunca devolve null nesse caso — o agente conversacional não pode inventar copy.
+ */
+async function tratarSemFluxoAberto(params: {
+  userId: string;
+  telefone: string;
+  texto: string;
+}): Promise<string | null> {
+  const desde = new Date(Date.now() - JANELA_RETOMADA_MIN * 60_000).toISOString();
+  const { data: recente } = await sb
+    .from("video_render_jobs")
+    .select("*")
+    .eq("user_id", params.userId)
+    .gte("created_at", desde)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!recente) return null;
+
+  const t = params.texto || "";
+  const falaDoVideo =
+    PALAVRAS_FLUXO.test(t) || detectarEscolha(t) !== null || detectarFormato(t) !== null;
+  if (!falaDoVideo) return null;
+  if (recente.status !== "cancelado") return null; // concluído/aprovado: agente segue normal
+
+  const opcoes: string[] = recente.metadata?.opcoes || [];
+  const querRetomar =
+    /\b(sim|retoma(r)?|reabr(e|ir)|volta(r)?|continua(r)?|pode|isso|quero)\b/i.test(t) &&
+    !/\bn[ãa]o\s+(quero|precisa)\b/i.test(t);
+
+  if (opcoes.length && (querRetomar || detectarEscolha(t) !== null || detectarFormato(t) !== null)) {
+    await sb
+      .from("video_render_jobs")
+      .update({ status: "aguardando_escolha", erro_mensagem: null })
+      .eq("id", recente.id);
+    console.log("[video-legenda-flow][retomada]", {
+      job_id: recente.id,
+      frase: t.slice(0, 160),
+    });
+    return `Retomei aquele vídeo 👍 (não precisa enviar de novo)\n\n${montarMensagemOpcoes(opcoes)}`;
+  }
+
+  return "Esse vídeo está como *cancelado*. Quer que eu retome ele? Responda *SIM* que eu reabro com as mesmas legendas — não precisa enviar de novo.";
 }
 
 export async function tratarRespostaFluxoLegenda(params: {
@@ -403,7 +508,8 @@ export async function tratarRespostaFluxoLegenda(params: {
     .limit(1)
     .maybeSingle();
 
-  if (!job) return null;
+  if (!job) return await tratarSemFluxoAberto(params);
+
 
   // ---- job já na fila / renderizando: nada de reabrir escolhas ----
   if (job.status === "pendente" || job.status === "processando") {
@@ -426,13 +532,14 @@ export async function tratarRespostaFluxoLegenda(params: {
         .catch((e: any) => console.error("[video-legenda-flow] publicação falhou:", e?.message));
       return "Aprovado ✅ Estou publicando agora e te aviso aqui quando estiver no ar.";
     }
-    if (ehNegativa(t) || /\bcancela/i.test(t)) {
-      await sb
-        .from("video_render_jobs")
-        .update({ status: "cancelado", plataformas: [] })
-        .eq("id", job.id);
+    if (ehCancelamentoExplicito(t)) {
+      await cancelarJob(job, t, "cancelamento_explicito_aprovacao", { plataformas: [] });
       return "Beleza, *não publiquei nada*. O vídeo legendado já está com você — se quiser tentar outra legenda, me manda o vídeo de novo.";
     }
+    if (ehDuvidaDeCancelamento(t)) {
+      return `O vídeo está pronto com a ${letraDaCopy(job)}. ${PERGUNTA_CANCELAR}`;
+    }
+
     if (detectarEscolha(t) !== null || detectarFormato(t) !== null) {
       return `O vídeo já está pronto com a ${letraDaCopy(job)}. Responda *APROVAR* para publicar ou *CANCELAR* para não publicar.`;
     }
@@ -445,12 +552,25 @@ export async function tratarRespostaFluxoLegenda(params: {
   if (job.status === "aguardando_escolha") {
     const idx = detectarEscolha(params.texto);
     if (idx === null) {
-      if (ehNegativa(params.texto)) {
-        await sb.from("video_render_jobs").update({ status: "cancelado" }).eq("id", job.id);
+      const t = params.texto || "";
+      if (ehCancelamentoExplicito(t)) {
+        await cancelarJob(job, t, "cancelamento_explicito_escolha");
         return "Beleza, deixei esse vídeo de lado. Quando quiser, me manda de novo.";
       }
-      return null; // não é resposta do fluxo — deixa o agente responder
+      // Correção de pedido (formato, legenda queimada, etc.) — o vídeo continua vivo.
+      if (PALAVRAS_FLUXO.test(t)) {
+        const fmt = detectarFormato(t);
+        if (fmt) {
+          await sb.from("video_render_jobs").update({ formato: fmt }).eq("id", job.id);
+        }
+        return `Mantive esse vídeo aberto${fmt ? ` e anotei o formato *${fmt}*` : ""}. A legenda vai *queimada no vídeo* — só me diga qual texto usar: *A*, *B* ou *C*.`;
+      }
+      if (ehDuvidaDeCancelamento(t)) {
+        return `Ainda estou com esse vídeo aqui, esperando *A*, *B* ou *C*. ${PERGUNTA_CANCELAR}`;
+      }
+      return null; // assunto realmente diferente — o agente responde
     }
+
     const opcoes: string[] = job.metadata?.opcoes || [];
     const caption = opcoes[idx];
     if (!caption) return null;
@@ -478,10 +598,14 @@ export async function tratarRespostaFluxoLegenda(params: {
     if (detectarEscolha(params.texto) !== null && !ehConfirmacao(params.texto)) {
       return `Já está fechado com a ${letraDaCopy(job)}. Responda *ENVIAR* ou *PUBLICAR*.`;
     }
-    if (ehNegativa(params.texto) && !querPublicar(params.texto)) {
-      await sb.from("video_render_jobs").update({ status: "cancelado" }).eq("id", job.id);
+    if (ehCancelamentoExplicito(params.texto) && !querPublicar(params.texto)) {
+      await cancelarJob(job, params.texto, "cancelamento_explicito_confirmacao");
       return "Sem problema, não publiquei nada. Quando quiser, me avise.";
     }
+    if (ehDuvidaDeCancelamento(params.texto)) {
+      return `Esse vídeo continua fechado com a ${letraDaCopy(job)}. Responda *ENVIAR* ou *PUBLICAR* — ou ${PERGUNTA_CANCELAR}`;
+    }
+
     if (ehConfirmacao(params.texto)) {
       const publicar = querPublicar(params.texto);
       const formatoPedido = detectarFormato(params.texto) || job.formato || "feed";
