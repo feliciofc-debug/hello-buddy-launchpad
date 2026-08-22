@@ -59,28 +59,55 @@ Deno.serve(async (req) => {
     if (!videoUrl) throw new Error("URL pública do vídeo legendado indisponível");
     console.log(`[video-publicar-aprovado] publicando LEGENDADO ${bucket}/${job.resultado_path}`);
 
-    const plataformas: string[] = Array.isArray(job.plataformas) && job.plataformas.length
-      ? job.plataformas
-      : ["instagram", "facebook"];
+    // Destino resolvido: só publica onde foi pedido.
+    const pedidas: string[] = Array.isArray(job.metadata?.plataformas_pedidas)
+      ? job.metadata.plataformas_pedidas
+      : [];
+    const plataformas: string[] = pedidas.length
+      ? pedidas
+      : (Array.isArray(job.plataformas) && job.plataformas.length
+        ? job.plataformas
+        : ["instagram", "facebook"]);
+
+    const formato = String(job.formato || "feed").toLowerCase();
+    const ehStory = formato === "story";
+    console.log(`[video-publicar-aprovado] formato=${formato} plataformas=${plataformas.join(",")}`);
 
     const publicados: string[] = [];
     const erros: string[] = [];
 
-    for (const plataforma of plataformas) {
+    if (ehStory) {
+      // STORY: função dedicada, aceita os dois canais de uma vez.
       try {
-        const { data: res, error: pErr } = await supabase.functions.invoke("meta-publish-reels", {
-          body: {
-            platform: plataforma,
-            video_url: videoUrl,
-            caption: job.copy_escolhida || job.caption || " ",
-            user_id: job.user_id,
-          },
+        const { data: res, error: sErr } = await supabase.functions.invoke("meta-publish-story", {
+          body: { video_url: videoUrl, user_id: job.user_id, canais: plataformas },
         });
-        if (pErr) throw pErr;
-        if (res?.success) publicados.push(plataforma);
-        else erros.push(`${plataforma}: ${res?.error || "falhou"}`);
+        if (sErr) throw sErr;
+        for (const plataforma of plataformas) {
+          const r = res?.[plataforma];
+          if (r?.ok) publicados.push(plataforma);
+          else erros.push(`${plataforma} (story): ${r?.error || res?.error || "falhou"}`);
+        }
       } catch (e) {
-        erros.push(`${plataforma}: ${(e as Error)?.message || "erro"}`);
+        erros.push(`story: ${(e as Error)?.message || "erro"}`);
+      }
+    } else {
+      for (const plataforma of plataformas) {
+        try {
+          const { data: res, error: pErr } = await supabase.functions.invoke("meta-publish-reels", {
+            body: {
+              platform: plataforma,
+              video_url: videoUrl,
+              caption: job.copy_escolhida || job.caption || " ",
+              user_id: job.user_id,
+            },
+          });
+          if (pErr) throw pErr;
+          if (res?.success) publicados.push(plataforma);
+          else erros.push(`${plataforma}: ${res?.error || "falhou"}`);
+        } catch (e) {
+          erros.push(`${plataforma}: ${(e as Error)?.message || "erro"}`);
+        }
       }
     }
 
@@ -94,7 +121,7 @@ Deno.serve(async (req) => {
 
     if (job.telefone) {
       const msg = publicados.length > 0
-        ? `✅ Publicado com a legenda na tela em: ${publicados
+        ? `✅ Publicado como *${ehStory ? "STORY" : "REELS"}* com a legenda na tela em: ${publicados
             .map((p) => (p === "instagram" ? "Instagram" : "Facebook"))
             .join(" e ")}.`
         : `A publicação falhou: ${erros.join(" | ")}\n\nMe responda *APROVAR* que eu tento de novo.`;

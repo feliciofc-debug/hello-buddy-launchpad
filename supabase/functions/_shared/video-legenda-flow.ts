@@ -312,6 +312,9 @@ export async function iniciarFluxoLegendaVideo(params: {
     .eq("user_id", params.userId)
     .in("status", ["aguardando_escolha", "aguardando_confirmacao"]);
 
+  const formatoInicial = detectarFormato(params.contexto || "") || "feed";
+  const redesIniciais = detectarPlataformas(params.contexto || "");
+
   const { error } = await sb.from("video_render_jobs").insert({
     user_id: params.userId,
     telefone: params.telefone,
@@ -320,7 +323,7 @@ export async function iniciarFluxoLegendaVideo(params: {
     video_path: loc.path,
     segmentos,
     status: "aguardando_escolha",
-    formato: "reels",
+    formato: formatoInicial,
     // Padrão seguro: NÃO publica. Só publica se o dono pedir "PUBLICAR".
     plataformas: [],
     metadata: {
@@ -328,6 +331,7 @@ export async function iniciarFluxoLegendaVideo(params: {
       transcricao,
       contexto: params.contexto || null,
       midia_id: params.midiaId || null,
+      plataformas_pedidas: redesIniciais,
     },
   });
   if (error) {
@@ -432,6 +436,81 @@ function detectarFormato(texto: string): "feed" | "story" | "reels" | null {
   return null;
 }
 
+/** Redes pedidas na frase. [] = nada dito. */
+function detectarPlataformas(texto: string): string[] {
+  const t = texto || "";
+  const ambos = /\b(ambos|as\s+duas|nos\s+dois|todas\s+as\s+redes)\b/i.test(t);
+  
+  const fb = /\b(facebook|face|fb)\b/i.test(t);
+  if (ambos) return ["instagram", "facebook"];
+  const out: string[] = [];
+  if (/\b(instagram|insta|ig)\b/i.test(t)) out.push("instagram");
+  if (fb) out.push("facebook");
+  return out;
+}
+
+function nomeRede(p: string): string {
+  return p === "instagram" ? "Instagram" : p === "facebook" ? "Facebook" : p;
+}
+
+function nomeFormato(f?: string | null): string {
+  const x = (f || "feed").toLowerCase();
+  if (x === "story") return "STORY";
+  if (x === "reels") return "REELS";
+  return "FEED";
+}
+
+/**
+ * A ÚLTIMA instrução vale: sempre que o dono citar formato ou rede,
+ * o marcador do job é reescrito.
+ */
+async function aplicarPedidoDeFormato(
+  job: any,
+  texto: string,
+): Promise<{ formato: string; plataformas_pedidas: string[] }> {
+  const fmt = detectarFormato(texto);
+  const redes = detectarPlataformas(texto);
+  const atual = {
+    formato: job.formato || "feed",
+    plataformas_pedidas: (job.metadata?.plataformas_pedidas || []) as string[],
+  };
+  if (!fmt && redes.length === 0) return atual;
+
+  const novo = {
+    formato: fmt || atual.formato,
+    plataformas_pedidas: redes.length ? redes : atual.plataformas_pedidas,
+  };
+  const patch: Record<string, unknown> = {
+    formato: novo.formato,
+    metadata: { ...(job.metadata || {}), plataformas_pedidas: novo.plataformas_pedidas },
+  };
+  // Se o job já tem destino definido, o destino também segue a última instrução.
+  if (Array.isArray(job.plataformas) && job.plataformas.length && novo.plataformas_pedidas.length) {
+    patch.plataformas = novo.plataformas_pedidas;
+  }
+  await sb.from("video_render_jobs").update(patch).eq("id", job.id);
+  job.formato = novo.formato;
+  job.metadata = { ...(job.metadata || {}), plataformas_pedidas: novo.plataformas_pedidas };
+  if (patch.plataformas) job.plataformas = novo.plataformas_pedidas;
+  console.log("[video-legenda-flow][formato-atualizado]", {
+    job_id: job.id,
+    formato: novo.formato,
+    plataformas: novo.plataformas_pedidas,
+    frase: (texto || "").slice(0, 160),
+  });
+  return novo;
+}
+
+/** Declaração obrigatória do que vai ao ar. */
+export function declararDestino(formato?: string | null, plataformas?: string[] | null): string {
+  const redes = (plataformas && plataformas.length ? plataformas : ["instagram", "facebook"]).map(
+    nomeRede,
+  ).join(" e ");
+  return `como *${nomeFormato(formato)}* no ${redes}`;
+}
+
+
+
 /** Só ecoa a letra da copy — nunca o texto inteiro. */
 function letraDaCopy(job: any): string {
   const l = String(job?.metadata?.copy_letra || "").toUpperCase();
@@ -514,9 +593,15 @@ export async function tratarRespostaFluxoLegenda(params: {
   // ---- job já na fila / renderizando: nada de reabrir escolhas ----
   if (job.status === "pendente" || job.status === "processando") {
     const ehSobreOFluxo =
-      detectarEscolha(params.texto) !== null || detectarFormato(params.texto) !== null;
+      detectarEscolha(params.texto) !== null ||
+      detectarFormato(params.texto) !== null ||
+      detectarPlataformas(params.texto).length > 0;
     if (!ehSobreOFluxo) return null;
-    return `Já estou gravando ${letraDaCopy(job)} no vídeo (formato *${job.formato || "feed"}*). Te aviso aqui assim que ficar pronto — a escolha já está fechada.`;
+    // A última instrução vale: formato/rede podem mudar até a aprovação.
+    const alvo = await aplicarPedidoDeFormato(job, params.texto);
+    return `Já estou gravando ${letraDaCopy(job)} no vídeo. Vai ${
+      declararDestino(alvo.formato, alvo.plataformas_pedidas)
+    }. Te aviso aqui assim que ficar pronto — a escolha da legenda já está fechada.`;
   }
 
 
@@ -525,12 +610,24 @@ export async function tratarRespostaFluxoLegenda(params: {
     const t = params.texto || "";
     const aprovou = /\b(aprovar|aprovado|aprovo|publica(r)?|posta(r)?|pode\s+publicar|libera(do)?|ok|sim)\b/i.test(t) &&
       !/\bn[ãa]o\b/i.test(t);
+
+    // Antes de qualquer coisa: se o dono citou formato/rede nesta mensagem, vale.
+    const alvo = await aplicarPedidoDeFormato(job, t);
+    const destinoFinal = alvo.plataformas_pedidas.length
+      ? alvo.plataformas_pedidas
+      : (Array.isArray(job.plataformas) && job.plataformas.length
+        ? job.plataformas
+        : ["instagram", "facebook"]);
+
     if (aprovou) {
-      await sb.from("video_render_jobs").update({ status: "aprovado" }).eq("id", job.id);
+      await sb
+        .from("video_render_jobs")
+        .update({ status: "aprovado", formato: alvo.formato, plataformas: destinoFinal })
+        .eq("id", job.id);
       sb.functions
         .invoke("video-publicar-aprovado", { body: { job_id: job.id } })
         .catch((e: any) => console.error("[video-legenda-flow] publicação falhou:", e?.message));
-      return "Aprovado ✅ Estou publicando agora e te aviso aqui quando estiver no ar.";
+      return `Aprovado ✅ Publicando ${declararDestino(alvo.formato, destinoFinal)} e te aviso aqui quando estiver no ar.`;
     }
     if (ehCancelamentoExplicito(t)) {
       await cancelarJob(job, t, "cancelamento_explicito_aprovacao", { plataformas: [] });
@@ -540,8 +637,10 @@ export async function tratarRespostaFluxoLegenda(params: {
       return `O vídeo está pronto com a ${letraDaCopy(job)}. ${PERGUNTA_CANCELAR}`;
     }
 
-    if (detectarEscolha(t) !== null || detectarFormato(t) !== null) {
-      return `O vídeo já está pronto com a ${letraDaCopy(job)}. Responda *APROVAR* para publicar ou *CANCELAR* para não publicar.`;
+    if (detectarEscolha(t) !== null || detectarFormato(t) !== null || detectarPlataformas(t).length) {
+      return `O vídeo está pronto com a ${letraDaCopy(job)}. Responda *APROVAR* que eu publico ${
+        declararDestino(alvo.formato, destinoFinal)
+      }, ou *CANCELAR* e nada vai ao ar.`;
     }
     return null; // não é resposta do fluxo — o agente segue normalmente
 
@@ -558,12 +657,12 @@ export async function tratarRespostaFluxoLegenda(params: {
         return "Beleza, deixei esse vídeo de lado. Quando quiser, me manda de novo.";
       }
       // Correção de pedido (formato, legenda queimada, etc.) — o vídeo continua vivo.
-      if (PALAVRAS_FLUXO.test(t)) {
-        const fmt = detectarFormato(t);
-        if (fmt) {
-          await sb.from("video_render_jobs").update({ formato: fmt }).eq("id", job.id);
-        }
-        return `Mantive esse vídeo aberto${fmt ? ` e anotei o formato *${fmt}*` : ""}. A legenda vai *queimada no vídeo* — só me diga qual texto usar: *A*, *B* ou *C*.`;
+      if (PALAVRAS_FLUXO.test(t) || detectarPlataformas(t).length) {
+        const alvo = await aplicarPedidoDeFormato(job, t);
+        const anotado = detectarFormato(t) || detectarPlataformas(t).length
+          ? ` e anotei: vai ${declararDestino(alvo.formato, alvo.plataformas_pedidas)}`
+          : "";
+        return `Mantive esse vídeo aberto${anotado}. A legenda vai *queimada no vídeo* — só me diga qual texto usar: *A*, *B* ou *C*.`;
       }
       if (ehDuvidaDeCancelamento(t)) {
         return `Ainda estou com esse vídeo aqui, esperando *A*, *B* ou *C*. ${PERGUNTA_CANCELAR}`;
@@ -575,21 +674,27 @@ export async function tratarRespostaFluxoLegenda(params: {
     const caption = opcoes[idx];
     if (!caption) return null;
     const letra = ["A", "B", "C"][idx];
-    const formatoPedido = detectarFormato(params.texto) || "feed";
+    const alvo = await aplicarPedidoDeFormato(job, params.texto);
 
     await sb
       .from("video_render_jobs")
       .update({
         caption,
         copy_escolhida: caption,
-        formato: formatoPedido,
+        formato: alvo.formato,
         status: "aguardando_confirmacao",
-        metadata: { ...(job.metadata || {}), copy_letra: letra },
+        metadata: {
+          ...(job.metadata || {}),
+          copy_letra: letra,
+          plataformas_pedidas: alvo.plataformas_pedidas,
+        },
       })
       .eq("id", job.id);
 
     // Uma linha curta + UMA pergunta. Sem reimprimir a copy.
-    return `Legenda *${letra}* registrada ✅ (formato *${formatoPedido}*)\n\nResponda *ENVIAR* (só te devolvo o vídeo legendado) ou *PUBLICAR* (te mando pra aprovar e só então publico no Instagram/Facebook).`;
+    return `Legenda *${letra}* registrada ✅ — vai ${
+      declararDestino(alvo.formato, alvo.plataformas_pedidas)
+    }\n\nResponda *ENVIAR* (só te devolvo o vídeo legendado) ou *PUBLICAR* (te mando pra aprovar e só então publico).`;
   }
 
   // ---- aguardando confirmação de publicação ----
@@ -608,28 +713,34 @@ export async function tratarRespostaFluxoLegenda(params: {
 
     if (ehConfirmacao(params.texto)) {
       const publicar = querPublicar(params.texto);
-      const formatoPedido = detectarFormato(params.texto) || job.formato || "feed";
+      const alvo = await aplicarPedidoDeFormato(job, params.texto);
+      const destino = alvo.plataformas_pedidas.length
+        ? alvo.plataformas_pedidas
+        : ["instagram", "facebook"];
       await sb
         .from("video_render_jobs")
         .update({
           status: "pendente",
           tentativas: 0,
           erro_mensagem: null,
-          formato: formatoPedido,
+          formato: alvo.formato,
           enfileirado_at: new Date().toISOString(),
-          plataformas: publicar ? ["instagram", "facebook"] : [],
+          plataformas: publicar ? destino : [],
         })
         .eq("id", job.id);
 
       const espera = await avisoDeFila(job.id);
       return (publicar
-        ? `Fechado 🎬 Gravando a ${letraDaCopy(job)} no vídeo. Quando terminar, te mando aqui para você aprovar — só publico depois do seu OK.`
+        ? `Fechado 🎬 Gravando a ${letraDaCopy(job)} no vídeo. Quando terminar, te mando aqui para você aprovar — só publico depois do seu OK, ${
+          declararDestino(alvo.formato, destino)
+        }.`
         : `Fechado 🎬 Gravando a ${letraDaCopy(job)} no vídeo e te devolvo o arquivo aqui. *Não vou publicar nada.*`) +
         espera;
     }
 
     return null;
   }
+
 
 
   return null;
