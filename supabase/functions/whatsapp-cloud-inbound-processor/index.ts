@@ -1487,21 +1487,87 @@ function buildForwardProof(wamid?: string | null): string {
   return `(protocolo #${proto} · ${hh}:${mm})`;
 }
 
+// ---- Estado persistente da conversa (comprovantes + decisões) -------------
+type AgentConvState = {
+  forward?: { protocolo?: string; destinatario?: string; wamid?: string | null; at?: string };
+  decisao?: { valor?: string; at?: string };
+  [k: string]: unknown;
+};
+
+async function loadAgentState(sb: any, convId: string): Promise<AgentConvState> {
+  try {
+    const { data } = await sb
+      .from("whatsapp_cloud_conversations")
+      .select("agent_state")
+      .eq("id", convId)
+      .maybeSingle();
+    const st = (data?.agent_state ?? {}) as AgentConvState;
+    return st && typeof st === "object" ? st : {};
+  } catch (e) {
+    console.warn("[processor][agent_state][load_failed]", (e as Error).message);
+    return {};
+  }
+}
+
+async function saveAgentState(sb: any, convId: string, patch: AgentConvState, current: AgentConvState = {}) {
+  try {
+    await sb
+      .from("whatsapp_cloud_conversations")
+      .update({ agent_state: { ...current, ...patch } })
+      .eq("id", convId);
+  } catch (e) {
+    console.warn("[processor][agent_state][save_failed]", (e as Error).message);
+  }
+}
+
+// Extrai o código do protocolo de um comprovante "(protocolo #ABC123 · 17:03)"
+function extractProtocolCode(proof?: string | null): string {
+  const m = String(proof || "").match(/#([A-Za-z0-9]{4,10})/);
+  return m ? m[1].toUpperCase() : "";
+}
+
+// O protocolo só pode aparecer UMA vez, no fim da linha, no turno em que foi gerado.
+// Remove qualquer protocolo copiado do histórico (inclusive solto no início da frase).
+function sanitizeProtocolLeaks(text: string, currentProof?: string): { text: string; cleaned: boolean } {
+  let out = String(text || "");
+  const before = out;
+  void extractProtocolCode;
+  const placeholder = "\u0000PROOF\u0000";
+  if (currentProof && out.includes(currentProof)) {
+    out = out.split(currentProof).join(placeholder);
+  }
+  // Remove comprovantes completos e protocolos soltos que não sejam o do turno atual
+  out = out.replace(/\(\s*protocolo\s*#[A-Za-z0-9]{4,10}[^)]*\)/gi, "");
+  out = out.replace(/protocolo\s*#[A-Za-z0-9]{4,10}/gi, "");
+  // Qualquer código solto (mesmo igual ao do turno) sai: só o comprovante do turno,
+  // preservado no placeholder, pode permanecer — e ele fica no fim da linha.
+  out = out.replace(/(^|[\s\n>*_—-])#[A-Za-z0-9]{4,10}\b/g, (_m, p1) => p1);
+  out = out.split(placeholder).join(currentProof ?? "");
+  out = out
+    .split("<<SPLIT>>")
+    .map((b) => b.replace(/[ \t]{2,}/g, " ").replace(/\s+([.,!?])/g, "$1").replace(/^[\s·,-]+/, "").trim())
+    .filter((b) => b.length > 0)
+    .join("<<SPLIT>>");
+  return { text: out, cleaned: out !== before };
+}
+
 // ---- Anti "encaminhamento fantasma" -------------------------------------
 // A confirmação de encaminhamento SÓ pode existir se a tool retornou ok:true
-// (ou seja, se houver comprovante gerado por buildForwardProof).
+// (ou seja, se houver comprovante gerado por buildForwardProof) OU se já existe
+// comprovante registrado no estado da conversa (turno anterior).
 const FORWARD_CLAIM_RE = /(encaminhei|encaminhando|já (mandei|enviei|passei|repassei)|acabei de (mandar|enviar|passar)|vou (já )?(mandar|enviar|passar|encaminhar|repassar)|estou (mandando|enviando|passando|encaminhando)|passei (o|seu) (recado|contato)|te retorna|vai te retornar|entra em contato com você|ele (te )?(liga|retorna|responde))/i;
 
 function splitSentences(text: string): string[] {
   return String(text || "").split(/(?<=[.!?…\n])\s+/);
 }
 
-// Remove qualquer frase que afirme encaminhamento quando NÃO existe comprovante.
-// Quando existe comprovante, garante que ele apareça na mensagem.
+// Remove qualquer frase que afirme encaminhamento quando NÃO existe comprovante
+// (nem neste turno, nem registrado na conversa).
 function enforceForwardTruth(
   text: string,
   forwardProof: string | undefined,
   ownerFirst: string,
+  persistedProof?: { protocolo?: string; at?: string } | null,
 ): { text: string; scrubbed: boolean } {
   const raw = String(text || "");
   if (forwardProof) {
@@ -1509,6 +1575,12 @@ function enforceForwardTruth(
     const parts = raw.split("<<SPLIT>>");
     parts[0] = `${parts[0].trimEnd()} ${forwardProof}`;
     return { text: parts.join("<<SPLIT>>"), scrubbed: false };
+  }
+
+  // Já existe encaminhamento confirmado nesta conversa (turno anterior):
+  // a afirmação do agente é VERDADEIRA — não apaga nada e não injeta aviso.
+  if (persistedProof?.protocolo) {
+    return { text: raw, scrubbed: false };
   }
 
   const blocks = raw.split("<<SPLIT>>");
@@ -1536,12 +1608,36 @@ function pedeAtencaoDoDono(text: string): boolean {
 }
 
 // Cliente encerrou o atendimento / optou por esperar o dono?
+// Inclui variações de 1ª pessoa ("aguardo ele", "fico no aguardo", "prefiro esperar").
 function clienteEncerrouAtendimento(text: string): boolean {
   const low = normalizeContactLookupText(text);
   if (!low) return false;
   if (low.length > 120) return false;
-  return /(^|\b)(aguardar( ele| o| dele)?|vou aguardar|prefiro aguardar|espero ele|vou esperar|prefiro esperar|prefiro falar com ele|falo com ele|so com ele|valeu|obrigad[oa]|ta bom|tudo bem entao|depois eu vejo|vou pensar|qualquer coisa te falo|ok|blz|beleza)(\b|$)/.test(low);
+  if (/\b(aguardo|espero|aguardarei|esperarei)\b/.test(low)) return true;
+  if (/\b(fico|ficarei)\s+(no\s+)?aguard(o|ando)\b/.test(low)) return true;
+  if (/\b(prefiro|vou|melhor)\s+(aguardar|esperar)\b/.test(low)) return true;
+  return /(^|\b)(aguardar( ele| o| dele| entao)?|aguardando|vou aguardar|prefiro aguardar|espero ele|vou esperar|prefiro esperar|prefiro falar com ele|falo com ele|so com ele|valeu|obrigad[oa]|ta bom|tudo bem entao|depois eu vejo|vou pensar|qualquer coisa te falo|ok|blz|beleza)(\b|$)/.test(low);
 }
+
+// Sentenças que re-oferecem a mesma escolha (adiantar x aguardar) após o cliente decidir.
+const REOFERTA_RE = /(prefere\s+(assim|aguardar|esperar|adiantar)|quer\s+que\s+eu\s+(v[áa]|vou)?\s*(te\s+)?adiantar|posso\s+(ir\s+)?te\s+adiantando|prefere\s+assim\s+ou|ou\s+prefere\s+aguardar)/i;
+
+function removerReoferta(text: string): { text: string; removed: boolean } {
+  let removed = false;
+  const out = String(text || "")
+    .split("<<SPLIT>>")
+    .map((block) => {
+      const kept = splitSentences(block).filter((s) => {
+        if (REOFERTA_RE.test(s)) { removed = true; return false; }
+        return true;
+      });
+      return kept.join(" ").replace(/\s{2,}/g, " ").trim();
+    })
+    .filter((b) => b.length > 0)
+    .join("<<SPLIT>>");
+  return { text: out, removed };
+}
+
 
 
 function isExplicitOwnerForwardIntent(raw: string, ownerName?: string | null): boolean {
@@ -6908,6 +7004,12 @@ async function processOne(queueId: string) {
         console.log(`[processor][owner-forward-direct-text] enviado para ${tenantOwnerPhone} com_foto=${!!imageUrlToOwner} reason=${explicitForward ? "explicit" : "human_needed"}`);
 
         const proto = buildForwardProof(sentOwnerId);
+        try {
+          const stPrev = await loadAgentState(sb, conv.id);
+          await saveAgentState(sb, conv.id, {
+            forward: { protocolo: proto, destinatario: tenantOwnerPhone, wamid: sentOwnerId ?? null, at: new Date().toISOString() },
+          }, stPrev);
+        } catch (_e) { /* não bloqueia */ }
         const reply = humanNeeded && !explicitForward
           ? `Vou confirmar isso com ${ownerFirstName(_tenantOwner?.name)} e pedir para ele te retornar. ${proto}`
           : `Certo, já encaminhei para ${ownerFirstName(_tenantOwner?.name)}. ${proto}`;
@@ -7109,6 +7211,12 @@ Regras:
         reply = humano || `Recebi *${label}*, mas não consegui ler direito. Consegue mandar de novo mais nítido?`;
       } else if (deveEncaminhar && ownerForwardWamid) {
         const proto = buildForwardProof(ownerForwardWamid);
+        try {
+          const stPrev = await loadAgentState(sb, conv.id);
+          await saveAgentState(sb, conv.id, {
+            forward: { protocolo: proto, destinatario: tenantOwnerPhone ?? null as any, wamid: ownerForwardWamid, at: new Date().toISOString() },
+          }, stPrev);
+        } catch (_e) { /* não bloqueia */ }
         reply = `${humano ? humano + "\n\n" : ""}Prontinho, Felício! Já encaminhei seu cadastro completo pro ${primeiroNome} agora — nome, CPF e documento. ${proto}\n\nEle vai te retornar em instantes com a proposta. 🙌`;
       } else if (deveEncaminhar) {
         reply = `${humano ? humano + "\n\n" : ""}Anexei no seu cadastro. Vou avisar o ${primeiroNome} agora mesmo pra ele te retornar. 🙌`;
@@ -7534,8 +7642,21 @@ Regras:
     // ⛔ ANTI-PROMESSA: o agente não pode dizer que vai fazer e não chamar a tool no mesmo turno.
     const antiPromessaBlock = `\n\nENTREGA NO MESMO TURNO (REGRA ABSOLUTA):\n- É PROIBIDO prometer trabalho futuro. Frases como "já estou preparando", "fica pronto em um instante", "vou montar e te mando", "aguarde uns minutos" são PROIBIDAS se você não chamou a ferramenta correspondente NESTA MESMA RESPOSTA.\n- Você NÃO tem fila nem execução em segundo plano: se não chamar a tool agora, NADA acontece e o pedido se perde.\n- Pedido de arte/anúncio/imagem/post ⇒ chame a tool (criar_anuncio, editar_imagem, gerar_imagem, criar_carrossel, postar_midia_biblioteca) AGORA e só depois responda.\n- Se faltar UM dado essencial, faça UMA pergunta curta em vez de prometer. Se os dados já vieram, execute sem perguntar.`;
 
-    const systemPromptWithDate = systemPrompt + dateBlock + antiPromessaBlock + ownerHintBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock + ebookBlock;
-    console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPromptWithDate.length}`);
+    // === ESTADO PERSISTENTE DA CONVERSA (comprovante de encaminhamento + decisões) ===
+    const agentState = await loadAgentState(sb, conv.id);
+    const persistedForward = (agentState.forward ?? null) as { protocolo?: string; destinatario?: string; wamid?: string | null; at?: string } | null;
+    const decisaoAnterior = (agentState.decisao ?? null) as { valor?: string; at?: string } | null;
+
+    let estadoBlock = "";
+    if (persistedForward?.protocolo) {
+      estadoBlock += `\n\n=== ENCAMINHAMENTO JÁ CONFIRMADO NESTA CONVERSA ===\n- O recado deste cliente JÁ foi entregue ao responsável (protocolo registrado internamente${persistedForward.at ? `, em ${persistedForward.at}` : ""}).\n- Você pode afirmar com segurança que o recado foi entregue e que o responsável vai retornar.\n- NUNCA escreva o código do protocolo no texto. Ele já foi informado uma única vez, no momento do envio. É PROIBIDO repetir códigos como "#XXXXXX" em qualquer resposta.\n- NÃO encaminhe de novo, a menos que exista FATO NOVO relevante.`;
+    }
+    if (decisaoAnterior?.valor) {
+      estadoBlock += `\n\n=== DECISÃO JÁ TOMADA PELO CLIENTE (NÃO OFEREÇA DE NOVO) ===\n- O cliente já escolheu: "${decisaoAnterior.valor}".\n- REGRA DO PRODUTO: nenhuma opção é oferecida duas vezes. É PROIBIDO perguntar novamente se ele prefere adiantar com você ou aguardar o responsável.\n- Apenas respeite a escolha e se coloque à disposição, sem repetir a pergunta.`;
+    }
+
+    const systemPromptWithDate = systemPrompt + dateBlock + antiPromessaBlock + ownerHintBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock + ebookBlock + estadoBlock;
+    console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPromptWithDate.length} forwardState=${!!persistedForward?.protocolo} decisao=${decisaoAnterior?.valor ?? "-"}`);
 
     // Histórico
     const { data: histRows } = await sb
@@ -7584,7 +7705,8 @@ Regras:
         const pediuDono = pedeAtencaoDoDono(userText);
         const encerrou = clienteEncerrouAtendimento(userText);
 
-        if (!forwardProof && ownerInfo?.phone && ownerInfo.phone !== row.from_number && (pediuDono || encerrou)) {
+        const jaEncaminhado = !!persistedForward?.protocolo;
+        if (!forwardProof && ownerInfo?.phone && ownerInfo.phone !== row.from_number && (pediuDono || encerrou) && !(jaEncaminhado && encerrou && !pediuDono)) {
           console.warn(`[processor][handoff][miss] tool não executada com sucesso (pediu_dono=${pediuDono} encerrou=${encerrou} tentou=${forwardAttempted}) from=${row.from_number} → handoff determinístico`);
           const recadoAuto = [
             `Nome: ${(conv as any)?.contact_name ?? "não informado"}`,
@@ -7603,11 +7725,41 @@ Regras:
           }
         }
 
-        const guard = enforceForwardTruth(reply, forwardProof, ownerFirst);
+        const guard = enforceForwardTruth(reply, forwardProof, ownerFirst, persistedForward);
         if (guard.scrubbed) {
           console.warn(`[processor][handoff][claim_scrubbed] afirmação de encaminhamento sem comprovante removida from=${row.from_number}`);
         }
         reply = guard.text;
+
+        // Protocolo só pode aparecer no turno em que foi gerado, no fim da linha.
+        const proto = sanitizeProtocolLeaks(reply, forwardProof);
+        if (proto.cleaned) console.warn(`[processor][protocol][leak_scrubbed] protocolo copiado do histórico removido from=${row.from_number}`);
+        reply = proto.text;
+
+        // Cliente já decidiu? Não oferecer a mesma escolha duas vezes.
+        if (decisaoAnterior?.valor || encerrou) {
+          const dedupe = removerReoferta(reply);
+          if (dedupe.removed) console.warn(`[processor][oferta][reoferta_removida] from=${row.from_number}`);
+          reply = dedupe.text || reply;
+        }
+
+        // Persiste comprovante e decisão no estado da conversa
+        const patch: AgentConvState = {};
+        if (forwardProof && !persistedForward?.protocolo) {
+          patch.forward = {
+            protocolo: forwardProof,
+            destinatario: ownerInfo?.phone ?? null as any,
+            wamid: null,
+            at: new Date().toISOString(),
+          };
+        }
+        if (encerrou && !decisaoAnterior?.valor) {
+          patch.decisao = { valor: "aguardar o responsável", at: new Date().toISOString() };
+        }
+        if (Object.keys(patch).length > 0) {
+          await saveAgentState(sb, conv.id, patch, agentState);
+          console.log(`[processor][agent_state][saved] forward=${!!patch.forward} decisao=${patch.decisao?.valor ?? "-"}`);
+        }
       } catch (e) {
         console.warn("[processor][handoff][guard_failed]", (e as Error).message);
       }
