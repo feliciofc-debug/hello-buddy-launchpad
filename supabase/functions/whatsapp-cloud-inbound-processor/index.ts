@@ -1520,6 +1520,122 @@ async function saveAgentState(sb: any, convId: string, patch: AgentConvState, cu
   }
 }
 
+// ---- Registro de lead encaminhado (não depende do WhatsApp do dono) -------
+async function registrarLeadEncaminhamento(params: {
+  userId: string;
+  telefone: string;
+  nome?: string | null;
+  mensagem?: string | null;
+  protocolo?: string | null;
+  wamid?: string | null;
+}): Promise<string | null> {
+  try {
+    const { data, error } = await sb
+      .from("lead_encaminhamentos")
+      .insert({
+        user_id: params.userId,
+        telefone: params.telefone,
+        nome: (params.nome || "").trim() || null,
+        mensagem: (params.mensagem || "").slice(0, 2000) || null,
+        protocolo: extractProtocolCode(params.protocolo) || null,
+        wamid_dono: params.wamid ?? null,
+        enviado_em: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+    if (error) throw error;
+    console.log(`[processor][lead_encaminhado][registrado] id=${data?.id} tel=${params.telefone} nome=${params.nome ?? "-"}`);
+    return data?.id ?? null;
+  } catch (e) {
+    console.warn("[processor][lead_encaminhado][falhou]", (e as Error).message);
+    return null;
+  }
+}
+
+const NOME_STOPWORDS = new Set([
+  "sim","nao","não","ok","okay","obrigado","obrigada","valeu","bom","boa","dia","tarde","noite","oi","ola","olá",
+  "consorcio","consórcio","orcamento","orçamento","quanto","quero","preciso","aguardo","espero","certo","beleza",
+  "tudo","bem","pode","ser","claro","talvez","depois","agora","isso","nada","ainda","legal","perfeito","entendi",
+]);
+
+// Captura o nome quando o cliente informa espontaneamente ("meu nome é X", "sou o X")
+// ou quando responde só o nome depois de a gente ter perguntado (pendente=true).
+function extrairNomeInformado(texto: string, pendente = false): string | null {
+  const t = String(texto || "").trim();
+  if (!t) return null;
+  const cap = (s: string) =>
+    s
+      .split(/\s+/)
+      .map((w) => (w.length > 2 ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w.toLowerCase()))
+      .join(" ")
+      .trim();
+
+  const m = t.match(
+    /(?:meu nome (?:é|eh|e)|me chamo|pode me chamar de|aqui (?:é|eh|e) (?:o |a )?|sou (?:o |a )?|nome:)\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’]{1,}(?:\s+(?:d[aeoi]s?\s+)?[A-Za-zÀ-ÿ'’]{2,}){0,2})/i,
+  );
+  if (m?.[1]) {
+    const cand = m[1].trim();
+    const first = cand.split(/\s+/)[0].toLowerCase();
+    if (!NOME_STOPWORDS.has(first)) return cap(cand);
+  }
+
+  if (pendente) {
+    const limpo = t.replace(/[^A-Za-zÀ-ÿ'’\s]/g, " ").replace(/\s+/g, " ").trim();
+    const palavras = limpo.split(" ").filter(Boolean);
+    if (palavras.length >= 1 && palavras.length <= 3 && palavras.every((p) => p.length >= 2 && !NOME_STOPWORDS.has(p.toLowerCase()))) {
+      return cap(limpo);
+    }
+  }
+  return null;
+}
+
+// Segunda mensagem curta ao dono, referenciando o protocolo do encaminhamento.
+async function enviarComplementoNomeAoDono(params: {
+  userId: string;
+  ownerPhone: string;
+  protocolo: string;
+  nome: string;
+}): Promise<boolean> {
+  const code = extractProtocolCode(params.protocolo);
+  const texto = code
+    ? `Complemento do #${code}: o cliente é ${params.nome}.`
+    : `Complemento: o cliente é ${params.nome}.`;
+  try {
+    const wamid = await sendWhatsApp(params.userId, params.ownerPhone, texto);
+    await logOwnerHeadsup(params.userId, texto, wamid);
+    console.log(`[processor][lead_encaminhado][complemento_enviado] proto=${code} nome=${params.nome}`);
+    return true;
+  } catch (e) {
+    console.warn("[processor][lead_encaminhado][complemento_falhou]", (e as Error).message);
+    return false;
+  }
+}
+
+// ---- Voz: a resposta termina no raciocínio, sem convite no fim -------------
+const CONVITE_FINAL_RE =
+  /^(?:(?:e\s+)?(?:é|eh)\s+só\s+me\s+chamar|qualquer\s+(?:coisa|d[úu]vida)[^.!?]*|fico\s+(?:à|a)\s+disposi[çc][ãa]o[^.!?]*|estou\s+(?:à|a)\s+disposi[çc][ãa]o[^.!?]*|me\s+chama[^.!?]*|se\s+precisar[^.!?]*|posso\s+(?:te\s+)?ajudar\s+(?:em\s+)?mais[^.!?]*|precisa\s+de\s+mais\s+alguma\s+coisa[^.!?]*|estou\s+(?:aqui|por\s+aqui)[^.!?]*|(?:quer|deseja)\s+que\s+eu\s+(?:te\s+)?(?:ajude|adiante|explique)[^.!?]*|conte\s+comigo[^.!?]*)[.!?…]*$/i;
+
+function removerConviteFinal(text: string): { text: string; removed: boolean } {
+  const blocos = String(text || "").split("<<SPLIT>>");
+  let removed = false;
+  const out = blocos.map((bloco) => {
+    let frases = splitSentences(bloco);
+    while (frases.length > 1) {
+      const ultima = frases[frases.length - 1].trim();
+      if (CONVITE_FINAL_RE.test(ultima.replace(/^[\s,;·-]+/, ""))) {
+        frases = frases.slice(0, -1);
+        removed = true;
+      } else break;
+    }
+    return frases.join(" ").replace(/\s+([.,!?])/g, "$1").trim();
+  });
+  const joined = out.filter((b) => b.length > 0).join("<<SPLIT>>");
+  return { text: joined || String(text || ""), removed };
+}
+
+const PERGUNTA_NOME = "Só pra eu completar o recado: qual seu nome?";
+
+
 // Extrai o código do protocolo de um comprovante "(protocolo #ABC123 · 17:03)"
 function extractProtocolCode(proof?: string | null): string {
   const m = String(proof || "").match(/#([A-Za-z0-9]{4,10})/);
@@ -4799,13 +4915,26 @@ async function toolEncaminharRecadoAoDono(
     const messageId = await sendWhatsApp(ctx.userId, owner.phone, recado, imageUrl);
     await logOwnerHeadsup(ctx.userId, imageUrl ? `${recado}\n\n[foto anexada]` : recado, messageId);
     const proof = buildForwardProof(messageId);
+    const nomeNoRecado = (() => {
+      const m = String(recado || "").match(/^\s*Nome:\s*(.+)$/im);
+      const v = (m?.[1] || "").trim();
+      return v && !/^n[ãa]o informado$/i.test(v) && !/^cliente$/i.test(v) ? v : null;
+    })();
+    await registrarLeadEncaminhamento({
+      userId: ctx.userId,
+      telefone: ctx.fromNumber,
+      nome: nomeNoRecado,
+      mensagem: recado,
+      protocolo: proof,
+      wamid: messageId,
+    });
     return JSON.stringify({
       ok: true,
       enviado_para: owner.name || "dono",
       com_foto: !!imageUrl,
       message_id: messageId,
       protocolo: proof,
-      instrucao: `Confirme pro cliente de forma humanizada em 2 linhas curtas: (1) que você JÁ ENVIOU o recado${imageUrl ? " e a foto" : ""} para ${owner.name || "o responsável"} agora — TERMINE essa linha EXATAMENTE com este comprovante entre parênteses: ${proof}. (2) ofereça continuar ajudando enquanto isso: "enquanto ${owner.name || "ele"} te retorna, se quiser já posso ir adiantando sobre consórcio com você — te explico planos, valores, prazos — e depois ${owner.name || "ele"} finaliza o atendimento, pode ser?". Não recite o texto do recado nem telefone, mas o comprovante ${proof} é OBRIGATÓRIO na primeira linha (é a prova pro cliente que o encaminhamento foi feito).`,
+      instrucao: `Confirme pro cliente de forma humanizada em 2 linhas curtas: (1) que você JÁ ENVIOU o recado${imageUrl ? " e a foto" : ""} para ${owner.name || "o responsável"} agora — TERMINE essa linha EXATAMENTE com este comprovante entre parênteses: ${proof}. (2) NÃO adicione convite, oferta ou pergunta no fim: a resposta termina no raciocínio. Não recite o texto do recado nem telefone, mas o comprovante ${proof} é OBRIGATÓRIO na primeira linha (é a prova pro cliente que o encaminhamento foi feito).`,
     });
   } catch (e) {
     return JSON.stringify({ erro: "falha_ao_enviar", detalhe: String((e as Error).message).slice(0, 200) });
@@ -6970,6 +7099,56 @@ async function processOne(queueId: string) {
       }
     }
 
+    // ---- Captura de NOME do lead (a qualquer momento) -----------------------
+    // Grava em contact_name, completa o registro do lead e, se o encaminhamento
+    // já foi feito, manda ao dono UM complemento curto com o nome.
+    let nomeLeadConhecido: string | null = ((conv as any)?.contact_name ?? contactName ?? null) as string | null;
+    let nomePerguntado = false;
+    if (!fromIsOwner && userText.trim()) {
+      try {
+        const stNome = await loadAgentState(sb, conv.id);
+        const pendente = (stNome as any)?.nome_pergunta === true;
+        nomePerguntado = pendente || (stNome as any)?.nome_pergunta === "feita";
+        const nomeCap = nomeLeadConhecido ? null : extrairNomeInformado(userText, pendente);
+        if (nomeCap) {
+          nomeLeadConhecido = nomeCap;
+          await sb.from("whatsapp_cloud_conversations").update({ contact_name: nomeCap }).eq("id", conv.id);
+          (conv as any).contact_name = nomeCap;
+          await sb
+            .from("lead_encaminhamentos")
+            .update({ nome: nomeCap })
+            .eq("user_id", userId)
+            .eq("telefone", row.from_number)
+            .is("nome", null);
+          console.log(`[processor][lead_nome][capturado] tel=${row.from_number} nome=${nomeCap}`);
+
+          const proofPersistido = (stNome as any)?.forward?.protocolo as string | undefined;
+          const complementoJa = (stNome as any)?.complemento_nome === true;
+          if (proofPersistido && !complementoJa && tenantOwnerPhone) {
+            const okComp = await enviarComplementoNomeAoDono({
+              userId,
+              ownerPhone: tenantOwnerPhone,
+              protocolo: proofPersistido,
+              nome: nomeCap,
+            });
+            await saveAgentState(sb, conv.id, { nome: nomeCap, nome_pergunta: "feita", complemento_nome: okComp }, stNome);
+            if (okComp) {
+              await sb
+                .from("lead_encaminhamentos")
+                .update({ complemento_nome_enviado: true })
+                .eq("user_id", userId)
+                .eq("telefone", row.from_number)
+                .eq("protocolo", extractProtocolCode(proofPersistido));
+            }
+          } else {
+            await saveAgentState(sb, conv.id, { nome: nomeCap, nome_pergunta: "feita" }, stNome);
+          }
+        }
+      } catch (e) {
+        console.warn("[processor][lead_nome][falhou]", (e as Error).message);
+      }
+    }
+
 
     // Atalho determinístico: quando cliente pede equipe/responsável/Marcelo ou faz
     // pergunta comercial que exige retorno humano, NÃO deixa a IA procurar contato.
@@ -7004,15 +7183,27 @@ async function processOne(queueId: string) {
         console.log(`[processor][owner-forward-direct-text] enviado para ${tenantOwnerPhone} com_foto=${!!imageUrlToOwner} reason=${explicitForward ? "explicit" : "human_needed"}`);
 
         const proto = buildForwardProof(sentOwnerId);
+        await registrarLeadEncaminhamento({
+          userId,
+          telefone: row.from_number,
+          nome: nomeLeadConhecido,
+          mensagem: userText,
+          protocolo: proto,
+          wamid: sentOwnerId,
+        });
+        let pedirNomeAgora = false;
         try {
           const stPrev = await loadAgentState(sb, conv.id);
+          pedirNomeAgora = !nomeLeadConhecido && !(stPrev as any)?.nome_pergunta;
           await saveAgentState(sb, conv.id, {
             forward: { protocolo: proto, destinatario: tenantOwnerPhone, wamid: sentOwnerId ?? null, at: new Date().toISOString() },
+            ...(pedirNomeAgora ? { nome_pergunta: true } : {}),
           }, stPrev);
         } catch (_e) { /* não bloqueia */ }
-        const reply = humanNeeded && !explicitForward
+        const confirmacao = humanNeeded && !explicitForward
           ? `Vou confirmar isso com ${ownerFirstName(_tenantOwner?.name)} e pedir para ele te retornar. ${proto}`
           : `Certo, já encaminhei para ${ownerFirstName(_tenantOwner?.name)}. ${proto}`;
+        const reply = pedirNomeAgora ? `${confirmacao}\n\n${PERGUNTA_NOME}` : confirmacao;
 
         const { data: outMsg } = await sb
           .from("whatsapp_cloud_messages")
@@ -7565,7 +7756,7 @@ Regras:
     if (!inboundFromOwner && _tenantOwner?.name) {
       const nomeCompleto = _tenantOwner.name.trim();
       const primeiroNome = nomeCompleto.split(/\s+/)[0] || nomeCompleto;
-      ownerHintBlock = `\n\n=== RESPONSÁVEL DESTE ATENDIMENTO (LEIA ANTES DE RESPONDER) ===\n- O DONO/CHEFE/RESPONSÁVEL deste agente é **${nomeCompleto}** (chamado geralmente de "${primeiroNome}").\n- Quando o cliente disser "manda pro ${primeiroNome}", "passa pro chefe", "avisa o dono", "encaminha pra ele", "passe para a equipe", "passa pro gerente", "pede pra equipe/consultor me mandar", "pede um orçamento/plano", ou QUALQUER pedido pra que alguém DA CASA responda/envie algo — chame IMEDIATAMENTE \`encaminhar_recado_ao_dono\` com um recado humanizado (incluindo nome/telefone do cliente e o que ele quer). NÃO chame \`enviar_mensagem_contato_comercial\`, NÃO chame listar_contatos_comerciais, NÃO tente "identificar qual ${primeiroNome}", NÃO peça sobrenome — o responsável já está configurado no sistema e a ferramenta sabe pra quem mandar.\n- É PROIBIDO responder ao cliente coisas como "não consegui identificar qual ${primeiroNome}", "tem vários com esse nome", "me confirma o nome completo dele" — isso é falha grave de atendimento. Se o cliente pediu pra passar algo pra dentro da casa, você JÁ SABE pra quem: é ${primeiroNome}.\n\n=== REGRA DE OURO DO ENCAMINHAMENTO (NUNCA VIOLE) ===\n- Quando o cliente pedir algo que você não pode resolver (orçamento, simulação, valores, negociação) ou pedir falar com alguém da casa, chame \`encaminhar_recado_ao_dono\` IMEDIATAMENTE, SEM ANUNCIAR ANTES. Não escreva nada sobre envio antes da ferramenta rodar.\n- Só DEPOIS de a ferramenta retornar \`ok: true\`, confirme ao cliente que o recado foi enviado — e a confirmação DEVE terminar com o comprovante (protocolo) devolvido pela ferramenta.\n- É PROIBIDO dizer que encaminhou, que vai encaminhar, que passou o recado, ou que o dono/${primeiroNome} vai retornar, sem que a ferramenta tenha retornado \`ok: true\`.\n- Se a ferramenta falhar (\`ok\` diferente de true ou \`erro\`), diga ao cliente que houve um problema no envio e peça o nome e o telefone dele para retorno. NUNCA invente entrega.\n- Confirmação modelo (só com ok: true), 2 linhas curtas:\n   1) "Prontinho, acabei de mandar seu recado aqui pro ${primeiroNome} — assim que ele puder, te retorna. <protocolo>"\n   2) "Enquanto isso, se quiser, já posso ir te adiantando sobre consórcio (planos, prazos, como funciona) — e o ${primeiroNome} finaliza com você. Prefere assim ou prefere aguardar ele?"\n- Se o cliente responder que quer ir adiantando com você, ATENDA NORMALMENTE. Se preferir aguardar o ${primeiroNome}, respeite e se coloque à disposição.\n- Nunca recite o texto do recado nem o telefone de ninguém.\n\n=== COLETA NATURAL DE DADOS DO CLIENTE (LEVE, SEM INSISTIR) ===\n- Logo no início da conversa, de forma leve e humanizada, pergunte UMA VEZ: nome do cliente e o que ele precisa. O telefone padrão já é o próprio WhatsApp dele (${_fromNumForPrompt}) — só peça outro se ele oferecer.\n- Se o cliente NÃO responder, **NÃO repita a pergunta, NÃO insista, NÃO trave o atendimento**. Siga ajudando normalmente com o que ele quiser falar.\n- Guarde mentalmente o que ele informar espontaneamente.\n- SEMPRE que chamar \`encaminhar_recado_ao_dono\`, inclua no topo do \`recado\`:\n    Nome: <nome informado, ou "não informado">\n    Telefone: <telefone informado pelo cliente; se não informou, use ${_fromNumForPrompt}>\n  Depois, 1-3 linhas do que o cliente quer.\n\n=== PRÉ-ATENDIMENTO DE CONSÓRCIO — OFERECER UMA VEZ, RESPEITAR RESPOSTA ===\n- Quando o cliente demonstrar INTERESSE em consórcio (ex: "quero contratar", "tenho interesse", "como funciona", "quero uma proposta", "quero falar sobre consórcio"), você DEVE oferecer UMA VEZ o pré-atendimento antes de encaminhar pro ${primeiroNome}. Assim o ${primeiroNome} já recebe o cliente com tudo pronto.\n- Ofereça de forma natural, em UMA mensagem só, algo como:\n  "Que ótimo! Pra já adiantar e o ${primeiroNome} te retornar com a proposta na mão, posso te fazer umas perguntinhas rápidas e recolher uns documentos (RG/CNH, comprovante de residência e de renda)? Assim ele já monta tudo antes de te ligar. Se preferir falar direto com ele, também tudo bem — é só me avisar."\n- Se o cliente ACEITAR: colete um item por vez, com ritmo de conversa (bem/valor da carta/prazo → nome completo/CPF → RG ou CNH → comprovante de residência → comprovante de renda → IR se tiver). Cada documento/dado recebido, agradeça leve e siga pro próximo. Se ele parar de responder ou pular etapa, DEIXE PRA LÁ e siga pro handoff.\n- Se o cliente RECUSAR ou preferir falar direto: respeite, NÃO insista, e faça o handoff automático pro ${primeiroNome}.\n- Se o cliente IGNORAR a oferta e responder outra coisa: siga o rumo dele, não repita a oferta.\n- REGRA DE OURO: **oferecer o pré-atendimento é OBRIGATÓRIO uma vez em conversas com interesse em consórcio, mas insistir é PROIBIDO.**\n\n=== HANDOFF AUTOMÁTICO AO FINAL DO ATENDIMENTO (OBRIGATÓRIO) ===\n- Assim que você PERCEBER que o atendimento chegou ao fim naturalmente, chame \`encaminhar_recado_ao_dono\` AUTOMATICAMENTE — SEM esperar o cliente pedir. O ${primeiroNome} PRECISA receber o resumo de todo cliente que passou por você.\n- Sinais de que o atendimento acabou (dispare o handoff assim que UM deles ocorrer):\n  • Cliente se despediu ("valeu", "obrigado", "tá bom então", "depois eu vejo", "vou pensar", "qualquer coisa te falo", 👍/🙏).\n  • Cliente demonstrou interesse concreto E você já concluiu (ou ele recusou) o pré-atendimento — hora de passar pro ${primeiroNome}.\n  • Cliente mandou documento(s) e não continuou a conversa em ~1-2 mensagens.\n  • Você já respondeu a dúvida principal e o cliente ficou em silêncio por várias trocas / mandou só "ok".\n- **AVISE O CLIENTE** antes/depois do handoff automático: "Perfeito, vou passar tudo isso pro ${primeiroNome} agora — ele te retorna em breve com a proposta." Não é surpresa: o cliente precisa saber que o próximo contato será do ${primeiroNome}.\n- REGRA ANTI-DUPLICATA: chame \`encaminhar_recado_ao_dono\` **UMA VEZ POR ATENDIMENTO**. Se já encaminhou nesta conversa e o cliente voltou a falar depois, só encaminhe de novo se surgiu FATO NOVO relevante (novo documento, mudou de ideia, quer fechar agora, etc.).\n- O recado deve conter:\n    Nome: <nome do cliente ou "não informado">\n    Telefone: <telefone do cliente; se não informou, ${_fromNumForPrompt}>\n    Status: <"Interessado — quer proposta" | "Só tirou dúvida" | "Mandou documentos" | "Vai pensar" | resumo curto do estágio>\n    Dados coletados: <bem, valor da carta, prazo, CPF, renda, etc. — só o que foi informado>\n    Documentos recebidos: <lista, ou "nenhum">\n    Resumo (2-4 linhas): o que o cliente quer, o que você já explicou, o que ${primeiroNome} precisa fazer ao retornar.`;
+      ownerHintBlock = `\n\n=== RESPONSÁVEL DESTE ATENDIMENTO (LEIA ANTES DE RESPONDER) ===\n- O DONO/CHEFE/RESPONSÁVEL deste agente é **${nomeCompleto}** (chamado geralmente de "${primeiroNome}").\n- Quando o cliente disser "manda pro ${primeiroNome}", "passa pro chefe", "avisa o dono", "encaminha pra ele", "passe para a equipe", "passa pro gerente", "pede pra equipe/consultor me mandar", "pede um orçamento/plano", ou QUALQUER pedido pra que alguém DA CASA responda/envie algo — chame IMEDIATAMENTE \`encaminhar_recado_ao_dono\` com um recado humanizado (incluindo nome/telefone do cliente e o que ele quer). NÃO chame \`enviar_mensagem_contato_comercial\`, NÃO chame listar_contatos_comerciais, NÃO tente "identificar qual ${primeiroNome}", NÃO peça sobrenome — o responsável já está configurado no sistema e a ferramenta sabe pra quem mandar.\n- É PROIBIDO responder ao cliente coisas como "não consegui identificar qual ${primeiroNome}", "tem vários com esse nome", "me confirma o nome completo dele" — isso é falha grave de atendimento. Se o cliente pediu pra passar algo pra dentro da casa, você JÁ SABE pra quem: é ${primeiroNome}.\n\n=== REGRA DE OURO DO ENCAMINHAMENTO (NUNCA VIOLE) ===\n- Quando o cliente pedir algo que você não pode resolver (orçamento, simulação, valores, negociação) ou pedir falar com alguém da casa, chame \`encaminhar_recado_ao_dono\` IMEDIATAMENTE, SEM ANUNCIAR ANTES. Não escreva nada sobre envio antes da ferramenta rodar.\n- Só DEPOIS de a ferramenta retornar \`ok: true\`, confirme ao cliente que o recado foi enviado — e a confirmação DEVE terminar com o comprovante (protocolo) devolvido pela ferramenta.\n- É PROIBIDO dizer que encaminhou, que vai encaminhar, que passou o recado, ou que o dono/${primeiroNome} vai retornar, sem que a ferramenta tenha retornado \`ok: true\`.\n- Se a ferramenta falhar (\`ok\` diferente de true ou \`erro\`), diga ao cliente que houve um problema no envio e peça o nome e o telefone dele para retorno. NUNCA invente entrega.\n- Confirmação modelo (só com ok: true), 1 linha curta:\n   1) "Prontinho, acabei de mandar seu recado aqui pro ${primeiroNome} — assim que ele puder, te retorna. <protocolo>"\n- PROIBIDO terminar mensagem com convite ou pergunta de cortesia ("é só me chamar", "qualquer dúvida", "fico à disposição", "posso te ajudar em mais algo?"). A resposta termina no raciocínio.\n- O sistema pergunta o nome do cliente automaticamente DEPOIS do encaminhamento — você NUNCA pede o nome antes de encaminhar.\n- Se o cliente responder que quer ir adiantando com você, ATENDA NORMALMENTE. Se preferir aguardar o ${primeiroNome}, respeite e se coloque à disposição.\n- Nunca recite o texto do recado nem o telefone de ninguém.\n\n=== COLETA NATURAL DE DADOS DO CLIENTE (LEVE, SEM INSISTIR) ===\n- Logo no início da conversa, de forma leve e humanizada, pergunte UMA VEZ: nome do cliente e o que ele precisa. O telefone padrão já é o próprio WhatsApp dele (${_fromNumForPrompt}) — só peça outro se ele oferecer.\n- Se o cliente NÃO responder, **NÃO repita a pergunta, NÃO insista, NÃO trave o atendimento**. Siga ajudando normalmente com o que ele quiser falar.\n- Guarde mentalmente o que ele informar espontaneamente.\n- SEMPRE que chamar \`encaminhar_recado_ao_dono\`, inclua no topo do \`recado\`:\n    Nome: <nome informado, ou "não informado">\n    Telefone: <telefone informado pelo cliente; se não informou, use ${_fromNumForPrompt}>\n  Depois, 1-3 linhas do que o cliente quer.\n\n=== PRÉ-ATENDIMENTO DE CONSÓRCIO — OFERECER UMA VEZ, RESPEITAR RESPOSTA ===\n- Quando o cliente demonstrar INTERESSE em consórcio (ex: "quero contratar", "tenho interesse", "como funciona", "quero uma proposta", "quero falar sobre consórcio"), você DEVE oferecer UMA VEZ o pré-atendimento antes de encaminhar pro ${primeiroNome}. Assim o ${primeiroNome} já recebe o cliente com tudo pronto.\n- Ofereça de forma natural, em UMA mensagem só, algo como:\n  "Que ótimo! Pra já adiantar e o ${primeiroNome} te retornar com a proposta na mão, posso te fazer umas perguntinhas rápidas e recolher uns documentos (RG/CNH, comprovante de residência e de renda)? Assim ele já monta tudo antes de te ligar. Se preferir falar direto com ele, também tudo bem — é só me avisar."\n- Se o cliente ACEITAR: colete um item por vez, com ritmo de conversa (bem/valor da carta/prazo → nome completo/CPF → RG ou CNH → comprovante de residência → comprovante de renda → IR se tiver). Cada documento/dado recebido, agradeça leve e siga pro próximo. Se ele parar de responder ou pular etapa, DEIXE PRA LÁ e siga pro handoff.\n- Se o cliente RECUSAR ou preferir falar direto: respeite, NÃO insista, e faça o handoff automático pro ${primeiroNome}.\n- Se o cliente IGNORAR a oferta e responder outra coisa: siga o rumo dele, não repita a oferta.\n- REGRA DE OURO: **oferecer o pré-atendimento é OBRIGATÓRIO uma vez em conversas com interesse em consórcio, mas insistir é PROIBIDO.**\n\n=== HANDOFF AUTOMÁTICO AO FINAL DO ATENDIMENTO (OBRIGATÓRIO) ===\n- Assim que você PERCEBER que o atendimento chegou ao fim naturalmente, chame \`encaminhar_recado_ao_dono\` AUTOMATICAMENTE — SEM esperar o cliente pedir. O ${primeiroNome} PRECISA receber o resumo de todo cliente que passou por você.\n- Sinais de que o atendimento acabou (dispare o handoff assim que UM deles ocorrer):\n  • Cliente se despediu ("valeu", "obrigado", "tá bom então", "depois eu vejo", "vou pensar", "qualquer coisa te falo", 👍/🙏).\n  • Cliente demonstrou interesse concreto E você já concluiu (ou ele recusou) o pré-atendimento — hora de passar pro ${primeiroNome}.\n  • Cliente mandou documento(s) e não continuou a conversa em ~1-2 mensagens.\n  • Você já respondeu a dúvida principal e o cliente ficou em silêncio por várias trocas / mandou só "ok".\n- **AVISE O CLIENTE** antes/depois do handoff automático: "Perfeito, vou passar tudo isso pro ${primeiroNome} agora — ele te retorna em breve com a proposta." Não é surpresa: o cliente precisa saber que o próximo contato será do ${primeiroNome}.\n- REGRA ANTI-DUPLICATA: chame \`encaminhar_recado_ao_dono\` **UMA VEZ POR ATENDIMENTO**. Se já encaminhou nesta conversa e o cliente voltou a falar depois, só encaminhe de novo se surgiu FATO NOVO relevante (novo documento, mudou de ideia, quer fechar agora, etc.).\n- O recado deve conter:\n    Nome: <nome do cliente ou "não informado">\n    Telefone: <telefone do cliente; se não informou, ${_fromNumForPrompt}>\n    Status: <"Interessado — quer proposta" | "Só tirou dúvida" | "Mandou documentos" | "Vai pensar" | resumo curto do estágio>\n    Dados coletados: <bem, valor da carta, prazo, CPF, renda, etc. — só o que foi informado>\n    Documentos recebidos: <lista, ou "nenhum">\n    Resumo (2-4 linhas): o que o cliente quer, o que você já explicou, o que ${primeiroNome} precisa fazer ao retornar.`;
     }
 
     // === SILVESTER DOSSIÊ — fire-and-forget ===
@@ -7756,6 +7947,21 @@ Regras:
         if (encerrou && !decisaoAnterior?.valor) {
           patch.decisao = { valor: "aguardar o responsável", at: new Date().toISOString() };
         }
+
+        // Voz: a resposta termina no raciocínio — sem convite no fim.
+        const semConvite = removerConviteFinal(reply);
+        if (semConvite.removed) console.log(`[processor][voz][convite_final_removido] from=${row.from_number}`);
+        reply = semConvite.text;
+
+        // Nome DEPOIS do encaminhamento: pergunta curta, UMA vez só.
+        const jaTemNome = !!(nomeLeadConhecido || (agentState as any)?.nome);
+        const jaPerguntou = !!(agentState as any)?.nome_pergunta || nomePerguntado;
+        if (forwardProof && !jaTemNome && !jaPerguntou) {
+          reply = `${reply}<<SPLIT>>${PERGUNTA_NOME}`;
+          patch.nome_pergunta = true;
+          console.log(`[processor][lead_nome][pergunta_enviada] from=${row.from_number}`);
+        }
+
         if (Object.keys(patch).length > 0) {
           await saveAgentState(sb, conv.id, patch, agentState);
           console.log(`[processor][agent_state][saved] forward=${!!patch.forward} decisao=${patch.decisao?.valor ?? "-"}`);
@@ -7764,6 +7970,7 @@ Regras:
         console.warn("[processor][handoff][guard_failed]", (e as Error).message);
       }
     }
+
 
     // Se o contato comercial respondeu por áudio, userText vem vazio. Agora que a IA ouviu
     // e produziu uma resposta, usa esse entendimento para avisar o dono também.

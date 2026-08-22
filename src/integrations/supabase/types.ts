@@ -4076,6 +4076,48 @@ export type Database = {
           },
         ]
       }
+      lead_encaminhamentos: {
+        Row: {
+          complemento_nome_enviado: boolean
+          created_at: string
+          enviado_em: string
+          id: string
+          mensagem: string | null
+          nome: string | null
+          protocolo: string | null
+          telefone: string
+          updated_at: string
+          user_id: string
+          wamid_dono: string | null
+        }
+        Insert: {
+          complemento_nome_enviado?: boolean
+          created_at?: string
+          enviado_em?: string
+          id?: string
+          mensagem?: string | null
+          nome?: string | null
+          protocolo?: string | null
+          telefone: string
+          updated_at?: string
+          user_id: string
+          wamid_dono?: string | null
+        }
+        Update: {
+          complemento_nome_enviado?: boolean
+          created_at?: string
+          enviado_em?: string
+          id?: string
+          mensagem?: string | null
+          nome?: string | null
+          protocolo?: string | null
+          telefone?: string
+          updated_at?: string
+          user_id?: string
+          wamid_dono?: string | null
+        }
+        Relationships: []
+      }
       lead_history: {
         Row: {
           created_at: string | null
