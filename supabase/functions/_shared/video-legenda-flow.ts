@@ -312,6 +312,9 @@ export async function iniciarFluxoLegendaVideo(params: {
     .eq("user_id", params.userId)
     .in("status", ["aguardando_escolha", "aguardando_confirmacao"]);
 
+  const formatoInicial = detectarFormato(params.contexto || "") || "feed";
+  const redesIniciais = detectarPlataformas(params.contexto || "");
+
   const { error } = await sb.from("video_render_jobs").insert({
     user_id: params.userId,
     telefone: params.telefone,
@@ -320,7 +323,7 @@ export async function iniciarFluxoLegendaVideo(params: {
     video_path: loc.path,
     segmentos,
     status: "aguardando_escolha",
-    formato: "reels",
+    formato: formatoInicial,
     // Padrão seguro: NÃO publica. Só publica se o dono pedir "PUBLICAR".
     plataformas: [],
     metadata: {
@@ -328,6 +331,7 @@ export async function iniciarFluxoLegendaVideo(params: {
       transcricao,
       contexto: params.contexto || null,
       midia_id: params.midiaId || null,
+      plataformas_pedidas: redesIniciais,
     },
   });
   if (error) {
