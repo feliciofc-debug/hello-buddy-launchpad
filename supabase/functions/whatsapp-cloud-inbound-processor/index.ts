@@ -1539,11 +1539,9 @@ function sanitizeProtocolLeaks(text: string, currentProof?: string): { text: str
   // Remove comprovantes completos e protocolos soltos que não sejam o do turno atual
   out = out.replace(/\(\s*protocolo\s*#[A-Za-z0-9]{4,10}[^)]*\)/gi, "");
   out = out.replace(/protocolo\s*#[A-Za-z0-9]{4,10}/gi, "");
-  out = out.replace(/(^|[\s\n>*_—-])#[A-Za-z0-9]{4,10}\b/g, (m, p1) => {
-    const code = m.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
-    if (currentCode && code === currentCode) return m;
-    return p1;
-  });
+  // Qualquer código solto (mesmo igual ao do turno) sai: só o comprovante do turno,
+  // preservado no placeholder, pode permanecer — e ele fica no fim da linha.
+  out = out.replace(/(^|[\s\n>*_—-])#[A-Za-z0-9]{4,10}\b/g, (_m, p1) => p1);
   out = out.split(placeholder).join(currentProof ?? "");
   out = out
     .split("<<SPLIT>>")
