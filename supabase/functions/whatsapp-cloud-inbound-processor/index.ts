@@ -5861,8 +5861,11 @@ async function callGemini(
       return { text: formatSocialPostToolResult(postResult) };
     }
 
+    // Texto puro do turno (turno multimodal chega como array de partes).
+    const userTextOnly = typeof userContent === "string" ? userContent : "";
+
     // 1) Cotações em tempo real (AwesomeAPI) — antes de qualquer coisa
-    const quotePairs = detectQuoteIntent(userContent);
+    const quotePairs = hasMedia ? [] : detectQuoteIntent(userTextOnly);
     if (quotePairs.length > 0) {
       console.log("[pietro][forced_quote]", quotePairs);
       const quotes = await Promise.all(quotePairs.map((p) => toolCotacaoMoeda(p)));
@@ -5881,9 +5884,11 @@ async function callGemini(
       }
     }
 
-    // 2) Busca web (Google) para outras intenções de tempo real
-    const forcedSearch = detectWebSearchIntent(userContent);
+    // 2) Busca web (Google) só para pedido explícito de pesquisa ou pergunta de fato externo.
+    //    Nunca em turno com mídia, nunca em conversa operacional.
+    const forcedSearch = detectWebSearchIntent(userTextOnly, { hasMedia });
     if (forcedSearch) {
+
       console.log("[pietro][forced_web_search]", forcedSearch);
       const searchResult = await toolPesquisarWeb(forcedSearch.query, forcedSearch.recencia);
       messages.push({
