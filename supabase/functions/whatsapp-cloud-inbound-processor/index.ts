@@ -7557,16 +7557,60 @@ Regras:
     const userContent = buildUserContent(userText, media);
     let reply = "";
     let generatedImageUrl: string | undefined;
+    let forwardProof: string | undefined;
+    let forwardAttempted = false;
     try {
       const aiResult = await callGemini(systemPromptWithDate, history, userContent, media.length > 0, { userId, fromNumber: row.from_number, media });
       reply = aiResult.text;
       generatedImageUrl = aiResult.imageUrl;
+      forwardProof = aiResult.forwardProof;
+      forwardAttempted = !!aiResult.forwardAttempted;
     } catch (e) {
       const aiError = String((e as Error).message ?? e).slice(0, 300);
       console.error("[processor][ai_fallback]", aiError);
       reply = inboundFromOwner
         ? "Recebi sua mensagem, mas tive uma instabilidade agora. Me manda de novo em alguns segundos que eu continuo."
         : `Boa tarde! Tudo bem? Posso saber seu nome? Me conta rapidinho o que você precisa — e, pra retorno, uso esse WhatsApp mesmo (${row.from_number}) ou prefere outro telefone?`;
+    }
+
+    // ---- Blindagem anti "encaminhamento fantasma" ----------------------------
+    // 1) Handoff determinístico quando o cliente pediu orçamento/valores ou encerrou
+    //    ("aguardar ele", "valeu", "vou pensar") e a IA não chamou a ferramenta.
+    // 2) A confirmação ao cliente só sobrevive se houver comprovante real.
+    if (!inboundFromOwner) {
+      try {
+        const ownerInfo = await resolveTenantOwner(sb, userId);
+        const ownerFirst = ownerFirstName(ownerInfo?.name);
+        const pediuDono = pedeAtencaoDoDono(userText);
+        const encerrou = clienteEncerrouAtendimento(userText);
+
+        if (!forwardProof && ownerInfo?.phone && ownerInfo.phone !== row.from_number && (pediuDono || encerrou)) {
+          console.warn(`[processor][handoff][miss] tool não executada com sucesso (pediu_dono=${pediuDono} encerrou=${encerrou} tentou=${forwardAttempted}) from=${row.from_number} → handoff determinístico`);
+          const recadoAuto = [
+            `Nome: ${(conv as any)?.contact_name ?? "não informado"}`,
+            `Telefone: ${row.from_number}`,
+            `Status: ${encerrou ? "Atendimento encerrado — cliente prefere falar/aguardar você" : "Interessado — pediu orçamento/valores"}`,
+            `Resumo: última mensagem do cliente: "${(userText || "(mídia)").slice(0, 300)}"`,
+            "Ação: retornar o contato do cliente.",
+          ].join("\n");
+          try {
+            const r = await toolEncaminharRecadoAoDono({ recado: recadoAuto }, { userId, fromNumber: row.from_number, media });
+            const p = JSON.parse(r);
+            if (p?.ok === true) forwardProof = String(p?.protocolo || "");
+            else console.warn("[processor][handoff][deterministic_failed]", String(p?.erro ?? "desconhecido"));
+          } catch (e) {
+            console.warn("[processor][handoff][deterministic_error]", (e as Error).message);
+          }
+        }
+
+        const guard = enforceForwardTruth(reply, forwardProof, ownerFirst);
+        if (guard.scrubbed) {
+          console.warn(`[processor][handoff][claim_scrubbed] afirmação de encaminhamento sem comprovante removida from=${row.from_number}`);
+        }
+        reply = guard.text;
+      } catch (e) {
+        console.warn("[processor][handoff][guard_failed]", (e as Error).message);
+      }
     }
 
     // Se o contato comercial respondeu por áudio, userText vem vazio. Agora que a IA ouviu
