@@ -7947,6 +7947,21 @@ Regras:
         if (encerrou && !decisaoAnterior?.valor) {
           patch.decisao = { valor: "aguardar o responsável", at: new Date().toISOString() };
         }
+
+        // Voz: a resposta termina no raciocínio — sem convite no fim.
+        const semConvite = removerConviteFinal(reply);
+        if (semConvite.removed) console.log(`[processor][voz][convite_final_removido] from=${row.from_number}`);
+        reply = semConvite.text;
+
+        // Nome DEPOIS do encaminhamento: pergunta curta, UMA vez só.
+        const jaTemNome = !!(nomeLeadConhecido || (agentState as any)?.nome);
+        const jaPerguntou = !!(agentState as any)?.nome_pergunta || nomePerguntado;
+        if (forwardProof && !jaTemNome && !jaPerguntou) {
+          reply = `${reply}<<SPLIT>>${PERGUNTA_NOME}`;
+          patch.nome_pergunta = true;
+          console.log(`[processor][lead_nome][pergunta_enviada] from=${row.from_number}`);
+        }
+
         if (Object.keys(patch).length > 0) {
           await saveAgentState(sb, conv.id, patch, agentState);
           console.log(`[processor][agent_state][saved] forward=${!!patch.forward} decisao=${patch.decisao?.valor ?? "-"}`);
@@ -7955,6 +7970,7 @@ Regras:
         console.warn("[processor][handoff][guard_failed]", (e as Error).message);
       }
     }
+
 
     // Se o contato comercial respondeu por áudio, userText vem vazio. Agora que a IA ouviu
     // e produziu uma resposta, usa esse entendimento para avisar o dono também.
