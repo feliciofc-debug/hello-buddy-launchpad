@@ -121,7 +121,7 @@ Deno.serve(async (req) => {
 
     if (job.telefone) {
       const msg = publicados.length > 0
-        ? `✅ Publicado com a legenda na tela em: ${publicados
+        ? `✅ Publicado como *${ehStory ? "STORY" : "REELS"}* com a legenda na tela em: ${publicados
             .map((p) => (p === "instagram" ? "Instagram" : "Facebook"))
             .join(" e ")}.`
         : `A publicação falhou: ${erros.join(" | ")}\n\nMe responda *APROVAR* que eu tento de novo.`;
