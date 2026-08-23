@@ -6952,10 +6952,41 @@ async function processOne(queueId: string) {
 
     // PASSO 6.7 — Baixa mídias
     let media: MediaExtract[] = [];
+    let mediaRejections: MediaRejection[] = [];
     if (waAccessToken && ["image", "audio", "video", "document"].includes(row.message_type ?? "")) {
-      media = await downloadAllMedia(row.payload, waAccessToken);
-      console.log(`[processor] media baixadas: ${media.length}`);
+      const dl = await downloadAllMediaDetailed(row.payload, waAccessToken);
+      media = dl.items;
+      mediaRejections = dl.rejections;
+      console.log(`[processor] media baixadas: ${media.length} | recusadas: ${mediaRejections.length}`);
     }
+
+    // Rejeição por tamanho NUNCA é silenciosa: avisa o remetente e encerra o turno.
+    const tooLarge = mediaRejections.filter((r) => r.reason === "too_large");
+    if (media.length === 0 && tooLarge.length > 0) {
+      const maiorMb = Math.max(...tooLarge.map((r) => (r.bytes ?? 0))) / 1048576;
+      console.warn(
+        `[processor][media_too_large] user=${userId} from=${row.from_number} tipo=${row.message_type} bytes_max=${maiorMb.toFixed(2)}MB limite=${(tooLarge[0].limitBytes / 1048576).toFixed(0)}MB`,
+      );
+      const kind = tooLarge[0].kind;
+      const label = kind === "video" ? "vídeo" : kind === "image" ? "imagem" : kind === "audio" ? "áudio" : "arquivo";
+      const aviso = kind === "video"
+        ? "Recebi seu vídeo, mas ele passou do tamanho que consigo processar por aqui. Manda uma versão menor ou mais curta que eu sigo com as legendas."
+        : `Recebi seu ${label}, mas ele passou do tamanho que consigo processar por aqui. Manda uma versão menor que eu sigo daqui.`;
+      try {
+        await sendWhatsApp(userId, row.from_number, aviso);
+        await sb.from("whatsapp_cloud_messages").insert({
+          conversation_id: conv.id,
+          direction: "outbound",
+          message_type: "text",
+          content: aviso,
+        });
+      } catch (e) {
+        console.error("[processor][media_too_large] falha ao avisar remetente:", (e as Error).message);
+      }
+      await doneQueue(row.id);
+      return { ok: true, reason: "media_too_large" };
+    }
+
 
     if (!fromIsOwner && row.message_type === "audio") {
       commercialContactForOwner = await findCommercialContactByPhone(userId, row.from_number);
