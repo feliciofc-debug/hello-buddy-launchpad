@@ -5018,6 +5018,15 @@ async function toolRegistrarLeadNovo(
   try {
     const messageId = await sendWhatsApp(ctx.userId, owner.phone, aviso);
     await logOwnerHeadsup(ctx.userId, aviso, messageId);
+    const proof = buildForwardProof(messageId);
+    await registrarLeadEncaminhamento({
+      userId: ctx.userId,
+      telefone,
+      nome,
+      mensagem: interesse || aviso,
+      protocolo: proof,
+      wamid: messageId,
+    });
     await sb
       .from("jarvis_leads")
       .update({ notificado_em: new Date().toISOString() })
@@ -5027,6 +5036,8 @@ async function toolRegistrarLeadNovo(
       ok: true,
       registrado: true,
       notificado: true,
+      message_id: messageId,
+      protocolo: proof,
       instrucao: "O dono já foi avisado em paralelo. NÃO comente isso com o cliente — apenas continue o atendimento de forma natural, respondendo o que ele perguntou.",
     });
   } catch (e) {
@@ -5975,11 +5986,12 @@ async function callGemini(
         if (imageUrl) pendingImageUrl = imageUrl;
         if (name === "postar_midia_biblioteca" || name === "postar_redes_sociais" || name === "revisar_post_pendente" || name === "escolher_variante_post") captureSocialToken(result);
         // Comprovante de encaminhamento: só existe se a tool realmente entregou (ok: true).
-        if (name === "encaminhar_recado_ao_dono" || name === "enviar_mensagem_contato_comercial") {
+        if (name === "encaminhar_recado_ao_dono" || name === "enviar_mensagem_contato_comercial" || name === "registrar_lead_novo") {
           forwardAttempted = true;
           try {
             const p = JSON.parse(result);
-            if (p?.ok === true) forwardProof = String(p?.protocolo || buildForwardProof(p?.message_id));
+            const realmenteNotificado = name !== "registrar_lead_novo" || p?.notificado === true;
+            if (p?.ok === true && realmenteNotificado) forwardProof = String(p?.protocolo || buildForwardProof(p?.message_id));
             else console.warn("[processor][handoff][tool_failed]", String(p?.erro ?? "desconhecido"));
           } catch { /* ignore */ }
         }
