@@ -1522,14 +1522,29 @@ async function loadAgentState(sb: any, convId: string): Promise<AgentConvState> 
   }
 }
 
-async function saveAgentState(sb: any, convId: string, patch: AgentConvState, current: AgentConvState = {}) {
+async function saveAgentState(sb: any, convId: string, patch: AgentConvState, current: AgentConvState = {}): Promise<boolean> {
   try {
-    await sb
+    const nextState = { ...current, ...patch };
+    const { error } = await sb
       .from("whatsapp_cloud_conversations")
-      .update({ agent_state: { ...current, ...patch } })
+      .update({ agent_state: nextState })
       .eq("id", convId);
+    if (error) throw error;
+
+    const { data: verified, error: verifyError } = await sb
+      .from("whatsapp_cloud_conversations")
+      .select("agent_state")
+      .eq("id", convId)
+      .maybeSingle();
+    if (verifyError) throw verifyError;
+    const saved = (verified?.agent_state ?? {}) as AgentConvState;
+    if (patch.forward?.protocolo && saved.forward?.protocolo !== patch.forward.protocolo) {
+      throw new Error("forward_proof_not_persisted");
+    }
+    return true;
   } catch (e) {
     console.warn("[processor][agent_state][save_failed]", (e as Error).message);
+    return false;
   }
 }
 
@@ -1561,6 +1576,33 @@ async function registrarLeadEncaminhamento(params: {
     return data?.id ?? null;
   } catch (e) {
     console.warn("[processor][lead_encaminhado][falhou]", (e as Error).message);
+    return null;
+  }
+}
+
+// Fonte secundária de verdade: recupera o último encaminhamento realmente registrado.
+// Evita falso negativo se o JSON de estado da conversa falhar ou for sobrescrito.
+async function recoverForwardProof(userId: string, telefone: string): Promise<AgentConvState["forward"] | null> {
+  try {
+    const { data, error } = await sb
+      .from("lead_encaminhamentos")
+      .select("protocolo, wamid_dono, enviado_em")
+      .eq("user_id", userId)
+      .eq("telefone", telefone)
+      .not("wamid_dono", "is", null)
+      .gte("enviado_em", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      .order("enviado_em", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data?.protocolo) return null;
+    return {
+      protocolo: `(protocolo #${data.protocolo})`,
+      wamid: data.wamid_dono,
+      at: data.enviado_em,
+    };
+  } catch (e) {
+    console.warn("[processor][handoff][proof_recovery_failed]", (e as Error).message);
     return null;
   }
 }
@@ -7256,10 +7298,13 @@ async function processOne(queueId: string) {
         try {
           const stPrev = await loadAgentState(sb, conv.id);
           pedirNomeAgora = !nomeLeadConhecido && !(stPrev as any)?.nome_pergunta;
-          await saveAgentState(sb, conv.id, {
+          const stateSaved = await saveAgentState(sb, conv.id, {
             forward: { protocolo: proto, destinatario: tenantOwnerPhone, wamid: sentOwnerId ?? null, at: new Date().toISOString() },
             ...(pedirNomeAgora ? { nome_pergunta: true } : {}),
           }, stPrev);
+          if (!stateSaved) {
+            console.warn(`[processor][handoff][state_degraded] comprovante preservado em lead_encaminhamentos from=${row.from_number}`);
+          }
         } catch (_e) { /* não bloqueia */ }
         const confirmacao = humanNeeded && !explicitForward
           ? `Vou confirmar isso com ${ownerFirstName(_tenantOwner?.name)} e pedir para ele te retornar. ${proto}`
@@ -7896,7 +7941,16 @@ Regras:
 
     // === ESTADO PERSISTENTE DA CONVERSA (comprovante de encaminhamento + decisões) ===
     const agentState = await loadAgentState(sb, conv.id);
-    const persistedForward = (agentState.forward ?? null) as { protocolo?: string; destinatario?: string; wamid?: string | null; at?: string } | null;
+    let persistedForward = (agentState.forward ?? null) as { protocolo?: string; destinatario?: string; wamid?: string | null; at?: string } | null;
+    if (!persistedForward?.protocolo && !fromIsOwner) {
+      const recovered = await recoverForwardProof(userId, row.from_number);
+      if (recovered?.protocolo) {
+        persistedForward = recovered;
+        agentState.forward = recovered;
+        const recoveredSaved = await saveAgentState(sb, conv.id, { forward: recovered }, agentState);
+        console.warn(`[processor][handoff][proof_recovered] from=${row.from_number} state_repaired=${recoveredSaved}`);
+      }
+    }
     const decisaoAnterior = (agentState.decisao ?? null) as { valor?: string; at?: string } | null;
 
     let estadoBlock = "";
