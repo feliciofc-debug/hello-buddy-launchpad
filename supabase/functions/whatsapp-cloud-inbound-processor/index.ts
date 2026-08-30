@@ -1486,17 +1486,15 @@ function ownerFirstName(ownerName?: string | null): string {
 }
 
 function buildForwardProof(wamid?: string | null): string {
+  if (!wamid) throw new Error("forward_delivery_receipt_missing");
   const now = new Date();
   // Horário São Paulo (UTC-3)
   const sp = new Date(now.getTime() - 3 * 3600 * 1000);
   const hh = String(sp.getUTCHours()).padStart(2, "0");
   const mm = String(sp.getUTCMinutes()).padStart(2, "0");
-  let proto = "";
-  if (wamid) {
-    const clean = String(wamid).replace(/[^A-Za-z0-9]/g, "");
-    proto = clean.slice(-6).toUpperCase();
-  }
-  if (!proto) proto = Math.random().toString(36).slice(-6).toUpperCase();
+  const clean = String(wamid).replace(/[^A-Za-z0-9]/g, "");
+  const proto = clean.slice(-6).toUpperCase();
+  if (!proto) throw new Error("forward_delivery_receipt_invalid");
   return `(protocolo #${proto} · ${hh}:${mm})`;
 }
 
@@ -1506,6 +1504,16 @@ type AgentConvState = {
   decisao?: { valor?: string; at?: string };
   [k: string]: unknown;
 };
+
+const LEAD_NOTIFICATION_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+
+function isSubstantiveLeadMessage(raw: string): boolean {
+  const low = normalizeContactLookupText(raw);
+  if (!low) return false;
+  if (/^(oi|ola|bom dia|boa tarde|boa noite|tudo bem|como vai)[.!?\s]*$/.test(low)) return false;
+  if (/^(sim|nao|ok|okay|obrigad[oa]|valeu|beleza|blz|certo)[.!?\s]*$/.test(low)) return false;
+  return low.length >= 8;
+}
 
 async function loadAgentState(sb: any, convId: string): Promise<AgentConvState> {
   try {
@@ -5026,7 +5034,8 @@ async function toolRegistrarLeadNovo(
       .eq("user_id", ctx.userId)
       .eq("telefone", telefone)
       .maybeSingle();
-    jaNotificado = !!existente?.notificado_em;
+    const notificadoEm = existente?.notificado_em ? new Date(existente.notificado_em).getTime() : 0;
+    jaNotificado = notificadoEm > 0 && Date.now() - notificadoEm < LEAD_NOTIFICATION_COOLDOWN_MS;
 
     const payload: Record<string, unknown> = {
       user_id: ctx.userId,
@@ -6033,7 +6042,7 @@ async function callGemini(
           try {
             const p = JSON.parse(result);
             const realmenteNotificado = name !== "registrar_lead_novo" || p?.notificado === true;
-            if (p?.ok === true && realmenteNotificado) forwardProof = String(p?.protocolo || buildForwardProof(p?.message_id));
+            if (p?.ok === true && realmenteNotificado && p?.message_id) forwardProof = String(p?.protocolo || buildForwardProof(p.message_id));
             else console.warn("[processor][handoff][tool_failed]", String(p?.erro ?? "desconhecido"));
           } catch { /* ignore */ }
         }
@@ -6072,9 +6081,13 @@ async function sendWhatsApp(user_id: string, to: string, message: string, imageU
   if (!res.ok) throw new Error(`send ${res.status}: ${txt.slice(0, 200)}`);
   try {
     const j = JSON.parse(txt);
-    return j?.message_id ?? j?.wamid ?? null;
+    const messageId = j?.message_id ?? j?.wamid ?? null;
+    if (j?.success !== true || !messageId) {
+      throw new Error(`send_without_delivery_receipt: ${txt.slice(0, 200)}`);
+    }
+    return messageId;
   } catch {
-    return null;
+    throw new Error(`send_invalid_response: ${txt.slice(0, 200)}`);
   }
 }
 
@@ -7939,6 +7952,31 @@ Regras:
     // ⛔ ANTI-PROMESSA: o agente não pode dizer que vai fazer e não chamar a tool no mesmo turno.
     const antiPromessaBlock = `\n\nENTREGA NO MESMO TURNO (REGRA ABSOLUTA):\n- É PROIBIDO prometer trabalho futuro. Frases como "já estou preparando", "fica pronto em um instante", "vou montar e te mando", "aguarde uns minutos" são PROIBIDAS se você não chamou a ferramenta correspondente NESTA MESMA RESPOSTA.\n- Você NÃO tem fila nem execução em segundo plano: se não chamar a tool agora, NADA acontece e o pedido se perde.\n- Pedido de arte/anúncio/imagem/post ⇒ chame a tool (criar_anuncio, editar_imagem, gerar_imagem, criar_carrossel, postar_midia_biblioteca) AGORA e só depois responda.\n- Se faltar UM dado essencial, faça UMA pergunta curta em vez de prometer. Se os dados já vieram, execute sem perguntar.`;
 
+    // === AVISO DETERMINÍSTICO DE NOVO CONTATO ================================
+    // Não depende da IA escolher uma tool: ao primeiro pedido real do contato,
+    // o responsável recebe nome/telefone/interesse. Falhas não são marcadas como
+    // sucesso, então a próxima mensagem tenta novamente.
+    if (!inboundFromOwner && tenantOwnerPhone && row.message_type === "text" && isSubstantiveLeadMessage(userText)) {
+      try {
+        const deterministicName = nomeLeadConhecido || contactName || "Nome não informado";
+        const rawNotice = await toolRegistrarLeadNovo({
+          nome: deterministicName,
+          interesse: userText.slice(0, 500),
+        }, {
+          userId,
+          fromNumber: row.from_number,
+        });
+        const notice = JSON.parse(rawNotice);
+        if (notice?.notificado === true && notice?.message_id) {
+          console.log(`[processor][lead_notice][delivered] from=${row.from_number} owner=${tenantOwnerPhone} wamid=${notice.message_id}`);
+        } else if (notice?.motivo !== "lead_ja_notificado") {
+          console.warn(`[processor][lead_notice][not_delivered] from=${row.from_number} motivo=${notice?.motivo ?? notice?.erro ?? "unknown"}`);
+        }
+      } catch (e) {
+        console.warn(`[processor][lead_notice][retry_next_message] from=${row.from_number} erro=${(e as Error).message}`);
+      }
+    }
+
     // === ESTADO PERSISTENTE DA CONVERSA (comprovante de encaminhamento + decisões) ===
     const agentState = await loadAgentState(sb, conv.id);
     let persistedForward = (agentState.forward ?? null) as { protocolo?: string; destinatario?: string; wamid?: string | null; at?: string } | null;
@@ -8024,7 +8062,7 @@ Regras:
           try {
             const r = await toolEncaminharRecadoAoDono({ recado: recadoAuto }, { userId, fromNumber: row.from_number, media });
             const p = JSON.parse(r);
-            if (p?.ok === true) forwardProof = String(p?.protocolo || "");
+            if (p?.ok === true && p?.message_id) forwardProof = String(p?.protocolo || buildForwardProof(p.message_id));
             else console.warn("[processor][handoff][deterministic_failed]", String(p?.erro ?? "desconhecido"));
           } catch (e) {
             console.warn("[processor][handoff][deterministic_error]", (e as Error).message);
