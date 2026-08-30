@@ -1486,17 +1486,15 @@ function ownerFirstName(ownerName?: string | null): string {
 }
 
 function buildForwardProof(wamid?: string | null): string {
+  if (!wamid) throw new Error("forward_delivery_receipt_missing");
   const now = new Date();
   // Horário São Paulo (UTC-3)
   const sp = new Date(now.getTime() - 3 * 3600 * 1000);
   const hh = String(sp.getUTCHours()).padStart(2, "0");
   const mm = String(sp.getUTCMinutes()).padStart(2, "0");
-  let proto = "";
-  if (wamid) {
-    const clean = String(wamid).replace(/[^A-Za-z0-9]/g, "");
-    proto = clean.slice(-6).toUpperCase();
-  }
-  if (!proto) proto = Math.random().toString(36).slice(-6).toUpperCase();
+  const clean = String(wamid).replace(/[^A-Za-z0-9]/g, "");
+  const proto = clean.slice(-6).toUpperCase();
+  if (!proto) throw new Error("forward_delivery_receipt_invalid");
   return `(protocolo #${proto} · ${hh}:${mm})`;
 }
 
@@ -6044,7 +6042,7 @@ async function callGemini(
           try {
             const p = JSON.parse(result);
             const realmenteNotificado = name !== "registrar_lead_novo" || p?.notificado === true;
-            if (p?.ok === true && realmenteNotificado) forwardProof = String(p?.protocolo || buildForwardProof(p?.message_id));
+            if (p?.ok === true && realmenteNotificado && p?.message_id) forwardProof = String(p?.protocolo || buildForwardProof(p.message_id));
             else console.warn("[processor][handoff][tool_failed]", String(p?.erro ?? "desconhecido"));
           } catch { /* ignore */ }
         }
@@ -8064,7 +8062,7 @@ Regras:
           try {
             const r = await toolEncaminharRecadoAoDono({ recado: recadoAuto }, { userId, fromNumber: row.from_number, media });
             const p = JSON.parse(r);
-            if (p?.ok === true) forwardProof = String(p?.protocolo || "");
+            if (p?.ok === true && p?.message_id) forwardProof = String(p?.protocolo || buildForwardProof(p.message_id));
             else console.warn("[processor][handoff][deterministic_failed]", String(p?.erro ?? "desconhecido"));
           } catch (e) {
             console.warn("[processor][handoff][deterministic_error]", (e as Error).message);
