@@ -120,7 +120,7 @@ serve(async (req) => {
                 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
                 'Content-Type': 'application/json',
               },
-              body: JSON.stringify({
+               body: JSON.stringify({
                  caption: post.post_text,
                  image_url: post.image_url,
                  user_id: post.user_id,

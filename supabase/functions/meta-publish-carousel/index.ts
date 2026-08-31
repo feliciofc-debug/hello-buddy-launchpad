@@ -101,7 +101,8 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
-    sanitizedCaption = await appendLinkPost(supabase, user_id, sanitizedCaption)
+     sanitizedCaption = await appendLinkPost(supabase, user_id, sanitizedCaption)
+     const productTags = await getProductTags(supabase, user_id, produto_id)
 
     // Resolve IG account credentials with fallback chain (same as meta-publish-instagram)
     const { igId, token } = await getIgCredentials(supabase, user_id)

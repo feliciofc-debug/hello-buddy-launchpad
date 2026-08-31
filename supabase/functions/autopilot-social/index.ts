@@ -585,11 +585,11 @@ serve(async (req) => {
                   produto_source: 'produtos',
                   platform: 'instagram',
                   page_id: clientPageId,
-                  post_text: textoInstagram,
-                  image_url: imagemUrlIg,
-                  link_url: linkProduto,
-                  status: 'pendente',
-                  scheduled_at: horarioIg.toISOString(),
+                   post_text: textoInstagram,
+                   image_url: imagemUrlIg,
+                   link_url: linkProduto,
+                   status: 'pendente',
+                   scheduled_at: horarioIg.toISOString(),
                 })
                 .select('id')
                 .single()
