@@ -6221,6 +6221,42 @@ async function transcribeAudioMedia(media: MediaExtract[]): Promise<string> {
   const audio = media.find((m) => m.kind === "audio");
   if (!audio?.base64) return "";
 
+  // 1ª via: endpoint dedicado de speech-to-text (determinístico, não depende do modelo "ouvir").
+  try {
+    const bytes = Uint8Array.from(atob(audio.base64), (c) => c.charCodeAt(0));
+    const mime = (audio.mime || "audio/ogg").split(";")[0];
+    const ext = mime.includes("mpeg") || mime.includes("mp3")
+      ? "mp3"
+      : mime.includes("wav")
+      ? "wav"
+      : mime.includes("m4a")
+      ? "m4a"
+      : mime.includes("mp4")
+      ? "mp4"
+      : "ogg";
+    const form = new FormData();
+    form.append("model", "openai/gpt-4o-mini-transcribe");
+    form.append("file", new Blob([bytes], { type: mime }), `audio.${ext}`);
+    const sttRes = await fetch("https://ai.gateway.lovable.dev/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${LOVABLE_API_KEY}` },
+      body: form,
+    });
+    const sttTxt = await sttRes.text();
+    if (sttRes.ok) {
+      try {
+        const j = JSON.parse(sttTxt);
+        const t = String(j?.text || "").trim();
+        if (t) return t;
+      } catch { /* cai no fallback */ }
+    } else {
+      console.warn(`[processor][stt] ${sttRes.status}: ${sttTxt.slice(0, 200)}`);
+    }
+  } catch (e) {
+    console.warn("[processor][stt] falhou:", (e as Error).message);
+  }
+
+  // 2ª via: modelo multimodal ouvindo o áudio.
   const content = buildUserContent(
     "Transcreva literalmente este áudio de WhatsApp em português do Brasil. Responda somente com a transcrição, sem comentários.",
     [audio],
@@ -6249,6 +6285,7 @@ async function transcribeAudioMedia(media: MediaExtract[]): Promise<string> {
     return txt.trim();
   }
 }
+
 
 function confirmationNoticeFromReply(match: any, text: string, source: "texto" | "audio"): string | null {
   const intent = classifyCommercialReply(text);
