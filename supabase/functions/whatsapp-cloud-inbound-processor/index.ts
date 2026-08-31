@@ -6221,6 +6221,42 @@ async function transcribeAudioMedia(media: MediaExtract[]): Promise<string> {
   const audio = media.find((m) => m.kind === "audio");
   if (!audio?.base64) return "";
 
+  // 1ª via: endpoint dedicado de speech-to-text (determinístico, não depende do modelo "ouvir").
+  try {
+    const bytes = Uint8Array.from(atob(audio.base64), (c) => c.charCodeAt(0));
+    const mime = (audio.mime || "audio/ogg").split(";")[0];
+    const ext = mime.includes("mpeg") || mime.includes("mp3")
+      ? "mp3"
+      : mime.includes("wav")
+      ? "wav"
+      : mime.includes("m4a")
+      ? "m4a"
+      : mime.includes("mp4")
+      ? "mp4"
+      : "ogg";
+    const form = new FormData();
+    form.append("model", "openai/gpt-4o-mini-transcribe");
+    form.append("file", new Blob([bytes], { type: mime }), `audio.${ext}`);
+    const sttRes = await fetch("https://ai.gateway.lovable.dev/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${LOVABLE_API_KEY}` },
+      body: form,
+    });
+    const sttTxt = await sttRes.text();
+    if (sttRes.ok) {
+      try {
+        const j = JSON.parse(sttTxt);
+        const t = String(j?.text || "").trim();
+        if (t) return t;
+      } catch { /* cai no fallback */ }
+    } else {
+      console.warn(`[processor][stt] ${sttRes.status}: ${sttTxt.slice(0, 200)}`);
+    }
+  } catch (e) {
+    console.warn("[processor][stt] falhou:", (e as Error).message);
+  }
+
+  // 2ª via: modelo multimodal ouvindo o áudio.
   const content = buildUserContent(
     "Transcreva literalmente este áudio de WhatsApp em português do Brasil. Responda somente com a transcrição, sem comentários.",
     [audio],
@@ -6249,6 +6285,7 @@ async function transcribeAudioMedia(media: MediaExtract[]): Promise<string> {
     return txt.trim();
   }
 }
+
 
 function confirmationNoticeFromReply(match: any, text: string, source: "texto" | "audio"): string | null {
   const intent = classifyCommercialReply(text);
@@ -7055,32 +7092,44 @@ async function processOne(queueId: string) {
     }
 
 
+    // REGRA FIXA: todo áudio recebido é transcrito por STT dedicado (determinístico).
+    // O agente NUNCA pode dizer que "não transcreve áudio" — o texto já chega pronto.
+    let audioTranscript = "";
+    if (media.some((m) => m.kind === "audio")) {
+      try {
+        audioTranscript = await transcribeAudioMedia(media);
+        if (audioTranscript) {
+          inboundContent = `🎙️ Áudio transcrito: ${audioTranscript}`;
+          await sb
+            .from("whatsapp_cloud_messages")
+            .update({ content: inboundContent })
+            .eq("conversation_id", conv.id)
+            .eq("wamid", row.wamid);
+        }
+        console.log(`[processor][audio] transcricao_len=${audioTranscript.length}`);
+      } catch (e) {
+        console.warn("[processor][audio-transcribe] falhou:", (e as Error).message);
+      }
+    }
+
     if (!fromIsOwner && row.message_type === "audio") {
       commercialContactForOwner = await findCommercialContactByPhone(userId, row.from_number);
-      if (commercialContactForOwner && media.some((m) => m.kind === "audio")) {
+      if (commercialContactForOwner && audioTranscript) {
         try {
-          const transcript = await transcribeAudioMedia(media);
-          if (transcript) {
-            inboundContent = `🎙️ Áudio transcrito: ${transcript}`;
-            await sb
-              .from("whatsapp_cloud_messages")
-              .update({ content: inboundContent })
-              .eq("conversation_id", conv.id)
-              .eq("wamid", row.wamid);
-            await notifyOwnerDeterministic({
-              userId,
-              fromNumber: row.from_number,
-              match: commercialContactForOwner,
-              text: transcript,
-              messageType: row.message_type,
-              source: "audio",
-            });
-          }
+          await notifyOwnerDeterministic({
+            userId,
+            fromNumber: row.from_number,
+            match: commercialContactForOwner,
+            text: audioTranscript,
+            messageType: row.message_type,
+            source: "audio",
+          });
         } catch (e) {
           console.warn("[processor][audio-transcribe-headsup] falhou:", (e as Error).message);
         }
       }
     }
+
 
     // Regra determinística: foto/vídeo enviado no WhatsApp vira mídia livre em /midias.
     // Não deixa a IA buscar produto parecido no catálogo nem preparar post com imagem errada.
@@ -8019,7 +8068,11 @@ Regras:
       }));
 
     // PASSO 9 — IA (multimodal)
-    const userContent = buildUserContent(userText, media);
+    const userTextComAudio = audioTranscript
+      ? `${userText ? `${userText}\n\n` : ""}🎙️ TRANSCRIÇÃO DO ÁUDIO QUE O USUÁRIO ENVIOU (já transcrito pelo sistema — use como se ele tivesse digitado; se ele pediu a transcrição, devolva este texto): "${audioTranscript}"`
+      : userText;
+    const userContent = buildUserContent(userTextComAudio, media);
+
     let reply = "";
     let generatedImageUrl: string | undefined;
     let forwardProof: string | undefined;
