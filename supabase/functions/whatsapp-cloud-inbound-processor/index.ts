@@ -8068,7 +8068,11 @@ Regras:
       }));
 
     // PASSO 9 — IA (multimodal)
-    const userContent = buildUserContent(userText, media);
+    const userTextComAudio = audioTranscript
+      ? `${userText ? `${userText}\n\n` : ""}🎙️ TRANSCRIÇÃO DO ÁUDIO QUE O USUÁRIO ENVIOU (já transcrito pelo sistema — use como se ele tivesse digitado; se ele pediu a transcrição, devolva este texto): "${audioTranscript}"`
+      : userText;
+    const userContent = buildUserContent(userTextComAudio, media);
+
     let reply = "";
     let generatedImageUrl: string | undefined;
     let forwardProof: string | undefined;
