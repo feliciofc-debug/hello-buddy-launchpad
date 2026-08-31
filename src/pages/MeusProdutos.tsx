@@ -81,6 +81,7 @@ interface Product {
   estoque: number;
   especificacoes: string | null;
   link_marketplace: string | null;
+  ig_product_id: string | null;
   publicar_marketplace: boolean;
   imagens: any; // Json do banco pode ser string[] ou string
   imagens_reel?: any; // Json do banco — array de URLs selecionadas para Reel (até 5)
@@ -100,6 +101,7 @@ interface ProductFormProps {
     estoque: string;
     especificacoes: string;
     link_marketplace: string;
+    ig_product_id: string;
     publicar_marketplace: boolean;
     imagens: string[];
     tipo: string;
@@ -710,6 +712,19 @@ const ProductForm = ({
       </p>
     </div>
 
+    <div className="space-y-2">
+      <Label htmlFor="ig_product_id">ID do produto no Instagram Shopping</Label>
+      <Input
+        id="ig_product_id"
+        value={formData.ig_product_id}
+        onChange={(e) => setFormData({ ...formData, ig_product_id: e.target.value })}
+        placeholder="Cole aqui o ID do catálogo da Meta"
+      />
+      <p className="text-xs text-muted-foreground">
+        Preencha somente se este produto estiver no catálogo do Instagram Shopping. Posts de foto e carrossel usarão a sacolinha automaticamente.
+      </p>
+    </div>
+
 
     {/* CATEGORIA COM SELECT */}
     <div className="space-y-2">
@@ -1103,6 +1118,7 @@ export default function MeusProdutos() {
           estoque: formData.estoque ? parseInt(formData.estoque) : 0,
           especificacoes: formData.especificacoes || null,
           link_marketplace: formData.link_marketplace || null,
+          ig_product_id: formData.ig_product_id.trim() || null,
           publicar_marketplace: formData.publicar_marketplace,
           imagens: formData.imagens || [],
           imagens_reel: Array.from(new Set((imagensReel || []).filter(Boolean))),
@@ -1215,6 +1231,7 @@ export default function MeusProdutos() {
           estoque: formData.estoque ? parseInt(formData.estoque) : 0,
           especificacoes: formData.especificacoes || null,
           link_marketplace: formData.link_marketplace || null,
+          ig_product_id: formData.ig_product_id.trim() || null,
           publicar_marketplace: formData.publicar_marketplace,
           imagens: existingExtraImages || [],
           imagens_reel: Array.from(new Set((imagensReel || []).filter(Boolean))),
@@ -1424,10 +1441,11 @@ export default function MeusProdutos() {
       link: product.link || '',
       tags: product.tags?.join(', ') || '',
       ativo: product.ativo,
-      estoque: product.estoque?.toString() || '0',
-      especificacoes: product.especificacoes || '',
-      link_marketplace: product.link_marketplace || '',
-      publicar_marketplace: product.publicar_marketplace ?? true,
+       estoque: product.estoque?.toString() || '0',
+       especificacoes: product.especificacoes || '',
+       link_marketplace: product.link_marketplace || '',
+       ig_product_id: product.ig_product_id || '',
+       publicar_marketplace: product.publicar_marketplace ?? true,
       imagens: Array.isArray(product.imagens) ? product.imagens : [],
       tipo: (product as any).tipo || 'fisico',
       ficha_tecnica: (product as any).ficha_tecnica || '',
@@ -1461,10 +1479,11 @@ export default function MeusProdutos() {
       link: '',
       tags: '',
       ativo: true,
-      estoque: '',
-      especificacoes: '',
-      link_marketplace: '',
-      publicar_marketplace: true,
+       estoque: '',
+       especificacoes: '',
+       link_marketplace: '',
+       ig_product_id: '',
+       publicar_marketplace: true,
       imagens: [],
       tipo: 'fisico',
       ficha_tecnica: '',
