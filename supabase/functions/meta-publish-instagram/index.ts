@@ -179,8 +179,9 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     } else if (body.caption && body.image_url) {
-      const { igId, token } = await getIgAccountId(supabase, body.user_id)
-      const result = await publishImageToInstagram(token, igId, sanitizedCaption, body.image_url, body.user_id)
+       const { igId, token } = await getIgAccountId(supabase, body.user_id)
+       const productTags = await getProductTags(supabase, body.user_id, body.produto_id)
+       const result = await publishImageToInstagram(token, igId, sanitizedCaption, body.image_url, body.user_id, productTags)
       return new Response(JSON.stringify({ success: true, ...result }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
@@ -203,17 +204,18 @@ serve(async (req) => {
           .update({ status: 'publicando', post_text: sanitizedPostText, updated_at: new Date().toISOString() })
           .eq('id', post.id)
 
-        const { igId, token } = await getIgAccountId(supabase, post.user_id)
-        
-        let result: { post_id: string }
-        
-        if (post.video_url) {
-          // Publicar como Reels
-          result = await publishReelsToInstagram(token, igId, sanitizedPostText, post.video_url, post.user_id)
-        } else {
-          // Publicar como imagem
-          result = await publishImageToInstagram(token, igId, sanitizedPostText, post.image_url, post.user_id)
-        }
+         const { igId, token } = await getIgAccountId(supabase, post.user_id)
+         const productTags = await getProductTags(supabase, post.user_id, post.produto_id)
+         
+         let result: { post_id: string }
+         
+         if (post.video_url) {
+           // Publicar como Reels
+           result = await publishReelsToInstagram(token, igId, sanitizedPostText, post.video_url, post.user_id)
+         } else {
+           // Publicar como imagem, com tag do catálogo quando configurada
+           result = await publishImageToInstagram(token, igId, sanitizedPostText, post.image_url, post.user_id, productTags)
+         }
 
         await supabase.from('social_posts_queue')
           .update({
@@ -263,6 +265,28 @@ serve(async (req) => {
   }
 })
 
+async function getProductTags(supabase: any, userId: string, produtoId?: string | null): Promise<Array<{ product_id: string; x: number; y: number }> | undefined> {
+  if (!produtoId) return undefined
+
+  const { data, error } = await supabase
+    .from('produtos')
+    .select('ig_product_id')
+    .eq('id', produtoId)
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (error) {
+    console.warn('⚠️ Não foi possível buscar o vínculo do catálogo para o produto:', error.message)
+    return undefined
+  }
+
+  const productId = typeof data?.ig_product_id === 'string' ? data.ig_product_id.trim() : ''
+  if (!productId) return undefined
+
+  console.log('🛍️ Tag de produto Instagram habilitada:', { produtoId, productId })
+  return [{ product_id: productId, x: 0.5, y: 0.5 }]
+}
+
 async function getIgAccountId(supabase: any, userId: string): Promise<{ igId: string, token: string }> {
   // 1. Buscar da meta_connections (multi-cliente)
   const { data: metaConn } = await supabase
@@ -288,6 +312,7 @@ async function publishImageToInstagram(
   caption: string,
   imageUrl: string,
   userId: string,
+  productTags?: Array<{ product_id: string; x: number; y: number }>,
 ): Promise<{ post_id: string }> {
 
   console.log('📸 Publicando IMAGEM no Instagram...', { igAccountId })
@@ -305,6 +330,7 @@ async function publishImageToInstagram(
         body: JSON.stringify({
           image_url: url,
           caption: caption,
+          ...(productTags?.length ? { product_tags: productTags } : {}),
           access_token: pageToken
         })
       }

@@ -60,7 +60,7 @@ serve(async (req) => {
           if (post.produto_id && post.produto_source === 'produtos') {
             const { data: produto, error: produtoError } = await supabase
               .from('produtos')
-              .select('id, user_id, nome')
+              .select('id, user_id, nome, ig_product_id')
               .eq('id', post.produto_id)
               .maybeSingle()
 
@@ -120,11 +120,12 @@ serve(async (req) => {
                 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
                 'Content-Type': 'application/json',
               },
-              body: JSON.stringify({
-                caption: post.post_text,
-                image_url: post.image_url,
-                user_id: post.user_id,
-              })
+               body: JSON.stringify({
+                 caption: post.post_text,
+                 image_url: post.image_url,
+                 user_id: post.user_id,
+                 produto_id: post.produto_id || undefined,
+               })
             })
             publishResult = await response.json()
           } else if (post.platform === 'linkedin') {

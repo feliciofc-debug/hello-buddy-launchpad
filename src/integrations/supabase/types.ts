@@ -6541,6 +6541,7 @@ export type Database = {
           ficha_tecnica: string | null
           garantia: string | null
           id: string
+          ig_product_id: string | null
           imagem_url: string | null
           imagens: Json | null
           imagens_reel: Json | null
@@ -6584,6 +6585,7 @@ export type Database = {
           ficha_tecnica?: string | null
           garantia?: string | null
           id?: string
+          ig_product_id?: string | null
           imagem_url?: string | null
           imagens?: Json | null
           imagens_reel?: Json | null
@@ -6627,6 +6629,7 @@ export type Database = {
           ficha_tecnica?: string | null
           garantia?: string | null
           id?: string
+          ig_product_id?: string | null
           imagem_url?: string | null
           imagens?: Json | null
           imagens_reel?: Json | null

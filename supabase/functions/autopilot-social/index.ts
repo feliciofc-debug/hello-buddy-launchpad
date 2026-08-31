@@ -189,7 +189,7 @@ serve(async (req) => {
 
         let query = supabase
           .from('produtos')
-          .select('id, user_id, nome, descricao, preco, imagem_url, link, link_marketplace, categoria, ativo, usa_textos_personalizados, incluir_cta_whatsapp')
+          .select('id, user_id, nome, descricao, preco, imagem_url, link, link_marketplace, categoria, ativo, usa_textos_personalizados, incluir_cta_whatsapp, ig_product_id')
           .eq('ativo', true)
           .eq('user_id', config.user_id)
           .order('created_at', { ascending: true })
@@ -585,11 +585,11 @@ serve(async (req) => {
                   produto_source: 'produtos',
                   platform: 'instagram',
                   page_id: clientPageId,
-                  post_text: textoInstagram,
-                  image_url: imagemUrlIg,
-                  link_url: linkProduto,
-                  status: 'pendente',
-                  scheduled_at: horarioIg.toISOString(),
+                   post_text: textoInstagram,
+                   image_url: imagemUrlIg,
+                   link_url: linkProduto,
+                   status: 'pendente',
+                   scheduled_at: horarioIg.toISOString(),
                 })
                 .select('id')
                 .single()
