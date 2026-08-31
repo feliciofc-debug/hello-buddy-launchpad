@@ -7092,32 +7092,44 @@ async function processOne(queueId: string) {
     }
 
 
+    // REGRA FIXA: todo áudio recebido é transcrito por STT dedicado (determinístico).
+    // O agente NUNCA pode dizer que "não transcreve áudio" — o texto já chega pronto.
+    let audioTranscript = "";
+    if (media.some((m) => m.kind === "audio")) {
+      try {
+        audioTranscript = await transcribeAudioMedia(media);
+        if (audioTranscript) {
+          inboundContent = `🎙️ Áudio transcrito: ${audioTranscript}`;
+          await sb
+            .from("whatsapp_cloud_messages")
+            .update({ content: inboundContent })
+            .eq("conversation_id", conv.id)
+            .eq("wamid", row.wamid);
+        }
+        console.log(`[processor][audio] transcricao_len=${audioTranscript.length}`);
+      } catch (e) {
+        console.warn("[processor][audio-transcribe] falhou:", (e as Error).message);
+      }
+    }
+
     if (!fromIsOwner && row.message_type === "audio") {
       commercialContactForOwner = await findCommercialContactByPhone(userId, row.from_number);
-      if (commercialContactForOwner && media.some((m) => m.kind === "audio")) {
+      if (commercialContactForOwner && audioTranscript) {
         try {
-          const transcript = await transcribeAudioMedia(media);
-          if (transcript) {
-            inboundContent = `🎙️ Áudio transcrito: ${transcript}`;
-            await sb
-              .from("whatsapp_cloud_messages")
-              .update({ content: inboundContent })
-              .eq("conversation_id", conv.id)
-              .eq("wamid", row.wamid);
-            await notifyOwnerDeterministic({
-              userId,
-              fromNumber: row.from_number,
-              match: commercialContactForOwner,
-              text: transcript,
-              messageType: row.message_type,
-              source: "audio",
-            });
-          }
+          await notifyOwnerDeterministic({
+            userId,
+            fromNumber: row.from_number,
+            match: commercialContactForOwner,
+            text: audioTranscript,
+            messageType: row.message_type,
+            source: "audio",
+          });
         } catch (e) {
           console.warn("[processor][audio-transcribe-headsup] falhou:", (e as Error).message);
         }
       }
     }
+
 
     // Regra determinística: foto/vídeo enviado no WhatsApp vira mídia livre em /midias.
     // Não deixa a IA buscar produto parecido no catálogo nem preparar post com imagem errada.
