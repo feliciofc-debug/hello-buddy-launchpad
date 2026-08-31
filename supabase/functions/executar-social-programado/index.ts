@@ -121,10 +121,11 @@ serve(async (req) => {
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
-                caption: post.post_text,
-                image_url: post.image_url,
-                user_id: post.user_id,
-              })
+                 caption: post.post_text,
+                 image_url: post.image_url,
+                 user_id: post.user_id,
+                 produto_id: post.produto_id || undefined,
+               })
             })
             publishResult = await response.json()
           } else if (post.platform === 'linkedin') {

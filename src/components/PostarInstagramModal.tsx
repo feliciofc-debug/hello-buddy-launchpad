@@ -36,6 +36,7 @@ interface Produto {
   imagem_url?: string | null;
   link?: string | null;
   link_marketplace?: string | null;
+  ig_product_id?: string | null;
 }
 
 interface PostarInstagramModalProps {
@@ -248,10 +249,11 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
           console.log(`📸 Publicando carrossel Instagram com ${finalImageUrls.length} fotos`);
           const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-carousel", {
             body: {
-              caption: captionFinal,
-              image_urls: finalImageUrls,
-              user_id: user.id,
-            },
+               caption: captionFinal,
+               image_urls: finalImageUrls,
+               user_id: user.id,
+               produto_id: produto.id,
+             },
           });
           if (pubError) throw pubError;
           if (!pubData?.success) throw new Error(pubData?.error || "Erro ao publicar carrossel");
@@ -259,10 +261,11 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
         } else {
           const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-instagram", {
             body: {
-              caption: captionFinal,
-              image_url: finalImageUrls[0],
-              user_id: user.id,
-            },
+               caption: captionFinal,
+               image_url: finalImageUrls[0],
+               user_id: user.id,
+               produto_id: produto.id,
+             },
           });
           if (pubError) throw pubError;
           if (!pubData?.success) throw new Error(pubData?.error || "Erro ao publicar no Instagram");
