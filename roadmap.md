@@ -1,6 +1,8 @@
 # Roadmap
 
-## Em investigação
-- [ ] Instagram "sacolinha" (product tags) na publicação via API
-  - Requisitos externos: conta IG Business com Instagram Shopping aprovado, catálogo no Commerce Manager vinculado à conta IG, permissões `instagram_shopping_tag_products` + `catalog_management` (App Review).
-  - Implementação (quando requisitos existirem): buscar produto por `GET /{ig-user-id}/catalog_product_search`, salvar `product_id` no nosso produto, e enviar `product_tags` no `POST /{ig-user-id}/media` em `meta-publish-instagram` (foto) e `meta-publish-carousel` (por slide).
+## Instagram Shopping — sacolinha
+- [ ] Área de Produtos: campo para informar o ID do produto no catálogo do Instagram.
+- [ ] Publicação de fotos: enviar `product_tags` quando o produto tiver ID cadastrado.
+- [ ] Publicação de carrosséis: preparar tags por slide quando houver produto vinculado.
+- [ ] Requisitos externos: conta IG Business com Instagram Shopping aprovado, catálogo no Commerce Manager vinculado à conta IG e permissões da Meta aprovadas.
+- [ ] Validar publicação real somente depois que o cliente autorizar um teste.
