@@ -60,7 +60,7 @@ serve(async (req) => {
           if (post.produto_id && post.produto_source === 'produtos') {
             const { data: produto, error: produtoError } = await supabase
               .from('produtos')
-              .select('id, user_id, nome')
+              .select('id, user_id, nome, ig_product_id')
               .eq('id', post.produto_id)
               .maybeSingle()
 

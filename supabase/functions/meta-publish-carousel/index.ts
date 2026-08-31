@@ -90,9 +90,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { user_id, image_urls, caption } = await req.json()
-    let sanitizedCaption = sanitizePublishText(caption)
-    if (!user_id || !image_urls?.length) {
+     const { user_id, image_urls, caption, produto_id } = await req.json()
+     let sanitizedCaption = sanitizePublishText(caption)
+     if (!user_id || !image_urls?.length) {
       return new Response(JSON.stringify({ error: 'user_id e image_urls são obrigatórios' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
@@ -160,10 +160,11 @@ Deno.serve(async (req) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        media_type: 'CAROUSEL',
-        children: childrenIds.join(','),
-        caption: sanitizedCaption || '',
-        access_token: token,
+         media_type: 'CAROUSEL',
+         children: childrenIds.join(','),
+         caption: sanitizedCaption || '',
+         ...(productTags?.length ? { product_tags: productTags } : {}),
+         access_token: token,
       }),
     })
     const carouselData = await carouselRes.json()
@@ -228,6 +229,28 @@ Deno.serve(async (req) => {
     })
   }
 })
+
+async function getProductTags(supabase: any, userId: string, produtoId?: string | null): Promise<Array<{ product_id: string; x: number; y: number }> | undefined> {
+  if (!produtoId) return undefined
+
+  const { data, error } = await supabase
+    .from('produtos')
+    .select('ig_product_id')
+    .eq('id', produtoId)
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (error) {
+    console.warn('⚠️ Não foi possível buscar o vínculo do catálogo para o carrossel:', error.message)
+    return undefined
+  }
+
+  const productId = typeof data?.ig_product_id === 'string' ? data.ig_product_id.trim() : ''
+  if (!productId) return undefined
+
+  console.log('🛍️ Tag de produto habilitada no carrossel:', { produtoId, productId })
+  return [{ product_id: productId, x: 0.5, y: 0.5 }]
+}
 
 async function getIgCredentials(supabase: any, userId: string): Promise<{ igId: string, token: string }> {
   // 1. meta_connections (multi-tenant)
