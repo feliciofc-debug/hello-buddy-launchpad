@@ -13,4 +13,5 @@
 ## BART — identidade e notificações do Paulo
 - [x] Reconhecer como dono os dois números do Paulo (profissional e pessoal), sem tratá-lo como cliente.
 - [x] Registrar status real da notificação (aceita, entregue, lida ou falhou), sem considerar apenas o ID inicial da Meta como entrega.
-- [x] Reenviar/alertar automaticamente quando a notificação não for entregue no número profissional.
+- [x] Manter o telefone pessoal apenas para reconhecer Paulo como dono; nunca enviar demandas para ele.
+- [x] Fixar todos os reports do BART exclusivamente no profissional 55 21 99720-8854, inclusive após falha de entrega.
