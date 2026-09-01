@@ -8,8 +8,8 @@ export const Scene1: React.FC = () => {
 
   const line1 = spring({ frame, fps, config: { damping: 200 } });
   const line2 = spring({ frame: frame - 10, fps, config: { damping: 200 } });
-  const barra = spring({ frame: frame - 26, fps, config: { damping: 18, stiffness: 120 } });
-  const sub = interpolate(frame, [38, 58], [0, 1], { extrapolateRight: "clamp" });
+  const barra = spring({ frame: frame - 32, fps, config: { damping: 18, stiffness: 120 } });
+  const sub = interpolate(frame, [46, 74], [0, 1], { extrapolateRight: "clamp" });
   const float = Math.sin(frame / 22) * 6;
 
   return (

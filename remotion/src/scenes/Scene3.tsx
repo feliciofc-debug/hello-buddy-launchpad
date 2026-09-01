@@ -33,7 +33,7 @@ export const Scene3: React.FC = () => {
       </div>
 
       {canais.map((c, i) => {
-        const s = spring({ frame: frame - 14 - i * 12, fps, config: { damping: 16, stiffness: 140 } });
+        const s = spring({ frame: frame - 16 - i * 22, fps, config: { damping: 16, stiffness: 140 } });
         const pulso = 1 + Math.sin((frame - i * 8) / 16) * 0.012;
         return (
           <div
