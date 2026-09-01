@@ -15,3 +15,4 @@
 - [x] Registrar status real da notificação (aceita, entregue, lida ou falhou), sem considerar apenas o ID inicial da Meta como entrega.
 - [x] Remover completamente o telefone pessoal do cadastro e do conhecimento operacional do BART.
 - [x] Fixar todos os reports do BART exclusivamente no profissional 55 21 99720-8854, inclusive após falha de entrega.
+- [x] Criar nova trilha instrumental profissional, temática de liberdade, com volume audível e mixar em nova versão do teaser
