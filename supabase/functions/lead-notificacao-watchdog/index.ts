@@ -9,8 +9,7 @@
 // Como funciona (roda de 10 em 10 minutos via pg_cron):
 //  1. Lista conversas com mensagem do CLIENTE nas últimas 12h (todos tenants).
 //  2. Ignora o próprio dono e mensagens irrelevantes ("ok", "obrigado", emoji).
-//  3. Verifica em lead_encaminhamentos se existe comprovante ENTREGUE
-//     (wamid_dono não nulo) para aquele telefone dentro da janela.
+//  3. Verifica em lead_encaminhamentos se a Meta confirmou ENTREGUE/LIDA.
 //  4. Se não existir, envia o aviso ao dono AGORA e registra o comprovante.
 //
 // Só registra sucesso com message_id real da Meta — nunca confirma no vácuo.
@@ -114,14 +113,14 @@ Deno.serve(async (req) => {
 
       resultado.verificados++;
 
-      // Já existe comprovante ENTREGUE na janela?
+      // Só considera resolvido quando a Meta confirmou entregue/lida.
       const { data: enc } = await sb
         .from("lead_encaminhamentos")
-        .select("id, wamid_dono, enviado_em")
+        .select("id, wamid_dono, enviado_em, status_entrega")
         .eq("user_id", conv.user_id)
         .eq("telefone", telefone)
         .gte("enviado_em", desde)
-        .not("wamid_dono", "is", null)
+        .in("status_entrega", ["entregue", "lida"])
         .limit(1);
       if (enc?.length) continue; // tudo certo, dono já foi avisado
 
@@ -148,6 +147,9 @@ Deno.serve(async (req) => {
           mensagem: trecho || null,
           protocolo: proto,
           wamid_dono: messageId,
+          destino_dono: owner.phone,
+          status_entrega: "aceita",
+          status_atualizado_em: new Date().toISOString(),
           enviado_em: new Date().toISOString(),
         });
         resultado.resgatados++;

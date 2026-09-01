@@ -4080,11 +4080,15 @@ export type Database = {
         Row: {
           complemento_nome_enviado: boolean
           created_at: string
+          destino_dono: string | null
           enviado_em: string
+          erro_entrega: string | null
           id: string
           mensagem: string | null
           nome: string | null
           protocolo: string | null
+          status_atualizado_em: string | null
+          status_entrega: string
           telefone: string
           updated_at: string
           user_id: string
@@ -4093,11 +4097,15 @@ export type Database = {
         Insert: {
           complemento_nome_enviado?: boolean
           created_at?: string
+          destino_dono?: string | null
           enviado_em?: string
+          erro_entrega?: string | null
           id?: string
           mensagem?: string | null
           nome?: string | null
           protocolo?: string | null
+          status_atualizado_em?: string | null
+          status_entrega?: string
           telefone: string
           updated_at?: string
           user_id: string
@@ -4106,11 +4114,15 @@ export type Database = {
         Update: {
           complemento_nome_enviado?: boolean
           created_at?: string
+          destino_dono?: string | null
           enviado_em?: string
+          erro_entrega?: string | null
           id?: string
           mensagem?: string | null
           nome?: string | null
           protocolo?: string | null
+          status_atualizado_em?: string | null
+          status_entrega?: string
           telefone?: string
           updated_at?: string
           user_id?: string
@@ -9043,6 +9055,7 @@ export type Database = {
           knowledge_base: string | null
           knowledge_segment_id: string | null
           nome_consultor: string | null
+          owner_alt_phones: string[]
           owner_name: string | null
           owner_phone: string | null
           persona: string | null
@@ -9064,6 +9077,7 @@ export type Database = {
           knowledge_base?: string | null
           knowledge_segment_id?: string | null
           nome_consultor?: string | null
+          owner_alt_phones?: string[]
           owner_name?: string | null
           owner_phone?: string | null
           persona?: string | null
@@ -9085,6 +9099,7 @@ export type Database = {
           knowledge_base?: string | null
           knowledge_segment_id?: string | null
           nome_consultor?: string | null
+          owner_alt_phones?: string[]
           owner_name?: string | null
           owner_phone?: string | null
           persona?: string | null

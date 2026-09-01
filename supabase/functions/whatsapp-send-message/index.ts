@@ -43,7 +43,9 @@ serve(async (req) => {
       .select('*')
       .eq('user_id', user_id)
       .eq('is_active', true)
-      .single()
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
     if (configError || !config) {
       throw new Error('WhatsApp não configurado. Vá em WhatsApp → Configuração para conectar.')
