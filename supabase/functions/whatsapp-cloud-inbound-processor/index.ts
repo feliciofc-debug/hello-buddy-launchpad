@@ -1564,6 +1564,7 @@ async function registrarLeadEncaminhamento(params: {
   mensagem?: string | null;
   protocolo?: string | null;
   wamid?: string | null;
+  destinoDono?: string | null;
 }): Promise<string | null> {
   try {
     const { data, error } = await sb
@@ -1575,6 +1576,9 @@ async function registrarLeadEncaminhamento(params: {
         mensagem: (params.mensagem || "").slice(0, 2000) || null,
         protocolo: extractProtocolCode(params.protocolo) || null,
         wamid_dono: params.wamid ?? null,
+        destino_dono: params.destinoDono ?? null,
+        status_entrega: "aceita",
+        status_atualizado_em: new Date().toISOString(),
         enviado_em: new Date().toISOString(),
       })
       .select("id")
@@ -1734,7 +1738,7 @@ function sanitizeProtocolLeaks(text: string, currentProof?: string): { text: str
 // A confirmação de encaminhamento SÓ pode existir se a tool retornou ok:true
 // (ou seja, se houver comprovante gerado por buildForwardProof) OU se já existe
 // comprovante registrado no estado da conversa (turno anterior).
-const FORWARD_CLAIM_RE = /(encaminhei|encaminhando|já (mandei|enviei|passei|repassei)|acabei de (mandar|enviar|passar)|vou (já )?(mandar|enviar|passar|encaminhar|repassar)|estou (mandando|enviando|passando|encaminhando)|passei (o|seu) (recado|contato)|te retorna|vai te retornar|entra em contato com você|ele (te )?(liga|retorna|responde))/i;
+const FORWARD_CLAIM_RE = /(encaminhei|encaminhando|avisei|avisando|aviso (o|ao|a)|vou avisar|já (mandei|enviei|passei|repassei|avisei)|acabei de (mandar|enviar|passar|avisar)|vou (já )?(mandar|enviar|passar|encaminhar|repassar|avisar)|estou (mandando|enviando|passando|encaminhando|avisando)|passei (o|seu) (recado|contato)|te retorna|vai te retornar|entra em contato com você|ele (te )?(liga|retorna|responde))/i;
 
 function splitSentences(text: string): string[] {
   return String(text || "").split(/(?<=[.!?…\n])\s+/);
@@ -4924,7 +4928,7 @@ async function toolEncaminharRecadoAoDono(
     return JSON.stringify({ erro: "dono_nao_configurado", detalhe: "Este agente não tem owner_phone configurado em whatsapp_cloud_agent_config." });
   }
   // Não encaminha pro próprio remetente (evita loop se o dono se autotestar)
-  if (owner.phone === ctx.fromNumber) {
+  if ([owner.phone, ...owner.altPhones].includes(ctx.fromNumber)) {
     return JSON.stringify({ erro: "remetente_e_o_dono", detalhe: "O próprio dono está mandando — nada pra encaminhar." });
   }
 
@@ -4990,6 +4994,7 @@ async function toolEncaminharRecadoAoDono(
       mensagem: recado,
       protocolo: proof,
       wamid: messageId,
+      destinoDono: owner.phone,
     });
     return JSON.stringify({
       ok: true,
@@ -5077,6 +5082,7 @@ async function toolRegistrarLeadNovo(
       mensagem: interesse || aviso,
       protocolo: proof,
       wamid: messageId,
+      destinoDono: owner.phone,
     });
     await sb
       .from("jarvis_leads")
@@ -6572,6 +6578,7 @@ async function processOne(queueId: string) {
     const isAmzTenantEarly = userId === ADMIN_AMZ_USER_ID;
     const ownerNumbers: string[] = [
       tenantOwnerPhone,
+      ..._tenantOwner.altPhones,
       ...(isAmzTenantEarly && isAmzOwnerAltPhone(row.from_number) ? [row.from_number] : []),
     ].filter((p): p is string => !!p);
     setTenantOwnerForCtx(userId, ownerNumbers);
@@ -7355,6 +7362,7 @@ async function processOne(queueId: string) {
           mensagem: userText,
           protocolo: proto,
           wamid: sentOwnerId,
+          destinoDono: tenantOwnerPhone,
         });
         let pedirNomeAgora = false;
         try {
@@ -8101,9 +8109,10 @@ Regras:
         const ownerFirst = ownerFirstName(ownerInfo?.name);
         const pediuDono = pedeAtencaoDoDono(userText);
         const encerrou = clienteEncerrouAtendimento(userText);
+        const pediuEncaminhamentoExplicito = isExplicitOwnerForwardIntent(userText, ownerInfo?.name);
 
         const jaEncaminhado = !!persistedForward?.protocolo;
-        if (!forwardProof && ownerInfo?.phone && ownerInfo.phone !== row.from_number && (pediuDono || encerrou) && !(jaEncaminhado && encerrou && !pediuDono)) {
+        if (!forwardProof && ownerInfo?.phone && ownerInfo.phone !== row.from_number && (pediuDono || encerrou || pediuEncaminhamentoExplicito) && !(jaEncaminhado && encerrou && !pediuDono && !pediuEncaminhamentoExplicito)) {
           console.warn(`[processor][handoff][miss] tool não executada com sucesso (pediu_dono=${pediuDono} encerrou=${encerrou} tentou=${forwardAttempted}) from=${row.from_number} → handoff determinístico`);
           const recadoAuto = [
             `Nome: ${(conv as any)?.contact_name ?? "não informado"}`,

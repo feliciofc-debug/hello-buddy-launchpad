@@ -43,7 +43,7 @@ export type AmzContext = {
   block: string;
 };
 
-export type TenantOwner = { phone: string | null; name: string | null };
+export type TenantOwner = { phone: string | null; name: string | null; altPhones: string[] };
 
 function normalizePhone(p: string): string {
   return (p || "").replace(/\D/g, "");
@@ -89,26 +89,27 @@ export async function resolveTenantOwner(
   sb: SupabaseClient,
   tenantUserId: string,
 ): Promise<TenantOwner> {
-  if (!tenantUserId) return { phone: null, name: null };
+  if (!tenantUserId) return { phone: null, name: null, altPhones: [] };
   const cached = _ownerCache.get(tenantUserId);
   if (cached) return cached;
 
   try {
     const { data } = await sb
       .from("whatsapp_cloud_agent_config")
-      .select("owner_phone, owner_name")
+      .select("owner_phone, owner_name, owner_alt_phones")
       .eq("user_id", tenantUserId)
       .maybeSingle();
 
     const owner: TenantOwner = {
       phone: normalizePhone(data?.owner_phone || "") || null,
       name: (data?.owner_name || null) as string | null,
+      altPhones: Array.from(new Set(((data?.owner_alt_phones || []) as string[]).map(normalizePhone).filter(Boolean))),
     };
     _ownerCache.set(tenantUserId, owner);
     return owner;
   } catch (e) {
     console.error("[amz-context] resolveTenantOwner:", e);
-    return { phone: null, name: null };
+    return { phone: null, name: null, altPhones: [] };
   }
 }
 
@@ -126,7 +127,7 @@ export async function buildAmzContext(
 
   // ---------- OWNER (dono do tenant) ----------
   const isAltOwner = isAmzTenant && isAmzOwnerAltPhone(phone);
-  if ((owner.phone && phone === owner.phone) || isAltOwner) {
+  if ((owner.phone && phone === owner.phone) || owner.altPhones.includes(phone) || isAltOwner) {
     if (isAmzTenant) {
       const stats = await collectOwnerStats(sb);
       const block = [

@@ -210,7 +210,84 @@ Deno.serve(async (req) => {
 
         const value = change?.value;
         if (!value) continue;
-        // Ignorar statuses (entrega/leitura). Só processar messages.
+        // Atualiza o comprovante com o estado REAL informado pela Meta.
+        const statuses = Array.isArray(value.statuses) ? value.statuses : [];
+        for (const statusEvent of statuses) {
+          const wamid = String(statusEvent?.id || "");
+          if (!wamid) continue;
+          const metaStatus = String(statusEvent?.status || "").toLowerCase();
+          const statusEntrega = metaStatus === "delivered"
+            ? "entregue"
+            : metaStatus === "read"
+            ? "lida"
+            : metaStatus === "failed"
+            ? "falhou"
+            : "enviada";
+          const erroEntrega = statusEntrega === "falhou"
+            ? JSON.stringify(statusEvent?.errors || []).slice(0, 1000)
+            : null;
+          const { data: encaminhamento } = await supabase
+            .from("lead_encaminhamentos")
+            .select("id, user_id, destino_dono, mensagem")
+            .eq("wamid_dono", wamid)
+            .maybeSingle();
+          const { error: statusError } = await supabase
+            .from("lead_encaminhamentos")
+            .update({
+              status_entrega: statusEntrega,
+              status_atualizado_em: new Date().toISOString(),
+              erro_entrega: erroEntrega,
+            })
+            .eq("wamid_dono", wamid);
+          if (statusError) console.error("[wa-cloud-webhook] delivery status update error", statusError);
+
+          // Se o número profissional estiver fora da janela de 24h (131047),
+          // tenta imediatamente um telefone alternativo cadastrado do dono.
+          const errorCodes = (statusEvent?.errors || []).map((e: any) => Number(e?.code));
+          if (statusEntrega === "falhou" && errorCodes.includes(131047) && encaminhamento?.id) {
+            const { data: ownerCfg } = await supabase
+              .from("whatsapp_cloud_agent_config")
+              .select("owner_alt_phones")
+              .eq("user_id", encaminhamento.user_id)
+              .maybeSingle();
+            const fallbackPhone = ((ownerCfg?.owner_alt_phones || []) as string[])
+              .map((p) => String(p || "").replace(/\D/g, ""))
+              .find((p) => p && p !== String(encaminhamento.destino_dono || "").replace(/\D/g, ""));
+            if (fallbackPhone) {
+              try {
+                const fallbackRes = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-send-message`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${SERVICE_KEY}`,
+                    apikey: SERVICE_KEY,
+                  },
+                  body: JSON.stringify({
+                    user_id: encaminhamento.user_id,
+                    to: fallbackPhone,
+                    message: `⚠️ O aviso não pôde ser entregue no seu número profissional porque a janela de 24h da Meta expirou.\n\n${encaminhamento.mensagem || "Há um cliente aguardando seu retorno."}`,
+                  }),
+                });
+                const fallbackJson = await fallbackRes.json();
+                const fallbackWamid = fallbackJson?.message_id || fallbackJson?.wamid;
+                if (fallbackRes.ok && fallbackJson?.success === true && fallbackWamid) {
+                  await supabase.from("lead_encaminhamentos").update({
+                    destino_dono: fallbackPhone,
+                    wamid_dono: fallbackWamid,
+                    status_entrega: "aceita",
+                    status_atualizado_em: new Date().toISOString(),
+                    erro_entrega: `Fallback acionado após 131047 no número profissional: ${erroEntrega}`.slice(0, 1000),
+                  }).eq("id", encaminhamento.id);
+                  console.warn(`[wa-cloud-webhook] owner fallback acionado lead=${encaminhamento.id} destino=${fallbackPhone}`);
+                }
+              } catch (fallbackError) {
+                console.error("[wa-cloud-webhook] owner fallback error", String(fallbackError));
+              }
+            }
+          }
+        }
+
+        // Depois dos statuses, processar somente mensagens recebidas.
         const messages = Array.isArray(value.messages) ? value.messages : [];
         if (messages.length === 0) continue;
 
