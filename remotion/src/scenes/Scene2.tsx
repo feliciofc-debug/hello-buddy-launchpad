@@ -15,10 +15,10 @@ export const Scene2: React.FC = () => {
 
   const entrada = spring({ frame, fps, config: { damping: 200 } });
   const titulo = interpolate(frame, [8, 26], [0, 1], { extrapolateRight: "clamp" });
-  const cursorX = interpolate(frame, [40, 74], [180, 372], { extrapolateRight: "clamp" });
-  const cursorY = interpolate(frame, [40, 74], [520, 880], { extrapolateRight: "clamp" });
-  const clique = spring({ frame: frame - 76, fps, config: { damping: 12, stiffness: 220 } });
-  const ok = interpolate(frame, [86, 102], [0, 1], { extrapolateRight: "clamp" });
+  const cursorX = interpolate(frame, [60, 112], [180, 372], { extrapolateRight: "clamp" });
+  const cursorY = interpolate(frame, [60, 112], [520, 880], { extrapolateRight: "clamp" });
+  const clique = spring({ frame: frame - 116, fps, config: { damping: 12, stiffness: 220 } });
+  const ok = interpolate(frame, [128, 148], [0, 1], { extrapolateRight: "clamp" });
 
   return (
     <AbsoluteFill style={{ ...font, alignItems: "center", justifyContent: "center" }}>
@@ -50,7 +50,7 @@ export const Scene2: React.FC = () => {
       >
         <div style={{ padding: 32, display: "flex", flexDirection: "column", gap: 20 }}>
           {linhas.map((t, i) => {
-            const s = spring({ frame: frame - 18 - i * 9, fps, config: { damping: 20, stiffness: 160 } });
+            const s = spring({ frame: frame - 20 - i * 14, fps, config: { damping: 20, stiffness: 160 } });
             return (
               <div
                 key={t}
@@ -123,7 +123,7 @@ export const Scene2: React.FC = () => {
           borderRadius: "50%",
           border: `4px solid ${C.text}`,
           background: `${C.orange}66`,
-          opacity: interpolate(frame, [34, 42, 96, 104], [0, 1, 1, 0]),
+          opacity: interpolate(frame, [54, 64, 140, 152], [0, 1, 1, 0]),
           transform: `scale(${1 + clique * 0.9})`,
         }}
       />

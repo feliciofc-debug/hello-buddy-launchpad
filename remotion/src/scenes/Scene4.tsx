@@ -7,8 +7,8 @@ export const Scene4: React.FC = () => {
   const { fps } = useVideoConfig();
 
   const logo = spring({ frame, fps, config: { damping: 14, stiffness: 130 } });
-  const texto = interpolate(frame, [16, 34], [0, 1], { extrapolateRight: "clamp" });
-  const linha = interpolate(frame, [30, 56], [0, 1], { extrapolateRight: "clamp" });
+  const texto = interpolate(frame, [18, 42], [0, 1], { extrapolateRight: "clamp" });
+  const linha = interpolate(frame, [36, 70], [0, 1], { extrapolateRight: "clamp" });
   const float = Math.sin(frame / 20) * 5;
 
   return (
