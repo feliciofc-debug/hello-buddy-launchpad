@@ -66,7 +66,7 @@ Deno.serve(async (req) => {
       const tentativas = (job.tentativas || 0) + 1;
       const definitivo = tentativas >= MAX_TENTATIVAS;
 
-      await supabase
+      const { data: falhaRegistrada } = await supabase
         .from("video_motion_jobs")
         .update({
           status: definitivo ? "falha_definitiva" : "pendente",
@@ -75,7 +75,13 @@ Deno.serve(async (req) => {
           erro_mensagem: String(erro || "erro no render"),
         })
         .eq("id", job.id)
-        .eq("status", "processando");
+        .eq("status", "processando")
+        .select("id")
+        .maybeSingle();
+
+      if (!falhaRegistrada) {
+        return respJson({ success: true, cancelado: true });
+      }
 
       if (definitivo) {
         await avisarCliente(
