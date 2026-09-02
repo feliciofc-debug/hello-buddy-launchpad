@@ -97,9 +97,41 @@ Deno.serve(async (req) => {
     if (!resultado_path) throw new Error("resultado_path obrigatório no sucesso");
     const bucket = resultado_bucket || "videos";
 
+    // O worker pode avisar sucesso mesmo quando o upload do MP4 não chegou.
+    // Sem arquivo no Storage o cliente vê um vídeo que não abre — então isso é falha.
+    const barra = resultado_path.lastIndexOf("/");
+    const pasta = barra > 0 ? resultado_path.slice(0, barra) : "";
+    const arquivo = barra > 0 ? resultado_path.slice(barra + 1) : resultado_path;
+    const { data: encontrados } = await supabase.storage
+      .from(bucket)
+      .list(pasta, { search: arquivo, limit: 100 });
+    const objeto = (encontrados || []).find((o: any) => o.name === arquivo);
+    const tamanho = Number(objeto?.metadata?.size || 0);
+
+    if (!objeto || tamanho < 1024) {
+      const tentativas = (job.tentativas || 0) + 1;
+      const definitivo = tentativas >= MAX_TENTATIVAS;
+      await supabase
+        .from("video_motion_jobs")
+        .update({
+          status: definitivo ? "falha_definitiva" : "pendente",
+          tentativas,
+          claimed_at: null,
+          erro_mensagem: "arquivo do vídeo não chegou ao armazenamento (upload falhou na VPS)",
+        })
+        .eq("id", job.id)
+        .eq("status", "processando");
+      return respJson({
+        success: false,
+        error: "arquivo não encontrado no storage",
+        retentativa: !definitivo,
+      });
+    }
+
     const { data: pub } = supabase.storage.from(bucket).getPublicUrl(resultado_path);
     const videoUrl = pub?.publicUrl;
     if (!videoUrl) throw new Error("não consegui montar a URL do vídeo");
+
 
     const plataformas: string[] = Array.isArray(job.plataformas) ? job.plataformas : [];
     const querPublicar = plataformas.length > 0;
