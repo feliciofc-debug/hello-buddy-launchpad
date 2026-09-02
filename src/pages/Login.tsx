@@ -57,6 +57,12 @@ export default function Login() {
       return;
     }
 
+    // Permite que um revisor ou cliente retome o fluxo público solicitado após o login.
+    if (nextPath) {
+      navigate(nextPath);
+      return;
+    }
+
     const contasPermanentes = ['expo@atombrasildigital.com', 'renatascarega@gmail.com', 'alessandradiasadm1@gmail.com', 'dudacarega@gmail.com', 'canarimp@gmail.com'];
     if (contasPermanentes.includes(emailLc) || profile?.tipo === 'b2b' || profile?.tipo === 'parceiro' || profile?.tipo === 'empresa') {
       navigate(nextPath || '/dashboard');
