@@ -24,8 +24,8 @@ export function useFeatureFlag(flagKey: string): boolean {
           return;
         }
 
-        // Flag enabled globally OR user email is in allowed list
-        const isAllowed = (flag as any).is_enabled || ((flag as any).allowed_emails || []).includes(user.email);
+        // Flags globais liberadas para usuários autenticados; flags restritas continuam por e-mail.
+        const isAllowed = (flag as any).is_enabled === true || ((flag as any).allowed_emails || []).includes(user.email);
         setHasAccess(isAllowed);
       } catch (error) {
         console.error('Erro ao verificar feature flag:', error);
