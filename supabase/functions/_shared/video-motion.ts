@@ -17,7 +17,7 @@ export type MotionProps = {
   /** preenchido pelo backend; nunca vem do usuário para outro tenant */
   logo_path?: string;
   logoUrl?: string;
-  site: string;
+  site?: string;
   cores: {
     bg: string;
     bg2: string;
@@ -30,7 +30,7 @@ export type MotionProps = {
   };
   hook: { kicker: string; linhas: string[]; destaque?: string; sub?: string };
   chat: { titulo: string; tituloDestaque?: string; mensagens: Mensagem[] };
-  cta: { frase: string; sub?: string };
+  cta: { frase: string; sub?: string; telefone?: string; consultor?: string };
   legendas: string[];
 };
 
@@ -127,7 +127,7 @@ function corrigirTexto(texto: string, nomes: string[]): string {
 /** Garante que o objeto vindo da IA (ou do usuário) é renderizável. */
 export function normalizarProps(
   bruto: any,
-  ctx: { marca: string; site: string; nomes?: string[] },
+  ctx: { marca: string; site?: string; telefone?: string; consultor?: string; nomes?: string[] },
 ): MotionProps {
   const nomes = ctx.nomes ?? [];
   const limpar = (s: unknown, max: number) => corrigirTexto(limparBruto(s, max), nomes);
@@ -152,13 +152,15 @@ export function normalizarProps(
     .filter(Boolean);
 
   const cores = { ...PALETA_PADRAO, ...(bruto?.cores || {}) };
-  const marca = limpar(bruto?.marca || ctx.marca, 12) || "AMZ";
+  const marca = limpar(bruto?.marca || ctx.marca, 12) || "Sua marca";
+  const siteBruto = limparBruto(bruto?.site ?? ctx.site, 40);
+  const site = /amzofertas\.com\.br/i.test(siteBruto) ? "" : siteBruto;
 
   return {
     marca,
     logo_path: typeof bruto?.logo_path === "string" ? bruto.logo_path : undefined,
     logoUrl: typeof bruto?.logoUrl === "string" ? bruto.logoUrl : undefined,
-    site: limparBruto(bruto?.site ?? ctx.site, 40),
+    site: site || undefined,
     cores,
     hook: {
       kicker: limpar(bruto?.hook?.kicker, 28) || marca,
@@ -179,6 +181,8 @@ export function normalizarProps(
     cta: {
       frase: limpar(bruto?.cta?.frase, 46) || "Fale com a gente.",
       sub: limpar(bruto?.cta?.sub, 60) || undefined,
+      telefone: limparBruto(bruto?.cta?.telefone ?? ctx.telefone, 30) || undefined,
+      consultor: limpar(bruto?.cta?.consultor ?? ctx.consultor, 40) || undefined,
     },
     legendas: legendas.length ? legendas : linhas.length ? [linhas.join(" ")] : [],
   };
@@ -204,7 +208,12 @@ export async function gerarRoteiroMotion(
   const ctx = await getTenantBusinessContext(sb, userId, { nomeFallback: opts?.nomeFallback });
   const nome = ctx.nome || "Sua empresa";
   const nomes = nomesOficiais(nome, tema);
-  const base = { marca: sigla(nome), site: (ctx.site || "").replace(/^https?:\/\//, ""), nomes };
+  const base = {
+    marca: sigla(nome),
+    site: (ctx.site || "").replace(/^https?:\/\//, ""),
+    telefone: ctx.atendimentoTelefoneFmt || undefined,
+    nomes,
+  };
 
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
   const instrucao = `Você escreve roteiros de vídeos verticais (20-25s) para redes sociais.
@@ -275,7 +284,7 @@ Regras: 4 ou 6 mensagens no chat, alternando dono/agente, linguagem simples de b
           { de: "agente", texto: "Mandei. Qualquer dúvida, é só responder aqui." },
         ],
       },
-      cta: { frase: "Fale com a gente.", sub: nome.slice(0, 55) },
+      cta: { frase: "Fale com a gente.", sub: nome.slice(0, 55), telefone: ctx.atendimentoTelefoneFmt || undefined },
       legendas: [tema.slice(0, 60), "Atendimento pelo WhatsApp.", "Simples e rápido."],
     },
     base,

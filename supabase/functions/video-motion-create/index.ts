@@ -77,7 +77,16 @@ Deno.serve(async (req) => {
 
     if (body?.props) {
       const nomes = nomesOficiais(String((user.user_metadata as any)?.nome ?? ""), tema);
-      props = normalizarProps({ ...body.props, cores: body.props?.cores }, { marca: "AMZ", site: "", nomes });
+      props = normalizarProps(
+        { ...body.props, cores: body.props?.cores },
+        {
+          marca: String(body.props?.marca ?? ""),
+          site: String(body.props?.site ?? ""),
+          telefone: String(body.props?.cta?.telefone ?? "") || undefined,
+          consultor: String(body.props?.cta?.consultor ?? "") || undefined,
+          nomes,
+        },
+      );
     } else {
       const r = await gerarRoteiroMotion(sb, user.id, tema, {
         nomeFallback: (user.user_metadata as any)?.nome ?? null,

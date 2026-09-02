@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, Sparkles, Clapperboard, Wand2, Clock, Download, RefreshCw, Upload, Palette, Ban } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { validarPaleta } from '@/lib/videoPalette';
 
 type Mensagem = { de: 'dono' | 'agente'; texto: string };
 
@@ -21,11 +22,11 @@ type MotionProps = {
   marca: string;
   logoUrl?: string;
   logo_path?: string;
-  site: string;
+  site?: string;
   cores: Record<string, string>;
   hook: { kicker: string; linhas: string[]; destaque?: string; sub?: string };
   chat: { titulo: string; tituloDestaque?: string; mensagens: Mensagem[] };
-  cta: { frase: string; sub?: string };
+  cta: { frase: string; sub?: string; telefone?: string; consultor?: string };
   legendas: string[];
 };
 
@@ -259,6 +260,11 @@ export const CriarVideoAnimado = () => {
 
   const enviarParaFila = async () => {
     if (!props) return;
+    const erroPaleta = validarPaleta(props.cores);
+    if (erroPaleta) {
+      toast.error(erroPaleta);
+      return;
+    }
     setEnviando(true);
     try {
       const { data, error } = await supabase.functions.invoke('video-motion-create', {

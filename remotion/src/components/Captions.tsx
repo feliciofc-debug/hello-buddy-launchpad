@@ -1,6 +1,7 @@
 import { AbsoluteFill, Sequence, interpolate, useCurrentFrame } from "remotion";
 import { C } from "../theme";
 import { font } from "../font";
+import { rgba, textoSobre } from "../templates/agente/contraste";
 
 export type Caption = { from: number; dur: number; text: string };
 
@@ -14,11 +15,11 @@ const Linha: React.FC<{ text: string }> = ({ text }) => {
           marginBottom: 150,
           maxWidth: 900,
           textAlign: "center",
-          background: "rgba(8,12,18,0.72)",
+          background: rgba(C.panel, 0.9),
           border: `1px solid ${C.line}`,
           borderRadius: 20,
           padding: "20px 30px",
-          color: C.text,
+          color: textoSobre(C.panel),
           fontSize: 40,
           fontWeight: 600,
           lineHeight: 1.25,

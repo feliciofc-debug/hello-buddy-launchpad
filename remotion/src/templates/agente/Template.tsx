@@ -345,11 +345,11 @@ const CTA: React.FC<
           width: 200,
           height: 200,
           borderRadius: 52,
-          background: logoUrl ? "#ffffff" : `linear-gradient(135deg, ${c.destaque}, ${c.destaqueSoft})`,
+          background: logoUrl ? c.bg2 : `linear-gradient(135deg, ${c.destaque}, ${c.destaqueSoft})`,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "#151515",
+          color: logoUrl ? c.texto : textoSobre(c.destaque),
           fontSize:
             marca.length <= 3 ? 78 : marca.length === 4 ? 62 : marca.length === 5 ? 50 : marca.length <= 8 ? 34 : 26,
           fontWeight: 800,
@@ -359,7 +359,7 @@ const CTA: React.FC<
           padding: 14,
           overflowWrap: "anywhere",
           transform: `scale(${logo}) translateY(${float}px)`,
-          boxShadow: `0 40px 90px ${c.destaque}44`,
+          boxShadow: `0 40px 90px ${rgba(c.destaque, ehClaro(c.bg) ? 0.18 : 0.32)}`,
         }}
       >
         {logoUrl ? (
@@ -392,8 +392,18 @@ const CTA: React.FC<
           {sub}
         </div>
       ) : null}
+      {consultor ? (
+        <div style={{ marginTop: 22, color: c.texto, fontSize: 30, fontWeight: 700, opacity: linha, textAlign: "center" }}>
+          {consultor}
+        </div>
+      ) : null}
+      {telefone ? (
+        <div style={{ marginTop: 12, color: c.suave, fontSize: 30, opacity: linha, textAlign: "center" }}>
+          {telefone}
+        </div>
+      ) : null}
       {site ? (
-        <div style={{ marginTop: 26, color: c.destaque, fontSize: 40, fontWeight: 700, opacity: linha }}>
+        <div style={{ marginTop: 18, color: c.destaque, fontSize: 36, fontWeight: 700, opacity: linha, textAlign: "center" }}>
           {site}
         </div>
       ) : null}
@@ -411,7 +421,7 @@ const LinhaLegenda: React.FC<{ c: Paleta; text: string }> = ({ c, text }) => {
           marginBottom: 150,
           maxWidth: 900,
           textAlign: "center",
-          background: "rgba(8,12,18,0.72)",
+          background: rgba(c.panel, 0.9),
           border: `1px solid ${c.line}`,
           borderRadius: 20,
           padding: "20px 30px",
