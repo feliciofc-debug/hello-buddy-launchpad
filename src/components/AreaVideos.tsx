@@ -358,7 +358,15 @@ export const AreaVideos = () => {
         />
       )}
 
+      <PostarLinkedInVideoModal
+        open={!!linkedinVideo}
+        onOpenChange={(open) => !open && setLinkedinVideo(null)}
+        videoUrl={linkedinVideo?.video_url || null}
+        videoNome={linkedinVideo?.titulo || null}
+      />
+
       <AutopilotModal open={autopilotOpen} onOpenChange={setAutopilotOpen} />
+
     </div>
   );
 };
