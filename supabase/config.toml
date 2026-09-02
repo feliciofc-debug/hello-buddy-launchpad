@@ -278,3 +278,9 @@ verify_jwt = false
 
 [functions.linkedin-token-refresh]
 verify_jwt = false
+
+[functions.video-motion-claim]
+verify_jwt = false
+
+[functions.video-motion-complete]
+verify_jwt = false
