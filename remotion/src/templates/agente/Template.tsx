@@ -320,7 +320,7 @@ const Chat: React.FC<{ c: Paleta; marca: string; logoUrl?: string } & TemplateAg
 };
 
 const CTA: React.FC<
-  { c: Paleta; marca: string; logoUrl?: string; site: string } & TemplateAgenteProps["cta"]
+  { c: Paleta; marca: string; logoUrl?: string; site?: string } & TemplateAgenteProps["cta"]
 > = ({
   c,
   marca,
@@ -328,6 +328,8 @@ const CTA: React.FC<
   site,
   frase,
   sub,
+  telefone,
+  consultor,
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
