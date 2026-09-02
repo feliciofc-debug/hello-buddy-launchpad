@@ -221,13 +221,15 @@ export const CriarVideoAnimado = () => {
 
       let blob: Blob | null = null;
       const { data: downloaded, error: downloadError } = await supabase.storage.from(j.resultado_bucket).download(j.resultado_path);
-      if (downloadError) throw downloadError;
-      blob = downloaded;
-      if (!blob) {
-        const resp = await fetch(urls[j.id] || '');
+      if (downloadError) {
+        const { data: pub } = supabase.storage.from(j.resultado_bucket).getPublicUrl(j.resultado_path);
+        const resp = await fetch(pub.publicUrl);
         if (!resp.ok) throw new Error('Não foi possível baixar o vídeo');
         blob = await resp.blob();
+      } else {
+        blob = downloaded;
       }
+      if (!blob) throw new Error('Arquivo de vídeo vazio');
 
       const destPath = `${user.id}/${Date.now()}-${j.id}.mp4`;
       const { error: uploadError } = await supabase.storage.from('produto-videos').upload(destPath, blob, { contentType: 'video/mp4' });
