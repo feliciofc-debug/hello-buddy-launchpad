@@ -434,11 +434,30 @@ export const CriarVideoAnimado = () => {
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Site / contato</Label>
+                <Label className="text-xs">Site do cliente (opcional)</Label>
                 <Input
-                  value={props.site}
-                  onChange={(e) => setProps((p) => (p ? { ...p, site: e.target.value } : p))}
+                  value={props.site || ''}
+                  onChange={(e) => setProps((p) => (p ? { ...p, site: e.target.value || undefined } : p))}
+                  placeholder="ex.: www.ademicon.com.br"
                   maxLength={40}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Nome do consultor (opcional)</Label>
+                <Input
+                  value={props.cta.consultor || ''}
+                  onChange={(e) => setProps((p) => (p ? { ...p, cta: { ...p.cta, consultor: e.target.value || undefined } } : p))}
+                  placeholder="Ex.: Marcelo Silva"
+                  maxLength={40}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Telefone ou WhatsApp (opcional)</Label>
+                <Input
+                  value={props.cta.telefone || ''}
+                  onChange={(e) => setProps((p) => (p ? { ...p, cta: { ...p.cta, telefone: e.target.value || undefined } } : p))}
+                  placeholder="Ex.: (21) 99999-9999"
+                  maxLength={30}
                 />
               </div>
             </div>

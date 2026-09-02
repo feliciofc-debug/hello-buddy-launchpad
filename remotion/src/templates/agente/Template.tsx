@@ -425,7 +425,7 @@ const LinhaLegenda: React.FC<{ c: Paleta; text: string }> = ({ c, text }) => {
           border: `1px solid ${c.line}`,
           borderRadius: 20,
           padding: "20px 30px",
-          color: c.texto,
+          color: textoSobre(c.panel),
           fontSize: 40,
           fontWeight: 600,
           lineHeight: 1.25,

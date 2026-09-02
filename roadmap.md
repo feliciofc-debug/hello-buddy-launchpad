@@ -33,3 +33,4 @@
 - [x] Diagnosticar o job da Ademicon e confirmar seu resultado final.
 - [x] Permitir cancelar jobs na fila ou em renderização pela tela Meus Produtos.
 - [x] Impedir que uma conclusão tardia do worker reative um job cancelado.
+- [x] Tornar o template de vídeo white label: site opcional, logo e dados do cliente, paleta dinâmica e contraste validado.
