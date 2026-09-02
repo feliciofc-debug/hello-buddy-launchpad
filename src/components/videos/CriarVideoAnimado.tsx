@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Sparkles, Clapperboard, Wand2, Clock, Download, RefreshCw, Upload, Palette } from 'lucide-react';
+import { Loader2, Sparkles, Clapperboard, Wand2, Clock, Download, RefreshCw, Upload, Palette, Ban } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -64,6 +64,7 @@ const STATUS: Record<string, { label: string; cor: string }> = {
   concluido: { label: 'Pronto', cor: 'bg-green-500/10 text-green-700 dark:text-green-400' },
   falha: { label: 'Falhou', cor: 'bg-red-500/10 text-red-700 dark:text-red-400' },
   falha_definitiva: { label: 'Falhou', cor: 'bg-red-500/10 text-red-700 dark:text-red-400' },
+  cancelado: { label: 'Cancelado', cor: 'bg-muted text-muted-foreground' },
 };
 
 export const CriarVideoAnimado = () => {
@@ -139,6 +140,39 @@ export const CriarVideoAnimado = () => {
   };
 
   const [baixando, setBaixando] = useState<string | null>(null);
+  const [cancelando, setCancelando] = useState<string | null>(null);
+
+  const cancelarVideo = async (jobId: string) => {
+    setCancelando(jobId);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Sessão não encontrada');
+
+      const { data, error } = await supabase
+        .from('video_motion_jobs')
+        .update({ status: 'cancelado', claimed_at: null })
+        .eq('id', jobId)
+        .eq('user_id', user.id)
+        .in('status', ['pendente', 'processando'])
+        .select('id')
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        await carregarJobs();
+        toast.info('O vídeo já havia terminado ou sido cancelado.');
+        return;
+      }
+
+      setJobs((atuais) => atuais.map((job) => (
+        job.id === jobId ? { ...job, status: 'cancelado' } : job
+      )));
+      toast.success('Renderização cancelada.');
+    } catch (e: any) {
+      toast.error(e?.message || 'Não foi possível cancelar o vídeo.');
+    } finally {
+      setCancelando(null);
+    }
+  };
 
   const baixarVideo = async (j: Job, url: string) => {
     setBaixando(j.id);
@@ -442,13 +476,18 @@ export const CriarVideoAnimado = () => {
               {jobs.map((j) => {
                 const st = STATUS[j.status] || STATUS.pendente;
                 const url = urls[j.id];
+                const emAndamento = j.status === 'pendente' || j.status === 'processando';
                 return (
                   <div key={j.id} className="rounded-lg border overflow-hidden bg-background">
                     {url ? (
                       <video src={url} controls className="w-full aspect-[9/16] max-h-[260px] bg-black object-contain" />
-                    ) : (
+                    ) : emAndamento ? (
                       <div className="w-full aspect-[9/16] max-h-[260px] bg-muted flex items-center justify-center">
                         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : (
+                      <div className="w-full aspect-[9/16] max-h-[260px] bg-muted flex items-center justify-center">
+                        <Clapperboard className="h-6 w-6 text-muted-foreground" />
                       </div>
                     )}
                     <div className="p-3 space-y-2">
@@ -471,6 +510,22 @@ export const CriarVideoAnimado = () => {
                             <Download className="mr-2 h-3 w-3" />
                           )}
                           Salvar no computador
+                        </Button>
+                      )}
+                      {emAndamento && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full text-destructive hover:text-destructive"
+                          disabled={cancelando === j.id}
+                          onClick={() => cancelarVideo(j.id)}
+                        >
+                          {cancelando === j.id ? (
+                            <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                          ) : (
+                            <Ban className="mr-2 h-3 w-3" />
+                          )}
+                          Cancelar renderização
                         </Button>
                       )}
 
