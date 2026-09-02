@@ -5,6 +5,12 @@ import { Dia02, DIA02_FRAMES } from "./videos/Dia02";
 import { Dia03, DIA03_FRAMES } from "./videos/Dia03";
 import { Dia04, DIA04_FRAMES } from "./videos/Dia04";
 import { Dia05, DIA05_FRAMES } from "./videos/Dia05";
+import {
+  TemplateAgente,
+  PROPS_EXEMPLO,
+  framesTemplateAgente,
+  type TemplateAgenteProps,
+} from "./templates/agente/Template";
 
 const base = { fps: 30, width: 1080, height: 1920 } as const;
 
@@ -16,5 +22,17 @@ export const RemotionRoot = () => (
     <Composition id="dia03" component={Dia03} durationInFrames={DIA03_FRAMES} {...base} />
     <Composition id="dia04" component={Dia04} durationInFrames={DIA04_FRAMES} {...base} />
     <Composition id="dia05" component={Dia05} durationInFrames={DIA05_FRAMES} {...base} />
+
+    {/* Template paramétrico usado pela plataforma (props vêm do job) */}
+    <Composition
+      id="template-agente"
+      component={TemplateAgente}
+      durationInFrames={framesTemplateAgente(PROPS_EXEMPLO)}
+      defaultProps={PROPS_EXEMPLO}
+      calculateMetadata={({ props }) => ({
+        durationInFrames: framesTemplateAgente(props as TemplateAgenteProps),
+      })}
+      {...base}
+    />
   </>
 );

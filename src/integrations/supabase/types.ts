@@ -8558,6 +8558,81 @@ export type Database = {
         }
         Relationships: []
       }
+      video_motion_jobs: {
+        Row: {
+          claimed_at: string | null
+          concluido_at: string | null
+          created_at: string
+          duracao_segundos: number | null
+          enfileirado_at: string
+          erro_mensagem: string | null
+          formato: string
+          id: string
+          legenda_post: string | null
+          metadata: Json
+          origem: string
+          plataformas: string[]
+          props: Json
+          resultado_bucket: string | null
+          resultado_path: string | null
+          status: string
+          telefone: string | null
+          template: string
+          tentativas: number
+          titulo: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          claimed_at?: string | null
+          concluido_at?: string | null
+          created_at?: string
+          duracao_segundos?: number | null
+          enfileirado_at?: string
+          erro_mensagem?: string | null
+          formato?: string
+          id?: string
+          legenda_post?: string | null
+          metadata?: Json
+          origem?: string
+          plataformas?: string[]
+          props: Json
+          resultado_bucket?: string | null
+          resultado_path?: string | null
+          status?: string
+          telefone?: string | null
+          template?: string
+          tentativas?: number
+          titulo?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          claimed_at?: string | null
+          concluido_at?: string | null
+          created_at?: string
+          duracao_segundos?: number | null
+          enfileirado_at?: string
+          erro_mensagem?: string | null
+          formato?: string
+          id?: string
+          legenda_post?: string | null
+          metadata?: Json
+          origem?: string
+          plataformas?: string[]
+          props?: Json
+          resultado_bucket?: string | null
+          resultado_path?: string | null
+          status?: string
+          telefone?: string | null
+          template?: string
+          tentativas?: number
+          titulo?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       video_render_jobs: {
         Row: {
           avisado_demora_at: string | null
@@ -10012,6 +10087,39 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      claim_video_motion_job: {
+        Args: { p_stale_minutos?: number }
+        Returns: {
+          claimed_at: string | null
+          concluido_at: string | null
+          created_at: string
+          duracao_segundos: number | null
+          enfileirado_at: string
+          erro_mensagem: string | null
+          formato: string
+          id: string
+          legenda_post: string | null
+          metadata: Json
+          origem: string
+          plataformas: string[]
+          props: Json
+          resultado_bucket: string | null
+          resultado_path: string | null
+          status: string
+          telefone: string | null
+          template: string
+          tentativas: number
+          titulo: string | null
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "video_motion_jobs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       claim_video_render_job: {
         Args: { p_stale_minutos?: number }
         Returns: {
@@ -10270,6 +10378,7 @@ export type Database = {
         Args: { p_phone: string }
         Returns: number
       }
+      video_motion_fila_posicao: { Args: { p_job_id: string }; Returns: number }
       video_render_fila_posicao: { Args: { p_job_id: string }; Returns: number }
     }
     Enums: {
