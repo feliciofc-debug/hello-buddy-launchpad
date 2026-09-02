@@ -48,7 +48,7 @@ export const PALETA_PADRAO: MotionProps["cores"] = {
 const MODELO = "google/gemini-2.5-flash";
 const GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
-const limpar = (s: unknown, max: number) =>
+const limparBruto = (s: unknown, max: number) =>
   String(s ?? "")
     .replace(/\s+/g, " ")
     .replace(/^["'`\s]+|["'`\s]+$/g, "")
