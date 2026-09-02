@@ -624,6 +624,21 @@ export const CriarVideoAnimado = () => {
                           Salvar no computador
                         </Button>
                       )}
+                      {url && (
+                        <Button
+                          size="sm"
+                          className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white"
+                          disabled={enviandoBiblioteca === j.id}
+                          onClick={() => enviarParaAreaVideos(j, url)}
+                        >
+                          {enviandoBiblioteca === j.id ? (
+                            <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                          ) : (
+                            <Send className="mr-2 h-3 w-3" />
+                          )}
+                          Enviar para vídeos
+                        </Button>
+                      )}
                       {emAndamento && (
                         <Button
                           variant="outline"
@@ -640,6 +655,23 @@ export const CriarVideoAnimado = () => {
                           Cancelar renderização
                         </Button>
                       )}
+                      {!emAndamento && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full text-destructive hover:text-destructive"
+                          disabled={excluindo === j.id}
+                          onClick={() => excluirVideo(j)}
+                        >
+                          {excluindo === j.id ? (
+                            <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                          ) : (
+                            <Trash2 className="mr-2 h-3 w-3" />
+                          )}
+                          Excluir vídeo
+                        </Button>
+                      )}
+
 
                     </div>
                   </div>
