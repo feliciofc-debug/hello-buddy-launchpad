@@ -188,7 +188,12 @@ export const CriarVideoAnimado = () => {
       if (!user) throw new Error('Sessão não encontrada');
 
       if (j.resultado_bucket && j.resultado_path) {
-        await supabase.storage.from(j.resultado_bucket).remove([j.resultado_path]);
+        try {
+          await supabase.storage.from(j.resultado_bucket).remove([j.resultado_path]);
+        } catch (storageErr: any) {
+          // Se o storage não permitir remover, apenas prossegue com o registro.
+          console.warn('[excluirVideo] Não foi possível remover arquivo do storage:', storageErr?.message);
+        }
       }
 
       const { error } = await supabase
@@ -216,13 +221,15 @@ export const CriarVideoAnimado = () => {
 
       let blob: Blob | null = null;
       const { data: downloaded, error: downloadError } = await supabase.storage.from(j.resultado_bucket).download(j.resultado_path);
-      if (downloadError) throw downloadError;
-      blob = downloaded;
-      if (!blob) {
-        const resp = await fetch(urls[j.id] || '');
+      if (downloadError) {
+        const { data: pub } = supabase.storage.from(j.resultado_bucket).getPublicUrl(j.resultado_path);
+        const resp = await fetch(pub.publicUrl);
         if (!resp.ok) throw new Error('Não foi possível baixar o vídeo');
         blob = await resp.blob();
+      } else {
+        blob = downloaded;
       }
+      if (!blob) throw new Error('Arquivo de vídeo vazio');
 
       const destPath = `${user.id}/${Date.now()}-${j.id}.mp4`;
       const { error: uploadError } = await supabase.storage.from('produto-videos').upload(destPath, blob, { contentType: 'video/mp4' });
@@ -612,22 +619,6 @@ export const CriarVideoAnimado = () => {
                       <Badge className={st.cor} variant="secondary">{st.label}</Badge>
                       {j.erro_mensagem && (
                         <p className="text-xs text-destructive line-clamp-2">{j.erro_mensagem}</p>
-                      )}
-                      {url && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full"
-                          disabled={baixando === j.id}
-                          onClick={() => baixarVideo(j, url)}
-                        >
-                          {baixando === j.id ? (
-                            <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                          ) : (
-                            <Download className="mr-2 h-3 w-3" />
-                          )}
-                          Salvar no computador
-                        </Button>
                       )}
                       {url && (
                         <Button
