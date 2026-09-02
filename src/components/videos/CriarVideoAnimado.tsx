@@ -333,6 +333,7 @@ export const CriarVideoAnimado = () => {
       setProps({
         ...data.props,
         marca: marcaCliente.trim() || data.props?.marca,
+        site: data.props?.site || '',
         logoUrl: logoUrl ?? undefined,
         cores: { ...cores },
       });
@@ -356,7 +357,12 @@ export const CriarVideoAnimado = () => {
     setEnviando(true);
     try {
       const { data, error } = await supabase.functions.invoke('video-motion-create', {
-        body: { tema: tema.trim(), props, legenda_post: legendaPost, formato: 'reels' },
+        body: {
+          tema: tema.trim(),
+          props: { ...props, site: props.site?.trim() || '' },
+          legenda_post: legendaPost,
+          formato: 'reels',
+        },
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Não consegui enfileirar');
