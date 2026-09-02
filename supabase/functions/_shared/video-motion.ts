@@ -14,6 +14,9 @@ export type Mensagem = { de: "dono" | "agente"; texto: string };
 
 export type MotionProps = {
   marca: string;
+  /** preenchido pelo backend; nunca vem do usuário para outro tenant */
+  logo_path?: string;
+  logoUrl?: string;
   site: string;
   cores: {
     bg: string;
@@ -90,6 +93,8 @@ export function normalizarProps(bruto: any, ctx: { marca: string; site: string }
 
   return {
     marca,
+    logo_path: typeof bruto?.logo_path === "string" ? bruto.logo_path : undefined,
+    logoUrl: typeof bruto?.logoUrl === "string" ? bruto.logoUrl : undefined,
     site: limpar(bruto?.site ?? ctx.site, 40),
     cores,
     hook: {
