@@ -19,10 +19,10 @@
 
 ## Campanha "AMZ em 30 Segundos" — 30 dias
 - [x] Calendário de 30 dias com 6 pilares (impacto, agendar com IA, multi-plataforma, agente no WhatsApp, resultados, CTA/objeção)
-- [ ] Produzir lote 1 (5 vídeos, 1 por pilar) em Remotion vertical 9:16
+- [x] Produzir lote 1 (dias 1 a 5, 1 por pilar) em Remotion vertical 9:16 — `/mnt/documents/amz-30-dias/dia-01..05`
 - [ ] Produzir lotes 2 a 6 reaproveitando cenas
-- [ ] Trilha sonora comum a toda a série (identidade sonora)
-- [ ] Legenda embutida em todos os vídeos
+- [x] Trilha sonora comum a toda a série (identidade sonora)
+- [x] Legenda embutida em todos os vídeos
 
 ## TikTok — aprovação da API
 - [ ] Definir URL pública para o cadastro (site institucional já existe: /plataforma, /integracoes, /sobre, /contato)
