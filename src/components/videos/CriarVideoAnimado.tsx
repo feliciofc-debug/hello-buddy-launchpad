@@ -138,7 +138,40 @@ export const CriarVideoAnimado = () => {
     setProps((p) => (p ? { ...p, cores: { ...p.cores, [nome]: valor } } : p));
   };
 
+  const [baixando, setBaixando] = useState<string | null>(null);
+
+  const baixarVideo = async (j: Job, url: string) => {
+    setBaixando(j.id);
+    try {
+      let blob: Blob | null = null;
+      if (j.resultado_bucket && j.resultado_path) {
+        const { data } = await supabase.storage.from(j.resultado_bucket).download(j.resultado_path);
+        blob = data ?? null;
+      }
+      if (!blob) {
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error('Não consegui baixar o arquivo');
+        blob = await resp.blob();
+      }
+      const nome = `${(j.titulo || 'video-animado').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}.mp4`;
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = nome;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(href);
+      toast.success('Vídeo salvo no seu computador');
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao salvar o vídeo');
+    } finally {
+      setBaixando(null);
+    }
+  };
+
   const carregarJobs = async () => {
+
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     const { data } = await supabase
@@ -425,12 +458,22 @@ export const CriarVideoAnimado = () => {
                         <p className="text-xs text-destructive line-clamp-2">{j.erro_mensagem}</p>
                       )}
                       {url && (
-                        <Button asChild variant="outline" size="sm" className="w-full">
-                          <a href={url} download target="_blank" rel="noreferrer">
-                            <Download className="mr-2 h-3 w-3" /> Baixar
-                          </a>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                          disabled={baixando === j.id}
+                          onClick={() => baixarVideo(j, url)}
+                        >
+                          {baixando === j.id ? (
+                            <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                          ) : (
+                            <Download className="mr-2 h-3 w-3" />
+                          )}
+                          Salvar no computador
                         </Button>
                       )}
+
                     </div>
                   </div>
                 );
