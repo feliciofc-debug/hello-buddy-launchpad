@@ -18,6 +18,7 @@ import { TransitionSeries, springTiming } from "@remotion/transitions";
 import { slide } from "@remotion/transitions/slide";
 import { fade } from "@remotion/transitions/fade";
 import { font } from "../../font";
+import { ehClaro, rgba, textoSobre } from "./contraste";
 
 // ---------- contrato de props ----------
 
@@ -35,15 +36,16 @@ export type Paleta = {
 };
 
 export type TemplateAgenteProps = {
-  marca: string; // sigla exibida no logo/CTA quando NÃO há logoUrl (ex.: "AMZ")
+  marca: string; // sigla exibida no logo/CTA quando NÃO há logoUrl (ex.: iniciais da marca)
   logoUrl?: string; // logo do cliente (URL assinada ou data URL) — quando existe, substitui a sigla
-  site: string; // rodapé do CTA (ex.: "amzofertas.com.br")
+  site?: string; // opcional — site DO CLIENTE, nunca fallback de outra marca
   cores: Paleta;
   hook: { kicker: string; linhas: string[]; destaque?: string; sub?: string };
   chat: { titulo: string; tituloDestaque?: string; mensagens: Mensagem[] };
-  cta: { frase: string; sub?: string };
+  cta: { frase: string; sub?: string; telefone?: string; consultor?: string };
   legendas: string[];
 };
+
 
 export const PALETA_AMZ: Paleta = {
   bg: "#0f1720",
