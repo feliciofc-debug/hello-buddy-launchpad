@@ -7,6 +7,7 @@
 
 import {
   AbsoluteFill,
+  Img,
   Sequence,
   interpolate,
   spring,
@@ -34,7 +35,8 @@ export type Paleta = {
 };
 
 export type TemplateAgenteProps = {
-  marca: string; // sigla exibida no logo/CTA (ex.: "AMZ")
+  marca: string; // sigla exibida no logo/CTA quando NÃO há logoUrl (ex.: "AMZ")
+  logoUrl?: string; // logo do cliente (URL assinada ou data URL) — quando existe, substitui a sigla
   site: string; // rodapé do CTA (ex.: "amzofertas.com.br")
   cores: Paleta;
   hook: { kicker: string; linhas: string[]; destaque?: string; sub?: string };
@@ -219,9 +221,10 @@ const Bolha: React.FC<{ c: Paleta; m: Mensagem; from: number }> = ({ c, m, from 
   );
 };
 
-const Chat: React.FC<{ c: Paleta; marca: string } & TemplateAgenteProps["chat"]> = ({
+const Chat: React.FC<{ c: Paleta; marca: string; logoUrl?: string } & TemplateAgenteProps["chat"]> = ({
   c,
   marca,
+  logoUrl,
   titulo,
   tituloDestaque,
   mensagens,
@@ -280,10 +283,19 @@ const Chat: React.FC<{ c: Paleta; marca: string } & TemplateAgenteProps["chat"]>
             background: c.bg2,
           }}
         >
-          <div style={{ width: 34, height: 34, borderRadius: 10, background: c.destaque }} />
-          <span style={{ color: c.texto, fontSize: 26, fontWeight: 700, letterSpacing: 1 }}>
-            {marca}
-          </span>
+          {logoUrl ? (
+            <Img
+              src={logoUrl}
+              style={{ height: 40, maxWidth: 190, objectFit: "contain" }}
+            />
+          ) : (
+            <>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: c.destaque }} />
+              <span style={{ color: c.texto, fontSize: 26, fontWeight: 700, letterSpacing: 1 }}>
+                {marca}
+              </span>
+            </>
+          )}
           <div style={{ flex: 1 }} />
           <div style={{ display: "flex", gap: 8 }}>
             {[0, 1, 2].map((i) => (
@@ -301,9 +313,12 @@ const Chat: React.FC<{ c: Paleta; marca: string } & TemplateAgenteProps["chat"]>
   );
 };
 
-const CTA: React.FC<{ c: Paleta; marca: string; site: string } & TemplateAgenteProps["cta"]> = ({
+const CTA: React.FC<
+  { c: Paleta; marca: string; logoUrl?: string; site: string } & TemplateAgenteProps["cta"]
+> = ({
   c,
   marca,
+  logoUrl,
   site,
   frase,
   sub,
@@ -322,7 +337,7 @@ const CTA: React.FC<{ c: Paleta; marca: string; site: string } & TemplateAgenteP
           width: 200,
           height: 200,
           borderRadius: 52,
-          background: `linear-gradient(135deg, ${c.destaque}, ${c.destaqueSoft})`,
+          background: logoUrl ? "#ffffff" : `linear-gradient(135deg, ${c.destaque}, ${c.destaqueSoft})`,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -339,7 +354,11 @@ const CTA: React.FC<{ c: Paleta; marca: string; site: string } & TemplateAgenteP
           boxShadow: `0 40px 90px ${c.destaque}44`,
         }}
       >
-        {marca}
+        {logoUrl ? (
+          <Img src={logoUrl} style={{ width: 164, height: 164, objectFit: "contain" }} />
+        ) : (
+          marca
+        )}
       </div>
       <div
         style={{
@@ -407,7 +426,7 @@ const LinhaLegenda: React.FC<{ c: Paleta; text: string }> = ({ c, text }) => {
 const timing = springTiming({ config: { damping: 200 }, durationInFrames: TRANSICAO });
 
 export const TemplateAgente: React.FC<TemplateAgenteProps> = (props) => {
-  const { cores: c, marca, site, hook, chat, cta, legendas } = props;
+  const { cores: c, marca, logoUrl, site, hook, chat, cta, legendas } = props;
   const total = framesTemplateAgente(props);
   const legendasValidas = (legendas || []).filter((l) => l && l.trim().length > 0);
   const passo = legendasValidas.length > 0 ? Math.floor((total - 20) / legendasValidas.length) : 0;
@@ -424,11 +443,11 @@ export const TemplateAgente: React.FC<TemplateAgenteProps> = (props) => {
           timing={timing}
         />
         <TransitionSeries.Sequence durationInFrames={framesChat(chat.mensagens.length)}>
-          <Chat c={c} marca={marca} {...chat} />
+          <Chat c={c} marca={marca} logoUrl={logoUrl} {...chat} />
         </TransitionSeries.Sequence>
         <TransitionSeries.Transition presentation={fade()} timing={timing} />
         <TransitionSeries.Sequence durationInFrames={CTA_FRAMES}>
-          <CTA c={c} marca={marca} site={site} {...cta} />
+          <CTA c={c} marca={marca} logoUrl={logoUrl} site={site} {...cta} />
         </TransitionSeries.Sequence>
       </TransitionSeries>
 
