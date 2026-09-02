@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Sparkles, Clapperboard, Wand2, Clock, Download, RefreshCw } from 'lucide-react';
+import { Loader2, Sparkles, Clapperboard, Wand2, Clock, Download, RefreshCw, Upload, Palette } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -19,6 +19,8 @@ type Mensagem = { de: 'dono' | 'agente'; texto: string };
 
 type MotionProps = {
   marca: string;
+  logoUrl?: string;
+  logo_path?: string;
   site: string;
   cores: Record<string, string>;
   hook: { kicker: string; linhas: string[]; destaque?: string; sub?: string };
@@ -39,6 +41,22 @@ type Job = {
   created_at: string;
 };
 
+
+const PALETAS = {
+  amz: {
+    label: 'AMZ',
+    cores: { bg: '#0f1720', bg2: '#1a2332', panel: '#16202c', line: '#26313f', destaque: '#FF7A1A', destaqueSoft: '#ff9e56', texto: '#f4f7fb', suave: '#93a4b8' },
+  },
+  ademicon: {
+    label: 'Ademicon',
+    cores: { bg: '#ffffff', bg2: '#fff7f8', panel: '#ffffff', line: '#ead9dc', destaque: '#c8102e', destaqueSoft: '#ed5368', texto: '#241b1d', suave: '#75666a' },
+  },
+  personalizada: {
+    label: 'Personalizada',
+    cores: { bg: '#ffffff', bg2: '#f5f5f5', panel: '#ffffff', line: '#dedede', destaque: '#c8102e', destaqueSoft: '#ed5368', texto: '#241b1d', suave: '#75666a' },
+  },
+} as const;
+
 const STATUS: Record<string, { label: string; cor: string }> = {
   pendente: { label: 'Na fila', cor: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400' },
   processando: { label: 'Renderizando', cor: 'bg-blue-500/10 text-blue-700 dark:text-blue-400' },
@@ -57,6 +75,68 @@ export const CriarVideoAnimado = () => {
   const [duracao, setDuracao] = useState<number | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [urls, setUrls] = useState<Record<string, string>>({});
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoPath, setLogoPath] = useState<string | null>(null);
+  const [subindoLogo, setSubindoLogo] = useState(false);
+  const [paletaSelecionada, setPaletaSelecionada] = useState<keyof typeof PALETAS>('personalizada');
+  const [cores, setCores] = useState<Record<string, string>>(PALETAS.personalizada.cores);
+
+  const carregarMarca = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data } = await supabase
+      .from('tenant_logos')
+      .select('storage_path')
+      .eq('user_id', user.id)
+      .eq('ativo', true)
+      .maybeSingle();
+    const path = data?.storage_path;
+    if (!path || !path.startsWith(`${user.id}/`)) return;
+    const { data: signed } = await supabase.storage.from('tenant-logos').createSignedUrl(path, 3600);
+    setLogoPath(path);
+    setLogoUrl(signed?.signedUrl ?? null);
+  };
+
+  const handleLogo = async (file: File) => {
+    if (!file.type.startsWith('image/') || file.size > 5 * 1024 * 1024) {
+      toast.error('Use uma imagem PNG, JPEG ou WEBP de até 5MB.');
+      return;
+    }
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    setSubindoLogo(true);
+    try {
+      const nome = file.name.replace(/[^a-zA-Z0-9._-]/g, '-').slice(-80);
+      const novoPath = `${user.id}/${Date.now()}-${nome}`;
+      const { error: uploadError } = await supabase.storage.from('tenant-logos').upload(novoPath, file, { contentType: file.type });
+      if (uploadError) throw uploadError;
+      const { error: deleteError } = await supabase.from('tenant_logos').delete().eq('user_id', user.id);
+      if (deleteError) throw deleteError;
+      const { error: insertError } = await supabase.from('tenant_logos').insert({ user_id: user.id, storage_path: novoPath, file_name: file.name, mime_type: file.type, ativo: true });
+      if (insertError) throw insertError;
+      if (logoPath) await supabase.storage.from('tenant-logos').remove([logoPath]);
+      const { data: signed } = await supabase.storage.from('tenant-logos').createSignedUrl(novoPath, 3600);
+      setLogoPath(novoPath);
+      setLogoUrl(signed?.signedUrl ?? null);
+      toast.success('Logo do cliente anexada.');
+    } catch (e: any) {
+      toast.error(e?.message || 'Não foi possível anexar a logo.');
+    } finally {
+      setSubindoLogo(false);
+    }
+  };
+
+  const selecionarPaleta = (nome: keyof typeof PALETAS) => {
+    setPaletaSelecionada(nome);
+    setCores({ ...PALETAS[nome].cores });
+    setProps((p) => (p ? { ...p, cores: { ...PALETAS[nome].cores } } : p));
+  };
+
+  const setCor = (nome: string, valor: string) => {
+    setPaletaSelecionada('personalizada');
+    setCores((atual) => ({ ...atual, [nome]: valor }));
+    setProps((p) => (p ? { ...p, cores: { ...p.cores, [nome]: valor } } : p));
+  };
 
   const carregarJobs = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -81,6 +161,7 @@ export const CriarVideoAnimado = () => {
   };
 
   useEffect(() => {
+    carregarMarca();
     carregarJobs();
     const t = setInterval(carregarJobs, 15000);
     return () => clearInterval(t);
@@ -94,11 +175,11 @@ export const CriarVideoAnimado = () => {
     setGerando(true);
     try {
       const { data, error } = await supabase.functions.invoke('video-motion-create', {
-        body: { tema: tema.trim(), apenas_roteiro: true },
+        body: { tema: tema.trim(), apenas_roteiro: true, cores },
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Não consegui gerar o roteiro');
-      setProps(data.props);
+      setProps({ ...data.props, logoUrl: logoUrl ?? undefined, cores: { ...cores, ...(data.props?.cores ?? {}) } });
       setLegendaPost(data.legenda_post || '');
       setDuracao(data.duracao_estimada ?? null);
       toast.success(data.usou_ia ? '✨ Roteiro gerado! Revise e ajuste.' : 'Roteiro base criado. Revise os textos.');
@@ -165,6 +246,38 @@ export const CriarVideoAnimado = () => {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
+        <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
+          <div className="flex items-center gap-2">
+            <Palette className="h-4 w-4 text-primary" />
+            <Label className="font-semibold">Identidade do cliente</Label>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {(Object.keys(PALETAS) as Array<keyof typeof PALETAS>).map((nome) => (
+              <Button key={nome} type="button" variant={paletaSelecionada === nome ? 'default' : 'outline'} onClick={() => selecionarPaleta(nome)} className="justify-start">
+                <span className="mr-2 h-4 w-4 rounded-full border" style={{ backgroundColor: PALETAS[nome].cores.destaque }} />
+                {PALETAS[nome].label}
+              </Button>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {(['bg', 'bg2', 'destaque', 'destaqueSoft'] as const).map((nome) => (
+              <label key={nome} className="flex items-center gap-2 text-xs text-muted-foreground">
+                <input type="color" value={cores[nome]} onChange={(e) => setCor(nome, e.target.value)} className="h-8 w-10 cursor-pointer rounded border bg-background p-1" aria-label={`Cor ${nome}`} />
+                {nome === 'destaque' ? 'Principal' : nome === 'destaqueSoft' ? 'Apoio' : nome === 'bg' ? 'Fundo' : 'Fundo 2'}
+              </label>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" id="motion-logo-upload" onChange={(e) => { const file = e.target.files?.[0]; if (file) handleLogo(file); e.currentTarget.value = ''; }} />
+            <Button type="button" variant="outline" disabled={subindoLogo} onClick={() => document.getElementById('motion-logo-upload')?.click()}>
+              {subindoLogo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+              {logoUrl ? 'Trocar logo' : 'Anexar logo do cliente'}
+            </Button>
+            {logoUrl && <img src={logoUrl} alt="Logo do cliente" className="h-10 max-w-[160px] rounded border bg-background object-contain p-1" />}
+            <span className="text-xs text-muted-foreground">A logo e as cores escolhidas serão usadas no vídeo.</span>
+          </div>
+        </div>
+
         <div className="space-y-2">
           <Label>Sobre o que é o vídeo?</Label>
           <div className="flex flex-col sm:flex-row gap-2">

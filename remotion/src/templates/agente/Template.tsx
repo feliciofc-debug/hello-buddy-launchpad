@@ -80,7 +80,7 @@ const Backdrop: React.FC<{ c: Paleta }> = ({ c }) => {
   return (
     <AbsoluteFill
       style={{
-        background: `radial-gradient(1200px 900px at 20% 0%, ${c.bg2} 0%, ${c.bg} 60%, #0a1017 100%)`,
+        background: `radial-gradient(1200px 900px at 20% 0%, ${c.bg2} 0%, ${c.bg} 60%, ${c.bg} 100%)`,
       }}
     >
       <AbsoluteFill
@@ -111,7 +111,7 @@ const Backdrop: React.FC<{ c: Paleta }> = ({ c }) => {
           right: -260 - drift,
           top: -180,
           borderRadius: "50%",
-          background: "radial-gradient(circle, #3b6ea533 0%, transparent 65%)",
+          background: `radial-gradient(circle, ${c.destaqueSoft}22 0%, transparent 65%)`,
         }}
       />
     </AbsoluteFill>
