@@ -34,6 +34,13 @@ Deno.serve(async (req) => {
     if (!claimed || !(claimed as any).id) return respJson({ success: true, job: null });
 
     const job = claimed as any;
+    const props = { ...(job.props || {}) };
+    const logoPath = typeof props.logo_path === "string" ? props.logo_path : "";
+    if (logoPath.startsWith(`${job.user_id}/`)) {
+      const { data: logo } = await supabase.storage.from("tenant-logos").createSignedUrl(logoPath, 3600);
+      if (logo?.signedUrl) props.logoUrl = logo.signedUrl;
+    }
+    delete props.logo_path;
 
     const nome = `motion/${job.user_id}/${job.id}.mp4`;
     const { data: up, error: upErr } = await supabase.storage
@@ -46,7 +53,7 @@ Deno.serve(async (req) => {
       job: {
         id: job.id,
         template: job.template || "template-agente",
-        props: job.props,
+        props,
         upload: {
           url: up.signedUrl,
           token: up.token,

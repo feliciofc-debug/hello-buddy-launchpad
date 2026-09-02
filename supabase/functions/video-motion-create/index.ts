@@ -22,6 +22,17 @@ import {
 const PLATAFORMAS_OK = ["instagram", "facebook", "linkedin", "tiktok"];
 const LIMITE_FILA_POR_USUARIO = 3;
 
+async function logoDoTenant(sb: any, userId: string): Promise<string | undefined> {
+  const { data } = await sb
+    .from("tenant_logos")
+    .select("storage_path")
+    .eq("user_id", userId)
+    .eq("ativo", true)
+    .maybeSingle();
+  const path = typeof data?.storage_path === "string" ? data.storage_path : "";
+  return path.startsWith(`${userId}/`) ? path : undefined;
+}
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -56,20 +67,26 @@ Deno.serve(async (req) => {
     }
 
     // 1. Roteiro: usa o que veio editado, senão gera com IA.
+    // A identidade visual é sempre controlada pelo tenant, não pela IA.
+    const logoPath = await logoDoTenant(sb, user.id);
     let props: MotionProps;
     let legendaPost = String(body?.legenda_post ?? "").trim();
     let usouIA = false;
 
     if (body?.props) {
-      props = normalizarProps(body.props, { marca: "AMZ", site: "" });
+      props = normalizarProps({ ...body.props, cores: body.props?.cores }, { marca: "AMZ", site: "" });
     } else {
       const r = await gerarRoteiroMotion(sb, user.id, tema, {
         nomeFallback: (user.user_metadata as any)?.nome ?? null,
       });
-      props = r.props;
+      props = normalizarProps({ ...r.props, cores: body?.cores ?? r.props.cores }, { marca: r.props.marca, site: r.props.site });
       usouIA = r.usouIA;
       if (!legendaPost) legendaPost = r.legendaPost;
     }
+
+    // O worker recebe um caminho interno e transforma-o em URL assinada curta no claim.
+    // Assim a logo continua protegida e não expira enquanto o job aguarda na fila.
+    props = { ...props, logo_path: logoPath, logoUrl: undefined };
 
     if (body?.apenas_roteiro) {
       return json({
