@@ -106,11 +106,25 @@ export default function LinkedInComposer({ midia, conectado, onPublicado, initia
       if (error) throw error;
       const { data } = supabase.storage.from(bucket).getPublicUrl(path);
       setMediaUrl(data.publicUrl);
+
+      // Vídeo enviado aqui também entra na biblioteca de vídeos (aba Vídeos)
+      if (!ehFoto) {
+        const { error: bibErr } = await supabase.from('videos_produtos' as any).insert({
+          user_id: user.id,
+          titulo: file.name.replace(/\.[^/.]+$/, ''),
+          video_url: data.publicUrl,
+          tamanho_mb: Math.round((file.size / (1024 * 1024)) * 100) / 100,
+          tipo: 'reels',
+          status: 'disponivel',
+        } as any);
+        if (bibErr) console.error('Falha ao registrar vídeo na biblioteca:', bibErr);
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro no upload');
     } finally {
       setUploading(false);
     }
+
   };
 
   const publicar = async () => {

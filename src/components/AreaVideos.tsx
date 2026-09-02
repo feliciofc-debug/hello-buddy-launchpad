@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Upload, Video, Trash2, Play, Facebook, Instagram, BookOpen, Rocket } from 'lucide-react';
+import { Upload, Video, Trash2, Play, Facebook, Instagram, BookOpen, Rocket, Linkedin } from 'lucide-react';
 import { AutopilotModal } from '@/components/AutopilotModal';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -11,6 +11,7 @@ import { PublicarStoryModal } from '@/components/PublicarStoryModal';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { TikTokIcon } from '@/components/tiktok/TikTokIcon';
 import { TikTokShareModal } from '@/components/TikTokShareModal';
+import { PostarLinkedInVideoModal } from '@/components/videos/PostarLinkedInVideoModal';
 import { ReelsGeradosGrid } from './videos/ReelsGeradosGrid';
 
 interface VideoItem {
@@ -45,7 +46,9 @@ export const AreaVideos = () => {
     description?: string;
   } | null>(null);
   const [autopilotOpen, setAutopilotOpen] = useState(false);
+  const [linkedinVideo, setLinkedinVideo] = useState<VideoItem | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
 
   const handleStoryPublished = async (
     videoId: string,
@@ -303,6 +306,15 @@ export const AreaVideos = () => {
                   )}
                   <Button
                     size="sm"
+                    className="flex-1 bg-[#0A66C2] text-white text-xs hover:bg-[#004182]"
+                    onClick={() => setLinkedinVideo(video)}
+                  >
+                    <Linkedin className="mr-1 h-3 w-3" />
+                    LinkedIn
+                  </Button>
+                  <Button
+
+                    size="sm"
                     variant="destructive"
                     onClick={() => handleDelete(video.id)}
                   >
@@ -346,7 +358,15 @@ export const AreaVideos = () => {
         />
       )}
 
+      <PostarLinkedInVideoModal
+        open={!!linkedinVideo}
+        onOpenChange={(open) => !open && setLinkedinVideo(null)}
+        videoUrl={linkedinVideo?.video_url || null}
+        videoNome={linkedinVideo?.titulo || null}
+      />
+
       <AutopilotModal open={autopilotOpen} onOpenChange={setAutopilotOpen} />
+
     </div>
   );
 };
