@@ -168,20 +168,18 @@ export default function RedesSociaisPainel() {
         </Card>
       </div>
 
-      {/* Aviso se não conectado — link para configurações */}
-      {!facebookConnected && !instagramConnected && (
+      {/* Aviso se não conectado — links para as configurações correspondentes */}
+      {!facebookConnected && !instagramConnected && !tiktokConn && (
         <Card className="border-amber-300 bg-amber-50 dark:bg-amber-900/10 dark:border-amber-700">
           <CardContent className="p-4 text-center space-y-2">
             <div className="flex items-center justify-center gap-2">
               <AlertTriangle className="h-5 w-5 text-amber-600" />
-              <p className="text-sm font-medium text-foreground">
-                Nenhuma conta conectada
-              </p>
+              <p className="text-sm font-medium text-foreground">Nenhuma conta conectada</p>
             </div>
             <p className="text-xs text-muted-foreground">
-              Conecte sua conta do Facebook/Instagram em{" "}
+              Conecte suas contas em{" "}
               <Link to="/configuracoes" className="text-primary underline font-medium">
-                Configurações → Meta
+                Configurações
               </Link>
             </p>
           </CardContent>

@@ -27,3 +27,4 @@
 ## TikTok — aprovação da API
 - [ ] Definir URL pública para o cadastro (site institucional já existe: /plataforma, /integracoes, /sobre, /contato)
 - [ ] Plano B: criar conta de teste e informar no campo Apply Reason
+- [ ] Garantir que revisores consigam entrar, conectar a conta TikTok e fazer uma postagem de teste em sandbox

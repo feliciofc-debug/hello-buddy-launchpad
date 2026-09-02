@@ -22,11 +22,18 @@ export default function Login() {
   const [sendingReset, setSendingReset] = useState(false);
   const routedRef = useRef(false);
 
+  const getSafeNextPath = () => {
+    const next = new URLSearchParams(window.location.search).get('next');
+    if (!next || !next.startsWith('/') || next.startsWith('//')) return null;
+    return next;
+  };
+
   const routeAfterAuth = async (userId: string, email: string) => {
     if (routedRef.current) return;
     routedRef.current = true;
 
     const emailLc = (email || '').trim().toLowerCase();
+    const nextPath = getSafeNextPath();
 
     // Verificar perfil do usuário
     const { data: profile } = await supabase
@@ -50,9 +57,15 @@ export default function Login() {
       return;
     }
 
+    // Permite que um revisor ou cliente retome o fluxo público solicitado após o login.
+    if (nextPath) {
+      navigate(nextPath);
+      return;
+    }
+
     const contasPermanentes = ['expo@atombrasildigital.com', 'renatascarega@gmail.com', 'alessandradiasadm1@gmail.com', 'dudacarega@gmail.com', 'canarimp@gmail.com'];
     if (contasPermanentes.includes(emailLc) || profile?.tipo === 'b2b' || profile?.tipo === 'parceiro' || profile?.tipo === 'empresa') {
-      navigate('/dashboard');
+      navigate(nextPath || '/dashboard');
       return;
     }
 
@@ -63,14 +76,14 @@ export default function Login() {
       .maybeSingle();
 
     if (trialCheck && (trialCheck as any).status === 'ativo' && new Date((trialCheck as any).data_fim) > new Date()) {
-      navigate('/dashboard');
+      navigate(nextPath || '/dashboard');
       return;
     }
 
     const { data: subscriptionCheck } = await supabase.functions.invoke('check-subscription');
 
     if (subscriptionCheck?.hasActiveSubscription) {
-      navigate('/dashboard');
+      navigate(nextPath || '/dashboard');
     } else {
       // Cliente novo (sem assinatura) vai direto para o checkout
       navigate('/planos');
