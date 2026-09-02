@@ -265,7 +265,10 @@ const Chat: React.FC<{ c: Paleta; marca: string; logoUrl?: string } & TemplateAg
           borderRadius: 56,
           background: c.panel,
           border: `2px solid ${c.line}`,
-          boxShadow: "0 60px 120px rgba(0,0,0,0.55)",
+          boxShadow: ehClaro(c.bg)
+            ? `0 40px 90px ${rgba("#0b1220", 0.16)}`
+            : `0 60px 120px ${rgba("#000000", 0.55)}`,
+
           overflow: "hidden",
           position: "relative",
           transform: `translateY(${interpolate(entrada, [0, 1], [220, 110])}px) scale(${interpolate(
