@@ -246,8 +246,9 @@ Regras: 4 ou 6 mensagens no chat, alternando dono/agente, linguagem simples de b
         const bruto = JSON.parse(txt.replace(/^```json|```$/g, "").trim());
         return {
           props: normalizarProps(bruto, base),
-          legendaPost: limpar(bruto?.legenda_post, 1200),
+          legendaPost: corrigirTexto(limparBruto(bruto?.legenda_post, 1200), nomes),
           usouIA: true,
+          nomes,
         };
       }
     } catch (e) {
@@ -284,5 +285,6 @@ Regras: 4 ou 6 mensagens no chat, alternando dono/agente, linguagem simples de b
     props,
     legendaPost: `${tema}\n\n${nome} — atendimento direto pelo WhatsApp.`,
     usouIA: false,
+    nomes,
   };
 }
