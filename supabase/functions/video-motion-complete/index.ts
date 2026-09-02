@@ -53,12 +53,20 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (jErr || !job) throw new Error("job não encontrado");
 
+    // Um cancelamento feito pelo cliente sempre vence uma conclusão tardia do worker.
+    if (job.status === "cancelado") {
+      if (renderOk && resultado_path) {
+        await supabase.storage.from(resultado_bucket || "videos").remove([resultado_path]);
+      }
+      return respJson({ success: true, cancelado: true });
+    }
+
     // ---------- FALHA ----------
     if (!renderOk) {
       const tentativas = (job.tentativas || 0) + 1;
       const definitivo = tentativas >= MAX_TENTATIVAS;
 
-      await supabase
+      const { data: falhaRegistrada } = await supabase
         .from("video_motion_jobs")
         .update({
           status: definitivo ? "falha_definitiva" : "pendente",
@@ -66,7 +74,14 @@ Deno.serve(async (req) => {
           claimed_at: null,
           erro_mensagem: String(erro || "erro no render"),
         })
-        .eq("id", job.id);
+        .eq("id", job.id)
+        .eq("status", "processando")
+        .select("id")
+        .maybeSingle();
+
+      if (!falhaRegistrada) {
+        return respJson({ success: true, cancelado: true });
+      }
 
       if (definitivo) {
         await avisarCliente(
@@ -89,7 +104,7 @@ Deno.serve(async (req) => {
     const plataformas: string[] = Array.isArray(job.plataformas) ? job.plataformas : [];
     const querPublicar = plataformas.length > 0;
 
-    await supabase
+    const { data: concluido } = await supabase
       .from("video_motion_jobs")
       .update({
         status: querPublicar ? "aguardando_aprovacao" : "concluido",
@@ -99,7 +114,16 @@ Deno.serve(async (req) => {
         concluido_at: new Date().toISOString(),
         erro_mensagem: null,
       })
-      .eq("id", job.id);
+      .eq("id", job.id)
+      .eq("status", "processando")
+      .select("id")
+      .maybeSingle();
+
+    // O cliente pode cancelar enquanto o worker está enviando o arquivo.
+    if (!concluido) {
+      await supabase.storage.from(bucket).remove([resultado_path]);
+      return respJson({ success: true, cancelado: true });
+    }
 
     if (job.origem === "whatsapp" && job.telefone) {
       const blocoLegenda = job.legenda_post ? `\n\n*Legenda sugerida:*\n${job.legenda_post}` : "";
