@@ -51,6 +51,7 @@ serve(async (req) => {
 
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')
 
     console.log(`🌍 TikTok env: ${isSandbox ? 'sandbox' : 'producao'} | client_key: ${TIKTOK_CLIENT_KEY}`)
 
@@ -59,20 +60,33 @@ serve(async (req) => {
       throw new Error(`Credenciais do TikTok ausentes para o ambiente ${isSandbox ? 'sandbox' : 'producao'}`)
     }
 
-
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-      throw new Error('Missing Supabase credentials')
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !SUPABASE_ANON_KEY) {
+      throw new Error('Credenciais do backend ausentes')
     }
 
     const { code, state } = await req.json()
+    const authorization = req.headers.get('Authorization')
+    if (!authorization) {
+      throw new Error('Sessão não autenticada')
+    }
+
+    const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authorization } },
+    })
+    const { data: authData, error: authError } = await authClient.auth.getUser()
+    if (authError || !authData.user) {
+      throw new Error('Sessão inválida ou expirada')
+    }
+    if (!state || state !== authData.user.id) {
+      throw new Error('Estado OAuth inválido para esta sessão')
+    }
 
     if (!code) {
       throw new Error('No authorization code provided')
     }
 
     console.log('🔄 Exchanging code for access token...')
-    console.log('📍 Code:', code.substring(0, 20) + '...')
-    console.log('📍 State (user_id):', state)
+    console.log('📍 Code recebido para a sessão autenticada')
 
     // Usar sempre o redirect_uri fixo (mesmo usado na autorização)
     const redirectUri = 'https://amzofertas.com.br/tiktok/callback'
@@ -132,11 +146,11 @@ serve(async (req) => {
 
     console.log('📅 Token expira em:', expiresAt.toISOString())
 
-    // Upsert integration record - usando user_id do state
+    // Upsert integration record usando o usuário autenticado, nunca um state confiado sozinho
     const { error: upsertError } = await supabase
       .from('integrations')
       .upsert({
-        user_id: state, // state contém o user_id
+        user_id: authData.user.id,
         platform: 'tiktok',
         access_token: access_token,
         refresh_token: refresh_token,

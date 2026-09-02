@@ -1,5 +1,6 @@
 import SiteLayout from "@/components/site/SiteLayout";
 import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 
 export default function Integracoes() {
   return (
@@ -23,18 +24,27 @@ export default function Integracoes() {
             </h2>
             <p className="text-muted-foreground mb-3 leading-relaxed">
               O usuário conecta sua própria conta do TikTok por OAuth. A AMZ
-              Ofertas envia vídeos ao perfil do cliente a partir do painel, mas
-              nunca publica sem ação explícita do usuário.
+              Ofertas envia vídeos ao perfil do cliente a partir do painel e
+              exige uma ação explícita antes de cada publicação.
+            </p>
+            <p className="text-muted-foreground mb-3 leading-relaxed">
+              No ambiente de testes, o conteúdo é enviado de forma privada ou
+              para revisão no aplicativo TikTok. Depois da aprovação da API, o
+              usuário poderá escolher as opções de visibilidade autorizadas
+              pela própria conta.
             </p>
             <p className="text-muted-foreground mb-3 leading-relaxed">
               <strong>Dados acessados:</strong> perfil básico do usuário, lista
               de contas vinculadas e status das publicações enviadas.
             </p>
-            <p className="text-muted-foreground leading-relaxed">
+            <p className="text-muted-foreground mb-4 leading-relaxed">
               <strong>Desconexão:</strong> a revogação do token pode ser feita
               em Configurações dentro da plataforma, ou diretamente nas
               configurações de aplicativos e sites do TikTok.
             </p>
+            <Button asChild>
+              <Link to="/login?next=/meus-produtos">Entrar e testar publicação</Link>
+            </Button>
           </section>
 
           <section className="bg-card border rounded-lg p-6">
