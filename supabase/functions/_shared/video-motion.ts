@@ -200,16 +200,20 @@ export async function gerarRoteiroMotion(
   userId: string,
   tema: string,
   opts?: { nomeFallback?: string | null },
-): Promise<{ props: MotionProps; legendaPost: string; usouIA: boolean }> {
+): Promise<{ props: MotionProps; legendaPost: string; usouIA: boolean; nomes: string[] }> {
   const ctx = await getTenantBusinessContext(sb, userId, { nomeFallback: opts?.nomeFallback });
   const nome = ctx.nome || "Sua empresa";
-  const base = { marca: sigla(nome), site: (ctx.site || "").replace(/^https?:\/\//, "") };
+  const nomes = nomesOficiais(nome, tema);
+  const base = { marca: sigla(nome), site: (ctx.site || "").replace(/^https?:\/\//, ""), nomes };
 
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
   const instrucao = `Você escreve roteiros de vídeos verticais (20-25s) para redes sociais.
 NEGÓCIO: ${nome}${ctx.segmento ? ` — ${ctx.segmento}` : ""}
 ${ctx.sobre ? `SOBRE: ${ctx.sobre}\n` : ""}${ctx.diferenciais ? `DIFERENCIAIS: ${ctx.diferenciais}\n` : ""}${ctx.publicoAlvo ? `PÚBLICO: ${ctx.publicoAlvo}\n` : ""}${ctx.produtos.length ? `PRODUTOS: ${ctx.produtos.slice(0, 6).join("; ")}\n` : ""}
 TEMA PEDIDO: ${tema}
+
+ATENÇÃO: o nome do negócio e as marcas citadas devem ser escritos EXATAMENTE assim, letra por letra: ${nomes.join(", ") || nome}. Nunca abrevie, traduza ou altere a grafia.
+
 
 Devolva SOMENTE JSON válido, sem markdown, neste formato:
 {
