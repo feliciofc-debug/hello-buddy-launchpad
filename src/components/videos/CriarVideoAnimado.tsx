@@ -188,7 +188,12 @@ export const CriarVideoAnimado = () => {
       if (!user) throw new Error('Sessão não encontrada');
 
       if (j.resultado_bucket && j.resultado_path) {
-        await supabase.storage.from(j.resultado_bucket).remove([j.resultado_path]);
+        try {
+          await supabase.storage.from(j.resultado_bucket).remove([j.resultado_path]);
+        } catch (storageErr: any) {
+          // Se o storage não permitir remover, apenas prossegue com o registro.
+          console.warn('[excluirVideo] Não foi possível remover arquivo do storage:', storageErr?.message);
+        }
       }
 
       const { error } = await supabase
