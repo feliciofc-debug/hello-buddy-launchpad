@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Upload, Video, Trash2, Play, Facebook, Instagram, BookOpen, Rocket } from 'lucide-react';
+import { Upload, Video, Trash2, Play, Facebook, Instagram, BookOpen, Rocket, Linkedin } from 'lucide-react';
 import { AutopilotModal } from '@/components/AutopilotModal';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -11,6 +11,7 @@ import { PublicarStoryModal } from '@/components/PublicarStoryModal';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { TikTokIcon } from '@/components/tiktok/TikTokIcon';
 import { TikTokShareModal } from '@/components/TikTokShareModal';
+import { PostarLinkedInVideoModal } from '@/components/videos/PostarLinkedInVideoModal';
 import { ReelsGeradosGrid } from './videos/ReelsGeradosGrid';
 
 interface VideoItem {
