@@ -337,6 +337,9 @@ const CTA: React.FC<
   const texto = interpolate(frame, [18, 44], [0, 1], { extrapolateRight: "clamp" });
   const linha = interpolate(frame, [38, 74], [0, 1], { extrapolateRight: "clamp" });
   const float = Math.sin(frame / 20) * 5;
+  const siteSeguro = /\bamz(?:\s+ofertas)?\b|amzofertas\.com\.br/i.test(marca)
+    ? site
+    : site?.replace(/(?:https?:\/\/)?(?:www\.)?amzofertas\.com\.br\/?/gi, "").trim();
 
   return (
     <AbsoluteFill style={{ ...font, alignItems: "center", justifyContent: "center" }}>
@@ -402,9 +405,9 @@ const CTA: React.FC<
           {telefone}
         </div>
       ) : null}
-      {site ? (
+      {siteSeguro ? (
         <div style={{ marginTop: 18, color: c.destaque, fontSize: 36, fontWeight: 700, opacity: linha, textAlign: "center" }}>
-          {site}
+          {siteSeguro}
         </div>
       ) : null}
     </AbsoluteFill>

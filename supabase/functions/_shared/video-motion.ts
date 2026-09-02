@@ -178,7 +178,10 @@ export function normalizarProps(
     marca,
     logo_path: typeof bruto?.logo_path === "string" ? bruto.logo_path : undefined,
     logoUrl: typeof bruto?.logoUrl === "string" ? bruto.logoUrl : undefined,
-    site: site || undefined,
+    // Não remover a chave quando estiver vazio. O Remotion combina inputProps
+    // com defaultProps; uma chave ausente poderia ressuscitar um site antigo
+    // existente no bundle em cache da VPS.
+    site,
     cores,
     hook: {
       kicker: limpar(bruto?.hook?.kicker, 28) || marca,

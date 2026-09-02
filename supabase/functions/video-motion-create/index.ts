@@ -106,7 +106,9 @@ Deno.serve(async (req) => {
 
     // O worker recebe um caminho interno e transforma-o em URL assinada curta no claim.
     // Assim a logo continua protegida e não expira enquanto o job aguarda na fila.
-    props = { ...props, logo_path: logoPath, logoUrl: undefined };
+    // `site` precisa existir até quando vazio para sobrescrever qualquer
+    // defaultProps antigo no bundle Remotion mantido pela VPS.
+    props = { ...props, site: props.site || "", logo_path: logoPath, logoUrl: undefined };
 
     if (body?.apenas_roteiro) {
       return json({
