@@ -168,7 +168,10 @@ export const AreaVideos = () => {
 
   return (
     <div className="space-y-6">
+      <CriarVideoAnimado />
+
       <ReelsGeradosGrid />
+
 
       <div className="flex items-center justify-between pt-2 gap-4 flex-wrap">
         <h2 className="text-xl font-semibold">📹 Vídeos Enviados</h2>
