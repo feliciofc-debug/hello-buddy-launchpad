@@ -55,6 +55,19 @@ const limparBruto = (s: unknown, max: number) =>
     .slice(0, max)
     .trim();
 
+const ehMarcaAmz = (marca: string) => /\bamz(?:\s+ofertas)?\b/i.test(marca);
+
+/** Evita que dados institucionais da plataforma vazem para peças white label. */
+const removerVestigiosAmz = (texto: string, marca: string) => {
+  if (!texto || ehMarcaAmz(marca)) return texto;
+  return texto
+    .replace(/(?:https?:\/\/)?(?:www\.)?amzofertas\.com\.br\/?/gi, "")
+    .replace(/\bAMZ\s+Ofertas\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[\s—|,:;-]+|[\s—|,:;-]+$/g, "")
+    .trim();
+};
+
 const sigla = (nome: string) => {
   const limpo = nome.replace(/[^\p{L}\p{N}\s]/gu, " ").trim();
   if (!limpo) return "SUA MARCA";
@@ -132,7 +145,11 @@ export function normalizarProps(
   ctx: { marca: string; site?: string; telefone?: string; consultor?: string; nomes?: string[] },
 ): MotionProps {
   const nomes = ctx.nomes ?? [];
-  const limpar = (s: unknown, max: number) => corrigirTexto(limparBruto(s, max), nomes);
+  const marcaBase = limparBruto(bruto?.marca || ctx.marca, 18) || "Sua marca";
+  const limpar = (s: unknown, max: number) => removerVestigiosAmz(
+    corrigirTexto(limparBruto(s, max), nomes),
+    marcaBase,
+  );
 
   const mensagensBrutas: any[] = Array.isArray(bruto?.chat?.mensagens) ? bruto.chat.mensagens : [];
   const mensagens: Mensagem[] = mensagensBrutas
@@ -155,8 +172,7 @@ export function normalizarProps(
 
   const cores = { ...PALETA_PADRAO, ...(bruto?.cores || {}) };
   const marca = limpar(bruto?.marca || ctx.marca, 18) || "Sua marca";
-  const siteBruto = limparBruto(bruto?.site ?? ctx.site, 40);
-  const site = /amzofertas\.com\.br/i.test(siteBruto) ? "" : siteBruto;
+  const site = removerVestigiosAmz(limparBruto(bruto?.site ?? ctx.site, 40), marca);
 
   return {
     marca,
@@ -209,11 +225,14 @@ export async function gerarRoteiroMotion(
 ): Promise<{ props: MotionProps; legendaPost: string; usouIA: boolean; nomes: string[] }> {
   const ctx = await getTenantBusinessContext(sb, userId, { nomeFallback: opts?.nomeFallback });
   // A marca informada no formulário manda: o vídeo é do cliente, não do tenant.
-  const nome = limparBruto(opts?.marca, 40) || ctx.nome || "Sua empresa";
+  const marcaInformada = limparBruto(opts?.marca, 40);
+  const nome = marcaInformada || ctx.nome || "Sua empresa";
   const nomes = nomesOficiais(nome, tema);
   const base = {
     marca: sigla(nome),
-    site: (ctx.site || "").replace(/^https?:\/\//, ""),
+    // Ao criar para outra marca, o site deve ser preenchido explicitamente no
+    // formulário. Nunca herdamos o domínio do tenant/plataforma nesse caso.
+    site: marcaInformada ? "" : (ctx.site || "").replace(/^https?:\/\//, ""),
     telefone: ctx.atendimentoTelefoneFmt || undefined,
     nomes,
   };
