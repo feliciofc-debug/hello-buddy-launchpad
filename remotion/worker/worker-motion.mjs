@@ -68,7 +68,7 @@ async function processar(job) {
       headers: { "Content-Type": job.upload.content_type, "x-upsert": "true" },
       body: bytes,
     });
-    if (!up.ok && up.status !== 409) throw new Error(`upload falhou: ${up.status}`);
+    if (!up.ok) throw new Error(`upload falhou: ${up.status} ${(await up.text()).slice(0, 200)}`);
 
     await chamar("video-motion-complete", {
       job_id: job.id,
