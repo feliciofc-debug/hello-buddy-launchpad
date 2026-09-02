@@ -67,8 +67,71 @@ const sigla = (nome: string) => {
     .toUpperCase();
 };
 
+// ---- Proteção do nome da marca -------------------------------------------
+// A IA às vezes erra a grafia do nome do cliente ("ADOMICON" em vez de
+// "ADEMICON"). Aqui reescrevemos qualquer palavra parecida com um nome
+// oficial do tenant pela grafia correta.
+
+const semAcento = (s: string) =>
+  s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+function distancia(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  if (Math.abs(m - n) > 2) return 99;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(
+        prev[j] + 1,
+        cur[j - 1] + 1,
+        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+
+/** Extrai nomes próprios candidatos (nome do negócio + palavras do tema). */
+export function nomesOficiais(nome: string, tema?: string): string[] {
+  const out: string[] = [];
+  const add = (p: string) => {
+    const limpo = p.replace(/[^\p{L}\p{N}]/gu, "");
+    if (limpo.length >= 5 && !out.some((o) => semAcento(o) === semAcento(limpo))) out.push(limpo);
+  };
+  String(nome ?? "").split(/\s+/).forEach(add);
+  String(tema ?? "")
+    .split(/\s+/)
+    .filter((p) => /^[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ]/.test(p))
+    .forEach(add);
+  return out;
+}
+
+function corrigirTexto(texto: string, nomes: string[]): string {
+  if (!texto || !nomes.length) return texto;
+  return texto.replace(/[\p{L}\p{N}]{5,}/gu, (palavra) => {
+    const alvo = semAcento(palavra);
+    for (const nome of nomes) {
+      const ref = semAcento(nome);
+      if (alvo === ref) return palavra;
+      if (distancia(alvo, ref) <= 2) {
+        // preserva o caixa-alta usado pela IA (ex.: "ADOMICON" -> "ADEMICON")
+        return palavra === palavra.toUpperCase() ? nome.toUpperCase() : nome;
+      }
+    }
+    return palavra;
+  });
+}
+
 /** Garante que o objeto vindo da IA (ou do usuário) é renderizável. */
-export function normalizarProps(bruto: any, ctx: { marca: string; site: string }): MotionProps {
+export function normalizarProps(
+  bruto: any,
+  ctx: { marca: string; site: string; nomes?: string[] },
+): MotionProps {
+  const nomes = ctx.nomes ?? [];
+  const limpar = (s: unknown, max: number) => corrigirTexto(limparBruto(s, max), nomes);
+
   const mensagensBrutas: any[] = Array.isArray(bruto?.chat?.mensagens) ? bruto.chat.mensagens : [];
   const mensagens: Mensagem[] = mensagensBrutas
     .slice(0, 6)
@@ -95,7 +158,7 @@ export function normalizarProps(bruto: any, ctx: { marca: string; site: string }
     marca,
     logo_path: typeof bruto?.logo_path === "string" ? bruto.logo_path : undefined,
     logoUrl: typeof bruto?.logoUrl === "string" ? bruto.logoUrl : undefined,
-    site: limpar(bruto?.site ?? ctx.site, 40),
+    site: limparBruto(bruto?.site ?? ctx.site, 40),
     cores,
     hook: {
       kicker: limpar(bruto?.hook?.kicker, 28) || marca,
@@ -120,6 +183,7 @@ export function normalizarProps(bruto: any, ctx: { marca: string; site: string }
     legendas: legendas.length ? legendas : linhas.length ? [linhas.join(" ")] : [],
   };
 }
+
 
 /** Duração aproximada em segundos (espelha framesTemplateAgente/30). */
 export function duracaoEstimada(props: MotionProps): number {
