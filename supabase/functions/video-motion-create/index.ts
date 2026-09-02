@@ -15,9 +15,11 @@ import { corsHeaders } from "../_shared/cors.ts";
 import {
   gerarRoteiroMotion,
   normalizarProps,
+  nomesOficiais,
   duracaoEstimada,
   type MotionProps,
 } from "../_shared/video-motion.ts";
+
 
 const PLATAFORMAS_OK = ["instagram", "facebook", "linkedin", "tiktok"];
 const LIMITE_FILA_POR_USUARIO = 3;
