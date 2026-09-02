@@ -179,7 +179,7 @@ export const CriarVideoAnimado = () => {
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Não consegui gerar o roteiro');
-      setProps({ ...data.props, logoUrl: logoUrl ?? undefined, cores: { ...cores, ...(data.props?.cores ?? {}) } });
+      setProps({ ...data.props, logoUrl: logoUrl ?? undefined, cores: { ...cores } });
       setLegendaPost(data.legenda_post || '');
       setDuracao(data.duracao_estimada ?? null);
       toast.success(data.usou_ia ? '✨ Roteiro gerado! Revise e ajuste.' : 'Roteiro base criado. Revise os textos.');
