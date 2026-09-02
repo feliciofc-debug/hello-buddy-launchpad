@@ -425,12 +425,22 @@ export const CriarVideoAnimado = () => {
                         <p className="text-xs text-destructive line-clamp-2">{j.erro_mensagem}</p>
                       )}
                       {url && (
-                        <Button asChild variant="outline" size="sm" className="w-full">
-                          <a href={url} download target="_blank" rel="noreferrer">
-                            <Download className="mr-2 h-3 w-3" /> Baixar
-                          </a>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                          disabled={baixando === j.id}
+                          onClick={() => baixarVideo(j, url)}
+                        >
+                          {baixando === j.id ? (
+                            <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                          ) : (
+                            <Download className="mr-2 h-3 w-3" />
+                          )}
+                          Salvar no computador
                         </Button>
                       )}
+
                     </div>
                   </div>
                 );
