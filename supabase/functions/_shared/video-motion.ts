@@ -58,6 +58,8 @@ const limparBruto = (s: unknown, max: number) =>
 const sigla = (nome: string) => {
   const limpo = nome.replace(/[^\p{L}\p{N}\s]/gu, " ").trim();
   if (!limpo) return "SUA MARCA";
+  // Marca curta cabe inteira no vídeo — sigla só para nomes longos.
+  if (limpo.length <= 14) return limpo;
   const palavras = limpo.split(/\s+/);
   if (palavras.length === 1) return palavras[0].slice(0, 8).toUpperCase();
   return palavras
@@ -152,7 +154,7 @@ export function normalizarProps(
     .filter(Boolean);
 
   const cores = { ...PALETA_PADRAO, ...(bruto?.cores || {}) };
-  const marca = limpar(bruto?.marca || ctx.marca, 12) || "Sua marca";
+  const marca = limpar(bruto?.marca || ctx.marca, 18) || "Sua marca";
   const siteBruto = limparBruto(bruto?.site ?? ctx.site, 40);
   const site = /amzofertas\.com\.br/i.test(siteBruto) ? "" : siteBruto;
 
@@ -203,10 +205,11 @@ export async function gerarRoteiroMotion(
   sb: SupabaseClient,
   userId: string,
   tema: string,
-  opts?: { nomeFallback?: string | null },
+  opts?: { nomeFallback?: string | null; marca?: string | null },
 ): Promise<{ props: MotionProps; legendaPost: string; usouIA: boolean; nomes: string[] }> {
   const ctx = await getTenantBusinessContext(sb, userId, { nomeFallback: opts?.nomeFallback });
-  const nome = ctx.nome || "Sua empresa";
+  // A marca informada no formulário manda: o vídeo é do cliente, não do tenant.
+  const nome = limparBruto(opts?.marca, 40) || ctx.nome || "Sua empresa";
   const nomes = nomesOficiais(nome, tema);
   const base = {
     marca: sigla(nome),

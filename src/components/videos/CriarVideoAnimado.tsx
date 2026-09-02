@@ -80,6 +80,7 @@ export const CriarVideoAnimado = () => {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoPath, setLogoPath] = useState<string | null>(null);
   const [subindoLogo, setSubindoLogo] = useState(false);
+  const [marcaCliente, setMarcaCliente] = useState('');
   const [paletaSelecionada, setPaletaSelecionada] = useState<keyof typeof PALETAS>('personalizada');
   const [cores, setCores] = useState<Record<string, string>>(PALETAS.personalizada.cores);
 
@@ -130,6 +131,7 @@ export const CriarVideoAnimado = () => {
 
   const selecionarPaleta = (nome: keyof typeof PALETAS) => {
     setPaletaSelecionada(nome);
+    if (nome !== 'personalizada' && !marcaCliente.trim()) setMarcaCliente(PALETAS[nome].label);
     setCores({ ...PALETAS[nome].cores });
     setProps((p) => (p ? { ...p, cores: { ...PALETAS[nome].cores } } : p));
   };
@@ -243,11 +245,16 @@ export const CriarVideoAnimado = () => {
     setGerando(true);
     try {
       const { data, error } = await supabase.functions.invoke('video-motion-create', {
-        body: { tema: tema.trim(), apenas_roteiro: true, cores },
+        body: { tema: tema.trim(), apenas_roteiro: true, cores, marca: marcaCliente.trim() || undefined },
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Não consegui gerar o roteiro');
-      setProps({ ...data.props, logoUrl: logoUrl ?? undefined, cores: { ...cores } });
+      setProps({
+        ...data.props,
+        marca: marcaCliente.trim() || data.props?.marca,
+        logoUrl: logoUrl ?? undefined,
+        cores: { ...cores },
+      });
       setLegendaPost(data.legenda_post || '');
       setDuracao(data.duracao_estimada ?? null);
       toast.success(data.usou_ia ? '✨ Roteiro gerado! Revise e ajuste.' : 'Roteiro base criado. Revise os textos.');
@@ -340,6 +347,17 @@ export const CriarVideoAnimado = () => {
               </label>
             ))}
           </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Nome da marca do cliente</Label>
+            <Input
+              value={marcaCliente}
+              onChange={(e) => { setMarcaCliente(e.target.value); setProps((p) => (p ? { ...p, marca: e.target.value } : p)); }}
+              placeholder="Ex.: Ademicon"
+              maxLength={18}
+            />
+            <p className="text-xs text-muted-foreground">É esse nome que aparece no vídeo quando não há logo anexada.</p>
+          </div>
+
           <div className="flex flex-wrap items-center gap-3">
             <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" id="motion-logo-upload" onChange={(e) => { const file = e.target.files?.[0]; if (file) handleLogo(file); e.currentTarget.value = ''; }} />
             <Button type="button" variant="outline" disabled={subindoLogo} onClick={() => document.getElementById('motion-logo-upload')?.click()}>
@@ -393,7 +411,7 @@ export const CriarVideoAnimado = () => {
                 <Input
                   value={props.marca}
                   onChange={(e) => setProps((p) => (p ? { ...p, marca: e.target.value } : p))}
-                  maxLength={12}
+                  maxLength={18}
                 />
               </div>
               {props.hook.linhas.map((l, i) => (
