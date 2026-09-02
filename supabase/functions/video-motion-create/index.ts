@@ -15,9 +15,11 @@ import { corsHeaders } from "../_shared/cors.ts";
 import {
   gerarRoteiroMotion,
   normalizarProps,
+  nomesOficiais,
   duracaoEstimada,
   type MotionProps,
 } from "../_shared/video-motion.ts";
+
 
 const PLATAFORMAS_OK = ["instagram", "facebook", "linkedin", "tiktok"];
 const LIMITE_FILA_POR_USUARIO = 3;
@@ -74,15 +76,20 @@ Deno.serve(async (req) => {
     let usouIA = false;
 
     if (body?.props) {
-      props = normalizarProps({ ...body.props, cores: body.props?.cores }, { marca: "AMZ", site: "" });
+      const nomes = nomesOficiais(String((user.user_metadata as any)?.nome ?? ""), tema);
+      props = normalizarProps({ ...body.props, cores: body.props?.cores }, { marca: "AMZ", site: "", nomes });
     } else {
       const r = await gerarRoteiroMotion(sb, user.id, tema, {
         nomeFallback: (user.user_metadata as any)?.nome ?? null,
       });
-      props = normalizarProps({ ...r.props, cores: body?.cores ?? r.props.cores }, { marca: r.props.marca, site: r.props.site });
+      props = normalizarProps(
+        { ...r.props, cores: body?.cores ?? r.props.cores },
+        { marca: r.props.marca, site: r.props.site, nomes: r.nomes },
+      );
       usouIA = r.usouIA;
       if (!legendaPost) legendaPost = r.legendaPost;
     }
+
 
     // O worker recebe um caminho interno e transforma-o em URL assinada curta no claim.
     // Assim a logo continua protegida e não expira enquanto o job aguarda na fila.

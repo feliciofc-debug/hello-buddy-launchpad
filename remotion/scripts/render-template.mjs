@@ -1,3 +1,4 @@
+import { existsSync } from "fs";
 // Renderiza uma composição paramétrica a partir de um JSON de props.
 // Uso: node scripts/render-template.mjs <composicao> <props.json> <saida.mp4>
 // É este script que o worker da VPS chama para cada job da fila.
@@ -26,7 +27,7 @@ const serveUrl = await bundle({
 });
 
 const browser = await openBrowser("chrome", {
-  browserExecutable: process.env.PUPPETEER_EXECUTABLE_PATH ?? "/bin/chromium",
+  browserExecutable: acharChromium(),
   chromiumOptions: { args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"] },
   chromeMode: "chrome-for-testing",
 });

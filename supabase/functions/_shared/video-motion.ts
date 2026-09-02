@@ -48,7 +48,7 @@ export const PALETA_PADRAO: MotionProps["cores"] = {
 const MODELO = "google/gemini-2.5-flash";
 const GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
-const limpar = (s: unknown, max: number) =>
+const limparBruto = (s: unknown, max: number) =>
   String(s ?? "")
     .replace(/\s+/g, " ")
     .replace(/^["'`\s]+|["'`\s]+$/g, "")
@@ -67,8 +67,71 @@ const sigla = (nome: string) => {
     .toUpperCase();
 };
 
+// ---- Proteção do nome da marca -------------------------------------------
+// A IA às vezes erra a grafia do nome do cliente ("ADOMICON" em vez de
+// "ADEMICON"). Aqui reescrevemos qualquer palavra parecida com um nome
+// oficial do tenant pela grafia correta.
+
+const semAcento = (s: string) =>
+  s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+function distancia(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  if (Math.abs(m - n) > 2) return 99;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(
+        prev[j] + 1,
+        cur[j - 1] + 1,
+        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+
+/** Extrai nomes próprios candidatos (nome do negócio + palavras do tema). */
+export function nomesOficiais(nome: string, tema?: string): string[] {
+  const out: string[] = [];
+  const add = (p: string) => {
+    const limpo = p.replace(/[^\p{L}\p{N}]/gu, "");
+    if (limpo.length >= 5 && !out.some((o) => semAcento(o) === semAcento(limpo))) out.push(limpo);
+  };
+  String(nome ?? "").split(/\s+/).forEach(add);
+  String(tema ?? "")
+    .split(/\s+/)
+    .filter((p) => /^[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ]/.test(p))
+    .forEach(add);
+  return out;
+}
+
+function corrigirTexto(texto: string, nomes: string[]): string {
+  if (!texto || !nomes.length) return texto;
+  return texto.replace(/[\p{L}\p{N}]{5,}/gu, (palavra) => {
+    const alvo = semAcento(palavra);
+    for (const nome of nomes) {
+      const ref = semAcento(nome);
+      if (alvo === ref) return palavra;
+      if (distancia(alvo, ref) <= 2) {
+        // preserva o caixa-alta usado pela IA (ex.: "ADOMICON" -> "ADEMICON")
+        return palavra === palavra.toUpperCase() ? nome.toUpperCase() : nome;
+      }
+    }
+    return palavra;
+  });
+}
+
 /** Garante que o objeto vindo da IA (ou do usuário) é renderizável. */
-export function normalizarProps(bruto: any, ctx: { marca: string; site: string }): MotionProps {
+export function normalizarProps(
+  bruto: any,
+  ctx: { marca: string; site: string; nomes?: string[] },
+): MotionProps {
+  const nomes = ctx.nomes ?? [];
+  const limpar = (s: unknown, max: number) => corrigirTexto(limparBruto(s, max), nomes);
+
   const mensagensBrutas: any[] = Array.isArray(bruto?.chat?.mensagens) ? bruto.chat.mensagens : [];
   const mensagens: Mensagem[] = mensagensBrutas
     .slice(0, 6)
@@ -95,7 +158,7 @@ export function normalizarProps(bruto: any, ctx: { marca: string; site: string }
     marca,
     logo_path: typeof bruto?.logo_path === "string" ? bruto.logo_path : undefined,
     logoUrl: typeof bruto?.logoUrl === "string" ? bruto.logoUrl : undefined,
-    site: limpar(bruto?.site ?? ctx.site, 40),
+    site: limparBruto(bruto?.site ?? ctx.site, 40),
     cores,
     hook: {
       kicker: limpar(bruto?.hook?.kicker, 28) || marca,
@@ -121,6 +184,7 @@ export function normalizarProps(bruto: any, ctx: { marca: string; site: string }
   };
 }
 
+
 /** Duração aproximada em segundos (espelha framesTemplateAgente/30). */
 export function duracaoEstimada(props: MotionProps): number {
   const frames = 190 + (40 + Math.max(1, props.chat.mensagens.length) * 52 + 70) + 170 - 60;
@@ -136,16 +200,20 @@ export async function gerarRoteiroMotion(
   userId: string,
   tema: string,
   opts?: { nomeFallback?: string | null },
-): Promise<{ props: MotionProps; legendaPost: string; usouIA: boolean }> {
+): Promise<{ props: MotionProps; legendaPost: string; usouIA: boolean; nomes: string[] }> {
   const ctx = await getTenantBusinessContext(sb, userId, { nomeFallback: opts?.nomeFallback });
   const nome = ctx.nome || "Sua empresa";
-  const base = { marca: sigla(nome), site: (ctx.site || "").replace(/^https?:\/\//, "") };
+  const nomes = nomesOficiais(nome, tema);
+  const base = { marca: sigla(nome), site: (ctx.site || "").replace(/^https?:\/\//, ""), nomes };
 
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
   const instrucao = `Você escreve roteiros de vídeos verticais (20-25s) para redes sociais.
 NEGÓCIO: ${nome}${ctx.segmento ? ` — ${ctx.segmento}` : ""}
 ${ctx.sobre ? `SOBRE: ${ctx.sobre}\n` : ""}${ctx.diferenciais ? `DIFERENCIAIS: ${ctx.diferenciais}\n` : ""}${ctx.publicoAlvo ? `PÚBLICO: ${ctx.publicoAlvo}\n` : ""}${ctx.produtos.length ? `PRODUTOS: ${ctx.produtos.slice(0, 6).join("; ")}\n` : ""}
 TEMA PEDIDO: ${tema}
+
+ATENÇÃO: o nome do negócio e as marcas citadas devem ser escritos EXATAMENTE assim, letra por letra: ${nomes.join(", ") || nome}. Nunca abrevie, traduza ou altere a grafia.
+
 
 Devolva SOMENTE JSON válido, sem markdown, neste formato:
 {
@@ -178,8 +246,9 @@ Regras: 4 ou 6 mensagens no chat, alternando dono/agente, linguagem simples de b
         const bruto = JSON.parse(txt.replace(/^```json|```$/g, "").trim());
         return {
           props: normalizarProps(bruto, base),
-          legendaPost: limpar(bruto?.legenda_post, 1200),
+          legendaPost: corrigirTexto(limparBruto(bruto?.legenda_post, 1200), nomes),
           usouIA: true,
+          nomes,
         };
       }
     } catch (e) {
@@ -216,5 +285,6 @@ Regras: 4 ou 6 mensagens no chat, alternando dono/agente, linguagem simples de b
     props,
     legendaPost: `${tema}\n\n${nome} — atendimento direto pelo WhatsApp.`,
     usouIA: false,
+    nomes,
   };
 }
