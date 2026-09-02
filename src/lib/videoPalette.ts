@@ -37,5 +37,8 @@ export function validarPaleta(cores: Record<string, string>): string | null {
   if (contraste(cores.bg2, cores.texto) < 4.5) {
     return 'O segundo fundo e a cor do texto precisam ter mais contraste.';
   }
+  if (contraste(cores.panel, textoSobre(cores.panel)) < 4.5) {
+    return 'A cor do painel precisa ter contraste suficiente para as legendas.';
+  }
   return null;
 }

@@ -266,8 +266,8 @@ const Chat: React.FC<{ c: Paleta; marca: string; logoUrl?: string } & TemplateAg
           background: c.panel,
           border: `2px solid ${c.line}`,
           boxShadow: ehClaro(c.bg)
-            ? `0 40px 90px ${rgba("#0b1220", 0.16)}`
-            : `0 60px 120px ${rgba("#000000", 0.55)}`,
+            ? `0 40px 90px ${rgba(c.bg, 0.16)}`
+            : `0 60px 120px ${rgba(c.bg, 0.55)}`,
 
           overflow: "hidden",
           position: "relative",
@@ -483,8 +483,7 @@ export const TemplateAgente: React.FC<TemplateAgenteProps> = (props) => {
 };
 
 export const PROPS_EXEMPLO: TemplateAgenteProps = {
-  marca: "AMZ",
-  site: "amzofertas.com.br",
+  marca: "SUA MARCA",
   cores: PALETA_AMZ,
   hook: {
     kicker: "Agente no WhatsApp",
