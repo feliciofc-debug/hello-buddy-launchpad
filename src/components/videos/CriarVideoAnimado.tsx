@@ -632,9 +632,9 @@ export const CriarVideoAnimado = () => {
                       {url && (
                         <Button
                           size="sm"
-                          className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white"
+                          className="w-full"
                           disabled={enviandoBiblioteca === j.id}
-                          onClick={() => enviarParaAreaVideos(j, url)}
+                          onClick={() => enviarParaAreaVideos(j)}
                         >
                           {enviandoBiblioteca === j.id ? (
                             <Loader2 className="mr-2 h-3 w-3 animate-spin" />
@@ -642,6 +642,22 @@ export const CriarVideoAnimado = () => {
                             <Send className="mr-2 h-3 w-3" />
                           )}
                           Enviar para vídeos
+                        </Button>
+                      )}
+                      {url && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                          disabled={baixando === j.id}
+                          onClick={() => baixarVideo(j, url)}
+                        >
+                          {baixando === j.id ? (
+                            <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                          ) : (
+                            <Download className="mr-2 h-3 w-3" />
+                          )}
+                          Salvar no computador
                         </Button>
                       )}
                       {emAndamento && (
