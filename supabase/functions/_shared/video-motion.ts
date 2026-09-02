@@ -57,7 +57,7 @@ const limparBruto = (s: unknown, max: number) =>
 
 const sigla = (nome: string) => {
   const limpo = nome.replace(/[^\p{L}\p{N}\s]/gu, " ").trim();
-  if (!limpo) return "AMZ";
+  if (!limpo) return "SUA MARCA";
   const palavras = limpo.split(/\s+/);
   if (palavras.length === 1) return palavras[0].slice(0, 8).toUpperCase();
   return palavras
