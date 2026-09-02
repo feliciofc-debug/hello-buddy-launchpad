@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Sparkles, Clapperboard, Wand2, Clock, Download, RefreshCw, Upload, Palette, Ban } from 'lucide-react';
+import { Loader2, Sparkles, Clapperboard, Wand2, Clock, Download, RefreshCw, Upload, Palette, Ban, Send, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { validarPaleta } from '@/lib/videoPalette';
@@ -177,7 +177,76 @@ export const CriarVideoAnimado = () => {
     }
   };
 
+  const [excluindo, setExcluindo] = useState<string | null>(null);
+  const [enviandoBiblioteca, setEnviandoBiblioteca] = useState<string | null>(null);
+
+  const excluirVideo = async (j: Job) => {
+    if (!confirm('Excluir este vídeo animado? Essa ação não pode ser desfeita.')) return;
+    setExcluindo(j.id);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Sessão não encontrada');
+
+      if (j.resultado_bucket && j.resultado_path) {
+        await supabase.storage.from(j.resultado_bucket).remove([j.resultado_path]);
+      }
+
+      const { error } = await supabase
+        .from('video_motion_jobs')
+        .delete()
+        .eq('id', j.id)
+        .eq('user_id', user.id);
+      if (error) throw error;
+
+      setJobs((atuais) => atuais.filter((job) => job.id !== j.id));
+      toast.success('Vídeo excluído.');
+    } catch (e: any) {
+      toast.error(e?.message || 'Não foi possível excluir o vídeo.');
+    } finally {
+      setExcluindo(null);
+    }
+  };
+
+  const enviarParaAreaVideos = async (j: Job, url: string) => {
+    setEnviandoBiblioteca(j.id);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Sessão não encontrada');
+
+      const { data: existente } = await supabase
+        .from('videos_produtos' as any)
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('video_url', url)
+        .maybeSingle();
+
+      if (existente) {
+        toast.info('Este vídeo já está na área de vídeos.');
+        return;
+      }
+
+      const { error } = await supabase
+        .from('videos_produtos' as any)
+        .insert({
+          user_id: user.id,
+          titulo: j.titulo || 'Vídeo animado',
+          video_url: url,
+          duracao_segundos: j.duracao_segundos,
+          tipo: 'reels',
+          status: 'disponivel',
+        } as any);
+      if (error) throw error;
+
+      toast.success('Enviado para a área de vídeos. Já pode publicar ou agendar.');
+    } catch (e: any) {
+      toast.error(e?.message || 'Não foi possível enviar para a área de vídeos.');
+    } finally {
+      setEnviandoBiblioteca(null);
+    }
+  };
+
   const baixarVideo = async (j: Job, url: string) => {
+
     setBaixando(j.id);
     try {
       let blob: Blob | null = null;
@@ -555,6 +624,21 @@ export const CriarVideoAnimado = () => {
                           Salvar no computador
                         </Button>
                       )}
+                      {url && (
+                        <Button
+                          size="sm"
+                          className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white"
+                          disabled={enviandoBiblioteca === j.id}
+                          onClick={() => enviarParaAreaVideos(j, url)}
+                        >
+                          {enviandoBiblioteca === j.id ? (
+                            <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                          ) : (
+                            <Send className="mr-2 h-3 w-3" />
+                          )}
+                          Enviar para vídeos
+                        </Button>
+                      )}
                       {emAndamento && (
                         <Button
                           variant="outline"
@@ -571,6 +655,23 @@ export const CriarVideoAnimado = () => {
                           Cancelar renderização
                         </Button>
                       )}
+                      {!emAndamento && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full text-destructive hover:text-destructive"
+                          disabled={excluindo === j.id}
+                          onClick={() => excluirVideo(j)}
+                        >
+                          {excluindo === j.id ? (
+                            <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                          ) : (
+                            <Trash2 className="mr-2 h-3 w-3" />
+                          )}
+                          Excluir vídeo
+                        </Button>
+                      )}
+
 
                     </div>
                   </div>
