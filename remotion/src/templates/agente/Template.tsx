@@ -18,6 +18,7 @@ import { TransitionSeries, springTiming } from "@remotion/transitions";
 import { slide } from "@remotion/transitions/slide";
 import { fade } from "@remotion/transitions/fade";
 import { font } from "../../font";
+import { ehClaro, rgba, textoSobre } from "./contraste";
 
 // ---------- contrato de props ----------
 
@@ -35,15 +36,16 @@ export type Paleta = {
 };
 
 export type TemplateAgenteProps = {
-  marca: string; // sigla exibida no logo/CTA quando NÃO há logoUrl (ex.: "AMZ")
+  marca: string; // sigla exibida no logo/CTA quando NÃO há logoUrl (ex.: iniciais da marca)
   logoUrl?: string; // logo do cliente (URL assinada ou data URL) — quando existe, substitui a sigla
-  site: string; // rodapé do CTA (ex.: "amzofertas.com.br")
+  site?: string; // opcional — site DO CLIENTE, nunca fallback de outra marca
   cores: Paleta;
   hook: { kicker: string; linhas: string[]; destaque?: string; sub?: string };
   chat: { titulo: string; tituloDestaque?: string; mensagens: Mensagem[] };
-  cta: { frase: string; sub?: string };
+  cta: { frase: string; sub?: string; telefone?: string; consultor?: string };
   legendas: string[];
 };
+
 
 export const PALETA_AMZ: Paleta = {
   bg: "#0f1720",
@@ -205,8 +207,9 @@ const Bolha: React.FC<{ c: Paleta; m: Mensagem; from: number }> = ({ c, m, from 
         opacity: s,
         transform: `translateY(${interpolate(s, [0, 1], [40, 0])}px)`,
         background: dono ? `linear-gradient(135deg, ${c.destaque}, ${c.destaqueSoft})` : c.bg2,
-        color: dono ? "#151515" : c.texto,
+        color: dono ? textoSobre(c.destaque) : c.texto,
         border: dono ? "none" : `1px solid ${c.line}`,
+
         borderRadius: 22,
         borderBottomRightRadius: dono ? 6 : 22,
         borderBottomLeftRadius: dono ? 22 : 6,
@@ -262,7 +265,10 @@ const Chat: React.FC<{ c: Paleta; marca: string; logoUrl?: string } & TemplateAg
           borderRadius: 56,
           background: c.panel,
           border: `2px solid ${c.line}`,
-          boxShadow: "0 60px 120px rgba(0,0,0,0.55)",
+          boxShadow: ehClaro(c.bg)
+            ? `0 40px 90px ${rgba(c.bg, 0.16)}`
+            : `0 60px 120px ${rgba(c.bg, 0.55)}`,
+
           overflow: "hidden",
           position: "relative",
           transform: `translateY(${interpolate(entrada, [0, 1], [220, 110])}px) scale(${interpolate(
@@ -314,7 +320,7 @@ const Chat: React.FC<{ c: Paleta; marca: string; logoUrl?: string } & TemplateAg
 };
 
 const CTA: React.FC<
-  { c: Paleta; marca: string; logoUrl?: string; site: string } & TemplateAgenteProps["cta"]
+  { c: Paleta; marca: string; logoUrl?: string; site?: string } & TemplateAgenteProps["cta"]
 > = ({
   c,
   marca,
@@ -322,6 +328,8 @@ const CTA: React.FC<
   site,
   frase,
   sub,
+  telefone,
+  consultor,
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -337,11 +345,11 @@ const CTA: React.FC<
           width: 200,
           height: 200,
           borderRadius: 52,
-          background: logoUrl ? "#ffffff" : `linear-gradient(135deg, ${c.destaque}, ${c.destaqueSoft})`,
+          background: logoUrl ? c.bg2 : `linear-gradient(135deg, ${c.destaque}, ${c.destaqueSoft})`,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "#151515",
+          color: logoUrl ? c.texto : textoSobre(c.destaque),
           fontSize:
             marca.length <= 3 ? 78 : marca.length === 4 ? 62 : marca.length === 5 ? 50 : marca.length <= 8 ? 34 : 26,
           fontWeight: 800,
@@ -351,7 +359,7 @@ const CTA: React.FC<
           padding: 14,
           overflowWrap: "anywhere",
           transform: `scale(${logo}) translateY(${float}px)`,
-          boxShadow: `0 40px 90px ${c.destaque}44`,
+          boxShadow: `0 40px 90px ${rgba(c.destaque, ehClaro(c.bg) ? 0.18 : 0.32)}`,
         }}
       >
         {logoUrl ? (
@@ -384,8 +392,18 @@ const CTA: React.FC<
           {sub}
         </div>
       ) : null}
+      {consultor ? (
+        <div style={{ marginTop: 22, color: c.texto, fontSize: 30, fontWeight: 700, opacity: linha, textAlign: "center" }}>
+          {consultor}
+        </div>
+      ) : null}
+      {telefone ? (
+        <div style={{ marginTop: 12, color: c.suave, fontSize: 30, opacity: linha, textAlign: "center" }}>
+          {telefone}
+        </div>
+      ) : null}
       {site ? (
-        <div style={{ marginTop: 26, color: c.destaque, fontSize: 40, fontWeight: 700, opacity: linha }}>
+        <div style={{ marginTop: 18, color: c.destaque, fontSize: 36, fontWeight: 700, opacity: linha, textAlign: "center" }}>
           {site}
         </div>
       ) : null}
@@ -403,11 +421,11 @@ const LinhaLegenda: React.FC<{ c: Paleta; text: string }> = ({ c, text }) => {
           marginBottom: 150,
           maxWidth: 900,
           textAlign: "center",
-          background: "rgba(8,12,18,0.72)",
+          background: rgba(c.panel, 0.9),
           border: `1px solid ${c.line}`,
           borderRadius: 20,
           padding: "20px 30px",
-          color: c.texto,
+          color: textoSobre(c.panel),
           fontSize: 40,
           fontWeight: 600,
           lineHeight: 1.25,
@@ -465,8 +483,7 @@ export const TemplateAgente: React.FC<TemplateAgenteProps> = (props) => {
 };
 
 export const PROPS_EXEMPLO: TemplateAgenteProps = {
-  marca: "AMZ",
-  site: "amzofertas.com.br",
+  marca: "SUA MARCA",
   cores: PALETA_AMZ,
   hook: {
     kicker: "Agente no WhatsApp",

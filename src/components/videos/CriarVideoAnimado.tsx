@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, Sparkles, Clapperboard, Wand2, Clock, Download, RefreshCw, Upload, Palette, Ban } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { validarPaleta } from '@/lib/videoPalette';
 
 type Mensagem = { de: 'dono' | 'agente'; texto: string };
 
@@ -21,11 +22,11 @@ type MotionProps = {
   marca: string;
   logoUrl?: string;
   logo_path?: string;
-  site: string;
+  site?: string;
   cores: Record<string, string>;
   hook: { kicker: string; linhas: string[]; destaque?: string; sub?: string };
   chat: { titulo: string; tituloDestaque?: string; mensagens: Mensagem[] };
-  cta: { frase: string; sub?: string };
+  cta: { frase: string; sub?: string; telefone?: string; consultor?: string };
   legendas: string[];
 };
 
@@ -259,6 +260,11 @@ export const CriarVideoAnimado = () => {
 
   const enviarParaFila = async () => {
     if (!props) return;
+    const erroPaleta = validarPaleta(props.cores);
+    if (erroPaleta) {
+      toast.error(erroPaleta);
+      return;
+    }
     setEnviando(true);
     try {
       const { data, error } = await supabase.functions.invoke('video-motion-create', {
@@ -428,11 +434,30 @@ export const CriarVideoAnimado = () => {
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Site / contato</Label>
+                <Label className="text-xs">Site do cliente (opcional)</Label>
                 <Input
-                  value={props.site}
-                  onChange={(e) => setProps((p) => (p ? { ...p, site: e.target.value } : p))}
+                  value={props.site || ''}
+                  onChange={(e) => setProps((p) => (p ? { ...p, site: e.target.value || undefined } : p))}
+                  placeholder="ex.: www.ademicon.com.br"
                   maxLength={40}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Nome do consultor (opcional)</Label>
+                <Input
+                  value={props.cta.consultor || ''}
+                  onChange={(e) => setProps((p) => (p ? { ...p, cta: { ...p.cta, consultor: e.target.value || undefined } } : p))}
+                  placeholder="Ex.: Marcelo Silva"
+                  maxLength={40}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Telefone ou WhatsApp (opcional)</Label>
+                <Input
+                  value={props.cta.telefone || ''}
+                  onChange={(e) => setProps((p) => (p ? { ...p, cta: { ...p.cta, telefone: e.target.value || undefined } } : p))}
+                  placeholder="Ex.: (21) 99999-9999"
+                  maxLength={30}
                 />
               </div>
             </div>
