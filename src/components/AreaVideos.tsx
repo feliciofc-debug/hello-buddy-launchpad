@@ -12,6 +12,7 @@ import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { TikTokIcon } from '@/components/tiktok/TikTokIcon';
 import { TikTokShareModal } from '@/components/TikTokShareModal';
 import { PostarLinkedInVideoModal } from '@/components/videos/PostarLinkedInVideoModal';
+import { CriarVideoAnimado } from '@/components/videos/CriarVideoAnimado';
 import { ReelsGeradosGrid } from './videos/ReelsGeradosGrid';
 
 interface VideoItem {
