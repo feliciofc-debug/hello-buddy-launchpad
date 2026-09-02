@@ -207,39 +207,44 @@ export const CriarVideoAnimado = () => {
     }
   };
 
-  const enviarParaAreaVideos = async (j: Job, url: string) => {
+  const enviarParaAreaVideos = async (j: Job) => {
     setEnviandoBiblioteca(j.id);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Sessão não encontrada');
+      if (!j.resultado_bucket || !j.resultado_path) throw new Error('Arquivo de vídeo não encontrado');
 
-      const { data: existente } = await supabase
-        .from('videos_produtos' as any)
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('video_url', url)
-        .maybeSingle();
-
-      if (existente) {
-        toast.info('Este vídeo já está na área de vídeos.');
-        return;
+      let blob: Blob | null = null;
+      const { data: downloaded, error: downloadError } = await supabase.storage.from(j.resultado_bucket).download(j.resultado_path);
+      if (downloadError) throw downloadError;
+      blob = downloaded;
+      if (!blob) {
+        const resp = await fetch(urls[j.id] || '');
+        if (!resp.ok) throw new Error('Não foi possível baixar o vídeo');
+        blob = await resp.blob();
       }
 
-      const { error } = await supabase
-        .from('videos_produtos' as any)
-        .insert({
-          user_id: user.id,
-          titulo: j.titulo || 'Vídeo animado',
-          video_url: url,
-          duracao_segundos: j.duracao_segundos,
-          tipo: 'reels',
-          status: 'disponivel',
-        } as any);
+      const destPath = `${user.id}/${Date.now()}-${j.id}.mp4`;
+      const { error: uploadError } = await supabase.storage.from('produto-videos').upload(destPath, blob, { contentType: 'video/mp4' });
+      if (uploadError) throw uploadError;
+
+      const { data: pub } = supabase.storage.from('produto-videos').getPublicUrl(destPath);
+      const videoUrl = pub?.publicUrl || '';
+
+      const { error } = await supabase.from('produto_videos' as any).insert({
+        user_id: user.id,
+        titulo: j.titulo || 'Vídeo animado',
+        legenda: j.legenda_post || '',
+        video_url: videoUrl,
+        duracao_segundos: j.duracao_segundos,
+        tamanho_bytes: blob.size,
+        status: 'pronto',
+      } as any);
       if (error) throw error;
 
-      toast.success('Enviado para a área de vídeos. Já pode publicar ou agendar.');
+      toast.success('Vídeo enviado para a área de vídeos. Agora é só publicar ou agendar.');
     } catch (e: any) {
-      toast.error(e?.message || 'Não foi possível enviar para a área de vídeos.');
+      toast.error(e?.message || 'Não foi possível enviar o vídeo para a área de vídeos.');
     } finally {
       setEnviandoBiblioteca(null);
     }
@@ -627,9 +632,9 @@ export const CriarVideoAnimado = () => {
                       {url && (
                         <Button
                           size="sm"
-                          className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white"
+                          className="w-full"
                           disabled={enviandoBiblioteca === j.id}
-                          onClick={() => enviarParaAreaVideos(j, url)}
+                          onClick={() => enviarParaAreaVideos(j)}
                         >
                           {enviandoBiblioteca === j.id ? (
                             <Loader2 className="mr-2 h-3 w-3 animate-spin" />
@@ -637,6 +642,22 @@ export const CriarVideoAnimado = () => {
                             <Send className="mr-2 h-3 w-3" />
                           )}
                           Enviar para vídeos
+                        </Button>
+                      )}
+                      {url && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                          disabled={baixando === j.id}
+                          onClick={() => baixarVideo(j, url)}
+                        >
+                          {baixando === j.id ? (
+                            <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                          ) : (
+                            <Download className="mr-2 h-3 w-3" />
+                          )}
+                          Salvar no computador
                         </Button>
                       )}
                       {emAndamento && (
