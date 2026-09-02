@@ -306,6 +306,15 @@ export const AreaVideos = () => {
                   )}
                   <Button
                     size="sm"
+                    className="flex-1 bg-[#0A66C2] text-white text-xs hover:bg-[#004182]"
+                    onClick={() => setLinkedinVideo(video)}
+                  >
+                    <Linkedin className="mr-1 h-3 w-3" />
+                    LinkedIn
+                  </Button>
+                  <Button
+
+                    size="sm"
                     variant="destructive"
                     onClick={() => handleDelete(video.id)}
                   >
