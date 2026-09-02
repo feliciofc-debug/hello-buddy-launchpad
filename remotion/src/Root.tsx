@@ -1,13 +1,20 @@
 import { Composition } from "remotion";
 import { MainVideo } from "./MainVideo";
+import { Dia01, DIA01_FRAMES } from "./videos/Dia01";
+import { Dia02, DIA02_FRAMES } from "./videos/Dia02";
+import { Dia03, DIA03_FRAMES } from "./videos/Dia03";
+import { Dia04, DIA04_FRAMES } from "./videos/Dia04";
+import { Dia05, DIA05_FRAMES } from "./videos/Dia05";
+
+const base = { fps: 30, width: 1080, height: 1920 } as const;
 
 export const RemotionRoot = () => (
-  <Composition
-    id="main"
-    component={MainVideo}
-    durationInFrames={620}
-    fps={30}
-    width={1080}
-    height={1920}
-  />
+  <>
+    <Composition id="main" component={MainVideo} durationInFrames={620} {...base} />
+    <Composition id="dia01" component={Dia01} durationInFrames={DIA01_FRAMES} {...base} />
+    <Composition id="dia02" component={Dia02} durationInFrames={DIA02_FRAMES} {...base} />
+    <Composition id="dia03" component={Dia03} durationInFrames={DIA03_FRAMES} {...base} />
+    <Composition id="dia04" component={Dia04} durationInFrames={DIA04_FRAMES} {...base} />
+    <Composition id="dia05" component={Dia05} durationInFrames={DIA05_FRAMES} {...base} />
+  </>
 );
