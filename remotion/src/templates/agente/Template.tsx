@@ -207,8 +207,9 @@ const Bolha: React.FC<{ c: Paleta; m: Mensagem; from: number }> = ({ c, m, from 
         opacity: s,
         transform: `translateY(${interpolate(s, [0, 1], [40, 0])}px)`,
         background: dono ? `linear-gradient(135deg, ${c.destaque}, ${c.destaqueSoft})` : c.bg2,
-        color: dono ? "#151515" : c.texto,
+        color: dono ? textoSobre(c.destaque) : c.texto,
         border: dono ? "none" : `1px solid ${c.line}`,
+
         borderRadius: 22,
         borderBottomRightRadius: dono ? 6 : 22,
         borderBottomLeftRadius: dono ? 22 : 6,
