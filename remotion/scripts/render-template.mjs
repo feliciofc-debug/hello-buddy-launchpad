@@ -21,6 +21,20 @@ if (!propsPath) {
 
 const inputProps = JSON.parse(fs.readFileSync(propsPath, "utf8"));
 
+// Detecta o navegador disponível. Se nada existir, deixa null: o Remotion baixa um.
+function acharChromium() {
+  const candidatos = [
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/snap/bin/chromium",
+  ].filter(Boolean);
+  for (const c of candidatos) if (existsSync(c)) return c;
+  return null;
+}
+
 const serveUrl = await bundle({
   entryPoint: path.resolve(__dirname, "../src/index.ts"),
   webpackOverride: (c) => c,
