@@ -46,7 +46,9 @@ export const AreaVideos = () => {
     description?: string;
   } | null>(null);
   const [autopilotOpen, setAutopilotOpen] = useState(false);
+  const [linkedinVideo, setLinkedinVideo] = useState<VideoItem | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
 
   const handleStoryPublished = async (
     videoId: string,
