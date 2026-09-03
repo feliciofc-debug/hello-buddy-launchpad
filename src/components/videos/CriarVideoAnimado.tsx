@@ -420,7 +420,14 @@ export const CriarVideoAnimado = () => {
     setGerando(true);
     try {
       const { data, error } = await supabase.functions.invoke('video-motion-create', {
-        body: { tema: tema.trim(), apenas_roteiro: true, cores, marca: marcaCliente.trim() || undefined },
+        body: {
+          tema: tema.trim(),
+          apenas_roteiro: true,
+          cores,
+          marca: marcaCliente.trim() || undefined,
+          trilha_id: semTrilha ? undefined : trilhaId || undefined,
+          sem_trilha: semTrilha,
+        },
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Não consegui gerar o roteiro');
@@ -456,6 +463,9 @@ export const CriarVideoAnimado = () => {
           props: { ...props, site: props.site?.trim() || '' },
           legenda_post: legendaPost,
           formato: 'reels',
+          trilha_id: semTrilha ? undefined : trilhaId || props.trilha_id || undefined,
+          sem_trilha: semTrilha,
+          trilha_volume: props.trilha_volume ?? 0.28,
         },
       });
       if (error) throw error;
@@ -547,6 +557,50 @@ export const CriarVideoAnimado = () => {
             </Button>
             {logoUrl && <img src={logoUrl} alt="Logo do cliente" className="h-10 max-w-[160px] rounded border bg-background object-contain p-1" />}
             <span className="text-xs text-muted-foreground">A logo e as cores escolhidas serão usadas no vídeo.</span>
+          </div>
+        </div>
+
+        <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <Label className="font-semibold">Trilha sonora</Label>
+              <p className="text-xs text-muted-foreground">Opcional. A faixa termina suavemente junto com o vídeo.</p>
+            </div>
+            <Badge variant="outline">0,28 volume</Badge>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <select
+              value={semTrilha ? '' : trilhaId ?? ''}
+              onChange={(e) => selecionarTrilha(e.target.value)}
+              className="h-10 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm"
+              aria-label="Selecionar trilha sonora"
+            >
+              <option value="">Sem trilha sonora</option>
+              {trilhas.map((faixa) => (
+                <option key={faixa.id} value={faixa.id}>
+                  {faixa.nome} — {faixa.mood}
+                </option>
+              ))}
+            </select>
+            <input
+              type="file"
+              accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/wav"
+              className="hidden"
+              id="motion-audio-upload"
+              onChange={(e) => { const file = e.target.files?.[0]; if (file) handleTrilha(file); e.currentTarget.value = ''; }}
+            />
+            <Button type="button" variant="outline" disabled={subindoTrilha} onClick={() => document.getElementById('motion-audio-upload')?.click()}>
+              {subindoTrilha ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+              Adicionar faixa
+            </Button>
+          </div>
+          {trilhas.length === 0 && <p className="text-xs text-muted-foreground">Sua biblioteca ainda está vazia. Adicione uma faixa própria ou licenciada.</p>}
+          {trilhaPreviewUrl && <audio src={trilhaPreviewUrl} controls className="w-full" aria-label="Prévia da trilha sonora" />}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="secondary" size="sm" onClick={definirTrilhaPadrao} disabled={!trilhaId && !semTrilha}>
+              Usar como padrão no Jarvis
+            </Button>
+            <span className="text-xs text-muted-foreground">O Jarvis usará essa escolha sem perguntar no WhatsApp.</span>
           </div>
         </div>
 
