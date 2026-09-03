@@ -43,6 +43,11 @@ export const ReelsGeradosGrid = () => {
   const [playingUrl, setPlayingUrl] = useState<string | null>(null);
   const [publishingReel, setPublishingReel] = useState<ReelGerado | null>(null);
   const [storyReel, setStoryReel] = useState<ReelGerado | null>(null);
+  // TikTok e LinkedIn ficam sempre disponíveis aqui: o fluxo de publicação é
+  // o mesmo dos vídeos de produto e não depende de plano nem de feature flag.
+  const [tiktokReel, setTiktokReel] = useState<ReelGerado | null>(null);
+  const [linkedinReel, setLinkedinReel] = useState<ReelGerado | null>(null);
+
 
   const handleStoryPublished = async (
     reelId: string,
