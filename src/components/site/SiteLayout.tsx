@@ -227,7 +227,31 @@ export default function SiteLayout({ children }: SiteLayoutProps) {
             </div>
           </div>
 
-          <div className="mt-12 pt-8 border-t text-center text-sm text-muted-foreground">
+          {/* Barra legal sempre visível (requisito TikTok App Review) */}
+          <div className="mt-10 pt-8 border-t flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-6">
+            <Link
+              to="/termos"
+              className="text-sm sm:text-base font-semibold text-foreground underline underline-offset-4 hover:text-primary transition"
+            >
+              Termos de Uso
+            </Link>
+            <span className="hidden sm:inline text-muted-foreground">·</span>
+            <Link
+              to="/politica-privacidade"
+              className="text-sm sm:text-base font-semibold text-foreground underline underline-offset-4 hover:text-primary transition"
+            >
+              Política de Privacidade
+            </Link>
+            <span className="hidden sm:inline text-muted-foreground">·</span>
+            <Link
+              to="/data-deletion"
+              className="text-sm sm:text-base font-semibold text-foreground underline underline-offset-4 hover:text-primary transition"
+            >
+              Exclusão de Dados
+            </Link>
+          </div>
+
+          <div className="mt-8 pt-6 border-t text-center text-sm text-muted-foreground">
             © {new Date().getFullYear()} ATOM BRASIL DIGITAL LTDA — CNPJ 22.003.550/0001-05
           </div>
         </div>
