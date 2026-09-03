@@ -4410,6 +4410,109 @@ async function toolPostarMidiaBiblioteca(
   }
 }
 
+// ============================================================
+// VÍDEO MOTION PELO WHATSAPP — roteiro + aprovação persistente.
+// O agente só enfileira depois de uma confirmação explícita do responsável.
+// ============================================================
+function normalizeVideoTopic(text: string): string {
+  return compactSpaces(text)
+    .replace(/^jarvis[,.!\s-]*/i, "")
+    .replace(/\b(por favor|pfv|pra mim|para mim)\b/gi, " ")
+    .replace(/\b(faz|faca|faça|cria|crie|monta|monte|gera|gere|produz|produza)\b/gi, " ")
+    .replace(/\b(um|uma|o|a)\s+(video|vídeo)\b/gi, " ")
+    .replace(/\b(video|vídeo)\s+(animado|motion|institucional|publicitario|publicitário)?\b/gi, " ")
+    .replace(/\b(para|pra|pro|no|na|em)\s+(whatsapp|instagram|insta|facebook|face|reels?|stories?)\b/gi, " ")
+    .replace(/\b(sem|com)\s+(juros|logo|legenda)\b/gi, " $1 $2 ")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s,;:.-]+|[\s,;:.-]+$/g, "")
+    .trim()
+    .slice(0, 240);
+}
+
+function isVideoMotionRequest(text: string): boolean {
+  const n = normalizePt(text || "");
+  return /\b(faz|faca|faça|cria|crie|monta|monte|gera|gere|produz|produza|quero|preciso)\b[\s\S]{0,80}\b(video|vídeo|motion|reels? animado)\b|\b(video|vídeo)\s+(animado|motion)\b/.test(n);
+}
+
+function isVideoApproval(text: string): boolean {
+  const n = normalizePt(compactSpaces(text || "")).replace(/[.!?]+$/g, "");
+  return /^(sim|ok|okay|pode|pode fazer|faz|faça|confirma|confirmo|aprovado|aprovada|manda ver|pode gerar|gera|gerar|vai|fechado|fechou)$/.test(n)
+    || /\b(aprovad[oa]|pode (fazer|gerar|renderizar)|manda ver|pode mandar|pode produzir)\b/.test(n);
+}
+
+function isVideoCancellation(text: string): boolean {
+  return /\b(cancel(a|ar)|nao|não|descarta|deixa pra la|deixa pra lá)\b/.test(normalizePt(text || ""));
+}
+
+function videoDraftToken(): string {
+  return crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+}
+
+function formatVideoDraft(props: any, tema: string, duracao: number): string {
+  const linhas = Array.isArray(props?.hook?.linhas) ? props.hook.linhas.filter(Boolean).join(" ") : "";
+  const mensagens = Array.isArray(props?.chat?.mensagens)
+    ? props.chat.mensagens.map((m: any) => `${m?.de === "dono" ? "Você" : "Agente"}: ${m?.texto || ""}`).filter((x: string) => !x.endsWith(": ")).join("\n")
+    : "";
+  const cta = props?.cta?.frase ? `\n\n*CTA:* ${props.cta.frase}` : "";
+  return `🎬 *Roteiro do vídeo — ${tema}*\n\n*Gancho:* ${linhas || "(não informado)"}\n\n*Conversa:*\n${mensagens || "(não informado)"}${cta}\n\nDuração estimada: ${duracao}s.\n\nResponda *APROVADO* para eu renderizar o MP4 (leva cerca de 4 minutos), ou me diga o que ajustar.`;
+}
+
+async function criarRascunhoVideoMotion(ctx: { userId: string; fromNumber: string }, tema: string): Promise<string> {
+  if (!isOwner(ctx)) return "Esse recurso é exclusivo do responsável da conta. Posso encaminhar o pedido para ele.";
+  const roteiro = await montarRoteiroMotion({ sb, userId: ctx.userId, tema, origem: "whatsapp", nomeFallback: null });
+  const token = videoDraftToken();
+  const { error } = await sb.from("video_motion_rascunhos").insert({
+    user_id: ctx.userId,
+    telefone: ctx.fromNumber,
+    token,
+    tema,
+    props: roteiro.props,
+    legenda_post: roteiro.legendaPost || null,
+    formato: "reels",
+    status: "aguardando_aprovacao",
+  });
+  if (error) throw new Error(`não consegui salvar o roteiro: ${error.message}`);
+  return `${formatVideoDraft(roteiro.props, tema, roteiro.props ? duracaoEstimada(roteiro.props) : 0)}\n\nCódigo de aprovação: *${token}*`;
+}
+
+async function buscarRascunhoVideo(ctx: { userId: string; fromNumber: string }): Promise<any | null> {
+  const { data, error } = await sb.from("video_motion_rascunhos")
+    .select("*")
+    .eq("user_id", ctx.userId)
+    .eq("telefone", ctx.fromNumber)
+    .eq("status", "aguardando_aprovacao")
+    .gt("expira_em", new Date().toISOString())
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (error) {
+    console.warn("[video-motion][draft-load]", error.message);
+    return null;
+  }
+  return data?.[0] ?? null;
+}
+
+async function confirmarRascunhoVideo(ctx: { userId: string; fromNumber: string }, cancelar = false): Promise<string> {
+  if (!isOwner(ctx)) return "A aprovação do vídeo só pode ser feita pelo responsável da conta.";
+  const draft = await buscarRascunhoVideo(ctx);
+  if (!draft) return "Não encontrei um roteiro de vídeo aguardando aprovação. Se quiser, peça um novo vídeo com o tema.";
+  if (cancelar) {
+    await sb.from("video_motion_rascunhos").update({ status: "cancelado" }).eq("id", draft.id).eq("user_id", ctx.userId);
+    return "Roteiro descartado. Nenhum vídeo será renderizado.";
+  }
+  const r = await enfileirarVideoMotion({
+    sb,
+    userId: ctx.userId,
+    tema: draft.tema,
+    origem: "whatsapp",
+    telefone: ctx.fromNumber,
+    props: draft.props,
+    legendaPost: draft.legenda_post,
+    formato: draft.formato,
+  });
+  if (!r.ok) return r.error;
+  await sb.from("video_motion_rascunhos").update({ status: "aprovado" }).eq("id", draft.id).eq("user_id", ctx.userId);
+  return `✅ Roteiro aprovado e vídeo enfileirado. Posição na fila: *${r.posicao_fila}*. Vou te enviar o MP4 aqui quando terminar (estimativa: cerca de 4 minutos).`;
+}
 
 const TOOLS = [
   {
