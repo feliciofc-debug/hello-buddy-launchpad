@@ -1,52 +1,136 @@
-# Plano: Agente Dr. Bruno — Agenda + Modo Técnico Isolado
+# Vídeo animado pelo WhatsApp (Jarvis/BART)
 
-## Objetivo
-Criar o agente WhatsApp do Dr. Bruno para atender pacientes (agenda e confirmação) e, exclusivamente no número do Dr. Bruno, operar em modo técnico-médico com a literatura da especialidade carregada na base de conhecimento do tenant.
+Plano técnico. Nada foi alterado no código.
 
-## Fase 1 — Agente administrativo de agenda
-1. Criar tenant/empresa para Dr. Bruno (ou reaproveitar cadastro existente).
-2. Criar configuração do agente em `whatsapp_cloud_agent_config`:
-   - Nome do agente, número do agente, número do dono (Dr. Bruno).
-   - Saudação, tom profissional/cortês, confirmação de consultas.
-3. Criar tabelas de agenda:
-   - `drbruno_agenda` (horários disponíveis, bloqueados, recorrentes).
-   - `drbruno_agendamentos` (paciente, telefone, data/hora, status, motivo, observações administrativas).
-4. Implementar tools do agente:
-   - `listar_horarios_disponiveis`
-   - `criar_agendamento`
-   - `confirmar_consulta`
-   - `cancelar_reagendar`
-   - `encaminhar_recado_ao_dono`
-5. Implementar confirmação 24h antes via template (preparar fluxo; template real depende de aprovação Meta).
-6. Criar tela simples `/drbruno/agenda` para o Dr. Bruno visualizar e gerenciar agendamentos.
+## 1. Como o agente funciona hoje
 
-## Fase 2 — Modo técnico isolado para o Dr. Bruno
-1. Criar estrutura de conhecimento médico no tenant:
-   - Inserir tópicos e regras em `agent_knowledge_topics` / `agent_knowledge_rules` / `agent_knowledge_segments` vinculados ao tenant do Dr. Bruno.
-2. Atualizar o processador de inbound do WhatsApp para detectar o número do dono e carregar o contexto técnico completo.
-3. Ajustar o system prompt do agente para:
-   - No número do dono: responder como colega médico, citar literatura carregada, usar termos técnicos.
-   - No número do paciente: nunca expor conteúdo técnico, manter respostas administrativas e de agenda.
-4. Adicionar tool `buscar_literatura_medica` restrita ao modo dono.
-5. Criar tela `/drbruno/conhecimento` para o Dr. Bruno acompanhar o que foi indexado.
+Ponto de entrada em duas etapas:
 
-## Dados necessários do usuário
-- Nome do agente.
-- Número WhatsApp do Dr. Bruno (dono).
-- Número WhatsApp do agente (pode ser da clínica).
-- Nome da clínica/consultório.
-- Especialidade do Dr. Bruno.
-- Grade de horários inicial (dias da semana + horários).
-- Tempo padrão de cada consulta.
-- Literatura médica em PDF/DOCX/TXT ou colada no chat.
+- `whatsapp-cloud-webhook` — recebe o webhook da Meta, valida e repassa.
+- `whatsapp-cloud-inbound-processor` (~8.300 linhas) — é o cérebro. Baixa mídia,
+  transcreve áudio, monta o contexto do tenant e chama o Lovable AI Gateway
+  (`/v1/chat/completions`, Gemini 2.5/3.1 conforme o tipo de turno) com um array
+  `TOOLS` de function calling. Loop de até 4 rodadas: o modelo escolhe uma tool,
+  `runTool(name, args, ctx)` executa, o resultado volta como mensagem `tool`.
 
-## Entregáveis
-- Agente WhatsApp ativo para pacientes do Dr. Bruno.
-- Agendamento e confirmação sem orientação clínica no chat.
-- Modo técnico exclusivo no número do Dr. Bruno com base de conhecimento médica.
-- Telas de agenda e conhecimento no dashboard.
+Ele **já executa ações reais**, não só conversa: gerar/editar imagem, criar
+carrossel, criar anúncio, postar e agendar nas redes (com token de confirmação),
+salvar mídia na biblioteca, registrar lead, encaminhar recado ao dono, consultar
+estoque/campanhas/autopilot, entregar ebook em PDF. Ou seja, vídeo motion é
+**mais uma tool**, não uma nova arquitetura.
 
-## Notas de segurança e compliance
-- Nenhum histórico clínico, diagnóstico ou prescrição será armazenado no chat.
-- A literatura médica fica isolada por tenant e só é exposta no contexto do dono.
-- Confirmação 24h depende de template aprovado pela Meta; fluxo será preparado, mas aprovação é externa.
+Descoberta importante: a fila já foi desenhada para esse caso. `video_motion_jobs`
+tem as colunas `telefone` e `origem` ('plataforma' | 'whatsapp'), e
+`video-motion-complete` já entrega o MP4 por WhatsApp
+(`whatsapp-send-message` com `video_url`) quando o job tem telefone. Metade do
+caminho de volta existe.
+
+## 2. Detecção da intenção
+
+Três camadas, na ordem:
+
+1. **Function calling** — nova tool `criar_video_animado(tema, formato?, plataformas?)`
+   com description restritiva: só para pedido explícito de vídeo animado/motion
+   ("faz um vídeo sobre...", "monta um vídeo de consórcio"), nunca quando o
+   usuário acabou de enviar uma foto/vídeo (aí é `salvar_midia_biblioteca`).
+2. **Guarda determinística** (mesmo padrão do `detectQuoteIntent`): regex de
+   intenção de vídeo sem mídia anexada força a tool, para o modelo não "conversar"
+   em vez de agir.
+3. **Guarda negativa** — turno com mídia nova nunca cai nessa tool (o
+   `media_guard` que já existe cobre isso).
+
+Ambíguo ("quero divulgar consórcio") → o agente pergunta uma vez: vídeo animado,
+post com imagem ou carrossel. Sem tema claro (< 4 caracteres úteis) → pergunta o
+tema em vez de inventar.
+
+## 3. Identidade visual — vem do cadastro, não do chat
+
+Já resolvido pelo backend, e é o mesmo caminho da plataforma:
+
+- marca, site, segmento, diferenciais → `empresa_config` via `business-context.ts`
+- logo → `tenant_logos` (registro ativo, `storage_path` prefixado com o `user_id`)
+- cores → paleta salva do tenant; sem paleta, `PALETA_PADRAO`
+- telefone/consultor → do próprio contato WhatsApp e do cadastro
+
+Cadastro incompleto:
+
+| Faltando | Comportamento |
+|---|---|
+| Logo | Renderiza com iniciais da marca e avisa "sem logo cadastrada, quer subir uma?" |
+| Cores | Usa a paleta padrão e avisa |
+| Nome da empresa | **Bloqueia** e pede o nome — sem marca não existe white label |
+| Site | Fica vazio (já é opcional; nunca cai em amzofertas.com.br) |
+
+## 4. Aprovação — concordo, roteiro antes do render
+
+`video-motion-create` já tem o modo `apenas_roteiro: 1`. Fluxo:
+
+1. Usuário pede o vídeo.
+2. Agente gera o roteiro (hook, 4-6 mensagens do chat, CTA) e manda em texto,
+   com a duração estimada.
+3. Usuário responde "pode fazer" / pede ajuste ("mais curto", "foca em imóvel").
+   Ajuste = regenerar o roteiro, não enfileirar.
+4. Só na aprovação o job entra na fila, com posição e tempo estimado.
+
+Detalhe técnico obrigatório: o `pendingFormatChoice` atual é um `Map` em memória
+do processor — some quando a função recicla. Para aprovação, o roteiro pendente
+precisa ir para tabela (`video_motion_rascunhos` ou coluna de job em status
+`aguardando_aprovacao`), com token curto e TTL de ~2h, mesmo padrão do
+"pode postar {token}".
+
+## 5. Entrega do MP4
+
+`video-motion-complete` já faz: sucesso → grava no Storage, gera URL assinada,
+chama `whatsapp-send-message` com `video_url`. A Meta aceita vídeo por link até
+16 MB; nossos MP4 têm 3-6 MB, folga confortável. Se algum dia passar, fallback
+`document_url` (o usuário baixa) ou link assinado em texto.
+
+O que falta ali: a mensagem de acompanhamento por WhatsApp em falha definitiva e
+a validação do MP4 antes de anunciar sucesso (parte já foi endurecida).
+
+## 6. Controles e limites (o ponto que quebra em produção)
+
+- **Limite por usuário**: `LIMITE_FILA_POR_USUARIO = 3` já existe em
+  `video-motion-create`. Para WhatsApp eu baixaria para **1 job ativo**: o
+  worker é single-thread, e um consultor pedindo 5 vídeos por áudio trava a fila
+  de todos os tenants.
+- **Cota diária por tenant** (ex. 5/dia), contada em `video_motion_jobs`, com
+  mensagem clara ao estourar.
+- **Fila justa**: hoje o claim é FIFO puro. Vale round-robin por `user_id`
+  (pega o job mais antigo do tenant com menos jobs concluídos hoje) para um
+  tenant não monopolizar.
+- **Anti-duplicidade**: bloquear novo job com o mesmo tema do tenant nos últimos
+  10 minutos (o usuário repete o pedido quando não vê resposta imediata).
+- **Timeout/watchdog**: job em `processando` há mais de 15 min volta a
+  `pendente` (cron), senão a fila trava se a VPS cair no meio.
+- **Feedback de espera**: informar posição na fila; com 2+ jobs à frente, avisar
+  que pode levar 10+ minutos.
+
+## 7. Fases, esforço e riscos
+
+**Fase 1 — tool de vídeo com aprovação (simples, ~1 rodada)**
+Nova tool `criar_video_animado` + `confirmar_video_animado`, rascunho persistido,
+chamada ao `video-motion-create` com `origem: 'whatsapp'` e `telefone`.
+Bloqueio conhecido: `video-motion-create` exige JWT de usuário
+(`anon.auth.getUser()`), e o processor roda com service role. Solução: extrair a
+lógica para `_shared/video-motion-enfileirar.ts` e chamá-la direto do processor
+(user_id já resolvido pelo número), sem tocar no contrato HTTP atual da tela.
+
+**Fase 2 — limites e fila justa (médio)**
+Limite 1 job ativo por WhatsApp, cota diária, anti-duplicidade, watchdog de
+`processando` travado, mensagem de fila.
+
+**Fase 3 — pós-entrega (opcional)**
+Depois do MP4, oferecer "quer que eu poste no Instagram/Facebook?" reaproveitando
+o fluxo de confirmação de postagem que já existe.
+
+**Riscos**
+- Alto: mexer no dispatcher de tools do processor (arquivo enorme, é o canal de
+  produção da Ademicon e do Paulo). Mitigação: só adicionar tool e handler, sem
+  reescrever fluxos existentes.
+- Médio: alterar `video-motion-create` pode quebrar a tela de criação.
+  Mitigação: extrair o núcleo compartilhado e manter a rota HTTP intacta.
+- Médio: fila compartilhada com um worker — sem os limites da Fase 2, a Fase 1
+  em produção degrada a experiência de todos.
+- Baixo: custo de IA (roteiro é uma chamada Flash) e custo de render (VPS
+  própria, sem custo por vídeo).
