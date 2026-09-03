@@ -26,10 +26,10 @@ export default function Contato() {
               E-mail
             </h2>
             <a
-              href="mailto:expo@atombrasildigital.com"
+              href="mailto:amzofertas@amzofertas.com.br"
               className="text-primary hover:underline break-all"
             >
-              expo@atombrasildigital.com
+              amzofertas@amzofertas.com.br
             </a>
           </div>
 

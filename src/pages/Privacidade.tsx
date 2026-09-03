@@ -113,7 +113,7 @@ const Privacidade = () => {
             </ul>
             <p className="mt-4">
               Para exercer esses direitos, acesse <Link to="/data-deletion" className="text-primary hover:underline">nossa página de exclusão de dados</Link> ou 
-              entre em contato pelo e-mail: privacidade@amzofertas.com.br
+              entre em contato pelo e-mail: amzofertas@amzofertas.com.br
             </p>
           </section>
 

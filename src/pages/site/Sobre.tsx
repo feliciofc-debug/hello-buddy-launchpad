@@ -132,10 +132,10 @@ export default function Sobre() {
                 </dt>
                 <dd className="text-foreground">
                   <a
-                    href="mailto:expo@atombrasildigital.com"
+                    href="mailto:amzofertas@amzofertas.com.br"
                     className="text-primary hover:underline"
                   >
-                    expo@atombrasildigital.com
+                    amzofertas@amzofertas.com.br
                   </a>
                 </dd>
               </div>

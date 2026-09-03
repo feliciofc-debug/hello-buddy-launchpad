@@ -79,7 +79,7 @@ export default function Security() {
       console.error("Erro ao enviar relatório:", error);
       toast({
         title: "Erro ao enviar relatório",
-        description: "Tente novamente ou entre em contato: contato@atombrasildigital.com",
+        description: "Tente novamente ou entre em contato: amzofertas@amzofertas.com.br",
         variant: "destructive",
       });
     } finally {
@@ -359,10 +359,10 @@ export default function Security() {
                 Se preferir, você pode nos contatar diretamente por email:
               </p>
               <a 
-                href="mailto:contato@atombrasildigital.com?subject=Relatório de Segurança"
+                href="mailto:amzofertas@amzofertas.com.br?subject=Relatório de Segurança"
                 className="text-primary hover:underline font-semibold"
               >
-                contato@atombrasildigital.com
+                amzofertas@amzofertas.com.br
               </a>
             </div>
             <div className="p-4 bg-muted/50 rounded-lg">
