@@ -11,6 +11,13 @@ import {
   framesTemplateAgente,
   type TemplateAgenteProps,
 } from "./templates/agente/Template";
+import {
+  TemplateProduto,
+  PROPS_PRODUTO_EXEMPLO,
+  framesTemplateProduto,
+  type TemplateProdutoProps,
+} from "./templates/produto/Template";
+
 
 const base = { fps: 30, width: 1080, height: 1920 } as const;
 
