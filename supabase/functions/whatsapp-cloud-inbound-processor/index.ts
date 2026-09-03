@@ -4504,6 +4504,18 @@ async function confirmarRascunhoVideo(ctx: { userId: string; fromNumber: string 
     if (error) return `Não consegui descartar o roteiro: ${error.message}`;
     return "Roteiro descartado. Nenhum vídeo será renderizado.";
   }
+
+  // Claim atômico: duas mensagens repetidas não podem criar dois jobs para o mesmo roteiro.
+  const { data: claimed, error: claimError } = await sb.from("video_motion_rascunhos")
+    .update({ status: "aprovando" })
+    .eq("id", draft.id)
+    .eq("user_id", ctx.userId)
+    .eq("status", "aguardando_aprovacao")
+    .select("id")
+    .maybeSingle();
+  if (claimError) return `Não consegui iniciar a aprovação: ${claimError.message}`;
+  if (!claimed) return "Esse roteiro já está sendo processado ou não está mais disponível.";
+
   const r = await enfileirarVideoMotion({
     sb,
     userId: ctx.userId,
@@ -4514,12 +4526,15 @@ async function confirmarRascunhoVideo(ctx: { userId: string; fromNumber: string 
     legendaPost: draft.legenda_post,
     formato: draft.formato,
   });
-  if (!r.ok) return r.error;
+  if (!r.ok) {
+    await sb.from("video_motion_rascunhos").update({ status: "aguardando_aprovacao" }).eq("id", draft.id).eq("status", "aprovando");
+    return r.error;
+  }
   const { error } = await sb.from("video_motion_rascunhos")
     .update({ status: "aprovado" })
     .eq("id", draft.id)
     .eq("user_id", ctx.userId)
-    .eq("status", "aguardando_aprovacao");
+    .eq("status", "aprovando");
   if (error) return `O vídeo foi enfileirado, mas não consegui atualizar o roteiro: ${error.message}`;
   return `✅ Roteiro aprovado e vídeo enfileirado. Posição na fila: *${r.posicao_fila}*. Vou te enviar o MP4 aqui quando terminar (estimativa: cerca de 4 minutos).`;
 }
