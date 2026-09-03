@@ -26,6 +26,54 @@ interface VideoAgendado {
 export function VideosAgendadosLista() {
   const [items, setItems] = useState<VideoAgendado[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editData, setEditData] = useState('');
+  const [editHora, setEditHora] = useState('');
+  const [salvando, setSalvando] = useState(false);
+
+  const abrirEdicao = (item: VideoAgendado) => {
+    const d = new Date(item.scheduled_for);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    setEditId(item.id);
+    setEditData(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
+    setEditHora(`${pad(d.getHours())}:${pad(d.getMinutes())}`);
+  };
+
+  const fecharEdicao = () => {
+    setEditId(null);
+    setEditData('');
+    setEditHora('');
+  };
+
+  const salvarEdicao = async (id: string) => {
+    if (!editData || !editHora) {
+      toast.error('Informe data e hora');
+      return;
+    }
+    const nova = new Date(`${editData}T${editHora}:00`);
+    if (isNaN(nova.getTime())) {
+      toast.error('Data/hora inválida');
+      return;
+    }
+    if (nova.getTime() < Date.now() + 60_000) {
+      toast.error('Escolha um horário no futuro');
+      return;
+    }
+    setSalvando(true);
+    const { error } = await supabase
+      .from('videos_agendados')
+      .update({ scheduled_for: nova.toISOString(), status: 'pendente', erro: null })
+      .eq('id', id);
+    setSalvando(false);
+    if (error) {
+      toast.error('Erro ao reagendar');
+      return;
+    }
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, scheduled_for: nova.toISOString(), status: 'pendente', erro: null } : i)));
+    toast.success('Agendamento atualizado');
+    fecharEdicao();
+  };
+
 
   const carregar = async () => {
     setLoading(true);
