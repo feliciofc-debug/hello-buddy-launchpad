@@ -53,3 +53,6 @@
 - [x] Botão TikTok visível em "Meus Reels Gerados" (faltava para todas as contas, inclusive a demo)
 - [x] Botão LinkedIn no mesmo card, igualando as ações de produto
 - [x] Publicado e testado com a conta tiktokreview@amzofertas.com.br (botao TikTok visivel em produtos e reels; modal Connect TikTok abre OAuth)
+
+## Testes vídeo de produto
+- [x] 2 produtos de exemplo criados na conta expo@atombrasildigital.com (fone fundo branco / air fryer fundo complexo)
