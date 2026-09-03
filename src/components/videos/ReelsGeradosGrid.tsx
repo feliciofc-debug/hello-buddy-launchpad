@@ -2,13 +2,17 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Play, Download, Rocket, Trash2, Film, Facebook, Instagram, CheckCircle2, BookOpen } from 'lucide-react';
+import { Play, Download, Rocket, Trash2, Film, Facebook, Instagram, CheckCircle2, BookOpen, Linkedin } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { PublicarReelsModal } from '@/components/PublicarReelsModal';
 import { PublicarStoryModal } from '@/components/PublicarStoryModal';
+import { TikTokIcon } from '@/components/tiktok/TikTokIcon';
+import { TikTokShareModal } from '@/components/TikTokShareModal';
+import { PostarLinkedInVideoModal } from '@/components/videos/PostarLinkedInVideoModal';
+
 
 interface ReelGerado {
   id: string;
@@ -39,6 +43,11 @@ export const ReelsGeradosGrid = () => {
   const [playingUrl, setPlayingUrl] = useState<string | null>(null);
   const [publishingReel, setPublishingReel] = useState<ReelGerado | null>(null);
   const [storyReel, setStoryReel] = useState<ReelGerado | null>(null);
+  // TikTok e LinkedIn ficam sempre disponíveis aqui: o fluxo de publicação é
+  // o mesmo dos vídeos de produto e não depende de plano nem de feature flag.
+  const [tiktokReel, setTiktokReel] = useState<ReelGerado | null>(null);
+  const [linkedinReel, setLinkedinReel] = useState<ReelGerado | null>(null);
+
 
   const handleStoryPublished = async (
     reelId: string,
@@ -301,6 +310,25 @@ export const ReelsGeradosGrid = () => {
                     </Button>
                     <Button
                       size="sm"
+                      className="text-xs bg-black text-white hover:bg-gray-800"
+                      onClick={() => setTiktokReel(reel)}
+                      title="Publicar no TikTok"
+                    >
+                      <TikTokIcon className="mr-1 h-3 w-3" />
+                      TikTok
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="text-xs bg-[#0A66C2] text-white hover:bg-[#004182]"
+                      onClick={() => setLinkedinReel(reel)}
+                      title="Publicar no LinkedIn"
+                    >
+                      <Linkedin className="mr-1 h-3 w-3" />
+                      LinkedIn
+                    </Button>
+                    <Button
+
+                      size="sm"
                       variant="destructive"
                       className="text-xs col-span-2"
                       onClick={() => handleExcluir(reel)}
@@ -378,6 +406,26 @@ export const ReelsGeradosGrid = () => {
           onPublished={(result) => handleStoryPublished(storyReel.id, result)}
         />
       )}
+
+      {tiktokReel && (
+        <TikTokShareModal
+          open={!!tiktokReel}
+          onOpenChange={(open) => !open && setTiktokReel(null)}
+          content={{
+            type: 'video',
+            url: tiktokReel.video_url,
+            title: tiktokReel.titulo || tiktokReel.produtos?.nome || 'Vídeo',
+          }}
+        />
+      )}
+
+      <PostarLinkedInVideoModal
+        open={!!linkedinReel}
+        onOpenChange={(open) => !open && setLinkedinReel(null)}
+        videoUrl={linkedinReel?.video_url || null}
+        videoNome={linkedinReel?.titulo || linkedinReel?.produtos?.nome || null}
+      />
     </div>
+
   );
 };

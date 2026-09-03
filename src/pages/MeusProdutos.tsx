@@ -828,7 +828,7 @@ export default function MeusProdutos() {
   const [isEngagementModalOpen, setIsEngagementModalOpen] = useState(false);
   const [engagementProduct, setEngagementProduct] = useState<Product | null>(null);
   
-  const showTikTok = useFeatureFlag('tiktok_integration');
+  const showTikTok = true; // TikTok liberado para todas as contas (review TikTok);
 
   const [tiktokModalOpen, setTiktokModalOpen] = useState(false);
   const [tiktokModalContent, setTiktokModalContent] = useState<{
