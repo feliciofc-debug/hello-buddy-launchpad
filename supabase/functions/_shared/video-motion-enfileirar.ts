@@ -155,7 +155,17 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
   }
 
   // `site` precisa existir mesmo vazio para sobrescrever defaultProps antigos do bundle.
-  props = { ...props, site: props.site || "", logo_path: logoPath, logoUrl: undefined };
+  // A trilha fica referenciada por ID/path seguro; a URL temporária só nasce no claim.
+  props = {
+    ...props,
+    site: props.site || "",
+    logo_path: logoPath,
+    logoUrl: undefined,
+    trilha_id: trilha?.id,
+    trilha_path: trilha?.path,
+    trilha_volume: trilha?.volume ?? 0.28,
+    trilhaUrl: undefined,
+  };
   return { props, legendaPost, usouIA };
 }
 
@@ -263,12 +273,14 @@ export async function enfileirarVideoMotion(input: EnfileirarInput): Promise<Enf
       template: "template-agente",
       titulo: tema.slice(0, 140),
       props,
+      trilha_id: props.trilha_id ?? null,
+      trilha_volume: props.trilha_volume ?? 0.28,
       legenda_post: legendaPost || null,
       plataformas,
       formato: ["reels", "story", "feed"].includes(String(input.formato))
         ? String(input.formato)
         : "reels",
-      metadata: { usou_ia: usouIA, origem },
+      metadata: { usou_ia: usouIA, origem, sem_trilha: !props.trilha_id },
     })
     .select()
     .single();

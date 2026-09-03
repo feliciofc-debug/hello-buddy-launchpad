@@ -42,6 +42,28 @@ Deno.serve(async (req) => {
     }
     delete props.logo_path;
 
+    // O arquivo é privado: assina uma URL nova apenas para este render.
+    // O worker nunca recebe storage_path arbitrário vindo do navegador.
+    const trilhaId = typeof job.trilha_id === "string" ? job.trilha_id : "";
+    if (trilhaId) {
+      const { data: trilha, error: trilhaErr } = await supabase
+        .from("trilhas_sonoras")
+        .select("id, user_id, storage_path, ativo")
+        .eq("id", trilhaId)
+        .eq("ativo", true)
+        .maybeSingle();
+      if (trilhaErr) throw trilhaErr;
+      const trilhaPath = String(trilha?.storage_path ?? "");
+      const trilhaPermitida = Boolean(trilha) && (trilha.user_id === null || trilha.user_id === job.user_id)
+        && (trilhaPath.startsWith("global/") || trilhaPath.startsWith(`${job.user_id}/`));
+      if (!trilhaPermitida) throw new Error("trilha não disponível para este tenant");
+      const { data: audio } = await supabase.storage.from("trilhas-audio").createSignedUrl(trilhaPath, 3600);
+      if (!audio?.signedUrl) throw new Error("não consegui assinar a trilha");
+      props.trilhaUrl = audio.signedUrl;
+    }
+    delete props.trilha_id;
+    delete props.trilha_path;
+
     const nome = `motion/${job.user_id}/${job.id}.mp4`;
     const { data: up, error: upErr } = await supabase.storage
       .from(BUCKET_SAIDA)
