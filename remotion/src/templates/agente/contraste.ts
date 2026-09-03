@@ -44,3 +44,21 @@ export function rgba(hex: string, alpha: number): string {
   const [r, g, b] = hexRgb(hex);
   return `rgba(${r},${g},${b},${alpha})`;
 }
+
+/**
+ * Cor de texto legível sobre um fundo, respeitando a cor preferida da paleta
+ * quando ela já tem contraste WCAG suficiente (>= 4.5:1).
+ */
+export function textoLegivelSobre(fundo: string, preferida?: string): string {
+  if (preferida && contraste(fundo, preferida) >= 4.5) return preferida;
+  return textoSobre(fundo);
+}
+
+/**
+ * Fundo da pílula de legenda derivado da paleta:
+ * paleta clara -> superfície clara; paleta escura -> painel escuro.
+ */
+export function fundoLegenda(bg: string, panel: string): string {
+  if (!ehClaro(bg)) return panel;
+  return ehClaro(panel) ? panel : bg;
+}
