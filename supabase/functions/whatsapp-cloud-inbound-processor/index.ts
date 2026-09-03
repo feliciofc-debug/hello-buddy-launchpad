@@ -39,8 +39,8 @@ import {
 import {
   enfileirarVideoMotion,
   montarRoteiroMotion,
-  type EnfileirarResult,
 } from "../_shared/video-motion-enfileirar.ts";
+import { duracaoEstimada } from "../_shared/video-motion.ts";
 
 import {
   entregarEbookTenant,
@@ -4982,6 +4982,20 @@ const TOOLS = [
           cor: { type: "string", description: "Cor de destaque escolhida PELO USUÁRIO: azul, verde, laranja, preto, dourado ou roxo. Deixe VAZIO na primeira chamada para eu perguntar com a lista de 1 toque." },
           publicar: { type: "boolean", description: "true (padrão) = gera e já publica no Instagram. false = só gera os cards e devolve os links, sem publicar." },
           legenda: { type: "string", description: "Legenda do post, se o usuário ditou uma. Vazio = a IA escreve a legenda com hashtags." },
+        },
+        required: ["tema"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "criar_video_animado",
+      description: "🎬 Cria um roteiro de vídeo Motion white-label sobre o tema pedido pelo RESPONSÁVEL. Use quando ele pedir para criar, gerar, montar ou fazer um vídeo animado/institucional/publicitário. Primeiro gera e envia o roteiro para aprovação; NUNCA renderiza sem aprovação explícita. Não use para clientes. O vídeo usa automaticamente a marca, cores, logo e contexto do próprio tenant.",
+      parameters: {
+        type: "object",
+        properties: {
+          tema: { type: "string", description: "Tema e objetivo do vídeo, preservando a ideia do responsável. Ex: 'mostrar como a Ademicon agenda posts e publica nas redes'." },
         },
         required: ["tema"],
       },
