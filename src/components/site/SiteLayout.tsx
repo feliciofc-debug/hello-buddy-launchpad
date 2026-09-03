@@ -175,13 +175,13 @@ export default function SiteLayout({ children }: SiteLayoutProps) {
               <h4 className="font-semibold mb-4 text-foreground">Legal</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li>
-                  <Link to="/terms" className="hover:text-foreground transition">
+                  <Link to="/termos" className="hover:text-foreground transition">
                     Termos de Uso
                   </Link>
                 </li>
                 <li>
-                  <Link to="/privacy" className="hover:text-foreground transition">
-                    Privacidade
+                  <Link to="/politica-privacidade" className="hover:text-foreground transition">
+                    Política de Privacidade
                   </Link>
                 </li>
                 <li>
