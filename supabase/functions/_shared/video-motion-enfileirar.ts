@@ -92,13 +92,13 @@ async function resolverTrilha(sb: any, userId: string, input: EnfileirarInput): 
   const trilhaId = input.trilhaId || propsTrilhaId;
   let query = sb.from("trilhas_sonoras").select("id, user_id, storage_path, ativo").eq("ativo", true);
   if (trilhaId) {
-    query = query.eq("id", trilhaId).maybeSingle();
+    query = query.eq("id", trilhaId);
   } else {
     const { data: config } = await sb.from("empresa_config").select("trilha_padrao_id").eq("user_id", userId).maybeSingle();
     if (!config?.trilha_padrao_id) return null;
-    query = query.eq("id", config.trilha_padrao_id).maybeSingle();
+    query = query.eq("id", config.trilha_padrao_id);
   }
-  const { data, error } = await query;
+  const { data, error } = await query.maybeSingle();
   if (error) throw new Error(`não consegui carregar a trilha: ${error.message}`);
   if (!data) {
     if (trilhaId) throw new Error("A trilha selecionada não está disponível para esta conta.");

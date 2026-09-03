@@ -436,6 +436,8 @@ export const CriarVideoAnimado = () => {
         marca: marcaCliente.trim() || data.props?.marca,
         site: data.props?.site || '',
         logoUrl: logoUrl ?? undefined,
+        trilha_id: semTrilha ? undefined : trilhaId || data.props?.trilha_id,
+        trilha_volume: data.props?.trilha_volume ?? 0.28,
         cores: { ...cores },
       });
       setLegendaPost(data.legenda_post || '');
