@@ -175,13 +175,13 @@ export default function SiteLayout({ children }: SiteLayoutProps) {
               <h4 className="font-semibold mb-4 text-foreground">Legal</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li>
-                  <Link to="/terms" className="hover:text-foreground transition">
+                  <Link to="/termos" className="hover:text-foreground transition">
                     Termos de Uso
                   </Link>
                 </li>
                 <li>
-                  <Link to="/privacy" className="hover:text-foreground transition">
-                    Privacidade
+                  <Link to="/politica-privacidade" className="hover:text-foreground transition">
+                    Política de Privacidade
                   </Link>
                 </li>
                 <li>
@@ -227,7 +227,31 @@ export default function SiteLayout({ children }: SiteLayoutProps) {
             </div>
           </div>
 
-          <div className="mt-12 pt-8 border-t text-center text-sm text-muted-foreground">
+          {/* Barra legal sempre visível (requisito TikTok App Review) */}
+          <div className="mt-10 pt-8 border-t flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-6">
+            <Link
+              to="/termos"
+              className="text-sm sm:text-base font-semibold text-foreground underline underline-offset-4 hover:text-primary transition"
+            >
+              Termos de Uso
+            </Link>
+            <span className="hidden sm:inline text-muted-foreground">·</span>
+            <Link
+              to="/politica-privacidade"
+              className="text-sm sm:text-base font-semibold text-foreground underline underline-offset-4 hover:text-primary transition"
+            >
+              Política de Privacidade
+            </Link>
+            <span className="hidden sm:inline text-muted-foreground">·</span>
+            <Link
+              to="/data-deletion"
+              className="text-sm sm:text-base font-semibold text-foreground underline underline-offset-4 hover:text-primary transition"
+            >
+              Exclusão de Dados
+            </Link>
+          </div>
+
+          <div className="mt-8 pt-6 border-t text-center text-sm text-muted-foreground">
             © {new Date().getFullYear()} ATOM BRASIL DIGITAL LTDA — CNPJ 22.003.550/0001-05
           </div>
         </div>

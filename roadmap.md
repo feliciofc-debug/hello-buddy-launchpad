@@ -34,3 +34,10 @@
 - [x] Permitir cancelar jobs na fila ou em renderização pela tela Meus Produtos.
 - [x] Impedir que uma conclusão tardia do worker reative um job cancelado.
 - [x] Tornar o template de vídeo white label: site opcional, logo e dados do cliente, paleta dinâmica e contraste validado.
+
+## TikTok Review — fechamento institucional
+- [x] Rodapé legal público na home com Termos e Privacidade visíveis
+- [x] Garantir que o banner de cookies não cubra os links legais
+- [x] Unificar CTA duplicado no hero
+- [x] Criar conta demonstrativa isolada, com dados e acesso permanente
+- [x] Validar home e links legais em desktop e mobile
