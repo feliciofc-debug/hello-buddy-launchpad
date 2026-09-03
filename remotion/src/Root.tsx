@@ -41,5 +41,18 @@ export const RemotionRoot = () => (
       })}
       {...base}
     />
+
+    {/* Template de produto (foto -> vídeo vertical), custo zero por render */}
+    <Composition
+      id="template-produto"
+      component={TemplateProduto}
+      durationInFrames={framesTemplateProduto(PROPS_PRODUTO_EXEMPLO)}
+      defaultProps={PROPS_PRODUTO_EXEMPLO}
+      calculateMetadata={({ props }) => ({
+        durationInFrames: framesTemplateProduto(props as TemplateProdutoProps),
+      })}
+      {...base}
+    />
   </>
 );
+
