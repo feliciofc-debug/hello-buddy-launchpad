@@ -37,6 +37,11 @@
 - [x] Integrar a criação de roteiro Motion ao agente via WhatsApp, com aprovação persistente do responsável.
 - [x] Enfileirar somente após aprovação explícita e enviar o MP4 ao WhatsApp na conclusão.
 - [x] Adicionar limites de fila, cota diária e watchdog para jobs travados.
+- [x] Adicionar biblioteca privada de trilhas, upload/prévia/seleção opcional e trilha padrão por empresa.
+- [x] Renderizar áudio no Remotion com volume controlado, corte pela duração e fade-out.
+- [x] Assinar a trilha apenas no claim do worker e manter vídeos sem áudio válidos.
+- [ ] Inserir faixas globais com licença comercial documentada após validação jurídica/licenciamento.
+- [ ] Validar um render ponta a ponta com uma faixa aprovada na VPS.
 
 ## TikTok Review — fechamento institucional
 - [x] Rodapé legal público na home com Termos e Privacidade visíveis
