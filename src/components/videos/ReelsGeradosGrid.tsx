@@ -2,13 +2,17 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Play, Download, Rocket, Trash2, Film, Facebook, Instagram, CheckCircle2, BookOpen } from 'lucide-react';
+import { Play, Download, Rocket, Trash2, Film, Facebook, Instagram, CheckCircle2, BookOpen, Linkedin } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { PublicarReelsModal } from '@/components/PublicarReelsModal';
 import { PublicarStoryModal } from '@/components/PublicarStoryModal';
+import { TikTokIcon } from '@/components/tiktok/TikTokIcon';
+import { TikTokShareModal } from '@/components/TikTokShareModal';
+import { PostarLinkedInVideoModal } from '@/components/videos/PostarLinkedInVideoModal';
+
 
 interface ReelGerado {
   id: string;
