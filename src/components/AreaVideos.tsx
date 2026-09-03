@@ -14,6 +14,7 @@ import { TikTokShareModal } from '@/components/TikTokShareModal';
 import { PostarLinkedInVideoModal } from '@/components/videos/PostarLinkedInVideoModal';
 import { CriarVideoAnimado } from '@/components/videos/CriarVideoAnimado';
 import { ReelsGeradosGrid } from './videos/ReelsGeradosGrid';
+import { VideosAgendadosLista } from '@/components/VideosAgendadosLista';
 
 interface VideoItem {
   id: string;
