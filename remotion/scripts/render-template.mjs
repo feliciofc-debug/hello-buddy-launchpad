@@ -60,7 +60,7 @@ await renderMedia({
   inputProps,
   outputLocation: outPath,
   puppeteerInstance: browser,
-  muted: true,
+  muted: !inputProps?.trilhaUrl,
   concurrency: 1,
 });
 

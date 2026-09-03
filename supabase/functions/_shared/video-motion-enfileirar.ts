@@ -42,6 +42,9 @@ export type EnfileirarInput = {
   formato?: string | null;
   plataformas?: unknown;
   nomeFallback?: string | null;
+  trilhaId?: string | null;
+  semTrilha?: boolean;
+  trilhaVolume?: number | null;
   /** só devolve o roteiro, não enfileira */
   apenasRoteiro?: boolean;
 };
@@ -82,6 +85,36 @@ const normalizarTema = (t: string) =>
   t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9 ]/g, " ")
     .replace(/\s+/g, " ").trim();
 
+/** Resolve uma faixa válida do catálogo sem aceitar caminhos arbitrários do cliente. */
+async function resolverTrilha(sb: any, userId: string, input: EnfileirarInput): Promise<{ id: string; path: string; volume: number } | null> {
+  if (input.semTrilha) return null;
+  const propsTrilhaId = typeof (input.props as any)?.trilha_id === "string" ? (input.props as any).trilha_id : null;
+  const trilhaId = input.trilhaId || propsTrilhaId;
+  let query = sb.from("trilhas_sonoras").select("id, user_id, storage_path, ativo").eq("ativo", true);
+  if (trilhaId) {
+    query = query.eq("id", trilhaId);
+  } else {
+    const { data: config } = await sb.from("empresa_config").select("trilha_padrao_id").eq("user_id", userId).maybeSingle();
+    if (!config?.trilha_padrao_id) return null;
+    query = query.eq("id", config.trilha_padrao_id);
+  }
+  const { data, error } = await query.maybeSingle();
+  if (error) throw new Error(`não consegui carregar a trilha: ${error.message}`);
+  if (!data) {
+    if (trilhaId) throw new Error("A trilha selecionada não está disponível para esta conta.");
+    return null;
+  }
+  const path = String(data.storage_path ?? "");
+  const pertenceAoUsuario = data.user_id === null || data.user_id === userId;
+  const caminhoSeguro = path.startsWith("global/") || path.startsWith(`${userId}/`);
+  if (!pertenceAoUsuario || !caminhoSeguro) throw new Error("A trilha selecionada não está disponível para esta conta.");
+  return {
+    id: String(data.id),
+    path,
+    volume: Math.min(1, Math.max(0, input.trilhaVolume ?? (input.props as any)?.trilha_volume ?? 0.28)),
+  };
+}
+
 /** Gera o roteiro (IA ou props editadas) sem tocar na fila. */
 export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
   props: MotionProps;
@@ -90,6 +123,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
 }> {
   const { sb, userId, tema } = input;
   const logoPath = await logoDoTenant(sb, userId);
+  const trilha = await resolverTrilha(sb, userId, input);
   let props: MotionProps;
   let legendaPost = String(input.legendaPost ?? "").trim();
   let usouIA = false;
@@ -121,7 +155,17 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
   }
 
   // `site` precisa existir mesmo vazio para sobrescrever defaultProps antigos do bundle.
-  props = { ...props, site: props.site || "", logo_path: logoPath, logoUrl: undefined };
+  // A trilha fica referenciada por ID/path seguro; a URL temporária só nasce no claim.
+  props = {
+    ...props,
+    site: props.site || "",
+    logo_path: logoPath,
+    logoUrl: undefined,
+    trilha_id: trilha?.id,
+    trilha_path: trilha?.path,
+    trilha_volume: trilha?.volume ?? 0.28,
+    trilhaUrl: undefined,
+  };
   return { props, legendaPost, usouIA };
 }
 
@@ -229,12 +273,14 @@ export async function enfileirarVideoMotion(input: EnfileirarInput): Promise<Enf
       template: "template-agente",
       titulo: tema.slice(0, 140),
       props,
+      trilha_id: props.trilha_id ?? null,
+      trilha_volume: props.trilha_volume ?? 0.28,
       legenda_post: legendaPost || null,
       plataformas,
       formato: ["reels", "story", "feed"].includes(String(input.formato))
         ? String(input.formato)
         : "reels",
-      metadata: { usou_ia: usouIA, origem },
+      metadata: { usou_ia: usouIA, origem, sem_trilha: !props.trilha_id },
     })
     .select()
     .single();

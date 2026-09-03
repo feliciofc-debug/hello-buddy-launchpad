@@ -17,6 +17,11 @@ export type MotionProps = {
   /** preenchido pelo backend; nunca vem do usuário para outro tenant */
   logo_path?: string;
   logoUrl?: string;
+  /** Referência segura da trilha; a URL assinada só é criada no claim. */
+  trilha_id?: string;
+  trilha_path?: string;
+  trilhaUrl?: string;
+  trilha_volume?: number;
   site?: string;
   cores: {
     bg: string;
@@ -178,6 +183,11 @@ export function normalizarProps(
     marca,
     logo_path: typeof bruto?.logo_path === "string" ? bruto.logo_path : undefined,
     logoUrl: typeof bruto?.logoUrl === "string" ? bruto.logoUrl : undefined,
+    trilha_id: typeof bruto?.trilha_id === "string" ? bruto.trilha_id : undefined,
+    trilha_path: typeof bruto?.trilha_path === "string" ? bruto.trilha_path : undefined,
+    trilha_volume: typeof bruto?.trilha_volume === "number"
+      ? Math.min(1, Math.max(0, bruto.trilha_volume))
+      : 0.28,
     // Não remover a chave quando estiver vazio. O Remotion combina inputProps
     // com defaultProps; uma chave ausente poderia ressuscitar um site antigo
     // existente no bundle em cache da VPS.

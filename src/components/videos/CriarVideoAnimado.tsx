@@ -23,11 +23,27 @@ type MotionProps = {
   logoUrl?: string;
   logo_path?: string;
   site?: string;
+  trilha_id?: string;
+  trilha_path?: string;
+  trilha_volume?: number;
+  trilhaUrl?: string;
   cores: Record<string, string>;
   hook: { kicker: string; linhas: string[]; destaque?: string; sub?: string };
   chat: { titulo: string; tituloDestaque?: string; mensagens: Mensagem[] };
   cta: { frase: string; sub?: string; telefone?: string; consultor?: string };
   legendas: string[];
+};
+
+type TrilhaSonora = {
+  id: string;
+  nome: string;
+  descricao: string | null;
+  mood: string;
+  duracao_seg: number | null;
+  storage_path: string;
+  licenca: string;
+  licenca_url: string | null;
+  user_id: string | null;
 };
 
 type Job = {
@@ -83,6 +99,11 @@ export const CriarVideoAnimado = () => {
   const [marcaCliente, setMarcaCliente] = useState('');
   const [paletaSelecionada, setPaletaSelecionada] = useState<keyof typeof PALETAS>('personalizada');
   const [cores, setCores] = useState<Record<string, string>>(PALETAS.personalizada.cores);
+  const [trilhas, setTrilhas] = useState<TrilhaSonora[]>([]);
+  const [trilhaId, setTrilhaId] = useState<string | null>(null);
+  const [semTrilha, setSemTrilha] = useState(false);
+  const [trilhaPreviewUrl, setTrilhaPreviewUrl] = useState<string | null>(null);
+  const [subindoTrilha, setSubindoTrilha] = useState(false);
 
   const carregarMarca = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -98,6 +119,78 @@ export const CriarVideoAnimado = () => {
     const { data: signed } = await supabase.storage.from('tenant-logos').createSignedUrl(path, 3600);
     setLogoPath(path);
     setLogoUrl(signed?.signedUrl ?? null);
+  };
+
+  const carregarTrilhas = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const [{ data: catalogo }, { data: config }] = await Promise.all([
+      supabase.from('trilhas_sonoras' as any)
+        .select('id, nome, descricao, mood, duracao_seg, storage_path, licenca, licenca_url, user_id')
+        .eq('ativo', true)
+        .order('user_id', { ascending: true, nullsFirst: true })
+        .order('nome', { ascending: true }),
+      supabase.from('empresa_config').select('trilha_padrao_id').eq('user_id', user.id).maybeSingle(),
+    ]);
+    setTrilhas((catalogo ?? []) as unknown as TrilhaSonora[]);
+    if ((config as { trilha_padrao_id?: string | null } | null)?.trilha_padrao_id) {
+      setTrilhaId((config as { trilha_padrao_id: string }).trilha_padrao_id);
+    }
+  };
+
+  const selecionarTrilha = async (id: string) => {
+    setTrilhaId(id || null);
+    setSemTrilha(!id);
+    setTrilhaPreviewUrl(null);
+    const faixa = trilhas.find((item) => item.id === id);
+    if (!faixa) return;
+    const { data } = await supabase.storage.from('trilhas-audio').createSignedUrl(faixa.storage_path, 600);
+    setTrilhaPreviewUrl(data?.signedUrl ?? null);
+  };
+
+  const handleTrilha = async (file: File) => {
+    if (!['audio/mpeg', 'audio/mp4', 'audio/x-m4a', 'audio/wav'].includes(file.type) || file.size > 10 * 1024 * 1024) {
+      toast.error('Use MP3, M4A ou WAV de até 10MB.');
+      return;
+    }
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    setSubindoTrilha(true);
+    try {
+      const nome = file.name.replace(/[^a-zA-Z0-9._-]/g, '-').slice(-80);
+      const storagePath = `${user.id}/${Date.now()}-${nome}`;
+      const { error: uploadError } = await supabase.storage.from('trilhas-audio').upload(storagePath, file, { contentType: file.type });
+      if (uploadError) throw uploadError;
+      const { data: inserted, error: insertError } = await supabase.from('trilhas_sonoras' as any).insert({
+        user_id: user.id,
+        nome: file.name.replace(/\.[^.]+$/, '').slice(0, 80),
+        descricao: 'Trilha enviada pelo cliente',
+        mood: 'corporativo',
+        storage_path: storagePath,
+        licenca: 'Arquivo fornecido pelo cliente; responsabilidade de licenciamento do proprietário.',
+        ativo: true,
+      }).select('id').single();
+      if (insertError) throw insertError;
+      await carregarTrilhas();
+      const novoId = String((inserted as any)?.id ?? '');
+      if (novoId) await selecionarTrilha(novoId);
+      toast.success('Trilha adicionada à sua biblioteca.');
+    } catch (e: any) {
+      toast.error(e?.message || 'Não foi possível adicionar a trilha.');
+    } finally {
+      setSubindoTrilha(false);
+    }
+  };
+
+  const definirTrilhaPadrao = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { error } = await supabase.from('empresa_config').update({ trilha_padrao_id: semTrilha ? null : trilhaId }).eq('user_id', user.id);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success(semTrilha ? 'Vídeos novos ficarão sem trilha.' : 'Trilha padrão salva para os próximos vídeos.');
   };
 
   const handleLogo = async (file: File) => {
@@ -313,6 +406,7 @@ export const CriarVideoAnimado = () => {
 
   useEffect(() => {
     carregarMarca();
+    carregarTrilhas();
     carregarJobs();
     const t = setInterval(carregarJobs, 15000);
     return () => clearInterval(t);
@@ -326,7 +420,14 @@ export const CriarVideoAnimado = () => {
     setGerando(true);
     try {
       const { data, error } = await supabase.functions.invoke('video-motion-create', {
-        body: { tema: tema.trim(), apenas_roteiro: true, cores, marca: marcaCliente.trim() || undefined },
+        body: {
+          tema: tema.trim(),
+          apenas_roteiro: true,
+          cores,
+          marca: marcaCliente.trim() || undefined,
+          trilha_id: semTrilha ? undefined : trilhaId || undefined,
+          sem_trilha: semTrilha,
+        },
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Não consegui gerar o roteiro');
@@ -335,6 +436,8 @@ export const CriarVideoAnimado = () => {
         marca: marcaCliente.trim() || data.props?.marca,
         site: data.props?.site || '',
         logoUrl: logoUrl ?? undefined,
+        trilha_id: semTrilha ? undefined : trilhaId || data.props?.trilha_id,
+        trilha_volume: data.props?.trilha_volume ?? 0.28,
         cores: { ...cores },
       });
       setLegendaPost(data.legenda_post || '');
@@ -362,6 +465,9 @@ export const CriarVideoAnimado = () => {
           props: { ...props, site: props.site?.trim() || '' },
           legenda_post: legendaPost,
           formato: 'reels',
+          trilha_id: semTrilha ? undefined : trilhaId || props.trilha_id || undefined,
+          sem_trilha: semTrilha,
+          trilha_volume: props.trilha_volume ?? 0.28,
         },
       });
       if (error) throw error;
@@ -453,6 +559,50 @@ export const CriarVideoAnimado = () => {
             </Button>
             {logoUrl && <img src={logoUrl} alt="Logo do cliente" className="h-10 max-w-[160px] rounded border bg-background object-contain p-1" />}
             <span className="text-xs text-muted-foreground">A logo e as cores escolhidas serão usadas no vídeo.</span>
+          </div>
+        </div>
+
+        <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <Label className="font-semibold">Trilha sonora</Label>
+              <p className="text-xs text-muted-foreground">Opcional. A faixa termina suavemente junto com o vídeo.</p>
+            </div>
+            <Badge variant="outline">0,28 volume</Badge>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <select
+              value={semTrilha ? '' : trilhaId ?? ''}
+              onChange={(e) => selecionarTrilha(e.target.value)}
+              className="h-10 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm"
+              aria-label="Selecionar trilha sonora"
+            >
+              <option value="">Sem trilha sonora</option>
+              {trilhas.map((faixa) => (
+                <option key={faixa.id} value={faixa.id}>
+                  {faixa.nome} — {faixa.mood}
+                </option>
+              ))}
+            </select>
+            <input
+              type="file"
+              accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/wav"
+              className="hidden"
+              id="motion-audio-upload"
+              onChange={(e) => { const file = e.target.files?.[0]; if (file) handleTrilha(file); e.currentTarget.value = ''; }}
+            />
+            <Button type="button" variant="outline" disabled={subindoTrilha} onClick={() => document.getElementById('motion-audio-upload')?.click()}>
+              {subindoTrilha ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+              Adicionar faixa
+            </Button>
+          </div>
+          {trilhas.length === 0 && <p className="text-xs text-muted-foreground">Sua biblioteca ainda está vazia. Adicione uma faixa própria ou licenciada.</p>}
+          {trilhaPreviewUrl && <audio src={trilhaPreviewUrl} controls className="w-full" aria-label="Prévia da trilha sonora" />}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="secondary" size="sm" onClick={definirTrilhaPadrao} disabled={!trilhaId && !semTrilha}>
+              Usar como padrão no Jarvis
+            </Button>
+            <span className="text-xs text-muted-foreground">O Jarvis usará essa escolha sem perguntar no WhatsApp.</span>
           </div>
         </div>
 

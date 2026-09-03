@@ -2713,6 +2713,7 @@ export type Database = {
           segmento: string | null
           site: string | null
           sobre_negocio: string | null
+          trilha_padrao_id: string | null
           updated_at: string | null
           user_id: string
           voz_copy: string
@@ -2729,6 +2730,7 @@ export type Database = {
           segmento?: string | null
           site?: string | null
           sobre_negocio?: string | null
+          trilha_padrao_id?: string | null
           updated_at?: string | null
           user_id: string
           voz_copy?: string
@@ -2745,11 +2747,20 @@ export type Database = {
           segmento?: string | null
           site?: string | null
           sobre_negocio?: string | null
+          trilha_padrao_id?: string | null
           updated_at?: string | null
           user_id?: string
           voz_copy?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "empresa_config_trilha_padrao_id_fkey"
+            columns: ["trilha_padrao_id"]
+            isOneToOne: false
+            referencedRelation: "trilhas_sonoras"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       empresas: {
         Row: {
@@ -8199,6 +8210,51 @@ export type Database = {
         }
         Relationships: []
       }
+      trilhas_sonoras: {
+        Row: {
+          ativo: boolean
+          created_at: string
+          descricao: string | null
+          duracao_seg: number | null
+          id: string
+          licenca: string
+          licenca_url: string | null
+          mood: string
+          nome: string
+          storage_path: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string
+          descricao?: string | null
+          duracao_seg?: number | null
+          id?: string
+          licenca: string
+          licenca_url?: string | null
+          mood?: string
+          nome: string
+          storage_path: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string
+          descricao?: string | null
+          duracao_seg?: number | null
+          id?: string
+          licenca?: string
+          licenca_url?: string | null
+          mood?: string
+          nome?: string
+          storage_path?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       user_market_config: {
         Row: {
           base_prompt: string | null
@@ -8580,6 +8636,9 @@ export type Database = {
           template: string
           tentativas: number
           titulo: string | null
+          trilha_id: string | null
+          trilha_url: string | null
+          trilha_volume: number
           updated_at: string
           user_id: string
         }
@@ -8604,6 +8663,9 @@ export type Database = {
           template?: string
           tentativas?: number
           titulo?: string | null
+          trilha_id?: string | null
+          trilha_url?: string | null
+          trilha_volume?: number
           updated_at?: string
           user_id: string
         }
@@ -8628,10 +8690,21 @@ export type Database = {
           template?: string
           tentativas?: number
           titulo?: string | null
+          trilha_id?: string | null
+          trilha_url?: string | null
+          trilha_volume?: number
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "video_motion_jobs_trilha_id_fkey"
+            columns: ["trilha_id"]
+            isOneToOne: false
+            referencedRelation: "trilhas_sonoras"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       video_motion_rascunhos: {
         Row: {
@@ -10155,6 +10228,9 @@ export type Database = {
           template: string
           tentativas: number
           titulo: string | null
+          trilha_id: string | null
+          trilha_url: string | null
+          trilha_volume: number
           updated_at: string
           user_id: string
         }
