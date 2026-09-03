@@ -182,10 +182,34 @@ export function VideosAgendadosLista() {
               {item.caption && (
                 <p className="text-xs text-foreground/80 mt-1 line-clamp-2" title={item.caption}>{item.caption}</p>
               )}
-              <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
-                <Calendar className="h-3 w-3" />
-                {format(new Date(item.scheduled_for), "dd 'de' MMM 'às' HH:mm", { locale: ptBR })}
-              </div>
+              {editId === item.id ? (
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                  <Input
+                    type="date"
+                    value={editData}
+                    onChange={(e) => setEditData(e.target.value)}
+                    className="h-8 w-[145px] text-xs"
+                  />
+                  <Input
+                    type="time"
+                    value={editHora}
+                    onChange={(e) => setEditHora(e.target.value)}
+                    className="h-8 w-[105px] text-xs"
+                  />
+                  <Button size="sm" className="h-8" disabled={salvando} onClick={() => salvarEdicao(item.id)}>
+                    {salvando ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                    <span className="ml-1 text-xs">Salvar</span>
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-8" onClick={fecharEdicao} disabled={salvando}>
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                  <Calendar className="h-3 w-3" />
+                  {format(new Date(item.scheduled_for), "dd 'de' MMM 'às' HH:mm", { locale: ptBR })}
+                </div>
+              )}
               <div className="flex gap-1 mt-2 flex-wrap">
                 {item.canais.map((c) => (
                   <Badge key={c} variant="outline" className="text-[10px]">{c}</Badge>
