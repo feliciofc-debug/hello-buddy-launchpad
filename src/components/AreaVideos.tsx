@@ -13,6 +13,8 @@ import { TikTokIcon } from '@/components/tiktok/TikTokIcon';
 import { TikTokShareModal } from '@/components/TikTokShareModal';
 import { PostarLinkedInVideoModal } from '@/components/videos/PostarLinkedInVideoModal';
 import { CriarVideoAnimado } from '@/components/videos/CriarVideoAnimado';
+import { CriarVideoProduto } from '@/components/videos/CriarVideoProduto';
+
 import { ReelsGeradosGrid } from './videos/ReelsGeradosGrid';
 import { VideosAgendadosLista } from '@/components/VideosAgendadosLista';
 
@@ -170,7 +172,10 @@ export const AreaVideos = () => {
 
   return (
     <div className="space-y-6">
+      <CriarVideoProduto />
+
       <CriarVideoAnimado />
+
 
       <ReelsGeradosGrid />
 

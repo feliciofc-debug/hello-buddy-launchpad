@@ -48,13 +48,69 @@ async function duracaoSegundos(arquivo) {
   }
 }
 
+// ------------------------------------------------------------
+// REMOÇÃO DE FUNDO (rembg local, custo zero)
+//
+// Roda SEMPRE EM SÉRIE, antes do render: o Chromium do Remotion é
+// pesado e não pode competir por CPU com o modelo. O worker é
+// single-thread, então basta ser sequencial aqui.
+//
+// Usa o MODO SERVIÇO do rembg (`rembg s`) para não recarregar o
+// modelo a cada foto. Sem serviço no ar, o vídeo continua saindo:
+// cai no fallback de fundo desfocado do próprio template.
+// ------------------------------------------------------------
+const REMBG_URL = process.env.REMBG_URL || "http://127.0.0.1:7000";
+const REMBG_MODELO = process.env.REMBG_MODELO || "isnet-general-use";
+const REMBG_TIMEOUT_MS = Number(process.env.REMBG_TIMEOUT_MS || 90000);
+const RECORTE_MAX_BYTES = 8 * 1024 * 1024;
+
+async function recortarFundo(imagemUrl) {
+  const baixar = await fetch(imagemUrl, { signal: AbortSignal.timeout(REMBG_TIMEOUT_MS) });
+  if (!baixar.ok) throw new Error(`download da foto falhou: ${baixar.status}`);
+  const entrada = Buffer.from(await baixar.arrayBuffer());
+  if (entrada.length > 15 * 1024 * 1024) throw new Error("foto maior que 15MB");
+
+  const form = new FormData();
+  form.append("file", new Blob([entrada]), "produto.png");
+  const url = `${REMBG_URL.replace(/\/$/, "")}/api/remove?m=${encodeURIComponent(REMBG_MODELO)}`;
+  const resp = await fetch(url, {
+    method: "POST",
+    body: form,
+    signal: AbortSignal.timeout(REMBG_TIMEOUT_MS),
+  });
+  if (!resp.ok) throw new Error(`rembg respondeu ${resp.status}`);
+  const saida = Buffer.from(await resp.arrayBuffer());
+  if (!saida.length) throw new Error("rembg devolveu arquivo vazio");
+  if (saida.length > RECORTE_MAX_BYTES) throw new Error("PNG recortado grande demais");
+  return `data:image/png;base64,${saida.toString("base64")}`;
+}
+
+/** Aplica o recorte quando pedido. Nunca derruba o job. */
+async function prepararProps(job) {
+  const props = job.props ? JSON.parse(JSON.stringify(job.props)) : {};
+  const produto = props.produto;
+  if (!produto || produto.recortar_fundo !== true || !produto.imagemUrl) return props;
+
+  try {
+    const t0 = Date.now();
+    produto.imagemUrl = await recortarFundo(produto.imagemUrl);
+    produto.recortado = true;
+    console.log(`[motion] recorte ok em ${Math.round((Date.now() - t0) / 1000)}s`);
+  } catch (e) {
+    produto.recortado = false;
+    console.warn("[motion] recorte falhou, seguindo com fundo desfocado:", e.message);
+  }
+  return props;
+}
+
 async function processar(job) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "motion-"));
   const propsPath = path.join(dir, "props.json");
   const outPath = path.join(dir, "out.mp4");
 
   try {
-    fs.writeFileSync(propsPath, JSON.stringify(job.props));
+    fs.writeFileSync(propsPath, JSON.stringify(await prepararProps(job)));
+
 
     await exec(
       process.execPath,
