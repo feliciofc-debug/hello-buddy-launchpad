@@ -7,6 +7,7 @@
 
 import {
   AbsoluteFill,
+  Audio,
   Img,
   Sequence,
   interpolate,
@@ -39,6 +40,8 @@ export type TemplateAgenteProps = {
   marca: string; // sigla exibida no logo/CTA quando NÃO há logoUrl (ex.: iniciais da marca)
   logoUrl?: string; // logo do cliente (URL assinada ou data URL) — quando existe, substitui a sigla
   site?: string; // opcional — site DO CLIENTE, nunca fallback de outra marca
+  trilhaUrl?: string;
+  trilha_volume?: number;
   cores: Paleta;
   hook: { kicker: string; linhas: string[]; destaque?: string; sub?: string };
   chat: { titulo: string; tituloDestaque?: string; mensagens: Mensagem[] };
@@ -447,9 +450,15 @@ const LinhaLegenda: React.FC<{ c: Paleta; text: string }> = ({ c, text }) => {
 const timing = springTiming({ config: { damping: 200 }, durationInFrames: TRANSICAO });
 
 export const TemplateAgente: React.FC<TemplateAgenteProps> = (props) => {
-  const { cores: c, marca, logoUrl, site, hook, chat, cta, legendas } = props;
+  const { cores: c, marca, logoUrl, site, trilhaUrl, trilha_volume, hook, chat, cta, legendas } = props;
   const total = framesTemplateAgente(props);
   const legendasValidas = (legendas || []).filter((l) => l && l.trim().length > 0);
+  const volumeBase = Math.min(1, Math.max(0, trilha_volume ?? 0.28));
+  const volumeTrilha = (frame: number) => {
+    const entrada = interpolate(frame, [0, 24], [0, 1], { extrapolateRight: "clamp" });
+    const saida = interpolate(frame, [Math.max(0, total - 45), total], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+    return volumeBase * entrada * saida;
+  };
   const passo = legendasValidas.length > 0 ? Math.floor((total - 20) / legendasValidas.length) : 0;
 
   return (
@@ -470,9 +479,11 @@ export const TemplateAgente: React.FC<TemplateAgenteProps> = (props) => {
         <TransitionSeries.Sequence durationInFrames={CTA_FRAMES}>
           <CTA c={c} marca={marca} logoUrl={logoUrl} site={site} {...cta} />
         </TransitionSeries.Sequence>
-      </TransitionSeries>
+       </TransitionSeries>
 
-      {legendasValidas.map((text, i) => (
+       {trilhaUrl ? <Audio src={trilhaUrl} volume={volumeTrilha} startFrom={0} endAt={total} /> : null}
+
+       {legendasValidas.map((text, i) => (
         <Sequence
           key={`${i}-${text}`}
           from={10 + i * passo}

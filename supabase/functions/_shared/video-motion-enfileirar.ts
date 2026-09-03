@@ -42,6 +42,9 @@ export type EnfileirarInput = {
   formato?: string | null;
   plataformas?: unknown;
   nomeFallback?: string | null;
+  trilhaId?: string | null;
+  semTrilha?: boolean;
+  trilhaVolume?: number | null;
   /** só devolve o roteiro, não enfileira */
   apenasRoteiro?: boolean;
 };
