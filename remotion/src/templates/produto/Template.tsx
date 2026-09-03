@@ -22,14 +22,12 @@ import {
   Audio,
   Img,
   Sequence,
+  Series,
   interpolate,
   spring,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
-import { TransitionSeries, springTiming } from "@remotion/transitions";
-import { fade } from "@remotion/transitions/fade";
-import { slide } from "@remotion/transitions/slide";
 import { font } from "../../font";
 import { ehClaro, fundoLegenda, rgba, textoSobre } from "../agente/contraste";
 import type { Paleta } from "../agente/Template";
@@ -66,19 +64,12 @@ const HEROI = 150;
 const FICHA = 150;
 const PRECO = 120;
 const CTA_F = 140;
-const TRANSICAO = 20;
 
 export const framesTemplateProduto = (props?: TemplateProdutoProps) => {
   const temPreco = Boolean(props?.produto?.preco);
   const temFicha = (props?.produto?.bullets?.length ?? 0) > 0;
-  return (
-    IMPACTO +
-    HEROI +
-    (temFicha ? FICHA : 0) +
-    (temPreco ? PRECO : 0) +
-    CTA_F -
-    TRANSICAO * (2 + (temFicha ? 1 : 0) + (temPreco ? 1 : 0))
-  );
+  // cortes secos: sem sobreposição de cenas, nada a subtrair
+  return IMPACTO + HEROI + (temFicha ? FICHA : 0) + (temPreco ? PRECO : 0) + CTA_F;
 };
 
 // ---------- peças reutilizáveis ----------
@@ -298,40 +289,47 @@ const CenaHeroi: React.FC<{ c: Paleta; p: TemplateProdutoProps }> = ({ c, p }) =
         <Produto c={c} produto={p.produto} escala={zoom} y={float - 60} />
       </div>
       <Sweep inicio={54} />
+      {/* Bloco de texto empilhado: nome e apoio nunca se sobrepõem. */}
       <div
         style={{
           position: "absolute",
-          bottom: 300,
+          bottom: 220,
           left: 80,
           right: 80,
-          textAlign: "center",
-          color: c.texto,
-          fontSize: p.produto.nome.length > 22 ? 66 : 82,
-          fontWeight: 800,
-          letterSpacing: -2,
-          lineHeight: 1.06,
-          opacity: nome,
-          transform: `translateY(${interpolate(nome, [0, 1], [34, 0])}px)`,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 18,
         }}
       >
-        {p.produto.nome}
-      </div>
-      {p.produto.subtitulo ? (
         <div
           style={{
-            position: "absolute",
-            bottom: 236,
-            left: 90,
-            right: 90,
             textAlign: "center",
-            color: c.suave,
-            fontSize: 36,
-            opacity: sub,
+            color: c.texto,
+            fontSize: p.produto.nome.length > 28 ? 58 : p.produto.nome.length > 22 ? 66 : 82,
+            fontWeight: 800,
+            letterSpacing: -2,
+            lineHeight: 1.06,
+            opacity: nome,
+            transform: `translateY(${interpolate(nome, [0, 1], [34, 0])}px)`,
           }}
         >
-          {p.produto.subtitulo}
+          {p.produto.nome}
         </div>
-      ) : null}
+        {p.produto.subtitulo ? (
+          <div
+            style={{
+              textAlign: "center",
+              color: c.suave,
+              fontSize: p.produto.subtitulo.length > 46 ? 30 : 36,
+              lineHeight: 1.3,
+              opacity: sub,
+            }}
+          >
+            {p.produto.subtitulo}
+          </div>
+        ) : null}
+      </div>
     </AbsoluteFill>
   );
 };
@@ -409,16 +407,16 @@ const CenaPreco: React.FC<{ c: Paleta; p: TemplateProdutoProps }> = ({ c, p }) =
   const escurece = interpolate(frame, [0, 24], [0, 1], { extrapolateRight: "clamp" });
   const selo = spring({ frame: frame - 46, fps, config: { damping: 12, stiffness: 150 } });
 
-  // contador: sobe até o valor final quando o preço tem número.
-  const numero = Number(String(p.produto.preco ?? "").replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", "."));
+  // O preço NUNCA anima de zero: exibimos o valor final desde o primeiro
+  // frame (contador partindo de 0 fazia o vídeo anunciar produto de graça).
+  const numero = Number(
+    String(p.produto.preco ?? "").replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", "."),
+  );
   const temNumero = Number.isFinite(numero) && numero > 0;
-  const atual = interpolate(frame, [12, 62], [0, numero], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
   const precoTexto = temNumero
-    ? `R$ ${atual.toLocaleString("pt-BR", { minimumFractionDigits: numero % 1 ? 2 : 0, maximumFractionDigits: 2 })}`
+    ? `R$ ${numero.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     : String(p.produto.preco ?? "");
+  const entradaPreco = spring({ frame: frame - 8, fps, config: { damping: 16, stiffness: 140 } });
 
   return (
     <AbsoluteFill style={{ ...font, alignItems: "center", justifyContent: "center" }}>
@@ -448,6 +446,8 @@ const CenaPreco: React.FC<{ c: Paleta; p: TemplateProdutoProps }> = ({ c, p }) =
           fontSize: 120,
           fontWeight: 800,
           letterSpacing: -4,
+          opacity: Math.min(1, entradaPreco * 1.2),
+          transform: `scale(${interpolate(entradaPreco, [0, 1], [0.82, 1])})`,
         }}
       >
         {precoTexto}
@@ -474,15 +474,30 @@ const CenaPreco: React.FC<{ c: Paleta; p: TemplateProdutoProps }> = ({ c, p }) =
   );
 };
 
+/** Placeholder nunca vai para a tela; só logo ou sigla real da marca. */
+const ehPlaceholderMarca = (m?: string) =>
+  !m || /^(sua marca|sua empresa)$/i.test(m.trim());
+
+const sigla = (nome: string) => {
+  const limpo = nome.replace(/[^\p{L}\p{N}\s]/gu, " ").trim();
+  if (limpo.length <= 12) return limpo;
+  const palavras = limpo.split(/\s+/);
+  if (palavras.length === 1) return palavras[0].slice(0, 8).toUpperCase();
+  return palavras.slice(0, 3).map((x) => x[0]).join("").toUpperCase();
+};
+
 const CenaCTA: React.FC<{ c: Paleta; p: TemplateProdutoProps }> = ({ c, p }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const logo = spring({ frame, fps, config: { damping: 14, stiffness: 130 } });
   const texto = interpolate(frame, [16, 42], [0, 1], { extrapolateRight: "clamp" });
   const pulse = 1 + Math.sin(frame / 8) * 0.02;
+  const marcaTexto = ehPlaceholderMarca(p.marca) ? "" : sigla(p.marca);
+  const mostrarBadge = Boolean(p.logoUrl) || marcaTexto.length > 0;
 
   return (
     <AbsoluteFill style={{ ...font, alignItems: "center", justifyContent: "center" }}>
+      {mostrarBadge ? (
       <div
         style={{
           width: 200,
@@ -493,7 +508,7 @@ const CenaCTA: React.FC<{ c: Paleta; p: TemplateProdutoProps }> = ({ c, p }) => 
           alignItems: "center",
           justifyContent: "center",
           color: p.logoUrl ? c.texto : textoSobre(c.destaque),
-          fontSize: p.marca.length <= 4 ? 66 : p.marca.length <= 8 ? 36 : 26,
+          fontSize: marcaTexto.length <= 4 ? 66 : marcaTexto.length <= 8 ? 36 : 26,
           fontWeight: 800,
           textAlign: "center",
           padding: 14,
@@ -505,9 +520,10 @@ const CenaCTA: React.FC<{ c: Paleta; p: TemplateProdutoProps }> = ({ c, p }) => 
         {p.logoUrl ? (
           <Img src={p.logoUrl} style={{ width: 164, height: 164, objectFit: "contain" }} />
         ) : (
-          p.marca
+          marcaTexto
         )}
       </div>
+      ) : null}
       <div
         style={{
           marginTop: 50,
@@ -593,9 +609,7 @@ const LinhaLegenda: React.FC<{ c: Paleta; text: string }> = ({ c, text }) => {
 
 export const TemplateProduto: React.FC<TemplateProdutoProps> = (props) => {
   const { cores: c, produto, legendas, trilhaUrl } = props;
-  const { fps } = useVideoConfig();
   const total = framesTemplateProduto(props);
-  const timing = springTiming({ config: { damping: 200 }, durationInFrames: TRANSICAO });
   const temFicha = (produto.bullets?.length ?? 0) > 0;
   const temPreco = Boolean(produto.preco);
 
@@ -609,39 +623,33 @@ export const TemplateProduto: React.FC<TemplateProdutoProps> = (props) => {
   const legendasValidas = (legendas ?? []).filter((l) => String(l ?? "").trim().length > 0);
   const passo = legendasValidas.length > 0 ? Math.floor((total - 20) / legendasValidas.length) : 0;
 
+  // CORTE SECO entre cenas (sem crossfade). Crossfade mostrava o produto
+  // duas vezes ao mesmo tempo, em escalas/posições diferentes — era a
+  // "imagem fantasma" que aparecia atrás do produto.
   return (
     <AbsoluteFill>
       <Fundo c={c} imagem={produto.imagemUrl} usarImagem={!produto.recortado} />
-      <TransitionSeries>
-        <TransitionSeries.Sequence durationInFrames={IMPACTO}>
+      <Series>
+        <Series.Sequence durationInFrames={IMPACTO}>
           <CenaImpacto c={c} p={props} />
-        </TransitionSeries.Sequence>
-        <TransitionSeries.Transition presentation={fade()} timing={timing} />
-        <TransitionSeries.Sequence durationInFrames={HEROI}>
+        </Series.Sequence>
+        <Series.Sequence durationInFrames={HEROI}>
           <CenaHeroi c={c} p={props} />
-        </TransitionSeries.Sequence>
+        </Series.Sequence>
         {temFicha ? (
-          <TransitionSeries.Transition
-            presentation={slide({ direction: "from-right" })}
-            timing={timing}
-          />
-        ) : null}
-        {temFicha ? (
-          <TransitionSeries.Sequence durationInFrames={FICHA}>
+          <Series.Sequence durationInFrames={FICHA}>
             <CenaFicha c={c} p={props} />
-          </TransitionSeries.Sequence>
+          </Series.Sequence>
         ) : null}
-        {temPreco ? <TransitionSeries.Transition presentation={fade()} timing={timing} /> : null}
         {temPreco ? (
-          <TransitionSeries.Sequence durationInFrames={PRECO}>
+          <Series.Sequence durationInFrames={PRECO}>
             <CenaPreco c={c} p={props} />
-          </TransitionSeries.Sequence>
+          </Series.Sequence>
         ) : null}
-        <TransitionSeries.Transition presentation={fade()} timing={timing} />
-        <TransitionSeries.Sequence durationInFrames={CTA_F}>
+        <Series.Sequence durationInFrames={CTA_F}>
           <CenaCTA c={c} p={props} />
-        </TransitionSeries.Sequence>
-      </TransitionSeries>
+        </Series.Sequence>
+      </Series>
 
       {trilhaUrl ? <Audio src={trilhaUrl} volume={volumeTrilha} startFrom={0} endAt={total} /> : null}
 
