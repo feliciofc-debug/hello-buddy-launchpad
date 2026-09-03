@@ -23,7 +23,10 @@ function contraste(a: string, b: string): number {
 }
 
 function textoSobre(cor: string): string {
-  return luminancia(cor) > 0.45 ? TEXTO_ESCURO : TEXTO_CLARO;
+  // Escolhe entre texto claro/escuro o que TEM MAIS contraste real (WCAG),
+  // e não por limiar de luminância — cores vibrantes (ex.: laranja) ficavam
+  // com texto claro ilegível e travavam a geração do vídeo.
+  return contraste(cor, TEXTO_ESCURO) >= contraste(cor, TEXTO_CLARO) ? TEXTO_ESCURO : TEXTO_CLARO;
 }
 
 export function validarPaleta(cores: Record<string, string>): string | null {
