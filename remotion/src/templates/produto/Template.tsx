@@ -474,15 +474,30 @@ const CenaPreco: React.FC<{ c: Paleta; p: TemplateProdutoProps }> = ({ c, p }) =
   );
 };
 
+/** Placeholder nunca vai para a tela; só logo ou sigla real da marca. */
+const ehPlaceholderMarca = (m?: string) =>
+  !m || /^(sua marca|sua empresa)$/i.test(m.trim());
+
+const sigla = (nome: string) => {
+  const limpo = nome.replace(/[^\p{L}\p{N}\s]/gu, " ").trim();
+  if (limpo.length <= 12) return limpo;
+  const palavras = limpo.split(/\s+/);
+  if (palavras.length === 1) return palavras[0].slice(0, 8).toUpperCase();
+  return palavras.slice(0, 3).map((x) => x[0]).join("").toUpperCase();
+};
+
 const CenaCTA: React.FC<{ c: Paleta; p: TemplateProdutoProps }> = ({ c, p }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const logo = spring({ frame, fps, config: { damping: 14, stiffness: 130 } });
   const texto = interpolate(frame, [16, 42], [0, 1], { extrapolateRight: "clamp" });
   const pulse = 1 + Math.sin(frame / 8) * 0.02;
+  const marcaTexto = ehPlaceholderMarca(p.marca) ? "" : sigla(p.marca);
+  const mostrarBadge = Boolean(p.logoUrl) || marcaTexto.length > 0;
 
   return (
     <AbsoluteFill style={{ ...font, alignItems: "center", justifyContent: "center" }}>
+      {mostrarBadge ? (
       <div
         style={{
           width: 200,
@@ -493,7 +508,7 @@ const CenaCTA: React.FC<{ c: Paleta; p: TemplateProdutoProps }> = ({ c, p }) => 
           alignItems: "center",
           justifyContent: "center",
           color: p.logoUrl ? c.texto : textoSobre(c.destaque),
-          fontSize: p.marca.length <= 4 ? 66 : p.marca.length <= 8 ? 36 : 26,
+          fontSize: marcaTexto.length <= 4 ? 66 : marcaTexto.length <= 8 ? 36 : 26,
           fontWeight: 800,
           textAlign: "center",
           padding: 14,
@@ -505,9 +520,10 @@ const CenaCTA: React.FC<{ c: Paleta; p: TemplateProdutoProps }> = ({ c, p }) => 
         {p.logoUrl ? (
           <Img src={p.logoUrl} style={{ width: 164, height: 164, objectFit: "contain" }} />
         ) : (
-          p.marca
+          marcaTexto
         )}
       </div>
+      ) : null}
       <div
         style={{
           marginTop: 50,

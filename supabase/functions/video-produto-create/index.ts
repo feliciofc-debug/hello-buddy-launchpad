@@ -18,6 +18,7 @@ import {
   logoDoTenant,
   resolverTrilha,
 } from "../_shared/video-motion-enfileirar.ts";
+import { getTenantBusinessContext } from "../_shared/business-context.ts";
 import {
   duracaoEstimadaProduto,
   normalizarPropsProduto,
@@ -58,8 +59,21 @@ Deno.serve(async (req) => {
       }, 400);
     }
 
+    // Marca do CTA: o que o usuário digitou; senão o nome real da empresa do
+    // tenant. Nunca deixamos o placeholder literal "Sua marca" ir para o vídeo.
+    const marcaDigitada = String(body?.marca ?? "").trim();
+    let marcaFinal = marcaDigitada;
+    if (!marcaFinal) {
+      try {
+        const ctxTenant = await getTenantBusinessContext(sb, user.id, {});
+        marcaFinal = String(ctxTenant?.nome ?? "").trim();
+      } catch (_e) {
+        marcaFinal = "";
+      }
+    }
+
     const props = normalizarPropsProduto(body?.props ?? {}, {
-      marca: body?.marca ?? undefined,
+      marca: marcaFinal || undefined,
       imagemUrl,
     });
     if (!props.produto.nome) {
