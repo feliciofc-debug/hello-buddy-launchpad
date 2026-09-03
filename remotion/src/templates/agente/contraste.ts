@@ -26,7 +26,8 @@ export function luminancia(hex: string): number {
 
 /** Texto legível por cima de uma cor de fundo. */
 export function textoSobre(hex: string): string {
-  return luminancia(hex) > 0.45 ? TEXTO_ESCURO : TEXTO_CLARO;
+  // Maior contraste real (WCAG) em vez de limiar de luminancia.
+  return contraste(hex, TEXTO_ESCURO) >= contraste(hex, TEXTO_CLARO) ? TEXTO_ESCURO : TEXTO_CLARO;
 }
 
 /** Razão de contraste WCAG entre duas cores. */
