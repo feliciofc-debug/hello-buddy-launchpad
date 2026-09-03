@@ -310,6 +310,25 @@ export const ReelsGeradosGrid = () => {
                     </Button>
                     <Button
                       size="sm"
+                      className="text-xs bg-black text-white hover:bg-gray-800"
+                      onClick={() => setTiktokReel(reel)}
+                      title="Publicar no TikTok"
+                    >
+                      <TikTokIcon className="mr-1 h-3 w-3" />
+                      TikTok
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="text-xs bg-[#0A66C2] text-white hover:bg-[#004182]"
+                      onClick={() => setLinkedinReel(reel)}
+                      title="Publicar no LinkedIn"
+                    >
+                      <Linkedin className="mr-1 h-3 w-3" />
+                      LinkedIn
+                    </Button>
+                    <Button
+
+                      size="sm"
                       variant="destructive"
                       className="text-xs col-span-2"
                       onClick={() => handleExcluir(reel)}
