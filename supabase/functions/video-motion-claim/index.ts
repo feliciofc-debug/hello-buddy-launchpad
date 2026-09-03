@@ -42,6 +42,22 @@ Deno.serve(async (req) => {
     }
     delete props.logo_path;
 
+    // Vídeo de produto: assina a foto para o worker, mesmo em bucket privado.
+    if (props.produto && typeof props.produto.imagemUrl === "string") {
+      const m = props.produto.imagemUrl.match(
+        /\/storage\/v1\/object\/(?:public|sign|authenticated)\/([^/]+)\/(.+?)(?:\?|$)/,
+      );
+      if (m) {
+        const [, bucket, caminho] = m;
+        const { data: assinada } = await supabase.storage
+          .from(bucket)
+          .createSignedUrl(decodeURIComponent(caminho), 3600);
+        if (assinada?.signedUrl) props.produto.imagemUrl = assinada.signedUrl;
+      }
+    }
+
+
+
     // O arquivo é privado: assina uma URL nova apenas para este render.
     // O worker nunca recebe storage_path arbitrário vindo do navegador.
     const trilhaId = typeof job.trilha_id === "string" ? job.trilha_id : "";
