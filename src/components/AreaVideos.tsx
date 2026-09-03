@@ -172,7 +172,10 @@ export const AreaVideos = () => {
 
   return (
     <div className="space-y-6">
+      <CriarVideoProduto />
+
       <CriarVideoAnimado />
+
 
       <ReelsGeradosGrid />
 
