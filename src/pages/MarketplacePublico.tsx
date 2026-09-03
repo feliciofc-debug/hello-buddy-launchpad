@@ -342,8 +342,8 @@ export default function MarketplacePublico() {
             <p className="mb-2">© 2024 AMZ Ofertas. Todos os direitos reservados.</p>
             <p>Marketplace de ofertas premium com as melhores comissões do mercado</p>
             <p className="mt-4">
-              <a href="mailto:suporte@amzofertas.com.br" className="hover:text-primary transition">
-                suporte@amzofertas.com.br
+              <a href="mailto:amzofertas@amzofertas.com.br" className="hover:text-primary transition">
+                amzofertas@amzofertas.com.br
               </a>
             </p>
           </div>
