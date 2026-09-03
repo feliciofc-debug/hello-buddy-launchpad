@@ -4,7 +4,8 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Calendar, Clock, Trash2, Video, BookOpen, Loader2, CheckCircle2, XCircle, Image as ImageIcon } from 'lucide-react';
+import { Calendar, Clock, Trash2, Video, BookOpen, Loader2, CheckCircle2, XCircle, Image as ImageIcon, Pencil, Check, X } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -25,6 +26,54 @@ interface VideoAgendado {
 export function VideosAgendadosLista() {
   const [items, setItems] = useState<VideoAgendado[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editData, setEditData] = useState('');
+  const [editHora, setEditHora] = useState('');
+  const [salvando, setSalvando] = useState(false);
+
+  const abrirEdicao = (item: VideoAgendado) => {
+    const d = new Date(item.scheduled_for);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    setEditId(item.id);
+    setEditData(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
+    setEditHora(`${pad(d.getHours())}:${pad(d.getMinutes())}`);
+  };
+
+  const fecharEdicao = () => {
+    setEditId(null);
+    setEditData('');
+    setEditHora('');
+  };
+
+  const salvarEdicao = async (id: string) => {
+    if (!editData || !editHora) {
+      toast.error('Informe data e hora');
+      return;
+    }
+    const nova = new Date(`${editData}T${editHora}:00`);
+    if (isNaN(nova.getTime())) {
+      toast.error('Data/hora inválida');
+      return;
+    }
+    if (nova.getTime() < Date.now() + 60_000) {
+      toast.error('Escolha um horário no futuro');
+      return;
+    }
+    setSalvando(true);
+    const { error } = await supabase
+      .from('videos_agendados')
+      .update({ scheduled_for: nova.toISOString(), status: 'pendente', erro: null })
+      .eq('id', id);
+    setSalvando(false);
+    if (error) {
+      toast.error('Erro ao reagendar');
+      return;
+    }
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, scheduled_for: nova.toISOString(), status: 'pendente', erro: null } : i)));
+    toast.success('Agendamento atualizado');
+    fecharEdicao();
+  };
+
 
   const carregar = async () => {
     setLoading(true);
@@ -133,10 +182,34 @@ export function VideosAgendadosLista() {
               {item.caption && (
                 <p className="text-xs text-foreground/80 mt-1 line-clamp-2" title={item.caption}>{item.caption}</p>
               )}
-              <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
-                <Calendar className="h-3 w-3" />
-                {format(new Date(item.scheduled_for), "dd 'de' MMM 'às' HH:mm", { locale: ptBR })}
-              </div>
+              {editId === item.id ? (
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                  <Input
+                    type="date"
+                    value={editData}
+                    onChange={(e) => setEditData(e.target.value)}
+                    className="h-8 w-[145px] text-xs"
+                  />
+                  <Input
+                    type="time"
+                    value={editHora}
+                    onChange={(e) => setEditHora(e.target.value)}
+                    className="h-8 w-[105px] text-xs"
+                  />
+                  <Button size="sm" className="h-8" disabled={salvando} onClick={() => salvarEdicao(item.id)}>
+                    {salvando ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                    <span className="ml-1 text-xs">Salvar</span>
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-8" onClick={fecharEdicao} disabled={salvando}>
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                  <Calendar className="h-3 w-3" />
+                  {format(new Date(item.scheduled_for), "dd 'de' MMM 'às' HH:mm", { locale: ptBR })}
+                </div>
+              )}
               <div className="flex gap-1 mt-2 flex-wrap">
                 {item.canais.map((c) => (
                   <Badge key={c} variant="outline" className="text-[10px]">{c}</Badge>
@@ -147,14 +220,24 @@ export function VideosAgendadosLista() {
               )}
             </div>
             {(item.status === 'pendente' || item.status === 'erro') && (
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => cancelar(item.id)}
-                title="Cancelar agendamento"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              <div className="flex flex-col gap-1">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => (editId === item.id ? fecharEdicao() : abrirEdicao(item))}
+                  title="Editar data e hora"
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => cancelar(item.id)}
+                  title="Cancelar agendamento"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             )}
           </div>
         </Card>

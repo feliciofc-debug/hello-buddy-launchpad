@@ -14,6 +14,7 @@ import { TikTokShareModal } from '@/components/TikTokShareModal';
 import { PostarLinkedInVideoModal } from '@/components/videos/PostarLinkedInVideoModal';
 import { CriarVideoAnimado } from '@/components/videos/CriarVideoAnimado';
 import { ReelsGeradosGrid } from './videos/ReelsGeradosGrid';
+import { VideosAgendadosLista } from '@/components/VideosAgendadosLista';
 
 interface VideoItem {
   id: string;
@@ -172,6 +173,11 @@ export const AreaVideos = () => {
       <CriarVideoAnimado />
 
       <ReelsGeradosGrid />
+
+      <div className="pt-2">
+        <h2 className="text-xl font-semibold mb-3">🗓️ Agendamentos (Reels e Stories)</h2>
+        <VideosAgendadosLista />
+      </div>
 
 
       <div className="flex items-center justify-between pt-2 gap-4 flex-wrap">
