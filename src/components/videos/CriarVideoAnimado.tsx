@@ -132,8 +132,10 @@ export const CriarVideoAnimado = () => {
         .order('nome', { ascending: true }),
       supabase.from('empresa_config').select('trilha_padrao_id').eq('user_id', user.id).maybeSingle(),
     ]);
-    setTrilhas((catalogo ?? []) as TrilhaSonora[]);
-    if (config?.trilha_padrao_id) setTrilhaId(config.trilha_padrao_id);
+    setTrilhas((catalogo ?? []) as unknown as TrilhaSonora[]);
+    if ((config as { trilha_padrao_id?: string | null } | null)?.trilha_padrao_id) {
+      setTrilhaId((config as { trilha_padrao_id: string }).trilha_padrao_id);
+    }
   };
 
   const selecionarTrilha = async (id: string) => {
