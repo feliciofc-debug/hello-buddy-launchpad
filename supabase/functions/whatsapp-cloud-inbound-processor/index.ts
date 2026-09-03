@@ -36,6 +36,11 @@ import {
   tratarRespostaFluxoLegenda,
   resolverVideoLegendado,
 } from "../_shared/video-legenda-flow.ts";
+import {
+  enfileirarVideoMotion,
+  montarRoteiroMotion,
+  type EnfileirarResult,
+} from "../_shared/video-motion-enfileirar.ts";
 
 import {
   entregarEbookTenant,
