@@ -416,16 +416,16 @@ const CenaPreco: React.FC<{ c: Paleta; p: TemplateProdutoProps }> = ({ c, p }) =
   const escurece = interpolate(frame, [0, 24], [0, 1], { extrapolateRight: "clamp" });
   const selo = spring({ frame: frame - 46, fps, config: { damping: 12, stiffness: 150 } });
 
-  // contador: sobe até o valor final quando o preço tem número.
-  const numero = Number(String(p.produto.preco ?? "").replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", "."));
+  // O preço NUNCA anima de zero: exibimos o valor final desde o primeiro
+  // frame (contador partindo de 0 fazia o vídeo anunciar produto de graça).
+  const numero = Number(
+    String(p.produto.preco ?? "").replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", "."),
+  );
   const temNumero = Number.isFinite(numero) && numero > 0;
-  const atual = interpolate(frame, [12, 62], [0, numero], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
   const precoTexto = temNumero
-    ? `R$ ${atual.toLocaleString("pt-BR", { minimumFractionDigits: numero % 1 ? 2 : 0, maximumFractionDigits: 2 })}`
+    ? `R$ ${numero.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     : String(p.produto.preco ?? "");
+  const entradaPreco = spring({ frame: frame - 8, fps, config: { damping: 16, stiffness: 140 } });
 
   return (
     <AbsoluteFill style={{ ...font, alignItems: "center", justifyContent: "center" }}>
@@ -455,6 +455,8 @@ const CenaPreco: React.FC<{ c: Paleta; p: TemplateProdutoProps }> = ({ c, p }) =
           fontSize: 120,
           fontWeight: 800,
           letterSpacing: -4,
+          opacity: Math.min(1, entradaPreco * 1.2),
+          transform: `scale(${interpolate(entradaPreco, [0, 1], [0.82, 1])})`,
         }}
       >
         {precoTexto}
