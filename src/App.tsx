@@ -163,6 +163,8 @@ const App = () => (
           <Route path="/midias" element={<Midias />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />
+            <Route path="/terms-of-service" element={<Termos />} />
+            <Route path="/privacy-policy" element={<PoliticaPrivacidade />} />
             <Route path="/data-deletion" element={<DataDeletion />} />
             <Route path="/security" element={<Security />} />
             <Route path="/admin" element={<Admin />} />
