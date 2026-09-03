@@ -35,7 +35,7 @@ interface VideoItem {
 }
 
 export const AreaVideos = () => {
-  const showTikTok = useFeatureFlag('tiktok_integration');
+  const showTikTok = true; // TikTok liberado para todas as contas (review TikTok);
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const [uploading, setUploading] = useState(false);
   const [showReelsModal, setShowReelsModal] = useState(false);

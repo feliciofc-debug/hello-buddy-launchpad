@@ -23,7 +23,7 @@ export default function RedesSociaisPainel() {
   const [stats, setStats] = useState({ total: 0, publicados: 0, hoje: 0, pendentes: 0, erros: 0 });
   const [metaConn, setMetaConn] = useState<any>(null);
   const [tiktokConn, setTiktokConn] = useState<any>(null);
-  const showTikTok = useFeatureFlag('tiktok_integration');
+  const showTikTok = true; // TikTok liberado para todas as contas (review TikTok);
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<any | null>(null);
 
