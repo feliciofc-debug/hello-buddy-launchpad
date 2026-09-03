@@ -4441,7 +4441,7 @@ function isVideoApproval(text: string): boolean {
 }
 
 function isVideoCancellation(text: string): boolean {
-  return /\b(cancel(a|ar)|nao|não|descarta|deixa pra la|deixa pra lá)\b/.test(normalizePt(text || ""));
+  return /\b(cancel(a|ar)|descarta|abandona|deixa pra la|deixa pra lá)\b/.test(normalizePt(text || ""));
 }
 
 function videoDraftToken(): string {
