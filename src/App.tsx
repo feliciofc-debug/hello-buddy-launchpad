@@ -161,10 +161,6 @@ const App = () => (
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/meus-produtos" element={<MeusProdutos />} />
           <Route path="/midias" element={<Midias />} />
-            <Route path="/terms" element={<Navigate to="/termos" replace />} />
-            <Route path="/privacy" element={<Navigate to="/politica-privacidade" replace />} />
-            <Route path="/terms-of-service" element={<Navigate to="/termos" replace />} />
-            <Route path="/privacy-policy" element={<Navigate to="/politica-privacidade" replace />} />
             <Route path="/data-deletion" element={<DataDeletion />} />
             <Route path="/security" element={<Security />} />
             <Route path="/admin" element={<Admin />} />
@@ -182,7 +178,6 @@ const App = () => (
             <Route path="/marketplace" element={<Marketplace />} />
             <Route path="/marketplace/:slug" element={<MarketplaceProduto />} />
             <Route path="/marketplace-publico" element={<MarketplacePublico />} />
-            <Route path="/politica-privacidade" element={<PoliticaPrivacidade />} />
             <Route path="/configuracoes-whatsapp" element={<ConfiguracoesWhatsApp />} />
             <Route path="/imoveis/leads-enriquecidos" element={<LeadsImoveisEnriquecidos />} />
             <Route path="/imoveis/seguidores-concorrentes" element={<SeguidoresConcorrentes />} />
@@ -217,9 +212,9 @@ const App = () => (
             {/* TikTok OAuth Callback */}
             <Route path="/tiktok/callback" element={<TikTokCallback />} />
             
-            {/* Páginas Legais */}
-            <Route path="/termos" element={<Termos />} />
-            <Route path="/privacidade" element={<Privacidade />} />
+            {/* Páginas Legais — URLs em inglês para review do TikTok, conteúdo em português */}
+            <Route path="/terms" element={<Termos />} />
+            <Route path="/privacy" element={<PoliticaPrivacidade />} />
             <Route path="/guia/contas-comerciais" element={<GuiaContasComerciais />} />
             <Route path="/guia-contas-comerciais" element={<GuiaContasComerciais />} />
             
