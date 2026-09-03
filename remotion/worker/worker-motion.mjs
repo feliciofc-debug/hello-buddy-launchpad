@@ -52,15 +52,17 @@ async function duracaoSegundos(arquivo) {
 // REMOÇÃO DE FUNDO (rembg local, custo zero)
 //
 // Roda SEMPRE EM SÉRIE, antes do render: o Chromium do Remotion é
-// pesado e não pode competir por CPU com o modelo. O worker é
-// single-thread, então basta ser sequencial aqui.
+// pesado e não pode competir por CPU com o modelo.
 //
-// Usa o MODO SERVIÇO do rembg (`rembg s`) para não recarregar o
-// modelo a cada foto. Sem serviço no ar, o vídeo continua saindo:
-// cai no fallback de fundo desfocado do próprio template.
+// Usa o BINÁRIO do rembg (`rembg i`). O modo serviço (`rembg s`)
+// não é utilizável: sobe uma UI Gradio que tenta abrir Chromium e,
+// rodando como root sem --no-sandbox, derruba o servidor.
+//
+// Se o recorte falhar, o vídeo continua saindo: cai no fallback de
+// fundo desfocado do próprio template.
 // ------------------------------------------------------------
-const REMBG_URL = process.env.REMBG_URL || "http://127.0.0.1:7000";
-const REMBG_MODELO = process.env.REMBG_MODELO || "isnet-general-use";
+const REMBG_BIN = process.env.REMBG_BIN || "/opt/rembg-env/bin/rembg";
+const REMBG_MODELO = process.env.REMBG_MODELO || "u2netp";
 const REMBG_TIMEOUT_MS = Number(process.env.REMBG_TIMEOUT_MS || 90000);
 const RECORTE_MAX_BYTES = 8 * 1024 * 1024;
 
@@ -70,20 +72,26 @@ async function recortarFundo(imagemUrl) {
   const entrada = Buffer.from(await baixar.arrayBuffer());
   if (entrada.length > 15 * 1024 * 1024) throw new Error("foto maior que 15MB");
 
-  const form = new FormData();
-  form.append("file", new Blob([entrada]), "produto.png");
-  const url = `${REMBG_URL.replace(/\/$/, "")}/api/remove?m=${encodeURIComponent(REMBG_MODELO)}`;
-  const resp = await fetch(url, {
-    method: "POST",
-    body: form,
-    signal: AbortSignal.timeout(REMBG_TIMEOUT_MS),
-  });
-  if (!resp.ok) throw new Error(`rembg respondeu ${resp.status}`);
-  const saida = Buffer.from(await resp.arrayBuffer());
-  if (!saida.length) throw new Error("rembg devolveu arquivo vazio");
-  if (saida.length > RECORTE_MAX_BYTES) throw new Error("PNG recortado grande demais");
-  return `data:image/png;base64,${saida.toString("base64")}`;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rembg-"));
+  const src = path.join(dir, "entrada.png");
+  const dst = path.join(dir, "saida.png");
+  try {
+    fs.writeFileSync(src, entrada);
+    // execFile: sem shell, sem risco de injeção pelos argumentos.
+    await exec(REMBG_BIN, ["i", "-m", REMBG_MODELO, src, dst], {
+      timeout: REMBG_TIMEOUT_MS,
+      maxBuffer: 1024 * 1024 * 8,
+    });
+    if (!fs.existsSync(dst)) throw new Error("rembg não gerou arquivo de saída");
+    const saida = fs.readFileSync(dst);
+    if (!saida.length) throw new Error("rembg devolveu arquivo vazio");
+    if (saida.length > RECORTE_MAX_BYTES) throw new Error("PNG recortado grande demais");
+    return `data:image/png;base64,${saida.toString("base64")}`;
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 }
+
 
 /** Aplica o recorte quando pedido. Nunca derruba o job. */
 async function prepararProps(job) {
