@@ -298,40 +298,47 @@ const CenaHeroi: React.FC<{ c: Paleta; p: TemplateProdutoProps }> = ({ c, p }) =
         <Produto c={c} produto={p.produto} escala={zoom} y={float - 60} />
       </div>
       <Sweep inicio={54} />
+      {/* Bloco de texto empilhado: nome e apoio nunca se sobrepõem. */}
       <div
         style={{
           position: "absolute",
-          bottom: 300,
+          bottom: 220,
           left: 80,
           right: 80,
-          textAlign: "center",
-          color: c.texto,
-          fontSize: p.produto.nome.length > 22 ? 66 : 82,
-          fontWeight: 800,
-          letterSpacing: -2,
-          lineHeight: 1.06,
-          opacity: nome,
-          transform: `translateY(${interpolate(nome, [0, 1], [34, 0])}px)`,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 18,
         }}
       >
-        {p.produto.nome}
-      </div>
-      {p.produto.subtitulo ? (
         <div
           style={{
-            position: "absolute",
-            bottom: 236,
-            left: 90,
-            right: 90,
             textAlign: "center",
-            color: c.suave,
-            fontSize: 36,
-            opacity: sub,
+            color: c.texto,
+            fontSize: p.produto.nome.length > 28 ? 58 : p.produto.nome.length > 22 ? 66 : 82,
+            fontWeight: 800,
+            letterSpacing: -2,
+            lineHeight: 1.06,
+            opacity: nome,
+            transform: `translateY(${interpolate(nome, [0, 1], [34, 0])}px)`,
           }}
         >
-          {p.produto.subtitulo}
+          {p.produto.nome}
         </div>
-      ) : null}
+        {p.produto.subtitulo ? (
+          <div
+            style={{
+              textAlign: "center",
+              color: c.suave,
+              fontSize: p.produto.subtitulo.length > 46 ? 30 : 36,
+              lineHeight: 1.3,
+              opacity: sub,
+            }}
+          >
+            {p.produto.subtitulo}
+          </div>
+        ) : null}
+      </div>
     </AbsoluteFill>
   );
 };
