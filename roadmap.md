@@ -52,4 +52,4 @@
 ## TikTok review (prioridade máxima — antes de terminar o vídeo de produto)
 - [x] Botão TikTok visível em "Meus Reels Gerados" (faltava para todas as contas, inclusive a demo)
 - [x] Botão LinkedIn no mesmo card, igualando as ações de produto
-- [ ] Publicar em produção e testar em aba anônima com tiktokreview@amzofertas.com.br
+- [x] Publicado e testado com a conta tiktokreview@amzofertas.com.br (botao TikTok visivel em produtos e reels; modal Connect TikTok abre OAuth)
