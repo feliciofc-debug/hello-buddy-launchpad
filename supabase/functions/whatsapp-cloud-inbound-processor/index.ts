@@ -4496,7 +4496,12 @@ async function confirmarRascunhoVideo(ctx: { userId: string; fromNumber: string 
   const draft = await buscarRascunhoVideo(ctx);
   if (!draft) return "Não encontrei um roteiro de vídeo aguardando aprovação. Se quiser, peça um novo vídeo com o tema.";
   if (cancelar) {
-    await sb.from("video_motion_rascunhos").update({ status: "cancelado" }).eq("id", draft.id).eq("user_id", ctx.userId);
+    const { error } = await sb.from("video_motion_rascunhos")
+      .update({ status: "cancelado" })
+      .eq("id", draft.id)
+      .eq("user_id", ctx.userId)
+      .eq("status", "aguardando_aprovacao");
+    if (error) return `Não consegui descartar o roteiro: ${error.message}`;
     return "Roteiro descartado. Nenhum vídeo será renderizado.";
   }
   const r = await enfileirarVideoMotion({
@@ -4510,7 +4515,12 @@ async function confirmarRascunhoVideo(ctx: { userId: string; fromNumber: string 
     formato: draft.formato,
   });
   if (!r.ok) return r.error;
-  await sb.from("video_motion_rascunhos").update({ status: "aprovado" }).eq("id", draft.id).eq("user_id", ctx.userId);
+  const { error } = await sb.from("video_motion_rascunhos")
+    .update({ status: "aprovado" })
+    .eq("id", draft.id)
+    .eq("user_id", ctx.userId)
+    .eq("status", "aguardando_aprovacao");
+  if (error) return `O vídeo foi enfileirado, mas não consegui atualizar o roteiro: ${error.message}`;
   return `✅ Roteiro aprovado e vídeo enfileirado. Posição na fila: *${r.posicao_fila}*. Vou te enviar o MP4 aqui quando terminar (estimativa: cerca de 4 minutos).`;
 }
 
