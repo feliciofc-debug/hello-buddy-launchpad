@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 
 import Dashboard from "./pages/Dashboard";
@@ -161,10 +161,10 @@ const App = () => (
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/meus-produtos" element={<MeusProdutos />} />
           <Route path="/midias" element={<Midias />} />
-            <Route path="/terms" element={<Terms />} />
-            <Route path="/privacy" element={<Privacy />} />
-            <Route path="/terms-of-service" element={<Termos />} />
-            <Route path="/privacy-policy" element={<PoliticaPrivacidade />} />
+            <Route path="/terms" element={<Navigate to="/termos" replace />} />
+            <Route path="/privacy" element={<Navigate to="/politica-privacidade" replace />} />
+            <Route path="/terms-of-service" element={<Navigate to="/termos" replace />} />
+            <Route path="/privacy-policy" element={<Navigate to="/politica-privacidade" replace />} />
             <Route path="/data-deletion" element={<DataDeletion />} />
             <Route path="/security" element={<Security />} />
             <Route path="/admin" element={<Admin />} />
