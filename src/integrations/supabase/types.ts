@@ -2713,6 +2713,7 @@ export type Database = {
           segmento: string | null
           site: string | null
           sobre_negocio: string | null
+          trilha_padrao_id: string | null
           updated_at: string | null
           user_id: string
           voz_copy: string
@@ -2729,6 +2730,7 @@ export type Database = {
           segmento?: string | null
           site?: string | null
           sobre_negocio?: string | null
+          trilha_padrao_id?: string | null
           updated_at?: string | null
           user_id: string
           voz_copy?: string
@@ -2745,11 +2747,20 @@ export type Database = {
           segmento?: string | null
           site?: string | null
           sobre_negocio?: string | null
+          trilha_padrao_id?: string | null
           updated_at?: string | null
           user_id?: string
           voz_copy?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "empresa_config_trilha_padrao_id_fkey"
+            columns: ["trilha_padrao_id"]
+            isOneToOne: false
+            referencedRelation: "trilhas_sonoras"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       empresas: {
         Row: {
@@ -8196,6 +8207,51 @@ export type Database = {
           status?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      trilhas_sonoras: {
+        Row: {
+          ativo: boolean
+          created_at: string
+          descricao: string | null
+          duracao_seg: number | null
+          id: string
+          licenca: string
+          licenca_url: string | null
+          mood: string
+          nome: string
+          storage_path: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string
+          descricao?: string | null
+          duracao_seg?: number | null
+          id?: string
+          licenca: string
+          licenca_url?: string | null
+          mood?: string
+          nome: string
+          storage_path: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string
+          descricao?: string | null
+          duracao_seg?: number | null
+          id?: string
+          licenca?: string
+          licenca_url?: string | null
+          mood?: string
+          nome?: string
+          storage_path?: string
+          updated_at?: string
+          user_id?: string | null
         }
         Relationships: []
       }
