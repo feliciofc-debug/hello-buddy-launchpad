@@ -220,14 +220,24 @@ export function VideosAgendadosLista() {
               )}
             </div>
             {(item.status === 'pendente' || item.status === 'erro') && (
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => cancelar(item.id)}
-                title="Cancelar agendamento"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              <div className="flex flex-col gap-1">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => (editId === item.id ? fecharEdicao() : abrirEdicao(item))}
+                  title="Editar data e hora"
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => cancelar(item.id)}
+                  title="Cancelar agendamento"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             )}
           </div>
         </Card>
