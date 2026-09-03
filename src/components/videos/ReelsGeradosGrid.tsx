@@ -406,6 +406,26 @@ export const ReelsGeradosGrid = () => {
           onPublished={(result) => handleStoryPublished(storyReel.id, result)}
         />
       )}
+
+      {tiktokReel && (
+        <TikTokShareModal
+          open={!!tiktokReel}
+          onOpenChange={(open) => !open && setTiktokReel(null)}
+          content={{
+            type: 'video',
+            url: tiktokReel.video_url,
+            title: tiktokReel.titulo || tiktokReel.produtos?.nome || 'Vídeo',
+          }}
+        />
+      )}
+
+      <PostarLinkedInVideoModal
+        open={!!linkedinReel}
+        onOpenChange={(open) => !open && setLinkedinReel(null)}
+        videoUrl={linkedinReel?.video_url || null}
+        videoNome={linkedinReel?.titulo || linkedinReel?.produtos?.nome || null}
+      />
     </div>
+
   );
 };
