@@ -97,6 +97,19 @@ export default function CookieBanner() {
     setShowBanner(false);
   };
 
+  // Enquanto o banner estiver aberto, reserva espaço no fim da página
+  // para que o rodapé (links legais) continue visível.
+  useEffect(() => {
+    if (showBanner) {
+      document.body.style.paddingBottom = '260px';
+    } else {
+      document.body.style.paddingBottom = '';
+    }
+    return () => {
+      document.body.style.paddingBottom = '';
+    };
+  }, [showBanner]);
+
   if (!showBanner) return null;
 
   return (
