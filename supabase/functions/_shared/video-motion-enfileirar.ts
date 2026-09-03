@@ -86,7 +86,7 @@ const normalizarTema = (t: string) =>
     .replace(/\s+/g, " ").trim();
 
 /** Resolve uma faixa válida do catálogo sem aceitar caminhos arbitrários do cliente. */
-async function resolverTrilha(sb: any, userId: string, input: EnfileirarInput): Promise<{ id: string; path: string; volume: number } | null> {
+export async function resolverTrilha(sb: any, userId: string, input: EnfileirarInput): Promise<{ id: string; path: string; volume: number } | null> {
   if (input.semTrilha) return null;
   const propsTrilhaId = typeof (input.props as any)?.trilha_id === "string" ? (input.props as any).trilha_id : null;
   const trilhaId = input.trilhaId || propsTrilhaId;
