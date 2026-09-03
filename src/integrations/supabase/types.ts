@@ -8636,6 +8636,8 @@ export type Database = {
           template: string
           tentativas: number
           titulo: string | null
+          trilha_url: string | null
+          trilha_volume: number
           updated_at: string
           user_id: string
         }
@@ -8660,6 +8662,8 @@ export type Database = {
           template?: string
           tentativas?: number
           titulo?: string | null
+          trilha_url?: string | null
+          trilha_volume?: number
           updated_at?: string
           user_id: string
         }
@@ -8684,6 +8688,8 @@ export type Database = {
           template?: string
           tentativas?: number
           titulo?: string | null
+          trilha_url?: string | null
+          trilha_volume?: number
           updated_at?: string
           user_id?: string
         }
@@ -10211,6 +10217,8 @@ export type Database = {
           template: string
           tentativas: number
           titulo: string | null
+          trilha_url: string | null
+          trilha_volume: number
           updated_at: string
           user_id: string
         }
