@@ -4,7 +4,8 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Calendar, Clock, Trash2, Video, BookOpen, Loader2, CheckCircle2, XCircle, Image as ImageIcon } from 'lucide-react';
+import { Calendar, Clock, Trash2, Video, BookOpen, Loader2, CheckCircle2, XCircle, Image as ImageIcon, Pencil, Check, X } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
