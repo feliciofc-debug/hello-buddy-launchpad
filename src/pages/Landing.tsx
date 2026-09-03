@@ -47,12 +47,6 @@ function Landing() {
                 Plataforma completa de marketing digital para pequenas e médias empresas. Crie, agende e publique conteúdo profissional em minutos.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 mb-8">
-                <button
-                  onClick={() => navigate('/cadastro')}
-                  className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-pink-500 hover:shadow-2xl text-white text-lg px-8 py-6 rounded-lg font-bold transition transform hover:scale-105"
-                >
-                  🚀 Fale com um Consultor
-                </button>
                 <a
                   href="https://wa.me/5521980804901?text=Ol%C3%A1!%20Tenho%20interesse%20em%20conhecer%20a%20AMZ%20Ofertas.%20Minha%20vitrine%20Shopee:%20"
                   target="_blank"
