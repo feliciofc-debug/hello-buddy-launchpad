@@ -85,6 +85,36 @@ const normalizarTema = (t: string) =>
   t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9 ]/g, " ")
     .replace(/\s+/g, " ").trim();
 
+/** Resolve uma faixa válida do catálogo sem aceitar caminhos arbitrários do cliente. */
+async function resolverTrilha(sb: any, userId: string, input: EnfileirarInput): Promise<{ id: string; path: string; volume: number } | null> {
+  if (input.semTrilha) return null;
+  const propsTrilhaId = typeof (input.props as any)?.trilha_id === "string" ? (input.props as any).trilha_id : null;
+  const trilhaId = input.trilhaId || propsTrilhaId;
+  let query = sb.from("trilhas_sonoras").select("id, user_id, storage_path, ativo").eq("ativo", true);
+  if (trilhaId) {
+    query = query.eq("id", trilhaId).maybeSingle();
+  } else {
+    const { data: config } = await sb.from("empresa_config").select("trilha_padrao_id").eq("user_id", userId).maybeSingle();
+    if (!config?.trilha_padrao_id) return null;
+    query = query.eq("id", config.trilha_padrao_id).maybeSingle();
+  }
+  const { data, error } = await query;
+  if (error) throw new Error(`não consegui carregar a trilha: ${error.message}`);
+  if (!data) {
+    if (trilhaId) throw new Error("A trilha selecionada não está disponível para esta conta.");
+    return null;
+  }
+  const path = String(data.storage_path ?? "");
+  const pertenceAoUsuario = data.user_id === null || data.user_id === userId;
+  const caminhoSeguro = path.startsWith("global/") || path.startsWith(`${userId}/`);
+  if (!pertenceAoUsuario || !caminhoSeguro) throw new Error("A trilha selecionada não está disponível para esta conta.");
+  return {
+    id: String(data.id),
+    path,
+    volume: Math.min(1, Math.max(0, input.trilhaVolume ?? (input.props as any)?.trilha_volume ?? 0.28)),
+  };
+}
+
 /** Gera o roteiro (IA ou props editadas) sem tocar na fila. */
 export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
   props: MotionProps;
@@ -93,6 +123,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
 }> {
   const { sb, userId, tema } = input;
   const logoPath = await logoDoTenant(sb, userId);
+  const trilha = await resolverTrilha(sb, userId, input);
   let props: MotionProps;
   let legendaPost = String(input.legendaPost ?? "").trim();
   let usouIA = false;
