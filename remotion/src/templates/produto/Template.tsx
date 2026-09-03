@@ -602,9 +602,7 @@ const LinhaLegenda: React.FC<{ c: Paleta; text: string }> = ({ c, text }) => {
 
 export const TemplateProduto: React.FC<TemplateProdutoProps> = (props) => {
   const { cores: c, produto, legendas, trilhaUrl } = props;
-  const { fps } = useVideoConfig();
   const total = framesTemplateProduto(props);
-  const timing = springTiming({ config: { damping: 200 }, durationInFrames: TRANSICAO });
   const temFicha = (produto.bullets?.length ?? 0) > 0;
   const temPreco = Boolean(produto.preco);
 
@@ -618,39 +616,33 @@ export const TemplateProduto: React.FC<TemplateProdutoProps> = (props) => {
   const legendasValidas = (legendas ?? []).filter((l) => String(l ?? "").trim().length > 0);
   const passo = legendasValidas.length > 0 ? Math.floor((total - 20) / legendasValidas.length) : 0;
 
+  // CORTE SECO entre cenas (sem crossfade). Crossfade mostrava o produto
+  // duas vezes ao mesmo tempo, em escalas/posições diferentes — era a
+  // "imagem fantasma" que aparecia atrás do produto.
   return (
     <AbsoluteFill>
       <Fundo c={c} imagem={produto.imagemUrl} usarImagem={!produto.recortado} />
-      <TransitionSeries>
-        <TransitionSeries.Sequence durationInFrames={IMPACTO}>
+      <Series>
+        <Series.Sequence durationInFrames={IMPACTO}>
           <CenaImpacto c={c} p={props} />
-        </TransitionSeries.Sequence>
-        <TransitionSeries.Transition presentation={fade()} timing={timing} />
-        <TransitionSeries.Sequence durationInFrames={HEROI}>
+        </Series.Sequence>
+        <Series.Sequence durationInFrames={HEROI}>
           <CenaHeroi c={c} p={props} />
-        </TransitionSeries.Sequence>
+        </Series.Sequence>
         {temFicha ? (
-          <TransitionSeries.Transition
-            presentation={slide({ direction: "from-right" })}
-            timing={timing}
-          />
-        ) : null}
-        {temFicha ? (
-          <TransitionSeries.Sequence durationInFrames={FICHA}>
+          <Series.Sequence durationInFrames={FICHA}>
             <CenaFicha c={c} p={props} />
-          </TransitionSeries.Sequence>
+          </Series.Sequence>
         ) : null}
-        {temPreco ? <TransitionSeries.Transition presentation={fade()} timing={timing} /> : null}
         {temPreco ? (
-          <TransitionSeries.Sequence durationInFrames={PRECO}>
+          <Series.Sequence durationInFrames={PRECO}>
             <CenaPreco c={c} p={props} />
-          </TransitionSeries.Sequence>
+          </Series.Sequence>
         ) : null}
-        <TransitionSeries.Transition presentation={fade()} timing={timing} />
-        <TransitionSeries.Sequence durationInFrames={CTA_F}>
+        <Series.Sequence durationInFrames={CTA_F}>
           <CenaCTA c={c} p={props} />
-        </TransitionSeries.Sequence>
-      </TransitionSeries>
+        </Series.Sequence>
+      </Series>
 
       {trilhaUrl ? <Audio src={trilhaUrl} volume={volumeTrilha} startFrom={0} endAt={total} /> : null}
 
