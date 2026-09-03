@@ -8633,6 +8633,51 @@ export type Database = {
         }
         Relationships: []
       }
+      video_motion_rascunhos: {
+        Row: {
+          created_at: string
+          expira_em: string
+          formato: string
+          id: string
+          legenda_post: string | null
+          props: Json
+          status: string
+          telefone: string | null
+          tema: string
+          token: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expira_em?: string
+          formato?: string
+          id?: string
+          legenda_post?: string | null
+          props: Json
+          status?: string
+          telefone?: string | null
+          tema: string
+          token: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expira_em?: string
+          formato?: string
+          id?: string
+          legenda_post?: string | null
+          props?: Json
+          status?: string
+          telefone?: string | null
+          tema?: string
+          token?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       video_render_jobs: {
         Row: {
           avisado_demora_at: string | null
@@ -10378,6 +10423,7 @@ export type Database = {
         Args: { p_phone: string }
         Returns: number
       }
+      video_motion_destravar_fila: { Args: never; Returns: number }
       video_motion_fila_posicao: { Args: { p_job_id: string }; Returns: number }
       video_render_fila_posicao: { Args: { p_job_id: string }; Returns: number }
     }

@@ -36,6 +36,11 @@ import {
   tratarRespostaFluxoLegenda,
   resolverVideoLegendado,
 } from "../_shared/video-legenda-flow.ts";
+import {
+  enfileirarVideoMotion,
+  montarRoteiroMotion,
+} from "../_shared/video-motion-enfileirar.ts";
+import { duracaoEstimada } from "../_shared/video-motion.ts";
 
 import {
   entregarEbookTenant,
@@ -4405,6 +4410,134 @@ async function toolPostarMidiaBiblioteca(
   }
 }
 
+// ============================================================
+// VÍDEO MOTION PELO WHATSAPP — roteiro + aprovação persistente.
+// O agente só enfileira depois de uma confirmação explícita do responsável.
+// ============================================================
+function normalizeVideoTopic(text: string): string {
+  return compactSpaces(text)
+    .replace(/^jarvis[,.!\s-]*/i, "")
+    .replace(/\b(por favor|pfv|pra mim|para mim)\b/gi, " ")
+    .replace(/\b(faz|faca|faça|cria|crie|monta|monte|gera|gere|produz|produza)\b/gi, " ")
+    .replace(/\b(um|uma|o|a)\s+(video|vídeo)\b/gi, " ")
+    .replace(/\b(video|vídeo)\s+(animado|motion|institucional|publicitario|publicitário)?\b/gi, " ")
+    .replace(/\b(para|pra|pro|no|na|em)\s+(whatsapp|instagram|insta|facebook|face|reels?|stories?)\b/gi, " ")
+    .replace(/\b(sem|com)\s+(juros|logo|legenda)\b/gi, " $1 $2 ")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s,;:.-]+|[\s,;:.-]+$/g, "")
+    .trim()
+    .slice(0, 240);
+}
+
+function isVideoMotionRequest(text: string): boolean {
+  const n = normalizePt(text || "");
+  return /\b(faz|faca|faça|cria|crie|monta|monte|gera|gere|produz|produza|quero|preciso)\b[\s\S]{0,80}\b(video|vídeo|motion|reels? animado)\b|\b(video|vídeo)\s+(animado|motion)\b/.test(n);
+}
+
+function isVideoApproval(text: string): boolean {
+  const n = normalizePt(compactSpaces(text || "")).replace(/[.!?]+$/g, "");
+  return /^(sim|ok|okay|pode|pode fazer|faz|faça|confirma|confirmo|aprovado|aprovada|manda ver|pode gerar|gera|gerar|vai|fechado|fechou)$/.test(n)
+    || /\b(aprovad[oa]|pode (fazer|gerar|renderizar)|manda ver|pode mandar|pode produzir)\b/.test(n);
+}
+
+function isVideoCancellation(text: string): boolean {
+  return /\b(cancel(a|ar)|descarta|abandona|deixa pra la|deixa pra lá)\b/.test(normalizePt(text || ""));
+}
+
+function videoDraftToken(): string {
+  return crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+}
+
+function formatVideoDraft(props: any, tema: string, duracao: number): string {
+  const linhas = Array.isArray(props?.hook?.linhas) ? props.hook.linhas.filter(Boolean).join(" ") : "";
+  const mensagens = Array.isArray(props?.chat?.mensagens)
+    ? props.chat.mensagens.map((m: any) => `${m?.de === "dono" ? "Você" : "Agente"}: ${m?.texto || ""}`).filter((x: string) => !x.endsWith(": ")).join("\n")
+    : "";
+  const cta = props?.cta?.frase ? `\n\n*CTA:* ${props.cta.frase}` : "";
+  return `🎬 *Roteiro do vídeo — ${tema}*\n\n*Gancho:* ${linhas || "(não informado)"}\n\n*Conversa:*\n${mensagens || "(não informado)"}${cta}\n\nDuração estimada: ${duracao}s.\n\nResponda *APROVADO* para eu renderizar o MP4 (leva cerca de 4 minutos), ou me diga o que ajustar.`;
+}
+
+async function criarRascunhoVideoMotion(ctx: { userId: string; fromNumber: string }, tema: string): Promise<string> {
+  if (!isOwner(ctx)) return "Esse recurso é exclusivo do responsável da conta. Posso encaminhar o pedido para ele.";
+  const roteiro = await montarRoteiroMotion({ sb, userId: ctx.userId, tema, origem: "whatsapp", nomeFallback: null });
+  const token = videoDraftToken();
+  const { error } = await sb.from("video_motion_rascunhos").insert({
+    user_id: ctx.userId,
+    telefone: ctx.fromNumber,
+    token,
+    tema,
+    props: roteiro.props,
+    legenda_post: roteiro.legendaPost || null,
+    formato: "reels",
+    status: "aguardando_aprovacao",
+  });
+  if (error) throw new Error(`não consegui salvar o roteiro: ${error.message}`);
+  return `${formatVideoDraft(roteiro.props, tema, roteiro.props ? duracaoEstimada(roteiro.props) : 0)}\n\nCódigo de aprovação: *${token}*`;
+}
+
+async function buscarRascunhoVideo(ctx: { userId: string; fromNumber: string }): Promise<any | null> {
+  const { data, error } = await sb.from("video_motion_rascunhos")
+    .select("*")
+    .eq("user_id", ctx.userId)
+    .eq("telefone", ctx.fromNumber)
+    .eq("status", "aguardando_aprovacao")
+    .gt("expira_em", new Date().toISOString())
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (error) {
+    console.warn("[video-motion][draft-load]", error.message);
+    return null;
+  }
+  return data?.[0] ?? null;
+}
+
+async function confirmarRascunhoVideo(ctx: { userId: string; fromNumber: string }, cancelar = false): Promise<string> {
+  if (!isOwner(ctx)) return "A aprovação do vídeo só pode ser feita pelo responsável da conta.";
+  const draft = await buscarRascunhoVideo(ctx);
+  if (!draft) return "Não encontrei um roteiro de vídeo aguardando aprovação. Se quiser, peça um novo vídeo com o tema.";
+  if (cancelar) {
+    const { error } = await sb.from("video_motion_rascunhos")
+      .update({ status: "cancelado" })
+      .eq("id", draft.id)
+      .eq("user_id", ctx.userId)
+      .eq("status", "aguardando_aprovacao");
+    if (error) return `Não consegui descartar o roteiro: ${error.message}`;
+    return "Roteiro descartado. Nenhum vídeo será renderizado.";
+  }
+
+  // Claim atômico: duas mensagens repetidas não podem criar dois jobs para o mesmo roteiro.
+  const { data: claimed, error: claimError } = await sb.from("video_motion_rascunhos")
+    .update({ status: "aprovando" })
+    .eq("id", draft.id)
+    .eq("user_id", ctx.userId)
+    .eq("status", "aguardando_aprovacao")
+    .select("id")
+    .maybeSingle();
+  if (claimError) return `Não consegui iniciar a aprovação: ${claimError.message}`;
+  if (!claimed) return "Esse roteiro já está sendo processado ou não está mais disponível.";
+
+  const r = await enfileirarVideoMotion({
+    sb,
+    userId: ctx.userId,
+    tema: draft.tema,
+    origem: "whatsapp",
+    telefone: ctx.fromNumber,
+    props: draft.props,
+    legendaPost: draft.legenda_post,
+    formato: draft.formato,
+  });
+  if (!r.ok) {
+    await sb.from("video_motion_rascunhos").update({ status: "aguardando_aprovacao" }).eq("id", draft.id).eq("status", "aprovando");
+    return r.error;
+  }
+  const { error } = await sb.from("video_motion_rascunhos")
+    .update({ status: "aprovado" })
+    .eq("id", draft.id)
+    .eq("user_id", ctx.userId)
+    .eq("status", "aprovando");
+  if (error) return `O vídeo foi enfileirado, mas não consegui atualizar o roteiro: ${error.message}`;
+  return `✅ Roteiro aprovado e vídeo enfileirado. Posição na fila: *${r.posicao_fila}*. Vou te enviar o MP4 aqui quando terminar (estimativa: cerca de 4 minutos).`;
+}
 
 const TOOLS = [
   {
@@ -4874,6 +5007,20 @@ const TOOLS = [
           cor: { type: "string", description: "Cor de destaque escolhida PELO USUÁRIO: azul, verde, laranja, preto, dourado ou roxo. Deixe VAZIO na primeira chamada para eu perguntar com a lista de 1 toque." },
           publicar: { type: "boolean", description: "true (padrão) = gera e já publica no Instagram. false = só gera os cards e devolve os links, sem publicar." },
           legenda: { type: "string", description: "Legenda do post, se o usuário ditou uma. Vazio = a IA escreve a legenda com hashtags." },
+        },
+        required: ["tema"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "criar_video_animado",
+      description: "🎬 Cria um roteiro de vídeo Motion white-label sobre o tema pedido pelo RESPONSÁVEL. Use quando ele pedir para criar, gerar, montar ou fazer um vídeo animado/institucional/publicitário. Primeiro gera e envia o roteiro para aprovação; NUNCA renderiza sem aprovação explícita. Não use para clientes. O vídeo usa automaticamente a marca, cores, logo e contexto do próprio tenant.",
+      parameters: {
+        type: "object",
+        properties: {
+          tema: { type: "string", description: "Tema e objetivo do vídeo, preservando a ideia do responsável. Ex: 'mostrar como a Ademicon agenda posts e publica nas redes'." },
         },
         required: ["tema"],
       },
@@ -5703,6 +5850,9 @@ async function runTool(
     let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}
     return { result: r, imageUrl: parsed?.image_url };
   }
+  if (name === "criar_video_animado") {
+    return { result: await criarRascunhoVideoMotion(ctx, normalizeVideoTopic(args?.tema ?? "")) };
+  }
   if (name === "consultar_clima") return { result: await toolConsultarClima(args?.local ?? "", ctx) };
   if (name === "cotacao_moeda") return { result: await toolCotacaoMoeda(args?.par ?? "") };
   if (name === "criar_lembrete") return { result: await toolCriarLembrete(args ?? {}, ctx) };
@@ -5789,6 +5939,26 @@ async function callGemini(
   if (!hasMedia && typeof userContent === "string") {
     const remetenteEhDono = isOwner(toolCtx);
     const latestPendingSocialToken = remetenteEhDono ? await findLatestPendingSocialToken(toolCtx.userId) : null;
+    const pendingVideoDraft = remetenteEhDono ? await buscarRascunhoVideo(toolCtx) : null;
+
+    // Vídeo Motion: aprovação e cancelamento são resolvidos antes da IA para
+    // impedir que o modelo apenas diga que vai renderizar sem criar o job.
+    if (pendingVideoDraft && isVideoCancellation(userContent)) {
+      return { text: await confirmarRascunhoVideo(toolCtx, true) };
+    }
+    if (pendingVideoDraft && isVideoApproval(userContent)) {
+      return { text: await confirmarRascunhoVideo(toolCtx) };
+    }
+    if (isVideoMotionRequest(userContent)) {
+      const tema = normalizeVideoTopic(userContent);
+      if (!remetenteEhDono) {
+        return { text: "A criação de vídeo é restrita ao responsável da conta. Posso encaminhar seu pedido para ele, se quiser." };
+      }
+      if (tema.length < 4) {
+        return { text: "Qual é o tema do vídeo? Ex.: mostrar como a plataforma agenda e publica posts." };
+      }
+      return { text: await criarRascunhoVideoMotion(toolCtx, tema) };
+    }
 
     // Fluxo A/B/C: resolve seleção e confirmação direto no código, sem depender da IA.
     const variantChoice = latestPendingSocialToken ? detectSocialVariantChoice(userContent) : null;

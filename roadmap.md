@@ -34,6 +34,9 @@
 - [x] Permitir cancelar jobs na fila ou em renderização pela tela Meus Produtos.
 - [x] Impedir que uma conclusão tardia do worker reative um job cancelado.
 - [x] Tornar o template de vídeo white label: site opcional, logo e dados do cliente, paleta dinâmica e contraste validado.
+- [x] Integrar a criação de roteiro Motion ao agente via WhatsApp, com aprovação persistente do responsável.
+- [x] Enfileirar somente após aprovação explícita e enviar o MP4 ao WhatsApp na conclusão.
+- [x] Adicionar limites de fila, cota diária e watchdog para jobs travados.
 
 ## TikTok Review — fechamento institucional
 - [x] Rodapé legal público na home com Termos e Privacidade visíveis
