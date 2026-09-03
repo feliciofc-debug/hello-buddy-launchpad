@@ -8636,6 +8636,7 @@ export type Database = {
           template: string
           tentativas: number
           titulo: string | null
+          trilha_id: string | null
           trilha_url: string | null
           trilha_volume: number
           updated_at: string
@@ -8662,6 +8663,7 @@ export type Database = {
           template?: string
           tentativas?: number
           titulo?: string | null
+          trilha_id?: string | null
           trilha_url?: string | null
           trilha_volume?: number
           updated_at?: string
@@ -8688,12 +8690,21 @@ export type Database = {
           template?: string
           tentativas?: number
           titulo?: string | null
+          trilha_id?: string | null
           trilha_url?: string | null
           trilha_volume?: number
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "video_motion_jobs_trilha_id_fkey"
+            columns: ["trilha_id"]
+            isOneToOne: false
+            referencedRelation: "trilhas_sonoras"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       video_motion_rascunhos: {
         Row: {
@@ -10217,6 +10228,7 @@ export type Database = {
           template: string
           tentativas: number
           titulo: string | null
+          trilha_id: string | null
           trilha_url: string | null
           trilha_volume: number
           updated_at: string
