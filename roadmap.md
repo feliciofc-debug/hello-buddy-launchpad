@@ -36,8 +36,8 @@
 - [x] Tornar o template de vídeo white label: site opcional, logo e dados do cliente, paleta dinâmica e contraste validado.
 
 ## TikTok Review — fechamento institucional
-- [ ] Rodapé legal público na home com Termos e Privacidade visíveis
-- [ ] Garantir que o banner de cookies não cubra os links legais
-- [ ] Unificar CTA duplicado no hero
-- [ ] Criar conta demonstrativa isolada, com dados e acesso permanente
-- [ ] Validar home e links legais em desktop e mobile
+- [x] Rodapé legal público na home com Termos e Privacidade visíveis
+- [x] Garantir que o banner de cookies não cubra os links legais
+- [x] Unificar CTA duplicado no hero
+- [x] Criar conta demonstrativa isolada, com dados e acesso permanente
+- [x] Validar home e links legais em desktop e mobile
