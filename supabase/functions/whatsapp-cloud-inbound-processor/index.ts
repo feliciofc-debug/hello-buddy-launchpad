@@ -5825,6 +5825,9 @@ async function runTool(
     let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}
     return { result: r, imageUrl: parsed?.image_url };
   }
+  if (name === "criar_video_animado") {
+    return { result: await criarRascunhoVideoMotion(ctx, normalizeVideoTopic(args?.tema ?? "")) };
+  }
   if (name === "consultar_clima") return { result: await toolConsultarClima(args?.local ?? "", ctx) };
   if (name === "cotacao_moeda") return { result: await toolCotacaoMoeda(args?.par ?? "") };
   if (name === "criar_lembrete") return { result: await toolCriarLembrete(args ?? {}, ctx) };
@@ -5911,6 +5914,26 @@ async function callGemini(
   if (!hasMedia && typeof userContent === "string") {
     const remetenteEhDono = isOwner(toolCtx);
     const latestPendingSocialToken = remetenteEhDono ? await findLatestPendingSocialToken(toolCtx.userId) : null;
+    const pendingVideoDraft = remetenteEhDono ? await buscarRascunhoVideo(toolCtx) : null;
+
+    // Vídeo Motion: aprovação e cancelamento são resolvidos antes da IA para
+    // impedir que o modelo apenas diga que vai renderizar sem criar o job.
+    if (pendingVideoDraft && isVideoCancellation(userContent)) {
+      return { text: await confirmarRascunhoVideo(toolCtx, true) };
+    }
+    if (pendingVideoDraft && isVideoApproval(userContent)) {
+      return { text: await confirmarRascunhoVideo(toolCtx) };
+    }
+    if (isVideoMotionRequest(userContent)) {
+      const tema = normalizeVideoTopic(userContent);
+      if (!remetenteEhDono) {
+        return { text: "A criação de vídeo é restrita ao responsável da conta. Posso encaminhar seu pedido para ele, se quiser." };
+      }
+      if (tema.length < 4) {
+        return { text: "Qual é o tema do vídeo? Ex.: mostrar como a plataforma agenda e publica posts." };
+      }
+      return { text: await criarRascunhoVideoMotion(toolCtx, tema) };
+    }
 
     // Fluxo A/B/C: resolve seleção e confirmação direto no código, sem depender da IA.
     const variantChoice = latestPendingSocialToken ? detectSocialVariantChoice(userContent) : null;
