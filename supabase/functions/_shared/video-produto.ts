@@ -71,6 +71,15 @@ export const PALETA_PADRAO_PRODUTO: Paleta = {
 const txt = (v: unknown, max: number) =>
   String(v ?? "").replace(/\s+/g, " ").replace(/^["'`\s]+|["'`\s]+$/g, "").slice(0, max).trim();
 
+/** Corta no limite sem quebrar palavra no meio e fecha com reticências. */
+const cortar = (v: unknown, max: number) => {
+  const bruto = String(v ?? "").replace(/\s+/g, " ").trim();
+  if (bruto.length <= max) return bruto;
+  const fatia = bruto.slice(0, max - 1);
+  const corte = fatia.lastIndexOf(" ");
+  return `${(corte > max * 0.6 ? fatia.slice(0, corte) : fatia).replace(/[\s,.;:-]+$/, "")}…`;
+};
+
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
 function normalizarCores(bruto: unknown): Paleta {
@@ -102,15 +111,12 @@ export function validarImagemProduto(url: string, supabaseUrl: string): string |
 }
 
 /** Frames do template (espelha framesTemplateProduto no Remotion). */
-const IMPACTO = 48, HEROI = 150, FICHA = 150, PRECO = 120, CTA_F = 140, TRANSICAO = 20;
+const IMPACTO = 48, HEROI = 150, FICHA = 150, PRECO = 120, CTA_F = 140;
 
 export function framesProduto(props: ProdutoVideoProps): number {
   const temFicha = (props.produto.bullets?.length ?? 0) > 0;
   const temPreco = Boolean(props.produto.preco);
-  return (
-    IMPACTO + HEROI + (temFicha ? FICHA : 0) + (temPreco ? PRECO : 0) + CTA_F -
-    TRANSICAO * (2 + (temFicha ? 1 : 0) + (temPreco ? 1 : 0))
-  );
+  return IMPACTO + HEROI + (temFicha ? FICHA : 0) + (temPreco ? PRECO : 0) + CTA_F;
 }
 
 export function duracaoEstimadaProduto(props: ProdutoVideoProps): number {
@@ -147,7 +153,7 @@ export function normalizarPropsProduto(
       recortar_fundo: p?.recortar_fundo === true,
       recortado: false,
       nome,
-      subtitulo: txt(p?.subtitulo, 60) || undefined,
+      subtitulo: cortar(p?.subtitulo, 64) || undefined,
       bullets,
       precoDe: txt(p?.precoDe, 20) || undefined,
       preco: txt(p?.preco, 20) || undefined,
@@ -160,6 +166,12 @@ export function normalizarPropsProduto(
       telefone: txt(bruto?.cta?.telefone ?? ctx.telefone, 30) || undefined,
       consultor: txt(bruto?.cta?.consultor ?? ctx.consultor, 40) || undefined,
     },
-    legendas: legendas.length ? legendas : [nome, ...bullets].filter(Boolean).slice(0, 4),
+    // As legendas NÃO repetem nome/bullets (já aparecem em cena). Sem texto
+    // próprio, o vídeo sai sem pílula de legenda.
+    legendas: legendas.filter(
+      (l: string) =>
+        l.toLowerCase() !== nome.toLowerCase() &&
+        !bullets.some((b: string) => b.toLowerCase() === l.toLowerCase()),
+    ),
   };
 }

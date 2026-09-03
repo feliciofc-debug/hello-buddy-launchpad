@@ -22,14 +22,12 @@ import {
   Audio,
   Img,
   Sequence,
+  Series,
   interpolate,
   spring,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
-import { TransitionSeries, springTiming } from "@remotion/transitions";
-import { fade } from "@remotion/transitions/fade";
-import { slide } from "@remotion/transitions/slide";
 import { font } from "../../font";
 import { ehClaro, fundoLegenda, rgba, textoSobre } from "../agente/contraste";
 import type { Paleta } from "../agente/Template";
@@ -66,19 +64,12 @@ const HEROI = 150;
 const FICHA = 150;
 const PRECO = 120;
 const CTA_F = 140;
-const TRANSICAO = 20;
 
 export const framesTemplateProduto = (props?: TemplateProdutoProps) => {
   const temPreco = Boolean(props?.produto?.preco);
   const temFicha = (props?.produto?.bullets?.length ?? 0) > 0;
-  return (
-    IMPACTO +
-    HEROI +
-    (temFicha ? FICHA : 0) +
-    (temPreco ? PRECO : 0) +
-    CTA_F -
-    TRANSICAO * (2 + (temFicha ? 1 : 0) + (temPreco ? 1 : 0))
-  );
+  // cortes secos: sem sobreposição de cenas, nada a subtrair
+  return IMPACTO + HEROI + (temFicha ? FICHA : 0) + (temPreco ? PRECO : 0) + CTA_F;
 };
 
 // ---------- peças reutilizáveis ----------
