@@ -18,7 +18,7 @@ import { TransitionSeries, springTiming } from "@remotion/transitions";
 import { slide } from "@remotion/transitions/slide";
 import { fade } from "@remotion/transitions/fade";
 import { font } from "../../font";
-import { ehClaro, rgba, textoSobre } from "./contraste";
+import { ehClaro, fundoLegenda, rgba, textoLegivelSobre, textoSobre } from "./contraste";
 
 // ---------- contrato de props ----------
 
@@ -207,7 +207,7 @@ const Bolha: React.FC<{ c: Paleta; m: Mensagem; from: number }> = ({ c, m, from 
         opacity: s,
         transform: `translateY(${interpolate(s, [0, 1], [40, 0])}px)`,
         background: dono ? `linear-gradient(135deg, ${c.destaque}, ${c.destaqueSoft})` : c.bg2,
-        color: dono ? textoSobre(c.destaque) : c.texto,
+        color: dono ? textoSobre(c.destaque) : textoLegivelSobre(c.bg2, c.texto),
         border: dono ? "none" : `1px solid ${c.line}`,
 
         borderRadius: 22,
@@ -424,11 +424,11 @@ const LinhaLegenda: React.FC<{ c: Paleta; text: string }> = ({ c, text }) => {
           marginBottom: 150,
           maxWidth: 900,
           textAlign: "center",
-          background: rgba(c.panel, 0.9),
+          background: rgba(fundoLegenda(c.bg, c.panel), 0.92),
           border: `1px solid ${c.line}`,
           borderRadius: 20,
           padding: "20px 30px",
-          color: textoSobre(c.panel),
+          color: textoSobre(fundoLegenda(c.bg, c.panel)),
           fontSize: 40,
           fontWeight: 600,
           lineHeight: 1.25,

@@ -1,10 +1,10 @@
 import { AbsoluteFill, Sequence, interpolate, useCurrentFrame } from "remotion";
 import { C } from "../theme";
 import { font } from "../font";
-import { rgba, textoSobre } from "../templates/agente/contraste";
+import { fundoLegenda, rgba, textoSobre } from "../templates/agente/contraste";
 
 export type Caption = { from: number; dur: number; text: string };
-export type CaptionPalette = { panel: string; line: string };
+export type CaptionPalette = { panel: string; line: string; bg?: string };
 
 const Linha: React.FC<{ text: string; palette: CaptionPalette }> = ({ text, palette }) => {
   const frame = useCurrentFrame();
@@ -16,11 +16,11 @@ const Linha: React.FC<{ text: string; palette: CaptionPalette }> = ({ text, pale
           marginBottom: 150,
           maxWidth: 900,
           textAlign: "center",
-          background: rgba(palette.panel, 0.9),
+          background: rgba(fundoLegenda(palette.bg ?? palette.panel, palette.panel), 0.92),
           border: `1px solid ${palette.line}`,
           borderRadius: 20,
           padding: "20px 30px",
-          color: textoSobre(palette.panel),
+          color: textoSobre(fundoLegenda(palette.bg ?? palette.panel, palette.panel)),
           fontSize: 40,
           fontWeight: 600,
           lineHeight: 1.25,
@@ -35,7 +35,7 @@ const Linha: React.FC<{ text: string; palette: CaptionPalette }> = ({ text, pale
 };
 
 export const Captions: React.FC<{ items: Caption[]; palette?: CaptionPalette }> = ({ items, palette }) => {
-  const colors = palette ?? { panel: C.panel, line: C.line };
+  const colors = palette ?? { panel: C.panel, line: C.line, bg: C.bg };
   return (
     <>
       {items.map((c) => (
