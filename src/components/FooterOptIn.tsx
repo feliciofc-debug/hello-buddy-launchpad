@@ -247,7 +247,7 @@ const FooterOptIn = () => {
       <p className="text-xs opacity-80 mt-6 text-center">
         🔒 Seus dados estão seguros e protegidos.<br />
         Você pode cancelar o recebimento a qualquer momento.{' '}
-        <Link to="/politica-privacidade" className="underline hover:text-yellow-200 transition-colors">
+        <Link to="/privacy" className="underline hover:text-yellow-200 transition-colors">
           Política de Privacidade
         </Link>
       </p>
