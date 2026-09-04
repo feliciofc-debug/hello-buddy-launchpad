@@ -1149,7 +1149,14 @@ async function toolEditarImagem(
     ? `\n\n📝 TEXTOS QUE DEVEM APARECER NA IMAGEM (obrigatório, escreva EXATAMENTE assim, sem inventar nem traduzir):\n${textos.map((t) => `- "${t}"`).join("\n")}\nRegras da tipografia:\n- Posicione as informações AO LADO (ou em faixa lateral/inferior) do objeto principal, em área limpa, NUNCA cobrindo o produto, rostos ou placa.\n- Fonte sans-serif moderna, legível, alinhada, hierarquia clara (destaque no dado mais forte).\n- Fundo sutil atrás do texto (faixa translúcida ou bloco sólido) para garantir contraste.\n- Sem erros de ortografia, sem letras cortadas, sem repetir o mesmo texto duas vezes.\n- Não adicione NENHUM outro texto além dos listados acima.`
     : `\n\nRegras: NÃO inclua texto, palavras, letras, números ou marcas d'água na imagem.`;
 
-  const blocoModo = isAnuncio
+  const blocoModo = isLogo
+    ? `\n\n🎯 MODO APLICAR LOGO/MARCA — A FOTO ORIGINAL NÃO PODE MUDAR:
+- Esta é uma EDIÇÃO LOCAL. Devolva EXATAMENTE a MESMA foto recebida, pixel a pixel: mesmo enquadramento, mesmo objeto, mesmo cenário, mesma luz, mesmas sombras, mesmas cores, mesma resolução e mesma proporção.
+- É PROIBIDO gerar uma foto nova, trocar o objeto/xícara/produto por outro modelo, mudar de ângulo, mudar o fundo, recriar a cena, mudar a mesa/superfície ou "melhorar" a composição.
+- A ÚNICA alteração permitida é APLICAR A MARCA/LOGO no local pedido, respeitando a curvatura, a perspectiva, o brilho e as sombras da superfície, como se estivesse impressa ali.
+- Se a logo aparecer em imagem de referência, reproduza a marca EXATAMENTE como está: mesmas cores, mesma tipografia, mesmas proporções, sem redesenhar, sem traduzir, sem inventar variação.
+- Nada mais na imagem pode ser alterado.`
+    : isAnuncio
     ? `\n\n🎯 MODO ANÚNCIO/FICHA TÉCNICA — TROCA TOTAL DE AMBIENTE (obrigatório):
 - RECORTE o produto principal da foto e DESCARTE COMPLETAMENTE o cenário original.
 - É PROIBIDO deixar qualquer resquício do local original: fios, tomadas, televisão, monitor, móveis, mesa, sofá, cortina, parede de casa, chão de casa, rodapé, roupa, pessoas ao fundo, papel, embalagens soltas, objetos de fundo, reflexo do ambiente antigo.
@@ -1160,7 +1167,9 @@ async function toolEditarImagem(
     ? `\n\n🎯 MODO FIGURINO: troque APENAS a roupa/fantasia da pessoa conforme o pedido. É OBRIGATÓRIO manter o MESMO rosto, mesma idade, mesmo corte de cabelo, mesma pele, mesma pose e o MESMO AMBIENTE/fundo (mesmos móveis, mesma luz, mesmo enquadramento). Não troque o cenário, não deixe a pessoa parecida com outra criança/adulto, não gere desenho — fotorealista.`
     : `\n\n🎯 MODO MELHORIA: eleve a qualidade (nitidez, cor, luz, composição) mantendo a cena reconhecível.`;
 
-  const blocoPreservar = preservar
+  const blocoPreservar = isLogo
+    ? `\n\n🔒 PRESERVAÇÃO TOTAL: a foto de entrada é a base final. Só a marca/logo é adicionada; todo o resto permanece idêntico.`
+    : preservar
     ? `\n\n🔒 PRESERVAÇÃO OBRIGATÓRIA: mantenha o mesmo ambiente/cenário, o mesmo enquadramento e as mesmas pessoas (rosto, feições, tom de pele, cabelo) e o mesmo objeto/produto principal identificáveis. Não substitua por outra pessoa/objeto.`
     : `\n\n🔒 PRESERVE SÓ O PRODUTO: o objeto/produto principal (e rostos, se houver pessoa) deve continuar idêntico e reconhecível. O CENÁRIO pode e DEVE ser recriado do zero.`;
 
