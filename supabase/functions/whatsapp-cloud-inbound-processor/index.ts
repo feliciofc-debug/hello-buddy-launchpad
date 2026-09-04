@@ -1205,6 +1205,7 @@ async function toolEditarImagem(
                 text: `Edite esta foto conforme o pedido abaixo.\n\nPedido: ${clean}${blocoModo}${blocoPreservar}${blocoTexto}${isLogo ? "\n\n📐 FORMATO: mantenha EXATAMENTE a mesma proporção e resolução da foto original — não recorte, não expanda, não reenquadre." : blocoFormatoSocial(clean + " " + modo)}\n\nResultado fotorealista de alta qualidade, pronto para publicação.`,
               },
               { type: "image_url", image_url: { url: dataUrlInput } },
+              ...(logoDataUrl ? [{ type: "image_url", image_url: { url: logoDataUrl } }] : []),
             ],
           },
         ],
