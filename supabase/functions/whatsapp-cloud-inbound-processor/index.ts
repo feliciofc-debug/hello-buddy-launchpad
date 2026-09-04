@@ -1026,28 +1026,12 @@ ${logoDataUrl ? `- A SEGUNDA IMAGEM ANEXADA É A LOGOMARCA OFICIAL DA EMPRESA. R
       : enhancedPrompt;
 
     console.log("[gerar_imagem] iniciando geração, promptLen=", enhancedPrompt.length, "comLogo=", !!logoDataUrl);
-    const t0 = Date.now();
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${LOVABLE_API_KEY}` },
-      body: JSON.stringify({
-        model: "google/gemini-3.1-flash-image",
-        messages: [{ role: "user", content: userContent }],
-        modalities: ["image", "text"],
-      }),
-    });
-    console.log("[gerar_imagem] gateway respondeu em", Date.now() - t0, "ms status=", res.status);
-    if (!res.ok) {
-      const t = await res.text();
-      console.error("[gerar_imagem] erro gateway:", res.status, t.slice(0, 300));
-      return JSON.stringify({ erro: `image_gen ${res.status}`, detalhe: t.slice(0, 200) });
-    }
-    const data = await res.json();
-    const dataUrl = data?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-    if (!dataUrl) {
-      console.error("[gerar_imagem] resposta sem imagem:", JSON.stringify(data).slice(0, 400));
-      return JSON.stringify({ erro: "sem_imagem_retornada" });
-    }
+    const r = await chamarGatewayImagem(
+      { messages: [{ role: "user", content: userContent }], modalities: ["image", "text"] },
+      "gerar_imagem",
+    );
+    if (!r.ok) return JSON.stringify({ erro: r.erro, detalhe: r.detalhe, motivo: r.motivo });
+    const dataUrl = r.dataUrl;
 
     let b64 = dataUrl;
     let mime = "image/png";
