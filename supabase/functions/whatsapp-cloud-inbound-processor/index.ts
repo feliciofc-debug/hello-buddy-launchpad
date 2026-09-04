@@ -5130,11 +5130,12 @@ const TOOLS = [
     type: "function",
     function: {
       name: "criar_video_animado",
-      description: "🎬 Cria um roteiro de vídeo Motion white-label sobre o tema pedido pelo RESPONSÁVEL. Use quando ele pedir para criar, gerar, montar ou fazer um vídeo animado/institucional/publicitário. Primeiro gera e envia o roteiro para aprovação; NUNCA renderiza sem aprovação explícita. Não use para clientes. O vídeo usa automaticamente a marca, cores, logo e contexto do próprio tenant.",
+      description: "🎬 Cria um roteiro de vídeo Motion white-label sobre o tema pedido pelo RESPONSÁVEL. Use quando ele pedir para criar, gerar, montar ou fazer um vídeo animado/institucional/publicitário. Primeiro gera e envia o roteiro para aprovação; NUNCA renderiza sem aprovação explícita. Não use para clientes. Por padrão usa a marca, cores, logo e contexto do próprio tenant — MAS se o pedido mencionar cores (hex como #E30613 ou nomes como 'vermelho e branco', 'nas cores do cliente'), copie ESSE trecho literalmente em 'cores' para o vídeo sair na identidade visual do cliente prospectado.",
       parameters: {
         type: "object",
         properties: {
           tema: { type: "string", description: "Tema e objetivo do vídeo, preservando a ideia do responsável. Ex: 'mostrar como a Ademicon agenda posts e publica nas redes'." },
+          cores: { type: "string", description: "Trecho LITERAL do pedido que menciona cores, com rótulos e hex se houver. Ex: 'fundo #ffffff, fundo 2 #fff5f5, destaque #E30613, apoio #ff4d57' ou 'vermelho e branco'. Deixe vazio se ele não citou cor nenhuma." },
         },
         required: ["tema"],
       },
