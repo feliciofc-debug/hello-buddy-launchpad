@@ -2507,7 +2507,8 @@ async function descreverImagemVisao(imageUrl: string): Promise<string> {
   try {
     // Modelo novo primeiro (mais preciso em OCR/leitura de arte). Fallback pro 2.5-pro.
     let out = await tryCall("google/gemini-3-flash-preview");
-    if (!out) out = await tryCall("google/gemini-2.5-pro");
+    if (!out) out = await tryCall("google/gemini-3.6-flash");
+    if (!out) out = await tryCall("google/gemini-3.1-pro-preview");
     console.log("[visao] descricao=", out.slice(0, 200));
     return out;
   } catch (e) {
