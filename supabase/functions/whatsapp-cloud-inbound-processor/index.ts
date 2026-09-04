@@ -4544,18 +4544,33 @@ function videoDraftToken(): string {
   return crypto.randomUUID().replace(/-/g, "").slice(0, 8);
 }
 
-function formatVideoDraft(props: any, tema: string, duracao: number): string {
+function formatVideoDraft(props: any, tema: string, duracao: number, paleta?: string): string {
   const linhas = Array.isArray(props?.hook?.linhas) ? props.hook.linhas.filter(Boolean).join(" ") : "";
   const mensagens = Array.isArray(props?.chat?.mensagens)
     ? props.chat.mensagens.map((m: any) => `${m?.de === "dono" ? "Você" : "Agente"}: ${m?.texto || ""}`).filter((x: string) => !x.endsWith(": ")).join("\n")
     : "";
   const cta = props?.cta?.frase ? `\n\n*CTA:* ${props.cta.frase}` : "";
-  return `🎬 *Roteiro do vídeo — ${tema}*\n\n*Gancho:* ${linhas || "(não informado)"}\n\n*Conversa:*\n${mensagens || "(não informado)"}${cta}\n\nDuração estimada: ${duracao}s.\n\nResponda *APROVADO* para eu renderizar o MP4 (leva cerca de 4 minutos), ou me diga o que ajustar.`;
+  const cores = paleta ? `\n\n*Paleta:* ${paleta}` : "";
+  return `🎬 *Roteiro do vídeo — ${tema}*\n\n*Gancho:* ${linhas || "(não informado)"}\n\n*Conversa:*\n${mensagens || "(não informado)"}${cta}${cores}\n\nDuração estimada: ${duracao}s.\n\nResponda *APROVADO* para eu renderizar o MP4 (leva cerca de 4 minutos), ou me diga o que ajustar.`;
 }
 
-async function criarRascunhoVideoMotion(ctx: { userId: string; fromNumber: string }, tema: string): Promise<string> {
+async function criarRascunhoVideoMotion(
+  ctx: { userId: string; fromNumber: string },
+  tema: string,
+  textoCores?: string,
+): Promise<string> {
   if (!isOwner(ctx)) return "Esse recurso é exclusivo do responsável da conta. Posso encaminhar o pedido para ele.";
-  const roteiro = await montarRoteiroMotion({ sb, userId: ctx.userId, tema, origem: "whatsapp", nomeFallback: null });
+  // Prospecção: quando o pedido menciona cores (hex ou nome), o vídeo sai na
+  // identidade visual do cliente-alvo; sem menção, segue a paleta do tenant.
+  const pedidas = extrairCoresDoTexto(`${textoCores ?? ""} ${tema}`);
+  const roteiro = await montarRoteiroMotion({
+    sb,
+    userId: ctx.userId,
+    tema,
+    origem: "whatsapp",
+    nomeFallback: null,
+    cores: pedidas?.cores ?? null,
+  });
   const token = videoDraftToken();
   const { error } = await sb.from("video_motion_rascunhos").insert({
     user_id: ctx.userId,
