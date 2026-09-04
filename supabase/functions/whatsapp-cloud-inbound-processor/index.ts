@@ -78,6 +78,92 @@ function escolherModelo(ctx: TaskContext): string {
   return model;
 }
 
+// ============================================================
+// 🛡️ BLINDAGEM DE IMAGEM (apresentação à prova de falha)
+// ------------------------------------------------------------
+// Toda chamada de geração/edição de imagem passa por aqui:
+//  - fila de modelos (se um estiver fora/lotado, cai pro próximo)
+//  - retry com backoff em 429/5xx (respeita Retry-After)
+//  - timeout duro por tentativa (nunca pendura)
+//  - erros terminais (400/401/402/403) não são reenviados
+// ============================================================
+const IMAGE_MODELS = [
+  "google/gemini-3.1-flash-image",
+  "google/gemini-3-pro-image",
+  "google/gemini-3.1-flash-lite-image",
+];
+
+type ImagemGatewayOk = { ok: true; dataUrl: string; model: string };
+type ImagemGatewayErr = { ok: false; erro: string; detalhe?: string; motivo?: string };
+
+async function chamarGatewayImagem(
+  body: Record<string, unknown>,
+  tag: string,
+  timeoutMs = 100000,
+): Promise<ImagemGatewayOk | ImagemGatewayErr> {
+  let ultimoErro: ImagemGatewayErr = { ok: false, erro: "image_gateway_indisponivel" };
+
+  for (const model of IMAGE_MODELS) {
+    for (let tentativa = 1; tentativa <= 2; tentativa++) {
+      const t0 = Date.now();
+      try {
+        const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
+          body: JSON.stringify({ ...body, model }),
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const dataUrl = data?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+          if (dataUrl) {
+            console.log(`[${tag}] ok model=${model} tentativa=${tentativa} em ${Date.now() - t0}ms`);
+            return { ok: true, dataUrl, model };
+          }
+          console.warn(`[${tag}] resposta sem imagem model=${model}`, JSON.stringify(data).slice(0, 300));
+          ultimoErro = { ok: false, erro: "sem_imagem_retornada" };
+          continue; // tenta de novo / próximo modelo
+        }
+
+        const texto = (await res.text()).slice(0, 300);
+        console.error(`[${tag}] gateway ${res.status} model=${model}`, texto);
+
+        // Créditos/política/config: reenviar não resolve.
+        if (res.status === 401 || res.status === 402 || res.status === 403) {
+          return {
+            ok: false,
+            erro: `image_gateway ${res.status}`,
+            detalhe: texto,
+            motivo: res.status === 401 ? "chave_invalida" : "creditos_ou_politica",
+          };
+        }
+
+        ultimoErro = { ok: false, erro: `image_gateway ${res.status}`, detalhe: texto };
+
+        // 400 = modelo/campo não aceito por ESTE modelo → tenta o próximo da fila.
+        if (res.status === 400) break;
+
+        if (res.status === 429 || res.status >= 500) {
+          const ra = Number(res.headers.get("retry-after"));
+          const esperaMs = Number.isFinite(ra) && ra > 0
+            ? Math.min(ra * 1000, 8000)
+            : 1200 * tentativa + Math.floor(Math.random() * 400);
+          await new Promise((r) => setTimeout(r, esperaMs));
+          continue;
+        }
+        break;
+      } catch (e) {
+        const msg = (e as Error).message || String(e);
+        console.error(`[${tag}] falha de rede/timeout model=${model} tentativa=${tentativa}: ${msg}`);
+        ultimoErro = { ok: false, erro: "image_gateway_timeout", detalhe: msg.slice(0, 200) };
+        await new Promise((r) => setTimeout(r, 800 * tentativa));
+      }
+    }
+  }
+  return ultimoErro;
+}
+
 const WHATSAPP_TEST_ACCESS_TOKEN = Deno.env.get("WHATSAPP_TEST_ACCESS_TOKEN");
 
 const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
