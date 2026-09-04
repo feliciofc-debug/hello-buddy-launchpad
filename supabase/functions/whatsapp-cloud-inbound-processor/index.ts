@@ -1134,16 +1134,29 @@ async function toolEditarImagem(
 
   const textos = (ctx.textos || []).map((t) => String(t || "").trim()).filter(Boolean).slice(0, 6);
   const modo = (ctx.modo || "").trim().toLowerCase();
-  const isAnuncio = modo === "ficha_tecnica" || modo === "anuncio" || modo === "estudio" || modo === "trocar_ambiente";
+  // 🔒 Pedido de LOGO/MARCA nunca troca a foto: a imagem original é mantida
+  // pixel a pixel e a marca é apenas aplicada sobre ela.
+  const isLogo = modo === "aplicar_logo" || modo === "logo" || modo === "marca" ||
+    /\b(logo|logotipo|marca|logomarca)\b/i.test(clean);
+  const isAnuncio = !isLogo &&
+    (modo === "ficha_tecnica" || modo === "anuncio" || modo === "estudio" || modo === "trocar_ambiente");
   // Em modo anúncio/ficha técnica o ambiente ORIGINAL deve ser descartado por padrão
   // (fios, TV, móveis, bagunça de casa nunca podem aparecer numa arte comercial).
-  const preservar = isAnuncio ? ctx.preservarAmbiente === true : ctx.preservarAmbiente !== false;
+  const preservar = isLogo ? true : isAnuncio ? ctx.preservarAmbiente === true : ctx.preservarAmbiente !== false;
+
 
   const blocoTexto = textos.length
     ? `\n\n📝 TEXTOS QUE DEVEM APARECER NA IMAGEM (obrigatório, escreva EXATAMENTE assim, sem inventar nem traduzir):\n${textos.map((t) => `- "${t}"`).join("\n")}\nRegras da tipografia:\n- Posicione as informações AO LADO (ou em faixa lateral/inferior) do objeto principal, em área limpa, NUNCA cobrindo o produto, rostos ou placa.\n- Fonte sans-serif moderna, legível, alinhada, hierarquia clara (destaque no dado mais forte).\n- Fundo sutil atrás do texto (faixa translúcida ou bloco sólido) para garantir contraste.\n- Sem erros de ortografia, sem letras cortadas, sem repetir o mesmo texto duas vezes.\n- Não adicione NENHUM outro texto além dos listados acima.`
     : `\n\nRegras: NÃO inclua texto, palavras, letras, números ou marcas d'água na imagem.`;
 
-  const blocoModo = isAnuncio
+  const blocoModo = isLogo
+    ? `\n\n🎯 MODO APLICAR LOGO/MARCA — A FOTO ORIGINAL NÃO PODE MUDAR:
+- Esta é uma EDIÇÃO LOCAL. Devolva EXATAMENTE a MESMA foto recebida, pixel a pixel: mesmo enquadramento, mesmo objeto, mesmo cenário, mesma luz, mesmas sombras, mesmas cores, mesma resolução e mesma proporção.
+- É PROIBIDO gerar uma foto nova, trocar o objeto/xícara/produto por outro modelo, mudar de ângulo, mudar o fundo, recriar a cena, mudar a mesa/superfície ou "melhorar" a composição.
+- A ÚNICA alteração permitida é APLICAR A MARCA/LOGO no local pedido, respeitando a curvatura, a perspectiva, o brilho e as sombras da superfície, como se estivesse impressa ali.
+- Se a logo aparecer em imagem de referência, reproduza a marca EXATAMENTE como está: mesmas cores, mesma tipografia, mesmas proporções, sem redesenhar, sem traduzir, sem inventar variação.
+- Nada mais na imagem pode ser alterado.`
+    : isAnuncio
     ? `\n\n🎯 MODO ANÚNCIO/FICHA TÉCNICA — TROCA TOTAL DE AMBIENTE (obrigatório):
 - RECORTE o produto principal da foto e DESCARTE COMPLETAMENTE o cenário original.
 - É PROIBIDO deixar qualquer resquício do local original: fios, tomadas, televisão, monitor, móveis, mesa, sofá, cortina, parede de casa, chão de casa, rodapé, roupa, pessoas ao fundo, papel, embalagens soltas, objetos de fundo, reflexo do ambiente antigo.
@@ -1154,7 +1167,9 @@ async function toolEditarImagem(
     ? `\n\n🎯 MODO FIGURINO: troque APENAS a roupa/fantasia da pessoa conforme o pedido. É OBRIGATÓRIO manter o MESMO rosto, mesma idade, mesmo corte de cabelo, mesma pele, mesma pose e o MESMO AMBIENTE/fundo (mesmos móveis, mesma luz, mesmo enquadramento). Não troque o cenário, não deixe a pessoa parecida com outra criança/adulto, não gere desenho — fotorealista.`
     : `\n\n🎯 MODO MELHORIA: eleve a qualidade (nitidez, cor, luz, composição) mantendo a cena reconhecível.`;
 
-  const blocoPreservar = preservar
+  const blocoPreservar = isLogo
+    ? `\n\n🔒 PRESERVAÇÃO TOTAL: a foto de entrada é a base final. Só a marca/logo é adicionada; todo o resto permanece idêntico.`
+    : preservar
     ? `\n\n🔒 PRESERVAÇÃO OBRIGATÓRIA: mantenha o mesmo ambiente/cenário, o mesmo enquadramento e as mesmas pessoas (rosto, feições, tom de pele, cabelo) e o mesmo objeto/produto principal identificáveis. Não substitua por outra pessoa/objeto.`
     : `\n\n🔒 PRESERVE SÓ O PRODUTO: o objeto/produto principal (e rostos, se houver pessoa) deve continuar idêntico e reconhecível. O CENÁRIO pode e DEVE ser recriado do zero.`;
 
@@ -1169,7 +1184,7 @@ async function toolEditarImagem(
             content: [
               {
                 type: "text",
-                text: `Edite esta foto conforme o pedido abaixo.\n\nPedido: ${clean}${blocoModo}${blocoPreservar}${blocoTexto}${blocoFormatoSocial(clean + " " + modo)}\n\nResultado fotorealista de alta qualidade, pronto para publicação.`,
+                text: `Edite esta foto conforme o pedido abaixo.\n\nPedido: ${clean}${blocoModo}${blocoPreservar}${blocoTexto}${isLogo ? "\n\n📐 FORMATO: mantenha EXATAMENTE a mesma proporção e resolução da foto original — não recorte, não expanda, não reenquadre." : blocoFormatoSocial(clean + " " + modo)}\n\nResultado fotorealista de alta qualidade, pronto para publicação.`,
               },
               { type: "image_url", image_url: { url: dataUrlInput } },
             ],
@@ -4691,8 +4706,8 @@ const TOOLS = [
         properties: {
           prompt: { type: "string", description: "Descrição da edição desejada. Ex: 'anúncio profissional desse SUV prata, luz de fim de tarde, fundo elegante desfocado' — mantendo o veículo/pessoa original." },
           textos: { type: "array", items: { type: "string" }, description: "Até 6 frases curtas para APARECEREM escritas na imagem, ao lado do objeto. Ex: ['45.000 km', 'Ano/Modelo 2021/2022', 'Único dono', 'Todas as revisões na concessionária']. Deixe vazio se o usuário não pediu texto na imagem." },
-          modo: { type: "string", enum: ["melhoria", "ficha_tecnica", "figurino"], description: "'ficha_tecnica' = anúncio comercial de produto/veículo: o cenário original é DESCARTADO e o produto vai pra um set de estúdio/showroom limpo (use SEMPRE que ele pedir anúncio, arte, 'ambiente bonito', 'fundo profissional', ou quando a foto tiver bagunça de casa: fios, TV, móveis); 'figurino' = trocar roupa/fantasia mantendo rosto e ambiente; 'melhoria' = só melhorar nitidez/luz mantendo a cena." },
-          preservar_ambiente: { type: "boolean", description: "Omita normalmente. Em modo 'ficha_tecnica' o cenário é trocado por padrão — só passe true se ele pedir EXPLICITAMENTE para manter o local original. Em 'melhoria'/'figurino' o padrão já é manter." },
+          modo: { type: "string", enum: ["melhoria", "ficha_tecnica", "figurino", "aplicar_logo"], description: "'aplicar_logo' = OBRIGATÓRIO sempre que ele pedir pra colocar/incluir a LOGO, a MARCA ou a logomarca em algum ponto da foto (na xícara, na camisa, na parede, no carro): a foto original é mantida pixel a pixel e SÓ a marca é aplicada — nunca gere outra foto nesse caso; 'ficha_tecnica' = anúncio comercial de produto/veículo: o cenário original é DESCARTADO e o produto vai pra um set de estúdio/showroom limpo (use quando ele pedir anúncio, arte, 'ambiente bonito', 'fundo profissional', ou quando a foto tiver bagunça de casa: fios, TV, móveis); 'figurino' = trocar roupa/fantasia mantendo rosto e ambiente; 'melhoria' = só melhorar nitidez/luz mantendo a cena." },
+          preservar_ambiente: { type: "boolean", description: "Omita normalmente. Em modo 'ficha_tecnica' o cenário é trocado por padrão — só passe true se ele pedir EXPLICITAMENTE para manter o local original. Em 'melhoria'/'figurino'/'aplicar_logo' o padrão já é manter." },
         },
         required: ["prompt"],
       },
@@ -6005,23 +6020,28 @@ async function callGemini(
     // Edição de foto recente é determinística: o modelo não pode apenas prometer
     // que vai trabalhar em segundo plano. A própria ferramenta busca a última
     // foto do tenant (janela de 30 min) e devolve a imagem pronta neste turno.
-    const pedidoEdicaoFoto = /\b(?:melhor(?:a|ar|e)|edit(?:a|ar|e)|trat(?:a|ar|e)|ajust(?:a|ar|e)|transform(?:a|ar|e)|coloc(?:a|ar|e)|troc(?:a|ar|e)|mud(?:a|ar|e)|cri(?:a|ar|e)|faz(?:er)?)\b[\s\S]{0,180}\b(?:foto|imagem|cen[aá]rio|ambiente|fundo|est[uú]dio|showroom|divulga(?:r|ção)|facebook|instagram)\b|\b(?:cen[aá]rio|ambiente|fundo)\s+(?:bonito|elegante|profissional|de\s+est[uú]dio)\b/i.test(userContent);
+    const pedidoLogoNaFoto = /\b(?:coloc(?:a|ar|e)|inclu(?:a|ir|i)|p[oõ]e|por|aplic(?:a|ar|e)|insir(?:a|ir)|adicion(?:a|ar|e)|estamp(?:a|ar|e))\b[\s\S]{0,120}\b(?:logo|logotipo|logomarca|marca)\b/i.test(userContent);
+    const pedidoEdicaoFoto = pedidoLogoNaFoto || /\b(?:melhor(?:a|ar|e)|edit(?:a|ar|e)|trat(?:a|ar|e)|ajust(?:a|ar|e)|transform(?:a|ar|e)|coloc(?:a|ar|e)|troc(?:a|ar|e)|mud(?:a|ar|e)|cri(?:a|ar|e)|faz(?:er)?)\b[\s\S]{0,180}\b(?:foto|imagem|cen[aá]rio|ambiente|fundo|est[uú]dio|showroom|divulga(?:r|ção)|facebook|instagram)\b|\b(?:cen[aá]rio|ambiente|fundo)\s+(?:bonito|elegante|profissional|de\s+est[uú]dio)\b/i.test(userContent);
     if (remetenteEhDono && pedidoEdicaoFoto) {
-      const trocarCenario = /\b(?:cen[aá]rio|ambiente|fundo|est[uú]dio|showroom|divulga(?:r|ção)|facebook|instagram)\b/i.test(userContent);
-      console.log(`[processor][forced_image_edit] modo=${trocarCenario ? "ficha_tecnica" : "melhoria"}`);
+      // Pedido de LOGO tem prioridade absoluta: a foto original é mantida e só a marca é aplicada.
+      const trocarCenario = !pedidoLogoNaFoto && /\b(?:cen[aá]rio|ambiente|fundo|est[uú]dio|showroom|divulga(?:r|ção)|facebook|instagram)\b/i.test(userContent);
+      const modoForcado = pedidoLogoNaFoto ? "aplicar_logo" : trocarCenario ? "ficha_tecnica" : "melhoria";
+      console.log(`[processor][forced_image_edit] modo=${modoForcado}`);
       const raw = await toolEditarImagem(userContent, {
         userId: toolCtx.userId,
         fromNumber: toolCtx.fromNumber,
         media: toolCtx.media,
         textos: [],
-        modo: trocarCenario ? "ficha_tecnica" : "melhoria",
+        modo: modoForcado,
         preservarAmbiente: trocarCenario ? false : undefined,
       });
       let parsed: any = {};
       try { parsed = JSON.parse(raw); } catch { /* resposta inválida tratada abaixo */ }
       if (parsed?.image_url) {
         return {
-          text: "Pronto — deixei a foto em um cenário profissional para divulgação.",
+          text: pedidoLogoNaFoto
+            ? "Pronto — apliquei a marca na sua foto original, sem mudar nada mais na imagem."
+            : "Pronto — deixei a foto em um cenário profissional para divulgação.",
           imageUrl: parsed.image_url,
         };
       }
@@ -8130,7 +8150,7 @@ Regras:
       const m0 = recMid?.[0];
       if (m0 && media.length === 0) {
           recentMediaBlock = inboundFromOwner
-            ? `\n\nMÍDIA RECENTE NA BIBLIOTECA /midias (últimos 15 min):\n- Tipo: ${m0.tipo}. Contexto salvo: "${m0.contexto_original ?? "sem contexto"}".\n- Se o dono pedir pra POSTAR/DIVULGAR agora em QUALQUER formato (feed, story, stories, reels), a mídia a publicar é ESTA que ele acabou de enviar — chame IMEDIATAMENTE postar_midia_biblioteca passando legenda/nome/preço do texto atual e formato='story' se ele citar story/stories (senão 'feed').\n- 🏷️ ANÚNCIO/ARTE: se ele pedir "cria a imagem para anúncio", "monta a arte", "faz um anúncio" e passar dados do produto (modelo, ano, km, preço, chaves, câmbio, "único dono"), chame IMEDIATAMENTE criar_anuncio NESTA MESMA RESPOSTA usando ESTA foto recente. Monte 'titulo' com o modelo citado, 'subtitulo' com ano/câmbio, coloque cada dado citado em 'itens' EXATAMENTE como ele escreveu e 'preco' com o valor dito. NÃO invente dados e NÃO pergunte nada se ele já deu o modelo.\n- ⛔ NUNCA chame postar_redes_sociais nesse caso — aquela tool busca PRODUTO no CATÁLOGO e vai devolver item ERRADO.\n- 🎨 EDIÇÃO/CENÁRIO: se ele pedir pra MELHORAR a foto, "deixar bonita", "colocar um cenário bonito", "fundo profissional", "ambiente para divulgar no Face/Insta", escrever dados na imagem (km, ano, preço, "único dono") ou trocar roupa/fantasia, chame IMEDIATAMENTE editar_imagem NESTA MESMA RESPOSTA — a ferramenta já pega ESTA foto recente sozinha. Use modo='ficha_tecnica' para cenário/estúdio/anúncio de produto e modo='figurino' para troca de roupa. Coloque em "textos" só os dados que ele escreveu.\n- ⛔ NUNCA responda que não consegue editar/gerar imagem, que "não tem essa função" ou que precisa reenviar a foto: a foto está aqui e a ferramenta existe. Chame a tool.\n- ⛔ NÃO chame buscar_estoque/consultar_estoque nesse caso.`
+            ? `\n\nMÍDIA RECENTE NA BIBLIOTECA /midias (últimos 15 min):\n- Tipo: ${m0.tipo}. Contexto salvo: "${m0.contexto_original ?? "sem contexto"}".\n- Se o dono pedir pra POSTAR/DIVULGAR agora em QUALQUER formato (feed, story, stories, reels), a mídia a publicar é ESTA que ele acabou de enviar — chame IMEDIATAMENTE postar_midia_biblioteca passando legenda/nome/preço do texto atual e formato='story' se ele citar story/stories (senão 'feed').\n- 🏷️ ANÚNCIO/ARTE: se ele pedir "cria a imagem para anúncio", "monta a arte", "faz um anúncio" e passar dados do produto (modelo, ano, km, preço, chaves, câmbio, "único dono"), chame IMEDIATAMENTE criar_anuncio NESTA MESMA RESPOSTA usando ESTA foto recente. Monte 'titulo' com o modelo citado, 'subtitulo' com ano/câmbio, coloque cada dado citado em 'itens' EXATAMENTE como ele escreveu e 'preco' com o valor dito. NÃO invente dados e NÃO pergunte nada se ele já deu o modelo.\n- ⛔ NUNCA chame postar_redes_sociais nesse caso — aquela tool busca PRODUTO no CATÁLOGO e vai devolver item ERRADO.\n- 🎨 EDIÇÃO/CENÁRIO: se ele pedir pra MELHORAR a foto, "deixar bonita", "colocar um cenário bonito", "fundo profissional", "ambiente para divulgar no Face/Insta", escrever dados na imagem (km, ano, preço, "único dono") ou trocar roupa/fantasia, chame IMEDIATAMENTE editar_imagem NESTA MESMA RESPOSTA — a ferramenta já pega ESTA foto recente sozinha. Se ele pedir pra COLOCAR/INCLUIR a LOGO ou a MARCA em algum ponto da foto (xícara, camisa, parede, carro), use OBRIGATORIAMENTE modo='aplicar_logo' — a foto dele é mantida igual e só a marca é aplicada; é PROIBIDO gerar outra foto. Use modo='ficha_tecnica' para cenário/estúdio/anúncio de produto e modo='figurino' para troca de roupa. Coloque em "textos" só os dados que ele escreveu.\n- ⛔ NUNCA responda que não consegue editar/gerar imagem, que "não tem essa função" ou que precisa reenviar a foto: a foto está aqui e a ferramenta existe. Chame a tool.\n- ⛔ NÃO chame buscar_estoque/consultar_estoque nesse caso.`
             : `\n\nMÍDIA RECENTE NA BIBLIOTECA /midias (últimos 15 min):\n- Tipo: ${m0.tipo}. Foi enviada por CLIENTE/CONTATO, não pelo responsável.\n- NÃO ofereça postar/divulgar, NÃO pergunte rede/formato e NÃO chame ferramentas de publicação.\n- Se ele acabou de confirmar ("pode mandar", "sim manda pro Marcelo", "encaminha") depois de você ter oferecido, chame encaminhar_recado_ao_dono com incluir_ultima_foto=true.`;
       }
     } catch (e) {
