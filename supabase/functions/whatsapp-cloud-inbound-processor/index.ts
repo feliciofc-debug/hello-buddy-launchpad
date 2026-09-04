@@ -4583,7 +4583,10 @@ async function criarRascunhoVideoMotion(
     status: "aguardando_aprovacao",
   });
   if (error) throw new Error(`não consegui salvar o roteiro: ${error.message}`);
-  return `${formatVideoDraft(roteiro.props, tema, roteiro.props ? duracaoEstimada(roteiro.props) : 0)}\n\nCódigo de aprovação: *${token}*`;
+  const paleta = pedidas
+    ? `${pedidas.resumo} (cores que você pediu)`
+    : `fundo ${roteiro.props?.cores?.bg}, destaque ${roteiro.props?.cores?.destaque} (padrão da sua marca)`;
+  return `${formatVideoDraft(roteiro.props, tema, roteiro.props ? duracaoEstimada(roteiro.props) : 0, paleta)}\n\nCódigo de aprovação: *${token}*`;
 }
 
 async function buscarRascunhoVideo(ctx: { userId: string; fromNumber: string }): Promise<any | null> {
