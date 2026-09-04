@@ -6110,7 +6110,8 @@ async function callGemini(
       if (tema.length < 4) {
         return { text: "Qual é o tema do vídeo? Ex.: mostrar como a plataforma agenda e publica posts." };
       }
-      return { text: await criarRascunhoVideoMotion(toolCtx, tema) };
+      // O texto inteiro vai junto: é dele que saem as cores pedidas (hex ou nome).
+      return { text: await criarRascunhoVideoMotion(toolCtx, tema, userContent) };
     }
 
     // Fluxo A/B/C: resolve seleção e confirmação direto no código, sem depender da IA.
