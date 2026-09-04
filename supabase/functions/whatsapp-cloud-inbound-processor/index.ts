@@ -1161,11 +1161,8 @@ async function toolEditarImagem(
 
   try {
     const dataUrlInput = imageInput;
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${LOVABLE_API_KEY}` },
-      body: JSON.stringify({
-        model: "google/gemini-3.1-flash-image",
+    const r = await chamarGatewayImagem(
+      {
         messages: [
           {
             role: "user",
@@ -1179,17 +1176,11 @@ async function toolEditarImagem(
           },
         ],
         modalities: ["image", "text"],
-      }),
-      signal: AbortSignal.timeout(90000),
-    });
-
-    if (!res.ok) {
-      const t = await res.text();
-      return JSON.stringify({ erro: `image_edit ${res.status}`, detalhe: t.slice(0, 200) });
-    }
-    const data = await res.json();
-    const dataUrl = data?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-    if (!dataUrl) return JSON.stringify({ erro: "sem_imagem_retornada" });
+      },
+      "editar_imagem",
+    );
+    if (!r.ok) return JSON.stringify({ erro: r.erro, detalhe: r.detalhe, motivo: r.motivo });
+    const dataUrl = r.dataUrl;
 
     let b64 = dataUrl;
     let mime = "image/png";
