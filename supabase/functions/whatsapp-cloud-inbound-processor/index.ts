@@ -7269,6 +7269,28 @@ async function processOne(queueId: string) {
     }
 
 
+    // Falha de download (token expirado / Graph fora) também nunca é silenciosa.
+    const falhouDownload = mediaRejections.filter((r) => r.reason !== "too_large");
+    if (media.length === 0 && falhouDownload.length > 0) {
+      console.error(
+        `[processor][media_download_failed] user=${userId} tipo=${row.message_type} motivos=${falhouDownload.map((r) => r.reason).join(",")}`,
+      );
+      const aviso = "Recebi seu arquivo, mas não consegui baixar ele agora (falha na conexão com o WhatsApp). Manda de novo, por favor.";
+      try {
+        await sendWhatsApp(userId, row.from_number, aviso);
+        await sb.from("whatsapp_cloud_messages").insert({
+          conversation_id: conv.id,
+          direction: "outbound",
+          message_type: "text",
+          content: aviso,
+        });
+      } catch (e) {
+        console.error("[processor][media_download_failed] falha ao avisar remetente:", (e as Error).message);
+      }
+      await doneQueue(row.id);
+      return { ok: true, reason: "media_download_failed" };
+    }
+
     // REGRA FIXA: todo áudio recebido é transcrito por STT dedicado (determinístico).
     // O agente NUNCA pode dizer que "não transcreve áudio" — o texto já chega pronto.
     let audioTranscript = "";
@@ -8229,7 +8251,7 @@ Regras:
       estadoBlock += `\n\n=== DECISÃO JÁ TOMADA PELO CLIENTE (NÃO OFEREÇA DE NOVO) ===\n- O cliente já escolheu: "${decisaoAnterior.valor}".\n- REGRA DO PRODUTO: nenhuma opção é oferecida duas vezes. É PROIBIDO perguntar novamente se ele prefere adiantar com você ou aguardar o responsável.\n- Apenas respeite a escolha e se coloque à disposição, sem repetir a pergunta.`;
     }
 
-    const systemPromptWithDate = systemPrompt + dateBlock + antiPromessaBlock + ownerHintBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock + ebookBlock + estadoBlock;
+    const systemPromptWithDate = systemPrompt + dateBlock + antiPromessaBlock + antiRecusaBlock + ownerHintBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock + ebookBlock + estadoBlock;
     console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPromptWithDate.length} forwardState=${!!persistedForward?.protocolo} decisao=${decisaoAnterior?.valor ?? "-"}`);
 
     // Histórico
