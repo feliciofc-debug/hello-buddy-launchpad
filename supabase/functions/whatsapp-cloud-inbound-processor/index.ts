@@ -5966,7 +5966,13 @@ async function runTool(
     return { result: r, imageUrl: parsed?.image_url };
   }
   if (name === "criar_video_animado") {
-    return { result: await criarRascunhoVideoMotion(ctx, normalizeVideoTopic(args?.tema ?? "")) };
+    return {
+      result: await criarRascunhoVideoMotion(
+        ctx,
+        normalizeVideoTopic(args?.tema ?? ""),
+        String(args?.cores ?? ""),
+      ),
+    };
   }
   if (name === "consultar_clima") return { result: await toolConsultarClima(args?.local ?? "", ctx) };
   if (name === "cotacao_moeda") return { result: await toolCotacaoMoeda(args?.par ?? "") };
