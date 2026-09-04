@@ -6020,23 +6020,28 @@ async function callGemini(
     // Edição de foto recente é determinística: o modelo não pode apenas prometer
     // que vai trabalhar em segundo plano. A própria ferramenta busca a última
     // foto do tenant (janela de 30 min) e devolve a imagem pronta neste turno.
-    const pedidoEdicaoFoto = /\b(?:melhor(?:a|ar|e)|edit(?:a|ar|e)|trat(?:a|ar|e)|ajust(?:a|ar|e)|transform(?:a|ar|e)|coloc(?:a|ar|e)|troc(?:a|ar|e)|mud(?:a|ar|e)|cri(?:a|ar|e)|faz(?:er)?)\b[\s\S]{0,180}\b(?:foto|imagem|cen[aá]rio|ambiente|fundo|est[uú]dio|showroom|divulga(?:r|ção)|facebook|instagram)\b|\b(?:cen[aá]rio|ambiente|fundo)\s+(?:bonito|elegante|profissional|de\s+est[uú]dio)\b/i.test(userContent);
+    const pedidoLogoNaFoto = /\b(?:coloc(?:a|ar|e)|inclu(?:a|ir|i)|p[oõ]e|por|aplic(?:a|ar|e)|insir(?:a|ir)|adicion(?:a|ar|e)|estamp(?:a|ar|e))\b[\s\S]{0,120}\b(?:logo|logotipo|logomarca|marca)\b/i.test(userContent);
+    const pedidoEdicaoFoto = pedidoLogoNaFoto || /\b(?:melhor(?:a|ar|e)|edit(?:a|ar|e)|trat(?:a|ar|e)|ajust(?:a|ar|e)|transform(?:a|ar|e)|coloc(?:a|ar|e)|troc(?:a|ar|e)|mud(?:a|ar|e)|cri(?:a|ar|e)|faz(?:er)?)\b[\s\S]{0,180}\b(?:foto|imagem|cen[aá]rio|ambiente|fundo|est[uú]dio|showroom|divulga(?:r|ção)|facebook|instagram)\b|\b(?:cen[aá]rio|ambiente|fundo)\s+(?:bonito|elegante|profissional|de\s+est[uú]dio)\b/i.test(userContent);
     if (remetenteEhDono && pedidoEdicaoFoto) {
-      const trocarCenario = /\b(?:cen[aá]rio|ambiente|fundo|est[uú]dio|showroom|divulga(?:r|ção)|facebook|instagram)\b/i.test(userContent);
-      console.log(`[processor][forced_image_edit] modo=${trocarCenario ? "ficha_tecnica" : "melhoria"}`);
+      // Pedido de LOGO tem prioridade absoluta: a foto original é mantida e só a marca é aplicada.
+      const trocarCenario = !pedidoLogoNaFoto && /\b(?:cen[aá]rio|ambiente|fundo|est[uú]dio|showroom|divulga(?:r|ção)|facebook|instagram)\b/i.test(userContent);
+      const modoForcado = pedidoLogoNaFoto ? "aplicar_logo" : trocarCenario ? "ficha_tecnica" : "melhoria";
+      console.log(`[processor][forced_image_edit] modo=${modoForcado}`);
       const raw = await toolEditarImagem(userContent, {
         userId: toolCtx.userId,
         fromNumber: toolCtx.fromNumber,
         media: toolCtx.media,
         textos: [],
-        modo: trocarCenario ? "ficha_tecnica" : "melhoria",
+        modo: modoForcado,
         preservarAmbiente: trocarCenario ? false : undefined,
       });
       let parsed: any = {};
       try { parsed = JSON.parse(raw); } catch { /* resposta inválida tratada abaixo */ }
       if (parsed?.image_url) {
         return {
-          text: "Pronto — deixei a foto em um cenário profissional para divulgação.",
+          text: pedidoLogoNaFoto
+            ? "Pronto — apliquei a marca na sua foto original, sem mudar nada mais na imagem."
+            : "Pronto — deixei a foto em um cenário profissional para divulgação.",
           imageUrl: parsed.image_url,
         };
       }
