@@ -41,6 +41,7 @@ import {
   montarRoteiroMotion,
 } from "../_shared/video-motion-enfileirar.ts";
 import { duracaoEstimada } from "../_shared/video-motion.ts";
+import { extrairCoresDoTexto } from "../_shared/video-cores.ts";
 
 import {
   entregarEbookTenant,
@@ -4543,18 +4544,33 @@ function videoDraftToken(): string {
   return crypto.randomUUID().replace(/-/g, "").slice(0, 8);
 }
 
-function formatVideoDraft(props: any, tema: string, duracao: number): string {
+function formatVideoDraft(props: any, tema: string, duracao: number, paleta?: string): string {
   const linhas = Array.isArray(props?.hook?.linhas) ? props.hook.linhas.filter(Boolean).join(" ") : "";
   const mensagens = Array.isArray(props?.chat?.mensagens)
     ? props.chat.mensagens.map((m: any) => `${m?.de === "dono" ? "Você" : "Agente"}: ${m?.texto || ""}`).filter((x: string) => !x.endsWith(": ")).join("\n")
     : "";
   const cta = props?.cta?.frase ? `\n\n*CTA:* ${props.cta.frase}` : "";
-  return `🎬 *Roteiro do vídeo — ${tema}*\n\n*Gancho:* ${linhas || "(não informado)"}\n\n*Conversa:*\n${mensagens || "(não informado)"}${cta}\n\nDuração estimada: ${duracao}s.\n\nResponda *APROVADO* para eu renderizar o MP4 (leva cerca de 4 minutos), ou me diga o que ajustar.`;
+  const cores = paleta ? `\n\n*Paleta:* ${paleta}` : "";
+  return `🎬 *Roteiro do vídeo — ${tema}*\n\n*Gancho:* ${linhas || "(não informado)"}\n\n*Conversa:*\n${mensagens || "(não informado)"}${cta}${cores}\n\nDuração estimada: ${duracao}s.\n\nResponda *APROVADO* para eu renderizar o MP4 (leva cerca de 4 minutos), ou me diga o que ajustar.`;
 }
 
-async function criarRascunhoVideoMotion(ctx: { userId: string; fromNumber: string }, tema: string): Promise<string> {
+async function criarRascunhoVideoMotion(
+  ctx: { userId: string; fromNumber: string },
+  tema: string,
+  textoCores?: string,
+): Promise<string> {
   if (!isOwner(ctx)) return "Esse recurso é exclusivo do responsável da conta. Posso encaminhar o pedido para ele.";
-  const roteiro = await montarRoteiroMotion({ sb, userId: ctx.userId, tema, origem: "whatsapp", nomeFallback: null });
+  // Prospecção: quando o pedido menciona cores (hex ou nome), o vídeo sai na
+  // identidade visual do cliente-alvo; sem menção, segue a paleta do tenant.
+  const pedidas = extrairCoresDoTexto(`${textoCores ?? ""} ${tema}`);
+  const roteiro = await montarRoteiroMotion({
+    sb,
+    userId: ctx.userId,
+    tema,
+    origem: "whatsapp",
+    nomeFallback: null,
+    cores: pedidas?.cores ?? null,
+  });
   const token = videoDraftToken();
   const { error } = await sb.from("video_motion_rascunhos").insert({
     user_id: ctx.userId,
@@ -4567,7 +4583,10 @@ async function criarRascunhoVideoMotion(ctx: { userId: string; fromNumber: strin
     status: "aguardando_aprovacao",
   });
   if (error) throw new Error(`não consegui salvar o roteiro: ${error.message}`);
-  return `${formatVideoDraft(roteiro.props, tema, roteiro.props ? duracaoEstimada(roteiro.props) : 0)}\n\nCódigo de aprovação: *${token}*`;
+  const paleta = pedidas
+    ? `${pedidas.resumo} (cores que você pediu)`
+    : `fundo ${roteiro.props?.cores?.bg}, destaque ${roteiro.props?.cores?.destaque} (padrão da sua marca)`;
+  return `${formatVideoDraft(roteiro.props, tema, roteiro.props ? duracaoEstimada(roteiro.props) : 0, paleta)}\n\nCódigo de aprovação: *${token}*`;
 }
 
 async function buscarRascunhoVideo(ctx: { userId: string; fromNumber: string }): Promise<any | null> {
@@ -5111,11 +5130,12 @@ const TOOLS = [
     type: "function",
     function: {
       name: "criar_video_animado",
-      description: "🎬 Cria um roteiro de vídeo Motion white-label sobre o tema pedido pelo RESPONSÁVEL. Use quando ele pedir para criar, gerar, montar ou fazer um vídeo animado/institucional/publicitário. Primeiro gera e envia o roteiro para aprovação; NUNCA renderiza sem aprovação explícita. Não use para clientes. O vídeo usa automaticamente a marca, cores, logo e contexto do próprio tenant.",
+      description: "🎬 Cria um roteiro de vídeo Motion white-label sobre o tema pedido pelo RESPONSÁVEL. Use quando ele pedir para criar, gerar, montar ou fazer um vídeo animado/institucional/publicitário. Primeiro gera e envia o roteiro para aprovação; NUNCA renderiza sem aprovação explícita. Não use para clientes. Por padrão usa a marca, cores, logo e contexto do próprio tenant — MAS se o pedido mencionar cores (hex como #E30613 ou nomes como 'vermelho e branco', 'nas cores do cliente'), copie ESSE trecho literalmente em 'cores' para o vídeo sair na identidade visual do cliente prospectado.",
       parameters: {
         type: "object",
         properties: {
           tema: { type: "string", description: "Tema e objetivo do vídeo, preservando a ideia do responsável. Ex: 'mostrar como a Ademicon agenda posts e publica nas redes'." },
+          cores: { type: "string", description: "Trecho LITERAL do pedido que menciona cores, com rótulos e hex se houver. Ex: 'fundo #ffffff, fundo 2 #fff5f5, destaque #E30613, apoio #ff4d57' ou 'vermelho e branco'. Deixe vazio se ele não citou cor nenhuma." },
         },
         required: ["tema"],
       },
@@ -5946,7 +5966,13 @@ async function runTool(
     return { result: r, imageUrl: parsed?.image_url };
   }
   if (name === "criar_video_animado") {
-    return { result: await criarRascunhoVideoMotion(ctx, normalizeVideoTopic(args?.tema ?? "")) };
+    return {
+      result: await criarRascunhoVideoMotion(
+        ctx,
+        normalizeVideoTopic(args?.tema ?? ""),
+        String(args?.cores ?? ""),
+      ),
+    };
   }
   if (name === "consultar_clima") return { result: await toolConsultarClima(args?.local ?? "", ctx) };
   if (name === "cotacao_moeda") return { result: await toolCotacaoMoeda(args?.par ?? "") };
@@ -6084,7 +6110,8 @@ async function callGemini(
       if (tema.length < 4) {
         return { text: "Qual é o tema do vídeo? Ex.: mostrar como a plataforma agenda e publica posts." };
       }
-      return { text: await criarRascunhoVideoMotion(toolCtx, tema) };
+      // O texto inteiro vai junto: é dele que saem as cores pedidas (hex ou nome).
+      return { text: await criarRascunhoVideoMotion(toolCtx, tema, userContent) };
     }
 
     // Fluxo A/B/C: resolve seleção e confirmação direto no código, sem depender da IA.
