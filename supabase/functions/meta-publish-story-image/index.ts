@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { prepareImageForStorySafe } from '../_shared/prepareImageForStory.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -35,6 +36,12 @@ serve(async (req) => {
     const token = conn.page_access_token
     const igId = conn.ig_account_id
 
+    // Story é 9:16. Qualquer outra proporção o Instagram ESTICA — então
+    // encaixamos a foto inteira num quadro 1080x1920 antes de publicar.
+    const preparada = await prepareImageForStorySafe(image_url, user_id, SUPABASE_URL, SERVICE_KEY)
+    const storyImageUrl = preparada.url
+    console.log(`[story-image] proporcao=${preparada.reason} convertida=${preparada.converted}`)
+
     // 1) Busca metadata da conta IG (apenas campos suportados na Graph v25)
     // Nota: `account_type` foi removido da Graph API — se a conta foi conectada
     // via FB Page, já é Business/Creator por definição.
@@ -57,7 +64,7 @@ serve(async (req) => {
     // 3) Cria container
     const containerBody: Record<string, any> = {
       media_type: 'STORIES',
-      image_url,
+      image_url: storyImageUrl,
       access_token: token,
     }
     if (link_sticker && elegivelLink) {
