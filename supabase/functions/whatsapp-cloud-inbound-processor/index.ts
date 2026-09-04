@@ -1134,10 +1134,16 @@ async function toolEditarImagem(
 
   const textos = (ctx.textos || []).map((t) => String(t || "").trim()).filter(Boolean).slice(0, 6);
   const modo = (ctx.modo || "").trim().toLowerCase();
-  const isAnuncio = modo === "ficha_tecnica" || modo === "anuncio" || modo === "estudio" || modo === "trocar_ambiente";
+  // 🔒 Pedido de LOGO/MARCA nunca troca a foto: a imagem original é mantida
+  // pixel a pixel e a marca é apenas aplicada sobre ela.
+  const isLogo = modo === "aplicar_logo" || modo === "logo" || modo === "marca" ||
+    /\b(logo|logotipo|marca|logomarca)\b/i.test(clean);
+  const isAnuncio = !isLogo &&
+    (modo === "ficha_tecnica" || modo === "anuncio" || modo === "estudio" || modo === "trocar_ambiente");
   // Em modo anúncio/ficha técnica o ambiente ORIGINAL deve ser descartado por padrão
   // (fios, TV, móveis, bagunça de casa nunca podem aparecer numa arte comercial).
-  const preservar = isAnuncio ? ctx.preservarAmbiente === true : ctx.preservarAmbiente !== false;
+  const preservar = isLogo ? true : isAnuncio ? ctx.preservarAmbiente === true : ctx.preservarAmbiente !== false;
+
 
   const blocoTexto = textos.length
     ? `\n\n📝 TEXTOS QUE DEVEM APARECER NA IMAGEM (obrigatório, escreva EXATAMENTE assim, sem inventar nem traduzir):\n${textos.map((t) => `- "${t}"`).join("\n")}\nRegras da tipografia:\n- Posicione as informações AO LADO (ou em faixa lateral/inferior) do objeto principal, em área limpa, NUNCA cobrindo o produto, rostos ou placa.\n- Fonte sans-serif moderna, legível, alinhada, hierarquia clara (destaque no dado mais forte).\n- Fundo sutil atrás do texto (faixa translúcida ou bloco sólido) para garantir contraste.\n- Sem erros de ortografia, sem letras cortadas, sem repetir o mesmo texto duas vezes.\n- Não adicione NENHUM outro texto além dos listados acima.`
