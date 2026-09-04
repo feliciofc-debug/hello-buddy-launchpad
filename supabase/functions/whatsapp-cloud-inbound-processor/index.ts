@@ -2860,7 +2860,7 @@ Responda APENAS com JSON válido nesta forma exata:
         signal: ac.signal,
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: MODEL_FAST,
           messages: [
             { role: "system", content: "Você retorna APENAS JSON válido, sem markdown, sem texto extra." },
             { role: "user", content: prompt },
