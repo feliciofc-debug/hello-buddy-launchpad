@@ -65,8 +65,8 @@ const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 // FAST = conversa normal (rápido/barato). DEEP = raciocínio pesado
 // (documento, código, multimodal). Decisão é pelo TIPO de fluxo,
 // nunca por heurística de palavra-chave no conteúdo.
-const MODEL_FAST = "google/gemini-2.5-flash";
-const MODEL_DEEP = "google/gemini-2.5-pro";
+const MODEL_FAST = "google/gemini-3.6-flash";
+const MODEL_DEEP = "google/gemini-3.1-pro-preview";
 
 type TaskContext = {
   kind: "conversation" | "document" | "multimodal";
@@ -949,7 +949,6 @@ ${logoDataUrl ? `- A SEGUNDA IMAGEM ANEXADA É A LOGOMARCA OFICIAL DA EMPRESA. R
         messages: [{ role: "user", content: userContent }],
         modalities: ["image", "text"],
       }),
-      signal: AbortSignal.timeout(90000),
     });
     console.log("[gerar_imagem] gateway respondeu em", Date.now() - t0, "ms status=", res.status);
     if (!res.ok) {
@@ -5940,6 +5939,33 @@ async function callGemini(
     const remetenteEhDono = isOwner(toolCtx);
     const latestPendingSocialToken = remetenteEhDono ? await findLatestPendingSocialToken(toolCtx.userId) : null;
     const pendingVideoDraft = remetenteEhDono ? await buscarRascunhoVideo(toolCtx) : null;
+
+    // Edição de foto recente é determinística: o modelo não pode apenas prometer
+    // que vai trabalhar em segundo plano. A própria ferramenta busca a última
+    // foto do tenant (janela de 30 min) e devolve a imagem pronta neste turno.
+    const pedidoEdicaoFoto = /\b(?:melhor(?:a|ar|e)|edit(?:a|ar|e)|trat(?:a|ar|e)|ajust(?:a|ar|e)|transform(?:a|ar|e)|coloc(?:a|ar|e)|troc(?:a|ar|e)|mud(?:a|ar|e)|cri(?:a|ar|e)|faz(?:er)?)\b[\s\S]{0,180}\b(?:foto|imagem|cen[aá]rio|ambiente|fundo|est[uú]dio|showroom|divulga(?:r|ção)|facebook|instagram)\b|\b(?:cen[aá]rio|ambiente|fundo)\s+(?:bonito|elegante|profissional|de\s+est[uú]dio)\b/i.test(userContent);
+    if (remetenteEhDono && pedidoEdicaoFoto) {
+      const trocarCenario = /\b(?:cen[aá]rio|ambiente|fundo|est[uú]dio|showroom|divulga(?:r|ção)|facebook|instagram)\b/i.test(userContent);
+      console.log(`[processor][forced_image_edit] modo=${trocarCenario ? "ficha_tecnica" : "melhoria"}`);
+      const raw = await toolEditarImagem(userContent, {
+        userId: toolCtx.userId,
+        fromNumber: toolCtx.fromNumber,
+        media: toolCtx.media,
+        textos: [],
+        modo: trocarCenario ? "ficha_tecnica" : "melhoria",
+        preservarAmbiente: trocarCenario ? false : undefined,
+      });
+      let parsed: any = {};
+      try { parsed = JSON.parse(raw); } catch { /* resposta inválida tratada abaixo */ }
+      if (parsed?.image_url) {
+        return {
+          text: "Pronto — deixei a foto em um cenário profissional para divulgação.",
+          imageUrl: parsed.image_url,
+        };
+      }
+      const detalhe = String(parsed?.detalhe || parsed?.erro || "A edição não retornou uma imagem").slice(0, 240);
+      return { text: `Não consegui concluir a edição desta vez: ${detalhe}.` };
+    }
 
     // Vídeo Motion: aprovação e cancelamento são resolvidos antes da IA para
     // impedir que o modelo apenas diga que vai renderizar sem criar o job.
