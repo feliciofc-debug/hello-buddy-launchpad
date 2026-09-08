@@ -7,8 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { ArrowLeft, Building2, Target, Bot, Save, Sparkles } from 'lucide-react';
+import { ArrowLeft, Building2, Target, Bot, Save, Sparkles, Globe } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { ImportarDoSiteModal, type IdentidadeImportada } from '@/components/ImportarDoSiteModal';
 
 export default function ConfiguracaoEmpresa() {
   const [segmentoSelecionado, setSegmentoSelecionado] = useState('outros');
@@ -17,6 +18,8 @@ export default function ConfiguracaoEmpresa() {
   const [diferenciais, setDiferenciais] = useState('');
   const [publicoAlvo, setPublicoAlvo] = useState('');
   const [site, setSite] = useState('');
+  const [tomDeVoz, setTomDeVoz] = useState('');
+  const [importarAberto, setImportarAberto] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
 
@@ -42,6 +45,7 @@ export default function ConfiguracaoEmpresa() {
         setDiferenciais(data.diferenciais || '');
         setPublicoAlvo(data.publico_alvo || '');
         setSite(data.site || '');
+        setTomDeVoz(data.voz_copy || '');
       }
     } catch (error) {
       console.error('Erro ao carregar config:', error);
@@ -69,6 +73,7 @@ export default function ConfiguracaoEmpresa() {
           diferenciais: diferenciais,
           publico_alvo: publicoAlvo,
           site: site,
+          voz_copy: tomDeVoz || null,
           updated_at: new Date().toISOString()
         }, {
           onConflict: 'user_id'
@@ -86,6 +91,42 @@ export default function ConfiguracaoEmpresa() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Aplica o que veio do site nos campos (o usuário já confirmou na tela)
+  // e guarda a paleta/identidade para os vídeos e para o contexto do Jarvis.
+  const aplicarImportacao = async (d: IdentidadeImportada) => {
+    if (d.nome_empresa) setNomeEmpresa(d.nome_empresa);
+    if (d.descricao) setSobreNegocio(d.descricao);
+    if (d.diferenciais) setDiferenciais(d.diferenciais);
+    if (d.publico_alvo) setPublicoAlvo(d.publico_alvo);
+    if (d.tom_de_voz) setTomDeVoz(d.tom_de_voz);
+    if (d.segmento_sugerido) setSegmentoSelecionado(d.segmento_sugerido);
+    setSite(d.url);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from('empresa_config').upsert({
+          user_id: user.id,
+          paleta_marca: d.paleta as any,
+          tipografia: d.fontes.join(', ') || null,
+          identidade_site: {
+            url: d.url,
+            tagline: d.tagline,
+            logo_url: d.logo_url,
+            cores_detectadas: d.cores_detectadas,
+            texto_base: d.texto_base,
+            lido_em: new Date().toISOString(),
+          } as any,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+      }
+    } catch (e) {
+      console.error('Erro ao guardar identidade do site:', e);
+    }
+
+    toast.success('Dados do site preenchidos. Revise e clique em salvar.');
   };
 
   const segmento = SEGMENTOS_EMPRESA.find(s => s.id === segmentoSelecionado);
@@ -112,6 +153,34 @@ export default function ConfiguracaoEmpresa() {
         </Link>
         <h1 className="text-3xl font-bold">⚙️ Configuração da Empresa</h1>
       </div>
+
+      <Card className="mb-6 border-primary/40">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Globe className="h-5 w-5 text-primary" />
+            Importar do meu site
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-muted-foreground">
+            Cole o endereço do site e a plataforma preenche marca, cores, tipografia, descrição do negócio e
+            tom de voz. Você confere e ajusta antes de salvar.
+          </p>
+          <Button onClick={() => setImportarAberto(true)} className="shrink-0">
+            <Globe className="mr-2 h-4 w-4" />
+            Importar do site
+          </Button>
+        </CardContent>
+      </Card>
+
+      <ImportarDoSiteModal
+        aberto={importarAberto}
+        onFechar={() => setImportarAberto(false)}
+        modo="empresa"
+        onConfirmar={aplicarImportacao}
+      />
+
+
 
       <Card className="mb-6">
         <CardHeader>
@@ -176,6 +245,14 @@ export default function ConfiguracaoEmpresa() {
               value={publicoAlvo}
               onChange={(e) => setPublicoAlvo(e.target.value)}
               placeholder="Ex: lojistas, academias e prestadores de serviço que vendem pelo WhatsApp"
+            />
+          </div>
+          <div>
+            <Label>Tom de voz da marca</Label>
+            <Input
+              value={tomDeVoz}
+              onChange={(e) => setTomDeVoz(e.target.value)}
+              placeholder="Ex: profissional, direto, próximo"
             />
           </div>
         </CardContent>

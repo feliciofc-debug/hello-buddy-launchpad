@@ -2705,14 +2705,17 @@ export type Database = {
           created_at: string | null
           diferenciais: string | null
           id: string
+          identidade_site: Json | null
           link_post: string | null
           nome_assinatura: string | null
           nome_empresa: string | null
+          paleta_marca: Json | null
           publico_alvo: string | null
           regras_copy: string | null
           segmento: string | null
           site: string | null
           sobre_negocio: string | null
+          tipografia: string | null
           trilha_padrao_id: string | null
           updated_at: string | null
           user_id: string
@@ -2722,14 +2725,17 @@ export type Database = {
           created_at?: string | null
           diferenciais?: string | null
           id?: string
+          identidade_site?: Json | null
           link_post?: string | null
           nome_assinatura?: string | null
           nome_empresa?: string | null
+          paleta_marca?: Json | null
           publico_alvo?: string | null
           regras_copy?: string | null
           segmento?: string | null
           site?: string | null
           sobre_negocio?: string | null
+          tipografia?: string | null
           trilha_padrao_id?: string | null
           updated_at?: string | null
           user_id: string
@@ -2739,14 +2745,17 @@ export type Database = {
           created_at?: string | null
           diferenciais?: string | null
           id?: string
+          identidade_site?: Json | null
           link_post?: string | null
           nome_assinatura?: string | null
           nome_empresa?: string | null
+          paleta_marca?: Json | null
           publico_alvo?: string | null
           regras_copy?: string | null
           segmento?: string | null
           site?: string | null
           sobre_negocio?: string | null
+          tipografia?: string | null
           trilha_padrao_id?: string | null
           updated_at?: string | null
           user_id?: string

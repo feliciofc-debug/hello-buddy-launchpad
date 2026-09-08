@@ -16,6 +16,8 @@ export type TenantBusinessContext = {
   diferenciais: string | null;
   publicoAlvo: string | null;
   site: string | null;
+  /** tom de voz da marca (empresa_config.voz_copy) */
+  tomDeVoz: string | null;
   produtos: string[];
   /** telefone de atendimento do tenant (display_phone do whatsapp_config), só dígitos */
   atendimentoTelefone: string | null;
@@ -48,12 +50,13 @@ export async function getTenantBusinessContext(
   let diferenciais: string | null = null;
   let publicoAlvo: string | null = null;
   let site: string | null = null;
+  let tomDeVoz: string | null = null;
   let produtos: string[] = [];
 
   try {
     const { data } = await sb
       .from("empresa_config")
-      .select("nome_empresa, segmento, sobre_negocio, diferenciais, publico_alvo, site")
+      .select("nome_empresa, segmento, sobre_negocio, diferenciais, publico_alvo, site, voz_copy")
       .eq("user_id", userId)
       .maybeSingle();
     if (data) {
@@ -63,6 +66,7 @@ export async function getTenantBusinessContext(
       diferenciais = (data.diferenciais || "").trim() || null;
       publicoAlvo = (data.publico_alvo || "").trim() || null;
       site = (data.site || "").trim() || null;
+      tomDeVoz = ((data as any).voz_copy || "").trim() || null;
     }
   } catch (e) {
     console.warn("[business-context] empresa_config falhou:", (e as Error).message);
@@ -115,6 +119,7 @@ export async function getTenantBusinessContext(
   if (diferenciais) linhas.push(`- Diferenciais / motivos para escolher: ${diferenciais}`);
   if (publicoAlvo) linhas.push(`- Público-alvo: ${publicoAlvo}`);
   if (site) linhas.push(`- Site/link: ${site}`);
+  if (tomDeVoz) linhas.push(`- Tom de voz da marca: ${tomDeVoz}`);
   if (produtos.length) linhas.push(`- Produtos/serviços em destaque: ${produtos.slice(0, 8).join("; ")}`);
   if (atendimentoTelefoneFmt) linhas.push(`- WhatsApp de atendimento: ${atendimentoTelefoneFmt}`);
 
@@ -132,6 +137,7 @@ export async function getTenantBusinessContext(
     diferenciais,
     publicoAlvo,
     site,
+    tomDeVoz,
     produtos,
     atendimentoTelefone,
     atendimentoTelefoneFmt,

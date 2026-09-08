@@ -11,10 +11,11 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Sparkles, Clapperboard, Wand2, Clock, Download, RefreshCw, Upload, Palette, Ban, Send, Trash2 } from 'lucide-react';
+import { Loader2, Sparkles, Clapperboard, Wand2, Clock, Download, RefreshCw, Upload, Palette, Ban, Send, Trash2, Globe } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { validarPaleta } from '@/lib/videoPalette';
+import { ImportarDoSiteModal, type IdentidadeImportada } from '@/components/ImportarDoSiteModal';
 
 type Mensagem = { de: 'dono' | 'agente'; texto: string };
 
@@ -104,6 +105,7 @@ export const CriarVideoAnimado = () => {
   const [semTrilha, setSemTrilha] = useState(false);
   const [trilhaPreviewUrl, setTrilhaPreviewUrl] = useState<string | null>(null);
   const [subindoTrilha, setSubindoTrilha] = useState(false);
+  const [importarAberto, setImportarAberto] = useState(false);
 
   const carregarMarca = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -228,6 +230,32 @@ export const CriarVideoAnimado = () => {
     setCores({ ...PALETAS[nome].cores });
     setProps((p) => (p ? { ...p, cores: { ...PALETAS[nome].cores } } : p));
   };
+
+  // Prospecção: aplica no vídeo a identidade lida do site do prospect
+  // (já confirmada pelo usuário na tela de importação).
+  const aplicarIdentidadeDoSite = async (d: IdentidadeImportada) => {
+    const novas = { ...cores, ...d.paleta };
+    setPaletaSelecionada('personalizada');
+    setCores(novas);
+    if (d.nome_empresa) setMarcaCliente(d.nome_empresa.slice(0, 18));
+    setProps((p) => (p ? { ...p, cores: novas, marca: d.nome_empresa?.slice(0, 18) || p.marca, site: d.url } : p));
+
+    if (d.logo_url) {
+      try {
+        const resp = await fetch(d.logo_url);
+        if (!resp.ok) throw new Error('download');
+        const blob = await resp.blob();
+        if (!blob.type.startsWith('image/')) throw new Error('tipo');
+        const ext = blob.type.split('/')[1]?.replace('svg+xml', 'svg') || 'png';
+        await handleLogo(new File([blob], `logo-site.${ext}`, { type: blob.type }));
+      } catch {
+        toast.info('Não consegui baixar a logo do site. Anexe o arquivo manualmente.');
+      }
+    }
+
+    toast.success('Cores do site aplicadas ao vídeo.');
+  };
+
 
   const setCor = (nome: string, valor: string) => {
     setPaletaSelecionada('personalizada');
@@ -524,14 +552,25 @@ export const CriarVideoAnimado = () => {
             <Palette className="h-4 w-4 text-primary" />
             <Label className="font-semibold">Identidade do cliente</Label>
           </div>
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-4">
             {(Object.keys(PALETAS) as Array<keyof typeof PALETAS>).map((nome) => (
               <Button key={nome} type="button" variant={paletaSelecionada === nome ? 'default' : 'outline'} onClick={() => selecionarPaleta(nome)} className="justify-start">
                 <span className="mr-2 h-4 w-4 rounded-full border" style={{ backgroundColor: PALETAS[nome].cores.destaque }} />
                 {PALETAS[nome].label}
               </Button>
             ))}
+            <Button type="button" variant="outline" onClick={() => setImportarAberto(true)} className="justify-start">
+              <Globe className="mr-2 h-4 w-4" />
+              Importar do site
+            </Button>
           </div>
+          <ImportarDoSiteModal
+            aberto={importarAberto}
+            onFechar={() => setImportarAberto(false)}
+            modo="video"
+            onConfirmar={aplicarIdentidadeDoSite}
+          />
+
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {(['bg', 'bg2', 'destaque', 'destaqueSoft'] as const).map((nome) => (
               <label key={nome} className="flex items-center gap-2 text-xs text-muted-foreground">
