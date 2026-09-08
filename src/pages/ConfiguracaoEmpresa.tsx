@@ -247,6 +247,14 @@ export default function ConfiguracaoEmpresa() {
               placeholder="Ex: lojistas, academias e prestadores de serviço que vendem pelo WhatsApp"
             />
           </div>
+          <div>
+            <Label>Tom de voz da marca</Label>
+            <Input
+              value={tomDeVoz}
+              onChange={(e) => setTomDeVoz(e.target.value)}
+              placeholder="Ex: profissional, direto, próximo"
+            />
+          </div>
         </CardContent>
       </Card>
 
