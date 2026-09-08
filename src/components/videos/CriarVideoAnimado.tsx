@@ -244,23 +244,35 @@ export const CriarVideoAnimado = () => {
     const novas = { ...cores, ...d.paleta };
     setPaletaSelecionada('personalizada');
     setCores(novas);
-    if (d.nome_empresa) setMarcaCliente(d.nome_empresa.slice(0, 18));
-    setProps((p) => (p ? { ...p, cores: novas, marca: d.nome_empresa?.slice(0, 18) || p.marca, site: d.url } : p));
+    if (d.nome_empresa) setMarcaCliente(d.nome_empresa);
+    setTomDeVozCliente(d.tom_de_voz || '');
+    setProps((p) => (p ? {
+      ...p,
+      cores: novas,
+      marca: d.nome_empresa || p.marca,
+      site: d.url,
+      // Peça de prospecção: o contato é do cliente, não o do usuário.
+      cta: { ...p.cta, telefone: '', consultor: '' },
+    } : p));
 
-    if (d.logo_url) {
+    // A logo vem baixada pela função (data URL), porque o navegador é
+    // bloqueado por CORS ao buscar imagem no site de terceiro.
+    const fonte = d.logo_data_url || null;
+    if (fonte) {
       try {
-        const resp = await fetch(d.logo_url);
-        if (!resp.ok) throw new Error('download');
+        const resp = await fetch(fonte);
         const blob = await resp.blob();
-        if (!blob.type.startsWith('image/')) throw new Error('tipo');
-        const ext = blob.type.split('/')[1]?.replace('svg+xml', 'svg') || 'png';
-        await handleLogo(new File([blob], `logo-site.${ext}`, { type: blob.type }));
+        const tipo = blob.type || 'image/png';
+        const ext = tipo.split('/')[1]?.replace('svg+xml', 'svg').replace(/^(x-icon|vnd\.microsoft\.icon)$/, 'ico') || 'png';
+        await handleLogo(new File([blob], `logo-site.${ext}`, { type: tipo }), { definirComoMarca: false });
       } catch {
-        toast.info('Não consegui baixar a logo do site. Anexe o arquivo manualmente.');
+        toast.info('Não consegui aplicar a logo do site. Anexe o arquivo manualmente.');
       }
+    } else if (d.logo_url) {
+      toast.info('O site não liberou o download da logo. Anexe o arquivo manualmente.');
     }
 
-    toast.success('Cores do site aplicadas ao vídeo.');
+    toast.success('Cores e identidade do site aplicadas a este vídeo.');
   };
 
 
