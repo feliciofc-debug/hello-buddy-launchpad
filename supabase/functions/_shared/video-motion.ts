@@ -409,11 +409,28 @@ export function normalizarProps(
 }
 
 
-/** Duração aproximada em segundos (espelha framesTemplateAgente/30). */
+/** Duração aproximada em segundos — espelha os frames de cada template. */
 export function duracaoEstimada(props: MotionProps): number {
-  const frames = 190 + (40 + Math.max(1, props.chat.mensagens.length) * 52 + 115) + 170 - 60;
+  let frames: number;
+  if (props.estilo === "institucional") {
+    const blocos = Math.max(1, (props.blocos ?? []).length);
+    const selo = props.selo?.valor ? 120 : 0;
+    frames = 170 + blocos * 100 + selo + 170 - 30 * (selo ? 3 : 2);
+  } else if (props.estilo === "lista") {
+    const itens = Math.max(1, (props.itens ?? []).length);
+    frames = 170 + itens * 95 + 170 - 60;
+  } else {
+    frames = 190 + (40 + Math.max(1, props.chat.mensagens.length) * 52 + 115) + 170 - 60;
+  }
   return Math.round((frames / 30) * 10) / 10;
 }
+
+/** Rótulo do estilo para mensagens ao usuário. */
+export const ROTULO_ESTILO: Record<EstiloMotion, string> = {
+  conversa: "Conversa no celular",
+  institucional: "Institucional",
+  lista: "Lista / passo a passo",
+};
 
 /**
  * Gera o roteiro do vídeo com IA a partir do contexto real do tenant.
