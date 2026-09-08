@@ -237,8 +237,9 @@ function fontesDe(html: string, css: string): string[] {
 
 // ---------- logo ----------
 
-function logoDe(html: string, base: string): string | null {
+function logoDe(html: string, base: URL): string[] {
   const candidatos: string[] = [];
+  const baseUrl = base.toString();
 
   const og = meta(html, "og:image");
   if (og) candidatos.push(og);
@@ -260,16 +261,35 @@ function logoDe(html: string, base: string): string | null {
   const srcLogo = imgLogo?.match(/(?:data-src|src)=["']([^"']+)["']/i)?.[1];
 
   if (srcLogo) candidatos.unshift(srcLogo);
+
+  // Qualquer arquivo de imagem com "logo"/"marca" no caminho, em qualquer parte
+  // do HTML — muitos sites montam o cabeçalho por JavaScript.
+  for (const m of html.matchAll(/["'(]([^"'()\s]+(?:logo|marca|brand)[^"'()\s]*\.(?:svg|png|webp|jpe?g))["')]/gi)) {
+    candidatos.push(m[1]);
+  }
+
   for (const i of comTamanho) candidatos.push(i.href);
 
-  for (const c of candidatos) {
-    const url = absoluto(c, base);
-    if (url && !url.startsWith("data:")) return url;
+  // Caminhos vindos de JSON embutido chegam escapados ("\u002F", "\/").
+  const desescapar = (v: string) =>
+    v.replace(/\\?u002f/gi, "/").replace(/\\\//g, "/").replace(/&amp;/g, "&");
+
+  const escolhidos: string[] = [];
+  for (const bruto of candidatos) {
+    const c = desescapar(bruto);
+    const url = absoluto(c, baseUrl);
+    if (url && !url.startsWith("data:") && !escolhidos.includes(url)) escolhidos.push(url);
   }
-  return null;
+  // .ico costuma ter 32px: só como último recurso, depois do favicon em PNG.
+  const ehIco = (u: string) => /\.ico(\?|$)/i.test(u);
+  return [
+    ...escolhidos.filter((u) => !ehIco(u)),
+    `https://www.google.com/s2/favicons?sz=256&domain=${encodeURIComponent(base.hostname)}`,
+    ...escolhidos.filter(ehIco),
+  ];
 }
 
-const TIPOS_LOGO = /^image\/(png|jpeg|jpg|webp|svg\+xml|gif|x-icon|vnd\.microsoft\.icon)$/i;
+const TIPOS_LOGO = /^image\/(png|jpeg|jpg|webp|svg\+xml|gif|ico|x-icon|vnd\.microsoft\.icon)$/i;
 
 /**
  * Baixa a logo aqui no servidor e devolve em data URL. O navegador não consegue
@@ -421,8 +441,18 @@ export async function lerIdentidadeDoSite(entrada: string): Promise<IdentidadeSi
 
     const textoBase = [descricaoMeta, h1, ...blocos].filter(Boolean).join("\n").slice(0, 3000);
 
-    const logoUrl = logoDe(html, baseEfetiva);
-    const logoDataUrl = await baixarLogo(logoUrl, controle.signal);
+    const candidatosLogo = logoDe(html, new URL(baseEfetiva));
+    let logoUrl: string | null = null;
+    let logoDataUrl: string | null = null;
+    for (const cand of candidatosLogo.slice(0, 6)) {
+      const dados = await baixarLogo(cand, controle.signal);
+      if (dados) {
+        logoUrl = cand;
+        logoDataUrl = dados;
+        break;
+      }
+      if (!logoUrl) logoUrl = cand;
+    }
 
     if (principais.length < 2) {
       avisos.push("O site entregou poucas cores no código — provavelmente monta a página por JavaScript.");

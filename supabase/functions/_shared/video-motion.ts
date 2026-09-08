@@ -202,10 +202,20 @@ export function normalizarProps(
     for (const p of proibidos) out = out.replace(new RegExp(escapar(p), "gi"), "");
     return out.replace(/\s{2,}/g, " ").replace(/\s+([,.;:!?])/g, "$1").trim();
   };
-  const limpar = (s: unknown, max: number) => semDadosDoTenant(removerVestigiosAmz(
+  // "Revista concluída e aprovada" -> "publicação concluída e aprovada":
+  // o nome do cliente identifica quem fala, nunca o objeto da ação.
+  const marcaNaoEhObjeto = (t: string) => {
+    if (!marcaBase) return t;
+    const alvo = escapar(marcaBase);
+    return t.replace(
+      new RegExp(`\\b(?:a|o|as|os)?\\s*${alvo}\\s+(conclu[ií]d[oa]s?|aprovad[oa]s?|finalizad[oa]s?|agendad[oa]s?|public[oa]d[oa]s?)\\b`, "gi"),
+      (_m, p1) => `publicação ${String(p1).replace(/o(s?)$/i, "a$1")}`,
+    );
+  };
+  const limpar = (s: unknown, max: number) => marcaNaoEhObjeto(semDadosDoTenant(removerVestigiosAmz(
     corrigirTexto(cortarFrase(limparBruto(s, max * 3), max), nomes),
     marcaBase,
-  ));
+  )));
 
 
   const mensagensBrutas: any[] = Array.isArray(bruto?.chat?.mensagens) ? bruto.chat.mensagens : [];
@@ -280,7 +290,7 @@ export function normalizarProps(
 
 /** Duração aproximada em segundos (espelha framesTemplateAgente/30). */
 export function duracaoEstimada(props: MotionProps): number {
-  const frames = 190 + (40 + Math.max(1, props.chat.mensagens.length) * 52 + 70) + 170 - 60;
+  const frames = 190 + (40 + Math.max(1, props.chat.mensagens.length) * 52 + 115) + 170 - 60;
   return Math.round((frames / 30) * 10) / 10;
 }
 
@@ -341,7 +351,9 @@ Devolva SOMENTE JSON válido, sem markdown, neste formato:
  "legenda_post": "legenda pronta para publicar, 2 a 4 linhas, tom institucional, 6 a 10 hashtags no final"
 }
 Regras: 4 ou 6 mensagens no chat, alternando dono/agente, frases COMPLETAS dentro do limite de caracteres (nunca corte no meio de palavra), sem emoji nos textos do vídeo, sem promessa de resultado garantido, sem inventar preço.
-Público é profissional: proibido gíria e informalidade exagerada ("tá insano", "bora", "top", "sem neura"). Se o tom da marca for institucional ou formal, escreva formal.`;
+Público é profissional: proibido gíria e informalidade exagerada ("tá insano", "bora", "top", "sem neura"). Se o tom da marca for institucional ou formal, escreva formal.
+O nome da marca identifica QUEM fala, nunca o objeto da ação: escreva "publicação concluída", "campanha aprovada", jamais "${nome} concluída" ou "${nome} aprovada".
+Nunca atribua a automação a outra empresa, plataforma, rede social ou ferramenta citada no site do cliente. Fale do resultado ("o agente agenda", "o conteúdo sai no horário") sem citar nome de plataforma.`;
 
   if (apiKey) {
     try {

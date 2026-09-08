@@ -68,7 +68,8 @@ const CTA_FRAMES = 170;
 const TRANSICAO = 30;
 const MSG_ESPACO = 52;
 const CHAT_ENTRADA = 40;
-const CHAT_RESPIRO = 70;
+// Respiro após a última fala: antes cortava para o CTA sem tempo de leitura.
+const CHAT_RESPIRO = 115;
 
 export const framesChat = (n: number) =>
   CHAT_ENTRADA + Math.max(1, n) * MSG_ESPACO + CHAT_RESPIRO;
