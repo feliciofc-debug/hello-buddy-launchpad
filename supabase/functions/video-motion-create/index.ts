@@ -63,6 +63,8 @@ Deno.serve(async (req) => {
        semTrilha: body?.sem_trilha === true,
        trilhaVolume: typeof body?.trilha_volume === "number" ? body.trilha_volume : null,
        apenasRoteiro: Boolean(body?.apenas_roteiro),
+       estilo: typeof body?.estilo === "string" ? body.estilo : null,
+       arranjo: typeof body?.arranjo === "number" ? body.arranjo : null,
     });
 
     if (!r.ok) return json({ success: false, error: r.error }, r.status);
