@@ -195,7 +195,10 @@ export const CriarVideoAnimado = () => {
     toast.success(semTrilha ? 'Vídeos novos ficarão sem trilha.' : 'Trilha padrão salva para os próximos vídeos.');
   };
 
-  const handleLogo = async (file: File) => {
+  // `definirComoMarca: false` usa a logo apenas neste vídeo (prospecção),
+  // sem substituir a logo cadastrada da própria empresa.
+  const handleLogo = async (file: File, opcoes?: { definirComoMarca?: boolean }) => {
+    const definirComoMarca = opcoes?.definirComoMarca !== false;
     if (!file.type.startsWith('image/') || file.size > 5 * 1024 * 1024) {
       toast.error('Use uma imagem PNG, JPEG ou WEBP de até 5MB.');
       return;
@@ -208,15 +211,19 @@ export const CriarVideoAnimado = () => {
       const novoPath = `${user.id}/${Date.now()}-${nome}`;
       const { error: uploadError } = await supabase.storage.from('tenant-logos').upload(novoPath, file, { contentType: file.type });
       if (uploadError) throw uploadError;
-      const { error: deleteError } = await supabase.from('tenant_logos').delete().eq('user_id', user.id);
-      if (deleteError) throw deleteError;
-      const { error: insertError } = await supabase.from('tenant_logos').insert({ user_id: user.id, storage_path: novoPath, file_name: file.name, mime_type: file.type, ativo: true });
-      if (insertError) throw insertError;
-      if (logoPath) await supabase.storage.from('tenant-logos').remove([logoPath]);
+
+      if (definirComoMarca) {
+        const { error: deleteError } = await supabase.from('tenant_logos').delete().eq('user_id', user.id);
+        if (deleteError) throw deleteError;
+        const { error: insertError } = await supabase.from('tenant_logos').insert({ user_id: user.id, storage_path: novoPath, file_name: file.name, mime_type: file.type, ativo: true });
+        if (insertError) throw insertError;
+        if (logoPath) await supabase.storage.from('tenant-logos').remove([logoPath]);
+      }
+
       const { data: signed } = await supabase.storage.from('tenant-logos').createSignedUrl(novoPath, 3600);
       setLogoPath(novoPath);
       setLogoUrl(signed?.signedUrl ?? null);
-      toast.success('Logo do cliente anexada.');
+      toast.success(definirComoMarca ? 'Logo do cliente anexada.' : 'Logo do site aplicada a este vídeo.');
     } catch (e: any) {
       toast.error(e?.message || 'Não foi possível anexar a logo.');
     } finally {

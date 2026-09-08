@@ -60,32 +60,66 @@ const limparBruto = (s: unknown, max: number) =>
     .slice(0, max)
     .trim();
 
+/** Corta respeitando a palavra e sinalizando o corte — nunca "campanhas d". */
+export const cortarFrase = (s: string, max: number): string => {
+  const t = String(s ?? "").replace(/\s+/g, " ").trim();
+  if (t.length <= max) return t;
+  const parcial = t.slice(0, max - 1);
+  const espaco = parcial.lastIndexOf(" ");
+  const base = espaco > max * 0.45 ? parcial.slice(0, espaco) : parcial;
+  return `${base.replace(/[\s,.;:!?\-–—]+$/, "")}…`;
+};
+
 const ehMarcaAmz = (marca: string) => /\bamz(?:\s+ofertas)?\b/i.test(marca);
 
-/** Evita que dados institucionais da plataforma vazem para peças white label. */
+/**
+ * Peça white label não pode citar a plataforma. Antes apagávamos a menção e o
+ * texto ficava com buraco ("Com a , seu marketing..."); agora TROCAMOS pelo
+ * nome da marca do vídeo.
+ */
 const removerVestigiosAmz = (texto: string, marca: string) => {
   if (!texto || ehMarcaAmz(marca)) return texto;
+  const nome = marca && marca !== "Sua marca" ? marca : "sua marca";
   return texto
-    .replace(/(?:https?:\/\/)?(?:www\.)?amzofertas\.com\.br\/?/gi, "")
-    .replace(/\bAMZ\s+Ofertas\b/gi, "")
+    .replace(/(?:https?:\/\/)?(?:www\.)?amzofertas\.com\.br\/?/gi, nome)
+    .replace(/\bAMZ\s+Ofertas\b/gi, nome)
+    .replace(/\bAMZ\b/g, nome)
+    // buracos herdados de versões antigas: "com a , seu" -> "com a marca, seu"
+    .replace(/\b(com|de|da|do|na|no|pela|pelo|para)\s+([ao]s?)\s*,/gi, `$1 $2 ${nome},`)
     .replace(/\s{2,}/g, " ")
+    .replace(/\s+([,.;:!?])/g, "$1")
     .replace(/^[\s—|,:;-]+|[\s—|,:;-]+$/g, "")
     .trim();
 };
 
-const sigla = (nome: string) => {
-  const limpo = nome.replace(/[^\p{L}\p{N}\s]/gu, " ").trim();
-  if (!limpo) return "SUA MARCA";
-  // Marca curta cabe inteira no vídeo — sigla só para nomes longos.
-  if (limpo.length <= 14) return limpo;
-  const palavras = limpo.split(/\s+/);
-  if (palavras.length === 1) return palavras[0].slice(0, 8).toUpperCase();
-  return palavras
-    .slice(0, 3)
-    .map((p) => p[0])
-    .join("")
-    .toUpperCase();
-};
+/** Palavras genéricas de razão social: descartáveis quando o nome não cabe. */
+const GENERICOS =
+  /^(supermercados?|hipermercados?|mercados?|minimercados?|lojas?|rede|redes|grupo|comercial|com[ée]rcio|distribuidora|empresa|cia\.?|companhia|casas?|atacado|atacadista|varejo|e|de|da|do|dos|das)$/i;
+
+/**
+ * Nome curto de exibição. "Supermercados Zona Sul" -> "Zona Sul"
+ * (antes cortava em 18 caracteres e saía "Supermercados Zona").
+ */
+export function marcaCurta(nome: string, max = 18): string {
+  const limpo = String(nome ?? "").replace(/\s+/g, " ").trim();
+  if (!limpo) return "Sua marca";
+  if (limpo.length <= max) return limpo;
+
+  const palavras = limpo.split(" ");
+  const uteis = palavras.filter((p) => !GENERICOS.test(p.replace(/[^\p{L}\p{N}.]/gu, "")));
+  const tentativas = [
+    uteis.join(" "),
+    uteis.slice(0, 2).join(" "),
+    uteis.slice(0, 1).join(" "),
+    palavras.slice(0, 2).join(" "),
+    palavras[0],
+  ];
+  for (const t of tentativas) {
+    const c = t.trim();
+    if (c && c.length <= max) return c;
+  }
+  return palavras.map((p) => p[0]).join("").toUpperCase().slice(0, max);
+}
 
 // ---- Proteção do nome da marca -------------------------------------------
 // A IA às vezes erra a grafia do nome do cliente ("ADOMICON" em vez de
@@ -147,14 +181,32 @@ function corrigirTexto(texto: string, nomes: string[]): string {
 /** Garante que o objeto vindo da IA (ou do usuário) é renderizável. */
 export function normalizarProps(
   bruto: any,
-  ctx: { marca: string; site?: string; telefone?: string; consultor?: string; nomes?: string[] },
+  ctx: {
+    marca: string;
+    site?: string;
+    telefone?: string;
+    consultor?: string;
+    nomes?: string[];
+    /** vídeo para marca de terceiro: nunca herdar contato do tenant */
+    semContato?: boolean;
+    /** trechos do tenant que não podem aparecer (nome do dono, telefone) */
+    proibidos?: string[];
+  },
 ): MotionProps {
   const nomes = ctx.nomes ?? [];
-  const marcaBase = limparBruto(bruto?.marca || ctx.marca, 18) || "Sua marca";
-  const limpar = (s: unknown, max: number) => removerVestigiosAmz(
-    corrigirTexto(limparBruto(s, max), nomes),
+  const marcaBase = marcaCurta(String(bruto?.marca || ctx.marca || ""), 18);
+  const proibidos = (ctx.proibidos ?? []).map((p) => String(p ?? "").trim()).filter((p) => p.length >= 4);
+  const escapar = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const semDadosDoTenant = (t: string) => {
+    let out = t;
+    for (const p of proibidos) out = out.replace(new RegExp(escapar(p), "gi"), "");
+    return out.replace(/\s{2,}/g, " ").replace(/\s+([,.;:!?])/g, "$1").trim();
+  };
+  const limpar = (s: unknown, max: number) => semDadosDoTenant(removerVestigiosAmz(
+    corrigirTexto(cortarFrase(limparBruto(s, max * 3), max), nomes),
     marcaBase,
-  );
+  ));
+
 
   const mensagensBrutas: any[] = Array.isArray(bruto?.chat?.mensagens) ? bruto.chat.mensagens : [];
   const mensagens: Mensagem[] = mensagensBrutas
@@ -176,7 +228,7 @@ export function normalizarProps(
     .filter(Boolean);
 
   const cores = { ...PALETA_PADRAO, ...(bruto?.cores || {}) };
-  const marca = limpar(bruto?.marca || ctx.marca, 18) || "Sua marca";
+  const marca = marcaBase || "Sua marca";
   const site = removerVestigiosAmz(limparBruto(bruto?.site ?? ctx.site, 40), marca);
 
   return {
@@ -210,10 +262,16 @@ export function normalizarProps(
           ],
     },
     cta: {
-      frase: limpar(bruto?.cta?.frase, 46) || "Fale com a gente.",
-      sub: limpar(bruto?.cta?.sub, 60) || undefined,
-      telefone: limparBruto(bruto?.cta?.telefone ?? ctx.telefone, 30) || undefined,
-      consultor: limpar(bruto?.cta?.consultor ?? ctx.consultor, 40) || undefined,
+      frase: limpar(bruto?.cta?.frase, 44) || "Fale com a gente.",
+      sub: limpar(bruto?.cta?.sub, 58) || undefined,
+      // Vídeo de prospecção: sem contato do tenant. O campo fica vazio para o
+      // usuário preencher o contato do próprio cliente.
+      telefone: ctx.semContato
+        ? (limparBruto(bruto?.cta?.telefone, 30) || undefined)
+        : (limparBruto(bruto?.cta?.telefone ?? ctx.telefone, 30) || undefined),
+      consultor: ctx.semContato
+        ? (limpar(bruto?.cta?.consultor, 40) || undefined)
+        : (limpar(bruto?.cta?.consultor ?? ctx.consultor, 40) || undefined),
     },
     legendas: legendas.length ? legendas : linhas.length ? [linhas.join(" ")] : [],
   };
@@ -234,40 +292,56 @@ export async function gerarRoteiroMotion(
   sb: SupabaseClient,
   userId: string,
   tema: string,
-  opts?: { nomeFallback?: string | null; marca?: string | null },
+  opts?: { nomeFallback?: string | null; marca?: string | null; tomDeVoz?: string | null },
 ): Promise<{ props: MotionProps; legendaPost: string; usouIA: boolean; nomes: string[] }> {
   const ctx = await getTenantBusinessContext(sb, userId, { nomeFallback: opts?.nomeFallback });
   // A marca informada no formulário manda: o vídeo é do cliente, não do tenant.
-  const marcaInformada = limparBruto(opts?.marca, 40);
+  const marcaInformada = limparBruto(opts?.marca, 60);
   const nome = marcaInformada || ctx.nome || "Sua empresa";
   const nomes = nomesOficiais(nome, tema);
+
+  // Marca de terceiro (prospecção): nada do tenant pode aparecer na peça.
+  const terceiro = Boolean(marcaInformada) &&
+    semAcento(marcaInformada).replace(/\W/g, "") !== semAcento(String(ctx.nome ?? "")).replace(/\W/g, "");
+
+  const tom = limparBruto(opts?.tomDeVoz ?? (terceiro ? "" : ctx.tomDeVoz), 120);
+
   const base = {
-    marca: sigla(nome),
+    marca: marcaCurta(nome),
     // Ao criar para outra marca, o site deve ser preenchido explicitamente no
     // formulário. Nunca herdamos o domínio do tenant/plataforma nesse caso.
-    site: marcaInformada ? "" : (ctx.site || "").replace(/^https?:\/\//, ""),
-    telefone: ctx.atendimentoTelefoneFmt || undefined,
+    site: terceiro ? "" : (ctx.site || "").replace(/^https?:\/\//, ""),
+    telefone: terceiro ? undefined : (ctx.atendimentoTelefoneFmt || undefined),
+    semContato: terceiro,
+    proibidos: terceiro
+      ? [
+        String(ctx.nome ?? ""),
+        String(opts?.nomeFallback ?? ""),
+        String(ctx.atendimentoTelefoneFmt ?? ""),
+        String(ctx.atendimentoTelefone ?? ""),
+      ]
+      : [],
     nomes,
   };
 
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
   const instrucao = `Você escreve roteiros de vídeos verticais (20-25s) para redes sociais.
 NEGÓCIO: ${nome}${ctx.segmento ? ` — ${ctx.segmento}` : ""}
-${ctx.sobre ? `SOBRE: ${ctx.sobre}\n` : ""}${ctx.diferenciais ? `DIFERENCIAIS: ${ctx.diferenciais}\n` : ""}${ctx.publicoAlvo ? `PÚBLICO: ${ctx.publicoAlvo}\n` : ""}${ctx.produtos.length ? `PRODUTOS: ${ctx.produtos.slice(0, 6).join("; ")}\n` : ""}
-TEMA PEDIDO: ${tema}
-
+${terceiro ? "" : `${ctx.sobre ? `SOBRE: ${ctx.sobre}\n` : ""}${ctx.diferenciais ? `DIFERENCIAIS: ${ctx.diferenciais}\n` : ""}${ctx.publicoAlvo ? `PÚBLICO: ${ctx.publicoAlvo}\n` : ""}${ctx.produtos.length ? `PRODUTOS: ${ctx.produtos.slice(0, 6).join("; ")}\n` : ""}`}TEMA PEDIDO: ${tema}
+${tom ? `TOM DE VOZ DA MARCA (obrigatório seguir): ${tom}\n` : ""}
 ATENÇÃO: o nome do negócio e as marcas citadas devem ser escritos EXATAMENTE assim, letra por letra: ${nomes.join(", ") || nome}. Nunca abrevie, traduza ou altere a grafia.
-
-
+Escreva o nome da marca por extenso sempre que citá-lo. NUNCA deixe lacuna, espaço em branco, placeholder, chave {{ }} ou colchete no lugar de um nome.
+${terceiro ? "Este vídeo é para a marca acima, não para quem está pedindo: não cite nome de pessoa, telefone, consultor ou outra empresa.\n" : ""}
 Devolva SOMENTE JSON válido, sem markdown, neste formato:
 {
  "hook": {"kicker":"até 24 caracteres","linhas":["até 18 chars","até 18 chars"],"destaque":"até 20 chars","sub":"até 80 chars, pode ter \\n"},
  "chat": {"titulo":"até 24 chars","tituloDestaque":"até 16 chars","mensagens":[{"de":"dono","texto":"até 90 chars"},{"de":"agente","texto":"até 100 chars"}]},
- "cta": {"frase":"até 40 chars","sub":"até 55 chars"},
+ "cta": {"frase":"até 40 chars, frase completa","sub":"até 55 chars"},
  "legendas": ["frase curta 1","frase curta 2","frase curta 3","frase curta 4"],
  "legenda_post": "legenda pronta para publicar, 2 a 4 linhas, tom institucional, 6 a 10 hashtags no final"
 }
-Regras: 4 ou 6 mensagens no chat, alternando dono/agente, linguagem simples de brasileiro real, sem emoji nos textos do vídeo, sem promessa de resultado garantido, sem inventar preço.`;
+Regras: 4 ou 6 mensagens no chat, alternando dono/agente, frases COMPLETAS dentro do limite de caracteres (nunca corte no meio de palavra), sem emoji nos textos do vídeo, sem promessa de resultado garantido, sem inventar preço.
+Público é profissional: proibido gíria e informalidade exagerada ("tá insano", "bora", "top", "sem neura"). Se o tom da marca for institucional ou formal, escreva formal.`;
 
   if (apiKey) {
     try {
@@ -319,8 +393,8 @@ Regras: 4 ou 6 mensagens no chat, alternando dono/agente, linguagem simples de b
           { de: "agente", texto: "Mandei. Qualquer dúvida, é só responder aqui." },
         ],
       },
-      cta: { frase: "Fale com a gente.", sub: nome.slice(0, 55), telefone: ctx.atendimentoTelefoneFmt || undefined },
-      legendas: [tema.slice(0, 60), "Atendimento pelo WhatsApp.", "Simples e rápido."],
+      cta: { frase: "Fale com a gente.", sub: cortarFrase(nome, 55), telefone: base.telefone },
+      legendas: [cortarFrase(tema, 60), "Atendimento pelo WhatsApp.", "Simples e rápido."],
     },
     base,
   );

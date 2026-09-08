@@ -26,6 +26,7 @@ export type IdentidadeImportada = {
   segmento_sugerido: string;
   tom_de_voz: string;
   logo_url: string | null;
+  logo_data_url?: string | null;
   fontes: string[];
   cores_detectadas: Array<{ hex: string; peso: number }>;
   paleta: Record<string, string>;
@@ -195,8 +196,12 @@ export const ImportarDoSiteModal = ({ aberto, onFechar, onConfirmar, modo = 'emp
                   <p className="text-xs text-muted-foreground">Nenhuma logo encontrada — anexe o arquivo depois.</p>
                 )}
               </div>
-              {dados.logo_url && (
-                <img src={dados.logo_url} alt="Logo do site" className="h-12 max-w-[140px] rounded border bg-background object-contain p-1" />
+              {(dados.logo_data_url || dados.logo_url) && (
+                <img
+                  src={dados.logo_data_url || dados.logo_url || ''}
+                  alt="Logo do site"
+                  className="h-12 max-w-[140px] rounded border bg-background object-contain p-1"
+                />
               )}
             </div>
 

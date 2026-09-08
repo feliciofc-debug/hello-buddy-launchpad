@@ -22,6 +22,8 @@ export type IdentidadeSite = {
   publico_alvo: string;
   diferenciais: string;
   logo_url: string | null;
+  /** logo já baixada pelo servidor (evita bloqueio de CORS no navegador) */
+  logo_data_url: string | null;
   fontes: string[];
   cores_detectadas: Array<{ hex: string; peso: number }>;
   paleta: CoresVideo;
@@ -267,6 +269,31 @@ function logoDe(html: string, base: string): string | null {
   return null;
 }
 
+const TIPOS_LOGO = /^image\/(png|jpeg|jpg|webp|svg\+xml|gif|x-icon|vnd\.microsoft\.icon)$/i;
+
+/**
+ * Baixa a logo aqui no servidor e devolve em data URL. O navegador não consegue
+ * baixar a imagem do site de terceiro (CORS), então quem faz isso é a função.
+ */
+async function baixarLogo(url: string | null, sinal: AbortSignal): Promise<string | null> {
+  if (!url) return null;
+  try {
+    const r = await fetch(url, { signal: sinal, redirect: "follow", headers: { "user-agent": UA } });
+    if (!r.ok) return null;
+    const tipo = (r.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    if (!TIPOS_LOGO.test(tipo)) return null;
+    const buf = new Uint8Array(await r.arrayBuffer());
+    if (!buf.byteLength || buf.byteLength > 900_000) return null;
+    let bin = "";
+    for (let i = 0; i < buf.length; i += 8192) {
+      bin += String.fromCharCode(...buf.subarray(i, i + 8192));
+    }
+    return `data:${tipo};base64,${btoa(bin)}`;
+  } catch {
+    return null;
+  }
+}
+
 // ---------- texto útil (o que vai para a base do Jarvis) ----------
 
 const LIXO =
@@ -394,14 +421,19 @@ export async function lerIdentidadeDoSite(entrada: string): Promise<IdentidadeSi
 
     const textoBase = [descricaoMeta, h1, ...blocos].filter(Boolean).join("\n").slice(0, 3000);
 
+    const logoUrl = logoDe(html, baseEfetiva);
+    const logoDataUrl = await baixarLogo(logoUrl, controle.signal);
+
     if (principais.length < 2) {
       avisos.push("O site entregou poucas cores no código — provavelmente monta a página por JavaScript.");
     }
     if (textoBase.length < 120) {
       avisos.push("O site entregou pouco texto legível — confira e complete a descrição do negócio à mão.");
     }
-    if (!logoDe(html, baseEfetiva)) {
+    if (!logoUrl) {
       avisos.push("Não encontrei a logo no site; anexe o arquivo manualmente.");
+    } else if (!logoDataUrl) {
+      avisos.push("Encontrei a logo, mas o site não deixou baixar o arquivo; anexe manualmente.");
     }
 
     clearTimeout(relogio);
@@ -418,7 +450,8 @@ export async function lerIdentidadeDoSite(entrada: string): Promise<IdentidadeSi
       tom_de_voz: tomDeVozDe(textoBase),
       publico_alvo: publicoDe(textoBase),
       diferenciais: blocos.slice(1, 5).join(" • ").slice(0, 500),
-      logo_url: logoDe(html, baseEfetiva),
+      logo_url: logoUrl,
+      logo_data_url: logoDataUrl,
       fontes: fontesDe(html, css),
       cores_detectadas: principais,
       paleta: montarPaleta(principais),
@@ -445,6 +478,7 @@ export async function lerIdentidadeDoSite(entrada: string): Promise<IdentidadeSi
       publico_alvo: "",
       diferenciais: "",
       logo_url: null,
+      logo_data_url: null,
       fontes: [],
       cores_detectadas: [],
       paleta: paletaAPartirDe({}),
