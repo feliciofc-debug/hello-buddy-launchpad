@@ -105,6 +105,7 @@ export const CriarVideoAnimado = () => {
   const [semTrilha, setSemTrilha] = useState(false);
   const [trilhaPreviewUrl, setTrilhaPreviewUrl] = useState<string | null>(null);
   const [subindoTrilha, setSubindoTrilha] = useState(false);
+  const [importarAberto, setImportarAberto] = useState(false);
 
   const carregarMarca = async () => {
     const { data: { user } } = await supabase.auth.getUser();
