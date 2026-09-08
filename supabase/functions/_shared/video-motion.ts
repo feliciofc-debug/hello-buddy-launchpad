@@ -477,7 +477,14 @@ export async function gerarRoteiroMotion(
       ]
       : [],
     nomes,
+    estilo: ESTILOS_MOTION.includes(opts?.estilo as EstiloMotion) ? opts?.estilo : null,
+    arranjo: opts?.arranjo ?? null,
   };
+
+  // Estilo explícito do formulário/WhatsApp; sem isso, a IA escolhe pelo tema.
+  const estiloForcado = ESTILOS_MOTION.includes(opts?.estilo as EstiloMotion)
+    ? (opts?.estilo as EstiloMotion)
+    : estiloPedidoNoTexto(tema);
 
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
   const instrucao = `Você escreve roteiros de vídeos verticais (20-25s) para redes sociais.
