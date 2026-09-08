@@ -40,7 +40,7 @@ import {
   enfileirarVideoMotion,
   montarRoteiroMotion,
 } from "../_shared/video-motion-enfileirar.ts";
-import { duracaoEstimada } from "../_shared/video-motion.ts";
+import { duracaoEstimada, ROTULO_ESTILO, type EstiloMotion } from "../_shared/video-motion.ts";
 import { extrairCoresDoTexto } from "../_shared/video-cores.ts";
 
 import {
