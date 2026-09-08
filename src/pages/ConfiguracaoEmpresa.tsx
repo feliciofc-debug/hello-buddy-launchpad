@@ -45,6 +45,7 @@ export default function ConfiguracaoEmpresa() {
         setDiferenciais(data.diferenciais || '');
         setPublicoAlvo(data.publico_alvo || '');
         setSite(data.site || '');
+        setTomDeVoz(data.voz_copy || '');
       }
     } catch (error) {
       console.error('Erro ao carregar config:', error);
