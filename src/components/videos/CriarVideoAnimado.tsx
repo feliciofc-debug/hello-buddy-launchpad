@@ -668,7 +668,10 @@ export const CriarVideoAnimado = () => {
               Adicionar faixa
             </Button>
           </div>
-          {trilhas.length === 0 && <p className="text-xs text-muted-foreground">Sua biblioteca ainda está vazia. Adicione uma faixa própria ou licenciada.</p>}
+          {trilhas.length === 0
+            ? <p className="text-xs text-muted-foreground">Não consegui carregar as faixas agora. Você pode adicionar uma faixa própria.</p>
+            : <p className="text-xs text-muted-foreground">A faixa marcada como padrão entra sozinha quando você não escolhe nenhuma.</p>}
+
           {trilhaPreviewUrl && <audio src={trilhaPreviewUrl} controls className="w-full" aria-label="Prévia da trilha sonora" />}
           <div className="flex flex-wrap items-center gap-2">
             <Button type="button" variant="secondary" size="sm" onClick={definirTrilhaPadrao} disabled={!trilhaId && !semTrilha}>
