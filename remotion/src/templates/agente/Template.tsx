@@ -374,12 +374,19 @@ const Chat: React.FC<{ c: Paleta; marca: string; logoUrl?: string } & TemplateAg
             padding: 26,
             display: "flex",
             flexDirection: "column",
-            justifyContent: "center",
+            justifyContent: "flex-end",
             gap: 18,
           }}
         >
           {mensagens.map((m, i) => (
-            <Bolha key={`${i}-${m.texto}`} c={c} m={m} from={CHAT_ENTRADA / 2 + i * MSG_ESPACO} />
+            <Bolha
+              key={`${i}-${m.texto}`}
+              c={c}
+              m={m}
+              logoUrl={logoUrl}
+              fonte={fonte}
+              from={CHAT_ENTRADA / 2 + i * MSG_ESPACO}
+            />
           ))}
         </div>
       </div>
