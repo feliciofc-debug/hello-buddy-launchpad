@@ -109,6 +109,8 @@ export const CriarVideoAnimado = () => {
   const [subindoTrilha, setSubindoTrilha] = useState(false);
   const [importarAberto, setImportarAberto] = useState(false);
   const [tomDeVozCliente, setTomDeVozCliente] = useState('');
+  // Biblioteca de templates: "auto" deixa a plataforma escolher pelo tema.
+  const [estilo, setEstilo] = useState<'auto' | 'conversa' | 'institucional' | 'lista'>('auto');
 
   const carregarMarca = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -479,6 +481,7 @@ export const CriarVideoAnimado = () => {
         body: {
           tema: tema.trim(),
           apenas_roteiro: true,
+          estilo,
           cores,
           marca: marcaCliente.trim() || undefined,
           tom_de_voz: tomDeVozCliente.trim() || undefined,
@@ -521,6 +524,7 @@ export const CriarVideoAnimado = () => {
         body: {
           tema: tema.trim(),
           props: { ...props, site: props.site?.trim() || '' },
+          estilo,
           legenda_post: legendaPost,
           formato: 'reels',
           marca: marcaCliente.trim() || undefined,
