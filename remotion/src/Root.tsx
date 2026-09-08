@@ -65,6 +65,30 @@ export const RemotionRoot = () => (
       })}
       {...base}
     />
+
+    {/* Estilo institucional — tipografia grande, blocos de argumento e selo */}
+    <Composition
+      id="template-institucional"
+      component={TemplateInstitucional}
+      durationInFrames={framesTemplateInstitucional(PROPS_INSTITUCIONAL_EXEMPLO)}
+      defaultProps={PROPS_INSTITUCIONAL_EXEMPLO}
+      calculateMetadata={({ props }) => ({
+        durationInFrames: framesTemplateInstitucional(props as TemplateInstitucionalProps),
+      })}
+      {...base}
+    />
+
+    {/* Estilo lista / passo a passo — itens numerados em sequência */}
+    <Composition
+      id="template-lista"
+      component={TemplateLista}
+      durationInFrames={framesTemplateLista(PROPS_LISTA_EXEMPLO)}
+      defaultProps={PROPS_LISTA_EXEMPLO}
+      calculateMetadata={({ props }) => ({
+        durationInFrames: framesTemplateLista(props as TemplateListaProps),
+      })}
+      {...base}
+    />
   </>
 );
 
