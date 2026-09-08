@@ -212,10 +212,28 @@ export function normalizarProps(
       (_m, p1) => `publicação ${String(p1).replace(/o(s?)$/i, "a$1")}`,
     );
   };
-  const limpar = (s: unknown, max: number) => marcaNaoEhObjeto(semDadosDoTenant(removerVestigiosAmz(
+  // A marca do cliente NUNCA executa a automação: "O sistema BeautyLink
+  // transcreve" -> "O sistema transcreve".
+  const marcaNaoAutomatiza = (t: string) => {
+    if (!marcaBase) return t;
+    const alvo = escapar(marcaBase);
+    const acoes = "transcreve|redige|escreve|agenda|publica|posta|otimiza|automatiza|gera|cria|responde|programa|analisa";
+    return t
+      .replace(new RegExp(`\\b(sistema|plataforma|agente|assistente|app|aplicativo)\\s+(?:d[ao]\\s+)?${alvo}\\b`, "gi"), "$1")
+      .replace(new RegExp(`\\b(?:a|o)\\s+${alvo}\\s+(${acoes})\\b`, "gi"), (_m, p1) => `a plataforma ${p1}`)
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  };
+  // A IA usava o rótulo de privacidade ("Público") como verbo.
+  const corrigirPortugues = (t: string) =>
+    t
+      .replace(/\b(e|foi|ser|seja|sendo|est[áa]|fica|ficou|j[áa])\s+p[úu]blico\b/gi, (_m, p1) => `${p1} publicado`)
+      .replace(/\bp[úu]blico\s+(em|no|na|nas|nos)\s+(todas?|todos?|instagram|facebook|tiktok|redes)/gi,
+        (_m, p1, p2) => `publicado ${p1} ${p2}`);
+  const limpar = (s: unknown, max: number) => corrigirPortugues(marcaNaoAutomatiza(marcaNaoEhObjeto(semDadosDoTenant(removerVestigiosAmz(
     corrigirTexto(cortarFrase(limparBruto(s, max * 3), max), nomes),
     marcaBase,
-  )));
+  )))));
 
 
   const mensagensBrutas: any[] = Array.isArray(bruto?.chat?.mensagens) ? bruto.chat.mensagens : [];
