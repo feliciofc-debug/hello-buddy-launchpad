@@ -7,8 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { ArrowLeft, Building2, Target, Bot, Save, Sparkles } from 'lucide-react';
+import { ArrowLeft, Building2, Target, Bot, Save, Sparkles, Globe } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { ImportarDoSiteModal, type IdentidadeImportada } from '@/components/ImportarDoSiteModal';
 
 export default function ConfiguracaoEmpresa() {
   const [segmentoSelecionado, setSegmentoSelecionado] = useState('outros');
@@ -17,6 +18,8 @@ export default function ConfiguracaoEmpresa() {
   const [diferenciais, setDiferenciais] = useState('');
   const [publicoAlvo, setPublicoAlvo] = useState('');
   const [site, setSite] = useState('');
+  const [tomDeVoz, setTomDeVoz] = useState('');
+  const [importarAberto, setImportarAberto] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
 
