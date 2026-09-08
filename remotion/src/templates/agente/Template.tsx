@@ -198,7 +198,33 @@ const Hook: React.FC<{ c: Paleta } & TemplateAgenteProps["hook"]> = ({
   );
 };
 
-const Bolha: React.FC<{ c: Paleta; m: Mensagem; from: number }> = ({ c, m, from }) => {
+/** Avatar da marca ao lado de CADA mensagem do agente, como no WhatsApp. */
+const Avatar: React.FC<{ c: Paleta; logoUrl?: string }> = ({ c, logoUrl }) => (
+  <div
+    style={{
+      width: 46,
+      height: 46,
+      borderRadius: 23,
+      flexShrink: 0,
+      overflow: "hidden",
+      background: logoUrl ? "#ffffff" : c.destaque,
+      border: `1px solid ${c.line}`,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    }}
+  >
+    {logoUrl ? <Img src={logoUrl} style={{ width: 40, height: 40, objectFit: "contain" }} /> : null}
+  </div>
+);
+
+const Bolha: React.FC<{ c: Paleta; m: Mensagem; from: number; logoUrl?: string; fonte: number }> = ({
+  c,
+  m,
+  from,
+  logoUrl,
+  fonte,
+}) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const s = spring({ frame: frame - from, fps, config: { damping: 18, stiffness: 150 } });
@@ -206,24 +232,32 @@ const Bolha: React.FC<{ c: Paleta; m: Mensagem; from: number }> = ({ c, m, from 
   return (
     <div
       style={{
+        display: "flex",
+        alignItems: "flex-end",
+        gap: 12,
         alignSelf: dono ? "flex-end" : "flex-start",
-        maxWidth: "84%",
+        maxWidth: dono ? "84%" : "94%",
         opacity: s,
         transform: `translateY(${interpolate(s, [0, 1], [40, 0])}px)`,
-        background: dono ? `linear-gradient(135deg, ${c.destaque}, ${c.destaqueSoft})` : c.bg2,
-        color: dono ? textoSobre(c.destaque) : textoLegivelSobre(c.bg2, c.texto),
-        border: dono ? "none" : `1px solid ${c.line}`,
-
-        borderRadius: 22,
-        borderBottomRightRadius: dono ? 6 : 22,
-        borderBottomLeftRadius: dono ? 22 : 6,
-        padding: "22px 24px",
-        fontSize: 30,
-        lineHeight: 1.3,
-        fontWeight: dono ? 700 : 400,
       }}
     >
-      {m.texto}
+      {dono ? null : <Avatar c={c} logoUrl={logoUrl} />}
+      <div
+        style={{
+          background: dono ? `linear-gradient(135deg, ${c.destaque}, ${c.destaqueSoft})` : c.bg2,
+          color: dono ? textoSobre(c.destaque) : textoLegivelSobre(c.bg2, c.texto),
+          border: dono ? "none" : `1px solid ${c.line}`,
+          borderRadius: 22,
+          borderBottomRightRadius: dono ? 6 : 22,
+          borderBottomLeftRadius: dono ? 22 : 6,
+          padding: "18px 22px",
+          fontSize: fonte,
+          lineHeight: 1.28,
+          fontWeight: dono ? 700 : 400,
+        }}
+      >
+        {m.texto}
+      </div>
     </div>
   );
 };
