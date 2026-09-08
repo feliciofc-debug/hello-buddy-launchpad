@@ -53,7 +53,7 @@ export async function getTenantBusinessContext(
   try {
     const { data } = await sb
       .from("empresa_config")
-      .select("nome_empresa, segmento, sobre_negocio, diferenciais, publico_alvo, site")
+      .select("nome_empresa, segmento, sobre_negocio, diferenciais, publico_alvo, site, voz_copy")
       .eq("user_id", userId)
       .maybeSingle();
     if (data) {
@@ -63,6 +63,7 @@ export async function getTenantBusinessContext(
       diferenciais = (data.diferenciais || "").trim() || null;
       publicoAlvo = (data.publico_alvo || "").trim() || null;
       site = (data.site || "").trim() || null;
+      tomDeVoz = ((data as any).voz_copy || "").trim() || null;
     }
   } catch (e) {
     console.warn("[business-context] empresa_config falhou:", (e as Error).message);
