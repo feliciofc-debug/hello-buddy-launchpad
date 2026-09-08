@@ -270,8 +270,13 @@ function logoDe(html: string, base: URL): string[] {
 
   for (const i of comTamanho) candidatos.push(i.href);
 
+  // Caminhos vindos de JSON embutido chegam escapados ("\u002F", "\/").
+  const desescapar = (v: string) =>
+    v.replace(/\\?u002f/gi, "/").replace(/\\\//g, "/").replace(/&amp;/g, "&");
+
   const escolhidos: string[] = [];
-  for (const c of candidatos) {
+  for (const bruto of candidatos) {
+    const c = desescapar(bruto);
     const url = absoluto(c, baseUrl);
     if (url && !url.startsWith("data:") && !escolhidos.includes(url)) escolhidos.push(url);
   }
