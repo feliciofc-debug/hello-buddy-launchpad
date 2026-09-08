@@ -45,6 +45,8 @@ type TrilhaSonora = {
   licenca: string;
   licenca_url: string | null;
   user_id: string | null;
+  padrao_global?: boolean | null;
+
 };
 
 type Job = {
