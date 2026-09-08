@@ -49,17 +49,22 @@ export type TemplateInstitucionalProps = {
   selo?: { valor: string; rotulo?: string };
   /** 1, 2 ou 3 — arranjo de cena */
   arranjo?: number;
+  /** frames por bloco; vídeo mais longo respira um pouco mais em cada cena */
+  ritmo?: number;
 };
 
 const BLOCO_FRAMES = 100;
 const SELO_FRAMES = 120;
 const TRANSICAO = 30;
 
+export const ritmoInstitucional = (p: TemplateInstitucionalProps) =>
+  p.ritmo && p.ritmo >= 60 && p.ritmo <= 220 ? Math.round(p.ritmo) : BLOCO_FRAMES;
+
 export const framesTemplateInstitucional = (p: TemplateInstitucionalProps) => {
   const blocos = Math.max(1, (p.blocos || []).length);
   const selo = p.selo?.valor ? SELO_FRAMES : 0;
   const transicoes = selo ? 3 : 2;
-  return HOOK_FRAMES + blocos * BLOCO_FRAMES + selo + CTA_FRAMES - TRANSICAO * transicoes;
+  return HOOK_FRAMES + blocos * ritmoInstitucional(p) + selo + CTA_FRAMES - TRANSICAO * transicoes;
 };
 
 // ---------- cena de blocos ----------

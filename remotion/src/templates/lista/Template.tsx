@@ -48,6 +48,8 @@ export type TemplateListaProps = {
   /** rótulo da lista, ex.: "3 motivos", "4 passos" */
   rotulo?: string;
   arranjo?: number;
+  /** frames por item; vídeo mais longo respira um pouco mais em cada cena */
+  ritmo?: number;
 };
 
 const ITEM_FRAMES = 95;
@@ -55,8 +57,11 @@ const TRANSICAO = 30;
 
 export const framesTemplateLista = (p: TemplateListaProps) => {
   const itens = Math.max(1, (p.itens || []).length);
-  return HOOK_FRAMES + itens * ITEM_FRAMES + CTA_FRAMES - TRANSICAO * 2;
+  return HOOK_FRAMES + itens * ritmoLista(p) + CTA_FRAMES - TRANSICAO * 2;
 };
+
+export const ritmoLista = (p: TemplateListaProps) =>
+  p.ritmo && p.ritmo >= 60 && p.ritmo <= 200 ? Math.round(p.ritmo) : ITEM_FRAMES;
 
 const Numero: React.FC<{ c: Paleta; n: number; tamanho?: number }> = ({ c, n, tamanho = 84 }) => (
   <div

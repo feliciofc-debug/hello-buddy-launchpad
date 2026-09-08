@@ -37,6 +37,38 @@ const ICONES_OK = [
   "alvo",
 ];
 
+/** Duração da peça. Muda o VOLUME de conteúdo, não a lentidão das cenas. */
+export type DuracaoMotion = "curto" | "medio" | "longo";
+
+export const DURACOES_MOTION: DuracaoMotion[] = ["curto", "medio", "longo"];
+
+/** Volume de conteúdo por duração (quantas cenas/blocos/trocas gerar). */
+export const VOLUME_POR_DURACAO: Record<
+  DuracaoMotion,
+  { blocos: number; itens: number; mensagens: number; legendas: number }
+> = {
+  curto: { blocos: 3, itens: 3, mensagens: 4, legendas: 4 },
+  medio: { blocos: 5, itens: 5, mensagens: 8, legendas: 6 },
+  longo: { blocos: 8, itens: 8, mensagens: 12, legendas: 8 },
+};
+
+export const ROTULO_DURACAO: Record<DuracaoMotion, string> = {
+  curto: "Curto (~25s)",
+  medio: "Médio (~45s)",
+  longo: "Longo (~75s)",
+};
+
+/** Duração pedida em texto livre ("faz um vídeo longo sobre X"). */
+export function duracaoPedidaNoTexto(texto: string): DuracaoMotion | null {
+  const t = String(texto ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (/\b(long[oa]|completo|detalhad[oa]|apresentacao comercial|institucional completo|90s|1 ?min|um minuto|minuto e meio)\b/.test(t)) {
+    return "longo";
+  }
+  if (/\b(medi[oa]|intermediari[oa]|45s?|40 segundos|45 segundos)\b/.test(t)) return "medio";
+  if (/\b(curt[oa]|rapid[oa]|reels?|stor(?:y|ies)|15s|20s|25s|30 segundos)\b/.test(t)) return "curto";
+  return null;
+}
+
 /** Estilo pedido em texto livre ("faz em formato de lista"). */
 export function estiloPedidoNoTexto(texto: string): EstiloMotion | null {
   const t = String(texto ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -52,6 +84,8 @@ export type MotionProps = {
   marca: string;
   /** estilo/template desta peça */
   estilo?: EstiloMotion;
+  /** duração pedida; define o volume de conteúdo do roteiro */
+  duracao?: DuracaoMotion;
   /** arranjo de cena dentro do estilo (1, 2 ou 3) */
   arranjo?: number;
   /** institucional: blocos de argumento */
@@ -243,9 +277,17 @@ export function normalizarProps(
     estilo?: EstiloMotion | null;
     /** arranjo de cena forçado (1..3) */
     arranjo?: number | null;
+    /** duração escolhida; define quantas cenas/blocos entram na peça */
+    duracao?: DuracaoMotion | null;
   },
 ): MotionProps {
   const nomes = ctx.nomes ?? [];
+  const duracao: DuracaoMotion = DURACOES_MOTION.includes(ctx.duracao as DuracaoMotion)
+    ? (ctx.duracao as DuracaoMotion)
+    : DURACOES_MOTION.includes(bruto?.duracao)
+      ? (bruto.duracao as DuracaoMotion)
+      : "curto";
+  const volume = VOLUME_POR_DURACAO[duracao];
   const marcaBase = marcaCurta(String(bruto?.marca || ctx.marca || ""), 18);
   const proibidos = (ctx.proibidos ?? []).map((p) => String(p ?? "").trim()).filter((p) => p.length >= 4);
   const escapar = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -290,7 +332,7 @@ export function normalizarProps(
 
   const mensagensBrutas: any[] = Array.isArray(bruto?.chat?.mensagens) ? bruto.chat.mensagens : [];
   const mensagens: Mensagem[] = mensagensBrutas
-    .slice(0, 6)
+    .slice(0, volume.mensagens)
     .map((m) => ({
       de: m?.de === "agente" ? "agente" : "dono",
       texto: limpar(m?.texto, 110),
@@ -303,7 +345,7 @@ export function normalizarProps(
     .filter(Boolean);
 
   const legendas = (Array.isArray(bruto?.legendas) ? bruto.legendas : [])
-    .slice(0, 6)
+    .slice(0, volume.legendas)
     .map((l: unknown) => limpar(l, 64))
     .filter(Boolean);
 
@@ -328,41 +370,72 @@ export function normalizarProps(
       }))
       .filter((b) => b.titulo.length > 0);
 
-  const blocos = listaDe(bruto?.blocos, 4);
-  const itens = listaDe(bruto?.itens, 5);
+  const blocos = listaDe(bruto?.blocos, volume.blocos);
+  const itens = listaDe(bruto?.itens, volume.itens);
   const seloValor = limpar(bruto?.selo?.valor, 22);
+
+  // Reserva usada só quando a IA devolveu menos conteúdo do que a duração pede.
+  const RESERVA_BLOCOS: BlocoMotion[] = [
+    { titulo: "Tecnologia própria", apoio: "Feita para o seu negócio.", icone: "engrenagem" },
+    { titulo: "Atendimento imediato", apoio: "Resposta em segundos.", icone: "relogio" },
+    { titulo: "Processo seguro", apoio: "Dados isolados por empresa.", icone: "escudo" },
+    { titulo: "Acompanhamento real", apoio: "Você vê o que foi feito.", icone: "grafico" },
+    { titulo: "Time no seu tom", apoio: "A comunicação da sua marca.", icone: "chat" },
+    { titulo: "Sem retrabalho", apoio: "Aprovação em um toque.", icone: "check" },
+    { titulo: "Foco no resultado", apoio: "Cada peça com objetivo claro.", icone: "alvo" },
+    { titulo: "Rotina previsível", apoio: "Conteúdo saindo toda semana.", icone: "selo" },
+  ];
+  const RESERVA_ITENS: BlocoMotion[] = [
+    { titulo: "Você pede", apoio: "Uma frase basta.", icone: "chat" },
+    { titulo: "A plataforma escreve", apoio: "No tom da sua marca.", icone: "engrenagem" },
+    { titulo: "Você aprova", apoio: "Revisa e libera.", icone: "check" },
+    { titulo: "Publicação agendada", apoio: "No melhor horário.", icone: "relogio" },
+    { titulo: "Resultado medido", apoio: "Você vê o alcance.", icone: "grafico" },
+    { titulo: "Ajuste rápido", apoio: "O que funciona, repete.", icone: "alvo" },
+    { titulo: "Tudo registrado", apoio: "Histórico sempre à mão.", icone: "selo" },
+    { titulo: "Sem depender de alguém", apoio: "A rotina não para.", icone: "escudo" },
+  ];
+  // A duração define o VOLUME: completamos até o mínimo do preset, nunca
+  // esticando o tempo de cada cena.
+  const completar = (base: BlocoMotion[], reserva: BlocoMotion[], alvo: number): BlocoMotion[] => {
+    const out = [...base];
+    for (const r of reserva) {
+      if (out.length >= alvo) break;
+      if (!out.some((b) => b.titulo.toLowerCase() === r.titulo.toLowerCase())) out.push(r);
+    }
+    return out.slice(0, alvo);
+  };
+  const minimo = duracao === "curto" ? 3 : duracao === "medio" ? 5 : 7;
+
   // Arranjo: o pedido manda; sem pedido, sorteia para dois vídeos seguidos do
   // mesmo estilo não saírem com o mesmo visual.
   const arranjoBruto = Number(ctx.arranjo ?? bruto?.arranjo);
-  const arranjo = [1, 2, 3].includes(arranjoBruto)
+  let arranjo = [1, 2, 3].includes(arranjoBruto)
     ? arranjoBruto
     : 1 + Math.floor(Math.random() * 3);
+
+  const blocosFinais = estilo === "institucional"
+    ? completar(blocos, RESERVA_BLOCOS, Math.max(minimo, Math.min(blocos.length || minimo, volume.blocos)))
+    : undefined;
+  const itensFinais = estilo === "lista"
+    ? completar(itens, RESERVA_ITENS, Math.max(minimo, Math.min(itens.length || minimo, volume.itens)))
+    : undefined;
+
+  // Muitos blocos/itens não cabem empilhados na tela: usa o arranjo de uma
+  // cena por argumento, que também dá ritmo ao vídeo longo.
+  if (estilo === "institucional" && (blocosFinais?.length ?? 0) > 4) arranjo = 2;
+  if (estilo === "lista" && (itensFinais?.length ?? 0) > 5) arranjo = 3;
 
   return {
     marca,
     estilo,
+    duracao,
     arranjo,
-    blocos: estilo === "institucional"
-      ? (blocos.length
-        ? blocos
-        : [
-          { titulo: "Tecnologia própria", apoio: "Feita para o seu negócio.", icone: "engrenagem" },
-          { titulo: "Atendimento imediato", apoio: "Resposta em segundos.", icone: "relogio" },
-          { titulo: "Processo seguro", apoio: "Dados isolados por empresa.", icone: "escudo" },
-        ])
-      : undefined,
+    blocos: blocosFinais,
     selo: estilo === "institucional" && seloValor
       ? { valor: seloValor, rotulo: limpar(bruto?.selo?.rotulo, 34) || undefined }
       : undefined,
-    itens: estilo === "lista"
-      ? (itens.length
-        ? itens
-        : [
-          { titulo: "Você pede", apoio: "Uma frase basta.", icone: "chat" },
-          { titulo: "A plataforma escreve", apoio: "No tom da sua marca.", icone: "engrenagem" },
-          { titulo: "Publicação agendada", apoio: "No melhor horário.", icone: "relogio" },
-        ])
-      : undefined,
+    itens: itensFinais,
     rotulo: estilo === "lista" ? (limpar(bruto?.rotulo, 20) || undefined) : undefined,
     logo_path: typeof bruto?.logo_path === "string" ? bruto.logo_path : undefined,
     logoUrl: typeof bruto?.logoUrl === "string" ? bruto.logoUrl : undefined,
@@ -385,12 +458,29 @@ export function normalizarProps(
     chat: {
       titulo: limpar(bruto?.chat?.titulo, 30) || "Tudo pelo",
       tituloDestaque: limpar(bruto?.chat?.tituloDestaque, 18) || "WhatsApp",
-      mensagens: mensagens.length
-        ? mensagens
-        : [
-            { de: "dono", texto: "posta isso hoje às 19h" },
-            { de: "agente", texto: "Fechado. Escrevi a legenda e agendei para 19:00." },
-          ],
+      mensagens: (() => {
+        const reserva: Mensagem[] = [
+          { de: "dono", texto: "posta isso hoje às 19h" },
+          { de: "agente", texto: "Fechado. Escrevi a legenda e agendei para 19:00." },
+          { de: "dono", texto: "manda a versão para o Instagram também" },
+          { de: "agente", texto: "Pronto. Adaptei o texto e deixei na fila." },
+          { de: "dono", texto: "e se eu quiser mudar depois?" },
+          { de: "agente", texto: "Você edita e aprova aqui mesmo, em um toque." },
+          { de: "dono", texto: "como vejo o resultado?" },
+          { de: "agente", texto: "Te mando o alcance de cada publicação." },
+          { de: "dono", texto: "pode repetir toda semana" },
+          { de: "agente", texto: "Combinado. A rotina já está programada." },
+          { de: "dono", texto: "obrigado" },
+          { de: "agente", texto: "Estou por aqui sempre que precisar." },
+        ];
+        const alvo = duracao === "curto" ? 4 : duracao === "medio" ? 8 : 12;
+        const out = [...mensagens];
+        for (const m of reserva) {
+          if (out.length >= alvo) break;
+          if (!out.some((x) => x.texto.toLowerCase() === m.texto.toLowerCase())) out.push(m);
+        }
+        return out.slice(0, Math.max(alvo, Math.min(mensagens.length, volume.mensagens)));
+      })(),
     },
     cta: {
       frase: limpar(bruto?.cta?.frase, 44) || "Fale com a gente.",
@@ -447,6 +537,8 @@ export async function gerarRoteiroMotion(
     /** estilo pedido pelo usuário; null/undefined = a IA escolhe */
     estilo?: EstiloMotion | null;
     arranjo?: number | null;
+    /** duração pedida; null = curto (padrão para redes) */
+    duracao?: DuracaoMotion | null;
   },
 ): Promise<{ props: MotionProps; legendaPost: string; usouIA: boolean; nomes: string[] }> {
   const ctx = await getTenantBusinessContext(sb, userId, { nomeFallback: opts?.nomeFallback });
@@ -482,13 +574,20 @@ export async function gerarRoteiroMotion(
       ? (opts?.estilo as EstiloMotion)
       : estiloPedidoNoTexto(tema)) as EstiloMotion | null,
     arranjo: opts?.arranjo ?? null,
+    // Duração explícita (formulário) ou pedida em texto no WhatsApp.
+    duracao: (DURACOES_MOTION.includes(opts?.duracao as DuracaoMotion)
+      ? (opts?.duracao as DuracaoMotion)
+      : duracaoPedidaNoTexto(tema) ?? "curto") as DuracaoMotion,
   };
 
   const estiloForcado = base.estilo;
+  const dur = base.duracao;
+  const vol = VOLUME_POR_DURACAO[dur];
+  const segundos = dur === "curto" ? "20-25s" : dur === "medio" ? "40-50s" : "70-90s";
 
 
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
-  const instrucao = `Você escreve roteiros de vídeos verticais (20-25s) para redes sociais.
+  const instrucao = `Você escreve roteiros de vídeos verticais (${segundos}) para redes sociais.
 NEGÓCIO: ${nome}${ctx.segmento ? ` — ${ctx.segmento}` : ""}
 ${terceiro ? "" : `${ctx.sobre ? `SOBRE: ${ctx.sobre}\n` : ""}${ctx.diferenciais ? `DIFERENCIAIS: ${ctx.diferenciais}\n` : ""}${ctx.publicoAlvo ? `PÚBLICO: ${ctx.publicoAlvo}\n` : ""}${ctx.produtos.length ? `PRODUTOS: ${ctx.produtos.slice(0, 6).join("; ")}\n` : ""}`}TEMA PEDIDO: ${tema}
 ${tom ? `TOM DE VOZ DA MARCA (obrigatório seguir): ${tom}\n` : ""}
@@ -517,9 +616,10 @@ Devolva SOMENTE JSON válido, sem markdown, neste formato:
  "legendas": ["frase curta 1","frase curta 2","frase curta 3","frase curta 4"],
  "legenda_post": "legenda pronta para publicar, 2 a 4 linhas, tom institucional, 6 a 10 hashtags no final"
 }
-Preencha a seção do estilo escolhido: "chat" (conversa), "blocos" + "selo" (institucional, 3 ou 4 blocos) ou "itens" + "rotulo" (lista, 3 a 5 itens). As outras seções podem ficar vazias.
+Preencha a seção do estilo escolhido: "chat" (conversa), "blocos" + "selo" (institucional) ou "itens" + "rotulo" (lista). As outras seções podem ficar vazias.
+DURAÇÃO PEDIDA: ${segundos}. O vídeo mais longo precisa de MAIS conteúdo, nunca cenas mais lentas. Para esta duração escreva: ${vol.mensagens} mensagens no chat (alternando dono/agente), ${vol.blocos} blocos no institucional, ${vol.itens} itens na lista e ${vol.legendas} legendas. Cada bloco/item/mensagem deve trazer um argumento NOVO, sem repetir ideia.
 No institucional, só preencha "selo" com dado REAL do contexto acima; sem dado confiável, deixe vazio — nunca invente número, percentual ou certificação.
-Regras: 4 ou 6 mensagens no chat, alternando dono/agente, frases COMPLETAS dentro do limite de caracteres (nunca corte no meio de palavra), sem emoji nos textos do vídeo, sem promessa de resultado garantido, sem inventar preço.
+Regras: número par de mensagens no chat, alternando dono/agente, frases COMPLETAS dentro do limite de caracteres (nunca corte no meio de palavra), sem emoji nos textos do vídeo, sem promessa de resultado garantido, sem inventar preço.
 O leitor é um profissional: proibido gíria e informalidade exagerada ("tá insano", "bora", "top", "sem neura"). Se o tom da marca for institucional ou formal, escreva formal.
 O nome da marca identifica QUEM fala, nunca o objeto da ação: escreva "publicação concluída", "campanha aprovada", jamais "${nome} concluída" ou "${nome} aprovada".
 Nunca atribua a automação a outra empresa, plataforma, rede social ou ferramenta citada no site do cliente, nem escreva "o sistema ${nome}". Fale do resultado ("o agente agenda", "o conteúdo sai no horário") sem citar nome de plataforma.

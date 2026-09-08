@@ -65,6 +65,7 @@ Deno.serve(async (req) => {
        apenasRoteiro: Boolean(body?.apenas_roteiro),
        estilo: typeof body?.estilo === "string" ? body.estilo : null,
        arranjo: typeof body?.arranjo === "number" ? body.arranjo : null,
+      duracao: typeof body?.duracao === "string" ? body.duracao : null,
     });
 
     if (!r.ok) return json({ success: false, error: r.error }, r.status);

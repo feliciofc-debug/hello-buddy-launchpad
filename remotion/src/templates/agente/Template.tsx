@@ -71,8 +71,11 @@ const CHAT_ENTRADA = 40;
 // Respiro após a última fala: antes cortava para o CTA sem tempo de leitura.
 const CHAT_RESPIRO = 115;
 
-export const framesChat = (n: number) =>
-  CHAT_ENTRADA + Math.max(1, n) * MSG_ESPACO + CHAT_RESPIRO;
+export const espacoMsg = (ritmo?: number) =>
+  ritmo && ritmo >= 40 && ritmo <= 120 ? Math.round(ritmo) : MSG_ESPACO;
+
+export const framesChat = (n: number, ritmo?: number) =>
+  CHAT_ENTRADA + Math.max(1, n) * espacoMsg(ritmo) + CHAT_RESPIRO;
 
 /** Duração total já descontando a sobreposição das 2 transições. */
 export const framesTemplateAgente = (props: TemplateAgenteProps) =>
