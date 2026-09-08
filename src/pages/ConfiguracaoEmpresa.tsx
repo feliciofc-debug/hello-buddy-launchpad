@@ -93,6 +93,42 @@ export default function ConfiguracaoEmpresa() {
     }
   };
 
+  // Aplica o que veio do site nos campos (o usuário já confirmou na tela)
+  // e guarda a paleta/identidade para os vídeos e para o contexto do Jarvis.
+  const aplicarImportacao = async (d: IdentidadeImportada) => {
+    if (d.nome_empresa) setNomeEmpresa(d.nome_empresa);
+    if (d.descricao) setSobreNegocio(d.descricao);
+    if (d.diferenciais) setDiferenciais(d.diferenciais);
+    if (d.publico_alvo) setPublicoAlvo(d.publico_alvo);
+    if (d.tom_de_voz) setTomDeVoz(d.tom_de_voz);
+    if (d.segmento_sugerido) setSegmentoSelecionado(d.segmento_sugerido);
+    setSite(d.url);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from('empresa_config').upsert({
+          user_id: user.id,
+          paleta_marca: d.paleta as any,
+          tipografia: d.fontes.join(', ') || null,
+          identidade_site: {
+            url: d.url,
+            tagline: d.tagline,
+            logo_url: d.logo_url,
+            cores_detectadas: d.cores_detectadas,
+            texto_base: d.texto_base,
+            lido_em: new Date().toISOString(),
+          } as any,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+      }
+    } catch (e) {
+      console.error('Erro ao guardar identidade do site:', e);
+    }
+
+    toast.success('Dados do site preenchidos. Revise e clique em salvar.');
+  };
+
   const segmento = SEGMENTOS_EMPRESA.find(s => s.id === segmentoSelecionado);
 
   if (loadingData) {
