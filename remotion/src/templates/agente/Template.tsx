@@ -276,7 +276,13 @@ const Chat: React.FC<{ c: Paleta; marca: string; logoUrl?: string } & TemplateAg
   const tituloOp = interpolate(frame, [6, 26], [0, 1], { extrapolateRight: "clamp" });
   // O celular acompanha a quantidade de mensagens: antes sobrava dois terços
   // de espaço vazio quando o roteiro trazia poucas falas.
-  const alturaFone = Math.max(560, Math.min(1120, 210 + mensagens.length * 178));
+  // Altura e corpo do texto acompanham o tamanho REAL das falas: antes a última
+  // mensagem longa era cortada pela borda do celular.
+  const fonte = mensagens.some((m) => m.texto.length > 84) ? 25 : mensagens.some((m) => m.texto.length > 62) ? 27 : 30;
+  const charsPorLinha = Math.max(20, Math.round(1180 / fonte));
+  const alturaMsg = (t: string) => 58 + Math.ceil(Math.max(1, t.length) / charsPorLinha) * Math.round(fonte * 1.3);
+  const alturaConteudo = mensagens.reduce((a, m) => a + alturaMsg(m.texto) + 18, 0);
+  const alturaFone = Math.max(560, Math.min(1240, 130 + alturaConteudo));
 
 
   return (
