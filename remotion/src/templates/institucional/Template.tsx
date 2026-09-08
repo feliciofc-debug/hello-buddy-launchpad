@@ -283,7 +283,8 @@ export const TemplateInstitucional: React.FC<TemplateInstitucionalProps> = (prop
   const arranjo = props.arranjo === 2 || props.arranjo === 3 ? props.arranjo : 1;
   const lista = blocos.length ? blocos : [{ titulo: "Tecnologia própria", apoio: "Feito para o seu negócio." }];
   const total = framesTemplateInstitucional({ ...props, blocos: lista });
-  const duracaoBlocos = lista.length * BLOCO_FRAMES;
+  const ritmo = ritmoInstitucional({ ...props, blocos: lista });
+  const duracaoBlocos = lista.length * ritmo;
 
   return (
     <AbsoluteFill>
@@ -298,7 +299,7 @@ export const TemplateInstitucional: React.FC<TemplateInstitucionalProps> = (prop
         />
         {arranjo === 2 ? (
           lista.map((b, i) => (
-            <TransitionSeries.Sequence key={`bloco-${i}`} durationInFrames={BLOCO_FRAMES + (i === 0 ? 0 : 0)}>
+            <TransitionSeries.Sequence key={`bloco-${i}`} durationInFrames={ritmo}>
               <BlocoTelaCheia c={c} b={b} indice={i} total={lista.length} />
             </TransitionSeries.Sequence>
           ))

@@ -284,6 +284,7 @@ export const TemplateLista: React.FC<TemplateListaProps> = (props) => {
   const lista = itens.length ? itens : [{ titulo: "Primeiro passo", apoio: "Comece por aqui." }];
   const arranjo = props.arranjo === 2 || props.arranjo === 3 ? props.arranjo : 1;
   const total = framesTemplateLista({ ...props, itens: lista });
+  const ritmo = ritmoLista({ ...props, itens: lista });
 
   return (
     <AbsoluteFill>
@@ -298,12 +299,12 @@ export const TemplateLista: React.FC<TemplateListaProps> = (props) => {
         />
         {arranjo === 3 ? (
           lista.map((item, i) => (
-            <TransitionSeries.Sequence key={`item-${i}`} durationInFrames={ITEM_FRAMES}>
+            <TransitionSeries.Sequence key={`item-${i}`} durationInFrames={ritmo}>
               <ItemTelaCheia c={c} item={item} indice={i} total={lista.length} />
             </TransitionSeries.Sequence>
           ))
         ) : (
-          <TransitionSeries.Sequence durationInFrames={lista.length * ITEM_FRAMES}>
+          <TransitionSeries.Sequence durationInFrames={lista.length * ritmo}>
             {arranjo === 2 ? (
               <ListaCronologia c={c} itens={lista} rotulo={rotulo} />
             ) : (
