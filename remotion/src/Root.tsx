@@ -17,6 +17,18 @@ import {
   framesTemplateProduto,
   type TemplateProdutoProps,
 } from "./templates/produto/Template";
+import {
+  TemplateInstitucional,
+  PROPS_INSTITUCIONAL_EXEMPLO,
+  framesTemplateInstitucional,
+  type TemplateInstitucionalProps,
+} from "./templates/institucional/Template";
+import {
+  TemplateLista,
+  PROPS_LISTA_EXEMPLO,
+  framesTemplateLista,
+  type TemplateListaProps,
+} from "./templates/lista/Template";
 
 
 const base = { fps: 30, width: 1080, height: 1920 } as const;
