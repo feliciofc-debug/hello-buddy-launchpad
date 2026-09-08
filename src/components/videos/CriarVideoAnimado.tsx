@@ -652,7 +652,7 @@ export const CriarVideoAnimado = () => {
               <option value="">Sem trilha sonora</option>
               {trilhas.map((faixa) => (
                 <option key={faixa.id} value={faixa.id}>
-                  {faixa.nome} — {faixa.mood}
+                  {faixa.nome} — {faixa.mood}{faixa.padrao_global ? ' (padrão)' : ''}
                 </option>
               ))}
             </select>
