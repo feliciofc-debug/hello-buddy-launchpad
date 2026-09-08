@@ -327,7 +327,16 @@ const Chat: React.FC<{ c: Paleta; marca: string; logoUrl?: string } & TemplateAg
             ))}
           </div>
         </div>
-        <div style={{ padding: 26, display: "flex", flexDirection: "column", gap: 18 }}>
+        <div
+          style={{
+            height: alturaFone - 78,
+            padding: 26,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            gap: 18,
+          }}
+        >
           {mensagens.map((m, i) => (
             <Bolha key={`${i}-${m.texto}`} c={c} m={m} from={CHAT_ENTRADA / 2 + i * MSG_ESPACO} />
           ))}
