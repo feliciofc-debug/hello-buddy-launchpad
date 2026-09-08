@@ -48,8 +48,18 @@ export const VOLUME_POR_DURACAO: Record<
   { blocos: number; itens: number; mensagens: number; legendas: number }
 > = {
   curto: { blocos: 3, itens: 3, mensagens: 4, legendas: 4 },
-  medio: { blocos: 5, itens: 5, mensagens: 8, legendas: 6 },
-  longo: { blocos: 8, itens: 8, mensagens: 12, legendas: 8 },
+  medio: { blocos: 6, itens: 6, mensagens: 8, legendas: 6 },
+  longo: { blocos: 9, itens: 9, mensagens: 12, legendas: 8 },
+};
+
+/**
+ * Frames por cena (bloco/item/mensagem). Mais conteúdo é o principal ganho de
+ * duração; o ritmo apenas dá tempo de leitura sem deixar a cena parada.
+ */
+export const RITMO_POR_DURACAO: Record<DuracaoMotion, Record<EstiloMotion, number>> = {
+  curto: { conversa: 52, institucional: 100, lista: 95 },
+  medio: { conversa: 62, institucional: 145, lista: 140 },
+  longo: { conversa: 72, institucional: 165, lista: 160 },
 };
 
 export const ROTULO_DURACAO: Record<DuracaoMotion, string> = {
@@ -86,6 +96,8 @@ export type MotionProps = {
   estilo?: EstiloMotion;
   /** duração pedida; define o volume de conteúdo do roteiro */
   duracao?: DuracaoMotion;
+  /** frames por cena, derivado da duração (lido pelos templates Remotion) */
+  ritmo?: number;
   /** arranjo de cena dentro do estilo (1, 2 ou 3) */
   arranjo?: number;
   /** institucional: blocos de argumento */
@@ -405,7 +417,7 @@ export function normalizarProps(
     }
     return out.slice(0, alvo);
   };
-  const minimo = duracao === "curto" ? 3 : duracao === "medio" ? 5 : 7;
+  const minimo = duracao === "curto" ? 3 : duracao === "medio" ? 6 : 9;
 
   // Arranjo: o pedido manda; sem pedido, sorteia para dois vídeos seguidos do
   // mesmo estilo não saírem com o mesmo visual.
@@ -430,6 +442,7 @@ export function normalizarProps(
     marca,
     estilo,
     duracao,
+    ritmo: RITMO_POR_DURACAO[duracao][estilo],
     arranjo,
     blocos: blocosFinais,
     selo: estilo === "institucional" && seloValor
@@ -501,16 +514,18 @@ export function normalizarProps(
 
 /** Duração aproximada em segundos — espelha os frames de cada template. */
 export function duracaoEstimada(props: MotionProps): number {
+  const estilo = (props.estilo ?? "conversa") as EstiloMotion;
+  const ritmo = props.ritmo ?? RITMO_POR_DURACAO[(props.duracao ?? "curto") as DuracaoMotion][estilo];
   let frames: number;
-  if (props.estilo === "institucional") {
+  if (estilo === "institucional") {
     const blocos = Math.max(1, (props.blocos ?? []).length);
     const selo = props.selo?.valor ? 120 : 0;
-    frames = 170 + blocos * 100 + selo + 170 - 30 * (selo ? 3 : 2);
-  } else if (props.estilo === "lista") {
+    frames = 170 + blocos * ritmo + selo + 170 - 30 * (selo ? 3 : 2);
+  } else if (estilo === "lista") {
     const itens = Math.max(1, (props.itens ?? []).length);
-    frames = 170 + itens * 95 + 170 - 60;
+    frames = 170 + itens * ritmo + 170 - 60;
   } else {
-    frames = 190 + (40 + Math.max(1, props.chat.mensagens.length) * 52 + 115) + 170 - 60;
+    frames = 190 + (40 + Math.max(1, props.chat.mensagens.length) * ritmo + 115) + 170 - 60;
   }
   return Math.round((frames / 30) * 10) / 10;
 }
