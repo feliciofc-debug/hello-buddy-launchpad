@@ -392,7 +392,7 @@ export async function lerIdentidadeDoSite(entrada: string): Promise<IdentidadeSi
     if (textoBase.length < 120) {
       avisos.push("O site entregou pouco texto legível — confira e complete a descrição do negócio à mão.");
     }
-    if (!logoDe(html, url)) {
+    if (!logoDe(html, baseEfetiva)) {
       avisos.push("Não encontrei a logo no site; anexe o arquivo manualmente.");
     }
 
@@ -410,7 +410,7 @@ export async function lerIdentidadeDoSite(entrada: string): Promise<IdentidadeSi
       tom_de_voz: tomDeVozDe(textoBase),
       publico_alvo: publicoDe(textoBase),
       diferenciais: blocos.slice(1, 5).join(" • ").slice(0, 500),
-      logo_url: logoDe(html, url),
+      logo_url: logoDe(html, baseEfetiva),
       fontes: fontesDe(html, css),
       cores_detectadas: principais,
       paleta: montarPaleta(principais),
