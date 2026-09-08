@@ -440,7 +440,14 @@ export async function gerarRoteiroMotion(
   sb: SupabaseClient,
   userId: string,
   tema: string,
-  opts?: { nomeFallback?: string | null; marca?: string | null; tomDeVoz?: string | null },
+  opts?: {
+    nomeFallback?: string | null;
+    marca?: string | null;
+    tomDeVoz?: string | null;
+    /** estilo pedido pelo usuário; null/undefined = a IA escolhe */
+    estilo?: EstiloMotion | null;
+    arranjo?: number | null;
+  },
 ): Promise<{ props: MotionProps; legendaPost: string; usouIA: boolean; nomes: string[] }> {
   const ctx = await getTenantBusinessContext(sb, userId, { nomeFallback: opts?.nomeFallback });
   // A marca informada no formulário manda: o vídeo é do cliente, não do tenant.
