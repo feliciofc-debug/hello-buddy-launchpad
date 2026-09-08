@@ -8230,6 +8230,7 @@ export type Database = {
           licenca_url: string | null
           mood: string
           nome: string
+          padrao_global: boolean
           storage_path: string
           updated_at: string
           user_id: string | null
@@ -8244,6 +8245,7 @@ export type Database = {
           licenca_url?: string | null
           mood?: string
           nome: string
+          padrao_global?: boolean
           storage_path: string
           updated_at?: string
           user_id?: string | null
@@ -8258,6 +8260,7 @@ export type Database = {
           licenca_url?: string | null
           mood?: string
           nome?: string
+          padrao_global?: boolean
           storage_path?: string
           updated_at?: string
           user_id?: string | null

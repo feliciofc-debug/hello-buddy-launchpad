@@ -1,0 +1,2 @@
+ALTER TABLE public.trilhas_sonoras ADD COLUMN IF NOT EXISTS padrao_global boolean NOT NULL DEFAULT false;
+CREATE UNIQUE INDEX IF NOT EXISTS trilhas_sonoras_padrao_global_unica ON public.trilhas_sonoras (padrao_global) WHERE padrao_global;
