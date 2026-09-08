@@ -686,6 +686,34 @@ export const CriarVideoAnimado = () => {
         </div>
 
         <div className="space-y-2">
+          <Label>Formato do vídeo</Label>
+          <div className="flex flex-wrap gap-2">
+            {([
+              { id: 'auto', nome: 'Automático', dica: 'A plataforma escolhe pelo tema' },
+              { id: 'conversa', nome: 'Conversa', dica: 'Celular com balões de WhatsApp' },
+              { id: 'institucional', nome: 'Institucional', dica: 'Texto grande, argumentos e selo' },
+              { id: 'lista', nome: 'Lista', dica: 'Itens numerados, passo a passo' },
+            ] as const).map((op) => (
+              <Button
+                key={op.id}
+                type="button"
+                size="sm"
+                variant={estilo === op.id ? 'default' : 'outline'}
+                onClick={() => setEstilo(op.id)}
+                title={op.dica}
+              >
+                {op.nome}
+              </Button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {estilo === 'auto'
+              ? 'No automático, cada vídeo sai no formato que combina com o tema — evita todos ficarem iguais.'
+              : 'Formato fixo para este vídeo.'}
+          </p>
+        </div>
+
+        <div className="space-y-2">
           <Label>Sobre o que é o vídeo?</Label>
           <div className="flex flex-col sm:flex-row gap-2">
             <Input
