@@ -118,6 +118,34 @@ export default function ConfiguracaoEmpresa() {
         <h1 className="text-3xl font-bold">⚙️ Configuração da Empresa</h1>
       </div>
 
+      <Card className="mb-6 border-primary/40">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Globe className="h-5 w-5 text-primary" />
+            Importar do meu site
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-muted-foreground">
+            Cole o endereço do site e a plataforma preenche marca, cores, tipografia, descrição do negócio e
+            tom de voz. Você confere e ajusta antes de salvar.
+          </p>
+          <Button onClick={() => setImportarAberto(true)} className="shrink-0">
+            <Globe className="mr-2 h-4 w-4" />
+            Importar do site
+          </Button>
+        </CardContent>
+      </Card>
+
+      <ImportarDoSiteModal
+        aberto={importarAberto}
+        onFechar={() => setImportarAberto(false)}
+        modo="empresa"
+        onConfirmar={aplicarImportacao}
+      />
+
+
+
       <Card className="mb-6">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
