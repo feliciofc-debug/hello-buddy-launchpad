@@ -231,6 +231,32 @@ export const CriarVideoAnimado = () => {
     setProps((p) => (p ? { ...p, cores: { ...PALETAS[nome].cores } } : p));
   };
 
+  // Prospecção: aplica no vídeo a identidade lida do site do prospect
+  // (já confirmada pelo usuário na tela de importação).
+  const aplicarIdentidadeDoSite = async (d: IdentidadeImportada) => {
+    const novas = { ...cores, ...d.paleta };
+    setPaletaSelecionada('personalizada');
+    setCores(novas);
+    if (d.nome_empresa) setMarcaCliente(d.nome_empresa.slice(0, 18));
+    setProps((p) => (p ? { ...p, cores: novas, marca: d.nome_empresa?.slice(0, 18) || p.marca, site: d.url } : p));
+
+    if (d.logo_url) {
+      try {
+        const resp = await fetch(d.logo_url);
+        if (!resp.ok) throw new Error('download');
+        const blob = await resp.blob();
+        if (!blob.type.startsWith('image/')) throw new Error('tipo');
+        const ext = blob.type.split('/')[1]?.replace('svg+xml', 'svg') || 'png';
+        await handleLogo(new File([blob], `logo-site.${ext}`, { type: blob.type }));
+      } catch {
+        toast.info('Não consegui baixar a logo do site. Anexe o arquivo manualmente.');
+      }
+    }
+
+    toast.success('Cores do site aplicadas ao vídeo.');
+  };
+
+
   const setCor = (nome: string, valor: string) => {
     setPaletaSelecionada('personalizada');
     setCores((atual) => ({ ...atual, [nome]: valor }));
