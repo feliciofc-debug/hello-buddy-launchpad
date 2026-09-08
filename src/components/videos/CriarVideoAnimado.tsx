@@ -45,6 +45,8 @@ type TrilhaSonora = {
   licenca: string;
   licenca_url: string | null;
   user_id: string | null;
+  padrao_global?: boolean | null;
+
 };
 
 type Job = {
@@ -129,16 +131,22 @@ export const CriarVideoAnimado = () => {
     if (!user) return;
     const [{ data: catalogo }, { data: config }] = await Promise.all([
       supabase.from('trilhas_sonoras' as any)
-        .select('id, nome, descricao, mood, duracao_seg, storage_path, licenca, licenca_url, user_id')
+        .select('id, nome, descricao, mood, duracao_seg, storage_path, licenca, licenca_url, user_id, padrao_global')
         .eq('ativo', true)
         .order('user_id', { ascending: true, nullsFirst: true })
         .order('nome', { ascending: true }),
       supabase.from('empresa_config').select('trilha_padrao_id').eq('user_id', user.id).maybeSingle(),
     ]);
-    setTrilhas((catalogo ?? []) as unknown as TrilhaSonora[]);
-    if ((config as { trilha_padrao_id?: string | null } | null)?.trilha_padrao_id) {
-      setTrilhaId((config as { trilha_padrao_id: string }).trilha_padrao_id);
+    const faixas = (catalogo ?? []) as unknown as TrilhaSonora[];
+    setTrilhas(faixas);
+    const padraoEmpresa = (config as { trilha_padrao_id?: string | null } | null)?.trilha_padrao_id ?? null;
+    const padraoPlataforma = faixas.find((f) => f.padrao_global)?.id ?? null;
+    const escolhida = padraoEmpresa ?? padraoPlataforma;
+    if (escolhida) {
+      setTrilhaId(escolhida);
+      setSemTrilha(false);
     }
+
   };
 
   const selecionarTrilha = async (id: string) => {
@@ -644,7 +652,7 @@ export const CriarVideoAnimado = () => {
               <option value="">Sem trilha sonora</option>
               {trilhas.map((faixa) => (
                 <option key={faixa.id} value={faixa.id}>
-                  {faixa.nome} — {faixa.mood}
+                  {faixa.nome} — {faixa.mood}{faixa.padrao_global ? ' (padrão)' : ''}
                 </option>
               ))}
             </select>
@@ -660,7 +668,10 @@ export const CriarVideoAnimado = () => {
               Adicionar faixa
             </Button>
           </div>
-          {trilhas.length === 0 && <p className="text-xs text-muted-foreground">Sua biblioteca ainda está vazia. Adicione uma faixa própria ou licenciada.</p>}
+          {trilhas.length === 0
+            ? <p className="text-xs text-muted-foreground">Não consegui carregar as faixas agora. Você pode adicionar uma faixa própria.</p>
+            : <p className="text-xs text-muted-foreground">A faixa marcada como padrão entra sozinha quando você não escolhe nenhuma.</p>}
+
           {trilhaPreviewUrl && <audio src={trilhaPreviewUrl} controls className="w-full" aria-label="Prévia da trilha sonora" />}
           <div className="flex flex-wrap items-center gap-2">
             <Button type="button" variant="secondary" size="sm" onClick={definirTrilhaPadrao} disabled={!trilhaId && !semTrilha}>
