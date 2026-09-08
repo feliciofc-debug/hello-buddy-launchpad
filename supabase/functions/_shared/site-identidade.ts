@@ -351,7 +351,12 @@ export async function lerIdentidadeDoSite(entrada: string): Promise<IdentidadeSi
     const alternativa = base.hostname.startsWith("www.")
       ? url.replace("://www.", "://")
       : url.replace("://", "://www.");
-    const html = (await buscar(url, controle.signal)) ?? (await buscar(alternativa, controle.signal)) ?? "";
+    let baseEfetiva = url;
+    let html = (await buscar(url, controle.signal)) ?? "";
+    if (!html) {
+      html = (await buscar(alternativa, controle.signal)) ?? "";
+      if (html) baseEfetiva = alternativa;
+    }
     if (!html) {
       avisos.push("O site não respondeu à leitura (pode estar fora do ar ou bloqueando acesso automático).");
     }
@@ -361,7 +366,7 @@ export async function lerIdentidadeDoSite(entrada: string): Promise<IdentidadeSi
     const links = [...html.matchAll(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi)]
       .map((m) => m[0].match(/href=["']([^"']+)["']/i)?.[1])
       .filter((h): h is string => !!h)
-      .map((h) => absoluto(h, url))
+      .map((h) => absoluto(h, baseEfetiva))
       .filter((u): u is string => !!u && !/fonts\.googleapis/.test(u))
       .slice(0, MAX_CSS);
 
