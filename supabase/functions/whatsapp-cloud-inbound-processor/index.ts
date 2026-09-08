@@ -4558,6 +4558,7 @@ async function criarRascunhoVideoMotion(
   ctx: { userId: string; fromNumber: string },
   tema: string,
   textoCores?: string,
+  estilo?: string | null,
 ): Promise<string> {
   if (!isOwner(ctx)) return "Esse recurso é exclusivo do responsável da conta. Posso encaminhar o pedido para ele.";
   // Prospecção: quando o pedido menciona cores (hex ou nome), o vídeo sai na
@@ -4570,6 +4571,7 @@ async function criarRascunhoVideoMotion(
     origem: "whatsapp",
     nomeFallback: null,
     cores: pedidas?.cores ?? null,
+    estilo: estilo ?? null,
   });
   const token = videoDraftToken();
   const { error } = await sb.from("video_motion_rascunhos").insert({
@@ -4586,7 +4588,8 @@ async function criarRascunhoVideoMotion(
   const paleta = pedidas
     ? `${pedidas.resumo} (cores que você pediu)`
     : `fundo ${roteiro.props?.cores?.bg}, destaque ${roteiro.props?.cores?.destaque} (padrão da sua marca)`;
-  return `${formatVideoDraft(roteiro.props, tema, roteiro.props ? duracaoEstimada(roteiro.props) : 0, paleta)}\n\nCódigo de aprovação: *${token}*`;
+  const rotuloEstilo = ROTULO_ESTILO[(roteiro.props?.estilo ?? "conversa") as EstiloMotion] ?? "Conversa no celular";
+  return `${formatVideoDraft(roteiro.props, tema, roteiro.props ? duracaoEstimada(roteiro.props) : 0, paleta)}\n\nFormato: *${rotuloEstilo}*\n\nCódigo de aprovação: *${token}*`;
 }
 
 async function buscarRascunhoVideo(ctx: { userId: string; fromNumber: string }): Promise<any | null> {
@@ -5136,6 +5139,7 @@ const TOOLS = [
         properties: {
           tema: { type: "string", description: "Tema e objetivo do vídeo, preservando a ideia do responsável. Ex: 'mostrar como a Ademicon agenda posts e publica nas redes'." },
           cores: { type: "string", description: "Trecho LITERAL do pedido que menciona cores, com rótulos e hex se houver. Ex: 'fundo #ffffff, fundo 2 #fff5f5, destaque #E30613, apoio #ff4d57' ou 'vermelho e branco'. Deixe vazio se ele não citou cor nenhuma." },
+          estilo: { type: "string", enum: ["auto", "conversa", "institucional", "lista"], description: "Formato do vídeo SE ele pediu: 'conversa' (celular com balões de WhatsApp), 'institucional' (tipografia grande, argumentos, selo/dado), 'lista' (itens numerados, '3 motivos', 'passo a passo'). Use 'auto' quando ele não pedir formato — a plataforma escolhe pelo tema." },
         },
         required: ["tema"],
       },
@@ -5971,6 +5975,7 @@ async function runTool(
         ctx,
         normalizeVideoTopic(args?.tema ?? ""),
         String(args?.cores ?? ""),
+        typeof args?.estilo === "string" ? args.estilo : null,
       ),
     };
   }
