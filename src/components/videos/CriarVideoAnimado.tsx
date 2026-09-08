@@ -11,10 +11,11 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Sparkles, Clapperboard, Wand2, Clock, Download, RefreshCw, Upload, Palette, Ban, Send, Trash2 } from 'lucide-react';
+import { Loader2, Sparkles, Clapperboard, Wand2, Clock, Download, RefreshCw, Upload, Palette, Ban, Send, Trash2, Globe } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { validarPaleta } from '@/lib/videoPalette';
+import { ImportarDoSiteModal, type IdentidadeImportada } from '@/components/ImportarDoSiteModal';
 
 type Mensagem = { de: 'dono' | 'agente'; texto: string };
 
