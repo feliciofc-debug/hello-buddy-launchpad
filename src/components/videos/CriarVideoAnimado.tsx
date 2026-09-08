@@ -111,6 +111,7 @@ export const CriarVideoAnimado = () => {
   const [tomDeVozCliente, setTomDeVozCliente] = useState('');
   // Biblioteca de templates: "auto" deixa a plataforma escolher pelo tema.
   const [estilo, setEstilo] = useState<'auto' | 'conversa' | 'institucional' | 'lista'>('auto');
+  const [duracaoPreset, setDuracaoPreset] = useState<'curto' | 'medio' | 'longo'>('curto');
 
   const carregarMarca = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -482,6 +483,7 @@ export const CriarVideoAnimado = () => {
           tema: tema.trim(),
           apenas_roteiro: true,
           estilo,
+          duracao: duracaoPreset,
           cores,
           marca: marcaCliente.trim() || undefined,
           tom_de_voz: tomDeVozCliente.trim() || undefined,
@@ -525,6 +527,7 @@ export const CriarVideoAnimado = () => {
           tema: tema.trim(),
           props: { ...props, site: props.site?.trim() || '' },
           estilo,
+          duracao: duracaoPreset,
           legenda_post: legendaPost,
           formato: 'reels',
           marca: marcaCliente.trim() || undefined,
@@ -712,6 +715,36 @@ export const CriarVideoAnimado = () => {
               : 'Formato fixo para este vídeo.'}
           </p>
         </div>
+
+        <div className="space-y-2">
+          <Label>Duração</Label>
+          <div className="flex flex-wrap gap-2">
+            {([
+              { id: 'curto', nome: 'Curto (~25s)', dica: 'Ideal para redes sociais' },
+              { id: 'medio', nome: 'Médio (~45s)', dica: 'Mais argumentos, ainda leve' },
+              { id: 'longo', nome: 'Longo (~75s)', dica: 'Para apresentação comercial' },
+            ] as const).map((op) => (
+              <Button
+                key={op.id}
+                type="button"
+                size="sm"
+                variant={duracaoPreset === op.id ? 'default' : 'outline'}
+                onClick={() => setDuracaoPreset(op.id)}
+                title={op.dica}
+              >
+                {op.nome}
+              </Button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {duracaoPreset === 'curto'
+              ? 'O vídeo mais longo ganha mais cenas, não cenas mais lentas.'
+              : duracaoPreset === 'medio'
+                ? 'Mais argumentos no roteiro. A geração leva cerca de 8 minutos.'
+                : 'Roteiro completo para apresentar a empresa. A geração leva cerca de 12 a 15 minutos.'}
+          </p>
+        </div>
+
 
         <div className="space-y-2">
           <Label>Sobre o que é o vídeo?</Label>

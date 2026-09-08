@@ -9,13 +9,16 @@
 // ============================================================
 
 import {
+  DURACOES_MOTION,
   duracaoEstimada,
+  duracaoPedidaNoTexto,
   ESTILOS_MOTION,
   estiloPedidoNoTexto,
   gerarRoteiroMotion,
   normalizarProps,
   nomesOficiais,
   TEMPLATE_POR_ESTILO,
+  type DuracaoMotion,
   type EstiloMotion,
   type MotionProps,
 } from "./video-motion.ts";
@@ -55,6 +58,8 @@ export type EnfileirarInput = {
   estilo?: string | null;
   /** arranjo de cena (1..3); vazio = sorteado para variar o visual */
   arranjo?: number | null;
+  /** duração: "curto" (padrão), "medio" ou "longo" */
+  duracao?: string | null;
   /** logo específica desta peça (prospecção), sempre dentro da pasta do usuário */
   logoPath?: string | null;
   /** só devolve o roteiro, não enfileira */
@@ -99,6 +104,18 @@ export function estiloEscolhido(input: EnfileirarInput): EstiloMotion | null {
   if (ESTILOS_MOTION.includes(pedido as EstiloMotion)) return pedido as EstiloMotion;
   if (pedido && pedido !== "auto" && pedido !== "automatico" && pedido !== "automático") return null;
   return estiloPedidoNoTexto(String(input.tema ?? ""));
+}
+
+/** Duração pedida explicitamente; vazio cai no que o texto sugerir (ou curto). */
+export function duracaoEscolhida(input: EnfileirarInput): DuracaoMotion {
+  const pedido = String(input.duracao ?? "").trim().toLowerCase().replace("é", "e");
+  if (DURACOES_MOTION.includes(pedido as DuracaoMotion)) return pedido as DuracaoMotion;
+  return duracaoPedidaNoTexto(String(input.tema ?? "")) ?? "curto";
+}
+
+/** Minutos aproximados de render na VPS (~10s de render por 1s de vídeo). */
+export function minutosRenderEstimado(segundos: number): number {
+  return Math.max(3, Math.round((segundos * 10) / 60));
 }
 
 const normalizarTema = (t: string) =>
@@ -171,6 +188,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
         nomes,
         estilo: estiloEscolhido(input) ?? (p?.estilo ?? null),
         arranjo: input.arranjo ?? p?.arranjo ?? null,
+        duracao: duracaoEscolhida(input),
       },
     );
   } else {
@@ -180,6 +198,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
       tomDeVoz: String(input.tomDeVoz ?? "").trim() || null,
       estilo: estiloEscolhido(input),
       arranjo: input.arranjo ?? null,
+      duracao: duracaoEscolhida(input),
     });
     props = normalizarProps(
       { ...r.props, cores: input.cores ?? r.props.cores },
@@ -189,6 +208,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
         nomes: r.nomes,
         estilo: r.props.estilo ?? null,
         arranjo: r.props.arranjo ?? null,
+        duracao: r.props.duracao ?? duracaoEscolhida(input),
       },
     );
     usouIA = r.usouIA;
@@ -327,6 +347,8 @@ export async function enfileirarVideoMotion(input: EnfileirarInput): Promise<Enf
         sem_trilha: !props.trilha_id,
         estilo: props.estilo ?? "conversa",
         arranjo: props.arranjo ?? 1,
+        duracao: props.duracao ?? "curto",
+        render_minutos_estimado: minutosRenderEstimado(duracaoEstimada(props)),
       },
     })
     .select()

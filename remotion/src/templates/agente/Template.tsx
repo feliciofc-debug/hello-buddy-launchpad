@@ -45,6 +45,8 @@ export type TemplateAgenteProps = {
   cores: Paleta;
   hook: { kicker: string; linhas: string[]; destaque?: string; sub?: string };
   chat: { titulo: string; tituloDestaque?: string; mensagens: Mensagem[] };
+  /** espaço em frames entre mensagens; vídeo longo respira mais */
+  ritmo?: number;
   cta: { frase: string; sub?: string; telefone?: string; consultor?: string };
   legendas: string[];
 };
@@ -71,12 +73,15 @@ const CHAT_ENTRADA = 40;
 // Respiro após a última fala: antes cortava para o CTA sem tempo de leitura.
 const CHAT_RESPIRO = 115;
 
-export const framesChat = (n: number) =>
-  CHAT_ENTRADA + Math.max(1, n) * MSG_ESPACO + CHAT_RESPIRO;
+export const espacoMsg = (ritmo?: number) =>
+  ritmo && ritmo >= 40 && ritmo <= 120 ? Math.round(ritmo) : MSG_ESPACO;
+
+export const framesChat = (n: number, ritmo?: number) =>
+  CHAT_ENTRADA + Math.max(1, n) * espacoMsg(ritmo) + CHAT_RESPIRO;
 
 /** Duração total já descontando a sobreposição das 2 transições. */
 export const framesTemplateAgente = (props: TemplateAgenteProps) =>
-  HOOK_FRAMES + framesChat(props.chat.mensagens.length) + CTA_FRAMES - TRANSICAO * 2;
+  HOOK_FRAMES + framesChat(props.chat.mensagens.length, props.ritmo) + CTA_FRAMES - TRANSICAO * 2;
 
 // ---------- cenas ----------
 
@@ -262,13 +267,16 @@ const Bolha: React.FC<{ c: Paleta; m: Mensagem; from: number; logoUrl?: string; 
   );
 };
 
-const Chat: React.FC<{ c: Paleta; marca: string; logoUrl?: string } & TemplateAgenteProps["chat"]> = ({
+const Chat: React.FC<
+  { c: Paleta; marca: string; logoUrl?: string; ritmo?: number } & TemplateAgenteProps["chat"]
+> = ({
   c,
   marca,
   logoUrl,
   titulo,
   tituloDestaque,
   mensagens,
+  ritmo,
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -278,7 +286,12 @@ const Chat: React.FC<{ c: Paleta; marca: string; logoUrl?: string } & TemplateAg
   // de espaço vazio quando o roteiro trazia poucas falas.
   // Altura e corpo do texto acompanham o tamanho REAL das falas: antes a última
   // mensagem longa era cortada pela borda do celular.
-  const fonte = mensagens.some((m) => m.texto.length > 84) ? 25 : mensagens.some((m) => m.texto.length > 62) ? 27 : 30;
+  // Conversa longa: texto um pouco menor para caber mais falas na tela.
+  const base = mensagens.length >= 9 ? 24 : mensagens.length >= 7 ? 26 : 30;
+  const fonte = Math.min(
+    base,
+    mensagens.some((m) => m.texto.length > 84) ? 25 : mensagens.some((m) => m.texto.length > 62) ? 27 : 30,
+  );
   const charsPorLinha = Math.max(20, Math.round(1180 / fonte));
   const alturaMsg = (t: string) => 58 + Math.ceil(Math.max(1, t.length) / charsPorLinha) * Math.round(fonte * 1.3);
   const alturaConteudo = mensagens.reduce((a, m) => a + alturaMsg(m.texto) + 18, 0);
@@ -372,6 +385,7 @@ const Chat: React.FC<{ c: Paleta; marca: string; logoUrl?: string } & TemplateAg
           style={{
             height: alturaFone - 78,
             padding: 26,
+            overflow: "hidden",
             display: "flex",
             flexDirection: "column",
             justifyContent: "flex-end",
@@ -385,7 +399,7 @@ const Chat: React.FC<{ c: Paleta; marca: string; logoUrl?: string } & TemplateAg
               m={m}
               logoUrl={logoUrl}
               fonte={fonte}
-              from={CHAT_ENTRADA / 2 + i * MSG_ESPACO}
+              from={CHAT_ENTRADA / 2 + i * espacoMsg(ritmo)}
             />
           ))}
         </div>
@@ -571,8 +585,8 @@ export const TemplateAgente: React.FC<TemplateAgenteProps> = (props) => {
           presentation={slide({ direction: "from-bottom" })}
           timing={timing}
         />
-        <TransitionSeries.Sequence durationInFrames={framesChat(chat.mensagens.length)}>
-          <Chat c={c} marca={marca} logoUrl={logoUrl} {...chat} />
+        <TransitionSeries.Sequence durationInFrames={framesChat(chat.mensagens.length, props.ritmo)}>
+          <Chat c={c} marca={marca} logoUrl={logoUrl} ritmo={props.ritmo} {...chat} />
         </TransitionSeries.Sequence>
         <TransitionSeries.Transition presentation={fade()} timing={timing} />
         <TransitionSeries.Sequence durationInFrames={CTA_FRAMES}>

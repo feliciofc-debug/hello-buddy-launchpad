@@ -38,9 +38,16 @@ import {
 } from "../_shared/video-legenda-flow.ts";
 import {
   enfileirarVideoMotion,
+  minutosRenderEstimado,
   montarRoteiroMotion,
 } from "../_shared/video-motion-enfileirar.ts";
-import { duracaoEstimada, ROTULO_ESTILO, type EstiloMotion } from "../_shared/video-motion.ts";
+import {
+  duracaoEstimada,
+  ROTULO_DURACAO,
+  ROTULO_ESTILO,
+  type DuracaoMotion,
+  type EstiloMotion,
+} from "../_shared/video-motion.ts";
 import { extrairCoresDoTexto } from "../_shared/video-cores.ts";
 
 import {
@@ -4551,7 +4558,18 @@ function formatVideoDraft(props: any, tema: string, duracao: number, paleta?: st
     : "";
   const cta = props?.cta?.frase ? `\n\n*CTA:* ${props.cta.frase}` : "";
   const cores = paleta ? `\n\n*Paleta:* ${paleta}` : "";
-  return `🎬 *Roteiro do vídeo — ${tema}*\n\n*Gancho:* ${linhas || "(não informado)"}\n\n*Conversa:*\n${mensagens || "(não informado)"}${cta}${cores}\n\nDuração estimada: ${duracao}s.\n\nResponda *APROVADO* para eu renderizar o MP4 (leva cerca de 4 minutos), ou me diga o que ajustar.`;
+  // O corpo muda com o estilo: conversa mostra as mensagens; institucional e
+  // lista mostram os argumentos/passos.
+  const itens: any[] = Array.isArray(props?.blocos) && props.blocos.length
+    ? props.blocos
+    : Array.isArray(props?.itens) ? props.itens : [];
+  const corpo = itens.length
+    ? `*${Array.isArray(props?.blocos) && props.blocos.length ? "Argumentos" : "Passos"}:*\n${
+      itens.map((b: any, i: number) => `${i + 1}. ${b?.titulo || ""}${b?.apoio ? ` — ${b.apoio}` : ""}`).join("\n")
+    }`
+    : `*Conversa:*\n${mensagens || "(não informado)"}`;
+  const minutos = minutosRenderEstimado(duracao);
+  return `🎬 *Roteiro do vídeo — ${tema}*\n\n*Gancho:* ${linhas || "(não informado)"}\n\n${corpo}${cta}${cores}\n\nDuração estimada: ${duracao}s.\n\nResponda *APROVADO* para eu renderizar o MP4 (leva cerca de ${minutos} minutos), ou me diga o que ajustar.`;
 }
 
 async function criarRascunhoVideoMotion(
@@ -4559,6 +4577,7 @@ async function criarRascunhoVideoMotion(
   tema: string,
   textoCores?: string,
   estilo?: string | null,
+  duracao?: string | null,
 ): Promise<string> {
   if (!isOwner(ctx)) return "Esse recurso é exclusivo do responsável da conta. Posso encaminhar o pedido para ele.";
   // Prospecção: quando o pedido menciona cores (hex ou nome), o vídeo sai na
@@ -4572,6 +4591,7 @@ async function criarRascunhoVideoMotion(
     nomeFallback: null,
     cores: pedidas?.cores ?? null,
     estilo: estilo ?? null,
+    duracao: duracao ?? null,
   });
   const token = videoDraftToken();
   const { error } = await sb.from("video_motion_rascunhos").insert({
@@ -4589,7 +4609,10 @@ async function criarRascunhoVideoMotion(
     ? `${pedidas.resumo} (cores que você pediu)`
     : `fundo ${roteiro.props?.cores?.bg}, destaque ${roteiro.props?.cores?.destaque} (padrão da sua marca)`;
   const rotuloEstilo = ROTULO_ESTILO[(roteiro.props?.estilo ?? "conversa") as EstiloMotion] ?? "Conversa no celular";
-  return `${formatVideoDraft(roteiro.props, tema, roteiro.props ? duracaoEstimada(roteiro.props) : 0, paleta)}\n\nFormato: *${rotuloEstilo}*\n\nCódigo de aprovação: *${token}*`;
+  const segundos = roteiro.props ? duracaoEstimada(roteiro.props) : 0;
+  const rotuloDuracao = ROTULO_DURACAO[(roteiro.props?.duracao ?? "curto") as DuracaoMotion] ?? "Curto (~25s)";
+  const minutos = minutosRenderEstimado(segundos);
+  return `${formatVideoDraft(roteiro.props, tema, segundos, paleta)}\n\nFormato: *${rotuloEstilo}*\nDuração: *${rotuloDuracao}* — render em cerca de ${minutos} min\n\nCódigo de aprovação: *${token}*`;
 }
 
 async function buscarRascunhoVideo(ctx: { userId: string; fromNumber: string }): Promise<any | null> {
@@ -5139,6 +5162,7 @@ const TOOLS = [
         properties: {
           tema: { type: "string", description: "Tema e objetivo do vídeo, preservando a ideia do responsável. Ex: 'mostrar como a Ademicon agenda posts e publica nas redes'." },
           cores: { type: "string", description: "Trecho LITERAL do pedido que menciona cores, com rótulos e hex se houver. Ex: 'fundo #ffffff, fundo 2 #fff5f5, destaque #E30613, apoio #ff4d57' ou 'vermelho e branco'. Deixe vazio se ele não citou cor nenhuma." },
+          duracao: { type: "string", enum: ["curto", "medio", "longo"], description: "Duração SE ele pediu: 'curto' (~25s, padrão para redes), 'medio' (~45s), 'longo' (~75s, apresentação comercial). Vídeo mais longo tem MAIS conteúdo e demora mais para renderizar. Omita quando ele não pedir." },
           estilo: { type: "string", enum: ["auto", "conversa", "institucional", "lista"], description: "Formato do vídeo SE ele pediu: 'conversa' (celular com balões de WhatsApp), 'institucional' (tipografia grande, argumentos, selo/dado), 'lista' (itens numerados, '3 motivos', 'passo a passo'). Use 'auto' quando ele não pedir formato — a plataforma escolhe pelo tema." },
         },
         required: ["tema"],
@@ -5976,6 +6000,7 @@ async function runTool(
         normalizeVideoTopic(args?.tema ?? ""),
         String(args?.cores ?? ""),
         typeof args?.estilo === "string" ? args.estilo : null,
+        typeof args?.duracao === "string" ? args.duracao : null,
       ),
     };
   }
