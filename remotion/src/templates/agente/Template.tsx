@@ -304,7 +304,18 @@ const Chat: React.FC<{ c: Paleta; marca: string; logoUrl?: string } & TemplateAg
           ) : (
             <>
               <div style={{ width: 34, height: 34, borderRadius: 10, background: c.destaque }} />
-              <span style={{ color: c.texto, fontSize: 26, fontWeight: 700, letterSpacing: 1 }}>
+              <span
+                style={{
+                  color: c.texto,
+                  fontSize: 26,
+                  fontWeight: 700,
+                  letterSpacing: 1,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  maxWidth: 380,
+                }}
+              >
                 {marca}
               </span>
             </>
