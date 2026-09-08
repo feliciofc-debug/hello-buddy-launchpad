@@ -345,7 +345,7 @@ export function normalizarProps(
   const mensagensBrutas: any[] = Array.isArray(bruto?.chat?.mensagens) ? bruto.chat.mensagens : [];
   const mensagens: Mensagem[] = mensagensBrutas
     .slice(0, volume.mensagens)
-    .map((m) => ({
+    .map((m): Mensagem => ({
       de: m?.de === "agente" ? "agente" : "dono",
       texto: limpar(m?.texto, 110),
     }))
