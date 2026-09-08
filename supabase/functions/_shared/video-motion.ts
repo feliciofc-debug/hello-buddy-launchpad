@@ -239,6 +239,10 @@ export function normalizarProps(
     semContato?: boolean;
     /** trechos do tenant que não podem aparecer (nome do dono, telefone) */
     proibidos?: string[];
+    /** estilo escolhido pelo usuário; vence o que a IA sugeriu */
+    estilo?: EstiloMotion | null;
+    /** arranjo de cena forçado (1..3) */
+    arranjo?: number | null;
   },
 ): MotionProps {
   const nomes = ctx.nomes ?? [];
