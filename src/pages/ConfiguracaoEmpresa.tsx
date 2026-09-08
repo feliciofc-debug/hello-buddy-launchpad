@@ -73,7 +73,6 @@ export default function ConfiguracaoEmpresa() {
           diferenciais: diferenciais,
           publico_alvo: publicoAlvo,
           site: site,
-          site: site,
           voz_copy: tomDeVoz || null,
           updated_at: new Date().toISOString()
         }, {
