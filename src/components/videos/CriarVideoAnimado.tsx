@@ -106,6 +106,7 @@ export const CriarVideoAnimado = () => {
   const [trilhaPreviewUrl, setTrilhaPreviewUrl] = useState<string | null>(null);
   const [subindoTrilha, setSubindoTrilha] = useState(false);
   const [importarAberto, setImportarAberto] = useState(false);
+  const [tomDeVozCliente, setTomDeVozCliente] = useState('');
 
   const carregarMarca = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -195,7 +196,10 @@ export const CriarVideoAnimado = () => {
     toast.success(semTrilha ? 'Vídeos novos ficarão sem trilha.' : 'Trilha padrão salva para os próximos vídeos.');
   };
 
-  const handleLogo = async (file: File) => {
+  // `definirComoMarca: false` usa a logo apenas neste vídeo (prospecção),
+  // sem substituir a logo cadastrada da própria empresa.
+  const handleLogo = async (file: File, opcoes?: { definirComoMarca?: boolean }) => {
+    const definirComoMarca = opcoes?.definirComoMarca !== false;
     if (!file.type.startsWith('image/') || file.size > 5 * 1024 * 1024) {
       toast.error('Use uma imagem PNG, JPEG ou WEBP de até 5MB.');
       return;
@@ -208,15 +212,19 @@ export const CriarVideoAnimado = () => {
       const novoPath = `${user.id}/${Date.now()}-${nome}`;
       const { error: uploadError } = await supabase.storage.from('tenant-logos').upload(novoPath, file, { contentType: file.type });
       if (uploadError) throw uploadError;
-      const { error: deleteError } = await supabase.from('tenant_logos').delete().eq('user_id', user.id);
-      if (deleteError) throw deleteError;
-      const { error: insertError } = await supabase.from('tenant_logos').insert({ user_id: user.id, storage_path: novoPath, file_name: file.name, mime_type: file.type, ativo: true });
-      if (insertError) throw insertError;
-      if (logoPath) await supabase.storage.from('tenant-logos').remove([logoPath]);
+
+      if (definirComoMarca) {
+        const { error: deleteError } = await supabase.from('tenant_logos').delete().eq('user_id', user.id);
+        if (deleteError) throw deleteError;
+        const { error: insertError } = await supabase.from('tenant_logos').insert({ user_id: user.id, storage_path: novoPath, file_name: file.name, mime_type: file.type, ativo: true });
+        if (insertError) throw insertError;
+        if (logoPath) await supabase.storage.from('tenant-logos').remove([logoPath]);
+      }
+
       const { data: signed } = await supabase.storage.from('tenant-logos').createSignedUrl(novoPath, 3600);
       setLogoPath(novoPath);
       setLogoUrl(signed?.signedUrl ?? null);
-      toast.success('Logo do cliente anexada.');
+      toast.success(definirComoMarca ? 'Logo do cliente anexada.' : 'Logo do site aplicada a este vídeo.');
     } catch (e: any) {
       toast.error(e?.message || 'Não foi possível anexar a logo.');
     } finally {
@@ -237,23 +245,35 @@ export const CriarVideoAnimado = () => {
     const novas = { ...cores, ...d.paleta };
     setPaletaSelecionada('personalizada');
     setCores(novas);
-    if (d.nome_empresa) setMarcaCliente(d.nome_empresa.slice(0, 18));
-    setProps((p) => (p ? { ...p, cores: novas, marca: d.nome_empresa?.slice(0, 18) || p.marca, site: d.url } : p));
+    if (d.nome_empresa) setMarcaCliente(d.nome_empresa);
+    setTomDeVozCliente(d.tom_de_voz || '');
+    setProps((p) => (p ? {
+      ...p,
+      cores: novas,
+      marca: d.nome_empresa || p.marca,
+      site: d.url,
+      // Peça de prospecção: o contato é do cliente, não o do usuário.
+      cta: { ...p.cta, telefone: '', consultor: '' },
+    } : p));
 
-    if (d.logo_url) {
+    // A logo vem baixada pela função (data URL), porque o navegador é
+    // bloqueado por CORS ao buscar imagem no site de terceiro.
+    const fonte = d.logo_data_url || null;
+    if (fonte) {
       try {
-        const resp = await fetch(d.logo_url);
-        if (!resp.ok) throw new Error('download');
+        const resp = await fetch(fonte);
         const blob = await resp.blob();
-        if (!blob.type.startsWith('image/')) throw new Error('tipo');
-        const ext = blob.type.split('/')[1]?.replace('svg+xml', 'svg') || 'png';
-        await handleLogo(new File([blob], `logo-site.${ext}`, { type: blob.type }));
+        const tipo = blob.type || 'image/png';
+        const ext = tipo.split('/')[1]?.replace('svg+xml', 'svg').replace(/^(x-icon|vnd\.microsoft\.icon)$/, 'ico') || 'png';
+        await handleLogo(new File([blob], `logo-site.${ext}`, { type: tipo }), { definirComoMarca: false });
       } catch {
-        toast.info('Não consegui baixar a logo do site. Anexe o arquivo manualmente.');
+        toast.info('Não consegui aplicar a logo do site. Anexe o arquivo manualmente.');
       }
+    } else if (d.logo_url) {
+      toast.info('O site não liberou o download da logo. Anexe o arquivo manualmente.');
     }
 
-    toast.success('Cores do site aplicadas ao vídeo.');
+    toast.success('Cores e identidade do site aplicadas a este vídeo.');
   };
 
 
@@ -453,6 +473,8 @@ export const CriarVideoAnimado = () => {
           apenas_roteiro: true,
           cores,
           marca: marcaCliente.trim() || undefined,
+          tom_de_voz: tomDeVozCliente.trim() || undefined,
+          logo_path: logoPath || undefined,
           trilha_id: semTrilha ? undefined : trilhaId || undefined,
           sem_trilha: semTrilha,
         },
@@ -493,6 +515,9 @@ export const CriarVideoAnimado = () => {
           props: { ...props, site: props.site?.trim() || '' },
           legenda_post: legendaPost,
           formato: 'reels',
+          marca: marcaCliente.trim() || undefined,
+          tom_de_voz: tomDeVozCliente.trim() || undefined,
+          logo_path: logoPath || undefined,
           trilha_id: semTrilha ? undefined : trilhaId || props.trilha_id || undefined,
           sem_trilha: semTrilha,
           trilha_volume: props.trilha_volume ?? 0.28,

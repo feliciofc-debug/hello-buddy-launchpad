@@ -45,6 +45,10 @@ export type EnfileirarInput = {
   trilhaId?: string | null;
   semTrilha?: boolean;
   trilhaVolume?: number | null;
+  /** tom de voz que o roteiro deve seguir (ex.: lido do site do cliente) */
+  tomDeVoz?: string | null;
+  /** logo específica desta peça (prospecção), sempre dentro da pasta do usuário */
+  logoPath?: string | null;
   /** só devolve o roteiro, não enfileira */
   apenasRoteiro?: boolean;
 };
@@ -122,7 +126,12 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
   usouIA: boolean;
 }> {
   const { sb, userId, tema } = input;
-  const logoPath = await logoDoTenant(sb, userId);
+  // Logo desta peça: a informada (prospecção) tem prioridade, desde que esteja
+  // na pasta do próprio usuário; senão, a logo cadastrada em "Minha marca".
+  const logoInformada = typeof input.logoPath === "string" && input.logoPath.startsWith(`${userId}/`)
+    ? input.logoPath
+    : undefined;
+  const logoPath = logoInformada ?? await logoDoTenant(sb, userId);
   const trilha = await resolverTrilha(sb, userId, input);
   let props: MotionProps;
   let legendaPost = String(input.legendaPost ?? "").trim();
@@ -145,6 +154,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
     const r = await gerarRoteiroMotion(sb, userId, tema, {
       nomeFallback: input.nomeFallback ?? null,
       marca: String(input.marca ?? "").trim() || null,
+      tomDeVoz: String(input.tomDeVoz ?? "").trim() || null,
     });
     props = normalizarProps(
       { ...r.props, cores: input.cores ?? r.props.cores },

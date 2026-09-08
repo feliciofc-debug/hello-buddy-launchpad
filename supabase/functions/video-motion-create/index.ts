@@ -57,6 +57,8 @@ Deno.serve(async (req) => {
        formato: body?.formato ?? null,
        plataformas: body?.plataformas,
        nomeFallback: (user.user_metadata as any)?.nome ?? null,
+       tomDeVoz: typeof body?.tom_de_voz === "string" ? body.tom_de_voz : null,
+       logoPath: typeof body?.logo_path === "string" ? body.logo_path : null,
        trilhaId: typeof body?.trilha_id === "string" ? body.trilha_id : null,
        semTrilha: body?.sem_trilha === true,
        trilhaVolume: typeof body?.trilha_volume === "number" ? body.trilha_volume : null,
