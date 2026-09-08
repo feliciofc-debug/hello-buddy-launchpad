@@ -12,8 +12,56 @@ import { getTenantBusinessContext } from "./business-context.ts";
 
 export type Mensagem = { de: "dono" | "agente"; texto: string };
 
+/** Estilos da biblioteca de templates. `conversa` é o histórico (celular + chat). */
+export type EstiloMotion = "conversa" | "institucional" | "lista";
+
+export const ESTILOS_MOTION: EstiloMotion[] = ["conversa", "institucional", "lista"];
+
+export const TEMPLATE_POR_ESTILO: Record<EstiloMotion, string> = {
+  conversa: "template-agente",
+  institucional: "template-institucional",
+  lista: "template-lista",
+};
+
+export type BlocoMotion = { titulo: string; apoio?: string; icone?: string };
+
+const ICONES_OK = [
+  "raio",
+  "escudo",
+  "grafico",
+  "relogio",
+  "chat",
+  "selo",
+  "check",
+  "engrenagem",
+  "alvo",
+];
+
+/** Estilo pedido em texto livre ("faz em formato de lista"). */
+export function estiloPedidoNoTexto(texto: string): EstiloMotion | null {
+  const t = String(texto ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (/\b(lista|passo a passo|passos|topicos|motivos|dicas|checklist|numerad[oa])\b/.test(t)) return "lista";
+  if (/\b(institucional|autoridade|tecnologia|seguranca|selo|diferenciais?|apresentacao da empresa)\b/.test(t)) {
+    return "institucional";
+  }
+  if (/\b(conversa|chat|whatsapp|celular|balo(?:es|ao)|atendimento por audio|manda audio)\b/.test(t)) return "conversa";
+  return null;
+}
+
 export type MotionProps = {
   marca: string;
+  /** estilo/template desta peça */
+  estilo?: EstiloMotion;
+  /** arranjo de cena dentro do estilo (1, 2 ou 3) */
+  arranjo?: number;
+  /** institucional: blocos de argumento */
+  blocos?: BlocoMotion[];
+  /** institucional: dado ou selo em destaque */
+  selo?: { valor: string; rotulo?: string };
+  /** lista: itens numerados */
+  itens?: BlocoMotion[];
+  /** lista: rótulo ("3 motivos", "4 passos") */
+  rotulo?: string;
   /** preenchido pelo backend; nunca vem do usuário para outro tenant */
   logo_path?: string;
   logoUrl?: string;
@@ -191,6 +239,10 @@ export function normalizarProps(
     semContato?: boolean;
     /** trechos do tenant que não podem aparecer (nome do dono, telefone) */
     proibidos?: string[];
+    /** estilo escolhido pelo usuário; vence o que a IA sugeriu */
+    estilo?: EstiloMotion | null;
+    /** arranjo de cena forçado (1..3) */
+    arranjo?: number | null;
   },
 ): MotionProps {
   const nomes = ctx.nomes ?? [];
@@ -259,8 +311,59 @@ export function normalizarProps(
   const marca = marcaBase || "Sua marca";
   const site = removerVestigiosAmz(limparBruto(bruto?.site ?? ctx.site, 40), marca);
 
+  // ---- biblioteca de templates ----
+  const estilo: EstiloMotion = ESTILOS_MOTION.includes(ctx.estilo as EstiloMotion)
+    ? (ctx.estilo as EstiloMotion)
+    : ESTILOS_MOTION.includes(bruto?.estilo)
+      ? (bruto.estilo as EstiloMotion)
+      : "conversa";
+
+  const listaDe = (v: unknown, max: number): BlocoMotion[] =>
+    (Array.isArray(v) ? v : [])
+      .slice(0, max)
+      .map((b: any) => ({
+        titulo: limpar(b?.titulo, 30),
+        apoio: limpar(b?.apoio, 62) || undefined,
+        icone: ICONES_OK.includes(String(b?.icone)) ? String(b.icone) : undefined,
+      }))
+      .filter((b) => b.titulo.length > 0);
+
+  const blocos = listaDe(bruto?.blocos, 4);
+  const itens = listaDe(bruto?.itens, 5);
+  const seloValor = limpar(bruto?.selo?.valor, 22);
+  // Arranjo: o pedido manda; sem pedido, sorteia para dois vídeos seguidos do
+  // mesmo estilo não saírem com o mesmo visual.
+  const arranjoBruto = Number(ctx.arranjo ?? bruto?.arranjo);
+  const arranjo = [1, 2, 3].includes(arranjoBruto)
+    ? arranjoBruto
+    : 1 + Math.floor(Math.random() * 3);
+
   return {
     marca,
+    estilo,
+    arranjo,
+    blocos: estilo === "institucional"
+      ? (blocos.length
+        ? blocos
+        : [
+          { titulo: "Tecnologia própria", apoio: "Feita para o seu negócio.", icone: "engrenagem" },
+          { titulo: "Atendimento imediato", apoio: "Resposta em segundos.", icone: "relogio" },
+          { titulo: "Processo seguro", apoio: "Dados isolados por empresa.", icone: "escudo" },
+        ])
+      : undefined,
+    selo: estilo === "institucional" && seloValor
+      ? { valor: seloValor, rotulo: limpar(bruto?.selo?.rotulo, 34) || undefined }
+      : undefined,
+    itens: estilo === "lista"
+      ? (itens.length
+        ? itens
+        : [
+          { titulo: "Você pede", apoio: "Uma frase basta.", icone: "chat" },
+          { titulo: "A plataforma escreve", apoio: "No tom da sua marca.", icone: "engrenagem" },
+          { titulo: "Publicação agendada", apoio: "No melhor horário.", icone: "relogio" },
+        ])
+      : undefined,
+    rotulo: estilo === "lista" ? (limpar(bruto?.rotulo, 20) || undefined) : undefined,
     logo_path: typeof bruto?.logo_path === "string" ? bruto.logo_path : undefined,
     logoUrl: typeof bruto?.logoUrl === "string" ? bruto.logoUrl : undefined,
     trilha_id: typeof bruto?.trilha_id === "string" ? bruto.trilha_id : undefined,
@@ -306,11 +409,28 @@ export function normalizarProps(
 }
 
 
-/** Duração aproximada em segundos (espelha framesTemplateAgente/30). */
+/** Duração aproximada em segundos — espelha os frames de cada template. */
 export function duracaoEstimada(props: MotionProps): number {
-  const frames = 190 + (40 + Math.max(1, props.chat.mensagens.length) * 52 + 115) + 170 - 60;
+  let frames: number;
+  if (props.estilo === "institucional") {
+    const blocos = Math.max(1, (props.blocos ?? []).length);
+    const selo = props.selo?.valor ? 120 : 0;
+    frames = 170 + blocos * 100 + selo + 170 - 30 * (selo ? 3 : 2);
+  } else if (props.estilo === "lista") {
+    const itens = Math.max(1, (props.itens ?? []).length);
+    frames = 170 + itens * 95 + 170 - 60;
+  } else {
+    frames = 190 + (40 + Math.max(1, props.chat.mensagens.length) * 52 + 115) + 170 - 60;
+  }
   return Math.round((frames / 30) * 10) / 10;
 }
+
+/** Rótulo do estilo para mensagens ao usuário. */
+export const ROTULO_ESTILO: Record<EstiloMotion, string> = {
+  conversa: "Conversa no celular",
+  institucional: "Institucional",
+  lista: "Lista / passo a passo",
+};
 
 /**
  * Gera o roteiro do vídeo com IA a partir do contexto real do tenant.
@@ -320,7 +440,14 @@ export async function gerarRoteiroMotion(
   sb: SupabaseClient,
   userId: string,
   tema: string,
-  opts?: { nomeFallback?: string | null; marca?: string | null; tomDeVoz?: string | null },
+  opts?: {
+    nomeFallback?: string | null;
+    marca?: string | null;
+    tomDeVoz?: string | null;
+    /** estilo pedido pelo usuário; null/undefined = a IA escolhe */
+    estilo?: EstiloMotion | null;
+    arranjo?: number | null;
+  },
 ): Promise<{ props: MotionProps; legendaPost: string; usouIA: boolean; nomes: string[] }> {
   const ctx = await getTenantBusinessContext(sb, userId, { nomeFallback: opts?.nomeFallback });
   // A marca informada no formulário manda: o vídeo é do cliente, não do tenant.
@@ -350,7 +477,15 @@ export async function gerarRoteiroMotion(
       ]
       : [],
     nomes,
+    // Estilo explícito (formulário ou pedido no WhatsApp). Sem isso a IA decide.
+    estilo: (ESTILOS_MOTION.includes(opts?.estilo as EstiloMotion)
+      ? (opts?.estilo as EstiloMotion)
+      : estiloPedidoNoTexto(tema)) as EstiloMotion | null,
+    arranjo: opts?.arranjo ?? null,
   };
+
+  const estiloForcado = base.estilo;
+
 
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
   const instrucao = `Você escreve roteiros de vídeos verticais (20-25s) para redes sociais.
@@ -360,14 +495,30 @@ ${tom ? `TOM DE VOZ DA MARCA (obrigatório seguir): ${tom}\n` : ""}
 ATENÇÃO: o nome do negócio e as marcas citadas devem ser escritos EXATAMENTE assim, letra por letra: ${nomes.join(", ") || nome}. Nunca abrevie, traduza ou altere a grafia.
 Escreva o nome da marca por extenso sempre que citá-lo. NUNCA deixe lacuna, espaço em branco, placeholder, chave {{ }} ou colchete no lugar de um nome.
 ${terceiro ? "Este vídeo é para a marca acima, não para quem está pedindo: não cite nome de pessoa, telefone, consultor ou outra empresa.\n" : ""}
+ESTILO DO VÍDEO: ${
+    estiloForcado
+      ? `use obrigatoriamente "${estiloForcado}".`
+      : `escolha o estilo que melhor conta ESTE tema, no campo "estilo":
+ - "conversa": só quando o tema é interação, atendimento, pedido por áudio, resposta ao cliente;
+ - "institucional": tecnologia, segurança, diferencial, autoridade, dado ou selo;
+ - "lista": "3 motivos", "como funciona em N passos", dicas, checklist.
+Na dúvida entre conversa e institucional, prefira institucional.`
+  }
 Devolva SOMENTE JSON válido, sem markdown, neste formato:
 {
+ "estilo": "conversa | institucional | lista",
  "hook": {"kicker":"até 24 caracteres","linhas":["até 18 chars","até 18 chars"],"destaque":"até 20 chars","sub":"até 80 chars, pode ter \\n"},
  "chat": {"titulo":"até 24 chars","tituloDestaque":"até 16 chars","mensagens":[{"de":"dono","texto":"até 90 chars"},{"de":"agente","texto":"até 100 chars"}]},
+ "blocos": [{"titulo":"até 28 chars","apoio":"até 60 chars","icone":"raio|escudo|grafico|relogio|chat|selo|check|engrenagem|alvo"}],
+ "selo": {"valor":"até 20 chars (dado, número ou selo)","rotulo":"até 32 chars"},
+ "itens": [{"titulo":"até 28 chars","apoio":"até 60 chars","icone":"um dos ícones acima"}],
+ "rotulo": "até 18 chars, ex.: 3 motivos / 4 passos",
  "cta": {"frase":"até 40 chars, frase completa","sub":"até 55 chars"},
  "legendas": ["frase curta 1","frase curta 2","frase curta 3","frase curta 4"],
  "legenda_post": "legenda pronta para publicar, 2 a 4 linhas, tom institucional, 6 a 10 hashtags no final"
 }
+Preencha a seção do estilo escolhido: "chat" (conversa), "blocos" + "selo" (institucional, 3 ou 4 blocos) ou "itens" + "rotulo" (lista, 3 a 5 itens). As outras seções podem ficar vazias.
+No institucional, só preencha "selo" com dado REAL do contexto acima; sem dado confiável, deixe vazio — nunca invente número, percentual ou certificação.
 Regras: 4 ou 6 mensagens no chat, alternando dono/agente, frases COMPLETAS dentro do limite de caracteres (nunca corte no meio de palavra), sem emoji nos textos do vídeo, sem promessa de resultado garantido, sem inventar preço.
 O leitor é um profissional: proibido gíria e informalidade exagerada ("tá insano", "bora", "top", "sem neura"). Se o tom da marca for institucional ou formal, escreva formal.
 O nome da marca identifica QUEM fala, nunca o objeto da ação: escreva "publicação concluída", "campanha aprovada", jamais "${nome} concluída" ou "${nome} aprovada".

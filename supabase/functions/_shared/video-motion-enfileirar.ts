@@ -10,9 +10,13 @@
 
 import {
   duracaoEstimada,
+  ESTILOS_MOTION,
+  estiloPedidoNoTexto,
   gerarRoteiroMotion,
   normalizarProps,
   nomesOficiais,
+  TEMPLATE_POR_ESTILO,
+  type EstiloMotion,
   type MotionProps,
 } from "./video-motion.ts";
 
@@ -47,6 +51,10 @@ export type EnfileirarInput = {
   trilhaVolume?: number | null;
   /** tom de voz que o roteiro deve seguir (ex.: lido do site do cliente) */
   tomDeVoz?: string | null;
+  /** estilo da biblioteca de templates; vazio/"auto" = a IA escolhe pelo tema */
+  estilo?: string | null;
+  /** arranjo de cena (1..3); vazio = sorteado para variar o visual */
+  arranjo?: number | null;
   /** logo específica desta peça (prospecção), sempre dentro da pasta do usuário */
   logoPath?: string | null;
   /** só devolve o roteiro, não enfileira */
@@ -83,6 +91,14 @@ export async function logoDoTenant(sb: any, userId: string): Promise<string | un
     .maybeSingle();
   const path = typeof data?.storage_path === "string" ? data.storage_path : "";
   return path.startsWith(`${userId}/`) ? path : undefined;
+}
+
+/** Estilo pedido explicitamente; "auto"/vazio devolve o que o texto sugerir. */
+export function estiloEscolhido(input: EnfileirarInput): EstiloMotion | null {
+  const pedido = String(input.estilo ?? "").trim().toLowerCase();
+  if (ESTILOS_MOTION.includes(pedido as EstiloMotion)) return pedido as EstiloMotion;
+  if (pedido && pedido !== "auto" && pedido !== "automatico" && pedido !== "automático") return null;
+  return estiloPedidoNoTexto(String(input.tema ?? ""));
 }
 
 const normalizarTema = (t: string) =>
@@ -153,6 +169,8 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
         telefone: String(p?.cta?.telefone ?? "") || undefined,
         consultor: String(p?.cta?.consultor ?? "") || undefined,
         nomes,
+        estilo: estiloEscolhido(input) ?? (p?.estilo ?? null),
+        arranjo: input.arranjo ?? p?.arranjo ?? null,
       },
     );
   } else {
@@ -160,10 +178,18 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
       nomeFallback: input.nomeFallback ?? null,
       marca: String(input.marca ?? "").trim() || null,
       tomDeVoz: String(input.tomDeVoz ?? "").trim() || null,
+      estilo: estiloEscolhido(input),
+      arranjo: input.arranjo ?? null,
     });
     props = normalizarProps(
       { ...r.props, cores: input.cores ?? r.props.cores },
-      { marca: r.props.marca, site: r.props.site, nomes: r.nomes },
+      {
+        marca: r.props.marca,
+        site: r.props.site,
+        nomes: r.nomes,
+        estilo: r.props.estilo ?? null,
+        arranjo: r.props.arranjo ?? null,
+      },
     );
     usouIA = r.usouIA;
     if (!legendaPost) legendaPost = r.legendaPost;
@@ -285,7 +311,7 @@ export async function enfileirarVideoMotion(input: EnfileirarInput): Promise<Enf
       user_id: userId,
       telefone: String(input.telefone ?? "").replace(/\D/g, "") || null,
       origem,
-      template: "template-agente",
+      template: TEMPLATE_POR_ESTILO[(props.estilo ?? "conversa") as EstiloMotion] ?? "template-agente",
       titulo: tema.slice(0, 140),
       props,
       trilha_id: props.trilha_id ?? null,
@@ -295,7 +321,13 @@ export async function enfileirarVideoMotion(input: EnfileirarInput): Promise<Enf
       formato: ["reels", "story", "feed"].includes(String(input.formato))
         ? String(input.formato)
         : "reels",
-      metadata: { usou_ia: usouIA, origem, sem_trilha: !props.trilha_id },
+      metadata: {
+        usou_ia: usouIA,
+        origem,
+        sem_trilha: !props.trilha_id,
+        estilo: props.estilo ?? "conversa",
+        arranjo: props.arranjo ?? 1,
+      },
     })
     .select()
     .single();

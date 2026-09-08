@@ -109,6 +109,8 @@ export const CriarVideoAnimado = () => {
   const [subindoTrilha, setSubindoTrilha] = useState(false);
   const [importarAberto, setImportarAberto] = useState(false);
   const [tomDeVozCliente, setTomDeVozCliente] = useState('');
+  // Biblioteca de templates: "auto" deixa a plataforma escolher pelo tema.
+  const [estilo, setEstilo] = useState<'auto' | 'conversa' | 'institucional' | 'lista'>('auto');
 
   const carregarMarca = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -479,6 +481,7 @@ export const CriarVideoAnimado = () => {
         body: {
           tema: tema.trim(),
           apenas_roteiro: true,
+          estilo,
           cores,
           marca: marcaCliente.trim() || undefined,
           tom_de_voz: tomDeVozCliente.trim() || undefined,
@@ -521,6 +524,7 @@ export const CriarVideoAnimado = () => {
         body: {
           tema: tema.trim(),
           props: { ...props, site: props.site?.trim() || '' },
+          estilo,
           legenda_post: legendaPost,
           formato: 'reels',
           marca: marcaCliente.trim() || undefined,
@@ -679,6 +683,34 @@ export const CriarVideoAnimado = () => {
             </Button>
             <span className="text-xs text-muted-foreground">O Jarvis usará essa escolha sem perguntar no WhatsApp.</span>
           </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Formato do vídeo</Label>
+          <div className="flex flex-wrap gap-2">
+            {([
+              { id: 'auto', nome: 'Automático', dica: 'A plataforma escolhe pelo tema' },
+              { id: 'conversa', nome: 'Conversa', dica: 'Celular com balões de WhatsApp' },
+              { id: 'institucional', nome: 'Institucional', dica: 'Texto grande, argumentos e selo' },
+              { id: 'lista', nome: 'Lista', dica: 'Itens numerados, passo a passo' },
+            ] as const).map((op) => (
+              <Button
+                key={op.id}
+                type="button"
+                size="sm"
+                variant={estilo === op.id ? 'default' : 'outline'}
+                onClick={() => setEstilo(op.id)}
+                title={op.dica}
+              >
+                {op.nome}
+              </Button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {estilo === 'auto'
+              ? 'No automático, cada vídeo sai no formato que combina com o tema — evita todos ficarem iguais.'
+              : 'Formato fixo para este vídeo.'}
+          </p>
         </div>
 
         <div className="space-y-2">
