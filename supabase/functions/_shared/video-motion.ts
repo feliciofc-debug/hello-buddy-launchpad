@@ -12,8 +12,56 @@ import { getTenantBusinessContext } from "./business-context.ts";
 
 export type Mensagem = { de: "dono" | "agente"; texto: string };
 
+/** Estilos da biblioteca de templates. `conversa` é o histórico (celular + chat). */
+export type EstiloMotion = "conversa" | "institucional" | "lista";
+
+export const ESTILOS_MOTION: EstiloMotion[] = ["conversa", "institucional", "lista"];
+
+export const TEMPLATE_POR_ESTILO: Record<EstiloMotion, string> = {
+  conversa: "template-agente",
+  institucional: "template-institucional",
+  lista: "template-lista",
+};
+
+export type BlocoMotion = { titulo: string; apoio?: string; icone?: string };
+
+const ICONES_OK = [
+  "raio",
+  "escudo",
+  "grafico",
+  "relogio",
+  "chat",
+  "selo",
+  "check",
+  "engrenagem",
+  "alvo",
+];
+
+/** Estilo pedido em texto livre ("faz em formato de lista"). */
+export function estiloPedidoNoTexto(texto: string): EstiloMotion | null {
+  const t = String(texto ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (/\b(lista|passo a passo|passos|topicos|motivos|dicas|checklist|numerad[oa])\b/.test(t)) return "lista";
+  if (/\b(institucional|autoridade|tecnologia|seguranca|selo|diferenciais?|apresentacao da empresa)\b/.test(t)) {
+    return "institucional";
+  }
+  if (/\b(conversa|chat|whatsapp|celular|balo(?:es|ao)|atendimento por audio|manda audio)\b/.test(t)) return "conversa";
+  return null;
+}
+
 export type MotionProps = {
   marca: string;
+  /** estilo/template desta peça */
+  estilo?: EstiloMotion;
+  /** arranjo de cena dentro do estilo (1, 2 ou 3) */
+  arranjo?: number;
+  /** institucional: blocos de argumento */
+  blocos?: BlocoMotion[];
+  /** institucional: dado ou selo em destaque */
+  selo?: { valor: string; rotulo?: string };
+  /** lista: itens numerados */
+  itens?: BlocoMotion[];
+  /** lista: rótulo ("3 motivos", "4 passos") */
+  rotulo?: string;
   /** preenchido pelo backend; nunca vem do usuário para outro tenant */
   logo_path?: string;
   logoUrl?: string;
