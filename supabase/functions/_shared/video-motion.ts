@@ -280,7 +280,7 @@ export function normalizarProps(
 
 /** Duração aproximada em segundos (espelha framesTemplateAgente/30). */
 export function duracaoEstimada(props: MotionProps): number {
-  const frames = 190 + (40 + Math.max(1, props.chat.mensagens.length) * 52 + 70) + 170 - 60;
+  const frames = 190 + (40 + Math.max(1, props.chat.mensagens.length) * 52 + 115) + 170 - 60;
   return Math.round((frames / 30) * 10) / 10;
 }
 
