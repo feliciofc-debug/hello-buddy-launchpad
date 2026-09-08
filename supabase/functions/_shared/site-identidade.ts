@@ -194,7 +194,7 @@ function agrupar(acc: Map<string, number>): Array<{ hex: string; peso: number }>
 
 /** Escolhe fundo (neutro) e destaque (cor viva) a partir das cores lidas. */
 function montarPaleta(principais: Array<{ hex: string; peso: number }>): CoresVideo {
-  const vivas = principais.filter((c) => saturacao(c.hex) >= 0.25 && brilho(c.hex) > 0.08 && brilho(c.hex) < 0.94);
+  const vivas = principais.filter((c) => saturacao(c.hex) >= 0.25 && brilho(c.hex) > 0.2 && brilho(c.hex) < 0.94);
   const neutras = principais.filter((c) => !vivas.includes(c));
 
   const destaque = vivas[0]?.hex;
