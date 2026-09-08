@@ -99,9 +99,14 @@ export async function resolverTrilha(sb: any, userId: string, input: EnfileirarI
     query = query.eq("id", trilhaId);
   } else {
     const { data: config } = await sb.from("empresa_config").select("trilha_padrao_id").eq("user_id", userId).maybeSingle();
-    if (!config?.trilha_padrao_id) return null;
-    query = query.eq("id", config.trilha_padrao_id);
+    if (config?.trilha_padrao_id) {
+      query = query.eq("id", config.trilha_padrao_id);
+    } else {
+      // Sem padrão da empresa: usa a faixa padrão da plataforma para o vídeo nunca sair mudo.
+      query = query.is("user_id", null).eq("padrao_global", true);
+    }
   }
+
   const { data, error } = await query.maybeSingle();
   if (error) throw new Error(`não consegui carregar a trilha: ${error.message}`);
   if (!data) {
