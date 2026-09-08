@@ -368,6 +368,15 @@ const CTA: React.FC<
     ? site
     : site?.replace(/(?:https?:\/\/)?(?:www\.)?amzofertas\.com\.br\/?/gi, "").trim();
 
+  // Nome comprido não cabe dentro do bloco: ali entram as iniciais e o nome
+  // completo aparece abaixo, em uma linha só, sem quebrar palavra no meio.
+  const palavras = marca.split(/\s+/).filter(Boolean);
+  const nomeLongo = marca.length > 10;
+  const dentroDoBloco = nomeLongo ? palavras.map((p) => p[0]).join("").toUpperCase().slice(0, 4) : marca;
+  const tamanhoBloco =
+    dentroDoBloco.length <= 3 ? 78 : dentroDoBloco.length === 4 ? 62 : dentroDoBloco.length === 5 ? 50 : dentroDoBloco.length <= 8 ? 34 : 26;
+  const tamanhoFrase = frase.length > 46 ? 44 : frase.length > 34 ? 52 : 62;
+
   return (
     <AbsoluteFill style={{ ...font, alignItems: "center", justifyContent: "center" }}>
       <div
@@ -380,14 +389,13 @@ const CTA: React.FC<
           alignItems: "center",
           justifyContent: "center",
           color: logoUrl ? c.texto : textoSobre(c.destaque),
-          fontSize:
-            marca.length <= 3 ? 78 : marca.length === 4 ? 62 : marca.length === 5 ? 50 : marca.length <= 8 ? 34 : 26,
+          fontSize: tamanhoBloco,
           fontWeight: 800,
-          letterSpacing: marca.length > 5 ? 0 : -2,
+          letterSpacing: dentroDoBloco.length > 5 ? 0 : -2,
           lineHeight: 1.05,
           textAlign: "center",
           padding: 14,
-          overflowWrap: "anywhere",
+          whiteSpace: "nowrap",
           transform: `scale(${logo}) translateY(${float}px)`,
           boxShadow: `0 40px 90px ${rgba(c.destaque, ehClaro(c.bg) ? 0.18 : 0.32)}`,
         }}
@@ -395,15 +403,34 @@ const CTA: React.FC<
         {logoUrl ? (
           <Img src={logoUrl} style={{ width: 164, height: 164, objectFit: "contain" }} />
         ) : (
-          marca
+          dentroDoBloco
         )}
       </div>
+      {!logoUrl && nomeLongo ? (
+        <div
+          style={{
+            marginTop: 22,
+            color: c.texto,
+            fontSize: 38,
+            fontWeight: 700,
+            letterSpacing: -0.5,
+            textAlign: "center",
+            maxWidth: 900,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            opacity: texto,
+          }}
+        >
+          {marca}
+        </div>
+      ) : null}
       <div
         style={{
           marginTop: 54,
           padding: "0 80px",
           color: c.texto,
-          fontSize: 62,
+          fontSize: tamanhoFrase,
           fontWeight: 800,
           textAlign: "center",
           letterSpacing: -1.5,
