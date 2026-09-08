@@ -313,8 +313,16 @@ const SEGMENTOS: Array<[string, RegExp]> = [
 ];
 
 function segmentoDe(texto: string): string {
-  for (const [id, re] of SEGMENTOS) if (re.test(texto)) return id;
-  return "outros";
+  // Conta quantas vezes cada segmento aparece: "consórcio" citado 10 vezes
+  // pesa mais do que uma menção solta a "veículo".
+  let melhor = "outros";
+  let maior = 0;
+  for (const [id, re] of SEGMENTOS) {
+    const global = new RegExp(re.source, "gi");
+    const n = (texto.match(global) ?? []).length;
+    if (n > maior) { maior = n; melhor = id; }
+  }
+  return maior > 0 ? melhor : "outros";
 }
 
 function tomDeVozDe(texto: string): string {
