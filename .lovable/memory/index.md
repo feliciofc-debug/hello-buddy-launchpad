@@ -13,3 +13,4 @@
 - [LinkedIn Fase 1](mem://integrations/linkedin/fase-1-perfil-pessoal) — OAuth perfil pessoal, publicação e link sempre no 1º comentário
 - [LinkedIn comentários bloqueados](mem://constraints/linkedin-comentarios-nao-liberados) — 403 ACCESS_DENIED em socialActions; fallback põe o link no corpo do post
 - [Campanha 30 dias — estado](mem://features/marketing/campanha-30-dias-estado) — Série AMZ em 30 Segundos: lote 1 pronto (usar -v2), prompts de post, lotes 2-6 pendentes
+- [Duração dos vídeos animados](mem://features/marketing/duracao-video-motion) — Presets curto/médio/longo: volume de conteúdo e ritmo das cenas
