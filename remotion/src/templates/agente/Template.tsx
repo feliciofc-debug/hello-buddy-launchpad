@@ -268,7 +268,7 @@ const Chat: React.FC<{ c: Paleta; marca: string; logoUrl?: string } & TemplateAg
       <div
         style={{
           width: 640,
-          height: 1120,
+          height: alturaFone,
           borderRadius: 56,
           background: c.panel,
           border: `2px solid ${c.line}`,
