@@ -524,14 +524,25 @@ export const CriarVideoAnimado = () => {
             <Palette className="h-4 w-4 text-primary" />
             <Label className="font-semibold">Identidade do cliente</Label>
           </div>
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-4">
             {(Object.keys(PALETAS) as Array<keyof typeof PALETAS>).map((nome) => (
               <Button key={nome} type="button" variant={paletaSelecionada === nome ? 'default' : 'outline'} onClick={() => selecionarPaleta(nome)} className="justify-start">
                 <span className="mr-2 h-4 w-4 rounded-full border" style={{ backgroundColor: PALETAS[nome].cores.destaque }} />
                 {PALETAS[nome].label}
               </Button>
             ))}
+            <Button type="button" variant="outline" onClick={() => setImportarAberto(true)} className="justify-start">
+              <Globe className="mr-2 h-4 w-4" />
+              Importar do site
+            </Button>
           </div>
+          <ImportarDoSiteModal
+            aberto={importarAberto}
+            onFechar={() => setImportarAberto(false)}
+            modo="video"
+            onConfirmar={aplicarIdentidadeDoSite}
+          />
+
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {(['bg', 'bg2', 'destaque', 'destaqueSoft'] as const).map((nome) => (
               <label key={nome} className="flex items-center gap-2 text-xs text-muted-foreground">
