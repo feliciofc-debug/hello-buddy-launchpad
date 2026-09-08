@@ -239,6 +239,10 @@ const Chat: React.FC<{ c: Paleta; marca: string; logoUrl?: string } & TemplateAg
   const { fps } = useVideoConfig();
   const entrada = spring({ frame, fps, config: { damping: 200 } });
   const tituloOp = interpolate(frame, [6, 26], [0, 1], { extrapolateRight: "clamp" });
+  // O celular acompanha a quantidade de mensagens: antes sobrava dois terços
+  // de espaço vazio quando o roteiro trazia poucas falas.
+  const alturaFone = Math.max(560, Math.min(1120, 210 + mensagens.length * 178));
+
 
   return (
     <AbsoluteFill style={{ ...font, alignItems: "center", justifyContent: "center" }}>
