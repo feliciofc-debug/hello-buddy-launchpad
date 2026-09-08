@@ -307,8 +307,59 @@ export function normalizarProps(
   const marca = marcaBase || "Sua marca";
   const site = removerVestigiosAmz(limparBruto(bruto?.site ?? ctx.site, 40), marca);
 
+  // ---- biblioteca de templates ----
+  const estilo: EstiloMotion = ESTILOS_MOTION.includes(ctx.estilo as EstiloMotion)
+    ? (ctx.estilo as EstiloMotion)
+    : ESTILOS_MOTION.includes(bruto?.estilo)
+      ? (bruto.estilo as EstiloMotion)
+      : "conversa";
+
+  const listaDe = (v: unknown, max: number): BlocoMotion[] =>
+    (Array.isArray(v) ? v : [])
+      .slice(0, max)
+      .map((b: any) => ({
+        titulo: limpar(b?.titulo, 30),
+        apoio: limpar(b?.apoio, 62) || undefined,
+        icone: ICONES_OK.includes(String(b?.icone)) ? String(b.icone) : undefined,
+      }))
+      .filter((b) => b.titulo.length > 0);
+
+  const blocos = listaDe(bruto?.blocos, 4);
+  const itens = listaDe(bruto?.itens, 5);
+  const seloValor = limpar(bruto?.selo?.valor, 22);
+  // Arranjo: o pedido manda; sem pedido, sorteia para dois vídeos seguidos do
+  // mesmo estilo não saírem com o mesmo visual.
+  const arranjoBruto = Number(ctx.arranjo ?? bruto?.arranjo);
+  const arranjo = [1, 2, 3].includes(arranjoBruto)
+    ? arranjoBruto
+    : 1 + Math.floor(Math.random() * 3);
+
   return {
     marca,
+    estilo,
+    arranjo,
+    blocos: estilo === "institucional"
+      ? (blocos.length
+        ? blocos
+        : [
+          { titulo: "Tecnologia própria", apoio: "Feita para o seu negócio.", icone: "engrenagem" },
+          { titulo: "Atendimento imediato", apoio: "Resposta em segundos.", icone: "relogio" },
+          { titulo: "Processo seguro", apoio: "Dados isolados por empresa.", icone: "escudo" },
+        ])
+      : undefined,
+    selo: estilo === "institucional" && seloValor
+      ? { valor: seloValor, rotulo: limpar(bruto?.selo?.rotulo, 34) || undefined }
+      : undefined,
+    itens: estilo === "lista"
+      ? (itens.length
+        ? itens
+        : [
+          { titulo: "Você pede", apoio: "Uma frase basta.", icone: "chat" },
+          { titulo: "A plataforma escreve", apoio: "No tom da sua marca.", icone: "engrenagem" },
+          { titulo: "Publicação agendada", apoio: "No melhor horário.", icone: "relogio" },
+        ])
+      : undefined,
+    rotulo: estilo === "lista" ? (limpar(bruto?.rotulo, 20) || undefined) : undefined,
     logo_path: typeof bruto?.logo_path === "string" ? bruto.logo_path : undefined,
     logoUrl: typeof bruto?.logoUrl === "string" ? bruto.logoUrl : undefined,
     trilha_id: typeof bruto?.trilha_id === "string" ? bruto.trilha_id : undefined,
