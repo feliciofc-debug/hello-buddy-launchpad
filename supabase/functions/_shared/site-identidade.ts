@@ -347,7 +347,11 @@ export async function lerIdentidadeDoSite(entrada: string): Promise<IdentidadeSi
   const avisos: string[] = [];
 
   try {
-    const html = (await buscar(url, controle.signal)) ?? "";
+    // Muitos sites bloqueiam o domínio sem "www" (ou o contrário): tentamos os dois.
+    const alternativa = base.hostname.startsWith("www.")
+      ? url.replace("://www.", "://")
+      : url.replace("://", "://www.");
+    const html = (await buscar(url, controle.signal)) ?? (await buscar(alternativa, controle.signal)) ?? "";
     if (!html) {
       avisos.push("O site não respondeu à leitura (pode estar fora do ar ou bloqueando acesso automático).");
     }
