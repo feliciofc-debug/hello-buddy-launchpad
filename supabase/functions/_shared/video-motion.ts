@@ -480,14 +480,30 @@ ${tom ? `TOM DE VOZ DA MARCA (obrigatório seguir): ${tom}\n` : ""}
 ATENÇÃO: o nome do negócio e as marcas citadas devem ser escritos EXATAMENTE assim, letra por letra: ${nomes.join(", ") || nome}. Nunca abrevie, traduza ou altere a grafia.
 Escreva o nome da marca por extenso sempre que citá-lo. NUNCA deixe lacuna, espaço em branco, placeholder, chave {{ }} ou colchete no lugar de um nome.
 ${terceiro ? "Este vídeo é para a marca acima, não para quem está pedindo: não cite nome de pessoa, telefone, consultor ou outra empresa.\n" : ""}
+ESTILO DO VÍDEO: ${
+    estiloForcado
+      ? `use obrigatoriamente "${estiloForcado}".`
+      : `escolha o estilo que melhor conta ESTE tema, no campo "estilo":
+ - "conversa": só quando o tema é interação, atendimento, pedido por áudio, resposta ao cliente;
+ - "institucional": tecnologia, segurança, diferencial, autoridade, dado ou selo;
+ - "lista": "3 motivos", "como funciona em N passos", dicas, checklist.
+Na dúvida entre conversa e institucional, prefira institucional.`
+  }
 Devolva SOMENTE JSON válido, sem markdown, neste formato:
 {
+ "estilo": "conversa | institucional | lista",
  "hook": {"kicker":"até 24 caracteres","linhas":["até 18 chars","até 18 chars"],"destaque":"até 20 chars","sub":"até 80 chars, pode ter \\n"},
  "chat": {"titulo":"até 24 chars","tituloDestaque":"até 16 chars","mensagens":[{"de":"dono","texto":"até 90 chars"},{"de":"agente","texto":"até 100 chars"}]},
+ "blocos": [{"titulo":"até 28 chars","apoio":"até 60 chars","icone":"raio|escudo|grafico|relogio|chat|selo|check|engrenagem|alvo"}],
+ "selo": {"valor":"até 20 chars (dado, número ou selo)","rotulo":"até 32 chars"},
+ "itens": [{"titulo":"até 28 chars","apoio":"até 60 chars","icone":"um dos ícones acima"}],
+ "rotulo": "até 18 chars, ex.: 3 motivos / 4 passos",
  "cta": {"frase":"até 40 chars, frase completa","sub":"até 55 chars"},
  "legendas": ["frase curta 1","frase curta 2","frase curta 3","frase curta 4"],
  "legenda_post": "legenda pronta para publicar, 2 a 4 linhas, tom institucional, 6 a 10 hashtags no final"
 }
+Preencha a seção do estilo escolhido: "chat" (conversa), "blocos" + "selo" (institucional, 3 ou 4 blocos) ou "itens" + "rotulo" (lista, 3 a 5 itens). As outras seções podem ficar vazias.
+No institucional, só preencha "selo" com dado REAL do contexto acima; sem dado confiável, deixe vazio — nunca invente número, percentual ou certificação.
 Regras: 4 ou 6 mensagens no chat, alternando dono/agente, frases COMPLETAS dentro do limite de caracteres (nunca corte no meio de palavra), sem emoji nos textos do vídeo, sem promessa de resultado garantido, sem inventar preço.
 O leitor é um profissional: proibido gíria e informalidade exagerada ("tá insano", "bora", "top", "sem neura"). Se o tom da marca for institucional ou formal, escreva formal.
 O nome da marca identifica QUEM fala, nunca o objeto da ação: escreva "publicação concluída", "campanha aprovada", jamais "${nome} concluída" ou "${nome} aprovada".
