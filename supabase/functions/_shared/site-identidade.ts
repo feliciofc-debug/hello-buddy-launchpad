@@ -275,14 +275,13 @@ function logoDe(html: string, base: URL): string[] {
     const url = absoluto(c, baseUrl);
     if (url && !url.startsWith("data:") && !escolhidos.includes(url)) escolhidos.push(url);
   }
-  // .ico costuma ter 32px: fica por último, é o pior recurso.
-  escolhidos.sort((a, b) => Number(/\.ico(\?|$)/i.test(a)) - Number(/\.ico(\?|$)/i.test(b)));
-
-  // Último recurso: serviço público de favicon em alta resolução (devolve PNG).
-  escolhidos.push(
+  // .ico costuma ter 32px: só como último recurso, depois do favicon em PNG.
+  const ehIco = (u: string) => /\.ico(\?|$)/i.test(u);
+  return [
+    ...escolhidos.filter((u) => !ehIco(u)),
     `https://www.google.com/s2/favicons?sz=256&domain=${encodeURIComponent(base.hostname)}`,
-  );
-  return escolhidos;
+    ...escolhidos.filter(ehIco),
+  ];
 }
 
 const TIPOS_LOGO = /^image\/(png|jpeg|jpg|webp|svg\+xml|gif|ico|x-icon|vnd\.microsoft\.icon)$/i;

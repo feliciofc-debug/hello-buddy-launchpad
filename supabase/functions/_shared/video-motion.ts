@@ -202,10 +202,20 @@ export function normalizarProps(
     for (const p of proibidos) out = out.replace(new RegExp(escapar(p), "gi"), "");
     return out.replace(/\s{2,}/g, " ").replace(/\s+([,.;:!?])/g, "$1").trim();
   };
-  const limpar = (s: unknown, max: number) => semDadosDoTenant(removerVestigiosAmz(
+  // "Revista concluída e aprovada" -> "publicação concluída e aprovada":
+  // o nome do cliente identifica quem fala, nunca o objeto da ação.
+  const marcaNaoEhObjeto = (t: string) => {
+    if (!marcaBase) return t;
+    const alvo = escapar(marcaBase);
+    return t.replace(
+      new RegExp(`\\b(?:a|o|as|os)?\\s*${alvo}\\s+(conclu[ií]d[oa]s?|aprovad[oa]s?|finalizad[oa]s?|agendad[oa]s?|public[oa]d[oa]s?)\\b`, "gi"),
+      (_m, p1) => `publicação ${String(p1).replace(/o(s?)$/i, "a$1")}`,
+    );
+  };
+  const limpar = (s: unknown, max: number) => marcaNaoEhObjeto(semDadosDoTenant(removerVestigiosAmz(
     corrigirTexto(cortarFrase(limparBruto(s, max * 3), max), nomes),
     marcaBase,
-  ));
+  )));
 
 
   const mensagensBrutas: any[] = Array.isArray(bruto?.chat?.mensagens) ? bruto.chat.mensagens : [];
