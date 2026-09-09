@@ -7794,8 +7794,9 @@ async function processOne(queueId: string) {
       const label = doc.filename || `arquivo ${doc.mime}`;
 
       const _agentNomeDoc = String(agent.agent_name || "assistente").trim();
+      const _consorcioDoc = /cons[oó]rcio|ademicon|carta\s+de\s+cr[eé]dito/i.test(`${(agent as any)?.persona || ""} ${(agent as any)?.knowledge_base || ""}`);
       const _donoNomeDoc = ownerFirstName(_tenantOwner?.name) || "o responsável";
-      const clientVisionPrompt = `Você é o ${_agentNomeDoc}, pré-atendente do consultor de consórcio ${_donoNomeDoc}. O cliente acabou de mandar um documento por WhatsApp. LEIA o documento (imagem/PDF) e devolva JSON PURO (sem markdown) neste formato:
+      const clientVisionPrompt = `Você é o ${_agentNomeDoc}, pré-atendente ${_consorcioDoc ? `do consultor de consórcio ${_donoNomeDoc}` : `de ${_donoNomeDoc}`}. O cliente acabou de mandar um documento por WhatsApp. LEIA o documento (imagem/PDF) e devolva JSON PURO (sem markdown) neste formato:
 
 {
   "tipo": "rg" | "cnh" | "comprovante_residencia" | "comprovante_renda" | "ir" | "foto_bem" | "outro",
@@ -7925,7 +7926,7 @@ Regras:
         try {
           const linhas: string[] = [];
           linhas.push(`👋 Oi ${primeiroNome}, aqui é o ${String(agent.agent_name || "seu assistente").trim()}.`);
-          linhas.push(`Novo cliente interessado em consórcio, pré-atendimento concluído:`);
+          linhas.push(_consorcioDoc ? `Novo cliente interessado em consórcio, pré-atendimento concluído:` : `Novo contato de cliente, pré-atendimento concluído:`);
           linhas.push("");
           linhas.push(`👤 *Nome:* ${dossieAtual.nome_completo}`);
           if (dossieAtual.cpf) linhas.push(`🆔 *CPF:* ${dossieAtual.cpf}`);
