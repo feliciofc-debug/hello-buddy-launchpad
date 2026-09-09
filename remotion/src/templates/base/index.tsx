@@ -453,3 +453,20 @@ export const volumeTrilha = (total: number, base = 0.28) => (frame: number) => {
   });
   return v * entrada * saida;
 };
+
+/**
+ * Trilha que acompanha a duração inteira do vídeo: repete em loop quando a
+ * faixa é mais curta e faz fade out no encerramento.
+ */
+export const TrilhaSonora: React.FC<{ url?: string; total: number; volume?: number }> = ({
+  url,
+  total,
+  volume,
+}) => {
+  if (!url) return null;
+  return (
+    <Sequence from={0} durationInFrames={total}>
+      <Audio src={url} loop volume={volumeTrilha(total, volume ?? 0.28)} />
+    </Sequence>
+  );
+};
