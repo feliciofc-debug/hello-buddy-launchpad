@@ -651,7 +651,7 @@ export const TemplateProduto: React.FC<TemplateProdutoProps> = (props) => {
         </Series.Sequence>
       </Series>
 
-      {trilhaUrl ? <Audio src={trilhaUrl} volume={volumeTrilha} startFrom={0} endAt={total} /> : null}
+      {trilhaUrl ? <Audio src={trilhaUrl} loop volume={volumeTrilha} /> : null}
 
       {legendasValidas.map((text, i) => (
         <Sequence
