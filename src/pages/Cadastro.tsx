@@ -188,7 +188,7 @@ export default function Cadastro() {
                   <Loader2 className="w-5 h-5 animate-spin" /> Processando...
                 </>
               ) : (
-                '🚀 Criar Conta e Pagar'
+                'Criar Conta e Pagar'
               )}
             </button>
 
