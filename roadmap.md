@@ -74,3 +74,11 @@
 - [x] Tela de importacao com aviso e atualizacao automatica
 - [x] Nome da marca nunca preenchido com o dominio
 - [ ] Instalar o worker na VPS (npm i playwright + pm2 start amz-site)
+
+## Isolamento de identidade no video (urgente)
+- [x] Botao "Remover logo" (nao apaga a logo cadastrada da conta)
+- [x] Botao "Usar a logo da minha empresa" para restaurar
+- [x] Trocar identidade/importar site limpa logo, nome, tom, site, telefone e consultor
+- [x] Camada A e B ignoram carrossel/slider/parceiros na busca da logo
+- [x] Cores dominantes da logo (SVG no servidor, pixels no navegador) — nunca por IA
+- [ ] Reiniciar o worker de leitura de site na VPS (pm2 restart amz-site)

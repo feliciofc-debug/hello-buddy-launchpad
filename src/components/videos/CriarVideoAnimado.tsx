@@ -98,6 +98,8 @@ export const CriarVideoAnimado = () => {
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoPath, setLogoPath] = useState<string | null>(null);
+  // Logo cadastrada da conta: usada só para poder restaurar depois de remover.
+  const [logoOficial, setLogoOficial] = useState<{ path: string; url: string | null } | null>(null);
   const [subindoLogo, setSubindoLogo] = useState(false);
   const [marcaCliente, setMarcaCliente] = useState('');
   const [paletaSelecionada, setPaletaSelecionada] = useState<keyof typeof PALETAS>('personalizada');
@@ -127,6 +129,38 @@ export const CriarVideoAnimado = () => {
     const { data: signed } = await supabase.storage.from('tenant-logos').createSignedUrl(path, 3600);
     setLogoPath(path);
     setLogoUrl(signed?.signedUrl ?? null);
+    setLogoOficial({ path, url: signed?.signedUrl ?? null });
+  };
+
+  // Tira a logo apenas deste vídeo. A logo cadastrada da conta continua salva.
+  const removerLogo = () => {
+    setLogoPath(null);
+    setLogoUrl(null);
+    setProps((p) => (p ? { ...p, logoUrl: undefined } : p));
+    toast.success('Logo removida deste vídeo. A logo cadastrada da sua empresa continua salva.');
+  };
+
+  const restaurarLogoOficial = () => {
+    if (!logoOficial?.path) return;
+    setLogoPath(logoOficial.path);
+    setLogoUrl(logoOficial.url);
+    setProps((p) => (p ? { ...p, logoUrl: logoOficial.url ?? undefined } : p));
+    toast.success('Logo da sua empresa restaurada neste vídeo.');
+  };
+
+  // Cada identidade carrega os próprios dados: nada do cliente anterior fica.
+  const limparIdentidadeDoVideo = () => {
+    setLogoPath(null);
+    setLogoUrl(null);
+    setMarcaCliente('');
+    setTomDeVozCliente('');
+    setProps((p) => (p ? {
+      ...p,
+      logoUrl: undefined,
+      marca: '',
+      site: undefined,
+      cta: { ...p.cta, telefone: '', consultor: '' },
+    } : p));
   };
 
   const carregarTrilhas = async () => {
@@ -244,16 +278,24 @@ export const CriarVideoAnimado = () => {
   };
 
   const selecionarPaleta = (nome: keyof typeof PALETAS) => {
+    // Trocar de identidade descarta logo, nome, tom, site e contatos anteriores.
+    limparIdentidadeDoVideo();
     setPaletaSelecionada(nome);
-    if (nome !== 'personalizada' && !marcaCliente.trim()) setMarcaCliente(PALETAS[nome].label);
+    if (nome !== 'personalizada') setMarcaCliente(PALETAS[nome].label);
     setCores({ ...PALETAS[nome].cores });
     setProps((p) => (p ? { ...p, cores: { ...PALETAS[nome].cores } } : p));
+    if (nome === 'amz' && logoOficial?.path) {
+      setLogoPath(logoOficial.path);
+      setLogoUrl(logoOficial.url);
+    }
   };
 
   // Prospecção: aplica no vídeo a identidade lida do site do prospect
   // (já confirmada pelo usuário na tela de importação).
   const aplicarIdentidadeDoSite = async (d: IdentidadeImportada) => {
-    const novas = { ...cores, ...d.paleta };
+    // Descarta a identidade do cliente anterior antes de aplicar a nova.
+    limparIdentidadeDoVideo();
+    const novas = { ...PALETAS.personalizada.cores, ...d.paleta };
     setPaletaSelecionada('personalizada');
     setCores(novas);
     if (d.nome_empresa) setMarcaCliente(d.nome_empresa);
@@ -636,8 +678,20 @@ export const CriarVideoAnimado = () => {
               {subindoLogo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
               {logoUrl ? 'Trocar logo' : 'Anexar logo do cliente'}
             </Button>
+            {logoUrl && (
+              <Button type="button" variant="ghost" onClick={removerLogo}>
+                Remover logo
+              </Button>
+            )}
+            {!logoUrl && logoOficial?.path && (
+              <Button type="button" variant="ghost" onClick={restaurarLogoOficial}>
+                Usar a logo da minha empresa
+              </Button>
+            )}
             {logoUrl && <img src={logoUrl} alt="Logo do cliente" className="h-10 max-w-[160px] rounded border bg-background object-contain p-1" />}
-            <span className="text-xs text-muted-foreground">A logo e as cores escolhidas serão usadas no vídeo.</span>
+            <span className="text-xs text-muted-foreground">
+              A logo e as cores escolhidas valem só para este vídeo. Remover aqui não apaga a logo cadastrada da sua empresa.
+            </span>
           </div>
         </div>
 

@@ -237,6 +237,11 @@ function fontesDe(html: string, css: string): string[] {
 
 // ---------- logo ----------
 
+// Imagens de vitrine de parceiros/fornecedores não são a marca do cliente
+// (ex.: "brands-slider-01.png" num carrossel de laboratórios).
+const LOGO_ALHEIA =
+  /slider|carousel|carrossel|swiper|owl-|glide|partner|parceir|fornecedor|marcas-|brands?[-_/]|clientes?[-_]|selo|bandeira|payment|pagamento|flag|social|whatsapp|instagram|facebook|tiktok|linkedin|youtube/i;
+
 function logoDe(html: string, base: URL): string[] {
   const candidatos: string[] = [];
   const baseUrl = base.toString();
@@ -257,7 +262,7 @@ function logoDe(html: string, base: URL): string[] {
   const cabecalho = html.match(/<header[\s\S]{0,4000}?<\/header>/i)?.[0] ?? html.slice(0, 6000);
   const imgLogo = [...cabecalho.matchAll(/<img[^>]+>/gi)]
     .map((m) => m[0])
-    .find((tag) => /logo|marca|brand/i.test(tag));
+    .find((tag) => /logo|marca|brand/i.test(tag) && !LOGO_ALHEIA.test(tag));
   const srcLogo = imgLogo?.match(/(?:data-src|src)=["']([^"']+)["']/i)?.[1];
 
   if (srcLogo) candidatos.unshift(srcLogo);
@@ -265,6 +270,7 @@ function logoDe(html: string, base: URL): string[] {
   // Qualquer arquivo de imagem com "logo"/"marca" no caminho, em qualquer parte
   // do HTML — muitos sites montam o cabeçalho por JavaScript.
   for (const m of html.matchAll(/["'(]([^"'()\s]+(?:logo|marca|brand)[^"'()\s]*\.(?:svg|png|webp|jpe?g))["')]/gi)) {
+    if (LOGO_ALHEIA.test(m[1])) continue;
     candidatos.push(m[1]);
   }
 
@@ -278,7 +284,9 @@ function logoDe(html: string, base: URL): string[] {
   for (const bruto of candidatos) {
     const c = desescapar(bruto);
     const url = absoluto(c, baseUrl);
-    if (url && !url.startsWith("data:") && !escolhidos.includes(url)) escolhidos.push(url);
+    if (!url || url.startsWith("data:") || escolhidos.includes(url)) continue;
+    if (LOGO_ALHEIA.test(url)) continue;
+    escolhidos.push(url);
   }
   // .ico costuma ter 32px: só como último recurso, depois do favicon em PNG.
   const ehIco = (u: string) => /\.ico(\?|$)/i.test(u);
@@ -290,6 +298,29 @@ function logoDe(html: string, base: URL): string[] {
 }
 
 const TIPOS_LOGO = /^image\/(png|jpeg|jpg|webp|svg\+xml|gif|ico|x-icon|vnd\.microsoft\.icon)$/i;
+
+/**
+ * Cores escritas dentro de uma logo em SVG. São hexadecimais do próprio
+ * arquivo — nunca inventados. Formatos em pixel (PNG/JPEG) são lidos pelo
+ * navegador da Camada B, que consegue amostrar a imagem.
+ */
+function coresDaLogoSvg(dataUrl: string | null, acc: Map<string, number>): void {
+  if (!dataUrl || !/^data:image\/svg\+xml;base64,/i.test(dataUrl)) return;
+  let svg = "";
+  try {
+    svg = atob(dataUrl.split(",")[1] ?? "");
+  } catch {
+    return;
+  }
+  const vistas = new Map<string, number>();
+  for (const m of svg.matchAll(/(?:fill|stop-color|stroke)\s*[:=]\s*["']?(#[0-9a-f]{3,8}|rgba?\([^)]+\))/gi)) {
+    const hex = normalizar(m[1]);
+    if (!hex) continue;
+    vistas.set(hex, (vistas.get(hex) ?? 0) + 1);
+  }
+  // A logo pesa como um elemento forte da marca, logo abaixo do fundo do topo.
+  for (const [hex, n] of vistas) acc.set(hex, (acc.get(hex) ?? 0) + Math.min(n, 3) * 6);
+}
 
 /**
  * Baixa a logo aqui no servidor e devolve em data URL. O navegador não consegue
@@ -431,7 +462,7 @@ export async function lerIdentidadeDoSite(entrada: string): Promise<IdentidadeSi
     const acc = new Map<string, number>();
     coresDoCss(css, acc);
     coresInline(html, acc);
-    const principais = agrupar(acc);
+
 
     const blocos = blocosUteis(html);
     const titulo = (html.match(/<title[^>]*>([\s\S]{0,200}?)<\/title>/i)?.[1] ?? "").trim();
@@ -455,6 +486,12 @@ export async function lerIdentidadeDoSite(entrada: string): Promise<IdentidadeSi
       }
       if (!logoUrl) logoUrl = cand;
     }
+
+    // A cor da marca muitas vezes só existe na logo (caso Venâncio: o vermelho
+    // não está no CSS). Só lemos hexadecimais reais do arquivo — nada de IA.
+    coresDaLogoSvg(logoDataUrl, acc);
+    const principais = agrupar(acc);
+
 
     if (principais.length < 2) {
       avisos.push("O site entregou poucas cores no código — provavelmente monta a página por JavaScript.");
