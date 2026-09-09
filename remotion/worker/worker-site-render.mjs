@@ -149,6 +149,48 @@ async function baixarLogo(pagina, url) {
   }
 }
 
+/**
+ * Cores dominantes lidas dos pixels da logo. Sao cores reais da imagem
+ * renderizada — nunca inventadas por IA. O vermelho de muitas redes so
+ * existe na logo, nao no CSS.
+ */
+async function coresDaLogo(pagina, dataUrl) {
+  if (!dataUrl) return [];
+  try {
+    return await pagina.evaluate(async (src) => {
+      const img = new Image();
+      img.src = src;
+      await img.decode().catch(() => {});
+      if (!img.width || !img.height) return [];
+      const L = 64;
+      const cv = document.createElement("canvas");
+      cv.width = L;
+      cv.height = L;
+      const ctx = cv.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0, L, L);
+      const px = ctx.getImageData(0, 0, L, L).data;
+      const acc = new Map();
+      for (let i = 0; i < px.length; i += 4) {
+        const [r, g, b, a] = [px[i], px[i + 1], px[i + 2], px[i + 3]];
+        if (a < 200) continue;
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        if (max - min < 30) continue; // cinza/branco/preto nao identificam marca
+        const q = (v) => Math.round(v / 24) * 24;
+        const hex = "#" + [q(r), q(g), q(b)]
+          .map((v) => Math.min(255, v).toString(16).padStart(2, "0")).join("");
+        acc.set(hex, (acc.get(hex) || 0) + 1);
+      }
+      return [...acc.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([hex]) => ({ hex, peso: 30 }));
+    }, dataUrl);
+  } catch {
+    return [];
+  }
+}
+
 async function processar(navegador, job) {
   const contexto = await navegador.newContext({
     viewport: { width: LARGURA, height: ALTURA },
