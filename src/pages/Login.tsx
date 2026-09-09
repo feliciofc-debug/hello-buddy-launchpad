@@ -4,11 +4,9 @@ import { Mail, Lock, ArrowLeft, Eye, EyeOff, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { lovable } from '@/integrations/lovable';
 import { toast } from 'sonner';
-import { useTranslation } from 'react-i18next';
 
 export default function Login() {
   const navigate = useNavigate();
-  const { t } = useTranslation();
   const [formData, setFormData] = useState({
     email: '',
     password: ''
@@ -46,7 +44,7 @@ export default function Login() {
       const validade = new Date(profile.validade_acesso);
       if (validade < new Date()) {
         await supabase.auth.signOut();
-        toast.error(t('login.access_expired'));
+        toast.error('Seu acesso expirou. Fale com o suporte para renovar.');
         routedRef.current = false;
         return;
       }
@@ -154,12 +152,12 @@ export default function Login() {
 
       if (error) throw error;
 
-      toast.success(t('login.success'));
+      toast.success('Login realizado com sucesso');
       await routeAfterAuth(data.user.id, email);
     } catch (error: any) {
       const msg = String(error?.message || 'Erro ao fazer login');
       if (msg.toLowerCase().includes('invalid login credentials')) {
-        toast.error(t('login.invalid_credentials'));
+        toast.error('E-mail ou senha incorretos');
       } else {
         toast.error(msg);
       }
@@ -171,7 +169,7 @@ export default function Login() {
   const handleSendReset = async () => {
     const email = forgotEmail.trim().toLowerCase();
     if (!email) {
-      toast.error(t('login.email'));
+      toast.error('Informe seu e-mail');
       return;
     }
 
@@ -181,49 +179,52 @@ export default function Login() {
       const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
       if (error) throw error;
 
-      toast.success(t('login.reset_success'));
+      toast.success('Enviamos um link de redefinição para o seu e-mail');
       setShowForgot(false);
     } catch (err: any) {
-      toast.error(err?.message || t('login.reset_error'));
+      toast.error(err?.message || 'Não foi possível enviar o e-mail de redefinição');
     } finally {
       setSendingReset(false);
     }
   };
 
+  const inputClass =
+    'w-full bg-slate-800/60 text-white text-base pl-11 pr-4 py-3 rounded-lg border border-slate-700 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/40 transition placeholder:text-slate-500';
+
   return (
-    <div className="min-h-screen min-h-[100dvh] bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-start sm:items-center justify-center p-4 sm:p-6 overflow-auto">
+    <div className="min-h-screen min-h-[100dvh] bg-slate-950 flex items-start sm:items-center justify-center p-4 sm:p-6 overflow-auto">
       <div className="max-w-md w-full py-4 sm:py-0">
         {/* Botão Voltar */}
-        <button 
-          onClick={() => navigate('/')} 
-          className="flex items-center gap-2 text-purple-300 hover:text-white mb-4 sm:mb-8 transition text-sm sm:text-base"
+        <button
+          onClick={() => navigate('/')}
+          className="flex items-center gap-2 text-slate-400 hover:text-white mb-4 sm:mb-8 transition text-sm sm:text-base"
         >
           <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
-          {t('login.back_home')}
+          Voltar para o início
         </button>
 
         {/* Card Login */}
-        <div className="bg-slate-800/50 backdrop-blur-lg border border-purple-500/30 rounded-2xl p-5 sm:p-8 shadow-2xl">
+        <div className="bg-slate-900/70 backdrop-blur-lg border border-slate-800 rounded-2xl p-5 sm:p-8 shadow-2xl">
           {/* Logo */}
           <div className="text-center mb-5 sm:mb-8">
-            <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-2 sm:p-3 rounded-xl inline-block mb-3 sm:mb-4">
+            <div className="bg-orange-500 p-2 sm:p-3 rounded-xl inline-block mb-3 sm:mb-4">
               <svg className="w-8 h-8 sm:w-10 sm:h-10" fill="white" viewBox="0 0 24 24">
                 <path d="M20 7h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zM10 4h4v3h-4V4zm10 16H4V9h16v11z"/>
               </svg>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-1 sm:mb-2">{t('login.title')}</h1>
-            <p className="text-purple-300 text-sm sm:text-base">{t('login.subtitle')}</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-1 sm:mb-2">Bem-vindo de volta</h1>
+            <p className="text-slate-400 text-sm sm:text-base">Entre para acessar sua conta</p>
           </div>
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
             {/* Email */}
             <div>
-              <label className="block text-sm font-medium text-purple-300 mb-1.5 sm:mb-2">
-                {t('login.email')}
+              <label className="block text-sm font-medium text-slate-300 mb-1.5 sm:mb-2">
+                E-mail
               </label>
               <div className="relative">
-                <Mail className="absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-purple-400" />
+                <Mail className="absolute left-3.5 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-500" />
                 <input
                   type="email"
                   required
@@ -231,32 +232,33 @@ export default function Login() {
                   inputMode="email"
                   value={formData.email}
                   onChange={(e) => setFormData({...formData, email: e.target.value})}
-                  className="w-full bg-slate-700/50 text-white text-base pl-10 sm:pl-12 pr-4 py-3 rounded-lg border border-purple-500/30 focus:outline-none focus:border-purple-500 transition placeholder:text-slate-500"
-                  placeholder={t('login.email_placeholder')}
+                  className={inputClass}
+                  placeholder="seu@email.com"
                 />
               </div>
             </div>
 
             {/* Senha */}
             <div>
-              <label className="block text-sm font-medium text-purple-300 mb-1.5 sm:mb-2">
-                {t('login.password')}
+              <label className="block text-sm font-medium text-slate-300 mb-1.5 sm:mb-2">
+                Senha
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-purple-400" />
+                <Lock className="absolute left-3.5 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-500" />
                 <input
                   type={showPassword ? "text" : "password"}
                   required
                   autoComplete="current-password"
                   value={formData.password}
                   onChange={(e) => setFormData({...formData, password: e.target.value})}
-                  className="w-full bg-slate-700/50 text-white text-base pl-10 sm:pl-12 pr-12 py-3 rounded-lg border border-purple-500/30 focus:outline-none focus:border-purple-500 transition placeholder:text-slate-500"
-                  placeholder={t('login.password_placeholder')}
+                  className={`${inputClass} pr-12`}
+                  placeholder="Sua senha"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 sm:right-4 top-1/2 transform -translate-y-1/2 text-purple-400 hover:text-purple-300 transition"
+                  className="absolute right-3.5 top-1/2 transform -translate-y-1/2 text-slate-500 hover:text-slate-300 transition"
+                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
@@ -271,39 +273,29 @@ export default function Login() {
                   setForgotEmail(formData.email);
                   setShowForgot(true);
                 }}
-                className="text-sm text-purple-400 hover:text-purple-300 transition"
+                className="text-sm text-orange-400 hover:text-orange-300 transition"
               >
-                {t('login.forgot_password')}
+                Esqueci minha senha
               </button>
             </div>
 
             {/* Botão Login */}
-            <div className="flex flex-col sm:grid sm:grid-cols-2 gap-3 sm:gap-4">
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition disabled:opacity-50 text-base"
-              >
-                {isLoading ? t('login.submitting') : t('login.submit')}
-              </button>
-              
-              <button
-                type="button"
-                onClick={() => navigate('/cadastro')}
-                className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition text-base"
-              >
-                {t('login.register')}
-              </button>
-            </div>
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-lg font-semibold transition disabled:opacity-50 text-base"
+            >
+              {isLoading ? 'Entrando...' : 'Entrar'}
+            </button>
           </form>
 
           {/* Divider */}
           <div className="relative my-5 sm:my-8">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-600"></div>
+              <div className="w-full border-t border-slate-800"></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-4 bg-slate-800 text-slate-400">{t('login.or')}</span>
+              <span className="px-4 bg-slate-900 text-slate-500">ou</span>
             </div>
           </div>
 
@@ -323,15 +315,14 @@ export default function Login() {
             {googleLoading ? 'Conectando...' : 'Entrar com Google'}
           </button>
 
-
           {/* Criar Conta */}
           <div className="text-center">
-            <p className="text-slate-400 mb-3 sm:mb-4 text-sm sm:text-base">{t('login.no_account')}</p>
+            <p className="text-slate-400 mb-3 sm:mb-4 text-sm sm:text-base">Ainda não tem uma conta?</p>
             <button
               onClick={() => navigate('/cadastro')}
-              className="w-full border-2 border-purple-500/50 text-purple-300 py-3 rounded-lg font-semibold hover:bg-purple-500/10 transition text-base"
+              className="w-full border border-slate-700 text-slate-200 py-3 rounded-lg font-semibold hover:border-orange-500/60 hover:text-orange-400 transition text-base"
             >
-              {t('login.register_free')}
+              Criar conta
             </button>
           </div>
         </div>
@@ -343,18 +334,18 @@ export default function Login() {
               className="absolute inset-0 bg-black/60"
               onClick={() => (sendingReset ? null : setShowForgot(false))}
             />
-            <div className="relative w-full max-w-md bg-slate-900 border border-purple-500/30 rounded-2xl p-6 shadow-2xl">
+            <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-xl font-bold text-white">{t('login.reset_title')}</h2>
-                  <p className="text-purple-300 text-sm mt-1">
-                    {t('login.reset_description')}
+                  <h2 className="text-xl font-bold text-white">Redefinir senha</h2>
+                  <p className="text-slate-400 text-sm mt-1">
+                    Enviaremos um link de redefinição para o seu e-mail.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowForgot(false)}
-                  className="text-purple-300 hover:text-white transition"
+                  className="text-slate-400 hover:text-white transition"
                   disabled={sendingReset}
                   aria-label="Fechar"
                 >
@@ -363,13 +354,13 @@ export default function Login() {
               </div>
 
               <div className="mt-5">
-                <label className="block text-sm font-medium text-purple-300 mb-2">{t('login.email')}</label>
+                <label className="block text-sm font-medium text-slate-300 mb-2">E-mail</label>
                 <input
                   type="email"
                   value={forgotEmail}
                   onChange={(e) => setForgotEmail(e.target.value)}
-                  className="w-full bg-slate-700/50 text-white px-4 py-3 rounded-lg border border-purple-500/30 focus:outline-none focus:border-purple-500 transition placeholder:text-slate-500"
-                  placeholder={t('login.email_placeholder')}
+                  className="w-full bg-slate-800/60 text-white px-4 py-3 rounded-lg border border-slate-700 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/40 transition placeholder:text-slate-500"
+                  placeholder="seu@email.com"
                 />
               </div>
 
@@ -378,17 +369,17 @@ export default function Login() {
                   type="button"
                   onClick={() => setShowForgot(false)}
                   disabled={sendingReset}
-                  className="w-full border-2 border-purple-500/50 text-purple-300 py-3 rounded-lg font-semibold hover:bg-purple-500/10 transition disabled:opacity-50"
+                  className="w-full border border-slate-700 text-slate-300 py-3 rounded-lg font-semibold hover:border-slate-500 transition disabled:opacity-50"
                 >
-                  {t('common.cancel')}
+                  Cancelar
                 </button>
                 <button
                   type="button"
                   onClick={handleSendReset}
                   disabled={sendingReset}
-                  className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition disabled:opacity-50"
+                  className="w-full bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-lg font-semibold transition disabled:opacity-50"
                 >
-                  {sendingReset ? t('login.reset_sending') : t('login.reset_send')}
+                  {sendingReset ? 'Enviando...' : 'Enviar link'}
                 </button>
               </div>
             </div>
