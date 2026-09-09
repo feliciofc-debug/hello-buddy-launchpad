@@ -270,6 +270,7 @@ function logoDe(html: string, base: URL): string[] {
   // Qualquer arquivo de imagem com "logo"/"marca" no caminho, em qualquer parte
   // do HTML — muitos sites montam o cabeçalho por JavaScript.
   for (const m of html.matchAll(/["'(]([^"'()\s]+(?:logo|marca|brand)[^"'()\s]*\.(?:svg|png|webp|jpe?g))["')]/gi)) {
+    if (LOGO_ALHEIA.test(m[1])) continue;
     candidatos.push(m[1]);
   }
 
