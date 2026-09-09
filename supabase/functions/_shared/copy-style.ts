@@ -108,15 +108,19 @@ function montarPromptBlock(
     );
   }
 
+  // ATENÇÃO: este bloco vale para QUALQUER negócio. Nada aqui pode citar nicho,
+  // marca ou hashtag de um cliente específico — regras de nicho vêm só de
+  // empresa_config.regras_copy (bloco "REGRAS DESTE CLIENTE" abaixo).
   linhas.push(
     "- Ordem da copy: 1) link sozinho na primeira linha, 2) corpo que termina no raciocínio (sem convite/CTA no fim), 3) hashtags.",
-    "- LINGUAGEM SIMPLES, NÃO FORMAL: proibido tom de relatório bancário. Diga \"comprar\" em vez de \"estruturar a aquisição\", \"apertar o orçamento\" em vez de \"desequilibrar as finanças\", \"não mexer na reserva\" em vez de \"preservar a liquidez\", \"comprar melhor\" em vez de \"potencializar o poder de compra\", \"parcelas\" em vez de \"aportes programados\", \"juntar dinheiro\" em vez de \"formação de capital\", \"crescer\" em vez de \"expansão patrimonial\", \"custo que compensa\" em vez de \"custo eficiente\", \"explicar\" em vez de \"desmistificar\", \"construir patrimônio\" em vez de \"consolidar patrimônio\".",
-    "- Frases curtas, uma ideia por frase, 2 a 3 frases no total. Nunca duas palavras técnicas na mesma frase.",
-    "- Comece pela situação concreta do leitor (gente comprando coisa), não pelo conceito.",
-    "- QUEM ESCREVE NÃO APARECE NA FRASE: proibido \"quero te ajudar\", \"falo sobre\", \"explico\", \"meu foco é\", \"posso te mostrar\", \"trabalho com\", \"vale olhar\". A copy é observação sobre o ASSUNTO, não apresentação de serviço. Errado: \"Explico as possibilidades dessa ferramenta.\" Certo: \"Existe uma diferença entre comprar rápido e comprar bem.\"",
-    "- O último período fecha com a consequência prática do que foi dito, nunca com convite, promessa ou frase vaga tipo \"chegar lá com tranquilidade\". Ex: \"No fim, o que muda não é o valor da parcela. É o que sobra depois.\"",
-    "- Consórcio NÃO é crédito e NÃO é investimento: proibido \"crédito com custo mais baixo\", \"crédito barato\", ou qualquer sugestão de rendimento/rentabilidade (produto regulado pelo Banco Central).",
-    "- 3 hashtags (máximo 4), simples e reais (#Consórcio #Ademicon + uma do tema). PROIBIDAS: #Investimento, #Renda, #Rentabilidade, #Crédito, #Juros, #Financiamento e termos inventados tipo #GestãoDeAtivos.",
+    "- LINGUAGEM SIMPLES, NÃO FORMAL: proibido tom de relatório. Prefira a palavra do dia a dia à palavra difícil.",
+    "- Frases curtas, uma ideia por frase, 2 a 3 frases no total.",
+    "- Comece pela situação concreta do leitor, não pelo conceito.",
+    "- QUEM ESCREVE NÃO APARECE NA FRASE: proibido \"quero te ajudar\", \"falo sobre\", \"explico\", \"meu foco é\", \"trabalho com\". A copy é observação sobre o ASSUNTO, não apresentação de serviço.",
+    "- O último período fecha com a consequência prática do que foi dito, nunca com convite, promessa ou frase vaga.",
+    "- Sem urgência artificial: proibido \"imperdível\", \"não perca\", \"clica agora\", \"o melhor\".",
+    "- Fale APENAS do assunto que o cliente trouxe. Nunca introduza produto, serviço, marca ou segmento que não seja deste cliente.",
+    "- 3 hashtags (máximo 4), simples e reais, tiradas do ASSUNTO do próprio conteúdo e do negócio deste cliente. Proibido inventar termos e proibido usar hashtag de outro segmento/marca.",
   );
 
 

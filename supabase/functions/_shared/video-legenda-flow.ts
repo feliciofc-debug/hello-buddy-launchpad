@@ -104,7 +104,7 @@ function textoDaTranscricao(segs: SegmentoLegenda[]): string {
 }
 
 const BLOCO_ACOMPANHA_FALA = `=== A COPY ACOMPANHA A FALA, MAS NÃO A TRANSCREVE ===
-1. Identifique o assunto real tratado (ex: lance, FGTS, contemplação, taxa de administração, um caso de cliente, uma dúvida respondida).
+1. Identifique o assunto real tratado na fala.
 2. Escreva sobre ESSE MESMO assunto, com palavras de quem escreve — não de quem falou.
 3. Se a fala tiver um argumento bom, é ele que vira a copy.
 4. A legenda precisa fazer sentido lida sozinha, antes do play.
@@ -119,8 +119,12 @@ NUNCA:
 - Não invente produto, preço ou promessa. Não cite nomes da equipe nem se dirija ao dono.
 - As 3 opções tratam do MESMO assunto, cada uma atacando um EIXO diferente (A, B e C), conforme as regras de voz abaixo.`;
 
+// Bloco NEUTRO — vale para QUALQUER negócio. Nada aqui pode citar nicho,
+// produto, marca ou hashtag de outro cliente. Regras específicas de nicho
+// (consórcio, saúde, etc.) chegam SOMENTE por empresa_config.regras_copy
+// do próprio tenant (style.promptBlock).
 const BLOCO_GENERICO = `=== A COPY ACOMPANHA A FALA, MAS NÃO A TRANSCREVE ===
-1. Identifique o assunto real tratado (ex: lance, FGTS, contemplação, taxa de administração, um caso de cliente, uma dúvida respondida).
+1. Identifique o assunto real tratado na fala.
 2. Escreva sobre ESSE MESMO assunto, com palavras de quem escreve — não de quem falou.
 3. Se a fala tiver um argumento bom, é ele que vira a copy.
 4. A legenda precisa fazer sentido lida sozinha, antes do play.
@@ -129,38 +133,23 @@ NUNCA:
 - Repetir frases do vídeo ou parafrasear a transcrição.
 - Citar dia da semana, local, "estou aqui", "nesse vídeo", "gravando".
 - Escrever "assista", "dá o play", "veja no vídeo".
+- Falar de assunto, produto, marca ou serviço que NÃO apareceu na fala nem no contexto do dono.
 
 === TOM: ELEGANTE É SIMPLES, NÃO FORMAL ===
 - Quem domina o assunto fala fácil. Palavra difícil é de quem precisa parecer que domina.
-- PROIBIDO linguagem de relatório bancário. Troque sempre pela coluna da direita:
-  estruturar a aquisição → comprar | desequilibrar as finanças → apertar o orçamento |
-  preservar a liquidez → não mexer na reserva | potencializar o poder de compra → comprar melhor |
-  aportes programados → parcelas | formação de capital → juntar dinheiro |
-  expansão patrimonial → crescer | custo eficiente → custo que compensa |
-  demanda um olhar atento → vale olhar | desmistificar → explicar |
-  consolidar patrimônio → construir patrimônio
-- RITMO: frases curtas, uma ideia por frase. 2 a 3 frases no total (não 4 longas). Nunca duas palavras técnicas na mesma frase. Se travar ao ler em voz alta, está errado.
-- Comece pela situação concreta do leitor, não pelo conceito. Fale de gente comprando coisa, não de "aquisição de ativos".
-- O CONSULTOR NÃO APARECE NA FRASE. Proibido qualquer construção em que quem escreve é o sujeito: "quero te ajudar", "falo sobre", "explico", "meu foco é", "posso te mostrar", "trabalho com", "eu ajudo", "vale olhar". A copy é OBSERVAÇÃO SOBRE O ASSUNTO, não apresentação de serviço.
-  - Errado: "Explico as possibilidades de usar essa ferramenta."
-  - Certo: "Existe uma diferença entre comprar rápido e comprar bem."
-- Sem "eu", sem "você" no imperativo, sem conselho de vendedor. Frases que descrevem uma realidade.
-- REGRA CENTRAL: a copy TERMINA NO RACIOCÍNIO, nunca em convite nem promessa. O último período fecha com a CONSEQUÊNCIA PRÁTICA do que foi dito.
-  - Errado: "Falo sobre as melhores estratégias para você." / "Chegar lá com tranquilidade." (vago, frase de para-choque)
-  - Certo: "No fim, o que muda não é o valor da parcela. É o que sobra depois."
-- O link fica sozinho na primeira linha. Quem se interessou procura.
-- CONSÓRCIO NÃO É CRÉDITO E NÃO É INVESTIMENTO. Proibido dizer "crédito com custo mais baixo", "crédito barato" ou sugerir que rende/valoriza (produto regulado pelo Banco Central).
-- PALAVRAS PROIBIDAS: financiamento, empréstimo, crédito barato, juros, banco, investimento, rendimento, rentabilidade, realizar sonhos, parcela que cabe no bolso, o melhor, imperdível.
+- RITMO: frases curtas, uma ideia por frase. 2 a 3 frases no total.
+- Comece pela situação concreta do leitor, não pelo conceito.
+- A copy TERMINA NO RACIOCÍNIO, nunca em convite vazio nem promessa.
+- Sem urgência artificial ("imperdível", "não perca", "clica agora", "o melhor").
 - No máximo 1 emoji (e quase sempre nenhum).
+- O link, quando houver, fica sozinho na primeira linha.
 
 === FORMATO ===
 - Máximo 500 caracteres por opção.
 - Não invente produto, preço ou promessa. Não cite nomes da equipe nem se dirija ao dono.
 - NÃO assine a copy com nome de pessoa nem de empresa.
-- 3 hashtags (no máximo 4), simples e reais: #Consórcio #Ademicon + uma do tema (ex: #Patrimônio, #Planejamento). PROIBIDAS: #Investimento, #Renda, #Rentabilidade, #Crédito, #Juros, #Financiamento e inventadas tipo #GestãoDeAtivos.
+- 3 hashtags (no máximo 4), simples e reais, TIRADAS DO ASSUNTO DO PRÓPRIO VÍDEO e do negócio deste cliente. PROIBIDO usar hashtag de outro segmento/marca que não seja deste cliente.
 - As 3 opções tratam do MESMO assunto, com 3 entradas diferentes — não a mesma frase reescrita.
-
-
 `;
 
 /** Gera 3 opções de copy a partir da transcrição do vídeo. */
