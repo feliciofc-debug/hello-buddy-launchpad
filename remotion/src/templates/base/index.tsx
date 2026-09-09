@@ -290,6 +290,7 @@ export const HookCena: React.FC<{ c: Paleta; arranjo?: number; logoUrl?: string 
           {sub}
         </div>
       ) : null}
+      </div>
     </AbsoluteFill>
   );
 };
