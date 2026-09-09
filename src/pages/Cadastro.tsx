@@ -90,24 +90,24 @@ export default function Cadastro() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+    <div className="min-h-screen bg-slate-950 text-white">
       <div className="max-w-xl mx-auto px-6 py-12">
         <button
           onClick={() => navigate('/')}
-          className="text-orange-300 hover:text-white transition mb-8 flex items-center gap-2"
+          className="text-slate-400 hover:text-white transition mb-8 flex items-center gap-2"
         >
           <ArrowLeft className="w-4 h-4" /> Voltar
         </button>
 
-        <div className="bg-slate-800/50 backdrop-blur-sm border-2 border-orange-500/50 rounded-3xl p-8 shadow-2xl shadow-orange-500/20">
+        <div className="bg-slate-900/70 backdrop-blur-sm border border-slate-800 rounded-2xl p-8 shadow-2xl">
           <div className="text-center mb-6">
-            <div className="inline-flex p-3 bg-gradient-to-r from-orange-500 to-pink-500 rounded-full mb-4">
+            <div className="inline-flex p-3 bg-orange-500 rounded-xl mb-4">
               <Lock className="w-8 h-8 text-white" />
             </div>
             <h1 className="text-3xl font-bold mb-2">Criar Conta</h1>
-            <p className="text-slate-300">
+            <p className="text-slate-400">
               Plano <strong className="text-white">AMZ Ofertas PRO</strong> ·{' '}
-              <span className="text-green-400 font-bold">R$ 597/mês</span>
+              <span className="text-orange-400 font-bold">R$ 597/mês</span>
             </p>
           </div>
 
