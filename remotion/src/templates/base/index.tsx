@@ -7,6 +7,7 @@
 
 import {
   AbsoluteFill,
+  Audio,
   Img,
   Sequence,
   interpolate,
@@ -174,9 +175,10 @@ export const Icone: React.FC<{ nome?: string; cor: string; tamanho?: number }> =
 
 export const HOOK_FRAMES = 170;
 
-export const HookCena: React.FC<{ c: Paleta; arranjo?: number } & Hook> = ({
+export const HookCena: React.FC<{ c: Paleta; arranjo?: number; logoUrl?: string } & Hook> = ({
   c,
   arranjo = 1,
+  logoUrl,
   kicker,
   linhas,
   destaque,
@@ -191,6 +193,9 @@ export const HookCena: React.FC<{ c: Paleta; arranjo?: number } & Hook> = ({
   const float = Math.sin(frame / 22) * 6;
   const centralizado = arranjo === 2;
 
+  // Logo do cliente já na abertura: centralizada e a ~1/3 da altura.
+  const logoAbertura = spring({ frame, fps, config: { damping: 16, stiffness: 130 } });
+
   return (
     <AbsoluteFill
       style={{
@@ -201,6 +206,37 @@ export const HookCena: React.FC<{ c: Paleta; arranjo?: number } & Hook> = ({
         textAlign: centralizado ? "center" : "left",
       }}
     >
+      {logoUrl ? (
+        <div
+          style={{
+            position: "absolute",
+            top: "33%",
+            left: 0,
+            right: 0,
+            display: "flex",
+            justifyContent: "center",
+            transform: `translateY(-50%) scale(${logoAbertura})`,
+            opacity: logoAbertura,
+          }}
+        >
+          <div
+            style={{
+              background: rgba(c.panel, ehClaro(c.bg) ? 0.9 : 0.68),
+              border: `1px solid ${c.line}`,
+              borderRadius: 34,
+              padding: "18px 26px",
+            }}
+          >
+            <Img src={logoUrl} style={{ height: 96, maxWidth: 320, objectFit: "contain" }} />
+          </div>
+        </div>
+      ) : null}
+      <div
+        style={{
+          marginTop: logoUrl ? 300 : 0,
+          alignSelf: centralizado ? "center" : "flex-start",
+        }}
+      >
       <div
         style={{
           color: c.suave,
@@ -255,6 +291,7 @@ export const HookCena: React.FC<{ c: Paleta; arranjo?: number } & Hook> = ({
           {sub}
         </div>
       ) : null}
+      </div>
     </AbsoluteFill>
   );
 };
@@ -416,4 +453,21 @@ export const volumeTrilha = (total: number, base = 0.28) => (frame: number) => {
     extrapolateRight: "clamp",
   });
   return v * entrada * saida;
+};
+
+/**
+ * Trilha que acompanha a duração inteira do vídeo: repete em loop quando a
+ * faixa é mais curta e faz fade out no encerramento.
+ */
+export const TrilhaSonora: React.FC<{ url?: string; total: number; volume?: number }> = ({
+  url,
+  total,
+  volume,
+}) => {
+  if (!url) return null;
+  return (
+    <Sequence from={0} durationInFrames={total}>
+      <Audio src={url} loop volume={volumeTrilha(total, volume ?? 0.28)} />
+    </Sequence>
+  );
 };

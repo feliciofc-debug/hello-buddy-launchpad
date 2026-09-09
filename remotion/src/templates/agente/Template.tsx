@@ -594,7 +594,7 @@ export const TemplateAgente: React.FC<TemplateAgenteProps> = (props) => {
         </TransitionSeries.Sequence>
        </TransitionSeries>
 
-       {trilhaUrl ? <Audio src={trilhaUrl} volume={volumeTrilha} startFrom={0} endAt={total} /> : null}
+       {trilhaUrl ? <Audio src={trilhaUrl} loop volume={volumeTrilha} /> : null}
 
        {legendasValidas.map((text, i) => (
         <Sequence

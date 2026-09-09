@@ -7,15 +7,14 @@
 
 import {
   AbsoluteFill,
-  Audio,
   interpolate,
   spring,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
 import { TransitionSeries, springTiming } from "@remotion/transitions";
-import { fade } from "@remotion/transitions/fade";
 import { slide } from "@remotion/transitions/slide";
+import { wipe } from "@remotion/transitions/wipe";
 import { font } from "../../font";
 import { ehClaro, rgba, textoSobre } from "../agente/contraste";
 import {
@@ -26,7 +25,7 @@ import {
   HookCena,
   Icone,
   Legendas,
-  volumeTrilha,
+  TrilhaSonora,
   type Cta,
   type Hook,
   type Paleta,
@@ -291,10 +290,10 @@ export const TemplateLista: React.FC<TemplateListaProps> = (props) => {
       <Backdrop c={c} arranjo={arranjo} />
       <TransitionSeries>
         <TransitionSeries.Sequence durationInFrames={HOOK_FRAMES}>
-          <HookCena c={c} arranjo={arranjo === 3 ? 2 : 1} {...hook} />
+          <HookCena c={c} arranjo={arranjo === 3 ? 2 : 1} logoUrl={logoUrl} {...hook} />
         </TransitionSeries.Sequence>
         <TransitionSeries.Transition
-          presentation={arranjo === 3 ? fade() : slide({ direction: "from-bottom" })}
+          presentation={arranjo === 3 ? wipe({ direction: "from-bottom" }) : slide({ direction: "from-bottom" })}
           timing={timing}
         />
         {arranjo === 3 ? (
@@ -312,15 +311,13 @@ export const TemplateLista: React.FC<TemplateListaProps> = (props) => {
             )}
           </TransitionSeries.Sequence>
         )}
-        <TransitionSeries.Transition presentation={fade()} timing={timing} />
+        <TransitionSeries.Transition presentation={wipe({ direction: "from-bottom" })} timing={timing} />
         <TransitionSeries.Sequence durationInFrames={CTA_FRAMES}>
           <CtaCena c={c} marca={marca} logoUrl={logoUrl} site={site} {...cta} />
         </TransitionSeries.Sequence>
       </TransitionSeries>
 
-      {trilhaUrl ? (
-        <Audio src={trilhaUrl} volume={volumeTrilha(total, trilha_volume ?? 0.28)} startFrom={0} endAt={total} />
-      ) : null}
+      <TrilhaSonora url={trilhaUrl} total={total} volume={trilha_volume} />
 
       <Legendas c={c} legendas={legendas} total={total} />
     </AbsoluteFill>
