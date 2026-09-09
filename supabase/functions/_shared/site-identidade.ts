@@ -518,3 +518,111 @@ export async function lerIdentidadeDoSite(entrada: string): Promise<IdentidadeSi
     };
   }
 }
+
+// ---------- nome da marca ----------
+
+const NOME_LIXO =
+  /^(home|in[íi]cio|bem[- ]vindos?|principal|p[áa]gina inicial|loja( online)?|site|institucional)$/i;
+
+/**
+ * Nome da marca a partir de og:site_name / <title>. NUNCA devolve o domínio:
+ * sem sinal claro, devolve "" e a tela pede o nome ao usuário.
+ */
+export function nomeDeMarca(ogSiteName: string, titulo: string): string {
+  const brutos = [ogSiteName, ...String(titulo || "").split(/[|\-–—:·»]/)];
+  for (const b of brutos) {
+    const nome = String(b || "").replace(/\s+/g, " ").trim();
+    if (nome.length < 2 || nome.length > 60) continue;
+    if (NOME_LIXO.test(nome)) continue;
+    if (/\.(com|br|net|org|me|io|app)\b/i.test(nome)) continue;
+    if (!/[a-zà-úA-ZÀ-Ú]/.test(nome)) continue;
+    return nome;
+  }
+  return "";
+}
+
+// ---------- Camada B (navegador na VPS) ----------
+
+/** A leitura simples não deu conta? (SPA, bloqueio, paleta pobre) */
+export function precisaCamadaB(id: IdentidadeSite): boolean {
+  return id.cores_detectadas.length < 2 || id.texto_base.length < 120;
+}
+
+export type DadosCamadaB = {
+  /** cores lidas da página JÁ RENDERIZADA (hex exatos, com peso) */
+  cores?: Array<{ hex: string; peso: number }>;
+  texto?: string;
+  titulo?: string;
+  site_name?: string;
+  fontes?: string[];
+  logo_url?: string | null;
+  logo_data_url?: string | null;
+};
+
+export type AnaliseIA = {
+  nome_empresa?: string;
+  tagline?: string;
+  descricao?: string;
+  diferenciais?: string;
+  publico_alvo?: string;
+  tom_de_voz?: string;
+  segmento?: string;
+};
+
+const preferir = (novo: string | undefined, atual: string) =>
+  (novo && novo.trim().length > atual.trim().length ? novo.trim() : atual);
+
+/**
+ * Junta o que a Camada A conseguiu com o que o navegador da VPS leu.
+ * As CORES vêm sempre do render (nunca da IA); a IA só interpreta texto.
+ */
+export function mesclarCamadaB(
+  a: IdentidadeSite,
+  b: DadosCamadaB,
+  ia: AnaliseIA = {},
+): IdentidadeSite {
+  const acc = new Map<string, number>();
+  for (const c of a.cores_detectadas) acc.set(c.hex, (acc.get(c.hex) ?? 0) + c.peso);
+  for (const c of b.cores ?? []) {
+    const hex = normalizar(String(c?.hex ?? ""));
+    if (!hex) continue;
+    // o render vale mais do que o CSS bruto: é a cor que o olho vê
+    acc.set(hex, (acc.get(hex) ?? 0) + Math.max(1, Number(c.peso) || 1) * 2);
+  }
+  const principais = agrupar(acc);
+
+  const textoBase = [a.texto_base, b.texto ?? ""].filter(Boolean).join("\n").slice(0, 4000);
+  const nome = nomeDeMarca(b.site_name ?? "", b.titulo ?? "") || a.nome_empresa ||
+    (ia.nome_empresa ?? "").trim();
+
+  const avisos: string[] = [];
+  if (principais.length < 2) {
+    avisos.push("Mesmo abrindo o site num navegador, não consegui ler cores confiáveis. Escolha as cores à mão.");
+  }
+  if (textoBase.length < 120) {
+    avisos.push("O site não entregou texto suficiente; complete a descrição do negócio à mão.");
+  }
+  if (!nome) avisos.push("Não identifiquei o nome da marca; escreva como ele deve aparecer.");
+  if (!a.logo_url && !b.logo_url) avisos.push("Não encontrei a logo no site; anexe o arquivo manualmente.");
+
+  return {
+    ...a,
+    parcial: avisos.length > 0,
+    avisos,
+    nome_empresa: nome.slice(0, 60),
+    tagline: preferir(ia.tagline, a.tagline).slice(0, 140),
+    descricao: preferir(ia.descricao, a.descricao).slice(0, 600),
+    diferenciais: preferir(ia.diferenciais, a.diferenciais).slice(0, 500),
+    publico_alvo: preferir(ia.publico_alvo, a.publico_alvo).slice(0, 200),
+    tom_de_voz: (ia.tom_de_voz || a.tom_de_voz || tomDeVozDe(textoBase)).slice(0, 120),
+    segmento_sugerido: a.segmento_sugerido !== "outros"
+      ? a.segmento_sugerido
+      : (segmentoDe(textoBase) !== "outros" ? segmentoDe(textoBase) : (ia.segmento || "outros")),
+    fontes: [...new Set([...(b.fontes ?? []), ...a.fontes])].slice(0, 4),
+    logo_url: a.logo_url ?? b.logo_url ?? null,
+    logo_data_url: a.logo_data_url ?? b.logo_data_url ?? null,
+    cores_detectadas: principais,
+    paleta: montarPaleta(principais),
+    texto_base: textoBase,
+  };
+}
