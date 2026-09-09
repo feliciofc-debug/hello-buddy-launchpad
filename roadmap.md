@@ -57,6 +57,8 @@
 - [x] Substituir prova social por credenciais, APIs oficiais e dados da empresa.
 - [x] Atualizar fluxo, recursos, chamadas e linguagem para redes, franquias e empresas de porte.
 - [x] Preservar navegação, formulário final e rodapé legal.
+- [x] Reposicionar a plataforma como produto central e o WhatsApp como modo complementar de operação.
+- [x] Apresentar painel e WhatsApp lado a lado, com fluxos e benefícios próprios.
 ## TikTok review (prioridade máxima — antes de terminar o vídeo de produto)
 - [x] Botão TikTok visível em "Meus Reels Gerados" (faltava para todas as contas, inclusive a demo)
 - [x] Botão LinkedIn no mesmo card, igualando as ações de produto

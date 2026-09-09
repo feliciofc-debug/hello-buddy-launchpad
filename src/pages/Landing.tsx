@@ -2,12 +2,15 @@ import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowRight,
+  BarChart3,
   BadgeCheck,
   Building2,
+  CalendarDays,
   Check,
   CircleCheck,
   FileAudio,
   Globe2,
+  LayoutDashboard,
   MessageCircle,
   Network,
   PackageOpen,
@@ -41,9 +44,14 @@ const redes = [
 
 const recursos = [
   {
+    icon: LayoutDashboard,
+    titulo: "Painel de operação",
+    texto: "Calendário editorial, biblioteca de conteúdo, fila de aprovação e métricas por canal e por unidade, em uma tela só.",
+  },
+  {
     icon: MessageCircle,
     titulo: "Agente de IA no WhatsApp",
-    texto: "O Jarvis cria conteúdo e atende solicitações por áudio, texto e imagem, com o contexto da sua empresa.",
+    texto: "Além do painel, o Jarvis executa pelo WhatsApp os mesmos comandos da plataforma: criar conteúdo, agendar, consultar resultados e atender leads.",
   },
   {
     icon: Video,
@@ -111,11 +119,11 @@ function Landing() {
               </div>
 
               <h1 className="max-w-4xl text-4xl font-bold leading-tight sm:text-5xl md:text-6xl">
-                Todo o marketing da sua empresa, pedido por áudio no WhatsApp.
+                Sua operação de conteúdo em uma plataforma. E também pelo WhatsApp.
               </h1>
 
               <p className="mt-7 max-w-3xl text-lg leading-relaxed text-slate-300 md:text-xl">
-                Conteúdo criado por IA, publicado automaticamente em cinco redes por API oficial. Um agente que conhece o seu negócio atende cliente e equipe no mesmo canal.
+                Crie, aprove, agende e publique em cinco redes por API oficial. Tudo pelo painel — ou pedindo por áudio no WhatsApp, quando for mais rápido.
               </p>
 
               <div className="mt-9 flex flex-col gap-3 sm:flex-row">
@@ -138,7 +146,7 @@ function Landing() {
               </div>
 
               <div className="mt-10 grid max-w-2xl gap-3 text-sm text-slate-300 sm:grid-cols-3">
-                {["APIs oficiais", "Aprovação antes de publicar", "Operação em cinco canais"].map((item) => (
+                {["APIs oficiais", "Aprovação antes de publicar", "Painel e WhatsApp no mesmo fluxo"].map((item) => (
                   <div key={item} className="flex items-center gap-2 border-l-2 border-orange-500 pl-3">
                     <Check className="h-4 w-4 shrink-0 text-orange-400" aria-hidden="true" />
                     <span>{item}</span>
@@ -215,14 +223,14 @@ function Landing() {
                 {
                   numero: "02",
                   icon: FileAudio,
-                  titulo: "Peça por áudio no WhatsApp",
-                  texto: "Diga o que quer publicar. A IA escreve, cria a arte ou o vídeo e monta o post com o contexto do negócio.",
+                  titulo: "Crie o conteúdo",
+                  texto: "Use o painel ou peça por áudio no WhatsApp. A IA escreve, cria a arte ou o vídeo e monta o post com o contexto do negócio.",
                 },
                 {
                   numero: "03",
                   icon: Send,
                   titulo: "Aprove e publique",
-                  texto: "Nada vai ao ar sem sua confirmação. A publicação é distribuída nas cinco redes pelas integrações oficiais.",
+                  texto: "Nada vai ao ar sem sua confirmação. A publicação é distribuída simultaneamente nas cinco redes pelas integrações oficiais.",
                 },
               ].map((passo) => {
                 const Icon = passo.icon;
@@ -264,6 +272,45 @@ function Landing() {
                   </article>
                 );
               })}
+            </div>
+          </div>
+        </section>
+
+        <section className="border-b border-slate-800 bg-slate-900 px-6 py-20 md:py-24">
+          <div className="mx-auto max-w-7xl">
+            <div className="mb-12 max-w-3xl">
+              <p className="mb-3 text-sm font-semibold uppercase text-orange-400">Dois modos de operar</p>
+              <h2 className="text-3xl font-bold md:text-5xl">A mesma operação, dois jeitos de comandar.</h2>
+            </div>
+
+            <div className="grid gap-px overflow-hidden border border-slate-700 bg-slate-700 md:grid-cols-2">
+              <article className="bg-slate-950 p-7 md:p-10">
+                <LayoutDashboard className="h-8 w-8 text-orange-400" aria-hidden="true" />
+                <h3 className="mt-6 text-2xl font-semibold">No painel</h3>
+                <p className="mt-2 text-sm font-medium text-orange-300">Para quem planeja</p>
+                <ul className="mt-6 space-y-4 text-slate-300">
+                  {["Calendário do mês inteiro", "Aprovação em lote", "Biblioteca de conteúdo", "Métricas por canal e unidade", "Gestão de várias lojas"].map((item) => (
+                    <li key={item} className="flex items-start gap-3">
+                      <CalendarDays className="mt-0.5 h-5 w-5 shrink-0 text-slate-500" aria-hidden="true" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </article>
+
+              <article className="bg-slate-950 p-7 md:p-10">
+                <MessageCircle className="h-8 w-8 text-orange-400" aria-hidden="true" />
+                <h3 className="mt-6 text-2xl font-semibold">No WhatsApp</h3>
+                <p className="mt-2 text-sm font-medium text-orange-300">Para quem está na operação</p>
+                <ul className="mt-6 space-y-4 text-slate-300">
+                  {["Pedir conteúdo por áudio", "Aprovar com uma palavra", "Agendar publicações", "Consultar estoque", "Acompanhar resultados sem abrir o painel"].map((item) => (
+                    <li key={item} className="flex items-start gap-3">
+                      <BarChart3 className="mt-0.5 h-5 w-5 shrink-0 text-slate-500" aria-hidden="true" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </article>
             </div>
           </div>
         </section>
