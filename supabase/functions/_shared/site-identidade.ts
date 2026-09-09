@@ -464,6 +464,12 @@ export async function lerIdentidadeDoSite(entrada: string): Promise<IdentidadeSi
       if (!logoUrl) logoUrl = cand;
     }
 
+    // A cor da marca muitas vezes só existe na logo (caso Venâncio: o vermelho
+    // não está no CSS). Só lemos hexadecimais reais do arquivo — nada de IA.
+    coresDaLogoSvg(logoDataUrl, acc);
+    const principais = agrupar(acc);
+
+
     if (principais.length < 2) {
       avisos.push("O site entregou poucas cores no código — provavelmente monta a página por JavaScript.");
     }
