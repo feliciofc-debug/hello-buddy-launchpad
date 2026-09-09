@@ -300,6 +300,29 @@ function logoDe(html: string, base: URL): string[] {
 const TIPOS_LOGO = /^image\/(png|jpeg|jpg|webp|svg\+xml|gif|ico|x-icon|vnd\.microsoft\.icon)$/i;
 
 /**
+ * Cores escritas dentro de uma logo em SVG. São hexadecimais do próprio
+ * arquivo — nunca inventados. Formatos em pixel (PNG/JPEG) são lidos pelo
+ * navegador da Camada B, que consegue amostrar a imagem.
+ */
+function coresDaLogoSvg(dataUrl: string | null, acc: Map<string, number>): void {
+  if (!dataUrl || !/^data:image\/svg\+xml;base64,/i.test(dataUrl)) return;
+  let svg = "";
+  try {
+    svg = atob(dataUrl.split(",")[1] ?? "");
+  } catch {
+    return;
+  }
+  const vistas = new Map<string, number>();
+  for (const m of svg.matchAll(/(?:fill|stop-color|stroke)\s*[:=]\s*["']?(#[0-9a-f]{3,8}|rgba?\([^)]+\))/gi)) {
+    const hex = normalizar(m[1]);
+    if (!hex) continue;
+    vistas.set(hex, (vistas.get(hex) ?? 0) + 1);
+  }
+  // A logo pesa como um elemento forte da marca, logo abaixo do fundo do topo.
+  for (const [hex, n] of vistas) acc.set(hex, (acc.get(hex) ?? 0) + Math.min(n, 3) * 6);
+}
+
+/**
  * Baixa a logo aqui no servidor e devolve em data URL. O navegador não consegue
  * baixar a imagem do site de terceiro (CORS), então quem faz isso é a função.
  */
