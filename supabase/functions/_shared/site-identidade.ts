@@ -284,7 +284,9 @@ function logoDe(html: string, base: URL): string[] {
   for (const bruto of candidatos) {
     const c = desescapar(bruto);
     const url = absoluto(c, baseUrl);
-    if (url && !url.startsWith("data:") && !escolhidos.includes(url)) escolhidos.push(url);
+    if (!url || url.startsWith("data:") || escolhidos.includes(url)) continue;
+    if (LOGO_ALHEIA.test(url)) continue;
+    escolhidos.push(url);
   }
   // .ico costuma ter 32px: só como último recurso, depois do favicon em PNG.
   const ehIco = (u: string) => /\.ico(\?|$)/i.test(u);
