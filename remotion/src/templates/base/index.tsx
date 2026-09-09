@@ -7,6 +7,7 @@
 
 import {
   AbsoluteFill,
+  Audio,
   Img,
   Sequence,
   interpolate,
