@@ -101,11 +101,26 @@ const LEITOR = `(() => {
     getComputedStyle(document.querySelector("h1") || document.body).fontFamily,
   ].filter(Boolean).map((f) => String(f).split(",")[0].replace(/["']/g, "").trim()))];
 
+  // Vitrine de parceiros/fornecedores nao e a marca do cliente.
+  const alheia = /slider|carousel|carrossel|swiper|owl-|glide|partner|parceir|fornecedor|marcas-|brands?[-_\\/]|clientes?[-_]|selo|bandeira|payment|pagamento|flag|social/i;
+  const suspeita = (img) => {
+    const ctx = (img.getAttribute("src") || "") + " " + (img.getAttribute("alt") || "") + " " +
+      (img.className || "") + " " + ((img.closest("[class]") || {}).className || "");
+    return alheia.test(String(ctx));
+  };
   let logo = null;
-  const cand = document.querySelector(
-    'header img[alt*="logo" i], header img[src*="logo" i], img[alt*="logo" i], img[src*="logo" i], header img, img[class*="logo" i]'
-  );
-  if (cand && cand.currentSrc) logo = cand.currentSrc;
+  const candidatos = [
+    ...document.querySelectorAll('header img[alt*="logo" i], header img[src*="logo" i], header a[href="/"] img'),
+    ...document.querySelectorAll('img[alt*="logo" i], img[src*="logo" i], img[class*="logo" i]'),
+    ...document.querySelectorAll("header img"),
+  ];
+  for (const img of candidatos) {
+    if (!img.currentSrc || suspeita(img)) continue;
+    const r = img.getBoundingClientRect();
+    if (r.width < 24 || r.height < 12 || r.top > 400) continue;
+    logo = img.currentSrc;
+    break;
+  }
 
   const meta = (n) => (document.querySelector('meta[property="' + n + '"], meta[name="' + n + '"]') || {}).content || "";
 
