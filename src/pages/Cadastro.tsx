@@ -122,7 +122,7 @@ export default function Cadastro() {
                   onChange={(e) => handleChange('email', e.target.value)}
                   placeholder="seu@email.com"
                   disabled={loading}
-                  className="w-full bg-slate-700/50 border border-slate-600 rounded-lg pl-10 pr-3 py-3 focus:outline-none focus:border-orange-500 transition disabled:opacity-50"
+                  className="w-full bg-slate-800/60 border border-slate-700 rounded-lg pl-10 pr-3 py-3 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/40 transition disabled:opacity-50"
                 />
               </div>
               {errors.email && <p className="text-red-400 text-sm mt-1">{errors.email}</p>}
@@ -138,7 +138,7 @@ export default function Cadastro() {
                   onChange={(e) => handleChange('whatsapp', e.target.value)}
                   placeholder="(11) 99999-9999"
                   disabled={loading}
-                  className="w-full bg-slate-700/50 border border-slate-600 rounded-lg pl-10 pr-3 py-3 focus:outline-none focus:border-orange-500 transition disabled:opacity-50"
+                  className="w-full bg-slate-800/60 border border-slate-700 rounded-lg pl-10 pr-3 py-3 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/40 transition disabled:opacity-50"
                 />
               </div>
               {errors.whatsapp && <p className="text-red-400 text-sm mt-1">{errors.whatsapp}</p>}
@@ -154,7 +154,7 @@ export default function Cadastro() {
                   onChange={(e) => handleChange('password', e.target.value)}
                   placeholder="Mínimo 8 caracteres"
                   disabled={loading}
-                  className="w-full bg-slate-700/50 border border-slate-600 rounded-lg pl-10 pr-3 py-3 focus:outline-none focus:border-orange-500 transition disabled:opacity-50"
+                  className="w-full bg-slate-800/60 border border-slate-700 rounded-lg pl-10 pr-3 py-3 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/40 transition disabled:opacity-50"
                 />
               </div>
               {errors.password && <p className="text-red-400 text-sm mt-1">{errors.password}</p>}
@@ -170,7 +170,7 @@ export default function Cadastro() {
                   onChange={(e) => handleChange('confirmPassword', e.target.value)}
                   placeholder="Digite a senha novamente"
                   disabled={loading}
-                  className="w-full bg-slate-700/50 border border-slate-600 rounded-lg pl-10 pr-3 py-3 focus:outline-none focus:border-orange-500 transition disabled:opacity-50"
+                  className="w-full bg-slate-800/60 border border-slate-700 rounded-lg pl-10 pr-3 py-3 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/40 transition disabled:opacity-50"
                 />
               </div>
               {errors.confirmPassword && (
@@ -181,7 +181,7 @@ export default function Cadastro() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:shadow-2xl text-white py-4 rounded-xl font-bold text-lg transition transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full bg-orange-500 hover:bg-orange-600 text-white py-4 rounded-xl font-bold text-lg transition transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>
@@ -215,7 +215,7 @@ export default function Cadastro() {
             Já tem conta?{' '}
             <button
               onClick={() => navigate('/login')}
-              className="text-orange-300 hover:text-white transition font-semibold"
+              className="text-orange-400 hover:text-orange-300 transition font-semibold"
             >
               Fazer login
             </button>
