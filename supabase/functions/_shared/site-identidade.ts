@@ -502,7 +502,7 @@ export async function lerIdentidadeDoSite(entrada: string): Promise<IdentidadeSi
       dominio: base.hostname.replace(/^www\./, ""),
       parcial: true,
       avisos,
-      nome_empresa: base.hostname.replace(/^www\./, ""),
+      nome_empresa: "",
       tagline: "",
       descricao: "",
       segmento_sugerido: "outros",
