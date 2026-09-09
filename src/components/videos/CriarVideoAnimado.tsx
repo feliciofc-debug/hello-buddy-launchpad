@@ -98,6 +98,8 @@ export const CriarVideoAnimado = () => {
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoPath, setLogoPath] = useState<string | null>(null);
+  // Logo cadastrada da conta: usada só para poder restaurar depois de remover.
+  const [logoOficial, setLogoOficial] = useState<{ path: string; url: string | null } | null>(null);
   const [subindoLogo, setSubindoLogo] = useState(false);
   const [marcaCliente, setMarcaCliente] = useState('');
   const [paletaSelecionada, setPaletaSelecionada] = useState<keyof typeof PALETAS>('personalizada');
