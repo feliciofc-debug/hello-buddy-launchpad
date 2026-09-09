@@ -66,3 +66,11 @@
 
 ## Testes vídeo de produto
 - [x] 2 produtos de exemplo criados na conta expo@atombrasildigital.com (fone fundo branco / air fryer fundo complexo)
+
+## Camada B — leitura de site por navegador (VPS)
+- [x] Fila site_render_jobs + RPC de retirada
+- [x] Endpoints: extrair-identidade-site (enfileira), site-render-claim, site-render-complete, site-identidade-status
+- [x] Worker Playwright remotion/worker/worker-site-render.mjs (cores do DOM renderizado + captura + IA só para texto/tom)
+- [x] Tela de importacao com aviso e atualizacao automatica
+- [x] Nome da marca nunca preenchido com o dominio
+- [ ] Instalar o worker na VPS (npm i playwright + pm2 start amz-site)
