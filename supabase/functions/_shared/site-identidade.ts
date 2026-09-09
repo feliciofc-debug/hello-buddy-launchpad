@@ -237,6 +237,11 @@ function fontesDe(html: string, css: string): string[] {
 
 // ---------- logo ----------
 
+// Imagens de vitrine de parceiros/fornecedores não são a marca do cliente
+// (ex.: "brands-slider-01.png" num carrossel de laboratórios).
+const LOGO_ALHEIA =
+  /slider|carousel|carrossel|swiper|owl-|glide|partner|parceir|fornecedor|marcas-|brands?[-_/]|clientes?[-_]|selo|bandeira|payment|pagamento|flag|social|whatsapp|instagram|facebook|tiktok|linkedin|youtube/i;
+
 function logoDe(html: string, base: URL): string[] {
   const candidatos: string[] = [];
   const baseUrl = base.toString();
