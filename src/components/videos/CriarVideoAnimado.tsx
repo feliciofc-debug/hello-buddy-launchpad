@@ -678,8 +678,20 @@ export const CriarVideoAnimado = () => {
               {subindoLogo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
               {logoUrl ? 'Trocar logo' : 'Anexar logo do cliente'}
             </Button>
+            {logoUrl && (
+              <Button type="button" variant="ghost" onClick={removerLogo}>
+                Remover logo
+              </Button>
+            )}
+            {!logoUrl && logoOficial?.path && (
+              <Button type="button" variant="ghost" onClick={restaurarLogoOficial}>
+                Usar a logo da minha empresa
+              </Button>
+            )}
             {logoUrl && <img src={logoUrl} alt="Logo do cliente" className="h-10 max-w-[160px] rounded border bg-background object-contain p-1" />}
-            <span className="text-xs text-muted-foreground">A logo e as cores escolhidas serão usadas no vídeo.</span>
+            <span className="text-xs text-muted-foreground">
+              A logo e as cores escolhidas valem só para este vídeo. Remover aqui não apaga a logo cadastrada da sua empresa.
+            </span>
           </div>
         </div>
 
