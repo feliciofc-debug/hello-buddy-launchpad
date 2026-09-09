@@ -159,6 +159,19 @@ export const ImportarDoSiteModal = ({ aberto, onFechar, onConfirmar, modo = 'emp
             A leitura leva até 20 segundos. Você pode continuar usando a tela.
           </p>
         )}
+        {avancada && (
+          <div className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+            <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-primary" />
+            <div>
+              <p className="font-medium">Leitura avançada em andamento</p>
+              <p className="text-xs text-muted-foreground">
+                Este site monta a página por JavaScript, então estamos abrindo-o num navegador
+                da plataforma para ler as cores como o olho vê. Leva de 1 a 3 minutos e os campos
+                abaixo são atualizados sozinhos. Nenhuma cor é inventada.
+              </p>
+            </div>
+          </div>
+        )}
 
         {dados && (
           <div className="space-y-5">
