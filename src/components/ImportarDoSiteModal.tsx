@@ -5,7 +5,7 @@
 // na geração de vídeo (prospecção).
 // ============================================================
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -48,11 +48,43 @@ export const ImportarDoSiteModal = ({ aberto, onFechar, onConfirmar, modo = 'emp
   const [lendo, setLendo] = useState(false);
   const [dados, setDados] = useState<IdentidadeImportada | null>(null);
   const [salvando, setSalvando] = useState(false);
+  /** leitura avançada (site montado por JavaScript) em andamento */
+  const [avancada, setAvancada] = useState(false);
+  const cancelado = useRef(false);
 
   const fechar = () => {
+    cancelado.current = true;
     setDados(null);
     setUrl('');
+    setAvancada(false);
     onFechar();
+  };
+
+  /** Espera o navegador da plataforma abrir o site e refinar o resultado. */
+  const aguardarAvancada = async (jobId: string) => {
+    setAvancada(true);
+    const limite = Date.now() + 4 * 60 * 1000;
+    try {
+      while (!cancelado.current && Date.now() < limite) {
+        await new Promise((r) => setTimeout(r, 5000));
+        const { data } = await supabase.functions.invoke('site-identidade-status', {
+          body: { job_id: jobId },
+        });
+        if (!data?.success) continue;
+        if (data.status === 'concluido' && data.identidade) {
+          if (cancelado.current) return;
+          setDados(data.identidade as IdentidadeImportada);
+          toast.success('Leitura avançada concluída — confira e ajuste o que precisar.');
+          return;
+        }
+        if (data.status === 'erro') {
+          toast.error('O site não permitiu a leitura avançada. Complete os campos à mão.');
+          return;
+        }
+      }
+    } finally {
+      setAvancada(false);
+    }
   };
 
   const ler = async () => {
@@ -60,8 +92,10 @@ export const ImportarDoSiteModal = ({ aberto, onFechar, onConfirmar, modo = 'emp
       toast.error('Cole o endereço do site.');
       return;
     }
+    cancelado.current = false;
     setLendo(true);
     setDados(null);
+    setAvancada(false);
     try {
       const { data, error } = await supabase.functions.invoke('extrair-identidade-site', {
         body: { url: url.trim() },
@@ -69,6 +103,8 @@ export const ImportarDoSiteModal = ({ aberto, onFechar, onConfirmar, modo = 'emp
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Não foi possível ler o site.');
       setDados(data.identidade as IdentidadeImportada);
+      const jobId = data?.camada_b?.job_id as string | undefined;
+      if (jobId) void aguardarAvancada(jobId);
     } catch (e: any) {
       toast.error(e?.message || 'Não foi possível ler o site. Preencha à mão.');
     } finally {
@@ -123,6 +159,19 @@ export const ImportarDoSiteModal = ({ aberto, onFechar, onConfirmar, modo = 'emp
             A leitura leva até 20 segundos. Você pode continuar usando a tela.
           </p>
         )}
+        {avancada && (
+          <div className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+            <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-primary" />
+            <div>
+              <p className="font-medium">Leitura avançada em andamento</p>
+              <p className="text-xs text-muted-foreground">
+                Este site monta a página por JavaScript, então estamos abrindo-o num navegador
+                da plataforma para ler as cores como o olho vê. Leva de 1 a 3 minutos e os campos
+                abaixo são atualizados sozinhos. Nenhuma cor é inventada.
+              </p>
+            </div>
+          </div>
+        )}
 
         {dados && (
           <div className="space-y-5">
@@ -175,7 +224,11 @@ export const ImportarDoSiteModal = ({ aberto, onFechar, onConfirmar, modo = 'emp
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <Label className="text-xs">Nome da marca</Label>
-                <Input value={dados.nome_empresa} onChange={(e) => setCampo('nome_empresa', e.target.value)} />
+                <Input
+                  value={dados.nome_empresa}
+                  onChange={(e) => setCampo('nome_empresa', e.target.value)}
+                  placeholder="Não identificado — escreva como deve aparecer"
+                />
               </div>
               <div>
                 <Label className="text-xs">Tipografia do site</Label>
