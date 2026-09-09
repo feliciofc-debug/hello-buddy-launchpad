@@ -192,6 +192,9 @@ export const HookCena: React.FC<{ c: Paleta; arranjo?: number; logoUrl?: string 
   const float = Math.sin(frame / 22) * 6;
   const centralizado = arranjo === 2;
 
+  // Logo do cliente já na abertura: centralizada e a ~1/3 da altura.
+  const logoAbertura = spring({ frame, fps, config: { damping: 16, stiffness: 130 } });
+
   return (
     <AbsoluteFill
       style={{
@@ -202,6 +205,37 @@ export const HookCena: React.FC<{ c: Paleta; arranjo?: number; logoUrl?: string 
         textAlign: centralizado ? "center" : "left",
       }}
     >
+      {logoUrl ? (
+        <div
+          style={{
+            position: "absolute",
+            top: "33%",
+            left: 0,
+            right: 0,
+            display: "flex",
+            justifyContent: "center",
+            transform: `translateY(-50%) scale(${logoAbertura})`,
+            opacity: logoAbertura,
+          }}
+        >
+          <div
+            style={{
+              background: rgba(c.panel, ehClaro(c.bg) ? 0.9 : 0.68),
+              border: `1px solid ${c.line}`,
+              borderRadius: 34,
+              padding: "18px 26px",
+            }}
+          >
+            <Img src={logoUrl} style={{ height: 96, maxWidth: 320, objectFit: "contain" }} />
+          </div>
+        </div>
+      ) : null}
+      <div
+        style={{
+          marginTop: logoUrl ? 300 : 0,
+          alignSelf: centralizado ? "center" : "flex-start",
+        }}
+      >
       <div
         style={{
           color: c.suave,
