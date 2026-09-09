@@ -49,6 +49,14 @@
 - [x] Unificar CTA duplicado no hero
 - [x] Criar conta demonstrativa isolada, com dados e acesso permanente
 - [x] Validar home e links legais em desktop e mobile
+
+## Landing page — posicionamento corporativo
+- [x] Reposicionar a abertura para marketing solicitado por áudio no WhatsApp.
+- [x] Exibir os cinco canais integrados no painel demonstrativo.
+- [x] Remover depoimentos fictícios e alegações não verificáveis.
+- [x] Substituir prova social por credenciais, APIs oficiais e dados da empresa.
+- [x] Atualizar fluxo, recursos, chamadas e linguagem para redes, franquias e empresas de porte.
+- [x] Preservar navegação, formulário final e rodapé legal.
 ## TikTok review (prioridade máxima — antes de terminar o vídeo de produto)
 - [x] Botão TikTok visível em "Meus Reels Gerados" (faltava para todas as contas, inclusive a demo)
 - [x] Botão LinkedIn no mesmo card, igualando as ações de produto

@@ -1,422 +1,457 @@
-import React, { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import React, { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  ArrowRight,
+  BadgeCheck,
+  Building2,
+  Check,
+  CircleCheck,
+  FileAudio,
+  Globe2,
+  Layers3,
+  MessageCircle,
+  Network,
+  PackageOpen,
+  Send,
+  ShieldCheck,
+  Sparkles,
+  Store,
+  Video,
+} from "lucide-react";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { WhatsAppSupportButton } from "@/components/WhatsAppSupportButton";
 import { WhatsAppFloatingButton } from "@/components/WhatsAppFloatingButton";
 import FooterOptIn from "@/components/FooterOptIn";
 import SiteLayout from "@/components/site/SiteLayout";
 
+const contatoUrl =
+  "https://wa.me/5521980804901?text=Ol%C3%A1!%20Quero%20conhecer%20a%20solu%C3%A7%C3%A3o%20corporativa%20da%20AMZ%20Ofertas.";
+
+const redes = [
+  { nome: "Instagram", sigla: "IG", status: "Programado", tom: "bg-pink-500/15 text-pink-300" },
+  { nome: "Facebook", sigla: "FB", status: "Programado", tom: "bg-blue-500/15 text-blue-300" },
+  { nome: "TikTok", sigla: "TK", status: "Em revisão", tom: "bg-cyan-500/15 text-cyan-300" },
+  { nome: "LinkedIn", sigla: "IN", status: "Programado", tom: "bg-sky-500/15 text-sky-300" },
+  { nome: "WhatsApp", sigla: "WA", status: "Ativo", tom: "bg-emerald-500/15 text-emerald-300" },
+];
+
+const recursos = [
+  {
+    icon: MessageCircle,
+    titulo: "Agente de IA no WhatsApp",
+    texto: "O Jarvis cria conteúdo e atende solicitações por áudio, texto e imagem, com o contexto da sua empresa.",
+  },
+  {
+    icon: Video,
+    titulo: "Vídeo animado vertical",
+    texto: "Reels, Stories e TikTok em quatro formatos, com cores, tipografia, logo e trilha da marca.",
+  },
+  {
+    icon: PackageOpen,
+    titulo: "Vídeo de produto",
+    texto: "A foto do catálogo vira anúncio com fundo removido, sombra, preço animado e chamada comercial.",
+  },
+  {
+    icon: Globe2,
+    titulo: "Identidade importada do site",
+    texto: "A plataforma lê cores, logo, tipografia e tom de voz diretamente do endereço da empresa.",
+  },
+  {
+    icon: FileAudio,
+    titulo: "Atendimento e qualificação",
+    texto: "Leads são atendidos e qualificados no WhatsApp oficial, com transferência para a equipe quando necessário.",
+  },
+  {
+    icon: Store,
+    titulo: "Conteúdo por unidade",
+    texto: "Redes e franquias operam campanhas locais por unidade, mantendo aprovação e direção centralizadas.",
+  },
+];
+
+const integracoes = [
+  "WhatsApp Cloud API",
+  "Instagram Graph API",
+  "Facebook Graph API",
+  "TikTok Content API",
+  "LinkedIn Marketing API",
+];
+
 function Landing() {
   const navigate = useNavigate();
 
-  // Scroll para o topo quando a página carregar
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
 
-  // Remover qualquer resquício do Typebot que possa estar em cache
   useEffect(() => {
-    // Remover elementos do Typebot do DOM
-    const typebotElements = document.querySelectorAll('[id*="typebot"], [class*="typebot"], typebot-bubble, typebot-standard');
-    typebotElements.forEach(el => el.remove());
-    
-    // Limpar window.Typebot se existir
-    if ((window as any).Typebot) {
-      delete (window as any).Typebot;
+    const typebotElements = document.querySelectorAll(
+      '[id*="typebot"], [class*="typebot"], typebot-bubble, typebot-standard',
+    );
+    typebotElements.forEach((element) => element.remove());
+
+    if ((window as Window & { Typebot?: unknown }).Typebot) {
+      delete (window as Window & { Typebot?: unknown }).Typebot;
     }
   }, []);
 
-  const scrollToSection = (id: string) => {
-    const element = document.getElementById(id);
-    element?.scrollIntoView({ behavior: 'smooth' });
-  };
-
   return (
     <SiteLayout>
-      <div className="bg-slate-900 text-white">
-      {/* HERO SECTION */}
-      <section className="pt-32 pb-20 px-6 bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid md:grid-cols-2 gap-12 items-center">
+      <main className="bg-slate-950 text-slate-50">
+        <section className="relative overflow-hidden border-b border-slate-800 px-6 pb-20 pt-28 md:pb-24 md:pt-36">
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-orange-500 to-transparent" />
+          <div className="relative mx-auto grid max-w-7xl items-center gap-14 lg:grid-cols-[1.08fr_0.92fr]">
             <div>
-              <h2 className="text-5xl md:text-6xl font-bold mb-6 leading-tight">
-                Transforme Suas Redes Sociais com <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-pink-500">Inteligência Artificial</span>
-              </h2>
-              <p className="text-xl text-purple-200 mb-8">
-                Plataforma completa de marketing digital para pequenas e médias empresas. Crie, agende e publique conteúdo profissional em minutos.
+              <div className="mb-6 inline-flex items-center gap-2 border border-orange-400/30 bg-orange-500/10 px-3 py-2 text-sm font-medium text-orange-300">
+                <Network className="h-4 w-4" aria-hidden="true" />
+                Marketing e atendimento em uma operação integrada
+              </div>
+
+              <h1 className="max-w-4xl text-4xl font-bold leading-tight sm:text-5xl md:text-6xl">
+                Todo o marketing da sua empresa, pedido por áudio no WhatsApp.
+              </h1>
+
+              <p className="mt-7 max-w-3xl text-lg leading-relaxed text-slate-300 md:text-xl">
+                Conteúdo criado por IA, publicado automaticamente em cinco redes por API oficial. Um agente que conhece o seu negócio atende cliente e equipe no mesmo canal.
               </p>
-              <div className="flex flex-col sm:flex-row gap-4 mb-8">
-                <a
-                  href="https://wa.me/5521980804901?text=Ol%C3%A1!%20Tenho%20interesse%20em%20conhecer%20a%20AMZ%20Ofertas.%20Minha%20vitrine%20Shopee:%20"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-2 bg-transparent border-2 border-green-500 text-green-400 hover:bg-green-500 hover:text-white text-lg px-8 py-6 rounded-lg font-semibold transition"
+
+              <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+                <Button asChild size="lg" className="h-12 bg-orange-500 px-7 text-base font-semibold text-slate-950 hover:bg-orange-400">
+                  <a href={contatoUrl} target="_blank" rel="noopener noreferrer">
+                    <MessageCircle className="h-5 w-5" aria-hidden="true" />
+                    Falar com um especialista
+                  </a>
+                </Button>
+                <Button
+                  type="button"
+                  size="lg"
+                  variant="outline"
+                  onClick={() => navigate("/cadastro")}
+                  className="h-12 border-slate-600 bg-transparent px-7 text-base text-slate-100 hover:bg-slate-800 hover:text-slate-50"
                 >
-                  💬 Falar com Consultor
-                </a>
-              </div>
-              <div className="flex items-center gap-8 text-sm">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl">✅</span>
-                  <span>Atendimento personalizado</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl">✅</span>
-                  <span>Configuração em 48h</span>
-                </div>
-              </div>
-            </div>
-            <div className="relative">
-              <div className="bg-slate-800/50 backdrop-blur-lg border-2 border-purple-500/30 rounded-2xl p-8 shadow-2xl">
-                <div className="mb-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-orange-300 font-semibold">Dashboard</span>
-                    <span className="bg-green-500 text-xs px-3 py-1 rounded-full font-bold">ATIVO</span>
-                  </div>
-                  <h3 className="text-xl font-bold mb-4">Posts Agendados</h3>
-                  <div className="space-y-3">
-                    <div className="bg-purple-500/20 p-3 rounded-lg">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm">📱 Instagram Feed</span>
-                        <span className="text-xs text-purple-300">Hoje 14h</span>
-                      </div>
-                      <p className="text-xs text-slate-300">Promoção especial...</p>
-                    </div>
-                    <div className="bg-blue-500/20 p-3 rounded-lg">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm">📘 Facebook</span>
-                        <span className="text-xs text-blue-300">Amanhã 10h</span>
-                      </div>
-                      <p className="text-xs text-slate-300">Novidades chegando...</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="bg-pink-500/20 p-3 rounded-lg text-center">
-                    <p className="text-xs text-pink-300">Posts</p>
-                    <p className="text-xl font-bold">42</p>
-                  </div>
-                  <div className="bg-green-500/20 p-3 rounded-lg text-center">
-                    <p className="text-xs text-green-300">Alcance</p>
-                    <p className="text-xl font-bold">8.5k</p>
-                  </div>
-                  <div className="bg-orange-500/20 p-3 rounded-lg text-center">
-                    <p className="text-xs text-orange-300">Engage</p>
-                    <p className="text-xl font-bold">12%</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* COMO FUNCIONA */}
-      <section id="como-funciona" className="py-20 px-6 bg-slate-900">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold mb-4">Como Funciona</h2>
-            <p className="text-xl text-purple-300">3 passos simples para transformar seu marketing</p>
-          </div>
-          
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-purple-500/30 rounded-2xl p-8 text-center">
-              <div className="w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-3xl font-bold mx-auto mb-6">1</div>
-              <div className="text-5xl mb-4">📸</div>
-              <h3 className="text-2xl font-bold mb-4">Adicione Seus Produtos</h3>
-              <p className="text-slate-300">Faça upload de fotos ou cole links dos seus produtos. Nossa IA analisa e entende automaticamente.</p>
-            </div>
-
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-orange-500/30 rounded-2xl p-8 text-center">
-              <div className="w-16 h-16 bg-gradient-to-r from-orange-500 to-red-500 rounded-full flex items-center justify-center text-3xl font-bold mx-auto mb-6">2</div>
-              <div className="text-5xl mb-4">🤖</div>
-              <h3 className="text-2xl font-bold mb-4">IA Cria Conteúdo Profissional</h3>
-              <p className="text-slate-300">Em segundos, receba posts otimizados para Instagram e Facebook. 3 opções de texto para cada rede social.</p>
-            </div>
-
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-green-500/30 rounded-2xl p-8 text-center">
-              <div className="w-16 h-16 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center text-3xl font-bold mx-auto mb-6">3</div>
-              <div className="text-5xl mb-4">📅</div>
-              <h3 className="text-2xl font-bold mb-4">Agende e Publique</h3>
-              <p className="text-slate-300">Escolha datas, horários e redes. Suas postagens saem automaticamente no melhor momento.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* BENEFÍCIOS */}
-      <section className="py-20 px-6 bg-gradient-to-b from-slate-900 to-purple-900">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold mb-4">
-              Tudo Que Sua Empresa Precisa
-            </h2>
-            <p className="text-xl text-purple-300">Ferramentas profissionais em uma plataforma simples</p>
-          </div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <div className="bg-slate-800/50 backdrop-blur-lg border border-purple-500/30 rounded-2xl p-8 hover:border-purple-500 transition">
-              <div className="text-5xl mb-4">📱</div>
-              <h3 className="text-2xl font-bold mb-3">Conteúdo Profissional</h3>
-              <p className="text-slate-300">IA cria textos persuasivos e otimizados para cada rede social. Sempre alinhados com sua marca.</p>
-            </div>
-
-            <div className="bg-slate-800/50 backdrop-blur-lg border border-orange-500/30 rounded-2xl p-8 hover:border-orange-500 transition">
-              <div className="text-5xl mb-4">📅</div>
-              <h3 className="text-2xl font-bold mb-3">Agendamento Inteligente</h3>
-              <p className="text-slate-300">Programe posts com antecedência. Diário, semanal ou personalizado. Sua empresa sempre presente nas redes.</p>
-            </div>
-
-            <div className="bg-slate-800/50 backdrop-blur-lg border border-green-500/30 rounded-2xl p-8 hover:border-green-500 transition">
-              <div className="text-5xl mb-4">📊</div>
-              <h3 className="text-2xl font-bold mb-3">Organização Total</h3>
-              <p className="text-slate-300">Catálogo de produtos, biblioteca de posts e histórico completo. Tudo em um só lugar.</p>
-            </div>
-
-            <div className="bg-slate-800/50 backdrop-blur-lg border border-blue-500/30 rounded-2xl p-8 hover:border-blue-500 transition">
-              <div className="text-5xl mb-4">🎯</div>
-              <h3 className="text-2xl font-bold mb-3">Múltiplas Redes</h3>
-              <p className="text-slate-300">Publique simultaneamente no Instagram Feed, Stories e Facebook. Economize tempo e amplie alcance.</p>
-            </div>
-
-            <div className="bg-slate-800/50 backdrop-blur-lg border border-pink-500/30 rounded-2xl p-8 hover:border-pink-500 transition">
-              <div className="text-5xl mb-4">📈</div>
-              <h3 className="text-2xl font-bold mb-3">Análise de Resultados</h3>
-              <p className="text-slate-300">Acompanhe métricas, engajamento e desempenho. Decisões baseadas em dados reais.</p>
-            </div>
-
-            <div className="bg-slate-800/50 backdrop-blur-lg border border-yellow-500/30 rounded-2xl p-8 hover:border-yellow-500 transition">
-              <div className="text-5xl mb-4">⚡</div>
-              <h3 className="text-2xl font-bold mb-3">Rápido e Simples</h3>
-              <p className="text-slate-300">Interface intuitiva. Sem complicação. Do produto ao post em menos de 2 minutos.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* PLANO */}
-      <section id="planos" className="py-20 px-6 bg-slate-900">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold mb-4">Plano Único — Sem Complicação</h2>
-            <p className="text-xl text-purple-300">Tudo que você precisa por um preço justo</p>
-          </div>
-
-          <div className="max-w-2xl mx-auto space-y-6">
-            {/* Plano único R$ 597 */}
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-orange-500 rounded-3xl p-10 shadow-2xl relative">
-              <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-orange-500 to-red-500 px-6 py-2 rounded-full text-sm font-bold">
-                MAIS VENDIDO
+                  Conhecer a plataforma
+                  <ArrowRight className="h-5 w-5" aria-hidden="true" />
+                </Button>
               </div>
 
-              <div className="text-center mb-8">
-                <div className="text-6xl mb-4">🚀</div>
-                <h3 className="text-3xl font-bold mb-4">AMZ OFERTAS PRO</h3>
-
-                <div className="text-3xl font-bold text-green-400 mb-2">
-                  Consulte um especialista
-                </div>
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-4 mb-8">
-                {[
-                  "Publicação automática no Facebook e Instagram",
-                  "IA que gera textos e imagens profissionais",
-                  "Autopilot Social — posts no piloto automático",
-                  "Upload de Reels e vídeos do celular",
-                  "WhatsApp Marketing com campanhas",
-                  "Dashboard com métricas em tempo real",
-                  "Gerador de vídeo slideshow com IA",
-                  "Suporte via WhatsApp",
-                  "Atualizações gratuitas",
-                  "Cancele quando quiser"
-                ].map((feature, index) => (
-                  <div key={index} className="flex items-center gap-3">
-                    <span className="text-green-400 text-xl">✅</span>
-                    <span className="text-lg">{feature}</span>
+              <div className="mt-10 grid max-w-2xl gap-3 text-sm text-slate-300 sm:grid-cols-3">
+                {["APIs oficiais", "Aprovação antes de publicar", "Operação em cinco canais"].map((item) => (
+                  <div key={item} className="flex items-center gap-2 border-l-2 border-orange-500 pl-3">
+                    <Check className="h-4 w-4 shrink-0 text-orange-400" aria-hidden="true" />
+                    <span>{item}</span>
                   </div>
                 ))}
               </div>
+            </div>
 
-              <button
-                onClick={() => navigate('/cadastro')}
-                className="w-full bg-gradient-to-r from-orange-500 to-pink-500 text-white py-5 rounded-xl font-bold text-2xl hover:shadow-2xl transition transform hover:scale-105 flex items-center justify-center gap-2"
-              >
-                🚀 Contratar Agora
-              </button>
+            <div className="relative mx-auto w-full max-w-xl" aria-label="Visão da operação integrada em cinco canais">
+              <div className="border border-slate-700 bg-slate-900 shadow-2xl shadow-slate-950/60">
+                <div className="flex items-center justify-between border-b border-slate-700 px-5 py-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-orange-400">Central de publicação</p>
+                    <p className="mt-1 font-semibold text-slate-100">Operação multicanal</p>
+                  </div>
+                  <span className="flex items-center gap-2 text-xs text-emerald-300">
+                    <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                    Operação ativa
+                  </span>
+                </div>
 
-              <p className="text-center mt-4 text-sm text-slate-400">
-                Prefere conversar antes?{' '}
-                <a
-                  href="https://wa.me/5521980804901?text=Ol%C3%A1!%20Tenho%20interesse%20em%20conhecer%20a%20AMZ%20Ofertas.%20Minha%20vitrine%20Shopee:%20"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-green-400 hover:text-green-300 font-semibold underline"
-                >
-                  Fale no WhatsApp
-                </a>
-              </p>
-              <p className="text-center mt-2 text-sm text-slate-400">
-                ✅ Pagamento via PIX, cartão ou boleto · Cancele quando quiser
-              </p>
+                <div className="space-y-2 p-4 sm:p-5">
+                  {redes.map((rede, index) => (
+                    <div key={rede.nome} className="grid grid-cols-[2.5rem_1fr_auto] items-center gap-3 border border-slate-800 bg-slate-950/70 p-3">
+                      <div className={`flex h-10 w-10 items-center justify-center rounded-full text-xs font-bold ${rede.tom}`}>
+                        {rede.sigla}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-medium text-slate-100">{rede.nome}</p>
+                        <p className="truncate text-xs text-slate-400">
+                          {index === 4 ? "Atendimento e qualificação" : "Campanha institucional — 14:00"}
+                        </p>
+                      </div>
+                      <span className="text-xs font-medium text-slate-300">{rede.status}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-3 border-t border-slate-700 bg-slate-900">
+                  {[
+                    ["5", "canais"],
+                    ["1", "aprovação"],
+                    ["API", "oficial"],
+                  ].map(([valor, rotulo]) => (
+                    <div key={rotulo} className="border-r border-slate-700 px-3 py-4 text-center last:border-r-0">
+                      <p className="text-lg font-bold text-orange-400">{valor}</p>
+                      <p className="text-xs text-slate-400">{rotulo}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* DEPOIMENTOS */}
-      <section className="py-20 px-6 bg-gradient-to-b from-slate-900 to-purple-900">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold mb-4">
-              O Que Nossos Clientes Dizem
-            </h2>
+        <section id="como-funciona" className="border-b border-slate-800 bg-slate-900 px-6 py-20 md:py-24">
+          <div className="mx-auto max-w-7xl">
+            <div className="mb-14 max-w-3xl">
+              <p className="mb-3 text-sm font-semibold uppercase text-orange-400">Como funciona</p>
+              <h2 className="text-3xl font-bold md:text-5xl">Da identidade da marca à publicação, com controle humano.</h2>
+              <p className="mt-5 text-lg leading-relaxed text-slate-300">
+                A tecnologia organiza o processo; sua equipe mantém a decisão final sobre cada conteúdo.
+              </p>
+            </div>
+
+            <div className="grid gap-px overflow-hidden border border-slate-700 bg-slate-700 md:grid-cols-3">
+              {[
+                {
+                  numero: "01",
+                  icon: Globe2,
+                  titulo: "Importe sua identidade",
+                  texto: "Cole o endereço do seu site. A plataforma extrai cores, logo, tipografia e tom de voz da sua marca.",
+                },
+                {
+                  numero: "02",
+                  icon: FileAudio,
+                  titulo: "Peça por áudio no WhatsApp",
+                  texto: "Diga o que quer publicar. A IA escreve, cria a arte ou o vídeo e monta o post com o contexto do negócio.",
+                },
+                {
+                  numero: "03",
+                  icon: Send,
+                  titulo: "Aprove e publique",
+                  texto: "Nada vai ao ar sem sua confirmação. A publicação é distribuída nas cinco redes pelas integrações oficiais.",
+                },
+              ].map((passo) => {
+                const Icon = passo.icon;
+                return (
+                  <article key={passo.numero} className="bg-slate-950 p-7 md:p-9">
+                    <div className="mb-10 flex items-center justify-between">
+                      <span className="text-sm font-semibold text-orange-400">{passo.numero}</span>
+                      <Icon className="h-6 w-6 text-slate-400" aria-hidden="true" />
+                    </div>
+                    <h3 className="text-xl font-semibold">{passo.titulo}</h3>
+                    <p className="mt-4 leading-relaxed text-slate-300">{passo.texto}</p>
+                  </article>
+                );
+              })}
+            </div>
           </div>
+        </section>
 
-          <div className="grid md:grid-cols-3 gap-8">
-            {[
-              {
-                text: "Economizamos 15 horas por semana em criação de conteúdo. A IA da AMZ é incrível!",
-                name: "João Silva",
-                empresa: "Padaria do Bairro",
-                color: "from-purple-500 to-pink-500"
-              },
-              {
-                text: "Triplicamos nosso engajamento no Instagram em apenas 2 meses. Resultados impressionantes!",
-                name: "Maria Santos",
-                empresa: "Boutique Fashion",
-                color: "from-orange-500 to-red-500"
-              },
-              {
-                text: "Plataforma completa e fácil de usar. Nossa presença digital nunca foi tão forte!",
-                name: "Carlos Mendes",
-                empresa: "Pet Shop Central",
-                color: "from-blue-500 to-cyan-500"
-              }
-            ].map((testimonial, index) => (
-              <div key={index} className="bg-gradient-to-br from-slate-800 to-slate-900 border border-green-500/30 rounded-2xl p-8">
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="text-2xl">⭐⭐⭐⭐⭐</span>
-                </div>
-                <p className="text-lg mb-6 italic">"{testimonial.text}"</p>
-                <div className="flex items-center gap-3">
-                  <div className={`w-12 h-12 bg-gradient-to-r ${testimonial.color} rounded-full flex items-center justify-center text-xl font-bold`}>
-                    {testimonial.name.charAt(0)}
-                  </div>
+        <section className="border-b border-slate-800 bg-slate-950 px-6 py-20 md:py-24">
+          <div className="mx-auto max-w-7xl">
+            <div className="mb-14 grid gap-6 lg:grid-cols-[0.85fr_1.15fr] lg:items-end">
+              <div>
+                <p className="mb-3 text-sm font-semibold uppercase text-orange-400">Capacidade operacional</p>
+                <h2 className="text-3xl font-bold md:text-5xl">Tudo que sua empresa precisa para operar conteúdo em escala.</h2>
+              </div>
+              <p className="max-w-2xl text-lg leading-relaxed text-slate-300 lg:justify-self-end">
+                Da solicitação no WhatsApp à publicação e ao atendimento de leads, mantendo identidade, governança e visão por unidade.
+              </p>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {recursos.map((recurso) => {
+                const Icon = recurso.icon;
+                return (
+                  <article key={recurso.titulo} className="border border-slate-800 bg-slate-900 p-7 transition-colors hover:border-orange-500/60">
+                    <Icon className="h-7 w-7 text-orange-400" aria-hidden="true" />
+                    <h3 className="mt-7 text-xl font-semibold">{recurso.titulo}</h3>
+                    <p className="mt-3 leading-relaxed text-slate-300">{recurso.texto}</p>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
+        <section className="border-b border-slate-800 bg-slate-900 px-6 py-20 md:py-24">
+          <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
+            <div>
+              <p className="mb-3 text-sm font-semibold uppercase text-orange-400">Credenciais verificáveis</p>
+              <h2 className="text-3xl font-bold md:text-5xl">Infraestrutura oficial para uma operação corporativa.</h2>
+              <p className="mt-6 text-lg leading-relaxed text-slate-300">
+                Sem números inflados ou depoimentos genéricos. A confiança está na empresa identificada, nas integrações documentadas e no controle de aprovação.
+              </p>
+
+              <div className="mt-8 border-l-2 border-orange-500 pl-5">
+                <p className="font-semibold text-slate-100">ATOM BRASIL DIGITAL LTDA</p>
+                <p className="mt-1 text-slate-400">CNPJ 22.003.550/0001-05</p>
+                <p className="mt-1 text-slate-400">Rio de Janeiro, Brasil</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="border border-slate-700 bg-slate-950 p-6">
+                <div className="flex gap-4">
+                  <BadgeCheck className="mt-0.5 h-7 w-7 shrink-0 text-orange-400" aria-hidden="true" />
                   <div>
-                    <p className="font-bold">{testimonial.name}</p>
-                    <p className="text-sm text-slate-400">{testimonial.empresa}</p>
-                    <p className="text-xs text-green-400">Cliente desde 2024</p>
+                    <h3 className="text-lg font-semibold">Tech Provider verificado pela Meta</h3>
+                    <p className="mt-2 leading-relaxed text-slate-300">
+                      Business Verification e Access Verification aprovadas para operar integrações empresariais.
+                    </p>
                   </div>
                 </div>
               </div>
-            ))}
+
+              <div className="border border-slate-700 bg-slate-950 p-6">
+                <div className="flex gap-4">
+                  <ShieldCheck className="mt-0.5 h-7 w-7 shrink-0 text-orange-400" aria-hidden="true" />
+                  <div className="w-full">
+                    <h3 className="text-lg font-semibold">Integrações por API oficial</h3>
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                      {integracoes.map((integracao) => (
+                        <div key={integracao} className="flex items-center gap-2 text-sm text-slate-300">
+                          <CircleCheck className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden="true" />
+                          {integracao}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border border-slate-700 bg-slate-950 p-6">
+                <div className="flex gap-4">
+                  <Building2 className="mt-0.5 h-7 w-7 shrink-0 text-orange-400" aria-hidden="true" />
+                  <div>
+                    <h3 className="text-lg font-semibold">Operação com governança</h3>
+                    <p className="mt-2 leading-relaxed text-slate-300">
+                      Aprovação humana antes da publicação, identidade por empresa e gestão de conteúdo por operação ou unidade.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* FAQ */}
-      <section className="py-20 px-6 bg-slate-900">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold mb-4">
-              Perguntas Frequentes
-            </h2>
+        <section id="planos" className="border-b border-slate-800 bg-slate-950 px-6 py-20 md:py-24">
+          <div className="mx-auto grid max-w-6xl gap-10 border border-slate-700 bg-slate-900 p-7 md:grid-cols-[1fr_0.8fr] md:p-12">
+            <div>
+              <p className="mb-3 text-sm font-semibold uppercase text-orange-400">AMZ Ofertas Pro</p>
+              <h2 className="text-3xl font-bold md:text-4xl">Uma operação configurada para a realidade da sua empresa.</h2>
+              <p className="mt-5 max-w-2xl text-lg leading-relaxed text-slate-300">
+                Conectamos seus canais, configuramos a identidade da marca e preparamos o agente para o fluxo da equipe.
+              </p>
+            </div>
+
+            <div className="border-l border-slate-700 md:pl-10">
+              <ul className="space-y-3 text-slate-300">
+                {["Cinco canais integrados", "Conteúdo em texto, imagem e vídeo", "Agente de IA no WhatsApp", "Aprovação e agendamento centralizados"].map((item) => (
+                  <li key={item} className="flex items-start gap-3">
+                    <Check className="mt-1 h-4 w-4 shrink-0 text-orange-400" aria-hidden="true" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+              <Button asChild size="lg" className="mt-8 h-12 w-full bg-orange-500 font-semibold text-slate-950 hover:bg-orange-400">
+                <a href={contatoUrl} target="_blank" rel="noopener noreferrer">
+                  Falar com um especialista
+                  <ArrowRight className="h-5 w-5" aria-hidden="true" />
+                </a>
+              </Button>
+              <button
+                type="button"
+                onClick={() => navigate("/cadastro")}
+                className="mt-4 w-full text-sm font-medium text-slate-300 underline decoration-slate-600 underline-offset-4 transition-colors hover:text-slate-50"
+              >
+                Acessar o cadastro da plataforma
+              </button>
+            </div>
           </div>
+        </section>
 
-          <Accordion type="single" collapsible className="space-y-4">
-            <AccordionItem value="item-1" className="bg-slate-800/50 border border-purple-500/30 rounded-xl px-6">
-              <AccordionTrigger className="text-lg font-semibold hover:text-purple-300">
-                Como começo a usar a plataforma?
-              </AccordionTrigger>
-              <AccordionContent className="text-slate-300">
-                O atendimento é consultivo: nossa equipe conversa com você no WhatsApp, entende sua operação e configura tudo pra você. Em até 48h sua automação já está rodando.
-              </AccordionContent>
-            </AccordionItem>
+        <section className="bg-slate-900 px-6 py-20 md:py-24">
+          <div className="mx-auto max-w-4xl">
+            <div className="mb-12">
+              <p className="mb-3 text-sm font-semibold uppercase text-orange-400">Perguntas frequentes</p>
+              <h2 className="text-3xl font-bold md:text-5xl">Informações para avaliar a operação.</h2>
+            </div>
 
-            <AccordionItem value="item-2" className="bg-slate-800/50 border border-purple-500/30 rounded-xl px-6">
-              <AccordionTrigger className="text-lg font-semibold hover:text-purple-300">
-                Posso cancelar a qualquer momento?
-              </AccordionTrigger>
-              <AccordionContent className="text-slate-300">
-                Sim! Não há fidelidade ou taxas de cancelamento. Você pode cancelar sua assinatura quando quiser através do painel de configurações.
-              </AccordionContent>
-            </AccordionItem>
+            <Accordion type="single" collapsible className="space-y-3">
+              <AccordionItem value="item-1" className="border border-slate-700 bg-slate-950 px-6">
+                <AccordionTrigger className="text-left text-lg font-semibold hover:text-orange-300">
+                  Como a plataforma aprende a identidade da empresa?
+                </AccordionTrigger>
+                <AccordionContent className="leading-relaxed text-slate-300">
+                  A empresa informa o endereço do próprio site. A plataforma identifica cores, logo, tipografia, segmento e tom de voz, e apresenta tudo para revisão antes de salvar.
+                </AccordionContent>
+              </AccordionItem>
 
-            <AccordionItem value="item-3" className="bg-slate-800/50 border border-purple-500/30 rounded-xl px-6">
-              <AccordionTrigger className="text-lg font-semibold hover:text-purple-300">
-                Quais redes sociais são suportadas?
-              </AccordionTrigger>
-              <AccordionContent className="text-slate-300">
-                Atualmente suportamos Instagram (Feed e Stories) e Facebook. Estamos trabalhando para adicionar TikTok e LinkedIn em breve.
-              </AccordionContent>
-            </AccordionItem>
+              <AccordionItem value="item-2" className="border border-slate-700 bg-slate-950 px-6">
+                <AccordionTrigger className="text-left text-lg font-semibold hover:text-orange-300">
+                  Quais canais estão integrados?
+                </AccordionTrigger>
+                <AccordionContent className="leading-relaxed text-slate-300">
+                  Instagram, Facebook, TikTok, LinkedIn e WhatsApp, por meio das APIs oficiais de cada plataforma.
+                </AccordionContent>
+              </AccordionItem>
 
-            <AccordionItem value="item-4" className="bg-slate-800/50 border border-purple-500/30 rounded-xl px-6">
-              <AccordionTrigger className="text-lg font-semibold hover:text-purple-300">
-                A IA cria as imagens também?
-              </AccordionTrigger>
-              <AccordionContent className="text-slate-300">
-                A IA cria textos otimizados para suas postagens. Você faz upload das fotos dos seus produtos e nossa IA gera legendas persuasivas e hashtags relevantes automaticamente.
-              </AccordionContent>
-            </AccordionItem>
+              <AccordionItem value="item-3" className="border border-slate-700 bg-slate-950 px-6">
+                <AccordionTrigger className="text-left text-lg font-semibold hover:text-orange-300">
+                  A plataforma publica sem aprovação?
+                </AccordionTrigger>
+                <AccordionContent className="leading-relaxed text-slate-300">
+                  Não. O conteúdo é apresentado para confirmação antes da publicação. A empresa mantém controle sobre texto, imagem, vídeo, canais e horário.
+                </AccordionContent>
+              </AccordionItem>
 
-            <AccordionItem value="item-5" className="bg-slate-800/50 border border-purple-500/30 rounded-xl px-6">
-              <AccordionTrigger className="text-lg font-semibold hover:text-purple-300">
-                Preciso de conhecimento técnico?
-              </AccordionTrigger>
-              <AccordionContent className="text-slate-300">
-                Não! A plataforma foi desenvolvida para ser extremamente intuitiva. Se você sabe usar Instagram e Facebook, já sabe usar a AMZ Ofertas. Tudo é visual e simples.
-              </AccordionContent>
-            </AccordionItem>
+              <AccordionItem value="item-4" className="border border-slate-700 bg-slate-950 px-6">
+                <AccordionTrigger className="text-left text-lg font-semibold hover:text-orange-300">
+                  É possível trabalhar com várias lojas ou unidades?
+                </AccordionTrigger>
+                <AccordionContent className="leading-relaxed text-slate-300">
+                  Sim. Redes e franquias podem organizar conteúdo por unidade, preservando a identidade da marca e a aprovação central.
+                </AccordionContent>
+              </AccordionItem>
 
-            <AccordionItem value="item-6" className="bg-slate-800/50 border border-purple-500/30 rounded-xl px-6">
-              <AccordionTrigger className="text-lg font-semibold hover:text-purple-300">
-                Como funciona o agendamento?
-              </AccordionTrigger>
-              <AccordionContent className="text-slate-300">
-                Você escolhe data, horário e em qual rede quer publicar. Pode agendar posts únicos ou criar um calendário semanal/mensal. A plataforma publica automaticamente no horário programado.
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        </div>
-      </section>
-
-      {/* FOOTER CTA */}
-      <section className="py-20 px-6 bg-gradient-to-br from-purple-900 via-slate-900 to-slate-900">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-4xl md:text-5xl font-bold mb-6">
-            Pronto Para Transformar Suas Redes Sociais?
-          </h2>
-          <p className="text-xl text-purple-300 mb-8">
-            Junte-se a centenas de empresas que já estão crescendo com a AMZ Ofertas
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button
-              onClick={() => navigate('/cadastro')}
-              className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-pink-500 hover:shadow-2xl text-white text-xl px-12 py-8 rounded-lg font-bold transition transform hover:scale-105"
-            >
-              🚀 Contratar Agora
-            </button>
-            <a
-              href="https://wa.me/5521980804901?text=Ol%C3%A1!%20Tenho%20interesse%20em%20conhecer%20a%20AMZ%20Ofertas.%20Minha%20vitrine%20Shopee:%20"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center justify-center gap-2 bg-transparent border-2 border-green-500 text-green-400 hover:bg-green-500 hover:text-white text-xl px-12 py-8 rounded-lg font-bold transition"
-            >
-              💬 Falar com Consultor
-            </a>
+              <AccordionItem value="item-5" className="border border-slate-700 bg-slate-950 px-6">
+                <AccordionTrigger className="text-left text-lg font-semibold hover:text-orange-300">
+                  A IA também cria imagens e vídeos?
+                </AccordionTrigger>
+                <AccordionContent className="leading-relaxed text-slate-300">
+                  Sim. A plataforma cria textos, artes, vídeos animados verticais e anúncios de produto, sempre usando a identidade aprovada da empresa.
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           </div>
-          <p className="mt-6 text-slate-400">
-            Cancele quando quiser · Configuração em 48h
-          </p>
-        </div>
-      </section>
+        </section>
 
-      {/* OPT-IN NEWSLETTER WHATSAPP */}
-      <FooterOptIn />
-      </div>
+        <section className="border-y border-slate-800 bg-slate-950 px-6 py-20">
+          <div className="mx-auto max-w-4xl text-center">
+            <Sparkles className="mx-auto h-8 w-8 text-orange-400" aria-hidden="true" />
+            <h2 className="mt-6 text-3xl font-bold md:text-5xl">Avalie como a AMZ se encaixa na sua operação.</h2>
+            <p className="mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-slate-300">
+              Converse com nossa equipe sobre canais, unidades, volume de conteúdo e atendimento pelo WhatsApp.
+            </p>
+            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+              <Button asChild size="lg" className="h-12 bg-orange-500 px-8 font-semibold text-slate-950 hover:bg-orange-400">
+                <a href={contatoUrl} target="_blank" rel="noopener noreferrer">
+                  <MessageCircle className="h-5 w-5" aria-hidden="true" />
+                  Falar com um especialista
+                </a>
+              </Button>
+              <Button
+                type="button"
+                size="lg"
+                variant="outline"
+                onClick={() => navigate("/cadastro")}
+                className="h-12 border-slate-600 bg-transparent px-8 text-slate-100 hover:bg-slate-800 hover:text-slate-50"
+              >
+                Conhecer a plataforma
+              </Button>
+            </div>
+          </div>
+        </section>
+
+        <FooterOptIn />
+      </main>
       <WhatsAppSupportButton />
       <WhatsAppFloatingButton />
     </SiteLayout>
