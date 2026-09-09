@@ -8,7 +8,6 @@ import {
   CircleCheck,
   FileAudio,
   Globe2,
-  Layers3,
   MessageCircle,
   Network,
   PackageOpen,
@@ -356,13 +355,14 @@ function Landing() {
                   <ArrowRight className="h-5 w-5" aria-hidden="true" />
                 </a>
               </Button>
-              <button
+              <Button
                 type="button"
+                variant="link"
                 onClick={() => navigate("/cadastro")}
-                className="mt-4 w-full text-sm font-medium text-slate-300 underline decoration-slate-600 underline-offset-4 transition-colors hover:text-slate-50"
+                className="mt-4 w-full text-sm font-medium text-slate-300 underline decoration-slate-600 underline-offset-4 hover:text-slate-50"
               >
                 Acessar o cadastro da plataforma
-              </button>
+              </Button>
             </div>
           </div>
         </section>
