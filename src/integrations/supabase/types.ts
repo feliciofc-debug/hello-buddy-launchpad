@@ -7529,6 +7529,48 @@ export type Database = {
         }
         Relationships: []
       }
+      site_render_jobs: {
+        Row: {
+          claimed_at: string | null
+          created_at: string
+          erro: string | null
+          id: string
+          identidade: Json | null
+          identidade_a: Json
+          status: string
+          tentativas: number
+          updated_at: string
+          url: string
+          user_id: string | null
+        }
+        Insert: {
+          claimed_at?: string | null
+          created_at?: string
+          erro?: string | null
+          id?: string
+          identidade?: Json | null
+          identidade_a?: Json
+          status?: string
+          tentativas?: number
+          updated_at?: string
+          url: string
+          user_id?: string | null
+        }
+        Update: {
+          claimed_at?: string | null
+          created_at?: string
+          erro?: string | null
+          id?: string
+          identidade?: Json | null
+          identidade_a?: Json
+          status?: string
+          tentativas?: number
+          updated_at?: string
+          url?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       social_posts_queue: {
         Row: {
           created_at: string | null
@@ -10215,6 +10257,28 @@ export type Database = {
           to: "fila_prospeccao_pietro"
           isOneToOne: false
           isSetofReturn: true
+        }
+      }
+      claim_site_render_job: {
+        Args: { p_stale_minutos?: number }
+        Returns: {
+          claimed_at: string | null
+          created_at: string
+          erro: string | null
+          id: string
+          identidade: Json | null
+          identidade_a: Json
+          status: string
+          tentativas: number
+          updated_at: string
+          url: string
+          user_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "site_render_jobs"
+          isOneToOne: true
+          isSetofReturn: false
         }
       }
       claim_video_motion_job: {
