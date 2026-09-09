@@ -262,7 +262,7 @@ function logoDe(html: string, base: URL): string[] {
   const cabecalho = html.match(/<header[\s\S]{0,4000}?<\/header>/i)?.[0] ?? html.slice(0, 6000);
   const imgLogo = [...cabecalho.matchAll(/<img[^>]+>/gi)]
     .map((m) => m[0])
-    .find((tag) => /logo|marca|brand/i.test(tag));
+    .find((tag) => /logo|marca|brand/i.test(tag) && !LOGO_ALHEIA.test(tag));
   const srcLogo = imgLogo?.match(/(?:data-src|src)=["']([^"']+)["']/i)?.[1];
 
   if (srcLogo) candidatos.unshift(srcLogo);
