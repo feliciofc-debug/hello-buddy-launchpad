@@ -205,11 +205,13 @@ async function processar(navegador, job) {
     const dados = await pagina.evaluate(LEITOR);
     const captura = await pagina.screenshot({ type: "jpeg", quality: 70 });
     const logoDataUrl = await baixarLogo(pagina, dados.logo_url);
+    const daLogo = await coresDaLogo(pagina, logoDataUrl);
 
     await chamar("site-render-complete", {
       job_id: job.id,
       success: true,
       ...dados,
+      cores: [...dados.cores, ...daLogo],
       logo_data_url: logoDataUrl,
       captura_data_url: `data:image/jpeg;base64,${captura.toString("base64")}`,
     });
