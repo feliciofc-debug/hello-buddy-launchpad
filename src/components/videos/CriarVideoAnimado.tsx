@@ -127,6 +127,38 @@ export const CriarVideoAnimado = () => {
     const { data: signed } = await supabase.storage.from('tenant-logos').createSignedUrl(path, 3600);
     setLogoPath(path);
     setLogoUrl(signed?.signedUrl ?? null);
+    setLogoOficial({ path, url: signed?.signedUrl ?? null });
+  };
+
+  // Tira a logo apenas deste vídeo. A logo cadastrada da conta continua salva.
+  const removerLogo = () => {
+    setLogoPath(null);
+    setLogoUrl(null);
+    setProps((p) => (p ? { ...p, logoUrl: undefined } : p));
+    toast.success('Logo removida deste vídeo. A logo cadastrada da sua empresa continua salva.');
+  };
+
+  const restaurarLogoOficial = () => {
+    if (!logoOficial?.path) return;
+    setLogoPath(logoOficial.path);
+    setLogoUrl(logoOficial.url);
+    setProps((p) => (p ? { ...p, logoUrl: logoOficial.url ?? undefined } : p));
+    toast.success('Logo da sua empresa restaurada neste vídeo.');
+  };
+
+  // Cada identidade carrega os próprios dados: nada do cliente anterior fica.
+  const limparIdentidadeDoVideo = () => {
+    setLogoPath(null);
+    setLogoUrl(null);
+    setMarcaCliente('');
+    setTomDeVozCliente('');
+    setProps((p) => (p ? {
+      ...p,
+      logoUrl: undefined,
+      marca: '',
+      site: undefined,
+      cta: { ...p.cta, telefone: '', consultor: '' },
+    } : p));
   };
 
   const carregarTrilhas = async () => {
