@@ -437,7 +437,9 @@ export async function lerIdentidadeDoSite(entrada: string): Promise<IdentidadeSi
     const titulo = (html.match(/<title[^>]*>([\s\S]{0,200}?)<\/title>/i)?.[1] ?? "").trim();
     const descricaoMeta = meta(html, "description") || meta(html, "og:description");
     const h1 = semTags(html.match(/<h1[^>]*>([\s\S]{0,300}?)<\/h1>/i)?.[1] ?? "");
-    const nomeEmpresa = (meta(html, "og:site_name") || titulo.split(/[|\-–—]/)[0] || base.hostname.replace(/^www\./, "")).trim().slice(0, 60);
+    // Nunca preenchemos com o domínio: se não houver nome de marca no código,
+    // o campo fica vazio para o usuário escrever.
+    const nomeEmpresa = nomeDeMarca(meta(html, "og:site_name"), titulo);
 
     const textoBase = [descricaoMeta, h1, ...blocos].filter(Boolean).join("\n").slice(0, 3000);
 
