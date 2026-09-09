@@ -48,11 +48,43 @@ export const ImportarDoSiteModal = ({ aberto, onFechar, onConfirmar, modo = 'emp
   const [lendo, setLendo] = useState(false);
   const [dados, setDados] = useState<IdentidadeImportada | null>(null);
   const [salvando, setSalvando] = useState(false);
+  /** leitura avançada (site montado por JavaScript) em andamento */
+  const [avancada, setAvancada] = useState(false);
+  const cancelado = useRef(false);
 
   const fechar = () => {
+    cancelado.current = true;
     setDados(null);
     setUrl('');
+    setAvancada(false);
     onFechar();
+  };
+
+  /** Espera o navegador da plataforma abrir o site e refinar o resultado. */
+  const aguardarAvancada = async (jobId: string) => {
+    setAvancada(true);
+    const limite = Date.now() + 4 * 60 * 1000;
+    try {
+      while (!cancelado.current && Date.now() < limite) {
+        await new Promise((r) => setTimeout(r, 5000));
+        const { data } = await supabase.functions.invoke('site-identidade-status', {
+          body: { job_id: jobId },
+        });
+        if (!data?.success) continue;
+        if (data.status === 'concluido' && data.identidade) {
+          if (cancelado.current) return;
+          setDados(data.identidade as IdentidadeImportada);
+          toast.success('Leitura avançada concluída — confira e ajuste o que precisar.');
+          return;
+        }
+        if (data.status === 'erro') {
+          toast.error('O site não permitiu a leitura avançada. Complete os campos à mão.');
+          return;
+        }
+      }
+    } finally {
+      setAvancada(false);
+    }
   };
 
   const ler = async () => {
@@ -60,8 +92,10 @@ export const ImportarDoSiteModal = ({ aberto, onFechar, onConfirmar, modo = 'emp
       toast.error('Cole o endereço do site.');
       return;
     }
+    cancelado.current = false;
     setLendo(true);
     setDados(null);
+    setAvancada(false);
     try {
       const { data, error } = await supabase.functions.invoke('extrair-identidade-site', {
         body: { url: url.trim() },
@@ -69,6 +103,8 @@ export const ImportarDoSiteModal = ({ aberto, onFechar, onConfirmar, modo = 'emp
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Não foi possível ler o site.');
       setDados(data.identidade as IdentidadeImportada);
+      const jobId = data?.camada_b?.job_id as string | undefined;
+      if (jobId) void aguardarAvancada(jobId);
     } catch (e: any) {
       toast.error(e?.message || 'Não foi possível ler o site. Preencha à mão.');
     } finally {
