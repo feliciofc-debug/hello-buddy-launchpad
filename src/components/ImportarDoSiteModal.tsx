@@ -224,7 +224,11 @@ export const ImportarDoSiteModal = ({ aberto, onFechar, onConfirmar, modo = 'emp
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <Label className="text-xs">Nome da marca</Label>
-                <Input value={dados.nome_empresa} onChange={(e) => setCampo('nome_empresa', e.target.value)} />
+                <Input
+                  value={dados.nome_empresa}
+                  onChange={(e) => setCampo('nome_empresa', e.target.value)}
+                  placeholder="Não identificado — escreva como deve aparecer"
+                />
               </div>
               <div>
                 <Label className="text-xs">Tipografia do site</Label>
