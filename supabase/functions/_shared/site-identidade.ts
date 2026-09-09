@@ -439,7 +439,7 @@ export async function lerIdentidadeDoSite(entrada: string): Promise<IdentidadeSi
     const acc = new Map<string, number>();
     coresDoCss(css, acc);
     coresInline(html, acc);
-    const principais = agrupar(acc);
+
 
     const blocos = blocosUteis(html);
     const titulo = (html.match(/<title[^>]*>([\s\S]{0,200}?)<\/title>/i)?.[1] ?? "").trim();
