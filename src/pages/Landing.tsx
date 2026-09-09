@@ -26,7 +26,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { WhatsAppSupportButton } from "@/components/WhatsAppSupportButton";
 import { WhatsAppFloatingButton } from "@/components/WhatsAppFloatingButton";
-import FooterOptIn from "@/components/FooterOptIn";
 import SiteLayout from "@/components/site/SiteLayout";
 
 const contatoUrl =
@@ -35,7 +34,7 @@ const contatoUrl =
 const redes = [
   { nome: "Instagram", sigla: "IG", status: "Programado", tom: "bg-pink-500/15 text-pink-300" },
   { nome: "Facebook", sigla: "FB", status: "Programado", tom: "bg-blue-500/15 text-blue-300" },
-  { nome: "TikTok", sigla: "TK", status: "Em revisão", tom: "bg-cyan-500/15 text-cyan-300" },
+  { nome: "TikTok", sigla: "TK", status: "Programado", tom: "bg-cyan-500/15 text-cyan-300" },
   { nome: "LinkedIn", sigla: "IN", status: "Programado", tom: "bg-sky-500/15 text-sky-300" },
   { nome: "WhatsApp", sigla: "WA", status: "Ativo", tom: "bg-emerald-500/15 text-emerald-300" },
 ];
@@ -449,8 +448,6 @@ function Landing() {
             </div>
           </div>
         </section>
-
-        <FooterOptIn />
       </main>
       <WhatsAppSupportButton />
       <WhatsAppFloatingButton />
