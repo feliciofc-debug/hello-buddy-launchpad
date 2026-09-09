@@ -174,9 +174,10 @@ export const Icone: React.FC<{ nome?: string; cor: string; tamanho?: number }> =
 
 export const HOOK_FRAMES = 170;
 
-export const HookCena: React.FC<{ c: Paleta; arranjo?: number } & Hook> = ({
+export const HookCena: React.FC<{ c: Paleta; arranjo?: number; logoUrl?: string } & Hook> = ({
   c,
   arranjo = 1,
+  logoUrl,
   kicker,
   linhas,
   destaque,
