@@ -278,16 +278,24 @@ export const CriarVideoAnimado = () => {
   };
 
   const selecionarPaleta = (nome: keyof typeof PALETAS) => {
+    // Trocar de identidade descarta logo, nome, tom, site e contatos anteriores.
+    limparIdentidadeDoVideo();
     setPaletaSelecionada(nome);
-    if (nome !== 'personalizada' && !marcaCliente.trim()) setMarcaCliente(PALETAS[nome].label);
+    if (nome !== 'personalizada') setMarcaCliente(PALETAS[nome].label);
     setCores({ ...PALETAS[nome].cores });
     setProps((p) => (p ? { ...p, cores: { ...PALETAS[nome].cores } } : p));
+    if (nome === 'amz' && logoOficial?.path) {
+      setLogoPath(logoOficial.path);
+      setLogoUrl(logoOficial.url);
+    }
   };
 
   // Prospecção: aplica no vídeo a identidade lida do site do prospect
   // (já confirmada pelo usuário na tela de importação).
   const aplicarIdentidadeDoSite = async (d: IdentidadeImportada) => {
-    const novas = { ...cores, ...d.paleta };
+    // Descarta a identidade do cliente anterior antes de aplicar a nova.
+    limparIdentidadeDoVideo();
+    const novas = { ...PALETAS.personalizada.cores, ...d.paleta };
     setPaletaSelecionada('personalizada');
     setCores(novas);
     if (d.nome_empresa) setMarcaCliente(d.nome_empresa);
