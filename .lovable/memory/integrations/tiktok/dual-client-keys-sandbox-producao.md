@@ -29,3 +29,13 @@ Regras:
   (`TikTokIntegrationCard.tsx`, `AfiliadoTikTok.tsx`, `SettingsPage.tsx`,
   `TikTokShareModal.tsx`) e `TIKTOK_CLIENT_KEY`/`TIKTOK_CLIENT_SECRET` como
   secrets na edge function.
+
+## Atualização 10/09/2026 — app APROVADO (LIVE)
+- Produção é o padrão agora: `TIKTOK_ENV=producao` (secret) e
+  `src/config/tiktok.ts` usa `producao` a menos que `VITE_TIKTOK_ENV=sandbox`.
+- Escopos LIVE: user.info.basic, user.info.profile, video.publish, video.upload.
+- Direct Post habilitado, mas AINDA NÃO AUDITADO:
+  máx. 5 usuários/24h, conta precisa estar privada, conteúdo sai SELF_ONLY.
+  Flag `TIKTOK_DIRECT_POST_AUDITADO = false` controla o aviso na tela;
+  mudar para `true` quando a auditoria passar.
+- RASCUNHO (inbox) é o modo padrão e sem limitações — usar para clientes.
