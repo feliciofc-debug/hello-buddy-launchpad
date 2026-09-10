@@ -136,7 +136,7 @@ export default function AfiliadoProdutosShopee() {
           content_type: "image",
           content_url: produto.imagem_url,
           title: caption,
-          post_mode: "direct"
+          post_mode: "draft"
         }
       });
 
