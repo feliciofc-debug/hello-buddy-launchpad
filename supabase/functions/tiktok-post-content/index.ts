@@ -148,8 +148,8 @@ serve(async (req) => {
     // TIKTOK_ENV controla o comportamento:
     //  - sandbox  -> app não auditado: TikTok só aceita inbox (rascunho) + SELF_ONLY
     //  - producao -> Direct Post aprovado: post_mode "direct" publica direto no perfil
-    const tiktokEnv = (Deno.env.get("TIKTOK_ENV") || "sandbox").toLowerCase();
-    const isProducao = tiktokEnv === "producao" || tiktokEnv === "production";
+    const tiktokEnv = (Deno.env.get("TIKTOK_ENV") || "producao").toLowerCase();
+    const isProducao = tiktokEnv !== "sandbox";
     // Permite testar Direct Post em sandbox (conteúdo sai como SELF_ONLY).
     // Em produção auditada, o mesmo caminho publica com a privacidade escolhida.
     const directPost = post_mode === "direct";
@@ -226,7 +226,13 @@ serve(async (req) => {
           errorMessage = "Muitas publicações recentes. Aguarde um pouco.";
           break;
         case "unaudited_client_can_only_post_to_private_accounts":
-          errorMessage = "A conta TikTok precisa estar configurada como privada para publicar durante os testes. Ative 'Conta Privada' nas configurações do TikTok.";
+          errorMessage = [
+            "O TikTok recusou a publicação direta porque nosso app ainda está em auditoria.",
+            "",
+            "Você tem dois caminhos:",
+            "1) Mais simples: escolha 'Salvar como rascunho'. O vídeo chega na caixa de entrada do TikTok e você toca em publicar no aplicativo — sem limite e podendo ficar público.",
+            "2) Para publicar direto agora: abra o TikTok, vá em Configurações > Privacidade e ative 'Conta privada'. Depois tente novamente. O vídeo sairá como privado (somente você).",
+          ].join("\n");
           break;
         case "scope_not_authorized":
           errorMessage = "Permissão video.publish não autorizada. Desconecte e reconecte a conta TikTok para conceder a permissão.";
