@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { Loader2, Video, Image, ExternalLink, AlertTriangle, CheckCircle2, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { buildTikTokAuthUrl } from "@/config/tiktok";
+import { buildTikTokAuthUrl, TIKTOK_DIRECT_POST_AUDITADO } from "@/config/tiktok";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface TikTokShareModalProps {
