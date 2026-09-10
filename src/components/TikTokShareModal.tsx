@@ -560,6 +560,27 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
                 : t("tiktok_share.mode_direct_help")
               }
             </p>
+
+            {postMode === "direct" && !TIKTOK_DIRECT_POST_AUDITADO && (
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription className="space-y-1 text-xs">
+                  <p className="font-semibold text-sm">
+                    Atenção: a publicação direta ainda está em auditoria no TikTok
+                  </p>
+                  <p>Enquanto o TikTok não concluir a auditoria do nosso app:</p>
+                  <ul className="list-disc pl-4 space-y-0.5">
+                    <li>o vídeo é publicado como <strong>privado (somente você)</strong>, mesmo que você escolha outra opção;</li>
+                    <li>sua conta do TikTok precisa estar em <strong>modo privado</strong> no momento da publicação, senão o TikTok recusa o envio;</li>
+                    <li>no máximo 5 pessoas conseguem publicar por dia usando este modo.</li>
+                  </ul>
+                  <p>
+                    Para publicar em público e sem limite, use <strong>Salvar como rascunho</strong>:
+                    o vídeo chega na sua caixa de entrada do TikTok e você toca em publicar no aplicativo.
+                  </p>
+                </AlertDescription>
+              </Alert>
+            )}
           </div>
 
           {postMode === "direct" && (
