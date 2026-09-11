@@ -7042,6 +7042,15 @@ async function callGemini(
         }
         const { result, imageUrl } = await runTool(name, args, toolCtx);
         if (imageUrl) pendingImageUrl = imageUrl;
+        // Toda mídia nova gerada volta com midia_id: o código curto é anexado à
+        // resposta pelo código, para o dono ter o que digitar no caminho seguro.
+        try {
+          const p = JSON.parse(result);
+          if (p?.midia_id && ehUuid(p.midia_id)) {
+            pendingMidiaLinha = linhaCodigoMidia(p.midia_id, p?.midia_tipo === "video" ? "video" : "foto");
+          }
+        } catch { /* resultado não-JSON: sem código a anexar */ }
+
         if (name === "postar_midia_biblioteca" || name === "postar_redes_sociais" || name === "revisar_post_pendente" || name === "escolher_variante_post") captureSocialToken(result);
         // Comprovante de encaminhamento: só existe se a tool realmente entregou (ok: true).
         if (name === "encaminhar_recado_ao_dono" || name === "enviar_mensagem_contato_comercial" || name === "registrar_lead_novo") {
