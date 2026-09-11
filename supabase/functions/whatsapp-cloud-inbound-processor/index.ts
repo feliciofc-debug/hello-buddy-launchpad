@@ -6114,12 +6114,42 @@ async function callGemini(
     const latestPendingSocialToken = remetenteEhDono ? await findLatestPendingSocialToken(toolCtx.userId) : null;
     const pendingVideoDraft = remetenteEhDono ? await buscarRascunhoVideo(toolCtx) : null;
 
+    // 🧭 Roteador de intenção: classifica a MENSAGEM ATUAL antes de qualquer
+    // continuação de fluxo anterior. Nova intenção explícita sempre vence.
+    const decisaoIntencao = classificarIntencao(userContent, {
+      videoDraft: !!pendingVideoDraft,
+      socialPost: !!latestPendingSocialToken,
+    });
+    console.log(`[processor][intencao] ${decisaoIntencao.intent} — ${decisaoIntencao.motivo}`);
+
+    // Vídeo Motion primeiro: é a intenção mais específica. Aprovação e
+    // cancelamento resolvem antes da IA para não prometer render sem job.
+    if (remetenteEhDono && decisaoIntencao.intent === "cancelar_video" && pendingVideoDraft) {
+      return { text: await confirmarRascunhoVideo(toolCtx, true) };
+    }
+    if (remetenteEhDono && decisaoIntencao.intent === "aprovar_video" && pendingVideoDraft) {
+      return { text: await confirmarRascunhoVideo(toolCtx) };
+    }
+    if (decisaoIntencao.intent === "video") {
+      if (!remetenteEhDono) {
+        return { text: "A criação de vídeo é restrita ao responsável da conta. Posso encaminhar seu pedido para ele, se quiser." };
+      }
+      const tema = normalizeVideoTopic(userContent);
+      if (tema.length < 4) {
+        return { text: "Qual é o tema do vídeo? Ex.: mostrar como a plataforma agenda e publica posts." };
+      }
+      // O texto inteiro vai junto: é dele que saem as cores pedidas (hex ou nome).
+      return { text: await criarRascunhoVideoMotion(toolCtx, tema, userContent) };
+    }
+    if (decisaoIntencao.intent === "ambigua") {
+      return { text: "Só pra eu não errar: você quer criar um *vídeo* ou *editar uma imagem*?" };
+    }
+
     // Edição de foto recente é determinística: o modelo não pode apenas prometer
     // que vai trabalhar em segundo plano. A própria ferramenta busca a última
     // foto do tenant (janela de 30 min) e devolve a imagem pronta neste turno.
     const pedidoLogoNaFoto = /\b(?:coloc(?:a|ar|e)|inclu(?:a|ir|i)|p[oõ]e|por|aplic(?:a|ar|e)|insir(?:a|ir)|adicion(?:a|ar|e)|estamp(?:a|ar|e))\b[\s\S]{0,120}\b(?:logo|logotipo|logomarca|marca)\b/i.test(userContent);
-    const pedidoEdicaoFoto = pedidoLogoNaFoto || /\b(?:melhor(?:a|ar|e)|edit(?:a|ar|e)|trat(?:a|ar|e)|ajust(?:a|ar|e)|transform(?:a|ar|e)|coloc(?:a|ar|e)|troc(?:a|ar|e)|mud(?:a|ar|e)|cri(?:a|ar|e)|faz(?:er)?)\b[\s\S]{0,180}\b(?:foto|imagem|cen[aá]rio|ambiente|fundo|est[uú]dio|showroom|divulga(?:r|ção)|facebook|instagram)\b|\b(?:cen[aá]rio|ambiente|fundo)\s+(?:bonito|elegante|profissional|de\s+est[uú]dio)\b/i.test(userContent);
-    if (remetenteEhDono && pedidoEdicaoFoto) {
+    if (remetenteEhDono && decisaoIntencao.intent === "editar_imagem") {
       // Pedido de LOGO tem prioridade absoluta: a foto original é mantida e só a marca é aplicada.
       const trocarCenario = !pedidoLogoNaFoto && /\b(?:cen[aá]rio|ambiente|fundo|est[uú]dio|showroom|divulga(?:r|ção)|facebook|instagram)\b/i.test(userContent);
       const modoForcado = pedidoLogoNaFoto ? "aplicar_logo" : trocarCenario ? "ficha_tecnica" : "melhoria";
@@ -6142,28 +6172,8 @@ async function callGemini(
           imageUrl: parsed.image_url,
         };
       }
-      const detalhe = String(parsed?.detalhe || parsed?.erro || "A edição não retornou uma imagem").slice(0, 240);
-      return { text: `Não consegui concluir a edição desta vez: ${detalhe}.` };
-    }
-
-    // Vídeo Motion: aprovação e cancelamento são resolvidos antes da IA para
-    // impedir que o modelo apenas diga que vai renderizar sem criar o job.
-    if (pendingVideoDraft && isVideoCancellation(userContent)) {
-      return { text: await confirmarRascunhoVideo(toolCtx, true) };
-    }
-    if (pendingVideoDraft && isVideoApproval(userContent)) {
-      return { text: await confirmarRascunhoVideo(toolCtx) };
-    }
-    if (isVideoMotionRequest(userContent)) {
-      const tema = normalizeVideoTopic(userContent);
-      if (!remetenteEhDono) {
-        return { text: "A criação de vídeo é restrita ao responsável da conta. Posso encaminhar seu pedido para ele, se quiser." };
-      }
-      if (tema.length < 4) {
-        return { text: "Qual é o tema do vídeo? Ex.: mostrar como a plataforma agenda e publica posts." };
-      }
-      // O texto inteiro vai junto: é dele que saem as cores pedidas (hex ou nome).
-      return { text: await criarRascunhoVideoMotion(toolCtx, tema, userContent) };
+      // Nunca expor código interno (ex.: sem_imagem) ao cliente.
+      return { text: mensagemDeErroParaUsuario(parsed?.erro, parsed?.instrucao) };
     }
 
     // Fluxo A/B/C: resolve seleção e confirmação direto no código, sem depender da IA.
