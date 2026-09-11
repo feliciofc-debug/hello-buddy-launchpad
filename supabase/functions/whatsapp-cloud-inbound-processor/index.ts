@@ -1127,27 +1127,15 @@ async function toolEditarImagem(
   const clean = (prompt || "").trim();
   if (!clean) return JSON.stringify({ erro: "prompt vazio" });
 
-  // 1) imagem do turno atual; 2) fallback: última foto recente da biblioteca (30 min)
+  // Só a imagem do turno atual. O fallback de "última foto dos últimos 30 min"
+  // foi REMOVIDO (2026-09-11): era um canal de vazamento — pedido sem anexo
+  // pegava a foto de outro contexto. Sem imagem no turno, pedimos a imagem.
   let imageInput: string | null = null;
   const img = (ctx.media || []).slice().reverse().find((m) => m.kind === "image");
   if (img) {
     imageInput = `data:${img.mime};base64,${img.base64}`;
-  } else {
-    try {
-      const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-      const { data: rec } = await sb
-        .from("midias_whatsapp")
-        .select("midia_url, created_at")
-        .eq("user_id", ctx.userId)
-        .eq("tipo", "foto")
-        .gte("created_at", cutoff)
-        .order("created_at", { ascending: false })
-        .limit(1);
-      if (rec?.[0]?.midia_url) imageInput = rec[0].midia_url as string;
-    } catch (e) {
-      console.warn("[editar_imagem] fallback midias falhou:", (e as Error).message);
-    }
   }
+
   if (!imageInput) {
     return JSON.stringify({
       erro: "sem_imagem",
