@@ -136,7 +136,26 @@ export function PublicarTodasRedesModal({
         </DialogHeader>
 
         <div className="space-y-5">
+          <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/40 p-3">
+            {mediaType === 'video' ? (
+              <video src={mediaUrl} className="h-16 w-16 rounded object-cover" muted playsInline preload="metadata" />
+            ) : (
+              <img src={mediaUrl} alt={`Prévia de ${title}`} className="h-16 w-16 rounded object-cover" loading="lazy" />
+            )}
+            <div className="min-w-0 text-sm">
+              <p className="font-semibold">
+                {mediaType === 'video' ? 'Vídeo' : 'Imagem'}
+                {mediaId ? <span className="ml-2 rounded bg-brand/15 px-2 py-0.5 font-mono text-xs text-brand">{shortId(mediaId)}</span> : null}
+              </p>
+              <p className="truncate text-muted-foreground">{fileNameOf(mediaUrl)}</p>
+              <p className="text-xs text-muted-foreground">
+                {mediaId ? 'Confira se este código é o mesmo que apareceu quando o conteúdo foi criado.' : 'Este item ainda não tem código de identificação.'}
+              </p>
+            </div>
+          </div>
+
           <div className="grid gap-2 sm:grid-cols-2">
+
             {NETWORKS.map((network) => {
               const connected = connections[network];
               const unsupported = network === 'tiktok' && mediaType === 'image';
