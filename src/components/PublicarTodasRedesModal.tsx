@@ -96,6 +96,7 @@ export function PublicarTodasRedesModal({
       const { data, error } = await supabase.functions.invoke('publicar-todas-redes', {
         body: {
           action: 'publish',
+          media_id: mediaId,
           media_type: mediaType,
           media_url: mediaUrl,
           image_urls: images,
