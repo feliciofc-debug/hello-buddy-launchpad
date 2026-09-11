@@ -6735,13 +6735,15 @@ async function callGemini(
       let parsed: any = {};
       try { parsed = JSON.parse(raw); } catch { /* resposta inválida tratada abaixo */ }
       if (parsed?.image_url) {
-        return {
-          text: pedidoLogoNaFoto
-            ? "Pronto — apliquei a marca na sua foto original, sem mudar nada mais na imagem."
-            : "Pronto — deixei a foto em um cenário profissional para divulgação.",
-          imageUrl: parsed.image_url,
-        };
+        const base = pedidoLogoNaFoto
+          ? "Pronto — apliquei a marca na sua foto original, sem mudar nada mais na imagem."
+          : "Pronto — deixei a foto em um cenário profissional para divulgação.";
+        const codigo = ehUuid(parsed?.midia_id)
+          ? `\n\n${linhaCodigoMidia(parsed.midia_id, "foto")}`
+          : "\n\n⚠️ Não consegui registrar esta imagem na biblioteca, então ela não tem código e não pode ser publicada pelo WhatsApp.";
+        return { text: `${base}${codigo}`, imageUrl: parsed.image_url };
       }
+
       // Nunca expor código interno (ex.: sem_imagem) ao cliente.
       return { text: mensagemDeErroParaUsuario(parsed?.erro, parsed?.instrucao) };
     }
