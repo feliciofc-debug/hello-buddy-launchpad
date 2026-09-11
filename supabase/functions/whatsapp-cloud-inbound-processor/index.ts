@@ -3572,6 +3572,8 @@ type PendingFormatChoice = {
   redes: string[];
   tom: string;
   legenda?: string;
+  assetId?: string; // ID da mídia identificada quando perguntei o formato
+  assetTipo?: "foto" | "video";
   createdAt: number;
 };
 const PENDING_FORMAT_CHOICES = new Map<string, PendingFormatChoice>();
@@ -6189,13 +6191,14 @@ async function runTool(
           if (/\bstor(y|ies|ie)\b/.test(argBlob)) formatoDetectado = "story";
           else if (/\breels?\b/.test(argBlob)) formatoDetectado = "reels";
         }
-        console.warn(`[pietro][postar_guard] mídia recente em /midias → redirecionando pra postar_midia_biblioteca (formato=${formatoDetectado ?? "feed"})`);
+        console.warn(`[pietro][postar_guard] postar_midia_biblioteca id=${recentes[0].id} (formato=${formatoDetectado ?? "feed"})`);
         const result = await toolPostarMidiaBiblioteca({
           legenda: args?.legenda ?? args?.produto,
           nome: args?.produto,
           tom: args?.tom,
           redes: args?.redes,
           formato: formatoDetectado,
+          midia_id: args?.midia_id ?? recentes[0].id,
         }, ctx);
         return { result };
       }
@@ -6427,24 +6430,25 @@ async function callGemini(
     const standaloneFormat = detectStandaloneFormatReply(userContent);
     const pendingChoice = getPendingFormatChoice(toolCtx.userId);
     if (remetenteEhDono && standaloneFormat && pendingChoice) {
-      const midiaRecenteResume = await buscarMidiaRecenteParaPostagem(toolCtx.userId);
-      if (midiaRecenteResume) {
-        // Reels só faz sentido pra vídeo — bloqueia foto+reels aqui.
-        if (standaloneFormat === "reels" && midiaRecenteResume.tipo !== "video") {
+      // O item é o MESMO que foi identificado quando perguntei o formato.
+      // Nada de buscar "a mídia mais recente" outra vez: o ID vem guardado.
+      if (pendingChoice.assetId) {
+        if (standaloneFormat === "reels" && pendingChoice.assetTipo !== "video") {
           clearPendingFormatChoice(toolCtx.userId);
           return { text: "Reels só aceita vídeo — essa mídia é foto. Quer no *feed* ou no *story*?" };
         }
-        console.log(`[pietro][pending_format_resume] formato=${standaloneFormat} redes=${pendingChoice.redes.join(",")} tipo=${midiaRecenteResume.tipo}`);
+        console.log(`[pietro][pending_format_resume] formato=${standaloneFormat} redes=${pendingChoice.redes.join(",")} asset=${pendingChoice.assetId}`);
         clearPendingFormatChoice(toolCtx.userId);
         const postResult = await toolPostarMidiaBiblioteca({
           legenda: pendingChoice.legenda,
           tom: pendingChoice.tom,
           redes: pendingChoice.redes,
           formato: standaloneFormat,
+          midia_id: pendingChoice.assetId,
         }, toolCtx);
         return { text: formatSocialPostToolResult(postResult) };
       }
-      // mídia expirou/sumiu — descarta pending e deixa o fluxo normal seguir
+      // sem ID guardado não há publicação: o fluxo normal segue e pede a mídia
       clearPendingFormatChoice(toolCtx.userId);
     }
 
@@ -6489,6 +6493,8 @@ async function callGemini(
         const isFoto = midiaRecente.tipo === "foto";
         const isVideo = midiaRecente.tipo === "video";
 
+        const idMidia = idCurto(midiaRecente.id);
+
         // Etapa 2: FOTO sem formato explícito → pergunta feed OU story (2 opções).
         if (isFoto && !formatoDetectado) {
           const redesAsk = socialPost.redes.length > 0 ? socialPost.redes : ["instagram"];
@@ -6496,10 +6502,12 @@ async function callGemini(
             redes: redesAsk,
             tom: socialPost.tom,
             legenda: cleanMediaPostLegenda(userContent),
+            assetId: midiaRecente.id,
+            assetTipo: "foto",
           });
           const redeLabel = redesAsk.map((r) => r === "instagram" ? "Instagram" : r === "facebook" ? "Facebook" : r === "tiktok" ? "TikTok" : r).join(" e ");
-          console.log("[pietro][pending_format_choice_set]", { redes: redesAsk, tipo: "foto" });
-          return { text: `Quer no *feed* ou no *story* do ${redeLabel}?` };
+          console.log("[pietro][pending_format_choice_set]", { redes: redesAsk, tipo: "foto", asset: midiaRecente.id });
+          return { text: `É a imagem *${idMidia}*. Quer no *feed* ou no *story* do ${redeLabel}?` };
         }
 
         // Etapa 3: VÍDEO sem formato explícito → pergunta feed / story / reels (3 opções).
@@ -6509,20 +6517,23 @@ async function callGemini(
             redes: redesAsk,
             tom: socialPost.tom,
             legenda: cleanMediaPostLegenda(userContent),
+            assetId: midiaRecente.id,
+            assetTipo: "video",
           });
           const redeLabel = redesAsk.map((r) => r === "instagram" ? "Instagram" : r === "facebook" ? "Facebook" : r === "tiktok" ? "TikTok" : r).join(" e ");
-          console.log("[pietro][pending_format_choice_set]", { redes: redesAsk, tipo: "video" });
-          return { text: `Quer no *feed*, no *story* ou como *reels* do ${redeLabel}?` };
+          console.log("[pietro][pending_format_choice_set]", { redes: redesAsk, tipo: "video", asset: midiaRecente.id });
+          return { text: `É o vídeo *${idMidia}*. Quer no *feed*, no *story* ou como *reels* do ${redeLabel}?` };
         }
 
-        // Formato explícito → segue direto.
+        // Formato explícito → segue direto, sempre com o ID explícito da mídia.
         const formato = formatoDetectado ?? "feed";
-        console.warn(`[pietro][forced_social_post] mídia recente em /midias → usando postar_midia_biblioteca id=${midiaRecente.id} formato=${formato} tipo=${midiaRecente.tipo}`);
+        console.warn(`[pietro][forced_social_post] postar_midia_biblioteca id=${midiaRecente.id} formato=${formato} tipo=${midiaRecente.tipo}`);
         const postResult = await toolPostarMidiaBiblioteca({
           legenda: cleanMediaPostLegenda(userContent),
           tom: socialPost.tom,
           redes: socialPost.redes,
           formato,
+          midia_id: midiaRecente.id,
         }, toolCtx);
         return { text: formatSocialPostToolResult(postResult) };
       }
