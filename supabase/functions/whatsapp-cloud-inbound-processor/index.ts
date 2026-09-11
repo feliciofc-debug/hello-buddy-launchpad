@@ -3641,14 +3641,18 @@ function formatSocialPostToolResult(raw: string): string {
       const v = variantes[r] || {};
       return v.A === v0.A && v.B === v0.B && v.C === v0.C;
     });
-    const bloco = (v: any) => `*Opção A — Direta*\n${v.A || ""}\n\n*Opção B — História*\n${v.B || ""}\n\n*Opção C — Interativa*\n${v.C || ""}`;
-    const preview = allEqual
-      ? bloco(v0)
-      : redes.map((r) => `━━━ *${r.toUpperCase()}* ━━━\n${bloco(variantes[r] || {})}`).join("\n\n");
+    // Uma MENSAGEM POR OPÇÃO, com o texto integral que vai ao ar. Nunca resumo.
+    const rotulo: Record<"A" | "B" | "C", string> = { A: "Direta", B: "História", C: "Interativa" };
+    const balaoOpcao = (letra: "A" | "B" | "C") =>
+      allEqual
+        ? `*Opção ${letra} — ${rotulo[letra]}*\n${(v0 as any)[letra] || ""}`
+        : `*Opção ${letra} — ${rotulo[letra]}*\n` +
+          redes.map((r) => `━━━ *${r.toUpperCase()}* ━━━\n${(variantes[r] || {})[letra] || ""}`).join("\n\n");
+    const baloes = (["A", "B", "C"] as const).map(balaoOpcao).join("<<SPLIT>>");
     const aviso = data?.aviso_formato ? `\n\n_${data.aviso_formato}_` : "";
     const avisoReels = data?.aviso_reels ? `\n_ℹ️ ${data.aviso_reels}_` : "";
-    const pergunta = `Qual você prefere? Responde *A*, *B* ou *C*.`;
-    return `Preparei 3 opções 👇${aviso}${avisoReels}<<SPLIT>>${preview}<<SPLIT>>${pergunta}`;
+    const pergunta = `Esses são os textos exatos que vão ao ar. Qual você prefere? Responde *A*, *B* ou *C*.`;
+    return `Preparei 3 opções 👇${aviso}${avisoReels}<<SPLIT>>${baloes}<<SPLIT>>${pergunta}`;
   }
 
   if (data?.status === "variante_selecionada") {
