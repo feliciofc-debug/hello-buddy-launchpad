@@ -3980,25 +3980,56 @@ async function toolConfirmarPostagemRedes(
 
   const approvedAt = new Date().toISOString();
   const rowIds = p.queueRows?.map((row) => row.id).filter(Boolean) ?? [];
-  if (rowIds.length === 0 || !p.produto?.imagem_url) {
+  if (rowIds.length === 0 || !p.produto?.imagem_url || !p.assetId) {
     return JSON.stringify({
       erro: "midia_nao_vinculada",
       mensagem: "Não consegui confirmar qual mídia foi aprovada. Nada foi publicado. Prepare o post novamente.",
     });
   }
+
+  // 🛡️ O item é buscado DE NOVO pelo ID e pelo dono na hora de publicar.
+  // Nenhum outro arquivo entra no lugar, e o tipo não pode mudar.
+  const { asset, mensagem: erroAsset } = await resolverAsset(sb, ctx.userId, p.assetId);
+  if (!asset) {
+    return JSON.stringify({ erro: "midia_nao_resolvida", mensagem: erroAsset || "Não consegui conferir a mídia aprovada. Nada foi publicado." });
+  }
+  if (asset.url !== p.produto.imagem_url) {
+    return JSON.stringify({
+      erro: "midia_divergente",
+      mensagem: `O arquivo da mídia ${asset.idCurto} mudou depois da prévia. Nada foi publicado — prepare o post novamente.`,
+    });
+  }
+  const tipoErro = validarTipoAprovado(p.assetTipo ?? asset.tipo, asset);
+  if (tipoErro) {
+    return JSON.stringify({
+      erro: "tipo_divergente",
+      mensagem: `O tipo aprovado não corresponde ao arquivo (${tipoErro}). Nada foi publicado.`,
+    });
+  }
+
+  if (!JARVIS_PUBLICACAO_ATIVA) {
+    return JSON.stringify({
+      erro: "publicacao_jarvis_desativada",
+      mensagem: `Aprovação registrada para a mídia *${asset.idCurto}*, mas a publicação pelo WhatsApp está desativada agora, por segurança. Nada foi publicado.<<SPLIT>>${resumoDaMidia(asset)}<<SPLIT>>Publique este item pela plataforma, na área de mídias — ele já está identificado por esse ID.`,
+    });
+  }
+
   const { data: approvedRows, error: approvalError } = await sb
     .from("social_posts_queue")
     .update({
       approved_at: approvedAt,
       approved_by: ctx.fromNumber,
-      approved_media_url: p.produto.imagem_url,
+      approved_media_url: asset.url,
+      approved_media_type: asset.tipo,
+      asset_id: asset.id,
+      asset_tipo: asset.tipo,
       updated_at: approvedAt,
     })
     .in("id", rowIds)
     .eq("user_id", ctx.userId)
     .eq("status", "aguardando_confirmacao")
     .eq("approval_token", token)
-    .eq("approved_media_url", p.produto.imagem_url)
+    .eq("asset_id", asset.id)
     .select("id");
   if (approvalError || approvedRows?.length !== rowIds.length) {
     return JSON.stringify({
