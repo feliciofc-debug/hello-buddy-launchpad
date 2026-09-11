@@ -4286,14 +4286,16 @@ async function toolEscolherVariantePost(
 ): Promise<string> {
   if (!isOwner(ctx)) return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Essa ação é restrita ao responsável da conta." });
   pendingCleanup();
-  const token = (args?.token || "").trim().toLowerCase();
+  const tk = normalizarTokenPost(args?.token);
   const opcaoRaw = (args?.opcao || "").toString().trim().toUpperCase();
   const opcao = (opcaoRaw.match(/[ABC]/)?.[0] || "") as "A" | "B" | "C" | "";
-  if (!/^[a-f0-9]{8}$/.test(token)) return JSON.stringify({ erro: "token inválido" });
+  if (!tk.token) return JSON.stringify({ erro: tk.erro, mensagem: tk.mensagem });
+  const token = tk.token;
   if (!opcao) return JSON.stringify({ erro: "opção inválida — use A, B ou C" });
 
   const p = PENDING_POSTS.get(token) ?? (await loadPendingSocialPost(token, ctx.userId));
-  if (!p) return JSON.stringify({ erro: "token não encontrado ou expirado" });
+  if (!p) return JSON.stringify(mensagemFalhaPendente(token, !!tk.semPrefixo));
+
   if (p.userId !== ctx.userId) return JSON.stringify({ erro: "token pertence a outro usuário" });
   if (!p.variantes) return JSON.stringify({ erro: "esse post não tem variantes — use confirmar_postagem_redes direto" });
 
