@@ -4328,6 +4328,15 @@ async function toolConfirmarPostagemRedes(
     });
   }
 
+  // Se a pergunta de incompatibilidade já foi feita (redes compatíveis gravadas
+  // no banco) e o dono voltou confirmando, ESTE "sim" é a confirmação dela.
+  // Sem isso a pergunta se repetiria em loop depois de um cold start.
+  if (p.redesConfirmadas?.length && p.somenteCompativeisConfirmado !== true) {
+    p.somenteCompativeisConfirmado = true;
+    PENDING_POSTS.set(token, p);
+    await updatePendingSocialPostMarker(token, p);
+  }
+
   // 🛡️ VERIFICAÇÃO PRÉVIA GLOBAL: se alguma rede escolhida não aceita o tipo do
   // item, NENHUMA rede é chamada. A incompatibilidade não pode mais aparecer no
   // meio da publicação, com posts já no ar.
