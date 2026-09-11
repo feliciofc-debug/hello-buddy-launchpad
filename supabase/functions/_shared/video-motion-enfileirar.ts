@@ -62,6 +62,10 @@ export type EnfileirarInput = {
   duracao?: string | null;
   /** logo específica desta peça (prospecção), sempre dentro da pasta do usuário */
   logoPath?: string | null;
+  /** peça de prospecção: nunca cai na logo cadastrada do tenant */
+  prospect?: boolean;
+  /** o usuário pediu para tirar a logo deste vídeo */
+  semLogo?: boolean;
   /** só devolve o roteiro, não enfileira */
   apenasRoteiro?: boolean;
 };
