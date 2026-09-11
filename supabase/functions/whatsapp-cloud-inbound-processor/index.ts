@@ -6355,8 +6355,10 @@ async function callGemini(
 
     // Confirmação de PUBLICAÇÃO vence uma aprovação antiga de roteiro. Esse era
     // o caminho real que fazia "sim" voltar para geração de vídeo.
-    const plainPostConfirmation = latestPendingSocialToken ? detectPlainSocialPostConfirmation(userContent) : null;
-    if (plainPostConfirmation) {
+    const plainPostConfirmation = latestPendingSocialToken && typeof userContent === "string"
+      ? detectPlainSocialPostConfirmation(userContent)
+      : null;
+    if (plainPostConfirmation && latestPendingSocialToken) {
       console.log("[pietro][forced_social_plain_confirm]", { token: latestPendingSocialToken, cancelar: !!plainPostConfirmation.cancelar });
       const confirmResult = await toolConfirmarPostagemRedes({ token: latestPendingSocialToken, cancelar: plainPostConfirmation.cancelar }, toolCtx);
       return { text: formatSocialPostToolResult(confirmResult) };
