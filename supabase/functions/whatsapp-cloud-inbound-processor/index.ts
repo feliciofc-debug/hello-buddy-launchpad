@@ -4311,22 +4311,26 @@ async function resolverMidiaBibliotecaPorId(
   }
 
   // O WhatsApp exibe códigos curtos como 53DBDA63, derivados do início do UUID.
-  // Postgres não aceita esse prefixo em uma comparação direta com coluna uuid;
-  // carregamos somente as mídias do mesmo tenant e resolvemos o prefixo com
-  // detecção explícita de ambiguidade.
+  // Convertemos o prefixo em um intervalo UUID para consultar diretamente no
+  // banco, sempre limitado ao mesmo tenant e com detecção de ambiguidade.
   if (!/^[0-9a-f]{8,32}$/i.test(idLimpo.replace(/-/g, ""))) {
     return { midia: null, erro: "Identificador de mídia inválido." };
   }
   const prefixo = idLimpo.replace(/-/g, "");
+  const formatarUuid = (hex: string) => `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+  const inicioUuid = formatarUuid(prefixo.padEnd(32, "0"));
+  const fimUuid = formatarUuid(prefixo.padEnd(32, "f"));
   const { data, error } = await sb
     .from("midias_whatsapp")
     .select(campos)
     .eq("user_id", userId)
     .in("tipo", ["foto", "video"])
+    .gte("id", inicioUuid)
+    .lte("id", fimUuid)
     .order("created_at", { ascending: false })
-    .limit(500);
+    .limit(2);
   if (error) return { midia: null, erro: `db_falhou: ${error.message}` };
-  const encontradas = (data || []).filter((item: any) => String(item.id).replace(/-/g, "").toLowerCase().startsWith(prefixo));
+  const encontradas = data || [];
   if (encontradas.length > 1) return { midia: null, erro: "Código curto ambíguo. Informe o identificador completo." };
   return { midia: encontradas[0] ?? null };
 }
