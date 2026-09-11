@@ -15,3 +15,12 @@
 - [x] Nunca expor códigos internos (sem_imagem); perguntar quando ambíguo
 - [x] Matriz de intenção, incluindo erros de digitação e abreviações
 - [x] Publicar e avisar para teste com o comando que falhou
+
+## Texto nunca truncado (concluído)
+- [x] Causa identificada: `cortarFrase`/`cortar` fatiavam no limite e fechavam com "…" (roteiro de vídeo, vídeo de produto, legenda de campanha).
+- [x] Módulo único `_shared/texto-completo.ts` (corte em frase completa + `textoIncompleto`).
+- [x] Texto nasce curto: limites como regra dura no prompt + uma reescrita automática quando estoura.
+- [x] Aviso no roteiro do Jarvis antes de aprovar.
+- [x] `publicar-todas-redes` bloqueia legenda incompleta (400).
+- [x] Legenda de campanha WhatsApp cortada em frase completa.
+- [x] Testes `_shared/texto-completo.test.ts` (8 passando com a matriz de intenção).
