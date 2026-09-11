@@ -2,9 +2,11 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { z } from 'npm:zod';
 import { textoIncompleto } from '../_shared/texto-completo.ts';
+import { resolverAsset, validarTipoAprovado } from '../_shared/publicacao-por-id.ts';
 
 const BodySchema = z.object({
   action: z.enum(['connections', 'publish']).default('publish'),
+  media_id: z.string().uuid().optional(),
   media_type: z.enum(['image', 'video']).optional(),
   media_url: z.string().url().optional(),
   image_urls: z.array(z.string().url()).max(10).optional(),
