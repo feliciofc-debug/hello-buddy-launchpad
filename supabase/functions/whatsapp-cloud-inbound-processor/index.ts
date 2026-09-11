@@ -8,6 +8,13 @@ import { buildAmzContext, OWNER_PHONE, resolveTenantOwner, isAmzOwnerAltPhone } 
 import { getTenantBusinessContext, buildCarouselPrompt } from "../_shared/business-context.ts";
 import { classificarIntencao, ferramentaPermitida, mensagemDeErroParaUsuario } from "../_shared/jarvis-intent.ts";
 import { pareceResumoDeOpcoes, segmentoIntruso } from "../_shared/aprovacao-integra.ts";
+import {
+  JARVIS_PUBLICACAO_ATIVA,
+  idCurto,
+  resolverAsset,
+  resumoDaMidia,
+  validarTipoAprovado,
+} from "../_shared/publicacao-por-id.ts";
 
 // ---------------------------------------------------------------------------
 // Multi-tenant owner registry (populado no início de cada processMessage).
@@ -3004,6 +3011,8 @@ type PendingSocialPost = {
   createdAt: number;
   formato?: "feed" | "story" | "reels";
   midiaTipo?: "foto" | "video";
+  assetId?: string; // ID imutável da mídia aprovada — único vínculo aceito na publicação
+  assetTipo?: "foto" | "video";
   queueRows?: Array<{ id: string; platform: string }>;
   incluirCtaWhatsapp?: boolean;
   briefing?: string; // texto escrito pelo dono que é a MENSAGEM do post (prioridade sobre o visual)
@@ -3090,6 +3099,7 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
     platform: rede,
     post_text: pending.scripts[rede] || "",
     image_url: pending.produto?.imagem_url || null,
+    video_url: pending.assetTipo === "video" ? (pending.produto?.imagem_url || null) : null,
     link_url: pending.produto?.link || null,
     status: "aguardando_confirmacao",
     scheduled_at: null,
@@ -3104,6 +3114,10 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
     approved_at: null,
     approved_by: null,
     approved_media_url: pending.produto?.imagem_url || null,
+    // Vínculo forte: a fila carrega o ID imutável e o tipo do item aprovado.
+    asset_id: pending.assetId ?? null,
+    asset_tipo: pending.assetTipo ?? null,
+    origem_fluxo: "jarvis",
     updated_at: new Date().toISOString(),
   }));
 
@@ -3651,8 +3665,12 @@ function formatSocialPostToolResult(raw: string): string {
     const baloes = (["A", "B", "C"] as const).map(balaoOpcao).join("<<SPLIT>>");
     const aviso = data?.aviso_formato ? `\n\n_${data.aviso_formato}_` : "";
     const avisoReels = data?.aviso_reels ? `\n_ℹ️ ${data.aviso_reels}_` : "";
+    const ma = data?.midia_aprovacao;
+    const blocoMidia = ma?.id
+      ? `<<SPLIT>>*Mídia deste post*\n🆔 *${ma.id_curto || idCurto(ma.id)}*\n${ma.tipo === "video" ? "Vídeo" : "Imagem"} • ${ma.arquivo_nome || "arquivo"}\nGuarde esse ID: ele precisa aparecer igual na confirmação.`
+      : "";
     const pergunta = `Esses são os textos exatos que vão ao ar. Qual você prefere? Responde *A*, *B* ou *C*.`;
-    return `Preparei 3 opções 👇${aviso}${avisoReels}<<SPLIT>>${baloes}<<SPLIT>>${pergunta}`;
+    return `Preparei 3 opções 👇${aviso}${avisoReels}${blocoMidia}<<SPLIT>>${baloes}<<SPLIT>>${pergunta}`;
   }
 
   if (data?.status === "variante_selecionada") {
@@ -4390,17 +4408,15 @@ async function toolPostarMidiaBiblioteca(
         mensagem: "Não consegui identificar com segurança qual mídia você quer publicar. Nada foi publicado. Envie o vídeo novamente ou diga para usar o vídeo que acabei de gerar.",
       });
     }
-    const query = sb
-      .from("midias_whatsapp")
-      .select("id, tipo, midia_url, contexto_original, created_at")
-      .eq("user_id", ctx.userId)
-      .eq("id", args.midia_id)
-      .limit(1);
-
-    const { data: midias, error } = await query;
-    if (error) return JSON.stringify({ erro: `db_falhou: ${error.message}` });
-    const midia = midias?.[0];
-    if (!midia) return JSON.stringify({ erro: "Não achei nenhuma mídia recente na biblioteca /midias. Peça pro cliente enviar a foto/vídeo primeiro." });
+    const { asset, erro: erroAsset, mensagem: msgAsset } = await resolverAsset(sb, ctx.userId, args.midia_id);
+    if (!asset) return JSON.stringify({ erro: erroAsset || "midia_nao_resolvida", mensagem: msgAsset });
+    const midia = {
+      id: asset.id,
+      tipo: asset.tipo,
+      midia_url: asset.url,
+      contexto_original: asset.origem,
+      created_at: asset.criadoEm,
+    };
 
     // Etapa 3: story de foto e vídeo, reels (só vídeo), feed (foto/vídeo).
     const formatoRaw = (args?.formato || "feed").toString().toLowerCase();
@@ -4562,7 +4578,7 @@ async function toolPostarMidiaBiblioteca(
     }
 
     const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo, incluirCtaWhatsapp: incluirCta, briefing: briefing || undefined };
+    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo, assetId: asset.id, assetTipo: asset.tipo, incluirCtaWhatsapp: incluirCta, briefing: briefing || undefined };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
 
@@ -4589,10 +4605,13 @@ async function toolPostarMidiaBiblioteca(
       midia: { id: midia.id, tipo: midia.tipo, url: midia.midia_url },
       produto: { nome: produtoLike.nome, preco: produtoLike.preco, imagem_url: produtoLike.imagem_url },
       midia_aprovacao: {
-        id: midia.id,
-        tipo: midia.tipo,
+        id: asset.id,
+        id_curto: asset.idCurto,
+        tipo: asset.tipo,
+        arquivo_nome: asset.arquivoNome,
+        thumbnail: asset.thumbnail,
         origem: contextoUsuario || "mídia enviada pelo WhatsApp",
-        recebida_em: midia.created_at,
+        recebida_em: asset.criadoEm,
       },
       tom,
       redes,
