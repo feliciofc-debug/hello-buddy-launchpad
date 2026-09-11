@@ -23,6 +23,7 @@ interface NetworkResult {
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  mediaId?: string;
   mediaType: 'image' | 'video';
   mediaUrl: string;
   imageUrls?: string[];
@@ -36,9 +37,16 @@ const NETWORKS: Network[] = ['instagram', 'facebook', 'tiktok', 'linkedin'];
 const LABELS: Record<Network, string> = { instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok', linkedin: 'LinkedIn' };
 const DEFAULT_LIMITS: Record<Network, number> = { instagram: 2200, facebook: 63206, tiktok: 2200, linkedin: 3000 };
 
+const shortId = (id?: string) => (id ? id.replace(/-/g, '').slice(0, 8).toUpperCase() : '');
+const fileNameOf = (url: string) => {
+  try { return decodeURIComponent(new URL(url).pathname.split('/').pop() || 'arquivo'); }
+  catch { return url.split('/').pop() || 'arquivo'; }
+};
+
 export function PublicarTodasRedesModal({
   open,
   onOpenChange,
+  mediaId,
   mediaType,
   mediaUrl,
   imageUrls = [],
