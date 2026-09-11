@@ -3017,6 +3017,33 @@ function isUuid(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+// ---- Código do PEDIDO DE POST x código da MÍDIA ----
+// O pedido de post usa prefixo `p_` + 8 hex. O código da mídia é 8 hex sem prefixo.
+// A decisão é pela PRESENÇA DO PREFIXO, nunca pelo caixa das letras (o modelo pode
+// normalizar o texto antes de chamar a ferramenta).
+// Compatibilidade com pedidos antigos sem prefixo: remover após 2026-10-15.
+const ACEITA_TOKEN_SEM_PREFIXO_ATE = Date.parse("2026-10-15T00:00:00Z");
+
+function novoTokenPost(): string {
+  return `p_${crypto.randomUUID().replace(/-/g, "").slice(0, 8)}`;
+}
+
+/** Valida sobre a string CRUA, antes de qualquer normalização. */
+function normalizarTokenPost(raw: unknown): { token?: string; semPrefixo?: boolean; erro?: string; mensagem?: string } {
+  const cru = String(raw ?? "").trim().replace(/^\*|\*$/g, "");
+  if (!cru) return { erro: "token_ausente", mensagem: "Me diga qual pedido de post confirmar (o código começa com `p_`). Nada foi publicado." };
+  const comPrefixo = cru.match(/^p_([0-9a-fA-F]{8})$/);
+  if (comPrefixo) return { token: `p_${comPrefixo[1].toLowerCase()}` };
+  if (/^[0-9a-fA-F]{8}$/.test(cru)) {
+    if (Date.now() > ACEITA_TOKEN_SEM_PREFIXO_ATE) {
+      return { erro: "token_e_id_de_midia", mensagem: "Isso parece o código de uma *mídia*, não de um *pedido de post*. Me diga qual pedido de post confirmar (o código começa com `p_`). Nada foi publicado." };
+    }
+    return { token: cru.toLowerCase(), semPrefixo: true };
+  }
+  return { erro: "token_invalido", mensagem: "Esse código não é de um pedido de post. O código do pedido começa com `p_`. Nada foi publicado." };
+}
+
+
 type PendingPostMarkerState = {
   variantes?: Record<string, PostVariantes>;
   variantSelecionada?: "A" | "B" | "C";
