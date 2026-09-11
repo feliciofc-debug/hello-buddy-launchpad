@@ -12,6 +12,7 @@ import { PublicarStoryModal } from '@/components/PublicarStoryModal';
 import { TikTokIcon } from '@/components/tiktok/TikTokIcon';
 import { TikTokShareModal } from '@/components/TikTokShareModal';
 import { PostarLinkedInVideoModal } from '@/components/videos/PostarLinkedInVideoModal';
+import { PublicarTodasRedesModal } from '@/components/PublicarTodasRedesModal';
 
 
 interface ReelGerado {
@@ -47,6 +48,7 @@ export const ReelsGeradosGrid = () => {
   // o mesmo dos vídeos de produto e não depende de plano nem de feature flag.
   const [tiktokReel, setTiktokReel] = useState<ReelGerado | null>(null);
   const [linkedinReel, setLinkedinReel] = useState<ReelGerado | null>(null);
+  const [allNetworksReel, setAllNetworksReel] = useState<ReelGerado | null>(null);
 
 
   const handleStoryPublished = async (
@@ -270,6 +272,13 @@ export const ReelsGeradosGrid = () => {
                   <div className="grid grid-cols-2 gap-2">
                     <Button
                       size="sm"
+                      className="col-span-2 bg-brand text-brand-foreground hover:bg-brand/90"
+                      onClick={() => setAllNetworksReel(reel)}
+                    >
+                      <Rocket className="mr-1 h-3 w-3" /> Publicar em todas as redes
+                    </Button>
+                    <Button
+                      size="sm"
                       variant="outline"
                       className="text-xs"
                       onClick={() => handleVer(reel.video_url)}
@@ -425,6 +434,23 @@ export const ReelsGeradosGrid = () => {
         videoUrl={linkedinReel?.video_url || null}
         videoNome={linkedinReel?.titulo || linkedinReel?.produtos?.nome || null}
       />
+      {allNetworksReel && (
+        <PublicarTodasRedesModal
+          open={!!allNetworksReel}
+          onOpenChange={(open) => !open && setAllNetworksReel(null)}
+          mediaType="video"
+          mediaUrl={allNetworksReel.video_url}
+          title={allNetworksReel.titulo || allNetworksReel.produtos?.nome || 'Vídeo'}
+          initialCaption={allNetworksReel.titulo || allNetworksReel.produtos?.nome || ''}
+          linkUrl={allNetworksReel.produtos?.link_marketplace || null}
+          onFinished={(results) => {
+            void handlePublished({
+              facebook: { ok: results.some((item) => item.network === 'facebook' && item.status === 'published') },
+              instagram: { ok: results.some((item) => item.network === 'instagram' && item.status === 'published') },
+            });
+          }}
+        />
+      )}
     </div>
 
   );

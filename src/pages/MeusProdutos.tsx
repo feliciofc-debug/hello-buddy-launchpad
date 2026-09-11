@@ -1931,7 +1931,8 @@ export default function MeusProdutos() {
                           className="w-full gap-2 bg-gradient-to-r from-blue-600 to-pink-600 text-white hover:from-blue-700 hover:to-pink-700 border-0"
                           onClick={() => { setSimultaneoProduct(product); setIsSimultaneoModalOpen(true); }}
                         >
-                          {t('products.publish_now')}
+                          <Rocket className="w-4 h-4" />
+                          Publicar em todas as redes
                         </Button>
                         <Button
                           variant="outline"
@@ -2055,7 +2056,8 @@ export default function MeusProdutos() {
                           className="w-full gap-2 bg-gradient-to-r from-blue-600 to-pink-600 text-white hover:from-blue-700 hover:to-pink-700 border-0"
                           onClick={() => { setSimultaneoProduct(product); setIsSimultaneoModalOpen(true); }}
                         >
-                          {t('products.publish_now')}
+                          <Rocket className="w-4 h-4" />
+                          Publicar em todas as redes
                         </Button>
                         <Button
                           variant="outline"

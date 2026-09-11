@@ -14,6 +14,7 @@ import { TikTokShareModal } from '@/components/TikTokShareModal';
 import { PostarLinkedInVideoModal } from '@/components/videos/PostarLinkedInVideoModal';
 import { CriarVideoAnimado } from '@/components/videos/CriarVideoAnimado';
 import { CriarVideoProduto } from '@/components/videos/CriarVideoProduto';
+import { PublicarTodasRedesModal } from '@/components/PublicarTodasRedesModal';
 
 import { ReelsGeradosGrid } from './videos/ReelsGeradosGrid';
 import { VideosAgendadosLista } from '@/components/VideosAgendadosLista';
@@ -51,6 +52,7 @@ export const AreaVideos = () => {
   } | null>(null);
   const [autopilotOpen, setAutopilotOpen] = useState(false);
   const [linkedinVideo, setLinkedinVideo] = useState<VideoItem | null>(null);
+  const [allNetworksVideo, setAllNetworksVideo] = useState<VideoItem | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
 
@@ -294,6 +296,13 @@ export const AreaVideos = () => {
                 <div className="flex gap-2 flex-wrap">
                   <Button
                     size="sm"
+                    className="w-full bg-brand text-brand-foreground hover:bg-brand/90"
+                    onClick={() => setAllNetworksVideo(video)}
+                  >
+                    <Rocket className="mr-1 h-3 w-3" /> Publicar em todas as redes
+                  </Button>
+                  <Button
+                    size="sm"
                     className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 text-white text-xs"
                     onClick={() => openReels(video)}
                   >
@@ -379,6 +388,16 @@ export const AreaVideos = () => {
         videoUrl={linkedinVideo?.video_url || null}
         videoNome={linkedinVideo?.titulo || null}
       />
+      {allNetworksVideo && (
+        <PublicarTodasRedesModal
+          open={!!allNetworksVideo}
+          onOpenChange={(open) => !open && setAllNetworksVideo(null)}
+          mediaType="video"
+          mediaUrl={allNetworksVideo.video_url}
+          title={allNetworksVideo.titulo || 'Vídeo'}
+          initialCaption={allNetworksVideo.titulo || ''}
+        />
+      )}
 
       <AutopilotModal open={autopilotOpen} onOpenChange={setAutopilotOpen} />
 
