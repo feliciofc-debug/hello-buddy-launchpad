@@ -3118,6 +3118,29 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
   return (data ?? []).map((r: any) => ({ id: r.id, platform: r.platform }));
 }
 
+// Motivo da última falha de carregamento, por token — as três causas
+// (inexistente / expirado / sem vínculo de mídia) precisam de frases distintas.
+type MotivoFalhaPendente = "nao_encontrado" | "expirado" | "sem_vinculo_midia" | "erro_banco";
+const MOTIVO_FALHA_PENDENTE = new Map<string, MotivoFalhaPendente>();
+
+function mensagemFalhaPendente(token: string, tokenSemPrefixo: boolean): { erro: string; mensagem: string } {
+  const motivo = MOTIVO_FALHA_PENDENTE.get(token) ?? "nao_encontrado";
+  MOTIVO_FALHA_PENDENTE.delete(token);
+  if (motivo === "expirado") {
+    return { erro: "post_expirado", mensagem: "Esse pedido de post passou de 2 horas e foi encerrado. Refaça o pedido. Nada foi publicado." };
+  }
+  if (motivo === "sem_vinculo_midia") {
+    return { erro: "sem_vinculo_midia", mensagem: "Esse pedido ficou sem mídia identificada e por segurança não pode publicar. Refaça o pedido informando o código da mídia. Nada foi publicado." };
+  }
+  if (motivo === "erro_banco") {
+    return { erro: "falha_consulta", mensagem: "Não consegui consultar esse pedido de post agora. Nada foi publicado." };
+  }
+  if (tokenSemPrefixo) {
+    return { erro: "token_e_id_de_midia", mensagem: "Isso parece o código de uma *mídia*, não de um *pedido de post*. Me diga qual pedido de post confirmar (o código começa com `p_`). Nada foi publicado." };
+  }
+  return { erro: "post_nao_encontrado", mensagem: "Não achei esse pedido de post. Nada foi publicado." };
+}
+
 async function loadPendingSocialPost(token: string, userId: string): Promise<PendingSocialPost | null> {
   const { data, error } = await sb
     .from("social_posts_queue")
@@ -3130,16 +3153,21 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
 
   if (error) {
     console.warn("[social_confirm][load_error]", error.message);
+    MOTIVO_FALHA_PENDENTE.set(token, "erro_banco");
     return null;
   }
   const rows = data ?? [];
-  if (rows.length === 0) return null;
+  if (rows.length === 0) {
+    MOTIVO_FALHA_PENDENTE.set(token, "nao_encontrado");
+    return null;
+  }
 
   const createdAt = new Date(rows[0].created_at).getTime();
   if (Number.isFinite(createdAt) && Date.now() - createdAt > SOCIAL_CONFIRMATION_TTL_MS) {
     await sb.from("social_posts_queue")
       .update({ status: "cancelado", error_message: "token_expirado", updated_at: new Date().toISOString() })
       .in("id", rows.map((r: any) => r.id));
+    MOTIVO_FALHA_PENDENTE.set(token, "expirado");
     return null;
   }
 
@@ -3152,10 +3180,13 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
   const assetIdReidratado = (rows[0] as any).asset_id;
   const assetTipoReidratado = (rows[0] as any).asset_tipo;
 
+  // Barreira anti-vazamento: sem ID e tipo de mídia, não confirma. NUNCA relaxar.
   if (!isUuid(assetIdReidratado) || !["foto", "video"].includes(assetTipoReidratado)) {
     console.error("[social_confirm][asset_binding_missing]", { token, userId });
+    MOTIVO_FALHA_PENDENTE.set(token, "sem_vinculo_midia");
     return null;
   }
+
 
   return {
     produto: {
