@@ -1,95 +1,103 @@
-# Correção do padrão: na dúvida, parar
-
-Quatro mudanças no fluxo de post do WhatsApp. Nenhuma delas depende de lista de palavras para funcionar.
+# Correção do padrão: na dúvida, parar (v3)
 
 Arquivos:
 - `supabase/functions/whatsapp-cloud-inbound-processor/index.ts`
-- novo `supabase/functions/_shared/post-guardas.ts` (regras puras, testáveis)
-- novo `supabase/functions/_shared/post-guardas.test.ts` (os 4 testes de regressão)
+- novo `supabase/functions/_shared/post-guardas.ts` (regras puras)
+- novo `supabase/functions/_shared/post-guardas.test.ts` (4 testes, dois deles de orquestração)
 
 ---
 
-## 1. Produto só com casamento forte (inverte a regra)
+## Resposta sobre `candidatos`
 
-Hoje `toolPostarRedesSociais` (linha 4060) usa `buscarProdutoParaPostagem`, que ordena por score de similaridade e devolve `ranked[0]`. Qualquer palavra que gere score > 0 vira produto. Foi assim que "todas" virou AMZOFERTAS.
+`candidatos` é um **subconjunto**, e você identificou um furo real.
 
-Novo em `post-guardas.ts`:
+`buscarProdutoParaPostagem` (linha 3517) monta um filtro `ilike` a partir dos tokens da frase e busca `produtos` e `products_stock` com `.limit(80)` cada. Só existe um caminho que traz o catálogo inteiro: o fallback da linha 3558, e ele roda **apenas** quando nenhum candidato pontua acima de zero — com `.limit(500)`.
+
+Ou seja: um produto cujo nome está literalmente na sua frase pode ficar fora se 80 outros registros casarem primeiro com algum token, ou se você tiver mais de 500 produtos.
+
+Por isso o casamento forte **não vai rodar sobre `candidatos`**. Vou adicionar `listarNomesDoCatalogo(userId)`, que busca só `id, nome, source` de `produtos` e `products_stock` do dono, paginado (1000 por página, até esgotar), sem filtro de texto. O casamento forte roda contra essa lista completa; o produto vencedor é então carregado por ID com todos os campos. `buscarProdutoParaPostagem` continua existindo, mas só para gerar a lista de sugestões da pergunta.
+
+---
+
+## 1. Produto só com casamento forte, contra o catálogo inteiro
 
 ```ts
+// post-guardas.ts — puro
 export type ForcaCasamento = "exato" | "palavra_inteira" | "fraco";
-
-// Puro: recebe a consulta e os nomes; não fala com banco.
 export function avaliarCasamentoProduto(query: string, nomes: string[]): {
-  forca: ForcaCasamento;
-  indicesFortes: number[];   // candidatos com casamento forte
+  forca: ForcaCasamento; indicesFortes: number[];
 }
 ```
 
-Regra: `exato` = consulta normalizada igual ao nome. `palavra_inteira` = o nome do produto aparece na consulta como sequência de palavras inteiras (>= 4 caracteres). Tudo o mais é `fraco`.
+Regras:
+- `exato`: consulta normalizada igual ao nome do produto.
+- `palavra_inteira`: o nome do produto (>= 4 caracteres) aparece na consulta como sequência de palavras inteiras.
+- **Nome com menos de 4 caracteres** ("Kit", "Pro", "TV"): só `exato`, comparando a consulta inteira. Nunca substring solta — "posta o kit de ferramentas" não casa com "Kit".
+- Todo o resto é `fraco`.
 
-Em `toolPostarRedesSociais` (linha 4060 em diante):
+Em `toolPostarRedesSociais` (linha 4060):
 
 ```ts
 -   const { produto: prod, sugestoes, candidatos } = await buscarProdutoParaPostagem(q, ctx.userId);
--   if (!prod) { ...sugestoes... }
-+   const { candidatos, sugestoes } = await buscarProdutoParaPostagem(q, ctx.userId);
-+   const { forca, indicesFortes } = avaliarCasamentoProduto(q, candidatos.map((c) => c.nome));
+-   if (!prod) { ... }
++   const nomes = await listarNomesDoCatalogo(ctx.userId);          // catálogo inteiro, paginado
++   const { forca, indicesFortes } = avaliarCasamentoProduto(q, nomes.map((n) => n.nome));
 +   if (forca === "fraco" || indicesFortes.length !== 1) {
++     const { sugestoes } = await buscarProdutoParaPostagem(q, ctx.userId);
 +     return JSON.stringify({
 +       erro: "produto_nao_identificado",
 +       mensagem: "De qual produto do catálogo é o post? Não escolhi nenhum.",
-+       candidatos_do_catalogo: sugestoes.slice(0, 7),
++       candidatos_do_catalogo: indicesFortes.length > 1
++         ? indicesFortes.map((i) => nomes[i].nome)
++         : sugestoes.slice(0, 7),
 +     });
 +   }
-+   const prod = candidatos[indicesFortes[0]];
++   const prod = await carregarProdutoPorId(nomes[indicesFortes[0]], ctx.userId);
 ```
 
-Consequências:
-- zero, mais de um, ou um só com casamento fraco → pergunta e lista candidatos. Nunca escolhe.
-- similaridade continua existindo, só para montar a lista de sugestões.
-- `TERMOS_GENERICOS_PRODUTO` (linha 3976) permanece como segunda camada, checada antes.
-- o atalho do roteador (linha 6743) passa a exigir o mesmo casamento forte antes de chamar o caminho do catálogo.
+`TERMOS_GENERICOS_PRODUTO` (3976) fica como segunda camada, checada antes. O atalho do roteador (6743) passa pela mesma avaliação antes de chamar o caminho do catálogo.
 
-"postar em todas as redes sociais" → `redes` = as quatro, produto = "todas" → casamento fraco → pergunta.
+"postar em todas as redes sociais" → produto = "todas" → `fraco` → pergunta, nenhum pedido criado.
 
-## 2. Prévia falha fechada
+## 2. Prévia falha fechada, com catch específico
 
-`formatSocialPostToolResult` (linha 3727) já é o formatador único dos três estados de prévia (`aguardando_escolha_variante` 3732, `variante_selecionada` 3760, `aguardando_confirmacao` 3772). O problema é que nenhum deles exige procedência.
-
-Novo em `post-guardas.ts`:
+`formatSocialPostToolResult` (3727) já é o formatador único dos três estados (`aguardando_escolha_variante` 3732, `variante_selecionada` 3760, `aguardando_confirmacao` 3772). Passa a exigir procedência em todos.
 
 ```ts
+// post-guardas.ts
 export type Procedencia = {
   origem: "biblioteca" | "catalogo";
-  produtoNome?: string;          // obrigatório quando origem = catalogo
-  midiaIdCurto: string;          // 8 caracteres
+  produtoNome?: string;        // obrigatório quando origem = catalogo
+  midiaIdCurto: string;        // 8 caracteres
   midiaTipo: "foto" | "video";
 };
-
 export class PreviaSemProcedenciaError extends Error {}
-
-// Lança PreviaSemProcedenciaError se faltar qualquer campo.
-export function renderProcedencia(p: unknown): string;
+export function renderProcedencia(p: unknown): string; // lança se faltar qualquer campo
 // -> "📌 *Origem:* produto do catálogo: AMZOFERTAS\n🆔 *BD601B92* • Foto"
 ```
 
-No formatador, os três estados passam a começar por:
+Nos três estados: `const cabecalho = renderProcedencia(data?.procedencia);` antes de montar qualquer balão.
+
+No chamador (~6899), catch **específico**:
 
 ```ts
-+ const cabecalho = renderProcedencia(data?.procedencia); // lança se faltar
++ } catch (e) {
++   if (e instanceof PreviaSemProcedenciaError) {
++     console.error("[previa][sem_procedencia]", e.message);
++     return "Bloqueei a prévia: o pedido chegou sem a procedência da mídia. Nada foi preparado nem publicado.";
++   }
++   console.error("[previa][falha_tecnica]", (e as Error).message, (e as Error).stack);
++   return "Falha técnica ao montar a prévia. Nada foi preparado nem publicado. O erro foi registrado.";
++ }
 ```
 
-Sem `procedencia` válida, o formatador lança; o chamador (linha ~6899) captura e envia apenas: "Bloqueei a prévia: o pedido chegou sem a procedência da mídia. Nada foi preparado nem publicado." Nenhuma opção A/B/C é exibida, então não existe o que confirmar.
+Query quebrada, timeout ou banco fora recebem a frase de falha técnica e o erro original vai para o log — nunca a frase de procedência.
 
-Os dois caminhos passam a emitir o campo:
-- catálogo (linha 4119): `procedencia: { origem: "catalogo", produtoNome: prod.nome, midiaIdCurto: idCurto(assetProduto.id), midiaTipo: "foto" }` — substitui `origem_do_post` e `instrucao_procedencia`, que dependiam do modelo obedecer.
-- biblioteca (linhas 4357 e 4829): `procedencia: { origem: "biblioteca", midiaIdCurto: asset.idCurto, midiaTipo: asset.tipo }`.
+Os dois caminhos emitem o campo:
+- catálogo (4119): `procedencia: { origem: "catalogo", produtoNome: prod.nome, midiaIdCurto: idCurto(assetProduto.id), midiaTipo: "foto" }`, substituindo `origem_do_post` e `instrucao_procedencia`, que dependiam do modelo obedecer.
+- biblioteca (4357 e 4829): `procedencia: { origem: "biblioteca", midiaIdCurto: asset.idCurto, midiaTipo: asset.tipo }`.
 
-## 3. Verificação de compatibilidade antes de qualquer publicação
-
-Hoje a publicação é `Promise.all` sobre as redes (linha 4224) e o TikTok descobre a incompatibilidade dentro da própria chamada.
-
-Novo em `post-guardas.ts`:
+## 3. Compatibilidade verificada antes de publicar — e a confirmação persistida
 
 ```ts
 export function verificarCompatibilidadeRedes(
@@ -97,43 +105,53 @@ export function verificarCompatibilidadeRedes(
 ): { compativeis: string[]; incompativeis: { rede: string; motivo: string }[] };
 ```
 
-Regras: TikTok exige vídeo; `reels` exige vídeo; `story` não aceita TikTok.
+TikTok exige vídeo; `reels` exige vídeo; `story` não aceita TikTok.
 
-Em `toolConfirmarPostagemRedes`, imediatamente antes da linha 4224:
+**Regra nova, permanente:** todo campo de `PendingSocialPost` tem que ser gravado no marcador `jarvis_token:...` e reidratado por `loadPendingSocialPost`. Se não puder ser persistido, não entra no tipo. Nada de estado que morre no cold start.
+
+`pendingPostMarker` passa a gravar dois campos a mais, ao lado de `variantes`/`variantSelecionada`/`tom`:
+
+```ts
+  somenteCompativeisConfirmado: pending.somenteCompativeisConfirmado ?? false,
+  redesConfirmadas: pending.redesConfirmadas ?? null,
+```
+
+e `loadPendingSocialPost` (após a barreira de vínculo da linha 3167, que fica intacta) reidrata os dois do mesmo JSON do marcador.
+
+Em `toolConfirmarPostagemRedes`, antes da linha 4224:
 
 ```ts
 + const compat = verificarCompatibilidadeRedes(p.redes, asset.tipo, p.formato || "feed");
 + if (compat.incompativeis.length > 0 && !p.somenteCompativeisConfirmado) {
-+   PENDING_POSTS.set(token, { ...p, compatPendente: compat });
-+   return JSON.stringify({
-+     status: "incompatibilidade_de_tipo",
-+     mensagem_partes: [...],   // redes recusadas + motivo + pergunta
-+     token,
-+   });
++   await marcarCompatPendente(token, p.userId, compat.compativeis);  // grava no banco, não no Map
++   return JSON.stringify({ status: "incompatibilidade_de_tipo", token, incompativeis: compat.incompativeis, compativeis: compat.compativeis });
 + }
-+ const redesAPublicar = p.somenteCompativeisConfirmado ? compat.compativeis : p.redes;
++ const redesAPublicar = p.redesConfirmadas?.length ? p.redesConfirmadas : compat.compativeis;
 - const resultados = await Promise.all(p.redes.map(...));
 + const resultados = await Promise.all(redesAPublicar.map(...));
 ```
 
-Nada é publicado enquanto houver rede incompatível. O Jarvis lista as recusadas e pergunta se segue só com as compatíveis; um novo "sim" marca `somenteCompativeisConfirmado` e publica só essas.
+`marcarCompatPendente` reescreve o marcador no banco com `somenteCompativeisConfirmado: false` + `redesConfirmadas: compativeis`. O seu "sim" seguinte faz um `update` no marcador para `somenteCompativeisConfirmado: true` e segue para a publicação. Se a função reciclar entre a pergunta e o "sim", o estado vem do banco e não há loop.
 
-## 4. Testes de regressão
+Enquanto houver rede incompatível não confirmada: **zero chamadas de API**.
 
-`_shared/post-guardas.test.ts`, rodando com `deno test`, quatro casos:
+## 4. Testes de regressão — dois puros, dois de orquestração
 
-1. `avaliarCasamentoProduto("todas as redes sociais", ["AMZOFERTAS", "Consultório Odontológico"])` → `fraco`, zero candidatos fortes.
-2. `renderProcedencia({ midiaIdCurto: "BD601B92" })` e `renderProcedencia(undefined)` → lançam `PreviaSemProcedenciaError`; `renderProcedencia` completo → texto com origem, nome, código e tipo.
-3. `verificarCompatibilidadeRedes(["facebook","instagram","linkedin","tiktok"], "foto", "feed")` → TikTok incompatível, logo nada publica (asserção sobre `incompativeis.length > 0`).
-4. `extrairIdentificadorMidiaDoTurno("publique a mídia ID 727711F0")` → resolve o código curto (caminho da biblioteca); `"o pedido a1b2c3d4 saiu"` → não resolve.
+`_shared/post-guardas.test.ts`:
 
-Para o caso 4, `extrairIdentificadorMidiaDoTurno` (linha 3610) é movida para `post-guardas.ts` e importada no processador — sem duplicar lógica.
+1. **Orquestração** — `toolPostarRedesSociais({ produto: "todas", redes: [4 redes] })` com `sb` stubado: retorna `produto_nao_identificado` **e** o stub de `insert` em `social_posts_queue` recebe zero chamadas.
+2. **Puro** — `renderProcedencia(undefined)` e `renderProcedencia({ midiaIdCurto: "BD601B92" })` lançam `PreviaSemProcedenciaError`; procedência completa devolve texto com origem, nome, código e tipo.
+3. **Orquestração** — pedido com `assetTipo: "foto"` e `redes` incluindo TikTok, confirmado com "sim": o **stub de `publicarEmRede` recebe zero chamadas** e o retorno é `incompatibilidade_de_tipo`. A asserção é sobre a contagem de chamadas.
+4. **Puro** — `extrairIdentificadorMidiaDoTurno("publique a mídia ID 727711F0")` resolve o código; `"o pedido a1b2c3d4 saiu"` não resolve.
+
+Para os casos 1 e 3, `toolPostarRedesSociais`, `toolConfirmarPostagemRedes`, o cliente de banco e `publicarEmRede` passam a receber suas dependências por parâmetro opcional (injeção mínima, sem mudar as chamadas existentes) — é o que permite testar o caminho real em vez de só o cálculo. `extrairIdentificadorMidiaDoTurno` (3610) e as três funções puras ficam em `post-guardas.ts`, importadas pelo processador, sem duplicação.
+
+Um teste extra de guarda: `avaliarCasamentoProduto("kit de ferramentas", ["Kit"])` → `fraco`; `avaliarCasamentoProduto("Kit", ["Kit"])` → `exato`.
 
 ---
 
-## Respostas diretas
+## Fora do escopo, confirmado
 
-- **Não altero a linha 3167** (barreira de vínculo de mídia). Ela continua exigindo UUID + tipo.
-- **Não relaxo nada** para o post passar: o catálogo passa a falhar mais, não menos.
-- **Compatibilidade de tipo deixa de ser por rede na hora da API** e passa a ser global antes da primeira chamada.
-- Os posts já publicados no Facebook, Instagram e LinkedIn **não são apagados por este plano** — me autorize e eu removo em seguida, é uma ação destrutiva em conta externa.
+Os posts já publicados no Facebook, Instagram e LinkedIn **não serão apagados**, e nenhum caminho de exclusão em conta externa entra neste fluxo. A remoção é manual, por você.
+
+A linha 3167 continua exigindo UUID + tipo. Nenhuma checagem existente é relaxada.
