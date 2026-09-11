@@ -62,3 +62,6 @@
 - [ ] Cobrir no teste o mesmo caminho executado pelo processador do WhatsApp
 - [ ] Classificar “sim” após confirmação como publicação, nunca como nova geração
 - [ ] Validar ponta a ponta com o histórico real sem publicar conteúdo adicional
+- [ ] Corrigir caminho real do WhatsApp: “sim” após prévia publica exatamente o asset aprovado por ID
+- [ ] Integrar filtro de nicho no caminho real do processador
+- [ ] Validar ponta a ponta no WhatsApp sem publicar mídia adicional
