@@ -35,9 +35,9 @@
 
 ## Incidente — publicação de vídeo errado
 - [x] Identificar a mídia publicada, horário, redes e comando de confirmação
-- [ ] Registrar vídeos recém-renderizados na biblioteca com vínculo ao job
-- [ ] Proibir seleção implícita da “última mídia” ao preparar publicação
-- [ ] Mostrar a mídia exata no resumo antes da confirmação
-- [ ] Gravar quem aprovou, quando aprovou e qual mídia foi aprovada
+- [x] Registrar vídeos recém-renderizados na biblioteca com vínculo ao job
+- [x] Proibir seleção implícita da “última mídia” ao preparar publicação
+- [x] Mostrar a mídia exata no resumo antes da confirmação
+- [x] Gravar quem aprovou, quando aprovou e qual mídia foi aprovada
 - [ ] Adicionar regressão: vídeo novo nunca pode publicar vídeo antigo
-- [ ] Publicar e validar os bloqueios sem disparar conteúdo real
+- [x] Publicar e validar os bloqueios sem disparar conteúdo real
