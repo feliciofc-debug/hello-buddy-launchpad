@@ -5412,12 +5412,15 @@ export type Database = {
       }
       midias_whatsapp: {
         Row: {
+          arquivo_nome: string | null
           comments: number | null
           contexto_original: string | null
           contexto_transcricao: string | null
           created_at: string
           duracao_segundos: number | null
           erro_mensagem: string | null
+          generation_job_id: string | null
+          generation_job_type: string | null
           hashtags: string[] | null
           id: string
           legenda_gerada: string | null
@@ -5446,12 +5449,15 @@ export type Database = {
           whatsapp_message_id: string | null
         }
         Insert: {
+          arquivo_nome?: string | null
           comments?: number | null
           contexto_original?: string | null
           contexto_transcricao?: string | null
           created_at?: string
           duracao_segundos?: number | null
           erro_mensagem?: string | null
+          generation_job_id?: string | null
+          generation_job_type?: string | null
           hashtags?: string[] | null
           id?: string
           legenda_gerada?: string | null
@@ -5480,12 +5486,15 @@ export type Database = {
           whatsapp_message_id?: string | null
         }
         Update: {
+          arquivo_nome?: string | null
           comments?: number | null
           contexto_original?: string | null
           contexto_transcricao?: string | null
           created_at?: string
           duracao_segundos?: number | null
           erro_mensagem?: string | null
+          generation_job_id?: string | null
+          generation_job_type?: string | null
           hashtags?: string[] | null
           id?: string
           legenda_gerada?: string | null
@@ -7576,7 +7585,10 @@ export type Database = {
           approval_token: string | null
           approved_at: string | null
           approved_by: string | null
+          approved_media_type: string | null
           approved_media_url: string | null
+          asset_id: string | null
+          asset_tipo: string | null
           created_at: string | null
           error_message: string | null
           fb_post_id: string | null
@@ -7585,6 +7597,7 @@ export type Database = {
           link_no_primeiro_comentario: boolean | null
           link_url: string | null
           linkedin_post_urn: string | null
+          origem_fluxo: string
           page_id: string | null
           platform: string
           post_text: string | null
@@ -7602,7 +7615,10 @@ export type Database = {
           approval_token?: string | null
           approved_at?: string | null
           approved_by?: string | null
+          approved_media_type?: string | null
           approved_media_url?: string | null
+          asset_id?: string | null
+          asset_tipo?: string | null
           created_at?: string | null
           error_message?: string | null
           fb_post_id?: string | null
@@ -7611,6 +7627,7 @@ export type Database = {
           link_no_primeiro_comentario?: boolean | null
           link_url?: string | null
           linkedin_post_urn?: string | null
+          origem_fluxo?: string
           page_id?: string | null
           platform?: string
           post_text?: string | null
@@ -7628,7 +7645,10 @@ export type Database = {
           approval_token?: string | null
           approved_at?: string | null
           approved_by?: string | null
+          approved_media_type?: string | null
           approved_media_url?: string | null
+          asset_id?: string | null
+          asset_tipo?: string | null
           created_at?: string | null
           error_message?: string | null
           fb_post_id?: string | null
@@ -7637,6 +7657,7 @@ export type Database = {
           link_no_primeiro_comentario?: boolean | null
           link_url?: string | null
           linkedin_post_urn?: string | null
+          origem_fluxo?: string
           page_id?: string | null
           platform?: string
           post_text?: string | null

@@ -8,6 +8,13 @@
       "when": 1789124928548,
       "tag": "0000_bind_social_approval_to_media",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789128455707,
+      "tag": "0001_bind_publication_to_asset_id",
+      "breakpoints": true
     }
   ]
 }

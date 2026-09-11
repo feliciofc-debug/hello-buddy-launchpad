@@ -157,34 +157,40 @@ Deno.serve(async (req) => {
       return respJson({ success: true, cancelado: true });
     }
 
-    // O MP4 recém-gerado precisa ser a mídia recente do pedido. Sem este registro,
-    // um comando posterior como "publicar em todas" pode apontar para um vídeo antigo.
+    // O MP4 recém-gerado entra na biblioteca com ID próprio e vínculo tipado ao job
+    // que o gerou. É esse ID que a aprovação e a publicação usam — nada de "mais recente".
+    let midiaId: string | null = null;
     if (job.origem === "whatsapp" && job.telefone) {
       const contexto = `[video_motion_job:${job.id}] ${job.titulo || "Vídeo animado gerado pelo Jarvis"}`;
-      const { error: bibliotecaError } = await supabase.from("midias_whatsapp").insert({
+      const { data: midiaRow, error: bibliotecaError } = await supabase.from("midias_whatsapp").insert({
         user_id: job.user_id,
         origem: "video_motion",
         telefone_origem: job.telefone,
         tipo: "video",
         midia_url: videoUrl,
+        arquivo_nome: String(resultado_path).split("/").pop() || null,
+        generation_job_id: job.id,
+        generation_job_type: "video_motion_jobs",
         duracao_segundos: duracao_segundos ?? null,
         contexto_original: contexto,
         legenda_gerada: job.legenda_post || null,
         status: "pendente",
         plataformas: [],
-      });
+      }).select("id").maybeSingle();
       if (bibliotecaError) {
         console.error("[video-motion-complete] falha ao vincular vídeo à biblioteca:", bibliotecaError.message);
       }
+      midiaId = midiaRow?.id ?? null;
     }
 
     if (job.origem === "whatsapp" && job.telefone) {
       const blocoLegenda = job.legenda_post ? `\n\n*Legenda sugerida:*\n${job.legenda_post}` : "";
+      const blocoId = midiaId ? `\n\n🆔 *${midiaId.replace(/-/g, "").slice(0, 8).toUpperCase()}* — confira se este mesmo ID aparece na confirmação antes de publicar.` : "";
       if (!querPublicar) {
         await avisarCliente(
           supabase,
           job,
-          `🎬 Seu vídeo animado ficou pronto. *Não publiquei em lugar nenhum.*${blocoLegenda}`,
+          `🎬 Seu vídeo animado ficou pronto. *Não publiquei em lugar nenhum.*${blocoLegenda}${blocoId}`,
           videoUrl,
         );
       } else {

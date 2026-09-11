@@ -8,6 +8,13 @@ import { buildAmzContext, OWNER_PHONE, resolveTenantOwner, isAmzOwnerAltPhone } 
 import { getTenantBusinessContext, buildCarouselPrompt } from "../_shared/business-context.ts";
 import { classificarIntencao, ferramentaPermitida, mensagemDeErroParaUsuario } from "../_shared/jarvis-intent.ts";
 import { pareceResumoDeOpcoes, segmentoIntruso } from "../_shared/aprovacao-integra.ts";
+import {
+  JARVIS_PUBLICACAO_ATIVA,
+  idCurto,
+  resolverAsset,
+  resumoDaMidia,
+  validarTipoAprovado,
+} from "../_shared/publicacao-por-id.ts";
 
 // ---------------------------------------------------------------------------
 // Multi-tenant owner registry (populado no início de cada processMessage).
@@ -3004,6 +3011,8 @@ type PendingSocialPost = {
   createdAt: number;
   formato?: "feed" | "story" | "reels";
   midiaTipo?: "foto" | "video";
+  assetId?: string; // ID imutável da mídia aprovada — único vínculo aceito na publicação
+  assetTipo?: "foto" | "video";
   queueRows?: Array<{ id: string; platform: string }>;
   incluirCtaWhatsapp?: boolean;
   briefing?: string; // texto escrito pelo dono que é a MENSAGEM do post (prioridade sobre o visual)
@@ -3090,6 +3099,7 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
     platform: rede,
     post_text: pending.scripts[rede] || "",
     image_url: pending.produto?.imagem_url || null,
+    video_url: pending.assetTipo === "video" ? (pending.produto?.imagem_url || null) : null,
     link_url: pending.produto?.link || null,
     status: "aguardando_confirmacao",
     scheduled_at: null,
@@ -3104,6 +3114,10 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
     approved_at: null,
     approved_by: null,
     approved_media_url: pending.produto?.imagem_url || null,
+    // Vínculo forte: a fila carrega o ID imutável e o tipo do item aprovado.
+    asset_id: pending.assetId ?? null,
+    asset_tipo: pending.assetTipo ?? null,
+    origem_fluxo: "jarvis",
     updated_at: new Date().toISOString(),
   }));
 
@@ -3558,6 +3572,8 @@ type PendingFormatChoice = {
   redes: string[];
   tom: string;
   legenda?: string;
+  assetId?: string; // ID da mídia identificada quando perguntei o formato
+  assetTipo?: "foto" | "video";
   createdAt: number;
 };
 const PENDING_FORMAT_CHOICES = new Map<string, PendingFormatChoice>();
@@ -3651,8 +3667,12 @@ function formatSocialPostToolResult(raw: string): string {
     const baloes = (["A", "B", "C"] as const).map(balaoOpcao).join("<<SPLIT>>");
     const aviso = data?.aviso_formato ? `\n\n_${data.aviso_formato}_` : "";
     const avisoReels = data?.aviso_reels ? `\n_ℹ️ ${data.aviso_reels}_` : "";
+    const ma = data?.midia_aprovacao;
+    const blocoMidia = ma?.id
+      ? `<<SPLIT>>*Mídia deste post*\n🆔 *${ma.id_curto || idCurto(ma.id)}*\n${ma.tipo === "video" ? "Vídeo" : "Imagem"} • ${ma.arquivo_nome || "arquivo"}\nGuarde esse ID: ele precisa aparecer igual na confirmação.`
+      : "";
     const pergunta = `Esses são os textos exatos que vão ao ar. Qual você prefere? Responde *A*, *B* ou *C*.`;
-    return `Preparei 3 opções 👇${aviso}${avisoReels}<<SPLIT>>${baloes}<<SPLIT>>${pergunta}`;
+    return `Preparei 3 opções 👇${aviso}${avisoReels}${blocoMidia}<<SPLIT>>${baloes}<<SPLIT>>${pergunta}`;
   }
 
   if (data?.status === "variante_selecionada") {
@@ -3962,25 +3982,56 @@ async function toolConfirmarPostagemRedes(
 
   const approvedAt = new Date().toISOString();
   const rowIds = p.queueRows?.map((row) => row.id).filter(Boolean) ?? [];
-  if (rowIds.length === 0 || !p.produto?.imagem_url) {
+  if (rowIds.length === 0 || !p.produto?.imagem_url || !p.assetId) {
     return JSON.stringify({
       erro: "midia_nao_vinculada",
       mensagem: "Não consegui confirmar qual mídia foi aprovada. Nada foi publicado. Prepare o post novamente.",
     });
   }
+
+  // 🛡️ O item é buscado DE NOVO pelo ID e pelo dono na hora de publicar.
+  // Nenhum outro arquivo entra no lugar, e o tipo não pode mudar.
+  const { asset, mensagem: erroAsset } = await resolverAsset(sb, ctx.userId, p.assetId);
+  if (!asset) {
+    return JSON.stringify({ erro: "midia_nao_resolvida", mensagem: erroAsset || "Não consegui conferir a mídia aprovada. Nada foi publicado." });
+  }
+  if (asset.url !== p.produto.imagem_url) {
+    return JSON.stringify({
+      erro: "midia_divergente",
+      mensagem: `O arquivo da mídia ${asset.idCurto} mudou depois da prévia. Nada foi publicado — prepare o post novamente.`,
+    });
+  }
+  const tipoErro = validarTipoAprovado(p.assetTipo ?? asset.tipo, asset);
+  if (tipoErro) {
+    return JSON.stringify({
+      erro: "tipo_divergente",
+      mensagem: `O tipo aprovado não corresponde ao arquivo (${tipoErro}). Nada foi publicado.`,
+    });
+  }
+
+  if (!JARVIS_PUBLICACAO_ATIVA) {
+    return JSON.stringify({
+      erro: "publicacao_jarvis_desativada",
+      mensagem: `Aprovação registrada para a mídia *${asset.idCurto}*, mas a publicação pelo WhatsApp está desativada agora, por segurança. Nada foi publicado.<<SPLIT>>${resumoDaMidia(asset)}<<SPLIT>>Publique este item pela plataforma, na área de mídias — ele já está identificado por esse ID.`,
+    });
+  }
+
   const { data: approvedRows, error: approvalError } = await sb
     .from("social_posts_queue")
     .update({
       approved_at: approvedAt,
       approved_by: ctx.fromNumber,
-      approved_media_url: p.produto.imagem_url,
+      approved_media_url: asset.url,
+      approved_media_type: asset.tipo,
+      asset_id: asset.id,
+      asset_tipo: asset.tipo,
       updated_at: approvedAt,
     })
     .in("id", rowIds)
     .eq("user_id", ctx.userId)
     .eq("status", "aguardando_confirmacao")
     .eq("approval_token", token)
-    .eq("approved_media_url", p.produto.imagem_url)
+    .eq("asset_id", asset.id)
     .select("id");
   if (approvalError || approvedRows?.length !== rowIds.length) {
     return JSON.stringify({
@@ -4390,17 +4441,15 @@ async function toolPostarMidiaBiblioteca(
         mensagem: "Não consegui identificar com segurança qual mídia você quer publicar. Nada foi publicado. Envie o vídeo novamente ou diga para usar o vídeo que acabei de gerar.",
       });
     }
-    const query = sb
-      .from("midias_whatsapp")
-      .select("id, tipo, midia_url, contexto_original, created_at")
-      .eq("user_id", ctx.userId)
-      .eq("id", args.midia_id)
-      .limit(1);
-
-    const { data: midias, error } = await query;
-    if (error) return JSON.stringify({ erro: `db_falhou: ${error.message}` });
-    const midia = midias?.[0];
-    if (!midia) return JSON.stringify({ erro: "Não achei nenhuma mídia recente na biblioteca /midias. Peça pro cliente enviar a foto/vídeo primeiro." });
+    const { asset, erro: erroAsset, mensagem: msgAsset } = await resolverAsset(sb, ctx.userId, args.midia_id);
+    if (!asset) return JSON.stringify({ erro: erroAsset || "midia_nao_resolvida", mensagem: msgAsset });
+    const midia = {
+      id: asset.id,
+      tipo: asset.tipo,
+      midia_url: asset.url,
+      contexto_original: asset.origem,
+      created_at: asset.criadoEm,
+    };
 
     // Etapa 3: story de foto e vídeo, reels (só vídeo), feed (foto/vídeo).
     const formatoRaw = (args?.formato || "feed").toString().toLowerCase();
@@ -4562,7 +4611,7 @@ async function toolPostarMidiaBiblioteca(
     }
 
     const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo, incluirCtaWhatsapp: incluirCta, briefing: briefing || undefined };
+    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo, assetId: asset.id, assetTipo: asset.tipo, incluirCtaWhatsapp: incluirCta, briefing: briefing || undefined };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
 
@@ -4589,10 +4638,13 @@ async function toolPostarMidiaBiblioteca(
       midia: { id: midia.id, tipo: midia.tipo, url: midia.midia_url },
       produto: { nome: produtoLike.nome, preco: produtoLike.preco, imagem_url: produtoLike.imagem_url },
       midia_aprovacao: {
-        id: midia.id,
-        tipo: midia.tipo,
+        id: asset.id,
+        id_curto: asset.idCurto,
+        tipo: asset.tipo,
+        arquivo_nome: asset.arquivoNome,
+        thumbnail: asset.thumbnail,
         origem: contextoUsuario || "mídia enviada pelo WhatsApp",
-        recebida_em: midia.created_at,
+        recebida_em: asset.criadoEm,
       },
       tom,
       redes,
@@ -6139,13 +6191,14 @@ async function runTool(
           if (/\bstor(y|ies|ie)\b/.test(argBlob)) formatoDetectado = "story";
           else if (/\breels?\b/.test(argBlob)) formatoDetectado = "reels";
         }
-        console.warn(`[pietro][postar_guard] mídia recente em /midias → redirecionando pra postar_midia_biblioteca (formato=${formatoDetectado ?? "feed"})`);
+        console.warn(`[pietro][postar_guard] postar_midia_biblioteca id=${recentes[0].id} (formato=${formatoDetectado ?? "feed"})`);
         const result = await toolPostarMidiaBiblioteca({
           legenda: args?.legenda ?? args?.produto,
           nome: args?.produto,
           tom: args?.tom,
           redes: args?.redes,
           formato: formatoDetectado,
+          midia_id: args?.midia_id ?? recentes[0].id,
         }, ctx);
         return { result };
       }
@@ -6377,24 +6430,25 @@ async function callGemini(
     const standaloneFormat = detectStandaloneFormatReply(userContent);
     const pendingChoice = getPendingFormatChoice(toolCtx.userId);
     if (remetenteEhDono && standaloneFormat && pendingChoice) {
-      const midiaRecenteResume = await buscarMidiaRecenteParaPostagem(toolCtx.userId);
-      if (midiaRecenteResume) {
-        // Reels só faz sentido pra vídeo — bloqueia foto+reels aqui.
-        if (standaloneFormat === "reels" && midiaRecenteResume.tipo !== "video") {
+      // O item é o MESMO que foi identificado quando perguntei o formato.
+      // Nada de buscar "a mídia mais recente" outra vez: o ID vem guardado.
+      if (pendingChoice.assetId) {
+        if (standaloneFormat === "reels" && pendingChoice.assetTipo !== "video") {
           clearPendingFormatChoice(toolCtx.userId);
           return { text: "Reels só aceita vídeo — essa mídia é foto. Quer no *feed* ou no *story*?" };
         }
-        console.log(`[pietro][pending_format_resume] formato=${standaloneFormat} redes=${pendingChoice.redes.join(",")} tipo=${midiaRecenteResume.tipo}`);
+        console.log(`[pietro][pending_format_resume] formato=${standaloneFormat} redes=${pendingChoice.redes.join(",")} asset=${pendingChoice.assetId}`);
         clearPendingFormatChoice(toolCtx.userId);
         const postResult = await toolPostarMidiaBiblioteca({
           legenda: pendingChoice.legenda,
           tom: pendingChoice.tom,
           redes: pendingChoice.redes,
           formato: standaloneFormat,
+          midia_id: pendingChoice.assetId,
         }, toolCtx);
         return { text: formatSocialPostToolResult(postResult) };
       }
-      // mídia expirou/sumiu — descarta pending e deixa o fluxo normal seguir
+      // sem ID guardado não há publicação: o fluxo normal segue e pede a mídia
       clearPendingFormatChoice(toolCtx.userId);
     }
 
@@ -6439,6 +6493,8 @@ async function callGemini(
         const isFoto = midiaRecente.tipo === "foto";
         const isVideo = midiaRecente.tipo === "video";
 
+        const idMidia = idCurto(midiaRecente.id);
+
         // Etapa 2: FOTO sem formato explícito → pergunta feed OU story (2 opções).
         if (isFoto && !formatoDetectado) {
           const redesAsk = socialPost.redes.length > 0 ? socialPost.redes : ["instagram"];
@@ -6446,10 +6502,12 @@ async function callGemini(
             redes: redesAsk,
             tom: socialPost.tom,
             legenda: cleanMediaPostLegenda(userContent),
+            assetId: midiaRecente.id,
+            assetTipo: "foto",
           });
           const redeLabel = redesAsk.map((r) => r === "instagram" ? "Instagram" : r === "facebook" ? "Facebook" : r === "tiktok" ? "TikTok" : r).join(" e ");
-          console.log("[pietro][pending_format_choice_set]", { redes: redesAsk, tipo: "foto" });
-          return { text: `Quer no *feed* ou no *story* do ${redeLabel}?` };
+          console.log("[pietro][pending_format_choice_set]", { redes: redesAsk, tipo: "foto", asset: midiaRecente.id });
+          return { text: `É a imagem *${idMidia}*. Quer no *feed* ou no *story* do ${redeLabel}?` };
         }
 
         // Etapa 3: VÍDEO sem formato explícito → pergunta feed / story / reels (3 opções).
@@ -6459,20 +6517,23 @@ async function callGemini(
             redes: redesAsk,
             tom: socialPost.tom,
             legenda: cleanMediaPostLegenda(userContent),
+            assetId: midiaRecente.id,
+            assetTipo: "video",
           });
           const redeLabel = redesAsk.map((r) => r === "instagram" ? "Instagram" : r === "facebook" ? "Facebook" : r === "tiktok" ? "TikTok" : r).join(" e ");
-          console.log("[pietro][pending_format_choice_set]", { redes: redesAsk, tipo: "video" });
-          return { text: `Quer no *feed*, no *story* ou como *reels* do ${redeLabel}?` };
+          console.log("[pietro][pending_format_choice_set]", { redes: redesAsk, tipo: "video", asset: midiaRecente.id });
+          return { text: `É o vídeo *${idMidia}*. Quer no *feed*, no *story* ou como *reels* do ${redeLabel}?` };
         }
 
-        // Formato explícito → segue direto.
+        // Formato explícito → segue direto, sempre com o ID explícito da mídia.
         const formato = formatoDetectado ?? "feed";
-        console.warn(`[pietro][forced_social_post] mídia recente em /midias → usando postar_midia_biblioteca id=${midiaRecente.id} formato=${formato} tipo=${midiaRecente.tipo}`);
+        console.warn(`[pietro][forced_social_post] postar_midia_biblioteca id=${midiaRecente.id} formato=${formato} tipo=${midiaRecente.tipo}`);
         const postResult = await toolPostarMidiaBiblioteca({
           legenda: cleanMediaPostLegenda(userContent),
           tom: socialPost.tom,
           redes: socialPost.redes,
           formato,
+          midia_id: midiaRecente.id,
         }, toolCtx);
         return { text: formatSocialPostToolResult(postResult) };
       }

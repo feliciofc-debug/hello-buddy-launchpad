@@ -59,15 +59,30 @@ Deno.serve(async (req) => {
     if (!videoUrl) throw new Error("URL pública do vídeo legendado indisponível");
     console.log(`[video-publicar-aprovado] publicando LEGENDADO ${bucket}/${job.resultado_path}`);
 
-    // Destino resolvido: só publica onde foi pedido.
+    // Destino resolvido: só publica onde foi pedido. Sem destino pedido não há
+    // publicação — o padrão silencioso já colocou conteúdo em rede errada antes.
     const pedidas: string[] = Array.isArray(job.metadata?.plataformas_pedidas)
       ? job.metadata.plataformas_pedidas
       : [];
     const plataformas: string[] = pedidas.length
       ? pedidas
-      : (Array.isArray(job.plataformas) && job.plataformas.length
-        ? job.plataformas
-        : ["instagram", "facebook"]);
+      : (Array.isArray(job.plataformas) ? job.plataformas : []);
+    if (plataformas.length === 0) {
+      await supabase
+        .from("video_render_jobs")
+        .update({ status: "erro_publicacao", erro_mensagem: "sem plataforma pedida — publicação bloqueada" })
+        .eq("id", job.id);
+      return resp({ success: false, error: "sem plataforma pedida — nada foi publicado" });
+    }
+
+    // O arquivo aprovado precisa ser vídeo de verdade.
+    if (!/\.(mp4|mov|m4v|webm)(\?|$)/i.test(String(job.resultado_path))) {
+      await supabase
+        .from("video_render_jobs")
+        .update({ status: "erro_publicacao", erro_mensagem: "arquivo aprovado não é vídeo — publicação bloqueada" })
+        .eq("id", job.id);
+      return resp({ success: false, error: "arquivo aprovado não é vídeo — nada foi publicado" });
+    }
 
     const formato = String(job.formato || "feed").toLowerCase();
     const ehStory = formato === "story";

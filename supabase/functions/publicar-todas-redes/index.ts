@@ -2,9 +2,11 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { z } from 'npm:zod';
 import { textoIncompleto } from '../_shared/texto-completo.ts';
+import { resolverAsset, validarTipoAprovado } from '../_shared/publicacao-por-id.ts';
 
 const BodySchema = z.object({
   action: z.enum(['connections', 'publish']).default('publish'),
+  media_id: z.string().uuid().optional(),
   media_type: z.enum(['image', 'video']).optional(),
   media_url: z.string().url().optional(),
   image_urls: z.array(z.string().url()).max(10).optional(),
@@ -80,6 +82,25 @@ Deno.serve(async (req) => {
 
     if (!body.media_type || !body.media_url || !body.caption?.trim()) {
       return json({ success: false, error: 'Mídia e legenda são obrigatórias' }, 400);
+    }
+
+    // 🛡️ Vínculo por identificador: quando o item vem da biblioteca, ele é buscado
+    // pelo ID e pelo dono, e o tipo aprovado tem que bater com o arquivo real.
+    const tipoEsperado = body.media_type === 'video' ? 'video' : 'foto';
+    if (body.media_id) {
+      const { asset, mensagem } = await resolverAsset(admin, userId, body.media_id);
+      if (!asset) return json({ success: false, error: mensagem || 'Mídia não encontrada. Nada foi publicado.' }, 400);
+      if (asset.url !== body.media_url) {
+        return json({ success: false, error: `O arquivo da mídia ${asset.idCurto} não é o que foi aprovado. Nada foi publicado.` }, 400);
+      }
+      const erroTipo = validarTipoAprovado(tipoEsperado, asset);
+      if (erroTipo) return json({ success: false, error: `Tipo de mídia divergente (${erroTipo}). Nada foi publicado.` }, 400);
+    } else {
+      const ehVideo = /\.(mp4|mov|m4v|webm|avi|mkv|3gp)(\?|$)/i.test(body.media_url);
+      const ehImagem = /\.(jpg|jpeg|png|webp|gif|avif|heic)(\?|$)/i.test(body.media_url);
+      if ((tipoEsperado === 'video' && ehImagem) || (tipoEsperado === 'foto' && ehVideo)) {
+        return json({ success: false, error: 'O arquivo não corresponde ao tipo escolhido. Nada foi publicado.' }, 400);
+      }
     }
 
     const networks = body.networks?.length ? body.networks : (Object.keys(connections) as Network[]);

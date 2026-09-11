@@ -42,3 +42,8 @@
 - [ ] Adicionar regressão: vídeo novo nunca pode publicar vídeo antigo
 - [x] Publicar e validar os bloqueios sem disparar conteúdo real
 - [x] Aprovação: texto integral por opção + bloqueio de segmento alheio
+
+- [ ] Publicação por ID imutável (asset_id + tipo) em todos os caminhos
+- [ ] ID curto visível na geração e na confirmação (comparável pelo dono)
+- [ ] Jarvis com publicação desativada até validação concluída
+- [ ] Resposta ao dono: causa do incidente + verificação de impacto em clientes
