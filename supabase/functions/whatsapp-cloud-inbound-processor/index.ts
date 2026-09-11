@@ -6953,6 +6953,12 @@ async function callGemini(
   // Roteamento por tipo de fluxo (Feature 2): multimodal → DEEP, texto conversa → FAST.
   const model = escolherModelo({ kind: hasMedia ? "multimodal" : "conversation" });
   let pendingImageUrl: string | undefined;
+  // Código curto da mídia recém-criada. Anexado à resposta de forma determinística:
+  // o modelo não decide se mostra ou não.
+  let pendingMidiaLinha: string | undefined;
+  const comCodigoDaMidia = (texto: string) =>
+    pendingMidiaLinha && !texto.includes(pendingMidiaLinha) ? `${texto}\n\n${pendingMidiaLinha}` : texto;
+
   let pendingSocialToken: string | undefined; // token de post aguardando confirmação — anexa <<SPLIT>>pode postar {token} no fim
 
   const captureSocialToken = (raw: string) => {
