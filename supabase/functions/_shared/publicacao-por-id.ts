@@ -4,8 +4,8 @@
 // cujo ID foi mostrado ao dono e aprovado por ele.
 // ============================================================
 
-/** Enquanto false, nenhum caminho do Jarvis pode publicar em rede social. */
-export const JARVIS_PUBLICACAO_ATIVA = false;
+/** Publicação liberada somente nos caminhos que validam o asset por ID. */
+export const JARVIS_PUBLICACAO_ATIVA = true;
 
 export type AssetPublicavel = {
   id: string;

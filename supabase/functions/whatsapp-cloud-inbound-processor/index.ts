@@ -3133,7 +3133,7 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
 async function loadPendingSocialPost(token: string, userId: string): Promise<PendingSocialPost | null> {
   const { data, error } = await sb
     .from("social_posts_queue")
-    .select("id, user_id, produto_id, produto_source, platform, post_text, image_url, link_url, status, error_message, created_at")
+    .select("id, user_id, produto_id, produto_source, platform, post_text, image_url, video_url, link_url, status, error_message, created_at, asset_id, asset_tipo")
     .eq("user_id", userId)
     .eq("status", "aguardando_confirmacao")
     .like("error_message", `jarvis_token:${token}%`)
@@ -3161,13 +3161,20 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
   const marker = (rows[0] as any).error_message;
   const state = decodePendingPostState(marker);
   const midiaTipoReidratado = midiaTipoFromPendingMarker(marker);
+  const assetIdReidratado = (rows[0] as any).asset_id;
+  const assetTipoReidratado = (rows[0] as any).asset_tipo;
+
+  if (!isUuid(assetIdReidratado) || !["foto", "video"].includes(assetTipoReidratado)) {
+    console.error("[social_confirm][asset_binding_missing]", { token, userId });
+    return null;
+  }
 
   return {
     produto: {
       id: (rows[0] as any).produto_id,
       source: (rows[0] as any).produto_source,
       nome: productNameFromPendingMarker(marker),
-      imagem_url: (rows[0] as any).image_url,
+      imagem_url: (rows[0] as any).video_url || (rows[0] as any).image_url,
       link: (rows[0] as any).link_url,
       midia_tipo: midiaTipoReidratado,
     } as any,
@@ -3178,6 +3185,8 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
     createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
     formato: formatoFromPendingMarker(marker),
     midiaTipo: midiaTipoReidratado,
+    assetId: assetIdReidratado,
+    assetTipo: assetTipoReidratado,
     queueRows: (rows as any[]).map((r) => ({ id: r.id, platform: r.platform })),
     variantes: state?.variantes,
     variantSelecionada: state?.variantSelecionada,
@@ -3547,21 +3556,31 @@ function cleanMediaPostLegenda(text: string): string | undefined {
   return legenda;
 }
 
-async function buscarMidiaRecenteParaPostagem(userId: string): Promise<{ id: string; tipo: string; created_at: string } | null> {
-  const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-  const { data, error } = await sb
+async function buscarMidiaIdentificadaParaPostagem(
+  userId: string,
+  texto: string,
+): Promise<{ id: string; tipo: string; created_at: string } | null> {
+  const uuid = texto.match(/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i)?.[0];
+  const curto = texto.match(/(?:\bID\s*[:#-]?\s*|\b)([0-9a-f]{8})\b/i)?.[1]?.toLowerCase();
+  if (!uuid && !curto) return null;
+
+  let query = sb
     .from("midias_whatsapp")
     .select("id, tipo, created_at")
     .eq("user_id", userId)
     .in("tipo", ["foto", "video"])
-    .gte("created_at", cutoff)
-    .order("created_at", { ascending: false })
-    .limit(1);
+    .not("status", "ilike", "%bloquead%");
+  if (uuid) query = query.eq("id", uuid);
+  const { data, error } = await query.order("created_at", { ascending: false }).limit(uuid ? 1 : 200);
   if (error) {
-    console.warn("[pietro][forced_social_post][midia_recente_error]", error.message);
+    console.warn("[pietro][forced_social_post][midia_id_error]", error.message);
     return null;
   }
-  return (data?.[0] as { id: string; tipo: string; created_at: string } | undefined) ?? null;
+  const encontrados = uuid
+    ? (data ?? [])
+    : (data ?? []).filter((item: any) => idCurto(item.id).toLowerCase() === curto);
+  if (encontrados.length !== 1) return null;
+  return encontrados[0] as { id: string; tipo: string; created_at: string };
 }
 
 // ---- Estado pendente de escolha de FORMATO (feed/story) — Etapa 2 ----
@@ -3680,7 +3699,11 @@ function formatSocialPostToolResult(raw: string): string {
     const preview = Object.entries(data.preview ?? {})
       .map(([rede, script]) => `*${String(rede).toUpperCase()}*\n${script}`)
       .join("\n\n");
-    return `✅ Opção *${opcao}* selecionada.<<SPLIT>>${preview}<<SPLIT>>Posso publicar agora? Responde *sim* pra postar ou me diga o ajuste.`;
+    const ma = data?.midia_aprovacao;
+    const blocoMidia = ma?.id_curto
+      ? `<<SPLIT>>*Confirmação da mídia*\n🆔 *${ma.id_curto}*\n${ma.tipo === "video" ? "Vídeo" : "Imagem"} • ${ma.arquivo_nome || "arquivo"}`
+      : "";
+    return `✅ Opção *${opcao}* selecionada.${blocoMidia}<<SPLIT>>${preview}<<SPLIT>>Confira o ID acima. Posso publicar agora? Responde *sim* pra postar ou me diga o ajuste.`;
   }
 
   if (data?.status === "aguardando_confirmacao") {
@@ -4224,6 +4247,12 @@ async function toolEscolherVariantePost(
     token,
     opcao_ativa: opcao,
     preview: scripts,
+    midia_aprovacao: {
+      id: p.assetId,
+      id_curto: p.assetId ? idCurto(p.assetId) : null,
+      tipo: p.assetTipo,
+      arquivo_nome: p.produto?.imagem_url ? String(p.produto.imagem_url).split("/").pop()?.split("?")[0] : null,
+    },
     instrucoes: `Confirme rapidinho: "Beleza, vou publicar a *Opção ${opcao}*. Pode postar?" Se o dono confirmar ('pode postar', 'sim', 'manda'), chame confirmar_postagem_redes com token="${token}". Se ele pedir ajuste, chame revisar_post_pendente.`,
   });
 }
@@ -6170,44 +6199,19 @@ async function runTool(
     return { result };
   }
 
-  // Guard: se pediu postar_redes_sociais mas tem mídia RECENTE (últimos 15 min) em /midias,
-  // redireciona pra postar_midia_biblioteca — evita buscar produto errado do catálogo
-  // quando o cliente enviou foto antes e agora só mandou a legenda/preço em texto.
-  // IMPORTANTE (Etapa 1 fix): vale TAMBÉM quando o pedido é story/reels — a FONTE
-  // continua sendo a biblioteca /midias, nunca o catálogo. Só o formato muda.
+  // Segurança: nunca converta um pedido de catálogo em publicação da mídia mais
+  // recente. O chamador deve trazer o ID exato já exibido ao responsável.
   if (name === "postar_redes_sociais") {
-    try {
-      const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-      const { data: recentes } = await sb
-        .from("midias_whatsapp")
-        .select("id, created_at")
-        .eq("user_id", ctx.userId)
-        .in("tipo", ["foto", "video"])
-        .gte("created_at", cutoff)
-        .order("created_at", { ascending: false })
-        .limit(1);
-      if (recentes && recentes.length > 0) {
-        // Detecta formato (story/reels/feed) a partir do que o agente pediu, mesmo
-        // que ele tenha errado a tool. Story/reels keywords em qualquer arg de texto.
-        const argBlob = JSON.stringify(args ?? {}).toLowerCase();
-        let formatoDetectado: string | undefined = args?.formato;
-        if (!formatoDetectado) {
-          if (/\bstor(y|ies|ie)\b/.test(argBlob)) formatoDetectado = "story";
-          else if (/\breels?\b/.test(argBlob)) formatoDetectado = "reels";
-        }
-        console.warn(`[pietro][postar_guard] postar_midia_biblioteca id=${recentes[0].id} (formato=${formatoDetectado ?? "feed"})`);
-        const result = await toolPostarMidiaBiblioteca({
-          legenda: args?.legenda ?? args?.produto,
-          nome: args?.produto,
-          tom: args?.tom,
-          redes: args?.redes,
-          formato: formatoDetectado,
-          midia_id: args?.midia_id ?? recentes[0].id,
-        }, ctx);
-        return { result };
-      }
-    } catch (e) {
-      console.warn("[pietro][postar_guard] falhou ao checar /midias:", (e as Error).message);
+    if (args?.midia_id) {
+      const result = await toolPostarMidiaBiblioteca({
+        legenda: args?.legenda ?? args?.produto,
+        nome: args?.produto,
+        tom: args?.tom,
+        redes: args?.redes,
+        formato: args?.formato,
+        midia_id: args.midia_id,
+      }, ctx);
+      return { result };
     }
   }
 
@@ -6340,6 +6344,15 @@ async function callGemini(
     });
     console.log(`[processor][intencao] ${decisaoIntencao.intent} — ${decisaoIntencao.motivo}`);
 
+    // Confirmação de PUBLICAÇÃO vence uma aprovação antiga de roteiro. Esse era
+    // o caminho real que fazia "sim" voltar para geração de vídeo.
+    const plainPostConfirmation = latestPendingSocialToken ? detectPlainSocialPostConfirmation(userContent) : null;
+    if (plainPostConfirmation) {
+      console.log("[pietro][forced_social_plain_confirm]", { token: latestPendingSocialToken, cancelar: !!plainPostConfirmation.cancelar });
+      const confirmResult = await toolConfirmarPostagemRedes({ token: latestPendingSocialToken, cancelar: plainPostConfirmation.cancelar }, toolCtx);
+      return { text: formatSocialPostToolResult(confirmResult) };
+    }
+
     // Vídeo Motion primeiro: é a intenção mais específica. Aprovação e
     // cancelamento resolvem antes da IA para não prometer render sem job.
     if (remetenteEhDono && decisaoIntencao.intent === "cancelar_video" && pendingVideoDraft) {
@@ -6409,13 +6422,6 @@ async function callGemini(
       console.log("[pietro][forced_social_variant_choice]", { token: latestPendingSocialToken, opcao: variantChoice });
       const variantResult = await toolEscolherVariantePost({ token: latestPendingSocialToken!, opcao: variantChoice }, toolCtx);
       return { text: formatSocialPostToolResult(variantResult) };
-    }
-
-    const plainPostConfirmation = latestPendingSocialToken ? detectPlainSocialPostConfirmation(userContent) : null;
-    if (plainPostConfirmation) {
-      console.log("[pietro][forced_social_plain_confirm]", { token: latestPendingSocialToken, cancelar: !!plainPostConfirmation.cancelar });
-      const confirmResult = await toolConfirmarPostagemRedes({ token: latestPendingSocialToken!, cancelar: plainPostConfirmation.cancelar }, toolCtx);
-      return { text: formatSocialPostToolResult(confirmResult) };
     }
 
     // 0) Postagem em redes sociais: atalho determinístico para não deixar o modelo "prometer" preview sem chamar a tool.
@@ -6491,13 +6497,13 @@ async function callGemini(
         return { text: "Esse tipo de publicação só o responsável da conta pode autorizar. Posso encaminhar seu pedido para ele, se quiser." };
       }
       console.log("[pietro][forced_social_post]", socialPost);
-      const midiaRecente = await buscarMidiaRecenteParaPostagem(toolCtx.userId);
-      if (midiaRecente) {
+      const midiaIdentificada = await buscarMidiaIdentificadaParaPostagem(toolCtx.userId, userContent);
+      if (midiaIdentificada) {
         const formatoDetectado = socialPost.formato;
-        const isFoto = midiaRecente.tipo === "foto";
-        const isVideo = midiaRecente.tipo === "video";
+        const isFoto = midiaIdentificada.tipo === "foto";
+        const isVideo = midiaIdentificada.tipo === "video";
 
-        const idMidia = idCurto(midiaRecente.id);
+        const idMidia = idCurto(midiaIdentificada.id);
 
         // Etapa 2: FOTO sem formato explícito → pergunta feed OU story (2 opções).
         if (isFoto && !formatoDetectado) {
@@ -6506,11 +6512,11 @@ async function callGemini(
             redes: redesAsk,
             tom: socialPost.tom,
             legenda: cleanMediaPostLegenda(userContent),
-            assetId: midiaRecente.id,
+            assetId: midiaIdentificada.id,
             assetTipo: "foto",
           });
           const redeLabel = redesAsk.map((r) => r === "instagram" ? "Instagram" : r === "facebook" ? "Facebook" : r === "tiktok" ? "TikTok" : r).join(" e ");
-          console.log("[pietro][pending_format_choice_set]", { redes: redesAsk, tipo: "foto", asset: midiaRecente.id });
+          console.log("[pietro][pending_format_choice_set]", { redes: redesAsk, tipo: "foto", asset: midiaIdentificada.id });
           return { text: `É a imagem *${idMidia}*. Quer no *feed* ou no *story* do ${redeLabel}?` };
         }
 
@@ -6521,29 +6527,29 @@ async function callGemini(
             redes: redesAsk,
             tom: socialPost.tom,
             legenda: cleanMediaPostLegenda(userContent),
-            assetId: midiaRecente.id,
+            assetId: midiaIdentificada.id,
             assetTipo: "video",
           });
           const redeLabel = redesAsk.map((r) => r === "instagram" ? "Instagram" : r === "facebook" ? "Facebook" : r === "tiktok" ? "TikTok" : r).join(" e ");
-          console.log("[pietro][pending_format_choice_set]", { redes: redesAsk, tipo: "video", asset: midiaRecente.id });
+          console.log("[pietro][pending_format_choice_set]", { redes: redesAsk, tipo: "video", asset: midiaIdentificada.id });
           return { text: `É o vídeo *${idMidia}*. Quer no *feed*, no *story* ou como *reels* do ${redeLabel}?` };
         }
 
         // Formato explícito → segue direto, sempre com o ID explícito da mídia.
         const formato = formatoDetectado ?? "feed";
-        console.warn(`[pietro][forced_social_post] postar_midia_biblioteca id=${midiaRecente.id} formato=${formato} tipo=${midiaRecente.tipo}`);
+        console.warn(`[pietro][forced_social_post] postar_midia_biblioteca id=${midiaIdentificada.id} formato=${formato} tipo=${midiaIdentificada.tipo}`);
         const postResult = await toolPostarMidiaBiblioteca({
           legenda: cleanMediaPostLegenda(userContent),
           tom: socialPost.tom,
           redes: socialPost.redes,
           formato,
-          midia_id: midiaRecente.id,
+          midia_id: midiaIdentificada.id,
         }, toolCtx);
         return { text: formatSocialPostToolResult(postResult) };
       }
 
       if (!socialPost.temProduto) {
-        return { text: "Qual produto você quer postar? Ou me envie a foto/vídeo primeiro que eu preparo pela biblioteca /midias." };
+        return { text: "Preciso do ID da mídia para não publicar o arquivo errado. Responda com o código de 8 caracteres que apareceu junto do vídeo. Nada foi publicado." };
       }
 
       const postResult = await toolPostarRedesSociais(socialPost, toolCtx);
