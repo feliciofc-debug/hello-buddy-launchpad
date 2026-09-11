@@ -84,6 +84,15 @@ Deno.serve(async (req) => {
     const networks = body.networks?.length ? body.networks : (Object.keys(connections) as Network[]);
     const images = body.image_urls?.length ? body.image_urls : [body.media_url];
     const caption = body.caption.trim();
+
+    // Nada de frase cortada indo ao ar na rede do cliente.
+    const defeito = textoIncompleto(caption);
+    if (defeito) {
+      return json({
+        success: false,
+        error: `A legenda está incompleta (${defeito}). Complete o texto antes de publicar.`,
+      }, 400);
+    }
     const headers = { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'Content-Type': 'application/json' };
 
     const publish = async (network: Network): Promise<NetworkResult> => {
