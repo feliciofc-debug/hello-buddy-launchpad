@@ -3761,6 +3761,11 @@ const CATEGORIAS_ASSUNTO: Array<{ nome: string; re: RegExp }> = [
   { nome: "veiculo", re: /\b(ve[ií]culo|carro|autom[oó]vel|seminovo|semi-novo|0km|zero\s*km|hatch|sedan|sed[aã]|suv|picape|caminhonete|moto(cicleta)?|c[aâ]mbio|flex|turbo|km\s*rodados?|honda|toyota|hyundai|chevrolet|volkswagen|fiat|ford|renault|nissan|jeep|bmw|mercedes|audi|peugeot|citro[eë]n|civic|corolla|creta|onix|hb20|compass|tracker|hilux|ranger)\b/i },
   { nome: "imovel", re: /\b(im[oó]vel|apartamento|casa\s+(?:à|a)\s+venda|terreno|lote|condom[ií]nio|metros\s+quadrados|m²|quartos?|su[ií]tes?)\b/i },
   { nome: "consorcio", re: /\b(cons[oó]rcio|carta\s+de\s+cr[eé]dito|ademicon|parcelas?\s+mensais|lance)\b/i },
+  { nome: "odontologia", re: /\b(odonto\w*|dentista|dent[aá]ri[ao]s?|consult[oó]rio|clareamento|implante\s+dent\w*|aparelho\s+ortod\w*|ortodontia|paciente\s+na\s+cadeira|conv[eê]nios?|recepcionista)\b/i },
+  { nome: "saude", re: /\b(cl[ií]nica\s+m[eé]dica|m[eé]dic[oa]s?|fisioterap\w+|nutricionista|psic[oó]log[oa]s?|exames?\s+laboratori\w*)\b/i },
+  { nome: "pet", re: /\b(pet\s*shop|veterin[aá]ri[oa]s?|banho\s+e\s+tosa|tutor\s+do\s+pet)\b/i },
+  { nome: "juridico", re: /\b(advogad[oa]s?|escrit[oó]rio\s+de\s+advocacia|processo\s+judicial|OAB)\b/i },
+  { nome: "estetica", re: /\b(est[eé]tica|sal[aã]o\s+de\s+beleza|micropigmenta\w+|botox|harmoniza\w+\s+facial|cabeleireir[oa]s?)\b/i },
 ];
 
 function categoriaAssunto(texto: string): string | null {
@@ -4598,20 +4603,24 @@ async function toolPostarMidiaBiblioteca(
     console.log(`[pietro][postar_midia] gerando copy redes=${redes.join(",")} base=${redeBase} formato=${formato}`);
     let opcoesBase = await gerarTresOpcoesRedeSocial(produtoLike, tom, redeBase, undefined, brandCtx, briefing || undefined);
 
-    // Última barreira contra contaminação de contexto: mesmo que o modelo ignore as
-    // instruções, uma copy automotiva nunca é exibida para uma foto de outro produto.
-    if (!isVideo && descricaoVisual && copyConflitaComImagem(descricaoVisual, opcoesBase)) {
-      console.error("[pietro][postar_midia] copy REJEITADA por conflito com a imagem; regenerando sem contexto");
+    // Última barreira contra contaminação de contexto: vale para FOTO e VÍDEO.
+    // Referência = o que a mídia realmente mostra (visão) ou o contexto/briefing
+    // que o dono escreveu. Se a copy inventar outro nicho, é descartada e refeita.
+    const referenciaAssunto = (descricaoVisual || contextoUsuario || briefing || "").trim();
+    if (referenciaAssunto && copyConflitaComImagem(referenciaAssunto, opcoesBase)) {
+      console.error("[pietro][postar_midia] copy REJEITADA por nicho fora do pedido; regenerando sem contexto", {
+        referencia: referenciaAssunto.slice(0, 120),
+      });
       const produtoVisual = {
         ...produtoLike,
-        nome: descricaoVisual.slice(0, 120),
-        descricao: `O produto mostrado na foto é: ${descricaoVisual}`,
+        nome: referenciaAssunto.slice(0, 120),
+        descricao: `O conteúdo desta mídia é: ${referenciaAssunto}`,
       };
       opcoesBase = await gerarTresOpcoesRedeSocial(
         produtoVisual,
         "beneficio",
         redeBase,
-        "Fale exclusivamente sobre o produto identificado nesta foto. Não mencione veículos, carros, concessionária, test-drive, quilometragem, ano ou modelo.",
+        "Fale exclusivamente sobre o assunto desta mídia. É PROIBIDO citar qualquer outro nicho (odontologia, consultório, paciente, convênio, veículos, imóveis, consórcio, pet, jurídico, estética) que não esteja no assunto informado.",
         undefined,
         undefined,
       );
@@ -6346,8 +6355,10 @@ async function callGemini(
 
     // Confirmação de PUBLICAÇÃO vence uma aprovação antiga de roteiro. Esse era
     // o caminho real que fazia "sim" voltar para geração de vídeo.
-    const plainPostConfirmation = latestPendingSocialToken ? detectPlainSocialPostConfirmation(userContent) : null;
-    if (plainPostConfirmation) {
+    const plainPostConfirmation = latestPendingSocialToken && typeof userContent === "string"
+      ? detectPlainSocialPostConfirmation(userContent)
+      : null;
+    if (plainPostConfirmation && latestPendingSocialToken) {
       console.log("[pietro][forced_social_plain_confirm]", { token: latestPendingSocialToken, cancelar: !!plainPostConfirmation.cancelar });
       const confirmResult = await toolConfirmarPostagemRedes({ token: latestPendingSocialToken, cancelar: plainPostConfirmation.cancelar }, toolCtx);
       return { text: formatSocialPostToolResult(confirmResult) };

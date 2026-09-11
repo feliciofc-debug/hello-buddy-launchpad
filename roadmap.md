@@ -58,9 +58,9 @@
 - [x] Validar regras e interface sem iniciar renderizações reais
 
 ## Incidente — contexto e intenção no WhatsApp real
-- [ ] Rastrear por que o filtro de nicho não bloqueou a copy odontológica no caminho real
+- [x] Rastrear por que o filtro de nicho não bloqueou a copy odontológica no caminho real (só rodava para foto; agora vale para vídeo e cobre odonto/saúde/pet/jurídico/estética)
 - [ ] Cobrir no teste o mesmo caminho executado pelo processador do WhatsApp
-- [ ] Classificar “sim” após confirmação como publicação, nunca como nova geração
+- [x] Classificar “sim” após confirmação como publicação, nunca como nova geração
 - [ ] Validar ponta a ponta com o histórico real sem publicar conteúdo adicional
 - [x] Corrigir caminho real do WhatsApp: “sim” após prévia publica exatamente o asset aprovado por ID
 - [x] Integrar filtro de nicho no caminho real do processador
