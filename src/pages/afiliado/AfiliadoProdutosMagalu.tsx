@@ -93,7 +93,7 @@ export default function AfiliadoProdutosMagalu() {
           content_type: "image",
           content_url: produto.imagem_url,
           title: caption,
-          post_mode: "draft"
+          post_mode: "direct"
         }
       });
 

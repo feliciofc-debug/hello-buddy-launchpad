@@ -11,16 +11,7 @@ export type TikTokEnv = 'sandbox' | 'producao';
 
 const ENV_OVERRIDE = (import.meta.env.VITE_TIKTOK_ENV as TikTokEnv | undefined);
 
-// App aprovado pelo TikTok (LIVE em 10/09/2026) -> produção é o padrão.
-// Para voltar a testar em sandbox: VITE_TIKTOK_ENV=sandbox
-export const TIKTOK_ENV: TikTokEnv = ENV_OVERRIDE === 'sandbox' ? 'sandbox' : 'producao';
-
-// Enquanto a auditoria do Direct Post não for concluída pelo TikTok:
-//  - máximo de 5 usuários publicando via Direct Post em 24h
-//  - a conta precisa estar em modo privado
-//  - o conteúdo sai como SELF_ONLY (privado)
-// O modo RASCUNHO não tem nenhuma dessas restrições.
-export const TIKTOK_DIRECT_POST_AUDITADO = false;
+export const TIKTOK_ENV: TikTokEnv = ENV_OVERRIDE === 'producao' ? 'producao' : 'sandbox';
 
 // client_key é PÚBLICA (aparece na URL de OAuth) — pode ficar no código.
 // O client_secret NUNCA fica aqui: vive nos secrets do backend.
