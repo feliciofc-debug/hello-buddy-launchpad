@@ -81,7 +81,9 @@ async function salvarLogoDoProspect(
     );
     const bin = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
     if (!bin.length || bin.length > 4_000_000) return undefined;
-    const path = `${userId}/prospect-${crypto.randomUUID()}.${ext}`;
+    // Namespace separado: uma logo temporária jamais pode ser confundida com
+    // a logo oficial da conta apenas por estar dentro da pasta do usuário.
+    const path = `${userId}/prospect/${crypto.randomUUID()}.${ext}`;
     const { error } = await sb.storage.from("tenant-logos").upload(path, bin, { contentType: tipo });
     if (error) throw error;
     return path;

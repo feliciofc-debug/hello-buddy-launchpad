@@ -4656,6 +4656,8 @@ async function criarRascunhoVideoMotion(
         tomDeVoz: identidade.tomDeVoz || undefined,
         logoPath: identidade.logoPath ?? null,
         prospect: true,
+        identitySource: "prospect",
+        identityKey: identidade.url,
       }
       : {}),
   } as any);
@@ -4710,6 +4712,7 @@ async function ajustarRascunhoVideo(
     props.logo_path = undefined;
     props.logoUrl = undefined;
     props.prospect = true; // impede a logo do tenant voltar na aprovação
+    props.identity_source = "none";
     mudancas.push("logo removida deste vídeo");
   }
   const { error } = await sb.from("video_motion_rascunhos")
@@ -4770,6 +4773,10 @@ async function confirmarRascunhoVideo(ctx: { userId: string; fromNumber: string 
     props: draft.props,
     legendaPost: draft.legenda_post,
     formato: draft.formato,
+    prospect: draft.props?.prospect === true,
+    semLogo: draft.props?.identity_source === "none",
+    identitySource: draft.props?.identity_source,
+    identityKey: draft.props?.identity_key,
   });
   if (!r.ok) {
     await sb.from("video_motion_rascunhos").update({ status: "aguardando_aprovacao" }).eq("id", draft.id).eq("status", "aprovando");

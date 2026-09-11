@@ -111,6 +111,10 @@ export type MotionProps = {
   rotulo?: string;
   /** peça de prospecção: identidade de terceiro, nada do tenant pode entrar */
   prospect?: boolean;
+  /** origem imutável da identidade; impede reaproveitar logo de outra peça */
+  identity_source?: "tenant" | "prospect" | "none";
+  /** URL do site que originou a identidade de prospecção */
+  identity_key?: string;
   /** preenchido pelo backend; nunca vem do usuário para outro tenant */
   logo_path?: string;
   logoUrl?: string;

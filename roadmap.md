@@ -24,3 +24,11 @@
 - [x] `publicar-todas-redes` bloqueia legenda incompleta (400).
 - [x] Legenda de campanha WhatsApp cortada em frase completa.
 - [x] Testes `_shared/texto-completo.test.ts` (8 passando com a matriz de intenção).
+
+## Isolamento definitivo de identidade em vídeos
+- [x] Corrigir estado residual após enviar vídeo de prospecção pela plataforma
+- [x] Persistir a origem da identidade em rascunhos e jobs
+- [x] Separar logos temporárias em namespace de prospecção
+- [x] Bloquear logo incompatível antes de enfileirar e novamente antes de renderizar
+- [x] Preservar a origem da identidade durante aprovação pelo Jarvis
+- [x] Adicionar teste de regressão cliente A → marca oficial B
