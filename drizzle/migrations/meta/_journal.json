@@ -15,6 +15,13 @@
       "when": 1789128455707,
       "tag": "0001_bind_publication_to_asset_id",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789130351043,
+      "tag": "0002_configure_video_motion_daily_quotas",
+      "breakpoints": true
     }
   ]
 }

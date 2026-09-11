@@ -28,8 +28,7 @@ export const PLATAFORMAS_OK = ["instagram", "facebook", "linkedin", "tiktok"];
 /** Fila ativa por usuário. WhatsApp é mais restrito: worker é single-thread. */
 export const LIMITE_FILA_PLATAFORMA = 3;
 export const LIMITE_FILA_WHATSAPP = 1;
-/** Cota diária por tenant, somando as duas origens. */
-export const COTA_DIARIA_POR_TENANT = 5;
+export const STATUS_QUE_CONSOMEM_COTA = ["pendente", "processando", "concluido", "aguardando_aprovacao", "publicado"];
 /** Janela de anti-duplicidade para o mesmo tema. */
 const JANELA_DUPLICIDADE_MIN = 10;
 
@@ -91,9 +90,43 @@ export type EnfileirarResult =
     legenda_post: string;
     duracao_estimada: number;
     posicao_fila: number;
+    cota_aviso: string;
+    cota_limite: number;
+    cota_usado: number;
+    cota_restante: number | null;
     usou_ia: boolean;
   }
   | { ok: false; status: number; error: string; motivo?: string };
+
+export type CotaMotion = { limite: number; origem: string; usado: number };
+
+export function mensagemCotaMotion(cota: CotaMotion, numeroDoVideo = cota.usado + 1): string {
+  if (cota.limite === -1) return "Vídeos ilimitados nesta conta.";
+  const restante = Math.max(0, cota.limite - numeroDoVideo);
+  return `Este é seu ${numeroDoVideo}º de ${cota.limite} vídeos hoje. ${restante === 1 ? "Restará 1." : `Restarão ${restante}.`}`;
+}
+
+export async function buscarCotaMotion(sb: any, userId: string): Promise<CotaMotion> {
+  const inicioSaoPaulo = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+  inicioSaoPaulo.setHours(0, 0, 0, 0);
+  const inicioUtc = new Date(inicioSaoPaulo.getTime() + 3 * 60 * 60 * 1000).toISOString();
+
+  const [{ data: configuracao, error: configError }, { count: usado, error: usoError }] = await Promise.all([
+    sb.rpc("video_motion_cota_efetiva", { p_user_id: userId }),
+    sb.from("video_motion_jobs")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .in("status", STATUS_QUE_CONSOMEM_COTA)
+      .gte("created_at", inicioUtc),
+  ]);
+
+  if (configError || usoError) {
+    console.error("[video-motion] falha ao resolver cota; acesso liberado por segurança", configError ?? usoError);
+    return { limite: -1, origem: "indisponivel", usado: usado ?? 0 };
+  }
+  const row = Array.isArray(configuracao) ? configuracao[0] : configuracao;
+  return { limite: Number(row?.limite ?? -1), origem: String(row?.origem ?? "sem_plano"), usado: usado ?? 0 };
+}
 
 export async function logoDoTenant(sb: any, userId: string): Promise<string | undefined> {
   const { data } = await sb
@@ -307,20 +340,12 @@ export async function checarLimitesMotion(
     };
   }
 
-  const inicioDoDia = new Date();
-  inicioDoDia.setUTCHours(0, 0, 0, 0);
-  const { count: hoje } = await sb
-    .from("video_motion_jobs")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .neq("status", "cancelado")
-    .gte("created_at", inicioDoDia.toISOString());
-
-  if ((hoje ?? 0) >= COTA_DIARIA_POR_TENANT) {
+  const cota = await buscarCotaMotion(sb, userId);
+  if (cota.limite !== -1 && cota.usado >= cota.limite) {
     return {
       status: 429,
       motivo: "cota_diaria",
-      error: `Cota de ${COTA_DIARIA_POR_TENANT} vídeos por dia atingida. Amanhã libera de novo.`,
+      error: `Você usou os ${cota.limite} vídeos disponíveis hoje no seu plano. O administrador pode ajustar essa cota.`,
     };
   }
 
@@ -370,6 +395,7 @@ export async function enfileirarVideoMotion(input: EnfileirarInput): Promise<Enf
 
   const bloqueio = await checarLimitesMotion(sb, userId, origem, tema);
   if (bloqueio) return { ok: false, ...bloqueio };
+  const cota = await buscarCotaMotion(sb, userId);
 
   const plataformas = Array.isArray(input.plataformas)
     ? (input.plataformas as unknown[])
@@ -419,6 +445,10 @@ export async function enfileirarVideoMotion(input: EnfileirarInput): Promise<Enf
     legenda_post: legendaPost,
     duracao_estimada: duracaoEstimada(props),
     posicao_fila: pos ?? 1,
+    cota_aviso: mensagemCotaMotion(cota),
+    cota_limite: cota.limite,
+    cota_usado: cota.usado + 1,
+    cota_restante: cota.limite === -1 ? null : Math.max(0, cota.limite - cota.usado - 1),
     usou_ia: usouIA,
   };
 }
