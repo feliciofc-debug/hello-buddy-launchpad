@@ -5890,6 +5890,7 @@ export type Database = {
           imagens_ia_mes_atual: number
           limite_envios: number | null
           limite_imagens_ia_mes: number
+          limite_videos_motion_dia: number | null
           max_envios_dia_numero: number
           mes_referencia: string | null
           mes_referencia_ia: string
@@ -5915,6 +5916,7 @@ export type Database = {
           imagens_ia_mes_atual?: number
           limite_envios?: number | null
           limite_imagens_ia_mes?: number
+          limite_videos_motion_dia?: number | null
           max_envios_dia_numero?: number
           mes_referencia?: string | null
           mes_referencia_ia?: string
@@ -5940,6 +5942,7 @@ export type Database = {
           imagens_ia_mes_atual?: number
           limite_envios?: number | null
           limite_imagens_ia_mes?: number
+          limite_videos_motion_dia?: number | null
           max_envios_dia_numero?: number
           mes_referencia?: string | null
           mes_referencia_ia?: string
@@ -6336,6 +6339,7 @@ export type Database = {
           updated_at: string
           usuarios_painel: number
           videos_legenda_mes: number
+          videos_motion_dia: number
           white_label: boolean
         }
         Insert: {
@@ -6352,6 +6356,7 @@ export type Database = {
           updated_at?: string
           usuarios_painel?: number
           videos_legenda_mes?: number
+          videos_motion_dia?: number
           white_label?: boolean
         }
         Update: {
@@ -6368,6 +6373,7 @@ export type Database = {
           updated_at?: string
           usuarios_painel?: number
           videos_legenda_mes?: number
+          videos_motion_dia?: number
           white_label?: boolean
         }
         Relationships: []
@@ -10261,6 +10267,24 @@ export type Database = {
           schedule: string
         }[]
       }
+      admin_list_video_motion_quotas: {
+        Args: never
+        Returns: {
+          email: string
+          limite_efetivo: number
+          limite_individual: number
+          nome: string
+          origem_limite: string
+          plano_limite: number
+          plano_nome: string
+          usado_hoje: number
+          user_id: string
+        }[]
+      }
+      admin_set_video_motion_quota: {
+        Args: { p_limite: number; p_user_id: string }
+        Returns: undefined
+      }
       auto_classificar_produto_afiliado: {
         Args: { p_categoria?: string; p_titulo: string }
         Returns: string
@@ -10607,6 +10631,13 @@ export type Database = {
       verificar_rate_limit_afiliado: {
         Args: { p_phone: string }
         Returns: number
+      }
+      video_motion_cota_efetiva: {
+        Args: { p_user_id: string }
+        Returns: {
+          limite: number
+          origem: string
+        }[]
       }
       video_motion_destravar_fila: { Args: never; Returns: number }
       video_motion_fila_posicao: { Args: { p_job_id: string }; Returns: number }
