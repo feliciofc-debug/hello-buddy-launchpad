@@ -3279,9 +3279,30 @@ async function publicarEmRede(
       return { rede, ok: res.ok && j?.success !== false, status: res.status, resposta: j };
     }
     if (rede === "tiktok") {
+      if (!isVideo) return { rede, ok: false, status: 0, resposta: { error: "TikTok em rascunho exige vídeo — gere um vídeo deste produto primeiro" } };
       const res = await fetch(`${SUPABASE_URL}/functions/v1/tiktok-post-content`, {
         method: "POST", headers: commonHeaders,
-        body: JSON.stringify({ user_id: userId, content_type: isVideo ? "video" : "image", content_url: mediaUrl, title: script.slice(0, 2200), post_mode: "direct" }),
+        body: JSON.stringify({ user_id: userId, content_type: "video", content_url: mediaUrl, title: script.slice(0, 2200), post_mode: "draft", source: "scheduled" }),
+      });
+      const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
+      return {
+        rede,
+        ok: res.ok && j?.success !== false,
+        status: res.status,
+        resposta: j,
+        nota: res.ok && j?.success !== false ? "TikTok: enviado para seus rascunhos — finalize a publicação pelo app." : undefined,
+      };
+    }
+    if (rede === "linkedin") {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/linkedin-publish`, {
+        method: "POST", headers: commonHeaders,
+        body: JSON.stringify({
+          user_id: userId,
+          texto: script.slice(0, 3000),
+          image_url: isVideo ? undefined : mediaUrl,
+          video_url: isVideo ? mediaUrl : undefined,
+          link_url: produto.link || undefined,
+        }),
       });
       const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
       return { rede, ok: res.ok && j?.success !== false, status: res.status, resposta: j };
@@ -3543,7 +3564,8 @@ function detectSocialPostIntent(text: string): { produto: string; tom: string; r
   if (/\b(face|facebook|fb)\b/.test(normalized)) redes.push("facebook");
   if (/\b(insta|instagram|ig)\b/.test(normalized)) redes.push("instagram");
   if (/\b(tiktok|tik tok)\b/.test(normalized)) redes.push("tiktok");
-  if (redes.length === 0 && /\bredes sociais\b/.test(normalized)) redes.push("facebook", "instagram", "tiktok");
+  if (/\b(linkedin|linked in)\b/.test(normalized)) redes.push("linkedin");
+  if (redes.length === 0 && /\b(redes sociais|todas as redes|em todas)\b/.test(normalized)) redes.push("facebook", "instagram", "tiktok", "linkedin");
   const formatoPedido = detectSocialPostFormat(original);
   if (redes.length === 0 && !formatoPedido) return null;
 
@@ -3806,8 +3828,8 @@ async function toolPostarRedesSociais(
     const q = (args?.produto || "").trim();
     if (!q) return JSON.stringify({ erro: "informe qual produto postar" });
 
-    const redesValidas = ["facebook", "instagram", "tiktok"];
-    const redes = (args?.redes && args.redes.length > 0 ? args.redes : ["facebook", "instagram", "tiktok"])
+    const redesValidas = ["facebook", "instagram", "tiktok", "linkedin"];
+    const redes = (args?.redes && args.redes.length > 0 ? args.redes : ["facebook", "instagram", "tiktok", "linkedin"])
       .map((r) => r.toLowerCase())
       .filter((r) => redesValidas.includes(r));
     const tom = args?.tom || "urgencia";
@@ -3831,7 +3853,7 @@ async function toolPostarRedesSociais(
     // Gera 3 OPÇÕES (A/B/C) por rede em paralelo — estilo plataforma /gerar-posts
     const variantesEntries = await Promise.all(
       redes.map(async (r) => {
-        const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
+        const redeGen = r === "facebook" ? "facebook" : "instagram";
         return [r, await gerarTresOpcoesRedeSocial(prod, tom, redeGen)] as const;
       }),
     );
@@ -4321,8 +4343,8 @@ async function toolPostarMidiaBiblioteca(
       return JSON.stringify({ erro: "Reels só aceita vídeo. Envia um vídeo curto vertical (ideal ≥3s, 9:16) e peça de novo." });
     }
 
-    const redesValidas = ["facebook", "instagram", "tiktok"];
-    let redes = (args?.redes && args.redes.length > 0 ? args.redes : ["facebook", "instagram", "tiktok"])
+    const redesValidas = ["facebook", "instagram", "tiktok", "linkedin"];
+    let redes = (args?.redes && args.redes.length > 0 ? args.redes : ["facebook", "instagram", "tiktok", "linkedin"])
       .map((r) => r.toLowerCase())
       .filter((r) => redesValidas.includes(r));
     // TikTok não tem story — remove da lista pra story
@@ -4985,13 +5007,13 @@ const TOOLS = [
     type: "function",
     function: {
       name: "postar_redes_sociais",
-      description: "Gera PREVIEW COMPLETO de post para Facebook, Instagram e/ou TikTok a partir de um PRODUTO DO CATÁLOGO do dono (estoque cadastrado), com copywriting no TOM escolhido. NÃO publica direto — devolve token de confirmação. ⛔ NUNCA use esta tool quando o cliente ACABOU DE ENVIAR foto/vídeo/áudio nesta mensagem — nesse caso use salvar_midia_biblioteca. Esta tool é EXCLUSIVA pra produto do catálogo pedido POR NOME em texto (ex: 'posta a caneta delineadora', 'divulga o kit xícaras'). LINK NÃO É OBRIGATÓRIO: se o produto não tiver link de compra, gera post institucional/lifestyle/engajamento — NUNCA recuse por falta de link. Quando o usuário pedir por NOME 'posta X nas redes', CHAME IMEDIATAMENTE. A busca do produto é fuzzy. Se retornar 'não encontrado' com sugestoes_do_catalogo, mostre as sugestões. Depois de mostrar o preview, ao aprovar chame confirmar_postagem_redes. Restrito ao dono (Felicio).",
+      description: "Gera PREVIEW COMPLETO de post para Facebook, Instagram, TikTok e/ou LinkedIn a partir de um PRODUTO DO CATÁLOGO do dono, sem incluir campanha de WhatsApp. Quando o dono disser 'publica em todas', use as quatro redes. NÃO publica direto: sempre devolve token e exige confirmação explícita. TikTok usa rascunho e precisa de vídeo. ⛔ NUNCA use esta tool quando o cliente ACABOU DE ENVIAR foto/vídeo/áudio nesta mensagem — nesse caso use salvar_midia_biblioteca. LINK NÃO É OBRIGATÓRIO. Depois do preview, só publique via confirmar_postagem_redes.",
       parameters: {
         type: "object",
         properties: {
           produto: { type: "string", description: "Nome, categoria ou palavra-chave do produto." },
           tom: { type: "string", enum: ["urgencia", "escassez", "black-friday", "prova-social", "beneficio"], description: "Tom do copy. Padrão: urgencia." },
-          redes: { type: "array", items: { type: "string", enum: ["facebook", "instagram", "tiktok"] }, description: "Redes. Padrão: todas as três." },
+          redes: { type: "array", items: { type: "string", enum: ["facebook", "instagram", "tiktok", "linkedin"] }, description: "Redes. Padrão: todas as quatro. Nunca inclui WhatsApp." },
           incluir_cta_whatsapp: { type: "boolean", description: "OPT-IN. Passe true SÓ SE o dono pediu explicitamente 'posta com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA do whatsapp', 'chama no whatsapp'. Nunca inclua automaticamente." },
         },
         required: ["produto"],
@@ -5002,7 +5024,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "confirmar_postagem_redes",
-      description: "Confirma e PUBLICA de fato o post nas redes sociais usando o token devolvido por postar_redes_sociais. Chame SOMENTE após o usuário aprovar explicitamente o preview ('pode postar', 'confirma', 'manda ver', 'sim'). Se pedir cancelar, passe cancelar=true.",
+      description: "Confirma e PUBLICA de fato o post nas redes sociais usando o token devolvido por postar_redes_sociais. Chame SOMENTE após aprovação explícita. Informe o resultado de CADA rede separadamente. Para TikTok, diga sempre: 'enviado para seus rascunhos — finalize a publicação pelo app'. Nunca dispare campanha de WhatsApp.",
       parameters: {
         type: "object",
         properties: {
@@ -5071,7 +5093,7 @@ const TOOLS = [
           nome: { type: "string", description: "Nome do produto/item, se informado." },
           preco: { type: "string", description: "Preço se informado (ex: '29,99')." },
           tom: { type: "string", enum: ["urgencia", "escassez", "black-friday", "prova-social", "beneficio"] },
-          redes: { type: "array", items: { type: "string", enum: ["facebook", "instagram", "tiktok"] } },
+          redes: { type: "array", items: { type: "string", enum: ["facebook", "instagram", "tiktok", "linkedin"] }, description: "'Publica em todas' = as quatro redes; nunca WhatsApp." },
           formato: { type: "string", enum: ["feed", "story", "reels"], description: "'feed' (default), 'story' (foto/vídeo 9:16) ou 'reels' (só vídeo)." },
           incluir_cta_whatsapp: { type: "boolean", description: "OPT-IN. true = adiciona '📱 Fale comigo no WhatsApp: wa.me/<numero_do_agente>' em SANDUÍCHE (no INÍCIO E no FIM) da legenda de todas as redes escolhidas. Idempotente: limpa CTA antigo antes de reaplicar (nunca triplica). Nunca inclua automaticamente — só quando o dono pedir com palavras claras ('com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA')." },
         },
@@ -5619,7 +5641,7 @@ async function toolCriarCarrossel(
       ? `https://www.instagram.com/${profileHandle.replace(/^@/, "")}/`
       : "https://www.instagram.com/";
     return JSON.stringify({
-      status: "publicado",
+      status: "publicado_com_resultados_individuais",
       cor: cor.label,
       cards: imageUrls.length,
       instagram_media_id: publicado.id,
