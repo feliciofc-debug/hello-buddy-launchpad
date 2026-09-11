@@ -4155,7 +4155,17 @@ async function toolPostarRedesSociais(
 
     // Casamento FORTE, avaliado contra TODOS os nomes do catálogo. Similaridade
     // no máximo sugere — nunca escolhe. Zero, vários ou fraco => pergunta.
-    const itensCatalogo = await listarNomesDoCatalogo(ctx.userId);
+    let itensCatalogo: Array<{ id: string; nome: string; source: string }>;
+    try {
+      itensCatalogo = await listarNomesDoCatalogo(ctx.userId);
+    } catch (e) {
+      // Falha técnica é falha técnica: não vira "de qual produto é o post?".
+      console.error("[postar_redes][catalogo_incompleto]", (e as Error).message);
+      return JSON.stringify({
+        erro: "falha_tecnica_ao_consultar_catalogo",
+        mensagem: "Falha técnica ao consultar o catálogo — a lista de produtos veio incompleta, então não avaliei nada. Nada foi preparado nem publicado. Tenta de novo em instantes.",
+      });
+    }
     const preparo = await prepararPostDoCatalogo({
       query: q,
       ehTermoGenerico: () => false, // já checado acima, antes de tocar no banco
