@@ -3556,32 +3556,49 @@ function cleanMediaPostLegenda(text: string): string | undefined {
   return legenda;
 }
 
+// Lê o identificador da mídia SOMENTE do texto da mensagem do turno atual.
+// Nunca do histórico, nunca de resumo, nunca de contexto acumulado — isso seria
+// "a última mídia" com outro nome.
+// Ajuste 3: hex solto no meio da frase NÃO conta. O código só vale se vier
+// rotulado (ID / código / cod / #) ou se a mensagem inteira for só o código.
+function extrairIdentificadorMidiaDoTurno(texto: string): { uuid?: string; curto?: string } {
+  const cru = String(texto || "").trim();
+  const uuid = cru.match(/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i)?.[0];
+  if (uuid) return { uuid };
+  const soOCodigo = cru.match(/^\*?([0-9a-f]{8})\*?$/i)?.[1];
+  if (soOCodigo) return { curto: soOCodigo.toLowerCase() };
+  const rotulado = cru.match(/\b(?:id|c[oó]digo|cod)\b\s*[:#-]?\s*\*?([0-9a-f]{8})\*?\b/i)?.[1]
+    ?? cru.match(/#\s*\*?([0-9a-f]{8})\*?\b/i)?.[1];
+  return rotulado ? { curto: rotulado.toLowerCase() } : {};
+}
+
 async function buscarMidiaIdentificadaParaPostagem(
   userId: string,
   texto: string,
 ): Promise<{ id: string; tipo: string; created_at: string } | null> {
-  const uuid = texto.match(/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i)?.[0];
-  const curto = texto.match(/(?:\bID\s*[:#-]?\s*|\b)([0-9a-f]{8})\b/i)?.[1]?.toLowerCase();
+  const { uuid, curto } = extrairIdentificadorMidiaDoTurno(texto);
   if (!uuid && !curto) return null;
 
+  // Ajuste 4: o ID curto são os 8 primeiros caracteres do UUID — filtra no banco
+  // por prefixo. Sem limit(200) e sem filtro em memória, que perdia mídia antiga.
   let query = sb
     .from("midias_whatsapp")
     .select("id, tipo, created_at")
     .eq("user_id", userId)
     .in("tipo", ["foto", "video"])
     .not("status", "ilike", "%bloquead%");
-  if (uuid) query = query.eq("id", uuid);
-  const { data, error } = await query.order("created_at", { ascending: false }).limit(uuid ? 1 : 200);
+  query = uuid ? query.eq("id", uuid) : query.like("id", `${curto}%`);
+  const { data, error } = await query.order("created_at", { ascending: false }).limit(5);
   if (error) {
     console.warn("[pietro][forced_social_post][midia_id_error]", error.message);
     return null;
   }
-  const encontrados = uuid
-    ? (data ?? [])
-    : (data ?? []).filter((item: any) => idCurto(item.id).toLowerCase() === curto);
+  const encontrados = data ?? [];
+  // Mais de uma correspondência = ambíguo. Ambíguo não publica.
   if (encontrados.length !== 1) return null;
   return encontrados[0] as { id: string; tipo: string; created_at: string };
 }
+
 
 // ---- Estado pendente de escolha de FORMATO (feed/story) — Etapa 2 ----
 // Quando o dono manda foto + "posta no Instagram" sem dizer formato, guardamos
