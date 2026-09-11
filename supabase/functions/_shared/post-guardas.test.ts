@@ -131,3 +131,18 @@ Deno.test("termo generico nao lista o catalogo", async () => {
   });
   assertEquals(listagens, 0);
 });
+
+Deno.test("orquestracao: compatPendente com flag false NAO publica, mesmo com redesConfirmadas gravado", async () => {
+  let chamadas = 0;
+  const out = await publicarComPreflight({
+    redes: ["facebook", "instagram", "tiktok"],
+    tipo: "foto",
+    formato: "feed",
+    // Estado exatamente como marcarCompatPendente grava no banco:
+    somenteCompativeisConfirmado: false,
+    redesConfirmadas: ["facebook", "instagram"],
+    publicar: async (redes) => { chamadas++; return redes; },
+  });
+  assertEquals(chamadas, 0);
+  assertEquals(out.publicou, false);
+});

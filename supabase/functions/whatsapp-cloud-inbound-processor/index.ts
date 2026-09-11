@@ -4088,6 +4088,9 @@ async function resolverAssetDoProduto(
 // forte precisa ver todos os nomes, senão um produto nomeado exato fica de fora
 // por causa do limit da busca por similaridade. Cache curto de 60s.
 const CATALOGO_NOMES_CACHE = new Map<string, { at: number; itens: Array<{ id: string; nome: string; source: string }> }>();
+export class CatalogoIncompletoError extends Error {
+  constructor(detalhe: string) { super(detalhe); this.name = "CatalogoIncompletoError"; }
+}
 async function listarNomesDoCatalogo(userId: string): Promise<Array<{ id: string; nome: string; source: string }>> {
   const cached = CATALOGO_NOMES_CACHE.get(userId);
   if (cached && Date.now() - cached.at < 60_000) return cached.itens;
@@ -4100,7 +4103,9 @@ async function listarNomesDoCatalogo(userId: string): Promise<Array<{ id: string
         .select(`id, ${campo}`)
         .eq("user_id", userId)
         .range(de, de + PAGINA - 1);
-      if (error) { console.warn("[catalogo_nomes][erro]", tabela, error.message); break; }
+      // Falha em QUALQUER página = catálogo parcial. Aborta: nunca avalia
+      // casamento contra lista incompleta e nunca cacheia listagem parcial.
+      if (error) throw new CatalogoIncompletoError(`${tabela}@${de}: ${error.message}`);
       const linhas = data ?? [];
       for (const r of linhas as any[]) if (r?.[campo]) itens.push({ id: r.id, nome: String(r[campo]), source });
       if (linhas.length < PAGINA) break;
@@ -4150,7 +4155,17 @@ async function toolPostarRedesSociais(
 
     // Casamento FORTE, avaliado contra TODOS os nomes do catálogo. Similaridade
     // no máximo sugere — nunca escolhe. Zero, vários ou fraco => pergunta.
-    const itensCatalogo = await listarNomesDoCatalogo(ctx.userId);
+    let itensCatalogo: Array<{ id: string; nome: string; source: string }>;
+    try {
+      itensCatalogo = await listarNomesDoCatalogo(ctx.userId);
+    } catch (e) {
+      // Falha técnica é falha técnica: não vira "de qual produto é o post?".
+      console.error("[postar_redes][catalogo_incompleto]", (e as Error).message);
+      return JSON.stringify({
+        erro: "falha_tecnica_ao_consultar_catalogo",
+        mensagem: "Falha técnica ao consultar o catálogo — a lista de produtos veio incompleta, então não avaliei nada. Nada foi preparado nem publicado. Tenta de novo em instantes.",
+      });
+    }
     const preparo = await prepararPostDoCatalogo({
       query: q,
       ehTermoGenerico: () => false, // já checado acima, antes de tocar no banco
