@@ -7,6 +7,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 // ImageScript não suporta WebP, mas é ótimo para recomprimir JPEG/PNG depois que a gente converte.
 import { Image } from "https://deno.land/x/imagescript@1.2.15/mod.ts";
+import { cortarFrase } from "../_shared/texto-completo.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -640,7 +641,8 @@ async function enviarParaGrupo(
     // ═══════════════════════════════════════════════════════════════
 
     if (imageUrl) {
-      const caption = message.length > 900 ? message.slice(0, 900) + "…" : message;
+      // Legenda longa é encurtada em frase completa — nunca reticências.
+      const caption = cortarFrase(message, 900);
 
       console.log(`🖼️ Preparando IMAGEM + LEGENDA (download + base64)...`);
 
