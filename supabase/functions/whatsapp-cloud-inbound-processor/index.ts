@@ -3570,14 +3570,17 @@ async function buscarMidiaIdentificadaParaPostagem(
     .eq("user_id", userId)
     .in("tipo", ["foto", "video"])
     .not("status", "ilike", "%bloquead%");
-  query = uuid ? query.eq("id", uuid) : query.ilike("id", `${curto}%`);
-  const { data, error } = await query.limit(2);
+  if (uuid) query = query.eq("id", uuid);
+  const { data, error } = await query.order("created_at", { ascending: false }).limit(uuid ? 1 : 200);
   if (error) {
     console.warn("[pietro][forced_social_post][midia_id_error]", error.message);
     return null;
   }
-  if ((data?.length ?? 0) !== 1) return null;
-  return (data?.[0] as { id: string; tipo: string; created_at: string } | undefined) ?? null;
+  const encontrados = uuid
+    ? (data ?? [])
+    : (data ?? []).filter((item: any) => idCurto(item.id).toLowerCase() === curto);
+  if (encontrados.length !== 1) return null;
+  return encontrados[0] as { id: string; tipo: string; created_at: string };
 }
 
 // ---- Estado pendente de escolha de FORMATO (feed/story) — Etapa 2 ----
