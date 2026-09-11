@@ -82,11 +82,12 @@
 - [ ] Validação no WhatsApp real pelo dono (gerar vídeo de veterinária → pedir post → conferir textos e código → responder sim)
 
 ## Correção do padrão "na dúvida, seguiu em frente" (plano v3, aguardando aprovação)
-- [ ] Casamento forte de produto contra TODOS os nomes do catálogo; zero/múltiplos/fraco → pergunta
-- [ ] Nome curto (<4 chars): só casamento exato da consulta inteira
-- [ ] Formatador único de prévia com procedência obrigatória (lança se faltar)
-- [ ] Catch específico de PreviaSemProcedenciaError; outros erros com frase técnica própria
-- [ ] Pré-checagem global de compatibilidade de tipo antes de qualquer chamada de API
-- [ ] somenteCompativeisConfirmado + redesConfirmadas persistidos no marcador e reidratados
-- [ ] Testes de orquestração com publicador stubado (zero chamadas quando incompatível)
-- [ ] Recusar termo genérico ANTES de listar catálogo; cache de nomes por 60s
+- [x] Casamento forte de produto contra TODOS os nomes do catálogo; zero/múltiplos/fraco → pergunta
+- [x] Nome curto (<4 chars): só casamento exato da consulta inteira
+- [x] Formatador único de prévia com procedência obrigatória (lança se faltar)
+- [x] Catch específico de PreviaSemProcedenciaError; outros erros com frase técnica própria
+- [x] Pré-checagem global de compatibilidade de tipo antes de qualquer chamada de API
+- [x] somenteCompativeisConfirmado + redesConfirmadas persistidos no marcador e reidratados
+- [x] Testes de orquestração com publicador stubado (zero chamadas quando incompatível)
+- [x] Recusar termo genérico ANTES de listar catálogo; cache de nomes por 60s
+- [ ] Validar no WhatsApp real: pedido genérico deve perguntar; foto+TikTok deve bloquear tudo
