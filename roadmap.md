@@ -80,3 +80,12 @@
 - [x] Ajuste 3: exigir rótulo (ID/código/cod/#) ou mensagem só com o código; hex solto não conta
 - [x] Ajuste 4: buscar ID curto por prefixo no banco (sem limit(200)/filtro em JS)
 - [ ] Validação no WhatsApp real pelo dono (gerar vídeo de veterinária → pedir post → conferir textos e código → responder sim)
+
+## Correção do padrão "na dúvida, seguiu em frente" (plano v3, aguardando aprovação)
+- [ ] Casamento forte de produto contra TODOS os nomes do catálogo; zero/múltiplos/fraco → pergunta
+- [ ] Nome curto (<4 chars): só casamento exato da consulta inteira
+- [ ] Formatador único de prévia com procedência obrigatória (lança se faltar)
+- [ ] Catch específico de PreviaSemProcedenciaError; outros erros com frase técnica própria
+- [ ] Pré-checagem global de compatibilidade de tipo antes de qualquer chamada de API
+- [ ] somenteCompativeisConfirmado + redesConfirmadas persistidos no marcador e reidratados
+- [ ] Testes de orquestração com publicador stubado (zero chamadas quando incompatível)
