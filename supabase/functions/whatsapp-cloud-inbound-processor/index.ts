@@ -3133,7 +3133,7 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
 async function loadPendingSocialPost(token: string, userId: string): Promise<PendingSocialPost | null> {
   const { data, error } = await sb
     .from("social_posts_queue")
-    .select("id, user_id, produto_id, produto_source, platform, post_text, image_url, link_url, status, error_message, created_at")
+    .select("id, user_id, produto_id, produto_source, platform, post_text, image_url, video_url, link_url, status, error_message, created_at, asset_id, asset_tipo")
     .eq("user_id", userId)
     .eq("status", "aguardando_confirmacao")
     .like("error_message", `jarvis_token:${token}%`)
@@ -3161,13 +3161,20 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
   const marker = (rows[0] as any).error_message;
   const state = decodePendingPostState(marker);
   const midiaTipoReidratado = midiaTipoFromPendingMarker(marker);
+  const assetIdReidratado = (rows[0] as any).asset_id;
+  const assetTipoReidratado = (rows[0] as any).asset_tipo;
+
+  if (!isUuid(assetIdReidratado) || !["foto", "video"].includes(assetTipoReidratado)) {
+    console.error("[social_confirm][asset_binding_missing]", { token, userId });
+    return null;
+  }
 
   return {
     produto: {
       id: (rows[0] as any).produto_id,
       source: (rows[0] as any).produto_source,
       nome: productNameFromPendingMarker(marker),
-      imagem_url: (rows[0] as any).image_url,
+      imagem_url: (rows[0] as any).video_url || (rows[0] as any).image_url,
       link: (rows[0] as any).link_url,
       midia_tipo: midiaTipoReidratado,
     } as any,
@@ -3178,6 +3185,8 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
     createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
     formato: formatoFromPendingMarker(marker),
     midiaTipo: midiaTipoReidratado,
+    assetId: assetIdReidratado,
+    assetTipo: assetTipoReidratado,
     queueRows: (rows as any[]).map((r) => ({ id: r.id, platform: r.platform })),
     variantes: state?.variantes,
     variantSelecionada: state?.variantSelecionada,
@@ -4224,6 +4233,12 @@ async function toolEscolherVariantePost(
     token,
     opcao_ativa: opcao,
     preview: scripts,
+    midia_aprovacao: {
+      id: p.assetId,
+      id_curto: p.assetId ? idCurto(p.assetId) : null,
+      tipo: p.assetTipo,
+      arquivo_nome: p.produto?.imagem_url ? String(p.produto.imagem_url).split("/").pop()?.split("?")[0] : null,
+    },
     instrucoes: `Confirme rapidinho: "Beleza, vou publicar a *Opção ${opcao}*. Pode postar?" Se o dono confirmar ('pode postar', 'sim', 'manda'), chame confirmar_postagem_redes com token="${token}". Se ele pedir ajuste, chame revisar_post_pendente.`,
   });
 }
@@ -6170,44 +6185,19 @@ async function runTool(
     return { result };
   }
 
-  // Guard: se pediu postar_redes_sociais mas tem mídia RECENTE (últimos 15 min) em /midias,
-  // redireciona pra postar_midia_biblioteca — evita buscar produto errado do catálogo
-  // quando o cliente enviou foto antes e agora só mandou a legenda/preço em texto.
-  // IMPORTANTE (Etapa 1 fix): vale TAMBÉM quando o pedido é story/reels — a FONTE
-  // continua sendo a biblioteca /midias, nunca o catálogo. Só o formato muda.
+  // Segurança: nunca converta um pedido de catálogo em publicação da mídia mais
+  // recente. O chamador deve trazer o ID exato já exibido ao responsável.
   if (name === "postar_redes_sociais") {
-    try {
-      const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-      const { data: recentes } = await sb
-        .from("midias_whatsapp")
-        .select("id, created_at")
-        .eq("user_id", ctx.userId)
-        .in("tipo", ["foto", "video"])
-        .gte("created_at", cutoff)
-        .order("created_at", { ascending: false })
-        .limit(1);
-      if (recentes && recentes.length > 0) {
-        // Detecta formato (story/reels/feed) a partir do que o agente pediu, mesmo
-        // que ele tenha errado a tool. Story/reels keywords em qualquer arg de texto.
-        const argBlob = JSON.stringify(args ?? {}).toLowerCase();
-        let formatoDetectado: string | undefined = args?.formato;
-        if (!formatoDetectado) {
-          if (/\bstor(y|ies|ie)\b/.test(argBlob)) formatoDetectado = "story";
-          else if (/\breels?\b/.test(argBlob)) formatoDetectado = "reels";
-        }
-        console.warn(`[pietro][postar_guard] postar_midia_biblioteca id=${recentes[0].id} (formato=${formatoDetectado ?? "feed"})`);
-        const result = await toolPostarMidiaBiblioteca({
-          legenda: args?.legenda ?? args?.produto,
-          nome: args?.produto,
-          tom: args?.tom,
-          redes: args?.redes,
-          formato: formatoDetectado,
-          midia_id: args?.midia_id ?? recentes[0].id,
-        }, ctx);
-        return { result };
-      }
-    } catch (e) {
-      console.warn("[pietro][postar_guard] falhou ao checar /midias:", (e as Error).message);
+    if (args?.midia_id) {
+      const result = await toolPostarMidiaBiblioteca({
+        legenda: args?.legenda ?? args?.produto,
+        nome: args?.produto,
+        tom: args?.tom,
+        redes: args?.redes,
+        formato: args?.formato,
+        midia_id: args.midia_id,
+      }, ctx);
+      return { result };
     }
   }
 
@@ -6340,6 +6330,15 @@ async function callGemini(
     });
     console.log(`[processor][intencao] ${decisaoIntencao.intent} — ${decisaoIntencao.motivo}`);
 
+    // Confirmação de PUBLICAÇÃO vence uma aprovação antiga de roteiro. Esse era
+    // o caminho real que fazia "sim" voltar para geração de vídeo.
+    const plainPostConfirmation = latestPendingSocialToken ? detectPlainSocialPostConfirmation(userContent) : null;
+    if (plainPostConfirmation) {
+      console.log("[pietro][forced_social_plain_confirm]", { token: latestPendingSocialToken, cancelar: !!plainPostConfirmation.cancelar });
+      const confirmResult = await toolConfirmarPostagemRedes({ token: latestPendingSocialToken, cancelar: plainPostConfirmation.cancelar }, toolCtx);
+      return { text: formatSocialPostToolResult(confirmResult) };
+    }
+
     // Vídeo Motion primeiro: é a intenção mais específica. Aprovação e
     // cancelamento resolvem antes da IA para não prometer render sem job.
     if (remetenteEhDono && decisaoIntencao.intent === "cancelar_video" && pendingVideoDraft) {
@@ -6409,13 +6408,6 @@ async function callGemini(
       console.log("[pietro][forced_social_variant_choice]", { token: latestPendingSocialToken, opcao: variantChoice });
       const variantResult = await toolEscolherVariantePost({ token: latestPendingSocialToken!, opcao: variantChoice }, toolCtx);
       return { text: formatSocialPostToolResult(variantResult) };
-    }
-
-    const plainPostConfirmation = latestPendingSocialToken ? detectPlainSocialPostConfirmation(userContent) : null;
-    if (plainPostConfirmation) {
-      console.log("[pietro][forced_social_plain_confirm]", { token: latestPendingSocialToken, cancelar: !!plainPostConfirmation.cancelar });
-      const confirmResult = await toolConfirmarPostagemRedes({ token: latestPendingSocialToken!, cancelar: plainPostConfirmation.cancelar }, toolCtx);
-      return { text: formatSocialPostToolResult(confirmResult) };
     }
 
     // 0) Postagem em redes sociais: atalho determinístico para não deixar o modelo "prometer" preview sem chamar a tool.
