@@ -75,3 +75,7 @@
 - [ ] Cancelar pedidos antigos aguardando_confirmacao com asset_id nulo
 - [ ] Roteiro e post pendentes ao mesmo tempo: Jarvis pergunta, nunca adivinha
 - [ ] Mensagens de erro distintas: inexistente / expirado / sem vínculo de mídia
+- [ ] Ajuste 1: código de mídia lido só da mensagem do turno atual (nunca histórico)
+- [ ] Ajuste 2: sem código resolvido → perguntar, nunca cair no catálogo
+- [ ] Ajuste 3: exigir rótulo (ID/código/cod/#) ou mensagem só com o código; hex solto não conta
+- [ ] Ajuste 4: buscar ID curto por prefixo no banco (sem limit(200)/filtro em JS)
