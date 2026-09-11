@@ -1,104 +1,139 @@
-# Post pelo WhatsApp — vínculo de mídia, roteamento e mensagens (v2)
+# Correção do padrão: na dúvida, parar
 
-Plano revisado com os três bloqueios. Nada aplicado ainda.
+Quatro mudanças no fluxo de post do WhatsApp. Nenhuma delas depende de lista de palavras para funcionar.
 
-## Bloqueio 1 — por que "posta isso" foi para o catálogo
+Arquivos:
+- `supabase/functions/whatsapp-cloud-inbound-processor/index.ts`
+- novo `supabase/functions/_shared/post-guardas.ts` (regras puras, testáveis)
+- novo `supabase/functions/_shared/post-guardas.test.ts` (os 4 testes de regressão)
 
-Existem duas ferramentas de post e a escolha é do modelo:
+---
 
-- caminho da biblioteca (`postar_midia_biblioteca`, linha 5336): **exige o identificador da mídia**
-  (`midia_id` obrigatório, linha 5341).
-- caminho do catálogo (`postar_redes_sociais`, linha 5260): exige apenas uma **palavra-chave de produto**
-  (linha 5270, `required: ["produto"]`).
+## 1. Produto só com casamento forte (inverte a regra)
 
-Na sua conversa, a mensagem do vídeo trouxe o **código curto** (`727711F0`), não o identificador completo.
-O modelo não tinha o identificador completo para chamar o caminho da biblioteca, então caiu no caminho
-que aceita texto livre. Lá, a busca por produto é aproximada: ela devolve o "melhor parecido" do catálogo
-mesmo quando o pedido não nomeia produto nenhum — e devolveu um item de odontologia. O vídeo da
-veterinária nunca entrou no post.
+Hoje `toolPostarRedesSociais` (linha 4060) usa `buscarProdutoParaPostagem`, que ordena por score de similaridade e devolve `ranked[0]`. Qualquer palavra que gere score > 0 vira produto. Foi assim que "todas" virou AMZOFERTAS.
 
-Ou seja: o erro de token foi o que impediu a publicação errada. Concordo integralmente com o bloqueio.
-
-### Correções do Bloqueio 1
-
-1. **Pedido de post logo depois de mídia aprovada vai obrigatoriamente para a biblioteca.** Antes de o
-   modelo escolher ferramenta, o processador resolve o código curto/identificador citado na conversa
-   (função `buscarMidiaIdentificadaParaPostagem`, já existente, linha 3559) e força o caminho da
-   biblioteca com aquele identificador. O caminho do catálogo fica **indisponível naquele turno**.
-2. **Caminho do catálogo só com produto nomeado.** `postar_redes_sociais` passa a recusar pedido cuja
-   palavra-chave seja genérica ("isso", "esse vídeo", "o post", "a mídia", "aquilo") ou vazia, e a recusar
-   correspondência aproximada fraca: se a busca não devolver um produto claramente correspondente ao nome
-   dito, a resposta é "de qual produto do catálogo é o post?" — não escolhe nada.
-3. **Prévia diz a procedência.** Todo post do catálogo passa a abrir com
-   `post do produto: <nome do produto>` (e o post de mídia continua mostrando código curto, tipo e nome
-   do arquivo). Se a procedência não bater, você cancela na primeira linha.
-4. Nenhum "mais recente", "último produto" ou "produto do contexto" em qualquer ramo. Sem identificação,
-   o Jarvis pergunta.
-
-## Bloqueio 2 — escolho a (a)
-
-Removo o fallback de "última foto dos últimos 30 minutos" em `toolEditarImagem` (linhas 1136–1146).
-Sem imagem no turno, a resposta é o bloco `sem_imagem` já existente (linhas 1151–1156), pedindo a foto.
-Não vou usar a (b): concordo que ela deixa o canal aberto.
-
-Com o fallback fora, o registro da foto do produto na biblioteca deixa de alimentar vazamento. E o
-registro passa a ter `origem: "catalogo_produto"` de qualquer forma, para auditoria.
-
-## Bloqueio 3 — prefixo decide, não o caixa
-
-Ordem correta na confirmação (linha 3997 em diante), sobre a **string crua**, antes de qualquer
-normalização:
-
-1. tem `p_` → é código de pedido; segue.
-2. não tem `p_` e casa 8 hex (qualquer caixa) → tenta como código antigo; **se não achar pedido**,
-   responde "isso parece o código de uma mídia, não de um pedido de post — me diga qual post confirmar".
-3. nada disso → "código inválido".
-
-A compatibilidade sem prefixo fica com data de corte explícita no código:
+Novo em `post-guardas.ts`:
 
 ```ts
-// Compatibilidade com códigos antigos sem prefixo. Remover após 2026-10-15.
-const ACEITA_TOKEN_SEM_PREFIXO_ATE = Date.parse("2026-10-15T00:00:00Z");
+export type ForcaCasamento = "exato" | "palavra_inteira" | "fraco";
+
+// Puro: recebe a consulta e os nomes; não fala com banco.
+export function avaliarCasamentoProduto(query: string, nomes: string[]): {
+  forca: ForcaCasamento;
+  indicesFortes: number[];   // candidatos com casamento forte
+}
 ```
 
-Passada a data, código sem prefixo é recusado com a mensagem do item 2.
+Regra: `exato` = consulta normalizada igual ao nome. `palavra_inteira` = o nome do produto aparece na consulta como sequência de palavras inteiras (>= 4 caracteres). Tudo o mais é `fraco`.
 
-## Os três itens menores
+Em `toolPostarRedesSociais` (linha 4060 em diante):
 
-- **Limpeza:** rodo o seu `update` no mesmo deploy, cancelando todo `aguardando_confirmacao` com
-  `asset_id` nulo, com `error_message = 'sem_vinculo_midia_pre_correcao'`.
-- **`status: "pendente"`:** conferido — `resolverAsset` (`_shared/publicacao-por-id.ts`, linha 80) só
-  considera bloqueado o status que casa `/bloquead/i`. "pendente" publica normalmente.
-- **Roteiro e post pendentes juntos:** sem precedência adivinhada. Havendo os dois, o "sim" não executa
-  nada e o Jarvis responde "quer publicar o post ou renderizar o vídeo?", com os dois identificados
-  (código do post e código curto da mídia). Só depois da escolha a ferramenta roda.
+```ts
+-   const { produto: prod, sugestoes, candidatos } = await buscarProdutoParaPostagem(q, ctx.userId);
+-   if (!prod) { ...sugestoes... }
++   const { candidatos, sugestoes } = await buscarProdutoParaPostagem(q, ctx.userId);
++   const { forca, indicesFortes } = avaliarCasamentoProduto(q, candidatos.map((c) => c.nome));
++   if (forca === "fraco" || indicesFortes.length !== 1) {
++     return JSON.stringify({
++       erro: "produto_nao_identificado",
++       mensagem: "De qual produto do catálogo é o post? Não escolhi nenhum.",
++       candidatos_do_catalogo: sugestoes.slice(0, 7),
++     });
++   }
++   const prod = candidatos[indicesFortes[0]];
+```
 
-## Resumo das mudanças por arquivo
+Consequências:
+- zero, mais de um, ou um só com casamento fraco → pergunta e lista candidatos. Nunca escolhe.
+- similaridade continua existindo, só para montar a lista de sugestões.
+- `TERMOS_GENERICOS_PRODUTO` (linha 3976) permanece como segunda camada, checada antes.
+- o atalho do roteador (linha 6743) passa a exigir o mesmo casamento forte antes de chamar o caminho do catálogo.
 
-`supabase/functions/whatsapp-cloud-inbound-processor/index.ts`
-- 1136–1146: remove fallback de foto recente.
-- ~3560: reaproveita `buscarMidiaIdentificadaParaPostagem` para forçar o caminho da biblioteca.
-- ~3133–3175 (`loadPendingSocialPost`): retorna motivo (`nao_encontrado` / `expirado` /
-  `sem_vinculo_midia`) em vez de `null`.
-- ~3920 (`postar_redes_sociais`): recusa palavra-chave genérica e correspondência fraca.
-- ~3967: token com prefixo `p_`.
-- ~3968: resolve e registra a mídia aprovada; `assetId`/`assetTipo` obrigatórios; falha imediata se não
-  resolver ("não consegui identificar a mídia aprovada").
-- ~3997 e nas outras três ferramentas de token: validação sobre a string crua, na ordem do Bloqueio 3, com
-  mensagens distintas.
-- ~5260: descrição da ferramenta de catálogo exige produto nomeado.
-- ~8596: guard de pendências — bloqueia geração de vídeo no "sim" e pergunta quando há post e roteiro.
+"postar em todas as redes sociais" → `redes` = as quatro, produto = "todas" → casamento fraco → pergunta.
 
-Novo helper `resolverAssetDoProduto(userId, produto)` no mesmo arquivo (procura por
-`user_id + midia_url`; insere com `origem: "catalogo_produto"`, `tipo: "foto"`, `status: "pendente"`).
+## 2. Prévia falha fechada
 
-Nada de checkout/pagamento é tocado. A checagem da linha 3167 continua intacta.
+`formatSocialPostToolResult` (linha 3727) já é o formatador único dos três estados de prévia (`aguardando_escolha_variante` 3732, `variante_selecionada` 3760, `aguardando_confirmacao` 3772). O problema é que nenhum deles exige procedência.
 
-## Validação (seu roteiro)
+Novo em `post-guardas.ts`:
 
-1. Vídeo de clínica veterinária pelo WhatsApp, aprovar.
-2. Pedir o post desse vídeo → textos só de veterinária; qualquer menção a odonto reprova.
-3. Conferir `asset_id` = identificador do vídeo aprovado e código curto igual ao da mensagem do vídeo.
-4. Só então "sim" → publica.
-5. Mandar código de mídia no lugar do código do pedido → resposta explica a diferença.
-6. Sua query: nenhuma linha nova com `asset_id` nulo.
+```ts
+export type Procedencia = {
+  origem: "biblioteca" | "catalogo";
+  produtoNome?: string;          // obrigatório quando origem = catalogo
+  midiaIdCurto: string;          // 8 caracteres
+  midiaTipo: "foto" | "video";
+};
+
+export class PreviaSemProcedenciaError extends Error {}
+
+// Lança PreviaSemProcedenciaError se faltar qualquer campo.
+export function renderProcedencia(p: unknown): string;
+// -> "📌 *Origem:* produto do catálogo: AMZOFERTAS\n🆔 *BD601B92* • Foto"
+```
+
+No formatador, os três estados passam a começar por:
+
+```ts
++ const cabecalho = renderProcedencia(data?.procedencia); // lança se faltar
+```
+
+Sem `procedencia` válida, o formatador lança; o chamador (linha ~6899) captura e envia apenas: "Bloqueei a prévia: o pedido chegou sem a procedência da mídia. Nada foi preparado nem publicado." Nenhuma opção A/B/C é exibida, então não existe o que confirmar.
+
+Os dois caminhos passam a emitir o campo:
+- catálogo (linha 4119): `procedencia: { origem: "catalogo", produtoNome: prod.nome, midiaIdCurto: idCurto(assetProduto.id), midiaTipo: "foto" }` — substitui `origem_do_post` e `instrucao_procedencia`, que dependiam do modelo obedecer.
+- biblioteca (linhas 4357 e 4829): `procedencia: { origem: "biblioteca", midiaIdCurto: asset.idCurto, midiaTipo: asset.tipo }`.
+
+## 3. Verificação de compatibilidade antes de qualquer publicação
+
+Hoje a publicação é `Promise.all` sobre as redes (linha 4224) e o TikTok descobre a incompatibilidade dentro da própria chamada.
+
+Novo em `post-guardas.ts`:
+
+```ts
+export function verificarCompatibilidadeRedes(
+  redes: string[], tipo: "foto" | "video", formato: "feed" | "story" | "reels",
+): { compativeis: string[]; incompativeis: { rede: string; motivo: string }[] };
+```
+
+Regras: TikTok exige vídeo; `reels` exige vídeo; `story` não aceita TikTok.
+
+Em `toolConfirmarPostagemRedes`, imediatamente antes da linha 4224:
+
+```ts
++ const compat = verificarCompatibilidadeRedes(p.redes, asset.tipo, p.formato || "feed");
++ if (compat.incompativeis.length > 0 && !p.somenteCompativeisConfirmado) {
++   PENDING_POSTS.set(token, { ...p, compatPendente: compat });
++   return JSON.stringify({
++     status: "incompatibilidade_de_tipo",
++     mensagem_partes: [...],   // redes recusadas + motivo + pergunta
++     token,
++   });
++ }
++ const redesAPublicar = p.somenteCompativeisConfirmado ? compat.compativeis : p.redes;
+- const resultados = await Promise.all(p.redes.map(...));
++ const resultados = await Promise.all(redesAPublicar.map(...));
+```
+
+Nada é publicado enquanto houver rede incompatível. O Jarvis lista as recusadas e pergunta se segue só com as compatíveis; um novo "sim" marca `somenteCompativeisConfirmado` e publica só essas.
+
+## 4. Testes de regressão
+
+`_shared/post-guardas.test.ts`, rodando com `deno test`, quatro casos:
+
+1. `avaliarCasamentoProduto("todas as redes sociais", ["AMZOFERTAS", "Consultório Odontológico"])` → `fraco`, zero candidatos fortes.
+2. `renderProcedencia({ midiaIdCurto: "BD601B92" })` e `renderProcedencia(undefined)` → lançam `PreviaSemProcedenciaError`; `renderProcedencia` completo → texto com origem, nome, código e tipo.
+3. `verificarCompatibilidadeRedes(["facebook","instagram","linkedin","tiktok"], "foto", "feed")` → TikTok incompatível, logo nada publica (asserção sobre `incompativeis.length > 0`).
+4. `extrairIdentificadorMidiaDoTurno("publique a mídia ID 727711F0")` → resolve o código curto (caminho da biblioteca); `"o pedido a1b2c3d4 saiu"` → não resolve.
+
+Para o caso 4, `extrairIdentificadorMidiaDoTurno` (linha 3610) é movida para `post-guardas.ts` e importada no processador — sem duplicar lógica.
+
+---
+
+## Respostas diretas
+
+- **Não altero a linha 3167** (barreira de vínculo de mídia). Ela continua exigindo UUID + tipo.
+- **Não relaxo nada** para o post passar: o catálogo passa a falhar mais, não menos.
+- **Compatibilidade de tipo deixa de ser por rede na hora da API** e passa a ser global antes da primeira chamada.
+- Os posts já publicados no Facebook, Instagram e LinkedIn **não são apagados por este plano** — me autorize e eu removo em seguida, é uma ação destrutiva em conta externa.
