@@ -173,7 +173,16 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
   const logoInformada = typeof input.logoPath === "string" && input.logoPath.startsWith(`${userId}/`)
     ? input.logoPath
     : undefined;
-  const logoPath = logoInformada ?? await logoDoTenant(sb, userId);
+  const logoDasProps = typeof (input.props as any)?.logo_path === "string" &&
+      String((input.props as any).logo_path).startsWith(`${userId}/`)
+    ? String((input.props as any).logo_path)
+    : undefined;
+  // Prospecção: a logo é a do prospect (ou nenhuma). NUNCA a do tenant, para a
+  // marca de um cliente não vazar no vídeo do próximo.
+  const prospect = input.prospect === true || (input.props as any)?.prospect === true;
+  const logoPath = input.semLogo
+    ? undefined
+    : (logoInformada ?? logoDasProps ?? (prospect ? undefined : await logoDoTenant(sb, userId)));
   const trilha = await resolverTrilha(sb, userId, input);
   let props: MotionProps;
   let legendaPost = String(input.legendaPost ?? "").trim();
@@ -223,6 +232,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
   // A trilha fica referenciada por ID/path seguro; a URL temporária só nasce no claim.
   props = {
     ...props,
+    prospect: prospect || undefined,
     site: props.site || "",
     logo_path: logoPath,
     logoUrl: undefined,
