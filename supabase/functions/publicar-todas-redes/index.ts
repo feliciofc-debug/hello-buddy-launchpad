@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { z } from 'npm:zod';
+import { textoIncompleto } from '../_shared/video-motion.ts';
 
 const BodySchema = z.object({
   action: z.enum(['connections', 'publish']).default('publish'),
