@@ -66,6 +66,10 @@ export type EnfileirarInput = {
   prospect?: boolean;
   /** o usuário pediu para tirar a logo deste vídeo */
   semLogo?: boolean;
+  /** proveniência obrigatória da identidade/logo desta peça */
+  identitySource?: "tenant" | "prospect" | "none";
+  /** identifica o site/origem da marca de prospecção */
+  identityKey?: string | null;
   /** só devolve o roteiro, não enfileira */
   apenasRoteiro?: boolean;
 };
@@ -100,6 +104,30 @@ export async function logoDoTenant(sb: any, userId: string): Promise<string | un
     .maybeSingle();
   const path = typeof data?.storage_path === "string" ? data.storage_path : "";
   return path.startsWith(`${userId}/`) ? path : undefined;
+}
+
+export function logoEhDeProspect(userId: string, path?: string): boolean {
+  if (!path?.startsWith(`${userId}/`)) return false;
+  const relativo = path.slice(userId.length + 1);
+  return relativo.startsWith("prospect/") || relativo.startsWith("prospect-") || /(?:^|\/)\d+-logo-site\./i.test(relativo);
+}
+
+export function validarProvenienciaLogo(
+  userId: string,
+  path: string | undefined,
+  origem: "tenant" | "prospect" | "none",
+  logoOficial?: string,
+): string | null {
+  if (!path) return null;
+  if (!path.startsWith(`${userId}/`)) return "A logo não pertence a esta conta.";
+  if (origem === "none") return "Este vídeo foi marcado para sair sem logo.";
+  if (origem === "prospect" && !logoEhDeProspect(userId, path)) {
+    return "A logo não corresponde à identidade de prospecção escolhida.";
+  }
+  if (origem === "tenant" && path !== logoOficial) {
+    return "A logo selecionada não corresponde à marca oficial desta conta.";
+  }
+  return null;
 }
 
 /** Estilo pedido explicitamente; "auto"/vazio devolve o que o texto sugerir. */
@@ -168,8 +196,8 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
   usouIA: boolean;
 }> {
   const { sb, userId, tema } = input;
-  // Logo desta peça: a informada (prospecção) tem prioridade, desde que esteja
-  // na pasta do próprio usuário; senão, a logo cadastrada em "Minha marca".
+  // A pasta do usuário, sozinha, não prova de qual marca é o arquivo. Toda logo
+  // precisa corresponder à proveniência explícita da identidade desta peça.
   const logoInformada = typeof input.logoPath === "string" && input.logoPath.startsWith(`${userId}/`)
     ? input.logoPath
     : undefined;
@@ -180,9 +208,15 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
   // Prospecção: a logo é a do prospect (ou nenhuma). NUNCA a do tenant, para a
   // marca de um cliente não vazar no vídeo do próximo.
   const prospect = input.prospect === true || (input.props as any)?.prospect === true;
-  const logoPath = input.semLogo
-    ? undefined
-    : (logoInformada ?? logoDasProps ?? (prospect ? undefined : await logoDoTenant(sb, userId)));
+  const origemInformada = input.identitySource ?? (input.props as any)?.identity_source;
+  const identitySource: "tenant" | "prospect" | "none" = input.semLogo || origemInformada === "none"
+    ? "none"
+    : (prospect || origemInformada === "prospect" ? "prospect" : "tenant");
+  const logoOficial = identitySource === "tenant" ? await logoDoTenant(sb, userId) : undefined;
+  const candidata = logoInformada ?? logoDasProps ?? logoOficial;
+  const erroLogo = validarProvenienciaLogo(userId, candidata, identitySource, logoOficial);
+  if (erroLogo) throw new Error(`${erroLogo} A renderização foi bloqueada para evitar mistura de marcas.`);
+  const logoPath = identitySource === "none" ? undefined : candidata;
   const trilha = await resolverTrilha(sb, userId, input);
   let props: MotionProps;
   let legendaPost = String(input.legendaPost ?? "").trim();
@@ -233,6 +267,10 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
   props = {
     ...props,
     prospect: prospect || undefined,
+    identity_source: identitySource,
+    identity_key: identitySource === "prospect"
+      ? String(input.identityKey ?? (input.props as any)?.identity_key ?? props.site ?? "").trim() || undefined
+      : undefined,
     site: props.site || "",
     logo_path: logoPath,
     logoUrl: undefined,

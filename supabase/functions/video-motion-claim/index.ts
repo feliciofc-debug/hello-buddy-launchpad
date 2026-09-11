@@ -36,7 +36,22 @@ Deno.serve(async (req) => {
     const job = claimed as any;
     const props = { ...(job.props || {}) };
     const logoPath = typeof props.logo_path === "string" ? props.logo_path : "";
+    const origem = props.identity_source === "prospect" || props.identity_source === "none"
+      ? props.identity_source
+      : "tenant";
+    const relativo = logoPath.startsWith(`${job.user_id}/`) ? logoPath.slice(String(job.user_id).length + 1) : "";
+    const caminhoProspect = relativo.startsWith("prospect/") || relativo.startsWith("prospect-") || /(?:^|\/)\d+-logo-site\./i.test(relativo);
+    if (logoPath && (!relativo || origem === "none" || (origem === "prospect") !== caminhoProspect)) {
+      throw new Error("logo incompatível com a identidade do vídeo; renderização bloqueada");
+    }
     if (logoPath.startsWith(`${job.user_id}/`)) {
+      if (origem === "tenant") {
+        const { data: oficial } = await supabase.from("tenant_logos").select("storage_path")
+          .eq("user_id", job.user_id).eq("ativo", true).maybeSingle();
+        if (!oficial?.storage_path || oficial.storage_path !== logoPath) {
+          throw new Error("logo diferente da marca oficial da conta; renderização bloqueada");
+        }
+      }
       const { data: logo } = await supabase.storage.from("tenant-logos").createSignedUrl(logoPath, 3600);
       if (logo?.signedUrl) props.logoUrl = logo.signedUrl;
     }
