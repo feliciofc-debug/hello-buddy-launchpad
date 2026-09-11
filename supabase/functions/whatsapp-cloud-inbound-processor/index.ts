@@ -3888,7 +3888,7 @@ async function findLatestPendingSocialToken(userId: string): Promise<string | nu
     console.warn("[social_pending][latest_token_error]", error.message);
     return null;
   }
-  return data?.[0]?.error_message?.match(/jarvis_token:([a-f0-9]{8})/i)?.[1]?.toLowerCase() || null;
+  return data?.[0]?.error_message?.match(/jarvis_token:((?:p_)?[a-f0-9]{8})/i)?.[1]?.toLowerCase() || null;
 }
 
 async function updatePendingSocialPostMarker(token: string, pending: PendingSocialPost): Promise<void> {
@@ -4027,10 +4027,22 @@ async function toolPostarRedesSociais(
       }
     }
 
-    const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    const pending: PendingSocialPost = { produto: prod, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), incluirCtaWhatsapp: incluirCta };
+    // Vínculo forte OBRIGATÓRIO: a foto do produto é canonizada como item da
+    // biblioteca desta conta, e o pedido nasce apontando para esse ID.
+    // Sem vínculo, não existe pedido — ele nasceria impossível de publicar.
+    const assetProduto = await resolverAssetDoProduto(ctx.userId, prod);
+    if (!assetProduto) {
+      return JSON.stringify({
+        erro: "midia_aprovada_nao_identificada",
+        mensagem: `Não consegui identificar a mídia aprovada do produto "${prod.nome}". Nada foi preparado nem publicado.`,
+      });
+    }
+
+    const token = novoTokenPost();
+    const pending: PendingSocialPost = { produto: prod, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), incluirCtaWhatsapp: incluirCta, formato: "feed", midiaTipo: "foto", assetId: assetProduto.id, assetTipo: assetProduto.tipo };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
+
 
     return JSON.stringify({
       status: "aguardando_escolha_variante",
