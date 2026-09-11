@@ -71,7 +71,12 @@ export const segmentosNoTexto = (texto: unknown): string[] => {
  */
 export const segmentoIntruso = (contextoDoPedido: unknown, textoGerado: unknown): string | null => {
   const doPedido = new Set(segmentosNoTexto(contextoDoPedido));
-  for (const seg of segmentosNoTexto(textoGerado)) {
+  const naCopy = segmentosNoTexto(textoGerado);
+  // "saude" é guarda-chuva de odontologia: não conta como intruso quando o
+  // pedido já é odontológico (evita falso positivo com a palavra "paciente").
+  const odonto = doPedido.has("odontologia") || naCopy.includes("odontologia");
+  for (const seg of naCopy) {
+    if (seg === "saude" && odonto && doPedido.has("odontologia")) continue;
     if (!doPedido.has(seg)) return seg;
   }
   return null;
