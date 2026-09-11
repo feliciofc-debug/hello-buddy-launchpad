@@ -51,6 +51,11 @@ import {
   type EstiloMotion,
 } from "../_shared/video-motion.ts";
 import { extrairCoresDoTexto } from "../_shared/video-cores.ts";
+import {
+  extrairUrlDoTexto,
+  identidadeDoSiteParaVideo,
+  type IdentidadeVideo,
+} from "../_shared/jarvis-identidade-site.ts";
 
 import {
   entregarEbookTenant,
@@ -5264,6 +5269,7 @@ const TOOLS = [
           cores: { type: "string", description: "Trecho LITERAL do pedido que menciona cores, com rótulos e hex se houver. Ex: 'fundo #ffffff, fundo 2 #fff5f5, destaque #E30613, apoio #ff4d57' ou 'vermelho e branco'. Deixe vazio se ele não citou cor nenhuma." },
           duracao: { type: "string", enum: ["curto", "medio", "longo"], description: "Duração SE ele pediu: 'curto' (~25s, padrão para redes), 'medio' (~45s), 'longo' (~75s, apresentação comercial). Vídeo mais longo tem MAIS conteúdo e demora mais para renderizar. Omita quando ele não pedir." },
           estilo: { type: "string", enum: ["auto", "conversa", "institucional", "lista"], description: "Formato do vídeo SE ele pediu: 'conversa' (celular com balões de WhatsApp), 'institucional' (tipografia grande, argumentos, selo/dado), 'lista' (itens numerados, '3 motivos', 'passo a passo'). Use 'auto' quando ele não pedir formato — a plataforma escolhe pelo tema." },
+          site: { type: "string", description: "Site da EMPRESA DO VÍDEO quando não é a do próprio responsável (prospecção). Ex.: 'drogariavenancio.com.br'. A plataforma lê cores, nome e logo desse site. Se o vídeo é para outra empresa e ele NÃO informou o site, pergunte: 'Qual o site da empresa? Uso para pegar as cores e a logo dela.' Deixe vazio quando o vídeo for da marca dele." },
         },
         required: ["tema"],
       },
@@ -6101,6 +6107,7 @@ async function runTool(
         String(args?.cores ?? ""),
         typeof args?.estilo === "string" ? args.estilo : null,
         typeof args?.duracao === "string" ? args.duracao : null,
+        typeof args?.site === "string" ? args.site : null,
       ),
     };
   }
