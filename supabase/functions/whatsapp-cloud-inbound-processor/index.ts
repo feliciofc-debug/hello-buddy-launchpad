@@ -3556,20 +3556,27 @@ function cleanMediaPostLegenda(text: string): string | undefined {
   return legenda;
 }
 
-async function buscarMidiaRecenteParaPostagem(userId: string): Promise<{ id: string; tipo: string; created_at: string } | null> {
-  const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-  const { data, error } = await sb
+async function buscarMidiaIdentificadaParaPostagem(
+  userId: string,
+  texto: string,
+): Promise<{ id: string; tipo: string; created_at: string } | null> {
+  const uuid = texto.match(/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i)?.[0];
+  const curto = texto.match(/(?:\bID\s*[:#-]?\s*|\b)([0-9a-f]{8})\b/i)?.[1]?.toLowerCase();
+  if (!uuid && !curto) return null;
+
+  let query = sb
     .from("midias_whatsapp")
     .select("id, tipo, created_at")
     .eq("user_id", userId)
     .in("tipo", ["foto", "video"])
-    .gte("created_at", cutoff)
-    .order("created_at", { ascending: false })
-    .limit(1);
+    .not("status", "ilike", "%bloquead%");
+  query = uuid ? query.eq("id", uuid) : query.ilike("id", `${curto}%`);
+  const { data, error } = await query.limit(2);
   if (error) {
-    console.warn("[pietro][forced_social_post][midia_recente_error]", error.message);
+    console.warn("[pietro][forced_social_post][midia_id_error]", error.message);
     return null;
   }
+  if ((data?.length ?? 0) !== 1) return null;
   return (data?.[0] as { id: string; tipo: string; created_at: string } | undefined) ?? null;
 }
 
@@ -6487,13 +6494,13 @@ async function callGemini(
         return { text: "Esse tipo de publicação só o responsável da conta pode autorizar. Posso encaminhar seu pedido para ele, se quiser." };
       }
       console.log("[pietro][forced_social_post]", socialPost);
-      const midiaRecente = await buscarMidiaRecenteParaPostagem(toolCtx.userId);
-      if (midiaRecente) {
+      const midiaIdentificada = await buscarMidiaIdentificadaParaPostagem(toolCtx.userId, userContent);
+      if (midiaIdentificada) {
         const formatoDetectado = socialPost.formato;
-        const isFoto = midiaRecente.tipo === "foto";
-        const isVideo = midiaRecente.tipo === "video";
+        const isFoto = midiaIdentificada.tipo === "foto";
+        const isVideo = midiaIdentificada.tipo === "video";
 
-        const idMidia = idCurto(midiaRecente.id);
+        const idMidia = idCurto(midiaIdentificada.id);
 
         // Etapa 2: FOTO sem formato explícito → pergunta feed OU story (2 opções).
         if (isFoto && !formatoDetectado) {
@@ -6502,11 +6509,11 @@ async function callGemini(
             redes: redesAsk,
             tom: socialPost.tom,
             legenda: cleanMediaPostLegenda(userContent),
-            assetId: midiaRecente.id,
+            assetId: midiaIdentificada.id,
             assetTipo: "foto",
           });
           const redeLabel = redesAsk.map((r) => r === "instagram" ? "Instagram" : r === "facebook" ? "Facebook" : r === "tiktok" ? "TikTok" : r).join(" e ");
-          console.log("[pietro][pending_format_choice_set]", { redes: redesAsk, tipo: "foto", asset: midiaRecente.id });
+          console.log("[pietro][pending_format_choice_set]", { redes: redesAsk, tipo: "foto", asset: midiaIdentificada.id });
           return { text: `É a imagem *${idMidia}*. Quer no *feed* ou no *story* do ${redeLabel}?` };
         }
 
@@ -6517,25 +6524,29 @@ async function callGemini(
             redes: redesAsk,
             tom: socialPost.tom,
             legenda: cleanMediaPostLegenda(userContent),
-            assetId: midiaRecente.id,
+            assetId: midiaIdentificada.id,
             assetTipo: "video",
           });
           const redeLabel = redesAsk.map((r) => r === "instagram" ? "Instagram" : r === "facebook" ? "Facebook" : r === "tiktok" ? "TikTok" : r).join(" e ");
-          console.log("[pietro][pending_format_choice_set]", { redes: redesAsk, tipo: "video", asset: midiaRecente.id });
+          console.log("[pietro][pending_format_choice_set]", { redes: redesAsk, tipo: "video", asset: midiaIdentificada.id });
           return { text: `É o vídeo *${idMidia}*. Quer no *feed*, no *story* ou como *reels* do ${redeLabel}?` };
         }
 
         // Formato explícito → segue direto, sempre com o ID explícito da mídia.
         const formato = formatoDetectado ?? "feed";
-        console.warn(`[pietro][forced_social_post] postar_midia_biblioteca id=${midiaRecente.id} formato=${formato} tipo=${midiaRecente.tipo}`);
+        console.warn(`[pietro][forced_social_post] postar_midia_biblioteca id=${midiaIdentificada.id} formato=${formato} tipo=${midiaIdentificada.tipo}`);
         const postResult = await toolPostarMidiaBiblioteca({
           legenda: cleanMediaPostLegenda(userContent),
           tom: socialPost.tom,
           redes: socialPost.redes,
           formato,
-          midia_id: midiaRecente.id,
+          midia_id: midiaIdentificada.id,
         }, toolCtx);
         return { text: formatSocialPostToolResult(postResult) };
+      }
+
+      if (!socialPost.temProduto) {
+        return { text: "Preciso do ID da mídia para não publicar o arquivo errado. Responda com o código de 8 caracteres que apareceu junto do vídeo. Nada foi publicado." };
       }
 
       if (!socialPost.temProduto) {
