@@ -6549,10 +6549,6 @@ async function callGemini(
         return { text: "Preciso do ID da mídia para não publicar o arquivo errado. Responda com o código de 8 caracteres que apareceu junto do vídeo. Nada foi publicado." };
       }
 
-      if (!socialPost.temProduto) {
-        return { text: "Qual produto você quer postar? Ou me envie a foto/vídeo primeiro que eu preparo pela biblioteca /midias." };
-      }
-
       const postResult = await toolPostarRedesSociais(socialPost, toolCtx);
       return { text: formatSocialPostToolResult(postResult) };
     }
