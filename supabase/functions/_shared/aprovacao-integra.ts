@@ -8,7 +8,7 @@
 // função que prepare conteúdo para aprovação/publicação.
 // ============================================================
 
-const semAcento = (s: string) =>
+const semAcento = (s: unknown) =>
   String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 // ---------- 1. Resumo disfarçado de conteúdo ----------
