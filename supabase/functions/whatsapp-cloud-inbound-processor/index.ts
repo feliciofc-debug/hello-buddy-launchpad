@@ -3689,7 +3689,11 @@ function formatSocialPostToolResult(raw: string): string {
     const preview = Object.entries(data.preview ?? {})
       .map(([rede, script]) => `*${String(rede).toUpperCase()}*\n${script}`)
       .join("\n\n");
-    return `✅ Opção *${opcao}* selecionada.<<SPLIT>>${preview}<<SPLIT>>Posso publicar agora? Responde *sim* pra postar ou me diga o ajuste.`;
+    const ma = data?.midia_aprovacao;
+    const blocoMidia = ma?.id_curto
+      ? `<<SPLIT>>*Confirmação da mídia*\n🆔 *${ma.id_curto}*\n${ma.tipo === "video" ? "Vídeo" : "Imagem"} • ${ma.arquivo_nome || "arquivo"}`
+      : "";
+    return `✅ Opção *${opcao}* selecionada.${blocoMidia}<<SPLIT>>${preview}<<SPLIT>>Confira o ID acima. Posso publicar agora? Responde *sim* pra postar ou me diga o ajuste.`;
   }
 
   if (data?.status === "aguardando_confirmacao") {
