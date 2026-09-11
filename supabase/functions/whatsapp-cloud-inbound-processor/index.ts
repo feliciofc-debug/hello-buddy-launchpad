@@ -2942,11 +2942,32 @@ Responda APENAS com JSON válido nesta forma exata:
     return { A, B, C };
   };
 
+  // Contexto legítimo DESTE pedido: nada além disso pode aparecer na copy.
+  const contextoDoPedido = [
+    produto.nome,
+    produto.descricao,
+    produto.categoria,
+    brief,
+    ajuste,
+    brandContext,
+  ].filter(Boolean).join(" \n ");
+
   // 2 tentativas: uma falha de rede/timeout não pode mais derrubar a copy pro fallback pobre.
   for (let i = 0; i < 2; i++) {
     try {
       const r = await tentativa();
-      if (r) return r;
+      if (r) {
+        // 🛡️ ANTI-VAZAMENTO DE SEGMENTO: copy que fala de um nicho ausente do
+        // pedido (ex.: dentista/consultório num post institucional da AMZ) é
+        // descartada. Segunda ocorrência cai no fallback com o texto do dono.
+        const intruso = segmentoIntruso(contextoDoPedido, `${r.A}\n${r.B}\n${r.C}`);
+        if (intruso) {
+          console.error(`[postar_redes] copy REJEITADA por segmento intruso: ${intruso}`);
+          if (i === 0) continue;
+          return fallback();
+        }
+        return r;
+      }
       console.warn(`[postar_redes] tentativa ${i + 1} sem copy válida`);
     } catch (e) {
       console.error(`[postar_redes] tentativa ${i + 1} falhou:`, e);
