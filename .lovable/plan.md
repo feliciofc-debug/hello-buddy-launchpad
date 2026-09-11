@@ -1,90 +1,52 @@
-# Publicação segura por ID imutável
+# Cota de vídeos configurável, sem bloquear o administrador
 
-## Situação atual
+## Resultado
 
-- A publicação automática e as filas permanecem desativadas: não há configurações ativas nem itens pendentes para publicar.
-- O fluxo principal já exige um `midia_id`, mas ainda existem atalhos do Jarvis que procuram a “mídia recente” e depois não repassam esse ID. Esse é o ponto que permite a troca de vídeo por imagem ou por outro item.
-- A confirmação hoje vincula principalmente a URL. URL não é uma identidade forte: a publicação precisa carregar o mesmo ID desde a geração até o envio à rede.
+- Remover o número fixo de 5 vídeos do código.
+- Deixar contas administradoras sem limite.
+- Aplicar aos clientes a cota diária definida pelo plano, com ajuste individual quando necessário.
+- Manter somente o controle de fila para proteger o worker que processa um vídeo por vez.
+- Não contar vídeos que falharam ou foram cancelados.
 
-## O que será construído
+## Implementação
 
-### 1. Registro único de cada mídia
+### 1. Configuração no painel administrativo
 
-- Criar um registro de publicação para cada imagem ou vídeo gerado/enviado, com:
-  - ID único imutável;
-  - cliente proprietário;
-  - tipo real (`imagem` ou `vídeo`);
-  - origem e ID da geração;
-  - endereço do arquivo, nome do arquivo e miniatura;
-  - data de criação e estado de bloqueio.
-- Vincular os vídeos animados ao registro usando o ID do trabalho de renderização, sem depender de data, posição na lista ou contexto da conversa.
-- Manter os arquivos e o histórico existentes; nada será apagado.
+- Adicionar a cota diária de vídeos aos planos.
+- Adicionar uma substituição opcional por conta: vazio usa o plano; `-1` significa ilimitado.
+- Criar no painel administrativo uma área “Cotas de vídeo” para alterar os valores por plano e por conta, sem precisar mudar código.
+- Exibir claramente a origem do limite: administrador, ajuste individual, plano ou acesso ilimitado padrão.
 
-### 2. Jarvis sem seleção implícita
+### 2. Regra única no servidor
 
-- Remover todos os caminhos “última mídia” e “mídia recente” do fluxo de publicação.
-- Ao concluir uma geração, o Jarvis guardará e devolverá o ID exato daquele item.
-- Pedidos de publicação sem ID falharão de forma segura e pedirão ao usuário que selecione o item; nunca haverá fallback.
-- A resposta de formato (`feed`, `story` ou `reels`) manterá o mesmo ID escolhido no passo anterior.
-- Aprovação e revisão preservarão o ID original; mudar de mídia criará uma nova aprovação.
+- Substituir `COTA_DIARIA_POR_TENANT = 5` por uma resolução central da cota efetiva.
+- Ordem de prioridade:
+  1. conta com papel de administrador: ilimitada;
+  2. ajuste individual da conta;
+  3. limite do plano ativo;
+  4. conta sem plano/configuração: ilimitada, seguindo a regra de acesso padrão da plataforma.
+- Continuar isolando toda consulta pelo identificador da conta.
 
-### 3. Prévia verificável antes da confirmação
+### 3. Falhas não consomem cota
 
-Antes de aceitar “publicar”, o Jarvis e a tela mostrarão o mesmo registro:
+- Contar apenas vídeos concluídos e os que ainda estão efetivamente na fila/processamento.
+- Ignorar estados de erro e cancelamento.
+- Como a fila já limita trabalhos simultâneos, uma falha libera automaticamente aquela tentativa sem ajuste manual.
 
-- tipo da mídia;
-- miniatura ou prévia do vídeo;
-- nome do arquivo;
-- ID curto visível;
-- origem e horário da geração;
-- redes, formato e texto integral.
+### 4. Aviso de saldo
 
-A confirmação será vinculada a esse ID, ao responsável e ao horário. Se qualquer dado mudar depois da prévia, a aprovação será invalidada.
+- Ao aceitar cada geração, devolver o uso previsto: “Este é seu 4º de 5 vídeos hoje. Restará 1.”
+- Para administrador ou conta ilimitada, informar “Vídeos ilimitados nesta conta”.
+- Mostrar o mesmo saldo no gerador da plataforma e na resposta do Jarvis.
+- Quando a cota do cliente acabar, informar o total do plano e que o limite pode ser ajustado pelo administrador.
 
-### 4. Validação rígida de tipo e propriedade
+### 5. Validação segura
 
-- A publicação buscará a mídia novamente pelo ID e pelo cliente no momento do envio.
-- Comparará tipo aprovado, tipo registrado, coluna usada na fila e formato solicitado.
-- Vídeo só poderá seguir como vídeo; imagem só poderá seguir como imagem.
-- Item inexistente, bloqueado, pertencente a outro cliente, sem arquivo ou com tipo divergente falhará antes de chamar qualquer rede.
-- A fila programada também exigirá esse vínculo; registros antigos sem ID permanecerão bloqueados.
+- Cobrir com testes: administrador ilimitado, plano limitado, ajuste individual, conta sem plano, falha/cancelamento não contado e mensagens de saldo.
+- Validar o fluxo sem iniciar renderizações reais nem publicar conteúdo.
+- Manter a publicação pelo Jarvis desativada; esta alteração afeta somente geração e fila de vídeos.
 
-### 5. Bloqueio central do Jarvis
+## Onde ficará configurado
 
-- Manter a publicação pelo Jarvis desativada enquanto a migração e a validação não forem concluídas.
-- Adicionar uma chave global de segurança consultada tanto na preparação quanto na confirmação/publicação.
-- O bloqueio retornará uma mensagem clara, sem tentar outra mídia.
-- Reativação somente após aprovação explícita do responsável e conclusão dos critérios abaixo.
-
-### 6. Cobrir caminhos paralelos
-
-Aplicar a mesma regra às saídas que hoje publicam diretamente ou por fila:
-
-- postagem do Jarvis;
-- vídeo animado aprovado;
-- publicação em todas as redes;
-- fila social programada;
-- vídeos agendados;
-- Facebook, Instagram, TikTok e LinkedIn.
-
-Nenhum desses caminhos poderá receber apenas uma URL solta para publicar conteúdo gerado pelo Jarvis.
-
-## Validação sem publicar conteúdo real
-
-- Testar: vídeo A aprovado publica somente o ID do vídeo A.
-- Testar: vídeo novo com imagem mais recente não troca de tipo nem de arquivo.
-- Testar: ID inexistente, bloqueado ou de outro cliente falha sem fallback.
-- Testar: confirmação de imagem não autoriza vídeo e confirmação de vídeo não autoriza imagem.
-- Testar: troca de item após a prévia invalida a confirmação.
-- Testar: resposta posterior de formato preserva o ID original.
-- Testar isolamento cliente A → cliente B.
-- Simular as chamadas às redes; nenhum conteúdo real será enviado durante a validação.
-
-## Critérios para reativar
-
-- Zero busca por “última mídia” nos caminhos de publicação.
-- Toda fila nova contém ID da mídia, tipo esperado e aprovação correspondente.
-- A prévia mostra mídia, nome e ID antes da confirmação.
-- Todos os cenários de falha encerram sem chamar redes externas.
-- Histórico antigo sem vínculo permanece bloqueado.
-- A publicação pelo Jarvis só será reativada após sua autorização explícita.
+- No painel administrativo, em **Cotas de vídeo**.
+- O valor padrão ficará em cada plano; exceções ficarão na própria conta do cliente.
