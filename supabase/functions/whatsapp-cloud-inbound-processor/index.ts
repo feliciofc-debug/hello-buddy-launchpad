@@ -6524,8 +6524,13 @@ async function callGemini(
       return { text: await confirmarRascunhoVideo(toolCtx, true) };
     }
     if (remetenteEhDono && decisaoIntencao.intent === "aprovar_video" && pendingVideoDraft) {
+      // Post pendente E roteiro pendente ao mesmo tempo: não adivinha, pergunta.
+      if (latestPendingSocialToken) {
+        return { text: "Tenho duas coisas esperando você: um *post* pronto pra publicar e um *roteiro de vídeo* pra renderizar. Qual você quer agora — *publicar o post* ou *renderizar o vídeo*?" };
+      }
       return { text: await confirmarRascunhoVideo(toolCtx) };
     }
+
     // Correção por texto do rascunho pendente ("troca a cor principal pro
     // vermelho", "tira a logo") antes de gastar o render.
     if (
