@@ -44,6 +44,7 @@ import {
 } from "../_shared/video-motion-enfileirar.ts";
 import {
   duracaoEstimada,
+  problemasDeTexto,
   ROTULO_DURACAO,
   ROTULO_ESTILO,
   type DuracaoMotion,
