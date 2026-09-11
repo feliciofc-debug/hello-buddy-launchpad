@@ -4328,7 +4328,26 @@ async function toolConfirmarPostagemRedes(
     });
   }
 
-  const resultados = await Promise.all(p.redes.map((r) => publicarEmRede(r, p.scripts[r], p.produto, p.userId, p.formato || "feed")));
+  // 🛡️ VERIFICAÇÃO PRÉVIA GLOBAL: se alguma rede escolhida não aceita o tipo do
+  // item, NENHUMA rede é chamada. A incompatibilidade não pode mais aparecer no
+  // meio da publicação, com posts já no ar.
+  const preflight = await publicarComPreflight({
+    redes: p.redes,
+    tipo: (p.assetTipo || asset.tipo) as "foto" | "video",
+    formato: p.formato || "feed",
+    somenteCompativeisConfirmado: p.somenteCompativeisConfirmado === true,
+    redesConfirmadas: p.redesConfirmadas ?? null,
+    marcarCompatPendente: async (compativeis) => {
+      const atualizado: PendingSocialPost = { ...p, somenteCompativeisConfirmado: false, redesConfirmadas: compativeis };
+      PENDING_POSTS.set(token, atualizado);
+      await updatePendingSocialPostMarker(token, atualizado); // persistido: sobrevive a cold start
+    },
+    publicar: (redes) => Promise.all(redes.map((r) => publicarEmRede(r, p.scripts[r], p.produto, p.userId, p.formato || "feed"))),
+  });
+  if (!preflight.publicou) {
+    return JSON.stringify({ ...preflight.resposta, token });
+  }
+  const resultados = preflight.resultado as Array<{ rede: string; ok: boolean; status: number; resposta: any; nota?: string }>;
   await updatePersistedSocialPostRows(p, resultados);
   PENDING_POSTS.delete(token);
   return JSON.stringify({
