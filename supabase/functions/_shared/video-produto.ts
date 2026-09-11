@@ -12,6 +12,8 @@
 //   - LIMITE_PREMIUM_DIA: teto rígido pensado para preservar o saldo do Jarvis
 // ============================================================
 
+import { cortarFrase } from "./video-motion.ts";
+
 export type NivelVideo = "padrao" | "premium";
 
 /** Flag/limites reservados para a fase 2. Nada consome isso ainda. */
