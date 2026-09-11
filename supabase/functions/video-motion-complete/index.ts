@@ -157,6 +157,27 @@ Deno.serve(async (req) => {
       return respJson({ success: true, cancelado: true });
     }
 
+    // O MP4 recém-gerado precisa ser a mídia recente do pedido. Sem este registro,
+    // um comando posterior como "publicar em todas" pode apontar para um vídeo antigo.
+    if (job.origem === "whatsapp" && job.telefone) {
+      const contexto = `[video_motion_job:${job.id}] ${job.titulo || "Vídeo animado gerado pelo Jarvis"}`;
+      const { error: bibliotecaError } = await supabase.from("midias_whatsapp").insert({
+        user_id: job.user_id,
+        origem: "video_motion",
+        telefone_origem: job.telefone,
+        tipo: "video",
+        midia_url: videoUrl,
+        duracao_segundos: duracao_segundos ?? null,
+        contexto_original: contexto,
+        legenda_gerada: job.legenda_post || null,
+        status: "pendente",
+        plataformas: [],
+      });
+      if (bibliotecaError) {
+        console.error("[video-motion-complete] falha ao vincular vídeo à biblioteca:", bibliotecaError.message);
+      }
+    }
+
     if (job.origem === "whatsapp" && job.telefone) {
       const blocoLegenda = job.legenda_post ? `\n\n*Legenda sugerida:*\n${job.legenda_post}` : "";
       if (!querPublicar) {
