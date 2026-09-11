@@ -640,7 +640,8 @@ async function enviarParaGrupo(
     // ═══════════════════════════════════════════════════════════════
 
     if (imageUrl) {
-      const caption = message.length > 900 ? message.slice(0, 900) + "…" : message;
+      // Legenda longa é encurtada em frase completa — nunca reticências.
+      const caption = cortarFrase(message, 900);
 
       console.log(`🖼️ Preparando IMAGEM + LEGENDA (download + base64)...`);
 
