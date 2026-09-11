@@ -55,8 +55,10 @@ function fakeSb() {
   };
 }
 
-Deno.test("publicação pelo Jarvis segue desativada até a validação terminar", () => {
-  assertEquals(JARVIS_PUBLICACAO_ATIVA, false);
+// Publicação pelo WhatsApp foi reativada a pedido do dono; as guardas por ID,
+// procedência e compatibilidade são o que impede publicação errada agora.
+Deno.test("publicação pelo Jarvis está ativa e depende das guardas por ID", () => {
+  assertEquals(JARVIS_PUBLICACAO_ATIVA, true);
 });
 
 Deno.test("ID curto é estável e comparável entre geração e confirmação", () => {

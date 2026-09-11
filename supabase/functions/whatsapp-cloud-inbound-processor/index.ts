@@ -15,6 +15,13 @@ import {
   resumoDaMidia,
   validarTipoAprovado,
 } from "../_shared/publicacao-por-id.ts";
+import {
+  prepararPostDoCatalogo,
+  PreviaSemProcedenciaError,
+  publicarComPreflight,
+  renderProcedencia,
+  verificarCompatibilidadeRedes,
+} from "../_shared/post-guardas.ts";
 
 // ---------------------------------------------------------------------------
 // Multi-tenant owner registry (populado no início de cada processMessage).
@@ -3006,6 +3013,12 @@ type PendingSocialPost = {
   briefing?: string; // texto escrito pelo dono que é a MENSAGEM do post (prioridade sobre o visual)
   approvedBy?: string;
   approvedAt?: string;
+  // REGRA: todo campo aqui precisa ser gravado no marcador e reidratado por
+  // loadPendingSocialPost. Estado que morre no cold start foi a causa raiz.
+  origem?: "biblioteca" | "catalogo";
+  arquivoNome?: string;
+  somenteCompativeisConfirmado?: boolean;
+  redesConfirmadas?: string[] | null;
 };
 const PENDING_POSTS = new Map<string, PendingSocialPost>();
 function pendingCleanup() {
@@ -3050,10 +3063,14 @@ type PendingPostMarkerState = {
   incluirCtaWhatsapp?: boolean;
   tom?: string;
   briefing?: string;
+  origem?: "biblioteca" | "catalogo";
+  arquivoNome?: string;
+  somenteCompativeisConfirmado?: boolean;
+  redesConfirmadas?: string[] | null;
 };
 
 function encodePendingPostState(state?: PendingPostMarkerState): string {
-  if (!state || (!state.variantes && !state.variantSelecionada && state.incluirCtaWhatsapp === undefined && !state.tom)) return "";
+  if (!state || (!state.variantes && !state.variantSelecionada && state.incluirCtaWhatsapp === undefined && !state.tom && !state.origem && state.somenteCompativeisConfirmado === undefined && !state.redesConfirmadas)) return "";
   try {
     const json = JSON.stringify(state);
     const bytes = new TextEncoder().encode(json);
@@ -3124,6 +3141,10 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
       incluirCtaWhatsapp: pending.incluirCtaWhatsapp,
       tom: pending.tom,
       briefing: pending.briefing ? pending.briefing.slice(0, 1200) : undefined,
+      origem: pending.origem,
+      arquivoNome: pending.arquivoNome,
+      somenteCompativeisConfirmado: pending.somenteCompativeisConfirmado ?? false,
+      redesConfirmadas: pending.redesConfirmadas ?? null,
     }),
     approval_token: token,
     approved_at: null,
@@ -3238,6 +3259,10 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
     variantSelecionada: state?.variantSelecionada,
     incluirCtaWhatsapp: state?.incluirCtaWhatsapp,
     briefing: (state as any)?.briefing,
+    origem: state?.origem ?? ((rows[0] as any).produto_id ? "catalogo" : "biblioteca"),
+    arquivoNome: state?.arquivoNome,
+    somenteCompativeisConfirmado: state?.somenteCompativeisConfirmado === true,
+    redesConfirmadas: Array.isArray(state?.redesConfirmadas) ? state?.redesConfirmadas : null,
   };
 }
 
@@ -3724,12 +3749,39 @@ function detectSocialPostIntent(text: string): { produto: string; tom: string; r
   return { produto: temProduto ? produto : "", tom, redes: uniqueStrings(redes), temProduto, formato: formatoPedido };
 }
 
+// Procedência de um pedido pendente — usada nos DOIS caminhos (biblioteca e catálogo).
+function procedenciaDoPending(p: PendingSocialPost) {
+  return {
+    origem: p.origem ?? (p.produto?.source && p.produto.source !== "midias_whatsapp" ? "catalogo" : "biblioteca"),
+    produtoNome: p.produto?.nome,
+    midiaIdCurto: p.assetId ? String(p.assetId).slice(0, 8) : "",
+    midiaTipo: (p.assetTipo || p.midiaTipo || "foto") as "foto" | "video",
+    arquivoNome: p.arquivoNome,
+  };
+}
+
+// Prévia NUNCA sai sem procedência. Erro de procedência tem frase própria;
+// qualquer outro erro é falha técnica, com a mensagem original no log.
+function renderPreviaSegura(raw: string): string {
+  try {
+    return formatSocialPostToolResult(raw);
+  } catch (e) {
+    if (e instanceof PreviaSemProcedenciaError) {
+      console.error("[previa][sem_procedencia]", e.message, raw.slice(0, 400));
+      return "Bloqueei a prévia: o pedido chegou sem a procedência da mídia (origem, código e tipo). Nada foi preparado nem publicado.";
+    }
+    console.error("[previa][falha_tecnica]", (e as Error).message, (e as Error).stack);
+    return "Falha técnica ao montar a prévia. Nada foi preparado nem publicado — o erro foi registrado.";
+  }
+}
+
 function formatSocialPostToolResult(raw: string): string {
   let data: any = null;
   try { data = JSON.parse(raw); } catch { return raw; }
 
   // Novo fluxo: 3 opções A/B/C
   if (data?.status === "aguardando_escolha_variante") {
+    const procedencia = renderProcedencia(data?.procedencia);
     const redes: string[] = Array.isArray(data.redes) ? data.redes : [];
     const variantes = data.variantes || {};
     // Se todas redes têm o mesmo texto por variante, mostra 1 vez só. Senão mostra por rede.
@@ -3749,34 +3801,30 @@ function formatSocialPostToolResult(raw: string): string {
     const baloes = (["A", "B", "C"] as const).map(balaoOpcao).join("<<SPLIT>>");
     const aviso = data?.aviso_formato ? `\n\n_${data.aviso_formato}_` : "";
     const avisoReels = data?.aviso_reels ? `\n_ℹ️ ${data.aviso_reels}_` : "";
-    const ma = data?.midia_aprovacao;
-    const blocoMidia = ma?.id
-      ? `<<SPLIT>>*Mídia deste post*\n🆔 *${ma.id_curto || idCurto(ma.id)}*\n${ma.tipo === "video" ? "Vídeo" : "Imagem"} • ${ma.arquivo_nome || "arquivo"}\nGuarde esse ID: ele precisa aparecer igual na confirmação.`
-      : "";
+    const blocoMidia = `<<SPLIT>>*Mídia deste post*\n${procedencia}\nGuarde esse código: ele precisa aparecer igual na confirmação.`;
     const pergunta = `Esses são os textos exatos que vão ao ar. Qual você prefere? Responde *A*, *B* ou *C*.`;
     return `Preparei 3 opções 👇${aviso}${avisoReels}${blocoMidia}<<SPLIT>>${baloes}<<SPLIT>>${pergunta}`;
   }
 
   if (data?.status === "variante_selecionada") {
+    const procedencia = renderProcedencia(data?.procedencia);
     const opcao = data?.opcao_ativa || "A";
     const preview = Object.entries(data.preview ?? {})
       .map(([rede, script]) => `*${String(rede).toUpperCase()}*\n${script}`)
       .join("\n\n");
-    const ma = data?.midia_aprovacao;
-    const blocoMidia = ma?.id_curto
-      ? `<<SPLIT>>*Confirmação da mídia*\n🆔 *${ma.id_curto}*\n${ma.tipo === "video" ? "Vídeo" : "Imagem"} • ${ma.arquivo_nome || "arquivo"}`
-      : "";
+    const blocoMidia = `<<SPLIT>>*Confirmação da mídia*\n${procedencia}`;
     return `✅ Opção *${opcao}* selecionada.${blocoMidia}<<SPLIT>>${preview}<<SPLIT>>Confira o ID acima. Posso publicar agora? Responde *sim* pra postar ou me diga o ajuste.`;
   }
 
   if (data?.status === "aguardando_confirmacao") {
+    const procedencia = renderProcedencia(data?.procedencia);
     const scripts = Object.entries(data.preview ?? {})
       .map(([rede, script]) => `*${rede.toUpperCase()}*\n${script}`)
       .join("\n\n");
     const avisoReels = data?.aviso_reels ? `\n\n_ℹ️ ${data.aviso_reels}_` : "";
     // 3 balões separados no WhatsApp: (1) preview, (2) convite de edição, (3) comando de confirmação isolado.
     const convite = `Quer ajustar algo antes de postar? Me diga o que mudar (ex: "mais curto", "foca nas tecnologias da AMZ", "tira o ACABA HOJE", "muda o tom pra profissional"). Se estiver bom, responde:`;
-    return `Perfeito, Felicio. Encontrei: *${data.produto?.nome ?? "produto"}*\n\n${scripts}${avisoReels}<<SPLIT>>${convite}<<SPLIT>>pode postar ${data.token}`;
+    return `Perfeito, Felicio.\n${procedencia}\n\n${scripts}${avisoReels}<<SPLIT>>${convite}<<SPLIT>>pode postar ${data.token}`;
   }
 
 
@@ -3901,6 +3949,10 @@ async function updatePendingSocialPostMarker(token: string, pending: PendingSoci
     incluirCtaWhatsapp: pending.incluirCtaWhatsapp,
     tom: pending.tom,
     briefing: pending.briefing ? pending.briefing.slice(0, 1200) : undefined,
+    origem: pending.origem,
+    arquivoNome: pending.arquivoNome,
+    somenteCompativeisConfirmado: pending.somenteCompativeisConfirmado ?? false,
+    redesConfirmadas: pending.redesConfirmadas ?? null,
   });
   const rowIds = pending.queueRows?.map((r) => r.id).filter(Boolean) ?? [];
   if (rowIds.length > 0) {
@@ -4032,6 +4084,45 @@ async function resolverAssetDoProduto(
   }
 }
 
+// Nomes de TODO o catálogo do dono (paginado, sem filtro de texto): o casamento
+// forte precisa ver todos os nomes, senão um produto nomeado exato fica de fora
+// por causa do limit da busca por similaridade. Cache curto de 60s.
+const CATALOGO_NOMES_CACHE = new Map<string, { at: number; itens: Array<{ id: string; nome: string; source: string }> }>();
+async function listarNomesDoCatalogo(userId: string): Promise<Array<{ id: string; nome: string; source: string }>> {
+  const cached = CATALOGO_NOMES_CACHE.get(userId);
+  if (cached && Date.now() - cached.at < 60_000) return cached.itens;
+
+  const itens: Array<{ id: string; nome: string; source: string }> = [];
+  const PAGINA = 1000;
+  for (const [tabela, campo, source] of [["produtos", "nome", "produtos"], ["products_stock", "name", "products_stock"]] as const) {
+    for (let de = 0; ; de += PAGINA) {
+      const { data, error } = await sb.from(tabela)
+        .select(`id, ${campo}`)
+        .eq("user_id", userId)
+        .range(de, de + PAGINA - 1);
+      if (error) { console.warn("[catalogo_nomes][erro]", tabela, error.message); break; }
+      const linhas = data ?? [];
+      for (const r of linhas as any[]) if (r?.[campo]) itens.push({ id: r.id, nome: String(r[campo]), source });
+      if (linhas.length < PAGINA) break;
+    }
+  }
+  CATALOGO_NOMES_CACHE.set(userId, { at: Date.now(), itens });
+  return itens;
+}
+
+async function carregarProdutoDoCatalogoPorId(item: { id: string; source: string }, userId: string): Promise<any | null> {
+  if (item.source === "products_stock") {
+    const { data } = await sb.from("products_stock")
+      .select("id, name, description_short, description_long, price, img_url, category, active, sku")
+      .eq("id", item.id).eq("user_id", userId).maybeSingle();
+    return data ? toSocialProduct(data, "products_stock") : null;
+  }
+  const { data } = await sb.from("produtos")
+    .select("id, nome, descricao, preco, imagem_url, imagens, link, link_marketplace, categoria, ativo, tags, sku")
+    .eq("id", item.id).eq("user_id", userId).maybeSingle();
+  return data ? toSocialProduct(data, "produtos") : null;
+}
+
 async function toolPostarRedesSociais(
   args: { produto: string; tom?: string; redes?: string[]; incluir_cta_whatsapp?: boolean },
   ctx: { userId: string; fromNumber: string },
@@ -4057,15 +4148,25 @@ async function toolPostarRedesSociais(
     const tom = args?.tom || "urgencia";
     const incluirCta = !!args?.incluir_cta_whatsapp;
 
-    const { produto: prod, sugestoes, candidatos } = await buscarProdutoParaPostagem(q, ctx.userId);
+    // Casamento FORTE, avaliado contra TODOS os nomes do catálogo. Similaridade
+    // no máximo sugere — nunca escolhe. Zero, vários ou fraco => pergunta.
+    const itensCatalogo = await listarNomesDoCatalogo(ctx.userId);
+    const preparo = await prepararPostDoCatalogo({
+      query: q,
+      ehTermoGenerico: () => false, // já checado acima, antes de tocar no banco
+      listarNomes: () => Promise.resolve(itensCatalogo.map((i) => i.nome)),
+      sugestoes: async () => (await buscarProdutoParaPostagem(q, ctx.userId)).sugestoes,
+    });
+    if (!preparo.ok) return JSON.stringify(preparo.resposta);
 
+    const prod = await carregarProdutoDoCatalogoPorId(itensCatalogo[preparo.indice], ctx.userId);
     if (!prod) {
       return JSON.stringify({
-        erro: `produto "${q}" não encontrado`,
-        dica: "Tente uma palavra-chave do nome real ou escolha uma das sugestões abaixo.",
-        sugestoes_do_catalogo: sugestoes.length ? sugestoes : (candidatos ?? []).slice(0, 7).map((r: any) => r.nome),
+        erro: "produto_nao_identificado",
+        mensagem: "Não consegui carregar esse produto do catálogo. Nada foi preparado.",
       });
     }
+    const sugestoes: string[] = [prod.nome];
 
     if (prod.ativo === false) return JSON.stringify({ erro: `produto "${prod.nome}" foi encontrado, mas está inativo no catálogo`, sugestoes_do_catalogo: sugestoes });
     if (!prod.imagem_url && redes.some((r) => r === "instagram" || r === "tiktok")) {
@@ -4111,7 +4212,7 @@ async function toolPostarRedesSociais(
     }
 
     const token = novoTokenPost();
-    const pending: PendingSocialPost = { produto: prod, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), incluirCtaWhatsapp: incluirCta, formato: "feed", midiaTipo: "foto", assetId: assetProduto.id, assetTipo: assetProduto.tipo };
+    const pending: PendingSocialPost = { produto: prod, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), incluirCtaWhatsapp: incluirCta, formato: "feed", midiaTipo: "foto", assetId: assetProduto.id, assetTipo: assetProduto.tipo, origem: "catalogo", arquivoNome: String(prod.imagem_url || "").split("/").pop()?.split("?")[0] };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
 
@@ -4119,7 +4220,13 @@ async function toolPostarRedesSociais(
     return JSON.stringify({
       status: "aguardando_escolha_variante",
       token,
-      origem_do_post: `produto do catálogo: ${prod.nome}`,
+      procedencia: {
+        origem: "catalogo",
+        produtoNome: prod.nome,
+        midiaIdCurto: String(assetProduto.id).slice(0, 8),
+        midiaTipo: "foto",
+        arquivoNome: String(prod.imagem_url || "").split("/").pop()?.split("?")[0],
+      },
       midia_vinculada: { id_curto: assetProduto.id.slice(0, 8).toUpperCase(), tipo: "foto", url: prod.imagem_url },
       produto: { nome: prod.nome, preco: prod.preco, imagem_url: prod.imagem_url, link: prod.link },
       tom,
@@ -4221,7 +4328,35 @@ async function toolConfirmarPostagemRedes(
     });
   }
 
-  const resultados = await Promise.all(p.redes.map((r) => publicarEmRede(r, p.scripts[r], p.produto, p.userId, p.formato || "feed")));
+  // Se a pergunta de incompatibilidade já foi feita (redes compatíveis gravadas
+  // no banco) e o dono voltou confirmando, ESTE "sim" é a confirmação dela.
+  // Sem isso a pergunta se repetiria em loop depois de um cold start.
+  if (p.redesConfirmadas?.length && p.somenteCompativeisConfirmado !== true) {
+    p.somenteCompativeisConfirmado = true;
+    PENDING_POSTS.set(token, p);
+    await updatePendingSocialPostMarker(token, p);
+  }
+
+  // 🛡️ VERIFICAÇÃO PRÉVIA GLOBAL: se alguma rede escolhida não aceita o tipo do
+  // item, NENHUMA rede é chamada. A incompatibilidade não pode mais aparecer no
+  // meio da publicação, com posts já no ar.
+  const preflight = await publicarComPreflight({
+    redes: p.redes,
+    tipo: (p.assetTipo || asset.tipo) as "foto" | "video",
+    formato: p.formato || "feed",
+    somenteCompativeisConfirmado: p.somenteCompativeisConfirmado === true,
+    redesConfirmadas: p.redesConfirmadas ?? null,
+    marcarCompatPendente: async (compativeis) => {
+      const atualizado: PendingSocialPost = { ...p, somenteCompativeisConfirmado: false, redesConfirmadas: compativeis };
+      PENDING_POSTS.set(token, atualizado);
+      await updatePendingSocialPostMarker(token, atualizado); // persistido: sobrevive a cold start
+    },
+    publicar: (redes) => Promise.all(redes.map((r) => publicarEmRede(r, p.scripts[r], p.produto, p.userId, p.formato || "feed"))),
+  });
+  if (!preflight.publicou) {
+    return JSON.stringify({ ...preflight.resposta, token });
+  }
+  const resultados = preflight.resultado as Array<{ rede: string; ok: boolean; status: number; resposta: any; nota?: string }>;
   await updatePersistedSocialPostRows(p, resultados);
   PENDING_POSTS.delete(token);
   return JSON.stringify({
@@ -4357,6 +4492,7 @@ async function toolRevisarPostPendente(
     status: "aguardando_escolha_variante",
     revisado: true,
     token,
+    procedencia: procedenciaDoPending(atualizado),
     formato: p.formato || "feed",
     redes: p.redes,
     variantes,
@@ -4407,6 +4543,7 @@ async function toolEscolherVariantePost(
   return JSON.stringify({
     status: "variante_selecionada",
     token,
+    procedencia: procedenciaDoPending({ ...p, scripts, variantSelecionada: opcao }),
     opcao_ativa: opcao,
     preview: scripts,
     midia_aprovacao: {
@@ -4806,7 +4943,7 @@ async function toolPostarMidiaBiblioteca(
     }
 
     const token = novoTokenPost();
-    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo, assetId: asset.id, assetTipo: asset.tipo, incluirCtaWhatsapp: incluirCta, briefing: briefing || undefined };
+    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo, assetId: asset.id, assetTipo: asset.tipo, incluirCtaWhatsapp: incluirCta, briefing: briefing || undefined, origem: "biblioteca", arquivoNome: asset.arquivoNome };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
 
@@ -4829,6 +4966,7 @@ async function toolPostarMidiaBiblioteca(
       status: "aguardando_escolha_variante",
       fonte: "biblioteca_midias",
       token,
+      procedencia: { origem: "biblioteca", midiaIdCurto: String(asset.id).slice(0, 8), midiaTipo: asset.tipo, arquivoNome: asset.arquivoNome },
       formato,
       midia: { id: midia.id, tipo: midia.tipo, url: midia.midia_url },
       produto: { nome: produtoLike.nome, preco: produtoLike.preco, imagem_url: produtoLike.imagem_url },
@@ -6518,7 +6656,7 @@ async function callGemini(
     if (plainPostConfirmation && latestPendingSocialToken) {
       console.log("[pietro][forced_social_plain_confirm]", { token: latestPendingSocialToken, cancelar: !!plainPostConfirmation.cancelar });
       const confirmResult = await toolConfirmarPostagemRedes({ token: latestPendingSocialToken, cancelar: plainPostConfirmation.cancelar }, toolCtx);
-      return { text: formatSocialPostToolResult(confirmResult) };
+      return { text: renderPreviaSegura(confirmResult) };
     }
 
     // Vídeo Motion primeiro: é a intenção mais específica. Aprovação e
@@ -6594,7 +6732,7 @@ async function callGemini(
     if (variantChoice) {
       console.log("[pietro][forced_social_variant_choice]", { token: latestPendingSocialToken, opcao: variantChoice });
       const variantResult = await toolEscolherVariantePost({ token: latestPendingSocialToken!, opcao: variantChoice }, toolCtx);
-      return { text: formatSocialPostToolResult(variantResult) };
+      return { text: renderPreviaSegura(variantResult) };
     }
 
     // Confirmação CURTA ("sim", "pode postar", "ok") com post pendente:
@@ -6609,7 +6747,7 @@ async function callGemini(
       }
       console.log("[pietro][forced_social_confirm_curto]", { token: latestPendingSocialToken });
       const confirmResult = await toolConfirmarPostagemRedes({ token: latestPendingSocialToken }, toolCtx);
-      return { text: formatSocialPostToolResult(confirmResult) };
+      return { text: renderPreviaSegura(confirmResult) };
     }
 
     // 0) Postagem em redes sociais: atalho determinístico para não deixar o modelo "prometer" preview sem chamar a tool.
@@ -6621,7 +6759,7 @@ async function callGemini(
       }
       console.log("[pietro][forced_social_confirm]", postConfirmation);
       const confirmResult = await toolConfirmarPostagemRedes(postConfirmation, toolCtx);
-      return { text: formatSocialPostToolResult(confirmResult) };
+      return { text: renderPreviaSegura(confirmResult) };
     }
 
     // Etapa 2: se o dono está respondendo APENAS o formato ("feed" / "story" / "no story"),
@@ -6645,7 +6783,7 @@ async function callGemini(
           formato: standaloneFormat,
           midia_id: pendingChoice.assetId,
         }, toolCtx);
-        return { text: formatSocialPostToolResult(postResult) };
+        return { text: renderPreviaSegura(postResult) };
       }
       // sem ID guardado não há publicação: o fluxo normal segue e pede a mídia
       clearPendingFormatChoice(toolCtx.userId);
@@ -6734,7 +6872,7 @@ async function callGemini(
           formato,
           midia_id: midiaIdentificada.id,
         }, toolCtx);
-        return { text: formatSocialPostToolResult(postResult) };
+        return { text: renderPreviaSegura(postResult) };
       }
 
       // Sem mídia resolvida no TURNO ATUAL: pergunta. Nunca cai no catálogo —
@@ -6746,7 +6884,7 @@ async function callGemini(
       }
 
       const postResult = await toolPostarRedesSociais(socialPost, toolCtx);
-      return { text: formatSocialPostToolResult(postResult) };
+      return { text: renderPreviaSegura(postResult) };
 
     }
 
@@ -6897,7 +7035,7 @@ async function callGemini(
           const parsed = JSON.parse(result);
           const st = parsed?.status;
           if (st === "aguardando_escolha_variante" || st === "variante_selecionada") {
-            return { text: formatSocialPostToolResult(result), imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
+            return { text: renderPreviaSegura(result), imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
           }
         } catch { /* ignore */ }
         messages.push({ role: "tool", tool_call_id: tc.id, content: result });
