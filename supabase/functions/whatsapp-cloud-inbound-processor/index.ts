@@ -6636,7 +6636,22 @@ async function callGemini(
       continue;
     }
 
-    return { text: appendConfirmCommand(msg?.content ?? ""), imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
+    // 🛡️ APROVAÇÃO ÍNTEGRA: o dono aprova o TEXTO que vai ao ar, nunca um resumo
+    // dele. Se o modelo respondeu descrevendo as opções (sem passar pelo fluxo
+    // determinístico A/B/C, que já manda os textos completos), a resposta é
+    // recusada — nenhuma escolha pode ser feita às cegas.
+    const respostaModelo = String(msg?.content ?? "");
+    const motivoResumo = pareceResumoDeOpcoes(respostaModelo);
+    if (motivoResumo) {
+      console.error(`[pietro][aprovacao] resposta recusada (${motivoResumo})`);
+      return {
+        text: "Ia te mandar só a descrição das opções, e isso não serve — você precisa ler o texto exato que vai ao ar.<<SPLIT>>Me confirma qual mídia é pra publicar (o vídeo que acabei de gerar ou outro) que eu preparo as 3 opções com os textos completos, um por mensagem.",
+        imageUrl: pendingImageUrl,
+        forwardProof,
+        forwardAttempted,
+      };
+    }
+    return { text: appendConfirmCommand(respostaModelo), imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
   }
   return { text: appendConfirmCommand("Desculpa, não consegui concluir a pesquisa agora."), imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
 }
