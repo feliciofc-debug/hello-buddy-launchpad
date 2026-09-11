@@ -717,36 +717,62 @@ Preencha a seção do estilo escolhido: "chat" (conversa), "blocos" + "selo" (in
 DURAÇÃO PEDIDA: ${segundos}. O vídeo mais longo precisa de MAIS conteúdo, nunca cenas mais lentas. Para esta duração escreva: ${vol.mensagens} mensagens no chat (alternando dono/agente), ${vol.blocos} blocos no institucional, ${vol.itens} itens na lista e ${vol.legendas} legendas. Cada bloco/item/mensagem deve trazer um argumento NOVO, sem repetir ideia.
 No institucional, só preencha "selo" com dado REAL do contexto acima; sem dado confiável, deixe vazio — nunca invente número, percentual ou certificação.
 Regras: número par de mensagens no chat, alternando dono/agente, frases COMPLETAS dentro do limite de caracteres (nunca corte no meio de palavra), sem emoji nos textos do vídeo, sem promessa de resultado garantido, sem inventar preço.
+LIMITE DE CARACTERES É REGRA DURA: conte os caracteres de cada campo antes de responder. O texto tem que NASCER curto — escreva outra frase menor em vez de encurtar uma frase longa. É PROIBIDO usar reticências ("..." ou "…"), terminar em vírgula, conjunção ("e", "com", "para", "que") ou deixar frase pela metade. Cada campo é uma frase inteira, que se entende sozinha.
+Não liste muitas redes/itens dentro de um campo curto: prefira "em todas as redes" a enumerar Instagram, Facebook, TikTok e LinkedIn num campo de 60 caracteres. Quando enumerar, cite todas ou nenhuma — nunca uma lista pela metade.
 O leitor é um profissional: proibido gíria e informalidade exagerada ("tá insano", "bora", "top", "sem neura"). Se o tom da marca for institucional ou formal, escreva formal.
 O nome da marca identifica QUEM fala, nunca o objeto da ação: escreva "publicação concluída", "campanha aprovada", jamais "${nome} concluída" ou "${nome} aprovada".
 Nunca atribua a automação a outra empresa, plataforma, rede social ou ferramenta citada no site do cliente, nem escreva "o sistema ${nome}". Fale do resultado ("o agente agenda", "o conteúdo sai no horário") sem citar nome de plataforma.
 Português correto: o verbo é "publicado" ("o conteúdo foi criado, aprovado e publicado"). Nunca use "Público" como verbo.`;
 
   if (apiKey) {
-    try {
+    const pedirRoteiro = async (extra: string) => {
       const r = await fetch(GATEWAY, {
         method: "POST",
         headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           model: MODELO,
-          messages: [{ role: "user", content: instrucao }],
+          messages: [{ role: "user", content: extra ? `${instrucao}\n${extra}` : instrucao }],
           response_format: { type: "json_object" },
         }),
       });
-
       if (!r.ok) {
-        const corpo = await r.text();
-        console.warn("[video-motion] IA falhou", r.status, corpo.slice(0, 300));
-      } else {
-        const j = await r.json();
-        const txt = j?.choices?.[0]?.message?.content ?? "";
-        const bruto = JSON.parse(txt.replace(/^```json|```$/g, "").trim());
-        return {
-          props: normalizarProps(bruto, base),
-          legendaPost: corrigirTexto(limparBruto(bruto?.legenda_post, 1200), nomes),
-          usouIA: true,
-          nomes,
-        };
+        console.warn("[video-motion] IA falhou", r.status, (await r.text()).slice(0, 300));
+        return null;
+      }
+      const j = await r.json();
+      const txt = j?.choices?.[0]?.message?.content ?? "";
+      return JSON.parse(txt.replace(/^```json|```$/g, "").trim());
+    };
+
+    try {
+      let bruto = await pedirRoteiro("");
+      if (bruto) {
+        let props = normalizarProps(bruto, base);
+        let legendaPost = corrigirTexto(limparBruto(bruto?.legenda_post, 1200), nomes);
+        let problemas = problemasDeTexto(props, legendaPost);
+
+        // O texto precisa NASCER no tamanho certo: se estourou o limite e
+        // sobrou frase pela metade, pedimos uma reescrita mais curta.
+        if (problemas.length) {
+          console.warn("[video-motion] roteiro com texto incompleto, reescrevendo:", problemas.slice(0, 6));
+          const retry = await pedirRoteiro(
+            `A versão anterior estourou os limites e saiu com frase pela metade nestes campos: ${
+              problemas.slice(0, 8).join(" | ")
+            }. Reescreva TODO o JSON com frases mais curtas, completas, dentro do limite, sem reticências e sem vírgula solta.`,
+          );
+          if (retry) {
+            const p2 = normalizarProps(retry, base);
+            const l2 = corrigirTexto(limparBruto(retry?.legenda_post, 1200), nomes);
+            if (problemasDeTexto(p2, l2).length <= problemas.length) {
+              bruto = retry;
+              props = p2;
+              legendaPost = l2;
+              problemas = problemasDeTexto(p2, l2);
+            }
+          }
+        }
+        if (problemas.length) console.warn("[video-motion] ainda com avisos de texto:", problemas.slice(0, 6));
+        return { props, legendaPost, usouIA: true, nomes };
       }
     } catch (e) {
       console.warn("[video-motion] roteiro IA erro:", (e as Error).message);
