@@ -15,6 +15,13 @@ import {
   resumoDaMidia,
   validarTipoAprovado,
 } from "../_shared/publicacao-por-id.ts";
+import {
+  prepararPostDoCatalogo,
+  PreviaSemProcedenciaError,
+  publicarComPreflight,
+  renderProcedencia,
+  verificarCompatibilidadeRedes,
+} from "../_shared/post-guardas.ts";
 
 // ---------------------------------------------------------------------------
 // Multi-tenant owner registry (populado no início de cada processMessage).
@@ -3006,6 +3013,12 @@ type PendingSocialPost = {
   briefing?: string; // texto escrito pelo dono que é a MENSAGEM do post (prioridade sobre o visual)
   approvedBy?: string;
   approvedAt?: string;
+  // REGRA: todo campo aqui precisa ser gravado no marcador e reidratado por
+  // loadPendingSocialPost. Estado que morre no cold start foi a causa raiz.
+  origem?: "biblioteca" | "catalogo";
+  arquivoNome?: string;
+  somenteCompativeisConfirmado?: boolean;
+  redesConfirmadas?: string[] | null;
 };
 const PENDING_POSTS = new Map<string, PendingSocialPost>();
 function pendingCleanup() {
@@ -3050,10 +3063,14 @@ type PendingPostMarkerState = {
   incluirCtaWhatsapp?: boolean;
   tom?: string;
   briefing?: string;
+  origem?: "biblioteca" | "catalogo";
+  arquivoNome?: string;
+  somenteCompativeisConfirmado?: boolean;
+  redesConfirmadas?: string[] | null;
 };
 
 function encodePendingPostState(state?: PendingPostMarkerState): string {
-  if (!state || (!state.variantes && !state.variantSelecionada && state.incluirCtaWhatsapp === undefined && !state.tom)) return "";
+  if (!state || (!state.variantes && !state.variantSelecionada && state.incluirCtaWhatsapp === undefined && !state.tom && !state.origem && state.somenteCompativeisConfirmado === undefined && !state.redesConfirmadas)) return "";
   try {
     const json = JSON.stringify(state);
     const bytes = new TextEncoder().encode(json);
@@ -3124,6 +3141,10 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
       incluirCtaWhatsapp: pending.incluirCtaWhatsapp,
       tom: pending.tom,
       briefing: pending.briefing ? pending.briefing.slice(0, 1200) : undefined,
+      origem: pending.origem,
+      arquivoNome: pending.arquivoNome,
+      somenteCompativeisConfirmado: pending.somenteCompativeisConfirmado ?? false,
+      redesConfirmadas: pending.redesConfirmadas ?? null,
     }),
     approval_token: token,
     approved_at: null,
@@ -3238,6 +3259,10 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
     variantSelecionada: state?.variantSelecionada,
     incluirCtaWhatsapp: state?.incluirCtaWhatsapp,
     briefing: (state as any)?.briefing,
+    origem: state?.origem ?? ((rows[0] as any).produto_id ? "catalogo" : "biblioteca"),
+    arquivoNome: state?.arquivoNome,
+    somenteCompativeisConfirmado: state?.somenteCompativeisConfirmado === true,
+    redesConfirmadas: Array.isArray(state?.redesConfirmadas) ? state?.redesConfirmadas : null,
   };
 }
 
@@ -3901,6 +3926,10 @@ async function updatePendingSocialPostMarker(token: string, pending: PendingSoci
     incluirCtaWhatsapp: pending.incluirCtaWhatsapp,
     tom: pending.tom,
     briefing: pending.briefing ? pending.briefing.slice(0, 1200) : undefined,
+    origem: pending.origem,
+    arquivoNome: pending.arquivoNome,
+    somenteCompativeisConfirmado: pending.somenteCompativeisConfirmado ?? false,
+    redesConfirmadas: pending.redesConfirmadas ?? null,
   });
   const rowIds = pending.queueRows?.map((r) => r.id).filter(Boolean) ?? [];
   if (rowIds.length > 0) {
