@@ -55,4 +55,4 @@
 - [x] Ignorar falhas e cancelamentos na cota
 - [x] Avisar uso e saldo antes do limite
 - [x] Criar área “Cotas de vídeo” no painel administrativo
-- [ ] Validar regras e interface sem iniciar renderizações reais
+- [x] Validar regras e interface sem iniciar renderizações reais
