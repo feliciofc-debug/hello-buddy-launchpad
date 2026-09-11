@@ -10,6 +10,8 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { autorizarWorker, renderCors, respJson } from "../_shared/render-auth.ts";
+import { linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
+
 
 const MAX_TENTATIVAS = 3;
 
@@ -185,13 +187,18 @@ Deno.serve(async (req) => {
 
     if (job.origem === "whatsapp" && job.telefone) {
       const blocoLegenda = job.legenda_post ? `\n\n*Legenda sugerida:*\n${job.legenda_post}` : "";
-      const blocoId = midiaId ? `\n\n🆔 *${midiaId.replace(/-/g, "").slice(0, 8).toUpperCase()}* — confira se este mesmo ID aparece na confirmação antes de publicar.` : "";
+      // O código curto vem ANTES da legenda: é o que o dono digita para publicar.
+      // Sem ele, o pedido sai em linguagem natural e cai no caminho frouxo.
+      const blocoId = midiaId
+        ? `\n${linhaCodigoMidia(midiaId, "video")}`
+        : `\n⚠️ Não consegui registrar este vídeo na biblioteca, então ele *não tem código* e não pode ser publicado pelo WhatsApp. Baixe o arquivo ou peça de novo.`;
       if (!querPublicar) {
         await avisarCliente(
           supabase,
           job,
-          `🎬 Seu vídeo animado ficou pronto. *Não publiquei em lugar nenhum.*${blocoLegenda}${blocoId}`,
+          `🎬 Seu vídeo animado ficou pronto. *Não publiquei em lugar nenhum.*${blocoId}${blocoLegenda}`,
           videoUrl,
+
         );
       } else {
         const nomes = plataformas

@@ -10,7 +10,11 @@ import { classificarIntencao, ferramentaPermitida, mensagemDeErroParaUsuario } f
 import { pareceResumoDeOpcoes, segmentoIntruso } from "../_shared/aprovacao-integra.ts";
 import {
   JARVIS_PUBLICACAO_ATIVA,
+  ehUuid,
+
   idCurto,
+  linhaCodigoMidia,
+
   resolverAsset,
   resumoDaMidia,
   validarTipoAprovado,
@@ -6731,13 +6735,15 @@ async function callGemini(
       let parsed: any = {};
       try { parsed = JSON.parse(raw); } catch { /* resposta inválida tratada abaixo */ }
       if (parsed?.image_url) {
-        return {
-          text: pedidoLogoNaFoto
-            ? "Pronto — apliquei a marca na sua foto original, sem mudar nada mais na imagem."
-            : "Pronto — deixei a foto em um cenário profissional para divulgação.",
-          imageUrl: parsed.image_url,
-        };
+        const base = pedidoLogoNaFoto
+          ? "Pronto — apliquei a marca na sua foto original, sem mudar nada mais na imagem."
+          : "Pronto — deixei a foto em um cenário profissional para divulgação.";
+        const codigo = ehUuid(parsed?.midia_id)
+          ? `\n\n${linhaCodigoMidia(parsed.midia_id, "foto")}`
+          : "\n\n⚠️ Não consegui registrar esta imagem na biblioteca, então ela não tem código e não pode ser publicada pelo WhatsApp.";
+        return { text: `${base}${codigo}`, imageUrl: parsed.image_url };
       }
+
       // Nunca expor código interno (ex.: sem_imagem) ao cliente.
       return { text: mensagemDeErroParaUsuario(parsed?.erro, parsed?.instrucao) };
     }
@@ -6951,6 +6957,12 @@ async function callGemini(
   // Roteamento por tipo de fluxo (Feature 2): multimodal → DEEP, texto conversa → FAST.
   const model = escolherModelo({ kind: hasMedia ? "multimodal" : "conversation" });
   let pendingImageUrl: string | undefined;
+  // Código curto da mídia recém-criada. Anexado à resposta de forma determinística:
+  // o modelo não decide se mostra ou não.
+  let pendingMidiaLinha: string | undefined;
+  const comCodigoDaMidia = (texto: string) =>
+    pendingMidiaLinha && !texto.includes(pendingMidiaLinha) ? `${texto}\n\n${pendingMidiaLinha}` : texto;
+
   let pendingSocialToken: string | undefined; // token de post aguardando confirmação — anexa <<SPLIT>>pode postar {token} no fim
 
   const captureSocialToken = (raw: string) => {
@@ -7034,6 +7046,15 @@ async function callGemini(
         }
         const { result, imageUrl } = await runTool(name, args, toolCtx);
         if (imageUrl) pendingImageUrl = imageUrl;
+        // Toda mídia nova gerada volta com midia_id: o código curto é anexado à
+        // resposta pelo código, para o dono ter o que digitar no caminho seguro.
+        try {
+          const p = JSON.parse(result);
+          if (p?.midia_id && ehUuid(p.midia_id)) {
+            pendingMidiaLinha = linhaCodigoMidia(p.midia_id, p?.midia_tipo === "video" ? "video" : "foto");
+          }
+        } catch { /* resultado não-JSON: sem código a anexar */ }
+
         if (name === "postar_midia_biblioteca" || name === "postar_redes_sociais" || name === "revisar_post_pendente" || name === "escolher_variante_post") captureSocialToken(result);
         // Comprovante de encaminhamento: só existe se a tool realmente entregou (ok: true).
         if (name === "encaminhar_recado_ao_dono" || name === "enviar_mensagem_contato_comercial" || name === "registrar_lead_novo") {
@@ -7073,7 +7094,7 @@ async function callGemini(
         forwardAttempted,
       };
     }
-    return { text: appendConfirmCommand(respostaModelo), imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
+    return { text: comCodigoDaMidia(appendConfirmCommand(respostaModelo)), imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
   }
   return { text: appendConfirmCommand("Desculpa, não consegui concluir a pesquisa agora."), imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
 }

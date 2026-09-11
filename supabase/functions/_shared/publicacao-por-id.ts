@@ -30,6 +30,18 @@ export function idCurto(id: string): string {
   return String(id || "").replace(/-/g, "").slice(0, 8).toUpperCase();
 }
 
+/**
+ * Linha OBRIGATÓRIA em toda mídia entregue ao dono: sem o código curto ele não
+ * tem o que digitar e acaba pedindo em linguagem natural — foi assim que um post
+ * saiu pelo caminho frouxo do catálogo. Determinística: nunca depende do modelo.
+ */
+export function linhaCodigoMidia(id: string, tipo: "foto" | "video"): string {
+  const codigo = idCurto(id);
+  const nomeTipo = tipo === "video" ? "Vídeo" : "Foto";
+  return `🆔 *ID da mídia: ${codigo}* • ${nomeTipo} — use este código para publicar (ex.: "publica a mídia ${codigo} no instagram").`;
+}
+
+
 export function nomeDoArquivo(url: string): string {
   try {
     const caminho = new URL(url).pathname;
