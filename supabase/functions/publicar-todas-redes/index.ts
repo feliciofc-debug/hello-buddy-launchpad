@@ -84,6 +84,25 @@ Deno.serve(async (req) => {
       return json({ success: false, error: 'Mídia e legenda são obrigatórias' }, 400);
     }
 
+    // 🛡️ Vínculo por identificador: quando o item vem da biblioteca, ele é buscado
+    // pelo ID e pelo dono, e o tipo aprovado tem que bater com o arquivo real.
+    const tipoEsperado = body.media_type === 'video' ? 'video' : 'foto';
+    if (body.media_id) {
+      const { asset, mensagem } = await resolverAsset(admin, userId, body.media_id);
+      if (!asset) return json({ success: false, error: mensagem || 'Mídia não encontrada. Nada foi publicado.' }, 400);
+      if (asset.url !== body.media_url) {
+        return json({ success: false, error: `O arquivo da mídia ${asset.idCurto} não é o que foi aprovado. Nada foi publicado.` }, 400);
+      }
+      const erroTipo = validarTipoAprovado(tipoEsperado, asset);
+      if (erroTipo) return json({ success: false, error: `Tipo de mídia divergente (${erroTipo}). Nada foi publicado.` }, 400);
+    } else {
+      const ehVideo = /\.(mp4|mov|m4v|webm|avi|mkv|3gp)(\?|$)/i.test(body.media_url);
+      const ehImagem = /\.(jpg|jpeg|png|webp|gif|avif|heic)(\?|$)/i.test(body.media_url);
+      if ((tipoEsperado === 'video' && ehImagem) || (tipoEsperado === 'foto' && ehVideo)) {
+        return json({ success: false, error: 'O arquivo não corresponde ao tipo escolhido. Nada foi publicado.' }, 400);
+      }
+    }
+
     const networks = body.networks?.length ? body.networks : (Object.keys(connections) as Network[]);
     const images = body.image_urls?.length ? body.image_urls : [body.media_url];
     const caption = body.caption.trim();
