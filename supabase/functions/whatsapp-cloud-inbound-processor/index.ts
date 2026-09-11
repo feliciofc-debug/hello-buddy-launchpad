@@ -6589,8 +6589,24 @@ async function callGemini(
       return { text: formatSocialPostToolResult(variantResult) };
     }
 
+    // Confirmação CURTA ("sim", "pode postar", "ok") com post pendente:
+    // é intenção de PUBLICAR — não pode ser engolida pela deduplicação de
+    // pedidos de vídeo ("esse mesmo vídeo já foi pedido...").
+    const confirmacaoCurta = typeof userContent === "string"
+      && /^(sim|s|ok|okay|isso|pode postar|pode publicar|publica|publique|posta|postar|manda|manda ver|confirma|confirmar|aprovado|vai|bora)[.!\s]*$/i.test(userContent.trim());
+    if (remetenteEhDono && confirmacaoCurta && latestPendingSocialToken) {
+      // Post E roteiro de vídeo pendentes ao mesmo tempo: não adivinha, pergunta.
+      if (pendingVideoDraft) {
+        return { text: "Tenho duas coisas esperando você: um *post* pronto pra publicar e um *roteiro de vídeo* pra renderizar. Qual você quer agora — *publicar o post* ou *renderizar o vídeo*?" };
+      }
+      console.log("[pietro][forced_social_confirm_curto]", { token: latestPendingSocialToken });
+      const confirmResult = await toolConfirmarPostagemRedes({ token: latestPendingSocialToken }, toolCtx);
+      return { text: formatSocialPostToolResult(confirmResult) };
+    }
+
     // 0) Postagem em redes sociais: atalho determinístico para não deixar o modelo "prometer" preview sem chamar a tool.
     const postConfirmation = detectSocialPostConfirmation(userContent);
+
     if (postConfirmation) {
       if (!remetenteEhDono) {
         return { text: "Essa publicação só pode ser autorizada pelo responsável da conta. Posso encaminhar seu pedido para ele, se quiser." };
