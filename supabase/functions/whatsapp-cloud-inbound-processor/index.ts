@@ -4645,7 +4645,6 @@ async function criarRascunhoVideoMotion(
     cores: pedidas?.cores ?? identidade?.cores ?? null,
     estilo: estilo ?? null,
     duracao: duracao ?? null,
-    apenasRoteiro: true,
     ...(identidade
       ? {
         marca: identidade.marca || undefined,
@@ -4681,7 +4680,39 @@ async function criarRascunhoVideoMotion(
   const segundos = roteiro.props ? duracaoEstimada(roteiro.props) : 0;
   const rotuloDuracao = ROTULO_DURACAO[(roteiro.props?.duracao ?? "curto") as DuracaoMotion] ?? "Curto (~25s)";
   const minutos = minutosRenderEstimado(segundos);
-  return `${formatVideoDraft(roteiro.props, tema, segundos, paleta)}\n\nFormato: *${rotuloEstilo}*\nDuração: *${rotuloDuracao}* — render em cerca de ${minutos} min\n\nCódigo de aprovação: *${token}*`;
+  return `${formatVideoDraft(roteiro.props, tema, segundos, paleta)}${linhaSite}\n\nFormato: *${rotuloEstilo}*\nDuração: *${rotuloDuracao}* — render em cerca de ${minutos} min\n\nCódigo de aprovação: *${token}*\n\nSe quiser, me diga _"troca a cor principal pro vermelho"_ ou _"tira a logo"_ antes de aprovar.`;
+}
+
+/** Correções por texto no rascunho pendente, antes de gastar o render. */
+async function ajustarRascunhoVideo(
+  ctx: { userId: string; fromNumber: string },
+  texto: string,
+): Promise<string | null> {
+  const draft = await buscarRascunhoVideo(ctx);
+  if (!draft) return null;
+  const props: any = { ...(draft.props ?? {}) };
+  const n = String(texto ?? "").toLowerCase();
+  const pedidas = extrairCoresDoTexto(texto);
+  const tirarLogo = /\b(tir(?:a|ar|e)|remov(?:e|er)|sem)\b[^.]{0,20}\blogo/.test(n);
+  if (!pedidas && !tirarLogo) return null;
+
+  const mudancas: string[] = [];
+  if (pedidas) {
+    props.cores = { ...(props.cores ?? {}), ...pedidas.cores };
+    mudancas.push(`cores: ${pedidas.resumo}`);
+  }
+  if (tirarLogo) {
+    props.logo_path = undefined;
+    props.logoUrl = undefined;
+    props.prospect = true; // impede a logo do tenant voltar na aprovação
+    mudancas.push("logo removida deste vídeo");
+  }
+  const { error } = await sb.from("video_motion_rascunhos")
+    .update({ props })
+    .eq("id", draft.id)
+    .eq("user_id", ctx.userId);
+  if (error) return null;
+  return `✅ Ajustei o roteiro: ${mudancas.join(" · ")}.\n\nResponda *APROVADO* para eu renderizar, ou me diga outro ajuste.`;
 }
 
 async function buscarRascunhoVideo(ctx: { userId: string; fromNumber: string }): Promise<any | null> {
