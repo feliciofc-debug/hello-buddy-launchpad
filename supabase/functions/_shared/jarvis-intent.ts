@@ -47,8 +47,8 @@ const RE_VIDEO_PALAVRA =
 const RE_VIDEO_ACAO =
   /\b(fa[czs]|faca|faz(?:er|e)?|cri(?:a|ar|e|e?a)?|crie|mont(?:a|ar|e)|ger(?:a|ar|e)|produz(?:ir|a)?|quero|queria|preciso|pode)\b/;
 const RE_POST_PALAVRA = /\b(post|posts|postagem|postagens|arte|artes|legenda|carrossel|carrosseis)\b/;
-const RE_PUBLICAR =
-  /\b(public(?:a|ar|ca|que|co)?|publiq(?:ue|ua)|posta(?:r|ndo)?|poste|sobe|subir)\b/;
+// tolera "publca", "publiica", "publik", "pubica" — teclado do WhatsApp falha
+const RE_PUBLICAR = /\b(pub[a-z]{0,8}|posta(?:r|ndo)?|poste|sobe|subir)\b/;
 const RE_TODAS_REDES = /\b(todas?(?:\s+as)?(?:\s+redes)?|redes\s+sociais|tudo)\b/;
 const RE_EDICAO_ALVO =
   /\b(fot(?:o|os|u)s?|imagens?|imagem|imgs?|cen[aá]?rios?|cenario|ambientes?|fundos?|est[uú]?dios?|showroom|logo(?:marca|tipo)?|marca|cor|cores)\b/;
