@@ -10,6 +10,8 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { autorizarWorker, renderCors, respJson } from "../_shared/render-auth.ts";
+import { linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
+
 
 const MAX_TENTATIVAS = 3;
 

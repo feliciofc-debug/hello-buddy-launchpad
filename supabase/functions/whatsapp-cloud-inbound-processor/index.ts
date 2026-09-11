@@ -11,6 +11,8 @@ import { pareceResumoDeOpcoes, segmentoIntruso } from "../_shared/aprovacao-inte
 import {
   JARVIS_PUBLICACAO_ATIVA,
   idCurto,
+  linhaCodigoMidia,
+
   resolverAsset,
   resumoDaMidia,
   validarTipoAprovado,
