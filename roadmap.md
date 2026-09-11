@@ -65,3 +65,13 @@
 - [x] Corrigir caminho real do WhatsApp: “sim” após prévia publica exatamente o asset aprovado por ID
 - [x] Integrar filtro de nicho no caminho real do processador
 - [ ] Validar ponta a ponta no WhatsApp sem publicar mídia adicional
+
+## Post pelo WhatsApp — vínculo de mídia e roteamento (aguardando aprovação do plano)
+- [ ] Preencher assetId/assetTipo no post do catálogo (nunca criar pedido sem vínculo)
+- [ ] Bloqueio 1: "posta isso" após mídia aprovada vai para o caminho da biblioteca, nunca para o catálogo
+- [ ] Bloqueio 1: exigir nome de produto explícito para o caminho do catálogo + mostrar o produto na prévia
+- [ ] Bloqueio 2 (opção a): remover fallback de "última foto 30 min" em editar_imagem
+- [ ] Bloqueio 3: detectar ID de mídia no lugar do token antes de toLowerCase; prefixo p_ com data de corte
+- [ ] Cancelar pedidos antigos aguardando_confirmacao com asset_id nulo
+- [ ] Roteiro e post pendentes ao mesmo tempo: Jarvis pergunta, nunca adivinha
+- [ ] Mensagens de erro distintas: inexistente / expirado / sem vínculo de mídia
