@@ -181,7 +181,12 @@ export async function publicarComPreflight(deps: {
       },
     };
   }
-  const alvo = (deps.redesConfirmadas?.length ? deps.redesConfirmadas : compat.compativeis)
+  // Quem manda é a FLAG de confirmação, não o array: redesConfirmadas é gravado
+  // junto com somenteCompativeisConfirmado=false ao fazer a pergunta, então
+  // array preenchido NÃO significa "o dono confirmou".
+  const alvo = (deps.somenteCompativeisConfirmado === true
+    ? (deps.redesConfirmadas?.length ? deps.redesConfirmadas : compat.compativeis)
+    : deps.redes)
     .filter((r) => compat.compativeis.includes(r));
   if (alvo.length === 0) {
     return {
