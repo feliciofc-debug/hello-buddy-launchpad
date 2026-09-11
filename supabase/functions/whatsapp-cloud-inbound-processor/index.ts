@@ -7,6 +7,7 @@ import { buildSystemPrompt, ADMIN_AMZ_USER_ID } from "../_shared/agent-soul.ts";
 import { buildAmzContext, OWNER_PHONE, resolveTenantOwner, isAmzOwnerAltPhone } from "../_shared/amz-context.ts";
 import { getTenantBusinessContext, buildCarouselPrompt } from "../_shared/business-context.ts";
 import { classificarIntencao, ferramentaPermitida, mensagemDeErroParaUsuario } from "../_shared/jarvis-intent.ts";
+import { pareceResumoDeOpcoes, segmentoIntruso } from "../_shared/aprovacao-integra.ts";
 
 // ---------------------------------------------------------------------------
 // Multi-tenant owner registry (populado no início de cada processMessage).
@@ -2941,11 +2942,32 @@ Responda APENAS com JSON válido nesta forma exata:
     return { A, B, C };
   };
 
+  // Contexto legítimo DESTE pedido: nada além disso pode aparecer na copy.
+  const contextoDoPedido = [
+    produto.nome,
+    produto.descricao,
+    produto.categoria,
+    brief,
+    ajuste,
+    brandContext,
+  ].filter(Boolean).join(" \n ");
+
   // 2 tentativas: uma falha de rede/timeout não pode mais derrubar a copy pro fallback pobre.
   for (let i = 0; i < 2; i++) {
     try {
       const r = await tentativa();
-      if (r) return r;
+      if (r) {
+        // 🛡️ ANTI-VAZAMENTO DE SEGMENTO: copy que fala de um nicho ausente do
+        // pedido (ex.: dentista/consultório num post institucional da AMZ) é
+        // descartada. Segunda ocorrência cai no fallback com o texto do dono.
+        const intruso = segmentoIntruso(contextoDoPedido, `${r.A}\n${r.B}\n${r.C}`);
+        if (intruso) {
+          console.error(`[postar_redes] copy REJEITADA por segmento intruso: ${intruso}`);
+          if (i === 0) continue;
+          return fallback();
+        }
+        return r;
+      }
       console.warn(`[postar_redes] tentativa ${i + 1} sem copy válida`);
     } catch (e) {
       console.error(`[postar_redes] tentativa ${i + 1} falhou:`, e);
@@ -3619,14 +3641,18 @@ function formatSocialPostToolResult(raw: string): string {
       const v = variantes[r] || {};
       return v.A === v0.A && v.B === v0.B && v.C === v0.C;
     });
-    const bloco = (v: any) => `*Opção A — Direta*\n${v.A || ""}\n\n*Opção B — História*\n${v.B || ""}\n\n*Opção C — Interativa*\n${v.C || ""}`;
-    const preview = allEqual
-      ? bloco(v0)
-      : redes.map((r) => `━━━ *${r.toUpperCase()}* ━━━\n${bloco(variantes[r] || {})}`).join("\n\n");
+    // Uma MENSAGEM POR OPÇÃO, com o texto integral que vai ao ar. Nunca resumo.
+    const rotulo: Record<"A" | "B" | "C", string> = { A: "Direta", B: "História", C: "Interativa" };
+    const balaoOpcao = (letra: "A" | "B" | "C") =>
+      allEqual
+        ? `*Opção ${letra} — ${rotulo[letra]}*\n${(v0 as any)[letra] || ""}`
+        : `*Opção ${letra} — ${rotulo[letra]}*\n` +
+          redes.map((r) => `━━━ *${r.toUpperCase()}* ━━━\n${(variantes[r] || {})[letra] || ""}`).join("\n\n");
+    const baloes = (["A", "B", "C"] as const).map(balaoOpcao).join("<<SPLIT>>");
     const aviso = data?.aviso_formato ? `\n\n_${data.aviso_formato}_` : "";
     const avisoReels = data?.aviso_reels ? `\n_ℹ️ ${data.aviso_reels}_` : "";
-    const pergunta = `Qual você prefere? Responde *A*, *B* ou *C*.`;
-    return `Preparei 3 opções 👇${aviso}${avisoReels}<<SPLIT>>${preview}<<SPLIT>>${pergunta}`;
+    const pergunta = `Esses são os textos exatos que vão ao ar. Qual você prefere? Responde *A*, *B* ou *C*.`;
+    return `Preparei 3 opções 👇${aviso}${avisoReels}<<SPLIT>>${baloes}<<SPLIT>>${pergunta}`;
   }
 
   if (data?.status === "variante_selecionada") {
@@ -3905,7 +3931,7 @@ async function toolPostarRedesSociais(
       opcao_ativa: "A",
       cta_whatsapp: incluirCta,
       cta_nota: ctaNota,
-      instrucoes: `Mostre as 3 OPÇÕES (A, B, C) de forma clara, uma em cada bloco separado, usando os textos de \`variantes\` (se houver mais de uma rede, mostre por rede — mas se o texto for parecido entre redes, mostre 1 vez só). Formato exemplo:\n\n*Opção A — Direta*\n<texto A>\n\n*Opção B — História*\n<texto B>\n\n*Opção C — Interativa*\n<texto C>\n\nDepois pergunte: "Qual você prefere? Responde *A*, *B* ou *C*. Ou 'pode postar' pra publicar a A."\n${incluirCta ? "" : "Se ainda não incluiu CTA de WhatsApp, pergunte também se quer incluir. "}Quando o dono responder "A" / "B" / "C" / "opção B" etc, chame escolher_variante_post com token="${token}" e opcao=<letra>. Se ele mandar ajuste de texto, chame revisar_post_pendente. Se confirmar ('pode postar'), chame confirmar_postagem_redes.`,
+      instrucoes: `REGRA DURA: mostre os TEXTOS COMPLETOS de cada opção, exatamente como sairão publicados — NUNCA um resumo, descrição da abordagem ou rótulo tipo "(Direta): foco em...". Se ficarem longos, mande uma mensagem por opção. Mostre as 3 OPÇÕES (A, B, C) de forma clara, uma em cada bloco separado, usando os textos de \`variantes\` (se houver mais de uma rede, mostre por rede — mas se o texto for parecido entre redes, mostre 1 vez só). Formato exemplo:\n\n*Opção A — Direta*\n<texto A>\n\n*Opção B — História*\n<texto B>\n\n*Opção C — Interativa*\n<texto C>\n\nDepois pergunte: "Qual você prefere? Responde *A*, *B* ou *C*. Ou 'pode postar' pra publicar a A."\n${incluirCta ? "" : "Se ainda não incluiu CTA de WhatsApp, pergunte também se quer incluir. "}Quando o dono responder "A" / "B" / "C" / "opção B" etc, chame escolher_variante_post com token="${token}" e opcao=<letra>. Se ele mandar ajuste de texto, chame revisar_post_pendente. Se confirmar ('pode postar'), chame confirmar_postagem_redes.`,
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
@@ -4576,7 +4602,7 @@ async function toolPostarMidiaBiblioteca(
       aviso_reels: avisoReels,
       cta_whatsapp: incluirCta,
       cta_nota: ctaNota,
-      instrucoes: `Diga o formato ("vou postar como ${formato.toUpperCase()}" — cite as redes) e mostre as 3 OPÇÕES A/B/C do texto de forma clara e separada, usando os textos de \`variantes\`. Formato exemplo:\n\n*Opção A — Direta*\n<texto A>\n\n*Opção B — História*\n<texto B>\n\n*Opção C — Interativa*\n<texto C>\n\nDepois pergunte: "Qual você prefere? Responde *A*, *B* ou *C* — ou 'pode postar' pra ir com a A. Se quiser ajustar algo (mais curto, mudar tom, tirar preço), me diga."${perguntaCta} Quando o dono responder "A"/"B"/"C"/"opção X", chame escolher_variante_post com token="${token}" e opcao=<letra>. Se pedir ajuste no texto, chame revisar_post_pendente com token="${token}" e ajuste=<instrução literal>. Se confirmar ("pode postar"), chame confirmar_postagem_redes com token="${token}".`,
+      instrucoes: `Diga o formato ("vou postar como ${formato.toUpperCase()}" — cite as redes) e mostre as 3 OPÇÕES A/B/C com os TEXTOS COMPLETOS (nunca resumo/descrição da abordagem), uma por mensagem se preciso, de forma clara e separada, usando os textos de \`variantes\`. Formato exemplo:\n\n*Opção A — Direta*\n<texto A>\n\n*Opção B — História*\n<texto B>\n\n*Opção C — Interativa*\n<texto C>\n\nDepois pergunte: "Qual você prefere? Responde *A*, *B* ou *C* — ou 'pode postar' pra ir com a A. Se quiser ajustar algo (mais curto, mudar tom, tirar preço), me diga."${perguntaCta} Quando o dono responder "A"/"B"/"C"/"opção X", chame escolher_variante_post com token="${token}" e opcao=<letra>. Se pedir ajuste no texto, chame revisar_post_pendente com token="${token}" e ajuste=<instrução literal>. Se confirmar ("pode postar"), chame confirmar_postagem_redes com token="${token}".`,
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
@@ -6614,7 +6640,22 @@ async function callGemini(
       continue;
     }
 
-    return { text: appendConfirmCommand(msg?.content ?? ""), imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
+    // 🛡️ APROVAÇÃO ÍNTEGRA: o dono aprova o TEXTO que vai ao ar, nunca um resumo
+    // dele. Se o modelo respondeu descrevendo as opções (sem passar pelo fluxo
+    // determinístico A/B/C, que já manda os textos completos), a resposta é
+    // recusada — nenhuma escolha pode ser feita às cegas.
+    const respostaModelo = String(msg?.content ?? "");
+    const motivoResumo = pareceResumoDeOpcoes(respostaModelo);
+    if (motivoResumo) {
+      console.error(`[pietro][aprovacao] resposta recusada (${motivoResumo})`);
+      return {
+        text: "Ia te mandar só a descrição das opções, e isso não serve — você precisa ler o texto exato que vai ao ar.<<SPLIT>>Me confirma qual mídia é pra publicar (o vídeo que acabei de gerar ou outro) que eu preparo as 3 opções com os textos completos, um por mensagem.",
+        imageUrl: pendingImageUrl,
+        forwardProof,
+        forwardAttempted,
+      };
+    }
+    return { text: appendConfirmCommand(respostaModelo), imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
   }
   return { text: appendConfirmCommand("Desculpa, não consegui concluir a pesquisa agora."), imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
 }

@@ -41,3 +41,4 @@
 - [x] Gravar quem aprovou, quando aprovou e qual mídia foi aprovada
 - [ ] Adicionar regressão: vídeo novo nunca pode publicar vídeo antigo
 - [x] Publicar e validar os bloqueios sem disparar conteúdo real
+- [x] Aprovação: texto integral por opção + bloqueio de segmento alheio
