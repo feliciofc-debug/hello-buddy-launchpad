@@ -66,12 +66,17 @@
 - [x] Integrar filtro de nicho no caminho real do processador
 - [ ] Validar ponta a ponta no WhatsApp sem publicar mídia adicional
 
-## Post pelo WhatsApp — vínculo de mídia e roteamento (aguardando aprovação do plano)
-- [ ] Preencher assetId/assetTipo no post do catálogo (nunca criar pedido sem vínculo)
-- [ ] Bloqueio 1: "posta isso" após mídia aprovada vai para o caminho da biblioteca, nunca para o catálogo
-- [ ] Bloqueio 1: exigir nome de produto explícito para o caminho do catálogo + mostrar o produto na prévia
-- [ ] Bloqueio 2 (opção a): remover fallback de "última foto 30 min" em editar_imagem
-- [ ] Bloqueio 3: detectar ID de mídia no lugar do token antes de toLowerCase; prefixo p_ com data de corte
-- [ ] Cancelar pedidos antigos aguardando_confirmacao com asset_id nulo
-- [ ] Roteiro e post pendentes ao mesmo tempo: Jarvis pergunta, nunca adivinha
-- [ ] Mensagens de erro distintas: inexistente / expirado / sem vínculo de mídia
+## Post pelo WhatsApp — vínculo de mídia e roteamento (implementado)
+- [x] Preencher assetId/assetTipo no post do catálogo (nunca criar pedido sem vínculo)
+- [x] Bloqueio 1: "posta isso" após mídia aprovada vai para o caminho da biblioteca, nunca para o catálogo
+- [x] Bloqueio 1: exigir nome de produto explícito para o caminho do catálogo + mostrar o produto na prévia
+- [x] Bloqueio 2 (opção a): remover fallback de "última foto 30 min" em editar_imagem
+- [x] Bloqueio 3: validar o código cru; prefixo p_ com corte em 2026-10-15
+- [x] Cancelar pedidos antigos aguardando_confirmacao com asset_id nulo
+- [x] Roteiro e post pendentes ao mesmo tempo: Jarvis pergunta, nunca adivinha
+- [x] Mensagens de erro distintas: inexistente / expirado / sem vínculo de mídia
+- [x] Ajuste 1: código de mídia lido só da mensagem do turno atual (nunca histórico)
+- [x] Ajuste 2: sem código resolvido → perguntar, nunca cair no catálogo
+- [x] Ajuste 3: exigir rótulo (ID/código/cod/#) ou mensagem só com o código; hex solto não conta
+- [x] Ajuste 4: buscar ID curto por prefixo no banco (sem limit(200)/filtro em JS)
+- [ ] Validação no WhatsApp real pelo dono (gerar vídeo de veterinária → pedir post → conferir textos e código → responder sim)

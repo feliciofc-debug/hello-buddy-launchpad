@@ -1127,27 +1127,15 @@ async function toolEditarImagem(
   const clean = (prompt || "").trim();
   if (!clean) return JSON.stringify({ erro: "prompt vazio" });
 
-  // 1) imagem do turno atual; 2) fallback: última foto recente da biblioteca (30 min)
+  // Só a imagem do turno atual. O fallback de "última foto dos últimos 30 min"
+  // foi REMOVIDO (2026-09-11): era um canal de vazamento — pedido sem anexo
+  // pegava a foto de outro contexto. Sem imagem no turno, pedimos a imagem.
   let imageInput: string | null = null;
   const img = (ctx.media || []).slice().reverse().find((m) => m.kind === "image");
   if (img) {
     imageInput = `data:${img.mime};base64,${img.base64}`;
-  } else {
-    try {
-      const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-      const { data: rec } = await sb
-        .from("midias_whatsapp")
-        .select("midia_url, created_at")
-        .eq("user_id", ctx.userId)
-        .eq("tipo", "foto")
-        .gte("created_at", cutoff)
-        .order("created_at", { ascending: false })
-        .limit(1);
-      if (rec?.[0]?.midia_url) imageInput = rec[0].midia_url as string;
-    } catch (e) {
-      console.warn("[editar_imagem] fallback midias falhou:", (e as Error).message);
-    }
   }
+
   if (!imageInput) {
     return JSON.stringify({
       erro: "sem_imagem",
@@ -3029,6 +3017,33 @@ function isUuid(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+// ---- Código do PEDIDO DE POST x código da MÍDIA ----
+// O pedido de post usa prefixo `p_` + 8 hex. O código da mídia é 8 hex sem prefixo.
+// A decisão é pela PRESENÇA DO PREFIXO, nunca pelo caixa das letras (o modelo pode
+// normalizar o texto antes de chamar a ferramenta).
+// Compatibilidade com pedidos antigos sem prefixo: remover após 2026-10-15.
+const ACEITA_TOKEN_SEM_PREFIXO_ATE = Date.parse("2026-10-15T00:00:00Z");
+
+function novoTokenPost(): string {
+  return `p_${crypto.randomUUID().replace(/-/g, "").slice(0, 8)}`;
+}
+
+/** Valida sobre a string CRUA, antes de qualquer normalização. */
+function normalizarTokenPost(raw: unknown): { token?: string; semPrefixo?: boolean; erro?: string; mensagem?: string } {
+  const cru = String(raw ?? "").trim().replace(/^\*|\*$/g, "");
+  if (!cru) return { erro: "token_ausente", mensagem: "Me diga qual pedido de post confirmar (o código começa com `p_`). Nada foi publicado." };
+  const comPrefixo = cru.match(/^p_([0-9a-fA-F]{8})$/);
+  if (comPrefixo) return { token: `p_${comPrefixo[1].toLowerCase()}` };
+  if (/^[0-9a-fA-F]{8}$/.test(cru)) {
+    if (Date.now() > ACEITA_TOKEN_SEM_PREFIXO_ATE) {
+      return { erro: "token_e_id_de_midia", mensagem: "Isso parece o código de uma *mídia*, não de um *pedido de post*. Me diga qual pedido de post confirmar (o código começa com `p_`). Nada foi publicado." };
+    }
+    return { token: cru.toLowerCase(), semPrefixo: true };
+  }
+  return { erro: "token_invalido", mensagem: "Esse código não é de um pedido de post. O código do pedido começa com `p_`. Nada foi publicado." };
+}
+
+
 type PendingPostMarkerState = {
   variantes?: Record<string, PostVariantes>;
   variantSelecionada?: "A" | "B" | "C";
@@ -3130,6 +3145,29 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
   return (data ?? []).map((r: any) => ({ id: r.id, platform: r.platform }));
 }
 
+// Motivo da última falha de carregamento, por token — as três causas
+// (inexistente / expirado / sem vínculo de mídia) precisam de frases distintas.
+type MotivoFalhaPendente = "nao_encontrado" | "expirado" | "sem_vinculo_midia" | "erro_banco";
+const MOTIVO_FALHA_PENDENTE = new Map<string, MotivoFalhaPendente>();
+
+function mensagemFalhaPendente(token: string, tokenSemPrefixo: boolean): { erro: string; mensagem: string } {
+  const motivo = MOTIVO_FALHA_PENDENTE.get(token) ?? "nao_encontrado";
+  MOTIVO_FALHA_PENDENTE.delete(token);
+  if (motivo === "expirado") {
+    return { erro: "post_expirado", mensagem: "Esse pedido de post passou de 2 horas e foi encerrado. Refaça o pedido. Nada foi publicado." };
+  }
+  if (motivo === "sem_vinculo_midia") {
+    return { erro: "sem_vinculo_midia", mensagem: "Esse pedido ficou sem mídia identificada e por segurança não pode publicar. Refaça o pedido informando o código da mídia. Nada foi publicado." };
+  }
+  if (motivo === "erro_banco") {
+    return { erro: "falha_consulta", mensagem: "Não consegui consultar esse pedido de post agora. Nada foi publicado." };
+  }
+  if (tokenSemPrefixo) {
+    return { erro: "token_e_id_de_midia", mensagem: "Isso parece o código de uma *mídia*, não de um *pedido de post*. Me diga qual pedido de post confirmar (o código começa com `p_`). Nada foi publicado." };
+  }
+  return { erro: "post_nao_encontrado", mensagem: "Não achei esse pedido de post. Nada foi publicado." };
+}
+
 async function loadPendingSocialPost(token: string, userId: string): Promise<PendingSocialPost | null> {
   const { data, error } = await sb
     .from("social_posts_queue")
@@ -3142,16 +3180,21 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
 
   if (error) {
     console.warn("[social_confirm][load_error]", error.message);
+    MOTIVO_FALHA_PENDENTE.set(token, "erro_banco");
     return null;
   }
   const rows = data ?? [];
-  if (rows.length === 0) return null;
+  if (rows.length === 0) {
+    MOTIVO_FALHA_PENDENTE.set(token, "nao_encontrado");
+    return null;
+  }
 
   const createdAt = new Date(rows[0].created_at).getTime();
   if (Number.isFinite(createdAt) && Date.now() - createdAt > SOCIAL_CONFIRMATION_TTL_MS) {
     await sb.from("social_posts_queue")
       .update({ status: "cancelado", error_message: "token_expirado", updated_at: new Date().toISOString() })
       .in("id", rows.map((r: any) => r.id));
+    MOTIVO_FALHA_PENDENTE.set(token, "expirado");
     return null;
   }
 
@@ -3164,10 +3207,13 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
   const assetIdReidratado = (rows[0] as any).asset_id;
   const assetTipoReidratado = (rows[0] as any).asset_tipo;
 
+  // Barreira anti-vazamento: sem ID e tipo de mídia, não confirma. NUNCA relaxar.
   if (!isUuid(assetIdReidratado) || !["foto", "video"].includes(assetTipoReidratado)) {
     console.error("[social_confirm][asset_binding_missing]", { token, userId });
+    MOTIVO_FALHA_PENDENTE.set(token, "sem_vinculo_midia");
     return null;
   }
+
 
   return {
     produto: {
@@ -3556,32 +3602,49 @@ function cleanMediaPostLegenda(text: string): string | undefined {
   return legenda;
 }
 
+// Lê o identificador da mídia SOMENTE do texto da mensagem do turno atual.
+// Nunca do histórico, nunca de resumo, nunca de contexto acumulado — isso seria
+// "a última mídia" com outro nome.
+// Ajuste 3: hex solto no meio da frase NÃO conta. O código só vale se vier
+// rotulado (ID / código / cod / #) ou se a mensagem inteira for só o código.
+function extrairIdentificadorMidiaDoTurno(texto: string): { uuid?: string; curto?: string } {
+  const cru = String(texto || "").trim();
+  const uuid = cru.match(/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i)?.[0];
+  if (uuid) return { uuid };
+  const soOCodigo = cru.match(/^\*?([0-9a-f]{8})\*?$/i)?.[1];
+  if (soOCodigo) return { curto: soOCodigo.toLowerCase() };
+  const rotulado = cru.match(/\b(?:id|c[oó]digo|cod)\b\s*[:#-]?\s*\*?([0-9a-f]{8})\*?\b/i)?.[1]
+    ?? cru.match(/#\s*\*?([0-9a-f]{8})\*?\b/i)?.[1];
+  return rotulado ? { curto: rotulado.toLowerCase() } : {};
+}
+
 async function buscarMidiaIdentificadaParaPostagem(
   userId: string,
   texto: string,
 ): Promise<{ id: string; tipo: string; created_at: string } | null> {
-  const uuid = texto.match(/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i)?.[0];
-  const curto = texto.match(/(?:\bID\s*[:#-]?\s*|\b)([0-9a-f]{8})\b/i)?.[1]?.toLowerCase();
+  const { uuid, curto } = extrairIdentificadorMidiaDoTurno(texto);
   if (!uuid && !curto) return null;
 
+  // Ajuste 4: o ID curto são os 8 primeiros caracteres do UUID — filtra no banco
+  // por prefixo. Sem limit(200) e sem filtro em memória, que perdia mídia antiga.
   let query = sb
     .from("midias_whatsapp")
     .select("id, tipo, created_at")
     .eq("user_id", userId)
     .in("tipo", ["foto", "video"])
     .not("status", "ilike", "%bloquead%");
-  if (uuid) query = query.eq("id", uuid);
-  const { data, error } = await query.order("created_at", { ascending: false }).limit(uuid ? 1 : 200);
+  query = uuid ? query.eq("id", uuid) : query.like("id", `${curto}%`);
+  const { data, error } = await query.order("created_at", { ascending: false }).limit(5);
   if (error) {
     console.warn("[pietro][forced_social_post][midia_id_error]", error.message);
     return null;
   }
-  const encontrados = uuid
-    ? (data ?? [])
-    : (data ?? []).filter((item: any) => idCurto(item.id).toLowerCase() === curto);
+  const encontrados = data ?? [];
+  // Mais de uma correspondência = ambíguo. Ambíguo não publica.
   if (encontrados.length !== 1) return null;
   return encontrados[0] as { id: string; tipo: string; created_at: string };
 }
+
 
 // ---- Estado pendente de escolha de FORMATO (feed/story) — Etapa 2 ----
 // Quando o dono manda foto + "posta no Instagram" sem dizer formato, guardamos
@@ -3747,8 +3810,11 @@ function formatSocialPostToolResult(raw: string): string {
 
 function detectSocialPostConfirmation(text: string): { token: string; cancelar?: boolean } | null {
   const normalized = normalizePt(text || "");
-  const token = (text || "").match(/\b[a-f0-9]{8}\b/i)?.[0];
+  // Aceita o código do pedido com prefixo (p_xxxxxxxx) e, até a data de corte,
+  // o formato antigo sem prefixo.
+  const token = (text || "").match(/\bp_[a-f0-9]{8}\b/i)?.[0] ?? (text || "").match(/\b[a-f0-9]{8}\b/i)?.[0];
   if (!token) return null;
+
   if (/\b(cancela|cancelar|nao posta|nao publicar|descarta)\b/.test(normalized)) return { token, cancelar: true };
   if (/\b(pode postar|confirma|confirmar|manda ver|publica|publique|sim|aprovado)\b/.test(normalized)) return { token };
   return null;
@@ -3825,7 +3891,7 @@ async function findLatestPendingSocialToken(userId: string): Promise<string | nu
     console.warn("[social_pending][latest_token_error]", error.message);
     return null;
   }
-  return data?.[0]?.error_message?.match(/jarvis_token:([a-f0-9]{8})/i)?.[1]?.toLowerCase() || null;
+  return data?.[0]?.error_message?.match(/jarvis_token:((?:p_)?[a-f0-9]{8})/i)?.[1]?.toLowerCase() || null;
 }
 
 async function updatePendingSocialPostMarker(token: string, pending: PendingSocialPost): Promise<void> {
@@ -3905,6 +3971,67 @@ async function toolPublicarLinkedin(
   }
 }
 
+// Palavras que NÃO nomeiam produto. Elas nunca podem virar busca no catálogo:
+// era assim que "posta isso" achava um produto qualquer e montava o post errado.
+const TERMOS_GENERICOS_PRODUTO = new Set([
+  "isso", "isto", "esse", "essa", "este", "esta", "aquilo", "aquele", "aquela",
+  "foto", "imagem", "video", "midia", "arquivo", "post", "conteudo", "material",
+  "o video", "o post", "a foto", "a imagem", "a midia", "esse video", "esse post",
+  "essa foto", "essa imagem", "o ultimo", "a ultima", "ultimo", "ultima",
+]);
+
+function ehTermoGenericoDeProduto(q: string): boolean {
+  const n = normalizePt(q).replace(/[^a-z0-9\s]/g, "").trim();
+  if (!n || n.length < 3) return true;
+  return TERMOS_GENERICOS_PRODUTO.has(n);
+}
+
+/**
+ * Canoniza a foto do produto do catálogo como item da biblioteca de mídias da conta.
+ * Reaproveita o registro quando a mesma foto do mesmo dono já existe; nunca reaproveita
+ * item bloqueado. Sem isso o pedido nasceria sem vínculo e não poderia publicar.
+ */
+async function resolverAssetDoProduto(
+  userId: string,
+  produto: any,
+): Promise<{ id: string; tipo: "foto" } | null> {
+  const url = String(produto?.imagem_url || "").trim();
+  if (!url) return null;
+  try {
+    const { data: existente } = await sb
+      .from("midias_whatsapp")
+      .select("id, status")
+      .eq("user_id", userId)
+      .eq("midia_url", url)
+      .eq("tipo", "foto")
+      .not("status", "ilike", "%bloquead%")
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (existente?.[0]?.id) return { id: existente[0].id as string, tipo: "foto" };
+
+    const { data: novo, error } = await sb
+      .from("midias_whatsapp")
+      .insert({
+        user_id: userId,
+        origem: "catalogo_produto",
+        tipo: "foto",
+        midia_url: url,
+        contexto_original: String(produto?.nome || "").slice(0, 300),
+        status: "pendente",
+      })
+      .select("id")
+      .single();
+    if (error || !novo?.id) {
+      console.error("[postar_redes][asset_produto_falhou]", error?.message);
+      return null;
+    }
+    return { id: novo.id as string, tipo: "foto" };
+  } catch (e) {
+    console.error("[postar_redes][asset_produto_erro]", (e as Error).message);
+    return null;
+  }
+}
+
 async function toolPostarRedesSociais(
   args: { produto: string; tom?: string; redes?: string[]; incluir_cta_whatsapp?: boolean },
   ctx: { userId: string; fromNumber: string },
@@ -3914,6 +4041,14 @@ async function toolPostarRedesSociais(
     pendingCleanup();
     const q = (args?.produto || "").trim();
     if (!q) return JSON.stringify({ erro: "informe qual produto postar" });
+    // Sem produto nomeado, este caminho não roda. Nada de "o produto do contexto".
+    if (ehTermoGenericoDeProduto(q)) {
+      return JSON.stringify({
+        erro: "produto_nao_nomeado",
+        mensagem: "Não entendi de qual item é o post. Se for uma mídia que geramos, me manda o código dela (8 caracteres). Se for produto do catálogo, me diga o nome do produto. Nada foi preparado.",
+      });
+    }
+
 
     const redesValidas = ["facebook", "instagram", "tiktok", "linkedin"];
     const redes = (args?.redes && args.redes.length > 0 ? args.redes : ["facebook", "instagram", "tiktok", "linkedin"])
@@ -3964,14 +4099,28 @@ async function toolPostarRedesSociais(
       }
     }
 
-    const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    const pending: PendingSocialPost = { produto: prod, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), incluirCtaWhatsapp: incluirCta };
+    // Vínculo forte OBRIGATÓRIO: a foto do produto é canonizada como item da
+    // biblioteca desta conta, e o pedido nasce apontando para esse ID.
+    // Sem vínculo, não existe pedido — ele nasceria impossível de publicar.
+    const assetProduto = await resolverAssetDoProduto(ctx.userId, prod);
+    if (!assetProduto) {
+      return JSON.stringify({
+        erro: "midia_aprovada_nao_identificada",
+        mensagem: `Não consegui identificar a mídia aprovada do produto "${prod.nome}". Nada foi preparado nem publicado.`,
+      });
+    }
+
+    const token = novoTokenPost();
+    const pending: PendingSocialPost = { produto: prod, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), incluirCtaWhatsapp: incluirCta, formato: "feed", midiaTipo: "foto", assetId: assetProduto.id, assetTipo: assetProduto.tipo };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
+
 
     return JSON.stringify({
       status: "aguardando_escolha_variante",
       token,
+      origem_do_post: `produto do catálogo: ${prod.nome}`,
+      midia_vinculada: { id_curto: assetProduto.id.slice(0, 8).toUpperCase(), tipo: "foto", url: prod.imagem_url },
       produto: { nome: prod.nome, preco: prod.preco, imagem_url: prod.imagem_url, link: prod.link },
       tom,
       redes,
@@ -3979,6 +4128,8 @@ async function toolPostarRedesSociais(
       opcao_ativa: "A",
       cta_whatsapp: incluirCta,
       cta_nota: ctaNota,
+      instrucao_procedencia: `OBRIGATÓRIO: antes das opções, escreva a linha "Post do produto *${prod.nome}* (mídia ${assetProduto.id.slice(0, 8).toUpperCase()}, foto)". O dono precisa ver de onde veio o post ANTES de confirmar.`,
+
       instrucoes: `REGRA DURA: mostre os TEXTOS COMPLETOS de cada opção, exatamente como sairão publicados — NUNCA um resumo, descrição da abordagem ou rótulo tipo "(Direta): foco em...". Se ficarem longos, mande uma mensagem por opção. Mostre as 3 OPÇÕES (A, B, C) de forma clara, uma em cada bloco separado, usando os textos de \`variantes\` (se houver mais de uma rede, mostre por rede — mas se o texto for parecido entre redes, mostre 1 vez só). Formato exemplo:\n\n*Opção A — Direta*\n<texto A>\n\n*Opção B — História*\n<texto B>\n\n*Opção C — Interativa*\n<texto C>\n\nDepois pergunte: "Qual você prefere? Responde *A*, *B* ou *C*. Ou 'pode postar' pra publicar a A."\n${incluirCta ? "" : "Se ainda não incluiu CTA de WhatsApp, pergunte também se quer incluir. "}Quando o dono responder "A" / "B" / "C" / "opção B" etc, chame escolher_variante_post com token="${token}" e opcao=<letra>. Se ele mandar ajuste de texto, chame revisar_post_pendente. Se confirmar ('pode postar'), chame confirmar_postagem_redes.`,
     });
   } catch (e) {
@@ -3993,10 +4144,12 @@ async function toolConfirmarPostagemRedes(
 ): Promise<string> {
   if (!isOwner(ctx)) return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Essa ação é restrita ao responsável da conta." });
   pendingCleanup();
-  const token = (args?.token || "").trim().toLowerCase();
-  if (!/^[a-f0-9]{8}$/.test(token)) return JSON.stringify({ erro: "token inválido" });
+  const tk = normalizarTokenPost(args?.token);
+  if (!tk.token) return JSON.stringify({ erro: tk.erro, mensagem: tk.mensagem });
+  const token = tk.token;
   const p = PENDING_POSTS.get(token) ?? (await loadPendingSocialPost(token, ctx.userId));
-  if (!p) return JSON.stringify({ erro: "token não encontrado ou expirado. Refaça o pedido de postagem." });
+  if (!p) return JSON.stringify(mensagemFalhaPendente(token, !!tk.semPrefixo));
+
   if (p.userId !== ctx.userId) return JSON.stringify({ erro: "token pertence a outro usuário" });
   if (args?.cancelar) {
     PENDING_POSTS.delete(token);
@@ -4089,14 +4242,16 @@ async function toolRevisarPostPendente(
 ): Promise<string> {
   if (!isOwner(ctx)) return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Essa ação é restrita ao responsável da conta." });
   pendingCleanup();
-  const token = (args?.token || "").trim().toLowerCase();
+  const tk = normalizarTokenPost(args?.token);
   const ajuste = (args?.ajuste || "").toString().trim();
   const toggleCta = typeof args?.incluir_cta_whatsapp === "boolean";
-  if (!/^[a-f0-9]{8}$/.test(token)) return JSON.stringify({ erro: "token inválido" });
+  if (!tk.token) return JSON.stringify({ erro: tk.erro, mensagem: tk.mensagem });
+  const token = tk.token;
   if (ajuste.length < 2 && !toggleCta) return JSON.stringify({ erro: "ajuste vazio — descreva o que mudar" });
 
   const p = PENDING_POSTS.get(token) ?? (await loadPendingSocialPost(token, ctx.userId));
-  if (!p) return JSON.stringify({ erro: "token não encontrado ou expirado. Refaça o pedido de postagem." });
+  if (!p) return JSON.stringify(mensagemFalhaPendente(token, !!tk.semPrefixo));
+
   if (p.userId !== ctx.userId) return JSON.stringify({ erro: "token pertence a outro usuário" });
 
   // Reconstroi produtoLike com descrição/contexto atual — não repergunta contexto.
@@ -4219,14 +4374,16 @@ async function toolEscolherVariantePost(
 ): Promise<string> {
   if (!isOwner(ctx)) return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Essa ação é restrita ao responsável da conta." });
   pendingCleanup();
-  const token = (args?.token || "").trim().toLowerCase();
+  const tk = normalizarTokenPost(args?.token);
   const opcaoRaw = (args?.opcao || "").toString().trim().toUpperCase();
   const opcao = (opcaoRaw.match(/[ABC]/)?.[0] || "") as "A" | "B" | "C" | "";
-  if (!/^[a-f0-9]{8}$/.test(token)) return JSON.stringify({ erro: "token inválido" });
+  if (!tk.token) return JSON.stringify({ erro: tk.erro, mensagem: tk.mensagem });
+  const token = tk.token;
   if (!opcao) return JSON.stringify({ erro: "opção inválida — use A, B ou C" });
 
   const p = PENDING_POSTS.get(token) ?? (await loadPendingSocialPost(token, ctx.userId));
-  if (!p) return JSON.stringify({ erro: "token não encontrado ou expirado" });
+  if (!p) return JSON.stringify(mensagemFalhaPendente(token, !!tk.semPrefixo));
+
   if (p.userId !== ctx.userId) return JSON.stringify({ erro: "token pertence a outro usuário" });
   if (!p.variantes) return JSON.stringify({ erro: "esse post não tem variantes — use confirmar_postagem_redes direto" });
 
@@ -4648,7 +4805,7 @@ async function toolPostarMidiaBiblioteca(
       }
     }
 
-    const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+    const token = novoTokenPost();
     const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo, assetId: asset.id, assetTipo: asset.tipo, incluirCtaWhatsapp: incluirCta, briefing: briefing || undefined };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
@@ -6370,8 +6527,13 @@ async function callGemini(
       return { text: await confirmarRascunhoVideo(toolCtx, true) };
     }
     if (remetenteEhDono && decisaoIntencao.intent === "aprovar_video" && pendingVideoDraft) {
+      // Post pendente E roteiro pendente ao mesmo tempo: não adivinha, pergunta.
+      if (latestPendingSocialToken) {
+        return { text: "Tenho duas coisas esperando você: um *post* pronto pra publicar e um *roteiro de vídeo* pra renderizar. Qual você quer agora — *publicar o post* ou *renderizar o vídeo*?" };
+      }
       return { text: await confirmarRascunhoVideo(toolCtx) };
     }
+
     // Correção por texto do rascunho pendente ("troca a cor principal pro
     // vermelho", "tira a logo") antes de gastar o render.
     if (
@@ -6435,8 +6597,24 @@ async function callGemini(
       return { text: formatSocialPostToolResult(variantResult) };
     }
 
+    // Confirmação CURTA ("sim", "pode postar", "ok") com post pendente:
+    // é intenção de PUBLICAR — não pode ser engolida pela deduplicação de
+    // pedidos de vídeo ("esse mesmo vídeo já foi pedido...").
+    const confirmacaoCurta = typeof userContent === "string"
+      && /^(sim|s|ok|okay|isso|pode postar|pode publicar|publica|publique|posta|postar|manda|manda ver|confirma|confirmar|aprovado|vai|bora)[.!\s]*$/i.test(userContent.trim());
+    if (remetenteEhDono && confirmacaoCurta && latestPendingSocialToken) {
+      // Post E roteiro de vídeo pendentes ao mesmo tempo: não adivinha, pergunta.
+      if (pendingVideoDraft) {
+        return { text: "Tenho duas coisas esperando você: um *post* pronto pra publicar e um *roteiro de vídeo* pra renderizar. Qual você quer agora — *publicar o post* ou *renderizar o vídeo*?" };
+      }
+      console.log("[pietro][forced_social_confirm_curto]", { token: latestPendingSocialToken });
+      const confirmResult = await toolConfirmarPostagemRedes({ token: latestPendingSocialToken }, toolCtx);
+      return { text: formatSocialPostToolResult(confirmResult) };
+    }
+
     // 0) Postagem em redes sociais: atalho determinístico para não deixar o modelo "prometer" preview sem chamar a tool.
     const postConfirmation = detectSocialPostConfirmation(userContent);
+
     if (postConfirmation) {
       if (!remetenteEhDono) {
         return { text: "Essa publicação só pode ser autorizada pelo responsável da conta. Posso encaminhar seu pedido para ele, se quiser." };
@@ -6559,12 +6737,17 @@ async function callGemini(
         return { text: formatSocialPostToolResult(postResult) };
       }
 
-      if (!socialPost.temProduto) {
-        return { text: "Preciso do ID da mídia para não publicar o arquivo errado. Responda com o código de 8 caracteres que apareceu junto do vídeo. Nada foi publicado." };
+      // Sem mídia resolvida no TURNO ATUAL: pergunta. Nunca cai no catálogo —
+      // era exatamente assim que "posta isso" achava um produto de outro nicho.
+      // Só vai ao catálogo quando o dono NOMEIA o produto.
+      const produtoNomeado = socialPost.temProduto && !ehTermoGenericoDeProduto(socialPost.produto || "");
+      if (!produtoNomeado) {
+        return { text: "Qual mídia você quer publicar? Me manda o código de 8 caracteres que apareceu junto dela (ex.: `ID 727171F0`). Se for produto do catálogo, diga o nome do produto. Nada foi publicado." };
       }
 
       const postResult = await toolPostarRedesSociais(socialPost, toolCtx);
       return { text: formatSocialPostToolResult(postResult) };
+
     }
 
     // Texto puro do turno (turno multimodal chega como array de partes).
@@ -8606,7 +8789,7 @@ Regras:
           .limit(10);
         if (pendRows && pendRows.length > 0) {
           const marker = (pendRows[0] as any).error_message as string | null;
-          const tokMatch = marker?.match(/jarvis_token:([a-f0-9]{8})/i);
+          const tokMatch = marker?.match(/jarvis_token:((?:p_)?[a-f0-9]{8})/i);
           const token = tokMatch?.[1];
           if (token) {
             const formato = formatoFromPendingMarker(marker);
