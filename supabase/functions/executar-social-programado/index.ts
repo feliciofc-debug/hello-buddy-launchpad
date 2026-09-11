@@ -41,11 +41,14 @@ serve(async (req) => {
     // ============================
     // PARTE 1: Publicar posts pendentes da social_posts_queue
     // ============================
+    // Só publica o que tem horário vencido. `scheduled_at` nulo não é "publicar já":
+    // essa leitura antecipava publicações que ninguém pediu.
     const { data: pendingPosts, error: fetchError } = await supabase
       .from('social_posts_queue')
       .select('*')
       .eq('status', 'pendente')
-      .or(`scheduled_at.is.null,scheduled_at.lte.${now.toISOString()}`)
+      .not('scheduled_at', 'is', null)
+      .lte('scheduled_at', now.toISOString())
       .limit(10)
 
     if (fetchError) {
@@ -57,6 +60,29 @@ serve(async (req) => {
 
       for (const post of pendingPosts) {
         try {
+          // 🛡️ Linha originada no Jarvis só publica com asset + aprovação vinculados.
+          if (post.origem_fluxo === 'jarvis' && (!post.asset_id || !post.approval_token || !post.approved_at)) {
+            console.error(`⛔ post ${post.id} sem vínculo de mídia/aprovação — cancelado`)
+            await supabase.from('social_posts_queue')
+              .update({ status: 'cancelado', error_message: 'sem_vinculo_de_asset_ou_aprovacao', updated_at: now.toISOString() })
+              .eq('id', post.id)
+            results.push({ id: post.id, platform: post.platform, success: false, reason: 'sem_vinculo_de_asset_ou_aprovacao' })
+            continue
+          }
+
+          // 🛡️ Arquivo tem que corresponder ao tipo: vídeo jamais entra como imagem.
+          const urlMidia = String(post.video_url || post.image_url || '')
+          const arquivoEhVideo = /\.(mp4|mov|m4v|webm|avi|mkv|3gp)(\?|$)/i.test(urlMidia)
+          const tipoAprovado = post.approved_media_type || post.asset_tipo || null
+          if ((tipoAprovado === 'video' && !arquivoEhVideo) || (tipoAprovado === 'foto' && arquivoEhVideo) || (!post.video_url && arquivoEhVideo)) {
+            console.error(`⛔ post ${post.id} bloqueado: tipo=${tipoAprovado} arquivo=${urlMidia}`)
+            await supabase.from('social_posts_queue')
+              .update({ status: 'cancelado', error_message: 'arquivo_nao_corresponde_ao_tipo_aprovado', updated_at: now.toISOString() })
+              .eq('id', post.id)
+            results.push({ id: post.id, platform: post.platform, success: false, reason: 'arquivo_nao_corresponde_ao_tipo_aprovado' })
+            continue
+          }
+
           if (post.produto_id && post.produto_source === 'produtos') {
             const { data: produto, error: produtoError } = await supabase
               .from('produtos')
