@@ -7,6 +7,7 @@ import { buildSystemPrompt, ADMIN_AMZ_USER_ID } from "../_shared/agent-soul.ts";
 import { buildAmzContext, OWNER_PHONE, resolveTenantOwner, isAmzOwnerAltPhone } from "../_shared/amz-context.ts";
 import { getTenantBusinessContext, buildCarouselPrompt } from "../_shared/business-context.ts";
 import { classificarIntencao, ferramentaPermitida, mensagemDeErroParaUsuario } from "../_shared/jarvis-intent.ts";
+import { pareceResumoDeOpcoes, segmentoIntruso } from "../_shared/aprovacao-integra.ts";
 
 // ---------------------------------------------------------------------------
 // Multi-tenant owner registry (populado no início de cada processMessage).
