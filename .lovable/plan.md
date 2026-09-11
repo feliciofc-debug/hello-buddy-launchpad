@@ -1,70 +1,104 @@
-# Corrigir o post do WhatsApp que nunca confirma
+# Post pelo WhatsApp — vínculo de mídia, roteamento e mensagens (v2)
 
-Sua análise está certa em todos os pontos. Confirmei no arquivo `whatsapp-cloud-inbound-processor/index.ts`:
-o caminho do catálogo grava o pedido de post **sem** identificação da mídia, e a checagem de segurança
-(correta) recusa esse pedido na confirmação. Resultado: 100% dos posts criados por esse caminho falham.
+Plano revisado com os três bloqueios. Nada aplicado ainda.
 
-## Respostas diretas às suas perguntas
+## Bloqueio 1 — por que "posta isso" foi para o catálogo
 
-**Existe outro ponto que cria pedido pendente?** Não. Só dois: linha 3969 (catálogo, quebrado) e
-linha 4653 (mídia da biblioteca, correto). Varri o arquivo por `status: "aguardando_confirmacao"` —
-os outros resultados são leituras/atualizações, não criação.
+Existem duas ferramentas de post e a escolha é do modelo:
 
-**De onde sai a identificação da mídia no caminho do catálogo?** Esta é a parte de risco e a solução é
-canonizar: o produto do catálogo tem uma foto (uma URL), e URL não é identidade. Então, antes de criar o
-pedido, a foto do produto passa a ser **registrada como item da biblioteca de mídias daquela conta**
-(reaproveitando o registro se a mesma foto do mesmo produto já estiver lá). O pedido de post nasce
-apontando para esse registro. A partir daí, geração, aprovação e publicação usam o mesmo identificador —
-igual ao caminho que já funciona. Se o produto não tiver foto, ou o registro falhar, a preparação
-**falha na hora**, com a frase "não consegui identificar a mídia aprovada". Nunca mais nasce um pedido
-sem identificação.
+- caminho da biblioteca (`postar_midia_biblioteca`, linha 5336): **exige o identificador da mídia**
+  (`midia_id` obrigatório, linha 5341).
+- caminho do catálogo (`postar_redes_sociais`, linha 5260): exige apenas uma **palavra-chave de produto**
+  (linha 5270, `required: ["produto"]`).
 
-**Decisão sobre o item 2 (prefixo):** concordo, com o prefixo `p_`. O código do pedido passa a ser
-`p_` + 8 caracteres; o código da mídia continua 8 caracteres em maiúsculas. Aceito também o código antigo
-sem prefixo por 2 horas (o tempo de vida do pedido), para não quebrar conversas em andamento. Se chegar um
-código de mídia no lugar do código do pedido, a resposta é: "esse é o código de uma mídia, não de um
-pedido de post — me diga qual post confirmar".
+Na sua conversa, a mensagem do vídeo trouxe o **código curto** (`727711F0`), não o identificador completo.
+O modelo não tinha o identificador completo para chamar o caminho da biblioteca, então caiu no caminho
+que aceita texto livre. Lá, a busca por produto é aproximada: ela devolve o "melhor parecido" do catálogo
+mesmo quando o pedido não nomeia produto nenhum — e devolveu um item de odontologia. O vídeo da
+veterinária nunca entrou no post.
 
-## O que muda
+Ou seja: o erro de token foi o que impediu a publicação errada. Concordo integralmente com o bloqueio.
 
-1. **Preparação do post pelo catálogo (linha ~3968)** — resolve e registra a mídia aprovada,
-   passa identificação e tipo no pedido; sem isso, erro imediato e nenhum pedido criado.
-2. **Checagem de segurança na leitura (linha 3167)** — fica como está. O erro é de quem grava.
-3. **Mensagens de erro** — três causas passam a ter três frases distintas:
-   - pedido inexistente: "não achei esse pedido de post"
-   - pedido vencido: "esse pedido passou de 2 horas — refaça"
-   - sem mídia identificada: "esse pedido ficou sem mídia identificada e não pode publicar; refaça"
-   - código de mídia enviado como código de pedido: frase própria, explicando a diferença.
-4. **Código do pedido com prefixo `p_`** e validação ajustada nas quatro ferramentas que recebem código
-   (confirmar, escolher variante, revisar, cancelar).
-5. **"sim" nunca cai na geração de vídeo** — quando existe pedido de post aguardando confirmação,
-   uma resposta curta de confirmação vira publicação, e a ferramenta de vídeo animado é bloqueada
-   naquele turno. Assim a mensagem "esse mesmo vídeo já foi pedido nos últimos minutos" não aparece
-   mais em resposta a um "sim".
+### Correções do Bloqueio 1
 
-## Detalhes técnicos
+1. **Pedido de post logo depois de mídia aprovada vai obrigatoriamente para a biblioteca.** Antes de o
+   modelo escolher ferramenta, o processador resolve o código curto/identificador citado na conversa
+   (função `buscarMidiaIdentificadaParaPostagem`, já existente, linha 3559) e força o caminho da
+   biblioteca com aquele identificador. O caminho do catálogo fica **indisponível naquele turno**.
+2. **Caminho do catálogo só com produto nomeado.** `postar_redes_sociais` passa a recusar pedido cuja
+   palavra-chave seja genérica ("isso", "esse vídeo", "o post", "a mídia", "aquilo") ou vazia, e a recusar
+   correspondência aproximada fraca: se a busca não devolver um produto claramente correspondente ao nome
+   dito, a resposta é "de qual produto do catálogo é o post?" — não escolhe nada.
+3. **Prévia diz a procedência.** Todo post do catálogo passa a abrir com
+   `post do produto: <nome do produto>` (e o post de mídia continua mostrando código curto, tipo e nome
+   do arquivo). Se a procedência não bater, você cancela na primeira linha.
+4. Nenhum "mais recente", "último produto" ou "produto do contexto" em qualquer ramo. Sem identificação,
+   o Jarvis pergunta.
 
-- Novo helper `resolverAssetDoProduto(userId, produto)` no processador: procura em `midias_whatsapp`
-  por `user_id + midia_url` igual à foto do produto; se não existir, insere com
-  `origem: "catalogo_produto"`, `tipo: "foto"`, `status: "pendente"`, `contexto_original` = nome do
-  produto. Retorna `{ id, tipo }` ou erro. Nunca reaproveita item com `status` bloqueado.
-- `toolPostarRedesSociais` (3968): chama o helper antes de montar `pending`; adiciona
-  `assetId`, `assetTipo: "foto"`, `midiaTipo: "foto"` — mesmo shape da linha 4652.
-- `loadPendingSocialPost`: retorna `{ erro: "nao_encontrado" | "expirado" | "sem_vinculo_midia" }`
-  em vez de `null`, para as mensagens ficarem distintas; `console.error` mantém
-  `[social_confirm][asset_binding_missing]`.
-- Token: `const token = "p_" + crypto.randomUUID().replace(/-/g,"").slice(0,8)`; regex passa a
-  `/^(p_)?[a-f0-9]{8}$/`; se o texto casar `/^[A-F0-9]{8}$/` (maiúsculo, formato de ID de mídia),
-  responde erro `token_e_id_de_midia`.
-- Dedupe: o guard de confirmação pendente (bloco `pendingConfirmBlock`, ~linha 8596) passa a também
-  desabilitar `criar_video_animado` na lista de ferramentas daquele turno quando o texto é confirmação
-  curta ("sim", "ok", "pode postar", "publica", "manda", "vai"). A trava de duplicidade em
-  `_shared/video-motion-enfileirar.ts` não muda.
-- Nenhuma alteração em arquivos de checkout/pagamento.
+## Bloqueio 2 — escolho a (a)
 
-## Como validar (o seu roteiro)
+Removo o fallback de "última foto dos últimos 30 minutos" em `toolEditarImagem` (linhas 1136–1146).
+Sem imagem no turno, a resposta é o bloco `sem_imagem` já existente (linhas 1151–1156), pedindo a foto.
+Não vou usar a (b): concordo que ela deixa o canal aberto.
 
-1. Pedir vídeo pelo WhatsApp e aprovar.
-2. Pedir o post, escolher B, responder "sim" → publica.
-3. Rodar sua query e conferir `asset_id` preenchido (UUID) e `approval_token` começando com `p_`.
-4. Mandar um código curto de mídia no lugar do código do pedido → resposta explica a diferença.
+Com o fallback fora, o registro da foto do produto na biblioteca deixa de alimentar vazamento. E o
+registro passa a ter `origem: "catalogo_produto"` de qualquer forma, para auditoria.
+
+## Bloqueio 3 — prefixo decide, não o caixa
+
+Ordem correta na confirmação (linha 3997 em diante), sobre a **string crua**, antes de qualquer
+normalização:
+
+1. tem `p_` → é código de pedido; segue.
+2. não tem `p_` e casa 8 hex (qualquer caixa) → tenta como código antigo; **se não achar pedido**,
+   responde "isso parece o código de uma mídia, não de um pedido de post — me diga qual post confirmar".
+3. nada disso → "código inválido".
+
+A compatibilidade sem prefixo fica com data de corte explícita no código:
+
+```ts
+// Compatibilidade com códigos antigos sem prefixo. Remover após 2026-10-15.
+const ACEITA_TOKEN_SEM_PREFIXO_ATE = Date.parse("2026-10-15T00:00:00Z");
+```
+
+Passada a data, código sem prefixo é recusado com a mensagem do item 2.
+
+## Os três itens menores
+
+- **Limpeza:** rodo o seu `update` no mesmo deploy, cancelando todo `aguardando_confirmacao` com
+  `asset_id` nulo, com `error_message = 'sem_vinculo_midia_pre_correcao'`.
+- **`status: "pendente"`:** conferido — `resolverAsset` (`_shared/publicacao-por-id.ts`, linha 80) só
+  considera bloqueado o status que casa `/bloquead/i`. "pendente" publica normalmente.
+- **Roteiro e post pendentes juntos:** sem precedência adivinhada. Havendo os dois, o "sim" não executa
+  nada e o Jarvis responde "quer publicar o post ou renderizar o vídeo?", com os dois identificados
+  (código do post e código curto da mídia). Só depois da escolha a ferramenta roda.
+
+## Resumo das mudanças por arquivo
+
+`supabase/functions/whatsapp-cloud-inbound-processor/index.ts`
+- 1136–1146: remove fallback de foto recente.
+- ~3560: reaproveita `buscarMidiaIdentificadaParaPostagem` para forçar o caminho da biblioteca.
+- ~3133–3175 (`loadPendingSocialPost`): retorna motivo (`nao_encontrado` / `expirado` /
+  `sem_vinculo_midia`) em vez de `null`.
+- ~3920 (`postar_redes_sociais`): recusa palavra-chave genérica e correspondência fraca.
+- ~3967: token com prefixo `p_`.
+- ~3968: resolve e registra a mídia aprovada; `assetId`/`assetTipo` obrigatórios; falha imediata se não
+  resolver ("não consegui identificar a mídia aprovada").
+- ~3997 e nas outras três ferramentas de token: validação sobre a string crua, na ordem do Bloqueio 3, com
+  mensagens distintas.
+- ~5260: descrição da ferramenta de catálogo exige produto nomeado.
+- ~8596: guard de pendências — bloqueia geração de vídeo no "sim" e pergunta quando há post e roteiro.
+
+Novo helper `resolverAssetDoProduto(userId, produto)` no mesmo arquivo (procura por
+`user_id + midia_url`; insere com `origem: "catalogo_produto"`, `tipo: "foto"`, `status: "pendente"`).
+
+Nada de checkout/pagamento é tocado. A checagem da linha 3167 continua intacta.
+
+## Validação (seu roteiro)
+
+1. Vídeo de clínica veterinária pelo WhatsApp, aprovar.
+2. Pedir o post desse vídeo → textos só de veterinária; qualquer menção a odonto reprova.
+3. Conferir `asset_id` = identificador do vídeo aprovado e código curto igual ao da mensagem do vídeo.
+4. Só então "sim" → publica.
+5. Mandar código de mídia no lugar do código do pedido → resposta explica a diferença.
+6. Sua query: nenhuma linha nova com `asset_id` nulo.
