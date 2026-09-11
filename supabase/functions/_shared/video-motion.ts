@@ -9,6 +9,7 @@
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { getTenantBusinessContext } from "./business-context.ts";
+import { cortarFrase, textoIncompleto } from "./texto-completo.ts";
 
 export type Mensagem = { de: "dono" | "agente"; texto: string };
 
