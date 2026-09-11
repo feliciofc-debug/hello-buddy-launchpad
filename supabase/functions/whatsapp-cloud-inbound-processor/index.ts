@@ -4907,7 +4907,11 @@ async function confirmarRascunhoVideo(ctx: { userId: string; fromNumber: string 
     .eq("user_id", ctx.userId)
     .eq("status", "aprovando");
   if (error) return `O vídeo foi enfileirado, mas não consegui atualizar o roteiro: ${error.message}`;
-  return `✅ Roteiro aprovado e vídeo enfileirado. Posição na fila: *${r.posicao_fila}*. Vou te enviar o MP4 aqui quando terminar (estimativa: cerca de 4 minutos).`;
+  return `✅ Roteiro aprovado e vídeo enfileirado. Posição na fila: *${r.posicao_fila}*.
+
+${r.cota_aviso}
+
+Vou te enviar o MP4 aqui quando terminar (estimativa: cerca de 4 minutos).`;
 }
 
 const TOOLS = [

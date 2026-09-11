@@ -613,7 +613,7 @@ export const CriarVideoAnimado = () => {
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Não consegui enfileirar');
-      toast.success(`🎬 Vídeo na fila (posição ${data.posicao_fila}). Te aviso quando ficar pronto.`);
+      toast.success(`🎬 Vídeo na fila (posição ${data.posicao_fila}). ${data.cota_aviso || "Te aviso quando ficar pronto."}`);
       setProps(null);
       setTema('');
       // O próximo pedido nasce novamente na identidade oficial. Nenhum dado

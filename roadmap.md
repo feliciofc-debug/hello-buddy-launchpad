@@ -47,3 +47,12 @@
 - [ ] ID curto visível na geração e na confirmação (comparável pelo dono)
 - [ ] Jarvis com publicação desativada até validação concluída
 - [ ] Resposta ao dono: causa do incidente + verificação de impacto em clientes
+
+## Cota configurável de vídeos Motion
+- [x] Remover cota fixa de 5 vídeos do código
+- [x] Deixar administradores ilimitados
+- [x] Configurar limite por plano e exceção por conta
+- [x] Ignorar falhas e cancelamentos na cota
+- [x] Avisar uso e saldo antes do limite
+- [x] Criar área “Cotas de vídeo” no painel administrativo
+- [ ] Validar regras e interface sem iniciar renderizações reais
