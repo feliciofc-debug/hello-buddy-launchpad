@@ -7092,7 +7092,7 @@ async function callGemini(
         forwardAttempted,
       };
     }
-    return { text: appendConfirmCommand(respostaModelo), imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
+    return { text: comCodigoDaMidia(appendConfirmCommand(respostaModelo)), imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
   }
   return { text: appendConfirmCommand("Desculpa, não consegui concluir a pesquisa agora."), imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
 }
