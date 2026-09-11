@@ -8765,7 +8765,7 @@ Regras:
           .limit(10);
         if (pendRows && pendRows.length > 0) {
           const marker = (pendRows[0] as any).error_message as string | null;
-          const tokMatch = marker?.match(/jarvis_token:([a-f0-9]{8})/i);
+          const tokMatch = marker?.match(/jarvis_token:((?:p_)?[a-f0-9]{8})/i);
           const token = tokMatch?.[1];
           if (token) {
             const formato = formatoFromPendingMarker(marker);
