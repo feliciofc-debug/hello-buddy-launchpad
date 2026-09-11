@@ -3749,12 +3749,39 @@ function detectSocialPostIntent(text: string): { produto: string; tom: string; r
   return { produto: temProduto ? produto : "", tom, redes: uniqueStrings(redes), temProduto, formato: formatoPedido };
 }
 
+// Procedência de um pedido pendente — usada nos DOIS caminhos (biblioteca e catálogo).
+function procedenciaDoPending(p: PendingSocialPost) {
+  return {
+    origem: p.origem ?? (p.produto?.source && p.produto.source !== "midias_whatsapp" ? "catalogo" : "biblioteca"),
+    produtoNome: p.produto?.nome,
+    midiaIdCurto: p.assetId ? String(p.assetId).slice(0, 8) : "",
+    midiaTipo: (p.assetTipo || p.midiaTipo || "foto") as "foto" | "video",
+    arquivoNome: p.arquivoNome,
+  };
+}
+
+// Prévia NUNCA sai sem procedência. Erro de procedência tem frase própria;
+// qualquer outro erro é falha técnica, com a mensagem original no log.
+function renderPreviaSegura(raw: string): string {
+  try {
+    return formatSocialPostToolResult(raw);
+  } catch (e) {
+    if (e instanceof PreviaSemProcedenciaError) {
+      console.error("[previa][sem_procedencia]", e.message, raw.slice(0, 400));
+      return "Bloqueei a prévia: o pedido chegou sem a procedência da mídia (origem, código e tipo). Nada foi preparado nem publicado.";
+    }
+    console.error("[previa][falha_tecnica]", (e as Error).message, (e as Error).stack);
+    return "Falha técnica ao montar a prévia. Nada foi preparado nem publicado — o erro foi registrado.";
+  }
+}
+
 function formatSocialPostToolResult(raw: string): string {
   let data: any = null;
   try { data = JSON.parse(raw); } catch { return raw; }
 
   // Novo fluxo: 3 opções A/B/C
   if (data?.status === "aguardando_escolha_variante") {
+    const procedencia = renderProcedencia(data?.procedencia);
     const redes: string[] = Array.isArray(data.redes) ? data.redes : [];
     const variantes = data.variantes || {};
     // Se todas redes têm o mesmo texto por variante, mostra 1 vez só. Senão mostra por rede.
@@ -3774,34 +3801,30 @@ function formatSocialPostToolResult(raw: string): string {
     const baloes = (["A", "B", "C"] as const).map(balaoOpcao).join("<<SPLIT>>");
     const aviso = data?.aviso_formato ? `\n\n_${data.aviso_formato}_` : "";
     const avisoReels = data?.aviso_reels ? `\n_ℹ️ ${data.aviso_reels}_` : "";
-    const ma = data?.midia_aprovacao;
-    const blocoMidia = ma?.id
-      ? `<<SPLIT>>*Mídia deste post*\n🆔 *${ma.id_curto || idCurto(ma.id)}*\n${ma.tipo === "video" ? "Vídeo" : "Imagem"} • ${ma.arquivo_nome || "arquivo"}\nGuarde esse ID: ele precisa aparecer igual na confirmação.`
-      : "";
+    const blocoMidia = `<<SPLIT>>*Mídia deste post*\n${procedencia}\nGuarde esse código: ele precisa aparecer igual na confirmação.`;
     const pergunta = `Esses são os textos exatos que vão ao ar. Qual você prefere? Responde *A*, *B* ou *C*.`;
     return `Preparei 3 opções 👇${aviso}${avisoReels}${blocoMidia}<<SPLIT>>${baloes}<<SPLIT>>${pergunta}`;
   }
 
   if (data?.status === "variante_selecionada") {
+    const procedencia = renderProcedencia(data?.procedencia);
     const opcao = data?.opcao_ativa || "A";
     const preview = Object.entries(data.preview ?? {})
       .map(([rede, script]) => `*${String(rede).toUpperCase()}*\n${script}`)
       .join("\n\n");
-    const ma = data?.midia_aprovacao;
-    const blocoMidia = ma?.id_curto
-      ? `<<SPLIT>>*Confirmação da mídia*\n🆔 *${ma.id_curto}*\n${ma.tipo === "video" ? "Vídeo" : "Imagem"} • ${ma.arquivo_nome || "arquivo"}`
-      : "";
+    const blocoMidia = `<<SPLIT>>*Confirmação da mídia*\n${procedencia}`;
     return `✅ Opção *${opcao}* selecionada.${blocoMidia}<<SPLIT>>${preview}<<SPLIT>>Confira o ID acima. Posso publicar agora? Responde *sim* pra postar ou me diga o ajuste.`;
   }
 
   if (data?.status === "aguardando_confirmacao") {
+    const procedencia = renderProcedencia(data?.procedencia);
     const scripts = Object.entries(data.preview ?? {})
       .map(([rede, script]) => `*${rede.toUpperCase()}*\n${script}`)
       .join("\n\n");
     const avisoReels = data?.aviso_reels ? `\n\n_ℹ️ ${data.aviso_reels}_` : "";
     // 3 balões separados no WhatsApp: (1) preview, (2) convite de edição, (3) comando de confirmação isolado.
     const convite = `Quer ajustar algo antes de postar? Me diga o que mudar (ex: "mais curto", "foca nas tecnologias da AMZ", "tira o ACABA HOJE", "muda o tom pra profissional"). Se estiver bom, responde:`;
-    return `Perfeito, Felicio. Encontrei: *${data.produto?.nome ?? "produto"}*\n\n${scripts}${avisoReels}<<SPLIT>>${convite}<<SPLIT>>pode postar ${data.token}`;
+    return `Perfeito, Felicio.\n${procedencia}\n\n${scripts}${avisoReels}<<SPLIT>>${convite}<<SPLIT>>pode postar ${data.token}`;
   }
 
 
@@ -6547,7 +6570,7 @@ async function callGemini(
     if (plainPostConfirmation && latestPendingSocialToken) {
       console.log("[pietro][forced_social_plain_confirm]", { token: latestPendingSocialToken, cancelar: !!plainPostConfirmation.cancelar });
       const confirmResult = await toolConfirmarPostagemRedes({ token: latestPendingSocialToken, cancelar: plainPostConfirmation.cancelar }, toolCtx);
-      return { text: formatSocialPostToolResult(confirmResult) };
+      return { text: renderPreviaSegura(confirmResult) };
     }
 
     // Vídeo Motion primeiro: é a intenção mais específica. Aprovação e
@@ -6623,7 +6646,7 @@ async function callGemini(
     if (variantChoice) {
       console.log("[pietro][forced_social_variant_choice]", { token: latestPendingSocialToken, opcao: variantChoice });
       const variantResult = await toolEscolherVariantePost({ token: latestPendingSocialToken!, opcao: variantChoice }, toolCtx);
-      return { text: formatSocialPostToolResult(variantResult) };
+      return { text: renderPreviaSegura(variantResult) };
     }
 
     // Confirmação CURTA ("sim", "pode postar", "ok") com post pendente:
@@ -6638,7 +6661,7 @@ async function callGemini(
       }
       console.log("[pietro][forced_social_confirm_curto]", { token: latestPendingSocialToken });
       const confirmResult = await toolConfirmarPostagemRedes({ token: latestPendingSocialToken }, toolCtx);
-      return { text: formatSocialPostToolResult(confirmResult) };
+      return { text: renderPreviaSegura(confirmResult) };
     }
 
     // 0) Postagem em redes sociais: atalho determinístico para não deixar o modelo "prometer" preview sem chamar a tool.
@@ -6650,7 +6673,7 @@ async function callGemini(
       }
       console.log("[pietro][forced_social_confirm]", postConfirmation);
       const confirmResult = await toolConfirmarPostagemRedes(postConfirmation, toolCtx);
-      return { text: formatSocialPostToolResult(confirmResult) };
+      return { text: renderPreviaSegura(confirmResult) };
     }
 
     // Etapa 2: se o dono está respondendo APENAS o formato ("feed" / "story" / "no story"),
@@ -6674,7 +6697,7 @@ async function callGemini(
           formato: standaloneFormat,
           midia_id: pendingChoice.assetId,
         }, toolCtx);
-        return { text: formatSocialPostToolResult(postResult) };
+        return { text: renderPreviaSegura(postResult) };
       }
       // sem ID guardado não há publicação: o fluxo normal segue e pede a mídia
       clearPendingFormatChoice(toolCtx.userId);
@@ -6763,7 +6786,7 @@ async function callGemini(
           formato,
           midia_id: midiaIdentificada.id,
         }, toolCtx);
-        return { text: formatSocialPostToolResult(postResult) };
+        return { text: renderPreviaSegura(postResult) };
       }
 
       // Sem mídia resolvida no TURNO ATUAL: pergunta. Nunca cai no catálogo —
@@ -6775,7 +6798,7 @@ async function callGemini(
       }
 
       const postResult = await toolPostarRedesSociais(socialPost, toolCtx);
-      return { text: formatSocialPostToolResult(postResult) };
+      return { text: renderPreviaSegura(postResult) };
 
     }
 
@@ -6926,7 +6949,7 @@ async function callGemini(
           const parsed = JSON.parse(result);
           const st = parsed?.status;
           if (st === "aguardando_escolha_variante" || st === "variante_selecionada") {
-            return { text: formatSocialPostToolResult(result), imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
+            return { text: renderPreviaSegura(result), imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
           }
         } catch { /* ignore */ }
         messages.push({ role: "tool", tool_call_id: tc.id, content: result });
