@@ -4802,7 +4802,7 @@ async function toolPostarMidiaBiblioteca(
       }
     }
 
-    const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+    const token = novoTokenPost();
     const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo, assetId: asset.id, assetTipo: asset.tipo, incluirCtaWhatsapp: incluirCta, briefing: briefing || undefined };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
@@ -6713,12 +6713,17 @@ async function callGemini(
         return { text: formatSocialPostToolResult(postResult) };
       }
 
-      if (!socialPost.temProduto) {
-        return { text: "Preciso do ID da mídia para não publicar o arquivo errado. Responda com o código de 8 caracteres que apareceu junto do vídeo. Nada foi publicado." };
+      // Sem mídia resolvida no TURNO ATUAL: pergunta. Nunca cai no catálogo —
+      // era exatamente assim que "posta isso" achava um produto de outro nicho.
+      // Só vai ao catálogo quando o dono NOMEIA o produto.
+      const produtoNomeado = socialPost.temProduto && !ehTermoGenericoDeProduto(socialPost.produto || "");
+      if (!produtoNomeado) {
+        return { text: "Qual mídia você quer publicar? Me manda o código de 8 caracteres que apareceu junto dela (ex.: `ID 727171F0`). Se for produto do catálogo, diga o nome do produto. Nada foi publicado." };
       }
 
       const postResult = await toolPostarRedesSociais(socialPost, toolCtx);
       return { text: formatSocialPostToolResult(postResult) };
+
     }
 
     // Texto puro do turno (turno multimodal chega como array de partes).
