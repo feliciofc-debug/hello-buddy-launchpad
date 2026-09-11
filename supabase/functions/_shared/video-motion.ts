@@ -148,21 +148,103 @@ const MODELO = "google/gemini-2.5-flash";
 const GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
 const limparBruto = (s: unknown, max: number) =>
-  String(s ?? "")
-    .replace(/\s+/g, " ")
-    .replace(/^["'`\s]+|["'`\s]+$/g, "")
-    .slice(0, max)
+  cortarFrase(
+    String(s ?? "")
+      .replace(/\s+/g, " ")
+      .replace(/^["'`\s]+|["'`\s]+$/g, "")
+      .trim(),
+    max,
+  );
+
+/** Vírgula/conjunção órfã que sobra depois de qualquer limpeza. */
+const arrumarPontuacao = (t: string) =>
+  t
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([,.;:!?])/g, "$1")
+    .replace(/,\s*(?=[,.;:!?])/g, "")
+    .replace(/^[\s,;:—–-]+/, "")
+    .replace(/\s+(e|ou|com|para|de|da|do|em|no|na)\s*$/i, "")
+    .replace(/[\s,;:]+$/, "")
     .trim();
 
-/** Corta respeitando a palavra e sinalizando o corte — nunca "campanhas d". */
+/**
+ * Ajusta o texto ao limite SEM deixar frase pela metade.
+ * Nunca devolve reticências e nunca corta no meio de palavra:
+ * 1) mantém as frases completas que couberem;
+ * 2) se a frase única não couber, descarta a última oração (vírgula/conjunção)
+ *    e fecha com ponto;
+ * 3) último recurso: corta em limite de palavra e fecha com ponto.
+ */
 export const cortarFrase = (s: string, max: number): string => {
-  const t = String(s ?? "").replace(/\s+/g, " ").trim();
+  const t = arrumarPontuacao(String(s ?? "").replace(/\s+/g, " ").trim()).replace(/…|\.\.\./g, "");
   if (t.length <= max) return t;
-  const parcial = t.slice(0, max - 1);
-  const espaco = parcial.lastIndexOf(" ");
-  const base = espaco > max * 0.45 ? parcial.slice(0, espaco) : parcial;
-  return `${base.replace(/[\s,.;:!?\-–—]+$/, "")}…`;
+
+  // 1) frases completas
+  const frases = t.split(/(?<=[.!?])\s+/);
+  if (frases.length > 1) {
+    let acc = "";
+    for (const f of frases) {
+      const teste = acc ? `${acc} ${f}` : f;
+      if (teste.length > max) break;
+      acc = teste;
+    }
+    if (acc) return arrumarPontuacao(acc);
+  }
+
+  // 2) corta orações da frase única
+  const parcial = t.slice(0, max);
+  const corte = Math.max(
+    parcial.lastIndexOf(","),
+    parcial.lastIndexOf(";"),
+    parcial.lastIndexOf(" e "),
+    parcial.lastIndexOf(" com "),
+    parcial.lastIndexOf(" para "),
+    parcial.lastIndexOf(" que "),
+    parcial.lastIndexOf(" sem "),
+  );
+  const oracao = corte > max * 0.5 ? arrumarPontuacao(parcial.slice(0, corte)) : "";
+  const base = oracao || arrumarPontuacao(parcial.slice(0, Math.max(0, parcial.lastIndexOf(" "))) || parcial);
+  const fechado = /[.!?]$/.test(base) || base.length < 18 ? base : `${base}.`;
+  return fechado.length <= max ? fechado : base.slice(0, max);
 };
+
+/** Texto que NÃO pode ir ao ar: cortado no meio, vírgula solta, lacuna. */
+export const textoIncompleto = (s: unknown): string | null => {
+  const t = String(s ?? "").trim();
+  if (!t) return null;
+  if (/(…|\.\.\.)\s*$/.test(t)) return "termina em reticências";
+  if (/[\s,;:]$/.test(t)) return "termina em vírgula ou sinal solto";
+  if (/,\s*,|\s,/.test(t)) return "vírgula solta no meio";
+  if (/\b(e|ou|com|para|de|da|do|em|no|na|que|sem)$/i.test(t)) return "frase interrompida";
+  if (/\{\{|\}\}|\[\s*\]|<[^>]*>$/.test(t)) return "placeholder não preenchido";
+  return null;
+};
+
+/** Varre um roteiro/legenda antes de renderizar ou publicar. */
+export function problemasDeTexto(props: MotionProps, legendaPost?: string): string[] {
+  const out: string[] = [];
+  const ver = (rotulo: string, valor?: string) => {
+    const p = textoIncompleto(valor);
+    if (p) out.push(`${rotulo}: ${p} ("${String(valor).slice(0, 60)}")`);
+  };
+  ver("chamada", props.hook?.kicker);
+  (props.hook?.linhas ?? []).forEach((l, i) => ver(`linha ${i + 1}`, l));
+  ver("subtítulo", props.hook?.sub);
+  (props.blocos ?? []).forEach((b, i) => {
+    ver(`argumento ${i + 1}`, b.titulo);
+    ver(`argumento ${i + 1} (apoio)`, b.apoio);
+  });
+  (props.itens ?? []).forEach((b, i) => {
+    ver(`item ${i + 1}`, b.titulo);
+    ver(`item ${i + 1} (apoio)`, b.apoio);
+  });
+  (props.chat?.mensagens ?? []).forEach((m, i) => ver(`mensagem ${i + 1}`, m.texto));
+  (props.legendas ?? []).forEach((l, i) => ver(`legenda ${i + 1}`, l));
+  ver("chamada final", props.cta?.frase);
+  ver("chamada final (apoio)", props.cta?.sub);
+  if (legendaPost) ver("legenda do post", legendaPost);
+  return out;
+}
 
 const ehMarcaAmz = (marca: string) => /\bamz(?:\s+ofertas)?\b/i.test(marca);
 
