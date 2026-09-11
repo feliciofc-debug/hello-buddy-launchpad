@@ -10,6 +10,8 @@ import { classificarIntencao, ferramentaPermitida, mensagemDeErroParaUsuario } f
 import { pareceResumoDeOpcoes, segmentoIntruso } from "../_shared/aprovacao-integra.ts";
 import {
   JARVIS_PUBLICACAO_ATIVA,
+  ehUuid,
+
   idCurto,
   linhaCodigoMidia,
 
