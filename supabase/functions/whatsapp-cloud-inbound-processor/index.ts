@@ -3810,8 +3810,11 @@ function formatSocialPostToolResult(raw: string): string {
 
 function detectSocialPostConfirmation(text: string): { token: string; cancelar?: boolean } | null {
   const normalized = normalizePt(text || "");
-  const token = (text || "").match(/\b[a-f0-9]{8}\b/i)?.[0];
+  // Aceita o código do pedido com prefixo (p_xxxxxxxx) e, até a data de corte,
+  // o formato antigo sem prefixo.
+  const token = (text || "").match(/\bp_[a-f0-9]{8}\b/i)?.[0] ?? (text || "").match(/\b[a-f0-9]{8}\b/i)?.[0];
   if (!token) return null;
+
   if (/\b(cancela|cancelar|nao posta|nao publicar|descarta)\b/.test(normalized)) return { token, cancelar: true };
   if (/\b(pode postar|confirma|confirmar|manda ver|publica|publique|sim|aprovado)\b/.test(normalized)) return { token };
   return null;
