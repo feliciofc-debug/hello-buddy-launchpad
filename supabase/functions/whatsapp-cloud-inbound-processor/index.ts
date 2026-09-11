@@ -3761,6 +3761,11 @@ const CATEGORIAS_ASSUNTO: Array<{ nome: string; re: RegExp }> = [
   { nome: "veiculo", re: /\b(ve[ií]culo|carro|autom[oó]vel|seminovo|semi-novo|0km|zero\s*km|hatch|sedan|sed[aã]|suv|picape|caminhonete|moto(cicleta)?|c[aâ]mbio|flex|turbo|km\s*rodados?|honda|toyota|hyundai|chevrolet|volkswagen|fiat|ford|renault|nissan|jeep|bmw|mercedes|audi|peugeot|citro[eë]n|civic|corolla|creta|onix|hb20|compass|tracker|hilux|ranger)\b/i },
   { nome: "imovel", re: /\b(im[oó]vel|apartamento|casa\s+(?:à|a)\s+venda|terreno|lote|condom[ií]nio|metros\s+quadrados|m²|quartos?|su[ií]tes?)\b/i },
   { nome: "consorcio", re: /\b(cons[oó]rcio|carta\s+de\s+cr[eé]dito|ademicon|parcelas?\s+mensais|lance)\b/i },
+  { nome: "odontologia", re: /\b(odonto\w*|dentista|dent[aá]ri[ao]s?|consult[oó]rio|clareamento|implante\s+dent\w*|aparelho\s+ortod\w*|ortodontia|paciente\s+na\s+cadeira|conv[eê]nios?|recepcionista)\b/i },
+  { nome: "saude", re: /\b(cl[ií]nica\s+m[eé]dica|m[eé]dic[oa]s?|fisioterap\w+|nutricionista|psic[oó]log[oa]s?|exames?\s+laboratori\w*)\b/i },
+  { nome: "pet", re: /\b(pet\s*shop|veterin[aá]ri[oa]s?|banho\s+e\s+tosa|tutor\s+do\s+pet)\b/i },
+  { nome: "juridico", re: /\b(advogad[oa]s?|escrit[oó]rio\s+de\s+advocacia|processo\s+judicial|OAB)\b/i },
+  { nome: "estetica", re: /\b(est[eé]tica|sal[aã]o\s+de\s+beleza|micropigmenta\w+|botox|harmoniza\w+\s+facial|cabeleireir[oa]s?)\b/i },
 ];
 
 function categoriaAssunto(texto: string): string | null {
