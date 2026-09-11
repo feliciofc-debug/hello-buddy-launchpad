@@ -4056,10 +4056,12 @@ async function toolConfirmarPostagemRedes(
 ): Promise<string> {
   if (!isOwner(ctx)) return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Essa ação é restrita ao responsável da conta." });
   pendingCleanup();
-  const token = (args?.token || "").trim().toLowerCase();
-  if (!/^[a-f0-9]{8}$/.test(token)) return JSON.stringify({ erro: "token inválido" });
+  const tk = normalizarTokenPost(args?.token);
+  if (!tk.token) return JSON.stringify({ erro: tk.erro, mensagem: tk.mensagem });
+  const token = tk.token;
   const p = PENDING_POSTS.get(token) ?? (await loadPendingSocialPost(token, ctx.userId));
-  if (!p) return JSON.stringify({ erro: "token não encontrado ou expirado. Refaça o pedido de postagem." });
+  if (!p) return JSON.stringify(mensagemFalhaPendente(token, !!tk.semPrefixo));
+
   if (p.userId !== ctx.userId) return JSON.stringify({ erro: "token pertence a outro usuário" });
   if (args?.cancelar) {
     PENDING_POSTS.delete(token);
@@ -4152,14 +4154,16 @@ async function toolRevisarPostPendente(
 ): Promise<string> {
   if (!isOwner(ctx)) return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Essa ação é restrita ao responsável da conta." });
   pendingCleanup();
-  const token = (args?.token || "").trim().toLowerCase();
+  const tk = normalizarTokenPost(args?.token);
   const ajuste = (args?.ajuste || "").toString().trim();
   const toggleCta = typeof args?.incluir_cta_whatsapp === "boolean";
-  if (!/^[a-f0-9]{8}$/.test(token)) return JSON.stringify({ erro: "token inválido" });
+  if (!tk.token) return JSON.stringify({ erro: tk.erro, mensagem: tk.mensagem });
+  const token = tk.token;
   if (ajuste.length < 2 && !toggleCta) return JSON.stringify({ erro: "ajuste vazio — descreva o que mudar" });
 
   const p = PENDING_POSTS.get(token) ?? (await loadPendingSocialPost(token, ctx.userId));
-  if (!p) return JSON.stringify({ erro: "token não encontrado ou expirado. Refaça o pedido de postagem." });
+  if (!p) return JSON.stringify(mensagemFalhaPendente(token, !!tk.semPrefixo));
+
   if (p.userId !== ctx.userId) return JSON.stringify({ erro: "token pertence a outro usuário" });
 
   // Reconstroi produtoLike com descrição/contexto atual — não repergunta contexto.
