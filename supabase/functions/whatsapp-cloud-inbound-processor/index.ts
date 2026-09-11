@@ -4593,7 +4593,17 @@ function formatVideoDraft(props: any, tema: string, duracao: number, paleta?: st
     }`
     : `*Conversa:*\n${mensagens || "(não informado)"}`;
   const minutos = minutosRenderEstimado(duracao);
-  return `🎬 *Roteiro do vídeo — ${tema}*\n\n*Gancho:* ${linhas || "(não informado)"}\n\n${corpo}${cta}${cores}\n\nDuração estimada: ${duracao}s.\n\nResponda *APROVADO* para eu renderizar o MP4 (leva cerca de ${minutos} minutos), ou me diga o que ajustar.`;
+  // Nenhum roteiro com frase pela metade deve ser aprovado sem aviso.
+  let alerta = "";
+  try {
+    const problemas = problemasDeTexto(props);
+    if (problemas.length) {
+      alerta = `\n\n⚠️ Revisei e encontrei ${problemas.length} texto(s) incompleto(s): ${
+        problemas.slice(0, 3).join("; ")
+      }. Me diga "reescreve mais curto" antes de aprovar.`;
+    }
+  } catch (_) { /* aviso é opcional, nunca quebra o roteiro */ }
+  return `🎬 *Roteiro do vídeo — ${tema}*\n\n*Gancho:* ${linhas || "(não informado)"}\n\n${corpo}${cta}${cores}\n\nDuração estimada: ${duracao}s.${alerta}\n\nResponda *APROVADO* para eu renderizar o MP4 (leva cerca de ${minutos} minutos), ou me diga o que ajustar.`;
 }
 
 async function criarRascunhoVideoMotion(
