@@ -6215,6 +6215,15 @@ async function callGemini(
     if (remetenteEhDono && decisaoIntencao.intent === "aprovar_video" && pendingVideoDraft) {
       return { text: await confirmarRascunhoVideo(toolCtx) };
     }
+    // Correção por texto do rascunho pendente ("troca a cor principal pro
+    // vermelho", "tira a logo") antes de gastar o render.
+    if (
+      remetenteEhDono && pendingVideoDraft && decisaoIntencao.intent !== "video" &&
+      !/\b(imagem|foto|imgem)\b/i.test(userContent)
+    ) {
+      const ajuste = await ajustarRascunhoVideo(toolCtx, userContent);
+      if (ajuste) return { text: ajuste };
+    }
     if (decisaoIntencao.intent === "video") {
       if (!remetenteEhDono) {
         return { text: "A criação de vídeo é restrita ao responsável da conta. Posso encaminhar seu pedido para ele, se quiser." };
