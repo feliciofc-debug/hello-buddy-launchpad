@@ -1057,7 +1057,7 @@ ${logoDataUrl ? `- A SEGUNDA IMAGEM ANEXADA É A LOGOMARCA OFICIAL DA EMPRESA. R
     // Salva automaticamente na biblioteca /midias para o usuário poder publicar
     let midiaId: string | null = null;
     try {
-      const { data: novo } = await sb
+      const { data: novo, error: insErr } = await sb
         .from("midias_whatsapp")
         .insert({
           user_id: ctx.userId,
@@ -1072,6 +1072,9 @@ ${logoDataUrl ? `- A SEGUNDA IMAGEM ANEXADA É A LOGOMARCA OFICIAL DA EMPRESA. R
         })
         .select("id")
         .single();
+      if (insErr || !novo?.id) {
+        throw new Error(`db_falhou: ${insErr?.message || "insert sem retorno"}`);
+      }
       midiaId = novo?.id ?? null;
     } catch (e) {
       console.warn("[gerar_imagem] falhou ao salvar em midias_whatsapp:", (e as Error).message);
@@ -1243,7 +1246,7 @@ async function toolEditarImagem(
     let midiaId: string | null = null;
     if (ctx.registrarNaBiblioteca !== false) {
       try {
-        const { data: novo } = await sb
+        const { data: novo, error: insErr } = await sb
           .from("midias_whatsapp")
           .insert({
             user_id: ctx.userId,
@@ -1258,6 +1261,9 @@ async function toolEditarImagem(
           })
           .select("id")
           .maybeSingle();
+        if (insErr || !novo?.id) {
+          throw new Error(`db_falhou: ${insErr?.message || "insert sem retorno"}`);
+        }
         midiaId = novo?.id ?? null;
       } catch (e) {
         console.warn("[editar_imagem] falhou ao salvar em midias_whatsapp:", (e as Error).message);
@@ -4284,6 +4290,47 @@ async function buscarBriefingRecenteDono(userId: string, fromNumber: string, aft
 }
 
 // ---- postar_midia_biblioteca: gera preview de post usando a ÚLTIMA mídia salva em /midias (não busca catálogo) ----
+async function resolverMidiaBibliotecaPorId(
+  userId: string,
+  idInformado: string,
+): Promise<{ midia: any | null; erro?: string }> {
+  const idLimpo = String(idInformado || "").trim().replace(/[^a-fA-F0-9-]/g, "").toLowerCase();
+  if (!idLimpo) return { midia: null, erro: "Identificador de mídia vazio." };
+
+  const campos = "id, tipo, midia_url, contexto_original, created_at";
+  const uuidCompleto = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idLimpo);
+  if (uuidCompleto) {
+    const { data, error } = await sb
+      .from("midias_whatsapp")
+      .select(campos)
+      .eq("user_id", userId)
+      .eq("id", idLimpo)
+      .maybeSingle();
+    if (error) return { midia: null, erro: `db_falhou: ${error.message}` };
+    return { midia: data ?? null };
+  }
+
+  // O WhatsApp exibe códigos curtos como 53DBDA63, derivados do início do UUID.
+  // Postgres não aceita esse prefixo em uma comparação direta com coluna uuid;
+  // carregamos somente as mídias do mesmo tenant e resolvemos o prefixo com
+  // detecção explícita de ambiguidade.
+  if (!/^[0-9a-f]{8,32}$/i.test(idLimpo.replace(/-/g, ""))) {
+    return { midia: null, erro: "Identificador de mídia inválido." };
+  }
+  const prefixo = idLimpo.replace(/-/g, "");
+  const { data, error } = await sb
+    .from("midias_whatsapp")
+    .select(campos)
+    .eq("user_id", userId)
+    .in("tipo", ["foto", "video"])
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (error) return { midia: null, erro: `db_falhou: ${error.message}` };
+  const encontradas = (data || []).filter((item: any) => String(item.id).replace(/-/g, "").toLowerCase().startsWith(prefixo));
+  if (encontradas.length > 1) return { midia: null, erro: "Código curto ambíguo. Informe o identificador completo." };
+  return { midia: encontradas[0] ?? null };
+}
+
 async function toolPostarMidiaBiblioteca(
   args: { legenda?: string; nome?: string; preco?: number | string; tom?: string; redes?: string[]; midia_id?: string; formato?: string; incluir_cta_whatsapp?: boolean; briefing?: string; usar_contexto_conversa?: boolean },
   ctx: { userId: string; fromNumber: string },
@@ -4293,23 +4340,22 @@ async function toolPostarMidiaBiblioteca(
     pendingCleanup();
 
     // Busca a última mídia salva pelo dono (foto/vídeo), ainda não publicada
-    let query = sb
-      .from("midias_whatsapp")
-      .select("id, tipo, midia_url, contexto_original, created_at")
-      .eq("user_id", ctx.userId)
-      .in("tipo", ["foto", "video"])
-      .order("created_at", { ascending: false })
-      .limit(1);
-    if (args?.midia_id) query = sb
-      .from("midias_whatsapp")
-      .select("id, tipo, midia_url, contexto_original, created_at")
-      .eq("user_id", ctx.userId)
-      .eq("id", args.midia_id)
-      .limit(1);
-
-    const { data: midias, error } = await query;
-    if (error) return JSON.stringify({ erro: `db_falhou: ${error.message}` });
-    const midia = midias?.[0];
+    let midia: any | null = null;
+    if (args?.midia_id) {
+      const resolvida = await resolverMidiaBibliotecaPorId(ctx.userId, args.midia_id);
+      if (resolvida.erro) return JSON.stringify({ erro: resolvida.erro });
+      midia = resolvida.midia;
+    } else {
+      const { data: midias, error } = await sb
+        .from("midias_whatsapp")
+        .select("id, tipo, midia_url, contexto_original, created_at")
+        .eq("user_id", ctx.userId)
+        .in("tipo", ["foto", "video"])
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (error) return JSON.stringify({ erro: `db_falhou: ${error.message}` });
+      midia = midias?.[0] ?? null;
+    }
     if (!midia) return JSON.stringify({ erro: "Não achei nenhuma mídia recente na biblioteca /midias. Peça pro cliente enviar a foto/vídeo primeiro." });
 
     // Etapa 3: story de foto e vídeo, reels (só vídeo), feed (foto/vídeo).
@@ -5061,13 +5107,14 @@ const TOOLS = [
     type: "function",
     function: {
       name: "postar_midia_biblioteca",
-      description: "🟢 USE SOMENTE quando o DONO/RESPONSÁVEL pedir pra POSTAR/DIVULGAR nas redes usando a foto/vídeo que ele ACABOU DE ENVIAR. Nunca use para cliente/contato. Pega a ÚLTIMA mídia salva em /midias. FORMATO: 'story' (foto ou vídeo 9:16), 'reels' (só vídeo, IG/FB), 'feed' (default). Se o dono disser 'reels' passe formato='reels'; 'story'/'stories' → 'story'; senão 'feed'. Para VÍDEO, sempre passe a legenda que o dono forneceu — não invente descrição de vídeo. ⚠️ BRIEFING (MUITO IMPORTANTE): se o dono ESCREVEU um texto/contexto nesta conversa (mesmo em mensagens anteriores) e pediu pra usar aquele texto/aquele contexto/aquela ideia no post, COPIE esse texto INTEIRO no parâmetro 'briefing'. A legenda deve comunicar a MENSAGEM DELE — a imagem é só o visual. Se ele se referir a um texto que mandou antes e você não tiver o texto em mãos, passe usar_contexto_conversa=true. CTA DE WHATSAPP: passe incluir_cta_whatsapp=true SÓ SE o dono pedir explicitamente (ex: 'posta com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA').",
+      description: "🟢 USE SOMENTE quando o DONO/RESPONSÁVEL pedir pra POSTAR/DIVULGAR nas redes usando a foto/vídeo que ele ACABOU DE ENVIAR. Nunca use para cliente/contato. Pega a ÚLTIMA mídia salva em /midias. Se a conversa mencionar um código/ID de mídia, passe-o em midia_id exatamente como apareceu; códigos curtos de 8 caracteres e UUIDs completos são aceitos. FORMATO: 'story' (foto ou vídeo 9:16), 'reels' (só vídeo, IG/FB), 'feed' (default). Se o dono disser 'reels' passe formato='reels'; 'story'/'stories' → 'story'; senão 'feed'. Para VÍDEO, sempre passe a legenda que o dono forneceu — não invente descrição de vídeo. ⚠️ BRIEFING (MUITO IMPORTANTE): se o dono ESCREVEU um texto/contexto nesta conversa (mesmo em mensagens anteriores) e pediu pra usar aquele texto/aquele contexto/aquela ideia no post, COPIE esse texto INTEIRO no parâmetro 'briefing'. A legenda deve comunicar a MENSAGEM DELE — a imagem é só o visual. Se ele se referir a um texto que mandou antes e você não tiver o texto em mãos, passe usar_contexto_conversa=true. CTA DE WHATSAPP: passe incluir_cta_whatsapp=true SÓ SE o dono pedir explicitamente (ex: 'posta com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA').",
       parameters: {
         type: "object",
         properties: {
           legenda: { type: "string", description: "Texto/legenda que o cliente falou junto." },
           briefing: { type: "string", description: "TEXTO INTEGRAL escrito pelo dono que deve ser a MENSAGEM CENTRAL do post (argumentos, diferenciais, tema, frase de efeito). Copie literalmente da conversa, sem resumir. Tem prioridade sobre a descrição visual da imagem." },
           usar_contexto_conversa: { type: "boolean", description: "Use SOMENTE se o dono, NESTA mensagem, se referir a um texto que ele mandou logo antes junto com essa mídia ('usa aquele texto que te mandei agora', 'pega o contexto que escrevi'). NUNCA passe true quando ele só disser 'posta no feed/story/reels' — nesse caso o post é sobre a FOTO enviada, e puxar assunto antigo gera post errado." },
+          midia_id: { type: "string", description: "ID da mídia a publicar. Aceita o UUID completo ou o código curto de 8 caracteres mostrado ao usuário (ex.: 53DBDA63)." },
           nome: { type: "string", description: "Nome do produto/item, se informado." },
           preco: { type: "string", description: "Preço se informado (ex: '29,99')." },
           tom: { type: "string", enum: ["urgencia", "escassez", "black-friday", "prova-social", "beneficio"] },
