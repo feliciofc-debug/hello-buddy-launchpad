@@ -2985,6 +2985,8 @@ type PendingSocialPost = {
   queueRows?: Array<{ id: string; platform: string }>;
   incluirCtaWhatsapp?: boolean;
   briefing?: string; // texto escrito pelo dono que é a MENSAGEM do post (prioridade sobre o visual)
+  approvedBy?: string;
+  approvedAt?: string;
 };
 const PENDING_POSTS = new Map<string, PendingSocialPost>();
 function pendingCleanup() {
@@ -3076,6 +3078,10 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
       tom: pending.tom,
       briefing: pending.briefing ? pending.briefing.slice(0, 1200) : undefined,
     }),
+    approval_token: token,
+    approved_at: null,
+    approved_by: null,
+    approved_media_url: pending.produto?.imagem_url || null,
     updated_at: new Date().toISOString(),
   }));
 
@@ -3928,6 +3934,35 @@ async function toolConfirmarPostagemRedes(
     return JSON.stringify({ status: "cancelado" });
   }
 
+  const approvedAt = new Date().toISOString();
+  const rowIds = p.queueRows?.map((row) => row.id).filter(Boolean) ?? [];
+  if (rowIds.length === 0 || !p.produto?.imagem_url) {
+    return JSON.stringify({
+      erro: "midia_nao_vinculada",
+      mensagem: "Não consegui confirmar qual mídia foi aprovada. Nada foi publicado. Prepare o post novamente.",
+    });
+  }
+  const { data: approvedRows, error: approvalError } = await sb
+    .from("social_posts_queue")
+    .update({
+      approved_at: approvedAt,
+      approved_by: ctx.fromNumber,
+      approved_media_url: p.produto.imagem_url,
+      updated_at: approvedAt,
+    })
+    .in("id", rowIds)
+    .eq("user_id", ctx.userId)
+    .eq("status", "aguardando_confirmacao")
+    .eq("approval_token", token)
+    .eq("approved_media_url", p.produto.imagem_url)
+    .select("id");
+  if (approvalError || approvedRows?.length !== rowIds.length) {
+    return JSON.stringify({
+      erro: "aprovacao_nao_registrada",
+      mensagem: "A aprovação não pôde ser vinculada à mídia exibida. Nada foi publicado.",
+    });
+  }
+
   const resultados = await Promise.all(p.redes.map((r) => publicarEmRede(r, p.scripts[r], p.produto, p.userId, p.formato || "feed")));
   await updatePersistedSocialPostRows(p, resultados);
   PENDING_POSTS.delete(token);
@@ -4321,15 +4356,15 @@ async function toolPostarMidiaBiblioteca(
     if (!isOwner(ctx)) return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Essa ação é restrita ao responsável da conta. Posso encaminhar o pedido para ele, se quiser." });
     pendingCleanup();
 
-    // Busca a última mídia salva pelo dono (foto/vídeo), ainda não publicada
-    let query = sb
-      .from("midias_whatsapp")
-      .select("id, tipo, midia_url, contexto_original, created_at")
-      .eq("user_id", ctx.userId)
-      .in("tipo", ["foto", "video"])
-      .order("created_at", { ascending: false })
-      .limit(1);
-    if (args?.midia_id) query = sb
+    // Segurança: publicar "a última mídia" sem identidade explícita causou um
+    // incidente real. Toda preparação precisa apontar para o ID mostrado ao dono.
+    if (!args?.midia_id || !isUuid(args.midia_id)) {
+      return JSON.stringify({
+        erro: "midia_nao_identificada",
+        mensagem: "Não consegui identificar com segurança qual mídia você quer publicar. Nada foi publicado. Envie o vídeo novamente ou diga para usar o vídeo que acabei de gerar.",
+      });
+    }
+    const query = sb
       .from("midias_whatsapp")
       .select("id, tipo, midia_url, contexto_original, created_at")
       .eq("user_id", ctx.userId)
@@ -4527,6 +4562,12 @@ async function toolPostarMidiaBiblioteca(
       formato,
       midia: { id: midia.id, tipo: midia.tipo, url: midia.midia_url },
       produto: { nome: produtoLike.nome, preco: produtoLike.preco, imagem_url: produtoLike.imagem_url },
+      midia_aprovacao: {
+        id: midia.id,
+        tipo: midia.tipo,
+        origem: contextoUsuario || "mídia enviada pelo WhatsApp",
+        recebida_em: midia.created_at,
+      },
       tom,
       redes,
       variantes,
@@ -5173,10 +5214,11 @@ const TOOLS = [
     type: "function",
     function: {
       name: "postar_midia_biblioteca",
-      description: "🟢 USE SOMENTE quando o DONO/RESPONSÁVEL pedir pra POSTAR/DIVULGAR nas redes usando a foto/vídeo que ele ACABOU DE ENVIAR. Nunca use para cliente/contato. Pega a ÚLTIMA mídia salva em /midias. FORMATO: 'story' (foto ou vídeo 9:16), 'reels' (só vídeo, IG/FB), 'feed' (default). Se o dono disser 'reels' passe formato='reels'; 'story'/'stories' → 'story'; senão 'feed'. Para VÍDEO, sempre passe a legenda que o dono forneceu — não invente descrição de vídeo. ⚠️ BRIEFING (MUITO IMPORTANTE): se o dono ESCREVEU um texto/contexto nesta conversa (mesmo em mensagens anteriores) e pediu pra usar aquele texto/aquele contexto/aquela ideia no post, COPIE esse texto INTEIRO no parâmetro 'briefing'. A legenda deve comunicar a MENSAGEM DELE — a imagem é só o visual. Se ele se referir a um texto que mandou antes e você não tiver o texto em mãos, passe usar_contexto_conversa=true. CTA DE WHATSAPP: passe incluir_cta_whatsapp=true SÓ SE o dono pedir explicitamente (ex: 'posta com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA').",
+      description: "🟢 USE SOMENTE quando o DONO/RESPONSÁVEL pedir pra POSTAR/DIVULGAR uma mídia identificada no contexto atual. Nunca use para cliente/contato. É OBRIGATÓRIO passar midia_id; nunca escolha silenciosamente a última mídia. FORMATO: 'story' (foto ou vídeo 9:16), 'reels' (só vídeo, IG/FB), 'feed' (default). Para VÍDEO, sempre passe a legenda/contexto fornecido pelo dono. Antes de publicar, mostre qual mídia está vinculada ao resumo e exija confirmação explícita.",
       parameters: {
         type: "object",
         properties: {
+          midia_id: { type: "string", description: "UUID exato da mídia indicada no contexto atual. Obrigatório; nunca omita nem adivinhe." },
           legenda: { type: "string", description: "Texto/legenda que o cliente falou junto." },
           briefing: { type: "string", description: "TEXTO INTEGRAL escrito pelo dono que deve ser a MENSAGEM CENTRAL do post (argumentos, diferenciais, tema, frase de efeito). Copie literalmente da conversa, sem resumir. Tem prioridade sobre a descrição visual da imagem." },
           usar_contexto_conversa: { type: "boolean", description: "Use SOMENTE se o dono, NESTA mensagem, se referir a um texto que ele mandou logo antes junto com essa mídia ('usa aquele texto que te mandei agora', 'pega o contexto que escrevi'). NUNCA passe true quando ele só disser 'posta no feed/story/reels' — nesse caso o post é sobre a FOTO enviada, e puxar assunto antigo gera post errado." },
@@ -5187,6 +5229,7 @@ const TOOLS = [
           formato: { type: "string", enum: ["feed", "story", "reels"], description: "'feed' (default), 'story' (foto/vídeo 9:16) ou 'reels' (só vídeo)." },
           incluir_cta_whatsapp: { type: "boolean", description: "OPT-IN. true = adiciona '📱 Fale comigo no WhatsApp: wa.me/<numero_do_agente>' em SANDUÍCHE (no INÍCIO E no FIM) da legenda de todas as redes escolhidas. Idempotente: limpa CTA antigo antes de reaplicar (nunca triplica). Nunca inclua automaticamente — só quando o dono pedir com palavras claras ('com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA')." },
         },
+        required: ["midia_id"],
       },
 
     },
@@ -8379,7 +8422,7 @@ Regras:
       const m0 = recMid?.[0];
       if (m0 && media.length === 0) {
           recentMediaBlock = inboundFromOwner
-            ? `\n\nMÍDIA RECENTE NA BIBLIOTECA /midias (últimos 15 min):\n- Tipo: ${m0.tipo}. Contexto salvo: "${m0.contexto_original ?? "sem contexto"}".\n- Se o dono pedir pra POSTAR/DIVULGAR agora em QUALQUER formato (feed, story, stories, reels), a mídia a publicar é ESTA que ele acabou de enviar — chame IMEDIATAMENTE postar_midia_biblioteca passando legenda/nome/preço do texto atual e formato='story' se ele citar story/stories (senão 'feed').\n- 🏷️ ANÚNCIO/ARTE: se ele pedir "cria a imagem para anúncio", "monta a arte", "faz um anúncio" e passar dados do produto (modelo, ano, km, preço, chaves, câmbio, "único dono"), chame IMEDIATAMENTE criar_anuncio NESTA MESMA RESPOSTA usando ESTA foto recente. Monte 'titulo' com o modelo citado, 'subtitulo' com ano/câmbio, coloque cada dado citado em 'itens' EXATAMENTE como ele escreveu e 'preco' com o valor dito. NÃO invente dados e NÃO pergunte nada se ele já deu o modelo.\n- ⛔ NUNCA chame postar_redes_sociais nesse caso — aquela tool busca PRODUTO no CATÁLOGO e vai devolver item ERRADO.\n- 🎨 EDIÇÃO/CENÁRIO: se ele pedir pra MELHORAR a foto, "deixar bonita", "colocar um cenário bonito", "fundo profissional", "ambiente para divulgar no Face/Insta", escrever dados na imagem (km, ano, preço, "único dono") ou trocar roupa/fantasia, chame IMEDIATAMENTE editar_imagem NESTA MESMA RESPOSTA — a ferramenta já pega ESTA foto recente sozinha. Se ele pedir pra COLOCAR/INCLUIR a LOGO ou a MARCA em algum ponto da foto (xícara, camisa, parede, carro), use OBRIGATORIAMENTE modo='aplicar_logo' — a foto dele é mantida igual e só a marca é aplicada; é PROIBIDO gerar outra foto. Use modo='ficha_tecnica' para cenário/estúdio/anúncio de produto e modo='figurino' para troca de roupa. Coloque em "textos" só os dados que ele escreveu.\n- ⛔ NUNCA responda que não consegue editar/gerar imagem, que "não tem essa função" ou que precisa reenviar a foto: a foto está aqui e a ferramenta existe. Chame a tool.\n- ⛔ NÃO chame buscar_estoque/consultar_estoque nesse caso.`
+            ? `\n\nMÍDIA RECENTE NA BIBLIOTECA /midias (últimos 30 min):\n- ID obrigatório: ${m0.id}. Tipo: ${m0.tipo}. Contexto salvo: "${m0.contexto_original ?? "sem contexto"}".\n- Se o dono pedir pra POSTAR/DIVULGAR ESTA mídia, chame postar_midia_biblioteca com midia_id="${m0.id}". Nunca omita o ID e nunca selecione outra mídia.\n- Se o pedido citar um vídeo recém-gerado e este contexto não descrevê-lo claramente, NÃO publique: diga que não conseguiu vincular a mídia com segurança.\n- ⛔ NUNCA chame postar_redes_sociais nesse caso — aquela tool busca produto no catálogo.\n- 🎨 EDIÇÃO/CENÁRIO: se pedir alteração, use editar_imagem para esta mídia; depois publique somente o ID retornado pela edição.`
             : `\n\nMÍDIA RECENTE NA BIBLIOTECA /midias (últimos 15 min):\n- Tipo: ${m0.tipo}. Foi enviada por CLIENTE/CONTATO, não pelo responsável.\n- NÃO ofereça postar/divulgar, NÃO pergunte rede/formato e NÃO chame ferramentas de publicação.\n- Se ele acabou de confirmar ("pode mandar", "sim manda pro Marcelo", "encaminha") depois de você ter oferecido, chame encaminhar_recado_ao_dono com incluir_ultima_foto=true.`;
       }
     } catch (e) {

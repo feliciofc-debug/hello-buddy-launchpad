@@ -32,3 +32,12 @@
 - [x] Bloquear logo incompatível antes de enfileirar e novamente antes de renderizar
 - [x] Preservar a origem da identidade durante aprovação pelo Jarvis
 - [x] Adicionar teste de regressão cliente A → marca oficial B
+
+## Incidente — publicação de vídeo errado
+- [x] Identificar a mídia publicada, horário, redes e comando de confirmação
+- [x] Registrar vídeos recém-renderizados na biblioteca com vínculo ao job
+- [x] Proibir seleção implícita da “última mídia” ao preparar publicação
+- [x] Mostrar a mídia exata no resumo antes da confirmação
+- [x] Gravar quem aprovou, quando aprovou e qual mídia foi aprovada
+- [ ] Adicionar regressão: vídeo novo nunca pode publicar vídeo antigo
+- [x] Publicar e validar os bloqueios sem disparar conteúdo real
