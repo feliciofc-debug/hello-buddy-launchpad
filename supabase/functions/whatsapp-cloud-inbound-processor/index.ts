@@ -6421,11 +6421,30 @@ async function callGemini(
 
     if (toolCalls && toolCalls.length > 0) {
       messages.push(msg);
+      // Cinto e suspensório: a ferramenta escolhida pela IA precisa combinar
+      // com a intenção da mensagem atual. Vídeo nunca executa imagem.
+      const intencaoAtual = typeof userContent === "string"
+        ? classificarIntencao(userContent).intent
+        : "outro";
       for (const tc of toolCalls) {
         const name = tc.function?.name;
         let args: any = {};
         try { args = JSON.parse(tc.function?.arguments ?? "{}"); } catch { /* ignore */ }
         console.log(`[pietro][tool] ${name}`, args);
+        if (name && !ferramentaPermitida(intencaoAtual, name)) {
+          console.warn(`[pietro][intencao_guard] bloqueando ${name} para intenção ${intencaoAtual}`);
+          messages.push({
+            role: "tool",
+            tool_call_id: tc.id,
+            content: JSON.stringify({
+              erro: "ferramenta_incompativel_com_pedido",
+              instrucao: intencaoAtual === "video"
+                ? "O pedido é de VÍDEO. Use criar_video_animado, nunca ferramentas de imagem."
+                : "O pedido é de EDIÇÃO DE IMAGEM. Não use ferramentas de vídeo.",
+            }),
+          });
+          continue;
+        }
         const { result, imageUrl } = await runTool(name, args, toolCtx);
         if (imageUrl) pendingImageUrl = imageUrl;
         if (name === "postar_midia_biblioteca" || name === "postar_redes_sociais" || name === "revisar_post_pendente" || name === "escolher_variante_post") captureSocialToken(result);
