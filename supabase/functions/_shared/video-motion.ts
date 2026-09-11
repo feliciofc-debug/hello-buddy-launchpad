@@ -109,6 +109,8 @@ export type MotionProps = {
   itens?: BlocoMotion[];
   /** lista: rótulo ("3 motivos", "4 passos") */
   rotulo?: string;
+  /** peça de prospecção: identidade de terceiro, nada do tenant pode entrar */
+  prospect?: boolean;
   /** preenchido pelo backend; nunca vem do usuário para outro tenant */
   logo_path?: string;
   logoUrl?: string;
@@ -471,6 +473,7 @@ export function normalizarProps(
       : undefined,
     itens: itensFinais,
     rotulo: estilo === "lista" ? (limpar(bruto?.rotulo, 20) || undefined) : undefined,
+    prospect: bruto?.prospect === true ? true : undefined,
     logo_path: typeof bruto?.logo_path === "string" ? bruto.logo_path : undefined,
     logoUrl: typeof bruto?.logoUrl === "string" ? bruto.logoUrl : undefined,
     trilha_id: typeof bruto?.trilha_id === "string" ? bruto.trilha_id : undefined,

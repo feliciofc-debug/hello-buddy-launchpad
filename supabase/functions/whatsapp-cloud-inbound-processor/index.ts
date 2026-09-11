@@ -51,6 +51,11 @@ import {
   type EstiloMotion,
 } from "../_shared/video-motion.ts";
 import { extrairCoresDoTexto } from "../_shared/video-cores.ts";
+import {
+  extrairUrlDoTexto,
+  identidadeDoSiteParaVideo,
+  type IdentidadeVideo,
+} from "../_shared/jarvis-identidade-site.ts";
 
 import {
   entregarEbookTenant,
@@ -4612,21 +4617,48 @@ async function criarRascunhoVideoMotion(
   textoCores?: string,
   estilo?: string | null,
   duracao?: string | null,
+  site?: string | null,
 ): Promise<string> {
   if (!isOwner(ctx)) return "Esse recurso é exclusivo do responsável da conta. Posso encaminhar o pedido para ele.";
   // Prospecção: quando o pedido menciona cores (hex ou nome), o vídeo sai na
   // identidade visual do cliente-alvo; sem menção, segue a paleta do tenant.
   const pedidas = extrairCoresDoTexto(`${textoCores ?? ""} ${tema}`);
+
+  // Prospecção pelo WhatsApp: site citado no pedido vira a identidade DESTA peça.
+  const url = extrairUrlDoTexto(`${site ?? ""} ${textoCores ?? ""} ${tema}`);
+  let identidade: IdentidadeVideo | null = null;
+  if (url) {
+    try {
+      identidade = await identidadeDoSiteParaVideo(sb, ctx.userId, url);
+    } catch (e) {
+      console.error("[video][identidade-site]", (e as Error)?.message);
+    }
+    if (!identidade) {
+      return `Não consegui ler o site ${url} agora. Me diga as cores da marca (ex.: "vermelho e branco") que eu monto o vídeo com elas — não quero usar a paleta errada numa peça de prospecção.`;
+    }
+    if (!identidade.cores && !pedidas) {
+      return `Li o site ${identidade.url}, mas ele não entregou as cores da marca.\n${identidade.resumo}\n\nMe diga as cores principais (ex.: "vermelho #e30613 e azul") que eu monto o vídeo. Não vou usar a paleta da AMZ numa peça de prospecção.`;
+    }
+  }
+
   const roteiro = await montarRoteiroMotion({
     sb,
     userId: ctx.userId,
     tema,
     origem: "whatsapp",
     nomeFallback: null,
-    cores: pedidas?.cores ?? null,
+    cores: pedidas?.cores ?? identidade?.cores ?? null,
     estilo: estilo ?? null,
     duracao: duracao ?? null,
-  });
+    ...(identidade
+      ? {
+        marca: identidade.marca || undefined,
+        tomDeVoz: identidade.tomDeVoz || undefined,
+        logoPath: identidade.logoPath ?? null,
+        prospect: true,
+      }
+      : {}),
+  } as any);
   const token = videoDraftToken();
   const { error } = await sb.from("video_motion_rascunhos").insert({
     user_id: ctx.userId,
@@ -4641,12 +4673,51 @@ async function criarRascunhoVideoMotion(
   if (error) throw new Error(`não consegui salvar o roteiro: ${error.message}`);
   const paleta = pedidas
     ? `${pedidas.resumo} (cores que você pediu)`
+    : identidade?.cores
+    ? `fundo ${roteiro.props?.cores?.bg}, destaque ${roteiro.props?.cores?.destaque} (cores lidas do site)`
     : `fundo ${roteiro.props?.cores?.bg}, destaque ${roteiro.props?.cores?.destaque} (padrão da sua marca)`;
+  const linhaSite = identidade
+    ? `\n\n🔎 Lido do site ${identidade.url}\n${identidade.resumo}${
+      identidade.logoEncontrada ? "" : "\nSem logo: o vídeo sai só com o nome da marca. Me envie o arquivo se quiser a logo."
+    }`
+    : "";
   const rotuloEstilo = ROTULO_ESTILO[(roteiro.props?.estilo ?? "conversa") as EstiloMotion] ?? "Conversa no celular";
   const segundos = roteiro.props ? duracaoEstimada(roteiro.props) : 0;
   const rotuloDuracao = ROTULO_DURACAO[(roteiro.props?.duracao ?? "curto") as DuracaoMotion] ?? "Curto (~25s)";
   const minutos = minutosRenderEstimado(segundos);
-  return `${formatVideoDraft(roteiro.props, tema, segundos, paleta)}\n\nFormato: *${rotuloEstilo}*\nDuração: *${rotuloDuracao}* — render em cerca de ${minutos} min\n\nCódigo de aprovação: *${token}*`;
+  return `${formatVideoDraft(roteiro.props, tema, segundos, paleta)}${linhaSite}\n\nFormato: *${rotuloEstilo}*\nDuração: *${rotuloDuracao}* — render em cerca de ${minutos} min\n\nCódigo de aprovação: *${token}*\n\nSe quiser, me diga _"troca a cor principal pro vermelho"_ ou _"tira a logo"_ antes de aprovar.`;
+}
+
+/** Correções por texto no rascunho pendente, antes de gastar o render. */
+async function ajustarRascunhoVideo(
+  ctx: { userId: string; fromNumber: string },
+  texto: string,
+): Promise<string | null> {
+  const draft = await buscarRascunhoVideo(ctx);
+  if (!draft) return null;
+  const props: any = { ...(draft.props ?? {}) };
+  const n = String(texto ?? "").toLowerCase();
+  const pedidas = extrairCoresDoTexto(texto);
+  const tirarLogo = /\b(tir(?:a|ar|e)|remov(?:e|er)|sem)\b[^.]{0,20}\blogo/.test(n);
+  if (!pedidas && !tirarLogo) return null;
+
+  const mudancas: string[] = [];
+  if (pedidas) {
+    props.cores = { ...(props.cores ?? {}), ...pedidas.cores };
+    mudancas.push(`cores: ${pedidas.resumo}`);
+  }
+  if (tirarLogo) {
+    props.logo_path = undefined;
+    props.logoUrl = undefined;
+    props.prospect = true; // impede a logo do tenant voltar na aprovação
+    mudancas.push("logo removida deste vídeo");
+  }
+  const { error } = await sb.from("video_motion_rascunhos")
+    .update({ props })
+    .eq("id", draft.id)
+    .eq("user_id", ctx.userId);
+  if (error) return null;
+  return `✅ Ajustei o roteiro: ${mudancas.join(" · ")}.\n\nResponda *APROVADO* para eu renderizar, ou me diga outro ajuste.`;
 }
 
 async function buscarRascunhoVideo(ctx: { userId: string; fromNumber: string }): Promise<any | null> {
@@ -5198,6 +5269,7 @@ const TOOLS = [
           cores: { type: "string", description: "Trecho LITERAL do pedido que menciona cores, com rótulos e hex se houver. Ex: 'fundo #ffffff, fundo 2 #fff5f5, destaque #E30613, apoio #ff4d57' ou 'vermelho e branco'. Deixe vazio se ele não citou cor nenhuma." },
           duracao: { type: "string", enum: ["curto", "medio", "longo"], description: "Duração SE ele pediu: 'curto' (~25s, padrão para redes), 'medio' (~45s), 'longo' (~75s, apresentação comercial). Vídeo mais longo tem MAIS conteúdo e demora mais para renderizar. Omita quando ele não pedir." },
           estilo: { type: "string", enum: ["auto", "conversa", "institucional", "lista"], description: "Formato do vídeo SE ele pediu: 'conversa' (celular com balões de WhatsApp), 'institucional' (tipografia grande, argumentos, selo/dado), 'lista' (itens numerados, '3 motivos', 'passo a passo'). Use 'auto' quando ele não pedir formato — a plataforma escolhe pelo tema." },
+          site: { type: "string", description: "Site da EMPRESA DO VÍDEO quando não é a do próprio responsável (prospecção). Ex.: 'drogariavenancio.com.br'. A plataforma lê cores, nome e logo desse site. Se o vídeo é para outra empresa e ele NÃO informou o site, pergunte: 'Qual o site da empresa? Uso para pegar as cores e a logo dela.' Deixe vazio quando o vídeo for da marca dele." },
         },
         required: ["tema"],
       },
@@ -6035,6 +6107,7 @@ async function runTool(
         String(args?.cores ?? ""),
         typeof args?.estilo === "string" ? args.estilo : null,
         typeof args?.duracao === "string" ? args.duracao : null,
+        typeof args?.site === "string" ? args.site : null,
       ),
     };
   }
@@ -6141,6 +6214,15 @@ async function callGemini(
     }
     if (remetenteEhDono && decisaoIntencao.intent === "aprovar_video" && pendingVideoDraft) {
       return { text: await confirmarRascunhoVideo(toolCtx) };
+    }
+    // Correção por texto do rascunho pendente ("troca a cor principal pro
+    // vermelho", "tira a logo") antes de gastar o render.
+    if (
+      remetenteEhDono && pendingVideoDraft && decisaoIntencao.intent !== "video" &&
+      !/\b(imagem|foto|imgem)\b/i.test(userContent)
+    ) {
+      const ajuste = await ajustarRascunhoVideo(toolCtx, userContent);
+      if (ajuste) return { text: ajuste };
     }
     if (decisaoIntencao.intent === "video") {
       if (!remetenteEhDono) {
