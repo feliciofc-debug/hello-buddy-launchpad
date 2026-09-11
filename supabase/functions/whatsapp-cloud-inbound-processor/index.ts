@@ -3968,6 +3968,67 @@ async function toolPublicarLinkedin(
   }
 }
 
+// Palavras que NÃO nomeiam produto. Elas nunca podem virar busca no catálogo:
+// era assim que "posta isso" achava um produto qualquer e montava o post errado.
+const TERMOS_GENERICOS_PRODUTO = new Set([
+  "isso", "isto", "esse", "essa", "este", "esta", "aquilo", "aquele", "aquela",
+  "foto", "imagem", "video", "midia", "arquivo", "post", "conteudo", "material",
+  "o video", "o post", "a foto", "a imagem", "a midia", "esse video", "esse post",
+  "essa foto", "essa imagem", "o ultimo", "a ultima", "ultimo", "ultima",
+]);
+
+function ehTermoGenericoDeProduto(q: string): boolean {
+  const n = normalizePt(q).replace(/[^a-z0-9\s]/g, "").trim();
+  if (!n || n.length < 3) return true;
+  return TERMOS_GENERICOS_PRODUTO.has(n);
+}
+
+/**
+ * Canoniza a foto do produto do catálogo como item da biblioteca de mídias da conta.
+ * Reaproveita o registro quando a mesma foto do mesmo dono já existe; nunca reaproveita
+ * item bloqueado. Sem isso o pedido nasceria sem vínculo e não poderia publicar.
+ */
+async function resolverAssetDoProduto(
+  userId: string,
+  produto: any,
+): Promise<{ id: string; tipo: "foto" } | null> {
+  const url = String(produto?.imagem_url || "").trim();
+  if (!url) return null;
+  try {
+    const { data: existente } = await sb
+      .from("midias_whatsapp")
+      .select("id, status")
+      .eq("user_id", userId)
+      .eq("midia_url", url)
+      .eq("tipo", "foto")
+      .not("status", "ilike", "%bloquead%")
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (existente?.[0]?.id) return { id: existente[0].id as string, tipo: "foto" };
+
+    const { data: novo, error } = await sb
+      .from("midias_whatsapp")
+      .insert({
+        user_id: userId,
+        origem: "catalogo_produto",
+        tipo: "foto",
+        midia_url: url,
+        contexto_original: String(produto?.nome || "").slice(0, 300),
+        status: "pendente",
+      })
+      .select("id")
+      .single();
+    if (error || !novo?.id) {
+      console.error("[postar_redes][asset_produto_falhou]", error?.message);
+      return null;
+    }
+    return { id: novo.id as string, tipo: "foto" };
+  } catch (e) {
+    console.error("[postar_redes][asset_produto_erro]", (e as Error).message);
+    return null;
+  }
+}
+
 async function toolPostarRedesSociais(
   args: { produto: string; tom?: string; redes?: string[]; incluir_cta_whatsapp?: boolean },
   ctx: { userId: string; fromNumber: string },
@@ -3977,6 +4038,14 @@ async function toolPostarRedesSociais(
     pendingCleanup();
     const q = (args?.produto || "").trim();
     if (!q) return JSON.stringify({ erro: "informe qual produto postar" });
+    // Sem produto nomeado, este caminho não roda. Nada de "o produto do contexto".
+    if (ehTermoGenericoDeProduto(q)) {
+      return JSON.stringify({
+        erro: "produto_nao_nomeado",
+        mensagem: "Não entendi de qual item é o post. Se for uma mídia que geramos, me manda o código dela (8 caracteres). Se for produto do catálogo, me diga o nome do produto. Nada foi preparado.",
+      });
+    }
+
 
     const redesValidas = ["facebook", "instagram", "tiktok", "linkedin"];
     const redes = (args?.redes && args.redes.length > 0 ? args.redes : ["facebook", "instagram", "tiktok", "linkedin"])
