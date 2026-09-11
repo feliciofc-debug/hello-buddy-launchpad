@@ -4084,6 +4084,45 @@ async function resolverAssetDoProduto(
   }
 }
 
+// Nomes de TODO o catálogo do dono (paginado, sem filtro de texto): o casamento
+// forte precisa ver todos os nomes, senão um produto nomeado exato fica de fora
+// por causa do limit da busca por similaridade. Cache curto de 60s.
+const CATALOGO_NOMES_CACHE = new Map<string, { at: number; itens: Array<{ id: string; nome: string; source: string }> }>();
+async function listarNomesDoCatalogo(userId: string): Promise<Array<{ id: string; nome: string; source: string }>> {
+  const cached = CATALOGO_NOMES_CACHE.get(userId);
+  if (cached && Date.now() - cached.at < 60_000) return cached.itens;
+
+  const itens: Array<{ id: string; nome: string; source: string }> = [];
+  const PAGINA = 1000;
+  for (const [tabela, campo, source] of [["produtos", "nome", "produtos"], ["products_stock", "name", "products_stock"]] as const) {
+    for (let de = 0; ; de += PAGINA) {
+      const { data, error } = await sb.from(tabela)
+        .select(`id, ${campo}`)
+        .eq("user_id", userId)
+        .range(de, de + PAGINA - 1);
+      if (error) { console.warn("[catalogo_nomes][erro]", tabela, error.message); break; }
+      const linhas = data ?? [];
+      for (const r of linhas as any[]) if (r?.[campo]) itens.push({ id: r.id, nome: String(r[campo]), source });
+      if (linhas.length < PAGINA) break;
+    }
+  }
+  CATALOGO_NOMES_CACHE.set(userId, { at: Date.now(), itens });
+  return itens;
+}
+
+async function carregarProdutoDoCatalogoPorId(item: { id: string; source: string }, userId: string): Promise<any | null> {
+  if (item.source === "products_stock") {
+    const { data } = await sb.from("products_stock")
+      .select("id, name, description_short, description_long, price, img_url, category, active, sku")
+      .eq("id", item.id).eq("user_id", userId).maybeSingle();
+    return data ? toSocialProduct(data, "products_stock") : null;
+  }
+  const { data } = await sb.from("produtos")
+    .select("id, nome, descricao, preco, imagem_url, imagens, link, link_marketplace, categoria, ativo, tags, sku")
+    .eq("id", item.id).eq("user_id", userId).maybeSingle();
+  return data ? toSocialProduct(data, "produtos") : null;
+}
+
 async function toolPostarRedesSociais(
   args: { produto: string; tom?: string; redes?: string[]; incluir_cta_whatsapp?: boolean },
   ctx: { userId: string; fromNumber: string },
@@ -4109,15 +4148,25 @@ async function toolPostarRedesSociais(
     const tom = args?.tom || "urgencia";
     const incluirCta = !!args?.incluir_cta_whatsapp;
 
-    const { produto: prod, sugestoes, candidatos } = await buscarProdutoParaPostagem(q, ctx.userId);
+    // Casamento FORTE, avaliado contra TODOS os nomes do catálogo. Similaridade
+    // no máximo sugere — nunca escolhe. Zero, vários ou fraco => pergunta.
+    const itensCatalogo = await listarNomesDoCatalogo(ctx.userId);
+    const preparo = await prepararPostDoCatalogo({
+      query: q,
+      ehTermoGenerico: () => false, // já checado acima, antes de tocar no banco
+      listarNomes: () => Promise.resolve(itensCatalogo.map((i) => i.nome)),
+      sugestoes: async () => (await buscarProdutoParaPostagem(q, ctx.userId)).sugestoes,
+    });
+    if (!preparo.ok) return JSON.stringify(preparo.resposta);
 
+    const prod = await carregarProdutoDoCatalogoPorId(itensCatalogo[preparo.indice], ctx.userId);
     if (!prod) {
       return JSON.stringify({
-        erro: `produto "${q}" não encontrado`,
-        dica: "Tente uma palavra-chave do nome real ou escolha uma das sugestões abaixo.",
-        sugestoes_do_catalogo: sugestoes.length ? sugestoes : (candidatos ?? []).slice(0, 7).map((r: any) => r.nome),
+        erro: "produto_nao_identificado",
+        mensagem: "Não consegui carregar esse produto do catálogo. Nada foi preparado.",
       });
     }
+    const sugestoes: string[] = [prod.nome];
 
     if (prod.ativo === false) return JSON.stringify({ erro: `produto "${prod.nome}" foi encontrado, mas está inativo no catálogo`, sugestoes_do_catalogo: sugestoes });
     if (!prod.imagem_url && redes.some((r) => r === "instagram" || r === "tiktok")) {
@@ -4163,7 +4212,7 @@ async function toolPostarRedesSociais(
     }
 
     const token = novoTokenPost();
-    const pending: PendingSocialPost = { produto: prod, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), incluirCtaWhatsapp: incluirCta, formato: "feed", midiaTipo: "foto", assetId: assetProduto.id, assetTipo: assetProduto.tipo };
+    const pending: PendingSocialPost = { produto: prod, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), incluirCtaWhatsapp: incluirCta, formato: "feed", midiaTipo: "foto", assetId: assetProduto.id, assetTipo: assetProduto.tipo, origem: "catalogo", arquivoNome: String(prod.imagem_url || "").split("/").pop()?.split("?")[0] };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
 
@@ -4171,7 +4220,13 @@ async function toolPostarRedesSociais(
     return JSON.stringify({
       status: "aguardando_escolha_variante",
       token,
-      origem_do_post: `produto do catálogo: ${prod.nome}`,
+      procedencia: {
+        origem: "catalogo",
+        produtoNome: prod.nome,
+        midiaIdCurto: String(assetProduto.id).slice(0, 8),
+        midiaTipo: "foto",
+        arquivoNome: String(prod.imagem_url || "").split("/").pop()?.split("?")[0],
+      },
       midia_vinculada: { id_curto: assetProduto.id.slice(0, 8).toUpperCase(), tipo: "foto", url: prod.imagem_url },
       produto: { nome: prod.nome, preco: prod.preco, imagem_url: prod.imagem_url, link: prod.link },
       tom,
@@ -4409,6 +4464,7 @@ async function toolRevisarPostPendente(
     status: "aguardando_escolha_variante",
     revisado: true,
     token,
+    procedencia: procedenciaDoPending(atualizado),
     formato: p.formato || "feed",
     redes: p.redes,
     variantes,
@@ -4459,6 +4515,7 @@ async function toolEscolherVariantePost(
   return JSON.stringify({
     status: "variante_selecionada",
     token,
+    procedencia: procedenciaDoPending({ ...p, scripts, variantSelecionada: opcao }),
     opcao_ativa: opcao,
     preview: scripts,
     midia_aprovacao: {
@@ -4858,7 +4915,7 @@ async function toolPostarMidiaBiblioteca(
     }
 
     const token = novoTokenPost();
-    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo, assetId: asset.id, assetTipo: asset.tipo, incluirCtaWhatsapp: incluirCta, briefing: briefing || undefined };
+    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo, assetId: asset.id, assetTipo: asset.tipo, incluirCtaWhatsapp: incluirCta, briefing: briefing || undefined, origem: "biblioteca", arquivoNome: asset.arquivoNome };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
 
@@ -4881,6 +4938,7 @@ async function toolPostarMidiaBiblioteca(
       status: "aguardando_escolha_variante",
       fonte: "biblioteca_midias",
       token,
+      procedencia: { origem: "biblioteca", midiaIdCurto: String(asset.id).slice(0, 8), midiaTipo: asset.tipo, arquivoNome: asset.arquivoNome },
       formato,
       midia: { id: midia.id, tipo: midia.tipo, url: midia.midia_url },
       produto: { nome: produtoLike.nome, preco: produtoLike.preco, imagem_url: produtoLike.imagem_url },
