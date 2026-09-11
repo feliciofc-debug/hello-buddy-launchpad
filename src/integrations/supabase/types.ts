@@ -7573,6 +7573,10 @@ export type Database = {
       }
       social_posts_queue: {
         Row: {
+          approval_token: string | null
+          approved_at: string | null
+          approved_by: string | null
+          approved_media_url: string | null
           created_at: string | null
           error_message: string | null
           fb_post_id: string | null
@@ -7595,6 +7599,10 @@ export type Database = {
           video_url: string | null
         }
         Insert: {
+          approval_token?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          approved_media_url?: string | null
           created_at?: string | null
           error_message?: string | null
           fb_post_id?: string | null
@@ -7617,6 +7625,10 @@ export type Database = {
           video_url?: string | null
         }
         Update: {
+          approval_token?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          approved_media_url?: string | null
           created_at?: string | null
           error_message?: string | null
           fb_post_id?: string | null
