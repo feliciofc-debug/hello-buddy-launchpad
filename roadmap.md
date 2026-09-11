@@ -89,3 +89,4 @@
 - [ ] Pré-checagem global de compatibilidade de tipo antes de qualquer chamada de API
 - [ ] somenteCompativeisConfirmado + redesConfirmadas persistidos no marcador e reidratados
 - [ ] Testes de orquestração com publicador stubado (zero chamadas quando incompatível)
+- [ ] Recusar termo genérico ANTES de listar catálogo; cache de nomes por 60s
