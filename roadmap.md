@@ -56,3 +56,9 @@
 - [x] Avisar uso e saldo antes do limite
 - [x] Criar área “Cotas de vídeo” no painel administrativo
 - [x] Validar regras e interface sem iniciar renderizações reais
+
+## Incidente — contexto e intenção no WhatsApp real
+- [ ] Rastrear por que o filtro de nicho não bloqueou a copy odontológica no caminho real
+- [ ] Cobrir no teste o mesmo caminho executado pelo processador do WhatsApp
+- [ ] Classificar “sim” após confirmação como publicação, nunca como nova geração
+- [ ] Validar ponta a ponta com o histórico real sem publicar conteúdo adicional
