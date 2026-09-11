@@ -4612,21 +4612,49 @@ async function criarRascunhoVideoMotion(
   textoCores?: string,
   estilo?: string | null,
   duracao?: string | null,
+  site?: string | null,
 ): Promise<string> {
   if (!isOwner(ctx)) return "Esse recurso é exclusivo do responsável da conta. Posso encaminhar o pedido para ele.";
   // Prospecção: quando o pedido menciona cores (hex ou nome), o vídeo sai na
   // identidade visual do cliente-alvo; sem menção, segue a paleta do tenant.
   const pedidas = extrairCoresDoTexto(`${textoCores ?? ""} ${tema}`);
+
+  // Prospecção pelo WhatsApp: site citado no pedido vira a identidade DESTA peça.
+  const url = extrairUrlDoTexto(`${site ?? ""} ${textoCores ?? ""} ${tema}`);
+  let identidade: IdentidadeVideo | null = null;
+  if (url) {
+    try {
+      identidade = await identidadeDoSiteParaVideo(sb, ctx.userId, url);
+    } catch (e) {
+      console.error("[video][identidade-site]", (e as Error)?.message);
+    }
+    if (!identidade) {
+      return `Não consegui ler o site ${url} agora. Me diga as cores da marca (ex.: "vermelho e branco") que eu monto o vídeo com elas — não quero usar a paleta errada numa peça de prospecção.`;
+    }
+    if (!identidade.cores && !pedidas) {
+      return `Li o site ${identidade.url}, mas ele não entregou as cores da marca.\n${identidade.resumo}\n\nMe diga as cores principais (ex.: "vermelho #e30613 e azul") que eu monto o vídeo. Não vou usar a paleta da AMZ numa peça de prospecção.`;
+    }
+  }
+
   const roteiro = await montarRoteiroMotion({
     sb,
     userId: ctx.userId,
     tema,
     origem: "whatsapp",
     nomeFallback: null,
-    cores: pedidas?.cores ?? null,
+    cores: pedidas?.cores ?? identidade?.cores ?? null,
     estilo: estilo ?? null,
     duracao: duracao ?? null,
-  });
+    apenasRoteiro: true,
+    ...(identidade
+      ? {
+        marca: identidade.marca || undefined,
+        tomDeVoz: identidade.tomDeVoz || undefined,
+        logoPath: identidade.logoPath ?? null,
+        prospect: true,
+      }
+      : {}),
+  } as any);
   const token = videoDraftToken();
   const { error } = await sb.from("video_motion_rascunhos").insert({
     user_id: ctx.userId,
@@ -4641,7 +4669,14 @@ async function criarRascunhoVideoMotion(
   if (error) throw new Error(`não consegui salvar o roteiro: ${error.message}`);
   const paleta = pedidas
     ? `${pedidas.resumo} (cores que você pediu)`
+    : identidade?.cores
+    ? `fundo ${roteiro.props?.cores?.bg}, destaque ${roteiro.props?.cores?.destaque} (cores lidas do site)`
     : `fundo ${roteiro.props?.cores?.bg}, destaque ${roteiro.props?.cores?.destaque} (padrão da sua marca)`;
+  const linhaSite = identidade
+    ? `\n\n🔎 Lido do site ${identidade.url}\n${identidade.resumo}${
+      identidade.logoEncontrada ? "" : "\nSem logo: o vídeo sai só com o nome da marca. Me envie o arquivo se quiser a logo."
+    }`
+    : "";
   const rotuloEstilo = ROTULO_ESTILO[(roteiro.props?.estilo ?? "conversa") as EstiloMotion] ?? "Conversa no celular";
   const segundos = roteiro.props ? duracaoEstimada(roteiro.props) : 0;
   const rotuloDuracao = ROTULO_DURACAO[(roteiro.props?.duracao ?? "curto") as DuracaoMotion] ?? "Curto (~25s)";
