@@ -28,7 +28,8 @@ export const PLATAFORMAS_OK = ["instagram", "facebook", "linkedin", "tiktok"];
 /** Fila ativa por usuário. WhatsApp é mais restrito: worker é single-thread. */
 export const LIMITE_FILA_PLATAFORMA = 3;
 export const LIMITE_FILA_WHATSAPP = 1;
-export const STATUS_QUE_CONSOMEM_COTA = ["pendente", "processando", "concluido", "aguardando_aprovacao", "publicado"];
+/** Cota diária por tenant, somando as duas origens. */
+export const COTA_DIARIA_POR_TENANT = 5;
 /** Janela de anti-duplicidade para o mesmo tema. */
 const JANELA_DUPLICIDADE_MIN = 10;
 
@@ -61,14 +62,6 @@ export type EnfileirarInput = {
   duracao?: string | null;
   /** logo específica desta peça (prospecção), sempre dentro da pasta do usuário */
   logoPath?: string | null;
-  /** peça de prospecção: nunca cai na logo cadastrada do tenant */
-  prospect?: boolean;
-  /** o usuário pediu para tirar a logo deste vídeo */
-  semLogo?: boolean;
-  /** proveniência obrigatória da identidade/logo desta peça */
-  identitySource?: "tenant" | "prospect" | "none";
-  /** identifica o site/origem da marca de prospecção */
-  identityKey?: string | null;
   /** só devolve o roteiro, não enfileira */
   apenasRoteiro?: boolean;
 };
@@ -90,43 +83,9 @@ export type EnfileirarResult =
     legenda_post: string;
     duracao_estimada: number;
     posicao_fila: number;
-    cota_aviso: string;
-    cota_limite: number;
-    cota_usado: number;
-    cota_restante: number | null;
     usou_ia: boolean;
   }
   | { ok: false; status: number; error: string; motivo?: string };
-
-export type CotaMotion = { limite: number; origem: string; usado: number };
-
-export function mensagemCotaMotion(cota: CotaMotion, numeroDoVideo = cota.usado + 1): string {
-  if (cota.limite === -1) return "Vídeos ilimitados nesta conta.";
-  const restante = Math.max(0, cota.limite - numeroDoVideo);
-  return `Este é seu ${numeroDoVideo}º de ${cota.limite} vídeos hoje. ${restante === 1 ? "Restará 1." : `Restarão ${restante}.`}`;
-}
-
-export async function buscarCotaMotion(sb: any, userId: string): Promise<CotaMotion> {
-  const inicioSaoPaulo = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
-  inicioSaoPaulo.setHours(0, 0, 0, 0);
-  const inicioUtc = new Date(inicioSaoPaulo.getTime() + 3 * 60 * 60 * 1000).toISOString();
-
-  const [{ data: configuracao, error: configError }, { count: usado, error: usoError }] = await Promise.all([
-    sb.rpc("video_motion_cota_efetiva", { p_user_id: userId }),
-    sb.from("video_motion_jobs")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .in("status", STATUS_QUE_CONSOMEM_COTA)
-      .gte("created_at", inicioUtc),
-  ]);
-
-  if (configError || usoError) {
-    console.error("[video-motion] falha ao resolver cota; acesso liberado por segurança", configError ?? usoError);
-    return { limite: -1, origem: "indisponivel", usado: usado ?? 0 };
-  }
-  const row = Array.isArray(configuracao) ? configuracao[0] : configuracao;
-  return { limite: Number(row?.limite ?? -1), origem: String(row?.origem ?? "sem_plano"), usado: usado ?? 0 };
-}
 
 export async function logoDoTenant(sb: any, userId: string): Promise<string | undefined> {
   const { data } = await sb
@@ -137,30 +96,6 @@ export async function logoDoTenant(sb: any, userId: string): Promise<string | un
     .maybeSingle();
   const path = typeof data?.storage_path === "string" ? data.storage_path : "";
   return path.startsWith(`${userId}/`) ? path : undefined;
-}
-
-export function logoEhDeProspect(userId: string, path?: string): boolean {
-  if (!path?.startsWith(`${userId}/`)) return false;
-  const relativo = path.slice(userId.length + 1);
-  return relativo.startsWith("prospect/") || relativo.startsWith("prospect-") || /(?:^|\/)\d+-logo-site\./i.test(relativo);
-}
-
-export function validarProvenienciaLogo(
-  userId: string,
-  path: string | undefined,
-  origem: "tenant" | "prospect" | "none",
-  logoOficial?: string,
-): string | null {
-  if (!path) return null;
-  if (!path.startsWith(`${userId}/`)) return "A logo não pertence a esta conta.";
-  if (origem === "none") return "Este vídeo foi marcado para sair sem logo.";
-  if (origem === "prospect" && !logoEhDeProspect(userId, path)) {
-    return "A logo não corresponde à identidade de prospecção escolhida.";
-  }
-  if (origem === "tenant" && path !== logoOficial) {
-    return "A logo selecionada não corresponde à marca oficial desta conta.";
-  }
-  return null;
 }
 
 /** Estilo pedido explicitamente; "auto"/vazio devolve o que o texto sugerir. */
@@ -229,27 +164,12 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
   usouIA: boolean;
 }> {
   const { sb, userId, tema } = input;
-  // A pasta do usuário, sozinha, não prova de qual marca é o arquivo. Toda logo
-  // precisa corresponder à proveniência explícita da identidade desta peça.
+  // Logo desta peça: a informada (prospecção) tem prioridade, desde que esteja
+  // na pasta do próprio usuário; senão, a logo cadastrada em "Minha marca".
   const logoInformada = typeof input.logoPath === "string" && input.logoPath.startsWith(`${userId}/`)
     ? input.logoPath
     : undefined;
-  const logoDasProps = typeof (input.props as any)?.logo_path === "string" &&
-      String((input.props as any).logo_path).startsWith(`${userId}/`)
-    ? String((input.props as any).logo_path)
-    : undefined;
-  // Prospecção: a logo é a do prospect (ou nenhuma). NUNCA a do tenant, para a
-  // marca de um cliente não vazar no vídeo do próximo.
-  const prospect = input.prospect === true || (input.props as any)?.prospect === true;
-  const origemInformada = input.identitySource ?? (input.props as any)?.identity_source;
-  const identitySource: "tenant" | "prospect" | "none" = input.semLogo || origemInformada === "none"
-    ? "none"
-    : (prospect || origemInformada === "prospect" ? "prospect" : "tenant");
-  const logoOficial = identitySource === "tenant" ? await logoDoTenant(sb, userId) : undefined;
-  const candidata = logoInformada ?? logoDasProps ?? logoOficial;
-  const erroLogo = validarProvenienciaLogo(userId, candidata, identitySource, logoOficial);
-  if (erroLogo) throw new Error(`${erroLogo} A renderização foi bloqueada para evitar mistura de marcas.`);
-  const logoPath = identitySource === "none" ? undefined : candidata;
+  const logoPath = logoInformada ?? await logoDoTenant(sb, userId);
   const trilha = await resolverTrilha(sb, userId, input);
   let props: MotionProps;
   let legendaPost = String(input.legendaPost ?? "").trim();
@@ -299,11 +219,6 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
   // A trilha fica referenciada por ID/path seguro; a URL temporária só nasce no claim.
   props = {
     ...props,
-    prospect: prospect || undefined,
-    identity_source: identitySource,
-    identity_key: identitySource === "prospect"
-      ? String(input.identityKey ?? (input.props as any)?.identity_key ?? props.site ?? "").trim() || undefined
-      : undefined,
     site: props.site || "",
     logo_path: logoPath,
     logoUrl: undefined,
@@ -340,12 +255,20 @@ export async function checarLimitesMotion(
     };
   }
 
-  const cota = await buscarCotaMotion(sb, userId);
-  if (cota.limite !== -1 && cota.usado >= cota.limite) {
+  const inicioDoDia = new Date();
+  inicioDoDia.setUTCHours(0, 0, 0, 0);
+  const { count: hoje } = await sb
+    .from("video_motion_jobs")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .neq("status", "cancelado")
+    .gte("created_at", inicioDoDia.toISOString());
+
+  if ((hoje ?? 0) >= COTA_DIARIA_POR_TENANT) {
     return {
       status: 429,
       motivo: "cota_diaria",
-      error: `Você usou os ${cota.limite} vídeos disponíveis hoje no seu plano. O administrador pode ajustar essa cota.`,
+      error: `Cota de ${COTA_DIARIA_POR_TENANT} vídeos por dia atingida. Amanhã libera de novo.`,
     };
   }
 
@@ -395,7 +318,6 @@ export async function enfileirarVideoMotion(input: EnfileirarInput): Promise<Enf
 
   const bloqueio = await checarLimitesMotion(sb, userId, origem, tema);
   if (bloqueio) return { ok: false, ...bloqueio };
-  const cota = await buscarCotaMotion(sb, userId);
 
   const plataformas = Array.isArray(input.plataformas)
     ? (input.plataformas as unknown[])
@@ -445,10 +367,6 @@ export async function enfileirarVideoMotion(input: EnfileirarInput): Promise<Enf
     legenda_post: legendaPost,
     duracao_estimada: duracaoEstimada(props),
     posicao_fila: pos ?? 1,
-    cota_aviso: mensagemCotaMotion(cota),
-    cota_limite: cota.limite,
-    cota_usado: cota.usado + 1,
-    cota_restante: cota.limite === -1 ? null : Math.max(0, cota.limite - cota.usado - 1),
     usou_ia: usouIA,
   };
 }

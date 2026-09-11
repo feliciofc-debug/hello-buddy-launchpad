@@ -10,8 +10,6 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { autorizarWorker, renderCors, respJson } from "../_shared/render-auth.ts";
-import { linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
-
 
 const MAX_TENTATIVAS = 3;
 
@@ -159,46 +157,14 @@ Deno.serve(async (req) => {
       return respJson({ success: true, cancelado: true });
     }
 
-    // O MP4 recém-gerado entra na biblioteca com ID próprio e vínculo tipado ao job
-    // que o gerou. É esse ID que a aprovação e a publicação usam — nada de "mais recente".
-    let midiaId: string | null = null;
-    if (job.origem === "whatsapp" && job.telefone) {
-      const contexto = `[video_motion_job:${job.id}] ${job.titulo || "Vídeo animado gerado pelo Jarvis"}`;
-      const { data: midiaRow, error: bibliotecaError } = await supabase.from("midias_whatsapp").insert({
-        user_id: job.user_id,
-        origem: "video_motion",
-        telefone_origem: job.telefone,
-        tipo: "video",
-        midia_url: videoUrl,
-        arquivo_nome: String(resultado_path).split("/").pop() || null,
-        generation_job_id: job.id,
-        generation_job_type: "video_motion_jobs",
-        duracao_segundos: duracao_segundos ?? null,
-        contexto_original: contexto,
-        legenda_gerada: job.legenda_post || null,
-        status: "pendente",
-        plataformas: [],
-      }).select("id").maybeSingle();
-      if (bibliotecaError) {
-        console.error("[video-motion-complete] falha ao vincular vídeo à biblioteca:", bibliotecaError.message);
-      }
-      midiaId = midiaRow?.id ?? null;
-    }
-
     if (job.origem === "whatsapp" && job.telefone) {
       const blocoLegenda = job.legenda_post ? `\n\n*Legenda sugerida:*\n${job.legenda_post}` : "";
-      // O código curto vem ANTES da legenda: é o que o dono digita para publicar.
-      // Sem ele, o pedido sai em linguagem natural e cai no caminho frouxo.
-      const blocoId = midiaId
-        ? `\n${linhaCodigoMidia(midiaId, "video")}`
-        : `\n⚠️ Não consegui registrar este vídeo na biblioteca, então ele *não tem código* e não pode ser publicado pelo WhatsApp. Baixe o arquivo ou peça de novo.`;
       if (!querPublicar) {
         await avisarCliente(
           supabase,
           job,
-          `🎬 Seu vídeo animado ficou pronto. *Não publiquei em lugar nenhum.*${blocoId}${blocoLegenda}`,
+          `🎬 Seu vídeo animado ficou pronto. *Não publiquei em lugar nenhum.*${blocoLegenda}`,
           videoUrl,
-
         );
       } else {
         const nomes = plataformas

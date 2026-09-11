@@ -23,9 +23,6 @@ type MotionProps = {
   marca: string;
   logoUrl?: string;
   logo_path?: string;
-  prospect?: boolean;
-  identity_source?: 'tenant' | 'prospect' | 'none';
-  identity_key?: string;
   site?: string;
   trilha_id?: string;
   trilha_path?: string;
@@ -103,8 +100,6 @@ export const CriarVideoAnimado = () => {
   const [logoPath, setLogoPath] = useState<string | null>(null);
   // Logo cadastrada da conta: usada só para poder restaurar depois de remover.
   const [logoOficial, setLogoOficial] = useState<{ path: string; url: string | null } | null>(null);
-  const [identitySource, setIdentitySource] = useState<'tenant' | 'prospect' | 'none'>('tenant');
-  const [identityKey, setIdentityKey] = useState('');
   const [subindoLogo, setSubindoLogo] = useState(false);
   const [marcaCliente, setMarcaCliente] = useState('');
   const [paletaSelecionada, setPaletaSelecionada] = useState<keyof typeof PALETAS>('personalizada');
@@ -141,9 +136,7 @@ export const CriarVideoAnimado = () => {
   const removerLogo = () => {
     setLogoPath(null);
     setLogoUrl(null);
-    setIdentitySource('none');
-    setIdentityKey('');
-    setProps((p) => (p ? { ...p, logoUrl: undefined, logo_path: undefined, identity_source: 'none' } : p));
+    setProps((p) => (p ? { ...p, logoUrl: undefined } : p));
     toast.success('Logo removida deste vídeo. A logo cadastrada da sua empresa continua salva.');
   };
 
@@ -151,9 +144,7 @@ export const CriarVideoAnimado = () => {
     if (!logoOficial?.path) return;
     setLogoPath(logoOficial.path);
     setLogoUrl(logoOficial.url);
-    setIdentitySource('tenant');
-    setIdentityKey('');
-    setProps((p) => (p ? { ...p, logoUrl: logoOficial.url ?? undefined, logo_path: logoOficial.path, prospect: false, identity_source: 'tenant', identity_key: undefined } : p));
+    setProps((p) => (p ? { ...p, logoUrl: logoOficial.url ?? undefined } : p));
     toast.success('Logo da sua empresa restaurada neste vídeo.');
   };
 
@@ -163,17 +154,12 @@ export const CriarVideoAnimado = () => {
     setLogoUrl(null);
     setMarcaCliente('');
     setTomDeVozCliente('');
-    setIdentitySource('none');
-    setIdentityKey('');
     setProps((p) => (p ? {
       ...p,
       logoUrl: undefined,
       marca: '',
       site: undefined,
       cta: { ...p.cta, telefone: '', consultor: '' },
-      prospect: false,
-      identity_source: 'none',
-      identity_key: undefined,
     } : p));
   };
 
@@ -268,9 +254,7 @@ export const CriarVideoAnimado = () => {
     setSubindoLogo(true);
     try {
       const nome = file.name.replace(/[^a-zA-Z0-9._-]/g, '-').slice(-80);
-      const novoPath = definirComoMarca
-        ? `${user.id}/${Date.now()}-${nome}`
-        : `${user.id}/prospect/${crypto.randomUUID()}-${nome}`;
+      const novoPath = `${user.id}/${Date.now()}-${nome}`;
       const { error: uploadError } = await supabase.storage.from('tenant-logos').upload(novoPath, file, { contentType: file.type });
       if (uploadError) throw uploadError;
 
@@ -285,7 +269,6 @@ export const CriarVideoAnimado = () => {
       const { data: signed } = await supabase.storage.from('tenant-logos').createSignedUrl(novoPath, 3600);
       setLogoPath(novoPath);
       setLogoUrl(signed?.signedUrl ?? null);
-      setIdentitySource(definirComoMarca ? 'tenant' : 'prospect');
       toast.success(definirComoMarca ? 'Logo do cliente anexada.' : 'Logo do site aplicada a este vídeo.');
     } catch (e: any) {
       toast.error(e?.message || 'Não foi possível anexar a logo.');
@@ -304,7 +287,6 @@ export const CriarVideoAnimado = () => {
     if (nome === 'amz' && logoOficial?.path) {
       setLogoPath(logoOficial.path);
       setLogoUrl(logoOficial.url);
-      setIdentitySource('tenant');
     }
   };
 
@@ -318,8 +300,6 @@ export const CriarVideoAnimado = () => {
     setCores(novas);
     if (d.nome_empresa) setMarcaCliente(d.nome_empresa);
     setTomDeVozCliente(d.tom_de_voz || '');
-    setIdentitySource('prospect');
-    setIdentityKey(d.url);
     setProps((p) => (p ? {
       ...p,
       cores: novas,
@@ -327,9 +307,6 @@ export const CriarVideoAnimado = () => {
       site: d.url,
       // Peça de prospecção: o contato é do cliente, não o do usuário.
       cta: { ...p.cta, telefone: '', consultor: '' },
-      prospect: true,
-      identity_source: 'prospect',
-      identity_key: d.url,
     } : p));
 
     // A logo vem baixada pela função (data URL), porque o navegador é
@@ -553,10 +530,6 @@ export const CriarVideoAnimado = () => {
           marca: marcaCliente.trim() || undefined,
           tom_de_voz: tomDeVozCliente.trim() || undefined,
           logo_path: logoPath || undefined,
-          prospect: identitySource === 'prospect',
-          sem_logo: identitySource === 'none',
-          identity_source: identitySource,
-          identity_key: identityKey || undefined,
           trilha_id: semTrilha ? undefined : trilhaId || undefined,
           sem_trilha: semTrilha,
         },
@@ -602,10 +575,6 @@ export const CriarVideoAnimado = () => {
           marca: marcaCliente.trim() || undefined,
           tom_de_voz: tomDeVozCliente.trim() || undefined,
           logo_path: logoPath || undefined,
-          prospect: identitySource === 'prospect',
-          sem_logo: identitySource === 'none',
-          identity_source: identitySource,
-          identity_key: identityKey || undefined,
           trilha_id: semTrilha ? undefined : trilhaId || props.trilha_id || undefined,
           sem_trilha: semTrilha,
           trilha_volume: props.trilha_volume ?? 0.28,
@@ -613,19 +582,9 @@ export const CriarVideoAnimado = () => {
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Não consegui enfileirar');
-      toast.success(`🎬 Vídeo na fila (posição ${data.posicao_fila}). ${data.cota_aviso || "Te aviso quando ficar pronto."}`);
+      toast.success(`🎬 Vídeo na fila (posição ${data.posicao_fila}). Te aviso quando ficar pronto.`);
       setProps(null);
       setTema('');
-      // O próximo pedido nasce novamente na identidade oficial. Nenhum dado
-      // temporário de prospecção permanece no formulário depois do envio.
-      setLogoPath(logoOficial?.path ?? null);
-      setLogoUrl(logoOficial?.url ?? null);
-      setMarcaCliente('');
-      setTomDeVozCliente('');
-      setPaletaSelecionada('amz');
-      setCores({ ...PALETAS.amz.cores });
-      setIdentitySource('tenant');
-      setIdentityKey('');
       carregarJobs();
     } catch (e: any) {
       toast.error(e.message || 'Erro ao enviar para a fila');

@@ -12,8 +12,6 @@
 //   - LIMITE_PREMIUM_DIA: teto rígido pensado para preservar o saldo do Jarvis
 // ============================================================
 
-import { cortarFrase } from "./texto-completo.ts";
-
 export type NivelVideo = "padrao" | "premium";
 
 /** Flag/limites reservados para a fase 2. Nada consome isso ainda. */
@@ -70,10 +68,17 @@ export const PALETA_PADRAO_PRODUTO: Paleta = {
   suave: "#93a4b8",
 };
 
-const txt = (v: unknown, max: number) => cortar(v, max);
+const txt = (v: unknown, max: number) =>
+  String(v ?? "").replace(/\s+/g, " ").replace(/^["'`\s]+|["'`\s]+$/g, "").slice(0, max).trim();
 
-/** Corta em frase/oração completa. NUNCA reticências, nunca palavra partida. */
-const cortar = (v: unknown, max: number) => cortarFrase(String(v ?? ""), max);
+/** Corta no limite sem quebrar palavra no meio e fecha com reticências. */
+const cortar = (v: unknown, max: number) => {
+  const bruto = String(v ?? "").replace(/\s+/g, " ").trim();
+  if (bruto.length <= max) return bruto;
+  const fatia = bruto.slice(0, max - 1);
+  const corte = fatia.lastIndexOf(" ");
+  return `${(corte > max * 0.6 ? fatia.slice(0, corte) : fatia).replace(/[\s,.;:-]+$/, "")}…`;
+};
 
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 

@@ -6,9 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Shield, Trash2, AlertTriangle, CheckCircle, Clock, ArrowLeft, RefreshCw, Upload, Package, Users, ListChecks, Send, Flag, BookOpen, Gauge } from "lucide-react";
+import { Shield, Trash2, AlertTriangle, CheckCircle, Clock, ArrowLeft, RefreshCw, Upload, Package, Users, ListChecks, Send, Flag, BookOpen } from "lucide-react";
 import { FeatureFlagsTab } from "@/components/admin/FeatureFlagsTab";
-import { VideoMotionQuotasTab } from "@/components/admin/VideoMotionQuotasTab";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
@@ -338,7 +337,7 @@ export default function Admin() {
         </div>
 
         <Tabs defaultValue="deletions" className="w-full">
-          <TabsList className="grid w-full max-w-2xl grid-cols-4">
+          <TabsList className="grid w-full max-w-lg grid-cols-3">
             <TabsTrigger value="deletions" className="gap-2">
               <Trash2 className="h-4 w-4" />
               Exclusão ({deletionRequests.length})
@@ -350,10 +349,6 @@ export default function Admin() {
             <TabsTrigger value="flags" className="gap-2">
               <Flag className="h-4 w-4" />
               Feature Flags
-            </TabsTrigger>
-            <TabsTrigger value="video-quotas" className="gap-2">
-              <Gauge className="h-4 w-4" />
-              Cotas de vídeo
             </TabsTrigger>
           </TabsList>
 
@@ -535,9 +530,6 @@ export default function Admin() {
           {/* Feature Flags Tab */}
           <TabsContent value="flags" className="mt-6">
             <FeatureFlagsTab />
-          </TabsContent>
-          <TabsContent value="video-quotas" className="mt-6">
-            <VideoMotionQuotasTab />
           </TabsContent>
         </Tabs>
       </main>

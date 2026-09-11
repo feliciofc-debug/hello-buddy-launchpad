@@ -14,4 +14,3 @@
 - [LinkedIn comentários bloqueados](mem://constraints/linkedin-comentarios-nao-liberados) — 403 ACCESS_DENIED em socialActions; fallback põe o link no corpo do post
 - [Campanha 30 dias — estado](mem://features/marketing/campanha-30-dias-estado) — Série AMZ em 30 Segundos: lote 1 pronto (usar -v2), prompts de post, lotes 2-6 pendentes
 - [Duração dos vídeos animados](mem://features/marketing/duracao-video-motion) — Presets curto/médio/longo: volume de conteúdo e ritmo das cenas
-- [Aprovação mostra texto integral](mem://governance/pj/aprovacao-mostra-texto-integral) — Texto exato por opção (nunca resumo) e bloqueio de segmento de outro cliente na copy

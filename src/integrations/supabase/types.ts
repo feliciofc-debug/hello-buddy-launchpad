@@ -5412,15 +5412,12 @@ export type Database = {
       }
       midias_whatsapp: {
         Row: {
-          arquivo_nome: string | null
           comments: number | null
           contexto_original: string | null
           contexto_transcricao: string | null
           created_at: string
           duracao_segundos: number | null
           erro_mensagem: string | null
-          generation_job_id: string | null
-          generation_job_type: string | null
           hashtags: string[] | null
           id: string
           legenda_gerada: string | null
@@ -5449,15 +5446,12 @@ export type Database = {
           whatsapp_message_id: string | null
         }
         Insert: {
-          arquivo_nome?: string | null
           comments?: number | null
           contexto_original?: string | null
           contexto_transcricao?: string | null
           created_at?: string
           duracao_segundos?: number | null
           erro_mensagem?: string | null
-          generation_job_id?: string | null
-          generation_job_type?: string | null
           hashtags?: string[] | null
           id?: string
           legenda_gerada?: string | null
@@ -5486,15 +5480,12 @@ export type Database = {
           whatsapp_message_id?: string | null
         }
         Update: {
-          arquivo_nome?: string | null
           comments?: number | null
           contexto_original?: string | null
           contexto_transcricao?: string | null
           created_at?: string
           duracao_segundos?: number | null
           erro_mensagem?: string | null
-          generation_job_id?: string | null
-          generation_job_type?: string | null
           hashtags?: string[] | null
           id?: string
           legenda_gerada?: string | null
@@ -5890,7 +5881,6 @@ export type Database = {
           imagens_ia_mes_atual: number
           limite_envios: number | null
           limite_imagens_ia_mes: number
-          limite_videos_motion_dia: number | null
           max_envios_dia_numero: number
           mes_referencia: string | null
           mes_referencia_ia: string
@@ -5916,7 +5906,6 @@ export type Database = {
           imagens_ia_mes_atual?: number
           limite_envios?: number | null
           limite_imagens_ia_mes?: number
-          limite_videos_motion_dia?: number | null
           max_envios_dia_numero?: number
           mes_referencia?: string | null
           mes_referencia_ia?: string
@@ -5942,7 +5931,6 @@ export type Database = {
           imagens_ia_mes_atual?: number
           limite_envios?: number | null
           limite_imagens_ia_mes?: number
-          limite_videos_motion_dia?: number | null
           max_envios_dia_numero?: number
           mes_referencia?: string | null
           mes_referencia_ia?: string
@@ -6339,7 +6327,6 @@ export type Database = {
           updated_at: string
           usuarios_painel: number
           videos_legenda_mes: number
-          videos_motion_dia: number
           white_label: boolean
         }
         Insert: {
@@ -6356,7 +6343,6 @@ export type Database = {
           updated_at?: string
           usuarios_painel?: number
           videos_legenda_mes?: number
-          videos_motion_dia?: number
           white_label?: boolean
         }
         Update: {
@@ -6373,7 +6359,6 @@ export type Database = {
           updated_at?: string
           usuarios_painel?: number
           videos_legenda_mes?: number
-          videos_motion_dia?: number
           white_label?: boolean
         }
         Relationships: []
@@ -7588,13 +7573,6 @@ export type Database = {
       }
       social_posts_queue: {
         Row: {
-          approval_token: string | null
-          approved_at: string | null
-          approved_by: string | null
-          approved_media_type: string | null
-          approved_media_url: string | null
-          asset_id: string | null
-          asset_tipo: string | null
           created_at: string | null
           error_message: string | null
           fb_post_id: string | null
@@ -7603,7 +7581,6 @@ export type Database = {
           link_no_primeiro_comentario: boolean | null
           link_url: string | null
           linkedin_post_urn: string | null
-          origem_fluxo: string
           page_id: string | null
           platform: string
           post_text: string | null
@@ -7618,13 +7595,6 @@ export type Database = {
           video_url: string | null
         }
         Insert: {
-          approval_token?: string | null
-          approved_at?: string | null
-          approved_by?: string | null
-          approved_media_type?: string | null
-          approved_media_url?: string | null
-          asset_id?: string | null
-          asset_tipo?: string | null
           created_at?: string | null
           error_message?: string | null
           fb_post_id?: string | null
@@ -7633,7 +7603,6 @@ export type Database = {
           link_no_primeiro_comentario?: boolean | null
           link_url?: string | null
           linkedin_post_urn?: string | null
-          origem_fluxo?: string
           page_id?: string | null
           platform?: string
           post_text?: string | null
@@ -7648,13 +7617,6 @@ export type Database = {
           video_url?: string | null
         }
         Update: {
-          approval_token?: string | null
-          approved_at?: string | null
-          approved_by?: string | null
-          approved_media_type?: string | null
-          approved_media_url?: string | null
-          asset_id?: string | null
-          asset_tipo?: string | null
           created_at?: string | null
           error_message?: string | null
           fb_post_id?: string | null
@@ -7663,7 +7625,6 @@ export type Database = {
           link_no_primeiro_comentario?: boolean | null
           link_url?: string | null
           linkedin_post_urn?: string | null
-          origem_fluxo?: string
           page_id?: string | null
           platform?: string
           post_text?: string | null
@@ -10267,24 +10228,6 @@ export type Database = {
           schedule: string
         }[]
       }
-      admin_list_video_motion_quotas: {
-        Args: never
-        Returns: {
-          email: string
-          limite_efetivo: number
-          limite_individual: number
-          nome: string
-          origem_limite: string
-          plano_limite: number
-          plano_nome: string
-          usado_hoje: number
-          user_id: string
-        }[]
-      }
-      admin_set_video_motion_quota: {
-        Args: { p_limite: number; p_user_id: string }
-        Returns: undefined
-      }
       auto_classificar_produto_afiliado: {
         Args: { p_categoria?: string; p_titulo: string }
         Returns: string
@@ -10631,13 +10574,6 @@ export type Database = {
       verificar_rate_limit_afiliado: {
         Args: { p_phone: string }
         Returns: number
-      }
-      video_motion_cota_efetiva: {
-        Args: { p_user_id: string }
-        Returns: {
-          limite: number
-          origem: string
-        }[]
       }
       video_motion_destravar_fila: { Args: never; Returns: number }
       video_motion_fila_posicao: { Args: { p_job_id: string }; Returns: number }

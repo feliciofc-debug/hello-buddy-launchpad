@@ -1,93 +1,84 @@
 # Roadmap
 
-- [x] Mapear publicação atual em produtos, vídeos e Jarvis
-- [x] Definir publicação simultânea com confirmação e status por rede
-- [x] Implementar botão único sem alterar fluxos individuais ou WhatsApp
-- [x] Implementar comando “publica em todas” no Jarvis com confirmação obrigatória
-- [x] Validar limites de legenda por rede, três pontos de entrada e respostas individuais
-- [x] Explicar claramente que o TikTok foi enviado aos rascunhos para finalização no app
+## Instagram Shopping — sacolinha
+- [x] Área de Produtos: campo para informar o ID do produto no catálogo do Instagram.
+- [x] Publicação de fotos: enviar `product_tags` quando o produto tiver ID cadastrado.
+- [x] Publicação de carrosséis: enviar a tag do produto vinculado no container do carrossel.
+- [x] Agendamentos e Autopilot: preservar o `produto_id` e resolver o vínculo no backend, por cliente.
+- [ ] Requisitos externos: conta IG Business com Instagram Shopping aprovado, catálogo no Commerce Manager vinculado à conta IG e permissões da Meta aprovadas.
+- [ ] Validar publicação real somente depois que o cliente autorizar um teste.
 
-## Fase 1 — rede de proteção do Jarvis
-- [x] Extrair roteador de intenção para módulo testável
-- [x] Classificar mensagem atual antes do histórico, com precedência de nova intenção
-- [x] Corrigir colisão imagem/vídeo (Instagram/Facebook não bastam para edição)
-- [x] Validação final: intenção de vídeo só chama vídeo
-- [x] Nunca expor códigos internos (sem_imagem); perguntar quando ambíguo
-- [x] Matriz de intenção, incluindo erros de digitação e abreviações
-- [x] Publicar e avisar para teste com o comando que falhou
+- [x] Áudio no WhatsApp: transcrição determinística via STT dedicado (agente não pode dizer que "não transcreve")
 
-## Texto nunca truncado (concluído)
-- [x] Causa identificada: `cortarFrase`/`cortar` fatiavam no limite e fechavam com "…" (roteiro de vídeo, vídeo de produto, legenda de campanha).
-- [x] Módulo único `_shared/texto-completo.ts` (corte em frase completa + `textoIncompleto`).
-- [x] Texto nasce curto: limites como regra dura no prompt + uma reescrita automática quando estoura.
-- [x] Aviso no roteiro do Jarvis antes de aprovar.
-- [x] `publicar-todas-redes` bloqueia legenda incompleta (400).
-- [x] Legenda de campanha WhatsApp cortada em frase completa.
-- [x] Testes `_shared/texto-completo.test.ts` (8 passando com a matriz de intenção).
+## BART — identidade e notificações do Paulo
+- [x] Reconhecer como dono os dois números do Paulo (profissional e pessoal), sem tratá-lo como cliente.
+- [x] Registrar status real da notificação (aceita, entregue, lida ou falhou), sem considerar apenas o ID inicial da Meta como entrega.
+- [x] Remover completamente o telefone pessoal do cadastro e do conhecimento operacional do BART.
+- [x] Fixar todos os reports do BART exclusivamente no profissional 55 21 99720-8854, inclusive após falha de entrega.
+- [x] Criar nova trilha instrumental profissional, temática de liberdade, com volume audível e mixar em nova versão do teaser
 
-## Isolamento definitivo de identidade em vídeos
-- [x] Corrigir estado residual após enviar vídeo de prospecção pela plataforma
-- [x] Persistir a origem da identidade em rascunhos e jobs
-- [x] Separar logos temporárias em namespace de prospecção
-- [x] Bloquear logo incompatível antes de enfileirar e novamente antes de renderizar
-- [x] Preservar a origem da identidade durante aprovação pelo Jarvis
-- [x] Adicionar teste de regressão cliente A → marca oficial B
+## Campanha "AMZ em 30 Segundos" — 30 dias
+- [x] Calendário de 30 dias com 6 pilares (impacto, agendar com IA, multi-plataforma, agente no WhatsApp, resultados, CTA/objeção)
+- [x] Produzir lote 1 (dias 1 a 5, 1 por pilar) em Remotion vertical 9:16 — `/mnt/documents/amz-30-dias/dia-01..05`
+- [ ] Produzir lotes 2 a 6 reaproveitando cenas
+- [x] Trilha sonora comum a toda a série (identidade sonora)
+- [x] Legenda embutida em todos os vídeos
 
-## Incidente — publicação de vídeo errado
-- [x] Identificar a mídia publicada, horário, redes e comando de confirmação
-- [x] Registrar vídeos recém-renderizados na biblioteca com vínculo ao job
-- [x] Proibir seleção implícita da “última mídia” ao preparar publicação
-- [x] Mostrar a mídia exata no resumo antes da confirmação
-- [x] Gravar quem aprovou, quando aprovou e qual mídia foi aprovada
-- [ ] Adicionar regressão: vídeo novo nunca pode publicar vídeo antigo
-- [x] Publicar e validar os bloqueios sem disparar conteúdo real
-- [x] Aprovação: texto integral por opção + bloqueio de segmento alheio
+## TikTok — aprovação da API
+- [ ] Definir URL pública para o cadastro (site institucional já existe: /plataforma, /integracoes, /sobre, /contato)
+- [ ] Plano B: criar conta de teste e informar no campo Apply Reason
+- [ ] Garantir que revisores consigam entrar, conectar a conta TikTok e fazer uma postagem de teste em sandbox
 
-- [ ] Publicação por ID imutável (asset_id + tipo) em todos os caminhos
-- [ ] ID curto visível na geração e na confirmação (comparável pelo dono)
-- [ ] Jarvis com publicação desativada até validação concluída
-- [ ] Resposta ao dono: causa do incidente + verificação de impacto em clientes
+## Vídeos animados — controle da renderização
+- [x] Diagnosticar o job da Ademicon e confirmar seu resultado final.
+- [x] Permitir cancelar jobs na fila ou em renderização pela tela Meus Produtos.
+- [x] Impedir que uma conclusão tardia do worker reative um job cancelado.
+- [x] Tornar o template de vídeo white label: site opcional, logo e dados do cliente, paleta dinâmica e contraste validado.
+- [x] Integrar a criação de roteiro Motion ao agente via WhatsApp, com aprovação persistente do responsável.
+- [x] Enfileirar somente após aprovação explícita e enviar o MP4 ao WhatsApp na conclusão.
+- [x] Adicionar limites de fila, cota diária e watchdog para jobs travados.
+- [x] Adicionar biblioteca privada de trilhas, upload/prévia/seleção opcional e trilha padrão por empresa.
+- [x] Renderizar áudio no Remotion com volume controlado, corte pela duração e fade-out.
+- [x] Assinar a trilha apenas no claim do worker e manter vídeos sem áudio válidos.
+- [ ] Inserir faixas globais com licença comercial documentada após validação jurídica/licenciamento.
+- [ ] Validar um render ponta a ponta com uma faixa aprovada na VPS.
 
-## Cota configurável de vídeos Motion
-- [x] Remover cota fixa de 5 vídeos do código
-- [x] Deixar administradores ilimitados
-- [x] Configurar limite por plano e exceção por conta
-- [x] Ignorar falhas e cancelamentos na cota
-- [x] Avisar uso e saldo antes do limite
-- [x] Criar área “Cotas de vídeo” no painel administrativo
-- [x] Validar regras e interface sem iniciar renderizações reais
+## TikTok Review — fechamento institucional
+- [x] Rodapé legal público na home com Termos e Privacidade visíveis
+- [x] Garantir que o banner de cookies não cubra os links legais
+- [x] Unificar CTA duplicado no hero
+- [x] Criar conta demonstrativa isolada, com dados e acesso permanente
+- [x] Validar home e links legais em desktop e mobile
 
-## Incidente — contexto e intenção no WhatsApp real
-- [x] Rastrear por que o filtro de nicho não bloqueou a copy odontológica no caminho real (só rodava para foto; agora vale para vídeo e cobre odonto/saúde/pet/jurídico/estética)
-- [ ] Cobrir no teste o mesmo caminho executado pelo processador do WhatsApp
-- [x] Classificar “sim” após confirmação como publicação, nunca como nova geração
-- [ ] Validar ponta a ponta com o histórico real sem publicar conteúdo adicional
-- [x] Corrigir caminho real do WhatsApp: “sim” após prévia publica exatamente o asset aprovado por ID
-- [x] Integrar filtro de nicho no caminho real do processador
-- [ ] Validar ponta a ponta no WhatsApp sem publicar mídia adicional
+## Landing page — posicionamento corporativo
+- [x] Reposicionar a abertura para marketing solicitado por áudio no WhatsApp.
+- [x] Exibir os cinco canais integrados no painel demonstrativo.
+- [x] Remover depoimentos fictícios e alegações não verificáveis.
+- [x] Substituir prova social por credenciais, APIs oficiais e dados da empresa.
+- [x] Atualizar fluxo, recursos, chamadas e linguagem para redes, franquias e empresas de porte.
+- [x] Preservar navegação, formulário final e rodapé legal.
+- [x] Reposicionar a plataforma como produto central e o WhatsApp como modo complementar de operação.
+- [x] Apresentar painel e WhatsApp lado a lado, com fluxos e benefícios próprios.
+## TikTok review (prioridade máxima — antes de terminar o vídeo de produto)
+- [x] Botão TikTok visível em "Meus Reels Gerados" (faltava para todas as contas, inclusive a demo)
+- [x] Botão LinkedIn no mesmo card, igualando as ações de produto
+- [x] Publicado e testado com a conta tiktokreview@amzofertas.com.br (botao TikTok visivel em produtos e reels; modal Connect TikTok abre OAuth)
 
-## Post pelo WhatsApp — vínculo de mídia e roteamento (implementado)
-- [x] Preencher assetId/assetTipo no post do catálogo (nunca criar pedido sem vínculo)
-- [x] Bloqueio 1: "posta isso" após mídia aprovada vai para o caminho da biblioteca, nunca para o catálogo
-- [x] Bloqueio 1: exigir nome de produto explícito para o caminho do catálogo + mostrar o produto na prévia
-- [x] Bloqueio 2 (opção a): remover fallback de "última foto 30 min" em editar_imagem
-- [x] Bloqueio 3: validar o código cru; prefixo p_ com corte em 2026-10-15
-- [x] Cancelar pedidos antigos aguardando_confirmacao com asset_id nulo
-- [x] Roteiro e post pendentes ao mesmo tempo: Jarvis pergunta, nunca adivinha
-- [x] Mensagens de erro distintas: inexistente / expirado / sem vínculo de mídia
-- [x] Ajuste 1: código de mídia lido só da mensagem do turno atual (nunca histórico)
-- [x] Ajuste 2: sem código resolvido → perguntar, nunca cair no catálogo
-- [x] Ajuste 3: exigir rótulo (ID/código/cod/#) ou mensagem só com o código; hex solto não conta
-- [x] Ajuste 4: buscar ID curto por prefixo no banco (sem limit(200)/filtro em JS)
-- [ ] Validação no WhatsApp real pelo dono (gerar vídeo de veterinária → pedir post → conferir textos e código → responder sim)
+## Testes vídeo de produto
+- [x] 2 produtos de exemplo criados na conta expo@atombrasildigital.com (fone fundo branco / air fryer fundo complexo)
 
-## Correção do padrão "na dúvida, seguiu em frente" (plano v3, aguardando aprovação)
-- [x] Casamento forte de produto contra TODOS os nomes do catálogo; zero/múltiplos/fraco → pergunta
-- [x] Nome curto (<4 chars): só casamento exato da consulta inteira
-- [x] Formatador único de prévia com procedência obrigatória (lança se faltar)
-- [x] Catch específico de PreviaSemProcedenciaError; outros erros com frase técnica própria
-- [x] Pré-checagem global de compatibilidade de tipo antes de qualquer chamada de API
-- [x] somenteCompativeisConfirmado + redesConfirmadas persistidos no marcador e reidratados
-- [x] Testes de orquestração com publicador stubado (zero chamadas quando incompatível)
-- [x] Recusar termo genérico ANTES de listar catálogo; cache de nomes por 60s
-- [ ] Validar no WhatsApp real: pedido genérico deve perguntar; foto+TikTok deve bloquear tudo
+## Camada B — leitura de site por navegador (VPS)
+- [x] Fila site_render_jobs + RPC de retirada
+- [x] Endpoints: extrair-identidade-site (enfileira), site-render-claim, site-render-complete, site-identidade-status
+- [x] Worker Playwright remotion/worker/worker-site-render.mjs (cores do DOM renderizado + captura + IA só para texto/tom)
+- [x] Tela de importacao com aviso e atualizacao automatica
+- [x] Nome da marca nunca preenchido com o dominio
+- [ ] Instalar o worker na VPS (npm i playwright + pm2 start amz-site)
+
+## Isolamento de identidade no video (urgente)
+- [x] Botao "Remover logo" (nao apaga a logo cadastrada da conta)
+- [x] Botao "Usar a logo da minha empresa" para restaurar
+- [x] Trocar identidade/importar site limpa logo, nome, tom, site, telefone e consultor
+- [x] Camada A e B ignoram carrossel/slider/parceiros na busca da logo
+- [x] Cores dominantes da logo (SVG no servidor, pixels no navegador) — nunca por IA
+- [ ] Reiniciar o worker de leitura de site na VPS (pm2 restart amz-site)

@@ -39,25 +39,6 @@ serve(async (req) => {
     const results: any[] = [];
 
     for (const item of agendados) {
-      // 🛡️ Tipo do agendamento tem que bater com o arquivo. Vídeo nunca sai como
-      // imagem e imagem nunca sai como vídeo — foi assim que conteúdo errado foi ao ar.
-      const url = String(item.video_url || "");
-      const ehArquivoVideo = /\.(mp4|mov|m4v|webm|avi|mkv|3gp)(\?|$)/i.test(url);
-      const ehArquivoImagem = /\.(jpg|jpeg|png|webp|gif|avif|heic)(\?|$)/i.test(url);
-      const esperaImagem = item.tipo === "story_imagem";
-      const tipoInvalido = !url
-        || (esperaImagem && ehArquivoVideo)
-        || (!esperaImagem && ehArquivoImagem);
-      if (tipoInvalido) {
-        console.error(`⛔ agendamento ${item.id} bloqueado: tipo=${item.tipo} arquivo=${url}`);
-        await supabase
-          .from("videos_agendados")
-          .update({ status: "erro", erro: "arquivo_nao_corresponde_ao_tipo_aprovado" })
-          .eq("id", item.id);
-        results.push({ id: item.id, ok: false, error: "arquivo_nao_corresponde_ao_tipo_aprovado" });
-        continue;
-      }
-
       // Marca como processando
       await supabase
         .from("videos_agendados")
@@ -67,7 +48,6 @@ serve(async (req) => {
       try {
         let funcResult: any = null;
         let funcError: any = null;
-
 
         if (item.tipo === "story") {
           const { data, error } = await supabase.functions.invoke("meta-publish-story", {
