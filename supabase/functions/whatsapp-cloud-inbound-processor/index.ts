@@ -4603,20 +4603,24 @@ async function toolPostarMidiaBiblioteca(
     console.log(`[pietro][postar_midia] gerando copy redes=${redes.join(",")} base=${redeBase} formato=${formato}`);
     let opcoesBase = await gerarTresOpcoesRedeSocial(produtoLike, tom, redeBase, undefined, brandCtx, briefing || undefined);
 
-    // Última barreira contra contaminação de contexto: mesmo que o modelo ignore as
-    // instruções, uma copy automotiva nunca é exibida para uma foto de outro produto.
-    if (!isVideo && descricaoVisual && copyConflitaComImagem(descricaoVisual, opcoesBase)) {
-      console.error("[pietro][postar_midia] copy REJEITADA por conflito com a imagem; regenerando sem contexto");
+    // Última barreira contra contaminação de contexto: vale para FOTO e VÍDEO.
+    // Referência = o que a mídia realmente mostra (visão) ou o contexto/briefing
+    // que o dono escreveu. Se a copy inventar outro nicho, é descartada e refeita.
+    const referenciaAssunto = (descricaoVisual || contextoUsuario || briefing || "").trim();
+    if (referenciaAssunto && copyConflitaComImagem(referenciaAssunto, opcoesBase)) {
+      console.error("[pietro][postar_midia] copy REJEITADA por nicho fora do pedido; regenerando sem contexto", {
+        referencia: referenciaAssunto.slice(0, 120),
+      });
       const produtoVisual = {
         ...produtoLike,
-        nome: descricaoVisual.slice(0, 120),
-        descricao: `O produto mostrado na foto é: ${descricaoVisual}`,
+        nome: referenciaAssunto.slice(0, 120),
+        descricao: `O conteúdo desta mídia é: ${referenciaAssunto}`,
       };
       opcoesBase = await gerarTresOpcoesRedeSocial(
         produtoVisual,
         "beneficio",
         redeBase,
-        "Fale exclusivamente sobre o produto identificado nesta foto. Não mencione veículos, carros, concessionária, test-drive, quilometragem, ano ou modelo.",
+        "Fale exclusivamente sobre o assunto desta mídia. É PROIBIDO citar qualquer outro nicho (odontologia, consultório, paciente, convênio, veículos, imóveis, consórcio, pet, jurídico, estética) que não esteja no assunto informado.",
         undefined,
         undefined,
       );
