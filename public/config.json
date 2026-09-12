@@ -1,0 +1,5 @@
+{
+  "supabaseUrl": "https://api.amzofertas.com.br",
+  "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6ImFteiIsImV4cCI6MjEwNDU5NzQ4Mn0.uDJENCSmbcEvxXoYP0wcI2KffkU7VT8cdK0nkqQ2sGw",
+  "authProvider": "custom"
+}

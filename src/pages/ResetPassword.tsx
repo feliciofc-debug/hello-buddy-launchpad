@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { isCustomAuth } from "@/config/runtime-config";
 import { toast } from "sonner";
 
 export default function ResetPassword() {
   const navigate = useNavigate();
+  const customAuth = isCustomAuth();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
@@ -39,7 +41,8 @@ export default function ResetPassword() {
       const { error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
 
-      toast.success("Senha atualizada! Agora você pode entrar.");
+      if (customAuth) await supabase.auth.signOut();
+      toast.success("Senha atualizada! Agora você pode entrar com a nova senha.");
       navigate("/login");
     } catch (err: any) {
       toast.error(err?.message || "Erro ao atualizar senha");
@@ -52,7 +55,9 @@ export default function ResetPassword() {
     <main className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-6">
       <section className="max-w-md w-full bg-slate-800/50 backdrop-blur-lg border border-purple-500/30 rounded-2xl p-8 shadow-2xl">
         <header className="mb-6">
-          <h1 className="text-2xl font-bold text-white">Redefinir senha</h1>
+          <h1 className="text-2xl font-bold text-white">
+            {customAuth ? "Alterar senha" : "Redefinir senha"}
+          </h1>
           <p className="text-purple-300 mt-2">Defina uma nova senha para sua conta.</p>
         </header>
 

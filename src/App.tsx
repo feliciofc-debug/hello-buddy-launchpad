@@ -2,8 +2,9 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Navigate, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
+import { isCustomAuth } from "@/config/runtime-config";
 
 import Dashboard from "./pages/Dashboard";
 import Landing from "./pages/Landing";
@@ -116,6 +117,7 @@ import PayAdminWuzapi from "./pages/pay/PayAdminWuzapi";
 import PainelLogin from "./pages/painel/PainelLogin";
 import PainelDashboard from "./pages/painel/PainelDashboard";
 const queryClient = new QueryClient();
+const customAuth = isCustomAuth();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -127,9 +129,10 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/cadastro" element={<Cadastro />} />
-            <Route path="/cadastro-afiliado" element={<CadastroAfiliado />} />
+            <Route path="/reset-password" element={customAuth ? <Navigate to="/login" replace /> : <ResetPassword />} />
+            <Route path="/alterar-senha" element={<ResetPassword />} />
+            <Route path="/cadastro" element={customAuth ? <Navigate to="/login" replace /> : <Cadastro />} />
+            <Route path="/cadastro-afiliado" element={customAuth ? <Navigate to="/login" replace /> : <CadastroAfiliado />} />
             <Route path="/planos" element={<Planos />} />
             <Route path="/plataforma" element={<Plataforma />} />
             <Route path="/integracoes" element={<Integracoes />} />
