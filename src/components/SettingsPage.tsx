@@ -7,9 +7,11 @@ import { useTranslation } from 'react-i18next';
 import { useEffect, useState } from 'react';
 import { MarcaPersonalizacao } from './MarcaPersonalizacao';
 import { buildTikTokAuthUrl } from "@/config/tiktok";
+import { isCustomAuth } from "@/config/runtime-config";
 
 const SettingsPage = () => {
   const navigate = useNavigate();
+  const customAuth = isCustomAuth();
   const { t, i18n } = useTranslation();
   const [metaConnection, setMetaConnection] = useState<any>(null);
   const [loadingMeta, setLoadingMeta] = useState(true);
@@ -208,6 +210,22 @@ const SettingsPage = () => {
         </button>
         
         <h1 className="text-3xl font-bold mb-6 text-gray-900 dark:text-white">{t('settings.api_settings_title')}</h1>
+
+        {customAuth && (
+          <div className="mb-6 p-5 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Segurança da conta</h2>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+              Altere a senha temporária recebida no primeiro acesso.
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate('/alterar-senha')}
+              className="mt-4 bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2 px-4 rounded transition-colors"
+            >
+              Alterar senha
+            </button>
+          </div>
+        )}
 
         <Tabs defaultValue="meta" className="w-full">
           <TabsList className="grid w-full grid-cols-4 mb-8">

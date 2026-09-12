@@ -27,10 +27,15 @@ export default function ResetPassword() {
       }
 
       if (!data.session) {
-        toast.error("Link inválido ou expirado. Solicite um novo.");
+        if (customAuth) {
+          toast.error("Faça login para alterar sua senha.");
+          navigate("/login", { replace: true });
+        } else {
+          toast.error("Link inválido ou expirado. Solicite um novo.");
+        }
       }
     });
-  }, []);
+  }, [customAuth, navigate]);
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
