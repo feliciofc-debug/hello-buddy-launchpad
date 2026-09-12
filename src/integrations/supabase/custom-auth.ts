@@ -23,7 +23,7 @@ type ErrorResponse = {
   message?: string;
 };
 
-const STORAGE_KEY = "amz-custom-auth-session-v1";
+const STORAGE_KEY_PREFIX = "amz-custom-auth-session-v1";
 
 class CustomAuthError extends Error {
   status: number;
@@ -82,7 +82,7 @@ const buildSession = (response: LoginResponse): Session => {
   return {
     access_token: response.access_token,
     refresh_token: "",
-    token_type: response.token_type || "bearer",
+    token_type: "bearer",
     expires_in: response.expires_in,
     expires_at: expiresAt,
     user: buildUser(response.user, response.access_token),
@@ -92,18 +92,18 @@ const buildSession = (response: LoginResponse): Session => {
 const isExpired = (session: Session) =>
   typeof session.expires_at === "number" && session.expires_at <= Math.floor(Date.now() / 1000);
 
-const readStoredSession = (): Session | null => {
+const readStoredSession = (storageKey: string): Session | null => {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey);
     if (!raw) return null;
     const session = JSON.parse(raw) as Session;
     if (!session?.access_token || !session?.user || isExpired(session)) {
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(storageKey);
       return null;
     }
     return session;
   } catch {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(storageKey);
     return null;
   }
 };
@@ -114,20 +114,24 @@ const errorMessage = (payload: ErrorResponse | null, status: number) => {
 };
 
 export class CustomAuthClient {
-  private session: Session | null = readStoredSession();
+  private session: Session | null;
   private listeners = new Set<AuthCallback>();
+  private readonly storageKey: string;
 
   constructor(
     private readonly baseUrl: string,
     private readonly anonKey: string,
-  ) {}
+  ) {
+    this.storageKey = `${STORAGE_KEY_PREFIX}:${baseUrl}`;
+    this.session = readStoredSession(this.storageKey);
+  }
 
   private persist(session: Session | null) {
     this.session = session;
     if (session) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+      localStorage.setItem(this.storageKey, JSON.stringify(session));
     } else {
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(this.storageKey);
     }
   }
 
