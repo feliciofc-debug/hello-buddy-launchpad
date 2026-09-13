@@ -4,6 +4,8 @@ export type RuntimeConfig = {
   supabaseUrl: string;
   supabaseAnonKey: string;
   authProvider: AuthProvider;
+  storageUrl: string;
+  publicMediaUrl: string;
 };
 
 const DEFAULT_CONFIG: RuntimeConfig = {
@@ -11,6 +13,8 @@ const DEFAULT_CONFIG: RuntimeConfig = {
   supabaseAnonKey:
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6ImFteiIsImV4cCI6MjEwNDU5NzQ4Mn0.uDJENCSmbcEvxXoYP0wcI2KffkU7VT8cdK0nkqQ2sGw",
   authProvider: "custom",
+  storageUrl: "https://api.amzofertas.com.br/storage/v1",
+  publicMediaUrl: "https://media.amzofertas.com.br",
 };
 
 let runtimeConfig: RuntimeConfig | null = null;
@@ -33,10 +37,22 @@ const validateConfig = (value: unknown): RuntimeConfig => {
     throw new Error('config.json: authProvider deve ser "supabase" ou "custom"');
   }
 
+  const supabaseUrl = normalizeUrl(config.supabaseUrl.trim());
+  const storageUrl =
+    typeof config.storageUrl === "string" && config.storageUrl.trim()
+      ? normalizeUrl(config.storageUrl.trim())
+      : `${supabaseUrl}/storage/v1`;
+  const publicMediaUrl =
+    typeof config.publicMediaUrl === "string" && config.publicMediaUrl.trim()
+      ? normalizeUrl(config.publicMediaUrl.trim())
+      : "https://media.amzofertas.com.br";
+
   return {
-    supabaseUrl: normalizeUrl(config.supabaseUrl.trim()),
+    supabaseUrl,
     supabaseAnonKey: config.supabaseAnonKey.trim(),
     authProvider: config.authProvider,
+    storageUrl,
+    publicMediaUrl,
   };
 };
 

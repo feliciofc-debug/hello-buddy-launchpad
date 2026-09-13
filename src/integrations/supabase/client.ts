@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { getRuntimeConfig } from "@/config/runtime-config";
 import { CustomAuthClient } from "./custom-auth";
+import { CustomStorageClient } from "./custom-storage";
 import type { Database } from "./types";
 
 const config = getRuntimeConfig();
@@ -14,12 +15,17 @@ const createTokenFetch = (auth: CustomAuthClient): typeof fetch => {
           ? input
           : new URL(input.url);
     const apiUrl = new URL(config.supabaseUrl);
+    const storageUrl = new URL(config.storageUrl);
+    const storagePath = `${storageUrl.pathname.replace(/\/+$/, "")}/`;
     const shouldAuthenticate =
-      requestUrl.origin === apiUrl.origin &&
-      (requestUrl.pathname.startsWith("/rest/v1/") ||
-        requestUrl.pathname === "/rest/v1" ||
-        requestUrl.pathname.startsWith("/functions/v1/") ||
-        requestUrl.pathname === "/functions/v1");
+      (requestUrl.origin === apiUrl.origin &&
+        (requestUrl.pathname.startsWith("/rest/v1/") ||
+          requestUrl.pathname === "/rest/v1" ||
+          requestUrl.pathname.startsWith("/functions/v1/") ||
+          requestUrl.pathname === "/functions/v1")) ||
+      (requestUrl.origin === storageUrl.origin &&
+        (requestUrl.pathname.startsWith(storagePath) ||
+          requestUrl.pathname === storageUrl.pathname));
 
     if (!shouldAuthenticate) return fetch(input, init);
 
@@ -34,6 +40,12 @@ const createTokenFetch = (auth: CustomAuthClient): typeof fetch => {
 
 const createCustomClient = (): SupabaseClient<Database> => {
   const auth = new CustomAuthClient(config.supabaseUrl, config.supabaseAnonKey);
+  const authenticatedFetch = createTokenFetch(auth);
+  const storage = new CustomStorageClient(
+    config.storageUrl,
+    config.publicMediaUrl,
+    authenticatedFetch,
+  );
   const client = createClient<Database>(config.supabaseUrl, config.supabaseAnonKey, {
     auth: {
       persistSession: false,
@@ -41,13 +53,14 @@ const createCustomClient = (): SupabaseClient<Database> => {
       detectSessionInUrl: false,
     },
     global: {
-      fetch: createTokenFetch(auth),
+      fetch: authenticatedFetch,
     },
   });
 
   return new Proxy(client, {
     get(target, property, receiver) {
       if (property === "auth") return auth;
+      if (property === "storage") return storage;
       const value = Reflect.get(target, property, receiver);
       return typeof value === "function" ? value.bind(target) : value;
     },
