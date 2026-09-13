@@ -42,6 +42,7 @@ const encodedPath = (path: string) =>
 
 const absoluteUrl = (value: string, storageUrl: string) => {
   if (/^https?:\/\//i.test(value)) return value;
+  if (value.startsWith("/object/")) return `${storageUrl}${value}`;
   if (value.startsWith("/")) return new URL(value, new URL(storageUrl).origin).toString();
   return new URL(value, `${storageUrl}/`).toString();
 };
