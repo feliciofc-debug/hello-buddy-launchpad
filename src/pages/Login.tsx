@@ -36,9 +36,16 @@ export default function Login() {
     // Verificar perfil do usuário
     const { data: profile } = await supabase
       .from('profiles')
-      .select('tipo, validade_acesso')
+      .select('tipo, validade_acesso, acesso_bloqueado')
       .eq('id', userId)
       .maybeSingle();
+
+    if (profile?.acesso_bloqueado) {
+      await supabase.auth.signOut();
+      toast.error('Esta conta foi encerrada e não tem mais acesso à plataforma.');
+      routedRef.current = false;
+      return;
+    }
 
     if (profile?.validade_acesso) {
       const validade = new Date(profile.validade_acesso);
@@ -61,7 +68,7 @@ export default function Login() {
       return;
     }
 
-    const contasPermanentes = ['expo@atombrasildigital.com', 'renatascarega@gmail.com', 'alessandradiasadm1@gmail.com', 'dudacarega@gmail.com', 'canarimp@gmail.com'];
+    const contasPermanentes = ['expo@atombrasildigital.com', 'renatascarega@gmail.com', 'alessandradiasadm1@gmail.com', 'dudacarega@gmail.com'];
     if (contasPermanentes.includes(emailLc) || profile?.tipo === 'b2b' || profile?.tipo === 'parceiro' || profile?.tipo === 'empresa') {
       navigate(nextPath || '/dashboard');
       return;

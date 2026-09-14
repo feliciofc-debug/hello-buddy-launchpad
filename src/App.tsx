@@ -102,6 +102,7 @@ import AfiliadoContatos from "./pages/afiliado/AfiliadoContatos";
 import AfiliadoCampanhas from "./pages/afiliado/AfiliadoCampanhas";
 
 import CookieBanner from "./components/CookieBanner";
+import ContaBloqueadaGate from "./components/ContaBloqueadaGate";
 import LanguageSwitcher from "./components/LanguageSwitcher";
 
 // Páginas Billing/Pay
@@ -124,6 +125,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <ContaBloqueadaGate>
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
@@ -250,7 +252,8 @@ const App = () => (
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
-            
+          </ContaBloqueadaGate>
+
             <CookieBanner />
           </BrowserRouter>
         </TooltipProvider>
