@@ -3,7 +3,8 @@
 - [TikTok duas client_keys](mem://integrations/tiktok/dual-client-keys-sandbox-producao) — Sandbox sbawx08s3trep7gfvg (teste privado) vs Produção aw2ouo90dyp4ju9w (review); redirect URI nos dois
 - [Anuncio Produto Template Engine](mem://features/marketing/anuncio-produto-template-engine) — Foto por IA + texto/preco/logo por template Satori (feed e story)
 - [Paulo Canarim Owner Recognition](mem://features/pj/paulo-canarim-owner-recognition) — Agente 5521975141829 vs dono 5521997208854; owner por tenant, nunca hardcoded
-- [BART Base Consórcio Ademicon](mem://features/pj/bart-base-consorcio-ademicon) — Mesma base do Silvester; playbook de consórcio tenant-agnóstico
+- [BART Base Consórcio Ademicon](mem://features/pj/bart-base-consorcio-ademicon) — Mesma base do Silvester; playbook de consórcio tenant-agnóstico (tenant DESATIVADO)
+- [Paulo Canarim desativado](mem://constraints/paulo-canarim-desativado) — Tenant encerrado 14/09/2026: agente BART e acesso desligados, não reativar
 - [Voz Copy e Link no Início](mem://features/marketing/voz-copy-e-link-no-inicio) — voz_copy por tenant (empresa/pessoa) + link de WhatsApp no começo da legenda
 - [Copy do vídeo acompanha a fala](mem://features/marketing/copy-video-acompanha-fala) — 3 copies do vídeo legendado: mesmo assunto reescrito, link sozinho na 1ª linha, termina no raciocínio (sem CTA)
 - [Copy simples, não formal](mem://features/marketing/copy-linguagem-simples) — Vocabulário falado (não relatório bancário), 2-3 frases curtas, 3-4 hashtags, posts sem assinatura
