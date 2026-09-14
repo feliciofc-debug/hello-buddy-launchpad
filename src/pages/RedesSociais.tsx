@@ -6,6 +6,7 @@ import { ArrowLeft, Instagram, Facebook, MessageCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { buildMetaAuthUrl } from "@/config/meta";
 
 interface SocialNetwork {
   id: string;
@@ -59,13 +60,13 @@ const RedesSociais = () => {
   };
 
   const handleConnect = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user ?? (await supabase.auth.getUser()).data.user;
     if (!user) {
       toast.error('Você precisa estar logado para conectar.');
       return;
     }
-    const authUrl = `https://www.facebook.com/v25.0/dialog/oauth?client_id=1254152493364240&redirect_uri=${encodeURIComponent('https://www.amzofertas.com.br/auth/callback/meta')}&scope=pages_show_list,pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish,business_management&response_type=code&state=${user.id}`;
-    window.location.href = authUrl;
+    window.location.href = buildMetaAuthUrl(user.id);
   };
 
   const handleReconnect = () => {
