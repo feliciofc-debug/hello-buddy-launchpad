@@ -36,9 +36,16 @@ export default function Login() {
     // Verificar perfil do usuário
     const { data: profile } = await supabase
       .from('profiles')
-      .select('tipo, validade_acesso')
+      .select('tipo, validade_acesso, acesso_bloqueado')
       .eq('id', userId)
       .maybeSingle();
+
+    if (profile?.acesso_bloqueado) {
+      await supabase.auth.signOut();
+      toast.error('Esta conta foi encerrada e não tem mais acesso à plataforma.');
+      routedRef.current = false;
+      return;
+    }
 
     if (profile?.validade_acesso) {
       const validade = new Date(profile.validade_acesso);
