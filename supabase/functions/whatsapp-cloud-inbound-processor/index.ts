@@ -3483,31 +3483,35 @@ function cleanMediaPostLegenda(text: string): string | undefined {
   return legenda;
 }
 
-async function buscarMidiaRecenteParaPostagem(userId: string): Promise<{ id: string; tipo: string; created_at: string } | null> {
-  const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-  const { data, error } = await sb
-    .from("midias_whatsapp")
-    .select("id, tipo, created_at")
-    .eq("user_id", userId)
-    .in("tipo", ["foto", "video"])
-    .gte("created_at", cutoff)
-    .order("created_at", { ascending: false })
-    .limit(1);
-  if (error) {
-    console.warn("[pietro][forced_social_post][midia_recente_error]", error.message);
-    return null;
-  }
-  return (data?.[0] as { id: string; tipo: string; created_at: string } | undefined) ?? null;
+const PERGUNTA_ID_MIDIA =
+  'Qual mídia você quer publicar? Envie o código de 8 caracteres que aparece junto dela, por exemplo: "posta a mídia BD601B92". Não publiquei nada e não vou escolher automaticamente.';
+
+function extrairIdentificadorMidia(texto: string): string | null {
+  const textoLimpo = String(texto || "").trim();
+  const uuid = textoLimpo.match(/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i)?.[0];
+  if (uuid) return uuid;
+
+  const codigoRotulado = textoLimpo.match(
+    /\b(?:id|c[oó]digo)(?:\s+da)?\s+m[ií]dia\s*[:#-]?\s*([0-9a-f]{8,32})\b/i,
+  )?.[1];
+  if (codigoRotulado) return codigoRotulado;
+
+  return textoLimpo.match(/\b[0-9a-f]{8}\b/i)?.[0] ?? null;
+}
+
+function pedidoReferenciaMidiaGenerica(texto: string, produtoDetectado = ""): boolean {
+  const alvo = normalizePt(`${produtoDetectado} ${texto}`);
+  return /\b(esse|essa|este|esta|isso|dessa|desse|aquele|aquela|o|a)?\s*(video|foto|imagem|midia)\b/.test(alvo);
 }
 
 // ---- Estado pendente de escolha de FORMATO (feed/story) — Etapa 2 ----
-// Quando o dono manda foto + "posta no Instagram" sem dizer formato, guardamos
-// as redes/tom/legenda aqui e perguntamos "feed ou story?". Quando ele
-// responder só "feed"/"story"/"no story", retomamos sem exigir reenvio da foto.
+// Só existe depois que uma mídia foi identificada explicitamente por código/UUID.
 type PendingFormatChoice = {
   redes: string[];
   tom: string;
   legenda?: string;
+  midiaId: string;
+  midiaTipo: "foto" | "video";
   createdAt: number;
 };
 const PENDING_FORMAT_CHOICES = new Map<string, PendingFormatChoice>();
@@ -4289,7 +4293,7 @@ async function buscarBriefingRecenteDono(userId: string, fromNumber: string, aft
   }
 }
 
-// ---- postar_midia_biblioteca: gera preview de post usando a ÚLTIMA mídia salva em /midias (não busca catálogo) ----
+// ---- postar_midia_biblioteca: gera preview somente da mídia identificada explicitamente (não busca catálogo) ----
 async function resolverMidiaBibliotecaPorId(
   userId: string,
   idInformado: string,
@@ -4343,24 +4347,31 @@ async function toolPostarMidiaBiblioteca(
     if (!isOwner(ctx)) return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Essa ação é restrita ao responsável da conta. Posso encaminhar o pedido para ele, se quiser." });
     pendingCleanup();
 
-    // Busca a última mídia salva pelo dono (foto/vídeo), ainda não publicada
-    let midia: any | null = null;
-    if (args?.midia_id) {
-      const resolvida = await resolverMidiaBibliotecaPorId(ctx.userId, args.midia_id);
-      if (resolvida.erro) return JSON.stringify({ erro: resolvida.erro });
-      midia = resolvida.midia;
-    } else {
-      const { data: midias, error } = await sb
-        .from("midias_whatsapp")
-        .select("id, tipo, midia_url, contexto_original, created_at")
-        .eq("user_id", ctx.userId)
-        .in("tipo", ["foto", "video"])
-        .order("created_at", { ascending: false })
-        .limit(1);
-      if (error) return JSON.stringify({ erro: `db_falhou: ${error.message}` });
-      midia = midias?.[0] ?? null;
+    const midiaId = String(args?.midia_id || "").trim();
+    if (!midiaId) {
+      return JSON.stringify({
+        erro: "midia_id_obrigatorio",
+        mensagem: PERGUNTA_ID_MIDIA,
+      });
     }
-    if (!midia) return JSON.stringify({ erro: "Não achei nenhuma mídia recente na biblioteca /midias. Peça pro cliente enviar a foto/vídeo primeiro." });
+
+    const resolvida = await resolverMidiaBibliotecaPorId(ctx.userId, midiaId);
+    if (resolvida.erro) {
+      if (/amb[ií]guo/i.test(resolvida.erro)) {
+        return JSON.stringify({
+          erro: "midia_id_ambiguo",
+          mensagem: `Encontrei mais de uma mídia com o código ${midiaId.toUpperCase()}. Não publiquei nada. Envie o ID completo da mídia correta.`,
+        });
+      }
+      return JSON.stringify({ erro: resolvida.erro });
+    }
+    const midia = resolvida.midia;
+    if (!midia) {
+      return JSON.stringify({
+        erro: "midia_nao_encontrada",
+        mensagem: `Não encontrei uma foto ou vídeo com o ID ${midiaId.toUpperCase()} nesta conta. Confira o código e envie novamente.`,
+      });
+    }
 
     // Etapa 3: story de foto e vídeo, reels (só vídeo), feed (foto/vídeo).
     const formatoRaw = (args?.formato || "feed").toString().toLowerCase();
@@ -5111,7 +5122,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "postar_midia_biblioteca",
-      description: "🟢 USE SOMENTE quando o DONO/RESPONSÁVEL pedir pra POSTAR/DIVULGAR nas redes usando a foto/vídeo que ele ACABOU DE ENVIAR. Nunca use para cliente/contato. Pega a ÚLTIMA mídia salva em /midias. Se a conversa mencionar um código/ID de mídia, passe-o em midia_id exatamente como apareceu; códigos curtos de 8 caracteres e UUIDs completos são aceitos. FORMATO: 'story' (foto ou vídeo 9:16), 'reels' (só vídeo, IG/FB), 'feed' (default). Se o dono disser 'reels' passe formato='reels'; 'story'/'stories' → 'story'; senão 'feed'. Para VÍDEO, sempre passe a legenda que o dono forneceu — não invente descrição de vídeo. ⚠️ BRIEFING (MUITO IMPORTANTE): se o dono ESCREVEU um texto/contexto nesta conversa (mesmo em mensagens anteriores) e pediu pra usar aquele texto/aquele contexto/aquela ideia no post, COPIE esse texto INTEIRO no parâmetro 'briefing'. A legenda deve comunicar a MENSAGEM DELE — a imagem é só o visual. Se ele se referir a um texto que mandou antes e você não tiver o texto em mãos, passe usar_contexto_conversa=true. CTA DE WHATSAPP: passe incluir_cta_whatsapp=true SÓ SE o dono pedir explicitamente (ex: 'posta com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA').",
+      description: "🟢 USE SOMENTE quando o DONO/RESPONSÁVEL pedir pra POSTAR/DIVULGAR uma foto ou vídeo identificado da biblioteca /midias. Nunca use para cliente/contato. midia_id é OBRIGATÓRIO: passe exatamente o código curto de 8 caracteres ou o UUID completo informado na conversa. Se o dono não informar um ID, PERGUNTE o código; é PROIBIDO escolher a mídia mais recente, a última foto/vídeo ou qualquer mídia por contexto. FORMATO: 'story' (foto ou vídeo 9:16), 'reels' (só vídeo, IG/FB), 'feed' (default). Se o dono disser 'reels' passe formato='reels'; 'story'/'stories' → 'story'; senão 'feed'. Para VÍDEO, sempre passe a legenda que o dono forneceu — não invente descrição de vídeo. ⚠️ BRIEFING (MUITO IMPORTANTE): se o dono ESCREVEU um texto/contexto nesta conversa (mesmo em mensagens anteriores) e pediu pra usar aquele texto/aquele contexto/aquela ideia no post, COPIE esse texto INTEIRO no parâmetro 'briefing'. A legenda deve comunicar a MENSAGEM DELE — a imagem é só o visual. Se ele se referir a um texto que mandou antes e você não tiver o texto em mãos, passe usar_contexto_conversa=true. CTA DE WHATSAPP: passe incluir_cta_whatsapp=true SÓ SE o dono pedir explicitamente (ex: 'posta com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA').",
       parameters: {
         type: "object",
         properties: {
@@ -5126,6 +5137,7 @@ const TOOLS = [
           formato: { type: "string", enum: ["feed", "story", "reels"], description: "'feed' (default), 'story' (foto/vídeo 9:16) ou 'reels' (só vídeo)." },
           incluir_cta_whatsapp: { type: "boolean", description: "OPT-IN. true = adiciona '📱 Fale comigo no WhatsApp: wa.me/<numero_do_agente>' em SANDUÍCHE (no INÍCIO E no FIM) da legenda de todas as redes escolhidas. Idempotente: limpa CTA antigo antes de reaplicar (nunca triplica). Nunca inclua automaticamente — só quando o dono pedir com palavras claras ('com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA')." },
         },
+        required: ["midia_id"],
       },
 
     },
@@ -5983,46 +5995,6 @@ async function runTool(
     return { result };
   }
 
-  // Guard: se pediu postar_redes_sociais mas tem mídia RECENTE (últimos 15 min) em /midias,
-  // redireciona pra postar_midia_biblioteca — evita buscar produto errado do catálogo
-  // quando o cliente enviou foto antes e agora só mandou a legenda/preço em texto.
-  // IMPORTANTE (Etapa 1 fix): vale TAMBÉM quando o pedido é story/reels — a FONTE
-  // continua sendo a biblioteca /midias, nunca o catálogo. Só o formato muda.
-  if (name === "postar_redes_sociais") {
-    try {
-      const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-      const { data: recentes } = await sb
-        .from("midias_whatsapp")
-        .select("id, created_at")
-        .eq("user_id", ctx.userId)
-        .in("tipo", ["foto", "video"])
-        .gte("created_at", cutoff)
-        .order("created_at", { ascending: false })
-        .limit(1);
-      if (recentes && recentes.length > 0) {
-        // Detecta formato (story/reels/feed) a partir do que o agente pediu, mesmo
-        // que ele tenha errado a tool. Story/reels keywords em qualquer arg de texto.
-        const argBlob = JSON.stringify(args ?? {}).toLowerCase();
-        let formatoDetectado: string | undefined = args?.formato;
-        if (!formatoDetectado) {
-          if (/\bstor(y|ies|ie)\b/.test(argBlob)) formatoDetectado = "story";
-          else if (/\breels?\b/.test(argBlob)) formatoDetectado = "reels";
-        }
-        console.warn(`[pietro][postar_guard] mídia recente em /midias → redirecionando pra postar_midia_biblioteca (formato=${formatoDetectado ?? "feed"})`);
-        const result = await toolPostarMidiaBiblioteca({
-          legenda: args?.legenda ?? args?.produto,
-          nome: args?.produto,
-          tom: args?.tom,
-          redes: args?.redes,
-          formato: formatoDetectado,
-        }, ctx);
-        return { result };
-      }
-    } catch (e) {
-      console.warn("[pietro][postar_guard] falhou ao checar /midias:", (e as Error).message);
-    }
-  }
-
   if (name === "consultar_cnpj") return { result: await toolConsultarCnpj(args?.cnpj ?? "") };
   if (name === "pesquisar_web") return { result: await toolPesquisarWeb(args?.query ?? "", args?.recencia) };
   if (name === "buscar_lugares_proximos") return { result: await toolBuscarLugaresProximos(ctx, args?.query ?? "", args?.radius_meters) };
@@ -6221,30 +6193,25 @@ async function callGemini(
       return { text: formatSocialPostToolResult(confirmResult) };
     }
 
-    // Etapa 2: se o dono está respondendo APENAS o formato ("feed" / "story" / "no story"),
-    // retoma o post pendente (redes/tom/legenda guardados) sem precisar reenviar a foto.
+    // Se o dono responde APENAS o formato, retoma somente a mídia cujo ID já
+    // havia sido informado. Nunca procura outra mídia por recência.
     const standaloneFormat = detectStandaloneFormatReply(userContent);
     const pendingChoice = getPendingFormatChoice(toolCtx.userId);
     if (remetenteEhDono && standaloneFormat && pendingChoice) {
-      const midiaRecenteResume = await buscarMidiaRecenteParaPostagem(toolCtx.userId);
-      if (midiaRecenteResume) {
-        // Reels só faz sentido pra vídeo — bloqueia foto+reels aqui.
-        if (standaloneFormat === "reels" && midiaRecenteResume.tipo !== "video") {
-          clearPendingFormatChoice(toolCtx.userId);
-          return { text: "Reels só aceita vídeo — essa mídia é foto. Quer no *feed* ou no *story*?" };
-        }
-        console.log(`[pietro][pending_format_resume] formato=${standaloneFormat} redes=${pendingChoice.redes.join(",")} tipo=${midiaRecenteResume.tipo}`);
+      if (standaloneFormat === "reels" && pendingChoice.midiaTipo !== "video") {
         clearPendingFormatChoice(toolCtx.userId);
-        const postResult = await toolPostarMidiaBiblioteca({
-          legenda: pendingChoice.legenda,
-          tom: pendingChoice.tom,
-          redes: pendingChoice.redes,
-          formato: standaloneFormat,
-        }, toolCtx);
-        return { text: formatSocialPostToolResult(postResult) };
+        return { text: "Reels só aceita vídeo — essa mídia é foto. Informe novamente o ID da mídia e escolha *feed* ou *story*." };
       }
-      // mídia expirou/sumiu — descarta pending e deixa o fluxo normal seguir
+      console.log(`[pietro][pending_format_resume] formato=${standaloneFormat} redes=${pendingChoice.redes.join(",")} tipo=${pendingChoice.midiaTipo} midia=${pendingChoice.midiaId}`);
       clearPendingFormatChoice(toolCtx.userId);
+      const postResult = await toolPostarMidiaBiblioteca({
+        midia_id: pendingChoice.midiaId,
+        legenda: pendingChoice.legenda,
+        tom: pendingChoice.tom,
+        redes: pendingChoice.redes,
+        formato: standaloneFormat,
+      }, toolCtx);
+      return { text: formatSocialPostToolResult(postResult) };
     }
 
     // ---- CARROSSEL (prioridade sobre o post único) ----
@@ -6282,48 +6249,62 @@ async function callGemini(
         return { text: "Esse tipo de publicação só o responsável da conta pode autorizar. Posso encaminhar seu pedido para ele, se quiser." };
       }
       console.log("[pietro][forced_social_post]", socialPost);
-      const midiaRecente = await buscarMidiaRecenteParaPostagem(toolCtx.userId);
-      if (midiaRecente) {
-        const formatoDetectado = socialPost.formato;
-        const isFoto = midiaRecente.tipo === "foto";
-        const isVideo = midiaRecente.tipo === "video";
+      const midiaId = extrairIdentificadorMidia(userContent);
+      if (midiaId) {
+        const resolvida = await resolverMidiaBibliotecaPorId(toolCtx.userId, midiaId);
+        if (resolvida.erro || !resolvida.midia) {
+          const postResult = await toolPostarMidiaBiblioteca({ midia_id: midiaId }, toolCtx);
+          return { text: formatSocialPostToolResult(postResult) };
+        }
 
-        // Etapa 2: FOTO sem formato explícito → pergunta feed OU story (2 opções).
+        const formatoDetectado = socialPost.formato;
+        const isFoto = resolvida.midia.tipo === "foto";
+        const isVideo = resolvida.midia.tipo === "video";
+
+        // Mídia explicitamente identificada, mas sem formato: guarda o mesmo ID
+        // para a resposta seguinte. Não há nova seleção no banco.
         if (isFoto && !formatoDetectado) {
           const redesAsk = socialPost.redes.length > 0 ? socialPost.redes : ["instagram"];
           setPendingFormatChoice(toolCtx.userId, {
             redes: redesAsk,
             tom: socialPost.tom,
             legenda: cleanMediaPostLegenda(userContent),
+            midiaId: resolvida.midia.id,
+            midiaTipo: "foto",
           });
           const redeLabel = redesAsk.map((r) => r === "instagram" ? "Instagram" : r === "facebook" ? "Facebook" : r === "tiktok" ? "TikTok" : r).join(" e ");
-          console.log("[pietro][pending_format_choice_set]", { redes: redesAsk, tipo: "foto" });
+          console.log("[pietro][pending_format_choice_set]", { redes: redesAsk, tipo: "foto", midia: resolvida.midia.id });
           return { text: `Quer no *feed* ou no *story* do ${redeLabel}?` };
         }
 
-        // Etapa 3: VÍDEO sem formato explícito → pergunta feed / story / reels (3 opções).
         if (isVideo && !formatoDetectado) {
           const redesAsk = socialPost.redes.length > 0 ? socialPost.redes : ["instagram"];
           setPendingFormatChoice(toolCtx.userId, {
             redes: redesAsk,
             tom: socialPost.tom,
             legenda: cleanMediaPostLegenda(userContent),
+            midiaId: resolvida.midia.id,
+            midiaTipo: "video",
           });
           const redeLabel = redesAsk.map((r) => r === "instagram" ? "Instagram" : r === "facebook" ? "Facebook" : r === "tiktok" ? "TikTok" : r).join(" e ");
-          console.log("[pietro][pending_format_choice_set]", { redes: redesAsk, tipo: "video" });
+          console.log("[pietro][pending_format_choice_set]", { redes: redesAsk, tipo: "video", midia: resolvida.midia.id });
           return { text: `Quer no *feed*, no *story* ou como *reels* do ${redeLabel}?` };
         }
 
-        // Formato explícito → segue direto.
         const formato = formatoDetectado ?? "feed";
-        console.warn(`[pietro][forced_social_post] mídia recente em /midias → usando postar_midia_biblioteca id=${midiaRecente.id} formato=${formato} tipo=${midiaRecente.tipo}`);
+        console.log(`[pietro][forced_social_post] mídia identificada explicitamente id=${resolvida.midia.id} formato=${formato} tipo=${resolvida.midia.tipo}`);
         const postResult = await toolPostarMidiaBiblioteca({
+          midia_id: resolvida.midia.id,
           legenda: cleanMediaPostLegenda(userContent),
           tom: socialPost.tom,
           redes: socialPost.redes,
           formato,
         }, toolCtx);
         return { text: formatSocialPostToolResult(postResult) };
+      }
+
+      if (pedidoReferenciaMidiaGenerica(userContent, socialPost.produto)) {
+        return { text: PERGUNTA_ID_MIDIA };
       }
 
       if (!socialPost.temProduto) {
