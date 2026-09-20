@@ -6183,7 +6183,11 @@ async function callGemini(
     }
 
     // 0) Postagem em redes sociais: atalho determinístico para não deixar o modelo "prometer" preview sem chamar a tool.
-    const postConfirmation = detectSocialPostConfirmation(userContent);
+    const detectedPostConfirmation = detectSocialPostConfirmation(userContent);
+    const postConfirmation = detectedPostConfirmation && latestPendingSocialToken &&
+        detectedPostConfirmation.token.toLowerCase() === latestPendingSocialToken.toLowerCase()
+      ? detectedPostConfirmation
+      : null;
     if (postConfirmation) {
       if (!remetenteEhDono) {
         return { text: "Essa publicação só pode ser autorizada pelo responsável da conta. Posso encaminhar seu pedido para ele, se quiser." };
