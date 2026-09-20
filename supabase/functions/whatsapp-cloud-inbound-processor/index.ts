@@ -4019,7 +4019,7 @@ async function toolPostarRedesSociais(
 
 async function toolConfirmarPostagemRedes(
   args: { token: string; cancelar?: boolean },
-  ctx: { userId: string; fromNumber: string },
+  ctx: MediaSelectionContext,
 ): Promise<string> {
   if (!isOwner(ctx)) return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Essa ação é restrita ao responsável da conta." });
   pendingCleanup();
@@ -4035,12 +4035,14 @@ async function toolConfirmarPostagemRedes(
         .update({ status: "cancelado", error_message: "cancelado_pelo_whatsapp", updated_at: new Date().toISOString() })
         .in("id", p.queueRows.map((r) => r.id));
     }
+    await savePendingMediaSelection(ctx, null);
     return JSON.stringify({ status: "cancelado" });
   }
 
   const resultados = await Promise.all(p.redes.map((r) => publicarEmRede(r, p.scripts[r], p.produto, p.userId, p.formato || "feed")));
   await updatePersistedSocialPostRows(p, resultados);
   PENDING_POSTS.delete(token);
+  await savePendingMediaSelection(ctx, null);
   return JSON.stringify({
     status: "publicado",
     produto: { nome: p.produto.nome },
