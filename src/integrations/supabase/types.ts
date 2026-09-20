@@ -1039,11 +1039,47 @@ export type Database = {
         }
         Relationships: []
       }
+      autopilot_auditoria: {
+        Row: {
+          acao: string
+          config_id: string | null
+          created_at: string
+          detalhes: Json | null
+          id: string
+          motivo: string | null
+          origem: string | null
+          user_id: string | null
+        }
+        Insert: {
+          acao: string
+          config_id?: string | null
+          created_at?: string
+          detalhes?: Json | null
+          id?: string
+          motivo?: string | null
+          origem?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          acao?: string
+          config_id?: string | null
+          created_at?: string
+          detalhes?: Json | null
+          id?: string
+          motivo?: string | null
+          origem?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       autopilot_config: {
         Row: {
           ativo: boolean | null
           categoria_filtro: string | null
           created_at: string | null
+          desativado_em: string | null
+          desativado_motivo: string | null
+          desativado_por: string | null
           dias_semana: number[]
           estilo_texto: string | null
           gerar_texto_ia: boolean | null
@@ -1075,6 +1111,9 @@ export type Database = {
           ativo?: boolean | null
           categoria_filtro?: string | null
           created_at?: string | null
+          desativado_em?: string | null
+          desativado_motivo?: string | null
+          desativado_por?: string | null
           dias_semana?: number[]
           estilo_texto?: string | null
           gerar_texto_ia?: boolean | null
@@ -1106,6 +1145,9 @@ export type Database = {
           ativo?: boolean | null
           categoria_filtro?: string | null
           created_at?: string | null
+          desativado_em?: string | null
+          desativado_motivo?: string | null
+          desativado_por?: string | null
           dias_semana?: number[]
           estilo_texto?: string | null
           gerar_texto_ia?: boolean | null
