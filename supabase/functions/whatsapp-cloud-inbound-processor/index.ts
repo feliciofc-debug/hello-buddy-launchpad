@@ -31,6 +31,7 @@ import { getTenantLogoDataUrl } from "../_shared/tenant-logo.ts";
 import { carouselColorRows, resolveCarouselColor } from "../_shared/carousel-colors.ts";
 import { logOutboundMessage } from "../_shared/cloud-log.ts";
 import { gerarVarianteFacebookFeed } from "../_shared/varianteFacebookFeed.ts";
+import { idCurto, linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
 import {
   iniciarFluxoLegendaVideo,
   tratarRespostaFluxoLegenda,
@@ -1615,6 +1616,7 @@ function buildForwardProof(wamid?: string | null): string {
 type AgentConvState = {
   forward?: { protocolo?: string; destinatario?: string; wamid?: string | null; at?: string };
   decisao?: { valor?: string; at?: string };
+  media_post_selection?: PendingMediaPostSelection | null;
   [k: string]: unknown;
 };
 
@@ -3160,6 +3162,21 @@ async function updatePersistedSocialPostRows(pending: PendingSocialPost, resulta
   }));
 }
 
+async function cancelarPreviewSocialPendente(token: string | undefined, userId: string): Promise<void> {
+  if (!token) return;
+  const pending = PENDING_POSTS.get(token) ?? (await loadPendingSocialPost(token, userId));
+  PENDING_POSTS.delete(token);
+  if (pending?.queueRows?.length) {
+    await sb.from("social_posts_queue")
+      .update({
+        status: "cancelado",
+        error_message: "cancelado_por_troca_de_midia",
+        updated_at: new Date().toISOString(),
+      })
+      .in("id", pending.queueRows.map((row) => row.id));
+  }
+}
+
 async function publicarEmRede(
   rede: string,
   script: string,
@@ -3486,6 +3503,35 @@ function cleanMediaPostLegenda(text: string): string | undefined {
 const PERGUNTA_ID_MIDIA =
   'Qual mídia você quer publicar? Envie o código de 8 caracteres que aparece junto dela, por exemplo: "posta a mídia BD601B92". Não publiquei nada e não vou escolher automaticamente.';
 
+type MediaSelectionCandidate = {
+  id: string;
+  tipo: "foto" | "video";
+  nome: string;
+  createdAt: string;
+};
+
+type PendingMediaPostSelection = {
+  stage: "media" | "format" | "copies";
+  candidates: MediaSelectionCandidate[];
+  selectedId?: string;
+  redes: string[];
+  tom: string;
+  legenda?: string;
+  formato?: "feed" | "story" | "reels";
+  incluirCtaWhatsapp?: boolean;
+  briefing?: string;
+  usarContextoConversa?: boolean;
+  socialToken?: string;
+  createdAt: number;
+};
+
+type MediaSelectionContext = {
+  userId: string;
+  fromNumber: string;
+  convId?: string;
+  agentState?: AgentConvState;
+};
+
 function extrairIdentificadorMidia(texto: string): string | null {
   const textoLimpo = String(texto || "").trim();
   const uuid = textoLimpo.match(/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i)?.[0];
@@ -3504,32 +3550,111 @@ function pedidoReferenciaMidiaGenerica(texto: string, produtoDetectado = ""): bo
   return /\b(esse|essa|este|esta|isso|dessa|desse|aquele|aquela|o|a)?\s*(video|foto|imagem|midia)\b/.test(alvo);
 }
 
-// ---- Estado pendente de escolha de FORMATO (feed/story) — Etapa 2 ----
-// Só existe depois que uma mídia foi identificada explicitamente por código/UUID.
-type PendingFormatChoice = {
-  redes: string[];
-  tom: string;
-  legenda?: string;
-  midiaId: string;
-  midiaTipo: "foto" | "video";
-  createdAt: number;
-};
-const PENDING_FORMAT_CHOICES = new Map<string, PendingFormatChoice>();
-const PENDING_FORMAT_TTL_MS = 10 * 60 * 1000;
+const PENDING_MEDIA_SELECTION_TTL_MS = 15 * 60 * 1000;
 
-function setPendingFormatChoice(userId: string, p: Omit<PendingFormatChoice, "createdAt">) {
-  PENDING_FORMAT_CHOICES.set(userId, { ...p, createdAt: Date.now() });
-}
-function getPendingFormatChoice(userId: string): PendingFormatChoice | null {
-  const p = PENDING_FORMAT_CHOICES.get(userId);
-  if (!p) return null;
-  if (Date.now() - p.createdAt > PENDING_FORMAT_TTL_MS) {
-    PENDING_FORMAT_CHOICES.delete(userId);
-    return null;
+function nomeMidiaParaSelecao(row: any): string {
+  const contexto = String(row?.contexto_original || "");
+  const visao = contexto.match(/\[visão\]\s*([\s\S]+)/i)?.[1]?.trim() || "";
+  const contextoUsuario = contexto.replace(/\n?\[visão\][\s\S]*/i, "").trim();
+  const base = visao || contextoUsuario || String(row?.arquivo_nome || "").trim();
+  if (base && !/^sem contexto$/i.test(base)) {
+    return compactSpaces(base).replace(/^a imagem mostra:\s*/i, "").slice(0, 72);
   }
-  return p;
+  const data = row?.created_at
+    ? new Date(row.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+    : "";
+  return `${row?.tipo === "video" ? "Vídeo" : "Imagem"}${data ? ` de ${data}` : ""}`;
 }
-function clearPendingFormatChoice(userId: string) { PENDING_FORMAT_CHOICES.delete(userId); }
+
+function tempoRelativoMidia(createdAt: string): string {
+  const diffMs = Math.max(0, Date.now() - new Date(createdAt).getTime());
+  const minutos = Math.floor(diffMs / 60000);
+  if (minutos < 1) return "agora";
+  if (minutos < 60) return `há ${minutos} min`;
+  const horas = Math.floor(minutos / 60);
+  if (horas < 24) return `há ${horas}h`;
+  if (horas < 48) return "ontem";
+  return `há ${Math.floor(horas / 24)} dias`;
+}
+
+function pendingMediaSelectionValida(state?: PendingMediaPostSelection | null): state is PendingMediaPostSelection {
+  return !!state && Date.now() - state.createdAt <= PENDING_MEDIA_SELECTION_TTL_MS;
+}
+
+async function savePendingMediaSelection(
+  ctx: MediaSelectionContext,
+  state: PendingMediaPostSelection | null,
+): Promise<boolean> {
+  if (!ctx.convId) return false;
+  const current = ctx.agentState ?? await loadAgentState(sb, ctx.convId);
+  current.media_post_selection = state;
+  ctx.agentState = current;
+  return await saveAgentState(sb, ctx.convId, { media_post_selection: state }, current);
+}
+
+function detectarEscolhaMidiaNumerada(texto: string, total: number): number | null {
+  const n = normalizePt(compactSpaces(texto || "")).replace(/[.!?]+$/g, "").trim();
+  const match = n.match(/^(?:quero\s+|escolho\s+|fica\s+com\s+|a\s+)?([123])$/);
+  if (!match) return null;
+  const index = Number(match[1]) - 1;
+  return index >= 0 && index < total ? index : null;
+}
+
+function confirmaMidiaUnica(texto: string): boolean {
+  const n = normalizePt(compactSpaces(texto || "")).replace(/[.!?]+$/g, "").trim();
+  return /^(sim|isso|essa|esse|pode|confirmo|correto|e essa|e esse)$/.test(n);
+}
+
+function detectarTrocaMidiaNumerada(texto: string, total: number): number | null {
+  const n = normalizePt(compactSpaces(texto || ""));
+  const match = n.match(/\b(?:troca|trocar|muda|mudar|prefiro|usa|usar|escolhe|escolher)\b[\s\S]{0,30}\b(?:midia\s+)?([123])\b/);
+  if (!match) return null;
+  const index = Number(match[1]) - 1;
+  return index >= 0 && index < total ? index : null;
+}
+
+async function iniciarSelecaoMidia(
+  ctx: MediaSelectionContext,
+  request: Omit<PendingMediaPostSelection, "stage" | "candidates" | "selectedId" | "socialToken" | "createdAt">,
+): Promise<string> {
+  const { data, error } = await sb
+    .from("midias_whatsapp")
+    .select("id, tipo, contexto_original, arquivo_nome, created_at")
+    .eq("user_id", ctx.userId)
+    .in("tipo", ["foto", "video"])
+    .order("created_at", { ascending: false })
+    .limit(3);
+  if (error) return `Não consegui consultar sua biblioteca agora: ${error.message}. Não publiquei nada.`;
+
+  const candidates: MediaSelectionCandidate[] = (data ?? []).map((row: any) => ({
+    id: row.id,
+    tipo: row.tipo === "video" ? "video" : "foto",
+    nome: nomeMidiaParaSelecao(row),
+    createdAt: row.created_at,
+  }));
+  if (candidates.length === 0) {
+    await savePendingMediaSelection(ctx, null);
+    return "Não encontrei nenhuma imagem ou vídeo na sua biblioteca. Envie a mídia primeiro. Não publiquei nada.";
+  }
+
+  const state: PendingMediaPostSelection = {
+    ...request,
+    stage: "media",
+    candidates,
+    createdAt: Date.now(),
+  };
+  if (!await savePendingMediaSelection(ctx, state)) {
+    return `${PERGUNTA_ID_MIDIA} Não consegui guardar uma seleção numerada com segurança.`;
+  }
+
+  const linhas = candidates.map((item, index) =>
+    `${index + 1}. ${item.nome} — ${item.tipo === "video" ? "Vídeo" : "Imagem"} — ${tempoRelativoMidia(item.createdAt)} — ID ${idCurto(item.id)}`
+  ).join("\n");
+  if (candidates.length === 1) {
+    return `Encontrei esta mídia:\n\n${linhas}\n\nÉ essa que você quer publicar? Responda *SIM*. Não publiquei nada.`;
+  }
+  return `Qual mídia você quer publicar?\n\n${linhas}\n\nResponde *1*, *2* ou *3*. Não publiquei nada.`;
+}
 
 // Detecta resposta curta só com o formato: "feed", "story", "reels", "no story", "nos stories" etc.
 function detectStandaloneFormatReply(text: string): "feed" | "story" | "reels" | undefined {
@@ -3582,6 +3707,10 @@ function detectSocialPostIntent(text: string): { produto: string; tom: string; r
 function formatSocialPostToolResult(raw: string): string {
   let data: any = null;
   try { data = JSON.parse(raw); } catch { return raw; }
+
+  if (data?.status === "aguardando_escolha_midia" && data?.mensagem) {
+    return String(data.mensagem);
+  }
 
   // Novo fluxo: 3 opções A/B/C
   if (data?.status === "aguardando_escolha_variante") {
@@ -4145,7 +4274,7 @@ async function salvarItemMidiaBiblioteca(
 }
 
 
-function respostaMidiaSalva(salvos: Array<{ tipo: "foto" | "video" | "audio" }>, descricaoVisual?: string, remetenteEhDono = false): string {
+function respostaMidiaSalva(salvos: Array<{ id: string; tipo: "foto" | "video" | "audio" }>, descricaoVisual?: string, remetenteEhDono = false): string {
   const total = salvos.length;
   const tipos = salvos.reduce((acc, item) => {
     acc[item.tipo] = (acc[item.tipo] ?? 0) + 1;
@@ -4158,23 +4287,28 @@ function respostaMidiaSalva(salvos: Array<{ tipo: "foto" | "video" | "audio" }>,
   ].filter(Boolean).join(", ");
   const temFoto = (tipos.foto ?? 0) > 0;
   const temVideo = (tipos.video ?? 0) > 0;
+  const blocoCodigos = salvos
+    .filter((item): item is { id: string; tipo: "foto" | "video" } => item.tipo === "foto" || item.tipo === "video")
+    .map((item) => linhaCodigoMidia(item.id, item.tipo))
+    .join("\n");
+  const comCodigos = (texto: string) => blocoCodigos ? `${texto}\n\n${blocoCodigos}` : texto;
   if (!remetenteEhDono) {
     if (temFoto && descricaoVisual?.trim()) {
-      return `Recebi ${partes || "a mídia"}. A imagem mostra: ${descricaoVisual.trim()}\n\nSe você quiser, eu encaminho isso para o responsável.`;
+      return comCodigos(`Recebi ${partes || "a mídia"}. A imagem mostra: ${descricaoVisual.trim()}\n\nSe você quiser, eu encaminho isso para o responsável.`);
     }
-    return `Recebi ${partes || "a mídia"}. Se você quiser, eu encaminho isso para o responsável.`;
+    return comCodigos(`Recebi ${partes || "a mídia"}. Se você quiser, eu encaminho isso para o responsável.`);
   }
   // VÍDEO: como não temos visão de vídeo, coletar rede+formato+legenda numa pergunta só (evita loop de contexto).
   if (temVideo && !temFoto) {
-    return `Salvei ${partes} na biblioteca /midias. Como não consigo assistir vídeo, me diga tudo numa mensagem só: **onde publicar** (Instagram / Facebook / ambos), **formato** (Feed, Story ou Reels) e uma **legenda/contexto** (do que se trata). Ex.: "Reels no Insta e Face — Interruptor touch-screen Tramontina, chique e prático".`;
+    return comCodigos(`Salvei ${partes} na biblioteca /midias. Como não consigo assistir vídeo, me diga tudo numa mensagem só: **onde publicar** (Instagram / Facebook / ambos), **formato** (Feed, Story ou Reels) e uma **legenda/contexto** (do que se trata). Ex.: "Reels no Insta e Face — Interruptor touch-screen Tramontina, chique e prático".`);
   }
   if (temFoto && descricaoVisual?.trim()) {
-    return `Salvei ${partes || "a mídia"} na biblioteca /midias. Estou vendo uma imagem que mostra: ${descricaoVisual.trim()}\n\nO que você quer que eu faça com ela? Posso preparar a legenda e o post para as redes.`;
+    return comCodigos(`Salvei ${partes || "a mídia"} na biblioteca /midias. Estou vendo uma imagem que mostra: ${descricaoVisual.trim()}\n\nO que você quer que eu faça com ela? Posso preparar a legenda e o post para as redes.`);
   }
   const instrucao = temFoto
     ? " INSTRUÇÃO PRO ASSISTENTE: analise VISUALMENTE a(s) imagem(ns) que o cliente acabou de mandar (você as recebeu no conteúdo desta mensagem) e descreva em 1-2 frases o que aparece nela (produto, cena, cor, contexto). Depois confirme que salvou. NÃO responda genericamente — mostre que viu a foto."
     : "";
-  return `${total === 1 ? "Salvei" : "Salvei"} ${partes || "a mídia"} na biblioteca /midias. Não usei produto do catálogo; publique/reuse por lá quando quiser.${instrucao}`;
+  return comCodigos(`${total === 1 ? "Salvei" : "Salvei"} ${partes || "a mídia"} na biblioteca /midias. Não usei produto do catálogo; publique/reuse por lá quando quiser.${instrucao}`);
 }
 
 async function descreverFotosSalvas(
@@ -4341,7 +4475,7 @@ async function resolverMidiaBibliotecaPorId(
 
 async function toolPostarMidiaBiblioteca(
   args: { legenda?: string; nome?: string; preco?: number | string; tom?: string; redes?: string[]; midia_id?: string; formato?: string; incluir_cta_whatsapp?: boolean; briefing?: string; usar_contexto_conversa?: boolean },
-  ctx: { userId: string; fromNumber: string },
+  ctx: MediaSelectionContext,
 ): Promise<string> {
   try {
     if (!isOwner(ctx)) return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Essa ação é restrita ao responsável da conta. Posso encaminhar o pedido para ele, se quiser." });
@@ -4349,9 +4483,18 @@ async function toolPostarMidiaBiblioteca(
 
     const midiaId = String(args?.midia_id || "").trim();
     if (!midiaId) {
+      const mensagem = await iniciarSelecaoMidia(ctx, {
+        redes: args?.redes ?? [],
+        tom: args?.tom || "urgencia",
+        legenda: args?.legenda,
+        formato: detectSocialPostFormat(args?.formato || ""),
+        incluirCtaWhatsapp: !!args?.incluir_cta_whatsapp,
+        briefing: args?.briefing,
+        usarContextoConversa: args?.usar_contexto_conversa,
+      });
       return JSON.stringify({
-        erro: "midia_id_obrigatorio",
-        mensagem: PERGUNTA_ID_MIDIA,
+        status: "aguardando_escolha_midia",
+        mensagem,
       });
     }
 
@@ -4536,6 +4679,30 @@ async function toolPostarMidiaBiblioteca(
     const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo, incluirCtaWhatsapp: incluirCta, briefing: briefing || undefined };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
+    const previousSelection = pendingMediaSelectionValida(ctx.agentState?.media_post_selection)
+      ? ctx.agentState!.media_post_selection!
+      : null;
+    await savePendingMediaSelection(ctx, {
+      stage: "copies",
+      candidates: previousSelection?.candidates?.some((candidate) => candidate.id === midia.id)
+        ? previousSelection.candidates
+        : [{
+          id: midia.id,
+          tipo: isVideo ? "video" : "foto",
+          nome,
+          createdAt: midia.created_at,
+        }],
+      selectedId: midia.id,
+      redes,
+      tom,
+      legenda: args?.legenda,
+      formato,
+      incluirCtaWhatsapp: incluirCta,
+      briefing: briefing || undefined,
+      usarContextoConversa: args?.usar_contexto_conversa,
+      socialToken: token,
+      createdAt: Date.now(),
+    });
 
     const avisoFormato = formato === "story"
       ? `⚠️ Formato: STORY (${isVideo ? "vídeo" : "foto"} precisa ser vertical 9:16 em ${redes.join(" e ")}).`
@@ -5122,7 +5289,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "postar_midia_biblioteca",
-      description: "🟢 USE SOMENTE quando o DONO/RESPONSÁVEL pedir pra POSTAR/DIVULGAR uma foto ou vídeo identificado da biblioteca /midias. Nunca use para cliente/contato. midia_id é OBRIGATÓRIO: passe exatamente o código curto de 8 caracteres ou o UUID completo informado na conversa. Se o dono não informar um ID, PERGUNTE o código; é PROIBIDO escolher a mídia mais recente, a última foto/vídeo ou qualquer mídia por contexto. FORMATO: 'story' (foto ou vídeo 9:16), 'reels' (só vídeo, IG/FB), 'feed' (default). Se o dono disser 'reels' passe formato='reels'; 'story'/'stories' → 'story'; senão 'feed'. Para VÍDEO, sempre passe a legenda que o dono forneceu — não invente descrição de vídeo. ⚠️ BRIEFING (MUITO IMPORTANTE): se o dono ESCREVEU um texto/contexto nesta conversa (mesmo em mensagens anteriores) e pediu pra usar aquele texto/aquele contexto/aquela ideia no post, COPIE esse texto INTEIRO no parâmetro 'briefing'. A legenda deve comunicar a MENSAGEM DELE — a imagem é só o visual. Se ele se referir a um texto que mandou antes e você não tiver o texto em mãos, passe usar_contexto_conversa=true. CTA DE WHATSAPP: passe incluir_cta_whatsapp=true SÓ SE o dono pedir explicitamente (ex: 'posta com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA').",
+      description: "🟢 USE SOMENTE quando o DONO/RESPONSÁVEL pedir pra POSTAR/DIVULGAR uma foto ou vídeo da biblioteca /midias. Nunca use para cliente/contato. Se houver código curto ou UUID na conversa, passe exatamente em midia_id. Se não houver, chame a tool SEM midia_id: o sistema mostrará as 3 últimas mídias numeradas e aguardará o dono escolher; é PROIBIDO escolher automaticamente. FORMATO: 'story' (foto ou vídeo 9:16), 'reels' (só vídeo, IG/FB), 'feed' (default). Se o dono disser 'reels' passe formato='reels'; 'story'/'stories' → 'story'; senão 'feed'. Para VÍDEO, sempre passe a legenda que o dono forneceu — não invente descrição de vídeo. ⚠️ BRIEFING (MUITO IMPORTANTE): se o dono ESCREVEU um texto/contexto nesta conversa (mesmo em mensagens anteriores) e pediu pra usar aquele texto/aquele contexto/aquela ideia no post, COPIE esse texto INTEIRO no parâmetro 'briefing'. A copy só será gerada depois da escolha e usará a mídia escolhida. CTA DE WHATSAPP: passe incluir_cta_whatsapp=true SÓ SE o dono pedir explicitamente.",
       parameters: {
         type: "object",
         properties: {
@@ -5137,7 +5304,6 @@ const TOOLS = [
           formato: { type: "string", enum: ["feed", "story", "reels"], description: "'feed' (default), 'story' (foto/vídeo 9:16) ou 'reels' (só vídeo)." },
           incluir_cta_whatsapp: { type: "boolean", description: "OPT-IN. true = adiciona '📱 Fale comigo no WhatsApp: wa.me/<numero_do_agente>' em SANDUÍCHE (no INÍCIO E no FIM) da legenda de todas as redes escolhidas. Idempotente: limpa CTA antigo antes de reaplicar (nunca triplica). Nunca inclua automaticamente — só quando o dono pedir com palavras claras ('com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA')." },
         },
-        required: ["midia_id"],
       },
 
     },
@@ -5873,8 +6039,9 @@ async function toolCriarAnuncio(
           telefone_origem: ctx.fromNumber,
           tipo: "foto",
           midia_url: render.image_url,
-          descricao: `Anúncio ${formato}: ${titulo}`,
+          contexto_original: `Anúncio ${formato}: ${titulo}`,
           origem: "anuncio_produto",
+          status: "pendente",
         })
         .select("id")
         .maybeSingle();
@@ -5986,7 +6153,7 @@ async function runTool(
 
   name: string,
   args: any,
-  ctx: { userId: string; fromNumber: string; media?: MediaExtract[] },
+  ctx: { userId: string; fromNumber: string; media?: MediaExtract[]; convId?: string; agentState?: AgentConvState },
 ): Promise<{ result: string; imageUrl?: string }> {
   const hasFreshLibraryMedia = (ctx.media ?? []).some((m) => m.kind === "image" || m.kind === "video");
   if (hasFreshLibraryMedia && name !== "salvar_midia_biblioteca" && name !== "encaminhar_recado_ao_dono") {
@@ -6094,7 +6261,7 @@ async function callGemini(
   history: Array<{ role: string; content: string }>,
   userContent: any,
   hasMedia: boolean,
-  toolCtx: { userId: string; fromNumber: string; media?: MediaExtract[] },
+  toolCtx: { userId: string; fromNumber: string; media?: MediaExtract[]; convId?: string; agentState?: AgentConvState },
 ): Promise<{ text: string; imageUrl?: string; forwardProof?: string; forwardAttempted?: boolean }> {
   let forwardProof: string | undefined;
   let forwardAttempted = false;
@@ -6136,10 +6303,11 @@ async function callGemini(
       let parsed: any = {};
       try { parsed = JSON.parse(raw); } catch { /* resposta inválida tratada abaixo */ }
       if (parsed?.image_url) {
+        const codigo = parsed?.midia_id ? `<<SPLIT>>${linhaCodigoMidia(parsed.midia_id, "foto")}` : "";
         return {
           text: pedidoLogoNaFoto
-            ? "Pronto — apliquei a marca na sua foto original, sem mudar nada mais na imagem."
-            : "Pronto — deixei a foto em um cenário profissional para divulgação.",
+            ? `Pronto — apliquei a marca na sua foto original, sem mudar nada mais na imagem.${codigo}`
+            : `Pronto — deixei a foto em um cenário profissional para divulgação.${codigo}`,
           imageUrl: parsed.image_url,
         };
       }
@@ -6165,6 +6333,76 @@ async function callGemini(
       }
       // O texto inteiro vai junto: é dele que saem as cores pedidas (hex ou nome).
       return { text: await criarRascunhoVideoMotion(toolCtx, tema, userContent) };
+    }
+
+    // Seleção de mídia persistida: os números sempre apontam para o snapshot
+    // exibido, mesmo se o roteador reiniciar ou uma nova mídia chegar depois.
+    let pendingMediaSelection = toolCtx.agentState?.media_post_selection;
+    if (pendingMediaSelection && !pendingMediaSelectionValida(pendingMediaSelection)) {
+      await savePendingMediaSelection(toolCtx, null);
+      pendingMediaSelection = null;
+    }
+    if (remetenteEhDono && pendingMediaSelectionValida(pendingMediaSelection)) {
+      const state = pendingMediaSelection;
+      let selectedIndex: number | null = null;
+      if (state.stage === "media") {
+        selectedIndex = detectarEscolhaMidiaNumerada(userContent, state.candidates.length);
+        if (selectedIndex == null && state.candidates.length === 1 && confirmaMidiaUnica(userContent)) selectedIndex = 0;
+      } else if (state.stage === "copies") {
+        selectedIndex = detectarTrocaMidiaNumerada(userContent, state.candidates.length);
+      }
+
+      if (selectedIndex != null) {
+        const selected = state.candidates[selectedIndex];
+        if (state.stage === "copies") await cancelarPreviewSocialPendente(state.socialToken, toolCtx.userId);
+        if (!state.formato) {
+          const nextState: PendingMediaPostSelection = {
+            ...state,
+            stage: "format",
+            selectedId: selected.id,
+            socialToken: undefined,
+            createdAt: Date.now(),
+          };
+          await savePendingMediaSelection(toolCtx, nextState);
+          const redesAsk = state.redes.length > 0 ? state.redes : ["instagram"];
+          const redeLabel = redesAsk.map((r) => r === "instagram" ? "Instagram" : r === "facebook" ? "Facebook" : r === "tiktok" ? "TikTok" : r).join(" e ");
+          return {
+            text: selected.tipo === "video"
+              ? `Você escolheu *${selected.nome}* (ID ${idCurto(selected.id)}). Quer no *feed*, no *story* ou como *reels* do ${redeLabel}?`
+              : `Você escolheu *${selected.nome}* (ID ${idCurto(selected.id)}). Quer no *feed* ou no *story* do ${redeLabel}?`,
+          };
+        }
+        const postResult = await toolPostarMidiaBiblioteca({
+          midia_id: selected.id,
+          legenda: state.legenda,
+          tom: state.tom,
+          redes: state.redes,
+          formato: state.formato,
+          incluir_cta_whatsapp: state.incluirCtaWhatsapp,
+          briefing: state.briefing,
+          usar_contexto_conversa: state.usarContextoConversa,
+        }, toolCtx);
+        return { text: formatSocialPostToolResult(postResult) };
+      }
+
+      const standaloneFormat = state.stage === "format" ? detectStandaloneFormatReply(userContent) : undefined;
+      if (standaloneFormat && state.selectedId) {
+        const selected = state.candidates.find((item) => item.id === state.selectedId);
+        if (standaloneFormat === "reels" && selected?.tipo !== "video") {
+          return { text: "Reels só aceita vídeo — essa mídia é imagem. Escolha *feed* ou *story*." };
+        }
+        const postResult = await toolPostarMidiaBiblioteca({
+          midia_id: state.selectedId,
+          legenda: state.legenda,
+          tom: state.tom,
+          redes: state.redes,
+          formato: standaloneFormat,
+          incluir_cta_whatsapp: state.incluirCtaWhatsapp,
+          briefing: state.briefing,
+          usar_contexto_conversa: state.usarContextoConversa,
+        }, toolCtx);
+        return { text: formatSocialPostToolResult(postResult) };
+      }
     }
 
     // Fluxo A/B/C: resolve seleção e confirmação direto no código, sem depender da IA.
@@ -6195,27 +6433,6 @@ async function callGemini(
       console.log("[pietro][forced_social_confirm]", postConfirmation);
       const confirmResult = await toolConfirmarPostagemRedes(postConfirmation, toolCtx);
       return { text: formatSocialPostToolResult(confirmResult) };
-    }
-
-    // Se o dono responde APENAS o formato, retoma somente a mídia cujo ID já
-    // havia sido informado. Nunca procura outra mídia por recência.
-    const standaloneFormat = detectStandaloneFormatReply(userContent);
-    const pendingChoice = getPendingFormatChoice(toolCtx.userId);
-    if (remetenteEhDono && standaloneFormat && pendingChoice) {
-      if (standaloneFormat === "reels" && pendingChoice.midiaTipo !== "video") {
-        clearPendingFormatChoice(toolCtx.userId);
-        return { text: "Reels só aceita vídeo — essa mídia é foto. Informe novamente o ID da mídia e escolha *feed* ou *story*." };
-      }
-      console.log(`[pietro][pending_format_resume] formato=${standaloneFormat} redes=${pendingChoice.redes.join(",")} tipo=${pendingChoice.midiaTipo} midia=${pendingChoice.midiaId}`);
-      clearPendingFormatChoice(toolCtx.userId);
-      const postResult = await toolPostarMidiaBiblioteca({
-        midia_id: pendingChoice.midiaId,
-        legenda: pendingChoice.legenda,
-        tom: pendingChoice.tom,
-        redes: pendingChoice.redes,
-        formato: standaloneFormat,
-      }, toolCtx);
-      return { text: formatSocialPostToolResult(postResult) };
     }
 
     // ---- CARROSSEL (prioridade sobre o post único) ----
@@ -6266,15 +6483,22 @@ async function callGemini(
         const isVideo = resolvida.midia.tipo === "video";
 
         // Mídia explicitamente identificada, mas sem formato: guarda o mesmo ID
-        // para a resposta seguinte. Não há nova seleção no banco.
+        // persistentemente para a resposta seguinte.
         if (isFoto && !formatoDetectado) {
           const redesAsk = socialPost.redes.length > 0 ? socialPost.redes : ["instagram"];
-          setPendingFormatChoice(toolCtx.userId, {
+          await savePendingMediaSelection(toolCtx, {
+            stage: "format",
+            candidates: [{
+              id: resolvida.midia.id,
+              tipo: "foto",
+              nome: nomeMidiaParaSelecao(resolvida.midia),
+              createdAt: resolvida.midia.created_at,
+            }],
+            selectedId: resolvida.midia.id,
             redes: redesAsk,
             tom: socialPost.tom,
             legenda: cleanMediaPostLegenda(userContent),
-            midiaId: resolvida.midia.id,
-            midiaTipo: "foto",
+            createdAt: Date.now(),
           });
           const redeLabel = redesAsk.map((r) => r === "instagram" ? "Instagram" : r === "facebook" ? "Facebook" : r === "tiktok" ? "TikTok" : r).join(" e ");
           console.log("[pietro][pending_format_choice_set]", { redes: redesAsk, tipo: "foto", midia: resolvida.midia.id });
@@ -6283,12 +6507,19 @@ async function callGemini(
 
         if (isVideo && !formatoDetectado) {
           const redesAsk = socialPost.redes.length > 0 ? socialPost.redes : ["instagram"];
-          setPendingFormatChoice(toolCtx.userId, {
+          await savePendingMediaSelection(toolCtx, {
+            stage: "format",
+            candidates: [{
+              id: resolvida.midia.id,
+              tipo: "video",
+              nome: nomeMidiaParaSelecao(resolvida.midia),
+              createdAt: resolvida.midia.created_at,
+            }],
+            selectedId: resolvida.midia.id,
             redes: redesAsk,
             tom: socialPost.tom,
             legenda: cleanMediaPostLegenda(userContent),
-            midiaId: resolvida.midia.id,
-            midiaTipo: "video",
+            createdAt: Date.now(),
           });
           const redeLabel = redesAsk.map((r) => r === "instagram" ? "Instagram" : r === "facebook" ? "Facebook" : r === "tiktok" ? "TikTok" : r).join(" e ");
           console.log("[pietro][pending_format_choice_set]", { redes: redesAsk, tipo: "video", midia: resolvida.midia.id });
@@ -6307,12 +6538,16 @@ async function callGemini(
         return { text: formatSocialPostToolResult(postResult) };
       }
 
-      if (pedidoReferenciaMidiaGenerica(userContent, socialPost.produto)) {
-        return { text: PERGUNTA_ID_MIDIA };
-      }
-
-      if (!socialPost.temProduto) {
-        return { text: "Qual produto você quer postar? Ou me envie a foto/vídeo primeiro que eu preparo pela biblioteca /midias." };
+      if (pedidoReferenciaMidiaGenerica(userContent, socialPost.produto) || !socialPost.temProduto) {
+        return {
+          text: await iniciarSelecaoMidia(toolCtx, {
+            redes: socialPost.redes,
+            tom: socialPost.tom,
+            legenda: cleanMediaPostLegenda(userContent),
+            formato: socialPost.formato,
+            incluirCtaWhatsapp: detectWantsWhatsappCta(userContent),
+          }),
+        };
       }
 
       const postResult = await toolPostarRedesSociais(socialPost, toolCtx);
@@ -6367,6 +6602,7 @@ async function callGemini(
   // Roteamento por tipo de fluxo (Feature 2): multimodal → DEEP, texto conversa → FAST.
   const model = escolherModelo({ kind: hasMedia ? "multimodal" : "conversation" });
   let pendingImageUrl: string | undefined;
+  let pendingMediaCodeBlock = "";
   let pendingSocialToken: string | undefined; // token de post aguardando confirmação — anexa <<SPLIT>>pode postar {token} no fim
 
   const captureSocialToken = (raw: string) => {
@@ -6431,6 +6667,18 @@ async function callGemini(
         console.log(`[pietro][tool] ${name}`, args);
         const { result, imageUrl } = await runTool(name, args, toolCtx);
         if (imageUrl) pendingImageUrl = imageUrl;
+        if (name === "gerar_imagem" || name === "editar_imagem" || name === "criar_anuncio" || name === "salvar_midia_biblioteca") {
+          try {
+            const parsed = JSON.parse(result);
+            const ids: string[] = Array.isArray(parsed?.midia_ids)
+              ? parsed.midia_ids
+              : parsed?.midia_id ? [parsed.midia_id] : [];
+            const tipos: string[] = Array.isArray(parsed?.tipos) ? parsed.tipos : [];
+            pendingMediaCodeBlock = ids.map((id, index) =>
+              linhaCodigoMidia(id, tipos[index] === "video" ? "video" : "foto")
+            ).join("\n");
+          } catch { /* resultado sem mídia identificável */ }
+        }
         if (name === "postar_midia_biblioteca" || name === "postar_redes_sociais" || name === "revisar_post_pendente" || name === "escolher_variante_post") captureSocialToken(result);
         // Comprovante de encaminhamento: só existe se a tool realmente entregou (ok: true).
         if (name === "encaminhar_recado_ao_dono" || name === "enviar_mensagem_contato_comercial" || name === "registrar_lead_novo") {
@@ -6446,8 +6694,14 @@ async function callGemini(
         try {
           const parsed = JSON.parse(result);
           const st = parsed?.status;
-          if (st === "aguardando_escolha_variante" || st === "variante_selecionada") {
-            return { text: formatSocialPostToolResult(result), imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
+          if (st === "aguardando_escolha_midia" || st === "aguardando_escolha_variante" || st === "variante_selecionada") {
+            const formatted = formatSocialPostToolResult(result);
+            return {
+              text: pendingMediaCodeBlock ? `${formatted}<<SPLIT>>${pendingMediaCodeBlock}` : formatted,
+              imageUrl: pendingImageUrl,
+              forwardProof,
+              forwardAttempted,
+            };
           }
         } catch { /* ignore */ }
         messages.push({ role: "tool", tool_call_id: tc.id, content: result });
@@ -6455,9 +6709,19 @@ async function callGemini(
       continue;
     }
 
-    return { text: appendConfirmCommand(msg?.content ?? ""), imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
+    const baseText = appendConfirmCommand(msg?.content ?? "");
+    const text = pendingMediaCodeBlock && !baseText.includes(pendingMediaCodeBlock)
+      ? `${baseText}<<SPLIT>>${pendingMediaCodeBlock}`
+      : baseText;
+    return { text, imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
   }
-  return { text: appendConfirmCommand("Desculpa, não consegui concluir a pesquisa agora."), imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
+  const fallbackText = appendConfirmCommand("Desculpa, não consegui concluir a pesquisa agora.");
+  return {
+    text: pendingMediaCodeBlock ? `${fallbackText}<<SPLIT>>${pendingMediaCodeBlock}` : fallbackText,
+    imageUrl: pendingImageUrl,
+    forwardProof,
+    forwardAttempted,
+  };
 }
 
 
@@ -7606,7 +7870,7 @@ async function processOne(queueId: string) {
       }
       const protoOwner = ownerForwarded ? buildForwardProof(ownerForwardWamid) : "";
       const reply = videoFlowReply
-        ? videoFlowReply
+        ? `${videoFlowReply}\n\n${linhaCodigoMidia(videoSalvo!.id, "video")}`
         : ownerForwarded
         ? `Recebi ${salvos.length === 1 ? "a foto" : "as mídias"}${descricaoVisual ? `. A imagem mostra: ${descricaoVisual.trim()}` : ""}\n\nCerto, já encaminhei para ${ownerFirstName(_tenantOwner?.name)}. ${protoOwner}`
         : respostaMidiaSalva(salvos, descricaoVisual);
@@ -8242,11 +8506,14 @@ Regras:
     }).format(new Date());
     const dateBlock = `\n\nCONTEXTO TEMPORAL (IMPORTANTE):\n- Data e hora atual em São Paulo: ${nowSP}.\n- Use SEMPRE esta data como referência de "hoje", "ontem", "esta semana", "este ano".\n- Para qualquer pergunta sobre notícias, eventos, cotações, clima, preços, jogos, agenda ou "o que está acontecendo", chame pesquisar_web com termos incluindo o ano/mês atual e passe recencia="d" (últimas 24h) ou "w" (última semana) quando fizer sentido. NUNCA responda de memória sobre fatos recentes.`;
     const inboundFromOwner = fromIsOwner;
-    const mediaBlock = media.length > 0
+    let mediaBlock = media.length > 0
       ? inboundFromOwner
         ? `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- O DONO/RESPONSÁVEL ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Foto/vídeo/áudio recebido é MÍDIA LIVRE da biblioteca — NÃO é um produto do catálogo.\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE. Passe em "contexto" o que ele falou (ou "sem contexto" se só mandou o arquivo).\n- É PROIBIDO chamar postar_redes_sociais quando há mídia nova enviada nesta mensagem — aquela tool é SÓ pra produtos do catálogo, nunca pra mídia recém-enviada.\n- 🏷️ ANÚNCIO: se ele pedir arte/anúncio de produto (veículo, imóvel, máquina, item de loja) e passar dados (modelo, ano, km, preço, garantia), chame criar_anuncio DEPOIS de salvar, NESTA MESMA RESPOSTA — 'titulo' = modelo, 'subtitulo' = ano/câmbio, cada dado citado em 'itens' exatamente como ele escreveu, 'preco' com o valor dito. Nunca invente dado.\n- 🎨 EDIÇÃO: se ele pedir para MELHORAR a foto, escrever dados na imagem (km, ano/modelo, "único dono", preço) ou trocar roupa/fantasia mantendo o ambiente, chame editar_imagem DEPOIS de salvar. Coloque cada dado citado por ele em "textos" (exatamente como ele escreveu) e escolha modo='ficha_tecnica' (produto/veículo — TROCA o ambiente por estúdio/showroom limpo, tirando fios, TV, móveis e bagunça da foto) ou modo='figurino' (troca de roupa mantendo rosto e cenário). Se ele pedir 'ambiente bonito', 'fundo profissional' ou 'ambiente para anúncio', use modo='ficha_tecnica' e NÃO passe preservar_ambiente.\n- ⛔ REGRA DE PUBLICAÇÃO PÓS-EDIÇÃO: se você chamou editar_imagem (ou criar_anuncio) e ele pedir pra POSTAR, a mídia a publicar é SEMPRE a versão TRATADA — chame postar_midia_biblioteca passando o midia_id retornado por aquela tool. É PROIBIDO publicar a foto original enviada por ele.\n- Depois de salvar, responda curto. Só fale de publicar/reusar porque o remetente é o responsável da conta.`
         : `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- Um CLIENTE/CONTATO ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Esse remetente NÃO é o dono/responsável da conta — trate como cliente, NUNCA como "chefe"/"dono".\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE para arquivar a mídia (uso interno, não comente com o cliente).\n- DEPOIS: OLHE a foto/vídeo, IDENTIFIQUE o teor (o que aparece — produto, documento, print, situação, etc.) e responda naturalmente comentando o que viu. Se o cliente fez uma pergunta ou pedido junto (ex: "esse produto tem?", "quanto custa?", "vocês fazem isso?"), TIRE A DÚVIDA dele com base no que dá pra ver + contexto do negócio.\n- É PROIBIDO perguntar onde postar, oferecer preparar legenda/post, publicar/reusar em redes ou pedir confirmação de rede/formato.\n- Só DEPOIS de comentar a foto e responder a dúvida, PERGUNTE se ele quer que você encaminhe essa foto/recado pro responsável (Marcelo). Só chame encaminhar_recado_ao_dono se ele CONFIRMAR que quer encaminhar (ou já pediu explicitamente na mesma mensagem).`
       : "";
+    if (media.length > 0 && inboundFromOwner) {
+      mediaBlock += `\n- ⛔ PUBLICAÇÃO SEM ID: salvar a mídia NÃO autoriza escolhê-la automaticamente. Se o dono pedir publicação sem um midia_id retornado por uma edição/geração nesta mesma execução, chame postar_midia_biblioteca sem midia_id para o sistema mostrar a seleção numerada.`;
+    }
 
     // Detecta mídia recente em /midias (últimos 30 min) — mesma janela do fallback de editar_imagem
     let recentMediaBlock = "";
@@ -8265,6 +8532,12 @@ Regras:
           recentMediaBlock = inboundFromOwner
             ? `\n\nMÍDIA RECENTE NA BIBLIOTECA /midias (últimos 15 min):\n- Tipo: ${m0.tipo}. Contexto salvo: "${m0.contexto_original ?? "sem contexto"}".\n- Se o dono pedir pra POSTAR/DIVULGAR agora em QUALQUER formato (feed, story, stories, reels), a mídia a publicar é ESTA que ele acabou de enviar — chame IMEDIATAMENTE postar_midia_biblioteca passando legenda/nome/preço do texto atual e formato='story' se ele citar story/stories (senão 'feed').\n- 🏷️ ANÚNCIO/ARTE: se ele pedir "cria a imagem para anúncio", "monta a arte", "faz um anúncio" e passar dados do produto (modelo, ano, km, preço, chaves, câmbio, "único dono"), chame IMEDIATAMENTE criar_anuncio NESTA MESMA RESPOSTA usando ESTA foto recente. Monte 'titulo' com o modelo citado, 'subtitulo' com ano/câmbio, coloque cada dado citado em 'itens' EXATAMENTE como ele escreveu e 'preco' com o valor dito. NÃO invente dados e NÃO pergunte nada se ele já deu o modelo.\n- ⛔ NUNCA chame postar_redes_sociais nesse caso — aquela tool busca PRODUTO no CATÁLOGO e vai devolver item ERRADO.\n- 🎨 EDIÇÃO/CENÁRIO: se ele pedir pra MELHORAR a foto, "deixar bonita", "colocar um cenário bonito", "fundo profissional", "ambiente para divulgar no Face/Insta", escrever dados na imagem (km, ano, preço, "único dono") ou trocar roupa/fantasia, chame IMEDIATAMENTE editar_imagem NESTA MESMA RESPOSTA — a ferramenta já pega ESTA foto recente sozinha. Se ele pedir pra COLOCAR/INCLUIR a LOGO ou a MARCA em algum ponto da foto (xícara, camisa, parede, carro), use OBRIGATORIAMENTE modo='aplicar_logo' — a foto dele é mantida igual e só a marca é aplicada; é PROIBIDO gerar outra foto. Use modo='ficha_tecnica' para cenário/estúdio/anúncio de produto e modo='figurino' para troca de roupa. Coloque em "textos" só os dados que ele escreveu.\n- ⛔ NUNCA responda que não consegue editar/gerar imagem, que "não tem essa função" ou que precisa reenviar a foto: a foto está aqui e a ferramenta existe. Chame a tool.\n- ⛔ NÃO chame buscar_estoque/consultar_estoque nesse caso.`
             : `\n\nMÍDIA RECENTE NA BIBLIOTECA /midias (últimos 15 min):\n- Tipo: ${m0.tipo}. Foi enviada por CLIENTE/CONTATO, não pelo responsável.\n- NÃO ofereça postar/divulgar, NÃO pergunte rede/formato e NÃO chame ferramentas de publicação.\n- Se ele acabou de confirmar ("pode mandar", "sim manda pro Marcelo", "encaminha") depois de você ter oferecido, chame encaminhar_recado_ao_dono com incluir_ultima_foto=true.`;
+        if (inboundFromOwner) {
+          recentMediaBlock = recentMediaBlock.replace(
+            /- Se o dono pedir pra POSTAR\/DIVULGAR[\s\S]*?(?=\n- 🏷️ ANÚNCIO\/ARTE:)/,
+            "- Se o dono pedir pra POSTAR/DIVULGAR sem identificar a mídia, chame postar_midia_biblioteca SEM midia_id. O sistema mostrará as 3 últimas mídias e aguardará a escolha por número. É PROIBIDO assumir que a mídia recente é a escolhida.",
+          );
+        }
       }
     } catch (e) {
       console.warn("[pietro][recent_media_hint] falhou:", (e as Error).message);
@@ -8507,7 +8780,13 @@ Regras:
     let forwardProof: string | undefined;
     let forwardAttempted = false;
     try {
-      const aiResult = await callGemini(systemPromptWithDate, history, userContent, media.length > 0, { userId, fromNumber: row.from_number, media });
+      const aiResult = await callGemini(systemPromptWithDate, history, userContent, media.length > 0, {
+        userId,
+        fromNumber: row.from_number,
+        media,
+        convId: conv.id,
+        agentState,
+      });
       reply = aiResult.text;
       generatedImageUrl = aiResult.imageUrl;
       forwardProof = aiResult.forwardProof;

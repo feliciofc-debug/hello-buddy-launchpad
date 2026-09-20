@@ -10,6 +10,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { autorizarWorker, renderCors, respJson } from "../_shared/render-auth.ts";
+import { linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
 
 const MAX_TENTATIVAS = 3;
 
@@ -27,6 +28,36 @@ async function avisarCliente(supabase: any, job: any, message: string, videoUrl?
   } catch (e) {
     console.error("[video-motion-complete] aviso WhatsApp falhou:", e);
   }
+}
+
+async function registrarVideoNaBiblioteca(supabase: any, job: any, videoUrl: string, duracao?: number | null): Promise<string> {
+  const { data: existente } = await supabase
+    .from("midias_whatsapp")
+    .select("id")
+    .eq("user_id", job.user_id)
+    .eq("midia_url", videoUrl)
+    .limit(1)
+    .maybeSingle();
+  if (existente?.id) return existente.id;
+
+  const contexto = [job.titulo, job.legenda_post].filter(Boolean).join("\n\n").slice(0, 1500);
+  const { data, error } = await supabase
+    .from("midias_whatsapp")
+    .insert({
+      user_id: job.user_id,
+      origem: "ia_video_motion",
+      telefone_origem: job.telefone || null,
+      tipo: "video",
+      midia_url: videoUrl,
+      mime_type: "video/mp4",
+      duracao_segundos: duracao ?? null,
+      contexto_original: contexto || "Vídeo animado",
+      status: "pendente",
+    })
+    .select("id")
+    .single();
+  if (error || !data?.id) throw new Error(`não consegui registrar o vídeo animado em /midias: ${error?.message || "id ausente"}`);
+  return data.id;
 }
 
 Deno.serve(async (req) => {
@@ -157,13 +188,16 @@ Deno.serve(async (req) => {
       return respJson({ success: true, cancelado: true });
     }
 
+    const midiaId = await registrarVideoNaBiblioteca(supabase, job, videoUrl, duracao_segundos ?? null);
+    const codigoMidia = linhaCodigoMidia(midiaId, "video");
+
     if (job.origem === "whatsapp" && job.telefone) {
       const blocoLegenda = job.legenda_post ? `\n\n*Legenda sugerida:*\n${job.legenda_post}` : "";
       if (!querPublicar) {
         await avisarCliente(
           supabase,
           job,
-          `🎬 Seu vídeo animado ficou pronto. *Não publiquei em lugar nenhum.*${blocoLegenda}`,
+          `🎬 Seu vídeo animado ficou pronto. *Não publiquei em lugar nenhum.*\n\n${codigoMidia}${blocoLegenda}`,
           videoUrl,
         );
       } else {
@@ -177,13 +211,13 @@ Deno.serve(async (req) => {
         await avisarCliente(
           supabase,
           job,
-          `🎬 Vídeo animado pronto. *Ainda não publiquei nada.*${blocoLegenda}\n\nResponda *APROVAR* que eu publico como *${nomeFormato}* no ${nomes}, ou *CANCELAR* e nada vai ao ar.`,
+          `🎬 Vídeo animado pronto. *Ainda não publiquei nada.*\n\n${codigoMidia}${blocoLegenda}\n\nResponda *APROVAR* que eu publico como *${nomeFormato}* no ${nomes}, ou *CANCELAR* e nada vai ao ar.`,
           videoUrl,
         );
       }
     }
 
-    return respJson({ success: true, aguardando_aprovacao: querPublicar, video_url: videoUrl });
+    return respJson({ success: true, aguardando_aprovacao: querPublicar, video_url: videoUrl, midia_id: midiaId });
   } catch (e) {
     console.error("[video-motion-complete] erro:", e);
     return respJson({
