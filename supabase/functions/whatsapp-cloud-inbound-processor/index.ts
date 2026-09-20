@@ -3553,13 +3553,20 @@ function pedidoReferenciaMidiaGenerica(texto: string, produtoDetectado = ""): bo
 const PENDING_MEDIA_SELECTION_TTL_MS = 15 * 60 * 1000;
 
 function nomeMidiaParaSelecao(row: any): string {
-  const contexto = String(row?.contexto_original || "");
-  const visao = contexto.match(/\[visão\]\s*([\s\S]+)/i)?.[1]?.trim() || "";
-  const contextoUsuario = contexto.replace(/\n?\[visão\][\s\S]*/i, "").trim();
-  const base = visao || contextoUsuario || String(row?.arquivo_nome || "").trim();
-  if (base && !/^sem contexto$/i.test(base)) {
-    return compactSpaces(base).replace(/^a imagem mostra:\s*/i, "").slice(0, 72);
-  }
+  const limpar = (value: unknown) => compactSpaces(String(value || "")).trim();
+  const candidatos = [
+    limpar(row?.contexto_original),
+    limpar(row?.contexto_transcricao),
+    limpar(row?.legenda_gerada),
+  ];
+  const base = candidatos.find((value) => value && !/^sem contexto$/i.test(value));
+  if (base) return base.slice(0, 45);
+
+  const tags = Array.isArray(row?.tags_ia)
+    ? row.tags_ia.map(limpar).filter(Boolean).slice(0, 3).join(", ")
+    : "";
+  if (tags) return tags.slice(0, 45);
+
   const data = row?.created_at
     ? new Date(row.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
     : "";
@@ -3619,7 +3626,7 @@ async function iniciarSelecaoMidia(
 ): Promise<string> {
   const { data, error } = await sb
     .from("midias_whatsapp")
-    .select("id, tipo, contexto_original, arquivo_nome, created_at")
+    .select("id, tipo, contexto_original, contexto_transcricao, legenda_gerada, tags_ia, created_at")
     .eq("user_id", ctx.userId)
     .in("tipo", ["foto", "video"])
     .order("created_at", { ascending: false })
