@@ -225,16 +225,21 @@ serve(async (req) => {
             console.log(`🔁 [AUTOPILOT] Reiniciando ciclo da config ${config.id}`)
             startIndex = 0
           } else {
-            console.log(`✅ [AUTOPILOT] Todos os produtos já foram postados. Desativando config ${config.id}`)
+            // 🛡️ NUNCA desligar o cliente automaticamente (incidente 11/09/2026).
+            // Ciclo esgotado = apenas reagenda para o próximo dia válido e continua ATIVO,
+            // para que novos produtos cadastrados voltem a ser postados sozinhos.
+            const proximoDiaCiclo = calcularProximoDiaValido(nowSaoPaulo, config.dias_semana || [], config.horario_inicio)
+            console.log(`⏸️ [AUTOPILOT] Ciclo esgotado (sem repetir_ciclo). Reagendando sem desativar config ${config.id}`)
             await supabase
               .from('autopilot_config')
-              .update({ ativo: false, updated_at: now.toISOString() })
+              .update({ proxima_execucao: proximoDiaCiclo.toISOString(), updated_at: now.toISOString() })
               .eq('id', config.id)
 
             results.push({
               config_id: config.id,
               skipped: true,
-              reason: 'ciclo_encerrado',
+              reason: 'ciclo_encerrado_sem_produtos_novos',
+              next_run: proximoDiaCiclo.toISOString(),
             })
             continue
           }

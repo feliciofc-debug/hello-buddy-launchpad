@@ -198,7 +198,17 @@ export const AutopilotConfig = () => {
 
     if (config.id) {
       const updateData: any = { ativo: novoEstado, updated_at: new Date().toISOString() };
-      if (novoEstado) updateData.proxima_execucao = new Date().toISOString();
+      if (novoEstado) {
+        updateData.proxima_execucao = new Date().toISOString();
+        updateData.desativado_por = null;
+        updateData.desativado_em = null;
+        updateData.desativado_motivo = null;
+      } else {
+        // Marca que a pausa foi decisão humana — o vigia não reativa nesse caso.
+        updateData.desativado_por = "usuario";
+        updateData.desativado_em = new Date().toISOString();
+        updateData.desativado_motivo = "pausado manualmente na tela do Autopilot";
+      }
 
       const { error } = await supabase
         .from("autopilot_config" as any)
