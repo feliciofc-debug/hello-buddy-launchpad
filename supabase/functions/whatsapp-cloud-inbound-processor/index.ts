@@ -3992,15 +3992,51 @@ async function toolPublicarLinkedin(
     if (!texto) return await fail("texto_obrigatorio", "Não publiquei: faltou o texto do post.");
     attemptText = texto;
 
+    const pedidoOriginal = String(args?.pedido_original || "");
+    const pedidoNormalizado = normalizePt(pedidoOriginal);
+    const pediuVideo = /\bvideo\b/.test(pedidoNormalizado);
+    const pediuImagem = /\b(foto|imagem)\b/.test(pedidoNormalizado);
+    const explicitamenteTexto = /\b(texto|copy|artigo|somente texto|apenas texto)\b/.test(pedidoNormalizado);
     let imageUrl = String(args?.image_url || "").trim() || null;
     let videoUrl: string | null = null;
     let mediaId = String(args?.midia_id || "").trim() || null;
+    let selectedMedia: any | null = null;
+    if (!mediaId && !explicitamenteTexto) {
+      const latest = await buscarUltimaMidiaDaConversa(ctx);
+      if (latest.erro) {
+        return await fail("consulta_midia_conversa_falhou", `Não publiquei: ${latest.erro}`);
+      }
+      if (!latest.midia) {
+        return await fail(
+          "midia_conversa_nao_encontrada",
+          "Não publiquei: não encontrei imagem ou vídeo nesta conversa. Reenvie a mídia desejada.",
+        );
+      }
+      selectedMedia = latest.midia;
+      mediaId = String(latest.midia.id);
+    }
+
     if (mediaId) {
-      const resolved = await resolverMidiaBibliotecaPorId(ctx.userId, mediaId);
+      const resolved: { midia: any | null; erro?: string } = selectedMedia
+        ? { midia: selectedMedia }
+        : await resolverMidiaBibliotecaPorId(ctx.userId, mediaId);
       if (resolved.erro || !resolved.midia) {
         return await fail("midia_nao_encontrada", `Não publiquei: ${resolved.erro || "mídia ausente"}`);
       }
       mediaId = String(resolved.midia.id);
+      const mediaTipo = resolved.midia.tipo === "video" ? "vídeo" : "imagem";
+      if (pediuVideo && resolved.midia.tipo !== "video") {
+        return await fail(
+          "ultima_midia_nao_e_video",
+          `Não publiquei: você pediu um vídeo, mas a última produção desta conversa é ${mediaTipo}. Reenvie o vídeo ou informe o código dele.`,
+        );
+      }
+      if (pediuImagem && resolved.midia.tipo !== "foto") {
+        return await fail(
+          "ultima_midia_nao_e_imagem",
+          `Não publiquei: você pediu uma imagem, mas a última produção desta conversa é ${mediaTipo}. Reenvie a imagem ou informe o código dela.`,
+        );
+      }
       if (
         resolved.midia.origem === "carrossel_whatsapp"
         || resolved.midia.origem === "carrossel_whatsapp_card"
@@ -4016,13 +4052,14 @@ async function toolPublicarLinkedin(
       } else {
         return await fail("midia_incompativel", "Não publiquei: esse tipo de mídia ainda não é aceito no LinkedIn.");
       }
-    } else {
-      const pedidoOriginal = String(args?.pedido_original || "");
-      const explicitamenteTexto = /\b(texto|copy|artigo|somente texto|apenas texto)\b/i.test(pedidoOriginal);
-      if (pedidoOriginal && !explicitamenteTexto && !imageUrl) {
+
+      const midiaUsada = `Usando: ${nomeCurtoMidia(resolved.midia)} - ${resolved.midia.tipo === "video" ? "Vídeo" : "Imagem"} - ${tempoRelativoMidia(resolved.midia.created_at)}`;
+      try {
+        await sendWhatsApp(ctx.userId, ctx.fromNumber, midiaUsada);
+      } catch (e) {
         return await fail(
-          "midia_nao_identificada",
-          "Não publiquei: não consegui identificar com segurança a mídia desta conversa. Reenvie a imagem ou o vídeo, ou informe que deseja somente texto.",
+          "aviso_midia_falhou",
+          `Não publiquei porque não consegui confirmar qual mídia seria usada: ${(e as Error).message}`,
         );
       }
     }
@@ -7102,10 +7139,10 @@ async function callGemini(
         if (name === "publicar_linkedin") {
           const originalRequest = typeof userContent === "string" ? userContent : "";
           args.pedido_original = originalRequest;
-          args.midia_id = args.midia_id
-            || extrairIdentificadorMidia(originalRequest)
-            || toolCtx.agentState?.last_media_interaction?.media_id
-            || undefined;
+          // Código curto/UUID só é atalho quando veio no pedido atual.
+          // Sem código, a própria tool usa buscarUltimaMidiaDaConversa(),
+          // que compara created_at com last_media_interaction corretamente.
+          args.midia_id = extrairIdentificadorMidia(originalRequest) || undefined;
         }
         console.log(`[pietro][tool] ${name}`, args);
         const { result, imageUrl } = await runTool(name, args, toolCtx);
