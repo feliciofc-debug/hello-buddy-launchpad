@@ -519,10 +519,12 @@ export async function lerIdentidadeDoSite(entrada: string): Promise<IdentidadeSi
       if (!logoUrl) logoUrl = cand;
     }
 
-    // A cor da marca muitas vezes só existe na logo (caso Venâncio: o vermelho
-    // não está no CSS). Só lemos hexadecimais reais do arquivo — nada de IA.
-    coresDaLogoSvg(logoDataUrl, acc);
-    const principais = agrupar(acc);
+    // Se a logo SVG oferece cores utilizáveis, elas são autoritativas. CSS,
+    // widgets e banners só entram quando a logo não fornece nenhuma cor.
+    const coresLogo = new Map<string, number>();
+    coresDaLogoSvg(logoDataUrl, coresLogo);
+    const principaisLogo = agrupar(coresLogo).filter((cor) => !ehNeutra(cor.hex));
+    const principais = principaisLogo.length > 0 ? principaisLogo : agrupar(acc);
 
 
     if (principais.length < 2) {
@@ -615,12 +617,17 @@ export function nomeDeMarca(ogSiteName: string, titulo: string): string {
 /** A leitura simples não deu conta? (SPA, bloqueio, paleta pobre) */
 export function precisaCamadaB(id: IdentidadeSite): boolean {
   const coresMarca = id.cores_detectadas.filter((cor) => !ehNeutra(cor.hex));
-  return coresMarca.length < 2 || id.texto_base.length < 120;
+  // PNG/JPEG/WebP precisam do Chromium para amostragem dos pixels. Mesmo que
+  // o CSS já tenha duas cores, elas não substituem as cores reais da logo.
+  const logoRaster = !!id.logo_data_url && !/^data:image\/svg\+xml/i.test(id.logo_data_url);
+  return !id.logo_data_url || logoRaster || coresMarca.length < 1 || id.texto_base.length < 120;
 }
 
 export type DadosCamadaB = {
   /** cores lidas da página JÁ RENDERIZADA (hex exatos, com peso) */
   cores?: Array<{ hex: string; peso: number }>;
+  /** cores dominantes não neutras amostradas exclusivamente da logo */
+  logo_cores?: Array<{ hex: string; peso: number }>;
   texto?: string;
   titulo?: string;
   site_name?: string;
@@ -652,12 +659,21 @@ export function mesclarCamadaB(
   ia: AnaliseIA = {},
 ): IdentidadeSite {
   const acc = new Map<string, number>();
-  for (const c of a.cores_detectadas) acc.set(c.hex, (acc.get(c.hex) ?? 0) + c.peso);
-  for (const c of b.cores ?? []) {
+  const coresLogo = (b.logo_cores ?? [])
+    .map((cor) => ({ hex: normalizar(String(cor?.hex ?? "")), peso: Number(cor?.peso) || 1 }))
+    .filter((cor): cor is { hex: string; peso: number } => !!cor.hex && !ehNeutra(cor.hex));
+  // A logo é a fonte autoritativa da marca. Captura, DOM e CSS entram apenas
+  // como fallback quando a logo não forneceu nenhuma cor utilizável.
+  const fonte = coresLogo.length > 0
+    ? coresLogo
+    : [
+      ...a.cores_detectadas,
+      ...(b.cores ?? []).map((cor) => ({ hex: String(cor?.hex ?? ""), peso: Math.max(1, Number(cor?.peso) || 1) * 2 })),
+    ];
+  for (const c of fonte) {
     const hex = normalizar(String(c?.hex ?? ""));
     if (!hex) continue;
-    // o render vale mais do que o CSS bruto: é a cor que o olho vê
-    acc.set(hex, (acc.get(hex) ?? 0) + Math.max(1, Number(c.peso) || 1) * 2);
+    acc.set(hex, (acc.get(hex) ?? 0) + Math.max(1, Number(c.peso) || 1));
   }
   const principais = agrupar(acc);
 
