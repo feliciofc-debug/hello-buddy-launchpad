@@ -4510,7 +4510,7 @@ async function descreverFotosSalvas(
 
 async function toolSalvarMidiaBiblioteca(
   args: { contexto?: string },
-  ctx: { userId: string; fromNumber?: string; media?: MediaExtract[]; convId?: string; agentState?: AgentConvState },
+  ctx: { userId: string; fromNumber: string; media?: MediaExtract[]; convId?: string; agentState?: AgentConvState },
 ): Promise<string> {
   const medias = (ctx.media || []).filter((m) => m.kind === "image" || m.kind === "video" || m.kind === "audio");
   if (medias.length === 0) {
