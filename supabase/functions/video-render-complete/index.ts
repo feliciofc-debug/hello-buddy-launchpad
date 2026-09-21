@@ -52,6 +52,8 @@ async function registrarVideoLegendado(
 
   const midiaPaiId = typeof job.metadata?.midia_id === "string" ? job.metadata.midia_id : null;
   const legenda = job.copy_escolhida || job.caption || "Vídeo com legenda queimada";
+  const duracaoNumero = duracao == null ? Number.NaN : Number(duracao);
+  const duracaoInteira = Number.isFinite(duracaoNumero) ? Math.round(duracaoNumero) : null;
   const { data, error } = await supabase
     .from("midias_whatsapp")
     .insert({
@@ -61,7 +63,7 @@ async function registrarVideoLegendado(
       tipo: "video",
       midia_url: videoUrl,
       mime_type: "video/mp4",
-      duracao_segundos: duracao ?? null,
+      duracao_segundos: duracaoInteira,
       contexto_original: String(legenda).slice(0, 1500),
       midia_pai_id: midiaPaiId,
       status: "pendente",
@@ -156,15 +158,24 @@ Deno.serve(async (req) => {
     // Única mensagem do fluxo que mostra a legenda completa.
     const legenda = job.copy_escolhida || job.caption;
     const blocoLegenda = legenda ? `\n\n*Legenda escolhida:*\n${legenda}` : "";
-    const midiaId = await registrarVideoLegendado(supabase, job, videoUrl, duracao_segundos ?? null);
-    const codigoMidia = linhaCodigoMidia(midiaId, "video");
+    let midiaId: string | null = null;
+    let codigoMidia = "";
+    let bibliotecaErro: string | null = null;
+    try {
+      midiaId = await registrarVideoLegendado(supabase, job, videoUrl, duracao_segundos ?? null);
+      codigoMidia = linhaCodigoMidia(midiaId, "video");
+    } catch (e) {
+      bibliotecaErro = e instanceof Error ? e.message : String(e);
+      console.error("[video-render-complete] registro em /midias falhou; entregando MP4 mesmo assim:", bibliotecaErro);
+    }
+    const blocoCodigo = codigoMidia ? `\n\n${codigoMidia}` : "";
 
     if (!querPublicar) {
       // Modo "só me devolve": manda o MP4 legendado no WhatsApp, sem publicar nada.
       await avisarCliente(
         supabase,
         job,
-        `🎬 Pronto! Legenda queimada na tela. *Não publiquei em lugar nenhum.*\n\n${codigoMidia}${blocoLegenda}`,
+        `🎬 Pronto! Legenda queimada na tela. *Não publiquei em lugar nenhum.*${blocoCodigo}${blocoLegenda}`,
         videoUrl,
       );
     } else {
@@ -176,7 +187,7 @@ Deno.serve(async (req) => {
       await avisarCliente(
         supabase,
         job,
-        `🎬 Vídeo pronto com a legenda na tela. *Ainda não publiquei nada.*\n\n${codigoMidia}${blocoLegenda}\n\nResponda *APROVAR* que eu publico como *${nomeFormato}* no ${nomes}, ou *CANCELAR* e nada vai ao ar.`,
+        `🎬 Vídeo pronto com a legenda na tela. *Ainda não publiquei nada.*${blocoCodigo}${blocoLegenda}\n\nResponda *APROVAR* que eu publico como *${nomeFormato}* no ${nomes}, ou *CANCELAR* e nada vai ao ar.`,
         videoUrl,
       );
     }
@@ -187,6 +198,7 @@ Deno.serve(async (req) => {
       aguardando_aprovacao: querPublicar,
       video_url: videoUrl,
       midia_id: midiaId,
+      biblioteca_erro: bibliotecaErro,
     });
 
   } catch (e) {
