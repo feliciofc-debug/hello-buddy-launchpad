@@ -213,7 +213,11 @@ function extractText(payload: any): string {
   if (payload.text?.body) return payload.text.body;
   if (payload.button?.text) return payload.button.text;
   if (payload.interactive?.button_reply?.title) return payload.interactive.button_reply.title;
-  if (payload.interactive?.list_reply?.title) return payload.interactive.list_reply.title;
+  if (payload.interactive?.list_reply?.title) {
+    const title = String(payload.interactive.list_reply.title);
+    const id = String(payload.interactive.list_reply.id || "");
+    return id.startsWith("video_") ? `${title}\n<<INTERACTIVE_ID:${id}>>` : title;
+  }
   if (payload.image?.caption) return payload.image.caption;
   if (payload.video?.caption) return payload.video.caption;
   if (payload.document?.caption) return payload.document.caption;
@@ -5047,8 +5051,11 @@ function extractVideoTargetSeconds(text: string): number | undefined {
   const match = String(text).match(/\b(\d{1,3}(?:[,.]\d+)?)\s*(?:s|seg(?:undo)?s?)\b/i);
   if (!match) return undefined;
   const value = Number(match[1].replace(",", "."));
-  return value >= 10 && value <= 120 ? value : undefined;
+  return Number.isFinite(value) && value > 0 ? value : undefined;
 }
+
+const extractVideoInteractiveId = (text: string): string | null =>
+  String(text).match(/<<INTERACTIVE_ID:(video_[a-z0-9_-]+)>>/i)?.[1] ?? null;
 
 function extractVideoLiteralPhrases(text: string): string[] {
   const found: string[] = [];
@@ -5526,6 +5533,10 @@ async function startVideoSetup(
       ? "client"
       : undefined;
   const textColors = extrairCoresDoTexto(`${explicit?.cores ?? ""} ${full}`);
+  const durationTarget = extractVideoTargetSeconds(full);
+  if (durationTarget != null && (durationTarget < 20 || durationTarget > 95)) {
+    return "Hoje os templates animados suportam duração exata entre 20 e 95 segundos. Diga uma duração dentro desse intervalo.";
+  }
   const setup: PendingVideoSetupState = {
     stage: "awaiting_template",
     tema,
@@ -5541,7 +5552,7 @@ async function startVideoSetup(
     duracao: typeof explicit?.duracao === "string" && ["curto", "medio", "longo"].includes(explicit.duracao)
       ? explicit.duracao as DuracaoMotion
       : duracaoPedidaNoTexto(full) ?? undefined,
-    duracao_alvo_segundos: extractVideoTargetSeconds(full),
+    duracao_alvo_segundos: durationTarget,
     frases_literais: extractVideoLiteralPhrases(full),
     created_at: new Date().toISOString(),
   };
@@ -5565,12 +5576,13 @@ async function handlePendingVideoSetup(
   }
 
   const n = normalizePt(response);
+  const interactiveId = extractVideoInteractiveId(response);
   if (setup.stage === "awaiting_template") {
-    const estilo = /institucional/.test(n)
+    const estilo = interactiveId === "video_template_institucional" || /institucional/.test(n)
       ? "institucional"
-      : /\blista\b|passo a passo/.test(n)
+      : interactiveId === "video_template_lista" || /\blista\b|passo a passo/.test(n)
         ? "lista"
-        : /conversa|celular|whatsapp/.test(n)
+        : interactiveId === "video_template_conversa" || /conversa|celular|whatsapp/.test(n)
           ? "conversa"
           : null;
     if (!estilo) {
@@ -5582,23 +5594,26 @@ async function handlePendingVideoSetup(
 
   if (setup.stage === "awaiting_track" || setup.stage === "awaiting_track_more") {
     const tracks = await listVideoTracks(ctx.userId);
-    if (/ver outras trilhas/.test(n)) {
+    if (interactiveId === "video_track_more" || /ver outras trilhas/.test(n)) {
       const nextPage = (setup.track_page ?? 0) + 1;
       const next = { ...setup, stage: "awaiting_track_more" as const, track_page: nextPage };
       await persistVideoSetup(ctx, next);
       await askVideoTrack(ctx, tracks, nextPage);
       return "Mostrei as outras trilhas na lista acima 👆";
     }
-    if (/voltar as primeiras|voltar às primeiras/.test(n)) {
+    if (interactiveId === "video_track_back" || /voltar as primeiras|voltar às primeiras/.test(n)) {
       const next = { ...setup, stage: "awaiting_track" as const, track_page: 0 };
       await persistVideoSetup(ctx, next);
       await askVideoTrack(ctx, tracks, 0);
       return "Voltei para as primeiras trilhas 👆";
     }
-    if (/^sem trilha$/.test(n)) {
+    if (interactiveId === "video_track_none" || /^sem trilha(?:\s+interactive id.*)?$/.test(n)) {
       return await advanceVideoSetup(ctx, { ...setup, trilha_id: null, trilha_nome: undefined, sem_trilha: true });
     }
-    const selected = tracks.find((track) => normalizePt(track.nome.slice(0, 24)) === n);
+    const selectedId = interactiveId?.match(/^video_track_([0-9a-f-]{36})$/i)?.[1];
+    const selected = selectedId
+      ? tracks.find((track) => track.id === selectedId)
+      : tracks.find((track) => normalizePt(track.nome.slice(0, 24)) === n);
     if (!selected) {
       await askVideoTrack(ctx, tracks, setup.track_page ?? 0);
       return "Não reconheci a trilha. Escolha uma opção na lista acima.";
@@ -5612,8 +5627,12 @@ async function handlePendingVideoSetup(
   }
 
   if (setup.stage === "awaiting_identity") {
-    if (/minha empresa/.test(n)) return await advanceVideoSetup(ctx, { ...setup, identidade: "tenant" });
-    if (/marca do meu cliente/.test(n)) return await advanceVideoSetup(ctx, { ...setup, identidade: "client" });
+    if (interactiveId === "video_identity_tenant" || /minha empresa/.test(n)) {
+      return await advanceVideoSetup(ctx, { ...setup, identidade: "tenant" });
+    }
+    if (interactiveId === "video_identity_client" || /marca do meu cliente/.test(n)) {
+      return await advanceVideoSetup(ctx, { ...setup, identidade: "client" });
+    }
     await askVideoIdentity(ctx);
     return "Não reconheci a identidade. Escolha uma opção na lista acima.";
   }
@@ -5625,7 +5644,7 @@ async function handlePendingVideoSetup(
   }
 
   if (setup.stage === "awaiting_palette_confirmation") {
-    if (/informar outro site/.test(n)) {
+    if (interactiveId === "video_palette_retry" || /informar outro site/.test(n)) {
       if (setup.logo_path) await sb.storage.from("tenant-logos").remove([setup.logo_path]);
       const next = {
         ...setup,
@@ -5637,10 +5656,10 @@ async function handlePendingVideoSetup(
       await persistVideoSetup(ctx, next);
       return "Envie a nova URL do site do cliente.";
     }
-    if (/usar paleta padrao|usar paleta padrão/.test(n)) {
+    if (interactiveId === "video_palette_default" || /usar paleta padrao|usar paleta padrão/.test(n)) {
       return await finalizeVideoSetup(ctx, { ...setup, cores: PALETA_PADRAO });
     }
-    if (/usar estas cores|usar cores encontradas/.test(n)) {
+    if (interactiveId === "video_palette_use" || /usar estas cores|usar cores encontradas/.test(n)) {
       return await finalizeVideoSetup(ctx, setup);
     }
     await askSitePaletteConfirmation(ctx, Object.values(setup.cores ?? {}).slice(0, 4));

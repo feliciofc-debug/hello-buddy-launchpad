@@ -203,12 +203,14 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
   const { sb, userId, tema } = input;
   const duracaoAlvoSegundos = input.duracaoAlvoSegundos ?? (input.props as any)?.duracao_alvo_segundos;
   const frasesLiterais = input.frasesLiterais ?? (input.props as any)?.frases_literais;
+  const semLogoTenant = input.semLogoTenant === true || (input.props as any)?.sem_logo_tenant === true;
   // Logo desta peça: a informada (prospecção) tem prioridade, desde que esteja
   // na pasta do próprio usuário; senão, a logo cadastrada em "Minha marca".
-  const logoInformada = typeof input.logoPath === "string" && input.logoPath.startsWith(`${userId}/`)
-    ? input.logoPath
+  const logoSolicitada = input.logoPath ?? (input.props as any)?.logo_path;
+  const logoInformada = typeof logoSolicitada === "string" && logoSolicitada.startsWith(`${userId}/`)
+    ? logoSolicitada
     : undefined;
-  const logoPath = logoInformada ?? (input.semLogoTenant ? undefined : await logoDoTenant(sb, userId));
+  const logoPath = logoInformada ?? (semLogoTenant ? undefined : await logoDoTenant(sb, userId));
   const trilha = await resolverTrilha(sb, userId, input);
   let props: MotionProps;
   let legendaPost = String(input.legendaPost ?? "").trim();
@@ -268,6 +270,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
     trilha_volume: trilha?.volume ?? 0.28,
     sem_trilha: input.semTrilha === true || (input.props as any)?.sem_trilha === true,
     frases_literais: frasesLiterais,
+    sem_logo_tenant: semLogoTenant,
     trilhaUrl: undefined,
   };
   return { props, legendaPost, usouIA };

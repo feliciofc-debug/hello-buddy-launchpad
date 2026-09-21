@@ -122,6 +122,8 @@ export type MotionProps = {
   duracao_alvo_segundos?: number;
   /** Persistidas no rascunho para sobreviver à aprovação e renormalização. */
   frases_literais?: string[];
+  /** Identidade de terceiro: impede fallback para a logo do tenant. */
+  sem_logo_tenant?: boolean;
   site?: string;
   cores: {
     bg: string;
@@ -545,7 +547,7 @@ export function duracaoEstimada(props: MotionProps): number {
 /** Ajusta os frames do template para a duração explícita sem trocar o conteúdo. */
 export function aplicarDuracaoAlvo(props: MotionProps, alvo?: number | null): MotionProps {
   const segundos = Number(alvo);
-  if (!Number.isFinite(segundos) || segundos < 10 || segundos > 120) return props;
+  if (!Number.isFinite(segundos) || segundos < 20 || segundos > 95) return props;
 
   const estilo = (props.estilo ?? "conversa") as EstiloMotion;
   const framesAlvo = Math.round(segundos * 30);
@@ -587,7 +589,6 @@ export function aplicarFrasesLiterais(props: MotionProps, frases?: string[] | nu
     ...props,
     hook: { ...props.hook },
     legendas: [...props.legendas],
-    frases_literais: obrigatorias,
   };
   const primeira = obrigatorias[0];
   const linhas = dividirFraseLiteral(primeira);
@@ -597,7 +598,7 @@ export function aplicarFrasesLiterais(props: MotionProps, frases?: string[] | nu
   for (const frase of obrigatorias) {
     if (!serializado().includes(frase)) next.legendas.push(frase);
   }
-  return next;
+  return { ...next, frases_literais: obrigatorias };
 }
 
 /** Rótulo do estilo para mensagens ao usuário. */
