@@ -1633,15 +1633,20 @@ function isSubstantiveLeadMessage(raw: string): boolean {
 
 async function loadAgentState(sb: any, convId: string): Promise<AgentConvState> {
   try {
-    const { data } = await sb
+    const { data, error } = await sb
       .from("whatsapp_cloud_conversations")
       .select("agent_state")
       .eq("id", convId)
       .maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error("conversation_not_found");
     const st = (data?.agent_state ?? {}) as AgentConvState;
     return st && typeof st === "object" ? st : {};
   } catch (e) {
-    console.warn("[processor][agent_state][load_failed]", (e as Error).message);
+    console.error("[processor][agent_state][load_failed]", {
+      convId,
+      error: (e as Error).message,
+    });
     return {};
   }
 }
@@ -1662,12 +1667,18 @@ async function saveAgentState(sb: any, convId: string, patch: AgentConvState, cu
       .maybeSingle();
     if (verifyError) throw verifyError;
     const saved = (verified?.agent_state ?? {}) as AgentConvState;
-    if (patch.forward?.protocolo && saved.forward?.protocolo !== patch.forward.protocolo) {
-      throw new Error("forward_proof_not_persisted");
+    for (const key of Object.keys(patch)) {
+      if (JSON.stringify(saved[key]) !== JSON.stringify(patch[key])) {
+        throw new Error(`state_key_not_persisted:${key}`);
+      }
     }
     return true;
   } catch (e) {
-    console.warn("[processor][agent_state][save_failed]", (e as Error).message);
+    console.error("[processor][agent_state][save_failed]", {
+      convId,
+      patchKeys: Object.keys(patch),
+      error: (e as Error).message,
+    });
     return false;
   }
 }
