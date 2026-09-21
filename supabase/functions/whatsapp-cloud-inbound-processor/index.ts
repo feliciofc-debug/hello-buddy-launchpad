@@ -1621,6 +1621,7 @@ type PendingCarouselState = {
   slides?: any[];
   caption?: string;
   media_id?: string;
+  image_urls?: string[];
   token?: string;
   facebook_requested?: boolean;
   created_at: string;
@@ -3191,9 +3192,6 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
   const state = decodePendingPostState(marker);
   const midiaTipoReidratado = midiaTipoFromPendingMarker(marker);
   const produtoId = (rows[0] as any).produto_id;
-  const carouselUrls = midiaTipoReidratado === "carrossel" && produtoId
-    ? await loadCarouselImageUrls(userId, produtoId)
-    : undefined;
 
   return {
     produto: {
@@ -3201,7 +3199,6 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
       source: (rows[0] as any).produto_source,
       nome: productNameFromPendingMarker(marker),
       imagem_url: (rows[0] as any).image_url,
-      image_urls: carouselUrls,
       link: (rows[0] as any).link_url,
       midia_tipo: midiaTipoReidratado,
     } as any,
@@ -3222,10 +3219,10 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
 
 async function updatePersistedSocialPostRows(pending: PendingSocialPost, resultados: Array<{ rede: string; ok: boolean; status: number; resposta: any }>) {
   const rows = pending.queueRows ?? [];
-  await Promise.all(resultados.map(async (result) => {
+  const errors = await Promise.all(resultados.map(async (result) => {
     const row = rows.find((r) => r.platform === result.rede);
-    if (!row?.id) return;
-    await sb.from("social_posts_queue")
+    if (!row?.id) return null;
+    const { error } = await sb.from("social_posts_queue")
       .update({
         status: result.ok ? "publicado" : "erro",
         fb_post_id: result.ok ? (result.resposta?.post_id || result.resposta?.id || null) : null,
@@ -3234,7 +3231,10 @@ async function updatePersistedSocialPostRows(pending: PendingSocialPost, resulta
         updated_at: new Date().toISOString(),
       })
       .eq("id", row.id);
+    return error?.message ?? null;
   }));
+  const failures = errors.filter(Boolean);
+  if (failures.length > 0) throw new Error(`social_queue_final_update_failed: ${failures.join(" | ")}`);
 }
 
 async function publicarEmRede(
@@ -3723,7 +3723,8 @@ function formatSocialPostToolResult(raw: string): string {
     const avisoReels = data?.aviso_reels ? `\n_ℹ️ ${data.aviso_reels}_` : "";
     if (data?.carrossel) {
       const avisoFacebook = data?.aviso_facebook ? `<<SPLIT>>⚠️ ${data.aviso_facebook}` : "";
-      const resumo = `Carrossel pronto: ${data.cards} cards. ID da mídia: ${data.media_code}. Ainda não publiquei.`;
+      const previewInfo = Number(data.cards) > 3 ? " Enviei os 3 primeiros; se quiser ver os demais, é só pedir." : "";
+      const resumo = `Carrossel pronto: ${data.cards} cards. ID da mídia: ${data.media_code}. Ainda não publiquei.${previewInfo}`;
       const pergunta = `Escolha *A*, *B* ou *C* para trocar a legenda — ou responda *SIM* para publicar com a opção A.`;
       return `${resumo}${avisoFacebook}<<SPLIT>>Preparei 3 opções de legenda 👇<<SPLIT>>${preview}<<SPLIT>>${pergunta}`;
     }
@@ -3866,15 +3867,17 @@ async function updatePendingSocialPostMarker(token: string, pending: PendingSoci
   });
   const rowIds = pending.queueRows?.map((r) => r.id).filter(Boolean) ?? [];
   if (rowIds.length > 0) {
-    await sb.from("social_posts_queue")
+    const { error } = await sb.from("social_posts_queue")
       .update({ error_message: marker, updated_at: new Date().toISOString() })
       .in("id", rowIds);
+    if (error) throw new Error(`pending_marker_update_failed: ${error.message}`);
   } else {
-    await sb.from("social_posts_queue")
+    const { error } = await sb.from("social_posts_queue")
       .update({ error_message: marker, updated_at: new Date().toISOString() })
       .eq("user_id", pending.userId)
       .eq("status", "aguardando_confirmacao")
       .like("error_message", `jarvis_token:${token}%`);
+    if (error) throw new Error(`pending_marker_update_failed: ${error.message}`);
   }
 }
 
@@ -4042,8 +4045,48 @@ async function toolConfirmarPostagemRedes(
     return JSON.stringify({ status: "cancelado" });
   }
 
+  if (p.midiaTipo === "carrossel") {
+    const carouselState = ctx.agentState?.pending_carousel;
+    if (
+      carouselState?.token !== token
+      || carouselState.media_id !== p.produto?.id
+      || !Array.isArray(carouselState.image_urls)
+      || carouselState.image_urls.length < 2
+    ) {
+      return JSON.stringify({
+        erro: "snapshot_carrossel_indisponivel",
+        mensagem: "Não encontrei o snapshot exato dos cards que você aprovou. Não publiquei nada; gere a prévia novamente.",
+      });
+    }
+    p.produto.image_urls = [...carouselState.image_urls];
+  }
+
+  if (p.midiaTipo === "carrossel") {
+    const queueIds = p.queueRows?.map((row) => row.id).filter(Boolean) ?? [];
+    if (queueIds.length !== 1) return JSON.stringify({ erro: "fila_confirmacao_ausente", mensagem: "Não encontrei a fila deste preview. Não publiquei nada." });
+    const { data: claimed, error: claimError } = await sb.from("social_posts_queue")
+      .update({ status: "publicando", updated_at: new Date().toISOString() })
+      .eq("id", queueIds[0])
+      .eq("status", "aguardando_confirmacao")
+      .select("id");
+    if (claimError) return JSON.stringify({ erro: "falha_ao_reservar_publicacao", mensagem: `Não publiquei porque não consegui reservar este preview: ${claimError.message}` });
+    if ((claimed?.length ?? 0) !== 1) {
+      return JSON.stringify({ erro: "confirmacao_ja_processada", mensagem: "Este preview já foi confirmado ou está sendo publicado. Não enviei de novo." });
+    }
+  }
+
   const resultados = await Promise.all(p.redes.map((r) => publicarEmRede(r, p.scripts[r], p.produto, p.userId, p.formato || "feed")));
-  await updatePersistedSocialPostRows(p, resultados);
+  try {
+    await updatePersistedSocialPostRows(p, resultados);
+  } catch (e) {
+    console.error("[social_confirm][final_persistence_failed]", { token, error: (e as Error).message });
+    PENDING_POSTS.delete(token);
+    return JSON.stringify({
+      erro: "resultado_publicacao_nao_persistido",
+      mensagem: "A rede respondeu, mas não consegui gravar o resultado final. Não confirme novamente para evitar duplicidade; confira o Instagram.",
+      detalhes: resultados,
+    });
+  }
   PENDING_POSTS.delete(token);
   if (ctx.convId && p.midiaTipo === "carrossel" && resultados.some((result) => result.ok)) {
     const current = ctx.agentState ?? await loadAgentState(sb, ctx.convId);
@@ -4214,18 +4257,30 @@ async function toolEscolherVariantePost(
     Object.entries(p.variantes).map(([r, v]) => [r, v[opcao] || v.A])
   );
 
-  if (p.queueRows?.length) {
-    await Promise.all(p.queueRows.map((row) => {
-      const novo = scripts[row.platform];
-      if (!novo) return Promise.resolve();
-      return sb.from("social_posts_queue")
-        .update({ post_text: novo, updated_at: new Date().toISOString() })
-        .eq("id", row.id);
-    }));
+  const atualizado: PendingSocialPost = { ...p, scripts, variantSelecionada: opcao };
+  const marker = pendingPostMarker(token, atualizado.produto?.nome, atualizado.formato || "feed", atualizado.midiaTipo || atualizado.produto?.midia_tipo || "foto", {
+    variantes: atualizado.variantes,
+    variantSelecionada: atualizado.variantSelecionada,
+    incluirCtaWhatsapp: atualizado.incluirCtaWhatsapp,
+    tom: atualizado.tom,
+    briefing: atualizado.briefing ? atualizado.briefing.slice(0, 1200) : undefined,
+  });
+  if (!atualizado.queueRows?.length) return JSON.stringify({ erro: "fila da variante não encontrada" });
+  const updateErrors = await Promise.all(atualizado.queueRows.map(async (row) => {
+    const novo = scripts[row.platform];
+    if (!novo) return `copy ausente para ${row.platform}`;
+    const { data, error } = await sb.from("social_posts_queue")
+      .update({ post_text: novo, error_message: marker, updated_at: new Date().toISOString() })
+      .eq("id", row.id)
+      .eq("status", "aguardando_confirmacao")
+      .select("id");
+    return error?.message ?? ((data?.length ?? 0) === 1 ? null : `linha ${row.id} não estava pendente`);
+  }));
+  const failures = updateErrors.filter(Boolean);
+  if (failures.length > 0) {
+    return JSON.stringify({ erro: "variante_nao_persistida", mensagem: `Não troquei a opção porque não consegui guardar a escolha: ${failures.join(" | ")}` });
   }
-
-  PENDING_POSTS.set(token, { ...p, scripts, variantSelecionada: opcao });
-  await updatePendingSocialPostMarker(token, { ...p, scripts, variantSelecionada: opcao });
+  PENDING_POSTS.set(token, atualizado);
 
   return JSON.stringify({
     status: "variante_selecionada",
@@ -5835,7 +5890,7 @@ async function enviarPreviewCarrossel(
 async function cancelarPreviewCarrosselAnterior(token: string | undefined, userId: string): Promise<void> {
   if (!token) return;
   PENDING_POSTS.delete(token);
-  await sb.from("social_posts_queue")
+  const { data, error } = await sb.from("social_posts_queue")
     .update({
       status: "cancelado",
       error_message: "cancelado_por_ajuste_carrossel",
@@ -5843,7 +5898,11 @@ async function cancelarPreviewCarrosselAnterior(token: string | undefined, userI
     })
     .eq("user_id", userId)
     .eq("status", "aguardando_confirmacao")
-    .like("error_message", `jarvis_token:${token}%`);
+    .like("error_message", `jarvis_token:${token}%`)
+    .select("id");
+  if (error || (data?.length ?? 0) === 0) {
+    throw new Error(error?.message || "preview_anterior_nao_encontrado");
+  }
 }
 
 async function prepararPreviewCarrosselExistente(
@@ -5851,6 +5910,7 @@ async function prepararPreviewCarrosselExistente(
   ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
   options: { tom?: string; legenda?: string; facebookRequested?: boolean; enviarCards?: boolean } = {},
 ): Promise<string> {
+  if (!ctx.convId) return JSON.stringify({ erro: "conversa_sem_id", mensagem: "Não consegui identificar a conversa para guardar a aprovação do carrossel." });
   const { data: parent, error: parentError } = await sb
     .from("midias_whatsapp")
     .select("id, midia_url, contexto_original, created_at")
@@ -5910,26 +5970,30 @@ async function prepararPreviewCarrosselExistente(
   const queueRows = await persistPendingSocialPost(token, pending);
   PENDING_POSTS.set(token, { ...pending, queueRows });
 
-  if (ctx.convId) {
-    const current = ctx.agentState ?? await loadAgentState(sb, ctx.convId);
-    const previous = current.pending_carousel;
-    const next: PendingCarouselState = {
-      stage: "awaiting_confirmation",
-      tema,
-      cor: previous?.media_id === parentId ? previous.cor : undefined,
-      slides: previous?.media_id === parentId ? previous.slides : undefined,
-      caption: options.legenda || previous?.caption,
-      media_id: parentId,
-      token,
-      facebook_requested: options.facebookRequested || previous?.facebook_requested,
-      created_at: new Date().toISOString(),
-    };
-    const saved = await saveAgentState(sb, ctx.convId, { pending_carousel: next }, current);
-    if (saved) {
-      current.pending_carousel = next;
-      ctx.agentState = current;
-    }
+  const current = ctx.agentState ?? await loadAgentState(sb, ctx.convId);
+  const previous = current.pending_carousel;
+  const next: PendingCarouselState = {
+    stage: "awaiting_confirmation",
+    tema,
+    cor: previous?.media_id === parentId ? previous.cor : undefined,
+    slides: previous?.media_id === parentId ? previous.slides : undefined,
+    caption: options.legenda || previous?.caption,
+    media_id: parentId,
+    image_urls: imageUrls,
+    token,
+    facebook_requested: options.facebookRequested || previous?.facebook_requested,
+    created_at: new Date().toISOString(),
+  };
+  const saved = await saveAgentState(sb, ctx.convId, { pending_carousel: next }, current);
+  if (!saved) {
+    PENDING_POSTS.delete(token);
+    await sb.from("social_posts_queue")
+      .update({ status: "cancelado", error_message: "estado_carrossel_nao_persistido", updated_at: new Date().toISOString() })
+      .in("id", queueRows.map((row) => row.id));
+    return JSON.stringify({ erro: "estado_carrossel_nao_persistido", mensagem: "Não consegui guardar o snapshot exato do carrossel. Não publiquei nada." });
   }
+  current.pending_carousel = next;
+  ctx.agentState = current;
 
   return JSON.stringify({
     status: "aguardando_escolha_variante",
@@ -5996,6 +6060,7 @@ async function toolCriarCarrossel(
       .select("id", { count: "exact", head: true })
       .eq("user_id", ctx.userId)
       .eq("produto_source", "carrossel_whatsapp")
+      .neq("status", "cancelado")
       .gte("created_at", desdeHoje);
     if ((feitosHoje ?? 0) >= CARROSSEL_MAX_DIA) {
       return JSON.stringify({
@@ -6078,6 +6143,7 @@ async function toolCriarCarrossel(
         slides,
         caption,
         media_id: mediaId,
+        image_urls: imageUrls,
         facebook_requested: !!args?.facebook_requested,
         created_at: new Date().toISOString(),
       };
@@ -6318,7 +6384,12 @@ function isCarouselAdjustment(text: string): boolean {
 }
 
 function requestedFacebook(text: string): boolean {
-  return /\b(facebook|face|fb)\b/i.test(text || "");
+  return /\b(facebook|face|fb|redes\s+sociais|todas?\s+as\s+redes|instagram\s+e\s+facebook|insta\s+e\s+face)\b/i.test(text || "");
+}
+
+function detectExplicitCarouselColor(text: string): string | undefined {
+  const match = String(text || "").match(/\b(?:cor|fundo|destaque)\s*[:=-]?\s*(azul|verde|laranja|preto|dourado|roxo)\b/i);
+  return match?.[1] && resolveCarouselColor(match[1]) ? match[1] : undefined;
 }
 
 // Extrai o tema do pedido, tirando o "faz um carrossel", o nº de páginas e o "posta no instagram".
@@ -6503,9 +6574,11 @@ async function callGemini(
 
   if (!hasMedia && typeof userContent === "string") {
     const remetenteEhDono = isOwner(toolCtx);
-    const latestPendingSocialToken = remetenteEhDono ? await findLatestPendingSocialToken(toolCtx.userId) : null;
-    const pendingVideoDraft = remetenteEhDono ? await buscarRascunhoVideo(toolCtx) : null;
     const pendingCarousel = remetenteEhDono ? toolCtx.agentState?.pending_carousel : null;
+    const latestPendingSocialToken = pendingCarousel?.stage === "awaiting_confirmation" && pendingCarousel.token
+      ? pendingCarousel.token
+      : remetenteEhDono ? await findLatestPendingSocialToken(toolCtx.userId) : null;
+    const pendingVideoDraft = remetenteEhDono ? await buscarRascunhoVideo(toolCtx) : null;
 
     // Edição de foto recente é determinística: o modelo não pode apenas prometer
     // que vai trabalhar em segundo plano. A própria ferramenta busca a última
@@ -6597,7 +6670,8 @@ async function callGemini(
       && pendingCarousel.media_id
       && /\b(ver|mostra|mostrar|manda|enviar)\b[\s\S]{0,40}\b(restante|resto|demais|outros?\s+cards?)\b/i.test(userContent)
     ) {
-      const urls = await loadCarouselImageUrls(toolCtx.userId, pendingCarousel.media_id);
+      const urls = Array.isArray(pendingCarousel.image_urls) ? pendingCarousel.image_urls : [];
+      if (urls.length < 2) return { text: "Perdi o snapshot da prévia; gere o carrossel novamente para eu mostrar os cards exatos." };
       try {
         await enviarPreviewCarrossel(toolCtx, urls, 3, Math.max(0, urls.length - 3));
         return { text: `Enviei os ${Math.max(0, urls.length - 3)} cards restantes. Ainda não publiquei.` };
@@ -6607,18 +6681,44 @@ async function callGemini(
     }
 
     if (pendingCarousel?.stage === "awaiting_confirmation" && isCarouselAdjustment(userContent)) {
-      const colorChange = /\b(muda|troca|altera|ajusta)\b[\s\S]{0,30}\bcor\b/i.test(normalizePt(userContent));
+      const colorChange = /\b(?:muda|troca|altera|ajusta)(?:\s+a)?(?:\s+cor)?\s+(?:para\s+)?(?:azul|verde|laranja|preto|dourado|roxo)\b|\b(?:na|para\s+a)\s+cor\s+(?:azul|verde|laranja|preto|dourado|roxo)\b/i.test(normalizePt(userContent));
       const novaCor = colorChange && resolveCarouselColor(userContent) ? userContent : pendingCarousel.cor;
       if (!novaCor) return { text: "Qual cor você quer usar no carrossel?" };
-      await cancelarPreviewCarrosselAnterior(pendingCarousel.token, toolCtx.userId);
+      const alsoChangesContent = /\b(card|slide|texto|titulo|chamada|legenda)\b/i.test(userContent);
       const r = await toolCriarCarrossel({
         tema: pendingCarousel.tema,
         cor: novaCor,
         legenda: pendingCarousel.caption,
         slides: pendingCarousel.slides,
-        ajuste: colorChange ? undefined : userContent,
+        ajuste: colorChange && !alsoChangesContent ? undefined : userContent,
         facebook_requested: pendingCarousel.facebook_requested,
       }, toolCtx);
+      try {
+        const parsed = JSON.parse(r);
+        if (parsed?.status === "aguardando_escolha_variante") {
+          try {
+            await cancelarPreviewCarrosselAnterior(pendingCarousel.token, toolCtx.userId);
+          } catch (e) {
+            if (parsed?.token) {
+              PENDING_POSTS.delete(parsed.token);
+              await sb.from("social_posts_queue")
+                .update({ status: "cancelado", error_message: "ajuste_nao_substituiu_preview_anterior", updated_at: new Date().toISOString() })
+                .eq("user_id", toolCtx.userId)
+                .eq("status", "aguardando_confirmacao")
+                .like("error_message", `jarvis_token:${parsed.token}%`);
+            }
+            if (toolCtx.convId) {
+              const current = toolCtx.agentState ?? await loadAgentState(sb, toolCtx.convId);
+              await saveAgentState(sb, toolCtx.convId, { pending_carousel: pendingCarousel }, current);
+              current.pending_carousel = pendingCarousel;
+              toolCtx.agentState = current;
+            }
+            return { text: `Gerei o ajuste, mas não consegui substituir o preview anterior com segurança (${(e as Error).message}). Não publiquei nada; tente o ajuste novamente.` };
+          }
+        }
+      } catch (e) {
+        console.error("[carrossel][adjust_parse_failed]", (e as Error).message);
+      }
       return { text: formatCarrosselToolResult(r) };
     }
 
@@ -6628,7 +6728,7 @@ async function callGemini(
         return { text: "Criar e publicar carrossel é restrito ao responsável da conta. Posso encaminhar seu pedido pra ele, se quiser." };
       }
       const tema = extractCarrosselTema(userContent);
-      const corPedida = resolveCarouselColor(userContent) ? userContent : undefined;
+      const corPedida = detectExplicitCarouselColor(userContent);
       console.log("[pietro][forced_carrossel]", { tema, cor: corPedida ? "detectada" : "aguardando" });
       if (tema.length < 3) {
         return { text: "Fechado, carrossel! Sobre qual assunto você quer? (ex: “vantagens da AMZ Ofertas”)" };
