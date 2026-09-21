@@ -5478,7 +5478,9 @@ function normalizeVideoTopic(text: string): string {
 
 function isVideoMotionRequest(text: string): boolean {
   const n = normalizePt(text || "");
-  return /\b(faz|faca|faça|cria|crie|monta|monte|gera|gere|produz|produza|quero|preciso)\b[\s\S]{0,80}\b(video|vídeo|motion|reels? animado)\b|\b(video|vídeo)\s+(animado|motion)\b/.test(n);
+  const pediuCriacao = /\b(faz|faca|cria|crie|monta|monte|gera|gere|produz|produza|quero|preciso)\b/.test(n);
+  const pediuFormatoAnimado = /\b(video|motion|animacao|animado|animada|reels? animado)\b/.test(n);
+  return pediuCriacao && pediuFormatoAnimado;
 }
 
 function isVideoApproval(text: string): boolean {
@@ -7417,6 +7419,20 @@ async function runTool(
   return { result: JSON.stringify({ erro: `ferramenta ${name} não existe` }) };
 }
 
+function mensagemErroEdicaoImagem(parsed: any): string {
+  const erro = String(parsed?.erro || "");
+  if (erro === "sem_imagem") {
+    return "Não encontrei uma imagem recente nesta conversa para editar. Envie a foto junto com o pedido de edição.";
+  }
+  if (erro === "sem_logo_cadastrada") {
+    return "Não encontrei uma logo cadastrada para aplicar. Cadastre a marca ou envie o arquivo da logo.";
+  }
+  const explicacao = String(parsed?.instrucao || parsed?.motivo || parsed?.detalhe || "").trim();
+  return explicacao
+    ? `Não consegui concluir a edição: ${explicacao}`
+    : "Não consegui concluir a edição da imagem desta vez.";
+}
+
 
 async function callGemini(
   systemPrompt: string,
@@ -7448,14 +7464,43 @@ async function callGemini(
       : remetenteEhDono ? await findLatestPendingSocialToken(toolCtx.userId) : null;
     const pendingVideoDraft = remetenteEhDono ? await buscarRascunhoVideo(toolCtx) : null;
 
+    // Criação de vídeo animado tem prioridade sobre qualquer heurística de
+    // edição de imagem. Listas de redes ("Instagram, Facebook...") não podem
+    // transformar um pedido explícito de vídeo em ficha técnica.
+    if (isVideoMotionRequest(userContent)) {
+      if (!remetenteEhDono) {
+        return { text: "A criação de vídeo é restrita ao responsável da conta. Posso encaminhar seu pedido para ele, se quiser." };
+      }
+      return { text: await startVideoSetup(toolCtx, userContent) };
+    }
+
     // Edição de foto recente é determinística: o modelo não pode apenas prometer
     // que vai trabalhar em segundo plano. A própria ferramenta busca a última
     // foto do tenant (janela de 30 min) e devolve a imagem pronta neste turno.
     const pedidoLogoNaFoto = /\b(?:coloc(?:a|ar|e)|inclu(?:a|ir|i)|p[oõ]e|por|aplic(?:a|ar|e)|insir(?:a|ir)|adicion(?:a|ar|e)|estamp(?:a|ar|e))\b[\s\S]{0,120}\b(?:logo|logotipo|logomarca|marca)\b/i.test(userContent);
-    const pedidoEdicaoFoto = pedidoLogoNaFoto || /\b(?:melhor(?:a|ar|e)|edit(?:a|ar|e)|trat(?:a|ar|e)|ajust(?:a|ar|e)|transform(?:a|ar|e)|coloc(?:a|ar|e)|troc(?:a|ar|e)|mud(?:a|ar|e)|cri(?:a|ar|e)|faz(?:er)?)\b[\s\S]{0,180}\b(?:foto|imagem|cen[aá]rio|ambiente|fundo|est[uú]dio|showroom|divulga(?:r|ção)|facebook|instagram)\b|\b(?:cen[aá]rio|ambiente|fundo)\s+(?:bonito|elegante|profissional|de\s+est[uú]dio)\b/i.test(userContent);
-    if (remetenteEhDono && pedidoEdicaoFoto && !isCarrosselRequest(userContent)) {
+    const pedidoEdicaoFoto = pedidoLogoNaFoto || /\b(?:melhor(?:a|ar|e)|edit(?:a|ar|e)|trat(?:a|ar|e)|ajust(?:a|ar|e)|transform(?:a|ar|e)|coloc(?:a|ar|e)|troc(?:a|ar|e)|mud(?:a|ar|e)|cri(?:a|ar|e)|faz(?:er)?)\b[\s\S]{0,180}\b(?:foto|imagem|cen[aá]rio|ambiente|fundo|est[uú]dio|showroom)\b|\b(?:cen[aá]rio|ambiente|fundo)\s+(?:bonito|elegante|profissional|de\s+est[uú]dio)\b/i.test(userContent);
+    let temFotoParaEditar = (toolCtx.media || []).some((m) => m.kind === "image");
+    if (remetenteEhDono && pedidoEdicaoFoto && !temFotoParaEditar) {
+      const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+      const { data: fotoRecente, error: fotoError } = await sb
+        .from("midias_whatsapp")
+        .select("id")
+        .eq("user_id", toolCtx.userId)
+        .eq("telefone_origem", toolCtx.fromNumber)
+        .eq("tipo", "foto")
+        .gte("created_at", cutoff)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (fotoError) console.warn("[processor][forced_image_edit][recent_photo_error]", fotoError.message);
+      temFotoParaEditar = !!fotoRecente?.id;
+      if (!temFotoParaEditar) {
+        console.log("[processor][forced_image_edit][skipped_no_image]");
+      }
+    }
+    if (remetenteEhDono && pedidoEdicaoFoto && temFotoParaEditar && !isCarrosselRequest(userContent)) {
       // Pedido de LOGO tem prioridade absoluta: a foto original é mantida e só a marca é aplicada.
-      const trocarCenario = !pedidoLogoNaFoto && /\b(?:cen[aá]rio|ambiente|fundo|est[uú]dio|showroom|divulga(?:r|ção)|facebook|instagram)\b/i.test(userContent);
+      const trocarCenario = !pedidoLogoNaFoto && /\b(?:cen[aá]rio|ambiente|fundo|est[uú]dio|showroom)\b/i.test(userContent);
       const modoForcado = pedidoLogoNaFoto ? "aplicar_logo" : trocarCenario ? "ficha_tecnica" : "melhoria";
       console.log(`[processor][forced_image_edit] modo=${modoForcado}`);
       const raw = await toolEditarImagem(userContent, {
@@ -7478,8 +7523,7 @@ async function callGemini(
           imageUrl: parsed.image_url,
         };
       }
-      const detalhe = String(parsed?.detalhe || parsed?.erro || "A edição não retornou uma imagem").slice(0, 240);
-      return { text: `Não consegui concluir a edição desta vez: ${detalhe}.` };
+      return { text: mensagemErroEdicaoImagem(parsed) };
     }
 
     // Aprovação/cancelamento de roteiro pronto têm prioridade até se a limpeza
@@ -7496,13 +7540,6 @@ async function callGemini(
     if (pendingVideoSetup) {
       return { text: await handlePendingVideoSetup(toolCtx, pendingVideoSetup, userContent) };
     }
-    if (isVideoMotionRequest(userContent)) {
-      if (!remetenteEhDono) {
-        return { text: "A criação de vídeo é restrita ao responsável da conta. Posso encaminhar seu pedido para ele, se quiser." };
-      }
-      return { text: await startVideoSetup(toolCtx, userContent) };
-    }
-
     // Fluxo A/B/C: resolve seleção e confirmação direto no código, sem depender da IA.
     const variantChoice = latestPendingSocialToken ? detectSocialVariantChoice(userContent) : null;
     if (variantChoice) {
@@ -7779,6 +7816,26 @@ async function callGemini(
         console.log(`[pietro][tool] ${name}`, args);
         const { result, imageUrl } = await runTool(name, args, toolCtx);
         if (imageUrl) pendingImageUrl = imageUrl;
+        if (name === "editar_imagem") {
+          try {
+            const parsed = JSON.parse(result);
+            if (parsed?.erro && !parsed?.image_url) {
+              return {
+                text: mensagemErroEdicaoImagem(parsed),
+                imageUrl: pendingImageUrl,
+                forwardProof,
+                forwardAttempted,
+              };
+            }
+          } catch {
+            return {
+              text: "Não consegui concluir a edição da imagem porque a ferramenta devolveu uma resposta inválida.",
+              imageUrl: pendingImageUrl,
+              forwardProof,
+              forwardAttempted,
+            };
+          }
+        }
         if (name === "gerar_imagem" || name === "editar_imagem" || name === "criar_anuncio" || name === "salvar_midia_biblioteca") {
           try {
             const parsed = JSON.parse(result);
