@@ -1614,10 +1614,23 @@ function buildForwardProof(wamid?: string | null): string {
 }
 
 // ---- Estado persistente da conversa (comprovantes + decisões) -------------
+type PendingCarouselState = {
+  stage: "awaiting_color" | "awaiting_confirmation";
+  tema: string;
+  cor?: string;
+  slides?: any[];
+  caption?: string;
+  media_id?: string;
+  token?: string;
+  facebook_requested?: boolean;
+  created_at: string;
+};
+
 type AgentConvState = {
   forward?: { protocolo?: string; destinatario?: string; wamid?: string | null; at?: string };
   decisao?: { valor?: string; at?: string };
   last_media_interaction?: { media_id: string; at: string };
+  pending_carousel?: PendingCarouselState | null;
   [k: string]: unknown;
 };
 
@@ -3009,7 +3022,7 @@ type PendingSocialPost = {
   userId: string;
   createdAt: number;
   formato?: "feed" | "story" | "reels";
-  midiaTipo?: "foto" | "video";
+  midiaTipo?: "foto" | "video" | "carrossel";
   queueRows?: Array<{ id: string; platform: string }>;
   incluirCtaWhatsapp?: boolean;
   briefing?: string; // texto escrito pelo dono que é a MENSAGEM do post (prioridade sobre o visual)
@@ -3064,7 +3077,7 @@ function pendingPostMarker(
   token: string,
   productName?: string,
   formato: "feed" | "story" | "reels" = "feed",
-  midiaTipo: "foto" | "video" = "foto",
+  midiaTipo: "foto" | "video" | "carrossel" = "foto",
   state?: PendingPostMarkerState,
 ): string {
   const encodedState = encodePendingPostState(state);
@@ -3081,9 +3094,9 @@ function formatoFromPendingMarker(marker?: string | null): "feed" | "story" | "r
   return (m?.[1]?.toLowerCase() as "feed" | "story" | "reels") || "feed";
 }
 
-function midiaTipoFromPendingMarker(marker?: string | null): "foto" | "video" {
-  const m = marker?.match(/;midia:(foto|video)/i);
-  return (m?.[1]?.toLowerCase() as "foto" | "video") || "foto";
+function midiaTipoFromPendingMarker(marker?: string | null): "foto" | "video" | "carrossel" {
+  const m = marker?.match(/;midia:(foto|video|carrossel)/i);
+  return (m?.[1]?.toLowerCase() as "foto" | "video" | "carrossel") || "foto";
 }
 
 async function persistPendingSocialPost(token: string, pending: PendingSocialPost): Promise<Array<{ id: string; platform: string }>> {
@@ -3114,6 +3127,36 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
 
   if (error) throw new Error(`não consegui salvar o token de confirmação: ${error.message}`);
   return (data ?? []).map((r: any) => ({ id: r.id, platform: r.platform }));
+}
+
+function carouselCardIndex(row: any): number {
+  const match = String(row?.contexto_original || "").match(/\[carrossel_card:(\d+)\]/i);
+  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+}
+
+async function loadCarouselImageUrls(userId: string, parentId: string): Promise<string[]> {
+  if (!isUuid(parentId)) return [];
+  const [{ data: parent, error: parentError }, { data: children, error: childrenError }] = await Promise.all([
+    sb.from("midias_whatsapp")
+      .select("id, midia_url, contexto_original")
+      .eq("id", parentId)
+      .eq("user_id", userId)
+      .maybeSingle(),
+    sb.from("midias_whatsapp")
+      .select("id, midia_url, contexto_original, created_at")
+      .eq("user_id", userId)
+      .eq("midia_pai_id", parentId)
+      .order("created_at", { ascending: true }),
+  ]);
+  if (parentError || childrenError) {
+    console.error("[carrossel][load_cards_failed]", {
+      parentId,
+      error: parentError?.message || childrenError?.message,
+    });
+    return [];
+  }
+  const orderedChildren = [...(children ?? [])].sort((a: any, b: any) => carouselCardIndex(a) - carouselCardIndex(b));
+  return [parent?.midia_url, ...orderedChildren.map((row: any) => row.midia_url)].filter(Boolean);
 }
 
 async function loadPendingSocialPost(token: string, userId: string): Promise<PendingSocialPost | null> {
@@ -3147,13 +3190,18 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
   const marker = (rows[0] as any).error_message;
   const state = decodePendingPostState(marker);
   const midiaTipoReidratado = midiaTipoFromPendingMarker(marker);
+  const produtoId = (rows[0] as any).produto_id;
+  const carouselUrls = midiaTipoReidratado === "carrossel" && produtoId
+    ? await loadCarouselImageUrls(userId, produtoId)
+    : undefined;
 
   return {
     produto: {
-      id: (rows[0] as any).produto_id,
+      id: produtoId,
       source: (rows[0] as any).produto_source,
       nome: productNameFromPendingMarker(marker),
       imagem_url: (rows[0] as any).image_url,
+      image_urls: carouselUrls,
       link: (rows[0] as any).link_url,
       midia_tipo: midiaTipoReidratado,
     } as any,
@@ -3192,11 +3240,31 @@ async function updatePersistedSocialPostRows(pending: PendingSocialPost, resulta
 async function publicarEmRede(
   rede: string,
   script: string,
-  produto: { nome: string; imagem_url: string; link?: string | null; descricao?: string | null; midia_tipo?: "foto" | "video" },
+  produto: { nome: string; imagem_url: string; image_urls?: string[]; link?: string | null; descricao?: string | null; midia_tipo?: "foto" | "video" | "carrossel" },
   userId: string,
   formato: "feed" | "story" | "reels" = "feed",
 ): Promise<{ rede: string; ok: boolean; status: number; resposta: any; nota?: string }> {
   try {
+    const commonHeaders = { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY } as const;
+    if (produto.midia_tipo === "carrossel") {
+      if (rede !== "instagram") {
+        return { rede, ok: false, status: 0, resposta: { error: "Carrossel por WhatsApp está disponível apenas no Instagram." } };
+      }
+      const imageUrls = Array.isArray(produto.image_urls) ? produto.image_urls.filter(Boolean) : [];
+      if (imageUrls.length < 2) {
+        return { rede, ok: false, status: 0, resposta: { error: "Não encontrei todos os cards do carrossel aprovado." } };
+      }
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-carousel`, {
+        method: "POST",
+        headers: commonHeaders,
+        body: JSON.stringify({ user_id: userId, image_urls: imageUrls, caption: script }),
+      });
+      const txt = await res.text();
+      let j: any = {};
+      try { j = JSON.parse(txt); } catch {}
+      return { rede, ok: res.ok && j?.success !== false && !!(j?.id || j?.post_id), status: res.status, resposta: j };
+    }
+
     const isVideo = produto.midia_tipo === "video";
     let mediaUrl = produto.imagem_url; // pode ser URL de vídeo quando isVideo
     // Se esse vídeo já passou pelo encode de legenda, publica SEMPRE a versão legendada.
@@ -3207,8 +3275,6 @@ async function publicarEmRede(
         mediaUrl = legendado;
       }
     }
-    const commonHeaders = { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY } as const;
-
     // === REELS (vídeo em IG/FB) ===
     if (formato === "reels") {
       if (!isVideo) return { rede, ok: false, status: 0, resposta: { error: "reels exige vídeo — envia um vídeo, não imagem" } };
@@ -3567,7 +3633,7 @@ async function buscarUltimaMidiaDaConversa(
 ): Promise<{ midia: any | null; erro?: string }> {
   const { data, error } = await sb
     .from("midias_whatsapp")
-    .select("id, tipo, midia_url, contexto_original, contexto_transcricao, legenda_gerada, tags_ia, telefone_origem, created_at")
+    .select("id, tipo, origem, midia_pai_id, midia_url, contexto_original, contexto_transcricao, legenda_gerada, tags_ia, telefone_origem, created_at")
     .eq("user_id", ctx.userId)
     .eq("telefone_origem", ctx.fromNumber)
     .in("tipo", ["foto", "video"])
@@ -3585,7 +3651,7 @@ async function buscarUltimaMidiaDaConversa(
 
   const { data: reused, error: reusedError } = await sb
     .from("midias_whatsapp")
-    .select("id, tipo, midia_url, contexto_original, contexto_transcricao, legenda_gerada, tags_ia, telefone_origem, created_at")
+    .select("id, tipo, origem, midia_pai_id, midia_url, contexto_original, contexto_transcricao, legenda_gerada, tags_ia, telefone_origem, created_at")
     .eq("id", interaction.media_id)
     .eq("user_id", ctx.userId)
     .in("tipo", ["foto", "video"])
@@ -3655,6 +3721,12 @@ function formatSocialPostToolResult(raw: string): string {
     const avisoMidia = data?.midia_usada && !data?.midia_usada_enviada ? `${data.midia_usada}<<SPLIT>>` : "";
     const aviso = data?.aviso_formato ? `\n\n_${data.aviso_formato}_` : "";
     const avisoReels = data?.aviso_reels ? `\n_ℹ️ ${data.aviso_reels}_` : "";
+    if (data?.carrossel) {
+      const avisoFacebook = data?.aviso_facebook ? `<<SPLIT>>⚠️ ${data.aviso_facebook}` : "";
+      const resumo = `Carrossel pronto: ${data.cards} cards. ID da mídia: ${data.media_code}. Ainda não publiquei.`;
+      const pergunta = `Escolha *A*, *B* ou *C* para trocar a legenda — ou responda *SIM* para publicar com a opção A.`;
+      return `${resumo}${avisoFacebook}<<SPLIT>>Preparei 3 opções de legenda 👇<<SPLIT>>${preview}<<SPLIT>>${pergunta}`;
+    }
     const pergunta = `Qual você prefere? Responde *A*, *B* ou *C*.`;
     return `${avisoMidia}Preparei 3 opções 👇${aviso}${avisoReels}<<SPLIT>>${preview}<<SPLIT>>${pergunta}`;
   }
@@ -3945,7 +4017,7 @@ async function toolPostarRedesSociais(
 
 async function toolConfirmarPostagemRedes(
   args: { token: string; cancelar?: boolean },
-  ctx: { userId: string; fromNumber: string },
+  ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
 ): Promise<string> {
   if (!isOwner(ctx)) return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Essa ação é restrita ao responsável da conta." });
   pendingCleanup();
@@ -3961,12 +4033,24 @@ async function toolConfirmarPostagemRedes(
         .update({ status: "cancelado", error_message: "cancelado_pelo_whatsapp", updated_at: new Date().toISOString() })
         .in("id", p.queueRows.map((r) => r.id));
     }
+    if (ctx.convId && p.midiaTipo === "carrossel") {
+      const current = ctx.agentState ?? await loadAgentState(sb, ctx.convId);
+      await saveAgentState(sb, ctx.convId, { pending_carousel: null }, current);
+      current.pending_carousel = null;
+      ctx.agentState = current;
+    }
     return JSON.stringify({ status: "cancelado" });
   }
 
   const resultados = await Promise.all(p.redes.map((r) => publicarEmRede(r, p.scripts[r], p.produto, p.userId, p.formato || "feed")));
   await updatePersistedSocialPostRows(p, resultados);
   PENDING_POSTS.delete(token);
+  if (ctx.convId && p.midiaTipo === "carrossel" && resultados.some((result) => result.ok)) {
+    const current = ctx.agentState ?? await loadAgentState(sb, ctx.convId);
+    await saveAgentState(sb, ctx.convId, { pending_carousel: null }, current);
+    current.pending_carousel = null;
+    ctx.agentState = current;
+  }
   return JSON.stringify({
     status: "publicado",
     produto: { nome: p.produto.nome },
@@ -4453,7 +4537,7 @@ async function resolverMidiaBibliotecaPorId(
   const idLimpo = String(idInformado || "").trim().replace(/[^a-fA-F0-9-]/g, "").toLowerCase();
   if (!idLimpo) return { midia: null, erro: "Identificador de mídia vazio." };
 
-  const campos = "id, tipo, midia_url, contexto_original, contexto_transcricao, legenda_gerada, tags_ia, telefone_origem, created_at";
+  const campos = "id, tipo, origem, midia_pai_id, midia_url, contexto_original, contexto_transcricao, legenda_gerada, tags_ia, telefone_origem, created_at";
   const uuidCompleto = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idLimpo);
   if (uuidCompleto) {
     const { data, error } = await sb
@@ -4493,7 +4577,7 @@ async function resolverMidiaBibliotecaPorId(
 
 async function toolPostarMidiaBiblioteca(
   args: { legenda?: string; nome?: string; preco?: number | string; tom?: string; redes?: string[]; midia_id?: string; formato?: string; incluir_cta_whatsapp?: boolean; briefing?: string; usar_contexto_conversa?: boolean },
-  ctx: { userId: string; fromNumber: string; agentState?: AgentConvState },
+  ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
 ): Promise<string> {
   try {
     if (!isOwner(ctx)) return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Essa ação é restrita ao responsável da conta. Posso encaminhar o pedido para ele, se quiser." });
@@ -4532,6 +4616,16 @@ async function toolPostarMidiaBiblioteca(
       return JSON.stringify({
         erro: "midia_nao_encontrada",
         mensagem: `Não encontrei uma foto ou vídeo com o ID ${midiaId.toUpperCase()} nesta conta. Confira o código e envie novamente.`,
+      });
+    }
+
+    if (midia.origem === "carrossel_whatsapp" || midia.origem === "carrossel_whatsapp_card" || midia.midia_pai_id) {
+      const parentId = midia.midia_pai_id || midia.id;
+      return await prepararPreviewCarrosselExistente(parentId, ctx, {
+        tom: args?.tom,
+        legenda: args?.legenda,
+        facebookRequested: (args?.redes ?? []).map((rede) => rede.toLowerCase()).includes("facebook"),
+        enviarCards: true,
       });
     }
 
@@ -5373,13 +5467,12 @@ const TOOLS = [
     function: {
 
       name: "criar_carrossel",
-      description: "🎠 Cria um CARROSSEL de Instagram (vários cards com texto) sobre um TEMA e PUBLICA no Instagram da conta. Use quando o responsável pedir 'faz um carrossel sobre X', 'monta um carrossel de dicas', 'cria um carrossel'. NÃO use para post de imagem única (use gerar_imagem/postar_redes_sociais). FLUXO: 1) na PRIMEIRA chamada passe só o tema, SEM cor — eu envio automaticamente uma lista de cores pro usuário tocar; 2) quando ele responder a cor (ex: 'Azul', 'Dourado'), chame de novo com tema + cor e publicar=true. Nunca invente a cor: se ele não disse, deixe o campo cor vazio. Restrito ao responsável da conta.",
+      description: "🎠 Gera um CARROSSEL de Instagram com vários cards separados para APROVAÇÃO antes de publicar. Use também em pedidos detalhados que descrevem card por card, slide por slide, roteiro de páginas ou sequência de artes; NUNCA transforme esses pedidos em uma imagem única ou grade. FLUXO: 1) na primeira chamada passe o tema/briefing completo e deixe cor vazia para mostrar o seletor; 2) quando o dono escolher a cor, chame novamente com tema + cor; 3) o sistema renderiza a prévia, mostra os cards e cria confirmação A/B/C. Esta tool NUNCA publica automaticamente. Se o dono mencionar Facebook, informe que este carrossel está disponível apenas no Instagram. Restrito ao responsável da conta.",
       parameters: {
         type: "object",
         properties: {
           tema: { type: "string", description: "Assunto/tema do carrossel, como o usuário pediu (ex: '5 dicas para vender mais no Instagram')." },
           cor: { type: "string", description: "Cor de destaque escolhida PELO USUÁRIO: azul, verde, laranja, preto, dourado ou roxo. Deixe VAZIO na primeira chamada para eu perguntar com a lista de 1 toque." },
-          publicar: { type: "boolean", description: "true (padrão) = gera e já publica no Instagram. false = só gera os cards e devolve os links, sem publicar." },
           legenda: { type: "string", description: "Legenda do post, se o usuário ditou uma. Vazio = a IA escreve a legenda com hashtags." },
         },
         required: ["tema"],
@@ -5631,10 +5724,9 @@ async function toolRegistrarLeadNovo(
 
 
 // ============================================================
-// FASE 4B — criar_carrossel: carrossel de Instagram 100% pelo WhatsApp.
-// Fluxo: gerar-carousel-content → render-carousel-slides → meta-publish-carousel
-// Sem aprovação card por card. Cor escolhida por LISTA de 1 toque.
-// Multi-tenant: usa SEMPRE o IG e a logo do próprio tenant (nunca admin).
+// C1 — criar_carrossel: gera, mostra prévia e só publica após confirmação.
+// Fluxo: gerar-carousel-content → render-carousel-slides → preview WhatsApp
+// → A/B/C → confirmação → meta-publish-carousel.
 // ============================================================
 const CARROSSEL_MAX_DIA = 5; // guardrail simples por tenant/dia
 
@@ -5659,7 +5751,7 @@ async function callEdge(fn: string, payload: any, timeoutMs = 120000): Promise<a
 }
 
 async function sendCarrosselColorPicker(userId: string, to: string, tema: string): Promise<void> {
-  await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-send-message`, {
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-send-message`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -5672,7 +5764,7 @@ async function sendCarrosselColorPicker(userId: string, to: string, tema: string
       interactive_list: {
         header: "🎨 Cor do carrossel",
         body: `Beleza! Vou montar o carrossel sobre *${tema.slice(0, 120)}*.\n\nEscolha a cor de destaque — é só 1 toque:`,
-        footer: "Depois eu já publico no seu Instagram",
+        footer: "Depois você confere antes de publicar",
         button: "Escolher cor",
         section_title: "Cores",
         rows: carouselColorRows(),
@@ -5680,11 +5772,183 @@ async function sendCarrosselColorPicker(userId: string, to: string, tema: string
     }),
     signal: AbortSignal.timeout(20000),
   });
+  if (!response.ok) {
+    throw new Error(`seletor_cor_falhou_${response.status}: ${(await response.text()).slice(0, 160)}`);
+  }
+}
+
+async function registrarCarrosselNaBiblioteca(
+  ctx: { userId: string; fromNumber: string },
+  tema: string,
+  imageUrls: string[],
+): Promise<string> {
+  const { data: parent, error: parentError } = await sb
+    .from("midias_whatsapp")
+    .insert({
+      user_id: ctx.userId,
+      origem: "carrossel_whatsapp",
+      telefone_origem: ctx.fromNumber,
+      tipo: "foto",
+      midia_url: imageUrls[0],
+      mime_type: "image/png",
+      contexto_original: `Carrossel: ${tema}`.slice(0, 1500),
+      status: "pendente",
+    })
+    .select("id")
+    .single();
+  if (parentError || !parent?.id) throw new Error(`carrossel_parent_falhou: ${parentError?.message || "sem id"}`);
+
+  const children = imageUrls.slice(1).map((url, index) => ({
+    user_id: ctx.userId,
+    origem: "carrossel_whatsapp_card",
+    telefone_origem: ctx.fromNumber,
+    tipo: "foto",
+    midia_url: url,
+    mime_type: "image/png",
+    contexto_original: `[carrossel_card:${String(index + 2).padStart(3, "0")}] ${tema}`.slice(0, 1500),
+    status: "pendente",
+    midia_pai_id: parent.id,
+  }));
+  if (children.length > 0) {
+    const { error: childrenError } = await sb.from("midias_whatsapp").insert(children);
+    if (childrenError) {
+      await sb.from("midias_whatsapp").delete().eq("id", parent.id);
+      throw new Error(`carrossel_cards_falharam: ${childrenError.message}`);
+    }
+  }
+  return parent.id;
+}
+
+async function enviarPreviewCarrossel(
+  ctx: { userId: string; fromNumber: string },
+  imageUrls: string[],
+  startIndex = 0,
+  maxCards = 3,
+): Promise<void> {
+  const total = imageUrls.length;
+  const end = Math.min(total, startIndex + maxCards);
+  for (let index = startIndex; index < end; index++) {
+    await sendWhatsApp(ctx.userId, ctx.fromNumber, `Card ${index + 1} de ${total}`, imageUrls[index]);
+  }
+}
+
+async function cancelarPreviewCarrosselAnterior(token: string | undefined, userId: string): Promise<void> {
+  if (!token) return;
+  PENDING_POSTS.delete(token);
+  await sb.from("social_posts_queue")
+    .update({
+      status: "cancelado",
+      error_message: "cancelado_por_ajuste_carrossel",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", userId)
+    .eq("status", "aguardando_confirmacao")
+    .like("error_message", `jarvis_token:${token}%`);
+}
+
+async function prepararPreviewCarrosselExistente(
+  parentId: string,
+  ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
+  options: { tom?: string; legenda?: string; facebookRequested?: boolean; enviarCards?: boolean } = {},
+): Promise<string> {
+  const { data: parent, error: parentError } = await sb
+    .from("midias_whatsapp")
+    .select("id, midia_url, contexto_original, created_at")
+    .eq("id", parentId)
+    .eq("user_id", ctx.userId)
+    .maybeSingle();
+  if (parentError || !parent) return JSON.stringify({ erro: "carrossel_nao_encontrado", mensagem: "Não encontrei o carrossel completo nesta conta." });
+
+  const imageUrls = await loadCarouselImageUrls(ctx.userId, parentId);
+  if (imageUrls.length < 2) return JSON.stringify({ erro: "carrossel_incompleto", mensagem: "Não encontrei todos os cards desse carrossel. Não publiquei nada." });
+  if (options.enviarCards) {
+    try {
+      await enviarPreviewCarrossel(ctx, imageUrls);
+    } catch (e) {
+      return JSON.stringify({ erro: "preview_carrossel_falhou", mensagem: `Não consegui mostrar os cards para aprovação: ${(e as Error).message}. Não publiquei nada.` });
+    }
+  }
+
+  const state = ctx.agentState?.pending_carousel;
+  const tema = state?.media_id === parentId ? state.tema : String(parent.contexto_original || "Carrossel").replace(/^Carrossel:\s*/i, "");
+  const slideContext = state?.media_id === parentId && Array.isArray(state.slides)
+    ? state.slides.map((slide: any, index: number) => `Card ${index + 1}: ${JSON.stringify(slide)}`).join("\n")
+    : `${imageUrls.length} cards sobre ${tema}`;
+  const produto = {
+    id: parentId,
+    source: "carrossel_whatsapp",
+    nome: `Carrossel: ${tema}`.slice(0, 120),
+    descricao: slideContext.slice(0, 5000),
+    imagem_url: imageUrls[0],
+    image_urls: imageUrls,
+    link: null,
+    midia_tipo: "carrossel" as const,
+  };
+  const tom = options.tom || "beneficio";
+  const variantesBase = await gerarTresOpcoesRedeSocial(
+    produto,
+    tom,
+    "instagram",
+    options.legenda ? `Use esta orientação do dono na legenda: ${options.legenda}` : undefined,
+    undefined,
+    options.legenda,
+  );
+  const variantes = { instagram: variantesBase };
+  const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+  const pending: PendingSocialPost = {
+    produto,
+    tom,
+    redes: ["instagram"],
+    scripts: { instagram: variantesBase.A },
+    variantes,
+    variantSelecionada: "A",
+    userId: ctx.userId,
+    createdAt: Date.now(),
+    formato: "feed",
+    midiaTipo: "carrossel",
+  };
+  const queueRows = await persistPendingSocialPost(token, pending);
+  PENDING_POSTS.set(token, { ...pending, queueRows });
+
+  if (ctx.convId) {
+    const current = ctx.agentState ?? await loadAgentState(sb, ctx.convId);
+    const previous = current.pending_carousel;
+    const next: PendingCarouselState = {
+      stage: "awaiting_confirmation",
+      tema,
+      cor: previous?.media_id === parentId ? previous.cor : undefined,
+      slides: previous?.media_id === parentId ? previous.slides : undefined,
+      caption: options.legenda || previous?.caption,
+      media_id: parentId,
+      token,
+      facebook_requested: options.facebookRequested || previous?.facebook_requested,
+      created_at: new Date().toISOString(),
+    };
+    const saved = await saveAgentState(sb, ctx.convId, { pending_carousel: next }, current);
+    if (saved) {
+      current.pending_carousel = next;
+      ctx.agentState = current;
+    }
+  }
+
+  return JSON.stringify({
+    status: "aguardando_escolha_variante",
+    fonte: "carrossel_whatsapp",
+    carrossel: true,
+    token,
+    cards: imageUrls.length,
+    media_id: parentId,
+    media_code: idCurto(parentId),
+    redes: ["instagram"],
+    variantes,
+    opcao_ativa: "A",
+    aviso_facebook: options.facebookRequested ? "Carrossel pelo WhatsApp está disponível apenas no Instagram; não publiquei no Facebook." : undefined,
+  });
 }
 
 async function toolCriarCarrossel(
-  args: { tema?: string; cor?: string; publicar?: boolean; legenda?: string },
-  ctx: { userId: string; fromNumber: string },
+  args: { tema?: string; cor?: string; legenda?: string; ajuste?: string; slides?: any[]; facebook_requested?: boolean },
+  ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
 ): Promise<string> {
   try {
     if (!isOwner(ctx)) {
@@ -5700,10 +5964,25 @@ async function toolCriarCarrossel(
     // 1) COR — se não vier (ou vier irreconhecível), manda a LISTA de 1 toque e para aqui.
     const cor = resolveCarouselColor(args?.cor);
     if (!cor) {
+      if (!ctx.convId) return JSON.stringify({ erro: "conversa_sem_id", mensagem: "Não consegui identificar esta conversa para guardar a escolha da cor." });
+      const current = ctx.agentState ?? await loadAgentState(sb, ctx.convId);
+      const pending: PendingCarouselState = {
+        stage: "awaiting_color",
+        tema,
+        caption: args?.legenda,
+        facebook_requested: !!args?.facebook_requested,
+        created_at: new Date().toISOString(),
+      };
+      if (!await saveAgentState(sb, ctx.convId, { pending_carousel: pending }, current)) {
+        return JSON.stringify({ erro: "estado_carrossel_nao_persistido", mensagem: "Não consegui guardar o carrossel antes de pedir a cor. Tente novamente." });
+      }
+      current.pending_carousel = pending;
+      ctx.agentState = current;
       await sendCarrosselColorPicker(ctx.userId, ctx.fromNumber, tema);
       return JSON.stringify({
         status: "aguardando_cor",
         tema,
+        aviso_facebook: args?.facebook_requested ? "Carrossel pelo WhatsApp está disponível apenas no Instagram." : undefined,
         instrucao:
           "Já enviei ao usuário uma LISTA de cores (1 toque). NÃO escreva a lista de novo, NÃO repita as opções. Responda no máximo 1 linha curta tipo 'É só escolher a cor aí em cima 👆'. Quando ele responder a cor (ex: 'Azul'), chame criar_carrossel outra vez com tema=\"" +
           tema.replace(/"/g, "'") + "\" e cor=<a cor escolhida>.",
@@ -5745,13 +6024,18 @@ async function toolCriarCarrossel(
     //    (buildCarouselPrompt espelha src/components/CarouselGenerator.tsx:
     //     4-5 tópicos densos por card) + CONTEXTO REAL do negócio do tenant.
     const business = await getTenantBusinessContext(sb, ctx.userId, { nomeFallback: businessName });
-    const prompt = buildCarouselPrompt({ tema, numSlides: 7, business });
+    let prompt = buildCarouselPrompt({ tema, numSlides: 7, business });
+    if (args?.ajuste && Array.isArray(args?.slides) && args.slides.length >= 2) {
+      prompt += `\n\nCARROSSEL ATUAL:\n${JSON.stringify(args.slides)}\n\nAJUSTE OBRIGATÓRIO DO DONO: ${args.ajuste}\nPreserve todos os cards e textos que não foram citados no ajuste.`;
+    }
     console.log("[criar_carrossel] contexto_do_negocio", {
       tem_contexto: business.temContexto,
       produtos: business.produtos.length,
     });
 
-    const conteudo = await callEdge("gerar-carousel-content", { prompt, tema }, 90000);
+    const conteudo = Array.isArray(args?.slides) && args.slides.length >= 2 && !args?.ajuste
+      ? { slides: args.slides, caption: args?.legenda || tema }
+      : await callEdge("gerar-carousel-content", { prompt, tema }, 90000);
     const slides = Array.isArray(conteudo?.slides) ? conteudo.slides : [];
     if (slides.length < 2) {
       return JSON.stringify({ erro: "conteudo_insuficiente", detalhe: "a IA não devolveu slides suficientes; peça pra tentar de novo" });
@@ -5774,95 +6058,40 @@ async function toolCriarCarrossel(
       return JSON.stringify({ erro: "falha_no_render", detalhe: "não consegui gerar as imagens dos cards" });
     }
 
-    // 6) Prévia pro dono: manda a CAPA no WhatsApp (não é aprovação, é transparência)
-    let capaWamid: string | null = null;
-    try {
-      capaWamid = await sendWhatsApp(
-        ctx.userId,
-        ctx.fromNumber,
-        `🎨 Carrossel *${cor.label}* pronto — ${imageUrls.length} cards (esta é a capa).`,
-        imageUrls[0],
-      );
-    } catch (e) {
-      console.warn("[criar_carrossel] falhou ao enviar a capa:", (e as Error).message);
+    const mediaId = await registrarCarrosselNaBiblioteca(ctx, tema, imageUrls);
+    if (!await rememberLastMediaInteraction(ctx, mediaId)) {
+      return JSON.stringify({ erro: "ultima_midia_nao_persistida", mensagem: "Gerei o carrossel, mas não consegui marcá-lo como a última produção desta conversa. Não publiquei nada." });
     }
 
-    // Sem publicar (publicar=false): devolve os links e para.
-    if (args?.publicar === false) {
-      return JSON.stringify({
-        status: "gerado_sem_publicar",
+    try {
+      await enviarPreviewCarrossel(ctx, imageUrls);
+    } catch (e) {
+      return JSON.stringify({ erro: "preview_carrossel_falhou", mensagem: `Gerei os cards, mas não consegui mostrá-los para aprovação: ${(e as Error).message}. Não publiquei nada.` });
+    }
+
+    if (ctx.convId) {
+      const current = ctx.agentState ?? await loadAgentState(sb, ctx.convId);
+      const pending: PendingCarouselState = {
+        stage: "awaiting_confirmation",
+        tema,
         cor: cor.label,
-        cards: imageUrls.length,
-        image_urls: imageUrls,
-        legenda: caption,
-        instrucao: "Diga em 1-2 linhas que os cards estão prontos e pergunte se pode publicar no Instagram. Se ele confirmar, chame criar_carrossel de novo com o MESMO tema e cor e publicar=true.",
-      });
-    }
-
-    // 7) PUBLICA no Instagram do tenant
-    let publicado: any = null;
-    let erroPublicacao: string | null = null;
-    try {
-      publicado = await callEdge("meta-publish-carousel", {
-        user_id: ctx.userId,
-        image_urls: imageUrls,
+        slides,
         caption,
-      }, 180000);
-    } catch (e) {
-      erroPublicacao = String((e as Error).message).slice(0, 250);
+        media_id: mediaId,
+        facebook_requested: !!args?.facebook_requested,
+        created_at: new Date().toISOString(),
+      };
+      if (!await saveAgentState(sb, ctx.convId, { pending_carousel: pending }, current)) {
+        return JSON.stringify({ erro: "estado_carrossel_nao_persistido", mensagem: "Gerei e mostrei os cards, mas não consegui guardar o preview com segurança. Não publiquei nada." });
+      }
+      current.pending_carousel = pending;
+      ctx.agentState = current;
     }
 
-    // 8) Log/auditoria: fila social + monitor de conversas
-    try {
-      await sb.from("social_posts_queue").insert({
-        user_id: ctx.userId,
-        platform: "instagram",
-        produto_source: "carrossel_whatsapp",
-        post_text: caption,
-        image_url: imageUrls[0],
-        status: publicado?.id ? "publicado" : "erro",
-        fb_post_id: publicado?.id ?? null,
-        published_at: publicado?.id ? new Date().toISOString() : null,
-        error_message: erroPublicacao,
-      });
-    } catch (e) {
-      console.warn("[criar_carrossel] log em social_posts_queue falhou:", (e as Error).message);
-    }
-    await logOutboundMessage(sb, {
-      userId: ctx.userId,
-      phone: ctx.fromNumber,
-      content: publicado?.id
-        ? `📣 Carrossel (${imageUrls.length} cards, cor ${cor.label}) publicado no Instagram — ${caption.slice(0, 120)}`
-        : `📣 Carrossel (${imageUrls.length} cards, cor ${cor.label}) NÃO publicado: ${erroPublicacao ?? "erro desconhecido"}`,
-      messageType: "image",
-      wamid: capaWamid,
-      sender: "agent",
-    });
-
-    if (!publicado?.id) {
-      return JSON.stringify({
-        erro: "falha_ao_publicar",
-        detalhe: erroPublicacao,
-        cards_gerados: imageUrls.length,
-        image_urls: imageUrls,
-        instrucao: "Avise que os cards ficaram prontos mas o Instagram recusou a publicação, diga o motivo em linguagem simples e ofereça tentar de novo.",
-      });
-    }
-
-    const link = profileHandle
-      ? `https://www.instagram.com/${profileHandle.replace(/^@/, "")}/`
-      : "https://www.instagram.com/";
-    return JSON.stringify({
-      status: "publicado",
-      cor: cor.label,
-      cards: imageUrls.length,
-      instagram_media_id: publicado.id,
-      link_perfil: link,
+    return await prepararPreviewCarrosselExistente(mediaId, ctx, {
       legenda: caption,
-      aviso_sem_contexto: business.temContexto
-        ? null
-        : "Este tenant não descreveu o negócio: o conteúdo saiu com base só no tema. Sugira 1 linha pedindo pra preencher \"Sobre o meu negócio\" em Configuração da Empresa, pra os próximos carrosséis falarem do negócio de verdade.",
-      instrucao: `Confirme em 2 linhas curtas: carrossel de ${imageUrls.length} cards na cor ${cor.label} publicado no Instagram agora, e mande o link ${link} pra ele conferir. Não recite a legenda inteira.`,
+      facebookRequested: !!args?.facebook_requested,
+      enviarCards: false,
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message).slice(0, 250) });
@@ -6076,32 +6305,20 @@ async function toolCriarAnuncio(
 
 // ============================================================
 // FASE 4B.1 — ROTEAMENTO DETERMINÍSTICO DO CARROSSEL
-// O pré-roteador de post social (detectSocialPostIntent) capturava
-// "faz um carrossel ... postar no Instagram" antes do modelo, caindo no
-// fluxo antigo de post único (A/B/C). Aqui garantimos: pedido de carrossel
-// → SEMPRE toolCriarCarrossel, sem depender da escolha do modelo.
+// Roteamento determinístico do carrossel e de seus ajustes.
 // ============================================================
-type PendingCarrossel = { tema: string; createdAt: number };
-const PENDING_CARROSSEL = new Map<string, PendingCarrossel>();
-const PENDING_CARROSSEL_TTL_MS = 30 * 60 * 1000;
-
-function setPendingCarrossel(userId: string, tema: string) {
-  PENDING_CARROSSEL.set(userId, { tema, createdAt: Date.now() });
-}
-function getPendingCarrossel(userId: string): string | null {
-  const p = PENDING_CARROSSEL.get(userId);
-  if (!p) return null;
-  if (Date.now() - p.createdAt > PENDING_CARROSSEL_TTL_MS) {
-    PENDING_CARROSSEL.delete(userId);
-    return null;
-  }
-  return p.tema;
-}
-function clearPendingCarrossel(userId: string) { PENDING_CARROSSEL.delete(userId); }
-
 export function isCarrosselRequest(text: string): boolean {
   const n = normalizePt(compactSpaces(text || ""));
-  return /\bcarrosse(l|is)\b|\bcarousel\b/.test(n);
+  return /\bcarrosse(l|is)\b|\bcarousel\b|\b(?:card|slide)\s*1\b[\s\S]*\b(?:card|slide)\s*2\b|\bsequencia\s+de\s+(?:cards|slides|artes)\b/.test(n);
+}
+
+function isCarouselAdjustment(text: string): boolean {
+  const n = normalizePt(compactSpaces(text || ""));
+  return /\b(muda|mudar|troca|trocar|altera|alterar|ajusta|ajustar|corrige|corrigir|refaz|refazer)\b[\s\S]{0,120}\b(card|slide|texto|titulo|cor|fundo)\b|\b(card|slide)\s*\d+\b/.test(n);
+}
+
+function requestedFacebook(text: string): boolean {
+  return /\b(facebook|face|fb)\b/i.test(text || "");
 }
 
 // Extrai o tema do pedido, tirando o "faz um carrossel", o nº de páginas e o "posta no instagram".
@@ -6116,7 +6333,6 @@ function extractCarrosselTema(text: string): string {
     .replace(/\b(para|pra|pro|no|na|em)\s+(o\s+|a\s+)?(instagram|insta|ig|facebook|face|fb|whatsapp|zap)\b/gi, " ")
     .replace(/\bcom\s+\d+\s*(paginas?|páginas?|cards?|slides?)\b/gi, " ")
     .replace(/\b\d+\s*(paginas?|páginas?|cards?|slides?)\b/gi, " ")
-    .replace(/\b(incluido|incluindo|inclusive)\b.*$/i, " ")
     .replace(/\b(posta|poste|postar|publica|publique|publicar|manda|mandar|envia|enviar)\b/gi, " ")
     .replace(/^[\s,.:;–—-]+|[\s,.:;–—-]+$/g, "");
   return compactSpaces(t);
@@ -6132,15 +6348,17 @@ function detectStandaloneCarrosselColor(text: string): string | null {
 function formatCarrosselToolResult(raw: string): string {
   let d: any = null;
   try { d = JSON.parse(raw); } catch { return raw; }
-  if (d?.status === "aguardando_cor") return "É só escolher a cor aí em cima 👆";
+  if (d?.status === "aguardando_cor") {
+    return d?.aviso_facebook
+      ? `⚠️ ${d.aviso_facebook}<<SPLIT>>É só escolher a cor aí em cima 👆`
+      : "É só escolher a cor aí em cima 👆";
+  }
+  if (d?.status === "aguardando_escolha_variante") return formatSocialPostToolResult(raw);
   if (d?.status === "publicado") {
     const base = `✅ Carrossel de *${d.cards} cards* na cor *${d.cor}* publicado no seu Instagram!<<SPLIT>>Confere aqui: ${d.link_perfil}`;
     return d?.aviso_sem_contexto
       ? `${base}<<SPLIT>>💡 Dica: preencha *Sobre o meu negócio* em Configuração da Empresa — assim os próximos carrosséis falam do seu negócio de verdade, não só do tema.`
       : base;
-  }
-  if (d?.status === "gerado_sem_publicar") {
-    return `🎨 Prontinho — ${d.cards} cards na cor *${d.cor}*.<<SPLIT>>Posso publicar no Instagram agora? Responde *sim*.`;
   }
   if (d?.erro === "falha_ao_publicar") {
     return `Os cards ficaram prontos, mas o Instagram recusou a publicação (${d.detalhe ?? "erro"}). Quer que eu tente de novo?`;
@@ -6287,13 +6505,14 @@ async function callGemini(
     const remetenteEhDono = isOwner(toolCtx);
     const latestPendingSocialToken = remetenteEhDono ? await findLatestPendingSocialToken(toolCtx.userId) : null;
     const pendingVideoDraft = remetenteEhDono ? await buscarRascunhoVideo(toolCtx) : null;
+    const pendingCarousel = remetenteEhDono ? toolCtx.agentState?.pending_carousel : null;
 
     // Edição de foto recente é determinística: o modelo não pode apenas prometer
     // que vai trabalhar em segundo plano. A própria ferramenta busca a última
     // foto do tenant (janela de 30 min) e devolve a imagem pronta neste turno.
     const pedidoLogoNaFoto = /\b(?:coloc(?:a|ar|e)|inclu(?:a|ir|i)|p[oõ]e|por|aplic(?:a|ar|e)|insir(?:a|ir)|adicion(?:a|ar|e)|estamp(?:a|ar|e))\b[\s\S]{0,120}\b(?:logo|logotipo|logomarca|marca)\b/i.test(userContent);
     const pedidoEdicaoFoto = pedidoLogoNaFoto || /\b(?:melhor(?:a|ar|e)|edit(?:a|ar|e)|trat(?:a|ar|e)|ajust(?:a|ar|e)|transform(?:a|ar|e)|coloc(?:a|ar|e)|troc(?:a|ar|e)|mud(?:a|ar|e)|cri(?:a|ar|e)|faz(?:er)?)\b[\s\S]{0,180}\b(?:foto|imagem|cen[aá]rio|ambiente|fundo|est[uú]dio|showroom|divulga(?:r|ção)|facebook|instagram)\b|\b(?:cen[aá]rio|ambiente|fundo)\s+(?:bonito|elegante|profissional|de\s+est[uú]dio)\b/i.test(userContent);
-    if (remetenteEhDono && pedidoEdicaoFoto) {
+    if (remetenteEhDono && pedidoEdicaoFoto && !isCarrosselRequest(userContent)) {
       // Pedido de LOGO tem prioridade absoluta: a foto original é mantida e só a marca é aplicada.
       const trocarCenario = !pedidoLogoNaFoto && /\b(?:cen[aá]rio|ambiente|fundo|est[uú]dio|showroom|divulga(?:r|ção)|facebook|instagram)\b/i.test(userContent);
       const modoForcado = pedidoLogoNaFoto ? "aplicar_logo" : trocarCenario ? "ficha_tecnica" : "melhoria";
@@ -6373,7 +6592,37 @@ async function callGemini(
     }
 
     // ---- CARROSSEL (prioridade sobre o post único) ----
-    // 1) pedido explícito de carrossel
+    if (
+      pendingCarousel?.stage === "awaiting_confirmation"
+      && pendingCarousel.media_id
+      && /\b(ver|mostra|mostrar|manda|enviar)\b[\s\S]{0,40}\b(restante|resto|demais|outros?\s+cards?)\b/i.test(userContent)
+    ) {
+      const urls = await loadCarouselImageUrls(toolCtx.userId, pendingCarousel.media_id);
+      try {
+        await enviarPreviewCarrossel(toolCtx, urls, 3, Math.max(0, urls.length - 3));
+        return { text: `Enviei os ${Math.max(0, urls.length - 3)} cards restantes. Ainda não publiquei.` };
+      } catch (e) {
+        return { text: `Não consegui enviar os cards restantes: ${(e as Error).message}` };
+      }
+    }
+
+    if (pendingCarousel?.stage === "awaiting_confirmation" && isCarouselAdjustment(userContent)) {
+      const colorChange = /\b(muda|troca|altera|ajusta)\b[\s\S]{0,30}\bcor\b/i.test(normalizePt(userContent));
+      const novaCor = colorChange && resolveCarouselColor(userContent) ? userContent : pendingCarousel.cor;
+      if (!novaCor) return { text: "Qual cor você quer usar no carrossel?" };
+      await cancelarPreviewCarrosselAnterior(pendingCarousel.token, toolCtx.userId);
+      const r = await toolCriarCarrossel({
+        tema: pendingCarousel.tema,
+        cor: novaCor,
+        legenda: pendingCarousel.caption,
+        slides: pendingCarousel.slides,
+        ajuste: colorChange ? undefined : userContent,
+        facebook_requested: pendingCarousel.facebook_requested,
+      }, toolCtx);
+      return { text: formatCarrosselToolResult(r) };
+    }
+
+    // 1) pedido explícito ou detalhado de carrossel
     if (isCarrosselRequest(userContent)) {
       if (!remetenteEhDono) {
         return { text: "Criar e publicar carrossel é restrito ao responsável da conta. Posso encaminhar seu pedido pra ele, se quiser." };
@@ -6384,19 +6633,24 @@ async function callGemini(
       if (tema.length < 3) {
         return { text: "Fechado, carrossel! Sobre qual assunto você quer? (ex: “vantagens da AMZ Ofertas”)" };
       }
-      setPendingCarrossel(toolCtx.userId, tema);
-      const r = await toolCriarCarrossel({ tema, cor: corPedida, publicar: true }, toolCtx);
-      if (!/"status"\s*:\s*"aguardando_cor"/.test(r)) clearPendingCarrossel(toolCtx.userId);
+      const r = await toolCriarCarrossel({
+        tema,
+        cor: corPedida,
+        facebook_requested: requestedFacebook(userContent),
+      }, toolCtx);
       return { text: formatCarrosselToolResult(r) };
     }
 
     // 2) resposta curta só com a cor, retomando o carrossel pendente
-    const temaPendente = getPendingCarrossel(toolCtx.userId);
-    const corResposta = temaPendente ? detectStandaloneCarrosselColor(userContent) : null;
-    if (remetenteEhDono && temaPendente && corResposta) {
-      console.log("[pietro][carrossel_cor_escolhida]", { tema: temaPendente });
-      clearPendingCarrossel(toolCtx.userId);
-      const r = await toolCriarCarrossel({ tema: temaPendente, cor: corResposta, publicar: true }, toolCtx);
+    const corResposta = pendingCarousel?.stage === "awaiting_color" ? detectStandaloneCarrosselColor(userContent) : null;
+    if (remetenteEhDono && pendingCarousel?.stage === "awaiting_color" && corResposta) {
+      console.log("[pietro][carrossel_cor_escolhida]", { tema: pendingCarousel.tema });
+      const r = await toolCriarCarrossel({
+        tema: pendingCarousel.tema,
+        cor: corResposta,
+        legenda: pendingCarousel.caption,
+        facebook_requested: pendingCarousel.facebook_requested,
+      }, toolCtx);
       return { text: formatCarrosselToolResult(r) };
     }
 
