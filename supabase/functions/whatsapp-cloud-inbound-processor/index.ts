@@ -7803,12 +7803,17 @@ async function callGemini(
             };
           }
         }
-        if (name === "criar_lembrete" || name === "criar_cobranca_amz" || (name === "enviar_mensagem_contato_comercial" && isOwner(toolCtx))) {
+        if (
+          name === "criar_lembrete"
+          || name === "criar_cobranca_amz"
+          || name === "entregar_ebook_presente"
+          || (name === "enviar_mensagem_contato_comercial" && isOwner(toolCtx))
+        ) {
           try {
             const parsed = JSON.parse(result);
             if (parsed?.ok !== true) {
               return {
-                text: `❌ Não concluí a ação: ${String(parsed?.detalhe || parsed?.erro || "a ferramenta não confirmou sucesso")}`,
+                text: `❌ Não concluí a ação: ${String(parsed?.detalhe || parsed?.erro || parsed?.motivo || "a ferramenta não confirmou sucesso")}`,
                 imageUrl: pendingImageUrl,
                 forwardProof,
                 forwardAttempted,
@@ -7818,6 +7823,8 @@ async function callGemini(
               ? `✅ Lembrete criado para ${parsed.quando}. ID: ${parsed.id}.`
               : name === "criar_cobranca_amz"
               ? `✅ Cobrança criada para ${parsed.cliente} no valor de R$ ${Number(parsed.valor).toFixed(2).replace(".", ",")}.\n${parsed.payment_link}`
+              : name === "entregar_ebook_presente"
+              ? `✅ Enviei o PDF “${parsed.ebook}”.`
               : `✅ Mensagem enfileirada para ${parsed?.contato?.nome || "o contato"} em ${parsed.agendado_para}.`;
             return { text: deterministicText, imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
           } catch {
