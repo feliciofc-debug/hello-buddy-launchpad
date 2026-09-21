@@ -4016,8 +4016,15 @@ async function toolPublicarLinkedin(
       } else {
         return await fail("midia_incompativel", "Não publiquei: esse tipo de mídia ainda não é aceito no LinkedIn.");
       }
-    } else if (/\b(v[ií]deo|midia|m[ií]dia)\b/i.test(String(args?.pedido_original || ""))) {
-      return await fail("midia_nao_identificada", "Não publiquei: não consegui identificar com segurança qual vídeo usar.");
+    } else {
+      const pedidoOriginal = String(args?.pedido_original || "");
+      const explicitamenteTexto = /\b(texto|copy|artigo|somente texto|apenas texto)\b/i.test(pedidoOriginal);
+      if (pedidoOriginal && !explicitamenteTexto && !imageUrl) {
+        return await fail(
+          "midia_nao_identificada",
+          "Não publiquei: não consegui identificar com segurança a mídia desta conversa. Reenvie a imagem ou o vídeo, ou informe que deseja somente texto.",
+        );
+      }
     }
 
     const corpo = texto
