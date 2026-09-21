@@ -155,6 +155,26 @@ export const PALETA_PADRAO: MotionProps["cores"] = {
 const MODELO = "google/gemini-2.5-flash";
 const GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
+function politicaCertificacaoTenant(userId: string): string {
+  // A variável aceita uma lista separada por vírgula, ponto e vírgula ou
+  // espaços. Sem allowlist explícita, nenhum tenant recebe a exceção.
+  const tenantIds = new Set(
+    String(Deno.env.get("AMZ_TENANT_ID") || "")
+      .split(/[\s,;]+/)
+      .map((id) => id.trim().toLowerCase())
+      .filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id)),
+  );
+  const tenantPermitido = tenantIds.has(String(userId || "").trim().toLowerCase());
+  if (tenantPermitido) {
+    const texto = String(
+      Deno.env.get("AMZ_TECH_PROVIDER_TEXT")
+        || "AMZ Ofertas - Tech Provider verificado pela Meta",
+    ).replace(/\s+/g, " ").trim();
+    return `EXCEÇÃO EXCLUSIVA DESTE TENANT: se o roteiro usar selo ou certificação, a única alegação permitida é ${JSON.stringify(texto)}. Copie esse texto exatamente; não invente, amplie ou atribua qualquer outra parceria, homologação, badge ou programa de terceiros.`;
+  }
+  return `PROIBIDO ABSOLUTO no selo e em qualquer texto: alegar selo, certificação, verificação, parceria, homologação ou programa de terceiros. Nada de "verificado pela Meta", "Tech Provider", "parceiro oficial", "certificado por", "homologado por", nem menção a badge ou programa do Google, Meta, TikTok, LinkedIn ou WhatsApp. Se o contexto mencionar integração oficial, escreva no máximo "integração via API oficial", sem citar selo, verificação ou parceria.`;
+}
+
 const limparBruto = (s: unknown, max: number) =>
   String(s ?? "")
     .replace(/\s+/g, " ")
@@ -677,6 +697,7 @@ export async function gerarRoteiroMotion(
     ? `${opts.duracaoAlvoSegundos}s (alvo exato, tolerância máxima de 1s)`
     : dur === "curto" ? "20-25s" : dur === "medio" ? "40-50s" : "70-90s";
   const frasesObrigatorias = (opts?.frasesLiterais ?? []).filter(Boolean);
+  const politicaCertificacao = politicaCertificacaoTenant(userId);
 
 
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
@@ -713,10 +734,12 @@ Devolva SOMENTE JSON válido, sem markdown, neste formato:
 Preencha a seção do estilo escolhido: "chat" (conversa), "blocos" + "selo" (institucional) ou "itens" + "rotulo" (lista). As outras seções podem ficar vazias.
 DURAÇÃO PEDIDA: ${segundos}. O vídeo mais longo precisa de MAIS conteúdo, nunca cenas mais lentas. Para esta duração escreva: ${vol.mensagens} mensagens no chat (alternando dono/agente), ${vol.blocos} blocos no institucional, ${vol.itens} itens na lista e ${vol.legendas} legendas. Cada bloco/item/mensagem deve trazer um argumento NOVO, sem repetir ideia.
 No institucional, só preencha "selo" com dado REAL do contexto acima; sem dado confiável, deixe vazio — nunca invente número, percentual ou certificação.
+${politicaCertificacao}
 Regras: número par de mensagens no chat, alternando dono/agente, frases COMPLETAS dentro do limite de caracteres (nunca corte no meio de palavra), sem emoji nos textos do vídeo, sem promessa de resultado garantido, sem inventar preço.
 O leitor é um profissional: proibido gíria e informalidade exagerada ("tá insano", "bora", "top", "sem neura"). Se o tom da marca for institucional ou formal, escreva formal.
 O nome da marca identifica QUEM fala, nunca o objeto da ação: escreva "publicação concluída", "campanha aprovada", jamais "${nome} concluída" ou "${nome} aprovada".
 Nunca atribua a automação a outra empresa, plataforma, rede social ou ferramenta citada no site do cliente, nem escreva "o sistema ${nome}". Fale do resultado ("o agente agenda", "o conteúdo sai no horário") sem citar nome de plataforma.
+ACENTUAÇÃO OBRIGATÓRIA: escreva em português brasileiro COM todos os acentos e cedilhas corretos (ação, automação, conversão, você, frequência, é, já, só). Texto sem acento está ERRADO e será rejeitado.
 Português correto: o verbo é "publicado" ("o conteúdo foi criado, aprovado e publicado"). Nunca use "Público" como verbo.`;
 
   if (apiKey) {
