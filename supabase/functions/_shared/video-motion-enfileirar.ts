@@ -11,6 +11,7 @@
 import {
   aplicarDuracaoAlvo,
   aplicarFrasesLiterais,
+  configuracaoCertificacaoTenant,
   DURACOES_MOTION,
   duracaoEstimada,
   duracaoPedidaNoTexto,
@@ -212,6 +213,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
   const identidadeCliente = input.identidadeCliente === true ||
     (input.props as any)?.identidade_cliente === true ||
     semLogoTenant;
+  const bloquearCertificacao = !configuracaoCertificacaoTenant(userId, identidadeCliente).permitida;
   // Logo desta peça: a informada (prospecção) tem prioridade, desde que esteja
   // na pasta do próprio usuário; senão, a logo cadastrada em "Minha marca".
   const logoSolicitada = input.logoPath ?? (input.props as any)?.logo_path;
@@ -239,6 +241,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
         arranjo: input.arranjo ?? p?.arranjo ?? null,
         duracao: duracaoEscolhida(input),
         identidadeCliente,
+        bloquearCertificacao,
       },
     ), frasesLiterais), duracaoAlvoSegundos);
   } else {
@@ -263,6 +266,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
         arranjo: r.props.arranjo ?? null,
         duracao: r.props.duracao ?? duracaoEscolhida(input),
         identidadeCliente,
+        bloquearCertificacao,
       },
     ), frasesLiterais), duracaoAlvoSegundos);
     usouIA = r.usouIA;
@@ -286,7 +290,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
     visual_limpo: identidadeCliente && /^#(?:fff|ffffff)$/i.test(String(props.cores?.bg ?? "")),
     trilhaUrl: undefined,
   };
-  if (identidadeCliente) {
+  if (bloquearCertificacao) {
     props = sanitizarRoteiroCliente(props) as MotionProps;
     legendaPost = removerAlegacoesCertificacao(legendaPost);
     if (roteiroContemAlegacaoCertificacao(props) || roteiroContemAlegacaoCertificacao(legendaPost)) {

@@ -158,13 +158,19 @@ export const PALETA_PADRAO: MotionProps["cores"] = {
 const MODELO = "google/gemini-2.5-flash";
 const GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
-function politicaCertificacaoTenant(userId: string, identidadeCliente: boolean): string {
+export function configuracaoCertificacaoTenant(
+  userId: string,
+  identidadeCliente: boolean,
+): { permitida: boolean; instrucao: string } {
   const proibicao =
     `PROIBIDO ABSOLUTO no selo e em qualquer texto: alegar selo, certificação, verificação, parceria, homologação ou programa de terceiros. ` +
     `Nada de "verificado pela Meta", "Tech Provider", "parceiro oficial", "certificado por", "homologado por", nem menção a badge ou programa do Google, Meta, TikTok, LinkedIn ou WhatsApp. ` +
     `Se o contexto mencionar integração oficial, escreva no máximo "integração via API oficial", sem citar selo, verificação ou parceria.`;
   if (identidadeCliente) {
-    return `IDENTIDADE DE CLIENTE: ${proibicao} Esta proibição não tem exceção, mesmo que o tenant solicitante possua certificações próprias.`;
+    return {
+      permitida: false,
+      instrucao: `IDENTIDADE DE CLIENTE: ${proibicao} Esta proibição não tem exceção, mesmo que o tenant solicitante possua certificações próprias.`,
+    };
   }
   // A variável aceita uma lista separada por vírgula, ponto e vírgula ou
   // espaços. Sem allowlist explícita, nenhum tenant recebe a exceção.
@@ -177,9 +183,12 @@ function politicaCertificacaoTenant(userId: string, identidadeCliente: boolean):
   const tenantPermitido = tenantIds.has(String(userId || "").trim().toLowerCase());
   const texto = String(Deno.env.get("AMZ_TECH_PROVIDER_TEXT") || "").replace(/\s+/g, " ").trim();
   if (tenantPermitido && texto) {
-    return `EXCEÇÃO EXCLUSIVA DESTE TENANT: se o roteiro usar selo ou certificação, a única alegação permitida é ${JSON.stringify(texto)}. Copie esse texto exatamente; não invente, amplie ou atribua qualquer outra parceria, homologação, badge ou programa de terceiros.`;
+    return {
+      permitida: true,
+      instrucao: `EXCEÇÃO EXCLUSIVA DESTE TENANT: se o roteiro usar selo ou certificação, a única alegação permitida é ${JSON.stringify(texto)}. Copie esse texto exatamente; não invente, amplie ou atribua qualquer outra parceria, homologação, badge ou programa de terceiros.`,
+    };
   }
-  return proibicao;
+  return { permitida: false, instrucao: proibicao };
 }
 
 const limparBruto = (s: unknown, max: number) =>
@@ -255,7 +264,7 @@ export function sanitizarRoteiroCliente(bruto: any): any {
   };
 }
 
-function garantirRoteiroSeguroParaCliente(props: MotionProps): MotionProps {
+function garantirRoteiroSemCertificacao(props: MotionProps): MotionProps {
   const seguro = sanitizarRoteiroCliente(props) as MotionProps;
   if (roteiroContemAlegacaoCertificacao(seguro)) {
     throw new Error("roteiro_cliente_contem_certificacao_proibida");
@@ -402,9 +411,11 @@ export function normalizarProps(
     duracao?: DuracaoMotion | null;
     /** identidade de terceiro: remover certificações do tenant */
     identidadeCliente?: boolean;
+    /** sem exceção configurada: remover alegações em qualquer identidade */
+    bloquearCertificacao?: boolean;
   },
 ): MotionProps {
-  if (ctx.identidadeCliente) bruto = sanitizarRoteiroCliente(bruto);
+  if (ctx.bloquearCertificacao || ctx.identidadeCliente) bruto = sanitizarRoteiroCliente(bruto);
   const nomes = ctx.nomes ?? [];
   const duracao: DuracaoMotion = DURACOES_MOTION.includes(ctx.duracao as DuracaoMotion)
     ? (ctx.duracao as DuracaoMotion)
@@ -559,7 +570,7 @@ export function normalizarProps(
     blocos: blocosFinais,
     // `null` é intencional: o Remotion combina inputProps com defaultProps.
     // Omitir a chave poderia ressuscitar um selo existente no bundle.
-    selo: estilo === "institucional" && seloValor && !ctx.identidadeCliente
+    selo: estilo === "institucional" && seloValor && !ctx.identidadeCliente && !ctx.bloquearCertificacao
       ? { valor: seloValor, rotulo: limpar(bruto?.selo?.rotulo, 34) || undefined }
       : null,
     itens: itensFinais,
@@ -787,7 +798,9 @@ export async function gerarRoteiroMotion(
     ? `${opts.duracaoAlvoSegundos}s (alvo exato, tolerância máxima de 1s)`
     : dur === "curto" ? "20-25s" : dur === "medio" ? "40-50s" : "70-90s";
   const frasesObrigatorias = (opts?.frasesLiterais ?? []).filter(Boolean);
-  const politicaCertificacao = politicaCertificacaoTenant(userId, terceiro);
+  const certificacao = configuracaoCertificacaoTenant(userId, terceiro);
+  const politicaCertificacao = certificacao.instrucao;
+  const bloquearCertificacao = !certificacao.permitida;
 
 
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
@@ -851,18 +864,25 @@ Português correto: o verbo é "publicado" ("o conteúdo foi criado, aprovado e 
         const j = await r.json();
         const txt = j?.choices?.[0]?.message?.content ?? "";
         const resposta = JSON.parse(txt.replace(/^```json|```$/g, "").trim());
-        if (terceiro && roteiroContemAlegacaoCertificacao(resposta)) {
-          console.error("[video-motion][client-certification-removed]", { userId, marca: nome });
+        if (bloquearCertificacao && roteiroContemAlegacaoCertificacao(resposta)) {
+          console.error("[video-motion][certification-removed]", { userId, marca: nome, identidadeCliente: terceiro });
         }
-        const bruto = terceiro ? sanitizarRoteiroCliente(resposta) : resposta;
+        const bruto = bloquearCertificacao ? sanitizarRoteiroCliente(resposta) : resposta;
         const propsGeradas = aplicarDuracaoAlvo(
-          aplicarFrasesLiterais(normalizarProps(bruto, { ...base, identidadeCliente: terceiro }), frasesObrigatorias),
+          aplicarFrasesLiterais(normalizarProps(bruto, {
+            ...base,
+            identidadeCliente: terceiro,
+            bloquearCertificacao,
+          }), frasesObrigatorias),
           opts?.duracaoAlvoSegundos,
         );
         return {
-          props: terceiro ? garantirRoteiroSeguroParaCliente(propsGeradas) : propsGeradas,
+          props: bloquearCertificacao ? garantirRoteiroSemCertificacao(propsGeradas) : propsGeradas,
           legendaPost: corrigirTexto(
-            limparBruto(terceiro ? removerAlegacoesCertificacao(resposta?.legenda_post) : resposta?.legenda_post, 1200),
+            limparBruto(
+              bloquearCertificacao ? removerAlegacoesCertificacao(resposta?.legenda_post) : resposta?.legenda_post,
+              1200,
+            ),
             nomes,
           ),
           usouIA: true,
@@ -896,9 +916,9 @@ Português correto: o verbo é "publicado" ("o conteúdo foi criado, aprovado e 
       cta: { frase: "Fale com a gente.", sub: cortarFrase(nome, 55), telefone: base.telefone },
       legendas: [cortarFrase(tema, 60), "Atendimento pelo WhatsApp.", "Simples e rápido."],
     },
-    { ...base, identidadeCliente: terceiro },
+    { ...base, identidadeCliente: terceiro, bloquearCertificacao },
   ), frasesObrigatorias), opts?.duracaoAlvoSegundos);
-  const props = terceiro ? garantirRoteiroSeguroParaCliente(propsGeradas) : propsGeradas;
+  const props = bloquearCertificacao ? garantirRoteiroSemCertificacao(propsGeradas) : propsGeradas;
 
   return {
     props,
