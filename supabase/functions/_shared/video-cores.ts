@@ -219,7 +219,8 @@ export function extrairCoresDoTexto(texto: string): CoresPedidas | null {
 
   // Hex/nome sem rótulo: neutro (branco/preto/cinza) vira fundo, cor viva vira destaque.
   for (const cor of soltos) {
-    const viva = saturacao(cor) >= 0.25 && luminancia(cor) > 0.03 && luminancia(cor) < 0.9;
+    // Tons escuros saturados, como azul-marinho, ainda são cores de marca.
+    const viva = saturacao(cor) >= 0.25 && luminancia(cor) > 0.01 && luminancia(cor) < 0.9;
     if (viva) {
       if (!parcial.destaque) parcial.destaque = cor;
       // Uma segunda cor de marca não pode formar o gradiente do destaque:
