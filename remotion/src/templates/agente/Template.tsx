@@ -49,6 +49,7 @@ export type TemplateAgenteProps = {
   ritmo?: number;
   cta: { frase: string; sub?: string; telefone?: string; consultor?: string };
   legendas: string[];
+  visual_limpo?: boolean;
 };
 
 
@@ -74,7 +75,7 @@ const CHAT_ENTRADA = 40;
 const CHAT_RESPIRO = 115;
 
 export const espacoMsg = (ritmo?: number) =>
-  ritmo && ritmo >= 40 && ritmo <= 120 ? Math.round(ritmo) : MSG_ESPACO;
+  ritmo && ritmo >= 40 && ritmo <= 200 ? Math.round(ritmo) : MSG_ESPACO;
 
 export const framesChat = (n: number, ritmo?: number) =>
   CHAT_ENTRADA + Math.max(1, n) * espacoMsg(ritmo) + CHAT_RESPIRO;
@@ -85,9 +86,12 @@ export const framesTemplateAgente = (props: TemplateAgenteProps) =>
 
 // ---------- cenas ----------
 
-const Backdrop: React.FC<{ c: Paleta }> = ({ c }) => {
+const Backdrop: React.FC<{ c: Paleta; limpo?: boolean }> = ({ c, limpo = false }) => {
   const frame = useCurrentFrame();
   const drift = Math.sin(frame / 90) * 40;
+  if (limpo && ehClaro(c.bg)) {
+    return <AbsoluteFill style={{ background: c.bg }} />;
+  }
   return (
     <AbsoluteFill
       style={{
@@ -576,7 +580,7 @@ export const TemplateAgente: React.FC<TemplateAgenteProps> = (props) => {
 
   return (
     <AbsoluteFill>
-      <Backdrop c={c} />
+      <Backdrop c={c} limpo={props.visual_limpo === true} />
       <TransitionSeries>
         <TransitionSeries.Sequence durationInFrames={HOOK_FRAMES}>
           <Hook c={c} {...hook} />

@@ -4,6 +4,9 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { RefreshCw, Trash2, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { getRuntimeConfig } from '@/config/runtime-config';
+
+const FUNCTIONS_URL = `${getRuntimeConfig().supabaseUrl}/functions/v1`;
 
 interface DebugLog {
   id: string;
@@ -124,7 +127,7 @@ export function DebugPayloads() {
         <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950 rounded text-sm">
           <p className="font-medium mb-2">📌 Configure no Wuzapi:</p>
           <code className="text-xs bg-background p-2 rounded block overflow-x-auto border">
-            https://jibpvpqgplmahjhswiza.supabase.co/functions/v1/wuzapi-webhook
+            {FUNCTIONS_URL}/wuzapi-webhook
           </code>
         </div>
       </CardContent>

@@ -10,8 +10,10 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { autorizarWorker, renderCors, respJson } from "../_shared/render-auth.ts";
+import { linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
 
 const MAX_TENTATIVAS = 3;
+const MAX_VIDEO_WHATSAPP_BYTES = 15 * 1024 * 1024;
 
 async function avisarCliente(supabase: any, job: any, message: string, videoUrl?: string) {
   if (!job.telefone) return;
@@ -29,6 +31,38 @@ async function avisarCliente(supabase: any, job: any, message: string, videoUrl?
   }
 }
 
+async function registrarVideoNaBiblioteca(supabase: any, job: any, videoUrl: string, duracao?: number | null): Promise<string> {
+  const { data: existente } = await supabase
+    .from("midias_whatsapp")
+    .select("id")
+    .eq("user_id", job.user_id)
+    .eq("midia_url", videoUrl)
+    .limit(1)
+    .maybeSingle();
+  if (existente?.id) return existente.id;
+
+  const contexto = [job.titulo, job.legenda_post].filter(Boolean).join("\n\n").slice(0, 1500);
+  const duracaoNumero = duracao == null ? Number.NaN : Number(duracao);
+  const duracaoInteira = Number.isFinite(duracaoNumero) ? Math.round(duracaoNumero) : null;
+  const { data, error } = await supabase
+    .from("midias_whatsapp")
+    .insert({
+      user_id: job.user_id,
+      origem: "ia_video_motion",
+      telefone_origem: job.telefone || null,
+      tipo: "video",
+      midia_url: videoUrl,
+      mime_type: "video/mp4",
+      duracao_segundos: duracaoInteira,
+      contexto_original: contexto || "Vídeo animado",
+      status: "pendente",
+    })
+    .select("id")
+    .single();
+  if (error || !data?.id) throw new Error(`não consegui registrar o vídeo animado em /midias: ${error?.message || "id ausente"}`);
+  return data.id;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: renderCors });
 
@@ -42,7 +76,7 @@ Deno.serve(async (req) => {
     );
 
     const body = await req.json();
-    const { job_id, success: renderOk, resultado_bucket, resultado_path, duracao_segundos, erro } =
+    const { job_id, success: renderOk, resultado_bucket, resultado_path, duracao_segundos, erro, redeliver } =
       body || {};
     if (!job_id) throw new Error("job_id obrigatório");
 
@@ -59,6 +93,59 @@ Deno.serve(async (req) => {
         await supabase.storage.from(resultado_bucket || "videos").remove([resultado_path]);
       }
       return respJson({ success: true, cancelado: true });
+    }
+
+    // Reentrega idempotente de um job já concluído: não renderiza, não altera status
+    // e usa o resultado_path persistido no próprio job.
+    if (redeliver === true) {
+      if (!job.resultado_path) throw new Error("job concluído sem resultado_path");
+      const bucketReentrega = job.resultado_bucket || "videos";
+      const { data: pub } = supabase.storage.from(bucketReentrega).getPublicUrl(job.resultado_path);
+      const videoUrl = pub?.publicUrl;
+      if (!videoUrl) throw new Error("não consegui montar a URL do vídeo para reentrega");
+
+      let midiaId: string | null = null;
+      let codigoMidia = "";
+      let bibliotecaErro: string | null = null;
+      try {
+        midiaId = await registrarVideoNaBiblioteca(supabase, job, videoUrl, job.duracao_segundos ?? null);
+        codigoMidia = linhaCodigoMidia(midiaId, "video");
+      } catch (e) {
+        bibliotecaErro = e instanceof Error ? e.message : String(e);
+        console.error("[video-motion-complete] registro em /midias falhou na reentrega; entregando MP4 mesmo assim:", bibliotecaErro);
+      }
+
+      const plataformas: string[] = Array.isArray(job.plataformas) ? job.plataformas : [];
+      const querPublicar = plataformas.length > 0;
+      const blocoCodigo = codigoMidia ? `\n\n${codigoMidia}` : "";
+      const blocoLegenda = job.legenda_post ? `\n\n*Legenda sugerida:*\n${job.legenda_post}` : "";
+      if (!querPublicar) {
+        await avisarCliente(
+          supabase,
+          job,
+          `🎬 Seu vídeo animado ficou pronto. *Não publiquei em lugar nenhum.*${blocoCodigo}${blocoLegenda}`,
+          videoUrl,
+        );
+      } else {
+        const nomes = plataformas
+          .map((p) => p === "instagram" ? "Instagram" : p === "facebook" ? "Facebook" : p === "linkedin" ? "LinkedIn" : p)
+          .join(" e ");
+        const fmt = String(job.formato || "reels").toLowerCase();
+        const nomeFormato = fmt === "story" ? "STORY" : fmt === "feed" ? "FEED" : "REELS";
+        await avisarCliente(
+          supabase,
+          job,
+          `🎬 Vídeo animado pronto. *Ainda não publiquei nada.*${blocoCodigo}${blocoLegenda}\n\nResponda *APROVAR* que eu publico como *${nomeFormato}* no ${nomes}, ou *CANCELAR* e nada vai ao ar.`,
+          videoUrl,
+        );
+      }
+      return respJson({
+        success: true,
+        redelivered: true,
+        video_url: videoUrl,
+        midia_id: midiaId,
+        biblioteca_erro: bibliotecaErro,
+      });
     }
 
     // ---------- FALHA ----------
@@ -128,6 +215,27 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (job.origem === "whatsapp" && tamanho > MAX_VIDEO_WHATSAPP_BYTES) {
+      const tentativas = (job.tentativas || 0) + 1;
+      const definitivo = tentativas >= MAX_TENTATIVAS;
+      await supabase.storage.from(bucket).remove([resultado_path]);
+      await supabase
+        .from("video_motion_jobs")
+        .update({
+          status: definitivo ? "falha_definitiva" : "pendente",
+          tentativas,
+          claimed_at: null,
+          erro_mensagem: `vídeo com ${Math.ceil(tamanho / 1024 / 1024)} MB excedeu o limite de entrega; aguardando recompressão`,
+        })
+        .eq("id", job.id)
+        .eq("status", "processando");
+      return respJson({
+        success: false,
+        error: "vídeo excedeu 15 MB antes da entrega",
+        retentativa: !definitivo,
+      });
+    }
+
     const { data: pub } = supabase.storage.from(bucket).getPublicUrl(resultado_path);
     const videoUrl = pub?.publicUrl;
     if (!videoUrl) throw new Error("não consegui montar a URL do vídeo");
@@ -157,13 +265,25 @@ Deno.serve(async (req) => {
       return respJson({ success: true, cancelado: true });
     }
 
+    let midiaId: string | null = null;
+    let codigoMidia = "";
+    let bibliotecaErro: string | null = null;
+    try {
+      midiaId = await registrarVideoNaBiblioteca(supabase, job, videoUrl, duracao_segundos ?? null);
+      codigoMidia = linhaCodigoMidia(midiaId, "video");
+    } catch (e) {
+      bibliotecaErro = e instanceof Error ? e.message : String(e);
+      console.error("[video-motion-complete] registro em /midias falhou; entregando MP4 mesmo assim:", bibliotecaErro);
+    }
+
     if (job.origem === "whatsapp" && job.telefone) {
+      const blocoCodigo = codigoMidia ? `\n\n${codigoMidia}` : "";
       const blocoLegenda = job.legenda_post ? `\n\n*Legenda sugerida:*\n${job.legenda_post}` : "";
       if (!querPublicar) {
         await avisarCliente(
           supabase,
           job,
-          `🎬 Seu vídeo animado ficou pronto. *Não publiquei em lugar nenhum.*${blocoLegenda}`,
+          `🎬 Seu vídeo animado ficou pronto. *Não publiquei em lugar nenhum.*${blocoCodigo}${blocoLegenda}`,
           videoUrl,
         );
       } else {
@@ -177,13 +297,19 @@ Deno.serve(async (req) => {
         await avisarCliente(
           supabase,
           job,
-          `🎬 Vídeo animado pronto. *Ainda não publiquei nada.*${blocoLegenda}\n\nResponda *APROVAR* que eu publico como *${nomeFormato}* no ${nomes}, ou *CANCELAR* e nada vai ao ar.`,
+          `🎬 Vídeo animado pronto. *Ainda não publiquei nada.*${blocoCodigo}${blocoLegenda}\n\nResponda *APROVAR* que eu publico como *${nomeFormato}* no ${nomes}, ou *CANCELAR* e nada vai ao ar.`,
           videoUrl,
         );
       }
     }
 
-    return respJson({ success: true, aguardando_aprovacao: querPublicar, video_url: videoUrl });
+    return respJson({
+      success: true,
+      aguardando_aprovacao: querPublicar,
+      video_url: videoUrl,
+      midia_id: midiaId,
+      biblioteca_erro: bibliotecaErro,
+    });
   } catch (e) {
     console.error("[video-motion-complete] erro:", e);
     return respJson({

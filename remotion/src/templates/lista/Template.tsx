@@ -47,6 +47,7 @@ export type TemplateListaProps = {
   /** rótulo da lista, ex.: "3 motivos", "4 passos" */
   rotulo?: string;
   arranjo?: number;
+  visual_limpo?: boolean;
   /** frames por item; vídeo mais longo respira um pouco mais em cada cena */
   ritmo?: number;
 };
@@ -60,7 +61,7 @@ export const framesTemplateLista = (p: TemplateListaProps) => {
 };
 
 export const ritmoLista = (p: TemplateListaProps) =>
-  p.ritmo && p.ritmo >= 60 && p.ritmo <= 200 ? Math.round(p.ritmo) : ITEM_FRAMES;
+  p.ritmo && p.ritmo >= 60 && p.ritmo <= 300 ? Math.round(p.ritmo) : ITEM_FRAMES;
 
 const Numero: React.FC<{ c: Paleta; n: number; tamanho?: number }> = ({ c, n, tamanho = 84 }) => (
   <div
@@ -287,7 +288,7 @@ export const TemplateLista: React.FC<TemplateListaProps> = (props) => {
 
   return (
     <AbsoluteFill>
-      <Backdrop c={c} arranjo={arranjo} />
+      <Backdrop c={c} arranjo={arranjo} limpo={props.visual_limpo === true} />
       <TransitionSeries>
         <TransitionSeries.Sequence durationInFrames={HOOK_FRAMES}>
           <HookCena c={c} arranjo={arranjo === 3 ? 2 : 1} logoUrl={logoUrl} {...hook} />
