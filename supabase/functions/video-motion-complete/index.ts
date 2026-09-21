@@ -13,6 +13,7 @@ import { autorizarWorker, renderCors, respJson } from "../_shared/render-auth.ts
 import { linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
 
 const MAX_TENTATIVAS = 3;
+const MAX_VIDEO_WHATSAPP_BYTES = 15 * 1024 * 1024;
 
 async function avisarCliente(supabase: any, job: any, message: string, videoUrl?: string) {
   if (!job.telefone) return;
@@ -210,6 +211,27 @@ Deno.serve(async (req) => {
       return respJson({
         success: false,
         error: "arquivo não encontrado no storage",
+        retentativa: !definitivo,
+      });
+    }
+
+    if (job.origem === "whatsapp" && tamanho > MAX_VIDEO_WHATSAPP_BYTES) {
+      const tentativas = (job.tentativas || 0) + 1;
+      const definitivo = tentativas >= MAX_TENTATIVAS;
+      await supabase.storage.from(bucket).remove([resultado_path]);
+      await supabase
+        .from("video_motion_jobs")
+        .update({
+          status: definitivo ? "falha_definitiva" : "pendente",
+          tentativas,
+          claimed_at: null,
+          erro_mensagem: `vídeo com ${Math.ceil(tamanho / 1024 / 1024)} MB excedeu o limite de entrega; aguardando recompressão`,
+        })
+        .eq("id", job.id)
+        .eq("status", "processando");
+      return respJson({
+        success: false,
+        error: "vídeo excedeu 15 MB antes da entrega",
         retentativa: !definitivo,
       });
     }
