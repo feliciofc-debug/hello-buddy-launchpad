@@ -54,7 +54,11 @@ import {
   type MotionProps,
 } from "../_shared/video-motion.ts";
 import { extrairCoresDoTexto } from "../_shared/video-cores.ts";
-import { lerIdentidadeDoSite } from "../_shared/site-identidade.ts";
+import {
+  lerIdentidadeDoSite,
+  precisaCamadaB,
+  type IdentidadeSite,
+} from "../_shared/site-identidade.ts";
 
 import {
   entregarEbookTenant,
@@ -5589,12 +5593,52 @@ async function criarRascunhoVideoMotion(
   return `${formatVideoDraft(roteiro.props, tema, segundos, paleta)}\n\nFormato: *${rotuloEstilo}*\nDuração: *${rotuloDuracao}* — render em cerca de ${minutos} min\n\nCódigo de aprovação: *${token}*`;
 }
 
+async function completeSiteIdentityWithRenderedPage(
+  userId: string,
+  identity: IdentidadeSite,
+): Promise<IdentidadeSite> {
+  if (!precisaCamadaB(identity)) return identity;
+  const { data: job, error } = await sb.from("site_render_jobs").insert({
+    user_id: userId,
+    url: identity.url,
+    identidade_a: identity,
+  }).select("id").single();
+  if (error || !job?.id) {
+    console.warn("[video-setup][site-render-enqueue]", error?.message || "job sem id");
+    return identity;
+  }
+
+  const deadline = Date.now() + 45_000;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+    const { data: current, error: pollError } = await sb.from("site_render_jobs")
+      .select("status, identidade, erro")
+      .eq("id", job.id)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (pollError) {
+      console.warn("[video-setup][site-render-poll]", pollError.message);
+      break;
+    }
+    if (current?.status === "concluido" && current.identidade) {
+      return current.identidade as IdentidadeSite;
+    }
+    if (current?.status === "erro") {
+      console.warn("[video-setup][site-render-failed]", current.erro || "erro desconhecido");
+      break;
+    }
+  }
+  console.warn("[video-setup][site-render-timeout]", { jobId: job.id, url: identity.url });
+  return identity;
+}
+
 async function prepareClientSiteIdentity(
   ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
   setup: PendingVideoSetupState,
   url: string,
 ): Promise<string> {
-  const identity = await lerIdentidadeDoSite(url);
+  const layerA = await lerIdentidadeDoSite(url);
+  const identity = await completeSiteIdentityWithRenderedPage(ctx.userId, layerA);
   const colors = identity.cores_detectadas.map((item) => item.hex).filter(Boolean);
   const extracted = colors.length >= 2;
   const logoPath = await uploadTemporarySiteLogo(ctx.userId, identity.logo_data_url);

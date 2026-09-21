@@ -154,10 +154,10 @@ async function baixarLogo(pagina, url) {
  * renderizada — nunca inventadas por IA. O vermelho de muitas redes so
  * existe na logo, nao no CSS.
  */
-async function coresDaLogo(pagina, dataUrl) {
+async function coresDaImagem(pagina, dataUrl, pesoBase, limite = 3) {
   if (!dataUrl) return [];
   try {
-    return await pagina.evaluate(async (src) => {
+    return await pagina.evaluate(async ({ src, pesoBase, limite }) => {
       const img = new Image();
       img.src = src;
       await img.decode().catch(() => {});
@@ -183,9 +183,9 @@ async function coresDaLogo(pagina, dataUrl) {
       }
       return [...acc.entries()]
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 3)
-        .map(([hex]) => ({ hex, peso: 30 }));
-    }, dataUrl);
+        .slice(0, limite)
+        .map(([hex, quantidade]) => ({ hex, peso: pesoBase + quantidade }));
+    }, { src: dataUrl, pesoBase, limite });
   } catch {
     return [];
   }
@@ -204,16 +204,20 @@ async function processar(navegador, job) {
     await pagina.waitForTimeout(3500); // deixa o JavaScript montar a tela
     const dados = await pagina.evaluate(LEITOR);
     const captura = await pagina.screenshot({ type: "jpeg", quality: 70 });
+    const capturaDataUrl = `data:image/jpeg;base64,${captura.toString("base64")}`;
     const logoDataUrl = await baixarLogo(pagina, dados.logo_url);
-    const daLogo = await coresDaLogo(pagina, logoDataUrl);
+    // Logo primeiro, depois pixels realmente visíveis da página. As duas
+    // fontes vencem cores meramente declaradas por frameworks.
+    const daLogo = await coresDaImagem(pagina, logoDataUrl, 10_000, 3);
+    const daCaptura = await coresDaImagem(pagina, capturaDataUrl, 500, 5);
 
     await chamar("site-render-complete", {
       job_id: job.id,
       success: true,
       ...dados,
-      cores: [...dados.cores, ...daLogo],
+      cores: [...daLogo, ...daCaptura, ...dados.cores],
       logo_data_url: logoDataUrl,
-      captura_data_url: `data:image/jpeg;base64,${captura.toString("base64")}`,
+      captura_data_url: capturaDataUrl,
     });
     console.log("[site] ok", job.url, dados.cores.length, "cores");
   } catch (e) {

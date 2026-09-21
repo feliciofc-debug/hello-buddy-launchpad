@@ -52,9 +52,22 @@ const composition = await selectComposition({
   inputProps,
   puppeteerInstance: browser,
 });
+const alvoSegundos = Number(inputProps?.duracao_alvo_segundos);
+const alvoFrames = Number.isFinite(alvoSegundos) && alvoSegundos >= 20 && alvoSegundos <= 95
+  ? Math.round(alvoSegundos * composition.fps)
+  : null;
+const compositionFinal = alvoFrames
+  ? { ...composition, durationInFrames: alvoFrames }
+  : composition;
+if (alvoFrames && composition.durationInFrames !== alvoFrames) {
+  console.warn(
+    `[duration] composição calculou ${composition.durationInFrames} frames; ` +
+    `ajustando para ${alvoFrames} (${alvoSegundos}s)`,
+  );
+}
 
 await renderMedia({
-  composition,
+  composition: compositionFinal,
   serveUrl,
   codec: "h264",
   inputProps,
@@ -65,4 +78,4 @@ await renderMedia({
 });
 
 await browser.close({ silent: false });
-console.log("ok", compId, "->", outPath, `${composition.durationInFrames} frames`);
+console.log("ok", compId, "->", outPath, `${compositionFinal.durationInFrames} frames`);
