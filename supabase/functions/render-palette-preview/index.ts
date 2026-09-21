@@ -3,6 +3,7 @@ import { initWasm, Resvg } from "https://esm.sh/@resvg/resvg-wasm@2.6.2";
 import { corsHeaders } from "../_shared/cors.ts";
 
 let wasmReady: Promise<void> | null = null;
+let fontReady: Promise<Uint8Array> | null = null;
 const ensureWasm = () => {
   if (!wasmReady) {
     wasmReady = initWasm(
@@ -13,6 +14,21 @@ const ensureWasm = () => {
     });
   }
   return wasmReady;
+};
+
+const ensureFont = () => {
+  if (!fontReady) {
+    fontReady = fetch("https://cdn.jsdelivr.net/npm/@fontsource/inter@5.2.8/files/inter-latin-400-normal.woff2")
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`fonte da prévia indisponível: ${response.status}`);
+        return new Uint8Array(await response.arrayBuffer());
+      })
+      .catch((error) => {
+        fontReady = null;
+        throw error;
+      });
+  }
+  return fontReady;
 };
 
 const escapeXml = (value: unknown) =>
@@ -33,6 +49,14 @@ function textColor(hex: string): string {
   const b = value & 255;
   return (r * 0.299 + g * 0.587 + b * 0.114) / 255 > 0.58 ? "#111827" : "#ffffff";
 }
+
+const bytesToBase64 = (bytes: Uint8Array): string => {
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 8192) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
+  }
+  return btoa(binary);
+};
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -56,6 +80,19 @@ Deno.serve(async (req) => {
       .slice(0, 6);
     if (!userId || colors.length < 2) throw new Error("user_id e ao menos duas cores são obrigatórios");
 
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey);
+    const logoPath = String(body?.logo_path ?? "");
+    let logoDataUrl = "";
+    if (logoPath.startsWith(`${userId}/video-site/`)) {
+      const { data: logo, error: logoError } = await supabase.storage.from("tenant-logos").download(logoPath);
+      if (logoError) {
+        console.warn("[render-palette-preview][logo]", logoError.message);
+      } else if (logo && logo.size <= 5 * 1024 * 1024) {
+        const mime = logo.type.startsWith("image/") ? logo.type : "image/png";
+        logoDataUrl = `data:${mime};base64,${bytesToBase64(new Uint8Array(await logo.arrayBuffer()))}`;
+      }
+    }
+
     const width = 1080;
     const rowHeight = 112;
     const height = 170 + colors.length * rowHeight;
@@ -69,16 +106,24 @@ Deno.serve(async (req) => {
         <text x="175" y="${y + 70}" font-size="26" font-weight="500" fill="${textColor(item.hex)}">${item.hex.toUpperCase()}</text>
       </g>`;
     }).join("");
+    const logo = logoDataUrl
+      ? `<rect x="760" y="24" width="250" height="88" rx="16" fill="#ffffff" stroke="#e2e8f0"/>
+         <image href="${escapeXml(logoDataUrl)}" x="776" y="36" width="218" height="64" preserveAspectRatio="xMidYMid meet"/>`
+      : "";
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
       <rect width="100%" height="100%" fill="#f8fafc"/>
-      <text x="70" y="62" font-family="Arial, sans-serif" font-size="38" font-weight="800" fill="#111827">Paleta encontrada</text>
-      <text x="70" y="101" font-family="Arial, sans-serif" font-size="23" fill="#475569">Confira as cores antes de gerar o roteiro</text>
-      <g font-family="Arial, sans-serif">${rows}</g>
+      <text x="70" y="62" font-family="Inter" font-size="38" font-weight="800" fill="#111827">Paleta encontrada</text>
+      <text x="70" y="101" font-family="Inter" font-size="23" fill="#475569">Confira os números e códigos antes de gerar</text>
+      ${logo}
+      <g font-family="Inter">${rows}</g>
     </svg>`;
 
-    await ensureWasm();
-    const png = new Resvg(svg, { fitTo: { mode: "width", value: width } }).render().asPng();
-    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey);
+    const [, font] = await Promise.all([ensureWasm(), ensureFont()]);
+    const png = new Resvg(svg, {
+      fitTo: { mode: "width", value: width },
+      font: { fontBuffers: [font], defaultFontFamily: "Inter" },
+      textRendering: 1,
+    }).render().asPng();
     const path = `${userId}/palette-previews/${Date.now()}-${crypto.randomUUID().slice(0, 8)}.png`;
     const { error } = await supabase.storage.from("temp").upload(path, png, {
       contentType: "image/png",

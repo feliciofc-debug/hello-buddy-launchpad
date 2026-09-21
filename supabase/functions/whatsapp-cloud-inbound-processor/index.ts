@@ -1658,6 +1658,8 @@ type PendingVideoSetupStage =
   | "awaiting_track_more"
   | "awaiting_identity"
   | "awaiting_site_url"
+  | "awaiting_palette_primary"
+  | "awaiting_palette_secondary"
   | "awaiting_palette_confirmation";
 
 type VideoPaletteOption = {
@@ -1681,6 +1683,8 @@ type PendingVideoSetupState = {
   tom_de_voz?: string;
   logo_path?: string;
   palette_options?: VideoPaletteOption[];
+  palette_candidates?: string[];
+  palette_primary?: string;
   formato?: "reels" | "feed" | "story";
   duracao?: DuracaoMotion;
   duracao_alvo_segundos?: number;
@@ -5369,6 +5373,15 @@ const paletteBrightness = (hex: string): number => {
   return (r * 0.299 + g * 0.587 + b * 0.114) / 255;
 };
 
+function paletteBrandCandidates(colors: string[]): string[] {
+  return [...new Set(
+    colors
+      .map((hex) => String(hex).toLowerCase())
+      .filter((hex) => /^#[0-9a-f]{6}$/.test(hex))
+      .filter((hex) => paletteSaturation(hex) >= 0.18 && paletteBrightness(hex) > 0.04 && paletteBrightness(hex) < 0.95),
+  )].slice(0, 8);
+}
+
 function paletteOptionsFromColors(colors: string[]): VideoPaletteOption[] {
   const valid = [...new Set(colors.map((hex) => String(hex).toLowerCase()).filter((hex) => /^#[0-9a-f]{6}$/.test(hex)))];
   const brand = valid.filter((hex) => paletteSaturation(hex) >= 0.18 && paletteBrightness(hex) > 0.08 && paletteBrightness(hex) < 0.95);
@@ -5496,19 +5509,34 @@ async function askVideoIdentity(ctx: { userId: string; fromNumber: string }): Pr
   });
 }
 
-async function askSitePaletteConfirmation(
+function paletteTouchTitle(hex: string): string {
+  const emoji: Record<ReturnType<typeof paletteFamily>, string> = {
+    vermelho: "🔴",
+    laranja: "🟠",
+    amarelo: "🟡",
+    verde: "🟢",
+    azul: "🔵",
+    roxo: "🟣",
+    rosa: "🟣",
+    neutro: "⚪",
+  };
+  return `${emoji[paletteFamily(hex)]} ${hex.toUpperCase()}`;
+}
+
+async function sendPalettePreview(
   ctx: { userId: string; fromNumber: string },
   options: VideoPaletteOption[],
-  extractionFailed = false,
+  logoPath?: string,
 ): Promise<void> {
-  if (!extractionFailed && options.length >= 2) {
+  if (options.length >= 2) {
     try {
       const preview = await callEdge("render-palette-preview", {
         user_id: ctx.userId,
         colors: options,
+        logo_path: logoPath,
       });
       if (preview?.success && preview?.image_url) {
-        await sendWhatsApp(ctx.userId, ctx.fromNumber, "Prévia numerada da paleta encontrada:", preview.image_url);
+        await sendWhatsApp(ctx.userId, ctx.fromNumber, "Logo e prévia numerada da paleta:", preview.image_url);
       } else {
         console.warn("[video-setup][palette-preview]", preview?.error || "render sem URL");
       }
@@ -5516,6 +5544,57 @@ async function askSitePaletteConfirmation(
       console.warn("[video-setup][palette-preview]", (error as Error).message);
     }
   }
+}
+
+async function askPalettePrimary(
+  ctx: { userId: string; fromNumber: string },
+  candidates: string[],
+  options: VideoPaletteOption[],
+  logoPath?: string,
+): Promise<void> {
+  await sendPalettePreview(ctx, options, logoPath);
+  await sendVideoInteractiveList(ctx, {
+    header: "🎨 Cor principal",
+    body: "Toque na cor principal da marca. Depois você escolhe a secundária.",
+    button: "Escolher principal",
+    section: "Cores extraídas do logo",
+    rows: candidates.map((hex) => ({
+      id: `video_palette_primary_${hex.slice(1)}`,
+      title: paletteTouchTitle(hex),
+      description: "Usar como cor principal",
+    })),
+  });
+}
+
+async function askPaletteSecondary(
+  ctx: { userId: string; fromNumber: string },
+  candidates: string[],
+  primary: string,
+): Promise<void> {
+  const remaining = candidates.filter((hex) => hex !== primary);
+  await sendVideoInteractiveList(ctx, {
+    header: "🎨 Cor secundária",
+    body: `Principal escolhida: ${primary.toUpperCase()}. Agora toque na cor de apoio, ou escolha Nenhuma.`,
+    button: "Escolher secundária",
+    section: "Detalhes e elementos de apoio",
+    rows: [
+      ...remaining.map((hex) => ({
+        id: `video_palette_secondary_${hex.slice(1)}`,
+        title: paletteTouchTitle(hex),
+        description: "Usar em bordas e detalhes",
+      })),
+      { id: "video_palette_secondary_none", title: "Nenhuma", description: "Usar somente a cor principal" },
+    ],
+  });
+}
+
+async function askSitePaletteConfirmation(
+  ctx: { userId: string; fromNumber: string },
+  options: VideoPaletteOption[],
+  extractionFailed = false,
+  logoPath?: string,
+): Promise<void> {
+  if (!extractionFailed) await sendPalettePreview(ctx, options, logoPath);
   const summary = options.map((item, index) => `${index + 1}. ${item.role} ${item.hex.toUpperCase()}`).join("\n");
   await sendVideoInteractiveList(ctx, {
     header: "🎨 Cores do site",
@@ -5712,27 +5791,34 @@ async function prepareClientSiteIdentity(
   const layerA = await lerIdentidadeDoSite(url);
   const identity = await completeSiteIdentityWithRenderedPage(ctx.userId, layerA);
   const colors = identity.cores_detectadas.map((item) => item.hex).filter(Boolean);
-  const paletteOptions = paletteOptionsFromColors(colors);
-  const extracted = paletteOptions.filter((item) => item.role === "Principal" || item.role === "Secundária").length >= 2;
+  const candidates = paletteBrandCandidates(colors);
+  const paletteOptions = paletteOptionsFromColors(candidates);
+  const extracted = candidates.length >= 1;
   const logoPath = await uploadTemporarySiteLogo(ctx.userId, identity.logo_data_url);
   const next: PendingVideoSetupState = {
     ...setup,
-    stage: "awaiting_palette_confirmation",
+    stage: extracted ? "awaiting_palette_primary" : "awaiting_palette_confirmation",
     identidade: "client",
     site: identity.url,
     marca: identity.nome_empresa || identity.dominio || setup.marca,
     tom_de_voz: identity.tom_de_voz || setup.tom_de_voz,
     logo_path: logoPath,
     palette_options: extracted ? paletteOptions : undefined,
+    palette_candidates: extracted ? candidates : undefined,
+    palette_primary: undefined,
     cores: extracted ? paletteFromOptions(paletteOptions) : PALETA_PADRAO,
   };
   if (!await persistVideoSetup(ctx, next)) {
     if (logoPath) await sb.storage.from("tenant-logos").remove([logoPath]);
     return "Não consegui guardar a identidade encontrada. Não gerei o roteiro; tente novamente.";
   }
-  await askSitePaletteConfirmation(ctx, paletteOptions, !extracted);
+  if (extracted) {
+    await askPalettePrimary(ctx, candidates, paletteOptions, logoPath);
+  } else {
+    await askSitePaletteConfirmation(ctx, paletteOptions, true, logoPath);
+  }
   return extracted
-    ? "Encontrei as cores do site. Confirme na lista acima antes de eu usar."
+    ? "Extraí as cores da logo. Escolha a principal tocando na lista acima."
     : "Não encontrei cores confiáveis. Escolha na lista acima como continuar.";
 }
 
@@ -6030,6 +6116,92 @@ async function handlePendingVideoSetup(
     return await prepareClientSiteIdentity(ctx, setup, url);
   }
 
+  if (setup.stage === "awaiting_palette_primary") {
+    const candidates = setup.palette_candidates ?? [];
+    const selectedFromList = interactiveId?.match(/^video_palette_primary_([0-9a-f]{6})$/i)?.[1];
+    const selectedFromText = response.match(/\bprincipal\s*:?\s*(#[0-9a-f]{6})\b/i)?.[1];
+    const selected = (selectedFromList ? `#${selectedFromList}` : selectedFromText)?.toLowerCase();
+    if (selected && candidates.includes(selected)) {
+      const next = {
+        ...setup,
+        stage: "awaiting_palette_secondary" as const,
+        palette_primary: selected,
+      };
+      if (!await persistVideoSetup(ctx, next)) {
+        return "Não consegui guardar a cor principal. Não gerei o roteiro; tente novamente.";
+      }
+      await askPaletteSecondary(ctx, candidates, selected);
+      return `Principal escolhida: ${selected.toUpperCase()}. Agora escolha a secundária na lista acima.`;
+    }
+    const adjusted = adjustPaletteOptions(response, setup.palette_options ?? []);
+    if (adjusted.options) {
+      const next = {
+        ...setup,
+        stage: "awaiting_palette_confirmation" as const,
+        palette_options: adjusted.options,
+        cores: paletteFromOptions(adjusted.options),
+      };
+      if (!await persistVideoSetup(ctx, next)) {
+        return "Não consegui guardar o ajuste da paleta. Não gerei o roteiro; tente novamente.";
+      }
+      await askSitePaletteConfirmation(ctx, adjusted.options, false, setup.logo_path);
+      return "Atualizei a paleta pelo seu comando. Confira a prévia e confirme.";
+    }
+    await askPalettePrimary(ctx, candidates, setup.palette_options ?? [], setup.logo_path);
+    return adjusted.error
+      ? `${adjusted.error} Escolha a principal na lista acima.`
+      : "Não reconheci a cor principal. Toque em uma opção da lista acima.";
+  }
+
+  if (setup.stage === "awaiting_palette_secondary") {
+    const candidates = setup.palette_candidates ?? [];
+    const primary = setup.palette_primary;
+    if (!primary) {
+      await persistVideoSetup(ctx, { ...setup, stage: "awaiting_palette_primary" });
+      await askPalettePrimary(ctx, candidates, setup.palette_options ?? [], setup.logo_path);
+      return "A escolha da principal não estava registrada. Escolha novamente na lista acima.";
+    }
+    const selectedFromList = interactiveId?.match(/^video_palette_secondary_([0-9a-f]{6})$/i)?.[1];
+    const selectedFromText = response.match(/\bsecund[aá]ria\s*:?\s*(#[0-9a-f]{6})\b/i)?.[1];
+    const none = interactiveId === "video_palette_secondary_none" || /^(nenhuma|sem secund[aá]ria|s[oó] a principal)$/.test(n);
+    const secondary = (selectedFromList ? `#${selectedFromList}` : selectedFromText)?.toLowerCase();
+    if (none || (secondary && candidates.includes(secondary) && secondary !== primary)) {
+      const neutrals = (setup.palette_options ?? [])
+        .filter((item) => item.role === "Fundo" || item.role === "Texto")
+        .map((item) => item.hex);
+      const options = paletteOptionsFromColors([primary, ...(secondary ? [secondary] : []), ...neutrals]);
+      const next = {
+        ...setup,
+        stage: "awaiting_palette_confirmation" as const,
+        palette_options: options,
+        cores: paletteFromOptions(options),
+      };
+      if (!await persistVideoSetup(ctx, next)) {
+        return "Não consegui guardar a cor secundária. Não gerei o roteiro; tente novamente.";
+      }
+      await askSitePaletteConfirmation(ctx, options, false, setup.logo_path);
+      return "Paleta montada. Confira os números e códigos na prévia e confirme.";
+    }
+    const adjusted = adjustPaletteOptions(response, setup.palette_options ?? []);
+    if (adjusted.options) {
+      const next = {
+        ...setup,
+        stage: "awaiting_palette_confirmation" as const,
+        palette_options: adjusted.options,
+        cores: paletteFromOptions(adjusted.options),
+      };
+      if (!await persistVideoSetup(ctx, next)) {
+        return "Não consegui guardar o ajuste da paleta. Não gerei o roteiro; tente novamente.";
+      }
+      await askSitePaletteConfirmation(ctx, adjusted.options, false, setup.logo_path);
+      return "Atualizei a paleta pelo seu comando. Confira a prévia e confirme.";
+    }
+    await askPaletteSecondary(ctx, candidates, primary);
+    return adjusted.error
+      ? `${adjusted.error} Escolha a secundária na lista acima.`
+      : "Não reconheci a cor secundária. Toque em uma opção ou escolha Nenhuma.";
+  }
+
   if (setup.stage === "awaiting_palette_confirmation") {
     if (interactiveId === "video_palette_retry" || /informar outro site/.test(n)) {
       if (setup.logo_path) await sb.storage.from("tenant-logos").remove([setup.logo_path]);
@@ -6039,6 +6211,8 @@ async function handlePendingVideoSetup(
         site: undefined,
         cores: undefined,
         palette_options: undefined,
+        palette_candidates: undefined,
+        palette_primary: undefined,
         logo_path: undefined,
       };
       await persistVideoSetup(ctx, next);
@@ -6056,7 +6230,7 @@ async function handlePendingVideoSetup(
     }
     const adjusted = adjustPaletteOptions(response, setup.palette_options ?? []);
     if (adjusted.error) {
-      await askSitePaletteConfirmation(ctx, setup.palette_options ?? [], false);
+      await askSitePaletteConfirmation(ctx, setup.palette_options ?? [], false, setup.logo_path);
       return `${adjusted.error} Mostrei a paleta novamente acima.`;
     }
     if (adjusted.options) {
@@ -6068,10 +6242,10 @@ async function handlePendingVideoSetup(
       if (!await persistVideoSetup(ctx, next)) {
         return "Não consegui guardar o ajuste da paleta. Não gerei o roteiro; tente novamente.";
       }
-      await askSitePaletteConfirmation(ctx, adjusted.options, false);
+      await askSitePaletteConfirmation(ctx, adjusted.options, false, setup.logo_path);
       return "Atualizei a paleta e mostrei uma nova prévia. Confirme quando estiver correta.";
     }
-    await askSitePaletteConfirmation(ctx, setup.palette_options ?? [], !setup.palette_options?.length);
+    await askSitePaletteConfirmation(ctx, setup.palette_options ?? [], !setup.palette_options?.length, setup.logo_path);
     return "Não entendi o ajuste. Use o número ou os códigos das cores, ou responda *confirmar*.";
   }
 
