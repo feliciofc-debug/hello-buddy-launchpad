@@ -1657,6 +1657,7 @@ type PendingVideoSetupState = {
   trilha_id?: string | null;
   trilha_nome?: string;
   sem_trilha?: boolean;
+  track_page?: number;
   identidade?: "tenant" | "client";
   cores?: MotionProps["cores"];
   marca?: string;
@@ -5043,9 +5044,9 @@ async function persistVideoSetup(
 }
 
 function extractVideoTargetSeconds(text: string): number | undefined {
-  const match = String(text).match(/\b(\d{1,3})(?:[,.]\d+)?\s*(?:s|seg(?:undo)?s?)\b/i);
+  const match = String(text).match(/\b(\d{1,3}(?:[,.]\d+)?)\s*(?:s|seg(?:undo)?s?)\b/i);
   if (!match) return undefined;
-  const value = Number(match[1]);
+  const value = Number(match[1].replace(",", "."));
   return value >= 10 && value <= 120 ? value : undefined;
 }
 
@@ -5202,11 +5203,13 @@ async function askVideoTemplate(
 async function askVideoTrack(
   ctx: { userId: string; fromNumber: string },
   tracks: TrilhaVideoOption[],
-  more = false,
+  page = 0,
 ): Promise<void> {
-  const first = tracks.slice(0, 8);
-  const remaining = tracks.slice(8);
-  const shown = more ? remaining : first;
+  const start = page === 0 ? 0 : 8 + (page - 1) * 7;
+  const size = page === 0 ? 8 : 7;
+  const shown = tracks.slice(start, start + size);
+  const hasPrevious = page > 0;
+  const hasNext = start + size < tracks.length;
   const rows = [
     { id: "video_track_none", title: "Sem trilha", description: "Gerar o vídeo sem música" },
     ...shown.map((track) => ({
@@ -5214,17 +5217,18 @@ async function askVideoTrack(
       title: track.nome,
       description: trackMoodLabel(track.mood),
     })),
-    ...(more
+    ...(hasPrevious
       ? [{ id: "video_track_back", title: "Voltar às primeiras", description: "Mostrar a página anterior" }]
-      : remaining.length
-        ? [{ id: "video_track_more", title: "Ver outras trilhas", description: `${remaining.length} opções restantes` }]
-        : []),
+      : []),
+    ...(hasNext
+      ? [{ id: "video_track_more", title: "Ver outras trilhas", description: `${tracks.length - (start + size)} opções restantes` }]
+      : []),
   ];
   await sendVideoInteractiveList(ctx, {
     header: "🎵 Trilha sonora",
     body: "Qual trilha você quer usar? O vídeo só sairá mudo se você escolher *Sem trilha*.",
     button: "Escolher trilha",
-    section: more ? "Outras trilhas" : "Trilhas disponíveis",
+    section: page > 0 ? "Outras trilhas" : "Trilhas disponíveis",
     rows,
   });
 }
@@ -5335,6 +5339,7 @@ type VideoDraftOptions = {
   site?: string;
   tomDeVoz?: string;
   logoPath?: string;
+  semLogoTenant?: boolean;
   formato?: "reels" | "feed" | "story";
 };
 
@@ -5363,6 +5368,7 @@ async function criarRascunhoVideoMotion(
     marca: options.marca,
     tomDeVoz: options.tomDeVoz,
     logoPath: options.logoPath,
+    semLogoTenant: options.semLogoTenant,
   });
   if (options.site) roteiro.props.site = options.site.replace(/^https?:\/\//i, "").replace(/\/$/, "");
   const token = videoDraftToken();
@@ -5405,7 +5411,7 @@ async function prepareClientSiteIdentity(
     stage: "awaiting_palette_confirmation",
     identidade: "client",
     site: identity.url,
-    marca: identity.nome_empresa || setup.marca,
+    marca: identity.nome_empresa || identity.dominio || setup.marca,
     tom_de_voz: identity.tom_de_voz || setup.tom_de_voz,
     logo_path: logoPath,
     cores: extracted ? validPalette(identity.paleta) : PALETA_PADRAO,
@@ -5437,6 +5443,7 @@ async function finalizeVideoSetup(
     site: setup.identidade === "client" ? setup.site : undefined,
     tomDeVoz: setup.tom_de_voz,
     logoPath: setup.logo_path,
+    semLogoTenant: setup.identidade === "client",
     formato: setup.formato ?? "reels",
   });
   if (!await persistVideoSetup(ctx, null)) {
@@ -5458,9 +5465,9 @@ async function advanceVideoSetup(
 
   if (!setup.trilha_id && setup.sem_trilha !== true) {
     const tracks = await listVideoTracks(ctx.userId);
-    if (tracks.length === 0) return "Não há trilhas ativas disponíveis. Cadastre uma trilha ou peça explicitamente *Sem trilha*.";
     const next = { ...setup, stage: "awaiting_track" as const };
     if (!await persistVideoSetup(ctx, next)) return "Não consegui guardar o formato antes de perguntar a trilha. Tente novamente.";
+    if (tracks.length === 0) return "Não há trilhas ativas disponíveis. Responda *Sem trilha* para gerar sem som.";
     await askVideoTrack(ctx, tracks);
     return "Escolha a trilha na lista acima 👆";
   }
@@ -5576,23 +5583,24 @@ async function handlePendingVideoSetup(
   if (setup.stage === "awaiting_track" || setup.stage === "awaiting_track_more") {
     const tracks = await listVideoTracks(ctx.userId);
     if (/ver outras trilhas/.test(n)) {
-      const next = { ...setup, stage: "awaiting_track_more" as const };
+      const nextPage = (setup.track_page ?? 0) + 1;
+      const next = { ...setup, stage: "awaiting_track_more" as const, track_page: nextPage };
       await persistVideoSetup(ctx, next);
-      await askVideoTrack(ctx, tracks, true);
+      await askVideoTrack(ctx, tracks, nextPage);
       return "Mostrei as outras trilhas na lista acima 👆";
     }
     if (/voltar as primeiras|voltar às primeiras/.test(n)) {
-      const next = { ...setup, stage: "awaiting_track" as const };
+      const next = { ...setup, stage: "awaiting_track" as const, track_page: 0 };
       await persistVideoSetup(ctx, next);
-      await askVideoTrack(ctx, tracks, false);
+      await askVideoTrack(ctx, tracks, 0);
       return "Voltei para as primeiras trilhas 👆";
     }
     if (/^sem trilha$/.test(n)) {
       return await advanceVideoSetup(ctx, { ...setup, trilha_id: null, trilha_nome: undefined, sem_trilha: true });
     }
-    const selected = tracks.find((track) => normalizePt(track.nome) === n);
+    const selected = tracks.find((track) => normalizePt(track.nome.slice(0, 24)) === n);
     if (!selected) {
-      await askVideoTrack(ctx, tracks, setup.stage === "awaiting_track_more");
+      await askVideoTrack(ctx, tracks, setup.track_page ?? 0);
       return "Não reconheci a trilha. Escolha uma opção na lista acima.";
     }
     return await advanceVideoSetup(ctx, {
@@ -5669,6 +5677,11 @@ async function confirmarRascunhoVideo(ctx: { userId: string; fromNumber: string 
       .eq("user_id", ctx.userId)
       .eq("status", "aguardando_aprovacao");
     if (error) return `Não consegui descartar o roteiro: ${error.message}`;
+    const logoPath = typeof draft.props?.logo_path === "string" ? draft.props.logo_path : "";
+    if (logoPath.startsWith(`${ctx.userId}/video-site/`)) {
+      const { error: removeError } = await sb.storage.from("tenant-logos").remove([logoPath]);
+      if (removeError) console.error("[video-setup][cancel-logo-cleanup]", removeError.message);
+    }
     return "Roteiro descartado. Nenhum vídeo será renderizado.";
   }
 
@@ -7266,19 +7279,19 @@ async function callGemini(
       return { text: `Não consegui concluir a edição desta vez: ${detalhe}.` };
     }
 
-    // Vídeo Motion: as perguntas de preparação, aprovação e cancelamento são
-    // resolvidas antes da IA para o modelo não pular escolhas obrigatórias.
-    if (pendingVideoSetup) {
-      return { text: await handlePendingVideoSetup(toolCtx, pendingVideoSetup, userContent) };
-    }
-
-    // Aprovação e cancelamento do roteiro pronto também são determinísticas.
-    // impedir que o modelo apenas diga que vai renderizar sem criar o job.
+    // Aprovação/cancelamento de roteiro pronto têm prioridade até se a limpeza
+    // do setup anterior tiver falhado depois de criar o rascunho.
     if (pendingVideoDraft && isVideoCancellation(userContent)) {
       return { text: await confirmarRascunhoVideo(toolCtx, true) };
     }
     if (pendingVideoDraft && isVideoApproval(userContent)) {
       return { text: await confirmarRascunhoVideo(toolCtx) };
+    }
+
+    // As perguntas de preparação são resolvidas antes da IA para o modelo não
+    // pular formato, trilha ou identidade visual.
+    if (pendingVideoSetup) {
+      return { text: await handlePendingVideoSetup(toolCtx, pendingVideoSetup, userContent) };
     }
     if (isVideoMotionRequest(userContent)) {
       if (!remetenteEhDono) {

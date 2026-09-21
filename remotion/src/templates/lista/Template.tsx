@@ -60,7 +60,7 @@ export const framesTemplateLista = (p: TemplateListaProps) => {
 };
 
 export const ritmoLista = (p: TemplateListaProps) =>
-  p.ritmo && p.ritmo >= 60 && p.ritmo <= 200 ? Math.round(p.ritmo) : ITEM_FRAMES;
+  p.ritmo && p.ritmo >= 60 && p.ritmo <= 300 ? Math.round(p.ritmo) : ITEM_FRAMES;
 
 const Numero: React.FC<{ c: Paleta; n: number; tamanho?: number }> = ({ c, n, tamanho = 84 }) => (
   <div

@@ -120,6 +120,8 @@ export type MotionProps = {
   sem_trilha?: boolean;
   /** Duração exata pedida pelo dono; o ritmo é calculado para chegar nela. */
   duracao_alvo_segundos?: number;
+  /** Persistidas no rascunho para sobreviver à aprovação e renormalização. */
+  frases_literais?: string[];
   site?: string;
   cores: {
     bg: string;
@@ -519,7 +521,13 @@ export function normalizarProps(
 /** Duração aproximada em segundos — espelha os frames de cada template. */
 export function duracaoEstimada(props: MotionProps): number {
   const estilo = (props.estilo ?? "conversa") as EstiloMotion;
-  const ritmo = props.ritmo ?? RITMO_POR_DURACAO[(props.duracao ?? "curto") as DuracaoMotion][estilo];
+  const fallback = RITMO_POR_DURACAO[(props.duracao ?? "curto") as DuracaoMotion][estilo];
+  const minimo = estilo === "conversa" ? 40 : 60;
+  const maximo = estilo === "conversa" ? 200 : 300;
+  const solicitado = Number(props.ritmo);
+  const ritmo = Number.isFinite(solicitado) && solicitado >= minimo && solicitado <= maximo
+    ? Math.round(solicitado)
+    : fallback;
   let frames: number;
   if (estilo === "institucional") {
     const blocos = Math.max(1, (props.blocos ?? []).length);
@@ -553,9 +561,9 @@ export function aplicarDuracaoAlvo(props: MotionProps, alvo?: number | null): Mo
     quantidade = Math.max(1, (props.itens ?? []).length);
   }
 
-  // Mantém pelo menos 1,2 s por item para leitura. Nos alvos usuais
-  // (15–90 s), a conta fecha exatamente no frame mais próximo.
-  const ritmo = Math.max(36, Math.round((framesAlvo - framesFixos) / quantidade));
+  const minimo = estilo === "conversa" ? 40 : 60;
+  const maximo = estilo === "conversa" ? 200 : 300;
+  const ritmo = Math.min(maximo, Math.max(minimo, Math.round((framesAlvo - framesFixos) / quantidade)));
   return { ...props, ritmo, duracao_alvo_segundos: segundos };
 }
 
@@ -575,7 +583,12 @@ export function aplicarFrasesLiterais(props: MotionProps, frases?: string[] | nu
   const obrigatorias = (frases ?? []).map((f) => String(f).replace(/\s+/g, " ").trim()).filter((f) => f.length >= 4 && f.length <= 64);
   if (obrigatorias.length === 0) return props;
 
-  let next = { ...props, hook: { ...props.hook }, legendas: [...props.legendas] };
+  let next = {
+    ...props,
+    hook: { ...props.hook },
+    legendas: [...props.legendas],
+    frases_literais: obrigatorias,
+  };
   const primeira = obrigatorias[0];
   const linhas = dividirFraseLiteral(primeira);
   if (linhas.join(" ") === primeira) next.hook.linhas = linhas;

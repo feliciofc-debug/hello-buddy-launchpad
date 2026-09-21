@@ -68,6 +68,8 @@ export type EnfileirarInput = {
   frasesLiterais?: string[] | null;
   /** logo específica desta peça (prospecção), sempre dentro da pasta do usuário */
   logoPath?: string | null;
+  /** identidade de terceiro: nunca cair na logo cadastrada do tenant */
+  semLogoTenant?: boolean;
   /** só devolve o roteiro, não enfileira */
   apenasRoteiro?: boolean;
 };
@@ -200,12 +202,13 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
 }> {
   const { sb, userId, tema } = input;
   const duracaoAlvoSegundos = input.duracaoAlvoSegundos ?? (input.props as any)?.duracao_alvo_segundos;
+  const frasesLiterais = input.frasesLiterais ?? (input.props as any)?.frases_literais;
   // Logo desta peça: a informada (prospecção) tem prioridade, desde que esteja
   // na pasta do próprio usuário; senão, a logo cadastrada em "Minha marca".
   const logoInformada = typeof input.logoPath === "string" && input.logoPath.startsWith(`${userId}/`)
     ? input.logoPath
     : undefined;
-  const logoPath = logoInformada ?? await logoDoTenant(sb, userId);
+  const logoPath = logoInformada ?? (input.semLogoTenant ? undefined : await logoDoTenant(sb, userId));
   const trilha = await resolverTrilha(sb, userId, input);
   let props: MotionProps;
   let legendaPost = String(input.legendaPost ?? "").trim();
@@ -226,7 +229,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
         arranjo: input.arranjo ?? p?.arranjo ?? null,
         duracao: duracaoEscolhida(input),
       },
-    ), input.frasesLiterais), duracaoAlvoSegundos);
+    ), frasesLiterais), duracaoAlvoSegundos);
   } else {
     const r = await gerarRoteiroMotion(sb, userId, tema, {
       nomeFallback: input.nomeFallback ?? null,
@@ -236,7 +239,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
       arranjo: input.arranjo ?? null,
       duracao: duracaoEscolhida(input),
       duracaoAlvoSegundos,
-      frasesLiterais: input.frasesLiterais,
+      frasesLiterais,
     });
     props = aplicarDuracaoAlvo(aplicarFrasesLiterais(normalizarProps(
       { ...r.props, cores: input.cores ?? r.props.cores },
@@ -248,7 +251,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
         arranjo: r.props.arranjo ?? null,
         duracao: r.props.duracao ?? duracaoEscolhida(input),
       },
-    ), input.frasesLiterais), duracaoAlvoSegundos);
+    ), frasesLiterais), duracaoAlvoSegundos);
     usouIA = r.usouIA;
     if (!legendaPost) legendaPost = r.legendaPost;
   }
@@ -264,6 +267,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
     trilha_path: trilha?.path,
     trilha_volume: trilha?.volume ?? 0.28,
     sem_trilha: input.semTrilha === true || (input.props as any)?.sem_trilha === true,
+    frases_literais: frasesLiterais,
     trilhaUrl: undefined,
   };
   return { props, legendaPost, usouIA };

@@ -57,7 +57,7 @@ const SELO_FRAMES = 120;
 const TRANSICAO = 30;
 
 export const ritmoInstitucional = (p: TemplateInstitucionalProps) =>
-  p.ritmo && p.ritmo >= 60 && p.ritmo <= 220 ? Math.round(p.ritmo) : BLOCO_FRAMES;
+  p.ritmo && p.ritmo >= 60 && p.ritmo <= 300 ? Math.round(p.ritmo) : BLOCO_FRAMES;
 
 export const framesTemplateInstitucional = (p: TemplateInstitucionalProps) => {
   const blocos = Math.max(1, (p.blocos || []).length);
