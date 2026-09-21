@@ -5913,10 +5913,16 @@ function adjustPaletteOptions(
   const hexes = [...response.matchAll(/#[0-9a-f]{6}\b/gi)].map((match) => match[0].toLowerCase());
   if (hexes.length >= 2) {
     const extracted = extrairCoresDoTexto(response);
+    const background = /\b(fundo|background)\b/.test(normalized)
+      ? extracted?.cores.bg
+      : current.find((item) => item.role === "Fundo")?.hex;
+    const text = /\b(texto|letra|fonte)\b/.test(normalized)
+      ? extracted?.cores.texto
+      : current.find((item) => item.role === "Texto")?.hex;
     const options = paletteOptionsFromColors([
       ...hexes,
-      extracted?.cores.bg ?? "#ffffff",
-      extracted?.cores.texto ?? "#1a1a1a",
+      background ?? "#ffffff",
+      text ?? "#1a1a1a",
     ]);
     return { options };
   }
