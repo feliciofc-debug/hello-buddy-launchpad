@@ -44,12 +44,17 @@ import {
 } from "../_shared/video-motion-enfileirar.ts";
 import {
   duracaoEstimada,
+  duracaoPedidaNoTexto,
+  estiloPedidoNoTexto,
+  PALETA_PADRAO,
   ROTULO_DURACAO,
   ROTULO_ESTILO,
   type DuracaoMotion,
   type EstiloMotion,
+  type MotionProps,
 } from "../_shared/video-motion.ts";
 import { extrairCoresDoTexto } from "../_shared/video-cores.ts";
+import { lerIdentidadeDoSite } from "../_shared/site-identidade.ts";
 
 import {
   entregarEbookTenant,
@@ -1632,7 +1637,37 @@ type AgentConvState = {
   decisao?: { valor?: string; at?: string };
   last_media_interaction?: { media_id: string; at: string };
   pending_carousel?: PendingCarouselState | null;
+  pending_video_setup?: PendingVideoSetupState | null;
   [k: string]: unknown;
+};
+
+type PendingVideoSetupStage =
+  | "awaiting_template"
+  | "awaiting_track"
+  | "awaiting_track_more"
+  | "awaiting_identity"
+  | "awaiting_site_url"
+  | "awaiting_palette_confirmation";
+
+type PendingVideoSetupState = {
+  stage: PendingVideoSetupStage;
+  tema: string;
+  pedido_original: string;
+  estilo?: EstiloMotion;
+  trilha_id?: string | null;
+  trilha_nome?: string;
+  sem_trilha?: boolean;
+  identidade?: "tenant" | "client";
+  cores?: MotionProps["cores"];
+  marca?: string;
+  site?: string;
+  tom_de_voz?: string;
+  logo_path?: string;
+  formato?: "reels" | "feed" | "story";
+  duracao?: DuracaoMotion;
+  duracao_alvo_segundos?: number;
+  frases_literais?: string[];
+  created_at: string;
 };
 
 type ConversationStateIdentity = {
@@ -4949,6 +4984,289 @@ async function toolPostarMidiaBiblioteca(
 // VÍDEO MOTION PELO WHATSAPP — roteiro + aprovação persistente.
 // O agente só enfileira depois de uma confirmação explícita do responsável.
 // ============================================================
+type TrilhaVideoOption = {
+  id: string;
+  nome: string;
+  mood: string;
+  padrao_global?: boolean;
+};
+
+async function sendVideoInteractiveList(
+  ctx: { userId: string; fromNumber: string },
+  params: {
+    header: string;
+    body: string;
+    button: string;
+    section: string;
+    rows: Array<{ id: string; title: string; description?: string }>;
+  },
+): Promise<void> {
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-send-message`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${SERVICE_KEY}`,
+      "apikey": SERVICE_KEY,
+    },
+    body: JSON.stringify({
+      user_id: ctx.userId,
+      to: ctx.fromNumber,
+      interactive_list: {
+        header: params.header,
+        body: params.body,
+        footer: "O roteiro só será gerado depois das escolhas",
+        button: params.button,
+        section_title: params.section,
+        rows: params.rows,
+      },
+    }),
+    signal: AbortSignal.timeout(20000),
+  });
+  if (!response.ok) {
+    throw new Error(`seletor_video_falhou_${response.status}: ${(await response.text()).slice(0, 160)}`);
+  }
+}
+
+async function persistVideoSetup(
+  ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
+  setup: PendingVideoSetupState | null,
+): Promise<boolean> {
+  if (!ctx.convId) return false;
+  const conversation = { id: ctx.convId, userId: ctx.userId, contactNumber: ctx.fromNumber };
+  const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+  const saved = await saveAgentState(sb, conversation, { pending_video_setup: setup }, current);
+  if (saved) {
+    current.pending_video_setup = setup;
+    ctx.agentState = current;
+  }
+  return saved;
+}
+
+function extractVideoTargetSeconds(text: string): number | undefined {
+  const match = String(text).match(/\b(\d{1,3})(?:[,.]\d+)?\s*(?:s|seg(?:undo)?s?)\b/i);
+  if (!match) return undefined;
+  const value = Number(match[1]);
+  return value >= 10 && value <= 120 ? value : undefined;
+}
+
+function extractVideoLiteralPhrases(text: string): string[] {
+  const found: string[] = [];
+  for (const match of String(text).matchAll(/[“"]([^”"]{4,64})[”"]/g)) found.push(match[1].trim());
+  const gancho = String(text).match(/\b(?:gancho|frase|texto)\s+(?:literal\s+)?(?:é|e|:)\s*([^.;\n]{4,64})/i)?.[1]?.trim();
+  if (gancho) found.push(gancho.replace(/^["“]|["”]$/g, "").trim());
+  return [...new Set(found)].slice(0, 5);
+}
+
+function detectVideoOutputFormat(text: string): "reels" | "feed" | "story" {
+  const n = normalizePt(text);
+  if (/\b(stor(?:y|ies))\b/.test(n)) return "story";
+  if (/\bfeed\b/.test(n)) return "feed";
+  return "reels";
+}
+
+async function listVideoTracks(userId: string): Promise<TrilhaVideoOption[]> {
+  const { data, error } = await sb
+    .from("trilhas_sonoras")
+    .select("id, nome, mood, padrao_global, user_id")
+    .eq("ativo", true)
+    .or(`user_id.is.null,user_id.eq.${userId}`)
+    .order("user_id", { ascending: true, nullsFirst: true })
+    .order("nome", { ascending: true });
+  if (error) throw new Error(`não consegui consultar as trilhas: ${error.message}`);
+  return (data ?? []).map((row: any) => ({
+    id: String(row.id),
+    nome: String(row.nome),
+    mood: String(row.mood || "corporativo"),
+    padrao_global: row.padrao_global === true,
+  }));
+}
+
+const trackMoodLabel = (mood: string) =>
+  mood === "energetico" ? "Energética" : mood === "inspirador" ? "Inspiradora" : mood === "suave" ? "Suave" : "Corporativa";
+
+function inferTrackFromRequest(text: string, tracks: TrilhaVideoOption[]): { id?: string; nome?: string; sem?: boolean } | null {
+  const n = normalizePt(text);
+  if (/\bsem\s+(?:trilha|musica|música|som)\b/.test(n)) return { sem: true };
+  const exact = tracks.find((track) => n.includes(normalizePt(track.nome)));
+  if (exact) return { id: exact.id, nome: exact.nome };
+
+  const choose = (mood: string, preferred: RegExp) =>
+    tracks.find((track) => track.mood === mood && preferred.test(track.nome))
+      ?? tracks.find((track) => track.mood === mood);
+  let selected: TrilhaVideoOption | undefined;
+  if (/\b(trilha|musica|música)\s+(animada|energetica|energética|agitada|upbeat)\b/.test(n)) {
+    selected = choose("energetico", /upbeat|happy|startup/i);
+  } else if (/\b(trilha|musica|música)\s+(inspiradora|motivacional|future)\b/.test(n)) {
+    selected = choose("inspirador", /future|motivacional/i);
+  } else if (/\b(trilha|musica|música)\s+(corporativa|classica|clássica)\b/.test(n)) {
+    selected = tracks.find((track) => track.padrao_global)
+      ?? choose("corporativo", /cl[aá]ssico|atlas/i);
+  }
+  return selected ? { id: selected.id, nome: selected.nome } : null;
+}
+
+function extractPublicSiteUrl(text: string): string | null {
+  const match = String(text).match(/https?:\/\/[^\s<>"']+|(?:www\.)?[a-z0-9][a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s<>"']*)?/i);
+  if (!match) return null;
+  try {
+    const url = new URL(/^https?:\/\//i.test(match[0]) ? match[0] : `https://${match[0]}`);
+    const host = url.hostname.toLowerCase();
+    if (!["http:", "https:"].includes(url.protocol)) return null;
+    if (
+      host === "localhost"
+      || host.endsWith(".local")
+      || /^127\./.test(host)
+      || /^10\./.test(host)
+      || /^192\.168\./.test(host)
+      || /^169\.254\./.test(host)
+      || /^172\.(?:1[6-9]|2\d|3[01])\./.test(host)
+      || host === "::1"
+    ) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function validPalette(raw: unknown): MotionProps["cores"] {
+  const source = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+  const color = (key: keyof MotionProps["cores"]) => {
+    const value = String(source[key] ?? "");
+    return /^#[0-9a-f]{6}$/i.test(value) ? value : PALETA_PADRAO[key];
+  };
+  return {
+    bg: color("bg"),
+    bg2: color("bg2"),
+    panel: color("panel"),
+    line: color("line"),
+    destaque: color("destaque"),
+    destaqueSoft: color("destaqueSoft"),
+    texto: color("texto"),
+    suave: color("suave"),
+  };
+}
+
+async function loadTenantVideoIdentity(userId: string): Promise<{
+  cores: MotionProps["cores"];
+  marca?: string;
+  site?: string;
+  tom?: string;
+}> {
+  const { data, error } = await sb.from("empresa_config")
+    .select("nome_empresa, site, voz_copy, paleta_marca, identidade_site")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error(`não consegui carregar a identidade da empresa: ${error.message}`);
+  const identity = data?.identidade_site && typeof data.identidade_site === "object" ? data.identidade_site as any : {};
+  return {
+    cores: validPalette(data?.paleta_marca ?? identity?.paleta),
+    marca: String(data?.nome_empresa || identity?.nome_empresa || "").trim() || undefined,
+    site: String(data?.site || identity?.url || "").trim() || undefined,
+    tom: String(data?.voz_copy || identity?.tom_de_voz || "").trim() || undefined,
+  };
+}
+
+async function uploadTemporarySiteLogo(userId: string, dataUrl?: string | null): Promise<string | undefined> {
+  const match = String(dataUrl ?? "").match(/^data:(image\/(?:png|jpeg|webp|svg\+xml));base64,([\s\S]+)$/i);
+  if (!match) return undefined;
+  const mime = match[1].toLowerCase();
+  const ext = mime === "image/jpeg" ? "jpg" : mime === "image/svg+xml" ? "svg" : mime.split("/")[1];
+  const path = `${userId}/video-site/${Date.now()}-logo.${ext}`;
+  const bytes = base64Decode(match[2]);
+  if (bytes.length > 5 * 1024 * 1024) return undefined;
+  const { error } = await sb.storage.from("tenant-logos").upload(path, bytes, { contentType: mime, upsert: false });
+  if (error) {
+    console.error("[video-setup][site-logo-upload]", error.message);
+    return undefined;
+  }
+  return path;
+}
+
+async function askVideoTemplate(
+  ctx: { userId: string; fromNumber: string },
+  tema: string,
+): Promise<void> {
+  await sendVideoInteractiveList(ctx, {
+    header: "🎬 Formato visual",
+    body: `Como você quer o vídeo sobre *${tema.slice(0, 100)}*?`,
+    button: "Escolher formato",
+    section: "Templates disponíveis",
+    rows: [
+      { id: "video_template_conversa", title: "Conversa no celular", description: "Celular e balões de WhatsApp" },
+      { id: "video_template_institucional", title: "Institucional", description: "Tipografia, argumentos e selo" },
+      { id: "video_template_lista", title: "Lista / passo a passo", description: "Itens numerados em sequência" },
+    ],
+  });
+}
+
+async function askVideoTrack(
+  ctx: { userId: string; fromNumber: string },
+  tracks: TrilhaVideoOption[],
+  more = false,
+): Promise<void> {
+  const first = tracks.slice(0, 8);
+  const remaining = tracks.slice(8);
+  const shown = more ? remaining : first;
+  const rows = [
+    { id: "video_track_none", title: "Sem trilha", description: "Gerar o vídeo sem música" },
+    ...shown.map((track) => ({
+      id: `video_track_${track.id}`,
+      title: track.nome,
+      description: trackMoodLabel(track.mood),
+    })),
+    ...(more
+      ? [{ id: "video_track_back", title: "Voltar às primeiras", description: "Mostrar a página anterior" }]
+      : remaining.length
+        ? [{ id: "video_track_more", title: "Ver outras trilhas", description: `${remaining.length} opções restantes` }]
+        : []),
+  ];
+  await sendVideoInteractiveList(ctx, {
+    header: "🎵 Trilha sonora",
+    body: "Qual trilha você quer usar? O vídeo só sairá mudo se você escolher *Sem trilha*.",
+    button: "Escolher trilha",
+    section: more ? "Outras trilhas" : "Trilhas disponíveis",
+    rows,
+  });
+}
+
+async function askVideoIdentity(ctx: { userId: string; fromNumber: string }): Promise<void> {
+  await sendVideoInteractiveList(ctx, {
+    header: "🎨 Identidade visual",
+    body: "Qual marca deve aparecer neste vídeo?",
+    button: "Escolher identidade",
+    section: "Marca do vídeo",
+    rows: [
+      { id: "video_identity_tenant", title: "Minha empresa", description: "Usar paleta e logo atuais" },
+      { id: "video_identity_client", title: "Marca do meu cliente", description: "Ler cores e logo pelo site" },
+    ],
+  });
+}
+
+async function askSitePaletteConfirmation(
+  ctx: { userId: string; fromNumber: string },
+  colors: string[],
+  extractionFailed = false,
+): Promise<void> {
+  await sendVideoInteractiveList(ctx, {
+    header: "🎨 Cores do site",
+    body: extractionFailed
+      ? "Não consegui extrair cores confiáveis desse site. Como você quer seguir?"
+      : `Encontrei estas cores no site: *${colors.slice(0, 4).join(", ")}*. Uso essas?`,
+    button: "Confirmar cores",
+    section: "Identidade do cliente",
+    rows: extractionFailed
+      ? [
+        { id: "video_palette_default", title: "Usar paleta padrão", description: "Continuar para o roteiro" },
+        { id: "video_palette_retry", title: "Informar outro site", description: "Tentar uma URL diferente" },
+      ]
+      : [
+        { id: "video_palette_use", title: "Usar estas cores", description: "Continuar para o roteiro" },
+        { id: "video_palette_default", title: "Usar paleta padrão", description: "Ignorar as cores encontradas" },
+        { id: "video_palette_retry", title: "Informar outro site", description: "Tentar uma URL diferente" },
+      ],
+  });
+}
+
 function normalizeVideoTopic(text: string): string {
   return compactSpaces(text)
     .replace(/^jarvis[,.!\s-]*/i, "")
@@ -5004,27 +5322,49 @@ function formatVideoDraft(props: any, tema: string, duracao: number, paleta?: st
   return `🎬 *Roteiro do vídeo — ${tema}*\n\n*Gancho:* ${linhas || "(não informado)"}\n\n${corpo}${cta}${cores}\n\nDuração estimada: ${duracao}s.\n\nResponda *APROVADO* para eu renderizar o MP4 (leva cerca de ${minutos} minutos), ou me diga o que ajustar.`;
 }
 
+type VideoDraftOptions = {
+  textoCores?: string;
+  estilo?: string | null;
+  duracao?: string | null;
+  duracaoAlvoSegundos?: number;
+  frasesLiterais?: string[];
+  trilhaId?: string | null;
+  semTrilha?: boolean;
+  cores?: MotionProps["cores"];
+  marca?: string;
+  site?: string;
+  tomDeVoz?: string;
+  logoPath?: string;
+  formato?: "reels" | "feed" | "story";
+};
+
 async function criarRascunhoVideoMotion(
   ctx: { userId: string; fromNumber: string },
   tema: string,
-  textoCores?: string,
-  estilo?: string | null,
-  duracao?: string | null,
+  options: VideoDraftOptions = {},
 ): Promise<string> {
   if (!isOwner(ctx)) return "Esse recurso é exclusivo do responsável da conta. Posso encaminhar o pedido para ele.";
   // Prospecção: quando o pedido menciona cores (hex ou nome), o vídeo sai na
   // identidade visual do cliente-alvo; sem menção, segue a paleta do tenant.
-  const pedidas = extrairCoresDoTexto(`${textoCores ?? ""} ${tema}`);
+  const pedidas = options.cores ? null : extrairCoresDoTexto(`${options.textoCores ?? ""} ${tema}`);
   const roteiro = await montarRoteiroMotion({
     sb,
     userId: ctx.userId,
     tema,
     origem: "whatsapp",
     nomeFallback: null,
-    cores: pedidas?.cores ?? null,
-    estilo: estilo ?? null,
-    duracao: duracao ?? null,
+    cores: options.cores ?? pedidas?.cores ?? null,
+    estilo: options.estilo ?? null,
+    duracao: options.duracao ?? null,
+    duracaoAlvoSegundos: options.duracaoAlvoSegundos,
+    frasesLiterais: options.frasesLiterais,
+    trilhaId: options.trilhaId,
+    semTrilha: options.semTrilha,
+    marca: options.marca,
+    tomDeVoz: options.tomDeVoz,
+    logoPath: options.logoPath,
   });
+  if (options.site) roteiro.props.site = options.site.replace(/^https?:\/\//i, "").replace(/\/$/, "");
   const token = videoDraftToken();
   const { error } = await sb.from("video_motion_rascunhos").insert({
     user_id: ctx.userId,
@@ -5033,18 +5373,273 @@ async function criarRascunhoVideoMotion(
     tema,
     props: roteiro.props,
     legenda_post: roteiro.legendaPost || null,
-    formato: "reels",
+    formato: options.formato ?? "reels",
     status: "aguardando_aprovacao",
   });
   if (error) throw new Error(`não consegui salvar o roteiro: ${error.message}`);
-  const paleta = pedidas
+  const paleta = options.cores
+    ? `fundo ${roteiro.props?.cores?.bg}, destaque ${roteiro.props?.cores?.destaque} (identidade escolhida)`
+    : pedidas
     ? `${pedidas.resumo} (cores que você pediu)`
     : `fundo ${roteiro.props?.cores?.bg}, destaque ${roteiro.props?.cores?.destaque} (padrão da sua marca)`;
   const rotuloEstilo = ROTULO_ESTILO[(roteiro.props?.estilo ?? "conversa") as EstiloMotion] ?? "Conversa no celular";
   const segundos = roteiro.props ? duracaoEstimada(roteiro.props) : 0;
-  const rotuloDuracao = ROTULO_DURACAO[(roteiro.props?.duracao ?? "curto") as DuracaoMotion] ?? "Curto (~25s)";
+  const rotuloDuracao = options.duracaoAlvoSegundos
+    ? `${options.duracaoAlvoSegundos}s (solicitada)`
+    : ROTULO_DURACAO[(roteiro.props?.duracao ?? "curto") as DuracaoMotion] ?? "Curto (~25s)";
   const minutos = minutosRenderEstimado(segundos);
   return `${formatVideoDraft(roteiro.props, tema, segundos, paleta)}\n\nFormato: *${rotuloEstilo}*\nDuração: *${rotuloDuracao}* — render em cerca de ${minutos} min\n\nCódigo de aprovação: *${token}*`;
+}
+
+async function prepareClientSiteIdentity(
+  ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
+  setup: PendingVideoSetupState,
+  url: string,
+): Promise<string> {
+  const identity = await lerIdentidadeDoSite(url);
+  const colors = identity.cores_detectadas.map((item) => item.hex).filter(Boolean);
+  const extracted = colors.length >= 2;
+  const logoPath = await uploadTemporarySiteLogo(ctx.userId, identity.logo_data_url);
+  const next: PendingVideoSetupState = {
+    ...setup,
+    stage: "awaiting_palette_confirmation",
+    identidade: "client",
+    site: identity.url,
+    marca: identity.nome_empresa || setup.marca,
+    tom_de_voz: identity.tom_de_voz || setup.tom_de_voz,
+    logo_path: logoPath,
+    cores: extracted ? validPalette(identity.paleta) : PALETA_PADRAO,
+  };
+  if (!await persistVideoSetup(ctx, next)) {
+    if (logoPath) await sb.storage.from("tenant-logos").remove([logoPath]);
+    return "Não consegui guardar a identidade encontrada. Não gerei o roteiro; tente novamente.";
+  }
+  await askSitePaletteConfirmation(ctx, colors, !extracted);
+  return extracted
+    ? "Encontrei as cores do site. Confirme na lista acima antes de eu usar."
+    : "Não encontrei cores confiáveis. Escolha na lista acima como continuar.";
+}
+
+async function finalizeVideoSetup(
+  ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
+  setup: PendingVideoSetupState,
+): Promise<string> {
+  const result = await criarRascunhoVideoMotion(ctx, setup.tema, {
+    textoCores: setup.pedido_original,
+    estilo: setup.estilo,
+    duracao: setup.duracao,
+    duracaoAlvoSegundos: setup.duracao_alvo_segundos,
+    frasesLiterais: setup.frases_literais,
+    trilhaId: setup.trilha_id,
+    semTrilha: setup.sem_trilha === true,
+    cores: setup.cores,
+    marca: setup.identidade === "client" ? setup.marca : undefined,
+    site: setup.identidade === "client" ? setup.site : undefined,
+    tomDeVoz: setup.tom_de_voz,
+    logoPath: setup.logo_path,
+    formato: setup.formato ?? "reels",
+  });
+  if (!await persistVideoSetup(ctx, null)) {
+    console.error("[video-setup] roteiro criado, mas estado pendente não foi limpo");
+  }
+  return result;
+}
+
+async function advanceVideoSetup(
+  ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
+  setup: PendingVideoSetupState,
+): Promise<string> {
+  if (!setup.estilo) {
+    const next = { ...setup, stage: "awaiting_template" as const };
+    if (!await persistVideoSetup(ctx, next)) return "Não consegui guardar o pedido antes de perguntar o formato. Tente novamente.";
+    await askVideoTemplate(ctx, setup.tema);
+    return "Escolha o formato visual na lista acima 👆";
+  }
+
+  if (!setup.trilha_id && setup.sem_trilha !== true) {
+    const tracks = await listVideoTracks(ctx.userId);
+    if (tracks.length === 0) return "Não há trilhas ativas disponíveis. Cadastre uma trilha ou peça explicitamente *Sem trilha*.";
+    const next = { ...setup, stage: "awaiting_track" as const };
+    if (!await persistVideoSetup(ctx, next)) return "Não consegui guardar o formato antes de perguntar a trilha. Tente novamente.";
+    await askVideoTrack(ctx, tracks);
+    return "Escolha a trilha na lista acima 👆";
+  }
+
+  if (!setup.identidade) {
+    const next = { ...setup, stage: "awaiting_identity" as const };
+    if (!await persistVideoSetup(ctx, next)) return "Não consegui guardar a trilha antes de perguntar a identidade. Tente novamente.";
+    await askVideoIdentity(ctx);
+    return "Escolha a identidade visual na lista acima 👆";
+  }
+
+  if (setup.identidade === "tenant") {
+    const identity = await loadTenantVideoIdentity(ctx.userId);
+    return await finalizeVideoSetup(ctx, {
+      ...setup,
+      cores: identity.cores,
+      marca: identity.marca,
+      site: identity.site,
+      tom_de_voz: identity.tom,
+    });
+  }
+
+  if (!setup.site) {
+    const next = { ...setup, stage: "awaiting_site_url" as const };
+    if (!await persistVideoSetup(ctx, next)) return "Não consegui guardar a escolha da marca do cliente. Tente novamente.";
+    return "Qual é a URL do site do cliente? Envie o endereço completo, por exemplo: https://empresa.com.br";
+  }
+
+  if (!setup.cores || setup.stage !== "awaiting_palette_confirmation") {
+    return await prepareClientSiteIdentity(ctx, setup, setup.site);
+  }
+
+  return "Confirme as cores do site na lista acima para eu gerar o roteiro.";
+}
+
+async function startVideoSetup(
+  ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
+  originalRequest: string,
+  explicit?: { tema?: string; estilo?: string | null; duracao?: string | null; cores?: string },
+): Promise<string> {
+  if (!ctx.convId) return "Não consegui identificar esta conversa para guardar as escolhas do vídeo. Tente novamente.";
+  const full = compactSpaces(originalRequest);
+  const tema = normalizeVideoTopic(explicit?.tema || full);
+  if (tema.length < 4) return "Qual é o tema do vídeo? Ex.: mostrar como a plataforma agenda e publica posts.";
+
+  const tracks = await listVideoTracks(ctx.userId);
+  const inferredTrack = inferTrackFromRequest(full, tracks);
+  const explicitStyle = typeof explicit?.estilo === "string" && ["conversa", "institucional", "lista"].includes(explicit.estilo)
+    ? explicit.estilo as EstiloMotion
+    : null;
+  const site = extractPublicSiteUrl(full);
+  const n = normalizePt(full);
+  const identity = /\b(minha marca|minha empresa|nossa marca|nossa empresa)\b/.test(n)
+    ? "tenant"
+    : site || /\b(marca|empresa)\s+(?:do|da)\s+(?:meu|minha)\s+cliente\b/.test(n)
+      ? "client"
+      : undefined;
+  const textColors = extrairCoresDoTexto(`${explicit?.cores ?? ""} ${full}`);
+  const setup: PendingVideoSetupState = {
+    stage: "awaiting_template",
+    tema,
+    pedido_original: full,
+    estilo: explicitStyle ?? estiloPedidoNoTexto(full) ?? undefined,
+    trilha_id: inferredTrack?.id,
+    trilha_nome: inferredTrack?.nome,
+    sem_trilha: inferredTrack?.sem === true,
+    identidade: identity,
+    site: identity === "client" ? site ?? undefined : undefined,
+    cores: textColors?.cores,
+    formato: detectVideoOutputFormat(full),
+    duracao: typeof explicit?.duracao === "string" && ["curto", "medio", "longo"].includes(explicit.duracao)
+      ? explicit.duracao as DuracaoMotion
+      : duracaoPedidaNoTexto(full) ?? undefined,
+    duracao_alvo_segundos: extractVideoTargetSeconds(full),
+    frases_literais: extractVideoLiteralPhrases(full),
+    created_at: new Date().toISOString(),
+  };
+  return await advanceVideoSetup(ctx, setup);
+}
+
+async function handlePendingVideoSetup(
+  ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
+  setup: PendingVideoSetupState,
+  response: string,
+): Promise<string> {
+  const age = Date.now() - new Date(setup.created_at).getTime();
+  if (!Number.isFinite(age) || age > 2 * 60 * 60 * 1000) {
+    await persistVideoSetup(ctx, null);
+    return "As escolhas desse vídeo expiraram. Peça o vídeo novamente para recomeçar.";
+  }
+  if (isVideoCancellation(response)) {
+    if (setup.logo_path) await sb.storage.from("tenant-logos").remove([setup.logo_path]);
+    await persistVideoSetup(ctx, null);
+    return "Pedido de vídeo cancelado. Não gerei roteiro nem renderizei nada.";
+  }
+
+  const n = normalizePt(response);
+  if (setup.stage === "awaiting_template") {
+    const estilo = /institucional/.test(n)
+      ? "institucional"
+      : /\blista\b|passo a passo/.test(n)
+        ? "lista"
+        : /conversa|celular|whatsapp/.test(n)
+          ? "conversa"
+          : null;
+    if (!estilo) {
+      await askVideoTemplate(ctx, setup.tema);
+      return "Não reconheci o formato. Escolha uma opção na lista acima.";
+    }
+    return await advanceVideoSetup(ctx, { ...setup, estilo });
+  }
+
+  if (setup.stage === "awaiting_track" || setup.stage === "awaiting_track_more") {
+    const tracks = await listVideoTracks(ctx.userId);
+    if (/ver outras trilhas/.test(n)) {
+      const next = { ...setup, stage: "awaiting_track_more" as const };
+      await persistVideoSetup(ctx, next);
+      await askVideoTrack(ctx, tracks, true);
+      return "Mostrei as outras trilhas na lista acima 👆";
+    }
+    if (/voltar as primeiras|voltar às primeiras/.test(n)) {
+      const next = { ...setup, stage: "awaiting_track" as const };
+      await persistVideoSetup(ctx, next);
+      await askVideoTrack(ctx, tracks, false);
+      return "Voltei para as primeiras trilhas 👆";
+    }
+    if (/^sem trilha$/.test(n)) {
+      return await advanceVideoSetup(ctx, { ...setup, trilha_id: null, trilha_nome: undefined, sem_trilha: true });
+    }
+    const selected = tracks.find((track) => normalizePt(track.nome) === n);
+    if (!selected) {
+      await askVideoTrack(ctx, tracks, setup.stage === "awaiting_track_more");
+      return "Não reconheci a trilha. Escolha uma opção na lista acima.";
+    }
+    return await advanceVideoSetup(ctx, {
+      ...setup,
+      trilha_id: selected.id,
+      trilha_nome: selected.nome,
+      sem_trilha: false,
+    });
+  }
+
+  if (setup.stage === "awaiting_identity") {
+    if (/minha empresa/.test(n)) return await advanceVideoSetup(ctx, { ...setup, identidade: "tenant" });
+    if (/marca do meu cliente/.test(n)) return await advanceVideoSetup(ctx, { ...setup, identidade: "client" });
+    await askVideoIdentity(ctx);
+    return "Não reconheci a identidade. Escolha uma opção na lista acima.";
+  }
+
+  if (setup.stage === "awaiting_site_url") {
+    const url = extractPublicSiteUrl(response);
+    if (!url) return "Não reconheci uma URL pública válida. Envie algo como https://empresa.com.br";
+    return await prepareClientSiteIdentity(ctx, setup, url);
+  }
+
+  if (setup.stage === "awaiting_palette_confirmation") {
+    if (/informar outro site/.test(n)) {
+      if (setup.logo_path) await sb.storage.from("tenant-logos").remove([setup.logo_path]);
+      const next = {
+        ...setup,
+        stage: "awaiting_site_url" as const,
+        site: undefined,
+        cores: undefined,
+        logo_path: undefined,
+      };
+      await persistVideoSetup(ctx, next);
+      return "Envie a nova URL do site do cliente.";
+    }
+    if (/usar paleta padrao|usar paleta padrão/.test(n)) {
+      return await finalizeVideoSetup(ctx, { ...setup, cores: PALETA_PADRAO });
+    }
+    if (/usar estas cores|usar cores encontradas/.test(n)) {
+      return await finalizeVideoSetup(ctx, setup);
+    }
+    await askSitePaletteConfirmation(ctx, Object.values(setup.cores ?? {}).slice(0, 4));
+    return "Confirme as cores na lista acima.";
+  }
+
+  return "Não consegui retomar as escolhas do vídeo. Cancele e peça novamente.";
 }
 
 async function buscarRascunhoVideo(ctx: { userId: string; fromNumber: string }): Promise<any | null> {
@@ -5588,7 +6183,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "criar_video_animado",
-      description: "🎬 Cria um roteiro de vídeo Motion white-label sobre o tema pedido pelo RESPONSÁVEL. Use quando ele pedir para criar, gerar, montar ou fazer um vídeo animado/institucional/publicitário. Primeiro gera e envia o roteiro para aprovação; NUNCA renderiza sem aprovação explícita. Não use para clientes. Por padrão usa a marca, cores, logo e contexto do próprio tenant — MAS se o pedido mencionar cores (hex como #E30613 ou nomes como 'vermelho e branco', 'nas cores do cliente'), copie ESSE trecho literalmente em 'cores' para o vídeo sair na identidade visual do cliente prospectado.",
+      description: "🎬 Inicia a criação de vídeo Motion para o RESPONSÁVEL. O sistema pergunta por listas interativas, uma de cada vez, o template visual, a trilha e a identidade que ainda não estiverem explícitos no pedido; só então gera o roteiro para aprovação. NUNCA pule essas perguntas, NUNCA renderize sem APROVADO e não use para clientes. Preserve literalmente frases ditadas pelo responsável e qualquer duração exata em segundos.",
       parameters: {
         type: "object",
         properties: {
@@ -6533,12 +7128,15 @@ async function runTool(
   }
   if (name === "criar_video_animado") {
     return {
-      result: await criarRascunhoVideoMotion(
+      result: await startVideoSetup(
         ctx,
-        normalizeVideoTopic(args?.tema ?? ""),
-        String(args?.cores ?? ""),
-        typeof args?.estilo === "string" ? args.estilo : null,
-        typeof args?.duracao === "string" ? args.duracao : null,
+        [args?.tema, args?.cores, args?.duracao, args?.estilo].filter(Boolean).join(" "),
+        {
+          tema: String(args?.tema ?? ""),
+          cores: String(args?.cores ?? ""),
+          estilo: typeof args?.estilo === "string" ? args.estilo : null,
+          duracao: typeof args?.duracao === "string" ? args.duracao : null,
+        },
       ),
     };
   }
@@ -6628,6 +7226,7 @@ async function callGemini(
   if (!hasMedia && typeof userContent === "string") {
     const remetenteEhDono = isOwner(toolCtx);
     const pendingCarousel = remetenteEhDono ? toolCtx.agentState?.pending_carousel : null;
+    const pendingVideoSetup = remetenteEhDono ? toolCtx.agentState?.pending_video_setup : null;
     const latestPendingSocialToken = pendingCarousel?.stage === "awaiting_confirmation" && pendingCarousel.token
       ? pendingCarousel.token
       : remetenteEhDono ? await findLatestPendingSocialToken(toolCtx.userId) : null;
@@ -6667,7 +7266,13 @@ async function callGemini(
       return { text: `Não consegui concluir a edição desta vez: ${detalhe}.` };
     }
 
-    // Vídeo Motion: aprovação e cancelamento são resolvidos antes da IA para
+    // Vídeo Motion: as perguntas de preparação, aprovação e cancelamento são
+    // resolvidas antes da IA para o modelo não pular escolhas obrigatórias.
+    if (pendingVideoSetup) {
+      return { text: await handlePendingVideoSetup(toolCtx, pendingVideoSetup, userContent) };
+    }
+
+    // Aprovação e cancelamento do roteiro pronto também são determinísticas.
     // impedir que o modelo apenas diga que vai renderizar sem criar o job.
     if (pendingVideoDraft && isVideoCancellation(userContent)) {
       return { text: await confirmarRascunhoVideo(toolCtx, true) };
@@ -6676,15 +7281,10 @@ async function callGemini(
       return { text: await confirmarRascunhoVideo(toolCtx) };
     }
     if (isVideoMotionRequest(userContent)) {
-      const tema = normalizeVideoTopic(userContent);
       if (!remetenteEhDono) {
         return { text: "A criação de vídeo é restrita ao responsável da conta. Posso encaminhar seu pedido para ele, se quiser." };
       }
-      if (tema.length < 4) {
-        return { text: "Qual é o tema do vídeo? Ex.: mostrar como a plataforma agenda e publica posts." };
-      }
-      // O texto inteiro vai junto: é dele que saem as cores pedidas (hex ou nome).
-      return { text: await criarRascunhoVideoMotion(toolCtx, tema, userContent) };
+      return { text: await startVideoSetup(toolCtx, userContent) };
     }
 
     // Fluxo A/B/C: resolve seleção e confirmação direto no código, sem depender da IA.

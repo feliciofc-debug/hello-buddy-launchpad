@@ -116,6 +116,10 @@ export type MotionProps = {
   trilha_path?: string;
   trilhaUrl?: string;
   trilha_volume?: number;
+  /** Só fica true quando o dono escolheu explicitamente "Sem trilha". */
+  sem_trilha?: boolean;
+  /** Duração exata pedida pelo dono; o ritmo é calculado para chegar nela. */
+  duracao_alvo_segundos?: number;
   site?: string;
   cores: {
     bg: string;
@@ -530,6 +534,59 @@ export function duracaoEstimada(props: MotionProps): number {
   return Math.round((frames / 30) * 10) / 10;
 }
 
+/** Ajusta os frames do template para a duração explícita sem trocar o conteúdo. */
+export function aplicarDuracaoAlvo(props: MotionProps, alvo?: number | null): MotionProps {
+  const segundos = Number(alvo);
+  if (!Number.isFinite(segundos) || segundos < 10 || segundos > 120) return props;
+
+  const estilo = (props.estilo ?? "conversa") as EstiloMotion;
+  const framesAlvo = Math.round(segundos * 30);
+  let quantidade = 1;
+  let framesFixos = 280;
+  if (estilo === "conversa") {
+    quantidade = Math.max(1, props.chat.mensagens.length);
+    framesFixos = 455;
+  } else if (estilo === "institucional") {
+    quantidade = Math.max(1, (props.blocos ?? []).length);
+    framesFixos = props.selo?.valor ? 370 : 280;
+  } else {
+    quantidade = Math.max(1, (props.itens ?? []).length);
+  }
+
+  // Mantém pelo menos 1,2 s por item para leitura. Nos alvos usuais
+  // (15–90 s), a conta fecha exatamente no frame mais próximo.
+  const ritmo = Math.max(36, Math.round((framesAlvo - framesFixos) / quantidade));
+  return { ...props, ritmo, duracao_alvo_segundos: segundos };
+}
+
+const dividirFraseLiteral = (frase: string, max = 22): string[] => {
+  const palavras = frase.trim().split(/\s+/).filter(Boolean);
+  const linhas: string[] = [];
+  for (const palavra of palavras) {
+    const atual = linhas[linhas.length - 1] ?? "";
+    if (!atual || `${atual} ${palavra}`.length > max) linhas.push(palavra);
+    else linhas[linhas.length - 1] = `${atual} ${palavra}`;
+  }
+  return linhas.slice(0, 3);
+};
+
+/** Frases ditadas pelo dono não podem ser parafraseadas pela IA. */
+export function aplicarFrasesLiterais(props: MotionProps, frases?: string[] | null): MotionProps {
+  const obrigatorias = (frases ?? []).map((f) => String(f).replace(/\s+/g, " ").trim()).filter((f) => f.length >= 4 && f.length <= 64);
+  if (obrigatorias.length === 0) return props;
+
+  let next = { ...props, hook: { ...props.hook }, legendas: [...props.legendas] };
+  const primeira = obrigatorias[0];
+  const linhas = dividirFraseLiteral(primeira);
+  if (linhas.join(" ") === primeira) next.hook.linhas = linhas;
+
+  const serializado = () => JSON.stringify(next);
+  for (const frase of obrigatorias) {
+    if (!serializado().includes(frase)) next.legendas.push(frase);
+  }
+  return next;
+}
+
 /** Rótulo do estilo para mensagens ao usuário. */
 export const ROTULO_ESTILO: Record<EstiloMotion, string> = {
   conversa: "Conversa no celular",
@@ -554,6 +611,10 @@ export async function gerarRoteiroMotion(
     arranjo?: number | null;
     /** duração pedida; null = curto (padrão para redes) */
     duracao?: DuracaoMotion | null;
+    /** duração exata em segundos, quando foi dita pelo dono */
+    duracaoAlvoSegundos?: number | null;
+    /** textos fornecidos explicitamente e que não podem ser reescritos */
+    frasesLiterais?: string[] | null;
   },
 ): Promise<{ props: MotionProps; legendaPost: string; usouIA: boolean; nomes: string[] }> {
   const ctx = await getTenantBusinessContext(sb, userId, { nomeFallback: opts?.nomeFallback });
@@ -598,7 +659,10 @@ export async function gerarRoteiroMotion(
   const estiloForcado = base.estilo;
   const dur = base.duracao;
   const vol = VOLUME_POR_DURACAO[dur];
-  const segundos = dur === "curto" ? "20-25s" : dur === "medio" ? "40-50s" : "70-90s";
+  const segundos = opts?.duracaoAlvoSegundos
+    ? `${opts.duracaoAlvoSegundos}s (alvo exato, tolerância máxima de 1s)`
+    : dur === "curto" ? "20-25s" : dur === "medio" ? "40-50s" : "70-90s";
+  const frasesObrigatorias = (opts?.frasesLiterais ?? []).filter(Boolean);
 
 
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
@@ -606,6 +670,7 @@ export async function gerarRoteiroMotion(
 NEGÓCIO: ${nome}${ctx.segmento ? ` — ${ctx.segmento}` : ""}
 ${terceiro ? "" : `${ctx.sobre ? `SOBRE: ${ctx.sobre}\n` : ""}${ctx.diferenciais ? `DIFERENCIAIS: ${ctx.diferenciais}\n` : ""}${ctx.publicoAlvo ? `PÚBLICO: ${ctx.publicoAlvo}\n` : ""}${ctx.produtos.length ? `PRODUTOS: ${ctx.produtos.slice(0, 6).join("; ")}\n` : ""}`}TEMA PEDIDO: ${tema}
 ${tom ? `TOM DE VOZ DA MARCA (obrigatório seguir): ${tom}\n` : ""}
+${frasesObrigatorias.length ? `TEXTOS LITERAIS OBRIGATÓRIOS: ${frasesObrigatorias.map((f) => JSON.stringify(f)).join(", ")}. Copie letra por letra, sem trocar, resumir ou parafrasear. Se for gancho, apenas divida entre as linhas sem alterar nenhuma palavra.\n` : ""}
 ATENÇÃO: o nome do negócio e as marcas citadas devem ser escritos EXATAMENTE assim, letra por letra: ${nomes.join(", ") || nome}. Nunca abrevie, traduza ou altere a grafia.
 Escreva o nome da marca por extenso sempre que citá-lo. NUNCA deixe lacuna, espaço em branco, placeholder, chave {{ }} ou colchete no lugar de um nome.
 ${terceiro ? "Este vídeo é para a marca acima, não para quem está pedindo: não cite nome de pessoa, telefone, consultor ou outra empresa.\n" : ""}
@@ -660,7 +725,10 @@ Português correto: o verbo é "publicado" ("o conteúdo foi criado, aprovado e 
         const txt = j?.choices?.[0]?.message?.content ?? "";
         const bruto = JSON.parse(txt.replace(/^```json|```$/g, "").trim());
         return {
-          props: normalizarProps(bruto, base),
+          props: aplicarDuracaoAlvo(
+            aplicarFrasesLiterais(normalizarProps(bruto, base), frasesObrigatorias),
+            opts?.duracaoAlvoSegundos,
+          ),
           legendaPost: corrigirTexto(limparBruto(bruto?.legenda_post, 1200), nomes),
           usouIA: true,
           nomes,
@@ -672,7 +740,7 @@ Português correto: o verbo é "publicado" ("o conteúdo foi criado, aprovado e 
   }
 
   // Fallback determinístico — ainda personalizado com o nome do negócio.
-  const props = normalizarProps(
+  const props = aplicarDuracaoAlvo(aplicarFrasesLiterais(normalizarProps(
     {
       hook: {
         kicker: nome.slice(0, 24),
@@ -694,7 +762,7 @@ Português correto: o verbo é "publicado" ("o conteúdo foi criado, aprovado e 
       legendas: [cortarFrase(tema, 60), "Atendimento pelo WhatsApp.", "Simples e rápido."],
     },
     base,
-  );
+  ), frasesObrigatorias), opts?.duracaoAlvoSegundos);
 
   return {
     props,
