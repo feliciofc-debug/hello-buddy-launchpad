@@ -685,8 +685,10 @@ export function mesclarCamadaB(
       ? a.segmento_sugerido
       : (segmentoDe(textoBase) !== "outros" ? segmentoDe(textoBase) : (ia.segmento || "outros")),
     fontes: [...new Set([...(b.fontes ?? []), ...a.fontes])].slice(0, 4),
-    logo_url: a.logo_url ?? b.logo_url ?? null,
-    logo_data_url: a.logo_data_url ?? b.logo_data_url ?? null,
+    // O navegador enxerga a logo realmente renderizada; ela tem prioridade
+    // sobre favicon/og:image encontrados no HTML bruto.
+    logo_url: b.logo_url ?? a.logo_url ?? null,
+    logo_data_url: b.logo_data_url ?? a.logo_data_url ?? null,
     cores_detectadas: principais,
     paleta: montarPaleta(principais),
     texto_base: textoBase,
