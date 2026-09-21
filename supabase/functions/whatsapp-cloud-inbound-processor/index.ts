@@ -1701,8 +1701,34 @@ async function saveAgentState(
     if (verifyError) throw verifyError;
     const saved = (verified?.agent_state ?? {}) as AgentConvState;
     for (const key of Object.keys(patch)) {
-      if (JSON.stringify(saved[key]) !== JSON.stringify(patch[key])) {
+      if (!Object.prototype.hasOwnProperty.call(saved, key)) {
         throw new Error(`state_key_not_persisted:${key}`);
+      }
+
+      const expected = patch[key];
+      const actual = saved[key];
+      const discriminators = ["token", "created_at", "at", "protocolo", "media_id"]
+        .filter((field) =>
+          expected !== null
+          && typeof expected === "object"
+          && Object.prototype.hasOwnProperty.call(expected, field)
+        );
+      const mismatches = discriminators.filter((field) =>
+        (actual as Record<string, unknown> | null)?.[field] !== (expected as Record<string, unknown>)[field]
+      );
+      const primitiveMismatch =
+        (expected === null || typeof expected !== "object")
+        && !Object.is(actual, expected);
+      if (mismatches.length > 0 || primitiveMismatch) {
+        console.warn("[processor][agent_state][verify_normalized]", {
+          convId: conversation.id,
+          userId: conversation.userId,
+          contactNumber: conversation.contactNumber,
+          key,
+          discriminators: mismatches,
+          expected,
+          actual,
+        });
       }
     }
     return true;
