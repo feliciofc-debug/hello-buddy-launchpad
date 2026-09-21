@@ -1635,6 +1635,12 @@ type AgentConvState = {
   [k: string]: unknown;
 };
 
+type ConversationStateIdentity = {
+  id: string;
+  userId: string;
+  contactNumber: string;
+};
+
 const LEAD_NOTIFICATION_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
 function isSubstantiveLeadMessage(raw: string): boolean {
@@ -1645,12 +1651,14 @@ function isSubstantiveLeadMessage(raw: string): boolean {
   return low.length >= 8;
 }
 
-async function loadAgentState(sb: any, convId: string): Promise<AgentConvState> {
+async function loadAgentState(sb: any, conversation: ConversationStateIdentity): Promise<AgentConvState> {
   try {
     const { data, error } = await sb
       .from("whatsapp_cloud_conversations")
       .select("agent_state")
-      .eq("id", convId)
+      .eq("id", conversation.id)
+      .eq("user_id", conversation.userId)
+      .eq("contact_number", conversation.contactNumber)
       .maybeSingle();
     if (error) throw error;
     if (!data) throw new Error("conversation_not_found");
@@ -1658,26 +1666,37 @@ async function loadAgentState(sb: any, convId: string): Promise<AgentConvState> 
     return st && typeof st === "object" ? st : {};
   } catch (e) {
     console.error("[processor][agent_state][load_failed]", {
-      convId,
+      convId: conversation.id,
+      userId: conversation.userId,
+      contactNumber: conversation.contactNumber,
       error: (e as Error).message,
     });
     return {};
   }
 }
 
-async function saveAgentState(sb: any, convId: string, patch: AgentConvState, current: AgentConvState = {}): Promise<boolean> {
+async function saveAgentState(
+  sb: any,
+  conversation: ConversationStateIdentity,
+  patch: AgentConvState,
+  current: AgentConvState = {},
+): Promise<boolean> {
   try {
     const nextState = { ...current, ...patch };
     const { error } = await sb
       .from("whatsapp_cloud_conversations")
       .update({ agent_state: nextState })
-      .eq("id", convId);
+      .eq("id", conversation.id)
+      .eq("user_id", conversation.userId)
+      .eq("contact_number", conversation.contactNumber);
     if (error) throw error;
 
     const { data: verified, error: verifyError } = await sb
       .from("whatsapp_cloud_conversations")
       .select("agent_state")
-      .eq("id", convId)
+      .eq("id", conversation.id)
+      .eq("user_id", conversation.userId)
+      .eq("contact_number", conversation.contactNumber)
       .maybeSingle();
     if (verifyError) throw verifyError;
     const saved = (verified?.agent_state ?? {}) as AgentConvState;
@@ -1689,7 +1708,9 @@ async function saveAgentState(sb: any, convId: string, patch: AgentConvState, cu
     return true;
   } catch (e) {
     console.error("[processor][agent_state][save_failed]", {
-      convId,
+      convId: conversation.id,
+      userId: conversation.userId,
+      contactNumber: conversation.contactNumber,
       patchKeys: Object.keys(patch),
       error: (e as Error).message,
     });
@@ -1698,13 +1719,14 @@ async function saveAgentState(sb: any, convId: string, patch: AgentConvState, cu
 }
 
 async function rememberLastMediaInteraction(
-  ctx: { convId?: string; agentState?: AgentConvState },
+  ctx: { convId?: string; userId: string; fromNumber: string; agentState?: AgentConvState },
   mediaId: string,
 ): Promise<boolean> {
   if (!ctx.convId || !mediaId) return false;
-  const current = ctx.agentState ?? await loadAgentState(sb, ctx.convId);
+  const conversation = { id: ctx.convId, userId: ctx.userId, contactNumber: ctx.fromNumber };
+  const current = ctx.agentState ?? await loadAgentState(sb, conversation);
   const interaction = { media_id: mediaId, at: new Date().toISOString() };
-  const saved = await saveAgentState(sb, ctx.convId, { last_media_interaction: interaction }, current);
+  const saved = await saveAgentState(sb, conversation, { last_media_interaction: interaction }, current);
   if (saved) {
     current.last_media_interaction = interaction;
     ctx.agentState = current;
@@ -4037,8 +4059,9 @@ async function toolConfirmarPostagemRedes(
         .in("id", p.queueRows.map((r) => r.id));
     }
     if (ctx.convId && p.midiaTipo === "carrossel") {
-      const current = ctx.agentState ?? await loadAgentState(sb, ctx.convId);
-      await saveAgentState(sb, ctx.convId, { pending_carousel: null }, current);
+      const conversation = { id: ctx.convId, userId: ctx.userId, contactNumber: ctx.fromNumber };
+      const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+      await saveAgentState(sb, conversation, { pending_carousel: null }, current);
       current.pending_carousel = null;
       ctx.agentState = current;
     }
@@ -4089,8 +4112,9 @@ async function toolConfirmarPostagemRedes(
   }
   PENDING_POSTS.delete(token);
   if (ctx.convId && p.midiaTipo === "carrossel" && resultados.some((result) => result.ok)) {
-    const current = ctx.agentState ?? await loadAgentState(sb, ctx.convId);
-    await saveAgentState(sb, ctx.convId, { pending_carousel: null }, current);
+    const conversation = { id: ctx.convId, userId: ctx.userId, contactNumber: ctx.fromNumber };
+    const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+    await saveAgentState(sb, conversation, { pending_carousel: null }, current);
     current.pending_carousel = null;
     ctx.agentState = current;
   }
@@ -5970,7 +5994,8 @@ async function prepararPreviewCarrosselExistente(
   const queueRows = await persistPendingSocialPost(token, pending);
   PENDING_POSTS.set(token, { ...pending, queueRows });
 
-  const current = ctx.agentState ?? await loadAgentState(sb, ctx.convId);
+  const conversation = { id: ctx.convId, userId: ctx.userId, contactNumber: ctx.fromNumber };
+  const current = ctx.agentState ?? await loadAgentState(sb, conversation);
   const previous = current.pending_carousel;
   const next: PendingCarouselState = {
     stage: "awaiting_confirmation",
@@ -5984,7 +6009,7 @@ async function prepararPreviewCarrosselExistente(
     facebook_requested: options.facebookRequested || previous?.facebook_requested,
     created_at: new Date().toISOString(),
   };
-  const saved = await saveAgentState(sb, ctx.convId, { pending_carousel: next }, current);
+  const saved = await saveAgentState(sb, conversation, { pending_carousel: next }, current);
   if (!saved) {
     PENDING_POSTS.delete(token);
     await sb.from("social_posts_queue")
@@ -6029,7 +6054,8 @@ async function toolCriarCarrossel(
     const cor = resolveCarouselColor(args?.cor);
     if (!cor) {
       if (!ctx.convId) return JSON.stringify({ erro: "conversa_sem_id", mensagem: "Não consegui identificar esta conversa para guardar a escolha da cor." });
-      const current = ctx.agentState ?? await loadAgentState(sb, ctx.convId);
+      const conversation = { id: ctx.convId, userId: ctx.userId, contactNumber: ctx.fromNumber };
+      const current = ctx.agentState ?? await loadAgentState(sb, conversation);
       const pending: PendingCarouselState = {
         stage: "awaiting_color",
         tema,
@@ -6037,7 +6063,7 @@ async function toolCriarCarrossel(
         facebook_requested: !!args?.facebook_requested,
         created_at: new Date().toISOString(),
       };
-      if (!await saveAgentState(sb, ctx.convId, { pending_carousel: pending }, current)) {
+      if (!await saveAgentState(sb, conversation, { pending_carousel: pending }, current)) {
         return JSON.stringify({ erro: "estado_carrossel_nao_persistido", mensagem: "Não consegui guardar o carrossel antes de pedir a cor. Tente novamente." });
       }
       current.pending_carousel = pending;
@@ -6135,7 +6161,8 @@ async function toolCriarCarrossel(
     }
 
     if (ctx.convId) {
-      const current = ctx.agentState ?? await loadAgentState(sb, ctx.convId);
+      const conversation = { id: ctx.convId, userId: ctx.userId, contactNumber: ctx.fromNumber };
+      const current = ctx.agentState ?? await loadAgentState(sb, conversation);
       const pending: PendingCarouselState = {
         stage: "awaiting_confirmation",
         tema,
@@ -6147,7 +6174,7 @@ async function toolCriarCarrossel(
         facebook_requested: !!args?.facebook_requested,
         created_at: new Date().toISOString(),
       };
-      if (!await saveAgentState(sb, ctx.convId, { pending_carousel: pending }, current)) {
+      if (!await saveAgentState(sb, conversation, { pending_carousel: pending }, current)) {
         return JSON.stringify({ erro: "estado_carrossel_nao_persistido", mensagem: "Gerei e mostrei os cards, mas não consegui guardar o preview com segurança. Não publiquei nada." });
       }
       current.pending_carousel = pending;
@@ -6708,8 +6735,9 @@ async function callGemini(
                 .like("error_message", `jarvis_token:${parsed.token}%`);
             }
             if (toolCtx.convId) {
-              const current = toolCtx.agentState ?? await loadAgentState(sb, toolCtx.convId);
-              await saveAgentState(sb, toolCtx.convId, { pending_carousel: pendingCarousel }, current);
+              const conversation = { id: toolCtx.convId, userId: toolCtx.userId, contactNumber: toolCtx.fromNumber };
+              const current = toolCtx.agentState ?? await loadAgentState(sb, conversation);
+              await saveAgentState(sb, conversation, { pending_carousel: pendingCarousel }, current);
               current.pending_carousel = pendingCarousel;
               toolCtx.agentState = current;
             }
@@ -7432,6 +7460,11 @@ async function processOne(queueId: string) {
         .update({ last_message_at: new Date().toISOString(), contact_name: contactName })
         .eq("id", conv.id);
     }
+    const convStateIdentity: ConversationStateIdentity = {
+      id: conv.id,
+      userId,
+      contactNumber: row.from_number,
+    };
 
     const userText = extractText(row.payload);
     let commercialContactForOwner: any = null;
@@ -8202,7 +8235,7 @@ async function processOne(queueId: string) {
     let nomePerguntado = false;
     if (!fromIsOwner && userText.trim()) {
       try {
-        const stNome = await loadAgentState(sb, conv.id);
+        const stNome = await loadAgentState(sb, convStateIdentity);
         const pendente = (stNome as any)?.nome_pergunta === true;
         nomePerguntado = pendente || (stNome as any)?.nome_pergunta === "feita";
         const nomeCap = nomeLeadConhecido ? null : extrairNomeInformado(userText, pendente);
@@ -8227,7 +8260,7 @@ async function processOne(queueId: string) {
               protocolo: proofPersistido,
               nome: nomeCap,
             });
-            await saveAgentState(sb, conv.id, { nome: nomeCap, nome_pergunta: "feita", complemento_nome: okComp }, stNome);
+            await saveAgentState(sb, convStateIdentity, { nome: nomeCap, nome_pergunta: "feita", complemento_nome: okComp }, stNome);
             if (okComp) {
               await sb
                 .from("lead_encaminhamentos")
@@ -8237,7 +8270,7 @@ async function processOne(queueId: string) {
                 .eq("protocolo", extractProtocolCode(proofPersistido));
             }
           } else {
-            await saveAgentState(sb, conv.id, { nome: nomeCap, nome_pergunta: "feita" }, stNome);
+            await saveAgentState(sb, convStateIdentity, { nome: nomeCap, nome_pergunta: "feita" }, stNome);
           }
         }
       } catch (e) {
@@ -8290,9 +8323,9 @@ async function processOne(queueId: string) {
         });
         let pedirNomeAgora = false;
         try {
-          const stPrev = await loadAgentState(sb, conv.id);
+          const stPrev = await loadAgentState(sb, convStateIdentity);
           pedirNomeAgora = !nomeLeadConhecido && !(stPrev as any)?.nome_pergunta;
-          const stateSaved = await saveAgentState(sb, conv.id, {
+          const stateSaved = await saveAgentState(sb, convStateIdentity, {
             forward: { protocolo: proto, destinatario: tenantOwnerPhone, wamid: sentOwnerId ?? null, at: new Date().toISOString() },
             ...(pedirNomeAgora ? { nome_pergunta: true } : {}),
           }, stPrev);
@@ -8504,8 +8537,8 @@ Regras:
       } else if (deveEncaminhar && ownerForwardWamid) {
         const proto = buildForwardProof(ownerForwardWamid);
         try {
-          const stPrev = await loadAgentState(sb, conv.id);
-          await saveAgentState(sb, conv.id, {
+          const stPrev = await loadAgentState(sb, convStateIdentity);
+          await saveAgentState(sb, convStateIdentity, {
             forward: { protocolo: proto, destinatario: tenantOwnerPhone ?? null as any, wamid: ownerForwardWamid, at: new Date().toISOString() },
           }, stPrev);
         } catch (_e) { /* não bloqueia */ }
@@ -8979,14 +9012,14 @@ Regras:
     }
 
     // === ESTADO PERSISTENTE DA CONVERSA (comprovante de encaminhamento + decisões) ===
-    const agentState = await loadAgentState(sb, conv.id);
+    const agentState = await loadAgentState(sb, convStateIdentity);
     let persistedForward = (agentState.forward ?? null) as { protocolo?: string; destinatario?: string; wamid?: string | null; at?: string } | null;
     if (!persistedForward?.protocolo && !fromIsOwner) {
       const recovered = await recoverForwardProof(userId, row.from_number);
       if (recovered?.protocolo) {
         persistedForward = recovered;
         agentState.forward = recovered;
-        const recoveredSaved = await saveAgentState(sb, conv.id, { forward: recovered }, agentState);
+        const recoveredSaved = await saveAgentState(sb, convStateIdentity, { forward: recovered }, agentState);
         console.warn(`[processor][handoff][proof_recovered] from=${row.from_number} state_repaired=${recoveredSaved}`);
       }
     }
@@ -9128,7 +9161,7 @@ Regras:
         }
 
         if (Object.keys(patch).length > 0) {
-          await saveAgentState(sb, conv.id, patch, agentState);
+          await saveAgentState(sb, convStateIdentity, patch, agentState);
           console.log(`[processor][agent_state][saved] forward=${!!patch.forward} decisao=${patch.decisao?.valor ?? "-"}`);
         }
       } catch (e) {
