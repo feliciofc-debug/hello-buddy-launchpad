@@ -2473,11 +2473,30 @@ async function toolCriarCobrancaAmz(args: { cliente: string; valor?: number }, c
     const r = await fetch(`${SUPABASE_URL}/functions/v1/pietro-criar-cobranca`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SERVICE_KEY}`, "apikey": SERVICE_KEY },
-      body: JSON.stringify({ customer_id: c.id, amount: args?.valor ?? 597 }),
+      body: JSON.stringify({
+        nome: c.trade_name || c.name,
+        whatsapp: c.phone || undefined,
+        email: c.email || undefined,
+        valor: args?.valor ?? 597,
+      }),
     });
     const txt = await r.text();
     if (!r.ok) return JSON.stringify({ erro: `cobranca_falhou ${r.status}`, detalhe: txt.slice(0, 200) });
-    return JSON.stringify({ ok: true, cliente: c.trade_name || c.name, valor: args?.valor ?? 597, resposta: txt.slice(0, 300) });
+    let payload: any = null;
+    try { payload = JSON.parse(txt); } catch { /* tratado abaixo */ }
+    if (payload?.success !== true || !payload?.subscription_id || !payload?.payment_link) {
+      return JSON.stringify({
+        erro: "cobranca_sem_confirmacao",
+        detalhe: String(payload?.error || txt || "resposta sem subscription_id/payment_link").slice(0, 300),
+      });
+    }
+    return JSON.stringify({
+      ok: true,
+      cliente: c.trade_name || c.name,
+      valor: args?.valor ?? 597,
+      subscription_id: payload.subscription_id,
+      payment_link: payload.payment_link,
+    });
   } catch (e) { return JSON.stringify({ erro: String((e as Error).message) }); }
 }
 
@@ -3971,56 +3990,176 @@ async function updatePendingSocialPostMarker(token: string, pending: PendingSoci
 
 // LinkedIn (perfil pessoal): tom profissional e link no 1º comentário.
 async function toolPublicarLinkedin(
-  args: { texto?: string; link?: string; comentario?: string; image_url?: string },
-  ctx: { userId: string; fromNumber: string },
+  args: { texto?: string; link?: string; comentario?: string; image_url?: string; midia_id?: string; pedido_original?: string },
+  ctx: { userId: string; fromNumber: string; agentState?: AgentConvState },
 ): Promise<string> {
+  let queueId: string | null = null;
+  let attemptText = "";
+  const fail = async (erro: string, detalhe?: string): Promise<string> => {
+    const message = detalhe ? `${erro}: ${detalhe}` : erro;
+    if (!queueId && attemptText) {
+      const { data: failedRow, error: insertError } = await sb.from("social_posts_queue").insert({
+        user_id: ctx.userId,
+        produto_id: null,
+        produto_source: "linkedin_jarvis",
+        platform: "linkedin",
+        post_text: attemptText,
+        link_url: args?.link || null,
+        status: "erro",
+        scheduled_at: new Date().toISOString(),
+        error_message: message.slice(0, 1000),
+      }).select("id").single();
+      if (failedRow?.id) queueId = String(failedRow.id);
+      if (insertError) console.error("[linkedin-tool][failed-attempt-insert]", insertError.message);
+    }
+    console.error("[linkedin-tool][failed]", { userId: ctx.userId, queueId, error: message });
+    if (queueId) {
+      const { error } = await sb.from("social_posts_queue").update({
+        status: "erro",
+        error_message: message.slice(0, 1000),
+        updated_at: new Date().toISOString(),
+      }).eq("id", queueId).eq("user_id", ctx.userId);
+      if (error) console.error("[linkedin-tool][queue-failure-update]", error.message);
+    }
+    return JSON.stringify({ ok: false, erro, mensagem: detalhe || erro, queue_id: queueId });
+  };
+
   try {
     if (!isOwner(ctx)) {
-      return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Publicar no LinkedIn é restrito ao responsável da conta." });
+      return await fail("acao_restrita_ao_responsavel", "Publicar no LinkedIn é restrito ao responsável da conta.");
     }
     const texto = (args?.texto || "").trim();
-    if (!texto) return JSON.stringify({ erro: "informe o texto do post" });
+    if (!texto) return await fail("texto_obrigatorio", "Não publiquei: faltou o texto do post.");
+    attemptText = texto;
 
-    const { data: conn } = await sb
-      .from("linkedin_connections")
-      .select("id, is_active")
-      .eq("user_id", ctx.userId)
-      .maybeSingle();
-    if (!conn || !(conn as any).is_active) {
-      return JSON.stringify({ erro: "linkedin_nao_conectado", mensagem: "O LinkedIn ainda não está conectado. Conecte em Configurações → LinkedIn." });
+    let imageUrl = String(args?.image_url || "").trim() || null;
+    let videoUrl: string | null = null;
+    let mediaId = String(args?.midia_id || "").trim() || null;
+    if (mediaId) {
+      const resolved = await resolverMidiaBibliotecaPorId(ctx.userId, mediaId);
+      if (resolved.erro || !resolved.midia) {
+        return await fail("midia_nao_encontrada", `Não publiquei: ${resolved.erro || "mídia ausente"}`);
+      }
+      mediaId = String(resolved.midia.id);
+      if (
+        resolved.midia.origem === "carrossel_whatsapp"
+        || resolved.midia.origem === "carrossel_whatsapp_card"
+        || resolved.midia.midia_pai_id
+      ) {
+        return await fail("carrossel_linkedin_nao_suportado", "Não publiquei: carrossel pelo LinkedIn ainda não está habilitado.");
+      }
+      if (resolved.midia.tipo === "video") {
+        videoUrl = String(resolved.midia.midia_url || "") || null;
+        imageUrl = null;
+      } else if (resolved.midia.tipo === "foto") {
+        imageUrl = String(resolved.midia.midia_url || "") || null;
+      } else {
+        return await fail("midia_incompativel", "Não publiquei: esse tipo de mídia ainda não é aceito no LinkedIn.");
+      }
+    } else if (/\b(v[ií]deo|midia|m[ií]dia)\b/i.test(String(args?.pedido_original || ""))) {
+      return await fail("midia_nao_identificada", "Não publiquei: não consegui identificar com segurança qual vídeo usar.");
     }
 
-    // tom LinkedIn: sem emojis; link posicionado no fim do texto (antes das hashtags)
     const corpo = texto
       .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "")
       .replace(/\b(deixo o )?link (nos coment[áa]rios|no primeiro coment[áa]rio|abaixo)\b\.?/gi, "")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
 
+    // Toda tentativa real nasce na fila antes de consultar conexão ou chamar API.
+    const { data: queued, error: queueError } = await sb.from("social_posts_queue").insert({
+      user_id: ctx.userId,
+      produto_id: null,
+      produto_source: "linkedin_jarvis",
+      platform: "linkedin",
+      post_text: corpo,
+      image_url: imageUrl,
+      video_url: videoUrl,
+      link_url: args?.link || null,
+      status: "publicando",
+      scheduled_at: new Date().toISOString(),
+      error_message: mediaId ? `midia_id:${mediaId}` : null,
+    }).select("id").single();
+    if (queueError || !queued?.id) {
+      console.error("[linkedin-tool][queue-create-failed]", queueError?.message || "id ausente");
+      return JSON.stringify({
+        ok: false,
+        erro: "fila_linkedin_nao_criada",
+        mensagem: `Não publiquei porque não consegui registrar a tentativa: ${queueError?.message || "id ausente"}`,
+      });
+    }
+    queueId = String(queued.id);
+
+    const { data: conn, error: connError } = await sb
+      .from("linkedin_connections")
+      .select("id, is_active")
+      .eq("user_id", ctx.userId)
+      .maybeSingle();
+    if (connError) return await fail("consulta_conexao_falhou", connError.message);
+    if (!conn || !(conn as any).is_active) {
+      return await fail("linkedin_nao_conectado", "Não publiquei. Conecte o LinkedIn em Configurações → LinkedIn.");
+    }
+
+    console.log("[linkedin-tool][request]", {
+      userId: ctx.userId,
+      queueId,
+      mediaId,
+      mediaType: videoUrl ? "video" : imageUrl ? "foto" : "texto",
+    });
     const res = await fetch(`${SUPABASE_URL}/functions/v1/linkedin-publish`, {
       method: "POST",
       headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         user_id: ctx.userId,
+        queue_id: queueId,
         texto: corpo,
         link_url: args?.link || undefined,
         comentario: args?.comentario || undefined,
-        image_url: args?.image_url || undefined,
+        image_url: imageUrl || undefined,
+        video_url: videoUrl || undefined,
         link_no_primeiro_comentario: true,
       }),
+      signal: AbortSignal.timeout(120000),
     });
-    const out = await res.json();
-    if (!out?.success) return JSON.stringify({ erro: out?.error || "falha ao publicar no LinkedIn" });
+    const responseText = await res.text();
+    console.log("[linkedin-tool][response]", {
+      queueId,
+      httpStatus: res.status,
+      body: responseText.slice(0, 1000),
+    });
+    let out: any = null;
+    try {
+      out = JSON.parse(responseText);
+    } catch {
+      return await fail("resposta_linkedin_invalida", `HTTP ${res.status}: ${responseText.slice(0, 300)}`);
+    }
+    const postUrn = typeof out?.post_urn === "string" ? out.post_urn.trim() : "";
+    if (!res.ok || out?.success !== true || !/^urn:li:/i.test(postUrn)) {
+      return await fail("linkedin_nao_confirmou_publicacao", String(out?.error || `HTTP ${res.status}; URN ausente`));
+    }
+
+    const { error: successUpdateError } = await sb.from("social_posts_queue").update({
+      status: "publicado",
+      linkedin_post_urn: postUrn,
+      published_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      error_message: null,
+    }).eq("id", queueId).eq("user_id", ctx.userId);
+    if (successUpdateError) {
+      console.error("[linkedin-tool][queue-success-update]", { queueId, error: successUpdateError.message });
+    }
 
     return JSON.stringify({
       ok: true,
-      post_urn: out.post_urn,
+      status: "publicado",
+      post_urn: postUrn,
+      queue_id: queueId,
+      media_type: videoUrl ? "video" : imageUrl ? "foto" : "texto",
       link_no_primeiro_comentario: !!out.comentario_publicado,
       link_no_corpo: !!out.link_no_corpo,
-      instrucao: "Confirme em 1-2 linhas que o post foi publicado no LinkedIn e diga onde ficou o link (fim do post ou primeiro comentário).",
     });
   } catch (e) {
-    return JSON.stringify({ erro: (e as Error).message });
+    return await fail("falha_publicacao_linkedin", (e as Error).message);
   }
 }
 
@@ -6181,7 +6320,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "publicar_linkedin",
-      description: "💼 Publica um post no LINKEDIN (perfil pessoal) do responsável. Use quando ele disser 'publica no LinkedIn', 'poste isso no meu LinkedIn'. Tom profissional: sem emojis, sem gírias, frases diretas. ESTRUTURA OBRIGATÓRIA da copy: (1) observação ou raciocínio que prenda o leitor; (2) um argumento técnico; (3) fecho que conclui a ideia, sem convite e sem CTA; (4) o link; (5) duas a três hashtags. O link NUNCA na primeira linha — ele entra no FIM do texto, depois do raciocínio e antes das hashtags (mande o link no campo 'link' e eu posiciono). PROIBIDO escrever 'link nos comentários', 'link abaixo', 'deixo o link nos comentários' ou qualquer variação. Restrito ao responsável da conta.",
+      description: "💼 Publica no LINKEDIN pessoal do responsável e só confirma sucesso quando a API devolve um URN real. Suporta texto, imagem e vídeo da biblioteca. Quando o pedido se referir a uma mídia, passe o ID de 8 caracteres ou UUID em midia_id; NUNCA substitua vídeo por texto silenciosamente. Tom profissional, sem emojis ou gírias. Estrutura: observação, argumento técnico, conclusão, link no fim antes de 2–3 hashtags. Restrito ao responsável.",
       parameters: {
         type: "object",
         properties: {
@@ -6189,6 +6328,7 @@ const TOOLS = [
           link: { type: "string", description: "Link do post. Ele será posicionado no fim do texto, antes das hashtags. Vazio se não houver." },
           comentario: { type: "string", description: "Opcional. Texto do primeiro comentário, usado apenas se a permissão de parceiro do LinkedIn estiver liberada." },
           image_url: { type: "string", description: "URL pública de uma imagem para acompanhar o post, se houver." },
+          midia_id: { type: "string", description: "ID curto de 8 caracteres ou UUID da imagem/vídeo da biblioteca. Obrigatório quando o pedido mencionar uma mídia." },
         },
         required: ["texto"],
       },
@@ -7584,6 +7724,14 @@ async function callGemini(
         const name = tc.function?.name;
         let args: any = {};
         try { args = JSON.parse(tc.function?.arguments ?? "{}"); } catch { /* ignore */ }
+        if (name === "publicar_linkedin") {
+          const originalRequest = typeof userContent === "string" ? userContent : "";
+          args.pedido_original = originalRequest;
+          args.midia_id = args.midia_id
+            || extrairIdentificadorMidia(originalRequest)
+            || toolCtx.agentState?.last_media_interaction?.media_id
+            || undefined;
+        }
         console.log(`[pietro][tool] ${name}`, args);
         const { result, imageUrl } = await runTool(name, args, toolCtx);
         if (imageUrl) pendingImageUrl = imageUrl;
@@ -7616,6 +7764,64 @@ async function callGemini(
             else console.warn("[processor][handoff][tool_failed]", String(p?.erro ?? "desconhecido"));
           } catch { /* ignore */ }
         }
+        // Publicação externa nunca volta ao modelo para ele "interpretar" o
+        // resultado. Só um URN real do LinkedIn libera a mensagem de sucesso.
+        if (name === "publicar_linkedin") {
+          try {
+            const parsed = JSON.parse(result);
+            const urn = typeof parsed?.post_urn === "string" ? parsed.post_urn : "";
+            if (parsed?.ok === true && parsed?.status === "publicado" && /^urn:li:/i.test(urn)) {
+              const mediaLabel = parsed?.media_type === "video"
+                ? " com o vídeo"
+                : parsed?.media_type === "foto" ? " com a imagem" : "";
+              return {
+                text: `✅ *POSTAGEM REALIZADA COM SUCESSO*\n\nPubliquei no LinkedIn${mediaLabel}.\nURN: ${urn}`,
+                imageUrl: pendingImageUrl,
+                forwardProof,
+                forwardAttempted,
+              };
+            }
+            return {
+              text: `❌ *NÃO PUBLIQUEI NO LINKEDIN*\n\n${String(parsed?.mensagem || parsed?.erro || "A API não confirmou a publicação.")}`,
+              imageUrl: pendingImageUrl,
+              forwardProof,
+              forwardAttempted,
+            };
+          } catch {
+            return {
+              text: "❌ *NÃO PUBLIQUEI NO LINKEDIN*\n\nA ferramenta devolveu uma resposta inválida e não confirmou nenhum URN.",
+              imageUrl: pendingImageUrl,
+              forwardProof,
+              forwardAttempted,
+            };
+          }
+        }
+        if (name === "criar_lembrete" || name === "criar_cobranca_amz" || (name === "enviar_mensagem_contato_comercial" && isOwner(toolCtx))) {
+          try {
+            const parsed = JSON.parse(result);
+            if (parsed?.ok !== true) {
+              return {
+                text: `❌ Não concluí a ação: ${String(parsed?.detalhe || parsed?.erro || "a ferramenta não confirmou sucesso")}`,
+                imageUrl: pendingImageUrl,
+                forwardProof,
+                forwardAttempted,
+              };
+            }
+            const deterministicText = name === "criar_lembrete"
+              ? `✅ Lembrete criado para ${parsed.quando}. ID: ${parsed.id}.`
+              : name === "criar_cobranca_amz"
+              ? `✅ Cobrança criada para ${parsed.cliente} no valor de R$ ${Number(parsed.valor).toFixed(2).replace(".", ",")}.\n${parsed.payment_link}`
+              : `✅ Mensagem enfileirada para ${parsed?.contato?.nome || "o contato"} em ${parsed.agendado_para}.`;
+            return { text: deterministicText, imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
+          } catch {
+            return {
+              text: "❌ Não concluí a ação: a ferramenta devolveu uma resposta inválida.",
+              imageUrl: pendingImageUrl,
+              forwardProof,
+              forwardAttempted,
+            };
+          }
+        }
         // Short-circuit determinístico do fluxo A/B/C — evita a IA reescrever/repetir textos.
         try {
           const parsed = JSON.parse(result);
@@ -7628,7 +7834,16 @@ async function callGemini(
               forwardAttempted,
             };
           }
-          if (st === "aguardando_escolha_variante" || st === "variante_selecionada") {
+          if (
+            st === "aguardando_escolha_variante"
+            || st === "variante_selecionada"
+            || st === "publicado"
+            || st === "cancelado"
+            || (
+              parsed?.erro
+              && ["postar_midia_biblioteca", "postar_redes_sociais", "confirmar_postagem_redes", "revisar_post_pendente", "escolher_variante_post"].includes(name)
+            )
+          ) {
             const formatted = formatSocialPostToolResult(result);
             return {
               text: pendingMediaCodeBlock ? `${formatted}<<SPLIT>>${pendingMediaCodeBlock}` : formatted,

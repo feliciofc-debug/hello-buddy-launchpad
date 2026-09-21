@@ -60,6 +60,11 @@ Deno.serve(async (req) => {
     const linkFinal = linkExplicito || link;
     const textoFinal = linkFinal ? posicionarLinkLinkedIn(corpo || texto, linkFinal) : texto;
 
+    console.log('[linkedin-publish][request]', {
+      user_id: userId,
+      queue_id: body.queue_id || null,
+      media_type: body.video_url ? 'video' : body.image_url ? 'imagem' : 'texto',
+    });
     const postUrn = await criarPost({
       accessToken: conn.access_token,
       authorUrn: conn.member_urn,
@@ -67,15 +72,27 @@ Deno.serve(async (req) => {
       imageUrl: body.image_url || null,
       videoUrl: body.video_url || null,
     });
+    if (!/^urn:li:/i.test(String(postUrn || ''))) {
+      throw new Error('LinkedIn não confirmou um URN válido para o post');
+    }
+    console.log('[linkedin-publish][api-confirmed]', { user_id: userId, queue_id: body.queue_id || null, post_urn: postUrn });
 
     if (body.queue_id) {
-      await admin.from('social_posts_queue').update({
+      const { error: queueError } = await admin.from('social_posts_queue').update({
         status: 'publicado',
         linkedin_post_urn: postUrn,
         published_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         error_message: null,
       }).eq('id', body.queue_id).eq('user_id', userId);
+      if (queueError) {
+        console.error('[linkedin-publish][queue-update-failed]', {
+          user_id: userId,
+          queue_id: body.queue_id,
+          post_urn: postUrn,
+          error: queueError.message,
+        });
+      }
     }
 
     return new Response(JSON.stringify({
