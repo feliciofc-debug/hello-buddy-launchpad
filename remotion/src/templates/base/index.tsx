@@ -45,10 +45,14 @@ export type Hook = {
 
 // ---------- fundo (3 variantes de arranjo) ----------
 
-export const Backdrop: React.FC<{ c: Paleta; arranjo?: number }> = ({ c, arranjo = 1 }) => {
+export const Backdrop: React.FC<{ c: Paleta; arranjo?: number; limpo?: boolean }> = ({ c, arranjo = 1, limpo = false }) => {
   const frame = useCurrentFrame();
   const drift = Math.sin(frame / 90) * 40;
   const claro = ehClaro(c.bg);
+
+  if (limpo && claro) {
+    return <AbsoluteFill style={{ background: c.bg }} />;
+  }
 
   return (
     <AbsoluteFill

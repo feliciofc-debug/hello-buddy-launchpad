@@ -19,6 +19,9 @@ import {
   gerarRoteiroMotion,
   normalizarProps,
   nomesOficiais,
+  removerAlegacoesCertificacao,
+  roteiroContemAlegacaoCertificacao,
+  sanitizarRoteiroCliente,
   TEMPLATE_POR_ESTILO,
   type DuracaoMotion,
   type EstiloMotion,
@@ -70,6 +73,8 @@ export type EnfileirarInput = {
   logoPath?: string | null;
   /** identidade de terceiro: nunca cair na logo cadastrada do tenant */
   semLogoTenant?: boolean;
+  /** identidade de cliente escolhida explicitamente */
+  identidadeCliente?: boolean;
   /** só devolve o roteiro, não enfileira */
   apenasRoteiro?: boolean;
 };
@@ -204,6 +209,9 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
   const duracaoAlvoSegundos = input.duracaoAlvoSegundos ?? (input.props as any)?.duracao_alvo_segundos;
   const frasesLiterais = input.frasesLiterais ?? (input.props as any)?.frases_literais;
   const semLogoTenant = input.semLogoTenant === true || (input.props as any)?.sem_logo_tenant === true;
+  const identidadeCliente = input.identidadeCliente === true ||
+    (input.props as any)?.identidade_cliente === true ||
+    semLogoTenant;
   // Logo desta peça: a informada (prospecção) tem prioridade, desde que esteja
   // na pasta do próprio usuário; senão, a logo cadastrada em "Minha marca".
   const logoSolicitada = input.logoPath ?? (input.props as any)?.logo_path;
@@ -230,6 +238,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
         estilo: estiloEscolhido(input) ?? (p?.estilo ?? null),
         arranjo: input.arranjo ?? p?.arranjo ?? null,
         duracao: duracaoEscolhida(input),
+        identidadeCliente,
       },
     ), frasesLiterais), duracaoAlvoSegundos);
   } else {
@@ -242,6 +251,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
       duracao: duracaoEscolhida(input),
       duracaoAlvoSegundos,
       frasesLiterais,
+      identidadeCliente,
     });
     props = aplicarDuracaoAlvo(aplicarFrasesLiterais(normalizarProps(
       { ...r.props, cores: input.cores ?? r.props.cores },
@@ -252,6 +262,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
         estilo: r.props.estilo ?? null,
         arranjo: r.props.arranjo ?? null,
         duracao: r.props.duracao ?? duracaoEscolhida(input),
+        identidadeCliente,
       },
     ), frasesLiterais), duracaoAlvoSegundos);
     usouIA = r.usouIA;
@@ -271,8 +282,17 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
     sem_trilha: input.semTrilha === true || (input.props as any)?.sem_trilha === true,
     frases_literais: frasesLiterais,
     sem_logo_tenant: semLogoTenant,
+    identidade_cliente: identidadeCliente,
+    visual_limpo: identidadeCliente && /^#(?:fff|ffffff)$/i.test(String(props.cores?.bg ?? "")),
     trilhaUrl: undefined,
   };
+  if (identidadeCliente) {
+    props = sanitizarRoteiroCliente(props) as MotionProps;
+    legendaPost = removerAlegacoesCertificacao(legendaPost);
+    if (roteiroContemAlegacaoCertificacao(props) || roteiroContemAlegacaoCertificacao(legendaPost)) {
+      throw new Error("roteiro_cliente_contem_certificacao_proibida");
+    }
+  }
   return { props, legendaPost, usouIA };
 }
 
