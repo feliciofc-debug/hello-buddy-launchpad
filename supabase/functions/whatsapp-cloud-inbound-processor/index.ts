@@ -5389,7 +5389,9 @@ function paletteFromOptions(options: VideoPaletteOption[]): MotionProps["cores"]
   const byRole = (role: VideoPaletteOption["role"]) => options.find((item) => item.role === role)?.hex;
   return paletaAPartirDe({
     destaque: byRole("Principal"),
-    destaqueSoft: byRole("Secundária"),
+    // A secundária é usada em bordas/detalhes; o gradiente recebe uma
+    // variação clara derivada exclusivamente da cor principal.
+    line: byRole("Secundária"),
     bg: byRole("Fundo"),
     texto: byRole("Texto"),
   });

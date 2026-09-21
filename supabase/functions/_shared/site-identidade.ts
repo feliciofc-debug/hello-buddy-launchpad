@@ -223,7 +223,9 @@ function montarPaleta(principais: Array<{ hex: string; peso: number }>): CoresVi
   return paletaAPartirDe({
     bg: fundo ?? "#ffffff",
     destaque: destaque ?? fundo ?? "#1a2332",
-    destaqueSoft: apoio,
+    // A segunda cor da marca entra em bordas e detalhes. `destaqueSoft`
+    // permanece vazio para ser derivado como uma variação do destaque.
+    line: apoio,
   });
 }
 
