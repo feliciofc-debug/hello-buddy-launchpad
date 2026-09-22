@@ -1,0 +1,103 @@
+# Importador AMZ — Dry-run A
+
+O Dry-run A valida a exportação da Lovable e o estado atual da VPS sem
+alterar autenticação, banco de dados, arquivos ou serviços.
+
+## O que ele verifica
+
+- os JSONs e as quantidades esperadas dos quatro clientes;
+- UUIDs, campos obrigatórios, enums e referências entre registros;
+- descarte de tokens, configurações antigas e histórico operacional;
+- `autopilot_config` sempre planejado com `ativo = false`;
+- contas-âncora, e-mails, vínculos de WhatsApp e colisões no PostgreSQL;
+- os 5.123 arquivos, tamanho, leitura, SHA-256 e colisões de destino;
+- reescrita exclusiva de URLs de
+  `jibpvpqgplmahjhswiza.supabase.co`;
+- troca do UUID antigo pelo UUID canônico no caminho da mídia;
+- espaço livre no filesystem que contém `/opt/amz-media`.
+
+Ele não consulta `storage.buckets` nem `storage.objects`. As pastas sob
+`/opt/amz-media` são tratadas como diretórios comuns; pasta ausente é apenas
+uma criação planejada para a etapa de importação, não um bloqueador.
+
+## Estrutura esperada
+
+```text
+/caminho/export_amz/
+  atom/*.json
+  duda/*.json
+  marcelo/*.json
+  renata/*.json
+  _arquivos/
+    jibpvpqgplmahjhswiza.supabase.co/
+      storage/v1/object/public/<pasta>/<uuid-antigo>/<arquivo>
+```
+
+Cada JSON de tabela pode ser uma lista ou um objeto `{"data": [...]}`.
+Se os arquivos estiverem em outra raiz, `--media-dir` aceita tanto a pasta
+que contém o host quanto a própria pasta `storage/v1/object/public`.
+
+## Política de dados
+
+- `integrations`: não importar; reconectar as integrações no ambiente novo;
+- `whatsapp_config`: não importar a linha antiga nem seus tokens; preservar as
+  duas configurações funcionais da VPS e transferir somente o proprietário;
+- `social_posts_queue`: não inserir as 10.861 linhas na fila operacional. Os
+  JSONs permanecem como histórico bruto para consulta;
+- `autopilot_config`: importar depois com `ativo=false` e
+  `proxima_execucao=NULL`;
+- `midias_whatsapp`: descartar `arquivo_nome`, `generation_job_id` e
+  `generation_job_type`, ausentes no destino;
+- `autopilot_config`: descartar `desativado_em`, `desativado_motivo` e
+  `desativado_por`, ausentes no destino;
+- `social_posts_queue`: além de a tabela inteira não ser importada,
+  `approval_token`, `approved_at`, `approved_by`, `approved_media_type`,
+  `approved_media_url`, `asset_id`, `asset_tipo` e `origem_fluxo` não existem
+  no schema atual do destino.
+
+Valores de `cliente_id` sem a tabela `clientes` e de `campanha_id` sem
+`campanhas_recorrentes` são planejados como `NULL`. URLs externas, como
+Shopee, não são alteradas.
+
+## Execução na VPS
+
+Use uma credencial PostgreSQL que possa ler as tabelas de destino. Mesmo que
+a credencial possua mais permissões, cada consulta é envolvida por
+`BEGIN TRANSACTION READ ONLY` e finalizada com `ROLLBACK`.
+
+```bash
+cd /opt/hello-buddy-launchpad
+export AMZ_DATABASE_URL='postgresql://...'
+
+python3 scripts/importador_amz/dry_run.py \
+  --export-dir /opt/importacoes/export_amz \
+  --target-media-dir /opt/amz-media \
+  --require-db \
+  --report-json /opt/importacoes/dry-run-a-report.json \
+  --manifest-json /opt/importacoes/dry-run-a-sha256.json
+```
+
+O endereço de conexão não aparece no relatório nem na saída. Os dois arquivos
+indicados acima são as únicas escritas do comando; omita as opções
+`--report-json` e `--manifest-json` para não escrever nem mesmo relatórios.
+Por segurança, o programa recusa gravar esses relatórios dentro de
+`export_amz` ou de `/opt/amz-media`.
+
+## Códigos de saída
+
+- `0`: nenhuma condição bloqueante;
+- `1`: erro operacional (JSON inválido, falha do `psql`, entre outros);
+- `2`: o dry-run terminou e encontrou bloqueadores.
+
+Avisos sobre arquivos referenciados mas ausentes não impedem a análise. Já
+quantidades divergentes, IDs inválidos, colisões de conteúdo e falta de espaço
+são bloqueadores.
+
+## Limites deliberados desta fase
+
+Os UUIDs futuros de Atom, Duda e Renata aparecem como marcadores
+`$AMZ_NEW_USER_ID`, `$DUDA_NEW_USER_ID` e `$RENATA_NEW_USER_ID`. O Dry-run B
+será executado depois da criação dessas contas, com os UUIDs reais.
+
+Nenhum código para copiar mídia, criar usuário, atualizar e-mail, inserir
+linha ou recarregar o PostgREST faz parte deste programa.
