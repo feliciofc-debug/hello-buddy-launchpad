@@ -30,6 +30,7 @@ from urllib.parse import unquote, urlparse
 SOURCE_HOST = "jibpvpqgplmahjhswiza.supabase.co"
 PUBLIC_STORAGE_PREFIX = "/storage/v1/object/public/"
 TARGET_STORAGE_URL = "https://api.amzofertas.com.br/storage/v1/object/public"
+REAL_TARGET_MEDIA_ROOT = Path("/opt/amz-media")
 
 SYMBOLIC_AMZ_ID = "$AMZ_NEW_USER_ID"
 SYMBOLIC_DUDA_ID = "$DUDA_NEW_USER_ID"
@@ -233,7 +234,7 @@ IMPORT_TABLES = tuple(
 )
 
 UUID_RE = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
     re.IGNORECASE,
 )
 
@@ -270,8 +271,8 @@ class PsqlReadOnly:
 
     def query(self, select_sql: str) -> list[dict[str, str]]:
         normalized = select_sql.strip().rstrip(";")
-        if not normalized.lower().startswith(("select ", "with ")):
-            raise ValueError("consulta recusada: apenas SELECT/WITH é permitido")
+        if not normalized.lower().startswith("select "):
+            raise ValueError("consulta recusada: apenas SELECT é permitido")
 
         script = (
             "BEGIN TRANSACTION READ ONLY;\n"
@@ -520,9 +521,7 @@ class DryRun:
             for field in source_only:
                 if field in row:
                     discarded_counter[field] += 1
-            for field in TOKEN_FIELDS:
-                if row.get(field) not in (None, ""):
-                    token_counter[field] += 1
+            self._count_sensitive_fields(row, token_counter)
 
             for (enum_table, field), allowed in ENUM_FIELDS.items():
                 if enum_table != table:
@@ -618,6 +617,31 @@ class DryRun:
             return False
         return True
 
+    @classmethod
+    def _is_sensitive_key(cls, key: Any) -> bool:
+        normalized = str(key).lower()
+        return (
+            normalized in TOKEN_FIELDS
+            or normalized.endswith(("_token", "_secret", "_password", "_key"))
+            or "password" in normalized
+        )
+
+    @classmethod
+    def _count_sensitive_fields(
+        cls,
+        value: Any,
+        counter: Counter[str],
+    ) -> None:
+        if isinstance(value, dict):
+            for key, nested in value.items():
+                normalized = str(key).lower()
+                if cls._is_sensitive_key(key) and nested not in (None, ""):
+                    counter[normalized] += 1
+                cls._count_sensitive_fields(nested, counter)
+        elif isinstance(value, list):
+            for nested in value:
+                cls._count_sensitive_fields(nested, counter)
+
     def _collect_urls(
         self,
         tenant: str,
@@ -629,6 +653,8 @@ class DryRun:
         if isinstance(value, dict):
             for key, nested in value.items():
                 next_path = f"{field_path}.{key}" if field_path else key
+                if self._is_sensitive_key(key):
+                    continue
                 self._collect_urls(tenant, table, record_id, nested, next_path)
         elif isinstance(value, list):
             for index, nested in enumerate(value):
@@ -639,10 +665,16 @@ class DryRun:
                     nested,
                     f"{field_path}[{index}]",
                 )
-        elif isinstance(value, str) and value.startswith(("http://", "https://")):
+        elif isinstance(value, str) and value.lower().startswith(
+            ("http://", "https://")
+        ):
             parsed = urlparse(value)
             if parsed.hostname == SOURCE_HOST:
-                redacted_url = parsed._replace(query="", fragment="").geturl()
+                redacted_url = parsed._replace(
+                    netloc=SOURCE_HOST,
+                    query="",
+                    fragment="",
+                ).geturl()
                 self.storage_references.append(
                     {
                         "tenant": tenant,
@@ -654,24 +686,33 @@ class DryRun:
                 )
 
     def validate_references(self) -> None:
-        self.product_ids = {
-            str(row["id"])
-            for tenant_rows in self.records.values()
-            for row in tenant_rows.get("produtos", [])
-            if row.get("id")
+        products_by_tenant = {
+            tenant: {
+                str(row["id"])
+                for row in tenant_rows.get("produtos", [])
+                if row.get("id")
+            }
+            for tenant, tenant_rows in self.records.items()
         }
-        self.media_ids = {
-            str(row["id"])
-            for tenant_rows in self.records.values()
-            for row in tenant_rows.get("midias_whatsapp", [])
-            if row.get("id")
+        media_by_tenant = {
+            tenant: {
+                str(row["id"])
+                for row in tenant_rows.get("midias_whatsapp", [])
+                if row.get("id")
+            }
+            for tenant, tenant_rows in self.records.items()
         }
-        self.opt_in_ids = {
-            str(row["id"])
-            for tenant_rows in self.records.values()
-            for row in tenant_rows.get("opt_ins", [])
-            if row.get("id")
+        opt_ins_by_tenant = {
+            tenant: {
+                str(row["id"])
+                for row in tenant_rows.get("opt_ins", [])
+                if row.get("id")
+            }
+            for tenant, tenant_rows in self.records.items()
         }
+        self.product_ids = set().union(*products_by_tenant.values())
+        self.media_ids = set().union(*media_by_tenant.values())
+        self.opt_in_ids = set().union(*opt_ins_by_tenant.values())
         opt_in_whatsapps: dict[str, list[str]] = defaultdict(list)
         cadastro_keys: dict[tuple[str, str], list[str]] = defaultdict(list)
 
@@ -687,11 +728,20 @@ class DryRun:
                     cadastro_keys[(target_user, whatsapp)].append(str(row.get("id")))
             for row in tenant_rows.get("midias_whatsapp", []):
                 parent = row.get("midia_pai_id")
-                if parent and str(parent) not in self.media_ids:
+                if parent and str(parent) not in media_by_tenant[tenant]:
+                    cross_tenant = str(parent) in self.media_ids
                     self.issue(
                         "blocker",
-                        "missing_media_parent",
-                        f"midia_pai_id não encontrado: {parent}",
+                        (
+                            "cross_tenant_media_parent"
+                            if cross_tenant
+                            else "missing_media_parent"
+                        ),
+                        (
+                            "midia_pai_id pertence a outro tenant"
+                            if cross_tenant
+                            else f"midia_pai_id não encontrado: {parent}"
+                        ),
                         tenant=tenant,
                         table="midias_whatsapp",
                         record_id=row.get("id"),
@@ -699,11 +749,20 @@ class DryRun:
             for table in ("biblioteca_campanhas", "notificacoes_usuario"):
                 for row in tenant_rows.get(table, []):
                     product = row.get("produto_id")
-                    if product and str(product) not in self.product_ids:
+                    if product and str(product) not in products_by_tenant[tenant]:
+                        cross_tenant = str(product) in self.product_ids
                         self.issue(
-                            "warning",
-                            "orphan_product_reference",
-                            f"produto_id será convertido para NULL: {product}",
+                            "blocker" if cross_tenant else "warning",
+                            (
+                                "cross_tenant_product_reference"
+                                if cross_tenant
+                                else "orphan_product_reference"
+                            ),
+                            (
+                                "produto_id pertence a outro tenant"
+                                if cross_tenant
+                                else f"produto_id será convertido para NULL: {product}"
+                            ),
                             tenant=tenant,
                             table=table,
                             record_id=row.get("id"),
@@ -730,22 +789,40 @@ class DryRun:
                     )
             for row in tenant_rows.get("cadastros", []):
                 opt_in = row.get("opt_in_id")
-                if opt_in and str(opt_in) not in self.opt_in_ids:
+                if opt_in and str(opt_in) not in opt_ins_by_tenant[tenant]:
+                    cross_tenant = str(opt_in) in self.opt_in_ids
                     self.issue(
-                        "warning",
-                        "orphan_opt_in_reference",
-                        f"opt_in_id será convertido para NULL: {opt_in}",
+                        "blocker" if cross_tenant else "warning",
+                        (
+                            "cross_tenant_opt_in_reference"
+                            if cross_tenant
+                            else "orphan_opt_in_reference"
+                        ),
+                        (
+                            "opt_in_id pertence a outro tenant"
+                            if cross_tenant
+                            else f"opt_in_id será convertido para NULL: {opt_in}"
+                        ),
                         tenant=tenant,
                         table="cadastros",
                         record_id=row.get("id"),
                     )
             for row in tenant_rows.get("autopilot_config", []):
                 for product in row.get("produto_ids") or []:
-                    if str(product) not in self.product_ids:
+                    if str(product) not in products_by_tenant[tenant]:
+                        cross_tenant = str(product) in self.product_ids
                         self.issue(
                             "blocker",
-                            "autopilot_missing_product",
-                            f"produto_ids contém produto ausente: {product}",
+                            (
+                                "autopilot_cross_tenant_product"
+                                if cross_tenant
+                                else "autopilot_missing_product"
+                            ),
+                            (
+                                "produto_ids contém produto de outro tenant"
+                                if cross_tenant
+                                else f"produto_ids contém produto ausente: {product}"
+                            ),
                             tenant=tenant,
                             table="autopilot_config",
                             record_id=row.get("id"),
@@ -783,8 +860,29 @@ class DryRun:
         return digest.hexdigest()
 
     def _map_relative_media_path(self, relative: Path) -> Path:
-        mapped_parts = [self.old_to_target.get(part, part) for part in relative.parts]
-        return Path(*mapped_parts)
+        if len(relative.parts) < 3:
+            raise ValueError("esperado <pasta>/<uuid-do-usuario>/<arquivo>")
+        owner_id = relative.parts[1]
+        if not self._is_uuid(owner_id):
+            raise ValueError("segundo componente não é UUID de usuário")
+        if owner_id not in self.old_to_target:
+            raise ValueError("UUID do proprietário não pertence aos quatro clientes")
+        return Path(
+            relative.parts[0],
+            self.old_to_target[owner_id],
+            *relative.parts[2:],
+        )
+
+    def _target_parent_conflict(self, target: Path) -> Path | None:
+        current = target.parent
+        while current != self.target_media_dir.parent:
+            if os.path.lexists(current):
+                if current.is_symlink() or not current.is_dir():
+                    return current
+            if current == self.target_media_dir:
+                break
+            current = current.parent
+        return None
 
     def _find_source_public_root(self) -> Path:
         candidates = [
@@ -831,9 +929,14 @@ class DryRun:
         unreadable = 0
         existing_same = 0
         existing_conflicts = 0
+        unresolved_target_ids = 0
         proposed_directories: set[str] = set()
 
-        files = sorted(path for path in source_public_root.rglob("*") if path.is_file())
+        files = sorted(
+            path
+            for path in source_public_root.rglob("*")
+            if not path.is_dir() or path.is_symlink()
+        )
         if len(files) != self.expected_files:
             self.issue(
                 "blocker",
@@ -843,7 +946,22 @@ class DryRun:
 
         for path in files:
             relative = path.relative_to(source_public_root)
-            mapped_relative = self._map_relative_media_path(relative)
+            if path.is_symlink() or not path.is_file():
+                self.issue(
+                    "blocker",
+                    "source_file_not_regular",
+                    f"mídia de origem não é arquivo regular: {path}",
+                )
+                continue
+            try:
+                mapped_relative = self._map_relative_media_path(relative)
+            except ValueError as error:
+                self.issue(
+                    "blocker",
+                    "invalid_source_media_layout",
+                    f"{relative}: {error}",
+                )
+                continue
             target = self.target_media_dir / mapped_relative
             source_total_bytes += path.stat().st_size
             if not os.access(path, os.R_OK):
@@ -867,19 +985,43 @@ class DryRun:
             proposed_directories.add(str(mapped_relative.parent))
 
             target_state = "new"
-            if target.is_file():
-                target_hash = self._sha256(target)
-                if target_hash == source_hash:
-                    existing_same += 1
-                    target_state = "existing_same_checksum"
-                else:
+            target_id = mapped_relative.parts[1]
+            if target_id.startswith("$"):
+                unresolved_target_ids += 1
+                target_state = "pending_target_user_id"
+            else:
+                parent_conflict = self._target_parent_conflict(target)
+                if parent_conflict is not None:
                     existing_conflicts += 1
-                    target_state = "existing_different_checksum"
+                    target_state = "blocked_by_non_directory_parent"
                     self.issue(
                         "blocker",
-                        "target_file_conflict",
-                        f"destino existente tem conteúdo diferente: {target}",
+                        "target_parent_conflict",
+                        f"componente do destino não é diretório real: {parent_conflict}",
                     )
+                elif os.path.lexists(target) and (
+                    target.is_symlink() or not target.is_file()
+                ):
+                    existing_conflicts += 1
+                    target_state = "existing_non_regular_path"
+                    self.issue(
+                        "blocker",
+                        "target_path_not_regular_file",
+                        f"destino existente não é arquivo regular: {target}",
+                    )
+                elif target.is_file():
+                    target_hash = self._sha256(target)
+                    if target_hash == source_hash:
+                        existing_same += 1
+                        target_state = "existing_same_checksum"
+                    else:
+                        existing_conflicts += 1
+                        target_state = "existing_different_checksum"
+                        self.issue(
+                            "blocker",
+                            "target_file_conflict",
+                            f"destino existente tem conteúdo diferente: {target}",
+                        )
 
             self.file_manifest.append(
                 {
@@ -891,6 +1033,16 @@ class DryRun:
                     "size": path.stat().st_size,
                     "state": target_state,
                 }
+            )
+
+        if unresolved_target_ids:
+            self.issue(
+                "info",
+                "destination_checks_pending_user_ids",
+                (
+                    f"{unresolved_target_ids} arquivo(s) de Atom/Duda/Renata "
+                    "serão comparados no Dry-run B após a criação das contas"
+                ),
             )
 
         missing_references: list[dict[str, Any]] = []
@@ -921,29 +1073,37 @@ class DryRun:
                     record_id=reference["record_id"],
                 )
                 continue
-            if len(relative.parts) >= 2 and self._is_uuid(relative.parts[1]):
-                expected_owner = TENANTS[reference["tenant"]]["source_user_id"]
-                if relative.parts[1] != expected_owner:
-                    self.issue(
-                        "blocker",
-                        "cross_tenant_storage_reference",
-                        (
-                            "URL aponta para UUID de outro tenant: "
-                            f"{relative.parts[1]}"
-                        ),
-                        tenant=reference["tenant"],
-                        table=reference["table"],
-                        record_id=reference["record_id"],
-                    )
+            try:
+                mapped_relative = self._map_relative_media_path(relative)
+            except ValueError as error:
+                self.issue(
+                    "blocker",
+                    "invalid_referenced_media_layout",
+                    f"{relative}: {error}",
+                    tenant=reference["tenant"],
+                    table=reference["table"],
+                    record_id=reference["record_id"],
+                )
+                continue
+            expected_owner = TENANTS[reference["tenant"]]["source_user_id"]
+            if relative.parts[1] != expected_owner:
+                self.issue(
+                    "blocker",
+                    "cross_tenant_storage_reference",
+                    "URL aponta para UUID de outro tenant",
+                    tenant=reference["tenant"],
+                    table=reference["table"],
+                    record_id=reference["record_id"],
+                )
             local_file = source_public_root / relative
-            mapped_relative = self._map_relative_media_path(relative)
             reference["local_file"] = str(local_file)
             reference["target_file"] = str(self.target_media_dir / mapped_relative)
             reference["target_url"] = f"{TARGET_STORAGE_URL}/{mapped_relative.as_posix()}"
             if not local_file.is_file():
                 missing_references.append(reference)
+                is_imported = reference["table"] not in SKIPPED_TABLES
                 self.issue(
-                    "warning",
+                    "blocker" if is_imported else "warning",
                     "referenced_file_missing",
                     f"arquivo referenciado ausente: {local_file}",
                     tenant=reference["tenant"],
@@ -963,6 +1123,8 @@ class DryRun:
             "unreadable_files": unreadable,
             "existing_same_checksum": existing_same,
             "existing_different_checksum": existing_conflicts,
+            "files_pending_target_user_id": unresolved_target_ids,
+            "destination_comparison_complete": unresolved_target_ids == 0,
             "proposed_directories": len(proposed_directories),
             "old_host_references": len(self.storage_references),
             "mapped_references": mapped_references,
@@ -1132,8 +1294,8 @@ class DryRun:
                 and int(row["row_count"]) > 0
             ):
                 self.issue(
-                    "warning",
-                    "marcelo_existing_configuration",
+                    "blocker",
+                    "marcelo_configuration_requires_merge_policy",
                     (
                         f"{row['table_name']} já possui {row['row_count']} linha(s) "
                         "para Marcelo; exige merge idempotente"
@@ -1203,9 +1365,9 @@ class DryRun:
             ]
             for row in existing_opt_ins:
                 self.issue(
-                    "warning",
-                    "destination_opt_in_whatsapp_exists",
-                    "WhatsApp de opt_in já existe no destino; exige comparação/merge",
+                    "blocker",
+                    "destination_opt_in_unverified_collision",
+                    "WhatsApp de opt_in já existe; conteúdo ainda não foi comparado",
                     table="opt_ins",
                     record_id=row["id"],
                 )
@@ -1213,11 +1375,9 @@ class DryRun:
         collisions: dict[str, list[str]] = {}
         for table in IMPORT_TABLES:
             if table == "profiles":
-                ids = sorted(
-                    cfg["target_user_id"]
-                    for cfg in TENANTS.values()
-                    if self._is_uuid(cfg["target_user_id"])
-                )
+                # Profiles são tratados pelo plano explícito de contas:
+                # Marcelo é merge; os outros três ainda não possuem UUID real.
+                ids = []
             else:
                 ids = sorted(self.ids_by_table.get(table, set()))
             if not ids:
@@ -1234,9 +1394,9 @@ class DryRun:
                 collisions[table] = found
                 for found_id in found:
                     self.issue(
-                        "warning",
-                        "destination_id_exists",
-                        "ID já existe no destino; requer comparação de conteúdo/merge",
+                        "blocker",
+                        "destination_id_unverified_collision",
+                        "ID já existe no destino e o conteúdo ainda não foi comparado",
                         table=table,
                         record_id=found_id,
                     )
@@ -1350,7 +1510,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     export_dir = args.export_dir.resolve()
     media_dir = (args.media_dir or export_dir / "_arquivos").resolve()
-    target_media_dir = args.target_media_dir.resolve()
+    # Não resolver symlinks do destino: eles precisam ser detectados e
+    # bloqueados, não transformados silenciosamente no caminho apontado.
+    target_media_dir = args.target_media_dir.absolute()
     dsn = os.environ.get(args.database_url_env, "")
     db = PsqlReadOnly(dsn) if dsn else None
     output_paths = [
@@ -1370,8 +1532,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
     for output_path in output_paths:
-        if is_within(output_path, export_dir) or is_within(
-            output_path, target_media_dir
+        if (
+            is_within(output_path, export_dir)
+            or is_within(output_path, target_media_dir)
+            or is_within(output_path, REAL_TARGET_MEDIA_ROOT)
         ):
             print(
                 json.dumps(

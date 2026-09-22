@@ -36,6 +36,10 @@ uma criação planejada para a etapa de importação, não um bloqueador.
 Cada JSON de tabela pode ser uma lista ou um objeto `{"data": [...]}`.
 Se os arquivos estiverem em outra raiz, `--media-dir` aceita tanto a pasta
 que contém o host quanto a própria pasta `storage/v1/object/public`.
+Cada mídia deve obedecer estritamente a
+`<pasta>/<uuid-antigo-do-cliente>/<caminho-do-arquivo>`; o caminho do objeto
+pode conter subpastas depois do UUID. Proprietário desconhecido, symlink ou
+caminho sem UUID é bloqueador.
 
 ## Política de dados
 
@@ -81,7 +85,8 @@ O endereço de conexão não aparece no relatório nem na saída. Os dois arquiv
 indicados acima são as únicas escritas do comando; omita as opções
 `--report-json` e `--manifest-json` para não escrever nem mesmo relatórios.
 Por segurança, o programa recusa gravar esses relatórios dentro de
-`export_amz` ou de `/opt/amz-media`.
+`export_amz`, do destino configurado ou de `/opt/amz-media`, mesmo que outro
+destino tenha sido informado na linha de comando.
 
 ## Códigos de saída
 
@@ -89,15 +94,19 @@ Por segurança, o programa recusa gravar esses relatórios dentro de
 - `1`: erro operacional (JSON inválido, falha do `psql`, entre outros);
 - `2`: o dry-run terminou e encontrou bloqueadores.
 
-Avisos sobre arquivos referenciados mas ausentes não impedem a análise. Já
-quantidades divergentes, IDs inválidos, colisões de conteúdo e falta de espaço
-são bloqueadores.
+Arquivo ausente que seja referenciado por uma tabela importada é bloqueador.
+Uma referência ausente dentro de tabela descartada, como
+`social_posts_queue`, permanece apenas como aviso. Quantidades divergentes,
+IDs inválidos, colisões não comparadas e falta de espaço também bloqueiam.
 
 ## Limites deliberados desta fase
 
 Os UUIDs futuros de Atom, Duda e Renata aparecem como marcadores
 `$AMZ_NEW_USER_ID`, `$DUDA_NEW_USER_ID` e `$RENATA_NEW_USER_ID`. O Dry-run B
-será executado depois da criação dessas contas, com os UUIDs reais.
+será executado depois da criação dessas contas, com os UUIDs reais. Até lá,
+os arquivos desses três clientes recebem o estado
+`pending_target_user_id`: seus checksums de origem são calculados, mas o
+programa não afirma ter comparado um caminho de destino fictício.
 
 Nenhum código para copiar mídia, criar usuário, atualizar e-mail, inserir
 linha ou recarregar o PostgREST faz parte deste programa.
