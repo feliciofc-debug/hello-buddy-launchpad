@@ -3,6 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { appendLinkPost } from '../_shared/link-post.ts'
 
 import { prepareImageForInstagramSafe } from "../_shared/prepareImageForInstagram.ts"
+import { InstagramContainerTimeoutError, waitForInstagramContainer } from "../_shared/instagram-container.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -147,6 +148,15 @@ serve(async (req) => {
     const body = await req.json()
     const isScheduler = body.source === 'scheduler'
     const sanitizedCaption = await appendLinkPost(supabase, body.user_id, sanitizePublishText(body.caption))
+    const saveCreationId = (userId: string, queueRowId?: string) => async (creationId: string) => {
+      if (!queueRowId) return
+      const { error } = await supabase.from('social_posts_queue').update({
+        instagram_creation_id: creationId,
+        instagram_container_status: 'IN_PROGRESS',
+        updated_at: new Date().toISOString(),
+      }).eq('id', queueRowId).eq('user_id', userId).eq('platform', 'instagram')
+      if (error) throw new Error(`Não consegui guardar creation_id do Instagram: ${error.message}`)
+    }
 
     let posts: any[] = []
 
@@ -174,14 +184,14 @@ serve(async (req) => {
     } else if (body.video_url && body.caption) {
       // Publicação direta de vídeo (Reels)
       const { igId, token } = await getIgAccountId(supabase, body.user_id)
-      const result = await publishReelsToInstagram(token, igId, sanitizedCaption, body.video_url, body.user_id, body.cover_url)
+      const result = await publishReelsToInstagram(token, igId, sanitizedCaption, body.video_url, body.user_id, body.cover_url, body.creation_id, saveCreationId(body.user_id, body.queue_row_id))
       return new Response(JSON.stringify({ success: true, ...result }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     } else if (body.caption && body.image_url) {
        const { igId, token } = await getIgAccountId(supabase, body.user_id)
        const productTags = await getProductTags(supabase, body.user_id, body.produto_id)
-       const result = await publishImageToInstagram(token, igId, sanitizedCaption, body.image_url, body.user_id, productTags)
+       const result = await publishImageToInstagram(token, igId, sanitizedCaption, body.image_url, body.user_id, productTags, body.creation_id, saveCreationId(body.user_id, body.queue_row_id))
       return new Response(JSON.stringify({ success: true, ...result }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
@@ -211,10 +221,10 @@ serve(async (req) => {
          
          if (post.video_url) {
            // Publicar como Reels
-           result = await publishReelsToInstagram(token, igId, sanitizedPostText, post.video_url, post.user_id)
+           result = await publishReelsToInstagram(token, igId, sanitizedPostText, post.video_url, post.user_id, undefined, post.instagram_creation_id, saveCreationId(post.user_id, post.id))
          } else {
            // Publicar como imagem, com tag do catálogo quando configurada
-           result = await publishImageToInstagram(token, igId, sanitizedPostText, post.image_url, post.user_id, productTags)
+           result = await publishImageToInstagram(token, igId, sanitizedPostText, post.image_url, post.user_id, productTags, post.instagram_creation_id, saveCreationId(post.user_id, post.id))
          }
 
         await supabase.from('social_posts_queue')
@@ -222,6 +232,8 @@ serve(async (req) => {
             status: 'publicado',
             fb_post_id: result.post_id,
             published_at: new Date().toISOString(),
+            instagram_creation_id: null,
+            instagram_container_status: 'PUBLISHED',
             updated_at: new Date().toISOString()
           })
           .eq('id', post.id)
@@ -231,12 +243,15 @@ serve(async (req) => {
 
       } catch (postError) {
         const errorMsg = postError instanceof Error ? postError.message : 'Erro desconhecido'
+        const timeout = postError instanceof InstagramContainerTimeoutError
         console.error('❌ Erro no post Instagram', post.id, ':', errorMsg)
 
         await supabase.from('social_posts_queue')
           .update({
-            status: 'erro',
+            status: timeout ? 'pendente' : 'erro',
             error_message: errorMsg,
+            instagram_creation_id: timeout ? postError.creationId : null,
+            instagram_container_status: timeout ? postError.lastStatus : null,
             updated_at: new Date().toISOString()
           })
           .eq('id', post.id)
@@ -255,11 +270,15 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('❌ Erro geral Instagram:', error)
+    const timeout = error instanceof InstagramContainerTimeoutError
     return new Response(JSON.stringify({
       success: false,
-      error: error instanceof Error ? error.message : 'Erro desconhecido'
+      error: error instanceof Error ? error.message : 'Erro desconhecido',
+      retryable: timeout,
+      creation_id: timeout ? error.creationId : undefined,
+      container_status: timeout ? error.lastStatus : undefined,
     }), {
-      status: 200,
+      status: timeout ? 202 : 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   }
@@ -313,12 +332,21 @@ async function publishImageToInstagram(
   imageUrl: string,
   userId: string,
   productTags?: Array<{ product_id: string; x: number; y: number }>,
+  retryCreationId?: string,
+  onContainerCreated?: (creationId: string) => Promise<void>,
 ): Promise<{ post_id: string }> {
 
   console.log('📸 Publicando IMAGEM no Instagram...', { igAccountId })
 
   // Camada de segurança: AVIF → conversão real via Storage helper
   const safeImageUrl = await ensureInstagramCompatibleImageUrl(imageUrl, userId)
+
+  let creationId = String(retryCreationId || '').trim()
+  if (creationId) {
+    console.log('♻️ Reutilizando container de imagem Instagram:', creationId)
+    await waitForInstagramContainer(creationId, pageToken, 'feed-image')
+    return await publishContainer(igAccountId, creationId, pageToken)
+  }
 
   // Passo 1: Criar container de mídia
   const criarContainer = async (url: string) => {
@@ -353,12 +381,13 @@ async function publishImageToInstagram(
     throw new Error(`Instagram API (container): ${containerResult.error.message}`)
   }
 
-  const creationId = containerResult.id
+  creationId = containerResult.id
   console.log('✅ Container criado:', creationId)
+  await onContainerCreated?.(creationId)
 
 
   // Aguardar processamento
-  await waitForContainer(creationId, pageToken)
+  await waitForInstagramContainer(creationId, pageToken, 'feed-image')
 
   // Passo 2: Publicar
   return await publishContainer(igAccountId, creationId, pageToken)
@@ -372,12 +401,21 @@ async function publishReelsToInstagram(
   videoUrl: string,
   userId: string,
   coverUrl?: string,
+  retryCreationId?: string,
+  onContainerCreated?: (creationId: string) => Promise<void>,
 ): Promise<{ post_id: string }> {
 
   console.log('🎬 Publicando REELS no Instagram...', { igAccountId, videoUrl })
 
   // CORREÇÃO: cover_url também não pode ser AVIF
   const safeCoverUrl = coverUrl ? await ensureInstagramCompatibleImageUrl(coverUrl, userId) : undefined
+
+  let creationId = String(retryCreationId || '').trim()
+  if (creationId) {
+    console.log('♻️ Reutilizando container Reels Instagram:', creationId)
+    await waitForInstagramContainer(creationId, pageToken, 'feed-reels')
+    return await publishContainer(igAccountId, creationId, pageToken)
+  }
 
   // Passo 1: Criar container de vídeo (Reels)
   const containerBody: Record<string, string> = {
@@ -406,48 +444,18 @@ async function publishReelsToInstagram(
     throw new Error(`Instagram Reels API (container): ${containerResult.error.message}`)
   }
 
-  const creationId = containerResult.id
+  creationId = containerResult.id
   console.log('✅ Container Reels criado:', creationId)
+  await onContainerCreated?.(creationId)
 
   // Aguardar processamento (vídeo demora mais)
-  await waitForContainer(creationId, pageToken, 30, 5000)
+  await waitForInstagramContainer(creationId, pageToken, 'feed-reels')
 
   // Passo 2: Publicar
   return await publishContainer(igAccountId, creationId, pageToken)
 }
 
 // === HELPERS ===
-async function waitForContainer(
-  creationId: string, 
-  pageToken: string, 
-  maxAttempts = 10, 
-  intervalMs = 3000
-): Promise<void> {
-  // Aguardar inicial
-  await new Promise(resolve => setTimeout(resolve, intervalMs))
-
-  let attempts = 0
-  while (attempts < maxAttempts) {
-    const statusResponse = await fetch(
-      `https://graph.facebook.com/v25.0/${creationId}?fields=status_code,status&access_token=${pageToken}`
-    )
-    const statusResult = await statusResponse.json()
-    console.log(`📋 Status do container (tentativa ${attempts + 1}):`, statusResult.status_code)
-
-    if (statusResult.status_code === 'FINISHED') {
-      return
-    } else if (statusResult.status_code === 'ERROR') {
-      const errorMsg = statusResult.status || 'Erro ao processar mídia'
-      throw new Error(`Instagram: ${errorMsg}. Verifique se a URL é pública e acessível.`)
-    } else {
-      attempts++
-      await new Promise(resolve => setTimeout(resolve, intervalMs))
-    }
-  }
-
-  throw new Error('Instagram: Timeout ao processar mídia. Tente novamente.')
-}
-
 async function publishContainer(
   igAccountId: string,
   creationId: string,
