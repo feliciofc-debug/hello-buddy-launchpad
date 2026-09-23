@@ -153,7 +153,7 @@ class ImportSqlTests(unittest.TestCase):
     def test_rollback_refuses_drift_before_changes(self) -> None:
         rollback = Rollback.__new__(Rollback)
         rollback.run_id = str(uuid.uuid4())
-        run = {"tenant": "duda"}
+        run = {"tenant": "duda", "started_at": "2026-09-23T17:00:00+00:00"}
         record_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
         changes = [
             {
