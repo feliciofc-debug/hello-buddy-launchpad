@@ -235,3 +235,79 @@ O resultado só fica pronto para a importação se também confirmar:
 - papel `admin` para AMZ e `empresa` para Duda e Renata;
 - existência e e-mail correto da conta preservada do Marcelo;
 - comparação de todos os destinos de mídia, agora sem UUID simbólico.
+
+## Importação real por tenant
+
+O importador exige o relatório e o manifesto aprovados do Dry-run B. Ele
+recusa marcadores simbólicos, blockers, conta/e-mail/papel divergente e
+qualquer destino diferente de `/opt/amz-media`.
+
+A senha de `supabase_admin` deve existir somente na variável `PGPW`. O processo
+encaminha o valor ao `docker exec` como `PGPASSWORD`, sem colocá-lo nos
+argumentos nem nos relatórios.
+
+Piloto da Duda:
+
+```bash
+cd /root/_diff_amz/main
+
+read -r -s -p 'Senha PostgreSQL de supabase_admin: ' PGPW
+echo
+export PGPW
+
+python3 scripts/importador_amz/import_data.py \
+  --tenant duda \
+  --export-dir /root/export_amz \
+  --media-dir /root/export_amz/_arquivos \
+  --target-media-dir /opt/amz-media \
+  --dry-run-report /root/amz-dry-run-output/dry-run-b-report.json \
+  --manifest-json /root/amz-dry-run-output/dry-run-b-sha256.json \
+  --report-json /root/amz-import-output/import-duda.json
+
+unset PGPW
+```
+
+O importador:
+
+- carrega somente um tenant por execução;
+- não importa `integrations`, `whatsapp_config` nem `social_posts_queue`;
+- preserva a política especial do Marcelo;
+- converte todos os UUIDs do tenant para a conta canônica;
+- limpa referências deliberadamente ausentes e reescreve URLs do host antigo;
+- força `autopilot_config.ativo=false` e `proxima_execucao=NULL`;
+- remove colunas exclusivas da origem e referências conhecidas sem destino;
+- copia mídia por checksum, com arquivos `0644` e diretórios atravessáveis pelo
+  nginx;
+- executa todos os upserts do tenant em uma única transação;
+- atualiza somente linhas diferentes e informa inseridas, atualizadas,
+  inalteradas e tabelas ignoradas;
+- mantém snapshots antes/depois em `amz_migration` para rollback.
+
+Os arquivos são preparados antes da transação. Se qualquer validação ou SQL
+falhar, somente arquivos criados pela tentativa são removidos e permissões
+anteriores são restauradas. Interrupções abruptas podem deixar arquivos
+órfãos, mas nunca linhas parcialmente confirmadas; uma nova execução compara
+checksums e converge sem duplicar registros.
+
+## Rollback de uma execução
+
+Use o `run_id` do relatório final:
+
+```bash
+read -r -s -p 'Senha PostgreSQL de supabase_admin: ' PGPW
+echo
+export PGPW
+
+python3 scripts/importador_amz/rollback_import.py \
+  --run-id '<RUN_ID_DO_RELATORIO>' \
+  --target-media-dir /opt/amz-media \
+  --report-json /root/amz-import-output/rollback-duda.json
+
+unset PGPW
+```
+
+O rollback é recusado se houver importação posterior do mesmo tenant ou se
+qualquer linha tiver mudado desde o snapshot. Linhas inseridas são removidas,
+linhas atualizadas são restauradas e arquivos criados são movidos, após
+conferência SHA-256, para `/opt/amz-media/.amz-rollback/<run_id>/`. Arquivos
+preexistentes nunca são apagados.
