@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import shutil
@@ -49,7 +50,7 @@ class Rollback:
         if len(rows) != 1:
             raise ValueError("execução de importação não encontrada")
         run = rows[0]
-        if run["status"] != "committed":
+        if run["status"] not in {"committed", "rollback_files_pending"}:
             raise ValueError(f"execução não pode ser revertida: status={run['status']}")
         later = self.psql.query(
             f"""
@@ -159,6 +160,21 @@ class Rollback:
             "SET LOCAL lock_timeout = '10s';",
             "SET LOCAL statement_timeout = '30min';",
             f"SELECT pg_advisory_xact_lock(hashtext('amz-import:{run['tenant']}'));",
+            f"""
+DO $later_run$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM {AUDIT_SCHEMA}.runs
+    WHERE tenant = '{run['tenant']}'
+      AND status = 'committed'
+      AND started_at > '{run['started_at']}'::timestamptz
+  ) THEN
+    RAISE EXCEPTION
+      'há importação posterior para o tenant; reverta-a primeiro';
+  END IF;
+END;
+$later_run$;""",
             """
 CREATE TEMP TABLE rollback_payload (
   sequence bigint NOT NULL,
@@ -194,6 +210,8 @@ COPY rollback_payload (
             )
             statements.append(
                 f"""
+ALTER TABLE public.{quoted_table} DISABLE TRIGGER USER;
+
 DO $guard_{table}$
 BEGIN
   IF EXISTS (
@@ -224,13 +242,15 @@ SET {set_clause}
 FROM rollback_payload payload
 WHERE payload.table_name = '{table}'
   AND payload.action = 'update'
-  AND current.id = payload.record_id;"""
+  AND current.id = payload.record_id;
+
+ALTER TABLE public.{quoted_table} ENABLE TRIGGER USER;"""
             )
         statements.extend(
             [
                 f"""
 UPDATE {AUDIT_SCHEMA}.runs
-SET status = 'rolled_back',
+SET status = 'rollback_files_pending',
     finished_at = now()
 WHERE id = '{self.run_id}'::uuid
   AND status = 'committed';
@@ -241,13 +261,12 @@ BEGIN
     SELECT 1
     FROM {AUDIT_SCHEMA}.runs
     WHERE id = '{self.run_id}'::uuid
-      AND status = 'rolled_back'
+      AND status = 'rollback_files_pending'
   ) THEN
     RAISE EXCEPTION 'status da importação mudou durante o rollback';
   END IF;
 END;
 $status$;""",
-                "COMMIT;",
                 f"""
 COPY (
   SELECT json_build_object(
@@ -259,6 +278,7 @@ COPY (
   FROM {AUDIT_SCHEMA}.runs
   WHERE id = '{self.run_id}'::uuid
 ) TO STDOUT;""",
+                "COMMIT;",
             ]
         )
         return "\n".join(statements) + "\n"
@@ -279,13 +299,20 @@ COPY (
             except ValueError:
                 raise ValueError("caminho inseguro no diário de arquivos")
             if entry["action"] == "created":
+                quarantine = quarantine_root / entry["relative_path"]
+                if (
+                    quarantine.is_file()
+                    and not quarantine.is_symlink()
+                    and sha256_file(quarantine) == entry["sha256"]
+                ):
+                    counts["quarantined"] += 1
+                    continue
                 if not target.is_file() or target.is_symlink():
                     counts["warning"] += 1
                     continue
                 if sha256_file(target) != entry["sha256"]:
                     counts["warning"] += 1
                     continue
-                quarantine = quarantine_root / entry["relative_path"]
                 try:
                     quarantine.parent.mkdir(
                         parents=True, exist_ok=True, mode=0o700
@@ -295,7 +322,12 @@ COPY (
                 except OSError:
                     counts["warning"] += 1
             elif entry["action"] == "permission_updated":
-                if target.is_file() and entry["previous_mode"]:
+                if (
+                    target.is_file()
+                    and not target.is_symlink()
+                    and entry["previous_mode"]
+                    and sha256_file(target) == entry["sha256"]
+                ):
                     os.chmod(target, int(entry["previous_mode"]))
                     counts["mode_restored"] += 1
                 else:
@@ -339,10 +371,45 @@ COPY (
         run = self.load_run()
         changes = self.load_changes()
         files = self.load_files()
-        schema = self.schema_columns({row["table_name"] for row in changes})
-        output = self.psql.run(self.build_sql(run, changes, schema))
-        report = json.loads(output)
+        if run["status"] == "committed":
+            schema = self.schema_columns({row["table_name"] for row in changes})
+            output = self.psql.run(self.build_sql(run, changes, schema))
+            try:
+                report = json.loads(output)
+            except json.JSONDecodeError:
+                report = {
+                    "run_id": self.run_id,
+                    "tenant": run["tenant"],
+                    "status": "rollback_files_pending",
+                    "rows_reverted": len(changes),
+                }
+        else:
+            report = {
+                "run_id": self.run_id,
+                "tenant": run["tenant"],
+                "status": "rollback_files_pending",
+                "rows_reverted": len(changes),
+                "resumed": True,
+            }
         report["files"] = self.quarantine_files(files)
+        if report["files"]["warning"] == 0:
+            self.psql.run(
+                f"""
+                BEGIN;
+                SELECT pg_advisory_xact_lock(
+                  hashtext('amz-import:{run['tenant']}')
+                );
+                UPDATE {AUDIT_SCHEMA}.runs
+                SET status = 'rolled_back',
+                    finished_at = now()
+                WHERE id = '{self.run_id}'::uuid
+                  AND status = 'rollback_files_pending';
+                COMMIT;
+                """
+            )
+            report["status"] = "rolled_back"
+        else:
+            report["status"] = "rollback_files_pending"
         report["quarantine"] = str(
             self.target_media_dir / ".amz-rollback" / self.run_id
         )
@@ -372,9 +439,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     try:
-        report = Rollback(parse_args(argv or sys.argv[1:])).run()
+        args = parse_args(argv or sys.argv[1:])
+        lock_path = args.target_media_dir / ".amz-import.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("w", encoding="utf-8") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            report = Rollback(args).run()
         print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
         return 0
+    except BlockingIOError:
+        print(json.dumps({"fatal": "importação ou rollback em andamento"}))
+        return 1
     except Exception as error:
         password = os.environ.get("PGPW", "")
         message = str(error).replace(password, "[REDACTED]") if password else str(error)

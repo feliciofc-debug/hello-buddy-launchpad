@@ -147,6 +147,7 @@ class ImportSqlTests(unittest.TestCase):
         self.assertIn("amz_migration.row_changes", sql)
         self.assertIn("snapshot final ausente", sql)
         self.assertIn("COMMIT;", sql)
+        self.assertLess(sql.index("COPY (\n  SELECT report"), sql.index("COMMIT;"))
         self.assertLess(sql.index("snapshot final ausente"), sql.index("COMMIT;"))
 
     def test_rollback_refuses_drift_before_changes(self) -> None:
@@ -168,7 +169,9 @@ class ImportSqlTests(unittest.TestCase):
 
         self.assertIn("mudou depois da importação; rollback recusado", sql)
         self.assertLess(sql.index("rollback recusado"), sql.index("DELETE FROM"))
-        self.assertIn("status = 'rolled_back'", sql)
+        self.assertIn("DISABLE TRIGGER USER", sql)
+        self.assertIn("ENABLE TRIGGER USER", sql)
+        self.assertIn("status = 'rollback_files_pending'", sql)
         self.assertIn("COMMIT;", sql)
 
 

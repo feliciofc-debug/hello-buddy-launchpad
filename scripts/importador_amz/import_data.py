@@ -222,6 +222,14 @@ class Importer:
             raise ValueError("o relatório informado não é do Dry-run B")
         if summary.get("blockers") != 0:
             raise ValueError("o Dry-run B contém blockers")
+        if not summary.get("ready_for_account_phase"):
+            raise ValueError("o Dry-run B não marcou a fase como pronta")
+        if not self.dry_report.get("database", {}).get("enabled"):
+            raise ValueError("o Dry-run B não incluiu validação do banco")
+        if not self.dry_report.get("storage", {}).get(
+            "destination_comparison_complete"
+        ):
+            raise ValueError("o Dry-run B não comparou todos os destinos de mídia")
         if self.tenant not in {"atom", "duda", "renata", "marcelo"}:
             raise ValueError("tenant inválido")
         try:
@@ -451,6 +459,14 @@ class Importer:
             ]
             if "id" not in used:
                 raise ValueError(f"{table}: coluna id ausente dos registros")
+            shapes = {
+                tuple(column for column in used if column in row) for row in rows
+            }
+            if len(shapes) != 1:
+                raise ValueError(
+                    f"{table}: registros têm conjuntos de colunas diferentes; "
+                    "importação recusada para não converter ausência em NULL"
+                )
             columns[table] = used
             filtered[table] = [
                 {key: row.get(key) for key in used if key in row} for row in rows
@@ -462,11 +478,23 @@ class Importer:
         seen_targets: set[str] = set()
         for entry in self.manifest:
             relative_source = Path(entry["relative_source"])
+            relative_target = Path(entry["relative_target"])
+            if (
+                relative_source.is_absolute()
+                or relative_target.is_absolute()
+                or ".." in relative_source.parts
+                or ".." in relative_target.parts
+            ):
+                raise ValueError("manifesto contém caminho inseguro")
             owned = self.source_user_id in relative_source.parts
             referenced = relative_source.as_posix() in self.referenced_paths
             if not (owned or referenced):
                 continue
-            relative_target = Path(entry["relative_target"])
+            expected_source = self.source_public_root / relative_source
+            if Path(entry["source"]).absolute() != expected_source.absolute():
+                raise ValueError(
+                    f"manifesto aponta origem inesperada: {relative_source}"
+                )
             expected_target = self.map_relative_path(relative_source)
             if relative_target != expected_target:
                 raise ValueError(
@@ -633,6 +661,20 @@ CREATE TABLE IF NOT EXISTS {AUDIT_SCHEMA}.files (
 ALTER TABLE {AUDIT_SCHEMA}.files
   ADD COLUMN IF NOT EXISTS previous_mode integer;""",
             f"""
+DO $pending_rollback$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM {AUDIT_SCHEMA}.runs
+    WHERE tenant = '{self.tenant}'
+      AND status = 'rollback_files_pending'
+  ) THEN
+    RAISE EXCEPTION
+      'tenant possui rollback de arquivos pendente; importação recusada';
+  END IF;
+END;
+$pending_rollback$;""",
+            f"""
 INSERT INTO {AUDIT_SCHEMA}.runs (id, tenant, target_user_id, status)
 VALUES ('{self.run_id}'::uuid, '{self.tenant}', '{self.target_user_id}'::uuid, 'running');""",
             """
@@ -696,6 +738,7 @@ FROM import_files;""",
             )
             statements.append(
                 f"""
+{"ALTER TABLE public." + quoted_table + " DISABLE TRIGGER USER;" if table in {"opt_ins", "cadastros"} else ""}
 CREATE TEMP TABLE incoming_{table} ON COMMIT DROP AS
 SELECT {select_list}
 FROM (
@@ -733,7 +776,8 @@ SET after_row = to_jsonb(target)
 FROM public.{quoted_table} target
 WHERE changes.run_id = '{self.run_id}'::uuid
   AND changes.table_name = '{table}'
-  AND target.id = changes.record_id;"""
+  AND target.id = changes.record_id;
+{"ALTER TABLE public." + quoted_table + " ENABLE TRIGGER USER;" if table in {"opt_ins", "cadastros"} else ""}"""
             )
 
         skipped_total = sum(self.skipped.values())
@@ -812,13 +856,13 @@ SET status = 'committed',
     report = summary.report
 FROM summary
 WHERE runs.id = '{self.run_id}'::uuid;""",
-                "COMMIT;",
                 f"""
 COPY (
   SELECT report::text
   FROM {AUDIT_SCHEMA}.runs
   WHERE id = '{self.run_id}'::uuid
 ) TO STDOUT;""",
+                "COMMIT;",
             ]
         )
         return "\n".join(statements) + "\n"
@@ -845,13 +889,28 @@ COPY (
         schema = self.schema_columns()
         filtered, columns = self.filtered_records(schema)
         media_entries = self.selected_media()
-        media_counts = self.copy_media(media_entries)
         try:
+            media_counts = self.copy_media(media_entries)
             output = self.psql.run(self.build_import_sql(filtered, columns))
-            report = json.loads(output)
         except BaseException:
             self.cleanup_media()
             raise
+        try:
+            report = json.loads(output)
+        except json.JSONDecodeError:
+            recovered = self.psql.query(
+                f"""
+                SELECT report::text
+                FROM {AUDIT_SCHEMA}.runs
+                WHERE id = '{self.run_id}'::uuid
+                  AND status = 'committed'
+                """
+            )
+            if len(recovered) != 1:
+                raise RuntimeError(
+                    f"importação confirmou, mas relatório {self.run_id} não foi recuperado"
+                )
+            report = json.loads(recovered[0]["report"])
         report["filesystem"] = media_counts
         report["report_json"] = str(self.args.report_json)
         report["report_saved"] = True
