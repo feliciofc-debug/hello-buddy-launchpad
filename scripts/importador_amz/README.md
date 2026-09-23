@@ -120,3 +120,31 @@ programa não afirma ter comparado um caminho de destino fictício.
 
 Nenhum código para copiar mídia, criar usuário, atualizar e-mail, inserir
 linha ou recarregar o PostgREST faz parte deste programa.
+
+## Pré-requisito de banco para zerar os blockers
+
+A migration
+`20260923160900_6be0b767-1e84-4e83-b13f-a8148ea5ee7f.sql` torna
+`profiles.whatsapp` e `profiles.cpf` nullable e remove o UUID legado da função
+`sync_cadastro_to_whatsapp_contacts`. Ela apenas foi entregue no repositório;
+deve ser revisada e aplicada separadamente no banco AMZ.
+
+A função usa primeiro `NEW.user_id`. O parâmetro `app.amz_tenant_id` é somente
+o fallback para uma eventual linha legada sem proprietário. Depois de criar a
+conta canônica da AMZ e antes da importação, grave o UUID real como configuração
+persistente do banco:
+
+```sql
+-- Execute via psql, substituindo o marcador pelo UUID canônico.
+SELECT format(
+  'ALTER DATABASE %I SET app.amz_tenant_id = %L',
+  current_database(),
+  '<UUID_CANONICO_DA_AMZ>'
+)\gexec
+```
+
+Abra uma nova conexão e confirme com `SHOW app.amz_tenant_id;`. Configurações
+feitas com `ALTER DATABASE` passam a valer em novas sessões; portanto, recicle
+os pools/conexões persistentes antes de qualquer operação que possa usar o
+fallback. Não defina o parâmetro com o UUID antigo nem antes de a conta
+canônica existir.
