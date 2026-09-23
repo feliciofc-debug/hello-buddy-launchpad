@@ -3575,6 +3575,24 @@ function detectSocialPostIntent(text: string): { produto: string; tom: string; r
   return { produto: temProduto ? produto : "", tom, redes: uniqueStrings(redes), temProduto, formato: formatoPedido };
 }
 
+function invalidSocialVariantsReason(
+  redes: string[],
+  variantes: Record<string, PostVariantes> | null | undefined,
+): string | null {
+  if (!Array.isArray(redes) || redes.length === 0) return "lista_de_redes_vazia";
+  if (!variantes || typeof variantes !== "object") return "variantes_ausentes";
+  for (const rede of redes) {
+    const opcoes = variantes[rede];
+    if (!opcoes || typeof opcoes !== "object") return `rede_sem_variantes:${rede}`;
+    for (const opcao of ["A", "B", "C"] as const) {
+      if (typeof opcoes[opcao] !== "string" || !opcoes[opcao].trim()) {
+        return `opcao_vazia:${rede}:${opcao}`;
+      }
+    }
+  }
+  return null;
+}
+
 function formatSocialPostToolResult(raw: string): string {
   let data: any = null;
   try { data = JSON.parse(raw); } catch { return raw; }
@@ -3582,22 +3600,41 @@ function formatSocialPostToolResult(raw: string): string {
   // Novo fluxo: 3 opções A/B/C
   if (data?.status === "aguardando_escolha_variante") {
     const redes: string[] = Array.isArray(data.redes) ? data.redes : [];
-    const variantes = data.variantes || {};
+    const variantes: Record<string, PostVariantes> = data.variantes || {};
+    const invalidReason = invalidSocialVariantsReason(redes, variantes);
+    if (invalidReason) {
+      console.error("[social_copy][empty_options_blocked]", {
+        reason: invalidReason,
+        token: typeof data?.token === "string" ? data.token : undefined,
+        revisado: data?.revisado === true,
+        redes,
+        variantKeys: Object.keys(variantes),
+      });
+      return "Não consegui gerar as opções de copy desta vez. Nenhuma opção foi enviada nem selecionada. Tente pedir o ajuste novamente.";
+    }
+
     // Se todas redes têm o mesmo texto por variante, mostra 1 vez só. Senão mostra por rede.
     const primeira = redes[0];
-    const v0 = variantes[primeira] || { A: "", B: "", C: "" };
+    const v0 = variantes[primeira];
     const allEqual = redes.every((r) => {
-      const v = variantes[r] || {};
+      const v = variantes[r];
       return v.A === v0.A && v.B === v0.B && v.C === v0.C;
     });
-    const bloco = (v: any) => `*Opção A — Direta*\n${v.A || ""}\n\n*Opção B — História*\n${v.B || ""}\n\n*Opção C — Interativa*\n${v.C || ""}`;
-    const preview = allEqual
-      ? bloco(v0)
-      : redes.map((r) => `━━━ *${r.toUpperCase()}* ━━━\n${bloco(variantes[r] || {})}`).join("\n\n");
+    const bloco = (v: PostVariantes) => `*Opção A — Direta*\n${v.A}\n\n*Opção B — História*\n${v.B}\n\n*Opção C — Interativa*\n${v.C}`;
     const aviso = data?.aviso_formato ? `\n\n_${data.aviso_formato}_` : "";
     const avisoReels = data?.aviso_reels ? `\n_ℹ️ ${data.aviso_reels}_` : "";
     const pergunta = `Qual você prefere? Responde *A*, *B* ou *C*.`;
-    return `Preparei 3 opções 👇${aviso}${avisoReels}<<SPLIT>>${preview}<<SPLIT>>${pergunta}`;
+    const cabecalho = `Preparei 3 opções 👇${aviso}${avisoReels}`;
+
+    // A pergunta viaja no MESMO balão que contém opções. Assim, uma falha no
+    // envio do preview nunca deixa uma pergunta A/B/C órfã no WhatsApp.
+    if (allEqual) return `${cabecalho}<<SPLIT>>${bloco(v0)}\n\n${pergunta}`;
+
+    // Copies diferentes por rede podem ultrapassar o limite de uma mensagem.
+    // Separa por rede e mantém a pergunta junto do último bloco de opções.
+    const blocosPorRede = redes.map((r) => `━━━ *${r.toUpperCase()}* ━━━\n${bloco(variantes[r])}`);
+    blocosPorRede[blocosPorRede.length - 1] += `\n\n${pergunta}`;
+    return `${cabecalho}<<SPLIT>>${blocosPorRede.join("<<SPLIT>>")}`;
   }
 
   if (data?.status === "variante_selecionada") {
@@ -3704,6 +3741,19 @@ function detectPlainSocialPostConfirmation(text: string): { cancelar?: boolean }
   if (/^(cancela|cancelar|nao posta|nao publicar|descarta|deixa pra la)$/.test(normalized)) return { cancelar: true };
   if (/^(sim|ok|ta bom|tudo certo|pode|pode postar|posta|postar|publica|publique|confirmo|confirma|manda|manda ver|vai|aprovado|pode publicar agora)$/.test(normalized)) return {};
   return null;
+}
+
+// Reconhece pedidos explícitos de edição de uma copy pendente. O texto original,
+// sem normalização nem resumo por IA, é encaminhado integralmente ao gerador.
+function detectPlainSocialCopyAdjustment(text: string): string | null {
+  const original = compactSpaces(text || "").trim();
+  if (original.length < 2 || original.length > 2500) return null;
+  const normalized = normalizePt(original);
+  const mencionaCopy = /\b(copy|copys|copies|texto|legenda|opcao|post)\b/.test(normalized);
+  const pedeMudanca = /\b(ajusta|ajustar|altera|alterar|muda|mudar|troca|trocar|refaz|refazer|reescreve|reescrever|corrige|corrigir|tira|tirar|remove|remover|inclui|incluir|adiciona|adicionar|coloca|colocar|poe|deixa|foca|falar|falando|menciona|mencionar)\b/.test(normalized);
+  const criticaCopy = /\b(copy|texto|legenda|opcao|post)\b[\s\S]{0,100}\b(nao|sem|pouco|confus|clar|errad|ruim|generi|long|curt|formal|informal)\b/.test(normalized);
+  const instrucaoCurta = /^(mais|menos|sem|com|tira|remove|inclui|adiciona|coloca|poe|deixa|foca|muda|troca|refaz)\b/.test(normalized);
+  return ((mencionaCopy && (pedeMudanca || criticaCopy)) || instrucaoCurta) ? original : null;
 }
 
 async function findLatestPendingSocialToken(userId: string): Promise<string | null> {
@@ -3843,6 +3893,14 @@ async function toolPostarRedesSociais(
     );
     let variantes: Record<string, PostVariantes> = Object.fromEntries(variantesEntries);
     let scripts: Record<string, string> = Object.fromEntries(variantesEntries.map(([r, v]) => [r, v.A]));
+    const invalidReason = invalidSocialVariantsReason(redes, variantes);
+    if (invalidReason) {
+      console.error("[postar_redes][empty_options]", { reason: invalidReason, userId: ctx.userId, redes });
+      return JSON.stringify({
+        erro: "falha_ao_gerar_opcoes",
+        mensagem: "Não consegui gerar as três opções de copy. Tente novamente; não vou pedir A/B/C sem antes mostrar as opções.",
+      });
+    }
 
     // Feature A: CTA de WhatsApp (opt-in) — número dinâmico do tenant. Aplica em TODAS as variantes.
     let ctaNota: string | undefined;
@@ -3931,6 +3989,9 @@ async function toolRevisarPostPendente(
   const toggleCta = typeof args?.incluir_cta_whatsapp === "boolean";
   if (!/^[a-f0-9]{8}$/.test(token)) return JSON.stringify({ erro: "token inválido" });
   if (ajuste.length < 2 && !toggleCta) return JSON.stringify({ erro: "ajuste vazio — descreva o que mudar" });
+  if (ajuste.length >= 2) {
+    console.log("[revisar_post][adjustment_received]", { token, chars: ajuste.length });
+  }
 
   const p = PENDING_POSTS.get(token) ?? (await loadPendingSocialPost(token, ctx.userId));
   if (!p) return JSON.stringify({ erro: "token não encontrado ou expirado. Refaça o pedido de postagem." });
@@ -3997,6 +4058,21 @@ async function toolRevisarPostPendente(
       }),
     );
     variantes = Object.fromEntries(varEntries);
+  }
+
+  const invalidReason = invalidSocialVariantsReason(p.redes, variantes);
+  if (invalidReason) {
+    console.error("[revisar_post][empty_options]", {
+      reason: invalidReason,
+      token,
+      userId: ctx.userId,
+      redes: p.redes,
+      adjustmentChars: ajuste.length,
+    });
+    return JSON.stringify({
+      erro: "falha_ao_regenerar_opcoes",
+      mensagem: "Não consegui regenerar as três opções com esse ajuste. O post anterior foi mantido; tente novamente.",
+    });
   }
 
   // Feature A: CTA de WhatsApp (opt-in) — aplica em TODAS as variantes.
@@ -4501,6 +4577,19 @@ async function toolPostarMidiaBiblioteca(
     console.log(`[pietro][postar_midia] copy gerada lenA=${opcoesBase.A.length}`);
     let variantes: Record<string, PostVariantes> = Object.fromEntries(redes.map((r) => [r, { ...opcoesBase }]));
     let scripts: Record<string, string> = Object.fromEntries(redes.map((r) => [r, opcoesBase.A]));
+    const invalidReason = invalidSocialVariantsReason(redes, variantes);
+    if (invalidReason) {
+      console.error("[postar_midia][empty_options]", {
+        reason: invalidReason,
+        userId: ctx.userId,
+        midiaId: midia.id,
+        redes,
+      });
+      return JSON.stringify({
+        erro: "falha_ao_gerar_opcoes",
+        mensagem: "Não consegui gerar as três opções de copy para essa mídia. Tente novamente; não vou pedir A/B/C sem antes mostrar as opções.",
+      });
+    }
 
 
     // Feature A: CTA de WhatsApp (opt-in, número dinâmico do tenant).
@@ -6208,6 +6297,22 @@ async function callGemini(
       console.log("[pietro][forced_social_plain_confirm]", { token: latestPendingSocialToken, cancelar: !!plainPostConfirmation.cancelar });
       const confirmResult = await toolConfirmarPostagemRedes({ token: latestPendingSocialToken!, cancelar: plainPostConfirmation.cancelar }, toolCtx);
       return { text: formatSocialPostToolResult(confirmResult) };
+    }
+
+    // Ajuste explícito em texto livre: encaminha a frase LITERAL diretamente ao
+    // gerador. Isso elimina a etapa em que o modelo podia resumir ou omitir o
+    // briefing novo e garante a resposta determinística com as opções completas.
+    const plainCopyAdjustment = latestPendingSocialToken ? detectPlainSocialCopyAdjustment(userContent) : null;
+    if (plainCopyAdjustment) {
+      console.log("[pietro][forced_social_copy_adjustment]", {
+        token: latestPendingSocialToken,
+        chars: plainCopyAdjustment.length,
+      });
+      const revisedResult = await toolRevisarPostPendente({
+        token: latestPendingSocialToken!,
+        ajuste: plainCopyAdjustment,
+      }, toolCtx);
+      return { text: formatSocialPostToolResult(revisedResult) };
     }
 
     // 0) Postagem em redes sociais: atalho determinístico para não deixar o modelo "prometer" preview sem chamar a tool.
@@ -8687,6 +8792,9 @@ Regras:
           await sendWhatsApp(userId, row.from_number, part);
         } catch (e) {
           console.error("[pietro][followup_send_failed]", (e as Error).message ?? e);
+          // Interrompe a sequência: continuar enviando poderia entregar a
+          // pergunta A/B/C depois de uma mensagem de opções que falhou.
+          throw e;
         }
       }
     } catch (e) {
