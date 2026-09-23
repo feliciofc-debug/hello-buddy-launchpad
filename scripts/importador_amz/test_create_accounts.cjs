@@ -53,12 +53,15 @@ test("SQL is transactional, parameter-staged and idempotent", () => {
   assert.match(sql, /^(\s*)BEGIN;/);
   assert.match(sql, /COPY account_import/);
   assert.match(sql, /WHERE operation = 'create'\s+AND NOT EXISTS/);
+  assert.match(sql, /não corresponde a uma conta canônica completa/);
+  assert.match(sql, /b7af0118-c506-4f87-8ac3-a0a11fd621fe/);
   assert.match(sql, /ON CONFLICT \(user_id, role\) DO NOTHING/);
   assert.match(
     sql,
     /lower\(target\.email\) = lower\(source\.previous_email\)/,
   );
   assert.match(sql, /COMMIT;/);
+  assert.match(sql, /validação final das quatro contas falhou/);
   assert.doesNotMatch(sql, /senha provisória/i);
 });
 

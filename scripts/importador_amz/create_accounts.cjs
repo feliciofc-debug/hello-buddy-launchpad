@@ -98,10 +98,14 @@ function inspectHandleNewUser() {
   const output = runPsql(`
 SELECT pg_get_functiondef('public.handle_new_user()'::regprocedure);
 SELECT '__TRIGGER_COUNT__=' || count(*)::text
-FROM pg_trigger
-WHERE tgrelid = 'auth.users'::regclass
-  AND NOT tgisinternal
-  AND pg_get_triggerdef(oid) ILIKE '%handle_new_user%';
+FROM pg_trigger trigger
+WHERE trigger.tgrelid = 'auth.users'::regclass
+  AND trigger.tgfoid = 'public.handle_new_user()'::regprocedure
+  AND NOT trigger.tgisinternal
+  AND trigger.tgenabled <> 'D'
+  AND (trigger.tgtype & 1) = 1
+  AND (trigger.tgtype & 2) = 0
+  AND (trigger.tgtype & 4) = 4;
 `);
   const marker = "\n__TRIGGER_COUNT__=";
   const markerIndex = output.lastIndexOf(marker);
@@ -258,6 +262,8 @@ ${copyRows}
 DO $guard$
 DECLARE
   marcelo account_import%ROWTYPE;
+  candidate account_import%ROWTYPE;
+  existing_user auth.users%ROWTYPE;
 BEGIN
   SELECT * INTO STRICT marcelo
   FROM account_import
@@ -282,6 +288,37 @@ BEGIN
     RAISE EXCEPTION
       'novo e-mail do Marcelo já pertence a outro UUID';
   END IF;
+
+  FOR candidate IN
+    SELECT * FROM account_import WHERE operation = 'create'
+  LOOP
+    SELECT * INTO existing_user
+    FROM auth.users
+    WHERE lower(email) = lower(candidate.email);
+
+    IF FOUND AND (
+      existing_user.email_confirmed_at IS NULL
+      OR COALESCE(existing_user.encrypted_password, '') !~ '^\\$2[aby]\\$10\\$'
+      OR existing_user.id IN (
+        'b7af0118-c506-4f87-8ac3-a0a11fd621fe'::uuid,
+        '684ed635-2a72-47ba-bee1-a8c906d973a3'::uuid,
+        '781d6839-0de1-4261-a971-4375ee8db92d'::uuid
+      )
+      OR NOT EXISTS (
+        SELECT 1 FROM public.profiles
+        WHERE id = existing_user.id
+      )
+      OR NOT EXISTS (
+        SELECT 1 FROM public.user_roles
+        WHERE user_id = existing_user.id
+          AND role = candidate.account_role::public.app_role
+      )
+    ) THEN
+      RAISE EXCEPTION
+        'e-mail % já existe, mas não corresponde a uma conta canônica completa',
+        candidate.email;
+    END IF;
+  END LOOP;
 END;
 $guard$;
 
@@ -323,6 +360,29 @@ SELECT users.id, source.account_role::public.app_role
 FROM account_import source
 JOIN auth.users users ON lower(users.email) = lower(source.email)
 ON CONFLICT (user_id, role) DO NOTHING;
+
+DO $validate$
+BEGIN
+  IF (
+    SELECT count(*)
+    FROM account_import source
+    JOIN auth.users users ON lower(users.email) = lower(source.email)
+    JOIN public.profiles profiles ON profiles.id = users.id
+    JOIN public.user_roles roles
+      ON roles.user_id = users.id
+     AND roles.role = source.account_role::public.app_role
+    WHERE users.email_confirmed_at IS NOT NULL
+      AND users.encrypted_password ~ '^\\$2[aby]\\$[0-9]{2}\\$'
+      AND (
+        source.tenant <> 'marcelo'
+        OR users.id = source.planned_id
+      )
+  ) <> 4 THEN
+    RAISE EXCEPTION
+      'validação final das quatro contas falhou; transação revertida';
+  END IF;
+END;
+$validate$;
 
 SELECT source.tenant, users.id::text, users.email, source.account_role
 FROM account_import source
@@ -394,8 +454,19 @@ async function main() {
   }
 
   console.log("\nUUIDs canônicos:");
-  for (const line of resultLines) {
+  for (const [index, line] of resultLines.entries()) {
     const [tenant, id, email, role] = line.split("|");
+    const expected = ACCOUNTS[index];
+    if (
+      tenant !== expected.tenant ||
+      email.toLowerCase() !== expected.email ||
+      role !== expected.role ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        id,
+      )
+    ) {
+      throw new Error("resultado final do PostgreSQL não corresponde ao plano");
+    }
     console.log(`${tenant.padEnd(8)} ${id}  ${email}  ${role}`);
   }
 }
