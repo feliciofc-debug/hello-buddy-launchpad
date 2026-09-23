@@ -121,10 +121,10 @@ class DryRunStorageTests(unittest.TestCase):
             "imagem_url",
         )
 
-    def test_rejects_invalid_media_layout_and_unknown_owner(self) -> None:
-        invalid = self.public / "videos" / "sem-uuid.mp4"
-        invalid.parent.mkdir(parents=True)
-        invalid.write_bytes(b"invalido")
+    def test_preserves_shared_and_unknown_owner_paths_as_warnings(self) -> None:
+        shared = self.public / "produtos" / "ia-marketing" / "sem-uuid.mp4"
+        shared.parent.mkdir(parents=True)
+        shared.write_bytes(b"compartilhado")
         unknown = (
             self.public
             / "videos"
@@ -137,12 +137,41 @@ class DryRunStorageTests(unittest.TestCase):
         dry_run = self.make_dry_run(expected_files=2)
         dry_run.inspect_storage()
 
-        invalid_issues = [
+        layout_blockers = [
             issue
             for issue in dry_run.issues
-            if issue.code == "invalid_source_media_layout"
+            if issue.severity == "blocker"
+            and issue.code
+            in {"invalid_source_media_layout", "invalid_referenced_media_layout"}
         ]
-        self.assertEqual(len(invalid_issues), 2)
+        self.assertEqual(layout_blockers, [])
+        self.assertEqual(len(dry_run.file_manifest), 2)
+        self.assertTrue(
+            all(
+                issue.severity == "warning"
+                for issue in dry_run.issues
+                if issue.code == "media_path_preserved_without_owner_rewrite"
+            )
+        )
+
+    def test_rewrites_user_uuid_at_any_path_position(self) -> None:
+        source_id = TENANTS["marcelo"]["source_user_id"]
+        target_id = TENANTS["marcelo"]["target_user_id"]
+        source = self.public / "produtos" / "midias" / source_id / "audio.ogg"
+        source.parent.mkdir(parents=True)
+        source.write_bytes(b"audio")
+
+        dry_run = self.make_dry_run()
+        dry_run.inspect_storage()
+
+        mapped = dry_run.file_manifest[0]
+        self.assertEqual(
+            mapped["relative_target"],
+            f"produtos/midias/{target_id}/audio.ogg",
+        )
+        self.assertFalse(
+            any("layout" in issue.code for issue in dry_run.issues)
+        )
 
     def test_non_regular_destination_parent_is_blocker(self) -> None:
         source_id = TENANTS["marcelo"]["source_user_id"]
@@ -183,7 +212,7 @@ class DryRunStorageTests(unittest.TestCase):
             )
         )
 
-    def test_missing_file_for_imported_record_is_blocker(self) -> None:
+    def test_missing_file_for_imported_record_is_warning_and_removed(self) -> None:
         source_id = TENANTS["duda"]["source_user_id"]
         self.public.mkdir(parents=True)
         dry_run = self.make_dry_run(expected_files=0)
@@ -206,7 +235,36 @@ class DryRunStorageTests(unittest.TestCase):
             for issue in dry_run.issues
             if issue.code == "referenced_file_missing"
         )
-        self.assertEqual(issue.severity, "blocker")
+        self.assertEqual(issue.severity, "warning")
+        missing = dry_run.report["storage"]["missing_references"][0]
+        self.assertEqual(missing["planned_action"], "remove_reference")
+
+    def test_cross_tenant_reference_in_skipped_queue_is_informational(self) -> None:
+        source_id = TENANTS["atom"]["source_user_id"]
+        source = self.public / "produtos" / "midias" / source_id / "imagem.png"
+        source.parent.mkdir(parents=True)
+        source.write_bytes(b"imagem")
+        dry_run = self.make_dry_run()
+        dry_run._collect_urls(
+            "renata",
+            "social_posts_queue",
+            "post-1",
+            {
+                "media_url": (
+                    f"https://{SOURCE_HOST}/storage/v1/object/public/"
+                    f"produtos/midias/{source_id}/imagem.png"
+                )
+            },
+        )
+
+        dry_run.inspect_storage()
+
+        issue = next(
+            issue
+            for issue in dry_run.issues
+            if issue.code == "cross_tenant_storage_reference"
+        )
+        self.assertEqual(issue.severity, "info")
 
     def test_url_userinfo_and_query_are_removed_from_report(self) -> None:
         dry_run = self.make_dry_run(expected_files=0)
@@ -263,6 +321,69 @@ class DryRunStorageTests(unittest.TestCase):
 
 
 class DryRunPolicyTests(unittest.TestCase):
+    def test_nullable_profile_field_is_not_a_blocker(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            dry_run = DryRun(root, root, root, 0, None)
+            row = {
+                "id": TENANTS["renata"]["source_user_id"],
+                "nome": "Renata",
+                "whatsapp": "",
+                "cpf": "00000000000",
+            }
+
+            dry_run._inspect_table("renata", "profiles", [row], 1)
+            dry_run._validate_missing_profile_fields(
+                [{"column_name": "whatsapp", "is_nullable": "YES"}]
+            )
+
+            issue = next(
+                issue
+                for issue in dry_run.issues
+                if issue.code == "profile_field_will_remain_empty"
+            )
+            self.assertEqual(issue.severity, "info")
+            self.assertFalse(
+                any(issue.code == "missing_required_field" for issue in dry_run.issues)
+            )
+
+    def test_non_nullable_profile_field_lists_exact_record(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            dry_run = DryRun(root, root, root, 0, None)
+            record_id = TENANTS["renata"]["source_user_id"]
+            dry_run.missing_profile_fields.append(
+                {
+                    "tenant": "renata",
+                    "field": "whatsapp",
+                    "record_id": record_id,
+                }
+            )
+
+            dry_run._validate_missing_profile_fields(
+                [{"column_name": "whatsapp", "is_nullable": "NO"}]
+            )
+
+            issue = next(
+                issue
+                for issue in dry_run.issues
+                if issue.code == "missing_non_nullable_profile_field"
+            )
+            self.assertEqual(issue.severity, "blocker")
+            self.assertEqual(issue.tenant, "renata")
+            self.assertEqual(issue.record_id, record_id)
+            self.assertIn("profiles.whatsapp", issue.message)
+
+    def test_marcelo_imports_only_profile_products_and_media(self) -> None:
+        self.assertTrue(DryRun._is_imported("marcelo", "profiles"))
+        self.assertTrue(DryRun._is_imported("marcelo", "produtos"))
+        self.assertTrue(DryRun._is_imported("marcelo", "midias_whatsapp"))
+        self.assertFalse(DryRun._is_imported("marcelo", "autopilot_config"))
+        self.assertFalse(
+            DryRun._is_imported("marcelo", "whatsapp_cloud_agent_config")
+        )
+        self.assertFalse(DryRun._is_imported("marcelo", "notificacoes_usuario"))
+
     def test_autopilot_enabled_is_planned_disabled(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

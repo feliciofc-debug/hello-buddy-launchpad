@@ -152,6 +152,8 @@ SKIPPED_TABLES = {
     "whatsapp_config": "configuracao_funcional_da_vps_prevalece",
 }
 
+MARCELO_IMPORT_TABLES = {"profiles", "produtos", "midias_whatsapp"}
+
 SOURCE_ONLY_COLUMNS: dict[str, set[str]] = {
     "midias_whatsapp": {
         "arquivo_nome",
@@ -263,6 +265,14 @@ class Issue:
         }
 
 
+@dataclass(frozen=True)
+class MediaPathMapping:
+    relative_target: Path
+    source_owner_id: str | None
+    target_owner_id: str | None
+    warning: str | None = None
+
+
 class PsqlReadOnly:
     """Executa somente COPY(SELECT ...) dentro de transação READ ONLY."""
 
@@ -321,6 +331,7 @@ class DryRun:
         }
         self.storage_references: list[dict[str, Any]] = []
         self.file_manifest: list[dict[str, Any]] = []
+        self.missing_profile_fields: list[dict[str, str]] = []
         self.report: dict[str, Any] = {
             "metadata": {
                 "mode": "dry-run-a",
@@ -330,6 +341,12 @@ class DryRun:
                 "target_storage_root": str(target_media_dir),
             },
             "account_plan": TENANTS,
+            "tenant_import_policy": {
+                "marcelo": {
+                    "import_only": sorted(MARCELO_IMPORT_TABLES),
+                    "preserve_destination_configuration": True,
+                }
+            },
             "tables": {},
             "storage": {},
             "database": {"enabled": db is not None},
@@ -356,6 +373,18 @@ class DryRun:
                 record_id=str(record_id) if record_id is not None else None,
             )
         )
+
+    @staticmethod
+    def _skip_reason(tenant: str, table: str) -> str | None:
+        if table in SKIPPED_TABLES:
+            return SKIPPED_TABLES[table]
+        if tenant == "marcelo" and table not in MARCELO_IMPORT_TABLES:
+            return "configuracao_e_dados_fora_do_escopo_preservados_na_vps"
+        return None
+
+    @classmethod
+    def _is_imported(cls, tenant: str, table: str) -> bool:
+        return cls._skip_reason(tenant, table) is None
 
     @staticmethod
     def _read_records(path: Path) -> list[dict[str, Any]]:
@@ -474,7 +503,7 @@ class DryRun:
                         table=table,
                         record_id=record_id_text,
                     )
-                elif table not in SKIPPED_TABLES:
+                elif self._is_imported(tenant, table):
                     if record_id_text in self.ids_by_table[table]:
                         self.issue(
                             "blocker",
@@ -489,14 +518,23 @@ class DryRun:
             for required in REQUIRED_FIELDS.get(table, ()):
                 value = row.get(required)
                 if value is None or (isinstance(value, str) and not value.strip()):
-                    self.issue(
-                        "blocker",
-                        "missing_required_field",
-                        f"campo obrigatório ausente/vazio: {required}",
-                        tenant=tenant,
-                        table=table,
-                        record_id=record_id,
-                    )
+                    if table == "profiles":
+                        self.missing_profile_fields.append(
+                            {
+                                "tenant": tenant,
+                                "field": required,
+                                "record_id": str(record_id),
+                            }
+                        )
+                    else:
+                        self.issue(
+                            "blocker",
+                            "missing_required_field",
+                            f"campo obrigatório ausente/vazio: {required}",
+                            tenant=tenant,
+                            table=table,
+                            record_id=record_id,
+                        )
 
             row_user_id = row.get("user_id")
             if row_user_id is not None and str(row_user_id) != source_user_id:
@@ -560,19 +598,16 @@ class DryRun:
 
             self._collect_urls(tenant, table, record_id, row)
 
+        skip_reason = self._skip_reason(tenant, table)
         table_report = self.report["tables"].setdefault(
             table,
             {
-                "policy": (
-                    f"skip:{SKIPPED_TABLES[table]}"
-                    if table in SKIPPED_TABLES
-                    else "validate_and_import"
-                ),
                 "source_only_columns": sorted(source_only),
                 "tenants": {},
             },
         )
         table_report["tenants"][tenant] = {
+            "policy": f"skip:{skip_reason}" if skip_reason else "validate_and_import",
             "expected": expected,
             "found": len(records),
             "ids": len(seen_ids),
@@ -859,18 +894,46 @@ class DryRun:
                 digest.update(chunk)
         return digest.hexdigest()
 
-    def _map_relative_media_path(self, relative: Path) -> Path:
-        if len(relative.parts) < 3:
-            raise ValueError("esperado <pasta>/<uuid-do-usuario>/<arquivo>")
-        owner_id = relative.parts[1]
-        if not self._is_uuid(owner_id):
-            raise ValueError("segundo componente não é UUID de usuário")
-        if owner_id not in self.old_to_target:
-            raise ValueError("UUID do proprietário não pertence aos quatro clientes")
-        return Path(
-            relative.parts[0],
-            self.old_to_target[owner_id],
-            *relative.parts[2:],
+    def _map_relative_media_path(self, relative: Path) -> MediaPathMapping:
+        uuid_parts = [
+            (index, part)
+            for index, part in enumerate(relative.parts)
+            if self._is_uuid(part)
+        ]
+        if not uuid_parts:
+            return MediaPathMapping(
+                relative,
+                None,
+                None,
+                "caminho compartilhado sem UUID de proprietário",
+            )
+        known_owners = [
+            (index, owner_id)
+            for index, owner_id in uuid_parts
+            if owner_id in self.old_to_target
+        ]
+        if len(known_owners) != 1:
+            return MediaPathMapping(
+                relative,
+                None,
+                None,
+                (
+                    "UUID de proprietário não reconhecido"
+                    if not known_owners
+                    else "mais de um UUID de proprietário reconhecido"
+                ),
+            )
+        owner_index, owner_id = known_owners[0]
+        target_owner_id = self.old_to_target[owner_id]
+        mapped_parts = list(relative.parts)
+        mapped_parts[owner_index] = target_owner_id
+        warning = (
+            "caminho contém UUID adicional não reconhecido"
+            if len(uuid_parts) > 1
+            else None
+        )
+        return MediaPathMapping(
+            Path(*mapped_parts), owner_id, target_owner_id, warning
         )
 
     def _target_parent_conflict(self, target: Path) -> Path | None:
@@ -953,15 +1016,14 @@ class DryRun:
                     f"mídia de origem não é arquivo regular: {path}",
                 )
                 continue
-            try:
-                mapped_relative = self._map_relative_media_path(relative)
-            except ValueError as error:
+            mapping = self._map_relative_media_path(relative)
+            mapped_relative = mapping.relative_target
+            if mapping.warning is not None:
                 self.issue(
-                    "blocker",
-                    "invalid_source_media_layout",
-                    f"{relative}: {error}",
+                    "warning",
+                    "media_path_preserved_without_owner_rewrite",
+                    f"{relative}: {mapping.warning}; caminho preservado",
                 )
-                continue
             target = self.target_media_dir / mapped_relative
             source_total_bytes += path.stat().st_size
             if not os.access(path, os.R_OK):
@@ -985,8 +1047,8 @@ class DryRun:
             proposed_directories.add(str(mapped_relative.parent))
 
             target_state = "new"
-            target_id = mapped_relative.parts[1]
-            if target_id.startswith("$"):
+            target_id = mapping.target_owner_id
+            if target_id is not None and target_id.startswith("$"):
                 unresolved_target_ids += 1
                 target_state = "pending_target_user_id"
             else:
@@ -1073,24 +1135,36 @@ class DryRun:
                     record_id=reference["record_id"],
                 )
                 continue
-            try:
-                mapped_relative = self._map_relative_media_path(relative)
-            except ValueError as error:
+            mapping = self._map_relative_media_path(relative)
+            mapped_relative = mapping.relative_target
+            if mapping.warning is not None:
                 self.issue(
-                    "blocker",
-                    "invalid_referenced_media_layout",
-                    f"{relative}: {error}",
+                    "warning",
+                    "media_reference_preserved_without_owner_rewrite",
+                    f"{relative}: {mapping.warning}; caminho preservado",
                     tenant=reference["tenant"],
                     table=reference["table"],
                     record_id=reference["record_id"],
                 )
-                continue
             expected_owner = TENANTS[reference["tenant"]]["source_user_id"]
-            if relative.parts[1] != expected_owner:
+            if (
+                mapping.source_owner_id is not None
+                and mapping.source_owner_id != expected_owner
+            ):
+                imported = self._is_imported(
+                    reference["tenant"], reference["table"]
+                )
                 self.issue(
-                    "blocker",
+                    "blocker" if imported else "info",
                     "cross_tenant_storage_reference",
-                    "URL aponta para UUID de outro tenant",
+                    (
+                        "URL aponta para UUID de outro tenant"
+                        + (
+                            ""
+                            if imported
+                            else "; tabela descartada, sem impacto na importação"
+                        )
+                    ),
                     tenant=reference["tenant"],
                     table=reference["table"],
                     record_id=reference["record_id"],
@@ -1100,12 +1174,15 @@ class DryRun:
             reference["target_file"] = str(self.target_media_dir / mapped_relative)
             reference["target_url"] = f"{TARGET_STORAGE_URL}/{mapped_relative.as_posix()}"
             if not local_file.is_file():
+                reference["planned_action"] = "remove_reference"
                 missing_references.append(reference)
-                is_imported = reference["table"] not in SKIPPED_TABLES
                 self.issue(
-                    "blocker" if is_imported else "warning",
+                    "warning",
                     "referenced_file_missing",
-                    f"arquivo referenciado ausente: {local_file}",
+                    (
+                        f"arquivo referenciado ausente: {local_file}; "
+                        "a referência será removida"
+                    ),
                     tenant=reference["tenant"],
                     table=reference["table"],
                     record_id=reference["record_id"],
@@ -1167,6 +1244,43 @@ class DryRun:
     def _sql_text_list(values: Iterable[str]) -> str:
         return ", ".join("'" + value.replace("'", "''") + "'" for value in values)
 
+    def _validate_missing_profile_fields(
+        self, profile_columns: list[dict[str, str]]
+    ) -> None:
+        profile_nullability = {
+            row["column_name"]: row["is_nullable"] == "YES"
+            for row in profile_columns
+        }
+        self.report["database"]["profiles_column_nullability"] = profile_nullability
+        for missing in self.missing_profile_fields:
+            field = missing["field"]
+            nullable = profile_nullability.get(field)
+            if nullable is False:
+                self.issue(
+                    "blocker",
+                    "missing_non_nullable_profile_field",
+                    f"profiles.{field} está vazio e a coluna de destino é NOT NULL",
+                    tenant=missing["tenant"],
+                    table="profiles",
+                    record_id=missing["record_id"],
+                )
+            else:
+                self.issue(
+                    "info",
+                    "profile_field_will_remain_empty",
+                    (
+                        f"profiles.{field} será importado vazio"
+                        if nullable is True
+                        else (
+                            f"profiles.{field} não existe no destino; "
+                            "o valor vazio não será importado"
+                        )
+                    ),
+                    tenant=missing["tenant"],
+                    table="profiles",
+                    record_id=missing["record_id"],
+                )
+
     def inspect_database(self) -> None:
         if self.db is None:
             self.issue(
@@ -1182,6 +1296,17 @@ class DryRun:
                 "psql não está instalado; não é possível consultar o destino em modo read-only",
             )
             return
+
+        profile_columns = self.db.query(
+            """
+            SELECT column_name, is_nullable
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'profiles'
+            ORDER BY ordinal_position
+            """
+        )
+        self._validate_missing_profile_fields(profile_columns)
 
         anchor_ids = [
             "11111111-1111-1111-1111-111111111111",
@@ -1285,20 +1410,15 @@ class DryRun:
         for row in occupancy:
             if (
                 row["user_id"] == TENANTS["marcelo"]["target_user_id"]
-                and row["table_name"]
-                in {
-                    "empresa_config",
-                    "whatsapp_cloud_agent_config",
-                    "autopilot_config",
-                }
+                and row["table_name"] not in MARCELO_IMPORT_TABLES
                 and int(row["row_count"]) > 0
             ):
                 self.issue(
-                    "blocker",
-                    "marcelo_configuration_requires_merge_policy",
+                    "info",
+                    "marcelo_destination_data_preserved",
                     (
                         f"{row['table_name']} já possui {row['row_count']} linha(s) "
-                        "para Marcelo; exige merge idempotente"
+                        "para Marcelo; destino será preservado e origem descartada"
                     ),
                     tenant="marcelo",
                     table=row["table_name"],
@@ -1418,15 +1538,15 @@ class DryRun:
             ),
             "records_planned_for_import": sum(
                 len(rows)
-                for tenant_rows in self.records.values()
+                for tenant, tenant_rows in self.records.items()
                 for table, rows in tenant_rows.items()
-                if table not in SKIPPED_TABLES
+                if self._is_imported(tenant, table)
             ),
             "records_skipped": sum(
                 len(rows)
-                for tenant_rows in self.records.values()
+                for tenant, tenant_rows in self.records.items()
                 for table, rows in tenant_rows.items()
-                if table in SKIPPED_TABLES
+                if not self._is_imported(tenant, table)
             ),
         }
         return self.report

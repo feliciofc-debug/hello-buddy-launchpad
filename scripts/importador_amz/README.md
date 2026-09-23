@@ -13,7 +13,7 @@ alterar autenticação, banco de dados, arquivos ou serviços.
 - os 5.123 arquivos, tamanho, leitura, SHA-256 e colisões de destino;
 - reescrita exclusiva de URLs de
   `jibpvpqgplmahjhswiza.supabase.co`;
-- troca do UUID antigo pelo UUID canônico no caminho da mídia;
+- troca do UUID antigo pelo UUID canônico em qualquer componente do caminho;
 - espaço livre no filesystem que contém `/opt/amz-media`.
 
 Ele não consulta `storage.buckets` nem `storage.objects`. As pastas sob
@@ -30,16 +30,19 @@ uma criação planejada para a etapa de importação, não um bloqueador.
   renata/*.json
   _arquivos/
     jibpvpqgplmahjhswiza.supabase.co/
-      storage/v1/object/public/<pasta>/<uuid-antigo>/<arquivo>
+      storage/v1/object/public/<caminho-legacy>
 ```
 
 Cada JSON de tabela pode ser uma lista ou um objeto `{"data": [...]}`.
 Se os arquivos estiverem em outra raiz, `--media-dir` aceita tanto a pasta
 que contém o host quanto a própria pasta `storage/v1/object/public`.
-Cada mídia deve obedecer estritamente a
-`<pasta>/<uuid-antigo-do-cliente>/<caminho-do-arquivo>`; o caminho do objeto
-pode conter subpastas depois do UUID. Proprietário desconhecido, symlink ou
-caminho sem UUID é bloqueador.
+O UUID antigo do cliente pode estar em qualquer posição do caminho, por
+exemplo `<pasta>/<uuid>/<arquivo>` ou
+`produtos/midias/<uuid>/<arquivo>`. Quando encontrado, apenas esse componente
+é substituído pelo UUID canônico. Caminhos compartilhados sem UUID, como
+`produtos/ia-marketing/<arquivo>`, são preservados e geram somente aviso.
+Um arquivo regular, legível e íntegro nunca é bloqueado apenas pelo layout do
+caminho. Symlinks continuam bloqueados.
 
 ## Política de dados
 
@@ -48,6 +51,9 @@ caminho sem UUID é bloqueador.
   duas configurações funcionais da VPS e transferir somente o proprietário;
 - `social_posts_queue`: não inserir as 10.861 linhas na fila operacional. Os
   JSONs permanecem como histórico bruto para consulta;
+- Marcelo: importar somente `profiles`, `produtos` e `midias_whatsapp`;
+  preservar integralmente as configurações e os demais dados já existentes
+  na VPS, inclusive WhatsApp e o agente Silvester;
 - `autopilot_config`: importar depois com `ativo=false` e
   `proxima_execucao=NULL`;
 - `midias_whatsapp`: descartar `arquivo_nome`, `generation_job_id` e
@@ -94,10 +100,14 @@ destino tenha sido informado na linha de comando.
 - `1`: erro operacional (JSON inválido, falha do `psql`, entre outros);
 - `2`: o dry-run terminou e encontrou bloqueadores.
 
-Arquivo ausente que seja referenciado por uma tabela importada é bloqueador.
-Uma referência ausente dentro de tabela descartada, como
-`social_posts_queue`, permanece apenas como aviso. Quantidades divergentes,
-IDs inválidos, colisões não comparadas e falta de espaço também bloqueiam.
+Arquivo referenciado ausente gera aviso e recebe no relatório a ação planejada
+`remove_reference`; a decisão conhecida é importar o registro sem essa
+referência. Referência entre tenants em tabela descartada, como
+`social_posts_queue`, é apenas informativa. Campo vazio de `profiles` só
+bloqueia quando a consulta ao schema confirmar que a coluna de destino é
+`NOT NULL`; o relatório identifica campo, cliente e registro exatos.
+Quantidades divergentes, IDs inválidos, colisões não comparadas e falta de
+espaço continuam bloqueando.
 
 ## Limites deliberados desta fase
 
