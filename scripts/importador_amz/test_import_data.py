@@ -90,6 +90,24 @@ class ImportTransformTests(unittest.TestCase):
             self.assertIsNone(value)
             self.assertEqual(importer.missing_references, 1)
 
+    def test_profile_preserves_destination_access_controls(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            importer = self.make_importer(Path(temp))
+            profile = importer.transform_record(
+                "profiles",
+                {
+                    "id": importer.source_user_id,
+                    "nome": "Duda",
+                    "acesso_bloqueado": True,
+                    "motivo_bloqueio": "legado",
+                    "validade_acesso": "2020-01-01",
+                },
+            )
+            self.assertEqual(profile["id"], importer.target_user_id)
+            self.assertNotIn("acesso_bloqueado", profile)
+            self.assertNotIn("motivo_bloqueio", profile)
+            self.assertNotIn("validade_acesso", profile)
+
     def test_media_copy_is_checksum_checked_and_world_readable(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -141,7 +159,7 @@ class ImportSqlTests(unittest.TestCase):
             {"produtos": ["id", "user_id", "nome"]},
         )
 
-        self.assertIn("BEGIN;", sql)
+        self.assertIn("BEGIN ISOLATION LEVEL SERIALIZABLE;", sql)
         self.assertIn("ON CONFLICT (id) DO UPDATE", sql)
         self.assertIn("IS DISTINCT FROM", sql)
         self.assertIn("amz_migration.row_changes", sql)
@@ -173,6 +191,45 @@ class ImportSqlTests(unittest.TestCase):
         self.assertIn("ENABLE TRIGGER USER", sql)
         self.assertIn("status = 'rollback_files_pending'", sql)
         self.assertIn("COMMIT;", sql)
+
+    def test_media_import_uses_owner_guard_and_two_pass_parent_update(self) -> None:
+        importer = Importer.__new__(Importer)
+        importer.run_id = str(uuid.uuid4())
+        importer.tenant = "marcelo"
+        importer.target_user_id = "22f0c364-a782-48fa-8482-0ed3d7529a5f"
+        importer.media_journal = []
+        importer.skipped = {}
+        importer.missing_references = 0
+        record_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        parent_id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        sql = importer.build_import_sql(
+            {
+                "midias_whatsapp": [
+                    {
+                        "id": record_id,
+                        "user_id": importer.target_user_id,
+                        "midia_pai_id": parent_id,
+                        "tipo": "imagem",
+                    }
+                ]
+            },
+            {
+                "midias_whatsapp": [
+                    "id",
+                    "user_id",
+                    "midia_pai_id",
+                    "tipo",
+                ]
+            },
+        )
+
+        self.assertIn("colisão de chave entre tenants", sql)
+        self.assertIn('NULL::uuid AS "midia_pai_id"', sql)
+        self.assertIn("SET midia_pai_id = incoming.midia_pai_id", sql)
+        self.assertLess(
+            sql.index('NULL::uuid AS "midia_pai_id"'),
+            sql.index("SET midia_pai_id = incoming.midia_pai_id"),
+        )
 
 
 if __name__ == "__main__":

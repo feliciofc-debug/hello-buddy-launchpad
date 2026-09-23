@@ -52,6 +52,12 @@ IMPORT_ORDER = (
 ROLLBACK_ORDER = tuple(reversed(IMPORT_ORDER))
 REAL_TARGET_MEDIA_ROOT = Path("/opt/amz-media")
 AUDIT_SCHEMA = "amz_migration"
+PROFILE_DESTINATION_ONLY_COLUMNS = {
+    "acesso_bloqueado",
+    "motivo_bloqueio",
+    "bloqueado_em",
+    "validade_acesso",
+}
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -273,6 +279,7 @@ class Importer:
             SELECT u.id::text, lower(u.email) AS email,
                    COALESCE(string_agg(r.role::text, ',' ORDER BY r.role::text), '') AS roles
             FROM auth.users u
+            JOIN public.profiles p ON p.id = u.id
             LEFT JOIN public.user_roles r ON r.user_id = u.id
             WHERE u.id = '%s'::uuid
             GROUP BY u.id, u.email
@@ -348,6 +355,8 @@ class Importer:
             record.pop(column, None)
         if table == "profiles":
             record["id"] = self.target_user_id
+            for column in PROFILE_DESTINATION_ONLY_COLUMNS:
+                record.pop(column, None)
         if "user_id" in record:
             record["user_id"] = self.target_user_id
         if "cliente_id" in record:
@@ -551,16 +560,38 @@ class Importer:
                 counts[action] += 1
             else:
                 temporary = target.with_name(f".{target.name}.{self.run_id}.tmp")
-                shutil.copyfile(source, temporary)
-                os.chmod(temporary, 0o644)
-                if sha256_file(temporary) != source_hash:
+                try:
+                    shutil.copyfile(source, temporary)
+                    os.chmod(temporary, 0o644)
+                    if sha256_file(temporary) != source_hash:
+                        raise ValueError(f"checksum da cópia divergiu: {source}")
+                    with temporary.open("rb") as handle:
+                        os.fsync(handle.fileno())
+                    try:
+                        os.link(temporary, target)
+                        directory_fd = os.open(
+                            target.parent, os.O_RDONLY | os.O_DIRECTORY
+                        )
+                        try:
+                            os.fsync(directory_fd)
+                        finally:
+                            os.close(directory_fd)
+                        self.created_files.append(target)
+                        action = "created"
+                        previous_mode = None
+                        counts[action] += 1
+                    except FileExistsError:
+                        if (
+                            target.is_symlink()
+                            or not target.is_file()
+                            or sha256_file(target) != source_hash
+                        ):
+                            raise ValueError(f"destino concorrente divergente: {target}")
+                        action = "existing"
+                        previous_mode = None
+                        counts[action] += 1
+                finally:
                     temporary.unlink(missing_ok=True)
-                    raise ValueError(f"checksum da cópia divergiu: {source}")
-                os.replace(temporary, target)
-                self.created_files.append(target)
-                action = "created"
-                previous_mode = None
-                counts[action] += 1
             self.media_journal.append(
                 {
                     "relative_path": entry["relative_target"],
@@ -622,9 +653,10 @@ class Importer:
             for item in self.media_journal
         ]
         statements = [
-            "BEGIN;",
+            "BEGIN ISOLATION LEVEL SERIALIZABLE;",
             "SET LOCAL lock_timeout = '10s';",
             "SET LOCAL statement_timeout = '30min';",
+            "SET LOCAL idle_in_transaction_session_timeout = '60s';",
             f"SELECT pg_advisory_xact_lock(hashtext('amz-import:{self.tenant}'));",
             f"CREATE SCHEMA IF NOT EXISTS {AUDIT_SCHEMA} AUTHORIZATION supabase_admin;",
             f"""
@@ -736,6 +768,55 @@ FROM import_files;""",
             excluded_row = ", ".join(
                 f"EXCLUDED.{column}" for column in compare_columns
             )
+            has_user_id = '"user_id"' in quoted_columns
+            insert_select = ", ".join(
+                (
+                    'NULL::uuid AS "midia_pai_id"'
+                    if table == "midias_whatsapp" and column == '"midia_pai_id"'
+                    else column
+                )
+                for column in quoted_columns
+            )
+            first_pass_updates = [
+                column
+                for column in update_columns
+                if not (
+                    table == "midias_whatsapp"
+                    and column == '"midia_pai_id"'
+                )
+            ]
+            update_set = ", ".join(
+                f"{column} = EXCLUDED.{column}" for column in first_pass_updates
+            )
+            owner_guard = (
+                f"""
+DO $owner_{table}$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM incoming_{table} incoming
+    JOIN public.{quoted_table} target ON target.id = incoming.id
+    WHERE target.user_id IS DISTINCT FROM incoming.user_id
+  ) THEN
+    RAISE EXCEPTION
+      'colisão de chave entre tenants em public.{table}';
+  END IF;
+END;
+$owner_{table}$;"""
+                if has_user_id
+                else ""
+            )
+            parent_second_pass = (
+                f"""
+UPDATE public.{quoted_table} target
+SET midia_pai_id = incoming.midia_pai_id
+FROM incoming_{table} incoming
+WHERE target.id = incoming.id
+  AND target.midia_pai_id IS DISTINCT FROM incoming.midia_pai_id;"""
+                if table == "midias_whatsapp"
+                and '"midia_pai_id"' in quoted_columns
+                else ""
+            )
             statements.append(
                 f"""
 {"ALTER TABLE public." + quoted_table + " DISABLE TRIGGER USER;" if table in {"opt_ins", "cadastros"} else ""}
@@ -749,6 +830,8 @@ FROM (
   FROM import_payload
   WHERE table_name = '{table}'
 ) typed;
+
+{owner_guard}
 
 INSERT INTO {AUDIT_SCHEMA}.row_changes (
   run_id, table_name, record_id, action, before_row
@@ -765,11 +848,13 @@ WHERE target.id IS NULL
    OR ROW({target_row}) IS DISTINCT FROM ROW({incoming_row});
 
 INSERT INTO public.{quoted_table} AS target ({column_list})
-SELECT {column_list}
+SELECT {insert_select}
 FROM incoming_{table}
 ON CONFLICT (id) DO UPDATE
 SET {update_set}
 WHERE ROW({target_row}) IS DISTINCT FROM ROW({excluded_row});
+
+{parent_second_pass}
 
 UPDATE {AUDIT_SCHEMA}.row_changes changes
 SET after_row = to_jsonb(target)

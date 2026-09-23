@@ -156,9 +156,10 @@ class Rollback:
             for row in changes
         )
         statements = [
-            "BEGIN;",
+            "BEGIN ISOLATION LEVEL SERIALIZABLE;",
             "SET LOCAL lock_timeout = '10s';",
             "SET LOCAL statement_timeout = '30min';",
+            "SET LOCAL idle_in_transaction_session_timeout = '60s';",
             f"SELECT pg_advisory_xact_lock(hashtext('amz-import:{run['tenant']}'));",
             f"""
 DO $later_run$
