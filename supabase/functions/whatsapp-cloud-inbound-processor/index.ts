@@ -2984,6 +2984,9 @@ type PendingSocialPost = {
   queueRows?: Array<{ id: string; platform: string }>;
   incluirCtaWhatsapp?: boolean;
   briefing?: string; // texto escrito pelo dono que é a MENSAGEM do post (prioridade sobre o visual)
+  instagramCreationId?: string;
+  tiktokPrivacyLevel?: string;
+  tiktokPrivacyOptions?: string[];
 };
 const PENDING_POSTS = new Map<string, PendingSocialPost>();
 function pendingCleanup() {
@@ -3001,10 +3004,12 @@ type PendingPostMarkerState = {
   incluirCtaWhatsapp?: boolean;
   tom?: string;
   briefing?: string;
+  tiktokPrivacyLevel?: string;
+  tiktokPrivacyOptions?: string[];
 };
 
 function encodePendingPostState(state?: PendingPostMarkerState): string {
-  if (!state || (!state.variantes && !state.variantSelecionada && state.incluirCtaWhatsapp === undefined && !state.tom)) return "";
+  if (!state || (!state.variantes && !state.variantSelecionada && state.incluirCtaWhatsapp === undefined && !state.tom && !state.briefing && !state.tiktokPrivacyLevel && !state.tiktokPrivacyOptions?.length)) return "";
   try {
     const json = JSON.stringify(state);
     const bytes = new TextEncoder().encode(json);
@@ -3074,6 +3079,8 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
       incluirCtaWhatsapp: pending.incluirCtaWhatsapp,
       tom: pending.tom,
       briefing: pending.briefing ? pending.briefing.slice(0, 1200) : undefined,
+      tiktokPrivacyLevel: pending.tiktokPrivacyLevel,
+      tiktokPrivacyOptions: pending.tiktokPrivacyOptions,
     }),
     updated_at: new Date().toISOString(),
   }));
@@ -3090,7 +3097,7 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
 async function loadPendingSocialPost(token: string, userId: string): Promise<PendingSocialPost | null> {
   const { data, error } = await sb
     .from("social_posts_queue")
-    .select("id, user_id, produto_id, produto_source, platform, post_text, image_url, link_url, status, error_message, created_at")
+    .select("id, user_id, produto_id, produto_source, platform, post_text, image_url, link_url, status, error_message, instagram_creation_id, instagram_container_status, created_at")
     .eq("user_id", userId)
     .eq("status", "aguardando_confirmacao")
     .like("error_message", `jarvis_token:${token}%`)
@@ -3140,24 +3147,98 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
     variantSelecionada: state?.variantSelecionada,
     incluirCtaWhatsapp: state?.incluirCtaWhatsapp,
     briefing: (state as any)?.briefing,
+    instagramCreationId: (rows as any[]).find((r) => r.platform === "instagram")?.instagram_creation_id || undefined,
+    tiktokPrivacyLevel: state?.tiktokPrivacyLevel,
+    tiktokPrivacyOptions: state?.tiktokPrivacyOptions,
   };
 }
 
-async function updatePersistedSocialPostRows(pending: PendingSocialPost, resultados: Array<{ rede: string; ok: boolean; status: number; resposta: any }>) {
+async function updatePersistedSocialPostRows(
+  pending: PendingSocialPost,
+  resultados: Array<{ rede: string; ok: boolean; status: number; resposta: any }>,
+  token: string,
+) {
   const rows = pending.queueRows ?? [];
   await Promise.all(resultados.map(async (result) => {
     const row = rows.find((r) => r.platform === result.rede);
     if (!row?.id) return;
+    const retryableInstagram = result.rede === "instagram"
+      && result.resposta?.retryable === true
+      && typeof result.resposta?.creation_id === "string";
     await sb.from("social_posts_queue")
       .update({
-        status: result.ok ? "publicado" : "erro",
+        status: result.ok ? "publicado" : retryableInstagram ? "aguardando_confirmacao" : "erro",
         fb_post_id: result.ok ? (result.resposta?.post_id || result.resposta?.id || null) : null,
         published_at: result.ok ? new Date().toISOString() : null,
-        error_message: result.ok ? null : (result.resposta?.error || result.resposta?.message || `falha_${result.status || "sem_status"}`),
+        error_message: result.ok
+          ? null
+          : retryableInstagram
+            ? pendingPostMarker(
+              token,
+              pending.produto?.nome,
+              pending.formato || "feed",
+              pending.midiaTipo || "foto",
+              {
+                variantes: pending.variantes,
+                variantSelecionada: pending.variantSelecionada,
+                incluirCtaWhatsapp: pending.incluirCtaWhatsapp,
+                tom: pending.tom,
+                briefing: pending.briefing,
+                tiktokPrivacyLevel: pending.tiktokPrivacyLevel,
+                tiktokPrivacyOptions: pending.tiktokPrivacyOptions,
+              },
+            )
+            : (result.resposta?.error || result.resposta?.message || `falha_${result.status || "sem_status"}`),
+        instagram_creation_id: retryableInstagram ? result.resposta.creation_id : null,
+        instagram_container_status: retryableInstagram ? (result.resposta.container_status || "UNKNOWN") : null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", row.id);
   }));
+}
+
+const TIKTOK_PRIVACY_LABELS: Record<string, string> = {
+  PUBLIC_TO_EVERYONE: "Todos",
+  MUTUAL_FOLLOW_FRIENDS: "Amigos",
+  FOLLOWER_OF_CREATOR: "Seguidores",
+  SELF_ONLY: "Somente eu",
+};
+
+async function fetchTikTokPrivacyOptions(userId: string): Promise<{ options: string[]; error?: string }> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/tiktok-creator-info`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${SERVICE_KEY}`,
+        apikey: SERVICE_KEY,
+      },
+      body: JSON.stringify({ user_id: userId }),
+    });
+    const txt = await res.text();
+    let data: any = {};
+    try { data = JSON.parse(txt); } catch { /* handled below */ }
+    if (!res.ok || data?.success !== true) {
+      return { options: [], error: data?.error || `creator_info_http_${res.status}` };
+    }
+    const options = Array.isArray(data.privacy_level_options)
+      ? data.privacy_level_options.filter((v: unknown): v is string => typeof v === "string" && !!v.trim())
+      : [];
+    if (options.length === 0) return { options: [], error: "TikTok não retornou opções de privacidade para esta conta." };
+    return { options: [...new Set(options)] };
+  } catch (e) {
+    return { options: [], error: String((e as Error).message || e) };
+  }
+}
+
+function matchTikTokPrivacyChoice(text: string, options: string[]): string | null {
+  const normalized = normalizePt(compactSpaces(text || ""));
+  for (const option of options) {
+    if (normalizePt(option) === normalized || normalizePt(TIKTOK_PRIVACY_LABELS[option] || option) === normalized) {
+      return option;
+    }
+  }
+  return null;
 }
 
 async function publicarEmRede(
@@ -3166,6 +3247,9 @@ async function publicarEmRede(
   produto: { nome: string; imagem_url: string; link?: string | null; descricao?: string | null; midia_tipo?: "foto" | "video" },
   userId: string,
   formato: "feed" | "story" | "reels" = "feed",
+  instagramCreationId?: string,
+  tiktokPrivacyLevel?: string,
+  queueRowId?: string,
 ): Promise<{ rede: string; ok: boolean; status: number; resposta: any; nota?: string }> {
   try {
     const isVideo = produto.midia_tipo === "video";
@@ -3189,7 +3273,7 @@ async function publicarEmRede(
         console.log(`[social-router] rede=${rede} formato=reels → meta-publish-reels`);
         const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-reels`, {
           method: "POST", headers: commonHeaders,
-          body: JSON.stringify({ platform: rede, video_url: mediaUrl, caption: script, user_id: userId }),
+          body: JSON.stringify({ platform: rede, video_url: mediaUrl, caption: script, user_id: userId, creation_id: rede === "instagram" ? instagramCreationId : undefined, queue_row_id: rede === "instagram" ? queueRowId : undefined }),
         });
         const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
         return { rede, ok: res.ok && j?.success !== false, status: res.status, resposta: j };
@@ -3203,19 +3287,19 @@ async function publicarEmRede(
         console.log(`[social-router] rede=${rede} formato=story tipo=video → meta-publish-story`);
         const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-story`, {
           method: "POST", headers: commonHeaders,
-          body: JSON.stringify({ user_id: userId, video_url: mediaUrl, canais: [rede] }),
+          body: JSON.stringify({ user_id: userId, video_url: mediaUrl, canais: [rede], creation_id: rede === "instagram" ? instagramCreationId : undefined, queue_row_id: rede === "instagram" ? queueRowId : undefined }),
         });
         const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
         const chanResult = j?.[rede];
         const chanOk = chanResult?.ok === true;
-        return { rede, ok: res.ok && chanOk, status: res.status, resposta: chanOk ? chanResult : { error: chanResult?.error || j?.error || `falha_${res.status}` } };
+        return { rede, ok: res.ok && chanOk, status: res.status, resposta: chanOk ? chanResult : { ...chanResult, error: chanResult?.error || j?.error || `falha_${res.status}` } };
       }
       // Foto — comportamento anterior
       if (rede === "instagram") {
         console.log(`[social-router] rede=instagram formato=story tipo=foto → meta-publish-story-image`);
         const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-story-image`, {
           method: "POST", headers: commonHeaders,
-          body: JSON.stringify({ user_id: userId, image_url: mediaUrl }),
+          body: JSON.stringify({ user_id: userId, image_url: mediaUrl, creation_id: instagramCreationId, queue_row_id: queueRowId }),
         });
         const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
         if (!res.ok || j?.success === false) {
@@ -3269,7 +3353,7 @@ async function publicarEmRede(
         console.log(`[social-router] rede=instagram formato=feed tipo=video → redirecionado pra REELS (padrão Meta)`);
         const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-reels`, {
           method: "POST", headers: commonHeaders,
-          body: JSON.stringify({ platform: "instagram", video_url: mediaUrl, caption: script, user_id: userId }),
+          body: JSON.stringify({ platform: "instagram", video_url: mediaUrl, caption: script, user_id: userId, creation_id: instagramCreationId, queue_row_id: queueRowId }),
         });
         const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
         return {
@@ -3279,15 +3363,25 @@ async function publicarEmRede(
       }
       const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-instagram`, {
         method: "POST", headers: commonHeaders,
-        body: JSON.stringify({ user_id: userId, caption: script, image_url: mediaUrl }),
+        body: JSON.stringify({ user_id: userId, caption: script, image_url: mediaUrl, creation_id: instagramCreationId, queue_row_id: queueRowId }),
       });
       const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
       return { rede, ok: res.ok && j?.success !== false, status: res.status, resposta: j };
     }
     if (rede === "tiktok") {
+      if (!isVideo) {
+        return { rede, ok: false, status: 0, resposta: { error: "TikTok aceita apenas vídeo neste fluxo. Envie um vídeo para publicar." } };
+      }
       const res = await fetch(`${SUPABASE_URL}/functions/v1/tiktok-post-content`, {
         method: "POST", headers: commonHeaders,
-        body: JSON.stringify({ user_id: userId, content_type: isVideo ? "video" : "image", content_url: mediaUrl, title: script.slice(0, 2200), post_mode: "direct" }),
+        body: JSON.stringify({
+          user_id: userId,
+          content_type: "video",
+          content_url: mediaUrl,
+          title: script.slice(0, 2200),
+          post_mode: "direct",
+          privacy_level: tiktokPrivacyLevel,
+        }),
       });
       const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
       return { rede, ok: res.ok && j?.success !== false, status: res.status, resposta: j };
@@ -3655,6 +3749,16 @@ function formatSocialPostToolResult(raw: string): string {
     return `Perfeito, Felicio. Encontrei: *${data.produto?.nome ?? "produto"}*\n\n${scripts}${avisoReels}<<SPLIT>>${convite}<<SPLIT>>pode postar ${data.token}`;
   }
 
+  if (data?.status === "aguardando_retry_instagram") {
+    const publicadas = Array.isArray(data.redes_publicadas) && data.redes_publicadas.length
+      ? `\n\nJá publicado em: ${data.redes_publicadas.map((r: string) => String(r).toUpperCase()).join(", ")}.`
+      : "";
+    return `${data.mensagem || "O Instagram ainda está processando a mídia; o container foi preservado para retry."}${publicadas}`;
+  }
+
+  if (data?.status === "aguardando_privacidade_tiktok") {
+    return data.mensagem || "Antes de publicar no TikTok, escolha quem poderá ver o vídeo.";
+  }
 
   if (data?.status === "publicado") {
     const redesArr = Array.isArray(data.redes_publicadas) ? data.redes_publicadas : [];
@@ -3682,6 +3786,37 @@ function formatSocialPostToolResult(raw: string): string {
   }
 
   return raw;
+}
+
+type WhatsAppInteractiveList = {
+  body: string;
+  button: string;
+  header?: string;
+  footer?: string;
+  section_title?: string;
+  rows: Array<{ id: string; title: string; description?: string }>;
+};
+
+function interactiveListFromSocialResult(raw: string): WhatsAppInteractiveList | undefined {
+  try {
+    const data = JSON.parse(raw);
+    if (data?.status !== "aguardando_privacidade_tiktok" || !Array.isArray(data?.privacy_options)) return undefined;
+    const options = data.privacy_options.filter((option: unknown): option is string => typeof option === "string" && !!option.trim());
+    if (options.length === 0) return undefined;
+    return {
+      header: "Privacidade do TikTok",
+      body: data.mensagem || "Escolha quem poderá ver o vídeo.",
+      button: "Escolher privacidade",
+      section_title: "Opções da sua conta",
+      rows: options.slice(0, 10).map((option: string) => ({
+        id: `tiktok_privacy:${option}`,
+        title: (TIKTOK_PRIVACY_LABELS[option] || option).slice(0, 24),
+        description: option,
+      })),
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 function detectSocialPostConfirmation(text: string): { token: string; cancelar?: boolean } | null {
@@ -3782,6 +3917,8 @@ async function updatePendingSocialPostMarker(token: string, pending: PendingSoci
     incluirCtaWhatsapp: pending.incluirCtaWhatsapp,
     tom: pending.tom,
     briefing: pending.briefing ? pending.briefing.slice(0, 1200) : undefined,
+    tiktokPrivacyLevel: pending.tiktokPrivacyLevel,
+    tiktokPrivacyOptions: pending.tiktokPrivacyOptions,
   });
   const rowIds = pending.queueRows?.map((r) => r.id).filter(Boolean) ?? [];
   if (rowIds.length > 0) {
@@ -3868,6 +4005,13 @@ async function toolPostarRedesSociais(
       .filter((r) => redesValidas.includes(r));
     const tom = args?.tom || "urgencia";
     const incluirCta = !!args?.incluir_cta_whatsapp;
+
+    if (redes.includes("tiktok")) {
+      return JSON.stringify({
+        erro: "tiktok_exige_video",
+        mensagem: "Produtos do catálogo usam foto neste fluxo, e o TikTok aceita apenas vídeo. Retire o TikTok ou envie um vídeo pela biblioteca de mídias.",
+      });
+    }
 
     const { produto: prod, sugestoes, candidatos } = await buscarProdutoParaPostagem(q, ctx.userId);
 
@@ -3963,8 +4107,64 @@ async function toolConfirmarPostagemRedes(
     return JSON.stringify({ status: "cancelado" });
   }
 
-  const resultados = await Promise.all(p.redes.map((r) => publicarEmRede(r, p.scripts[r], p.produto, p.userId, p.formato || "feed")));
-  await updatePersistedSocialPostRows(p, resultados);
+  if (p.redes.includes("tiktok")) {
+    if (p.produto?.midia_tipo !== "video" && p.midiaTipo !== "video") {
+      return JSON.stringify({
+        erro: "tiktok_exige_video",
+        mensagem: "O TikTok aceita apenas vídeo neste fluxo. Envie um vídeo antes de publicar no TikTok.",
+      });
+    }
+    if (!p.tiktokPrivacyLevel) {
+      // A API do TikTok exige creator_info atualizado antes de cada escolha.
+      const creatorInfo = await fetchTikTokPrivacyOptions(p.userId);
+      if (creatorInfo.error || creatorInfo.options.length === 0) {
+        console.error("[tiktok][privacy_preflight_failed]", { userId: p.userId, error: creatorInfo.error });
+        return JSON.stringify({
+          erro: "tiktok_privacy_indisponivel",
+          mensagem: `Não consegui consultar as opções de privacidade do TikTok: ${creatorInfo.error || "nenhuma opção disponível"}. Nada foi publicado.`,
+        });
+      }
+      const atualizado = { ...p, tiktokPrivacyOptions: creatorInfo.options };
+      PENDING_POSTS.set(token, atualizado);
+      await updatePendingSocialPostMarker(token, atualizado);
+      return JSON.stringify({
+        status: "aguardando_privacidade_tiktok",
+        token,
+        privacy_options: creatorInfo.options,
+        mensagem: "Antes de publicar no TikTok, escolha quem poderá ver o vídeo.",
+      });
+    }
+  }
+
+  const resultados = await Promise.all(p.redes.map((r) => publicarEmRede(
+    r,
+    p.scripts[r],
+    p.produto,
+    p.userId,
+    p.formato || "feed",
+    r === "instagram" ? p.instagramCreationId : undefined,
+    r === "tiktok" ? p.tiktokPrivacyLevel : undefined,
+    p.queueRows?.find((row) => row.platform === r)?.id,
+  )));
+  await updatePersistedSocialPostRows(p, resultados, token);
+  const retryInstagram = resultados.find((r) =>
+    r.rede === "instagram"
+    && !r.ok
+    && r.resposta?.retryable === true
+    && typeof r.resposta?.creation_id === "string"
+  );
+  if (retryInstagram) {
+    const atualizado = { ...p, redes: ["instagram"], instagramCreationId: retryInstagram.resposta.creation_id };
+    PENDING_POSTS.set(token, atualizado);
+    return JSON.stringify({
+      status: "aguardando_retry_instagram",
+      token,
+      creation_id: retryInstagram.resposta.creation_id,
+      container_status: retryInstagram.resposta.container_status,
+      redes_publicadas: resultados.filter((r) => r.ok).map((r) => r.rede),
+      mensagem: `O Instagram ainda está processando a mídia. Guardei o container ${retryInstagram.resposta.creation_id}; responda "pode postar" para tentar publicar o mesmo container, sem criar outro.`,
+    });
+  }
   PENDING_POSTS.delete(token);
   return JSON.stringify({
     status: "publicado",
@@ -3976,6 +4176,22 @@ async function toolConfirmarPostagemRedes(
   });
 }
 
+async function applyPendingTikTokPrivacyChoice(
+  token: string,
+  text: string,
+  ctx: { userId: string; fromNumber: string },
+): Promise<string | null> {
+  const p = PENDING_POSTS.get(token) ?? (await loadPendingSocialPost(token, ctx.userId));
+  if (!p || p.userId !== ctx.userId || !p.redes.includes("tiktok") || !p.tiktokPrivacyOptions?.length) return null;
+  const choice = matchTikTokPrivacyChoice(text, p.tiktokPrivacyOptions);
+  if (!choice) return null;
+
+  console.log("[tiktok][privacy_selected]", { token, userId: ctx.userId, privacy_level: choice });
+  const atualizado = { ...p, tiktokPrivacyLevel: choice };
+  PENDING_POSTS.set(token, atualizado);
+  await updatePendingSocialPostMarker(token, atualizado);
+  return await toolConfirmarPostagemRedes({ token }, ctx);
+}
 
 // ---- revisar_post_pendente: regenera o script com um ajuste solicitado pelo dono, MANTENDO token/mídia/formato ----
 async function toolRevisarPostPendente(
@@ -4456,6 +4672,12 @@ async function toolPostarMidiaBiblioteca(
     // Reels só faz sentido em IG/FB
     if (formato === "reels") redes = redes.filter((r) => r !== "tiktok");
     if (redes.length === 0) return JSON.stringify({ erro: `nenhuma rede válida para formato ${formato}` });
+    if (!isVideo && redes.includes("tiktok")) {
+      return JSON.stringify({
+        erro: "tiktok_exige_video",
+        mensagem: "O TikTok aceita apenas vídeo neste fluxo. Retire o TikTok ou envie um vídeo.",
+      });
+    }
     const tom = args?.tom || "urgencia";
 
     const precoNum = args?.preco != null ? Number(String(args.preco).replace(",", ".").replace(/[^\d.]/g, "")) : null;
@@ -6212,7 +6434,7 @@ async function callGemini(
   userContent: any,
   hasMedia: boolean,
   toolCtx: { userId: string; fromNumber: string; media?: MediaExtract[] },
-): Promise<{ text: string; imageUrl?: string; forwardProof?: string; forwardAttempted?: boolean }> {
+): Promise<{ text: string; imageUrl?: string; forwardProof?: string; forwardAttempted?: boolean; interactiveList?: WhatsAppInteractiveList }> {
   let forwardProof: string | undefined;
   let forwardAttempted = false;
   const nowSP = new Date().toLocaleString("pt-BR", {
@@ -6231,6 +6453,16 @@ async function callGemini(
     const remetenteEhDono = isOwner(toolCtx);
     const latestPendingSocialToken = remetenteEhDono ? await findLatestPendingSocialToken(toolCtx.userId) : null;
     const pendingVideoDraft = remetenteEhDono ? await buscarRascunhoVideo(toolCtx) : null;
+
+    if (latestPendingSocialToken) {
+      const privacyResult = await applyPendingTikTokPrivacyChoice(latestPendingSocialToken, userContent, toolCtx);
+      if (privacyResult) {
+        return {
+          text: formatSocialPostToolResult(privacyResult),
+          interactiveList: interactiveListFromSocialResult(privacyResult),
+        };
+      }
+    }
 
     // Edição de foto recente é determinística: o modelo não pode apenas prometer
     // que vai trabalhar em segundo plano. A própria ferramenta busca a última
@@ -6296,7 +6528,10 @@ async function callGemini(
     if (plainPostConfirmation) {
       console.log("[pietro][forced_social_plain_confirm]", { token: latestPendingSocialToken, cancelar: !!plainPostConfirmation.cancelar });
       const confirmResult = await toolConfirmarPostagemRedes({ token: latestPendingSocialToken!, cancelar: plainPostConfirmation.cancelar }, toolCtx);
-      return { text: formatSocialPostToolResult(confirmResult) };
+      return {
+        text: formatSocialPostToolResult(confirmResult),
+        interactiveList: interactiveListFromSocialResult(confirmResult),
+      };
     }
 
     // Ajuste explícito em texto livre: encaminha a frase LITERAL diretamente ao
@@ -6323,7 +6558,10 @@ async function callGemini(
       }
       console.log("[pietro][forced_social_confirm]", postConfirmation);
       const confirmResult = await toolConfirmarPostagemRedes(postConfirmation, toolCtx);
-      return { text: formatSocialPostToolResult(confirmResult) };
+      return {
+        text: formatSocialPostToolResult(confirmResult),
+        interactiveList: interactiveListFromSocialResult(confirmResult),
+      };
     }
 
     // Etapa 2: se o dono está respondendo APENAS o formato ("feed" / "story" / "no story"),
@@ -6566,8 +6804,14 @@ async function callGemini(
         try {
           const parsed = JSON.parse(result);
           const st = parsed?.status;
-          if (st === "aguardando_escolha_variante" || st === "variante_selecionada") {
-            return { text: formatSocialPostToolResult(result), imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
+          if (st === "aguardando_escolha_variante" || st === "variante_selecionada" || st === "aguardando_privacidade_tiktok" || st === "aguardando_retry_instagram") {
+            return {
+              text: formatSocialPostToolResult(result),
+              imageUrl: pendingImageUrl,
+              forwardProof,
+              forwardAttempted,
+              interactiveList: interactiveListFromSocialResult(result),
+            };
           }
         } catch { /* ignore */ }
         messages.push({ role: "tool", tool_call_id: tc.id, content: result });
@@ -6581,9 +6825,16 @@ async function callGemini(
 }
 
 
-async function sendWhatsApp(user_id: string, to: string, message: string, imageUrl?: string): Promise<string | null> {
+async function sendWhatsApp(
+  user_id: string,
+  to: string,
+  message: string,
+  imageUrl?: string,
+  interactiveList?: WhatsAppInteractiveList,
+): Promise<string | null> {
   const body: any = { user_id, to, message };
   if (imageUrl) body.image_url = imageUrl;
+  if (interactiveList) body.interactive_list = interactiveList;
   const res = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-send-message`, {
     method: "POST",
     headers: {
@@ -8624,12 +8875,14 @@ Regras:
 
     let reply = "";
     let generatedImageUrl: string | undefined;
+    let interactiveList: WhatsAppInteractiveList | undefined;
     let forwardProof: string | undefined;
     let forwardAttempted = false;
     try {
       const aiResult = await callGemini(systemPromptWithDate, history, userContent, media.length > 0, { userId, fromNumber: row.from_number, media });
       reply = aiResult.text;
       generatedImageUrl = aiResult.imageUrl;
+      interactiveList = aiResult.interactiveList;
       forwardProof = aiResult.forwardProof;
       forwardAttempted = !!aiResult.forwardAttempted;
     } catch (e) {
@@ -8774,7 +9027,7 @@ Regras:
         direction: "outbound",
         sender: "agent",
         content: generatedImageUrl ? `${loggedContent}\n\n[imagem: ${generatedImageUrl}]` : loggedContent,
-        message_type: generatedImageUrl ? "image" : "text",
+        message_type: generatedImageUrl ? "image" : interactiveList ? "interactive" : "text",
       })
       .select("id")
       .single();
@@ -8782,7 +9035,7 @@ Regras:
     // PASSO 11 — Envia (mensagem principal + follow-ups separados)
     let sendError: string | null = null;
     try {
-      const sentId = await sendWhatsApp(userId, row.from_number, primaryReply, generatedImageUrl);
+      const sentId = await sendWhatsApp(userId, row.from_number, primaryReply, generatedImageUrl, interactiveList);
       if (sentId && outMsg?.id) {
         await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
       }
