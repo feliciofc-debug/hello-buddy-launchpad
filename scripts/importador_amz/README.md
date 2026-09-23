@@ -156,11 +156,60 @@ três marcadores por UUIDs canônicos reais e validar no banco se cada conta tem
 o e-mail e o papel esperados. Os três UUIDs são obrigatórios, devem ser
 distintos e não podem coincidir com UUIDs legados nem com a conta do Marcelo.
 
-Depois de criar as contas pela API administrativa de autenticação, copie os
-UUIDs retornados:
+Crie ou reconcilie as contas com o utilitário interativo:
+
+```bash
+cd /root/_diff_amz/main
+node scripts/importador_amz/create_accounts.cjs \
+  --export-dir /root/export_amz
+```
+
+O utilitário:
+
+- confere no banco a definição ativa e o trigger de `handle_new_user` antes de
+  pedir qualquer senha;
+- lê somente os campos de metadata usados pela função ativa;
+- pede e confirma cada senha em `/dev/tty`, com echo desativado;
+- usa `/opt/amz-auth/node_modules/bcryptjs` com custo 10;
+- transmite hashes e dados ao `psql` exclusivamente por stdin;
+- executa tudo em uma transação como `supabase_admin`;
+- não altera contas novas que já existam pelo e-mail;
+- atualiza o Marcelo somente enquanto ele ainda usa o e-mail antigo;
+- insere os papéis com `ON CONFLICT DO NOTHING`;
+- nunca imprime senha ou hash.
+
+Se qualquer trigger ou escrita falhar, a transação inteira é revertida. Ao
+final, o programa imprime somente tenant, UUID, e-mail e papel. Copie os três
+UUIDs novos e defina a configuração persistente da AMZ:
 
 ```bash
 read -r -p 'UUID canônico da AMZ: ' AMZ_ID
+
+docker exec -i amz-postgres \
+  psql -X -v ON_ERROR_STOP=1 -U supabase_admin -d amz \
+  -v "amz_id=${AMZ_ID}" <<'SQL'
+SELECT format(
+  'ALTER DATABASE %I SET app.amz_tenant_id = %L',
+  current_database(),
+  :'amz_id'
+)\gexec
+SQL
+
+pm2 restart amz-auth
+
+docker exec amz-postgres \
+  psql -X -U supabase_admin -d amz \
+  -c 'SHOW app.amz_tenant_id'
+```
+
+O `ALTER DATABASE` vale para conexões novas. Além do `amz-auth`, recicle antes
+da importação qualquer outro serviço que mantenha um pool PostgreSQL e possa
+inserir em `cadastros`; `NOTIFY pgrst, 'reload schema'` sozinho não recria
+conexões existentes.
+
+Informe os outros UUIDs e execute o Dry-run B:
+
+```bash
 read -r -p 'UUID canônico da Duda: ' DUDA_ID
 read -r -p 'UUID canônico da Renata: ' RENATA_ID
 
@@ -186,23 +235,3 @@ O resultado só fica pronto para a importação se também confirmar:
 - papel `admin` para AMZ e `empresa` para Duda e Renata;
 - existência e e-mail correto da conta preservada do Marcelo;
 - comparação de todos os destinos de mídia, agora sem UUID simbólico.
-
-## Limite conhecido da API administrativa
-
-O contrato versionado deste repositório contém apenas `POST /auth/v1/login`,
-`GET /auth/v1/user` e `POST /auth/v1/user/password`. A instância em produção
-também responde `404` para `GET /auth/v1/admin/users` e não publica OpenAPI.
-Portanto, não é seguro inventar comandos de criação/alteração de contas.
-
-Antes da primeira escrita, inspecione na VPS o entrypoint real do processo:
-
-```bash
-pm2 describe amz-auth
-pm2 env "$(pm2 pid amz-auth)"
-```
-
-É necessário obter do código do `amz-auth` o endpoint administrativo, método,
-schema JSON, mecanismo de autenticação e suporte à troca obrigatória no
-primeiro acesso. Senhas provisórias devem ser lidas interativamente com
-`getpass`/prompt oculto e enviadas pelo corpo em `stdin`; nunca devem aparecer
-em argumento de processo, arquivo, variável exportada ou histórico do shell.
