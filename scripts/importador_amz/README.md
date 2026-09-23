@@ -148,3 +148,61 @@ feitas com `ALTER DATABASE` passam a valer em novas sessões; portanto, recicle
 os pools/conexões persistentes antes de qualquer operação que possa usar o
 fallback. Não defina o parâmetro com o UUID antigo nem antes de a conta
 canônica existir.
+
+## Dry-run B
+
+O Dry-run B continua estritamente read-only. A única diferença é substituir os
+três marcadores por UUIDs canônicos reais e validar no banco se cada conta tem
+o e-mail e o papel esperados. Os três UUIDs são obrigatórios, devem ser
+distintos e não podem coincidir com UUIDs legados nem com a conta do Marcelo.
+
+Depois de criar as contas pela API administrativa de autenticação, copie os
+UUIDs retornados:
+
+```bash
+read -r -p 'UUID canônico da AMZ: ' AMZ_ID
+read -r -p 'UUID canônico da Duda: ' DUDA_ID
+read -r -p 'UUID canônico da Renata: ' RENATA_ID
+
+AMZ_DATABASE_URL='container://amz-postgres/amz' \
+PATH="/root/amz-dry-run/bin:$PATH" \
+python3 /root/amz-dry-run/dry_run.py \
+  --export-dir /root/export_amz \
+  --media-dir /root/export_amz/_arquivos \
+  --target-media-dir /opt/amz-media \
+  --expected-files 5123 \
+  --require-db \
+  --target-id "atom=${AMZ_ID}" \
+  --target-id "duda=${DUDA_ID}" \
+  --target-id "renata=${RENATA_ID}" \
+  --report-json /root/amz-dry-run-output/dry-run-b-report.json \
+  --manifest-json /root/amz-dry-run-output/dry-run-b-sha256.json
+```
+
+O resultado só fica pronto para a importação se também confirmar:
+
+- existência das três contas pelos UUIDs informados;
+- correspondência exata dos e-mails;
+- papel `admin` para AMZ e `empresa` para Duda e Renata;
+- existência e e-mail correto da conta preservada do Marcelo;
+- comparação de todos os destinos de mídia, agora sem UUID simbólico.
+
+## Limite conhecido da API administrativa
+
+O contrato versionado deste repositório contém apenas `POST /auth/v1/login`,
+`GET /auth/v1/user` e `POST /auth/v1/user/password`. A instância em produção
+também responde `404` para `GET /auth/v1/admin/users` e não publica OpenAPI.
+Portanto, não é seguro inventar comandos de criação/alteração de contas.
+
+Antes da primeira escrita, inspecione na VPS o entrypoint real do processo:
+
+```bash
+pm2 describe amz-auth
+pm2 env "$(pm2 pid amz-auth)"
+```
+
+É necessário obter do código do `amz-auth` o endpoint administrativo, método,
+schema JSON, mecanismo de autenticação e suporte à troca obrigatória no
+primeiro acesso. Senhas provisórias devem ser lidas interativamente com
+`getpass`/prompt oculto e enviadas pelo corpo em `stdin`; nunca devem aparecer
+em argumento de processo, arquivo, variável exportada ou histórico do shell.

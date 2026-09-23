@@ -35,6 +35,7 @@ REAL_TARGET_MEDIA_ROOT = Path("/opt/amz-media")
 SYMBOLIC_AMZ_ID = "$AMZ_NEW_USER_ID"
 SYMBOLIC_DUDA_ID = "$DUDA_NEW_USER_ID"
 SYMBOLIC_RENATA_ID = "$RENATA_NEW_USER_ID"
+NEW_ACCOUNT_TENANTS = ("atom", "duda", "renata")
 
 TENANTS: dict[str, dict[str, str]] = {
     "atom": {
@@ -329,12 +330,19 @@ class DryRun:
         self.old_to_target = {
             cfg["source_user_id"]: cfg["target_user_id"] for cfg in TENANTS.values()
         }
+        self.mode = (
+            "dry-run-a"
+            if any(
+                cfg["target_user_id"].startswith("$") for cfg in TENANTS.values()
+            )
+            else "dry-run-b"
+        )
         self.storage_references: list[dict[str, Any]] = []
         self.file_manifest: list[dict[str, Any]] = []
         self.missing_profile_fields: list[dict[str, str]] = []
         self.report: dict[str, Any] = {
             "metadata": {
-                "mode": "dry-run-a",
+                "mode": self.mode,
                 "read_only": True,
                 "generated_at": datetime.now(timezone.utc).isoformat(),
                 "source_host": SOURCE_HOST,
@@ -1310,10 +1318,14 @@ class DryRun:
 
         anchor_ids = [
             "11111111-1111-1111-1111-111111111111",
-            "22f0c364-a782-48fa-8482-0ed3d7529a5f",
-            TENANTS["atom"]["source_user_id"],
-            TENANTS["marcelo"]["source_user_id"],
+            *[
+                cfg["target_user_id"]
+                for cfg in TENANTS.values()
+                if self._is_uuid(cfg["target_user_id"])
+            ],
+            *[cfg["source_user_id"] for cfg in TENANTS.values()],
         ]
+        anchor_ids = list(dict.fromkeys(anchor_ids))
         emails = [cfg["email"].lower() for cfg in TENANTS.values()]
         users = self.db.query(
             """
@@ -1342,13 +1354,48 @@ class DryRun:
         if TENANTS["marcelo"]["target_user_id"] not in by_id:
             self.issue("blocker", "missing_marcelo_anchor", "conta 22f0... não existe")
 
-        for tenant in ("atom", "duda", "renata"):
-            email = TENANTS[tenant]["email"].lower()
-            if email in by_email:
+        for tenant in NEW_ACCOUNT_TENANTS:
+            cfg = TENANTS[tenant]
+            email = cfg["email"].lower()
+            target_user_id = cfg["target_user_id"]
+            if self.mode == "dry-run-a":
+                if email in by_email:
+                    self.issue(
+                        "blocker",
+                        "new_email_already_exists",
+                        f"e-mail planejado já existe no destino: {email}",
+                        tenant=tenant,
+                    )
+                continue
+
+            target_user = by_id.get(target_user_id)
+            if target_user is None:
                 self.issue(
                     "blocker",
-                    "new_email_already_exists",
-                    f"e-mail planejado já existe no destino: {email}",
+                    "target_account_missing",
+                    f"conta canônica não encontrada: {target_user_id}",
+                    tenant=tenant,
+                )
+                continue
+            if target_user["email"] != email:
+                self.issue(
+                    "blocker",
+                    "target_account_email_mismatch",
+                    (
+                        f"conta {target_user_id} usa {target_user['email']!r}; "
+                        f"esperado {email!r}"
+                    ),
+                    tenant=tenant,
+                )
+            roles = {role for role in target_user["roles"].split(",") if role}
+            if cfg["role"] not in roles:
+                self.issue(
+                    "blocker",
+                    "target_account_role_missing",
+                    (
+                        f"conta {target_user_id} não possui papel "
+                        f"{cfg['role']!r}; encontrados={sorted(roles)}"
+                    ),
                     tenant=tenant,
                 )
         marcelo_email = TENANTS["marcelo"]["email"].lower()
@@ -1561,7 +1608,7 @@ class DryRun:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Dry-run A, estritamente sem mutações, da migração Lovable -> VPS."
+        description="Dry-run A/B, estritamente sem mutações, da migração Lovable -> VPS."
     )
     parser.add_argument(
         "--export-dir",
@@ -1587,6 +1634,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Quantidade esperada de arquivos baixados.",
     )
     parser.add_argument(
+        "--target-id",
+        action="append",
+        default=[],
+        metavar="TENANT=UUID",
+        help=(
+            "UUID canônico de atom, duda ou renata. Informe os três para ativar "
+            "o Dry-run B. Pode ser repetido; não aceita marcadores simbólicos."
+        ),
+    )
+    parser.add_argument(
         "--database-url-env",
         default="AMZ_DATABASE_URL",
         help="Nome da variável que contém a conexão PostgreSQL. O valor nunca é exibido.",
@@ -1609,6 +1666,60 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def configure_target_ids(raw_values: list[str]) -> None:
+    global TENANTS
+
+    if not raw_values:
+        return
+
+    overrides: dict[str, str] = {}
+    for raw_value in raw_values:
+        tenant, separator, target_id = raw_value.partition("=")
+        tenant = tenant.strip().lower()
+        target_id = target_id.strip().lower()
+        if not separator or tenant not in NEW_ACCOUNT_TENANTS:
+            raise ValueError(
+                "--target-id deve usar atom=UUID, duda=UUID ou renata=UUID"
+            )
+        if tenant in overrides:
+            raise ValueError(f"--target-id repetido para {tenant}")
+        if not UUID_RE.fullmatch(target_id):
+            raise ValueError(f"UUID canônico inválido para {tenant}: {target_id!r}")
+        overrides[tenant] = target_id
+
+    missing = set(NEW_ACCOUNT_TENANTS) - set(overrides)
+    if missing:
+        raise ValueError(
+            "Dry-run B exige os três UUIDs canônicos; faltam: "
+            + ", ".join(sorted(missing))
+        )
+
+    reserved_ids = {
+        cfg["source_user_id"] for cfg in TENANTS.values()
+    } | {TENANTS["marcelo"]["target_user_id"]}
+    duplicate_targets = [
+        target_id
+        for target_id, count in Counter(overrides.values()).items()
+        if count > 1
+    ]
+    if duplicate_targets:
+        raise ValueError("UUID canônico repetido entre contas novas")
+    collisions = sorted(set(overrides.values()) & reserved_ids)
+    if collisions:
+        raise ValueError(
+            "UUID canônico colide com UUID legado ou conta do Marcelo: "
+            + ", ".join(collisions)
+        )
+
+    TENANTS = {
+        tenant: {
+            **cfg,
+            "target_user_id": overrides.get(tenant, cfg["target_user_id"]),
+        }
+        for tenant, cfg in TENANTS.items()
+    }
+
+
 def safe_write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + ".tmp")
@@ -1628,6 +1739,11 @@ def is_within(path: Path, directory: Path) -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
+    try:
+        configure_target_ids(args.target_id)
+    except ValueError as error:
+        print(json.dumps({"fatal": str(error), "read_only": True}, ensure_ascii=False))
+        return 1
     export_dir = args.export_dir.resolve()
     media_dir = (args.media_dir or export_dir / "_arquivos").resolve()
     # Não resolver symlinks do destino: eles precisam ser detectados e
@@ -1702,7 +1818,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         json.dumps(
             {
-                "mode": "dry-run-a",
+                "mode": report["metadata"]["mode"],
                 "read_only": True,
                 "blockers": summary["blockers"],
                 "warnings": summary["warnings"],

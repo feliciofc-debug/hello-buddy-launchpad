@@ -13,6 +13,7 @@ from scripts.importador_amz.dry_run import (
     SOURCE_HOST,
     SYMBOLIC_AMZ_ID,
     TENANTS,
+    configure_target_ids,
 )
 
 
@@ -544,6 +545,64 @@ class DryRunDatabaseTests(unittest.TestCase):
 
 
 class DryRunCliTests(unittest.TestCase):
+    def test_dry_run_b_requires_all_canonical_ids(self) -> None:
+        with patch.object(dry_run_module, "TENANTS", TENANTS.copy()):
+            with self.assertRaisesRegex(ValueError, "faltam: duda, renata"):
+                configure_target_ids(
+                    ["atom=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]
+                )
+
+    def test_dry_run_b_uses_real_distinct_ids(self) -> None:
+        target_ids = {
+            "atom": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "duda": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            "renata": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        }
+        with patch.object(
+            dry_run_module,
+            "TENANTS",
+            {tenant: cfg.copy() for tenant, cfg in TENANTS.items()},
+        ):
+            configure_target_ids(
+                [
+                    f"atom={target_ids['atom']}",
+                    f"duda={target_ids['duda']}",
+                    f"renata={target_ids['renata']}",
+                ]
+            )
+            with tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                dry_run = DryRun(root, root, root, 0, None)
+
+            self.assertEqual(dry_run.mode, "dry-run-b")
+            self.assertEqual(
+                dry_run.old_to_target[TENANTS["atom"]["source_user_id"]],
+                target_ids["atom"],
+            )
+
+    def test_dry_run_b_rejects_legacy_and_duplicate_ids(self) -> None:
+        with patch.object(
+            dry_run_module,
+            "TENANTS",
+            {tenant: cfg.copy() for tenant, cfg in TENANTS.items()},
+        ):
+            with self.assertRaisesRegex(ValueError, "UUID canônico repetido"):
+                configure_target_ids(
+                    [
+                        "atom=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                        "duda=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                        "renata=cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                    ]
+                )
+            with self.assertRaisesRegex(ValueError, "UUID legado"):
+                configure_target_ids(
+                    [
+                        f"atom={TENANTS['atom']['source_user_id']}",
+                        "duda=bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                        "renata=cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                    ]
+                )
+
     def test_cli_without_report_arguments_writes_nothing(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
