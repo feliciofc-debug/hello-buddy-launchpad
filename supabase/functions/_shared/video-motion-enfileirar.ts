@@ -9,6 +9,8 @@
 // ============================================================
 
 import {
+  aplicarDuracaoAlvo,
+  aplicarFrasesLiterais,
   DURACOES_MOTION,
   duracaoEstimada,
   duracaoPedidaNoTexto,
@@ -60,8 +62,14 @@ export type EnfileirarInput = {
   arranjo?: number | null;
   /** duração: "curto" (padrão), "medio" ou "longo" */
   duracao?: string | null;
+  /** duração exata pedida no WhatsApp */
+  duracaoAlvoSegundos?: number | null;
+  /** frases fornecidas pelo dono que a IA deve copiar literalmente */
+  frasesLiterais?: string[] | null;
   /** logo específica desta peça (prospecção), sempre dentro da pasta do usuário */
   logoPath?: string | null;
+  /** identidade de terceiro: nunca cair na logo cadastrada do tenant */
+  semLogoTenant?: boolean;
   /** só devolve o roteiro, não enfileira */
   apenasRoteiro?: boolean;
 };
@@ -108,6 +116,10 @@ export function estiloEscolhido(input: EnfileirarInput): EstiloMotion | null {
 
 /** Duração pedida explicitamente; vazio cai no que o texto sugerir (ou curto). */
 export function duracaoEscolhida(input: EnfileirarInput): DuracaoMotion {
+  const alvo = Number(input.duracaoAlvoSegundos ?? (input.props as any)?.duracao_alvo_segundos);
+  if (Number.isFinite(alvo) && alvo >= 10) {
+    return alvo <= 30 ? "curto" : alvo <= 60 ? "medio" : "longo";
+  }
   const pedido = String(input.duracao ?? "").trim().toLowerCase().replace("é", "e");
   if (DURACOES_MOTION.includes(pedido as DuracaoMotion)) return pedido as DuracaoMotion;
   return duracaoPedidaNoTexto(String(input.tema ?? "")) ?? "curto";
@@ -124,27 +136,52 @@ const normalizarTema = (t: string) =>
 
 /** Resolve uma faixa válida do catálogo sem aceitar caminhos arbitrários do cliente. */
 export async function resolverTrilha(sb: any, userId: string, input: EnfileirarInput): Promise<{ id: string; path: string; volume: number } | null> {
-  if (input.semTrilha) return null;
+  const semTrilhaExplicita = input.semTrilha === true || (input.props as any)?.sem_trilha === true;
+  if (semTrilhaExplicita) return null;
   const propsTrilhaId = typeof (input.props as any)?.trilha_id === "string" ? (input.props as any).trilha_id : null;
   const trilhaId = input.trilhaId || propsTrilhaId;
-  let query = sb.from("trilhas_sonoras").select("id, user_id, storage_path, ativo").eq("ativo", true);
+  let data: any = null;
+  let error: any = null;
   if (trilhaId) {
-    query = query.eq("id", trilhaId);
+    const result = await sb.from("trilhas_sonoras")
+      .select("id, user_id, storage_path, ativo")
+      .eq("ativo", true)
+      .eq("id", trilhaId)
+      .maybeSingle();
+    data = result.data;
+    error = result.error;
   } else {
     const { data: config } = await sb.from("empresa_config").select("trilha_padrao_id").eq("user_id", userId).maybeSingle();
     if (config?.trilha_padrao_id) {
-      query = query.eq("id", config.trilha_padrao_id);
-    } else {
-      // Sem padrão da empresa: usa a faixa padrão da plataforma para o vídeo nunca sair mudo.
-      query = query.is("user_id", null).eq("padrao_global", true);
+      const result = await sb.from("trilhas_sonoras")
+        .select("id, user_id, storage_path, ativo")
+        .eq("ativo", true)
+        .eq("id", config.trilha_padrao_id)
+        .maybeSingle();
+      data = result.data;
+      error = result.error;
+    }
+    if (!data && !error) {
+      // Só o "Sem trilha" explícito pode produzir vídeo mudo. Sem padrão do
+      // tenant, prefere o global marcado; se ainda não existir, usa a primeira
+      // faixa global ativa de forma determinística.
+      const global = await sb.from("trilhas_sonoras")
+        .select("id, user_id, storage_path, ativo, padrao_global")
+        .eq("ativo", true)
+        .is("user_id", null)
+        .order("padrao_global", { ascending: false })
+        .order("nome", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      data = global.data;
+      error = global.error;
     }
   }
 
-  const { data, error } = await query.maybeSingle();
   if (error) throw new Error(`não consegui carregar a trilha: ${error.message}`);
   if (!data) {
     if (trilhaId) throw new Error("A trilha selecionada não está disponível para esta conta.");
-    return null;
+    throw new Error("Nenhuma trilha sonora ativa está disponível. Escolha explicitamente 'Sem trilha' para gerar o vídeo mudo.");
   }
   const path = String(data.storage_path ?? "");
   const pertenceAoUsuario = data.user_id === null || data.user_id === userId;
@@ -164,12 +201,16 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
   usouIA: boolean;
 }> {
   const { sb, userId, tema } = input;
+  const duracaoAlvoSegundos = input.duracaoAlvoSegundos ?? (input.props as any)?.duracao_alvo_segundos;
+  const frasesLiterais = input.frasesLiterais ?? (input.props as any)?.frases_literais;
+  const semLogoTenant = input.semLogoTenant === true || (input.props as any)?.sem_logo_tenant === true;
   // Logo desta peça: a informada (prospecção) tem prioridade, desde que esteja
   // na pasta do próprio usuário; senão, a logo cadastrada em "Minha marca".
-  const logoInformada = typeof input.logoPath === "string" && input.logoPath.startsWith(`${userId}/`)
-    ? input.logoPath
+  const logoSolicitada = input.logoPath ?? (input.props as any)?.logo_path;
+  const logoInformada = typeof logoSolicitada === "string" && logoSolicitada.startsWith(`${userId}/`)
+    ? logoSolicitada
     : undefined;
-  const logoPath = logoInformada ?? await logoDoTenant(sb, userId);
+  const logoPath = logoInformada ?? (semLogoTenant ? undefined : await logoDoTenant(sb, userId));
   const trilha = await resolverTrilha(sb, userId, input);
   let props: MotionProps;
   let legendaPost = String(input.legendaPost ?? "").trim();
@@ -178,7 +219,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
   if (input.props) {
     const p: any = input.props;
     const nomes = nomesOficiais(String(p?.marca ?? input.nomeFallback ?? ""), tema);
-    props = normalizarProps(
+    props = aplicarDuracaoAlvo(aplicarFrasesLiterais(normalizarProps(
       { ...p, cores: input.cores ?? p?.cores },
       {
         marca: String(p?.marca ?? ""),
@@ -190,7 +231,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
         arranjo: input.arranjo ?? p?.arranjo ?? null,
         duracao: duracaoEscolhida(input),
       },
-    );
+    ), frasesLiterais), duracaoAlvoSegundos);
   } else {
     const r = await gerarRoteiroMotion(sb, userId, tema, {
       nomeFallback: input.nomeFallback ?? null,
@@ -199,8 +240,10 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
       estilo: estiloEscolhido(input),
       arranjo: input.arranjo ?? null,
       duracao: duracaoEscolhida(input),
+      duracaoAlvoSegundos,
+      frasesLiterais,
     });
-    props = normalizarProps(
+    props = aplicarDuracaoAlvo(aplicarFrasesLiterais(normalizarProps(
       { ...r.props, cores: input.cores ?? r.props.cores },
       {
         marca: r.props.marca,
@@ -210,7 +253,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
         arranjo: r.props.arranjo ?? null,
         duracao: r.props.duracao ?? duracaoEscolhida(input),
       },
-    );
+    ), frasesLiterais), duracaoAlvoSegundos);
     usouIA = r.usouIA;
     if (!legendaPost) legendaPost = r.legendaPost;
   }
@@ -225,6 +268,9 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
     trilha_id: trilha?.id,
     trilha_path: trilha?.path,
     trilha_volume: trilha?.volume ?? 0.28,
+    sem_trilha: input.semTrilha === true || (input.props as any)?.sem_trilha === true,
+    frases_literais: frasesLiterais,
+    sem_logo_tenant: semLogoTenant,
     trilhaUrl: undefined,
   };
   return { props, legendaPost, usouIA };
@@ -345,9 +391,11 @@ export async function enfileirarVideoMotion(input: EnfileirarInput): Promise<Enf
         usou_ia: usouIA,
         origem,
         sem_trilha: !props.trilha_id,
+        sem_trilha_explicita: props.sem_trilha === true,
         estilo: props.estilo ?? "conversa",
         arranjo: props.arranjo ?? 1,
         duracao: props.duracao ?? "curto",
+        duracao_alvo_segundos: props.duracao_alvo_segundos ?? null,
         render_minutos_estimado: minutosRenderEstimado(duracaoEstimada(props)),
       },
     })

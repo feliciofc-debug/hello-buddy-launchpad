@@ -74,7 +74,7 @@ const CHAT_ENTRADA = 40;
 const CHAT_RESPIRO = 115;
 
 export const espacoMsg = (ritmo?: number) =>
-  ritmo && ritmo >= 40 && ritmo <= 120 ? Math.round(ritmo) : MSG_ESPACO;
+  ritmo && ritmo >= 40 && ritmo <= 200 ? Math.round(ritmo) : MSG_ESPACO;
 
 export const framesChat = (n: number, ritmo?: number) =>
   CHAT_ENTRADA + Math.max(1, n) * espacoMsg(ritmo) + CHAT_RESPIRO;

@@ -2,11 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, ArrowLeft, Eye, EyeOff, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { lovable } from '@/integrations/lovable';
+import { isCustomAuth } from '@/config/runtime-config';
 import { toast } from 'sonner';
 
 export default function Login() {
   const navigate = useNavigate();
+  const customAuth = isCustomAuth();
   const [formData, setFormData] = useState({
     email: '',
     password: ''
@@ -118,6 +119,8 @@ export default function Login() {
   const handleGoogle = async () => {
     setGoogleLoading(true);
     try {
+      if (customAuth) throw new Error('Login com Google não disponível neste ambiente');
+      const { lovable } = await import('@/integrations/lovable');
       sessionStorage.setItem('oauth_in_progress', '1');
       const isAmzDomain = window.location.hostname === 'amzofertas.com.br' || window.location.hostname === 'www.amzofertas.com.br';
       const redirectUri = isAmzDomain ? 'https://amzofertas.com.br/login?oauth=google' : `${window.location.origin}/login?oauth=google`;
@@ -273,7 +276,7 @@ export default function Login() {
             </div>
 
             {/* Esqueci Senha */}
-            <div className="text-right">
+            {!customAuth && <div className="text-right">
               <button
                 type="button"
                 onClick={() => {
@@ -284,7 +287,7 @@ export default function Login() {
               >
                 Esqueci minha senha
               </button>
-            </div>
+            </div>}
 
             {/* Botão Login */}
             <button
@@ -296,6 +299,7 @@ export default function Login() {
             </button>
           </form>
 
+          {!customAuth && <>
           {/* Divider */}
           <div className="relative my-5 sm:my-8">
             <div className="absolute inset-0 flex items-center">
@@ -332,6 +336,7 @@ export default function Login() {
               Criar conta
             </button>
           </div>
+          </>}
         </div>
 
         {/* Modal: Redefinir senha */}

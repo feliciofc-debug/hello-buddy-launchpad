@@ -969,27 +969,42 @@ export default function MeusProdutos() {
   const fetchProducts = async () => {
     try {
       setIsLoading(true);
-      const { data, error } = await supabase
+      const { data: produtos, error } = await supabase
         .from('produtos')
-        .select(`
-          *, 
-          clientes(nome, tipo_negocio),
-          campanhas_recorrentes!campanhas_recorrentes_produto_id_fkey(
-            id, nome, frequencia, data_inicio, horarios, dias_semana,
-            mensagem_template, listas_ids, ativa, status, ultima_execucao,
-            total_enviados, proxima_execucao
-          )
-        `)
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      
-      // Processar produtos para incluir campanha ativa
-      const produtosComCampanhas = (data || []).map(p => {
-        const campanhasAtivas = (p.campanhas_recorrentes as any[])?.filter((c: any) => c.ativa) || [];
+
+      // O backend próprio não possui no schema cache os relacionamentos usados
+      // pelo select aninhado. Busca os dados relacionados separadamente para que
+      // uma FK ausente não impeça a listagem dos produtos.
+      const [{ data: clientes, error: clientesError }, { data: campanhas, error: campanhasError }] =
+        await Promise.all([
+          supabase.from('clientes').select('id, nome, tipo_negocio'),
+          supabase
+            .from('campanhas_recorrentes')
+            .select(`
+              id, produto_id, nome, frequencia, data_inicio, horarios, dias_semana,
+              mensagem_template, listas_ids, ativa, status, ultima_execucao,
+              total_enviados, proxima_execucao
+            `)
+            .eq('ativa', true),
+        ]);
+
+      if (clientesError) throw clientesError;
+      if (campanhasError) throw campanhasError;
+
+      const clientesPorId = new Map((clientes || []).map((cliente) => [cliente.id, cliente]));
+      const campanhasPorProduto = new Map(
+        (campanhas || []).map((campanha) => [campanha.produto_id, campanha]),
+      );
+
+      const produtosComCampanhas = (produtos || []).map((produto) => {
         return {
-          ...p,
-          campanha: campanhasAtivas.length > 0 ? campanhasAtivas[0] : null
+          ...produto,
+          clientes: produto.cliente_id ? clientesPorId.get(produto.cliente_id) : undefined,
+          campanha: campanhasPorProduto.get(produto.id) || null,
         };
       });
       
