@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, Sparkles, Clapperboard, Wand2, Clock, Download, RefreshCw, Upload, Palette, Ban, Send, Trash2, Globe } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { getRuntimeConfig } from '@/config/runtime-config';
 import { validarPaleta } from '@/lib/videoPalette';
 import { ImportarDoSiteModal, type IdentidadeImportada } from '@/components/ImportarDoSiteModal';
 
@@ -413,37 +414,65 @@ export const CriarVideoAnimado = () => {
       if (!user) throw new Error('Sessão não encontrada');
       if (!j.resultado_bucket || !j.resultado_path) throw new Error('Arquivo de vídeo não encontrado');
 
-      let blob: Blob | null = null;
-      const { data: downloaded, error: downloadError } = await supabase.storage.from(j.resultado_bucket).download(j.resultado_path);
-      if (downloadError) {
-        const { data: pub } = supabase.storage.from(j.resultado_bucket).getPublicUrl(j.resultado_path);
-        const resp = await fetch(pub.publicUrl);
-        if (!resp.ok) throw new Error('Não foi possível baixar o vídeo');
-        blob = await resp.blob();
-      } else {
-        blob = downloaded;
-      }
-      if (!blob) throw new Error('Arquivo de vídeo vazio');
-
-      const destPath = `${user.id}/${Date.now()}-${j.id}.mp4`;
-      const { error: uploadError } = await supabase.storage.from('produto-videos').upload(destPath, blob, { contentType: 'video/mp4' });
-      if (uploadError) throw uploadError;
-
-      const { data: pub } = supabase.storage.from('produto-videos').getPublicUrl(destPath);
+      const { data: pub } = supabase.storage.from(j.resultado_bucket).getPublicUrl(j.resultado_path);
       const videoUrl = pub?.publicUrl || '';
+      if (!videoUrl) throw new Error('Não foi possível montar a URL pública do vídeo');
 
-      const { error } = await supabase.from('produto_videos' as any).insert({
+      // O backend usa a URL pública padrão do Storage, enquanto o frontend usa
+      // publicMediaUrl. Ambas apontam para o mesmo arquivo na VPS.
+      const config = getRuntimeConfig();
+      const storagePath = [j.resultado_bucket, ...j.resultado_path.split('/')]
+        .map((parte) => encodeURIComponent(parte))
+        .join('/');
+      const storagePublicUrl = `${config.storageUrl}/object/public/${storagePath}`;
+      const urlsDoMesmoArquivo = Array.from(new Set([videoUrl, storagePublicUrl]));
+
+      const { data: midia, error: midiaError } = await supabase
+        .from('midias_whatsapp')
+        .select('id, midia_url')
+        .eq('user_id', user.id)
+        .eq('tipo', 'video')
+        .in('midia_url', urlsDoMesmoArquivo)
+        .limit(1)
+        .maybeSingle();
+      if (midiaError) throw midiaError;
+
+      const urlsRegistradas = midia?.midia_url
+        ? Array.from(new Set([...urlsDoMesmoArquivo, midia.midia_url]))
+        : urlsDoMesmoArquivo;
+      let existenteQuery = supabase
+        .from('produto_videos')
+        .select('id')
+        .eq('user_id', user.id);
+      existenteQuery = midia?.id
+        ? existenteQuery.or(`midia_whatsapp_id.eq.${midia.id},video_url.in.(${urlsRegistradas.join(',')})`)
+        : existenteQuery.in('video_url', urlsRegistradas);
+      const { data: existente, error: existenteError } = await existenteQuery.limit(1).maybeSingle();
+      if (existenteError) throw existenteError;
+      if (existente?.id) {
+        toast.info('Este vídeo já está na sua biblioteca.');
+        return;
+      }
+
+      const duracaoNumero = j.duracao_segundos == null ? Number.NaN : Number(j.duracao_segundos);
+      const duracaoInteira = Number.isFinite(duracaoNumero) ? Math.round(duracaoNumero) : null;
+      const { error } = await supabase.from('produto_videos').insert({
         user_id: user.id,
         titulo: j.titulo || 'Vídeo animado',
         legenda: j.legenda_post || '',
-        video_url: videoUrl,
-        duracao_segundos: j.duracao_segundos,
-        tamanho_bytes: blob.size,
+        video_url: midia?.midia_url || videoUrl,
+        duracao_segundos: duracaoInteira,
         status: 'pronto',
+        origem: 'ia_video_motion',
+        midia_whatsapp_id: midia?.id || null,
       } as any);
+      if (error?.code === '23505') {
+        toast.info('Este vídeo já está na sua biblioteca.');
+        return;
+      }
       if (error) throw error;
 
-      toast.success('Vídeo enviado para a área de vídeos. Agora é só publicar ou agendar.');
+      toast.success('Vídeo adicionado à biblioteca sem duplicar o arquivo.');
     } catch (e: any) {
       toast.error(e?.message || 'Não foi possível enviar o vídeo para a área de vídeos.');
     } finally {
@@ -455,16 +484,10 @@ export const CriarVideoAnimado = () => {
 
     setBaixando(j.id);
     try {
-      let blob: Blob | null = null;
-      if (j.resultado_bucket && j.resultado_path) {
-        const { data } = await supabase.storage.from(j.resultado_bucket).download(j.resultado_path);
-        blob = data ?? null;
-      }
-      if (!blob) {
-        const resp = await fetch(url);
-        if (!resp.ok) throw new Error('Não consegui baixar o arquivo');
-        blob = await resp.blob();
-      }
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`Não consegui baixar o arquivo (HTTP ${resp.status})`);
+      const blob = await resp.blob();
+      if (blob.size === 0) throw new Error('O arquivo de vídeo está vazio');
       const nome = `${(j.titulo || 'video-animado').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}.mp4`;
       const href = URL.createObjectURL(blob);
       const a = document.createElement('a');
