@@ -11,6 +11,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { autorizarWorker, renderCors, respJson } from "../_shared/render-auth.ts";
 import { linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
+import { syncProdutoVideoFromMidia } from "../_shared/sync-produto-video.ts";
 
 const MAX_TENTATIVAS = 3;
 
@@ -72,6 +73,17 @@ async function registrarVideoLegendado(
     .single();
   if (error || !data?.id) throw new Error(`não consegui registrar o vídeo legendado em /midias: ${error?.message || "id ausente"}`);
   return data.id;
+}
+
+async function sincronizarAreaDeVideos(supabase: any, midiaId: string): Promise<void> {
+  try {
+    await syncProdutoVideoFromMidia(supabase, midiaId);
+  } catch (e) {
+    console.error(
+      "[video-render-complete] sincronização com produto_videos falhou; mantendo vídeo concluído:",
+      e instanceof Error ? e.message : String(e),
+    );
+  }
 }
 
 Deno.serve(async (req) => {
@@ -164,6 +176,7 @@ Deno.serve(async (req) => {
     try {
       midiaId = await registrarVideoLegendado(supabase, job, videoUrl, duracao_segundos ?? null);
       codigoMidia = linhaCodigoMidia(midiaId, "video");
+      await sincronizarAreaDeVideos(supabase, midiaId);
     } catch (e) {
       bibliotecaErro = e instanceof Error ? e.message : String(e);
       console.error("[video-render-complete] registro em /midias falhou; entregando MP4 mesmo assim:", bibliotecaErro);
