@@ -23,7 +23,7 @@ interface VideoItem {
   titulo: string | null;
   video_url: string;
   thumbnail_url: string | null;
-  tamanho_mb: number | null;
+  tamanho_bytes: number | null;
   duracao_segundos: number | null;
   status: string;
   publicado_facebook: boolean;
@@ -31,7 +31,7 @@ interface VideoItem {
   postado_story_facebook?: boolean;
   postado_story_instagram?: boolean;
   postado_story_em?: string | null;
-  created_at: string;
+  criado_em: string;
 }
 
 export const AreaVideos = () => {
@@ -71,7 +71,7 @@ export const AreaVideos = () => {
       if (result.instagram.story_id) updates.story_instagram_id = result.instagram.story_id;
     }
     if (result.facebook?.ok || result.instagram?.ok) {
-      await supabase.from('videos_produtos' as any).update(updates).eq('id', videoId);
+      await supabase.from('produto_videos').update(updates).eq('id', videoId);
       loadVideos();
     }
   };
@@ -84,13 +84,18 @@ export const AreaVideos = () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data } = await supabase
-      .from('videos_produtos' as any)
+    const { data, error } = await supabase
+      .from('produto_videos')
       .select('*')
       .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
+      .order('criado_em', { ascending: false });
 
-    if (data) setVideos(data as any);
+    if (error) {
+      console.error('[AreaVideos] Erro ao carregar vídeos:', error);
+      toast.error('Não foi possível carregar seus vídeos.');
+      return;
+    }
+    setVideos((data || []) as VideoItem[]);
   };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -123,15 +128,14 @@ export const AreaVideos = () => {
       const { data: urlData } = supabase.storage.from('videos').getPublicUrl(fileName);
 
       const { error: insertError } = await supabase
-        .from('videos_produtos' as any)
+        .from('produto_videos')
         .insert({
           user_id: user.id,
           titulo: file.name.replace(/\.[^/.]+$/, ''),
           video_url: urlData.publicUrl,
-          tamanho_mb: Math.round(sizeMB * 100) / 100,
-          tipo: 'reels',
-          status: 'disponivel',
-        } as any);
+          tamanho_bytes: file.size,
+          status: 'pronto',
+        });
 
       if (insertError) throw insertError;
 
@@ -147,7 +151,7 @@ export const AreaVideos = () => {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Excluir este vídeo?')) return;
-    await supabase.from('videos_produtos' as any).delete().eq('id', id);
+    await supabase.from('produto_videos').delete().eq('id', id);
     toast.success('Vídeo excluído');
     loadVideos();
   };
@@ -274,8 +278,10 @@ export const AreaVideos = () => {
               <CardContent className="p-4 space-y-3">
                 <p className="font-medium text-sm truncate">{video.titulo || 'Sem título'}</p>
                 <div className="flex gap-1 flex-wrap">
-                  {video.tamanho_mb && (
-                    <Badge variant="outline" className="text-xs">{video.tamanho_mb} MB</Badge>
+                  {video.tamanho_bytes && (
+                    <Badge variant="outline" className="text-xs">
+                      {(video.tamanho_bytes / (1024 * 1024)).toFixed(2)} MB
+                    </Badge>
                   )}
                   {video.publicado_facebook && (
                     <Badge className="bg-blue-500 text-white text-xs gap-1">
@@ -348,7 +354,7 @@ export const AreaVideos = () => {
         videoUrl={selectedVideo?.video_url || null}
         videoNome={selectedVideo?.titulo || null}
         videoId={selectedVideo?.id || null}
-        videoSource="videos_produtos"
+        videoSource="produto_videos"
         produto={null}
       />
 
