@@ -120,12 +120,12 @@ export const AreaVideos = () => {
 
       const fileName = `${user.id}/${Date.now()}-${file.name}`;
       const { error: uploadError } = await supabase.storage
-        .from('produto-videos')
+        .from('videos')
         .upload(fileName, file, { contentType: file.type });
 
       if (uploadError) throw uploadError;
 
-      const { data: urlData } = supabase.storage.from('produto-videos').getPublicUrl(fileName);
+      const { data: urlData } = supabase.storage.from('videos').getPublicUrl(fileName);
 
       const { error: insertError } = await supabase
         .from('produto_videos')
