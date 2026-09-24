@@ -1,4 +1,7 @@
 type SupabaseClientLike = {
+  // Supabase's fluent query builder varies by generated schema and is supplied
+  // by each Edge Function at runtime.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   from: (table: string) => any;
 };
 
