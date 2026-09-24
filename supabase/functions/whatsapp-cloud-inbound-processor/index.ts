@@ -32,6 +32,7 @@ import { carouselColorRows, resolveCarouselColor } from "../_shared/carousel-col
 import { logOutboundMessage } from "../_shared/cloud-log.ts";
 import { gerarVarianteFacebookFeed } from "../_shared/varianteFacebookFeed.ts";
 import { idCurto, linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
+import { syncProdutoVideoFromMidia } from "../_shared/sync-produto-video.ts";
 import {
   iniciarFluxoLegendaVideo,
   tratarRespostaFluxoLegenda,
@@ -9833,6 +9834,22 @@ async function processOne(queueId: string) {
     if (freshLibraryMedia.length > 0) {
       const contexto = (userText || freshLibraryMedia.map((m) => m.caption).filter(Boolean).join(" ") || "").trim();
       const salvos = await Promise.all(freshLibraryMedia.map((m) => salvarItemMidiaBiblioteca(m, { userId, fromNumber: row.from_number }, contexto)));
+      if (fromIsOwner) {
+        await Promise.all(
+          salvos
+            .filter((item) => item.tipo === "video")
+            .map(async (item) => {
+              try {
+                await syncProdutoVideoFromMidia(sb, item.id);
+              } catch (e) {
+                console.error(
+                  "[processor][produto_videos_sync] falhou; mantendo vídeo em midias_whatsapp:",
+                  e instanceof Error ? e.message : String(e),
+                );
+              }
+            }),
+        );
+      }
       let descricaoVisual = "";
       try {
         descricaoVisual = await descreverFotosSalvas(freshLibraryMedia, salvos, contexto);
