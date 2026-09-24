@@ -454,12 +454,14 @@ export const CriarVideoAnimado = () => {
         return;
       }
 
+      const duracaoNumero = j.duracao_segundos == null ? Number.NaN : Number(j.duracao_segundos);
+      const duracaoInteira = Number.isFinite(duracaoNumero) ? Math.round(duracaoNumero) : null;
       const { error } = await supabase.from('produto_videos').insert({
         user_id: user.id,
         titulo: j.titulo || 'Vídeo animado',
         legenda: j.legenda_post || '',
         video_url: midia?.midia_url || videoUrl,
-        duracao_segundos: j.duracao_segundos,
+        duracao_segundos: duracaoInteira,
         status: 'pronto',
         origem: 'ia_video_motion',
         midia_whatsapp_id: midia?.id || null,

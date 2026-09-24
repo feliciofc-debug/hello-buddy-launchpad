@@ -54,6 +54,12 @@ export async function syncProdutoVideoFromMidia(
   }
   if (existente?.id) return { id: existente.id, created: false };
 
+  const duracaoNumero = midia.duracao_segundos == null
+    ? Number.NaN
+    : Number(midia.duracao_segundos);
+  const duracaoInteira = Number.isFinite(duracaoNumero)
+    ? Math.round(duracaoNumero)
+    : null;
   const { data: criado, error: insertError } = await supabase
     .from("produto_videos")
     .insert({
@@ -62,7 +68,7 @@ export async function syncProdutoVideoFromMidia(
       thumbnail_url: midia.thumbnail_url || null,
       titulo: tituloPorOrigem(midia.origem),
       legenda: midia.contexto_original || null,
-      duracao_segundos: midia.duracao_segundos ?? null,
+      duracao_segundos: duracaoInteira,
       tamanho_bytes: midia.tamanho_bytes ?? null,
       status: "pronto",
       criado_em: midia.created_at,
