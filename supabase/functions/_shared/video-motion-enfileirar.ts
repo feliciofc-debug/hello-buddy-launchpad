@@ -24,6 +24,7 @@ import {
   type EstiloMotion,
   type MotionProps,
 } from "./video-motion.ts";
+import { getTenantLogo } from "./tenant-logo.ts";
 
 export const PLATAFORMAS_OK = ["instagram", "facebook", "linkedin", "tiktok"];
 
@@ -96,14 +97,156 @@ export type EnfileirarResult =
   | { ok: false; status: number; error: string; motivo?: string };
 
 export async function logoDoTenant(sb: any, userId: string): Promise<string | undefined> {
-  const { data } = await sb
-    .from("tenant_logos")
-    .select("storage_path")
+  return (await getTenantLogo(sb, userId))?.storage_path;
+}
+
+type LogoMotionResolvida = {
+  path?: string;
+  url?: string;
+  origem: "explicit_path" | "explicit_url" | "client_identity" | "site_identity" | "profile" | "tenant_logos" | "user_logos";
+};
+
+function urlLogoSegura(value: unknown): string | null {
+  try {
+    const url = new URL(String(value ?? "").trim());
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    const host = url.hostname.toLowerCase();
+    if (
+      host === "localhost"
+      || host === "::1"
+      || host.endsWith(".local")
+      || /^127\./.test(host)
+      || /^10\./.test(host)
+      || /^192\.168\./.test(host)
+      || /^169\.254\./.test(host)
+      || /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+    ) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+async function logoUrlResponde(urlValue: unknown): Promise<string | null> {
+  const url = urlLogoSegura(urlValue);
+  if (!url) return null;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 6_000);
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { Range: "bytes=0-0" },
+      redirect: "follow",
+      signal: controller.signal,
+    });
+    if (!response.ok) return null;
+    const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+    if (contentType && !contentType.startsWith("image/") && !contentType.includes("octet-stream")) return null;
+    await response.body?.cancel();
+    return url;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function logoPathExiste(sb: any, userId: string, pathValue: unknown): Promise<string | null> {
+  const path = typeof pathValue === "string" ? pathValue.trim() : "";
+  if (!path.startsWith(`${userId}/`)) return null;
+  const { data, error } = await sb.storage.from("tenant-logos").createSignedUrl(path, 60);
+  if (error || !data?.signedUrl) return null;
+  return await logoUrlResponde(data.signedUrl) ? path : null;
+}
+
+async function logoDaIdentidadeSite(sb: any, userId: string): Promise<string | null> {
+  const { data, error } = await sb
+    .from("empresa_config")
+    .select("identidade_site")
     .eq("user_id", userId)
-    .eq("ativo", true)
     .maybeSingle();
-  const path = typeof data?.storage_path === "string" ? data.storage_path : "";
-  return path.startsWith(`${userId}/`) ? path : undefined;
+  if (error) {
+    console.warn("[video-motion][logo] identidade_site indisponível:", error.message);
+    return null;
+  }
+  const identity = data?.identidade_site && typeof data.identidade_site === "object"
+    ? data.identidade_site as Record<string, unknown>
+    : null;
+  return await logoUrlResponde(identity?.logo_url);
+}
+
+async function logoDoPerfil(sb: any, userId: string): Promise<string | null> {
+  const { data, error } = await sb
+    .from("profiles")
+    .select("logo_reel_url")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) {
+    console.warn("[video-motion][logo] profile indisponível:", error.message);
+    return null;
+  }
+  const url = urlLogoSegura(data?.logo_reel_url);
+  if (!url || !url.includes(`/${userId}/`)) return null;
+  return await logoUrlResponde(url);
+}
+
+async function logoOrfaEmUserLogos(sb: any, userId: string): Promise<string | null> {
+  const { data, error } = await sb.storage.from("user-logos").list(userId, {
+    limit: 20,
+    search: "logo.",
+  });
+  if (error) {
+    console.warn("[video-motion][logo] user-logos indisponível:", error.message);
+    return null;
+  }
+  const file = (data ?? []).find((item: any) => /^logo\.(png|jpe?g|webp|svg)$/i.test(String(item.name ?? "")));
+  if (!file?.name) return null;
+  const path = `${userId}/${file.name}`;
+  const { data: publicData } = sb.storage.from("user-logos").getPublicUrl(path);
+  return await logoUrlResponde(publicData?.publicUrl);
+}
+
+export async function resolverLogoMotion(
+  sb: any,
+  userId: string,
+  params: {
+    explicitPath?: unknown;
+    explicitUrl?: unknown;
+    clientIdentity?: boolean;
+  },
+): Promise<LogoMotionResolvida | null> {
+  const explicitPath = await logoPathExiste(sb, userId, params.explicitPath);
+  if (explicitPath) {
+    return {
+      path: explicitPath,
+      origem: params.clientIdentity ? "client_identity" : "explicit_path",
+    };
+  }
+
+  const explicitUrl = await logoUrlResponde(params.explicitUrl);
+  if (explicitUrl) {
+    return {
+      url: explicitUrl,
+      origem: params.clientIdentity ? "client_identity" : "explicit_url",
+    };
+  }
+
+  // Marca de cliente nunca herda identidade, perfil ou storage da AMZ/tenant.
+  if (params.clientIdentity) return null;
+
+  const siteIdentity = await logoDaIdentidadeSite(sb, userId);
+  if (siteIdentity) return { url: siteIdentity, origem: "site_identity" };
+
+  const profileLogo = await logoDoPerfil(sb, userId);
+  if (profileLogo) return { url: profileLogo, origem: "profile" };
+
+  const tenantPath = await logoPathExiste(sb, userId, await logoDoTenant(sb, userId));
+  if (tenantPath) return { path: tenantPath, origem: "tenant_logos" };
+
+  const userLogo = await logoOrfaEmUserLogos(sb, userId);
+  if (userLogo) return { url: userLogo, origem: "user_logos" };
+
+  return null;
 }
 
 /** Estilo pedido explicitamente; "auto"/vazio devolve o que o texto sugerir. */
@@ -204,13 +347,19 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
   const duracaoAlvoSegundos = input.duracaoAlvoSegundos ?? (input.props as any)?.duracao_alvo_segundos;
   const frasesLiterais = input.frasesLiterais ?? (input.props as any)?.frases_literais;
   const semLogoTenant = input.semLogoTenant === true || (input.props as any)?.sem_logo_tenant === true;
-  // Logo desta peça: a informada (prospecção) tem prioridade, desde que esteja
-  // na pasta do próprio usuário; senão, a logo cadastrada em "Minha marca".
   const logoSolicitada = input.logoPath ?? (input.props as any)?.logo_path;
-  const logoInformada = typeof logoSolicitada === "string" && logoSolicitada.startsWith(`${userId}/`)
-    ? logoSolicitada
-    : undefined;
-  const logoPath = logoInformada ?? (semLogoTenant ? undefined : await logoDoTenant(sb, userId));
+  const logo = await resolverLogoMotion(sb, userId, {
+    explicitPath: logoSolicitada,
+    explicitUrl: (input.props as any)?.logoUrl,
+    clientIdentity: semLogoTenant,
+  });
+  if (logo) {
+    console.log(`[video-motion][logo] tenant=${userId} origem=${logo.origem}`);
+  } else {
+    console.warn(
+      `[video-motion][logo_missing] tenant=${userId} client_identity=${semLogoTenant} — render seguirá sem logo`,
+    );
+  }
   const trilha = await resolverTrilha(sb, userId, input);
   let props: MotionProps;
   let legendaPost = String(input.legendaPost ?? "").trim();
@@ -263,8 +412,8 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
   props = {
     ...props,
     site: props.site || "",
-    logo_path: logoPath,
-    logoUrl: undefined,
+    logo_path: logo?.path,
+    logoUrl: logo?.url,
     trilha_id: trilha?.id,
     trilha_path: trilha?.path,
     trilha_volume: trilha?.volume ?? 0.28,
