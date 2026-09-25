@@ -1334,6 +1334,7 @@ async function resolveCompositionSources(
   explicitPhotos?: CompositionSource[],
   preferredMediaIds: string[] = [],
 ): Promise<{ environment: CompositionSource; product: CompositionSource } | null> {
+  type CompositionMediaRow = { id: string; midia_url: string; contexto_original?: string | null };
   let photos = (explicitPhotos ?? []).filter((photo) => !!photo.url);
   const preferredIds = preferredMediaIds.filter(Boolean).slice(-2);
   if (photos.length < 2 && preferredIds.length > 0) {
@@ -1347,11 +1348,12 @@ async function resolveCompositionSources(
     if (preferredError) {
       throw new Error(`composition_preferred_media_lookup_failed: ${preferredError.message}`);
     }
-    const byId = new Map((preferred ?? []).map((row: any) => [row.id, row]));
+    const preferredRows = (preferred ?? []) as CompositionMediaRow[];
+    const byId = new Map(preferredRows.map((row) => [row.id, row]));
     const ordered = preferredIds
       .map((id) => byId.get(id))
-      .filter(Boolean)
-      .map((row: any) => ({
+      .filter((row): row is CompositionMediaRow => !!row)
+      .map((row) => ({
         id: row.id,
         url: row.midia_url,
         context: row.contexto_original,
