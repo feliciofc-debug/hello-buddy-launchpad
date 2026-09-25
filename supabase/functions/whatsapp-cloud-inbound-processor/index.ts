@@ -1455,11 +1455,15 @@ async function composeProductInEnvironment(params: {
           ],
         }],
         modalities: ["image", "text"],
-        extra_body: {
-          google: {
-            image_config: { image_size: resolution },
-          },
-        },
+        ...(resolution === "2K"
+          ? {
+              extra_body: {
+                google: {
+                  image_config: { image_size: "2K" },
+                },
+              },
+            }
+          : {}),
       },
       "compor_produto_ambiente",
       120000,
