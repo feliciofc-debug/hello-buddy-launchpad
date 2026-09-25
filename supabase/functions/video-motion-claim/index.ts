@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
         .maybeSingle();
       if (trilhaErr) throw trilhaErr;
       const trilhaPath = String(trilha?.storage_path ?? "");
-      const trilhaPermitida = Boolean(trilha) && (trilha.user_id === null || trilha.user_id === job.user_id)
+      const trilhaPermitida = trilha != null && (trilha.user_id === null || trilha.user_id === job.user_id)
         && (trilhaPath.startsWith("global/") || trilhaPath.startsWith(`${job.user_id}/`));
       if (!trilhaPermitida) throw new Error("trilha não disponível para este tenant");
       const { data: audio } = await supabase.storage.from("trilhas-audio").createSignedUrl(trilhaPath, 3600);
