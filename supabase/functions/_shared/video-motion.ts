@@ -9,6 +9,7 @@
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { getTenantBusinessContext } from "./business-context.ts";
+import { AMZ_TENANT_ID } from "./amz-tenant.ts";
 
 export type Mensagem = { de: "dono" | "agente"; texto: string };
 
@@ -156,15 +157,7 @@ const MODELO = "google/gemini-2.5-flash";
 const GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
 function politicaCertificacaoTenant(userId: string): string {
-  // A variável aceita uma lista separada por vírgula, ponto e vírgula ou
-  // espaços. Sem allowlist explícita, nenhum tenant recebe a exceção.
-  const tenantIds = new Set(
-    String(Deno.env.get("AMZ_TENANT_ID") || "")
-      .split(/[\s,;]+/)
-      .map((id) => id.trim().toLowerCase())
-      .filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id)),
-  );
-  const tenantPermitido = tenantIds.has(String(userId || "").trim().toLowerCase());
+  const tenantPermitido = String(userId || "").trim().toLowerCase() === AMZ_TENANT_ID.toLowerCase();
   if (tenantPermitido) {
     const texto = String(
       Deno.env.get("AMZ_TECH_PROVIDER_TEXT")

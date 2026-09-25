@@ -3,6 +3,7 @@
 // Fluxo: pagamento aprovado -> grava em comexia_pagamentos -> notifica no WhatsApp.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { AMZ_TENANT_ID } from "../_shared/amz-tenant.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,7 +13,7 @@ const corsHeaders = {
 // Número que RECEBE o aviso de pagamento comexia
 const DESTINO_NOTIFICACAO = "5521995379550";
 // user_id do tenant AMZ cujo whatsapp_config envia (número 5521980804901)
-const SENDER_USER_ID = "b7af0118-c506-4f87-8ac3-a0a11fd621fe";
+const SENDER_USER_ID = AMZ_TENANT_ID;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {

@@ -1,11 +1,12 @@
 // Jarvis Proactive Monitor — roda de hora em hora e alerta o Felicio no WhatsApp
 // Alertas: estoque crítico, autopilot/edge functions falhando, novos leads/vendas, inadimplência AMZ
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { AMZ_TENANT_ID } from "../_shared/amz-tenant.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const OWNER_PHONE = "5521967520706";
-const ADMIN_USER_ID = Deno.env.get("ADMIN_AMZ_USER_ID") || "b7af0118-c506-4f87-8ac3-a0a11fd621fe";
+const ADMIN_USER_ID = AMZ_TENANT_ID;
 
 const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 

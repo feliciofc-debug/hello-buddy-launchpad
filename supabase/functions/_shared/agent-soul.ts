@@ -9,17 +9,18 @@
 // Isolamento em 3 camadas (defesa em profundidade):
 //   1. Default 'whitelabel' no schema (whatsapp_cloud_agent_config.agent_mode)
 //   2. Check duplo aqui no código: só ativa modo 'amz' se agent_mode === 'amz'
-//      E user_id === ADMIN_AMZ_USER_ID (hardcoded). Qualquer outro user_id
+//      E user_id === AMZ_TENANT_ID. Qualquer outro user_id
 //      tentando 'amz' é forçado a 'whitelabel'.
 //   3. Catálogo carregado com .eq('user_id', tenantUserId) — RLS por tenant.
 // ============================================================================
 
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { getCopyStyle } from "./copy-style.ts";
+import { AMZ_TENANT_ID } from "./amz-tenant.ts";
 
-// Hardcoded: único user_id autorizado a operar no modo AMZ.
-// Mudar isto requer redeploy — propositalmente friccional.
-export const ADMIN_AMZ_USER_ID = "b7af0118-c506-4f87-8ac3-a0a11fd621fe";
+// Compatibilidade temporária para consumidores externos; o valor agora vem
+// de AMZ_TENANT_ID e nunca mais do UUID Lovable legado.
+export const ADMIN_AMZ_USER_ID = AMZ_TENANT_ID;
 
 // Threshold de catálogo: ≤50 injeta tudo; >50 faz keyword-rank top 15.
 const CATALOG_FULL_THRESHOLD = 50;

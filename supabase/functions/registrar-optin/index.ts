@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { AMZ_TENANT_ID } from '../_shared/amz-tenant.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -113,10 +114,9 @@ Fique ligado! Em breve você receberá ofertas imperdíveis! 🔥
 _Para sair da lista, responda SAIR a qualquer momento._`;
       
       // Canal oficial Meta Cloud API
-      const AMZ_TENANT_USER_ID = 'b7af0118-c506-4f87-8ac3-a0a11fd621fe';
       const { error: sendError } = await supabase.functions.invoke('whatsapp-send-message', {
         body: {
-          user_id: AMZ_TENANT_USER_ID,
+          user_id: AMZ_TENANT_ID,
           to: telefoneFormatado,
           message: mensagemBoasVindas
         }

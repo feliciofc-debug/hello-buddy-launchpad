@@ -1,6 +1,7 @@
 // One-shot: lê WHATSAPP_TEST_ACCESS_TOKEN do secret e grava na whatsapp_config
 // do tenant de teste, junto com phone_number_id + waba_id do número de teste.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { AMZ_TENANT_ID } from "../_shared/amz-tenant.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -11,7 +12,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const TEST_TOKEN = Deno.env.get("WHATSAPP_TEST_ACCESS_TOKEN") ?? "";
 
-const TEST_USER_ID = "b7af0118-c506-4f87-8ac3-a0a11fd621fe";
+const TEST_USER_ID = AMZ_TENANT_ID;
 const PHONE_NUMBER_ID = "1156251107576181";
 const WABA_ID = "851111477791145";
 

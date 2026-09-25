@@ -11,7 +11,7 @@ ALTER TABLE public.whatsapp_cloud_agent_config
 -- ausência de cota diária; fila ativa e anti-duplicidade continuam valendo.
 UPDATE public.whatsapp_cloud_agent_config
 SET motion_video_daily_limit = NULL
-WHERE user_id = 'b7af0118-c506-4f87-8ac3-a0a11fd621fe';
+WHERE user_id = '561e0ccc-3eda-4dc1-a315-c86a51623fc3';
 
 COMMENT ON COLUMN public.whatsapp_cloud_agent_config.motion_video_daily_limit IS
   'Cota diária de vídeos motion por tenant. Default 5; NULL significa ilimitado.';

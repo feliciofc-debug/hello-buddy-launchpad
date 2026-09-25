@@ -3,7 +3,8 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { decode as base64Decode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
-import { buildSystemPrompt, ADMIN_AMZ_USER_ID, AMZ_KNOWLEDGE } from "../_shared/agent-soul.ts";
+import { buildSystemPrompt, AMZ_KNOWLEDGE } from "../_shared/agent-soul.ts";
+import { AMZ_TENANT_ID as ADMIN_AMZ_USER_ID } from "../_shared/amz-tenant.ts";
 import { buildAmzContext, OWNER_PHONE, resolveTenantOwner, isAmzOwnerAltPhone } from "../_shared/amz-context.ts";
 import { getTenantBusinessContext, buildCarouselPrompt } from "../_shared/business-context.ts";
 
