@@ -17,6 +17,15 @@ type LoginResponse = {
   user: ApiUser;
 };
 
+type SignUpCredentials = {
+  email: string;
+  password: string;
+  options?: {
+    data?: Record<string, unknown>;
+    emailRedirectTo?: string;
+  };
+};
+
 type ErrorResponse = {
   erro?: string;
   motivo?: string;
@@ -328,11 +337,41 @@ export class CustomAuthClient {
     }
   }
 
-  async signUp() {
-    return {
-      data: { user: null, session: null },
-      error: new CustomAuthError("Cadastro não disponível neste ambiente", 501),
-    };
+  async signUp(credentials: SignUpCredentials) {
+    try {
+      const response = await fetch(`${this.baseUrl}/auth/v1/signup`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          apikey: this.anonKey,
+        },
+        body: JSON.stringify({
+          email: credentials.email,
+          password: credentials.password,
+          data: credentials.options?.data ?? {},
+        }),
+      });
+
+      if (!response.ok) {
+        return {
+          data: { user: null, session: null },
+          error: await this.parseError(response),
+        };
+      }
+
+      // O cadastro confirma o e-mail no servidor. Autenticar em seguida mantém
+      // a mesma semântica do Supabase: signUp retorna usuário e sessão.
+      return this.signInWithPassword({
+        email: credentials.email,
+        password: credentials.password,
+      });
+    } catch (error) {
+      return {
+        data: { user: null, session: null },
+        error: error instanceof Error ? error : new CustomAuthError(String(error)),
+      };
+    }
   }
 
   async resetPasswordForEmail() {
