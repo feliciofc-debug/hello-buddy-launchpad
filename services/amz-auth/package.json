@@ -1,0 +1,8 @@
+{
+  "name": "amz-auth-signup-route",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test signup-route.test.cjs"
+  }
+}

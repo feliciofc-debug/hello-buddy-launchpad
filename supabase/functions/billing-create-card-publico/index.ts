@@ -29,7 +29,6 @@ serve(async (req) => {
       first_name,
       last_name,
       company_name,
-      installments,
     } = body || {};
 
     if (!subscription_id || !UUID_RE.test(String(subscription_id))) return bad('subscription_id inválido');

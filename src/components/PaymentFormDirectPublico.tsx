@@ -35,7 +35,7 @@ export default function PaymentFormDirectPublico({
   const [loading, setLoading] = useState(false);
   const [paymentData, setPaymentData] = useState<any>(null);
   const [copied, setCopied] = useState(false);
-  const [installments, setInstallments] = useState(1);
+  const installments = 1;
   const [documentType, setDocumentType] = useState<'cpf' | 'cnpj'>('cpf');
   const [confirmed, setConfirmed] = useState(false);
   const pollRef = useRef<number | null>(null);
@@ -83,8 +83,6 @@ export default function PaymentFormDirectPublico({
   const validateDocument = () => documentType === 'cpf'
     ? formData.cpf.replace(/\D/g, '').length === 11
     : formData.cnpj.replace(/\D/g, '').length === 14;
-
-  const calculateInstallment = (n: number) => valorIntegral / n;
 
   const startPolling = () => {
     if (pollRef.current) window.clearInterval(pollRef.current);
@@ -217,7 +215,7 @@ export default function PaymentFormDirectPublico({
         </div>
 
         <div className="text-sm text-muted-foreground mb-2">
-          <p>💳 Cartão: até 12x</p>
+          <p>💳 Cartão: à vista</p>
           <p>📱 PIX: aprovação imediata</p>
           <p>📄 Boleto: vencimento em 3 dias</p>
         </div>
@@ -248,7 +246,7 @@ export default function PaymentFormDirectPublico({
                 <div className="text-center">
                   <div className="text-3xl mb-2">💳</div>
                   <div className="font-bold">Cartão</div>
-                  <div className="text-xs text-muted-foreground mt-1">Até 12x</div>
+                  <div className="text-xs text-muted-foreground mt-1">À vista</div>
                 </div>
               </button>
               <button
@@ -350,9 +348,9 @@ export default function PaymentFormDirectPublico({
 
             {paymentMethod === 'card' && (
               <div>
-                <Label>Parcelamento</Label>
+                <Label>Pagamento</Label>
                 <div className="w-full p-3 border rounded-lg bg-muted/40 text-sm font-medium">
-                  1x de R$ {calculateInstallment(1).toFixed(2)} (à vista)
+                  Cartão à vista — R$ {valorIntegral.toFixed(2)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-2">
                   Pagamento somente à vista. Você será redirecionado para o checkout seguro do Mercado Pago para inserir os dados do cartão.
@@ -375,7 +373,7 @@ export default function PaymentFormDirectPublico({
               paymentMethod === 'pix'
                 ? `Gerar PIX - R$ ${valorIntegral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
                 : paymentMethod === 'card'
-                  ? `Pagar ${installments}x de R$ ${calculateInstallment(installments).toFixed(2)}`
+                  ? `Pagar à vista — R$ ${valorIntegral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
                   : `Gerar Boleto - R$ ${valorIntegral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
             }
           </Button>

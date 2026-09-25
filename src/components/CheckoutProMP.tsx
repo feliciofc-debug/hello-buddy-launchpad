@@ -87,7 +87,7 @@ const CheckoutProMP = ({ planName, userId }: CheckoutProMPProps) => {
           <div className="border-2 border-gray-200 rounded-lg p-3 text-center hover:border-[#1a2332] transition">
             <CreditCard className="w-6 h-6 mx-auto mb-1 text-[#1a2332]" />
             <p className="text-xs font-semibold text-gray-700">Cartão</p>
-            <p className="text-[10px] text-gray-500">Até 12x</p>
+            <p className="text-[10px] text-gray-500">À vista</p>
           </div>
           <div className="border-2 border-gray-200 rounded-lg p-3 text-center hover:border-[#1a2332] transition">
             <Receipt className="w-6 h-6 mx-auto mb-1 text-[#1a2332]" />

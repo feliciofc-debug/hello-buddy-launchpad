@@ -11,8 +11,7 @@ import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
 import Cadastro from "./pages/Cadastro";
-import CadastroAfiliado from "./pages/CadastroAfiliado";
-import Planos from "./pages/Planos";
+import Planos from "./pages/PlanosAtuais";
 import TestPayment from "./pages/TestPayment";
 import PagarMensalidade from "./pages/PagarMensalidade";
 import NotFound from "./pages/NotFound";
@@ -131,8 +130,8 @@ const App = () => (
             <Route path="/login" element={<Login />} />
             <Route path="/reset-password" element={customAuth ? <Navigate to="/login" replace /> : <ResetPassword />} />
             <Route path="/alterar-senha" element={<ResetPassword />} />
-            <Route path="/cadastro" element={customAuth ? <Navigate to="/login" replace /> : <Cadastro />} />
-            <Route path="/cadastro-afiliado" element={customAuth ? <Navigate to="/login" replace /> : <CadastroAfiliado />} />
+            <Route path="/cadastro" element={<Cadastro />} />
+            <Route path="/cadastro-afiliado" element={<Navigate to="/planos" replace />} />
             <Route path="/planos" element={<Planos />} />
             <Route path="/plataforma" element={<Plataforma />} />
             <Route path="/integracoes" element={<Integracoes />} />

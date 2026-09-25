@@ -6334,6 +6334,7 @@ export type Database = {
           nome: string
           ordem: number
           perfis_sociais: number
+          posts_mes: number
           preco_mensal: number | null
           slug: string
           updated_at: string
@@ -6351,6 +6352,7 @@ export type Database = {
           nome: string
           ordem?: number
           perfis_sociais?: number
+          posts_mes?: number
           preco_mensal?: number | null
           slug: string
           updated_at?: string
@@ -6368,6 +6370,7 @@ export type Database = {
           nome?: string
           ordem?: number
           perfis_sociais?: number
+          posts_mes?: number
           preco_mensal?: number | null
           slug?: string
           updated_at?: string
@@ -6816,6 +6819,8 @@ export type Database = {
           acesso_bloqueado: boolean
           amazon_id: string | null
           bloqueado_em: string | null
+          cadastro_notificacao_erro: string | null
+          cadastro_notificado_em: string | null
           cnae: string | null
           cnae_descricao: string | null
           cpf: string
@@ -6830,7 +6835,10 @@ export type Database = {
           motivo_bloqueio: string | null
           nome: string
           nome_fantasia: string | null
+          pagamento_status: string | null
           plano: string | null
+          plano_solicitado: string | null
+          plano_solicitado_em: string | null
           razao_social: string | null
           shopee_id: string | null
           tipo: string | null
@@ -6844,6 +6852,8 @@ export type Database = {
           acesso_bloqueado?: boolean
           amazon_id?: string | null
           bloqueado_em?: string | null
+          cadastro_notificacao_erro?: string | null
+          cadastro_notificado_em?: string | null
           cnae?: string | null
           cnae_descricao?: string | null
           cpf: string
@@ -6858,7 +6868,10 @@ export type Database = {
           motivo_bloqueio?: string | null
           nome: string
           nome_fantasia?: string | null
+          pagamento_status?: string | null
           plano?: string | null
+          plano_solicitado?: string | null
+          plano_solicitado_em?: string | null
           razao_social?: string | null
           shopee_id?: string | null
           tipo?: string | null
@@ -6872,6 +6885,8 @@ export type Database = {
           acesso_bloqueado?: boolean
           amazon_id?: string | null
           bloqueado_em?: string | null
+          cadastro_notificacao_erro?: string | null
+          cadastro_notificado_em?: string | null
           cnae?: string | null
           cnae_descricao?: string | null
           cpf?: string
@@ -6886,7 +6901,10 @@ export type Database = {
           motivo_bloqueio?: string | null
           nome?: string
           nome_fantasia?: string | null
+          pagamento_status?: string | null
           plano?: string | null
+          plano_solicitado?: string | null
+          plano_solicitado_em?: string | null
           razao_social?: string | null
           shopee_id?: string | null
           tipo?: string | null

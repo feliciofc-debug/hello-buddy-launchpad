@@ -21,7 +21,7 @@ export default function PaymentFormDirect({
   const [loading, setLoading] = useState(false);
   const [paymentData, setPaymentData] = useState<any>(null);
   const [copied, setCopied] = useState(false);
-  const [installments, setInstallments] = useState(12);
+  const installments = 1;
   const [documentType, setDocumentType] = useState<'cpf' | 'cnpj'>('cpf');
   
   const [formData, setFormData] = useState({
@@ -113,10 +113,6 @@ export default function PaymentFormDirect({
 
   const validateEmail = (email: string) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  };
-
-  const calculateInstallment = (numInstallments: number) => {
-    return valorIntegral / numInstallments;
   };
 
   const handlePayment = async () => {
@@ -329,7 +325,7 @@ export default function PaymentFormDirect({
         </div>
 
         <div className="text-sm text-muted-foreground mb-2">
-          <p>💳 Cartão: R$ {valorIntegral.toLocaleString('pt-BR')},00 em até 12x</p>
+          <p>💳 Cartão à vista: R$ {valorIntegral.toLocaleString('pt-BR')},00</p>
           <p>📱 PIX: R$ {valorIntegral.toLocaleString('pt-BR')},00 (aprovação imediata)</p>
         </div>
       </div>
@@ -367,7 +363,7 @@ export default function PaymentFormDirect({
                 <div className="text-center">
                   <div className="text-3xl mb-2">💳</div>
                   <div className="font-bold">Cartão</div>
-                  <div className="text-xs text-muted-foreground mt-1">Até 12x</div>
+                  <div className="text-xs text-muted-foreground mt-1">À vista</div>
                 </div>
               </button>
 
@@ -543,18 +539,10 @@ export default function PaymentFormDirect({
                 </div>
 
                 <div>
-                  <Label>Parcelamento</Label>
-                  <select
-                    value={installments}
-                    onChange={(e) => setInstallments(Number(e.target.value))}
-                    className="w-full p-2 border rounded-lg bg-background"
-                  >
-                    {Array.from({length: 12}, (_, i) => i + 1).map(num => (
-                      <option key={num} value={num}>
-                        {num}x de R$ {calculateInstallment(num).toFixed(2)} sem juros
-                      </option>
-                    ))}
-                  </select>
+                  <Label>Pagamento</Label>
+                  <div className="w-full p-3 border rounded-lg bg-muted/40 text-sm font-medium">
+                    Cartão à vista — R$ {valorIntegral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </div>
                 </div>
               </>
             )}
@@ -571,8 +559,8 @@ export default function PaymentFormDirect({
                   ? `Gerar PIX - R$ ${valorComDesconto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (10% off)`
                   : `Gerar PIX - R$ ${valorIntegral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
               ) :
-              paymentMethod === 'card' ? 
-                `Pagar ${installments}x de R$ ${calculateInstallment(installments).toFixed(2)}` :
+              paymentMethod === 'card' ?
+                `Pagar à vista — R$ ${valorIntegral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` :
               `Pagar R$ ${valorIntegral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
             }
           </Button>

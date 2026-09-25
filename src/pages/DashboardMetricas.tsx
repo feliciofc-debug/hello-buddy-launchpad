@@ -52,6 +52,7 @@ import DashboardOverview from '@/components/dashboard/DashboardOverview';
 import { useDashboardMetrics, type DashboardPeriod } from '@/hooks/useDashboardMetrics';
 import { useBillingAccess } from '@/hooks/useBillingAccess';
 import BillingBlockedScreen from '@/components/BillingBlockedScreen';
+import { getAmzPlan } from '@/lib/amz-plans';
 
 import { LeadsQuentes } from '@/components/LeadsQuentes';
 import {
@@ -147,7 +148,7 @@ export default function DashboardMetricas() {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('tipo, nome_fantasia')
+      .select('tipo, nome, nome_fantasia, plano_solicitado, pagamento_status')
       .eq('id', user.id)
       .maybeSingle();
 
@@ -519,6 +520,20 @@ export default function DashboardMetricas() {
               </Button>
             </div>
           </div>
+
+          {userProfile?.pagamento_status === 'pending_payment' && (
+            <div className="flex items-start gap-3 rounded-xl border border-amber-400/40 bg-amber-400/10 p-4 text-amber-950 dark:text-amber-100">
+              <Clock className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
+              <div>
+                <p className="font-semibold">Cadastro recebido — pagamento em confirmação</p>
+                <p className="mt-1 text-sm opacity-90">
+                  Plano {getAmzPlan(userProfile.plano_solicitado).name}. Você pode usar o painel
+                  normalmente enquanto nossa equipe confirma o pagamento feito por cartão à vista,
+                  PIX ou boleto.
+                </p>
+              </div>
+            </div>
+          )}
 
           {loadingDash && !metricasDash.atualizadoEm ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">

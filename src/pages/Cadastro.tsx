@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Loader2, Lock, Mail, Phone, MessageCircle } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Loader2, Lock, Mail, Phone, MessageCircle, UserRound } from 'lucide-react';
 import { z } from 'zod';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { AMZ_PLANS, formatPlanPrice, getAmzPlan, isAmzPlanId, type AmzPlanId } from '@/lib/amz-plans';
 
 const WHATSAPP_URL =
   'https://wa.me/5521980804901?text=Ol%C3%A1!%20Tenho%20interesse%20em%20conhecer%20a%20AMZ%20Ofertas.%20Minha%20vitrine%20Shopee:%20';
 
 const cadastroSchema = z.object({
+  nome: z.string().trim().min(2, { message: 'Informe seu nome' }).max(120),
   email: z.string().trim().email({ message: 'E-mail inválido' }).max(255),
   whatsapp: z.string().trim().min(10, { message: 'WhatsApp inválido' }).max(20),
   password: z.string().min(8, { message: 'Senha deve ter no mínimo 8 caracteres' }).max(72),
@@ -20,8 +22,15 @@ const cadastroSchema = z.object({
 
 export default function Cadastro() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const requestedPlan = searchParams.get('plano');
+  const [selectedPlanId, setSelectedPlanId] = useState<AmzPlanId>(
+    isAmzPlanId(requestedPlan) ? requestedPlan : 'essencial',
+  );
+  const selectedPlan = getAmzPlan(selectedPlanId);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
+    nome: '',
     email: '',
     whatsapp: '',
     password: '',
@@ -61,13 +70,15 @@ export default function Cadastro() {
         options: {
           emailRedirectTo: `${window.location.origin}/dashboard`,
           data: {
+            nome: form.nome,
             whatsapp: form.whatsapp,
+            plano_solicitado: selectedPlanId,
           },
         },
       });
 
       if (signUpError) {
-        if (signUpError.message.includes('already registered')) {
+        if (/already registered|já (?:está|esta) cadastrado|email.*cadastrado/i.test(signUpError.message)) {
           toast.error('Este e-mail já está cadastrado. Faça login.');
           setTimeout(() => navigate('/login'), 1500);
           return;
@@ -78,13 +89,11 @@ export default function Cadastro() {
       const userId = signUpData.user?.id;
       if (!userId) throw new Error('Erro ao criar conta');
 
-      toast.success('Conta criada! Escolha a forma de pagamento...');
-
-      // Redireciona para /planos onde o modal CheckoutProMP é renderizado
-      navigate('/planos');
-    } catch (err: any) {
+      toast.success('Conta criada! Vamos confirmar o pagamento com você.');
+      navigate('/dashboard?cadastro=pendente');
+    } catch (err: unknown) {
       console.error('Erro no cadastro:', err);
-      toast.error(err.message || 'Erro ao processar cadastro');
+      toast.error(err instanceof Error ? err.message : 'Erro ao processar cadastro');
       setLoading(false);
     }
   };
@@ -93,7 +102,7 @@ export default function Cadastro() {
     <div className="min-h-screen bg-slate-950 text-white">
       <div className="max-w-xl mx-auto px-6 py-12">
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/planos')}
           className="text-slate-400 hover:text-white transition mb-8 flex items-center gap-2"
         >
           <ArrowLeft className="w-4 h-4" /> Voltar
@@ -106,12 +115,52 @@ export default function Cadastro() {
             </div>
             <h1 className="text-3xl font-bold mb-2">Criar Conta</h1>
             <p className="text-slate-400">
-              Plano <strong className="text-white">AMZ Ofertas PRO</strong> ·{' '}
-              <span className="text-orange-400 font-bold">R$ 597/mês</span>
+              Plano <strong className="text-white">{selectedPlan.name}</strong> ·{' '}
+              <span className="text-orange-400 font-bold">
+                {formatPlanPrice(selectedPlan.price)}/mês
+              </span>
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-semibold mb-1.5">Plano escolhido</label>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {AMZ_PLANS.map((plan) => (
+                  <button
+                    key={plan.id}
+                    type="button"
+                    disabled={loading}
+                    onClick={() => setSelectedPlanId(plan.id)}
+                    className={`rounded-lg border px-3 py-2 text-left transition ${
+                      selectedPlanId === plan.id
+                        ? 'border-orange-500 bg-orange-500/10'
+                        : 'border-slate-700 bg-slate-800/50 hover:border-slate-500'
+                    }`}
+                  >
+                    <span className="block text-sm font-semibold">{plan.name}</span>
+                    <span className="text-xs text-slate-400">{formatPlanPrice(plan.price)}/mês</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold mb-1.5">Nome</label>
+              <div className="relative">
+                <UserRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  value={form.nome}
+                  onChange={(e) => handleChange('nome', e.target.value)}
+                  placeholder="Seu nome completo"
+                  disabled={loading}
+                  className="w-full bg-slate-800/60 border border-slate-700 rounded-lg pl-10 pr-3 py-3 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/40 transition disabled:opacity-50"
+                />
+              </div>
+              {errors.nome && <p className="text-red-400 text-sm mt-1">{errors.nome}</p>}
+            </div>
+
             <div>
               <label className="block text-sm font-semibold mb-1.5">E-mail</label>
               <div className="relative">
@@ -188,12 +237,13 @@ export default function Cadastro() {
                   <Loader2 className="w-5 h-5 animate-spin" /> Processando...
                 </>
               ) : (
-                'Criar Conta e Pagar'
+                'Criar conta'
               )}
             </button>
 
             <p className="text-xs text-slate-400 text-center">
-              Você será redirecionado ao Mercado Pago para concluir o pagamento via PIX, cartão ou boleto.
+              Pagamento por cartão à vista, PIX ou boleto. Após o cadastro, nossa equipe confirma
+              o pagamento e a ativação com você.
             </p>
           </form>
 

@@ -108,12 +108,12 @@ A AMZ é uma plataforma completa de atendimento inteligente com IA, atendendo ta
 - ROI por vendedor
 - Sazonalidade
 
-## PRECIFICAÇÃO B2B
-- Starter: R$ 297/mês (3 usuários)
-- Professional: R$ 697/mês (10 usuários) ⭐ RECOMENDADO B2B
-- Enterprise: R$ 1.497/mês (ilimitado)
-- Integrações customizadas: R$ 3.000-5.000 (one-time)
-- Trial: 30 dias grátis
+## PLANOS ATUAIS
+- Essencial: R$ 597/mês, até 60 posts, sem agente e sem atendimento por WhatsApp
+- Profissional: R$ 997/mês, plataforma liberada e posts ilimitados
+- Avançado com IA: R$ 1.597/mês, inclui agente atendendo clientes no WhatsApp da empresa
+- Sem taxa de implantação
+- Pagamento por cartão à vista, PIX ou boleto; não ofereça parcelamento
 
 ## DIFERENCIAIS vs CONCORRENTES B2B
 - vs Kommo: 50-70% mais barato (não cobra por usuário)
