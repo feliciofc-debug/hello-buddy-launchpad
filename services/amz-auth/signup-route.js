@@ -149,7 +149,10 @@ function registerSignupRoute({
       // protege instalações em que a migration ainda não foi recarregada.
       await client.query(
         `INSERT INTO public.user_roles (user_id, role)
-         VALUES ($1::uuid, 'empresa')
+         SELECT $1::uuid, 'empresa'::public.app_role
+         WHERE NOT EXISTS (
+           SELECT 1 FROM public.user_roles WHERE user_id = $1::uuid
+         )
          ON CONFLICT (user_id, role) DO NOTHING`,
         [userId],
       );

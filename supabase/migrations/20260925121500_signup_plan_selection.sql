@@ -107,7 +107,10 @@ BEGIN
   END IF;
 
   INSERT INTO public.user_roles (user_id, role)
-  VALUES (new.id, 'empresa')
+  SELECT new.id, 'empresa'::public.app_role
+  WHERE NOT EXISTS (
+    SELECT 1 FROM public.user_roles WHERE user_id = new.id
+  )
   ON CONFLICT (user_id, role) DO NOTHING;
 
   UPDATE public.profiles
