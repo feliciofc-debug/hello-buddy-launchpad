@@ -31,8 +31,8 @@ export const PLATAFORMAS_OK = ["instagram", "facebook", "linkedin", "tiktok"];
 /** Fila ativa por usuário. WhatsApp é mais restrito: worker é single-thread. */
 export const LIMITE_FILA_PLATAFORMA = 3;
 export const LIMITE_FILA_WHATSAPP = 1;
-/** Cota diária por tenant, somando as duas origens. */
-export const COTA_DIARIA_POR_TENANT = 5;
+/** Fallback para tenants sem linha/configuração. `NULL` no banco significa ilimitado. */
+export const COTA_DIARIA_MOTION_PADRAO = 5;
 /** Janela de anti-duplicidade para o mesmo tema. */
 const JANELA_DUPLICIDADE_MIN = 10;
 
@@ -425,6 +425,25 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
   return { props, legendaPost, usouIA };
 }
 
+/** Lê a cota do tenant. `null` é uma escolha explícita de operação ilimitada. */
+export async function cotaDiariaMotionDoTenant(sb: any, userId: string): Promise<number | null> {
+  const { data, error } = await sb
+    .from("whatsapp_cloud_agent_config")
+    .select("motion_video_daily_limit")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) {
+    console.warn("[video-motion][daily-limit] usando fallback:", error.message);
+    return COTA_DIARIA_MOTION_PADRAO;
+  }
+  if (!data) return COTA_DIARIA_MOTION_PADRAO;
+  if (data.motion_video_daily_limit === null) return null;
+  const configured = Number(data.motion_video_daily_limit);
+  return Number.isInteger(configured) && configured >= 0
+    ? configured
+    : COTA_DIARIA_MOTION_PADRAO;
+}
+
 /** Limites de fila/cota/duplicidade. Devolve null quando está liberado. */
 export async function checarLimitesMotion(
   sb: any,
@@ -450,21 +469,24 @@ export async function checarLimitesMotion(
     };
   }
 
-  const inicioDoDia = new Date();
-  inicioDoDia.setUTCHours(0, 0, 0, 0);
-  const { count: hoje } = await sb
-    .from("video_motion_jobs")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .neq("status", "cancelado")
-    .gte("created_at", inicioDoDia.toISOString());
+  const cotaDiaria = await cotaDiariaMotionDoTenant(sb, userId);
+  if (cotaDiaria !== null) {
+    const inicioDoDia = new Date();
+    inicioDoDia.setUTCHours(0, 0, 0, 0);
+    const { count: hoje } = await sb
+      .from("video_motion_jobs")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .neq("status", "cancelado")
+      .gte("created_at", inicioDoDia.toISOString());
 
-  if ((hoje ?? 0) >= COTA_DIARIA_POR_TENANT) {
-    return {
-      status: 429,
-      motivo: "cota_diaria",
-      error: `Cota de ${COTA_DIARIA_POR_TENANT} vídeos por dia atingida. Amanhã libera de novo.`,
-    };
+    if ((hoje ?? 0) >= cotaDiaria) {
+      return {
+        status: 429,
+        motivo: "cota_diaria",
+        error: `Cota configurável de ${cotaDiaria} vídeos por dia atingida. Amanhã libera de novo; o responsável pode alterar esse limite nas configurações do agente.`,
+      };
+    }
   }
 
   // Anti-duplicidade: o usuário repete o pedido quando não vê resposta imediata.
