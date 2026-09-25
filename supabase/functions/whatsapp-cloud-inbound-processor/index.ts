@@ -35,6 +35,16 @@ import { idCurto, linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
 import { syncProdutoVideoFromMidia } from "../_shared/sync-produto-video.ts";
 import { splitWhatsAppText } from "../_shared/whatsapp-text.ts";
 import {
+  catalogImageUrl,
+  environmentLikelihood,
+  IMAGE_COMPOSITION_ESTIMATED_COST_USD,
+  IMAGE_COMPOSITION_MODEL,
+  isImageCompositionIntent,
+  requestedCompositionResolution,
+  selectCatalogProduct,
+  type ImageCompositionResolution,
+} from "../_shared/image-composition.ts";
+import {
   iniciarFluxoLegendaVideo,
   tratarRespostaFluxoLegenda,
   resolverVideoLegendado,
@@ -123,10 +133,11 @@ async function chamarGatewayImagem(
   body: Record<string, unknown>,
   tag: string,
   timeoutMs = 100000,
+  models: readonly string[] = IMAGE_MODELS,
 ): Promise<ImagemGatewayOk | ImagemGatewayErr> {
   let ultimoErro: ImagemGatewayErr = { ok: false, erro: "image_gateway_indisponivel" };
 
-  for (const model of IMAGE_MODELS) {
+  for (const model of models) {
     for (let tentativa = 1; tentativa <= 2; tentativa++) {
       const t0 = Date.now();
       try {
@@ -1302,6 +1313,227 @@ async function toolEditarImagem(
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
+  }
+}
+
+type CompositionSource = {
+  id: string | null;
+  url: string;
+  context?: string | null;
+  productId?: string | null;
+};
+
+type CompositionResult =
+  | { ok: true; imageUrl: string; mediaId: string; resolution: ImageCompositionResolution }
+  | { ok: false; message: string; reason: string };
+
+async function resolveCompositionSources(
+  userId: string,
+  fromNumber: string,
+  requestText: string,
+  explicitPhotos?: CompositionSource[],
+): Promise<{ environment: CompositionSource; product: CompositionSource } | null> {
+  let photos = (explicitPhotos ?? []).filter((photo) => !!photo.url);
+  if (photos.length < 2) {
+    const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    const { data, error } = await sb
+      .from("midias_whatsapp")
+      .select("id, midia_url, contexto_original, created_at")
+      .eq("user_id", userId)
+      .eq("telefone_origem", fromNumber)
+      .eq("tipo", "foto")
+      .eq("origem", "whatsapp")
+      .gte("created_at", cutoff)
+      .order("created_at", { ascending: false })
+      .limit(2);
+    if (error) throw new Error(`composition_media_lookup_failed: ${error.message}`);
+    const recent = (data ?? []).reverse().map((row: any) => ({
+      id: row.id,
+      url: row.midia_url,
+      context: row.contexto_original,
+    }));
+    photos = [...recent, ...photos].filter(
+      (photo, index, all) => all.findIndex((candidate) => candidate.id === photo.id) === index,
+    ).slice(-2);
+  }
+
+  const { data: products, error: productError } = await sb
+    .from("produtos")
+    .select("id, nome, imagem_url, imagens")
+    .eq("user_id", userId)
+    .eq("ativo", true)
+    .limit(500);
+  if (productError) {
+    console.warn("[image_composition][catalog_lookup_failed]", productError.message);
+  }
+  const catalogProduct = selectCatalogProduct(requestText, products ?? []);
+  const catalogUrl = catalogProduct ? catalogImageUrl(catalogProduct) : null;
+
+  if (catalogProduct && catalogUrl && photos.length >= 1) {
+    const environment = [...photos].sort(
+      (a, b) => environmentLikelihood(b.context || "") - environmentLikelihood(a.context || ""),
+    )[0];
+    return {
+      environment,
+      product: { id: null, url: catalogUrl, context: catalogProduct.nome, productId: catalogProduct.id },
+    };
+  }
+
+  if (photos.length < 2) return null;
+  const [first, second] = photos.slice(-2);
+  const firstScore = environmentLikelihood(first.context || "");
+  const secondScore = environmentLikelihood(second.context || "");
+  return firstScore >= secondScore
+    ? { environment: first, product: second }
+    : { environment: second, product: first };
+}
+
+async function composeProductInEnvironment(params: {
+  userId: string;
+  fromNumber: string;
+  conversationId: string | null;
+  requestText: string;
+  environment: CompositionSource;
+  product: CompositionSource;
+}): Promise<CompositionResult> {
+  const resolution = requestedCompositionResolution(params.requestText);
+  const estimatedCost = IMAGE_COMPOSITION_ESTIMATED_COST_USD[resolution];
+  const { data: reservationData, error: reservationError } = await sb.rpc(
+    "reserve_image_composition",
+    {
+      p_user_id: params.userId,
+      p_phone: params.fromNumber,
+      p_conversation_id: params.conversationId,
+      p_environment_midia_id: params.environment.id,
+      p_product_midia_id: params.product.id,
+      p_product_id: params.product.productId ?? null,
+      p_model: IMAGE_COMPOSITION_MODEL,
+      p_resolution: resolution,
+      p_estimated_cost_usd: estimatedCost,
+    },
+  );
+  if (reservationError) {
+    console.error("[image_composition][reservation_failed]", reservationError.message);
+    return {
+      ok: false,
+      reason: "reservation_failed",
+      message: "Não consegui iniciar a simulação agora. As duas fotos continuam salvas; tenta novamente daqui a pouco.",
+    };
+  }
+
+  const reservation = Array.isArray(reservationData) ? reservationData[0] : reservationData;
+  if (!reservation?.allowed) {
+    const daily = reservation?.denial_reason === "daily";
+    return {
+      ok: false,
+      reason: daily ? "daily_limit" : "monthly_limit",
+      message: daily
+        ? "Hoje já fiz algumas simulações pra você. Posso deixar a próxima ideia para amanhã?"
+        : "As simulações deste mês já foram usadas por aqui. Posso avisar a equipe para liberar mais?",
+    };
+  }
+  const compositionId = reservation.composition_id as string;
+
+  const prompt = [
+    "Crie uma SIMULAÇÃO FOTOREALISTA usando exatamente as duas imagens de referência.",
+    "IMAGEM 1 = AMBIENTE BASE DO CLIENTE. Preserve a mesma sala, arquitetura, móveis, objetos, cores, enquadramento e iluminação. Não redesenhe nem substitua o ambiente.",
+    "IMAGEM 2 = PRODUTO EXATO. Recorte mentalmente o produto e insira-o no ambiente conforme o pedido. Preserve fielmente desenho, cor, material, acabamento e proporções do produto; não invente um modelo parecido.",
+    `PEDIDO DO CLIENTE: ${params.requestText}`,
+    "Ajuste somente escala, perspectiva, oclusão, sombras e reflexos necessários para a instalação parecer real e coerente com a luz do ambiente.",
+    "Não adicione texto, marca d'água, pessoas ou outros produtos. Mantenha a proporção e o enquadramento da IMAGEM 1.",
+  ].join("\n\n");
+
+  try {
+    const generated = await chamarGatewayImagem(
+      {
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            { type: "image_url", image_url: { url: params.environment.url } },
+            { type: "image_url", image_url: { url: params.product.url } },
+          ],
+        }],
+        modalities: ["image", "text"],
+        extra_body: {
+          google: {
+            image_config: { image_size: resolution },
+          },
+        },
+      },
+      "compor_produto_ambiente",
+      120000,
+      [IMAGE_COMPOSITION_MODEL],
+    );
+    if (!generated.ok) {
+      await sb.from("image_compositions").update({
+        status: "failed",
+        error_message: [generated.erro, generated.detalhe, generated.motivo].filter(Boolean).join(" | ").slice(0, 1000),
+        completed_at: new Date().toISOString(),
+      }).eq("id", compositionId).eq("user_id", params.userId);
+      return {
+        ok: false,
+        reason: generated.erro,
+        message: "Não consegui combinar as duas fotos desta vez. Mantive as originais sem fazer uma edição diferente.",
+      };
+    }
+
+    const match = generated.dataUrl.match(/^data:(image\/[\w.+-]+);base64,(.+)$/);
+    if (!match) throw new Error("imagem_gerada_em_formato_invalido");
+    const mime = match[1];
+    const bytes = base64Decode(match[2]);
+    const fileName = `whatsapp-ai/${params.userId}/composition-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+    const { error: uploadError } = await sb.storage
+      .from("produtos")
+      .upload(fileName, bytes, { contentType: mime, upsert: false });
+    if (uploadError) throw new Error(`upload_falhou: ${uploadError.message}`);
+    const { data: publicData } = sb.storage.from("produtos").getPublicUrl(fileName);
+    if (!publicData?.publicUrl) throw new Error("sem_url_publica");
+
+    const { data: mediaRow, error: mediaError } = await sb
+      .from("midias_whatsapp")
+      .insert({
+        user_id: params.userId,
+        origem: "ia_composicao",
+        telefone_origem: params.fromNumber,
+        tipo: "foto",
+        midia_url: publicData.publicUrl,
+        mime_type: mime,
+        tamanho_bytes: bytes.length,
+        contexto_original: `Simulação ilustrativa: ${params.requestText}`.slice(0, 1500),
+        status: "pendente",
+      })
+      .select("id")
+      .single();
+    if (mediaError || !mediaRow?.id) {
+      throw new Error(`registro_midia_falhou: ${mediaError?.message || "id ausente"}`);
+    }
+
+    await sb.from("image_compositions").update({
+      result_midia_id: mediaRow.id,
+      model: generated.model,
+      resolution,
+      estimated_cost_usd: estimatedCost,
+      status: "completed",
+      completed_at: new Date().toISOString(),
+    }).eq("id", compositionId).eq("user_id", params.userId);
+    console.log(
+      `[image_composition] completed id=${compositionId} model=${generated.model} resolution=${resolution} estimated_usd=${estimatedCost}`,
+    );
+    return { ok: true, imageUrl: publicData.publicUrl, mediaId: mediaRow.id, resolution };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await sb.from("image_compositions").update({
+      status: "failed",
+      error_message: message.slice(0, 1000),
+      completed_at: new Date().toISOString(),
+    }).eq("id", compositionId).eq("user_id", params.userId);
+    console.error("[image_composition][failed]", message);
+    return {
+      ok: false,
+      reason: "composition_failed",
+      message: "Não consegui combinar as duas fotos desta vez. Mantive as originais sem fazer uma edição diferente.",
+    };
   }
 }
 
@@ -8182,6 +8414,42 @@ async function callGemini(
       return { text: await startVideoSetup(toolCtx, userContent) };
     }
 
+    // Composição produto+ambiente tem prioridade sobre forced_image_edit.
+    // Diferentemente da edição comum, este fluxo exige DUAS referências e
+    // nunca pode degradar silenciosamente para ficha técnica de uma só foto.
+    if (isImageCompositionIntent(userContent)) {
+      try {
+        const sources = await resolveCompositionSources(
+          toolCtx.userId,
+          toolCtx.fromNumber,
+          userContent,
+        );
+        if (!sources) {
+          return {
+            text: "Me manda duas fotos: uma do ambiente e outra do produto exato que você quer colocar nele.",
+          };
+        }
+        const result = await composeProductInEnvironment({
+          userId: toolCtx.userId,
+          fromNumber: toolCtx.fromNumber,
+          conversationId: toolCtx.convId || null,
+          requestText: userContent,
+          ...sources,
+        });
+        if (!result.ok) return { text: result.message };
+        if (result.mediaId) await rememberLastMediaInteraction(toolCtx, result.mediaId);
+        return {
+          text: `Pronto — mantive o ambiente e inseri o produto de referência. É uma simulação ilustrativa.${result.resolution === "2K" ? " Gerei em alta resolução." : ""}<<SPLIT>>${linhaCodigoMidia(result.mediaId, "foto")}`,
+          imageUrl: result.imageUrl,
+        };
+      } catch (error) {
+        console.error("[image_composition][route_failed]", error);
+        return {
+          text: "Não consegui combinar as duas fotos agora. Mantive as originais sem entregar uma edição diferente.",
+        };
+      }
+    }
+
     if (latestPendingSocialToken) {
       const privacyResult = await applyPendingTikTokPrivacyChoice(latestPendingSocialToken, userContent, toolCtx);
       if (privacyResult) {
@@ -9857,6 +10125,76 @@ async function processOne(queueId: string) {
             }),
         );
       }
+
+      const savedPhotos = salvos
+        .filter((item) => item.tipo === "foto")
+        .map((item) => ({ id: item.id, url: item.url, context: contexto }));
+      if (isImageCompositionIntent(contexto) && savedPhotos.length > 0) {
+        let compositionReply = "";
+        let compositionImageUrl: string | undefined;
+        try {
+          const sources = await resolveCompositionSources(
+            userId,
+            row.from_number,
+            contexto,
+            savedPhotos,
+          );
+          if (!sources) {
+            compositionReply = "Recebi a foto. Agora me manda também a foto do ambiente e a do produto que você quer simular.";
+          } else {
+            const result = await composeProductInEnvironment({
+              userId,
+              fromNumber: row.from_number,
+              conversationId: conv.id,
+              requestText: contexto,
+              ...sources,
+            });
+            compositionReply = result.ok
+              ? `Pronto — montei a composição mantendo o ambiente e usando o produto de referência. É uma simulação ilustrativa.${result.resolution === "2K" ? " Gerei em alta resolução." : ""}`
+              : result.message;
+            if (result.ok) compositionImageUrl = result.imageUrl;
+          }
+        } catch (error) {
+          console.error("[image_composition][fresh_media_route_failed]", error);
+          compositionReply = "Não consegui combinar as duas fotos agora. Mantive as originais salvas, sem entregar uma edição diferente.";
+        }
+
+        const { data: outMsg } = await sb
+          .from("whatsapp_cloud_messages")
+          .insert({
+            conversation_id: conv.id,
+            user_id: userId,
+            direction: "outbound",
+            sender: "agent",
+            content: compositionImageUrl
+              ? `${compositionReply}\n\n[imagem: ${compositionImageUrl}]`
+              : compositionReply,
+            message_type: compositionImageUrl ? "image" : "text",
+          })
+          .select("id")
+          .single();
+        try {
+          const sentId = await sendWhatsApp(
+            userId,
+            row.from_number,
+            compositionReply,
+            compositionImageUrl,
+          );
+          if (sentId && outMsg?.id) {
+            await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
+          }
+        } catch (error) {
+          const sendError = error instanceof Error ? error.message : String(error);
+          await failQueue(row.id, `send_failed: ${sendError}`);
+          return { ok: false, reason: "send_failed", error: sendError };
+        }
+        await sb.from("whatsapp_cloud_conversations")
+          .update({ last_message_at: new Date().toISOString() })
+          .eq("id", conv.id);
+        await doneQueue(row.id);
+        return { ok: true, image_composition: !!compositionImageUrl };
+      }
+
       let descricaoVisual = "";
       try {
         descricaoVisual = await descreverFotosSalvas(freshLibraryMedia, salvos, contexto);
