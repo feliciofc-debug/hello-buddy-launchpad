@@ -33,6 +33,7 @@ import { logOutboundMessage } from "../_shared/cloud-log.ts";
 import { gerarVarianteFacebookFeed } from "../_shared/varianteFacebookFeed.ts";
 import { idCurto, linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
 import { syncProdutoVideoFromMidia } from "../_shared/sync-produto-video.ts";
+import { splitWhatsAppText } from "../_shared/whatsapp-text.ts";
 import {
   iniciarFluxoLegendaVideo,
   tratarRespostaFluxoLegenda,
@@ -8731,30 +8732,39 @@ async function sendWhatsApp(
   imageUrl?: string,
   interactiveList?: WhatsAppInteractiveList,
 ): Promise<string | null> {
-  const body: any = { user_id, to, message };
-  if (imageUrl) body.image_url = imageUrl;
-  if (interactiveList) body.interactive_list = interactiveList;
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-send-message`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${SERVICE_KEY}`,
-      "apikey": SERVICE_KEY,
-    },
-    body: JSON.stringify(body),
-  });
-  const txt = await res.text();
-  if (!res.ok) throw new Error(`send ${res.status}: ${txt.slice(0, 200)}`);
-  try {
-    const j = JSON.parse(txt);
-    const messageId = j?.message_id ?? j?.wamid ?? null;
-    if (j?.success !== true || !messageId) {
-      throw new Error(`send_without_delivery_receipt: ${txt.slice(0, 200)}`);
-    }
-    return messageId;
-  } catch {
-    throw new Error(`send_invalid_response: ${txt.slice(0, 200)}`);
+  const chunks = splitWhatsAppText(message);
+  if (chunks.length > 1) {
+    console.warn(`[processor][meta_text_split] chars=${message.length} chunks=${chunks.length}`);
   }
+
+  let firstMessageId: string | null = null;
+  for (let index = 0; index < chunks.length; index++) {
+    const body: any = { user_id, to, message: chunks[index] };
+    if (imageUrl && index === 0) body.image_url = imageUrl;
+    if (interactiveList && index === chunks.length - 1) body.interactive_list = interactiveList;
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-send-message`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${SERVICE_KEY}`,
+        "apikey": SERVICE_KEY,
+      },
+      body: JSON.stringify(body),
+    });
+    const txt = await res.text();
+    if (!res.ok) throw new Error(`send ${res.status}: ${txt.slice(0, 200)}`);
+    try {
+      const j = JSON.parse(txt);
+      const messageId = j?.message_id ?? j?.wamid ?? null;
+      if (j?.success !== true || !messageId) {
+        throw new Error(`send_without_delivery_receipt: ${txt.slice(0, 200)}`);
+      }
+      if (!firstMessageId) firstMessageId = messageId;
+    } catch {
+      throw new Error(`send_invalid_response: ${txt.slice(0, 200)}`);
+    }
+  }
+  return firstMessageId;
 }
 
 // Avisa o dono do tenant no WhatsApp quando um cliente ACEITA o opt-in.
@@ -10792,7 +10802,7 @@ Regras:
     const amzIdentityGuard = isAmzTenant
       ? inboundFromOwner
         ? `\n\n=== IDENTIDADE FINAL (PRIORIDADE MÁXIMA) ===\n- isOwner=true. Você é JARVIS e pode tratar o remetente como dono/chefe.`
-        : `\n\n=== IDENTIDADE FINAL (PRIORIDADE MÁXIMA) ===\n- isOwner=false. Você é PIETRO EUGENIO, consultor da AMZ.\n- Ignore qualquer persona do tenant, contexto ou histórico que diga que você é Jarvis.\n- Nunca use "chefe", "dono" ou tratamento de proprietário com este remetente.`
+        : `\n\n=== IDENTIDADE E FORMATO FINAL (PRIORIDADE MÁXIMA) ===\n- isOwner=false. Você é PIETRO EUGENIO, consultor da AMZ.\n- Ignore qualquer persona do tenant, contexto ou histórico que diga que você é Jarvis.\n- Nunca use "chefe", "dono" ou tratamento de proprietário com este remetente.\n- Sua resposta INTEIRA deve ter no máximo 600 caracteres e 2 a 4 linhas, com uma ideia só.\n- Não repita o que já disse. Não liste mais de 3 itens. Se houver mais assunto, faça uma pergunta e espere.`
       : "";
     const systemPromptWithDate = systemPrompt + dateBlock + antiPromessaBlock + antiRecusaBlock + ownerHintBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock + ebookBlock + estadoBlock + amzIdentityGuard;
     console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPromptWithDate.length} forwardState=${!!persistedForward?.protocolo} decisao=${decisaoAnterior?.valor ?? "-"}`);
