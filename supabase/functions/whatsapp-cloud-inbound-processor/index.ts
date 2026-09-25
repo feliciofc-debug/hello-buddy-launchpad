@@ -3,7 +3,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { decode as base64Decode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
-import { buildSystemPrompt, ADMIN_AMZ_USER_ID } from "../_shared/agent-soul.ts";
+import { buildSystemPrompt, ADMIN_AMZ_USER_ID, AMZ_KNOWLEDGE } from "../_shared/agent-soul.ts";
 import { buildAmzContext, OWNER_PHONE, resolveTenantOwner, isAmzOwnerAltPhone } from "../_shared/amz-context.ts";
 import { getTenantBusinessContext, buildCarouselPrompt } from "../_shared/business-context.ts";
 
@@ -32,6 +32,18 @@ import { carouselColorRows, resolveCarouselColor } from "../_shared/carousel-col
 import { logOutboundMessage } from "../_shared/cloud-log.ts";
 import { gerarVarianteFacebookFeed } from "../_shared/varianteFacebookFeed.ts";
 import { idCurto, linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
+import { syncProdutoVideoFromMidia } from "../_shared/sync-produto-video.ts";
+import { splitWhatsAppText } from "../_shared/whatsapp-text.ts";
+import {
+  catalogImageUrl,
+  environmentLikelihood,
+  IMAGE_COMPOSITION_ESTIMATED_COST_USD,
+  IMAGE_COMPOSITION_MODEL,
+  isImageCompositionIntent,
+  requestedCompositionResolution,
+  selectCatalogProduct,
+  type ImageCompositionResolution,
+} from "../_shared/image-composition.ts";
 import {
   iniciarFluxoLegendaVideo,
   tratarRespostaFluxoLegenda,
@@ -121,10 +133,11 @@ async function chamarGatewayImagem(
   body: Record<string, unknown>,
   tag: string,
   timeoutMs = 100000,
+  models: readonly string[] = IMAGE_MODELS,
 ): Promise<ImagemGatewayOk | ImagemGatewayErr> {
   let ultimoErro: ImagemGatewayErr = { ok: false, erro: "image_gateway_indisponivel" };
 
-  for (const model of IMAGE_MODELS) {
+  for (const model of models) {
     for (let tentativa = 1; tentativa <= 2; tentativa++) {
       const t0 = Date.now();
       try {
@@ -1303,6 +1316,259 @@ async function toolEditarImagem(
   }
 }
 
+type CompositionSource = {
+  id: string | null;
+  url: string;
+  context?: string | null;
+  productId?: string | null;
+};
+
+type CompositionResult =
+  | { ok: true; imageUrl: string; mediaId: string; resolution: ImageCompositionResolution }
+  | { ok: false; message: string; reason: string };
+
+async function resolveCompositionSources(
+  userId: string,
+  fromNumber: string,
+  requestText: string,
+  explicitPhotos?: CompositionSource[],
+  preferredMediaIds: string[] = [],
+): Promise<{ environment: CompositionSource; product: CompositionSource } | null> {
+  type CompositionMediaRow = { id: string; midia_url: string; contexto_original?: string | null };
+  let photos = (explicitPhotos ?? []).filter((photo) => !!photo.url);
+  const preferredIds = preferredMediaIds.filter(Boolean).slice(-2);
+  if (photos.length < 2 && preferredIds.length > 0) {
+    const { data: preferred, error: preferredError } = await sb
+      .from("midias_whatsapp")
+      .select("id, midia_url, contexto_original")
+      .eq("user_id", userId)
+      .eq("telefone_origem", fromNumber)
+      .eq("tipo", "foto")
+      .in("id", preferredIds);
+    if (preferredError) {
+      throw new Error(`composition_preferred_media_lookup_failed: ${preferredError.message}`);
+    }
+    const preferredRows = (preferred ?? []) as CompositionMediaRow[];
+    const byId = new Map(preferredRows.map((row) => [row.id, row]));
+    const ordered = preferredIds
+      .map((id) => byId.get(id))
+      .filter((row): row is CompositionMediaRow => !!row)
+      .map((row) => ({
+        id: row.id,
+        url: row.midia_url,
+        context: row.contexto_original,
+      }));
+    photos = [...ordered, ...photos].filter(
+      (photo, index, all) => all.findIndex((candidate) => candidate.id === photo.id) === index,
+    ).slice(-2);
+  }
+  if (photos.length < 2) {
+    const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    const { data, error } = await sb
+      .from("midias_whatsapp")
+      .select("id, midia_url, contexto_original, created_at")
+      .eq("user_id", userId)
+      .eq("telefone_origem", fromNumber)
+      .eq("tipo", "foto")
+      .eq("origem", "whatsapp")
+      .gte("created_at", cutoff)
+      .order("created_at", { ascending: false })
+      .limit(2);
+    if (error) throw new Error(`composition_media_lookup_failed: ${error.message}`);
+    const recent = (data ?? []).reverse().map((row: any) => ({
+      id: row.id,
+      url: row.midia_url,
+      context: row.contexto_original,
+    }));
+    photos = [...recent, ...photos].filter(
+      (photo, index, all) => all.findIndex((candidate) => candidate.id === photo.id) === index,
+    ).slice(-2);
+  }
+
+  const { data: products, error: productError } = await sb
+    .from("produtos")
+    .select("id, nome, imagem_url, imagens")
+    .eq("user_id", userId)
+    .eq("ativo", true)
+    .limit(500);
+  if (productError) {
+    console.warn("[image_composition][catalog_lookup_failed]", productError.message);
+  }
+  const catalogProduct = selectCatalogProduct(requestText, products ?? []);
+  const catalogUrl = catalogProduct ? catalogImageUrl(catalogProduct) : null;
+
+  if (catalogProduct && catalogUrl && photos.length >= 1) {
+    const environment = [...photos].sort(
+      (a, b) => environmentLikelihood(b.context || "") - environmentLikelihood(a.context || ""),
+    )[0];
+    return {
+      environment,
+      product: { id: null, url: catalogUrl, context: catalogProduct.nome, productId: catalogProduct.id },
+    };
+  }
+
+  if (photos.length < 2) return null;
+  const [first, second] = photos.slice(-2);
+  const firstScore = environmentLikelihood(first.context || "");
+  const secondScore = environmentLikelihood(second.context || "");
+  return firstScore >= secondScore
+    ? { environment: first, product: second }
+    : { environment: second, product: first };
+}
+
+async function composeProductInEnvironment(params: {
+  userId: string;
+  fromNumber: string;
+  conversationId: string | null;
+  requestText: string;
+  environment: CompositionSource;
+  product: CompositionSource;
+}): Promise<CompositionResult> {
+  const resolution = requestedCompositionResolution(params.requestText);
+  const estimatedCost = IMAGE_COMPOSITION_ESTIMATED_COST_USD[resolution];
+  const { data: reservationData, error: reservationError } = await sb.rpc(
+    "reserve_image_composition",
+    {
+      p_user_id: params.userId,
+      p_phone: params.fromNumber,
+      p_conversation_id: params.conversationId,
+      p_environment_midia_id: params.environment.id,
+      p_product_midia_id: params.product.id,
+      p_product_id: params.product.productId ?? null,
+      p_model: IMAGE_COMPOSITION_MODEL,
+      p_resolution: resolution,
+      p_estimated_cost_usd: estimatedCost,
+    },
+  );
+  if (reservationError) {
+    console.error("[image_composition][reservation_failed]", reservationError.message);
+    return {
+      ok: false,
+      reason: "reservation_failed",
+      message: "Não consegui iniciar a simulação agora. As duas fotos continuam salvas; tenta novamente daqui a pouco.",
+    };
+  }
+
+  const reservation = Array.isArray(reservationData) ? reservationData[0] : reservationData;
+  if (!reservation?.allowed) {
+    const daily = reservation?.denial_reason === "daily";
+    return {
+      ok: false,
+      reason: daily ? "daily_limit" : "monthly_limit",
+      message: daily
+        ? "Hoje já fiz algumas simulações pra você. Posso deixar a próxima ideia para amanhã?"
+        : "As simulações deste mês já foram usadas por aqui. Posso avisar a equipe para liberar mais?",
+    };
+  }
+  const compositionId = reservation.composition_id as string;
+
+  const prompt = [
+    "Crie uma SIMULAÇÃO FOTOREALISTA usando exatamente as duas imagens de referência.",
+    "IMAGEM 1 = AMBIENTE BASE DO CLIENTE. Preserve a mesma sala, arquitetura, móveis, objetos, cores, enquadramento e iluminação. Não redesenhe nem substitua o ambiente.",
+    "IMAGEM 2 = PRODUTO EXATO. Recorte mentalmente o produto e insira-o no ambiente conforme o pedido. Preserve fielmente desenho, cor, material, acabamento e proporções do produto; não invente um modelo parecido.",
+    `PEDIDO DO CLIENTE: ${params.requestText}`,
+    "Ajuste somente escala, perspectiva, oclusão, sombras e reflexos necessários para a instalação parecer real e coerente com a luz do ambiente.",
+    "Não adicione texto, marca d'água, pessoas ou outros produtos. Mantenha a proporção e o enquadramento da IMAGEM 1.",
+  ].join("\n\n");
+
+  try {
+    const generated = await chamarGatewayImagem(
+      {
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            { type: "image_url", image_url: { url: params.environment.url } },
+            { type: "image_url", image_url: { url: params.product.url } },
+          ],
+        }],
+        modalities: ["image", "text"],
+        ...(resolution === "2K"
+          ? {
+              extra_body: {
+                google: {
+                  image_config: { image_size: "2K" },
+                },
+              },
+            }
+          : {}),
+      },
+      "compor_produto_ambiente",
+      120000,
+      [IMAGE_COMPOSITION_MODEL],
+    );
+    if (!generated.ok) {
+      await sb.from("image_compositions").update({
+        status: "failed",
+        error_message: [generated.erro, generated.detalhe, generated.motivo].filter(Boolean).join(" | ").slice(0, 1000),
+        completed_at: new Date().toISOString(),
+      }).eq("id", compositionId).eq("user_id", params.userId);
+      return {
+        ok: false,
+        reason: generated.erro,
+        message: "Não consegui combinar as duas fotos desta vez. Mantive as originais sem fazer uma edição diferente.",
+      };
+    }
+
+    const match = generated.dataUrl.match(/^data:(image\/[\w.+-]+);base64,(.+)$/);
+    if (!match) throw new Error("imagem_gerada_em_formato_invalido");
+    const mime = match[1];
+    const bytes = base64Decode(match[2]);
+    const fileName = `whatsapp-ai/${params.userId}/composition-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+    const { error: uploadError } = await sb.storage
+      .from("produtos")
+      .upload(fileName, bytes, { contentType: mime, upsert: false });
+    if (uploadError) throw new Error(`upload_falhou: ${uploadError.message}`);
+    const { data: publicData } = sb.storage.from("produtos").getPublicUrl(fileName);
+    if (!publicData?.publicUrl) throw new Error("sem_url_publica");
+
+    const { data: mediaRow, error: mediaError } = await sb
+      .from("midias_whatsapp")
+      .insert({
+        user_id: params.userId,
+        origem: "ia_composicao",
+        telefone_origem: params.fromNumber,
+        tipo: "foto",
+        midia_url: publicData.publicUrl,
+        mime_type: mime,
+        tamanho_bytes: bytes.length,
+        contexto_original: `Simulação ilustrativa: ${params.requestText}`.slice(0, 1500),
+        status: "pendente",
+      })
+      .select("id")
+      .single();
+    if (mediaError || !mediaRow?.id) {
+      throw new Error(`registro_midia_falhou: ${mediaError?.message || "id ausente"}`);
+    }
+
+    await sb.from("image_compositions").update({
+      result_midia_id: mediaRow.id,
+      model: generated.model,
+      resolution,
+      estimated_cost_usd: estimatedCost,
+      status: "completed",
+      completed_at: new Date().toISOString(),
+    }).eq("id", compositionId).eq("user_id", params.userId);
+    console.log(
+      `[image_composition] completed id=${compositionId} model=${generated.model} resolution=${resolution} estimated_usd=${estimatedCost}`,
+    );
+    return { ok: true, imageUrl: publicData.publicUrl, mediaId: mediaRow.id, resolution };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await sb.from("image_compositions").update({
+      status: "failed",
+      error_message: message.slice(0, 1000),
+      completed_at: new Date().toISOString(),
+    }).eq("id", compositionId).eq("user_id", params.userId);
+    console.error("[image_composition][failed]", message);
+    return {
+      ok: false,
+      reason: "composition_failed",
+      message: "Não consegui combinar as duas fotos desta vez. Mantive as originais sem fazer uma edição diferente.",
+    };
+  }
+}
+
 // ---- consultar_clima: Open-Meteo (grátis, sem chave), com geocoding opcional ----
 async function toolConsultarClima(cidadeOuLatLng: string, ctx: { userId: string; fromNumber: string }): Promise<string> {
   try {
@@ -1647,6 +1913,7 @@ type AgentConvState = {
   forward?: { protocolo?: string; destinatario?: string; wamid?: string | null; at?: string };
   decisao?: { valor?: string; at?: string };
   last_media_interaction?: { media_id: string; at: string };
+  pending_image_composition?: { media_ids: string[]; at: string } | null;
   pending_carousel?: PendingCarouselState | null;
   pending_video_setup?: PendingVideoSetupState | null;
   [k: string]: unknown;
@@ -1697,16 +1964,6 @@ type ConversationStateIdentity = {
   userId: string;
   contactNumber: string;
 };
-
-const LEAD_NOTIFICATION_COOLDOWN_MS = 6 * 60 * 60 * 1000;
-
-function isSubstantiveLeadMessage(raw: string): boolean {
-  const low = normalizeContactLookupText(raw);
-  if (!low) return false;
-  if (/^(oi|ola|bom dia|boa tarde|boa noite|tudo bem|como vai)[.!?\s]*$/.test(low)) return false;
-  if (/^(sim|nao|ok|okay|obrigad[oa]|valeu|beleza|blz|certo)[.!?\s]*$/.test(low)) return false;
-  return low.length >= 8;
-}
 
 async function loadAgentState(sb: any, conversation: ConversationStateIdentity): Promise<AgentConvState> {
   try {
@@ -2096,6 +2353,8 @@ function isExplicitOwnerForwardIntent(raw: string, ownerName?: string | null): b
     "equipe",
     "consultor",
     "atendente",
+    "humano",
+    "pessoa",
     ownerFirst,
   ].filter(Boolean).join("|")})\\b`, "i").test(low);
   const hasForwardVerb = /\b(manda|mandar|mande|mandei|envia|enviar|envie|encaminha|encaminhar|encaminhe|passa|passe|repassa|repassar|avisa|avisar|avise|pede|pedir|peca|solicita|solicitar|chama|chamar|falar|contato|retorno|retornar)\b/i.test(low);
@@ -2120,13 +2379,16 @@ function buildOwnerForwardMessage(params: {
   pedido?: string | null;
   descricaoVisual?: string | null;
   messageType?: string | null;
+  urgent?: boolean;
 }): string {
   const dono = ownerFirstName(params.ownerName);
   const cliente = params.contactName?.trim() || "cliente";
   const pedido = (params.pedido || "").trim();
   const descricao = (params.descricaoVisual || "").trim();
   const partes = [
-    `${dono}, o ${cliente} (${params.fromNumber}) precisa de retorno no WhatsApp.`,
+    params.urgent
+      ? `URGENTE — ${dono}, o ${cliente} (${params.fromNumber}) pediu para falar com uma pessoa e precisa de retorno no WhatsApp.`
+      : `${dono}, o ${cliente} (${params.fromNumber}) precisa de retorno no WhatsApp.`,
     pedido ? `Mensagem do cliente: "${pedido.slice(0, 700)}".` : null,
     descricao ? `A foto enviada mostra: ${descricao.slice(0, 900)}.` : null,
     !pedido && !descricao ? `Tipo recebido: ${params.messageType || "mensagem"}.` : null,
@@ -2895,20 +3157,7 @@ async function toolVerProduto(
 
 // Pitch fixo da AMZ pra usar quando o post é sobre a MARCA (logo, institucional, arte da empresa).
 // Evita alucinação de "produto físico" e força a copy a falar das tecnologias reais da plataforma.
-const AMZ_BRAND_PITCH = `AMZ OFERTAS — Plataforma completa de atendimento inteligente + marketing automatizado com IA pra PMEs brasileiras.
-TECNOLOGIAS/ENTREGAS REAIS (use só o que couber, não invente):
-• WhatsApp Business API oficial com atendente IA 24/7 personalizado (Pietro/Jarvis) — fecha venda, tira dúvida, agenda, cobra.
-• Geração de conteúdo com IA: posts, Reels, Stories, carrosséis, imagens fotorrealistas com logo embutida.
-• Publicação automática em Instagram, Facebook e TikTok — direto do WhatsApp: manda foto + contexto, o Pietro monta a copy e posta.
-• Autopilot: agenda e publica 24/7 sem intervenção manual.
-• Catálogo de produtos com importação automática (Shopee, Amazon, Mercado Livre, Magalu).
-• CRM + Pipeline Kanban + multi-usuário + cobrança PIX recorrente + analytics em tempo real.
-• Marketplace público amzofertas.com.br/marketplace.
-• Multi-tenant com white-label pra agências.
-• LGPD compliant, backup diário, suporte direto com o fundador.
-DIFERENCIAIS: IA própria (não depende só de OpenAI), atendimento IA + marketing IA na MESMA plataforma, implantação sem time técnico.
-PLANO: R$ 597/mês (fundador) — trial mediante contato. Agência (white-label): negociação caso a caso.
-CTA padrão: "Chama no WhatsApp (21) 98080-4901 pra testar" ou "Agenda uma demo".`;
+const AMZ_BRAND_PITCH = AMZ_KNOWLEDGE;
 
 // ---- CTA de WhatsApp opt-in (Feature A) ----
 // Busca o número do agente DO TENANT (multi-tenant) — nunca hardcodar.
@@ -7058,7 +7307,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "registrar_lead_novo",
-      description: "🔔 USE quando você estiver atendendo alguém DESCONHECIDO (não é o dono nem cliente já cadastrado) que veio buscar informações sobre o negócio/plataforma, E ele já tiver te dito o NOME (empresa/ramo se souber). Registra o lead e avisa o dono automaticamente, em paralelo — NÃO comente isso com o cliente, NÃO interrompa o atendimento, e continue a conversa normalmente. Chame UMA VEZ por conversa (só chame de novo se o cliente informar dados novos importantes).",
+      description: "🔔 USE UMA VEZ quando estiver atendendo alguém DESCONHECIDO e já souber obrigatoriamente o NOME e o RAMO do negócio. Registra o lead e avisa o dono em paralelo. NÃO use num 'oi' solto, NÃO comente o aviso com o lead e continue atendendo normalmente.",
       parameters: {
         type: "object",
         properties: {
@@ -7067,7 +7316,7 @@ const TOOLS = [
           ramo: { type: "string", description: "Ramo/segmento do negócio dele, se informou. Vazio se não souber." },
           interesse: { type: "string", description: "Em 1 frase, o que ele quer/está buscando (ex: 'quer saber como funciona o atendimento por IA e o preço')." },
         },
-        required: ["nome"],
+        required: ["nome", "ramo"],
       },
     },
   },
@@ -7266,6 +7515,7 @@ async function toolRegistrarLeadNovo(
 
   const empresa = (args?.empresa || "").trim() || null;
   const ramo = (args?.ramo || "").trim() || null;
+  if (!ramo) return JSON.stringify({ erro: "ramo_obrigatorio" });
   const interesse = (args?.interesse || "").trim() || null;
   const telefone = ctx.fromNumber;
 
@@ -7283,8 +7533,7 @@ async function toolRegistrarLeadNovo(
       .eq("user_id", ctx.userId)
       .eq("telefone", telefone)
       .maybeSingle();
-    const notificadoEm = existente?.notificado_em ? new Date(existente.notificado_em).getTime() : 0;
-    jaNotificado = notificadoEm > 0 && Date.now() - notificadoEm < LEAD_NOTIFICATION_COOLDOWN_MS;
+    jaNotificado = !!existente?.notificado_em;
 
     const payload: Record<string, unknown> = {
       user_id: ctx.userId,
@@ -7299,6 +7548,19 @@ async function toolRegistrarLeadNovo(
 
     const { error } = await sb.from("jarvis_leads").upsert(payload, { onConflict: "user_id,telefone" });
     if (error) console.warn("[registrar_lead_novo] upsert falhou:", error.message);
+
+    const { error: cadastroError } = await sb.from("cadastros").upsert({
+      user_id: ctx.userId,
+      nome,
+      whatsapp: telefone,
+      empresa,
+      origem: "whatsapp_pietro",
+      ultima_interacao: new Date().toISOString(),
+      respondeu_alguma_vez: true,
+      notas: [`Ramo: ${ramo}`, interesse ? `Interesse: ${interesse}` : null].filter(Boolean).join("\n"),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "user_id,whatsapp" });
+    if (cadastroError) console.warn("[registrar_lead_novo] cadastro falhou:", cadastroError.message);
   } catch (e) {
     console.warn("[registrar_lead_novo] persistência falhou:", (e as Error).message);
   }
@@ -7310,10 +7572,12 @@ async function toolRegistrarLeadNovo(
     return JSON.stringify({ ok: true, registrado: true, notificado: false, motivo: "lead_ja_notificado", instrucao: "Continue o atendimento normalmente e NÃO comente nada disso com o cliente." });
   }
 
-  const partes = [`🔔 Novo lead: ${nome}`];
-  if (empresa) partes.push(`da empresa ${empresa}`);
-  if (ramo) partes.push(`(ramo: ${ramo})`);
-  const aviso = `${partes.join(" ")}\n${interesse ? `Interesse: ${interesse}\n` : ""}Telefone: +${telefone}\nOrigem: WhatsApp — atendido pelo assistente agora.`;
+  const identificacao = empresa ? `${nome}, da ${empresa}, do ramo de ${ramo}` : `${nome}, do ramo de ${ramo}`;
+  const aviso = [
+    `Chefe, entrou um contato agora. ${identificacao}.`,
+    interesse ? `${interesse.replace(/[.!?]+$/, "")}.` : null,
+    `Telefone: +${telefone}. To conversando com ele ainda.`,
+  ].filter(Boolean).join(" ");
 
   try {
     const messageId = await sendWhatsApp(ctx.userId, owner.phone, aviso);
@@ -8183,6 +8447,66 @@ async function callGemini(
       return { text: await startVideoSetup(toolCtx, userContent) };
     }
 
+    // Composição produto+ambiente tem prioridade sobre forced_image_edit.
+    // Diferentemente da edição comum, este fluxo exige DUAS referências e
+    // nunca pode degradar silenciosamente para ficha técnica de uma só foto.
+    if (isImageCompositionIntent(userContent)) {
+      try {
+        const pendingComposition = toolCtx.agentState?.pending_image_composition;
+        const pendingAge = pendingComposition?.at
+          ? Date.now() - new Date(pendingComposition.at).getTime()
+          : Number.POSITIVE_INFINITY;
+        const preferredMediaIds = pendingAge <= 15 * 60 * 1000
+          ? pendingComposition?.media_ids ?? []
+          : [];
+        const sources = await resolveCompositionSources(
+          toolCtx.userId,
+          toolCtx.fromNumber,
+          userContent,
+          undefined,
+          preferredMediaIds,
+        );
+        if (!sources) {
+          return {
+            text: "Me manda duas fotos: uma do ambiente e outra do produto exato que você quer colocar nele.",
+          };
+        }
+        const result = await composeProductInEnvironment({
+          userId: toolCtx.userId,
+          fromNumber: toolCtx.fromNumber,
+          conversationId: toolCtx.convId || null,
+          requestText: userContent,
+          ...sources,
+        });
+        if (!result.ok) return { text: result.message };
+        if (toolCtx.convId) {
+          const conversation = {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          };
+          const current = toolCtx.agentState ?? await loadAgentState(sb, conversation);
+          const interaction = { media_id: result.mediaId, at: new Date().toISOString() };
+          await saveAgentState(sb, conversation, {
+            pending_image_composition: null,
+            last_media_interaction: interaction,
+          }, current);
+          current.pending_image_composition = null;
+          current.last_media_interaction = interaction;
+          toolCtx.agentState = current;
+        }
+        return {
+          text: `Pronto — mantive o ambiente e inseri o produto de referência. É uma simulação ilustrativa.${result.resolution === "2K" ? " Gerei em alta resolução." : ""}<<SPLIT>>${linhaCodigoMidia(result.mediaId, "foto")}`,
+          imageUrl: result.imageUrl,
+        };
+      } catch (error) {
+        console.error("[image_composition][route_failed]", error);
+        return {
+          text: "Não consegui combinar as duas fotos agora. Mantive as originais sem entregar uma edição diferente.",
+        };
+      }
+    }
+
     if (latestPendingSocialToken) {
       const privacyResult = await applyPendingTikTokPrivacyChoice(latestPendingSocialToken, userContent, toolCtx);
       if (privacyResult) {
@@ -8733,30 +9057,39 @@ async function sendWhatsApp(
   imageUrl?: string,
   interactiveList?: WhatsAppInteractiveList,
 ): Promise<string | null> {
-  const body: any = { user_id, to, message };
-  if (imageUrl) body.image_url = imageUrl;
-  if (interactiveList) body.interactive_list = interactiveList;
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-send-message`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${SERVICE_KEY}`,
-      "apikey": SERVICE_KEY,
-    },
-    body: JSON.stringify(body),
-  });
-  const txt = await res.text();
-  if (!res.ok) throw new Error(`send ${res.status}: ${txt.slice(0, 200)}`);
-  try {
-    const j = JSON.parse(txt);
-    const messageId = j?.message_id ?? j?.wamid ?? null;
-    if (j?.success !== true || !messageId) {
-      throw new Error(`send_without_delivery_receipt: ${txt.slice(0, 200)}`);
-    }
-    return messageId;
-  } catch {
-    throw new Error(`send_invalid_response: ${txt.slice(0, 200)}`);
+  const chunks = splitWhatsAppText(message);
+  if (chunks.length > 1) {
+    console.warn(`[processor][meta_text_split] chars=${message.length} chunks=${chunks.length}`);
   }
+
+  let firstMessageId: string | null = null;
+  for (let index = 0; index < chunks.length; index++) {
+    const body: any = { user_id, to, message: chunks[index] };
+    if (imageUrl && index === 0) body.image_url = imageUrl;
+    if (interactiveList && index === chunks.length - 1) body.interactive_list = interactiveList;
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-send-message`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${SERVICE_KEY}`,
+        "apikey": SERVICE_KEY,
+      },
+      body: JSON.stringify(body),
+    });
+    const txt = await res.text();
+    if (!res.ok) throw new Error(`send ${res.status}: ${txt.slice(0, 200)}`);
+    try {
+      const j = JSON.parse(txt);
+      const messageId = j?.message_id ?? j?.wamid ?? null;
+      if (j?.success !== true || !messageId) {
+        throw new Error(`send_without_delivery_receipt: ${txt.slice(0, 200)}`);
+      }
+      if (!firstMessageId) firstMessageId = messageId;
+    } catch {
+      throw new Error(`send_invalid_response: ${txt.slice(0, 200)}`);
+    }
+  }
+  return firstMessageId;
 }
 
 // Avisa o dono do tenant no WhatsApp quando um cliente ACEITA o opt-in.
@@ -9833,6 +10166,132 @@ async function processOne(queueId: string) {
     if (freshLibraryMedia.length > 0) {
       const contexto = (userText || freshLibraryMedia.map((m) => m.caption).filter(Boolean).join(" ") || "").trim();
       const salvos = await Promise.all(freshLibraryMedia.map((m) => salvarItemMidiaBiblioteca(m, { userId, fromNumber: row.from_number }, contexto)));
+      if (fromIsOwner) {
+        await Promise.all(
+          salvos
+            .filter((item) => item.tipo === "video")
+            .map(async (item) => {
+              try {
+                await syncProdutoVideoFromMidia(sb, item.id);
+              } catch (e) {
+                console.error(
+                  "[processor][produto_videos_sync] falhou; mantendo vídeo em midias_whatsapp:",
+                  e instanceof Error ? e.message : String(e),
+                );
+              }
+            }),
+        );
+      }
+
+      const savedPhotos = salvos
+        .filter((item) => item.tipo === "foto")
+        .map((item) => ({ id: item.id, url: item.url, context: contexto }));
+      const stateConversation = {
+        id: conv.id,
+        userId,
+        contactNumber: row.from_number,
+      };
+      const freshAgentState = await loadAgentState(sb, stateConversation);
+      const priorPending = freshAgentState.pending_image_composition;
+      const priorPendingAge = priorPending?.at
+        ? Date.now() - new Date(priorPending.at).getTime()
+        : Number.POSITIVE_INFINITY;
+      const pendingMediaIds = [
+        ...(priorPendingAge <= 15 * 60 * 1000 ? priorPending?.media_ids ?? [] : []),
+        ...savedPhotos.map((item) => item.id),
+      ].filter((id, index, all) => all.indexOf(id) === index).slice(-2);
+      const latestSaved = salvos.at(-1);
+      const freshStatePatch: Partial<AgentConvState> = {
+        ...(latestSaved
+          ? { last_media_interaction: { media_id: latestSaved.id, at: new Date().toISOString() } }
+          : {}),
+        ...(savedPhotos.length > 0
+          ? {
+            pending_image_composition: {
+              media_ids: pendingMediaIds,
+              at: new Date().toISOString(),
+            },
+          }
+          : {}),
+      };
+      await saveAgentState(sb, stateConversation, freshStatePatch, freshAgentState);
+      Object.assign(freshAgentState, freshStatePatch);
+      if (isImageCompositionIntent(contexto) && savedPhotos.length > 0) {
+        let compositionReply = "";
+        let compositionImageUrl: string | undefined;
+        let compositionMediaId: string | undefined;
+        try {
+          const sources = await resolveCompositionSources(
+            userId,
+            row.from_number,
+            contexto,
+            savedPhotos,
+            pendingMediaIds,
+          );
+          if (!sources) {
+            compositionReply = "Recebi a foto. Agora me manda também a foto do ambiente e a do produto que você quer simular.";
+          } else {
+            const result = await composeProductInEnvironment({
+              userId,
+              fromNumber: row.from_number,
+              conversationId: conv.id,
+              requestText: contexto,
+              ...sources,
+            });
+            compositionReply = result.ok
+              ? `Pronto — montei a composição mantendo o ambiente e usando o produto de referência. É uma simulação ilustrativa.${result.resolution === "2K" ? " Gerei em alta resolução." : ""}`
+              : result.message;
+            if (result.ok) {
+              compositionImageUrl = result.imageUrl;
+              compositionMediaId = result.mediaId;
+              const interaction = { media_id: result.mediaId, at: new Date().toISOString() };
+              await saveAgentState(sb, stateConversation, {
+                pending_image_composition: null,
+                last_media_interaction: interaction,
+              }, freshAgentState);
+            }
+          }
+        } catch (error) {
+          console.error("[image_composition][fresh_media_route_failed]", error);
+          compositionReply = "Não consegui combinar as duas fotos agora. Mantive as originais salvas, sem entregar uma edição diferente.";
+        }
+
+        const { data: outMsg } = await sb
+          .from("whatsapp_cloud_messages")
+          .insert({
+            conversation_id: conv.id,
+            user_id: userId,
+            direction: "outbound",
+            sender: "agent",
+            content: compositionImageUrl
+              ? `${compositionReply}\n\n[imagem: ${compositionImageUrl}]`
+              : compositionReply,
+            message_type: compositionImageUrl ? "image" : "text",
+          })
+          .select("id")
+          .single();
+        try {
+          const sentId = await sendWhatsApp(
+            userId,
+            row.from_number,
+            compositionReply,
+            compositionImageUrl,
+          );
+          if (sentId && outMsg?.id) {
+            await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
+          }
+        } catch (error) {
+          const sendError = error instanceof Error ? error.message : String(error);
+          await failQueue(row.id, `send_failed: ${sendError}`);
+          return { ok: false, reason: "send_failed", error: sendError };
+        }
+        await sb.from("whatsapp_cloud_conversations")
+          .update({ last_message_at: new Date().toISOString() })
+          .eq("id", conv.id);
+        await doneQueue(row.id);
+        return { ok: true, image_composition: !!compositionImageUrl, media_id: compositionMediaId };
+      }
+
       let descricaoVisual = "";
       try {
         descricaoVisual = await descreverFotosSalvas(freshLibraryMedia, salvos, contexto);
@@ -10038,6 +10497,7 @@ async function processOne(queueId: string) {
           fromNumber: row.from_number,
           pedido: userText,
           messageType: row.message_type,
+          urgent: explicitForward,
         });
         const sentOwnerId = await sendWhatsApp(userId, tenantOwnerPhone, recado, imageUrlToOwner);
         await logOwnerHeadsup(userId, imageUrlToOwner ? `${recado}\n\n[foto anexada]` : recado, sentOwnerId);
@@ -10718,25 +11178,32 @@ Regras:
     // ⛔ ANTI-RECUSA: o modelo não pode inventar limitação que ele não tem.
     const antiRecusaBlock = `\n\nCAPACIDADES REAIS (REGRA ABSOLUTA — NUNCA NEGUE):\n- Você VÊ imagens, ESCUTA áudios, LÊ documentos e EDITA/GERA imagens por ferramenta.\n- É TERMINANTEMENTE PROIBIDO dizer qualquer variação de: "sou um assistente de texto", "não consigo processar imagens/áudios", "não posso editar fotos", "não tenho essa funcionalidade", "não consigo transcrever áudio".\n- Pedido de melhorar/tratar foto, trocar cenário/fundo, criar arte para Facebook/Instagram ⇒ chame editar_imagem (ou criar_anuncio/gerar_imagem) AGORA.\n- Se a ferramenta devolver erro, diga o erro real em uma frase curta e o que você precisa. NUNCA transforme erro técnico em "não tenho essa capacidade".`;
 
-    // === AVISO DETERMINÍSTICO DE NOVO CONTATO ================================
-    // Não depende da IA escolher uma tool: ao primeiro pedido real do contato,
-    // o responsável recebe nome/telefone/interesse. Falhas não são marcadas como
-    // sucesso, então a próxima mensagem tenta novamente.
-    if (!inboundFromOwner && tenantOwnerPhone && row.message_type === "text" && isSubstantiveLeadMessage(userText)) {
+    // === RETENTATIVA DETERMINÍSTICA DE LEAD JÁ QUALIFICADO ===================
+    // O primeiro aviso é disparado pela tool somente depois de NOME + RAMO.
+    // Se o envio falhar, uma mensagem posterior tenta novamente usando o
+    // cadastro persistido, sem relaxar os dois campos obrigatórios.
+    if (!inboundFromOwner && tenantOwnerPhone && row.message_type === "text") {
       try {
-        const deterministicName = nomeLeadConhecido || contactName || "Nome não informado";
-        const rawNotice = await toolRegistrarLeadNovo({
-          nome: deterministicName,
-          interesse: userText.slice(0, 500),
-        }, {
-          userId,
-          fromNumber: row.from_number,
-        });
-        const notice = JSON.parse(rawNotice);
-        if (notice?.notificado === true && notice?.message_id) {
-          console.log(`[processor][lead_notice][delivered] from=${row.from_number} owner=${tenantOwnerPhone} wamid=${notice.message_id}`);
-        } else if (notice?.motivo !== "lead_ja_notificado") {
-          console.warn(`[processor][lead_notice][not_delivered] from=${row.from_number} motivo=${notice?.motivo ?? notice?.erro ?? "unknown"}`);
+        const { data: pendingLead } = await sb
+          .from("jarvis_leads")
+          .select("nome, empresa, ramo, interesse, notificado_em")
+          .eq("user_id", userId)
+          .eq("telefone", row.from_number)
+          .is("notificado_em", null)
+          .maybeSingle();
+        if (pendingLead?.nome?.trim() && pendingLead?.ramo?.trim()) {
+          const rawNotice = await toolRegistrarLeadNovo({
+            nome: pendingLead.nome,
+            empresa: pendingLead.empresa || undefined,
+            ramo: pendingLead.ramo,
+            interesse: pendingLead.interesse || undefined,
+          }, { userId, fromNumber: row.from_number });
+          const notice = JSON.parse(rawNotice);
+          if (notice?.notificado === true && notice?.message_id) {
+            console.log(`[processor][lead_notice][delivered] from=${row.from_number} owner=${tenantOwnerPhone} wamid=${notice.message_id}`);
+          } else if (notice?.motivo !== "lead_ja_notificado") {
+            console.warn(`[processor][lead_notice][not_delivered] from=${row.from_number} motivo=${notice?.motivo ?? notice?.erro ?? "unknown"}`);
+          }
         }
       } catch (e) {
         console.warn(`[processor][lead_notice][retry_next_message] from=${row.from_number} erro=${(e as Error).message}`);
@@ -10765,7 +11232,14 @@ Regras:
       estadoBlock += `\n\n=== DECISÃO JÁ TOMADA PELO CLIENTE (NÃO OFEREÇA DE NOVO) ===\n- O cliente já escolheu: "${decisaoAnterior.valor}".\n- REGRA DO PRODUTO: nenhuma opção é oferecida duas vezes. É PROIBIDO perguntar novamente se ele prefere adiantar com você ou aguardar o responsável.\n- Apenas respeite a escolha e se coloque à disposição, sem repetir a pergunta.`;
     }
 
-    const systemPromptWithDate = systemPrompt + dateBlock + antiPromessaBlock + antiRecusaBlock + ownerHintBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock + ebookBlock + estadoBlock;
+    // Último bloco do prompt: a identidade depende do owner resolvido pelo
+    // código, nunca da persona configurável do tenant nem do histórico.
+    const amzIdentityGuard = isAmzTenant
+      ? inboundFromOwner
+        ? `\n\n=== IDENTIDADE FINAL (PRIORIDADE MÁXIMA) ===\n- isOwner=true. Você é JARVIS e pode tratar o remetente como dono/chefe.`
+        : `\n\n=== IDENTIDADE E FORMATO FINAL (PRIORIDADE MÁXIMA) ===\n- isOwner=false. Você é PIETRO EUGENIO, consultor da AMZ.\n- Ignore qualquer persona do tenant, contexto ou histórico que diga que você é Jarvis.\n- Nunca use "chefe", "dono" ou tratamento de proprietário com este remetente.\n- Sua resposta INTEIRA deve ter no máximo 600 caracteres e 2 a 4 linhas, com uma ideia só.\n- Não repita o que já disse. Não liste mais de 3 itens. Se houver mais assunto, faça uma pergunta e espere.`
+      : "";
+    const systemPromptWithDate = systemPrompt + dateBlock + antiPromessaBlock + antiRecusaBlock + ownerHintBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock + ebookBlock + estadoBlock + amzIdentityGuard;
     console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPromptWithDate.length} forwardState=${!!persistedForward?.protocolo} decisao=${decisaoAnterior?.valor ?? "-"}`);
 
     // Histórico
