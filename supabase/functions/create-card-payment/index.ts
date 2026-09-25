@@ -21,7 +21,7 @@ serve(async (req) => {
       throw new Error('MERCADOPAGO_ACCESS_TOKEN não configurado');
     }
 
-    // Criar preferência para checkout (permite cartão com parcelamento)
+    // Criar preferência para checkout com cartão somente à vista.
     const preference = {
       items: [{
         title: body.description,
@@ -32,8 +32,8 @@ serve(async (req) => {
       payer: body.payer,
       payment_methods: {
         excluded_payment_types: [],
-        installments: body.installments || 12,
-        default_installments: body.installments || 1
+        installments: 1,
+        default_installments: 1
       },
       statement_descriptor: 'AMZ OFERTAS',
       back_urls: {

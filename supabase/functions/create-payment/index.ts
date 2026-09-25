@@ -63,7 +63,7 @@ serve(async (req) => {
         name: 'Cliente AMZ Ofertas'
       },
       payment_methods: {
-        installments: 12,
+        installments: 1,
         excluded_payment_types: [],
         excluded_payment_methods: []
       },
