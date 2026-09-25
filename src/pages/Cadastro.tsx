@@ -91,9 +91,9 @@ export default function Cadastro() {
 
       toast.success('Conta criada! Vamos confirmar o pagamento com você.');
       navigate('/dashboard?cadastro=pendente');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Erro no cadastro:', err);
-      toast.error(err.message || 'Erro ao processar cadastro');
+      toast.error(err instanceof Error ? err.message : 'Erro ao processar cadastro');
       setLoading(false);
     }
   };
