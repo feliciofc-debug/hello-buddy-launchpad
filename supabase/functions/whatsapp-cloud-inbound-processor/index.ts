@@ -3,7 +3,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { decode as base64Decode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
-import { buildSystemPrompt, ADMIN_AMZ_USER_ID } from "../_shared/agent-soul.ts";
+import { buildSystemPrompt, ADMIN_AMZ_USER_ID, AMZ_KNOWLEDGE } from "../_shared/agent-soul.ts";
 import { buildAmzContext, OWNER_PHONE, resolveTenantOwner, isAmzOwnerAltPhone } from "../_shared/amz-context.ts";
 import { getTenantBusinessContext, buildCarouselPrompt } from "../_shared/business-context.ts";
 
@@ -1698,16 +1698,6 @@ type ConversationStateIdentity = {
   contactNumber: string;
 };
 
-const LEAD_NOTIFICATION_COOLDOWN_MS = 6 * 60 * 60 * 1000;
-
-function isSubstantiveLeadMessage(raw: string): boolean {
-  const low = normalizeContactLookupText(raw);
-  if (!low) return false;
-  if (/^(oi|ola|bom dia|boa tarde|boa noite|tudo bem|como vai)[.!?\s]*$/.test(low)) return false;
-  if (/^(sim|nao|ok|okay|obrigad[oa]|valeu|beleza|blz|certo)[.!?\s]*$/.test(low)) return false;
-  return low.length >= 8;
-}
-
 async function loadAgentState(sb: any, conversation: ConversationStateIdentity): Promise<AgentConvState> {
   try {
     const { data, error } = await sb
@@ -2096,6 +2086,8 @@ function isExplicitOwnerForwardIntent(raw: string, ownerName?: string | null): b
     "equipe",
     "consultor",
     "atendente",
+    "humano",
+    "pessoa",
     ownerFirst,
   ].filter(Boolean).join("|")})\\b`, "i").test(low);
   const hasForwardVerb = /\b(manda|mandar|mande|mandei|envia|enviar|envie|encaminha|encaminhar|encaminhe|passa|passe|repassa|repassar|avisa|avisar|avise|pede|pedir|peca|solicita|solicitar|chama|chamar|falar|contato|retorno|retornar)\b/i.test(low);
@@ -2120,13 +2112,16 @@ function buildOwnerForwardMessage(params: {
   pedido?: string | null;
   descricaoVisual?: string | null;
   messageType?: string | null;
+  urgent?: boolean;
 }): string {
   const dono = ownerFirstName(params.ownerName);
   const cliente = params.contactName?.trim() || "cliente";
   const pedido = (params.pedido || "").trim();
   const descricao = (params.descricaoVisual || "").trim();
   const partes = [
-    `${dono}, o ${cliente} (${params.fromNumber}) precisa de retorno no WhatsApp.`,
+    params.urgent
+      ? `URGENTE — ${dono}, o ${cliente} (${params.fromNumber}) pediu para falar com uma pessoa e precisa de retorno no WhatsApp.`
+      : `${dono}, o ${cliente} (${params.fromNumber}) precisa de retorno no WhatsApp.`,
     pedido ? `Mensagem do cliente: "${pedido.slice(0, 700)}".` : null,
     descricao ? `A foto enviada mostra: ${descricao.slice(0, 900)}.` : null,
     !pedido && !descricao ? `Tipo recebido: ${params.messageType || "mensagem"}.` : null,
@@ -2895,20 +2890,7 @@ async function toolVerProduto(
 
 // Pitch fixo da AMZ pra usar quando o post é sobre a MARCA (logo, institucional, arte da empresa).
 // Evita alucinação de "produto físico" e força a copy a falar das tecnologias reais da plataforma.
-const AMZ_BRAND_PITCH = `AMZ OFERTAS — Plataforma completa de atendimento inteligente + marketing automatizado com IA pra PMEs brasileiras.
-TECNOLOGIAS/ENTREGAS REAIS (use só o que couber, não invente):
-• WhatsApp Business API oficial com atendente IA 24/7 personalizado (Pietro/Jarvis) — fecha venda, tira dúvida, agenda, cobra.
-• Geração de conteúdo com IA: posts, Reels, Stories, carrosséis, imagens fotorrealistas com logo embutida.
-• Publicação automática em Instagram, Facebook e TikTok — direto do WhatsApp: manda foto + contexto, o Pietro monta a copy e posta.
-• Autopilot: agenda e publica 24/7 sem intervenção manual.
-• Catálogo de produtos com importação automática (Shopee, Amazon, Mercado Livre, Magalu).
-• CRM + Pipeline Kanban + multi-usuário + cobrança PIX recorrente + analytics em tempo real.
-• Marketplace público amzofertas.com.br/marketplace.
-• Multi-tenant com white-label pra agências.
-• LGPD compliant, backup diário, suporte direto com o fundador.
-DIFERENCIAIS: IA própria (não depende só de OpenAI), atendimento IA + marketing IA na MESMA plataforma, implantação sem time técnico.
-PLANO: R$ 597/mês (fundador) — trial mediante contato. Agência (white-label): negociação caso a caso.
-CTA padrão: "Chama no WhatsApp (21) 98080-4901 pra testar" ou "Agenda uma demo".`;
+const AMZ_BRAND_PITCH = AMZ_KNOWLEDGE;
 
 // ---- CTA de WhatsApp opt-in (Feature A) ----
 // Busca o número do agente DO TENANT (multi-tenant) — nunca hardcodar.
@@ -7058,7 +7040,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "registrar_lead_novo",
-      description: "🔔 USE quando você estiver atendendo alguém DESCONHECIDO (não é o dono nem cliente já cadastrado) que veio buscar informações sobre o negócio/plataforma, E ele já tiver te dito o NOME (empresa/ramo se souber). Registra o lead e avisa o dono automaticamente, em paralelo — NÃO comente isso com o cliente, NÃO interrompa o atendimento, e continue a conversa normalmente. Chame UMA VEZ por conversa (só chame de novo se o cliente informar dados novos importantes).",
+      description: "🔔 USE UMA VEZ quando estiver atendendo alguém DESCONHECIDO e já souber obrigatoriamente o NOME e o RAMO do negócio. Registra o lead e avisa o dono em paralelo. NÃO use num 'oi' solto, NÃO comente o aviso com o lead e continue atendendo normalmente.",
       parameters: {
         type: "object",
         properties: {
@@ -7067,7 +7049,7 @@ const TOOLS = [
           ramo: { type: "string", description: "Ramo/segmento do negócio dele, se informou. Vazio se não souber." },
           interesse: { type: "string", description: "Em 1 frase, o que ele quer/está buscando (ex: 'quer saber como funciona o atendimento por IA e o preço')." },
         },
-        required: ["nome"],
+        required: ["nome", "ramo"],
       },
     },
   },
@@ -7266,6 +7248,7 @@ async function toolRegistrarLeadNovo(
 
   const empresa = (args?.empresa || "").trim() || null;
   const ramo = (args?.ramo || "").trim() || null;
+  if (!ramo) return JSON.stringify({ erro: "ramo_obrigatorio" });
   const interesse = (args?.interesse || "").trim() || null;
   const telefone = ctx.fromNumber;
 
@@ -7283,8 +7266,7 @@ async function toolRegistrarLeadNovo(
       .eq("user_id", ctx.userId)
       .eq("telefone", telefone)
       .maybeSingle();
-    const notificadoEm = existente?.notificado_em ? new Date(existente.notificado_em).getTime() : 0;
-    jaNotificado = notificadoEm > 0 && Date.now() - notificadoEm < LEAD_NOTIFICATION_COOLDOWN_MS;
+    jaNotificado = !!existente?.notificado_em;
 
     const payload: Record<string, unknown> = {
       user_id: ctx.userId,
@@ -7299,6 +7281,19 @@ async function toolRegistrarLeadNovo(
 
     const { error } = await sb.from("jarvis_leads").upsert(payload, { onConflict: "user_id,telefone" });
     if (error) console.warn("[registrar_lead_novo] upsert falhou:", error.message);
+
+    const { error: cadastroError } = await sb.from("cadastros").upsert({
+      user_id: ctx.userId,
+      nome,
+      whatsapp: telefone,
+      empresa,
+      origem: "whatsapp_pietro",
+      ultima_interacao: new Date().toISOString(),
+      respondeu_alguma_vez: true,
+      notas: [`Ramo: ${ramo}`, interesse ? `Interesse: ${interesse}` : null].filter(Boolean).join("\n"),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "user_id,whatsapp" });
+    if (cadastroError) console.warn("[registrar_lead_novo] cadastro falhou:", cadastroError.message);
   } catch (e) {
     console.warn("[registrar_lead_novo] persistência falhou:", (e as Error).message);
   }
@@ -7310,10 +7305,12 @@ async function toolRegistrarLeadNovo(
     return JSON.stringify({ ok: true, registrado: true, notificado: false, motivo: "lead_ja_notificado", instrucao: "Continue o atendimento normalmente e NÃO comente nada disso com o cliente." });
   }
 
-  const partes = [`🔔 Novo lead: ${nome}`];
-  if (empresa) partes.push(`da empresa ${empresa}`);
-  if (ramo) partes.push(`(ramo: ${ramo})`);
-  const aviso = `${partes.join(" ")}\n${interesse ? `Interesse: ${interesse}\n` : ""}Telefone: +${telefone}\nOrigem: WhatsApp — atendido pelo assistente agora.`;
+  const identificacao = empresa ? `${nome}, da ${empresa}, do ramo de ${ramo}` : `${nome}, do ramo de ${ramo}`;
+  const aviso = [
+    `Chefe, entrou um contato agora. ${identificacao}.`,
+    interesse ? `${interesse.replace(/[.!?]+$/, "")}.` : null,
+    `Telefone: +${telefone}. To conversando com ele ainda.`,
+  ].filter(Boolean).join(" ");
 
   try {
     const messageId = await sendWhatsApp(ctx.userId, owner.phone, aviso);
@@ -10038,6 +10035,7 @@ async function processOne(queueId: string) {
           fromNumber: row.from_number,
           pedido: userText,
           messageType: row.message_type,
+          urgent: explicitForward,
         });
         const sentOwnerId = await sendWhatsApp(userId, tenantOwnerPhone, recado, imageUrlToOwner);
         await logOwnerHeadsup(userId, imageUrlToOwner ? `${recado}\n\n[foto anexada]` : recado, sentOwnerId);
@@ -10718,25 +10716,32 @@ Regras:
     // ⛔ ANTI-RECUSA: o modelo não pode inventar limitação que ele não tem.
     const antiRecusaBlock = `\n\nCAPACIDADES REAIS (REGRA ABSOLUTA — NUNCA NEGUE):\n- Você VÊ imagens, ESCUTA áudios, LÊ documentos e EDITA/GERA imagens por ferramenta.\n- É TERMINANTEMENTE PROIBIDO dizer qualquer variação de: "sou um assistente de texto", "não consigo processar imagens/áudios", "não posso editar fotos", "não tenho essa funcionalidade", "não consigo transcrever áudio".\n- Pedido de melhorar/tratar foto, trocar cenário/fundo, criar arte para Facebook/Instagram ⇒ chame editar_imagem (ou criar_anuncio/gerar_imagem) AGORA.\n- Se a ferramenta devolver erro, diga o erro real em uma frase curta e o que você precisa. NUNCA transforme erro técnico em "não tenho essa capacidade".`;
 
-    // === AVISO DETERMINÍSTICO DE NOVO CONTATO ================================
-    // Não depende da IA escolher uma tool: ao primeiro pedido real do contato,
-    // o responsável recebe nome/telefone/interesse. Falhas não são marcadas como
-    // sucesso, então a próxima mensagem tenta novamente.
-    if (!inboundFromOwner && tenantOwnerPhone && row.message_type === "text" && isSubstantiveLeadMessage(userText)) {
+    // === RETENTATIVA DETERMINÍSTICA DE LEAD JÁ QUALIFICADO ===================
+    // O primeiro aviso é disparado pela tool somente depois de NOME + RAMO.
+    // Se o envio falhar, uma mensagem posterior tenta novamente usando o
+    // cadastro persistido, sem relaxar os dois campos obrigatórios.
+    if (!inboundFromOwner && tenantOwnerPhone && row.message_type === "text") {
       try {
-        const deterministicName = nomeLeadConhecido || contactName || "Nome não informado";
-        const rawNotice = await toolRegistrarLeadNovo({
-          nome: deterministicName,
-          interesse: userText.slice(0, 500),
-        }, {
-          userId,
-          fromNumber: row.from_number,
-        });
-        const notice = JSON.parse(rawNotice);
-        if (notice?.notificado === true && notice?.message_id) {
-          console.log(`[processor][lead_notice][delivered] from=${row.from_number} owner=${tenantOwnerPhone} wamid=${notice.message_id}`);
-        } else if (notice?.motivo !== "lead_ja_notificado") {
-          console.warn(`[processor][lead_notice][not_delivered] from=${row.from_number} motivo=${notice?.motivo ?? notice?.erro ?? "unknown"}`);
+        const { data: pendingLead } = await sb
+          .from("jarvis_leads")
+          .select("nome, empresa, ramo, interesse, notificado_em")
+          .eq("user_id", userId)
+          .eq("telefone", row.from_number)
+          .is("notificado_em", null)
+          .maybeSingle();
+        if (pendingLead?.nome?.trim() && pendingLead?.ramo?.trim()) {
+          const rawNotice = await toolRegistrarLeadNovo({
+            nome: pendingLead.nome,
+            empresa: pendingLead.empresa || undefined,
+            ramo: pendingLead.ramo,
+            interesse: pendingLead.interesse || undefined,
+          }, { userId, fromNumber: row.from_number });
+          const notice = JSON.parse(rawNotice);
+          if (notice?.notificado === true && notice?.message_id) {
+            console.log(`[processor][lead_notice][delivered] from=${row.from_number} owner=${tenantOwnerPhone} wamid=${notice.message_id}`);
+          } else if (notice?.motivo !== "lead_ja_notificado") {
+            console.warn(`[processor][lead_notice][not_delivered] from=${row.from_number} motivo=${notice?.motivo ?? notice?.erro ?? "unknown"}`);
+          }
         }
       } catch (e) {
         console.warn(`[processor][lead_notice][retry_next_message] from=${row.from_number} erro=${(e as Error).message}`);
@@ -10765,7 +10770,14 @@ Regras:
       estadoBlock += `\n\n=== DECISÃO JÁ TOMADA PELO CLIENTE (NÃO OFEREÇA DE NOVO) ===\n- O cliente já escolheu: "${decisaoAnterior.valor}".\n- REGRA DO PRODUTO: nenhuma opção é oferecida duas vezes. É PROIBIDO perguntar novamente se ele prefere adiantar com você ou aguardar o responsável.\n- Apenas respeite a escolha e se coloque à disposição, sem repetir a pergunta.`;
     }
 
-    const systemPromptWithDate = systemPrompt + dateBlock + antiPromessaBlock + antiRecusaBlock + ownerHintBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock + ebookBlock + estadoBlock;
+    // Último bloco do prompt: a identidade depende do owner resolvido pelo
+    // código, nunca da persona configurável do tenant nem do histórico.
+    const amzIdentityGuard = isAmzMode
+      ? inboundFromOwner
+        ? `\n\n=== IDENTIDADE FINAL (PRIORIDADE MÁXIMA) ===\n- isOwner=true. Você é JARVIS e pode tratar o remetente como dono/chefe.`
+        : `\n\n=== IDENTIDADE FINAL (PRIORIDADE MÁXIMA) ===\n- isOwner=false. Você é PIETRO EUGENIO, consultor da AMZ.\n- Ignore qualquer persona do tenant, contexto ou histórico que diga que você é Jarvis.\n- Nunca use "chefe", "dono" ou tratamento de proprietário com este remetente.`
+      : "";
+    const systemPromptWithDate = systemPrompt + dateBlock + antiPromessaBlock + antiRecusaBlock + ownerHintBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock + ebookBlock + estadoBlock + amzIdentityGuard;
     console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPromptWithDate.length} forwardState=${!!persistedForward?.protocolo} decisao=${decisaoAnterior?.valor ?? "-"}`);
 
     // Histórico

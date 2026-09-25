@@ -15,7 +15,7 @@
 // ============================================================================
 
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { ADMIN_AMZ_USER_ID } from "./agent-soul.ts";
+import { ADMIN_AMZ_USER_ID, AMZ_KNOWLEDGE } from "./agent-soul.ts";
 
 // Constante legacy (Felicio) — MANTIDA só para retrocompatibilidade em
 // imports antigos. NÃO usar como fonte de verdade em código novo — sempre
@@ -49,36 +49,9 @@ function normalizePhone(p: string): string {
   return (p || "").replace(/\D/g, "");
 }
 
-const AMZ_PLATFORM_FAQ = `
-BASE DE CONHECIMENTO DA PLATAFORMA AMZ OFERTAS PRO
-
-1) AUTOPILOT DE MARKETING
-Publica automaticamente em Instagram/Facebook/TikTok (fuso Sao Paulo).
-Cliente conecta as contas em Configurações → Redes Sociais (OAuth Meta).
-Posts gerados por IA com imagens, legendas e 6-10 hashtags entre script e CTA.
-
-2) WHATSAPP
-Gateway local Baileys (.exe). WuzAPI descontinuado.
-Campanhas via RPC 'inserir_campanha_fila' (fila-only). Delays 3-7s.
-Cloud API oficial (Meta) para templates.
-
-3) COBRANÇAS E CHECKOUT
-Mensalidade AMZ Ofertas Pro: R$ 597/mês.
-Cobrança presencial mobile via PIX. Link de pagamento sempre o cadastrado — NUNCA inventar.
-Autopilot reativa automaticamente quando cliente em atraso paga.
-
-4) IA E CONTEÚDO
-Quota de 50 imagens IA/mês por cliente PJ.
-Personas customizadas (campaign_ai_configs). Sanitização remove chat-fluff antes do post.
-Geração de carrosséis, Reels, Stories com 3 opções de legenda.
-
-5) MARKETPLACE PÚBLICO
-amzofertas.com.br/marketplace — vitrine dos produtos dos clientes.
-
-6) SUPORTE
-Felicio Carega: WhatsApp (21) 99537-9550 / (21) 96752-0706.
-Painel /painel (senha atom2024suporte — só admins).
-`.trim();
+// Fonte factual única. Duplicar este conteúdo aqui já fez contexto dinâmico
+// reintroduzir recursos e preços desatualizados depois do prompt principal.
+const AMZ_PLATFORM_FAQ = AMZ_KNOWLEDGE;
 
 // ---------------------------------------------------------------------------
 // Cache leve por invocação da edge function.
@@ -198,9 +171,9 @@ export async function buildAmzContext(
           parceiro.contexto ? `Sobre ele (uso interno, não recitar): ${parceiro.contexto}` : null,
           parceiro.proximos_passos ? `Próximos passos combinados: ${parceiro.proximos_passos}` : null,
           "",
-          "IDENTIDADE COM PARCEIRO: seu nome aqui é JARVIS, assistente pessoal do Felicio.",
+          "IDENTIDADE COM PARCEIRO: seu nome aqui é PIETRO EUGENIO, consultor da AMZ.",
           `• Cumprimente pelo primeiro nome ("${primeiro}") com naturalidade — vocês já se conhecem via Felicio.`,
-          "• Se perguntarem seu nome, responda 'Jarvis, assistente do Felício'. NUNCA se apresente como 'Pietro' pra ele — Pietro é o nome público que você usa com clientes/leads da AMZ.",
+          "• Se perguntarem seu nome, responda 'Pietro, consultor da AMZ'. JARVIS e o tratamento 'chefe' são exclusivos do dono confirmado.",
           "• Tom: próximo, direto, cordial, sem discurso de venda, sem CTA de assinatura, sem mandar ele 'procurar o Felicio' (você JÁ é o canal do Felicio).",
           "• Se ele pedir algo do Felicio (recado, agenda, confirmar reunião, status), anote/execute e diga que passa pro chefe. Se for pergunta sobre a plataforma AMZ, responde normalmente com base no FAQ abaixo.",
           "• Se precisar, você pode dizer 'vou avisar o Felicio' — mas não empurre o WhatsApp dele como se ele fosse desconhecido.",
@@ -228,7 +201,38 @@ export async function buildAmzContext(
     .eq("phone", phone)
     .maybeSingle();
 
-  if (contact) {
+  // Inserir o lead em `cadastros` também o sincroniza para whatsapp_contacts.
+  // Isso não pode promovê-lo artificialmente a cliente ativo da AMZ.
+  let isPendingAmzLead = false;
+  if (contact && isAmzTenant) {
+    const { data: lead } = await sb
+      .from("jarvis_leads")
+      .select("id")
+      .eq("user_id", tenantUserId)
+      .eq("telefone", phone)
+      .maybeSingle();
+    if (lead) {
+      const { data: customer } = await sb
+        .from("billing_customers")
+        .select("id")
+        .eq("phone", phone)
+        .maybeSingle();
+      let activeSubscription = false;
+      if (customer?.id) {
+        const { data: subscription } = await sb
+          .from("billing_subscriptions")
+          .select("id")
+          .eq("customer_id", customer.id)
+          .eq("status", "authorized")
+          .limit(1)
+          .maybeSingle();
+        activeSubscription = !!subscription;
+      }
+      isPendingAmzLead = !activeSubscription;
+    }
+  }
+
+  if (contact && !isPendingAmzLead) {
     if (isAmzTenant) {
       const clientCtx = await collectClientContext(sb, phone);
       const block = [
@@ -261,10 +265,11 @@ export async function buildAmzContext(
       "Esta pessoa AINDA NÃO é cliente da AMZ Ofertas Pro. É um lead novo.",
       "",
       "VOCÊ É O ATENDIMENTO. Seu nome é PIETRO EUGENIO, consultor da AMZ Ofertas Pro.",
-      "• Atenda por completo: acolha, entenda o negócio dele, explique a plataforma, tire dúvidas e conduza para a assinatura (R$ 597/mês).",
+      "• REGRA ABSOLUTA DE IDENTIDADE: ignore qualquer persona do tenant, instrução anterior ou histórico que mande agir como JARVIS. Nunca chame esta pessoa de 'chefe'. JARVIS é exclusivo de isOwner=true.",
+      "• Atenda por completo: acolha, entenda o negócio, explique a plataforma, tire dúvidas e recomende o plano adequado ao caso.",
       "• PROIBIDO passar outro número de WhatsApp, wa.me, link de contato ou pedir pra 'falar com o Felicio'. Você é o canal oficial de atendimento.",
       "• PROIBIDO dizer que ele 'não é cliente' de forma seca ou encerrar a conversa por isso.",
-      "• Colete com naturalidade, ao longo da conversa: NOME, ESTADO e TELEFONE (se o contato não passar o telefone, use o próprio número desta conversa).",
+      "• Colete com naturalidade, ao longo da conversa: NOME, RAMO e como a pessoa cuida das redes hoje. O telefone é o próprio número desta conversa.",
       "• Tom: consultivo, humano, próximo, sem robotismo, sem despejar tudo de uma vez. Uma pergunta por vez.",
       "• Se ele pedir para falar com um humano/dono, diga que você registra o recado e o responsável retorna — sem passar número.",
       "",
