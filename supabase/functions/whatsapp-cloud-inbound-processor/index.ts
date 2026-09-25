@@ -1332,8 +1332,34 @@ async function resolveCompositionSources(
   fromNumber: string,
   requestText: string,
   explicitPhotos?: CompositionSource[],
+  preferredMediaIds: string[] = [],
 ): Promise<{ environment: CompositionSource; product: CompositionSource } | null> {
   let photos = (explicitPhotos ?? []).filter((photo) => !!photo.url);
+  const preferredIds = preferredMediaIds.filter(Boolean).slice(-2);
+  if (photos.length < 2 && preferredIds.length > 0) {
+    const { data: preferred, error: preferredError } = await sb
+      .from("midias_whatsapp")
+      .select("id, midia_url, contexto_original")
+      .eq("user_id", userId)
+      .eq("telefone_origem", fromNumber)
+      .eq("tipo", "foto")
+      .in("id", preferredIds);
+    if (preferredError) {
+      throw new Error(`composition_preferred_media_lookup_failed: ${preferredError.message}`);
+    }
+    const byId = new Map((preferred ?? []).map((row: any) => [row.id, row]));
+    const ordered = preferredIds
+      .map((id) => byId.get(id))
+      .filter(Boolean)
+      .map((row: any) => ({
+        id: row.id,
+        url: row.midia_url,
+        context: row.contexto_original,
+      }));
+    photos = [...ordered, ...photos].filter(
+      (photo, index, all) => all.findIndex((candidate) => candidate.id === photo.id) === index,
+    ).slice(-2);
+  }
   if (photos.length < 2) {
     const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
     const { data, error } = await sb
@@ -1885,6 +1911,7 @@ type AgentConvState = {
   forward?: { protocolo?: string; destinatario?: string; wamid?: string | null; at?: string };
   decisao?: { valor?: string; at?: string };
   last_media_interaction?: { media_id: string; at: string };
+  pending_image_composition?: { media_ids: string[]; at: string } | null;
   pending_carousel?: PendingCarouselState | null;
   pending_video_setup?: PendingVideoSetupState | null;
   [k: string]: unknown;
@@ -8423,10 +8450,19 @@ async function callGemini(
     // nunca pode degradar silenciosamente para ficha técnica de uma só foto.
     if (isImageCompositionIntent(userContent)) {
       try {
+        const pendingComposition = toolCtx.agentState?.pending_image_composition;
+        const pendingAge = pendingComposition?.at
+          ? Date.now() - new Date(pendingComposition.at).getTime()
+          : Number.POSITIVE_INFINITY;
+        const preferredMediaIds = pendingAge <= 15 * 60 * 1000
+          ? pendingComposition?.media_ids ?? []
+          : [];
         const sources = await resolveCompositionSources(
           toolCtx.userId,
           toolCtx.fromNumber,
           userContent,
+          undefined,
+          preferredMediaIds,
         );
         if (!sources) {
           return {
@@ -8441,7 +8477,22 @@ async function callGemini(
           ...sources,
         });
         if (!result.ok) return { text: result.message };
-        if (result.mediaId) await rememberLastMediaInteraction(toolCtx, result.mediaId);
+        if (toolCtx.convId) {
+          const conversation = {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          };
+          const current = toolCtx.agentState ?? await loadAgentState(sb, conversation);
+          const interaction = { media_id: result.mediaId, at: new Date().toISOString() };
+          await saveAgentState(sb, conversation, {
+            pending_image_composition: null,
+            last_media_interaction: interaction,
+          }, current);
+          current.pending_image_composition = null;
+          current.last_media_interaction = interaction;
+          toolCtx.agentState = current;
+        }
         return {
           text: `Pronto — mantive o ambiente e inseri o produto de referência. É uma simulação ilustrativa.${result.resolution === "2K" ? " Gerei em alta resolução." : ""}<<SPLIT>>${linhaCodigoMidia(result.mediaId, "foto")}`,
           imageUrl: result.imageUrl,
@@ -10133,15 +10184,47 @@ async function processOne(queueId: string) {
       const savedPhotos = salvos
         .filter((item) => item.tipo === "foto")
         .map((item) => ({ id: item.id, url: item.url, context: contexto }));
+      const stateConversation = {
+        id: conv.id,
+        userId,
+        contactNumber: row.from_number,
+      };
+      const freshAgentState = await loadAgentState(sb, stateConversation);
+      const priorPending = freshAgentState.pending_image_composition;
+      const priorPendingAge = priorPending?.at
+        ? Date.now() - new Date(priorPending.at).getTime()
+        : Number.POSITIVE_INFINITY;
+      const pendingMediaIds = [
+        ...(priorPendingAge <= 15 * 60 * 1000 ? priorPending?.media_ids ?? [] : []),
+        ...savedPhotos.map((item) => item.id),
+      ].filter((id, index, all) => all.indexOf(id) === index).slice(-2);
+      const latestSaved = salvos.at(-1);
+      const freshStatePatch: Partial<AgentConvState> = {
+        ...(latestSaved
+          ? { last_media_interaction: { media_id: latestSaved.id, at: new Date().toISOString() } }
+          : {}),
+        ...(savedPhotos.length > 0
+          ? {
+            pending_image_composition: {
+              media_ids: pendingMediaIds,
+              at: new Date().toISOString(),
+            },
+          }
+          : {}),
+      };
+      await saveAgentState(sb, stateConversation, freshStatePatch, freshAgentState);
+      Object.assign(freshAgentState, freshStatePatch);
       if (isImageCompositionIntent(contexto) && savedPhotos.length > 0) {
         let compositionReply = "";
         let compositionImageUrl: string | undefined;
+        let compositionMediaId: string | undefined;
         try {
           const sources = await resolveCompositionSources(
             userId,
             row.from_number,
             contexto,
             savedPhotos,
+            pendingMediaIds,
           );
           if (!sources) {
             compositionReply = "Recebi a foto. Agora me manda também a foto do ambiente e a do produto que você quer simular.";
@@ -10156,7 +10239,15 @@ async function processOne(queueId: string) {
             compositionReply = result.ok
               ? `Pronto — montei a composição mantendo o ambiente e usando o produto de referência. É uma simulação ilustrativa.${result.resolution === "2K" ? " Gerei em alta resolução." : ""}`
               : result.message;
-            if (result.ok) compositionImageUrl = result.imageUrl;
+            if (result.ok) {
+              compositionImageUrl = result.imageUrl;
+              compositionMediaId = result.mediaId;
+              const interaction = { media_id: result.mediaId, at: new Date().toISOString() };
+              await saveAgentState(sb, stateConversation, {
+                pending_image_composition: null,
+                last_media_interaction: interaction,
+              }, freshAgentState);
+            }
           }
         } catch (error) {
           console.error("[image_composition][fresh_media_route_failed]", error);
@@ -10196,7 +10287,7 @@ async function processOne(queueId: string) {
           .update({ last_message_at: new Date().toISOString() })
           .eq("id", conv.id);
         await doneQueue(row.id);
-        return { ok: true, image_composition: !!compositionImageUrl };
+        return { ok: true, image_composition: !!compositionImageUrl, media_id: compositionMediaId };
       }
 
       let descricaoVisual = "";
