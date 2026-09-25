@@ -31,7 +31,7 @@ export function extractClientNameFromLogoRequest(text: string): string | null {
   const input = String(text ?? "").replace(/\s+/g, " ").trim();
   if (!/\b(?:logo|logomarca|logotipo)\b/i.test(input)) return null;
   const match = input.match(
-    /\b(?:logo|logomarca|logotipo)\s+(?:(?:e|é)\s+)?(?:d[oa]|de)\s+(.+?)(?=,|[.;]|\s+(?:guarda|salva|registre|registra|use|usa|vou usar|para usar)\b|$)/i,
+    /\b(?:logo|logomarca|logotipo)(?:\s+oficial)?\s+(?:(?:e|é)\s+)?(?:d[oa]|de)\s+(.+?)(?=,|[.;]|\s+(?:guard[ae]|salv[ae]|registr[ae]|cadastr[ae]|use|usa|vou usar|para usar)\b|$)/i,
   );
   const name = String(match?.[1] ?? "")
     .replace(/^(?:o|a|um|uma|cliente|empresa|marca)\s+/i, "")

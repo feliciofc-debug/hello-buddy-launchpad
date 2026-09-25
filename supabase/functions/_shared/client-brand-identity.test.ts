@@ -17,6 +17,14 @@ Deno.test("extrai cliente citado no pedido de guardar logo", () => {
     extractClientNameFromLogoRequest("Salva esta logomarca da Clínica São José para os vídeos"),
     "Clínica São José",
   );
+  assertEquals(
+    extractClientNameFromLogoRequest("Guarde como logo do Casarão Lustres."),
+    "Casarão Lustres",
+  );
+  assertEquals(
+    extractClientNameFromLogoRequest("Use essa como logo oficial da Loja Central"),
+    "Loja Central",
+  );
 });
 
 Deno.test("não inventa cliente quando o pedido de logo não informa nome", () => {

@@ -6027,7 +6027,116 @@ async function uploadTemporarySiteLogo(userId: string, dataUrl?: string | null):
 function isClientLogoRegistrationRequest(text: string): boolean {
   const value = String(text ?? "");
   if (!/\b(?:logo|logomarca|logotipo)\b/i.test(value)) return false;
-  return /\b(?:guarda|guardar|salva|salvar|registre|registra|cadastra|cadastrar|esse\s+(?:e|é)|essa\s+(?:e|é)|isto\s+(?:e|é)|usar\s+(?:nos?|em)\s+(?:videos?|vídeos?|posts?))\b/i.test(value);
+  return /\b(?:guard(?:a|ar|e)|salv(?:a|ar|e)|registr(?:a|ar|e)|cadastr(?:a|ar|e)|us(?:a|e|ar)\s+(?:essa|esse|esta|este|isso)|esse\s+(?:e|é)|essa\s+(?:e|é)|isto\s+(?:e|é)|usar\s+(?:nos?|em)\s+(?:videos?|vídeos?|posts?))\b/i.test(value);
+}
+
+async function uploadClientLogoFromMediaUrl(userId: string, mediaUrl: string): Promise<string | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await fetch(mediaUrl, { signal: controller.signal, redirect: "follow" });
+    if (!response.ok) return null;
+    const mime = String(response.headers.get("content-type") || "").split(";")[0].toLowerCase();
+    if (!/^image\/(?:png|jpeg|webp|svg\+xml)$/i.test(mime)) return null;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (!bytes.length || bytes.length > 5 * 1024 * 1024) return null;
+    const ext = mime === "image/jpeg" ? "jpg" : mime === "image/svg+xml" ? "svg" : mime.split("/")[1];
+    const path = `${userId}/client-brands/${Date.now()}-${crypto.randomUUID().slice(0, 8)}-logo.${ext}`;
+    const { error } = await sb.storage.from("tenant-logos").upload(path, bytes, {
+      contentType: mime,
+      upsert: false,
+    });
+    if (error) {
+      console.error("[client-brand][media-logo-upload]", error.message);
+      return null;
+    }
+    return path;
+  } catch (error) {
+    console.error("[client-brand][media-logo-download]", (error as Error).message);
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function toolRegistrarLogoCliente(
+  args: { cliente?: string },
+  ctx: { userId: string; fromNumber: string; agentState?: AgentConvState },
+): Promise<string> {
+  if (!isOwner(ctx)) {
+    return JSON.stringify({ ok: false, erro: "somente_responsavel" });
+  }
+  const requestedName = String(args?.cliente || "").replace(/\s+/g, " ").trim().slice(0, 100);
+  if (!requestedName) {
+    return JSON.stringify({ ok: false, erro: "cliente_ausente", mensagem: "De qual cliente é essa logo?" });
+  }
+  const latest = await buscarUltimaMidiaDaConversa(ctx);
+  if (latest.erro) {
+    return JSON.stringify({ ok: false, erro: "busca_midia_falhou", mensagem: latest.erro });
+  }
+  if (!latest.midia || latest.midia.tipo !== "foto") {
+    return JSON.stringify({
+      ok: false,
+      erro: "foto_ausente",
+      mensagem: "Não encontrei uma foto recente nesta conversa. Envie a logo e tente novamente.",
+    });
+  }
+  const age = Date.now() - new Date(latest.midia.created_at).getTime();
+  if (!Number.isFinite(age) || age > 24 * 60 * 60 * 1000) {
+    return JSON.stringify({
+      ok: false,
+      erro: "foto_expirada",
+      mensagem: "A última foto desta conversa tem mais de 24 horas. Envie a logo novamente.",
+    });
+  }
+
+  const matches = await listClientBrandIdentityMatches(sb, ctx.userId, requestedName);
+  if (matches.length > 1) {
+    return JSON.stringify({
+      ok: false,
+      erro: "cliente_ambiguo",
+      mensagem: `Encontrei mais de um cliente parecido: ${matches.map((item) => item.client_name).join(", ")}. Qual deles é?`,
+    });
+  }
+  const clientName = matches[0]?.client_name || requestedName;
+  const logoPath = await uploadClientLogoFromMediaUrl(ctx.userId, String(latest.midia.midia_url || ""));
+  if (!logoPath) {
+    return JSON.stringify({
+      ok: false,
+      erro: "upload_falhou",
+      mensagem: "Encontrei a foto, mas não consegui salvá-la como logo. Envie PNG, JPEG ou WEBP com até 5 MB.",
+    });
+  }
+  try {
+    const previousLogoPath = matches[0]?.logo_path;
+    const saved = await saveClientBrandIdentity(sb, {
+      userId: ctx.userId,
+      clientName,
+      logoPath,
+      identity: { logo_origem: "whatsapp_manual", source_media_id: latest.midia.id },
+    });
+    if (
+      previousLogoPath
+      && previousLogoPath !== logoPath
+      && previousLogoPath.startsWith(`${ctx.userId}/client-brands/`)
+    ) {
+      await sb.storage.from("tenant-logos").remove([previousLogoPath]);
+    }
+    return JSON.stringify({
+      ok: true,
+      client_name: saved.client_name,
+      logo_path: saved.logo_path,
+      source_media_id: latest.midia.id,
+      mensagem: `Guardei como logo do ${saved.client_name}. Vou usar nos vídeos e posts desse cliente.`,
+    });
+  } catch (error) {
+    await sb.storage.from("tenant-logos").remove([logoPath]);
+    return JSON.stringify({
+      ok: false,
+      erro: "persistencia_falhou",
+      mensagem: (error as Error).message,
+    });
+  }
 }
 
 async function askVideoTemplate(
@@ -7368,6 +7477,20 @@ const TOOLS = [
   {
     type: "function",
     function: {
+      name: "registrar_logo_cliente",
+      description: "CADASTRA DE VERDADE a última FOTO desta conversa como logo de um cliente do responsável. Use quando o DONO disser 'guarde/salve/registre/cadastre/use essa como logo do cliente X', inclusive quando a foto veio na mensagem anterior. Só confirme que guardou se esta ferramenta retornar ok=true; se retornar erro, repita a mensagem de erro e NUNCA finja sucesso.",
+      parameters: {
+        type: "object",
+        properties: {
+          cliente: { type: "string", description: "Nome exato da empresa/cliente citado pelo responsável, ex.: Casarão Lustres." },
+        },
+        required: ["cliente"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "salvar_midia_biblioteca",
       description: "🔴 USE quando receber foto, vídeo ou áudio nesta mensagem — mesmo sem legenda — para arquivar na biblioteca de Mídias (/midias). NÃO tenta casar com produto do catálogo, NÃO publica direto, NÃO pergunta antes. Se o remetente NÃO for dono/responsável, nunca fale de publicar/reusar nem pergunte rede/formato; apenas confirme recebimento e, se fizer sentido, ofereça encaminhar ao responsável. Passe em 'contexto' o que foi falado junto, ou string vazia se não falou nada.",
       parameters: {
@@ -8494,6 +8617,7 @@ async function runTool(
   if (name === "confirmar_postagem_redes") return { result: await toolConfirmarPostagemRedes(args ?? {}, ctx) };
   if (name === "revisar_post_pendente") return { result: await toolRevisarPostPendente(args ?? {}, ctx) };
   if (name === "escolher_variante_post") return { result: await toolEscolherVariantePost(args ?? {}, ctx) };
+  if (name === "registrar_logo_cliente") return { result: await toolRegistrarLogoCliente(args ?? {}, ctx) };
   if (name === "salvar_midia_biblioteca") return { result: await toolSalvarMidiaBiblioteca(args ?? {}, ctx) };
   if (name === "postar_midia_biblioteca") return { result: await toolPostarMidiaBiblioteca(args ?? {}, ctx) };
   if (name === "criar_carrossel") return { result: await toolCriarCarrossel(args ?? {}, ctx) };
@@ -8611,6 +8735,27 @@ async function callGemini(
       } catch (error) {
         console.error("[client-brand][pending-logo-save]", error);
         return { text: "Não consegui associar a logo ao cliente. O arquivo continua guardado; diga novamente o nome da empresa." };
+      }
+    }
+
+    if (remetenteEhDono && isClientLogoRegistrationRequest(userContent)) {
+      const clientName = extractClientNameFromLogoRequest(userContent);
+      if (!clientName) {
+        return { text: "De qual cliente é essa logo? Diga o nome da empresa para eu associar a última foto." };
+      }
+      const raw = await toolRegistrarLogoCliente({ cliente: clientName }, toolCtx);
+      try {
+        const result = JSON.parse(raw);
+        return {
+          text: String(
+            result?.mensagem
+            || (result?.ok === true
+              ? `Guardei como logo do ${result.client_name}. Vou usar nos vídeos e posts desse cliente.`
+              : "Não consegui cadastrar a logo."),
+          ),
+        };
+      } catch {
+        return { text: "Não consegui confirmar o cadastro da logo. Não marquei a imagem como logo do cliente." };
       }
     }
 
@@ -9058,6 +9203,26 @@ async function callGemini(
         console.log(`[pietro][tool] ${name}`, args);
         const { result, imageUrl } = await runTool(name, args, toolCtx);
         if (imageUrl) pendingImageUrl = imageUrl;
+        if (name === "registrar_logo_cliente") {
+          try {
+            const parsed = JSON.parse(result);
+            return {
+              text: String(parsed?.mensagem || (parsed?.ok === true
+                ? `Guardei como logo do ${parsed.client_name}. Vou usar nos vídeos e posts desse cliente.`
+                : "Não consegui cadastrar a logo.")),
+              imageUrl: pendingImageUrl,
+              forwardProof,
+              forwardAttempted,
+            };
+          } catch {
+            return {
+              text: "Não consegui confirmar o cadastro da logo. Não marquei a imagem como logo do cliente.",
+              imageUrl: pendingImageUrl,
+              forwardProof,
+              forwardAttempted,
+            };
+          }
+        }
         if (name === "editar_imagem") {
           try {
             const parsed = JSON.parse(result);
@@ -10689,7 +10854,7 @@ async function processOne(queueId: string) {
         ? `${videoFlowReply}\n\n${linhaCodigoMidia(videoSalvo!.id, "video")}`
         : ownerForwarded
         ? `Recebi ${salvos.length === 1 ? "a foto" : "as mídias"}${descricaoVisual ? `. A imagem mostra: ${descricaoVisual.trim()}` : ""}\n\nCerto, já encaminhei para ${ownerFirstName(_tenantOwner?.name)}. ${protoOwner}`
-        : respostaMidiaSalva(salvos, descricaoVisual);
+        : respostaMidiaSalva(salvos, descricaoVisual, fromIsOwner);
 
       const { data: outMsg } = await sb
         .from("whatsapp_cloud_messages")
