@@ -27,8 +27,9 @@ export type IdentidadeImportada = {
   tom_de_voz: string;
   logo_url: string | null;
   logo_data_url?: string | null;
+  logo_origem?: string | null;
   fontes: string[];
-  cores_detectadas: Array<{ hex: string; peso: number }>;
+  cores_detectadas: Array<{ hex: string; peso: number; origem?: string }>;
   paleta: Record<string, string>;
   texto_base: string;
   parcial: boolean;
@@ -50,6 +51,7 @@ export const ImportarDoSiteModal = ({ aberto, onFechar, onConfirmar, modo = 'emp
   const [salvando, setSalvando] = useState(false);
   /** leitura avançada (site montado por JavaScript) em andamento */
   const [avancada, setAvancada] = useState(false);
+  const [coresEditadas, setCoresEditadas] = useState<string[]>([]);
   const cancelado = useRef(false);
 
   const fechar = () => {
@@ -57,6 +59,7 @@ export const ImportarDoSiteModal = ({ aberto, onFechar, onConfirmar, modo = 'emp
     setDados(null);
     setUrl('');
     setAvancada(false);
+    setCoresEditadas([]);
     onFechar();
   };
 
@@ -96,6 +99,7 @@ export const ImportarDoSiteModal = ({ aberto, onFechar, onConfirmar, modo = 'emp
     setLendo(true);
     setDados(null);
     setAvancada(false);
+    setCoresEditadas([]);
     try {
       const { data, error } = await supabase.functions.invoke('extrair-identidade-site', {
         body: { url: url.trim() },
@@ -115,11 +119,17 @@ export const ImportarDoSiteModal = ({ aberto, onFechar, onConfirmar, modo = 'emp
   const setCampo = (campo: keyof IdentidadeImportada, valor: string) =>
     setDados((d) => (d ? { ...d, [campo]: valor } : d));
 
-  const setCor = (chave: string, valor: string) =>
+  const setCor = (chave: string, valor: string) => {
+    setCoresEditadas((atuais) => atuais.includes(chave) ? atuais : [...atuais, chave]);
     setDados((d) => (d ? { ...d, paleta: { ...d.paleta, [chave]: valor } } : d));
+  };
 
   const confirmar = async () => {
     if (!dados) return;
+    if (dados.cores_detectadas.length === 0 && coresEditadas.length < 2) {
+      toast.error('Confirme manualmente pelo menos duas cores da marca antes de continuar.');
+      return;
+    }
     setSalvando(true);
     try {
       await onConfirmar(dados);
@@ -197,12 +207,14 @@ export const ImportarDoSiteModal = ({ aberto, onFechar, onConfirmar, modo = 'emp
                   {dados.cores_detectadas.map((c) => (
                     <span key={c.hex} className="flex items-center gap-2 rounded border px-2 py-1 text-xs">
                       <span className="h-4 w-4 rounded-full border" style={{ backgroundColor: c.hex }} />
-                      {c.hex}
+                      {c.hex}{c.origem ? ` · ${c.origem.replaceAll('_', ' ')}` : ''}
                     </span>
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground">Nenhuma cor foi lida no código do site.</p>
+                <p className="text-xs text-muted-foreground">
+                  Nenhuma cor confiável foi lida. Confirme manualmente pelo menos duas cores abaixo.
+                </p>
               )}
 
               <div className="grid grid-cols-2 gap-3 pt-2 sm:grid-cols-4">
@@ -244,7 +256,9 @@ export const ImportarDoSiteModal = ({ aberto, onFechar, onConfirmar, modo = 'emp
               <div className="flex-1">
                 <Label className="text-xs">Logo encontrada</Label>
                 {dados.logo_url ? (
-                  <p className="truncate text-xs text-muted-foreground">{dados.logo_url}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {dados.logo_url}{dados.logo_origem ? ` · ${dados.logo_origem.replaceAll('_', ' ')}` : ''}
+                  </p>
                 ) : (
                   <p className="text-xs text-muted-foreground">Nenhuma logo encontrada — anexe o arquivo depois.</p>
                 )}

@@ -227,13 +227,13 @@ export const HookCena: React.FC<{ c: Paleta; arranjo?: number; logoUrl?: string 
               padding: "18px 26px",
             }}
           >
-            <Img src={logoUrl} style={{ height: 96, maxWidth: 320, objectFit: "contain" }} />
+            <Img src={logoUrl} style={{ height: 140, maxWidth: 420, objectFit: "contain" }} />
           </div>
         </div>
       ) : null}
       <div
         style={{
-          marginTop: logoUrl ? 300 : 0,
+          marginTop: logoUrl ? 340 : 0,
           alignSelf: centralizado ? "center" : "flex-start",
         }}
       >
@@ -320,9 +320,9 @@ export const CtaCena: React.FC<
     <AbsoluteFill style={{ ...font, alignItems: "center", justifyContent: "center" }}>
       <div
         style={{
-          width: 200,
-          height: 200,
-          borderRadius: 52,
+          width: 260,
+          height: 260,
+          borderRadius: 62,
           background: logoUrl ? c.bg2 : `linear-gradient(135deg, ${c.destaque}, ${c.destaqueSoft})`,
           display: "flex",
           alignItems: "center",
@@ -338,7 +338,7 @@ export const CtaCena: React.FC<
           boxShadow: `0 40px 90px ${rgba(c.destaque, ehClaro(c.bg) ? 0.18 : 0.32)}`,
         }}
       >
-        {logoUrl ? <Img src={logoUrl} style={{ width: 164, height: 164, objectFit: "contain" }} /> : dentroDoBloco}
+        {logoUrl ? <Img src={logoUrl} style={{ width: 220, height: 220, objectFit: "contain" }} /> : dentroDoBloco}
       </div>
       {!logoUrl && nomeLongo ? (
         <div

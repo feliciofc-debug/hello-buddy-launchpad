@@ -58,6 +58,7 @@ import {
   duracaoEstimada,
   duracaoPedidaNoTexto,
   estiloPedidoNoTexto,
+  normalizarSiteMotion,
   PALETA_PADRAO,
   ROTULO_DURACAO,
   ROTULO_ESTILO,
@@ -1932,6 +1933,7 @@ type PendingVideoSetupStage =
 type VideoPaletteOption = {
   hex: string;
   role: "Principal" | "Secundária" | "Fundo" | "Texto";
+  origem?: string;
 };
 
 type PendingVideoSetupState = {
@@ -6156,16 +6158,21 @@ async function askSitePaletteConfirmation(
 ): Promise<void> {
   if (!extractionFailed) await sendPalettePreview(ctx, options, logoPath);
   const summary = options.map((item, index) => `${index + 1}. ${item.role} ${item.hex.toUpperCase()}`).join("\n");
+  const provenance = options
+    .filter((item) => item.origem)
+    .map((item) => `${item.hex.toUpperCase()}: ${item.origem}`)
+    .join("\n");
   await sendVideoInteractiveList(ctx, {
     header: "🎨 Cores do site",
     body: extractionFailed
-      ? "Não consegui extrair cores confiáveis desse site. Como você quer seguir?"
-      : `Encontrei esta paleta:\n${summary}\n\nResponda *confirmar* ou ajuste: “tira a 3”, “troca a principal pela 2”, “usa #00a88a e #0b1f6b”.`,
+      ? "Não consegui ler a identidade do site. Me manda o logo e as cores da marca — não vou inventar uma paleta."
+      : `Encontrei estas candidatas:\n${summary}${provenance ? `\n\nOrigem auditável:\n${provenance}` : ""}\n\nConfirme com o responsável ou ajuste: “tira a 3”, “troca a principal pela 2”, “usa #00a88a e #0b1f6b”.`,
     button: "Confirmar cores",
     section: "Identidade do cliente",
     rows: extractionFailed
       ? [
-        { id: "video_palette_default", title: "Usar paleta padrão", description: "Continuar para o roteiro" },
+        { id: "video_identity_send_logo", title: "Enviar logo agora", description: "Anexar o arquivo pelo WhatsApp" },
+        { id: "video_identity_manual_colors", title: "Informar as cores", description: "Responder com pelo menos dois códigos hex" },
         { id: "video_palette_retry", title: "Informar outro site", description: "Tentar uma URL diferente" },
       ]
       : [
@@ -6277,7 +6284,7 @@ async function criarRascunhoVideoMotion(
     logoPath: options.logoPath,
     semLogoTenant: options.semLogoTenant,
   });
-  if (options.site) roteiro.props.site = options.site.replace(/^https?:\/\//i, "").replace(/\/$/, "");
+  if (options.site) roteiro.props.site = normalizarSiteMotion(options.site);
   const token = videoDraftToken();
   const { error } = await sb.from("video_motion_rascunhos").insert({
     user_id: ctx.userId,
@@ -6350,11 +6357,30 @@ async function prepareClientSiteIdentity(
 ): Promise<string> {
   const layerA = await lerIdentidadeDoSite(url);
   const identity = await completeSiteIdentityWithRenderedPage(ctx.userId, layerA);
-  const colors = identity.cores_detectadas.map((item) => item.hex).filter(Boolean);
+  const detectedColors = Array.isArray(identity.cores_detectadas) ? identity.cores_detectadas : [];
+  const colors = detectedColors.map((item) => item.hex).filter(Boolean);
   const candidates = paletteBrandCandidates(colors);
-  const paletteOptions = paletteOptionsFromColors(candidates);
+  const originsByColor = new Map(
+    detectedColors.map((item) => [item.hex.toLowerCase(), item.origem || "origem_desconhecida"]),
+  );
+  const paletteOptions = paletteOptionsFromColors(candidates).map((option) => ({
+    ...option,
+    origem: originsByColor.get(option.hex.toLowerCase())
+      ?? (option.role === "Fundo" || option.role === "Texto" ? "apoio_calculado" : "origem_desconhecida"),
+  }));
   const extracted = candidates.length >= 1;
   const logoPath = await uploadTemporarySiteLogo(ctx.userId, identity.logo_data_url);
+  console.log("[video-setup][identity-provenance]", JSON.stringify({
+    user_id: ctx.userId,
+    site: identity.url,
+    logo: identity.logo_url ? { url: identity.logo_url, origem: identity.logo_origem } : null,
+    cores: detectedColors.map((item) => ({
+      hex: item.hex,
+      peso: item.peso,
+      origem: item.origem,
+    })),
+    html_util: String(identity.texto_base || "").length >= 120,
+  }));
   const next: PendingVideoSetupState = {
     ...setup,
     stage: extracted ? "awaiting_palette_primary" : "awaiting_palette_confirmation",
@@ -6366,7 +6392,7 @@ async function prepareClientSiteIdentity(
     palette_options: extracted ? paletteOptions : undefined,
     palette_candidates: extracted ? candidates : undefined,
     palette_primary: undefined,
-    cores: extracted ? paletteFromOptions(paletteOptions) : PALETA_PADRAO,
+    cores: extracted ? paletteFromOptions(paletteOptions) : undefined,
   };
   if (!await persistVideoSetup(ctx, next)) {
     if (logoPath) await sb.storage.from("tenant-logos").remove([logoPath]);
@@ -6378,8 +6404,10 @@ async function prepareClientSiteIdentity(
     await askSitePaletteConfirmation(ctx, paletteOptions, true, logoPath);
   }
   return extracted
-    ? "Extraí as cores da logo. Escolha a principal tocando na lista acima."
-    : "Não encontrei cores confiáveis. Escolha na lista acima como continuar.";
+    ? detectedColors.some((item) => String(item.origem || "").includes("logo"))
+      ? "Extraí cores da logo. Escolha a principal tocando na lista acima."
+      : "Encontrei cores na página renderizada, mas não na logo. Confira com o responsável e escolha a principal."
+    : "Não consegui ler a identidade do site. Me manda o logo e as cores da marca — você pode anexar o arquivo aqui no WhatsApp.";
 }
 
 async function finalizeVideoSetup(
@@ -6763,6 +6791,12 @@ async function handlePendingVideoSetup(
   }
 
   if (setup.stage === "awaiting_palette_confirmation") {
+    if (interactiveId === "video_identity_send_logo" || /enviar logo/.test(n)) {
+      return "Anexe agora o arquivo da logo em PNG, JPEG ou WEBP. Depois, envie pelo menos duas cores da marca em hexadecimal, por exemplo: #112233 e #AABBCC.";
+    }
+    if (interactiveId === "video_identity_manual_colors" || /informar as cores/.test(n)) {
+      return "Envie pelo menos duas cores confirmadas da marca em hexadecimal, por exemplo: principal #112233 e secundária #AABBCC.";
+    }
     if (interactiveId === "video_palette_retry" || /informar outro site/.test(n)) {
       if (setup.logo_path) await sb.storage.from("tenant-logos").remove([setup.logo_path]);
       const next = {
@@ -6778,7 +6812,10 @@ async function handlePendingVideoSetup(
       await persistVideoSetup(ctx, next);
       return "Envie a nova URL do site do cliente.";
     }
-    if (interactiveId === "video_palette_default" || /usar paleta padrao|usar paleta padrão/.test(n)) {
+    if (
+      (setup.palette_options?.length ?? 0) > 0
+      && (interactiveId === "video_palette_default" || /usar paleta padrao|usar paleta padrão/.test(n))
+    ) {
       return await finalizeVideoSetup(ctx, { ...setup, cores: PALETA_PADRAO });
     }
     if (
@@ -6786,6 +6823,9 @@ async function handlePendingVideoSetup(
       || /usar estas cores|usar cores encontradas/.test(n)
       || /^(confirmar|confirmo|confirmado|pode usar|sim)$/.test(n)
     ) {
+      if (!setup.cores || (setup.palette_options?.length ?? 0) === 0) {
+        return "Ainda não tenho cores confirmadas. Envie pelo menos duas cores em hexadecimal ou anexe a logo da marca.";
+      }
       return await finalizeVideoSetup(ctx, setup);
     }
     const adjusted = adjustPaletteOptions(response, setup.palette_options ?? []);
@@ -10165,6 +10205,77 @@ async function processOne(queueId: string) {
     const freshLibraryMedia = media.filter((m) => m.kind === "image" || m.kind === "video");
     if (freshLibraryMedia.length > 0) {
       const contexto = (userText || freshLibraryMedia.map((m) => m.caption).filter(Boolean).join(" ") || "").trim();
+      const stateConversation = {
+        id: conv.id,
+        userId,
+        contactNumber: row.from_number,
+      };
+      const freshAgentState = await loadAgentState(sb, stateConversation);
+      const pendingVideoIdentity = fromIsOwner ? freshAgentState.pending_video_setup : null;
+      const incomingLogo = freshLibraryMedia.find((item) => item.kind === "image");
+      const waitingForClientLogo = pendingVideoIdentity?.identidade === "client"
+        && pendingVideoIdentity.stage === "awaiting_palette_confirmation"
+        && (!pendingVideoIdentity.cores || (pendingVideoIdentity.palette_options?.length ?? 0) === 0);
+      if (waitingForClientLogo && incomingLogo) {
+        const logoPath = await uploadTemporarySiteLogo(
+          userId,
+          `data:${incomingLogo.mime};base64,${incomingLogo.base64}`,
+        );
+        let reply: string;
+        if (!logoPath) {
+          reply = "Não consegui salvar essa logo. Envie em PNG, JPEG ou WEBP com até 5 MB.";
+        } else {
+          const previousLogoPath = pendingVideoIdentity.logo_path;
+          const nextSetup = { ...pendingVideoIdentity, logo_path: logoPath };
+          const persisted = await persistVideoSetup({
+            userId,
+            fromNumber: row.from_number,
+            convId: conv.id,
+            agentState: freshAgentState,
+          }, nextSetup);
+          if (!persisted) {
+            await sb.storage.from("tenant-logos").remove([logoPath]);
+          } else if (
+            previousLogoPath
+            && previousLogoPath !== logoPath
+            && previousLogoPath.startsWith(`${userId}/video-site/`)
+          ) {
+            await sb.storage.from("tenant-logos").remove([previousLogoPath]);
+          }
+          reply = persisted
+            ? "Logo recebida e vinculada somente a este vídeo. Agora envie pelo menos duas cores confirmadas da marca em hexadecimal, por exemplo: #112233 e #AABBCC."
+            : "Recebi a logo, mas não consegui vinculá-la ao pedido. Envie o arquivo novamente.";
+        }
+
+        const { data: outMsg } = await sb
+          .from("whatsapp_cloud_messages")
+          .insert({
+            conversation_id: conv.id,
+            user_id: userId,
+            direction: "outbound",
+            sender: "agent",
+            content: reply,
+            message_type: "text",
+          })
+          .select("id")
+          .single();
+        try {
+          const sentId = await sendWhatsApp(userId, row.from_number, reply);
+          if (sentId && outMsg?.id) {
+            await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
+          }
+        } catch (error) {
+          const sendError = error instanceof Error ? error.message : String(error);
+          await failQueue(row.id, `send_failed: ${sendError}`);
+          return { ok: false, reason: "send_failed", error: sendError };
+        }
+        await sb.from("whatsapp_cloud_conversations")
+          .update({ last_message_at: new Date().toISOString() })
+          .eq("id", conv.id);
+        await doneQueue(row.id);
+        return { ok: true, video_client_logo_received: !!logoPath };
+      }
+
       const salvos = await Promise.all(freshLibraryMedia.map((m) => salvarItemMidiaBiblioteca(m, { userId, fromNumber: row.from_number }, contexto)));
       if (fromIsOwner) {
         await Promise.all(
@@ -10186,12 +10297,6 @@ async function processOne(queueId: string) {
       const savedPhotos = salvos
         .filter((item) => item.tipo === "foto")
         .map((item) => ({ id: item.id, url: item.url, context: contexto }));
-      const stateConversation = {
-        id: conv.id,
-        userId,
-        contactNumber: row.from_number,
-      };
-      const freshAgentState = await loadAgentState(sb, stateConversation);
       const priorPending = freshAgentState.pending_image_composition;
       const priorPendingAge = priorPending?.at
         ? Date.now() - new Date(priorPending.at).getTime()

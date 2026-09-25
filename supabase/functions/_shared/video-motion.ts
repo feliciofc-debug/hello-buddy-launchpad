@@ -182,6 +182,20 @@ const limparBruto = (s: unknown, max: number) =>
     .slice(0, max)
     .trim();
 
+/** Converte links Markdown/URLs em um endereço curto e próprio para exibição. */
+export function normalizarSiteMotion(valor: unknown, max = 40): string {
+  let site = String(valor ?? "").replace(/\s+/g, " ").trim();
+  const markdown = site.match(/^\[[^\]]*]\(\s*<?([^)\s>]+)>?\s*\)$/);
+  if (markdown) site = markdown[1];
+  site = site
+    .replace(/^<|>$/g, "")
+    .replace(/^https?:\/\//i, "")
+    .replace(/[)\],.;:!?]+$/g, "")
+    .replace(/\/+$/g, "")
+    .trim();
+  return site.slice(0, max);
+}
+
 /** Corta respeitando a palavra e sinalizando o corte — nunca "campanhas d". */
 export const cortarFrase = (s: string, max: number): string => {
   const t = String(s ?? "").replace(/\s+/g, " ").trim();
@@ -391,7 +405,7 @@ export function normalizarProps(
 
   const cores = { ...PALETA_PADRAO, ...(bruto?.cores || {}) };
   const marca = marcaBase || "Sua marca";
-  const site = removerVestigiosAmz(limparBruto(bruto?.site ?? ctx.site, 40), marca);
+  const site = removerVestigiosAmz(normalizarSiteMotion(bruto?.site ?? ctx.site), marca);
 
   // ---- biblioteca de templates ----
   const estilo: EstiloMotion = ESTILOS_MOTION.includes(ctx.estilo as EstiloMotion)

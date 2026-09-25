@@ -3,8 +3,17 @@ import {
   assertExists,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { resolverLogoMotion } from "./video-motion-enfileirar.ts";
+import { normalizarSiteMotion } from "./video-motion.ts";
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
+
+Deno.test("normaliza site em Markdown para URL limpa", () => {
+  assertEquals(
+    normalizarSiteMotion("[www.casaraolustres.com.br](https://www.casaraolustres.com.br)"),
+    "www.casaraolustres.com.br",
+  );
+  assertEquals(normalizarSiteMotion("https://cliente.com.br/catalogo/"), "cliente.com.br/catalogo");
+});
 
 function fakeSupabase(rows: Record<string, unknown>) {
   const queried: string[] = [];
