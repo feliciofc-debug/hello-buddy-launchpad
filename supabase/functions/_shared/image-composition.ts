@@ -25,7 +25,7 @@ export function isImageCompositionIntent(value: string): boolean {
 
   const action =
     /\b(coloca|colocar|ponha|poe|por|instala|instalar|simula|simular|insere|inserir|aplica|aplicar|monta|montar)\b/.test(text) ||
-    /\bcomo (?:vai |iria )?ficar\b/.test(text);
+    /\bcomo (?:fica|ficaria|(?:vai |iria )?ficar)\b/.test(text);
   const placement =
     /\b(no|na|nos|nas|sobre|em cima|dentro|ambiente|sala|quarto|cozinha|mesa|parede|teto|casa|espaco)\b/.test(text);
   const demonstrativeProduct =
