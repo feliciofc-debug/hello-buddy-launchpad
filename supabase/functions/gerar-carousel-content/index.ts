@@ -12,13 +12,15 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { prompt, tema, user_id: userIdBody } = await req.json()
+    const { prompt, tema, user_id: userIdBody, neutral_copy: neutralCopy = false } = await req.json()
 
     const sbAdmin = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     )
-    const copyStyle = await getCopyStyle(sbAdmin, userIdBody || userIdDoRequest(req))
+    const copyStyle = neutralCopy
+      ? { promptBlock: '' }
+      : await getCopyStyle(sbAdmin, userIdBody || userIdDoRequest(req))
     if (!prompt || !tema) {
       return new Response(JSON.stringify({ error: 'prompt e tema são obrigatórios' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
@@ -35,7 +37,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
         messages: [
-          { role: 'system', content: 'Você gera conteúdo JSON para carrosséis de Instagram. Responda APENAS JSON válido, sem markdown, sem ```.' },
+          { role: 'system', content: 'Você gera conteúdo JSON para carrosséis de Instagram. Não use emojis em títulos nem no texto dos slides. Responda APENAS JSON válido, sem markdown, sem ```.' },
           { role: 'user', content: `${prompt}\n${copyStyle.promptBlock}` }
         ],
         temperature: 0.7,
@@ -55,8 +57,8 @@ Deno.serve(async (req) => {
                       type: "object",
                       properties: {
                         type: { type: "string", enum: ["cover", "content", "cta"] },
-                        title: { type: "string", description: "Título curto e impactante" },
-                        body: { type: "string", description: "Texto explicativo (apenas para slides content)" },
+                        title: { type: "string", description: "Título curto e impactante, sem emojis" },
+                        body: { type: "string", description: "Tópicos em linhas separadas por \\n, sem emojis" },
                         number: { type: "number", description: "Número do slide (apenas para content)" }
                       },
                       required: ["type", "title"]

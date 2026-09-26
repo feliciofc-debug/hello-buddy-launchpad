@@ -6,7 +6,18 @@ import { decode as base64Decode } from "https://deno.land/std@0.168.0/encoding/b
 import { buildSystemPrompt, AMZ_KNOWLEDGE } from "../_shared/agent-soul.ts";
 import { AMZ_TENANT_ID as ADMIN_AMZ_USER_ID } from "../_shared/amz-tenant.ts";
 import { buildAmzContext, OWNER_PHONE, resolveTenantOwner, isAmzOwnerAltPhone } from "../_shared/amz-context.ts";
-import { getTenantBusinessContext, buildCarouselPrompt } from "../_shared/business-context.ts";
+import {
+  buildCarouselPrompt,
+  buildProspectDemoCarouselPrompt,
+  getTenantBusinessContext,
+} from "../_shared/business-context.ts";
+import {
+  requestedCarouselSlideCount,
+  sanitizeCarouselSlides,
+  sanitizeProspectDemoCaption,
+  sanitizeProspectDemoSlides,
+  sendCarouselCardsInOrder,
+} from "../_shared/carousel-content.ts";
 
 // ---------------------------------------------------------------------------
 // Multi-tenant owner registry (populado no início de cada processMessage).
@@ -2024,6 +2035,7 @@ function buildForwardProof(wamid?: string | null): string {
 type PendingCarouselState = {
   stage: "awaiting_color" | "awaiting_confirmation";
   tema: string;
+  num_slides?: number;
   cor?: string;
   slides?: any[];
   caption?: string;
@@ -8266,6 +8278,7 @@ const TOOLS = [
         properties: {
           tema: { type: "string", description: "Assunto/tema do carrossel, como o usuário pediu (ex: '5 dicas para vender mais no Instagram')." },
           cor: { type: "string", description: "Cor de destaque escolhida PELO USUÁRIO: azul, verde, laranja, preto, dourado ou roxo. Deixe VAZIO na primeira chamada para eu perguntar com a lista de 1 toque." },
+          num_slides: { type: "number", description: "Quantidade pedida, de 3 a 10. Sem pedido explícito, use 7." },
           legenda: { type: "string", description: "Legenda do post, se o usuário ditou uma. Vazio = a IA escreve a legenda com hashtags." },
         },
         required: ["tema"],
@@ -8627,17 +8640,36 @@ async function registrarCarrosselNaBiblioteca(
   return parent.id;
 }
 
+async function loadProspectCarouselBranch(userId: string, fromNumber: string): Promise<string | null> {
+  const { data, error } = await sb
+    .from("jarvis_leads")
+    .select("ramo")
+    .eq("user_id", userId)
+    .eq("telefone", fromNumber)
+    .maybeSingle();
+  if (error) {
+    console.warn("[carrossel-demo][ramo_lookup_failed]", error.message);
+    return null;
+  }
+  return String(data?.ramo || "").trim() || null;
+}
+
 async function enviarPreviewCarrossel(
   ctx: { userId: string; fromNumber: string },
   imageUrls: string[],
   startIndex = 0,
-  maxCards = 3,
+  maxCards = imageUrls.length,
 ): Promise<void> {
-  const total = imageUrls.length;
-  const end = Math.min(total, startIndex + maxCards);
-  for (let index = startIndex; index < end; index++) {
-    await sendWhatsApp(ctx.userId, ctx.fromNumber, `Card ${index + 1} de ${total}`, imageUrls[index]);
-  }
+  await sendCarouselCardsInOrder({
+    imageUrls,
+    startIndex,
+    maxCards,
+    send: async (url, index, total) => {
+      await sendWhatsApp(ctx.userId, ctx.fromNumber, `Card ${index + 1} de ${total}`, url);
+    },
+    pause: wait,
+    logger: (message) => console.log(message),
+  });
 }
 
 async function cancelarPreviewCarrosselAnterior(token: string | undefined, userId: string): Promise<void> {
@@ -8763,7 +8795,15 @@ async function prepararPreviewCarrosselExistente(
 }
 
 async function toolCriarCarrossel(
-  args: { tema?: string; cor?: string; legenda?: string; ajuste?: string; slides?: any[]; facebook_requested?: boolean },
+  args: {
+    tema?: string;
+    cor?: string;
+    legenda?: string;
+    ajuste?: string;
+    slides?: any[];
+    num_slides?: number;
+    facebook_requested?: boolean;
+  },
   ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState; demonstracao?: boolean },
 ): Promise<string> {
   try {
@@ -8779,6 +8819,12 @@ async function toolCriarCarrossel(
 
     const tema = (args?.tema || "").trim();
     if (tema.length < 3) return JSON.stringify({ erro: "informe o tema/assunto do carrossel" });
+    const numSlides = Array.isArray(args.slides) && args.slides.length >= 3
+      ? Math.min(10, args.slides.length)
+      : requestedCarouselSlideCount(
+        Number.isFinite(args.num_slides) ? `${args.num_slides} cards` : tema,
+        demoProspect,
+      );
 
     // 1) COR — se não vier (ou vier irreconhecível), manda a LISTA de 1 toque e para aqui.
     const cor = resolveCarouselColor(args?.cor);
@@ -8789,6 +8835,7 @@ async function toolCriarCarrossel(
       const pending: PendingCarouselState = {
         stage: "awaiting_color",
         tema,
+        num_slides: numSlides,
         caption: args?.legenda,
         facebook_requested: !!args?.facebook_requested,
         created_at: new Date().toISOString(),
@@ -8838,30 +8885,71 @@ async function toolCriarCarrossel(
         mensagem: "Seu Instagram não está conectado. Vá em Configurações → Redes Sociais, conecte a conta e me chama de novo.",
       });
     }
-    const businessName = (conn?.page_name || "").trim() || null;
-    const profileHandle = conn?.ig_username ? `@${String(conn.ig_username).replace(/^@/, "")}` : null;
+    const businessName = demoProspect ? null : (conn?.page_name || "").trim() || null;
+    const profileHandle = demoProspect || !conn?.ig_username
+      ? null
+      : `@${String(conn.ig_username).replace(/^@/, "")}`;
 
     // 4) CONTEÚDO dos slides — MESMO gerador E MESMA metodologia do app
     //    (buildCarouselPrompt espelha src/components/CarouselGenerator.tsx:
     //     4-5 tópicos densos por card) + CONTEXTO REAL do negócio do tenant.
-    const business = await getTenantBusinessContext(sb, ctx.userId, { nomeFallback: businessName });
-    let prompt = buildCarouselPrompt({ tema, numSlides: 7, business });
+    const business = demoProspect
+      ? null
+      : await getTenantBusinessContext(sb, ctx.userId, { nomeFallback: businessName });
+    const prospectBranch = demoProspect
+      ? await loadProspectCarouselBranch(ctx.userId, ctx.fromNumber)
+      : null;
+    let prompt = demoProspect
+      ? buildProspectDemoCarouselPrompt({ tema, ramo: prospectBranch, numSlides })
+      : buildCarouselPrompt({ tema, numSlides, business });
     if (args?.ajuste && Array.isArray(args?.slides) && args.slides.length >= 2) {
       prompt += `\n\nCARROSSEL ATUAL:\n${JSON.stringify(args.slides)}\n\nAJUSTE OBRIGATÓRIO DO DONO: ${args.ajuste}\nPreserve todos os cards e textos que não foram citados no ajuste.`;
     }
     console.log("[criar_carrossel] contexto_do_negocio", {
-      tem_contexto: business.temContexto,
-      produtos: business.produtos.length,
+      demonstracao: demoProspect,
+      num_slides: numSlides,
+      ramo_prospect: prospectBranch,
+      tem_contexto: business?.temContexto ?? false,
+      produtos: business?.produtos.length ?? 0,
     });
 
-    const conteudo = Array.isArray(args?.slides) && args.slides.length >= 2 && !args?.ajuste
+    let conteudo = Array.isArray(args?.slides) && args.slides.length >= 2 && !args?.ajuste
       ? { slides: args.slides, caption: args?.legenda || tema }
-      : await callEdge("gerar-carousel-content", { prompt, tema }, 90000);
-    const slides = Array.isArray(conteudo?.slides) ? conteudo.slides : [];
-    if (slides.length < 2) {
-      return JSON.stringify({ erro: "conteudo_insuficiente", detalhe: "a IA não devolveu slides suficientes; peça pra tentar de novo" });
+      : await callEdge("gerar-carousel-content", {
+        prompt,
+        tema,
+        user_id: ctx.userId,
+        neutral_copy: demoProspect,
+      }, 90000);
+    let slides = Array.isArray(conteudo?.slides)
+      ? demoProspect
+        ? sanitizeProspectDemoSlides(conteudo.slides)
+        : sanitizeCarouselSlides(conteudo.slides)
+      : [];
+    if ((!args?.slides || args?.ajuste) && slides.length !== numSlides) {
+      console.warn(`[criar_carrossel] quantidade_incorreta recebida=${slides.length} esperada=${numSlides}; tentando novamente`);
+      conteudo = await callEdge("gerar-carousel-content", {
+        prompt: `${prompt}\n\nCORREÇÃO OBRIGATÓRIA: a resposta anterior não trouxe a quantidade pedida. Retorne EXATAMENTE ${numSlides} slides.`,
+        tema,
+        user_id: ctx.userId,
+        neutral_copy: demoProspect,
+      }, 90000);
+      slides = Array.isArray(conteudo?.slides)
+        ? demoProspect
+          ? sanitizeProspectDemoSlides(conteudo.slides)
+          : sanitizeCarouselSlides(conteudo.slides)
+        : [];
     }
-    const caption = (args?.legenda || conteudo?.caption || tema).toString();
+    if (slides.length !== numSlides) {
+      return JSON.stringify({
+        erro: "quantidade_slides_incorreta",
+        detalhe: `a IA devolveu ${slides.length} cards; eram esperados ${numSlides}`,
+      });
+    }
+    const generatedCaption = (args?.legenda || conteudo?.caption || tema).toString();
+    const caption = demoProspect
+      ? sanitizeProspectDemoCaption(generatedCaption, tema)
+      : generatedCaption;
 
     // 5) RENDER server-side (Satori + resvg) — template dark-premium
     const render = await callEdge("render-carousel-slides", {
@@ -8872,11 +8960,14 @@ async function toolCriarCarrossel(
       secondaryColor: cor.secondaryColor,
       businessName,
       profileHandle,
-      incluir_logo: true,
+      incluir_logo: !demoProspect,
     }, 180000);
     const imageUrls: string[] = Array.isArray(render?.image_urls) ? render.image_urls : [];
-    if (imageUrls.length < 2) {
-      return JSON.stringify({ erro: "falha_no_render", detalhe: "não consegui gerar as imagens dos cards" });
+    if (imageUrls.length !== slides.length) {
+      return JSON.stringify({
+        erro: "falha_no_render",
+        detalhe: `foram renderizados ${imageUrls.length} de ${slides.length} cards`,
+      });
     }
 
     const mediaId = await registrarCarrosselNaBiblioteca(ctx, tema, imageUrls);
@@ -8915,6 +9006,7 @@ async function toolCriarCarrossel(
       const pending: PendingCarouselState = {
         stage: "awaiting_confirmation",
         tema,
+        num_slides: numSlides,
         cor: cor.label,
         slides,
         caption,
@@ -9906,6 +9998,7 @@ async function callGemini(
       const r = await toolCriarCarrossel({
         tema: pendingCarousel.tema,
         cor: novaCor,
+        num_slides: pendingCarousel.num_slides,
         legenda: pendingCarousel.caption,
         slides: pendingCarousel.slides,
         ajuste: colorChange && !alsoChangesContent ? undefined : userContent,
@@ -9955,6 +10048,7 @@ async function callGemini(
       const { result: r } = await runTool("criar_carrossel", {
         tema,
         cor: corPedida,
+        num_slides: requestedCarouselSlideCount(userContent, !remetenteEhDono),
         facebook_requested: requestedFacebook(userContent),
       }, toolCtx);
       return { text: formatCarrosselToolResult(r) };
@@ -9971,6 +10065,7 @@ async function callGemini(
       const { result: r } = await runTool("criar_carrossel", {
         tema: pendingCarousel.tema,
         cor: corResposta,
+        num_slides: pendingCarousel.num_slides,
         legenda: pendingCarousel.caption,
         facebook_requested: pendingCarousel.facebook_requested,
       }, toolCtx);
