@@ -79,6 +79,7 @@ Deno.test("reply sem repetição conserva formatação", () => {
 });
 
 Deno.test("Pietro conduz imagem e carrossel com uma pergunta por vez", () => {
+  const prompt = AMZ_KNOWLEDGE.replace(/\s+/g, " ");
   for (const trecho of [
     "Me diz um produto ou serviço seu",
     "chame gerar_imagem",
@@ -86,6 +87,6 @@ Deno.test("Pietro conduz imagem e carrossel com uma pergunta por vez", () => {
     "chame criar_carrossel",
     "ofereça a mesma demonstração novamente",
   ]) {
-    assertEquals(AMZ_KNOWLEDGE.includes(trecho), true);
+    assertEquals(prompt.includes(trecho), true);
   }
 });
