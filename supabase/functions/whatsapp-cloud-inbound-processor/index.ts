@@ -4442,7 +4442,7 @@ function detectPlainSocialPostConfirmation(text: string): { cancelar?: boolean }
   const normalized = normalizePt(text || "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
   if (!normalized) return null;
   if (/^(cancela|cancelar|nao posta|nao publicar|descarta|deixa pra la)$/.test(normalized)) return { cancelar: true };
-  if (/^(sim|ok|ta bom|tudo certo|pode|pode postar|posta|postar|publica|publique|confirmo|confirma|manda|manda ver|vai|aprovado|pode publicar agora)$/.test(normalized)) return {};
+  if (/^(sim|ok|ta bom|tudo certo|pode|pode postar|posta|postar|publica|publique|publicar agora|confirmo|confirma|manda|manda ver|vai|aprovado|pode publicar agora)$/.test(normalized)) return {};
   return null;
 }
 
@@ -5058,7 +5058,9 @@ async function toolAgendarPostPendente(
 
   const when = formatScheduledDate(scheduledDate);
   const networks = formatSocialNetworks(scheduledNetworks);
-  const warning = hasTikTok ? " O TikTok não foi agendado e precisa ser publicado na hora." : "";
+  const warning = hasTikTok
+    ? ' O TikTok não foi agendado e precisa ser publicado na hora; responda "publicar agora" para enviá-lo.'
+    : "";
   return JSON.stringify({
     ok: true,
     status: "agendado",
@@ -5092,7 +5094,12 @@ async function loadScheduledSocialGroups(userId: string): Promise<ScheduledSocia
   for (const row of data ?? []) {
     const token = String(row.approval_token || "");
     if (!token || !row.scheduled_at) continue;
-    const group = grouped.get(token) ?? { token, scheduledAt: row.scheduled_at, networks: [], rowIds: [] };
+    const group = grouped.get(token) ?? {
+      token,
+      scheduledAt: row.scheduled_at,
+      networks: [] as string[],
+      rowIds: [] as string[],
+    };
     group.networks.push(row.platform);
     group.rowIds.push(row.id);
     grouped.set(token, group);
@@ -9083,6 +9090,15 @@ async function callGemini(
       const parsed = JSON.parse(result);
       return { text: String(parsed?.mensagem || "Não consegui cancelar o agendamento.") };
     }
+    const standaloneScheduleToken = userContent.trim().match(/^[a-f0-9]{8}$/i)?.[0]?.toLowerCase();
+    if (remetenteEhDono && standaloneScheduleToken) {
+      const groups = await loadScheduledSocialGroups(toolCtx.userId).catch(() => []);
+      if (groups.some((group) => group.token.toLowerCase() === standaloneScheduleToken)) {
+        const result = await toolCancelarAgendamentoPost({ token: standaloneScheduleToken }, toolCtx);
+        const parsed = JSON.parse(result);
+        return { text: String(parsed?.mensagem || "Não consegui cancelar o agendamento.") };
+      }
+    }
     if (remetenteEhDono && socialInteractive?.[1]?.startsWith("social_publish:")) {
       const result = await toolConfirmarPostagemRedes({ token: socialInteractive[2] }, toolCtx);
       return {
@@ -12426,7 +12442,6 @@ Regras:
         primaryReply,
         generatedImageUrl,
         hasFollowUps ? undefined : interactiveList,
-        hasFollowUps ? undefined : interactiveButtons,
       );
       if (sentId && outMsg?.id) {
         await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
@@ -12442,7 +12457,6 @@ Regras:
             part,
             undefined,
             isLast ? interactiveList : undefined,
-            isLast ? interactiveButtons : undefined,
           );
         } catch (e) {
           console.error("[pietro][followup_send_failed]", (e as Error).message ?? e);
@@ -12450,6 +12464,17 @@ Regras:
           // pergunta A/B/C depois de uma mensagem de opções que falhou.
           throw e;
         }
+      }
+      if (interactiveButtons) {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        await sendWhatsApp(
+          userId,
+          row.from_number,
+          interactiveButtons.body,
+          undefined,
+          undefined,
+          interactiveButtons,
+        );
       }
     } catch (e) {
       sendError = String((e as Error).message ?? e);

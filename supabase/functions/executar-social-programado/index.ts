@@ -169,13 +169,43 @@ serve(async (req) => {
             throw new Error(`Plataforma não suportada pelo executor: ${post.platform}`)
           }
 
+          if (
+            post.platform === 'instagram'
+            && publishResult?.retryable === true
+            && typeof publishResult?.creation_id === 'string'
+          ) {
+            await supabase.from('social_posts_queue')
+              .update({
+                status: 'pendente',
+                error_message: publishResult.error || 'Instagram ainda está processando o vídeo',
+                instagram_creation_id: publishResult.creation_id,
+                instagram_container_status: publishResult.container_status || 'IN_PROGRESS',
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', post.id)
+            results.push({
+              id: post.id,
+              platform: post.platform,
+              success: false,
+              retryable: true,
+              creation_id: publishResult.creation_id,
+            })
+            continue
+          }
+
           if (publishResult?.success || publishResult?.post_id) {
             await supabase.from('social_posts_queue')
               .update({
                 status: 'publicado',
                 fb_post_id: publishResult.post_id || publishResult.id,
                 published_at: now.toISOString(),
-                updated_at: now.toISOString()
+                updated_at: now.toISOString(),
+                ...(post.platform === 'instagram'
+                  ? {
+                    instagram_creation_id: null,
+                    instagram_container_status: 'PUBLISHED',
+                  }
+                  : {}),
               })
               .eq('id', post.id)
 

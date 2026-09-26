@@ -89,7 +89,7 @@ serve(async (req) => {
           ...(interactive_buttons.header
             ? { header: { type: 'text', text: String(interactive_buttons.header).slice(0, 60) } }
             : {}),
-          body: { text: String(interactive_buttons.body || message || 'Escolha uma opção').slice(0, 1024) },
+          body: { text: String(message || interactive_buttons.body || 'Escolha uma opção').slice(0, 1024) },
           ...(interactive_buttons.footer
             ? { footer: { text: String(interactive_buttons.footer).slice(0, 60) } }
             : {}),
