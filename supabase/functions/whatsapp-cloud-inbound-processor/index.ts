@@ -48,6 +48,11 @@ import {
   selectLatestImplicitMediaId,
 } from "../_shared/owner-media-intent.ts";
 import {
+  canRunSocialPostAction,
+  selectSocialVariantScripts,
+  socialApprovalButtons,
+} from "../_shared/social-approval-flow.ts";
+import {
   catalogImageUrl,
   environmentLikelihood,
   IMAGE_COMPOSITION_ESTIMATED_COST_USD,
@@ -3419,9 +3424,9 @@ type PendingSocialPost = {
   produto: any;
   tom: string;
   redes: string[];
-  scripts: Record<string, string>; // variante ATIVA por rede (default: A)
+  scripts: Record<string, string>; // cópia persistida por rede; A é só preview até escolha explícita
   variantes?: Record<string, PostVariantes>; // 3 opções por rede
-  variantSelecionada?: "A" | "B" | "C"; // default "A"
+  variantSelecionada?: "A" | "B" | "C"; // ausente até o dono escolher explicitamente
   userId: string;
   createdAt: number;
   formato?: "feed" | "story" | "reels";
@@ -4264,13 +4269,11 @@ function formatSocialPostToolResult(raw: string): string {
       const avisoFacebook = data?.aviso_facebook ? `<<SPLIT>>⚠️ ${data.aviso_facebook}` : "";
       const previewInfo = Number(data.cards) > 3 ? " Enviei os 3 primeiros; se quiser ver os demais, é só pedir." : "";
       const resumo = `Carrossel pronto: ${data.cards} cards. ID da mídia: ${data.media_code}. Ainda não publiquei.${previewInfo}`;
-      const pergunta = `Escolha *A*, *B* ou *C* para trocar a legenda — ou use uma ação abaixo com a opção A.\n\nOu responda: *agendar sexta às 10h*.`;
+      const pergunta = "Antes de publicar ou agendar, escolha o texto: *A*, *B* ou *C*.";
       blocosPreview[blocosPreview.length - 1] += `\n\n${pergunta}`;
       return `${resumo}${avisoFacebook}<<SPLIT>>Preparei 3 opções de legenda 👇<<SPLIT>>${blocosPreview.join("<<SPLIT>>")}`;
     }
-    const pergunta = data?.formato === "story"
-      ? `Qual você prefere? Responde *A*, *B* ou *C*.\n\nStory pelo WhatsApp só pode ser publicado agora.`
-      : `Qual você prefere? Responde *A*, *B* ou *C*.\n\nPara usar a opção A, escolha uma ação abaixo — ou responda: *agendar sexta às 10h*.`;
+    const pergunta = "Qual texto você prefere? Escolha *A*, *B* ou *C*.";
     const cabecalho = `Preparei 3 opções 👇${aviso}${avisoReels}`;
 
     // A pergunta viaja no MESMO balão que contém opções. Assim, uma falha no
@@ -4286,8 +4289,12 @@ function formatSocialPostToolResult(raw: string): string {
       .join("\n\n");
     const action = data?.formato === "story"
       ? "Story pelo WhatsApp só pode ser publicado agora."
-      : "Escolha *Publicar agora* ou *Agendar*. Você também pode responder: *agendar sexta às 10h*.";
+      : "Agora escolha *Publicar agora* ou *Agendar*.";
     return `✅ Opção *${opcao}* selecionada.<<SPLIT>>${preview}<<SPLIT>>${action}`;
+  }
+
+  if (data?.status === "escolha_variante_necessaria") {
+    return data.mensagem || "Antes, escolha o texto: A, B ou C.";
   }
 
   if (data?.status === "aguardando_confirmacao") {
@@ -4365,25 +4372,51 @@ type WhatsAppInteractiveButtons = {
 function interactiveButtonsFromSocialResult(raw: string): WhatsAppInteractiveButtons | undefined {
   try {
     const data = JSON.parse(raw);
-    if (!["aguardando_escolha_variante", "variante_selecionada"].includes(String(data?.status))) return undefined;
+    const status = String(data?.status);
+    if (!["aguardando_escolha_variante", "escolha_variante_necessaria", "variante_selecionada"].includes(status)) return undefined;
     const token = String(data?.token || "").trim().toLowerCase();
     if (!/^[a-f0-9]{8}$/.test(token)) return undefined;
     const isStory = data?.formato === "story";
+    const selected = status === "variante_selecionada" ? data?.opcao_ativa : undefined;
+    const buttonKeys = socialApprovalButtons(selected, isStory);
+    if (!selected) {
+      return {
+        header: "Escolha o texto",
+        body: "Antes de publicar ou agendar, escolha uma opção.",
+        buttons: buttonKeys.map((key) => {
+          const option = key.slice(-1);
+          return { id: `social_variant:${option}:${token}`, title: `Opção ${option}` };
+        }),
+      };
+    }
     return {
       header: "Aprovar criativo",
       body: isStory
         ? "Story pelo WhatsApp só pode ser publicado agora."
         : "Publique agora ou escolha agendar. Para informar a data por texto, responda: agendar sexta às 10h.",
-      buttons: isStory
-        ? [{ id: `social_publish:${token}`, title: "Publicar agora" }]
-        : [
-          { id: `social_publish:${token}`, title: "Publicar agora" },
-          { id: `social_schedule:${token}`, title: "Agendar" },
-        ],
+      buttons: buttonKeys.map((key) => key === "publish"
+        ? { id: `social_publish:${token}`, title: "Publicar agora" }
+        : { id: `social_schedule:${token}`, title: "Agendar" }),
     };
   } catch {
     return undefined;
   }
+}
+
+function variantSelectionRequiredResult(
+  token: string,
+  pending: PendingSocialPost,
+): string {
+  return JSON.stringify({
+    ok: false,
+    status: "escolha_variante_necessaria",
+    erro: "variante_nao_selecionada",
+    mensagem: "Antes, escolha o texto: A, B ou C.",
+    token,
+    formato: pending.formato || "feed",
+    redes: pending.redes,
+    variantes: pending.variantes,
+  });
 }
 
 function interactiveListFromSocialResult(raw: string): WhatsAppInteractiveList | undefined {
@@ -4819,7 +4852,7 @@ async function toolPostarRedesSociais(
     }
 
     const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    const pending: PendingSocialPost = { produto: prod, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), incluirCtaWhatsapp: incluirCta };
+    const pending: PendingSocialPost = { produto: prod, tom, redes, scripts, variantes, userId: ctx.userId, createdAt: Date.now(), incluirCtaWhatsapp: incluirCta };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
 
@@ -4830,10 +4863,9 @@ async function toolPostarRedesSociais(
       tom,
       redes,
       variantes, // { facebook: {A,B,C}, instagram: {A,B,C}, ... }
-      opcao_ativa: "A",
       cta_whatsapp: incluirCta,
       cta_nota: ctaNota,
-      instrucoes: `Mostre as 3 OPÇÕES (A, B, C) de forma clara, uma em cada bloco separado, usando os textos de \`variantes\` (se houver mais de uma rede, mostre por rede — mas se o texto for parecido entre redes, mostre 1 vez só). Formato exemplo:\n\n*Opção A — Direta*\n<texto A>\n\n*Opção B — História*\n<texto B>\n\n*Opção C — Interativa*\n<texto C>\n\nDepois pergunte: "Qual você prefere? Responde *A*, *B* ou *C*."\n${incluirCta ? "" : "Se ainda não incluiu CTA de WhatsApp, pergunte também se quer incluir. "}Quando o dono responder "A" / "B" / "C" / "opção B" etc, chame escolher_variante_post com token="${token}" e opcao=<letra>. Se ele mandar ajuste de texto, chame revisar_post_pendente. Se confirmar ('pode postar'), chame confirmar_postagem_redes. Se pedir data futura, chame agendar_post_pendente.`,
+      instrucoes: `FASE 1: mostre as 3 OPÇÕES (A, B, C) e peça uma escolha. Não ofereça publicar nem agendar antes disso. ${incluirCta ? "" : "Se ainda não incluiu CTA de WhatsApp, pergunte também se quer incluir. "}Ao escolher A/B/C, chame escolher_variante_post com token="${token}". Se pedir ajuste, chame revisar_post_pendente; as novas opções voltam à FASE 1.`,
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
@@ -4867,6 +4899,10 @@ async function toolConfirmarPostagemRedes(
       ctx.agentState = current;
     }
     return JSON.stringify({ status: "cancelado" });
+  }
+
+  if (!canRunSocialPostAction(p.variantSelecionada)) {
+    return variantSelectionRequiredResult(token, p);
   }
 
   if (p.midiaTipo === "carrossel") {
@@ -4996,6 +5032,9 @@ async function toolAgendarPostPendente(
   const pending = PENDING_POSTS.get(token) ?? await loadPendingSocialPost(token, ctx.userId);
   if (!pending || pending.userId !== ctx.userId) {
     return JSON.stringify({ ok: false, erro: "token_nao_encontrado", mensagem: "Não encontrei esse criativo aguardando confirmação." });
+  }
+  if (!canRunSocialPostAction(pending.variantSelecionada)) {
+    return variantSelectionRequiredResult(token, pending);
   }
   if (pending.formato === "story") {
     return JSON.stringify({
@@ -5273,7 +5312,6 @@ async function toolRevisarPostPendente(
 
   // Se ajuste vazio (apenas toggle de CTA), reaproveita variantes atuais sem regerar.
   let variantes: Record<string, PostVariantes>;
-  const selecionada: "A" | "B" | "C" = p.variantSelecionada || "A";
   if (ajuste.length < 2 && toggleCta) {
     // Remove CTA anterior de todas as variantes; será reaplicado abaixo se incluirCta.
     const stripCta = (s: string) => (s || "").replace(/\n{1,2}📱 Fale comigo no WhatsApp:.*$/i, "").trimEnd();
@@ -5329,7 +5367,7 @@ async function toolRevisarPostPendente(
   }
 
   const scripts: Record<string, string> = Object.fromEntries(
-    Object.entries(variantes).map(([r, v]) => [r, v[selecionada] || v.A])
+    Object.entries(variantes).map(([r, v]) => [r, v.A])
   );
 
   // Atualiza social_posts_queue.
@@ -5343,7 +5381,13 @@ async function toolRevisarPostPendente(
     }));
   }
 
-  const atualizado: PendingSocialPost = { ...p, scripts, variantes, variantSelecionada: selecionada, incluirCtaWhatsapp: incluirCta };
+  const atualizado: PendingSocialPost = {
+    ...p,
+    scripts,
+    variantes,
+    variantSelecionada: undefined,
+    incluirCtaWhatsapp: incluirCta,
+  };
   PENDING_POSTS.set(token, atualizado);
   await updatePendingSocialPostMarker(token, atualizado);
 
@@ -5354,10 +5398,9 @@ async function toolRevisarPostPendente(
     formato: p.formato || "feed",
     redes: p.redes,
     variantes,
-    opcao_ativa: selecionada,
     cta_whatsapp: incluirCta,
     cta_nota: ctaNota,
-    instrucoes: `Mostre as 3 OPÇÕES A/B/C REVISADAS de forma clara (uma por bloco). Se responder A/B/C: chame escolher_variante_post. Se pedir novo ajuste: chame revisar_post_pendente de novo com token="${token}". Se confirmar: chame confirmar_postagem_redes com token="${token}". Se pedir data futura: chame agendar_post_pendente com o mesmo token.`,
+    instrucoes: `FASE 1 novamente: mostre as opções A/B/C revisadas e exija uma escolha. Não publique nem agende antes disso. Se responder A/B/C, chame escolher_variante_post. Se pedir novo ajuste, chame revisar_post_pendente com token="${token}".`,
   });
 }
 
@@ -5380,7 +5423,7 @@ async function toolEscolherVariantePost(
   if (!p.variantes) return JSON.stringify({ erro: "esse post não tem variantes — use confirmar_postagem_redes direto" });
 
   const scripts: Record<string, string> = Object.fromEntries(
-    Object.entries(p.variantes).map(([r, v]) => [r, v[opcao] || v.A])
+    Object.entries(p.variantes).map(([r, v]) => [r, selectSocialVariantScripts(v, opcao)])
   );
 
   const atualizado: PendingSocialPost = { ...p, scripts, variantSelecionada: opcao };
@@ -6001,7 +6044,7 @@ async function toolPostarMidiaBiblioteca(
     }
 
     const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo, incluirCtaWhatsapp: incluirCta, briefing: briefing || undefined };
+    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, variantes, userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo, incluirCtaWhatsapp: incluirCta, briefing: briefing || undefined };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
     const avisoFormato = formato === "story"
@@ -6029,14 +6072,13 @@ async function toolPostarMidiaBiblioteca(
       tom,
       redes,
       variantes,
-      opcao_ativa: "A",
       midia_usada: midiaUsada,
       midia_usada_enviada: true,
       aviso_formato: avisoFormato,
       aviso_reels: avisoReels,
       cta_whatsapp: incluirCta,
       cta_nota: ctaNota,
-      instrucoes: `Diga o formato ("vou postar como ${formato.toUpperCase()}" — cite as redes) e mostre as 3 OPÇÕES A/B/C do texto de forma clara e separada, usando os textos de \`variantes\`.${perguntaCta} Quando o dono responder "A"/"B"/"C"/"opção X", chame escolher_variante_post com token="${token}" e opcao=<letra>. Se pedir ajuste no texto, chame revisar_post_pendente com token="${token}" e ajuste=<instrução literal>. Se confirmar ("pode postar"), chame confirmar_postagem_redes. Se informar data futura, chame agendar_post_pendente.`,
+      instrucoes: `FASE 1: diga o formato, mostre A/B/C e exija a escolha do texto antes de publicar ou agendar.${perguntaCta} Ao responder A/B/C, chame escolher_variante_post com token="${token}". Se pedir ajuste, chame revisar_post_pendente; as novas opções voltam à FASE 1.`,
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
@@ -7814,7 +7856,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "confirmar_postagem_redes",
-      description: "Confirma e PUBLICA de fato o post nas redes sociais usando o token devolvido por postar_redes_sociais. Chame SOMENTE após o usuário aprovar explicitamente o preview ('pode postar', 'confirma', 'manda ver', 'sim'). Se pedir cancelar, passe cancelar=true.",
+      description: "Confirma e PUBLICA de fato o post. Só funciona DEPOIS que o dono escolheu explicitamente A, B ou C com escolher_variante_post; nunca presuma A. Se pedir cancelar, passe cancelar=true.",
       parameters: {
         type: "object",
         properties: {
@@ -7829,7 +7871,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "agendar_post_pendente",
-      description: "Agenda um criativo que está aguardando confirmação. Use quando o responsável disser 'agendar amanhã 18h', 'agenda pra sexta às 10' etc. Resolva a expressão usando a data/hora atual de São Paulo do system prompt e envie data_hora_sp em YYYY-MM-DD HH:MM. Só confirme ao usuário se retornar ok=true. TikTok não é agendado.",
+      description: "Agenda um criativo somente DEPOIS que o dono escolheu explicitamente A, B ou C. Nunca presuma A. Resolva a expressão usando a data/hora atual de São Paulo e envie data_hora_sp em YYYY-MM-DD HH:MM. Só confirme se retornar ok=true. TikTok não é agendado.",
       parameters: {
         type: "object",
         properties: {
@@ -8457,7 +8499,6 @@ async function prepararPreviewCarrosselExistente(
     redes: ["instagram"],
     scripts: { instagram: variantesBase.A },
     variantes,
-    variantSelecionada: "A",
     userId: ctx.userId,
     createdAt: Date.now(),
     formato: "feed",
@@ -8502,7 +8543,6 @@ async function prepararPreviewCarrosselExistente(
     media_code: idCurto(parentId),
     redes: ["instagram"],
     variantes,
-    opcao_ativa: "A",
     aviso_facebook: options.facebookRequested ? "Carrossel pelo WhatsApp está disponível apenas no Instagram; não publiquei no Facebook." : undefined,
   });
 }
@@ -9109,7 +9149,9 @@ async function callGemini(
       : remetenteEhDono ? await findLatestPendingSocialToken(toolCtx.userId) : null;
     const pendingVideoDraft = remetenteEhDono ? await buscarRascunhoVideo(toolCtx) : null;
     const normalizedInput = normalizePt(userContent);
-    const socialInteractive = userContent.match(/<<INTERACTIVE_ID:(social_(?:publish|schedule):([a-f0-9]{8}))>>/i);
+    const socialInteractiveId = userContent.match(/<<INTERACTIVE_ID:(social_[^>]+)>>/i)?.[1] || "";
+    const socialActionInteractive = socialInteractiveId.match(/^social_(publish|schedule):([a-f0-9]{8})$/i);
+    const socialVariantInteractive = socialInteractiveId.match(/^social_variant:([ABC]):([a-f0-9]{8})$/i);
     const ownerMediaIntent = classifyOwnerMediaIntent(userContent);
 
     if (remetenteEhDono && /\bmeus agendamentos\b/.test(normalizedInput)) {
@@ -9131,15 +9173,37 @@ async function callGemini(
         return { text: String(parsed?.mensagem || "Não consegui cancelar o agendamento.") };
       }
     }
-    if (remetenteEhDono && socialInteractive?.[1]?.startsWith("social_publish:")) {
-      const result = await toolConfirmarPostagemRedes({ token: socialInteractive[2] }, toolCtx);
+    if (remetenteEhDono && socialVariantInteractive) {
+      const result = await toolEscolherVariantePost({
+        token: socialVariantInteractive[2],
+        opcao: socialVariantInteractive[1],
+      }, toolCtx);
+      return {
+        text: formatSocialPostToolResult(result),
+        interactiveButtons: interactiveButtonsFromSocialResult(result),
+      };
+    }
+    if (remetenteEhDono && socialActionInteractive?.[1]?.toLowerCase() === "publish") {
+      const result = await toolConfirmarPostagemRedes({ token: socialActionInteractive[2] }, toolCtx);
       return {
         text: formatSocialPostToolResult(result),
         interactiveList: interactiveListFromSocialResult(result),
+        interactiveButtons: interactiveButtonsFromSocialResult(result),
       };
     }
-    if (remetenteEhDono && socialInteractive?.[1]?.startsWith("social_schedule:")) {
-      return { text: "Para quando? Ex.: sexta às 10h" };
+    if (remetenteEhDono && socialActionInteractive?.[1]?.toLowerCase() === "schedule") {
+      const token = socialActionInteractive[2].toLowerCase();
+      const pending = PENDING_POSTS.get(token) ?? await loadPendingSocialPost(token, toolCtx.userId);
+      if (!pending || !canRunSocialPostAction(pending.variantSelecionada)) {
+        const result = pending
+          ? variantSelectionRequiredResult(token, pending)
+          : JSON.stringify({ erro: "token_nao_encontrado", mensagem: "Não encontrei esse criativo aguardando confirmação." });
+        return {
+          text: formatSocialPostToolResult(result),
+          interactiveButtons: interactiveButtonsFromSocialResult(result),
+        };
+      }
+      return { text: "Para quando? Informe o dia/mês e a hora. Ex.: 30/09 às 10h" };
     }
     if (
       remetenteEhDono
@@ -9148,7 +9212,16 @@ async function callGemini(
         normalizedInput.replace(/<<interactive id:[^>]+>>/g, "").trim(),
       )
     ) {
-      return { text: "Para quando? Ex.: sexta às 10h" };
+      const pending = PENDING_POSTS.get(latestPendingSocialToken)
+        ?? await loadPendingSocialPost(latestPendingSocialToken, toolCtx.userId);
+      if (pending && !canRunSocialPostAction(pending.variantSelecionada)) {
+        const result = variantSelectionRequiredResult(latestPendingSocialToken, pending);
+        return {
+          text: formatSocialPostToolResult(result),
+          interactiveButtons: interactiveButtonsFromSocialResult(result),
+        };
+      }
+      return { text: "Para quando? Informe o dia/mês e a hora. Ex.: 30/09 às 10h" };
     }
 
     // Precedência de mídia do dono: gerar > postar > editar. Uma geração
@@ -9450,6 +9523,7 @@ async function callGemini(
       return {
         text: formatSocialPostToolResult(confirmResult),
         interactiveList: interactiveListFromSocialResult(confirmResult),
+        interactiveButtons: interactiveButtonsFromSocialResult(confirmResult),
       };
     }
 
@@ -9466,7 +9540,10 @@ async function callGemini(
         token: latestPendingSocialToken!,
         ajuste: plainCopyAdjustment,
       }, toolCtx);
-      return { text: formatSocialPostToolResult(revisedResult) };
+      return {
+        text: formatSocialPostToolResult(revisedResult),
+        interactiveButtons: interactiveButtonsFromSocialResult(revisedResult),
+      };
     }
 
     // 0) Postagem em redes sociais: atalho determinístico para não deixar o modelo "prometer" preview sem chamar a tool.
@@ -9484,6 +9561,7 @@ async function callGemini(
       return {
         text: formatSocialPostToolResult(confirmResult),
         interactiveList: interactiveListFromSocialResult(confirmResult),
+        interactiveButtons: interactiveButtonsFromSocialResult(confirmResult),
       };
     }
 
@@ -9890,6 +9968,7 @@ async function callGemini(
               imageUrl: pendingImageUrl,
               forwardProof,
               forwardAttempted,
+              interactiveButtons: interactiveButtonsFromSocialResult(result),
             };
           } catch {
             return {
@@ -9914,6 +9993,7 @@ async function callGemini(
           }
           if (
             st === "aguardando_escolha_variante"
+            || st === "escolha_variante_necessaria"
             || st === "variante_selecionada"
             || st === "aguardando_privacidade_tiktok"
             || st === "aguardando_retry_instagram"
@@ -12180,7 +12260,11 @@ Regras:
             const formato = formatoFromPendingMarker(marker);
             const midiaTipo = midiaTipoFromPendingMarker(marker);
             const redes = [...new Set(pendRows.map((r: any) => r.platform))].join(", ");
-            pendingConfirmBlock = `\n\nPOST PENDENTE AGUARDANDO ESCOLHA DE VARIANTE, PUBLICAÇÃO OU AGENDAMENTO (últimos 10 min):\n- token: ${token}\n- formato: ${formato}\n- mídia: ${midiaTipo}\n- redes: ${redes}\n- variante ativa: A (default) — o dono pode trocar pra B ou C.\n\nCOMO ROTEAR A PRÓXIMA MENSAGEM DO DONO:\n1. ESCOLHA DE VARIANTE ("A", "B", "C", "a", "b", "c", "opção A", "opção B", "opção C", "a primeira", "a segunda", "a terceira", "quero a B", "gostei da C"): chame IMEDIATAMENTE escolher_variante_post com token="${token}" e opcao=<A|B|C>.\n2. CONFIRMAÇÃO curta ("pode postar", "publica", "manda", "manda ver", "vai", "posta", "confirma", "sim", "ok", "tá bom, pode postar"): chame IMEDIATAMENTE confirmar_postagem_redes com token="${token}" (publica a variante ativa).\n3. AGENDAMENTO ("agendar amanhã 18h", "agenda pra sexta às 10", "dia 30 às 9 da manhã"): resolva a data absoluta com o cabeçalho de horário de São Paulo e chame IMEDIATAMENTE agendar_post_pendente com token="${token}" e data_hora_sp="YYYY-MM-DD HH:MM". Se não houver data/hora, pergunte exatamente: "Para quando? Ex.: sexta às 10h". Só afirme que agendou se a ferramenta retornar ok=true.\n4. AJUSTE NO TEXTO/SCRIPT ("tira o ACABA HOJE", "põe o preço 89,90", "deixa mais curto", "muda o tom pra profissional", "adiciona que tem garantia", "refaz mais leve", "tira o emoji"): chame IMEDIATAMENTE revisar_post_pendente com token="${token}" e ajuste=<instrução literal do dono>. NÃO recrie o post do zero, NÃO chame postar_midia_biblioteca.\n5. MUDANÇA DE ESCOPO clara (trocar rede, mudar formato feed↔story↔reels, trocar de mídia): aí sim recrie via postar_midia_biblioteca.\n6. Ambíguo ("tá bom, deixa mais curto"): trate como AJUSTE (regra 4) — só publique com confirmação explícita.\n- "meus agendamentos": chame listar_agendamentos_posts.\n- "cancelar agendamento": chame cancelar_agendamento_post; se houver vários, mostre as opções devolvidas e não escolha sozinho.\n- NÃO chame postar_midia_biblioteca só pra reformular texto, trocar variante ou agendar — use as tools acima.`;
+            const selectedVariant = decodePendingPostState(marker)?.variantSelecionada;
+            const phase = canRunSocialPostAction(selectedVariant)
+              ? `FASE 2 — texto escolhido: ${selectedVariant}. Agora o dono pode publicar ou agendar.`
+              : "FASE 1 — nenhum texto foi escolhido. É PROIBIDO presumir a opção A ou executar publicação/agendamento.";
+            pendingConfirmBlock = `\n\nPOST PENDENTE (últimos 10 min):\n- token: ${token}\n- formato: ${formato}\n- mídia: ${midiaTipo}\n- redes: ${redes}\n- ${phase}\n\nCOMO ROTEAR:\n1. ESCOLHA A/B/C: chame escolher_variante_post com token="${token}".\n2. PUBLICAR: só depois de A/B/C escolhido, chame confirmar_postagem_redes. Sem escolha, responda: "Antes, escolha o texto: A, B ou C."\n3. AGENDAR: só depois de A/B/C escolhido, chame agendar_post_pendente. Se faltar data, pergunte: "Para quando? Informe o dia/mês e a hora. Ex.: 30/09 às 10h".\n4. AJUSTE: chame revisar_post_pendente; isso gera novas opções e volta obrigatoriamente à FASE 1.\n5. MUDANÇA DE ESCOPO (rede, formato ou mídia): recrie via postar_midia_biblioteca.\n- Nunca presuma A. As ferramentas também bloqueiam publicar/agendar sem escolha explícita.`;
           }
         }
       }
