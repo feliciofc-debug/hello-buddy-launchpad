@@ -50,7 +50,8 @@ export async function trimLogoImage(
   bytes: Uint8Array,
   mime: string,
 ): Promise<{ bytes: Uint8Array; mime: string; trimmed: boolean }> {
-  const normalizedMime = mime.split(";")[0].trim().toLowerCase();
+  const rawMime = mime.split(";")[0].trim().toLowerCase();
+  const normalizedMime = rawMime === "image/jpg" ? "image/jpeg" : rawMime;
   if (normalizedMime !== "image/png" && normalizedMime !== "image/jpeg") {
     return { bytes, mime: normalizedMime, trimmed: false };
   }

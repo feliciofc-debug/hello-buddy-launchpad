@@ -1,5 +1,6 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { findLogoContentBounds } from "./logo-image-trim.ts";
+import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
+import { findLogoContentBounds, trimLogoImage } from "./logo-image-trim.ts";
 
 Deno.test("recorta branco/transparente e preserva cerca de 4% de respiro", () => {
   const width = 100;
@@ -20,4 +21,20 @@ Deno.test("recorta branco/transparente e preserva cerca de 4% de respiro", () =>
     width: 54,
     height: 22,
   });
+});
+
+Deno.test("logo recortada é salva em PNG e formato não suportado fica intacto", async () => {
+  const image = new Image(100, 80);
+  image.fill(0xffffffff);
+  image.drawBox(25, 30, 50, 20, 0x14202cff);
+  const originalPng = new Uint8Array(await image.encode());
+  const processed = await trimLogoImage(originalPng, "image/png");
+  assertEquals(processed.trimmed, true);
+  assertEquals(processed.mime, "image/png");
+  const decoded = await Image.decode(processed.bytes);
+  assertEquals([decoded.width, decoded.height], [54, 22]);
+
+  const webp = new Uint8Array([1, 2, 3, 4]);
+  const untouched = await trimLogoImage(webp, "image/webp");
+  assertEquals(untouched, { bytes: webp, mime: "image/webp", trimmed: false });
 });

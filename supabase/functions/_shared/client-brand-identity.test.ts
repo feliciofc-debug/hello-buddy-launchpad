@@ -85,4 +85,13 @@ Deno.test("persiste logo por cliente e recupera antes pelo domínio", async () =
   assertEquals(found?.client_name, "Casarão Lustres");
   assertEquals(found?.logo_path, "tenant-1/client-brands/casarao-logo.png");
   assertEquals(found?.identity?.logo_origem, "whatsapp_manual");
+
+  await saveClientBrandIdentity(sb, {
+    userId: "tenant-2",
+    clientName: "Cliente Novo",
+    logoPath: "tenant-2/video-site/logo-temporaria.png",
+    identity: { logo_origem: "pagina_renderizada" },
+  });
+  const temporary = await findClientBrandIdentity(sb, "tenant-2", { name: "Cliente Novo" });
+  assertEquals(temporary?.logo_path, null);
 });

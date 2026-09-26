@@ -6549,7 +6549,9 @@ async function prepareClientSiteIdentity(
       ?? (option.role === "Fundo" || option.role === "Texto" ? "apoio_calculado" : "origem_desconhecida"),
   }));
   const extracted = candidates.length >= 1;
-  const savedLogoPath = savedIdentity?.logo_path && !savedIdentity.logo_path.includes("/video-site/")
+  const savedLogoPath = savedIdentity?.identity?.logo_origem === "whatsapp_manual"
+      && savedIdentity.logo_path
+      && !savedIdentity.logo_path.includes("/video-site/")
     ? savedIdentity.logo_path
     : undefined;
   const siteLogoCandidatePath = savedLogoPath
