@@ -22,6 +22,7 @@ Deno.test("resposta longa de lead vira no máximo três partes abaixo de 700 car
   assert(parts.length <= 3);
   assert(parts.length > 1);
   assert(parts.every((part) => part.length <= 700));
+  assert(parts.slice(0, -1).every((part) => /[.!?]$/.test(part)));
 });
 
 Deno.test("três mensagens seguidas deixam apenas a mais recente responder", () => {

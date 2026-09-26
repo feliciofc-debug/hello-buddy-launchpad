@@ -49,14 +49,36 @@ export function betweenPartsDelayForSenderMs(
 function shortenFinalPart(part: string): string {
   const suffix = " Se quiser, continuo na próxima mensagem.";
   const available = LEAD_CODE_SPLIT_LIMIT - suffix.length;
-  const shortened = splitWhatsAppText(part, available)[0]?.trim() || "";
+  const shortened = splitLeadTextAtSentences(part, available)[0]?.trim() || "";
   return `${shortened}${suffix}`.trim();
+}
+
+function splitLeadTextAtSentences(text: string, maxLength: number): string[] {
+  const transportSafe = splitWhatsAppText(text, 4000);
+  const result: string[] = [];
+  for (const transportPart of transportSafe) {
+    let remaining = transportPart.trim();
+    while (remaining.length > maxLength) {
+      const window = remaining.slice(0, maxLength + 1);
+      const sentenceEnds = [...window.matchAll(/[.!?](?=\s|$)/g)];
+      let boundary = sentenceEnds.at(-1)?.index;
+      if (boundary != null) boundary += 1;
+      if (!boundary || boundary < Math.floor(maxLength * 0.25)) {
+        boundary = window.lastIndexOf(" ");
+      }
+      if (boundary < 1) boundary = maxLength;
+      result.push(remaining.slice(0, boundary).trim());
+      remaining = remaining.slice(boundary).trimStart();
+    }
+    if (remaining) result.push(remaining);
+  }
+  return result;
 }
 
 export function prepareLeadReplyParts(reply: string): string[] {
   const parts = String(reply || "")
     .split("<<SPLIT>>")
-    .flatMap((part) => splitWhatsAppText(part.trim(), LEAD_CODE_SPLIT_LIMIT))
+    .flatMap((part) => splitLeadTextAtSentences(part.trim(), LEAD_CODE_SPLIT_LIMIT))
     .map((part) => part.trim())
     .filter(Boolean);
 
