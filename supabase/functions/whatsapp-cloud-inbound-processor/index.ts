@@ -4257,7 +4257,9 @@ function formatSocialPostToolResult(raw: string): string {
       blocosPreview[blocosPreview.length - 1] += `\n\n${pergunta}`;
       return `${resumo}${avisoFacebook}<<SPLIT>>Preparei 3 opções de legenda 👇<<SPLIT>>${blocosPreview.join("<<SPLIT>>")}`;
     }
-    const pergunta = `Qual você prefere? Responde *A*, *B* ou *C*.\n\nPara usar a opção A, escolha uma ação abaixo — ou responda: *agendar sexta às 10h*.`;
+    const pergunta = data?.formato === "story"
+      ? `Qual você prefere? Responde *A*, *B* ou *C*.\n\nStory pelo WhatsApp só pode ser publicado agora.`
+      : `Qual você prefere? Responde *A*, *B* ou *C*.\n\nPara usar a opção A, escolha uma ação abaixo — ou responda: *agendar sexta às 10h*.`;
     const cabecalho = `Preparei 3 opções 👇${aviso}${avisoReels}`;
 
     // A pergunta viaja no MESMO balão que contém opções. Assim, uma falha no
@@ -4271,7 +4273,10 @@ function formatSocialPostToolResult(raw: string): string {
     const preview = Object.entries(data.preview ?? {})
       .map(([rede, script]) => `*${String(rede).toUpperCase()}*\n${script}`)
       .join("\n\n");
-    return `✅ Opção *${opcao}* selecionada.<<SPLIT>>${preview}<<SPLIT>>Escolha *Publicar agora* ou *Agendar*. Você também pode responder: *agendar sexta às 10h*.`;
+    const action = data?.formato === "story"
+      ? "Story pelo WhatsApp só pode ser publicado agora."
+      : "Escolha *Publicar agora* ou *Agendar*. Você também pode responder: *agendar sexta às 10h*.";
+    return `✅ Opção *${opcao}* selecionada.<<SPLIT>>${preview}<<SPLIT>>${action}`;
   }
 
   if (data?.status === "aguardando_confirmacao") {
@@ -4352,13 +4357,18 @@ function interactiveButtonsFromSocialResult(raw: string): WhatsAppInteractiveBut
     if (!["aguardando_escolha_variante", "variante_selecionada"].includes(String(data?.status))) return undefined;
     const token = String(data?.token || "").trim().toLowerCase();
     if (!/^[a-f0-9]{8}$/.test(token)) return undefined;
+    const isStory = data?.formato === "story";
     return {
       header: "Aprovar criativo",
-      body: "Publique agora ou escolha agendar. Para informar a data por texto, responda: agendar sexta às 10h.",
-      buttons: [
-        { id: `social_publish:${token}`, title: "Publicar agora" },
-        { id: `social_schedule:${token}`, title: "Agendar" },
-      ],
+      body: isStory
+        ? "Story pelo WhatsApp só pode ser publicado agora."
+        : "Publique agora ou escolha agendar. Para informar a data por texto, responda: agendar sexta às 10h.",
+      buttons: isStory
+        ? [{ id: `social_publish:${token}`, title: "Publicar agora" }]
+        : [
+          { id: `social_publish:${token}`, title: "Publicar agora" },
+          { id: `social_schedule:${token}`, title: "Agendar" },
+        ],
     };
   } catch {
     return undefined;
@@ -4972,6 +4982,17 @@ async function toolAgendarPostPendente(
   if (!isOwner(ctx)) return JSON.stringify({ ok: false, erro: "acao_restrita_ao_responsavel" });
   const token = String(args?.token || "").trim().toLowerCase();
   if (!/^[a-f0-9]{8}$/.test(token)) return JSON.stringify({ ok: false, erro: "token_invalido", mensagem: "Não encontrei o criativo que deve ser agendado." });
+  const pending = PENDING_POSTS.get(token) ?? await loadPendingSocialPost(token, ctx.userId);
+  if (!pending || pending.userId !== ctx.userId) {
+    return JSON.stringify({ ok: false, erro: "token_nao_encontrado", mensagem: "Não encontrei esse criativo aguardando confirmação." });
+  }
+  if (pending.formato === "story") {
+    return JSON.stringify({
+      ok: false,
+      erro: "story_nao_agendavel",
+      mensagem: "Story ainda não pode ser agendado pelo WhatsApp. Posso publicar agora, ou você agenda pelo site em Story Foto (Agendar).",
+    });
+  }
   const scheduledDate = parseSaoPauloDateTime(args?.data_hora_sp);
   if (!scheduledDate) {
     return JSON.stringify({ ok: false, erro: "data_invalida", mensagem: "Informe a data no formato YYYY-MM-DD HH:MM, em horário de São Paulo." });
@@ -4980,10 +5001,6 @@ async function toolAgendarPostPendente(
     return JSON.stringify({ ok: false, erro: "data_muito_proxima", mensagem: "Escolha um horário com pelo menos 10 minutos de antecedência." });
   }
 
-  const pending = PENDING_POSTS.get(token) ?? await loadPendingSocialPost(token, ctx.userId);
-  if (!pending || pending.userId !== ctx.userId) {
-    return JSON.stringify({ ok: false, erro: "token_nao_encontrado", mensagem: "Não encontrei esse criativo aguardando confirmação." });
-  }
   const scheduledNetworks = pending.redes.filter((network) => network !== "tiktok");
   const hasTikTok = pending.redes.includes("tiktok");
   if (scheduledNetworks.length === 0) {
@@ -5384,6 +5401,7 @@ async function toolEscolherVariantePost(
     status: "variante_selecionada",
     token,
     opcao_ativa: opcao,
+    formato: atualizado.formato || "feed",
     preview: scripts,
     instrucoes: `Mostre que a Opção ${opcao} está ativa e ofereça publicar agora ou agendar. Se confirmar publicação, chame confirmar_postagem_redes com token="${token}". Se informar uma data futura, chame agendar_post_pendente com o mesmo token. Se pedir ajuste, chame revisar_post_pendente.`,
   });
