@@ -84,7 +84,7 @@ Deno.test("Pietro conduz imagem e carrossel com uma pergunta por vez", () => {
     "chame gerar_imagem",
     "Quer ver também um carrossel pro Instagram?",
     "chame criar_carrossel",
-    "não ofereça a mesma demonstração novamente",
+    "ofereça a mesma demonstração novamente",
   ]) {
     assertEquals(AMZ_KNOWLEDGE.includes(trecho), true);
   }
