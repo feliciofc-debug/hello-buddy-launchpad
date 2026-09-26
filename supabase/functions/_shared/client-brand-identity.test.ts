@@ -68,6 +68,15 @@ Deno.test("persiste logo por cliente e recupera antes pelo domínio", async () =
     clientName: "Casarão Lustres",
     siteUrl: "https://www.casaraolustres.com.br",
     logoPath: "tenant-1/client-brands/casarao-logo.png",
+    identity: { logo_origem: "whatsapp_manual" },
+  });
+
+  await saveClientBrandIdentity(sb, {
+    userId: "tenant-1",
+    clientName: "Casarão Lustres",
+    siteUrl: "https://www.casaraolustres.com.br",
+    logoPath: "tenant-1/video-site/logo-temporaria.png",
+    identity: { logo_origem: "pagina_renderizada" },
   });
 
   const found = await findClientBrandIdentity(sb, "tenant-1", {
@@ -75,4 +84,5 @@ Deno.test("persiste logo por cliente e recupera antes pelo domínio", async () =
   });
   assertEquals(found?.client_name, "Casarão Lustres");
   assertEquals(found?.logo_path, "tenant-1/client-brands/casarao-logo.png");
+  assertEquals(found?.identity?.logo_origem, "whatsapp_manual");
 });

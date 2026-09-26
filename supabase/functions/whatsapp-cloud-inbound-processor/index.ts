@@ -82,6 +82,7 @@ import {
   listClientBrandIdentityMatches,
   saveClientBrandIdentity,
 } from "../_shared/client-brand-identity.ts";
+import { trimLogoImage } from "../_shared/logo-image-trim.ts";
 
 import {
   entregarEbookTenant,
@@ -1934,6 +1935,7 @@ type PendingVideoSetupStage =
   | "awaiting_track_more"
   | "awaiting_identity"
   | "awaiting_site_url"
+  | "awaiting_site_logo_confirmation"
   | "awaiting_palette_primary"
   | "awaiting_palette_secondary"
   | "awaiting_palette_confirmation";
@@ -1959,6 +1961,7 @@ type PendingVideoSetupState = {
   site?: string;
   tom_de_voz?: string;
   logo_path?: string;
+  site_logo_candidate_path?: string;
   palette_options?: VideoPaletteOption[];
   palette_candidates?: string[];
   palette_primary?: string;
@@ -6008,11 +6011,17 @@ async function uploadClientLogoData(
   const match = String(dataUrl ?? "").match(/^data:(image\/(?:png|jpeg|webp|svg\+xml));base64,([\s\S]+)$/i);
   if (!match) return undefined;
   const mime = match[1].toLowerCase();
-  const ext = mime === "image/jpeg" ? "jpg" : mime === "image/svg+xml" ? "svg" : mime.split("/")[1];
-  const path = `${userId}/${folder}/${Date.now()}-${crypto.randomUUID().slice(0, 8)}-logo.${ext}`;
   const bytes = base64Decode(match[2]);
   if (bytes.length > 5 * 1024 * 1024) return undefined;
-  const { error } = await sb.storage.from("tenant-logos").upload(path, bytes, { contentType: mime, upsert: false });
+  const processed = await trimLogoImage(bytes, mime);
+  const ext = processed.mime === "image/jpeg"
+    ? "jpg"
+    : processed.mime === "image/svg+xml" ? "svg" : processed.mime.split("/")[1];
+  const path = `${userId}/${folder}/${Date.now()}-${crypto.randomUUID().slice(0, 8)}-logo.${ext}`;
+  const { error } = await sb.storage.from("tenant-logos").upload(path, processed.bytes, {
+    contentType: processed.mime,
+    upsert: false,
+  });
   if (error) {
     console.error("[video-setup][site-logo-upload]", error.message);
     return undefined;
@@ -6040,10 +6049,13 @@ async function uploadClientLogoFromMediaUrl(userId: string, mediaUrl: string): P
     if (!/^image\/(?:png|jpeg|webp|svg\+xml)$/i.test(mime)) return null;
     const bytes = new Uint8Array(await response.arrayBuffer());
     if (!bytes.length || bytes.length > 5 * 1024 * 1024) return null;
-    const ext = mime === "image/jpeg" ? "jpg" : mime === "image/svg+xml" ? "svg" : mime.split("/")[1];
+    const processed = await trimLogoImage(bytes, mime);
+    const ext = processed.mime === "image/jpeg"
+      ? "jpg"
+      : processed.mime === "image/svg+xml" ? "svg" : processed.mime.split("/")[1];
     const path = `${userId}/client-brands/${Date.now()}-${crypto.randomUUID().slice(0, 8)}-logo.${ext}`;
-    const { error } = await sb.storage.from("tenant-logos").upload(path, bytes, {
-      contentType: mime,
+    const { error } = await sb.storage.from("tenant-logos").upload(path, processed.bytes, {
+      contentType: processed.mime,
       upsert: false,
     });
     if (error) {
@@ -6314,6 +6326,33 @@ async function askSitePaletteConfirmation(
   });
 }
 
+async function askSiteLogoConfirmation(
+  ctx: { userId: string; fromNumber: string },
+  logoPath: string,
+): Promise<void> {
+  const { data, error } = await sb.storage.from("tenant-logos").createSignedUrl(logoPath, 3600);
+  if (error || !data?.signedUrl) {
+    console.warn("[video-setup][site-logo-preview]", error?.message || "URL assinada ausente");
+  } else {
+    await sendWhatsApp(
+      ctx.userId,
+      ctx.fromNumber,
+      "Encontrei esta imagem no site. Confirme se ela é realmente a logo do cliente:",
+      data.signedUrl,
+    );
+  }
+  await sendVideoInteractiveList(ctx, {
+    header: "🖼️ Logo encontrada",
+    body: "A imagem do site só será usada no vídeo se você confirmar. Sem confirmação, o vídeo segue sem logo.",
+    button: "Confirmar logo",
+    section: "Logo do cliente",
+    rows: [
+      { id: "video_site_logo_use", title: "Usar esta logo", description: "Confirmar a imagem mostrada" },
+      { id: "video_site_logo_reject", title: "Não é a logo", description: "Gerar sem esta imagem" },
+    ],
+  });
+}
+
 function normalizeVideoTopic(text: string): string {
   return compactSpaces(text)
     .replace(/^jarvis[,.!\s-]*/i, "")
@@ -6510,8 +6549,12 @@ async function prepareClientSiteIdentity(
       ?? (option.role === "Fundo" || option.role === "Texto" ? "apoio_calculado" : "origem_desconhecida"),
   }));
   const extracted = candidates.length >= 1;
-  const logoPath = savedIdentity?.logo_path
-    || await uploadTemporarySiteLogo(ctx.userId, identity.logo_data_url);
+  const savedLogoPath = savedIdentity?.logo_path && !savedIdentity.logo_path.includes("/video-site/")
+    ? savedIdentity.logo_path
+    : undefined;
+  const siteLogoCandidatePath = savedLogoPath
+    ? undefined
+    : await uploadTemporarySiteLogo(ctx.userId, identity.logo_data_url);
   const clientName = savedIdentity?.client_name
     || identity.nome_empresa
     || identity.dominio
@@ -6522,7 +6565,9 @@ async function prepareClientSiteIdentity(
       userId: ctx.userId,
       clientName,
       siteUrl: identity.url,
-      logoPath,
+      // /video-site/ é somente candidato para este fluxo. Só uma logo já
+      // persistida (normalmente whatsapp_manual) pode continuar definitiva.
+      logoPath: savedIdentity?.logo_path,
       identity: identity as unknown as Record<string, unknown>,
     });
   } catch (error) {
@@ -6541,27 +6586,34 @@ async function prepareClientSiteIdentity(
   }));
   const next: PendingVideoSetupState = {
     ...setup,
-    stage: extracted ? "awaiting_palette_primary" : "awaiting_palette_confirmation",
+    stage: siteLogoCandidatePath
+      ? "awaiting_site_logo_confirmation"
+      : extracted ? "awaiting_palette_primary" : "awaiting_palette_confirmation",
     identidade: "client",
     site: identity.url,
     marca: clientName,
     tom_de_voz: identity.tom_de_voz || setup.tom_de_voz,
-    logo_path: logoPath,
+    logo_path: savedLogoPath,
+    site_logo_candidate_path: siteLogoCandidatePath,
     palette_options: extracted ? paletteOptions : undefined,
     palette_candidates: extracted ? candidates : undefined,
     palette_primary: undefined,
     cores: extracted ? paletteFromOptions(paletteOptions) : undefined,
   };
   if (!await persistVideoSetup(ctx, next)) {
-    if (logoPath?.startsWith(`${ctx.userId}/video-site/`)) {
-      await sb.storage.from("tenant-logos").remove([logoPath]);
+    if (siteLogoCandidatePath) {
+      await sb.storage.from("tenant-logos").remove([siteLogoCandidatePath]);
     }
     return "Não consegui guardar a identidade encontrada. Não gerei o roteiro; tente novamente.";
   }
+  if (siteLogoCandidatePath) {
+    await askSiteLogoConfirmation(ctx, siteLogoCandidatePath);
+    return "Mostrei a imagem encontrada no site. Confirme se ela é a logo; sem confirmação, não vou usá-la.";
+  }
   if (extracted) {
-    await askPalettePrimary(ctx, candidates, paletteOptions, logoPath);
+    await askPalettePrimary(ctx, candidates, paletteOptions, savedLogoPath);
   } else {
-    await askSitePaletteConfirmation(ctx, paletteOptions, true, logoPath);
+    await askSitePaletteConfirmation(ctx, paletteOptions, true, savedLogoPath);
   }
   return extracted
     ? detectedColors.some((item) => String(item.origem || "").includes("logo"))
@@ -6787,12 +6839,18 @@ async function handlePendingVideoSetup(
 ): Promise<string> {
   const age = Date.now() - new Date(setup.created_at).getTime();
   if (!Number.isFinite(age) || age > 2 * 60 * 60 * 1000) {
+    if (setup.site_logo_candidate_path) {
+      await sb.storage.from("tenant-logos").remove([setup.site_logo_candidate_path]);
+    }
     await persistVideoSetup(ctx, null);
     return "As escolhas desse vídeo expiraram. Peça o vídeo novamente para recomeçar.";
   }
   if (isVideoCancellation(response)) {
     if (setup.logo_path?.startsWith(`${ctx.userId}/video-site/`)) {
       await sb.storage.from("tenant-logos").remove([setup.logo_path]);
+    }
+    if (setup.site_logo_candidate_path) {
+      await sb.storage.from("tenant-logos").remove([setup.site_logo_candidate_path]);
     }
     await persistVideoSetup(ctx, null);
     return "Pedido de vídeo cancelado. Não gerei roteiro nem renderizei nada.";
@@ -6888,6 +6946,43 @@ async function handlePendingVideoSetup(
       return `Encontrei a logo salva do ${saved.client_name}. Agora envie pelo menos duas cores confirmadas da marca, por exemplo: #112233 e #AABBCC.`;
     }
     return await prepareClientSiteIdentity(ctx, setup, url);
+  }
+
+  if (setup.stage === "awaiting_site_logo_confirmation") {
+    const accepted = interactiveId === "video_site_logo_use"
+      || /^(usar|use|confirmo|confirmar|sim|essa e a logo|essa é a logo)$/i.test(response.trim());
+    const rejected = interactiveId === "video_site_logo_reject"
+      || /^(nao|não|rejeitar|nao e a logo|não é a logo|gerar sem logo)$/i.test(response.trim());
+    if (!accepted && !rejected) {
+      if (setup.site_logo_candidate_path) {
+        await askSiteLogoConfirmation(ctx, setup.site_logo_candidate_path);
+      }
+      return "Confirme se a imagem mostrada é a logo do cliente ou escolha gerar sem ela.";
+    }
+    const candidatePath = setup.site_logo_candidate_path;
+    if (rejected && candidatePath) {
+      await sb.storage.from("tenant-logos").remove([candidatePath]);
+    }
+    const hasCandidates = (setup.palette_candidates?.length ?? 0) > 0;
+    const next = {
+      ...setup,
+      stage: (hasCandidates ? "awaiting_palette_primary" : "awaiting_palette_confirmation") as PendingVideoSetupStage,
+      logo_path: accepted ? candidatePath : undefined,
+      site_logo_candidate_path: undefined,
+    };
+    if (!await persistVideoSetup(ctx, next)) {
+      return "Não consegui guardar sua decisão sobre a logo. Não gerei o roteiro; tente novamente.";
+    }
+    if (hasCandidates) {
+      await askPalettePrimary(ctx, next.palette_candidates ?? [], next.palette_options ?? [], next.logo_path);
+      return accepted
+        ? "Logo confirmada somente para este vídeo. Agora escolha a cor principal."
+        : "Imagem descartada. O vídeo seguirá sem logo; agora escolha a cor principal.";
+    }
+    await askSitePaletteConfirmation(ctx, [], true, next.logo_path);
+    return accepted
+      ? "Logo confirmada somente para este vídeo. Agora envie pelo menos duas cores da marca."
+      : "Imagem descartada. O vídeo seguirá sem logo; agora envie pelo menos duas cores da marca.";
   }
 
   if (setup.stage === "awaiting_palette_primary") {
@@ -10515,9 +10610,7 @@ async function processOne(queueId: string) {
       const freshAgentState = await loadAgentState(sb, stateConversation);
       const pendingVideoIdentity = fromIsOwner ? freshAgentState.pending_video_setup : null;
       const incomingLogo = freshLibraryMedia.find((item) => item.kind === "image");
-      const waitingForClientLogo = pendingVideoIdentity?.identidade === "client"
-        && pendingVideoIdentity.stage === "awaiting_palette_confirmation"
-        && (!pendingVideoIdentity.cores || (pendingVideoIdentity.palette_options?.length ?? 0) === 0);
+      const waitingForClientLogo = pendingVideoIdentity?.identidade === "client";
       if (waitingForClientLogo && incomingLogo) {
         const logoPath = await uploadClientLogoData(
           userId,
@@ -10529,7 +10622,17 @@ async function processOne(queueId: string) {
           reply = "Não consegui salvar essa logo. Envie em PNG, JPEG ou WEBP com até 5 MB.";
         } else {
           const previousLogoPath = pendingVideoIdentity.logo_path;
-          const nextSetup = { ...pendingVideoIdentity, logo_path: logoPath };
+          const previousCandidatePath = pendingVideoIdentity.site_logo_candidate_path;
+          const wasAwaitingSiteLogo = pendingVideoIdentity.stage === "awaiting_site_logo_confirmation";
+          const hasPaletteCandidates = (pendingVideoIdentity.palette_candidates?.length ?? 0) > 0;
+          const nextSetup: PendingVideoSetupState = {
+            ...pendingVideoIdentity,
+            stage: wasAwaitingSiteLogo
+              ? (hasPaletteCandidates ? "awaiting_palette_primary" : "awaiting_palette_confirmation")
+              : pendingVideoIdentity.stage,
+            logo_path: logoPath,
+            site_logo_candidate_path: undefined,
+          };
           const persisted = await persistVideoSetup({
             userId,
             fromNumber: row.from_number,
@@ -10545,6 +10648,9 @@ async function processOne(queueId: string) {
           ) {
             await sb.storage.from("tenant-logos").remove([previousLogoPath]);
           }
+          if (persisted && previousCandidatePath && previousCandidatePath !== logoPath) {
+            await sb.storage.from("tenant-logos").remove([previousCandidatePath]);
+          }
           if (persisted) {
             const clientName = extractClientNameFromLogoRequest(contexto)
               || pendingVideoIdentity.marca
@@ -10558,7 +10664,23 @@ async function processOne(queueId: string) {
                   logoPath,
                   identity: { logo_origem: "whatsapp_manual" },
                 });
-                reply = `Guardei como logo do ${saved.client_name}. Vou usar nos vídeos e posts desse cliente. Agora envie pelo menos duas cores confirmadas da marca, por exemplo: #112233 e #AABBCC.`;
+                const confirmation = `Guardei como logo do ${saved.client_name}. Vou usar nos vídeos e posts desse cliente.`;
+                if (wasAwaitingSiteLogo && hasPaletteCandidates) {
+                  await askPalettePrimary(
+                    { userId, fromNumber: row.from_number },
+                    nextSetup.palette_candidates ?? [],
+                    nextSetup.palette_options ?? [],
+                    logoPath,
+                  );
+                  reply = `${confirmation} Agora escolha a cor principal na lista.`;
+                } else if (
+                  nextSetup.stage === "awaiting_palette_confirmation"
+                  && (!nextSetup.cores || (nextSetup.palette_options?.length ?? 0) === 0)
+                ) {
+                  reply = `${confirmation} Agora envie pelo menos duas cores confirmadas da marca, por exemplo: #112233 e #AABBCC.`;
+                } else {
+                  reply = `${confirmation} Continue pela escolha anterior para concluir o vídeo.`;
+                }
               } catch (error) {
                 console.error("[client-brand][video-logo-save]", error);
                 reply = "Vinculei a logo a este vídeo, mas não consegui cadastrá-la para os próximos. Envie as cores da marca e depois tente salvar a logo novamente.";

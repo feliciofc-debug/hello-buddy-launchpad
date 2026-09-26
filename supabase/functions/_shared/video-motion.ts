@@ -390,6 +390,23 @@ export function normalizarProps(
     .slice(0, 3)
     .map((l: unknown) => limpar(l, 22))
     .filter(Boolean);
+  const hookDestaque = limpar(bruto?.hook?.destaque, 22) || undefined;
+  const normalizarTrechoHook = (value: string) =>
+    value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const linhasSemDestaque = [...linhas];
+  if (hookDestaque && linhasSemDestaque.length > 0) {
+    const ultima = linhasSemDestaque.at(-1)!;
+    const palavras = ultima.split(/\s+/);
+    const destaqueNormalizado = normalizarTrechoHook(hookDestaque);
+    for (let inicio = 0; inicio < palavras.length; inicio++) {
+      if (normalizarTrechoHook(palavras.slice(inicio).join(" ")) !== destaqueNormalizado) continue;
+      const prefixo = palavras.slice(0, inicio).join(" ").replace(/[\s,.;:!?\-–—]+$/, "");
+      if (prefixo) linhasSemDestaque[linhasSemDestaque.length - 1] = prefixo;
+      else linhasSemDestaque.pop();
+      break;
+    }
+  }
 
   const legendas = (Array.isArray(bruto?.legendas) ? bruto.legendas : [])
     .slice(0, volume.legendas)
@@ -499,8 +516,8 @@ export function normalizarProps(
     cores,
     hook: {
       kicker: limpar(bruto?.hook?.kicker, 28) || marca,
-      linhas: linhas.length ? linhas : ["Seu negócio", "no automático."],
-      destaque: limpar(bruto?.hook?.destaque, 22) || undefined,
+      linhas: linhasSemDestaque.length ? linhasSemDestaque : ["Seu negócio", "no automático."],
+      destaque: hookDestaque,
       sub: limpar(bruto?.hook?.sub, 90) || undefined,
     },
     chat: {

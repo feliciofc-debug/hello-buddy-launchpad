@@ -122,16 +122,25 @@ export async function saveClientBrandIdentity(
     name: clientName,
     site: input.siteUrl,
   });
+  const existingOrigin = String(existing?.identity?.logo_origem || "");
+  const incomingOrigin = String(input.identity?.logo_origem || "");
+  const incomingTemporary = String(input.logoPath || "").includes("/video-site/");
+  const preserveManualLogo = existingOrigin === "whatsapp_manual" && incomingOrigin !== "whatsapp_manual";
+  const logoPath = incomingTemporary || preserveManualLogo
+    ? existing?.logo_path || null
+    : input.logoPath || existing?.logo_path || null;
+  const mergedIdentity = {
+    ...((existing?.identity && typeof existing.identity === "object") ? existing.identity : {}),
+    ...((input.identity && typeof input.identity === "object") ? input.identity : {}),
+  };
+  if (preserveManualLogo) mergedIdentity.logo_origem = "whatsapp_manual";
   const payload = {
     user_id: input.userId,
     client_name: existing?.client_name || clientName,
     normalized_name: existing?.normalized_name || normalizedName,
     site_url: input.siteUrl || existing?.site_url || null,
-    logo_path: input.logoPath || existing?.logo_path || null,
-    identity: {
-      ...((existing?.identity && typeof existing.identity === "object") ? existing.identity : {}),
-      ...((input.identity && typeof input.identity === "object") ? input.identity : {}),
-    },
+    logo_path: logoPath,
+    identity: mergedIdentity,
     updated_at: new Date().toISOString(),
   };
   const { data, error } = await sb

@@ -3,7 +3,7 @@ import {
   assertExists,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { resolverLogoMotion } from "./video-motion-enfileirar.ts";
-import { normalizarSiteMotion } from "./video-motion.ts";
+import { normalizarProps, normalizarSiteMotion } from "./video-motion.ts";
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 
@@ -13,6 +13,17 @@ Deno.test("normaliza site em Markdown para URL limpa", () => {
     "www.casaraolustres.com.br",
   );
   assertEquals(normalizarSiteMotion("https://cliente.com.br/catalogo/"), "cliente.com.br/catalogo");
+});
+
+Deno.test("remove destaque repetido do fim das linhas do hook", () => {
+  const props = normalizarProps({
+    hook: {
+      linhas: ["Iluminação que transforma."],
+      destaque: "transforma.",
+    },
+  }, { marca: "Casarão Lustres" });
+  assertEquals(props.hook.linhas, ["Iluminação que"]);
+  assertEquals(props.hook.destaque, "transforma.");
 });
 
 function fakeSupabase(rows: Record<string, unknown>) {

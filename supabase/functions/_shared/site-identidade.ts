@@ -8,6 +8,7 @@
 // ============================================================
 
 import { paletaAPartirDe, type CoresVideo } from "./video-cores.ts";
+import { trimLogoImage } from "./logo-image-trim.ts";
 
 export type IdentidadeSite = {
   url: string;
@@ -264,7 +265,7 @@ function fontesDe(html: string, css: string): string[] {
 const LOGO_ALHEIA =
   /slider|carousel|carrossel|swiper|owl-|glide|partner|parceir|fornecedor|marcas-|brands?[-_/]|clientes?[-_]|selo|bandeira|payment|pagamento|flag|social|whatsapp|instagram|facebook|tiktok|linkedin|youtube/i;
 
-type LogoCandidato = { url: string; origem: string };
+export type LogoCandidato = { url: string; origem: string };
 
 async function iconesDoManifest(html: string, base: string, sinal: AbortSignal): Promise<string[]> {
   const tag = [...html.matchAll(/<link[^>]+rel=["'][^"']*manifest[^"']*["'][^>]*>/gi)]
@@ -291,12 +292,9 @@ async function iconesDoManifest(html: string, base: string, sinal: AbortSignal):
   }
 }
 
-function logoDe(html: string, base: URL, manifestIcons: string[] = []): LogoCandidato[] {
+export function logoDe(html: string, base: URL, manifestIcons: string[] = []): LogoCandidato[] {
   const candidatos: Array<{ valor: string; origem: string }> = [];
   const baseUrl = base.toString();
-
-  const og = meta(html, "og:image");
-  if (og) candidatos.push({ valor: og, origem: "og:image" });
 
   const icones = [...html.matchAll(/<link[^>]+rel=["'][^"']*icon[^"']*["'][^>]*>/gi)].map((m) => m[0]);
   const comTamanho = icones
@@ -394,11 +392,12 @@ async function baixarLogo(url: string | null, sinal: AbortSignal): Promise<strin
     if (!TIPOS_LOGO.test(tipo)) return null;
     const buf = new Uint8Array(await r.arrayBuffer());
     if (!buf.byteLength || buf.byteLength > 900_000) return null;
+    const processed = await trimLogoImage(buf, tipo);
     let bin = "";
-    for (let i = 0; i < buf.length; i += 8192) {
-      bin += String.fromCharCode(...buf.subarray(i, i + 8192));
+    for (let i = 0; i < processed.bytes.length; i += 8192) {
+      bin += String.fromCharCode(...processed.bytes.subarray(i, i + 8192));
     }
-    return `data:${tipo};base64,${btoa(bin)}`;
+    return `data:${processed.mime};base64,${btoa(bin)}`;
   } catch {
     return null;
   }
@@ -752,10 +751,16 @@ export function mesclarCamadaB(
   }
   if (!nome) avisos.push("Não identifiquei o nome da marca; escreva como ele deve aparecer.");
   if (!a.logo_url && !b.logo_url) avisos.push("Não encontrei a logo no site; anexe o arquivo manualmente.");
-  const logoOrigem = b.logo_url ? "pagina_renderizada" : a.logo_origem;
+  // URL e bytes são um par indivisível. Se o navegador encontrou uma URL mas
+  // não conseguiu baixar seus bytes, mantemos AMBOS da Camada A; misturar as
+  // fontes faria uma URL apontar para uma imagem diferente da data URL.
+  const usarLogoCamadaB = !!b.logo_url && !!b.logo_data_url;
+  const logoUrl = usarLogoCamadaB ? b.logo_url! : a.logo_url;
+  const logoDataUrl = usarLogoCamadaB ? b.logo_data_url! : a.logo_data_url;
+  const logoOrigem = usarLogoCamadaB ? "pagina_renderizada" : a.logo_origem;
   console.log("[site-identidade][proveniencia-final]", JSON.stringify({
     url: a.url,
-    logo: (b.logo_url ?? a.logo_url) ? { url: b.logo_url ?? a.logo_url, origem: logoOrigem } : null,
+    logo: logoUrl ? { url: logoUrl, origem: logoOrigem } : null,
     cores: principais.map((cor) => ({ hex: cor.hex, origem: cor.origem, peso: cor.peso })),
   }));
 
@@ -775,9 +780,9 @@ export function mesclarCamadaB(
     fontes: [...new Set([...(b.fontes ?? []), ...a.fontes])].slice(0, 4),
     // O navegador enxerga a logo realmente renderizada; ela tem prioridade
     // sobre favicon/og:image encontrados no HTML bruto.
-    logo_url: b.logo_url ?? a.logo_url ?? null,
+    logo_url: logoUrl ?? null,
     logo_origem: logoOrigem,
-    logo_data_url: b.logo_data_url ?? a.logo_data_url ?? null,
+    logo_data_url: logoDataUrl ?? null,
     cores_detectadas: principais,
     paleta: montarPaleta(principais),
     texto_base: textoBase,

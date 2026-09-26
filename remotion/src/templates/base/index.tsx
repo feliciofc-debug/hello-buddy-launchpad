@@ -227,13 +227,13 @@ export const HookCena: React.FC<{ c: Paleta; arranjo?: number; logoUrl?: string 
               padding: "18px 26px",
             }}
           >
-            <Img src={logoUrl} style={{ height: 140, maxWidth: 420, objectFit: "contain" }} />
+            <Img src={logoUrl} style={{ height: 220, maxWidth: 640, objectFit: "contain" }} />
           </div>
         </div>
       ) : null}
       <div
         style={{
-          marginTop: logoUrl ? 340 : 0,
+          marginTop: logoUrl ? 430 : 0,
           alignSelf: centralizado ? "center" : "flex-start",
         }}
       >
