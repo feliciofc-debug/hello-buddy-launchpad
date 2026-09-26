@@ -239,6 +239,7 @@ export function PostarFacebookModal({
         page_id: pageId || "",
         post_text: mensagemFinal,
         image_url: imagesToPublish[0] || null,
+        image_urls: imagesToPublish.length >= 2 ? imagesToPublish : null,
         link_url: incluirLink ? linkProduto : null,
         scheduled_at: scheduledAt,
       }, modoEnvio === "agora");

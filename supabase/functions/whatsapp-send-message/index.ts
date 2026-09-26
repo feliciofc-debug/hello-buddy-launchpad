@@ -30,6 +30,10 @@ serve(async (req) => {
       // { body: string, button: string, header?: string, footer?: string,
       //   rows: [{ id, title, description? }] }  (máx 10 rows)
       interactive_list,
+      // Botões de resposta rápida (máx 3).
+      // { body: string, header?: string, footer?: string,
+      //   buttons: [{ id, title }] }
+      interactive_buttons,
     } = body
 
 
@@ -68,7 +72,31 @@ serve(async (req) => {
 
     let messagePayload: any
 
-    if (interactive_list?.rows?.length) {
+    if (interactive_buttons?.buttons?.length) {
+      const buttons = interactive_buttons.buttons.slice(0, 3).map((button: any, index: number) => ({
+        type: 'reply',
+        reply: {
+          id: String(button?.id ?? `action_${index}`).slice(0, 256),
+          title: String(button?.title ?? `Opção ${index + 1}`).slice(0, 20),
+        },
+      }))
+      messagePayload = {
+        messaging_product: 'whatsapp',
+        to: to.replace(/\D/g, ''),
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          ...(interactive_buttons.header
+            ? { header: { type: 'text', text: String(interactive_buttons.header).slice(0, 60) } }
+            : {}),
+          body: { text: String(message || interactive_buttons.body || 'Escolha uma opção').slice(0, 1024) },
+          ...(interactive_buttons.footer
+            ? { footer: { text: String(interactive_buttons.footer).slice(0, 60) } }
+            : {}),
+          action: { buttons },
+        },
+      }
+    } else if (interactive_list?.rows?.length) {
       // ============================================================
       // LISTA INTERATIVA (type:interactive/list) — 1 toque, até 10 opções.
       // Usada quando 3 reply-buttons não bastam (ex: paleta de cores).

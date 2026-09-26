@@ -6,7 +6,18 @@ import { decode as base64Decode } from "https://deno.land/std@0.168.0/encoding/b
 import { buildSystemPrompt, AMZ_KNOWLEDGE } from "../_shared/agent-soul.ts";
 import { AMZ_TENANT_ID as ADMIN_AMZ_USER_ID } from "../_shared/amz-tenant.ts";
 import { buildAmzContext, OWNER_PHONE, resolveTenantOwner, isAmzOwnerAltPhone } from "../_shared/amz-context.ts";
-import { getTenantBusinessContext, buildCarouselPrompt } from "../_shared/business-context.ts";
+import {
+  buildCarouselPrompt,
+  buildProspectDemoCarouselPrompt,
+  getTenantBusinessContext,
+} from "../_shared/business-context.ts";
+import {
+  requestedCarouselSlideCount,
+  sanitizeCarouselSlides,
+  sanitizeProspectDemoCaption,
+  sanitizeProspectDemoSlides,
+  sendCarouselCardsInOrder,
+} from "../_shared/carousel-content.ts";
 
 // ---------------------------------------------------------------------------
 // Multi-tenant owner registry (populado no início de cada processMessage).
@@ -35,6 +46,47 @@ import { gerarVarianteFacebookFeed } from "../_shared/varianteFacebookFeed.ts";
 import { idCurto, linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
 import { syncProdutoVideoFromMidia } from "../_shared/sync-produto-video.ts";
 import { splitWhatsAppText } from "../_shared/whatsapp-text.ts";
+import {
+  betweenPartsDelayForSenderMs,
+  firstReplyDelayForSenderMs,
+  hasNewerProcessableInbound,
+  prepareLeadReplyParts,
+} from "../_shared/whatsapp-humanized-delivery.ts";
+import {
+  asksForLeadName,
+  extractLeadName,
+  findLeadNameInConversation,
+} from "../_shared/lead-name.ts";
+import {
+  decideWhatsAppCreativeTool,
+  DEMO_LIMIT_MESSAGE,
+  TENANT_CREATION_BLOCK_MESSAGE,
+  type DemoToolDecision,
+} from "../_shared/whatsapp-demo-policy.ts";
+import { dedupeConsecutiveReplyText } from "../_shared/reply-dedupe.ts";
+import {
+  formatScheduledDate,
+  formatSocialNetworks,
+  parseSaoPauloDateTime,
+} from "../_shared/social-schedule.ts";
+import {
+  allRowsAreFuturePending,
+  chooseSocialSchedule,
+  hasMinimumScheduleLead,
+  type ScheduledSocialGroup,
+} from "../_shared/social-reschedule.ts";
+import {
+  classifyOwnerMediaIntent,
+  extractSocialPostBriefing,
+  hasImageGenerationRequest,
+  hasSocialPostRequest,
+  selectLatestImplicitMediaId,
+} from "../_shared/owner-media-intent.ts";
+import {
+  canRunSocialPostAction,
+  selectSocialVariantScripts,
+  socialApprovalButtons,
+} from "../_shared/social-approval-flow.ts";
 import {
   catalogImageUrl,
   environmentLikelihood,
@@ -221,6 +273,7 @@ type QueueRow = {
   payload: any;
   status: string;
   attempts: number;
+  created_at: string;
 };
 
 async function failQueue(id: string, error: string) {
@@ -237,11 +290,75 @@ async function doneQueue(id: string) {
     .eq("id", id);
 }
 
+async function sendTypingIndicator(
+  phoneNumberId: string,
+  accessToken: string | null,
+  inboundWamid: string,
+): Promise<void> {
+  if (!phoneNumberId || !accessToken || !inboundWamid) return;
+  try {
+    const response = await fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        status: "read",
+        message_id: inboundWamid,
+        typing_indicator: { type: "text" },
+      }),
+    });
+    if (!response.ok) {
+      const detail = await response.text();
+      console.warn(`[processor][typing_indicator_failed] status=${response.status} detail=${detail.slice(0, 160)}`);
+    }
+  } catch (error) {
+    console.warn("[processor][typing_indicator_failed]", (error as Error).message);
+  }
+}
+
+async function wait(ms: number): Promise<void> {
+  if (ms <= 0) return;
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function groupIfNewerLeadTextExists(row: QueueRow): Promise<boolean> {
+  await wait(6000);
+  const { data: newer, error } = await sb
+    .from("whatsapp_cloud_inbound_queue")
+    .select("id, created_at, status")
+    .eq("phone_number_id", row.phone_number_id)
+    .eq("from_number", row.from_number)
+    .eq("message_type", "text")
+    .gt("created_at", row.created_at)
+    .order("created_at", { ascending: false })
+    .limit(10);
+  if (error || !hasNewerProcessableInbound(row.created_at, newer ?? [])) return false;
+  const { data: grouped } = await sb.from("whatsapp_cloud_inbound_queue")
+    .update({
+      status: "grouped",
+      error: null,
+      processed_at: new Date().toISOString(),
+    })
+    .eq("id", row.id)
+    .eq("status", "processing")
+    .select("id");
+  if (!grouped?.length) return false;
+  console.log(`[processor][lead_batch] grouped=${row.id} newer=${newer[0].id}`);
+  return true;
+}
+
 function extractText(payload: any): string {
   if (!payload) return "";
   if (payload.text?.body) return payload.text.body;
   if (payload.button?.text) return payload.button.text;
-  if (payload.interactive?.button_reply?.title) return payload.interactive.button_reply.title;
+  if (payload.interactive?.button_reply?.title) {
+    const title = String(payload.interactive.button_reply.title);
+    const id = String(payload.interactive.button_reply.id || "");
+    return id ? `${title}\n<<INTERACTIVE_ID:${id}>>` : title;
+  }
   if (payload.interactive?.list_reply?.title) {
     const title = String(payload.interactive.list_reply.title);
     const id = String(payload.interactive.list_reply.id || "");
@@ -1034,8 +1151,11 @@ function blocoFormatoSocial(pedido?: string): string {
 // Padrão IA Marketing: fotorealista, sem texto/letras/marca d'água, iluminação profissional.
 async function toolGerarImagem(
   prompt: string,
-  ctx: { userId: string; fromNumber?: string; incluirLogo?: boolean },
+  ctx: { userId: string; fromNumber?: string; incluirLogo?: boolean; demonstracao?: boolean },
 ): Promise<string> {
+  if (!isOwner({ userId: ctx.userId, fromNumber: ctx.fromNumber || "" }) && !ctx.demonstracao) {
+    return JSON.stringify({ ok: false, erro: "acao_restrita_ao_responsavel" });
+  }
   const clean = (prompt || "").trim();
   if (!clean) return JSON.stringify({ erro: "prompt vazio" });
   try {
@@ -1127,7 +1247,11 @@ ${logoDataUrl ? `- A SEGUNDA IMAGEM ANEXADA É A LOGOMARCA OFICIAL DA EMPRESA. R
       salvo_em_midias: !!midiaId,
       logo_aplicada: !!logoDataUrl,
       logo_solicitada_sem_cadastro: !!ctx.incluirLogo && !logoDataUrl,
-      instrucao: !!ctx.incluirLogo && !logoDataUrl
+      demonstracao: ctx.demonstracao === true,
+      exemplo_legenda_solicitado: ctx.demonstracao === true,
+      instrucao: ctx.demonstracao
+        ? "DEMONSTRAÇÃO: envie a imagem somente nesta conversa e escreva junto um exemplo curto de legenda pronta baseado no pedido. Deixe claro que nada foi publicado. Não ofereça publicar esta mídia."
+        : !!ctx.incluirLogo && !logoDataUrl
         ? "A imagem foi criada e enviada, MAS sem a logo: não há logomarca cadastrada nesta conta. Avise em 1 linha e diga que ele pode cadastrar em Minha Marca (menu do painel) e pedir de novo."
         : (logoDataUrl
           ? "A imagem foi criada COM a logomarca da empresa, enviada ao usuário e salva na biblioteca /midias. Diga em 1-2 linhas o que criou, confirme que a marca foi aplicada e peça pra ele conferir se ficou fiel."
@@ -1151,6 +1275,9 @@ async function toolEditarImagem(
     registrarNaBiblioteca?: boolean;
   },
 ): Promise<string> {
+  if (!isOwner({ userId: ctx.userId, fromNumber: ctx.fromNumber || "" })) {
+    return JSON.stringify({ ok: false, erro: "acao_restrita_ao_responsavel" });
+  }
   const clean = (prompt || "").trim();
   if (!clean) return JSON.stringify({ erro: "prompt vazio" });
 
@@ -1908,6 +2035,7 @@ function buildForwardProof(wamid?: string | null): string {
 type PendingCarouselState = {
   stage: "awaiting_color" | "awaiting_confirmation";
   tema: string;
+  num_slides?: number;
   cor?: string;
   slides?: any[];
   caption?: string;
@@ -2150,43 +2278,6 @@ async function recoverForwardProof(userId: string, telefone: string): Promise<Ag
   }
 }
 
-const NOME_STOPWORDS = new Set([
-  "sim","nao","não","ok","okay","obrigado","obrigada","valeu","bom","boa","dia","tarde","noite","oi","ola","olá",
-  "consorcio","consórcio","orcamento","orçamento","quanto","quero","preciso","aguardo","espero","certo","beleza",
-  "tudo","bem","pode","ser","claro","talvez","depois","agora","isso","nada","ainda","legal","perfeito","entendi",
-]);
-
-// Captura o nome quando o cliente informa espontaneamente ("meu nome é X", "sou o X")
-// ou quando responde só o nome depois de a gente ter perguntado (pendente=true).
-function extrairNomeInformado(texto: string, pendente = false): string | null {
-  const t = String(texto || "").trim();
-  if (!t) return null;
-  const cap = (s: string) =>
-    s
-      .split(/\s+/)
-      .map((w) => (w.length > 2 ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w.toLowerCase()))
-      .join(" ")
-      .trim();
-
-  const m = t.match(
-    /(?:meu nome (?:é|eh|e)|me chamo|pode me chamar de|aqui (?:é|eh|e) (?:o |a )?|sou (?:o |a )?|nome:)\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’]{1,}(?:\s+(?:d[aeoi]s?\s+)?[A-Za-zÀ-ÿ'’]{2,}){0,2})/i,
-  );
-  if (m?.[1]) {
-    const cand = m[1].trim();
-    const first = cand.split(/\s+/)[0].toLowerCase();
-    if (!NOME_STOPWORDS.has(first)) return cap(cand);
-  }
-
-  if (pendente) {
-    const limpo = t.replace(/[^A-Za-zÀ-ÿ'’\s]/g, " ").replace(/\s+/g, " ").trim();
-    const palavras = limpo.split(" ").filter(Boolean);
-    if (palavras.length >= 1 && palavras.length <= 3 && palavras.every((p) => p.length >= 2 && !NOME_STOPWORDS.has(p.toLowerCase()))) {
-      return cap(limpo);
-    }
-  }
-  return null;
-}
-
 // Segunda mensagem curta ao dono, referenciando o protocolo do encaminhamento.
 async function enviarComplementoNomeAoDono(params: {
   userId: string;
@@ -2233,6 +2324,44 @@ function removerConviteFinal(text: string): { text: string; removed: boolean } {
 
 const PERGUNTA_NOME = "Só pra eu completar o recado: qual seu nome?";
 
+async function persistKnownLeadName(params: {
+  userId: string;
+  telefone: string;
+  conversationId: string;
+  nome: string;
+}): Promise<void> {
+  await Promise.all([
+    sb.from("whatsapp_cloud_conversations")
+      .update({ contact_name: params.nome })
+      .eq("id", params.conversationId),
+    sb.from("lead_encaminhamentos")
+      .update({ nome: params.nome })
+      .eq("user_id", params.userId)
+      .eq("telefone", params.telefone)
+      .is("nome", null),
+  ]);
+}
+
+async function findKnownLeadName(params: {
+  userId: string;
+  telefone: string;
+  conversationId: string;
+}): Promise<string | null> {
+  const { data: registeredLead } = await sb.from("jarvis_leads")
+    .select("nome")
+    .eq("user_id", params.userId)
+    .eq("telefone", params.telefone)
+    .maybeSingle();
+  const registeredName = extractLeadName(String(registeredLead?.nome || ""), true);
+  if (registeredName) return registeredName;
+
+  const { data: recentRows } = await sb.from("whatsapp_cloud_messages")
+    .select("direction, content")
+    .eq("conversation_id", params.conversationId)
+    .order("created_at", { ascending: false })
+    .limit(40);
+  return findLeadNameInConversation([...(recentRows ?? [])].reverse());
+}
 
 // Extrai o código do protocolo de um comprovante "(protocolo #ABC123 · 17:03)"
 function extractProtocolCode(proof?: string | null): string {
@@ -3403,9 +3532,9 @@ type PendingSocialPost = {
   produto: any;
   tom: string;
   redes: string[];
-  scripts: Record<string, string>; // variante ATIVA por rede (default: A)
+  scripts: Record<string, string>; // cópia persistida por rede; A é só preview até escolha explícita
   variantes?: Record<string, PostVariantes>; // 3 opções por rede
-  variantSelecionada?: "A" | "B" | "C"; // default "A"
+  variantSelecionada?: "A" | "B" | "C"; // ausente até o dono escolher explicitamente
   userId: string;
   createdAt: number;
   formato?: "feed" | "story" | "reels";
@@ -3492,17 +3621,25 @@ function midiaTipoFromPendingMarker(marker?: string | null): "foto" | "video" | 
 }
 
 async function persistPendingSocialPost(token: string, pending: PendingSocialPost): Promise<Array<{ id: string; platform: string }>> {
+  const mediaType = pending.midiaTipo || (pending.produto as any)?.midia_tipo || "foto";
+  const mediaUrl = pending.produto?.imagem_url || null;
+  const imageUrls = Array.isArray(pending.produto?.image_urls)
+    ? pending.produto.image_urls.filter((url: unknown): url is string => typeof url === "string" && !!url.trim())
+    : [];
   const rows = pending.redes.map((rede) => ({
     user_id: pending.userId,
     produto_id: isUuid(pending.produto?.id) ? pending.produto.id : null,
     produto_source: pending.produto?.source || "produtos",
     platform: rede,
     post_text: pending.scripts[rede] || "",
-    image_url: pending.produto?.imagem_url || null,
+    image_url: mediaType === "video" ? null : mediaUrl,
+    video_url: mediaType === "video" ? mediaUrl : null,
+    image_urls: imageUrls.length >= 2 ? imageUrls : null,
     link_url: pending.produto?.link || null,
+    approval_token: token,
     status: "aguardando_confirmacao",
     scheduled_at: null,
-    error_message: pendingPostMarker(token, pending.produto?.nome, pending.formato || "feed", pending.midiaTipo || (pending.produto as any)?.midia_tipo || "foto", {
+    error_message: pendingPostMarker(token, pending.produto?.nome, pending.formato || "feed", mediaType, {
       variantes: pending.variantes,
       variantSelecionada: pending.variantSelecionada,
       incluirCtaWhatsapp: pending.incluirCtaWhatsapp,
@@ -3556,7 +3693,7 @@ async function loadCarouselImageUrls(userId: string, parentId: string): Promise<
 async function loadPendingSocialPost(token: string, userId: string): Promise<PendingSocialPost | null> {
   const { data, error } = await sb
     .from("social_posts_queue")
-    .select("id, user_id, produto_id, produto_source, platform, post_text, image_url, link_url, status, error_message, instagram_creation_id, instagram_container_status, created_at")
+    .select("id, user_id, produto_id, produto_source, platform, post_text, image_url, image_urls, video_url, link_url, status, error_message, instagram_creation_id, instagram_container_status, approval_token, created_at")
     .eq("user_id", userId)
     .eq("status", "aguardando_confirmacao")
     .like("error_message", `jarvis_token:${token}%`)
@@ -3591,7 +3728,8 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
       id: produtoId,
       source: (rows[0] as any).produto_source,
       nome: productNameFromPendingMarker(marker),
-      imagem_url: (rows[0] as any).image_url,
+      imagem_url: (rows[0] as any).video_url || (rows[0] as any).image_url,
+      image_urls: Array.isArray((rows[0] as any).image_urls) ? (rows[0] as any).image_urls : undefined,
       link: (rows[0] as any).link_url,
       midia_tipo: midiaTipoReidratado,
     } as any,
@@ -4073,6 +4211,7 @@ function extrairIdentificadorMidia(texto: string): string | null {
 
 function pedidoReferenciaMidiaGenerica(texto: string, produtoDetectado = ""): boolean {
   const alvo = normalizePt(`${produtoDetectado} ${texto}`);
+  if (/^(esse|essa|este|esta|isso|desse|dessa|aquele|aquela)$/i.test(normalizePt(produtoDetectado).trim())) return true;
   return /\b(esse|essa|este|esta|isso|dessa|desse|aquele|aquela|o|a)?\s*(video|foto|imagem|midia)\b/.test(alvo);
 }
 
@@ -4122,31 +4261,34 @@ async function buscarUltimaMidiaDaConversa(
     .maybeSingle();
   if (error) return { midia: null, erro: error.message };
 
-  const interaction = ctx.agentState?.last_media_interaction;
-  const interactionAt = interaction?.at ? new Date(interaction.at).getTime() : 0;
-  const createdAt = data?.created_at ? new Date(data.created_at).getTime() : 0;
-  if (!interaction?.media_id || !Number.isFinite(interactionAt) || interactionAt <= createdAt) {
-    return { midia: data ?? null };
-  }
+  const selectedId = selectLatestImplicitMediaId(data, ctx.agentState?.last_media_interaction ?? null);
+  if (!selectedId || selectedId === data?.id) return { midia: data ?? null };
 
-  const { data: reused, error: reusedError } = await sb
+  // Uma mídia reencaminhada pode ser deduplicada e conservar o created_at
+  // antigo. Nesse caso, last_media_interaction.at representa o evento mais
+  // recente da conversa e o ID deduplicado deve vencer.
+  const { data: interacted, error: interactedError } = await sb
     .from("midias_whatsapp")
     .select("id, tipo, origem, midia_pai_id, midia_url, contexto_original, contexto_transcricao, legenda_gerada, tags_ia, telefone_origem, created_at")
-    .eq("id", interaction.media_id)
+    .eq("id", selectedId)
     .eq("user_id", ctx.userId)
     .in("tipo", ["foto", "video"])
     .maybeSingle();
-  if (reusedError) return { midia: null, erro: reusedError.message };
-  return { midia: reused ?? data ?? null };
+  if (interactedError) return { midia: null, erro: interactedError.message };
+  return { midia: interacted ?? data ?? null };
 }
 
 // Detecta resposta curta só com o formato: "feed", "story", "reels", "no story", "nos stories" etc.
-function detectSocialPostIntent(text: string): { produto: string; tom: string; redes: string[]; temProduto: boolean; formato?: "feed" | "story" | "reels" } | null {
+function detectSocialPostIntent(
+  text: string,
+  options: { allowGenerationChain?: boolean } = {},
+): { produto: string; tom: string; redes: string[]; temProduto: boolean; formato?: "feed" | "story" | "reels" } | null {
   const original = compactSpaces(text || "");
   const normalized = normalizePt(original);
   // Pedido de CARROSSEL nunca é post único — quem trata é o roteador de carrossel.
   if (/\bcarrosse(l|is)\b|\bcarousel\b/.test(normalized)) return null;
-  if (!/\b(posta|poste|postar|publica|publique|publicar)\b/.test(normalized)) return null;
+  if (hasImageGenerationRequest(original) && !options.allowGenerationChain) return null;
+  if (!hasSocialPostRequest(original)) return null;
 
 
   const redes: string[] = [];
@@ -4235,11 +4377,11 @@ function formatSocialPostToolResult(raw: string): string {
       const avisoFacebook = data?.aviso_facebook ? `<<SPLIT>>⚠️ ${data.aviso_facebook}` : "";
       const previewInfo = Number(data.cards) > 3 ? " Enviei os 3 primeiros; se quiser ver os demais, é só pedir." : "";
       const resumo = `Carrossel pronto: ${data.cards} cards. ID da mídia: ${data.media_code}. Ainda não publiquei.${previewInfo}`;
-      const pergunta = `Escolha *A*, *B* ou *C* para trocar a legenda — ou responda *SIM* para publicar com a opção A.`;
+      const pergunta = "Antes de publicar ou agendar, escolha o texto: *A*, *B* ou *C*.";
       blocosPreview[blocosPreview.length - 1] += `\n\n${pergunta}`;
       return `${resumo}${avisoFacebook}<<SPLIT>>Preparei 3 opções de legenda 👇<<SPLIT>>${blocosPreview.join("<<SPLIT>>")}`;
     }
-    const pergunta = `Qual você prefere? Responde *A*, *B* ou *C*.`;
+    const pergunta = "Qual texto você prefere? Escolha *A*, *B* ou *C*.";
     const cabecalho = `Preparei 3 opções 👇${aviso}${avisoReels}`;
 
     // A pergunta viaja no MESMO balão que contém opções. Assim, uma falha no
@@ -4253,7 +4395,14 @@ function formatSocialPostToolResult(raw: string): string {
     const preview = Object.entries(data.preview ?? {})
       .map(([rede, script]) => `*${String(rede).toUpperCase()}*\n${script}`)
       .join("\n\n");
-    return `✅ Opção *${opcao}* selecionada.<<SPLIT>>${preview}<<SPLIT>>Posso publicar agora? Responde *sim* pra postar ou me diga o ajuste.`;
+    const action = data?.formato === "story"
+      ? "Story pelo WhatsApp só pode ser publicado agora."
+      : "Agora escolha *Publicar agora* ou *Agendar*.";
+    return `✅ Opção *${opcao}* selecionada.<<SPLIT>>${preview}<<SPLIT>>${action}`;
+  }
+
+  if (data?.status === "escolha_variante_necessaria") {
+    return data.mensagem || "Antes, escolha o texto: A, B ou C.";
   }
 
   if (data?.status === "aguardando_confirmacao") {
@@ -4271,6 +4420,13 @@ function formatSocialPostToolResult(raw: string): string {
       ? `\n\nJá publicado em: ${data.redes_publicadas.map((r: string) => String(r).toUpperCase()).join(", ")}.`
       : "";
     return `${data.mensagem || "O Instagram ainda está processando a mídia; o container foi preservado para retry."}${publicadas}`;
+  }
+
+  if (
+    ["agendado", "agendamentos_listados", "sem_agendamentos", "agendamento_cancelado"].includes(String(data?.status))
+    && data?.mensagem
+  ) {
+    return String(data.mensagem);
   }
 
   if (data?.status === "aguardando_privacidade_tiktok") {
@@ -4313,6 +4469,63 @@ type WhatsAppInteractiveList = {
   section_title?: string;
   rows: Array<{ id: string; title: string; description?: string }>;
 };
+
+type WhatsAppInteractiveButtons = {
+  body: string;
+  header?: string;
+  footer?: string;
+  buttons: Array<{ id: string; title: string }>;
+};
+
+function interactiveButtonsFromSocialResult(raw: string): WhatsAppInteractiveButtons | undefined {
+  try {
+    const data = JSON.parse(raw);
+    const status = String(data?.status);
+    if (!["aguardando_escolha_variante", "escolha_variante_necessaria", "variante_selecionada"].includes(status)) return undefined;
+    const token = String(data?.token || "").trim().toLowerCase();
+    if (!/^[a-f0-9]{8}$/.test(token)) return undefined;
+    const isStory = data?.formato === "story";
+    const selected = status === "variante_selecionada" ? data?.opcao_ativa : undefined;
+    const buttonKeys = socialApprovalButtons(selected, isStory);
+    if (!selected) {
+      return {
+        header: "Escolha o texto",
+        body: "Antes de publicar ou agendar, escolha uma opção.",
+        buttons: buttonKeys.map((key) => {
+          const option = key.slice(-1);
+          return { id: `social_variant:${option}:${token}`, title: `Opção ${option}` };
+        }),
+      };
+    }
+    return {
+      header: "Aprovar criativo",
+      body: isStory
+        ? "Story pelo WhatsApp só pode ser publicado agora."
+        : "Publique agora ou escolha agendar. Para informar a data por texto, responda: agendar sexta às 10h.",
+      buttons: buttonKeys.map((key) => key === "publish"
+        ? { id: `social_publish:${token}`, title: "Publicar agora" }
+        : { id: `social_schedule:${token}`, title: "Agendar" }),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function variantSelectionRequiredResult(
+  token: string,
+  pending: PendingSocialPost,
+): string {
+  return JSON.stringify({
+    ok: false,
+    status: "escolha_variante_necessaria",
+    erro: "variante_nao_selecionada",
+    mensagem: "Antes, escolha o texto: A, B ou C.",
+    token,
+    formato: pending.formato || "feed",
+    redes: pending.redes,
+    variantes: pending.variantes,
+  });
+}
 
 function interactiveListFromSocialResult(raw: string): WhatsAppInteractiveList | undefined {
   try {
@@ -4391,7 +4604,7 @@ function detectPlainSocialPostConfirmation(text: string): { cancelar?: boolean }
   const normalized = normalizePt(text || "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
   if (!normalized) return null;
   if (/^(cancela|cancelar|nao posta|nao publicar|descarta|deixa pra la)$/.test(normalized)) return { cancelar: true };
-  if (/^(sim|ok|ta bom|tudo certo|pode|pode postar|posta|postar|publica|publique|confirmo|confirma|manda|manda ver|vai|aprovado|pode publicar agora)$/.test(normalized)) return {};
+  if (/^(sim|ok|ta bom|tudo certo|pode|pode postar|posta|postar|publica|publique|publicar agora|confirmo|confirma|manda|manda ver|vai|aprovado|pode publicar agora)$/.test(normalized)) return {};
   return null;
 }
 
@@ -4747,7 +4960,7 @@ async function toolPostarRedesSociais(
     }
 
     const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    const pending: PendingSocialPost = { produto: prod, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), incluirCtaWhatsapp: incluirCta };
+    const pending: PendingSocialPost = { produto: prod, tom, redes, scripts, variantes, userId: ctx.userId, createdAt: Date.now(), incluirCtaWhatsapp: incluirCta };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
 
@@ -4758,10 +4971,9 @@ async function toolPostarRedesSociais(
       tom,
       redes,
       variantes, // { facebook: {A,B,C}, instagram: {A,B,C}, ... }
-      opcao_ativa: "A",
       cta_whatsapp: incluirCta,
       cta_nota: ctaNota,
-      instrucoes: `Mostre as 3 OPÇÕES (A, B, C) de forma clara, uma em cada bloco separado, usando os textos de \`variantes\` (se houver mais de uma rede, mostre por rede — mas se o texto for parecido entre redes, mostre 1 vez só). Formato exemplo:\n\n*Opção A — Direta*\n<texto A>\n\n*Opção B — História*\n<texto B>\n\n*Opção C — Interativa*\n<texto C>\n\nDepois pergunte: "Qual você prefere? Responde *A*, *B* ou *C*. Ou 'pode postar' pra publicar a A."\n${incluirCta ? "" : "Se ainda não incluiu CTA de WhatsApp, pergunte também se quer incluir. "}Quando o dono responder "A" / "B" / "C" / "opção B" etc, chame escolher_variante_post com token="${token}" e opcao=<letra>. Se ele mandar ajuste de texto, chame revisar_post_pendente. Se confirmar ('pode postar'), chame confirmar_postagem_redes.`,
+      instrucoes: `FASE 1: mostre as 3 OPÇÕES (A, B, C) e peça uma escolha. Não ofereça publicar nem agendar antes disso. ${incluirCta ? "" : "Se ainda não incluiu CTA de WhatsApp, pergunte também se quer incluir. "}Ao escolher A/B/C, chame escolher_variante_post com token="${token}". Se pedir ajuste, chame revisar_post_pendente; as novas opções voltam à FASE 1.`,
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
@@ -4795,6 +5007,10 @@ async function toolConfirmarPostagemRedes(
       ctx.agentState = current;
     }
     return JSON.stringify({ status: "cancelado" });
+  }
+
+  if (!canRunSocialPostAction(p.variantSelecionada)) {
+    return variantSelectionRequiredResult(token, p);
   }
 
   if (p.midiaTipo === "carrossel") {
@@ -4914,6 +5130,322 @@ async function toolConfirmarPostagemRedes(
   });
 }
 
+async function toolAgendarPostPendente(
+  args: { token?: string; data_hora_sp?: string },
+  ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
+): Promise<string> {
+  if (!isOwner(ctx)) return JSON.stringify({ ok: false, erro: "acao_restrita_ao_responsavel" });
+  const token = String(args?.token || "").trim().toLowerCase();
+  if (!/^[a-f0-9]{8}$/.test(token)) return JSON.stringify({ ok: false, erro: "token_invalido", mensagem: "Não encontrei o criativo que deve ser agendado." });
+  const pending = PENDING_POSTS.get(token) ?? await loadPendingSocialPost(token, ctx.userId);
+  if (!pending || pending.userId !== ctx.userId) {
+    return JSON.stringify({ ok: false, erro: "token_nao_encontrado", mensagem: "Não encontrei esse criativo aguardando confirmação." });
+  }
+  if (!canRunSocialPostAction(pending.variantSelecionada)) {
+    return variantSelectionRequiredResult(token, pending);
+  }
+  if (pending.formato === "story") {
+    return JSON.stringify({
+      ok: false,
+      erro: "story_nao_agendavel",
+      mensagem: "Story ainda não pode ser agendado pelo WhatsApp. Posso publicar agora, ou você agenda pelo site em Story Foto (Agendar).",
+    });
+  }
+  const scheduledDate = parseSaoPauloDateTime(args?.data_hora_sp);
+  if (!scheduledDate) {
+    return JSON.stringify({ ok: false, erro: "data_invalida", mensagem: "Informe a data no formato YYYY-MM-DD HH:MM, em horário de São Paulo." });
+  }
+  if (scheduledDate.getTime() < Date.now() + 10 * 60 * 1000) {
+    return JSON.stringify({ ok: false, erro: "data_muito_proxima", mensagem: "Escolha um horário com pelo menos 10 minutos de antecedência." });
+  }
+
+  const scheduledNetworks = pending.redes.filter((network) => network !== "tiktok");
+  const hasTikTok = pending.redes.includes("tiktok");
+  if (scheduledNetworks.length === 0) {
+    return JSON.stringify({
+      ok: false,
+      erro: "tiktok_nao_agendavel",
+      mensagem: "O TikTok ainda precisa ser publicado na hora; este criativo não tem outra rede que possa ser agendada.",
+    });
+  }
+
+  let imageUrls = Array.isArray(pending.produto?.image_urls)
+    ? pending.produto.image_urls.filter((url: unknown): url is string => typeof url === "string" && !!url.trim())
+    : [];
+  if (pending.midiaTipo === "carrossel" && imageUrls.length < 2 && pending.produto?.id) {
+    imageUrls = await loadCarouselImageUrls(ctx.userId, pending.produto.id);
+  }
+  if (pending.midiaTipo === "carrossel" && imageUrls.length < 2) {
+    return JSON.stringify({ ok: false, erro: "carrossel_incompleto", mensagem: "Não encontrei todos os cards do carrossel; gere a prévia novamente." });
+  }
+
+  const rowIds = (pending.queueRows ?? [])
+    .filter((row) => scheduledNetworks.includes(row.platform))
+    .map((row) => row.id);
+  if (rowIds.length !== scheduledNetworks.length) {
+    return JSON.stringify({ ok: false, erro: "fila_incompleta", mensagem: "Não encontrei todas as linhas deste criativo; nada foi agendado." });
+  }
+  const mediaUrl = pending.produto?.imagem_url || null;
+  const isVideo = pending.midiaTipo === "video" || pending.produto?.midia_tipo === "video";
+  const { data: updatedRows, error } = await sb.from("social_posts_queue")
+    .update({
+      status: "pendente",
+      scheduled_at: scheduledDate.toISOString(),
+      approval_token: token,
+      error_message: null,
+      image_url: isVideo ? null : mediaUrl,
+      video_url: isVideo ? mediaUrl : null,
+      image_urls: imageUrls.length >= 2 ? imageUrls : null,
+      solicitante_telefone: ctx.fromNumber,
+      notificado_em: null,
+      instagram_creation_id: null,
+      instagram_container_status: null,
+      updated_at: new Date().toISOString(),
+    })
+    .in("id", rowIds)
+    .eq("status", "aguardando_confirmacao")
+    .select("id");
+  if (error || (updatedRows?.length ?? 0) !== rowIds.length) {
+    return JSON.stringify({
+      ok: false,
+      erro: "agendamento_nao_persistido",
+      mensagem: `Não consegui guardar o agendamento; nada deve ser considerado confirmado.${error?.message ? ` ${error.message}` : ""}`,
+    });
+  }
+
+  if (hasTikTok) {
+    const tiktokPending: PendingSocialPost = {
+      ...pending,
+      redes: ["tiktok"],
+      scripts: { tiktok: pending.scripts.tiktok },
+      queueRows: (pending.queueRows ?? []).filter((row) => row.platform === "tiktok"),
+    };
+    PENDING_POSTS.set(token, tiktokPending);
+    await updatePendingSocialPostMarker(token, tiktokPending);
+  } else {
+    PENDING_POSTS.delete(token);
+  }
+  if (ctx.convId && pending.midiaTipo === "carrossel") {
+    const conversation = { id: ctx.convId, userId: ctx.userId, contactNumber: ctx.fromNumber };
+    const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+    await saveAgentState(sb, conversation, { pending_carousel: null }, current);
+    current.pending_carousel = null;
+    ctx.agentState = current;
+  }
+
+  const when = formatScheduledDate(scheduledDate);
+  const networks = formatSocialNetworks(scheduledNetworks);
+  const warning = hasTikTok
+    ? ' O TikTok não foi agendado e precisa ser publicado na hora; responda "publicar agora" para enviá-lo.'
+    : "";
+  return JSON.stringify({
+    ok: true,
+    status: "agendado",
+    token,
+    scheduled_at: scheduledDate.toISOString(),
+    data_extenso: when,
+    redes: scheduledNetworks,
+    mensagem: `Agendado para ${when} no ${networks}. Para desfazer, responda: cancelar agendamento.${warning}`,
+    aviso_tiktok: hasTikTok,
+  });
+}
+
+async function loadScheduledSocialGroups(userId: string): Promise<ScheduledSocialGroup[]> {
+  const { data, error } = await sb.from("social_posts_queue")
+    .select("id, platform, scheduled_at, approval_token")
+    .eq("user_id", userId)
+    .eq("status", "pendente")
+    .gt("scheduled_at", new Date().toISOString())
+    .not("approval_token", "is", null)
+    .order("scheduled_at", { ascending: true })
+    .limit(100);
+  if (error) throw new Error(error.message);
+  const grouped = new Map<string, ScheduledSocialGroup>();
+  for (const row of data ?? []) {
+    const token = String(row.approval_token || "");
+    if (!token || !row.scheduled_at) continue;
+    const group = grouped.get(token) ?? {
+      token,
+      scheduledAt: row.scheduled_at,
+      networks: [] as string[],
+      rowIds: [] as string[],
+    };
+    group.networks.push(row.platform);
+    group.rowIds.push(row.id);
+    grouped.set(token, group);
+  }
+  return [...grouped.values()].sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
+}
+
+async function toolListarAgendamentosPosts(
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  if (!isOwner(ctx)) return JSON.stringify({ ok: false, erro: "acao_restrita_ao_responsavel" });
+  try {
+    const groups = await loadScheduledSocialGroups(ctx.userId);
+    if (!groups.length) return JSON.stringify({ ok: true, status: "sem_agendamentos", mensagem: "Você não tem posts agendados pelo WhatsApp." });
+    const lines = groups.map((group, index) =>
+      `${index + 1}. ${formatScheduledDate(new Date(group.scheduledAt))} — ${formatSocialNetworks(group.networks)} — código ${group.token.toUpperCase()}`
+    );
+    return JSON.stringify({ ok: true, status: "agendamentos_listados", agendamentos: groups, mensagem: `Próximos agendamentos:\n${lines.join("\n")}` });
+  } catch (error) {
+    return JSON.stringify({ ok: false, erro: "falha_ao_listar", mensagem: (error as Error).message });
+  }
+}
+
+async function toolCancelarAgendamentoPost(
+  args: { token?: string },
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  if (!isOwner(ctx)) return JSON.stringify({ ok: false, erro: "acao_restrita_ao_responsavel" });
+  try {
+    const groups = await loadScheduledSocialGroups(ctx.userId);
+    if (!groups.length) return JSON.stringify({ ok: false, erro: "sem_agendamentos", mensagem: "Você não tem posts agendados pelo WhatsApp para cancelar." });
+    const requested = String(args?.token || "").trim().toLowerCase();
+    let selected = requested ? groups.find((group) => group.token.toLowerCase() === requested) : undefined;
+    if (requested && !selected) {
+      return JSON.stringify({ ok: false, erro: "agendamento_nao_encontrado", mensagem: "Não encontrei um agendamento futuro com esse código." });
+    }
+    if (!selected && groups.length > 1) {
+      const lines = groups.map((group, index) =>
+        `${index + 1}. ${formatScheduledDate(new Date(group.scheduledAt))} — ${formatSocialNetworks(group.networks)} — código ${group.token.toUpperCase()}`
+      );
+      return JSON.stringify({
+        ok: false,
+        erro: "selecao_necessaria",
+        mensagem: `Você tem mais de um agendamento. Qual deseja cancelar?\n${lines.join("\n")}\nResponda com o código.`,
+      });
+    }
+    selected ??= groups[0];
+    const { data, error } = await sb.from("social_posts_queue")
+      .update({
+        status: "cancelado",
+        error_message: "cancelado_pelo_whatsapp",
+        updated_at: new Date().toISOString(),
+      })
+      .in("id", selected.rowIds)
+      .eq("status", "pendente")
+      .select("id");
+    if (error || (data?.length ?? 0) !== selected.rowIds.length) throw new Error(error?.message || "nem todas as linhas foram canceladas");
+    return JSON.stringify({
+      ok: true,
+      status: "agendamento_cancelado",
+      token: selected.token,
+      mensagem: `Agendamento de ${formatScheduledDate(new Date(selected.scheduledAt))} no ${formatSocialNetworks(selected.networks)} cancelado.`,
+    });
+  } catch (error) {
+    return JSON.stringify({ ok: false, erro: "falha_ao_cancelar", mensagem: (error as Error).message });
+  }
+}
+
+async function toolRemarcarAgendamentoPost(
+  args: { token?: string; data_hora_sp?: string },
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  if (!isOwner(ctx)) return JSON.stringify({ ok: false, erro: "acao_restrita_ao_responsavel" });
+  const scheduledDate = parseSaoPauloDateTime(args?.data_hora_sp);
+  if (!scheduledDate) {
+    return JSON.stringify({
+      ok: false,
+      erro: "data_invalida",
+      mensagem: "Informe o novo dia e horário. Ex.: 30/09 às 10h.",
+    });
+  }
+  if (!hasMinimumScheduleLead(scheduledDate)) {
+    return JSON.stringify({
+      ok: false,
+      erro: "data_muito_proxima",
+      mensagem: "Escolha um horário com pelo menos 10 minutos de antecedência.",
+    });
+  }
+
+  try {
+    const groups = await loadScheduledSocialGroups(ctx.userId);
+    const requested = String(args?.token || "").trim().toLowerCase();
+    const choice = chooseSocialSchedule(groups, requested);
+    let selected = choice.selected;
+    if (choice.reason === "selection_required") {
+      const lines = groups.map((group, index) =>
+        `${index + 1}. ${formatScheduledDate(new Date(group.scheduledAt))} — ${formatSocialNetworks(group.networks)} — código ${group.token.toUpperCase()}`
+      );
+      return JSON.stringify({
+        ok: false,
+        erro: "selecao_necessaria",
+        mensagem: `Você tem mais de um agendamento. Qual deseja remarcar?\n${lines.join("\n")}\nResponda com o código e o novo horário.`,
+      });
+    }
+    if (!selected) {
+      if (requested) {
+        const { data: tokenRows } = await sb.from("social_posts_queue")
+          .select("status, scheduled_at")
+          .eq("user_id", ctx.userId)
+          .eq("approval_token", requested)
+          .limit(20);
+        if ((tokenRows?.length ?? 0) > 0) {
+          return JSON.stringify({
+            ok: false,
+            erro: "agendamento_nao_remarcavel",
+            mensagem: "Esse post já está sendo publicado, foi publicado, falhou ou foi cancelado e não pode mais ser remarcado.",
+          });
+        }
+      }
+      return JSON.stringify({
+        ok: false,
+        erro: "sem_agendamentos",
+        mensagem: "Você não tem posts futuros pendentes para remarcar.",
+      });
+    }
+
+    const nowIso = new Date().toISOString();
+    const { data: allTokenRows, error: stateError } = await sb.from("social_posts_queue")
+      .select("id, status, scheduled_at")
+      .eq("user_id", ctx.userId)
+      .eq("approval_token", selected.token)
+      .limit(100);
+    const everyRowIsFuturePending = !stateError
+      && allRowsAreFuturePending(allTokenRows ?? []);
+    if (!everyRowIsFuturePending) {
+      return JSON.stringify({
+        ok: false,
+        erro: "agendamento_nao_remarcavel",
+        mensagem: "Esse post já está sendo publicado, foi publicado, falhou ou foi cancelado e não pode mais ser remarcado.",
+      });
+    }
+    const rowIds = allTokenRows!.map((row) => row.id);
+    const { data, error } = await sb.from("social_posts_queue")
+      .update({
+        scheduled_at: scheduledDate.toISOString(),
+        solicitante_telefone: ctx.fromNumber,
+        notificado_em: null,
+        updated_at: nowIso,
+      })
+      .in("id", rowIds)
+      .eq("status", "pendente")
+      .gt("scheduled_at", nowIso)
+      .select("id");
+    if (error || (data?.length ?? 0) !== rowIds.length) {
+      return JSON.stringify({
+        ok: false,
+        erro: "agendamento_nao_remarcavel",
+        mensagem: "O post começou a ser processado ou mudou de estado e não pode mais ser remarcado.",
+      });
+    }
+    return JSON.stringify({
+      ok: true,
+      status: "agendamento_remarcado",
+      token: selected.token,
+      scheduled_at: scheduledDate.toISOString(),
+      mensagem: `Remarcado para ${formatScheduledDate(scheduledDate)} no ${formatSocialNetworks(selected.networks)}. Para desfazer, responda: cancelar agendamento.`,
+    });
+  } catch (error) {
+    return JSON.stringify({
+      ok: false,
+      erro: "falha_ao_remarcar",
+      mensagem: `Não consegui remarcar o post: ${(error as Error).message}`,
+    });
+  }
+}
+
 async function applyPendingTikTokPrivacyChoice(
   token: string,
   text: string,
@@ -4991,7 +5523,6 @@ async function toolRevisarPostPendente(
 
   // Se ajuste vazio (apenas toggle de CTA), reaproveita variantes atuais sem regerar.
   let variantes: Record<string, PostVariantes>;
-  const selecionada: "A" | "B" | "C" = p.variantSelecionada || "A";
   if (ajuste.length < 2 && toggleCta) {
     // Remove CTA anterior de todas as variantes; será reaplicado abaixo se incluirCta.
     const stripCta = (s: string) => (s || "").replace(/\n{1,2}📱 Fale comigo no WhatsApp:.*$/i, "").trimEnd();
@@ -5047,7 +5578,7 @@ async function toolRevisarPostPendente(
   }
 
   const scripts: Record<string, string> = Object.fromEntries(
-    Object.entries(variantes).map(([r, v]) => [r, v[selecionada] || v.A])
+    Object.entries(variantes).map(([r, v]) => [r, v.A])
   );
 
   // Atualiza social_posts_queue.
@@ -5061,7 +5592,13 @@ async function toolRevisarPostPendente(
     }));
   }
 
-  const atualizado: PendingSocialPost = { ...p, scripts, variantes, variantSelecionada: selecionada, incluirCtaWhatsapp: incluirCta };
+  const atualizado: PendingSocialPost = {
+    ...p,
+    scripts,
+    variantes,
+    variantSelecionada: undefined,
+    incluirCtaWhatsapp: incluirCta,
+  };
   PENDING_POSTS.set(token, atualizado);
   await updatePendingSocialPostMarker(token, atualizado);
 
@@ -5072,10 +5609,9 @@ async function toolRevisarPostPendente(
     formato: p.formato || "feed",
     redes: p.redes,
     variantes,
-    opcao_ativa: selecionada,
     cta_whatsapp: incluirCta,
     cta_nota: ctaNota,
-    instrucoes: `Mostre as 3 OPÇÕES A/B/C REVISADAS de forma clara (uma por bloco). Pergunte: "Ficou melhor? Responde *A*, *B* ou *C* — ou 'pode postar' pra ir com a A. Se quiser mais um ajuste, é só me dizer." Se responder A/B/C: chame escolher_variante_post. Se pedir novo ajuste: chame revisar_post_pendente de novo com token="${token}". Se confirmar: chame confirmar_postagem_redes com token="${token}".`,
+    instrucoes: `FASE 1 novamente: mostre as opções A/B/C revisadas e exija uma escolha. Não publique nem agende antes disso. Se responder A/B/C, chame escolher_variante_post. Se pedir novo ajuste, chame revisar_post_pendente com token="${token}".`,
   });
 }
 
@@ -5098,7 +5634,7 @@ async function toolEscolherVariantePost(
   if (!p.variantes) return JSON.stringify({ erro: "esse post não tem variantes — use confirmar_postagem_redes direto" });
 
   const scripts: Record<string, string> = Object.fromEntries(
-    Object.entries(p.variantes).map(([r, v]) => [r, v[opcao] || v.A])
+    Object.entries(p.variantes).map(([r, v]) => [r, selectSocialVariantScripts(v, opcao)])
   );
 
   const atualizado: PendingSocialPost = { ...p, scripts, variantSelecionada: opcao };
@@ -5130,8 +5666,9 @@ async function toolEscolherVariantePost(
     status: "variante_selecionada",
     token,
     opcao_ativa: opcao,
+    formato: atualizado.formato || "feed",
     preview: scripts,
-    instrucoes: `Confirme rapidinho: "Beleza, vou publicar a *Opção ${opcao}*. Pode postar?" Se o dono confirmar ('pode postar', 'sim', 'manda'), chame confirmar_postagem_redes com token="${token}". Se ele pedir ajuste, chame revisar_post_pendente.`,
+    instrucoes: `Mostre que a Opção ${opcao} está ativa e ofereça publicar agora ou agendar. Se confirmar publicação, chame confirmar_postagem_redes com token="${token}". Se informar uma data futura, chame agendar_post_pendente com o mesmo token. Se pedir ajuste, chame revisar_post_pendente.`,
   });
 }
 
@@ -5599,7 +6136,7 @@ async function toolPostarMidiaBiblioteca(
     }
 
     // VÍDEO precisa de contexto do dono (não temos visão de vídeo — não inventar descrição).
-    const legendaDono = (legendaArg || contextoUsuario || briefing || "").toString().trim();
+    const legendaDono = (briefing || legendaArg || contextoUsuario || "").toString().trim();
     if (isVideo && !legendaDono) {
       return JSON.stringify({
         erro: "video_sem_contexto",
@@ -5646,7 +6183,9 @@ async function toolPostarMidiaBiblioteca(
 
     const midiaUsada = `Usando: ${nomeCurtoMidia(midia)} - ${isVideo ? "Vídeo" : "Imagem"} - ${tempoRelativoMidia(midia.created_at)}`;
     try {
-      await sendWhatsApp(ctx.userId, ctx.fromNumber, midiaUsada);
+      // A mídia escolhida faz parte da prévia: para foto, mostra a própria
+      // imagem antes das opções A/B/C em vez de enviar apenas a descrição.
+      await sendWhatsApp(ctx.userId, ctx.fromNumber, midiaUsada, isVideo ? undefined : midia.midia_url);
     } catch (e) {
       return JSON.stringify({
         erro: "aviso_midia_falhou",
@@ -5716,7 +6255,7 @@ async function toolPostarMidiaBiblioteca(
     }
 
     const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo, incluirCtaWhatsapp: incluirCta, briefing: briefing || undefined };
+    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, variantes, userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo, incluirCtaWhatsapp: incluirCta, briefing: briefing || undefined };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
     const avisoFormato = formato === "story"
@@ -5744,14 +6283,13 @@ async function toolPostarMidiaBiblioteca(
       tom,
       redes,
       variantes,
-      opcao_ativa: "A",
       midia_usada: midiaUsada,
       midia_usada_enviada: true,
       aviso_formato: avisoFormato,
       aviso_reels: avisoReels,
       cta_whatsapp: incluirCta,
       cta_nota: ctaNota,
-      instrucoes: `Diga o formato ("vou postar como ${formato.toUpperCase()}" — cite as redes) e mostre as 3 OPÇÕES A/B/C do texto de forma clara e separada, usando os textos de \`variantes\`. Formato exemplo:\n\n*Opção A — Direta*\n<texto A>\n\n*Opção B — História*\n<texto B>\n\n*Opção C — Interativa*\n<texto C>\n\nDepois pergunte: "Qual você prefere? Responde *A*, *B* ou *C* — ou 'pode postar' pra ir com a A. Se quiser ajustar algo (mais curto, mudar tom, tirar preço), me diga."${perguntaCta} Quando o dono responder "A"/"B"/"C"/"opção X", chame escolher_variante_post com token="${token}" e opcao=<letra>. Se pedir ajuste no texto, chame revisar_post_pendente com token="${token}" e ajuste=<instrução literal>. Se confirmar ("pode postar"), chame confirmar_postagem_redes com token="${token}".`,
+      instrucoes: `FASE 1: diga o formato, mostre A/B/C e exija a escolha do texto antes de publicar ou agendar.${perguntaCta} Ao responder A/B/C, chame escolher_variante_post com token="${token}". Se pedir ajuste, chame revisar_post_pendente; as novas opções voltam à FASE 1.`,
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
@@ -6706,6 +7244,7 @@ async function startVideoSetup(
   originalRequest: string,
   explicit?: { tema?: string; estilo?: string | null; duracao?: string | null; cores?: string },
 ): Promise<string> {
+  if (!isOwner(ctx)) return "Esse recurso é exclusivo do responsável da conta.";
   if (!ctx.convId) return "Não consegui identificar esta conversa para guardar as escolhas do vídeo. Tente novamente.";
   const full = compactSpaces(originalRequest);
   const tema = normalizeVideoTopic(explicit?.tema || full);
@@ -7253,7 +7792,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "gerar_imagem",
-      description: "Cria uma imagem ULTRA REALISTA por IA (padrão IA Marketing — fotorealista, iluminação profissional, qualidade editorial, SEM texto/letras) a partir de um prompt descritivo. Use SEMPRE que o usuário pedir 'faz uma imagem', 'gera uma arte', 'cria uma foto de X', 'desenha', 'me manda uma imagem', 'faz um banner/post/mockup'. A imagem é enviada automaticamente no WhatsApp E salva na biblioteca /midias — o usuário pode publicar direto nas redes sociais depois. Responda com legenda curta (1-2 linhas) descrevendo o que criou e avisando que já está pronta pra postar. NUNCA cole a URL na resposta.",
+      description: "Cria imagem ultrarrealista. Dono: uso normal e mídia pronta para publicação. Prospect do tenant AMZ: no máximo UMA demonstração por telefone; envie só na conversa, com exemplo de legenda, e diga que nada foi publicado. Cliente final de qualquer outro tenant: bloqueado pelo código. NUNCA cole URL.",
       parameters: {
         type: "object",
         properties: {
@@ -7529,7 +8068,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "confirmar_postagem_redes",
-      description: "Confirma e PUBLICA de fato o post nas redes sociais usando o token devolvido por postar_redes_sociais. Chame SOMENTE após o usuário aprovar explicitamente o preview ('pode postar', 'confirma', 'manda ver', 'sim'). Se pedir cancelar, passe cancelar=true.",
+      description: "Confirma e PUBLICA de fato o post. Só funciona DEPOIS que o dono escolheu explicitamente A, B ou C com escolher_variante_post; nunca presuma A. Se pedir cancelar, passe cancelar=true.",
       parameters: {
         type: "object",
         properties: {
@@ -7537,6 +8076,57 @@ const TOOLS = [
           cancelar: { type: "boolean", description: "Se true, descarta o preview sem publicar." },
         },
         required: ["token"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "agendar_post_pendente",
+      description: "Agenda um criativo somente DEPOIS que o dono escolheu explicitamente A, B ou C. Nunca presuma A. Resolva a expressão usando a data/hora atual de São Paulo e envie data_hora_sp em YYYY-MM-DD HH:MM. Só confirme se retornar ok=true. TikTok não é agendado.",
+      parameters: {
+        type: "object",
+        properties: {
+          token: { type: "string", description: "Token de 8 caracteres do criativo pendente." },
+          data_hora_sp: { type: "string", description: "Data/hora absoluta em São Paulo, formato YYYY-MM-DD HH:MM." },
+        },
+        required: ["token", "data_hora_sp"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "listar_agendamentos_posts",
+      description: "Lista os próximos posts sociais agendados pelo WhatsApp, com data, redes e código.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "cancelar_agendamento_post",
+      description: "Cancela um post social futuro agendado pelo WhatsApp. Omita token quando houver apenas um; se houver vários, a ferramenta pedirá qual código cancelar.",
+      parameters: {
+        type: "object",
+        properties: {
+          token: { type: "string", description: "Código de 8 caracteres exibido em 'meus agendamentos'." },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "remarcar_agendamento_post",
+      description: "Remarca um post social futuro agendado pelo WhatsApp. Use para 'muda o horário', 'remarca' ou 'adia'. Omita token quando houver apenas um; se houver vários, a ferramenta pedirá qual. Resolva a data em São Paulo e só confirme se retornar ok=true.",
+      parameters: {
+        type: "object",
+        properties: {
+          token: { type: "string", description: "Código de 8 caracteres exibido em 'meus agendamentos'." },
+          data_hora_sp: { type: "string", description: "Nova data/hora em São Paulo. Aceita YYYY-MM-DD HH:MM ou dd/mm às HHh; sem ano, usa a próxima ocorrência." },
+        },
+        required: ["data_hora_sp"],
       },
     },
   },
@@ -7682,12 +8272,13 @@ const TOOLS = [
     function: {
 
       name: "criar_carrossel",
-      description: "🎠 Gera um CARROSSEL de Instagram com vários cards separados para APROVAÇÃO antes de publicar. Use também em pedidos detalhados que descrevem card por card, slide por slide, roteiro de páginas ou sequência de artes; NUNCA transforme esses pedidos em uma imagem única ou grade. FLUXO: 1) na primeira chamada passe o tema/briefing completo e deixe cor vazia para mostrar o seletor; 2) quando o dono escolher a cor, chame novamente com tema + cor; 3) o sistema renderiza a prévia, mostra os cards e cria confirmação A/B/C. Esta tool NUNCA publica automaticamente. Se o dono mencionar Facebook, informe que este carrossel está disponível apenas no Instagram. Restrito ao responsável da conta.",
+      description: "🎠 Gera um CARROSSEL com vários cards separados. Para o dono, cria prévia para aprovação antes de publicar. Para prospect do tenant AMZ, permite UMA demonstração por telefone, mostra os cards e uma legenda, mas NUNCA cria aprovação nem publica. Em outros tenants é restrito ao responsável. FLUXO: 1) primeira chamada sem cor mostra seletor; 2) depois chame com tema + cor.",
       parameters: {
         type: "object",
         properties: {
           tema: { type: "string", description: "Assunto/tema do carrossel, como o usuário pediu (ex: '5 dicas para vender mais no Instagram')." },
           cor: { type: "string", description: "Cor de destaque escolhida PELO USUÁRIO: azul, verde, laranja, preto, dourado ou roxo. Deixe VAZIO na primeira chamada para eu perguntar com a lista de 1 toque." },
+          num_slides: { type: "number", description: "Quantidade pedida, de 3 a 10. Sem pedido explícito, use 7." },
           legenda: { type: "string", description: "Legenda do post, se o usuário ditou uma. Vazio = a IA escreve a legenda com hashtags." },
         },
         required: ["tema"],
@@ -7980,7 +8571,7 @@ async function callEdge(fn: string, payload: any, timeoutMs = 120000): Promise<a
   return json ?? {};
 }
 
-async function sendCarrosselColorPicker(userId: string, to: string, tema: string): Promise<void> {
+async function sendCarrosselColorPicker(userId: string, to: string, tema: string, demonstracao = false): Promise<void> {
   const response = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-send-message`, {
     method: "POST",
     headers: {
@@ -7994,7 +8585,7 @@ async function sendCarrosselColorPicker(userId: string, to: string, tema: string
       interactive_list: {
         header: "🎨 Cor do carrossel",
         body: `Beleza! Vou montar o carrossel sobre *${tema.slice(0, 120)}*.\n\nEscolha a cor de destaque — é só 1 toque:`,
-        footer: "Depois você confere antes de publicar",
+        footer: demonstracao ? "Demonstração: nada será publicado" : "Depois você confere antes de publicar",
         button: "Escolher cor",
         section_title: "Cores",
         rows: carouselColorRows(),
@@ -8049,17 +8640,36 @@ async function registrarCarrosselNaBiblioteca(
   return parent.id;
 }
 
+async function loadProspectCarouselBranch(userId: string, fromNumber: string): Promise<string | null> {
+  const { data, error } = await sb
+    .from("jarvis_leads")
+    .select("ramo")
+    .eq("user_id", userId)
+    .eq("telefone", fromNumber)
+    .maybeSingle();
+  if (error) {
+    console.warn("[carrossel-demo][ramo_lookup_failed]", error.message);
+    return null;
+  }
+  return String(data?.ramo || "").trim() || null;
+}
+
 async function enviarPreviewCarrossel(
   ctx: { userId: string; fromNumber: string },
   imageUrls: string[],
   startIndex = 0,
-  maxCards = 3,
+  maxCards = imageUrls.length,
 ): Promise<void> {
-  const total = imageUrls.length;
-  const end = Math.min(total, startIndex + maxCards);
-  for (let index = startIndex; index < end; index++) {
-    await sendWhatsApp(ctx.userId, ctx.fromNumber, `Card ${index + 1} de ${total}`, imageUrls[index]);
-  }
+  await sendCarouselCardsInOrder({
+    imageUrls,
+    startIndex,
+    maxCards,
+    send: async (url, index, total) => {
+      await sendWhatsApp(ctx.userId, ctx.fromNumber, `Card ${index + 1} de ${total}`, url);
+    },
+    pause: wait,
+    logger: (message) => console.log(message),
+  });
 }
 
 async function cancelarPreviewCarrosselAnterior(token: string | undefined, userId: string): Promise<void> {
@@ -8136,7 +8746,6 @@ async function prepararPreviewCarrosselExistente(
     redes: ["instagram"],
     scripts: { instagram: variantesBase.A },
     variantes,
-    variantSelecionada: "A",
     userId: ctx.userId,
     createdAt: Date.now(),
     formato: "feed",
@@ -8181,17 +8790,27 @@ async function prepararPreviewCarrosselExistente(
     media_code: idCurto(parentId),
     redes: ["instagram"],
     variantes,
-    opcao_ativa: "A",
     aviso_facebook: options.facebookRequested ? "Carrossel pelo WhatsApp está disponível apenas no Instagram; não publiquei no Facebook." : undefined,
   });
 }
 
 async function toolCriarCarrossel(
-  args: { tema?: string; cor?: string; legenda?: string; ajuste?: string; slides?: any[]; facebook_requested?: boolean },
-  ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
+  args: {
+    tema?: string;
+    cor?: string;
+    legenda?: string;
+    ajuste?: string;
+    slides?: any[];
+    num_slides?: number;
+    facebook_requested?: boolean;
+  },
+  ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState; demonstracao?: boolean },
 ): Promise<string> {
   try {
-    if (!isOwner(ctx)) {
+    const demoProspect = ctx.demonstracao === true
+      && ctx.userId === ADMIN_AMZ_USER_ID
+      && !isOwner(ctx);
+    if (!isOwner(ctx) && !demoProspect) {
       return JSON.stringify({
         erro: "acao_restrita_ao_responsavel",
         mensagem: "Criar e publicar carrossel é restrito ao responsável da conta.",
@@ -8200,6 +8819,12 @@ async function toolCriarCarrossel(
 
     const tema = (args?.tema || "").trim();
     if (tema.length < 3) return JSON.stringify({ erro: "informe o tema/assunto do carrossel" });
+    const numSlides = Array.isArray(args.slides) && args.slides.length >= 3
+      ? Math.min(10, args.slides.length)
+      : requestedCarouselSlideCount(
+        Number.isFinite(args.num_slides) ? `${args.num_slides} cards` : tema,
+        demoProspect,
+      );
 
     // 1) COR — se não vier (ou vier irreconhecível), manda a LISTA de 1 toque e para aqui.
     const cor = resolveCarouselColor(args?.cor);
@@ -8210,6 +8835,7 @@ async function toolCriarCarrossel(
       const pending: PendingCarouselState = {
         stage: "awaiting_color",
         tema,
+        num_slides: numSlides,
         caption: args?.legenda,
         facebook_requested: !!args?.facebook_requested,
         created_at: new Date().toISOString(),
@@ -8219,7 +8845,7 @@ async function toolCriarCarrossel(
       }
       current.pending_carousel = pending;
       ctx.agentState = current;
-      await sendCarrosselColorPicker(ctx.userId, ctx.fromNumber, tema);
+      await sendCarrosselColorPicker(ctx.userId, ctx.fromNumber, tema, demoProspect);
       return JSON.stringify({
         status: "aguardando_cor",
         tema,
@@ -8253,36 +8879,77 @@ async function toolCriarCarrossel(
       .eq("user_id", ctx.userId)
       .eq("is_active", true)
       .maybeSingle();
-    if (!conn?.ig_account_id) {
+    if (!conn?.ig_account_id && !demoProspect) {
       return JSON.stringify({
         erro: "instagram_nao_conectado",
         mensagem: "Seu Instagram não está conectado. Vá em Configurações → Redes Sociais, conecte a conta e me chama de novo.",
       });
     }
-    const businessName = (conn.page_name || "").trim() || null;
-    const profileHandle = conn.ig_username ? `@${String(conn.ig_username).replace(/^@/, "")}` : null;
+    const businessName = demoProspect ? null : (conn?.page_name || "").trim() || null;
+    const profileHandle = demoProspect || !conn?.ig_username
+      ? null
+      : `@${String(conn.ig_username).replace(/^@/, "")}`;
 
     // 4) CONTEÚDO dos slides — MESMO gerador E MESMA metodologia do app
     //    (buildCarouselPrompt espelha src/components/CarouselGenerator.tsx:
     //     4-5 tópicos densos por card) + CONTEXTO REAL do negócio do tenant.
-    const business = await getTenantBusinessContext(sb, ctx.userId, { nomeFallback: businessName });
-    let prompt = buildCarouselPrompt({ tema, numSlides: 7, business });
+    const business = demoProspect
+      ? null
+      : await getTenantBusinessContext(sb, ctx.userId, { nomeFallback: businessName });
+    const prospectBranch = demoProspect
+      ? await loadProspectCarouselBranch(ctx.userId, ctx.fromNumber)
+      : null;
+    let prompt = demoProspect
+      ? buildProspectDemoCarouselPrompt({ tema, ramo: prospectBranch, numSlides })
+      : buildCarouselPrompt({ tema, numSlides, business });
     if (args?.ajuste && Array.isArray(args?.slides) && args.slides.length >= 2) {
       prompt += `\n\nCARROSSEL ATUAL:\n${JSON.stringify(args.slides)}\n\nAJUSTE OBRIGATÓRIO DO DONO: ${args.ajuste}\nPreserve todos os cards e textos que não foram citados no ajuste.`;
     }
     console.log("[criar_carrossel] contexto_do_negocio", {
-      tem_contexto: business.temContexto,
-      produtos: business.produtos.length,
+      demonstracao: demoProspect,
+      num_slides: numSlides,
+      ramo_prospect: prospectBranch,
+      tem_contexto: business?.temContexto ?? false,
+      produtos: business?.produtos.length ?? 0,
     });
 
-    const conteudo = Array.isArray(args?.slides) && args.slides.length >= 2 && !args?.ajuste
+    let conteudo = Array.isArray(args?.slides) && args.slides.length >= 2 && !args?.ajuste
       ? { slides: args.slides, caption: args?.legenda || tema }
-      : await callEdge("gerar-carousel-content", { prompt, tema }, 90000);
-    const slides = Array.isArray(conteudo?.slides) ? conteudo.slides : [];
-    if (slides.length < 2) {
-      return JSON.stringify({ erro: "conteudo_insuficiente", detalhe: "a IA não devolveu slides suficientes; peça pra tentar de novo" });
+      : await callEdge("gerar-carousel-content", {
+        prompt,
+        tema,
+        user_id: ctx.userId,
+        neutral_copy: demoProspect,
+      }, 90000);
+    let slides = Array.isArray(conteudo?.slides)
+      ? demoProspect
+        ? sanitizeProspectDemoSlides(conteudo.slides)
+        : sanitizeCarouselSlides(conteudo.slides)
+      : [];
+    if ((!args?.slides || args?.ajuste) && slides.length !== numSlides) {
+      console.warn(`[criar_carrossel] quantidade_incorreta recebida=${slides.length} esperada=${numSlides}; tentando novamente`);
+      conteudo = await callEdge("gerar-carousel-content", {
+        prompt: `${prompt}\n\nCORREÇÃO OBRIGATÓRIA: a resposta anterior não trouxe a quantidade pedida. Retorne EXATAMENTE ${numSlides} slides.`,
+        tema,
+        user_id: ctx.userId,
+        neutral_copy: demoProspect,
+      }, 90000);
+      slides = Array.isArray(conteudo?.slides)
+        ? demoProspect
+          ? sanitizeProspectDemoSlides(conteudo.slides)
+          : sanitizeCarouselSlides(conteudo.slides)
+        : [];
     }
-    const caption = (args?.legenda || conteudo?.caption || tema).toString();
+    if (slides.length !== numSlides) {
+      return JSON.stringify({
+        erro: "quantidade_slides_incorreta",
+        detalhe: `a IA devolveu ${slides.length} cards; eram esperados ${numSlides}`,
+      });
+    }
+    const generatedCaption = (args?.legenda || conteudo?.caption || tema).toString();
+    const caption = demoProspect
+      ? sanitizeProspectDemoCaption(generatedCaption, tema)
+      : generatedCaption;
 
     // 5) RENDER server-side (Satori + resvg) — template dark-premium
     const render = await callEdge("render-carousel-slides", {
@@ -8293,11 +8960,14 @@ async function toolCriarCarrossel(
       secondaryColor: cor.secondaryColor,
       businessName,
       profileHandle,
-      incluir_logo: true,
+      incluir_logo: !demoProspect,
     }, 180000);
     const imageUrls: string[] = Array.isArray(render?.image_urls) ? render.image_urls : [];
-    if (imageUrls.length < 2) {
-      return JSON.stringify({ erro: "falha_no_render", detalhe: "não consegui gerar as imagens dos cards" });
+    if (imageUrls.length !== slides.length) {
+      return JSON.stringify({
+        erro: "falha_no_render",
+        detalhe: `foram renderizados ${imageUrls.length} de ${slides.length} cards`,
+      });
     }
 
     const mediaId = await registrarCarrosselNaBiblioteca(ctx, tema, imageUrls);
@@ -8311,12 +8981,32 @@ async function toolCriarCarrossel(
       return JSON.stringify({ erro: "preview_carrossel_falhou", mensagem: `Gerei os cards, mas não consegui mostrá-los para aprovação: ${(e as Error).message}. Não publiquei nada.` });
     }
 
+    if (demoProspect) {
+      if (ctx.convId) {
+        const conversation = { id: ctx.convId, userId: ctx.userId, contactNumber: ctx.fromNumber };
+        const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+        await saveAgentState(sb, conversation, { pending_carousel: null }, current);
+        current.pending_carousel = null;
+        ctx.agentState = current;
+      }
+      return JSON.stringify({
+        ok: true,
+        status: "demonstracao_carrossel",
+        demonstracao: true,
+        cards: imageUrls.length,
+        media_id: mediaId,
+        exemplo_legenda: caption,
+        mensagem: `Pronto — esta é a demonstração do carrossel. Nada foi publicado.\n\nExemplo de legenda: ${caption}`,
+      });
+    }
+
     if (ctx.convId) {
       const conversation = { id: ctx.convId, userId: ctx.userId, contactNumber: ctx.fromNumber };
       const current = ctx.agentState ?? await loadAgentState(sb, conversation);
       const pending: PendingCarouselState = {
         stage: "awaiting_confirmation",
         tema,
+        num_slides: numSlides,
         cor: cor.label,
         slides,
         caption,
@@ -8603,6 +9293,9 @@ function formatCarrosselToolResult(raw: string): string {
       : "É só escolher a cor aí em cima 👆";
   }
   if (d?.status === "aguardando_escolha_variante") return formatSocialPostToolResult(raw);
+  if (d?.status === "demonstracao_carrossel") {
+    return String(d.mensagem || "Carrossel de demonstração criado. Nada foi publicado.");
+  }
   if (d?.status === "publicado") {
     const base = `✅ Carrossel de *${d.cards} cards* na cor *${d.cor}* publicado no seu Instagram!<<SPLIT>>Confere aqui: ${d.link_perfil}`;
     return d?.aviso_sem_contexto
@@ -8617,8 +9310,49 @@ function formatCarrosselToolResult(raw: string): string {
   return "Carrossel processado.";
 }
 
+async function countProspectDemoMedia(
+  userId: string,
+  fromNumber: string,
+  origin: "ia_whatsapp" | "carrossel_whatsapp",
+): Promise<number> {
+  const { count, error } = await sb.from("midias_whatsapp")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("telefone_origem", fromNumber)
+    .eq("origem", origin);
+  if (error) throw new Error(`demo_count_failed: ${error.message}`);
+  return count ?? 0;
+}
 
-
+async function resolveCreativeToolDecision(
+  name: string,
+  ctx: { userId: string; fromNumber: string },
+): Promise<DemoToolDecision> {
+  const owner = isOwner(ctx);
+  const isAmzTenant = ctx.userId === ADMIN_AMZ_USER_ID;
+  try {
+    const generatedImages = !owner && isAmzTenant && name === "gerar_imagem"
+      ? await countProspectDemoMedia(ctx.userId, ctx.fromNumber, "ia_whatsapp")
+      : 0;
+    const generatedCarousels = !owner && isAmzTenant && name === "criar_carrossel"
+      ? await countProspectDemoMedia(ctx.userId, ctx.fromNumber, "carrossel_whatsapp")
+      : 0;
+    return decideWhatsAppCreativeTool({
+      toolName: name,
+      isOwner: owner,
+      isAmzTenant,
+      generatedImages,
+      generatedCarousels,
+    });
+  } catch (error) {
+    console.error("[demo-policy][count_failed]", error);
+    return {
+      allowed: false,
+      reason: isAmzTenant ? "demo_restricted" : "tenant_restricted",
+      message: isAmzTenant ? DEMO_LIMIT_MESSAGE : TENANT_CREATION_BLOCK_MESSAGE,
+    };
+  }
+}
 
 async function runTool(
 
@@ -8628,6 +9362,18 @@ async function runTool(
   args: any,
   ctx: { userId: string; fromNumber: string; media?: MediaExtract[]; convId?: string; agentState?: AgentConvState },
 ): Promise<{ result: string; imageUrl?: string }> {
+  const creativeDecision = await resolveCreativeToolDecision(name, ctx);
+  if (!creativeDecision.allowed) {
+    return {
+      result: JSON.stringify({
+        ok: false,
+        status: "demonstracao_bloqueada",
+        erro: creativeDecision.reason,
+        mensagem: creativeDecision.message,
+      }),
+    };
+  }
+  const demonstracao = creativeDecision.mode === "demo";
   const hasFreshLibraryMedia = (ctx.media ?? []).some((m) => m.kind === "image" || m.kind === "video");
   if (hasFreshLibraryMedia && name !== "salvar_midia_biblioteca" && name !== "encaminhar_recado_ao_dono") {
     console.warn(`[pietro][media_guard] bloqueando tool ${name}; mídia nova deve ir para /midias`);
@@ -8639,7 +9385,12 @@ async function runTool(
   if (name === "pesquisar_web") return { result: await toolPesquisarWeb(args?.query ?? "", args?.recencia) };
   if (name === "buscar_lugares_proximos") return { result: await toolBuscarLugaresProximos(ctx, args?.query ?? "", args?.radius_meters) };
   if (name === "gerar_imagem") {
-    const r = await toolGerarImagem(args?.prompt ?? "", { userId: ctx.userId, fromNumber: ctx.fromNumber, incluirLogo: args?.incluir_logo === true });
+    const r = await toolGerarImagem(args?.prompt ?? "", {
+      userId: ctx.userId,
+      fromNumber: ctx.fromNumber,
+      incluirLogo: args?.incluir_logo === true,
+      demonstracao,
+    });
     let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}
     return { result: r, imageUrl: parsed?.image_url };
   }
@@ -8712,12 +9463,18 @@ async function runTool(
   if (name === "resumo_plataforma") return { result: await toolResumoPlataforma(ctx) };
   if (name === "postar_redes_sociais") return { result: await toolPostarRedesSociais(args ?? {}, ctx) };
   if (name === "confirmar_postagem_redes") return { result: await toolConfirmarPostagemRedes(args ?? {}, ctx) };
+  if (name === "agendar_post_pendente") return { result: await toolAgendarPostPendente(args ?? {}, ctx) };
+  if (name === "listar_agendamentos_posts") return { result: await toolListarAgendamentosPosts(ctx) };
+  if (name === "cancelar_agendamento_post") return { result: await toolCancelarAgendamentoPost(args ?? {}, ctx) };
+  if (name === "remarcar_agendamento_post") return { result: await toolRemarcarAgendamentoPost(args ?? {}, ctx) };
   if (name === "revisar_post_pendente") return { result: await toolRevisarPostPendente(args ?? {}, ctx) };
   if (name === "escolher_variante_post") return { result: await toolEscolherVariantePost(args ?? {}, ctx) };
   if (name === "registrar_logo_cliente") return { result: await toolRegistrarLogoCliente(args ?? {}, ctx) };
   if (name === "salvar_midia_biblioteca") return { result: await toolSalvarMidiaBiblioteca(args ?? {}, ctx) };
   if (name === "postar_midia_biblioteca") return { result: await toolPostarMidiaBiblioteca(args ?? {}, ctx) };
-  if (name === "criar_carrossel") return { result: await toolCriarCarrossel(args ?? {}, ctx) };
+  if (name === "criar_carrossel") {
+    return { result: await toolCriarCarrossel(args ?? {}, { ...ctx, demonstracao }) };
+  }
   if (name === "publicar_linkedin") return { result: await toolPublicarLinkedin(args ?? {}, ctx) };
   if (name === "criar_anuncio") {
     const r = await toolCriarAnuncio(args ?? {}, ctx);
@@ -8753,7 +9510,14 @@ async function callGemini(
   userContent: any,
   hasMedia: boolean,
   toolCtx: { userId: string; fromNumber: string; media?: MediaExtract[]; convId?: string; agentState?: AgentConvState },
-): Promise<{ text: string; imageUrl?: string; forwardProof?: string; forwardAttempted?: boolean; interactiveList?: WhatsAppInteractiveList }> {
+): Promise<{
+  text: string;
+  imageUrl?: string;
+  forwardProof?: string;
+  forwardAttempted?: boolean;
+  interactiveList?: WhatsAppInteractiveList;
+  interactiveButtons?: WhatsAppInteractiveButtons;
+}> {
   let forwardProof: string | undefined;
   let forwardAttempted = false;
   const nowSP = new Date().toLocaleString("pt-BR", {
@@ -8770,13 +9534,145 @@ async function callGemini(
 
   if (!hasMedia && typeof userContent === "string") {
     const remetenteEhDono = isOwner(toolCtx);
-    const pendingCarousel = remetenteEhDono ? toolCtx.agentState?.pending_carousel : null;
+    const prospectAmz = !remetenteEhDono && toolCtx.userId === ADMIN_AMZ_USER_ID;
+    const pendingCarousel = remetenteEhDono || prospectAmz ? toolCtx.agentState?.pending_carousel : null;
     const pendingVideoSetup = remetenteEhDono ? toolCtx.agentState?.pending_video_setup : null;
     const pendingClientLogo = remetenteEhDono ? toolCtx.agentState?.pending_client_logo : null;
     const latestPendingSocialToken = pendingCarousel?.stage === "awaiting_confirmation" && pendingCarousel.token
       ? pendingCarousel.token
       : remetenteEhDono ? await findLatestPendingSocialToken(toolCtx.userId) : null;
     const pendingVideoDraft = remetenteEhDono ? await buscarRascunhoVideo(toolCtx) : null;
+    const normalizedInput = normalizePt(userContent);
+    const socialInteractiveId = userContent.match(/<<INTERACTIVE_ID:(social_[^>]+)>>/i)?.[1] || "";
+    const socialActionInteractive = socialInteractiveId.match(/^social_(publish|schedule):([a-f0-9]{8})$/i);
+    const socialVariantInteractive = socialInteractiveId.match(/^social_variant:([ABC]):([a-f0-9]{8})$/i);
+    const ownerMediaIntent = classifyOwnerMediaIntent(userContent);
+
+    if (remetenteEhDono && /\bmeus agendamentos\b/.test(normalizedInput)) {
+      const result = await toolListarAgendamentosPosts(toolCtx);
+      return { text: formatSocialPostToolResult(result) };
+    }
+    if (remetenteEhDono && /\bcancelar agendamento\b/.test(normalizedInput)) {
+      const explicitToken = userContent.match(/\b[a-f0-9]{8}\b/i)?.[0];
+      const result = await toolCancelarAgendamentoPost({ token: explicitToken }, toolCtx);
+      const parsed = JSON.parse(result);
+      return { text: String(parsed?.mensagem || "Não consegui cancelar o agendamento.") };
+    }
+    const standaloneScheduleToken = userContent.trim().match(/^[a-f0-9]{8}$/i)?.[0]?.toLowerCase();
+    if (remetenteEhDono && standaloneScheduleToken) {
+      const groups = await loadScheduledSocialGroups(toolCtx.userId).catch(() => []);
+      if (groups.some((group) => group.token.toLowerCase() === standaloneScheduleToken)) {
+        const result = await toolCancelarAgendamentoPost({ token: standaloneScheduleToken }, toolCtx);
+        const parsed = JSON.parse(result);
+        return { text: String(parsed?.mensagem || "Não consegui cancelar o agendamento.") };
+      }
+    }
+    if (remetenteEhDono && socialVariantInteractive) {
+      const result = await toolEscolherVariantePost({
+        token: socialVariantInteractive[2],
+        opcao: socialVariantInteractive[1],
+      }, toolCtx);
+      return {
+        text: formatSocialPostToolResult(result),
+        interactiveButtons: interactiveButtonsFromSocialResult(result),
+      };
+    }
+    if (remetenteEhDono && socialActionInteractive?.[1]?.toLowerCase() === "publish") {
+      const result = await toolConfirmarPostagemRedes({ token: socialActionInteractive[2] }, toolCtx);
+      return {
+        text: formatSocialPostToolResult(result),
+        interactiveList: interactiveListFromSocialResult(result),
+        interactiveButtons: interactiveButtonsFromSocialResult(result),
+      };
+    }
+    if (remetenteEhDono && socialActionInteractive?.[1]?.toLowerCase() === "schedule") {
+      const token = socialActionInteractive[2].toLowerCase();
+      const pending = PENDING_POSTS.get(token) ?? await loadPendingSocialPost(token, toolCtx.userId);
+      if (!pending || !canRunSocialPostAction(pending.variantSelecionada)) {
+        const result = pending
+          ? variantSelectionRequiredResult(token, pending)
+          : JSON.stringify({ erro: "token_nao_encontrado", mensagem: "Não encontrei esse criativo aguardando confirmação." });
+        return {
+          text: formatSocialPostToolResult(result),
+          interactiveButtons: interactiveButtonsFromSocialResult(result),
+        };
+      }
+      return { text: "Para quando? Informe o dia/mês e a hora. Ex.: 30/09 às 10h" };
+    }
+    if (
+      remetenteEhDono
+      && latestPendingSocialToken
+      && /^(agendar|agenda|quero agendar|prefiro agendar)$/.test(
+        normalizedInput.replace(/<<interactive id:[^>]+>>/g, "").trim(),
+      )
+    ) {
+      const pending = PENDING_POSTS.get(latestPendingSocialToken)
+        ?? await loadPendingSocialPost(latestPendingSocialToken, toolCtx.userId);
+      if (pending && !canRunSocialPostAction(pending.variantSelecionada)) {
+        const result = variantSelectionRequiredResult(latestPendingSocialToken, pending);
+        return {
+          text: formatSocialPostToolResult(result),
+          interactiveButtons: interactiveButtonsFromSocialResult(result),
+        };
+      }
+      return { text: "Para quando? Informe o dia/mês e a hora. Ex.: 30/09 às 10h" };
+    }
+
+    // Precedência de mídia do dono: gerar > postar > editar. Uma geração
+    // encadeada com post salva a nova imagem em /midias e usa exatamente esse
+    // ID na prévia, sem deixar os atalhos capturarem uma mídia anterior.
+    if (remetenteEhDono && (ownerMediaIntent.action === "generate" || ownerMediaIntent.action === "generate_and_post")) {
+      const imagePrompt = userContent.split(/\b(?:depois|em seguida|na sequência)\b/i)[0].trim();
+      const incluirLogo = /\b(?:com|inclui|incluir|coloca|colocar|aplica|aplicar)\b.{0,30}\b(?:minha|nossa|a)?\s*(?:logo|logotipo|logomarca)\b/i.test(userContent);
+      console.log("[pietro][forced_image_generation]", { chainedPost: ownerMediaIntent.action === "generate_and_post" });
+      const generatedRaw = await toolGerarImagem(imagePrompt || userContent, {
+        userId: toolCtx.userId,
+        fromNumber: toolCtx.fromNumber,
+        incluirLogo,
+      });
+      let generated: any = {};
+      try { generated = JSON.parse(generatedRaw); } catch { /* tratado abaixo */ }
+      if (generated?.ok !== true || !generated?.image_url) {
+        return { text: `Não consegui gerar a imagem: ${String(generated?.detalhe || generated?.erro || "resposta inválida")}` };
+      }
+      if (generated?.midia_id) await rememberLastMediaInteraction(toolCtx, generated.midia_id);
+
+      if (ownerMediaIntent.action === "generate_and_post") {
+        if (!generated?.midia_id) {
+          return {
+            text: "Gerei a imagem, mas não consegui salvá-la na biblioteca para montar a prévia do post.",
+            imageUrl: generated.image_url,
+          };
+        }
+        const social = detectSocialPostIntent(userContent, { allowGenerationChain: true }) ?? {
+          produto: "",
+          tom: "urgencia",
+          redes: ["facebook", "instagram"],
+          temProduto: false,
+          formato: detectSocialPostFormat(userContent) ?? "feed",
+        };
+        const briefing = extractSocialPostBriefing(userContent);
+        const postResult = await toolPostarMidiaBiblioteca({
+          midia_id: generated.midia_id,
+          legenda: briefing || cleanMediaPostLegenda(userContent),
+          briefing,
+          tom: social.tom,
+          redes: social.redes.length ? social.redes : ["facebook", "instagram"],
+          formato: social.formato ?? "feed",
+          incluir_cta_whatsapp: detectWantsWhatsappCta(userContent),
+        }, toolCtx);
+        return {
+          text: formatSocialPostToolResult(postResult),
+          interactiveButtons: interactiveButtonsFromSocialResult(postResult),
+        };
+      }
+
+      const code = generated?.midia_id ? `<<SPLIT>>${linhaCodigoMidia(generated.midia_id, "foto")}` : "";
+      return {
+        text: `Pronto — criei a imagem e salvei na biblioteca.${code}`,
+        imageUrl: generated.image_url,
+      };
+    }
 
     if (pendingClientLogo) {
       const conversation = toolCtx.convId
@@ -8861,7 +9757,11 @@ async function callGemini(
     // transformar um pedido explícito de vídeo em ficha técnica.
     if (isVideoMotionRequest(userContent)) {
       if (!remetenteEhDono) {
-        return { text: "A criação de vídeo é restrita ao responsável da conta. Posso encaminhar seu pedido para ele, se quiser." };
+        return {
+          text: toolCtx.userId === ADMIN_AMZ_USER_ID
+            ? DEMO_LIMIT_MESSAGE
+            : TENANT_CREATION_BLOCK_MESSAGE,
+        };
       }
       return { text: await startVideoSetup(toolCtx, userContent) };
     }
@@ -8870,6 +9770,13 @@ async function callGemini(
     // Diferentemente da edição comum, este fluxo exige DUAS referências e
     // nunca pode degradar silenciosamente para ficha técnica de uma só foto.
     if (isImageCompositionIntent(userContent)) {
+      if (!remetenteEhDono) {
+        return {
+          text: toolCtx.userId === ADMIN_AMZ_USER_ID
+            ? DEMO_LIMIT_MESSAGE
+            : TENANT_CREATION_BLOCK_MESSAGE,
+        };
+      }
       try {
         const pendingComposition = toolCtx.agentState?.pending_image_composition;
         const pendingAge = pendingComposition?.at
@@ -8939,8 +9846,9 @@ async function callGemini(
     // Edição de foto recente é determinística: o modelo não pode apenas prometer
     // que vai trabalhar em segundo plano. A própria ferramenta busca a última
     // foto do tenant (janela de 30 min) e devolve a imagem pronta neste turno.
-    const pedidoLogoNaFoto = /\b(?:coloc(?:a|ar|e)|inclu(?:a|ir|i)|p[oõ]e|por|aplic(?:a|ar|e)|insir(?:a|ir)|adicion(?:a|ar|e)|estamp(?:a|ar|e))\b[\s\S]{0,120}\b(?:logo|logotipo|logomarca|marca)\b/i.test(userContent);
-    const pedidoEdicaoFoto = pedidoLogoNaFoto || /\b(?:melhor(?:a|ar|e)|edit(?:a|ar|e)|trat(?:a|ar|e)|ajust(?:a|ar|e)|transform(?:a|ar|e)|coloc(?:a|ar|e)|troc(?:a|ar|e)|mud(?:a|ar|e)|cri(?:a|ar|e)|faz(?:er)?)\b[\s\S]{0,180}\b(?:foto|imagem|cen[aá]rio|ambiente|fundo|est[uú]dio|showroom)\b|\b(?:cen[aá]rio|ambiente|fundo)\s+(?:bonito|elegante|profissional|de\s+est[uú]dio)\b/i.test(userContent);
+    const pedidoEdicaoFoto = ownerMediaIntent.action === "edit";
+    const pedidoLogoNaFoto = pedidoEdicaoFoto
+      && /\b(?:logo|logotipo|logomarca|marca)\b/i.test(userContent);
     let temFotoParaEditar = (toolCtx.media || []).some((m) => m.kind === "image");
     if (remetenteEhDono && pedidoEdicaoFoto && !temFotoParaEditar) {
       const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
@@ -9007,7 +9915,10 @@ async function callGemini(
     if (variantChoice) {
       console.log("[pietro][forced_social_variant_choice]", { token: latestPendingSocialToken, opcao: variantChoice });
       const variantResult = await toolEscolherVariantePost({ token: latestPendingSocialToken!, opcao: variantChoice }, toolCtx);
-      return { text: formatSocialPostToolResult(variantResult) };
+      return {
+        text: formatSocialPostToolResult(variantResult),
+        interactiveButtons: interactiveButtonsFromSocialResult(variantResult),
+      };
     }
 
     const plainPostConfirmation = latestPendingSocialToken ? detectPlainSocialPostConfirmation(userContent) : null;
@@ -9017,6 +9928,7 @@ async function callGemini(
       return {
         text: formatSocialPostToolResult(confirmResult),
         interactiveList: interactiveListFromSocialResult(confirmResult),
+        interactiveButtons: interactiveButtonsFromSocialResult(confirmResult),
       };
     }
 
@@ -9033,7 +9945,10 @@ async function callGemini(
         token: latestPendingSocialToken!,
         ajuste: plainCopyAdjustment,
       }, toolCtx);
-      return { text: formatSocialPostToolResult(revisedResult) };
+      return {
+        text: formatSocialPostToolResult(revisedResult),
+        interactiveButtons: interactiveButtonsFromSocialResult(revisedResult),
+      };
     }
 
     // 0) Postagem em redes sociais: atalho determinístico para não deixar o modelo "prometer" preview sem chamar a tool.
@@ -9044,13 +9959,18 @@ async function callGemini(
       : null;
     if (postConfirmation) {
       if (!remetenteEhDono) {
-        return { text: "Essa publicação só pode ser autorizada pelo responsável da conta. Posso encaminhar seu pedido para ele, se quiser." };
+        return {
+          text: toolCtx.userId === ADMIN_AMZ_USER_ID
+            ? DEMO_LIMIT_MESSAGE
+            : "Essa publicação só pode ser autorizada pelo responsável da conta.",
+        };
       }
       console.log("[pietro][forced_social_confirm]", postConfirmation);
       const confirmResult = await toolConfirmarPostagemRedes(postConfirmation, toolCtx);
       return {
         text: formatSocialPostToolResult(confirmResult),
         interactiveList: interactiveListFromSocialResult(confirmResult),
+        interactiveButtons: interactiveButtonsFromSocialResult(confirmResult),
       };
     }
 
@@ -9078,6 +9998,7 @@ async function callGemini(
       const r = await toolCriarCarrossel({
         tema: pendingCarousel.tema,
         cor: novaCor,
+        num_slides: pendingCarousel.num_slides,
         legenda: pendingCarousel.caption,
         slides: pendingCarousel.slides,
         ajuste: colorChange && !alsoChangesContent ? undefined : userContent,
@@ -9115,8 +10036,8 @@ async function callGemini(
 
     // 1) pedido explícito ou detalhado de carrossel
     if (isCarrosselRequest(userContent)) {
-      if (!remetenteEhDono) {
-        return { text: "Criar e publicar carrossel é restrito ao responsável da conta. Posso encaminhar seu pedido pra ele, se quiser." };
+      if (!remetenteEhDono && toolCtx.userId !== ADMIN_AMZ_USER_ID) {
+        return { text: "Esse recurso é exclusivo do responsável da conta. Posso continuar ajudando com suas dúvidas por aqui." };
       }
       const tema = extractCarrosselTema(userContent);
       const corPedida = detectExplicitCarouselColor(userContent);
@@ -9124,9 +10045,10 @@ async function callGemini(
       if (tema.length < 3) {
         return { text: "Fechado, carrossel! Sobre qual assunto você quer? (ex: “vantagens da AMZ Ofertas”)" };
       }
-      const r = await toolCriarCarrossel({
+      const { result: r } = await runTool("criar_carrossel", {
         tema,
         cor: corPedida,
+        num_slides: requestedCarouselSlideCount(userContent, !remetenteEhDono),
         facebook_requested: requestedFacebook(userContent),
       }, toolCtx);
       return { text: formatCarrosselToolResult(r) };
@@ -9134,11 +10056,16 @@ async function callGemini(
 
     // 2) resposta curta só com a cor, retomando o carrossel pendente
     const corResposta = pendingCarousel?.stage === "awaiting_color" ? detectStandaloneCarrosselColor(userContent) : null;
-    if (remetenteEhDono && pendingCarousel?.stage === "awaiting_color" && corResposta) {
+    if (
+      (remetenteEhDono || toolCtx.userId === ADMIN_AMZ_USER_ID)
+      && pendingCarousel?.stage === "awaiting_color"
+      && corResposta
+    ) {
       console.log("[pietro][carrossel_cor_escolhida]", { tema: pendingCarousel.tema });
-      const r = await toolCriarCarrossel({
+      const { result: r } = await runTool("criar_carrossel", {
         tema: pendingCarousel.tema,
         cor: corResposta,
+        num_slides: pendingCarousel.num_slides,
         legenda: pendingCarousel.caption,
         facebook_requested: pendingCarousel.facebook_requested,
       }, toolCtx);
@@ -9149,34 +10076,50 @@ async function callGemini(
 
     if (socialPost) {
       if (!remetenteEhDono) {
-        return { text: "Esse tipo de publicação só o responsável da conta pode autorizar. Posso encaminhar seu pedido para ele, se quiser." };
+        return {
+          text: toolCtx.userId === ADMIN_AMZ_USER_ID
+            ? DEMO_LIMIT_MESSAGE
+            : "Esse tipo de publicação só o responsável da conta pode autorizar.",
+        };
       }
       console.log("[pietro][forced_social_post]", socialPost);
       const midiaId = extrairIdentificadorMidia(userContent);
+      const briefing = extractSocialPostBriefing(userContent);
       if (midiaId) {
         const postResult = await toolPostarMidiaBiblioteca({
           midia_id: midiaId,
-          legenda: cleanMediaPostLegenda(userContent),
+          legenda: briefing || cleanMediaPostLegenda(userContent),
+          briefing,
           tom: socialPost.tom,
           redes: socialPost.redes,
           formato: socialPost.formato ?? "feed",
         }, toolCtx);
-        return { text: formatSocialPostToolResult(postResult) };
+        return {
+          text: formatSocialPostToolResult(postResult),
+          interactiveButtons: interactiveButtonsFromSocialResult(postResult),
+        };
       }
 
       if (pedidoReferenciaMidiaGenerica(userContent, socialPost.produto) || !socialPost.temProduto) {
         const postResult = await toolPostarMidiaBiblioteca({
-          legenda: cleanMediaPostLegenda(userContent),
+          legenda: briefing || cleanMediaPostLegenda(userContent),
+          briefing,
           tom: socialPost.tom,
           redes: socialPost.redes,
           formato: socialPost.formato ?? "feed",
           incluir_cta_whatsapp: detectWantsWhatsappCta(userContent),
         }, toolCtx);
-        return { text: formatSocialPostToolResult(postResult) };
+        return {
+          text: formatSocialPostToolResult(postResult),
+          interactiveButtons: interactiveButtonsFromSocialResult(postResult),
+        };
       }
 
       const postResult = await toolPostarRedesSociais(socialPost, toolCtx);
-      return { text: formatSocialPostToolResult(postResult) };
+      return {
+        text: formatSocialPostToolResult(postResult),
+        interactiveButtons: interactiveButtonsFromSocialResult(postResult),
+      };
     }
 
     // Texto puro do turno (turno multimodal chega como array de partes).
@@ -9300,6 +10243,24 @@ async function callGemini(
         console.log(`[pietro][tool] ${name}`, args);
         const { result, imageUrl } = await runTool(name, args, toolCtx);
         if (imageUrl) pendingImageUrl = imageUrl;
+        try {
+          const policyResult = JSON.parse(result);
+          if (policyResult?.status === "demonstracao_bloqueada") {
+            return {
+              text: String(policyResult.mensagem || DEMO_LIMIT_MESSAGE),
+              imageUrl: pendingImageUrl,
+              forwardProof,
+              forwardAttempted,
+            };
+          }
+          if (policyResult?.status === "demonstracao_carrossel") {
+            return {
+              text: formatCarrosselToolResult(result),
+              forwardProof,
+              forwardAttempted,
+            };
+          }
+        } catch { /* resultado comum da ferramenta */ }
         if (name === "registrar_logo_cliente") {
           try {
             const parsed = JSON.parse(result);
@@ -9343,7 +10304,9 @@ async function callGemini(
         if (name === "gerar_imagem" || name === "editar_imagem" || name === "criar_anuncio" || name === "salvar_midia_biblioteca") {
           try {
             const parsed = JSON.parse(result);
-            const ids: string[] = Array.isArray(parsed?.midia_ids)
+            const ids: string[] = parsed?.demonstracao === true
+              ? []
+              : Array.isArray(parsed?.midia_ids)
               ? parsed.midia_ids
               : parsed?.midia_id ? [parsed.midia_id] : [];
             const tipos: string[] = Array.isArray(parsed?.tipos) ? parsed.tipos : [];
@@ -9434,6 +10397,28 @@ async function callGemini(
             };
           }
         }
+        if (["agendar_post_pendente", "listar_agendamentos_posts", "cancelar_agendamento_post", "remarcar_agendamento_post"].includes(name)) {
+          try {
+            const parsed = JSON.parse(result);
+            return {
+              text: String(
+                parsed?.mensagem
+                  || (parsed?.ok === true ? "Ação concluída." : "Não consegui concluir a ação."),
+              ),
+              imageUrl: pendingImageUrl,
+              forwardProof,
+              forwardAttempted,
+              interactiveButtons: interactiveButtonsFromSocialResult(result),
+            };
+          } catch {
+            return {
+              text: "Não consegui concluir a ação porque a ferramenta devolveu uma resposta inválida.",
+              imageUrl: pendingImageUrl,
+              forwardProof,
+              forwardAttempted,
+            };
+          }
+        }
         // Short-circuit determinístico do fluxo A/B/C — evita a IA reescrever/repetir textos.
         try {
           const parsed = JSON.parse(result);
@@ -9448,6 +10433,7 @@ async function callGemini(
           }
           if (
             st === "aguardando_escolha_variante"
+            || st === "escolha_variante_necessaria"
             || st === "variante_selecionada"
             || st === "aguardando_privacidade_tiktok"
             || st === "aguardando_retry_instagram"
@@ -9465,6 +10451,7 @@ async function callGemini(
               forwardProof,
               forwardAttempted,
               interactiveList: interactiveListFromSocialResult(result),
+              interactiveButtons: interactiveButtonsFromSocialResult(result),
             };
           }
         } catch { /* ignore */ }
@@ -9495,17 +10482,22 @@ async function sendWhatsApp(
   message: string,
   imageUrl?: string,
   interactiveList?: WhatsAppInteractiveList,
+  interactiveButtons?: WhatsAppInteractiveButtons,
+  delivery?: { beforeChunk?: (chunk: string) => Promise<void> },
 ): Promise<string | null> {
-  const chunks = splitWhatsAppText(message);
+  const dedupedMessage = dedupeConsecutiveReplyText(message);
+  const chunks = splitWhatsAppText(dedupedMessage);
   if (chunks.length > 1) {
     console.warn(`[processor][meta_text_split] chars=${message.length} chunks=${chunks.length}`);
   }
 
   let firstMessageId: string | null = null;
   for (let index = 0; index < chunks.length; index++) {
+    if (index > 0 && delivery?.beforeChunk) await delivery.beforeChunk(chunks[index]);
     const body: any = { user_id, to, message: chunks[index] };
     if (imageUrl && index === 0) body.image_url = imageUrl;
     if (interactiveList && index === chunks.length - 1) body.interactive_list = interactiveList;
+    if (interactiveButtons && index === chunks.length - 1) body.interactive_buttons = interactiveButtons;
     const res = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-send-message`, {
       method: "POST",
       headers: {
@@ -9892,6 +10884,7 @@ async function processOne(queueId: string) {
     .eq("id", queueId);
 
   const row = claimed as QueueRow;
+  let stopTypingHeartbeat = () => {};
 
   try {
     // PASSO 3 — Resolve tenant + access_token
@@ -9899,7 +10892,7 @@ async function processOne(queueId: string) {
     let waAccessToken: string | null = null;
     const { data: cfg } = await sb
       .from("whatsapp_config")
-      .select("user_id, access_token, connection_method, phone_number_id")
+      .select("user_id, access_token, connection_method, phone_number_id, business_name")
       .eq("phone_number_id", row.phone_number_id)
       .eq("is_active", true)
       .maybeSingle();
@@ -9915,6 +10908,13 @@ async function processOne(queueId: string) {
     if (!userId) {
       await failQueue(row.id, "tenant_not_found");
       return { ok: false, reason: "tenant_not_found" };
+    }
+    if (["text", "audio"].includes(row.message_type ?? "")) {
+      await sendTypingIndicator(row.phone_number_id, waAccessToken, row.wamid);
+      const heartbeat = setInterval(() => {
+        void sendTypingIndicator(row.phone_number_id, waAccessToken, row.wamid);
+      }, 15000);
+      stopTypingHeartbeat = () => clearInterval(heartbeat);
     }
 
     // PASSO 4 — Config do agente
@@ -10337,6 +11337,12 @@ async function processOne(queueId: string) {
     }
     // ================== FIM OPT-IN GATE ==================================
 
+    // Leads costumam enviar a ideia em várias mensagens curtas. A mensagem mais
+    // nova responde com todo o histórico; as anteriores encerram sem duplicar.
+    if (!fromIsOwner && row.message_type === "text") {
+      const grouped = await groupIfNewerLeadTextExists(row);
+      if (grouped) return { ok: true, status: "grouped", queueId: row.id };
+    }
 
     const isAmzTenant = userId === ADMIN_AMZ_USER_ID;
     const isAmzMode = (agent as any).agent_mode === "amz" && isAmzTenant;
@@ -10838,7 +11844,7 @@ async function processOne(queueId: string) {
         ...(latestSaved
           ? { last_media_interaction: { media_id: latestSaved.id, at: new Date().toISOString() } }
           : {}),
-        ...(savedPhotos.length > 0
+        ...(fromIsOwner && savedPhotos.length > 0
           ? {
             pending_image_composition: {
               media_ids: pendingMediaIds,
@@ -10849,7 +11855,7 @@ async function processOne(queueId: string) {
       };
       await saveAgentState(sb, stateConversation, freshStatePatch, freshAgentState);
       Object.assign(freshAgentState, freshStatePatch);
-      if (isImageCompositionIntent(contexto) && savedPhotos.length > 0) {
+      if (fromIsOwner && isImageCompositionIntent(contexto) && savedPhotos.length > 0) {
         let compositionReply = "";
         let compositionImageUrl: string | undefined;
         let compositionMediaId: string | undefined;
@@ -11062,17 +12068,26 @@ async function processOne(queueId: string) {
         const stNome = await loadAgentState(sb, convStateIdentity);
         const pendente = (stNome as any)?.nome_pergunta === true;
         nomePerguntado = pendente || (stNome as any)?.nome_pergunta === "feita";
-        const nomeCap = nomeLeadConhecido ? null : extrairNomeInformado(userText, pendente);
+        const { data: lastOutbound } = await sb.from("whatsapp_cloud_messages")
+          .select("content")
+          .eq("conversation_id", conv.id)
+          .eq("direction", "outbound")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const agentAskedName = asksForLeadName(String(lastOutbound?.content || ""));
+        const nomeCap = nomeLeadConhecido
+          ? null
+          : extractLeadName(userText, pendente || agentAskedName);
         if (nomeCap) {
           nomeLeadConhecido = nomeCap;
-          await sb.from("whatsapp_cloud_conversations").update({ contact_name: nomeCap }).eq("id", conv.id);
+          await persistKnownLeadName({
+            userId,
+            telefone: row.from_number,
+            conversationId: conv.id,
+            nome: nomeCap,
+          });
           (conv as any).contact_name = nomeCap;
-          await sb
-            .from("lead_encaminhamentos")
-            .update({ nome: nomeCap })
-            .eq("user_id", userId)
-            .eq("telefone", row.from_number)
-            .is("nome", null);
           console.log(`[processor][lead_nome][capturado] tel=${row.from_number} nome=${nomeCap}`);
 
           const proofPersistido = (stNome as any)?.forward?.protocolo as string | undefined;
@@ -11102,6 +12117,49 @@ async function processOne(queueId: string) {
       }
     }
 
+    // Recupera nomes já registrados pela tool ou ditos anteriormente na
+    // conversa antes de qualquer encaminhamento/pergunta fixa.
+    if (!fromIsOwner && !nomeLeadConhecido) {
+      try {
+        const recoveredName = await findKnownLeadName({
+          userId,
+          telefone: row.from_number,
+          conversationId: conv.id,
+        });
+        if (recoveredName) {
+          nomeLeadConhecido = recoveredName;
+          await persistKnownLeadName({
+            userId,
+            telefone: row.from_number,
+            conversationId: conv.id,
+            nome: recoveredName,
+          });
+          (conv as any).contact_name = recoveredName;
+          const currentState = await loadAgentState(sb, convStateIdentity);
+          const proof = (currentState as any)?.forward?.protocolo as string | undefined;
+          const complementSent = (currentState as any)?.complemento_nome === true;
+          let sentNow = complementSent;
+          if (proof && !complementSent && tenantOwnerPhone) {
+            sentNow = await enviarComplementoNomeAoDono({
+              userId,
+              ownerPhone: tenantOwnerPhone,
+              protocolo: proof,
+              nome: recoveredName,
+            });
+          }
+          await saveAgentState(sb, convStateIdentity, {
+            nome: recoveredName,
+            nome_pergunta: "feita",
+            ...(proof ? { complemento_nome: sentNow } : {}),
+          }, currentState);
+          nomePerguntado = true;
+          console.log(`[processor][lead_nome][recuperado] tel=${row.from_number} nome=${recoveredName}`);
+        }
+      } catch (error) {
+        console.warn("[processor][lead_nome][recuperacao_falhou]", (error as Error).message);
+      }
+    }
+
 
     // Atalho determinístico: quando cliente pede equipe/responsável/Marcelo ou faz
     // pergunta comercial que exige retorno humano, NÃO deixa a IA procurar contato.
@@ -11126,7 +12184,7 @@ async function processOne(queueId: string) {
         }
         const recado = buildOwnerForwardMessage({
           ownerName: _tenantOwner?.name,
-          contactName,
+          contactName: nomeLeadConhecido || contactName,
           fromNumber: row.from_number,
           pedido: userText,
           messageType: row.message_type,
@@ -11597,6 +12655,7 @@ Regras:
         whatsapp_consultor: (agent as any).whatsapp_consultor,
         owner_phone: (agent as any).owner_phone,
         owner_name: (agent as any).owner_name,
+        business_name: (cfg as any)?.business_name,
 
       },
       userText || "",
@@ -11672,7 +12731,7 @@ Regras:
         const semLegendaDono = !contextoAtual || /^\s*\[visão\]/i.test(contextoAtual);
         const texto = (userText || "").trim();
         // Evita gravar comandos puros de publicação como legenda.
-        const ehComandoPublicar = /^(publica[rl]?|posta[rl]?|manda|pode postar|pode publicar|confirma|confirmar|ok|sim)\b/i.test(texto);
+        const ehComandoPublicar = /^(publica[rl]?|posta[rl]?|manda|pode postar|pode publicar|confirma|confirmar|agend(?:a|ar|e)|ok|sim)\b/i.test(texto);
         // Guard extra: se já há post pendente (últ 10 min), o texto do dono é ajuste/confirmação — NÃO virar contexto.
         const { data: pendCheck } = await sb
           .from("social_posts_queue")
@@ -11711,7 +12770,11 @@ Regras:
             const formato = formatoFromPendingMarker(marker);
             const midiaTipo = midiaTipoFromPendingMarker(marker);
             const redes = [...new Set(pendRows.map((r: any) => r.platform))].join(", ");
-            pendingConfirmBlock = `\n\nPOST PENDENTE AGUARDANDO ESCOLHA DE VARIANTE OU CONFIRMAÇÃO (últimos 10 min):\n- token: ${token}\n- formato: ${formato}\n- mídia: ${midiaTipo}\n- redes: ${redes}\n- variante ativa: A (default) — o dono pode trocar pra B ou C.\n\nCOMO ROTEAR A PRÓXIMA MENSAGEM DO DONO:\n1. ESCOLHA DE VARIANTE ("A", "B", "C", "a", "b", "c", "opção A", "opção B", "opção C", "a primeira", "a segunda", "a terceira", "quero a B", "gostei da C"): chame IMEDIATAMENTE escolher_variante_post com token="${token}" e opcao=<A|B|C>. Depois pergunte "pode postar?".\n2. CONFIRMAÇÃO curta ("pode postar", "publica", "manda", "manda ver", "vai", "posta", "confirma", "sim", "ok", "tá bom, pode postar"): chame IMEDIATAMENTE confirmar_postagem_redes com token="${token}" (publica a variante ativa).\n3. AJUSTE NO TEXTO/SCRIPT ("tira o ACABA HOJE", "põe o preço 89,90", "deixa mais curto", "muda o tom pra profissional", "adiciona que tem garantia", "refaz mais leve", "tira o emoji"): chame IMEDIATAMENTE revisar_post_pendente com token="${token}" e ajuste=<instrução literal do dono>. NÃO recrie o post do zero, NÃO chame postar_midia_biblioteca.\n4. MUDANÇA DE ESCOPO clara (trocar rede, mudar formato feed↔story↔reels, trocar de mídia): aí sim recrie via postar_midia_biblioteca.\n5. Ambíguo ("tá bom, deixa mais curto"): trate como AJUSTE (regra 3) — só publique com confirmação explícita.\n- NÃO chame postar_midia_biblioteca só pra reformular texto ou trocar variante — use as tools acima.`;
+            const selectedVariant = decodePendingPostState(marker)?.variantSelecionada;
+            const phase = canRunSocialPostAction(selectedVariant)
+              ? `FASE 2 — texto escolhido: ${selectedVariant}. Agora o dono pode publicar ou agendar.`
+              : "FASE 1 — nenhum texto foi escolhido. É PROIBIDO presumir a opção A ou executar publicação/agendamento.";
+            pendingConfirmBlock = `\n\nPOST PENDENTE (últimos 10 min):\n- token: ${token}\n- formato: ${formato}\n- mídia: ${midiaTipo}\n- redes: ${redes}\n- ${phase}\n\nCOMO ROTEAR:\n1. ESCOLHA A/B/C: chame escolher_variante_post com token="${token}".\n2. PUBLICAR: só depois de A/B/C escolhido, chame confirmar_postagem_redes. Sem escolha, responda: "Antes, escolha o texto: A, B ou C."\n3. AGENDAR: só depois de A/B/C escolhido, chame agendar_post_pendente. Se faltar data, pergunte: "Para quando? Informe o dia/mês e a hora. Ex.: 30/09 às 10h".\n4. AJUSTE: chame revisar_post_pendente; isso gera novas opções e volta obrigatoriamente à FASE 1.\n5. MUDANÇA DE ESCOPO (rede, formato ou mídia): recrie via postar_midia_biblioteca.\n- Nunca presuma A. As ferramentas também bloqueiam publicar/agendar sem escolha explícita.`;
           }
         }
       }
@@ -11870,7 +12933,7 @@ Regras:
     const amzIdentityGuard = isAmzTenant
       ? inboundFromOwner
         ? `\n\n=== IDENTIDADE FINAL (PRIORIDADE MÁXIMA) ===\n- isOwner=true. Você é JARVIS e pode tratar o remetente como dono/chefe.`
-        : `\n\n=== IDENTIDADE E FORMATO FINAL (PRIORIDADE MÁXIMA) ===\n- isOwner=false. Você é PIETRO EUGENIO, consultor da AMZ.\n- Ignore qualquer persona do tenant, contexto ou histórico que diga que você é Jarvis.\n- Nunca use "chefe", "dono" ou tratamento de proprietário com este remetente.\n- Sua resposta INTEIRA deve ter no máximo 600 caracteres e 2 a 4 linhas, com uma ideia só.\n- Não repita o que já disse. Não liste mais de 3 itens. Se houver mais assunto, faça uma pergunta e espere.`
+        : `\n\n=== IDENTIDADE E FORMATO FINAL (PRIORIDADE MÁXIMA) ===\n- isOwner=false. Você é PIETRO EUGENIO, assistente virtual da AMZ.\n- Ignore qualquer persona do tenant, contexto ou histórico que diga que você é Jarvis.\n- Nunca use "chefe", "dono" ou tratamento de proprietário com este remetente.\n- Máximo 3 linhas e 350 caracteres por mensagem, uma pergunta, sem listas, títulos ou negrito e no máximo 1 emoji.\n- Se precisar continuar, use no máximo 3 partes com <<SPLIT>>.`
       : "";
     const systemPromptWithDate = systemPrompt + dateBlock + antiPromessaBlock + antiRecusaBlock + ownerHintBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock + ebookBlock + estadoBlock + amzIdentityGuard;
     console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPromptWithDate.length} forwardState=${!!persistedForward?.protocolo} decisao=${decisaoAnterior?.valor ?? "-"}`);
@@ -11900,6 +12963,7 @@ Regras:
     let reply = "";
     let generatedImageUrl: string | undefined;
     let interactiveList: WhatsAppInteractiveList | undefined;
+    let interactiveButtons: WhatsAppInteractiveButtons | undefined;
     let forwardProof: string | undefined;
     let forwardAttempted = false;
     try {
@@ -11913,6 +12977,7 @@ Regras:
       reply = aiResult.text;
       generatedImageUrl = aiResult.imageUrl;
       interactiveList = aiResult.interactiveList;
+      interactiveButtons = aiResult.interactiveButtons;
       forwardProof = aiResult.forwardProof;
       forwardAttempted = !!aiResult.forwardAttempted;
     } catch (e) {
@@ -11993,6 +13058,24 @@ Regras:
         reply = semConvite.text;
 
         // Nome DEPOIS do encaminhamento: pergunta curta, UMA vez só.
+        if (!nomeLeadConhecido) {
+          nomeLeadConhecido = await findKnownLeadName({
+            userId,
+            telefone: row.from_number,
+            conversationId: conv.id,
+          });
+          if (nomeLeadConhecido) {
+            await persistKnownLeadName({
+              userId,
+              telefone: row.from_number,
+              conversationId: conv.id,
+              nome: nomeLeadConhecido,
+            });
+            (conv as any).contact_name = nomeLeadConhecido;
+            patch.nome = nomeLeadConhecido;
+            patch.nome_pergunta = "feita";
+          }
+        }
         const jaTemNome = !!(nomeLeadConhecido || (agentState as any)?.nome);
         const jaPerguntou = !!(agentState as any)?.nome_pergunta || nomePerguntado;
         if (forwardProof && !jaTemNome && !jaPerguntou) {
@@ -12042,8 +13125,17 @@ Regras:
       .update({ used_count: quota.used_count + 1 })
       .eq("user_id", userId);
 
-    // Splits reply em múltiplas mensagens separadas usando o sentinel <<SPLIT>>
-    const replyParts = reply.split("<<SPLIT>>").map((p) => p.trim()).filter((p) => p.length > 0);
+    const dedupedReply = dedupeConsecutiveReplyText(reply);
+    if (dedupedReply !== reply) {
+      console.warn(`[processor][reply_deduplicated] before=${reply.length} after=${dedupedReply.length}`);
+      reply = dedupedReply;
+    }
+
+    // Para leads, a trava de transporte limita cada parte a 700 caracteres e
+    // no máximo 3 mensagens. Para o dono, preserva prévias/listas/resultados.
+    const replyParts = inboundFromOwner
+      ? reply.split("<<SPLIT>>").map((p) => p.trim()).filter((p) => p.length > 0)
+      : prepareLeadReplyParts(reply);
     const primaryReply = replyParts[0] ?? reply;
     const followUps = replyParts.slice(1);
     const loggedContent = replyParts.join("\n\n---\n\n");
@@ -12057,7 +13149,7 @@ Regras:
         direction: "outbound",
         sender: "agent",
         content: generatedImageUrl ? `${loggedContent}\n\n[imagem: ${generatedImageUrl}]` : loggedContent,
-        message_type: generatedImageUrl ? "image" : interactiveList ? "interactive" : "text",
+        message_type: generatedImageUrl ? "image" : (interactiveList || interactiveButtons) ? "interactive" : "text",
       })
       .select("id")
       .single();
@@ -12065,20 +13157,74 @@ Regras:
     // PASSO 11 — Envia (mensagem principal + follow-ups separados)
     let sendError: string | null = null;
     try {
-      const sentId = await sendWhatsApp(userId, row.from_number, primaryReply, generatedImageUrl, interactiveList);
+      const hasFollowUps = followUps.length > 0;
+      await sendTypingIndicator(row.phone_number_id, waAccessToken, row.wamid);
+      await wait(firstReplyDelayForSenderMs(
+        inboundFromOwner,
+        row.created_at,
+        primaryReply.length,
+      ));
+      const sentId = await sendWhatsApp(
+        userId,
+        row.from_number,
+        primaryReply,
+        generatedImageUrl,
+        hasFollowUps ? undefined : interactiveList,
+        undefined,
+        {
+          beforeChunk: async (chunk) => {
+            await sendTypingIndicator(row.phone_number_id, waAccessToken, row.wamid);
+            await wait(betweenPartsDelayForSenderMs(inboundFromOwner, chunk.length));
+          },
+        },
+      );
       if (sentId && outMsg?.id) {
         await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
       }
-      for (const part of followUps) {
+      for (let index = 0; index < followUps.length; index++) {
+        const part = followUps[index];
+        const isLast = index === followUps.length - 1;
         try {
-          await new Promise((r) => setTimeout(r, 600));
-          await sendWhatsApp(userId, row.from_number, part);
+          await sendTypingIndicator(row.phone_number_id, waAccessToken, row.wamid);
+          await wait(betweenPartsDelayForSenderMs(inboundFromOwner, part.length));
+          await sendWhatsApp(
+            userId,
+            row.from_number,
+            part,
+            undefined,
+            isLast ? interactiveList : undefined,
+            undefined,
+            {
+              beforeChunk: async (chunk) => {
+                await sendTypingIndicator(row.phone_number_id, waAccessToken, row.wamid);
+                await wait(betweenPartsDelayForSenderMs(inboundFromOwner, chunk.length));
+              },
+            },
+          );
         } catch (e) {
           console.error("[pietro][followup_send_failed]", (e as Error).message ?? e);
           // Interrompe a sequência: continuar enviando poderia entregar a
           // pergunta A/B/C depois de uma mensagem de opções que falhou.
           throw e;
         }
+      }
+      if (interactiveButtons) {
+        await sendTypingIndicator(row.phone_number_id, waAccessToken, row.wamid);
+        await wait(betweenPartsDelayForSenderMs(inboundFromOwner, interactiveButtons.body.length));
+        await sendWhatsApp(
+          userId,
+          row.from_number,
+          interactiveButtons.body,
+          undefined,
+          undefined,
+          interactiveButtons,
+          {
+            beforeChunk: async (chunk) => {
+              await sendTypingIndicator(row.phone_number_id, waAccessToken, row.wamid);
+              await wait(betweenPartsDelayForSenderMs(inboundFromOwner, chunk.length));
+            },
+          },
+        );
       }
     } catch (e) {
       sendError = String((e as Error).message ?? e);
@@ -12100,6 +13246,8 @@ Regras:
     const msg = String((e as Error).message ?? e).slice(0, 500);
     await failQueue(row.id, msg);
     return { ok: false, reason: "exception", error: msg };
+  } finally {
+    stopTypingHeartbeat();
   }
 }
 

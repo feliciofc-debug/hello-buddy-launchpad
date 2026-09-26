@@ -7600,12 +7600,14 @@ export type Database = {
           fb_post_id: string | null
           id: string
           image_url: string | null
+          image_urls: Json | null
           link_no_primeiro_comentario: boolean | null
           link_url: string | null
           linkedin_post_urn: string | null
           origem_fluxo: string
           page_id: string | null
           platform: string
+          notificado_em: string | null
           post_text: string | null
           post_text_linkedin: string | null
           produto_id: string | null
@@ -7613,6 +7615,7 @@ export type Database = {
           published_at: string | null
           scheduled_at: string | null
           status: string | null
+          solicitante_telefone: string | null
           updated_at: string | null
           user_id: string
           video_url: string | null
@@ -7630,12 +7633,14 @@ export type Database = {
           fb_post_id?: string | null
           id?: string
           image_url?: string | null
+          image_urls?: Json | null
           link_no_primeiro_comentario?: boolean | null
           link_url?: string | null
           linkedin_post_urn?: string | null
           origem_fluxo?: string
           page_id?: string | null
           platform?: string
+          notificado_em?: string | null
           post_text?: string | null
           post_text_linkedin?: string | null
           produto_id?: string | null
@@ -7643,6 +7648,7 @@ export type Database = {
           published_at?: string | null
           scheduled_at?: string | null
           status?: string | null
+          solicitante_telefone?: string | null
           updated_at?: string | null
           user_id: string
           video_url?: string | null
@@ -7660,12 +7666,14 @@ export type Database = {
           fb_post_id?: string | null
           id?: string
           image_url?: string | null
+          image_urls?: Json | null
           link_no_primeiro_comentario?: boolean | null
           link_url?: string | null
           linkedin_post_urn?: string | null
           origem_fluxo?: string
           page_id?: string | null
           platform?: string
+          notificado_em?: string | null
           post_text?: string | null
           post_text_linkedin?: string | null
           produto_id?: string | null
@@ -7673,6 +7681,7 @@ export type Database = {
           published_at?: string | null
           scheduled_at?: string | null
           status?: string | null
+          solicitante_telefone?: string | null
           updated_at?: string | null
           user_id?: string
           video_url?: string | null

@@ -12,6 +12,8 @@
  * evitando a necessidade de transpilar JSX dentro do Deno.
  */
 
+import { carouselBodyLines } from "../carousel-content.ts";
+
 export type SlideType = "cover" | "content" | "cta";
 
 export interface RenderSlide {
@@ -182,15 +184,18 @@ function cover(slide: RenderSlide, ctx: RenderContext): Node {
   );
 
   if (slide.body) {
+    const lines = carouselBodyLines(slide.body);
     children.push(
       el("div", {
         display: "flex",
+        flexDirection: "column",
         color: "rgba(255,255,255,0.65)",
         fontSize: 30,
         lineHeight: 1.5,
         textAlign: "center",
         maxWidth: 800,
-      }, slide.body),
+        gap: 10,
+      }, lines.map((line) => el("div", { display: "flex" }, line))),
     );
   }
 
@@ -273,10 +278,7 @@ function content(slide: RenderSlide, ctx: RenderContext): Node {
     }),
   ];
 
-  const lines = (slide.body || "")
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
+  const lines = carouselBodyLines(slide.body);
 
   if (lines.length > 1) {
     children.push(
@@ -297,14 +299,13 @@ function content(slide: RenderSlide, ctx: RenderContext): Node {
           borderRadius: 22,
           padding: "24px 32px",
         }, [
-          el("div", { width: 18, height: 18, borderRadius: 18, backgroundColor: p, flexShrink: 0 }),
           el("div", {
             display: "flex",
             color: "rgba(255,255,255,0.92)",
             fontSize: lines.length > 3 ? 30 : 34,
             fontWeight: 500,
             lineHeight: 1.35,
-          }, line),
+          }, line.startsWith("• ") ? line : `• ${line}`),
         ])
       )),
     );
@@ -365,16 +366,21 @@ function cta(slide: RenderSlide, ctx: RenderContext): Node {
   ];
 
   if (slide.body) {
+    const lines = carouselBodyLines(slide.body);
     children.push(
       el("div", {
         display: "flex",
+        flexDirection: "column",
         color: "rgba(255,255,255,0.6)",
         fontSize: 28,
         textAlign: "center",
         lineHeight: 1.6,
         marginBottom: 50,
         maxWidth: 800,
-      }, slide.body.replace(/\\n/g, " ")),
+        gap: 12,
+      }, lines.map((line) =>
+        el("div", { display: "flex" }, line.startsWith("• ") ? line : `• ${line}`)
+      )),
     );
   }
 

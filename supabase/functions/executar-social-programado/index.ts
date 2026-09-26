@@ -1,9 +1,121 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { normalizeImageUrls } from '../_shared/social-schedule.ts'
+import { buildScheduledPostNotification } from '../_shared/social-post-notification.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+}
+
+const RESULT_TEMPLATE_NAME = 'amz_post_agendado_resultado'
+
+async function hasRecentInbound(supabase: any, userId: string, phone: string, now: Date): Promise<boolean> {
+  const { data: conversation } = await supabase
+    .from('whatsapp_cloud_conversations')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('contact_number', phone)
+    .maybeSingle()
+  if (!conversation?.id) return false
+  const since = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString()
+  const { data: inbound } = await supabase
+    .from('whatsapp_cloud_messages')
+    .select('id')
+    .eq('conversation_id', conversation.id)
+    .eq('direction', 'inbound')
+    .gte('created_at', since)
+    .limit(1)
+  return (inbound?.length ?? 0) > 0
+}
+
+async function notifyScheduledSocialToken(
+  supabase: any,
+  supabaseUrl: string,
+  serviceKey: string,
+  userId: string,
+  token: string,
+  now: Date,
+) {
+  const { data: rows, error } = await supabase
+    .from('social_posts_queue')
+    .select('id, platform, status, scheduled_at, error_message, fb_post_id, notificado_em, solicitante_telefone')
+    .eq('user_id', userId)
+    .eq('approval_token', token)
+  if (error || !rows?.length) return
+
+  const notification = buildScheduledPostNotification(rows)
+  if (!notification) return
+
+  const claimedAt = new Date().toISOString()
+  const ids = rows.map((row: any) => row.id)
+  const { data: claimed, error: claimError } = await supabase
+    .from('social_posts_queue')
+    .update({ notificado_em: claimedAt, updated_at: claimedAt })
+    .in('id', ids)
+    .is('notificado_em', null)
+    .select('id')
+  if (claimError || (claimed?.length ?? 0) !== ids.length) return
+
+  const phone = String(rows.find((row: any) => row.solicitante_telefone)?.solicitante_telefone || '')
+  let deliveredOrHandled = false
+  try {
+    if (!phone) {
+      console.warn('[social-notify][sem_solicitante]', { userId, token })
+      deliveredOrHandled = true
+      return
+    }
+
+    if (await hasRecentInbound(supabase, userId, phone, now)) {
+      const response = await fetch(`${supabaseUrl}/functions/v1/whatsapp-send-message`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, to: phone, message: notification.text }),
+      })
+      const result = await response.json().catch(() => ({}))
+      deliveredOrHandled = response.ok && result?.success !== false
+      if (!deliveredOrHandled) console.error('[social-notify][falha_texto_livre]', { userId, token, motivo: result?.motivo })
+      return
+    }
+
+    const { data: template } = await supabase
+      .from('whatsapp_templates')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('nome_meta', RESULT_TEMPLATE_NAME)
+      .eq('idioma', 'pt_BR')
+      .eq('status_meta', 'aprovado')
+      .maybeSingle()
+    if (!template?.id) {
+      console.warn('[social-notify][sem_template_fora_janela]', { userId, token })
+      deliveredOrHandled = true
+      return
+    }
+    const response = await fetch(`${supabaseUrl}/functions/v1/whatsapp-cloud-send-template`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: userId,
+        to: phone,
+        template_id: template.id,
+        variaveis: [notification.scheduledDateText, notification.templateResult],
+        tipo: 'social_post_agendado_resultado',
+        registrar: true,
+      }),
+    })
+    const result = await response.json().catch(() => ({}))
+    deliveredOrHandled = response.ok && result?.success === true
+    if (!deliveredOrHandled) console.error('[social-notify][falha_template]', { userId, token, motivo: result?.motivo })
+  } catch (notifyError) {
+    console.error('[social-notify][erro]', { userId, token, error: (notifyError as Error).message })
+  } finally {
+    if (!deliveredOrHandled) {
+      await supabase.from('social_posts_queue')
+        .update({ notificado_em: null })
+        .in('id', ids)
+        .eq('notificado_em', claimedAt)
+    }
+  }
 }
 
 serve(async (req) => {
@@ -94,6 +206,7 @@ serve(async (req) => {
             .eq('id', post.id)
 
           let publishResult: any
+          const imageUrls = normalizeImageUrls(post.image_urls)
 
           if (post.platform === 'facebook') {
             const response = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-post`, {
@@ -106,15 +219,20 @@ serve(async (req) => {
                 message: post.post_text,
                 page_id: post.page_id || '',
                 user_id: post.user_id,
-                image_url: post.image_url || undefined,
+                ...(imageUrls.length >= 2
+                  ? { image_urls: imageUrls }
+                  : post.video_url
+                  ? { video_url: post.video_url }
+                  : { image_url: post.image_url || undefined }),
               })
             })
             publishResult = await response.json()
           } else if (post.platform === 'instagram') {
-            if (!post.image_url) {
-              throw new Error('Instagram requer imagem')
+            if (!post.image_url && !post.video_url && imageUrls.length < 2) {
+              throw new Error('Instagram requer imagem, vídeo ou carrossel')
             }
-            const response = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-instagram`, {
+            const isCarousel = imageUrls.length >= 2
+            const response = await fetch(`${SUPABASE_URL}/functions/v1/${isCarousel ? 'meta-publish-carousel' : 'meta-publish-instagram'}`, {
               method: 'POST',
               headers: {
                 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
@@ -122,9 +240,17 @@ serve(async (req) => {
               },
                body: JSON.stringify({
                  caption: post.post_text,
-                 image_url: post.image_url,
                  user_id: post.user_id,
                  produto_id: post.produto_id || undefined,
+                 ...(isCarousel
+                   ? { image_urls: imageUrls }
+                   : post.video_url
+                   ? {
+                     video_url: post.video_url,
+                     creation_id: post.instagram_creation_id || undefined,
+                     queue_row_id: post.id,
+                   }
+                   : { image_url: post.image_url }),
                })
             })
             publishResult = await response.json()
@@ -150,6 +276,32 @@ serve(async (req) => {
                 .update({ linkedin_post_urn: publishResult.post_urn })
                 .eq('id', post.id)
             }
+          } else {
+            throw new Error(`Plataforma não suportada pelo executor: ${post.platform}`)
+          }
+
+          if (
+            post.platform === 'instagram'
+            && publishResult?.retryable === true
+            && typeof publishResult?.creation_id === 'string'
+          ) {
+            await supabase.from('social_posts_queue')
+              .update({
+                status: 'pendente',
+                error_message: publishResult.error || 'Instagram ainda está processando o vídeo',
+                instagram_creation_id: publishResult.creation_id,
+                instagram_container_status: publishResult.container_status || 'IN_PROGRESS',
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', post.id)
+            results.push({
+              id: post.id,
+              platform: post.platform,
+              success: false,
+              retryable: true,
+              creation_id: publishResult.creation_id,
+            })
+            continue
           }
 
           if (publishResult?.success || publishResult?.post_id) {
@@ -158,7 +310,13 @@ serve(async (req) => {
                 status: 'publicado',
                 fb_post_id: publishResult.post_id || publishResult.id,
                 published_at: now.toISOString(),
-                updated_at: now.toISOString()
+                updated_at: now.toISOString(),
+                ...(post.platform === 'instagram'
+                  ? {
+                    instagram_creation_id: null,
+                    instagram_container_status: 'PUBLISHED',
+                  }
+                  : {}),
               })
               .eq('id', post.id)
 
@@ -181,6 +339,18 @@ serve(async (req) => {
             .eq('id', post.id)
 
           results.push({ id: post.id, platform: post.platform, success: false, error: errorMsg })
+        }
+      }
+
+      const notificationGroups = new Map<string, string>()
+      for (const post of pendingPosts) {
+        if (post.approval_token) notificationGroups.set(String(post.approval_token), String(post.user_id))
+      }
+      for (const [token, userId] of notificationGroups) {
+        try {
+          await notifyScheduledSocialToken(supabase, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, userId, token, now)
+        } catch (notifyError) {
+          console.error('[social-notify][nao_bloqueia_executor]', { userId, token, error: (notifyError as Error).message })
         }
       }
     }
