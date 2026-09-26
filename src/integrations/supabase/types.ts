@@ -7600,6 +7600,7 @@ export type Database = {
           fb_post_id: string | null
           id: string
           image_url: string | null
+          image_urls: Json | null
           link_no_primeiro_comentario: boolean | null
           link_url: string | null
           linkedin_post_urn: string | null
@@ -7630,6 +7631,7 @@ export type Database = {
           fb_post_id?: string | null
           id?: string
           image_url?: string | null
+          image_urls?: Json | null
           link_no_primeiro_comentario?: boolean | null
           link_url?: string | null
           linkedin_post_urn?: string | null
@@ -7660,6 +7662,7 @@ export type Database = {
           fb_post_id?: string | null
           id?: string
           image_url?: string | null
+          image_urls?: Json | null
           link_no_primeiro_comentario?: boolean | null
           link_url?: string | null
           linkedin_post_urn?: string | null

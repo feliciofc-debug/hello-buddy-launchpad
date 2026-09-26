@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { normalizeImageUrls } from '../_shared/social-schedule.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -94,6 +95,7 @@ serve(async (req) => {
             .eq('id', post.id)
 
           let publishResult: any
+          const imageUrls = normalizeImageUrls(post.image_urls)
 
           if (post.platform === 'facebook') {
             const response = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-post`, {
@@ -106,15 +108,20 @@ serve(async (req) => {
                 message: post.post_text,
                 page_id: post.page_id || '',
                 user_id: post.user_id,
-                image_url: post.image_url || undefined,
+                ...(imageUrls.length >= 2
+                  ? { image_urls: imageUrls }
+                  : post.video_url
+                  ? { video_url: post.video_url }
+                  : { image_url: post.image_url || undefined }),
               })
             })
             publishResult = await response.json()
           } else if (post.platform === 'instagram') {
-            if (!post.image_url) {
-              throw new Error('Instagram requer imagem')
+            if (!post.image_url && !post.video_url && imageUrls.length < 2) {
+              throw new Error('Instagram requer imagem, vídeo ou carrossel')
             }
-            const response = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-instagram`, {
+            const isCarousel = imageUrls.length >= 2
+            const response = await fetch(`${SUPABASE_URL}/functions/v1/${isCarousel ? 'meta-publish-carousel' : 'meta-publish-instagram'}`, {
               method: 'POST',
               headers: {
                 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
@@ -122,9 +129,17 @@ serve(async (req) => {
               },
                body: JSON.stringify({
                  caption: post.post_text,
-                 image_url: post.image_url,
                  user_id: post.user_id,
                  produto_id: post.produto_id || undefined,
+                 ...(isCarousel
+                   ? { image_urls: imageUrls }
+                   : post.video_url
+                   ? {
+                     video_url: post.video_url,
+                     creation_id: post.instagram_creation_id || undefined,
+                     queue_row_id: post.id,
+                   }
+                   : { image_url: post.image_url }),
                })
             })
             publishResult = await response.json()
@@ -150,6 +165,8 @@ serve(async (req) => {
                 .update({ linkedin_post_urn: publishResult.post_urn })
                 .eq('id', post.id)
             }
+          } else {
+            throw new Error(`Plataforma não suportada pelo executor: ${post.platform}`)
           }
 
           if (publishResult?.success || publishResult?.post_id) {

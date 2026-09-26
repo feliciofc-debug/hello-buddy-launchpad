@@ -36,6 +36,11 @@ import { idCurto, linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
 import { syncProdutoVideoFromMidia } from "../_shared/sync-produto-video.ts";
 import { splitWhatsAppText } from "../_shared/whatsapp-text.ts";
 import {
+  formatScheduledDate,
+  formatSocialNetworks,
+  parseSaoPauloDateTime,
+} from "../_shared/social-schedule.ts";
+import {
   catalogImageUrl,
   environmentLikelihood,
   IMAGE_COMPOSITION_ESTIMATED_COST_USD,
@@ -241,7 +246,11 @@ function extractText(payload: any): string {
   if (!payload) return "";
   if (payload.text?.body) return payload.text.body;
   if (payload.button?.text) return payload.button.text;
-  if (payload.interactive?.button_reply?.title) return payload.interactive.button_reply.title;
+  if (payload.interactive?.button_reply?.title) {
+    const title = String(payload.interactive.button_reply.title);
+    const id = String(payload.interactive.button_reply.id || "");
+    return id ? `${title}\n<<INTERACTIVE_ID:${id}>>` : title;
+  }
   if (payload.interactive?.list_reply?.title) {
     const title = String(payload.interactive.list_reply.title);
     const id = String(payload.interactive.list_reply.id || "");
@@ -3492,17 +3501,25 @@ function midiaTipoFromPendingMarker(marker?: string | null): "foto" | "video" | 
 }
 
 async function persistPendingSocialPost(token: string, pending: PendingSocialPost): Promise<Array<{ id: string; platform: string }>> {
+  const mediaType = pending.midiaTipo || (pending.produto as any)?.midia_tipo || "foto";
+  const mediaUrl = pending.produto?.imagem_url || null;
+  const imageUrls = Array.isArray(pending.produto?.image_urls)
+    ? pending.produto.image_urls.filter((url: unknown): url is string => typeof url === "string" && !!url.trim())
+    : [];
   const rows = pending.redes.map((rede) => ({
     user_id: pending.userId,
     produto_id: isUuid(pending.produto?.id) ? pending.produto.id : null,
     produto_source: pending.produto?.source || "produtos",
     platform: rede,
     post_text: pending.scripts[rede] || "",
-    image_url: pending.produto?.imagem_url || null,
+    image_url: mediaType === "video" ? null : mediaUrl,
+    video_url: mediaType === "video" ? mediaUrl : null,
+    image_urls: imageUrls.length >= 2 ? imageUrls : null,
     link_url: pending.produto?.link || null,
+    approval_token: token,
     status: "aguardando_confirmacao",
     scheduled_at: null,
-    error_message: pendingPostMarker(token, pending.produto?.nome, pending.formato || "feed", pending.midiaTipo || (pending.produto as any)?.midia_tipo || "foto", {
+    error_message: pendingPostMarker(token, pending.produto?.nome, pending.formato || "feed", mediaType, {
       variantes: pending.variantes,
       variantSelecionada: pending.variantSelecionada,
       incluirCtaWhatsapp: pending.incluirCtaWhatsapp,
@@ -3556,7 +3573,7 @@ async function loadCarouselImageUrls(userId: string, parentId: string): Promise<
 async function loadPendingSocialPost(token: string, userId: string): Promise<PendingSocialPost | null> {
   const { data, error } = await sb
     .from("social_posts_queue")
-    .select("id, user_id, produto_id, produto_source, platform, post_text, image_url, link_url, status, error_message, instagram_creation_id, instagram_container_status, created_at")
+    .select("id, user_id, produto_id, produto_source, platform, post_text, image_url, image_urls, video_url, link_url, status, error_message, instagram_creation_id, instagram_container_status, approval_token, created_at")
     .eq("user_id", userId)
     .eq("status", "aguardando_confirmacao")
     .like("error_message", `jarvis_token:${token}%`)
@@ -3591,7 +3608,8 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
       id: produtoId,
       source: (rows[0] as any).produto_source,
       nome: productNameFromPendingMarker(marker),
-      imagem_url: (rows[0] as any).image_url,
+      imagem_url: (rows[0] as any).video_url || (rows[0] as any).image_url,
+      image_urls: Array.isArray((rows[0] as any).image_urls) ? (rows[0] as any).image_urls : undefined,
       link: (rows[0] as any).link_url,
       midia_tipo: midiaTipoReidratado,
     } as any,
@@ -4235,11 +4253,11 @@ function formatSocialPostToolResult(raw: string): string {
       const avisoFacebook = data?.aviso_facebook ? `<<SPLIT>>⚠️ ${data.aviso_facebook}` : "";
       const previewInfo = Number(data.cards) > 3 ? " Enviei os 3 primeiros; se quiser ver os demais, é só pedir." : "";
       const resumo = `Carrossel pronto: ${data.cards} cards. ID da mídia: ${data.media_code}. Ainda não publiquei.${previewInfo}`;
-      const pergunta = `Escolha *A*, *B* ou *C* para trocar a legenda — ou responda *SIM* para publicar com a opção A.`;
+      const pergunta = `Escolha *A*, *B* ou *C* para trocar a legenda — ou use uma ação abaixo com a opção A.\n\nOu responda: *agendar sexta às 10h*.`;
       blocosPreview[blocosPreview.length - 1] += `\n\n${pergunta}`;
       return `${resumo}${avisoFacebook}<<SPLIT>>Preparei 3 opções de legenda 👇<<SPLIT>>${blocosPreview.join("<<SPLIT>>")}`;
     }
-    const pergunta = `Qual você prefere? Responde *A*, *B* ou *C*.`;
+    const pergunta = `Qual você prefere? Responde *A*, *B* ou *C*.\n\nPara usar a opção A, escolha uma ação abaixo — ou responda: *agendar sexta às 10h*.`;
     const cabecalho = `Preparei 3 opções 👇${aviso}${avisoReels}`;
 
     // A pergunta viaja no MESMO balão que contém opções. Assim, uma falha no
@@ -4253,7 +4271,7 @@ function formatSocialPostToolResult(raw: string): string {
     const preview = Object.entries(data.preview ?? {})
       .map(([rede, script]) => `*${String(rede).toUpperCase()}*\n${script}`)
       .join("\n\n");
-    return `✅ Opção *${opcao}* selecionada.<<SPLIT>>${preview}<<SPLIT>>Posso publicar agora? Responde *sim* pra postar ou me diga o ajuste.`;
+    return `✅ Opção *${opcao}* selecionada.<<SPLIT>>${preview}<<SPLIT>>Escolha *Publicar agora* ou *Agendar*. Você também pode responder: *agendar sexta às 10h*.`;
   }
 
   if (data?.status === "aguardando_confirmacao") {
@@ -4271,6 +4289,13 @@ function formatSocialPostToolResult(raw: string): string {
       ? `\n\nJá publicado em: ${data.redes_publicadas.map((r: string) => String(r).toUpperCase()).join(", ")}.`
       : "";
     return `${data.mensagem || "O Instagram ainda está processando a mídia; o container foi preservado para retry."}${publicadas}`;
+  }
+
+  if (
+    ["agendado", "agendamentos_listados", "sem_agendamentos", "agendamento_cancelado"].includes(String(data?.status))
+    && data?.mensagem
+  ) {
+    return String(data.mensagem);
   }
 
   if (data?.status === "aguardando_privacidade_tiktok") {
@@ -4313,6 +4338,32 @@ type WhatsAppInteractiveList = {
   section_title?: string;
   rows: Array<{ id: string; title: string; description?: string }>;
 };
+
+type WhatsAppInteractiveButtons = {
+  body: string;
+  header?: string;
+  footer?: string;
+  buttons: Array<{ id: string; title: string }>;
+};
+
+function interactiveButtonsFromSocialResult(raw: string): WhatsAppInteractiveButtons | undefined {
+  try {
+    const data = JSON.parse(raw);
+    if (!["aguardando_escolha_variante", "variante_selecionada"].includes(String(data?.status))) return undefined;
+    const token = String(data?.token || "").trim().toLowerCase();
+    if (!/^[a-f0-9]{8}$/.test(token)) return undefined;
+    return {
+      header: "Aprovar criativo",
+      body: "Publique agora ou escolha agendar. Para informar a data por texto, responda: agendar sexta às 10h.",
+      buttons: [
+        { id: `social_publish:${token}`, title: "Publicar agora" },
+        { id: `social_schedule:${token}`, title: "Agendar" },
+      ],
+    };
+  } catch {
+    return undefined;
+  }
+}
 
 function interactiveListFromSocialResult(raw: string): WhatsAppInteractiveList | undefined {
   try {
@@ -4761,7 +4812,7 @@ async function toolPostarRedesSociais(
       opcao_ativa: "A",
       cta_whatsapp: incluirCta,
       cta_nota: ctaNota,
-      instrucoes: `Mostre as 3 OPÇÕES (A, B, C) de forma clara, uma em cada bloco separado, usando os textos de \`variantes\` (se houver mais de uma rede, mostre por rede — mas se o texto for parecido entre redes, mostre 1 vez só). Formato exemplo:\n\n*Opção A — Direta*\n<texto A>\n\n*Opção B — História*\n<texto B>\n\n*Opção C — Interativa*\n<texto C>\n\nDepois pergunte: "Qual você prefere? Responde *A*, *B* ou *C*. Ou 'pode postar' pra publicar a A."\n${incluirCta ? "" : "Se ainda não incluiu CTA de WhatsApp, pergunte também se quer incluir. "}Quando o dono responder "A" / "B" / "C" / "opção B" etc, chame escolher_variante_post com token="${token}" e opcao=<letra>. Se ele mandar ajuste de texto, chame revisar_post_pendente. Se confirmar ('pode postar'), chame confirmar_postagem_redes.`,
+      instrucoes: `Mostre as 3 OPÇÕES (A, B, C) de forma clara, uma em cada bloco separado, usando os textos de \`variantes\` (se houver mais de uma rede, mostre por rede — mas se o texto for parecido entre redes, mostre 1 vez só). Formato exemplo:\n\n*Opção A — Direta*\n<texto A>\n\n*Opção B — História*\n<texto B>\n\n*Opção C — Interativa*\n<texto C>\n\nDepois pergunte: "Qual você prefere? Responde *A*, *B* ou *C*."\n${incluirCta ? "" : "Se ainda não incluiu CTA de WhatsApp, pergunte também se quer incluir. "}Quando o dono responder "A" / "B" / "C" / "opção B" etc, chame escolher_variante_post com token="${token}" e opcao=<letra>. Se ele mandar ajuste de texto, chame revisar_post_pendente. Se confirmar ('pode postar'), chame confirmar_postagem_redes. Se pedir data futura, chame agendar_post_pendente.`,
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
@@ -4912,6 +4963,202 @@ async function toolConfirmarPostagemRedes(
     notas: resultados.filter((r) => r.ok && (r as any).nota).map((r) => (r as any).nota),
     detalhes: resultados,
   });
+}
+
+async function toolAgendarPostPendente(
+  args: { token?: string; data_hora_sp?: string },
+  ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
+): Promise<string> {
+  if (!isOwner(ctx)) return JSON.stringify({ ok: false, erro: "acao_restrita_ao_responsavel" });
+  const token = String(args?.token || "").trim().toLowerCase();
+  if (!/^[a-f0-9]{8}$/.test(token)) return JSON.stringify({ ok: false, erro: "token_invalido", mensagem: "Não encontrei o criativo que deve ser agendado." });
+  const scheduledDate = parseSaoPauloDateTime(args?.data_hora_sp);
+  if (!scheduledDate) {
+    return JSON.stringify({ ok: false, erro: "data_invalida", mensagem: "Informe a data no formato YYYY-MM-DD HH:MM, em horário de São Paulo." });
+  }
+  if (scheduledDate.getTime() < Date.now() + 10 * 60 * 1000) {
+    return JSON.stringify({ ok: false, erro: "data_muito_proxima", mensagem: "Escolha um horário com pelo menos 10 minutos de antecedência." });
+  }
+
+  const pending = PENDING_POSTS.get(token) ?? await loadPendingSocialPost(token, ctx.userId);
+  if (!pending || pending.userId !== ctx.userId) {
+    return JSON.stringify({ ok: false, erro: "token_nao_encontrado", mensagem: "Não encontrei esse criativo aguardando confirmação." });
+  }
+  const scheduledNetworks = pending.redes.filter((network) => network !== "tiktok");
+  const hasTikTok = pending.redes.includes("tiktok");
+  if (scheduledNetworks.length === 0) {
+    return JSON.stringify({
+      ok: false,
+      erro: "tiktok_nao_agendavel",
+      mensagem: "O TikTok ainda precisa ser publicado na hora; este criativo não tem outra rede que possa ser agendada.",
+    });
+  }
+
+  let imageUrls = Array.isArray(pending.produto?.image_urls)
+    ? pending.produto.image_urls.filter((url: unknown): url is string => typeof url === "string" && !!url.trim())
+    : [];
+  if (pending.midiaTipo === "carrossel" && imageUrls.length < 2 && pending.produto?.id) {
+    imageUrls = await loadCarouselImageUrls(ctx.userId, pending.produto.id);
+  }
+  if (pending.midiaTipo === "carrossel" && imageUrls.length < 2) {
+    return JSON.stringify({ ok: false, erro: "carrossel_incompleto", mensagem: "Não encontrei todos os cards do carrossel; gere a prévia novamente." });
+  }
+
+  const rowIds = (pending.queueRows ?? [])
+    .filter((row) => scheduledNetworks.includes(row.platform))
+    .map((row) => row.id);
+  if (rowIds.length !== scheduledNetworks.length) {
+    return JSON.stringify({ ok: false, erro: "fila_incompleta", mensagem: "Não encontrei todas as linhas deste criativo; nada foi agendado." });
+  }
+  const mediaUrl = pending.produto?.imagem_url || null;
+  const isVideo = pending.midiaTipo === "video" || pending.produto?.midia_tipo === "video";
+  const { data: updatedRows, error } = await sb.from("social_posts_queue")
+    .update({
+      status: "pendente",
+      scheduled_at: scheduledDate.toISOString(),
+      approval_token: token,
+      error_message: null,
+      image_url: isVideo ? null : mediaUrl,
+      video_url: isVideo ? mediaUrl : null,
+      image_urls: imageUrls.length >= 2 ? imageUrls : null,
+      instagram_creation_id: null,
+      instagram_container_status: null,
+      updated_at: new Date().toISOString(),
+    })
+    .in("id", rowIds)
+    .eq("status", "aguardando_confirmacao")
+    .select("id");
+  if (error || (updatedRows?.length ?? 0) !== rowIds.length) {
+    return JSON.stringify({
+      ok: false,
+      erro: "agendamento_nao_persistido",
+      mensagem: `Não consegui guardar o agendamento; nada deve ser considerado confirmado.${error?.message ? ` ${error.message}` : ""}`,
+    });
+  }
+
+  if (hasTikTok) {
+    const tiktokPending: PendingSocialPost = {
+      ...pending,
+      redes: ["tiktok"],
+      scripts: { tiktok: pending.scripts.tiktok },
+      queueRows: (pending.queueRows ?? []).filter((row) => row.platform === "tiktok"),
+    };
+    PENDING_POSTS.set(token, tiktokPending);
+    await updatePendingSocialPostMarker(token, tiktokPending);
+  } else {
+    PENDING_POSTS.delete(token);
+  }
+  if (ctx.convId && pending.midiaTipo === "carrossel") {
+    const conversation = { id: ctx.convId, userId: ctx.userId, contactNumber: ctx.fromNumber };
+    const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+    await saveAgentState(sb, conversation, { pending_carousel: null }, current);
+    current.pending_carousel = null;
+    ctx.agentState = current;
+  }
+
+  const when = formatScheduledDate(scheduledDate);
+  const networks = formatSocialNetworks(scheduledNetworks);
+  const warning = hasTikTok ? " O TikTok não foi agendado e precisa ser publicado na hora." : "";
+  return JSON.stringify({
+    ok: true,
+    status: "agendado",
+    token,
+    scheduled_at: scheduledDate.toISOString(),
+    data_extenso: when,
+    redes: scheduledNetworks,
+    mensagem: `Agendado para ${when} no ${networks}. Para desfazer, responda: cancelar agendamento.${warning}`,
+    aviso_tiktok: hasTikTok,
+  });
+}
+
+type ScheduledSocialGroup = {
+  token: string;
+  scheduledAt: string;
+  networks: string[];
+  rowIds: string[];
+};
+
+async function loadScheduledSocialGroups(userId: string): Promise<ScheduledSocialGroup[]> {
+  const { data, error } = await sb.from("social_posts_queue")
+    .select("id, platform, scheduled_at, approval_token")
+    .eq("user_id", userId)
+    .eq("status", "pendente")
+    .gt("scheduled_at", new Date().toISOString())
+    .not("approval_token", "is", null)
+    .order("scheduled_at", { ascending: true })
+    .limit(100);
+  if (error) throw new Error(error.message);
+  const grouped = new Map<string, ScheduledSocialGroup>();
+  for (const row of data ?? []) {
+    const token = String(row.approval_token || "");
+    if (!token || !row.scheduled_at) continue;
+    const group = grouped.get(token) ?? { token, scheduledAt: row.scheduled_at, networks: [], rowIds: [] };
+    group.networks.push(row.platform);
+    group.rowIds.push(row.id);
+    grouped.set(token, group);
+  }
+  return [...grouped.values()].sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
+}
+
+async function toolListarAgendamentosPosts(
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  if (!isOwner(ctx)) return JSON.stringify({ ok: false, erro: "acao_restrita_ao_responsavel" });
+  try {
+    const groups = await loadScheduledSocialGroups(ctx.userId);
+    if (!groups.length) return JSON.stringify({ ok: true, status: "sem_agendamentos", mensagem: "Você não tem posts agendados pelo WhatsApp." });
+    const lines = groups.map((group, index) =>
+      `${index + 1}. ${formatScheduledDate(new Date(group.scheduledAt))} — ${formatSocialNetworks(group.networks)} — código ${group.token.toUpperCase()}`
+    );
+    return JSON.stringify({ ok: true, status: "agendamentos_listados", agendamentos: groups, mensagem: `Próximos agendamentos:\n${lines.join("\n")}` });
+  } catch (error) {
+    return JSON.stringify({ ok: false, erro: "falha_ao_listar", mensagem: (error as Error).message });
+  }
+}
+
+async function toolCancelarAgendamentoPost(
+  args: { token?: string },
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  if (!isOwner(ctx)) return JSON.stringify({ ok: false, erro: "acao_restrita_ao_responsavel" });
+  try {
+    const groups = await loadScheduledSocialGroups(ctx.userId);
+    if (!groups.length) return JSON.stringify({ ok: false, erro: "sem_agendamentos", mensagem: "Você não tem posts agendados pelo WhatsApp para cancelar." });
+    const requested = String(args?.token || "").trim().toLowerCase();
+    let selected = requested ? groups.find((group) => group.token.toLowerCase() === requested) : undefined;
+    if (requested && !selected) {
+      return JSON.stringify({ ok: false, erro: "agendamento_nao_encontrado", mensagem: "Não encontrei um agendamento futuro com esse código." });
+    }
+    if (!selected && groups.length > 1) {
+      const lines = groups.map((group, index) =>
+        `${index + 1}. ${formatScheduledDate(new Date(group.scheduledAt))} — ${formatSocialNetworks(group.networks)} — código ${group.token.toUpperCase()}`
+      );
+      return JSON.stringify({
+        ok: false,
+        erro: "selecao_necessaria",
+        mensagem: `Você tem mais de um agendamento. Qual deseja cancelar?\n${lines.join("\n")}\nResponda com o código.`,
+      });
+    }
+    selected ??= groups[0];
+    const { data, error } = await sb.from("social_posts_queue")
+      .update({
+        status: "cancelado",
+        error_message: "cancelado_pelo_whatsapp",
+        updated_at: new Date().toISOString(),
+      })
+      .in("id", selected.rowIds)
+      .eq("status", "pendente")
+      .select("id");
+    if (error || (data?.length ?? 0) !== selected.rowIds.length) throw new Error(error?.message || "nem todas as linhas foram canceladas");
+    return JSON.stringify({
+      ok: true,
+      status: "agendamento_cancelado",
+      token: selected.token,
+      mensagem: `Agendamento de ${formatScheduledDate(new Date(selected.scheduledAt))} no ${formatSocialNetworks(selected.networks)} cancelado.`,
+    });
+  } catch (error) {
+    return JSON.stringify({ ok: false, erro: "falha_ao_cancelar", mensagem: (error as Error).message });
+  }
 }
 
 async function applyPendingTikTokPrivacyChoice(
@@ -5075,7 +5322,7 @@ async function toolRevisarPostPendente(
     opcao_ativa: selecionada,
     cta_whatsapp: incluirCta,
     cta_nota: ctaNota,
-    instrucoes: `Mostre as 3 OPÇÕES A/B/C REVISADAS de forma clara (uma por bloco). Pergunte: "Ficou melhor? Responde *A*, *B* ou *C* — ou 'pode postar' pra ir com a A. Se quiser mais um ajuste, é só me dizer." Se responder A/B/C: chame escolher_variante_post. Se pedir novo ajuste: chame revisar_post_pendente de novo com token="${token}". Se confirmar: chame confirmar_postagem_redes com token="${token}".`,
+    instrucoes: `Mostre as 3 OPÇÕES A/B/C REVISADAS de forma clara (uma por bloco). Se responder A/B/C: chame escolher_variante_post. Se pedir novo ajuste: chame revisar_post_pendente de novo com token="${token}". Se confirmar: chame confirmar_postagem_redes com token="${token}". Se pedir data futura: chame agendar_post_pendente com o mesmo token.`,
   });
 }
 
@@ -5131,7 +5378,7 @@ async function toolEscolherVariantePost(
     token,
     opcao_ativa: opcao,
     preview: scripts,
-    instrucoes: `Confirme rapidinho: "Beleza, vou publicar a *Opção ${opcao}*. Pode postar?" Se o dono confirmar ('pode postar', 'sim', 'manda'), chame confirmar_postagem_redes com token="${token}". Se ele pedir ajuste, chame revisar_post_pendente.`,
+    instrucoes: `Mostre que a Opção ${opcao} está ativa e ofereça publicar agora ou agendar. Se confirmar publicação, chame confirmar_postagem_redes com token="${token}". Se informar uma data futura, chame agendar_post_pendente com o mesmo token. Se pedir ajuste, chame revisar_post_pendente.`,
   });
 }
 
@@ -5751,7 +5998,7 @@ async function toolPostarMidiaBiblioteca(
       aviso_reels: avisoReels,
       cta_whatsapp: incluirCta,
       cta_nota: ctaNota,
-      instrucoes: `Diga o formato ("vou postar como ${formato.toUpperCase()}" — cite as redes) e mostre as 3 OPÇÕES A/B/C do texto de forma clara e separada, usando os textos de \`variantes\`. Formato exemplo:\n\n*Opção A — Direta*\n<texto A>\n\n*Opção B — História*\n<texto B>\n\n*Opção C — Interativa*\n<texto C>\n\nDepois pergunte: "Qual você prefere? Responde *A*, *B* ou *C* — ou 'pode postar' pra ir com a A. Se quiser ajustar algo (mais curto, mudar tom, tirar preço), me diga."${perguntaCta} Quando o dono responder "A"/"B"/"C"/"opção X", chame escolher_variante_post com token="${token}" e opcao=<letra>. Se pedir ajuste no texto, chame revisar_post_pendente com token="${token}" e ajuste=<instrução literal>. Se confirmar ("pode postar"), chame confirmar_postagem_redes com token="${token}".`,
+      instrucoes: `Diga o formato ("vou postar como ${formato.toUpperCase()}" — cite as redes) e mostre as 3 OPÇÕES A/B/C do texto de forma clara e separada, usando os textos de \`variantes\`.${perguntaCta} Quando o dono responder "A"/"B"/"C"/"opção X", chame escolher_variante_post com token="${token}" e opcao=<letra>. Se pedir ajuste no texto, chame revisar_post_pendente com token="${token}" e ajuste=<instrução literal>. Se confirmar ("pode postar"), chame confirmar_postagem_redes. Se informar data futura, chame agendar_post_pendente.`,
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
@@ -7543,6 +7790,42 @@ const TOOLS = [
   {
     type: "function",
     function: {
+      name: "agendar_post_pendente",
+      description: "Agenda um criativo que está aguardando confirmação. Use quando o responsável disser 'agendar amanhã 18h', 'agenda pra sexta às 10' etc. Resolva a expressão usando a data/hora atual de São Paulo do system prompt e envie data_hora_sp em YYYY-MM-DD HH:MM. Só confirme ao usuário se retornar ok=true. TikTok não é agendado.",
+      parameters: {
+        type: "object",
+        properties: {
+          token: { type: "string", description: "Token de 8 caracteres do criativo pendente." },
+          data_hora_sp: { type: "string", description: "Data/hora absoluta em São Paulo, formato YYYY-MM-DD HH:MM." },
+        },
+        required: ["token", "data_hora_sp"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "listar_agendamentos_posts",
+      description: "Lista os próximos posts sociais agendados pelo WhatsApp, com data, redes e código.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "cancelar_agendamento_post",
+      description: "Cancela um post social futuro agendado pelo WhatsApp. Omita token quando houver apenas um; se houver vários, a ferramenta pedirá qual código cancelar.",
+      parameters: {
+        type: "object",
+        properties: {
+          token: { type: "string", description: "Código de 8 caracteres exibido em 'meus agendamentos'." },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "revisar_post_pendente",
       description: "🛠️ USE quando houver um POST PENDENTE (aguardando 'pode postar') e o dono pedir AJUSTES NO TEXTO/SCRIPT antes de publicar. Ex: 'tira o ACABA HOJE', 'põe o preço 89,90', 'deixa mais curto', 'muda o tom pra profissional'. TAMBÉM use pra LIGAR/DESLIGAR o CTA de WhatsApp no post pendente (passe incluir_cta_whatsapp=true/false; ajuste pode ser omitido nesse caso). Regenera o script aplicando o ajuste e MANTÉM o mesmo token, mídia, formato e redes.",
       parameters: {
@@ -8712,6 +8995,9 @@ async function runTool(
   if (name === "resumo_plataforma") return { result: await toolResumoPlataforma(ctx) };
   if (name === "postar_redes_sociais") return { result: await toolPostarRedesSociais(args ?? {}, ctx) };
   if (name === "confirmar_postagem_redes") return { result: await toolConfirmarPostagemRedes(args ?? {}, ctx) };
+  if (name === "agendar_post_pendente") return { result: await toolAgendarPostPendente(args ?? {}, ctx) };
+  if (name === "listar_agendamentos_posts") return { result: await toolListarAgendamentosPosts(ctx) };
+  if (name === "cancelar_agendamento_post") return { result: await toolCancelarAgendamentoPost(args ?? {}, ctx) };
   if (name === "revisar_post_pendente") return { result: await toolRevisarPostPendente(args ?? {}, ctx) };
   if (name === "escolher_variante_post") return { result: await toolEscolherVariantePost(args ?? {}, ctx) };
   if (name === "registrar_logo_cliente") return { result: await toolRegistrarLogoCliente(args ?? {}, ctx) };
@@ -8753,7 +9039,14 @@ async function callGemini(
   userContent: any,
   hasMedia: boolean,
   toolCtx: { userId: string; fromNumber: string; media?: MediaExtract[]; convId?: string; agentState?: AgentConvState },
-): Promise<{ text: string; imageUrl?: string; forwardProof?: string; forwardAttempted?: boolean; interactiveList?: WhatsAppInteractiveList }> {
+): Promise<{
+  text: string;
+  imageUrl?: string;
+  forwardProof?: string;
+  forwardAttempted?: boolean;
+  interactiveList?: WhatsAppInteractiveList;
+  interactiveButtons?: WhatsAppInteractiveButtons;
+}> {
   let forwardProof: string | undefined;
   let forwardAttempted = false;
   const nowSP = new Date().toLocaleString("pt-BR", {
@@ -8777,6 +9070,38 @@ async function callGemini(
       ? pendingCarousel.token
       : remetenteEhDono ? await findLatestPendingSocialToken(toolCtx.userId) : null;
     const pendingVideoDraft = remetenteEhDono ? await buscarRascunhoVideo(toolCtx) : null;
+    const normalizedInput = normalizePt(userContent);
+    const socialInteractive = userContent.match(/<<INTERACTIVE_ID:(social_(?:publish|schedule):([a-f0-9]{8}))>>/i);
+
+    if (remetenteEhDono && /\bmeus agendamentos\b/.test(normalizedInput)) {
+      const result = await toolListarAgendamentosPosts(toolCtx);
+      return { text: formatSocialPostToolResult(result) };
+    }
+    if (remetenteEhDono && /\bcancelar agendamento\b/.test(normalizedInput)) {
+      const explicitToken = userContent.match(/\b[a-f0-9]{8}\b/i)?.[0];
+      const result = await toolCancelarAgendamentoPost({ token: explicitToken }, toolCtx);
+      const parsed = JSON.parse(result);
+      return { text: String(parsed?.mensagem || "Não consegui cancelar o agendamento.") };
+    }
+    if (remetenteEhDono && socialInteractive?.[1]?.startsWith("social_publish:")) {
+      const result = await toolConfirmarPostagemRedes({ token: socialInteractive[2] }, toolCtx);
+      return {
+        text: formatSocialPostToolResult(result),
+        interactiveList: interactiveListFromSocialResult(result),
+      };
+    }
+    if (remetenteEhDono && socialInteractive?.[1]?.startsWith("social_schedule:")) {
+      return { text: "Para quando? Ex.: sexta às 10h" };
+    }
+    if (
+      remetenteEhDono
+      && latestPendingSocialToken
+      && /^(agendar|agenda|quero agendar|prefiro agendar)$/.test(
+        normalizedInput.replace(/<<interactive id:[^>]+>>/g, "").trim(),
+      )
+    ) {
+      return { text: "Para quando? Ex.: sexta às 10h" };
+    }
 
     if (pendingClientLogo) {
       const conversation = toolCtx.convId
@@ -9007,7 +9332,10 @@ async function callGemini(
     if (variantChoice) {
       console.log("[pietro][forced_social_variant_choice]", { token: latestPendingSocialToken, opcao: variantChoice });
       const variantResult = await toolEscolherVariantePost({ token: latestPendingSocialToken!, opcao: variantChoice }, toolCtx);
-      return { text: formatSocialPostToolResult(variantResult) };
+      return {
+        text: formatSocialPostToolResult(variantResult),
+        interactiveButtons: interactiveButtonsFromSocialResult(variantResult),
+      };
     }
 
     const plainPostConfirmation = latestPendingSocialToken ? detectPlainSocialPostConfirmation(userContent) : null;
@@ -9434,6 +9762,27 @@ async function callGemini(
             };
           }
         }
+        if (["agendar_post_pendente", "listar_agendamentos_posts", "cancelar_agendamento_post"].includes(name)) {
+          try {
+            const parsed = JSON.parse(result);
+            return {
+              text: String(
+                parsed?.mensagem
+                  || (parsed?.ok === true ? "Ação concluída." : "Não consegui concluir a ação."),
+              ),
+              imageUrl: pendingImageUrl,
+              forwardProof,
+              forwardAttempted,
+            };
+          } catch {
+            return {
+              text: "Não consegui concluir a ação porque a ferramenta devolveu uma resposta inválida.",
+              imageUrl: pendingImageUrl,
+              forwardProof,
+              forwardAttempted,
+            };
+          }
+        }
         // Short-circuit determinístico do fluxo A/B/C — evita a IA reescrever/repetir textos.
         try {
           const parsed = JSON.parse(result);
@@ -9465,6 +9814,7 @@ async function callGemini(
               forwardProof,
               forwardAttempted,
               interactiveList: interactiveListFromSocialResult(result),
+              interactiveButtons: interactiveButtonsFromSocialResult(result),
             };
           }
         } catch { /* ignore */ }
@@ -9495,6 +9845,7 @@ async function sendWhatsApp(
   message: string,
   imageUrl?: string,
   interactiveList?: WhatsAppInteractiveList,
+  interactiveButtons?: WhatsAppInteractiveButtons,
 ): Promise<string | null> {
   const chunks = splitWhatsAppText(message);
   if (chunks.length > 1) {
@@ -9506,6 +9857,7 @@ async function sendWhatsApp(
     const body: any = { user_id, to, message: chunks[index] };
     if (imageUrl && index === 0) body.image_url = imageUrl;
     if (interactiveList && index === chunks.length - 1) body.interactive_list = interactiveList;
+    if (interactiveButtons && index === chunks.length - 1) body.interactive_buttons = interactiveButtons;
     const res = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-send-message`, {
       method: "POST",
       headers: {
@@ -11672,7 +12024,7 @@ Regras:
         const semLegendaDono = !contextoAtual || /^\s*\[visão\]/i.test(contextoAtual);
         const texto = (userText || "").trim();
         // Evita gravar comandos puros de publicação como legenda.
-        const ehComandoPublicar = /^(publica[rl]?|posta[rl]?|manda|pode postar|pode publicar|confirma|confirmar|ok|sim)\b/i.test(texto);
+        const ehComandoPublicar = /^(publica[rl]?|posta[rl]?|manda|pode postar|pode publicar|confirma|confirmar|agend(?:a|ar|e)|ok|sim)\b/i.test(texto);
         // Guard extra: se já há post pendente (últ 10 min), o texto do dono é ajuste/confirmação — NÃO virar contexto.
         const { data: pendCheck } = await sb
           .from("social_posts_queue")
@@ -11711,7 +12063,7 @@ Regras:
             const formato = formatoFromPendingMarker(marker);
             const midiaTipo = midiaTipoFromPendingMarker(marker);
             const redes = [...new Set(pendRows.map((r: any) => r.platform))].join(", ");
-            pendingConfirmBlock = `\n\nPOST PENDENTE AGUARDANDO ESCOLHA DE VARIANTE OU CONFIRMAÇÃO (últimos 10 min):\n- token: ${token}\n- formato: ${formato}\n- mídia: ${midiaTipo}\n- redes: ${redes}\n- variante ativa: A (default) — o dono pode trocar pra B ou C.\n\nCOMO ROTEAR A PRÓXIMA MENSAGEM DO DONO:\n1. ESCOLHA DE VARIANTE ("A", "B", "C", "a", "b", "c", "opção A", "opção B", "opção C", "a primeira", "a segunda", "a terceira", "quero a B", "gostei da C"): chame IMEDIATAMENTE escolher_variante_post com token="${token}" e opcao=<A|B|C>. Depois pergunte "pode postar?".\n2. CONFIRMAÇÃO curta ("pode postar", "publica", "manda", "manda ver", "vai", "posta", "confirma", "sim", "ok", "tá bom, pode postar"): chame IMEDIATAMENTE confirmar_postagem_redes com token="${token}" (publica a variante ativa).\n3. AJUSTE NO TEXTO/SCRIPT ("tira o ACABA HOJE", "põe o preço 89,90", "deixa mais curto", "muda o tom pra profissional", "adiciona que tem garantia", "refaz mais leve", "tira o emoji"): chame IMEDIATAMENTE revisar_post_pendente com token="${token}" e ajuste=<instrução literal do dono>. NÃO recrie o post do zero, NÃO chame postar_midia_biblioteca.\n4. MUDANÇA DE ESCOPO clara (trocar rede, mudar formato feed↔story↔reels, trocar de mídia): aí sim recrie via postar_midia_biblioteca.\n5. Ambíguo ("tá bom, deixa mais curto"): trate como AJUSTE (regra 3) — só publique com confirmação explícita.\n- NÃO chame postar_midia_biblioteca só pra reformular texto ou trocar variante — use as tools acima.`;
+            pendingConfirmBlock = `\n\nPOST PENDENTE AGUARDANDO ESCOLHA DE VARIANTE, PUBLICAÇÃO OU AGENDAMENTO (últimos 10 min):\n- token: ${token}\n- formato: ${formato}\n- mídia: ${midiaTipo}\n- redes: ${redes}\n- variante ativa: A (default) — o dono pode trocar pra B ou C.\n\nCOMO ROTEAR A PRÓXIMA MENSAGEM DO DONO:\n1. ESCOLHA DE VARIANTE ("A", "B", "C", "a", "b", "c", "opção A", "opção B", "opção C", "a primeira", "a segunda", "a terceira", "quero a B", "gostei da C"): chame IMEDIATAMENTE escolher_variante_post com token="${token}" e opcao=<A|B|C>.\n2. CONFIRMAÇÃO curta ("pode postar", "publica", "manda", "manda ver", "vai", "posta", "confirma", "sim", "ok", "tá bom, pode postar"): chame IMEDIATAMENTE confirmar_postagem_redes com token="${token}" (publica a variante ativa).\n3. AGENDAMENTO ("agendar amanhã 18h", "agenda pra sexta às 10", "dia 30 às 9 da manhã"): resolva a data absoluta com o cabeçalho de horário de São Paulo e chame IMEDIATAMENTE agendar_post_pendente com token="${token}" e data_hora_sp="YYYY-MM-DD HH:MM". Se não houver data/hora, pergunte exatamente: "Para quando? Ex.: sexta às 10h". Só afirme que agendou se a ferramenta retornar ok=true.\n4. AJUSTE NO TEXTO/SCRIPT ("tira o ACABA HOJE", "põe o preço 89,90", "deixa mais curto", "muda o tom pra profissional", "adiciona que tem garantia", "refaz mais leve", "tira o emoji"): chame IMEDIATAMENTE revisar_post_pendente com token="${token}" e ajuste=<instrução literal do dono>. NÃO recrie o post do zero, NÃO chame postar_midia_biblioteca.\n5. MUDANÇA DE ESCOPO clara (trocar rede, mudar formato feed↔story↔reels, trocar de mídia): aí sim recrie via postar_midia_biblioteca.\n6. Ambíguo ("tá bom, deixa mais curto"): trate como AJUSTE (regra 4) — só publique com confirmação explícita.\n- "meus agendamentos": chame listar_agendamentos_posts.\n- "cancelar agendamento": chame cancelar_agendamento_post; se houver vários, mostre as opções devolvidas e não escolha sozinho.\n- NÃO chame postar_midia_biblioteca só pra reformular texto, trocar variante ou agendar — use as tools acima.`;
           }
         }
       }
@@ -11900,6 +12252,7 @@ Regras:
     let reply = "";
     let generatedImageUrl: string | undefined;
     let interactiveList: WhatsAppInteractiveList | undefined;
+    let interactiveButtons: WhatsAppInteractiveButtons | undefined;
     let forwardProof: string | undefined;
     let forwardAttempted = false;
     try {
@@ -11913,6 +12266,7 @@ Regras:
       reply = aiResult.text;
       generatedImageUrl = aiResult.imageUrl;
       interactiveList = aiResult.interactiveList;
+      interactiveButtons = aiResult.interactiveButtons;
       forwardProof = aiResult.forwardProof;
       forwardAttempted = !!aiResult.forwardAttempted;
     } catch (e) {
@@ -12057,7 +12411,7 @@ Regras:
         direction: "outbound",
         sender: "agent",
         content: generatedImageUrl ? `${loggedContent}\n\n[imagem: ${generatedImageUrl}]` : loggedContent,
-        message_type: generatedImageUrl ? "image" : interactiveList ? "interactive" : "text",
+        message_type: generatedImageUrl ? "image" : (interactiveList || interactiveButtons) ? "interactive" : "text",
       })
       .select("id")
       .single();
@@ -12065,14 +12419,31 @@ Regras:
     // PASSO 11 — Envia (mensagem principal + follow-ups separados)
     let sendError: string | null = null;
     try {
-      const sentId = await sendWhatsApp(userId, row.from_number, primaryReply, generatedImageUrl, interactiveList);
+      const hasFollowUps = followUps.length > 0;
+      const sentId = await sendWhatsApp(
+        userId,
+        row.from_number,
+        primaryReply,
+        generatedImageUrl,
+        hasFollowUps ? undefined : interactiveList,
+        hasFollowUps ? undefined : interactiveButtons,
+      );
       if (sentId && outMsg?.id) {
         await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
       }
-      for (const part of followUps) {
+      for (let index = 0; index < followUps.length; index++) {
+        const part = followUps[index];
+        const isLast = index === followUps.length - 1;
         try {
           await new Promise((r) => setTimeout(r, 600));
-          await sendWhatsApp(userId, row.from_number, part);
+          await sendWhatsApp(
+            userId,
+            row.from_number,
+            part,
+            undefined,
+            isLast ? interactiveList : undefined,
+            isLast ? interactiveButtons : undefined,
+          );
         } catch (e) {
           console.error("[pietro][followup_send_failed]", (e as Error).message ?? e);
           // Interrompe a sequência: continuar enviando poderia entregar a

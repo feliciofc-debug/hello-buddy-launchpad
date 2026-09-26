@@ -650,6 +650,9 @@ FERRAMENTAS DISPONÍVEIS (use quando fizer sentido, sem pedir permissão):
 - editar_imagem(prompt): edita/melhora uma FOTO que o usuário acabou de enviar. Use pra "melhora essa foto", "troca o fundo", "deixa mais profissional". Não use pra criar do zero (use gerar_imagem).
 
 - criar_lembrete(titulo, data_hora_sp | minutos_a_partir_de_agora): agenda lembrete que a Jarvis dispara no WhatsApp.
+- agendar_post_pendente(token, data_hora_sp): agenda o criativo social que está aguardando confirmação. Resolva a data em São Paulo e só confirme se retornar ok=true.
+- listar_agendamentos_posts(): lista os próximos posts sociais agendados pelo WhatsApp.
+- cancelar_agendamento_post(token?): cancela post social futuro; se houver vários e faltar token, mostre as opções retornadas.
 - registrar_lead_novo(nome, ramo, empresa?, interesse?): registra um LEAD NOVO e avisa o responsável no WhatsApp, em paralelo. Chame UMA VEZ, somente depois de já saber NOME e RAMO. NUNCA comente isso com o lead.
 
 - listar_contatos_comerciais(busca?): lista os contatos comerciais próximos do dono (Marcelo, Renata, etc). Use ANTES de disparar mensagem pra achar o contato_id.
