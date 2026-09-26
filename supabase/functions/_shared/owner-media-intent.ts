@@ -10,6 +10,32 @@ export type OwnerMediaIntent = {
   mediaStrategy: "generated" | "last" | null;
 };
 
+export function selectLatestImplicitMediaId(
+  newestSavedMedia: { id?: string | null; created_at?: string | null } | null,
+  lastInteraction: { media_id?: string | null; at?: string | null } | null,
+): string | null {
+  const savedId = newestSavedMedia?.id || null;
+  const interactionId = lastInteraction?.media_id || null;
+  const savedAtValue = newestSavedMedia?.created_at
+    ? new Date(newestSavedMedia.created_at).getTime()
+    : Number.NEGATIVE_INFINITY;
+  const savedAt = Number.isFinite(savedAtValue)
+    ? savedAtValue
+    : Number.NEGATIVE_INFINITY;
+  const interactionAt = lastInteraction?.at
+    ? new Date(lastInteraction.at).getTime()
+    : Number.NEGATIVE_INFINITY;
+
+  if (
+    interactionId &&
+    Number.isFinite(interactionAt) &&
+    interactionAt > savedAt
+  ) {
+    return interactionId;
+  }
+  return savedId;
+}
+
 function normalizeIntentText(text: string): string {
   return String(text || "")
     .normalize("NFD")

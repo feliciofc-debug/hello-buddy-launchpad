@@ -5,6 +5,7 @@ import {
   hasDirectedImageEditRequest,
   hasImageGenerationRequest,
   hasSocialPostRequest,
+  selectLatestImplicitMediaId,
 } from "./owner-media-intent.ts";
 
 const GENERATE_THEN_POST =
@@ -31,15 +32,38 @@ Deno.test("pedido exato de post usa a última mídia e nunca vira edição", () 
     action: "post",
     mediaStrategy: "last",
   });
-  const latestConversationMediaId = "EA0BEE5B";
-  const selectedMediaId =
-    classifyOwnerMediaIntent(POST_LAST_IMAGE).mediaStrategy === "last"
-      ? latestConversationMediaId
-      : "12BFB18C";
-  assertEquals(selectedMediaId, "EA0BEE5B");
   assertEquals(
     extractSocialPostBriefing(POST_LAST_IMAGE),
     "com a AMZ o empreendedor cria e publica os posts da empresa só mandando uma foto no WhatsApp.",
+  );
+});
+
+Deno.test("reencaminhar EA0BEE5B vence imagens geradas depois mesmo com deduplicação", () => {
+  // EA0BEE5B foi salva às 08:24. Depois foram criadas 12BFB18C e
+  // 40EE08A5; esta última é a linha mais nova da biblioteca.
+  const newestSavedMedia = {
+    id: "40EE08A5",
+    created_at: "2026-09-26T11:25:30.000Z",
+  };
+  // Ao reencaminhar EA0BEE5B, a deduplicação conserva seu created_at antigo,
+  // mas freshStatePatch registra o evento atual em last_media_interaction.
+  const lastInteraction = {
+    media_id: "EA0BEE5B",
+    at: "2026-09-26T11:26:00.000Z",
+  };
+  assertEquals(
+    selectLatestImplicitMediaId(newestSavedMedia, lastInteraction),
+    "EA0BEE5B",
+  );
+});
+
+Deno.test("linha nova vence quando a interação registrada é mais antiga", () => {
+  assertEquals(
+    selectLatestImplicitMediaId(
+      { id: "40EE08A5", created_at: "2026-09-26T11:25:30.000Z" },
+      { media_id: "EA0BEE5B", at: "2026-09-26T11:24:30.000Z" },
+    ),
+    "40EE08A5",
   );
 });
 

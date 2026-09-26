@@ -45,6 +45,7 @@ import {
   extractSocialPostBriefing,
   hasImageGenerationRequest,
   hasSocialPostRequest,
+  selectLatestImplicitMediaId,
 } from "../_shared/owner-media-intent.ts";
 import {
   catalogImageUrl,
@@ -4134,7 +4135,7 @@ function tempoRelativoMidia(createdAt: string): string {
 }
 
 async function buscarUltimaMidiaDaConversa(
-  ctx: { userId: string; fromNumber: string },
+  ctx: { userId: string; fromNumber: string; agentState?: AgentConvState },
 ): Promise<{ midia: any | null; erro?: string }> {
   const { data, error } = await sb
     .from("midias_whatsapp")
@@ -4146,9 +4147,22 @@ async function buscarUltimaMidiaDaConversa(
     .limit(1)
     .maybeSingle();
   if (error) return { midia: null, erro: error.message };
-  // Regra do produto: sem ID explícito, usa sempre a mídia mais recente desta
-  // conversa. Uma seleção antiga não pode sobrepor uma foto encaminhada depois.
-  return { midia: data ?? null };
+
+  const selectedId = selectLatestImplicitMediaId(data, ctx.agentState?.last_media_interaction ?? null);
+  if (!selectedId || selectedId === data?.id) return { midia: data ?? null };
+
+  // Uma mídia reencaminhada pode ser deduplicada e conservar o created_at
+  // antigo. Nesse caso, last_media_interaction.at representa o evento mais
+  // recente da conversa e o ID deduplicado deve vencer.
+  const { data: interacted, error: interactedError } = await sb
+    .from("midias_whatsapp")
+    .select("id, tipo, origem, midia_pai_id, midia_url, contexto_original, contexto_transcricao, legenda_gerada, tags_ia, telefone_origem, created_at")
+    .eq("id", selectedId)
+    .eq("user_id", ctx.userId)
+    .in("tipo", ["foto", "video"])
+    .maybeSingle();
+  if (interactedError) return { midia: null, erro: interactedError.message };
+  return { midia: interacted ?? data ?? null };
 }
 
 // Detecta resposta curta só com o formato: "feed", "story", "reels", "no story", "nos stories" etc.
