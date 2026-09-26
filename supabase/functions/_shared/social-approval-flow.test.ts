@@ -3,6 +3,7 @@ import {
   canRunSocialPostAction,
   selectSocialVariantScripts,
   socialApprovalButtons,
+  socialInteractiveButtonsFromResult,
   type SocialVariantChoice,
 } from "./social-approval-flow.ts";
 
@@ -36,4 +37,35 @@ Deno.test("escolher B libera publicar/agendar e mantém B", () => {
 
 Deno.test("Story escolhido oferece somente publicar agora", () => {
   assertEquals(socialApprovalButtons("C", true), ["publish"]);
+});
+
+Deno.test("carrossel recebe botões A/B/C e depois ações de publicar ou agendar", () => {
+  const token = "abcd1234";
+  const carouselPreview = JSON.stringify({
+    status: "aguardando_escolha_variante",
+    carrossel: true,
+    token,
+  });
+  assertEquals(
+    socialInteractiveButtonsFromResult(carouselPreview)?.buttons,
+    [
+      { id: `social_variant:A:${token}`, title: "Opção A" },
+      { id: `social_variant:B:${token}`, title: "Opção B" },
+      { id: `social_variant:C:${token}`, title: "Opção C" },
+    ],
+  );
+
+  const selectedB = JSON.stringify({
+    status: "variante_selecionada",
+    carrossel: true,
+    token,
+    opcao_ativa: "B",
+  });
+  assertEquals(
+    socialInteractiveButtonsFromResult(selectedB)?.buttons,
+    [
+      { id: `social_publish:${token}`, title: "Publicar agora" },
+      { id: `social_schedule:${token}`, title: "Agendar" },
+    ],
+  );
 });

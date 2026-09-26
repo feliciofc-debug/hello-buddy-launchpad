@@ -1,4 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { AMZ_KNOWLEDGE } from "./agent-soul.ts";
 import { dedupeConsecutiveReplyText } from "./reply-dedupe.ts";
 import {
   decideWhatsAppCreativeTool,
@@ -75,4 +76,16 @@ Deno.test("reply duplicado consecutivo vira texto único inclusive entre partes"
 Deno.test("reply sem repetição conserva formatação", () => {
   const reply = "Primeira linha.\nSegunda linha com https://amzofertas.com.br/demo.";
   assertEquals(dedupeConsecutiveReplyText(reply), reply);
+});
+
+Deno.test("Pietro conduz imagem e carrossel com uma pergunta por vez", () => {
+  for (const trecho of [
+    "Me diz um produto ou serviço seu",
+    "chame gerar_imagem",
+    "Quer ver também um carrossel pro Instagram?",
+    "chame criar_carrossel",
+    "não ofereça a mesma demonstração novamente",
+  ]) {
+    assertEquals(AMZ_KNOWLEDGE.includes(trecho), true);
+  }
 });

@@ -85,7 +85,7 @@ import {
 import {
   canRunSocialPostAction,
   selectSocialVariantScripts,
-  socialApprovalButtons,
+  socialInteractiveButtonsFromResult,
 } from "../_shared/social-approval-flow.ts";
 import {
   catalogImageUrl,
@@ -4375,8 +4375,7 @@ function formatSocialPostToolResult(raw: string): string {
     const avisoReels = data?.aviso_reels ? `\n_ℹ️ ${data.aviso_reels}_` : "";
     if (data?.carrossel) {
       const avisoFacebook = data?.aviso_facebook ? `<<SPLIT>>⚠️ ${data.aviso_facebook}` : "";
-      const previewInfo = Number(data.cards) > 3 ? " Enviei os 3 primeiros; se quiser ver os demais, é só pedir." : "";
-      const resumo = `Carrossel pronto: ${data.cards} cards. ID da mídia: ${data.media_code}. Ainda não publiquei.${previewInfo}`;
+      const resumo = `Carrossel pronto: ${data.cards} cards. ID da mídia: ${data.media_code}. Enviei todos em ordem e ainda não publiquei.`;
       const pergunta = "Antes de publicar ou agendar, escolha o texto: *A*, *B* ou *C*.";
       blocosPreview[blocosPreview.length - 1] += `\n\n${pergunta}`;
       return `${resumo}${avisoFacebook}<<SPLIT>>Preparei 3 opções de legenda 👇<<SPLIT>>${blocosPreview.join("<<SPLIT>>")}`;
@@ -4478,37 +4477,7 @@ type WhatsAppInteractiveButtons = {
 };
 
 function interactiveButtonsFromSocialResult(raw: string): WhatsAppInteractiveButtons | undefined {
-  try {
-    const data = JSON.parse(raw);
-    const status = String(data?.status);
-    if (!["aguardando_escolha_variante", "escolha_variante_necessaria", "variante_selecionada"].includes(status)) return undefined;
-    const token = String(data?.token || "").trim().toLowerCase();
-    if (!/^[a-f0-9]{8}$/.test(token)) return undefined;
-    const isStory = data?.formato === "story";
-    const selected = status === "variante_selecionada" ? data?.opcao_ativa : undefined;
-    const buttonKeys = socialApprovalButtons(selected, isStory);
-    if (!selected) {
-      return {
-        header: "Escolha o texto",
-        body: "Antes de publicar ou agendar, escolha uma opção.",
-        buttons: buttonKeys.map((key) => {
-          const option = key.slice(-1);
-          return { id: `social_variant:${option}:${token}`, title: `Opção ${option}` };
-        }),
-      };
-    }
-    return {
-      header: "Aprovar criativo",
-      body: isStory
-        ? "Story pelo WhatsApp só pode ser publicado agora."
-        : "Publique agora ou escolha agendar. Para informar a data por texto, responda: agendar sexta às 10h.",
-      buttons: buttonKeys.map((key) => key === "publish"
-        ? { id: `social_publish:${token}`, title: "Publicar agora" }
-        : { id: `social_schedule:${token}`, title: "Agendar" }),
-    };
-  } catch {
-    return undefined;
-  }
+  return socialInteractiveButtonsFromResult(raw);
 }
 
 function variantSelectionRequiredResult(
@@ -9310,6 +9279,16 @@ function formatCarrosselToolResult(raw: string): string {
   return "Carrossel processado.";
 }
 
+function carouselToolResponse(raw: string): {
+  text: string;
+  interactiveButtons?: WhatsAppInteractiveButtons;
+} {
+  return {
+    text: formatCarrosselToolResult(raw),
+    interactiveButtons: interactiveButtonsFromSocialResult(raw),
+  };
+}
+
 async function countProspectDemoMedia(
   userId: string,
   fromNumber: string,
@@ -10031,7 +10010,7 @@ async function callGemini(
       } catch (e) {
         console.error("[carrossel][adjust_parse_failed]", (e as Error).message);
       }
-      return { text: formatCarrosselToolResult(r) };
+      return carouselToolResponse(r);
     }
 
     // 1) pedido explícito ou detalhado de carrossel
@@ -10051,7 +10030,7 @@ async function callGemini(
         num_slides: requestedCarouselSlideCount(userContent, !remetenteEhDono),
         facebook_requested: requestedFacebook(userContent),
       }, toolCtx);
-      return { text: formatCarrosselToolResult(r) };
+      return carouselToolResponse(r);
     }
 
     // 2) resposta curta só com a cor, retomando o carrossel pendente
@@ -10069,7 +10048,7 @@ async function callGemini(
         legenda: pendingCarousel.caption,
         facebook_requested: pendingCarousel.facebook_requested,
       }, toolCtx);
-      return { text: formatCarrosselToolResult(r) };
+      return carouselToolResponse(r);
     }
 
     const socialPost = detectSocialPostIntent(userContent);
@@ -10253,9 +10232,10 @@ async function callGemini(
               forwardAttempted,
             };
           }
-          if (policyResult?.status === "demonstracao_carrossel") {
+          if (name === "criar_carrossel") {
             return {
-              text: formatCarrosselToolResult(result),
+              ...carouselToolResponse(result),
+              imageUrl: pendingImageUrl,
               forwardProof,
               forwardAttempted,
             };
