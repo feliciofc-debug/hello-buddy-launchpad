@@ -8,7 +8,9 @@ function saoPauloYear(date: Date): number {
 export function parseSaoPauloDateTime(value: unknown, referenceDate = new Date()): Date | null {
   const raw = String(value || "").trim();
   const absolute = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})$/);
-  const brazilian = raw.match(/^(\d{2})\/(\d{2})(?:\/(\d{4}))?(?:\s*(?:às?|a)?\s*)(\d{1,2})(?::(\d{2})|h(?:(\d{2}))?)$/i);
+  const brazilian = raw.match(
+    /^(\d{2})\/(\d{2})(?:\s*(?:às?|a)?\s*)(\d{1,2})(?::(\d{2})|h(?:(\d{2}))?)$/i,
+  );
   if (!absolute && !brazilian) return null;
 
   let year: string;
@@ -16,15 +18,15 @@ export function parseSaoPauloDateTime(value: unknown, referenceDate = new Date()
   let day: string;
   let hour: string;
   let minute: string;
-  const hasExplicitYear = !!absolute || !!brazilian?.[3];
+  const hasExplicitYear = !!absolute;
   if (absolute) {
     [, year, month, day, hour, minute] = absolute;
   } else {
     day = brazilian![1];
     month = brazilian![2];
-    year = brazilian![3] || String(saoPauloYear(referenceDate));
-    hour = brazilian![4];
-    minute = brazilian![5] ?? brazilian![6] ?? "00";
+    year = String(saoPauloYear(referenceDate));
+    hour = brazilian![3];
+    minute = brazilian![4] ?? brazilian![5] ?? "00";
   }
   hour = hour.padStart(2, "0");
   const date = new Date(`${year}-${month}-${day}T${hour}:${minute}:00-03:00`);
