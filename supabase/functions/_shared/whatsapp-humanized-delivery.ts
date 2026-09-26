@@ -3,6 +3,11 @@ import { splitWhatsAppText } from "./whatsapp-text.ts";
 export const LEAD_MAX_PARTS = 3;
 export const LEAD_CODE_SPLIT_LIMIT = 700;
 
+export function virtualAssistantDisclosure(businessName: string): string {
+  const company = businessName.trim() || "empresa";
+  return `Sou o assistente virtual da ${company}. Se preferir, posso chamar alguém da equipe.`;
+}
+
 export function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
 }

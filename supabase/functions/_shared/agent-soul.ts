@@ -17,6 +17,7 @@
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { getCopyStyle } from "./copy-style.ts";
 import { AMZ_TENANT_ID } from "./amz-tenant.ts";
+import { virtualAssistantDisclosure } from "./whatsapp-humanized-delivery.ts";
 
 // Compatibilidade temporária para consumidores externos; o valor agora vem
 // de AMZ_TENANT_ID e nunca mais do UUID Lovable legado.
@@ -236,11 +237,6 @@ export type AgentMode = "whitelabel" | "amz";
 
 // Papel do agente dentro do modo AMZ. "support" é o default seguro.
 export type AmzAudience = "sales" | "support";
-
-export function virtualAssistantDisclosure(businessName: string): string {
-  const company = businessName.trim() || "empresa";
-  return `Sou o assistente virtual da ${company}. Se preferir, posso chamar alguém da equipe.`;
-}
 
 export type TenantAgentConfig = {
   user_id: string;

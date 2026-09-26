@@ -1,10 +1,10 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { virtualAssistantDisclosure } from "./agent-soul.ts";
 import {
   betweenPartsDelayForSenderMs,
   firstReplyDelayForSenderMs,
   hasNewerProcessableInbound,
   prepareLeadReplyParts,
+  virtualAssistantDisclosure,
 } from "./whatsapp-humanized-delivery.ts";
 
 Deno.test("pergunta sobre robô recebe identificação virtual honesta e whitelabel", () => {
