@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { format } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,12 @@ import {
   isSameCalendarDay,
   toTimeString,
 } from "@/lib/sao-paulo-time";
+import {
+  createSocialPostQueueEntry,
+  markSocialPostFailed,
+  markSocialPostPublished,
+} from "@/lib/social-post-queue";
+import { useEngagementPostComposer } from "@/hooks/useEngagementPostComposer";
 
 interface Produto {
   id: string;
@@ -45,53 +51,6 @@ interface PostarFacebookModalProps {
   modo_postagem_fb?: string | null;
   /** Estilos permitidos pro produto (subset de ESTILOS_ENGAJAMENTO). Filtra o dropdown. */
   engajamento_estilos?: string[] | null;
-}
-
-// Mantido em sincronia com src/components/produtos/EngagementModeSelector.tsx
-const ESTILOS_ENGAJAMENTO: { id: string; emoji: string; label: string }[] = [
-  { id: 'escassez', emoji: '🔥', label: 'Escassez' },
-  { id: 'curiosidade', emoji: '❓', label: 'Curiosidade' },
-  { id: 'pergunta', emoji: '🤔', label: 'Pergunta' },
-  { id: 'polemica', emoji: '⚡', label: 'Polêmica' },
-  { id: 'dado', emoji: '📊', label: 'Dado' },
-  { id: 'tabu', emoji: '🤫', label: 'Tabu' },
-];
-
-// ───────── Cache + rate-limit da pré-visualização (mesma estratégia do EngagementModeSelector) ─────────
-const PREVIEW_RATE_LIMIT = 5; // por hora
-const PREVIEW_CACHE_MIN = 30;
-const previewCacheKey = (id: string) => `engagement_preview_cache:${id}`;
-const previewRateKey = (id: string) => `engagement_preview_rate:${id}`;
-
-interface PreviewCacheEntry { caption: string; estilo: string; ts: number }
-interface PreviewRateEntry { ts: number }
-
-function loadPreviewCache(id: string): PreviewCacheEntry | null {
-  try {
-    const raw = localStorage.getItem(previewCacheKey(id));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as PreviewCacheEntry;
-    const ageMin = (Date.now() - parsed.ts) / 60000;
-    if (ageMin > PREVIEW_CACHE_MIN) return null;
-    return parsed;
-  } catch { return null; }
-}
-function savePreviewCache(id: string, entry: PreviewCacheEntry) {
-  try { localStorage.setItem(previewCacheKey(id), JSON.stringify(entry)); } catch { /* ignore */ }
-}
-function loadPreviewRate(id: string): PreviewRateEntry[] {
-  try {
-    const raw = localStorage.getItem(previewRateKey(id));
-    if (!raw) return [];
-    const arr = JSON.parse(raw) as PreviewRateEntry[];
-    const cutoff = Date.now() - 60 * 60 * 1000;
-    return arr.filter((e) => e.ts > cutoff);
-  } catch { return []; }
-}
-function pushPreviewRate(id: string) {
-  const arr = loadPreviewRate(id);
-  arr.push({ ts: Date.now() });
-  try { localStorage.setItem(previewRateKey(id), JSON.stringify(arr)); } catch { /* ignore */ }
 }
 
 export function PostarFacebookModal({
@@ -119,27 +78,23 @@ export function PostarFacebookModal({
 
   // ── Cenário B: produto está em Modo Engajamento? ──
   const isEngagementProduct = modo_postagem_fb === 'engajamento';
-
-  // Estilos disponíveis no dropdown (filtrados por engajamento_estilos do produto)
-  const estilosDisponiveis = useMemo(() => {
-    if (!engajamento_estilos || engajamento_estilos.length === 0) {
-      return ESTILOS_ENGAJAMENTO; // fallback: todos
-    }
-    const set = new Set(engajamento_estilos);
-    return ESTILOS_ENGAJAMENTO.filter((e) => set.has(e.id));
-  }, [engajamento_estilos]);
-
-  // No Cenário B: 'engajamento' é default; user pode trocar pra 'promocional' nesta postagem
-  const [modoEscolhido, setModoEscolhido] = useState<'engajamento' | 'promocional'>('promocional');
-
-  // Estilo pra Cenário B: 'aleatorio' | id de estilo
-  const [estiloEscolhido, setEstiloEscolhido] = useState<string>('aleatorio');
-
-  // Pré-visualização Engajamento
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewCaption, setPreviewCaption] = useState<string | null>(null);
-  const [previewEstilo, setPreviewEstilo] = useState<string | null>(null);
-  const [previewFromCache, setPreviewFromCache] = useState(false);
+  const {
+    mode: modoEscolhido,
+    setMode: setModoEscolhido,
+    style: estiloEscolhido,
+    setStyle: setEstiloEscolhido,
+    styles: estilosDisponiveis,
+    previewLoading,
+    previewCaption,
+    previewStyle: previewEstilo,
+    previewFromCache,
+    generatePreview: handlePreviewEngajamento,
+  } = useEngagementPostComposer({
+    open,
+    productId: produto.id,
+    initialMode: isEngagementProduct ? "engajamento" : "promocional",
+    allowedStyles: engajamento_estilos,
+  });
 
   const loadAllImages = useCallback(async () => {
     try {
@@ -198,16 +153,6 @@ export function PostarFacebookModal({
     }
   }, [open, modoEnvio, dataAgendamento, horaAgendamento]);
 
-  // Reset Cenário B sempre que abrir o modal
-  useEffect(() => {
-    if (!open) return;
-    setModoEscolhido(isEngagementProduct ? 'engajamento' : 'promocional');
-    setEstiloEscolhido('aleatorio');
-    setPreviewCaption(null);
-    setPreviewEstilo(null);
-    setPreviewFromCache(false);
-  }, [open, isEngagementProduct]);
-
   const handleGerarTexto = async () => {
     setGerando(true);
     try {
@@ -235,61 +180,6 @@ export function PostarFacebookModal({
 
   const selecionarOpcao = (texto: string) => {
     setTextoPost(texto);
-  };
-
-  // ── Cenário B: pré-visualização Engajamento (cache + rate-limit) ──
-  const handlePreviewEngajamento = async () => {
-    if (estilosDisponiveis.length === 0) {
-      toast.error('Este produto não tem estilos de engajamento configurados.');
-      return;
-    }
-    // Resolve estilo: se 'aleatorio', sortear entre disponíveis
-    const estiloFinal =
-      estiloEscolhido === 'aleatorio'
-        ? estilosDisponiveis[Math.floor(Math.random() * estilosDisponiveis.length)].id
-        : estiloEscolhido;
-
-    // Cache (chave inclui estilo pra não confundir prévias)
-    const cacheId = `${produto.id}:${estiloFinal}`;
-    const cached = loadPreviewCache(cacheId);
-    if (cached) {
-      setPreviewCaption(cached.caption);
-      setPreviewEstilo(cached.estilo);
-      setPreviewFromCache(true);
-      return;
-    }
-
-    // Rate limit por produto
-    const rate = loadPreviewRate(produto.id);
-    if (rate.length >= PREVIEW_RATE_LIMIT) {
-      const maisAntiga = Math.min(...rate.map((r) => r.ts));
-      const liberaEm = maisAntiga + 60 * 60 * 1000;
-      const minRest = Math.max(1, Math.ceil((liberaEm - Date.now()) / 60000));
-      toast.error(`Limite de prévias atingido. Aguarde ${minRest} min antes de gerar outra.`);
-      return;
-    }
-
-    setPreviewLoading(true);
-    setPreviewFromCache(false);
-    try {
-      const { data, error } = await supabase.functions.invoke('generate-social-post-engagement', {
-        body: { produto_id: produto.id, estilo: estiloFinal },
-      });
-      if (error) throw error;
-      const resp = data as { success?: boolean; caption?: string; estilo?: string; error?: string } | null;
-      if (!resp?.success || !resp.caption) {
-        throw new Error(resp?.error || 'Falha ao gerar prévia.');
-      }
-      setPreviewCaption(resp.caption);
-      setPreviewEstilo(resp.estilo || estiloFinal);
-      savePreviewCache(cacheId, { caption: resp.caption, estilo: resp.estilo || estiloFinal, ts: Date.now() });
-      pushPreviewRate(produto.id);
-    } catch (err) {
-      console.error('[engagement-preview]', err);
-      toast.error('Não foi possível gerar a caption. Verifique se o produto tem informações suficientes e tente novamente.');
-    } finally {
-      setPreviewLoading(false);
-    }
   };
 
   const usarPreviewComoTexto = () => {
@@ -325,6 +215,7 @@ export function PostarFacebookModal({
     }
 
     setPublicando(true);
+    let queueId: string | null = null;
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -340,7 +231,7 @@ export function PostarFacebookModal({
         scheduledAt = combineSaoPauloDateTimeToIso(dataAgendamento, horaFinal);
       }
 
-      const { error: insertError } = await supabase.from("social_posts_queue" as any).insert({
+      queueId = await createSocialPostQueueEntry({
         user_id: user.id,
         produto_id: produto.id,
         produto_source: "produtos",
@@ -349,16 +240,14 @@ export function PostarFacebookModal({
         post_text: mensagemFinal,
         image_url: imagesToPublish[0] || null,
         link_url: incluirLink ? linkProduto : null,
-        status: "pendente",
         scheduled_at: scheduledAt,
-      } as any);
-
-      if (insertError) throw insertError;
+      }, modoEnvio === "agora");
 
       if (modoEnvio === "agora") {
+        let externalPostId: string | null = null;
         if (imagesToPublish.length >= 2) {
           console.log(`📸 Publicando carrossel Facebook com ${imagesToPublish.length} fotos`);
-          const { error: pubError } = await supabase.functions.invoke("meta-publish-post", {
+          const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-post", {
             body: {
               message: mensagemFinal,
               user_id: user.id,
@@ -366,6 +255,7 @@ export function PostarFacebookModal({
             },
           });
           if (pubError) throw pubError;
+          externalPostId = pubData?.post_id || pubData?.id || null;
           toast.success(t('publish.carousel_published_fb', { count: imagesToPublish.length }));
         } else {
           const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-post", {
@@ -378,8 +268,10 @@ export function PostarFacebookModal({
           });
           if (pubError) throw pubError;
           const postId = pubData?.post_id || pubData?.id || "OK";
+          externalPostId = postId === "OK" ? null : postId;
           toast.success(t('publish.published_fb', { id: postId }));
         }
+        await markSocialPostPublished(queueId, externalPostId);
       } else {
         const horaFinal = clampTimeForToday(dataAgendamento!, horaAgendamento);
         toast.success(t('publish.scheduled_success', { date: format(dataAgendamento!, "dd/MM/yyyy"), time: horaFinal }));
@@ -389,10 +281,11 @@ export function PostarFacebookModal({
       setOpcoes(null);
       setModoEnvio("agora");
       setDataAgendamento(undefined);
-      setPreviewCaption(null);
-      setPreviewEstilo(null);
       onOpenChange(false);
     } catch (err: any) {
+      if (queueId && modoEnvio === "agora") {
+        await markSocialPostFailed(queueId, err);
+      }
       console.error("Erro ao publicar:", err);
       toast.error(err.message || t('publish.error_fb'));
     } finally {

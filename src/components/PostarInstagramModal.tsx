@@ -27,6 +27,11 @@ import {
   isSameCalendarDay,
   toTimeString,
 } from "@/lib/sao-paulo-time";
+import {
+  createSocialPostQueueEntry,
+  markSocialPostFailed,
+  markSocialPostPublished,
+} from "@/lib/social-post-queue";
 
 interface Produto {
   id: string;
@@ -199,6 +204,7 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
     }
 
     setPublicando(true);
+    let queueId: string | null = null;
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -229,7 +235,7 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
         scheduledAt = combineSaoPauloDateTimeToIso(dataAgendamento, horaFinal);
       }
 
-      const { error: insertError } = await supabase.from("social_posts_queue" as any).insert({
+      queueId = await createSocialPostQueueEntry({
         user_id: user.id,
         produto_id: produto.id,
         produto_source: "produtos",
@@ -238,11 +244,8 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
         post_text: captionFinal,
         image_url: finalImageUrls[0] || null,
         link_url: incluirLink ? linkProduto : null,
-        status: "pendente",
         scheduled_at: scheduledAt,
-      } as any);
-
-      if (insertError) throw insertError;
+      }, modoEnvio === "agora");
 
       if (modoEnvio === "agora") {
         if (finalImageUrls.length >= 2) {
@@ -271,6 +274,7 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
           if (!pubData?.success) throw new Error(pubData?.error || "Erro ao publicar no Instagram");
           toast.success(t('publish.published_ig'));
         }
+        await markSocialPostPublished(queueId);
       } else {
         const horaFinal = clampTimeForToday(dataAgendamento!, horaAgendamento);
         toast.success(t('publish.scheduled_success', { date: format(dataAgendamento!, "dd/MM/yyyy"), time: horaFinal }));
@@ -282,6 +286,9 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
       setDataAgendamento(undefined);
       onOpenChange(false);
     } catch (err: any) {
+      if (queueId && modoEnvio === "agora") {
+        await markSocialPostFailed(queueId, err);
+      }
       console.error("Erro ao publicar no Instagram:", err);
       toast.error(err.message || t('publish.error_ig'));
     } finally {
