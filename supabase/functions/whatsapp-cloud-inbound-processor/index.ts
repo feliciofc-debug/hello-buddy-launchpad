@@ -42,6 +42,11 @@ import {
   prepareLeadReplyParts,
 } from "../_shared/whatsapp-humanized-delivery.ts";
 import {
+  asksForLeadName,
+  extractLeadName,
+  findLeadNameInConversation,
+} from "../_shared/lead-name.ts";
+import {
   formatScheduledDate,
   formatSocialNetworks,
   parseSaoPauloDateTime,
@@ -2244,43 +2249,6 @@ async function recoverForwardProof(userId: string, telefone: string): Promise<Ag
   }
 }
 
-const NOME_STOPWORDS = new Set([
-  "sim","nao","não","ok","okay","obrigado","obrigada","valeu","bom","boa","dia","tarde","noite","oi","ola","olá",
-  "consorcio","consórcio","orcamento","orçamento","quanto","quero","preciso","aguardo","espero","certo","beleza",
-  "tudo","bem","pode","ser","claro","talvez","depois","agora","isso","nada","ainda","legal","perfeito","entendi",
-]);
-
-// Captura o nome quando o cliente informa espontaneamente ("meu nome é X", "sou o X")
-// ou quando responde só o nome depois de a gente ter perguntado (pendente=true).
-function extrairNomeInformado(texto: string, pendente = false): string | null {
-  const t = String(texto || "").trim();
-  if (!t) return null;
-  const cap = (s: string) =>
-    s
-      .split(/\s+/)
-      .map((w) => (w.length > 2 ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w.toLowerCase()))
-      .join(" ")
-      .trim();
-
-  const m = t.match(
-    /(?:meu nome (?:é|eh|e)|me chamo|pode me chamar de|aqui (?:é|eh|e) (?:o |a )?|sou (?:o |a )?|nome:)\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’]{1,}(?:\s+(?:d[aeoi]s?\s+)?[A-Za-zÀ-ÿ'’]{2,}){0,2})/i,
-  );
-  if (m?.[1]) {
-    const cand = m[1].trim();
-    const first = cand.split(/\s+/)[0].toLowerCase();
-    if (!NOME_STOPWORDS.has(first)) return cap(cand);
-  }
-
-  if (pendente) {
-    const limpo = t.replace(/[^A-Za-zÀ-ÿ'’\s]/g, " ").replace(/\s+/g, " ").trim();
-    const palavras = limpo.split(" ").filter(Boolean);
-    if (palavras.length >= 1 && palavras.length <= 3 && palavras.every((p) => p.length >= 2 && !NOME_STOPWORDS.has(p.toLowerCase()))) {
-      return cap(limpo);
-    }
-  }
-  return null;
-}
-
 // Segunda mensagem curta ao dono, referenciando o protocolo do encaminhamento.
 async function enviarComplementoNomeAoDono(params: {
   userId: string;
@@ -2327,6 +2295,44 @@ function removerConviteFinal(text: string): { text: string; removed: boolean } {
 
 const PERGUNTA_NOME = "Só pra eu completar o recado: qual seu nome?";
 
+async function persistKnownLeadName(params: {
+  userId: string;
+  telefone: string;
+  conversationId: string;
+  nome: string;
+}): Promise<void> {
+  await Promise.all([
+    sb.from("whatsapp_cloud_conversations")
+      .update({ contact_name: params.nome })
+      .eq("id", params.conversationId),
+    sb.from("lead_encaminhamentos")
+      .update({ nome: params.nome })
+      .eq("user_id", params.userId)
+      .eq("telefone", params.telefone)
+      .is("nome", null),
+  ]);
+}
+
+async function findKnownLeadName(params: {
+  userId: string;
+  telefone: string;
+  conversationId: string;
+}): Promise<string | null> {
+  const { data: registeredLead } = await sb.from("jarvis_leads")
+    .select("nome")
+    .eq("user_id", params.userId)
+    .eq("telefone", params.telefone)
+    .maybeSingle();
+  const registeredName = extractLeadName(String(registeredLead?.nome || ""), true);
+  if (registeredName) return registeredName;
+
+  const { data: recentRows } = await sb.from("whatsapp_cloud_messages")
+    .select("direction, content")
+    .eq("conversation_id", params.conversationId)
+    .order("created_at", { ascending: false })
+    .limit(40);
+  return findLeadNameInConversation([...(recentRows ?? [])].reverse());
+}
 
 // Extrai o código do protocolo de um comprovante "(protocolo #ABC123 · 17:03)"
 function extractProtocolCode(proof?: string | null): string {
@@ -11819,17 +11825,26 @@ async function processOne(queueId: string) {
         const stNome = await loadAgentState(sb, convStateIdentity);
         const pendente = (stNome as any)?.nome_pergunta === true;
         nomePerguntado = pendente || (stNome as any)?.nome_pergunta === "feita";
-        const nomeCap = nomeLeadConhecido ? null : extrairNomeInformado(userText, pendente);
+        const { data: lastOutbound } = await sb.from("whatsapp_cloud_messages")
+          .select("content")
+          .eq("conversation_id", conv.id)
+          .eq("direction", "outbound")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const agentAskedName = asksForLeadName(String(lastOutbound?.content || ""));
+        const nomeCap = nomeLeadConhecido
+          ? null
+          : extractLeadName(userText, pendente || agentAskedName);
         if (nomeCap) {
           nomeLeadConhecido = nomeCap;
-          await sb.from("whatsapp_cloud_conversations").update({ contact_name: nomeCap }).eq("id", conv.id);
+          await persistKnownLeadName({
+            userId,
+            telefone: row.from_number,
+            conversationId: conv.id,
+            nome: nomeCap,
+          });
           (conv as any).contact_name = nomeCap;
-          await sb
-            .from("lead_encaminhamentos")
-            .update({ nome: nomeCap })
-            .eq("user_id", userId)
-            .eq("telefone", row.from_number)
-            .is("nome", null);
           console.log(`[processor][lead_nome][capturado] tel=${row.from_number} nome=${nomeCap}`);
 
           const proofPersistido = (stNome as any)?.forward?.protocolo as string | undefined;
@@ -11859,6 +11874,49 @@ async function processOne(queueId: string) {
       }
     }
 
+    // Recupera nomes já registrados pela tool ou ditos anteriormente na
+    // conversa antes de qualquer encaminhamento/pergunta fixa.
+    if (!fromIsOwner && !nomeLeadConhecido) {
+      try {
+        const recoveredName = await findKnownLeadName({
+          userId,
+          telefone: row.from_number,
+          conversationId: conv.id,
+        });
+        if (recoveredName) {
+          nomeLeadConhecido = recoveredName;
+          await persistKnownLeadName({
+            userId,
+            telefone: row.from_number,
+            conversationId: conv.id,
+            nome: recoveredName,
+          });
+          (conv as any).contact_name = recoveredName;
+          const currentState = await loadAgentState(sb, convStateIdentity);
+          const proof = (currentState as any)?.forward?.protocolo as string | undefined;
+          const complementSent = (currentState as any)?.complemento_nome === true;
+          let sentNow = complementSent;
+          if (proof && !complementSent && tenantOwnerPhone) {
+            sentNow = await enviarComplementoNomeAoDono({
+              userId,
+              ownerPhone: tenantOwnerPhone,
+              protocolo: proof,
+              nome: recoveredName,
+            });
+          }
+          await saveAgentState(sb, convStateIdentity, {
+            nome: recoveredName,
+            nome_pergunta: "feita",
+            ...(proof ? { complemento_nome: sentNow } : {}),
+          }, currentState);
+          nomePerguntado = true;
+          console.log(`[processor][lead_nome][recuperado] tel=${row.from_number} nome=${recoveredName}`);
+        }
+      } catch (error) {
+        console.warn("[processor][lead_nome][recuperacao_falhou]", (error as Error).message);
+      }
+    }
+
 
     // Atalho determinístico: quando cliente pede equipe/responsável/Marcelo ou faz
     // pergunta comercial que exige retorno humano, NÃO deixa a IA procurar contato.
@@ -11883,7 +11941,7 @@ async function processOne(queueId: string) {
         }
         const recado = buildOwnerForwardMessage({
           ownerName: _tenantOwner?.name,
-          contactName,
+          contactName: nomeLeadConhecido || contactName,
           fromNumber: row.from_number,
           pedido: userText,
           messageType: row.message_type,
@@ -12757,6 +12815,24 @@ Regras:
         reply = semConvite.text;
 
         // Nome DEPOIS do encaminhamento: pergunta curta, UMA vez só.
+        if (!nomeLeadConhecido) {
+          nomeLeadConhecido = await findKnownLeadName({
+            userId,
+            telefone: row.from_number,
+            conversationId: conv.id,
+          });
+          if (nomeLeadConhecido) {
+            await persistKnownLeadName({
+              userId,
+              telefone: row.from_number,
+              conversationId: conv.id,
+              nome: nomeLeadConhecido,
+            });
+            (conv as any).contact_name = nomeLeadConhecido;
+            patch.nome = nomeLeadConhecido;
+            patch.nome_pergunta = "feita";
+          }
+        }
         const jaTemNome = !!(nomeLeadConhecido || (agentState as any)?.nome);
         const jaPerguntou = !!(agentState as any)?.nome_pergunta || nomePerguntado;
         if (forwardProof && !jaTemNome && !jaPerguntou) {
