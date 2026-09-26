@@ -8,6 +8,7 @@
 // ============================================================
 
 import { paletaAPartirDe, type CoresVideo } from "./video-cores.ts";
+import { trimLogoImage } from "./logo-image-trim.ts";
 
 export type IdentidadeSite = {
   url: string;
@@ -22,10 +23,11 @@ export type IdentidadeSite = {
   publico_alvo: string;
   diferenciais: string;
   logo_url: string | null;
+  logo_origem: string | null;
   /** logo já baixada pelo servidor (evita bloqueio de CORS no navegador) */
   logo_data_url: string | null;
   fontes: string[];
-  cores_detectadas: Array<{ hex: string; peso: number }>;
+  cores_detectadas: Array<{ hex: string; peso: number; origem: string }>;
   paleta: CoresVideo;
   texto_base: string;
 };
@@ -263,12 +265,36 @@ function fontesDe(html: string, css: string): string[] {
 const LOGO_ALHEIA =
   /slider|carousel|carrossel|swiper|owl-|glide|partner|parceir|fornecedor|marcas-|brands?[-_/]|clientes?[-_]|selo|bandeira|payment|pagamento|flag|social|whatsapp|instagram|facebook|tiktok|linkedin|youtube/i;
 
-function logoDe(html: string, base: URL): string[] {
-  const candidatos: string[] = [];
-  const baseUrl = base.toString();
+export type LogoCandidato = { url: string; origem: string };
 
-  const og = meta(html, "og:image");
-  if (og) candidatos.push(og);
+async function iconesDoManifest(html: string, base: string, sinal: AbortSignal): Promise<string[]> {
+  const tag = [...html.matchAll(/<link[^>]+rel=["'][^"']*manifest[^"']*["'][^>]*>/gi)]
+    .map((match) => match[0])[0];
+  const href = tag?.match(/href=["']([^"']+)["']/i)?.[1];
+  const manifestUrl = href ? absoluto(href, base) : absoluto("/manifest.json", base);
+  if (!manifestUrl) return [];
+  const raw = await buscar(manifestUrl, sinal);
+  if (!raw) return [];
+  try {
+    const manifest = JSON.parse(raw);
+    const icons = Array.isArray(manifest?.icons) ? manifest.icons : [];
+    return icons
+      .map((icon: any) => ({
+        src: typeof icon?.src === "string" ? absoluto(icon.src, manifestUrl) : null,
+        size: Math.max(...(String(icon?.sizes ?? "").match(/\d+/g)?.map(Number) ?? [0])),
+      }))
+      .filter((icon: { src: string | null }) => !!icon.src)
+      .sort((a: { size: number }, b: { size: number }) => b.size - a.size)
+      .map((icon: { src: string }) => icon.src)
+      .slice(0, 4);
+  } catch {
+    return [];
+  }
+}
+
+export function logoDe(html: string, base: URL, manifestIcons: string[] = []): LogoCandidato[] {
+  const candidatos: Array<{ valor: string; origem: string }> = [];
+  const baseUrl = base.toString();
 
   const icones = [...html.matchAll(/<link[^>]+rel=["'][^"']*icon[^"']*["'][^>]*>/gi)].map((m) => m[0]);
   const comTamanho = icones
@@ -286,35 +312,41 @@ function logoDe(html: string, base: URL): string[] {
     .find((tag) => /logo|marca|brand/i.test(tag) && !LOGO_ALHEIA.test(tag));
   const srcLogo = imgLogo?.match(/(?:data-src|src)=["']([^"']+)["']/i)?.[1];
 
-  if (srcLogo) candidatos.unshift(srcLogo);
+  if (srcLogo) candidatos.unshift({ valor: srcLogo, origem: "img_logo_html" });
 
   // Qualquer arquivo de imagem com "logo"/"marca" no caminho, em qualquer parte
   // do HTML — muitos sites montam o cabeçalho por JavaScript.
   for (const m of html.matchAll(/["'(]([^"'()\s]+(?:logo|marca|brand)[^"'()\s]*\.(?:svg|png|webp|jpe?g))["')]/gi)) {
     if (LOGO_ALHEIA.test(m[1])) continue;
-    candidatos.push(m[1]);
+    candidatos.push({ valor: m[1], origem: "arquivo_logo_html" });
   }
 
-  for (const i of comTamanho) candidatos.push(i.href);
+  for (const icon of manifestIcons) candidatos.push({ valor: icon, origem: "manifest" });
+  for (const i of comTamanho) {
+    candidatos.push({
+      valor: i.href,
+      origem: i.apple ? "apple-touch-icon" : i.tam >= 96 ? "favicon_grande" : "favicon",
+    });
+  }
+  candidatos.push({ valor: "/favicon.ico", origem: "favicon" });
 
   // Caminhos vindos de JSON embutido chegam escapados ("\u002F", "\/").
   const desescapar = (v: string) =>
     v.replace(/\\?u002f/gi, "/").replace(/\\\//g, "/").replace(/&amp;/g, "&");
 
-  const escolhidos: string[] = [];
-  for (const bruto of candidatos) {
-    const c = desescapar(bruto);
+  const escolhidos: LogoCandidato[] = [];
+  for (const candidato of candidatos) {
+    const c = desescapar(candidato.valor);
     const url = absoluto(c, baseUrl);
-    if (!url || url.startsWith("data:") || escolhidos.includes(url)) continue;
+    if (!url || url.startsWith("data:") || escolhidos.some((item) => item.url === url)) continue;
     if (LOGO_ALHEIA.test(url)) continue;
-    escolhidos.push(url);
+    escolhidos.push({ url, origem: candidato.origem });
   }
   // .ico costuma ter 32px: só como último recurso, depois do favicon em PNG.
   const ehIco = (u: string) => /\.ico(\?|$)/i.test(u);
   return [
-    ...escolhidos.filter((u) => !ehIco(u)),
-    `https://www.google.com/s2/favicons?sz=256&domain=${encodeURIComponent(base.hostname)}`,
-    ...escolhidos.filter(ehIco),
+    ...escolhidos.filter((item) => !ehIco(item.url)),
+    ...escolhidos.filter((item) => ehIco(item.url)),
   ];
 }
 
@@ -360,11 +392,12 @@ async function baixarLogo(url: string | null, sinal: AbortSignal): Promise<strin
     if (!TIPOS_LOGO.test(tipo)) return null;
     const buf = new Uint8Array(await r.arrayBuffer());
     if (!buf.byteLength || buf.byteLength > 900_000) return null;
+    const processed = await trimLogoImage(buf, tipo);
     let bin = "";
-    for (let i = 0; i < buf.length; i += 8192) {
-      bin += String.fromCharCode(...buf.subarray(i, i + 8192));
+    for (let i = 0; i < processed.bytes.length; i += 8192) {
+      bin += String.fromCharCode(...processed.bytes.subarray(i, i + 8192));
     }
-    return `data:${tipo};base64,${btoa(bin)}`;
+    return `data:${processed.mime};base64,${btoa(bin)}`;
   } catch {
     return null;
   }
@@ -506,17 +539,23 @@ export async function lerIdentidadeDoSite(entrada: string): Promise<IdentidadeSi
 
     const textoBase = [descricaoMeta, h1, ...blocos].filter(Boolean).join("\n").slice(0, 3000);
 
-    const candidatosLogo = logoDe(html, new URL(baseEfetiva));
+    const manifestIcons = await iconesDoManifest(html, baseEfetiva, controle.signal);
+    const candidatosLogo = logoDe(html, new URL(baseEfetiva), manifestIcons);
     let logoUrl: string | null = null;
     let logoDataUrl: string | null = null;
+    let logoOrigem: string | null = null;
     for (const cand of candidatosLogo.slice(0, 6)) {
-      const dados = await baixarLogo(cand, controle.signal);
+      const dados = await baixarLogo(cand.url, controle.signal);
       if (dados) {
-        logoUrl = cand;
+        logoUrl = cand.url;
+        logoOrigem = cand.origem;
         logoDataUrl = dados;
         break;
       }
-      if (!logoUrl) logoUrl = cand;
+      if (!logoUrl) {
+        logoUrl = cand.url;
+        logoOrigem = cand.origem;
+      }
     }
 
     // Se a logo SVG oferece cores utilizáveis, elas são autoritativas. CSS,
@@ -524,7 +563,9 @@ export async function lerIdentidadeDoSite(entrada: string): Promise<IdentidadeSi
     const coresLogo = new Map<string, number>();
     coresDaLogoSvg(logoDataUrl, coresLogo);
     const principaisLogo = agrupar(coresLogo).filter((cor) => !ehNeutra(cor.hex));
-    const principais = principaisLogo.length > 0 ? principaisLogo : agrupar(acc);
+    const coresOrigem = principaisLogo.length > 0 ? "logo_svg" : "html_css";
+    const principais = (principaisLogo.length > 0 ? principaisLogo : agrupar(acc))
+      .map((cor) => ({ ...cor, origem: coresOrigem }));
 
 
     if (principais.length < 2) {
@@ -538,6 +579,12 @@ export async function lerIdentidadeDoSite(entrada: string): Promise<IdentidadeSi
     } else if (!logoDataUrl) {
       avisos.push("Encontrei a logo, mas o site não deixou baixar o arquivo; anexe manualmente.");
     }
+    console.log("[site-identidade][proveniencia]", JSON.stringify({
+      url,
+      html_util: textoBase.length >= 120,
+      logo: logoUrl ? { url: logoUrl, origem: logoOrigem } : null,
+      cores: principais.map((cor) => ({ hex: cor.hex, origem: cor.origem, peso: cor.peso })),
+    }));
 
     clearTimeout(relogio);
 
@@ -554,6 +601,7 @@ export async function lerIdentidadeDoSite(entrada: string): Promise<IdentidadeSi
       publico_alvo: publicoDe(textoBase),
       diferenciais: blocos.slice(1, 5).join(" • ").slice(0, 500),
       logo_url: logoUrl,
+      logo_origem: logoOrigem,
       logo_data_url: logoDataUrl,
       fontes: fontesDe(html, css),
       cores_detectadas: principais,
@@ -581,6 +629,7 @@ export async function lerIdentidadeDoSite(entrada: string): Promise<IdentidadeSi
       publico_alvo: "",
       diferenciais: "",
       logo_url: null,
+      logo_origem: null,
       logo_data_url: null,
       fontes: [],
       cores_detectadas: [],
@@ -659,23 +708,32 @@ export function mesclarCamadaB(
   ia: AnaliseIA = {},
 ): IdentidadeSite {
   const acc = new Map<string, number>();
+  const origens = new Map<string, string>();
   const coresLogo = (b.logo_cores ?? [])
-    .map((cor) => ({ hex: normalizar(String(cor?.hex ?? "")), peso: Number(cor?.peso) || 1 }))
-    .filter((cor): cor is { hex: string; peso: number } => !!cor.hex && !ehNeutra(cor.hex));
+    .map((cor) => ({ hex: normalizar(String(cor?.hex ?? "")), peso: Number(cor?.peso) || 1, origem: "logo_renderizada" }))
+    .filter((cor): cor is { hex: string; peso: number; origem: string } => !!cor.hex && !ehNeutra(cor.hex));
   // A logo é a fonte autoritativa da marca. Captura, DOM e CSS entram apenas
   // como fallback quando a logo não forneceu nenhuma cor utilizável.
   const fonte = coresLogo.length > 0
     ? coresLogo
     : [
       ...a.cores_detectadas,
-      ...(b.cores ?? []).map((cor) => ({ hex: String(cor?.hex ?? ""), peso: Math.max(1, Number(cor?.peso) || 1) * 2 })),
+      ...(b.cores ?? []).map((cor) => ({
+        hex: String(cor?.hex ?? ""),
+        peso: Math.max(1, Number(cor?.peso) || 1) * 2,
+        origem: "pagina_renderizada",
+      })),
     ];
   for (const c of fonte) {
     const hex = normalizar(String(c?.hex ?? ""));
     if (!hex) continue;
     acc.set(hex, (acc.get(hex) ?? 0) + Math.max(1, Number(c.peso) || 1));
+    origens.set(hex, String(c.origem || "html_css"));
   }
-  const principais = agrupar(acc);
+  const principais = agrupar(acc).map((cor) => ({
+    ...cor,
+    origem: origens.get(cor.hex) ?? "pagina_renderizada",
+  }));
 
   const textoBase = [a.texto_base, b.texto ?? ""].filter(Boolean).join("\n").slice(0, 4000);
   const nome = nomeDeMarca(b.site_name ?? "", b.titulo ?? "") || a.nome_empresa ||
@@ -685,11 +743,26 @@ export function mesclarCamadaB(
   if (principais.length < 2) {
     avisos.push("Mesmo abrindo o site num navegador, não consegui ler cores confiáveis. Escolha as cores à mão.");
   }
+  if (coresLogo.length === 0 && principais.some((cor) => cor.origem === "pagina_renderizada")) {
+    avisos.push("As cores vieram da página renderizada, não da logo. Confirme com o responsável antes de usar.");
+  }
   if (textoBase.length < 120) {
     avisos.push("O site não entregou texto suficiente; complete a descrição do negócio à mão.");
   }
   if (!nome) avisos.push("Não identifiquei o nome da marca; escreva como ele deve aparecer.");
   if (!a.logo_url && !b.logo_url) avisos.push("Não encontrei a logo no site; anexe o arquivo manualmente.");
+  // URL e bytes são um par indivisível. Se o navegador encontrou uma URL mas
+  // não conseguiu baixar seus bytes, mantemos AMBOS da Camada A; misturar as
+  // fontes faria uma URL apontar para uma imagem diferente da data URL.
+  const usarLogoCamadaB = !!b.logo_url && !!b.logo_data_url;
+  const logoUrl = usarLogoCamadaB ? b.logo_url! : a.logo_url;
+  const logoDataUrl = usarLogoCamadaB ? b.logo_data_url! : a.logo_data_url;
+  const logoOrigem = usarLogoCamadaB ? "pagina_renderizada" : a.logo_origem;
+  console.log("[site-identidade][proveniencia-final]", JSON.stringify({
+    url: a.url,
+    logo: logoUrl ? { url: logoUrl, origem: logoOrigem } : null,
+    cores: principais.map((cor) => ({ hex: cor.hex, origem: cor.origem, peso: cor.peso })),
+  }));
 
   return {
     ...a,
@@ -707,8 +780,9 @@ export function mesclarCamadaB(
     fontes: [...new Set([...(b.fontes ?? []), ...a.fontes])].slice(0, 4),
     // O navegador enxerga a logo realmente renderizada; ela tem prioridade
     // sobre favicon/og:image encontrados no HTML bruto.
-    logo_url: b.logo_url ?? a.logo_url ?? null,
-    logo_data_url: b.logo_data_url ?? a.logo_data_url ?? null,
+    logo_url: logoUrl ?? null,
+    logo_origem: logoOrigem,
+    logo_data_url: logoDataUrl ?? null,
     cores_detectadas: principais,
     paleta: montarPaleta(principais),
     texto_base: textoBase,

@@ -1,6 +1,7 @@
 // One-shot: salva WHATSAPP_AMZ_SYSTEM_USER_TOKEN no row do AMZ e roda Teste A.
 // NÃO loga o valor do token em lugar nenhum.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { AMZ_TENANT_ID } from "../_shared/amz-tenant.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -10,7 +11,6 @@ const cors = {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
 
-  const AMZ_USER_ID = "b7af0118-c506-4f87-8ac3-a0a11fd621fe";
   const AMZ_PHONE_NUMBER_ID = "1136417836228337";
   const TEST_TO = "5521964641312"; // Marcelo — número passado como destino do Teste A
 
@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
   const { data: upd, error: updErr } = await supabase
     .from("whatsapp_config")
     .update({ access_token: token, updated_at: new Date().toISOString() })
-    .eq("user_id", AMZ_USER_ID)
+    .eq("user_id", AMZ_TENANT_ID)
     .eq("phone_number_id", AMZ_PHONE_NUMBER_ID)
     .select("id, user_id, phone_number_id, is_active, connection_method, updated_at");
 

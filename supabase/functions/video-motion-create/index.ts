@@ -59,6 +59,7 @@ Deno.serve(async (req) => {
        nomeFallback: (user.user_metadata as any)?.nome ?? null,
        tomDeVoz: typeof body?.tom_de_voz === "string" ? body.tom_de_voz : null,
        logoPath: typeof body?.logo_path === "string" ? body.logo_path : null,
+       semLogoTenant: body?.sem_logo_tenant === true,
        trilhaId: typeof body?.trilha_id === "string" ? body.trilha_id : null,
        semTrilha: body?.sem_trilha === true,
        trilhaVolume: typeof body?.trilha_volume === "number" ? body.trilha_volume : null,

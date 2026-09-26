@@ -2,13 +2,14 @@
 // Roda buildAmzContext nos 4 cenários e devolve o access resolvido.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { buildAmzContext, resolveTenantOwner } from "../_shared/amz-context.ts";
+import { AMZ_TENANT_ID } from "../_shared/amz-tenant.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const AMZ_USER   = "b7af0118-c506-4f87-8ac3-a0a11fd621fe";
+const AMZ_USER   = AMZ_TENANT_ID;
 const MARC_USER  = "d2ca3f33-777b-465d-9961-59ce2eae393d";
 const FELICIO    = "5521967520706";
 const MARCELO    = "5521964641312";

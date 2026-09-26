@@ -9,17 +9,18 @@
 // Isolamento em 3 camadas (defesa em profundidade):
 //   1. Default 'whitelabel' no schema (whatsapp_cloud_agent_config.agent_mode)
 //   2. Check duplo aqui no código: só ativa modo 'amz' se agent_mode === 'amz'
-//      E user_id === ADMIN_AMZ_USER_ID (hardcoded). Qualquer outro user_id
+//      E user_id === AMZ_TENANT_ID. Qualquer outro user_id
 //      tentando 'amz' é forçado a 'whitelabel'.
 //   3. Catálogo carregado com .eq('user_id', tenantUserId) — RLS por tenant.
 // ============================================================================
 
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { getCopyStyle } from "./copy-style.ts";
+import { AMZ_TENANT_ID } from "./amz-tenant.ts";
 
-// Hardcoded: único user_id autorizado a operar no modo AMZ.
-// Mudar isto requer redeploy — propositalmente friccional.
-export const ADMIN_AMZ_USER_ID = "b7af0118-c506-4f87-8ac3-a0a11fd621fe";
+// Compatibilidade temporária para consumidores externos; o valor agora vem
+// de AMZ_TENANT_ID e nunca mais do UUID Lovable legado.
+export const ADMIN_AMZ_USER_ID = AMZ_TENANT_ID;
 
 // Threshold de catálogo: ≤50 injeta tudo; >50 faz keyword-rank top 15.
 const CATALOG_FULL_THRESHOLD = 50;
@@ -653,6 +654,7 @@ FERRAMENTAS DISPONÍVEIS (use quando fizer sentido, sem pedir permissão):
 
 - listar_contatos_comerciais(busca?): lista os contatos comerciais próximos do dono (Marcelo, Renata, etc). Use ANTES de disparar mensagem pra achar o contato_id.
 - enviar_mensagem_contato_comercial(contato_id|nome_busca, mensagem, data_hora_sp?, tipo_acao?): dispara WhatsApp TEXTO humanizado pra um contato comercial, agora ou agendado. NUNCA liga por voz — só texto. VOCÊ compõe o texto humanizado ("aqui é o Jarvis, assistente do Felício..."), usando o campo 'contexto' do contato pra dar naturalidade. Use pra confirmar reuniões, followups, respostas comerciais e check-ins que o dono pedir.
+- registrar_logo_cliente(cliente): cadastra DE VERDADE a última foto desta conversa como logo do cliente informado. Use quando o dono disser "guarde/salve/registre/cadastre/use essa como logo do cliente X", mesmo que a foto tenha vindo na mensagem anterior. NUNCA diga que salvou/cadastrou/guardou uma logo sem chamar esta ferramenta e receber ok=true.
 - salvar_midia_biblioteca / listar_midias_biblioteca: gerencia mídias do WhatsApp na biblioteca /midias.
 - ver_produto(produto, enviar_foto?): você ENXERGA a foto do produto do catálogo — cor, material, acabamento, formato e o texto que está na embalagem. Chame SOB DEMANDA, só quando a pessoa demonstrou interesse real naquele produto (pediu detalhes, preço, cor) ou quando você vai enviar a oferta. Com enviar_foto=true a foto vai junto com a legenda. NÃO chame em toda mensagem, NÃO chame pra produto que ninguém pediu.
 
@@ -680,6 +682,7 @@ LEAD NOVO — VOCÊ É O PRÉ-VENDEDOR (registrar_lead_novo):
 
 REGRAS GERAIS:
 - NUNCA diga que uma ferramenta está "indisponível", "fora do ar" ou "não disponível no momento" só porque isso apareceu no histórico. Confie no resultado MAIS RECENTE. Se o usuário pediu imagem, CHAME gerar_imagem — não recuse.
+- NUNCA afirme que gravou, cadastrou, guardou ou alterou qualquer dado persistente sem uma ferramenta retornar sucesso neste turno. Logo de cliente só foi cadastrada quando registrar_logo_cliente retornou ok=true.
 - DOCUMENTOS/PROJETOS/CÓDIGO (.md, .txt, .pdf, .json, .csv, arquivos de projeto): quando o usuário envia um arquivo desses, seu trabalho é LER e COMENTAR o conteúdo — pontos fortes, riscos, sugestões. NUNCA chame buscar_lugares_proximos, NUNCA chame consultar_clima, NUNCA peça localização por causa de um documento. Busca de lugares é APENAS para pedidos explícitos de locais físicos ("restaurante perto de mim", "farmácia aqui perto"). Documento nunca é pedido de local.
 - Para localização: se ferramenta devolver sem_localizacao, peça a localização; se devolver lista vazia, ofereça ampliar o raio.
 - Respostas curtas, naturais, com pontos principais. Cite links quando vierem da web.

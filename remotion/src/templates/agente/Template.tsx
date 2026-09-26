@@ -353,7 +353,7 @@ const Chat: React.FC<
           {logoUrl ? (
             <Img
               src={logoUrl}
-              style={{ height: 40, maxWidth: 190, objectFit: "contain" }}
+              style={{ height: 64, maxWidth: 280, objectFit: "contain" }}
             />
           ) : (
             <>
@@ -443,9 +443,9 @@ const CTA: React.FC<
     <AbsoluteFill style={{ ...font, alignItems: "center", justifyContent: "center" }}>
       <div
         style={{
-          width: 200,
-          height: 200,
-          borderRadius: 52,
+          width: 260,
+          height: 260,
+          borderRadius: 62,
           background: logoUrl ? c.bg2 : `linear-gradient(135deg, ${c.destaque}, ${c.destaqueSoft})`,
           display: "flex",
           alignItems: "center",
@@ -463,7 +463,7 @@ const CTA: React.FC<
         }}
       >
         {logoUrl ? (
-          <Img src={logoUrl} style={{ width: 164, height: 164, objectFit: "contain" }} />
+          <Img src={logoUrl} style={{ width: 220, height: 220, objectFit: "contain" }} />
         ) : (
           dentroDoBloco
         )}

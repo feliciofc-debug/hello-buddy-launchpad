@@ -23,6 +23,7 @@ type MotionProps = {
   marca: string;
   logoUrl?: string;
   logo_path?: string;
+  sem_logo_tenant?: boolean;
   site?: string;
   trilha_id?: string;
   trilha_path?: string;
@@ -101,6 +102,7 @@ export const CriarVideoAnimado = () => {
   // Logo cadastrada da conta: usada só para poder restaurar depois de remover.
   const [logoOficial, setLogoOficial] = useState<{ path: string; url: string | null } | null>(null);
   const [subindoLogo, setSubindoLogo] = useState(false);
+  const [identidadeCliente, setIdentidadeCliente] = useState(false);
   const [marcaCliente, setMarcaCliente] = useState('');
   const [paletaSelecionada, setPaletaSelecionada] = useState<keyof typeof PALETAS>('personalizada');
   const [cores, setCores] = useState<Record<string, string>>(PALETAS.personalizada.cores);
@@ -150,6 +152,7 @@ export const CriarVideoAnimado = () => {
 
   // Cada identidade carrega os próprios dados: nada do cliente anterior fica.
   const limparIdentidadeDoVideo = () => {
+    setIdentidadeCliente(false);
     setLogoPath(null);
     setLogoUrl(null);
     setMarcaCliente('');
@@ -281,6 +284,7 @@ export const CriarVideoAnimado = () => {
     // Trocar de identidade descarta logo, nome, tom, site e contatos anteriores.
     limparIdentidadeDoVideo();
     setPaletaSelecionada(nome);
+    setIdentidadeCliente(nome !== 'amz' && nome !== 'personalizada');
     if (nome !== 'personalizada') setMarcaCliente(PALETAS[nome].label);
     setCores({ ...PALETAS[nome].cores });
     setProps((p) => (p ? { ...p, cores: { ...PALETAS[nome].cores } } : p));
@@ -295,6 +299,7 @@ export const CriarVideoAnimado = () => {
   const aplicarIdentidadeDoSite = async (d: IdentidadeImportada) => {
     // Descarta a identidade do cliente anterior antes de aplicar a nova.
     limparIdentidadeDoVideo();
+    setIdentidadeCliente(true);
     const novas = { ...PALETAS.personalizada.cores, ...d.paleta };
     setPaletaSelecionada('personalizada');
     setCores(novas);
@@ -530,6 +535,7 @@ export const CriarVideoAnimado = () => {
           marca: marcaCliente.trim() || undefined,
           tom_de_voz: tomDeVozCliente.trim() || undefined,
           logo_path: logoPath || undefined,
+          sem_logo_tenant: identidadeCliente,
           trilha_id: semTrilha ? undefined : trilhaId || undefined,
           sem_trilha: semTrilha,
         },
@@ -540,7 +546,7 @@ export const CriarVideoAnimado = () => {
         ...data.props,
         marca: marcaCliente.trim() || data.props?.marca,
         site: data.props?.site || '',
-        logoUrl: logoUrl ?? undefined,
+        logoUrl: logoUrl ?? data.props?.logoUrl ?? undefined,
         trilha_id: semTrilha ? undefined : trilhaId || data.props?.trilha_id,
         trilha_volume: data.props?.trilha_volume ?? 0.28,
         cores: { ...cores },
@@ -575,6 +581,7 @@ export const CriarVideoAnimado = () => {
           marca: marcaCliente.trim() || undefined,
           tom_de_voz: tomDeVozCliente.trim() || undefined,
           logo_path: logoPath || undefined,
+          sem_logo_tenant: identidadeCliente,
           trilha_id: semTrilha ? undefined : trilhaId || props.trilha_id || undefined,
           sem_trilha: semTrilha,
           trilha_volume: props.trilha_volume ?? 0.28,
@@ -665,7 +672,11 @@ export const CriarVideoAnimado = () => {
             <Label className="text-xs">Nome da marca do cliente</Label>
             <Input
               value={marcaCliente}
-              onChange={(e) => { setMarcaCliente(e.target.value); setProps((p) => (p ? { ...p, marca: e.target.value } : p)); }}
+              onChange={(e) => {
+                setMarcaCliente(e.target.value);
+                setIdentidadeCliente(Boolean(e.target.value.trim()));
+                setProps((p) => (p ? { ...p, marca: e.target.value } : p));
+              }}
               placeholder="Ex.: Ademicon"
               maxLength={18}
             />

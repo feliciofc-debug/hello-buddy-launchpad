@@ -37,8 +37,16 @@ Deno.serve(async (req) => {
     const props = { ...(job.props || {}) };
     const logoPath = typeof props.logo_path === "string" ? props.logo_path : "";
     if (logoPath.startsWith(`${job.user_id}/`)) {
-      const { data: logo } = await supabase.storage.from("tenant-logos").createSignedUrl(logoPath, 3600);
-      if (logo?.signedUrl) props.logoUrl = logo.signedUrl;
+      const { data: logo, error: logoError } = await supabase.storage.from("tenant-logos").createSignedUrl(logoPath, 3600);
+      if (logo?.signedUrl) {
+        props.logoUrl = logo.signedUrl;
+      } else {
+        console.warn(
+          `[video-motion-claim][logo_missing] job=${job.id} tenant=${job.user_id} path=${logoPath} erro=${logoError?.message ?? "signed_url_vazia"}`,
+        );
+      }
+    } else if (!props.logoUrl) {
+      console.warn(`[video-motion-claim][logo_missing] job=${job.id} tenant=${job.user_id} — render seguirá sem logo`);
     }
     delete props.logo_path;
 
@@ -70,7 +78,7 @@ Deno.serve(async (req) => {
         .maybeSingle();
       if (trilhaErr) throw trilhaErr;
       const trilhaPath = String(trilha?.storage_path ?? "");
-      const trilhaPermitida = Boolean(trilha) && (trilha.user_id === null || trilha.user_id === job.user_id)
+      const trilhaPermitida = trilha != null && (trilha.user_id === null || trilha.user_id === job.user_id)
         && (trilhaPath.startsWith("global/") || trilhaPath.startsWith(`${job.user_id}/`));
       if (!trilhaPermitida) throw new Error("trilha não disponível para este tenant");
       const { data: audio } = await supabase.storage.from("trilhas-audio").createSignedUrl(trilhaPath, 3600);

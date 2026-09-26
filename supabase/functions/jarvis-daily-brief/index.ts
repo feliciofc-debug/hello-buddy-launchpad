@@ -1,11 +1,11 @@
 // Jarvis Daily Brief — dispara às 8h SP no WhatsApp do Felicio
 // Cron: 0 11 * * * (11h UTC = 8h São Paulo)
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { AMZ_TENANT_ID } from "../_shared/amz-tenant.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const OWNER_PHONE = "5521967520706";
-const ADMIN_AMZ_USER_ID = Deno.env.get("ADMIN_AMZ_USER_ID") || "";
 
 const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
@@ -18,7 +18,7 @@ async function sendWA(to: string, message: string) {
   const r = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-send-message`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SERVICE_KEY}`, "apikey": SERVICE_KEY },
-    body: JSON.stringify({ user_id: ADMIN_AMZ_USER_ID, to, message }),
+    body: JSON.stringify({ user_id: AMZ_TENANT_ID, to, message }),
   });
   return { ok: r.ok, txt: await r.text() };
 }

@@ -9,6 +9,7 @@
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { getTenantBusinessContext } from "./business-context.ts";
+import { AMZ_TENANT_ID } from "./amz-tenant.ts";
 
 export type Mensagem = { de: "dono" | "agente"; texto: string };
 
@@ -156,15 +157,7 @@ const MODELO = "google/gemini-2.5-flash";
 const GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
 function politicaCertificacaoTenant(userId: string): string {
-  // A variável aceita uma lista separada por vírgula, ponto e vírgula ou
-  // espaços. Sem allowlist explícita, nenhum tenant recebe a exceção.
-  const tenantIds = new Set(
-    String(Deno.env.get("AMZ_TENANT_ID") || "")
-      .split(/[\s,;]+/)
-      .map((id) => id.trim().toLowerCase())
-      .filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id)),
-  );
-  const tenantPermitido = tenantIds.has(String(userId || "").trim().toLowerCase());
+  const tenantPermitido = String(userId || "").trim().toLowerCase() === AMZ_TENANT_ID.toLowerCase();
   if (tenantPermitido) {
     const texto = String(
       Deno.env.get("AMZ_TECH_PROVIDER_TEXT")
@@ -181,6 +174,20 @@ const limparBruto = (s: unknown, max: number) =>
     .replace(/^["'`\s]+|["'`\s]+$/g, "")
     .slice(0, max)
     .trim();
+
+/** Converte links Markdown/URLs em um endereço curto e próprio para exibição. */
+export function normalizarSiteMotion(valor: unknown, max = 40): string {
+  let site = String(valor ?? "").replace(/\s+/g, " ").trim();
+  const markdown = site.match(/^\[[^\]]*]\(\s*<?([^)\s>]+)>?\s*\)$/);
+  if (markdown) site = markdown[1];
+  site = site
+    .replace(/^<|>$/g, "")
+    .replace(/^https?:\/\//i, "")
+    .replace(/[)\],.;:!?]+$/g, "")
+    .replace(/\/+$/g, "")
+    .trim();
+  return site.slice(0, max);
+}
 
 /** Corta respeitando a palavra e sinalizando o corte — nunca "campanhas d". */
 export const cortarFrase = (s: string, max: number): string => {
@@ -379,10 +386,28 @@ export function normalizarProps(
     }))
     .filter((m) => m.texto.length > 0);
 
-  const linhas = (Array.isArray(bruto?.hook?.linhas) ? bruto.hook.linhas : [])
+  const linhasCompletas = (Array.isArray(bruto?.hook?.linhas) ? bruto.hook.linhas : [])
     .slice(0, 3)
-    .map((l: unknown) => limpar(l, 22))
+    .map((l: unknown) => limpar(l, 60))
     .filter(Boolean);
+  const hookDestaque = limpar(bruto?.hook?.destaque, 22) || undefined;
+  const normalizarTrechoHook = (value: string) =>
+    value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const linhasSemDestaque = [...linhasCompletas];
+  if (hookDestaque && linhasSemDestaque.length > 0) {
+    const ultima = linhasSemDestaque.at(-1)!;
+    const palavras = ultima.split(/\s+/);
+    const destaqueNormalizado = normalizarTrechoHook(hookDestaque);
+    for (let inicio = 0; inicio < palavras.length; inicio++) {
+      if (normalizarTrechoHook(palavras.slice(inicio).join(" ")) !== destaqueNormalizado) continue;
+      const prefixo = palavras.slice(0, inicio).join(" ").replace(/[\s,.;:!?\-–—]+$/, "");
+      if (prefixo) linhasSemDestaque[linhasSemDestaque.length - 1] = prefixo;
+      else linhasSemDestaque.pop();
+      break;
+    }
+  }
+  const linhas = linhasSemDestaque.map((linha) => limpar(linha, 22)).filter(Boolean);
 
   const legendas = (Array.isArray(bruto?.legendas) ? bruto.legendas : [])
     .slice(0, volume.legendas)
@@ -391,7 +416,7 @@ export function normalizarProps(
 
   const cores = { ...PALETA_PADRAO, ...(bruto?.cores || {}) };
   const marca = marcaBase || "Sua marca";
-  const site = removerVestigiosAmz(limparBruto(bruto?.site ?? ctx.site, 40), marca);
+  const site = removerVestigiosAmz(normalizarSiteMotion(bruto?.site ?? ctx.site), marca);
 
   // ---- biblioteca de templates ----
   const estilo: EstiloMotion = ESTILOS_MOTION.includes(ctx.estilo as EstiloMotion)
@@ -493,7 +518,7 @@ export function normalizarProps(
     hook: {
       kicker: limpar(bruto?.hook?.kicker, 28) || marca,
       linhas: linhas.length ? linhas : ["Seu negócio", "no automático."],
-      destaque: limpar(bruto?.hook?.destaque, 22) || undefined,
+      destaque: hookDestaque,
       sub: limpar(bruto?.hook?.sub, 90) || undefined,
     },
     chat: {

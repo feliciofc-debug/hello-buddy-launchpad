@@ -15,7 +15,8 @@
 // ============================================================================
 
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { ADMIN_AMZ_USER_ID, AMZ_KNOWLEDGE } from "./agent-soul.ts";
+import { AMZ_KNOWLEDGE } from "./agent-soul.ts";
+import { AMZ_TENANT_ID as ADMIN_AMZ_USER_ID } from "./amz-tenant.ts";
 
 // Constante legacy (Felicio) — MANTIDA só para retrocompatibilidade em
 // imports antigos. NÃO usar como fonte de verdade em código novo — sempre
