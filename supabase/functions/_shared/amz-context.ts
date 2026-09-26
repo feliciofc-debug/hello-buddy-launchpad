@@ -24,12 +24,9 @@ import { AMZ_TENANT_ID as ADMIN_AMZ_USER_ID } from "./amz-tenant.ts";
 export const OWNER_PHONE = "5521967520706";
 export const AGENT_PHONE = "5521980804901";
 
-// Números ADICIONAIS do Felicio no tenant AMZ. O 5521995379550 é o número
-// comercial dele que atende a plataforma Comex IA — é o MESMO dono, então
-// precisa ser reconhecido como chefe (nunca como lead/cliente).
-export const OWNER_ALT_PHONES_AMZ: Record<string, string> = {
-  "5521995379550": "número comercial do Felicio (plataforma Comex IA)",
-};
+// Números adicionais do dono no tenant AMZ. Vazio por enquanto: números de
+// teste devem seguir o fluxo normal de cliente/estranho.
+export const OWNER_ALT_PHONES_AMZ: Record<string, string> = {};
 
 export function isAmzOwnerAltPhone(phone: string): boolean {
   return Object.prototype.hasOwnProperty.call(OWNER_ALT_PHONES_AMZ, normalizePhone(phone));
