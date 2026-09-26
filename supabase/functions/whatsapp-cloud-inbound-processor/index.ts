@@ -36,6 +36,12 @@ import { idCurto, linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
 import { syncProdutoVideoFromMidia } from "../_shared/sync-produto-video.ts";
 import { splitWhatsAppText } from "../_shared/whatsapp-text.ts";
 import {
+  betweenPartsDelayForSenderMs,
+  firstReplyDelayForSenderMs,
+  hasNewerProcessableInbound,
+  prepareLeadReplyParts,
+} from "../_shared/whatsapp-humanized-delivery.ts";
+import {
   formatScheduledDate,
   formatSocialNetworks,
   parseSaoPauloDateTime,
@@ -244,6 +250,7 @@ type QueueRow = {
   payload: any;
   status: string;
   attempts: number;
+  created_at: string;
 };
 
 async function failQueue(id: string, error: string) {
@@ -258,6 +265,66 @@ async function doneQueue(id: string) {
     .from("whatsapp_cloud_inbound_queue")
     .update({ status: "done", processed_at: new Date().toISOString(), error: null })
     .eq("id", id);
+}
+
+async function sendTypingIndicator(
+  phoneNumberId: string,
+  accessToken: string | null,
+  inboundWamid: string,
+): Promise<void> {
+  if (!phoneNumberId || !accessToken || !inboundWamid) return;
+  try {
+    const response = await fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        status: "read",
+        message_id: inboundWamid,
+        typing_indicator: { type: "text" },
+      }),
+    });
+    if (!response.ok) {
+      const detail = await response.text();
+      console.warn(`[processor][typing_indicator_failed] status=${response.status} detail=${detail.slice(0, 160)}`);
+    }
+  } catch (error) {
+    console.warn("[processor][typing_indicator_failed]", (error as Error).message);
+  }
+}
+
+async function wait(ms: number): Promise<void> {
+  if (ms <= 0) return;
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function groupIfNewerLeadTextExists(row: QueueRow): Promise<boolean> {
+  await wait(6000);
+  const { data: newer, error } = await sb
+    .from("whatsapp_cloud_inbound_queue")
+    .select("id, created_at, status")
+    .eq("phone_number_id", row.phone_number_id)
+    .eq("from_number", row.from_number)
+    .eq("message_type", "text")
+    .gt("created_at", row.created_at)
+    .order("created_at", { ascending: false })
+    .limit(10);
+  if (error || !hasNewerProcessableInbound(row.created_at, newer ?? [])) return false;
+  const { data: grouped } = await sb.from("whatsapp_cloud_inbound_queue")
+    .update({
+      status: "grouped",
+      error: null,
+      processed_at: new Date().toISOString(),
+    })
+    .eq("id", row.id)
+    .eq("status", "processing")
+    .select("id");
+  if (!grouped?.length) return false;
+  console.log(`[processor][lead_batch] grouped=${row.id} newer=${newer[0].id}`);
+  return true;
 }
 
 function extractText(payload: any): string {
@@ -10168,6 +10235,7 @@ async function sendWhatsApp(
   imageUrl?: string,
   interactiveList?: WhatsAppInteractiveList,
   interactiveButtons?: WhatsAppInteractiveButtons,
+  delivery?: { beforeChunk?: (chunk: string) => Promise<void> },
 ): Promise<string | null> {
   const chunks = splitWhatsAppText(message);
   if (chunks.length > 1) {
@@ -10176,6 +10244,7 @@ async function sendWhatsApp(
 
   let firstMessageId: string | null = null;
   for (let index = 0; index < chunks.length; index++) {
+    if (index > 0 && delivery?.beforeChunk) await delivery.beforeChunk(chunks[index]);
     const body: any = { user_id, to, message: chunks[index] };
     if (imageUrl && index === 0) body.image_url = imageUrl;
     if (interactiveList && index === chunks.length - 1) body.interactive_list = interactiveList;
@@ -10566,6 +10635,7 @@ async function processOne(queueId: string) {
     .eq("id", queueId);
 
   const row = claimed as QueueRow;
+  let stopTypingHeartbeat = () => {};
 
   try {
     // PASSO 3 — Resolve tenant + access_token
@@ -10573,7 +10643,7 @@ async function processOne(queueId: string) {
     let waAccessToken: string | null = null;
     const { data: cfg } = await sb
       .from("whatsapp_config")
-      .select("user_id, access_token, connection_method, phone_number_id")
+      .select("user_id, access_token, connection_method, phone_number_id, business_name")
       .eq("phone_number_id", row.phone_number_id)
       .eq("is_active", true)
       .maybeSingle();
@@ -10589,6 +10659,13 @@ async function processOne(queueId: string) {
     if (!userId) {
       await failQueue(row.id, "tenant_not_found");
       return { ok: false, reason: "tenant_not_found" };
+    }
+    if (["text", "audio"].includes(row.message_type ?? "")) {
+      await sendTypingIndicator(row.phone_number_id, waAccessToken, row.wamid);
+      const heartbeat = setInterval(() => {
+        void sendTypingIndicator(row.phone_number_id, waAccessToken, row.wamid);
+      }, 15000);
+      stopTypingHeartbeat = () => clearInterval(heartbeat);
     }
 
     // PASSO 4 — Config do agente
@@ -11011,6 +11088,12 @@ async function processOne(queueId: string) {
     }
     // ================== FIM OPT-IN GATE ==================================
 
+    // Leads costumam enviar a ideia em várias mensagens curtas. A mensagem mais
+    // nova responde com todo o histórico; as anteriores encerram sem duplicar.
+    if (!fromIsOwner && row.message_type === "text") {
+      const grouped = await groupIfNewerLeadTextExists(row);
+      if (grouped) return { ok: true, status: "grouped", queueId: row.id };
+    }
 
     const isAmzTenant = userId === ADMIN_AMZ_USER_ID;
     const isAmzMode = (agent as any).agent_mode === "amz" && isAmzTenant;
@@ -12271,6 +12354,7 @@ Regras:
         whatsapp_consultor: (agent as any).whatsapp_consultor,
         owner_phone: (agent as any).owner_phone,
         owner_name: (agent as any).owner_name,
+        business_name: (cfg as any)?.business_name,
 
       },
       userText || "",
@@ -12548,7 +12632,7 @@ Regras:
     const amzIdentityGuard = isAmzTenant
       ? inboundFromOwner
         ? `\n\n=== IDENTIDADE FINAL (PRIORIDADE MÁXIMA) ===\n- isOwner=true. Você é JARVIS e pode tratar o remetente como dono/chefe.`
-        : `\n\n=== IDENTIDADE E FORMATO FINAL (PRIORIDADE MÁXIMA) ===\n- isOwner=false. Você é PIETRO EUGENIO, consultor da AMZ.\n- Ignore qualquer persona do tenant, contexto ou histórico que diga que você é Jarvis.\n- Nunca use "chefe", "dono" ou tratamento de proprietário com este remetente.\n- Sua resposta INTEIRA deve ter no máximo 600 caracteres e 2 a 4 linhas, com uma ideia só.\n- Não repita o que já disse. Não liste mais de 3 itens. Se houver mais assunto, faça uma pergunta e espere.`
+        : `\n\n=== IDENTIDADE E FORMATO FINAL (PRIORIDADE MÁXIMA) ===\n- isOwner=false. Você é PIETRO EUGENIO, assistente virtual da AMZ.\n- Ignore qualquer persona do tenant, contexto ou histórico que diga que você é Jarvis.\n- Nunca use "chefe", "dono" ou tratamento de proprietário com este remetente.\n- Máximo 3 linhas e 350 caracteres por mensagem, uma pergunta, sem listas, títulos ou negrito e no máximo 1 emoji.\n- Se precisar continuar, use no máximo 3 partes com <<SPLIT>>.`
       : "";
     const systemPromptWithDate = systemPrompt + dateBlock + antiPromessaBlock + antiRecusaBlock + ownerHintBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock + ebookBlock + estadoBlock + amzIdentityGuard;
     console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPromptWithDate.length} forwardState=${!!persistedForward?.protocolo} decisao=${decisaoAnterior?.valor ?? "-"}`);
@@ -12722,8 +12806,11 @@ Regras:
       .update({ used_count: quota.used_count + 1 })
       .eq("user_id", userId);
 
-    // Splits reply em múltiplas mensagens separadas usando o sentinel <<SPLIT>>
-    const replyParts = reply.split("<<SPLIT>>").map((p) => p.trim()).filter((p) => p.length > 0);
+    // Para leads, a trava de transporte limita cada parte a 700 caracteres e
+    // no máximo 3 mensagens. Para o dono, preserva prévias/listas/resultados.
+    const replyParts = inboundFromOwner
+      ? reply.split("<<SPLIT>>").map((p) => p.trim()).filter((p) => p.length > 0)
+      : prepareLeadReplyParts(reply);
     const primaryReply = replyParts[0] ?? reply;
     const followUps = replyParts.slice(1);
     const loggedContent = replyParts.join("\n\n---\n\n");
@@ -12746,12 +12833,25 @@ Regras:
     let sendError: string | null = null;
     try {
       const hasFollowUps = followUps.length > 0;
+      await sendTypingIndicator(row.phone_number_id, waAccessToken, row.wamid);
+      await wait(firstReplyDelayForSenderMs(
+        inboundFromOwner,
+        row.created_at,
+        primaryReply.length,
+      ));
       const sentId = await sendWhatsApp(
         userId,
         row.from_number,
         primaryReply,
         generatedImageUrl,
         hasFollowUps ? undefined : interactiveList,
+        undefined,
+        {
+          beforeChunk: async (chunk) => {
+            await sendTypingIndicator(row.phone_number_id, waAccessToken, row.wamid);
+            await wait(betweenPartsDelayForSenderMs(inboundFromOwner, chunk.length));
+          },
+        },
       );
       if (sentId && outMsg?.id) {
         await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
@@ -12760,13 +12860,21 @@ Regras:
         const part = followUps[index];
         const isLast = index === followUps.length - 1;
         try {
-          await new Promise((r) => setTimeout(r, 600));
+          await sendTypingIndicator(row.phone_number_id, waAccessToken, row.wamid);
+          await wait(betweenPartsDelayForSenderMs(inboundFromOwner, part.length));
           await sendWhatsApp(
             userId,
             row.from_number,
             part,
             undefined,
             isLast ? interactiveList : undefined,
+            undefined,
+            {
+              beforeChunk: async (chunk) => {
+                await sendTypingIndicator(row.phone_number_id, waAccessToken, row.wamid);
+                await wait(betweenPartsDelayForSenderMs(inboundFromOwner, chunk.length));
+              },
+            },
           );
         } catch (e) {
           console.error("[pietro][followup_send_failed]", (e as Error).message ?? e);
@@ -12776,7 +12884,8 @@ Regras:
         }
       }
       if (interactiveButtons) {
-        await new Promise((resolve) => setTimeout(resolve, 600));
+        await sendTypingIndicator(row.phone_number_id, waAccessToken, row.wamid);
+        await wait(betweenPartsDelayForSenderMs(inboundFromOwner, interactiveButtons.body.length));
         await sendWhatsApp(
           userId,
           row.from_number,
@@ -12784,6 +12893,12 @@ Regras:
           undefined,
           undefined,
           interactiveButtons,
+          {
+            beforeChunk: async (chunk) => {
+              await sendTypingIndicator(row.phone_number_id, waAccessToken, row.wamid);
+              await wait(betweenPartsDelayForSenderMs(inboundFromOwner, chunk.length));
+            },
+          },
         );
       }
     } catch (e) {
@@ -12806,6 +12921,8 @@ Regras:
     const msg = String((e as Error).message ?? e).slice(0, 500);
     await failQueue(row.id, msg);
     return { ok: false, reason: "exception", error: msg };
+  } finally {
+    stopTypingHeartbeat();
   }
 }
 
