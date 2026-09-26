@@ -41,6 +41,12 @@ import {
   parseSaoPauloDateTime,
 } from "../_shared/social-schedule.ts";
 import {
+  classifyOwnerMediaIntent,
+  extractSocialPostBriefing,
+  hasImageGenerationRequest,
+  hasSocialPostRequest,
+} from "../_shared/owner-media-intent.ts";
+import {
   catalogImageUrl,
   environmentLikelihood,
   IMAGE_COMPOSITION_ESTIMATED_COST_USD,
@@ -4091,6 +4097,7 @@ function extrairIdentificadorMidia(texto: string): string | null {
 
 function pedidoReferenciaMidiaGenerica(texto: string, produtoDetectado = ""): boolean {
   const alvo = normalizePt(`${produtoDetectado} ${texto}`);
+  if (/^(esse|essa|este|esta|isso|desse|dessa|aquele|aquela)$/i.test(normalizePt(produtoDetectado).trim())) return true;
   return /\b(esse|essa|este|esta|isso|dessa|desse|aquele|aquela|o|a)?\s*(video|foto|imagem|midia)\b/.test(alvo);
 }
 
@@ -4159,12 +4166,16 @@ async function buscarUltimaMidiaDaConversa(
 }
 
 // Detecta resposta curta só com o formato: "feed", "story", "reels", "no story", "nos stories" etc.
-function detectSocialPostIntent(text: string): { produto: string; tom: string; redes: string[]; temProduto: boolean; formato?: "feed" | "story" | "reels" } | null {
+function detectSocialPostIntent(
+  text: string,
+  options: { allowGenerationChain?: boolean } = {},
+): { produto: string; tom: string; redes: string[]; temProduto: boolean; formato?: "feed" | "story" | "reels" } | null {
   const original = compactSpaces(text || "");
   const normalized = normalizePt(original);
   // Pedido de CARROSSEL nunca é post único — quem trata é o roteador de carrossel.
   if (/\bcarrosse(l|is)\b|\bcarousel\b/.test(normalized)) return null;
-  if (!/\b(posta|poste|postar|publica|publique|publicar)\b/.test(normalized)) return null;
+  if (hasImageGenerationRequest(original) && !options.allowGenerationChain) return null;
+  if (!hasSocialPostRequest(original)) return null;
 
 
   const redes: string[] = [];
@@ -5871,7 +5882,7 @@ async function toolPostarMidiaBiblioteca(
     }
 
     // VÍDEO precisa de contexto do dono (não temos visão de vídeo — não inventar descrição).
-    const legendaDono = (legendaArg || contextoUsuario || briefing || "").toString().trim();
+    const legendaDono = (briefing || legendaArg || contextoUsuario || "").toString().trim();
     if (isVideo && !legendaDono) {
       return JSON.stringify({
         erro: "video_sem_contexto",
@@ -5918,7 +5929,9 @@ async function toolPostarMidiaBiblioteca(
 
     const midiaUsada = `Usando: ${nomeCurtoMidia(midia)} - ${isVideo ? "Vídeo" : "Imagem"} - ${tempoRelativoMidia(midia.created_at)}`;
     try {
-      await sendWhatsApp(ctx.userId, ctx.fromNumber, midiaUsada);
+      // A mídia escolhida faz parte da prévia: para foto, mostra a própria
+      // imagem antes das opções A/B/C em vez de enviar apenas a descrição.
+      await sendWhatsApp(ctx.userId, ctx.fromNumber, midiaUsada, isVideo ? undefined : midia.midia_url);
     } catch (e) {
       return JSON.stringify({
         erro: "aviso_midia_falhou",
@@ -9097,6 +9110,7 @@ async function callGemini(
     const pendingVideoDraft = remetenteEhDono ? await buscarRascunhoVideo(toolCtx) : null;
     const normalizedInput = normalizePt(userContent);
     const socialInteractive = userContent.match(/<<INTERACTIVE_ID:(social_(?:publish|schedule):([a-f0-9]{8}))>>/i);
+    const ownerMediaIntent = classifyOwnerMediaIntent(userContent);
 
     if (remetenteEhDono && /\bmeus agendamentos\b/.test(normalizedInput)) {
       const result = await toolListarAgendamentosPosts(toolCtx);
@@ -9135,6 +9149,62 @@ async function callGemini(
       )
     ) {
       return { text: "Para quando? Ex.: sexta às 10h" };
+    }
+
+    // Precedência de mídia do dono: gerar > postar > editar. Uma geração
+    // encadeada com post salva a nova imagem em /midias e usa exatamente esse
+    // ID na prévia, sem deixar os atalhos capturarem uma mídia anterior.
+    if (remetenteEhDono && (ownerMediaIntent.action === "generate" || ownerMediaIntent.action === "generate_and_post")) {
+      const imagePrompt = userContent.split(/\b(?:depois|em seguida|na sequência)\b/i)[0].trim();
+      const incluirLogo = /\b(?:com|inclui|incluir|coloca|colocar|aplica|aplicar)\b.{0,30}\b(?:minha|nossa|a)?\s*(?:logo|logotipo|logomarca)\b/i.test(userContent);
+      console.log("[pietro][forced_image_generation]", { chainedPost: ownerMediaIntent.action === "generate_and_post" });
+      const generatedRaw = await toolGerarImagem(imagePrompt || userContent, {
+        userId: toolCtx.userId,
+        fromNumber: toolCtx.fromNumber,
+        incluirLogo,
+      });
+      let generated: any = {};
+      try { generated = JSON.parse(generatedRaw); } catch { /* tratado abaixo */ }
+      if (generated?.ok !== true || !generated?.image_url) {
+        return { text: `Não consegui gerar a imagem: ${String(generated?.detalhe || generated?.erro || "resposta inválida")}` };
+      }
+      if (generated?.midia_id) await rememberLastMediaInteraction(toolCtx, generated.midia_id);
+
+      if (ownerMediaIntent.action === "generate_and_post") {
+        if (!generated?.midia_id) {
+          return {
+            text: "Gerei a imagem, mas não consegui salvá-la na biblioteca para montar a prévia do post.",
+            imageUrl: generated.image_url,
+          };
+        }
+        const social = detectSocialPostIntent(userContent, { allowGenerationChain: true }) ?? {
+          produto: "",
+          tom: "urgencia",
+          redes: ["facebook", "instagram"],
+          temProduto: false,
+          formato: detectSocialPostFormat(userContent) ?? "feed",
+        };
+        const briefing = extractSocialPostBriefing(userContent);
+        const postResult = await toolPostarMidiaBiblioteca({
+          midia_id: generated.midia_id,
+          legenda: briefing || cleanMediaPostLegenda(userContent),
+          briefing,
+          tom: social.tom,
+          redes: social.redes.length ? social.redes : ["facebook", "instagram"],
+          formato: social.formato ?? "feed",
+          incluir_cta_whatsapp: detectWantsWhatsappCta(userContent),
+        }, toolCtx);
+        return {
+          text: formatSocialPostToolResult(postResult),
+          interactiveButtons: interactiveButtonsFromSocialResult(postResult),
+        };
+      }
+
+      const code = generated?.midia_id ? `<<SPLIT>>${linhaCodigoMidia(generated.midia_id, "foto")}` : "";
+      return {
+        text: `Pronto — criei a imagem e salvei na biblioteca.${code}`,
+        imageUrl: generated.image_url,
+      };
     }
 
     if (pendingClientLogo) {
@@ -9298,8 +9368,9 @@ async function callGemini(
     // Edição de foto recente é determinística: o modelo não pode apenas prometer
     // que vai trabalhar em segundo plano. A própria ferramenta busca a última
     // foto do tenant (janela de 30 min) e devolve a imagem pronta neste turno.
-    const pedidoLogoNaFoto = /\b(?:coloc(?:a|ar|e)|inclu(?:a|ir|i)|p[oõ]e|por|aplic(?:a|ar|e)|insir(?:a|ir)|adicion(?:a|ar|e)|estamp(?:a|ar|e))\b[\s\S]{0,120}\b(?:logo|logotipo|logomarca|marca)\b/i.test(userContent);
-    const pedidoEdicaoFoto = pedidoLogoNaFoto || /\b(?:melhor(?:a|ar|e)|edit(?:a|ar|e)|trat(?:a|ar|e)|ajust(?:a|ar|e)|transform(?:a|ar|e)|coloc(?:a|ar|e)|troc(?:a|ar|e)|mud(?:a|ar|e)|cri(?:a|ar|e)|faz(?:er)?)\b[\s\S]{0,180}\b(?:foto|imagem|cen[aá]rio|ambiente|fundo|est[uú]dio|showroom)\b|\b(?:cen[aá]rio|ambiente|fundo)\s+(?:bonito|elegante|profissional|de\s+est[uú]dio)\b/i.test(userContent);
+    const pedidoEdicaoFoto = ownerMediaIntent.action === "edit";
+    const pedidoLogoNaFoto = pedidoEdicaoFoto
+      && /\b(?:logo|logotipo|logomarca|marca)\b/i.test(userContent);
     let temFotoParaEditar = (toolCtx.media || []).some((m) => m.kind === "image");
     if (remetenteEhDono && pedidoEdicaoFoto && !temFotoParaEditar) {
       const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
@@ -9515,30 +9586,42 @@ async function callGemini(
       }
       console.log("[pietro][forced_social_post]", socialPost);
       const midiaId = extrairIdentificadorMidia(userContent);
+      const briefing = extractSocialPostBriefing(userContent);
       if (midiaId) {
         const postResult = await toolPostarMidiaBiblioteca({
           midia_id: midiaId,
-          legenda: cleanMediaPostLegenda(userContent),
+          legenda: briefing || cleanMediaPostLegenda(userContent),
+          briefing,
           tom: socialPost.tom,
           redes: socialPost.redes,
           formato: socialPost.formato ?? "feed",
         }, toolCtx);
-        return { text: formatSocialPostToolResult(postResult) };
+        return {
+          text: formatSocialPostToolResult(postResult),
+          interactiveButtons: interactiveButtonsFromSocialResult(postResult),
+        };
       }
 
       if (pedidoReferenciaMidiaGenerica(userContent, socialPost.produto) || !socialPost.temProduto) {
         const postResult = await toolPostarMidiaBiblioteca({
-          legenda: cleanMediaPostLegenda(userContent),
+          legenda: briefing || cleanMediaPostLegenda(userContent),
+          briefing,
           tom: socialPost.tom,
           redes: socialPost.redes,
           formato: socialPost.formato ?? "feed",
           incluir_cta_whatsapp: detectWantsWhatsappCta(userContent),
         }, toolCtx);
-        return { text: formatSocialPostToolResult(postResult) };
+        return {
+          text: formatSocialPostToolResult(postResult),
+          interactiveButtons: interactiveButtonsFromSocialResult(postResult),
+        };
       }
 
       const postResult = await toolPostarRedesSociais(socialPost, toolCtx);
-      return { text: formatSocialPostToolResult(postResult) };
+      return {
+        text: formatSocialPostToolResult(postResult),
+        interactiveButtons: interactiveButtonsFromSocialResult(postResult),
+      };
     }
 
     // Texto puro do turno (turno multimodal chega como array de partes).
