@@ -653,6 +653,7 @@ FERRAMENTAS DISPONÍVEIS (use quando fizer sentido, sem pedir permissão):
 - agendar_post_pendente(token, data_hora_sp): agenda o criativo social somente depois da escolha explícita A/B/C. Nunca presuma A. Resolva a data em São Paulo e só confirme se retornar ok=true.
 - listar_agendamentos_posts(): lista os próximos posts sociais agendados pelo WhatsApp.
 - cancelar_agendamento_post(token?): cancela post social futuro; se houver vários e faltar token, mostre as opções retornadas.
+- remarcar_agendamento_post(token?, data_hora_sp): remarca post social futuro quando o dono disser "muda o horário", "remarca" ou "adia". Se houver vários e faltar código, mostre as opções retornadas. Só confirme se ok=true.
 - registrar_lead_novo(nome, ramo, empresa?, interesse?): registra um LEAD NOVO e avisa o responsável no WhatsApp, em paralelo. Chame UMA VEZ, somente depois de já saber NOME e RAMO. NUNCA comente isso com o lead.
 
 - listar_contatos_comerciais(busca?): lista os contatos comerciais próximos do dono (Marcelo, Renata, etc). Use ANTES de disparar mensagem pra achar o contato_id.

@@ -7607,6 +7607,7 @@ export type Database = {
           origem_fluxo: string
           page_id: string | null
           platform: string
+          notificado_em: string | null
           post_text: string | null
           post_text_linkedin: string | null
           produto_id: string | null
@@ -7614,6 +7615,7 @@ export type Database = {
           published_at: string | null
           scheduled_at: string | null
           status: string | null
+          solicitante_telefone: string | null
           updated_at: string | null
           user_id: string
           video_url: string | null
@@ -7638,6 +7640,7 @@ export type Database = {
           origem_fluxo?: string
           page_id?: string | null
           platform?: string
+          notificado_em?: string | null
           post_text?: string | null
           post_text_linkedin?: string | null
           produto_id?: string | null
@@ -7645,6 +7648,7 @@ export type Database = {
           published_at?: string | null
           scheduled_at?: string | null
           status?: string | null
+          solicitante_telefone?: string | null
           updated_at?: string | null
           user_id: string
           video_url?: string | null
@@ -7669,6 +7673,7 @@ export type Database = {
           origem_fluxo?: string
           page_id?: string | null
           platform?: string
+          notificado_em?: string | null
           post_text?: string | null
           post_text_linkedin?: string | null
           produto_id?: string | null
@@ -7676,6 +7681,7 @@ export type Database = {
           published_at?: string | null
           scheduled_at?: string | null
           status?: string | null
+          solicitante_telefone?: string | null
           updated_at?: string | null
           user_id?: string
           video_url?: string | null

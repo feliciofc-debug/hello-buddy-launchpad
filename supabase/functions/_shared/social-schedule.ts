@@ -1,7 +1,32 @@
-export function parseSaoPauloDateTime(value: unknown): Date | null {
-  const match = String(value || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/);
-  if (!match) return null;
-  const [, year, month, day, hour, minute] = match;
+function saoPauloYear(date: Date): number {
+  return Number(new Intl.DateTimeFormat("en", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+  }).format(date));
+}
+
+export function parseSaoPauloDateTime(value: unknown, referenceDate = new Date()): Date | null {
+  const raw = String(value || "").trim();
+  const absolute = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})$/);
+  const brazilian = raw.match(/^(\d{2})\/(\d{2})(?:\/(\d{4}))?(?:\s*(?:às?|a)?\s*)(\d{1,2})(?::(\d{2})|h(?:(\d{2}))?)$/i);
+  if (!absolute && !brazilian) return null;
+
+  let year: string;
+  let month: string;
+  let day: string;
+  let hour: string;
+  let minute: string;
+  const hasExplicitYear = !!absolute || !!brazilian?.[3];
+  if (absolute) {
+    [, year, month, day, hour, minute] = absolute;
+  } else {
+    day = brazilian![1];
+    month = brazilian![2];
+    year = brazilian![3] || String(saoPauloYear(referenceDate));
+    hour = brazilian![4];
+    minute = brazilian![5] ?? brazilian![6] ?? "00";
+  }
+  hour = hour.padStart(2, "0");
   const date = new Date(`${year}-${month}-${day}T${hour}:${minute}:00-03:00`);
   if (!Number.isFinite(date.getTime())) return null;
   const parts = Object.fromEntries(
@@ -15,10 +40,18 @@ export function parseSaoPauloDateTime(value: unknown): Date | null {
       hourCycle: "h23",
     }).formatToParts(date).map((part) => [part.type, part.value]),
   );
-  return parts.year === year && parts.month === month && parts.day === day
-      && parts.hour === hour && parts.minute === minute
-    ? date
-    : null;
+  if (
+    parts.year !== year || parts.month !== month || parts.day !== day
+    || parts.hour !== hour || parts.minute !== minute
+  ) return null;
+
+  if (!hasExplicitYear && date.getTime() <= referenceDate.getTime()) {
+    return parseSaoPauloDateTime(
+      `${Number(year) + 1}-${month}-${day} ${hour}:${minute}`,
+      referenceDate,
+    );
+  }
+  return date;
 }
 
 export function formatScheduledDate(date: Date): string {

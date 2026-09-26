@@ -41,6 +41,12 @@ import {
   parseSaoPauloDateTime,
 } from "../_shared/social-schedule.ts";
 import {
+  allRowsAreFuturePending,
+  chooseSocialSchedule,
+  hasMinimumScheduleLead,
+  type ScheduledSocialGroup,
+} from "../_shared/social-reschedule.ts";
+import {
   classifyOwnerMediaIntent,
   extractSocialPostBriefing,
   hasImageGenerationRequest,
@@ -5088,6 +5094,8 @@ async function toolAgendarPostPendente(
       image_url: isVideo ? null : mediaUrl,
       video_url: isVideo ? mediaUrl : null,
       image_urls: imageUrls.length >= 2 ? imageUrls : null,
+      solicitante_telefone: ctx.fromNumber,
+      notificado_em: null,
       instagram_creation_id: null,
       instagram_container_status: null,
       updated_at: new Date().toISOString(),
@@ -5139,13 +5147,6 @@ async function toolAgendarPostPendente(
     aviso_tiktok: hasTikTok,
   });
 }
-
-type ScheduledSocialGroup = {
-  token: string;
-  scheduledAt: string;
-  networks: string[];
-  rowIds: string[];
-};
 
 async function loadScheduledSocialGroups(userId: string): Promise<ScheduledSocialGroup[]> {
   const { data, error } = await sb.from("social_posts_queue")
@@ -5232,6 +5233,114 @@ async function toolCancelarAgendamentoPost(
     });
   } catch (error) {
     return JSON.stringify({ ok: false, erro: "falha_ao_cancelar", mensagem: (error as Error).message });
+  }
+}
+
+async function toolRemarcarAgendamentoPost(
+  args: { token?: string; data_hora_sp?: string },
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  if (!isOwner(ctx)) return JSON.stringify({ ok: false, erro: "acao_restrita_ao_responsavel" });
+  const scheduledDate = parseSaoPauloDateTime(args?.data_hora_sp);
+  if (!scheduledDate) {
+    return JSON.stringify({
+      ok: false,
+      erro: "data_invalida",
+      mensagem: "Informe o novo dia e horário. Ex.: 30/09 às 10h.",
+    });
+  }
+  if (!hasMinimumScheduleLead(scheduledDate)) {
+    return JSON.stringify({
+      ok: false,
+      erro: "data_muito_proxima",
+      mensagem: "Escolha um horário com pelo menos 10 minutos de antecedência.",
+    });
+  }
+
+  try {
+    const groups = await loadScheduledSocialGroups(ctx.userId);
+    const requested = String(args?.token || "").trim().toLowerCase();
+    const choice = chooseSocialSchedule(groups, requested);
+    let selected = choice.selected;
+    if (choice.reason === "selection_required") {
+      const lines = groups.map((group, index) =>
+        `${index + 1}. ${formatScheduledDate(new Date(group.scheduledAt))} — ${formatSocialNetworks(group.networks)} — código ${group.token.toUpperCase()}`
+      );
+      return JSON.stringify({
+        ok: false,
+        erro: "selecao_necessaria",
+        mensagem: `Você tem mais de um agendamento. Qual deseja remarcar?\n${lines.join("\n")}\nResponda com o código e o novo horário.`,
+      });
+    }
+    if (!selected) {
+      if (requested) {
+        const { data: tokenRows } = await sb.from("social_posts_queue")
+          .select("status, scheduled_at")
+          .eq("user_id", ctx.userId)
+          .eq("approval_token", requested)
+          .limit(20);
+        if ((tokenRows?.length ?? 0) > 0) {
+          return JSON.stringify({
+            ok: false,
+            erro: "agendamento_nao_remarcavel",
+            mensagem: "Esse post já está sendo publicado, foi publicado, falhou ou foi cancelado e não pode mais ser remarcado.",
+          });
+        }
+      }
+      return JSON.stringify({
+        ok: false,
+        erro: "sem_agendamentos",
+        mensagem: "Você não tem posts futuros pendentes para remarcar.",
+      });
+    }
+
+    const nowIso = new Date().toISOString();
+    const { data: allTokenRows, error: stateError } = await sb.from("social_posts_queue")
+      .select("id, status, scheduled_at")
+      .eq("user_id", ctx.userId)
+      .eq("approval_token", selected.token)
+      .limit(100);
+    const everyRowIsFuturePending = !stateError
+      && allRowsAreFuturePending(allTokenRows ?? []);
+    if (!everyRowIsFuturePending) {
+      return JSON.stringify({
+        ok: false,
+        erro: "agendamento_nao_remarcavel",
+        mensagem: "Esse post já está sendo publicado, foi publicado, falhou ou foi cancelado e não pode mais ser remarcado.",
+      });
+    }
+    const rowIds = allTokenRows!.map((row) => row.id);
+    const { data, error } = await sb.from("social_posts_queue")
+      .update({
+        scheduled_at: scheduledDate.toISOString(),
+        solicitante_telefone: ctx.fromNumber,
+        notificado_em: null,
+        updated_at: nowIso,
+      })
+      .in("id", rowIds)
+      .eq("status", "pendente")
+      .gt("scheduled_at", nowIso)
+      .select("id");
+    if (error || (data?.length ?? 0) !== rowIds.length) {
+      return JSON.stringify({
+        ok: false,
+        erro: "agendamento_nao_remarcavel",
+        mensagem: "O post começou a ser processado ou mudou de estado e não pode mais ser remarcado.",
+      });
+    }
+    return JSON.stringify({
+      ok: true,
+      status: "agendamento_remarcado",
+      token: selected.token,
+      scheduled_at: scheduledDate.toISOString(),
+      mensagem: `Remarcado para ${formatScheduledDate(scheduledDate)} no ${formatSocialNetworks(selected.networks)}. Para desfazer, responda: cancelar agendamento.`,
+    });
+  } catch (error) {
+    return JSON.stringify({
+      ok: false,
+      erro: "falha_ao_remarcar",
+      mensagem: `Não consegui remarcar o post: ${(error as Error).message}`,
+    });
   }
 }
 
@@ -7906,6 +8015,21 @@ const TOOLS = [
   {
     type: "function",
     function: {
+      name: "remarcar_agendamento_post",
+      description: "Remarca um post social futuro agendado pelo WhatsApp. Use para 'muda o horário', 'remarca' ou 'adia'. Omita token quando houver apenas um; se houver vários, a ferramenta pedirá qual. Resolva a data em São Paulo e só confirme se retornar ok=true.",
+      parameters: {
+        type: "object",
+        properties: {
+          token: { type: "string", description: "Código de 8 caracteres exibido em 'meus agendamentos'." },
+          data_hora_sp: { type: "string", description: "Nova data/hora em São Paulo. Aceita YYYY-MM-DD HH:MM ou dd/mm às HHh; sem ano, usa a próxima ocorrência." },
+        },
+        required: ["data_hora_sp"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "revisar_post_pendente",
       description: "🛠️ USE quando houver um POST PENDENTE (aguardando 'pode postar') e o dono pedir AJUSTES NO TEXTO/SCRIPT antes de publicar. Ex: 'tira o ACABA HOJE', 'põe o preço 89,90', 'deixa mais curto', 'muda o tom pra profissional'. TAMBÉM use pra LIGAR/DESLIGAR o CTA de WhatsApp no post pendente (passe incluir_cta_whatsapp=true/false; ajuste pode ser omitido nesse caso). Regenera o script aplicando o ajuste e MANTÉM o mesmo token, mídia, formato e redes.",
       parameters: {
@@ -9076,6 +9200,7 @@ async function runTool(
   if (name === "agendar_post_pendente") return { result: await toolAgendarPostPendente(args ?? {}, ctx) };
   if (name === "listar_agendamentos_posts") return { result: await toolListarAgendamentosPosts(ctx) };
   if (name === "cancelar_agendamento_post") return { result: await toolCancelarAgendamentoPost(args ?? {}, ctx) };
+  if (name === "remarcar_agendamento_post") return { result: await toolRemarcarAgendamentoPost(args ?? {}, ctx) };
   if (name === "revisar_post_pendente") return { result: await toolRevisarPostPendente(args ?? {}, ctx) };
   if (name === "escolher_variante_post") return { result: await toolEscolherVariantePost(args ?? {}, ctx) };
   if (name === "registrar_logo_cliente") return { result: await toolRegistrarLogoCliente(args ?? {}, ctx) };
@@ -9957,7 +10082,7 @@ async function callGemini(
             };
           }
         }
-        if (["agendar_post_pendente", "listar_agendamentos_posts", "cancelar_agendamento_post"].includes(name)) {
+        if (["agendar_post_pendente", "listar_agendamentos_posts", "cancelar_agendamento_post", "remarcar_agendamento_post"].includes(name)) {
           try {
             const parsed = JSON.parse(result);
             return {
