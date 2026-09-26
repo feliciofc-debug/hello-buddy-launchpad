@@ -4134,7 +4134,7 @@ function tempoRelativoMidia(createdAt: string): string {
 }
 
 async function buscarUltimaMidiaDaConversa(
-  ctx: { userId: string; fromNumber: string; agentState?: AgentConvState },
+  ctx: { userId: string; fromNumber: string },
 ): Promise<{ midia: any | null; erro?: string }> {
   const { data, error } = await sb
     .from("midias_whatsapp")
@@ -4146,23 +4146,9 @@ async function buscarUltimaMidiaDaConversa(
     .limit(1)
     .maybeSingle();
   if (error) return { midia: null, erro: error.message };
-
-  const interaction = ctx.agentState?.last_media_interaction;
-  const interactionAt = interaction?.at ? new Date(interaction.at).getTime() : 0;
-  const createdAt = data?.created_at ? new Date(data.created_at).getTime() : 0;
-  if (!interaction?.media_id || !Number.isFinite(interactionAt) || interactionAt <= createdAt) {
-    return { midia: data ?? null };
-  }
-
-  const { data: reused, error: reusedError } = await sb
-    .from("midias_whatsapp")
-    .select("id, tipo, origem, midia_pai_id, midia_url, contexto_original, contexto_transcricao, legenda_gerada, tags_ia, telefone_origem, created_at")
-    .eq("id", interaction.media_id)
-    .eq("user_id", ctx.userId)
-    .in("tipo", ["foto", "video"])
-    .maybeSingle();
-  if (reusedError) return { midia: null, erro: reusedError.message };
-  return { midia: reused ?? data ?? null };
+  // Regra do produto: sem ID explícito, usa sempre a mídia mais recente desta
+  // conversa. Uma seleção antiga não pode sobrepor uma foto encaminhada depois.
+  return { midia: data ?? null };
 }
 
 // Detecta resposta curta só com o formato: "feed", "story", "reels", "no story", "nos stories" etc.

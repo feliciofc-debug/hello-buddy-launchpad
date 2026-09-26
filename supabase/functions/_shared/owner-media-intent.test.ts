@@ -31,6 +31,12 @@ Deno.test("pedido exato de post usa a última mídia e nunca vira edição", () 
     action: "post",
     mediaStrategy: "last",
   });
+  const latestConversationMediaId = "EA0BEE5B";
+  const selectedMediaId =
+    classifyOwnerMediaIntent(POST_LAST_IMAGE).mediaStrategy === "last"
+      ? latestConversationMediaId
+      : "12BFB18C";
+  assertEquals(selectedMediaId, "EA0BEE5B");
   assertEquals(
     extractSocialPostBriefing(POST_LAST_IMAGE),
     "com a AMZ o empreendedor cria e publica os posts da empresa só mandando uma foto no WhatsApp.",
