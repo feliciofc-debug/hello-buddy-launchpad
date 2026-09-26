@@ -47,6 +47,13 @@ import {
   findLeadNameInConversation,
 } from "../_shared/lead-name.ts";
 import {
+  decideWhatsAppCreativeTool,
+  DEMO_LIMIT_MESSAGE,
+  TENANT_CREATION_BLOCK_MESSAGE,
+  type DemoToolDecision,
+} from "../_shared/whatsapp-demo-policy.ts";
+import { dedupeConsecutiveReplyText } from "../_shared/reply-dedupe.ts";
+import {
   formatScheduledDate,
   formatSocialNetworks,
   parseSaoPauloDateTime,
@@ -1133,8 +1140,11 @@ function blocoFormatoSocial(pedido?: string): string {
 // Padrão IA Marketing: fotorealista, sem texto/letras/marca d'água, iluminação profissional.
 async function toolGerarImagem(
   prompt: string,
-  ctx: { userId: string; fromNumber?: string; incluirLogo?: boolean },
+  ctx: { userId: string; fromNumber?: string; incluirLogo?: boolean; demonstracao?: boolean },
 ): Promise<string> {
+  if (!isOwner({ userId: ctx.userId, fromNumber: ctx.fromNumber || "" }) && !ctx.demonstracao) {
+    return JSON.stringify({ ok: false, erro: "acao_restrita_ao_responsavel" });
+  }
   const clean = (prompt || "").trim();
   if (!clean) return JSON.stringify({ erro: "prompt vazio" });
   try {
@@ -1226,7 +1236,11 @@ ${logoDataUrl ? `- A SEGUNDA IMAGEM ANEXADA É A LOGOMARCA OFICIAL DA EMPRESA. R
       salvo_em_midias: !!midiaId,
       logo_aplicada: !!logoDataUrl,
       logo_solicitada_sem_cadastro: !!ctx.incluirLogo && !logoDataUrl,
-      instrucao: !!ctx.incluirLogo && !logoDataUrl
+      demonstracao: ctx.demonstracao === true,
+      exemplo_legenda_solicitado: ctx.demonstracao === true,
+      instrucao: ctx.demonstracao
+        ? "DEMONSTRAÇÃO: envie a imagem somente nesta conversa e escreva junto um exemplo curto de legenda pronta baseado no pedido. Deixe claro que nada foi publicado. Não ofereça publicar esta mídia."
+        : !!ctx.incluirLogo && !logoDataUrl
         ? "A imagem foi criada e enviada, MAS sem a logo: não há logomarca cadastrada nesta conta. Avise em 1 linha e diga que ele pode cadastrar em Minha Marca (menu do painel) e pedir de novo."
         : (logoDataUrl
           ? "A imagem foi criada COM a logomarca da empresa, enviada ao usuário e salva na biblioteca /midias. Diga em 1-2 linhas o que criou, confirme que a marca foi aplicada e peça pra ele conferir se ficou fiel."
@@ -1250,6 +1264,9 @@ async function toolEditarImagem(
     registrarNaBiblioteca?: boolean;
   },
 ): Promise<string> {
+  if (!isOwner({ userId: ctx.userId, fromNumber: ctx.fromNumber || "" })) {
+    return JSON.stringify({ ok: false, erro: "acao_restrita_ao_responsavel" });
+  }
   const clean = (prompt || "").trim();
   if (!clean) return JSON.stringify({ erro: "prompt vazio" });
 
@@ -7215,6 +7232,7 @@ async function startVideoSetup(
   originalRequest: string,
   explicit?: { tema?: string; estilo?: string | null; duracao?: string | null; cores?: string },
 ): Promise<string> {
+  if (!isOwner(ctx)) return "Esse recurso é exclusivo do responsável da conta.";
   if (!ctx.convId) return "Não consegui identificar esta conversa para guardar as escolhas do vídeo. Tente novamente.";
   const full = compactSpaces(originalRequest);
   const tema = normalizeVideoTopic(explicit?.tema || full);
@@ -7762,7 +7780,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "gerar_imagem",
-      description: "Cria uma imagem ULTRA REALISTA por IA (padrão IA Marketing — fotorealista, iluminação profissional, qualidade editorial, SEM texto/letras) a partir de um prompt descritivo. Use SEMPRE que o usuário pedir 'faz uma imagem', 'gera uma arte', 'cria uma foto de X', 'desenha', 'me manda uma imagem', 'faz um banner/post/mockup'. A imagem é enviada automaticamente no WhatsApp E salva na biblioteca /midias — o usuário pode publicar direto nas redes sociais depois. Responda com legenda curta (1-2 linhas) descrevendo o que criou e avisando que já está pronta pra postar. NUNCA cole a URL na resposta.",
+      description: "Cria imagem ultrarrealista. Dono: uso normal e mídia pronta para publicação. Prospect do tenant AMZ: no máximo UMA demonstração por telefone; envie só na conversa, com exemplo de legenda, e diga que nada foi publicado. Cliente final de qualquer outro tenant: bloqueado pelo código. NUNCA cole URL.",
       parameters: {
         type: "object",
         properties: {
@@ -8242,7 +8260,7 @@ const TOOLS = [
     function: {
 
       name: "criar_carrossel",
-      description: "🎠 Gera um CARROSSEL de Instagram com vários cards separados para APROVAÇÃO antes de publicar. Use também em pedidos detalhados que descrevem card por card, slide por slide, roteiro de páginas ou sequência de artes; NUNCA transforme esses pedidos em uma imagem única ou grade. FLUXO: 1) na primeira chamada passe o tema/briefing completo e deixe cor vazia para mostrar o seletor; 2) quando o dono escolher a cor, chame novamente com tema + cor; 3) o sistema renderiza a prévia, mostra os cards e cria confirmação A/B/C. Esta tool NUNCA publica automaticamente. Se o dono mencionar Facebook, informe que este carrossel está disponível apenas no Instagram. Restrito ao responsável da conta.",
+      description: "🎠 Gera um CARROSSEL com vários cards separados. Para o dono, cria prévia para aprovação antes de publicar. Para prospect do tenant AMZ, permite UMA demonstração por telefone, mostra os cards e uma legenda, mas NUNCA cria aprovação nem publica. Em outros tenants é restrito ao responsável. FLUXO: 1) primeira chamada sem cor mostra seletor; 2) depois chame com tema + cor.",
       parameters: {
         type: "object",
         properties: {
@@ -8540,7 +8558,7 @@ async function callEdge(fn: string, payload: any, timeoutMs = 120000): Promise<a
   return json ?? {};
 }
 
-async function sendCarrosselColorPicker(userId: string, to: string, tema: string): Promise<void> {
+async function sendCarrosselColorPicker(userId: string, to: string, tema: string, demonstracao = false): Promise<void> {
   const response = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-send-message`, {
     method: "POST",
     headers: {
@@ -8554,7 +8572,7 @@ async function sendCarrosselColorPicker(userId: string, to: string, tema: string
       interactive_list: {
         header: "🎨 Cor do carrossel",
         body: `Beleza! Vou montar o carrossel sobre *${tema.slice(0, 120)}*.\n\nEscolha a cor de destaque — é só 1 toque:`,
-        footer: "Depois você confere antes de publicar",
+        footer: demonstracao ? "Demonstração: nada será publicado" : "Depois você confere antes de publicar",
         button: "Escolher cor",
         section_title: "Cores",
         rows: carouselColorRows(),
@@ -8746,10 +8764,13 @@ async function prepararPreviewCarrosselExistente(
 
 async function toolCriarCarrossel(
   args: { tema?: string; cor?: string; legenda?: string; ajuste?: string; slides?: any[]; facebook_requested?: boolean },
-  ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
+  ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState; demonstracao?: boolean },
 ): Promise<string> {
   try {
-    if (!isOwner(ctx)) {
+    const demoProspect = ctx.demonstracao === true
+      && ctx.userId === ADMIN_AMZ_USER_ID
+      && !isOwner(ctx);
+    if (!isOwner(ctx) && !demoProspect) {
       return JSON.stringify({
         erro: "acao_restrita_ao_responsavel",
         mensagem: "Criar e publicar carrossel é restrito ao responsável da conta.",
@@ -8777,7 +8798,7 @@ async function toolCriarCarrossel(
       }
       current.pending_carousel = pending;
       ctx.agentState = current;
-      await sendCarrosselColorPicker(ctx.userId, ctx.fromNumber, tema);
+      await sendCarrosselColorPicker(ctx.userId, ctx.fromNumber, tema, demoProspect);
       return JSON.stringify({
         status: "aguardando_cor",
         tema,
@@ -8811,14 +8832,14 @@ async function toolCriarCarrossel(
       .eq("user_id", ctx.userId)
       .eq("is_active", true)
       .maybeSingle();
-    if (!conn?.ig_account_id) {
+    if (!conn?.ig_account_id && !demoProspect) {
       return JSON.stringify({
         erro: "instagram_nao_conectado",
         mensagem: "Seu Instagram não está conectado. Vá em Configurações → Redes Sociais, conecte a conta e me chama de novo.",
       });
     }
-    const businessName = (conn.page_name || "").trim() || null;
-    const profileHandle = conn.ig_username ? `@${String(conn.ig_username).replace(/^@/, "")}` : null;
+    const businessName = (conn?.page_name || "").trim() || null;
+    const profileHandle = conn?.ig_username ? `@${String(conn.ig_username).replace(/^@/, "")}` : null;
 
     // 4) CONTEÚDO dos slides — MESMO gerador E MESMA metodologia do app
     //    (buildCarouselPrompt espelha src/components/CarouselGenerator.tsx:
@@ -8867,6 +8888,25 @@ async function toolCriarCarrossel(
       await enviarPreviewCarrossel(ctx, imageUrls);
     } catch (e) {
       return JSON.stringify({ erro: "preview_carrossel_falhou", mensagem: `Gerei os cards, mas não consegui mostrá-los para aprovação: ${(e as Error).message}. Não publiquei nada.` });
+    }
+
+    if (demoProspect) {
+      if (ctx.convId) {
+        const conversation = { id: ctx.convId, userId: ctx.userId, contactNumber: ctx.fromNumber };
+        const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+        await saveAgentState(sb, conversation, { pending_carousel: null }, current);
+        current.pending_carousel = null;
+        ctx.agentState = current;
+      }
+      return JSON.stringify({
+        ok: true,
+        status: "demonstracao_carrossel",
+        demonstracao: true,
+        cards: imageUrls.length,
+        media_id: mediaId,
+        exemplo_legenda: caption,
+        mensagem: `Pronto — esta é a demonstração do carrossel. Nada foi publicado.\n\nExemplo de legenda: ${caption}`,
+      });
     }
 
     if (ctx.convId) {
@@ -9161,6 +9201,9 @@ function formatCarrosselToolResult(raw: string): string {
       : "É só escolher a cor aí em cima 👆";
   }
   if (d?.status === "aguardando_escolha_variante") return formatSocialPostToolResult(raw);
+  if (d?.status === "demonstracao_carrossel") {
+    return String(d.mensagem || "Carrossel de demonstração criado. Nada foi publicado.");
+  }
   if (d?.status === "publicado") {
     const base = `✅ Carrossel de *${d.cards} cards* na cor *${d.cor}* publicado no seu Instagram!<<SPLIT>>Confere aqui: ${d.link_perfil}`;
     return d?.aviso_sem_contexto
@@ -9175,8 +9218,49 @@ function formatCarrosselToolResult(raw: string): string {
   return "Carrossel processado.";
 }
 
+async function countProspectDemoMedia(
+  userId: string,
+  fromNumber: string,
+  origin: "ia_whatsapp" | "carrossel_whatsapp",
+): Promise<number> {
+  const { count, error } = await sb.from("midias_whatsapp")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("telefone_origem", fromNumber)
+    .eq("origem", origin);
+  if (error) throw new Error(`demo_count_failed: ${error.message}`);
+  return count ?? 0;
+}
 
-
+async function resolveCreativeToolDecision(
+  name: string,
+  ctx: { userId: string; fromNumber: string },
+): Promise<DemoToolDecision> {
+  const owner = isOwner(ctx);
+  const isAmzTenant = ctx.userId === ADMIN_AMZ_USER_ID;
+  try {
+    const generatedImages = !owner && isAmzTenant && name === "gerar_imagem"
+      ? await countProspectDemoMedia(ctx.userId, ctx.fromNumber, "ia_whatsapp")
+      : 0;
+    const generatedCarousels = !owner && isAmzTenant && name === "criar_carrossel"
+      ? await countProspectDemoMedia(ctx.userId, ctx.fromNumber, "carrossel_whatsapp")
+      : 0;
+    return decideWhatsAppCreativeTool({
+      toolName: name,
+      isOwner: owner,
+      isAmzTenant,
+      generatedImages,
+      generatedCarousels,
+    });
+  } catch (error) {
+    console.error("[demo-policy][count_failed]", error);
+    return {
+      allowed: false,
+      reason: isAmzTenant ? "demo_restricted" : "tenant_restricted",
+      message: isAmzTenant ? DEMO_LIMIT_MESSAGE : TENANT_CREATION_BLOCK_MESSAGE,
+    };
+  }
+}
 
 async function runTool(
 
@@ -9186,6 +9270,18 @@ async function runTool(
   args: any,
   ctx: { userId: string; fromNumber: string; media?: MediaExtract[]; convId?: string; agentState?: AgentConvState },
 ): Promise<{ result: string; imageUrl?: string }> {
+  const creativeDecision = await resolveCreativeToolDecision(name, ctx);
+  if (!creativeDecision.allowed) {
+    return {
+      result: JSON.stringify({
+        ok: false,
+        status: "demonstracao_bloqueada",
+        erro: creativeDecision.reason,
+        mensagem: creativeDecision.message,
+      }),
+    };
+  }
+  const demonstracao = creativeDecision.mode === "demo";
   const hasFreshLibraryMedia = (ctx.media ?? []).some((m) => m.kind === "image" || m.kind === "video");
   if (hasFreshLibraryMedia && name !== "salvar_midia_biblioteca" && name !== "encaminhar_recado_ao_dono") {
     console.warn(`[pietro][media_guard] bloqueando tool ${name}; mídia nova deve ir para /midias`);
@@ -9197,7 +9293,12 @@ async function runTool(
   if (name === "pesquisar_web") return { result: await toolPesquisarWeb(args?.query ?? "", args?.recencia) };
   if (name === "buscar_lugares_proximos") return { result: await toolBuscarLugaresProximos(ctx, args?.query ?? "", args?.radius_meters) };
   if (name === "gerar_imagem") {
-    const r = await toolGerarImagem(args?.prompt ?? "", { userId: ctx.userId, fromNumber: ctx.fromNumber, incluirLogo: args?.incluir_logo === true });
+    const r = await toolGerarImagem(args?.prompt ?? "", {
+      userId: ctx.userId,
+      fromNumber: ctx.fromNumber,
+      incluirLogo: args?.incluir_logo === true,
+      demonstracao,
+    });
     let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}
     return { result: r, imageUrl: parsed?.image_url };
   }
@@ -9279,7 +9380,9 @@ async function runTool(
   if (name === "registrar_logo_cliente") return { result: await toolRegistrarLogoCliente(args ?? {}, ctx) };
   if (name === "salvar_midia_biblioteca") return { result: await toolSalvarMidiaBiblioteca(args ?? {}, ctx) };
   if (name === "postar_midia_biblioteca") return { result: await toolPostarMidiaBiblioteca(args ?? {}, ctx) };
-  if (name === "criar_carrossel") return { result: await toolCriarCarrossel(args ?? {}, ctx) };
+  if (name === "criar_carrossel") {
+    return { result: await toolCriarCarrossel(args ?? {}, { ...ctx, demonstracao }) };
+  }
   if (name === "publicar_linkedin") return { result: await toolPublicarLinkedin(args ?? {}, ctx) };
   if (name === "criar_anuncio") {
     const r = await toolCriarAnuncio(args ?? {}, ctx);
@@ -9339,7 +9442,8 @@ async function callGemini(
 
   if (!hasMedia && typeof userContent === "string") {
     const remetenteEhDono = isOwner(toolCtx);
-    const pendingCarousel = remetenteEhDono ? toolCtx.agentState?.pending_carousel : null;
+    const prospectAmz = !remetenteEhDono && toolCtx.userId === ADMIN_AMZ_USER_ID;
+    const pendingCarousel = remetenteEhDono || prospectAmz ? toolCtx.agentState?.pending_carousel : null;
     const pendingVideoSetup = remetenteEhDono ? toolCtx.agentState?.pending_video_setup : null;
     const pendingClientLogo = remetenteEhDono ? toolCtx.agentState?.pending_client_logo : null;
     const latestPendingSocialToken = pendingCarousel?.stage === "awaiting_confirmation" && pendingCarousel.token
@@ -9561,7 +9665,11 @@ async function callGemini(
     // transformar um pedido explícito de vídeo em ficha técnica.
     if (isVideoMotionRequest(userContent)) {
       if (!remetenteEhDono) {
-        return { text: "A criação de vídeo é restrita ao responsável da conta. Posso encaminhar seu pedido para ele, se quiser." };
+        return {
+          text: toolCtx.userId === ADMIN_AMZ_USER_ID
+            ? DEMO_LIMIT_MESSAGE
+            : TENANT_CREATION_BLOCK_MESSAGE,
+        };
       }
       return { text: await startVideoSetup(toolCtx, userContent) };
     }
@@ -9570,6 +9678,13 @@ async function callGemini(
     // Diferentemente da edição comum, este fluxo exige DUAS referências e
     // nunca pode degradar silenciosamente para ficha técnica de uma só foto.
     if (isImageCompositionIntent(userContent)) {
+      if (!remetenteEhDono) {
+        return {
+          text: toolCtx.userId === ADMIN_AMZ_USER_ID
+            ? DEMO_LIMIT_MESSAGE
+            : TENANT_CREATION_BLOCK_MESSAGE,
+        };
+      }
       try {
         const pendingComposition = toolCtx.agentState?.pending_image_composition;
         const pendingAge = pendingComposition?.at
@@ -9752,7 +9867,11 @@ async function callGemini(
       : null;
     if (postConfirmation) {
       if (!remetenteEhDono) {
-        return { text: "Essa publicação só pode ser autorizada pelo responsável da conta. Posso encaminhar seu pedido para ele, se quiser." };
+        return {
+          text: toolCtx.userId === ADMIN_AMZ_USER_ID
+            ? DEMO_LIMIT_MESSAGE
+            : "Essa publicação só pode ser autorizada pelo responsável da conta.",
+        };
       }
       console.log("[pietro][forced_social_confirm]", postConfirmation);
       const confirmResult = await toolConfirmarPostagemRedes(postConfirmation, toolCtx);
@@ -9824,8 +9943,8 @@ async function callGemini(
 
     // 1) pedido explícito ou detalhado de carrossel
     if (isCarrosselRequest(userContent)) {
-      if (!remetenteEhDono) {
-        return { text: "Criar e publicar carrossel é restrito ao responsável da conta. Posso encaminhar seu pedido pra ele, se quiser." };
+      if (!remetenteEhDono && toolCtx.userId !== ADMIN_AMZ_USER_ID) {
+        return { text: "Esse recurso é exclusivo do responsável da conta. Posso continuar ajudando com suas dúvidas por aqui." };
       }
       const tema = extractCarrosselTema(userContent);
       const corPedida = detectExplicitCarouselColor(userContent);
@@ -9833,7 +9952,7 @@ async function callGemini(
       if (tema.length < 3) {
         return { text: "Fechado, carrossel! Sobre qual assunto você quer? (ex: “vantagens da AMZ Ofertas”)" };
       }
-      const r = await toolCriarCarrossel({
+      const { result: r } = await runTool("criar_carrossel", {
         tema,
         cor: corPedida,
         facebook_requested: requestedFacebook(userContent),
@@ -9843,9 +9962,13 @@ async function callGemini(
 
     // 2) resposta curta só com a cor, retomando o carrossel pendente
     const corResposta = pendingCarousel?.stage === "awaiting_color" ? detectStandaloneCarrosselColor(userContent) : null;
-    if (remetenteEhDono && pendingCarousel?.stage === "awaiting_color" && corResposta) {
+    if (
+      (remetenteEhDono || toolCtx.userId === ADMIN_AMZ_USER_ID)
+      && pendingCarousel?.stage === "awaiting_color"
+      && corResposta
+    ) {
       console.log("[pietro][carrossel_cor_escolhida]", { tema: pendingCarousel.tema });
-      const r = await toolCriarCarrossel({
+      const { result: r } = await runTool("criar_carrossel", {
         tema: pendingCarousel.tema,
         cor: corResposta,
         legenda: pendingCarousel.caption,
@@ -9858,7 +9981,11 @@ async function callGemini(
 
     if (socialPost) {
       if (!remetenteEhDono) {
-        return { text: "Esse tipo de publicação só o responsável da conta pode autorizar. Posso encaminhar seu pedido para ele, se quiser." };
+        return {
+          text: toolCtx.userId === ADMIN_AMZ_USER_ID
+            ? DEMO_LIMIT_MESSAGE
+            : "Esse tipo de publicação só o responsável da conta pode autorizar.",
+        };
       }
       console.log("[pietro][forced_social_post]", socialPost);
       const midiaId = extrairIdentificadorMidia(userContent);
@@ -10021,6 +10148,24 @@ async function callGemini(
         console.log(`[pietro][tool] ${name}`, args);
         const { result, imageUrl } = await runTool(name, args, toolCtx);
         if (imageUrl) pendingImageUrl = imageUrl;
+        try {
+          const policyResult = JSON.parse(result);
+          if (policyResult?.status === "demonstracao_bloqueada") {
+            return {
+              text: String(policyResult.mensagem || DEMO_LIMIT_MESSAGE),
+              imageUrl: pendingImageUrl,
+              forwardProof,
+              forwardAttempted,
+            };
+          }
+          if (policyResult?.status === "demonstracao_carrossel") {
+            return {
+              text: formatCarrosselToolResult(result),
+              forwardProof,
+              forwardAttempted,
+            };
+          }
+        } catch { /* resultado comum da ferramenta */ }
         if (name === "registrar_logo_cliente") {
           try {
             const parsed = JSON.parse(result);
@@ -10064,7 +10209,9 @@ async function callGemini(
         if (name === "gerar_imagem" || name === "editar_imagem" || name === "criar_anuncio" || name === "salvar_midia_biblioteca") {
           try {
             const parsed = JSON.parse(result);
-            const ids: string[] = Array.isArray(parsed?.midia_ids)
+            const ids: string[] = parsed?.demonstracao === true
+              ? []
+              : Array.isArray(parsed?.midia_ids)
               ? parsed.midia_ids
               : parsed?.midia_id ? [parsed.midia_id] : [];
             const tipos: string[] = Array.isArray(parsed?.tipos) ? parsed.tipos : [];
@@ -10243,7 +10390,8 @@ async function sendWhatsApp(
   interactiveButtons?: WhatsAppInteractiveButtons,
   delivery?: { beforeChunk?: (chunk: string) => Promise<void> },
 ): Promise<string | null> {
-  const chunks = splitWhatsAppText(message);
+  const dedupedMessage = dedupeConsecutiveReplyText(message);
+  const chunks = splitWhatsAppText(dedupedMessage);
   if (chunks.length > 1) {
     console.warn(`[processor][meta_text_split] chars=${message.length} chunks=${chunks.length}`);
   }
@@ -11601,7 +11749,7 @@ async function processOne(queueId: string) {
         ...(latestSaved
           ? { last_media_interaction: { media_id: latestSaved.id, at: new Date().toISOString() } }
           : {}),
-        ...(savedPhotos.length > 0
+        ...(fromIsOwner && savedPhotos.length > 0
           ? {
             pending_image_composition: {
               media_ids: pendingMediaIds,
@@ -11612,7 +11760,7 @@ async function processOne(queueId: string) {
       };
       await saveAgentState(sb, stateConversation, freshStatePatch, freshAgentState);
       Object.assign(freshAgentState, freshStatePatch);
-      if (isImageCompositionIntent(contexto) && savedPhotos.length > 0) {
+      if (fromIsOwner && isImageCompositionIntent(contexto) && savedPhotos.length > 0) {
         let compositionReply = "";
         let compositionImageUrl: string | undefined;
         let compositionMediaId: string | undefined;
@@ -12881,6 +13029,12 @@ Regras:
       .from("ai_messages_quota")
       .update({ used_count: quota.used_count + 1 })
       .eq("user_id", userId);
+
+    const dedupedReply = dedupeConsecutiveReplyText(reply);
+    if (dedupedReply !== reply) {
+      console.warn(`[processor][reply_deduplicated] before=${reply.length} after=${dedupedReply.length}`);
+      reply = dedupedReply;
+    }
 
     // Para leads, a trava de transporte limita cada parte a 700 caracteres e
     // no máximo 3 mensagens. Para o dono, preserva prévias/listas/resultados.
