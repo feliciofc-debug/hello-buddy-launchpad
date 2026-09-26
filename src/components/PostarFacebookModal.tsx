@@ -255,6 +255,7 @@ export function PostarFacebookModal({
             },
           });
           if (pubError) throw pubError;
+          if (pubData?.success === false) throw new Error(pubData.error || "Erro ao publicar carrossel no Facebook");
           externalPostId = pubData?.post_id || pubData?.id || null;
           toast.success(t('publish.carousel_published_fb', { count: imagesToPublish.length }));
         } else {
@@ -267,6 +268,7 @@ export function PostarFacebookModal({
             },
           });
           if (pubError) throw pubError;
+          if (pubData?.success === false) throw new Error(pubData.error || "Erro ao publicar no Facebook");
           const postId = pubData?.post_id || pubData?.id || "OK";
           externalPostId = postId === "OK" ? null : postId;
           toast.success(t('publish.published_fb', { id: postId }));

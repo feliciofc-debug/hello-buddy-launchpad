@@ -13,7 +13,7 @@ export async function createSocialPostQueueEntry(
       ...payload,
       // O executor só consome "pendente". Publicação direta nasce protegida
       // contra republicação, mesmo se o navegador fechar durante a chamada.
-      status: publishNow ? "publicando" : "pendente",
+      status: publishNow ? "processando" : "pendente",
     })
     .select("id")
     .single();
