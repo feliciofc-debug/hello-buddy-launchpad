@@ -82,6 +82,7 @@ import {
 import {
   parseTikTokDisclosure,
   privacyChoiceText,
+  tiktokInteractiveId,
   tiktokInteractiveListFromToolResult,
 } from "../_shared/tiktok-whatsapp-consent.ts";
 import {
@@ -96,6 +97,13 @@ import {
   selectSocialVariantScripts,
   socialInteractiveButtonsFromResult,
 } from "../_shared/social-approval-flow.ts";
+import {
+  canUseAmbiguousPendingReply,
+  classifyExplicitPendingPostCommand,
+  isPendingInteractionRecent,
+  PENDING_LOOKBACK_MS,
+  requiresOldPendingPublishConfirmation,
+} from "../_shared/social-pending-window.ts";
 import {
   catalogImageUrl,
   environmentLikelihood,
@@ -3537,7 +3545,7 @@ async function gerarScriptRedesSociais(
 
 // Cache em memória + persistência no banco para posts pendentes.
 // Edge Functions podem trocar de instância entre o preview e a confirmação; só Map em memória perde o token.
-const SOCIAL_CONFIRMATION_TTL_MS = 24 * 60 * 60 * 1000;
+const SOCIAL_CONFIRMATION_TTL_MS = PENDING_LOOKBACK_MS;
 type PostVariantes = { A: string; B: string; C: string };
 type PendingSocialPost = {
   produto: any;
@@ -3549,6 +3557,7 @@ type PendingSocialPost = {
   userId: string;
   requesterPhone?: string;
   createdAt: number;
+  lastInteractionAt?: number;
   formato?: "feed" | "story" | "reels";
   midiaTipo?: "foto" | "video" | "carrossel";
   queueRows?: Array<{ id: string; platform: string }>;
@@ -3730,7 +3739,7 @@ async function loadCarouselImageUrls(userId: string, parentId: string): Promise<
 async function loadPendingSocialPost(token: string, userId: string): Promise<PendingSocialPost | null> {
   const { data, error } = await sb
     .from("social_posts_queue")
-    .select("id, user_id, produto_id, produto_source, platform, post_text, image_url, image_urls, video_url, link_url, status, error_message, instagram_creation_id, instagram_container_status, approval_token, solicitante_telefone, created_at")
+    .select("id, user_id, produto_id, produto_source, platform, post_text, image_url, image_urls, video_url, link_url, status, error_message, instagram_creation_id, instagram_container_status, approval_token, solicitante_telefone, created_at, updated_at")
     .eq("user_id", userId)
     .eq("status", "aguardando_confirmacao")
     .like("error_message", `jarvis_token:${token}%`)
@@ -3773,6 +3782,10 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
     userId,
     requesterPhone: (rows[0] as any).solicitante_telefone || undefined,
     createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
+    lastInteractionAt: Math.max(
+      Number.isFinite(createdAt) ? createdAt : Date.now(),
+      ...(rows as any[]).map((row) => new Date(row.updated_at || row.created_at).getTime()).filter(Number.isFinite),
+    ),
     formato: formatoFromPendingMarker(marker),
     midiaTipo: midiaTipoReidratado,
     queueRows: (rows as any[]).map((r) => ({ id: r.id, platform: r.platform })),
@@ -4598,6 +4611,19 @@ function interactiveButtonsFromSocialResult(raw: string): WhatsAppInteractiveBut
   return socialInteractiveButtonsFromResult(raw);
 }
 
+function oldPendingPublishConfirmationButtons(
+  token: string,
+  description: string,
+): WhatsAppInteractiveButtons {
+  return {
+    header: "Confirmar publicação",
+    body: `Vou usar ${description}. Como essa aprovação não é recente, confirme antes de publicar.`,
+    buttons: [
+      { id: `social_publish_confirm:${token}`, title: "Confirmar agora" },
+    ],
+  };
+}
+
 function variantSelectionRequiredResult(
   token: string,
   pending: PendingSocialPost,
@@ -4694,6 +4720,7 @@ type LatestPendingSocial = {
   token: string;
   count: number;
   description: string;
+  isRecent: boolean;
 };
 
 function describePendingSocialPost(marker: string | null | undefined, createdAt: string): string {
@@ -4726,6 +4753,18 @@ function describePendingSocialPost(marker: string | null | undefined, createdAt:
       month: "2-digit",
     }).format(created)} às ${time}`;
   return `o ${mediaLabel} de ${product} ${when}`;
+}
+
+function describeLoadedPendingSocialPost(pending: PendingSocialPost): string {
+  return describePendingSocialPost(
+    pendingPostMarker(
+      "00000000",
+      pending.produto?.nome,
+      pending.formato || "feed",
+      pending.midiaTipo || pending.produto?.midia_tipo || "foto",
+    ),
+    new Date(pending.createdAt).toISOString(),
+  );
 }
 
 async function findLatestPendingSocialToken(
@@ -4762,10 +4801,12 @@ async function findLatestPendingSocialToken(
     token: latest[0],
     count: grouped.size,
     description: describePendingSocialPost(latest[1].error_message, latest[1].created_at),
+    isRecent: isPendingInteractionRecent(latest[1].created_at, latest[1].updated_at),
   };
 }
 
 async function updatePendingSocialPostMarker(token: string, pending: PendingSocialPost): Promise<void> {
+  const interactionAt = new Date();
   const marker = pendingPostMarker(token, pending.produto?.nome, pending.formato || "feed", pending.midiaTipo || (pending.produto as any)?.midia_tipo || "foto", {
     variantes: pending.variantes,
     variantSelecionada: pending.variantSelecionada,
@@ -4786,17 +4827,18 @@ async function updatePendingSocialPostMarker(token: string, pending: PendingSoci
   const rowIds = pending.queueRows?.map((r) => r.id).filter(Boolean) ?? [];
   if (rowIds.length > 0) {
     const { error } = await sb.from("social_posts_queue")
-      .update({ error_message: marker, updated_at: new Date().toISOString() })
+      .update({ error_message: marker, updated_at: interactionAt.toISOString() })
       .in("id", rowIds);
     if (error) throw new Error(`pending_marker_update_failed: ${error.message}`);
   } else {
     const { error } = await sb.from("social_posts_queue")
-      .update({ error_message: marker, updated_at: new Date().toISOString() })
+      .update({ error_message: marker, updated_at: interactionAt.toISOString() })
       .eq("user_id", pending.userId)
       .eq("status", "aguardando_confirmacao")
       .like("error_message", `jarvis_token:${token}%`);
     if (error) throw new Error(`pending_marker_update_failed: ${error.message}`);
   }
+  pending.lastInteractionAt = interactionAt.getTime();
 }
 
 // LinkedIn (perfil pessoal): tom profissional e link no 1º comentário.
@@ -5268,6 +5310,7 @@ async function toolAgendarPostPendente(
   ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
 ): Promise<string> {
   if (!isOwner(ctx)) return JSON.stringify({ ok: false, erro: "acao_restrita_ao_responsavel" });
+  pendingCleanup();
   const token = String(args?.token || "").trim().toLowerCase();
   if (!/^[a-f0-9]{8}$/.test(token)) return JSON.stringify({ ok: false, erro: "token_invalido", mensagem: "Não encontrei o criativo que deve ser agendado." });
   const pending = PENDING_POSTS.get(token) ?? await loadPendingSocialPost(token, ctx.userId);
@@ -9819,6 +9862,8 @@ async function callGemini(
     ...history,
     { role: "user", content: userContent },
   ];
+  let blockModelPendingTextActions = false;
+  let modelPendingActionNotice = "";
 
   if (!hasMedia && typeof userContent === "string") {
     const remetenteEhDono = isOwner(toolCtx);
@@ -9826,25 +9871,35 @@ async function callGemini(
     const pendingCarousel = remetenteEhDono || prospectAmz ? toolCtx.agentState?.pending_carousel : null;
     const pendingVideoSetup = remetenteEhDono ? toolCtx.agentState?.pending_video_setup : null;
     const pendingClientLogo = remetenteEhDono ? toolCtx.agentState?.pending_client_logo : null;
-    const latestPendingSocial = pendingCarousel?.stage === "awaiting_confirmation" && pendingCarousel.token
-      ? {
-        token: pendingCarousel.token,
-        count: 1,
-        description: "o carrossel mais recente",
-      }
-      : remetenteEhDono
-        ? await findLatestPendingSocialToken(toolCtx.userId, toolCtx.fromNumber)
-        : null;
+    const latestPendingSocial = remetenteEhDono
+      ? await findLatestPendingSocialToken(toolCtx.userId, toolCtx.fromNumber)
+      : null;
     const latestPendingSocialToken = latestPendingSocial?.token ?? null;
+    const recentPendingSocialToken = latestPendingSocial
+      && canUseAmbiguousPendingReply(latestPendingSocial.isRecent, hasMedia)
+      ? latestPendingSocial.token
+      : null;
     const latestPendingNotice = latestPendingSocial && latestPendingSocial.count > 1
       ? `Há mais de um post aguardando aprovação. Vou usar ${latestPendingSocial.description}, que é o mais recente.\n\n`
+      : "";
+    const explicitPendingNotice = latestPendingSocial
+      ? `Vou usar ${latestPendingSocial.description}.\n\n`
       : "";
     const pendingVideoDraft = remetenteEhDono ? await buscarRascunhoVideo(toolCtx) : null;
     const normalizedInput = normalizePt(userContent);
     const socialInteractiveId = userContent.match(/<<INTERACTIVE_ID:(social_[^>]+)>>/i)?.[1] || "";
-    const socialActionInteractive = socialInteractiveId.match(/^social_(publish|schedule):([a-f0-9]{8})$/i);
+    const socialActionInteractive = socialInteractiveId.match(/^social_(publish|publish_confirm|schedule):([a-f0-9]{8})$/i);
     const socialVariantInteractive = socialInteractiveId.match(/^social_variant:([ABC]):([a-f0-9]{8})$/i);
     const ownerMediaIntent = classifyOwnerMediaIntent(userContent);
+    const explicitPendingCommand = classifyExplicitPendingPostCommand(userContent, hasMedia);
+    const anyPendingInteractive = !!socialInteractiveId || !!tiktokInteractiveId(userContent);
+    modelPendingActionNotice = explicitPendingCommand && latestPendingSocial
+      ? `Vou usar ${latestPendingSocial.description}.\n\n`
+      : "";
+    blockModelPendingTextActions = !!latestPendingSocial
+      && !latestPendingSocial.isRecent
+      && !explicitPendingCommand
+      && !anyPendingInteractive;
 
     if (remetenteEhDono && /\bmeus agendamentos\b/.test(normalizedInput)) {
       const result = await toolListarAgendamentosPosts(toolCtx);
@@ -9865,30 +9920,51 @@ async function callGemini(
         return { text: String(parsed?.mensagem || "Não consegui cancelar o agendamento.") };
       }
     }
-    const asksToSchedulePendingPost = /\b(?:agendar|agenda|agende)\b/.test(normalizedInput)
-      && !/\b(?:meus agendamentos|listar agendamentos|cancelar agendamento|remarcar|remarca|reuniao|lembrete|consulta|compromisso)\b/.test(normalizedInput);
-    const asksToPublishPendingPost = /\b(?:publicar agora|poste agora|postar agora|pode postar|pode publicar)\b/.test(normalizedInput);
     if (
       remetenteEhDono
       && !latestPendingSocialToken
-      && (asksToSchedulePendingPost || asksToPublishPendingPost)
+      && explicitPendingCommand
     ) {
       return {
         text: "Não encontrei um post aguardando aprovação. Quer que eu prepare de novo a partir da última mídia?",
       };
     }
     if (remetenteEhDono && socialVariantInteractive) {
+      const token = socialVariantInteractive[2].toLowerCase();
+      const pending = await loadPendingSocialPost(token, toolCtx.userId);
       const result = await toolEscolherVariantePost({
-        token: socialVariantInteractive[2],
+        token,
         opcao: socialVariantInteractive[1],
       }, toolCtx);
       return {
+        text: `${pending ? `Vou usar ${describeLoadedPendingSocialPost(pending)}.\n\n` : ""}${formatSocialPostToolResult(result)}`,
+        interactiveButtons: interactiveButtonsFromSocialResult(result),
+      };
+    }
+    if (remetenteEhDono && socialActionInteractive?.[1]?.toLowerCase() === "publish_confirm") {
+      const result = await toolConfirmarPostagemRedes({ token: socialActionInteractive[2] }, toolCtx);
+      return {
         text: formatSocialPostToolResult(result),
+        interactiveList: interactiveListFromSocialResult(result),
         interactiveButtons: interactiveButtonsFromSocialResult(result),
       };
     }
     if (remetenteEhDono && socialActionInteractive?.[1]?.toLowerCase() === "publish") {
-      const result = await toolConfirmarPostagemRedes({ token: socialActionInteractive[2] }, toolCtx);
+      const token = socialActionInteractive[2].toLowerCase();
+      const pending = await loadPendingSocialPost(token, toolCtx.userId);
+      if (
+        pending
+        && requiresOldPendingPublishConfirmation(
+          isPendingInteractionRecent(pending.createdAt, pending.lastInteractionAt),
+        )
+      ) {
+        const description = describeLoadedPendingSocialPost(pending);
+        return {
+          text: `Vou usar ${description}. Como essa aprovação tem mais de 30 minutos, confirme no botão antes de publicar.`,
+          interactiveButtons: oldPendingPublishConfirmationButtons(token, description),
+        };
+      }
+      const result = await toolConfirmarPostagemRedes({ token }, toolCtx);
       return {
         text: formatSocialPostToolResult(result),
         interactiveList: interactiveListFromSocialResult(result),
@@ -9897,7 +9973,7 @@ async function callGemini(
     }
     if (remetenteEhDono && socialActionInteractive?.[1]?.toLowerCase() === "schedule") {
       const token = socialActionInteractive[2].toLowerCase();
-      const pending = PENDING_POSTS.get(token) ?? await loadPendingSocialPost(token, toolCtx.userId);
+      const pending = await loadPendingSocialPost(token, toolCtx.userId);
       if (!pending || !canRunSocialPostAction(pending.variantSelecionada)) {
         const result = pending
           ? variantSelectionRequiredResult(token, pending)
@@ -9907,12 +9983,15 @@ async function callGemini(
           interactiveButtons: interactiveButtonsFromSocialResult(result),
         };
       }
-      return { text: "Para quando? Informe o dia/mês e a hora. Ex.: 30/09 às 10h" };
+      return {
+        text: `Vou usar ${describeLoadedPendingSocialPost(pending)}. Para quando? Informe o dia/mês e a hora. Ex.: 30/09 às 10h`,
+      };
     }
     if (
       remetenteEhDono
       && latestPendingSocialToken
-      && /^(agendar|agenda|quero agendar|prefiro agendar)$/.test(
+      && explicitPendingCommand === "schedule"
+      && /^(agendar|agenda|agende)$/.test(
         normalizedInput.replace(/<<interactive id:[^>]+>>/g, "").trim(),
       )
     ) {
@@ -9921,11 +10000,42 @@ async function callGemini(
       if (pending && !canRunSocialPostAction(pending.variantSelecionada)) {
         const result = variantSelectionRequiredResult(latestPendingSocialToken, pending);
         return {
-          text: `${latestPendingNotice}${formatSocialPostToolResult(result)}`,
+          text: `${explicitPendingNotice}${formatSocialPostToolResult(result)}`,
           interactiveButtons: interactiveButtonsFromSocialResult(result),
         };
       }
-      return { text: `${latestPendingNotice}Para quando? Informe o dia/mês e a hora. Ex.: 30/09 às 10h` };
+      return { text: `${explicitPendingNotice}Para quando? Informe o dia/mês e a hora. Ex.: 30/09 às 10h` };
+    }
+    if (remetenteEhDono && latestPendingSocialToken && explicitPendingCommand === "schedule") {
+      const rawSchedule = userContent
+        .replace(/<<INTERACTIVE_ID:[^>]+>>/gi, "")
+        .replace(/^(?:agendar|agenda|agende)\s+(?:para\s+)?/i, "")
+        .trim();
+      if (parseSaoPauloDateTime(rawSchedule)) {
+        const result = await toolAgendarPostPendente({
+          token: latestPendingSocialToken,
+          data_hora_sp: rawSchedule,
+        }, toolCtx);
+        return {
+          text: `${explicitPendingNotice}${formatSocialPostToolResult(result)}`,
+          interactiveList: interactiveListFromSocialResult(result),
+          interactiveButtons: interactiveButtonsFromSocialResult(result),
+        };
+      }
+    }
+    if (
+      remetenteEhDono
+      && latestPendingSocialToken
+      && explicitPendingCommand === "publish"
+      && requiresOldPendingPublishConfirmation(!!latestPendingSocial?.isRecent)
+    ) {
+      return {
+        text: `${explicitPendingNotice}Como essa aprovação tem mais de 30 minutos, confirme no botão antes de publicar.`,
+        interactiveButtons: oldPendingPublishConfirmationButtons(
+          latestPendingSocialToken,
+          latestPendingSocial!.description,
+        ),
+      };
     }
 
     // Precedência de mídia do dono: gerar > postar > editar. Uma geração
@@ -10143,11 +10253,15 @@ async function callGemini(
       }
     }
 
-    if (latestPendingSocialToken) {
-      const privacyResult = await applyPendingTikTokPrivacyChoice(latestPendingSocialToken, userContent, toolCtx);
+    const tiktokChoiceInteractive = !!tiktokInteractiveId(userContent);
+    const pendingTokenForTikTokChoice = tiktokChoiceInteractive
+      ? latestPendingSocialToken
+      : recentPendingSocialToken;
+    if (pendingTokenForTikTokChoice) {
+      const privacyResult = await applyPendingTikTokPrivacyChoice(pendingTokenForTikTokChoice, userContent, toolCtx);
       if (privacyResult) {
         return {
-          text: `${latestPendingNotice}${formatSocialPostToolResult(privacyResult)}`,
+          text: `${tiktokChoiceInteractive ? explicitPendingNotice : latestPendingNotice}${formatSocialPostToolResult(privacyResult)}`,
           interactiveList: interactiveListFromSocialResult(privacyResult),
         };
       }
@@ -10221,20 +10335,20 @@ async function callGemini(
       return { text: await handlePendingVideoSetup(toolCtx, pendingVideoSetup, userContent) };
     }
     // Fluxo A/B/C: resolve seleção e confirmação direto no código, sem depender da IA.
-    const variantChoice = latestPendingSocialToken ? detectSocialVariantChoice(userContent) : null;
+    const variantChoice = recentPendingSocialToken ? detectSocialVariantChoice(userContent) : null;
     if (variantChoice) {
-      console.log("[pietro][forced_social_variant_choice]", { token: latestPendingSocialToken, opcao: variantChoice });
-      const variantResult = await toolEscolherVariantePost({ token: latestPendingSocialToken!, opcao: variantChoice }, toolCtx);
+      console.log("[pietro][forced_social_variant_choice]", { token: recentPendingSocialToken, opcao: variantChoice });
+      const variantResult = await toolEscolherVariantePost({ token: recentPendingSocialToken!, opcao: variantChoice }, toolCtx);
       return {
         text: `${latestPendingNotice}${formatSocialPostToolResult(variantResult)}`,
         interactiveButtons: interactiveButtonsFromSocialResult(variantResult),
       };
     }
 
-    const plainPostConfirmation = latestPendingSocialToken ? detectPlainSocialPostConfirmation(userContent) : null;
+    const plainPostConfirmation = recentPendingSocialToken ? detectPlainSocialPostConfirmation(userContent) : null;
     if (plainPostConfirmation) {
-      console.log("[pietro][forced_social_plain_confirm]", { token: latestPendingSocialToken, cancelar: !!plainPostConfirmation.cancelar });
-      const confirmResult = await toolConfirmarPostagemRedes({ token: latestPendingSocialToken!, cancelar: plainPostConfirmation.cancelar }, toolCtx);
+      console.log("[pietro][forced_social_plain_confirm]", { token: recentPendingSocialToken, cancelar: !!plainPostConfirmation.cancelar });
+      const confirmResult = await toolConfirmarPostagemRedes({ token: recentPendingSocialToken!, cancelar: plainPostConfirmation.cancelar }, toolCtx);
       return {
         text: `${latestPendingNotice}${formatSocialPostToolResult(confirmResult)}`,
         interactiveList: interactiveListFromSocialResult(confirmResult),
@@ -10245,14 +10359,14 @@ async function callGemini(
     // Ajuste explícito em texto livre: encaminha a frase LITERAL diretamente ao
     // gerador. Isso elimina a etapa em que o modelo podia resumir ou omitir o
     // briefing novo e garante a resposta determinística com as opções completas.
-    const plainCopyAdjustment = latestPendingSocialToken ? detectPlainSocialCopyAdjustment(userContent) : null;
+    const plainCopyAdjustment = recentPendingSocialToken ? detectPlainSocialCopyAdjustment(userContent) : null;
     if (plainCopyAdjustment) {
       console.log("[pietro][forced_social_copy_adjustment]", {
-        token: latestPendingSocialToken,
+        token: recentPendingSocialToken,
         chars: plainCopyAdjustment.length,
       });
       const revisedResult = await toolRevisarPostPendente({
-        token: latestPendingSocialToken!,
+        token: recentPendingSocialToken!,
         ajuste: plainCopyAdjustment,
       }, toolCtx);
       return {
@@ -10263,8 +10377,8 @@ async function callGemini(
 
     // 0) Postagem em redes sociais: atalho determinístico para não deixar o modelo "prometer" preview sem chamar a tool.
     const detectedPostConfirmation = detectSocialPostConfirmation(userContent);
-    const postConfirmation = detectedPostConfirmation && latestPendingSocialToken &&
-        detectedPostConfirmation.token.toLowerCase() === latestPendingSocialToken.toLowerCase()
+    const postConfirmation = detectedPostConfirmation && recentPendingSocialToken &&
+        detectedPostConfirmation.token.toLowerCase() === recentPendingSocialToken.toLowerCase()
       ? detectedPostConfirmation
       : null;
     if (postConfirmation) {
@@ -10551,6 +10665,22 @@ async function callGemini(
           args.midia_id = extrairIdentificadorMidia(originalRequest) || undefined;
         }
         console.log(`[pietro][tool] ${name}`, args);
+        if (
+          blockModelPendingTextActions
+          && [
+            "confirmar_postagem_redes",
+            "escolher_variante_post",
+            "revisar_post_pendente",
+            "agendar_post_pendente",
+          ].includes(String(name))
+        ) {
+          return {
+            text: "Esse post não está mais no assunto recente. Se quiser retomá-lo, diga “publicar agora” ou “agendar” e eu mostro qual post será usado.",
+            imageUrl: pendingImageUrl,
+            forwardProof,
+            forwardAttempted,
+          };
+        }
         const { result, imageUrl } = await runTool(name, args, toolCtx);
         if (imageUrl) pendingImageUrl = imageUrl;
         try {
@@ -10714,12 +10844,12 @@ async function callGemini(
             const isTikTokChoice = parsed?.status === "aguardando_privacidade_tiktok"
               || parsed?.status === "aguardando_declaracao_tiktok";
             return {
-              text: isTikTokChoice
+              text: `${name === "agendar_post_pendente" ? modelPendingActionNotice : ""}${isTikTokChoice
                 ? formatSocialPostToolResult(result)
                 : String(
                   parsed?.mensagem
                     || (parsed?.ok === true ? "Ação concluída." : "Não consegui concluir a ação."),
-                ),
+                )}`,
               imageUrl: pendingImageUrl,
               forwardProof,
               forwardAttempted,
@@ -13049,14 +13179,15 @@ Regras:
         const texto = (userText || "").trim();
         // Evita gravar comandos puros de publicação como legenda.
         const ehComandoPublicar = /^(publica[rl]?|posta[rl]?|manda|pode postar|pode publicar|confirma|confirmar|agend(?:a|ar|e)|ok|sim)\b/i.test(texto);
-        // Guard extra: se já há post pendente (até 24h), o texto do dono é ajuste/confirmação — NÃO virar contexto.
+        // Guard extra: só um post pendente dos últimos 10 min impede que o
+        // texto vire legenda da nova mídia. Pendentes antigos não bloqueiam.
         const { data: pendCheck } = await sb
           .from("social_posts_queue")
           .select("id")
           .eq("user_id", userId)
           .eq("status", "aguardando_confirmacao")
           .or(`solicitante_telefone.eq.${row.from_number},solicitante_telefone.is.null`)
-          .gte("created_at", new Date(Date.now() - SOCIAL_CONFIRMATION_TTL_MS).toISOString())
+          .gte("created_at", new Date(Date.now() - 10 * 60 * 1000).toISOString())
           .limit(1);
         const temPending = (pendCheck?.length ?? 0) > 0;
         if (v0 && semLegendaDono && !ehComandoPublicar && !temPending && texto.length >= 3 && texto.length <= 400) {
@@ -13074,12 +13205,12 @@ Regras:
         const cutoffPend = new Date(Date.now() - SOCIAL_CONFIRMATION_TTL_MS).toISOString();
         const { data: pendRows } = await sb
           .from("social_posts_queue")
-          .select("platform, error_message, created_at, solicitante_telefone")
+          .select("platform, error_message, created_at, updated_at, solicitante_telefone")
           .eq("user_id", userId)
           .eq("status", "aguardando_confirmacao")
           .or(`solicitante_telefone.eq.${row.from_number},solicitante_telefone.is.null`)
           .gte("created_at", cutoffPend)
-          .order("created_at", { ascending: false })
+          .order("updated_at", { ascending: false })
           .limit(50);
         if (pendRows && pendRows.length > 0) {
           const marker = (pendRows[0] as any).error_message as string | null;
@@ -13097,13 +13228,20 @@ Regras:
             const midiaTipo = midiaTipoFromPendingMarker(marker);
             const redes = [...new Set(tokenRows.map((r: any) => r.platform))].join(", ");
             const selectedVariant = decodePendingPostState(marker)?.variantSelecionada;
+            const pendingIsRecent = isPendingInteractionRecent(
+              tokenRows[0].created_at,
+              tokenRows[0].updated_at,
+            );
             const phase = canRunSocialPostAction(selectedVariant)
               ? `FASE 2 — texto escolhido: ${selectedVariant}. Agora o dono pode publicar ou agendar.`
               : "FASE 1 — nenhum texto foi escolhido. É PROIBIDO presumir a opção A ou executar publicação/agendamento.";
             const multiple = pendingCount > 1
               ? `\n- Há ${pendingCount} posts pendentes. Use o mais recente e diga ao dono que está usando ${describePendingSocialPost(marker, tokenRows[0].created_at)}.`
               : "";
-            pendingConfirmBlock = `\n\nPOST PENDENTE (últimas 24h):\n- token: ${token}\n- formato: ${formato}\n- mídia: ${midiaTipo}\n- redes: ${redes}${multiple}\n- ${phase}\n\nCOMO ROTEAR:\n1. ESCOLHA A/B/C: chame escolher_variante_post com token="${token}".\n2. PUBLICAR: só depois de A/B/C escolhido, chame confirmar_postagem_redes. Sem escolha, responda: "Antes, escolha o texto: A, B ou C."\n3. AGENDAR: só depois de A/B/C escolhido, chame agendar_post_pendente. Se faltar data, pergunte: "Para quando? Informe o dia/mês e a hora. Ex.: 30/09 às 10h".\n4. AJUSTE: chame revisar_post_pendente; isso gera novas opções e volta obrigatoriamente à FASE 1.\n5. MUDANÇA DE ESCOPO (rede, formato ou mídia): recrie via postar_midia_biblioteca.\n- Nunca presuma A. As ferramentas também bloqueiam publicar/agendar sem escolha explícita.\n- Se a intenção for agendar/publicar e não houver post pendente, responda: "Não encontrei um post aguardando aprovação. Quer que eu prepare de novo a partir da última mídia?" Nunca transforme isso em consulta de agendamentos.`;
+            const recencyRule = pendingIsRecent
+              ? "RECENTE (até 30 min da última interação): respostas curtas podem se referir a este post."
+              : "ANTIGO (mais de 30 min): respostas curtas ou ambíguas como sim, ok, pode, vai, manda, A/B/C e ajustes NÃO se referem a este post. Só use com botão/token ou comando explícito agendar <data/hora>, publicar agora ou postar agora. Para publicar, peça confirmação por botão antes.";
+            pendingConfirmBlock = `\n\nPOST PENDENTE (últimas 24h):\n- token: ${token}\n- formato: ${formato}\n- mídia: ${midiaTipo}\n- redes: ${redes}\n- janela: ${recencyRule}${multiple}\n- ${phase}\n\nCOMO ROTEAR:\n1. ESCOLHA A/B/C: só chame escolher_variante_post por texto se o pendente for RECENTE; botão com token continua válido por 24h.\n2. PUBLICAR: só depois de A/B/C escolhido. Se ANTIGO, "publicar agora" exige confirmação por botão antes de confirmar_postagem_redes. Respostas curtas nunca publicam post antigo.\n3. AGENDAR: comando explícito "agendar <data/hora>" pode usar o post por 24h e deve informar qual post será usado. Se faltar data, pergunte: "Para quando? Informe o dia/mês e a hora. Ex.: 30/09 às 10h".\n4. AJUSTE: só use texto livre para revisar_post_pendente se o pendente for RECENTE; isso gera novas opções e volta obrigatoriamente à FASE 1.\n5. MUDANÇA DE ESCOPO (rede, formato ou mídia): recrie via postar_midia_biblioteca.\n- Nunca presuma A. Mídia nova nunca usa este pendente antigo.\n- Se a intenção explícita for agendar/publicar e não houver post pendente, responda: "Não encontrei um post aguardando aprovação. Quer que eu prepare de novo a partir da última mídia?" Nunca transforme isso em consulta de agendamentos.`;
           }
         }
       }
