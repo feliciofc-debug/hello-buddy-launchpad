@@ -9862,7 +9862,9 @@ async function callGemini(
     ...history,
     { role: "user", content: userContent },
   ];
-  let blockModelPendingTextActions = false;
+  // Um anexo novo sempre inicia o fluxo daquela mídia; o modelo não pode
+  // consumir um post pendente anterior no mesmo turno.
+  let blockModelPendingTextActions = hasMedia;
   let modelPendingActionNotice = "";
 
   if (!hasMedia && typeof userContent === "string") {
