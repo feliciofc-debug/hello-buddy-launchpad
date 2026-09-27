@@ -3867,8 +3867,10 @@ async function fetchTikTokPrivacyOptions(userId: string): Promise<{
     if (!res.ok || data?.success !== true) {
       return { options: [], error: data?.error || `creator_info_http_${res.status}` };
     }
-    const options = Array.isArray(data.privacy_level_options)
-      ? data.privacy_level_options.filter((v: unknown): v is string => typeof v === "string" && !!v.trim())
+    const options: string[] = Array.isArray(data.privacy_level_options)
+      ? data.privacy_level_options
+        .filter((v: unknown): v is string => typeof v === "string" && !!v.trim())
+        .map((v: string) => v)
       : [];
     if (options.length === 0) return { options: [], error: "TikTok não retornou opções de privacidade para esta conta." };
     return {
@@ -5622,7 +5624,7 @@ async function applyPendingTikTokPrivacyChoice(
     };
     PENDING_POSTS.set(token, atualizado);
     await updatePendingSocialPostMarker(token, atualizado);
-    const scheduled = new Date(atualizado.pendingTikTokScheduledAt);
+    const scheduled = new Date(atualizado.pendingTikTokScheduledAt!);
     const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
       timeZone: "America/Sao_Paulo",
       year: "numeric",
