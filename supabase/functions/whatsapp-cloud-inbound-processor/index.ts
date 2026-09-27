@@ -104,8 +104,10 @@ import {
   selectLatestImplicitMediaId,
 } from "../_shared/owner-media-intent.ts";
 import {
+  classifyPendingBrandReply,
   decideWhatsAppImageBrand,
   detectWhatsAppBrandDirective,
+  previewableWhatsAppLogoUrl,
   type WhatsAppBrandPreference,
 } from "../_shared/whatsapp-image-brand.ts";
 import {
@@ -10273,15 +10275,22 @@ async function callGemini(
       const conversation = toolCtx.convId
         ? { id: toolCtx.convId, userId: toolCtx.userId, contactNumber: toolCtx.fromNumber }
         : null;
-      const pendingAge = Date.now() - new Date(pendingBrandGeneration.created_at).getTime();
-      if (!Number.isFinite(pendingAge) || pendingAge > 24 * 60 * 60 * 1000) {
+      const brandReply = classifyPendingBrandReply({
+        stage: pendingBrandGeneration.stage,
+        text: userContent,
+        interactiveId: brandInteractiveId,
+        createdAt: pendingBrandGeneration.created_at,
+      });
+      if (brandReply.action === "expired" || brandReply.action === "continue_conversation") {
         if (conversation) {
           await saveAgentState(sb, conversation, { pending_brand_generation: null }, toolCtx.agentState ?? {});
         }
-      } else if (
-        pendingBrandGeneration.stage === "awaiting_choice"
-        && (brandInteractiveId === "brand_image_none" || detectWhatsAppBrandDirective(userContent) === "none")
-      ) {
+        if (toolCtx.agentState) toolCtx.agentState.pending_brand_generation = null;
+        console.log("[whatsapp-brand] pendência descartada; seguindo conversa", {
+          reason: brandReply.action,
+          stage: pendingBrandGeneration.stage,
+        });
+      } else if (brandReply.action === "choose_none") {
         const preference: WhatsAppBrandPreference = {
           mode: "none",
           updatedAt: new Date().toISOString(),
@@ -10299,23 +10308,16 @@ async function callGemini(
           references: pendingBrandGeneration.reference_urls,
         });
         return completedWhatsAppImageResponse(raw, true);
-      } else if (
-        pendingBrandGeneration.stage === "awaiting_choice"
-        && brandInteractiveId === "brand_image_site"
-      ) {
+      } else if (brandReply.action === "choose_site") {
         const next = { ...pendingBrandGeneration, stage: "awaiting_site_url" as const };
         if (conversation) {
           await saveAgentState(sb, conversation, { pending_brand_generation: next }, toolCtx.agentState ?? {});
           toolCtx.agentState!.pending_brand_generation = next;
         }
         return { text: "Envie o link do site da sua marca (começando com https://). Vou usar somente fontes públicas e seguras." };
-      } else if (pendingBrandGeneration.stage === "awaiting_site_url") {
-        const siteUrl = userContent.match(/https?:\/\/[^\s<>"']+/i)?.[0];
-        if (!siteUrl) {
-          return { text: "Envie o link completo do site, começando com https://, ou escolha gerar sem marca." };
-        }
+      } else if (brandReply.action === "site_url") {
         try {
-          const identity = await fetchBrandSiteIdentity(siteUrl);
+          const identity = await fetchBrandSiteIdentity(brandReply.url);
           const preference: WhatsAppBrandPreference = {
             mode: "site",
             siteUrl: identity.url,
@@ -10339,7 +10341,7 @@ async function callGemini(
             }
             return {
               text: `Encontrei estas cores: ${colorsText}. Também encontrei uma possível logo. Só vou salvá-la com sua confirmação.`,
-              imageUrl: identity.logo_url ?? undefined,
+              imageUrl: previewableWhatsAppLogoUrl(identity.logo_url, identity.logo_data_url) ?? undefined,
               interactiveButtons: {
                 header: "Logo encontrada",
                 body: "Quer salvar esta imagem como sua logo cadastrada?",
@@ -10370,12 +10372,9 @@ async function callGemini(
           console.error("[whatsapp-brand-site] leitura falhou:", error instanceof Error ? error.message : String(error));
           return { text: "Não consegui ler a identidade desse site agora. Confira o link ou escolha gerar sem marca." };
         }
-      } else if (
-        pendingBrandGeneration.stage === "awaiting_logo_confirmation"
-        && (brandInteractiveId === "brand_logo_save" || brandInteractiveId === "brand_logo_skip")
-      ) {
+      } else if (brandReply.action === "save_logo" || brandReply.action === "skip_logo") {
         let saved = false;
-        if (brandInteractiveId === "brand_logo_save" && pendingBrandGeneration.site_url) {
+        if (brandReply.action === "save_logo" && pendingBrandGeneration.site_url) {
           try {
             const identity = await fetchBrandSiteIdentity(pendingBrandGeneration.site_url);
             saved = Boolean(
@@ -10411,13 +10410,13 @@ async function callGemini(
         const completed = completedWhatsAppImageResponse(raw, false);
         completed.text = saved
           ? `Salvei a logo com sua confirmação.\n\n${completed.text}`
-          : brandInteractiveId === "brand_logo_save"
+          : brandReply.action === "save_logo"
           ? `Não consegui salvar essa logo com segurança; não alterei seu cadastro.\n\n${completed.text}`
           : `Não salvei a logo. Usei apenas as cores encontradas.\n\n${completed.text}`;
         return completed;
-      } else if (pendingBrandGeneration.stage === "awaiting_choice") {
+      } else if (brandReply.action === "repeat_choice") {
         return {
-          text: "Escolha “Usar cores do site” ou “Sem marca” para eu concluir esta imagem.",
+          text: "Ainda não há uma logo cadastrada. Posso usar as cores do seu site ou gerar sem marca.",
           interactiveButtons: {
             header: "Identidade da imagem",
             body: "Vou lembrar sua escolha para as próximas gerações.",
