@@ -361,6 +361,11 @@ const SettingsPage = () => {
                         ⚠️ {t('settings.token_expired_reconnect')}
                       </p>
                     )}
+                    {tiktokConnection.verification_unavailable && (
+                      <p className="text-yellow-700 dark:text-yellow-400 font-medium">
+                        ⚠️ Não foi possível verificar o TikTok agora. A conexão continua ativa.
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex gap-3 pt-2">

@@ -1,7 +1,10 @@
 export const TIKTOK_RECONNECT_MESSAGE =
   "A conexão com o seu TikTok expirou. Reconecte o TikTok na plataforma para continuar.";
+export const TIKTOK_TEMPORARILY_UNAVAILABLE_MESSAGE =
+  "O TikTok não respondeu agora. Vou tentar de novo em alguns minutos.";
 
 const REFRESH_MARGIN_MS = 10 * 60 * 1000;
+const REFRESH_TIMEOUT_MS = 15 * 1000;
 
 type TikTokIntegration = {
   id: string;
@@ -18,7 +21,7 @@ export type TikTokTokenResult =
   | { ok: true; accessToken: string; integration: TikTokIntegration; refreshed: boolean }
   | {
     ok: false;
-    error: "not_connected" | "tiktok_reconnect_required";
+    error: "not_connected" | "tiktok_reconnect_required" | "tiktok_temporarily_unavailable";
     message: string;
     integration?: TikTokIntegration;
   };
@@ -49,6 +52,30 @@ function tokenIsValid(integration: TikTokIntegration, now: Date): boolean {
   if (!integration.token_expires_at) return true;
   const expiresAt = new Date(integration.token_expires_at).getTime();
   return Number.isFinite(expiresAt) && expiresAt - now.getTime() >= REFRESH_MARGIN_MS;
+}
+
+export function isDefinitiveTikTokRefreshRejection(status: number, payload: any): boolean {
+  if (status < 400 || status >= 500 || status === 429) return false;
+  const error = payload?.error;
+  const details = [
+    typeof error === "string" ? error : error?.code,
+    error?.message,
+    payload?.error_description,
+    payload?.description,
+    payload?.message,
+  ].filter(Boolean).join(" ").toLowerCase();
+  if (/\binvalid[_\s-]*grant\b/.test(details)) return true;
+  return /refresh[_\s-]*token/.test(details)
+    && /(invalid|expired|revoked|not[_\s-]*valid|no[_\s-]*longer[_\s-]*valid)/.test(details);
+}
+
+function temporaryUnavailable(integration?: TikTokIntegration): TikTokTokenResult {
+  return {
+    ok: false,
+    error: "tiktok_temporarily_unavailable",
+    message: TIKTOK_TEMPORARILY_UNAVAILABLE_MESSAGE,
+    integration,
+  };
 }
 
 async function readIntegration(supabase: any, userId: string): Promise<TikTokIntegration | null> {
@@ -136,22 +163,19 @@ export async function getValidTikTokAccessToken(
 
   const credentials = getTikTokOAuthCredentials();
   if (!credentials.clientKey || !credentials.clientSecret) {
-    console.error("[tiktok-token] credenciais OAuth ausentes");
-    await markReconnectRequired(supabase, integration);
-    return {
-      ok: false,
-      error: "tiktok_reconnect_required",
-      message: TIKTOK_RECONNECT_MESSAGE,
-      integration,
-    };
+    console.error("[tiktok-token] configuração OAuth ausente; client_key/client_secret não configurados");
+    return temporaryUnavailable(integration);
   }
 
   let response: Response;
   let payload: any = {};
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS);
   try {
     response = await fetcher("https://open.tiktokapis.com/v2/oauth/token/", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      signal: controller.signal,
       body: new URLSearchParams({
         client_key: credentials.clientKey,
         client_secret: credentials.clientSecret,
@@ -161,14 +185,11 @@ export async function getValidTikTokAccessToken(
     });
     payload = await response.json().catch(() => ({}));
   } catch (error) {
-    console.error("[tiktok-token] falha de rede ao renovar:", (error as Error).message);
-    await markReconnectRequired(supabase, integration);
-    return {
-      ok: false,
-      error: "tiktok_reconnect_required",
-      message: TIKTOK_RECONNECT_MESSAGE,
-      integration,
-    };
+    const reason = (error as Error)?.name === "AbortError" ? "timeout" : "falha de rede";
+    console.warn(`[tiktok-token] ${reason} ao renovar o token`);
+    return temporaryUnavailable(integration);
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   const tokenInfo = payload?.data || payload;
@@ -184,14 +205,18 @@ export async function getValidTikTokAccessToken(
     if (concurrent) {
       return { ok: true, accessToken: concurrent.access_token, integration: concurrent, refreshed: true };
     }
-    await markReconnectRequired(supabase, integration);
-    console.warn("[tiktok-token] renovação recusada; reconexão necessária");
-    return {
-      ok: false,
-      error: "tiktok_reconnect_required",
-      message: TIKTOK_RECONNECT_MESSAGE,
-      integration,
-    };
+    if (isDefinitiveTikTokRefreshRejection(response.status, payload)) {
+      await markReconnectRequired(supabase, integration);
+      console.warn("[tiktok-token] refresh token recusado definitivamente; reconexão necessária");
+      return {
+        ok: false,
+        error: "tiktok_reconnect_required",
+        message: TIKTOK_RECONNECT_MESSAGE,
+        integration,
+      };
+    }
+    console.warn(`[tiktok-token] renovação temporariamente indisponível (HTTP ${response.status})`);
+    return temporaryUnavailable(integration);
   }
 
   const expiresIn = Number(tokenInfo.expires_in);
@@ -227,10 +252,5 @@ export async function getValidTikTokAccessToken(
     return { ok: true, accessToken: concurrent.access_token, integration: concurrent, refreshed: true };
   }
   console.error("[tiktok-token] não foi possível persistir a renovação");
-  return {
-    ok: false,
-    error: "tiktok_reconnect_required",
-    message: TIKTOK_RECONNECT_MESSAGE,
-    integration,
-  };
+  return temporaryUnavailable(integration);
 }

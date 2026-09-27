@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   getValidTikTokAccessToken,
   TIKTOK_RECONNECT_MESSAGE,
+  TIKTOK_TEMPORARILY_UNAVAILABLE_MESSAGE,
 } from "../_shared/tiktok-token.ts";
 
 const corsHeaders = {
@@ -135,7 +136,9 @@ serve(async (req) => {
           error: token.error,
           message: token.error === "tiktok_reconnect_required"
             ? TIKTOK_RECONNECT_MESSAGE
-            : "TikTok não conectado.",
+            : token.error === "tiktok_temporarily_unavailable"
+              ? TIKTOK_TEMPORARILY_UNAVAILABLE_MESSAGE
+              : "TikTok não conectado.",
         }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );

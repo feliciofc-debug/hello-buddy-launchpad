@@ -136,6 +136,50 @@ Deno.test("falha de renovação exige reconexão", async () => {
   assertEquals(supabase.rows[0].is_active, false);
 });
 
+Deno.test("falha de rede é transitória e não desativa a integração", async () => {
+  setCredentials();
+  const supabase = new FakeSupabase([baseRow({
+    token_expires_at: "2026-09-27T11:59:00.000Z",
+  })]);
+  const result = await getValidTikTokAccessToken(supabase, "user-1", {
+    now,
+    fetcher: (() => Promise.reject(new TypeError("network down"))) as typeof fetch,
+  });
+  assertEquals(!result.ok && result.error, "tiktok_temporarily_unavailable");
+  assertEquals(supabase.rows[0].is_active, true);
+});
+
+for (const status of [500, 429]) {
+  Deno.test(`HTTP ${status} é transitório e não desativa a integração`, async () => {
+    setCredentials();
+    const supabase = new FakeSupabase([baseRow({
+      token_expires_at: "2026-09-27T11:59:00.000Z",
+    })]);
+    const result = await getValidTikTokAccessToken(supabase, "user-1", {
+      now,
+      waiter: () => Promise.resolve(),
+      fetcher: (() => Promise.resolve(new Response(JSON.stringify({
+        error: status === 429 ? "rate_limit_exceeded" : "server_error",
+      }), { status }))) as typeof fetch,
+    });
+    assertEquals(!result.ok && result.error, "tiktok_temporarily_unavailable");
+    assertEquals(supabase.rows[0].is_active, true);
+  });
+}
+
+Deno.test("credenciais OAuth ausentes são erro transitório e não desativam", async () => {
+  Deno.env.set("TIKTOK_ENV", "production");
+  Deno.env.delete("TIKTOK_CLIENT_KEY");
+  Deno.env.delete("TIKTOK_CLIENT_SECRET");
+  const supabase = new FakeSupabase([baseRow({
+    token_expires_at: "2026-09-27T11:59:00.000Z",
+  })]);
+  const result = await getValidTikTokAccessToken(supabase, "user-1", { now });
+  assertEquals(!result.ok && result.error, "tiktok_temporarily_unavailable");
+  assertEquals(supabase.rows[0].is_active, true);
+  setCredentials();
+});
+
 Deno.test("integração sem refresh_token exige reconexão", async () => {
   setCredentials();
   const supabase = new FakeSupabase([baseRow({

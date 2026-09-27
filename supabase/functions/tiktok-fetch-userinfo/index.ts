@@ -3,6 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
   getValidTikTokAccessToken,
   TIKTOK_RECONNECT_MESSAGE,
+  TIKTOK_TEMPORARILY_UNAVAILABLE_MESSAGE,
 } from '../_shared/tiktok-token.ts'
 
 const corsHeaders = {
@@ -40,13 +41,17 @@ serve(async (req) => {
     }
     if (!token.ok) {
       const integration = token.integration
+      const reconnectRequired = token.error === 'tiktok_reconnect_required'
       return new Response(
         JSON.stringify({
           connected: true,
-          reconnect_required: true,
-          expired: true,
+          reconnect_required: reconnectRequired,
+          expired: reconnectRequired,
+          verification_unavailable: !reconnectRequired,
           error: token.error,
-          message: TIKTOK_RECONNECT_MESSAGE,
+          message: reconnectRequired
+            ? TIKTOK_RECONNECT_MESSAGE
+            : TIKTOK_TEMPORARILY_UNAVAILABLE_MESSAGE,
           open_id: integration?.meta_user_id || null,
           last_verified_at: integration?.updated_at || null,
           connected_at: integration?.created_at || null,
@@ -78,13 +83,15 @@ serve(async (req) => {
         await userInfoResp.text()
         token = await getValidTikTokAccessToken(supabase, user_id, { forceRefresh: true })
         if (!token.ok) {
+          const reconnectRequired = token.error === 'tiktok_reconnect_required'
           return new Response(
             JSON.stringify({
               ...baseConnectedPayload,
-              expired: true,
-              reconnect_required: true,
-              error: 'tiktok_reconnect_required',
-              message: TIKTOK_RECONNECT_MESSAGE,
+              expired: reconnectRequired,
+              reconnect_required: reconnectRequired,
+              verification_unavailable: !reconnectRequired,
+              error: token.error,
+              message: token.message,
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
           )

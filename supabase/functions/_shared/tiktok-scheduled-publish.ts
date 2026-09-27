@@ -74,6 +74,10 @@ export function isDeferredTikTokCode(code: unknown): boolean {
   ].includes(String(code || ""));
 }
 
+export function isTemporaryTikTokFailure(value: unknown): boolean {
+  return String(value || "").toLowerCase().includes("tiktok_temporarily_unavailable");
+}
+
 export function containsForbiddenProviderBranding(value: unknown, userId?: string | null): boolean {
   if (!value) return false;
   if (String(userId || "").toLowerCase() === AMZ_TENANT_ID.toLowerCase()) return false;
@@ -233,6 +237,15 @@ export async function publishScheduledTikTok(
       publish_id: input.publishId,
     });
     if (!statusResponse.ok || statusResponse.data?.success === false) {
+      if (isTemporaryTikTokFailure(statusResponse.data?.error)) {
+        return retryResult(
+          mode,
+          now,
+          "O TikTok não respondeu agora. Vou tentar de novo em alguns minutos.",
+          false,
+          input.scheduledAt,
+        );
+      }
       if (statusResponse.data?.error === "tiktok_reconnect_required") {
         return {
           state: "failed",
@@ -326,6 +339,15 @@ export async function publishScheduledTikTok(
 
   const creatorResponse = await invokeJson(deps, "tiktok-creator-info", { user_id: input.userId });
   if (!creatorResponse.ok || creatorResponse.data?.success !== true) {
+    if (isTemporaryTikTokFailure(creatorResponse.data?.error)) {
+      return retryResult(
+        mode,
+        now,
+        "O TikTok não respondeu agora. Vou tentar de novo em alguns minutos.",
+        false,
+        input.scheduledAt,
+      );
+    }
     const code = creatorResponse.data?.tiktok_error?.code;
     if (isRetryableTikTokCode(code) || isDeferredTikTokCode(code)) {
       return retryResult(mode, now, friendlyTikTokFailure(code), isDeferredTikTokCode(code), input.scheduledAt);
@@ -375,6 +397,15 @@ export async function publishScheduledTikTok(
     scheduled_record_id: input.recordId,
   });
   if (!postResponse.ok || postResponse.data?.success === false) {
+    if (isTemporaryTikTokFailure(postResponse.data?.error)) {
+      return retryResult(
+        mode,
+        now,
+        "O TikTok não respondeu agora. Vou tentar de novo em alguns minutos.",
+        false,
+        input.scheduledAt,
+      );
+    }
     const code = postResponse.data?.tiktok_error?.code;
     if (isRetryableTikTokCode(code) || isDeferredTikTokCode(code)) {
       return retryResult(mode, now, friendlyTikTokFailure(code), isDeferredTikTokCode(code), input.scheduledAt);

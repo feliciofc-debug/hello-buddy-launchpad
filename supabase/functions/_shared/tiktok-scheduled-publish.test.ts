@@ -6,6 +6,7 @@ import {
   containsForbiddenProviderBranding,
   isDeferredTikTokCode,
   isRetryableTikTokCode,
+  publishScheduledTikTok,
   resolveTikTokInteractionSettings,
   resolveTikTokDeliveryMode,
   tiktokWaitExpired,
@@ -89,4 +90,39 @@ Deno.test("interações ficam desligadas por padrão e respeitam escolha do site
     disable_duet: false,
     disable_stitch: true,
   });
+});
+
+Deno.test("indisponibilidade transitória no refresh agenda retry", async () => {
+  const countQuery = {
+    select() { return this; },
+    eq() { return this; },
+    gte() { return this; },
+    neq() { return this; },
+    then(resolve: (value: unknown) => unknown) {
+      return Promise.resolve({ count: 0 }).then(resolve);
+    },
+  };
+  const result = await publishScheduledTikTok({
+    supabase: { from: () => ({ ...countQuery }) },
+    supabaseUrl: "https://example.supabase.co",
+    serviceKey: "service-key",
+    now: new Date("2026-09-27T12:00:00.000Z"),
+    fetcher: (() => Promise.resolve(new Response(JSON.stringify({
+      success: false,
+      error: "tiktok_temporarily_unavailable",
+    }), { status: 400 }))) as typeof fetch,
+  }, {
+    userId: "user-1",
+    videoUrl: "https://cdn.example.com/video.mp4",
+    title: "Teste",
+    source: "scheduled",
+    privacyLevel: "PUBLIC_TO_EVERYONE",
+    consentedAt: "2026-09-27T11:00:00.000Z",
+    providerBranding: "marca do cliente",
+    scheduledAt: "2026-09-27T11:55:00.000Z",
+    recordTable: "social_posts_queue",
+    recordId: "queue-1",
+  });
+  assertEquals(result.state, "retry");
+  assertEquals(result.retryAt, "2026-09-27T12:15:00.000Z");
 });
