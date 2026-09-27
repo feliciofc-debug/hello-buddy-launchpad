@@ -187,8 +187,12 @@ serve(async (req) => {
       .from('social_posts_queue')
       .select('*')
       .eq('status', 'pendente')
-      .or(`scheduled_at.is.null,scheduled_at.lte.${now.toISOString()}`)
-      .or(`tiktok_next_retry_at.is.null,tiktok_next_retry_at.lte.${now.toISOString()}`)
+      .or([
+        'and(scheduled_at.is.null,tiktok_next_retry_at.is.null)',
+        `and(scheduled_at.is.null,tiktok_next_retry_at.lte.${now.toISOString()})`,
+        `and(scheduled_at.lte.${now.toISOString()},tiktok_next_retry_at.is.null)`,
+        `and(scheduled_at.lte.${now.toISOString()},tiktok_next_retry_at.lte.${now.toISOString()})`,
+      ].join(','))
       .order('scheduled_at', { ascending: true, nullsFirst: true })
       .limit(10)
 
