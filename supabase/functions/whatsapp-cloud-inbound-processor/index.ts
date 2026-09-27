@@ -5137,7 +5137,7 @@ async function toolPrepararLinkedin(
       mensagem: "Carrossel pelo LinkedIn ainda não está habilitado. Não publiquei nada.",
     });
   }
-  const explicitTextOnly = /\b(?:somente|apenas)\s+texto\b|\bpost\s+de\s+texto\b/i.test(original);
+  const explicitTextOnly = /\b(?:texto|copy|artigo)\b|\bpost\s+de\s+texto\b/i.test(original);
   if (!explicitTextOnly) {
     return await toolPostarMidiaBiblioteca({
       midia_id: args?.midia_id,
