@@ -137,8 +137,11 @@ serve(async (req) => {
     // Save to database
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     
+    const expiresInSeconds = Number(expires_in)
     const expiresAt = new Date()
-    expiresAt.setSeconds(expiresAt.getSeconds() + expires_in)
+    expiresAt.setSeconds(
+      expiresAt.getSeconds() + (Number.isFinite(expiresInSeconds) ? expiresInSeconds : 86400),
+    )
 
     console.log('📅 Token expira em:', expiresAt.toISOString())
 
