@@ -16,6 +16,8 @@ export type TikTokScheduledInput = {
   publishId?: string | null;
   postRowId?: string | null;
   providerBranding?: unknown;
+  recordTable: "social_posts_queue" | "videos_agendados";
+  recordId: string;
 };
 
 export type TikTokScheduledResult = {
@@ -294,6 +296,8 @@ export async function publishScheduledTikTok(
     branded_content: !!input.brandedContent,
     source: input.source,
     consented_at: input.consentedAt,
+    scheduled_record_table: input.recordTable,
+    scheduled_record_id: input.recordId,
   });
   if (!postResponse.ok || postResponse.data?.success === false) {
     const code = postResponse.data?.tiktok_error?.code;

@@ -119,6 +119,35 @@ async function notifyScheduledSocialToken(
   }
 }
 
+async function notifyTikTokDeferred(
+  supabase: any,
+  supabaseUrl: string,
+  serviceKey: string,
+  post: any,
+  message: string,
+  now: Date,
+) {
+  const phone = String(post.solicitante_telefone || "")
+  if (!phone || !(await hasRecentInbound(supabase, post.user_id, phone, now))) {
+    console.warn('[tiktok-scheduled][adiado_sem_janela_whatsapp]', { userId: post.user_id, postId: post.id })
+    return
+  }
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/whatsapp-send-message`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: post.user_id,
+        to: phone,
+        message: `⚠️ O TikTok pediu para adiar seu post agendado: ${message} Vou tentar novamente automaticamente.`,
+      }),
+    })
+    if (!response.ok) console.error('[tiktok-scheduled][falha_aviso_adiamento]', { postId: post.id })
+  } catch (error) {
+    console.error('[tiktok-scheduled][erro_aviso_adiamento]', { postId: post.id, error: (error as Error).message })
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -306,6 +335,8 @@ serve(async (req) => {
                 videoDurationSec: post.tiktok_video_duration_sec,
                 publishId: post.tiktok_publish_id,
                 postRowId: post.tiktok_post_row_id,
+                recordTable: 'social_posts_queue',
+                recordId: post.id,
               },
             )
             const tiktokUpdate = {
@@ -321,6 +352,21 @@ serve(async (req) => {
               updated_at: new Date().toISOString(),
             }
             if (tiktokResult.state === 'processing' || tiktokResult.state === 'retry') {
+              if (
+                tiktokResult.state === 'retry'
+                && Number(post.tiktok_retry_count || 0) === 0
+                && tiktokResult.retryAt
+                && new Date(tiktokResult.retryAt).getTime() - now.getTime() >= 45 * 60 * 1000
+              ) {
+                await notifyTikTokDeferred(
+                  supabase,
+                  SUPABASE_URL,
+                  SUPABASE_SERVICE_ROLE_KEY,
+                  post,
+                  tiktokResult.message,
+                  now,
+                )
+              }
               await supabase.from('social_posts_queue')
                 .update({
                   ...tiktokUpdate,

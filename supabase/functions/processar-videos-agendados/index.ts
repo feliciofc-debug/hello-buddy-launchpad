@@ -111,6 +111,8 @@ serve(async (req) => {
                   publishId: item.tiktok_publish_id,
                   postRowId: item.tiktok_post_row_id,
                   providerBranding: metadata?.provider_branding,
+                  recordTable: "videos_agendados",
+                  recordId: item.id,
                 },
               );
               await supabase.from("videos_agendados").update({

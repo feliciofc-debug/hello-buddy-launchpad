@@ -21,6 +21,8 @@ interface PostRequest {
   brand_organic?: boolean;
   branded_content?: boolean;
   consented_at?: string;
+  scheduled_record_table?: "social_posts_queue" | "videos_agendados";
+  scheduled_record_id?: string;
   // Scheduled só pode fazer Direct Post com consentimento persistido no registro.
   // Autopilot sempre usa o inbox/rascunho.
   source?: "manual" | "scheduled" | "autopilot";
@@ -50,6 +52,8 @@ serve(async (req) => {
       brand_organic = false,
       branded_content = false,
       consented_at,
+      scheduled_record_table,
+      scheduled_record_id,
       source = "manual",
     } = body;
 
@@ -57,10 +61,26 @@ serve(async (req) => {
     // agendamento só pode usar Direct Post com privacidade e consentimento
     // explícitos, persistidos no próprio registro e enviados pelo executor.
     let post_mode = body.post_mode;
+    let persistedScheduledConsent = false;
     if (
-      source === "autopilot"
-      || (source === "scheduled" && (!privacy_level || !consented_at))
+      source === "scheduled"
+      && scheduled_record_id
+      && (scheduled_record_table === "social_posts_queue" || scheduled_record_table === "videos_agendados")
     ) {
+      const { data: scheduledRecord } = await supabase
+        .from(scheduled_record_table)
+        .select("user_id, tiktok_privacy_level, tiktok_consented_at")
+        .eq("id", scheduled_record_id)
+        .eq("user_id", user_id)
+        .maybeSingle();
+      persistedScheduledConsent = !!(
+        scheduledRecord?.tiktok_consented_at
+        && scheduledRecord?.tiktok_privacy_level
+        && scheduledRecord.tiktok_privacy_level === privacy_level
+        && scheduledRecord.tiktok_consented_at === consented_at
+      );
+    }
+    if (source === "autopilot" || (source === "scheduled" && !persistedScheduledConsent)) {
       console.log(`🔒 Coerção TikTok: source="${source}" sem consentimento completo -> rascunho`);
       post_mode = "draft";
     }
