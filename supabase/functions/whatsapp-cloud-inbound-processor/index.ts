@@ -11322,6 +11322,23 @@ async function callGemini(
             ).join("\n");
           } catch { /* resultado sem mídia identificável */ }
         }
+        if (name === "gerar_imagem") {
+          let generated: any = {};
+          try { generated = JSON.parse(result); } catch { /* resposta inválida tratada pelo formatter */ }
+          // A demonstração ainda passa pelo modelo para incluir a legenda curta.
+          // Para o dono, a confirmação da marca é determinística: nunca depende
+          // de o modelo lembrar de dizer se aplicou ou não a logo.
+          if (generated?.demonstracao !== true) {
+            return {
+              ...completedWhatsAppImageResponse(
+                result,
+                detectWhatsAppBrandDirective(String(args?.prompt || "")) === "none",
+              ),
+              forwardProof,
+              forwardAttempted,
+            };
+          }
+        }
         if (name === "postar_midia_biblioteca" || name === "postar_redes_sociais" || name === "publicar_linkedin" || name === "revisar_post_pendente" || name === "escolher_variante_post") captureSocialToken(result);
         // Comprovante de encaminhamento: só existe se a tool realmente entregou (ok: true).
         if (name === "encaminhar_recado_ao_dono" || name === "enviar_mensagem_contato_comercial" || name === "registrar_lead_novo") {
