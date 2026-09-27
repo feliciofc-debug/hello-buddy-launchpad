@@ -1,6 +1,7 @@
 import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
 
 export type BrandImageFormat = "original" | "feed" | "story";
+export type LogoCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 
 export type LogoPlacement = {
   x: number;
@@ -8,6 +9,7 @@ export type LogoPlacement = {
   width: number;
   height: number;
   margin: number;
+  corner: LogoCorner;
 };
 
 export type BrandImageResult = {
@@ -17,6 +19,15 @@ export type BrandImageResult = {
   placement: LogoPlacement;
   backgroundRemoved: boolean;
   panelUsed: boolean;
+  vignetteUsed: boolean;
+};
+
+export type LogoPlacementDecision = {
+  placement: LogoPlacement;
+  luminance: number;
+  variance: number;
+  edgeDensity: number;
+  useVignette: boolean;
 };
 
 const FEED_SIZE = 1080;
@@ -47,7 +58,109 @@ export function calculateLogoPlacement(
     width = Math.max(1, Math.round(width * scale));
     height = maxHeight;
   }
-  return { x: margin, y: margin, width, height, margin };
+  return { x: margin, y: margin, width, height, margin, corner: "top-left" };
+}
+
+function luminanceAt(bitmap: Uint8ClampedArray, width: number, x: number, y: number): number {
+  const offset = (y * width + x) * 4;
+  return (
+    0.2126 * bitmap[offset]
+    + 0.7152 * bitmap[offset + 1]
+    + 0.0722 * bitmap[offset + 2]
+  ) / 255;
+}
+
+function placementMetrics(
+  bitmap: Uint8ClampedArray,
+  imageWidth: number,
+  imageHeight: number,
+  placement: LogoPlacement,
+): { luminance: number; variance: number; edgeDensity: number } {
+  const padding = Math.max(8, Math.round(placement.width * 0.08));
+  const x0 = clamp(placement.x - padding, 0, imageWidth - 1);
+  const y0 = clamp(placement.y - padding, 0, imageHeight - 1);
+  const x1 = clamp(placement.x + placement.width + padding, 1, imageWidth);
+  const y1 = clamp(placement.y + placement.height + padding, 1, imageHeight);
+  const step = Math.max(1, Math.floor(Math.min(x1 - x0, y1 - y0) / 28));
+  const values: number[] = [];
+  let edges = 0;
+  let comparisons = 0;
+  for (let y = y0; y < y1; y += step) {
+    for (let x = x0; x < x1; x += step) {
+      const value = luminanceAt(bitmap, imageWidth, x, y);
+      values.push(value);
+      if (x + step < x1) {
+        if (Math.abs(value - luminanceAt(bitmap, imageWidth, x + step, y)) > 0.12) edges++;
+        comparisons++;
+      }
+      if (y + step < y1) {
+        if (Math.abs(value - luminanceAt(bitmap, imageWidth, x, y + step)) > 0.12) edges++;
+        comparisons++;
+      }
+    }
+  }
+  const luminance = values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
+  const variance = values.reduce((sum, value) => sum + (value - luminance) ** 2, 0)
+    / Math.max(1, values.length);
+  return {
+    luminance,
+    variance,
+    edgeDensity: edges / Math.max(1, comparisons),
+  };
+}
+
+export function selectLogoPlacement(
+  bitmap: Uint8ClampedArray,
+  imageWidth: number,
+  imageHeight: number,
+  logoWidth: number,
+  logoHeight: number,
+  format: BrandImageFormat = "original",
+): LogoPlacementDecision {
+  const base = calculateLogoPlacement(imageWidth, imageHeight, logoWidth, logoHeight);
+  const bottomEdge = format === "story"
+    ? Math.floor(imageHeight * 0.82) - base.margin
+    : imageHeight - base.margin;
+  const placements: LogoPlacement[] = [
+    { ...base, corner: "top-left" },
+    { ...base, x: imageWidth - base.margin - base.width, corner: "top-right" },
+    {
+      ...base,
+      y: Math.max(base.margin, bottomEdge - base.height),
+      corner: "bottom-left",
+    },
+    {
+      ...base,
+      x: imageWidth - base.margin - base.width,
+      y: Math.max(base.margin, bottomEdge - base.height),
+      corner: "bottom-right",
+    },
+  ];
+  const evaluated = placements.map((placement) => ({
+    placement,
+    ...placementMetrics(bitmap, imageWidth, imageHeight, placement),
+  }));
+  const darkCandidates = evaluated.filter((item) =>
+    item.luminance <= 0.46
+    && item.variance <= 0.055
+    && item.edgeDensity <= 0.24
+  );
+  const candidates = darkCandidates.length ? darkCandidates : evaluated;
+  const chosen = [...candidates].sort((a, b) => {
+    const aComplexity = Math.sqrt(a.variance) + a.edgeDensity;
+    const bComplexity = Math.sqrt(b.variance) + b.edgeDensity;
+    const aCost = darkCandidates.length
+      ? a.luminance * 0.58 + aComplexity * 0.42
+      : aComplexity * 0.88 + a.luminance * 0.12;
+    const bCost = darkCandidates.length
+      ? b.luminance * 0.58 + bComplexity * 0.42
+      : bComplexity * 0.88 + b.luminance * 0.12;
+    return aCost - bCost;
+  })[0];
+  return {
+    ...chosen,
+    useVignette: darkCandidates.length === 0,
+  };
 }
 
 function colorDistance(
@@ -70,60 +183,114 @@ export function removeSolidLogoBackground(
 ): { bitmap: Uint8ClampedArray; removed: boolean; alreadyTransparent: boolean } {
   const output = new Uint8ClampedArray(bitmap);
   let transparent = 0;
-  for (let i = 3; i < output.length; i += 4) {
-    if (output[i] < 245) transparent++;
+  let opaque = 0;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  for (let index = 0; index < width * height; index++) {
+    const alpha = output[index * 4 + 3];
+    if (alpha < 245) transparent++;
+    if (alpha < 80) continue;
+    opaque++;
+    const x = index % width;
+    const y = Math.floor(index / width);
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
   }
-  if (transparent / Math.max(1, width * height) > 0.025) {
-    return { bitmap: output, removed: false, alreadyTransparent: true };
+  if (!opaque || maxX < minX || maxY < minY) {
+    return { bitmap: output, removed: false, alreadyTransparent: transparent > 0 };
   }
 
-  const cornerOffsets = [
-    0,
-    (width - 1) * 4,
-    ((height - 1) * width) * 4,
-    ((height * width) - 1) * 4,
-  ];
-  const corners = cornerOffsets.map((offset) => pixelRgb(output, offset));
-  if (corners.some((color) => colorDistance(color, corners[0]) > 24)) {
-    return { bitmap: output, removed: false, alreadyTransparent: false };
+  const hasTransparentCorners = transparent / Math.max(1, width * height) > 0.025;
+  const seeds: number[] = [];
+  const boundaryColors: Array<[number, number, number]> = [];
+  const addBoundary = (x: number, y: number) => {
+    const index = y * width + x;
+    const offset = index * 4;
+    if (output[offset + 3] < 180) return;
+    seeds.push(index);
+    boundaryColors.push(pixelRgb(output, offset));
+  };
+
+  if (hasTransparentCorners) {
+    for (let x = minX; x <= maxX; x++) {
+      addBoundary(x, minY);
+      if (maxY !== minY) addBoundary(x, maxY);
+    }
+    for (let y = minY + 1; y < maxY; y++) {
+      addBoundary(minX, y);
+      if (maxX !== minX) addBoundary(maxX, y);
+    }
+  } else {
+    for (let x = 0; x < width; x++) {
+      addBoundary(x, 0);
+      if (height > 1) addBoundary(x, height - 1);
+    }
+    for (let y = 1; y < height - 1; y++) {
+      addBoundary(0, y);
+      if (width > 1) addBoundary(width - 1, y);
+    }
+  }
+  if (!boundaryColors.length) {
+    return { bitmap: output, removed: false, alreadyTransparent: hasTransparentCorners };
+  }
+
+  const buckets = new Map<string, { count: number; r: number; g: number; b: number }>();
+  for (const [r, g, b] of boundaryColors) {
+    const key = `${Math.round(r / 20)},${Math.round(g / 20)},${Math.round(b / 20)}`;
+    const bucket = buckets.get(key) ?? { count: 0, r: 0, g: 0, b: 0 };
+    bucket.count++;
+    bucket.r += r;
+    bucket.g += g;
+    bucket.b += b;
+    buckets.set(key, bucket);
+  }
+  const dominant = [...buckets.values()].sort((a, b) => b.count - a.count)[0];
+  if (!dominant || dominant.count / boundaryColors.length < 0.55) {
+    return { bitmap: output, removed: false, alreadyTransparent: hasTransparentCorners };
   }
   const background: [number, number, number] = [
-    Math.round(corners.reduce((sum, color) => sum + color[0], 0) / corners.length),
-    Math.round(corners.reduce((sum, color) => sum + color[1], 0) / corners.length),
-    Math.round(corners.reduce((sum, color) => sum + color[2], 0) / corners.length),
+    Math.round(dominant.r / dominant.count),
+    Math.round(dominant.g / dominant.count),
+    Math.round(dominant.b / dominant.count),
   ];
-
+  const matchingSeeds = seeds.filter((index) =>
+    colorDistance(pixelRgb(output, index * 4), background) <= 34
+  );
   const visited = new Uint8Array(width * height);
-  const queue: number[] = [];
-  for (let x = 0; x < width; x++) {
-    queue.push(x, (height - 1) * width + x);
-  }
-  for (let y = 1; y < height - 1; y++) {
-    queue.push(y * width, y * width + width - 1);
-  }
-
+  const queue = [...matchingSeeds];
   let removed = 0;
   for (let cursor = 0; cursor < queue.length; cursor++) {
     const index = queue[cursor];
     if (visited[index]) continue;
     visited[index] = 1;
     const offset = index * 4;
-    if (colorDistance(pixelRgb(output, offset), background) > 38) continue;
+    if (
+      output[offset + 3] < 40
+      || colorDistance(pixelRgb(output, offset), background) > 38
+    ) continue;
     output[offset + 3] = 0;
     removed++;
     const x = index % width;
     const y = Math.floor(index / width);
-    if (x > 0) queue.push(index - 1);
-    if (x + 1 < width) queue.push(index + 1);
-    if (y > 0) queue.push(index - width);
-    if (y + 1 < height) queue.push(index + width);
+    if (x > minX) queue.push(index - 1);
+    if (x < maxX) queue.push(index + 1);
+    if (y > minY) queue.push(index - width);
+    if (y < maxY) queue.push(index + width);
   }
 
-  const ratio = removed / Math.max(1, width * height);
+  const ratio = removed / Math.max(1, opaque);
   if (ratio < 0.03 || ratio > 0.92) {
-    return { bitmap: new Uint8ClampedArray(bitmap), removed: false, alreadyTransparent: false };
+    return {
+      bitmap: new Uint8ClampedArray(bitmap),
+      removed: false,
+      alreadyTransparent: hasTransparentCorners,
+    };
   }
-  return { bitmap: output, removed: true, alreadyTransparent: false };
+  return { bitmap: output, removed: true, alreadyTransparent: hasTransparentCorners };
 }
 
 function saturation(r: number, g: number, b: number): number {
@@ -191,32 +358,27 @@ function areaLuminance(image: Image, placement: LogoPlacement): number {
   return count ? total / count : 0.5;
 }
 
-function drawRoundedPanel(
-  image: Image,
-  placement: LogoPlacement,
-  lightArea: boolean,
-): void {
-  const padding = Math.max(10, Math.round(placement.width * 0.08));
-  const x0 = Math.max(0, placement.x - padding);
-  const y0 = Math.max(0, placement.y - padding);
-  const x1 = Math.min(image.width, placement.x + placement.width + padding);
-  const y1 = Math.min(image.height, placement.y + placement.height + padding);
-  const radius = Math.max(8, Math.round(Math.min(x1 - x0, y1 - y0) * 0.16));
-  const target = lightArea ? [12, 18, 28] : [250, 250, 250];
+function drawCornerVignette(image: Image, placement: LogoPlacement): void {
+  const centerX = placement.x + placement.width / 2;
+  const centerY = placement.y + placement.height / 2;
+  const radiusX = placement.width * 1.45;
+  const radiusY = placement.height * 2.1;
+  const x0 = Math.max(0, Math.floor(centerX - radiusX));
+  const y0 = Math.max(0, Math.floor(centerY - radiusY));
+  const x1 = Math.min(image.width, Math.ceil(centerX + radiusX));
+  const y1 = Math.min(image.height, Math.ceil(centerY + radiusY));
   for (let y = y0; y < y1; y++) {
     for (let x = x0; x < x1; x++) {
-      const dx = Math.max(x0 + radius - x, 0, x - (x1 - radius - 1));
-      const dy = Math.max(y0 + radius - y, 0, y - (y1 - radius - 1));
-      if (dx * dx + dy * dy > radius * radius) continue;
-      const edge = Math.min(
-        1,
-        Math.min(x - x0, x1 - 1 - x, y - y0, y1 - 1 - y) / Math.max(1, padding),
+      const distance = Math.sqrt(
+        ((x - centerX) / radiusX) ** 2
+          + ((y - centerY) / radiusY) ** 2,
       );
-      const alpha = 0.18 + edge * 0.18;
+      if (distance >= 1) continue;
+      const strength = (1 - distance) ** 2 * 0.5;
       const offset = (y * image.width + x) * 4;
       for (let channel = 0; channel < 3; channel++) {
         image.bitmap[offset + channel] = Math.round(
-          image.bitmap[offset + channel] * (1 - alpha) + target[channel] * alpha,
+          image.bitmap[offset + channel] * (1 - strength),
         );
       }
     }
@@ -240,22 +402,6 @@ function drawSubtleShadow(image: Image, logo: Image, x: number, y: number): void
     shadow.bitmap[offset + 3] = Math.round(logo.bitmap[offset + 3] * 0.24);
   }
   image.composite(shadow, x + 2, y + 3);
-}
-
-function logoLuminance(image: Image): number {
-  let total = 0;
-  let weight = 0;
-  for (let offset = 0; offset < image.bitmap.length; offset += 4) {
-    const alpha = image.bitmap[offset + 3] / 255;
-    if (alpha < 0.05) continue;
-    total += (
-      0.2126 * image.bitmap[offset]
-      + 0.7152 * image.bitmap[offset + 1]
-      + 0.0722 * image.bitmap[offset + 2]
-    ) / 255 * alpha;
-    weight += alpha;
-  }
-  return weight ? total / weight : 0.5;
 }
 
 function fitBaseImage(base: Image, format: BrandImageFormat): Image {
@@ -306,12 +452,17 @@ export async function applyBrandLogo(
   const cleaned = removeSolidLogoBackground(logo.bitmap, logo.width, logo.height);
   logo.bitmap.set(cleaned.bitmap);
 
-  const placement = calculateLogoPlacement(base.width, base.height, logo.width, logo.height);
+  const decision = selectLogoPlacement(
+    base.bitmap,
+    base.width,
+    base.height,
+    logo.width,
+    logo.height,
+    options.format ?? "original",
+  );
+  const placement = decision.placement;
   logo.resize(placement.width, placement.height);
-  const localLuminance = areaLuminance(base, placement);
-  const lowContrast = Math.abs(localLuminance - logoLuminance(logo)) < 0.28;
-  const panelUsed = !cleaned.removed && !cleaned.alreadyTransparent || lowContrast;
-  if (panelUsed) drawRoundedPanel(base, placement, localLuminance > 0.55);
+  if (decision.useVignette) drawCornerVignette(base, placement);
   drawSubtleShadow(base, logo, placement.x, placement.y);
   base.composite(logo, placement.x, placement.y);
 
@@ -321,7 +472,8 @@ export async function applyBrandLogo(
     height: base.height,
     placement,
     backgroundRemoved: cleaned.removed,
-    panelUsed,
+    panelUsed: false,
+    vignetteUsed: decision.useVignette,
   };
 }
 
@@ -332,7 +484,7 @@ export function buildBrandGenerationGuidance(
   const palette = colors.filter((color) => /^#[0-9a-f]{6}$/i.test(color)).slice(0, 4);
   const lines = [
     options.hasLogo
-      ? "Reserve uma área de espaço negativo limpa no canto superior esquerdo, com cerca de 25% da largura por 15% da altura, sem objetos importantes, sem texto e sem logos. A logo original será aplicada depois da geração."
+      ? "Reserve em um dos cantos uma área ESCURA e LISA para a marca, como parede escura, sombra, céu noturno ou superfície fosca, com cerca de 25% da largura por 15% da altura. Deixe esse canto sem luzes, janelas, objetos importantes, texto ou logos. A logo original será aplicada depois da geração."
       : "",
     palette.length
       ? `Harmonize iluminação, fundo e detalhes com esta paleta de marca: ${palette.join(", ")}. Não escreva os códigos na imagem.`

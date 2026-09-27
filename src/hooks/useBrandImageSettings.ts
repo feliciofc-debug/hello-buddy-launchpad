@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { edgeFunctionErrorMessage } from "@/lib/edge-function-error";
 
 export type SiteBrandPreview = {
   url: string;
@@ -30,7 +31,13 @@ export function useBrandImageSettings() {
       const { data, error } = await supabase.functions.invoke("analisar-produto", {
         body: { action: "brand_assets" },
       });
-      if (error) throw error;
+      if (error) {
+        throw new Error(await edgeFunctionErrorMessage(
+          error,
+          data,
+          "Não consegui carregar sua marca agora.",
+        ));
+      }
       const hasLogo = data?.has_logo === true;
       setHasSavedLogo(hasLogo);
       setUseSavedLogo(hasLogo);
@@ -56,7 +63,13 @@ export function useBrandImageSettings() {
       const { data, error } = await supabase.functions.invoke("analisar-produto", {
         body: { action: "preview_site_identity", site_url: siteUrl.trim() },
       });
-      if (error) throw error;
+      if (error) {
+        throw new Error(await edgeFunctionErrorMessage(
+          error,
+          data,
+          "Não foi possível ler a identidade do site agora.",
+        ));
+      }
       if (!data?.success || !data?.identity) {
         throw new Error(data?.error || "Não foi possível ler a identidade do site.");
       }
@@ -79,7 +92,13 @@ export function useBrandImageSettings() {
           logo_data_url: sitePreview.logo_data_url,
         },
       });
-      if (error) throw error;
+      if (error) {
+        throw new Error(await edgeFunctionErrorMessage(
+          error,
+          data,
+          "Não foi possível salvar a logo agora.",
+        ));
+      }
       if (!data?.success) throw new Error(data?.error || "Não foi possível salvar a logo.");
       setHasSavedLogo(true);
       setUseSavedLogo(true);

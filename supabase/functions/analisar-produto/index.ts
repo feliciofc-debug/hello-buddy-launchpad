@@ -94,6 +94,27 @@ function hasMatch(text: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(text));
 }
 
+function aiServiceError(status: number, operation: "imagem" | "texto"): Error {
+  if (status === 402) {
+    return new Error(
+      "O saldo do serviço de IA está indisponível no momento. Tente novamente mais tarde ou fale com o suporte.",
+    );
+  }
+  if (status === 429) {
+    return new Error(
+      "A IA atingiu um limite temporário de solicitações. Aguarde alguns instantes e tente novamente.",
+    );
+  }
+  if (status >= 500) {
+    return new Error(
+      `O modelo de ${operation === "imagem" ? "imagem" : "texto"} não respondeu agora. Tente novamente em alguns minutos.`,
+    );
+  }
+  return new Error(
+    `Não consegui gerar ${operation === "imagem" ? "a imagem" : "os textos"} agora. Revise o pedido e tente novamente.`,
+  );
+}
+
 function isPortraitEditRequest(text: string, imageCount: number): boolean {
   if (imageCount === 0) return false;
 
@@ -344,11 +365,17 @@ function sanitizePostPayload(posts: Record<string, Record<string, string>>, sour
   return sanitized;
 }
 
-async function authenticatedUserId(req: Request, supabaseAdmin: any): Promise<string | null> {
+async function authenticatedUserId(
+  req: Request,
+  supabaseUrl: string,
+  anonKey: string,
+): Promise<string | null> {
   const authorization = req.headers.get("authorization") || "";
-  const token = authorization.replace(/^Bearer\s+/i, "").trim();
-  if (!token) return null;
-  const { data, error } = await supabaseAdmin.auth.getUser(token);
+  if (!authorization) return null;
+  const authClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: authorization } },
+  });
+  const { data, error } = await authClient.auth.getUser();
   if (error) return null;
   return data?.user?.id ?? null;
 }
@@ -401,11 +428,15 @@ serve(async (req) => {
     } = payload;
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !SUPABASE_ANON_KEY) {
+      throw new Error("O serviço de IA está temporariamente indisponível. Tente novamente em alguns minutos.");
+    }
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const userId = await authenticatedUserId(req, supabaseAdmin);
+    const userId = await authenticatedUserId(req, SUPABASE_URL, SUPABASE_ANON_KEY);
+    if (!userId) throw new Error("Sua sessão expirou. Entre novamente.");
 
     if (action === "brand_assets") {
-      if (!userId) throw new Error("Faça login novamente para acessar sua marca.");
       const assets = await loadTenantBrandAssets(supabaseAdmin, userId);
       return new Response(JSON.stringify({
         success: true,
@@ -415,14 +446,12 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
     if (action === "preview_site_identity") {
-      if (!userId) throw new Error("Faça login novamente para analisar o site.");
       const identity = await fetchBrandSiteIdentity(String(actionSiteUrl || ""));
       return new Response(JSON.stringify({ success: true, identity }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
     if (action === "save_site_logo") {
-      if (!userId) throw new Error("Faça login novamente para salvar a logo.");
       const saved = await saveSiteLogoForTenant(
         supabaseAdmin,
         userId,
@@ -442,7 +471,8 @@ serve(async (req) => {
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY não configurada');
+      console.error("[analisar-produto] credencial do serviço de IA ausente");
+      throw new Error('O serviço de IA está temporariamente indisponível. Tente novamente em alguns minutos.');
     }
 
     let finalImages = images;
@@ -639,15 +669,7 @@ CRITICAL RULES:
       if (!imageGenResponse.ok) {
         const errorText = await imageGenResponse.text();
         console.error('❌ Erro ao gerar imagem:', errorText);
-        
-        if (imageGenResponse.status === 429) {
-          throw new Error('Limite de geração de imagens atingido. Aguarde alguns segundos.');
-        }
-        if (imageGenResponse.status === 402) {
-          throw new Error('Créditos insuficientes. Adicione créditos em Settings → Workspace → Usage.');
-        }
-        
-        throw new Error(`Erro ao gerar imagem: ${imageGenResponse.status}`);
+        throw aiServiceError(imageGenResponse.status, "imagem");
       }
 
       const imageGenData = await imageGenResponse.json();
@@ -831,15 +853,7 @@ Retorne APENAS um JSON válido no formato:
       if (!response.ok) {
         const errorText = await response.text();
         console.error('Erro na Lovable AI:', response.status, errorText);
-        
-        if (response.status === 429) {
-          throw new Error('Limite de requisições atingido. Aguarde alguns segundos e tente novamente.');
-        }
-        if (response.status === 402) {
-          throw new Error('Créditos insuficientes. Adicione créditos em Settings -> Workspace -> Usage.');
-        }
-        
-        throw new Error(`Erro na IA: ${response.status}`);
+        throw aiServiceError(response.status, "texto");
       }
 
       const data = await response.json();
@@ -1014,7 +1028,7 @@ Retorne APENAS um JSON válido no formato:
         if (!response.ok) {
           const errorText = await response.text();
           console.error('Erro na Lovable AI:', response.status, errorText);
-          throw new Error(`Erro na IA: ${response.status}`);
+          throw aiServiceError(response.status, "texto");
         }
 
         const data = await response.json();
@@ -1371,15 +1385,7 @@ Retorne APENAS um JSON válido no formato:
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Erro na Lovable AI:', response.status, errorText);
-      
-      if (response.status === 429) {
-        throw new Error('Limite de requisições atingido. Aguarde alguns segundos e tente novamente.');
-      }
-      if (response.status === 402) {
-        throw new Error('Créditos insuficientes. Adicione créditos em Settings -> Workspace -> Usage.');
-      }
-      
-      throw new Error(`Erro na IA: ${response.status}`);
+      throw aiServiceError(response.status, "texto");
     }
 
     const data = await response.json();
@@ -1418,14 +1424,15 @@ Retorne APENAS um JSON válido no formato:
 
   } catch (error) {
     console.error('❌ Erro na função analisar-produto:', error);
+    const message = error instanceof Error ? error.message : 'Erro desconhecido';
     return new Response(
       JSON.stringify({ 
         success: false,
-        error: error instanceof Error ? error.message : 'Erro desconhecido'
+        error: message,
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500
+        status: message === "Sua sessão expirou. Entre novamente." ? 401 : 500,
       }
     );
   }

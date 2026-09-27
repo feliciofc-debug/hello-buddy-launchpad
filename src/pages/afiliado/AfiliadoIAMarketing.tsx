@@ -18,6 +18,8 @@ import { getSafeProductLink, getSanitizedProductLinks } from "@/lib/product-link
 import { sanitizeGeneratedPostText, sanitizeGeneratedPostVariations } from "@/lib/social-post-sanitizer";
 import { BrandImageSettings } from "@/components/BrandImageSettings";
 import { useBrandImageSettings } from "@/hooks/useBrandImageSettings";
+import { useIALimit } from "@/hooks/useIALimit";
+import { edgeFunctionErrorMessage } from "@/lib/edge-function-error";
 
 interface PostVariations {
   opcaoA: string;
@@ -43,6 +45,15 @@ const AfiliadoIAMarketing = () => {
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [referenceFiles, setReferenceFiles] = useState<File[]>([]);
   const brandSettings = useBrandImageSettings();
+  const {
+    iaUsado,
+    iaLimite,
+    iaStatus,
+    iaError,
+    canGenerate,
+    remaining,
+    incrementUsage: incrementIAUsage,
+  } = useIALimit();
   const [selectedVariations, setSelectedVariations] = useState({
     instagram: 'opcaoA' as keyof PostVariations,
     facebook: 'opcaoA' as keyof PostVariations,
@@ -67,6 +78,15 @@ const AfiliadoIAMarketing = () => {
 
   const handleAnalyze = async () => {
     if (!url.trim()) { toast.error("Digite uma descrição ou cole um link"); return; }
+    if (iaStatus === "loading") return;
+    if (iaStatus === "error") {
+      toast.error(iaError || "Não consegui verificar seu limite agora. Tente novamente.");
+      return;
+    }
+    if (!canGenerate() && iaUsado >= iaLimite) {
+      toast.error(`Limite de ${iaLimite} gerações de IA atingido.`);
+      return;
+    }
     setLoading(true);
     setResultado(null);
     try {
@@ -87,7 +107,13 @@ const AfiliadoIAMarketing = () => {
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        throw new Error(await edgeFunctionErrorMessage(
+          error,
+          data,
+          "Não consegui gerar a imagem agora. Tente novamente.",
+        ));
+      }
       if (!data.success) throw new Error(data.error || 'Erro ao analisar produto');
 
       const sanitizedGeneratedPosts = sanitizeGeneratedPostVariations({
@@ -129,6 +155,7 @@ const AfiliadoIAMarketing = () => {
         texto_whatsapp: JSON.stringify(analysisResult.whatsapp),
         status: 'rascunho'
       });
+      await incrementIAUsage();
 
       toast.success("✅ Posts gerados e salvos!");
     } catch (err: any) {
@@ -240,6 +267,18 @@ const AfiliadoIAMarketing = () => {
     <AfiliadoLayout>
       <div className="p-4 md:p-6 lg:p-8">
         <div className="max-w-7xl mx-auto">
+          {iaStatus === "ready" && iaLimite < 9999 && (
+            <div className={`mb-4 rounded-lg border p-3 ${remaining() === 0 ? "border-destructive bg-destructive/10" : "border-border bg-muted/50"}`}>
+              <span className="text-sm">
+                Gerações de IA: <strong>{iaUsado}/{iaLimite}</strong> neste mês ({remaining()} restantes)
+              </span>
+            </div>
+          )}
+          {iaStatus === "error" && (
+            <div className="mb-4 rounded-lg border border-amber-500 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-100">
+              {iaError || "Não consegui verificar seu limite agora. Tente novamente."}
+            </div>
+          )}
           <Tabs defaultValue="gerar" className="w-full">
             <TabsList className="grid w-full max-w-2xl mx-auto grid-cols-4 mb-8">
               <TabsTrigger value="gerar">Gerar Posts</TabsTrigger>
@@ -331,8 +370,12 @@ const AfiliadoIAMarketing = () => {
                       </div>
                     </div>
                   </div>
-                  <Button onClick={handleAnalyze} disabled={loading || !url.trim()} size="lg" className="w-full text-lg py-6 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700">
-                    {loading ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Analisando com IA...</> : <>✨ ANALISAR COM IA</>}
+                  <Button onClick={handleAnalyze} disabled={loading || !url.trim() || iaStatus === "loading"} size="lg" className="w-full text-lg py-6 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700">
+                    {iaStatus === "loading"
+                      ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Verificando seu plano...</>
+                      : loading
+                      ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Analisando com IA...</>
+                      : <>✨ ANALISAR COM IA</>}
                   </Button>
                 </CardContent>
               </Card>

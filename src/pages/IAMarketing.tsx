@@ -25,6 +25,7 @@ import { sanitizeGeneratedPostText, sanitizeGeneratedPostVariations } from "@/li
 import { prepareImageForInstagramPublish } from "@/lib/prepareImageForInstagramPublish";
 import { BrandImageSettings } from "@/components/BrandImageSettings";
 import { useBrandImageSettings } from "@/hooks/useBrandImageSettings";
+import { edgeFunctionErrorMessage } from "@/lib/edge-function-error";
 
 interface PostVariations {
   opcaoA: string;
@@ -51,7 +52,15 @@ const IAMarketing = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { isTrial, trial, canUseIAMarketing, canPostToday, isTrialExpired, incrementImageUsage, incrementPostUsage, trialDaysRemaining } = useTrialConfig();
-  const { iaUsado, iaLimite, canGenerate, remaining, incrementUsage: incrementIAUsage } = useIALimit();
+  const {
+    iaUsado,
+    iaLimite,
+    iaStatus,
+    iaError,
+    canGenerate,
+    remaining,
+    incrementUsage: incrementIAUsage,
+  } = useIALimit();
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [resultado, setResultado] = useState<ProductAnalysis | null>(null);
@@ -106,7 +115,12 @@ const IAMarketing = () => {
     }
 
     // PJ limit guard - check monthly IA image limit (all clients)
-    if (!canGenerate()) {
+    if (iaStatus === "loading") return;
+    if (iaStatus === "error") {
+      toast.error(iaError || "Não consegui verificar seu limite agora. Tente novamente.");
+      return;
+    }
+    if (!canGenerate() && iaUsado >= iaLimite) {
       toast.error(t('ai_marketing.ia_limit', { limit: iaLimite }));
       return;
     }
@@ -154,7 +168,13 @@ const IAMarketing = () => {
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        throw new Error(await edgeFunctionErrorMessage(
+          error,
+          data,
+          "Não consegui gerar a imagem agora. Tente novamente.",
+        ));
+      }
       
       if (!data.success) {
         throw new Error(data.error || 'Erro ao analisar produto');
@@ -473,7 +493,7 @@ const IAMarketing = () => {
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 p-4 md:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto">
         {/* PJ IA Limit Banner */}
-        {!isTrial && iaLimite < 9999 && (
+        {!isTrial && iaStatus === "ready" && iaLimite < 9999 && (
           <div className={`mb-4 p-3 rounded-lg border ${remaining() === 0 ? 'bg-destructive/10 border-destructive' : 'bg-muted/50 border-border'}`}>
             <div className="flex items-center justify-between">
               <span className="text-sm">
@@ -483,6 +503,11 @@ const IAMarketing = () => {
                 <span className="text-sm font-medium text-destructive">{t('ai_marketing.limit_reached')}</span>
               )}
             </div>
+          </div>
+        )}
+        {!isTrial && iaStatus === "error" && (
+          <div className="mb-4 rounded-lg border border-amber-500 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-100">
+            {iaError || "Não consegui verificar seu limite agora. Tente novamente."}
           </div>
         )}
         {isTrial && trial && (
@@ -610,11 +635,16 @@ const IAMarketing = () => {
                   
                   <Button
                     onClick={handleAnalyze}
-                    disabled={loading || !url.trim()}
+                    disabled={loading || !url.trim() || iaStatus === "loading"}
                     size="lg"
                     className="w-full text-lg py-6 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
                   >
-                    {loading ? (
+                    {iaStatus === "loading" ? (
+                      <>
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                        Verificando seu plano...
+                      </>
+                    ) : loading ? (
                       <>
                         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                         {t('publish.analyzing')}

@@ -2,8 +2,10 @@ import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.t
 import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
 import {
   applyBrandLogo,
+  buildBrandGenerationGuidance,
   calculateLogoPlacement,
   removeSolidLogoBackground,
+  selectLogoPlacement,
   shouldApplyBranding,
 } from "./brand-image-engine.ts";
 
@@ -48,27 +50,98 @@ Deno.test("remove fundo sólido conectado às bordas sem apagar a marca", () => 
   assertEquals(result.bitmap[((20 * width + 40) * 4) + 3], 255);
 });
 
-Deno.test("usa painel translúcido quando o fundo da logo não pode ser removido", async () => {
+Deno.test("escolhe canto escuro quando o superior esquerdo é claro", () => {
+  const image = new Image(500, 500);
+  image.fill(0xeeeeeeff);
+  image.drawBox(300, 300, 200, 200, 0x151820ff);
+  const decision = selectLogoPlacement(image.bitmap, 500, 500, 180, 60);
+  assertEquals(decision.placement.corner, "bottom-right");
+  assertEquals(decision.useVignette, false);
+});
+
+Deno.test("remove cartão opaco com cantos transparentes e preserva ícone e letras", () => {
+  const width = 200;
+  const height = 80;
+  const bitmap = new Uint8ClampedArray(width * height * 4);
+  const fill = (
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    color: [number, number, number, number],
+  ) => {
+    for (let y = y0; y < y1; y++) {
+      for (let x = x0; x < x1; x++) {
+        bitmap.set(color, (y * width + x) * 4);
+      }
+    }
+  };
+  fill(10, 10, 190, 70, [24, 28, 36, 255]);
+  fill(25, 24, 52, 56, [240, 150, 30, 255]);
+  fill(68, 25, 168, 33, [255, 255, 255, 255]);
+  fill(68, 43, 150, 51, [255, 255, 255, 255]);
+  const result = removeSolidLogoBackground(bitmap, width, height);
+  assertEquals(result.removed, true);
+  assertEquals(result.bitmap[(12 * width + 12) * 4 + 3], 0);
+  assertEquals(result.bitmap[(35 * width + 35) * 4 + 3], 255);
+  assertEquals(result.bitmap[(28 * width + 100) * 4 + 3], 255);
+});
+
+Deno.test("não cria moldura em área escura e lisa", async () => {
   const base = new Image(500, 500);
-  base.fill(0xeeeeeeff);
+  base.fill(0x151820ff);
   const logo = new Image(160, 60);
-  logo.fill(0xffffffff);
-  for (const [x, y, color] of [
-    [0, 0, [17, 17, 17]],
-    [159, 0, [255, 255, 255]],
-    [0, 59, [255, 255, 255]],
-    [159, 59, [34, 34, 34]],
-  ] as const) {
-    const offset = (y * logo.width + x) * 4;
-    logo.bitmap.set([...color, 255], offset);
+  logo.fill(0x00000000);
+  for (let y = 15; y < 45; y++) {
+    for (let x = 30; x < 130; x++) {
+      logo.bitmap.set([240, 240, 240, 255], (y * logo.width + x) * 4);
+    }
   }
-  logo.drawBox(45, 20, 70, 20, 0xcc2233ff);
   const result = await applyBrandLogo(
     new Uint8Array(await base.encode()),
     new Uint8Array(await logo.encode()),
   );
-  assertEquals(result.backgroundRemoved, false);
-  assertEquals(result.panelUsed, true);
+  assertEquals(result.panelUsed, false);
+  assertEquals(result.vignetteUsed, false);
+});
+
+Deno.test("story mantém a logo fora da faixa inferior de dezoito por cento", () => {
+  const image = new Image(1080, 1920);
+  image.fill(0xeeeeeeff);
+  image.drawBox(0, 1350, 1080, 570, 0x151820ff);
+  const decision = selectLogoPlacement(
+    image.bitmap,
+    image.width,
+    image.height,
+    300,
+    100,
+    "story",
+  );
+  assert(decision.placement.y + decision.placement.height <= image.height * 0.82);
+});
+
+Deno.test("salvaguardas mantêm original quando remoção é menor que 3% ou maior que 92%", () => {
+  const mostlyCard = new Uint8ClampedArray(100 * 60 * 4);
+  for (let y = 5; y < 55; y++) {
+    for (let x = 5; x < 95; x++) {
+      mostlyCard.set([22, 24, 30, 255], (y * 100 + x) * 4);
+    }
+  }
+  for (let y = 28; y < 32; y++) {
+    for (let x = 46; x < 54; x++) {
+      mostlyCard.set([255, 255, 255, 255], (y * 100 + x) * 4);
+    }
+  }
+  assertEquals(removeSolidLogoBackground(mostlyCard, 100, 60).removed, false);
+
+  const thinBorder = new Uint8ClampedArray(200 * 200 * 4);
+  thinBorder.fill(255);
+  for (let y = 1; y < 199; y++) {
+    for (let x = 1; x < 199; x++) {
+      thinBorder.set([180, 40, 60, 255], (y * 200 + x) * 4);
+    }
+  }
+  assertEquals(removeSolidLogoBackground(thinBorder, 200, 200).removed, false);
 });
 
 Deno.test("aplica logo depois do enquadramento final de feed e story", async () => {
@@ -99,4 +172,7 @@ Deno.test("aplica logo depois do enquadramento final de feed e story", async () 
 Deno.test("sem logo e sem cores não aplica marca", () => {
   assertEquals(shouldApplyBranding({ useLogo: false, hasLogo: false, colors: [] }), false);
   assertEquals(shouldApplyBranding({ useLogo: true, hasLogo: true, colors: [] }), true);
+  const guidance = buildBrandGenerationGuidance([], { hasLogo: true, hasBasePhoto: false });
+  assert(guidance.includes("ESCURA e LISA"));
+  assert(guidance.includes("sem luzes, janelas"));
 });
