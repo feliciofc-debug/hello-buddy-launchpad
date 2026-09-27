@@ -105,6 +105,16 @@ import {
   requiresOldPendingPublishConfirmation,
 } from "../_shared/social-pending-window.ts";
 import {
+  canonicalSocialNetwork,
+  detectRequestedSocialNetworks,
+  SUPPORTED_SOCIAL_NETWORKS,
+} from "../_shared/social-networks.ts";
+import {
+  isConfirmedLinkedInPublishResult,
+  sanitizeLinkedInApprovalCopy,
+} from "../_shared/linkedin-approval.ts";
+import { buildSocialQueueNetworkRows } from "../_shared/social-queue.ts";
+import {
   catalogImageUrl,
   environmentLikelihood,
   IMAGE_COMPOSITION_ESTIMATED_COST_USD,
@@ -3371,7 +3381,7 @@ function detectWantsWhatsappCta(text: string): boolean {
 async function gerarTresOpcoesRedeSocial(
   produto: { nome: string; descricao?: string | null; preco?: number | null; link?: string | null; categoria?: string | null; source?: string | null },
   tom: string,
-  rede: "facebook" | "instagram",
+  rede: "facebook" | "instagram" | "linkedin",
   ajuste?: string,
   brandContext?: string,
   briefing?: string,
@@ -3389,9 +3399,28 @@ async function gerarTresOpcoesRedeSocial(
   const preco = produto.preco ? `R$ ${Number(produto.preco).toFixed(2).replace(".", ",")}` : "";
   const limite = 600; // ← curto e engajador, como a plataforma
   const temLink = !!(produto.link && /^https?:\/\//i.test(produto.link));
-  const ctaBase = temLink
+  const ctaBase = rede === "linkedin"
+    ? temLink
+      ? `Coloque o link "${produto.link}" no fim, imediatamente antes das hashtags.`
+      : "Conclua o raciocínio de forma profissional, sem inventar link nem pedir comentário artificial."
+    : temLink
     ? (rede === "instagram" ? `CTA no fim: "👉 Link na bio"` : `CTA no fim: "👉 Compre aqui: ${produto.link}"`)
     : `CTA de engajamento (chama no direct/WhatsApp, "comenta EU QUERO"). NÃO invente link nem "link na bio".`;
+  const networkStyle = rede === "linkedin"
+    ? `- Tom profissional, claro e natural. Sem emojis, sem gírias e sem chamadas apelativas.
+- Estrutura obrigatória: observação inicial → argumento útil/técnico → conclusão.
+- Use exatamente 2 ou 3 hashtags relevantes no fim.
+- Se houver link, ele fica no fim do texto, imediatamente antes das hashtags.`
+    : `- 1ª linha impactante com emoji.
+- 1-3 bullets curtos ou frases curtas de benefício (nada de parágrafo longo).
+- 5-8 hashtags no fim, relevantes, separadas por espaço.`;
+  const angleRules = rede === "linkedin"
+    ? `- Opção A — ANÁLISE DIRETA: observação concreta, argumento e conclusão prática.
+- Opção B — EXPERIÊNCIA/CONTEXTO: situação profissional ou aprendizado, argumento e conclusão.
+- Opção C — PONTO DE VISTA: pergunta ou tese profissional, argumento e conclusão.`
+    : `- Opção A — DIRETA/CTA: apresenta e chama pra ação (o que é + benefício-chave + CTA).
+- Opção B — STORYTELLING: começa com uma cena, dor, curiosidade ou história real do contexto; termina no CTA suave.
+- Opção C — INTERATIVA/EDUCATIVA: pergunta que engaja OU mini-ensinamento sobre o tema (dica, mito x verdade, "sabia que…"), com CTA leve no fim.`;
 
   const descLower = `${produto.nome} ${produto.descricao || ""} ${produto.categoria || ""}`.toLowerCase();
   const ehConsorcio = /consorci|consórci|carta\s+de\s+cr[eé]dito/.test(descLower);
@@ -3441,10 +3470,8 @@ ${temLink ? `- Link: ${produto.link}` : "- SEM link (post de engajamento/institu
 
 REGRAS DURAS (valem pra TODAS as 3 opções):
 - Máximo ${limite} caracteres por opção (curto, direto, engajador — nada de textão).
-- 1ª linha impactante com emoji.
-- 1-3 bullets curtos ou frases curtas de benefício (nada de parágrafo longo).
+${networkStyle}
 - ${ctaBase}
-- 5-8 hashtags no fim, relevantes, separadas por espaço.
 - NUNCA invente: preço, desconto, "%", "só hoje", "estoque", "últimas unidades", "vagas limitadas", depoimentos, números de clientes.
 - NUNCA escreva "Conteúdo da imagem", "Nesta imagem", "A arte mostra" ou qualquer descrição do visual.
 - NUNCA cite o nome do dono/anunciante nem trate o leitor pelo nome próprio (nada de "Felicio, ...") — o post é público, para desconhecidos. O protagonista é o PRODUTO.
@@ -3452,9 +3479,7 @@ REGRAS DURAS (valem pra TODAS as 3 opções):
 - Sem markdown, sem "Aqui está:", sem aspas envolvendo o post.
 
 ÂNGULOS OBRIGATÓRIOS (uma opção por ângulo):
-- Opção A — DIRETA/CTA: apresenta e chama pra ação (o que é + benefício-chave + CTA).
-- Opção B — STORYTELLING: começa com uma cena, dor, curiosidade ou história real do contexto; termina no CTA suave.
-- Opção C — INTERATIVA/EDUCATIVA: pergunta que engaja OU mini-ensinamento sobre o tema (dica, mito x verdade, "sabia que…"), com CTA leve no fim.
+${angleRules}
 
 ${ajuste ? `\n🎯 AJUSTE OBRIGATÓRIO DO DONO (aplique nas 3 opções, mantendo os ângulos): "${ajuste}"` : ""}
 ${brandContext ? `\n🏢 CONTEXTO DA MARCA (BASE — não é produto físico):\n${brandContext}\n\nFale das tecnologias/benefícios reais. NÃO use "maleta/kit/unidades/estoque". CTA: agendar demo, falar no WhatsApp, testar a plataforma.` : ""}
@@ -3467,10 +3492,15 @@ Responda APENAS com JSON válido nesta forma exata:
   // idênticas com "Conteúdo da imagem: ...".
   const fallback = (): { A: string; B: string; C: string } => {
     const corpo = (brief || produto.descricao || "").toString().replace(/^Conteúdo da imagem:\s*/i, "").trim();
-    const cta = temLink ? `👉 ${produto.link}` : "👉 Chama no direct pra saber mais!";
-    const cabeca = brief ? "" : `🔥 ${produto.nome}${preco ? ` — ${preco}` : ""}\n\n`;
+    const cta = rede === "linkedin"
+      ? temLink ? String(produto.link) : ""
+      : temLink ? `👉 ${produto.link}` : "👉 Chama no direct pra saber mais!";
+    const cabeca = brief ? "" : rede === "linkedin"
+      ? `${produto.nome}${preco ? ` — ${preco}` : ""}\n\n`
+      : `🔥 ${produto.nome}${preco ? ` — ${preco}` : ""}\n\n`;
     const base = `${cabeca}${corpo.slice(0, 380)}\n\n${cta}`.slice(0, limite);
-    return { A: base, B: base, C: base };
+    const cleanBase = rede === "linkedin" ? sanitizeLinkedInApprovalCopy(base) : base;
+    return { A: cleanBase, B: cleanBase, C: cleanBase };
   };
 
 
@@ -3509,7 +3539,11 @@ Responda APENAS com JSON válido nesta forma exata:
     const m = txt.match(/\{[\s\S]*\}/);
     if (!m) return null;
     const parsed = JSON.parse(m[0].replace(/,(\s*[}\]])/g, "$1"));
-    const clean = (s: unknown) => (typeof s === "string" ? s.trim().slice(0, limite) : "");
+    const clean = (s: unknown) => {
+      if (typeof s !== "string") return "";
+      const value = rede === "linkedin" ? sanitizeLinkedInApprovalCopy(s) : s.trim();
+      return value.slice(0, limite);
+    };
     const A = clean(parsed.A) || clean(parsed.opcaoA);
     const B = clean(parsed.B) || clean(parsed.opcaoB);
     const C = clean(parsed.C) || clean(parsed.opcaoC);
@@ -3663,12 +3697,12 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
   const imageUrls = Array.isArray(pending.produto?.image_urls)
     ? pending.produto.image_urls.filter((url: unknown): url is string => typeof url === "string" && !!url.trim())
     : [];
-  const rows = pending.redes.map((rede) => ({
+  const rows = buildSocialQueueNetworkRows(pending.redes, pending.scripts).map((networkRow) => ({
     user_id: pending.userId,
     produto_id: isUuid(pending.produto?.id) ? pending.produto.id : null,
     produto_source: pending.produto?.source || "produtos",
-    platform: rede,
-    post_text: pending.scripts[rede] || "",
+    platform: networkRow.platform,
+    post_text: networkRow.post_text,
     image_url: mediaType === "video" ? null : mediaUrl,
     video_url: mediaType === "video" ? mediaUrl : null,
     image_urls: imageUrls.length >= 2 ? imageUrls : null,
@@ -3823,6 +3857,9 @@ async function updatePersistedSocialPostRows(
       .update({
         status: result.ok ? "publicado" : retryableInstagram ? "aguardando_confirmacao" : "erro",
         fb_post_id: result.ok ? (result.resposta?.post_id || result.resposta?.id || null) : null,
+        linkedin_post_urn: result.ok && result.rede === "linkedin"
+          ? (result.resposta?.post_urn || null)
+          : null,
         published_at: result.ok ? new Date().toISOString() : null,
         error_message: result.ok
           ? null
@@ -4115,6 +4152,33 @@ async function publicarEmRede(
       const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
       return { rede, ok: res.ok && j?.success !== false, status: res.status, resposta: j };
     }
+    if (rede === "linkedin") {
+      const body: Record<string, unknown> = {
+        user_id: userId,
+        queue_id: queueRowId,
+        texto: sanitizeLinkedInApprovalCopy(script),
+        link_url: produto.link || undefined,
+      };
+      if (isVideo) body.video_url = mediaUrl;
+      else if (mediaUrl) body.image_url = mediaUrl;
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/linkedin-publish`, {
+        method: "POST",
+        headers: commonHeaders,
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(120000),
+      });
+      const txt = await res.text();
+      let j: any = {};
+      try { j = JSON.parse(txt); } catch {}
+      const postUrn = typeof j?.post_urn === "string" ? j.post_urn.trim() : "";
+      return {
+        rede,
+        ok: isConfirmedLinkedInPublishResult(res.ok, j),
+        status: res.status,
+        resposta: j,
+        nota: /^urn:li:/i.test(postUrn) ? `LinkedIn confirmou a publicação com URN ${postUrn}.` : undefined,
+      };
+    }
     if (rede === "tiktok") {
       if (!isVideo) {
         return { rede, ok: false, status: 0, resposta: { error: "TikTok aceita apenas vídeo neste fluxo. Envie um vídeo para publicar." } };
@@ -4229,8 +4293,8 @@ function sanitizeSocialProductText(text: string): string {
   product = product.replace(/\bcom\s+(?:um\s+)?script\b.*$/i, "");
   product = product.replace(/\b(?:script|copy|legenda)\s+(?:de\s+)?(?:urg[eê]ncia|escassez|benef[ií]cio|prova social|black\s*friday)\b.*$/i, "");
   product = product.replace(/\b(?:posta|poste|postar|publica|publique|publicar)\b/gi, " ");
-  product = product.replace(/\b(?:no|na|nos|nas|em|para|pra|pro)\s+(?:o\s+|a\s+)?(?:face|facebook|fb|insta|instagram|ig|tiktok|tik\s*tok|redes sociais|stor(?:y|ies|ie)|reels?|feed)\b/gi, " ");
-  product = product.replace(/\b(?:face|facebook|fb|insta|instagram|ig|tiktok|tik\s*tok|redes sociais|stor(?:y|ies|ie)|reels?|feed)\b/gi, " ");
+  product = product.replace(/\b(?:no|na|nos|nas|em|para|pra|pro)\s+(?:o\s+|a\s+)?(?:face|facebook|fb|insta|instagram|ig|tiktok|tik\s*tok|linkedin|linked\s*in|lkd|redes sociais|stor(?:y|ies|ie)|reels?|feed)\b/gi, " ");
+  product = product.replace(/\b(?:face|facebook|fb|insta|instagram|ig|tiktok|tik\s*tok|linkedin|linked\s*in|lkd|redes sociais|stor(?:y|ies|ie)|reels?|feed)\b/gi, " ");
   product = product.replace(/\b(?:e|de|do|da|dos|das|no|na|nos|nas|em|para|pra|pro|o|a|os|as|um|uma)\b/gi, " ");
   product = product.replace(/^\s*produtos?\s+/i, "");
   return compactSpaces(product.replace(/^[,.;:!\s-]+|[,.;:!\s-]+$/g, ""));
@@ -4419,11 +4483,7 @@ function detectSocialPostIntent(
   if (!hasSocialPostRequest(original)) return null;
 
 
-  const redes: string[] = [];
-  if (/\b(face|facebook|fb)\b/.test(normalized)) redes.push("facebook");
-  if (/\b(insta|instagram|ig)\b/.test(normalized)) redes.push("instagram");
-  if (/\b(tiktok|tik tok)\b/.test(normalized)) redes.push("tiktok");
-  if (redes.length === 0 && /\bredes sociais\b/.test(normalized)) redes.push("facebook", "instagram", "tiktok");
+  const redes: string[] = detectRequestedSocialNetworks(original);
   const formatoPedido = detectSocialPostFormat(original);
   if (redes.length === 0 && !formatoPedido) return null;
 
@@ -4435,11 +4495,11 @@ function detectSocialPostIntent(
 
   const withoutJarvis = original.replace(/^jarvis[,.!\s-]*/i, "");
   let produto = "";
-  const direct = withoutJarvis.match(/\b(?:posta|poste|postar|publica|publique|publicar)\s+(?:o|a|os|as)?\s*(.+?)(?:\s+(?:no|na|nos|nas|em|para|pra|pro)\s+(?:o\s+|a\s+)?(?:face|facebook|fb|insta|instagram|ig|tiktok|tik\s*tok|redes sociais|stor(?:y|ies|ie)|reels?|feed)\b|\s+com\s+(?:um\s+)?script\b|$)/i);
+  const direct = withoutJarvis.match(/\b(?:posta|poste|postar|publica|publique|publicar)\s+(?:o|a|os|as)?\s*(.+?)(?:\s+(?:no|na|nos|nas|em|para|pra|pro)\s+(?:o\s+|a\s+)?(?:face|facebook|fb|insta|instagram|ig|tiktok|tik\s*tok|linkedin|linked\s*in|lkd|redes sociais|stor(?:y|ies|ie)|reels?|feed)\b|\s+com\s+(?:um\s+)?script\b|$)/i);
   if (direct?.[1]) produto = direct[1];
 
-  const afterNetworks = withoutJarvis.match(/\b(?:face|facebook|fb|insta|instagram|ig|tiktok|tik\s*tok|redes sociais|stor(?:y|ies|ie)|reels?|feed)\b(?:\s*(?:e|,|\/|\+|no|na|nos|nas|em|para|pra|pro)?\s*(?:face|facebook|fb|insta|instagram|ig|tiktok|tik\s*tok|redes sociais|stor(?:y|ies|ie)|reels?|feed)\b)*\s+(?:o|a|os|as)?\s*(.+?)(?:\s+com\s+(?:um\s+)?script\b|$)/i);
-  if ((!produto || /^(nas?|nos?|em|para|pra|pro|face|facebook|insta|instagram|ig|fb|stor(y|ies|ie)|reels?|feed)\b/i.test(produto)) && afterNetworks?.[1]) produto = afterNetworks[1];
+  const afterNetworks = withoutJarvis.match(/\b(?:face|facebook|fb|insta|instagram|ig|tiktok|tik\s*tok|linkedin|linked\s*in|lkd|redes sociais|stor(?:y|ies|ie)|reels?|feed)\b(?:\s*(?:e|,|\/|\+|no|na|nos|nas|em|para|pra|pro)?\s*(?:face|facebook|fb|insta|instagram|ig|tiktok|tik\s*tok|linkedin|linked\s*in|lkd|redes sociais|stor(?:y|ies|ie)|reels?|feed)\b)*\s+(?:o|a|os|as)?\s*(.+?)(?:\s+com\s+(?:um\s+)?script\b|$)/i);
+  if ((!produto || /^(nas?|nos?|em|para|pra|pro|face|facebook|insta|instagram|ig|fb|linkedin|linked\s*in|lkd|stor(y|ies|ie)|reels?|feed)\b/i.test(produto)) && afterNetworks?.[1]) produto = afterNetworks[1];
 
   const explicitProduct = withoutJarvis.match(/\bproduto\s+(.+?)(?:\s+com\s+(?:um\s+)?script\b|$)/i);
   if ((!produto || /^(nas?|nos?|em|para|pra|pro)\b/i.test(produto)) && explicitProduct?.[1]) produto = explicitProduct[1];
@@ -4842,7 +4902,7 @@ async function updatePendingSocialPostMarker(token: string, pending: PendingSoci
 }
 
 // LinkedIn (perfil pessoal): tom profissional e link no 1º comentário.
-async function toolPublicarLinkedin(
+async function publishLinkedInImmediately(
   args: { texto?: string; link?: string; comentario?: string; image_url?: string; midia_id?: string; pedido_original?: string },
   ctx: { userId: string; fromNumber: string; agentState?: AgentConvState },
 ): Promise<string> {
@@ -5060,6 +5120,84 @@ async function toolPublicarLinkedin(
   }
 }
 
+async function toolPrepararLinkedin(
+  args: { texto?: string; link?: string; image_url?: string; midia_id?: string; pedido_original?: string },
+  ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
+): Promise<string> {
+  if (!isOwner(ctx)) {
+    return JSON.stringify({
+      erro: "acao_restrita_ao_responsavel",
+      mensagem: "Preparar publicação no LinkedIn é restrito ao responsável da conta.",
+    });
+  }
+  const original = String(args?.pedido_original || "");
+  if (isCarrosselRequest(original)) {
+    return JSON.stringify({
+      erro: "carrossel_linkedin_nao_suportado",
+      mensagem: "Carrossel pelo LinkedIn ainda não está habilitado. Não publiquei nada.",
+    });
+  }
+  const explicitTextOnly = /\b(?:somente|apenas)\s+texto\b|\bpost\s+de\s+texto\b/i.test(original);
+  if (!explicitTextOnly) {
+    return await toolPostarMidiaBiblioteca({
+      midia_id: args?.midia_id,
+      legenda: args?.texto,
+      briefing: args?.texto,
+      link: args?.link,
+      redes: ["linkedin"],
+      formato: "feed",
+      tom: "beneficio",
+    }, ctx);
+  }
+
+  const texto = String(args?.texto || "").trim();
+  if (!texto) {
+    return JSON.stringify({ erro: "texto_obrigatorio", mensagem: "Diga o tema do post para eu preparar as opções." });
+  }
+  const produto = {
+    id: null,
+    source: "linkedin_text",
+    nome: texto.slice(0, 100),
+    descricao: texto,
+    imagem_url: null,
+    link: args?.link || null,
+    midia_tipo: "foto" as const,
+  };
+  const variantesLinkedIn = await gerarTresOpcoesRedeSocial(
+    produto,
+    "beneficio",
+    "linkedin",
+    undefined,
+    undefined,
+    texto,
+  );
+  const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+  const pending: PendingSocialPost = {
+    produto,
+    tom: "beneficio",
+    redes: ["linkedin"],
+    scripts: { linkedin: variantesLinkedIn.A },
+    variantes: { linkedin: variantesLinkedIn },
+    userId: ctx.userId,
+    requesterPhone: ctx.fromNumber,
+    createdAt: Date.now(),
+    formato: "feed",
+    midiaTipo: "foto",
+    briefing: texto,
+  };
+  const queueRows = await persistPendingSocialPost(token, pending);
+  PENDING_POSTS.set(token, { ...pending, queueRows });
+  return JSON.stringify({
+    status: "aguardando_escolha_variante",
+    token,
+    formato: "feed",
+    produto: { nome: produto.nome, imagem_url: null, link: produto.link },
+    tom: "beneficio",
+    redes: ["linkedin"],
+    variantes: { linkedin: variantesLinkedIn },
+  });
+}
+
 async function toolPostarRedesSociais(
   args: { produto: string; tom?: string; redes?: string[]; incluir_cta_whatsapp?: boolean },
   ctx: { userId: string; fromNumber: string },
@@ -5070,10 +5208,11 @@ async function toolPostarRedesSociais(
     const q = (args?.produto || "").trim();
     if (!q) return JSON.stringify({ erro: "informe qual produto postar" });
 
-    const redesValidas = ["facebook", "instagram", "tiktok"];
     const redes = (args?.redes && args.redes.length > 0 ? args.redes : ["facebook", "instagram", "tiktok"])
-      .map((r) => r.toLowerCase())
-      .filter((r) => redesValidas.includes(r));
+      .map(canonicalSocialNetwork)
+      .filter((network): network is NonNullable<typeof network> =>
+        !!network && SUPPORTED_SOCIAL_NETWORKS.includes(network)
+      );
     const tom = args?.tom || "urgencia";
     const incluirCta = !!args?.incluir_cta_whatsapp;
 
@@ -5102,7 +5241,9 @@ async function toolPostarRedesSociais(
     // Gera 3 OPÇÕES (A/B/C) por rede em paralelo — estilo plataforma /gerar-posts
     const variantesEntries = await Promise.all(
       redes.map(async (r) => {
-        const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
+        const redeGen = r === "tiktok"
+          ? "instagram"
+          : (r as "facebook" | "instagram" | "linkedin");
         return [r, await gerarTresOpcoesRedeSocial(prod, tom, redeGen)] as const;
       }),
     );
@@ -5122,11 +5263,17 @@ async function toolPostarRedesSociais(
     if (incluirCta) {
       const telAgente = await buscarTelefoneAgenteTenant(ctx.userId);
       if (telAgente) {
-        variantes = Object.fromEntries(Object.entries(variantes).map(([r, v]) => [r, {
-          A: appendWhatsappCta(v.A, telAgente),
-          B: appendWhatsappCta(v.B, telAgente),
-          C: appendWhatsappCta(v.C, telAgente),
-        }]));
+        variantes = Object.fromEntries(Object.entries(variantes).map(([r, v]) => [r, r === "linkedin"
+          ? {
+            A: sanitizeLinkedInApprovalCopy(`${v.A}\n\nhttps://wa.me/${telAgente}`),
+            B: sanitizeLinkedInApprovalCopy(`${v.B}\n\nhttps://wa.me/${telAgente}`),
+            C: sanitizeLinkedInApprovalCopy(`${v.C}\n\nhttps://wa.me/${telAgente}`),
+          }
+          : {
+            A: appendWhatsappCta(v.A, telAgente),
+            B: appendWhatsappCta(v.B, telAgente),
+            C: appendWhatsappCta(v.C, telAgente),
+          }]));
         scripts = Object.fromEntries(Object.entries(variantes).map(([r, v]) => [r, v.A]));
         ctaNota = `CTA de WhatsApp incluído (wa.me/${telAgente}).`;
       } else {
@@ -5834,7 +5981,10 @@ async function toolRevisarPostPendente(
   let variantes: Record<string, PostVariantes>;
   if (ajuste.length < 2 && toggleCta) {
     // Remove CTA anterior de todas as variantes; será reaplicado abaixo se incluirCta.
-    const stripCta = (s: string) => (s || "").replace(/\n{1,2}📱 Fale comigo no WhatsApp:.*$/i, "").trimEnd();
+    const stripCta = (s: string) => (s || "")
+      .replace(/\n{1,2}📱 Fale comigo no WhatsApp:.*$/i, "")
+      .replace(/\n{1,2}https:\/\/wa\.me\/\d+\s*/gi, "\n")
+      .trimEnd();
     if (p.variantes) {
       variantes = Object.fromEntries(Object.entries(p.variantes).map(([r, v]) => [r, {
         A: stripCta(v.A), B: stripCta(v.B), C: stripCta(v.C),
@@ -5847,7 +5997,9 @@ async function toolRevisarPostPendente(
     // Regenera 3 NOVAS opções aplicando o ajuste.
     const varEntries = await Promise.all(
       p.redes.map(async (r) => {
-        const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
+        const redeGen = r === "tiktok"
+          ? "instagram"
+          : (r as "facebook" | "instagram" | "linkedin");
         return [r, await gerarTresOpcoesRedeSocial(produtoLike, tom, redeGen, ajuste, brandCtx, p.briefing)] as const;
       }),
     );
@@ -5875,11 +6027,17 @@ async function toolRevisarPostPendente(
   if (incluirCta) {
     const telAgente = await buscarTelefoneAgenteTenant(ctx.userId);
     if (telAgente) {
-      variantes = Object.fromEntries(Object.entries(variantes).map(([r, v]) => [r, {
-        A: appendWhatsappCta(v.A, telAgente),
-        B: appendWhatsappCta(v.B, telAgente),
-        C: appendWhatsappCta(v.C, telAgente),
-      }]));
+      variantes = Object.fromEntries(Object.entries(variantes).map(([r, v]) => [r, r === "linkedin"
+        ? {
+          A: sanitizeLinkedInApprovalCopy(`${v.A}\n\nhttps://wa.me/${telAgente}`),
+          B: sanitizeLinkedInApprovalCopy(`${v.B}\n\nhttps://wa.me/${telAgente}`),
+          C: sanitizeLinkedInApprovalCopy(`${v.C}\n\nhttps://wa.me/${telAgente}`),
+        }
+        : {
+          A: appendWhatsappCta(v.A, telAgente),
+          B: appendWhatsappCta(v.B, telAgente),
+          C: appendWhatsappCta(v.C, telAgente),
+        }]));
       ctaNota = `CTA de WhatsApp incluído (wa.me/${telAgente}).`;
     } else {
       ctaNota = "Não achei o número do agente pra montar o CTA — post sai sem CTA.";
@@ -6332,7 +6490,7 @@ async function resolverMidiaBibliotecaPorId(
 }
 
 async function toolPostarMidiaBiblioteca(
-  args: { legenda?: string; nome?: string; preco?: number | string; tom?: string; redes?: string[]; midia_id?: string; formato?: string; incluir_cta_whatsapp?: boolean; briefing?: string; usar_contexto_conversa?: boolean },
+  args: { legenda?: string; nome?: string; preco?: number | string; link?: string; tom?: string; redes?: string[]; midia_id?: string; formato?: string; incluir_cta_whatsapp?: boolean; briefing?: string; usar_contexto_conversa?: boolean },
   ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
 ): Promise<string> {
   try {
@@ -6377,10 +6535,22 @@ async function toolPostarMidiaBiblioteca(
 
     if (midia.origem === "carrossel_whatsapp" || midia.origem === "carrossel_whatsapp_card" || midia.midia_pai_id) {
       const parentId = midia.midia_pai_id || midia.id;
+      const requestedNetworks = (args?.redes ?? [])
+        .map(canonicalSocialNetwork)
+        .filter(Boolean);
+      if (requestedNetworks.includes("linkedin") && !requestedNetworks.includes("instagram")) {
+        return JSON.stringify({
+          erro: "carrossel_linkedin_nao_suportado",
+          mensagem: "Carrossel pelo LinkedIn ainda não está habilitado. Não publiquei nada.",
+        });
+      }
       return await prepararPreviewCarrosselExistente(parentId, ctx, {
         tom: args?.tom,
         legenda: args?.legenda,
         facebookRequested: (args?.redes ?? []).map((rede) => rede.toLowerCase()).includes("facebook"),
+        linkedinRequested: (args?.redes ?? []).some((rede) =>
+          canonicalSocialNetwork(rede) === "linkedin"
+        ),
         enviarCards: true,
       });
     }
@@ -6394,14 +6564,15 @@ async function toolPostarMidiaBiblioteca(
       return JSON.stringify({ erro: "Reels só aceita vídeo. Envia um vídeo curto vertical (ideal ≥3s, 9:16) e peça de novo." });
     }
 
-    const redesValidas = ["facebook", "instagram", "tiktok"];
     let redes = (args?.redes && args.redes.length > 0 ? args.redes : ["facebook", "instagram", "tiktok"])
-      .map((r) => r.toLowerCase())
-      .filter((r) => redesValidas.includes(r));
-    // TikTok não tem story — remove da lista pra story
-    if (formato === "story") redes = redes.filter((r) => r !== "tiktok");
-    // Reels só faz sentido em IG/FB
-    if (formato === "reels") redes = redes.filter((r) => r !== "tiktok");
+      .map(canonicalSocialNetwork)
+      .filter((network): network is NonNullable<typeof network> =>
+        !!network && SUPPORTED_SOCIAL_NETWORKS.includes(network)
+      );
+    // Story e Reels deste fluxo são formatos da Meta.
+    if (formato === "story" || formato === "reels") {
+      redes = redes.filter((r) => r !== "tiktok" && r !== "linkedin");
+    }
     if (redes.length === 0) return JSON.stringify({ erro: `nenhuma rede válida para formato ${formato}` });
     if (!isVideo && redes.includes("tiktok")) {
       return JSON.stringify({
@@ -6480,7 +6651,9 @@ async function toolPostarMidiaBiblioteca(
       nome,
       descricao: descricaoFinal || null,
       preco: precoNum && !isNaN(precoNum) ? precoNum : null,
-      link: null,
+      link: typeof args?.link === "string" && /^https?:\/\//i.test(args.link.trim())
+        ? args.link.trim()
+        : null,
       categoria: null,
       imagem_url: midia.midia_url,
       ativo: true,
@@ -6513,34 +6686,47 @@ async function toolPostarMidiaBiblioteca(
       });
     }
 
-    // Gera as 3 opções UMA vez (rede-base) e reaproveita nas demais redes.
-    // Antes gerava 1 chamada de IA por rede em paralelo — dobrava a latência e às vezes
-    // a função encerrava antes de responder ("pedi a copy e não chegou nada").
+    // Meta/TikTok compartilham a copy-base; LinkedIn recebe variações próprias,
+    // profissionais e sem emojis.
     const redeBase: "facebook" | "instagram" = redes.includes("instagram") ? "instagram" : "facebook";
-    console.log(`[pietro][postar_midia] gerando copy redes=${redes.join(",")} base=${redeBase} formato=${formato}`);
-    let opcoesBase = await gerarTresOpcoesRedeSocial(produtoLike, tom, redeBase, undefined, brandCtx, briefing || undefined);
-
-    // Última barreira contra contaminação de contexto: mesmo que o modelo ignore as
-    // instruções, uma copy automotiva nunca é exibida para uma foto de outro produto.
-    if (!isVideo && descricaoVisual && copyConflitaComImagem(descricaoVisual, opcoesBase)) {
-      console.error("[pietro][postar_midia] copy REJEITADA por conflito com a imagem; regenerando sem contexto");
-      const produtoVisual = {
-        ...produtoLike,
-        nome: descricaoVisual.slice(0, 120),
-        descricao: `O produto mostrado na foto é: ${descricaoVisual}`,
-      };
-      opcoesBase = await gerarTresOpcoesRedeSocial(
-        produtoVisual,
-        "beneficio",
-        redeBase,
-        "Fale exclusivamente sobre o produto identificado nesta foto. Não mencione veículos, carros, concessionária, test-drive, quilometragem, ano ou modelo.",
+    const gerarOpcoes = async (redeGeracao: "facebook" | "instagram" | "linkedin") => {
+      let options = await gerarTresOpcoesRedeSocial(
+        produtoLike,
+        tom,
+        redeGeracao,
         undefined,
-        undefined,
+        brandCtx,
+        briefing || undefined,
       );
-    }
-    console.log(`[pietro][postar_midia] copy gerada lenA=${opcoesBase.A.length}`);
-    let variantes: Record<string, PostVariantes> = Object.fromEntries(redes.map((r) => [r, { ...opcoesBase }]));
-    let scripts: Record<string, string> = Object.fromEntries(redes.map((r) => [r, opcoesBase.A]));
+      if (!isVideo && descricaoVisual && copyConflitaComImagem(descricaoVisual, options)) {
+        console.error(`[pietro][postar_midia] copy ${redeGeracao} REJEITADA por conflito com a imagem; regenerando`);
+        options = await gerarTresOpcoesRedeSocial(
+          {
+            ...produtoLike,
+            nome: descricaoVisual.slice(0, 120),
+            descricao: `O produto mostrado na foto é: ${descricaoVisual}`,
+          },
+          "beneficio",
+          redeGeracao,
+          "Fale exclusivamente sobre o produto identificado nesta foto. Não mencione veículos, carros, concessionária, test-drive, quilometragem, ano ou modelo.",
+          undefined,
+          undefined,
+        );
+      }
+      return options;
+    };
+    console.log(`[pietro][postar_midia] gerando copy redes=${redes.join(",")} base=${redeBase} formato=${formato}`);
+    const [opcoesBase, opcoesLinkedIn] = await Promise.all([
+      redes.some((rede) => rede !== "linkedin") ? gerarOpcoes(redeBase) : Promise.resolve(null),
+      redes.includes("linkedin") ? gerarOpcoes("linkedin") : Promise.resolve(null),
+    ]);
+    const variantes: Record<string, PostVariantes> = Object.fromEntries(redes.map((rede) => [
+      rede,
+      { ...(rede === "linkedin" ? opcoesLinkedIn! : opcoesBase!) },
+    ]));
+    let scripts: Record<string, string> = Object.fromEntries(
+      Object.entries(variantes).map(([rede, options]) => [rede, options.A]),
+    );
     const invalidReason = invalidSocialVariantsReason(redes, variantes);
     if (invalidReason) {
       console.error("[postar_midia][empty_options]", {
@@ -6562,11 +6748,19 @@ async function toolPostarMidiaBiblioteca(
     if (incluirCta) {
       const telAgente = await buscarTelefoneAgenteTenant(ctx.userId);
       if (telAgente) {
-        variantes = Object.fromEntries(Object.entries(variantes).map(([r, v]) => [r, {
-          A: appendWhatsappCta(v.A, telAgente),
-          B: appendWhatsappCta(v.B, telAgente),
-          C: appendWhatsappCta(v.C, telAgente),
-        }]));
+        for (const [network, options] of Object.entries(variantes)) {
+          variantes[network] = network === "linkedin"
+            ? {
+              A: sanitizeLinkedInApprovalCopy(`${options.A}\n\nhttps://wa.me/${telAgente}`),
+              B: sanitizeLinkedInApprovalCopy(`${options.B}\n\nhttps://wa.me/${telAgente}`),
+              C: sanitizeLinkedInApprovalCopy(`${options.C}\n\nhttps://wa.me/${telAgente}`),
+            }
+            : {
+              A: appendWhatsappCta(options.A, telAgente),
+              B: appendWhatsappCta(options.B, telAgente),
+              C: appendWhatsappCta(options.C, telAgente),
+            };
+        }
         scripts = Object.fromEntries(Object.entries(variantes).map(([r, v]) => [r, v.A]));
         ctaNota = `CTA de WhatsApp incluído (wa.me/${telAgente}).`;
       } else {
@@ -8377,7 +8571,7 @@ const TOOLS = [
         properties: {
           produto: { type: "string", description: "Nome, categoria ou palavra-chave do produto." },
           tom: { type: "string", enum: ["urgencia", "escassez", "black-friday", "prova-social", "beneficio"], description: "Tom do copy. Padrão: urgencia." },
-          redes: { type: "array", items: { type: "string", enum: ["facebook", "instagram", "tiktok"] }, description: "Redes. Padrão: todas as três." },
+          redes: { type: "array", items: { type: "string", enum: ["facebook", "instagram", "tiktok", "linkedin"] }, description: "Redes. Inclua LinkedIn quando o dono pedir LinkedIn, Linked In ou LKD." },
           incluir_cta_whatsapp: { type: "boolean", description: "OPT-IN. Passe true SÓ SE o dono pediu explicitamente 'posta com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA do whatsapp', 'chama no whatsapp'. Nunca inclua automaticamente." },
         },
         required: ["produto"],
@@ -8522,8 +8716,9 @@ const TOOLS = [
           midia_id: { type: "string", description: "ID da mídia a publicar. Aceita o UUID completo ou o código curto de 8 caracteres mostrado ao usuário (ex.: 53DBDA63)." },
           nome: { type: "string", description: "Nome do produto/item, se informado." },
           preco: { type: "string", description: "Preço se informado (ex: '29,99')." },
+          link: { type: "string", description: "Link explícito informado pelo dono. No LinkedIn, fica no fim antes das hashtags." },
           tom: { type: "string", enum: ["urgencia", "escassez", "black-friday", "prova-social", "beneficio"] },
-          redes: { type: "array", items: { type: "string", enum: ["facebook", "instagram", "tiktok"] } },
+          redes: { type: "array", items: { type: "string", enum: ["facebook", "instagram", "tiktok", "linkedin"] } },
           formato: { type: "string", enum: ["feed", "story", "reels"], description: "'feed' (default), 'story' (foto/vídeo 9:16) ou 'reels' (só vídeo)." },
           incluir_cta_whatsapp: { type: "boolean", description: "OPT-IN. true = adiciona '📱 Fale comigo no WhatsApp: wa.me/<numero_do_agente>' em SANDUÍCHE (no INÍCIO E no FIM) da legenda de todas as redes escolhidas. Idempotente: limpa CTA antigo antes de reaplicar (nunca triplica). Nunca inclua automaticamente — só quando o dono pedir com palavras claras ('com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA')." },
         },
@@ -8573,7 +8768,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "publicar_linkedin",
-      description: "💼 Publica no LINKEDIN pessoal do responsável e só confirma sucesso quando a API devolve um URN real. Suporta texto, imagem e vídeo da biblioteca. Quando o pedido se referir a uma mídia, passe o ID de 8 caracteres ou UUID em midia_id; NUNCA substitua vídeo por texto silenciosamente. Tom profissional, sem emojis ou gírias. Estrutura: observação, argumento técnico, conclusão, link no fim antes de 2–3 hashtags. Restrito ao responsável.",
+      description: "💼 Prepara uma prévia para LINKEDIN no fluxo obrigatório de aprovação A/B/C. NUNCA publica nesta chamada. Suporta texto, imagem e vídeo da biblioteca; depois da escolha, o dono decide Publicar agora ou Agendar. Quando o pedido se referir a mídia, passe o ID de 8 caracteres ou UUID em midia_id. Tom profissional, sem emojis ou gírias; observação → argumento → conclusão; link antes de 2–3 hashtags.",
       parameters: {
         type: "object",
         properties: {
@@ -9013,7 +9208,7 @@ async function cancelarPreviewCarrosselAnterior(token: string | undefined, userI
 async function prepararPreviewCarrosselExistente(
   parentId: string,
   ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
-  options: { tom?: string; legenda?: string; facebookRequested?: boolean; enviarCards?: boolean } = {},
+  options: { tom?: string; legenda?: string; facebookRequested?: boolean; linkedinRequested?: boolean; enviarCards?: boolean } = {},
 ): Promise<string> {
   if (!ctx.convId) return JSON.stringify({ erro: "conversa_sem_id", mensagem: "Não consegui identificar a conversa para guardar a aprovação do carrossel." });
   const { data: parent, error: parentError } = await sb
@@ -9111,7 +9306,12 @@ async function prepararPreviewCarrosselExistente(
     media_code: idCurto(parentId),
     redes: ["instagram"],
     variantes,
-    aviso_facebook: options.facebookRequested ? "Carrossel pelo WhatsApp está disponível apenas no Instagram; não publiquei no Facebook." : undefined,
+    aviso_facebook: options.facebookRequested || options.linkedinRequested
+      ? `Carrossel pelo WhatsApp está disponível apenas no Instagram; não publiquei no ${[
+        options.facebookRequested ? "Facebook" : "",
+        options.linkedinRequested ? "LinkedIn" : "",
+      ].filter(Boolean).join(" nem no ")}.`
+      : undefined,
   });
 }
 
@@ -9806,7 +10006,7 @@ async function runTool(
   if (name === "criar_carrossel") {
     return { result: await toolCriarCarrossel(args ?? {}, { ...ctx, demonstracao }) };
   }
-  if (name === "publicar_linkedin") return { result: await toolPublicarLinkedin(args ?? {}, ctx) };
+  if (name === "publicar_linkedin") return { result: await toolPrepararLinkedin(args ?? {}, ctx) };
   if (name === "criar_anuncio") {
     const r = await toolCriarAnuncio(args ?? {}, ctx);
     let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}
@@ -10465,6 +10665,12 @@ async function callGemini(
       if (!remetenteEhDono && toolCtx.userId !== ADMIN_AMZ_USER_ID) {
         return { text: "Esse recurso é exclusivo do responsável da conta. Posso continuar ajudando com suas dúvidas por aqui." };
       }
+      const carouselNetworks = detectRequestedSocialNetworks(userContent);
+      if (carouselNetworks.includes("linkedin") && !carouselNetworks.includes("instagram")) {
+        return {
+          text: "Carrossel pelo LinkedIn ainda não está habilitado. Posso preparar esse carrossel para o Instagram.",
+        };
+      }
       const tema = extractCarrosselTema(userContent);
       const corPedida = detectExplicitCarouselColor(userContent);
       console.log("[pietro][forced_carrossel]", { tema, cor: corPedida ? "detectada" : "aguardando" });
@@ -10477,7 +10683,11 @@ async function callGemini(
         num_slides: requestedCarouselSlideCount(userContent, !remetenteEhDono),
         facebook_requested: requestedFacebook(userContent),
       }, toolCtx);
-      return carouselToolResponse(r);
+      const response = carouselToolResponse(r);
+      if (carouselNetworks.includes("linkedin")) {
+        response.text = `${response.text}<<SPLIT>>Carrossel pelo LinkedIn ainda não está habilitado; mantive apenas o Instagram.`;
+      }
+      return response;
     }
 
     // 2) resposta curta só com a cor, retomando o carrossel pendente
@@ -10764,7 +10974,7 @@ async function callGemini(
             ).join("\n");
           } catch { /* resultado sem mídia identificável */ }
         }
-        if (name === "postar_midia_biblioteca" || name === "postar_redes_sociais" || name === "revisar_post_pendente" || name === "escolher_variante_post") captureSocialToken(result);
+        if (name === "postar_midia_biblioteca" || name === "postar_redes_sociais" || name === "publicar_linkedin" || name === "revisar_post_pendente" || name === "escolher_variante_post") captureSocialToken(result);
         // Comprovante de encaminhamento: só existe se a tool realmente entregou (ok: true).
         if (name === "encaminhar_recado_ao_dono" || name === "enviar_mensagem_contato_comercial" || name === "registrar_lead_novo") {
           forwardAttempted = true;
@@ -10775,37 +10985,14 @@ async function callGemini(
             else console.warn("[processor][handoff][tool_failed]", String(p?.erro ?? "desconhecido"));
           } catch { /* ignore */ }
         }
-        // Publicação externa nunca volta ao modelo para ele "interpretar" o
-        // resultado. Só um URN real do LinkedIn libera a mensagem de sucesso.
         if (name === "publicar_linkedin") {
-          try {
-            const parsed = JSON.parse(result);
-            const urn = typeof parsed?.post_urn === "string" ? parsed.post_urn : "";
-            if (parsed?.ok === true && parsed?.status === "publicado" && /^urn:li:/i.test(urn)) {
-              const mediaLabel = parsed?.media_type === "video"
-                ? " com o vídeo"
-                : parsed?.media_type === "foto" ? " com a imagem" : "";
-              return {
-                text: `✅ *POSTAGEM REALIZADA COM SUCESSO*\n\nPubliquei no LinkedIn${mediaLabel}.\nURN: ${urn}`,
-                imageUrl: pendingImageUrl,
-                forwardProof,
-                forwardAttempted,
-              };
-            }
-            return {
-              text: `❌ *NÃO PUBLIQUEI NO LINKEDIN*\n\n${String(parsed?.mensagem || parsed?.erro || "A API não confirmou a publicação.")}`,
-              imageUrl: pendingImageUrl,
-              forwardProof,
-              forwardAttempted,
-            };
-          } catch {
-            return {
-              text: "❌ *NÃO PUBLIQUEI NO LINKEDIN*\n\nA ferramenta devolveu uma resposta inválida e não confirmou nenhum URN.",
-              imageUrl: pendingImageUrl,
-              forwardProof,
-              forwardAttempted,
-            };
-          }
+          return {
+            text: formatSocialPostToolResult(result),
+            imageUrl: pendingImageUrl,
+            forwardProof,
+            forwardAttempted,
+            interactiveButtons: interactiveButtonsFromSocialResult(result),
+          };
         }
         if (
           name === "criar_lembrete"

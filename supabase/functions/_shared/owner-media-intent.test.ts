@@ -84,7 +84,7 @@ Deno.test("mantém comandos explícitos de edição dirigidos à foto", () => {
 });
 
 Deno.test("mantém comandos explícitos de publicação", () => {
-  for (const text of ["posta essa no insta", "publica no facebook"]) {
+  for (const text of ["posta essa no insta", "publica no facebook", "posta no LinkedIn", "publica no lkd"]) {
     assertEquals(classifyOwnerMediaIntent(text), {
       action: "post",
       mediaStrategy: "last",

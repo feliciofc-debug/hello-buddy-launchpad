@@ -68,7 +68,7 @@ export function hasSocialPostRequest(text: string): boolean {
     `\\b${verb}\\s+(?:(?:essa|esta|isso|esse|este)\\b|(?:a|essa|esta)\\s+(?:foto|imagem|midia|video)\\b)`,
   ).test(value);
   const socialDestination =
-    /\b(?:no|na|nos|nas|pro|pra|para\s+o|para\s+a|em)\s+(?:facebook|face|fb|instagram|insta|ig|tiktok|tik\s*tok|redes?\s+sociais?)\b/
+    /\b(?:no|na|nos|nas|pro|pra|para\s+o|para\s+a|em)\s+(?:facebook|face|fb|instagram|insta|ig|tiktok|tik\s*tok|linkedin|linked\s*in|lkd|redes?\s+sociais?)\b/
       .test(value);
 
   return imperativeAtStart || explicitMediaTarget || socialDestination;

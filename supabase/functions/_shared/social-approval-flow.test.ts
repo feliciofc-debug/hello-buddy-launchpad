@@ -69,3 +69,26 @@ Deno.test("carrossel recebe botões A/B/C e depois ações de publicar ou agenda
     ],
   );
 });
+
+Deno.test("prévia exclusiva do LinkedIn exige A/B/C antes de publicar", () => {
+  const preview = JSON.stringify({
+    status: "aguardando_escolha_variante",
+    token: "abcd1234",
+    redes: ["linkedin"],
+    variantes: {
+      linkedin: {
+        A: "Copy A profissional",
+        B: "Copy B profissional",
+        C: "Copy C profissional",
+      },
+    },
+  });
+  assertEquals(
+    socialInteractiveButtonsFromResult(preview)?.buttons,
+    [
+      { id: "social_variant:A:abcd1234", title: "Opção A" },
+      { id: "social_variant:B:abcd1234", title: "Opção B" },
+      { id: "social_variant:C:abcd1234", title: "Opção C" },
+    ],
+  );
+});
