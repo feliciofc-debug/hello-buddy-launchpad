@@ -1057,6 +1057,7 @@ export type Database = {
           postar_facebook: boolean | null
           postar_instagram: boolean | null
           postar_linkedin: boolean
+          postar_tiktok: boolean
           postar_videos: boolean
           posts_por_dia: number
           produto_fonte: string
@@ -1064,6 +1065,7 @@ export type Database = {
           proxima_execucao: string | null
           repetir_ciclo: boolean | null
           total_publicados: number | null
+          tiktok_privacy_level: string | null
           ultima_execucao: string | null
           ultimo_produto_index: number | null
           ultimo_video_index: number
@@ -1088,6 +1090,7 @@ export type Database = {
           postar_facebook?: boolean | null
           postar_instagram?: boolean | null
           postar_linkedin?: boolean
+          postar_tiktok?: boolean
           postar_videos?: boolean
           posts_por_dia?: number
           produto_fonte?: string
@@ -1095,6 +1098,7 @@ export type Database = {
           proxima_execucao?: string | null
           repetir_ciclo?: boolean | null
           total_publicados?: number | null
+          tiktok_privacy_level?: string | null
           ultima_execucao?: string | null
           ultimo_produto_index?: number | null
           ultimo_video_index?: number
@@ -1119,6 +1123,7 @@ export type Database = {
           postar_facebook?: boolean | null
           postar_instagram?: boolean | null
           postar_linkedin?: boolean
+          postar_tiktok?: boolean
           postar_videos?: boolean
           posts_por_dia?: number
           produto_fonte?: string
@@ -1126,6 +1131,7 @@ export type Database = {
           proxima_execucao?: string | null
           repetir_ciclo?: boolean | null
           total_publicados?: number | null
+          tiktok_privacy_level?: string | null
           ultima_execucao?: string | null
           ultimo_produto_index?: number | null
           ultimo_video_index?: number
@@ -7616,6 +7622,19 @@ export type Database = {
           scheduled_at: string | null
           status: string | null
           solicitante_telefone: string | null
+          tiktok_brand_organic: boolean
+          tiktok_branded_content: boolean
+          tiktok_consented_at: string | null
+          tiktok_creator_nickname: string | null
+          tiktok_fail_reason: string | null
+          tiktok_is_commercial_content: boolean
+          tiktok_next_retry_at: string | null
+          tiktok_post_row_id: string | null
+          tiktok_privacy_level: string | null
+          tiktok_publish_id: string | null
+          tiktok_publish_status: string | null
+          tiktok_retry_count: number
+          tiktok_video_duration_sec: number | null
           updated_at: string | null
           user_id: string
           video_url: string | null
@@ -7649,6 +7668,19 @@ export type Database = {
           scheduled_at?: string | null
           status?: string | null
           solicitante_telefone?: string | null
+          tiktok_brand_organic?: boolean
+          tiktok_branded_content?: boolean
+          tiktok_consented_at?: string | null
+          tiktok_creator_nickname?: string | null
+          tiktok_fail_reason?: string | null
+          tiktok_is_commercial_content?: boolean
+          tiktok_next_retry_at?: string | null
+          tiktok_post_row_id?: string | null
+          tiktok_privacy_level?: string | null
+          tiktok_publish_id?: string | null
+          tiktok_publish_status?: string | null
+          tiktok_retry_count?: number
+          tiktok_video_duration_sec?: number | null
           updated_at?: string | null
           user_id: string
           video_url?: string | null
@@ -7682,6 +7714,19 @@ export type Database = {
           scheduled_at?: string | null
           status?: string | null
           solicitante_telefone?: string | null
+          tiktok_brand_organic?: boolean
+          tiktok_branded_content?: boolean
+          tiktok_consented_at?: string | null
+          tiktok_creator_nickname?: string | null
+          tiktok_fail_reason?: string | null
+          tiktok_is_commercial_content?: boolean
+          tiktok_next_retry_at?: string | null
+          tiktok_post_row_id?: string | null
+          tiktok_privacy_level?: string | null
+          tiktok_publish_id?: string | null
+          tiktok_publish_status?: string | null
+          tiktok_retry_count?: number
+          tiktok_video_duration_sec?: number | null
           updated_at?: string | null
           user_id?: string
           video_url?: string | null
@@ -8997,6 +9042,13 @@ export type Database = {
           scheduled_for: string
           status: string
           tentativas: number
+          tiktok_brand_organic: boolean | null
+          tiktok_branded_content: boolean | null
+          tiktok_consented_at: string | null
+          tiktok_creator_nickname: string | null
+          tiktok_is_commercial_content: boolean | null
+          tiktok_privacy_level: string | null
+          tiktok_video_duration_sec: number | null
           tipo: string
           updated_at: string
           user_id: string
@@ -9017,6 +9069,13 @@ export type Database = {
           scheduled_for: string
           status?: string
           tentativas?: number
+          tiktok_brand_organic?: boolean | null
+          tiktok_branded_content?: boolean | null
+          tiktok_consented_at?: string | null
+          tiktok_creator_nickname?: string | null
+          tiktok_is_commercial_content?: boolean | null
+          tiktok_privacy_level?: string | null
+          tiktok_video_duration_sec?: number | null
           tipo: string
           updated_at?: string
           user_id: string
@@ -9037,6 +9096,13 @@ export type Database = {
           scheduled_for?: string
           status?: string
           tentativas?: number
+          tiktok_brand_organic?: boolean | null
+          tiktok_branded_content?: boolean | null
+          tiktok_consented_at?: string | null
+          tiktok_creator_nickname?: string | null
+          tiktok_is_commercial_content?: boolean | null
+          tiktok_privacy_level?: string | null
+          tiktok_video_duration_sec?: number | null
           tipo?: string
           updated_at?: string
           user_id?: string

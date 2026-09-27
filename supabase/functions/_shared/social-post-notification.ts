@@ -8,6 +8,8 @@ export type ScheduledPostNotificationRow = {
   error_message?: string | null;
   fb_post_id?: string | null;
   notificado_em?: string | null;
+  tiktok_publish_status?: string | null;
+  tiktok_fail_reason?: string | null;
 };
 
 export type ScheduledPostNotification = {
@@ -18,6 +20,13 @@ export type ScheduledPostNotification = {
 };
 
 const FINAL_STATUSES = new Set(["publicado", "erro", "cancelado"]);
+
+function isFinalNotificationRow(row: ScheduledPostNotificationRow): boolean {
+  if (!FINAL_STATUSES.has(String(row.status))) return false;
+  if (row.platform !== "tiktok" || row.status !== "publicado") return true;
+  return row.tiktok_publish_status === "PUBLISH_COMPLETE"
+    || row.tiktok_publish_status === "SEND_TO_USER_INBOX";
+}
 
 export function friendlySocialPostError(value: unknown): string {
   const raw = String(value || "").toLowerCase();
@@ -41,7 +50,7 @@ export function buildScheduledPostNotification(
 ): ScheduledPostNotification | null {
   if (
     rows.length === 0
-    || rows.some((row) => !FINAL_STATUSES.has(String(row.status)))
+    || rows.some((row) => !isFinalNotificationRow(row))
     || rows.some((row) => !!row.notificado_em)
   ) return null;
 
@@ -49,16 +58,25 @@ export function buildScheduledPostNotification(
   if (!scheduledAt) return null;
   const when = formatScheduledDate(new Date(scheduledAt));
   const published = rows.filter((row) => row.status === "publicado");
+  const drafts = published.filter((row) =>
+    row.platform === "tiktok" && row.tiktok_publish_status === "SEND_TO_USER_INBOX"
+  );
+  const actuallyPublished = published.filter((row) => !drafts.includes(row));
   const failed = rows.filter((row) => row.status === "erro" || row.status === "cancelado");
-  const allNetworks = formatSocialNetworks(rows.map((row) => row.platform));
-  const publishedNetworks = formatSocialNetworks(published.map((row) => row.platform));
+  const publishedNetworks = formatSocialNetworks(actuallyPublished.map((row) => row.platform));
   const failedNetworks = formatSocialNetworks(failed.map((row) => row.platform));
-  const reason = friendlySocialPostError(failed[0]?.error_message);
+  const reason = friendlySocialPostError(
+    failed[0]?.tiktok_fail_reason || failed[0]?.error_message,
+  );
   const facebookId = published.find((row) => row.platform === "facebook")?.fb_post_id;
   const facebookLink = facebookId ? `\nhttps://facebook.com/${facebookId}` : "";
 
   if (failed.length === 0) {
-    const result = `publicado no ${allNetworks}`;
+    const resultParts = [
+      actuallyPublished.length > 0 ? `publicado no ${formatSocialNetworks(actuallyPublished.map((row) => row.platform))}` : "",
+      drafts.length > 0 ? "enviado para os rascunhos do seu TikTok, é só abrir o app e publicar" : "",
+    ].filter(Boolean);
+    const result = resultParts.join("; ");
     return {
       kind: "success",
       text: `✅ Seu post agendado para ${when} foi ${result}.${facebookLink}`,
@@ -67,7 +85,11 @@ export function buildScheduledPostNotification(
     };
   }
   if (published.length > 0) {
-    const result = `publicado no ${publishedNetworks}, mas falhou no ${failedNetworks}: ${reason}`;
+    const successParts = [
+      actuallyPublished.length > 0 ? `publicado no ${publishedNetworks}` : "",
+      drafts.length > 0 ? "enviado para os rascunhos do seu TikTok" : "",
+    ].filter(Boolean).join("; ");
+    const result = `${successParts}, mas falhou no ${failedNetworks}: ${reason}`;
     return {
       kind: "partial",
       text: `⚠️ Seu post agendado para ${when} foi ${result}.${facebookLink}`,

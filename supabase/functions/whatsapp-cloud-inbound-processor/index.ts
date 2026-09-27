@@ -3545,6 +3545,14 @@ type PendingSocialPost = {
   instagramCreationId?: string;
   tiktokPrivacyLevel?: string;
   tiktokPrivacyOptions?: string[];
+  tiktokCreatorNickname?: string;
+  tiktokMaxDurationSec?: number;
+  tiktokVideoDurationSec?: number;
+  tiktokIsCommercialContent?: boolean;
+  tiktokBrandOrganic?: boolean;
+  tiktokBrandedContent?: boolean;
+  tiktokConsentedAt?: string;
+  pendingTikTokScheduledAt?: string;
 };
 const PENDING_POSTS = new Map<string, PendingSocialPost>();
 function pendingCleanup() {
@@ -3564,10 +3572,18 @@ type PendingPostMarkerState = {
   briefing?: string;
   tiktokPrivacyLevel?: string;
   tiktokPrivacyOptions?: string[];
+  tiktokCreatorNickname?: string;
+  tiktokMaxDurationSec?: number;
+  tiktokVideoDurationSec?: number;
+  tiktokIsCommercialContent?: boolean;
+  tiktokBrandOrganic?: boolean;
+  tiktokBrandedContent?: boolean;
+  tiktokConsentedAt?: string;
+  pendingTikTokScheduledAt?: string;
 };
 
 function encodePendingPostState(state?: PendingPostMarkerState): string {
-  if (!state || (!state.variantes && !state.variantSelecionada && state.incluirCtaWhatsapp === undefined && !state.tom && !state.briefing && !state.tiktokPrivacyLevel && !state.tiktokPrivacyOptions?.length)) return "";
+  if (!state || (!state.variantes && !state.variantSelecionada && state.incluirCtaWhatsapp === undefined && !state.tom && !state.briefing && !state.tiktokPrivacyLevel && !state.tiktokPrivacyOptions?.length && !state.pendingTikTokScheduledAt)) return "";
   try {
     const json = JSON.stringify(state);
     const bytes = new TextEncoder().encode(json);
@@ -3647,6 +3663,14 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
       briefing: pending.briefing ? pending.briefing.slice(0, 1200) : undefined,
       tiktokPrivacyLevel: pending.tiktokPrivacyLevel,
       tiktokPrivacyOptions: pending.tiktokPrivacyOptions,
+      tiktokCreatorNickname: pending.tiktokCreatorNickname,
+      tiktokMaxDurationSec: pending.tiktokMaxDurationSec,
+      tiktokVideoDurationSec: pending.tiktokVideoDurationSec,
+      tiktokIsCommercialContent: pending.tiktokIsCommercialContent,
+      tiktokBrandOrganic: pending.tiktokBrandOrganic,
+      tiktokBrandedContent: pending.tiktokBrandedContent,
+      tiktokConsentedAt: pending.tiktokConsentedAt,
+      pendingTikTokScheduledAt: pending.pendingTikTokScheduledAt,
     }),
     updated_at: new Date().toISOString(),
   }));
@@ -3748,6 +3772,14 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
     instagramCreationId: (rows as any[]).find((r) => r.platform === "instagram")?.instagram_creation_id || undefined,
     tiktokPrivacyLevel: state?.tiktokPrivacyLevel,
     tiktokPrivacyOptions: state?.tiktokPrivacyOptions,
+    tiktokCreatorNickname: state?.tiktokCreatorNickname,
+    tiktokMaxDurationSec: state?.tiktokMaxDurationSec,
+    tiktokVideoDurationSec: state?.tiktokVideoDurationSec,
+    tiktokIsCommercialContent: state?.tiktokIsCommercialContent,
+    tiktokBrandOrganic: state?.tiktokBrandOrganic,
+    tiktokBrandedContent: state?.tiktokBrandedContent,
+    tiktokConsentedAt: state?.tiktokConsentedAt,
+    pendingTikTokScheduledAt: state?.pendingTikTokScheduledAt,
   };
 }
 
@@ -3784,6 +3816,14 @@ async function updatePersistedSocialPostRows(
                 briefing: pending.briefing,
                 tiktokPrivacyLevel: pending.tiktokPrivacyLevel,
                 tiktokPrivacyOptions: pending.tiktokPrivacyOptions,
+                tiktokCreatorNickname: pending.tiktokCreatorNickname,
+                tiktokMaxDurationSec: pending.tiktokMaxDurationSec,
+                tiktokVideoDurationSec: pending.tiktokVideoDurationSec,
+                tiktokIsCommercialContent: pending.tiktokIsCommercialContent,
+                tiktokBrandOrganic: pending.tiktokBrandOrganic,
+                tiktokBrandedContent: pending.tiktokBrandedContent,
+                tiktokConsentedAt: pending.tiktokConsentedAt,
+                pendingTikTokScheduledAt: pending.pendingTikTokScheduledAt,
               },
             )
             : (result.resposta?.error || result.resposta?.message || `falha_${result.status || "sem_status"}`),
@@ -3805,7 +3845,12 @@ const TIKTOK_PRIVACY_LABELS: Record<string, string> = {
   SELF_ONLY: "Somente eu",
 };
 
-async function fetchTikTokPrivacyOptions(userId: string): Promise<{ options: string[]; error?: string }> {
+async function fetchTikTokPrivacyOptions(userId: string): Promise<{
+  options: string[];
+  creatorNickname?: string;
+  maxDurationSec?: number;
+  error?: string;
+}> {
   try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/tiktok-creator-info`, {
       method: "POST",
@@ -3826,7 +3871,13 @@ async function fetchTikTokPrivacyOptions(userId: string): Promise<{ options: str
       ? data.privacy_level_options.filter((v: unknown): v is string => typeof v === "string" && !!v.trim())
       : [];
     if (options.length === 0) return { options: [], error: "TikTok não retornou opções de privacidade para esta conta." };
-    return { options: [...new Set(options)] };
+    return {
+      options: [...new Set(options)],
+      creatorNickname: typeof data.creator_nickname === "string" ? data.creator_nickname : undefined,
+      maxDurationSec: Number.isFinite(Number(data.max_video_post_duration_sec))
+        ? Number(data.max_video_post_duration_sec)
+        : undefined,
+    };
   } catch (e) {
     return { options: [], error: String((e as Error).message || e) };
   }
@@ -3840,6 +3891,35 @@ function matchTikTokPrivacyChoice(text: string, options: string[]): string | nul
     }
   }
   return null;
+}
+
+async function loadPendingTikTokVideoDuration(pending: PendingSocialPost): Promise<number | undefined> {
+  const known = Number(
+    pending.tiktokVideoDurationSec
+      ?? pending.produto?.duracao_segundos,
+  );
+  if (Number.isFinite(known) && known > 0) return known;
+  if (!isUuid(pending.produto?.id)) return undefined;
+  const source = String(pending.produto?.source || "");
+  if (source === "midias_whatsapp") {
+    const { data } = await sb.from("midias_whatsapp")
+      .select("duracao_segundos")
+      .eq("id", pending.produto.id)
+      .eq("user_id", pending.userId)
+      .maybeSingle();
+    const duration = Number(data?.duracao_segundos);
+    return Number.isFinite(duration) && duration > 0 ? duration : undefined;
+  }
+  if (source === "videos_produtos") {
+    const { data } = await sb.from("videos_produtos")
+      .select("duracao_segundos")
+      .eq("id", pending.produto.id)
+      .eq("user_id", pending.userId)
+      .maybeSingle();
+    const duration = Number(data?.duracao_segundos);
+    return Number.isFinite(duration) && duration > 0 ? duration : undefined;
+  }
+  return undefined;
 }
 
 async function publicarEmRede(
@@ -4428,7 +4508,10 @@ function formatSocialPostToolResult(raw: string): string {
     return String(data.mensagem);
   }
 
-  if (data?.status === "aguardando_privacidade_tiktok") {
+  if (
+    data?.status === "aguardando_privacidade_tiktok"
+    || data?.status === "aguardando_declaracao_tiktok"
+  ) {
     return data.mensagem || "Antes de publicar no TikTok, escolha quem poderá ver o vídeo.";
   }
 
@@ -4499,6 +4582,19 @@ function variantSelectionRequiredResult(
 function interactiveListFromSocialResult(raw: string): WhatsAppInteractiveList | undefined {
   try {
     const data = JSON.parse(raw);
+    if (data?.status === "aguardando_declaracao_tiktok") {
+      return {
+        header: "Conteúdo no TikTok",
+        body: data.mensagem || "Informe se o vídeo é comercial.",
+        button: "Escolher declaração",
+        section_title: "Declaração",
+        rows: [
+          { id: "tiktok_disclosure:non_commercial", title: "Não é comercial" },
+          { id: "tiktok_disclosure:brand_organic", title: "Promove minha marca" },
+          { id: "tiktok_disclosure:branded_content", title: "Promove outra marca" },
+        ],
+      };
+    }
     if (data?.status !== "aguardando_privacidade_tiktok" || !Array.isArray(data?.privacy_options)) return undefined;
     const options = data.privacy_options.filter((option: unknown): option is string => typeof option === "string" && !!option.trim());
     if (options.length === 0) return undefined;
@@ -4618,6 +4714,14 @@ async function updatePendingSocialPostMarker(token: string, pending: PendingSoci
     briefing: pending.briefing ? pending.briefing.slice(0, 1200) : undefined,
     tiktokPrivacyLevel: pending.tiktokPrivacyLevel,
     tiktokPrivacyOptions: pending.tiktokPrivacyOptions,
+    tiktokCreatorNickname: pending.tiktokCreatorNickname,
+    tiktokMaxDurationSec: pending.tiktokMaxDurationSec,
+    tiktokVideoDurationSec: pending.tiktokVideoDurationSec,
+    tiktokIsCommercialContent: pending.tiktokIsCommercialContent,
+    tiktokBrandOrganic: pending.tiktokBrandOrganic,
+    tiktokBrandedContent: pending.tiktokBrandedContent,
+    tiktokConsentedAt: pending.tiktokConsentedAt,
+    pendingTikTokScheduledAt: pending.pendingTikTokScheduledAt,
   });
   const rowIds = pending.queueRows?.map((r) => r.id).filter(Boolean) ?? [];
   if (rowIds.length > 0) {
@@ -5128,13 +5232,63 @@ async function toolAgendarPostPendente(
     return JSON.stringify({ ok: false, erro: "data_muito_proxima", mensagem: "Escolha um horário com pelo menos 10 minutos de antecedência." });
   }
 
-  const scheduledNetworks = pending.redes.filter((network) => network !== "tiktok");
   const hasTikTok = pending.redes.includes("tiktok");
+  const isVideo = pending.midiaTipo === "video" || pending.produto?.midia_tipo === "video";
+  const scheduledNetworks = hasTikTok && !isVideo
+    ? pending.redes.filter((network) => network !== "tiktok")
+    : [...pending.redes];
+
+  if (hasTikTok && isVideo && (!pending.tiktokPrivacyLevel || !pending.tiktokConsentedAt)) {
+    const creatorInfo = await fetchTikTokPrivacyOptions(pending.userId);
+    if (creatorInfo.error || creatorInfo.options.length === 0) {
+      return JSON.stringify({
+        ok: false,
+        erro: "tiktok_privacy_indisponivel",
+        mensagem: `Não consegui validar a conta TikTok: ${creatorInfo.error || "nenhuma privacidade disponível"}. Nada foi agendado.`,
+      });
+    }
+    const videoDuration = await loadPendingTikTokVideoDuration(pending);
+    if (videoDuration == null) {
+      return JSON.stringify({
+        ok: false,
+        erro: "tiktok_duracao_indisponivel",
+        mensagem: "Não consegui verificar a duração deste vídeo para o limite da conta TikTok. Nada foi agendado no TikTok.",
+      });
+    }
+    if (
+      creatorInfo.maxDurationSec != null
+      && videoDuration > creatorInfo.maxDurationSec
+    ) {
+      return JSON.stringify({
+        ok: false,
+        erro: "tiktok_video_muito_longo",
+        mensagem: `Este vídeo tem ${Math.ceil(videoDuration)}s, mas a conta TikTok aceita no máximo ${creatorInfo.maxDurationSec}s. Nada foi agendado.`,
+      });
+    }
+    const atualizado = {
+      ...pending,
+      tiktokPrivacyOptions: creatorInfo.options,
+      tiktokCreatorNickname: creatorInfo.creatorNickname,
+      tiktokMaxDurationSec: creatorInfo.maxDurationSec,
+      tiktokVideoDurationSec: videoDuration,
+      pendingTikTokScheduledAt: scheduledDate.toISOString(),
+    };
+    PENDING_POSTS.set(token, atualizado);
+    await updatePendingSocialPostMarker(token, atualizado);
+    return JSON.stringify({
+      ok: false,
+      status: "aguardando_privacidade_tiktok",
+      token,
+      privacy_options: creatorInfo.options,
+      creator_nickname: creatorInfo.creatorNickname,
+      mensagem: `Antes de agendar no TikTok${creatorInfo.creatorNickname ? ` da conta ${creatorInfo.creatorNickname}` : ""}, escolha quem poderá ver o vídeo. Nenhuma opção vem marcada.`,
+    });
+  }
   if (scheduledNetworks.length === 0) {
     return JSON.stringify({
       ok: false,
-      erro: "tiktok_nao_agendavel",
-      mensagem: "O TikTok ainda precisa ser publicado na hora; este criativo não tem outra rede que possa ser agendada.",
+      erro: "tiktok_exige_video",
+      mensagem: "O TikTok aceita só vídeo. Envie um vídeo para agendar nessa rede.",
     });
   }
 
@@ -5155,7 +5309,6 @@ async function toolAgendarPostPendente(
     return JSON.stringify({ ok: false, erro: "fila_incompleta", mensagem: "Não encontrei todas as linhas deste criativo; nada foi agendado." });
   }
   const mediaUrl = pending.produto?.imagem_url || null;
-  const isVideo = pending.midiaTipo === "video" || pending.produto?.midia_tipo === "video";
   const { data: updatedRows, error } = await sb.from("social_posts_queue")
     .update({
       status: "pendente",
@@ -5169,6 +5322,19 @@ async function toolAgendarPostPendente(
       notificado_em: null,
       instagram_creation_id: null,
       instagram_container_status: null,
+      tiktok_privacy_level: pending.tiktokPrivacyLevel || null,
+      tiktok_is_commercial_content: !!pending.tiktokIsCommercialContent,
+      tiktok_brand_organic: !!pending.tiktokBrandOrganic,
+      tiktok_branded_content: !!pending.tiktokBrandedContent,
+      tiktok_consented_at: pending.tiktokConsentedAt || null,
+      tiktok_creator_nickname: pending.tiktokCreatorNickname || null,
+      tiktok_video_duration_sec: pending.tiktokVideoDurationSec || null,
+      tiktok_publish_id: null,
+      tiktok_post_row_id: null,
+      tiktok_publish_status: null,
+      tiktok_fail_reason: null,
+      tiktok_retry_count: 0,
+      tiktok_next_retry_at: null,
       updated_at: new Date().toISOString(),
     })
     .in("id", rowIds)
@@ -5182,17 +5348,22 @@ async function toolAgendarPostPendente(
     });
   }
 
-  if (hasTikTok) {
-    const tiktokPending: PendingSocialPost = {
-      ...pending,
-      redes: ["tiktok"],
-      scripts: { tiktok: pending.scripts.tiktok },
-      queueRows: (pending.queueRows ?? []).filter((row) => row.platform === "tiktok"),
-    };
-    PENDING_POSTS.set(token, tiktokPending);
-    await updatePendingSocialPostMarker(token, tiktokPending);
-  } else {
-    PENDING_POSTS.delete(token);
+  PENDING_POSTS.delete(token);
+  if (hasTikTok && !isVideo) {
+    const tiktokRows = (pending.queueRows ?? [])
+      .filter((row) => row.platform === "tiktok")
+      .map((row) => row.id);
+    if (tiktokRows.length > 0) {
+      await sb.from("social_posts_queue")
+        .update({
+          status: "cancelado",
+          approval_token: null,
+          error_message: "tiktok_exige_video",
+          updated_at: new Date().toISOString(),
+        })
+        .in("id", tiktokRows)
+        .eq("status", "aguardando_confirmacao");
+    }
   }
   if (ctx.convId && pending.midiaTipo === "carrossel") {
     const conversation = { id: ctx.convId, userId: ctx.userId, contactNumber: ctx.fromNumber };
@@ -5204,8 +5375,8 @@ async function toolAgendarPostPendente(
 
   const when = formatScheduledDate(scheduledDate);
   const networks = formatSocialNetworks(scheduledNetworks);
-  const warning = hasTikTok
-    ? ' O TikTok não foi agendado e precisa ser publicado na hora; responda "publicar agora" para enviá-lo.'
+  const warning = hasTikTok && !isVideo
+    ? " O TikTok aceita só vídeo, então segui com as outras redes."
     : "";
   return JSON.stringify({
     ok: true,
@@ -5215,7 +5386,7 @@ async function toolAgendarPostPendente(
     data_extenso: when,
     redes: scheduledNetworks,
     mensagem: `Agendado para ${when} no ${networks}. Para desfazer, responda: cancelar agendamento.${warning}`,
-    aviso_tiktok: hasTikTok,
+    aviso_tiktok: hasTikTok && !isVideo,
   });
 }
 
@@ -5422,13 +5593,67 @@ async function applyPendingTikTokPrivacyChoice(
 ): Promise<string | null> {
   const p = PENDING_POSTS.get(token) ?? (await loadPendingSocialPost(token, ctx.userId));
   if (!p || p.userId !== ctx.userId || !p.redes.includes("tiktok") || !p.tiktokPrivacyOptions?.length) return null;
-  const choice = matchTikTokPrivacyChoice(text, p.tiktokPrivacyOptions);
-  if (!choice) return null;
+  if (p.pendingTikTokScheduledAt && p.tiktokPrivacyLevel && !p.tiktokConsentedAt) {
+    const normalized = normalizePt(text)
+      .replace(/^tiktok_disclosure:/, "")
+      .replace(/_/g, " ");
+    let disclosure: "non_commercial" | "brand_organic" | "branded_content" | null = null;
+    if (/\b(nao comercial|sem publicidade|non commercial)\b/.test(normalized)) disclosure = "non_commercial";
+    else if (/\b(minha marca|propria marca|brand organic)\b/.test(normalized)) disclosure = "brand_organic";
+    else if (/\b(outra marca|terceir[oa]s?|branded content)\b/.test(normalized)) disclosure = "branded_content";
+    if (!disclosure) return null;
+    if (disclosure === "branded_content" && p.tiktokPrivacyLevel === "SELF_ONLY") {
+      const atualizado = { ...p, tiktokPrivacyLevel: undefined };
+      PENDING_POSTS.set(token, atualizado);
+      await updatePendingSocialPostMarker(token, atualizado);
+      return JSON.stringify({
+        status: "aguardando_privacidade_tiktok",
+        token,
+        privacy_options: p.tiktokPrivacyOptions,
+        mensagem: "Conteúdo de outra marca não pode usar “Somente eu”. Escolha outra privacidade para continuar.",
+      });
+    }
+    const atualizado = {
+      ...p,
+      tiktokIsCommercialContent: disclosure !== "non_commercial",
+      tiktokBrandOrganic: disclosure === "brand_organic",
+      tiktokBrandedContent: disclosure === "branded_content",
+      tiktokConsentedAt: new Date().toISOString(),
+    };
+    PENDING_POSTS.set(token, atualizado);
+    await updatePendingSocialPostMarker(token, atualizado);
+    const scheduled = new Date(atualizado.pendingTikTokScheduledAt);
+    const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(scheduled).map((part) => [part.type, part.value]));
+    return await toolAgendarPostPendente(
+      { token, data_hora_sp: `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}` },
+      ctx,
+    );
+  }
 
+  const choice = matchTikTokPrivacyChoice(
+    text.replace(/^tiktok_privacy:/i, ""),
+    p.tiktokPrivacyOptions,
+  );
+  if (!choice) return null;
   console.log("[tiktok][privacy_selected]", { token, userId: ctx.userId, privacy_level: choice });
   const atualizado = { ...p, tiktokPrivacyLevel: choice };
   PENDING_POSTS.set(token, atualizado);
   await updatePendingSocialPostMarker(token, atualizado);
+  if (atualizado.pendingTikTokScheduledAt) {
+    return JSON.stringify({
+      status: "aguardando_declaracao_tiktok",
+      token,
+      mensagem: "Este vídeo é conteúdo comercial? Escolha uma opção. Ao escolher, você confirma que tem os direitos da música e aceita o Music Usage Confirmation do TikTok. Comentários, dueto e stitch ficarão desligados.",
+    });
+  }
   return await toolConfirmarPostagemRedes({ token }, ctx);
 }
 
@@ -10416,6 +10641,7 @@ async function callGemini(
             || st === "escolha_variante_necessaria"
             || st === "variante_selecionada"
             || st === "aguardando_privacidade_tiktok"
+            || st === "aguardando_declaracao_tiktok"
             || st === "aguardando_retry_instagram"
             || st === "publicado"
             || st === "cancelado"

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { publishScheduledTikTok } from "../_shared/tiktok-scheduled-publish.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -39,6 +40,16 @@ serve(async (req) => {
     const results: any[] = [];
 
     for (const item of agendados) {
+      if (
+        item.tiktok_next_retry_at
+        && new Date(item.tiktok_next_retry_at).getTime() > Date.now()
+      ) continue;
+      const completedChannels = new Set<string>(
+        Array.isArray(item.completed_channels) ? item.completed_channels : [],
+      );
+      const previousResult = item.resultado && typeof item.resultado === "object"
+        ? item.resultado
+        : {};
       // Marca como processando
       await supabase
         .from("videos_agendados")
@@ -73,25 +84,91 @@ serve(async (req) => {
           if (data?.success) funcResult = { success: true, instagram: { ok: true, story_id: data.story_id }, warnings: data.warnings };
         } else if (item.tipo === "reels") {
           // Reels: publica em cada plataforma do array canais
-          const reelsResult: any = { success: false };
+          const reelsResult: any = { ...previousResult, success: completedChannels.size > 0 };
+          let hasPendingChannel = false;
           for (const platform of item.canais) {
-            const { data, error: pubErr } = await supabase.functions.invoke("meta-publish-reels", {
-              body: {
-                platform,
-                video_url: item.video_url,
-                caption: item.caption,
-                user_id: item.user_id,
-              },
-            });
-            if (pubErr) {
-              reelsResult[platform] = { ok: false, error: pubErr.message };
-            } else if (data?.success) {
-              reelsResult[platform] = { ok: true, post_id: data.post_id };
-              reelsResult.success = true;
+            if (completedChannels.has(platform) || reelsResult?.[platform]?.final === true) continue;
+            if (platform === "tiktok") {
+              const metadata = item.metadata && typeof item.metadata === "object" ? item.metadata : {};
+              const source = metadata?.source === "autopilot" ? "autopilot" : "scheduled";
+              const tiktokResult = await publishScheduledTikTok(
+                {
+                  supabase,
+                  supabaseUrl: SUPABASE_URL,
+                  serviceKey: SERVICE_KEY,
+                },
+                {
+                  userId: item.user_id,
+                  videoUrl: item.video_url,
+                  title: item.caption || "",
+                  source,
+                  privacyLevel: item.tiktok_privacy_level,
+                  consentedAt: item.tiktok_consented_at,
+                  isCommercialContent: item.tiktok_is_commercial_content,
+                  brandOrganic: item.tiktok_brand_organic,
+                  brandedContent: item.tiktok_branded_content,
+                  videoDurationSec: item.tiktok_video_duration_sec,
+                  publishId: item.tiktok_publish_id,
+                  postRowId: item.tiktok_post_row_id,
+                  providerBranding: metadata?.provider_branding,
+                },
+              );
+              await supabase.from("videos_agendados").update({
+                tiktok_publish_id: tiktokResult.publishId || item.tiktok_publish_id || null,
+                tiktok_post_row_id: tiktokResult.postRowId || item.tiktok_post_row_id || null,
+                tiktok_publish_status: tiktokResult.publishStatus || null,
+                tiktok_fail_reason: tiktokResult.failReason || null,
+                tiktok_next_retry_at: tiktokResult.retryAt || null,
+                tiktok_retry_count: tiktokResult.state === "retry"
+                  ? Number(item.tiktok_retry_count || 0) + 1
+                  : Number(item.tiktok_retry_count || 0),
+              }).eq("id", item.id);
+              if (tiktokResult.state === "processing" || tiktokResult.state === "retry") {
+                hasPendingChannel = true;
+                reelsResult.tiktok = {
+                  ok: false,
+                  pending: true,
+                  state: tiktokResult.state,
+                  message: tiktokResult.message,
+                };
+              } else if (tiktokResult.state === "published" || tiktokResult.state === "draft") {
+                completedChannels.add("tiktok");
+                reelsResult.tiktok = {
+                  ok: true,
+                  final: true,
+                  state: tiktokResult.state,
+                  message: tiktokResult.message,
+                };
+                reelsResult.success = true;
+              } else {
+                reelsResult.tiktok = {
+                  ok: false,
+                  final: true,
+                  state: "failed",
+                  error: tiktokResult.message,
+                };
+              }
             } else {
-              reelsResult[platform] = { ok: false, error: data?.error || "Erro desconhecido" };
+              const { data, error: pubErr } = await supabase.functions.invoke("meta-publish-reels", {
+                body: {
+                  platform,
+                  video_url: item.video_url,
+                  caption: item.caption,
+                  user_id: item.user_id,
+                },
+              });
+              if (pubErr) {
+                reelsResult[platform] = { ok: false, final: true, error: pubErr.message };
+              } else if (data?.success) {
+                reelsResult[platform] = { ok: true, final: true, post_id: data.post_id };
+                completedChannels.add(platform);
+                reelsResult.success = true;
+              } else {
+                reelsResult[platform] = { ok: false, final: true, error: data?.error || "Erro desconhecido" };
+              }
             }
           }
+          reelsResult.pending = hasPendingChannel;
           funcResult = reelsResult;
         }
 
@@ -104,12 +181,24 @@ serve(async (req) => {
         const okIg = funcResult?.instagram?.ok;
         const okAny = okFb || okIg || funcResult?.success;
 
-        if (okAny) {
+        if (funcResult?.pending) {
+          await supabase
+            .from("videos_agendados")
+            .update({
+              status: "pendente",
+              resultado: funcResult,
+              completed_channels: [...completedChannels],
+              erro: null,
+            })
+            .eq("id", item.id);
+          results.push({ id: item.id, ok: false, pending: true });
+        } else if (okAny) {
           await supabase
             .from("videos_agendados")
             .update({
               status: "publicado",
               resultado: funcResult,
+              completed_channels: [...completedChannels],
               published_at: new Date().toISOString(),
               erro: null,
             })

@@ -42,3 +42,40 @@ Deno.test("grupo já notificado não gera aviso duplicado", () => {
     { ...base, id: "ig", platform: "instagram", status: "publicado" },
   ]), null);
 });
+
+Deno.test("TikTok só é anunciado como publicado após PUBLISH_COMPLETE", () => {
+  assertEquals(buildScheduledPostNotification([
+    {
+      ...base,
+      id: "tt",
+      platform: "tiktok",
+      status: "publicado",
+      tiktok_publish_status: "PROCESSING_UPLOAD",
+    },
+  ]), null);
+
+  const result = buildScheduledPostNotification([
+    {
+      ...base,
+      id: "tt",
+      platform: "tiktok",
+      status: "publicado",
+      tiktok_publish_status: "PUBLISH_COMPLETE",
+    },
+  ]);
+  assertMatch(result!.text, /publicado no TikTok/);
+});
+
+Deno.test("rascunho do TikTok recebe mensagem honesta", () => {
+  const result = buildScheduledPostNotification([
+    {
+      ...base,
+      id: "tt",
+      platform: "tiktok",
+      status: "publicado",
+      tiktok_publish_status: "SEND_TO_USER_INBOX",
+    },
+  ]);
+  assertMatch(result!.text, /rascunhos do seu TikTok/);
+  assertEquals(result!.text.includes("publicado no TikTok"), false);
+});

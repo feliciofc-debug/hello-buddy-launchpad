@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { normalizeImageUrls } from '../_shared/social-schedule.ts'
 import { buildScheduledPostNotification } from '../_shared/social-post-notification.ts'
+import { publishScheduledTikTok } from '../_shared/tiktok-scheduled-publish.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -39,7 +40,7 @@ async function notifyScheduledSocialToken(
 ) {
   const { data: rows, error } = await supabase
     .from('social_posts_queue')
-    .select('id, platform, status, scheduled_at, error_message, fb_post_id, notificado_em, solicitante_telefone')
+    .select('id, platform, status, scheduled_at, error_message, fb_post_id, notificado_em, solicitante_telefone, tiktok_publish_status, tiktok_fail_reason')
     .eq('user_id', userId)
     .eq('approval_token', token)
   if (error || !rows?.length) return
@@ -169,6 +170,13 @@ serve(async (req) => {
 
       for (const post of pendingPosts) {
         try {
+          if (
+            post.platform === 'tiktok'
+            && post.tiktok_next_retry_at
+            && new Date(post.tiktok_next_retry_at).getTime() > now.getTime()
+          ) {
+            continue
+          }
           if (post.produto_id && post.produto_source === 'produtos') {
             const { data: produto, error: produtoError } = await supabase
               .from('produtos')
@@ -276,6 +284,72 @@ serve(async (req) => {
                 .update({ linkedin_post_urn: publishResult.post_urn })
                 .eq('id', post.id)
             }
+          } else if (post.platform === 'tiktok') {
+            if (!post.video_url) throw new Error('O TikTok aceita apenas vídeo neste agendamento')
+            const tiktokResult = await publishScheduledTikTok(
+              {
+                supabase,
+                supabaseUrl: SUPABASE_URL,
+                serviceKey: SUPABASE_SERVICE_ROLE_KEY,
+                now,
+              },
+              {
+                userId: post.user_id,
+                videoUrl: post.video_url,
+                title: post.post_text || '',
+                source: 'scheduled',
+                privacyLevel: post.tiktok_privacy_level,
+                consentedAt: post.tiktok_consented_at,
+                isCommercialContent: post.tiktok_is_commercial_content,
+                brandOrganic: post.tiktok_brand_organic,
+                brandedContent: post.tiktok_branded_content,
+                videoDurationSec: post.tiktok_video_duration_sec,
+                publishId: post.tiktok_publish_id,
+                postRowId: post.tiktok_post_row_id,
+              },
+            )
+            const tiktokUpdate = {
+              tiktok_publish_id: tiktokResult.publishId || post.tiktok_publish_id || null,
+              tiktok_post_row_id: tiktokResult.postRowId || post.tiktok_post_row_id || null,
+              tiktok_publish_status: tiktokResult.publishStatus || null,
+              tiktok_fail_reason: tiktokResult.failReason || null,
+              tiktok_next_retry_at: tiktokResult.retryAt || null,
+              tiktok_retry_count: tiktokResult.state === 'retry'
+                ? Number(post.tiktok_retry_count || 0) + 1
+                : Number(post.tiktok_retry_count || 0),
+              error_message: tiktokResult.state === 'failed' ? tiktokResult.message : null,
+              updated_at: new Date().toISOString(),
+            }
+            if (tiktokResult.state === 'processing' || tiktokResult.state === 'retry') {
+              await supabase.from('social_posts_queue')
+                .update({
+                  ...tiktokUpdate,
+                  status: 'pendente',
+                  tiktok_next_retry_at: tiktokResult.retryAt
+                    || new Date(Date.now() + 60_000).toISOString(),
+                })
+                .eq('id', post.id)
+              results.push({
+                id: post.id,
+                platform: post.platform,
+                success: false,
+                retryable: true,
+                state: tiktokResult.state,
+              })
+              continue
+            }
+            if (tiktokResult.state === 'failed') {
+              await supabase.from('social_posts_queue')
+                .update({ ...tiktokUpdate, status: 'erro' })
+                .eq('id', post.id)
+              results.push({ id: post.id, platform: post.platform, success: false, error: tiktokResult.message })
+              continue
+            }
+            publishResult = {
+              success: true,
+              tiktok_state: tiktokResult.state,
+              tiktok_update: tiktokUpdate,
+            }
           } else {
             throw new Error(`Plataforma não suportada pelo executor: ${post.platform}`)
           }
@@ -317,6 +391,7 @@ serve(async (req) => {
                     instagram_container_status: 'PUBLISHED',
                   }
                   : {}),
+                ...(post.platform === 'tiktok' ? publishResult.tiktok_update : {}),
               })
               .eq('id', post.id)
 

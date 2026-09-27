@@ -542,6 +542,18 @@ export async function enfileirarVideoMotion(input: EnfileirarInput): Promise<Enf
       .filter((p) => PLATAFORMAS_OK.includes(p))
     : [];
 
+  if (
+    plataformas.includes("tiktok")
+    && /\btech\s*provider\b|amzofertas\.com\.br|\bamz\s+ofertas\b/i.test(JSON.stringify(props))
+  ) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Este template contém marca do provedor e não pode ser enviado ao TikTok. Remova o selo, site ou marca AMZ e gere novamente.",
+      motivo: "tiktok_provider_branding",
+    };
+  }
+
   const { data: job, error: insErr } = await sb
     .from("video_motion_jobs")
     .insert({

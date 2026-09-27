@@ -20,8 +20,10 @@ interface PostRequest {
   is_commercial_content?: boolean;
   brand_organic?: boolean;
   branded_content?: boolean;
-  // Origem: "manual" (tela com UX de compliance) ou "scheduled" (cron -> sempre rascunho)
-  source?: "manual" | "scheduled";
+  consented_at?: string;
+  // Scheduled só pode fazer Direct Post com consentimento persistido no registro.
+  // Autopilot sempre usa o inbox/rascunho.
+  source?: "manual" | "scheduled" | "autopilot";
 }
 
 serve(async (req) => {
@@ -47,13 +49,19 @@ serve(async (req) => {
       is_commercial_content = false,
       brand_organic = false,
       branded_content = false,
+      consented_at,
       source = "manual",
     } = body;
 
-    // Defesa em profundidade: o caminho automático (agendamento) NUNCA publica direto.
+    // Defesa em profundidade: piloto automático nunca publica direto. Um
+    // agendamento só pode usar Direct Post com privacidade e consentimento
+    // explícitos, persistidos no próprio registro e enviados pelo executor.
     let post_mode = body.post_mode;
-    if (source === "scheduled" && post_mode !== "draft") {
-      console.log(`🔒 Coerção: source="scheduled" recebeu post_mode="${post_mode}" -> forçando "draft"`);
+    if (
+      source === "autopilot"
+      || (source === "scheduled" && (!privacy_level || !consented_at))
+    ) {
+      console.log(`🔒 Coerção TikTok: source="${source}" sem consentimento completo -> rascunho`);
       post_mode = "draft";
     }
 
@@ -268,6 +276,12 @@ serve(async (req) => {
         case "spam_risk_too_many_posts":
           errorMessage = "Muitas publicações recentes. Aguarde um pouco.";
           break;
+        case "spam_risk_too_many_pending_share":
+          errorMessage = "Há muitos envios pendentes no TikTok. Aguarde antes de tentar novamente.";
+          break;
+        case "reached_active_user_cap":
+          errorMessage = "O TikTok pediu para adiar este envio. Tente novamente mais tarde.";
+          break;
         case "unaudited_client_can_only_post_to_private_accounts":
           errorMessage = "A conta TikTok precisa estar configurada como privada para publicar durante os testes. Ative 'Conta Privada' nas configurações do TikTok.";
           break;
@@ -354,7 +368,7 @@ serve(async (req) => {
         is_commercial_content: !!is_commercial_content,
         brand_organic: !!brand_organic,
         branded_content: !!branded_content,
-        consent_accepted_at: source === "manual" ? new Date().toISOString() : null,
+        consent_accepted_at: consented_at || (source === "manual" ? new Date().toISOString() : null),
         source,
         tiktok_response: initData,
         status: "processing",
@@ -373,8 +387,8 @@ serve(async (req) => {
         success: true,
         direct_post: directPost,
         message: directPost
-          ? "Vídeo publicado no TikTok!"
-          : "Vídeo enviado para os rascunhos do TikTok. Abra o app TikTok (Caixa de entrada) e toque em publicar para ir ao perfil.",
+          ? "Vídeo enviado ao TikTok e em processamento."
+          : "Vídeo enviado ao TikTok. O rascunho está sendo preparado para a caixa de entrada.",
         publish_id: publishId,
         post_row_id: postRow?.id ?? null,
       }),
