@@ -1,6 +1,20 @@
 const INTERACTIVE_ID_RE = /<<INTERACTIVE_ID:([^>]+)>>/i;
 
 export type TikTokDisclosure = "non_commercial" | "brand_organic" | "branded_content";
+export type TikTokInteractiveList = {
+  body: string;
+  button: string;
+  header?: string;
+  section_title?: string;
+  rows: Array<{ id: string; title: string; description?: string }>;
+};
+
+const PRIVACY_LABELS: Record<string, string> = {
+  PUBLIC_TO_EVERYONE: "Todos",
+  MUTUAL_FOLLOW_FRIENDS: "Amigos",
+  FOLLOWER_OF_CREATOR: "Seguidores",
+  SELF_ONLY: "Somente eu",
+};
 
 export function tiktokInteractiveId(text: string): string | null {
   const id = String(text || "").match(INTERACTIVE_ID_RE)?.[1] || "";
@@ -45,4 +59,42 @@ export function privacyChoiceText(text: string): string {
     return id.slice("tiktok_privacy:".length);
   }
   return textWithoutInteractiveMarker(text);
+}
+
+export function tiktokInteractiveListFromToolResult(raw: string): TikTokInteractiveList | undefined {
+  try {
+    const data = JSON.parse(raw);
+    if (data?.status === "aguardando_declaracao_tiktok") {
+      return {
+        header: "Conteúdo no TikTok",
+        body: data.mensagem || "Informe se o vídeo é comercial.",
+        button: "Escolher declaração",
+        section_title: "Declaração",
+        rows: [
+          { id: "tiktok_disclosure:non_commercial", title: "Não é comercial" },
+          { id: "tiktok_disclosure:brand_organic", title: "Promove minha marca" },
+          { id: "tiktok_disclosure:branded_content", title: "Promove outra marca" },
+        ],
+      };
+    }
+    if (data?.status !== "aguardando_privacidade_tiktok" || !Array.isArray(data?.privacy_options)) {
+      return undefined;
+    }
+    const options = data.privacy_options
+      .filter((option: unknown): option is string => typeof option === "string" && !!option.trim());
+    if (options.length === 0) return undefined;
+    return {
+      header: "Privacidade do TikTok",
+      body: data.mensagem || "Escolha quem poderá ver o vídeo.",
+      button: "Escolher privacidade",
+      section_title: "Opções da sua conta",
+      rows: options.slice(0, 10).map((option: string) => ({
+        id: `tiktok_privacy:${option}`,
+        title: (PRIVACY_LABELS[option] || option).slice(0, 24),
+        description: option,
+      })),
+    };
+  } catch {
+    return undefined;
+  }
 }

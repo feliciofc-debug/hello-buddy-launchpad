@@ -78,6 +78,7 @@ import {
 import {
   parseTikTokDisclosure,
   privacyChoiceText,
+  tiktokInteractiveListFromToolResult,
 } from "../_shared/tiktok-whatsapp-consent.ts";
 import {
   classifyOwnerMediaIntent,
@@ -4588,38 +4589,7 @@ function variantSelectionRequiredResult(
 }
 
 function interactiveListFromSocialResult(raw: string): WhatsAppInteractiveList | undefined {
-  try {
-    const data = JSON.parse(raw);
-    if (data?.status === "aguardando_declaracao_tiktok") {
-      return {
-        header: "Conteúdo no TikTok",
-        body: data.mensagem || "Informe se o vídeo é comercial.",
-        button: "Escolher declaração",
-        section_title: "Declaração",
-        rows: [
-          { id: "tiktok_disclosure:non_commercial", title: "Não é comercial" },
-          { id: "tiktok_disclosure:brand_organic", title: "Promove minha marca" },
-          { id: "tiktok_disclosure:branded_content", title: "Promove outra marca" },
-        ],
-      };
-    }
-    if (data?.status !== "aguardando_privacidade_tiktok" || !Array.isArray(data?.privacy_options)) return undefined;
-    const options = data.privacy_options.filter((option: unknown): option is string => typeof option === "string" && !!option.trim());
-    if (options.length === 0) return undefined;
-    return {
-      header: "Privacidade do TikTok",
-      body: data.mensagem || "Escolha quem poderá ver o vídeo.",
-      button: "Escolher privacidade",
-      section_title: "Opções da sua conta",
-      rows: options.slice(0, 10).map((option: string) => ({
-        id: `tiktok_privacy:${option}`,
-        title: (TIKTOK_PRIVACY_LABELS[option] || option).slice(0, 24),
-        description: option,
-      })),
-    };
-  } catch {
-    return undefined;
-  }
+  return tiktokInteractiveListFromToolResult(raw);
 }
 
 function detectSocialPostConfirmation(text: string): { token: string; cancelar?: boolean } | null {
@@ -5639,10 +5609,23 @@ async function applyPendingTikTokPrivacyChoice(
       minute: "2-digit",
       hourCycle: "h23",
     }).formatToParts(scheduled).map((part) => [part.type, part.value]));
-    return await toolAgendarPostPendente(
+    const scheduleResult = await toolAgendarPostPendente(
       { token, data_hora_sp: `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}` },
       ctx,
     );
+    try {
+      const parsed = JSON.parse(scheduleResult);
+      if (parsed?.erro === "data_muito_proxima") {
+        return JSON.stringify({
+          ok: false,
+          status: "aguardando_novo_horario_tiktok",
+          erro: "data_muito_proxima",
+          token,
+          mensagem: "O horário ficou muito próximo. Informe só um novo dia e horário, com pelo menos 10 minutos de antecedência.",
+        });
+      }
+    } catch { /* devolve a resposta original */ }
+    return scheduleResult;
   }
 
   const choice = matchTikTokPrivacyChoice(
@@ -10612,14 +10595,19 @@ async function callGemini(
         if (["agendar_post_pendente", "listar_agendamentos_posts", "cancelar_agendamento_post", "remarcar_agendamento_post"].includes(name)) {
           try {
             const parsed = JSON.parse(result);
+            const isTikTokChoice = parsed?.status === "aguardando_privacidade_tiktok"
+              || parsed?.status === "aguardando_declaracao_tiktok";
             return {
-              text: String(
-                parsed?.mensagem
-                  || (parsed?.ok === true ? "Ação concluída." : "Não consegui concluir a ação."),
-              ),
+              text: isTikTokChoice
+                ? formatSocialPostToolResult(result)
+                : String(
+                  parsed?.mensagem
+                    || (parsed?.ok === true ? "Ação concluída." : "Não consegui concluir a ação."),
+                ),
               imageUrl: pendingImageUrl,
               forwardProof,
               forwardAttempted,
+              interactiveList: interactiveListFromSocialResult(result),
               interactiveButtons: interactiveButtonsFromSocialResult(result),
             };
           } catch {
