@@ -17,3 +17,14 @@ Deno.test("detecta LinkedIn junto com Instagram", () => {
     ["instagram", "linkedin"],
   );
 });
+
+Deno.test("redes sociais preserva o padrão e só inclui LinkedIn quando explícito", () => {
+  assertEquals(
+    detectRequestedSocialNetworks("posta nas redes sociais"),
+    ["facebook", "instagram", "tiktok"],
+  );
+  assertEquals(
+    detectRequestedSocialNetworks("posta nas redes sociais e no LinkedIn"),
+    ["facebook", "instagram", "tiktok", "linkedin"],
+  );
+});

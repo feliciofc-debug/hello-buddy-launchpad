@@ -7,6 +7,12 @@ export const SUPPORTED_SOCIAL_NETWORKS: SupportedSocialNetwork[] = [
   "linkedin",
 ];
 
+export const DEFAULT_SOCIAL_NETWORKS: SupportedSocialNetwork[] = [
+  "facebook",
+  "instagram",
+  "tiktok",
+];
+
 export function canonicalSocialNetwork(value: unknown): SupportedSocialNetwork | null {
   const normalized = String(value || "")
     .normalize("NFD")
@@ -26,13 +32,12 @@ export function detectRequestedSocialNetworks(text: string): SupportedSocialNetw
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
-  const networks: SupportedSocialNetwork[] = [];
+  const networks: SupportedSocialNetwork[] = /\bredes sociais\b/.test(normalized)
+    ? [...DEFAULT_SOCIAL_NETWORKS]
+    : [];
   if (/\b(?:facebook|face|fb)\b/.test(normalized)) networks.push("facebook");
   if (/\b(?:instagram|insta|ig)\b/.test(normalized)) networks.push("instagram");
   if (/\b(?:tiktok|tik\s*tok)\b/.test(normalized)) networks.push("tiktok");
   if (/\b(?:linkedin|linked\s*in|lkd)\b/.test(normalized)) networks.push("linkedin");
-  if (networks.length === 0 && /\bredes sociais\b/.test(normalized)) {
-    return [...SUPPORTED_SOCIAL_NETWORKS];
-  }
   return [...new Set(networks)];
 }

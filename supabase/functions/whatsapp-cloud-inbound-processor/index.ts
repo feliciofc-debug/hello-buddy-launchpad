@@ -112,6 +112,7 @@ import {
 import {
   isConfirmedLinkedInPublishResult,
   sanitizeLinkedInApprovalCopy,
+  shouldPrepareLinkedInTextOnly,
 } from "../_shared/linkedin-approval.ts";
 import { buildSocialQueueNetworkRows } from "../_shared/social-queue.ts";
 import {
@@ -5137,8 +5138,12 @@ async function toolPrepararLinkedin(
       mensagem: "Carrossel pelo LinkedIn ainda não está habilitado. Não publiquei nada.",
     });
   }
-  const explicitTextOnly = /\b(?:texto|copy|artigo)\b|\bpost\s+de\s+texto\b/i.test(original);
-  if (!explicitTextOnly) {
+  const textOnly = shouldPrepareLinkedInTextOnly({
+    requestText: original,
+    mediaId: args?.midia_id,
+    imageUrl: args?.image_url,
+  });
+  if (!textOnly) {
     return await toolPostarMidiaBiblioteca({
       midia_id: args?.midia_id,
       legenda: args?.texto,

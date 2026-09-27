@@ -2,6 +2,23 @@ const EMOJI_RE = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\uFE0F]/gu;
 const URL_RE = /https?:\/\/[^\s]+/gi;
 const HASHTAG_RE = /#[\p{L}\p{N}_-]+/gu;
 
+export function shouldPrepareLinkedInTextOnly(input: {
+  requestText?: string;
+  mediaId?: string;
+  imageUrl?: string;
+}): boolean {
+  if (String(input.mediaId || "").trim() || String(input.imageUrl || "").trim()) {
+    return false;
+  }
+  const request = String(input.requestText || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const mentionsMedia =
+    /\b(?:foto|imagem|video|midia|arte|essa|esse|esta|este|ultima|ultimo)\b/.test(request);
+  return !mentionsMedia;
+}
+
 export function sanitizeLinkedInApprovalCopy(value: string): string {
   const input = String(value || "").replace(EMOJI_RE, "");
   const links = input.match(URL_RE) ?? [];
