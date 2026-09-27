@@ -19,6 +19,10 @@ export function useBrandImageSettings() {
   const [loadingBrand, setLoadingBrand] = useState(true);
   const [readingSite, setReadingSite] = useState(false);
   const [savingLogo, setSavingLogo] = useState(false);
+  const updateSiteUrl = useCallback((value: string) => {
+    setSiteUrl(value);
+    setSitePreview(null);
+  }, []);
 
   const loadBrandAssets = useCallback(async () => {
     setLoadingBrand(true);
@@ -93,7 +97,7 @@ export function useBrandImageSettings() {
     savedLogoPreview,
     savedColors,
     siteUrl,
-    setSiteUrl,
+    setSiteUrl: updateSiteUrl,
     sitePreview,
     loadingBrand,
     readingSite,

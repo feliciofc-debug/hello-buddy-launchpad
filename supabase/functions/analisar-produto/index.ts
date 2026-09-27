@@ -447,6 +447,7 @@ serve(async (req) => {
 
     let finalImages = images;
     let generatedImage: string | null = null;
+    let logoAppliedServerSide = false;
     let siteIdentity: BrandSiteIdentity | null = null;
     let logoDataUrl: string | null = typeof logo === "string" ? logo : null;
     let brandColors: string[] = [];
@@ -669,7 +670,6 @@ CRITICAL RULES:
             }
           }
           let imageBytes = base64Decode(base64Data);
-          let brandApplied = false;
           const logoAsset = dataUrlToImageBytes(logoDataUrl);
           if (logoAsset) {
             try {
@@ -679,7 +679,7 @@ CRITICAL RULES:
               const branded = await applyBrandLogo(imageBytes, logoAsset.bytes, { format });
               imageBytes = branded.bytes;
               mimeType = "image/png";
-              brandApplied = true;
+              logoAppliedServerSide = true;
             } catch (brandError) {
               console.error(
                 "[analisar-produto][marca] aplicação server-side falhou:",
@@ -705,7 +705,7 @@ CRITICAL RULES:
                 '✅ Imagem salva no Storage público:',
                 generatedImage,
                 '| marca aplicada:',
-                brandApplied,
+                logoAppliedServerSide,
               );
             } else {
               generatedImage = generatedImageUrl;
@@ -872,7 +872,7 @@ Retorne APENAS um JSON válido no formato:
           applyLogoOverlay,
           brandIdentity: {
             colors: brandColors,
-            logoApplied: Boolean(logoDataUrl && generatedImage),
+            logoApplied: logoAppliedServerSide,
             siteLogo: siteIdentity?.logo_data_url ?? null,
           },
         }),

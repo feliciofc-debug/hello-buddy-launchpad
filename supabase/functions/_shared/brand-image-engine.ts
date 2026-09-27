@@ -242,6 +242,22 @@ function drawSubtleShadow(image: Image, logo: Image, x: number, y: number): void
   image.composite(shadow, x + 2, y + 3);
 }
 
+function logoLuminance(image: Image): number {
+  let total = 0;
+  let weight = 0;
+  for (let offset = 0; offset < image.bitmap.length; offset += 4) {
+    const alpha = image.bitmap[offset + 3] / 255;
+    if (alpha < 0.05) continue;
+    total += (
+      0.2126 * image.bitmap[offset]
+      + 0.7152 * image.bitmap[offset + 1]
+      + 0.0722 * image.bitmap[offset + 2]
+    ) / 255 * alpha;
+    weight += alpha;
+  }
+  return weight ? total / weight : 0.5;
+}
+
 function fitBaseImage(base: Image, format: BrandImageFormat): Image {
   if (format === "original") return base;
   const targetWidth = format === "story" ? STORY_WIDTH : FEED_SIZE;
@@ -293,17 +309,7 @@ export async function applyBrandLogo(
   const placement = calculateLogoPlacement(base.width, base.height, logo.width, logo.height);
   logo.resize(placement.width, placement.height);
   const localLuminance = areaLuminance(base, placement);
-  const logoColors = extractDominantLogoColors(logo.bitmap, logo.width, logo.height, 1);
-  const logoDark = logoColors.length === 0
-    ? 0.5
-    : (() => {
-      const value = Number.parseInt(logoColors[0].slice(1), 16);
-      const r = (value >> 16) & 255;
-      const g = (value >> 8) & 255;
-      const b = value & 255;
-      return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-    })();
-  const lowContrast = Math.abs(localLuminance - logoDark) < 0.28;
+  const lowContrast = Math.abs(localLuminance - logoLuminance(logo)) < 0.28;
   const panelUsed = !cleaned.removed && !cleaned.alreadyTransparent || lowContrast;
   if (panelUsed) drawRoundedPanel(base, placement, localLuminance > 0.55);
   drawSubtleShadow(base, logo, placement.x, placement.y);

@@ -1303,7 +1303,7 @@ ${brandGuidance}
       midia_id: midiaId,
       salvo_em_midias: !!midiaId,
       logo_aplicada: logoAplicada,
-      logo_solicitada_sem_cadastro: !!ctx.incluirLogo && !logoDataUrl,
+      logo_solicitada_sem_cadastro: !!ctx.incluirLogo && !ctx.demonstracao && !logoDataUrl,
       logo_aplicacao_falhou: !!logoDataUrl && !logoAplicada,
       demonstracao: ctx.demonstracao === true,
       exemplo_legenda_solicitado: ctx.demonstracao === true,
