@@ -317,7 +317,12 @@ export function detectLogoCardBackground(
   const boundsArea = Math.max(1, (maxX - minX + 1) * (maxY - minY + 1));
   const solidCoverage = matching / boundsArea;
   const boundsCoverage = boundsArea / Math.max(1, width * height);
-  const detected = solidCoverage >= 0.28 && boundsCoverage >= 0.3;
+  const widthCoverage = (maxX - minX + 1) / Math.max(1, width);
+  const heightCoverage = (maxY - minY + 1) / Math.max(1, height);
+  const detected = solidCoverage >= 0.28
+    && boundsCoverage >= 0.3
+    && widthCoverage >= 0.65
+    && heightCoverage >= 0.55;
   return {
     detected,
     color: detected ? color : null,
