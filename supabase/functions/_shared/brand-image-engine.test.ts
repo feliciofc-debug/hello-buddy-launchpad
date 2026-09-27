@@ -72,10 +72,11 @@ Deno.test("aplica logo depois do enquadramento final de feed e story", async () 
   const baseBytes = new Uint8Array(await base.encode());
   const logoBytes = new Uint8Array(await logo.encode());
 
-  for (const [format, dimensions] of [
+  const formats: Array<["feed" | "story", [number, number]]> = [
     ["feed", [1080, 1080]],
     ["story", [1080, 1920]],
-  ] as const) {
+  ];
+  for (const [format, dimensions] of formats) {
     const result = await applyBrandLogo(baseBytes, logoBytes, { format });
     assertEquals([result.width, result.height], dimensions);
     const decoded = await Image.decode(result.bytes);
