@@ -97,7 +97,7 @@ function hasMatch(text: string, patterns: RegExp[]): boolean {
 function aiServiceError(status: number, operation: "imagem" | "texto"): Error {
   if (status === 402) {
     return new Error(
-      "O saldo do serviço de IA está indisponível no momento. Tente novamente mais tarde ou fale com o suporte.",
+      "O saldo disponível para o serviço de IA acabou. Tente novamente mais tarde ou fale com o suporte.",
     );
   }
   if (status === 429) {
