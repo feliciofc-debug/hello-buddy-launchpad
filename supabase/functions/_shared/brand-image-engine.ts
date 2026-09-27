@@ -393,6 +393,7 @@ function drawSubtleShadow(image: Image, logo: Image, x: number, y: number): void
     width: logo.width,
     height: logo.height,
     margin: 0,
+    corner: "top-left",
   }) > 0.55;
   const color = dark ? [0, 0, 0] : [255, 255, 255];
   for (let offset = 0; offset < logo.bitmap.length; offset += 4) {
