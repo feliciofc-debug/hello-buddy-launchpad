@@ -4,6 +4,8 @@ import {
   applyBrandLogo,
   buildBrandGenerationGuidance,
   calculateLogoPlacement,
+  detectLogoCardBackground,
+  featherLogoCardEdges,
   removeSolidLogoBackground,
   selectLogoPlacement,
   shouldApplyBranding,
@@ -25,11 +27,11 @@ Deno.test("posição e tamanho da logo se adaptam a proporções diferentes", ()
   const landscape = calculateLogoPlacement(1600, 900, 400, 120);
   assertEquals(square.x, 49);
   assertEquals(square.y, 49);
-  assert(square.width >= 172 && square.width <= 216);
+  assert(square.width >= 237 && square.width <= 281);
   assertEquals(story.x, 49);
-  assert(story.width >= 172 && story.width <= 216);
+  assert(story.width >= 237 && story.width <= 281);
   assert(landscape.x >= 64 && landscape.x <= 72);
-  assert(landscape.width >= 256 && landscape.width <= 320);
+  assert(landscape.width >= 352 && landscape.width <= 400);
 });
 
 Deno.test("remove fundo sólido conectado às bordas sem apagar a marca", () => {
@@ -85,6 +87,82 @@ Deno.test("remove cartão opaco com cantos transparentes e preserva ícone e let
   assertEquals(result.bitmap[(12 * width + 12) * 4 + 3], 0);
   assertEquals(result.bitmap[(35 * width + 35) * 4 + 3], 255);
   assertEquals(result.bitmap[(28 * width + 100) * 4 + 3], 255);
+});
+
+Deno.test("detecta cartão e applyBrandLogo preserva seu fundo", async () => {
+  const logo = new Image(240, 90);
+  logo.fill(0x00000000);
+  logo.drawBox(8, 8, 224, 74, 0x181c24ff);
+  logo.drawBox(30, 28, 32, 34, 0xf0961eff);
+  logo.drawBox(76, 30, 125, 9, 0xffffffff);
+  logo.drawBox(76, 49, 100, 7, 0xffffffff);
+  const detection = detectLogoCardBackground(logo.bitmap, logo.width, logo.height);
+  assertEquals(detection.detected, true);
+  assertEquals(detection.hex, "#181c24");
+
+  const base = new Image(700, 700);
+  base.fill(0x181c24ff);
+  const result = await applyBrandLogo(
+    new Uint8Array(await base.encode()),
+    new Uint8Array(await logo.encode()),
+  );
+  assertEquals(result.mode, "integrated-card");
+  assertEquals(result.backgroundRemoved, false);
+  assertEquals(result.cardBackgroundHex, "#181c24");
+});
+
+Deno.test("cartão escolhe o canto mais próximo da sua cor e com pouco detalhe", () => {
+  const image = new Image(600, 600);
+  image.fill(0xd8d8d8ff);
+  image.drawBox(350, 0, 250, 190, 0x181c24ff);
+  const decision = selectLogoPlacement(
+    image.bitmap,
+    image.width,
+    image.height,
+    240,
+    90,
+    "feed",
+    [24, 28, 36],
+  );
+  assertEquals(decision.placement.corner, "top-right");
+  assert((decision.targetColorDistance ?? 999) < 10);
+});
+
+Deno.test("esfuma o alpha nas bordas do cartão", () => {
+  const width = 100;
+  const height = 40;
+  const bitmap = new Uint8ClampedArray(width * height * 4);
+  for (let index = 0; index < width * height; index++) {
+    bitmap.set([24, 28, 36, 255], index * 4);
+  }
+  const feathered = featherLogoCardEdges(bitmap, width, height, {
+    minX: 0,
+    minY: 0,
+    maxX: width - 1,
+    maxY: height - 1,
+  });
+  assert(feathered[3] < 255);
+  assertEquals(feathered[((height / 2 * width + width / 2) * 4) + 3], 255);
+});
+
+Deno.test("nunca amplia logo raster acima de cem por cento", () => {
+  const placement = calculateLogoPlacement(1080, 1080, 80, 20);
+  assertEquals(placement.width, 80);
+  assertEquals(placement.height, 20);
+});
+
+Deno.test("logo transparente mantém o modo sem cartão", async () => {
+  const logo = new Image(180, 70);
+  logo.fill(0x00000000);
+  logo.drawBox(35, 22, 110, 25, 0xffffffff);
+  const base = new Image(500, 500);
+  base.fill(0x151820ff);
+  const result = await applyBrandLogo(
+    new Uint8Array(await base.encode()),
+    new Uint8Array(await logo.encode()),
+  );
+  assertEquals(result.mode, "transparent");
+  assertEquals(result.backgroundRemoved, false);
 });
 
 Deno.test("não cria moldura em área escura e lisa", async () => {

@@ -1,6 +1,7 @@
 import {
   applyBrandLogo,
   buildBrandGenerationGuidance,
+  inspectLogoCardFromBytes,
 } from "./brand-image-engine.ts";
 import { dataUrlToImageBytes } from "./brand-assets.ts";
 
@@ -19,6 +20,7 @@ export type MarketingImageRequest = {
   references?: string[];
   logoDataUrl?: string | null;
   brandColors?: string[];
+  cardBackgroundHex?: string | null;
   format?: MarketingImageFormat;
   apiKey: string;
   fetchImpl?: typeof fetch;
@@ -132,6 +134,7 @@ export function buildMarketingImagePrompt(input: {
   references?: string[];
   brandColors?: string[];
   hasLogo?: boolean;
+  cardBackgroundHex?: string | null;
   format?: MarketingImageFormat;
 }): { mode: MarketingImageMode; format: MarketingImageFormat; messages: unknown[]; prompt: string } {
   const references = input.references ?? [];
@@ -142,6 +145,7 @@ export function buildMarketingImagePrompt(input: {
   const brandGuidance = buildBrandGenerationGuidance(input.brandColors ?? [], {
     hasLogo: Boolean(input.hasLogo),
     hasBasePhoto: Boolean(referenceImage),
+    cardBackgroundHex: input.cardBackgroundHex,
   });
   const support = supportImages.length
     ? `\nSUPPORT REFERENCES: The ${supportImages.length} additional image(s) are secondary references only and never replace the main subject or scene from the first image.\n`
@@ -264,11 +268,16 @@ export async function generateMarketingImage(
   if (!request.apiKey) {
     throw new Error("O serviço de IA está temporariamente indisponível. Tente novamente em alguns minutos.");
   }
+  const logoAsset = dataUrlToImageBytes(request.logoDataUrl);
+  const card = logoAsset
+    ? await inspectLogoCardFromBytes(logoAsset.bytes)
+    : null;
   const built = buildMarketingImagePrompt({
     prompt: request.prompt,
     references: request.references,
     brandColors: request.brandColors,
     hasLogo: Boolean(request.logoDataUrl),
+    cardBackgroundHex: card?.hex,
     format: request.format,
   });
   const fetchImpl = request.fetchImpl ?? fetch;
@@ -304,10 +313,9 @@ export async function generateMarketingImage(
           let mimeType = decoded.mimeType;
           let logoApplied = false;
           let logoApplicationFailed = false;
-          const logo = dataUrlToImageBytes(request.logoDataUrl);
-          if (logo) {
+          if (logoAsset) {
             try {
-              const branded = await applyBrandLogo(bytes, logo.bytes, { format: built.format });
+              const branded = await applyBrandLogo(bytes, logoAsset.bytes, { format: built.format });
               bytes = branded.bytes;
               mimeType = "image/png";
               logoApplied = true;

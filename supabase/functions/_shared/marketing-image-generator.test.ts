@@ -40,6 +40,17 @@ Deno.test("scene preservation remains distinct from generic base photo", () => {
   );
 });
 
+Deno.test("card logo prompt reserves a smooth area in its exact background color", () => {
+  const result = buildMarketingImagePrompt({
+    prompt: "cafeteria premium à noite",
+    hasLogo: true,
+    cardBackgroundHex: "#181c24",
+  });
+  assert(result.prompt.includes("#181c24"), "card color must be included in prompt");
+  assert(result.prompt.includes("LISA e ESCURA"), "prompt must reserve a smooth dark area");
+  assert(result.prompt.includes("sem luzes, reflexos"), "reserved area must avoid visual noise");
+});
+
 Deno.test("image gateway falls back to the next model", async () => {
   const calls: string[] = [];
   const pixel = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+Avp9WQAAAABJRU5ErkJggg==";
