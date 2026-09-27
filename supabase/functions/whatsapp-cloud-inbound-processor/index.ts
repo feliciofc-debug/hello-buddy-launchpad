@@ -76,6 +76,10 @@ import {
   type ScheduledSocialGroup,
 } from "../_shared/social-reschedule.ts";
 import {
+  parseTikTokDisclosure,
+  privacyChoiceText,
+} from "../_shared/tiktok-whatsapp-consent.ts";
+import {
   classifyOwnerMediaIntent,
   extractSocialPostBriefing,
   hasImageGenerationRequest,
@@ -362,7 +366,9 @@ function extractText(payload: any): string {
   if (payload.interactive?.list_reply?.title) {
     const title = String(payload.interactive.list_reply.title);
     const id = String(payload.interactive.list_reply.id || "");
-    return id.startsWith("video_") ? `${title}\n<<INTERACTIVE_ID:${id}>>` : title;
+    return /^(?:video_|tiktok_(?:privacy|disclosure):)/i.test(id)
+      ? `${title}\n<<INTERACTIVE_ID:${id}>>`
+      : title;
   }
   if (payload.image?.caption) return payload.image.caption;
   if (payload.video?.caption) return payload.video.caption;
@@ -5273,6 +5279,10 @@ async function toolAgendarPostPendente(
       tiktokCreatorNickname: creatorInfo.creatorNickname,
       tiktokMaxDurationSec: creatorInfo.maxDurationSec,
       tiktokVideoDurationSec: videoDuration,
+      // A escolha de um fluxo anterior de "Publicar agora" não vale como
+      // consentimento do novo agendamento.
+      tiktokPrivacyLevel: undefined,
+      tiktokConsentedAt: undefined,
       pendingTikTokScheduledAt: scheduledDate.toISOString(),
     };
     PENDING_POSTS.set(token, atualizado);
@@ -5334,6 +5344,7 @@ async function toolAgendarPostPendente(
       tiktok_publish_id: null,
       tiktok_post_row_id: null,
       tiktok_publish_status: null,
+      tiktok_processing_started_at: null,
       tiktok_fail_reason: null,
       tiktok_retry_count: 0,
       tiktok_next_retry_at: null,
@@ -5596,13 +5607,7 @@ async function applyPendingTikTokPrivacyChoice(
   const p = PENDING_POSTS.get(token) ?? (await loadPendingSocialPost(token, ctx.userId));
   if (!p || p.userId !== ctx.userId || !p.redes.includes("tiktok") || !p.tiktokPrivacyOptions?.length) return null;
   if (p.pendingTikTokScheduledAt && p.tiktokPrivacyLevel && !p.tiktokConsentedAt) {
-    const normalized = normalizePt(text)
-      .replace(/^tiktok_disclosure:/, "")
-      .replace(/_/g, " ");
-    let disclosure: "non_commercial" | "brand_organic" | "branded_content" | null = null;
-    if (/\b(nao comercial|sem publicidade|non commercial)\b/.test(normalized)) disclosure = "non_commercial";
-    else if (/\b(minha marca|propria marca|brand organic)\b/.test(normalized)) disclosure = "brand_organic";
-    else if (/\b(outra marca|terceir[oa]s?|branded content)\b/.test(normalized)) disclosure = "branded_content";
+    const disclosure = parseTikTokDisclosure(text);
     if (!disclosure) return null;
     if (disclosure === "branded_content" && p.tiktokPrivacyLevel === "SELF_ONLY") {
       const atualizado = { ...p, tiktokPrivacyLevel: undefined };
@@ -5641,7 +5646,7 @@ async function applyPendingTikTokPrivacyChoice(
   }
 
   const choice = matchTikTokPrivacyChoice(
-    text.replace(/^tiktok_privacy:/i, ""),
+    privacyChoiceText(text),
     p.tiktokPrivacyOptions,
   );
   if (!choice) return null;

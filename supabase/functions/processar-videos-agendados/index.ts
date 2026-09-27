@@ -17,12 +17,14 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 
   try {
+    const now = new Date();
     // Pega até 5 agendamentos prontos (status pendente + horário passou)
     const { data: agendados, error } = await supabase
       .from("videos_agendados")
       .select("*")
       .eq("status", "pendente")
-      .lte("scheduled_for", new Date().toISOString())
+      .lte("scheduled_for", now.toISOString())
+      .or(`tiktok_next_retry_at.is.null,tiktok_next_retry_at.lte.${now.toISOString()}`)
       .order("scheduled_for", { ascending: true })
       .limit(5);
 
@@ -110,7 +112,18 @@ serve(async (req) => {
                   videoDurationSec: item.tiktok_video_duration_sec,
                   publishId: item.tiktok_publish_id,
                   postRowId: item.tiktok_post_row_id,
+                  processingStartedAt: item.tiktok_processing_started_at,
                   providerBranding: metadata?.provider_branding,
+                  scheduledAt: item.scheduled_for,
+                  disableComment: typeof metadata?.tiktok_disable_comment === "boolean"
+                    ? metadata.tiktok_disable_comment
+                    : true,
+                  disableDuet: typeof metadata?.tiktok_disable_duet === "boolean"
+                    ? metadata.tiktok_disable_duet
+                    : true,
+                  disableStitch: typeof metadata?.tiktok_disable_stitch === "boolean"
+                    ? metadata.tiktok_disable_stitch
+                    : true,
                   recordTable: "videos_agendados",
                   recordId: item.id,
                 },
@@ -119,6 +132,9 @@ serve(async (req) => {
                 tiktok_publish_id: tiktokResult.publishId || item.tiktok_publish_id || null,
                 tiktok_post_row_id: tiktokResult.postRowId || item.tiktok_post_row_id || null,
                 tiktok_publish_status: tiktokResult.publishStatus || null,
+                tiktok_processing_started_at: tiktokResult.processingStartedAt
+                  || item.tiktok_processing_started_at
+                  || null,
                 tiktok_fail_reason: tiktokResult.failReason || null,
                 tiktok_next_retry_at: tiktokResult.retryAt || null,
                 tiktok_retry_count: tiktokResult.state === "retry"

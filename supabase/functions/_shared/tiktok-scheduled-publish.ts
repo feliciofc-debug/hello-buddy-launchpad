@@ -1,3 +1,5 @@
+import { AMZ_TENANT_ID } from "./amz-tenant.ts";
+
 export type TikTokScheduledSource = "scheduled" | "autopilot";
 export type TikTokDeliveryMode = "direct" | "draft";
 export type TikTokScheduledState = "processing" | "published" | "draft" | "failed" | "retry";
@@ -15,7 +17,12 @@ export type TikTokScheduledInput = {
   videoDurationSec?: number | null;
   publishId?: string | null;
   postRowId?: string | null;
+  processingStartedAt?: string | null;
   providerBranding?: unknown;
+  scheduledAt: string;
+  disableComment?: boolean;
+  disableDuet?: boolean;
+  disableStitch?: boolean;
   recordTable: "social_posts_queue" | "videos_agendados";
   recordId: string;
 };
@@ -26,6 +33,7 @@ export type TikTokScheduledResult = {
   publishId?: string | null;
   postRowId?: string | null;
   publishStatus?: string | null;
+  processingStartedAt?: string | null;
   failReason?: string | null;
   message: string;
   retryAt?: string;
@@ -42,6 +50,8 @@ type TikTokDependencies = {
 export const TIKTOK_MAX_POSTS_PER_24H = 5;
 const RETRY_DELAY_MS = 15 * 60 * 1000;
 const DEFER_DELAY_MS = 60 * 60 * 1000;
+const RETRY_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+const PROCESSING_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 
 export function resolveTikTokDeliveryMode(input: {
   source: TikTokScheduledSource;
@@ -64,8 +74,9 @@ export function isDeferredTikTokCode(code: unknown): boolean {
   ].includes(String(code || ""));
 }
 
-export function containsForbiddenProviderBranding(value: unknown): boolean {
+export function containsForbiddenProviderBranding(value: unknown, userId?: string | null): boolean {
   if (!value) return false;
+  if (String(userId || "").toLowerCase() === AMZ_TENANT_ID.toLowerCase()) return false;
   const text = typeof value === "string" ? value : JSON.stringify(value);
   return /\btech\s*provider\b|amzofertas\.com\.br|\bamz\s+ofertas\b/i.test(text);
 }
@@ -80,6 +91,43 @@ export function validateTikTokDuration(
     return `O vídeo tem ${Math.ceil(durationSec)}s, mas esta conta TikTok aceita no máximo ${maxDurationSec}s.`;
   }
   return null;
+}
+
+export function tiktokWaitExpired(
+  state: "retry" | "processing",
+  scheduledAt: string,
+  now = new Date(),
+): boolean {
+  const scheduledMs = new Date(scheduledAt).getTime();
+  if (!Number.isFinite(scheduledMs)) return false;
+  const limit = state === "processing" ? PROCESSING_TIMEOUT_MS : RETRY_TIMEOUT_MS;
+  return now.getTime() - scheduledMs >= limit;
+}
+
+export function resolveTikTokInteractionSettings(input: {
+  disableComment?: boolean;
+  disableDuet?: boolean;
+  disableStitch?: boolean;
+}) {
+  return {
+    disable_comment: input.disableComment ?? true,
+    disable_duet: input.disableDuet ?? true,
+    disable_stitch: input.disableStitch ?? true,
+  };
+}
+
+function timeoutResult(
+  mode: TikTokDeliveryMode,
+  state: "retry" | "processing",
+): TikTokScheduledResult {
+  return {
+    state: "failed",
+    mode,
+    failReason: state === "processing" ? "tiktok_processing_timeout" : "tiktok_retry_timeout",
+    message: state === "processing"
+      ? "O TikTok não concluiu o processamento em até 2 horas."
+      : "O TikTok não aceitou o envio após 24 horas de novas tentativas.",
+  };
 }
 
 export function friendlyTikTokFailure(value: unknown): string {
@@ -125,7 +173,11 @@ function retryResult(
   now: Date,
   message: string,
   deferred = false,
+  scheduledAt?: string,
 ): TikTokScheduledResult {
+  if (scheduledAt && tiktokWaitExpired("retry", scheduledAt, now)) {
+    return timeoutResult(mode, "retry");
+  }
   return {
     state: "retry",
     mode,
@@ -162,7 +214,7 @@ export async function publishScheduledTikTok(
       // validações continuam e o TikTok ainda aplica as regras de conteúdo.
     }
   }
-  if (containsForbiddenProviderBranding(providerBranding)) {
+  if (containsForbiddenProviderBranding(providerBranding, input.userId)) {
     return {
       state: "failed",
       mode,
@@ -172,12 +224,16 @@ export async function publishScheduledTikTok(
   }
 
   if (input.publishId) {
+    const processingReference = input.processingStartedAt || input.scheduledAt;
     const statusResponse = await invokeJson(deps, "tiktok-post-status", {
       user_id: input.userId,
       publish_id: input.publishId,
     });
     if (!statusResponse.ok || statusResponse.data?.success === false) {
       const code = statusResponse.data?.tiktok_error?.code;
+      if (tiktokWaitExpired("processing", processingReference, now)) {
+        return timeoutResult(mode, "processing");
+      }
       if (isRetryableTikTokCode(code) || isDeferredTikTokCode(code)) {
         return retryResult(mode, now, friendlyTikTokFailure(code), isDeferredTikTokCode(code));
       }
@@ -216,6 +272,9 @@ export async function publishScheduledTikTok(
         message: friendlyTikTokFailure(failReason),
       };
     }
+    if (tiktokWaitExpired("processing", processingReference, now)) {
+      return timeoutResult(mode, "processing");
+    }
     return {
       state: "processing",
       mode,
@@ -227,6 +286,10 @@ export async function publishScheduledTikTok(
   }
 
   const since = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+  const processingSince = new Date(now.getTime() - PROCESSING_TIMEOUT_MS).toISOString();
+  if (tiktokWaitExpired("retry", input.scheduledAt, now)) {
+    return timeoutResult(mode, "retry");
+  }
   const [{ count: recentCount }, { count: processingCount }] = await Promise.all([
     deps.supabase
       .from("tiktok_posts")
@@ -238,20 +301,21 @@ export async function publishScheduledTikTok(
       .from("tiktok_posts")
       .select("id", { count: "exact", head: true })
       .eq("user_id", input.userId)
-      .eq("status", "processing"),
+      .eq("status", "processing")
+      .gte("created_at", processingSince),
   ]);
   if ((processingCount ?? 0) >= 1) {
-    return retryResult(mode, now, "Já existe um vídeo deste cliente sendo processado pelo TikTok.");
+    return retryResult(mode, now, "Já existe um vídeo deste cliente sendo processado pelo TikTok.", false, input.scheduledAt);
   }
   if ((recentCount ?? 0) >= TIKTOK_MAX_POSTS_PER_24H) {
-    return retryResult(mode, now, "O limite conservador de envios ao TikTok nas últimas 24 horas foi atingido.", true);
+    return retryResult(mode, now, "O limite conservador de envios ao TikTok nas últimas 24 horas foi atingido.", true, input.scheduledAt);
   }
 
   const creatorResponse = await invokeJson(deps, "tiktok-creator-info", { user_id: input.userId });
   if (!creatorResponse.ok || creatorResponse.data?.success !== true) {
     const code = creatorResponse.data?.tiktok_error?.code;
     if (isRetryableTikTokCode(code) || isDeferredTikTokCode(code)) {
-      return retryResult(mode, now, friendlyTikTokFailure(code), isDeferredTikTokCode(code));
+      return retryResult(mode, now, friendlyTikTokFailure(code), isDeferredTikTokCode(code), input.scheduledAt);
     }
     return {
       state: "failed",
@@ -288,9 +352,7 @@ export async function publishScheduledTikTok(
     title: input.title,
     post_mode: mode,
     privacy_level: mode === "direct" ? input.privacyLevel : undefined,
-    disable_comment: true,
-    disable_duet: true,
-    disable_stitch: true,
+    ...resolveTikTokInteractionSettings(input),
     is_commercial_content: !!input.isCommercialContent,
     brand_organic: !!input.brandOrganic,
     branded_content: !!input.brandedContent,
@@ -302,7 +364,7 @@ export async function publishScheduledTikTok(
   if (!postResponse.ok || postResponse.data?.success === false) {
     const code = postResponse.data?.tiktok_error?.code;
     if (isRetryableTikTokCode(code) || isDeferredTikTokCode(code)) {
-      return retryResult(mode, now, friendlyTikTokFailure(code), isDeferredTikTokCode(code));
+      return retryResult(mode, now, friendlyTikTokFailure(code), isDeferredTikTokCode(code), input.scheduledAt);
     }
     const failReason = postResponse.data?.error || "tiktok_upload_failed";
     return { state: "failed", mode, failReason, message: friendlyTikTokFailure(failReason) };
@@ -314,6 +376,7 @@ export async function publishScheduledTikTok(
     publishId: postResponse.data?.publish_id ?? null,
     postRowId: postResponse.data?.post_row_id ?? null,
     publishStatus: "PROCESSING_UPLOAD",
+    processingStartedAt: now.toISOString(),
     message: mode === "direct"
       ? "Enviado ao TikTok, está processando."
       : "Enviado ao TikTok; o rascunho está sendo preparado.",

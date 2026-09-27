@@ -79,3 +79,17 @@ Deno.test("rascunho do TikTok recebe mensagem honesta", () => {
   assertMatch(result!.text, /rascunhos do seu TikTok/);
   assertEquals(result!.text.includes("publicado no TikTok"), false);
 });
+
+Deno.test("timeout do TikTok vira falha legível e nunca publicação", () => {
+  const result = buildScheduledPostNotification([
+    {
+      ...base,
+      id: "tt",
+      platform: "tiktok",
+      status: "erro",
+      tiktok_fail_reason: "tiktok_processing_timeout",
+    },
+  ]);
+  assertMatch(result!.text, /não concluiu o processamento em até 2 horas/);
+  assertEquals(result!.text.includes("publicado no TikTok"), false);
+});

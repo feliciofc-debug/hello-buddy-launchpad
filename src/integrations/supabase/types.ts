@@ -7630,6 +7630,7 @@ export type Database = {
           tiktok_is_commercial_content: boolean
           tiktok_next_retry_at: string | null
           tiktok_post_row_id: string | null
+          tiktok_processing_started_at: string | null
           tiktok_privacy_level: string | null
           tiktok_publish_id: string | null
           tiktok_publish_status: string | null
@@ -7676,6 +7677,7 @@ export type Database = {
           tiktok_is_commercial_content?: boolean
           tiktok_next_retry_at?: string | null
           tiktok_post_row_id?: string | null
+          tiktok_processing_started_at?: string | null
           tiktok_privacy_level?: string | null
           tiktok_publish_id?: string | null
           tiktok_publish_status?: string | null
@@ -7722,6 +7724,7 @@ export type Database = {
           tiktok_is_commercial_content?: boolean
           tiktok_next_retry_at?: string | null
           tiktok_post_row_id?: string | null
+          tiktok_processing_started_at?: string | null
           tiktok_privacy_level?: string | null
           tiktok_publish_id?: string | null
           tiktok_publish_status?: string | null
@@ -9031,6 +9034,7 @@ export type Database = {
         Row: {
           canais: string[]
           caption: string | null
+          completed_channels: string[]
           created_at: string
           erro: string | null
           id: string
@@ -9046,8 +9050,15 @@ export type Database = {
           tiktok_branded_content: boolean | null
           tiktok_consented_at: string | null
           tiktok_creator_nickname: string | null
+          tiktok_fail_reason: string | null
           tiktok_is_commercial_content: boolean | null
+          tiktok_next_retry_at: string | null
+          tiktok_post_row_id: string | null
+          tiktok_processing_started_at: string | null
           tiktok_privacy_level: string | null
+          tiktok_publish_id: string | null
+          tiktok_publish_status: string | null
+          tiktok_retry_count: number
           tiktok_video_duration_sec: number | null
           tipo: string
           updated_at: string
@@ -9058,6 +9069,7 @@ export type Database = {
         Insert: {
           canais?: string[]
           caption?: string | null
+          completed_channels?: string[]
           created_at?: string
           erro?: string | null
           id?: string
@@ -9073,8 +9085,15 @@ export type Database = {
           tiktok_branded_content?: boolean | null
           tiktok_consented_at?: string | null
           tiktok_creator_nickname?: string | null
+          tiktok_fail_reason?: string | null
           tiktok_is_commercial_content?: boolean | null
+          tiktok_next_retry_at?: string | null
+          tiktok_post_row_id?: string | null
+          tiktok_processing_started_at?: string | null
           tiktok_privacy_level?: string | null
+          tiktok_publish_id?: string | null
+          tiktok_publish_status?: string | null
+          tiktok_retry_count?: number
           tiktok_video_duration_sec?: number | null
           tipo: string
           updated_at?: string
@@ -9085,6 +9104,7 @@ export type Database = {
         Update: {
           canais?: string[]
           caption?: string | null
+          completed_channels?: string[]
           created_at?: string
           erro?: string | null
           id?: string
@@ -9100,8 +9120,15 @@ export type Database = {
           tiktok_branded_content?: boolean | null
           tiktok_consented_at?: string | null
           tiktok_creator_nickname?: string | null
+          tiktok_fail_reason?: string | null
           tiktok_is_commercial_content?: boolean | null
+          tiktok_next_retry_at?: string | null
+          tiktok_post_row_id?: string | null
+          tiktok_processing_started_at?: string | null
           tiktok_privacy_level?: string | null
+          tiktok_publish_id?: string | null
+          tiktok_publish_status?: string | null
+          tiktok_retry_count?: number
           tiktok_video_duration_sec?: number | null
           tipo?: string
           updated_at?: string

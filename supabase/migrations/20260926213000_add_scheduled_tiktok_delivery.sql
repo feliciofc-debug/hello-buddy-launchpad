@@ -11,6 +11,7 @@ ALTER TABLE public.social_posts_queue
   ADD COLUMN IF NOT EXISTS tiktok_publish_id text,
   ADD COLUMN IF NOT EXISTS tiktok_post_row_id uuid,
   ADD COLUMN IF NOT EXISTS tiktok_publish_status text,
+  ADD COLUMN IF NOT EXISTS tiktok_processing_started_at timestamptz,
   ADD COLUMN IF NOT EXISTS tiktok_fail_reason text,
   ADD COLUMN IF NOT EXISTS tiktok_retry_count integer NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS tiktok_next_retry_at timestamptz;
@@ -27,6 +28,7 @@ ALTER TABLE public.videos_agendados
   ADD COLUMN IF NOT EXISTS tiktok_publish_id text,
   ADD COLUMN IF NOT EXISTS tiktok_post_row_id uuid,
   ADD COLUMN IF NOT EXISTS tiktok_publish_status text,
+  ADD COLUMN IF NOT EXISTS tiktok_processing_started_at timestamptz,
   ADD COLUMN IF NOT EXISTS tiktok_fail_reason text,
   ADD COLUMN IF NOT EXISTS tiktok_retry_count integer NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS tiktok_next_retry_at timestamptz;

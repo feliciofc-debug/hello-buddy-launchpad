@@ -6,9 +6,12 @@ import {
   containsForbiddenProviderBranding,
   isDeferredTikTokCode,
   isRetryableTikTokCode,
+  resolveTikTokInteractionSettings,
   resolveTikTokDeliveryMode,
+  tiktokWaitExpired,
   validateTikTokDuration,
 } from "./tiktok-scheduled-publish.ts";
+import { AMZ_TENANT_ID } from "./amz-tenant.ts";
 
 Deno.test("agendamento com privacidade e consentimento usa Direct Post", () => {
   assertEquals(resolveTikTokDeliveryMode({
@@ -43,9 +46,17 @@ Deno.test("duração é comparada com creator_info", () => {
 });
 
 Deno.test("bloqueia marca inserida pelo provedor, não a marca genérica do cliente", () => {
-  assert(containsForbiddenProviderBranding("AMZ Ofertas - Tech Provider verificado"));
-  assert(containsForbiddenProviderBranding({ watermark: "amzofertas.com.br" }));
+  const otherTenant = "11111111-1111-4111-8111-111111111111";
+  assert(containsForbiddenProviderBranding("AMZ Ofertas - Tech Provider verificado", otherTenant));
+  assert(containsForbiddenProviderBranding({ watermark: "amzofertas.com.br" }, otherTenant));
   assertEquals(containsForbiddenProviderBranding("Logo do próprio cliente"), false);
+});
+
+Deno.test("tenant AMZ pode usar a própria marca", () => {
+  assertEquals(
+    containsForbiddenProviderBranding("AMZ Ofertas - Tech Provider verificado", AMZ_TENANT_ID),
+    false,
+  );
 });
 
 Deno.test("classifica rate limit para retry e riscos para adiamento", () => {
@@ -53,4 +64,29 @@ Deno.test("classifica rate limit para retry e riscos para adiamento", () => {
   assert(isDeferredTikTokCode("spam_risk_too_many_posts"));
   assert(isDeferredTikTokCode("reached_active_user_cap"));
   assertEquals(isRetryableTikTokCode("invalid_param"), false);
+});
+
+Deno.test("retry expira em 24h e processamento em 2h", () => {
+  const now = new Date("2026-09-27T12:00:00.000Z");
+  assertEquals(tiktokWaitExpired("retry", "2026-09-26T12:01:00.000Z", now), false);
+  assertEquals(tiktokWaitExpired("retry", "2026-09-26T12:00:00.000Z", now), true);
+  assertEquals(tiktokWaitExpired("processing", "2026-09-27T10:01:00.000Z", now), false);
+  assertEquals(tiktokWaitExpired("processing", "2026-09-27T10:00:00.000Z", now), true);
+});
+
+Deno.test("interações ficam desligadas por padrão e respeitam escolha do site", () => {
+  assertEquals(resolveTikTokInteractionSettings({}), {
+    disable_comment: true,
+    disable_duet: true,
+    disable_stitch: true,
+  });
+  assertEquals(resolveTikTokInteractionSettings({
+    disableComment: false,
+    disableDuet: false,
+    disableStitch: true,
+  }), {
+    disable_comment: false,
+    disable_duet: false,
+    disable_stitch: true,
+  });
 });

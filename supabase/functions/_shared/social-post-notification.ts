@@ -33,6 +33,12 @@ export function friendlySocialPostError(value: unknown): string {
   if (raw.includes("produto_deletado") || raw.includes("produto deletado")) {
     return "o conteúdo original não está mais disponível";
   }
+  if (raw.includes("tiktok_processing_timeout")) {
+    return "o TikTok não concluiu o processamento em até 2 horas";
+  }
+  if (raw.includes("tiktok_retry_timeout")) {
+    return "o TikTok não aceitou o envio após 24 horas de tentativas";
+  }
   if (raw.includes("token") || raw.includes("permission") || raw.includes("autoriz")) {
     return "a conexão com a rede social precisa ser renovada";
   }

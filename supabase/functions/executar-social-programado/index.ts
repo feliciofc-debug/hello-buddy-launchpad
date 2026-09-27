@@ -188,6 +188,8 @@ serve(async (req) => {
       .select('*')
       .eq('status', 'pendente')
       .or(`scheduled_at.is.null,scheduled_at.lte.${now.toISOString()}`)
+      .or(`tiktok_next_retry_at.is.null,tiktok_next_retry_at.lte.${now.toISOString()}`)
+      .order('scheduled_at', { ascending: true, nullsFirst: true })
       .limit(10)
 
     if (fetchError) {
@@ -335,6 +337,8 @@ serve(async (req) => {
                 videoDurationSec: post.tiktok_video_duration_sec,
                 publishId: post.tiktok_publish_id,
                 postRowId: post.tiktok_post_row_id,
+                processingStartedAt: post.tiktok_processing_started_at,
+                scheduledAt: post.scheduled_at,
                 recordTable: 'social_posts_queue',
                 recordId: post.id,
               },
@@ -343,6 +347,9 @@ serve(async (req) => {
               tiktok_publish_id: tiktokResult.publishId || post.tiktok_publish_id || null,
               tiktok_post_row_id: tiktokResult.postRowId || post.tiktok_post_row_id || null,
               tiktok_publish_status: tiktokResult.publishStatus || null,
+              tiktok_processing_started_at: tiktokResult.processingStartedAt
+                || post.tiktok_processing_started_at
+                || null,
               tiktok_fail_reason: tiktokResult.failReason || null,
               tiktok_next_retry_at: tiktokResult.retryAt || null,
               tiktok_retry_count: tiktokResult.state === 'retry'

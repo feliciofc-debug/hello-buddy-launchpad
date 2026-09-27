@@ -25,6 +25,7 @@ import {
   type MotionProps,
 } from "./video-motion.ts";
 import { getTenantLogo } from "./tenant-logo.ts";
+import { AMZ_TENANT_ID } from "./amz-tenant.ts";
 
 export const PLATAFORMAS_OK = ["instagram", "facebook", "linkedin", "tiktok"];
 
@@ -544,6 +545,7 @@ export async function enfileirarVideoMotion(input: EnfileirarInput): Promise<Enf
 
   if (
     plataformas.includes("tiktok")
+    && userId.toLowerCase() !== AMZ_TENANT_ID.toLowerCase()
     && /\btech\s*provider\b|amzofertas\.com\.br|\bamz\s+ofertas\b/i.test(JSON.stringify(props))
   ) {
     return {
