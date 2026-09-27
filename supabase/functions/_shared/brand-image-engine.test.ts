@@ -53,8 +53,15 @@ Deno.test("usa painel translúcido quando o fundo da logo não pode ser removido
   base.fill(0xeeeeeeff);
   const logo = new Image(160, 60);
   logo.fill(0xffffffff);
-  logo.drawBox(0, 0, 20, 20, 0x111111ff);
-  logo.drawBox(140, 40, 20, 20, 0x222222ff);
+  for (const [x, y, color] of [
+    [0, 0, [17, 17, 17]],
+    [159, 0, [255, 255, 255]],
+    [0, 59, [255, 255, 255]],
+    [159, 59, [34, 34, 34]],
+  ] as const) {
+    const offset = (y * logo.width + x) * 4;
+    logo.bitmap.set([...color, 255], offset);
+  }
   logo.drawBox(45, 20, 70, 20, 0xcc2233ff);
   const result = await applyBrandLogo(
     new Uint8Array(await base.encode()),

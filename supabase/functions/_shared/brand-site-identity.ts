@@ -101,7 +101,7 @@ export function extractBrandIdentityFromHtml(
     }
   }
 
-  const header = html.match(/<header\b[\s\S]{0,20_000}?<\/header>/i)?.[0] ?? "";
+  const header = html.match(/<header\b[\s\S]{0,20000}?<\/header>/i)?.[0] ?? "";
   const logoTag = [...header.matchAll(/<img\b[^>]*>/gi)]
     .map((match) => match[0])
     .find((tag) => {
@@ -120,7 +120,7 @@ export function extractBrandIdentityFromHtml(
   const logoUrl = logoSource ? absoluteUrl(logoSource, base) : null;
 
   let inlineSvg: string | null = null;
-  const svg = header.match(/<svg\b[\s\S]{0,100_000}?<\/svg>/i)?.[0] ?? "";
+  const svg = header.match(/<svg\b[\s\S]{0,100000}?<\/svg>/i)?.[0] ?? "";
   if (svg && /\b(?:logo|logotipo|logomarca|brand|marca)\b/i.test(svg.slice(0, 1000))) {
     inlineSvg = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;
     addColors(svg, weights, 80);
