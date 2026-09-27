@@ -93,3 +93,17 @@ Deno.test("timeout do TikTok vira falha legível e nunca publicação", () => {
   assertMatch(result!.text, /não concluiu o processamento em até 2 horas/);
   assertEquals(result!.text.includes("publicado no TikTok"), false);
 });
+
+Deno.test("reconexão do TikTok vira falha final amigável", () => {
+  const result = buildScheduledPostNotification([
+    {
+      ...base,
+      id: "tt",
+      platform: "tiktok",
+      status: "erro",
+      tiktok_fail_reason: "tiktok_reconnect_required",
+    },
+  ]);
+  assertMatch(result!.text, /reconecte o TikTok na plataforma/);
+  assertEquals(result!.text.includes("tiktok_reconnect_required"), false);
+});

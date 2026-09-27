@@ -1,5 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  getValidTikTokAccessToken,
+  TIKTOK_RECONNECT_MESSAGE,
+} from "../_shared/tiktok-token.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,44 +33,48 @@ serve(async (req) => {
       );
     }
 
-    const { data: integration, error: integrationError } = await supabase
-      .from("integrations")
-      .select("access_token, token_expires_at")
-      .eq("user_id", user_id)
-      .eq("platform", "tiktok")
-      .eq("is_active", true)
-      .maybeSingle();
-
-    if (integrationError || !integration) {
+    let token = await getValidTikTokAccessToken(supabase, user_id);
+    if (!token.ok) {
       return new Response(
-        JSON.stringify({ success: false, error: "not_connected" }),
+        JSON.stringify({
+          success: false,
+          error: token.error,
+          message: token.error === "tiktok_reconnect_required"
+            ? TIKTOK_RECONNECT_MESSAGE
+            : "TikTok não conectado.",
+        }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    if (integration.token_expires_at && new Date(integration.token_expires_at) < new Date()) {
-      return new Response(
-        JSON.stringify({ success: false, error: "token_expired" }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+    const queryCreator = (accessToken: string) =>
+      fetch("https://open.tiktokapis.com/v2/post/publish/creator_info/query/", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json; charset=UTF-8",
+        },
+      });
+    let resp = await queryCreator(token.accessToken);
+    let json = await resp.json();
+    if (resp.status === 401 || json?.error?.code === "access_token_invalid") {
+      token = await getValidTikTokAccessToken(supabase, user_id, { forceRefresh: true });
+      if (!token.ok) {
+        return new Response(
+          JSON.stringify({ success: false, error: "tiktok_reconnect_required", message: TIKTOK_RECONNECT_MESSAGE }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      resp = await queryCreator(token.accessToken);
+      json = await resp.json();
     }
-
-    const resp = await fetch("https://open.tiktokapis.com/v2/post/publish/creator_info/query/", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${integration.access_token}`,
-        "Content-Type": "application/json; charset=UTF-8",
-      },
-    });
-
-    const json = await resp.json();
     console.log("📦 creator_info:", resp.status, JSON.stringify(json));
 
     const errCode = json?.error?.code;
     if (!resp.ok || (errCode && errCode !== "ok")) {
       let message = json?.error?.message || `Falha ao consultar o TikTok (status ${resp.status})`;
       if (errCode === "access_token_invalid" || resp.status === 401) {
-        message = "Token inválido. Reconecte sua conta TikTok.";
+        message = TIKTOK_RECONNECT_MESSAGE;
       } else if (errCode === "spam_risk_too_many_pending_share") {
         message = "Muitas publicações pendentes no TikTok. Aguarde alguns minutos.";
       } else if (errCode === "reached_active_user_cap") {

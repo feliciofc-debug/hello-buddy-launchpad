@@ -1,5 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import {
+  getValidTikTokAccessToken,
+  TIKTOK_RECONNECT_MESSAGE,
+} from '../_shared/tiktok-token.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -27,20 +31,30 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-    const { data: integration, error } = await supabase
-      .from('integrations')
-      .select('*')
-      .eq('user_id', user_id)
-      .eq('platform', 'tiktok')
-      .eq('is_active', true)
-      .maybeSingle()
-
-    if (error || !integration) {
+    let token = await getValidTikTokAccessToken(supabase, user_id)
+    if (!token.ok && token.error === 'not_connected') {
       return new Response(
         JSON.stringify({ connected: false }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
       )
     }
+    if (!token.ok) {
+      const integration = token.integration
+      return new Response(
+        JSON.stringify({
+          connected: true,
+          reconnect_required: true,
+          expired: true,
+          error: token.error,
+          message: TIKTOK_RECONNECT_MESSAGE,
+          open_id: integration?.meta_user_id || null,
+          last_verified_at: integration?.updated_at || null,
+          connected_at: integration?.created_at || null,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      )
+    }
+    const integration = token.integration
 
     const baseConnectedPayload = {
       connected: true as const,
@@ -51,20 +65,42 @@ serve(async (req) => {
     }
 
     try {
-      const userInfoResp = await fetch(
-        'https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,avatar_url,display_name,username',
-        {
+      const fetchUserInfo = (accessToken: string) =>
+        fetch('https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,avatar_url,display_name,username', {
           method: 'GET',
           headers: {
-            Authorization: `Bearer ${integration.access_token}`,
+            Authorization: `Bearer ${accessToken}`,
           },
-        }
-      )
+        })
+      let userInfoResp = await fetchUserInfo(token.accessToken)
 
       if (userInfoResp.status === 401) {
         await userInfoResp.text()
+        token = await getValidTikTokAccessToken(supabase, user_id, { forceRefresh: true })
+        if (!token.ok) {
+          return new Response(
+            JSON.stringify({
+              ...baseConnectedPayload,
+              expired: true,
+              reconnect_required: true,
+              error: 'tiktok_reconnect_required',
+              message: TIKTOK_RECONNECT_MESSAGE,
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+          )
+        }
+        userInfoResp = await fetchUserInfo(token.accessToken)
+      }
+      if (userInfoResp.status === 401) {
+        await userInfoResp.text()
         return new Response(
-          JSON.stringify({ ...baseConnectedPayload, expired: true }),
+          JSON.stringify({
+            ...baseConnectedPayload,
+            expired: true,
+            reconnect_required: true,
+            error: 'tiktok_reconnect_required',
+            message: TIKTOK_RECONNECT_MESSAGE,
+          }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
         )
       }

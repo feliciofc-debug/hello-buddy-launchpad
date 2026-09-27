@@ -181,7 +181,7 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
             ? t("tiktok_share.err_token_expired")
             : data?.error === "not_connected"
               ? t("tiktok_share.err_not_connected")
-              : data?.error || t("tiktok_share.err_creator_info")
+              : data?.message || data?.error || t("tiktok_share.err_creator_info")
         );
         return;
       }
@@ -275,15 +275,12 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
         return;
       }
 
-      const nowIso = new Date().toISOString();
-
       const { data: integration } = await supabase
         .from("integrations")
-        .select("id, is_active, platform, token_expires_at")
+        .select("id, is_active, platform")
         .eq("user_id", user.id)
         .eq("platform", "tiktok")
         .eq("is_active", true)
-        .gt("token_expires_at", nowIso)
         .maybeSingle();
 
       const connected = !!integration;
@@ -387,7 +384,7 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
           closeTimerRef.current = window.setTimeout(() => onOpenChange(false), 2000);
         }
       } else {
-        throw new Error(data.error || t("tiktok_share.err_post_generic"));
+        throw new Error(data.message || data.error || t("tiktok_share.err_post_generic"));
       }
     } catch (error: any) {
       console.error("Erro ao postar:", error);

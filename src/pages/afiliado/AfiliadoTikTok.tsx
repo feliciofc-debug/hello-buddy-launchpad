@@ -45,21 +45,12 @@ export default function AfiliadoTikTok() {
       }
 
       // Carregar integração
-      const { data: integrationData } = await supabase
-        .from("integrations")
-        .select("*")
-        .eq("user_id", user.id)
-        .eq("platform", "tiktok")
-        .maybeSingle();
-
-      if (integrationData) {
-        const expiresAt = integrationData.token_expires_at ?? null;
-        const isExpired = expiresAt ? new Date(expiresAt) < new Date() : true;
-
-        setIsConnected(integrationData.is_active === true && !isExpired);
-        setLastUpdated(integrationData.updated_at);
-        setTokenExpired(isExpired);
-      }
+      const { data: connection } = await supabase.functions.invoke("tiktok-fetch-userinfo", {
+        body: { user_id: user.id },
+      });
+      setIsConnected(connection?.connected === true && connection?.reconnect_required !== true);
+      setLastUpdated(connection?.last_verified_at || null);
+      setTokenExpired(connection?.reconnect_required === true);
 
       // Carregar histórico de posts usando função RPC ou query direta com type assertion
       const { data: postsData, error: postsError } = await supabase

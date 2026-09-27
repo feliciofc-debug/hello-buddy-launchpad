@@ -132,6 +132,9 @@ function timeoutResult(
 
 export function friendlyTikTokFailure(value: unknown): string {
   const raw = String(value || "").toLowerCase();
+  if (raw.includes("tiktok_reconnect_required") || raw.includes("reconect")) {
+    return "A conexão com o seu TikTok expirou. Reconecte o TikTok na plataforma para continuar.";
+  }
   if (raw.includes("duration") || raw.includes("duração") || raw.includes("too_long")) {
     return "o vídeo é mais longo do que esta conta permite";
   }
@@ -230,6 +233,16 @@ export async function publishScheduledTikTok(
       publish_id: input.publishId,
     });
     if (!statusResponse.ok || statusResponse.data?.success === false) {
+      if (statusResponse.data?.error === "tiktok_reconnect_required") {
+        return {
+          state: "failed",
+          mode,
+          publishId: input.publishId,
+          postRowId: input.postRowId,
+          failReason: "tiktok_reconnect_required",
+          message: friendlyTikTokFailure("tiktok_reconnect_required"),
+        };
+      }
       const code = statusResponse.data?.tiktok_error?.code;
       if (tiktokWaitExpired("processing", processingReference, now)) {
         return timeoutResult(mode, "processing");

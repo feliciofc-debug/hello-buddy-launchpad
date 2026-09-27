@@ -30,6 +30,9 @@ function isFinalNotificationRow(row: ScheduledPostNotificationRow): boolean {
 
 export function friendlySocialPostError(value: unknown): string {
   const raw = String(value || "").toLowerCase();
+  if (raw.includes("tiktok_reconnect_required") || raw.includes("reconect")) {
+    return "a conexão com o TikTok expirou; reconecte o TikTok na plataforma";
+  }
   if (raw.includes("produto_deletado") || raw.includes("produto deletado")) {
     return "o conteúdo original não está mais disponível";
   }

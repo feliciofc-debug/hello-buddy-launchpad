@@ -1,5 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  getValidTikTokAccessToken,
+  TIKTOK_RECONNECT_MESSAGE,
+} from "../_shared/tiktok-token.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,43 +49,59 @@ serve(async (req) => {
       );
     }
 
-    // Buscar token do usuário
-    const { data: integration, error: integrationError } = await supabase
-      .from("integrations")
-      .select("access_token, token_expires_at")
-      .eq("user_id", user_id)
-      .eq("platform", "tiktok")
-      .eq("is_active", true)
-      .single();
-
-    if (integrationError || !integration) {
+    let token = await getValidTikTokAccessToken(supabase, user_id);
+    if (!token.ok) {
       return new Response(
-        JSON.stringify({ success: false, error: "TikTok não conectado. Por favor, conecte sua conta primeiro." }),
+        JSON.stringify({
+          success: false,
+          error: token.error,
+          message: token.error === "tiktok_reconnect_required"
+            ? TIKTOK_RECONNECT_MESSAGE
+            : "TikTok não conectado.",
+        }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const accessToken = integration.access_token;
-
     // === Consultar status real da publicação no TikTok ===
-    const statusResponse = await fetch("https://open.tiktokapis.com/v2/post/publish/status/fetch/", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${accessToken}`,
-        "Content-Type": "application/json; charset=UTF-8",
-      },
-      body: JSON.stringify({ publish_id }),
-    });
-
-    const statusData = await statusResponse.json();
+    const queryStatus = (accessToken: string) =>
+      fetch("https://open.tiktokapis.com/v2/post/publish/status/fetch/", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${accessToken}`,
+          "Content-Type": "application/json; charset=UTF-8",
+        },
+        body: JSON.stringify({ publish_id }),
+      });
+    let statusResponse = await queryStatus(token.accessToken);
+    let statusData = await statusResponse.json();
+    if (statusResponse.status === 401 || statusData?.error?.code === "access_token_invalid") {
+      token = await getValidTikTokAccessToken(supabase, user_id, { forceRefresh: true });
+      if (!token.ok) {
+        return new Response(
+          JSON.stringify({ success: false, error: "tiktok_reconnect_required", message: TIKTOK_RECONNECT_MESSAGE }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      statusResponse = await queryStatus(token.accessToken);
+      statusData = await statusResponse.json();
+    }
     console.log("📦 Resposta status TikTok:", JSON.stringify(statusData));
 
     const tiktokErrorCode = statusData?.error?.code;
     if (!statusResponse.ok || (tiktokErrorCode && tiktokErrorCode !== "ok")) {
+      const reconnectRequired = statusResponse.status === 401 || tiktokErrorCode === "access_token_invalid";
       const errorMessage =
-        statusData?.error?.message || `Erro ao consultar status no TikTok (status ${statusResponse.status})`;
+        reconnectRequired
+          ? TIKTOK_RECONNECT_MESSAGE
+          : statusData?.error?.message || `Erro ao consultar status no TikTok (status ${statusResponse.status})`;
       return new Response(
-        JSON.stringify({ success: false, error: errorMessage, tiktok_error: statusData?.error ?? null }),
+        JSON.stringify({
+          success: false,
+          error: reconnectRequired ? "tiktok_reconnect_required" : errorMessage,
+          message: errorMessage,
+          tiktok_error: statusData?.error ?? null,
+        }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

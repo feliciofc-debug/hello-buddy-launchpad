@@ -3872,7 +3872,14 @@ async function fetchTikTokPrivacyOptions(userId: string): Promise<{
     let data: any = {};
     try { data = JSON.parse(txt); } catch { /* handled below */ }
     if (!res.ok || data?.success !== true) {
-      return { options: [], error: data?.error || `creator_info_http_${res.status}` };
+      return {
+        options: [],
+        error: data?.message
+          || (data?.error === "tiktok_reconnect_required"
+            ? "A conexão com o seu TikTok expirou. Reconecte o TikTok na plataforma para continuar."
+            : data?.error)
+          || `Não foi possível consultar a conta TikTok agora.`,
+      };
     }
     const options: string[] = Array.isArray(data.privacy_level_options)
       ? data.privacy_level_options

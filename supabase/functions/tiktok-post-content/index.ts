@@ -1,5 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  getValidTikTokAccessToken,
+  TIKTOK_RECONNECT_MESSAGE,
+} from "../_shared/tiktok-token.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -123,31 +127,21 @@ serve(async (req) => {
       );
     }
 
-    // Buscar token do usuário
-    const { data: integration, error: integrationError } = await supabase
-      .from("integrations")
-      .select("*")
-      .eq("user_id", user_id)
-      .eq("platform", "tiktok")
-      .eq("is_active", true)
-      .single();
-
-    if (integrationError || !integration) {
+    const token = await getValidTikTokAccessToken(supabase, user_id);
+    if (!token.ok) {
       return new Response(
-        JSON.stringify({ success: false, error: "TikTok não conectado. Por favor, conecte sua conta primeiro." }),
+        JSON.stringify({
+          success: false,
+          error: token.error,
+          message: token.error === "tiktok_reconnect_required"
+            ? TIKTOK_RECONNECT_MESSAGE
+            : "TikTok não conectado.",
+        }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const accessToken = integration.access_token;
-
-    // Verificar se token expirou
-    if (integration.token_expires_at && new Date(integration.token_expires_at) < new Date()) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Token expirado. Por favor, reconecte sua conta TikTok." }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    const accessToken = token.accessToken;
 
     // Direct Post só aceita valores anunciados por creator_info para esta conta.
     // Consulta em tempo real para não usar opção antiga ou de outro perfil.
@@ -169,8 +163,14 @@ serve(async (req) => {
         allowed: allowedPrivacy,
       });
       if (!creatorResponse.ok || creatorData?.error?.code && creatorData.error.code !== "ok") {
+        const reconnectRequired = creatorResponse.status === 401
+          || creatorData?.error?.code === "access_token_invalid";
         return new Response(
-          JSON.stringify({ success: false, error: creatorData?.error?.message || "Não foi possível consultar a privacidade disponível no TikTok." }),
+          JSON.stringify({
+            success: false,
+            error: reconnectRequired ? "tiktok_reconnect_required" : (creatorData?.error?.message || "Não foi possível consultar a privacidade disponível no TikTok."),
+            message: reconnectRequired ? TIKTOK_RECONNECT_MESSAGE : undefined,
+          }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -288,7 +288,7 @@ serve(async (req) => {
       let errorMessage = `Erro ao iniciar upload no TikTok (status ${initResponse.status})`;
       switch (initErrorCode) {
         case "access_token_invalid":
-          errorMessage = "Token inválido. Reconecte sua conta TikTok.";
+          errorMessage = TIKTOK_RECONNECT_MESSAGE;
           break;
         case "rate_limit_exceeded":
           errorMessage = "Limite de requisições atingido. Tente novamente em alguns minutos.";

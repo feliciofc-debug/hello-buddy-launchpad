@@ -143,7 +143,7 @@ export function PublicarReelsModal({
         body: { user_id: userId },
       });
       if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || "Não foi possível consultar a conta TikTok");
+      if (!data?.success) throw new Error(data?.message || data?.error || "Não foi possível consultar a conta TikTok");
 
       const creator: TikTokCreatorInfo = {
         creator_nickname: data.creator_nickname ?? null,

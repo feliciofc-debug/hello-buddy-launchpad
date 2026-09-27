@@ -43,6 +43,9 @@ export default function TikTokIntegrationCard() {
       
       setUserId(user.id);
 
+      await supabase.functions.invoke('tiktok-fetch-userinfo', {
+        body: { user_id: user.id },
+      });
       const { data, error } = await supabase
         .from('integrations')
         .select('*')
@@ -121,8 +124,7 @@ export default function TikTokIntegrationCard() {
   };
 
   const isTokenExpired = () => {
-    if (!integration?.token_expires_at) return true;
-    return new Date(integration.token_expires_at) < new Date();
+    return integration?.is_active === false;
   };
 
   const formatDate = (dateStr: string) => {
@@ -202,11 +204,7 @@ export default function TikTokIntegrationCard() {
                 <div className="text-sm text-muted-foreground space-y-1">
                   <p>ID: {integration.meta_user_id || 'N/A'}</p>
                   <p>Última atualização: {formatDate(integration.updated_at)}</p>
-                  {integration.token_expires_at && (
-                    <p className={isTokenExpired() ? 'text-red-500' : ''}>
-                      {isTokenExpired() ? '⚠️ Token expirado' : `Expira em: ${formatDate(integration.token_expires_at)}`}
-                    </p>
-                  )}
+                  <p>Renovação automática ativa</p>
                 </div>
               </div>
 
