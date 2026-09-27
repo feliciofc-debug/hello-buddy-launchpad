@@ -1,6 +1,21 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { decode as base64Decode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
+import {
+  applyBrandLogo,
+  buildBrandGenerationGuidance,
+} from "../_shared/brand-image-engine.ts";
+import {
+  colorsFromLogoDataUrl,
+  dataUrlToImageBytes,
+  loadTenantBrandAssets,
+} from "../_shared/brand-assets.ts";
+import {
+  fetchBrandSiteIdentity,
+  type BrandSiteIdentity,
+} from "../_shared/brand-site-identity.ts";
+import { setTenantLogo } from "../_shared/tenant-logo.ts";
+import { trimLogoImage } from "../_shared/logo-image-trim.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -151,7 +166,11 @@ function isScenePreservationRequest(text: string, imageCount: number): boolean {
   return hasMatch(text, preservePatterns);
 }
 
-function buildScenePreservationPrompt(userPrompt: string, hasLogoReference: boolean, supportImageCount: number): string {
+function buildScenePreservationPrompt(
+  userPrompt: string,
+  supportImageCount: number,
+  brandGuidance: string,
+): string {
   return `Edite a PRIMEIRA imagem enviada mantendo-a como BASE FIEL e RECONHECÍVEL da composição final.
 
 O LOCAL/CENÁRIO/AMBIENTE da foto original deve continuar sendo o MESMO lugar, com a MESMA arquitetura, MESMO enquadramento geral, MESMOS elementos estruturais (paredes, fachada, vitrine, prateleiras, mobiliário, produtos visíveis, placas, totens, postes, calçada, céu, vegetação) e MESMA composição.
@@ -173,7 +192,7 @@ PERMITIDO (melhorias sutis e realistas):
 - Deixar a fachada/letreiro/logo da loja mais legível, vibrante e bem acabada SEM redesenhá-los do zero — apenas como retoque/restauração fotográfica
 - Aplicar acabamento de fotografia comercial profissional, 8K, ultra-realista
 
-${supportImageCount > 0 ? `IMAGENS DE APOIO:\n- As ${supportImageCount} imagem(ns) adicional(is) servem apenas como referência secundária e NUNCA substituem a cena da primeira foto.\n\n` : ''}${hasLogoReference ? `LOGO / MARCA:\n- A última imagem enviada é a logo oficial. Use-a APENAS para refinar/atualizar o letreiro existente da fachada, mantendo posição, escala e perspectiva originais. Não crie letreiros novos em outros lugares.\n\n` : ''}TEXTO NA IMAGEM:
+${supportImageCount > 0 ? `IMAGENS DE APOIO:\n- As ${supportImageCount} imagem(ns) adicional(is) servem apenas como referência secundária e NUNCA substituem a cena da primeira foto.\n\n` : ''}${brandGuidance ? `IDENTIDADE VISUAL:\n${brandGuidance}\n\n` : ''}TEXTO NA IMAGEM:
 - Preserve textos já existentes na fachada/letreiro originais (nome da loja, telefones, categorias) com a mesma grafia
 - NÃO adicione textos promocionais, slogans, preços ou legendas novas
 
@@ -181,7 +200,11 @@ INSTRUÇÕES DO USUÁRIO — siga com máxima fidelidade dentro das regras acima
 ${userPrompt}`;
 }
 
-function buildPortraitEditPrompt(userPrompt: string, hasLogoReference: boolean, supportImageCount: number): string {
+function buildPortraitEditPrompt(
+  userPrompt: string,
+  supportImageCount: number,
+  brandGuidance: string,
+): string {
   return `Edite a PRIMEIRA imagem enviada usando-a como BASE PRINCIPAL da composição final.
 
 A pessoa da primeira foto deve continuar claramente sendo a MESMA pessoa na imagem final. Preserve rosto, identidade, traços naturais, expressão geral e reconhecibilidade.
@@ -198,7 +221,7 @@ REGRAS INEGOCIÁVEIS:
 - Priorize fotografia corporativa premium, ultrarrealista, natural, 8K, iluminação profissional de estúdio, materiais e texturas reais
 - Mantenha proporções humanas corretas, mãos normais, olhos normais e apenas um rosto
 
-${supportImageCount > 0 ? `IMAGENS DE APOIO:\n- As ${supportImageCount} imagem(ns) adicional(is) servem apenas como referência secundária e NUNCA substituem a pessoa da primeira foto.\n\n` : ''}${hasLogoReference ? `LOGO / MARCA:\n- A última imagem enviada é uma referência da marca. Use-a apenas para integrar a identidade visual ao cenário de forma corporativa, elegante e coerente com o ambiente.\n\n` : `MARCA / IDENTIDADE VISUAL:\n- Se o usuário pedir logo ou identidade visual no ambiente, represente isso como branding corporativo premium no cenário.\n\n`}INSTRUÇÕES DO USUÁRIO — siga com máxima fidelidade:
+${supportImageCount > 0 ? `IMAGENS DE APOIO:\n- As ${supportImageCount} imagem(ns) adicional(is) servem apenas como referência secundária e NUNCA substituem a pessoa da primeira foto.\n\n` : ''}${brandGuidance ? `IDENTIDADE VISUAL:\n${brandGuidance}\n\n` : ''}INSTRUÇÕES DO USUÁRIO — siga com máxima fidelidade:
 ${userPrompt}`;
 }
 
@@ -321,6 +344,42 @@ function sanitizePostPayload(posts: Record<string, Record<string, string>>, sour
   return sanitized;
 }
 
+async function authenticatedUserId(req: Request, supabaseAdmin: any): Promise<string | null> {
+  const authorization = req.headers.get("authorization") || "";
+  const token = authorization.replace(/^Bearer\s+/i, "").trim();
+  if (!token) return null;
+  const { data, error } = await supabaseAdmin.auth.getUser(token);
+  if (error) return null;
+  return data?.user?.id ?? null;
+}
+
+async function saveSiteLogoForTenant(
+  supabaseAdmin: any,
+  userId: string,
+  dataUrl: string,
+): Promise<boolean> {
+  const decoded = dataUrlToImageBytes(dataUrl);
+  if (!decoded || decoded.bytes.length > 5 * 1024 * 1024) return false;
+  const processed = await trimLogoImage(decoded.bytes, decoded.mime);
+  const extension = processed.mime === "image/jpeg"
+    ? "jpg"
+    : processed.mime === "image/svg+xml"
+    ? "svg"
+    : "png";
+  const storagePath = `${userId}/ia-marketing/${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${extension}`;
+  const { error } = await supabaseAdmin.storage.from("tenant-logos").upload(
+    storagePath,
+    processed.bytes,
+    { contentType: processed.mime, upsert: false },
+  );
+  if (error) throw new Error(`Não consegui salvar a logo: ${error.message}`);
+  return await setTenantLogo(supabaseAdmin, userId, {
+    storagePath,
+    fileName: `logo-site.${extension}`,
+    mimeType: processed.mime,
+  });
+}
+
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -328,7 +387,53 @@ serve(async (req) => {
   }
 
   try {
-    const { url, images = [], logo = null, source = 'generic' } = await req.json();
+    const payload = await req.json();
+    const {
+      url,
+      images = [],
+      logo = null,
+      source = 'generic',
+      action,
+      site_url: actionSiteUrl,
+      logo_data_url: actionLogoDataUrl,
+      use_saved_logo = false,
+      brand_site_url = null,
+    } = payload;
+    const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const userId = await authenticatedUserId(req, supabaseAdmin);
+
+    if (action === "brand_assets") {
+      if (!userId) throw new Error("Faça login novamente para acessar sua marca.");
+      const assets = await loadTenantBrandAssets(supabaseAdmin, userId);
+      return new Response(JSON.stringify({
+        success: true,
+        has_logo: Boolean(assets.logoDataUrl),
+        logo_preview: assets.logoDataUrl,
+        colors: assets.colors,
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    if (action === "preview_site_identity") {
+      if (!userId) throw new Error("Faça login novamente para analisar o site.");
+      const identity = await fetchBrandSiteIdentity(String(actionSiteUrl || ""));
+      return new Response(JSON.stringify({ success: true, identity }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    if (action === "save_site_logo") {
+      if (!userId) throw new Error("Faça login novamente para salvar a logo.");
+      const saved = await saveSiteLogoForTenant(
+        supabaseAdmin,
+        userId,
+        String(actionLogoDataUrl || ""),
+      );
+      if (!saved) throw new Error("A imagem encontrada não pôde ser salva como logo.");
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     console.log('🔍 Analisando:', url, '| Imagens referência:', images.length, '| Logo:', logo ? 'SIM' : 'NÃO', '| Source:', source);
 
     if (!url) {
@@ -342,14 +447,26 @@ serve(async (req) => {
 
     let finalImages = images;
     let generatedImage: string | null = null;
+    let siteIdentity: BrandSiteIdentity | null = null;
+    let logoDataUrl: string | null = typeof logo === "string" ? logo : null;
+    let brandColors: string[] = [];
+    if (use_saved_logo && userId) {
+      const assets = await loadTenantBrandAssets(supabaseAdmin, userId);
+      logoDataUrl = assets.logoDataUrl;
+      brandColors = assets.colors;
+    } else if (brand_site_url) {
+      siteIdentity = await fetchBrandSiteIdentity(String(brand_site_url));
+      brandColors = siteIdentity.colors;
+    }
+    if (!brandColors.length && logoDataUrl) {
+      brandColors = await colorsFromLogoDataUrl(logoDataUrl);
+    }
 
     // Verificar se é uma URL válida ou apenas um prompt de texto
     const isUrl = url.match(/^https?:\/\//i);
     const portraitEditMode = !isUrl && isPortraitEditRequest(url, images.length);
     const scenePreservationMode = !isUrl && !portraitEditMode && isScenePreservationRequest(url, images.length);
-    // Se a logo vai ser enviada para a IA (não-SVG), não sobrepor no frontend
-    const logoWillBeSentToAI = typeof logo === 'string' && !logo.startsWith('data:image/svg');
-    let applyLogoOverlay = !portraitEditMode && !scenePreservationMode && !logoWillBeSentToAI;
+    const applyLogoOverlay = false;
     
     // DETECTAR IDIOMA DO PROMPT DO USUÁRIO
     const detectLanguage = (text: string): string => {
@@ -372,7 +489,10 @@ serve(async (req) => {
     if (!isUrl) {
       const referenceImage = images[0] || null;
       const supportImages = referenceImage ? images.slice(1) : [];
-      const logoReferenceForAI = typeof logo === 'string' && !logo.startsWith('data:image/svg') ? logo : null;
+      const brandGuidance = buildBrandGenerationGuidance(brandColors, {
+        hasLogo: Boolean(logoDataUrl),
+        hasBasePhoto: Boolean(referenceImage),
+      });
 
       if (referenceImage) {
         console.log(
@@ -397,7 +517,7 @@ serve(async (req) => {
             content: [
               {
                 type: 'text',
-                text: buildPortraitEditPrompt(url, Boolean(logoReferenceForAI), supportImages.length)
+                text: buildPortraitEditPrompt(url, supportImages.length, brandGuidance)
               },
               {
                 type: 'image_url',
@@ -407,9 +527,6 @@ serve(async (req) => {
                 type: 'image_url',
                 image_url: { url: image }
               })),
-              ...(logoReferenceForAI
-                ? [{ type: 'image_url', image_url: { url: logoReferenceForAI } }]
-                : []),
             ]
           }
         ];
@@ -425,23 +542,19 @@ serve(async (req) => {
             content: [
               {
                 type: 'text',
-                text: buildScenePreservationPrompt(url, Boolean(logoReferenceForAI), supportImages.length)
+                text: buildScenePreservationPrompt(url, supportImages.length, brandGuidance)
               },
               { type: 'image_url', image_url: { url: referenceImage } },
               ...supportImages.map((image: string) => ({
                 type: 'image_url',
                 image_url: { url: image }
               })),
-              ...(logoReferenceForAI
-                ? [{ type: 'image_url', image_url: { url: logoReferenceForAI } }]
-                : []),
             ]
           }
         ];
       } else {
         const userPromptRaw = (url || '').toString().trim();
         const conceptKeywords = buildConceptKeywords(url);
-        const hasLogo = Boolean(logoReferenceForAI);
         const imagePrompt = referenceImage
           ? `PRIMARY USER REQUEST (follow LITERALLY and FAITHFULLY — this is the most important instruction):
 "${userPromptRaw}"
@@ -451,18 +564,17 @@ Generate a single ultra-realistic photographic image that depicts EXACTLY what t
 STYLE: Ultra-realistic, photographic quality, 8K resolution, professional photography lighting, real materials and textures. NO cartoon, NO illustration, NO vector, NO clip art.
 
 REFERENCE IMAGE RULES:
-- Use the reference image only as visual inspiration for the subject when relevant
-- Do NOT copy the reference if it conflicts with the user request — the user request ALWAYS wins
+- Preserve the real product, person or place from the FIRST reference faithfully and recognizably
+- Build or refine the environment, background, light and finish around it
+- Supporting references never replace the main subject from the first image
 
-${hasLogo ? `LOGO / BRAND IDENTITY (CRITICAL):
-- The LAST image provided is the company LOGO
-- Incorporate it EXACTLY as it appears (same colors, font, design)
-- Place it in a natural, visible position
-- Do NOT modify, redraw or reinterpret the logo
-` : ''}CRITICAL RULES:
-- ABSOLUTELY NO TEXT of any kind${hasLogo ? ' EXCEPT the logo' : ''}
-- NO slogans, captions, labels, watermarks${hasLogo ? ' besides the logo' : ''}
-- The image must be text-free${hasLogo ? ' except the logo' : ''}`
+BRAND PREPARATION:
+${brandGuidance}
+
+CRITICAL RULES:
+- ABSOLUTELY NO TEXT of any kind
+- NO slogans, captions, labels, logos or watermarks
+- The image must be text-free`
           : `PRIMARY USER REQUEST (follow LITERALLY and FAITHFULLY — this is the most important instruction):
 "${userPromptRaw}"
 
@@ -472,14 +584,12 @@ STYLE: Ultra-realistic, photographic quality, 8K resolution, cinematic lighting,
 
 Concept summary for reinforcement: ${conceptKeywords}.
 
-${hasLogo ? `LOGO / BRAND IDENTITY (CRITICAL):
-- The image provided is the company LOGO
-- Incorporate it EXACTLY as it appears (same colors, font, design)
-- Place it in a natural, visible position
-- Do NOT modify, redraw or reinterpret the logo
-` : ''}CRITICAL RULES:
-- ABSOLUTELY NO TEXT of any kind${hasLogo ? ' EXCEPT the logo' : ''}
-- NO slogans, captions, labels, watermarks${hasLogo ? ' besides the logo' : ''}
+BRAND PREPARATION:
+${brandGuidance}
+
+CRITICAL RULES:
+- ABSOLUTELY NO TEXT of any kind
+- NO slogans, captions, labels, logos or watermarks
 - Communicate through visual composition only`;
 
         // Build content array with images
@@ -494,11 +604,6 @@ ${hasLogo ? `LOGO / BRAND IDENTITY (CRITICAL):
           contentParts.push({ type: 'image_url', image_url: { url: img } });
         });
         
-        // Add logo as last image so AI can reproduce it
-        if (logoReferenceForAI) {
-          contentParts.push({ type: 'image_url', image_url: { url: logoReferenceForAI } });
-        }
-        
         contentParts.push({ type: 'text', text: imagePrompt });
 
         imageGenMessages = [
@@ -512,7 +617,8 @@ ${hasLogo ? `LOGO / BRAND IDENTITY (CRITICAL):
       console.log(
         '🎨 Iniciando geração de imagem...',
         portraitEditMode ? 'MODO EDIÇÃO DE RETRATO' : referenceImage ? 'COM referência' : 'SEM referência',
-        '| Logo enviada para IA:', logoReferenceForAI ? 'SIM' : 'NÃO'
+        '| Logo enviada para IA: NÃO',
+        '| Logo aplicada depois:', logoDataUrl ? 'SIM' : 'NÃO'
       );
 
       // Chamar API de geração de imagem
@@ -552,10 +658,6 @@ ${hasLogo ? `LOGO / BRAND IDENTITY (CRITICAL):
       if (generatedImageUrl) {
         // Upload base64 para Storage público para que Instagram/Facebook aceitem a URL
         try {
-          const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
-          const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-          const supabaseStorage = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-          
           // Extrair dados base64 (remover prefixo data:image/...)
           let base64Data = generatedImageUrl;
           let mimeType = 'image/png';
@@ -566,23 +668,45 @@ ${hasLogo ? `LOGO / BRAND IDENTITY (CRITICAL):
               base64Data = match[2];
             }
           }
-          
-          const imageBytes = base64Decode(base64Data);
+          let imageBytes = base64Decode(base64Data);
+          let brandApplied = false;
+          const logoAsset = dataUrlToImageBytes(logoDataUrl);
+          if (logoAsset) {
+            try {
+              const format = /\bstor(?:y|ies)\b|\breels?\b|9:16|vertical/i.test(String(url))
+                ? "story"
+                : "feed";
+              const branded = await applyBrandLogo(imageBytes, logoAsset.bytes, { format });
+              imageBytes = branded.bytes;
+              mimeType = "image/png";
+              brandApplied = true;
+            } catch (brandError) {
+              console.error(
+                "[analisar-produto][marca] aplicação server-side falhou:",
+                brandError instanceof Error ? brandError.message : String(brandError),
+              );
+            }
+          }
           const fileName = `ia-marketing/${Date.now()}-${Math.random().toString(36).substring(7)}.png`;
           
-          const { error: uploadError } = await supabaseStorage.storage
+          const { error: uploadError } = await supabaseAdmin.storage
             .from('produtos')
             .upload(fileName, imageBytes, { contentType: mimeType, upsert: true });
           
           if (!uploadError) {
-            const { data: publicUrlData } = supabaseStorage.storage
+            const { data: publicUrlData } = supabaseAdmin.storage
               .from('produtos')
               .getPublicUrl(fileName);
             
             if (publicUrlData?.publicUrl) {
               generatedImage = publicUrlData.publicUrl;
               finalImages = [generatedImage];
-              console.log('✅ Imagem salva no Storage público:', generatedImage);
+              console.log(
+                '✅ Imagem salva no Storage público:',
+                generatedImage,
+                '| marca aplicada:',
+                brandApplied,
+              );
             } else {
               generatedImage = generatedImageUrl;
               finalImages = [generatedImageUrl];
@@ -745,7 +869,12 @@ Retorne APENAS um JSON válido no formato:
           story: posts.story,
           whatsapp: posts.whatsapp || { opcaoA: '', opcaoB: '', opcaoC: '' },
           generatedImage: generatedImage,
-          applyLogoOverlay
+          applyLogoOverlay,
+          brandIdentity: {
+            colors: brandColors,
+            logoApplied: Boolean(logoDataUrl && generatedImage),
+            siteLogo: siteIdentity?.logo_data_url ?? null,
+          },
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -16,6 +16,8 @@ import { CarouselGenerator } from "@/components/CarouselGenerator";
 import { AfiliadoLayout } from "@/components/afiliado/AfiliadoLayout";
 import { getSafeProductLink, getSanitizedProductLinks } from "@/lib/product-links";
 import { sanitizeGeneratedPostText, sanitizeGeneratedPostVariations } from "@/lib/social-post-sanitizer";
+import { BrandImageSettings } from "@/components/BrandImageSettings";
+import { useBrandImageSettings } from "@/hooks/useBrandImageSettings";
 
 interface PostVariations {
   opcaoA: string;
@@ -30,7 +32,6 @@ interface ProductAnalysis {
   story: PostVariations;
   whatsapp: PostVariations;
   generatedImage?: string | null;
-  applyLogoOverlay?: boolean;
 }
 
 const AfiliadoIAMarketing = () => {
@@ -40,8 +41,8 @@ const AfiliadoIAMarketing = () => {
   const [resultado, setResultado] = useState<ProductAnalysis | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
-  const [logoFile, setLogoFile] = useState<File | null>(null);
   const [referenceFiles, setReferenceFiles] = useState<File[]>([]);
+  const brandSettings = useBrandImageSettings();
   const [selectedVariations, setSelectedVariations] = useState({
     instagram: 'opcaoA' as keyof PostVariations,
     facebook: 'opcaoA' as keyof PostVariations,
@@ -64,34 +65,6 @@ const AfiliadoIAMarketing = () => {
     });
   };
 
-  const compositeImageWithLogo = async (baseImageUrl: string, logoBase64: string): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) { reject('No canvas context'); return; }
-      const baseImg = new Image();
-      baseImg.crossOrigin = 'anonymous';
-      baseImg.onload = () => {
-        canvas.width = baseImg.width;
-        canvas.height = baseImg.height;
-        ctx.drawImage(baseImg, 0, 0);
-        const logoImg = new Image();
-        logoImg.onload = () => {
-          const logoMaxWidth = canvas.width * 0.2;
-          const logoScale = Math.min(logoMaxWidth / logoImg.width, 1);
-          const logoW = logoImg.width * logoScale;
-          const logoH = logoImg.height * logoScale;
-          ctx.drawImage(logoImg, canvas.width - logoW - 20, canvas.height - logoH - 20, logoW, logoH);
-          resolve(canvas.toDataURL('image/png'));
-        };
-        logoImg.onerror = () => resolve(baseImageUrl);
-        logoImg.src = logoBase64;
-      };
-      baseImg.onerror = () => reject('Failed to load base image');
-      baseImg.src = baseImageUrl;
-    });
-  };
-
   const handleAnalyze = async () => {
     if (!url.trim()) { toast.error("Digite uma descrição ou cole um link"); return; }
     setLoading(true);
@@ -103,11 +76,15 @@ const AfiliadoIAMarketing = () => {
       const imagesBase64 = await Promise.all(
         referenceFiles.filter(f => f.type.startsWith('image/')).map(fileToBase64)
       );
-      const logoBase64 = logoFile ? await fileToBase64(logoFile) : null;
-
       const isShopeeUrl = url.trim().toLowerCase().includes('shopee.com');
       const { data, error } = await supabase.functions.invoke('analisar-produto', {
-        body: { url: url.trim(), images: imagesBase64, logo: logoBase64, source: isShopeeUrl ? 'shopee' : 'generic' }
+        body: {
+          url: url.trim(),
+          images: imagesBase64,
+          use_saved_logo: brandSettings.useSavedLogo,
+          brand_site_url: brandSettings.useSavedLogo ? null : brandSettings.siteUrl.trim() || null,
+          source: isShopeeUrl ? 'shopee' : 'generic',
+        }
       });
 
       if (error) throw error;
@@ -127,19 +104,7 @@ const AfiliadoIAMarketing = () => {
         story: sanitizedGeneratedPosts.story,
         whatsapp: sanitizedGeneratedPosts.whatsapp,
         generatedImage: data.generatedImage || null,
-        applyLogoOverlay: data.applyLogoOverlay !== false
       };
-
-      // Se tem imagem gerada E logo, compor a logo sobre a imagem
-      if (analysisResult.generatedImage && logoFile && analysisResult.applyLogoOverlay !== false) {
-        try {
-          const logob64 = logoBase64 || await fileToBase64(logoFile);
-          const composited = await compositeImageWithLogo(analysisResult.generatedImage, logob64);
-          analysisResult.generatedImage = composited;
-        } catch (e) {
-          console.error('Erro ao compor logo:', e);
-        }
-      }
 
       setResultado(analysisResult);
       if (data.generatedImage) toast.success("🎨 Imagem gerada com IA!");
@@ -303,34 +268,39 @@ const AfiliadoIAMarketing = () => {
                     disabled={loading}
                   />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Upload de Logo */}
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">Logo da empresa</Label>
-                      <p className="text-xs text-muted-foreground">A logo será aplicada sobre a imagem sem alteração</p>
-                      <div className="border-2 border-dashed rounded-lg p-3 min-h-[80px] flex items-center justify-center">
-                        {logoFile ? (
-                          <div className="relative inline-block">
-                            <img src={URL.createObjectURL(logoFile)} className="h-16 w-16 object-contain rounded" alt="Logo" />
-                            <button type="button" onClick={() => setLogoFile(null)}
-                              className="absolute -right-2 -top-2 h-5 w-5 p-0 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center text-xs">
-                              <X className="h-3 w-3" />
-                            </button>
-                          </div>
-                        ) : (
-                          <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
-                            <Upload className="h-4 w-4" />
-                            <span>Anexar logo</span>
-                            <input type="file" accept="image/png,image/webp,image/svg+xml" className="hidden"
-                              onChange={(e) => { const f = e.target.files?.[0]; if (f) setLogoFile(f); }} />
-                          </label>
-                        )}
-                      </div>
-                    </div>
+                    <BrandImageSettings
+                      hasSavedLogo={brandSettings.hasSavedLogo}
+                      useSavedLogo={brandSettings.useSavedLogo}
+                      onUseSavedLogoChange={brandSettings.setUseSavedLogo}
+                      savedLogoPreview={brandSettings.savedLogoPreview}
+                      savedColors={brandSettings.savedColors}
+                      siteUrl={brandSettings.siteUrl}
+                      onSiteUrlChange={brandSettings.setSiteUrl}
+                      sitePreview={brandSettings.sitePreview}
+                      loading={brandSettings.loadingBrand}
+                      readingSite={brandSettings.readingSite}
+                      savingLogo={brandSettings.savingLogo}
+                      onPreviewSite={async () => {
+                        try {
+                          await brandSettings.previewSite();
+                        } catch (error) {
+                          toast.error(error instanceof Error ? error.message : "Não foi possível ler o site.");
+                        }
+                      }}
+                      onSaveSiteLogo={async () => {
+                        try {
+                          await brandSettings.saveSiteLogo();
+                          toast.success("Logo salva na sua marca.");
+                        } catch (error) {
+                          toast.error(error instanceof Error ? error.message : "Não foi possível salvar a logo.");
+                        }
+                      }}
+                    />
 
                     {/* Upload de Imagens de Referência */}
                     <div className="space-y-2">
                       <Label className="text-sm font-medium">Foto base / referências</Label>
-                      <p className="text-xs text-muted-foreground">A 1ª foto pode ser usada como base principal da edição; as demais servem de apoio visual (até 4)</p>
+                      <p className="text-xs text-muted-foreground">A 1ª foto é preservada como base principal e harmonizada com a marca; até 3 fotos adicionais servem de apoio.</p>
                       <div className="border-2 border-dashed rounded-lg p-3 min-h-[80px]">
                         {referenceFiles.length < 4 && (
                           <div className="flex items-center justify-center mb-2">

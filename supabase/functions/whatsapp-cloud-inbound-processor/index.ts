@@ -40,6 +40,14 @@ function getTenantOwnersForCtx(userId: string): string[] {
 import { downloadAllMediaDetailed, type MediaExtract, type MediaRejection } from "../_shared/whatsapp-media.ts";
 import { extractDocumentText } from "../_shared/document-extract.ts";
 import { getTenantLogoDataUrl } from "../_shared/tenant-logo.ts";
+import {
+  applyBrandLogo,
+  buildBrandGenerationGuidance,
+} from "../_shared/brand-image-engine.ts";
+import {
+  dataUrlToImageBytes,
+  loadTenantBrandAssets,
+} from "../_shared/brand-assets.ts";
 import { carouselColorRows, resolveCarouselColor } from "../_shared/carousel-colors.ts";
 import { logOutboundMessage } from "../_shared/cloud-log.ts";
 import { gerarVarianteFacebookFeed } from "../_shared/varianteFacebookFeed.ts";
@@ -1193,10 +1201,17 @@ async function toolGerarImagem(
     // Só busca a logo quando o usuário pediu explicitamente. Sem logo cadastrada
     // => segue sem marca (nunca usa logo de outro tenant).
     let logoDataUrl: string | null = null;
-    if (ctx.incluirLogo) {
-      logoDataUrl = await getTenantLogoDataUrl(sb, ctx.userId);
+    let brandColors: string[] = [];
+    if (ctx.incluirLogo && !ctx.demonstracao) {
+      const assets = await loadTenantBrandAssets(sb, ctx.userId);
+      logoDataUrl = assets.logoDataUrl;
+      brandColors = assets.colors;
       console.log("[gerar_imagem] incluir_logo=true, logo encontrada:", !!logoDataUrl);
     }
+    const brandGuidance = buildBrandGenerationGuidance(brandColors, {
+      hasLogo: Boolean(logoDataUrl),
+      hasBasePhoto: false,
+    });
 
     // Blindagem de qualidade — força padrão ULTRA REALISTA idêntico ao IA Marketing
     const enhancedPrompt = `${clean}
@@ -1208,23 +1223,18 @@ DIRETRIZES OBRIGATÓRIAS DE QUALIDADE (padrão IA Marketing):
 - Composição equilibrada, enquadramento profissional (regra dos terços quando fizer sentido).
 - Se houver produto: destacado em primeiro plano, foco perfeito, apelo comercial.
 - Se houver pessoa: rosto e mãos anatomicamente corretos, expressão natural.
-${logoDataUrl ? `- A SEGUNDA IMAGEM ANEXADA É A LOGOMARCA OFICIAL DA EMPRESA. Reproduza-a na cena com FIDELIDADE ABSOLUTA: mesmas formas, mesmas cores, mesmas proporções e o texto/lettering EXATAMENTE igual — não redesenhe, não traduza, não estilize, não invente elementos.
-- Aplique a logo de forma NATIVA e discreta (canto superior direito ou inferior direito), tamanho pequeno, integrada à iluminação da cena, sem moldura, sem fundo branco atrás e sem efeito de adesivo colado.
-- PROIBIDO: qualquer outro texto, letras, palavras, números, legendas, marcas d'água ou logos além dessa logomarca.` : `- PROIBIDO: qualquer texto, letras, palavras, números, legendas, marcas d'água, logos artificiais, bordas ou molduras.`}
+${brandGuidance}
 - PROIBIDO: aparência de IA/CGI barato, plástico, cartoon (a menos que o usuário peça explicitamente).
 - Resultado final: parece uma foto tirada por um fotógrafo profissional de marketing.${blocoFormatoSocial(clean)}`;
 
-    // Conteúdo multimodal: prompt + logo como IMAGEM DE REFERÊNCIA (quando pedida)
-    const userContent: any = logoDataUrl
-      ? [
-          { type: "text", text: enhancedPrompt },
-          { type: "image_url", image_url: { url: logoDataUrl } },
-        ]
-      : enhancedPrompt;
-
-    console.log("[gerar_imagem] iniciando geração, promptLen=", enhancedPrompt.length, "comLogo=", !!logoDataUrl);
+    console.log(
+      "[gerar_imagem] iniciando geração, promptLen=",
+      enhancedPrompt.length,
+      "logoEnviadaParaIA=false, aplicarDepois=",
+      !!logoDataUrl,
+    );
     const r = await chamarGatewayImagem(
-      { messages: [{ role: "user", content: userContent }], modalities: ["image", "text"] },
+      { messages: [{ role: "user", content: enhancedPrompt }], modalities: ["image", "text"] },
       "gerar_imagem",
     );
     if (!r.ok) return JSON.stringify({ erro: r.erro, detalhe: r.detalhe, motivo: r.motivo });
@@ -1236,7 +1246,24 @@ ${logoDataUrl ? `- A SEGUNDA IMAGEM ANEXADA É A LOGOMARCA OFICIAL DA EMPRESA. R
       const m = b64.match(/^data:(image\/\w+);base64,(.+)$/);
       if (m) { mime = m[1]; b64 = m[2]; }
     }
-    const bytes = base64Decode(b64);
+    let bytes = base64Decode(b64);
+    let logoAplicada = false;
+    const logoAsset = dataUrlToImageBytes(logoDataUrl);
+    if (logoAsset) {
+      try {
+        const branded = await applyBrandLogo(bytes, logoAsset.bytes, {
+          format: /\bstor(?:y|ies)\b|\breels?\b|9:16|vertical/i.test(clean) ? "story" : "feed",
+        });
+        bytes = branded.bytes;
+        mime = "image/png";
+        logoAplicada = true;
+      } catch (error) {
+        console.error(
+          "[gerar_imagem][marca] aplicação server-side falhou:",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
     const fileName = `midias/${ctx.userId}/ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
     const { error: upErr } = await sb.storage.from("produtos").upload(fileName, bytes, { contentType: mime, upsert: true });
     if (upErr) return JSON.stringify({ erro: `upload_falhou: ${upErr.message}` });
@@ -1275,16 +1302,19 @@ ${logoDataUrl ? `- A SEGUNDA IMAGEM ANEXADA É A LOGOMARCA OFICIAL DA EMPRESA. R
       prompt: clean,
       midia_id: midiaId,
       salvo_em_midias: !!midiaId,
-      logo_aplicada: !!logoDataUrl,
+      logo_aplicada: logoAplicada,
       logo_solicitada_sem_cadastro: !!ctx.incluirLogo && !logoDataUrl,
+      logo_aplicacao_falhou: !!logoDataUrl && !logoAplicada,
       demonstracao: ctx.demonstracao === true,
       exemplo_legenda_solicitado: ctx.demonstracao === true,
       instrucao: ctx.demonstracao
         ? "DEMONSTRAÇÃO: envie a imagem somente nesta conversa e escreva junto um exemplo curto de legenda pronta baseado no pedido. Deixe claro que nada foi publicado. Não ofereça publicar esta mídia."
         : !!ctx.incluirLogo && !logoDataUrl
         ? "A imagem foi criada e enviada, MAS sem a logo: não há logomarca cadastrada nesta conta. Avise em 1 linha e diga que ele pode cadastrar em Minha Marca (menu do painel) e pedir de novo."
-        : (logoDataUrl
+        : (logoAplicada
           ? "A imagem foi criada COM a logomarca da empresa, enviada ao usuário e salva na biblioteca /midias. Diga em 1-2 linhas o que criou, confirme que a marca foi aplicada e peça pra ele conferir se ficou fiel."
+          : logoDataUrl
+          ? "A imagem foi criada, mas não consegui aplicar a logo original com segurança. Avise isso com clareza; não diga que a marca foi aplicada."
           : "A imagem foi enviada ao usuário E salva automaticamente na biblioteca /midias. Diga em 1-2 linhas o que criou e avise que já está disponível pra publicar nas redes sociais (ele pode pedir 'posta essa imagem' ou usar em /midias)."),
     });
   } catch (e) {
