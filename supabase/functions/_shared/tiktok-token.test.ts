@@ -136,6 +136,23 @@ Deno.test("falha de renovação exige reconexão", async () => {
   assertEquals(supabase.rows[0].is_active, false);
 });
 
+Deno.test("HTTP 200 com invalid_grant exige reconexão", async () => {
+  setCredentials();
+  const supabase = new FakeSupabase([baseRow({
+    token_expires_at: "2026-09-27T11:59:00.000Z",
+  })]);
+  const result = await getValidTikTokAccessToken(supabase, "user-1", {
+    now,
+    waiter: () => Promise.resolve(),
+    fetcher: (() => Promise.resolve(new Response(JSON.stringify({
+      error: "invalid_grant",
+      error_description: "The refresh token has expired.",
+    }), { status: 200 }))) as typeof fetch,
+  });
+  assertEquals(!result.ok && result.error, "tiktok_reconnect_required");
+  assertEquals(supabase.rows[0].is_active, false);
+});
+
 Deno.test("falha de rede é transitória e não desativa a integração", async () => {
   setCredentials();
   const supabase = new FakeSupabase([baseRow({

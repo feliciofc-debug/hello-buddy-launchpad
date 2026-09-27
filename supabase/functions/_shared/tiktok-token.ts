@@ -55,7 +55,8 @@ function tokenIsValid(integration: TikTokIntegration, now: Date): boolean {
 }
 
 export function isDefinitiveTikTokRefreshRejection(status: number, payload: any): boolean {
-  if (status < 400 || status >= 500 || status === 429) return false;
+  if (status >= 500 || status === 429) return false;
+  if (!((status >= 200 && status < 300) || (status >= 400 && status < 500))) return false;
   const error = payload?.error;
   const details = [
     typeof error === "string" ? error : error?.code,
