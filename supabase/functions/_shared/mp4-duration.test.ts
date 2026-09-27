@@ -11,7 +11,7 @@ function concat(...parts: Uint8Array[]): Uint8Array {
   return result;
 }
 
-function box(type: string, payload = new Uint8Array()): Uint8Array {
+function box(type: string, payload: ArrayLike<number> = new Uint8Array()): Uint8Array {
   const result = new Uint8Array(8 + payload.length);
   new DataView(result.buffer).setUint32(0, result.length, false);
   result.set(new TextEncoder().encode(type), 4);
