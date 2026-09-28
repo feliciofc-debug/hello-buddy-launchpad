@@ -112,7 +112,7 @@ Deno.test("card logo prompt reserves a smooth area in its exact background color
   assert(result.prompt.includes("sem luzes, reflexos"), "reserved area must avoid visual noise");
 });
 
-Deno.test("in-scene prompt uses official logo and exact registered name", () => {
+Deno.test("in-scene prompt treats official logo as sole source of truth", () => {
   const result = buildMarketingImagePrompt({
     prompt: "sala de reunião sofisticada",
     hasLogo: true,
@@ -121,13 +121,33 @@ Deno.test("in-scene prompt uses official logo and exact registered name", () => 
       exactName: "AMZ Ofertas",
     },
   });
-  assert(result.prompt.includes('"AMZ Ofertas"'), "exact brand name must be reinforced");
+  assert(!result.prompt.includes('"AMZ Ofertas"'), "brand name must not be written separately");
+  assert(
+    result.prompt.includes("único texto permitido") || result.prompt.includes("only text allowed"),
+    "only text already present in the logo may be rendered",
+  );
+  assert(result.prompt.includes("logo reference is the sole source of truth"), "logo must be authoritative");
   assert(result.prompt.includes("ONE coherent physical surface"), "brand must be integrated into one surface");
   assert(result.prompt.includes("Never invent another company name"), "invented brands must remain forbidden");
   const content = (result.messages.at(-1) as any)?.content;
   assert(Array.isArray(content) && content.some((part: any) =>
     part?.image_url?.url === "data:image/png;base64,AAAA"
   ), "official logo must be sent as image reference");
+});
+
+Deno.test("in-scene generation works without a separate brand name", async () => {
+  const fixtures = await imageFixtures();
+  const mock = mockedBrandFlow(fixtures.generated, [APPROVED]);
+  const result = await generateMarketingImage({
+    prompt: "recepção corporativa moderna",
+    logoDataUrl: fixtures.logo,
+    brandName: null,
+    apiKey: "test",
+    models: ["image-model"],
+    fetchImpl: mock.fetchImpl,
+  });
+  assert(result.brandApplicationMode === "in_scene_verified", "logo reference should be enough");
+  assert(mock.counts.verifications === 1, "logo should still be verified");
 });
 
 Deno.test("image gateway falls back to the next model", async () => {

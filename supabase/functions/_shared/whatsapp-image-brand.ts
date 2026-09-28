@@ -16,7 +16,6 @@ export const PENDING_BRAND_GENERATION_TTL_MS = 30 * 60 * 1000;
 
 export type PendingBrandStage =
   | "awaiting_choice"
-  | "awaiting_site_choice"
   | "awaiting_site_url"
   | "awaiting_logo_upload"
   | "awaiting_uploaded_logo_confirmation";
@@ -27,8 +26,6 @@ export type PendingBrandReply =
   | { action: "choose_logo" }
   | { action: "choose_site" }
   | { action: "choose_none" }
-  | { action: "use_previous_site" }
-  | { action: "use_other_site" }
   | { action: "site_url"; url: string }
   | { action: "save_uploaded_logo" }
   | { action: "use_uploaded_logo_once" };
@@ -47,7 +44,18 @@ export function detectWhatsAppBrandDirective(text: string): "use" | "none" | nul
 }
 
 export function extractWhatsAppBrandSiteUrl(text: string): string | null {
-  return text.match(/https?:\/\/[^\s<>"']+/i)?.[0] ?? null;
+  const candidate = text.match(/https?:\/\/[^\s<>"']+/i)?.[0]
+    ?? text.match(
+      /\b(?:www\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}(?::\d+)?(?:\/[^\s<>"']*)?/i,
+    )?.[0];
+  if (!candidate) return null;
+  const cleaned = candidate.replace(/[),.;!?]+$/g, "");
+  try {
+    const url = new URL(/^https?:\/\//i.test(cleaned) ? cleaned : `https://${cleaned}`);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 export function extractExplicitWhatsAppBrandSiteUrl(text: string): string | null {
@@ -152,7 +160,7 @@ export function whatsAppUploadedLogoConfirmationButtons(): Array<{
 }
 
 export function classifyPendingBrandReply(input: {
-  stage: PendingBrandStage;
+  stage: PendingBrandStage | "awaiting_site_choice";
   text: string;
   interactiveId?: string;
   createdAt: string;
@@ -196,11 +204,7 @@ export function classifyPendingBrandReply(input: {
   ) {
     return { action: "choose_site" };
   }
-  if (input.stage === "awaiting_site_choice") {
-    if (interactiveId === "brand_site_previous") return { action: "use_previous_site" };
-    if (interactiveId === "brand_site_other") return { action: "use_other_site" };
-  }
-  if (input.stage === "awaiting_site_url") {
+  if (input.stage === "awaiting_site_url" || input.stage === "awaiting_site_choice") {
     const url = extractWhatsAppBrandSiteUrl(input.text);
     return url ? { action: "site_url", url } : { action: "continue_conversation" };
   }

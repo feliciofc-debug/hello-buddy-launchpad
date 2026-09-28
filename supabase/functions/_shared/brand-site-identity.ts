@@ -82,6 +82,14 @@ function absoluteUrl(value: string, base: URL): string | null {
   }
 }
 
+export function cleanSiteBrandName(value: string): string | null {
+  return String(value || "")
+    .split(/\s+(?:\||-|–|—)\s+|\s*:\s*/, 1)[0]
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120) || null;
+}
+
 export function prioritizeSiteIdentityColors(
   cssColors: string[],
   logoColors: string[],
@@ -119,9 +127,9 @@ export function extractBrandIdentityFromHtml(
     const key = attribute(tag, "property") || attribute(tag, "name");
     return /^(?:og:site_name|application-name)$/i.test(key);
   });
-  const brandName = String(
+  const brandName = cleanSiteBrandName(
     (siteNameTag && attribute(siteNameTag, "content")) || "",
-  ).trim().slice(0, 120) || null;
+  );
   for (const tag of themeTags) {
     if (attribute(tag, "name").toLowerCase() !== "theme-color") continue;
     const color = normalizeHex(attribute(tag, "content"));

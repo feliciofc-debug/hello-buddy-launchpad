@@ -24,15 +24,56 @@ const REJECTED_VERIFICATION: BrandVerificationPayload = {
   confidence: 0,
 };
 
+const INSIGNIFICANT_BRAND_TERMS = new Set([
+  "a",
+  "as",
+  "da",
+  "das",
+  "de",
+  "do",
+  "dos",
+  "e",
+  "empresa",
+  "grupo",
+  "marca",
+  "o",
+  "oficial",
+  "os",
+]);
+
+export function normalizeBrandVerificationText(value: string): string {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+export function isBrandNameCompatible(
+  exactBrandName: string,
+  textFound: string,
+): boolean {
+  const significantTerm = normalizeBrandVerificationText(exactBrandName)
+    .split(/\s+/)
+    .find((term) => term.length >= 2 && !INSIGNIFICANT_BRAND_TERMS.has(term));
+  if (!significantTerm) return false;
+  return normalizeBrandVerificationText(textFound).split(/\s+/).includes(significantTerm);
+}
+
 export function isBrandVerificationApproved(
   result: BrandVerificationPayload,
+  exactBrandName = "",
 ): boolean {
   return result.brand_visible === true
-    && result.text_exact === true
     && result.logo_matches === true
     && Array.isArray(result.invented_brands)
     && result.invented_brands.length === 0
-    && Number(result.confidence) >= 0.7;
+    && Number(result.confidence) >= 0.7
+    && (
+      result.text_exact === true
+      || isBrandNameCompatible(exactBrandName, result.text_found)
+    );
 }
 
 function parseVerificationJson(text: string): BrandVerificationPayload {
@@ -91,11 +132,11 @@ export async function verifyBrandInImage(input: {
               type: "text",
               text: `Audite rigorosamente a primeira imagem gerada comparando-a com a segunda imagem, que é a logo oficial.
 
-Nome exato obrigatório da marca: "${input.exactBrandName}".
+Nome cadastrado ou informado para checagem de compatibilidade: "${input.exactBrandName || "(não informado)"}".
 
 Verifique:
 1. A marca oficial está visível e legível em uma superfície física da cena.
-2. Toda grafia visível da marca corresponde EXATAMENTE ao nome informado, sem trocar, omitir ou inventar letras.
+2. O texto da marca na imagem gerada corresponde ao texto que realmente aparece na logo oficial de referência. A logo é a fonte da verdade; o nome informado acima é apenas uma pista de compatibilidade e não substitui a referência.
 3. Cores, formas e símbolo correspondem à logo oficial, considerando apenas perspectiva, luz e material da superfície.
 4. Não existe qualquer outra marca, empresa, logo ou slogan inventado.
 
@@ -116,7 +157,7 @@ Responda SOMENTE JSON válido:
     const payload = parseVerificationJson(String(body?.choices?.[0]?.message?.content || ""));
     return {
       ...payload,
-      approved: isBrandVerificationApproved(payload),
+      approved: isBrandVerificationApproved(payload, input.exactBrandName),
       technical_error: false,
     };
   } catch (error) {

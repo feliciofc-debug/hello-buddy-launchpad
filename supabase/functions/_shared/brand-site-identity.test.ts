@@ -1,6 +1,7 @@
 import { assertEquals, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   assertSafePublicUrl,
+  cleanSiteBrandName,
   extractBrandIdentityFromHtml,
   isPrivateOrLocalAddress,
   prioritizeSiteIdentityColors,
@@ -57,6 +58,11 @@ Deno.test("extrai nome da marca declarado pelo site", () => {
     "https://amz.example/produto",
   );
   assertEquals(identity.brand_name, "AMZ Ofertas");
+  assertEquals(cleanSiteBrandName("Ademicon | Consórcio de imóveis"), "Ademicon");
+  assertEquals(cleanSiteBrandName("Ademicon - Consórcio de imóveis"), "Ademicon");
+  assertEquals(cleanSiteBrandName("Ademicon – Consórcio"), "Ademicon");
+  assertEquals(cleanSiteBrandName("Ademicon — Investimentos"), "Ademicon");
+  assertEquals(cleanSiteBrandName("Ademicon: Consórcio"), "Ademicon");
 });
 
 Deno.test("bloqueia localhost e faixas privadas contra SSRF", async () => {

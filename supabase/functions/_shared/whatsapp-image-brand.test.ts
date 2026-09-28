@@ -79,7 +79,7 @@ Deno.test("somente link explicitamente usado como identidade pula a escolha", ()
   assert(
     extractExplicitWhatsAppBrandSiteUrl(
       "use a identidade visual deste site https://marca.example",
-    ) === "https://marca.example",
+    ) === "https://marca.example/",
     "natural explicit site-identity wording should be accepted",
   );
   assert(extractWhatsAppBrandSiteUrl("gere sem marca") === null, "request without URL stays unset");
@@ -191,19 +191,7 @@ Deno.test("os três botões de marca resolvem a escolha", () => {
   assert(noBrand.action === "choose_none", "short no-logo choice must work");
 });
 
-Deno.test("site anterior e upload manual mantêm escolhas explícitas", () => {
-  const previous = classifyPendingBrandReply({
-    stage: "awaiting_site_choice",
-    text: "Usar example.com",
-    interactiveId: "brand_site_previous",
-    createdAt: new Date().toISOString(),
-  });
-  const other = classifyPendingBrandReply({
-    stage: "awaiting_site_choice",
-    text: "Outro site",
-    interactiveId: "brand_site_other",
-    createdAt: new Date().toISOString(),
-  });
+Deno.test("upload manual mantém confirmação explícita", () => {
   const save = classifyPendingBrandReply({
     stage: "awaiting_uploaded_logo_confirmation",
     text: "Salvar como minha logo",
@@ -216,8 +204,6 @@ Deno.test("site anterior e upload manual mantêm escolhas explícitas", () => {
     interactiveId: "brand_uploaded_logo_once",
     createdAt: new Date().toISOString(),
   });
-  assert(previous.action === "use_previous_site", "previous site button must work");
-  assert(other.action === "use_other_site", "other site button must work");
   assert(save.action === "save_uploaded_logo", "upload is only saved after confirmation");
   assert(once.action === "use_uploaded_logo_once", "temporary logo choice must not save");
   const uploadButtons = whatsAppUploadedLogoConfirmationButtons();
@@ -228,7 +214,7 @@ Deno.test("site anterior e upload manual mantêm escolhas explícitas", () => {
 Deno.test("site URL stage only intercepts a URL", () => {
   const withUrl = classifyPendingBrandReply({
     stage: "awaiting_site_url",
-    text: "é https://example.com",
+    text: "é ademicon.com.br",
     createdAt: new Date().toISOString(),
   });
   const otherSubject = classifyPendingBrandReply({
@@ -236,8 +222,30 @@ Deno.test("site URL stage only intercepts a URL", () => {
     text: "qual é a previsão do tempo?",
     createdAt: new Date().toISOString(),
   });
-  assert(withUrl.action === "site_url", "valid URL must continue site flow");
+  assert(
+    withUrl.action === "site_url" && withUrl.url === "https://ademicon.com.br/",
+    "domain without protocol must be normalized",
+  );
   assert(otherSubject.action === "continue_conversation", "other subject must not be intercepted");
+});
+
+Deno.test("pendência antiga de escolha do site passa a aguardar qualquer domínio", () => {
+  const legacy = classifyPendingBrandReply({
+    stage: "awaiting_site_choice",
+    text: "www.site.com/catalogo",
+    interactiveId: "brand_site_previous",
+    createdAt: new Date().toISOString(),
+  });
+  const noDomain = classifyPendingBrandReply({
+    stage: "awaiting_site_choice",
+    text: "quero usar outro",
+    createdAt: new Date().toISOString(),
+  });
+  assert(
+    legacy.action === "site_url" && legacy.url === "https://www.site.com/catalogo",
+    "legacy stage must behave as awaiting_site_url",
+  );
+  assert(noDomain.action === "continue_conversation", "legacy stage must not trap text without domain");
 });
 
 Deno.test("botão antigo expira após trinta minutos sem prender outro assunto", () => {

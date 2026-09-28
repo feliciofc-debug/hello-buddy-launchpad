@@ -6,6 +6,7 @@ import {
 import { dataUrlToImageBytes } from "./brand-assets.ts";
 import {
   type BrandVerificationResult,
+  isBrandNameCompatible,
   verifyBrandInImage,
 } from "./brand-verification.ts";
 
@@ -67,7 +68,8 @@ const INVENTED_BRAND_RULES = `BRAND SAFETY — MANDATORY:
 const IN_SCENE_BRAND_RULES = `BRAND SAFETY — MANDATORY:
 - Use ONLY the official logo supplied as the LAST image reference.
 - Integrate it into exactly ONE coherent physical surface in the scene: a wall sign, door sign, LED panel, monitor, uniform/badge, package, mug or storefront.
-- Preserve the exact letters, colors, symbol and proportions from the official reference. Respect perspective, lighting and material, while keeping the name fully legible and undistorted.
+- Reproduce the logo EXACTLY as it appears in the reference image, engraved or physically applied to that surface. The logo reference is the sole source of truth.
+- Preserve every letter, word, color, symbol and proportion from the official reference. Respect perspective, lighting and material without changing its content.
 - Never invent another company name, brand, logo, slogan or promotional text anywhere.
 - All other screens, panels, packages, clothing and walls must remain generic and unnamed.`;
 
@@ -167,7 +169,7 @@ export function buildMarketingImagePrompt(input: {
   const mode = detectMarketingImageMode(input.prompt, references.length);
   const format = input.format ?? detectMarketingImageFormat(input.prompt);
   const brandGuidance = input.inSceneBrand
-    ? `Integre a logo oficial da ÚLTIMA imagem de referência em UMA superfície física realista da cena. O nome deve ser escrito exatamente assim: "${input.inSceneBrand.exactName}". Não aplique como etiqueta flutuante ou overlay.`
+    ? "Reproduza a logo exatamente como na ÚLTIMA imagem de referência, gravada ou aplicada em UMA superfície física realista da cena. Não escreva o nome da marca separadamente e não aplique como etiqueta flutuante ou overlay."
     : buildBrandGenerationGuidance(input.brandColors ?? [], {
       hasLogo: Boolean(input.hasLogo),
       hasBasePhoto: Boolean(referenceImage),
@@ -175,7 +177,7 @@ export function buildMarketingImagePrompt(input: {
     });
   const brandRules = input.inSceneBrand ? IN_SCENE_BRAND_RULES : INVENTED_BRAND_RULES;
   const noTextRule = input.inSceneBrand
-    ? `No text is allowed except the exact official brand name "${input.inSceneBrand.exactName}" contained in its logo.`
+    ? "The only text allowed is the text that already exists inside the official logo reference. Do not write, complete, translate or infer any brand name separately."
     : "ABSOLUTELY NO NEW TEXT, captions, labels or watermarks.";
   const retryGuidance = input.inSceneBrand?.retryFeedback
     ? `\nCORRECTION REQUIRED AFTER VERIFICATION: ${input.inSceneBrand.retryFeedback}\n`
@@ -356,13 +358,16 @@ async function callImageGateway(input: {
   throw new Error(gatewayErrorMessage(lastFailure));
 }
 
-function verificationFeedback(result: BrandVerificationResult): string {
+function verificationFeedback(
+  result: BrandVerificationResult,
+  exactBrandName: string,
+): string {
   if (result.technical_error) {
     return "A verificação anterior falhou tecnicamente. Reproduza a logo oficial com máxima fidelidade e sem qualquer outro texto ou marca.";
   }
   const issues: string[] = [];
   if (!result.brand_visible) issues.push("a marca não ficou visível e legível");
-  if (!result.text_exact) {
+  if (!result.text_exact && !isBrandNameCompatible(exactBrandName, result.text_found)) {
     issues.push(`a grafia ficou incorreta${result.text_found ? ` (foi lido: "${result.text_found}")` : ""}`);
   }
   if (!result.logo_matches) issues.push("formas ou cores não corresponderam à referência");
@@ -400,7 +405,6 @@ export async function generateMarketingImage(
   const useInSceneBrand = Boolean(
     logoAsset
     && request.logoDataUrl
-    && exactBrandName
     && baseline.mode === "text",
   );
 
@@ -469,7 +473,7 @@ export async function generateMarketingImage(
           verificationAttempts,
         };
       }
-      feedback = verificationFeedback(verification);
+      feedback = verificationFeedback(verification, exactBrandName);
     }
   }
 

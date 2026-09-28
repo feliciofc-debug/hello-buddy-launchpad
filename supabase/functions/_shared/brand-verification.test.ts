@@ -1,4 +1,5 @@
 import {
+  isBrandNameCompatible,
   isBrandVerificationApproved,
   verifyBrandInImage,
 } from "./brand-verification.ts";
@@ -43,6 +44,51 @@ Deno.test("verification requires every flag and minimum confidence", () => {
       confidence: 0.69,
     }),
     "confidence below threshold must reject",
+  );
+});
+
+Deno.test("Ademicon aprova texto da logo oficial compatível, mas nunca logo divergente", () => {
+  const firstAttempt = {
+    brand_visible: true,
+    text_exact: true,
+    text_found: "Ademicon Consórcio",
+    logo_matches: false,
+    invented_brands: [],
+    confidence: 0.98,
+  };
+  const officialLogoAttempt = {
+    brand_visible: true,
+    text_exact: false,
+    text_found: "ADEMICON consórcio e investimento",
+    logo_matches: true,
+    invented_brands: [],
+    confidence: 0.98,
+  };
+  assert(
+    !isBrandVerificationApproved(firstAttempt, "Ademicon Consórcio"),
+    "logo_matches false must always reject",
+  );
+  assert(
+    isBrandVerificationApproved(officialLogoAttempt, "Ademicon Consórcio"),
+    "official logo text containing the significant name must pass",
+  );
+  assert(
+    isBrandNameCompatible("Ademícon: Consórcio", "ADEMICON consórcio e investimento"),
+    "compatibility must ignore accents, punctuation and case",
+  );
+});
+
+Deno.test("AMZ Ofertas continua aprovando com texto exato", () => {
+  assert(
+    isBrandVerificationApproved({
+      brand_visible: true,
+      text_exact: true,
+      text_found: "AMZ Ofertas",
+      logo_matches: true,
+      invented_brands: [],
+      confidence: 0.94,
+    }, "AMZ Ofertas"),
+    "existing exact brand flow must remain approved",
   );
 });
 

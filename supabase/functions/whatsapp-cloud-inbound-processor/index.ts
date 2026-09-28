@@ -1377,17 +1377,9 @@ async function prepareWhatsAppImageGeneration(input: {
   if (siteUrl && !directive && conversation) {
     try {
       const identity = await fetchBrandSiteIdentity(siteUrl);
-      const nextPreference: WhatsAppBrandPreference = {
-        mode: "site",
-        siteUrl: identity.url,
-        colors: identity.colors,
-        updatedAt: new Date().toISOString(),
-      };
       await saveAgentState(sb, conversation, {
-        brand_image_preference: nextPreference,
         pending_brand_generation: null,
       }, input.ctx.agentState ?? {});
-      if (input.ctx.agentState) input.ctx.agentState.brand_image_preference = nextPreference;
       const siteBrand = whatsAppSiteBrandGenerationOptions(identity);
       return {
         deferred: false,
@@ -2325,8 +2317,6 @@ type PendingBrandGeneration = {
   chained_post?: boolean;
   original_request?: string;
   reference_urls?: string[];
-  site_url?: string;
-  colors?: string[];
   logo_candidate_path?: string;
   logo_candidate_mime?: string;
 };
@@ -10435,65 +10425,21 @@ async function callGemini(
         });
         return await completePendingBrandGeneration(raw, pendingBrandGeneration, toolCtx);
       } else if (brandReply.action === "choose_site") {
-        const previousSite = toolCtx.agentState?.brand_image_preference?.mode === "site"
-          ? toolCtx.agentState.brand_image_preference.siteUrl
-          : null;
-        const next = {
-          ...pendingBrandGeneration,
-          stage: previousSite ? "awaiting_site_choice" as const : "awaiting_site_url" as const,
-          site_url: previousSite || undefined,
-        };
-        if (conversation) {
-          await saveAgentState(sb, conversation, { pending_brand_generation: next }, toolCtx.agentState ?? {});
-          toolCtx.agentState!.pending_brand_generation = next;
-        }
-        if (previousSite) {
-          let domain = "site anterior";
-          try {
-            domain = new URL(previousSite).hostname.replace(/^www\./, "").slice(0, 14);
-          } catch { /* usa rótulo seguro */ }
-          return {
-            text: "Quer usar o último site ou informar outro?",
-            interactiveButtons: {
-              header: "Cores da marca",
-              body: "Escolha o site para esta imagem.",
-              buttons: [
-                { id: "brand_site_previous", title: `Usar ${domain}` },
-                { id: "brand_site_other", title: "Outro site" },
-              ],
-            },
-          };
-        }
-        return { text: "Envie o link do site da sua marca (começando com https://). Vou usar somente fontes públicas e seguras." };
-      } else if (brandReply.action === "use_previous_site") {
-        if (!pendingBrandGeneration.site_url) {
-          return { text: "Não encontrei o site anterior. Envie o link completo começando com https://." };
-        }
-        brandReply = { action: "site_url", url: pendingBrandGeneration.site_url };
-      } else if (brandReply.action === "use_other_site") {
         const next = {
           ...pendingBrandGeneration,
           stage: "awaiting_site_url" as const,
-          site_url: undefined,
         };
         if (conversation) {
           await saveAgentState(sb, conversation, { pending_brand_generation: next }, toolCtx.agentState ?? {});
           toolCtx.agentState!.pending_brand_generation = next;
         }
-        return { text: "Envie o link completo do outro site, começando com https://." };
+        return { text: "Envie o link de qualquer site para eu usar a identidade visual nesta imagem." };
       }
       if (brandReply.action === "site_url") {
         try {
           const identity = await fetchBrandSiteIdentity(brandReply.url);
-          const preference: WhatsAppBrandPreference = {
-            mode: "site",
-            siteUrl: identity.url,
-            colors: identity.colors,
-            updatedAt: new Date().toISOString(),
-          };
           if (conversation) {
             await saveAgentState(sb, conversation, {
-              brand_image_preference: preference,
               pending_brand_generation: null,
             }, toolCtx.agentState ?? {});
           }
