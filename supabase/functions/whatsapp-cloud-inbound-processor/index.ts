@@ -110,6 +110,7 @@ import {
   decideWhatsAppImageBrand,
   detectWhatsAppBrandDirective,
   extractExplicitWhatsAppBrandSiteUrl,
+  resolveWhatsAppGeneratorBrand,
   whatsAppImageBrandResultMessage,
   whatsAppSiteBrandGenerationOptions,
   whatsAppUploadedLogoConfirmationButtons,
@@ -1229,10 +1230,13 @@ async function toolGerarImagem(
     let brandColors: string[] = ctx.brandColors ?? [];
     let brandName: string | null = null;
     if (shouldUseLogo) {
-      const assets = await loadTenantBrandAssets(sb, ctx.userId);
-      logoDataUrl = ctx.logoDataUrl ?? assets.logoDataUrl;
-      if (!brandColors.length) brandColors = assets.colors;
-      brandName = ctx.brandName ?? assets.brandName;
+      const assets = ctx.brandSource === "site"
+        ? null
+        : await loadTenantBrandAssets(sb, ctx.userId);
+      const resolvedBrand = resolveWhatsAppGeneratorBrand(ctx, assets);
+      logoDataUrl = resolvedBrand.logoDataUrl;
+      brandColors = resolvedBrand.brandColors;
+      brandName = resolvedBrand.brandName;
       console.log("[gerar_imagem] marca padrão, logo encontrada:", !!logoDataUrl);
     }
     console.log(

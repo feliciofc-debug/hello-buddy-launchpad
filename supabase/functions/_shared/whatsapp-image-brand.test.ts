@@ -5,6 +5,7 @@ import {
   extractExplicitWhatsAppBrandSiteUrl,
   extractWhatsAppBrandSiteUrl,
   previewableWhatsAppLogoUrl,
+  resolveWhatsAppGeneratorBrand,
   whatsAppImageBrandResultMessage,
   whatsAppSiteBrandGenerationOptions,
   whatsAppUploadedLogoConfirmationButtons,
@@ -104,6 +105,25 @@ Deno.test("logo confiável do site é temporária e a resposta é honesta", () =
     }) === "Apliquei a logo encontrada no site na cena.",
     "verified in-scene result should be reported",
   );
+});
+
+Deno.test("modo site nunca herda nome, logo ou cores do tenant", () => {
+  const resolved = resolveWhatsAppGeneratorBrand(
+    {
+      brandSource: "site",
+      logoDataUrl: "data:image/png;base64,LOGO_SITE",
+      brandColors: ["#164e63"],
+      brandName: null,
+    },
+    {
+      logoDataUrl: "data:image/png;base64,LOGO_TENANT",
+      colors: ["#ff0000"],
+      brandName: "AMZ Ofertas",
+    },
+  );
+  assert(resolved.brandName === null, "tenant brand name must never leak into site mode");
+  assert(resolved.logoDataUrl?.includes("LOGO_SITE"), "site logo must not fall back to tenant logo");
+  assert(resolved.brandColors.join(",") === "#164e63", "site colors must not fall back to tenant colors");
 });
 
 Deno.test("site sem logo confiável usa somente cores", () => {

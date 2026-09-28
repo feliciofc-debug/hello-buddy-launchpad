@@ -113,6 +113,34 @@ export function whatsAppSiteBrandGenerationOptions(identity: {
   };
 }
 
+export function resolveWhatsAppGeneratorBrand(input: {
+  brandSource?: "site";
+  logoDataUrl?: string | null;
+  brandColors?: string[];
+  brandName?: string | null;
+}, tenantAssets?: {
+  logoDataUrl: string | null;
+  colors: string[];
+  brandName: string | null;
+} | null): {
+  logoDataUrl: string | null;
+  brandColors: string[];
+  brandName: string | null;
+} {
+  if (input.brandSource === "site") {
+    return {
+      logoDataUrl: input.logoDataUrl ?? null,
+      brandColors: input.brandColors ?? [],
+      brandName: input.brandName ?? null,
+    };
+  }
+  return {
+    logoDataUrl: input.logoDataUrl ?? tenantAssets?.logoDataUrl ?? null,
+    brandColors: input.brandColors?.length ? input.brandColors : tenantAssets?.colors ?? [],
+    brandName: input.brandName ?? tenantAssets?.brandName ?? null,
+  };
+}
+
 export function whatsAppUploadedLogoConfirmationButtons(): Array<{
   id: string;
   title: string;
