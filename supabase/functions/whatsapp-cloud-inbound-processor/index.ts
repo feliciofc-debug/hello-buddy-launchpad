@@ -2616,7 +2616,8 @@ async function persistKnownLeadName(params: {
   await Promise.all([
     sb.from("whatsapp_cloud_conversations")
       .update({ contact_name: params.nome })
-      .eq("id", params.conversationId),
+      .eq("id", params.conversationId)
+      .eq("user_id", params.userId),
     sb.from("lead_encaminhamentos")
       .update({ nome: params.nome })
       .eq("user_id", params.userId)
@@ -4161,7 +4162,8 @@ async function updatePersistedSocialPostRows(
         instagram_container_status: retryableInstagram ? (result.resposta.container_status || "UNKNOWN") : null,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", row.id);
+      .eq("id", row.id)
+      .eq("user_id", pending.userId);
     return error?.message ?? null;
   }));
   const failures = errors.filter(Boolean);
@@ -6222,7 +6224,11 @@ async function toolRevisarPostPendente(
   const source = p.produto?.source;
   try {
     if (source === "midias_whatsapp" && p.produto?.id) {
-      const { data: midia } = await sb.from("midias_whatsapp").select("id, tipo, midia_url, contexto_original").eq("id", p.produto.id).single();
+      const { data: midia } = await sb.from("midias_whatsapp")
+        .select("id, tipo, midia_url, contexto_original")
+        .eq("id", p.produto.id)
+        .eq("user_id", ctx.userId)
+        .single();
       if (midia) {
         const contextoRaw = (midia.contexto_original || "").toString();
         const mVisao = contextoRaw.match(/\[visão\]\s*([\s\S]+)/i);
@@ -6241,7 +6247,11 @@ async function toolRevisarPostPendente(
         };
       }
     } else if (source === "produtos" && p.produto?.id) {
-      const { data: prod } = await sb.from("produtos").select("*").eq("id", p.produto.id).single();
+      const { data: prod } = await sb.from("produtos")
+        .select("*")
+        .eq("id", p.produto.id)
+        .eq("user_id", ctx.userId)
+        .single();
       if (prod) produtoLike = { ...prod, source: "produtos" };
     }
   } catch (e) {
@@ -6599,6 +6609,7 @@ async function descreverFotosSalvas(
   medias: MediaExtract[],
   salvos: MidiaSalva[],
   contexto: string,
+  userId: string,
 ): Promise<string> {
   const fotos = medias
     .map((m, i) => ({ m, id: salvos[i]?.id, tipo: salvos[i]?.tipo, url: salvos[i]?.url, reutilizada: salvos[i]?.reutilizada }))
@@ -6616,7 +6627,8 @@ async function descreverFotosSalvas(
       await sb
         .from("midias_whatsapp")
         .update({ contexto_original: contexto ? `${contexto}\n\n[visão] ${d}` : `[visão] ${d}` })
-        .eq("id", f.id);
+        .eq("id", f.id)
+        .eq("user_id", userId);
     }
     return d;
   }));
@@ -6653,7 +6665,7 @@ async function toolSalvarMidiaBiblioteca(
     // Descreve a(s) foto(s) por visão pra Jarvis conseguir comentar o que viu e pra alimentar futura copy.
     let descricaoVisual = "";
     try {
-      descricaoVisual = await descreverFotosSalvas(medias, salvos, contexto);
+      descricaoVisual = await descreverFotosSalvas(medias, salvos, contexto, ctx.userId);
     } catch (e) {
       console.warn("[salvar_midia][visao] falhou:", (e as Error).message);
     }
@@ -6874,7 +6886,7 @@ async function toolPostarMidiaBiblioteca(
       if (descricaoVisual) {
         await sb.from("midias_whatsapp").update({
           contexto_original: contextoRaw ? `${contextoRaw}\n\n[visão] ${descricaoVisual}` : `[visão] ${descricaoVisual}`,
-        }).eq("id", midia.id);
+        }).eq("id", midia.id).eq("user_id", ctx.userId);
       }
     }
     const contextoUsuario = contextoRaw.replace(/\n?\[visão\][\s\S]*/i, "").trim();
@@ -9432,7 +9444,10 @@ async function registrarCarrosselNaBiblioteca(
   if (children.length > 0) {
     const { error: childrenError } = await sb.from("midias_whatsapp").insert(children);
     if (childrenError) {
-      await sb.from("midias_whatsapp").delete().eq("id", parent.id);
+      await sb.from("midias_whatsapp")
+        .delete()
+        .eq("id", parent.id)
+        .eq("user_id", ctx.userId);
       throw new Error(`carrossel_cards_falharam: ${childrenError.message}`);
     }
   }

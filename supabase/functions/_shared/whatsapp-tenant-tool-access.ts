@@ -11,7 +11,9 @@ export type TenantToolAccessContext = {
   adminAmzUserId: string;
 };
 
-export function canUseAmzGlobalTools(context: TenantToolAccessContext): boolean {
+export function canUseAmzGlobalTools(
+  context: TenantToolAccessContext,
+): boolean {
   return context.isOwner && context.userId === context.adminAmzUserId;
 }
 
