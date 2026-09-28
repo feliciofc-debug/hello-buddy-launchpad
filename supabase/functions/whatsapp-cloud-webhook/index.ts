@@ -241,59 +241,6 @@ Deno.serve(async (req) => {
             .eq("wamid_dono", wamid);
           if (statusError) console.error("[wa-cloud-webhook] delivery status update error", statusError);
 
-          // Campanhas da IA Marketing: comprovante e relatório acompanham o
-          // mesmo WAMID oficial recebido da Meta.
-          const campaignRecipientStatus = statusEntrega === "entregue"
-            ? "delivered"
-            : statusEntrega === "lida"
-            ? "read"
-            : statusEntrega === "falhou"
-            ? "failed"
-            : "sent";
-          const recipientPatch: Record<string, unknown> = {
-            status: campaignRecipientStatus,
-            failure_reason: erroEntrega,
-            updated_at: new Date().toISOString(),
-          };
-          if (campaignRecipientStatus === "delivered") recipientPatch.delivered_at = new Date().toISOString();
-          if (campaignRecipientStatus === "read") recipientPatch.read_at = new Date().toISOString();
-          const { data: campaignRecipient, error: campaignStatusError } = await supabase
-            .from("whatsapp_marketing_campaign_recipients")
-            .update(recipientPatch)
-            .eq("message_id", wamid)
-            .select("campaign_id")
-            .maybeSingle();
-          if (campaignStatusError) {
-            console.error("[wa-cloud-webhook] campaign status update error", campaignStatusError);
-          }
-          await supabase
-            .from("historico_envios")
-            .update({
-              delivery_status: campaignRecipientStatus,
-              delivery_updated_at: new Date().toISOString(),
-              delivery_error: erroEntrega,
-            })
-            .eq("message_id", wamid);
-          if (campaignRecipient?.campaign_id) {
-            const { data: campaignRows } = await supabase
-              .from("whatsapp_marketing_campaign_recipients")
-              .select("status")
-              .eq("campaign_id", campaignRecipient.campaign_id);
-            const delivered = (campaignRows ?? []).filter((row: any) =>
-              row.status === "delivered" || row.status === "read"
-            ).length;
-            const read = (campaignRows ?? []).filter((row: any) => row.status === "read").length;
-            const failed = (campaignRows ?? []).filter((row: any) => row.status === "failed").length;
-            await supabase.from("whatsapp_marketing_campaigns")
-              .update({
-                total_delivered: delivered,
-                total_read: read,
-                total_failed: failed,
-                updated_at: new Date().toISOString(),
-              })
-              .eq("id", campaignRecipient.campaign_id);
-          }
-
           // O destino profissional é obrigatório: uma falha nunca pode desviar
           // demandas de atendimento para telefones alternativos/pessoais.
           if (statusEntrega === "falhou" && encaminhamento?.id) {

@@ -701,30 +701,6 @@ serve(async (req) => {
     // 🚫 REMOVIDO: chamada ao executar-envio-programado (afiliado/Baileys).
     // 🚫 REMOVIDO: fila anti-bloqueio do Baileys (processar-fila-afiliado).
     // Migração definitiva para Meta Cloud API oficial — nenhuma fila local é processada aqui.
-    // A mesma batida do cron processa a fila oficial da IA Marketing.
-    try {
-      const campaignWorker = await fetch(
-        `${supabaseUrl}/functions/v1/whatsapp-campanha-processar`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${supabaseKey}`,
-            apikey: supabaseKey,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ batch_limit: 25 }),
-        },
-      );
-      if (!campaignWorker.ok) {
-        console.error(
-          "[ia-marketing-whatsapp] worker falhou:",
-          campaignWorker.status,
-          (await campaignWorker.text()).slice(0, 300),
-        );
-      }
-    } catch (workerError) {
-      console.error("[ia-marketing-whatsapp] worker indisponível:", workerError);
-    }
 
 
     return new Response(
