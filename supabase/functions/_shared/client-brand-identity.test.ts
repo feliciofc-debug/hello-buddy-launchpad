@@ -14,7 +14,9 @@ Deno.test("extrai cliente citado no pedido de guardar logo", () => {
     "Casarao Lustres",
   );
   assertEquals(
-    extractClientNameFromLogoRequest("Salva esta logomarca da Clínica São José para os vídeos"),
+    extractClientNameFromLogoRequest(
+      "Salva esta logomarca da Clínica São José para os vídeos",
+    ),
     "Clínica São José",
   );
   assertEquals(
@@ -22,13 +24,18 @@ Deno.test("extrai cliente citado no pedido de guardar logo", () => {
     "Casarão Lustres",
   );
   assertEquals(
-    extractClientNameFromLogoRequest("Use essa como logo oficial da Loja Central"),
+    extractClientNameFromLogoRequest(
+      "Use essa como logo oficial da Loja Central",
+    ),
     "Loja Central",
   );
 });
 
 Deno.test("não inventa cliente quando o pedido de logo não informa nome", () => {
-  assertEquals(extractClientNameFromLogoRequest("guarda esse logo do cliente"), null);
+  assertEquals(
+    extractClientNameFromLogoRequest("guarda esse logo do cliente"),
+    null,
+  );
   assertEquals(extractClientNameFromLogoRequest("guarda esta imagem"), null);
 });
 
@@ -49,7 +56,8 @@ Deno.test("persiste logo por cliente e recupera antes pelo domínio", async () =
       },
       upsert: (payload: Record<string, unknown>) => {
         const index = rows.findIndex((row) =>
-          row.user_id === payload.user_id && row.normalized_name === payload.normalized_name
+          row.user_id === payload.user_id &&
+          row.normalized_name === payload.normalized_name
         );
         const saved = { id: "identity-1", ...payload };
         if (index >= 0) rows[index] = saved;
@@ -75,8 +83,8 @@ Deno.test("persiste logo por cliente e recupera antes pelo domínio", async () =
     userId: "tenant-1",
     clientName: "Casarão Lustres",
     siteUrl: "https://www.casaraolustres.com.br",
-    logoPath: "tenant-1/video-site/logo-temporaria.png",
-    identity: { logo_origem: "pagina_renderizada" },
+    logoPath: "tenant-1/client-brands/logo-do-site.png",
+    identity: { logo_origem: "site_high_confidence", colors: ["#123456"] },
   });
 
   const found = await findClientBrandIdentity(sb, "tenant-1", {
@@ -85,6 +93,7 @@ Deno.test("persiste logo por cliente e recupera antes pelo domínio", async () =
   assertEquals(found?.client_name, "Casarão Lustres");
   assertEquals(found?.logo_path, "tenant-1/client-brands/casarao-logo.png");
   assertEquals(found?.identity?.logo_origem, "whatsapp_manual");
+  assertEquals(found?.identity?.colors, ["#123456"]);
 
   await saveClientBrandIdentity(sb, {
     userId: "tenant-2",
@@ -92,6 +101,8 @@ Deno.test("persiste logo por cliente e recupera antes pelo domínio", async () =
     logoPath: "tenant-2/video-site/logo-temporaria.png",
     identity: { logo_origem: "pagina_renderizada" },
   });
-  const temporary = await findClientBrandIdentity(sb, "tenant-2", { name: "Cliente Novo" });
+  const temporary = await findClientBrandIdentity(sb, "tenant-2", {
+    name: "Cliente Novo",
+  });
   assertEquals(temporary?.logo_path, null);
 });

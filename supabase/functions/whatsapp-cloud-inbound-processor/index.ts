@@ -190,9 +190,12 @@ import {
 import {
   canRunClientLogoRegistrationShortcut,
   extractVideoClientName,
+  isSameVideoBrandName,
   resolveAutomaticVideoSiteIdentity,
+  selectVideoClientLogo,
   videoSiteDomain,
 } from "../_shared/video-client-identity.ts";
+import { completeSiteIdentityWithRenderedPage } from "../_shared/video-site-identity.ts";
 import { trimLogoImage } from "../_shared/logo-image-trim.ts";
 
 import {
@@ -7838,7 +7841,12 @@ async function prepareClientSiteIdentity(
   setup: PendingVideoSetupState,
   url: string,
 ): Promise<string> {
-  const identity = await fetchBrandSiteIdentity(url);
+  const fastIdentity = await fetchBrandSiteIdentity(url);
+  const identity = await completeSiteIdentityWithRenderedPage(
+    sb,
+    ctx.userId,
+    fastIdentity,
+  );
   const automatic = resolveAutomaticVideoSiteIdentity({
     requestedClientName: setup.marca,
     siteBrandName: identity.brand_name,
@@ -7851,15 +7859,32 @@ async function prepareClientSiteIdentity(
     setup.pedido_original,
   );
   const paletteOptions = paletteOptionsFromColors(automatic.colors);
-  const logoPath = automatic.useSiteLogo && !requestedWithoutLogo
+  const savedIdentity = await findClientBrandIdentity(sb, ctx.userId, {
+    name: automatic.clientName,
+    site: identity.url,
+  });
+  const manualLogoPath = savedIdentity?.identity?.logo_origem === "whatsapp_manual"
+    ? savedIdentity.logo_path || undefined
+    : undefined;
+  const uploadedSiteLogoPath = !manualLogoPath
+      && automatic.useSiteLogo
+      && !requestedWithoutLogo
     ? await uploadClientLogoData(
       ctx.userId,
       identity.logo_data_url,
       "client-brands",
     )
     : undefined;
+  const selectedLogo = selectVideoClientLogo({
+    manualLogoPath,
+    siteLogoPath: uploadedSiteLogoPath,
+    withoutLogo: requestedWithoutLogo,
+  });
+  const logoPath = selectedLogo.path;
   const appliedIdentity = [
-    logoPath ? "logo do site" : null,
+    manualLogoPath && !requestedWithoutLogo
+      ? "logo salva do cliente"
+      : uploadedSiteLogoPath ? "logo do site" : null,
     automatic.colors.length
       ? `cores ${automatic.colors.slice(0, 4).join(" · ")}`
       : null,
@@ -7873,7 +7898,9 @@ async function prepareClientSiteIdentity(
       logoPath,
       identity: {
         ...identity,
-        logo_origem: logoPath ? "site_high_confidence" : undefined,
+        logo_origem: selectedLogo.source === "none"
+          ? undefined
+          : selectedLogo.source,
       } as unknown as Record<string, unknown>,
     });
   } catch (error) {
@@ -7884,6 +7911,7 @@ async function prepareClientSiteIdentity(
     site: identity.url,
     logo_confidence: identity.logo_confidence,
     logo_used: Boolean(logoPath),
+    logo_source: selectedLogo.source,
     colors: automatic.colors,
   }));
   const next: PendingVideoSetupState = {
@@ -7901,8 +7929,8 @@ async function prepareClientSiteIdentity(
     cores: automatic.colors.length ? paletteFromOptions(paletteOptions) : undefined,
   };
   if (!await persistVideoSetup(ctx, next)) {
-    if (logoPath) {
-      await sb.storage.from("tenant-logos").remove([logoPath]);
+    if (uploadedSiteLogoPath) {
+      await sb.storage.from("tenant-logos").remove([uploadedSiteLogoPath]);
     }
     return "Não consegui guardar a identidade encontrada. Não gerei o roteiro; tente novamente.";
   }
@@ -8005,8 +8033,16 @@ async function startVideoSetup(
     : null;
   const site = extractPublicSiteUrl(full);
   const requestedClientName = extractVideoClientName(full);
+  const tenantIdentity = requestedClientName
+    ? await loadTenantVideoIdentity(ctx.userId)
+    : null;
+  const requestedTenantBrand = isSameVideoBrandName(
+    requestedClientName,
+    tenantIdentity?.marca,
+  );
   const n = normalizePt(full);
-  const identity = /\b(minha marca|minha empresa|nossa marca|nossa empresa)\b/.test(n)
+  const identity = requestedTenantBrand
+      || /\b(minha marca|minha empresa|nossa marca|nossa empresa)\b/.test(n)
     ? "tenant"
     : site || requestedClientName || /\b(marca|empresa)\s+(?:do|da)\s+(?:meu|minha)\s+cliente\b/.test(n)
       ? "client"

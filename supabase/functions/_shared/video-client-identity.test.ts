@@ -2,8 +2,58 @@ import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   canRunClientLogoRegistrationShortcut,
   extractVideoClientName,
+  isSameVideoBrandName,
   resolveAutomaticVideoSiteIdentity,
+  selectVideoClientLogo,
 } from "./video-client-identity.ts";
+
+Deno.test("extrai o cliente em pedidos reais sem confundir duração, assunto ou formato", () => {
+  assertEquals(
+    extractVideoClientName("cria um vídeo da Ademicon sobre consórcio"),
+    "Ademicon",
+  );
+  assertEquals(
+    extractVideoClientName("cria um vídeo de 30 segundos para a AMZ Ofertas"),
+    "AMZ Ofertas",
+  );
+  assertEquals(
+    extractVideoClientName(
+      "cria um vídeo de 45 segundos sobre consórcio de imóvel da Ademicon, formato vertical...",
+    ),
+    "Ademicon",
+  );
+  assertEquals(
+    extractVideoClientName("faz um vídeo da AMZ Ofertas"),
+    "AMZ Ofertas",
+  );
+});
+
+Deno.test("marca pedida igual à marca normalizada do tenant usa identidade própria", () => {
+  assertEquals(isSameVideoBrandName("AMZ Ofertas", "amz ofertas"), true);
+  assertEquals(isSameVideoBrandName("Ademicon", "AMZ Ofertas"), false);
+  assertEquals(isSameVideoBrandName(null, "AMZ Ofertas"), false);
+});
+
+Deno.test("logo manual do cliente tem prioridade sobre logo encontrada no site", () => {
+  assertEquals(
+    selectVideoClientLogo({
+      manualLogoPath: "tenant/client-brands/manual.png",
+      siteLogoPath: "tenant/client-brands/site.png",
+    }),
+    {
+      path: "tenant/client-brands/manual.png",
+      source: "whatsapp_manual",
+    },
+  );
+  assertEquals(
+    selectVideoClientLogo({
+      manualLogoPath: "tenant/client-brands/manual.png",
+      siteLogoPath: "tenant/client-brands/site.png",
+      withoutLogo: true,
+    }),
+    { source: "none" },
+  );
+});
 
 Deno.test("vídeo do cliente usa nome pedido, logo confiável e cores automaticamente", () => {
   assertEquals(
@@ -56,11 +106,13 @@ Deno.test("atalho de cadastro não captura fluxo de vídeo nem respostas interat
     }),
     false,
   );
-  for (const id of [
-    "video_site_logo_use",
-    "brand_image_logo",
-    "social_publish:12345678",
-  ]) {
+  for (
+    const id of [
+      "video_site_logo_use",
+      "brand_image_logo",
+      "social_publish:12345678",
+    ]
+  ) {
     assertEquals(
       canRunClientLogoRegistrationShortcut({
         text: `Usar esta logo\n<<INTERACTIVE_ID:${id}>>`,
