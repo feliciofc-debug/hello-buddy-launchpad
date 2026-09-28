@@ -80,6 +80,12 @@ import {
   TENANT_CREATION_BLOCK_MESSAGE,
   type DemoToolDecision,
 } from "../_shared/whatsapp-demo-policy.ts";
+import {
+  AMZ_GLOBAL_TOOL_NAMES,
+  canUseAmzGlobalTools,
+  filterToolsForTenant,
+  resolveTenantToolScope,
+} from "../_shared/whatsapp-tenant-tool-access.ts";
 import { dedupeConsecutiveReplyText } from "../_shared/reply-dedupe.ts";
 import {
   formatScheduledDate,
@@ -3015,7 +3021,8 @@ async function toolEnviarMensagemContatoComercial(
   // 4) Atualizar última interação
   await sb.from("contatos_comerciais")
     .update({ ultima_interacao: new Date().toISOString() })
-    .eq("id", contato.id);
+    .eq("id", contato.id)
+    .eq("user_id", ctx.userId);
 
   const quandoSP = new Date(scheduledMs).toLocaleString("pt-BR", {
     timeZone: "America/Sao_Paulo",
@@ -3115,9 +3122,16 @@ function isOwner(ctx: { userId?: string; fromNumber: string }): boolean {
   return owners.includes(ctx.fromNumber);
 }
 
+function hasAmzGlobalToolAccess(ctx: { userId: string; fromNumber: string }): boolean {
+  return canUseAmzGlobalTools({
+    userId: ctx.userId,
+    isOwner: isOwner(ctx),
+    adminAmzUserId: ADMIN_AMZ_USER_ID,
+  });
+}
 
-async function toolMetricasAmz(ctx: { fromNumber: string }): Promise<string> {
-  if (!isOwner(ctx)) return JSON.stringify({ erro: "ferramenta_restrita_ao_dono" });
+async function toolMetricasAmz(ctx: { userId: string; fromNumber: string }): Promise<string> {
+  if (!hasAmzGlobalToolAccess(ctx)) return JSON.stringify({ erro: "ferramenta_restrita" });
   try {
     const { count: totalClientes } = await sb.from("billing_customers").select("*", { count: "exact", head: true });
     const { count: ativas } = await sb.from("billing_subscriptions").select("*", { count: "exact", head: true }).eq("status", "authorized");
@@ -3133,8 +3147,8 @@ async function toolMetricasAmz(ctx: { fromNumber: string }): Promise<string> {
   } catch (e) { return JSON.stringify({ erro: String((e as Error).message) }); }
 }
 
-async function toolInadimplentesAmz(ctx: { fromNumber: string }): Promise<string> {
-  if (!isOwner(ctx)) return JSON.stringify({ erro: "ferramenta_restrita_ao_dono" });
+async function toolInadimplentesAmz(ctx: { userId: string; fromNumber: string }): Promise<string> {
+  if (!hasAmzGlobalToolAccess(ctx)) return JSON.stringify({ erro: "ferramenta_restrita" });
   try {
     const { data } = await sb.from("billing_subscriptions")
       .select("id, status, amount, next_billing_date, payment_fail_count, customer_id, billing_customers(name, trade_name, phone, email)")
@@ -3147,8 +3161,8 @@ async function toolInadimplentesAmz(ctx: { fromNumber: string }): Promise<string
   } catch (e) { return JSON.stringify({ erro: String((e as Error).message) }); }
 }
 
-async function toolStatusPlataforma(ctx: { fromNumber: string }): Promise<string> {
-  if (!isOwner(ctx)) return JSON.stringify({ erro: "ferramenta_restrita_ao_dono" });
+async function toolStatusPlataforma(ctx: { userId: string; fromNumber: string }): Promise<string> {
+  if (!hasAmzGlobalToolAccess(ctx)) return JSON.stringify({ erro: "ferramenta_restrita" });
   try {
     const { data } = await sb.from("edge_functions_health").select("function_name, status, last_check, last_error, consecutive_failures, is_critical")
       .order("consecutive_failures", { ascending: false }).limit(50);
@@ -3157,8 +3171,8 @@ async function toolStatusPlataforma(ctx: { fromNumber: string }): Promise<string
   } catch (e) { return JSON.stringify({ erro: String((e as Error).message) }); }
 }
 
-async function toolCriarCobrancaAmz(args: { cliente: string; valor?: number }, ctx: { fromNumber: string }): Promise<string> {
-  if (!isOwner(ctx)) return JSON.stringify({ erro: "ferramenta_restrita_ao_dono" });
+async function toolCriarCobrancaAmz(args: { cliente: string; valor?: number }, ctx: { userId: string; fromNumber: string }): Promise<string> {
+  if (!hasAmzGlobalToolAccess(ctx)) return JSON.stringify({ erro: "ferramenta_restrita" });
   const nome = (args?.cliente || "").trim();
   if (!nome) return JSON.stringify({ erro: "cliente_obrigatorio" });
   try {
@@ -3201,7 +3215,11 @@ async function toolCriarCobrancaAmz(args: { cliente: string; valor?: number }, c
 
 // ---- CONSCIÊNCIA DA PLATAFORMA (dono vê tudo, cliente só o próprio) ----
 async function resolveScope(ctx: { userId: string; fromNumber: string }): Promise<{ scopeUserId: string | null; isAdmin: boolean }> {
-  return { scopeUserId: isOwner(ctx) ? null : ctx.userId, isAdmin: isOwner(ctx) };
+  return resolveTenantToolScope({
+    userId: ctx.userId,
+    isOwner: isOwner(ctx),
+    adminAmzUserId: ADMIN_AMZ_USER_ID,
+  });
 }
 
 async function toolConsultarEstoque(query: string, ctx: { userId: string; fromNumber: string }): Promise<string> {
@@ -3524,7 +3542,7 @@ async function toolVerProduto(
   try {
     const { data: prods } = await sb
       .from("produtos")
-      .select("nome, categoria, preco, estoque, ativo, link, descricao, imagem_url, imagens")
+      .select("id, nome, categoria, preco, estoque, ativo, link, descricao, imagem_url, imagens, descricao_visual")
       .eq("user_id", ctx.userId)
       .or(`nome.ilike.%${q}%,descricao.ilike.%${q}%,categoria.ilike.%${q}%,tags.ilike.%${q}%`)
       .limit(3);
@@ -3538,7 +3556,10 @@ async function toolVerProduto(
     if (!visao && foto) {
       visao = await descreverProdutoCacheado(foto);
       if (visao) {
-        await sb.from("produtos").update({ descricao_visual: visao }).eq("id", p.id);
+        await sb.from("produtos")
+          .update({ descricao_visual: visao })
+          .eq("id", p.id)
+          .eq("user_id", ctx.userId);
         console.log("[visao-produto] descricao_visual salva para", p.nome);
       }
     } else if (visao) {
@@ -5136,7 +5157,8 @@ async function updatePendingSocialPostMarker(token: string, pending: PendingSoci
   if (rowIds.length > 0) {
     const { error } = await sb.from("social_posts_queue")
       .update({ error_message: marker, updated_at: interactionAt.toISOString() })
-      .in("id", rowIds);
+      .in("id", rowIds)
+      .eq("user_id", pending.userId);
     if (error) throw new Error(`pending_marker_update_failed: ${error.message}`);
   } else {
     const { error } = await sb.from("social_posts_queue")
@@ -5571,7 +5593,8 @@ async function toolConfirmarPostagemRedes(
     if (p.queueRows?.length) {
       await sb.from("social_posts_queue")
         .update({ status: "cancelado", error_message: "cancelado_pelo_whatsapp", updated_at: new Date().toISOString() })
-        .in("id", p.queueRows.map((r) => r.id));
+        .in("id", p.queueRows.map((r) => r.id))
+        .eq("user_id", ctx.userId);
     }
     if (ctx.convId && p.midiaTipo === "carrossel") {
       const conversation = { id: ctx.convId, userId: ctx.userId, contactNumber: ctx.fromNumber };
@@ -5638,6 +5661,7 @@ async function toolConfirmarPostagemRedes(
     const { data: claimed, error: claimError } = await sb.from("social_posts_queue")
       .update({ status: "publicando", updated_at: new Date().toISOString() })
       .eq("id", queueIds[0])
+      .eq("user_id", ctx.userId)
       .eq("status", "aguardando_confirmacao")
       .select("id");
     if (claimError) return JSON.stringify({ erro: "falha_ao_reservar_publicacao", mensagem: `Não publiquei porque não consegui reservar este preview: ${claimError.message}` });
@@ -5971,6 +5995,7 @@ async function toolCancelarAgendamentoPost(
         updated_at: new Date().toISOString(),
       })
       .in("id", selected.rowIds)
+      .eq("user_id", ctx.userId)
       .eq("status", "pendente")
       .select("id");
     if (error || (data?.length ?? 0) !== selected.rowIds.length) throw new Error(error?.message || "nem todas as linhas foram canceladas");
@@ -6067,6 +6092,7 @@ async function toolRemarcarAgendamentoPost(
         updated_at: nowIso,
       })
       .in("id", rowIds)
+      .eq("user_id", ctx.userId)
       .eq("status", "pendente")
       .gt("scheduled_at", nowIso)
       .select("id");
@@ -6307,7 +6333,8 @@ async function toolRevisarPostPendente(
       if (!novo) return Promise.resolve();
       return sb.from("social_posts_queue")
         .update({ post_text: novo, updated_at: new Date().toISOString() })
-        .eq("id", row.id);
+        .eq("id", row.id)
+        .eq("user_id", ctx.userId);
     }));
   }
 
@@ -6371,6 +6398,7 @@ async function toolEscolherVariantePost(
     const { data, error } = await sb.from("social_posts_queue")
       .update({ post_text: novo, error_message: marker, updated_at: new Date().toISOString() })
       .eq("id", row.id)
+      .eq("user_id", ctx.userId)
       .eq("status", "aguardando_confirmacao")
       .select("id");
     return error?.message ?? ((data?.length ?? 0) === 1 ? null : `linha ${row.id} não estava pendente`);
@@ -8499,7 +8527,11 @@ async function confirmarRascunhoVideo(ctx: { userId: string; fromNumber: string 
     formato: draft.formato,
   });
   if (!r.ok) {
-    await sb.from("video_motion_rascunhos").update({ status: "aguardando_aprovacao" }).eq("id", draft.id).eq("status", "aprovando");
+    await sb.from("video_motion_rascunhos")
+      .update({ status: "aguardando_aprovacao" })
+      .eq("id", draft.id)
+      .eq("user_id", ctx.userId)
+      .eq("status", "aprovando");
     return r.error;
   }
   const { error } = await sb.from("video_motion_rascunhos")
@@ -10145,6 +10177,9 @@ async function runTool(
   args: any,
   ctx: { userId: string; fromNumber: string; media?: MediaExtract[]; convId?: string; agentState?: AgentConvState },
 ): Promise<{ result: string; imageUrl?: string; interactiveButtons?: WhatsAppInteractiveButtons }> {
+  if (AMZ_GLOBAL_TOOL_NAMES.has(name) && !hasAmzGlobalToolAccess(ctx)) {
+    return { result: JSON.stringify({ erro: "ferramenta_restrita" }) };
+  }
   const creativeDecision = await resolveCreativeToolDecision(name, ctx);
   if (!creativeDecision.allowed) {
     return {
@@ -11258,6 +11293,11 @@ async function callGemini(
     return `${cleaned}<<SPLIT>>${convite}<<SPLIT>>${cmd}`;
   };
 
+  const availableTools = filterToolsForTenant(TOOLS, {
+    userId: toolCtx.userId,
+    isOwner: isOwner(toolCtx),
+    adminAmzUserId: ADMIN_AMZ_USER_ID,
+  });
 
   for (let step = 0; step < 4; step++) {
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -11270,7 +11310,7 @@ async function callGemini(
         model,
         messages,
         temperature: 0.7,
-        tools: TOOLS,
+        tools: availableTools,
       }),
     });
 
