@@ -10445,6 +10445,11 @@ async function callGemini(
         createdAt: pendingBrandGeneration.created_at,
       });
       if (brandReply.action === "expired" || brandReply.action === "continue_conversation") {
+        if (pendingBrandGeneration.logo_candidate_path) {
+          await sb.storage.from("tenant-logos").remove([
+            pendingBrandGeneration.logo_candidate_path,
+          ]);
+        }
         if (conversation) {
           await saveAgentState(sb, conversation, { pending_brand_generation: null }, toolCtx.agentState ?? {});
         }
