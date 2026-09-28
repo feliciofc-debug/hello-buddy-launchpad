@@ -293,7 +293,9 @@ export const TemplateInstitucional: React.FC<TemplateInstitucionalProps> = (prop
           <HookCena c={c} arranjo={arranjo} logoUrl={logoUrl} {...hook} />
         </TransitionSeries.Sequence>
         <TransitionSeries.Transition
-          presentation={arranjo === 2 ? wipe({ direction: "from-bottom" }) : slide({ direction: "from-bottom" })}
+          presentation={(arranjo === 2
+            ? wipe({ direction: "from-bottom" })
+            : slide({ direction: "from-bottom" })) as any}
           timing={timing}
         />
         {arranjo === 2 ? (

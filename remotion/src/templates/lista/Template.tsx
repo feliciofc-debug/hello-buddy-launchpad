@@ -293,7 +293,9 @@ export const TemplateLista: React.FC<TemplateListaProps> = (props) => {
           <HookCena c={c} arranjo={arranjo === 3 ? 2 : 1} logoUrl={logoUrl} {...hook} />
         </TransitionSeries.Sequence>
         <TransitionSeries.Transition
-          presentation={arranjo === 3 ? wipe({ direction: "from-bottom" }) : slide({ direction: "from-bottom" })}
+          presentation={(arranjo === 3
+            ? wipe({ direction: "from-bottom" })
+            : slide({ direction: "from-bottom" })) as any}
           timing={timing}
         />
         {arranjo === 3 ? (
