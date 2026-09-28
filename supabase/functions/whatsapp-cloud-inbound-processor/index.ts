@@ -8,7 +8,17 @@ import {
 } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 import { buildSystemPrompt, AMZ_KNOWLEDGE } from "../_shared/agent-soul.ts";
 import { AMZ_TENANT_ID as ADMIN_AMZ_USER_ID } from "../_shared/amz-tenant.ts";
-import { buildAmzContext, OWNER_PHONE, resolveTenantOwner, isAmzOwnerAltPhone } from "../_shared/amz-context.ts";
+import {
+  buildAmzContext,
+  isAmzOwnerAltPhone,
+  OWNER_PHONE,
+  resolveTenantOwner,
+  tenantOwnerMatchesPhone,
+} from "../_shared/amz-context.ts";
+import {
+  ownerPhoneVariants,
+  ownerPhonesEquivalent,
+} from "../_shared/owner-phone.ts";
 import {
   buildCarouselPrompt,
   buildProspectDemoCarouselPrompt,
@@ -31,7 +41,14 @@ import {
 // ---------------------------------------------------------------------------
 const _tenantOwners = new Map<string, string[]>();
 function setTenantOwnerForCtx(userId: string, ownerPhones: (string | null)[]) {
-  _tenantOwners.set(userId, ownerPhones.filter((p): p is string => !!p));
+  _tenantOwners.set(
+    userId,
+    Array.from(
+      new Set(
+        ownerPhones.flatMap((phone) => ownerPhoneVariants(phone)),
+      ),
+    ),
+  );
 }
 function getTenantOwnerForCtx(userId: string): string | null {
   return _tenantOwners.get(userId)?.[0] ?? null;
@@ -3125,7 +3142,7 @@ async function toolCalcularRota(origem: string, destino: string, ctx: { userId: 
 function isOwner(ctx: { userId?: string; fromNumber: string }): boolean {
   if (!ctx.fromNumber) return false;
   const owners = ctx.userId ? getTenantOwnersForCtx(ctx.userId) : [];
-  return owners.includes(ctx.fromNumber);
+  return owners.some((owner) => ownerPhonesEquivalent(owner, ctx.fromNumber));
 }
 
 function hasAmzGlobalToolAccess(ctx: { userId: string; fromNumber: string }): boolean {
@@ -12173,7 +12190,7 @@ async function processOne(queueId: string) {
 
     // PASSO 6.5 — Contexto por tenant (owner / partner / client / stranger)
     // Resolve o dono DESTE tenant e registra pro isOwner(ctx) enxergar.
-    const _tenantOwner = await resolveTenantOwner(sb, userId);
+    const _tenantOwner = await resolveTenantOwner(sb, userId, { fresh: true });
     const tenantOwnerPhone: string | null = _tenantOwner.phone;
     // No tenant AMZ o Felicio tem mais de um número (pessoal + comercial da
     // Comex IA). Todos contam como dono; o encaminhamento continua indo para
@@ -12185,7 +12202,8 @@ async function processOne(queueId: string) {
       ...(isAmzTenantEarly && isAmzOwnerAltPhone(row.from_number) ? [row.from_number] : []),
     ].filter((p): p is string => !!p);
     setTenantOwnerForCtx(userId, ownerNumbers);
-    const fromIsOwner = ownerNumbers.includes(row.from_number);
+    const fromIsOwner = tenantOwnerMatchesPhone(_tenantOwner, row.from_number)
+      || (isAmzTenantEarly && isAmzOwnerAltPhone(row.from_number));
 
 
     // =====================================================================

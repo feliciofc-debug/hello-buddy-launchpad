@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Sparkles, Save, Bot, MessageCircle, BookOpen, UserCog, Loader2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Sparkles, Save, Bot, MessageCircle, BookOpen, UserCog, Loader2, Phone } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { toast } from "@/hooks/use-toast";
 
 type AgentConfig = {
+  owner_phone: string;
+  owner_name: string;
+  owner_alt_phones: string;
   agent_name: string;
   persona: string;
   tone: string;
@@ -27,6 +30,9 @@ type AgentConfig = {
 };
 
 const EMPTY: AgentConfig = {
+  owner_phone: "",
+  owner_name: "",
+  owner_alt_phones: "",
   agent_name: "",
   persona: "",
   tone: "",
@@ -37,7 +43,7 @@ const EMPTY: AgentConfig = {
 };
 
 const FIELDS: Record<
-  keyof Omit<AgentConfig, "is_active">,
+  Exclude<keyof AgentConfig, "is_active" | "owner_phone" | "owner_name" | "owner_alt_phones">,
   { label: string; placeholder: string; help: string; multiline: boolean; rows?: number }
 > = {
   agent_name: {
@@ -92,6 +98,23 @@ const SECTIONS = [
   { id: "handoff", icon: UserCog, title: "Transferência para Humano", fields: ["handoff_rules"] as const },
 ];
 
+function normalizeOwnerPhone(value: string): string {
+  let digits = value.replace(/\D/g, "");
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  if (digits.length === 10 || digits.length === 11) digits = `55${digits}`;
+  if (!digits.startsWith("55") || ![12, 13].includes(digits.length)) return "";
+  return digits;
+}
+
+function normalizeAlternativePhones(value: string, mainPhone: string): string[] {
+  return Array.from(new Set(
+    value
+      .split(/[,;\n]+/)
+      .map(normalizeOwnerPhone)
+      .filter((phone) => phone && phone !== mainPhone),
+  ));
+}
+
 export default function ConfigAgenteWhatsApp() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -115,6 +138,9 @@ export default function ConfigAgenteWhatsApp() {
         .maybeSingle();
       if (data) {
         setConfig({
+          owner_phone: data.owner_phone ?? "",
+          owner_name: data.owner_name ?? "",
+          owner_alt_phones: (data.owner_alt_phones ?? []).join(", "),
           agent_name: data.agent_name ?? "",
           persona: data.persona ?? "",
           tone: data.tone ?? "",
@@ -157,10 +183,40 @@ export default function ConfigAgenteWhatsApp() {
 
   const handleSave = async () => {
     if (!userId) return;
+    const ownerPhone = config.owner_phone.trim()
+      ? normalizeOwnerPhone(config.owner_phone)
+      : "";
+    if (config.owner_phone.trim() && !ownerPhone) {
+      toast({
+        title: "WhatsApp do responsável inválido",
+        description: "Informe DDD + número. O DDI 55 é acrescentado automaticamente.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const invalidAlternative = config.owner_alt_phones
+      .split(/[,;\n]+/)
+      .map((phone) => phone.trim())
+      .filter(Boolean)
+      .some((phone) => !normalizeOwnerPhone(phone));
+    if (invalidAlternative) {
+      toast({
+        title: "Número alternativo inválido",
+        description: "Separe os números por vírgula e informe DDD + número em cada um.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
         user_id: userId,
+        owner_phone: ownerPhone || null,
+        owner_name: config.owner_name.trim() || null,
+        owner_alt_phones: normalizeAlternativePhones(
+          config.owner_alt_phones,
+          ownerPhone,
+        ),
         agent_name: config.agent_name || null,
         persona: config.persona || null,
         tone: config.tone || null,
@@ -225,6 +281,66 @@ export default function ConfigAgenteWhatsApp() {
               </div>
             </div>
           </CardHeader>
+        </Card>
+
+        {!config.owner_phone.trim() && (
+          <div className="mb-6 flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+            <div>
+              <p className="font-medium">Responsável ainda não configurado</p>
+              <p className="mt-1 text-muted-foreground">
+                Cadastre o WhatsApp do responsável para usar os recursos de criação pelo WhatsApp.
+              </p>
+            </div>
+          </div>
+        )}
+
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Phone className="h-4 w-4 text-primary" />
+              Responsável pela conta
+            </CardTitle>
+            <CardDescription>
+              Esse número será reconhecido como dono no agente e poderá criar imagens, vídeos, carrosséis e posts.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-5 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="owner_name">Nome do responsável</Label>
+              <Input
+                id="owner_name"
+                value={config.owner_name}
+                onChange={(event) => update("owner_name", event.target.value)}
+                placeholder="Ex.: Marcelo Silva"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="owner_phone">WhatsApp do responsável</Label>
+              <Input
+                id="owner_phone"
+                value={config.owner_phone}
+                onChange={(event) => update("owner_phone", event.target.value)}
+                inputMode="tel"
+                placeholder="Ex.: (21) 99999-9999"
+              />
+              <p className="text-xs text-muted-foreground">
+                Informe DDD + número. O DDI 55 é acrescentado automaticamente.
+              </p>
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="owner_alt_phones">
+                Números alternativos <span className="font-normal text-muted-foreground">(opcional)</span>
+              </Label>
+              <Input
+                id="owner_alt_phones"
+                value={config.owner_alt_phones}
+                onChange={(event) => update("owner_alt_phones", event.target.value)}
+                inputMode="tel"
+                placeholder="Separe por vírgula: (21) 98888-8888, (11) 97777-7777"
+              />
+            </div>
+          </CardContent>
         </Card>
 
         <Accordion type="multiple" defaultValue={SECTIONS.map((s) => s.id)} className="space-y-3">
