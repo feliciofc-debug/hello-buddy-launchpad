@@ -13218,7 +13218,7 @@ async function processOne(queueId: string) {
 
       let descricaoVisual = "";
       try {
-        descricaoVisual = await descreverFotosSalvas(freshLibraryMedia, salvos, contexto);
+        descricaoVisual = await descreverFotosSalvas(freshLibraryMedia, salvos, contexto, userId);
       } catch (e) {
         console.warn("[processor][fresh_media_visao] falhou:", (e as Error).message);
       }
