@@ -20,6 +20,7 @@ import { slide } from "@remotion/transitions/slide";
 import { fade } from "@remotion/transitions/fade";
 import { font } from "../../font";
 import { ehClaro, fundoLegenda, rgba, textoLegivelSobre, textoSobre } from "./contraste";
+import { HookCena } from "../base";
 
 // ---------- contrato de props ----------
 
@@ -579,7 +580,7 @@ export const TemplateAgente: React.FC<TemplateAgenteProps> = (props) => {
       <Backdrop c={c} />
       <TransitionSeries>
         <TransitionSeries.Sequence durationInFrames={HOOK_FRAMES}>
-          <Hook c={c} {...hook} />
+          <HookCena c={c} logoUrl={logoUrl} {...hook} />
         </TransitionSeries.Sequence>
         <TransitionSeries.Transition
           presentation={slide({ direction: "from-bottom" })}
