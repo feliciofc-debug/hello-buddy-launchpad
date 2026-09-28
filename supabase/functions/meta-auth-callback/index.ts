@@ -1,6 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+const SITE_URL = Deno.env.get('APP_SITE_URL') ?? 'https://www.amzofertas.com.br'
+const REDIRECT_URI = `${SITE_URL}/auth/callback/meta`
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
@@ -16,9 +19,6 @@ serve(async (req) => {
     const META_APP_SECRET = Deno.env.get('META_APP_SECRET')
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-
-    const REDIRECT_URI = 'https://www.amzofertas.com.br/auth/callback/meta'
-    const SITE_URL = 'https://www.amzofertas.com.br'
 
     if (!META_APP_ID || !META_APP_SECRET || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error('Missing required environment variables')
@@ -290,7 +290,7 @@ serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     return new Response(null, {
       status: 302,
-      headers: { ...corsHeaders, 'Location': `https://www.amzofertas.com.br/configuracoes?error=true&message=${encodeURIComponent(errorMessage)}` }
+      headers: { ...corsHeaders, 'Location': `${SITE_URL}/configuracoes?error=true&message=${encodeURIComponent(errorMessage)}` }
     })
   }
 })
