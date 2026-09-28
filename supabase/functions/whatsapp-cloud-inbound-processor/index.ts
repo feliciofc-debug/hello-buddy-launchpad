@@ -2,7 +2,10 @@
 // Modo AMZ: reconhece Felicio (dono), filtra clientes AMZ, lê imagens e áudios.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { decode as base64Decode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
+import {
+  decode as base64Decode,
+  encode as base64Encode,
+} from "https://deno.land/std@0.168.0/encoding/base64.ts";
 import { buildSystemPrompt, AMZ_KNOWLEDGE } from "../_shared/agent-soul.ts";
 import { AMZ_TENANT_ID as ADMIN_AMZ_USER_ID } from "../_shared/amz-tenant.ts";
 import { buildAmzContext, OWNER_PHONE, resolveTenantOwner, isAmzOwnerAltPhone } from "../_shared/amz-context.ts";
@@ -107,6 +110,7 @@ import {
   classifyPendingBrandReply,
   decideWhatsAppImageBrand,
   detectWhatsAppBrandDirective,
+  extractWhatsAppBrandSiteUrl,
   previewableWhatsAppLogoUrl,
   type WhatsAppBrandPreference,
 } from "../_shared/whatsapp-image-brand.ts";
@@ -1206,6 +1210,7 @@ async function toolGerarImagem(
     demonstracao?: boolean;
     references?: string[];
     brandColors?: string[];
+    logoDataUrl?: string | null;
   },
 ): Promise<string> {
   if (!isOwner({ userId: ctx.userId, fromNumber: ctx.fromNumber || "" }) && !ctx.demonstracao) {
@@ -1222,7 +1227,7 @@ async function toolGerarImagem(
     let brandName: string | null = null;
     if (shouldUseLogo) {
       const assets = await loadTenantBrandAssets(sb, ctx.userId);
-      logoDataUrl = assets.logoDataUrl;
+      logoDataUrl = ctx.logoDataUrl ?? assets.logoDataUrl;
       if (!brandColors.length) brandColors = assets.colors;
       brandName = assets.brandName;
       console.log("[gerar_imagem] marca padrão, logo encontrada:", !!logoDataUrl);
@@ -1311,7 +1316,7 @@ async function toolGerarImagem(
 }
 
 type PreparedWhatsAppImage =
-  | { deferred: true; text: string; interactiveButtons: WhatsAppInteractiveButtons }
+  | { deferred: true; text: string; imageUrl?: string; interactiveButtons?: WhatsAppInteractiveButtons }
   | { deferred: false; raw: string };
 
 async function prepareWhatsAppImageGeneration(input: {
@@ -1320,6 +1325,7 @@ async function prepareWhatsAppImageGeneration(input: {
   demonstracao?: boolean;
   references?: string[];
   chainedPost?: boolean;
+  chainedRequest?: string;
 }): Promise<PreparedWhatsAppImage> {
   if (input.demonstracao) {
     return {
@@ -1335,6 +1341,7 @@ async function prepareWhatsAppImageGeneration(input: {
   }
   const assets = await loadTenantBrandAssets(sb, input.ctx.userId);
   const directive = detectWhatsAppBrandDirective(input.prompt);
+  const siteUrl = extractWhatsAppBrandSiteUrl(input.prompt);
   const preference = input.ctx.agentState?.brand_image_preference ?? null;
   const decision = decideWhatsAppImageBrand({
     demonstration: false,
@@ -1345,35 +1352,103 @@ async function prepareWhatsAppImageGeneration(input: {
   const conversation = input.ctx.convId
     ? { id: input.ctx.convId, userId: input.ctx.userId, contactNumber: input.ctx.fromNumber }
     : null;
-  if (directive === "none" && conversation) {
-    const nextPreference: WhatsAppBrandPreference = {
-      mode: "none",
-      updatedAt: new Date().toISOString(),
-    };
-    await saveAgentState(sb, conversation, { brand_image_preference: nextPreference }, input.ctx.agentState ?? {});
-    if (input.ctx.agentState) input.ctx.agentState.brand_image_preference = nextPreference;
-  } else if (directive === "use" && assets.logoDataUrl && conversation && preference) {
-    await saveAgentState(sb, conversation, { brand_image_preference: null }, input.ctx.agentState ?? {});
-    if (input.ctx.agentState) input.ctx.agentState.brand_image_preference = null;
+  const basePending = {
+    prompt: input.prompt,
+    created_at: new Date().toISOString(),
+    chained_post: input.chainedPost,
+    original_request: input.chainedRequest,
+    reference_urls: input.references,
+  };
+  if (siteUrl && !directive && conversation) {
+    try {
+      const identity = await fetchBrandSiteIdentity(siteUrl);
+      const nextPreference: WhatsAppBrandPreference = {
+        mode: "site",
+        siteUrl: identity.url,
+        colors: identity.colors,
+        updatedAt: new Date().toISOString(),
+      };
+      if (identity.logo_confidence === "high" && identity.logo_data_url) {
+        const pending: PendingBrandGeneration = {
+          ...basePending,
+          stage: "awaiting_logo_confirmation",
+          site_url: identity.url,
+          colors: identity.colors,
+          logo_url: identity.logo_url,
+        };
+        await saveAgentState(sb, conversation, {
+          brand_image_preference: nextPreference,
+          pending_brand_generation: pending,
+        }, input.ctx.agentState ?? {});
+        if (input.ctx.agentState) {
+          input.ctx.agentState.brand_image_preference = nextPreference;
+          input.ctx.agentState.pending_brand_generation = pending;
+        }
+        return {
+          deferred: true,
+          text: `Encontrei estas cores: ${identity.colors.join(" · ") || "nenhuma cor confiável"}. Também encontrei uma possível logo. Só vou salvá-la com sua confirmação.`,
+          imageUrl: previewableWhatsAppLogoUrl(identity.logo_url, identity.logo_data_url) ?? undefined,
+          interactiveButtons: {
+            header: "Logo encontrada",
+            body: "Quer salvar esta imagem como sua logo cadastrada?",
+            buttons: [
+              { id: "brand_logo_save", title: "Salvar como minha logo" },
+              { id: "brand_logo_skip", title: "Agora não" },
+            ],
+          },
+        };
+      }
+      await saveAgentState(sb, conversation, {
+        brand_image_preference: nextPreference,
+        pending_brand_generation: null,
+      }, input.ctx.agentState ?? {});
+      if (input.ctx.agentState) input.ctx.agentState.brand_image_preference = nextPreference;
+      return {
+        deferred: false,
+        raw: await toolGerarImagem(input.prompt, {
+          userId: input.ctx.userId,
+          fromNumber: input.ctx.fromNumber,
+          incluirLogo: false,
+          references: input.references,
+          brandColors: identity.colors,
+        }),
+      };
+    } catch (error) {
+      console.error("[whatsapp-brand-site] link no pedido falhou:", error instanceof Error ? error.message : String(error));
+      return {
+        deferred: true,
+        text: "Não consegui ler as cores desse site agora. Confira o link e envie o pedido novamente.",
+      };
+    }
   }
-  if (decision.askChoice && conversation) {
+  if (decision.reason === "missing_logo" && conversation) {
     const pending: PendingBrandGeneration = {
-      stage: "awaiting_choice",
-      prompt: input.prompt,
-      created_at: new Date().toISOString(),
-      chained_post: input.chainedPost,
-      reference_urls: input.references,
+      ...basePending,
+      stage: "awaiting_logo_upload",
     };
     await saveAgentState(sb, conversation, { pending_brand_generation: pending }, input.ctx.agentState ?? {});
     if (input.ctx.agentState) input.ctx.agentState.pending_brand_generation = pending;
     return {
       deferred: true,
-      text: "Ainda não há uma logo cadastrada. Como você quer tratar a marca nesta imagem?",
+      text: "Envie a imagem da sua logo (PNG, de preferência com fundo transparente).",
+    };
+  }
+  if (decision.askChoice && conversation) {
+    const pending: PendingBrandGeneration = {
+      ...basePending,
+      stage: "awaiting_choice",
+    };
+    await saveAgentState(sb, conversation, { pending_brand_generation: pending }, input.ctx.agentState ?? {});
+    if (input.ctx.agentState) input.ctx.agentState.pending_brand_generation = pending;
+    return {
+      deferred: true,
+      text: "Como quer a marca nesta imagem?",
       interactiveButtons: {
         header: "Identidade da imagem",
-        body: "Escolha uma opção. Vou lembrar para as próximas gerações.",
+        body: "Escolha uma opção para este pedido.",
         buttons: [
-          { id: "brand_image_site", title: "Usar cores do site" },
+          { id: "brand_image_logo", title: "Com minha marca" },
+          { id: "brand_image_site", title: "Cores do meu site" },
           { id: "brand_image_none", title: "Sem marca" },
         ],
       },
@@ -1412,6 +1487,74 @@ async function saveConfirmedSiteLogo(userId: string, dataUrl: string): Promise<b
     fileName: `logo-site.${extension}`,
     mimeType: processed.mime,
   });
+}
+
+async function temporaryBrandLogoDataUrl(
+  path: string,
+  mime = "image/png",
+): Promise<string | null> {
+  const { data, error } = await sb.storage.from("tenant-logos").download(path);
+  if (error || !data) return null;
+  const bytes = new Uint8Array(await data.arrayBuffer());
+  if (!bytes.length || bytes.length > 5 * 1024 * 1024) return null;
+  return `data:${mime};base64,${base64Encode(bytes)}`;
+}
+
+async function completePendingBrandGeneration(
+  raw: string,
+  pending: PendingBrandGeneration,
+  toolCtx: any,
+  explicitlyUnbranded = false,
+): Promise<{ text: string; imageUrl?: string; interactiveButtons?: WhatsAppInteractiveButtons }> {
+  if (!pending.chained_post) {
+    return completedWhatsAppImageResponse(raw, explicitlyUnbranded);
+  }
+  let generated: any = {};
+  try { generated = JSON.parse(raw); } catch { /* erro honesto abaixo */ }
+  if (generated?.ok !== true || !generated?.image_url) {
+    return {
+      text: `Não consegui gerar a imagem: ${String(generated?.detalhe || generated?.erro || "resposta inválida")}`,
+    };
+  }
+  if (generated?.midia_id) await rememberLastMediaInteraction(toolCtx, generated.midia_id);
+  if (!generated?.midia_id) {
+    return {
+      text: "Gerei a imagem, mas não consegui salvá-la na biblioteca para montar a prévia do post.",
+      imageUrl: generated.image_url,
+    };
+  }
+  const chainedRequest = pending.original_request || pending.prompt;
+  const social = detectSocialPostIntent(chainedRequest, { allowGenerationChain: true }) ?? {
+    produto: "",
+    tom: "urgencia",
+    redes: ["facebook", "instagram"],
+    temProduto: false,
+    formato: detectSocialPostFormat(chainedRequest) ?? "feed",
+  };
+  const briefing = extractSocialPostBriefing(chainedRequest);
+  const postResult = await toolPostarMidiaBiblioteca({
+    midia_id: generated.midia_id,
+    legenda: briefing || cleanMediaPostLegenda(chainedRequest),
+    briefing,
+    tom: social.tom,
+    redes: social.redes.length ? social.redes : ["facebook", "instagram"],
+    formato: social.formato ?? "feed",
+    incluir_cta_whatsapp: detectWantsWhatsappCta(chainedRequest),
+  }, toolCtx);
+  const brandResult = generated?.logo_aplicada
+    ? generated?.brand_application_mode === "in_scene_verified"
+        || generated?.brand_application_mode === "in_scene_retry_verified"
+      ? "Apliquei sua logo na cena."
+      : "Apliquei sua logo sobre a imagem."
+    : generated?.logo_aplicacao_falhou
+    ? "Não consegui aplicar a logo desta vez."
+    : explicitlyUnbranded
+    ? "Gerei sem logo, como você pediu."
+    : "Gerei sem logo.";
+  return {
+    text: `${brandResult}\n\n${formatSocialPostToolResult(postResult)}`,
+    interactiveButtons: interactiveButtonsFromSocialResult(postResult),
+  };
 }
 
 function completedWhatsAppImageResponse(raw: string, explicitlyUnbranded = false): {
@@ -2229,14 +2372,23 @@ type PendingCarouselState = {
 };
 
 type PendingBrandGeneration = {
-  stage: "awaiting_choice" | "awaiting_site_url" | "awaiting_logo_confirmation";
+  stage:
+    | "awaiting_choice"
+    | "awaiting_site_choice"
+    | "awaiting_site_url"
+    | "awaiting_logo_confirmation"
+    | "awaiting_logo_upload"
+    | "awaiting_uploaded_logo_confirmation";
   prompt: string;
   created_at: string;
   chained_post?: boolean;
+  original_request?: string;
   reference_urls?: string[];
   site_url?: string;
   colors?: string[];
   logo_url?: string | null;
+  logo_candidate_path?: string;
+  logo_candidate_mime?: string;
 };
 
 type AgentConvState = {
@@ -7228,7 +7380,7 @@ async function loadTenantVideoIdentity(userId: string): Promise<{
 async function uploadClientLogoData(
   userId: string,
   dataUrl: string | null | undefined,
-  folder: "video-site" | "client-brands",
+  folder: "video-site" | "client-brands" | "brand-image-temp",
 ): Promise<string | undefined> {
   const match = String(dataUrl ?? "").match(/^data:(image\/(?:png|jpeg|webp|svg\+xml));base64,([\s\S]+)$/i);
   if (!match) return undefined;
@@ -10094,6 +10246,7 @@ async function runTool(
     if (prepared.deferred) {
       return {
         result: JSON.stringify({ ok: false, status: "aguardando_escolha_marca", mensagem: prepared.text }),
+        imageUrl: prepared.imageUrl,
         interactiveButtons: prepared.interactiveButtons,
       };
     }
@@ -10285,7 +10438,7 @@ async function callGemini(
       const conversation = toolCtx.convId
         ? { id: toolCtx.convId, userId: toolCtx.userId, contactNumber: toolCtx.fromNumber }
         : null;
-      const brandReply = classifyPendingBrandReply({
+      let brandReply = classifyPendingBrandReply({
         stage: pendingBrandGeneration.stage,
         text: userContent,
         interactiveId: brandInteractiveId,
@@ -10300,14 +10453,12 @@ async function callGemini(
           reason: brandReply.action,
           stage: pendingBrandGeneration.stage,
         });
+        if (brandReply.action === "expired") {
+          return { text: "Esse pedido de imagem expirou. Envie o pedido novamente para eu continuar." };
+        }
       } else if (brandReply.action === "choose_none") {
-        const preference: WhatsAppBrandPreference = {
-          mode: "none",
-          updatedAt: new Date().toISOString(),
-        };
         if (conversation) {
           await saveAgentState(sb, conversation, {
-            brand_image_preference: preference,
             pending_brand_generation: null,
           }, toolCtx.agentState ?? {});
         }
@@ -10317,15 +10468,76 @@ async function callGemini(
           incluirLogo: false,
           references: pendingBrandGeneration.reference_urls,
         });
-        return completedWhatsAppImageResponse(raw, true);
+        return await completePendingBrandGeneration(raw, pendingBrandGeneration, toolCtx, true);
+      } else if (brandReply.action === "choose_logo") {
+        const assets = await loadTenantBrandAssets(sb, toolCtx.userId);
+        if (!assets.logoDataUrl) {
+          const next = { ...pendingBrandGeneration, stage: "awaiting_logo_upload" as const };
+          if (conversation) {
+            await saveAgentState(sb, conversation, { pending_brand_generation: next }, toolCtx.agentState ?? {});
+            toolCtx.agentState!.pending_brand_generation = next;
+          }
+          return { text: "Envie a imagem da sua logo (PNG, de preferência com fundo transparente)." };
+        }
+        if (conversation) {
+          await saveAgentState(sb, conversation, { pending_brand_generation: null }, toolCtx.agentState ?? {});
+        }
+        const raw = await toolGerarImagem(pendingBrandGeneration.prompt, {
+          userId: toolCtx.userId,
+          fromNumber: toolCtx.fromNumber,
+          incluirLogo: true,
+          references: pendingBrandGeneration.reference_urls,
+        });
+        return await completePendingBrandGeneration(raw, pendingBrandGeneration, toolCtx);
       } else if (brandReply.action === "choose_site") {
-        const next = { ...pendingBrandGeneration, stage: "awaiting_site_url" as const };
+        const previousSite = toolCtx.agentState?.brand_image_preference?.mode === "site"
+          ? toolCtx.agentState.brand_image_preference.siteUrl
+          : null;
+        const next = {
+          ...pendingBrandGeneration,
+          stage: previousSite ? "awaiting_site_choice" as const : "awaiting_site_url" as const,
+          site_url: previousSite || undefined,
+        };
         if (conversation) {
           await saveAgentState(sb, conversation, { pending_brand_generation: next }, toolCtx.agentState ?? {});
           toolCtx.agentState!.pending_brand_generation = next;
         }
+        if (previousSite) {
+          let domain = "site anterior";
+          try {
+            domain = new URL(previousSite).hostname.replace(/^www\./, "").slice(0, 14);
+          } catch { /* usa rótulo seguro */ }
+          return {
+            text: "Quer usar o último site ou informar outro?",
+            interactiveButtons: {
+              header: "Cores da marca",
+              body: "Escolha o site para esta imagem.",
+              buttons: [
+                { id: "brand_site_previous", title: `Usar ${domain}` },
+                { id: "brand_site_other", title: "Outro site" },
+              ],
+            },
+          };
+        }
         return { text: "Envie o link do site da sua marca (começando com https://). Vou usar somente fontes públicas e seguras." };
-      } else if (brandReply.action === "site_url") {
+      } else if (brandReply.action === "use_previous_site") {
+        if (!pendingBrandGeneration.site_url) {
+          return { text: "Não encontrei o site anterior. Envie o link completo começando com https://." };
+        }
+        brandReply = { action: "site_url", url: pendingBrandGeneration.site_url };
+      } else if (brandReply.action === "use_other_site") {
+        const next = {
+          ...pendingBrandGeneration,
+          stage: "awaiting_site_url" as const,
+          site_url: undefined,
+        };
+        if (conversation) {
+          await saveAgentState(sb, conversation, { pending_brand_generation: next }, toolCtx.agentState ?? {});
+          toolCtx.agentState!.pending_brand_generation = next;
+        }
+        return { text: "Envie o link completo do outro site, começando com https://." };
+      }
+      if (brandReply.action === "site_url") {
         try {
           const identity = await fetchBrandSiteIdentity(brandReply.url);
           const preference: WhatsAppBrandPreference = {
@@ -10375,7 +10587,11 @@ async function callGemini(
             brandColors: identity.colors,
             references: pendingBrandGeneration.reference_urls,
           });
-          const completed = completedWhatsAppImageResponse(raw);
+          const completed = await completePendingBrandGeneration(
+            raw,
+            pendingBrandGeneration,
+            toolCtx,
+          );
           completed.text = `Cores encontradas: ${colorsText}.\n\n${completed.text}`;
           return completed;
         } catch (error) {
@@ -10396,14 +10612,12 @@ async function callGemini(
             console.error("[whatsapp-brand-site] logo não salva:", error instanceof Error ? error.message : String(error));
           }
         }
-        const preference: WhatsAppBrandPreference | null = saved
-          ? null
-          : {
-            mode: "site",
-            siteUrl: pendingBrandGeneration.site_url,
-            colors: pendingBrandGeneration.colors,
-            updatedAt: new Date().toISOString(),
-          };
+        const preference: WhatsAppBrandPreference = {
+          mode: "site",
+          siteUrl: pendingBrandGeneration.site_url,
+          colors: pendingBrandGeneration.colors,
+          updatedAt: new Date().toISOString(),
+        };
         if (conversation) {
           await saveAgentState(sb, conversation, {
             brand_image_preference: preference,
@@ -10417,25 +10631,66 @@ async function callGemini(
           brandColors: pendingBrandGeneration.colors,
           references: pendingBrandGeneration.reference_urls,
         });
-        const completed = completedWhatsAppImageResponse(raw, false);
+        const completed = await completePendingBrandGeneration(
+          raw,
+          pendingBrandGeneration,
+          toolCtx,
+        );
         completed.text = saved
           ? `Salvei a logo com sua confirmação.\n\n${completed.text}`
           : brandReply.action === "save_logo"
           ? `Não consegui salvar essa logo com segurança; não alterei seu cadastro.\n\n${completed.text}`
           : `Não salvei a logo. Usei apenas as cores encontradas.\n\n${completed.text}`;
         return completed;
-      } else if (brandReply.action === "repeat_choice") {
-        return {
-          text: "Ainda não há uma logo cadastrada. Posso usar as cores do seu site ou gerar sem marca.",
-          interactiveButtons: {
-            header: "Identidade da imagem",
-            body: "Vou lembrar sua escolha para as próximas gerações.",
-            buttons: [
-              { id: "brand_image_site", title: "Usar cores do site" },
-              { id: "brand_image_none", title: "Sem marca" },
-            ],
-          },
-        };
+      } else if (
+        brandReply.action === "save_uploaded_logo"
+        || brandReply.action === "use_uploaded_logo_once"
+      ) {
+        const candidatePath = pendingBrandGeneration.logo_candidate_path;
+        const candidateMime = pendingBrandGeneration.logo_candidate_mime || "image/png";
+        const logoDataUrl = candidatePath
+          ? await temporaryBrandLogoDataUrl(candidatePath, candidateMime)
+          : null;
+        if (!candidatePath || !logoDataUrl) {
+          if (conversation) {
+            await saveAgentState(sb, conversation, { pending_brand_generation: null }, toolCtx.agentState ?? {});
+          }
+          return { text: "Não consegui recuperar essa logo. Envie o pedido de imagem novamente." };
+        }
+        let saved = false;
+        if (brandReply.action === "save_uploaded_logo") {
+          const extension = candidatePath.split(".").pop() || "png";
+          saved = await setTenantLogo(sb, toolCtx.userId, {
+            storagePath: candidatePath,
+            fileName: `logo-whatsapp.${extension}`,
+            mimeType: candidateMime,
+          });
+          if (!saved) {
+            return { text: "Não consegui salvar essa logo com segurança. Seu cadastro não foi alterado." };
+          }
+        }
+        if (conversation) {
+          await saveAgentState(sb, conversation, { pending_brand_generation: null }, toolCtx.agentState ?? {});
+        }
+        const raw = await toolGerarImagem(pendingBrandGeneration.prompt, {
+          userId: toolCtx.userId,
+          fromNumber: toolCtx.fromNumber,
+          incluirLogo: true,
+          logoDataUrl,
+          references: pendingBrandGeneration.reference_urls,
+        });
+        if (!saved) {
+          await sb.storage.from("tenant-logos").remove([candidatePath]);
+        }
+        const completed = await completePendingBrandGeneration(
+          raw,
+          pendingBrandGeneration,
+          toolCtx,
+        );
+        completed.text = saved
+          ? `Salvei a logo com sua confirmação.\n\n${completed.text}`
+          : `Usei a logo somente nesta imagem e não alterei seu cadastro.\n\n${completed.text}`;
+        return completed;
       }
     }
 
@@ -10586,9 +10841,14 @@ async function callGemini(
         prompt: imagePrompt || userContent,
         ctx: toolCtx,
         chainedPost: ownerMediaIntent.action === "generate_and_post",
+        chainedRequest: userContent,
       });
       if (prepared.deferred) {
-        return { text: prepared.text, interactiveButtons: prepared.interactiveButtons };
+        return {
+          text: prepared.text,
+          imageUrl: prepared.imageUrl,
+          interactiveButtons: prepared.interactiveButtons,
+        };
       }
       const generatedRaw = prepared.raw;
       let generated: any = {};
@@ -12631,6 +12891,89 @@ async function processOne(queueId: string) {
       const freshAgentState = await loadAgentState(sb, stateConversation);
       const pendingVideoIdentity = fromIsOwner ? freshAgentState.pending_video_setup : null;
       const incomingLogo = freshLibraryMedia.find((item) => item.kind === "image");
+      const pendingBrandUpload = fromIsOwner
+        && freshAgentState.pending_brand_generation?.stage === "awaiting_logo_upload"
+        ? freshAgentState.pending_brand_generation
+        : null;
+      if (pendingBrandUpload && incomingLogo) {
+        const pendingAge = Date.now() - new Date(pendingBrandUpload.created_at).getTime();
+        if (Number.isFinite(pendingAge) && pendingAge <= 30 * 60 * 1000) {
+          const logoPath = await uploadClientLogoData(
+            userId,
+            `data:${incomingLogo.mime};base64,${incomingLogo.base64}`,
+            "brand-image-temp",
+          );
+          let reply = "Não consegui preparar essa logo. Envie PNG, JPEG ou WEBP com até 5 MB.";
+          let previewUrl: string | undefined;
+          let buttons: WhatsAppInteractiveButtons | undefined;
+          if (logoPath) {
+            const extension = logoPath.split(".").pop()?.toLowerCase();
+            const logoMime = extension === "jpg" || extension === "jpeg"
+              ? "image/jpeg"
+              : extension === "webp"
+              ? "image/webp"
+              : extension === "svg"
+              ? "image/svg+xml"
+              : "image/png";
+            const next: PendingBrandGeneration = {
+              ...pendingBrandUpload,
+              stage: "awaiting_uploaded_logo_confirmation",
+              logo_candidate_path: logoPath,
+              logo_candidate_mime: logoMime,
+            };
+            await saveAgentState(sb, stateConversation, {
+              pending_brand_generation: next,
+            }, freshAgentState);
+            freshAgentState.pending_brand_generation = next;
+            const signed = await sb.storage.from("tenant-logos").createSignedUrl(logoPath, 30 * 60);
+            previewUrl = signed.data?.signedUrl;
+            reply = "Recebi esta logo. Quer cadastrá-la ou usar somente nesta imagem?";
+            buttons = {
+              header: "Confirmar logo",
+              body: "Só salvo como sua logo com sua confirmação.",
+              buttons: [
+                { id: "brand_uploaded_logo_save", title: "Salvar como minha logo" },
+                { id: "brand_uploaded_logo_once", title: "Usar só nesta imagem" },
+              ],
+            };
+          }
+          const { data: outMsg } = await sb
+            .from("whatsapp_cloud_messages")
+            .insert({
+              conversation_id: conv.id,
+              user_id: userId,
+              direction: "outbound",
+              sender: "agent",
+              content: previewUrl ? `${reply}\n\n[imagem: ${previewUrl}]` : reply,
+              message_type: previewUrl ? "image" : "text",
+            })
+            .select("id")
+            .single();
+          try {
+            const sentId = await sendWhatsApp(
+              userId,
+              row.from_number,
+              reply,
+              previewUrl,
+              undefined,
+              buttons,
+            );
+            if (sentId && outMsg?.id) {
+              await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
+            }
+          } catch (error) {
+            const sendError = error instanceof Error ? error.message : String(error);
+            await failQueue(row.id, `send_failed: ${sendError}`);
+            return { ok: false, reason: "send_failed", error: sendError };
+          }
+          await doneQueue(row.id);
+          return { ok: true, awaiting_uploaded_brand_logo_confirmation: !!logoPath };
+        }
+        await saveAgentState(sb, stateConversation, {
+          pending_brand_generation: null,
+        }, freshAgentState);
+        freshAgentState.pending_brand_generation = null;
+      }
       const waitingForClientLogo = pendingVideoIdentity?.identidade === "client";
       if (waitingForClientLogo && incomingLogo) {
         const logoPath = await uploadClientLogoData(
@@ -12887,7 +13230,7 @@ async function processOne(queueId: string) {
           references: savedPhotos.map((item) => item.url),
         });
         const completed = prepared.deferred
-          ? { text: prepared.text, imageUrl: undefined }
+          ? { text: prepared.text, imageUrl: prepared.imageUrl }
           : completedWhatsAppImageResponse(prepared.raw, detectWhatsAppBrandDirective(contexto) === "none");
         const buttons = prepared.deferred ? prepared.interactiveButtons : undefined;
         const { data: outMsg } = await sb

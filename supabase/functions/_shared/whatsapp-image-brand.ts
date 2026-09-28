@@ -9,25 +9,32 @@ export type WhatsAppBrandDecision = {
   useLogo: boolean;
   askChoice: boolean;
   colors: string[];
-  reason: "demo" | "explicit_none" | "saved_logo" | "site" | "remembered_none" | "unconfigured";
+  reason: "demo" | "explicit_none" | "explicit_logo" | "missing_logo" | "choose_per_request";
 };
 
 export const PENDING_BRAND_GENERATION_TTL_MS = 30 * 60 * 1000;
 
 export type PendingBrandStage =
   | "awaiting_choice"
+  | "awaiting_site_choice"
   | "awaiting_site_url"
-  | "awaiting_logo_confirmation";
+  | "awaiting_logo_confirmation"
+  | "awaiting_logo_upload"
+  | "awaiting_uploaded_logo_confirmation";
 
 export type PendingBrandReply =
   | { action: "expired" }
   | { action: "continue_conversation" }
+  | { action: "choose_logo" }
   | { action: "choose_site" }
   | { action: "choose_none" }
+  | { action: "use_previous_site" }
+  | { action: "use_other_site" }
   | { action: "site_url"; url: string }
   | { action: "save_logo" }
   | { action: "skip_logo" }
-  | { action: "repeat_choice" };
+  | { action: "save_uploaded_logo" }
+  | { action: "use_uploaded_logo_once" };
 
 export function detectWhatsAppBrandDirective(text: string): "use" | "none" | null {
   const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -42,6 +49,10 @@ export function detectWhatsAppBrandDirective(text: string): "use" | "none" | nul
   return null;
 }
 
+export function extractWhatsAppBrandSiteUrl(text: string): string | null {
+  return text.match(/https?:\/\/[^\s<>"']+/i)?.[0] ?? null;
+}
+
 export function classifyPendingBrandReply(input: {
   stage: PendingBrandStage;
   text: string;
@@ -49,12 +60,14 @@ export function classifyPendingBrandReply(input: {
   createdAt: string;
   now?: number;
 }): PendingBrandReply {
+  const interactiveId = String(input.interactiveId || "").toLowerCase();
   const createdAt = new Date(input.createdAt).getTime();
   const age = (input.now ?? Date.now()) - createdAt;
   if (!Number.isFinite(age) || age < 0 || age > PENDING_BRAND_GENERATION_TTL_MS) {
-    return { action: "expired" };
+    return interactiveId.startsWith("brand_")
+      ? { action: "expired" }
+      : { action: "continue_conversation" };
   }
-  const interactiveId = String(input.interactiveId || "").toLowerCase();
   const normalized = input.text
     .replace(/<<INTERACTIVE_ID:[^>]+>>/gi, "")
     .normalize("NFD")
@@ -69,22 +82,37 @@ export function classifyPendingBrandReply(input: {
   if (
     input.stage === "awaiting_choice"
     && (
+      interactiveId === "brand_image_logo"
+      || directive === "use"
+      || /^(?:com minha marca|com minha logo|minha marca|minha logo)$/.test(normalized)
+    )
+  ) {
+    return { action: "choose_logo" };
+  }
+  if (
+    input.stage === "awaiting_choice"
+    && (
       interactiveId === "brand_image_site"
       || /^(?:site|cores? do site|usar cores? do site)$/.test(normalized)
     )
   ) {
     return { action: "choose_site" };
   }
-  if (directive === "use") {
-    return { action: "repeat_choice" };
+  if (input.stage === "awaiting_site_choice") {
+    if (interactiveId === "brand_site_previous") return { action: "use_previous_site" };
+    if (interactiveId === "brand_site_other") return { action: "use_other_site" };
   }
   if (input.stage === "awaiting_site_url") {
-    const url = input.text.match(/https?:\/\/[^\s<>"']+/i)?.[0];
+    const url = extractWhatsAppBrandSiteUrl(input.text);
     return url ? { action: "site_url", url } : { action: "continue_conversation" };
   }
   if (input.stage === "awaiting_logo_confirmation") {
     if (interactiveId === "brand_logo_save") return { action: "save_logo" };
     if (interactiveId === "brand_logo_skip") return { action: "skip_logo" };
+  }
+  if (input.stage === "awaiting_uploaded_logo_confirmation") {
+    if (interactiveId === "brand_uploaded_logo_save") return { action: "save_uploaded_logo" };
+    if (interactiveId === "brand_uploaded_logo_once") return { action: "use_uploaded_logo_once" };
   }
   return { action: "continue_conversation" };
 }
@@ -111,22 +139,10 @@ export function decideWhatsAppImageBrand(input: {
   if (input.directive === "none") {
     return { useLogo: false, askChoice: false, colors: [], reason: "explicit_none" };
   }
-  if (input.directive === "use" && input.hasSavedLogo) {
-    return { useLogo: true, askChoice: false, colors: [], reason: "saved_logo" };
+  if (input.directive === "use") {
+    return input.hasSavedLogo
+      ? { useLogo: true, askChoice: false, colors: [], reason: "explicit_logo" }
+      : { useLogo: false, askChoice: false, colors: [], reason: "missing_logo" };
   }
-  if (input.preference?.mode === "none" && input.directive !== "use") {
-    return { useLogo: false, askChoice: false, colors: [], reason: "remembered_none" };
-  }
-  if (input.hasSavedLogo) {
-    return { useLogo: true, askChoice: false, colors: [], reason: "saved_logo" };
-  }
-  if (input.preference?.mode === "site") {
-    return {
-      useLogo: false,
-      askChoice: false,
-      colors: input.preference.colors ?? [],
-      reason: "site",
-    };
-  }
-  return { useLogo: false, askChoice: true, colors: [], reason: "unconfigured" };
+  return { useLogo: false, askChoice: true, colors: [], reason: "choose_per_request" };
 }

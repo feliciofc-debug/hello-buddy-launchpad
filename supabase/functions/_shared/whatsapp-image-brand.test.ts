@@ -2,6 +2,7 @@ import {
   classifyPendingBrandReply,
   decideWhatsAppImageBrand,
   detectWhatsAppBrandDirective,
+  extractWhatsAppBrandSiteUrl,
   previewableWhatsAppLogoUrl,
 } from "./whatsapp-image-brand.ts";
 
@@ -9,54 +10,60 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
-Deno.test("saved logo is enabled by default for varied wording and no mention", () => {
-  for (const text of ["crie uma imagem de café", "coloque a logo", "use minha marca"]) {
-    const decision = decideWhatsAppImageBrand({
-      demonstration: false,
-      hasSavedLogo: true,
-      directive: detectWhatsAppBrandDirective(text),
-    });
-    assert(decision.useLogo, `saved logo should be used for: ${text}`);
-    assert(!decision.askChoice, "configured tenant must not be asked again");
-  }
-});
-
-Deno.test("explicit sem logo wins and remembered choice is reused", () => {
-  const explicit = decideWhatsAppImageBrand({
+Deno.test("pedido sem diretiva sempre pergunta por imagem, mesmo com memória ou logo", () => {
+  const withLogo = decideWhatsAppImageBrand({
     demonstration: false,
     hasSavedLogo: true,
-    directive: detectWhatsAppBrandDirective("gere sem logo"),
   });
-  assert(!explicit.useLogo && explicit.reason === "explicit_none", "explicit opt-out must win");
-
-  const remembered = decideWhatsAppImageBrand({
-    demonstration: false,
-    hasSavedLogo: false,
-    preference: { mode: "none", updatedAt: new Date().toISOString() },
-  });
-  assert(!remembered.askChoice && remembered.reason === "remembered_none", "choice should be remembered");
-});
-
-Deno.test("unconfigured tenant is asked once and demos remain unbranded", () => {
-  const first = decideWhatsAppImageBrand({ demonstration: false, hasSavedLogo: false });
-  assert(first.askChoice, "first owner generation should ask for brand choice");
-  const demo = decideWhatsAppImageBrand({ demonstration: true, hasSavedLogo: true });
-  assert(!demo.useLogo && !demo.askChoice && demo.reason === "demo", "demo must stay unbranded");
-});
-
-Deno.test("site preference contributes colors without silently using its logo", () => {
-  const decision = decideWhatsAppImageBrand({
+  const withMemory = decideWhatsAppImageBrand({
     demonstration: false,
     hasSavedLogo: false,
     preference: {
       mode: "site",
       siteUrl: "https://example.com",
-      colors: ["#123456", "#abcdef"],
+      colors: ["#123456"],
       updatedAt: new Date().toISOString(),
     },
   });
-  assert(!decision.useLogo, "site logo must not be applied before confirmation");
-  assert(decision.colors.length === 2, "site colors should be remembered");
+  assert(withLogo.askChoice && !withLogo.useLogo, "saved logo must not skip per-request choice");
+  assert(withMemory.askChoice && withMemory.colors.length === 0, "memory must only retain the site URL");
+});
+
+Deno.test("diretivas explícitas pulam a pergunta", () => {
+  const none = decideWhatsAppImageBrand({
+    demonstration: false,
+    hasSavedLogo: true,
+    directive: detectWhatsAppBrandDirective("gere sem logo"),
+  });
+  const use = decideWhatsAppImageBrand({
+    demonstration: false,
+    hasSavedLogo: true,
+    directive: detectWhatsAppBrandDirective("gere com minha marca"),
+  });
+  const missing = decideWhatsAppImageBrand({
+    demonstration: false,
+    hasSavedLogo: false,
+    directive: detectWhatsAppBrandDirective("use minha logo"),
+  });
+  assert(!none.useLogo && !none.askChoice && none.reason === "explicit_none", "opt-out must win");
+  assert(use.useLogo && !use.askChoice && use.reason === "explicit_logo", "saved logo should be used");
+  assert(!missing.useLogo && !missing.askChoice && missing.reason === "missing_logo", "missing logo asks for upload");
+});
+
+Deno.test("demonstrações permanecem sem marca e sem botões", () => {
+  const first = decideWhatsAppImageBrand({ demonstration: false, hasSavedLogo: false });
+  const demo = decideWhatsAppImageBrand({ demonstration: true, hasSavedLogo: true });
+  assert(first.askChoice, "owner generation should ask for this request");
+  assert(!demo.useLogo && !demo.askChoice && demo.reason === "demo", "demo must stay unbranded");
+});
+
+Deno.test("link no pedido é detectado para pular a escolha", () => {
+  assert(
+    extractWhatsAppBrandSiteUrl("gere uma imagem usando https://marca.example/identidade") ===
+      "https://marca.example/identidade",
+    "http(s) URL should be extracted",
+  );
+  assert(extractWhatsAppBrandSiteUrl("gere sem marca") === null, "request without URL stays unset");
 });
 
 Deno.test("unrelated reminder leaves brand choice and continues normal conversation", () => {
@@ -77,7 +84,13 @@ Deno.test("new image request replaces pending brand generation", () => {
   assert(result.action === "continue_conversation", "new image request must restart normal generation");
 });
 
-Deno.test("brand buttons and short site choices still answer the pending question", () => {
+Deno.test("os três botões de marca resolvem a escolha", () => {
+  const logoButton = classifyPendingBrandReply({
+    stage: "awaiting_choice",
+    text: "Com minha marca",
+    interactiveId: "brand_image_logo",
+    createdAt: new Date().toISOString(),
+  });
   const siteButton = classifyPendingBrandReply({
     stage: "awaiting_choice",
     text: "Usar cores do site",
@@ -94,9 +107,41 @@ Deno.test("brand buttons and short site choices still answer the pending questio
     text: "sem logo",
     createdAt: new Date().toISOString(),
   });
+  assert(logoButton.action === "choose_logo", "logo button must work");
   assert(siteButton.action === "choose_site", "site button must work");
   assert(shortSite.action === "choose_site", "short site choice must work");
   assert(noBrand.action === "choose_none", "short no-logo choice must work");
+});
+
+Deno.test("site anterior e upload de logo têm confirmações explícitas", () => {
+  const previous = classifyPendingBrandReply({
+    stage: "awaiting_site_choice",
+    text: "Usar example.com",
+    interactiveId: "brand_site_previous",
+    createdAt: new Date().toISOString(),
+  });
+  const other = classifyPendingBrandReply({
+    stage: "awaiting_site_choice",
+    text: "Outro site",
+    interactiveId: "brand_site_other",
+    createdAt: new Date().toISOString(),
+  });
+  const save = classifyPendingBrandReply({
+    stage: "awaiting_uploaded_logo_confirmation",
+    text: "Salvar como minha logo",
+    interactiveId: "brand_uploaded_logo_save",
+    createdAt: new Date().toISOString(),
+  });
+  const once = classifyPendingBrandReply({
+    stage: "awaiting_uploaded_logo_confirmation",
+    text: "Usar só nesta imagem",
+    interactiveId: "brand_uploaded_logo_once",
+    createdAt: new Date().toISOString(),
+  });
+  assert(previous.action === "use_previous_site", "previous site button must work");
+  assert(other.action === "use_other_site", "other site button must work");
+  assert(save.action === "save_uploaded_logo", "upload is only saved after confirmation");
+  assert(once.action === "use_uploaded_logo_once", "temporary logo choice must not save");
 });
 
 Deno.test("site URL stage only intercepts a URL", () => {
@@ -114,15 +159,23 @@ Deno.test("site URL stage only intercepts a URL", () => {
   assert(otherSubject.action === "continue_conversation", "other subject must not be intercepted");
 });
 
-Deno.test("brand pending expires after thirty minutes", () => {
+Deno.test("botão antigo expira após trinta minutos sem prender outro assunto", () => {
   const now = Date.now();
-  const result = classifyPendingBrandReply({
+  const oldButton = classifyPendingBrandReply({
     stage: "awaiting_choice",
-    text: "site",
+    text: "Cores do meu site",
+    interactiveId: "brand_image_site",
     createdAt: new Date(now - 31 * 60 * 1000).toISOString(),
     now,
   });
-  assert(result.action === "expired", "old pending question must be ignored");
+  const unrelated = classifyPendingBrandReply({
+    stage: "awaiting_choice",
+    text: "me lembra de ligar amanhã",
+    createdAt: new Date(now - 31 * 60 * 1000).toISOString(),
+    now,
+  });
+  assert(oldButton.action === "expired", "old interactive button must expire");
+  assert(unrelated.action === "continue_conversation", "expired pending must not capture another subject");
 });
 
 Deno.test("SVG site logo is not sent as WhatsApp image preview", () => {
