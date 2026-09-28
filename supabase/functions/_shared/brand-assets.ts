@@ -6,6 +6,7 @@ import { getTenantLogoDataUrl } from "./tenant-logo.ts";
 export type TenantBrandAssets = {
   logoDataUrl: string | null;
   colors: string[];
+  brandName: string | null;
 };
 
 export function dataUrlToImageBytes(
@@ -89,7 +90,7 @@ export async function loadTenantBrandAssets(
     : await getTenantLogoDataUrl(supabase, userId);
   const { data, error } = await supabase
     .from("empresa_config")
-    .select("paleta_marca, identidade_site")
+    .select("nome_empresa, paleta_marca, identidade_site")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) {
@@ -101,5 +102,18 @@ export async function loadTenantBrandAssets(
   let colors = normalizeSavedBrandColors(data?.paleta_marca);
   if (!colors.length) colors = normalizeSavedBrandColors(identity.paleta);
   if (!colors.length && logoDataUrl) colors = await colorsFromLogoDataUrl(logoDataUrl);
-  return { logoDataUrl, colors };
+  let brandName = String(data?.nome_empresa || "").trim() || null;
+  if (!brandName) {
+    try {
+      const { data: whatsapp } = await supabase
+        .from("whatsapp_config")
+        .select("business_name")
+        .eq("user_id", userId)
+        .maybeSingle();
+      brandName = String(whatsapp?.business_name || "").trim() || null;
+    } catch {
+      // Nome é um reforço de grafia; sua ausência não pode misturar tenants.
+    }
+  }
+  return { logoDataUrl, colors, brandName };
 }

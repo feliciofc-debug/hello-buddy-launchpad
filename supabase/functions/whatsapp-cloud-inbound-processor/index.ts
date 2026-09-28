@@ -1219,16 +1219,18 @@ async function toolGerarImagem(
     const shouldUseLogo = !ctx.demonstracao && ctx.incluirLogo !== false;
     let logoDataUrl: string | null = null;
     let brandColors: string[] = ctx.brandColors ?? [];
+    let brandName: string | null = null;
     if (shouldUseLogo) {
       const assets = await loadTenantBrandAssets(sb, ctx.userId);
       logoDataUrl = assets.logoDataUrl;
       if (!brandColors.length) brandColors = assets.colors;
+      brandName = assets.brandName;
       console.log("[gerar_imagem] marca padrão, logo encontrada:", !!logoDataUrl);
     }
     console.log(
       "[gerar_imagem] motor compartilhado, promptLen=",
       clean.length,
-      "logoEnviadaParaIA=false, aplicarDepois=",
+      "logoDisponivel=",
       !!logoDataUrl,
     );
     const generated = await generateMarketingImage({
@@ -1236,6 +1238,7 @@ async function toolGerarImagem(
       references: ctx.references,
       logoDataUrl,
       brandColors,
+      brandName,
       apiKey: LOVABLE_API_KEY,
     });
     const bytes = generated.bytes;
@@ -1280,6 +1283,7 @@ async function toolGerarImagem(
       midia_id: midiaId,
       salvo_em_midias: !!midiaId,
       logo_aplicada: logoAplicada,
+      brand_application_mode: generated.brandApplicationMode,
       logo_solicitada_sem_cadastro: shouldUseLogo && !logoDataUrl,
       logo_aplicacao_falhou: generated.logoApplicationFailed,
       demonstracao: ctx.demonstracao === true,
@@ -1293,7 +1297,10 @@ async function toolGerarImagem(
           ? "A imagem foi criada usando as cores da marca, mas sem logo. Informe isso com clareza."
           : "A imagem foi criada sem logo porque não há uma logo cadastrada. Informe isso com clareza.")
         : (logoAplicada
-          ? "A imagem foi criada COM a logo original, enviada e salva na biblioteca /midias. Diga: “Apliquei sua logo.”"
+          ? generated.brandApplicationMode === "in_scene_verified"
+              || generated.brandApplicationMode === "in_scene_retry_verified"
+            ? "A imagem foi criada com a logo verificada em uma superfície real da cena. Diga: “Apliquei sua logo na cena.”"
+            : "A imagem foi criada com a logo original aplicada pelo fallback seguro. Diga: “Apliquei sua logo sobre a imagem.”"
           : logoDataUrl
           ? "A imagem foi criada, mas diga: “Não consegui aplicar a logo desta vez.” Nunca afirme que a marca foi aplicada."
           : "A imagem foi criada sem logo e salva na biblioteca /midias. Informe honestamente que foi gerada sem logo."),
@@ -1419,7 +1426,10 @@ function completedWhatsAppImageResponse(raw: string, explicitlyUnbranded = false
     };
   }
   const brandMessage = result.logo_aplicada
-    ? "Apliquei sua logo."
+    ? result.brand_application_mode === "in_scene_verified"
+        || result.brand_application_mode === "in_scene_retry_verified"
+      ? "Apliquei sua logo na cena."
+      : "Apliquei sua logo sobre a imagem."
     : result.logo_aplicacao_falhou
     ? "Não consegui aplicar a logo desta vez."
     : explicitlyUnbranded
@@ -10588,7 +10598,10 @@ async function callGemini(
       }
       if (generated?.midia_id) await rememberLastMediaInteraction(toolCtx, generated.midia_id);
       const brandResult = generated?.logo_aplicada
-        ? "Apliquei sua logo."
+        ? generated?.brand_application_mode === "in_scene_verified"
+            || generated?.brand_application_mode === "in_scene_retry_verified"
+          ? "Apliquei sua logo na cena."
+          : "Apliquei sua logo sobre a imagem."
         : generated?.logo_aplicacao_falhou
         ? "Não consegui aplicar a logo desta vez."
         : detectWhatsAppBrandDirective(userContent) === "none"

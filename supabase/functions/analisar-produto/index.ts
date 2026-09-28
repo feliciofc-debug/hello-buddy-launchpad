@@ -339,13 +339,17 @@ serve(async (req) => {
     let finalImages = images;
     let generatedImage: string | null = null;
     let logoAppliedServerSide = false;
+    let brandApplicationMode = "none";
     let siteIdentity: BrandSiteIdentity | null = null;
     let logoDataUrl: string | null = typeof logo === "string" ? logo : null;
     let brandColors: string[] = [];
+    const tenantAssets = await loadTenantBrandAssets(supabaseAdmin, userId, {
+      includeLogo: Boolean(use_saved_logo),
+    });
+    const brandName = tenantAssets.brandName;
     if (use_saved_logo && userId) {
-      const assets = await loadTenantBrandAssets(supabaseAdmin, userId);
-      logoDataUrl = assets.logoDataUrl;
-      brandColors = assets.colors;
+      logoDataUrl = tenantAssets.logoDataUrl;
+      brandColors = tenantAssets.colors;
     } else if (brand_site_url) {
       siteIdentity = await fetchBrandSiteIdentity(String(brand_site_url));
       brandColors = siteIdentity.colors;
@@ -383,9 +387,11 @@ serve(async (req) => {
         references: images,
         logoDataUrl,
         brandColors,
+        brandName,
         apiKey: LOVABLE_API_KEY,
       });
       logoAppliedServerSide = result.logoApplied;
+      brandApplicationMode = result.brandApplicationMode;
       console.log(
         "🎨 Imagem gerada pelo motor compartilhado:",
         result.mode,
@@ -540,6 +546,13 @@ Retorne APENAS um JSON válido no formato:
           brandIdentity: {
             colors: brandColors,
             logoApplied: logoAppliedServerSide,
+            applicationMode: brandApplicationMode,
+            message: brandApplicationMode === "in_scene_verified"
+                || brandApplicationMode === "in_scene_retry_verified"
+              ? "Apliquei sua logo na cena."
+              : logoAppliedServerSide
+              ? "Apliquei sua logo sobre a imagem."
+              : null,
             siteLogo: siteIdentity?.logo_data_url ?? null,
           },
         }),
