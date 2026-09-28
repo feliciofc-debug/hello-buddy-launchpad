@@ -21,6 +21,7 @@ create table if not exists public.whatsapp_marketing_campaigns (
   total_read integer not null default 0,
   total_failed integer not null default 0,
   total_skipped integer not null default 0,
+  total_ignored_without_opt_in integer not null default 0,
   created_at timestamptz not null default now(),
   started_at timestamptz null,
   completed_at timestamptz null,

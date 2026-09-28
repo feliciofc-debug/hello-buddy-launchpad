@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { assertSafePublicUrl } from "../_shared/brand-site-identity.ts";
 import {
+  campaignTenantId,
   filterAuthorizedAudience,
   isInsideWhatsAppWindow,
   normalizeCampaignPhone,
@@ -143,15 +144,34 @@ async function resolveAudience(
 }
 
 async function validatePublicImage(rawUrl: string): Promise<void> {
-  const url = await assertSafePublicUrl(rawUrl);
-  const response = await fetch(url, {
-    method: "HEAD",
-    signal: AbortSignal.timeout(10_000),
-    redirect: "follow",
-  });
-  if (!response.ok) throw new Error("A imagem não está publicamente acessível.");
-  const type = response.headers.get("content-type") || "";
-  if (type && !type.startsWith("image/")) throw new Error("A URL informada não é uma imagem pública.");
+  let url = await assertSafePublicUrl(rawUrl);
+  for (let redirect = 0; redirect <= 3; redirect++) {
+    let response = await fetch(url, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(10_000),
+      redirect: "manual",
+    });
+    if (response.status === 405 || response.status === 501) {
+      response = await fetch(url, {
+        method: "GET",
+        headers: { Range: "bytes=0-0" },
+        signal: AbortSignal.timeout(10_000),
+        redirect: "manual",
+      });
+    }
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      await response.body?.cancel();
+      if (!location || redirect === 3) throw new Error("A imagem possui redirecionamento inválido.");
+      url = await assertSafePublicUrl(new URL(location, url).toString());
+      continue;
+    }
+    const type = response.headers.get("content-type") || "";
+    await response.body?.cancel();
+    if (!response.ok) throw new Error("A imagem não está publicamente acessível.");
+    if (type && !type.startsWith("image/")) throw new Error("A URL informada não é uma imagem pública.");
+    return;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -160,6 +180,7 @@ Deno.serve(async (req) => {
     const user = await authenticatedUser(req);
     if (!user) return json({ success: false, error: "Sua sessão expirou. Entre novamente." }, 401);
     const body = await req.json().catch(() => ({}));
+    const tenantId = campaignTenantId(user.id, body?.user_id);
     const action = String(body?.action || "bootstrap");
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -168,15 +189,15 @@ Deno.serve(async (req) => {
     );
 
     if (action === "bootstrap") {
-      const listIds = await tenantListIds(admin, user.id);
+      const listIds = await tenantListIds(admin, tenantId);
       const [{ data: lists, error: listsError }, templates, { data: members, error: membersError }] =
         await Promise.all([
           admin.from("pj_listas_categoria")
             .select("id, nome")
-            .eq("user_id", user.id)
+            .eq("user_id", tenantId)
             .eq("ativa", true)
             .order("nome"),
-          approvedTemplates(admin, user.id, Boolean(body?.has_image)),
+          approvedTemplates(admin, tenantId, Boolean(body?.has_image)),
           listIds.length
             ? admin.from("pj_lista_membros")
               .select("lista_id, telefone, opt_in_status")
@@ -202,7 +223,7 @@ Deno.serve(async (req) => {
     if (action === "search_contacts") {
       const query = String(body?.query || "").replace(/[%(),]/g, "").trim();
       if (query.length < 2) return json({ success: true, contacts: [] });
-      const ids = await tenantListIds(admin, user.id);
+      const ids = await tenantListIds(admin, tenantId);
       if (!ids.length) return json({ success: true, contacts: [] });
       const { data, error } = await admin
         .from("pj_lista_membros")
@@ -215,7 +236,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "preview") {
-      const summary = await resolveAudience(admin, user.id, body.destination as Destination);
+      const summary = await resolveAudience(admin, tenantId, body.destination as Destination);
       return json({ success: true, summary });
     }
 
@@ -228,14 +249,14 @@ Deno.serve(async (req) => {
         throw new Error("Escolha um destino válido.");
       }
       if (imageUrl) await validatePublicImage(imageUrl);
-      const summary = await resolveAudience(admin, user.id, destination);
+      const summary = await resolveAudience(admin, tenantId, destination);
       if (!summary.recipients.length) throw new Error("Nenhum contato com autorização foi encontrado.");
       const templateId = String(body?.template_id || "").trim() || null;
       if (summary.need_template > 0 && !templateId) {
         throw new Error(`${summary.need_template} contato(s) estão fora da janela de 24 horas e exigem um modelo MARKETING aprovado.`);
       }
       if (templateId) {
-        const templates = await approvedTemplates(admin, user.id, Boolean(imageUrl));
+        const templates = await approvedTemplates(admin, tenantId, Boolean(imageUrl));
         if (!templates.some((template: any) => template.id === templateId)) {
           throw new Error("O modelo escolhido não está aprovado ou não aceita a imagem deste post.");
         }
@@ -245,7 +266,7 @@ Deno.serve(async (req) => {
       const { data: campaign, error: campaignError } = await admin
         .from("whatsapp_marketing_campaigns")
         .insert({
-          user_id: user.id,
+          user_id: tenantId,
           name: String(body?.name || "IA Marketing").slice(0, 120),
           destination_type: destination.type,
           list_id: destination.type === "list" ? destination.list_id : null,
@@ -257,6 +278,7 @@ Deno.serve(async (req) => {
           status: "scheduled",
           total_recipients: summary.recipients.length,
           total_skipped: summary.ignored_without_opt_in,
+          total_ignored_without_opt_in: summary.ignored_without_opt_in,
         })
         .select("id, status, scheduled_at")
         .single();
@@ -265,7 +287,7 @@ Deno.serve(async (req) => {
         .from("whatsapp_marketing_campaign_recipients")
         .insert(summary.recipients.map((recipient) => ({
           campaign_id: campaign.id,
-          user_id: user.id,
+          user_id: tenantId,
           phone: recipient.phone,
           contact_name: recipient.name,
           send_mode: recipient.send_mode,
@@ -295,14 +317,14 @@ Deno.serve(async (req) => {
         .from("whatsapp_marketing_campaigns")
         .select("*")
         .eq("id", campaignId)
-        .eq("user_id", user.id)
+        .eq("user_id", tenantId)
         .maybeSingle();
       if (!campaign) return json({ success: false, error: "Campanha não encontrada." }, 404);
       const { data: recipients } = await admin
         .from("whatsapp_marketing_campaign_recipients")
         .select("phone, contact_name, send_mode, status, failure_reason, message_id, updated_at")
         .eq("campaign_id", campaignId)
-        .eq("user_id", user.id)
+        .eq("user_id", tenantId)
         .order("created_at");
       return json({ success: true, campaign, recipients: recipients ?? [] });
     }
@@ -313,7 +335,7 @@ Deno.serve(async (req) => {
         .from("whatsapp_marketing_campaigns")
         .select("id, status")
         .eq("id", campaignId)
-        .eq("user_id", user.id)
+        .eq("user_id", tenantId)
         .maybeSingle();
       if (!campaign) return json({ success: false, error: "Campanha não encontrada." }, 404);
       if (["completed", "cancelled"].includes(campaign.status)) {

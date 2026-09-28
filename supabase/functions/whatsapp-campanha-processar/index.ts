@@ -78,17 +78,21 @@ async function refreshCampaignCounts(admin: any, campaignId: string): Promise<vo
   const queued = (counts.get("queued") ?? 0) + (counts.get("sending") ?? 0);
   const { data: campaign } = await admin
     .from("whatsapp_marketing_campaigns")
-    .select("status")
+    .select("status, total_ignored_without_opt_in")
     .eq("id", campaignId)
     .maybeSingle();
   const terminal = queued === 0 && campaign?.status !== "paused" && campaign?.status !== "cancelled";
   await admin.from("whatsapp_marketing_campaigns")
     .update({
-      total_sent: counts.get("sent") ?? 0,
+      total_sent: (counts.get("sent") ?? 0)
+        + (counts.get("delivered") ?? 0)
+        + (counts.get("read") ?? 0),
       total_delivered: counts.get("delivered") ?? 0,
       total_read: counts.get("read") ?? 0,
       total_failed: counts.get("failed") ?? 0,
-      total_skipped: (counts.get("skipped") ?? 0) + (counts.get("cancelled") ?? 0),
+      total_skipped: Number(campaign?.total_ignored_without_opt_in || 0)
+        + (counts.get("skipped") ?? 0)
+        + (counts.get("cancelled") ?? 0),
       ...(terminal ? { status: "completed", completed_at: new Date().toISOString() } : {}),
       updated_at: new Date().toISOString(),
     })
