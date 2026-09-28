@@ -55,7 +55,7 @@ export function extractExplicitWhatsAppBrandSiteUrl(text: string): string | null
   if (!url) return null;
   const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const explicitBrandContext =
-    /\b(?:cores?|paleta|identidade(?: visual)?)\s+(?:do|da|de)\s+(?:meu|minha|nosso|nossa|site|marca|empresa)\b/.test(normalized)
+    /\b(?:cores?|paleta|identidade(?: visual)?)\s+(?:do|da|de|desse|dessa|deste|desta)\s+(?:meu|minha|nosso|nossa|site|marca|empresa)\b/.test(normalized)
     || /\bsite\s+(?:do|da|de)\s+(?:minha|nossa|marca|empresa)\b/.test(normalized)
     || /\b(?:marca|empresa)\s+(?:do|da|de)\s+site\b/.test(normalized);
   return explicitBrandContext ? url : null;

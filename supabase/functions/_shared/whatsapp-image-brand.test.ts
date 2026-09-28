@@ -75,6 +75,12 @@ Deno.test("somente link explicitamente usado como identidade pula a escolha", ()
     ) === null,
     "product URL must still show the three brand buttons",
   );
+  assert(
+    extractExplicitWhatsAppBrandSiteUrl(
+      "use a identidade visual deste site https://marca.example",
+    ) === "https://marca.example",
+    "natural explicit site-identity wording should be accepted",
+  );
   assert(extractWhatsAppBrandSiteUrl("gere sem marca") === null, "request without URL stays unset");
 });
 
