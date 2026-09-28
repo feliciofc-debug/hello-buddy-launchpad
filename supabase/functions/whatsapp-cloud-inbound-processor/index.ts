@@ -1497,7 +1497,7 @@ async function temporaryBrandLogoDataUrl(
   if (error || !data) return null;
   const bytes = new Uint8Array(await data.arrayBuffer());
   if (!bytes.length || bytes.length > 5 * 1024 * 1024) return null;
-  return `data:${mime};base64,${base64Encode(bytes)}`;
+  return `data:${mime};base64,${base64Encode(bytes.buffer)}`;
 }
 
 async function completePendingBrandGeneration(
