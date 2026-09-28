@@ -5871,6 +5871,7 @@ async function toolAgendarPostPendente(
       updated_at: new Date().toISOString(),
     })
     .in("id", rowIds)
+    .eq("user_id", ctx.userId)
     .eq("status", "aguardando_confirmacao")
     .select("id");
   if (error || (updatedRows?.length ?? 0) !== rowIds.length) {
@@ -5895,6 +5896,7 @@ async function toolAgendarPostPendente(
           updated_at: new Date().toISOString(),
         })
         .in("id", tiktokRows)
+        .eq("user_id", ctx.userId)
         .eq("status", "aguardando_confirmacao");
     }
   }
@@ -9589,7 +9591,8 @@ async function prepararPreviewCarrosselExistente(
     PENDING_POSTS.delete(token);
     await sb.from("social_posts_queue")
       .update({ status: "cancelado", error_message: "estado_carrossel_nao_persistido", updated_at: new Date().toISOString() })
-      .in("id", queueRows.map((row) => row.id));
+      .in("id", queueRows.map((row) => row.id))
+      .eq("user_id", ctx.userId);
     return JSON.stringify({ erro: "estado_carrossel_nao_persistido", mensagem: "Não consegui guardar o snapshot exato do carrossel. Não publiquei nada." });
   }
   current.pending_carousel = next;
