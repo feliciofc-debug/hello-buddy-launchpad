@@ -14,13 +14,6 @@ export type EligibleAudience = {
   duplicates: number;
 };
 
-export function campaignTenantId(
-  authenticatedUserId: string,
-  _untrustedRequestedUserId?: unknown,
-): string {
-  return authenticatedUserId;
-}
-
 export function normalizeCampaignPhone(raw: string): string | null {
   const digits = String(raw || "").replace(/\D/g, "");
   if (digits.length < 10 || digits.length > 15) return null;

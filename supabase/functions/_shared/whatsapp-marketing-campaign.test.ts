@@ -1,19 +1,11 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
-  campaignTenantId,
   filterAuthorizedAudience,
   isCampaignDue,
   isInsideWhatsAppWindow,
   runConservativeCampaignBatch,
   templateSupportsImage,
 } from "./whatsapp-marketing-campaign.ts";
-
-Deno.test("tenant da campanha sempre vem do usuário autenticado", () => {
-  assertEquals(
-    campaignTenantId("tenant-do-jwt", "tenant-enviado-pelo-frontend"),
-    "tenant-do-jwt",
-  );
-});
 
 Deno.test("janela de 24h distingue mensagens dentro, no limite e futuras", () => {
   const now = Date.parse("2026-09-28T12:00:00Z");
