@@ -18,7 +18,6 @@ export type PendingBrandStage =
   | "awaiting_choice"
   | "awaiting_site_choice"
   | "awaiting_site_url"
-  | "awaiting_logo_confirmation"
   | "awaiting_logo_upload"
   | "awaiting_uploaded_logo_confirmation";
 
@@ -31,8 +30,6 @@ export type PendingBrandReply =
   | { action: "use_previous_site" }
   | { action: "use_other_site" }
   | { action: "site_url"; url: string }
-  | { action: "save_logo" }
-  | { action: "skip_logo" }
   | { action: "save_uploaded_logo" }
   | { action: "use_uploaded_logo_once" };
 
@@ -51,6 +48,79 @@ export function detectWhatsAppBrandDirective(text: string): "use" | "none" | nul
 
 export function extractWhatsAppBrandSiteUrl(text: string): string | null {
   return text.match(/https?:\/\/[^\s<>"']+/i)?.[0] ?? null;
+}
+
+export function extractExplicitWhatsAppBrandSiteUrl(text: string): string | null {
+  const url = extractWhatsAppBrandSiteUrl(text);
+  if (!url) return null;
+  const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const explicitBrandContext =
+    /\b(?:cores?|paleta|identidade(?: visual)?)\s+(?:do|da|de)\s+(?:meu|minha|nosso|nossa|site|marca|empresa)\b/.test(normalized)
+    || /\bsite\s+(?:do|da|de)\s+(?:minha|nossa|marca|empresa)\b/.test(normalized)
+    || /\b(?:marca|empresa)\s+(?:do|da|de)\s+site\b/.test(normalized);
+  return explicitBrandContext ? url : null;
+}
+
+export function whatsAppImageBrandResultMessage(
+  result: Record<string, unknown>,
+  explicitlyUnbranded = false,
+): string {
+  if (result.brand_source === "site") {
+    if (result.logo_aplicada) {
+      return result.brand_application_mode === "in_scene_verified"
+          || result.brand_application_mode === "in_scene_retry_verified"
+        ? "Apliquei a logo encontrada no site na cena."
+        : "Apliquei a logo encontrada no site sobre a imagem.";
+    }
+    if (result.site_logo_requested) {
+      return "Não consegui aplicar a logo do site desta vez; usei somente as cores encontradas.";
+    }
+    return "Usei somente as cores encontradas no site.";
+  }
+  if (result.logo_aplicada) {
+    return result.brand_application_mode === "in_scene_verified"
+        || result.brand_application_mode === "in_scene_retry_verified"
+      ? "Apliquei sua logo na cena."
+      : "Apliquei sua logo sobre a imagem.";
+  }
+  if (result.logo_aplicacao_falhou) return "Não consegui aplicar a logo desta vez.";
+  if (explicitlyUnbranded) return "Gerei sem logo, como você pediu.";
+  if (result.logo_solicitada_sem_cadastro) return "Gerei sem logo porque ainda não há uma cadastrada.";
+  return "Gerei sem logo.";
+}
+
+export function whatsAppSiteBrandGenerationOptions(identity: {
+  colors: string[];
+  brand_name?: string | null;
+  logo_data_url?: string | null;
+  logo_confidence: "high" | "none";
+}): {
+  incluirLogo: boolean;
+  logoDataUrl: string | null;
+  brandColors: string[];
+  brandName: string | null;
+  brandSource: "site";
+} {
+  const trustedLogo = identity.logo_confidence === "high"
+    ? identity.logo_data_url || null
+    : null;
+  return {
+    incluirLogo: Boolean(trustedLogo),
+    logoDataUrl: trustedLogo,
+    brandColors: identity.colors,
+    brandName: identity.brand_name || null,
+    brandSource: "site",
+  };
+}
+
+export function whatsAppUploadedLogoConfirmationButtons(): Array<{
+  id: string;
+  title: string;
+}> {
+  return [
+    { id: "brand_uploaded_logo_save", title: "Salvar minha logo" },
+    { id: "brand_uploaded_logo_once", title: "Usar só nesta imagem" },
+  ];
 }
 
 export function classifyPendingBrandReply(input: {
@@ -105,10 +175,6 @@ export function classifyPendingBrandReply(input: {
   if (input.stage === "awaiting_site_url") {
     const url = extractWhatsAppBrandSiteUrl(input.text);
     return url ? { action: "site_url", url } : { action: "continue_conversation" };
-  }
-  if (input.stage === "awaiting_logo_confirmation") {
-    if (interactiveId === "brand_logo_save") return { action: "save_logo" };
-    if (interactiveId === "brand_logo_skip") return { action: "skip_logo" };
   }
   if (input.stage === "awaiting_uploaded_logo_confirmation") {
     if (interactiveId === "brand_uploaded_logo_save") return { action: "save_uploaded_logo" };

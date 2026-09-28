@@ -48,7 +48,6 @@ import {
   buildBrandGenerationGuidance,
 } from "../_shared/brand-image-engine.ts";
 import {
-  dataUrlToImageBytes,
   loadTenantBrandAssets,
 } from "../_shared/brand-assets.ts";
 import { fetchBrandSiteIdentity } from "../_shared/brand-site-identity.ts";
@@ -110,8 +109,10 @@ import {
   classifyPendingBrandReply,
   decideWhatsAppImageBrand,
   detectWhatsAppBrandDirective,
-  extractWhatsAppBrandSiteUrl,
-  previewableWhatsAppLogoUrl,
+  extractExplicitWhatsAppBrandSiteUrl,
+  whatsAppImageBrandResultMessage,
+  whatsAppSiteBrandGenerationOptions,
+  whatsAppUploadedLogoConfirmationButtons,
   type WhatsAppBrandPreference,
 } from "../_shared/whatsapp-image-brand.ts";
 import {
@@ -1211,6 +1212,8 @@ async function toolGerarImagem(
     references?: string[];
     brandColors?: string[];
     logoDataUrl?: string | null;
+    brandName?: string | null;
+    brandSource?: "site";
   },
 ): Promise<string> {
   if (!isOwner({ userId: ctx.userId, fromNumber: ctx.fromNumber || "" }) && !ctx.demonstracao) {
@@ -1229,7 +1232,7 @@ async function toolGerarImagem(
       const assets = await loadTenantBrandAssets(sb, ctx.userId);
       logoDataUrl = ctx.logoDataUrl ?? assets.logoDataUrl;
       if (!brandColors.length) brandColors = assets.colors;
-      brandName = assets.brandName;
+      brandName = ctx.brandName ?? assets.brandName;
       console.log("[gerar_imagem] marca padrão, logo encontrada:", !!logoDataUrl);
     }
     console.log(
@@ -1291,10 +1294,18 @@ async function toolGerarImagem(
       brand_application_mode: generated.brandApplicationMode,
       logo_solicitada_sem_cadastro: shouldUseLogo && !logoDataUrl,
       logo_aplicacao_falhou: generated.logoApplicationFailed,
+      brand_source: ctx.brandSource ?? null,
+      site_logo_requested: ctx.brandSource === "site" && Boolean(logoDataUrl),
       demonstracao: ctx.demonstracao === true,
       exemplo_legenda_solicitado: ctx.demonstracao === true,
       instrucao: ctx.demonstracao
         ? "DEMONSTRAÇÃO: envie a imagem somente nesta conversa e escreva junto um exemplo curto de legenda pronta baseado no pedido. Deixe claro que nada foi publicado. Não ofereça publicar esta mídia."
+        : ctx.brandSource === "site"
+        ? (logoAplicada
+          ? "A imagem usou a logo encontrada no site somente nesta geração. Informe honestamente que ela foi aplicada na cena ou pelo fallback."
+          : logoDataUrl
+          ? "A logo encontrada no site não pôde ser aplicada; informe que foram usadas somente as cores."
+          : "A imagem foi criada somente com as cores encontradas no site.")
         : ctx.incluirLogo === false
         ? "A imagem foi criada sem logo, como o usuário pediu. Informe isso com clareza."
         : shouldUseLogo && !logoDataUrl
@@ -1341,7 +1352,7 @@ async function prepareWhatsAppImageGeneration(input: {
   }
   const assets = await loadTenantBrandAssets(sb, input.ctx.userId);
   const directive = detectWhatsAppBrandDirective(input.prompt);
-  const siteUrl = extractWhatsAppBrandSiteUrl(input.prompt);
+  const siteUrl = extractExplicitWhatsAppBrandSiteUrl(input.prompt);
   const preference = input.ctx.agentState?.brand_image_preference ?? null;
   const decision = decideWhatsAppImageBrand({
     demonstration: false,
@@ -1368,49 +1379,19 @@ async function prepareWhatsAppImageGeneration(input: {
         colors: identity.colors,
         updatedAt: new Date().toISOString(),
       };
-      if (identity.logo_confidence === "high" && identity.logo_data_url) {
-        const pending: PendingBrandGeneration = {
-          ...basePending,
-          stage: "awaiting_logo_confirmation",
-          site_url: identity.url,
-          colors: identity.colors,
-          logo_url: identity.logo_url,
-        };
-        await saveAgentState(sb, conversation, {
-          brand_image_preference: nextPreference,
-          pending_brand_generation: pending,
-        }, input.ctx.agentState ?? {});
-        if (input.ctx.agentState) {
-          input.ctx.agentState.brand_image_preference = nextPreference;
-          input.ctx.agentState.pending_brand_generation = pending;
-        }
-        return {
-          deferred: true,
-          text: `Encontrei estas cores: ${identity.colors.join(" · ") || "nenhuma cor confiável"}. Também encontrei uma possível logo. Só vou salvá-la com sua confirmação.`,
-          imageUrl: previewableWhatsAppLogoUrl(identity.logo_url, identity.logo_data_url) ?? undefined,
-          interactiveButtons: {
-            header: "Logo encontrada",
-            body: "Quer salvar esta imagem como sua logo cadastrada?",
-            buttons: [
-              { id: "brand_logo_save", title: "Salvar como minha logo" },
-              { id: "brand_logo_skip", title: "Agora não" },
-            ],
-          },
-        };
-      }
       await saveAgentState(sb, conversation, {
         brand_image_preference: nextPreference,
         pending_brand_generation: null,
       }, input.ctx.agentState ?? {});
       if (input.ctx.agentState) input.ctx.agentState.brand_image_preference = nextPreference;
+      const siteBrand = whatsAppSiteBrandGenerationOptions(identity);
       return {
         deferred: false,
         raw: await toolGerarImagem(input.prompt, {
           userId: input.ctx.userId,
           fromNumber: input.ctx.fromNumber,
-          incluirLogo: false,
           references: input.references,
-          brandColors: identity.colors,
+          ...siteBrand,
         }),
       };
     } catch (error) {
@@ -1466,29 +1447,6 @@ async function prepareWhatsAppImageGeneration(input: {
   };
 }
 
-async function saveConfirmedSiteLogo(userId: string, dataUrl: string): Promise<boolean> {
-  const decoded = dataUrlToImageBytes(dataUrl);
-  if (!decoded || decoded.bytes.length > 5 * 1024 * 1024) return false;
-  const processed = await trimLogoImage(decoded.bytes, decoded.mime);
-  const extension = processed.mime === "image/jpeg"
-    ? "jpg"
-    : processed.mime === "image/svg+xml"
-    ? "svg"
-    : "png";
-  const storagePath = `${userId}/whatsapp-site/${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${extension}`;
-  const { error } = await sb.storage.from("tenant-logos").upload(
-    storagePath,
-    processed.bytes,
-    { contentType: processed.mime, upsert: false },
-  );
-  if (error) throw error;
-  return await setTenantLogo(sb, userId, {
-    storagePath,
-    fileName: `logo-site.${extension}`,
-    mimeType: processed.mime,
-  });
-}
-
 async function temporaryBrandLogoDataUrl(
   path: string,
   mime = "image/png",
@@ -1541,16 +1499,7 @@ async function completePendingBrandGeneration(
     formato: social.formato ?? "feed",
     incluir_cta_whatsapp: detectWantsWhatsappCta(chainedRequest),
   }, toolCtx);
-  const brandResult = generated?.logo_aplicada
-    ? generated?.brand_application_mode === "in_scene_verified"
-        || generated?.brand_application_mode === "in_scene_retry_verified"
-      ? "Apliquei sua logo na cena."
-      : "Apliquei sua logo sobre a imagem."
-    : generated?.logo_aplicacao_falhou
-    ? "Não consegui aplicar a logo desta vez."
-    : explicitlyUnbranded
-    ? "Gerei sem logo, como você pediu."
-    : "Gerei sem logo.";
+  const brandResult = whatsAppImageBrandResultMessage(generated, explicitlyUnbranded);
   return {
     text: `${brandResult}\n\n${formatSocialPostToolResult(postResult)}`,
     interactiveButtons: interactiveButtonsFromSocialResult(postResult),
@@ -1568,18 +1517,7 @@ function completedWhatsAppImageResponse(raw: string, explicitlyUnbranded = false
       text: `Não consegui gerar a imagem: ${String(result?.detalhe || result?.erro || "resposta inválida")}`,
     };
   }
-  const brandMessage = result.logo_aplicada
-    ? result.brand_application_mode === "in_scene_verified"
-        || result.brand_application_mode === "in_scene_retry_verified"
-      ? "Apliquei sua logo na cena."
-      : "Apliquei sua logo sobre a imagem."
-    : result.logo_aplicacao_falhou
-    ? "Não consegui aplicar a logo desta vez."
-    : explicitlyUnbranded
-    ? "Gerei sem logo, como você pediu."
-    : result.logo_solicitada_sem_cadastro
-    ? "Gerei sem logo porque ainda não há uma cadastrada."
-    : "Gerei sem logo.";
+  const brandMessage = whatsAppImageBrandResultMessage(result, explicitlyUnbranded);
   const code = result.midia_id ? `<<SPLIT>>${linhaCodigoMidia(result.midia_id, "foto")}` : "";
   return {
     text: `Pronto — criei a imagem e salvei na biblioteca. ${brandMessage}${code}`,
@@ -2376,7 +2314,6 @@ type PendingBrandGeneration = {
     | "awaiting_choice"
     | "awaiting_site_choice"
     | "awaiting_site_url"
-    | "awaiting_logo_confirmation"
     | "awaiting_logo_upload"
     | "awaiting_uploaded_logo_confirmation";
   prompt: string;
@@ -2386,7 +2323,6 @@ type PendingBrandGeneration = {
   reference_urls?: string[];
   site_url?: string;
   colors?: string[];
-  logo_url?: string | null;
   logo_candidate_path?: string;
   logo_candidate_mime?: string;
 };
@@ -10551,102 +10487,28 @@ async function callGemini(
             colors: identity.colors,
             updatedAt: new Date().toISOString(),
           };
-          const colorsText = identity.colors.length ? identity.colors.join(" · ") : "nenhuma cor confiável";
-          if (identity.logo_confidence === "high" && identity.logo_data_url) {
-            const next: PendingBrandGeneration = {
-              ...pendingBrandGeneration,
-              stage: "awaiting_logo_confirmation",
-              site_url: identity.url,
-              colors: identity.colors,
-              logo_url: identity.logo_url,
-            };
-            if (conversation) {
-              await saveAgentState(sb, conversation, {
-                brand_image_preference: preference,
-                pending_brand_generation: next,
-              }, toolCtx.agentState ?? {});
-            }
-            return {
-              text: `Encontrei estas cores: ${colorsText}. Também encontrei uma possível logo. Só vou salvá-la com sua confirmação.`,
-              imageUrl: previewableWhatsAppLogoUrl(identity.logo_url, identity.logo_data_url) ?? undefined,
-              interactiveButtons: {
-                header: "Logo encontrada",
-                body: "Quer salvar esta imagem como sua logo cadastrada?",
-                buttons: [
-                  { id: "brand_logo_save", title: "Salvar como minha logo" },
-                  { id: "brand_logo_skip", title: "Agora não" },
-                ],
-              },
-            };
-          }
           if (conversation) {
             await saveAgentState(sb, conversation, {
               brand_image_preference: preference,
               pending_brand_generation: null,
             }, toolCtx.agentState ?? {});
           }
+          const siteBrand = whatsAppSiteBrandGenerationOptions(identity);
           const raw = await toolGerarImagem(pendingBrandGeneration.prompt, {
             userId: toolCtx.userId,
             fromNumber: toolCtx.fromNumber,
-            incluirLogo: false,
-            brandColors: identity.colors,
             references: pendingBrandGeneration.reference_urls,
+            ...siteBrand,
           });
-          const completed = await completePendingBrandGeneration(
+          return await completePendingBrandGeneration(
             raw,
             pendingBrandGeneration,
             toolCtx,
           );
-          completed.text = `Cores encontradas: ${colorsText}.\n\n${completed.text}`;
-          return completed;
         } catch (error) {
           console.error("[whatsapp-brand-site] leitura falhou:", error instanceof Error ? error.message : String(error));
           return { text: "Não consegui ler a identidade desse site agora. Confira o link ou escolha gerar sem marca." };
         }
-      } else if (brandReply.action === "save_logo" || brandReply.action === "skip_logo") {
-        let saved = false;
-        if (brandReply.action === "save_logo" && pendingBrandGeneration.site_url) {
-          try {
-            const identity = await fetchBrandSiteIdentity(pendingBrandGeneration.site_url);
-            saved = Boolean(
-              identity.logo_confidence === "high"
-              && identity.logo_data_url
-              && await saveConfirmedSiteLogo(toolCtx.userId, identity.logo_data_url),
-            );
-          } catch (error) {
-            console.error("[whatsapp-brand-site] logo não salva:", error instanceof Error ? error.message : String(error));
-          }
-        }
-        const preference: WhatsAppBrandPreference = {
-          mode: "site",
-          siteUrl: pendingBrandGeneration.site_url,
-          colors: pendingBrandGeneration.colors,
-          updatedAt: new Date().toISOString(),
-        };
-        if (conversation) {
-          await saveAgentState(sb, conversation, {
-            brand_image_preference: preference,
-            pending_brand_generation: null,
-          }, toolCtx.agentState ?? {});
-        }
-        const raw = await toolGerarImagem(pendingBrandGeneration.prompt, {
-          userId: toolCtx.userId,
-          fromNumber: toolCtx.fromNumber,
-          incluirLogo: saved,
-          brandColors: pendingBrandGeneration.colors,
-          references: pendingBrandGeneration.reference_urls,
-        });
-        const completed = await completePendingBrandGeneration(
-          raw,
-          pendingBrandGeneration,
-          toolCtx,
-        );
-        completed.text = saved
-          ? `Salvei a logo com sua confirmação.\n\n${completed.text}`
-          : brandReply.action === "save_logo"
-          ? `Não consegui salvar essa logo com segurança; não alterei seu cadastro.\n\n${completed.text}`
-          : `Não salvei a logo. Usei apenas as cores encontradas.\n\n${completed.text}`;
-        return completed;
       } else if (
         brandReply.action === "save_uploaded_logo"
         || brandReply.action === "use_uploaded_logo_once"
@@ -10862,16 +10724,10 @@ async function callGemini(
         return { text: `Não consegui gerar a imagem: ${String(generated?.detalhe || generated?.erro || "resposta inválida")}` };
       }
       if (generated?.midia_id) await rememberLastMediaInteraction(toolCtx, generated.midia_id);
-      const brandResult = generated?.logo_aplicada
-        ? generated?.brand_application_mode === "in_scene_verified"
-            || generated?.brand_application_mode === "in_scene_retry_verified"
-          ? "Apliquei sua logo na cena."
-          : "Apliquei sua logo sobre a imagem."
-        : generated?.logo_aplicacao_falhou
-        ? "Não consegui aplicar a logo desta vez."
-        : detectWhatsAppBrandDirective(userContent) === "none"
-        ? "Gerei sem logo, como você pediu."
-        : "Gerei sem logo.";
+      const brandResult = whatsAppImageBrandResultMessage(
+        generated,
+        detectWhatsAppBrandDirective(userContent) === "none",
+      );
 
       if (ownerMediaIntent.action === "generate_and_post") {
         if (!generated?.midia_id) {
@@ -12936,10 +12792,7 @@ async function processOne(queueId: string) {
             buttons = {
               header: "Confirmar logo",
               body: "Só salvo como sua logo com sua confirmação.",
-              buttons: [
-                { id: "brand_uploaded_logo_save", title: "Salvar como minha logo" },
-                { id: "brand_uploaded_logo_once", title: "Usar só nesta imagem" },
-              ],
+              buttons: whatsAppUploadedLogoConfirmationButtons(),
             };
           }
           const { data: outMsg } = await sb

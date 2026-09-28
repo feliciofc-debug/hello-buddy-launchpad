@@ -1,6 +1,9 @@
+import { colorsFromLogoDataUrl } from "./brand-assets.ts";
+
 export type BrandSiteIdentity = {
   url: string;
   colors: string[];
+  brand_name: string | null;
   logo_url: string | null;
   logo_data_url: string | null;
   logo_confidence: "high" | "none";
@@ -11,6 +14,17 @@ const MAX_CSS_BYTES = 300_000;
 const MAX_LOGO_BYTES = 1_000_000;
 const TIMEOUT_MS = 10_000;
 const USER_AGENT = "AMZBrandIdentity/1.0";
+const GENERIC_FRAMEWORK_COLORS = new Set([
+  "#f87171",
+  "#fecaca",
+  "#ef4444",
+  "#dc2626",
+  "#9333ea",
+  "#a855f7",
+  "#7e22ce",
+  "#8b5cf6",
+  "#c4b5fd",
+]);
 
 function normalizeHex(value: string): string | null {
   let raw = value.trim().toLowerCase();
@@ -68,6 +82,31 @@ function absoluteUrl(value: string, base: URL): string | null {
   }
 }
 
+export function prioritizeSiteIdentityColors(
+  cssColors: string[],
+  logoColors: string[],
+): string[] {
+  const normalizedLogo = logoColors.map(normalizeHex).filter((color): color is string =>
+    Boolean(color) && !isNeutral(color!)
+  );
+  const normalizedCss = cssColors.map(normalizeHex).filter((color): color is string =>
+    Boolean(color) && !isNeutral(color!)
+  );
+  const candidates = [
+    ...normalizedLogo,
+    ...normalizedCss.filter((color) =>
+      normalizedLogo.length === 0
+      || !GENERIC_FRAMEWORK_COLORS.has(color)
+      || normalizedLogo.some((logoColor) => colorDistance(logoColor, color) < 18)
+    ),
+  ];
+  return candidates
+    .filter((color, index, list) => list.findIndex((candidate) =>
+      colorDistance(candidate, color) < 28
+    ) === index)
+    .slice(0, 4);
+}
+
 export function extractBrandIdentityFromHtml(
   html: string,
   pageUrl: string,
@@ -76,6 +115,13 @@ export function extractBrandIdentityFromHtml(
   const base = new URL(pageUrl);
   const weights = new Map<string, number>();
   const themeTags = [...html.matchAll(/<meta[^>]+>/gi)].map((match) => match[0]);
+  const siteNameTag = themeTags.find((tag) => {
+    const key = attribute(tag, "property") || attribute(tag, "name");
+    return /^(?:og:site_name|application-name)$/i.test(key);
+  });
+  const brandName = String(
+    (siteNameTag && attribute(siteNameTag, "content")) || "",
+  ).trim().slice(0, 120) || null;
   for (const tag of themeTags) {
     if (attribute(tag, "name").toLowerCase() !== "theme-color") continue;
     const color = normalizeHex(attribute(tag, "content"));
@@ -137,6 +183,7 @@ export function extractBrandIdentityFromHtml(
   return {
     url: base.toString(),
     colors,
+    brand_name: brandName,
     logo_url: logoUrl,
     logo_data_url: inlineSvg,
     logo_confidence: logoUrl || inlineSvg ? "high" : "none",
@@ -313,6 +360,10 @@ export async function fetchBrandSiteIdentity(rawUrl: string): Promise<BrandSiteI
       } catch {
         identity.logo_data_url = null;
       }
+    }
+    if (identity.logo_confidence === "high" && identity.logo_data_url) {
+      const logoColors = await colorsFromLogoDataUrl(identity.logo_data_url).catch(() => []);
+      identity.colors = prioritizeSiteIdentityColors(identity.colors, logoColors);
     }
     return identity;
   } finally {

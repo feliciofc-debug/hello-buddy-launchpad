@@ -2,8 +2,12 @@ import {
   classifyPendingBrandReply,
   decideWhatsAppImageBrand,
   detectWhatsAppBrandDirective,
+  extractExplicitWhatsAppBrandSiteUrl,
   extractWhatsAppBrandSiteUrl,
   previewableWhatsAppLogoUrl,
+  whatsAppImageBrandResultMessage,
+  whatsAppSiteBrandGenerationOptions,
+  whatsAppUploadedLogoConfirmationButtons,
 } from "./whatsapp-image-brand.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -57,13 +61,61 @@ Deno.test("demonstrações permanecem sem marca e sem botões", () => {
   assert(!demo.useLogo && !demo.askChoice && demo.reason === "demo", "demo must stay unbranded");
 });
 
-Deno.test("link no pedido é detectado para pular a escolha", () => {
+Deno.test("somente link explicitamente usado como identidade pula a escolha", () => {
   assert(
-    extractWhatsAppBrandSiteUrl("gere uma imagem usando https://marca.example/identidade") ===
+    extractExplicitWhatsAppBrandSiteUrl(
+      "gere uma imagem usando as cores do meu site https://marca.example/identidade",
+    ) ===
       "https://marca.example/identidade",
-    "http(s) URL should be extracted",
+    "explicit brand site should be extracted",
+  );
+  assert(
+    extractExplicitWhatsAppBrandSiteUrl(
+      "faça um anúncio deste produto https://amazon.com.br/dp/ABC",
+    ) === null,
+    "product URL must still show the three brand buttons",
   );
   assert(extractWhatsAppBrandSiteUrl("gere sem marca") === null, "request without URL stays unset");
+});
+
+Deno.test("logo confiável do site é temporária e a resposta é honesta", () => {
+  const options = whatsAppSiteBrandGenerationOptions({
+    colors: ["#123456"],
+    brand_name: "Marca Exemplo",
+    logo_data_url: "data:image/png;base64,AAAA",
+    logo_confidence: "high",
+  });
+  assert(options.incluirLogo, "trusted site logo must be sent to the shared generator");
+  assert(options.logoDataUrl?.startsWith("data:image/png"), "site logo must remain in-memory");
+  assert(options.brandName === "Marca Exemplo", "site brand name should be forwarded");
+  assert(options.brandSource === "site", "result must preserve temporary site provenance");
+  assert(
+    whatsAppImageBrandResultMessage({
+      brand_source: "site",
+      site_logo_requested: true,
+      logo_aplicada: true,
+      brand_application_mode: "in_scene_verified",
+    }) === "Apliquei a logo encontrada no site na cena.",
+    "verified in-scene result should be reported",
+  );
+});
+
+Deno.test("site sem logo confiável usa somente cores", () => {
+  const options = whatsAppSiteBrandGenerationOptions({
+    colors: ["#123456", "#abcdef"],
+    brand_name: "Marca Exemplo",
+    logo_data_url: "data:image/png;base64,AAAA",
+    logo_confidence: "none",
+  });
+  assert(!options.incluirLogo && options.logoDataUrl === null, "untrusted logo must be discarded");
+  assert(
+    whatsAppImageBrandResultMessage({
+      brand_source: "site",
+      site_logo_requested: false,
+      logo_aplicada: false,
+    }) === "Usei somente as cores encontradas no site.",
+    "colors-only result should be reported",
+  );
 });
 
 Deno.test("unrelated reminder leaves brand choice and continues normal conversation", () => {
@@ -113,7 +165,7 @@ Deno.test("os três botões de marca resolvem a escolha", () => {
   assert(noBrand.action === "choose_none", "short no-logo choice must work");
 });
 
-Deno.test("site anterior e upload de logo têm confirmações explícitas", () => {
+Deno.test("site anterior e upload manual mantêm escolhas explícitas", () => {
   const previous = classifyPendingBrandReply({
     stage: "awaiting_site_choice",
     text: "Usar example.com",
@@ -142,6 +194,9 @@ Deno.test("site anterior e upload de logo têm confirmações explícitas", () =
   assert(other.action === "use_other_site", "other site button must work");
   assert(save.action === "save_uploaded_logo", "upload is only saved after confirmation");
   assert(once.action === "use_uploaded_logo_once", "temporary logo choice must not save");
+  const uploadButtons = whatsAppUploadedLogoConfirmationButtons();
+  assert(uploadButtons[0].title === "Salvar minha logo", "save button must not be truncated");
+  assert(uploadButtons.every((button) => button.title.length <= 20), "Meta button titles must fit 20 chars");
 });
 
 Deno.test("site URL stage only intercepts a URL", () => {

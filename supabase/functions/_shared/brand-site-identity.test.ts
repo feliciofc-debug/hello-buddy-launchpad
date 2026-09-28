@@ -3,6 +3,7 @@ import {
   assertSafePublicUrl,
   extractBrandIdentityFromHtml,
   isPrivateOrLocalAddress,
+  prioritizeSiteIdentityColors,
 } from "./brand-site-identity.ts";
 
 Deno.test("extrai theme-color e variáveis CSS e ignora cinzas", () => {
@@ -33,6 +34,29 @@ Deno.test("aceita somente logo de alta confiança no header e nunca og:image", (
   );
   assertEquals(withoutHeaderLogo.logo_url, null);
   assertEquals(withoutHeaderLogo.logo_confidence, "none");
+});
+
+Deno.test("prioriza cores da logo e descarta paleta genérica ausente nela", () => {
+  assertEquals(
+    prioritizeSiteIdentityColors(
+      ["#f87171", "#fecaca", "#9333ea", "#0ea5e9", "#f59e0b"],
+      ["#164e63", "#f59e0b"],
+    ),
+    ["#164e63", "#f59e0b", "#0ea5e9"],
+  );
+  assertEquals(
+    prioritizeSiteIdentityColors(["#9333ea", "#0ea5e9"], ["#9333ea"]),
+    ["#9333ea", "#0ea5e9"],
+  );
+});
+
+Deno.test("extrai nome da marca declarado pelo site", () => {
+  const identity = extractBrandIdentityFromHtml(
+    `<meta property="og:site_name" content="AMZ Ofertas">
+     <title>Produto em oferta | AMZ Ofertas</title>`,
+    "https://amz.example/produto",
+  );
+  assertEquals(identity.brand_name, "AMZ Ofertas");
 });
 
 Deno.test("bloqueia localhost e faixas privadas contra SSRF", async () => {
