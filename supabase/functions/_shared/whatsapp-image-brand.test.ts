@@ -82,6 +82,12 @@ Deno.test("somente link explicitamente usado como identidade pula a escolha", ()
     ) === "https://marca.example/",
     "natural explicit site-identity wording should be accepted",
   );
+  assert(
+    extractExplicitWhatsAppBrandSiteUrl(
+      "use as cores do meu site ademicon.com.br",
+    ) === "https://ademicon.com.br/",
+    "explicit brand domain without protocol should be normalized",
+  );
   assert(extractWhatsAppBrandSiteUrl("gere sem marca") === null, "request without URL stays unset");
 });
 
