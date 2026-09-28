@@ -1,16 +1,18 @@
-import { useState, useEffect, useCallback } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Loader2, CalendarIcon, X, ChevronDown, Search } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { format } from "date-fns";
+import { CalendarIcon, CheckCircle2, Loader2, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { format } from "date-fns";
+import { combineSaoPauloDateTimeToIso } from "@/lib/sao-paulo-time";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface EnviarWhatsAppModalProps {
   open: boolean;
@@ -19,384 +21,529 @@ interface EnviarWhatsAppModalProps {
   imagemUrl?: string | null;
 }
 
-type TipoDestino = "lista" | "grupo" | "individual";
+type DestinationType = "list" | "individual";
 
-interface ListaItem {
+type ListItem = {
   id: string;
   nome: string;
-  total_membros: number;
-}
+  total: number;
+  confirmed: number;
+  ignored: number;
+};
 
-interface GrupoItem {
+type ContactItem = {
   id: string;
-  nome: string;
-  participantes_count: number | null;
-  grupo_jid: string;
-}
-
-interface ContatoItem {
-  id: string;
-  nome: string;
+  nome: string | null;
   telefone: string;
+  opt_in_status: string;
+  lista_id: string;
+};
+
+type TemplateItem = {
+  id: string;
+  nome_meta: string;
+  body_text: string | null;
+  variaveis_map: unknown;
+  header: unknown;
+};
+
+type PreviewSummary = {
+  recipients: Array<{ phone: string; name: string | null; send_mode: "session" | "template" }>;
+  inside_window: number;
+  need_template: number;
+  ignored_without_opt_in: number;
+  duplicates: number;
+};
+
+type CampaignReport = {
+  id: string;
+  status: string;
+  scheduled_at: string;
+  total_recipients: number;
+  total_sent: number;
+  total_delivered: number;
+  total_read: number;
+  total_failed: number;
+  total_skipped: number;
+  stop_reason?: string | null;
+};
+
+async function invokeCampaign(body: Record<string, unknown>) {
+  const { data, error } = await supabase.functions.invoke("whatsapp-campanha-enviar", { body });
+  if (error) {
+    let detail = error.message;
+    try {
+      const response = (error as any)?.context as Response | undefined;
+      if (response?.clone) {
+        const parsed = await response.clone().json();
+        detail = parsed?.error || detail;
+      }
+    } catch {
+      // Mantém o erro original da função.
+    }
+    throw new Error(detail);
+  }
+  if (data?.success === false) throw new Error(data.error || "Não consegui concluir a operação.");
+  return data;
 }
 
-export function EnviarWhatsAppModal({ open, onOpenChange, mensagem, imagemUrl }: EnviarWhatsAppModalProps) {
-  const [tipoDestino, setTipoDestino] = useState<TipoDestino | null>(null);
-  const [listas, setListas] = useState<ListaItem[]>([]);
-  const [grupos, setGrupos] = useState<GrupoItem[]>([]);
-  const [contatos, setContatos] = useState<ContatoItem[]>([]);
-  const [selectedId, setSelectedId] = useState<string>("");
-  const [selectedContato, setSelectedContato] = useState<ContatoItem | null>(null);
-  const [buscaContato, setBuscaContato] = useState("");
-  const [loadingDestinos, setLoadingDestinos] = useState(false);
-  const [enviando, setEnviando] = useState(false);
-  const [erro, setErro] = useState("");
-  const [agendamentoAberto, setAgendamentoAberto] = useState(false);
-  const [dataAgendamento, setDataAgendamento] = useState<Date>();
-  const [horaAgendamento, setHoraAgendamento] = useState("09:00");
-  const [userId, setUserId] = useState<string>("");
+function templateVariableCount(template: TemplateItem | null): number {
+  if (!template) return 0;
+  const bodyMatches = [...String(template.body_text || "").matchAll(/\{\{\s*(\d+)\s*\}\}/g)]
+    .map((match) => Number(match[1]));
+  if (bodyMatches.length) return Math.max(...bodyMatches);
+  if (Array.isArray(template.variaveis_map)) return template.variaveis_map.length;
+  if (template.variaveis_map && typeof template.variaveis_map === "object") {
+    return Object.keys(template.variaveis_map as Record<string, unknown>).length;
+  }
+  return 0;
+}
+
+export function EnviarWhatsAppModal({
+  open,
+  onOpenChange,
+  mensagem,
+  imagemUrl,
+}: EnviarWhatsAppModalProps) {
+  const [destinationType, setDestinationType] = useState<DestinationType | null>(null);
+  const [lists, setLists] = useState<ListItem[]>([]);
+  const [contacts, setContacts] = useState<ContactItem[]>([]);
+  const [templates, setTemplates] = useState<TemplateItem[]>([]);
+  const [selectedId, setSelectedId] = useState("");
+  const [selectedContact, setSelectedContact] = useState<ContactItem | null>(null);
+  const [contactQuery, setContactQuery] = useState("");
+  const [selectedTemplate, setSelectedTemplate] = useState("");
+  const [templateVariables, setTemplateVariables] = useState<string[]>([]);
+  const [summary, setSummary] = useState<PreviewSummary | null>(null);
+  const [loadingInitial, setLoadingInitial] = useState(false);
+  const [loadingContacts, setLoadingContacts] = useState(false);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const [scheduleMode, setScheduleMode] = useState<"now" | "later">("now");
+  const [scheduleDate, setScheduleDate] = useState<Date>();
+  const [scheduleTime, setScheduleTime] = useState("09:00");
+  const [campaignId, setCampaignId] = useState<string | null>(null);
+  const [report, setReport] = useState<CampaignReport | null>(null);
+  const [reportRecipients, setReportRecipients] = useState<any[]>([]);
+
+  const activeTemplate = useMemo(
+    () => templates.find((template) => template.id === selectedTemplate) ?? null,
+    [templates, selectedTemplate],
+  );
+  const variableCount = templateVariableCount(activeTemplate);
+
+  const handleError = useCallback((caught: unknown) => {
+    const message = caught instanceof Error ? caught.message : "Não consegui carregar os dados agora.";
+    setError(message);
+    setSessionExpired(/sessão expirou|session|jwt|não autenticado/i.test(message));
+  }, []);
 
   useEffect(() => {
-    if (open) {
-      setTipoDestino(null);
-      setSelectedId("");
-      setSelectedContato(null);
-      setBuscaContato("");
-      setErro("");
-      setAgendamentoAberto(false);
-      setDataAgendamento(undefined);
-      loadUserId();
-    }
-  }, [open]);
-
-  const loadUserId = async () => {
-    const { data } = await supabase.auth.getUser();
-    if (data.user) setUserId(data.user.id);
-  };
-
-  useEffect(() => {
-    if (!userId || !tipoDestino) return;
+    if (!open) return;
+    setDestinationType(null);
     setSelectedId("");
-    setSelectedContato(null);
-    setBuscaContato("");
+    setSelectedContact(null);
+    setContactQuery("");
+    setSelectedTemplate("");
+    setTemplateVariables([]);
+    setSummary(null);
+    setError("");
+    setSessionExpired(false);
+    setScheduleMode("now");
+    setScheduleDate(undefined);
+    setCampaignId(null);
+    setReport(null);
+    setReportRecipients([]);
+    setLoadingInitial(true);
+    invokeCampaign({ action: "bootstrap", has_image: Boolean(imagemUrl) })
+      .then((data) => {
+        setLists(data.lists || []);
+        setTemplates(data.templates || []);
+      })
+      .catch(handleError)
+      .finally(() => setLoadingInitial(false));
+  }, [open, imagemUrl, handleError]);
 
-    if (tipoDestino === "lista") loadListas();
-    else if (tipoDestino === "grupo") loadGrupos();
-  }, [tipoDestino, userId]);
-
-  const loadListas = async () => {
-    setLoadingDestinos(true);
-    const { data } = await supabase
-      .from("pj_listas_categoria")
-      .select("id, nome, total_membros")
-      .eq("user_id", userId)
-      .eq("ativa", true);
-    setListas((data as ListaItem[]) || []);
-    setLoadingDestinos(false);
-  };
-
-  const loadGrupos = async () => {
-    setLoadingDestinos(true);
-    const { data } = await supabase
-      .from("pj_grupos_whatsapp")
-      .select("id, nome, participantes_count, grupo_jid")
-      .eq("user_id", userId)
-      .eq("ativo", true);
-    setGrupos((data as unknown as GrupoItem[]) || []);
-    setLoadingDestinos(false);
-  };
-
-  // Debounced contact search
   useEffect(() => {
-    if (tipoDestino !== "individual" || !userId || buscaContato.length < 2) {
-      setContatos([]);
+    if (destinationType !== "individual" || contactQuery.trim().length < 2 || selectedContact) {
+      setContacts([]);
       return;
     }
-    const timer = setTimeout(async () => {
-      const { data } = await supabase
-        .from("pj_lista_membros")
-        .select("id, nome, telefone")
-        .or(`nome.ilike.%${buscaContato}%,telefone.ilike.%${buscaContato}%`)
-        .limit(10);
-      setContatos((data as unknown as ContatoItem[]) || []);
+    const timer = window.setTimeout(() => {
+      setLoadingContacts(true);
+      invokeCampaign({ action: "search_contacts", query: contactQuery.trim() })
+        .then((data) => setContacts(data.contacts || []))
+        .catch(handleError)
+        .finally(() => setLoadingContacts(false));
     }, 300);
-    return () => clearTimeout(timer);
-  }, [buscaContato, tipoDestino, userId]);
+    return () => window.clearTimeout(timer);
+  }, [contactQuery, destinationType, selectedContact, handleError]);
 
-  const podeEnviar = () => {
-    if (!tipoDestino) return false;
-    if (tipoDestino === "individual") return !!selectedContato;
-    return !!selectedId;
-  };
+  const destination = useMemo(() => {
+    if (destinationType === "list" && selectedId) return { type: "list", list_id: selectedId };
+    if (destinationType === "individual" && selectedContact) {
+      return { type: "individual", contact_id: selectedContact.id };
+    }
+    return null;
+  }, [destinationType, selectedId, selectedContact]);
 
-  const getNomeDestino = () => {
-    if (tipoDestino === "lista") return listas.find(l => l.id === selectedId)?.nome || "";
-    if (tipoDestino === "grupo") return grupos.find(g => g.id === selectedId)?.nome || "";
-    if (tipoDestino === "individual") return selectedContato?.nome || "";
-    return "";
-  };
-
-  const handleEnviar = async () => {
-    if (!podeEnviar()) return;
-    setEnviando(true);
-    setErro("");
-
-    try {
-      if (tipoDestino === "grupo") {
-        const grupo = grupos.find(g => g.id === selectedId);
-        if (!grupo) throw new Error("Grupo não encontrado");
-
-        const { error } = await supabase.functions.invoke("send-wuzapi-group-message-pj", {
-          body: {
-            groupJid: grupo.grupo_jid,
-            message: mensagem,
-            imageUrl: imagemUrl || undefined,
-            userId,
-          },
-        });
-        if (error) throw error;
-      } else if (tipoDestino === "lista") {
-        // Send to each member of the list
-        const { data: membros } = await supabase
-          .from("pj_lista_membros")
-          .select("telefone")
-          .eq("lista_id", selectedId);
-
-        if (!membros?.length) throw new Error("Lista sem membros");
-
-        for (const membro of membros) {
-          await supabase.functions.invoke("send-wuzapi-message-pj", {
-            body: {
-              telefone: membro.telefone,
-              mensagem,
-              imagem_url: imagemUrl || undefined,
-              userId,
-            },
-          });
+  useEffect(() => {
+    if (!destination) {
+      setSummary(null);
+      return;
+    }
+    let active = true;
+    setLoadingPreview(true);
+    setError("");
+    invokeCampaign({ action: "preview", destination })
+      .then((data) => {
+        if (!active) return;
+        setSummary(data.summary);
+        if (data.summary?.need_template > 0 && templates.length) {
+          setSelectedTemplate((current) => current || templates[0].id);
         }
-      } else if (tipoDestino === "individual" && selectedContato) {
-        const { error } = await supabase.functions.invoke("send-wuzapi-message-pj", {
-          body: {
-            telefone: selectedContato.telefone,
-            mensagem,
-            imagem_url: imagemUrl || undefined,
-            userId,
-          },
-        });
-        if (error) throw error;
-      }
+      })
+      .catch(handleError)
+      .finally(() => active && setLoadingPreview(false));
+    return () => {
+      active = false;
+    };
+  }, [destination, templates, handleError]);
 
-      toast.success(`✅ Enviado para ${getNomeDestino()}!`);
-      onOpenChange(false);
-    } catch (err: any) {
-      setErro(err.message || "Erro ao enviar");
+  useEffect(() => {
+    setTemplateVariables((current) =>
+      Array.from({ length: variableCount }, (_, index) => current[index] || (index === 0 ? "{{nome}}" : ""))
+    );
+  }, [variableCount, selectedTemplate]);
+
+  useEffect(() => {
+    if (!campaignId || !open) return;
+    const refresh = async () => {
+      try {
+        const data = await invokeCampaign({ action: "status", campaign_id: campaignId });
+        setReport(data.campaign);
+        setReportRecipients(data.recipients || []);
+      } catch (caught) {
+        handleError(caught);
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(refresh, 4_000);
+    return () => window.clearInterval(timer);
+  }, [campaignId, open, handleError]);
+
+  const canSubmit = Boolean(
+    destination
+    && summary
+    && summary.recipients.length > 0
+    && (!summary.need_template || selectedTemplate)
+    && templateVariables.every((value) => value.trim())
+    && (scheduleMode === "now" || scheduleDate),
+  );
+
+  const submit = async () => {
+    if (!destination || !summary || !canSubmit) return;
+    setSending(true);
+    setError("");
+    try {
+      const scheduledAt = scheduleMode === "later" && scheduleDate
+        ? combineSaoPauloDateTimeToIso(scheduleDate, scheduleTime)
+        : new Date().toISOString();
+      if (scheduleMode === "later" && new Date(scheduledAt).getTime() <= Date.now() + 60_000) {
+        throw new Error("Escolha um horário futuro, com pelo menos um minuto de antecedência.");
+      }
+      const data = await invokeCampaign({
+        action: "create",
+        name: `IA Marketing · ${format(new Date(), "dd/MM/yyyy HH:mm")}`,
+        destination,
+        message: mensagem,
+        image_url: imagemUrl || null,
+        template_id: selectedTemplate || null,
+        template_variables: templateVariables,
+        scheduled_at: scheduledAt,
+      });
+      setCampaignId(data.campaign.id);
+      setReport(data.campaign);
+      toast.success(scheduleMode === "later" ? "Campanha agendada com segurança." : "Campanha colocada na fila oficial.");
+    } catch (caught) {
+      handleError(caught);
     } finally {
-      setEnviando(false);
+      setSending(false);
     }
   };
 
-  const isAgendado = agendamentoAberto && dataAgendamento;
+  const cancelCampaign = async () => {
+    if (!campaignId) return;
+    try {
+      await invokeCampaign({ action: "cancel", campaign_id: campaignId });
+      setReport((current) => current ? { ...current, status: "cancelled" } : current);
+      toast.success("Envios pendentes cancelados.");
+    } catch (caught) {
+      handleError(caught);
+    }
+  };
+
+  const terminal = report && ["completed", "cancelled", "failed"].includes(report.status);
+  const failedRecipients = reportRecipients.filter((recipient) => recipient.status === "failed");
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={sending ? undefined : onOpenChange}>
+      <DialogContent className="max-w-xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            📲 Enviar via WhatsApp
-          </DialogTitle>
+          <DialogTitle>📲 Enviar pela API oficial do WhatsApp</DialogTitle>
         </DialogHeader>
 
-        {/* 1. PRÉVIA */}
         <div className="bg-muted/50 rounded-lg p-3 flex gap-3 items-start">
-          {imagemUrl && (
-            <img src={imagemUrl} alt="Preview" className="w-[60px] h-[60px] rounded object-cover flex-shrink-0" />
-          )}
-          <div className="flex-1 min-w-0">
-            <p className="text-sm line-clamp-3 text-muted-foreground">{mensagem}</p>
-            <p className="text-xs text-green-600 mt-1 font-medium">✅ Pronto para envio</p>
+          {imagemUrl && <img src={imagemUrl} alt="Preview" className="w-16 h-16 rounded object-cover" />}
+          <p className="text-sm line-clamp-4 text-muted-foreground flex-1">{mensagem}</p>
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          A API oficial do WhatsApp não permite envio para grupos. Use uma lista de contatos que autorizaram o recebimento.
+        </p>
+
+        {loadingInitial ? (
+          <div className="flex items-center justify-center py-10 text-sm text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin mr-2" /> Carregando contatos e modelos...
           </div>
-        </div>
-
-        {/* 2. SELEÇÃO DE TIPO */}
-        <div className="grid grid-cols-3 gap-2">
-          {[
-            { tipo: "lista" as TipoDestino, icon: "📋", label: "Lista de Transmissão", sub: "Até 256 pessoas", badge: "⚠️ Máx 256", badgeColor: "bg-orange-100 text-orange-700 border-orange-200" },
-            { tipo: "grupo" as TipoDestino, icon: "👥", label: "Grupo WhatsApp", sub: "Sem limite", badge: "✅ Ilimitado", badgeColor: "bg-green-100 text-green-700 border-green-200" },
-            { tipo: "individual" as TipoDestino, icon: "👤", label: "Contato Individual", sub: "Envio direto", badge: "📱 1 pessoa", badgeColor: "bg-blue-100 text-blue-700 border-blue-200" },
-          ].map((item) => (
-            <button
-              key={item.tipo}
-              onClick={() => setTipoDestino(item.tipo)}
-              className={cn(
-                "rounded-lg border-2 p-3 text-left transition-all hover:shadow-md",
-                tipoDestino === item.tipo
-                  ? "border-primary bg-primary/5 shadow-md"
-                  : "border-border hover:border-muted-foreground/30"
+        ) : sessionExpired ? (
+          <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            Sua sessão expirou. Entre novamente para enviar.
+          </div>
+        ) : campaignId ? (
+          <div className="space-y-4">
+            <div className="rounded-lg border p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-green-600" />
+                <strong>{report?.status === "scheduled" ? "Campanha agendada" : "Relatório da campanha"}</strong>
+                <Badge className="ml-auto" variant="outline">{report?.status || "carregando"}</Badge>
+              </div>
+              {report && (
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <span>Enviados: {report.total_sent}</span>
+                  <span>Entregues: {report.total_delivered}</span>
+                  <span>Lidos: {report.total_read}</span>
+                  <span>Falhas: {report.total_failed}</span>
+                  <span>Ignorados: {report.total_skipped}</span>
+                  <span>Total: {report.total_recipients}</span>
+                </div>
               )}
-            >
-              <div className="text-xl mb-1">{item.icon}</div>
-              <p className="text-xs font-semibold leading-tight">{item.label}</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">{item.sub}</p>
-              <Badge variant="outline" className={cn("mt-1.5 text-[10px] px-1.5 py-0", item.badgeColor)}>
-                {item.badge}
-              </Badge>
-            </button>
-          ))}
-        </div>
+              {report?.stop_reason && <p className="text-sm text-destructive">Pausada: {report.stop_reason}</p>}
+              {failedRecipients.slice(0, 5).map((recipient) => (
+                <p key={recipient.phone} className="text-xs text-destructive">
+                  {recipient.contact_name || recipient.phone}: {recipient.failure_reason}
+                </p>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              {!terminal && (
+                <Button variant="destructive" onClick={cancelCampaign} className="flex-1">
+                  Cancelar pendentes
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => onOpenChange(false)} className="flex-1">Fechar</Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { type: "list" as const, icon: "📋", label: "Lista com autorização", description: "Somente opt-in confirmado" },
+                { type: "individual" as const, icon: "👤", label: "Contato individual", description: "Um destinatário autorizado" },
+              ].map((item) => (
+                <button
+                  key={item.type}
+                  type="button"
+                  onClick={() => {
+                    setDestinationType(item.type);
+                    setSelectedId("");
+                    setSelectedContact(null);
+                    setSummary(null);
+                  }}
+                  className={cn(
+                    "rounded-lg border-2 p-3 text-left",
+                    destinationType === item.type ? "border-primary bg-primary/5" : "border-border",
+                  )}
+                >
+                  <span className="text-xl">{item.icon}</span>
+                  <p className="text-sm font-semibold">{item.label}</p>
+                  <p className="text-xs text-muted-foreground">{item.description}</p>
+                </button>
+              ))}
+            </div>
 
-        {/* 3. SELECT DINÂMICO */}
-        {tipoDestino && (
-          <div className="space-y-2">
-            {tipoDestino === "lista" && (
-              loadingDestinos ? (
-                <div className="flex items-center justify-center py-4"><Loader2 className="h-5 w-5 animate-spin" /></div>
-              ) : listas.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-3">Nenhuma lista criada ainda.</p>
-              ) : (
-                <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                  {listas.map((l) => (
-                    <button
-                      key={l.id}
-                      onClick={() => setSelectedId(l.id)}
-                      className={cn(
-                        "w-full text-left rounded-md border p-2.5 text-sm transition-colors",
-                        selectedId === l.id ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"
-                      )}
-                    >
-                      {l.nome} <span className="text-muted-foreground">({l.total_membros} contatos)</span>
-                    </button>
-                  ))}
-                </div>
-              )
-            )}
-
-            {tipoDestino === "grupo" && (
-              loadingDestinos ? (
-                <div className="flex items-center justify-center py-4"><Loader2 className="h-5 w-5 animate-spin" /></div>
-              ) : grupos.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-3">Nenhum grupo criado ainda.</p>
-              ) : (
-                <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                  {grupos.map((g) => (
-                    <button
-                      key={g.id}
-                      onClick={() => setSelectedId(g.id)}
-                      className={cn(
-                        "w-full text-left rounded-md border p-2.5 text-sm transition-colors",
-                        selectedId === g.id ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"
-                      )}
-                    >
-                      {g.nome} <span className="text-muted-foreground">({g.participantes_count || 0} membros)</span>
-                    </button>
-                  ))}
-                </div>
-              )
-            )}
-
-            {tipoDestino === "individual" && (
+            {destinationType === "list" && (
               <div className="space-y-2">
-                {selectedContato ? (
-                  <div className="flex items-center gap-2 bg-primary/10 rounded-md px-3 py-2">
-                    <span className="text-sm font-medium">{selectedContato.nome} ({selectedContato.telefone})</span>
-                    <button onClick={() => setSelectedContato(null)} className="ml-auto"><X className="h-4 w-4" /></button>
+                <Label>Lista</Label>
+                {lists.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Nenhuma lista ativa encontrada.</p>
+                ) : lists.map((list) => (
+                  <button
+                    type="button"
+                    key={list.id}
+                    onClick={() => setSelectedId(list.id)}
+                    className={cn(
+                      "w-full rounded-md border p-3 text-left text-sm",
+                      selectedId === list.id ? "border-primary bg-primary/5" : "border-border",
+                    )}
+                  >
+                    <strong>{list.nome}</strong>
+                    <p className="text-xs text-muted-foreground">
+                      {list.confirmed} autorizados · {list.ignored} sem autorização
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {destinationType === "individual" && (
+              <div className="space-y-2">
+                <Label>Contato autorizado</Label>
+                {selectedContact ? (
+                  <div className="flex items-center rounded-md border p-3">
+                    <span className="text-sm">{selectedContact.nome || "Sem nome"} · {selectedContact.telefone}</span>
+                    <Badge variant="outline" className="ml-2">{selectedContact.opt_in_status}</Badge>
+                    <button type="button" className="ml-auto" onClick={() => setSelectedContact(null)}>
+                      <X className="h-4 w-4" />
+                    </button>
                   </div>
                 ) : (
                   <>
+                    <p className="text-xs text-muted-foreground">Digite pelo menos 2 letras ou números.</p>
                     <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <Input
-                        placeholder="Buscar por nome ou telefone..."
-                        value={buscaContato}
-                        onChange={(e) => setBuscaContato(e.target.value)}
+                        value={contactQuery}
+                        onChange={(event) => setContactQuery(event.target.value)}
+                        placeholder="Buscar nome ou telefone"
                         className="pl-9"
                       />
                     </div>
-                    {contatos.length > 0 && (
-                      <div className="space-y-1 max-h-40 overflow-y-auto border rounded-md p-1">
-                        {contatos.map((c) => (
-                          <button
-                            key={c.id}
-                            onClick={() => { setSelectedContato(c); setBuscaContato(""); setContatos([]); }}
-                            className="w-full text-left rounded px-3 py-2 text-sm hover:bg-muted/50 transition-colors"
-                          >
-                            {c.nome} <span className="text-muted-foreground">• {c.telefone}</span>
-                          </button>
-                        ))}
-                      </div>
+                    {loadingContacts && <p className="text-xs text-muted-foreground">Buscando contatos...</p>}
+                    {!loadingContacts && contactQuery.trim().length >= 2 && contacts.length === 0 && (
+                      <p className="text-sm text-muted-foreground">Nenhum contato encontrado.</p>
                     )}
+                    {contacts.map((contact) => (
+                      <button
+                        type="button"
+                        key={contact.id}
+                        onClick={() => {
+                          setSelectedContact(contact);
+                          setContactQuery("");
+                          setContacts([]);
+                        }}
+                        className="w-full rounded border p-2 text-left text-sm hover:bg-muted"
+                      >
+                        {contact.nome || "Sem nome"} · {contact.telefone}
+                        <Badge variant="outline" className="ml-2">{contact.opt_in_status}</Badge>
+                      </button>
+                    ))}
                   </>
                 )}
               </div>
             )}
-          </div>
-        )}
 
-        {/* 4. AGENDAMENTO */}
-        <Collapsible open={agendamentoAberto} onOpenChange={setAgendamentoAberto}>
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="sm" className="w-full justify-between text-muted-foreground">
-              📅 Agendar envio
-              <ChevronDown className={cn("h-4 w-4 transition-transform", agendamentoAberto && "rotate-180")} />
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="space-y-3 pt-2">
-            <div className="flex gap-2">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className={cn("flex-1 justify-start text-left", !dataAgendamento && "text-muted-foreground")}>
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {dataAgendamento ? format(dataAgendamento, "dd/MM/yyyy") : "Selecionar data"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={dataAgendamento}
-                    onSelect={setDataAgendamento}
-                    disabled={(date) => date < new Date()}
-                    className="p-3 pointer-events-auto"
-                  />
-                </PopoverContent>
-              </Popover>
-              <Input
-                type="time"
-                value={horaAgendamento}
-                onChange={(e) => setHoraAgendamento(e.target.value)}
-                className="w-28"
-              />
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
-
-        {/* ERRO */}
-        {erro && (
-          <div className="bg-destructive/10 border border-destructive/30 rounded-md p-3 text-sm text-destructive">
-            ❌ {erro}
-            <p className="text-xs mt-1">Verifique se o WhatsApp está conectado</p>
-          </div>
-        )}
-
-        {/* 5. BOTÃO ENVIO */}
-        <div className="flex gap-2">
-          {erro && (
-            <Button variant="outline" onClick={() => setErro("")} className="flex-1">
-              Tentar novamente
-            </Button>
-          )}
-          <Button
-            onClick={handleEnviar}
-            disabled={!podeEnviar() || enviando}
-            className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
-          >
-            {enviando ? (
-              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enviando...</>
-            ) : isAgendado ? (
-              "📅 Agendar"
-            ) : (
-              "⚡ Enviar agora"
+            {loadingPreview && <p className="text-sm text-muted-foreground">Verificando autorização e janela de 24 horas...</p>}
+            {summary && (
+              <div className="rounded-lg border bg-muted/30 p-3 text-sm space-y-1">
+                <strong>Resumo do destino</strong>
+                <p>{summary.inside_window} dentro da janela de 24h: recebem imagem e legenda livre.</p>
+                <p>{summary.need_template} precisam de modelo MARKETING aprovado.</p>
+                <p>{summary.ignored_without_opt_in} sem autorização ignorados.</p>
+                {summary.duplicates > 0 && <p>{summary.duplicates} duplicados removidos.</p>}
+              </div>
             )}
-          </Button>
-        </div>
+
+            {summary && summary.need_template > 0 && (
+              <div className="space-y-3">
+                <Label>Modelo aprovado para contatos fora da janela</Label>
+                {templates.length === 0 ? (
+                  <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-800">
+                    Não há modelo MARKETING aprovado com cabeçalho compatível. O envio fora da janela está bloqueado.
+                  </p>
+                ) : (
+                  <>
+                    <Select value={selectedTemplate} onValueChange={setSelectedTemplate}>
+                      <SelectTrigger><SelectValue placeholder="Escolha um modelo aprovado" /></SelectTrigger>
+                      <SelectContent>
+                        {templates.map((template) => (
+                          <SelectItem key={template.id} value={template.id}>{template.nome_meta}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {activeTemplate?.body_text && (
+                      <p className="rounded border p-2 text-xs text-muted-foreground whitespace-pre-wrap">
+                        {activeTemplate.body_text}
+                      </p>
+                    )}
+                    {templateVariables.map((value, index) => (
+                      <div key={index}>
+                        <Label>Variável {index + 1}</Label>
+                        <Input
+                          value={value}
+                          onChange={(event) => setTemplateVariables((current) =>
+                            current.map((item, itemIndex) => itemIndex === index ? event.target.value : item)
+                          )}
+                          placeholder={index === 0 ? "{{nome}} para usar o nome do contato" : `Valor de {{${index + 1}}}`}
+                        />
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>Quando enviar?</Label>
+              <div className="flex gap-2">
+                <Button type="button" variant={scheduleMode === "now" ? "default" : "outline"} onClick={() => setScheduleMode("now")}>
+                  Enviar agora
+                </Button>
+                <Button type="button" variant={scheduleMode === "later" ? "default" : "outline"} onClick={() => setScheduleMode("later")}>
+                  Agendar
+                </Button>
+              </div>
+              {scheduleMode === "later" && (
+                <div className="flex gap-2">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className={cn("flex-1 justify-start", !scheduleDate && "text-muted-foreground")}>
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {scheduleDate ? format(scheduleDate, "dd/MM/yyyy") : "Escolha a data"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={scheduleDate}
+                        onSelect={setScheduleDate}
+                        disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  <Input type="time" value={scheduleTime} onChange={(event) => setScheduleTime(event.target.value)} className="w-28" />
+                </div>
+              )}
+            </div>
+
+            {error && (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                {error}
+              </div>
+            )}
+
+            <Button
+              onClick={submit}
+              disabled={!canSubmit || sending || loadingPreview}
+              className="w-full bg-gradient-to-r from-green-600 to-emerald-600"
+            >
+              {sending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {scheduleMode === "later" ? "Agendar campanha" : "Enviar pela API oficial"}
+            </Button>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
