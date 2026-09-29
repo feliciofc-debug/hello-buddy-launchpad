@@ -32,7 +32,10 @@ function chunks<T>(values: T[], size = IN_FILTER_CHUNK): T[][] {
 }
 
 async function loadAllPages<T>(
-  load: (from: number, to: number) => Promise<{ data: T[] | null; error: any }>,
+  load: (
+    from: number,
+    to: number,
+  ) => PromiseLike<{ data: T[] | null; error: any }>,
 ): Promise<T[]> {
   const rows: T[] = [];
   for (let from = 0;; from += PAGE_SIZE) {

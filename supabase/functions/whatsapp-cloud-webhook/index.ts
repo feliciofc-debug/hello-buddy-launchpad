@@ -271,7 +271,8 @@ Deno.serve(async (req) => {
             existingRecipient?.status,
             campaignRecipientStatus,
           );
-          let campaignRecipient = existingRecipient;
+          let campaignRecipient: { campaign_id?: string | null } | null =
+            existingRecipient;
           if (existingRecipient && nextRecipientStatus) {
             const changedAt = new Date().toISOString();
             const recipientPatch: Record<string, unknown> = {
