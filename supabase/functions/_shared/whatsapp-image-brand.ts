@@ -77,13 +77,13 @@ export function whatsAppImageBrandResultMessage(
     if (result.logo_aplicada) {
       return result.brand_application_mode === "in_scene_verified"
           || result.brand_application_mode === "in_scene_retry_verified"
-        ? "Apliquei a logo encontrada no site na cena."
-        : "Apliquei a logo encontrada no site sobre a imagem.";
+        ? "Apliquei a logo do site na cena."
+        : "Apliquei a logo do site sobre a imagem.";
     }
     if (result.site_logo_requested) {
-      return "Não consegui aplicar a logo do site desta vez; usei somente as cores encontradas.";
+      return "Não consegui aplicar a logo do site desta vez; usei somente as cores do site.";
     }
-    return "Usei somente as cores encontradas no site.";
+    return "Usei somente as cores do site.";
   }
   if (result.logo_aplicada) {
     return result.brand_application_mode === "in_scene_verified"
@@ -97,6 +97,25 @@ export function whatsAppImageBrandResultMessage(
   return "Gerei sem logo.";
 }
 
+export function whatsAppDemoResponseWithBrand(
+  modelCaption: string,
+  result: Record<string, unknown>,
+): string {
+  const caption = String(modelCaption || "")
+    .split(/<<SPLIT>>|\n+/)
+    .map((line) => line.trim())
+    .filter((line) =>
+      line
+      && !/(?:demonstra[cç][aã]o|imagem|arte).{0,50}(?:feita|feito|criada|gerada|usa(?:ndo)?).{0,50}(?:marca|logo|identidade|cores?\s+do\s+site)/i
+        .test(line)
+      && !/(?:usei|apliquei|utilizei).{0,50}(?:marca|logo|identidade|cores?\s+do\s+site)/i
+        .test(line)
+    )
+    .join("\n");
+  const brandMessage = whatsAppImageBrandResultMessage(result);
+  return caption ? `${brandMessage}<<SPLIT>>${caption}` : brandMessage;
+}
+
 export function whatsAppImageFailureMessage(result: Record<string, unknown>): string {
   const explanation = String(
     result.mensagem ?? result.detalhe ?? result.erro ?? "",
@@ -108,7 +127,7 @@ export function whatsAppSiteBrandGenerationOptions(identity: {
   colors: string[];
   brand_name?: string | null;
   logo_data_url?: string | null;
-  logo_confidence: "high" | "none";
+  logo_confidence: "high" | "medium" | "none";
 }): {
   incluirLogo: boolean;
   logoDataUrl: string | null;
@@ -116,7 +135,7 @@ export function whatsAppSiteBrandGenerationOptions(identity: {
   brandName: string | null;
   brandSource: "site";
 } {
-  const trustedLogo = identity.logo_confidence === "high"
+  const trustedLogo = identity.logo_confidence !== "none"
     ? identity.logo_data_url || null
     : null;
   return {

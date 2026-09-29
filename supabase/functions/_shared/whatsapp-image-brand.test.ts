@@ -6,6 +6,7 @@ import {
   extractWhatsAppBrandSiteUrl,
   previewableWhatsAppLogoUrl,
   resolveWhatsAppGeneratorBrand,
+  whatsAppDemoResponseWithBrand,
   whatsAppImageBrandResultMessage,
   whatsAppImageFailureMessage,
   whatsAppSiteBrandGenerationOptions,
@@ -109,7 +110,7 @@ Deno.test("logo confiável do site é temporária e a resposta é honesta", () =
       site_logo_requested: true,
       logo_aplicada: true,
       brand_application_mode: "in_scene_verified",
-    }) === "Apliquei a logo encontrada no site na cena.",
+    }) === "Apliquei a logo do site na cena.",
     "verified in-scene result should be reported",
   );
 });
@@ -156,8 +157,41 @@ Deno.test("site sem logo confiável usa somente cores", () => {
       brand_source: "site",
       site_logo_requested: false,
       logo_aplicada: false,
-    }) === "Usei somente as cores encontradas no site.",
+    }) === "Usei somente as cores do site.",
     "colors-only result should be reported",
+  );
+});
+
+Deno.test("ícone grande de confiança média pode ser usado como fallback do site", () => {
+  const options = whatsAppSiteBrandGenerationOptions({
+    colors: ["#123456"],
+    logo_data_url: "data:image/png;base64,ICON",
+    logo_confidence: "medium",
+  });
+  assert(options.incluirLogo, "medium-confidence official icon should be usable");
+  assert(options.logoDataUrl?.includes("ICON"), "fallback icon must remain temporary");
+});
+
+Deno.test("resposta da demo usa marca determinística e remove afirmação inventada", () => {
+  assert(
+    whatsAppDemoResponseWithBrand(
+      "Essa foi uma demonstração feita com a marca do seu site.\nLegenda: conforto para sua casa.",
+      {
+        brand_source: "site",
+        site_logo_requested: false,
+        logo_aplicada: false,
+      },
+    ) === "Usei somente as cores do site.<<SPLIT>>Legenda: conforto para sua casa.",
+    "site without logo must never be described as branded",
+  );
+  assert(
+    whatsAppDemoResponseWithBrand("Legenda: transforme seu ambiente.", {
+      brand_source: "site",
+      site_logo_requested: true,
+      logo_aplicada: true,
+      brand_application_mode: "in_scene_verified",
+    }) === "Apliquei a logo do site na cena.<<SPLIT>>Legenda: transforme seu ambiente.",
+    "verified in-scene logo must be reported by deterministic code",
   );
 });
 

@@ -38,6 +38,46 @@ Deno.test("aceita somente logo de alta confiança no header e nunca og:image", (
   assertEquals(withoutHeaderLogo.logo_confidence, "none");
 });
 
+Deno.test("detecta logo lazy-load VTEX fora de header", () => {
+  const identity = extractBrandIdentityFromHtml(
+    `<img width="160" alt="Bom pastor Logo"
+      class="lazyload vtex-store-components-3-x-logoImage"
+      data-src="https://lojabompastor.vtexassets.com/assets/b33c5a3b.png"
+      loading="lazy">`,
+    "https://www.lojabompastor.com.br/",
+  );
+  assertEquals(
+    identity.logo_url,
+    "https://lojabompastor.vtexassets.com/assets/b33c5a3b.png",
+  );
+  assertEquals(identity.logo_confidence, "high");
+});
+
+Deno.test("detecta primeiro candidato de data-srcset e srcset", () => {
+  const lazy = extractBrandIdentityFromHtml(
+    `<img alt="Marca logo" data-srcset="/logo-320.png 320w, /logo-640.png 640w">`,
+    "https://marca.example/",
+  );
+  const regular = extractBrandIdentityFromHtml(
+    `<a href="/"><img srcset="/brand-1x.png 1x, /brand-2x.png 2x"></a>`,
+    "https://marca.example/",
+  );
+  assertEquals(lazy.logo_url, "https://marca.example/logo-320.png");
+  assertEquals(regular.logo_url, "https://marca.example/brand-1x.png");
+});
+
+Deno.test("usa favicon grande como fallback de confiança média", () => {
+  const identity = extractBrandIdentityFromHtml(
+    `<link rel="icon" sizes="512x512" href="/arquivos/favicon-bom-pastor.png">`,
+    "https://www.lojabompastor.com.br/",
+  );
+  assertEquals(
+    identity.logo_url,
+    "https://www.lojabompastor.com.br/arquivos/favicon-bom-pastor.png",
+  );
+  assertEquals(identity.logo_confidence, "medium");
+});
+
 Deno.test("prioriza cores da logo e descarta paleta genérica ausente nela", () => {
   assertEquals(
     prioritizeSiteIdentityColors(

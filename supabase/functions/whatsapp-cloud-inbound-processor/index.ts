@@ -143,6 +143,7 @@ import {
   extractExplicitWhatsAppBrandSiteUrl,
   extractWhatsAppBrandSiteUrl,
   resolveWhatsAppGeneratorBrand,
+  whatsAppDemoResponseWithBrand,
   whatsAppImageBrandResultMessage,
   whatsAppImageFailureMessage,
   whatsAppSiteBrandGenerationOptions,
@@ -1344,13 +1345,7 @@ async function toolGerarImagem(
       exemplo_legenda_solicitado: ctx.demonstracao === true,
       instrucao: ctx.demonstracao
         ? ctx.brandSource === "site"
-          ? `DEMONSTRAÇÃO: envie a imagem somente nesta conversa com uma legenda curta e diga honestamente que ${
-            logoAplicada
-              ? "a logo e as cores do site foram usadas somente nesta imagem"
-              : logoDataUrl
-              ? "a logo do site não pôde ser aplicada e somente as cores foram usadas"
-              : "somente as cores encontradas no site foram usadas"
-          }. Nada foi salvo no cadastro nem publicado. Depois da demo, registre o lead e avise que o Felicio vai entrar em contato.`
+          ? "DEMONSTRAÇÃO: escreva SOMENTE uma legenda curta para a imagem. NÃO afirme nada sobre logo, marca, cores ou identidade visual; o código anexará a informação exata. Nada foi salvo no cadastro nem publicado. Depois da demo, registre o lead e avise que o Felicio vai entrar em contato."
           : "DEMONSTRAÇÃO: envie a imagem somente nesta conversa e escreva junto um exemplo curto de legenda pronta baseado no pedido. Informe honestamente que foi feita sem logo de cadastro e que nada foi publicado. Depois da demo, registre o lead e avise que o Felicio vai entrar em contato."
         : ctx.brandSource === "site"
         ? (logoAplicada
@@ -11472,6 +11467,7 @@ async function callGemini(
   const model = escolherModelo({ kind: hasMedia ? "multimodal" : "conversation" });
   let pendingImageUrl: string | undefined;
   let pendingMediaCodeBlock = "";
+  let pendingDemoSiteBrandResult: Record<string, unknown> | null = null;
   let pendingSocialToken: string | undefined; // token de post aguardando confirmação — anexa <<SPLIT>>pode postar {token} no fim
 
   const captureSocialToken = (raw: string) => {
@@ -11671,6 +11667,9 @@ async function callGemini(
               forwardAttempted,
             };
           }
+          if (generated?.brand_source === "site") {
+            pendingDemoSiteBrandResult = generated;
+          }
         }
         if (name === "postar_midia_biblioteca" || name === "postar_redes_sociais" || name === "publicar_linkedin" || name === "revisar_post_pendente" || name === "escolher_variante_post") captureSocialToken(result);
         // Comprovante de encaminhamento: só existe se a tool realmente entregou (ok: true).
@@ -11794,13 +11793,19 @@ async function callGemini(
       continue;
     }
 
-    const baseText = appendConfirmCommand(msg?.content ?? "");
+    const modelText = pendingDemoSiteBrandResult
+      ? whatsAppDemoResponseWithBrand(msg?.content ?? "", pendingDemoSiteBrandResult)
+      : msg?.content ?? "";
+    const baseText = appendConfirmCommand(modelText);
     const text = pendingMediaCodeBlock && !baseText.includes(pendingMediaCodeBlock)
       ? `${baseText}<<SPLIT>>${pendingMediaCodeBlock}`
       : baseText;
     return { text, imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
   }
-  const fallbackText = appendConfirmCommand("Desculpa, não consegui concluir a pesquisa agora.");
+  const fallbackModelText = pendingDemoSiteBrandResult
+    ? whatsAppDemoResponseWithBrand("", pendingDemoSiteBrandResult)
+    : "Desculpa, não consegui concluir a pesquisa agora.";
+  const fallbackText = appendConfirmCommand(fallbackModelText);
   return {
     text: pendingMediaCodeBlock ? `${fallbackText}<<SPLIT>>${pendingMediaCodeBlock}` : fallbackText,
     imageUrl: pendingImageUrl,

@@ -6,7 +6,7 @@ export type BrandSiteIdentity = {
   brand_name: string | null;
   logo_url: string | null;
   logo_data_url: string | null;
-  logo_confidence: "high" | "none";
+  logo_confidence: "high" | "medium" | "none";
 };
 
 const MAX_HTML_BYTES = 2_000_000;
@@ -72,6 +72,20 @@ function addColors(source: string, weights: Map<string, number>, baseWeight = 1)
 
 function attribute(tag: string, name: string): string {
   return tag.match(new RegExp(`\\b${name}=["']([^"']+)["']`, "i"))?.[1] ?? "";
+}
+
+function firstSrcsetCandidate(value: string): string {
+  return value.split(",")[0]?.trim().split(/\s+/)[0] ?? "";
+}
+
+function imageSource(tag: string): string {
+  return attribute(tag, "data-src")
+    || attribute(tag, "data-lazy-src")
+    || attribute(tag, "data-original")
+    || attribute(tag, "src")
+    || firstSrcsetCandidate(
+      attribute(tag, "data-srcset") || attribute(tag, "srcset"),
+    );
 }
 
 function absoluteUrl(value: string, base: URL): string | null {
@@ -155,22 +169,72 @@ export function extractBrandIdentityFromHtml(
     }
   }
 
-  const header = html.match(/<header\b[\s\S]{0,20000}?<\/header>/i)?.[0] ?? "";
-  const logoTag = [...header.matchAll(/<img\b[^>]*>/gi)]
-    .map((match) => match[0])
-    .find((tag) => {
-      const evidence = [
-        attribute(tag, "class"),
-        attribute(tag, "id"),
-        attribute(tag, "alt"),
-        attribute(tag, "src"),
-        attribute(tag, "data-src"),
-      ].join(" ");
-      return /\b(?:logo|logotipo|logomarca|brand|marca)\b/i.test(evidence);
+  const header = html.match(/<header\b[\s\S]{0,100000}?<\/header>/i)?.[0] ?? "";
+  const homeLinks = [...html.matchAll(
+    /<a\b[^>]*href=["']\/["'][^>]*>[\s\S]{0,10000}?<\/a>/gi,
+  )].map((match) => match[0]).join("\n");
+  const allImageTags = [...html.matchAll(/<img\b[^>]*>/gi)].map((match) => match[0]);
+  const logoEvidence = (tag: string) => /(?:logo|logotipo|logomarca)/i.test([
+    attribute(tag, "class"),
+    attribute(tag, "id"),
+    attribute(tag, "alt"),
+    imageSource(tag),
+  ].join(" "));
+  const prioritizedImages = [
+    ...[...header.matchAll(/<img\b[^>]*>/gi)].map((match) => match[0]),
+    ...[...homeLinks.matchAll(/<img\b[^>]*>/gi)].map((match) => match[0]),
+    ...allImageTags.filter(logoEvidence),
+  ].filter((tag, index, list) => list.indexOf(tag) === index);
+  const logoTag = prioritizedImages.find((tag) =>
+    logoEvidence(tag) || header.includes(tag) || homeLinks.includes(tag)
+  );
+  let logoSource = logoTag ? imageSource(logoTag) : "";
+  let logoConfidence: BrandSiteIdentity["logo_confidence"] = logoSource
+    ? "high"
+    : "none";
+
+  if (!logoSource) {
+    const linkTags = [...html.matchAll(/<link\b[^>]*>/gi)].map((match) => match[0]);
+    const fallbackIcon = linkTags.find((tag) => {
+      const rel = attribute(tag, "rel").toLowerCase();
+      if (rel.includes("apple-touch-icon")) return Boolean(attribute(tag, "href"));
+      if (!/(?:^|\s)icon(?:\s|$)/.test(rel)) return false;
+      const size = attribute(tag, "sizes").match(/(\d+)\s*x\s*(\d+)/i);
+      return Boolean(
+        attribute(tag, "href")
+        && size
+        && Number(size[1]) >= 192
+        && Number(size[2]) >= 192,
+      );
     });
-  const logoSource = logoTag
-    ? attribute(logoTag, "data-src") || attribute(logoTag, "src")
-    : "";
+    logoSource = fallbackIcon ? attribute(fallbackIcon, "href") : "";
+    if (!logoSource) {
+      const ogImageTag = themeTags.find((tag) =>
+        attribute(tag, "property").toLowerCase() === "og:image"
+      );
+      const ogWidth = Number(attribute(
+        themeTags.find((tag) =>
+          attribute(tag, "property").toLowerCase() === "og:image:width"
+        ) ?? "",
+        "content",
+      ));
+      const ogHeight = Number(attribute(
+        themeTags.find((tag) =>
+          attribute(tag, "property").toLowerCase() === "og:image:height"
+        ) ?? "",
+        "content",
+      ));
+      if (
+        ogImageTag
+        && ogWidth >= 192
+        && ogHeight >= 192
+        && Math.abs(ogWidth - ogHeight) / Math.max(ogWidth, ogHeight) <= 0.1
+      ) {
+        logoSource = attribute(ogImageTag, "content");
+      }
+    }
+    if (logoSource) logoConfidence = "medium";
+  }
   const logoUrl = logoSource ? absoluteUrl(logoSource, base) : null;
 
   let inlineSvg: string | null = null;
@@ -194,7 +258,7 @@ export function extractBrandIdentityFromHtml(
     brand_name: brandName,
     logo_url: logoUrl,
     logo_data_url: inlineSvg,
-    logo_confidence: logoUrl || inlineSvg ? "high" : "none",
+    logo_confidence: inlineSvg ? "high" : logoUrl ? logoConfidence : "none",
   };
 }
 
@@ -392,7 +456,7 @@ export async function fetchBrandSiteIdentity(rawUrl: string): Promise<BrandSiteI
         identity.logo_confidence = "none";
       }
     }
-    if (identity.logo_confidence === "high" && identity.logo_data_url) {
+    if (identity.logo_confidence !== "none" && identity.logo_data_url) {
       const logoColors = await colorsFromLogoDataUrl(identity.logo_data_url).catch(() => []);
       identity.colors = prioritizeSiteIdentityColors(identity.colors, logoColors);
     }
