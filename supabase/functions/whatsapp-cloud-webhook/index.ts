@@ -4,6 +4,10 @@
 // Pública (sem JWT). Segurança = HMAC.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import {
+  type CampaignDeliveryStatus,
+  nextCampaignDeliveryStatus,
+} from "../_shared/whatsapp-marketing-campaign.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -243,37 +247,102 @@ Deno.serve(async (req) => {
 
           // Campanhas da IA Marketing: comprovante e relatório acompanham o
           // mesmo WAMID oficial recebido da Meta.
-          const campaignRecipientStatus = statusEntrega === "entregue"
+          const campaignRecipientStatus: CampaignDeliveryStatus =
+            statusEntrega === "entregue"
             ? "delivered"
             : statusEntrega === "lida"
             ? "read"
             : statusEntrega === "falhou"
             ? "failed"
             : "sent";
-          const recipientPatch: Record<string, unknown> = {
-            status: campaignRecipientStatus,
-            failure_reason: erroEntrega,
-            updated_at: new Date().toISOString(),
-          };
-          if (campaignRecipientStatus === "delivered") recipientPatch.delivered_at = new Date().toISOString();
-          if (campaignRecipientStatus === "read") recipientPatch.read_at = new Date().toISOString();
-          const { data: campaignRecipient, error: campaignStatusError } = await supabase
-            .from("whatsapp_marketing_campaign_recipients")
-            .update(recipientPatch)
-            .eq("message_id", wamid)
-            .select("campaign_id")
-            .maybeSingle();
-          if (campaignStatusError) {
-            console.error("[wa-cloud-webhook] campaign status update error", campaignStatusError);
+          const { data: existingRecipient, error: recipientLookupError } =
+            await supabase
+              .from("whatsapp_marketing_campaign_recipients")
+              .select("id, campaign_id, status")
+              .eq("message_id", wamid)
+              .maybeSingle();
+          if (recipientLookupError) {
+            console.error(
+              "[wa-cloud-webhook] campaign status lookup error",
+              recipientLookupError,
+            );
           }
-          await supabase
+          const nextRecipientStatus = nextCampaignDeliveryStatus(
+            existingRecipient?.status,
+            campaignRecipientStatus,
+          );
+          let campaignRecipient = existingRecipient;
+          if (existingRecipient && nextRecipientStatus) {
+            const changedAt = new Date().toISOString();
+            const recipientPatch: Record<string, unknown> = {
+              status: nextRecipientStatus,
+              failure_reason: nextRecipientStatus === "failed"
+                ? erroEntrega
+                : null,
+              updated_at: changedAt,
+            };
+            if (nextRecipientStatus === "delivered") {
+              recipientPatch.delivered_at = changedAt;
+            }
+            if (nextRecipientStatus === "read") {
+              recipientPatch.read_at = changedAt;
+            }
+            const { data: updatedRecipient, error: campaignStatusError } =
+              await supabase
+                .from("whatsapp_marketing_campaign_recipients")
+                .update(recipientPatch)
+                .eq("id", existingRecipient.id)
+                .eq("status", existingRecipient.status)
+                .select("campaign_id")
+                .maybeSingle();
+            if (campaignStatusError) {
+              console.error(
+                "[wa-cloud-webhook] campaign status update error",
+                campaignStatusError,
+              );
+            }
+            campaignRecipient = updatedRecipient || existingRecipient;
+          }
+          const { data: historyRow, error: historyLookupError } = await supabase
             .from("historico_envios")
-            .update({
-              delivery_status: campaignRecipientStatus,
-              delivery_updated_at: new Date().toISOString(),
-              delivery_error: erroEntrega,
-            })
-            .eq("message_id", wamid);
+            .select("id, delivery_status")
+            .eq("message_id", wamid)
+            .maybeSingle();
+          if (historyLookupError) {
+            console.error(
+              "[wa-cloud-webhook] history status lookup error",
+              historyLookupError,
+            );
+          }
+          const nextHistoryStatus = nextCampaignDeliveryStatus(
+            historyRow?.delivery_status,
+            campaignRecipientStatus,
+          );
+          if (historyRow && nextHistoryStatus) {
+            let historyUpdate = supabase
+              .from("historico_envios")
+              .update({
+                delivery_status: nextHistoryStatus,
+                delivery_updated_at: new Date().toISOString(),
+                delivery_error: nextHistoryStatus === "failed"
+                  ? erroEntrega
+                  : null,
+              })
+              .eq("id", historyRow.id);
+            historyUpdate = historyRow.delivery_status
+              ? historyUpdate.eq(
+                "delivery_status",
+                historyRow.delivery_status,
+              )
+              : historyUpdate.is("delivery_status", null);
+            const { error: historyStatusError } = await historyUpdate;
+            if (historyStatusError) {
+              console.error(
+                "[wa-cloud-webhook] history status update error",
+                historyStatusError,
+              );
+            }
+          }
           if (campaignRecipient?.campaign_id) {
             const { data: campaignRows } = await supabase
               .from("whatsapp_marketing_campaign_recipients")

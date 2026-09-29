@@ -68,6 +68,29 @@ type CampaignReport = {
   stop_reason?: string | null;
 };
 
+const POLLING_TERMINAL_STATUSES = new Set([
+  "paused",
+  "completed",
+  "cancelled",
+  "failed",
+]);
+
+const PAUSE_REASON_LABELS: Record<string, string> = {
+  rate_limit: "Limite temporário de envios da Meta. A campanha retoma automaticamente em 30 minutos.",
+  quality: "A Meta sinalizou queda na qualidade do número. Verifique a conta antes de retomar.",
+  structural: "Falha de configuração, credencial ou estrutura do envio.",
+  template_paused: "O modelo foi pausado, desativado ou deixou de ser aprovado pela Meta.",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  scheduled: "agendada",
+  processing: "enviando",
+  paused: "pausada",
+  completed: "concluída",
+  cancelled: "cancelada",
+  failed: "falhou",
+};
+
 async function invokeCampaign(body: Record<string, unknown>) {
   const { data, error } = await supabase.functions.invoke("whatsapp-campanha-enviar", { body });
   if (error) {
@@ -119,6 +142,7 @@ export function EnviarWhatsAppModal({
   const [loadingContacts, setLoadingContacts] = useState(false);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [sending, setSending] = useState(false);
+  const [resuming, setResuming] = useState(false);
   const [error, setError] = useState("");
   const [sessionExpired, setSessionExpired] = useState(false);
   const [scheduleMode, setScheduleMode] = useState<"now" | "later">("now");
@@ -220,19 +244,30 @@ export function EnviarWhatsAppModal({
 
   useEffect(() => {
     if (!campaignId || !open) return;
+    if (report?.status && POLLING_TERMINAL_STATUSES.has(report.status)) return;
+    let timer: number | undefined;
     const refresh = async () => {
       try {
         const data = await invokeCampaign({ action: "status", campaign_id: campaignId });
         setReport(data.campaign);
         setReportRecipients(data.recipients || []);
+        if (
+          data.campaign?.status
+          && POLLING_TERMINAL_STATUSES.has(data.campaign.status)
+          && timer !== undefined
+        ) {
+          window.clearInterval(timer);
+        }
       } catch (caught) {
         handleError(caught);
       }
     };
     void refresh();
-    const timer = window.setInterval(refresh, 4_000);
-    return () => window.clearInterval(timer);
-  }, [campaignId, open, handleError]);
+    timer = window.setInterval(refresh, 4_000);
+    return () => {
+      if (timer !== undefined) window.clearInterval(timer);
+    };
+  }, [campaignId, open, report?.status, handleError]);
 
   const canSubmit = Boolean(
     destination
@@ -285,6 +320,25 @@ export function EnviarWhatsAppModal({
     }
   };
 
+  const resumeCampaign = async () => {
+    if (!campaignId) return;
+    setResuming(true);
+    setError("");
+    try {
+      await invokeCampaign({ action: "resume", campaign_id: campaignId });
+      setReport((current) =>
+        current
+          ? { ...current, status: "scheduled", stop_reason: null }
+          : current
+      );
+      toast.success("Campanha retomada.");
+    } catch (caught) {
+      handleError(caught);
+    } finally {
+      setResuming(false);
+    }
+  };
+
   const terminal = report && ["completed", "cancelled", "failed"].includes(report.status);
   const failedRecipients = reportRecipients.filter((recipient) => recipient.status === "failed");
 
@@ -318,7 +372,9 @@ export function EnviarWhatsAppModal({
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-5 w-5 text-green-600" />
                 <strong>{report?.status === "scheduled" ? "Campanha agendada" : "Relatório da campanha"}</strong>
-                <Badge className="ml-auto" variant="outline">{report?.status || "carregando"}</Badge>
+                <Badge className="ml-auto" variant="outline">
+                  {report?.status ? STATUS_LABELS[report.status] || report.status : "carregando"}
+                </Badge>
               </div>
               {report && (
                 <div className="grid grid-cols-3 gap-2 text-xs">
@@ -330,7 +386,11 @@ export function EnviarWhatsAppModal({
                   <span>Total: {report.total_recipients}</span>
                 </div>
               )}
-              {report?.stop_reason && <p className="text-sm text-destructive">Pausada: {report.stop_reason}</p>}
+              {report?.stop_reason && (
+                <p className="text-sm text-destructive">
+                  Pausada: {PAUSE_REASON_LABELS[report.stop_reason] || report.stop_reason}
+                </p>
+              )}
               {failedRecipients.slice(0, 5).map((recipient) => (
                 <p key={recipient.phone} className="text-xs text-destructive">
                   {recipient.contact_name || recipient.phone}: {recipient.failure_reason}
@@ -338,6 +398,16 @@ export function EnviarWhatsAppModal({
               ))}
             </div>
             <div className="flex gap-2">
+              {report?.status === "paused" && (
+                <Button
+                  onClick={resumeCampaign}
+                  disabled={resuming}
+                  className="flex-1"
+                >
+                  {resuming && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Retomar
+                </Button>
+              )}
               {!terminal && (
                 <Button variant="destructive" onClick={cancelCampaign} className="flex-1">
                   Cancelar pendentes

@@ -1,10 +1,15 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   campaignTenantId,
+  claimQueuedCampaignRecipient,
   filterAuthorizedAudience,
   isCampaignDue,
   isInsideWhatsAppWindow,
+  isRateLimitAutoResumeDue,
+  isRecipientSendingStale,
+  nextCampaignDeliveryStatus,
   runConservativeCampaignBatch,
+  templateMatchesCampaignMedia,
   templateSupportsImage,
 } from "./whatsapp-marketing-campaign.ts";
 
@@ -50,6 +55,85 @@ Deno.test("template com imagem é detectado em formatos persistidos", () => {
   assertEquals(templateSupportsImage({ format: "IMAGE" }), true);
   assertEquals(templateSupportsImage('[{"tipo":"imagem"}]'), true);
   assertEquals(templateSupportsImage({ format: "TEXT" }), false);
+  assertEquals(templateMatchesCampaignMedia({ format: "IMAGE" }, true), true);
+  assertEquals(templateMatchesCampaignMedia({ format: "IMAGE" }, false), false);
+  assertEquals(templateMatchesCampaignMedia({ format: "TEXT" }, false), true);
+  assertEquals(templateMatchesCampaignMedia({ format: "TEXT" }, true), false);
+});
+
+Deno.test("claim concorrente permite um único worker enviar", async () => {
+  let status = "queued";
+  const admin = {
+    from: () => ({
+      update: () => {
+        let expectedStatus = "";
+        const query = {
+          eq: (column: string, value: string) => {
+            if (column === "status") expectedStatus = value;
+            return query;
+          },
+          select: () => ({
+            maybeSingle: async () => {
+              if (status !== expectedStatus) return { data: null, error: null };
+              status = "sending";
+              return { data: { id: "recipient-1" }, error: null };
+            },
+          }),
+        };
+        return query;
+      },
+    }),
+  };
+
+  const [first, second] = await Promise.all([
+    claimQueuedCampaignRecipient(admin, "recipient-1", 1),
+    claimQueuedCampaignRecipient(admin, "recipient-1", 1),
+  ]);
+  assertEquals([first, second].filter(Boolean).length, 1);
+});
+
+Deno.test("recipient sending há mais de 15 minutos fica obsoleto", () => {
+  const now = Date.parse("2026-09-29T12:00:00Z");
+  assertEquals(
+    isRecipientSendingStale("2026-09-29T11:44:59Z", now),
+    true,
+  );
+  assertEquals(
+    isRecipientSendingStale("2026-09-29T11:45:01Z", now),
+    false,
+  );
+});
+
+Deno.test("webhook não rebaixa read para delivered", () => {
+  assertEquals(nextCampaignDeliveryStatus("sent", "delivered"), "delivered");
+  assertEquals(nextCampaignDeliveryStatus("delivered", "read"), "read");
+  assertEquals(nextCampaignDeliveryStatus("read", "delivered"), null);
+  assertEquals(nextCampaignDeliveryStatus("read", "failed"), null);
+  assertEquals(nextCampaignDeliveryStatus("sent", "failed"), "failed");
+});
+
+Deno.test("rate limit retoma automaticamente somente depois de 30 minutos", () => {
+  const now = Date.parse("2026-09-29T12:00:00Z");
+  assertEquals(
+    isRateLimitAutoResumeDue(
+      "rate_limit",
+      "2026-09-29T11:29:59Z",
+      now,
+    ),
+    true,
+  );
+  assertEquals(
+    isRateLimitAutoResumeDue(
+      "rate_limit",
+      "2026-09-29T11:30:01Z",
+      now,
+    ),
+    false,
+  );
+  assertEquals(
+    isRateLimitAutoResumeDue("quality", "2026-09-29T10:00:00Z", now),
+    false,
+  );
 });
 
 Deno.test("lote respeita ritmo conservador entre destinatários", async () => {

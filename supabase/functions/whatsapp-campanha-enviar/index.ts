@@ -5,7 +5,7 @@ import {
   filterAuthorizedAudience,
   isInsideWhatsAppWindow,
   normalizeCampaignPhone,
-  templateSupportsImage,
+  templateMatchesCampaignMedia,
 } from "../_shared/whatsapp-marketing-campaign.ts";
 
 const CORS = {
@@ -18,6 +18,30 @@ function json(body: unknown, status = 200): Response {
     status,
     headers: { ...CORS, "Content-Type": "application/json" },
   });
+}
+
+const PAGE_SIZE = 1_000;
+const IN_FILTER_CHUNK = 150;
+
+function chunks<T>(values: T[], size = IN_FILTER_CHUNK): T[][] {
+  const result: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    result.push(values.slice(index, index + size));
+  }
+  return result;
+}
+
+async function loadAllPages<T>(
+  load: (from: number, to: number) => Promise<{ data: T[] | null; error: any }>,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0;; from += PAGE_SIZE) {
+    const { data, error } = await load(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    const page = data ?? [];
+    rows.push(...page);
+    if (page.length < PAGE_SIZE) return rows;
+  }
 }
 
 async function authenticatedUser(req: Request): Promise<{ id: string } | null> {
@@ -33,26 +57,36 @@ async function authenticatedUser(req: Request): Promise<{ id: string } | null> {
 }
 
 async function tenantListIds(admin: any, userId: string): Promise<string[]> {
-  const { data, error } = await admin
-    .from("pj_listas_categoria")
-    .select("id")
-    .eq("user_id", userId);
-  if (error) throw new Error(`listas_indisponiveis:${error.message}`);
-  return (data ?? []).map((row: any) => String(row.id));
+  try {
+    const data = await loadAllPages<any>((from, to) =>
+      admin.from("pj_listas_categoria")
+        .select("id")
+        .eq("user_id", userId)
+        .range(from, to)
+    );
+    return data.map((row: any) => String(row.id));
+  } catch (error) {
+    throw new Error(`listas_indisponiveis:${(error as Error).message}`);
+  }
 }
 
 async function approvedTemplates(admin: any, userId: string, hasImage: boolean) {
-  const { data, error } = await admin
-    .from("whatsapp_templates")
-    .select("id, nome_meta, idioma, body_text, variaveis_map, header, categoria_meta, status_meta")
-    .eq("user_id", userId)
-    .eq("status_meta", "aprovado")
-    .eq("categoria_meta", "MARKETING")
-    .order("created_at", { ascending: false });
-  if (error) throw new Error(`templates_indisponiveis:${error.message}`);
-  return (data ?? []).filter((template: any) =>
-    !hasImage || templateSupportsImage(template.header)
-  );
+  try {
+    const data = await loadAllPages<any>((from, to) =>
+      admin.from("whatsapp_templates")
+        .select("id, nome_meta, idioma, body_text, variaveis_map, header, categoria_meta, status_meta")
+        .eq("user_id", userId)
+        .eq("status_meta", "aprovado")
+        .eq("categoria_meta", "MARKETING")
+        .order("created_at", { ascending: false })
+        .range(from, to)
+    );
+    return data.filter((template: any) =>
+      templateMatchesCampaignMedia(template.header, hasImage)
+    );
+  } catch (error) {
+    throw new Error(`templates_indisponiveis:${(error as Error).message}`);
+  }
 }
 
 async function loadInboundWindowPhones(
@@ -67,19 +101,24 @@ async function loadInboundWindowPhones(
     const normalized = normalizeCampaignPhone(phone);
     if (!normalized) return [];
     return [normalized, normalized.startsWith("55") ? normalized.slice(2) : normalized];
-  }))].slice(0, 2_000);
-  const { data, error } = await admin
-    .from("whatsapp_cloud_inbound_queue")
-    .select("from_number, created_at")
-    .eq("user_id", userId)
-    .in("from_number", variants)
-    .gte("created_at", cutoff);
-  if (error) throw new Error(`janela_whatsapp_indisponivel:${error.message}`);
+  }))];
   const open = new Set<string>();
-  for (const row of data ?? []) {
-    if (isInsideWhatsAppWindow(row.created_at, now)) {
-      const normalized = normalizeCampaignPhone(row.from_number);
-      if (normalized) open.add(normalized);
+  for (const phoneChunk of chunks(variants)) {
+    const data = await loadAllPages<any>((from, to) =>
+      admin.from("whatsapp_cloud_inbound_queue")
+        .select("from_number, created_at")
+        .eq("user_id", userId)
+        .in("from_number", phoneChunk)
+        .gte("created_at", cutoff)
+        .range(from, to)
+    ).catch((error) => {
+      throw new Error(`janela_whatsapp_indisponivel:${error.message}`);
+    });
+    for (const row of data) {
+      if (isInsideWhatsAppWindow(row.created_at, now)) {
+        const normalized = normalizeCampaignPhone(row.from_number);
+        if (normalized) open.add(normalized);
+      }
     }
   }
   return open;
@@ -104,12 +143,14 @@ async function resolveAudience(
   let rows: any[] = [];
   if (destination.type === "list") {
     if (!listIds.includes(String(destination.list_id))) throw new Error("lista_nao_encontrada");
-    const { data, error } = await admin
-      .from("pj_lista_membros")
-      .select("telefone, nome, opt_in_status")
-      .eq("lista_id", destination.list_id);
-    if (error) throw new Error(`membros_indisponiveis:${error.message}`);
-    rows = data ?? [];
+    rows = await loadAllPages<any>((from, to) =>
+      admin.from("pj_lista_membros")
+        .select("telefone, nome, opt_in_status")
+        .eq("lista_id", destination.list_id)
+        .range(from, to)
+    ).catch((error) => {
+      throw new Error(`membros_indisponiveis:${error.message}`);
+    });
   } else {
     const { data, error } = await admin
       .from("pj_lista_membros")
@@ -190,23 +231,28 @@ Deno.serve(async (req) => {
 
     if (action === "bootstrap") {
       const listIds = await tenantListIds(admin, tenantId);
-      const [{ data: lists, error: listsError }, templates, { data: members, error: membersError }] =
-        await Promise.all([
+      const [lists, templates] = await Promise.all([
+        loadAllPages<any>((from, to) =>
           admin.from("pj_listas_categoria")
             .select("id, nome")
             .eq("user_id", tenantId)
             .eq("ativa", true)
-            .order("nome"),
-          approvedTemplates(admin, tenantId, Boolean(body?.has_image)),
-          listIds.length
-            ? admin.from("pj_lista_membros")
-              .select("lista_id, telefone, opt_in_status")
-              .in("lista_id", listIds)
-            : Promise.resolve({ data: [], error: null }),
-        ]);
-      if (listsError || membersError) throw new Error("Não consegui carregar seus contatos agora.");
+            .order("nome")
+            .range(from, to)
+        ),
+        approvedTemplates(admin, tenantId, Boolean(body?.has_image)),
+      ]);
+      const members: any[] = [];
+      for (const listChunk of chunks(listIds)) {
+        members.push(...await loadAllPages<any>((from, to) =>
+          admin.from("pj_lista_membros")
+            .select("lista_id, telefone, opt_in_status")
+            .in("lista_id", listChunk)
+            .range(from, to)
+        ));
+      }
       const counts = new Map<string, { total: number; confirmed: number; ignored: number }>();
-      for (const member of members ?? []) {
+      for (const member of members) {
         const count = counts.get(member.lista_id) ?? { total: 0, confirmed: 0, ignored: 0 };
         count.total++;
         if (member.opt_in_status === "confirmado") count.confirmed++;
@@ -215,7 +261,7 @@ Deno.serve(async (req) => {
       }
       return json({
         success: true,
-        lists: (lists ?? []).map((list: any) => ({ ...list, ...(counts.get(list.id) ?? { total: 0, confirmed: 0, ignored: 0 }) })),
+        lists: lists.map((list: any) => ({ ...list, ...(counts.get(list.id) ?? { total: 0, confirmed: 0, ignored: 0 }) })),
         templates,
       });
     }
@@ -225,14 +271,20 @@ Deno.serve(async (req) => {
       if (query.length < 2) return json({ success: true, contacts: [] });
       const ids = await tenantListIds(admin, tenantId);
       if (!ids.length) return json({ success: true, contacts: [] });
-      const { data, error } = await admin
-        .from("pj_lista_membros")
-        .select("id, nome, telefone, opt_in_status, lista_id")
-        .in("lista_id", ids)
-        .or(`nome.ilike.%${query}%,telefone.ilike.%${query}%`)
-        .limit(20);
-      if (error) throw new Error("Não consegui buscar contatos agora.");
-      return json({ success: true, contacts: data ?? [] });
+      const contacts: any[] = [];
+      for (const listChunk of chunks(ids)) {
+        const matches = await loadAllPages<any>((from, to) =>
+          admin.from("pj_lista_membros")
+            .select("id, nome, telefone, opt_in_status, lista_id")
+            .in("lista_id", listChunk)
+            .or(`nome.ilike.%${query}%,telefone.ilike.%${query}%`)
+            .range(from, to)
+        ).catch(() => {
+          throw new Error("Não consegui buscar contatos agora.");
+        });
+        contacts.push(...matches);
+      }
+      return json({ success: true, contacts: contacts.slice(0, 50) });
     }
 
     if (action === "preview") {
@@ -283,19 +335,21 @@ Deno.serve(async (req) => {
         .select("id, status, scheduled_at")
         .single();
       if (campaignError || !campaign) throw new Error(`Não consegui criar a campanha: ${campaignError?.message || "sem retorno"}`);
-      const { error: recipientsError } = await admin
-        .from("whatsapp_marketing_campaign_recipients")
-        .insert(summary.recipients.map((recipient) => ({
-          campaign_id: campaign.id,
-          user_id: tenantId,
-          phone: recipient.phone,
-          contact_name: recipient.name,
-          send_mode: recipient.send_mode,
-          next_attempt_at: scheduledAt.toISOString(),
-        })));
-      if (recipientsError) {
-        await admin.from("whatsapp_marketing_campaigns").delete().eq("id", campaign.id);
-        throw new Error(`Não consegui montar a fila: ${recipientsError.message}`);
+      for (const recipientChunk of chunks(summary.recipients, PAGE_SIZE)) {
+        const { error: recipientsError } = await admin
+          .from("whatsapp_marketing_campaign_recipients")
+          .insert(recipientChunk.map((recipient) => ({
+            campaign_id: campaign.id,
+            user_id: tenantId,
+            phone: recipient.phone,
+            contact_name: recipient.name,
+            send_mode: recipient.send_mode,
+            next_attempt_at: scheduledAt.toISOString(),
+          })));
+        if (recipientsError) {
+          await admin.from("whatsapp_marketing_campaigns").delete().eq("id", campaign.id);
+          throw new Error(`Não consegui montar a fila: ${recipientsError.message}`);
+        }
       }
       if (scheduledAt.getTime() <= Date.now() + 30_000) {
         await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/whatsapp-campanha-processar`, {
@@ -320,13 +374,62 @@ Deno.serve(async (req) => {
         .eq("user_id", tenantId)
         .maybeSingle();
       if (!campaign) return json({ success: false, error: "Campanha não encontrada." }, 404);
-      const { data: recipients } = await admin
-        .from("whatsapp_marketing_campaign_recipients")
-        .select("phone, contact_name, send_mode, status, failure_reason, message_id, updated_at")
+      const recipients = await loadAllPages<any>((from, to) =>
+        admin.from("whatsapp_marketing_campaign_recipients")
+          .select("phone, contact_name, send_mode, status, failure_reason, message_id, updated_at")
+          .eq("campaign_id", campaignId)
+          .eq("user_id", tenantId)
+          .order("created_at")
+          .range(from, to)
+      );
+      return json({ success: true, campaign, recipients });
+    }
+
+    if (action === "resume") {
+      const campaignId = String(body?.campaign_id || "");
+      const { data: campaign } = await admin
+        .from("whatsapp_marketing_campaigns")
+        .select("id, status")
+        .eq("id", campaignId)
+        .eq("user_id", tenantId)
+        .maybeSingle();
+      if (!campaign) return json({ success: false, error: "Campanha não encontrada." }, 404);
+      if (campaign.status !== "paused") {
+        return json({ success: false, error: "Somente campanhas pausadas podem ser retomadas." }, 409);
+      }
+      const resumedAt = new Date().toISOString();
+      const { data: resumed, error: resumeError } = await admin
+        .from("whatsapp_marketing_campaigns")
+        .update({
+          status: "scheduled",
+          stop_reason: null,
+          scheduled_at: resumedAt,
+          updated_at: resumedAt,
+        })
+        .eq("id", campaignId)
+        .eq("user_id", tenantId)
+        .eq("status", "paused")
+        .select("id")
+        .maybeSingle();
+      if (resumeError) throw resumeError;
+      if (!resumed) {
+        return json({ success: false, error: "A campanha já foi alterada. Atualize o relatório." }, 409);
+      }
+      await admin.from("whatsapp_marketing_campaign_recipients")
+        .update({ next_attempt_at: resumedAt, updated_at: resumedAt })
         .eq("campaign_id", campaignId)
         .eq("user_id", tenantId)
-        .order("created_at");
-      return json({ success: true, campaign, recipients: recipients ?? [] });
+        .eq("status", "queued");
+      await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/whatsapp-campanha-processar`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+          apikey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ campaign_id: campaignId, batch_limit: 10 }),
+      }).catch((error) => console.error("[whatsapp-campaign] resume trigger:", error));
+      return json({ success: true, status: "scheduled" });
     }
 
     if (action === "cancel") {
@@ -338,7 +441,7 @@ Deno.serve(async (req) => {
         .eq("user_id", tenantId)
         .maybeSingle();
       if (!campaign) return json({ success: false, error: "Campanha não encontrada." }, 404);
-      if (["completed", "cancelled"].includes(campaign.status)) {
+      if (["completed", "cancelled", "failed"].includes(campaign.status)) {
         return json({ success: false, error: "Esta campanha não possui envios pendentes." }, 409);
       }
       await admin.from("whatsapp_marketing_campaigns")

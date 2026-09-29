@@ -1,6 +1,8 @@
 export const WHATSAPP_SESSION_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const DEFAULT_CAMPAIGN_PACE_MS = 1_200;
 export const MAX_RECIPIENT_ATTEMPTS = 2;
+export const STALE_SENDING_MS = 15 * 60 * 1000;
+export const RATE_LIMIT_RESUME_MS = 30 * 60 * 1000;
 
 export type AudienceRow = {
   phone: string;
@@ -87,6 +89,88 @@ export function templateSupportsImage(header: unknown): boolean {
   return /(?:image|imagem)/i.test(serialized);
 }
 
+export function templateMatchesCampaignMedia(
+  header: unknown,
+  hasImage: boolean,
+): boolean {
+  return templateSupportsImage(header) === hasImage;
+}
+
+export type CampaignDeliveryStatus =
+  | "queued"
+  | "sending"
+  | "sent"
+  | "delivered"
+  | "read"
+  | "failed";
+
+const DELIVERY_RANK: Partial<Record<CampaignDeliveryStatus, number>> = {
+  queued: 0,
+  sending: 1,
+  sent: 2,
+  delivered: 3,
+  read: 4,
+};
+
+export function nextCampaignDeliveryStatus(
+  current: string | null | undefined,
+  incoming: CampaignDeliveryStatus,
+): CampaignDeliveryStatus | null {
+  const currentStatus = String(current || "") as CampaignDeliveryStatus;
+  if (incoming === "failed") {
+    return !currentStatus || ["queued", "sending", "sent"].includes(currentStatus)
+      ? "failed"
+      : null;
+  }
+  if (currentStatus === "failed") return null;
+  if (currentStatus && DELIVERY_RANK[currentStatus] === undefined) return null;
+  const currentRank = DELIVERY_RANK[currentStatus] ?? -1;
+  const incomingRank = DELIVERY_RANK[incoming] ?? -1;
+  return incomingRank >= currentRank ? incoming : null;
+}
+
+export function isRecipientSendingStale(
+  updatedAt: string | null | undefined,
+  now = Date.now(),
+): boolean {
+  if (!updatedAt) return false;
+  const timestamp = new Date(updatedAt).getTime();
+  return Number.isFinite(timestamp)
+    && timestamp <= now - STALE_SENDING_MS;
+}
+
+export function isRateLimitAutoResumeDue(
+  stopReason: string | null | undefined,
+  updatedAt: string | null | undefined,
+  now = Date.now(),
+): boolean {
+  if (stopReason !== "rate_limit" || !updatedAt) return false;
+  const timestamp = new Date(updatedAt).getTime();
+  return Number.isFinite(timestamp)
+    && timestamp <= now - RATE_LIMIT_RESUME_MS;
+}
+
+export async function claimQueuedCampaignRecipient(
+  admin: any,
+  recipientId: string,
+  attempts: number,
+  nowIso = new Date().toISOString(),
+): Promise<boolean> {
+  const { data, error } = await admin
+    .from("whatsapp_marketing_campaign_recipients")
+    .update({
+      status: "sending",
+      attempts,
+      updated_at: nowIso,
+    })
+    .eq("id", recipientId)
+    .eq("status", "queued")
+    .select("id")
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data?.id);
+}
+
 export function classifyCampaignStop(input: {
   category?: string | null;
   reason?: string | null;
@@ -105,6 +189,7 @@ export function classifyCampaignStop(input: {
 
 export type BatchSendResult = {
   success: boolean;
+  skipped?: boolean;
   category?: string | null;
   reason?: string | null;
 };
@@ -127,6 +212,7 @@ export async function runConservativeCampaignBatch<T>(input: {
   let stoppedBy: ReturnType<typeof classifyCampaignStop> = null;
   for (let index = 0; index < input.recipients.length; index++) {
     const result = await input.send(input.recipients[index], index);
+    if (result.skipped) continue;
     processed++;
     if (result.success) sent++;
     else failed++;
