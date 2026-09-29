@@ -127,13 +127,14 @@ async function refreshCampaignCounts(admin: any, campaignId: string): Promise<vo
     .select("status, total_ignored_without_opt_in")
     .eq("id", campaignId)
     .maybeSingle();
-  const terminal = queued === 0 && campaign?.status !== "paused" && campaign?.status !== "cancelled";
+  const terminal = queued === 0 && campaign?.status !== "cancelled";
   await admin.from("whatsapp_marketing_campaigns")
     .update({
       total_sent: (counts.get("sent") ?? 0)
         + (counts.get("delivered") ?? 0)
         + (counts.get("read") ?? 0),
-      total_delivered: counts.get("delivered") ?? 0,
+      total_delivered: (counts.get("delivered") ?? 0)
+        + (counts.get("read") ?? 0),
       total_read: counts.get("read") ?? 0,
       total_failed: counts.get("failed") ?? 0,
       total_skipped: Number(campaign?.total_ignored_without_opt_in || 0)
