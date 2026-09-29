@@ -51,7 +51,7 @@ async function verifySignature(rawBody: Uint8Array, header: string | null): Prom
   const sig = await crypto.subtle.sign(
     "HMAC",
     key,
-    rawBody,
+    Uint8Array.from(rawBody).buffer,
   );
   return timingSafeEqual(new Uint8Array(sig), hexToBytes(header));
 }
