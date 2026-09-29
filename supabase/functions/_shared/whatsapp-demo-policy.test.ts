@@ -3,7 +3,10 @@ import { AMZ_KNOWLEDGE, AMZ_SALES_BLOCK } from "./agent-soul.ts";
 import { dedupeConsecutiveReplyText } from "./reply-dedupe.ts";
 import {
   decideWhatsAppCreativeTool,
+  demoLimitMessage,
+  demoLimitReplay,
   DEMO_LIMIT_MESSAGE,
+  isDemoTestPhone,
 } from "./whatsapp-demo-policy.ts";
 
 Deno.test("prospect AMZ gera uma imagem e a segunda é recusada", () => {
@@ -63,6 +66,37 @@ Deno.test("dono mantém acesso às ferramentas sem limite de demonstração", ()
     isAmzTenant: true,
     generatedImages: 99,
   }), { allowed: true, mode: "owner" });
+});
+
+Deno.test("telefone de teste AMZ ignora limite sem virar dono", () => {
+  assertEquals(
+    isDemoTestPhone("5521988887777", ["(21) 98888-7777"]),
+    true,
+  );
+  assertEquals(
+    isDemoTestPhone("552188887777", ["5521988887777"]),
+    true,
+  );
+  assertEquals(
+    decideWhatsAppCreativeTool({
+      toolName: "gerar_imagem",
+      isOwner: false,
+      isAmzTenant: true,
+      generatedImages: 0,
+    }),
+    { allowed: true, mode: "demo" },
+  );
+});
+
+Deno.test("limite informa data sem afirmar que a demo foi feita agora", () => {
+  const message = demoLimitMessage("2026-09-20T15:00:00.000Z");
+  assertEquals(message.includes("20/09/2026"), true);
+  assertEquals(message.includes("Essa foi"), false);
+  assertEquals(message.includes("reenviar a última mídia"), true);
+  assertEquals(demoLimitReplay({
+    created_at: "2026-09-20T15:00:00.000Z",
+    midia_url: "https://cdn.example/demo.png",
+  }).imageUrl, "https://cdn.example/demo.png");
 });
 
 Deno.test("reply duplicado consecutivo vira texto único inclusive entre partes", () => {

@@ -9,7 +9,7 @@ export type BrandSiteIdentity = {
   logo_confidence: "high" | "none";
 };
 
-const MAX_HTML_BYTES = 800_000;
+const MAX_HTML_BYTES = 2_000_000;
 const MAX_CSS_BYTES = 300_000;
 const MAX_LOGO_BYTES = 1_000_000;
 const TIMEOUT_MS = 10_000;
@@ -273,9 +273,15 @@ export async function assertSafePublicUrl(
   return url;
 }
 
-async function readLimited(response: Response, maxBytes: number): Promise<Uint8Array> {
+export async function readLimited(
+  response: Response,
+  maxBytes: number,
+  truncateAtLimit = false,
+): Promise<Uint8Array> {
   const declared = Number(response.headers.get("content-length") || 0);
-  if (declared > maxBytes) throw new Error("Resposta maior que o limite permitido.");
+  if (declared > maxBytes && !truncateAtLimit) {
+    throw new Error("Resposta maior que o limite permitido.");
+  }
   if (!response.body) return new Uint8Array();
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -283,12 +289,22 @@ async function readLimited(response: Response, maxBytes: number): Promise<Uint8A
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-    total += value.length;
-    if (total > maxBytes) {
+    const remaining = maxBytes - total;
+    if (value.length > remaining) {
+      if (truncateAtLimit && remaining > 0) {
+        chunks.push(value.subarray(0, remaining));
+        total += remaining;
+      }
       await reader.cancel();
-      throw new Error("Resposta maior que o limite permitido.");
+      if (!truncateAtLimit) throw new Error("Resposta maior que o limite permitido.");
+      break;
     }
     chunks.push(value);
+    total += value.length;
+    if (truncateAtLimit && total === maxBytes) {
+      await reader.cancel();
+      break;
+    }
   }
   const output = new Uint8Array(total);
   let offset = 0;
@@ -303,6 +319,7 @@ async function safeFetch(
   rawUrl: string,
   signal: AbortSignal,
   maxBytes: number,
+  truncateAtLimit = false,
 ): Promise<{ response: Response; bytes: Uint8Array; finalUrl: URL }> {
   let current = await assertSafePublicUrl(rawUrl);
   for (let redirect = 0; redirect <= 3; redirect++) {
@@ -318,7 +335,11 @@ async function safeFetch(
       continue;
     }
     if (!response.ok) throw new Error(`O site respondeu com HTTP ${response.status}.`);
-    return { response, bytes: await readLimited(response, maxBytes), finalUrl: current };
+    return {
+      response,
+      bytes: await readLimited(response, maxBytes, truncateAtLimit),
+      finalUrl: current,
+    };
   }
   throw new Error("Redirecionamentos demais.");
 }
@@ -335,7 +356,7 @@ export async function fetchBrandSiteIdentity(rawUrl: string): Promise<BrandSiteI
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const page = await safeFetch(rawUrl, controller.signal, MAX_HTML_BYTES);
+    const page = await safeFetch(rawUrl, controller.signal, MAX_HTML_BYTES, true);
     const contentType = page.response.headers.get("content-type") ?? "";
     if (!contentType.includes("text/html")) throw new Error("A URL não retornou uma página HTML.");
     const html = new TextDecoder().decode(page.bytes);
@@ -348,7 +369,7 @@ export async function fetchBrandSiteIdentity(rawUrl: string): Promise<BrandSiteI
     const cssParts: string[] = [];
     for (const cssUrl of cssUrls) {
       try {
-        const css = await safeFetch(cssUrl, controller.signal, MAX_CSS_BYTES);
+        const css = await safeFetch(cssUrl, controller.signal, MAX_CSS_BYTES, true);
         cssParts.push(new TextDecoder().decode(css.bytes));
       } catch {
         // Folha opcional: a identidade continua com o HTML disponível.
@@ -366,7 +387,9 @@ export async function fetchBrandSiteIdentity(rawUrl: string): Promise<BrandSiteI
           identity.logo_confidence = "none";
         }
       } catch {
+        identity.logo_url = null;
         identity.logo_data_url = null;
+        identity.logo_confidence = "none";
       }
     }
     if (identity.logo_confidence === "high" && identity.logo_data_url) {

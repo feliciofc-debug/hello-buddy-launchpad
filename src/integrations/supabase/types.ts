@@ -9436,6 +9436,7 @@ export type Database = {
           agent_name: string | null
           cargo: string | null
           created_at: string
+          demo_test_phones: string[]
           greeting: string | null
           handoff_rules: Json | null
           id: string
@@ -9458,6 +9459,7 @@ export type Database = {
           agent_name?: string | null
           cargo?: string | null
           created_at?: string
+          demo_test_phones?: string[]
           greeting?: string | null
           handoff_rules?: Json | null
           id?: string
@@ -9480,6 +9482,7 @@ export type Database = {
           agent_name?: string | null
           cargo?: string | null
           created_at?: string
+          demo_test_phones?: string[]
           greeting?: string | null
           handoff_rules?: Json | null
           id?: string

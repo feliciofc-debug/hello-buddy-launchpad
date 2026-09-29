@@ -1,5 +1,7 @@
+import { ownerPhonesEquivalent } from "./owner-phone.ts";
+
 export const DEMO_LIMIT_MESSAGE =
-  "Essa foi a demonstração gratuita. Para criar mais e publicar nas suas redes, o Felicio te mostra a plataforma completa. Quer que eu peça pra ele te chamar?";
+  "A demonstração gratuita deste número já foi usada. Vou reenviar a última mídia; se quiser avançar, o Felicio pode te mostrar a plataforma completa.";
 
 export const TENANT_CREATION_BLOCK_MESSAGE =
   "Esse recurso é exclusivo do responsável da conta. Posso continuar ajudando com suas dúvidas por aqui.";
@@ -27,6 +29,37 @@ const PUBLICATION_TOOLS = new Set([
 export type DemoToolDecision =
   | { allowed: true; mode: "owner" | "normal" | "demo" }
   | { allowed: false; reason: "demo_limit" | "demo_restricted" | "tenant_restricted"; message: string };
+
+export function isDemoTestPhone(fromNumber: string, testPhones: unknown): boolean {
+  return Array.isArray(testPhones)
+    && testPhones.some((phone) => ownerPhonesEquivalent(phone, fromNumber));
+}
+
+export function demoLimitMessage(createdAt?: string | null): string {
+  const timestamp = createdAt ? new Date(createdAt) : null;
+  const valid = timestamp && Number.isFinite(timestamp.getTime());
+  const date = valid
+    ? new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(timestamp)
+    : null;
+  return date
+    ? `A demonstração gratuita deste número foi feita em ${date}. Vou reenviar a última mídia; se quiser avançar, o Felicio pode te mostrar a plataforma completa.`
+    : DEMO_LIMIT_MESSAGE;
+}
+
+export function demoLimitReplay(previous?: {
+  midia_url?: string | null;
+  created_at?: string | null;
+} | null): { message: string; imageUrl?: string } {
+  return {
+    message: demoLimitMessage(previous?.created_at),
+    ...(previous?.midia_url ? { imageUrl: previous.midia_url } : {}),
+  };
+}
 
 export function decideWhatsAppCreativeTool(params: {
   toolName: string;

@@ -7,6 +7,7 @@ import {
   previewableWhatsAppLogoUrl,
   resolveWhatsAppGeneratorBrand,
   whatsAppImageBrandResultMessage,
+  whatsAppImageFailureMessage,
   whatsAppSiteBrandGenerationOptions,
   whatsAppUploadedLogoConfirmationButtons,
 } from "./whatsapp-image-brand.ts";
@@ -110,6 +111,16 @@ Deno.test("logo confiável do site é temporária e a resposta é honesta", () =
       brand_application_mode: "in_scene_verified",
     }) === "Apliquei a logo encontrada no site na cena.",
     "verified in-scene result should be reported",
+  );
+});
+
+Deno.test("falha de geração preserva mensagem explicativa", () => {
+  assert(
+    whatsAppImageFailureMessage({
+      status: "aguardando_escolha_marca",
+      mensagem: "Não consegui ler a identidade desse site agora.",
+    }) === "Não consegui ler a identidade desse site agora.",
+    "deferred explanation must win over generic invalid-response copy",
   );
 });
 

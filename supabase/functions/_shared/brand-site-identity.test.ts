@@ -5,6 +5,7 @@ import {
   extractBrandIdentityFromHtml,
   isPrivateOrLocalAddress,
   prioritizeSiteIdentityColors,
+  readLimited,
 } from "./brand-site-identity.ts";
 
 Deno.test("extrai theme-color e variáveis CSS e ignora cinzas", () => {
@@ -63,6 +64,40 @@ Deno.test("extrai nome da marca declarado pelo site", () => {
   assertEquals(cleanSiteBrandName("Ademicon – Consórcio"), "Ademicon");
   assertEquals(cleanSiteBrandName("Ademicon — Investimentos"), "Ademicon");
   assertEquals(cleanSiteBrandName("Ademicon: Consórcio"), "Ademicon");
+});
+
+Deno.test("HTML acima do limite preserva identidade encontrada no início", async () => {
+  const head = `<meta property="og:site_name" content="Loja Bom Pastor">
+    <meta name="theme-color" content="#164E63">
+    <header><img class="site-logo" src="/logo.png"></header>`;
+  const oversized = `${head}${"x".repeat(2_100_000)}`;
+  const bytes = await readLimited(
+    new Response(oversized, {
+      headers: { "content-length": String(new TextEncoder().encode(oversized).length) },
+    }),
+    2_000_000,
+    true,
+  );
+  assertEquals(bytes.length, 2_000_000);
+  const identity = extractBrandIdentityFromHtml(
+    new TextDecoder().decode(bytes),
+    "https://www.lojabompastor.com.br/",
+  );
+  assertEquals(identity.brand_name, "Loja Bom Pastor");
+  assertEquals(identity.colors, ["#164e63"]);
+  assertEquals(identity.logo_url, "https://www.lojabompastor.com.br/logo.png");
+});
+
+Deno.test("logo acima do limite continua sendo rejeitada", async () => {
+  await assertRejects(
+    () =>
+      readLimited(
+        new Response(new Uint8Array(12), { headers: { "content-length": "12" } }),
+        10,
+      ),
+    Error,
+    "maior que o limite",
+  );
 });
 
 Deno.test("bloqueia localhost e faixas privadas contra SSRF", async () => {

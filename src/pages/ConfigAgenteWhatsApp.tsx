@@ -20,6 +20,7 @@ type AgentConfig = {
   owner_phone: string;
   owner_name: string;
   owner_alt_phones: string;
+  demo_test_phones: string;
   agent_name: string;
   persona: string;
   tone: string;
@@ -33,6 +34,7 @@ const EMPTY: AgentConfig = {
   owner_phone: "",
   owner_name: "",
   owner_alt_phones: "",
+  demo_test_phones: "",
   agent_name: "",
   persona: "",
   tone: "",
@@ -43,7 +45,7 @@ const EMPTY: AgentConfig = {
 };
 
 const FIELDS: Record<
-  Exclude<keyof AgentConfig, "is_active" | "owner_phone" | "owner_name" | "owner_alt_phones">,
+  Exclude<keyof AgentConfig, "is_active" | "owner_phone" | "owner_name" | "owner_alt_phones" | "demo_test_phones">,
   { label: string; placeholder: string; help: string; multiline: boolean; rows?: number }
 > = {
   agent_name: {
@@ -141,6 +143,7 @@ export default function ConfigAgenteWhatsApp() {
           owner_phone: data.owner_phone ?? "",
           owner_name: data.owner_name ?? "",
           owner_alt_phones: (data.owner_alt_phones ?? []).join(", "),
+          demo_test_phones: (data.demo_test_phones ?? []).join(", "),
           agent_name: data.agent_name ?? "",
           persona: data.persona ?? "",
           tone: data.tone ?? "",
@@ -207,6 +210,19 @@ export default function ConfigAgenteWhatsApp() {
       });
       return;
     }
+    const invalidTestPhone = config.demo_test_phones
+      .split(/[,;\n]+/)
+      .map((phone) => phone.trim())
+      .filter(Boolean)
+      .some((phone) => !normalizeOwnerPhone(phone));
+    if (invalidTestPhone) {
+      toast({
+        title: "Telefone de teste inválido",
+        description: "Separe os números por vírgula e informe DDD + número em cada um.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -216,6 +232,10 @@ export default function ConfigAgenteWhatsApp() {
         owner_alt_phones: normalizeAlternativePhones(
           config.owner_alt_phones,
           ownerPhone,
+        ),
+        demo_test_phones: normalizeAlternativePhones(
+          config.demo_test_phones,
+          "",
         ),
         agent_name: config.agent_name || null,
         persona: config.persona || null,
@@ -339,6 +359,21 @@ export default function ConfigAgenteWhatsApp() {
                 inputMode="tel"
                 placeholder="Separe por vírgula: (21) 98888-8888, (11) 97777-7777"
               />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="demo_test_phones">
+                Telefones de teste da demonstração <span className="font-normal text-muted-foreground">(opcional)</span>
+              </Label>
+              <Input
+                id="demo_test_phones"
+                value={config.demo_test_phones}
+                onChange={(event) => update("demo_test_phones", event.target.value)}
+                inputMode="tel"
+                placeholder="Separe por vírgula: (21) 98888-8888, (11) 97777-7777"
+              />
+              <p className="text-xs text-muted-foreground">
+                No tenant AMZ, esses números continuam como prospects, mas podem repetir a demonstração sem consumir o limite.
+              </p>
             </div>
           </CardContent>
         </Card>

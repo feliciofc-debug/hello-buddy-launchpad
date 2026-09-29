@@ -97,6 +97,13 @@ export function whatsAppImageBrandResultMessage(
   return "Gerei sem logo.";
 }
 
+export function whatsAppImageFailureMessage(result: Record<string, unknown>): string {
+  const explanation = String(
+    result.mensagem ?? result.detalhe ?? result.erro ?? "",
+  ).trim();
+  return explanation || "Não consegui gerar a imagem porque a ferramenta devolveu uma resposta inválida.";
+}
+
 export function whatsAppSiteBrandGenerationOptions(identity: {
   colors: string[];
   brand_name?: string | null;

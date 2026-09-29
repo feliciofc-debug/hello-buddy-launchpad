@@ -93,7 +93,9 @@ import {
 } from "../_shared/lead-name.ts";
 import {
   decideWhatsAppCreativeTool,
+  demoLimitReplay,
   DEMO_LIMIT_MESSAGE,
+  isDemoTestPhone,
   TENANT_CREATION_BLOCK_MESSAGE,
   type DemoToolDecision,
 } from "../_shared/whatsapp-demo-policy.ts";
@@ -142,6 +144,7 @@ import {
   extractWhatsAppBrandSiteUrl,
   resolveWhatsAppGeneratorBrand,
   whatsAppImageBrandResultMessage,
+  whatsAppImageFailureMessage,
   whatsAppSiteBrandGenerationOptions,
   whatsAppUploadedLogoConfirmationButtons,
   type WhatsAppBrandPreference,
@@ -1541,7 +1544,7 @@ async function completePendingBrandGeneration(
   try { generated = JSON.parse(raw); } catch { /* erro honesto abaixo */ }
   if (generated?.ok !== true || !generated?.image_url) {
     return {
-      text: `Não consegui gerar a imagem: ${String(generated?.detalhe || generated?.erro || "resposta inválida")}`,
+      text: whatsAppImageFailureMessage(generated),
     };
   }
   if (generated?.midia_id) await rememberLastMediaInteraction(toolCtx, generated.midia_id);
@@ -1584,7 +1587,7 @@ function completedWhatsAppImageResponse(raw: string, explicitlyUnbranded = false
   try { result = JSON.parse(raw); } catch { /* erro honesto abaixo */ }
   if (result?.ok !== true || !result?.image_url) {
     return {
-      text: `Não consegui gerar a imagem: ${String(result?.detalhe || result?.erro || "resposta inválida")}`,
+      text: whatsAppImageFailureMessage(result),
     };
   }
   const brandMessage = whatsAppImageBrandResultMessage(result, explicitlyUnbranded);
@@ -10290,17 +10293,45 @@ async function countProspectDemoMedia(
   return count ?? 0;
 }
 
+async function latestProspectDemoMedia(
+  userId: string,
+  fromNumber: string,
+  toolName: string,
+): Promise<{ midia_url: string; created_at: string } | null> {
+  const origin = toolName === "criar_carrossel"
+    ? "carrossel_whatsapp"
+    : "ia_whatsapp";
+  const { data, error } = await sb.from("midias_whatsapp")
+    .select("midia_url, created_at")
+    .eq("user_id", userId)
+    .eq("telefone_origem", fromNumber)
+    .eq("origem", origin)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.warn("[demo-policy][latest_media_failed]", error.message);
+    return null;
+  }
+  return data?.midia_url && data?.created_at
+    ? { midia_url: data.midia_url, created_at: data.created_at }
+    : null;
+}
+
 async function resolveCreativeToolDecision(
   name: string,
-  ctx: { userId: string; fromNumber: string },
+  ctx: { userId: string; fromNumber: string; demoTestPhones?: string[] },
 ): Promise<DemoToolDecision> {
   const owner = isOwner(ctx);
   const isAmzTenant = ctx.userId === ADMIN_AMZ_USER_ID;
+  const exemptTestPhone = isAmzTenant
+    && !owner
+    && isDemoTestPhone(ctx.fromNumber, ctx.demoTestPhones);
   try {
-    const generatedImages = !owner && isAmzTenant && name === "gerar_imagem"
+    const generatedImages = !owner && isAmzTenant && !exemptTestPhone && name === "gerar_imagem"
       ? await countProspectDemoMedia(ctx.userId, ctx.fromNumber, "ia_whatsapp")
       : 0;
-    const generatedCarousels = !owner && isAmzTenant && name === "criar_carrossel"
+    const generatedCarousels = !owner && isAmzTenant && !exemptTestPhone && name === "criar_carrossel"
       ? await countProspectDemoMedia(ctx.userId, ctx.fromNumber, "carrossel_whatsapp")
       : 0;
     return decideWhatsAppCreativeTool({
@@ -10326,20 +10357,34 @@ async function runTool(
 
   name: string,
   args: any,
-  ctx: { userId: string; fromNumber: string; media?: MediaExtract[]; convId?: string; agentState?: AgentConvState },
+  ctx: {
+    userId: string;
+    fromNumber: string;
+    media?: MediaExtract[];
+    convId?: string;
+    agentState?: AgentConvState;
+    demoTestPhones?: string[];
+  },
 ): Promise<{ result: string; imageUrl?: string; interactiveButtons?: WhatsAppInteractiveButtons }> {
   if (AMZ_GLOBAL_TOOL_NAMES.has(name) && !hasAmzGlobalToolAccess(ctx)) {
     return { result: JSON.stringify({ erro: "ferramenta_restrita" }) };
   }
   const creativeDecision = await resolveCreativeToolDecision(name, ctx);
   if (!creativeDecision.allowed) {
+    const previousDemo = creativeDecision.reason === "demo_limit"
+      ? await latestProspectDemoMedia(ctx.userId, ctx.fromNumber, name)
+      : null;
+    const replay = demoLimitReplay(previousDemo);
     return {
       result: JSON.stringify({
         ok: false,
         status: "demonstracao_bloqueada",
         erro: creativeDecision.reason,
-        mensagem: creativeDecision.message,
+        mensagem: previousDemo
+          ? replay.message
+          : creativeDecision.message,
       }),
+      imageUrl: replay.imageUrl,
     };
   }
   const demonstracao = creativeDecision.mode === "demo";
@@ -10487,7 +10532,14 @@ async function callGemini(
   history: Array<{ role: string; content: string }>,
   userContent: any,
   hasMedia: boolean,
-  toolCtx: { userId: string; fromNumber: string; media?: MediaExtract[]; convId?: string; agentState?: AgentConvState },
+  toolCtx: {
+    userId: string;
+    fromNumber: string;
+    media?: MediaExtract[];
+    convId?: string;
+    agentState?: AgentConvState;
+    demoTestPhones?: string[];
+  },
 ): Promise<{
   text: string;
   imageUrl?: string;
@@ -10872,7 +10924,7 @@ async function callGemini(
       let generated: any = {};
       try { generated = JSON.parse(generatedRaw); } catch { /* tratado abaixo */ }
       if (generated?.ok !== true || !generated?.image_url) {
-        return { text: `Não consegui gerar a imagem: ${String(generated?.detalhe || generated?.erro || "resposta inválida")}` };
+        return { text: whatsAppImageFailureMessage(generated) };
       }
       if (generated?.midia_id) await rememberLastMediaInteraction(toolCtx, generated.midia_id);
       const brandResult = whatsAppImageBrandResultMessage(
@@ -11290,13 +11342,13 @@ async function callGemini(
       if (tema.length < 3) {
         return { text: "Fechado, carrossel! Sobre qual assunto você quer? (ex: “vantagens da AMZ Ofertas”)" };
       }
-      const { result: r } = await runTool("criar_carrossel", {
+      const { result: r, imageUrl } = await runTool("criar_carrossel", {
         tema,
         cor: corPedida,
         num_slides: requestedCarouselSlideCount(userContent, !remetenteEhDono),
         facebook_requested: requestedFacebook(userContent),
       }, toolCtx);
-      const response = carouselToolResponse(r);
+      const response = { ...carouselToolResponse(r), imageUrl };
       if (carouselNetworks.includes("linkedin")) {
         response.text = `${response.text}<<SPLIT>>Carrossel pelo LinkedIn ainda não está habilitado; mantive apenas o Instagram.`;
       }
@@ -11311,14 +11363,14 @@ async function callGemini(
       && corResposta
     ) {
       console.log("[pietro][carrossel_cor_escolhida]", { tema: pendingCarousel.tema });
-      const { result: r } = await runTool("criar_carrossel", {
+      const { result: r, imageUrl } = await runTool("criar_carrossel", {
         tema: pendingCarousel.tema,
         cor: corResposta,
         num_slides: pendingCarousel.num_slides,
         legenda: pendingCarousel.caption,
         facebook_requested: pendingCarousel.facebook_requested,
       }, toolCtx);
-      return carouselToolResponse(r);
+      return { ...carouselToolResponse(r), imageUrl };
     }
 
     const socialPost = detectSocialPostIntent(userContent);
@@ -14430,6 +14482,9 @@ Regras:
         media,
         convId: conv.id,
         agentState,
+        demoTestPhones: Array.isArray((agent as any).demo_test_phones)
+          ? (agent as any).demo_test_phones
+          : [],
       });
       reply = aiResult.text;
       generatedImageUrl = aiResult.imageUrl;
