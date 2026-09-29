@@ -1,8 +1,12 @@
-import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assertEquals,
+  assertThrows,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   campaignTenantId,
   claimQueuedCampaignRecipient,
   filterAuthorizedAudience,
+  filterSelectedAuthorizedAudience,
   isCampaignDue,
   isInsideWhatsAppWindow,
   isRateLimitAutoResumeDue,
@@ -41,6 +45,55 @@ Deno.test("audiência exige opt-in, respeita recusa e remove duplicados", () => 
   assertEquals(result.recipients, [{ phone: "5511999990001", name: "Ana" }]);
   assertEquals(result.duplicates, 2);
   assertEquals(result.ignoredWithoutOptIn, 3);
+});
+
+Deno.test("seleção só da janela usa apenas o telefone autorizado escolhido", () => {
+  const result = filterSelectedAuthorizedAudience([
+    {
+      phone: "5511999990001",
+      name: "Dentro da janela",
+      optInStatus: "confirmado",
+    },
+    {
+      phone: "5511999990002",
+      name: "Fora da janela",
+      optInStatus: "confirmado",
+    },
+  ], ["5511999990001"]);
+  assertEquals(result.recipients, [{
+    phone: "5511999990001",
+    name: "Dentro da janela",
+  }]);
+});
+
+Deno.test("servidor bloqueia contato selecionado sem autorização", () => {
+  assertThrows(
+    () =>
+      filterSelectedAuthorizedAudience([
+        {
+          phone: "5511999990001",
+          name: "Sem opt-in",
+          optInStatus: "pendente",
+        },
+      ], ["5511999990001"]),
+    Error,
+    "contato_sem_autorizacao",
+  );
+});
+
+Deno.test("servidor bloqueia número selecionado que não pertence à lista", () => {
+  assertThrows(
+    () =>
+      filterSelectedAuthorizedAudience([
+        {
+          phone: "5511999990001",
+          name: "Membro",
+          optInStatus: "confirmado",
+        },
+      ], ["5511999999999"]),
+    Error,
+    "contato_nao_pertence_a_lista",
+  );
 });
 
 Deno.test("campanha só fica disponível no horário agendado", () => {

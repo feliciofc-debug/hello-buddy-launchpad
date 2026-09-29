@@ -64,6 +64,47 @@ export function filterAuthorizedAudience(rows: AudienceRow[]): EligibleAudience 
   return { recipients, ignoredWithoutOptIn, duplicates };
 }
 
+export function filterSelectedAuthorizedAudience(
+  rows: AudienceRow[],
+  selectedPhones: unknown[],
+): EligibleAudience {
+  const selected = new Set<string>();
+  for (const raw of selectedPhones) {
+    const phone = normalizeCampaignPhone(String(raw ?? ""));
+    if (!phone) throw new Error("telefone_selecionado_invalido");
+    selected.add(phone);
+  }
+  if (!selected.size) {
+    return { recipients: [], ignoredWithoutOptIn: 0, duplicates: 0 };
+  }
+
+  const memberPhones = new Set(
+    rows
+      .map((row) => normalizeCampaignPhone(row.phone))
+      .filter((phone): phone is string => Boolean(phone)),
+  );
+  for (const phone of selected) {
+    if (!memberPhones.has(phone)) {
+      throw new Error("contato_nao_pertence_a_lista");
+    }
+  }
+
+  const selectedRows = rows.filter((row) => {
+    const phone = normalizeCampaignPhone(row.phone);
+    return Boolean(phone && selected.has(phone));
+  });
+  const eligible = filterAuthorizedAudience(selectedRows);
+  const eligiblePhones = new Set(
+    eligible.recipients.map((recipient) => recipient.phone),
+  );
+  for (const phone of selected) {
+    if (!eligiblePhones.has(phone)) {
+      throw new Error("contato_sem_autorizacao");
+    }
+  }
+  return eligible;
+}
+
 export function isInsideWhatsAppWindow(
   lastInboundAt: string | null | undefined,
   now = Date.now(),

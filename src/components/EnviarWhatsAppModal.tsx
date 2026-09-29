@@ -39,6 +39,17 @@ type ContactItem = {
   lista_id: string;
 };
 
+type ListMember = {
+  id: string;
+  name: string | null;
+  phone: string | null;
+  phone_masked: string;
+  authorization_status: "authorized" | "unauthorized";
+  opt_in_status: string | null;
+  inside_window: boolean;
+  delivery_requirement: "session" | "template" | "blocked";
+};
+
 type TemplateItem = {
   id: string;
   nome_meta: string;
@@ -130,6 +141,12 @@ export function EnviarWhatsAppModal({
 }: EnviarWhatsAppModalProps) {
   const [destinationType, setDestinationType] = useState<DestinationType | null>(null);
   const [lists, setLists] = useState<ListItem[]>([]);
+  const [listMembers, setListMembers] = useState<ListMember[]>([]);
+  const [memberQuery, setMemberQuery] = useState("");
+  const [memberPage, setMemberPage] = useState(0);
+  const [membersHaveMore, setMembersHaveMore] = useState(false);
+  const [membersTotal, setMembersTotal] = useState(0);
+  const [selectedPhones, setSelectedPhones] = useState<string[]>([]);
   const [contacts, setContacts] = useState<ContactItem[]>([]);
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -140,6 +157,8 @@ export function EnviarWhatsAppModal({
   const [summary, setSummary] = useState<PreviewSummary | null>(null);
   const [loadingInitial, setLoadingInitial] = useState(false);
   const [loadingContacts, setLoadingContacts] = useState(false);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+  const [selectingMembers, setSelectingMembers] = useState(false);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [sending, setSending] = useState(false);
   const [resuming, setResuming] = useState(false);
@@ -168,6 +187,12 @@ export function EnviarWhatsAppModal({
     if (!open) return;
     setDestinationType(null);
     setSelectedId("");
+    setListMembers([]);
+    setMemberQuery("");
+    setMemberPage(0);
+    setMembersHaveMore(false);
+    setMembersTotal(0);
+    setSelectedPhones([]);
     setSelectedContact(null);
     setContactQuery("");
     setSelectedTemplate("");
@@ -189,6 +214,98 @@ export function EnviarWhatsAppModal({
       .catch(handleError)
       .finally(() => setLoadingInitial(false));
   }, [open, imagemUrl, handleError]);
+
+  useEffect(() => {
+    if (destinationType !== "list" || !selectedId) {
+      setListMembers([]);
+      setMembersHaveMore(false);
+      setMembersTotal(0);
+      return;
+    }
+    let active = true;
+    const timer = window.setTimeout(() => {
+      setLoadingMembers(true);
+      invokeCampaign({
+        action: "list_members",
+        list_id: selectedId,
+        page: 0,
+        page_size: 50,
+        query: memberQuery.trim(),
+      })
+        .then((data) => {
+          if (!active) return;
+          setListMembers(data.members || []);
+          setMemberPage(0);
+          setMembersHaveMore(Boolean(data.has_more));
+          setMembersTotal(Number(data.total || 0));
+        })
+        .catch(handleError)
+        .finally(() => active && setLoadingMembers(false));
+    }, memberQuery.trim() ? 300 : 0);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [destinationType, selectedId, memberQuery, handleError]);
+
+  const loadMoreMembers = async () => {
+    if (!selectedId || loadingMembers || !membersHaveMore) return;
+    setLoadingMembers(true);
+    try {
+      const nextPage = memberPage + 1;
+      const data = await invokeCampaign({
+        action: "list_members",
+        list_id: selectedId,
+        page: nextPage,
+        page_size: 50,
+        query: memberQuery.trim(),
+      });
+      setListMembers((current) => [...current, ...(data.members || [])]);
+      setMemberPage(nextPage);
+      setMembersHaveMore(Boolean(data.has_more));
+      setMembersTotal(Number(data.total || 0));
+    } catch (caught) {
+      handleError(caught);
+    } finally {
+      setLoadingMembers(false);
+    }
+  };
+
+  const selectAuthorizedMembers = async (onlyInsideWindow: boolean) => {
+    if (!selectedId) return;
+    setSelectingMembers(true);
+    setError("");
+    try {
+      const phones: string[] = [];
+      let page = 0;
+      let hasMore = true;
+      while (hasMore) {
+        const data = await invokeCampaign({
+          action: "list_members",
+          list_id: selectedId,
+          page,
+          page_size: 200,
+          query: "",
+        });
+        for (const member of (data.members || []) as ListMember[]) {
+          if (
+            member.authorization_status === "authorized"
+            && member.phone
+            && (!onlyInsideWindow || member.inside_window)
+          ) {
+            phones.push(member.phone);
+          }
+        }
+        hasMore = Boolean(data.has_more);
+        page++;
+      }
+      setSelectedPhones([...new Set(phones)]);
+    } catch (caught) {
+      handleError(caught);
+    } finally {
+      setSelectingMembers(false);
+    }
+  };
 
   useEffect(() => {
     if (destinationType !== "individual" || contactQuery.trim().length < 2 || selectedContact) {
@@ -218,10 +335,20 @@ export function EnviarWhatsAppModal({
       setSummary(null);
       return;
     }
+    if (destination.type === "list" && selectedPhones.length === 0) {
+      setSummary(null);
+      return;
+    }
     let active = true;
     setLoadingPreview(true);
     setError("");
-    invokeCampaign({ action: "preview", destination })
+    invokeCampaign({
+      action: "preview",
+      destination,
+      selected_phones: destination.type === "list"
+        ? selectedPhones
+        : undefined,
+    })
       .then((data) => {
         if (!active) return;
         setSummary(data.summary);
@@ -234,7 +361,7 @@ export function EnviarWhatsAppModal({
     return () => {
       active = false;
     };
-  }, [destination, templates, handleError]);
+  }, [destination, selectedPhones, templates, handleError]);
 
   useEffect(() => {
     setTemplateVariables((current) =>
@@ -293,6 +420,9 @@ export function EnviarWhatsAppModal({
         action: "create",
         name: `IA Marketing · ${format(new Date(), "dd/MM/yyyy HH:mm")}`,
         destination,
+        selected_phones: destination.type === "list"
+          ? selectedPhones
+          : undefined,
         message: mensagem,
         image_url: imagemUrl || null,
         template_id: selectedTemplate || null,
@@ -430,6 +560,9 @@ export function EnviarWhatsAppModal({
                     setDestinationType(item.type);
                     setSelectedId("");
                     setSelectedContact(null);
+                    setSelectedPhones([]);
+                    setListMembers([]);
+                    setMemberQuery("");
                     setSummary(null);
                   }}
                   className={cn(
@@ -453,7 +586,13 @@ export function EnviarWhatsAppModal({
                   <button
                     type="button"
                     key={list.id}
-                    onClick={() => setSelectedId(list.id)}
+                    onClick={() => {
+                      setSelectedId(list.id);
+                      setSelectedPhones([]);
+                      setMemberQuery("");
+                      setListMembers([]);
+                      setSummary(null);
+                    }}
                     className={cn(
                       "w-full rounded-md border p-3 text-left text-sm",
                       selectedId === list.id ? "border-primary bg-primary/5" : "border-border",
@@ -465,6 +604,142 @@ export function EnviarWhatsAppModal({
                     </p>
                   </button>
                 ))}
+                {selectedId && (
+                  <div className="mt-4 space-y-3 rounded-lg border p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <Label>Contatos da lista</Label>
+                      <span className="text-xs text-muted-foreground">
+                        {selectedPhones.length} selecionado(s) · {membersTotal} contato(s)
+                      </span>
+                    </div>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        value={memberQuery}
+                        onChange={(event) => setMemberQuery(event.target.value)}
+                        placeholder="Buscar nesta lista por nome ou telefone"
+                        className="pl-9"
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={selectingMembers}
+                        onClick={() => selectAuthorizedMembers(false)}
+                      >
+                        Selecionar todos autorizados
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={selectingMembers}
+                        onClick={() => selectAuthorizedMembers(true)}
+                      >
+                        Só quem está na janela 24h
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        disabled={selectingMembers || selectedPhones.length === 0}
+                        onClick={() => setSelectedPhones([])}
+                      >
+                        Limpar
+                      </Button>
+                    </div>
+                    {selectingMembers && (
+                      <p className="flex items-center text-xs text-muted-foreground">
+                        <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                        Selecionando contatos autorizados...
+                      </p>
+                    )}
+                    <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                      {listMembers.map((member) => {
+                        const authorized = member.authorization_status === "authorized"
+                          && Boolean(member.phone);
+                        const checked = Boolean(
+                          member.phone && selectedPhones.includes(member.phone),
+                        );
+                        const label = !authorized
+                          ? "Sem autorização"
+                          : member.inside_window
+                          ? "Janela 24h"
+                          : "Precisa de modelo";
+                        return (
+                          <label
+                            key={member.id}
+                            className={cn(
+                              "flex items-center gap-3 rounded-md border p-2",
+                              authorized ? "cursor-pointer" : "cursor-not-allowed opacity-70",
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={!authorized}
+                              onChange={(event) => {
+                                if (!member.phone) return;
+                                setSelectedPhones((current) =>
+                                  event.target.checked
+                                    ? [...new Set([...current, member.phone!])]
+                                    : current.filter((phone) => phone !== member.phone)
+                                );
+                              }}
+                              className="h-4 w-4 accent-primary"
+                            />
+                            <span className="min-w-0 flex-1 text-sm">
+                              <span className="block truncate font-medium">
+                                {member.name || "Sem nome"}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {member.phone_masked}
+                              </span>
+                            </span>
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "shrink-0",
+                                !authorized && "border-muted bg-muted text-muted-foreground",
+                                authorized && member.inside_window
+                                  && "border-emerald-300 bg-emerald-50 text-emerald-700",
+                                authorized && !member.inside_window
+                                  && "border-amber-300 bg-amber-50 text-amber-700",
+                              )}
+                            >
+                              {label}
+                            </Badge>
+                          </label>
+                        );
+                      })}
+                      {!loadingMembers && listMembers.length === 0 && (
+                        <p className="py-4 text-center text-sm text-muted-foreground">
+                          Nenhum contato encontrado nesta lista.
+                        </p>
+                      )}
+                    </div>
+                    {loadingMembers && (
+                      <p className="flex items-center justify-center text-xs text-muted-foreground">
+                        <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                        Carregando contatos...
+                      </p>
+                    )}
+                    {membersHaveMore && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        disabled={loadingMembers}
+                        onClick={loadMoreMembers}
+                      >
+                        Carregar mais
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

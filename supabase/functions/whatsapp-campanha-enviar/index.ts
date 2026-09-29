@@ -3,6 +3,7 @@ import { assertSafePublicUrl } from "../_shared/brand-site-identity.ts";
 import {
   campaignTenantId,
   filterAuthorizedAudience,
+  filterSelectedAuthorizedAudience,
   isInsideWhatsAppWindow,
   normalizeCampaignPhone,
   templateMatchesCampaignMedia,
@@ -131,10 +132,20 @@ type Destination =
   | { type: "list"; list_id: string }
   | { type: "individual"; contact_id: string };
 
+function maskCampaignPhone(phone: string): string {
+  const normalized = normalizeCampaignPhone(phone);
+  if (!normalized) return "Número inválido";
+  const national = normalized.startsWith("55")
+    ? normalized.slice(2)
+    : normalized;
+  return `+55 (${national.slice(0, 2)}) *****-${national.slice(-4)}`;
+}
+
 async function resolveAudience(
   admin: any,
   userId: string,
   destination: Destination,
+  selectedPhones?: unknown[] | null,
 ): Promise<{
   recipients: Array<{ phone: string; name: string | null; send_mode: "session" | "template" }>;
   inside_window: number;
@@ -164,11 +175,29 @@ async function resolveAudience(
     if (error || !data) throw new Error("contato_nao_encontrado");
     rows = [data];
   }
-  const filtered = filterAuthorizedAudience(rows.map((row: any) => ({
+  const audienceRows = rows.map((row: any) => ({
     phone: row.telefone,
     name: row.nome,
     optInStatus: row.opt_in_status,
-  })));
+  }));
+  let filtered;
+  try {
+    filtered = destination.type === "list" && Array.isArray(selectedPhones)
+      ? filterSelectedAuthorizedAudience(audienceRows, selectedPhones)
+      : filterAuthorizedAudience(audienceRows);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    if (reason === "contato_nao_pertence_a_lista") {
+      throw new Error("Um contato selecionado não pertence a esta lista.");
+    }
+    if (
+      reason === "contato_sem_autorizacao"
+      || reason === "telefone_selecionado_invalido"
+    ) {
+      throw new Error("Um contato selecionado não possui autorização válida.");
+    }
+    throw error;
+  }
   const open = await loadInboundWindowPhones(
     admin,
     userId,
@@ -269,6 +298,73 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (action === "list_members") {
+      const listId = String(body?.list_id || "");
+      const listIds = await tenantListIds(admin, tenantId);
+      if (!listId || !listIds.includes(listId)) {
+        return json({ success: false, error: "Lista não encontrada." }, 404);
+      }
+      const page = Math.max(0, Number(body?.page) || 0);
+      const pageSize = Math.max(
+        1,
+        Math.min(200, Number(body?.page_size) || 50),
+      );
+      const query = String(body?.query || "")
+        .replace(/[%(),]/g, "")
+        .trim();
+      let membersQuery = admin
+        .from("pj_lista_membros")
+        .select("id, nome, telefone, opt_in_status", { count: "exact" })
+        .eq("lista_id", listId)
+        .order("nome", { ascending: true })
+        .range(page * pageSize, page * pageSize + pageSize - 1);
+      if (query.length >= 2) {
+        membersQuery = membersQuery.or(
+          `nome.ilike.%${query}%,telefone.ilike.%${query}%`,
+        );
+      }
+      const { data, count, error } = await membersQuery;
+      if (error) throw new Error("Não consegui carregar os contatos desta lista.");
+      const normalizedPhones = (data ?? [])
+        .map((member: any) => normalizeCampaignPhone(member.telefone))
+        .filter((phone): phone is string => Boolean(phone));
+      const openPhones = await loadInboundWindowPhones(
+        admin,
+        tenantId,
+        normalizedPhones,
+      );
+      const members = (data ?? []).map((member: any) => {
+        const phone = normalizeCampaignPhone(member.telefone);
+        const authorized = member.opt_in_status === "confirmado";
+        const insideWindow = Boolean(
+          authorized && phone && openPhones.has(phone),
+        );
+        return {
+          id: member.id,
+          name: String(member.nome || "").trim() || null,
+          phone,
+          phone_masked: maskCampaignPhone(member.telefone),
+          authorization_status: authorized
+            ? "authorized"
+            : "unauthorized",
+          opt_in_status: member.opt_in_status,
+          inside_window: insideWindow,
+          delivery_requirement: !authorized
+            ? "blocked"
+            : insideWindow ? "session" : "template",
+        };
+      });
+      const total = Number(count || 0);
+      return json({
+        success: true,
+        members,
+        page,
+        page_size: pageSize,
+        total,
+        has_more: (page + 1) * pageSize < total,
+      });
+    }
+
     if (action === "search_contacts") {
       const query = String(body?.query || "").replace(/[%(),]/g, "").trim();
       if (query.length < 2) return json({ success: true, contacts: [] });
@@ -291,7 +387,14 @@ Deno.serve(async (req) => {
     }
 
     if (action === "preview") {
-      const summary = await resolveAudience(admin, tenantId, body.destination as Destination);
+      const summary = await resolveAudience(
+        admin,
+        tenantId,
+        body.destination as Destination,
+        Array.isArray(body?.selected_phones)
+          ? body.selected_phones
+          : null,
+      );
       return json({ success: true, summary });
     }
 
@@ -304,7 +407,14 @@ Deno.serve(async (req) => {
         throw new Error("Escolha um destino válido.");
       }
       if (imageUrl) await validatePublicImage(imageUrl);
-      const summary = await resolveAudience(admin, tenantId, destination);
+      const summary = await resolveAudience(
+        admin,
+        tenantId,
+        destination,
+        Array.isArray(body?.selected_phones)
+          ? body.selected_phones
+          : null,
+      );
       if (!summary.recipients.length) throw new Error("Nenhum contato com autorização foi encontrado.");
       const templateId = String(body?.template_id || "").trim() || null;
       if (summary.need_template > 0 && !templateId) {
