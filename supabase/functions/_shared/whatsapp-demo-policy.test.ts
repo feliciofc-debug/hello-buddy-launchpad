@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { AMZ_KNOWLEDGE } from "./agent-soul.ts";
+import { AMZ_KNOWLEDGE, AMZ_SALES_BLOCK } from "./agent-soul.ts";
 import { dedupeConsecutiveReplyText } from "./reply-dedupe.ts";
 import {
   decideWhatsAppCreativeTool,
@@ -79,13 +79,20 @@ Deno.test("reply sem repetição conserva formatação", () => {
 });
 
 Deno.test("Pietro conduz imagem e carrossel com uma pergunta por vez", () => {
-  const prompt = AMZ_KNOWLEDGE.replace(/\s+/g, " ");
+  const prompt = `${AMZ_KNOWLEDGE} ${AMZ_SALES_BLOCK}`.replace(/\s+/g, " ");
   for (const trecho of [
     "Me diz um produto ou serviço seu",
     "chame gerar_imagem",
     "Quer ver também um carrossel pro Instagram?",
     "chame criar_carrossel",
     "ofereça a mesma demonstração novamente",
+    "2 ou 3 melhorias concretas",
+    "passe-o em site_url",
+    "sem salvar no cadastro",
+    "Prospect nunca publica",
+    "Quando pedir preço ou proposta",
+    "chame registrar_lead_novo",
+    "Felicio vai entrar em contato",
   ]) {
     assertEquals(prompt.includes(trecho), true);
   }

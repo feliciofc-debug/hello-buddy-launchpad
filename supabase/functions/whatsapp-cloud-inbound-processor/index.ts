@@ -98,6 +98,12 @@ import {
   type DemoToolDecision,
 } from "../_shared/whatsapp-demo-policy.ts";
 import {
+  amzProspectHandoffInstruction,
+  buildAmzLeadOwnerSummary,
+  prospectDemoBrandPlan,
+  resolveInviteConfirmation,
+} from "../_shared/amz-consultive-prospect.ts";
+import {
   AMZ_GLOBAL_TOOL_NAMES,
   canUseAmzGlobalTools,
   filterToolsForTenant,
@@ -133,6 +139,7 @@ import {
   decideWhatsAppImageBrand,
   detectWhatsAppBrandDirective,
   extractExplicitWhatsAppBrandSiteUrl,
+  extractWhatsAppBrandSiteUrl,
   resolveWhatsAppGeneratorBrand,
   whatsAppImageBrandResultMessage,
   whatsAppSiteBrandGenerationOptions,
@@ -1250,14 +1257,17 @@ async function toolGerarImagem(
   const clean = (prompt || "").trim();
   if (!clean) return JSON.stringify({ erro: "prompt vazio" });
   try {
-    // A marca cadastrada é o padrão nas duas portas. Demonstração e pedido
-    // explícito sem marca nunca carregam o ativo do tenant.
-    const shouldUseLogo = !ctx.demonstracao && ctx.incluirLogo !== false;
+    // Demonstração nunca carrega ativos do tenant. A única marca permitida
+    // nela é a identidade temporária de um site enviada explicitamente.
+    const temporarySiteDemo = ctx.demonstracao === true && ctx.brandSource === "site";
+    const shouldUseLogo = (!ctx.demonstracao || temporarySiteDemo) && ctx.incluirLogo !== false;
+    const shouldResolveBrand = shouldUseLogo
+      || (ctx.demonstracao === true && (ctx.brandColors?.length ?? 0) > 0);
     let logoDataUrl: string | null = null;
     let brandColors: string[] = ctx.brandColors ?? [];
     let brandName: string | null = null;
-    if (shouldUseLogo) {
-      const assets = ctx.brandSource === "site"
+    if (shouldResolveBrand) {
+      const assets = ctx.demonstracao || ctx.brandSource === "site"
         ? null
         : await loadTenantBrandAssets(sb, ctx.userId);
       const resolvedBrand = resolveWhatsAppGeneratorBrand(ctx, assets);
@@ -1330,7 +1340,15 @@ async function toolGerarImagem(
       demonstracao: ctx.demonstracao === true,
       exemplo_legenda_solicitado: ctx.demonstracao === true,
       instrucao: ctx.demonstracao
-        ? "DEMONSTRAÇÃO: envie a imagem somente nesta conversa e escreva junto um exemplo curto de legenda pronta baseado no pedido. Deixe claro que nada foi publicado. Não ofereça publicar esta mídia."
+        ? ctx.brandSource === "site"
+          ? `DEMONSTRAÇÃO: envie a imagem somente nesta conversa com uma legenda curta e diga honestamente que ${
+            logoAplicada
+              ? "a logo e as cores do site foram usadas somente nesta imagem"
+              : logoDataUrl
+              ? "a logo do site não pôde ser aplicada e somente as cores foram usadas"
+              : "somente as cores encontradas no site foram usadas"
+          }. Nada foi salvo no cadastro nem publicado. Depois da demo, registre o lead e avise que o Felicio vai entrar em contato.`
+          : "DEMONSTRAÇÃO: envie a imagem somente nesta conversa e escreva junto um exemplo curto de legenda pronta baseado no pedido. Informe honestamente que foi feita sem logo de cadastro e que nada foi publicado. Depois da demo, registre o lead e avise que o Felicio vai entrar em contato."
         : ctx.brandSource === "site"
         ? (logoAplicada
           ? "A imagem usou a logo encontrada no site somente nesta geração. Informe honestamente que ela foi aplicada na cena ou pelo fallback."
@@ -1365,11 +1383,39 @@ async function prepareWhatsAppImageGeneration(input: {
   prompt: string;
   ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState };
   demonstracao?: boolean;
+  prospectSiteUrl?: string;
+  prospectBrandColors?: unknown;
   references?: string[];
   chainedPost?: boolean;
   chainedRequest?: string;
 }): Promise<PreparedWhatsAppImage> {
   if (input.demonstracao) {
+    const plan = prospectDemoBrandPlan({
+      isAmzProspect: input.ctx.userId === ADMIN_AMZ_USER_ID,
+      siteUrl: extractWhatsAppBrandSiteUrl(input.prospectSiteUrl || ""),
+      brandColors: input.prospectBrandColors,
+    });
+    if (plan.useTemporarySiteIdentity && plan.siteUrl) {
+      try {
+        const identity = await fetchBrandSiteIdentity(plan.siteUrl);
+        return {
+          deferred: false,
+          raw: await toolGerarImagem(input.prompt, {
+            userId: input.ctx.userId,
+            fromNumber: input.ctx.fromNumber,
+            demonstracao: true,
+            references: input.references,
+            ...whatsAppSiteBrandGenerationOptions(identity),
+          }),
+        };
+      } catch (error) {
+        console.warn("[demo-prospect][site_identity_failed]", error);
+        return {
+          deferred: true,
+          text: "Não consegui ler a identidade desse site agora. Confira o link ou me diga as cores da marca para eu criar a demonstração.",
+        };
+      }
+    }
     return {
       deferred: false,
       raw: await toolGerarImagem(input.prompt, {
@@ -1377,6 +1423,7 @@ async function prepareWhatsAppImageGeneration(input: {
         fromNumber: input.ctx.fromNumber,
         demonstracao: true,
         incluirLogo: false,
+        brandColors: plan.brandColors,
         references: input.references,
       }),
     };
@@ -8638,12 +8685,14 @@ const TOOLS = [
     type: "function",
     function: {
       name: "gerar_imagem",
-      description: "Cria imagem ultrarrealista. Dono: uso normal e mídia pronta para publicação. Prospect do tenant AMZ: no máximo UMA demonstração por telefone; envie só na conversa, com exemplo de legenda, e diga que nada foi publicado. Cliente final de qualquer outro tenant: bloqueado pelo código. NUNCA cole URL.",
+      description: "Cria imagem ultrarrealista. Dono: uso normal e mídia pronta para publicação. Prospect do tenant AMZ: no máximo UMA demonstração por telefone; se ele informou um site, passe a URL em site_url para usar a identidade somente nessa imagem. Envie só na conversa, com exemplo de legenda, e diga que nada foi publicado. Cliente final de qualquer outro tenant: bloqueado pelo código. Nunca coloque URL dentro do prompt visual.",
       parameters: {
         type: "object",
         properties: {
           prompt: { type: "string", description: "Descrição visual detalhada. Inclua estilo (fotorealista, cartoon, aquarela), enquadramento, iluminação, cores, elementos. Ex: 'foto profissional de um café expresso em mesa de madeira rústica, luz natural quente, estilo editorial'" },
           incluir_logo: { type: "boolean", description: "A logo cadastrada é usada por padrão. Informe false SOMENTE quando o usuário pedir explicitamente 'sem logo' ou 'sem marca'. A logo original é aplicada no servidor depois da geração." },
+          site_url: { type: "string", description: "Somente na demonstração AMZ: site informado pelo prospect para usar logo/cores temporariamente nesta imagem. Nunca invente nem use site de outro negócio." },
+          brand_colors: { type: "array", items: { type: "string" }, description: "Somente na demonstração AMZ sem site: cores hex informadas pelo próprio prospect." },
         },
         required: ["prompt"],
       },
@@ -9083,7 +9132,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "registrar_lead_novo",
-      description: "🔔 USE UMA VEZ quando estiver atendendo alguém DESCONHECIDO e já souber obrigatoriamente o NOME e o RAMO do negócio. Registra o lead e avisa o dono em paralelo. NÃO use num 'oi' solto, NÃO comente o aviso com o lead e continue atendendo normalmente.",
+      description: "🔔 USE UMA VEZ quando estiver atendendo alguém DESCONHECIDO e já souber obrigatoriamente o NOME e o RAMO do negócio. Registra o lead e avisa o dono. No tenant AMZ, use quando pedir preço/proposta, demonstrar intenção de contratar ou após a demo; informe ao prospect que o Felicio entrará em contato. Nos demais tenants, mantenha o atendimento silencioso atual.",
       parameters: {
         type: "object",
         properties: {
@@ -9091,6 +9140,9 @@ const TOOLS = [
           empresa: { type: "string", description: "Empresa dele, se informou. Vazio se não souber." },
           ramo: { type: "string", description: "Ramo/segmento do negócio dele, se informou. Vazio se não souber." },
           interesse: { type: "string", description: "Em 1 frase, o que ele quer/está buscando (ex: 'quer saber como funciona o atendimento por IA e o preço')." },
+          dor_marketing: { type: "string", description: "Principal dificuldade de marketing relatada, se houver." },
+          demonstracao: { type: "string", description: "O que foi demonstrado ao prospect, se houver." },
+          proximo_passo: { type: "string", description: "Próximo passo combinado, como proposta ou contato do Felicio." },
         },
         required: ["nome", "ramo"],
       },
@@ -9280,11 +9332,19 @@ async function toolEncaminharRecadoAoDono(
 }
 
 
-// ---- registrar_lead_novo: JARVIS como SDR — registra o lead e avisa o dono do tenant ----
-// Regras: só stranger/lead novo; 1 notificação por lead (notificado_em); nunca interrompe
-// o atendimento (o agente é instruído a NÃO comentar isso com o cliente).
+// ---- registrar_lead_novo: registra o lead e avisa o dono do tenant ----
+// Outros tenants preservam o aviso silencioso. Na venda AMZ, o prospect é
+// informado de que o Felicio dará continuidade ao contato.
 async function toolRegistrarLeadNovo(
-  args: { nome?: string; empresa?: string; ramo?: string; interesse?: string },
+  args: {
+    nome?: string;
+    empresa?: string;
+    ramo?: string;
+    interesse?: string;
+    dor_marketing?: string;
+    demonstracao?: string;
+    proximo_passo?: string;
+  },
   ctx: { userId: string; fromNumber: string },
 ): Promise<string> {
   const nome = (args?.nome || "").trim();
@@ -9294,6 +9354,13 @@ async function toolRegistrarLeadNovo(
   const ramo = (args?.ramo || "").trim() || null;
   if (!ramo) return JSON.stringify({ erro: "ramo_obrigatorio" });
   const interesse = (args?.interesse || "").trim() || null;
+  const isAmzProspect = ctx.userId === ADMIN_AMZ_USER_ID;
+  const amzSummary = buildAmzLeadOwnerSummary({
+    business: empresa || ramo,
+    pain: (args?.dor_marketing || "").trim() || null,
+    demonstration: (args?.demonstracao || "").trim() || null,
+    nextStep: (args?.proximo_passo || "").trim() || null,
+  });
   const telefone = ctx.fromNumber;
 
   const owner = await resolveTenantOwner(sb, ctx.userId);
@@ -9321,7 +9388,9 @@ async function toolRegistrarLeadNovo(
     };
     if (empresa) payload.empresa = empresa;
     if (ramo) payload.ramo = ramo;
-    if (interesse) payload.interesse = interesse;
+    if (interesse || amzSummary.length) {
+      payload.interesse = [interesse, ...amzSummary].filter(Boolean).join(" | ");
+    }
 
     const { error } = await sb.from("jarvis_leads").upsert(payload, { onConflict: "user_id,telefone" });
     if (error) console.warn("[registrar_lead_novo] upsert falhou:", error.message);
@@ -9334,7 +9403,11 @@ async function toolRegistrarLeadNovo(
       origem: "whatsapp_pietro",
       ultima_interacao: new Date().toISOString(),
       respondeu_alguma_vez: true,
-      notas: [`Ramo: ${ramo}`, interesse ? `Interesse: ${interesse}` : null].filter(Boolean).join("\n"),
+      notas: [
+        `Ramo: ${ramo}`,
+        interesse ? `Interesse: ${interesse}` : null,
+        ...(isAmzProspect ? amzSummary : []),
+      ].filter(Boolean).join("\n"),
       updated_at: new Date().toISOString(),
     }, { onConflict: "user_id,whatsapp" });
     if (cadastroError) console.warn("[registrar_lead_novo] cadastro falhou:", cadastroError.message);
@@ -9343,16 +9416,33 @@ async function toolRegistrarLeadNovo(
   }
 
   if (!owner?.phone) {
-    return JSON.stringify({ ok: true, registrado: true, notificado: false, motivo: "dono_nao_configurado", instrucao: "Continue o atendimento normalmente e NÃO comente nada disso com o cliente." });
+    return JSON.stringify({
+      ok: true,
+      registrado: true,
+      notificado: false,
+      motivo: "dono_nao_configurado",
+      instrucao: isAmzProspect
+        ? "Diga apenas que a equipe da AMZ dará continuidade ao contato."
+        : "Continue o atendimento normalmente e NÃO comente nada disso com o cliente.",
+    });
   }
   if (jaNotificado) {
-    return JSON.stringify({ ok: true, registrado: true, notificado: false, motivo: "lead_ja_notificado", instrucao: "Continue o atendimento normalmente e NÃO comente nada disso com o cliente." });
+    return JSON.stringify({
+      ok: true,
+      registrado: true,
+      notificado: false,
+      motivo: "lead_ja_notificado",
+      instrucao: isAmzProspect
+        ? amzProspectHandoffInstruction("o Felicio")
+        : "Continue o atendimento normalmente e NÃO comente nada disso com o cliente.",
+    });
   }
 
   const identificacao = empresa ? `${nome}, da ${empresa}, do ramo de ${ramo}` : `${nome}, do ramo de ${ramo}`;
   const aviso = [
     `Chefe, entrou um contato agora. ${identificacao}.`,
     interesse ? `${interesse.replace(/[.!?]+$/, "")}.` : null,
+    ...(isAmzProspect ? amzSummary : []),
     `Telefone: +${telefone}. To conversando com ele ainda.`,
   ].filter(Boolean).join(" ");
 
@@ -9380,11 +9470,20 @@ async function toolRegistrarLeadNovo(
       notificado: true,
       message_id: messageId,
       protocolo: proof,
-      instrucao: "O dono já foi avisado em paralelo. NÃO comente isso com o cliente — apenas continue o atendimento de forma natural, respondendo o que ele perguntou.",
+      instrucao: isAmzProspect
+        ? amzProspectHandoffInstruction("o Felicio")
+        : "O dono já foi avisado em paralelo. NÃO comente isso com o cliente — apenas continue o atendimento de forma natural, respondendo o que ele perguntou.",
     });
   } catch (e) {
     console.warn("[registrar_lead_novo] notificação falhou:", (e as Error).message);
-    return JSON.stringify({ ok: true, registrado: true, notificado: false, instrucao: "Continue o atendimento normalmente e NÃO comente nada disso com o cliente." });
+    return JSON.stringify({
+      ok: true,
+      registrado: true,
+      notificado: false,
+      instrucao: isAmzProspect
+        ? "Diga apenas que a equipe da AMZ dará continuidade ao contato."
+        : "Continue o atendimento normalmente e NÃO comente nada disso com o cliente.",
+    });
   }
 }
 
@@ -10259,6 +10358,8 @@ async function runTool(
       prompt: args?.prompt ?? "",
       ctx,
       demonstracao,
+      prospectSiteUrl: args?.site_url,
+      prospectBrandColors: args?.brand_colors,
     });
     if (prepared.deferred) {
       return {
@@ -12377,7 +12478,7 @@ async function processOne(queueId: string) {
         // Só olha membros com convite enviado.
         const { data: membrosConvidados } = await sb
           .from("pj_lista_membros")
-          .select("id, opt_in_status, convite_enviado_em")
+          .select("id, nome, opt_in_status, convite_enviado_em, convite_template_id")
           .eq("user_id", userId)
           .eq("telefone", row.from_number)
           .eq("opt_in_status", "convite_enviado");
@@ -12430,9 +12531,32 @@ async function processOne(queueId: string) {
 
               try {
                 const ebookTenant = await getTenantEbook(sb, userId);
-                const boasVindas = ebookTenant
+                const fallbackBoasVindas = ebookTenant
                   ? "Show! Você está na lista. 🎉 Já vou te mandar seu presente aqui."
                   : "Show! Você está na lista. 🎉 Em breve mandaremos novidades e ofertas selecionadas.";
+                const conviteMaisRecente = [...dentroJanela].sort((a, b) =>
+                  String(b.convite_enviado_em || "").localeCompare(String(a.convite_enviado_em || ""))
+                )[0];
+                let inviteTemplate: {
+                  nome_meta?: string | null;
+                  tipo_uso?: string | null;
+                  variaveis_map?: Record<string, unknown> | null;
+                } | null = null;
+                if (conviteMaisRecente?.convite_template_id) {
+                  const { data: template } = await sb
+                    .from("whatsapp_templates")
+                    .select("nome_meta, tipo_uso, variaveis_map")
+                    .eq("id", conviteMaisRecente.convite_template_id)
+                    .eq("user_id", userId)
+                    .maybeSingle();
+                  inviteTemplate = template as typeof inviteTemplate;
+                }
+                const boasVindas = resolveInviteConfirmation({
+                  isAmzTenant: userId === ADMIN_AMZ_USER_ID,
+                  template: inviteTemplate,
+                  contactName: conviteMaisRecente?.nome ?? (conv as any).contact_name ?? null,
+                  fallback: fallbackBoasVindas,
+                });
                 await sendWhatsApp(userId, row.from_number, boasVindas);
                 await sb.from("whatsapp_cloud_messages").insert({
                   conversation_id: conv.id,
