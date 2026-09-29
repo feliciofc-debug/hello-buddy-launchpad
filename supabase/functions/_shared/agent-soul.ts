@@ -14,7 +14,10 @@
 //   3. Catálogo carregado com .eq('user_id', tenantUserId) — RLS por tenant.
 // ============================================================================
 
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import {
+  createClient,
+  SupabaseClient,
+} from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { getCopyStyle } from "./copy-style.ts";
 import { AMZ_TENANT_ID } from "./amz-tenant.ts";
 import { virtualAssistantDisclosure } from "./whatsapp-humanized-delivery.ts";
@@ -298,7 +301,6 @@ que você não conseguiu classificar com certeza).
 • Na dúvida entre atender e encaminhar: ATENDA.
 `.trim();
 
-
 // ----------------------------------------------------------------------------
 // Tipos
 // ----------------------------------------------------------------------------
@@ -339,20 +341,21 @@ export function renderSegmentPromptTemplate(
   cfg: TenantAgentConfig,
 ): string {
   const nomeConsultor = (cfg.nome_consultor || cfg.owner_name || "").trim();
-  const primeiroNome =
-    (cfg.primeiro_nome || "").trim() || nomeConsultor.split(/\s+/)[0] || "o consultor";
+  const primeiroNome = (cfg.primeiro_nome || "").trim() ||
+    nomeConsultor.split(/\s+/)[0] || "o consultor";
   const vars: Record<string, string> = {
     NOME_AGENTE: (cfg.agent_name || "").trim() || "assistente",
     NOME_CONSULTOR: nomeConsultor || "o consultor",
     PRIMEIRO_NOME: primeiroNome,
     CARGO: (cfg.cargo || "").trim() || "consultor",
-    WHATSAPP_CONSULTOR: (cfg.whatsapp_consultor || cfg.owner_phone || "").trim(),
+    WHATSAPP_CONSULTOR: (cfg.whatsapp_consultor || cfg.owner_phone || "")
+      .trim(),
   };
-  return template.replace(/\{\{\s*([A-Z_]+)\s*\}\}/g, (m, key: string) =>
-    key in vars ? vars[key] : m,
+  return template.replace(
+    /\{\{\s*([A-Z_]+)\s*\}\}/g,
+    (m, key: string) => key in vars ? vars[key] : m,
   );
 }
-
 
 // ----------------------------------------------------------------------------
 // SEGMENT_FAILSAFE_BLOCK — MODO SEGURO quando a base de conhecimento
@@ -387,16 +390,30 @@ REGRAS EM MODO SEGURO (SEM EXCEÇÃO):
 async function loadKnowledgeSegment(
   sb: SupabaseClient,
   segmentId: string,
-): Promise<{ segmentName: string; rulesBlock: string; topicsBlock: string; promptTemplate: string | null } | null> {
+): Promise<
+  {
+    segmentName: string;
+    rulesBlock: string;
+    topicsBlock: string;
+    promptTemplate: string | null;
+  } | null
+> {
   try {
     const [segRes, rulesRes, topicsRes] = await Promise.all([
-      sb.from("agent_knowledge_segments").select("nome, ativo, prompt_template").eq("id", segmentId).maybeSingle(),
-      sb.from("agent_knowledge_rules").select("ordem, regra, motivo").eq("segment_id", segmentId).eq("ativa", true).order("ordem"),
-      sb.from("agent_knowledge_topics").select("titulo, tags, conteudo_tecnico, traducao_leve, exemplo").eq("segment_id", segmentId).eq("ativa", true),
+      sb.from("agent_knowledge_segments").select("nome, ativo, prompt_template")
+        .eq("id", segmentId).maybeSingle(),
+      sb.from("agent_knowledge_rules").select("ordem, regra, motivo").eq(
+        "segment_id",
+        segmentId,
+      ).eq("ativa", true).order("ordem"),
+      sb.from("agent_knowledge_topics").select(
+        "titulo, tags, conteudo_tecnico, traducao_leve, exemplo",
+      ).eq("segment_id", segmentId).eq("ativa", true),
     ]);
 
-
-    if (segRes.error || !segRes.data || segRes.data.ativo === false) return null;
+    if (segRes.error || !segRes.data || segRes.data.ativo === false) {
+      return null;
+    }
     if (rulesRes.error) return null;
     const rules = rulesRes.data ?? [];
     // Sem travas ativas = fail-safe. Compliance exige pelo menos 1 trava carregada.
@@ -432,23 +449,21 @@ async function loadKnowledgeSegment(
       `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
     ].join("\n");
 
-    const topicsBlock = topics.length === 0
-      ? ""
-      : [
-          ``,
-          `📚 CONHECIMENTO DO SEGMENTO — ${segRes.data.nome}`,
-          `(Material de consulta. Use a TRADUÇÃO LEVE ao falar com o cliente;`,
-          ` nunca despeje o juridiquês bruto. Se conflitar com uma TRAVA, a TRAVA VENCE.)`,
-          ``,
-          ...topics.map((t: any) => {
-            const parts = [`## ${t.titulo}`];
-            if (t.tags?.length) parts.push(`tags: ${t.tags.join(", ")}`);
-            if (t.conteudo_tecnico) parts.push(`técnico: ${t.conteudo_tecnico}`);
-            parts.push(`tradução: ${t.traducao_leve}`);
-            if (t.exemplo) parts.push(`exemplo: ${t.exemplo}`);
-            return parts.join("\n");
-          }),
-        ].join("\n");
+    const topicsBlock = topics.length === 0 ? "" : [
+      ``,
+      `📚 CONHECIMENTO DO SEGMENTO — ${segRes.data.nome}`,
+      `(Material de consulta. Use a TRADUÇÃO LEVE ao falar com o cliente;`,
+      ` nunca despeje o juridiquês bruto. Se conflitar com uma TRAVA, a TRAVA VENCE.)`,
+      ``,
+      ...topics.map((t: any) => {
+        const parts = [`## ${t.titulo}`];
+        if (t.tags?.length) parts.push(`tags: ${t.tags.join(", ")}`);
+        if (t.conteudo_tecnico) parts.push(`técnico: ${t.conteudo_tecnico}`);
+        parts.push(`tradução: ${t.traducao_leve}`);
+        if (t.exemplo) parts.push(`exemplo: ${t.exemplo}`);
+        return parts.join("\n");
+      }),
+    ].join("\n");
 
     return {
       segmentName: segRes.data.nome,
@@ -456,7 +471,6 @@ async function loadKnowledgeSegment(
       topicsBlock,
       promptTemplate: (segRes.data as any).prompt_template ?? null,
     };
-
   } catch (err) {
     console.error("[agent-soul] loadKnowledgeSegment falhou:", err);
     return null;
@@ -512,7 +526,9 @@ export async function buildTenantContext(
     }
   }
 
-  const template = seg?.promptTemplate?.trim() ? seg.promptTemplate.trim() : null;
+  const template = seg?.promptTemplate?.trim()
+    ? seg.promptTemplate.trim()
+    : null;
   const blocks: string[] = [];
 
   if (template) {
@@ -528,10 +544,9 @@ export async function buildTenantContext(
       blocks.push(`BASE DE CONHECIMENTO DO NEGÓCIO:\n${cfg.knowledge_base}`);
     }
     if (cfg.handoff_rules) {
-      const hr =
-        typeof cfg.handoff_rules === "string"
-          ? cfg.handoff_rules
-          : JSON.stringify(cfg.handoff_rules);
+      const hr = typeof cfg.handoff_rules === "string"
+        ? cfg.handoff_rules
+        : JSON.stringify(cfg.handoff_rules);
       if (hr && hr !== "{}" && hr !== "null") {
         blocks.push(`QUANDO TRANSFERIR PRA HUMANO:\n${hr}`);
       }
@@ -582,7 +597,6 @@ export async function buildTenantContext(
   return { text: blocks.join("\n\n"), templateApplied: !!template };
 }
 
-
 // ----------------------------------------------------------------------------
 // loadCatalogForTenant — Carrega catálogo do tenant com estratégia adaptativa:
 //   ≤50 produtos: injeta tudo
@@ -605,10 +619,9 @@ async function loadCatalogForTenant(
   }
   if (!produtos || produtos.length === 0) return null;
 
-  const selected =
-    produtos.length <= CATALOG_FULL_THRESHOLD
-      ? produtos
-      : rankByKeywords(produtos, userText, CATALOG_RANKED_TOPN);
+  const selected = produtos.length <= CATALOG_FULL_THRESHOLD
+    ? produtos
+    : rankByKeywords(produtos, userText, CATALOG_RANKED_TOPN);
 
   if (selected.length === 0) return null;
 
@@ -635,7 +648,11 @@ async function loadCatalogForTenant(
 // rankByKeywords — Ranking simples por matching de palavras.
 // Sem embeddings (fase 2 se necessário); resolve 95% dos casos.
 // ----------------------------------------------------------------------------
-function rankByKeywords(produtos: any[], userText: string, topN: number): any[] {
+function rankByKeywords(
+  produtos: any[],
+  userText: string,
+  topN: number,
+): any[] {
   const text = (userText || "").toLowerCase();
   const tokens = text
     .normalize("NFD")
@@ -692,7 +709,6 @@ export async function buildSystemPrompt(
   amzAudience: AmzAudience = "support",
 ): Promise<{ systemPrompt: string; mode: AgentMode }> {
   const mode = resolveAgentMode(cfg.agent_mode, cfg.user_id);
-
 
   const TOOLS_HINT = `
 FERRAMENTAS DISPONÍVEIS (use quando fizer sentido, sem pedir permissão):
@@ -758,7 +774,10 @@ REGRAS GERAIS:
     blocks.push(AMZ_KNOWLEDGE);
     // Fail-safe de papel: só entra em VENDA se explicitamente "sales".
     // Qualquer outro valor (inclusive ausente/desconhecido) → SUPORTE.
-    blocks.push("", amzAudience === "sales" ? AMZ_SALES_BLOCK : AMZ_SUPPORT_BLOCK);
+    blocks.push(
+      "",
+      amzAudience === "sales" ? AMZ_SALES_BLOCK : AMZ_SUPPORT_BLOCK,
+    );
     if (amzContextBlock && amzContextBlock.trim().length > 0) {
       blocks.push("", amzContextBlock.trim());
     }
@@ -771,7 +790,6 @@ REGRAS GERAIS:
     blocks.push(tenant.text);
   }
 
-
   // Voz da copy + link de atendimento do tenant (multi-tenant, por user_id).
   try {
     const style = await getCopyStyle(sb, cfg.user_id);
@@ -783,17 +801,23 @@ REGRAS GERAIS:
       );
     }
   } catch (e) {
-    console.warn("[agent-soul] estilo de copy indisponível:", (e as Error).message);
+    console.warn(
+      "[agent-soul] estilo de copy indisponível:",
+      (e as Error).message,
+    );
   }
 
   const agentName = (cfg.agent_name || "Assistente").trim();
-  const businessName = (cfg.business_name || cfg.owner_name || "empresa").trim();
+  const businessName = (cfg.business_name || cfg.owner_name || "empresa")
+    .trim();
   blocks.push(
     "",
     [
       "IDENTIDADE E FORMATO FINAL — SOBREPÕE TEMPLATES E INSTRUÇÕES ANTERIORES:",
       `- Você é ${agentName}, o assistente virtual da ${businessName}.`,
-      `- Não finja ser pessoa. Se perguntarem, responda: "${virtualAssistantDisclosure(businessName)}"`,
+      `- Não finja ser pessoa. Se perguntarem, responda: "${
+        virtualAssistantDisclosure(businessName)
+      }"`,
       "- Não explique a tecnologia usada nem cite fornecedores ou marcas da plataforma.",
       "- Para quem não é o dono: máximo 3 linhas e 350 caracteres por mensagem, uma pergunta, sem listas/títulos/negrito e no máximo 1 emoji. Use até 3 partes com <<SPLIT>> se necessário.",
       "- Para o dono: seja curto, mas prévias de post, listas de agendamentos e resultados de ferramentas ficam fora do limite.",
@@ -803,7 +827,6 @@ REGRAS GERAIS:
 
   return { systemPrompt: blocks.join("\n"), mode };
 }
-
 
 // Helper: cria client service-role (usado pelo processor).
 export function createServiceClient(): SupabaseClient {

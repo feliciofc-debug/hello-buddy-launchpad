@@ -18,14 +18,14 @@ export function resolveInviteConfirmation(params: {
   fallback: string;
 }): string {
   const template = params.template;
-  const isInvite = template?.nome_meta === "convite_pietro_amz_v1"
-    || ["convite", "convite_optin"].includes(String(template?.tipo_uso || ""));
+  const isInvite = template?.nome_meta === "convite_pietro_amz_v1" ||
+    ["convite", "convite_optin"].includes(String(template?.tipo_uso || ""));
   if (!params.isAmzTenant || !isInvite) return params.fallback;
 
   const configured = String(
-    template?.variaveis_map?.confirmation_message
-      ?? template?.variaveis_map?.mensagem_confirmacao
-      ?? "",
+    template?.variaveis_map?.confirmation_message ??
+      template?.variaveis_map?.mensagem_confirmacao ??
+      "",
   ).trim();
   const message = configured || AMZ_INVITE_DISCOVERY_MESSAGE;
   return message.replaceAll("{nome}", firstName(params.contactName));
@@ -33,9 +33,13 @@ export function resolveInviteConfirmation(params: {
 
 export function normalizeProspectBrandColors(values: unknown): string[] {
   if (!Array.isArray(values)) return [];
-  return [...new Set(values
-    .map((value) => String(value || "").trim().toLowerCase())
-    .filter((value) => /^#[0-9a-f]{6}$/.test(value)))]
+  return [
+    ...new Set(
+      values
+        .map((value) => String(value || "").trim().toLowerCase())
+        .filter((value) => /^#[0-9a-f]{6}$/.test(value)),
+    ),
+  ]
     .slice(0, 6);
 }
 
@@ -50,10 +54,14 @@ export function prospectDemoBrandPlan(params: {
   persistIdentity: false;
   allowPublishing: false;
 } {
-  const siteUrl = params.isAmzProspect ? String(params.siteUrl || "").trim() || null : null;
+  const siteUrl = params.isAmzProspect
+    ? String(params.siteUrl || "").trim() || null
+    : null;
   return {
     siteUrl,
-    brandColors: params.isAmzProspect ? normalizeProspectBrandColors(params.brandColors) : [],
+    brandColors: params.isAmzProspect
+      ? normalizeProspectBrandColors(params.brandColors)
+      : [],
     useTemporarySiteIdentity: Boolean(siteUrl),
     persistIdentity: false,
     allowPublishing: false,
@@ -76,6 +84,10 @@ export function buildAmzLeadOwnerSummary(summary: AmzLeadSummary): string[] {
   ].filter((line): line is string => Boolean(line));
 }
 
-export function amzProspectHandoffInstruction(ownerName?: string | null): string {
-  return `Avise o prospect que ${String(ownerName || "o Felicio").trim()} vai entrar em contato.`;
+export function amzProspectHandoffInstruction(
+  ownerName?: string | null,
+): string {
+  return `Avise o prospect que ${
+    String(ownerName || "o Felicio").trim()
+  } vai entrar em contato.`;
 }
