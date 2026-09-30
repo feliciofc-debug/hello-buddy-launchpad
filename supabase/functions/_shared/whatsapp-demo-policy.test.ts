@@ -13,10 +13,12 @@ import {
   demoLimitMessage,
   demoLimitReplay,
   DEMO_LIMIT_MESSAGE,
+  finalizeAmzNonOwnerText,
   isDemoTestPhone,
   guardProspectCreativeClaims,
   NON_OWNER_CAPABILITY_GUIDANCE,
   nonOwnerCapabilityGuidance,
+  ownerForwardClientConfirmation,
   requiredProspectCreativeTool,
 } from "./whatsapp-demo-policy.ts";
 
@@ -227,6 +229,43 @@ Deno.test("filtro final remove contato direto de toda resposta ao prospect AMZ",
     isAmzProspect: true,
     creativeToolRan: false,
   }), "Posso te ajudar com mais alguma dúvida sobre a plataforma?");
+});
+
+Deno.test("encaminhamento direto anonimiza somente o tenant AMZ", () => {
+  assertEquals(ownerForwardClientConfirmation({
+    isAmzTenant: true,
+    humanNeeded: false,
+    explicitForward: true,
+    ownerName: "Felicio Carega",
+    protocol: "(protocolo #DVENQA · 07:33)",
+  }), "Certo, já encaminhei para um dos nossos consultores. Ele vai entrar em contato com você. (protocolo #DVENQA · 07:33)");
+  assertEquals(ownerForwardClientConfirmation({
+    isAmzTenant: true,
+    humanNeeded: true,
+    explicitForward: false,
+    ownerName: "Felicio Carega",
+    protocol: "(protocolo #ABC123 · 10:30)",
+  }), "Vou confirmar isso com um dos nossos consultores e pedir para ele te retornar. (protocolo #ABC123 · 10:30)");
+  assertEquals(ownerForwardClientConfirmation({
+    isAmzTenant: false,
+    humanNeeded: false,
+    explicitForward: true,
+    ownerName: "Marcelo Silva",
+    protocol: "(protocolo #ABC123 · 10:30)",
+  }), "Certo, já encaminhei para Marcelo. (protocolo #ABC123 · 10:30)");
+});
+
+Deno.test("rede final de não-dono AMZ remove nome configurado e Felicio", () => {
+  assertEquals(
+    finalizeAmzNonOwnerText(
+      "O Felicio falou com Marcelo Silva. Vou confirmar com o Marcelo.",
+      "Marcelo Silva",
+    ),
+    "um consultor da AMZ falou com um consultor da AMZ. Vou confirmar com um consultor da AMZ.",
+  );
+  assertEquals(/\bfel[ií]cio\b/i.test(
+    finalizeAmzNonOwnerText("Já encaminhei ao Felício."),
+  ), false);
 });
 
 Deno.test("atalho restrito de não-dono segue ao modelo com orientação", () => {

@@ -68,12 +68,45 @@ export function nonOwnerCapabilityGuidance(
   return !isOwner && shortcutDetected ? NON_OWNER_CAPABILITY_GUIDANCE : null;
 }
 
-function anonymizeAmzConsultant(text: string): string {
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function anonymizeConsultantName(text: string, namePattern: string): string {
   return text
-    .replace(/\b(?:ao|a\s+o)\s+fel[ií]cio\b/gi, "a um consultor da AMZ")
-    .replace(/\b(?:pro|para\s+o|pelo)\s+fel[ií]cio\b/gi, "para um consultor da AMZ")
-    .replace(/\bo\s+fel[ií]cio\b/gi, "um consultor da AMZ")
-    .replace(/\bfel[ií]cio\b/gi, "um consultor da AMZ");
+    .replace(
+      new RegExp(`\\b(?:ao|a\\s+o)\\s+${namePattern}\\b`, "gi"),
+      "a um consultor da AMZ",
+    )
+    .replace(
+      new RegExp(`\\b(?:pro|para\\s+o|pelo)\\s+${namePattern}\\b`, "gi"),
+      "para um consultor da AMZ",
+    )
+    .replace(
+      new RegExp(`\\bo\\s+${namePattern}\\b`, "gi"),
+      "um consultor da AMZ",
+    )
+    .replace(
+      new RegExp(`\\b${namePattern}\\b`, "gi"),
+      "um consultor da AMZ",
+    );
+}
+
+function anonymizeAmzConsultant(
+  text: string,
+  ownerName?: string | null,
+): string {
+  const configuredNames = [
+    String(ownerName || "").trim(),
+    String(ownerName || "").trim().split(/\s+/)[0] || "",
+  ]
+    .filter((name) => name.length >= 3)
+    .sort((a, b) => b.length - a.length);
+  let anonymized = text;
+  for (const name of [...new Set(configuredNames)]) {
+    anonymized = anonymizeConsultantName(anonymized, escapeRegex(name));
+  }
+  return anonymizeConsultantName(anonymized, "fel[ií]cio");
 }
 
 export function sanitizeAmzProspectContactDetails(text: string): string {
@@ -94,6 +127,34 @@ export function sanitizeAmzProspectContactDetails(text: string): string {
     "Posso te ajudar com mais alguma dúvida sobre a plataforma?";
 }
 
+export function finalizeAmzNonOwnerText(
+  text: string,
+  ownerName?: string | null,
+): string {
+  return sanitizeAmzProspectContactDetails(
+    anonymizeAmzConsultant(text, ownerName),
+  );
+}
+
+export function ownerForwardClientConfirmation(params: {
+  isAmzTenant: boolean;
+  humanNeeded: boolean;
+  explicitForward: boolean;
+  ownerName?: string | null;
+  protocol: string;
+}): string {
+  if (params.isAmzTenant) {
+    return params.humanNeeded && !params.explicitForward
+      ? `Vou confirmar isso com um dos nossos consultores e pedir para ele te retornar. ${params.protocol}`
+      : `Certo, já encaminhei para um dos nossos consultores. Ele vai entrar em contato com você. ${params.protocol}`;
+  }
+  const owner = String(params.ownerName || "").trim().split(/\s+/)[0] ||
+    "responsável";
+  return params.humanNeeded && !params.explicitForward
+    ? `Vou confirmar isso com ${owner} e pedir para ele te retornar. ${params.protocol}`
+    : `Certo, já encaminhei para ${owner}. ${params.protocol}`;
+}
+
 export function guardProspectCreativeClaims(params: {
   text: string;
   isAmzProspect: boolean;
@@ -104,9 +165,7 @@ export function guardProspectCreativeClaims(params: {
     !params.isAmzProspect
   ) return params.text;
 
-  const anonymized = anonymizeAmzConsultant(
-    sanitizeAmzProspectContactDetails(params.text),
-  );
+  const anonymized = finalizeAmzNonOwnerText(params.text);
   if (params.creativeToolRan || !containsUnsupportedCreativeClaim(anonymized)) {
     return anonymized || "Posso te ajudar com mais alguma dúvida sobre a plataforma?";
   }

@@ -100,12 +100,13 @@ import {
   deterministicDemoBlockedResponse,
   demoLimitReplay,
   DEMO_LIMIT_MESSAGE,
+  finalizeAmzNonOwnerText,
   guardProspectCreativeClaims,
   isCreativeDemoTool,
   isDemoTestPhone,
   nonOwnerCapabilityGuidance,
+  ownerForwardClientConfirmation,
   requiredProspectCreativeTool,
-  sanitizeAmzProspectContactDetails,
   TENANT_CREATION_BLOCK_MESSAGE,
   type DemoToolDecision,
 } from "../_shared/whatsapp-demo-policy.ts";
@@ -11932,10 +11933,25 @@ async function sendWhatsApp(
   interactiveButtons?: WhatsAppInteractiveButtons,
   delivery?: { beforeChunk?: (chunk: string) => Promise<void> },
 ): Promise<string | null> {
-  const dedupedMessage = dedupeConsecutiveReplyText(message);
+  let finalizedMessage = message;
+  if (user_id === ADMIN_AMZ_USER_ID) {
+    let recipientIsOwner = isOwner({ userId: user_id, fromNumber: to })
+      || isAmzOwnerAltPhone(to);
+    let ownerName: string | null = null;
+    if (!recipientIsOwner) {
+      const owner = await resolveTenantOwner(sb, user_id);
+      recipientIsOwner = tenantOwnerMatchesPhone(owner, to)
+        || isAmzOwnerAltPhone(to);
+      ownerName = owner.name;
+    }
+    if (!recipientIsOwner) {
+      finalizedMessage = finalizeAmzNonOwnerText(message, ownerName);
+    }
+  }
+  const dedupedMessage = dedupeConsecutiveReplyText(finalizedMessage);
   const chunks = splitWhatsAppText(dedupedMessage);
   if (chunks.length > 1) {
-    console.warn(`[processor][meta_text_split] chars=${message.length} chunks=${chunks.length}`);
+    console.warn(`[processor][meta_text_split] chars=${finalizedMessage.length} chunks=${chunks.length}`);
   }
 
   let firstMessageId: string | null = null;
@@ -12716,12 +12732,15 @@ async function processOne(queueId: string) {
                     .maybeSingle();
                   inviteTemplate = template as typeof inviteTemplate;
                 }
-                const boasVindas = resolveInviteConfirmation({
+                const rawBoasVindas = resolveInviteConfirmation({
                   isAmzTenant: userId === ADMIN_AMZ_USER_ID,
                   template: inviteTemplate,
                   contactName: conviteMaisRecente?.nome ?? (conv as any).contact_name ?? null,
                   fallback: fallbackBoasVindas,
                 });
+                const boasVindas = isAmzTenant && !fromIsOwner
+                  ? finalizeAmzNonOwnerText(rawBoasVindas, _tenantOwner?.name)
+                  : rawBoasVindas;
                 await sendWhatsApp(userId, row.from_number, boasVindas);
                 await sb.from("whatsapp_cloud_messages").insert({
                   conversation_id: conv.id,
@@ -13582,11 +13601,22 @@ async function processOne(queueId: string) {
         console.log(`[processor][owner-forward-direct-media] enviado para ${tenantOwnerPhone} com_foto=${!!imageUrlToOwner} wamid=${sentOwnerId}`);
       }
       const protoOwner = ownerForwarded ? buildForwardProof(ownerForwardWamid) : "";
-      const reply = videoFlowReply
+      const rawReply = videoFlowReply
         ? `${videoFlowReply}\n\n${linhaCodigoMidia(videoSalvo!.id, "video")}`
         : ownerForwarded
-        ? `Recebi ${salvos.length === 1 ? "a foto" : "as mídias"}${descricaoVisual ? `. A imagem mostra: ${descricaoVisual.trim()}` : ""}\n\nCerto, já encaminhei para ${ownerFirstName(_tenantOwner?.name)}. ${protoOwner}`
+        ? `Recebi ${salvos.length === 1 ? "a foto" : "as mídias"}${descricaoVisual ? `. A imagem mostra: ${descricaoVisual.trim()}` : ""}\n\n${
+          ownerForwardClientConfirmation({
+            isAmzTenant,
+            humanNeeded: false,
+            explicitForward: true,
+            ownerName: _tenantOwner?.name,
+            protocol: protoOwner,
+          })
+        }`
         : respostaMidiaSalva(salvos, descricaoVisual, fromIsOwner);
+      const reply = isAmzTenant && !fromIsOwner
+        ? finalizeAmzNonOwnerText(rawReply, _tenantOwner?.name)
+        : rawReply;
 
       const { data: outMsg } = await sb
         .from("whatsapp_cloud_messages")
@@ -13818,10 +13848,19 @@ async function processOne(queueId: string) {
             console.warn(`[processor][handoff][state_degraded] comprovante preservado em lead_encaminhamentos from=${row.from_number}`);
           }
         } catch (_e) { /* não bloqueia */ }
-        const confirmacao = humanNeeded && !explicitForward
-          ? `Vou confirmar isso com ${ownerFirstName(_tenantOwner?.name)} e pedir para ele te retornar. ${proto}`
-          : `Certo, já encaminhei para ${ownerFirstName(_tenantOwner?.name)}. ${proto}`;
-        const reply = pedirNomeAgora ? `${confirmacao}\n\n${PERGUNTA_NOME}` : confirmacao;
+        const confirmacao = ownerForwardClientConfirmation({
+          isAmzTenant,
+          humanNeeded,
+          explicitForward,
+          ownerName: _tenantOwner?.name,
+          protocol: proto,
+        });
+        const rawReply = pedirNomeAgora
+          ? `${confirmacao}\n\n${PERGUNTA_NOME}`
+          : confirmacao;
+        const reply = isAmzTenant
+          ? finalizeAmzNonOwnerText(rawReply, _tenantOwner?.name)
+          : rawReply;
 
         const { data: outMsg } = await sb
           .from("whatsapp_cloud_messages")
@@ -14027,14 +14066,25 @@ Regras:
             forward: { protocolo: proto, destinatario: tenantOwnerPhone ?? null as any, wamid: ownerForwardWamid, at: new Date().toISOString() },
           }, stPrev);
         } catch (_e) { /* não bloqueia */ }
-        reply = `${humano ? humano + "\n\n" : ""}Prontinho, Felício! Já encaminhei seu cadastro completo pro ${primeiroNome} agora — nome, CPF e documento. ${proto}\n\nEle vai te retornar em instantes com a proposta. 🙌`;
+        reply = isAmzTenant
+          ? `${humano ? humano + "\n\n" : ""}Prontinho! Já encaminhei seu cadastro completo para um dos nossos consultores agora — nome, CPF e documento. ${proto}\n\nEle vai te retornar em instantes com a proposta. 🙌`
+          : `${humano ? humano + "\n\n" : ""}Prontinho, Felício! Já encaminhei seu cadastro completo pro ${primeiroNome} agora — nome, CPF e documento. ${proto}\n\nEle vai te retornar em instantes com a proposta. 🙌`;
       } else if (deveEncaminhar) {
-        reply = `${humano ? humano + "\n\n" : ""}Anexei no seu cadastro. Vou avisar o ${primeiroNome} agora mesmo pra ele te retornar. 🙌`;
+        reply = isAmzTenant
+          ? `${humano ? humano + "\n\n" : ""}Anexei no seu cadastro. Vou avisar um dos nossos consultores agora mesmo para ele te retornar. 🙌`
+          : `${humano ? humano + "\n\n" : ""}Anexei no seu cadastro. Vou avisar o ${primeiroNome} agora mesmo pra ele te retornar. 🙌`;
       } else {
         const nomeVisto = vision?.dados?.nome_completo ? ` (${vision.dados.nome_completo})` : "";
-        reply = humano
+        reply = isAmzTenant
+          ? humano
+            ? `${humano} Já anexei no seu cadastro para um dos nossos consultores usar na proposta. 👍`
+            : `Recebi seu documento${nomeVisto} e já anexei no seu cadastro para um dos nossos consultores. Obrigado!`
+          : humano
           ? `${humano} Já anexei no seu cadastro pra ${primeiroNome} usar na proposta. 👍`
           : `Recebi seu documento${nomeVisto} e já anexei no seu cadastro pra ${primeiroNome}. Obrigado!`;
+      }
+      if (isAmzTenant) {
+        reply = finalizeAmzNonOwnerText(reply, _tenantOwner?.name);
       }
 
       const { data: outMsg } = await sb
@@ -14751,7 +14801,7 @@ Regras:
       .eq("user_id", userId);
 
     if (!inboundFromOwner && userId === ADMIN_AMZ_USER_ID) {
-      reply = sanitizeAmzProspectContactDetails(reply);
+      reply = finalizeAmzNonOwnerText(reply, _tenantOwner?.name);
     }
 
     const dedupedReply = dedupeConsecutiveReplyText(reply);
