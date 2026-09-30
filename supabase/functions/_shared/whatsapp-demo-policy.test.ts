@@ -7,12 +7,15 @@ import {
 import { dedupeConsecutiveReplyText } from "./reply-dedupe.ts";
 import { extractWhatsAppBrandSiteUrl } from "./whatsapp-image-brand.ts";
 import {
+  AMZ_SITE_HANDOFF_MESSAGE,
+  appendAmzSiteLinkAfterHandoff,
   containsUnsupportedCreativeClaim,
   decideWhatsAppCreativeTool,
   deterministicDemoBlockedResponse,
   demoLimitMessage,
   demoLimitReplay,
   DEMO_LIMIT_MESSAGE,
+  finalizeAmzInboundReply,
   finalizeAmzNonOwnerText,
   isDemoTestPhone,
   guardProspectCreativeClaims,
@@ -266,6 +269,48 @@ Deno.test("rede final de não-dono AMZ remove nome configurado e Felicio", () =>
   assertEquals(/\bfel[ií]cio\b/i.test(
     finalizeAmzNonOwnerText("Já encaminhei ao Felício."),
   ), false);
+});
+
+Deno.test("mensagem pedida pelo dono para contato comercial fica intacta", () => {
+  const ownerRequested =
+    "Aqui é o Jarvis, assistente do Felício. Pode ligar para 5521980804901.";
+  assertEquals(finalizeAmzInboundReply({
+    text: ownerRequested,
+    isAmzTenant: true,
+    inboundFromOwner: true,
+    ownerName: "Felício",
+  }), ownerRequested);
+});
+
+Deno.test("link do site acompanha somente o primeiro handoff do prospect AMZ", () => {
+  const first = appendAmzSiteLinkAfterHandoff({
+    text: "Certo, já encaminhei.",
+    isAmzProspect: true,
+    handoffSucceeded: true,
+    siteLinkAlreadySent: false,
+  });
+  assertEquals(first, {
+    text: `Certo, já encaminhei.<<SPLIT>>${AMZ_SITE_HANDOFF_MESSAGE}`,
+    markSiteLinkSent: true,
+  });
+  assertEquals(appendAmzSiteLinkAfterHandoff({
+    text: "Encaminhei novamente.",
+    isAmzProspect: true,
+    handoffSucceeded: true,
+    siteLinkAlreadySent: true,
+  }), {
+    text: "Encaminhei novamente.",
+    markSiteLinkSent: false,
+  });
+  assertEquals(appendAmzSiteLinkAfterHandoff({
+    text: "Certo, já encaminhei.",
+    isAmzProspect: false,
+    handoffSucceeded: true,
+    siteLinkAlreadySent: false,
+  }), {
+    text: "Certo, já encaminhei.",
+    markSiteLinkSent: false,
+  });
 });
 
 Deno.test("atalho restrito de não-dono segue ao modelo com orientação", () => {

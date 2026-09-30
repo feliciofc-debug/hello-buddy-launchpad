@@ -9,6 +9,9 @@ export const TENANT_CREATION_BLOCK_MESSAGE =
 export const NON_OWNER_CAPABILITY_GUIDANCE =
   "O cliente pode estar perguntando sobre um recurso. Responda a pergunta explicando o recurso com honestidade. Não execute publicação, vídeo ou composição para ele; na demonstração ele só vê exemplos na conversa.";
 
+export const AMZ_SITE_HANDOFF_MESSAGE =
+  "Enquanto isso, conheça tudo que a plataforma oferece: https://www.amzofertas.com.br";
+
 const CREATION_TOOLS = new Set([
   "gerar_imagem",
   "editar_imagem",
@@ -134,6 +137,36 @@ export function finalizeAmzNonOwnerText(
   return sanitizeAmzProspectContactDetails(
     anonymizeAmzConsultant(text, ownerName),
   );
+}
+
+export function finalizeAmzInboundReply(params: {
+  text: string;
+  isAmzTenant: boolean;
+  inboundFromOwner: boolean;
+  ownerName?: string | null;
+}): string {
+  return params.isAmzTenant && !params.inboundFromOwner
+    ? finalizeAmzNonOwnerText(params.text, params.ownerName)
+    : params.text;
+}
+
+export function appendAmzSiteLinkAfterHandoff(params: {
+  text: string;
+  isAmzProspect: boolean;
+  handoffSucceeded: boolean;
+  siteLinkAlreadySent: boolean;
+}): { text: string; markSiteLinkSent: boolean } {
+  if (
+    !params.isAmzProspect
+    || !params.handoffSucceeded
+    || params.siteLinkAlreadySent
+  ) {
+    return { text: params.text, markSiteLinkSent: false };
+  }
+  return {
+    text: `${params.text}<<SPLIT>>${AMZ_SITE_HANDOFF_MESSAGE}`,
+    markSiteLinkSent: true,
+  };
 }
 
 export function ownerForwardClientConfirmation(params: {

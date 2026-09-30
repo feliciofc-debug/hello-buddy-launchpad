@@ -95,12 +95,13 @@ import {
   findLeadNameInConversation,
 } from "../_shared/lead-name.ts";
 import {
+  appendAmzSiteLinkAfterHandoff,
   containsUnsupportedCreativeClaim,
   decideWhatsAppCreativeTool,
   deterministicDemoBlockedResponse,
   demoLimitReplay,
   DEMO_LIMIT_MESSAGE,
-  finalizeAmzNonOwnerText,
+  finalizeAmzInboundReply,
   guardProspectCreativeClaims,
   isCreativeDemoTool,
   isDemoTestPhone,
@@ -2407,6 +2408,7 @@ type PendingBrandGeneration = {
 type AgentConvState = {
   forward?: { protocolo?: string; destinatario?: string; wamid?: string | null; at?: string };
   decisao?: { valor?: string; at?: string };
+  site_link_enviado?: boolean;
   last_media_interaction?: { media_id: string; at: string };
   pending_image_composition?: { media_ids: string[]; at: string } | null;
   pending_carousel?: PendingCarouselState | null;
@@ -11933,25 +11935,10 @@ async function sendWhatsApp(
   interactiveButtons?: WhatsAppInteractiveButtons,
   delivery?: { beforeChunk?: (chunk: string) => Promise<void> },
 ): Promise<string | null> {
-  let finalizedMessage = message;
-  if (user_id === ADMIN_AMZ_USER_ID) {
-    let recipientIsOwner = isOwner({ userId: user_id, fromNumber: to })
-      || isAmzOwnerAltPhone(to);
-    let ownerName: string | null = null;
-    if (!recipientIsOwner) {
-      const owner = await resolveTenantOwner(sb, user_id);
-      recipientIsOwner = tenantOwnerMatchesPhone(owner, to)
-        || isAmzOwnerAltPhone(to);
-      ownerName = owner.name;
-    }
-    if (!recipientIsOwner) {
-      finalizedMessage = finalizeAmzNonOwnerText(message, ownerName);
-    }
-  }
-  const dedupedMessage = dedupeConsecutiveReplyText(finalizedMessage);
+  const dedupedMessage = dedupeConsecutiveReplyText(message);
   const chunks = splitWhatsAppText(dedupedMessage);
   if (chunks.length > 1) {
-    console.warn(`[processor][meta_text_split] chars=${finalizedMessage.length} chunks=${chunks.length}`);
+    console.warn(`[processor][meta_text_split] chars=${message.length} chunks=${chunks.length}`);
   }
 
   let firstMessageId: string | null = null;
@@ -12738,9 +12725,12 @@ async function processOne(queueId: string) {
                   contactName: conviteMaisRecente?.nome ?? (conv as any).contact_name ?? null,
                   fallback: fallbackBoasVindas,
                 });
-                const boasVindas = isAmzTenantEarly && !fromIsOwner
-                  ? finalizeAmzNonOwnerText(rawBoasVindas, _tenantOwner?.name)
-                  : rawBoasVindas;
+                const boasVindas = finalizeAmzInboundReply({
+                  text: rawBoasVindas,
+                  isAmzTenant: isAmzTenantEarly,
+                  inboundFromOwner: fromIsOwner,
+                  ownerName: _tenantOwner?.name,
+                });
                 await sendWhatsApp(userId, row.from_number, boasVindas);
                 await sb.from("whatsapp_cloud_messages").insert({
                   conversation_id: conv.id,
@@ -12921,7 +12911,17 @@ async function processOne(queueId: string) {
 
       let sendError: string | null = null;
       try {
-        const sentId = await sendWhatsApp(userId, row.from_number, reply);
+        const mediaReplyParts = reply.split("<<SPLIT>>")
+          .map((part) => part.trim())
+          .filter(Boolean);
+        const sentId = await sendWhatsApp(
+          userId,
+          row.from_number,
+          mediaReplyParts[0] ?? reply,
+        );
+        for (const part of mediaReplyParts.slice(1)) {
+          await sendWhatsApp(userId, row.from_number, part);
+        }
         if (sentId && outMsg?.id) {
           await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
         }
@@ -13614,9 +13614,30 @@ async function processOne(queueId: string) {
           })
         }`
         : respostaMidiaSalva(salvos, descricaoVisual, fromIsOwner);
-      const reply = isAmzTenant && !fromIsOwner
-        ? finalizeAmzNonOwnerText(rawReply, _tenantOwner?.name)
-        : rawReply;
+      const finalizedReply = finalizeAmzInboundReply({
+        text: rawReply,
+        isAmzTenant,
+        inboundFromOwner: fromIsOwner,
+        ownerName: _tenantOwner?.name,
+      });
+      const mediaState = isAmzTenant && ownerForwarded
+        ? await loadAgentState(sb, convStateIdentity)
+        : {};
+      const siteLink = appendAmzSiteLinkAfterHandoff({
+        text: finalizedReply,
+        isAmzProspect: isAmzTenant && !fromIsOwner,
+        handoffSucceeded: ownerForwarded,
+        siteLinkAlreadySent: mediaState.site_link_enviado === true,
+      });
+      const reply = siteLink.text;
+      if (siteLink.markSiteLinkSent) {
+        await saveAgentState(
+          sb,
+          convStateIdentity,
+          { site_link_enviado: true },
+          mediaState,
+        );
+      }
 
       const { data: outMsg } = await sb
         .from("whatsapp_cloud_messages")
@@ -13837,12 +13858,17 @@ async function processOne(queueId: string) {
           destinoDono: tenantOwnerPhone,
         });
         let pedirNomeAgora = false;
+        let siteLinkAlreadySent = false;
         try {
           const stPrev = await loadAgentState(sb, convStateIdentity);
           pedirNomeAgora = !nomeLeadConhecido && !(stPrev as any)?.nome_pergunta;
+          siteLinkAlreadySent = stPrev.site_link_enviado === true;
           const stateSaved = await saveAgentState(sb, convStateIdentity, {
             forward: { protocolo: proto, destinatario: tenantOwnerPhone, wamid: sentOwnerId ?? null, at: new Date().toISOString() },
             ...(pedirNomeAgora ? { nome_pergunta: true } : {}),
+            ...(isAmzTenant && !siteLinkAlreadySent
+              ? { site_link_enviado: true }
+              : {}),
           }, stPrev);
           if (!stateSaved) {
             console.warn(`[processor][handoff][state_degraded] comprovante preservado em lead_encaminhamentos from=${row.from_number}`);
@@ -13858,9 +13884,19 @@ async function processOne(queueId: string) {
         const rawReply = pedirNomeAgora
           ? `${confirmacao}\n\n${PERGUNTA_NOME}`
           : confirmacao;
-        const reply = isAmzTenant
-          ? finalizeAmzNonOwnerText(rawReply, _tenantOwner?.name)
-          : rawReply;
+        const finalizedReply = finalizeAmzInboundReply({
+          text: rawReply,
+          isAmzTenant,
+          inboundFromOwner: false,
+          ownerName: _tenantOwner?.name,
+        });
+        const siteLink = appendAmzSiteLinkAfterHandoff({
+          text: finalizedReply,
+          isAmzProspect: isAmzTenant,
+          handoffSucceeded: true,
+          siteLinkAlreadySent,
+        });
+        const reply = siteLink.text;
 
         const { data: outMsg } = await sb
           .from("whatsapp_cloud_messages")
@@ -13875,7 +13911,17 @@ async function processOne(queueId: string) {
           .select("id")
           .single();
 
-        const sentClientId = await sendWhatsApp(userId, row.from_number, reply);
+        const directReplyParts = reply.split("<<SPLIT>>")
+          .map((part) => part.trim())
+          .filter(Boolean);
+        const sentClientId = await sendWhatsApp(
+          userId,
+          row.from_number,
+          directReplyParts[0] ?? reply,
+        );
+        for (const part of directReplyParts.slice(1)) {
+          await sendWhatsApp(userId, row.from_number, part);
+        }
         if (sentClientId && outMsg?.id) {
           await sb.from("whatsapp_cloud_messages").update({ wamid: sentClientId }).eq("id", outMsg.id);
         }
@@ -14056,14 +14102,19 @@ Regras:
       }
 
       let reply: string;
+      let docSiteLinkAlreadySent = false;
       if (vision?.legivel === false) {
         reply = humano || `Recebi *${label}*, mas não consegui ler direito. Consegue mandar de novo mais nítido?`;
       } else if (deveEncaminhar && ownerForwardWamid) {
         const proto = buildForwardProof(ownerForwardWamid);
         try {
           const stPrev = await loadAgentState(sb, convStateIdentity);
+          docSiteLinkAlreadySent = stPrev.site_link_enviado === true;
           await saveAgentState(sb, convStateIdentity, {
             forward: { protocolo: proto, destinatario: tenantOwnerPhone ?? null as any, wamid: ownerForwardWamid, at: new Date().toISOString() },
+            ...(isAmzTenant && !docSiteLinkAlreadySent
+              ? { site_link_enviado: true }
+              : {}),
           }, stPrev);
         } catch (_e) { /* não bloqueia */ }
         reply = isAmzTenant
@@ -14083,9 +14134,18 @@ Regras:
           ? `${humano} Já anexei no seu cadastro pra ${primeiroNome} usar na proposta. 👍`
           : `Recebi seu documento${nomeVisto} e já anexei no seu cadastro pra ${primeiroNome}. Obrigado!`;
       }
-      if (isAmzTenant) {
-        reply = finalizeAmzNonOwnerText(reply, _tenantOwner?.name);
-      }
+      reply = finalizeAmzInboundReply({
+        text: reply,
+        isAmzTenant,
+        inboundFromOwner: false,
+        ownerName: _tenantOwner?.name,
+      });
+      reply = appendAmzSiteLinkAfterHandoff({
+        text: reply,
+        isAmzProspect: isAmzTenant,
+        handoffSucceeded: Boolean(deveEncaminhar && ownerForwardWamid),
+        siteLinkAlreadySent: docSiteLinkAlreadySent,
+      }).text;
 
       const { data: outMsg } = await sb
         .from("whatsapp_cloud_messages")
@@ -14102,7 +14162,17 @@ Regras:
 
       let sendError: string | null = null;
       try {
-        const sentId = await sendWhatsApp(userId, row.from_number, reply);
+        const docReplyParts = reply.split("<<SPLIT>>")
+          .map((part) => part.trim())
+          .filter(Boolean);
+        const sentId = await sendWhatsApp(
+          userId,
+          row.from_number,
+          docReplyParts[0] ?? reply,
+        );
+        for (const part of docReplyParts.slice(1)) {
+          await sendWhatsApp(userId, row.from_number, part);
+        }
         if (sentId && outMsg?.id) {
           await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
         }
@@ -14759,6 +14829,17 @@ Regras:
           console.log(`[processor][lead_nome][pergunta_enviada] from=${row.from_number}`);
         }
 
+        const siteLink = appendAmzSiteLinkAfterHandoff({
+          text: reply,
+          isAmzProspect: userId === ADMIN_AMZ_USER_ID,
+          handoffSucceeded: Boolean(forwardProof),
+          siteLinkAlreadySent: agentState.site_link_enviado === true,
+        });
+        reply = siteLink.text;
+        if (siteLink.markSiteLinkSent) {
+          patch.site_link_enviado = true;
+        }
+
         if (Object.keys(patch).length > 0) {
           await saveAgentState(sb, convStateIdentity, patch, agentState);
           console.log(`[processor][agent_state][saved] forward=${!!patch.forward} decisao=${patch.decisao?.valor ?? "-"}`);
@@ -14800,9 +14881,12 @@ Regras:
       .update({ used_count: quota.used_count + 1 })
       .eq("user_id", userId);
 
-    if (!inboundFromOwner && userId === ADMIN_AMZ_USER_ID) {
-      reply = finalizeAmzNonOwnerText(reply, _tenantOwner?.name);
-    }
+    reply = finalizeAmzInboundReply({
+      text: reply,
+      isAmzTenant: userId === ADMIN_AMZ_USER_ID,
+      inboundFromOwner,
+      ownerName: _tenantOwner?.name,
+    });
 
     const dedupedReply = dedupeConsecutiveReplyText(reply);
     if (dedupedReply !== reply) {
