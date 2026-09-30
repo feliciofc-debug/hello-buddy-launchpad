@@ -22,8 +22,8 @@ Deno.test("claim inclui logo assinada por uma hora quando solicitada", async () 
   assertEquals(signed, ["tenant-logos", `${USER_ID}/logo.png`, 3600]);
   assertEquals(logo, {
     download_url: "https://storage.example/logo-signed",
-    posicao: "topo",
-    largura_ratio: 0.22,
+    posicao: "canto_superior_esquerdo",
+    largura_ratio: 0.38,
     margem_ratio: 0.04,
   });
 });

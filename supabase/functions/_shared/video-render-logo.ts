@@ -1,7 +1,7 @@
 export interface VideoRenderLogoClaim {
   download_url: string;
-  posicao: "topo";
-  largura_ratio: 0.22;
+  posicao: "canto_superior_esquerdo";
+  largura_ratio: 0.38;
   margem_ratio: 0.04;
 }
 
@@ -34,8 +34,8 @@ export async function buildVideoRenderLogoClaim(
   if (!downloadUrl) return null;
   return {
     download_url: downloadUrl,
-    posicao: "topo",
-    largura_ratio: 0.22,
+    posicao: "canto_superior_esquerdo",
+    largura_ratio: 0.38,
     margem_ratio: 0.04,
   };
 }
