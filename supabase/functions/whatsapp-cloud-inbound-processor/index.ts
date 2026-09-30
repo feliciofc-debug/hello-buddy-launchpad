@@ -92,10 +92,13 @@ import {
   findLeadNameInConversation,
 } from "../_shared/lead-name.ts";
 import {
+  containsUnsupportedCreativeClaim,
   decideWhatsAppCreativeTool,
   deterministicDemoBlockedResponse,
   demoLimitReplay,
   DEMO_LIMIT_MESSAGE,
+  guardProspectCreativeClaims,
+  isCreativeDemoTool,
   isDemoTestPhone,
   TENANT_CREATION_BLOCK_MESSAGE,
   type DemoToolDecision,
@@ -10292,19 +10295,23 @@ async function countProspectDemoMedia(
 async function latestProspectDemoMedia(
   userId: string,
   fromNumber: string,
-  toolName: string,
+  toolName?: string,
 ): Promise<{ midia_url: string; created_at: string } | null> {
-  const origin = toolName === "criar_carrossel"
-    ? "carrossel_whatsapp"
-    : "ia_whatsapp";
-  const { data, error } = await sb.from("midias_whatsapp")
+  const query = sb.from("midias_whatsapp")
     .select("midia_url, created_at")
     .eq("user_id", userId)
     .eq("telefone_origem", fromNumber)
-    .eq("origem", origin)
     .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
+  const scoped = toolName
+    ? query.eq(
+      "origem",
+      toolName === "criar_carrossel"
+        ? "carrossel_whatsapp"
+        : "ia_whatsapp",
+    )
+    : query.in("origem", ["ia_whatsapp", "carrossel_whatsapp"]);
+  const { data, error } = await scoped.maybeSingle();
   if (error) {
     console.warn("[demo-policy][latest_media_failed]", error.message);
     return null;
@@ -10546,6 +10553,11 @@ async function callGemini(
 }> {
   let forwardProof: string | undefined;
   let forwardAttempted = false;
+  const senderIsOwner = isOwner(toolCtx);
+  const senderIsAmzProspect = !senderIsOwner
+    && toolCtx.userId === ADMIN_AMZ_USER_ID;
+  const senderIsDemoTestPhone = senderIsAmzProspect
+    && isDemoTestPhone(toolCtx.fromNumber, toolCtx.demoTestPhones);
   const nowSP = new Date().toLocaleString("pt-BR", {
     timeZone: "America/Sao_Paulo",
     weekday: "long", day: "2-digit", month: "2-digit", year: "numeric",
@@ -11481,6 +11493,7 @@ async function callGemini(
   let pendingImageUrl: string | undefined;
   let pendingMediaCodeBlock = "";
   let pendingDemoSiteBrandResult: Record<string, unknown> | null = null;
+  let creativeToolRanThisTurn = false;
   let pendingSocialToken: string | undefined; // token de post aguardando confirmação — anexa <<SPLIT>>pode postar {token} no fim
 
   const captureSocialToken = (raw: string) => {
@@ -11556,6 +11569,7 @@ async function callGemini(
           args.midia_id = extrairIdentificadorMidia(originalRequest) || undefined;
         }
         console.log(`[pietro][tool] ${name}`, args);
+        if (isCreativeDemoTool(name)) creativeToolRanThisTurn = true;
         if (
           blockModelPendingTextActions
           && [
@@ -11809,14 +11823,40 @@ async function callGemini(
       continue;
     }
 
-    const modelText = pendingDemoSiteBrandResult
+    const rawModelText = pendingDemoSiteBrandResult
       ? whatsAppDemoResponseWithBrand(msg?.content ?? "", pendingDemoSiteBrandResult)
       : msg?.content ?? "";
+    let guardReplayImageUrl: string | undefined;
+    let modelText = rawModelText;
+    if (
+      senderIsAmzProspect
+      && !senderIsDemoTestPhone
+      && !creativeToolRanThisTurn
+      && containsUnsupportedCreativeClaim(rawModelText)
+    ) {
+      const previousDemo = await latestProspectDemoMedia(
+        toolCtx.userId,
+        toolCtx.fromNumber,
+      );
+      modelText = guardProspectCreativeClaims({
+        text: rawModelText,
+        isAmzProspect: true,
+        isTestPhone: false,
+        creativeToolRan: false,
+        previousDemoCreatedAt: previousDemo?.created_at,
+      });
+      guardReplayImageUrl = previousDemo?.midia_url;
+    }
     const baseText = appendConfirmCommand(modelText);
     const text = pendingMediaCodeBlock && !baseText.includes(pendingMediaCodeBlock)
       ? `${baseText}<<SPLIT>>${pendingMediaCodeBlock}`
       : baseText;
-    return { text, imageUrl: pendingImageUrl, forwardProof, forwardAttempted };
+    return {
+      text,
+      imageUrl: pendingImageUrl ?? guardReplayImageUrl,
+      forwardProof,
+      forwardAttempted,
+    };
   }
   const fallbackModelText = pendingDemoSiteBrandResult
     ? whatsAppDemoResponseWithBrand("", pendingDemoSiteBrandResult)

@@ -14,6 +14,46 @@ const CREATION_TOOLS = new Set([
   "criar_video_animado",
 ]);
 
+export function isCreativeDemoTool(toolName: string): boolean {
+  return CREATION_TOOLS.has(toolName);
+}
+
+const CREATIVE_CLAIM = /\b(?:j[aá]\s+)?(?:criei|gerei|fiz)\b.{0,60}\b(?:logo|imagem|arte|post|carrossel|v[ií]deo)\b/i;
+const DEMO_LIMIT_CLAIM = /demonstra[cç][aã]o gratuita.{0,40}\b(?:[eé]\s+de|limite|por empresa)\b/i;
+
+export function containsUnsupportedCreativeClaim(text: string): boolean {
+  return CREATIVE_CLAIM.test(text) || DEMO_LIMIT_CLAIM.test(text);
+}
+
+export function guardProspectCreativeClaims(params: {
+  text: string;
+  isAmzProspect: boolean;
+  isTestPhone: boolean;
+  creativeToolRan: boolean;
+  previousDemoCreatedAt?: string | null;
+}): string {
+  if (
+    !params.isAmzProspect
+    || params.isTestPhone
+    || params.creativeToolRan
+    || !containsUnsupportedCreativeClaim(params.text)
+  ) return params.text;
+
+  const remaining = params.text
+    .split(/(?<=[.!?])\s+|<<SPLIT>>|\n+/)
+    .map((part) => part.trim())
+    .filter((part) =>
+      part
+      && !CREATIVE_CLAIM.test(part)
+      && !DEMO_LIMIT_CLAIM.test(part)
+    )
+    .join(" ")
+    .trim();
+  if (!params.previousDemoCreatedAt) return remaining;
+  const limit = demoLimitMessage(params.previousDemoCreatedAt);
+  return remaining ? `${limit}<<SPLIT>>${remaining}` : limit;
+}
+
 const PUBLICATION_TOOLS = new Set([
   "postar_redes_sociais",
   "postar_midia_biblioteca",

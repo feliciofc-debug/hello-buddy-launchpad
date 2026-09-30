@@ -2,12 +2,14 @@ import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { AMZ_KNOWLEDGE, AMZ_SALES_BLOCK } from "./agent-soul.ts";
 import { dedupeConsecutiveReplyText } from "./reply-dedupe.ts";
 import {
+  containsUnsupportedCreativeClaim,
   decideWhatsAppCreativeTool,
   deterministicDemoBlockedResponse,
   demoLimitMessage,
   demoLimitReplay,
   DEMO_LIMIT_MESSAGE,
   isDemoTestPhone,
+  guardProspectCreativeClaims,
 } from "./whatsapp-demo-policy.ts";
 
 Deno.test("prospect AMZ gera uma imagem e a segunda é recusada", () => {
@@ -130,6 +132,41 @@ Deno.test("resultado comum e tool não criativa continuam no fluxo normal", () =
   ), null);
 });
 
+Deno.test("afirmação falsa do caso real vira limite determinístico", () => {
+  const falseReply =
+    "A demonstração gratuita é de 1 post por empresa e já criei a sua logo acima! Como posso te chamar para o Felicio falar com você?";
+  assertEquals(containsUnsupportedCreativeClaim(falseReply), true);
+  const guarded = guardProspectCreativeClaims({
+    text: falseReply,
+    isAmzProspect: true,
+    isTestPhone: false,
+    creativeToolRan: false,
+    previousDemoCreatedAt: "2026-09-29T15:00:00.000Z",
+  });
+  assertEquals(guarded.includes("A demonstração gratuita deste número foi feita em 29/09/2026."), true);
+  assertEquals(guarded.includes("já criei a sua logo"), false);
+  assertEquals(guarded.includes("por empresa"), false);
+  assertEquals(guarded.includes("Como posso te chamar"), true);
+});
+
+Deno.test("conversa normal e resposta ao dono ficam inalteradas", () => {
+  const normal = "Posso te explicar como a plataforma funciona. Qual é o seu negócio?";
+  assertEquals(guardProspectCreativeClaims({
+    text: normal,
+    isAmzProspect: true,
+    isTestPhone: false,
+    creativeToolRan: false,
+  }), normal);
+
+  const ownerText = "Já criei a sua imagem e salvei na biblioteca.";
+  assertEquals(guardProspectCreativeClaims({
+    text: ownerText,
+    isAmzProspect: false,
+    isTestPhone: false,
+    creativeToolRan: false,
+  }), ownerText);
+});
+
 Deno.test("reply duplicado consecutivo vira texto único inclusive entre partes", () => {
   const paragraph = "A plataforma cria o conteúdo. Você escolhe quando publicar.";
   assertEquals(dedupeConsecutiveReplyText(`${paragraph} ${paragraph}`), paragraph);
@@ -158,6 +195,8 @@ Deno.test("Pietro conduz imagem e carrossel com uma pergunta por vez", () => {
     "Quando pedir preço ou proposta",
     "chame registrar_lead_novo",
     "Felicio vai entrar em contato",
+    "SEMPRE chame a ferramenta correspondente",
+    "Só afirme após receber o resultado da ferramenta",
   ]) {
     assertEquals(prompt.includes(trecho), true);
   }
