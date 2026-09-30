@@ -11952,7 +11952,12 @@ async function sendWhatsApp(
   let firstMessageId: string | null = null;
   for (let index = 0; index < chunks.length; index++) {
     if (index > 0 && delivery?.beforeChunk) await delivery.beforeChunk(chunks[index]);
-    const body: any = { user_id, to, message: chunks[index] };
+    const body: any = {
+      user_id,
+      to,
+      message: chunks[index],
+      skip_log: true,
+    };
     if (imageUrl && index === 0) body.image_url = imageUrl;
     if (interactiveList && index === chunks.length - 1) body.interactive_list = interactiveList;
     if (interactiveButtons && index === chunks.length - 1) body.interactive_buttons = interactiveButtons;

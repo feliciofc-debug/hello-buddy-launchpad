@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { toMetaSafeImageUrl } from '../_shared/meta-media.ts'
-import { logOutboundMessage } from '../_shared/cloud-log.ts'
+import { logOutboundMessage, shouldLogOutboundMessage } from '../_shared/cloud-log.ts'
 
 
 
@@ -24,6 +24,7 @@ serve(async (req) => {
     const {
       user_id, to, message, template_name, template_language,
       image_url, video_url, document_url, document_filename,
+      skip_log,
       // vCard (cartão de contato clicável) — Meta Cloud API type:contacts
       contact_card, // { nome: string, telefone: string }
       // Lista interativa (1 toque) — usada p/ escolher cor do carrossel, etc.
@@ -220,16 +221,19 @@ serve(async (req) => {
 
     console.log('✅ Mensagem enviada:', result.messages?.[0]?.id)
 
-    // Registra no monitor de conversas (para acompanhar campanhas em tempo real)
-    await logOutboundMessage(supabase, {
-      userId: user_id,
-      phone: String(to),
-      content: message || (interactive_list ? `🎨 ${interactive_list.body || 'lista de opções'}` : (document_url ? `📄 ${document_filename || 'documento'}` : (video_url ? '🎬 vídeo' : (image_url ? '🖼️ imagem' : (contact_card ? '📇 cartão de contato' : ''))))),
-      messageType: interactive_list ? 'interactive' : document_url ? 'document' : video_url ? 'video' : image_url ? 'image' : contact_card ? 'contacts' : template_name ? 'template' : 'text',
+    // O processor já registra a própria resposta; campanhas e convites
+    // continuam usando este log central.
+    if (shouldLogOutboundMessage(skip_log)) {
+      await logOutboundMessage(supabase, {
+        userId: user_id,
+        phone: String(to),
+        content: message || (interactive_list ? `🎨 ${interactive_list.body || 'lista de opções'}` : (document_url ? `📄 ${document_filename || 'documento'}` : (video_url ? '🎬 vídeo' : (image_url ? '🖼️ imagem' : (contact_card ? '📇 cartão de contato' : ''))))),
+        messageType: interactive_list ? 'interactive' : document_url ? 'document' : video_url ? 'video' : image_url ? 'image' : contact_card ? 'contacts' : template_name ? 'template' : 'text',
 
-      wamid: result.messages?.[0]?.id ?? null,
-      sender: 'campanha',
-    })
+        wamid: result.messages?.[0]?.id ?? null,
+        sender: 'campanha',
+      })
+    }
 
     return new Response(JSON.stringify({
       success: true,
