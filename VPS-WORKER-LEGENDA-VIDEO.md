@@ -163,6 +163,11 @@ services:
 
 `worker.py`:
 
+> A fonte oficial agora é o arquivo versionado
+> `vps/render-worker/worker.py`. Copie esse arquivo para
+> `/opt/render-worker/worker.py`; o bloco abaixo documenta a versão original
+> do worker e não deve mais ser usado para atualização da VPS.
+
 ```python
 import os, time, json, glob, shutil, subprocess, tempfile, requests
 from PIL import ImageFont
@@ -307,6 +312,27 @@ Subir:
 
 ```bash
 docker compose up -d && docker logs -f render-worker
+```
+
+### Logo opcional da conta
+
+Quando o job devolvido pelo claim contém `logo`, o worker versionado:
+
+- baixa a URL assinada da logo (validade de 1 hora);
+- redimensiona mantendo a proporção para 22% da largura do vídeo;
+- centraliza no topo com margem de 4% da altura;
+- aplica logo e legenda no mesmo filtro/encode do FFmpeg, preservando a
+  transparência do PNG.
+
+Falha de download ou de overlay gera apenas um aviso no log. Nesse caso o
+worker repete o render sem logo, para que a logo nunca derrube o vídeo.
+
+Para atualizar e validar antes de reiniciar:
+
+```bash
+cp vps/render-worker/worker.py /opt/render-worker/worker.py
+python -m unittest vps/render-worker/test_worker.py
+docker compose -f /opt/render-worker/docker-compose.yml up -d
 ```
 
 Teste de conectividade (deve devolver `{"success":true,"job":null}`):

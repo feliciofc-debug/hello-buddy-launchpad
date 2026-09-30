@@ -12,6 +12,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { autorizarWorker, renderCors, respJson } from "../_shared/render-auth.ts";
+import { buildVideoRenderLogoClaim } from "../_shared/video-render-logo.ts";
 
 const BUCKET_SAIDA = "videos";
 const STALE_MINUTOS = 15;
@@ -92,6 +93,15 @@ Deno.serve(async (req) => {
       .createSignedUploadUrl(nome, { upsert: true });
     if (upSignErr || !up?.signedUrl) throw upSignErr || new Error("upload url falhou");
 
+    const logo = await buildVideoRenderLogoClaim(job, async (bucket, path, ttlSeconds) => {
+      const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, ttlSeconds);
+      if (error || !data?.signedUrl) {
+        console.warn("[video-render-claim] logo indisponível; render seguirá sem logo:", error?.message);
+        return null;
+      }
+      return data.signedUrl;
+    });
+
     return respJson({
       success: true,
       job: {
@@ -108,6 +118,7 @@ Deno.serve(async (req) => {
         formato: job.formato,
         estilo: ESTILO_LEGENDA,
         tentativa: (job.tentativas || 0) + 1,
+        ...(logo ? { logo } : {}),
       },
     });
   } catch (e) {

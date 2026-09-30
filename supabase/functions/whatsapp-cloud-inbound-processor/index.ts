@@ -59,7 +59,10 @@ function getTenantOwnersForCtx(userId: string): string[] {
 
 import { downloadAllMediaDetailed, type MediaExtract, type MediaRejection } from "../_shared/whatsapp-media.ts";
 import { extractDocumentText } from "../_shared/document-extract.ts";
-import { getTenantLogoDataUrl } from "../_shared/tenant-logo.ts";
+import {
+  getTenantLogoDataUrl,
+  getTenantLogoStorageLocation,
+} from "../_shared/tenant-logo.ts";
 import {
   applyBrandLogo,
   buildBrandGenerationGuidance,
@@ -199,8 +202,9 @@ import {
 } from "../_shared/image-composition.ts";
 import {
   iniciarFluxoLegendaVideo,
-  tratarRespostaFluxoLegenda,
   resolverVideoLegendado,
+  tratarRespostaFluxoLegenda,
+  VIDEO_LEGENDA_LOGO_BUTTONS,
 } from "../_shared/video-legenda-flow.ts";
 import {
   enfileirarVideoMotion,
@@ -13812,13 +13816,22 @@ async function processOne(queueId: string) {
     // A queima da legenda roda no worker da VPS — nada depende do navegador.
     // ============================================================
     if (fromIsOwner && userText.trim()) {
+      const videoLegendaLogo = await getTenantLogoStorageLocation(sb, userId);
       const fluxoReply = await tratarRespostaFluxoLegenda({
         userId,
         telefone: row.from_number,
         texto: userText,
+        logo: videoLegendaLogo,
       });
       if (fluxoReply) {
         console.log("[processor][video_legenda_flow] resposta determinística do fluxo de legenda");
+        const logoButtons: WhatsAppInteractiveButtons | undefined =
+          videoLegendaLogo && /^Legenda \*[ABC]\* registrada/u.test(fluxoReply)
+            ? {
+              body: fluxoReply,
+              buttons: VIDEO_LEGENDA_LOGO_BUTTONS.map((button) => ({ ...button })),
+            }
+            : undefined;
         const { data: outMsg } = await sb
           .from("whatsapp_cloud_messages")
           .insert({
@@ -13827,12 +13840,19 @@ async function processOne(queueId: string) {
             direction: "outbound",
             sender: "agent",
             content: fluxoReply,
-            message_type: "text",
+            message_type: logoButtons ? "interactive" : "text",
           })
           .select("id")
           .single();
 
-        const sentFlowId = await sendWhatsApp(userId, row.from_number, fluxoReply);
+        const sentFlowId = await sendWhatsApp(
+          userId,
+          row.from_number,
+          fluxoReply,
+          undefined,
+          undefined,
+          logoButtons,
+        );
         if (sentFlowId && outMsg?.id) {
           await sb.from("whatsapp_cloud_messages").update({ wamid: sentFlowId }).eq("id", outMsg.id);
         }

@@ -340,9 +340,42 @@ function detectarEscolha(texto: string): number | null {
 }
 
 function ehConfirmacao(texto: string): boolean {
-  return /\b(sim|pode|publica(r)?|posta(r)?|manda(r)?|envia(r)?|autorizo|confirmo|vai|bora|ok)\b/i.test(
+  return /\b(sim|pode|publica(r)?|posta(r)?|manda(r)?|envia(r)?|autorizo|confirmo|vai|bora|ok|com\s+logo|sem\s+logo)\b/i.test(
     texto || "",
   );
+}
+
+export interface VideoLegendaLogoAsset {
+  bucket: string;
+  path: string;
+}
+
+export const VIDEO_LEGENDA_LOGO_BUTTONS = [
+  { id: "video_legenda_com_logo", title: "Gerar com logo" },
+  { id: "video_legenda_sem_logo", title: "Gerar sem logo" },
+] as const;
+
+/** true = com logo; false = sem logo/padrão atual; null = não decidiu. */
+export function detectarEscolhaLogo(texto: string): boolean | null {
+  const t = texto || "";
+  if (/<<INTERACTIVE_ID:video_legenda_com_logo>>/i.test(t) || /\bcom\s+(a\s+)?logo\b/i.test(t)) {
+    return true;
+  }
+  if (
+    /<<INTERACTIVE_ID:video_legenda_sem_logo>>/i.test(t) ||
+    /\bsem\s+(a\s+)?logo\b/i.test(t)
+  ) {
+    return false;
+  }
+  return null;
+}
+
+export function metadataEscolhaLogo(
+  metadata: Record<string, unknown> | null | undefined,
+  texto: string,
+): Record<string, unknown> {
+  const escolha = detectarEscolhaLogo(texto);
+  return { ...(metadata || {}), com_logo: escolha === true };
 }
 
 /**
@@ -560,6 +593,7 @@ export async function tratarRespostaFluxoLegenda(params: {
   userId: string;
   telefone: string;
   texto: string;
+  logo?: VideoLegendaLogoAsset | null;
 }): Promise<string | null> {
   const { data: job } = await sb
     .from("video_render_jobs")
@@ -676,14 +710,20 @@ export async function tratarRespostaFluxoLegenda(params: {
           ...(job.metadata || {}),
           copy_letra: letra,
           plataformas_pedidas: alvo.plataformas_pedidas,
+          ...(params.logo
+            ? { logo_bucket: params.logo.bucket, logo_path: params.logo.path }
+            : {}),
         },
       })
       .eq("id", job.id);
 
     // Uma linha curta + UMA pergunta. Sem reimprimir a copy.
+    const confirmar = params.logo
+      ? "Escolha *Gerar com logo* ou *Gerar sem logo*. Se responder só *ENVIAR* ou *PUBLICAR*, gero sem logo."
+      : "Responda *ENVIAR* (só te devolvo o vídeo legendado) ou *PUBLICAR* (te mando pra aprovar e só então publico).";
     return `Legenda *${letra}* registrada ✅ — vai ${
       declararDestino(alvo.formato, alvo.plataformas_pedidas)
-    }\n\nResponda *ENVIAR* (só te devolvo o vídeo legendado) ou *PUBLICAR* (te mando pra aprovar e só então publico).`;
+    }\n\n${confirmar}`;
   }
 
   // ---- aguardando confirmação de publicação ----
@@ -715,6 +755,7 @@ export async function tratarRespostaFluxoLegenda(params: {
           formato: alvo.formato,
           enfileirado_at: new Date().toISOString(),
           plataformas: publicar ? destino : [],
+          metadata: metadataEscolhaLogo(job.metadata, params.texto),
         })
         .eq("id", job.id);
 

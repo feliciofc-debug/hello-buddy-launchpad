@@ -15,6 +15,11 @@ export interface TenantLogo {
 
 const BUCKET = "tenant-logos";
 
+export interface TenantLogoStorageLocation {
+  bucket: string;
+  path: string;
+}
+
 /** Logo ativa do tenant, ou null se ele não configurou (feature opcional). */
 export async function getTenantLogo(sb: any, userId: string): Promise<TenantLogo | null> {
   if (!userId) return null;
@@ -57,6 +62,30 @@ export async function getTenantLogoSignedUrl(
     return null;
   }
   return data?.signedUrl ?? null;
+}
+
+/**
+ * Localização persistente da logo usada em renders assíncronos.
+ * Prefere tenant_logos e aceita a logo legada do próprio tenant quando ela
+ * também está no Storage. URLs externas não são repassadas ao worker.
+ */
+export async function getTenantLogoStorageLocation(
+  sb: any,
+  userId: string,
+): Promise<TenantLogoStorageLocation | null> {
+  const logo = await getTenantLogo(sb, userId);
+  if (logo) return { bucket: BUCKET, path: logo.storage_path };
+
+  const { data, error } = await sb
+    .from("profiles")
+    .select("logo_reel_url")
+    .eq("id", userId)
+    .maybeSingle();
+  const url = String(data?.logo_reel_url || "");
+  if (error || !url || !url.includes(`/${userId}/`)) return null;
+  const match = url.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+?)(?:\?|$)/);
+  if (!match) return null;
+  return { bucket: match[1], path: decodeURIComponent(match[2]) };
 }
 
 /** Logo legada do próprio tenant (tela Configurações → Marca): profiles.logo_reel_url. */
