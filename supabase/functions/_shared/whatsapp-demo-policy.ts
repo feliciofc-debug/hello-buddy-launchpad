@@ -20,6 +20,7 @@ export function isCreativeDemoTool(toolName: string): boolean {
 
 export function requiredProspectCreativeTool(
   text: string,
+  hasSiteUrl = false,
 ): "gerar_imagem" | "criar_carrossel" | null {
   const normalized = String(text || "")
     .normalize("NFD")
@@ -31,47 +32,67 @@ export function requiredProspectCreativeTool(
   const creationVerb = /\b(?:gera|gere|gerar|cria|crie|criar|faz|faca|fazer|refaz|refaca|refazer)\b/;
   const creativeTarget = /\b(?:imagem|arte|foto|logo|logotipo|logomarca|marca)\b/;
   const retryWithBrand = /\b(?:gera|gere|cria|crie|faz|faca|refaz|refaca)\s+(?:isso\s+)?de novo\b.{0,100}\b(?:logo|marca|site)\b/;
+  const explicitRequest = /\b(?:quero|queria|gostaria|me mostra|mostra pra mim|quero ver|vamos testar|pode (?:gerar|criar|fazer))\b/;
+  const demoOrExample = /\b(?:demonstra(?:cao|r)?|demo|exemplo|mostra(?:r)?|quero ver|ver|testar)\b/;
+  const demoTarget = /\b(?:site|logo|marca|imagem|post|arte|demonstra(?:cao)?)\b/;
+  const capabilityQuestion = /\?$/.test(normalized)
+    && /\b(?:voces?|conseguem?|como funciona|quanto custa|da para|e possivel)\b/.test(normalized)
+    && !explicitRequest.test(normalized)
+    && !hasSiteUrl;
+  if (capabilityQuestion) return null;
   return (
       creationVerb.test(normalized)
       && creativeTarget.test(normalized)
     )
     || retryWithBrand.test(normalized)
+    || (demoOrExample.test(normalized) && demoTarget.test(normalized) && explicitRequest.test(normalized))
+    || (hasSiteUrl && (creationVerb.test(normalized) || demoOrExample.test(normalized) || explicitRequest.test(normalized)))
     ? "gerar_imagem"
     : null;
 }
 
 const CREATIVE_CLAIM = /\b(?:j[aá]\s+)?(?:criei|gerei|fiz)\b.{0,60}\b(?:logo|imagem|arte|post|carrossel|v[ií]deo)\b/i;
-const DEMO_LIMIT_CLAIM = /demonstra[cç][aã]o gratuita.{0,40}\b(?:[eé]\s+de|limite|por empresa)\b/i;
+const DEMO_HISTORY_OR_LIMIT = /(?:\b(?:demonstra[cç][aã]o|demo|teste|imagem\s+de\s+demonstra[cç][aã]o)\b.{0,160}\b(?:j[aá]\s+foi|gerad[ao]|acima|em cima|limite|direito\s+a|1\s+post|1\s+teste|por empresa|por conta)\b|\b(?:limite|direito\s+a|1\s+post|1\s+teste|por empresa|por conta)\b.{0,80}\b(?:demonstra[cç][aã]o|demo|teste|imagem|post)\b)/i;
 
 export function containsUnsupportedCreativeClaim(text: string): boolean {
-  return CREATIVE_CLAIM.test(text) || DEMO_LIMIT_CLAIM.test(text);
+  return CREATIVE_CLAIM.test(text) || DEMO_HISTORY_OR_LIMIT.test(text);
+}
+
+function anonymizeAmzConsultant(text: string): string {
+  return text
+    .replace(/\b(?:ao|a\s+o)\s+fel[ií]cio\b/gi, "a um consultor da AMZ")
+    .replace(/\b(?:pro|para\s+o|pelo)\s+fel[ií]cio\b/gi, "para um consultor da AMZ")
+    .replace(/\bo\s+fel[ií]cio\b/gi, "um consultor da AMZ")
+    .replace(/\bfel[ií]cio\b/gi, "um consultor da AMZ");
 }
 
 export function guardProspectCreativeClaims(params: {
   text: string;
   isAmzProspect: boolean;
-  isTestPhone: boolean;
   creativeToolRan: boolean;
   previousDemoCreatedAt?: string | null;
 }): string {
   if (
     !params.isAmzProspect
-    || params.isTestPhone
-    || params.creativeToolRan
-    || !containsUnsupportedCreativeClaim(params.text)
   ) return params.text;
 
-  const remaining = params.text
+  const anonymized = anonymizeAmzConsultant(params.text);
+  if (params.creativeToolRan || !containsUnsupportedCreativeClaim(anonymized)) {
+    return anonymized || "Posso te ajudar com mais alguma dúvida sobre a plataforma?";
+  }
+  const remaining = anonymized
     .split(/(?<=[.!?])\s+|<<SPLIT>>|\n+/)
     .map((part) => part.trim())
     .filter((part) =>
       part
       && !CREATIVE_CLAIM.test(part)
-      && !DEMO_LIMIT_CLAIM.test(part)
+      && !DEMO_HISTORY_OR_LIMIT.test(part)
     )
     .join(" ")
     .trim();
-  if (!params.previousDemoCreatedAt) return remaining;
+  if (!params.previousDemoCreatedAt) {
+    return remaining || "Posso te ajudar com mais alguma dúvida sobre a plataforma?";
+  }
   const limit = demoLimitMessage(params.previousDemoCreatedAt);
   return remaining ? `${limit}<<SPLIT>>${remaining}` : limit;
 }

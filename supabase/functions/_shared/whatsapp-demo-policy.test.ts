@@ -5,6 +5,7 @@ import {
   AMZ_SUPPORT_BLOCK,
 } from "./agent-soul.ts";
 import { dedupeConsecutiveReplyText } from "./reply-dedupe.ts";
+import { extractWhatsAppBrandSiteUrl } from "./whatsapp-image-brand.ts";
 import {
   containsUnsupportedCreativeClaim,
   decideWhatsAppCreativeTool,
@@ -137,21 +138,29 @@ Deno.test("resultado comum e tool não criativa continuam no fluxo normal", () =
   ), null);
 });
 
-Deno.test("afirmação falsa do caso real vira limite determinístico", () => {
-  const falseReply =
-    "A demonstração gratuita é de 1 post por empresa e já criei a sua logo acima! Como posso te chamar para um consultor da AMZ falar com você?";
-  assertEquals(containsUnsupportedCreativeClaim(falseReply), true);
-  const guarded = guardProspectCreativeClaims({
-    text: falseReply,
-    isAmzProspect: true,
-    isTestPhone: false,
-    creativeToolRan: false,
-    previousDemoCreatedAt: "2026-09-29T15:00:00.000Z",
-  });
-  assertEquals(guarded.includes("A demonstração gratuita deste número foi feita em 29/09/2026."), true);
-  assertEquals(guarded.includes("já criei a sua logo"), false);
-  assertEquals(guarded.includes("por empresa"), false);
-  assertEquals(guarded.includes("Como posso te chamar"), true);
+Deno.test("quatro respostas reais falsas viram limite determinístico", () => {
+  const falseReplies = [
+    "A demonstração gratuita é de 1 post por empresa e já criei a sua logo acima!",
+    "A demonstração gratuita de 1 post com seu site já foi gerada na mensagem anterior!",
+    "A imagem de demonstração da Loja Bom Pastor já está logo acima no chat! Como cada conta tem direito a 1 teste de imagem",
+    "A demonstração com a Loja Bom Pastor já foi gerada ali em cima na conversa! Como o limite de teste é de 1 post, o recado já foi entregue ao Felicio",
+  ];
+  for (const falseReply of falseReplies) {
+    assertEquals(containsUnsupportedCreativeClaim(falseReply), true);
+    const guarded = guardProspectCreativeClaims({
+      text: falseReply,
+      isAmzProspect: true,
+      creativeToolRan: false,
+      previousDemoCreatedAt: "2026-09-29T15:00:00.000Z",
+    });
+    assertEquals(
+      guarded.includes("A demonstração gratuita deste número foi feita em 29/09/2026."),
+      true,
+    );
+    assertEquals(/\bfel[ií]cio\b/i.test(guarded), false);
+    assertEquals(guarded.includes("por empresa"), false);
+    assertEquals(guarded.trim().length > 0, true);
+  }
 });
 
 Deno.test("pedido repetido de telefone de teste exige tool criativa", () => {
@@ -166,12 +175,41 @@ Deno.test("pedido repetido de telefone de teste exige tool criativa", () => {
   assertEquals(requiredProspectCreativeTool("qual o preço do plano?"), null);
 });
 
+Deno.test("frase real de demonstração exige imagem e preserva site_url", () => {
+  const text =
+    "quero ver a demonstração com o meu site lojabompastor.com.br";
+  const siteUrl = extractWhatsAppBrandSiteUrl(text);
+  assertEquals(siteUrl, "https://lojabompastor.com.br/");
+  assertEquals(
+    requiredProspectCreativeTool(text, Boolean(siteUrl)),
+    "gerar_imagem",
+  );
+  assertEquals(
+    requiredProspectCreativeTool("vocês conseguem fazer foto?"),
+    null,
+  );
+  assertEquals(requiredProspectCreativeTool("como funciona?"), null);
+  assertEquals(requiredProspectCreativeTool("quanto custa?"), null);
+});
+
+Deno.test("filtro final anonimiza nome do dono mesmo após tool criativa", () => {
+  assertEquals(guardProspectCreativeClaims({
+    text: "O recado já foi entregue ao Felício.",
+    isAmzProspect: true,
+    creativeToolRan: true,
+  }), "O recado já foi entregue a um consultor da AMZ.");
+  assertEquals(guardProspectCreativeClaims({
+    text: "O Felicio vai retornar; fale pro Felicio se precisar.",
+    isAmzProspect: true,
+    creativeToolRan: false,
+  }), "um consultor da AMZ vai retornar; fale para um consultor da AMZ se precisar.");
+});
+
 Deno.test("conversa normal e resposta ao dono ficam inalteradas", () => {
   const normal = "Posso te explicar como a plataforma funciona. Qual é o seu negócio?";
   assertEquals(guardProspectCreativeClaims({
     text: normal,
     isAmzProspect: true,
-    isTestPhone: false,
     creativeToolRan: false,
   }), normal);
 
@@ -179,7 +217,6 @@ Deno.test("conversa normal e resposta ao dono ficam inalteradas", () => {
   assertEquals(guardProspectCreativeClaims({
     text: ownerText,
     isAmzProspect: false,
-    isTestPhone: false,
     creativeToolRan: false,
   }), ownerText);
 });

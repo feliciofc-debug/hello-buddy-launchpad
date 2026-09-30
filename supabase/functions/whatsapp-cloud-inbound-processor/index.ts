@@ -10557,8 +10557,6 @@ async function callGemini(
   const senderIsOwner = isOwner(toolCtx);
   const senderIsAmzProspect = !senderIsOwner
     && toolCtx.userId === ADMIN_AMZ_USER_ID;
-  const senderIsDemoTestPhone = senderIsAmzProspect
-    && isDemoTestPhone(toolCtx.fromNumber, toolCtx.demoTestPhones);
   const nowSP = new Date().toLocaleString("pt-BR", {
     timeZone: "America/Sao_Paulo",
     weekday: "long", day: "2-digit", month: "2-digit", year: "numeric",
@@ -11531,9 +11529,16 @@ async function callGemini(
     isOwner: isOwner(toolCtx),
     adminAmzUserId: ADMIN_AMZ_USER_ID,
   });
+  const requiredProspectSiteUrl = senderIsAmzProspect
+      && typeof userContent === "string"
+    ? extractWhatsAppBrandSiteUrl(userContent)
+    : null;
   const requiredCreativeTool = senderIsAmzProspect
       && typeof userContent === "string"
-    ? requiredProspectCreativeTool(userContent)
+    ? requiredProspectCreativeTool(
+      userContent,
+      Boolean(requiredProspectSiteUrl),
+    )
     : null;
 
   for (let step = 0; step < 4; step++) {
@@ -11573,6 +11578,13 @@ async function callGemini(
         const name = tc.function?.name;
         let args: any = {};
         try { args = JSON.parse(tc.function?.arguments ?? "{}"); } catch { /* ignore */ }
+        if (
+          name === "gerar_imagem"
+          && requiredCreativeTool === "gerar_imagem"
+          && requiredProspectSiteUrl
+        ) {
+          args.site_url = requiredProspectSiteUrl;
+        }
         if (name === "publicar_linkedin") {
           const originalRequest = typeof userContent === "string" ? userContent : "";
           args.pedido_original = originalRequest;
@@ -11840,26 +11852,26 @@ async function callGemini(
       ? whatsAppDemoResponseWithBrand(msg?.content ?? "", pendingDemoSiteBrandResult)
       : msg?.content ?? "";
     let guardReplayImageUrl: string | undefined;
-    let modelText = rawModelText;
+    let previousDemo: { midia_url: string; created_at: string } | null = null;
     if (
       senderIsAmzProspect
-      && !senderIsDemoTestPhone
       && !creativeToolRanThisTurn
       && containsUnsupportedCreativeClaim(rawModelText)
     ) {
-      const previousDemo = await latestProspectDemoMedia(
+      previousDemo = await latestProspectDemoMedia(
         toolCtx.userId,
         toolCtx.fromNumber,
       );
-      modelText = guardProspectCreativeClaims({
-        text: rawModelText,
-        isAmzProspect: true,
-        isTestPhone: false,
-        creativeToolRan: false,
-        previousDemoCreatedAt: previousDemo?.created_at,
-      });
       guardReplayImageUrl = previousDemo?.midia_url;
     }
+    const modelText = senderIsAmzProspect
+      ? guardProspectCreativeClaims({
+        text: rawModelText,
+        isAmzProspect: true,
+        creativeToolRan: creativeToolRanThisTurn,
+        previousDemoCreatedAt: previousDemo?.created_at,
+      })
+      : rawModelText;
     const baseText = appendConfirmCommand(modelText);
     const text = pendingMediaCodeBlock && !baseText.includes(pendingMediaCodeBlock)
       ? `${baseText}<<SPLIT>>${pendingMediaCodeBlock}`
