@@ -129,6 +129,9 @@ export default function ContatosListasPJ() {
   // Filtro de qualificação nos membros expandidos
   const [filtroQualificacao, setFiltroQualificacao] = useState<"todos" | "qualificados" | "aguardando" | "recusaram">("todos");
 
+  // Exportação CSV (somente leitura)
+  const [exportando, setExportando] = useState(false);
+
   const membrosFiltrados = listaMembros.filter((m) => {
     const s = m.opt_in_status;
     if (filtroQualificacao === "qualificados") return s === "confirmado";
@@ -242,6 +245,76 @@ export default function ContatosListasPJ() {
       .order("nome", { ascending: true });
     setListaMembros((data as unknown as MembroItem[]) || []);
     setLoadingMembros(false);
+  };
+
+  // ── Exportar todas as listas (CSV, somente leitura) ──
+  const exportAllListasCSV = async () => {
+    if (listas.length === 0) {
+      toast.error("Nenhuma lista para exportar");
+      return;
+    }
+    setExportando(true);
+    try {
+      const listaIds = listas.map((l) => l.id);
+
+      // Buscar todos os membros das listas (paginado, somente leitura)
+      const allMembros: any[] = [];
+      const PAGE = 1000;
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+          .from("pj_lista_membros")
+          .select("lista_id, nome, telefone, opt_in_status, opt_in_em, adicionado_em")
+          .eq("user_id", userId)
+          .in("lista_id", listaIds)
+          .order("lista_id")
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        allMembros.push(...data);
+        if (data.length < PAGE) break;
+      }
+
+      const esc = (v: any) => {
+        const s = v === null || v === undefined ? "" : String(v);
+        return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const statusLabel = (s: string | null | undefined) =>
+        s === "confirmado" ? "qualificado" : s === "recusado" ? "recusou" : "aguardando";
+
+      const linhas = [
+        "lista_nome,lista_criada_em,contato_nome,telefone,status_optin,optin_respondido_em,contato_criado_em",
+      ];
+      const listasById = new Map(listas.map((l) => [l.id, l]));
+      for (const m of allMembros) {
+        const lista = listasById.get(m.lista_id);
+        linhas.push([
+          esc(lista?.nome ?? ""),
+          esc(lista?.created_at ?? ""),
+          esc(m.nome ?? ""),
+          esc(m.telefone),
+          esc(statusLabel(m.opt_in_status)),
+          esc(m.opt_in_em ?? ""),
+          esc(m.adicionado_em ?? ""),
+        ].join(","));
+      }
+
+      const csv = "\uFEFF" + linhas.join("\r\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `listas-contatos-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success(`${allMembros.length} contatos exportados de ${listas.length} listas`);
+    } catch (err: any) {
+      console.error("Erro ao exportar CSV:", err);
+      toast.error("Erro ao exportar: " + err.message);
+    } finally {
+      setExportando(false);
+    }
   };
 
   // ── Delete ──
