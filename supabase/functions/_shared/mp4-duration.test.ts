@@ -1,5 +1,9 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { parseMp4DurationSeconds } from "./mp4-duration.ts";
+import {
+  integerMediaDurationSeconds,
+  parseMp4DurationSeconds,
+  whatsAppMediaSaveFailureMessage,
+} from "./mp4-duration.ts";
 
 function concat(...parts: Uint8Array[]): Uint8Array {
   const result = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
@@ -44,4 +48,19 @@ Deno.test("lê duração de MP4 com moov no fim", () => {
 
 Deno.test("arquivo inválido não produz duração", () => {
   assertEquals(parseMp4DurationSeconds(new TextEncoder().encode("não é mp4")), null);
+});
+
+Deno.test("normaliza duração persistida para inteiro positivo", () => {
+  assertEquals(integerMediaDurationSeconds(74.5615), 75);
+  assertEquals(integerMediaDurationSeconds(0.4), 1);
+  assertEquals(integerMediaDurationSeconds("inválida"), null);
+  assertEquals(integerMediaDurationSeconds(Number.POSITIVE_INFINITY), null);
+  assertEquals(integerMediaDurationSeconds(0), null);
+});
+
+Deno.test("falha ao salvar vídeo tem resposta determinística", () => {
+  assertEquals(
+    whatsAppMediaSaveFailureMessage(true),
+    "Recebi seu vídeo, mas tive um problema para salvá-lo. Pode me enviar de novo?",
+  );
 });

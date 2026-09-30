@@ -80,7 +80,9 @@ import { idCurto, linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
 import { syncProdutoVideoFromMidia } from "../_shared/sync-produto-video.ts";
 import {
   fetchMp4DurationSeconds,
+  integerMediaDurationSeconds,
   parseMp4DurationSeconds,
+  whatsAppMediaSaveFailureMessage,
 } from "../_shared/mp4-duration.ts";
 import { splitWhatsAppText } from "../_shared/whatsapp-text.ts";
 import {
@@ -4336,7 +4338,9 @@ async function loadPendingTikTokVideoDuration(pending: PendingSocialPost): Promi
       const detected = await fetchMp4DurationSeconds(videoUrl);
       if (!detected) return undefined;
       const { error } = await sb.from("midias_whatsapp")
-        .update({ duracao_segundos: detected })
+        .update({
+          duracao_segundos: integerMediaDurationSeconds(detected),
+        })
         .eq("id", pending.produto.id)
         .eq("user_id", pending.userId);
       if (error) console.warn("[tiktok][duration_persist_failed]", error.message);
@@ -6581,7 +6585,9 @@ async function salvarItemMidiaBiblioteca(
         const duration = parseMp4DurationSeconds(bytes);
         if (duration) {
           const { error } = await sb.from("midias_whatsapp")
-            .update({ duracao_segundos: duration })
+            .update({
+              duracao_segundos: integerMediaDurationSeconds(duration),
+            })
             .eq("id", duplicada.id)
             .eq("user_id", ctx.userId);
           if (error) console.warn("[salvar_midia][duracao_duplicada]", error.message);
@@ -6620,7 +6626,9 @@ async function salvarItemMidiaBiblioteca(
       midia_url: url,
       mime_type: media.mime,
       tamanho_bytes: bytes.length,
-      duracao_segundos: tipo === "video" ? parseMp4DurationSeconds(bytes) : null,
+      duracao_segundos: tipo === "video"
+        ? integerMediaDurationSeconds(parseMp4DurationSeconds(bytes))
+        : null,
       contexto_original: contexto || media.caption || null,
       status: "pendente",
     })
@@ -13288,7 +13296,76 @@ async function processOne(queueId: string) {
         return { ok: true, video_client_logo_received: !!logoPath };
       }
 
-      const salvos = await Promise.all(freshLibraryMedia.map((m) => salvarItemMidiaBiblioteca(m, { userId, fromNumber: row.from_number }, contexto)));
+      let salvos: Awaited<ReturnType<typeof salvarItemMidiaBiblioteca>>[];
+      try {
+        salvos = await Promise.all(
+          freshLibraryMedia.map((m) =>
+            salvarItemMidiaBiblioteca(
+              m,
+              { userId, fromNumber: row.from_number },
+              contexto,
+            )
+          ),
+        );
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        console.error(
+          `[processor][media_save_failed] user=${userId} from=${row.from_number} tipo=${row.message_type}:`,
+          detail,
+        );
+        const aviso = whatsAppMediaSaveFailureMessage(
+          freshLibraryMedia.some((item) => item.kind === "video"),
+        );
+        let outMessageId: string | undefined;
+        try {
+          const { data: outMsg, error: outError } = await sb
+            .from("whatsapp_cloud_messages")
+            .insert({
+              conversation_id: conv.id,
+              user_id: userId,
+              direction: "outbound",
+              sender: "agent",
+              content: aviso,
+              message_type: "text",
+            })
+            .select("id")
+            .single();
+          if (outError) {
+            console.error(
+              "[processor][media_save_failed] falha ao registrar aviso:",
+              outError.message,
+            );
+          }
+          outMessageId = outMsg?.id;
+        } catch (logError) {
+          console.error(
+            "[processor][media_save_failed] exceção ao registrar aviso:",
+            logError instanceof Error ? logError.message : String(logError),
+          );
+        }
+        let notifiedSender = false;
+        try {
+          const sentId = await sendWhatsApp(userId, row.from_number, aviso);
+          notifiedSender = true;
+          if (sentId && outMessageId) {
+            await sb.from("whatsapp_cloud_messages")
+              .update({ wamid: sentId })
+              .eq("id", outMessageId);
+          }
+        } catch (sendError) {
+          console.error(
+            "[processor][media_save_failed] falha ao avisar remetente:",
+            sendError instanceof Error ? sendError.message : String(sendError),
+          );
+        }
+        await failQueue(row.id, `media_save_failed: ${detail}`);
+        return {
+          ok: false,
+          reason: "media_save_failed",
+          error: detail,
+          notified_sender: notifiedSender,
+        };
+      }
       if (fromIsOwner) {
         await Promise.all(
           salvos

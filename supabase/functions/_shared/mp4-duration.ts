@@ -1,5 +1,18 @@
 const DEFAULT_MAX_VIDEO_BYTES = 100 * 1024 * 1024;
 
+export function integerMediaDurationSeconds(value: unknown): number | null {
+  const duration = Number(value);
+  return Number.isFinite(duration) && duration > 0
+    ? Math.max(1, Math.round(duration))
+    : null;
+}
+
+export function whatsAppMediaSaveFailureMessage(hasVideo: boolean): string {
+  return hasVideo
+    ? "Recebi seu vídeo, mas tive um problema para salvá-lo. Pode me enviar de novo?"
+    : "Recebi sua mídia, mas tive um problema para salvá-la. Pode me enviar de novo?";
+}
+
 function uint32(bytes: Uint8Array, offset: number): number | null {
   if (offset < 0 || offset + 4 > bytes.length) return null;
   return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(offset, false);
