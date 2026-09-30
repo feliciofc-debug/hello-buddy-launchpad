@@ -12738,7 +12738,7 @@ async function processOne(queueId: string) {
                   contactName: conviteMaisRecente?.nome ?? (conv as any).contact_name ?? null,
                   fallback: fallbackBoasVindas,
                 });
-                const boasVindas = isAmzTenant && !fromIsOwner
+                const boasVindas = isAmzTenantEarly && !fromIsOwner
                   ? finalizeAmzNonOwnerText(rawBoasVindas, _tenantOwner?.name)
                   : rawBoasVindas;
                 await sendWhatsApp(userId, row.from_number, boasVindas);
