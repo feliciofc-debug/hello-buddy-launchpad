@@ -204,8 +204,8 @@ import {
   iniciarFluxoLegendaVideo,
   resolverVideoLegendado,
   tratarRespostaFluxoLegenda,
-  VIDEO_LEGENDA_LOGO_BUTTONS,
 } from "../_shared/video-legenda-flow.ts";
+import { VIDEO_LEGENDA_LOGO_BUTTONS } from "../_shared/video-legenda-logo.ts";
 import {
   enfileirarVideoMotion,
   minutosRenderEstimado,

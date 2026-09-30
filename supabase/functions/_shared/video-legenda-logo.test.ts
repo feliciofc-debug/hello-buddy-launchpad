@@ -5,7 +5,7 @@ import {
   detectarEscolhaLogo,
   metadataEscolhaLogo,
   VIDEO_LEGENDA_LOGO_BUTTONS,
-} from "./video-legenda-flow.ts";
+} from "./video-legenda-logo.ts";
 
 Deno.test("botões de logo cabem no limite do WhatsApp", () => {
   assertEquals(VIDEO_LEGENDA_LOGO_BUTTONS.map((button) => button.title), [
