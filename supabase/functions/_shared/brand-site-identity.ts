@@ -9,6 +9,9 @@ export type BrandSiteIdentity = {
   logo_confidence: "high" | "medium" | "none";
 };
 
+export const SITE_IDENTITY_READ_FAILURE_MESSAGE =
+  "Não consegui abrir esse endereço. Me manda o site do jeito que aparece no navegador, por exemplo: www.suaempresa.com.br\nSe preferir, me diga as cores da sua marca que eu crio a demonstração com elas.";
+
 const MAX_HTML_BYTES = 2_000_000;
 const MAX_CSS_BYTES = 300_000;
 const MAX_LOGO_BYTES = 1_000_000;
@@ -311,27 +314,62 @@ export function isPrivateOrLocalAddress(hostname: string): boolean {
     || host.startsWith("::ffff:192.168.");
 }
 
+type DnsResolver = (
+  hostname: string,
+  recordType: "A" | "AAAA",
+) => Promise<string[]>;
+
+type BrandSiteIdentityOptions = {
+  resolver?: DnsResolver;
+  fetcher?: typeof fetch;
+};
+
+class PublicUrlSafetyError extends Error {
+  constructor(
+    message: string,
+    readonly reason: "invalid" | "private_address" | "dns_not_found",
+  ) {
+    super(message);
+    this.name = "PublicUrlSafetyError";
+  }
+}
+
+const defaultResolver: DnsResolver = async (hostname, recordType) =>
+  await Deno.resolveDns(hostname, recordType);
+
 export async function assertSafePublicUrl(
   rawUrl: string,
-  resolver: (hostname: string, recordType: "A" | "AAAA") => Promise<string[]> = async (
-    hostname,
-    recordType,
-  ) => await Deno.resolveDns(hostname, recordType),
+  resolver: DnsResolver = defaultResolver,
 ): Promise<URL> {
   const url = new URL(rawUrl);
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("A URL precisa começar com http:// ou https://.");
+    throw new PublicUrlSafetyError(
+      "A URL precisa começar com http:// ou https://.",
+      "invalid",
+    );
   }
   if (url.username || url.password || isPrivateOrLocalAddress(url.hostname)) {
-    throw new Error("URL privada ou local não é permitida.");
+    throw new PublicUrlSafetyError(
+      "URL privada ou local não é permitida.",
+      "private_address",
+    );
   }
   if (!parseIpv4(url.hostname) && !url.hostname.includes(":")) {
     const addresses = [
       ...(await resolver(url.hostname, "A").catch(() => [])),
       ...(await resolver(url.hostname, "AAAA").catch(() => [])),
     ];
-    if (!addresses.length || addresses.some(isPrivateOrLocalAddress)) {
-      throw new Error("O site não possui um endereço público seguro.");
+    if (!addresses.length) {
+      throw new PublicUrlSafetyError(
+        "O site não possui um endereço público seguro.",
+        "dns_not_found",
+      );
+    }
+    if (addresses.some(isPrivateOrLocalAddress)) {
+      throw new PublicUrlSafetyError(
+        "O site não possui um endereço público seguro.",
+        "private_address",
+      );
     }
   }
   return url;
@@ -384,10 +422,12 @@ async function safeFetch(
   signal: AbortSignal,
   maxBytes: number,
   truncateAtLimit = false,
+  resolver: DnsResolver = defaultResolver,
+  fetcher: typeof fetch = fetch,
 ): Promise<{ response: Response; bytes: Uint8Array; finalUrl: URL }> {
-  let current = await assertSafePublicUrl(rawUrl);
+  let current = await assertSafePublicUrl(rawUrl, resolver);
   for (let redirect = 0; redirect <= 3; redirect++) {
-    const response = await fetch(current, {
+    const response = await fetcher(current, {
       signal,
       redirect: "manual",
       headers: { "user-agent": USER_AGENT },
@@ -395,7 +435,10 @@ async function safeFetch(
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location");
       if (!location || redirect === 3) throw new Error("Redirecionamento inválido.");
-      current = await assertSafePublicUrl(new URL(location, current).toString());
+      current = await assertSafePublicUrl(
+        new URL(location, current).toString(),
+        resolver,
+      );
       continue;
     }
     if (!response.ok) throw new Error(`O site respondeu com HTTP ${response.status}.`);
@@ -416,11 +459,23 @@ function bytesToDataUrl(bytes: Uint8Array, mime: string): string {
   return `data:${mime};base64,${btoa(binary)}`;
 }
 
-export async function fetchBrandSiteIdentity(rawUrl: string): Promise<BrandSiteIdentity> {
+async function fetchBrandSiteIdentityOnce(
+  rawUrl: string,
+  options: BrandSiteIdentityOptions,
+): Promise<BrandSiteIdentity> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const resolver = options.resolver ?? defaultResolver;
+  const fetcher = options.fetcher ?? fetch;
   try {
-    const page = await safeFetch(rawUrl, controller.signal, MAX_HTML_BYTES, true);
+    const page = await safeFetch(
+      rawUrl,
+      controller.signal,
+      MAX_HTML_BYTES,
+      true,
+      resolver,
+      fetcher,
+    );
     const contentType = page.response.headers.get("content-type") ?? "";
     if (!contentType.includes("text/html")) throw new Error("A URL não retornou uma página HTML.");
     const html = new TextDecoder().decode(page.bytes);
@@ -433,7 +488,14 @@ export async function fetchBrandSiteIdentity(rawUrl: string): Promise<BrandSiteI
     const cssParts: string[] = [];
     for (const cssUrl of cssUrls) {
       try {
-        const css = await safeFetch(cssUrl, controller.signal, MAX_CSS_BYTES, true);
+        const css = await safeFetch(
+          cssUrl,
+          controller.signal,
+          MAX_CSS_BYTES,
+          true,
+          resolver,
+          fetcher,
+        );
         cssParts.push(new TextDecoder().decode(css.bytes));
       } catch {
         // Folha opcional: a identidade continua com o HTML disponível.
@@ -442,7 +504,14 @@ export async function fetchBrandSiteIdentity(rawUrl: string): Promise<BrandSiteI
     const identity = extractBrandIdentityFromHtml(html, page.finalUrl.toString(), cssParts.join("\n"));
     if (identity.logo_url) {
       try {
-        const logo = await safeFetch(identity.logo_url, controller.signal, MAX_LOGO_BYTES);
+        const logo = await safeFetch(
+          identity.logo_url,
+          controller.signal,
+          MAX_LOGO_BYTES,
+          false,
+          resolver,
+          fetcher,
+        );
         const logoType = (logo.response.headers.get("content-type") ?? "").split(";")[0].trim();
         if (/^image\/(?:png|jpeg|webp|svg\+xml)$/i.test(logoType)) {
           identity.logo_data_url = bytesToDataUrl(logo.bytes, logoType);
@@ -463,5 +532,39 @@ export async function fetchBrandSiteIdentity(rawUrl: string): Promise<BrandSiteI
     return identity;
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+function shouldTryWwwFallback(error: unknown): boolean {
+  if (error instanceof PublicUrlSafetyError) {
+    return error.reason === "dns_not_found";
+  }
+  if (error instanceof TypeError) return true;
+  const name = error instanceof Error ? error.name : "";
+  return [
+    "AbortError",
+    "ConnectionRefused",
+    "ConnectionReset",
+    "NotConnected",
+    "TimedOut",
+    "NetworkUnreachable",
+  ].includes(name);
+}
+
+export async function fetchBrandSiteIdentity(
+  rawUrl: string,
+  options: BrandSiteIdentityOptions = {},
+): Promise<BrandSiteIdentity> {
+  try {
+    return await fetchBrandSiteIdentityOnce(rawUrl, options);
+  } catch (error) {
+    const url = new URL(rawUrl);
+    const canUseWww = !url.hostname.toLowerCase().startsWith("www.")
+      && !parseIpv4(url.hostname)
+      && !url.hostname.includes(":")
+      && shouldTryWwwFallback(error);
+    if (!canUseWww) throw error;
+    url.hostname = `www.${url.hostname}`;
+    return await fetchBrandSiteIdentityOnce(url.toString(), options);
   }
 }

@@ -1,5 +1,5 @@
 export const AMZ_INVITE_DISCOVERY_MESSAGE =
-  "Que ótimo, {nome}! Me conta: qual é o seu negócio? E vocês têm site ou Instagram?";
+  "Que ótimo, {nome}! Me conta: qual é o seu negócio? E vocês têm site ou Instagram? Se tiver site, me manda o endereço, por exemplo: www.suaempresa.com.br";
 
 type InviteTemplate = {
   nome_meta?: string | null;

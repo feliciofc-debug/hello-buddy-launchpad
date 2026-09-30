@@ -14,6 +14,10 @@ Deno.test("convite AMZ inicia descoberta consultiva e aceita mensagem configurad
     contactName: "Mariana Silva",
     fallback: "fallback",
   }), AMZ_INVITE_DISCOVERY_MESSAGE.replace("{nome}", "Mariana"));
+  assertEquals(
+    AMZ_INVITE_DISCOVERY_MESSAGE.includes("www.suaempresa.com.br"),
+    true,
+  );
 
   assertEquals(resolveInviteConfirmation({
     isAmzTenant: true,

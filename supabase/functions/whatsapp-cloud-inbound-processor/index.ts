@@ -67,7 +67,10 @@ import {
 import {
   loadTenantBrandAssets,
 } from "../_shared/brand-assets.ts";
-import { fetchBrandSiteIdentity } from "../_shared/brand-site-identity.ts";
+import {
+  fetchBrandSiteIdentity,
+  SITE_IDENTITY_READ_FAILURE_MESSAGE,
+} from "../_shared/brand-site-identity.ts";
 import { generateMarketingImage } from "../_shared/marketing-image-generator.ts";
 import { setTenantLogo } from "../_shared/tenant-logo.ts";
 import { carouselColorRows, resolveCarouselColor } from "../_shared/carousel-colors.ts";
@@ -1415,7 +1418,7 @@ async function prepareWhatsAppImageGeneration(input: {
         console.warn("[demo-prospect][site_identity_failed]", error);
         return {
           deferred: true,
-          text: "Não consegui ler a identidade desse site agora. Confira o link ou me diga as cores da marca para eu criar a demonstração.",
+          text: SITE_IDENTITY_READ_FAILURE_MESSAGE,
         };
       }
     }
@@ -1471,7 +1474,7 @@ async function prepareWhatsAppImageGeneration(input: {
       console.error("[whatsapp-brand-site] link no pedido falhou:", error instanceof Error ? error.message : String(error));
       return {
         deferred: true,
-        text: "Não consegui ler as cores desse site agora. Confira o link e envie o pedido novamente.",
+        text: SITE_IDENTITY_READ_FAILURE_MESSAGE,
       };
     }
   }
@@ -7726,7 +7729,7 @@ async function askSitePaletteConfirmation(
   await sendVideoInteractiveList(ctx, {
     header: "🎨 Cores do site",
     body: extractionFailed
-      ? "Não consegui ler a identidade do site. Me manda o logo e as cores da marca — não vou inventar uma paleta."
+      ? SITE_IDENTITY_READ_FAILURE_MESSAGE
       : `Encontrei estas candidatas:\n${summary}${provenance ? `\n\nOrigem auditável:\n${provenance}` : ""}\n\nConfirme com o responsável ou ajuste: “tira a 3”, “troca a principal pela 2”, “usa #00a88a e #0b1f6b”.`,
     button: "Confirmar cores",
     section: "Identidade do cliente",
@@ -10717,7 +10720,7 @@ async function callGemini(
           );
         } catch (error) {
           console.error("[whatsapp-brand-site] leitura falhou:", error instanceof Error ? error.message : String(error));
-          return { text: "Não consegui ler a identidade desse site agora. Confira o link ou escolha gerar sem marca." };
+          return { text: SITE_IDENTITY_READ_FAILURE_MESSAGE };
         }
       } else if (
         brandReply.action === "save_uploaded_logo"

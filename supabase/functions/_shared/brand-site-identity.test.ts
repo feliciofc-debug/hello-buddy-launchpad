@@ -3,9 +3,11 @@ import {
   assertSafePublicUrl,
   cleanSiteBrandName,
   extractBrandIdentityFromHtml,
+  fetchBrandSiteIdentity,
   isPrivateOrLocalAddress,
   prioritizeSiteIdentityColors,
   readLimited,
+  SITE_IDENTITY_READ_FAILURE_MESSAGE,
 } from "./brand-site-identity.ts";
 
 Deno.test("extrai theme-color e variáveis CSS e ignora cinzas", () => {
@@ -173,5 +175,76 @@ Deno.test("bloqueia localhost e faixas privadas contra SSRF", async () => {
       )
     ).hostname,
     "public.example",
+  );
+});
+
+Deno.test("domínio sem DNS tenta www uma vez e preserva a segurança", async () => {
+  const resolvedHosts: string[] = [];
+  const identity = await fetchBrandSiteIdentity(
+    "https://lojabompastor.com.br/produtos?x=1",
+    {
+      resolver: async (hostname, type) => {
+        resolvedHosts.push(`${hostname}:${type}`);
+        if (hostname === "www.lojabompastor.com.br" && type === "A") {
+          return ["93.184.216.34"];
+        }
+        return [];
+      },
+      fetcher: async (input) => {
+        const url = new URL(String(input));
+        assertEquals(url.hostname, "www.lojabompastor.com.br");
+        assertEquals(url.pathname, "/produtos");
+        assertEquals(url.search, "?x=1");
+        return new Response(
+          `<meta name="theme-color" content="#ee3124"><title>Bom Pastor</title>`,
+          { headers: { "content-type": "text/html; charset=utf-8" } },
+        );
+      },
+    },
+  );
+  assertEquals(identity.url, "https://www.lojabompastor.com.br/produtos?x=1");
+  assertEquals(identity.colors, ["#ee3124"]);
+  assertEquals(resolvedHosts, [
+    "lojabompastor.com.br:A",
+    "lojabompastor.com.br:AAAA",
+    "www.lojabompastor.com.br:A",
+    "www.lojabompastor.com.br:AAAA",
+  ]);
+});
+
+Deno.test("endereço privado é bloqueado sem tentar fallback www", async () => {
+  const resolvedHosts: string[] = [];
+  await assertRejects(
+    () =>
+      fetchBrandSiteIdentity("https://intranet.example/", {
+        resolver: async (hostname, type) => {
+          resolvedHosts.push(`${hostname}:${type}`);
+          return type === "A" ? ["10.0.0.8"] : [];
+        },
+        fetcher: () => {
+          throw new Error("fetch não deveria rodar");
+        },
+      }),
+    Error,
+    "público seguro",
+  );
+  assertEquals(resolvedHosts, [
+    "intranet.example:A",
+    "intranet.example:AAAA",
+  ]);
+});
+
+Deno.test("www sem DNS mantém falha e mensagem determinística orienta o endereço", async () => {
+  await assertRejects(
+    () =>
+      fetchBrandSiteIdentity("https://www.inexistente.example/", {
+        resolver: async () => [],
+      }),
+    Error,
+    "público seguro",
+  );
+  assertEquals(
+    SITE_IDENTITY_READ_FAILURE_MESSAGE,
+    "Não consegui abrir esse endereço. Me manda o site do jeito que aparece no navegador, por exemplo: www.suaempresa.com.br\nSe preferir, me diga as cores da sua marca que eu crio a demonstração com elas.",
   );
 });
