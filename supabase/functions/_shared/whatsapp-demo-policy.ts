@@ -30,6 +30,27 @@ export type DemoToolDecision =
   | { allowed: true; mode: "owner" | "normal" | "demo" }
   | { allowed: false; reason: "demo_limit" | "demo_restricted" | "tenant_restricted"; message: string };
 
+export function deterministicDemoBlockedResponse(
+  toolName: string,
+  rawResult: string,
+  replayImageUrl?: string,
+): { text: string; imageUrl?: string } | null {
+  if (!CREATION_TOOLS.has(toolName)) return null;
+  try {
+    const result = JSON.parse(rawResult);
+    if (
+      result?.status !== "demonstracao_bloqueada"
+      || typeof result?.mensagem !== "string"
+    ) return null;
+    return {
+      text: result.mensagem,
+      ...(replayImageUrl ? { imageUrl: replayImageUrl } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function isDemoTestPhone(fromNumber: string, testPhones: unknown): boolean {
   return Array.isArray(testPhones)
     && testPhones.some((phone) => ownerPhonesEquivalent(phone, fromNumber));

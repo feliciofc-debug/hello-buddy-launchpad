@@ -93,6 +93,7 @@ import {
 } from "../_shared/lead-name.ts";
 import {
   decideWhatsAppCreativeTool,
+  deterministicDemoBlockedResponse,
   demoLimitReplay,
   DEMO_LIMIT_MESSAGE,
   isDemoTestPhone,
@@ -11343,6 +11344,12 @@ async function callGemini(
         num_slides: requestedCarouselSlideCount(userContent, !remetenteEhDono),
         facebook_requested: requestedFacebook(userContent),
       }, toolCtx);
+      const blocked = deterministicDemoBlockedResponse(
+        "criar_carrossel",
+        r,
+        imageUrl,
+      );
+      if (blocked) return blocked;
       const response = { ...carouselToolResponse(r), imageUrl };
       if (carouselNetworks.includes("linkedin")) {
         response.text = `${response.text}<<SPLIT>>Carrossel pelo LinkedIn ainda não está habilitado; mantive apenas o Instagram.`;
@@ -11365,6 +11372,12 @@ async function callGemini(
         legenda: pendingCarousel.caption,
         facebook_requested: pendingCarousel.facebook_requested,
       }, toolCtx);
+      const blocked = deterministicDemoBlockedResponse(
+        "criar_carrossel",
+        r,
+        imageUrl,
+      );
+      if (blocked) return blocked;
       return { ...carouselToolResponse(r), imageUrl };
     }
 
@@ -11560,6 +11573,18 @@ async function callGemini(
           };
         }
         const { result, imageUrl, interactiveButtons } = await runTool(name, args, toolCtx);
+        const blocked = deterministicDemoBlockedResponse(
+          name,
+          result,
+          imageUrl,
+        );
+        if (blocked) {
+          return {
+            ...blocked,
+            forwardProof,
+            forwardAttempted,
+          };
+        }
         if (imageUrl) pendingImageUrl = imageUrl;
         if (interactiveButtons) {
           let parsed: any = {};
@@ -11573,15 +11598,6 @@ async function callGemini(
           };
         }
         try {
-          const policyResult = JSON.parse(result);
-          if (policyResult?.status === "demonstracao_bloqueada") {
-            return {
-              text: String(policyResult.mensagem || DEMO_LIMIT_MESSAGE),
-              imageUrl: pendingImageUrl,
-              forwardProof,
-              forwardAttempted,
-            };
-          }
           if (name === "criar_carrossel") {
             return {
               ...carouselToolResponse(result),

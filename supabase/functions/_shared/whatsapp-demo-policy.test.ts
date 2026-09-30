@@ -3,6 +3,7 @@ import { AMZ_KNOWLEDGE, AMZ_SALES_BLOCK } from "./agent-soul.ts";
 import { dedupeConsecutiveReplyText } from "./reply-dedupe.ts";
 import {
   decideWhatsAppCreativeTool,
+  deterministicDemoBlockedResponse,
   demoLimitMessage,
   demoLimitReplay,
   DEMO_LIMIT_MESSAGE,
@@ -97,6 +98,36 @@ Deno.test("limite informa data sem afirmar que a demo foi feita agora", () => {
     created_at: "2026-09-20T15:00:00.000Z",
     midia_url: "https://cdn.example/demo.png",
   }).imageUrl, "https://cdn.example/demo.png");
+});
+
+Deno.test("bloqueio criativo preserva exatamente mensagem e mídia de replay", () => {
+  const message =
+    "A demonstração gratuita deste número foi feita em 20/09/2026. Vou reenviar a última mídia.";
+  const response = deterministicDemoBlockedResponse(
+    "gerar_imagem",
+    JSON.stringify({
+      status: "demonstracao_bloqueada",
+      mensagem: message,
+    }),
+    "https://cdn.example/demo.png",
+  );
+  assertEquals(response, {
+    text: message,
+    imageUrl: "https://cdn.example/demo.png",
+  });
+  assertEquals(response?.text.includes("logo"), false);
+});
+
+Deno.test("resultado comum e tool não criativa continuam no fluxo normal", () => {
+  const blocked = JSON.stringify({
+    status: "demonstracao_bloqueada",
+    mensagem: "Mensagem literal",
+  });
+  assertEquals(deterministicDemoBlockedResponse("consultar_clima", blocked), null);
+  assertEquals(deterministicDemoBlockedResponse(
+    "gerar_imagem",
+    JSON.stringify({ ok: true }),
+  ), null);
 });
 
 Deno.test("reply duplicado consecutivo vira texto único inclusive entre partes", () => {
