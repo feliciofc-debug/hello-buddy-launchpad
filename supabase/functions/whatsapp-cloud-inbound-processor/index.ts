@@ -103,7 +103,9 @@ import {
   guardProspectCreativeClaims,
   isCreativeDemoTool,
   isDemoTestPhone,
+  nonOwnerCapabilityGuidance,
   requiredProspectCreativeTool,
+  sanitizeAmzProspectContactDetails,
   TENANT_CREATION_BLOCK_MESSAGE,
   type DemoToolDecision,
 } from "../_shared/whatsapp-demo-policy.ts";
@@ -10571,6 +10573,19 @@ async function callGemini(
     ...history,
     { role: "user", content: userContent },
   ];
+  let restrictedNonOwnerCapabilityTurn = false;
+  const deferRestrictedShortcutToModel = (shortcutDetected: boolean): boolean => {
+    const guidance = nonOwnerCapabilityGuidance(
+      senderIsOwner,
+      shortcutDetected,
+    );
+    if (!guidance) return false;
+    if (!restrictedNonOwnerCapabilityTurn) {
+      messages[0].content = `${messages[0].content}\n\n${guidance}`;
+      restrictedNonOwnerCapabilityTurn = true;
+    }
+    return true;
+  };
   // Um anexo novo sempre inicia o fluxo daquela mídia; o modelo não pode
   // consumir um post pendente anterior no mesmo turno.
   let blockModelPendingTextActions = hasMedia;
@@ -11067,27 +11082,19 @@ async function callGemini(
     // edição de imagem. Listas de redes ("Instagram, Facebook...") não podem
     // transformar um pedido explícito de vídeo em ficha técnica.
     if (isVideoMotionRequest(userContent)) {
-      if (!remetenteEhDono) {
-        return {
-          text: toolCtx.userId === ADMIN_AMZ_USER_ID
-            ? DEMO_LIMIT_MESSAGE
-            : TENANT_CREATION_BLOCK_MESSAGE,
-        };
+      if (!deferRestrictedShortcutToModel(true)) {
+        return { text: await startVideoSetup(toolCtx, userContent) };
       }
-      return { text: await startVideoSetup(toolCtx, userContent) };
     }
 
     // Composição produto+ambiente tem prioridade sobre forced_image_edit.
     // Diferentemente da edição comum, este fluxo exige DUAS referências e
     // nunca pode degradar silenciosamente para ficha técnica de uma só foto.
-    if (isImageCompositionIntent(userContent)) {
-      if (!remetenteEhDono) {
-        return {
-          text: toolCtx.userId === ADMIN_AMZ_USER_ID
-            ? DEMO_LIMIT_MESSAGE
-            : TENANT_CREATION_BLOCK_MESSAGE,
-        };
-      }
+    const imageCompositionIntent = isImageCompositionIntent(userContent);
+    if (imageCompositionIntent && !remetenteEhDono) {
+      deferRestrictedShortcutToModel(true);
+    }
+    if (imageCompositionIntent && remetenteEhDono) {
       try {
         const pendingComposition = toolCtx.agentState?.pending_image_composition;
         const pendingAge = pendingComposition?.at
@@ -11258,14 +11265,10 @@ async function callGemini(
         detectedPostConfirmation.token.toLowerCase() === recentPendingSocialToken.toLowerCase()
       ? detectedPostConfirmation
       : null;
-    if (postConfirmation) {
-      if (!remetenteEhDono) {
-        return {
-          text: toolCtx.userId === ADMIN_AMZ_USER_ID
-            ? DEMO_LIMIT_MESSAGE
-            : "Essa publicação só pode ser autorizada pelo responsável da conta.",
-        };
-      }
+    if (postConfirmation && !remetenteEhDono) {
+      deferRestrictedShortcutToModel(true);
+    }
+    if (postConfirmation && remetenteEhDono) {
       console.log("[pietro][forced_social_confirm]", postConfirmation);
       const confirmResult = await toolConfirmarPostagemRedes(postConfirmation, toolCtx);
       return {
@@ -11336,10 +11339,18 @@ async function callGemini(
     }
 
     // 1) pedido explícito ou detalhado de carrossel
-    if (isCarrosselRequest(userContent)) {
-      if (!remetenteEhDono && toolCtx.userId !== ADMIN_AMZ_USER_ID) {
-        return { text: "Esse recurso é exclusivo do responsável da conta. Posso continuar ajudando com suas dúvidas por aqui." };
-      }
+    const carouselRequest = isCarrosselRequest(userContent);
+    if (
+      carouselRequest
+      && !remetenteEhDono
+      && toolCtx.userId !== ADMIN_AMZ_USER_ID
+    ) {
+      deferRestrictedShortcutToModel(true);
+    }
+    if (
+      carouselRequest
+      && (remetenteEhDono || toolCtx.userId === ADMIN_AMZ_USER_ID)
+    ) {
       const carouselNetworks = detectRequestedSocialNetworks(userContent);
       if (carouselNetworks.includes("linkedin") && !carouselNetworks.includes("instagram")) {
         return {
@@ -11397,14 +11408,10 @@ async function callGemini(
 
     const socialPost = detectSocialPostIntent(userContent);
 
-    if (socialPost) {
-      if (!remetenteEhDono) {
-        return {
-          text: toolCtx.userId === ADMIN_AMZ_USER_ID
-            ? DEMO_LIMIT_MESSAGE
-            : "Esse tipo de publicação só o responsável da conta pode autorizar.",
-        };
-      }
+    if (socialPost && !remetenteEhDono) {
+      deferRestrictedShortcutToModel(true);
+    }
+    if (socialPost && remetenteEhDono) {
       console.log("[pietro][forced_social_post]", socialPost);
       const midiaId = extrairIdentificadorMidia(userContent);
       const briefing = extractSocialPostBriefing(userContent);
@@ -11527,16 +11534,33 @@ async function callGemini(
     return `${cleaned}<<SPLIT>>${convite}<<SPLIT>>${cmd}`;
   };
 
+  const unavailableForRestrictedNonOwner = new Set([
+    "editar_imagem",
+    "criar_video_animado",
+    "postar_redes_sociais",
+    "confirmar_postagem_redes",
+    "agendar_post_pendente",
+    "cancelar_agendamento_post",
+    "remarcar_agendamento_post",
+    "revisar_post_pendente",
+    "escolher_variante_post",
+    "postar_midia_biblioteca",
+    "publicar_linkedin",
+  ]);
   const availableTools = filterToolsForTenant(TOOLS, {
     userId: toolCtx.userId,
     isOwner: isOwner(toolCtx),
     adminAmzUserId: ADMIN_AMZ_USER_ID,
-  });
+  }).filter((tool: any) =>
+    !restrictedNonOwnerCapabilityTurn
+    || !unavailableForRestrictedNonOwner.has(tool?.function?.name)
+  );
   const requiredProspectSiteUrl = senderIsAmzProspect
       && typeof userContent === "string"
     ? extractWhatsAppBrandSiteUrl(userContent)
     : null;
-  const requiredCreativeTool = senderIsAmzProspect
+  const requiredCreativeTool = !restrictedNonOwnerCapabilityTurn
+      && senderIsAmzProspect
       && typeof userContent === "string"
     ? requiredProspectCreativeTool(
       userContent,
@@ -14725,6 +14749,10 @@ Regras:
       .from("ai_messages_quota")
       .update({ used_count: quota.used_count + 1 })
       .eq("user_id", userId);
+
+    if (!inboundFromOwner && userId === ADMIN_AMZ_USER_ID) {
+      reply = sanitizeAmzProspectContactDetails(reply);
+    }
 
     const dedupedReply = dedupeConsecutiveReplyText(reply);
     if (dedupedReply !== reply) {

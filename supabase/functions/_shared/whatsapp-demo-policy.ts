@@ -6,6 +6,9 @@ export const DEMO_LIMIT_MESSAGE =
 export const TENANT_CREATION_BLOCK_MESSAGE =
   "Esse recurso é exclusivo do responsável da conta. Posso continuar ajudando com suas dúvidas por aqui.";
 
+export const NON_OWNER_CAPABILITY_GUIDANCE =
+  "O cliente pode estar perguntando sobre um recurso. Responda a pergunta explicando o recurso com honestidade. Não execute publicação, vídeo ou composição para ele; na demonstração ele só vê exemplos na conversa.";
+
 const CREATION_TOOLS = new Set([
   "gerar_imagem",
   "editar_imagem",
@@ -58,12 +61,37 @@ export function containsUnsupportedCreativeClaim(text: string): boolean {
   return CREATIVE_CLAIM.test(text) || DEMO_HISTORY_OR_LIMIT.test(text);
 }
 
+export function nonOwnerCapabilityGuidance(
+  isOwner: boolean,
+  shortcutDetected: boolean,
+): string | null {
+  return !isOwner && shortcutDetected ? NON_OWNER_CAPABILITY_GUIDANCE : null;
+}
+
 function anonymizeAmzConsultant(text: string): string {
   return text
     .replace(/\b(?:ao|a\s+o)\s+fel[ií]cio\b/gi, "a um consultor da AMZ")
     .replace(/\b(?:pro|para\s+o|pelo)\s+fel[ií]cio\b/gi, "para um consultor da AMZ")
     .replace(/\bo\s+fel[ií]cio\b/gi, "um consultor da AMZ")
     .replace(/\bfel[ií]cio\b/gi, "um consultor da AMZ");
+}
+
+export function sanitizeAmzProspectContactDetails(text: string): string {
+  const sanitized = text
+    .replace(
+      /\b(?:https?:\/\/)?(?:wa\.me|api\.whatsapp\.com|chat\.whatsapp\.com)\/[^\s<>()]*/gi,
+      "",
+    )
+    .replace(/\+?\d[\d\s().-]{8,}\d/g, (candidate) => {
+      const digits = candidate.replace(/\D/g, "");
+      return digits.length >= 10 && digits.length <= 15 ? "" : candidate;
+    })
+    .replace(/\(\s*\)/g, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\s+([,.;!?])/g, "$1")
+    .trim();
+  return sanitized ||
+    "Posso te ajudar com mais alguma dúvida sobre a plataforma?";
 }
 
 export function guardProspectCreativeClaims(params: {
@@ -76,7 +104,9 @@ export function guardProspectCreativeClaims(params: {
     !params.isAmzProspect
   ) return params.text;
 
-  const anonymized = anonymizeAmzConsultant(params.text);
+  const anonymized = anonymizeAmzConsultant(
+    sanitizeAmzProspectContactDetails(params.text),
+  );
   if (params.creativeToolRan || !containsUnsupportedCreativeClaim(anonymized)) {
     return anonymized || "Posso te ajudar com mais alguma dúvida sobre a plataforma?";
   }

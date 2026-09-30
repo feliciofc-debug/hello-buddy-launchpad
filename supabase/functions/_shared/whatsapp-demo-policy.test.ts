@@ -15,6 +15,8 @@ import {
   DEMO_LIMIT_MESSAGE,
   isDemoTestPhone,
   guardProspectCreativeClaims,
+  NON_OWNER_CAPABILITY_GUIDANCE,
+  nonOwnerCapabilityGuidance,
   requiredProspectCreativeTool,
 } from "./whatsapp-demo-policy.ts";
 
@@ -203,6 +205,45 @@ Deno.test("filtro final anonimiza nome do dono mesmo após tool criativa", () =>
     isAmzProspect: true,
     creativeToolRan: false,
   }), "um consultor da AMZ vai retornar; fale para um consultor da AMZ se precisar.");
+});
+
+Deno.test("filtro final remove contato direto de toda resposta ao prospect AMZ", () => {
+  const guarded = guardProspectCreativeClaims({
+    text: "Prontinho! Veja como fica um post para a Loja Bom Pastor: https://wa.me/5521980804901 O conforto que sua casa merece...",
+    isAmzProspect: true,
+    creativeToolRan: true,
+  });
+  assertEquals(
+    guarded,
+    "Prontinho! Veja como fica um post para a Loja Bom Pastor: O conforto que sua casa merece...",
+  );
+  assertEquals(guardProspectCreativeClaims({
+    text: "Fale pelo api.whatsapp.com/send?phone=5521980804901 ou +55 (21) 98080-4901.",
+    isAmzProspect: true,
+    creativeToolRan: false,
+  }), "Fale pelo ou.");
+  assertEquals(guardProspectCreativeClaims({
+    text: "https://chat.whatsapp.com/convite",
+    isAmzProspect: true,
+    creativeToolRan: false,
+  }), "Posso te ajudar com mais alguma dúvida sobre a plataforma?");
+});
+
+Deno.test("atalho restrito de não-dono segue ao modelo com orientação", () => {
+  assertEquals(
+    nonOwnerCapabilityGuidance(
+      false,
+      true,
+    ),
+    NON_OWNER_CAPABILITY_GUIDANCE,
+  );
+  assertEquals(nonOwnerCapabilityGuidance(false, false), null);
+  assertEquals(nonOwnerCapabilityGuidance(true, true), null);
+  assertEquals(
+    NON_OWNER_CAPABILITY_GUIDANCE.includes("Não execute publicação, vídeo ou composição"),
+    true,
+  );
+  assertEquals(NON_OWNER_CAPABILITY_GUIDANCE.includes(DEMO_LIMIT_MESSAGE), false);
 });
 
 Deno.test("conversa normal e resposta ao dono ficam inalteradas", () => {
