@@ -205,7 +205,7 @@ import {
   resolverVideoLegendado,
   tratarRespostaFluxoLegenda,
 } from "../_shared/video-legenda-flow.ts";
-import { VIDEO_LEGENDA_LOGO_BUTTONS } from "../_shared/video-legenda-logo.ts";
+import { botoesLegendaParaLogo } from "../_shared/video-legenda-logo.ts";
 import {
   enfileirarVideoMotion,
   minutosRenderEstimado,
@@ -13825,11 +13825,12 @@ async function processOne(queueId: string) {
       });
       if (fluxoReply) {
         console.log("[processor][video_legenda_flow] resposta determinística do fluxo de legenda");
+        const availableLogoButtons = botoesLegendaParaLogo(videoLegendaLogo);
         const logoButtons: WhatsAppInteractiveButtons | undefined =
-          videoLegendaLogo && /^Legenda \*[ABC]\* registrada/u.test(fluxoReply)
+          availableLogoButtons && /^Legenda \*[ABC]\* registrada/u.test(fluxoReply)
             ? {
               body: fluxoReply,
-              buttons: VIDEO_LEGENDA_LOGO_BUTTONS.map((button) => ({ ...button })),
+              buttons: availableLogoButtons,
             }
             : undefined;
         const { data: outMsg } = await sb

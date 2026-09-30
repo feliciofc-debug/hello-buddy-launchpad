@@ -2,6 +2,7 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  botoesLegendaParaLogo,
   detectarEscolhaLogo,
   metadataEscolhaLogo,
   VIDEO_LEGENDA_LOGO_BUTTONS,
@@ -13,6 +14,14 @@ Deno.test("botões de logo cabem no limite do WhatsApp", () => {
     "Gerar sem logo",
   ]);
   assertEquals(VIDEO_LEGENDA_LOGO_BUTTONS.every((button) => button.title.length <= 20), true);
+});
+
+Deno.test("conta com logo recebe botões e conta sem logo mantém confirmação atual", () => {
+  assertEquals(botoesLegendaParaLogo({ bucket: "tenant-logos", path: "tenant/logo.png" }), [
+    { id: "video_legenda_com_logo", title: "Gerar com logo" },
+    { id: "video_legenda_sem_logo", title: "Gerar sem logo" },
+  ]);
+  assertEquals(botoesLegendaParaLogo(null), null);
 });
 
 Deno.test("confirmação com logo persiste a escolha no metadata do job", () => {

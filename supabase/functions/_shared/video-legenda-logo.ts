@@ -8,6 +8,12 @@ export const VIDEO_LEGENDA_LOGO_BUTTONS = [
   { id: "video_legenda_sem_logo", title: "Gerar sem logo" },
 ] as const;
 
+export function botoesLegendaParaLogo(
+  logo: VideoLegendaLogoAsset | null | undefined,
+): Array<{ id: string; title: string }> | null {
+  return logo ? VIDEO_LEGENDA_LOGO_BUTTONS.map((button) => ({ ...button })) : null;
+}
+
 /** true = com logo; false = sem logo/padrão atual; null = não decidiu. */
 export function detectarEscolhaLogo(texto: string): boolean | null {
   const t = texto || "";
