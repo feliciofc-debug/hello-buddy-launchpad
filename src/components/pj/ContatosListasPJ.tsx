@@ -504,9 +504,15 @@ export default function ContatosListasPJ() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">📋 Listas & Contatos</h2>
-        <p className="text-sm text-muted-foreground mt-1">Gerencie suas listas, grupos e contatos para campanhas</p>
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">📋 Listas & Contatos</h2>
+          <p className="text-sm text-muted-foreground mt-1">Gerencie suas listas, grupos e contatos para campanhas</p>
+        </div>
+        <Button variant="outline" onClick={exportAllListasCSV} disabled={exportando || listas.length === 0} className="gap-2">
+          {exportando ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+          {exportando ? "Exportando..." : "Exportar todas as listas (CSV)"}
+        </Button>
       </div>
 
       {/* GRID: Listas + Grupos */}
