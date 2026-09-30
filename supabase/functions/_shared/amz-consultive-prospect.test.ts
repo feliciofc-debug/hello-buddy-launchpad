@@ -50,7 +50,7 @@ Deno.test("demo AMZ usa identidade do site somente na geração e nunca publica"
   });
 });
 
-Deno.test("handoff comercial inclui resumo e contato do Felicio", () => {
+Deno.test("handoff comercial inclui resumo e contato sem expor o dono", () => {
   assertEquals(buildAmzLeadOwnerSummary({
     business: "Clínica odontológica",
     pain: "Falta de tempo para publicar",
@@ -62,5 +62,8 @@ Deno.test("handoff comercial inclui resumo e contato do Felicio", () => {
     "Demonstração: Imagem com identidade do site",
     "Próximo passo: Enviar proposta",
   ]);
-  assertEquals(amzProspectHandoffInstruction("Felicio"), "Avise o prospect que Felicio vai entrar em contato.");
+  assertEquals(
+    amzProspectHandoffInstruction(),
+    "Avise o prospect que um consultor da AMZ vai entrar em contato.",
+  );
 });

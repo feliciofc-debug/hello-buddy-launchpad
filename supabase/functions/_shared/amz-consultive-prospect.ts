@@ -76,6 +76,6 @@ export function buildAmzLeadOwnerSummary(summary: AmzLeadSummary): string[] {
   ].filter((line): line is string => Boolean(line));
 }
 
-export function amzProspectHandoffInstruction(ownerName?: string | null): string {
-  return `Avise o prospect que ${String(ownerName || "o Felicio").trim()} vai entrar em contato.`;
+export function amzProspectHandoffInstruction(): string {
+  return "Avise o prospect que um consultor da AMZ vai entrar em contato.";
 }

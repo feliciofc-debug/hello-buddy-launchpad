@@ -1,7 +1,7 @@
 import { ownerPhonesEquivalent } from "./owner-phone.ts";
 
 export const DEMO_LIMIT_MESSAGE =
-  "A demonstração gratuita deste número já foi usada. Vou reenviar a última mídia; se quiser avançar, o Felicio pode te mostrar a plataforma completa.";
+  "A demonstração gratuita deste número já foi usada. Vou reenviar a última mídia; se quiser avançar, um consultor da AMZ pode te mostrar a plataforma completa.";
 
 export const TENANT_CREATION_BLOCK_MESSAGE =
   "Esse recurso é exclusivo do responsável da conta. Posso continuar ajudando com suas dúvidas por aqui.";
@@ -16,6 +16,28 @@ const CREATION_TOOLS = new Set([
 
 export function isCreativeDemoTool(toolName: string): boolean {
   return CREATION_TOOLS.has(toolName);
+}
+
+export function requiredProspectCreativeTool(
+  text: string,
+): "gerar_imagem" | "criar_carrossel" | null {
+  const normalized = String(text || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+  if (/\b(?:carrossel|carousel)\b/.test(normalized)) return "criar_carrossel";
+  const creationVerb = /\b(?:gera|gere|gerar|cria|crie|criar|faz|faca|fazer|refaz|refaca|refazer)\b/;
+  const creativeTarget = /\b(?:imagem|arte|foto|logo|logotipo|logomarca|marca)\b/;
+  const retryWithBrand = /\b(?:gera|gere|cria|crie|faz|faca|refaz|refaca)\s+(?:isso\s+)?de novo\b.{0,100}\b(?:logo|marca|site)\b/;
+  return (
+      creationVerb.test(normalized)
+      && creativeTarget.test(normalized)
+    )
+    || retryWithBrand.test(normalized)
+    ? "gerar_imagem"
+    : null;
 }
 
 const CREATIVE_CLAIM = /\b(?:j[aá]\s+)?(?:criei|gerei|fiz)\b.{0,60}\b(?:logo|imagem|arte|post|carrossel|v[ií]deo)\b/i;
@@ -108,7 +130,7 @@ export function demoLimitMessage(createdAt?: string | null): string {
     }).format(timestamp)
     : null;
   return date
-    ? `A demonstração gratuita deste número foi feita em ${date}. Vou reenviar a última mídia; se quiser avançar, o Felicio pode te mostrar a plataforma completa.`
+    ? `A demonstração gratuita deste número foi feita em ${date}. Vou reenviar a última mídia; se quiser avançar, um consultor da AMZ pode te mostrar a plataforma completa.`
     : DEMO_LIMIT_MESSAGE;
 }
 

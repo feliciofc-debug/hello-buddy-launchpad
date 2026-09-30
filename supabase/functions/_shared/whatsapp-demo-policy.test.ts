@@ -1,5 +1,9 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { AMZ_KNOWLEDGE, AMZ_SALES_BLOCK } from "./agent-soul.ts";
+import {
+  AMZ_KNOWLEDGE,
+  AMZ_SALES_BLOCK,
+  AMZ_SUPPORT_BLOCK,
+} from "./agent-soul.ts";
 import { dedupeConsecutiveReplyText } from "./reply-dedupe.ts";
 import {
   containsUnsupportedCreativeClaim,
@@ -10,6 +14,7 @@ import {
   DEMO_LIMIT_MESSAGE,
   isDemoTestPhone,
   guardProspectCreativeClaims,
+  requiredProspectCreativeTool,
 } from "./whatsapp-demo-policy.ts";
 
 Deno.test("prospect AMZ gera uma imagem e a segunda é recusada", () => {
@@ -134,7 +139,7 @@ Deno.test("resultado comum e tool não criativa continuam no fluxo normal", () =
 
 Deno.test("afirmação falsa do caso real vira limite determinístico", () => {
   const falseReply =
-    "A demonstração gratuita é de 1 post por empresa e já criei a sua logo acima! Como posso te chamar para o Felicio falar com você?";
+    "A demonstração gratuita é de 1 post por empresa e já criei a sua logo acima! Como posso te chamar para um consultor da AMZ falar com você?";
   assertEquals(containsUnsupportedCreativeClaim(falseReply), true);
   const guarded = guardProspectCreativeClaims({
     text: falseReply,
@@ -147,6 +152,18 @@ Deno.test("afirmação falsa do caso real vira limite determinístico", () => {
   assertEquals(guarded.includes("já criei a sua logo"), false);
   assertEquals(guarded.includes("por empresa"), false);
   assertEquals(guarded.includes("Como posso te chamar"), true);
+});
+
+Deno.test("pedido repetido de telefone de teste exige tool criativa", () => {
+  assertEquals(
+    requiredProspectCreativeTool("gera de novo com a logo do site"),
+    "gerar_imagem",
+  );
+  assertEquals(
+    requiredProspectCreativeTool("cria um carrossel de 5 cards"),
+    "criar_carrossel",
+  );
+  assertEquals(requiredProspectCreativeTool("qual o preço do plano?"), null);
 });
 
 Deno.test("conversa normal e resposta ao dono ficam inalteradas", () => {
@@ -194,10 +211,23 @@ Deno.test("Pietro conduz imagem e carrossel com uma pergunta por vez", () => {
     "Prospect nunca publica",
     "Quando pedir preço ou proposta",
     "chame registrar_lead_novo",
-    "Felicio vai entrar em contato",
+    "um consultor da AMZ vai entrar em contato",
     "SEMPRE chame a ferramenta correspondente",
     "Só afirme após receber o resultado da ferramenta",
+    "Nunca cite o nome do dono para prospect",
   ]) {
     assertEquals(prompt.includes(trecho), true);
   }
+});
+
+Deno.test("prompts e limite para prospect não expõem nome do dono", () => {
+  const prospectText = [
+    AMZ_KNOWLEDGE,
+    AMZ_SALES_BLOCK,
+    AMZ_SUPPORT_BLOCK,
+    DEMO_LIMIT_MESSAGE,
+    demoLimitMessage("2026-09-29T15:00:00.000Z"),
+  ].join("\n");
+  assertEquals(/\bfel[ií]cio\b/i.test(prospectText), false);
+  assertEquals(prospectText.includes("um consultor da AMZ"), true);
 });

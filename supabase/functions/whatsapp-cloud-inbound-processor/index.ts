@@ -100,6 +100,7 @@ import {
   guardProspectCreativeClaims,
   isCreativeDemoTool,
   isDemoTestPhone,
+  requiredProspectCreativeTool,
   TENANT_CREATION_BLOCK_MESSAGE,
   type DemoToolDecision,
 } from "../_shared/whatsapp-demo-policy.ts";
@@ -1349,8 +1350,8 @@ async function toolGerarImagem(
       exemplo_legenda_solicitado: ctx.demonstracao === true,
       instrucao: ctx.demonstracao
         ? ctx.brandSource === "site"
-          ? "DEMONSTRAÇÃO: escreva SOMENTE uma legenda curta para a imagem. NÃO afirme nada sobre logo, marca, cores ou identidade visual; o código anexará a informação exata. Nada foi salvo no cadastro nem publicado. Depois da demo, registre o lead e avise que o Felicio vai entrar em contato."
-          : "DEMONSTRAÇÃO: envie a imagem somente nesta conversa e escreva junto um exemplo curto de legenda pronta baseado no pedido. Informe honestamente que foi feita sem logo de cadastro e que nada foi publicado. Depois da demo, registre o lead e avise que o Felicio vai entrar em contato."
+          ? "DEMONSTRAÇÃO: escreva SOMENTE uma legenda curta para a imagem. NÃO afirme nada sobre logo, marca, cores ou identidade visual; o código anexará a informação exata. Nada foi salvo no cadastro nem publicado. Depois da demo, registre o lead e avise que um consultor da AMZ vai entrar em contato."
+          : "DEMONSTRAÇÃO: envie a imagem somente nesta conversa e escreva junto um exemplo curto de legenda pronta baseado no pedido. Informe honestamente que foi feita sem logo de cadastro e que nada foi publicado. Depois da demo, registre o lead e avise que um consultor da AMZ vai entrar em contato."
         : ctx.brandSource === "site"
         ? (logoAplicada
           ? "A imagem usou a logo encontrada no site somente nesta geração. Informe honestamente que ela foi aplicada na cena ou pelo fallback."
@@ -9134,7 +9135,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "registrar_lead_novo",
-      description: "🔔 USE UMA VEZ quando estiver atendendo alguém DESCONHECIDO e já souber obrigatoriamente o NOME e o RAMO do negócio. Registra o lead e avisa o dono. No tenant AMZ, use quando pedir preço/proposta, demonstrar intenção de contratar ou após a demo; informe ao prospect que o Felicio entrará em contato. Nos demais tenants, mantenha o atendimento silencioso atual.",
+      description: "🔔 USE UMA VEZ quando estiver atendendo alguém DESCONHECIDO e já souber obrigatoriamente o NOME e o RAMO do negócio. Registra o lead e avisa o dono. No tenant AMZ, use quando pedir preço/proposta, demonstrar intenção de contratar ou após a demo; informe ao prospect que um consultor da AMZ entrará em contato. Nos demais tenants, mantenha o atendimento silencioso atual.",
       parameters: {
         type: "object",
         properties: {
@@ -9144,7 +9145,7 @@ const TOOLS = [
           interesse: { type: "string", description: "Em 1 frase, o que ele quer/está buscando (ex: 'quer saber como funciona o atendimento por IA e o preço')." },
           dor_marketing: { type: "string", description: "Principal dificuldade de marketing relatada, se houver." },
           demonstracao: { type: "string", description: "O que foi demonstrado ao prospect, se houver." },
-          proximo_passo: { type: "string", description: "Próximo passo combinado, como proposta ou contato do Felicio." },
+          proximo_passo: { type: "string", description: "Próximo passo combinado, como proposta ou contato de um consultor da AMZ." },
         },
         required: ["nome", "ramo"],
       },
@@ -9435,7 +9436,7 @@ async function toolRegistrarLeadNovo(
       notificado: false,
       motivo: "lead_ja_notificado",
       instrucao: isAmzProspect
-        ? amzProspectHandoffInstruction("o Felicio")
+        ? amzProspectHandoffInstruction()
         : "Continue o atendimento normalmente e NÃO comente nada disso com o cliente.",
     });
   }
@@ -9473,7 +9474,7 @@ async function toolRegistrarLeadNovo(
       message_id: messageId,
       protocolo: proof,
       instrucao: isAmzProspect
-        ? amzProspectHandoffInstruction("o Felicio")
+        ? amzProspectHandoffInstruction()
         : "O dono já foi avisado em paralelo. NÃO comente isso com o cliente — apenas continue o atendimento de forma natural, respondendo o que ele perguntou.",
     });
   } catch (e) {
@@ -11530,6 +11531,10 @@ async function callGemini(
     isOwner: isOwner(toolCtx),
     adminAmzUserId: ADMIN_AMZ_USER_ID,
   });
+  const requiredCreativeTool = senderIsAmzProspect
+      && typeof userContent === "string"
+    ? requiredProspectCreativeTool(userContent)
+    : null;
 
   for (let step = 0; step < 4; step++) {
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -11543,6 +11548,14 @@ async function callGemini(
         messages,
         temperature: 0.7,
         tools: availableTools,
+        ...(step === 0 && requiredCreativeTool
+          ? {
+              tool_choice: {
+                type: "function",
+                function: { name: requiredCreativeTool },
+              },
+            }
+          : {}),
       }),
     });
 
