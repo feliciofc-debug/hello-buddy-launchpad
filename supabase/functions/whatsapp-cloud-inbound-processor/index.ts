@@ -74,7 +74,7 @@ import {
 import { generateMarketingImage } from "../_shared/marketing-image-generator.ts";
 import { setTenantLogo } from "../_shared/tenant-logo.ts";
 import { carouselColorRows, resolveCarouselColor } from "../_shared/carousel-colors.ts";
-import { logOutboundMessage } from "../_shared/cloud-log.ts";
+import { processorSkipOutboundLog } from "../_shared/cloud-log.ts";
 import { gerarVarianteFacebookFeed } from "../_shared/varianteFacebookFeed.ts";
 import { idCurto, linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
 import { syncProdutoVideoFromMidia } from "../_shared/sync-produto-video.ts";
@@ -3653,7 +3653,15 @@ async function toolVerProduto(
     if (args?.enviar_foto && foto) {
       const legenda = `*${p.nome}*${p.preco ? `\n💰 R$ ${Number(p.preco).toFixed(2)}` : ""}`;
       try {
-        await sendWhatsApp(ctx.userId, ctx.fromNumber, legenda, foto);
+        await sendWhatsApp(
+          ctx.userId,
+          ctx.fromNumber,
+          legenda,
+          foto,
+          undefined,
+          undefined,
+          { alreadyLogged: false },
+        );
         foto_enviada = true;
       } catch (e) {
         console.warn("[ver_produto] envio de foto falhou:", (e as Error).message);
@@ -5364,7 +5372,15 @@ async function publishLinkedInImmediately(
 
       const midiaUsada = `Usando: ${nomeCurtoMidia(resolved.midia)} - ${resolved.midia.tipo === "video" ? "Vídeo" : "Imagem"} - ${tempoRelativoMidia(resolved.midia.created_at)}`;
       try {
-        await sendWhatsApp(ctx.userId, ctx.fromNumber, midiaUsada);
+        await sendWhatsApp(
+          ctx.userId,
+          ctx.fromNumber,
+          midiaUsada,
+          undefined,
+          undefined,
+          undefined,
+          { alreadyLogged: false },
+        );
       } catch (e) {
         return await fail(
           "aviso_midia_falhou",
@@ -7060,7 +7076,15 @@ async function toolPostarMidiaBiblioteca(
     try {
       // A mídia escolhida faz parte da prévia: para foto, mostra a própria
       // imagem antes das opções A/B/C em vez de enviar apenas a descrição.
-      await sendWhatsApp(ctx.userId, ctx.fromNumber, midiaUsada, isVideo ? undefined : midia.midia_url);
+      await sendWhatsApp(
+        ctx.userId,
+        ctx.fromNumber,
+        midiaUsada,
+        isVideo ? undefined : midia.midia_url,
+        undefined,
+        undefined,
+        { alreadyLogged: false },
+      );
     } catch (e) {
       return JSON.stringify({
         erro: "aviso_midia_falhou",
@@ -7223,6 +7247,8 @@ async function sendVideoInteractiveList(
     body: JSON.stringify({
       user_id: ctx.userId,
       to: ctx.fromNumber,
+      skip_log: false,
+      log_sender: "agent",
       interactive_list: {
         header: params.header,
         body: params.body,
@@ -7675,7 +7701,15 @@ async function sendPalettePreview(
         logo_path: logoPath,
       });
       if (preview?.success && preview?.image_url) {
-        await sendWhatsApp(ctx.userId, ctx.fromNumber, "Logo e prévia numerada da paleta:", preview.image_url);
+        await sendWhatsApp(
+          ctx.userId,
+          ctx.fromNumber,
+          "Logo e prévia numerada da paleta:",
+          preview.image_url,
+          undefined,
+          undefined,
+          { alreadyLogged: false },
+        );
       } else {
         console.warn("[video-setup][palette-preview]", preview?.error || "render sem URL");
       }
@@ -7773,6 +7807,9 @@ async function askSiteLogoConfirmation(
       ctx.fromNumber,
       "Encontrei esta imagem no site. Confirme se ela é realmente a logo do cliente:",
       data.signedUrl,
+      undefined,
+      undefined,
+      { alreadyLogged: false },
     );
   }
   await sendVideoInteractiveList(ctx, {
@@ -9547,6 +9584,8 @@ async function sendCarrosselColorPicker(userId: string, to: string, tema: string
     body: JSON.stringify({
       user_id: userId,
       to,
+      skip_log: false,
+      log_sender: "agent",
       interactive_list: {
         header: "🎨 Cor do carrossel",
         body: `Beleza! Vou montar o carrossel sobre *${tema.slice(0, 120)}*.\n\nEscolha a cor de destaque — é só 1 toque:`,
@@ -9633,7 +9672,15 @@ async function enviarPreviewCarrossel(
     startIndex,
     maxCards,
     send: async (url, index, total) => {
-      await sendWhatsApp(ctx.userId, ctx.fromNumber, `Card ${index + 1} de ${total}`, url);
+      await sendWhatsApp(
+        ctx.userId,
+        ctx.fromNumber,
+        `Card ${index + 1} de ${total}`,
+        url,
+        undefined,
+        undefined,
+        { alreadyLogged: false },
+      );
     },
     pause: wait,
     logger: (message) => console.log(message),
@@ -11941,7 +11988,10 @@ async function sendWhatsApp(
   imageUrl?: string,
   interactiveList?: WhatsAppInteractiveList,
   interactiveButtons?: WhatsAppInteractiveButtons,
-  delivery?: { beforeChunk?: (chunk: string) => Promise<void> },
+  delivery?: {
+    beforeChunk?: (chunk: string) => Promise<void>;
+    alreadyLogged?: boolean;
+  },
 ): Promise<string | null> {
   const dedupedMessage = dedupeConsecutiveReplyText(message);
   const chunks = splitWhatsAppText(dedupedMessage);
@@ -11952,12 +12002,14 @@ async function sendWhatsApp(
   let firstMessageId: string | null = null;
   for (let index = 0; index < chunks.length; index++) {
     if (index > 0 && delivery?.beforeChunk) await delivery.beforeChunk(chunks[index]);
+    const skipLog = processorSkipOutboundLog(delivery?.alreadyLogged);
     const body: any = {
       user_id,
       to,
       message: chunks[index],
-      skip_log: true,
+      skip_log: skipLog,
     };
+    if (!skipLog) body.log_sender = "agent";
     if (imageUrl && index === 0) body.image_url = imageUrl;
     if (interactiveList && index === chunks.length - 1) body.interactive_list = interactiveList;
     if (interactiveButtons && index === chunks.length - 1) body.interactive_buttons = interactiveButtons;

@@ -16,6 +16,14 @@ export function shouldLogOutboundMessage(skipLog: unknown): boolean {
   return skipLog !== true;
 }
 
+export function processorSkipOutboundLog(alreadyLogged = true): boolean {
+  return alreadyLogged;
+}
+
+export function outboundLogSender(value: unknown): "agent" | "campanha" {
+  return value === "agent" ? "agent" : "campanha";
+}
+
 export async function logOutboundMessage(
   sb: any,
   params: {

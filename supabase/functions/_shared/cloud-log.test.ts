@@ -1,6 +1,8 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   logOutboundMessage,
+  outboundLogSender,
+  processorSkipOutboundLog,
   shouldLogOutboundMessage,
 } from "./cloud-log.ts";
 
@@ -72,7 +74,35 @@ class FakeSupabase {
 }
 
 Deno.test("processor com skip_log não pede segundo registro", () => {
-  assertEquals(shouldLogOutboundMessage(true), false);
+  const skipLog = processorSkipOutboundLog();
+  assertEquals(skipLog, true);
+  assertEquals(shouldLogOutboundMessage(skipLog), false);
+});
+
+Deno.test("processor registra uma vez envio auxiliar ainda não gravado", async () => {
+  const skipLog = processorSkipOutboundLog(false);
+  assertEquals(skipLog, false);
+  assertEquals(shouldLogOutboundMessage(skipLog), true);
+  assertEquals(outboundLogSender("agent"), "agent");
+  assertEquals(outboundLogSender(undefined), "campanha");
+
+  const sb = new FakeSupabase({
+    whatsapp_cloud_conversations: [{
+      id: "conv-1",
+      user_id: "tenant-1",
+      contact_number: "5521999999999",
+    }],
+    whatsapp_cloud_messages: [],
+  });
+  await logOutboundMessage(sb, {
+    userId: "tenant-1",
+    phone: "21999999999",
+    content: "Card 1 de 3",
+    wamid: "wamid-card-1",
+    sender: outboundLogSender("agent"),
+  });
+  assertEquals(sb.messageInserts.length, 1);
+  assertEquals(sb.messageInserts[0].sender, "agent");
 });
 
 Deno.test("campanha sem skip_log continua registrando sender campanha", async () => {

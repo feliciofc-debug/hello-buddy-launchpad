@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { toMetaSafeImageUrl } from '../_shared/meta-media.ts'
-import { logOutboundMessage, shouldLogOutboundMessage } from '../_shared/cloud-log.ts'
+import { logOutboundMessage, outboundLogSender, shouldLogOutboundMessage } from '../_shared/cloud-log.ts'
 
 
 
@@ -24,7 +24,7 @@ serve(async (req) => {
     const {
       user_id, to, message, template_name, template_language,
       image_url, video_url, document_url, document_filename,
-      skip_log,
+      skip_log, log_sender,
       // vCard (cartão de contato clicável) — Meta Cloud API type:contacts
       contact_card, // { nome: string, telefone: string }
       // Lista interativa (1 toque) — usada p/ escolher cor do carrossel, etc.
@@ -231,7 +231,7 @@ serve(async (req) => {
         messageType: interactive_list ? 'interactive' : document_url ? 'document' : video_url ? 'video' : image_url ? 'image' : contact_card ? 'contacts' : template_name ? 'template' : 'text',
 
         wamid: result.messages?.[0]?.id ?? null,
-        sender: 'campanha',
+        sender: outboundLogSender(log_sender),
       })
     }
 
