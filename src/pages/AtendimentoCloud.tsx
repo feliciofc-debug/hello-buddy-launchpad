@@ -130,29 +130,22 @@ export default function AtendimentoCloud() {
       }
       const convs: Conversation[] = ((data as any) || []) as Conversation[];
 
-      const visiblePhones = [...new Set(
-        convs.flatMap((conversation) =>
-          phoneVariants(conversation.contact_number)
-        ),
-      )];
       const memberStatusByPhone = new Map<string, OptInStatus>();
-      if (visiblePhones.length > 0) {
-        const { data: members, error: membersError } = await supabase
-          .from("pj_lista_membros")
-          .select("telefone, opt_in_status")
-          .eq("user_id", userId)
-          .in("telefone", visiblePhones);
-        if (membersError) {
-          console.error(membersError);
-        } else {
-          for (const member of members || []) {
-            for (const variant of phoneVariants(member.telefone || "")) {
-              const status = strongestOptInStatus(
-                memberStatusByPhone.get(variant),
-                member.opt_in_status,
-              );
-              if (status) memberStatusByPhone.set(variant, status);
-            }
+      const { data: members, error: membersError } = await supabase
+        .from("pj_lista_membros")
+        .select("telefone, opt_in_status")
+        .eq("user_id", userId)
+        .in("opt_in_status", ["confirmado", "recusado"]);
+      if (membersError) {
+        console.error(membersError);
+      } else {
+        for (const member of members || []) {
+          for (const variant of phoneVariants(member.telefone || "")) {
+            const status = strongestOptInStatus(
+              memberStatusByPhone.get(variant),
+              member.opt_in_status,
+            );
+            if (status) memberStatusByPhone.set(variant, status);
           }
         }
       }
