@@ -235,10 +235,14 @@ import {
 } from "../_shared/client-brand-identity.ts";
 import {
   canRunClientLogoRegistrationShortcut,
+  clientLogoUploadFollowUp,
   extractVideoClientName,
+  hasUsableVideoTopic,
+  isVideoMotionRequest,
   isSameVideoBrandName,
   resolveAutomaticVideoSiteIdentity,
   selectVideoClientLogo,
+  shouldStartVideoSetup,
   videoSiteDomain,
 } from "../_shared/video-client-identity.ts";
 import { completeSiteIdentityWithRenderedPage } from "../_shared/video-site-identity.ts";
@@ -2420,12 +2424,14 @@ type AgentConvState = {
   pending_carousel?: PendingCarouselState | null;
   pending_video_setup?: PendingVideoSetupState | null;
   pending_client_logo?: { logo_path: string; created_at: string } | null;
+  pending_client_logo_intent?: { client_name: string; created_at: string } | null;
   pending_brand_generation?: PendingBrandGeneration | null;
   brand_image_preference?: WhatsAppBrandPreference | null;
   [k: string]: unknown;
 };
 
 type PendingVideoSetupStage =
+  | "awaiting_tema"
   | "awaiting_template"
   | "awaiting_track"
   | "awaiting_track_more"
@@ -7832,7 +7838,7 @@ function normalizeVideoTopic(text: string): string {
   return compactSpaces(text)
     .replace(/^jarvis[,.!\s-]*/i, "")
     .replace(/\b(por favor|pfv|pra mim|para mim)\b/gi, " ")
-    .replace(/\b(faz|faca|faça|cria|crie|monta|monte|gera|gere|produz|produza)\b/gi, " ")
+    .replace(/\b(faz|faca|faça|fazer|cria|criar|crie|monta|montar|monte|gera|gerar|gere|produz|produzir|produza)\b/gi, " ")
     .replace(/\b(um|uma|o|a)\s+(video|vídeo)\b/gi, " ")
     .replace(/\b(video|vídeo)\s+(animado|motion|institucional|publicitario|publicitário)?\b/gi, " ")
     .replace(/\b(para|pra|pro|no|na|em)\s+(whatsapp|instagram|insta|facebook|face|reels?|stories?)\b/gi, " ")
@@ -7841,13 +7847,6 @@ function normalizeVideoTopic(text: string): string {
     .replace(/^[\s,;:.-]+|[\s,;:.-]+$/g, "")
     .trim()
     .slice(0, 240);
-}
-
-function isVideoMotionRequest(text: string): boolean {
-  const n = normalizePt(text || "");
-  const pediuCriacao = /\b(faz|faca|cria|crie|monta|monte|gera|gere|produz|produza|quero|preciso)\b/.test(n);
-  const pediuFormatoAnimado = /\b(video|motion|animacao|animado|animada|reels? animado)\b/.test(n);
-  return pediuCriacao && pediuFormatoAnimado;
 }
 
 function isVideoApproval(text: string): boolean {
@@ -8148,7 +8147,18 @@ async function startVideoSetup(
   if (!ctx.convId) return "Não consegui identificar esta conversa para guardar as escolhas do vídeo. Tente novamente.";
   const full = compactSpaces(originalRequest);
   const tema = normalizeVideoTopic(explicit?.tema || full);
-  if (tema.length < 4) return "Qual é o tema do vídeo? Ex.: mostrar como a plataforma agenda e publica posts.";
+  if (!hasUsableVideoTopic(tema)) {
+    const waitingForTheme: PendingVideoSetupState = {
+      stage: "awaiting_tema",
+      tema: "",
+      pedido_original: full,
+      created_at: new Date().toISOString(),
+    };
+    if (!await persistVideoSetup(ctx, waitingForTheme)) {
+      return "Não consegui guardar o pedido antes de perguntar o tema. Envie o pedido completo novamente.";
+    }
+    return "Qual é o tema do vídeo? Ex.: mostrar como a plataforma agenda e publica posts.";
+  }
 
   const tracks = await listVideoTracks(ctx.userId);
   const inferredTrack = inferTrackFromRequest(full, tracks);
@@ -8309,6 +8319,15 @@ async function handlePendingVideoSetup(
 
   const n = normalizePt(response);
   const interactiveId = extractVideoInteractiveId(response);
+  if (setup.stage === "awaiting_tema") {
+    if (!hasUsableVideoTopic(normalizeVideoTopic(response))) {
+      return "Qual é o tema do vídeo? Pode enviar o roteiro completo.";
+    }
+    return await startVideoSetup(
+      ctx,
+      `${setup.pedido_original}\n${response}`.trim(),
+    );
+  }
   if (setup.stage === "awaiting_template") {
     const estilo = interactiveId === "video_template_institucional" || /institucional/.test(n)
       ? "institucional"
@@ -10659,6 +10678,7 @@ async function callGemini(
     const pendingCarousel = remetenteEhDono || prospectAmz ? toolCtx.agentState?.pending_carousel : null;
     const pendingVideoSetup = remetenteEhDono ? toolCtx.agentState?.pending_video_setup : null;
     const pendingClientLogo = remetenteEhDono ? toolCtx.agentState?.pending_client_logo : null;
+    const pendingClientLogoIntent = remetenteEhDono ? toolCtx.agentState?.pending_client_logo_intent : null;
     const pendingBrandGeneration = remetenteEhDono ? toolCtx.agentState?.pending_brand_generation : null;
     const latestPendingSocial = remetenteEhDono
       ? await findLatestPendingSocialToken(toolCtx.userId, toolCtx.fromNumber)
@@ -10680,6 +10700,11 @@ async function callGemini(
     const socialInteractiveId = userContent.match(/<<INTERACTIVE_ID:(social_[^>]+)>>/i)?.[1] || "";
     const socialActionInteractive = socialInteractiveId.match(/^social_(publish|publish_confirm|schedule):([a-f0-9]{8})$/i);
     const socialVariantInteractive = socialInteractiveId.match(/^social_variant:([ABC]):([a-f0-9]{8})$/i);
+    const previousHistoryMessage = history.at(-1);
+    const previousTurnAskedVideoTheme = previousHistoryMessage?.role === "assistant"
+      && /\bqual e o tema do video\b/.test(
+        normalizePt(String(previousHistoryMessage.content ?? "")),
+      );
     const ownerMediaIntent = classifyOwnerMediaIntent(userContent);
     const explicitPendingCommand = classifyExplicitPendingPostCommand(userContent, hasMedia);
     const anyPendingInteractive = !!socialInteractiveId || !!tiktokInteractiveId(userContent);
@@ -10702,6 +10727,35 @@ async function callGemini(
     }
     if (pendingVideoSetup) {
       return { text: await handlePendingVideoSetup(toolCtx, pendingVideoSetup, userContent) };
+    }
+    if (!remetenteEhDono && isVideoMotionRequest(userContent)) {
+      deferRestrictedShortcutToModel(true);
+    }
+    if (
+      remetenteEhDono
+      && (previousTurnAskedVideoTheme || shouldStartVideoSetup(userContent))
+    ) {
+      const previousVideoRequest = previousTurnAskedVideoTheme
+        && history.at(-2)?.role === "user"
+        ? String(history.at(-2)?.content ?? "")
+        : "";
+      return {
+        text: await startVideoSetup(
+          toolCtx,
+          `${previousVideoRequest}\n${userContent}`.trim(),
+        ),
+      };
+    }
+    if (pendingClientLogoIntent && isVideoCancellation(userContent)) {
+      const conversation = toolCtx.convId
+        ? { id: toolCtx.convId, userId: toolCtx.userId, contactNumber: toolCtx.fromNumber }
+        : null;
+      if (conversation) {
+        await saveAgentState(sb, conversation, {
+          pending_client_logo_intent: null,
+        }, toolCtx.agentState ?? {});
+      }
+      return { text: "Cadastro da logo cancelado." };
     }
 
     if (remetenteEhDono && pendingBrandGeneration) {
@@ -11127,6 +11181,30 @@ async function callGemini(
       const raw = await toolRegistrarLogoCliente({ cliente: clientName }, toolCtx);
       try {
         const result = JSON.parse(raw);
+        const uploadFollowUp = clientLogoUploadFollowUp(
+          clientName,
+          String(result?.erro ?? ""),
+        );
+        if (uploadFollowUp) {
+          const conversation = toolCtx.convId
+            ? { id: toolCtx.convId, userId: toolCtx.userId, contactNumber: toolCtx.fromNumber }
+            : null;
+          if (conversation) {
+            const pendingIntent = {
+              client_name: clientName,
+              created_at: new Date().toISOString(),
+            };
+            await saveAgentState(sb, conversation, {
+              pending_client_logo_intent: pendingIntent,
+            }, toolCtx.agentState ?? {});
+            if (toolCtx.agentState) {
+              toolCtx.agentState.pending_client_logo_intent = pendingIntent;
+            }
+          }
+          return {
+            text: uploadFollowUp,
+          };
+        }
         return {
           text: String(
             result?.mensagem
@@ -11137,15 +11215,6 @@ async function callGemini(
         };
       } catch {
         return { text: "Não consegui confirmar o cadastro da logo. Não marquei a imagem como logo do cliente." };
-      }
-    }
-
-    // Criação de vídeo animado tem prioridade sobre qualquer heurística de
-    // edição de imagem. Listas de redes ("Instagram, Facebook...") não podem
-    // transformar um pedido explícito de vídeo em ficha técnica.
-    if (isVideoMotionRequest(userContent)) {
-      if (!deferRestrictedShortcutToModel(true)) {
-        return { text: await startVideoSetup(toolCtx, userContent) };
       }
     }
 
@@ -13178,6 +13247,7 @@ async function processOne(queueId: string) {
       const pendingVideoIdentity = fromIsOwner ? freshAgentState.pending_video_setup : null;
       const incomingLogo = freshLibraryMedia.find((item) => item.kind === "image");
       const pendingBrandUpload = fromIsOwner
+        && !pendingVideoIdentity
         && freshAgentState.pending_brand_generation?.stage === "awaiting_logo_upload"
         ? freshAgentState.pending_brand_generation
         : null;
@@ -13355,6 +13425,87 @@ async function processOne(queueId: string) {
           .eq("id", conv.id);
         await doneQueue(row.id);
         return { ok: true, video_client_logo_received: !!logoPath };
+      }
+
+      const pendingClientLogoIntent = fromIsOwner
+        ? freshAgentState.pending_client_logo_intent
+        : null;
+      if (pendingClientLogoIntent && incomingLogo) {
+        const age = Date.now() - new Date(pendingClientLogoIntent.created_at).getTime();
+        if (Number.isFinite(age) && age <= 24 * 60 * 60 * 1000) {
+          const logoPath = await uploadClientLogoData(
+            userId,
+            `data:${incomingLogo.mime};base64,${incomingLogo.base64}`,
+            "client-brands",
+          );
+          let registered = false;
+          let reply = "Não consegui salvar essa logo. Envie em PNG, JPEG ou WEBP com até 5 MB.";
+          if (logoPath) {
+            try {
+              const matches = await listClientBrandIdentityMatches(
+                sb,
+                userId,
+                pendingClientLogoIntent.client_name,
+              );
+              if (matches.length > 1) {
+                await saveAgentState(sb, stateConversation, {
+                  pending_client_logo_intent: null,
+                  pending_client_logo: {
+                    logo_path: logoPath,
+                    created_at: new Date().toISOString(),
+                  },
+                }, freshAgentState);
+                reply = `Encontrei mais de um cliente parecido: ${matches.map((item) => item.client_name).join(", ")}. De qual deles é a logo?`;
+              } else {
+                const saved = await saveClientBrandIdentity(sb, {
+                  userId,
+                  clientName: matches[0]?.client_name || pendingClientLogoIntent.client_name,
+                  logoPath,
+                  identity: { logo_origem: "whatsapp_manual" },
+                });
+                await saveAgentState(sb, stateConversation, {
+                  pending_client_logo_intent: null,
+                  pending_client_logo: null,
+                }, freshAgentState);
+                registered = true;
+                reply = `Guardei como logo do ${saved.client_name}. Vou usar nos vídeos e posts desse cliente.`;
+              }
+            } catch (error) {
+              console.error("[client-brand][pending-intent-save]", error);
+              await sb.storage.from("tenant-logos").remove([logoPath]);
+              reply = "Recebi a imagem, mas não consegui concluir o cadastro. Envie novamente ou responda *cancelar*.";
+            }
+          }
+
+          const { data: outMsg } = await sb
+            .from("whatsapp_cloud_messages")
+            .insert({
+              conversation_id: conv.id,
+              user_id: userId,
+              direction: "outbound",
+              sender: "agent",
+              content: reply,
+              message_type: "text",
+            })
+            .select("id")
+            .single();
+          try {
+            const sentId = await sendWhatsApp(userId, row.from_number, reply);
+            if (sentId && outMsg?.id) {
+              await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
+            }
+          } catch (error) {
+            const sendError = error instanceof Error ? error.message : String(error);
+            await failQueue(row.id, `send_failed: ${sendError}`);
+            return { ok: false, reason: "send_failed", error: sendError };
+          }
+          await doneQueue(row.id);
+          return { ok: true, client_logo_registered: registered };
+        }
+        await saveAgentState(sb, stateConversation, {
+          pending_client_logo_intent: null,
+        }, freshAgentState);
+        freshAgentState.pending_client_logo_intent = null;
       }
 
       let salvos: Awaited<ReturnType<typeof salvarItemMidiaBiblioteca>>[];
