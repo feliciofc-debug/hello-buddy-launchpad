@@ -38,32 +38,54 @@ export function selectLatestImplicitMediaId(
 
 export function selectPublicationMediaId(input: {
   explicitId?: string | null;
-  lastInteraction?: { media_id?: string | null } | null;
+  lastInteraction?: {
+    media_id?: string | null;
+    at?: string | null;
+    media_created_at?: string | null;
+  } | null;
   recentGenerated?: { id?: string | null; created_at?: string | null } | null;
   nowMs?: number;
   maxGeneratedAgeMs?: number;
+  maxInteractionAgeMs?: number;
 }): string | null {
   const explicitId = String(input.explicitId || "").trim();
   if (explicitId) return explicitId;
 
   const interactionId = String(input.lastInteraction?.media_id || "").trim();
-  if (interactionId) return interactionId;
-
+  const interactionAt = input.lastInteraction?.at
+    ? new Date(input.lastInteraction.at).getTime()
+    : Number.NaN;
+  const interactionMediaAt = input.lastInteraction?.media_created_at
+    ? new Date(input.lastInteraction.media_created_at).getTime()
+    : Number.NaN;
   const generatedId = String(input.recentGenerated?.id || "").trim();
   const generatedAt = input.recentGenerated?.created_at
     ? new Date(input.recentGenerated.created_at).getTime()
     : Number.NaN;
   const nowMs = input.nowMs ?? Date.now();
-  const maxAgeMs = input.maxGeneratedAgeMs ?? 2 * 60 * 60 * 1000;
-  if (
-    generatedId &&
+  const maxGeneratedAgeMs = input.maxGeneratedAgeMs ?? 2 * 60 * 60 * 1000;
+  const maxInteractionAgeMs = input.maxInteractionAgeMs ??
+    24 * 60 * 60 * 1000;
+  const interactionIsRecent = interactionId &&
+    Number.isFinite(interactionAt) &&
+    interactionAt <= nowMs &&
+    nowMs - interactionAt <= maxInteractionAgeMs;
+  const generatedIsRecent = generatedId &&
     Number.isFinite(generatedAt) &&
     generatedAt <= nowMs &&
-    nowMs - generatedAt <= maxAgeMs
-  ) {
-    return generatedId;
-  }
-  return null;
+    nowMs - generatedAt <= maxGeneratedAgeMs;
+  const effectiveInteractionAt = Math.max(
+    Number.isFinite(interactionAt) ? interactionAt : Number.NEGATIVE_INFINITY,
+    Number.isFinite(interactionMediaAt)
+      ? interactionMediaAt
+      : Number.NEGATIVE_INFINITY,
+  );
+
+  if (
+    interactionIsRecent &&
+    (!generatedIsRecent || effectiveInteractionAt > generatedAt)
+  ) return interactionId;
+  return generatedIsRecent ? generatedId : null;
 }
 
 function normalizeIntentText(text: string): string {

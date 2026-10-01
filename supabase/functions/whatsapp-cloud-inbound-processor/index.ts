@@ -6974,19 +6974,25 @@ async function resolverMidiaParaPublicacao(
     return await resolverMidiaBibliotecaPorId(ctx.userId, selectedExplicitId);
   }
 
+  const nowMs = Date.now();
+  const lastInteraction = ctx.agentState?.last_media_interaction ?? null;
   const interactionId = selectPublicationMediaId({
-    lastInteraction: ctx.agentState?.last_media_interaction ?? null,
+    lastInteraction,
+    nowMs,
   });
+  let interactedMedia: any | null = null;
   if (interactionId) {
     const interacted = await resolverMidiaBibliotecaPorId(
       ctx.userId,
       interactionId,
     );
     if (interacted.erro) return interacted;
-    if (interacted.midia && compativel(interacted.midia)) return interacted;
+    if (interacted.midia && compativel(interacted.midia)) {
+      interactedMedia = interacted.midia;
+    }
   }
 
-  const generatedSince = new Date(Date.now() - 2 * 60 * 60 * 1000)
+  const generatedSince = new Date(nowMs - 2 * 60 * 60 * 1000)
     .toISOString();
   let query = sb
     .from("midias_whatsapp")
@@ -7001,6 +7007,8 @@ async function resolverMidiaParaPublicacao(
       "ia_edicao",
       "ia_composicao",
       "anuncio_produto",
+      "whatsapp",
+      "whatsapp_pietro",
     ])
     .gte("created_at", generatedSince);
   if (referencia === "video") query = query.eq("tipo", "video");
@@ -7011,10 +7019,19 @@ async function resolverMidiaParaPublicacao(
     .maybeSingle();
   if (error) return { midia: null, erro: error.message };
 
-  const selectedGeneratedId = selectPublicationMediaId({
+  const selectedId = selectPublicationMediaId({
+    lastInteraction: interactedMedia
+      ? {
+        ...lastInteraction,
+        media_created_at: interactedMedia.created_at,
+      }
+      : null,
     recentGenerated: generated ?? null,
+    nowMs,
   });
-  return selectedGeneratedId ? { midia: generated } : { midia: null };
+  if (selectedId === interactedMedia?.id) return { midia: interactedMedia };
+  if (selectedId === generated?.id) return { midia: generated };
+  return { midia: null };
 }
 
 async function toolPostarMidiaBiblioteca(

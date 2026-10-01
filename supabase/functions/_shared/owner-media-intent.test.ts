@@ -68,32 +68,70 @@ Deno.test("linha nova vence quando a interação registrada é mais antiga", () 
   );
 });
 
-Deno.test("publicação resolve código, interação e geração recente nessa ordem", () => {
-  const nowMs = Date.parse("2026-10-01T17:00:00.000Z");
-  const recentGenerated = {
-    id: "VIDEO-RECENTE",
-    created_at: "2026-10-01T16:30:00.000Z",
-  };
+Deno.test("código explícito sempre vence a seleção implícita", () => {
   assertEquals(
     selectPublicationMediaId({
       explicitId: "CODIGO",
-      lastInteraction: { media_id: "INTERACAO" },
-      recentGenerated,
-      nowMs,
+      lastInteraction: {
+        media_id: "INTERACAO",
+        at: "2026-10-01T14:00:00.000Z",
+      },
+      recentGenerated: {
+        id: "VIDEO-RECENTE",
+        created_at: "2026-10-01T14:06:00.000Z",
+      },
+      nowMs: Date.parse("2026-10-01T14:10:00.000Z"),
     }),
     "CODIGO",
   );
+});
+
+Deno.test("interação de ontem perde para vídeo gerado hoje", () => {
   assertEquals(
     selectPublicationMediaId({
-      lastInteraction: { media_id: "INTERACAO" },
-      recentGenerated,
-      nowMs,
+      lastInteraction: {
+        media_id: "1bff2265",
+        at: "2026-09-30T11:38:00.000Z",
+        media_created_at: "2026-09-30T11:38:00.000Z",
+      },
+      recentGenerated: {
+        id: "281f39c0",
+        created_at: "2026-10-01T14:06:00.000Z",
+      },
+      nowMs: Date.parse("2026-10-01T14:10:00.000Z"),
     }),
-    "INTERACAO",
+    "281f39c0",
   );
+});
+
+Deno.test("interação de dez minutos vence geração de duas horas", () => {
   assertEquals(
-    selectPublicationMediaId({ recentGenerated, nowMs }),
-    "VIDEO-RECENTE",
+    selectPublicationMediaId({
+      lastInteraction: {
+        media_id: "VIDEO-INTERAGIDO",
+        at: "2026-10-01T14:00:00.000Z",
+        media_created_at: "2026-09-20T10:00:00.000Z",
+      },
+      recentGenerated: {
+        id: "VIDEO-GERADO",
+        created_at: "2026-10-01T12:10:00.000Z",
+      },
+      nowMs: Date.parse("2026-10-01T14:10:00.000Z"),
+    }),
+    "VIDEO-INTERAGIDO",
+  );
+});
+
+Deno.test("interação com mais de 24 horas é ignorada", () => {
+  assertEquals(
+    selectPublicationMediaId({
+      lastInteraction: {
+        media_id: "VIDEO-ANTIGO",
+        at: "2026-09-30T14:09:59.000Z",
+      },
+      nowMs: Date.parse("2026-10-01T14:10:00.000Z"),
+    }),
+    null,
   );
 });
 
@@ -102,9 +140,9 @@ Deno.test("publicação não usa geração com mais de duas horas", () => {
     selectPublicationMediaId({
       recentGenerated: {
         id: "VIDEO-ANTIGO",
-        created_at: "2026-10-01T14:59:59.000Z",
+        created_at: "2026-10-01T12:09:59.000Z",
       },
-      nowMs: Date.parse("2026-10-01T17:00:00.000Z"),
+      nowMs: Date.parse("2026-10-01T14:10:00.000Z"),
     }),
     null,
   );

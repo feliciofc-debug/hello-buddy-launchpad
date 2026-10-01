@@ -12,13 +12,20 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { autorizarWorker, renderCors, respJson } from "../_shared/render-auth.ts";
 import { linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
 import { syncProdutoVideoFromMidia } from "../_shared/sync-produto-video.ts";
+import { rememberDeliveredMediaInteraction } from "../_shared/whatsapp-last-media-interaction.ts";
 
 const MAX_TENTATIVAS = 3;
 
-async function avisarCliente(supabase: any, job: any, message: string, videoUrl?: string) {
-  if (!job.telefone) return;
+async function avisarCliente(
+  supabase: any,
+  job: any,
+  message: string,
+  videoUrl?: string,
+  mediaId?: string,
+): Promise<boolean> {
+  if (!job.telefone) return false;
   try {
-    await supabase.functions.invoke("whatsapp-send-message", {
+    const { error } = await supabase.functions.invoke("whatsapp-send-message", {
       body: {
         user_id: job.user_id,
         to: job.telefone,
@@ -26,8 +33,21 @@ async function avisarCliente(supabase: any, job: any, message: string, videoUrl?
         ...(videoUrl ? { video_url: videoUrl } : {}),
       },
     });
+    if (error) throw error;
+    if (mediaId) {
+      const remembered = await rememberDeliveredMediaInteraction(supabase, {
+        userId: job.user_id,
+        contactNumber: job.telefone,
+        mediaId,
+      });
+      if (!remembered) {
+        console.warn("[video-motion-complete] não atualizou last_media_interaction");
+      }
+    }
+    return true;
   } catch (e) {
     console.error("[video-motion-complete] aviso WhatsApp falhou:", e);
+    return false;
   }
 }
 
@@ -137,6 +157,7 @@ Deno.serve(async (req) => {
           job,
           `🎬 Seu vídeo animado ficou pronto. *Não publiquei em lugar nenhum.*${blocoCodigo}${blocoLegenda}`,
           videoUrl,
+          midiaId || undefined,
         );
       } else {
         const nomes = plataformas
@@ -149,6 +170,7 @@ Deno.serve(async (req) => {
           job,
           `🎬 Vídeo animado pronto. *Ainda não publiquei nada.*${blocoCodigo}${blocoLegenda}\n\nResponda *APROVAR* que eu publico como *${nomeFormato}* no ${nomes}, ou *CANCELAR* e nada vai ao ar.`,
           videoUrl,
+          midiaId || undefined,
         );
       }
       return respJson({
@@ -277,6 +299,7 @@ Deno.serve(async (req) => {
           job,
           `🎬 Seu vídeo animado ficou pronto. *Não publiquei em lugar nenhum.*${blocoCodigo}${blocoLegenda}`,
           videoUrl,
+          midiaId || undefined,
         );
       } else {
         const nomes = plataformas
@@ -291,6 +314,7 @@ Deno.serve(async (req) => {
           job,
           `🎬 Vídeo animado pronto. *Ainda não publiquei nada.*${blocoCodigo}${blocoLegenda}\n\nResponda *APROVAR* que eu publico como *${nomeFormato}* no ${nomes}, ou *CANCELAR* e nada vai ao ar.`,
           videoUrl,
+          midiaId || undefined,
         );
       }
     }
