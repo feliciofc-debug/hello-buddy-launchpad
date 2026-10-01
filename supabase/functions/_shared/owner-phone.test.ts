@@ -5,6 +5,8 @@ import {
   tenantOwnerMatchesPhone,
 } from "./amz-context.ts";
 import {
+  brazilianPhoneKey,
+  brazilianPhoneLookupVariants,
   normalizeOwnerPhone,
   ownerPhonesEquivalent,
 } from "./owner-phone.ts";
@@ -29,6 +31,19 @@ Deno.test("considera equivalentes celulares com e sem o nono dígito", () => {
     ownerPhonesEquivalent("5521967520706", "5511999999999"),
     false,
   );
+});
+
+Deno.test("gera chave e variantes estáveis para bloqueio por telefone", () => {
+  assertEquals(
+    brazilianPhoneKey("+55 (21) 96752-0706"),
+    brazilianPhoneKey("21 6752-0706"),
+  );
+  assertEquals(brazilianPhoneLookupVariants("5521967520706"), [
+    "5521967520706",
+    "21967520706",
+    "552167520706",
+    "2167520706",
+  ]);
 });
 
 Deno.test("tenant sem owner_phone não reconhece nenhum remetente como dono", async () => {

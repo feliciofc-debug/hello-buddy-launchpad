@@ -47,6 +47,17 @@ Deno.test("audiência exige opt-in, respeita recusa e remove duplicados", () => 
   assertEquals(result.ignoredWithoutOptIn, 3);
 });
 
+Deno.test("recusa prevalece entre variantes com e sem nono dígito", () => {
+  const result = filterAuthorizedAudience([
+    { phone: "5521967520706", name: "Contato", optInStatus: "confirmado" },
+    { phone: "552167520706", name: "Contato", optInStatus: "recusado" },
+  ]);
+
+  assertEquals(result.recipients, []);
+  assertEquals(result.duplicates, 1);
+  assertEquals(result.ignoredWithoutOptIn, 1);
+});
+
 Deno.test("seleção só da janela usa apenas o telefone autorizado escolhido", () => {
   const result = filterSelectedAuthorizedAudience([
     {

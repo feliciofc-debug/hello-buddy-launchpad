@@ -37,3 +37,21 @@ export function ownerPhonesEquivalent(a: unknown, b: unknown): boolean {
   const bVariants = new Set(ownerPhoneVariants(b));
   return aVariants.some((phone) => bVariants.has(phone));
 }
+
+export function brazilianPhoneKey(value: unknown): string {
+  const phone = normalizeOwnerPhone(value);
+  if (!phone) return "";
+  const subscriber = phone.slice(4);
+  return subscriber.length === 9 && subscriber.startsWith("9")
+    ? `${phone.slice(0, 4)}${subscriber.slice(1)}`
+    : phone;
+}
+
+export function brazilianPhoneLookupVariants(value: unknown): string[] {
+  const variants = new Set<string>();
+  for (const phone of ownerPhoneVariants(value)) {
+    variants.add(phone);
+    variants.add(phone.slice(2));
+  }
+  return [...variants];
+}

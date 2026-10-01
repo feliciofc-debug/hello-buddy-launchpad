@@ -4,6 +4,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { logOutboundMessage } from "../_shared/cloud-log.ts";
+import { brazilianPhoneKey } from "../_shared/owner-phone.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -164,7 +165,7 @@ Deno.serve(async (req) => {
 
     const blockedPhones = new Set<string>(
       (recusadosRows || [])
-        .map(r => normalizePhone(r.telefone))
+        .map(r => brazilianPhoneKey(r.telefone))
         .filter((p): p is string => !!p)
     );
 
@@ -187,7 +188,7 @@ Deno.serve(async (req) => {
     const filtrados = (elegiveis || [])
       .filter(m => {
         const p = normalizePhone(m.telefone);
-        return p && !blockedPhones.has(p);
+        return p && !blockedPhones.has(brazilianPhoneKey(p));
       })
       .slice(0, cap);
 

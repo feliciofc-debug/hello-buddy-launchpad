@@ -16,9 +16,11 @@ import {
   tenantOwnerMatchesPhone,
 } from "../_shared/amz-context.ts";
 import {
+  brazilianPhoneLookupVariants,
   ownerPhoneVariants,
   ownerPhonesEquivalent,
 } from "../_shared/owner-phone.ts";
+import { isLikelyBusinessAutoReply } from "../_shared/whatsapp-opt-in-gate.ts";
 import {
   buildCarouselPrompt,
   buildProspectDemoCarouselPrompt,
@@ -12778,6 +12780,10 @@ async function processOne(queueId: string) {
     // Se mudar aqui, atualizar o template na Meta na mesma PR.
     // =====================================================================
     try {
+      const phoneLookupVariants = brazilianPhoneLookupVariants(row.from_number);
+      if (!phoneLookupVariants.length && row.from_number) {
+        phoneLookupVariants.push(row.from_number);
+      }
       // O dono normalmente não passa pelo gate (ele conversa como chefe).
       // Exceção: se ELE recebeu um convite (teste/self-onboarding), o gate vale.
       let conviteAbertoParaDono = false;
@@ -12786,7 +12792,7 @@ async function processOne(queueId: string) {
           .from("pj_lista_membros")
           .select("id")
           .eq("user_id", userId)
-          .eq("telefone", row.from_number)
+          .in("telefone", phoneLookupVariants)
           .eq("opt_in_status", "convite_enviado")
           .limit(1);
         conviteAbertoParaDono = !!(cv && cv.length > 0);
@@ -12840,6 +12846,11 @@ async function processOne(queueId: string) {
         const isSimText = SIM_TOKENS.has(normalized) || normalized.startsWith("sim, quero") || normalized.startsWith("sim quero") || normalized.startsWith("quero ver");
         const isSoftNao = NAO_TOKENS_SOFT.has(normalized);
 
+        const { data: membrosDoTelefone } = await sb
+          .from("pj_lista_membros")
+          .select("id, nome, telefone, opt_in_status, convite_enviado_em, convite_template_id")
+          .eq("user_id", userId)
+          .in("telefone", phoneLookupVariants);
 
         // Helper: registra log de auditoria (best-effort)
         const logOptIn = async (
@@ -12870,18 +12881,13 @@ async function processOne(queueId: string) {
         // Independe do status atual do membro (ou de existir membro).
         // Só não redispara se já estiver "recusado".
         if (isStopButton || isStopText) {
-          // Busca QUALQUER registro do membro nesse tenant (para atualizar).
-          const { data: membros } = await sb
-            .from("pj_lista_membros")
-            .select("id, opt_in_status")
-            .eq("user_id", userId)
-            .eq("telefone", row.from_number);
-
-          const jaRecusado = (membros || []).some(m => m.opt_in_status === "recusado");
+          const membros = membrosDoTelefone || [];
+          const jaRecusado = membros.length > 0 &&
+            membros.every(m => m.opt_in_status === "recusado");
           const nowIso = new Date().toISOString();
 
           if (!jaRecusado) {
-            if (membros && membros.length > 0) {
+            if (membros.length > 0) {
               await sb
                 .from("pj_lista_membros")
                 .update({
@@ -12889,8 +12895,7 @@ async function processOne(queueId: string) {
                   opt_in_origem: "stop_universal",
                   opt_in_em: nowIso,
                 })
-                .eq("user_id", userId)
-                .eq("telefone", row.from_number);
+                .in("id", membros.map((m) => m.id));
             } else {
               // Sem membro cadastrado — cria um marcador de recusa para
               // garantir que campanhas futuras respeitem o opt-out.
@@ -12929,12 +12934,8 @@ async function processOne(queueId: string) {
 
         // --- (2) Captura de resposta ao convite ---------------------------
         // Só olha membros com convite enviado.
-        const { data: membrosConvidados } = await sb
-          .from("pj_lista_membros")
-          .select("id, nome, opt_in_status, convite_enviado_em, convite_template_id")
-          .eq("user_id", userId)
-          .eq("telefone", row.from_number)
-          .eq("opt_in_status", "convite_enviado");
+        const membrosConvidados = (membrosDoTelefone || [])
+          .filter((m) => m.opt_in_status === "convite_enviado");
 
         if (membrosConvidados && membrosConvidados.length > 0) {
           const SETE_DIAS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -12963,6 +12964,25 @@ async function processOne(queueId: string) {
           if (dentroJanela.length > 0) {
             const idsDentro = dentroJanela.map(m => m.id);
             const nowIso = new Date().toISOString();
+            const conviteMaisRecente = [...dentroJanela].sort((a, b) =>
+              String(b.convite_enviado_em || "").localeCompare(String(a.convite_enviado_em || ""))
+            )[0];
+
+            if (
+              !isSimButton &&
+              !isSimText &&
+              !isSoftNao &&
+              isLikelyBusinessAutoReply({
+                text: rawText,
+                invitationSentAt: conviteMaisRecente?.convite_enviado_em,
+                receivedAt: row.created_at,
+                buttonId,
+              })
+            ) {
+              console.log(`[opt-in-gate] auto-resposta ignorada tenant=${userId} from=${row.from_number}`);
+              await doneQueue(row.id);
+              return { ok: true, opt_in_gate: "auto_resposta_ignorada" };
+            }
 
             if (isSimButton || isSimText) {
               await sb
@@ -12987,9 +13007,6 @@ async function processOne(queueId: string) {
                 const fallbackBoasVindas = ebookTenant
                   ? "Show! Você está na lista. 🎉 Já vou te mandar seu presente aqui."
                   : "Show! Você está na lista. 🎉 Em breve mandaremos novidades e ofertas selecionadas.";
-                const conviteMaisRecente = [...dentroJanela].sort((a, b) =>
-                  String(b.convite_enviado_em || "").localeCompare(String(a.convite_enviado_em || ""))
-                )[0];
                 let inviteTemplate: {
                   nome_meta?: string | null;
                   tipo_uso?: string | null;
@@ -13059,8 +13076,8 @@ async function processOne(queueId: string) {
             }
 
             if (isSoftNao) {
-              // "não" no convite = recusa suave (não é STOP universal, mas
-              // deve ser respeitada dentro do fluxo de convite).
+              // Recusa é permanente para todas as listas deste tenant.
+              const idsDoTelefone = (membrosDoTelefone || []).map((m) => m.id);
               await sb
                 .from("pj_lista_membros")
                 .update({
@@ -13068,7 +13085,7 @@ async function processOne(queueId: string) {
                   opt_in_origem: "convite_texto_nao",
                   opt_in_em: nowIso,
                 })
-                .in("id", idsDentro);
+                .in("id", idsDoTelefone);
               await logOptIn("recusado", "convite_texto_nao");
               await registrarOfertaEbook(sb, userId, row.from_number, null, "recusado", "convite_texto_nao");
 

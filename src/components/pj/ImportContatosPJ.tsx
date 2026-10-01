@@ -35,6 +35,16 @@ function normalizePhone(val: string): string {
   return val.replace(/[\s\-\(\)\.]/g, '');
 }
 
+function phoneRefusalKey(val: string): string {
+  let digits = String(val || '').replace(/\D/g, '');
+  if (digits.length === 10 || digits.length === 11) digits = `55${digits}`;
+  if (!digits.startsWith('55') || (digits.length !== 12 && digits.length !== 13)) return digits;
+  const subscriber = digits.slice(4);
+  return subscriber.length === 9 && subscriber.startsWith('9')
+    ? `${digits.slice(0, 4)}${subscriber.slice(1)}`
+    : digits;
+}
+
 function parseCSV(text: string): ParseResult {
   const lines = text.trim().split(/\r?\n/);
   if (lines.length === 0) return { contacts: [], ignored: [] };
@@ -233,6 +243,16 @@ export default function ImportContatosPJ() {
         if (grupoError) throw grupoError;
       } else {
         // Salvar como lista de transmissão
+        const { data: refusedRows, error: refusedError } = await supabase
+          .from('pj_lista_membros')
+          .select('telefone')
+          .eq('user_id', user.id)
+          .eq('opt_in_status', 'recusado');
+        if (refusedError) throw refusedError;
+        const refusedPhones = new Set(
+          (refusedRows || []).map((row) => phoneRefusalKey(row.telefone)).filter(Boolean),
+        );
+
         const { data: lista, error: listaError } = await supabase
           .from('pj_listas_categoria')
           .insert({
@@ -251,11 +271,20 @@ export default function ImportContatosPJ() {
 
         const batchSize = 100;
         for (let i = 0; i < contactsToImport.length; i += batchSize) {
-          const batch = contactsToImport.slice(i, i + batchSize).map(c => ({
-            lista_id: lista.id,
-            nome: c.nome ?? null,
-            telefone: c.telefone,
-          }));
+          const batch = contactsToImport.slice(i, i + batchSize).map(c => {
+            const refused = refusedPhones.has(phoneRefusalKey(c.telefone));
+            return {
+              lista_id: lista.id,
+              nome: c.nome ?? null,
+              telefone: c.telefone,
+              ...(refused
+                ? {
+                    opt_in_status: 'recusado',
+                    opt_in_origem: 'import_global_refusal',
+                  }
+                : {}),
+            };
+          });
           const { error } = await supabase.from('pj_lista_membros').insert(batch);
           if (error) throw error;
         }

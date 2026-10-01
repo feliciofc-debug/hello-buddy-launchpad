@@ -8,6 +8,7 @@ import {
   runConservativeCampaignBatch,
   STALE_SENDING_MS,
 } from "../_shared/whatsapp-marketing-campaign.ts";
+import { brazilianPhoneKey } from "../_shared/owner-phone.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -79,8 +80,10 @@ async function stillAuthorized(admin: any, userId: string, phone: string): Promi
   }
   let confirmed = false;
   let refused = false;
+  const requestedPhoneKey = brazilianPhoneKey(phone) || phone;
   for (const member of members) {
-    if (normalizeCampaignPhone(member.telefone) !== phone) continue;
+    const normalized = normalizeCampaignPhone(member.telefone);
+    if (!normalized || (brazilianPhoneKey(normalized) || normalized) !== requestedPhoneKey) continue;
     confirmed ||= member.opt_in_status === "confirmado";
     refused ||= member.opt_in_status === "recusado";
   }

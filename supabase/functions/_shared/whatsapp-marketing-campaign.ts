@@ -1,3 +1,5 @@
+import { brazilianPhoneKey } from "./owner-phone.ts";
+
 export const WHATSAPP_SESSION_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const DEFAULT_CAMPAIGN_PACE_MS = 1_200;
 export const MAX_RECIPIENT_ATTEMPTS = 2;
@@ -30,7 +32,13 @@ export function normalizeCampaignPhone(raw: string): string | null {
 }
 
 export function filterAuthorizedAudience(rows: AudienceRow[]): EligibleAudience {
-  const grouped = new Map<string, { name: string | null; confirmed: boolean; refused: boolean; count: number }>();
+  const grouped = new Map<string, {
+    phone: string;
+    name: string | null;
+    confirmed: boolean;
+    refused: boolean;
+    count: number;
+  }>();
   let invalid = 0;
   for (const row of rows) {
     const phone = normalizeCampaignPhone(row.phone);
@@ -38,7 +46,9 @@ export function filterAuthorizedAudience(rows: AudienceRow[]): EligibleAudience 
       invalid++;
       continue;
     }
-    const current = grouped.get(phone) ?? {
+    const phoneKey = brazilianPhoneKey(phone) || phone;
+    const current = grouped.get(phoneKey) ?? {
+      phone,
       name: null,
       confirmed: false,
       refused: false,
@@ -46,20 +56,21 @@ export function filterAuthorizedAudience(rows: AudienceRow[]): EligibleAudience 
     };
     current.count++;
     current.name ||= String(row.name || "").trim() || null;
+    if (phone.length > current.phone.length) current.phone = phone;
     current.confirmed ||= row.optInStatus === "confirmado";
     current.refused ||= row.optInStatus === "recusado";
-    grouped.set(phone, current);
+    grouped.set(phoneKey, current);
   }
   const recipients: EligibleAudience["recipients"] = [];
   let ignoredWithoutOptIn = invalid;
   let duplicates = 0;
-  for (const [phone, entry] of grouped) {
+  for (const entry of grouped.values()) {
     duplicates += Math.max(0, entry.count - 1);
     if (!entry.confirmed || entry.refused) {
       ignoredWithoutOptIn++;
       continue;
     }
-    recipients.push({ phone, name: entry.name });
+    recipients.push({ phone: entry.phone, name: entry.name });
   }
   return { recipients, ignoredWithoutOptIn, duplicates };
 }
@@ -72,7 +83,7 @@ export function filterSelectedAuthorizedAudience(
   for (const raw of selectedPhones) {
     const phone = normalizeCampaignPhone(String(raw ?? ""));
     if (!phone) throw new Error("telefone_selecionado_invalido");
-    selected.add(phone);
+    selected.add(brazilianPhoneKey(phone) || phone);
   }
   if (!selected.size) {
     return { recipients: [], ignoredWithoutOptIn: 0, duplicates: 0 };
@@ -81,6 +92,7 @@ export function filterSelectedAuthorizedAudience(
   const memberPhones = new Set(
     rows
       .map((row) => normalizeCampaignPhone(row.phone))
+      .map((phone) => phone ? (brazilianPhoneKey(phone) || phone) : null)
       .filter((phone): phone is string => Boolean(phone)),
   );
   for (const phone of selected) {
@@ -91,11 +103,13 @@ export function filterSelectedAuthorizedAudience(
 
   const selectedRows = rows.filter((row) => {
     const phone = normalizeCampaignPhone(row.phone);
-    return Boolean(phone && selected.has(phone));
+    return Boolean(phone && selected.has(brazilianPhoneKey(phone) || phone));
   });
   const eligible = filterAuthorizedAudience(selectedRows);
   const eligiblePhones = new Set(
-    eligible.recipients.map((recipient) => recipient.phone),
+    eligible.recipients.map((recipient) =>
+      brazilianPhoneKey(recipient.phone) || recipient.phone
+    ),
   );
   for (const phone of selected) {
     if (!eligiblePhones.has(phone)) {
