@@ -5621,7 +5621,11 @@ async function toolPostarRedesSociais(
     if (!isOwner(ctx)) return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Essa ação é restrita ao responsável da conta. Posso encaminhar o pedido para ele, se quiser." });
     pendingCleanup();
     const pedidoOriginal = String(args?.pedido_original || "");
-    if (publicationMediaReference(pedidoOriginal)) {
+    if (
+      publicationMediaReference(pedidoOriginal) ||
+      extrairIdentificadorMidia(pedidoOriginal) ||
+      String(args?.midia_id || "").trim()
+    ) {
       return await toolPostarMidiaBiblioteca({
         midia_id: args?.midia_id,
         pedido_original: pedidoOriginal,
