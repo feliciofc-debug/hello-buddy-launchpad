@@ -154,10 +154,10 @@ async function baixarLogo(pagina, url) {
  * renderizada — nunca inventadas por IA. O vermelho de muitas redes so
  * existe na logo, nao no CSS.
  */
-async function coresDaLogo(pagina, dataUrl) {
+async function coresDaImagem(pagina, dataUrl, pesoBase, limite = 3) {
   if (!dataUrl) return [];
   try {
-    return await pagina.evaluate(async (src) => {
+    return await pagina.evaluate(async ({ src, pesoBase, limite }) => {
       const img = new Image();
       img.src = src;
       await img.decode().catch(() => {});
@@ -177,15 +177,23 @@ async function coresDaLogo(pagina, dataUrl) {
         const min = Math.min(r, g, b);
         if (max - min < 30) continue; // cinza/branco/preto nao identificam marca
         const q = (v) => Math.round(v / 24) * 24;
-        const hex = "#" + [q(r), q(g), q(b)]
-          .map((v) => Math.min(255, v).toString(16).padStart(2, "0")).join("");
-        acc.set(hex, (acc.get(hex) || 0) + 1);
+        const bucket = [q(r), q(g), q(b)].map((v) => Math.min(255, v)).join(",");
+        const atual = acc.get(bucket) || { quantidade: 0, r: 0, g: 0, b: 0 };
+        atual.quantidade += 1;
+        atual.r += r;
+        atual.g += g;
+        atual.b += b;
+        acc.set(bucket, atual);
       }
       return [...acc.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3)
-        .map(([hex]) => ({ hex, peso: 30 }));
-    }, dataUrl);
+        .sort((a, b) => b[1].quantidade - a[1].quantidade)
+        .slice(0, limite)
+        .map(([, cor]) => ({
+          hex: "#" + [cor.r, cor.g, cor.b]
+            .map((soma) => Math.round(soma / cor.quantidade).toString(16).padStart(2, "0")).join(""),
+          peso: pesoBase + cor.quantidade,
+        }));
+    }, { src: dataUrl, pesoBase, limite });
   } catch {
     return [];
   }
@@ -204,16 +212,23 @@ async function processar(navegador, job) {
     await pagina.waitForTimeout(3500); // deixa o JavaScript montar a tela
     const dados = await pagina.evaluate(LEITOR);
     const captura = await pagina.screenshot({ type: "jpeg", quality: 70 });
+    const capturaDataUrl = `data:image/jpeg;base64,${captura.toString("base64")}`;
     const logoDataUrl = await baixarLogo(pagina, dados.logo_url);
-    const daLogo = await coresDaLogo(pagina, logoDataUrl);
+    // Logo primeiro, depois pixels realmente visíveis da página. As duas
+    // fontes vencem cores meramente declaradas por frameworks.
+    const daLogo = await coresDaImagem(pagina, logoDataUrl, 10_000, 3);
+    const daCaptura = await coresDaImagem(pagina, capturaDataUrl, 500, 5);
 
     await chamar("site-render-complete", {
       job_id: job.id,
       success: true,
       ...dados,
-      cores: [...dados.cores, ...daLogo],
+      // Mantemos as cores da logo separadas. O backend só cai para captura/DOM
+      // quando nenhuma cor de marca utilizável foi extraída da logo.
+      logo_cores: daLogo,
+      cores: [...daCaptura, ...dados.cores],
       logo_data_url: logoDataUrl,
-      captura_data_url: `data:image/jpeg;base64,${captura.toString("base64")}`,
+      captura_data_url: capturaDataUrl,
     });
     console.log("[site] ok", job.url, dados.cores.length, "cores");
   } catch (e) {

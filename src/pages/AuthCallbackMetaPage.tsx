@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
+import { getRuntimeConfig } from '@/config/runtime-config';
+
+const FUNCTIONS_URL = `${getRuntimeConfig().supabaseUrl}/functions/v1`;
 
 const AuthCallbackMetaPage = () => {
   const [message, setMessage] = useState('Processando autenticação...');
@@ -7,7 +10,7 @@ const AuthCallbackMetaPage = () => {
 
   useEffect(() => {
     // Redirecionar para a edge function com os parâmetros da URL
-    const edgeFunctionUrl = `https://jibpvpqgplmahjhswiza.supabase.co/functions/v1/meta-auth-callback${location.search}`;
+    const edgeFunctionUrl = `${FUNCTIONS_URL}/meta-auth-callback${location.search}`;
     window.location.href = edgeFunctionUrl;
   }, [location]);
 

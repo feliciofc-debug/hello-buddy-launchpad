@@ -10,6 +10,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { autorizarWorker, renderCors, respJson } from "../_shared/render-auth.ts";
+import { linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
 
 const MAX_TENTATIVAS = 3;
 
@@ -32,6 +33,45 @@ async function avisarCliente(
   } catch (e) {
     console.error("[video-render-complete] aviso WhatsApp falhou:", e);
   }
+}
+
+async function registrarVideoLegendado(
+  supabase: any,
+  job: any,
+  videoUrl: string,
+  duracao?: number | null,
+): Promise<string> {
+  const { data: existente } = await supabase
+    .from("midias_whatsapp")
+    .select("id")
+    .eq("user_id", job.user_id)
+    .eq("midia_url", videoUrl)
+    .limit(1)
+    .maybeSingle();
+  if (existente?.id) return existente.id;
+
+  const midiaPaiId = typeof job.metadata?.midia_id === "string" ? job.metadata.midia_id : null;
+  const legenda = job.copy_escolhida || job.caption || "Vídeo com legenda queimada";
+  const duracaoNumero = duracao == null ? Number.NaN : Number(duracao);
+  const duracaoInteira = Number.isFinite(duracaoNumero) ? Math.round(duracaoNumero) : null;
+  const { data, error } = await supabase
+    .from("midias_whatsapp")
+    .insert({
+      user_id: job.user_id,
+      origem: "video_legendado",
+      telefone_origem: job.telefone || null,
+      tipo: "video",
+      midia_url: videoUrl,
+      mime_type: "video/mp4",
+      duracao_segundos: duracaoInteira,
+      contexto_original: String(legenda).slice(0, 1500),
+      midia_pai_id: midiaPaiId,
+      status: "pendente",
+    })
+    .select("id")
+    .single();
+  if (error || !data?.id) throw new Error(`não consegui registrar o vídeo legendado em /midias: ${error?.message || "id ausente"}`);
+  return data.id;
 }
 
 Deno.serve(async (req) => {
@@ -118,13 +158,24 @@ Deno.serve(async (req) => {
     // Única mensagem do fluxo que mostra a legenda completa.
     const legenda = job.copy_escolhida || job.caption;
     const blocoLegenda = legenda ? `\n\n*Legenda escolhida:*\n${legenda}` : "";
+    let midiaId: string | null = null;
+    let codigoMidia = "";
+    let bibliotecaErro: string | null = null;
+    try {
+      midiaId = await registrarVideoLegendado(supabase, job, videoUrl, duracao_segundos ?? null);
+      codigoMidia = linhaCodigoMidia(midiaId, "video");
+    } catch (e) {
+      bibliotecaErro = e instanceof Error ? e.message : String(e);
+      console.error("[video-render-complete] registro em /midias falhou; entregando MP4 mesmo assim:", bibliotecaErro);
+    }
+    const blocoCodigo = codigoMidia ? `\n\n${codigoMidia}` : "";
 
     if (!querPublicar) {
       // Modo "só me devolve": manda o MP4 legendado no WhatsApp, sem publicar nada.
       await avisarCliente(
         supabase,
         job,
-        `🎬 Pronto! Legenda queimada na tela. *Não publiquei em lugar nenhum.*${blocoLegenda}`,
+        `🎬 Pronto! Legenda queimada na tela. *Não publiquei em lugar nenhum.*${blocoCodigo}${blocoLegenda}`,
         videoUrl,
       );
     } else {
@@ -136,7 +187,7 @@ Deno.serve(async (req) => {
       await avisarCliente(
         supabase,
         job,
-        `🎬 Vídeo pronto com a legenda na tela. *Ainda não publiquei nada.*${blocoLegenda}\n\nResponda *APROVAR* que eu publico como *${nomeFormato}* no ${nomes}, ou *CANCELAR* e nada vai ao ar.`,
+        `🎬 Vídeo pronto com a legenda na tela. *Ainda não publiquei nada.*${blocoCodigo}${blocoLegenda}\n\nResponda *APROVAR* que eu publico como *${nomeFormato}* no ${nomes}, ou *CANCELAR* e nada vai ao ar.`,
         videoUrl,
       );
     }
@@ -146,6 +197,8 @@ Deno.serve(async (req) => {
       success: true,
       aguardando_aprovacao: querPublicar,
       video_url: videoUrl,
+      midia_id: midiaId,
+      biblioteca_erro: bibliotecaErro,
     });
 
   } catch (e) {

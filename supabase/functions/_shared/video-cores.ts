@@ -113,10 +113,10 @@ const normalizarHex = (bruto: string): string | null => {
 
 const ROTULOS: Array<{ chave: "bg" | "bg2" | "panel" | "line" | "destaque" | "destaqueSoft" | "texto"; re: RegExp }> = [
   { chave: "bg2", re: /\b(?:fundo\s*2|segundo\s+fundo|fundo\s+secund[aá]rio)\b/i },
-  { chave: "destaqueSoft", re: /\b(?:apoio|destaque\s+suave|secund[aá]ria?|cor\s+de\s+apoio)\b/i },
+  { chave: "destaqueSoft", re: /\b(?:destaque\s+suave)\b/i },
   { chave: "destaque", re: /\b(?:destaque|principal|cor\s+principal|realce)\b/i },
   { chave: "panel", re: /\b(?:painel|card|caixa)\b/i },
-  { chave: "line", re: /\b(?:linha|borda|contorno)\b/i },
+  { chave: "line", re: /\b(?:linha|borda|contorno|apoio|secund[aá]ria?|cor\s+de\s+apoio)\b/i },
   { chave: "texto", re: /\b(?:texto|letra|fonte)\b/i },
   { chave: "bg", re: /\b(?:fundo|background)\b/i },
 ];
@@ -219,10 +219,13 @@ export function extrairCoresDoTexto(texto: string): CoresPedidas | null {
 
   // Hex/nome sem rótulo: neutro (branco/preto/cinza) vira fundo, cor viva vira destaque.
   for (const cor of soltos) {
-    const viva = saturacao(cor) >= 0.25 && luminancia(cor) > 0.03 && luminancia(cor) < 0.9;
+    // Tons escuros saturados, como azul-marinho, ainda são cores de marca.
+    const viva = saturacao(cor) >= 0.25 && luminancia(cor) > 0.01 && luminancia(cor) < 0.9;
     if (viva) {
       if (!parcial.destaque) parcial.destaque = cor;
-      else if (!parcial.destaqueSoft) parcial.destaqueSoft = cor;
+      // Uma segunda cor de marca não pode formar o gradiente do destaque:
+      // ela fica restrita a bordas/detalhes e o tom suave é derivado.
+      else if (!parcial.line) parcial.line = cor;
     } else {
       if (!parcial.bg) parcial.bg = cor;
       else if (!parcial.bg2) parcial.bg2 = cor;

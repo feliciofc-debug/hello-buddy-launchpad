@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, ShoppingBag, Loader2, AlertCircle, TrendingUp, Star, Package } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Product {
   itemid: number;
@@ -130,23 +131,17 @@ const ShopeeSearchComponent: React.FC = () => {
         console.log('⚠️ Proxies falharam, tentando Edge Function...');
         
         try {
-          const response = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/buscar-produtos-shopee`,
+          const { data, error: invokeError } = await supabase.functions.invoke(
+            'buscar-produtos-shopee',
             {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-              },
-              body: JSON.stringify({
+              body: {
                 searchTerm: query,
                 limit: 20
-              })
+              }
             }
           );
 
-          if (response.ok) {
-            const data = await response.json();
+          if (!invokeError) {
             console.log('✅ Produtos da Edge Function:', data);
             
             if (data.products && data.products.length > 0) {
@@ -289,24 +284,18 @@ const ShopeeSearchComponent: React.FC = () => {
 
     try {
       // USA A EDGE FUNCTION DO SUPABASE JÁ EXISTENTE
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-shopee-affiliate-link`,
+      const { data, error: invokeError } = await supabase.functions.invoke(
+        'generate-shopee-affiliate-link',
         {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-          },
-          body: JSON.stringify({
+          body: {
             itemid: product.itemid,
             shopid: product.shopid,
             productName: product.name
-          })
+          }
         }
       );
 
-      if (response.ok) {
-        const data = await response.json();
+      if (!invokeError) {
         product.affiliate_link = data.affiliateLink;
         setProducts([...products]);
         toast.success('Link de afiliado gerado!');

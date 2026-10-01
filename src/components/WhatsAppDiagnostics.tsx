@@ -6,6 +6,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { AlertCircle, CheckCircle2, RefreshCw, Send, MessageSquare } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { getRuntimeConfig } from "@/config/runtime-config";
+
+const FUNCTIONS_URL = `${getRuntimeConfig().supabaseUrl}/functions/v1`;
 
 export const WhatsAppDiagnostics = () => {
   const [loading, setLoading] = useState(false);
@@ -217,7 +220,7 @@ export const WhatsAppDiagnostics = () => {
             <li>No painel Wuzapi, vá em <strong>Configuration → Webhook Events</strong></li>
             <li>Configure o <strong>Webhook URL</strong>: 
               <code className="block bg-muted p-1 rounded text-xs mt-1 overflow-x-auto">
-                https://jibpvpqgplmahjhswiza.supabase.co/functions/v1/wuzapi-webhook
+                {FUNCTIONS_URL}/wuzapi-webhook
               </code>
             </li>
             <li>Em <strong>Webhook Events</strong>, selecione apenas: <strong>Message</strong></li>
