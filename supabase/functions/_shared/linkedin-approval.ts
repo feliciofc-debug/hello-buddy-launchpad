@@ -2,6 +2,38 @@ const EMOJI_RE = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\uFE0F]/gu;
 const URL_RE = /https?:\/\/[^\s]+/gi;
 const HASHTAG_RE = /#[\p{L}\p{N}_-]+/gu;
 
+function normalizePublicationRequest(value: unknown): string {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function publicationMediaReference(
+  requestText?: string,
+): "video" | "image" | "any" | null {
+  const request = normalizePublicationRequest(requestText);
+  if (/\b(video|reels?)\b/.test(request)) return "video";
+  if (/\b(foto|imagem|arte|midia)\b/.test(request)) return "image";
+  if (
+    /\b(?:isso|esse|essa|este|esta)\b(?!\s+(?:produto|item|servico|oferta)\b)/
+      .test(request) ||
+    /\b(?:ultima|ultimo)\b/.test(request)
+  ) {
+    return "any";
+  }
+  return null;
+}
+
+export function isExplicitTextOnlyPublication(requestText?: string): boolean {
+  const request = normalizePublicationRequest(requestText);
+  return /\b(?:somente|apenas|so)\s+(?:com\s+)?texto\b/.test(request) ||
+    /\b(?:posta|poste|postar|publica|publique|publicar)\s+(?:um\s+)?texto\b/
+      .test(request);
+}
+
 export function shouldPrepareLinkedInTextOnly(input: {
   requestText?: string;
   mediaId?: string;
@@ -10,13 +42,8 @@ export function shouldPrepareLinkedInTextOnly(input: {
   if (String(input.mediaId || "").trim() || String(input.imageUrl || "").trim()) {
     return false;
   }
-  const request = String(input.requestText || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-  const mentionsMedia =
-    /\b(?:foto|imagem|video|midia|arte|essa|esse|esta|este|ultima|ultimo)\b/.test(request);
-  return !mentionsMedia;
+  return isExplicitTextOnlyPublication(input.requestText) &&
+    publicationMediaReference(input.requestText) === null;
 }
 
 export function sanitizeLinkedInApprovalCopy(value: string): string {

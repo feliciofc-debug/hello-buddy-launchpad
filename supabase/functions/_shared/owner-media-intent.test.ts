@@ -6,6 +6,7 @@ import {
   hasImageGenerationRequest,
   hasSocialPostRequest,
   selectLatestImplicitMediaId,
+  selectPublicationMediaId,
 } from "./owner-media-intent.ts";
 
 const GENERATE_THEN_POST =
@@ -64,6 +65,48 @@ Deno.test("linha nova vence quando a interação registrada é mais antiga", () 
       { media_id: "EA0BEE5B", at: "2026-09-26T11:24:30.000Z" },
     ),
     "40EE08A5",
+  );
+});
+
+Deno.test("publicação resolve código, interação e geração recente nessa ordem", () => {
+  const nowMs = Date.parse("2026-10-01T17:00:00.000Z");
+  const recentGenerated = {
+    id: "VIDEO-RECENTE",
+    created_at: "2026-10-01T16:30:00.000Z",
+  };
+  assertEquals(
+    selectPublicationMediaId({
+      explicitId: "CODIGO",
+      lastInteraction: { media_id: "INTERACAO" },
+      recentGenerated,
+      nowMs,
+    }),
+    "CODIGO",
+  );
+  assertEquals(
+    selectPublicationMediaId({
+      lastInteraction: { media_id: "INTERACAO" },
+      recentGenerated,
+      nowMs,
+    }),
+    "INTERACAO",
+  );
+  assertEquals(
+    selectPublicationMediaId({ recentGenerated, nowMs }),
+    "VIDEO-RECENTE",
+  );
+});
+
+Deno.test("publicação não usa geração com mais de duas horas", () => {
+  assertEquals(
+    selectPublicationMediaId({
+      recentGenerated: {
+        id: "VIDEO-ANTIGO",
+        created_at: "2026-10-01T14:59:59.000Z",
+      },
+      nowMs: Date.parse("2026-10-01T17:00:00.000Z"),
+    }),
+    null,
   );
 });
 

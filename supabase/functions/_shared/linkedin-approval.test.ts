@@ -1,9 +1,15 @@
-import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  assertEquals,
+  assertRejects,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  isExplicitTextOnlyPublication,
   isConfirmedLinkedInPublishResult,
+  publicationMediaReference,
   sanitizeLinkedInApprovalCopy,
   shouldPrepareLinkedInTextOnly,
 } from "./linkedin-approval.ts";
+import { criarPost } from "./linkedin.ts";
 
 Deno.test("copy do LinkedIn remove emoji e posiciona link antes de até três hashtags", () => {
   assertEquals(
@@ -43,12 +49,12 @@ Deno.test("pedido explícito de texto no LinkedIn prepara prévia sem mídia", (
   );
 });
 
-Deno.test("pedido de post no LinkedIn sem mídia prepara prévia de texto", () => {
+Deno.test("pedido genérico sem mídia não vira publicação só de texto", () => {
   assertEquals(
     shouldPrepareLinkedInTextOnly({
       requestText: "posta no LinkedIn sobre automação",
     }),
-    true,
+    false,
   );
 });
 
@@ -67,4 +73,60 @@ Deno.test("referência de mídia recebida vence texto puro", () => {
     }),
     false,
   );
+});
+
+Deno.test("distingue referência de mídia de pedido explicitamente textual", () => {
+  assertEquals(publicationMediaReference("publica o vídeo no LinkedIn"), "video");
+  assertEquals(publicationMediaReference("posta isso no LinkedIn"), "any");
+  assertEquals(
+    isExplicitTextOnlyPublication(
+      "publica somente texto no LinkedIn sobre automação",
+    ),
+    true,
+  );
+});
+
+Deno.test("falha no upload de vídeo impede a criação do post textual", async () => {
+  const originalFetch = globalThis.fetch;
+  let postAttempted = false;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "https://cdn.example/video.mp4") {
+      return new Response(new Uint8Array([1, 2, 3]));
+    }
+    if (url.endsWith("/rest/videos?action=initializeUpload")) {
+      return Response.json({
+        value: {
+          video: "urn:li:video:123",
+          uploadInstructions: [{
+            firstByte: 0,
+            lastByte: 2,
+            uploadUrl: "https://upload.example/video",
+          }],
+        },
+      });
+    }
+    if (url === "https://upload.example/video" && init?.method === "PUT") {
+      return new Response("upload failed", { status: 500 });
+    }
+    if (url.endsWith("/rest/posts")) postAttempted = true;
+    return new Response("unexpected request", { status: 500 });
+  }) as typeof fetch;
+
+  try {
+    await assertRejects(
+      () =>
+        criarPost({
+          accessToken: "token",
+          authorUrn: "urn:li:person:123",
+          texto: "Copy",
+          videoUrl: "https://cdn.example/video.mp4",
+        }),
+      Error,
+      "Upload de vídeo falhou",
+    );
+    assertEquals(postAttempted, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

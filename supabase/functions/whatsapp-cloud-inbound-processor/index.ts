@@ -152,6 +152,7 @@ import {
   hasImageGenerationRequest,
   hasSocialPostRequest,
   selectLatestImplicitMediaId,
+  selectPublicationMediaId,
 } from "../_shared/owner-media-intent.ts";
 import {
   classifyPendingBrandReply,
@@ -186,6 +187,7 @@ import {
 } from "../_shared/social-networks.ts";
 import {
   isConfirmedLinkedInPublishResult,
+  publicationMediaReference,
   sanitizeLinkedInApprovalCopy,
   shouldPrepareLinkedInTextOnly,
 } from "../_shared/linkedin-approval.ts";
@@ -4526,6 +4528,16 @@ async function publicarEmRede(
       return { rede, ok: res.ok && j?.success !== false, status: res.status, resposta: j };
     }
     if (rede === "linkedin") {
+      if (isVideo && !String(mediaUrl || "").trim()) {
+        return {
+          rede,
+          ok: false,
+          status: 0,
+          resposta: {
+            error: "Upload do vídeo não pôde ser iniciado porque o arquivo está ausente. O texto não foi publicado sozinho.",
+          },
+        };
+      }
       const body: Record<string, unknown> = {
         user_id: userId,
         queue_id: queueRowId,
@@ -5525,8 +5537,25 @@ async function toolPrepararLinkedin(
     imageUrl: args?.image_url,
   });
   if (!textOnly) {
+    const resolved = await resolverMidiaParaPublicacao({
+      midiaId: args?.midia_id,
+      pedidoOriginal: original,
+    }, ctx);
+    if (resolved.erro) {
+      return JSON.stringify({
+        erro: "consulta_midia_conversa_falhou",
+        mensagem: `Não consegui consultar as mídias desta conversa agora: ${resolved.erro}. Não publiquei nada.`,
+      });
+    }
+    if (!resolved.midia?.id) {
+      return JSON.stringify({
+        erro: "midia_nao_encontrada",
+        mensagem: "Qual mídia você quer publicar? Me mande o código (ID da mídia) ou diga 'o último vídeo'.",
+      });
+    }
     return await toolPostarMidiaBiblioteca({
-      midia_id: args?.midia_id,
+      midia_id: resolved.midia.id,
+      pedido_original: original,
       legenda: args?.texto,
       briefing: args?.texto,
       link: args?.link,
@@ -5585,12 +5614,24 @@ async function toolPrepararLinkedin(
 }
 
 async function toolPostarRedesSociais(
-  args: { produto: string; tom?: string; redes?: string[]; incluir_cta_whatsapp?: boolean },
-  ctx: { userId: string; fromNumber: string },
+  args: { produto: string; tom?: string; redes?: string[]; incluir_cta_whatsapp?: boolean; midia_id?: string; pedido_original?: string },
+  ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
 ): Promise<string> {
   try {
     if (!isOwner(ctx)) return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Essa ação é restrita ao responsável da conta. Posso encaminhar o pedido para ele, se quiser." });
     pendingCleanup();
+    const pedidoOriginal = String(args?.pedido_original || "");
+    if (publicationMediaReference(pedidoOriginal)) {
+      return await toolPostarMidiaBiblioteca({
+        midia_id: args?.midia_id,
+        pedido_original: pedidoOriginal,
+        legenda: args?.produto,
+        briefing: args?.produto,
+        tom: args?.tom,
+        redes: args?.redes,
+        incluir_cta_whatsapp: args?.incluir_cta_whatsapp,
+      }, ctx);
+    }
     const q = (args?.produto || "").trim();
     if (!q) return JSON.stringify({ erro: "informe qual produto postar" });
 
@@ -5780,6 +5821,17 @@ async function toolConfirmarPostagemRedes(
     if ((claimed?.length ?? 0) !== 1) {
       return JSON.stringify({ erro: "confirmacao_ja_processada", mensagem: "Este preview já foi confirmado ou está sendo publicado. Não enviei de novo." });
     }
+  }
+
+  if (
+    p.redes.includes("linkedin") &&
+    (p.midiaTipo === "video" || p.produto?.midia_tipo === "video") &&
+    !String(p.produto?.imagem_url || "").trim()
+  ) {
+    return JSON.stringify({
+      erro: "video_linkedin_sem_arquivo",
+      mensagem: "Não publiquei no LinkedIn porque o arquivo do vídeo não está disponível. Envie o vídeo novamente ou informe outro ID de mídia.",
+    });
   }
 
   const resultados = await Promise.all(p.redes.map((r) => publicarEmRede(
@@ -6897,47 +6949,112 @@ async function resolverMidiaBibliotecaPorId(
   return { midia: encontradas[0] ?? null };
 }
 
+async function resolverMidiaParaPublicacao(
+  input: { midiaId?: string; pedidoOriginal?: string },
+  ctx: { userId: string; fromNumber: string; agentState?: AgentConvState },
+): Promise<{ midia: any | null; erro?: string }> {
+  const pedidoOriginal = String(input.pedidoOriginal || "");
+  const referencia = publicationMediaReference(pedidoOriginal);
+  const compativel = (midia: any): boolean =>
+    referencia === "video"
+      ? midia?.tipo === "video"
+      : referencia === "image"
+      ? midia?.tipo === "foto"
+      : midia?.tipo === "foto" || midia?.tipo === "video";
+
+  const explicitId = extrairIdentificadorMidia(pedidoOriginal) ||
+    String(input.midiaId || "").trim() ||
+    null;
+  const selectedExplicitId = selectPublicationMediaId({ explicitId });
+  if (selectedExplicitId) {
+    return await resolverMidiaBibliotecaPorId(ctx.userId, selectedExplicitId);
+  }
+
+  const interactionId = selectPublicationMediaId({
+    lastInteraction: ctx.agentState?.last_media_interaction ?? null,
+  });
+  if (interactionId) {
+    const interacted = await resolverMidiaBibliotecaPorId(
+      ctx.userId,
+      interactionId,
+    );
+    if (interacted.erro) return interacted;
+    if (interacted.midia && compativel(interacted.midia)) return interacted;
+  }
+
+  const generatedSince = new Date(Date.now() - 2 * 60 * 60 * 1000)
+    .toISOString();
+  let query = sb
+    .from("midias_whatsapp")
+    .select("id, tipo, origem, midia_pai_id, midia_url, contexto_original, contexto_transcricao, legenda_gerada, tags_ia, telefone_origem, created_at")
+    .eq("user_id", ctx.userId)
+    .eq("telefone_origem", ctx.fromNumber)
+    .in("tipo", ["foto", "video"])
+    .in("origem", [
+      "ia_video_motion",
+      "video_legendado",
+      "ia_whatsapp",
+      "ia_edicao",
+      "ia_composicao",
+      "anuncio_produto",
+    ])
+    .gte("created_at", generatedSince);
+  if (referencia === "video") query = query.eq("tipo", "video");
+  if (referencia === "image") query = query.eq("tipo", "foto");
+  const { data: generated, error } = await query
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) return { midia: null, erro: error.message };
+
+  const selectedGeneratedId = selectPublicationMediaId({
+    recentGenerated: generated ?? null,
+  });
+  return selectedGeneratedId ? { midia: generated } : { midia: null };
+}
+
 async function toolPostarMidiaBiblioteca(
-  args: { legenda?: string; nome?: string; preco?: number | string; link?: string; tom?: string; redes?: string[]; midia_id?: string; formato?: string; incluir_cta_whatsapp?: boolean; briefing?: string; usar_contexto_conversa?: boolean },
+  args: { legenda?: string; nome?: string; preco?: number | string; link?: string; tom?: string; redes?: string[]; midia_id?: string; formato?: string; incluir_cta_whatsapp?: boolean; briefing?: string; usar_contexto_conversa?: boolean; pedido_original?: string },
   ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
 ): Promise<string> {
   try {
     if (!isOwner(ctx)) return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Essa ação é restrita ao responsável da conta. Posso encaminhar o pedido para ele, se quiser." });
     pendingCleanup();
 
-    let midiaId = String(args?.midia_id || "").trim();
-    if (!midiaId) {
-      const ultima = await buscarUltimaMidiaDaConversa(ctx);
-      if (ultima.erro) {
-        return JSON.stringify({
-          erro: "consulta_midia_conversa_falhou",
-          mensagem: `Não consegui consultar as mídias desta conversa agora: ${ultima.erro}. Não publiquei nada.`,
-        });
-      }
-      if (!ultima.midia?.id) {
-        return JSON.stringify({
-          erro: "midia_conversa_nao_encontrada",
-          mensagem: "Não encontrei nenhuma imagem ou vídeo nesta conversa. Envie ou reenvie a mídia que você quer publicar.",
-        });
-      }
-      midiaId = ultima.midia.id;
-    }
-
-    const resolvida = await resolverMidiaBibliotecaPorId(ctx.userId, midiaId);
+    const pedidoOriginal = String(args?.pedido_original || "");
+    const midiaIdInformado = extrairIdentificadorMidia(pedidoOriginal) ||
+      String(args?.midia_id || "").trim();
+    const resolvida = await resolverMidiaParaPublicacao({
+      midiaId: midiaIdInformado,
+      pedidoOriginal,
+    }, ctx);
     if (resolvida.erro) {
       if (/amb[ií]guo/i.test(resolvida.erro)) {
         return JSON.stringify({
           erro: "midia_id_ambiguo",
-          mensagem: `Encontrei mais de uma mídia com o código ${midiaId.toUpperCase()}. Não publiquei nada. Envie o ID completo da mídia correta.`,
+          mensagem: `Encontrei mais de uma mídia com o código ${midiaIdInformado.toUpperCase()}. Não publiquei nada. Envie o ID completo da mídia correta.`,
         });
       }
-      return JSON.stringify({ erro: resolvida.erro });
+      return JSON.stringify({
+        erro: "consulta_midia_conversa_falhou",
+        mensagem: `Não consegui consultar as mídias desta conversa agora: ${resolvida.erro}. Não publiquei nada.`,
+      });
     }
     const midia = resolvida.midia;
     if (!midia) {
       return JSON.stringify({
         erro: "midia_nao_encontrada",
-        mensagem: `Não encontrei uma foto ou vídeo com o ID ${midiaId.toUpperCase()} nesta conta. Confira o código e envie novamente.`,
+        mensagem: "Qual mídia você quer publicar? Me mande o código (ID da mídia) ou diga 'o último vídeo'.",
+      });
+    }
+    const referencia = publicationMediaReference(pedidoOriginal);
+    if (
+      (referencia === "video" && midia.tipo !== "video") ||
+      (referencia === "image" && midia.tipo !== "foto")
+    ) {
+      return JSON.stringify({
+        erro: "midia_incompativel_com_pedido",
+        mensagem: "Qual mídia você quer publicar? Me mande o código (ID da mídia) ou diga 'o último vídeo'.",
       });
     }
 
@@ -11549,6 +11666,7 @@ async function callGemini(
       if (midiaId) {
         const postResult = await toolPostarMidiaBiblioteca({
           midia_id: midiaId,
+          pedido_original: userContent,
           legenda: briefing || cleanMediaPostLegenda(userContent),
           briefing,
           tom: socialPost.tom,
@@ -11563,6 +11681,7 @@ async function callGemini(
 
       if (pedidoReferenciaMidiaGenerica(userContent, socialPost.produto) || !socialPost.temProduto) {
         const postResult = await toolPostarMidiaBiblioteca({
+          pedido_original: userContent,
           legenda: briefing || cleanMediaPostLegenda(userContent),
           briefing,
           tom: socialPost.tom,
@@ -11576,7 +11695,10 @@ async function callGemini(
         };
       }
 
-      const postResult = await toolPostarRedesSociais(socialPost, toolCtx);
+      const postResult = await toolPostarRedesSociais({
+        ...socialPost,
+        pedido_original: userContent,
+      }, toolCtx);
       return {
         text: formatSocialPostToolResult(postResult),
         interactiveButtons: interactiveButtonsFromSocialResult(postResult),
@@ -11743,13 +11865,17 @@ async function callGemini(
         ) {
           args.site_url = requiredProspectSiteUrl;
         }
-        if (name === "publicar_linkedin") {
+        if (
+          name === "publicar_linkedin" ||
+          name === "postar_redes_sociais" ||
+          name === "postar_midia_biblioteca"
+        ) {
           const originalRequest = typeof userContent === "string" ? userContent : "";
           args.pedido_original = originalRequest;
-          // Código curto/UUID só é atalho quando veio no pedido atual.
-          // Sem código, a própria tool usa buscarUltimaMidiaDaConversa(),
-          // que compara created_at com last_media_interaction corretamente.
-          args.midia_id = extrairIdentificadorMidia(originalRequest) || undefined;
+          const explicitMediaId = extrairIdentificadorMidia(originalRequest);
+          if (explicitMediaId || name === "publicar_linkedin") {
+            args.midia_id = explicitMediaId || undefined;
+          }
         }
         console.log(`[pietro][tool] ${name}`, args);
         if (isCreativeDemoTool(name)) creativeToolRanThisTurn = true;
