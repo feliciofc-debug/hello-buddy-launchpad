@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { appendLinkPost } from '../_shared/link-post.ts'
+import { InstagramContainerTimeoutError, waitForInstagramContainer } from '../_shared/instagram-container.ts'
 
 
 const corsHeaders = {
@@ -96,7 +97,7 @@ serve(async (req) => {
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-    const { platform, video_url, caption, user_id } = await req.json()
+    const { platform, video_url, caption, user_id, creation_id, queue_row_id } = await req.json()
     const sanitizedCaption = await appendLinkPost(supabase, user_id, sanitizePublishText(caption))
 
     if (!video_url) throw new Error('video_url é obrigatório')
@@ -110,18 +111,30 @@ serve(async (req) => {
 
     const result = platform === 'facebook'
       ? await publishFacebookReels(credentials.token, credentials.pageId!, video_url, sanitizedCaption)
-      : await publishInstagramReels(credentials.token, credentials.igId!, video_url, sanitizedCaption)
+      : await publishInstagramReels(credentials.token, credentials.igId!, video_url, sanitizedCaption, creation_id, async (newCreationId) => {
+        if (!queue_row_id) return
+        const { error } = await supabase.from('social_posts_queue').update({
+          instagram_creation_id: newCreationId,
+          instagram_container_status: 'IN_PROGRESS',
+          updated_at: new Date().toISOString(),
+        }).eq('id', queue_row_id).eq('user_id', user_id).eq('platform', 'instagram')
+        if (error) throw new Error(`Não consegui guardar creation_id do Instagram: ${error.message}`)
+      })
 
     return new Response(JSON.stringify({ success: true, ...result }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   } catch (error) {
     console.error('❌ Erro Reels:', error)
+    const timeout = error instanceof InstagramContainerTimeoutError
     return new Response(JSON.stringify({
       success: false,
-      error: error instanceof Error ? error.message : 'Erro desconhecido'
+      error: error instanceof Error ? error.message : 'Erro desconhecido',
+      retryable: timeout,
+      creation_id: timeout ? error.creationId : undefined,
+      container_status: timeout ? error.lastStatus : undefined,
     }), {
-      status: 500,
+      status: timeout ? 202 : 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   }
@@ -222,11 +235,15 @@ async function publishInstagramReels(
   pageToken: string,
   igAccountId: string,
   videoUrl: string,
-  caption: string
+  caption: string,
+  retryCreationId?: string,
+  onContainerCreated?: (creationId: string) => Promise<void>,
 ): Promise<{ post_id: string }> {
   console.log('📹 Publicando Instagram Reels...', { igAccountId })
 
-  const containerResponse = await fetch(
+  let creationId = String(retryCreationId || '').trim()
+  if (!creationId) {
+    const containerResponse = await fetch(
     `https://graph.facebook.com/v25.0/${igAccountId}/media`,
     {
       method: 'POST',
@@ -238,33 +255,19 @@ async function publishInstagramReels(
         access_token: pageToken
       })
     }
-  )
-
-  const containerResult = await containerResponse.json()
-  if (containerResult.error) throw new Error(`IG Reels container: ${containerResult.error.message}`)
-
-  const creationId = containerResult.id
-  let containerReady = false
-  let attempts = 0
-
-  while (!containerReady && attempts < 30) {
-    await new Promise((resolve) => setTimeout(resolve, 3000))
-
-    const statusResponse = await fetch(
-      `https://graph.facebook.com/v25.0/${creationId}?fields=status_code&access_token=${pageToken}`
     )
-    const statusResult = await statusResponse.json()
 
-    if (statusResult.status_code === 'FINISHED') {
-      containerReady = true
-    } else if (statusResult.status_code === 'ERROR') {
-      throw new Error('IG Reels: Erro ao processar vídeo. Verifique formato e tamanho.')
-    }
+    const containerResult = await containerResponse.json()
+    if (containerResult.error) throw new Error(`IG Reels container: ${containerResult.error.message}`)
 
-    attempts++
+    creationId = containerResult.id
+    console.log('✅ Container Instagram Reels criado:', creationId)
+    await onContainerCreated?.(creationId)
+  } else {
+    console.log('♻️ Reutilizando container Instagram Reels:', creationId)
   }
 
-  if (!containerReady) throw new Error('IG Reels: Timeout ao processar vídeo')
+  await waitForInstagramContainer(creationId, pageToken, 'reels')
 
   const publishResponse = await fetch(
     `https://graph.facebook.com/v25.0/${igAccountId}/media_publish`,
