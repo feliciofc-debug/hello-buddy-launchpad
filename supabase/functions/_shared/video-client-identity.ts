@@ -17,6 +17,62 @@ function normalizedBrand(value: unknown): string {
     .replace(/[^a-z0-9]+/g, "");
 }
 
+function normalizedIntent(value: unknown): string {
+  return compact(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+export function isVideoMotionRequest(text: string): boolean {
+  const normalized = normalizedIntent(text);
+  const requestsExistingVideoDelivery =
+    /\b(postar|publicar|posta|publica|agendar|agenda|mandar|manda|enviar|envia)\b/
+      .test(normalized) &&
+    (
+      /\b(?:esse|este)\s+(?:ultimo\s+)?video\b|\b(?:o\s+)?ultimo\s+video\b/
+        .test(normalized) ||
+      /\b(?:id\s+da\s+midia\s*:?\s*)?[a-f0-9]{8}(?:-[a-f0-9-]{27,})?\b/i
+        .test(normalized)
+    );
+  if (requestsExistingVideoDelivery) return false;
+  const requestedCreation =
+    /\b(faz|faca|fazer|cria|criar|crie|monta|monte|gera|gere|produz|produza|quero|preciso)\b/
+      .test(normalized);
+  const requestedMotion =
+    /\b(video|motion|animacao|animacoes|animado|animada|reels? animado)\b/
+      .test(normalized);
+  return requestedCreation && requestedMotion;
+}
+
+export function shouldStartVideoSetup(text: string): boolean {
+  if (isVideoMotionRequest(text)) return true;
+  const normalized = normalizedIntent(text);
+  const sceneCount = normalized.match(/\bcena\s*\d+\b/g)?.length ?? 0;
+  const isVideoScript = /\broteiros?\b/.test(normalized) &&
+    /\b(video|motion|animad[oa]s?|cenas?)\b/.test(normalized);
+  return isVideoScript || sceneCount >= 2;
+}
+
+export function hasUsableVideoTopic(topic: string): boolean {
+  const normalized = normalizedIntent(topic);
+  return normalized.length >= 4 &&
+    !/^(?:(?:video|animado|motion)\s+)*(?:de\s+)?\d{1,3}(?:[,.]\d+)?\s*(?:s|seg(?:undo)?s?|min(?:uto)?s?)$/
+      .test(normalized);
+}
+
+export function clientLogoUploadFollowUp(
+  clientName: string,
+  errorCode: string,
+): string | null {
+  if (errorCode !== "foto_ausente" && errorCode !== "foto_expirada") {
+    return null;
+  }
+  return `Envie a logo do ${
+    compact(clientName)
+  } agora em PNG, JPEG ou WEBP. Assim que receber a imagem, vou cadastrá-la automaticamente. Se preferir desistir, responda *cancelar*.`;
+}
+
 function cleanVideoClientCandidate(value: string): string | null {
   const name = compact(value)
     .replace(/^(?:a|o|cliente|empresa|marca)\s+/i, "")
@@ -159,9 +215,21 @@ export function canRunClientLogoRegistrationShortcut(input: {
     return false;
   }
   const text = String(input.text ?? "");
+  const compactText = compact(text);
+  const wordCount = compactText ? compactText.split(/\s+/u).length : 0;
+  const lineCount = text.split(/\r?\n/u).filter((line) => line.trim()).length;
+  const normalizedText = normalizedIntent(compactText);
+  if (
+    wordCount > 25 ||
+    lineCount > 1 ||
+    /\b(?:videos?|motion|animac(?:ao|oes)|animad[oa]s?|roteiros?|cenas?|carrosseis?|posts?|imagens?)\b/u
+      .test(normalizedText)
+  ) {
+    return false;
+  }
   return /\b(?:logo|logomarca|logotipo)\b/i.test(text) &&
-    /\b(?:guard(?:a|ar|e)|salv(?:a|ar|e)|registr(?:a|ar|e)|cadastr(?:a|ar|e)|us(?:a|e|ar)\s+(?:essa|esse|esta|este|isso)|esse\s+(?:e|é)|essa\s+(?:e|é)|isto\s+(?:e|é)|usar\s+(?:nos?|em)\s+(?:videos?|vídeos?|posts?))\b/i
+    /\b(?:guard(?:a|ar|e)|salv(?:a|ar|e)|registr(?:a|ar|e)|cadastr(?:a|ar|e)|us(?:a|e|ar)\s+(?:essa|esse|esta|este|isso)|esse\s+e|essa\s+e|isto\s+e|usar\s+(?:nos?|em)\s+(?:videos?|posts?))\b/i
       .test(
-        text,
+        normalizedText,
       );
 }

@@ -1,10 +1,14 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   canRunClientLogoRegistrationShortcut,
+  clientLogoUploadFollowUp,
   extractVideoClientName,
+  hasUsableVideoTopic,
   isSameVideoBrandName,
+  isVideoMotionRequest,
   resolveAutomaticVideoSiteIdentity,
   selectVideoClientLogo,
+  shouldStartVideoSetup,
 } from "./video-client-identity.ts";
 
 Deno.test("extrai o cliente em pedidos reais sem confundir duração, assunto ou formato", () => {
@@ -127,5 +131,103 @@ Deno.test("atalho de cadastro não captura fluxo de vídeo nem respostas interat
       hasPendingVideoSetup: false,
     }),
     true,
+  );
+  assertEquals(
+    canRunClientLogoRegistrationShortcut({
+      text: "salva essa logo do cliente Pimenta",
+      hasPendingVideoSetup: false,
+    }),
+    true,
+  );
+  assertEquals(
+    canRunClientLogoRegistrationShortcut({
+      text: "essa é a logo da Ademicon",
+      hasPendingVideoSetup: false,
+    }),
+    true,
+  );
+});
+
+Deno.test("atalho de cadastro não captura roteiro longo que menciona logo", () => {
+  const roteiro = `ROTEIRO — VÍDEO ANIMADO COMEXIA
+Cena 1 (0–5s): fundo escuro com o texto "Sua importação começa aqui".
+Cena 2 (5–10s): mostrar o fluxo da plataforma e destacar agilidade.
+Cena 3 (10–15s): entrar com a logo da comexia e encerrar com uma chamada para ação.`;
+
+  assertEquals(
+    canRunClientLogoRegistrationShortcut({
+      text: roteiro,
+      hasPendingVideoSetup: false,
+    }),
+    false,
+  );
+  assertEquals(isVideoMotionRequest(roteiro), false);
+  assertEquals(shouldStartVideoSetup(roteiro), true);
+});
+
+Deno.test("atalho de cadastro ignora pedidos curtos de criação", () => {
+  for (
+    const text of [
+      "Crie um vídeo usando a logo da Comexia",
+      "Monte um carrossel com a logo da Comexia",
+      "Faça uma imagem com a logo da Comexia",
+    ]
+  ) {
+    assertEquals(
+      canRunClientLogoRegistrationShortcut({
+        text,
+        hasPendingVideoSetup: false,
+      }),
+      false,
+    );
+  }
+  assertEquals(
+    isVideoMotionRequest("Criar um vídeo animado de 45 segundos"),
+    true,
+  );
+  assertEquals(hasUsableVideoTopic("de 45 segundos"), false);
+  assertEquals(hasUsableVideoTopic("animado de 45 segundos"), false);
+  assertEquals(
+    hasUsableVideoTopic("campanha da Comexia com o roteiro enviado"),
+    true,
+  );
+});
+
+Deno.test("roteiro sem contexto de vídeo não abre setup", () => {
+  assertEquals(
+    shouldStartVideoSetup("cria um roteiro de atendimento"),
+    false,
+  );
+});
+
+Deno.test("publicação de vídeo existente não abre criação de vídeo", () => {
+  for (
+    const text of [
+      "quero postar esse vídeo no instagram",
+      "publica o último vídeo",
+      "quero agendar o vídeo ID da mídia: A1B2C3D4",
+    ]
+  ) {
+    assertEquals(isVideoMotionRequest(text), false);
+    assertEquals(shouldStartVideoSetup(text), false);
+  }
+  assertEquals(
+    shouldStartVideoSetup("cria um vídeo e posta no instagram"),
+    true,
+  );
+});
+
+Deno.test("pedido de vídeo de não-dono continua identificável para orientação", () => {
+  assertEquals(isVideoMotionRequest("faz um vídeo pra mim"), true);
+});
+
+Deno.test("cadastro de logo sem foto oferece continuação clara", () => {
+  assertEquals(
+    clientLogoUploadFollowUp("Pimenta", "foto_ausente"),
+    "Envie a logo do Pimenta agora em PNG, JPEG ou WEBP. Assim que receber a imagem, vou cadastrá-la automaticamente. Se preferir desistir, responda *cancelar*.",
+  );
+  assertEquals(
+    clientLogoUploadFollowUp("Pimenta", "persistencia_falhou"),
+    null,
   );
 });
