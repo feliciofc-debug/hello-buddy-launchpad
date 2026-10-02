@@ -27,6 +27,8 @@ const SettingsPage = () => {
   const [metaAdsConnection, setMetaAdsConnection] = useState<any>(null);
   const [loadingMetaAds, setLoadingMetaAds] = useState(true);
   const [savingMetaAdsAccount, setSavingMetaAdsAccount] = useState(false);
+  const [metaAdsMonthlyLimit, setMetaAdsMonthlyLimit] = useState('200');
+  const [savingMetaAdsLimit, setSavingMetaAdsLimit] = useState(false);
   const [disconnectingMetaAds, setDisconnectingMetaAds] = useState(false);
   const [tiktokConnection, setTiktokConnection] = useState<any>(null);
   const [loadingTiktok, setLoadingTiktok] = useState(true);
@@ -114,12 +116,15 @@ const SettingsPage = () => {
       if (!user) return;
       const { data } = await supabase
         .from('integrations')
-        .select('id, ad_account_id, ad_account_name, ad_account_currency, ad_accounts, token_expires_at, is_active')
+        .select('id, ad_account_id, ad_account_name, ad_account_currency, ad_accounts, token_expires_at, is_active, limite_mensal_anuncios')
         .eq('user_id', user.id)
         .eq('platform', 'meta_ads')
         .eq('is_active', true)
         .maybeSingle();
       setMetaAdsConnection(data);
+      if (data?.limite_mensal_anuncios != null) {
+        setMetaAdsMonthlyLimit(String(data.limite_mensal_anuncios));
+      }
     } finally {
       setLoadingMetaAds(false);
     }
@@ -271,6 +276,37 @@ const SettingsPage = () => {
       toast.error('Erro ao desconectar. Tente novamente.');
     } finally {
       setDisconnectingMetaAds(false);
+    }
+  };
+
+  const handleSaveMetaAdsLimit = async () => {
+    const limit = Number(metaAdsMonthlyLimit);
+    if (!Number.isFinite(limit) || limit <= 0) {
+      toast.error('Informe um limite mensal maior que zero.');
+      return;
+    }
+    setSavingMetaAdsLimit(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { error } = await supabase
+        .from('integrations')
+        .update({
+          limite_mensal_anuncios: limit,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', user.id)
+        .eq('platform', 'meta_ads');
+      if (error) throw error;
+      setMetaAdsConnection({
+        ...metaAdsConnection,
+        limite_mensal_anuncios: limit,
+      });
+      toast.success('Limite mensal de anúncios salvo.');
+    } catch {
+      toast.error('Não foi possível salvar o limite mensal.');
+    } finally {
+      setSavingMetaAdsLimit(false);
     }
   };
 
@@ -469,6 +505,37 @@ const SettingsPage = () => {
                       Selecione a conta que o Jarvis deve consultar.
                     </p>
                   )}
+
+                  <div className="max-w-sm space-y-2">
+                    <label
+                      htmlFor="meta-ads-monthly-limit"
+                      className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      Limite mensal para anúncios (R$)
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        id="meta-ads-monthly-limit"
+                        type="number"
+                        min="1"
+                        step="0.01"
+                        value={metaAdsMonthlyLimit}
+                        onChange={(event) => setMetaAdsMonthlyLimit(event.target.value)}
+                        className="min-w-0 flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSaveMetaAdsLimit}
+                        disabled={savingMetaAdsLimit}
+                        className="rounded bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {savingMetaAdsLimit ? 'Salvando...' : 'Salvar'}
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Novas campanhas não poderão ultrapassar este teto no mês.
+                    </p>
+                  </div>
 
                   <div className="flex gap-3 pt-2">
                     <button

@@ -308,3 +308,18 @@ verify_jwt = false
 
 [functions.site-identidade-status]
 verify_jwt = false
+
+[functions.meta-ads-targeting-search]
+verify_jwt = true
+
+[functions.meta-ads-draft]
+verify_jwt = true
+
+[functions.meta-ads-preview]
+verify_jwt = true
+
+[functions.meta-ads-publish]
+verify_jwt = true
+
+[functions.meta-ads-campaign-action]
+verify_jwt = true

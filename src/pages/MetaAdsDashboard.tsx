@@ -3,12 +3,17 @@ import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
   BarChart3,
+  Check,
   DollarSign,
   Eye,
+  ExternalLink,
+  Image as ImageIcon,
   Loader2,
   MessageCircle,
   MousePointerClick,
+  Plus,
   RefreshCw,
+  Search,
   Settings,
   TrendingUp,
   Users,
@@ -27,6 +32,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
 
 type Period = "hoje" | "ontem" | "7_dias" | "30_dias" | "este_mes";
 
@@ -76,6 +85,89 @@ type DashboardError = {
   message: string;
 };
 
+type MediaItem = {
+  id: string;
+  midia_url: string;
+  thumbnail_url: string | null;
+  arquivo_nome: string | null;
+  legenda_gerada: string | null;
+  contexto_original: string | null;
+  tipo: string;
+  created_at: string;
+};
+
+type TargetingOption = {
+  id: string;
+  name: string;
+  key?: string;
+};
+
+type CampaignDraft = {
+  id: string;
+  title: string;
+  text: string;
+  preview?: Record<string, unknown>;
+};
+
+type OfficialPreview = {
+  placement: string;
+  format: string;
+  body: string;
+};
+
+type CampaignObjective = "whatsapp" | "site";
+type Gender = "all" | "male" | "female";
+type SpecialCategory =
+  | ""
+  | "CREDIT"
+  | "EMPLOYMENT"
+  | "HOUSING"
+  | "ISSUES_ELECTIONS_POLITICS"
+  | "FINANCIAL_PRODUCTS_SERVICES";
+
+type CampaignActionError = {
+  code: string;
+  message: string;
+  billingUrl?: string;
+};
+
+const STEPS = ["Objetivo", "Público", "Orçamento", "Criativo e revisão"];
+
+const ERROR_MESSAGES: Record<string, string> = {
+  not_connected: "Conecte sua conta de anúncios antes de continuar.",
+  meta_ads_not_ready: "Selecione uma conta de anúncios nas configurações.",
+  facebook_page_not_ready: "Conecte uma Página do Facebook antes de continuar.",
+  whatsapp_not_ready: "Seu WhatsApp ainda não está pronto para receber anúncios.",
+  funding_source_required: "Adicione uma forma de pagamento à conta de anúncios.",
+  monthly_cap_exceeded: "Esta campanha ultrapassa seu limite mensal de anúncios.",
+  token_expired: "Sua conexão com o Meta expirou. Reconecte a conta.",
+  explicit_confirmation_required: "Confirme a publicação para continuar.",
+  ad_account_not_active: "Sua conta de anúncios não está ativa.",
+  invalid_draft: "Revise os campos da campanha.",
+};
+
+async function getCampaignError(
+  invokeError: unknown,
+  response: Record<string, unknown> | null,
+  fallback: string,
+): Promise<CampaignActionError> {
+  let payload = response;
+  const context = (invokeError as { context?: Response } | null)?.context;
+  if (context instanceof Response) {
+    try {
+      payload = await context.clone().json() as Record<string, unknown>;
+    } catch {
+      // Keep the response body already returned by the client.
+    }
+  }
+  const code = String(payload?.error ?? payload?.code ?? "request_failed");
+  return {
+    code,
+    message: String(payload?.message ?? ERROR_MESSAGES[code] ?? fallback),
+    billingUrl: typeof payload?.billing_url === "string" ? payload.billing_url : undefined,
+  };
+}
+
 const PERIODS: Array<{ value: Period; label: string }> = [
   { value: "hoje", label: "Hoje" },
   { value: "ontem", label: "Ontem" },
@@ -114,6 +206,224 @@ export default function MetaAdsDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<DashboardError | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showWizard, setShowWizard] = useState(false);
+  const [step, setStep] = useState(0);
+  const [objective, setObjective] = useState<CampaignObjective>("whatsapp");
+  const [destinationUrl, setDestinationUrl] = useState("");
+  const [whatsappMessage, setWhatsappMessage] = useState(
+    "Olá! Vi seu anúncio e gostaria de saber mais.",
+  );
+  const [radiusKm, setRadiusKm] = useState("25");
+  const [ageMin, setAgeMin] = useState("18");
+  const [ageMax, setAgeMax] = useState("65");
+  const [gender, setGender] = useState<Gender>("all");
+  const [specialCategory, setSpecialCategory] = useState<SpecialCategory>("");
+  const [media, setMedia] = useState<MediaItem[]>([]);
+  const [mediaLoading, setMediaLoading] = useState(false);
+  const [selectedMediaId, setSelectedMediaId] = useState("");
+  const [cityQuery, setCityQuery] = useState("");
+  const [interestQuery, setInterestQuery] = useState("");
+  const [cities, setCities] = useState<TargetingOption[]>([]);
+  const [interests, setInterests] = useState<TargetingOption[]>([]);
+  const [selectedCity, setSelectedCity] = useState<TargetingOption | null>(null);
+  const [selectedInterests, setSelectedInterests] = useState<TargetingOption[]>([]);
+  const [targetingLoading, setTargetingLoading] = useState<"city" | "interest" | null>(null);
+  const [dailyBudget, setDailyBudget] = useState("20");
+  const [durationDays, setDurationDays] = useState("7");
+  const [draft, setDraft] = useState<CampaignDraft | null>(null);
+  const [officialPreview, setOfficialPreview] = useState<OfficialPreview[] | null>(null);
+  const [wizardLoading, setWizardLoading] = useState<"draft" | "preview" | "publish" | null>(null);
+  const [published, setPublished] = useState(false);
+  const [actionError, setActionError] = useState<CampaignActionError | null>(null);
+
+  const selectedMedia = media.find((item) => item.id === selectedMediaId);
+  const totalBudget = (Number(dailyBudget) || 0) * (Number(durationDays) || 0);
+
+  const openWizard = async () => {
+    setShowWizard(true);
+    if (media.length || mediaLoading) return;
+    setMediaLoading(true);
+    const { data: auth } = await supabase.auth.getUser();
+    if (!auth.user) {
+      toast.error("Entre novamente para criar uma campanha.");
+      setMediaLoading(false);
+      return;
+    }
+    const { data: items, error: mediaError } = await supabase
+      .from("midias_whatsapp")
+      .select("id, midia_url, thumbnail_url, arquivo_nome, legenda_gerada, contexto_original, tipo, created_at")
+      .eq("user_id", auth.user.id)
+      .in("tipo", ["foto", "imagem", "video"])
+      .order("created_at", { ascending: false })
+      .limit(60);
+    if (mediaError) toast.error("Não foi possível carregar suas mídias.");
+    setMedia((items as MediaItem[] | null) ?? []);
+    setMediaLoading(false);
+  };
+
+  const searchTargeting = async (type: "city" | "interest") => {
+    const query = type === "city" ? cityQuery : interestQuery;
+    if (query.trim().length < 2) return;
+    setTargetingLoading(type);
+    try {
+      const { data: response, error: invokeError } = await supabase.functions.invoke(
+        "meta-ads-targeting-search",
+        { body: { type, query: query.trim() } },
+      );
+      if (invokeError) throw invokeError;
+      const options = (response?.data ?? response?.options ?? []) as TargetingOption[];
+      if (type === "city") setCities(options);
+      else setInterests(options);
+    } catch {
+      toast.error("Não foi possível consultar as opções do Meta.");
+    } finally {
+      setTargetingLoading(null);
+    }
+  };
+
+  const campaignPayload = () => ({
+    name: draft?.title || `Campanha ${selectedCity?.name || "Meta Ads"}`,
+    objective,
+    primary_text: draft?.text || selectedMedia?.legenda_gerada ||
+      selectedMedia?.contexto_original || "Conheça esta novidade.",
+    headline: draft?.title || selectedMedia?.arquivo_nome || "Conheça esta novidade",
+    media_id: selectedMediaId,
+    media_url: selectedMedia?.midia_url,
+    media_type: selectedMedia?.tipo === "video" ? "video" : "image",
+    daily_budget: Number(dailyBudget),
+    duration_days: Number(durationDays),
+    cities: selectedCity ? [selectedCity] : [],
+    interests: selectedInterests,
+    destination_url: objective === "site" ? destinationUrl.trim() : undefined,
+    radius_km: Number(radiusKm),
+    age_min: Number(ageMin),
+    age_max: Number(ageMax),
+    gender: gender === "all" ? undefined : gender,
+    whatsapp_message: objective === "whatsapp" ? whatsappMessage.trim() : undefined,
+    special_ad_categories: specialCategory ? [specialCategory] : [],
+  });
+
+  const generateDraft = async () => {
+    if (!selectedMediaId) {
+      toast.error("Selecione uma mídia para o anúncio.");
+      return;
+    }
+    setActionError(null);
+    setWizardLoading("draft");
+    try {
+      const { data: response, error: invokeError } = await supabase.functions.invoke(
+        "meta-ads-draft",
+        { body: { draft: campaignPayload(), generate_copy: true } },
+      );
+      if (invokeError || !response?.ok) {
+        const failure = await getCampaignError(
+          invokeError,
+          response,
+          "Não foi possível gerar o rascunho.",
+        );
+        setActionError(failure);
+        toast.error(failure.message);
+        return;
+      }
+      const result = response.data?.rascunho ?? response.draft ?? response;
+      setDraft({
+        id: response.data?.id ?? response.campaign_id ?? result.id,
+        title: result.headline ?? result.title ?? result.titulo ?? "",
+        text: result.primary_text ?? result.text ?? result.texto ?? "",
+        preview: result.preview,
+      });
+      setOfficialPreview(null);
+      setPublished(false);
+      toast.success(response.copy_generated
+        ? "Texto criado. Você pode editar."
+        : "Rascunho criado. Você pode editar o texto.");
+    } catch (draftError) {
+      toast.error(draftError instanceof Error && draftError.message
+        ? draftError.message
+        : "Não foi possível gerar o rascunho.");
+    } finally {
+      setWizardLoading(null);
+    }
+  };
+
+  const requestPreview = async () => {
+    if (!draft) return;
+    setActionError(null);
+    setWizardLoading("preview");
+    try {
+      const { data: saved, error: saveError } = await supabase.functions.invoke(
+        "meta-ads-draft",
+        { body: { id: draft.id, draft: campaignPayload() } },
+      );
+      if (saveError || !saved?.ok) {
+        const failure = await getCampaignError(
+          saveError,
+          saved,
+          "Não foi possível salvar suas alterações.",
+        );
+        setActionError(failure);
+        toast.error(failure.message);
+        return;
+      }
+      const { data: response, error: invokeError } = await supabase.functions.invoke(
+        "meta-ads-preview",
+        { body: { draft_id: draft.id } },
+      );
+      if (invokeError || !response?.ok) {
+        const failure = await getCampaignError(
+          invokeError,
+          response,
+          "Não foi possível gerar a prévia.",
+        );
+        setActionError(failure);
+        toast.error(failure.message);
+        return;
+      }
+      if (!Array.isArray(response.previews) || !response.previews.length) {
+        throw new Error("O Meta não retornou uma prévia.");
+      }
+      setOfficialPreview(response.previews as OfficialPreview[]);
+      toast.success("Prévia oficial validada pelo Meta.");
+    } catch (previewError) {
+      toast.error(previewError instanceof Error && previewError.message
+        ? previewError.message
+        : "Não foi possível gerar a prévia oficial.");
+    } finally {
+      setWizardLoading(null);
+    }
+  };
+
+  const publishCampaign = async () => {
+    if (!draft || !officialPreview) return;
+    if (!window.confirm(`Publicar esta campanha com limite de ${money(totalBudget)}?`)) return;
+    setActionError(null);
+    setWizardLoading("publish");
+    try {
+      const { data: response, error: invokeError } = await supabase.functions.invoke(
+        "meta-ads-publish",
+        { body: { draft_id: draft.id, confirm_publish: true } },
+      );
+      if (invokeError || !response?.ok) {
+        const failure = await getCampaignError(
+          invokeError,
+          response,
+          "Não foi possível publicar a campanha.",
+        );
+        setActionError(failure);
+        toast.error(failure.message);
+        return;
+      }
+      setPublished(true);
+      toast.success("Campanha publicada.");
+      await load();
+    } catch (publishError) {
+      toast.error(publishError instanceof Error && publishError.message
+        ? publishError.message
+        : "Não foi possível publicar a campanha.");
+    } finally {
+      setWizardLoading(null);
+    }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -226,6 +536,10 @@ export default function MetaAdsDashboard() {
           </div>
 
           <div className="flex items-center gap-2">
+            <Button onClick={openWizard}>
+              <Plus className="w-4 h-4 mr-2" />
+              Criar campanha
+            </Button>
             <select
               value={period}
               onChange={(event) => setPeriod(event.target.value as Period)}
@@ -245,6 +559,488 @@ export default function MetaAdsDashboard() {
             </Button>
           </div>
         </div>
+
+        {showWizard && (
+          <Card>
+            <CardHeader className="space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <CardTitle>Nova campanha</CardTitle>
+                <Button variant="ghost" onClick={() => setShowWizard(false)}>
+                  Fechar
+                </Button>
+              </div>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                {STEPS.map((label, index) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => index <= step && setStep(index)}
+                    className={`rounded-md border px-3 py-2 text-left text-sm ${
+                      index === step
+                        ? "border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-950"
+                        : index < step
+                          ? "border-green-500 text-green-700"
+                          : "text-muted-foreground"
+                    }`}
+                  >
+                    <span className="mr-2 font-semibold">
+                      {index < step ? <Check className="inline h-4 w-4" /> : index + 1}
+                    </span>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {step === 0 && (
+                <div className="space-y-5">
+                  <div className="space-y-3">
+                    <Label htmlFor="campaign-objective">Para onde o anúncio leva?</Label>
+                    <select
+                      id="campaign-objective"
+                      value={objective}
+                      onChange={(event) => {
+                        setObjective(event.target.value as CampaignObjective);
+                        setDraft(null);
+                        setOfficialPreview(null);
+                        setActionError(null);
+                      }}
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="whatsapp">Conversa no WhatsApp</option>
+                      <option value="site">Página do meu site</option>
+                    </select>
+                  </div>
+
+                  {objective === "whatsapp" ? (
+                    <div className="space-y-2">
+                      <Label htmlFor="whatsapp-message">Mensagem pronta do WhatsApp</Label>
+                      <Textarea
+                        id="whatsapp-message"
+                        rows={3}
+                        maxLength={1000}
+                        value={whatsappMessage}
+                        onChange={(event) => setWhatsappMessage(event.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        A pessoa pode editar a mensagem antes de enviar.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Label htmlFor="destination-url">Endereço da página</Label>
+                      <Input
+                        id="destination-url"
+                        type="url"
+                        value={destinationUrl}
+                        onChange={(event) => setDestinationUrl(event.target.value)}
+                        placeholder="https://seusite.com/oferta"
+                      />
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label htmlFor="special-category">Este anúncio é sobre algum tema especial?</Label>
+                    <select
+                      id="special-category"
+                      value={specialCategory}
+                      onChange={(event) => setSpecialCategory(event.target.value as SpecialCategory)}
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="">Não</option>
+                      <option value="CREDIT">Crédito</option>
+                      <option value="EMPLOYMENT">Emprego</option>
+                      <option value="HOUSING">Moradia</option>
+                      <option value="ISSUES_ELECTIONS_POLITICS">Política ou eleições</option>
+                      <option value="FINANCIAL_PRODUCTS_SERVICES">Produtos e serviços financeiros</option>
+                    </select>
+                    <p className="text-xs text-muted-foreground">
+                      Se o anúncio tratar de um desses temas, escolha a opção correta.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {step === 1 && (
+                <div className="grid gap-6 md:grid-cols-2">
+                  <div className="space-y-3">
+                    <Label htmlFor="city-search">Cidade</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="city-search"
+                        value={cityQuery}
+                        onChange={(event) => setCityQuery(event.target.value)}
+                        onKeyDown={(event) => event.key === "Enter" && searchTargeting("city")}
+                        placeholder="Ex.: São Paulo"
+                      />
+                      <Button variant="outline" onClick={() => searchTargeting("city")}>
+                        {targetingLoading === "city"
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : <Search className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                    {selectedCity && (
+                      <Badge variant="secondary">{selectedCity.name}</Badge>
+                    )}
+                    <div className="space-y-1">
+                      {cities.map((city) => (
+                        <button
+                          key={city.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedCity(city);
+                            setCities([]);
+                          }}
+                          className="block w-full rounded border px-3 py-2 text-left text-sm hover:bg-muted"
+                        >
+                          {city.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <Label htmlFor="interest-search">Interesses</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="interest-search"
+                        value={interestQuery}
+                        onChange={(event) => setInterestQuery(event.target.value)}
+                        onKeyDown={(event) => event.key === "Enter" && searchTargeting("interest")}
+                        placeholder="Ex.: marketing digital"
+                      />
+                      <Button variant="outline" onClick={() => searchTargeting("interest")}>
+                        {targetingLoading === "interest"
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : <Search className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedInterests.map((interest) => (
+                        <button
+                          key={interest.id}
+                          type="button"
+                          onClick={() => setSelectedInterests((items) =>
+                            items.filter((item) => item.id !== interest.id))}
+                        >
+                          <Badge variant="secondary">{interest.name} ×</Badge>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="space-y-1">
+                      {interests.map((interest) => (
+                        <button
+                          key={interest.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedInterests((items) =>
+                              items.some((item) => item.id === interest.id)
+                                ? items
+                                : [...items, interest]);
+                            setInterests([]);
+                            setInterestQuery("");
+                          }}
+                          className="block w-full rounded border px-3 py-2 text-left text-sm hover:bg-muted"
+                        >
+                          {interest.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid gap-4 rounded-md border p-4 md:col-span-2 md:grid-cols-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="radius-km">Raio da cidade (km)</Label>
+                      <Input
+                        id="radius-km"
+                        type="number"
+                        min="1"
+                        max="80"
+                        value={radiusKm}
+                        onChange={(event) => setRadiusKm(event.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="age-min">Idade mínima</Label>
+                      <Input
+                        id="age-min"
+                        type="number"
+                        min="18"
+                        max="65"
+                        value={ageMin}
+                        onChange={(event) => setAgeMin(event.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="age-max">Idade máxima</Label>
+                      <Input
+                        id="age-max"
+                        type="number"
+                        min="18"
+                        max="65"
+                        value={ageMax}
+                        onChange={(event) => setAgeMax(event.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="audience-gender">Gênero</Label>
+                      <select
+                        id="audience-gender"
+                        value={gender}
+                        onChange={(event) => setGender(event.target.value as Gender)}
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                      >
+                        <option value="all">Todos</option>
+                        <option value="female">Mulheres</option>
+                        <option value="male">Homens</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {step === 2 && (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="daily-budget">Orçamento diário (R$)</Label>
+                    <Input
+                      id="daily-budget"
+                      type="number"
+                      min="1"
+                      step="0.01"
+                      value={dailyBudget}
+                      onChange={(event) => setDailyBudget(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="duration-days">Duração (dias)</Label>
+                    <Input
+                      id="duration-days"
+                      type="number"
+                      min="1"
+                      max="365"
+                      value={durationDays}
+                      onChange={(event) => setDurationDays(event.target.value)}
+                    />
+                  </div>
+                  <div className="rounded-md bg-muted p-4 md:col-span-2">
+                    <p className="text-sm text-muted-foreground">Gasto máximo desta campanha</p>
+                    <p className="text-2xl font-bold">{money(totalBudget)}</p>
+                  </div>
+                </div>
+              )}
+
+              {step === 3 && (
+                <div className="space-y-6">
+                  <div className="space-y-3">
+                    <Label>Escolha uma mídia recebida no seu WhatsApp</Label>
+                    {mediaLoading ? (
+                      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Carregando mídias...
+                      </p>
+                    ) : media.length ? (
+                      <div className="grid max-h-72 grid-cols-2 gap-3 overflow-y-auto md:grid-cols-4">
+                        {media.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedMediaId(item.id);
+                              setDraft(null);
+                              setOfficialPreview(null);
+                            }}
+                            className={`overflow-hidden rounded-md border-2 text-left ${
+                              selectedMediaId === item.id ? "border-blue-600" : "border-transparent"
+                            }`}
+                          >
+                            {item.tipo === "video" ? (
+                              <video
+                                src={item.midia_url}
+                                poster={item.thumbnail_url ?? undefined}
+                                className="aspect-square w-full object-cover"
+                              />
+                            ) : (
+                              <img
+                                src={item.thumbnail_url || item.midia_url}
+                                alt={item.arquivo_nome || "Mídia do WhatsApp"}
+                                className="aspect-square w-full object-cover"
+                              />
+                            )}
+                            <span className="block truncate p-2 text-xs">
+                              {item.arquivo_nome || item.tipo}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-md border border-dashed p-6 text-center">
+                        <ImageIcon className="mx-auto mb-2 h-6 w-6 text-muted-foreground" />
+                        <p className="text-sm">Nenhuma imagem ou vídeo recebido.</p>
+                        <Button variant="link" onClick={() => navigate("/whatsapp")}>
+                          Abrir WhatsApp
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {!draft ? (
+                    <Button onClick={generateDraft} disabled={!selectedMediaId || !!wizardLoading}>
+                      {wizardLoading === "draft" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Gerar título e texto com IA
+                    </Button>
+                  ) : (
+                    <div className="grid gap-6 md:grid-cols-2">
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="ad-title">Título</Label>
+                          <Input
+                            id="ad-title"
+                            value={draft.title}
+                            onChange={(event) => {
+                              setDraft({ ...draft, title: event.target.value });
+                              setOfficialPreview(null);
+                            }}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="ad-text">Texto principal</Label>
+                          <Textarea
+                            id="ad-text"
+                            rows={6}
+                            value={draft.text}
+                            onChange={(event) => {
+                              setDraft({ ...draft, text: event.target.value });
+                              setOfficialPreview(null);
+                            }}
+                          />
+                        </div>
+                        <Button variant="outline" onClick={generateDraft} disabled={!!wizardLoading}>
+                          Gerar outra sugestão
+                        </Button>
+                      </div>
+                      <div className="space-y-4">
+                        <div className="rounded-lg border bg-background p-4">
+                          {selectedMedia && (
+                            selectedMedia.tipo === "video"
+                              ? <video src={selectedMedia.midia_url} controls className="mb-3 w-full rounded" />
+                              : <img src={selectedMedia.midia_url} alt="" className="mb-3 w-full rounded" />
+                          )}
+                          <p className="font-semibold">{draft.title}</p>
+                          <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{draft.text}</p>
+                        </div>
+                        <Button onClick={requestPreview} disabled={!!wizardLoading}>
+                          {wizardLoading === "preview" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          Gerar prévia oficial
+                        </Button>
+                        {officialPreview && (
+                          <div className="space-y-4">
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              {officialPreview.map((preview) => (
+                                <div key={preview.placement} className="overflow-hidden rounded-md border bg-white">
+                                  <p className="border-b px-3 py-2 text-xs font-medium uppercase text-gray-600">
+                                    {preview.placement}
+                                  </p>
+                                  <iframe
+                                    title={`Prévia oficial — ${preview.placement}`}
+                                    srcDoc={preview.body}
+                                    sandbox="allow-scripts allow-popups"
+                                    className="h-80 w-full"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                            <div className="space-y-3 rounded-md border border-green-500 bg-green-50 p-4 dark:bg-green-950">
+                            <p className="font-medium text-green-800 dark:text-green-200">
+                              <Check className="mr-2 inline h-4 w-4" />
+                              Prévia oficial pronta. Revise e publique explicitamente.
+                            </p>
+                            <Button onClick={publishCampaign} disabled={!!wizardLoading || published}>
+                              {wizardLoading === "publish" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                              {published ? "Campanha publicada" : "Confirmar e publicar"}
+                            </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {actionError && (
+                <div className="space-y-3 rounded-md border border-red-300 bg-red-50 p-4 text-sm dark:border-red-900 dark:bg-red-950">
+                  <p className="font-medium text-red-800 dark:text-red-200">
+                    {actionError.message}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {actionError.billingUrl && (
+                      <Button asChild>
+                        <a href={actionError.billingUrl} target="_blank" rel="noreferrer">
+                          Configurar pagamento
+                          <ExternalLink className="ml-2 h-4 w-4" />
+                        </a>
+                      </Button>
+                    )}
+                    {actionError.code === "whatsapp_not_ready" && (
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setObjective("site");
+                          setActionError(null);
+                          setOfficialPreview(null);
+                          setStep(0);
+                        }}
+                      >
+                        Usar uma página do site
+                      </Button>
+                    )}
+                    {[
+                      "not_connected",
+                      "meta_ads_not_ready",
+                      "facebook_page_not_ready",
+                      "token_expired",
+                    ].includes(actionError.code) && (
+                      <Button variant="outline" onClick={() => navigate("/configuracoes")}>
+                        Abrir configurações
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col-reverse justify-between gap-3 border-t pt-4 sm:flex-row">
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="link" className="px-0" onClick={() => navigate("/planos")}>
+                    Pagamentos <ExternalLink className="ml-1 h-3 w-3" />
+                  </Button>
+                  <Button variant="link" onClick={() => navigate("/configuracoes")}>
+                    Página e conta Meta <ExternalLink className="ml-1 h-3 w-3" />
+                  </Button>
+                  <Button variant="link" onClick={() => navigate("/whatsapp")}>
+                    WhatsApp <ExternalLink className="ml-1 h-3 w-3" />
+                  </Button>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" disabled={step === 0} onClick={() => setStep((value) => value - 1)}>
+                    Voltar
+                  </Button>
+                  {step < STEPS.length - 1 && (
+                    <Button
+                      onClick={() => setStep((value) => value + 1)}
+                      disabled={(step === 0 && objective === "site" &&
+                        !/^https:\/\/.+/i.test(destinationUrl.trim())) ||
+                        (step === 1 && (!selectedCity ||
+                          !(Number(radiusKm) >= 1 && Number(radiusKm) <= 80) ||
+                          !(Number(ageMin) >= 18 && Number(ageMax) <= 65) ||
+                          Number(ageMin) > Number(ageMax))) ||
+                        (step === 2 && (!(Number(dailyBudget) > 0) || !(Number(durationDays) > 0)))}
+                    >
+                      Continuar
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {loading ? (
           <Card>

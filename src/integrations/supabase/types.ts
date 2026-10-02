@@ -3832,6 +3832,7 @@ export type Database = {
           expires_at: string | null
           id: string
           is_active: boolean | null
+          limite_mensal_anuncios: number
           lomadee_affiliate_id: string | null
           lomadee_app_token: string | null
           lomadee_connected_at: string | null
@@ -3855,6 +3856,7 @@ export type Database = {
           expires_at?: string | null
           id?: string
           is_active?: boolean | null
+          limite_mensal_anuncios?: number
           lomadee_affiliate_id?: string | null
           lomadee_app_token?: string | null
           lomadee_connected_at?: string | null
@@ -3878,6 +3880,7 @@ export type Database = {
           expires_at?: string | null
           id?: string
           is_active?: boolean | null
+          limite_mensal_anuncios?: number
           lomadee_affiliate_id?: string | null
           lomadee_app_token?: string | null
           lomadee_connected_at?: string | null
@@ -5362,6 +5365,60 @@ export type Database = {
           strategy?: Json | null
           user_id?: string | null
           wuzapi_response?: Json | null
+        }
+        Relationships: []
+      }
+      meta_ads_campanhas: {
+        Row: {
+          ad_id: string | null
+          adset_id: string | null
+          aprovado_em: string | null
+          atualizado_em: string
+          campaign_id: string | null
+          creative_id: string | null
+          criado_em: string
+          duracao_dias: number
+          erro: string | null
+          gasto_maximo: number
+          id: string
+          orcamento_diario: number
+          rascunho: Json
+          status: string
+          user_id: string
+        }
+        Insert: {
+          ad_id?: string | null
+          adset_id?: string | null
+          aprovado_em?: string | null
+          atualizado_em?: string
+          campaign_id?: string | null
+          creative_id?: string | null
+          criado_em?: string
+          duracao_dias?: number
+          erro?: string | null
+          gasto_maximo?: number
+          id?: string
+          orcamento_diario?: number
+          rascunho?: Json
+          status?: string
+          user_id: string
+        }
+        Update: {
+          ad_id?: string | null
+          adset_id?: string | null
+          aprovado_em?: string | null
+          atualizado_em?: string
+          campaign_id?: string | null
+          creative_id?: string | null
+          criado_em?: string
+          duracao_dias?: number
+          erro?: string | null
+          gasto_maximo?: number
+          id?: string
+          orcamento_diario?: number
+          rascunho?: Json
+          status?: string
+          user_id?: string
         }
         Relationships: []
       }

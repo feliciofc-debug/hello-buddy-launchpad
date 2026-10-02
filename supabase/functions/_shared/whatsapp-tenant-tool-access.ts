@@ -7,6 +7,11 @@ export const AMZ_GLOBAL_TOOL_NAMES = new Set([
 
 export const OWNER_ONLY_TOOL_NAMES = new Set([
   "relatorio_anuncios_meta",
+  "rascunho_anuncio_meta",
+  "publicar_anuncio_meta",
+  "pausar_campanha_meta",
+  "ativar_campanha_meta",
+  "status_campanha_meta",
 ]);
 
 export type TenantToolAccessContext = {

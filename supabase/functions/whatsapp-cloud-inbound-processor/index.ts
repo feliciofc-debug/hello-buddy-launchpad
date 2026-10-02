@@ -135,6 +135,14 @@ import {
   getMetaAdsReport,
   isMetaAdsReportRequest,
 } from "../_shared/meta-ads-report.ts";
+import {
+  calculateMetaAdsMonthlyAvailability,
+  metaAdsMaximumSpend,
+  metaGraphRequest,
+  publishMetaAdsCampaign,
+  publicMetaAdsError,
+  validateMetaAdsDraft,
+} from "../_shared/meta-ads-create.ts";
 import { dedupeConsecutiveReplyText } from "../_shared/reply-dedupe.ts";
 import {
   formatScheduledDate,
@@ -3254,6 +3262,426 @@ async function toolRelatorioAnunciosMeta(
       return data;
     },
   });
+}
+
+type MetaAdsToolContext = {
+  userId: string;
+  fromNumber: string;
+  convId?: string;
+};
+
+type MetaAdsIntegrationRow = {
+  access_token: string;
+  token_expires_at?: string | null;
+  ad_account_id?: string | null;
+  ad_account_name?: string | null;
+  ad_account_currency?: string | null;
+  limite_mensal_anuncios?: number | string | null;
+  is_active?: boolean | null;
+};
+
+const META_ADS_CONNECT_URL = "https://www.amzofertas.com.br/configuracoes";
+const META_ADS_DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+function metaAdsBrl(value: unknown): string {
+  const amount = Number(value);
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(Number.isFinite(amount) ? amount : 0);
+}
+
+async function loadMetaAdsIntegration(
+  userId: string,
+): Promise<MetaAdsIntegrationRow | null> {
+  const { data, error } = await sb
+    .from("integrations")
+    .select("access_token, token_expires_at, ad_account_id, ad_account_name, ad_account_currency, limite_mensal_anuncios, is_active")
+    .eq("user_id", userId)
+    .eq("platform", "meta_ads")
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data as MetaAdsIntegrationRow;
+}
+
+function metaAdsIntegrationProblem(
+  integration: MetaAdsIntegrationRow | null,
+): string | null {
+  if (!integration?.access_token) {
+    return `O Meta Ads ainda não está conectado. Conecte em ${META_ADS_CONNECT_URL}`;
+  }
+  const expiresAt = Date.parse(String(integration.token_expires_at ?? ""));
+  if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) {
+    return `A conexão do Meta Ads venceu. Reconecte em ${META_ADS_CONNECT_URL}`;
+  }
+  if (!integration.ad_account_id) {
+    return `Escolha uma conta de anúncios em ${META_ADS_CONNECT_URL}`;
+  }
+  return null;
+}
+
+async function metaAdsGraph(
+  integration: MetaAdsIntegrationRow,
+  path: string,
+  init?: { method?: "GET" | "POST"; params?: Record<string, string> },
+): Promise<any> {
+  return await metaGraphRequest(path, {
+    accessToken: integration.access_token,
+    method: init?.method,
+    params: init?.params,
+  });
+}
+
+async function loadMetaAdsMonthlyAvailability(
+  integration: MetaAdsIntegrationRow,
+  userId: string,
+): Promise<ReturnType<typeof calculateMetaAdsMonthlyAvailability>> {
+  const { data: platformRows, error } = await sb
+    .from("meta_ads_campanhas")
+    .select("campaign_id,gasto_maximo")
+    .eq("user_id", userId)
+    .in("status", ["publicado", "pausado"])
+    .not("campaign_id", "is", null);
+  if (error) throw new Error("META_REQUEST");
+
+  const accountInsights = await metaAdsGraph(
+    integration,
+    `${integration.ad_account_id}/insights`,
+    {
+      params: {
+        fields: "spend",
+        level: "account",
+        date_preset: "this_month",
+        limit: "1",
+      },
+    },
+  );
+  const actualSpent = Number(accountInsights?.data?.[0]?.spend ?? 0);
+  const activeCampaigns: Array<{
+    maximumSpend: number;
+    lifetimeSpent: number;
+  }> = [];
+  await Promise.all((platformRows ?? []).map(async (platform: any) => {
+    const campaign = await metaAdsGraph(
+      integration,
+      String(platform.campaign_id),
+      { params: { fields: "effective_status" } },
+    );
+    if (campaign?.effective_status !== "ACTIVE") return;
+    const insights = await metaAdsGraph(
+      integration,
+      `${platform.campaign_id}/insights`,
+      {
+        params: {
+          fields: "spend",
+          date_preset: "maximum",
+          limit: "1",
+        },
+      },
+    );
+    activeCampaigns.push({
+      maximumSpend: Number(platform.gasto_maximo ?? 0),
+      lifetimeSpent: Number(insights?.data?.[0]?.spend ?? 0),
+    });
+  }));
+  const now = new Date();
+  const daysInMonth = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth() + 1,
+    0,
+  )).getUTCDate();
+  return calculateMetaAdsMonthlyAvailability({
+    monthlyCap: integration.limite_mensal_anuncios,
+    actualSpent,
+    activeCampaigns,
+    daysRemaining: daysInMonth - now.getUTCDate() + 1,
+  });
+}
+
+function metaAdsSafeError(error: unknown): string {
+  return publicMetaAdsError(error).message;
+}
+
+async function findLatestMetaAdsDraft(ctx: MetaAdsToolContext): Promise<any | null> {
+  let query = sb
+    .from("meta_ads_campanhas")
+    .select("id, user_id, rascunho, status, orcamento_diario, duracao_dias, gasto_maximo, aprovado_em, criado_em")
+    .eq("user_id", ctx.userId)
+    .eq("status", "rascunho")
+    .is("aprovado_em", null)
+    .gte("criado_em", new Date(Date.now() - META_ADS_DRAFT_MAX_AGE_MS).toISOString())
+    .order("criado_em", { ascending: false })
+    .limit(1);
+  if (ctx.convId) query = query.eq("rascunho->>conversation_id", ctx.convId);
+  const { data, error } = await query.maybeSingle();
+  if (error || !data) return null;
+  const draftPhone = String(data.rascunho?.solicitante_telefone ?? "");
+  if (!draftPhone || !ownerPhonesEquivalent(draftPhone, ctx.fromNumber)) return null;
+  return data;
+}
+
+async function toolRascunhoAnuncioMeta(
+  args: Record<string, unknown>,
+  ctx: MetaAdsToolContext,
+): Promise<string> {
+  if (!isOwner(ctx)) return "Essa ferramenta é restrita ao responsável da conta.";
+  const nome = String(args?.nome ?? "").trim();
+  const orcamentoDiario = Number(args?.orcamento_diario);
+  const duracaoDias = Math.trunc(Number(args?.duracao_dias));
+  const validated = validateMetaAdsDraft({
+    name: nome,
+    objective: args?.objective,
+    primary_text: args?.texto_principal,
+    headline: args?.titulo,
+    description: args?.descricao,
+    media_url: args?.midia_url,
+    media_type: args?.tipo_midia,
+    daily_budget: orcamentoDiario,
+    duration_days: duracaoDias,
+    cities: args?.cidades,
+    interests: args?.interesses,
+    destination_url: args?.destination_url,
+    radius_km: args?.radius_km,
+    age_min: args?.age_min,
+    age_max: args?.age_max,
+    gender: args?.gender,
+    whatsapp_message: args?.whatsapp_message,
+    special_ad_categories: args?.special_ad_categories,
+  });
+  if (!validated.ok) {
+    return `O rascunho está incompleto. Revise: ${validated.errors.join(", ")}. Nenhum anúncio foi publicado.`;
+  }
+
+  const integration = await loadMetaAdsIntegration(ctx.userId);
+  const integrationProblem = metaAdsIntegrationProblem(integration);
+  if (integrationProblem || !integration) return integrationProblem!;
+
+  let availability: ReturnType<typeof calculateMetaAdsMonthlyAvailability>;
+  try {
+    availability = await loadMetaAdsMonthlyAvailability(
+      integration,
+      ctx.userId,
+    );
+  } catch (error) {
+    return metaAdsSafeError(error);
+  }
+  const tetoMensal = Number(integration.limite_mensal_anuncios ?? 200);
+  const gastoMaximo = metaAdsMaximumSpend(validated.draft);
+  const rascunho = {
+    ...validated.draft,
+    solicitante_telefone: ctx.fromNumber,
+    conversation_id: ctx.convId ?? null,
+    gasto_mes_no_rascunho: availability.spent,
+    limite_mensal_no_rascunho: tetoMensal,
+  };
+  const { data, error } = await sb
+    .from("meta_ads_campanhas")
+    .insert({
+      user_id: ctx.userId,
+      rascunho,
+      status: "rascunho",
+      orcamento_diario: validated.draft.daily_budget,
+      duracao_dias: validated.draft.duration_days,
+      gasto_maximo: gastoMaximo,
+    })
+    .select("id")
+    .single();
+  if (error || !data) {
+    return "Não consegui salvar o rascunho do anúncio. Nenhum anúncio foi publicado.";
+  }
+  const objectiveSummary = validated.draft.objective === "site"
+    ? `Site (${validated.draft.destination_url})`
+    : "WhatsApp";
+  return [
+    `Rascunho salvo: ${validated.draft.name}`,
+    `Objetivo: ${objectiveSummary}`,
+    `Orçamento: ${metaAdsBrl(validated.draft.daily_budget)}/dia por ${validated.draft.duration_days} dia(s)`,
+    `Gasto neste mês: ${metaAdsBrl(availability.spent)}`,
+    `Teto mensal: ${metaAdsBrl(tetoMensal)}`,
+    `Gasto máximo deste anúncio: ${metaAdsBrl(gastoMaximo)}`,
+    gastoMaximo > availability.available
+      ? "Atenção: este anúncio ultrapassaria o teto mensal e não poderá ser publicado assim."
+      : null,
+    `Código do rascunho: ${data.id}`,
+    "",
+    "Responda SIM para publicar ou me diga o que mudar",
+  ].filter((line): line is string => line !== null).join("\n");
+}
+
+async function toolPublicarAnuncioMeta(
+  args: Record<string, unknown>,
+  ctx: MetaAdsToolContext,
+): Promise<string> {
+  if (!isOwner(ctx)) return "Essa ferramenta é restrita ao responsável da conta.";
+  if (String(args?.confirmacao ?? "").trim().toUpperCase() !== "SIM") {
+    return "Para publicar o último rascunho, responda exatamente SIM.";
+  }
+  const draft = await findLatestMetaAdsDraft(ctx);
+  if (!draft) {
+    return "Não encontrei um rascunho desta conversa aguardando um SIM explícito nas últimas 24 horas.";
+  }
+  if (args?.rascunho_id && String(args.rascunho_id) !== String(draft.id)) {
+    return "Esse SIM não corresponde ao rascunho mais recente desta conversa.";
+  }
+
+  const integration = await loadMetaAdsIntegration(ctx.userId);
+  const integrationProblem = metaAdsIntegrationProblem(integration);
+  if (integrationProblem || !integration) return integrationProblem!;
+  const validated = validateMetaAdsDraft(draft.rascunho);
+  if (!validated.ok) {
+    return `Não publiquei: o rascunho precisa ser corrigido (${validated.errors.join(", ")}).`;
+  }
+
+  let availability: ReturnType<typeof calculateMetaAdsMonthlyAvailability>;
+  try {
+    const account = await metaAdsGraph(
+      integration,
+      integration.ad_account_id!,
+      {
+        params: {
+          fields:
+            "account_status,disable_reason,funding_source_details,is_prepay_account,balance",
+        },
+      },
+    );
+    if (Number(account?.account_status) !== 1) {
+      return "Não publiquei: a conta de anúncios não está ativa.";
+    }
+    if (!account?.funding_source_details) {
+      const accountId = String(integration.ad_account_id).replace(/^act_/, "");
+      return `Não publiquei: configure uma forma de pagamento em https://adsmanager.facebook.com/billing_hub/payment_settings/?asset_id=${accountId}`;
+    }
+    availability = await loadMetaAdsMonthlyAvailability(
+      integration,
+      ctx.userId,
+    );
+  } catch (error) {
+    return metaAdsSafeError(error);
+  }
+  const gastoMaximo = metaAdsMaximumSpend(validated.draft);
+  if (gastoMaximo > availability.available) {
+    return `Não publiquei: o gasto do mês (${metaAdsBrl(availability.spent)}) e a reserva das campanhas ativas (${metaAdsBrl(availability.reservedRemaining)}) deixam ${metaAdsBrl(availability.available)} disponíveis no teto de ${metaAdsBrl(availability.cap)}; este anúncio pode gastar até ${metaAdsBrl(gastoMaximo)}.`;
+  }
+  const [{ data: page }, { data: whatsapp }] = await Promise.all([
+    sb.from("meta_connections").select("page_id,is_active")
+      .eq("user_id", ctx.userId).eq("is_active", true).limit(1).maybeSingle(),
+    sb.from("whatsapp_config")
+      .select("display_phone,phone_number_id,is_active,is_verified")
+      .eq("user_id", ctx.userId).eq("is_active", true).limit(1).maybeSingle(),
+  ]);
+  if (!page?.page_id) {
+    return "Não publiquei: conecte uma Página do Facebook antes de continuar.";
+  }
+  if (
+    validated.draft.objective !== "site" &&
+    (!whatsapp?.display_phone || !whatsapp?.phone_number_id ||
+      whatsapp.is_active !== true)
+  ) {
+    return "Não publiquei: a configuração do WhatsApp da conta está incompleta.";
+  }
+
+  const approvedAt = new Date().toISOString();
+  const { data: claimed, error: claimError } = await sb
+    .from("meta_ads_campanhas")
+    .update({ aprovado_em: approvedAt, atualizado_em: approvedAt })
+    .eq("id", draft.id)
+    .eq("user_id", ctx.userId)
+    .eq("status", "rascunho")
+    .is("aprovado_em", null)
+    .select("id")
+    .maybeSingle();
+  if (claimError || !claimed) {
+    return "Esse rascunho já foi confirmado ou não está mais disponível.";
+  }
+
+  try {
+    const ids = await publishMetaAdsCampaign({
+      accessToken: integration.access_token,
+      adAccountId: integration.ad_account_id!,
+      pageId: page.page_id,
+      whatsappPhoneNumber: whatsapp?.display_phone,
+      draft: validated.draft,
+    });
+    await sb.from("meta_ads_campanhas").update({
+      status: "publicado",
+      ...ids,
+      erro: null,
+      atualizado_em: new Date().toISOString(),
+    }).eq("id", draft.id).eq("user_id", ctx.userId);
+    return `✅ Anúncio publicado. Campanha: ${ids.campaign_id || "criada com sucesso"}.`;
+  } catch (error) {
+    await sb.from("meta_ads_campanhas").update({
+      aprovado_em: null,
+      erro: publicMetaAdsError(error).code,
+      atualizado_em: new Date().toISOString(),
+    }).eq("id", draft.id).eq("user_id", ctx.userId).eq("status", "rascunho");
+    return `${publicMetaAdsError(error).message} O rascunho foi preservado.`;
+  }
+}
+
+async function findMetaAdsCampaign(
+  reference: unknown,
+  ctx: MetaAdsToolContext,
+): Promise<any | null> {
+  let query = sb
+    .from("meta_ads_campanhas")
+    .select("id, campaign_id, rascunho, status, criado_em")
+    .eq("user_id", ctx.userId)
+    .not("campaign_id", "is", null);
+  const value = String(reference ?? "").trim();
+  if (value) {
+    query = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value)
+      ? query.eq("id", value)
+      : query.eq("campaign_id", value);
+  } else {
+    query = query.order("criado_em", { ascending: false }).limit(1);
+  }
+  const { data, error } = await query.maybeSingle();
+  return error ? null : data;
+}
+
+async function toolAlterarStatusCampanhaMeta(
+  status: "ACTIVE" | "PAUSED" | null,
+  args: Record<string, unknown>,
+  ctx: MetaAdsToolContext,
+): Promise<string> {
+  if (!isOwner(ctx)) return "Essa ferramenta é restrita ao responsável da conta.";
+  const campaign = await findMetaAdsCampaign(args?.campanha_id, ctx);
+  if (!campaign?.campaign_id) {
+    return "Não encontrei essa campanha Meta Ads nesta conta.";
+  }
+  const integration = await loadMetaAdsIntegration(ctx.userId);
+  const integrationProblem = metaAdsIntegrationProblem(integration);
+  if (integrationProblem || !integration) return integrationProblem!;
+  try {
+    const result = status
+      ? await metaAdsGraph(integration, campaign.campaign_id, {
+        method: "POST",
+        params: { status },
+      })
+      : await metaAdsGraph(integration, campaign.campaign_id, {
+        params: { fields: "id,name,status,effective_status" },
+      });
+    if (status) {
+      await sb.from("meta_ads_campanhas").update({
+        status: status === "PAUSED" ? "pausado" : "publicado",
+        atualizado_em: new Date().toISOString(),
+      }).eq("id", campaign.id).eq("user_id", ctx.userId);
+      return status === "PAUSED"
+        ? `⏸️ Campanha ${campaign.campaign_id} pausada.`
+        : `▶️ Campanha ${campaign.campaign_id} ativada.`;
+    }
+    return [
+      `Campanha: ${result?.name || campaign.rascunho?.name || campaign.campaign_id}`,
+      `ID: ${campaign.campaign_id}`,
+      `Status configurado: ${result?.status || campaign.status}`,
+      `Status efetivo: ${result?.effective_status || "não informado"}`,
+    ].join("\n");
+  } catch (error) {
+    return metaAdsSafeError(error);
+  }
 }
 
 async function toolMetricasAmz(ctx: { userId: string; fromNumber: string }): Promise<string> {
@@ -9120,6 +9548,155 @@ const TOOLS = [
   {
     type: "function",
     function: {
+      name: "rascunho_anuncio_meta",
+      description: "[SOMENTE DONO] Salva no banco um rascunho de campanha Meta Ads e mostra orçamento, gasto do mês, teto mensal e gasto máximo. Esta chamada NUNCA publica. Use também para aplicar mudanças pedidas a um rascunho.",
+      parameters: {
+        type: "object",
+        properties: {
+          nome: { type: "string", description: "Nome curto da campanha." },
+          objective: {
+            type: "string",
+            enum: ["whatsapp", "site"],
+            description: "Destino da campanha: conversa no WhatsApp ou visita ao site.",
+          },
+          texto_principal: { type: "string", description: "Texto principal do anúncio." },
+          titulo: { type: "string", description: "Título curto do anúncio." },
+          descricao: { type: "string", description: "Descrição complementar opcional." },
+          midia_url: { type: "string", description: "URL HTTPS da imagem ou vídeo aprovado." },
+          tipo_midia: { type: "string", enum: ["image", "video"], description: "Tipo da mídia aprovada." },
+          destination_url: {
+            type: "string",
+            description: "URL HTTPS de destino. Obrigatória quando objective='site'.",
+          },
+          radius_km: {
+            type: "number",
+            minimum: 1,
+            maximum: 80,
+            description: "Raio em quilômetros ao redor de cada cidade. Padrão: 25.",
+          },
+          age_min: {
+            type: "integer",
+            minimum: 18,
+            maximum: 65,
+            description: "Idade mínima. Padrão: 18.",
+          },
+          age_max: {
+            type: "integer",
+            minimum: 18,
+            maximum: 65,
+            description: "Idade máxima. Padrão: 65.",
+          },
+          gender: {
+            type: "string",
+            enum: ["all", "male", "female"],
+            description: "Todos os gêneros, homens ou mulheres. Padrão: all.",
+          },
+          whatsapp_message: {
+            type: "string",
+            description: "Mensagem pré-preenchida ao abrir o WhatsApp. Use apenas no objetivo whatsapp.",
+          },
+          special_ad_categories: {
+            type: "array",
+            description: "Categorias especiais aplicáveis; use [] quando nenhuma se aplicar.",
+            items: {
+              type: "string",
+              enum: [
+                "CREDIT",
+                "EMPLOYMENT",
+                "HOUSING",
+                "ISSUES_ELECTIONS_POLITICS",
+                "FINANCIAL_PRODUCTS_SERVICES",
+              ],
+            },
+          },
+          cidades: {
+            type: "array",
+            description: "Cidades selecionadas no targeting da Meta.",
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "string", description: "ID/key da cidade retornado pela Meta." },
+                name: { type: "string", description: "Nome da cidade." },
+              },
+              required: ["id", "name"],
+            },
+          },
+          interesses: {
+            type: "array",
+            description: "Interesses opcionais selecionados no targeting da Meta.",
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "string", description: "ID do interesse retornado pela Meta." },
+                name: { type: "string", description: "Nome do interesse." },
+              },
+              required: ["id", "name"],
+            },
+          },
+          orcamento_diario: { type: "number", description: "Orçamento diário em reais." },
+          duracao_dias: { type: "integer", minimum: 1, maximum: 365, description: "Duração em dias." },
+        },
+        required: ["nome", "objective", "texto_principal", "titulo", "midia_url", "tipo_midia", "cidades", "orcamento_diario", "duracao_dias"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "publicar_anuncio_meta",
+      description: "[SOMENTE DONO] Publica o rascunho Meta Ads mais recente desta conversa. Só chame quando a mensagem atual do dono for exatamente SIM em resposta ao rascunho; a confirmação expira em 24 horas.",
+      parameters: {
+        type: "object",
+        properties: {
+          confirmacao: { type: "string", enum: ["SIM"], description: "Deve refletir literalmente a mensagem atual do dono." },
+          rascunho_id: { type: "string", description: "Código do rascunho mostrado na prévia." },
+        },
+        required: ["confirmacao"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "pausar_campanha_meta",
+      description: "[SOMENTE DONO] Pausa uma campanha Meta Ads publicada por esta conta.",
+      parameters: {
+        type: "object",
+        properties: {
+          campanha_id: { type: "string", description: "ID Meta ou código interno da campanha. Omita para usar a campanha publicada mais recente." },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "ativar_campanha_meta",
+      description: "[SOMENTE DONO] Reativa uma campanha Meta Ads publicada por esta conta.",
+      parameters: {
+        type: "object",
+        properties: {
+          campanha_id: { type: "string", description: "ID Meta ou código interno da campanha. Omita para usar a campanha publicada mais recente." },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "status_campanha_meta",
+      description: "[SOMENTE DONO] Consulta na Meta o status atual e efetivo de uma campanha desta conta.",
+      parameters: {
+        type: "object",
+        properties: {
+          campanha_id: { type: "string", description: "ID Meta ou código interno da campanha. Omita para usar a campanha publicada mais recente." },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "consultar_metricas_amz",
       description: "[ADMIN — só Felicio] Retorna métricas gerais do negócio AMZ OFERTAS: total de clientes, assinaturas ativas/pausadas, faturamento do mês e de ontem.",
       parameters: { type: "object", properties: {} },
@@ -10757,6 +11334,27 @@ async function runTool(
       result: await toolRelatorioAnunciosMeta(args?.periodo, ctx),
     };
   }
+  if (name === "rascunho_anuncio_meta") {
+    return { result: await toolRascunhoAnuncioMeta(args ?? {}, ctx) };
+  }
+  if (name === "publicar_anuncio_meta") {
+    return { result: await toolPublicarAnuncioMeta(args ?? {}, ctx) };
+  }
+  if (name === "pausar_campanha_meta") {
+    return {
+      result: await toolAlterarStatusCampanhaMeta("PAUSED", args ?? {}, ctx),
+    };
+  }
+  if (name === "ativar_campanha_meta") {
+    return {
+      result: await toolAlterarStatusCampanhaMeta("ACTIVE", args ?? {}, ctx),
+    };
+  }
+  if (name === "status_campanha_meta") {
+    return {
+      result: await toolAlterarStatusCampanhaMeta(null, args ?? {}, ctx),
+    };
+  }
   if (name === "consultar_metricas_amz") return { result: await toolMetricasAmz(ctx) };
   if (name === "listar_inadimplentes_amz") return { result: await toolInadimplentesAmz(ctx) };
   if (name === "status_plataforma_amz") return { result: await toolStatusPlataforma(ctx) };
@@ -11897,10 +12495,19 @@ async function callGemini(
       Boolean(requiredProspectSiteUrl),
     )
     : null;
-  const requiredMetaAdsTool = senderIsOwner
-      && !hasMedia
-      && typeof userContent === "string"
-      && isMetaAdsReportRequest(userContent)
+  const explicitMetaAdsSim = senderIsOwner
+    && !hasMedia
+    && typeof userContent === "string"
+    && userContent.trim().toUpperCase() === "SIM";
+  const pendingMetaAdsDraft = explicitMetaAdsSim
+    ? await findLatestMetaAdsDraft(toolCtx)
+    : null;
+  const requiredMetaAdsTool = pendingMetaAdsDraft
+    ? "publicar_anuncio_meta"
+    : senderIsOwner
+        && !hasMedia
+        && typeof userContent === "string"
+        && isMetaAdsReportRequest(userContent)
     ? "relatorio_anuncios_meta"
     : null;
   const requiredTool = requiredMetaAdsTool || requiredCreativeTool;
@@ -11942,6 +12549,12 @@ async function callGemini(
         const name = tc.function?.name;
         let args: any = {};
         try { args = JSON.parse(tc.function?.arguments ?? "{}"); } catch { /* ignore */ }
+        if (name === "publicar_anuncio_meta") {
+          args.confirmacao = typeof userContent === "string"
+            ? userContent.trim()
+            : "";
+          args.rascunho_id = pendingMetaAdsDraft?.id ?? args.rascunho_id;
+        }
         if (
           name === "gerar_imagem"
           && requiredCreativeTool === "gerar_imagem"
@@ -11980,7 +12593,14 @@ async function callGemini(
           };
         }
         const { result, imageUrl, interactiveButtons } = await runTool(name, args, toolCtx);
-        if (name === "relatorio_anuncios_meta") {
+        if ([
+          "relatorio_anuncios_meta",
+          "rascunho_anuncio_meta",
+          "publicar_anuncio_meta",
+          "pausar_campanha_meta",
+          "ativar_campanha_meta",
+          "status_campanha_meta",
+        ].includes(String(name))) {
           return {
             text: result,
             imageUrl: pendingImageUrl,
