@@ -6,6 +6,7 @@ import {
   buildMetaAdsPayloads,
   calculateMetaAdsMonthlyAvailability,
   checkMetaAdsMonthlyCap,
+  hasExplicitMetaAdsPublishConfirmation,
   generateMetaAdsCopy,
   type MetaAdsDraft,
   metaAdsMaximumSpend,
@@ -80,6 +81,18 @@ Deno.test("valida e normaliza rascunho sem aceitar mídia insegura", () => {
   assert(invalidTargeting.errors.includes("age_range"));
   assert(invalidTargeting.errors.includes("gender"));
   assert(invalidTargeting.errors.includes("special_ad_categories"));
+});
+
+Deno.test("bloqueia publicação sem confirmação explícita", () => {
+  assertEquals(hasExplicitMetaAdsPublishConfirmation({}), false);
+  assertEquals(
+    hasExplicitMetaAdsPublishConfirmation({ confirmed: "true" }),
+    false,
+  );
+  assertEquals(
+    hasExplicitMetaAdsPublishConfirmation({ confirm_publish: true }),
+    true,
+  );
 });
 
 Deno.test("impõe teto mensal incluindo o gasto máximo solicitado", () => {

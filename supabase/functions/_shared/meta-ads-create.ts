@@ -292,6 +292,16 @@ export function metaAdsMaximumSpend(draft: MetaAdsDraft): number {
   return Math.round(draft.daily_budget * draft.duration_days * 100) / 100;
 }
 
+export function hasExplicitMetaAdsPublishConfirmation(
+  value: unknown,
+): boolean {
+  if (!value || typeof value !== "object") return false;
+  const input = value as Record<string, unknown>;
+  return input.confirm_publish === true ||
+    input.confirmed === true ||
+    input.confirm === true;
+}
+
 export function checkMetaAdsMonthlyCap(input: {
   monthlyCap: unknown;
   alreadyCommitted: unknown;

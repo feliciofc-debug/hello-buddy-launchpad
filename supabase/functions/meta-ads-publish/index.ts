@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import {
   calculateMetaAdsMonthlyAvailability,
+  hasExplicitMetaAdsPublishConfirmation,
   metaAdsMaximumSpend,
   metaGraphRequest,
   publicMetaAdsError,
@@ -36,9 +37,9 @@ serve(async (req) => {
   const { data: { user }, error: authError } = await client.auth.getUser();
   if (authError || !user) return json({ error: "unauthorized" }, 401);
   const body = await req.json().catch(() => ({}));
-  const confirmed = body?.confirm_publish === true ||
-    body?.confirmed === true || body?.confirm === true;
-  if (!confirmed) return json({ error: "explicit_confirmation_required" }, 400);
+  if (!hasExplicitMetaAdsPublishConfirmation(body)) {
+    return json({ error: "explicit_confirmation_required" }, 400);
+  }
   const draftId = String(body?.draft_id ?? "");
   if (!draftId) return json({ error: "draft_id_required" }, 400);
 
