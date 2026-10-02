@@ -336,10 +336,13 @@ export function buildMetaAdsPayloads(context: MetaAdsPublishContext) {
   };
   const endTime = new Date(Date.now() + draft.duration_days * 86_400_000)
     .toISOString();
+  const maximumSpend = metaAdsMaximumSpend(draft);
   const campaign = {
     name: draft.name,
     objective: isWhatsapp ? "OUTCOME_ENGAGEMENT" : "OUTCOME_TRAFFIC",
-    spend_cap: Math.round(metaAdsMaximumSpend(draft) * 100),
+    ...(maximumSpend >= 600
+      ? { spend_cap: Math.round(maximumSpend * 100) }
+      : {}),
     special_ad_categories: categories,
     special_ad_category_country: categories.length ? ["BR"] : undefined,
     status: "PAUSED",

@@ -174,7 +174,6 @@ Deno.test("payload usa padrões fixos, pausados e desliga expansões", () => {
     draft,
   });
   assertEquals(payloads.campaign.status, "PAUSED");
-  assertEquals(payloads.campaign.spend_cap, 10_000);
   assertEquals(payloads.adset.status, "PAUSED");
   assertEquals(payloads.ad.status, "PAUSED");
   assertEquals(
@@ -195,6 +194,26 @@ Deno.test("payload usa padrões fixos, pausados e desliga expansões", () => {
     payloads.creative.object_story_spec.link_data?.call_to_action.value.link
       .includes("text=Ol%C3%A1"),
   );
+});
+
+Deno.test("só envia spend_cap para campanhas de pelo menos R$ 600", () => {
+  const context = {
+    accessToken: "secret",
+    adAccountId: "act_1",
+    pageId: "page_1",
+    whatsappPhoneNumber: "+55 11 99999-9999",
+  };
+  const small = buildMetaAdsPayloads({
+    ...context,
+    draft: { ...draft, daily_budget: 10, duration_days: 14 },
+  });
+  assertEquals("spend_cap" in small.campaign, false);
+
+  const large = buildMetaAdsPayloads({
+    ...context,
+    draft: { ...draft, daily_budget: 100, duration_days: 9 },
+  });
+  assertEquals(large.campaign.spend_cap, 90_000);
 });
 
 Deno.test("site usa tráfego, link clicks e destino HTTPS sem WhatsApp", () => {
