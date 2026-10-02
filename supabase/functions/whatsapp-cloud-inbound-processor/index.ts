@@ -141,6 +141,11 @@ import {
   graphRequest,
   redactSecrets,
 } from "../_shared/meta-ads-report.ts";
+import {
+  isExactMetaAdsApproval,
+  metaAdsApprovalContext,
+  metaAdsDraftMatchesApproval,
+} from "../_shared/meta-ads-whatsapp-approval.ts";
 import { dedupeConsecutiveReplyText } from "../_shared/reply-dedupe.ts";
 import {
   formatScheduledDate,
@@ -8875,18 +8880,11 @@ type MetaAdsToolContext = {
 };
 
 function metaApprovalContext(ctx: MetaAdsToolContext) {
-  return {
-    owner_phone: String(ctx.fromNumber || "").replace(/\D/g, ""),
-    conversation_id: String(ctx.convId || ""),
-  };
+  return metaAdsApprovalContext(ctx.fromNumber, ctx.convId);
 }
 
 function metaDraftBelongsToConversation(row: any, ctx: MetaAdsToolContext): boolean {
-  const approval = row?.draft_json?._whatsapp_approval;
-  const expected = metaApprovalContext(ctx);
-  return !!expected.owner_phone && !!expected.conversation_id
-    && approval?.owner_phone === expected.owner_phone
-    && approval?.conversation_id === expected.conversation_id;
+  return metaAdsDraftMatchesApproval(row, metaApprovalContext(ctx));
 }
 
 async function toolRascunhoAnuncioMeta(
@@ -9242,7 +9240,7 @@ async function publishLatestMetaDraftOnExactSim(
   text: string,
   ctx: MetaAdsToolContext,
 ): Promise<string | null> {
-  if (text !== "SIM" || !isOwner(ctx)) return null;
+  if (!isExactMetaAdsApproval(text, isOwner(ctx))) return null;
   try {
     const draft = await latestEligibleMetaDraft(ctx);
     if (!draft) return null;
