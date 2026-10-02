@@ -131,6 +131,36 @@ type CampaignActionError = {
   billingUrl?: string;
 };
 
+type PaymentStatus = {
+  ok: true;
+  account_id: string;
+  billing_url: string;
+  account_active: boolean;
+  payment_configured: boolean;
+};
+
+type FacebookSdk = {
+  init(options: { appId: string; version: string; xfbml: boolean }): void;
+  ui(
+    options: {
+      method: "ads_payment";
+      account_id: string;
+      display: "popup";
+    },
+    callback: (response: unknown) => void,
+  ): void;
+};
+
+declare global {
+  interface Window {
+    FB?: FacebookSdk;
+    fbAsyncInit?: () => void;
+  }
+}
+
+const META_APP_ID = "1254152493364240";
+const META_SDK_ID = "meta-ads-facebook-jssdk";
+
 const STEPS = ["Objetivo", "Público", "Orçamento", "Criativo e revisão"];
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -239,6 +269,8 @@ export default function MetaAdsDashboard() {
   const [actionError, setActionError] = useState<CampaignActionError | null>(null);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [paymentOAuthLoading, setPaymentOAuthLoading] = useState(false);
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | null>(null);
+  const [facebookSdkReady, setFacebookSdkReady] = useState(false);
 
   const selectedMediaId = selectedMedia?.id ?? "";
   const totalBudget = (Number(dailyBudget) || 0) * (Number(durationDays) || 0);
@@ -467,20 +499,50 @@ export default function MetaAdsDashboard() {
     }
   };
 
-  const requestPaymentAuthorization = async () => {
+  const verifyPaymentStatus = useCallback(async (showSuccess = true) => {
     setPaymentOAuthLoading(true);
     try {
       const { data: response, error: invokeError } =
-        await supabase.functions.invoke("meta-ads-oauth-start", {
-          body: { request_ads_payment: true },
+        await supabase.functions.invoke("meta-ads-payment-status", {
+          body: {},
         });
-      if (invokeError) throw invokeError;
-      if (!response?.auth_url) throw new Error("URL de autorização ausente");
-      window.location.href = response.auth_url;
+      if (invokeError || !response?.ok) throw invokeError ?? new Error("status_failed");
+      const status = response as PaymentStatus;
+      setPaymentStatus(status);
+      if (showSuccess) {
+        if (status.payment_configured && status.account_active) {
+          toast.success("Forma de pagamento confirmada pela Meta.");
+        } else {
+          toast.error("A Meta ainda não confirmou uma forma de pagamento ativa.");
+        }
+      }
+      return status;
     } catch {
-      toast.error("Não foi possível iniciar a autorização de pagamento.");
+      toast.error("Não foi possível verificar o pagamento na Meta.");
+      return null;
+    } finally {
       setPaymentOAuthLoading(false);
     }
+  }, []);
+
+  const openPaymentAuthorization = async () => {
+    let status = paymentStatus;
+    if (!status) {
+      status = await verifyPaymentStatus(false);
+    }
+    if (!window.FB || !facebookSdkReady || !status?.account_id) {
+      toast.error("O diálogo de pagamento da Meta ainda não está disponível.");
+      return;
+    }
+    setPaymentOAuthLoading(true);
+    window.FB.ui({
+      method: "ads_payment",
+      account_id: status.account_id,
+      display: "popup",
+    }, () => {
+      // The SDK callback only means the dialog closed; Graph is authoritative.
+      void verifyPaymentStatus(true);
+    });
   };
 
   const load = useCallback(async () => {
@@ -513,6 +575,32 @@ export default function MetaAdsDashboard() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    let active = true;
+    const initialize = () => {
+      if (!active || !window.FB) return;
+      window.FB.init({ appId: META_APP_ID, version: "v25.0", xfbml: false });
+      setFacebookSdkReady(true);
+    };
+    window.fbAsyncInit = initialize;
+    if (window.FB) {
+      initialize();
+    } else {
+      const script = document.createElement("script");
+      script.id = META_SDK_ID;
+      script.async = true;
+      script.defer = true;
+      script.crossOrigin = "anonymous";
+      script.src = "https://connect.facebook.net/pt_BR/sdk.js";
+      document.body.appendChild(script);
+    }
+    return () => {
+      active = false;
+      delete window.fbAsyncInit;
+      document.getElementById(META_SDK_ID)?.remove();
+    };
+  }, []);
 
   const metrics = data?.summary;
   const cards = metrics
@@ -1105,10 +1193,10 @@ export default function MetaAdsDashboard() {
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="gap-2 sm:space-x-0">
-              {actionError?.billingUrl && (
+              {(paymentStatus?.billing_url || actionError?.billingUrl) && (
                 <Button variant="outline" asChild>
                   <a
-                    href={actionError.billingUrl}
+                    href={paymentStatus?.billing_url || actionError?.billingUrl}
                     target="_blank"
                     rel="noreferrer"
                   >
@@ -1118,13 +1206,20 @@ export default function MetaAdsDashboard() {
                 </Button>
               )}
               <Button
-                onClick={requestPaymentAuthorization}
+                variant="outline"
+                onClick={() => void verifyPaymentStatus(true)}
                 disabled={paymentOAuthLoading}
+              >
+                Já cadastrei, verificar
+              </Button>
+              <Button
+                onClick={() => void openPaymentAuthorization()}
+                disabled={paymentOAuthLoading || !facebookSdkReady}
               >
                 {paymentOAuthLoading && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
-                Autorizar pagamento com a Meta
+                Cadastrar pagamento com a Meta
               </Button>
             </DialogFooter>
           </DialogContent>

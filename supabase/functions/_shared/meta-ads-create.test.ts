@@ -174,6 +174,7 @@ Deno.test("payload usa padrões fixos, pausados e desliga expansões", () => {
     draft,
   });
   assertEquals(payloads.campaign.status, "PAUSED");
+  assertEquals(payloads.campaign.spend_cap, 10_000);
   assertEquals(payloads.adset.status, "PAUSED");
   assertEquals(payloads.ad.status, "PAUSED");
   assertEquals(

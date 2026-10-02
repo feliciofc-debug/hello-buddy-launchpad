@@ -27,21 +27,11 @@ CREATE INDEX IF NOT EXISTS idx_meta_ads_campanhas_user_status
 
 ALTER TABLE public.meta_ads_campanhas ENABLE ROW LEVEL SECURITY;
 
+GRANT SELECT ON public.meta_ads_campanhas TO authenticated;
+REVOKE INSERT, UPDATE, DELETE ON public.meta_ads_campanhas FROM authenticated;
+
 CREATE POLICY "meta_ads_campanhas_owner_select"
   ON public.meta_ads_campanhas FOR SELECT TO authenticated
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "meta_ads_campanhas_owner_insert"
-  ON public.meta_ads_campanhas FOR INSERT TO authenticated
-  WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "meta_ads_campanhas_owner_update"
-  ON public.meta_ads_campanhas FOR UPDATE TO authenticated
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "meta_ads_campanhas_owner_delete"
-  ON public.meta_ads_campanhas FOR DELETE TO authenticated
   USING (auth.uid() = user_id);
 
 CREATE POLICY "meta_ads_campanhas_service_role_all"

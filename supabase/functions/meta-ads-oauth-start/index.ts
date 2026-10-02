@@ -41,11 +41,6 @@ serve(async (req) => {
     });
     const { data: { user }, error } = await supabase.auth.getUser();
     if (error || !user) return json({ error: "unauthorized" }, 401);
-    const body = await req.json().catch(() => ({}));
-    const scopes = body?.request_ads_payment === true
-      ? [...BASE_SCOPES, "ads_payment"]
-      : BASE_SCOPES;
-
     const state = await createMetaAdsOAuthState({
       userId: user.id,
       secret: appSecret,
@@ -55,13 +50,9 @@ serve(async (req) => {
     );
     authUrl.searchParams.set("client_id", appId);
     authUrl.searchParams.set("redirect_uri", REDIRECT_URI);
-    authUrl.searchParams.set("scope", scopes.join(","));
+    authUrl.searchParams.set("scope", BASE_SCOPES.join(","));
     authUrl.searchParams.set("response_type", "code");
     authUrl.searchParams.set("state", state);
-    if (body?.request_ads_payment === true) {
-      authUrl.searchParams.set("auth_type", "rerequest");
-    }
-
     return json({ auth_url: authUrl.toString() });
   } catch {
     return json({ error: "oauth_start_failed" }, 500);

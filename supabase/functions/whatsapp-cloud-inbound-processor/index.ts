@@ -3429,6 +3429,19 @@ async function findLatestMetaAdsDraft(
   ctx: MetaAdsToolContext,
   message: unknown,
 ): Promise<any | null> {
+  if (!ctx.convId) return null;
+  const { data: latestOutbound, error: outboundError } = await sb
+    .from("whatsapp_cloud_messages")
+    .select("id")
+    .eq("user_id", ctx.userId)
+    .eq("conversation_id", ctx.convId)
+    .eq("direction", "outbound")
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (outboundError || !latestOutbound?.id) return null;
+
   let query = sb
     .from("meta_ads_campanhas")
     .select("id, user_id, rascunho, status, orcamento_diario, duracao_dias, gasto_maximo, aprovado_em, criado_em")
@@ -3445,6 +3458,7 @@ async function findLatestMetaAdsDraft(
     isOwner: isOwner(ctx),
     ownerPhone: ctx.fromNumber,
     conversationId: ctx.convId,
+    latestOutboundMessageId: latestOutbound.id,
     drafts: data,
     phonesEquivalent: ownerPhonesEquivalent,
   });
@@ -11513,6 +11527,7 @@ async function callGemini(
   forwardAttempted?: boolean;
   interactiveList?: WhatsAppInteractiveList;
   interactiveButtons?: WhatsAppInteractiveButtons;
+  metaAdsSummaryDraftId?: string;
 }> {
   let forwardProof: string | undefined;
   let forwardAttempted = false;
@@ -12516,6 +12531,7 @@ async function callGemini(
   let pendingDemoSiteBrandResult: Record<string, unknown> | null = null;
   let creativeToolRanThisTurn = false;
   let pendingSocialToken: string | undefined; // token de post aguardando confirmação — anexa <<SPLIT>>pode postar {token} no fim
+  let metaAdsSummaryDraftId: string | undefined;
 
   const captureSocialToken = (raw: string) => {
     try {
@@ -12676,6 +12692,11 @@ async function callGemini(
           };
         }
         const { result, imageUrl, interactiveButtons } = await runTool(name, args, toolCtx);
+        if (name === "rascunho_anuncio_meta") {
+          metaAdsSummaryDraftId = result.match(
+            /Código do rascunho:\s*([0-9a-f-]{36})/i,
+          )?.[1];
+        }
         if ([
           "relatorio_anuncios_meta",
           "rascunho_anuncio_meta",
@@ -12689,6 +12710,7 @@ async function callGemini(
             imageUrl: pendingImageUrl,
             forwardProof,
             forwardAttempted,
+            metaAdsSummaryDraftId,
           };
         }
         const blocked = deterministicDemoBlockedResponse(
@@ -12960,6 +12982,7 @@ async function callGemini(
       imageUrl: pendingImageUrl ?? guardReplayImageUrl,
       forwardProof,
       forwardAttempted,
+      metaAdsSummaryDraftId,
     };
   }
   const fallbackModelText = pendingDemoSiteBrandResult
@@ -12971,6 +12994,7 @@ async function callGemini(
     imageUrl: pendingImageUrl,
     forwardProof,
     forwardAttempted,
+    metaAdsSummaryDraftId,
   };
 }
 
@@ -15950,6 +15974,7 @@ Regras:
     let interactiveButtons: WhatsAppInteractiveButtons | undefined;
     let forwardProof: string | undefined;
     let forwardAttempted = false;
+    let metaAdsSummaryDraftId: string | undefined;
     try {
       const aiResult = await callGemini(systemPromptWithDate, history, userContent, media.length > 0, {
         userId,
@@ -15967,6 +15992,7 @@ Regras:
       interactiveButtons = aiResult.interactiveButtons;
       forwardProof = aiResult.forwardProof;
       forwardAttempted = !!aiResult.forwardAttempted;
+      metaAdsSummaryDraftId = aiResult.metaAdsSummaryDraftId;
     } catch (e) {
       const aiError = String((e as Error).message ?? e).slice(0, 300);
       console.error("[processor][ai_fallback]", aiError);
@@ -16243,6 +16269,35 @@ Regras:
     if (sendError) {
       await failQueue(row.id, `send_failed: ${sendError}`);
       return { ok: false, reason: "send_failed", error: sendError };
+    }
+
+    if (metaAdsSummaryDraftId && outMsg?.id) {
+      const summarySentAt = new Date().toISOString();
+      const { data: campaign, error: campaignLoadError } = await sb
+        .from("meta_ads_campanhas")
+        .select("rascunho")
+        .eq("id", metaAdsSummaryDraftId)
+        .eq("user_id", userId)
+        .eq("status", "rascunho")
+        .maybeSingle();
+      if (!campaignLoadError && campaign?.rascunho) {
+        const { error: correlationError } = await sb
+          .from("meta_ads_campanhas")
+          .update({
+            rascunho: {
+              ...(campaign.rascunho as Record<string, unknown>),
+              resumo_message_id: outMsg.id,
+              resumo_enviado_em: summarySentAt,
+            },
+            atualizado_em: summarySentAt,
+          })
+          .eq("id", metaAdsSummaryDraftId)
+          .eq("user_id", userId)
+          .eq("status", "rascunho");
+        if (correlationError) {
+          console.error("[processor][meta_ads_summary_correlation_failed]");
+        }
+      }
     }
 
     await doneQueue(row.id);

@@ -339,6 +339,7 @@ export function buildMetaAdsPayloads(context: MetaAdsPublishContext) {
   const campaign = {
     name: draft.name,
     objective: isWhatsapp ? "OUTCOME_ENGAGEMENT" : "OUTCOME_TRAFFIC",
+    spend_cap: Math.round(metaAdsMaximumSpend(draft) * 100),
     special_ad_categories: categories,
     special_ad_category_country: categories.length ? ["BR"] : undefined,
     status: "PAUSED",

@@ -14,6 +14,7 @@ function draft(
   created: string,
   conversation = "conversation-1",
   phone = "+55 11 99999-9999",
+  summaryMessageId = `summary-${id}`,
 ): MetaAdsApprovalDraft {
   return {
     id,
@@ -23,6 +24,8 @@ function draft(
     rascunho: {
       conversation_id: conversation,
       solicitante_telefone: phone,
+      resumo_message_id: summaryMessageId,
+      resumo_enviado_em: created,
     },
   };
 }
@@ -42,6 +45,7 @@ Deno.test("aprovação escolhe deterministicamente o rascunho mais recente", () 
     isOwner: true,
     ownerPhone: "11999999999",
     conversationId: "conversation-1",
+    latestOutboundMessageId: "summary-latest",
     drafts: [
       draft("older", "2026-10-02T16:00:00.000Z"),
       draft(
@@ -62,6 +66,7 @@ Deno.test("bloqueia não dono, outra conversa, outro telefone e mais de 24h", ()
     message: "SIM",
     ownerPhone: "11999999999",
     conversationId: "conversation-1",
+    latestOutboundMessageId: "summary-valid",
     phonesEquivalent: equivalent,
     now,
   };
@@ -87,6 +92,30 @@ Deno.test("bloqueia não dono, outra conversa, outro telefone e mais de 24h", ()
           "5511888888888",
         ),
       ],
+    }),
+    null,
+  );
+});
+
+Deno.test("não seleciona rascunho quando Jarvis enviou outra mensagem depois do resumo", () => {
+  const sentSummary = draft(
+    "draft-1",
+    "2026-10-02T17:00:00.000Z",
+    "conversation-1",
+    "5511999999999",
+    "summary-message",
+  );
+
+  assertEquals(
+    latestMetaAdsWhatsappApproval({
+      message: "SIM",
+      isOwner: true,
+      ownerPhone: "11999999999",
+      conversationId: "conversation-1",
+      latestOutboundMessageId: "later-jarvis-question",
+      drafts: [sentSummary],
+      phonesEquivalent: equivalent,
+      now,
     }),
     null,
   );

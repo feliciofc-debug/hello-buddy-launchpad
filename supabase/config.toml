@@ -321,5 +321,8 @@ verify_jwt = true
 [functions.meta-ads-publish]
 verify_jwt = true
 
+[functions.meta-ads-payment-status]
+verify_jwt = true
+
 [functions.meta-ads-campaign-action]
 verify_jwt = true

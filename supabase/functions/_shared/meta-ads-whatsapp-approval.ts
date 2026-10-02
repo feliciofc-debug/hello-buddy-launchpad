@@ -6,6 +6,8 @@ export type MetaAdsApprovalDraft = {
   rascunho?: {
     conversation_id?: string | null;
     solicitante_telefone?: string | null;
+    resumo_message_id?: string | null;
+    resumo_enviado_em?: string | null;
   } | null;
 };
 
@@ -26,6 +28,7 @@ export function latestMetaAdsWhatsappApproval(input: {
   isOwner: boolean;
   ownerPhone: string;
   conversationId?: string | null;
+  latestOutboundMessageId?: string | null;
   drafts: MetaAdsApprovalDraft[];
   phonesEquivalent: PhonesEquivalent;
   now?: Date;
@@ -35,7 +38,8 @@ export function latestMetaAdsWhatsappApproval(input: {
     !input.isOwner ||
     !isLiteralMetaAdsApproval(input.message) ||
     !input.ownerPhone ||
-    !input.conversationId
+    !input.conversationId ||
+    !input.latestOutboundMessageId
   ) return null;
 
   const nowMs = (input.now ?? new Date()).getTime();
@@ -45,17 +49,24 @@ export function latestMetaAdsWhatsappApproval(input: {
   return input.drafts
     .filter((draft) => {
       const createdMs = Date.parse(draft.criado_em);
+      const summarySentMs = Date.parse(String(
+        draft.rascunho?.resumo_enviado_em ?? "",
+      ));
       const draftPhone = String(
         draft.rascunho?.solicitante_telefone ?? "",
       );
       return draft.status === "rascunho" &&
         !draft.aprovado_em &&
         draft.rascunho?.conversation_id === input.conversationId &&
+        draft.rascunho?.resumo_message_id === input.latestOutboundMessageId &&
         Boolean(draftPhone) &&
         input.phonesEquivalent(input.ownerPhone, draftPhone) &&
         Number.isFinite(createdMs) &&
         createdMs >= oldestMs &&
-        createdMs <= nowMs;
+        createdMs <= nowMs &&
+        Number.isFinite(summarySentMs) &&
+        summarySentMs >= oldestMs &&
+        summarySentMs <= nowMs;
     })
     .sort((left, right) => {
       const byCreated = Date.parse(right.criado_em) -
