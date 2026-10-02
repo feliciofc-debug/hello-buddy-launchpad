@@ -911,6 +911,7 @@ export default function MetaAdsDashboard() {
     if (!status) {
       status = await verifyPaymentStatus(false);
     }
+    if (!status) return;
     if (!window.FB || !facebookSdkReady || !status?.account_id) {
       toast.error("O diálogo de pagamento da Meta ainda não está disponível.");
       return;
@@ -946,11 +947,14 @@ export default function MetaAdsDashboard() {
         return;
       }
       if (!response?.ok) {
+        const failure = await getCampaignError(
+          null,
+          response,
+          "Não foi possível carregar os anúncios agora.",
+        );
         setData(null);
-        if (response?.code === "unauthorized" || response?.error === "unauthorized") {
-          setSessionExpired(true);
-        }
-        setError(response as DashboardError);
+        if (failure.code === "unauthorized") setSessionExpired(true);
+        setError({ ok: false, code: failure.code, message: failure.message });
       } else {
         setData(response as DashboardData);
       }
