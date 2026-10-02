@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -483,7 +483,7 @@ export default function MetaAdsDashboard() {
     }
   };
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -508,11 +508,11 @@ export default function MetaAdsDashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [period]);
 
   useEffect(() => {
-    load();
-  }, [period]);
+    void load();
+  }, [load]);
 
   const metrics = data?.summary;
   const cards = metrics

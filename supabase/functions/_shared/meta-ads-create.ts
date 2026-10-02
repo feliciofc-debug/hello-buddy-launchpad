@@ -428,7 +428,10 @@ export function buildMetaAdsPayloads(context: MetaAdsPublishContext) {
   };
 }
 
-function safeGraphMessage(body: any, fallback: string): string {
+function safeGraphMessage(
+  body: { error?: { message?: unknown } } | null,
+  fallback: string,
+): string {
   const message = cleanText(body?.error?.message, 500);
   // Meta error messages can echo request values. Never allow credentials into errors.
   return message
@@ -439,6 +442,7 @@ function safeGraphMessage(body: any, fallback: string): string {
     : fallback;
 }
 
+// Graph responses vary by endpoint; callers validate the fields they consume.
 export async function metaGraphRequest(
   path: string,
   options: {
@@ -448,6 +452,7 @@ export async function metaGraphRequest(
     fetchImpl?: typeof fetch;
     formData?: FormData;
   },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const url = new URL(`${META_GRAPH_URL}/${path.replace(/^\/+/, "")}`);
@@ -538,9 +543,12 @@ export async function uploadMetaAdsMedia(
     fetchImpl,
   });
   const images = result?.images && Object.values(result.images);
-  const hash = Array.isArray(images) && images[0] &&
+  const firstImage = Array.isArray(images) && images[0] &&
       typeof images[0] === "object"
-    ? String((images[0] as any).hash || "")
+    ? images[0] as { hash?: unknown }
+    : null;
+  const hash = firstImage
+    ? String(firstImage.hash || "")
     : "";
   if (!hash) throw new Error("Meta não retornou o hash da imagem");
   return { imageHash: hash };
