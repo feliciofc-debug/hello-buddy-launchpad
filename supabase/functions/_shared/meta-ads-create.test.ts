@@ -25,6 +25,7 @@ const draft: MetaAdsDraft = {
   duration_days: 5,
   cities: [{ id: "2420605", name: "São Paulo" }],
   interests: [{ id: "6003139266461", name: "Marketing" }],
+  behaviors: [{ id: "6002714895372", name: "Compradores envolvidos" }],
   radius_km: 25,
   age_min: 18,
   age_max: 65,
@@ -189,6 +190,9 @@ Deno.test("payload usa padrões fixos, pausados e desliga expansões", () => {
   assertEquals(payloads.adset.bid_strategy, "LOWEST_COST_WITHOUT_CAP");
   assertEquals(payloads.adset.targeting.age_min, 18);
   assertEquals(payloads.adset.targeting.age_max, 65);
+  assertEquals(payloads.adset.targeting.behaviors, [
+    { id: "6002714895372", name: "Compradores envolvidos" },
+  ]);
   assertEquals(payloads.adset.targeting_automation.advantage_audience, 0);
   assert(
     payloads.creative.object_story_spec.link_data?.call_to_action.value.link

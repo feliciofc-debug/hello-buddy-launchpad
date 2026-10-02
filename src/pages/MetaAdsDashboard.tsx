@@ -100,6 +100,13 @@ type TargetingOption = {
   id: string;
   name: string;
   key?: string;
+  audience_size_lower_bound?: number;
+  audience_size_upper_bound?: number;
+};
+
+type AudienceEstimate = {
+  audience_size_lower_bound: number;
+  audience_size_upper_bound: number;
 };
 
 type CampaignDraft = {
@@ -230,6 +237,41 @@ const STATUS_LABELS: Record<string, string> = {
   ADSET_PAUSED: "Conjunto pausado",
 };
 
+const INTEREST_PRESETS = [
+  {
+    name: "Profissionais liberais",
+    terms: [
+      "Odontologia",
+      "Psicologia",
+      "Advocacia",
+      "Nutrição",
+      "Fisioterapia",
+      "Contabilidade",
+      "Arquitetura",
+    ],
+  },
+  {
+    name: "Empreendedores e pequenos negócios",
+    terms: ["Empreendedorismo", "Pequena empresa", "Marketing digital"],
+  },
+  {
+    name: "Comércio local",
+    terms: ["Varejo", "Compras", "Moda", "Restaurantes"],
+  },
+  {
+    name: "Beleza e estética",
+    terms: ["Salão de beleza", "Estética", "Cosméticos"],
+  },
+] as const;
+
+const audienceRange = (option: TargetingOption) => {
+  const lower = option.audience_size_lower_bound;
+  const upper = option.audience_size_upper_bound;
+  return Number.isFinite(lower) && Number.isFinite(upper)
+    ? `${integer(lower)}–${integer(upper)} pessoas`
+    : null;
+};
+
 export default function MetaAdsDashboard() {
   const navigate = useNavigate();
   const [period, setPeriod] = useState<Period>("7_dias");
@@ -255,11 +297,23 @@ export default function MetaAdsDashboard() {
   const [productLink, setProductLink] = useState("");
   const [cityQuery, setCityQuery] = useState("");
   const [interestQuery, setInterestQuery] = useState("");
+  const [behaviorQuery, setBehaviorQuery] = useState("");
   const [cities, setCities] = useState<TargetingOption[]>([]);
   const [interests, setInterests] = useState<TargetingOption[]>([]);
+  const [interestSuggestions, setInterestSuggestions] = useState<TargetingOption[]>([]);
+  const [behaviors, setBehaviors] = useState<TargetingOption[]>([]);
   const [selectedCity, setSelectedCity] = useState<TargetingOption | null>(null);
   const [selectedInterests, setSelectedInterests] = useState<TargetingOption[]>([]);
-  const [targetingLoading, setTargetingLoading] = useState<"city" | "interest" | null>(null);
+  const [selectedBehaviors, setSelectedBehaviors] = useState<TargetingOption[]>([]);
+  const [interestFocused, setInterestFocused] = useState(false);
+  const [emptySearch, setEmptySearch] = useState<
+    Partial<Record<"city" | "interest" | "behavior", string>>
+  >({});
+  const [targetingLoading, setTargetingLoading] = useState<
+    "city" | "interest" | "behavior" | null
+  >(null);
+  const [audienceEstimate, setAudienceEstimate] = useState<AudienceEstimate | null>(null);
+  const [audienceEstimateLoading, setAudienceEstimateLoading] = useState(false);
   const [dailyBudget, setDailyBudget] = useState("20");
   const [durationDays, setDurationDays] = useState("7");
   const [draft, setDraft] = useState<CampaignDraft | null>(null);
@@ -279,25 +333,141 @@ export default function MetaAdsDashboard() {
     setShowWizard(true);
   };
 
-  const searchTargeting = async (type: "city" | "interest") => {
-    const query = type === "city" ? cityQuery : interestQuery;
+  const searchTargeting = async (type: "city" | "interest" | "behavior") => {
+    const query = type === "city"
+      ? cityQuery
+      : type === "interest"
+      ? interestQuery
+      : behaviorQuery;
     if (query.trim().length < 2) return;
+    const searchedTerm = query.trim();
     setTargetingLoading(type);
+    setEmptySearch((current) => ({ ...current, [type]: undefined }));
     try {
       const { data: response, error: invokeError } = await supabase.functions.invoke(
         "meta-ads-targeting-search",
-        { body: { type, query: query.trim() } },
+        { body: { type, query: searchedTerm } },
       );
       if (invokeError) throw invokeError;
       const options = (response?.data ?? response?.options ?? []) as TargetingOption[];
       if (type === "city") setCities(options);
-      else setInterests(options);
+      else if (type === "interest") setInterests(options);
+      else setBehaviors(options);
+      if (!options.length) {
+        setEmptySearch((current) => ({ ...current, [type]: searchedTerm }));
+      }
     } catch {
       toast.error("Não foi possível consultar as opções do Meta.");
     } finally {
       setTargetingLoading(null);
     }
   };
+
+  const selectInterestPreset = async (terms: readonly string[]) => {
+    setTargetingLoading("interest");
+    setInterestFocused(false);
+    try {
+      const resolved = await Promise.all(terms.map(async (term) => {
+        try {
+          const { data: response, error: invokeError } =
+            await supabase.functions.invoke("meta-ads-targeting-search", {
+              body: { type: "interest", query: term },
+            });
+          if (invokeError) return null;
+          const options = (response?.data ?? []) as TargetingOption[];
+          return options[0] ?? null;
+        } catch {
+          return null;
+        }
+      }));
+      setSelectedInterests((current) => {
+        const next = [...current];
+        const ids = new Set(current.map((item) => item.id));
+        resolved.forEach((item) => {
+          if (item && !ids.has(item.id)) {
+            ids.add(item.id);
+            next.push(item);
+          }
+        });
+        return next;
+      });
+    } finally {
+      setTargetingLoading(null);
+    }
+  };
+
+  useEffect(() => {
+    const interestList = selectedInterests.map((item) => item.id);
+    if (!interestList.length) {
+      setInterestSuggestions([]);
+      return;
+    }
+    let active = true;
+    void supabase.functions.invoke("meta-ads-targeting-search", {
+      body: { type: "interest_suggestion", interest_list: interestList },
+    }).then(({ data: response, error: invokeError }) => {
+      if (!active || invokeError) return;
+      const selected = new Set(interestList);
+      const suggestions = ((response?.data ?? []) as TargetingOption[])
+        .filter((item) => !selected.has(item.id));
+      setInterestSuggestions(suggestions);
+    });
+    return () => {
+      active = false;
+    };
+  }, [selectedInterests]);
+
+  useEffect(() => {
+    if (step !== 1 || !selectedCity) {
+      setAudienceEstimate(null);
+      setAudienceEstimateLoading(false);
+      return;
+    }
+    let active = true;
+    const timeout = window.setTimeout(async () => {
+      setAudienceEstimateLoading(true);
+      const { data: response, error: invokeError } =
+        await supabase.functions.invoke("meta-ads-targeting-search", {
+          body: {
+            type: "reach_estimate",
+            cities: [selectedCity],
+            interests: selectedInterests,
+            behaviors: selectedBehaviors,
+            radius_km: Number(radiusKm),
+            age_min: Number(ageMin),
+            age_max: Number(ageMax),
+            gender,
+          },
+        });
+      if (!active) return;
+      if (
+        !invokeError && response?.available &&
+        Number.isFinite(response.audience_size_lower_bound) &&
+        Number.isFinite(response.audience_size_upper_bound)
+      ) {
+        setAudienceEstimate({
+          audience_size_lower_bound: response.audience_size_lower_bound,
+          audience_size_upper_bound: response.audience_size_upper_bound,
+        });
+      } else {
+        setAudienceEstimate(null);
+      }
+      setAudienceEstimateLoading(false);
+    }, 700);
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [
+    step,
+    selectedCity,
+    selectedInterests,
+    selectedBehaviors,
+    radiusKm,
+    ageMin,
+    ageMax,
+    gender,
+  ]);
 
   const campaignPayload = (copy?: { title: string; text: string }) => ({
     name: copy?.title || draft?.title ||
@@ -314,6 +484,7 @@ export default function MetaAdsDashboard() {
     duration_days: Number(durationDays),
     cities: selectedCity ? [selectedCity] : [],
     interests: selectedInterests,
+    behaviors: selectedBehaviors,
     destination_url: objective === "site" ? destinationUrl.trim() : undefined,
     radius_km: Number(radiusKm),
     age_min: Number(ageMin),
@@ -676,7 +847,7 @@ export default function MetaAdsDashboard() {
               Anúncios Meta
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Métricas somente leitura da conta{" "}
+              Crie e acompanhe seus anúncios da conta{" "}
               {data?.account.name || data?.account.id || "selecionada"}.
             </p>
           </div>
@@ -808,14 +979,17 @@ export default function MetaAdsDashboard() {
               )}
 
               {step === 1 && (
-                <div className="grid gap-6 md:grid-cols-2">
+                <div className="grid gap-6 md:grid-cols-3">
                   <div className="space-y-3">
                     <Label htmlFor="city-search">Cidade</Label>
                     <div className="flex gap-2">
                       <Input
                         id="city-search"
                         value={cityQuery}
-                        onChange={(event) => setCityQuery(event.target.value)}
+                        onChange={(event) => {
+                          setCityQuery(event.target.value);
+                          setEmptySearch((current) => ({ ...current, city: undefined }));
+                        }}
                         onKeyDown={(event) => event.key === "Enter" && searchTargeting("city")}
                         placeholder="Ex.: São Paulo"
                       />
@@ -842,6 +1016,11 @@ export default function MetaAdsDashboard() {
                           {city.name}
                         </button>
                       ))}
+                      {emptySearch.city && (
+                        <p className="text-sm text-muted-foreground">
+                          Nenhum resultado para '{emptySearch.city}'. Tente outra palavra.
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="space-y-3">
@@ -850,7 +1029,15 @@ export default function MetaAdsDashboard() {
                       <Input
                         id="interest-search"
                         value={interestQuery}
-                        onChange={(event) => setInterestQuery(event.target.value)}
+                        onFocus={() => setInterestFocused(true)}
+                        onBlur={() => setInterestFocused(false)}
+                        onChange={(event) => {
+                          setInterestQuery(event.target.value);
+                          setEmptySearch((current) => ({
+                            ...current,
+                            interest: undefined,
+                          }));
+                        }}
                         onKeyDown={(event) => event.key === "Enter" && searchTargeting("interest")}
                         placeholder="Ex.: marketing digital"
                       />
@@ -868,10 +1055,33 @@ export default function MetaAdsDashboard() {
                           onClick={() => setSelectedInterests((items) =>
                             items.filter((item) => item.id !== interest.id))}
                         >
-                          <Badge variant="secondary">{interest.name} ×</Badge>
+                          <Badge variant="secondary">
+                            {interest.name}
+                            {audienceRange(interest)
+                              ? ` (${audienceRange(interest)})`
+                              : ""} ×
+                          </Badge>
                         </button>
                       ))}
                     </div>
+                    {interestFocused && !interestQuery.trim() && (
+                      <div className="space-y-2 rounded-md border p-3">
+                        {INTEREST_PRESETS.map((group) => (
+                          <button
+                            key={group.name}
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => void selectInterestPreset(group.terms)}
+                            className="block w-full rounded border px-3 py-2 text-left hover:bg-muted"
+                          >
+                            <span className="block text-sm font-medium">{group.name}</span>
+                            <span className="block text-xs text-muted-foreground">
+                              {group.terms.join(", ")}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <div className="space-y-1">
                       {interests.map((interest) => (
                         <button
@@ -887,12 +1097,121 @@ export default function MetaAdsDashboard() {
                           }}
                           className="block w-full rounded border px-3 py-2 text-left text-sm hover:bg-muted"
                         >
-                          {interest.name}
+                          <span className="block">{interest.name}</span>
+                          {audienceRange(interest) && (
+                            <span className="text-xs text-muted-foreground">
+                              {audienceRange(interest)}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                      {emptySearch.interest && (
+                        <p className="text-sm text-muted-foreground">
+                          Nenhum resultado para '{emptySearch.interest}'. Tente outra palavra.
+                        </p>
+                      )}
+                    </div>
+                    {interestSuggestions.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground">
+                          Sugestões relacionadas do Meta
+                        </p>
+                        {interestSuggestions.map((interest) => (
+                          <button
+                            key={interest.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedInterests((items) =>
+                                items.some((item) => item.id === interest.id)
+                                  ? items
+                                  : [...items, interest]);
+                              setInterestSuggestions((items) =>
+                                items.filter((item) => item.id !== interest.id));
+                            }}
+                            className="block w-full rounded border px-3 py-2 text-left text-sm hover:bg-muted"
+                          >
+                            <span className="block">{interest.name}</span>
+                            {audienceRange(interest) && (
+                              <span className="text-xs text-muted-foreground">
+                                {audienceRange(interest)}
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-3">
+                    <Label htmlFor="behavior-search">Comportamentos</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="behavior-search"
+                        value={behaviorQuery}
+                        onChange={(event) => {
+                          setBehaviorQuery(event.target.value);
+                          setEmptySearch((current) => ({
+                            ...current,
+                            behavior: undefined,
+                          }));
+                        }}
+                        onKeyDown={(event) =>
+                          event.key === "Enter" && searchTargeting("behavior")}
+                        placeholder="Ex.: compradores envolvidos"
+                      />
+                      <Button variant="outline" onClick={() => searchTargeting("behavior")}>
+                        {targetingLoading === "behavior"
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : <Search className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedBehaviors.map((behavior) => (
+                        <button
+                          key={behavior.id}
+                          type="button"
+                          onClick={() => setSelectedBehaviors((items) =>
+                            items.filter((item) => item.id !== behavior.id))}
+                        >
+                          <Badge variant="secondary">
+                            {behavior.name} · comportamento
+                            {audienceRange(behavior)
+                              ? ` (${audienceRange(behavior)})`
+                              : ""} ×
+                          </Badge>
                         </button>
                       ))}
                     </div>
+                    <div className="space-y-1">
+                      {behaviors.map((behavior) => (
+                        <button
+                          key={behavior.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedBehaviors((items) =>
+                              items.some((item) => item.id === behavior.id)
+                                ? items
+                                : [...items, behavior]);
+                            setBehaviors([]);
+                            setBehaviorQuery("");
+                          }}
+                          className="block w-full rounded border px-3 py-2 text-left text-sm hover:bg-muted"
+                        >
+                          <span className="block">{behavior.name} · comportamento</span>
+                          {audienceRange(behavior) && (
+                            <span className="text-xs text-muted-foreground">
+                              {audienceRange(behavior)}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                      {emptySearch.behavior && (
+                        <p className="text-sm text-muted-foreground">
+                          Nenhum resultado para '{emptySearch.behavior}'. Tente outra palavra.
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <div className="grid gap-4 rounded-md border p-4 md:col-span-2 md:grid-cols-4">
+                  <div className="grid gap-4 rounded-md border p-4 md:col-span-3 md:grid-cols-4">
                     <div className="space-y-2">
                       <Label htmlFor="radius-km">Raio da cidade (km)</Label>
                       <Input
@@ -939,6 +1258,22 @@ export default function MetaAdsDashboard() {
                         <option value="male">Homens</option>
                       </select>
                     </div>
+                    {selectedCity && (
+                      <div className="rounded-md bg-muted p-3 md:col-span-4">
+                        <p className="text-sm font-medium">Público estimado</p>
+                        <p className="text-sm text-muted-foreground">
+                          {audienceEstimateLoading
+                            ? "Calculando com dados do Meta..."
+                            : audienceEstimate
+                            ? `${
+                              integer(audienceEstimate.audience_size_lower_bound)
+                            }–${
+                              integer(audienceEstimate.audience_size_upper_bound)
+                            } pessoas`
+                            : "Estimativa indisponível no Meta para este público."}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

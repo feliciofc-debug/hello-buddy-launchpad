@@ -19,6 +19,7 @@ export type MetaAdsDraft = {
   duration_days: number;
   cities: MetaAdsTarget[];
   interests?: MetaAdsTarget[];
+  behaviors?: MetaAdsTarget[];
   destination_url?: string;
   radius_km?: number;
   age_min?: number;
@@ -159,6 +160,7 @@ export function validateMetaAdsDraft(
     duration_days: durationDays,
     cities: targets(input.cities, 25),
     interests: targets(input.interests, 50),
+    behaviors: targets(input.behaviors, 50),
     destination_url: validHttpsUrl(input.destination_url) || undefined,
     radius_km: radius,
     age_min: ageMin,
@@ -380,6 +382,10 @@ export function buildMetaAdsPayloads(context: MetaAdsPublishContext) {
       interests: (draft.interests ?? []).map((interest) => ({
         id: interest.id,
         name: interest.name,
+      })),
+      behaviors: (draft.behaviors ?? []).map((behavior) => ({
+        id: behavior.id,
+        name: behavior.name,
       })),
       publisher_platforms: ["facebook", "instagram"],
       facebook_positions: ["feed", "story"],
