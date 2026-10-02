@@ -7,6 +7,10 @@ import {
   uploadMetaAdsMedia,
   validateMetaAdsDraft,
 } from "../_shared/meta-ads-create.ts";
+import {
+  MetaAdsMediaError,
+  resolveMetaAdsMediaUrl,
+} from "../_shared/meta-ads-media.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -72,14 +76,19 @@ serve(async (req) => {
     (!whatsapp?.display_phone || !whatsapp?.phone_number_id)
   ) return json({ error: "whatsapp_not_ready" }, 409);
 
-  const context = {
-    accessToken: integration.access_token,
-    adAccountId: integration.ad_account_id,
-    pageId: page.page_id,
-    whatsappPhoneNumber: whatsapp?.display_phone,
-    draft: validated.draft,
-  };
   try {
+    const accessibleDraft = await resolveMetaAdsMediaUrl(
+      admin,
+      user.id,
+      validated.draft,
+    );
+    const context = {
+      accessToken: integration.access_token,
+      adAccountId: integration.ad_account_id,
+      pageId: page.page_id,
+      whatsappPhoneNumber: whatsapp?.display_phone,
+      draft: accessibleDraft,
+    };
     const media = await uploadMetaAdsMedia(context, fetch);
     const creative = structuredClone(buildMetaAdsPayloads(context).creative);
     if (validated.draft.media_type === "image") {
@@ -111,6 +120,12 @@ serve(async (req) => {
     }));
     return json({ ok: true, official: true, previews });
   } catch (error) {
+    if (error instanceof MetaAdsMediaError) {
+      return json({
+        error: "media_unavailable",
+        message: error.message,
+      }, 409);
+    }
     const safe = publicMetaAdsError(error);
     return json({ ok: false, ...safe }, 502);
   }

@@ -21,6 +21,8 @@ const draft: MetaAdsDraft = {
   headline: "Atendimento no WhatsApp",
   media_url: "https://cdn.example.test/anuncio.png",
   media_type: "image",
+  media_id: "9ee8620e-6e3d-4dbc-8297-423bd45a1886",
+  media_source: "midias_whatsapp",
   daily_budget: 20,
   duration_days: 5,
   cities: [{ id: "2420605", name: "São Paulo" }],
@@ -37,6 +39,8 @@ Deno.test("valida e normaliza rascunho sem aceitar mídia insegura", () => {
   const valid = validateMetaAdsDraft(draft);
   assert(valid.ok);
   assertEquals(valid.draft.daily_budget, 20);
+  assertEquals(valid.draft.media_source, "midias_whatsapp");
+  assertEquals(valid.draft.media_id, draft.media_id);
   assertEquals(metaAdsMaximumSpend(valid.draft), 100);
 
   const invalid = validateMetaAdsDraft({

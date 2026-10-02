@@ -15,6 +15,13 @@ export type MetaAdsDraft = {
   description?: string;
   media_url: string;
   media_type: "image" | "video";
+  media_id?: string;
+  media_source?:
+    | "midias_whatsapp"
+    | "video_render_jobs"
+    | "video_motion_jobs";
+  media_bucket?: string;
+  media_path?: string;
   daily_budget: number;
   duration_days: number;
   cities: MetaAdsTarget[];
@@ -156,6 +163,16 @@ export function validateMetaAdsDraft(
     description: cleanText(input.description, 255) || undefined,
     media_url: validHttpsUrl(input.media_url),
     media_type: mediaType as "image" | "video",
+    media_id: cleanText(input.media_id, 100) || undefined,
+    media_source: [
+        "midias_whatsapp",
+        "video_render_jobs",
+        "video_motion_jobs",
+      ].includes(String(input.media_source))
+      ? input.media_source as MetaAdsDraft["media_source"]
+      : undefined,
+    media_bucket: cleanText(input.media_bucket, 100) || undefined,
+    media_path: cleanText(input.media_path, 1_000) || undefined,
     daily_budget: dailyBudget,
     duration_days: durationDays,
     cities: targets(input.cities, 25),
@@ -179,6 +196,7 @@ export function validateMetaAdsDraft(
   if (!draft.headline) errors.push("headline");
   if (!draft.media_url) errors.push("media_url");
   if (!mediaType) errors.push("media_type");
+  if (draft.media_source && !draft.media_id) errors.push("media_id");
   if (
     !Number.isFinite(dailyBudget) || dailyBudget < 1 ||
     dailyBudget > MAX_DAILY_BUDGET

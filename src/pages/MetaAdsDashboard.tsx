@@ -138,7 +138,6 @@ type WizardAutosave = {
   selectedMedia: MetaAdsMedia | null;
   productTitle: string;
   productPrice: string;
-  productRating: string;
   productLink: string;
   cityQuery: string;
   interestQuery: string;
@@ -408,7 +407,6 @@ export default function MetaAdsDashboard() {
   const [selectedMedia, setSelectedMedia] = useState<MetaAdsMedia | null>(null);
   const [productTitle, setProductTitle] = useState("");
   const [productPrice, setProductPrice] = useState("");
-  const [productRating, setProductRating] = useState("");
   const [productLink, setProductLink] = useState("");
   const [cityQuery, setCityQuery] = useState("");
   const [interestQuery, setInterestQuery] = useState("");
@@ -474,7 +472,6 @@ export default function MetaAdsDashboard() {
     selectedMedia,
     productTitle,
     productPrice,
-    productRating,
     productLink,
     cityQuery,
     interestQuery,
@@ -499,7 +496,6 @@ export default function MetaAdsDashboard() {
     selectedMedia,
     productTitle,
     productPrice,
-    productRating,
     productLink,
     cityQuery,
     interestQuery,
@@ -527,7 +523,6 @@ export default function MetaAdsDashboard() {
     setSelectedMedia(null);
     setProductTitle("");
     setProductPrice("");
-    setProductRating("");
     setProductLink("");
     setCityQuery("");
     setInterestQuery("");
@@ -565,7 +560,6 @@ export default function MetaAdsDashboard() {
     setSelectedMedia(state.selectedMedia ?? null);
     setProductTitle(String(state.productTitle ?? ""));
     setProductPrice(String(state.productPrice ?? ""));
-    setProductRating(String(state.productRating ?? ""));
     setProductLink(String(state.productLink ?? ""));
     setCityQuery(String(state.cityQuery ?? ""));
     setInterestQuery(String(state.interestQuery ?? ""));
@@ -714,7 +708,6 @@ export default function MetaAdsDashboard() {
         selectedMedia: null,
         productTitle: String(raw.headline ?? raw.name ?? ""),
         productPrice: "",
-        productRating: "",
         productLink: "",
         cityQuery: "",
         interestQuery: "",
@@ -1094,9 +1087,12 @@ export default function MetaAdsDashboard() {
     objective,
     primary_text: copy?.text || draft?.text || selectedMedia?.legenda_gerada ||
       selectedMedia?.contexto_original || "Conheça esta novidade.",
-    headline: copy?.title || draft?.title || selectedMedia?.arquivo_nome ||
+    headline: copy?.title || draft?.title || productTitle.trim() ||
       "Conheça esta novidade",
     media_id: selectedMediaId,
+    media_source: selectedMedia?.media_source,
+    media_bucket: selectedMedia?.media_bucket,
+    media_path: selectedMedia?.media_path,
     media_url: selectedMedia?.midia_url,
     media_type: selectedMedia?.tipo === "video" ? "video" : "image",
     daily_budget: Number(dailyBudget),
@@ -1122,6 +1118,42 @@ export default function MetaAdsDashboard() {
       .slice(0, 255);
   };
 
+  const generatedCopyUsesOnlyProvidedFacts = (content: string) => {
+    const suppliedFacts = [
+      productTitle,
+      productPrice,
+      productLink,
+    ].filter(Boolean).join(" ");
+    const normalizedFacts = normalizeTargetingName(suppliedFacts);
+    const normalizeNumber = (value: string) =>
+      value.replace(/[.,](?=\d{1,2}\b)/, ".").replace(/[^\d.]/g, "");
+    const suppliedNumbers = new Set(
+      (suppliedFacts.match(/\d+(?:[.,]\d+)?/g) ?? []).map(normalizeNumber),
+    );
+    const inventedNumber = (content.match(/\d+(?:[.,]\d+)?/g) ?? [])
+      .map(normalizeNumber)
+      .some((number) => !suppliedNumbers.has(number));
+    if (inventedNumber) return false;
+    const normalizedContent = normalizeTargetingName(content);
+    if (
+      !productPrice.trim() &&
+      /(?:r\$|\breais?\b|\bpreco\s+(?:de|por)\b)/i.test(content)
+    ) return false;
+    if (
+      /\b(?:avaliacao|nota|estrelas?)\b/.test(normalizedContent) &&
+      !/\b(?:avaliacao|nota|estrelas?)\b/.test(normalizedFacts)
+    ) return false;
+    if (
+      /\b(?:depoimento|clientes?\s+(?:dizem|afirmam|amam|comprovam))\b/.test(
+        normalizedContent,
+      ) &&
+      !/\b(?:depoimento|clientes?\s+(?:dizem|afirmam|amam|comprovam))\b/.test(
+        normalizedFacts,
+      )
+    ) return false;
+    return true;
+  };
+
   const generateDraft = async () => {
     if (!selectedMediaId) {
       toast.error("Selecione uma mídia para o anúncio.");
@@ -1140,9 +1172,24 @@ export default function MetaAdsDashboard() {
           {
             body: {
               productTitle,
-              productPrice,
-              productRating,
-              productLink,
+              productPrice: productPrice.trim() ||
+                "não informado; não mencione preço",
+              productRating:
+                "não informada; não mencione nota, avaliação ou estrelas",
+              productLink: productLink.trim() ||
+                "não informado; não inclua link",
+              productDescription: [
+                "REGRA OBRIGATÓRIA: use somente os fatos fornecidos abaixo.",
+                "Nunca invente preço, desconto, nota, avaliação, depoimento,",
+                "quantidade, porcentagem, prazo ou qualquer número.",
+                `Produto ou serviço: ${productTitle.trim()}.`,
+                productPrice.trim()
+                  ? `Preço informado pelo usuário: ${productPrice.trim()}.`
+                  : "Preço não informado: não mencione preço.",
+                productLink.trim()
+                  ? `Link informado pelo usuário: ${productLink.trim()}.`
+                  : "Link não informado: não inclua link.",
+              ].join(" "),
               platform: "facebook",
             },
           },
@@ -1163,6 +1210,11 @@ export default function MetaAdsDashboard() {
         ? generated.content
         : "";
       if (!content.trim()) throw new Error("A IA não retornou conteúdo.");
+      if (!generatedCopyUsesOnlyProvidedFacts(content)) {
+        throw new Error(
+          "A IA incluiu uma informação que você não forneceu. Nada foi salvo; gere novamente.",
+        );
+      }
       const copy = { title: deriveHeadline(content), text: content };
 
       const { data: response, error: invokeError } = await supabase.functions.invoke(
@@ -2082,7 +2134,6 @@ export default function MetaAdsDashboard() {
                       setDraft(null);
                       setOfficialPreview(null);
                     }}
-                    onOpenWhatsApp={() => navigate("/whatsapp")}
                   />
 
                   <div className="grid gap-4 rounded-md border p-4 md:grid-cols-2">
@@ -2096,7 +2147,7 @@ export default function MetaAdsDashboard() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="product-price">Preço</Label>
+                      <Label htmlFor="product-price">Preço (opcional)</Label>
                       <Input
                         id="product-price"
                         value={productPrice}
@@ -2105,16 +2156,9 @@ export default function MetaAdsDashboard() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="product-rating">Avaliação</Label>
-                      <Input
-                        id="product-rating"
-                        value={productRating}
-                        onChange={(event) => setProductRating(event.target.value)}
-                        placeholder="Ex.: 4,8"
-                      />
-                    </div>
-                    <div className="space-y-2 md:col-span-2">
-                      <Label htmlFor="product-link">Link do produto ou serviço</Label>
+                      <Label htmlFor="product-link">
+                        Link do produto ou serviço (opcional)
+                      </Label>
                       <Input
                         id="product-link"
                         type="url"

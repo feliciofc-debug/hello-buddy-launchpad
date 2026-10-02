@@ -11,6 +11,10 @@ import {
   rollbackMetaAdsCampaign,
   validateMetaAdsDraft,
 } from "../_shared/meta-ads-create.ts";
+import {
+  MetaAdsMediaError,
+  resolveMetaAdsMediaUrl,
+} from "../_shared/meta-ads-media.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -83,6 +87,23 @@ serve(async (req) => {
     (!whatsapp?.display_phone || !whatsapp?.phone_number_id ||
       whatsapp.is_active !== true)
   ) return json({ error: "whatsapp_not_ready" }, 409);
+
+  let accessibleDraft = validated.draft;
+  try {
+    accessibleDraft = await resolveMetaAdsMediaUrl(
+      admin,
+      user.id,
+      validated.draft,
+    );
+  } catch (error) {
+    if (error instanceof MetaAdsMediaError) {
+      return json({
+        error: "media_unavailable",
+        message: error.message,
+      }, 409);
+    }
+    return json({ error: "media_unavailable" }, 409);
+  }
 
   try {
     const account = await metaGraphRequest(integration.ad_account_id, {
@@ -235,7 +256,7 @@ serve(async (req) => {
       adAccountId: integration.ad_account_id,
       pageId: page.page_id,
       whatsappPhoneNumber: whatsapp?.display_phone,
-      draft: validated.draft,
+      draft: accessibleDraft,
     });
     if (!hasCompleteMetaAdsEntityIds(ids)) {
       const rolledBack = await rollbackMetaAdsCampaign(
