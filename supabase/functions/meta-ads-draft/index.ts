@@ -19,6 +19,17 @@ const json = (body: unknown, status = 200) =>
     headers: { ...CORS, "Content-Type": "application/json" },
   });
 
+const safeWizardState = (value: unknown): Record<string, unknown> | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  try {
+    const serialized = JSON.stringify(value);
+    if (serialized.length > 100_000) return null;
+    return JSON.parse(serialized) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
   if (!["GET", "POST", "DELETE"].includes(req.method)) {
@@ -67,6 +78,32 @@ serve(async (req) => {
   }
 
   const body = await req.json().catch(() => ({}));
+  if (req.method === "POST" && body?.action === "list") {
+    const { data, error } = await admin.from("meta_ads_campanhas")
+      .select(
+        "id,rascunho,status,orcamento_diario,duracao_dias,gasto_maximo,criado_em,atualizado_em",
+      )
+      .eq("user_id", user.id)
+      .eq("status", "rascunho")
+      .order("atualizado_em", { ascending: false })
+      .limit(50);
+    if (error) return json({ error: "draft_load_failed" }, 500);
+    return json({ ok: true, data: data ?? [] });
+  }
+  if (req.method === "POST" && body?.action === "delete") {
+    const id = String(body?.id ?? "");
+    if (!id) return json({ error: "id_required" }, 400);
+    const { data, error } = await admin.from("meta_ads_campanhas")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .eq("status", "rascunho")
+      .select("id")
+      .maybeSingle();
+    if (error) return json({ error: "draft_delete_failed" }, 500);
+    if (!data) return json({ error: "not_found_or_not_draft" }, 404);
+    return json({ ok: true, id });
+  }
   if (req.method === "POST" && body?.action === "availability") {
     if (!integration.access_token || !integration.ad_account_id) {
       return json({ error: "meta_ads_not_ready" }, 409);
@@ -160,6 +197,65 @@ serve(async (req) => {
       available: availability.available,
     });
   }
+  if (req.method === "POST" && body?.action === "save_wizard") {
+    const state = safeWizardState(body?.wizard_state);
+    if (!state) return json({ error: "invalid_wizard_state" }, 400);
+    const id = String(body?.id ?? "");
+    const dailyBudget = Math.max(0, Number(state.dailyBudget) || 0);
+    const durationDays = Math.max(
+      1,
+      Math.min(365, Math.floor(Number(state.durationDays) || 1)),
+    );
+    const values = {
+      orcamento_diario: dailyBudget,
+      duracao_dias: durationDays,
+      gasto_maximo: Math.round(dailyBudget * durationDays * 100) / 100,
+      atualizado_em: new Date().toISOString(),
+      erro: null,
+    };
+    if (id) {
+      const { data: current } = await admin.from("meta_ads_campanhas")
+        .select("rascunho")
+        .eq("id", id)
+        .eq("user_id", user.id)
+        .eq("status", "rascunho")
+        .maybeSingle();
+      if (!current) return json({ error: "not_found_or_not_draft" }, 404);
+      const currentDraft = current.rascunho &&
+          typeof current.rascunho === "object" &&
+          !Array.isArray(current.rascunho)
+        ? current.rascunho as Record<string, unknown>
+        : {};
+      const { data, error } = await admin.from("meta_ads_campanhas")
+        .update({
+          ...values,
+          rascunho: { ...currentDraft, wizard_state: state },
+        })
+        .eq("id", id)
+        .eq("user_id", user.id)
+        .eq("status", "rascunho")
+        .select(
+          "id,rascunho,status,orcamento_diario,duracao_dias,gasto_maximo,criado_em,atualizado_em",
+        )
+        .maybeSingle();
+      if (error) return json({ error: "draft_save_failed" }, 500);
+      if (!data) return json({ error: "not_found_or_not_draft" }, 404);
+      return json({ ok: true, data });
+    }
+    const { data, error } = await admin.from("meta_ads_campanhas")
+      .insert({
+        user_id: user.id,
+        rascunho: { wizard_state: state },
+        status: "rascunho",
+        ...values,
+      })
+      .select(
+        "id,rascunho,status,orcamento_diario,duracao_dias,gasto_maximo,criado_em,atualizado_em",
+      )
+      .single();
+    if (error) return json({ error: "draft_save_failed" }, 500);
+    return json({ ok: true, data }, 201);
+  }
   const id = String(body?.id ?? queryId ?? "");
   if (req.method === "DELETE") {
     if (!id) return json({ error: "id_required" }, 400);
@@ -179,12 +275,15 @@ serve(async (req) => {
   const draftInput = supplied && typeof supplied === "object"
     ? { ...supplied }
     : {};
+  const wizardState = safeWizardState(
+    body?.wizard_state ?? draftInput.wizard_state,
+  );
   const validated = validateMetaAdsDraft(draftInput);
   if (!validated.ok) return json(validated, 400);
   const draft = validated.draft;
   const values = {
     user_id: user.id,
-    rascunho: draft,
+    rascunho: wizardState ? { ...draft, wizard_state: wizardState } : draft,
     status: "rascunho",
     orcamento_diario: draft.daily_budget,
     duracao_dias: draft.duration_days,

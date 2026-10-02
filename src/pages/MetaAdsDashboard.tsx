@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -123,6 +123,46 @@ type CampaignDraft = {
   preview?: Record<string, unknown>;
 };
 
+type WizardAutosave = {
+  version: 1;
+  updatedAt: string;
+  step: number;
+  objective: CampaignObjective;
+  destinationUrl: string;
+  whatsappMessage: string;
+  radiusKm: string;
+  ageMin: string;
+  ageMax: string;
+  gender: Gender;
+  specialCategory: SpecialCategory;
+  selectedMedia: MetaAdsMedia | null;
+  productTitle: string;
+  productPrice: string;
+  productRating: string;
+  productLink: string;
+  cityQuery: string;
+  interestQuery: string;
+  behaviorQuery: string;
+  selectedCity: TargetingOption | null;
+  selectedInterests: TargetingOption[];
+  selectedBehaviors: TargetingOption[];
+  dailyBudget: string;
+  durationDays: string;
+  draft: CampaignDraft | null;
+  serverDraftId: string | null;
+};
+
+type ServerDraft = {
+  id: string;
+  rascunho: Record<string, unknown>;
+  status: "rascunho";
+  orcamento_diario: number;
+  duracao_dias: number;
+  gasto_maximo: number;
+  criado_em: string;
+  atualizado_em: string;
+};
+
 type OfficialPreview = {
   placement: string;
   format: string;
@@ -174,6 +214,8 @@ declare global {
 
 const META_APP_ID = "1254152493364240";
 const META_SDK_ID = "meta-ads-facebook-jssdk";
+const DEFAULT_WHATSAPP_MESSAGE =
+  "Olá! Vi seu anúncio e gostaria de saber mais.";
 
 const STEPS = ["Objetivo", "Público", "Orçamento", "Criativo e revisão"];
 
@@ -269,11 +311,16 @@ const INTEREST_PRESETS = [
   },
   {
     name: "Comércio local",
-    queries: [["Varejo"], ["Compras"], ["Moda"], ["Restaurantes"]],
+    queries: [["Compras"], ["Restaurantes"], ["Pequenas empresas"]],
   },
   {
     name: "Beleza e estética",
-    queries: [["Salão de beleza"], ["Estética"], ["Cosméticos"]],
+    queries: [
+      ["Salão de beleza"],
+      ["Cosméticos"],
+      ["Cuidados com a pele"],
+      ["Maquiagem"],
+    ],
   },
 ] as const;
 
@@ -301,23 +348,6 @@ const UNSAFE_PRESET_TERMS = [
   "universidade",
 ];
 
-const editDistance = (left: string, right: string) => {
-  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
-  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
-    const current = [leftIndex];
-    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
-      current[rightIndex] = Math.min(
-        current[rightIndex - 1] + 1,
-        previous[rightIndex] + 1,
-        previous[rightIndex - 1] +
-          (left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1),
-      );
-    }
-    previous.splice(0, previous.length, ...current);
-  }
-  return previous[right.length];
-};
-
 const closestSafeInterest = (
   options: TargetingOption[],
   queries: readonly string[],
@@ -326,18 +356,24 @@ const closestSafeInterest = (
   return options
     .filter((option) => {
       const name = normalizeTargetingName(option.name);
-      return !UNSAFE_PRESET_TERMS.some((term) => name.includes(term));
+      const matches = normalizedQueries.some((query) =>
+        name === query || name.startsWith(`${query} `)
+      );
+      const changesMeaning = option.name.includes("(") ||
+        normalizedQueries.some((query) =>
+          query === "moda" && name !== query
+        );
+      return matches && !changesMeaning &&
+        !UNSAFE_PRESET_TERMS.some((term) => name.includes(term));
     })
     .map((option) => {
       const name = normalizeTargetingName(option.name);
       const score = Math.min(...normalizedQueries.map((query) =>
         name === query
           ? 0
-          : name.startsWith(query)
-          ? 10 + Math.abs(name.length - query.length)
-          : name.includes(query)
-          ? 20 + Math.abs(name.length - query.length)
-          : 100 + editDistance(name, query)
+          : name.startsWith(`${query} `)
+          ? 10 + name.length - query.length
+          : Number.POSITIVE_INFINITY
       ));
       return { option, score };
     })
@@ -351,11 +387,18 @@ export default function MetaAdsDashboard() {
   const [error, setError] = useState<DashboardError | null>(null);
   const [loading, setLoading] = useState(true);
   const [showWizard, setShowWizard] = useState(false);
+  const [resumePromptOpen, setResumePromptOpen] = useState(false);
+  const [savedWizard, setSavedWizard] = useState<WizardAutosave | null>(null);
+  const [wizardStarted, setWizardStarted] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [serverDraftId, setServerDraftId] = useState<string | null>(null);
+  const [serverDrafts, setServerDrafts] = useState<ServerDraft[]>([]);
+  const [serverDraftsLoading, setServerDraftsLoading] = useState(true);
   const [step, setStep] = useState(0);
   const [objective, setObjective] = useState<CampaignObjective>("whatsapp");
   const [destinationUrl, setDestinationUrl] = useState("");
   const [whatsappMessage, setWhatsappMessage] = useState(
-    "Olá! Vi seu anúncio e gostaria de saber mais.",
+    DEFAULT_WHATSAPP_MESSAGE,
   );
   const [radiusKm, setRadiusKm] = useState("25");
   const [ageMin, setAgeMin] = useState("18");
@@ -372,7 +415,6 @@ export default function MetaAdsDashboard() {
   const [behaviorQuery, setBehaviorQuery] = useState("");
   const [cities, setCities] = useState<TargetingOption[]>([]);
   const [interests, setInterests] = useState<TargetingOption[]>([]);
-  const [interestSuggestions, setInterestSuggestions] = useState<TargetingOption[]>([]);
   const [behaviors, setBehaviors] = useState<TargetingOption[]>([]);
   const [selectedCity, setSelectedCity] = useState<TargetingOption | null>(null);
   const [selectedInterests, setSelectedInterests] = useState<TargetingOption[]>([]);
@@ -402,6 +444,8 @@ export default function MetaAdsDashboard() {
   const [paymentOAuthLoading, setPaymentOAuthLoading] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | null>(null);
   const [facebookSdkReady, setFacebookSdkReady] = useState(false);
+  const restoringHistoryRef = useRef(false);
+  const wizardStateRef = useRef<WizardAutosave | null>(null);
 
   const selectedMediaId = selectedMedia?.id ?? "";
   const totalBudget = (Number(dailyBudget) || 0) * (Number(durationDays) || 0);
@@ -413,10 +457,447 @@ export default function MetaAdsDashboard() {
       monthlyAvailability.available / Number(durationDays) * 100,
     ) / 100
     : 0;
+  const storageKey = userId ? `meta_ads_wizard_${userId}` : null;
+
+  const wizardState = useMemo<WizardAutosave>(() => ({
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    step,
+    objective,
+    destinationUrl,
+    whatsappMessage,
+    radiusKm,
+    ageMin,
+    ageMax,
+    gender,
+    specialCategory,
+    selectedMedia,
+    productTitle,
+    productPrice,
+    productRating,
+    productLink,
+    cityQuery,
+    interestQuery,
+    behaviorQuery,
+    selectedCity,
+    selectedInterests,
+    selectedBehaviors,
+    dailyBudget,
+    durationDays,
+    draft,
+    serverDraftId,
+  }), [
+    step,
+    objective,
+    destinationUrl,
+    whatsappMessage,
+    radiusKm,
+    ageMin,
+    ageMax,
+    gender,
+    specialCategory,
+    selectedMedia,
+    productTitle,
+    productPrice,
+    productRating,
+    productLink,
+    cityQuery,
+    interestQuery,
+    behaviorQuery,
+    selectedCity,
+    selectedInterests,
+    selectedBehaviors,
+    dailyBudget,
+    durationDays,
+    draft,
+    serverDraftId,
+  ]);
+  wizardStateRef.current = wizardState;
+
+  const resetWizard = () => {
+    setStep(0);
+    setObjective("whatsapp");
+    setDestinationUrl("");
+    setWhatsappMessage(DEFAULT_WHATSAPP_MESSAGE);
+    setRadiusKm("25");
+    setAgeMin("18");
+    setAgeMax("65");
+    setGender("all");
+    setSpecialCategory("");
+    setSelectedMedia(null);
+    setProductTitle("");
+    setProductPrice("");
+    setProductRating("");
+    setProductLink("");
+    setCityQuery("");
+    setInterestQuery("");
+    setBehaviorQuery("");
+    setCities([]);
+    setInterests([]);
+    setBehaviors([]);
+    setSelectedCity(null);
+    setSelectedInterests([]);
+    setSelectedBehaviors([]);
+    setDailyBudget("20");
+    setDurationDays("7");
+    setDraft(null);
+    setServerDraftId(null);
+    setOfficialPreview(null);
+    setActionError(null);
+    setPublished(false);
+  };
+
+  const applyWizardState = (
+    state: WizardAutosave,
+    forcedServerDraftId?: string,
+  ) => {
+    setStep(Math.max(0, Math.min(STEPS.length - 1, Number(state.step) || 0)));
+    setObjective(state.objective === "site" ? "site" : "whatsapp");
+    setDestinationUrl(String(state.destinationUrl ?? ""));
+    setWhatsappMessage(
+      String(state.whatsappMessage ?? DEFAULT_WHATSAPP_MESSAGE),
+    );
+    setRadiusKm(String(state.radiusKm ?? "25"));
+    setAgeMin(String(state.ageMin ?? "18"));
+    setAgeMax(String(state.ageMax ?? "65"));
+    setGender(["male", "female"].includes(state.gender) ? state.gender : "all");
+    setSpecialCategory(state.specialCategory ?? "");
+    setSelectedMedia(state.selectedMedia ?? null);
+    setProductTitle(String(state.productTitle ?? ""));
+    setProductPrice(String(state.productPrice ?? ""));
+    setProductRating(String(state.productRating ?? ""));
+    setProductLink(String(state.productLink ?? ""));
+    setCityQuery(String(state.cityQuery ?? ""));
+    setInterestQuery(String(state.interestQuery ?? ""));
+    setBehaviorQuery(String(state.behaviorQuery ?? ""));
+    setSelectedCity(state.selectedCity ?? null);
+    setSelectedInterests(
+      Array.isArray(state.selectedInterests) ? state.selectedInterests : [],
+    );
+    setSelectedBehaviors(
+      Array.isArray(state.selectedBehaviors) ? state.selectedBehaviors : [],
+    );
+    setDailyBudget(String(state.dailyBudget ?? "20"));
+    setDurationDays(String(state.durationDays ?? "7"));
+    setDraft(state.draft ?? null);
+    setServerDraftId(forcedServerDraftId ?? state.serverDraftId ?? null);
+    setOfficialPreview(null);
+    setActionError(null);
+    setPublished(false);
+    setWizardStarted(true);
+    setShowWizard(true);
+    setResumePromptOpen(false);
+  };
 
   const openWizard = () => {
+    if (savedWizard) {
+      setResumePromptOpen(true);
+      return;
+    }
+    setWizardStarted(true);
     setShowWizard(true);
   };
+
+  const startNewWizard = (askConfirmation: boolean) => {
+    if (
+      askConfirmation &&
+      !window.confirm(
+        "Começar uma nova campanha? O progresso salvo neste navegador será apagado.",
+      )
+    ) return;
+    if (storageKey) localStorage.removeItem(storageKey);
+    setSavedWizard(null);
+    resetWizard();
+    setWizardStarted(true);
+    setShowWizard(true);
+    setResumePromptOpen(false);
+  };
+
+  const closeWizard = () => {
+    if (
+      wizardStarted && !published &&
+      !window.confirm(
+        "Sair? Seu progresso fica salvo e você pode continuar depois.",
+      )
+    ) return;
+    setShowWizard(false);
+  };
+
+  const leavePage = (path: string) => {
+    if (
+      wizardStarted && !published &&
+      !window.confirm(
+        "Você tem uma campanha em andamento. Deseja sair mesmo?",
+      )
+    ) return;
+    if (storageKey) {
+      localStorage.setItem(
+        storageKey,
+        JSON.stringify({ ...wizardState, updatedAt: new Date().toISOString() }),
+      );
+    }
+    setWizardStarted(false);
+    navigate(path);
+  };
+
+  const loadServerDrafts = useCallback(async () => {
+    setServerDraftsLoading(true);
+    const { data: response, error: invokeError } =
+      await supabase.functions.invoke("meta-ads-draft", {
+        body: { action: "list" },
+      });
+    if (invokeError || !response?.ok) {
+      const failure = await getCampaignError(
+        invokeError,
+        response,
+        "Não foi possível carregar os rascunhos.",
+      );
+      if (failure.code === "unauthorized") setSessionExpired(true);
+      setServerDrafts([]);
+    } else {
+      setServerDrafts((response.data ?? []) as ServerDraft[]);
+    }
+    setServerDraftsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void supabase.auth.getUser().then(({ data: auth }) => {
+      if (!active || !auth.user) return;
+      setUserId(auth.user.id);
+      const key = `meta_ads_wizard_${auth.user.id}`;
+      try {
+        const parsed = JSON.parse(
+          localStorage.getItem(key) ?? "null",
+        ) as WizardAutosave | null;
+        if (parsed?.version === 1) {
+          setSavedWizard(parsed);
+          setResumePromptOpen(true);
+        }
+      } catch {
+        localStorage.removeItem(key);
+      }
+    });
+    void loadServerDrafts();
+    return () => {
+      active = false;
+    };
+  }, [loadServerDrafts]);
+
+  const continueServerDraft = (row: ServerDraft) => {
+    const raw = row.rascunho ?? {};
+    const embedded = raw.wizard_state &&
+        typeof raw.wizard_state === "object" &&
+        !Array.isArray(raw.wizard_state)
+      ? raw.wizard_state as WizardAutosave
+      : null;
+    const restored: WizardAutosave = embedded?.version === 1
+      ? { ...embedded }
+      : {
+        version: 1,
+        updatedAt: row.atualizado_em,
+        step: 3,
+        objective: raw.objective === "site" ? "site" : "whatsapp",
+        destinationUrl: String(raw.destination_url ?? ""),
+        whatsappMessage: String(
+          raw.whatsapp_message ?? DEFAULT_WHATSAPP_MESSAGE,
+        ),
+        radiusKm: String(raw.radius_km ?? "25"),
+        ageMin: String(raw.age_min ?? "18"),
+        ageMax: String(raw.age_max ?? "65"),
+        gender: raw.gender === "male" || raw.gender === "female"
+          ? raw.gender
+          : "all",
+        specialCategory: Array.isArray(raw.special_ad_categories)
+          ? (raw.special_ad_categories[0] as SpecialCategory) ?? ""
+          : "",
+        selectedMedia: null,
+        productTitle: String(raw.headline ?? raw.name ?? ""),
+        productPrice: "",
+        productRating: "",
+        productLink: "",
+        cityQuery: "",
+        interestQuery: "",
+        behaviorQuery: "",
+        selectedCity: Array.isArray(raw.cities)
+          ? raw.cities[0] as TargetingOption ?? null
+          : null,
+        selectedInterests: Array.isArray(raw.interests)
+          ? raw.interests as TargetingOption[]
+          : [],
+        selectedBehaviors: Array.isArray(raw.behaviors)
+          ? raw.behaviors as TargetingOption[]
+          : [],
+        dailyBudget: String(raw.daily_budget ?? row.orcamento_diario ?? "20"),
+        durationDays: String(raw.duration_days ?? row.duracao_dias ?? "7"),
+        draft: null,
+        serverDraftId: row.id,
+      };
+    const title = String(raw.headline ?? restored.draft?.title ?? "");
+    const text = String(raw.primary_text ?? restored.draft?.text ?? "");
+    if (title && text) {
+      restored.draft = { id: row.id, title, text };
+    }
+    restored.step = 3;
+    applyWizardState(restored, row.id);
+  };
+
+  const deleteServerDraft = async (row: ServerDraft) => {
+    if (!window.confirm("Excluir este rascunho? Esta ação não pode ser desfeita.")) {
+      return;
+    }
+    const { data: response, error: invokeError } =
+      await supabase.functions.invoke("meta-ads-draft", {
+        body: { action: "delete", id: row.id },
+      });
+    if (invokeError || !response?.ok) {
+      const failure = await getCampaignError(
+        invokeError,
+        response,
+        "Não foi possível excluir o rascunho.",
+      );
+      if (failure.code === "unauthorized") {
+        setSessionExpired(true);
+      } else {
+        toast.error(failure.message);
+      }
+      return;
+    }
+    setServerDrafts((current) =>
+      current.filter((draftRow) => draftRow.id !== row.id)
+    );
+    if (serverDraftId === row.id || savedWizard?.serverDraftId === row.id) {
+      const localOnly = {
+        ...wizardState,
+        serverDraftId: null,
+        updatedAt: new Date().toISOString(),
+      };
+      setServerDraftId(null);
+      setDraft(null);
+      setWizardStarted(false);
+      setShowWizard(false);
+      setSavedWizard(localOnly);
+      if (storageKey) {
+        localStorage.setItem(storageKey, JSON.stringify(localOnly));
+      }
+    }
+    toast.success("Rascunho excluído.");
+  };
+
+  useEffect(() => {
+    if (!storageKey || !wizardStarted || published) return;
+    const timeout = window.setTimeout(() => {
+      const saved = { ...wizardState, updatedAt: new Date().toISOString() };
+      localStorage.setItem(storageKey, JSON.stringify(saved));
+      setSavedWizard(saved);
+    }, 500);
+    return () => window.clearTimeout(timeout);
+  }, [storageKey, wizardStarted, published, wizardState]);
+
+  useEffect(() => {
+    if (!wizardStarted || published) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (storageKey && wizardStateRef.current) {
+        localStorage.setItem(
+          storageKey,
+          JSON.stringify({
+            ...wizardStateRef.current,
+            updatedAt: new Date().toISOString(),
+          }),
+        );
+      }
+      event.preventDefault();
+      event.returnValue =
+        "Você tem uma campanha em andamento. Deseja sair mesmo?";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [wizardStarted, published, storageKey]);
+
+  useEffect(() => {
+    if (!wizardStarted || published) return;
+    window.history.pushState(
+      { ...window.history.state, metaAdsWizardGuard: true },
+      "",
+      window.location.href,
+    );
+    const handlePopState = () => {
+      if (restoringHistoryRef.current) {
+        restoringHistoryRef.current = false;
+        return;
+      }
+      if (
+        window.confirm(
+          "Você tem uma campanha em andamento. Deseja sair mesmo?",
+        )
+      ) {
+        if (storageKey && wizardStateRef.current) {
+          localStorage.setItem(
+            storageKey,
+            JSON.stringify({
+              ...wizardStateRef.current,
+              updatedAt: new Date().toISOString(),
+            }),
+          );
+        }
+        window.removeEventListener("popstate", handlePopState);
+        window.history.back();
+      } else {
+        restoringHistoryRef.current = true;
+        window.history.forward();
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [wizardStarted, published, storageKey]);
+
+  useEffect(() => {
+    if (step !== 3 || !wizardStarted || published || wizardLoading) return;
+    let active = true;
+    const timeout = window.setTimeout(async () => {
+      const { data: response, error: invokeError } =
+        await supabase.functions.invoke("meta-ads-draft", {
+          body: {
+            action: "save_wizard",
+            id: serverDraftId,
+            wizard_state: wizardState,
+          },
+        });
+      if (!active) return;
+      if (invokeError || !response?.ok) {
+        const failure = await getCampaignError(
+          invokeError,
+          response,
+          "Não foi possível salvar o rascunho na conta.",
+        );
+        if (failure.code === "unauthorized") {
+          setSessionExpired(true);
+        } else {
+          setActionError(failure);
+        }
+        return;
+      }
+      const saved = response.data as ServerDraft;
+      if (!serverDraftId && saved?.id) setServerDraftId(saved.id);
+      if (saved?.id) {
+        setServerDrafts((current) => {
+          const next = current.filter((row) => row.id !== saved.id);
+          return [saved, ...next];
+        });
+      }
+    }, 700);
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [
+    step,
+    wizardStarted,
+    published,
+    wizardLoading,
+    serverDraftId,
+    wizardState,
+  ]);
 
   const searchTargeting = async (type: "city" | "interest" | "behavior") => {
     const query = type === "city"
@@ -506,36 +987,6 @@ export default function MetaAdsDashboard() {
       setTargetingLoading(null);
     }
   };
-
-  useEffect(() => {
-    const interestList = selectedInterests.map((item) => item.id);
-    if (!interestList.length) {
-      setInterestSuggestions([]);
-      return;
-    }
-    let active = true;
-    void supabase.functions.invoke("meta-ads-targeting-search", {
-      body: { type: "interest_suggestion", interest_list: interestList },
-    }).then(async ({ data: response, error: invokeError }) => {
-      if (!active) return;
-      if (invokeError || !response?.ok) {
-        const failure = await getCampaignError(
-          invokeError,
-          response,
-          "Não foi possível consultar as sugestões do Meta.",
-        );
-        if (active && failure.code === "unauthorized") setSessionExpired(true);
-        return;
-      }
-      const selected = new Set(interestList);
-      const suggestions = ((response?.data ?? []) as TargetingOption[])
-        .filter((item) => !selected.has(item.id));
-      setInterestSuggestions(suggestions);
-    });
-    return () => {
-      active = false;
-    };
-  }, [selectedInterests]);
 
   useEffect(() => {
     if (step !== 1 || !selectedCity) {
@@ -716,7 +1167,16 @@ export default function MetaAdsDashboard() {
 
       const { data: response, error: invokeError } = await supabase.functions.invoke(
         "meta-ads-draft",
-        { body: { id: draft?.id, draft: campaignPayload(copy) } },
+        {
+          body: {
+            id: serverDraftId ?? draft?.id,
+            draft: campaignPayload(copy),
+            wizard_state: {
+              ...wizardState,
+              draft: { id: serverDraftId ?? draft?.id ?? "", ...copy },
+            },
+          },
+        },
       );
       if (invokeError || !response?.ok) {
         const failure = await getCampaignError(
@@ -739,6 +1199,7 @@ export default function MetaAdsDashboard() {
         text: result.primary_text ?? copy.text,
         preview: result.preview,
       });
+      setServerDraftId(response.data?.id ?? response.campaign_id ?? result.id);
       setOfficialPreview(null);
       setPublished(false);
       toast.success("Texto criado e rascunho salvo. Você pode editar.");
@@ -758,7 +1219,13 @@ export default function MetaAdsDashboard() {
     try {
       const { data: saved, error: saveError } = await supabase.functions.invoke(
         "meta-ads-draft",
-        { body: { id: draft.id, draft: campaignPayload() } },
+        {
+          body: {
+            id: serverDraftId ?? draft.id,
+            draft: campaignPayload(),
+            wizard_state: wizardState,
+          },
+        },
       );
       if (saveError || !saved?.ok) {
         const failure = await getCampaignError(
@@ -776,7 +1243,7 @@ export default function MetaAdsDashboard() {
       }
       const { data: response, error: invokeError } = await supabase.functions.invoke(
         "meta-ads-preview",
-        { body: { draft_id: draft.id } },
+        { body: { draft_id: serverDraftId ?? draft.id } },
       );
       if (invokeError || !response?.ok) {
         const failure = await getCampaignError(
@@ -814,7 +1281,12 @@ export default function MetaAdsDashboard() {
     try {
       const { data: response, error: invokeError } = await supabase.functions.invoke(
         "meta-ads-publish",
-        { body: { draft_id: draft.id, confirm_publish: true } },
+        {
+          body: {
+            draft_id: serverDraftId ?? draft.id,
+            confirm_publish: true,
+          },
+        },
       );
       if (invokeError || !response?.ok) {
         const failure = await getCampaignError(
@@ -854,6 +1326,12 @@ export default function MetaAdsDashboard() {
         return;
       }
       setPublished(true);
+      setWizardStarted(false);
+      setSavedWizard(null);
+      if (storageKey) localStorage.removeItem(storageKey);
+      setServerDrafts((current) =>
+        current.filter((row) => row.id !== (serverDraftId ?? draft.id))
+      );
       toast.success("Campanha publicada.");
       await load();
     } catch (publishError) {
@@ -1056,6 +1534,33 @@ export default function MetaAdsDashboard() {
       })
       : "",
   }));
+  const stepBlockReason = step === 0 && objective === "site" &&
+      !/^https:\/\/.+/i.test(destinationUrl.trim())
+    ? "Informe um endereço de site válido começando com https://."
+    : step === 1 && !selectedCity
+    ? cityQuery.trim()
+      ? "Clique na lupa e escolha a cidade na lista."
+      : "Busque e escolha uma cidade para continuar."
+    : step === 1 &&
+        !(Number(radiusKm) >= 1 && Number(radiusKm) <= 80)
+    ? "Informe um raio entre 1 e 80 km."
+    : step === 1 &&
+        (!(Number(ageMin) >= 18) || !(Number(ageMin) <= 65) ||
+          !(Number(ageMax) >= 18) || !(Number(ageMax) <= 65) ||
+          Number(ageMin) > Number(ageMax))
+    ? "Informe idades entre 18 e 65 anos, com a mínima menor que a máxima."
+    : step === 2 && !(Number(dailyBudget) > 0)
+    ? "Informe um orçamento diário maior que zero."
+    : step === 2 &&
+        (!(Number(durationDays) >= 1) || !(Number(durationDays) <= 365))
+    ? "Informe uma duração entre 1 e 365 dias."
+    : step === 2 && monthlyAvailabilityLoading
+    ? "Aguarde a consulta do limite mensal."
+    : step === 2 && !monthlyAvailability
+    ? "Consulte o limite mensal para continuar."
+    : step === 2 && exceedsMonthlyAvailability
+    ? `Reduza o orçamento para até ${money(suggestedDailyBudget)} por dia.`
+    : null;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 p-4 md:p-6">
@@ -1065,7 +1570,7 @@ export default function MetaAdsDashboard() {
             <Button
               variant="ghost"
               className="mb-2 -ml-3"
-              onClick={() => navigate("/dashboard")}
+              onClick={() => leavePage("/dashboard")}
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
               Voltar
@@ -1118,7 +1623,7 @@ export default function MetaAdsDashboard() {
             <CardHeader className="space-y-4">
               <div className="flex items-center justify-between gap-4">
                 <CardTitle>Nova campanha</CardTitle>
-                <Button variant="ghost" onClick={() => setShowWizard(false)}>
+                <Button variant="ghost" onClick={closeWizard}>
                   Fechar
                 </Button>
               </div>
@@ -1224,6 +1729,7 @@ export default function MetaAdsDashboard() {
                         value={cityQuery}
                         onChange={(event) => {
                           setCityQuery(event.target.value);
+                          setSelectedCity(null);
                           setEmptySearch((current) => ({ ...current, city: undefined }));
                         }}
                         onKeyDown={(event) => event.key === "Enter" && searchTargeting("city")}
@@ -1245,6 +1751,7 @@ export default function MetaAdsDashboard() {
                           type="button"
                           onClick={() => {
                             setSelectedCity(city);
+                            setCityQuery(city.name);
                             setCities([]);
                           }}
                           className="block w-full rounded border px-3 py-2 text-left text-sm hover:bg-muted"
@@ -1255,6 +1762,11 @@ export default function MetaAdsDashboard() {
                       {emptySearch.city && (
                         <p className="text-sm text-muted-foreground">
                           Nenhum resultado para '{emptySearch.city}'. Tente outra palavra.
+                        </p>
+                      )}
+                      {cityQuery.trim() && !selectedCity && (
+                        <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                          Clique na lupa e escolha a cidade na lista.
                         </p>
                       )}
                     </div>
@@ -1347,35 +1859,6 @@ export default function MetaAdsDashboard() {
                         </p>
                       )}
                     </div>
-                    {interestSuggestions.length > 0 && (
-                      <div className="space-y-1">
-                        <p className="text-xs font-medium text-muted-foreground">
-                          Sugestões relacionadas do Meta
-                        </p>
-                        {interestSuggestions.map((interest) => (
-                          <button
-                            key={interest.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedInterests((items) =>
-                                items.some((item) => item.id === interest.id)
-                                  ? items
-                                  : [...items, interest]);
-                              setInterestSuggestions((items) =>
-                                items.filter((item) => item.id !== interest.id));
-                            }}
-                            className="block w-full rounded border px-3 py-2 text-left text-sm hover:bg-muted"
-                          >
-                            <span className="block">{interest.name}</span>
-                            {audienceRange(interest) && (
-                              <span className="text-xs text-muted-foreground">
-                                {audienceRange(interest)}
-                              </span>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    )}
                   </div>
                   <div className="space-y-3">
                     <Label htmlFor="behavior-search">Comportamentos</Label>
@@ -1646,10 +2129,14 @@ export default function MetaAdsDashboard() {
                     <Button
                       onClick={generateDraft}
                       disabled={!selectedMediaId || !productTitle.trim() ||
-                        !!wizardLoading}
+                        !serverDraftId || !!wizardLoading}
                     >
-                      {wizardLoading === "draft" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Gerar título e texto com IA
+                      {(wizardLoading === "draft" || !serverDraftId) && (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      )}
+                      {serverDraftId
+                        ? "Gerar título e texto com IA"
+                        : "Salvando rascunho..."}
                     </Button>
                   ) : (
                     <div className="grid gap-6 md:grid-cols-2">
@@ -1775,26 +2262,19 @@ export default function MetaAdsDashboard() {
                     WhatsApp <ExternalLink className="ml-1 h-3 w-3" />
                   </Button>
                 </div>
-                <div className="flex justify-end gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {stepBlockReason && (
+                    <p className="w-full text-right text-sm font-medium text-amber-700 dark:text-amber-300">
+                      {stepBlockReason}
+                    </p>
+                  )}
                   <Button variant="outline" disabled={step === 0} onClick={() => setStep((value) => value - 1)}>
                     Voltar
                   </Button>
                   {step < STEPS.length - 1 && (
                     <Button
                       onClick={() => setStep((value) => value + 1)}
-                      disabled={(step === 0 && objective === "site" &&
-                        !/^https:\/\/.+/i.test(destinationUrl.trim())) ||
-                        (step === 1 && (!selectedCity ||
-                          !(Number(radiusKm) >= 1 && Number(radiusKm) <= 80) ||
-                          !(Number(ageMin) >= 18 && Number(ageMax) <= 65) ||
-                          Number(ageMin) > Number(ageMax))) ||
-                        (step === 2 && (
-                          !(Number(dailyBudget) > 0) ||
-                          !(Number(durationDays) > 0) ||
-                          monthlyAvailabilityLoading ||
-                          !monthlyAvailability ||
-                          exceedsMonthlyAvailability
-                        ))}
+                      disabled={Boolean(stepBlockReason)}
                     >
                       Continuar
                     </Button>
@@ -1804,6 +2284,95 @@ export default function MetaAdsDashboard() {
             </CardContent>
           </Card>
         )}
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Rascunhos</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {serverDraftsLoading ? (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Carregando rascunhos...
+              </p>
+            ) : serverDrafts.length ? (
+              <div className="space-y-3">
+                {serverDrafts.map((row) => {
+                  const storedState = row.rascunho?.wizard_state &&
+                      typeof row.rascunho.wizard_state === "object"
+                    ? row.rascunho.wizard_state as Partial<WizardAutosave>
+                    : null;
+                  const name = String(
+                    row.rascunho?.headline ??
+                      storedState?.draft?.title ??
+                      storedState?.productTitle ??
+                      row.rascunho?.name ??
+                      "Campanha sem nome",
+                  );
+                  return (
+                    <div
+                      key={row.id}
+                      className="flex flex-col gap-3 rounded-md border p-4 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div>
+                        <p className="font-medium">{name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          Orçamento máximo: {money(row.gasto_maximo)}
+                          {" · "}
+                          Atualizado em{" "}
+                          {new Date(row.atualizado_em).toLocaleString("pt-BR")}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => continueServerDraft(row)}
+                        >
+                          Continuar editando
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          onClick={() => void deleteServerDraft(row)}
+                        >
+                          Excluir
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Nenhum rascunho salvo na conta.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Dialog open={resumePromptOpen} onOpenChange={setResumePromptOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Você tem uma campanha em andamento</DialogTitle>
+              <DialogDescription>
+                Continue de onde parou ou comece uma nova campanha.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:space-x-0">
+              <Button
+                variant="outline"
+                onClick={() => startNewWizard(true)}
+              >
+                Começar nova
+              </Button>
+              <Button
+                onClick={() => savedWizard && applyWizardState(savedWizard)}
+                disabled={!savedWizard}
+              >
+                Continuar de onde parei
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
           <DialogContent>
