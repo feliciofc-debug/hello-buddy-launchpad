@@ -140,6 +140,12 @@ serve(async (req) => {
     .eq("user_id", user.id)
     .in("status", ["publicando", "publicado", "pausado"]);
   if (capLoadError) return json({ error: "monthly_cap_check_failed" }, 500);
+  const rows = (platformRows ?? []) as Array<{
+    id: string;
+    campaign_id: string | null;
+    gasto_maximo: number | string | null;
+    status: string;
+  }>;
   let actualSpent = 0;
   const activeCampaigns: Array<{
     maximumSpend: number;
@@ -160,11 +166,11 @@ serve(async (req) => {
     );
     actualSpent = Number(accountInsights?.data?.[0]?.spend || 0);
     await Promise.all(
-      (platformRows ?? [])
-        .filter((platform: any) =>
+      rows
+        .filter((platform) =>
           platform.status !== "publicando" && platform.campaign_id
         )
-        .map(async (platform: any) => {
+        .map(async (platform) => {
           const campaign = await metaGraphRequest(
             String(platform.campaign_id),
             {
@@ -200,9 +206,9 @@ serve(async (req) => {
     monthlyCap: integration.limite_mensal_anuncios,
     actualSpent,
     activeCampaigns,
-    inFlightReservations: (platformRows ?? [])
-      .filter((platform: any) => platform.status === "publicando")
-      .map((platform: any) => platform.gasto_maximo),
+    inFlightReservations: rows
+      .filter((platform) => platform.status === "publicando")
+      .map((platform) => platform.gasto_maximo),
     daysRemaining: daysInMonth - now.getUTCDate() + 1,
   });
   const maximumSpend = metaAdsMaximumSpend(validated.draft);
@@ -224,9 +230,9 @@ serve(async (req) => {
       p_user_id: user.id,
       p_campaign_id: draftId,
       p_committed_without_inflight: committedWithoutInflight,
-      p_observed_campaign_ids: (platformRows ?? [])
-        .filter((platform: any) => platform.status !== "publicando")
-        .map((platform: any) => platform.id),
+      p_observed_campaign_ids: rows
+        .filter((platform) => platform.status !== "publicando")
+        .map((platform) => platform.id),
     },
   );
   if (reservationError) {
