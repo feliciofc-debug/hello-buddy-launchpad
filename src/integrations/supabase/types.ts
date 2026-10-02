@@ -3824,6 +3824,10 @@ export type Database = {
       integrations: {
         Row: {
           access_token: string
+          ad_account_currency: string | null
+          ad_account_id: string | null
+          ad_account_name: string | null
+          ad_accounts: Json
           created_at: string | null
           expires_at: string | null
           id: string
@@ -3843,6 +3847,10 @@ export type Database = {
         }
         Insert: {
           access_token: string
+          ad_account_currency?: string | null
+          ad_account_id?: string | null
+          ad_account_name?: string | null
+          ad_accounts?: Json
           created_at?: string | null
           expires_at?: string | null
           id?: string
@@ -3862,6 +3870,10 @@ export type Database = {
         }
         Update: {
           access_token?: string
+          ad_account_currency?: string | null
+          ad_account_id?: string | null
+          ad_account_name?: string | null
+          ad_accounts?: Json
           created_at?: string | null
           expires_at?: string | null
           id?: string

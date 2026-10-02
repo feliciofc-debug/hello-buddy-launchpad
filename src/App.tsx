@@ -24,6 +24,7 @@ import Configuracoes from "./pages/Configuracoes";
 
 import SettingsPage from "./components/SettingsPage";
 import AuthCallbackMetaPage from "./pages/AuthCallbackMetaPage";
+import AuthCallbackMetaAdsPage from "./pages/AuthCallbackMetaAdsPage";
 import IAMarketing from "./pages/IAMarketing";
 import RedesSociais from "./pages/RedesSociais";
 import Biblioteca from "./pages/Biblioteca";
@@ -155,6 +156,7 @@ const App = () => (
             <Route path="/campanhas/:id/leads" element={<CampanhaLeads />} />
             <Route path="/campanhas/:campanhaId/leads-descobertos" element={<LeadsDescobertos />} />
             <Route path="/auth/callback/meta" element={<AuthCallbackMetaPage />} />
+            <Route path="/auth/callback/meta-ads" element={<AuthCallbackMetaAdsPage />} />
             <Route path="/ia-marketing" element={<IAMarketing />} />
             <Route path="/configuracoes/redes-sociais" element={<RedesSociais />} />
             <Route path="/biblioteca" element={<Biblioteca />} />

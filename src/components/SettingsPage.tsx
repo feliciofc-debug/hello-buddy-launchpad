@@ -9,6 +9,14 @@ import { MarcaPersonalizacao } from './MarcaPersonalizacao';
 import { buildTikTokAuthUrl } from "@/config/tiktok";
 import { isCustomAuth } from "@/config/runtime-config";
 import { buildMetaAuthUrl } from "@/config/meta";
+import { buildMetaAdsAuthUrl } from "@/config/meta-ads";
+
+type MetaAdsAccount = {
+  id: string;
+  name: string;
+  account_status: number;
+  currency: string;
+};
 
 const SettingsPage = () => {
   const navigate = useNavigate();
@@ -17,6 +25,10 @@ const SettingsPage = () => {
   const [metaConnection, setMetaConnection] = useState<any>(null);
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [metaAdsConnection, setMetaAdsConnection] = useState<any>(null);
+  const [loadingMetaAds, setLoadingMetaAds] = useState(true);
+  const [savingMetaAdsAccount, setSavingMetaAdsAccount] = useState(false);
+  const [disconnectingMetaAds, setDisconnectingMetaAds] = useState(false);
   const [tiktokConnection, setTiktokConnection] = useState<any>(null);
   const [loadingTiktok, setLoadingTiktok] = useState(true);
   const [disconnectingTiktok, setDisconnectingTiktok] = useState(false);
@@ -96,6 +108,24 @@ const SettingsPage = () => {
     }
   };
 
+  const fetchMetaAdsConnection = async () => {
+    setLoadingMetaAds(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from('integrations')
+        .select('id, ad_account_id, ad_account_name, ad_account_currency, ad_accounts, token_expires_at, is_active')
+        .eq('user_id', user.id)
+        .eq('platform', 'meta_ads')
+        .eq('is_active', true)
+        .maybeSingle();
+      setMetaAdsConnection(data);
+    } finally {
+      setLoadingMetaAds(false);
+    }
+  };
+
   useEffect(() => {
     const fetchMetaConnection = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -109,6 +139,7 @@ const SettingsPage = () => {
       setLoadingMeta(false);
     };
     fetchMetaConnection();
+    fetchMetaAdsConnection();
     fetchTiktokConnection();
     fetchLinkedinConnection();
 
@@ -121,7 +152,10 @@ const SettingsPage = () => {
       window.history.replaceState({}, '', window.location.pathname);
     }
     const urlMessage = params.get('message');
-    if (params.get('success') === 'true' && params.get('platform') === 'meta') {
+    if (params.get('success') === 'true' && params.get('platform') === 'meta_ads') {
+      toast.success('✅ Meta Ads conectado com sucesso!');
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (params.get('success') === 'true' && params.get('platform') === 'meta') {
       toast.success('✅ Meta Business conectado com sucesso!');
       window.history.replaceState({}, '', window.location.pathname);
     } else if (params.get('error') === 'true') {
@@ -157,7 +191,10 @@ const SettingsPage = () => {
     setDisconnecting(true);
     try {
       const { error: e1 } = await supabase.from('meta_connections').delete().eq('user_id', user.id);
-      const { error: e2 } = await supabase.from('integrations').delete().eq('user_id', user.id).like('platform', 'meta%');
+      const { error: e2 } = await supabase.from('integrations').delete()
+        .eq('user_id', user.id)
+        .like('platform', 'meta%')
+        .neq('platform', 'meta_ads');
       if (e1) console.error('Erro meta_connections:', e1);
       if (e2) console.error('Erro integrations:', e2);
       setMetaConnection(null);
@@ -166,6 +203,71 @@ const SettingsPage = () => {
       toast.error('Erro ao desconectar. Tente novamente.');
     } finally {
       setDisconnecting(false);
+    }
+  };
+
+  const handleConnectMetaAds = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error('Você precisa estar logado para conectar.');
+      return;
+    }
+    window.location.href = buildMetaAdsAuthUrl(user.id);
+  };
+
+  const handleSelectMetaAdsAccount = async (accountId: string) => {
+    const accounts = (Array.isArray(metaAdsConnection?.ad_accounts)
+      ? metaAdsConnection.ad_accounts
+      : []) as MetaAdsAccount[];
+    const account = accounts.find((item) => item.id === accountId);
+    if (!account) return;
+    setSavingMetaAdsAccount(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { error } = await supabase
+        .from('integrations')
+        .update({
+          ad_account_id: account.id,
+          ad_account_name: account.name,
+          ad_account_currency: account.currency,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', user.id)
+        .eq('platform', 'meta_ads');
+      if (error) throw error;
+      setMetaAdsConnection((current: any) => ({
+        ...current,
+        ad_account_id: account.id,
+        ad_account_name: account.name,
+        ad_account_currency: account.currency,
+      }));
+      toast.success('Conta de anúncios selecionada.');
+    } catch {
+      toast.error('Não foi possível selecionar a conta de anúncios.');
+    } finally {
+      setSavingMetaAdsAccount(false);
+    }
+  };
+
+  const handleDisconnectMetaAds = async () => {
+    if (!window.confirm('Tem certeza que deseja desconectar o Meta Ads?')) return;
+    setDisconnectingMetaAds(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { error } = await supabase
+        .from('integrations')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('platform', 'meta_ads');
+      if (error) throw error;
+      setMetaAdsConnection(null);
+      toast.success('Meta Ads desconectado.');
+    } catch {
+      toast.error('Erro ao desconectar. Tente novamente.');
+    } finally {
+      setDisconnectingMetaAds(false);
     }
   };
 
@@ -236,7 +338,7 @@ const SettingsPage = () => {
             <TabsTrigger value="marca">🎨 {t('settings.brand_tab')}</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="meta">
+          <TabsContent value="meta" className="space-y-6">
             <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">
               <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">{t('settings.meta_business_title')}</h2>
 
@@ -296,6 +398,102 @@ const SettingsPage = () => {
                     className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors"
                   >
                     {t('settings.connect_meta_business')}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+              <h2 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">
+                Meta Ads (anúncios)
+              </h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Conecte uma conta de anúncios para consultar relatórios pelo WhatsApp.
+              </p>
+
+              {loadingMetaAds ? (
+                <div className="flex items-center gap-2 text-gray-500">
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>Carregando conexão...</span>
+                </div>
+              ) : metaAdsConnection ? (
+                <div className="space-y-4">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                    ✅ Conectado
+                  </span>
+
+                  {Array.isArray(metaAdsConnection.ad_accounts) &&
+                    metaAdsConnection.ad_accounts.length > 1 && (
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="meta-ads-account"
+                        className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                      >
+                        Conta de anúncios
+                      </label>
+                      <select
+                        id="meta-ads-account"
+                        value={metaAdsConnection.ad_account_id || ''}
+                        onChange={(event) => handleSelectMetaAdsAccount(event.target.value)}
+                        disabled={savingMetaAdsAccount}
+                        className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-white"
+                      >
+                        <option value="" disabled>Selecione uma conta</option>
+                        {(metaAdsConnection.ad_accounts as MetaAdsAccount[]).map((account) => (
+                          <option key={account.id} value={account.id}>
+                            {account.name} — {account.id} ({account.currency})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {metaAdsConnection.ad_account_id && (
+                    <div className="space-y-1 text-sm text-gray-700 dark:text-gray-300">
+                      <p>
+                        <span className="font-medium">Conta selecionada:</span>{' '}
+                        {metaAdsConnection.ad_account_name || metaAdsConnection.ad_account_id}
+                      </p>
+                      <p>
+                        <span className="font-medium">ID:</span>{' '}
+                        {metaAdsConnection.ad_account_id}
+                      </p>
+                    </div>
+                  )}
+
+                  {!metaAdsConnection.ad_account_id && (
+                    <p className="text-sm font-medium text-yellow-700 dark:text-yellow-400">
+                      Selecione a conta que o Jarvis deve consultar.
+                    </p>
+                  )}
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={handleConnectMetaAds}
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors"
+                    >
+                      🔄 Reconectar
+                    </button>
+                    <button
+                      onClick={handleDisconnectMetaAds}
+                      disabled={disconnectingMetaAds}
+                      className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold py-2 px-4 rounded transition-colors flex items-center gap-2"
+                    >
+                      {disconnectingMetaAds && <Loader2 className="w-4 h-4 animate-spin" />}
+                      🔌 Desconectar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 mb-4">
+                    Não conectado
+                  </span>
+                  <button
+                    onClick={handleConnectMetaAds}
+                    className="block mt-3 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors"
+                  >
+                    Conectar Meta Ads
                   </button>
                 </div>
               )}

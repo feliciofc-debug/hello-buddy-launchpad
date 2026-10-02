@@ -128,8 +128,13 @@ import {
   AMZ_GLOBAL_TOOL_NAMES,
   canUseAmzGlobalTools,
   filterToolsForTenant,
+  OWNER_ONLY_TOOL_NAMES,
   resolveTenantToolScope,
 } from "../_shared/whatsapp-tenant-tool-access.ts";
+import {
+  getMetaAdsReport,
+  isMetaAdsReportRequest,
+} from "../_shared/meta-ads-report.ts";
 import { dedupeConsecutiveReplyText } from "../_shared/reply-dedupe.ts";
 import {
   formatScheduledDate,
@@ -3224,6 +3229,30 @@ function hasAmzGlobalToolAccess(ctx: { userId: string; fromNumber: string }): bo
     userId: ctx.userId,
     isOwner: isOwner(ctx),
     adminAmzUserId: ADMIN_AMZ_USER_ID,
+  });
+}
+
+async function toolRelatorioAnunciosMeta(
+  periodo: unknown,
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  if (!isOwner(ctx)) {
+    return "Esse relatório é restrito ao responsável da conta.";
+  }
+  return await getMetaAdsReport({
+    userId: ctx.userId,
+    period: periodo,
+    loadIntegration: async (userId) => {
+      const { data, error } = await sb
+        .from("integrations")
+        .select("access_token, token_expires_at, ad_account_id, ad_account_name, ad_account_currency, is_active")
+        .eq("user_id", userId)
+        .eq("platform", "meta_ads")
+        .eq("is_active", true)
+        .maybeSingle();
+      if (error) return null;
+      return data;
+    },
   });
 }
 
@@ -9074,6 +9103,23 @@ const TOOLS = [
   {
     type: "function",
     function: {
+      name: "relatorio_anuncios_meta",
+      description: "[SOMENTE DONO] Consulta relatório somente leitura do Meta Ads. Use para 'como estão meus anúncios', 'relatório de anúncios', 'quanto gastei em anúncios' e 'resultado da campanha'. Nunca cria nem altera anúncios.",
+      parameters: {
+        type: "object",
+        properties: {
+          periodo: {
+            type: "string",
+            enum: ["hoje", "ontem", "7_dias", "30_dias", "este_mes"],
+            description: "Período do relatório. Padrão: 7_dias.",
+          },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "consultar_metricas_amz",
       description: "[ADMIN — só Felicio] Retorna métricas gerais do negócio AMZ OFERTAS: total de clientes, assinaturas ativas/pausadas, faturamento do mês e de ontem.",
       parameters: { type: "object", properties: {} },
@@ -10596,6 +10642,9 @@ async function runTool(
     demoTestPhones?: string[];
   },
 ): Promise<{ result: string; imageUrl?: string; interactiveButtons?: WhatsAppInteractiveButtons }> {
+  if (OWNER_ONLY_TOOL_NAMES.has(name) && !isOwner(ctx)) {
+    return { result: "Essa ferramenta é restrita ao responsável da conta." };
+  }
   if (AMZ_GLOBAL_TOOL_NAMES.has(name) && !hasAmzGlobalToolAccess(ctx)) {
     return { result: JSON.stringify({ erro: "ferramenta_restrita" }) };
   }
@@ -10703,6 +10752,11 @@ async function runTool(
   if (name === "consultar_noticias") return { result: await toolConsultarNoticias(args?.tema ?? "") };
   if (name === "rastrear_correios") return { result: await toolRastrearCorreios(args?.codigo ?? "") };
   if (name === "calcular_rota") return { result: await toolCalcularRota(args?.origem ?? "", args?.destino ?? "", ctx) };
+  if (name === "relatorio_anuncios_meta") {
+    return {
+      result: await toolRelatorioAnunciosMeta(args?.periodo, ctx),
+    };
+  }
   if (name === "consultar_metricas_amz") return { result: await toolMetricasAmz(ctx) };
   if (name === "listar_inadimplentes_amz") return { result: await toolInadimplentesAmz(ctx) };
   if (name === "status_plataforma_amz") return { result: await toolStatusPlataforma(ctx) };
@@ -11843,6 +11897,13 @@ async function callGemini(
       Boolean(requiredProspectSiteUrl),
     )
     : null;
+  const requiredMetaAdsTool = senderIsOwner
+      && !hasMedia
+      && typeof userContent === "string"
+      && isMetaAdsReportRequest(userContent)
+    ? "relatorio_anuncios_meta"
+    : null;
+  const requiredTool = requiredMetaAdsTool || requiredCreativeTool;
 
   for (let step = 0; step < 4; step++) {
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -11856,11 +11917,11 @@ async function callGemini(
         messages,
         temperature: 0.7,
         tools: availableTools,
-        ...(step === 0 && requiredCreativeTool
+        ...(step === 0 && requiredTool
           ? {
               tool_choice: {
                 type: "function",
-                function: { name: requiredCreativeTool },
+                function: { name: requiredTool },
               },
             }
           : {}),
@@ -11919,6 +11980,14 @@ async function callGemini(
           };
         }
         const { result, imageUrl, interactiveButtons } = await runTool(name, args, toolCtx);
+        if (name === "relatorio_anuncios_meta") {
+          return {
+            text: result,
+            imageUrl: pendingImageUrl,
+            forwardProof,
+            forwardAttempted,
+          };
+        }
         const blocked = deterministicDemoBlockedResponse(
           name,
           result,
