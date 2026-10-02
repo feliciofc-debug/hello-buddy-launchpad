@@ -63,7 +63,7 @@ export const Backdrop: React.FC<{ c: Paleta; arranjo?: number }> = ({ c, arranjo
       {arranjo === 3 ? (
         <AbsoluteFill
           style={{
-            opacity: claro ? 0.5 : 0.3,
+            opacity: 0,
             backgroundImage: `repeating-linear-gradient(135deg, ${c.line} 0px, ${c.line} 2px, transparent 2px, transparent 26px)`,
             transform: `translateY(${(frame * 0.25) % 26}px)`,
           }}
@@ -71,7 +71,7 @@ export const Backdrop: React.FC<{ c: Paleta; arranjo?: number }> = ({ c, arranjo
       ) : (
         <AbsoluteFill
           style={{
-            opacity: claro ? 0.55 : 0.35,
+            opacity: 0,
             backgroundImage: `linear-gradient(${c.line} 1px, transparent 1px), linear-gradient(90deg, ${c.line} 1px, transparent 1px)`,
             backgroundSize: "72px 72px",
             transform: `translateY(${((frame * 0.35) % 72) - 72}px)`,
