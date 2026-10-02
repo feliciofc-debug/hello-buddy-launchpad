@@ -126,8 +126,21 @@ import {
   AMZ_GLOBAL_TOOL_NAMES,
   canUseAmzGlobalTools,
   filterToolsForTenant,
+  OWNER_ONLY_TOOL_NAMES,
   resolveTenantToolScope,
 } from "../_shared/whatsapp-tenant-tool-access.ts";
+import {
+  enforceMonthlyCap,
+  publishMetaCampaign,
+  rollbackMetaEntities,
+  validateDraft,
+} from "../_shared/meta-ads-create.ts";
+import {
+  checkMetaAdsReadiness,
+  getMetaAdsIntegration,
+  graphRequest,
+  redactSecrets,
+} from "../_shared/meta-ads-report.ts";
 import { dedupeConsecutiveReplyText } from "../_shared/reply-dedupe.ts";
 import {
   formatScheduledDate,
@@ -8855,6 +8868,395 @@ async function confirmarRascunhoVideo(ctx: { userId: string; fromNumber: string 
   return `✅ Roteiro aprovado e vídeo enfileirado. Posição na fila: *${r.posicao_fila}*. Vou te enviar o MP4 aqui quando terminar (estimativa: cerca de 4 minutos).`;
 }
 
+type MetaAdsToolContext = {
+  userId: string;
+  fromNumber: string;
+  convId?: string;
+};
+
+function metaApprovalContext(ctx: MetaAdsToolContext) {
+  return {
+    owner_phone: String(ctx.fromNumber || "").replace(/\D/g, ""),
+    conversation_id: String(ctx.convId || ""),
+  };
+}
+
+function metaDraftBelongsToConversation(row: any, ctx: MetaAdsToolContext): boolean {
+  const approval = row?.draft_json?._whatsapp_approval;
+  const expected = metaApprovalContext(ctx);
+  return !!expected.owner_phone && !!expected.conversation_id
+    && approval?.owner_phone === expected.owner_phone
+    && approval?.conversation_id === expected.conversation_id;
+}
+
+async function toolRascunhoAnuncioMeta(
+  args: any,
+  ctx: MetaAdsToolContext,
+): Promise<string> {
+  if (!isOwner(ctx)) {
+    return JSON.stringify({ ok: false, erro: "acao_restrita_ao_responsavel" });
+  }
+  if (!ctx.convId) {
+    return JSON.stringify({ ok: false, erro: "conversa_nao_identificada" });
+  }
+  try {
+    const draft = validateDraft({
+      name: args?.nome,
+      message: args?.texto,
+      mediaUrl: args?.midia_url,
+      mediaType: args?.tipo_midia,
+      dailyBudget: args?.orcamento_diario,
+      maxSpend: args?.gasto_maximo,
+      cityKeys: args?.cidades,
+      interestIds: args?.interesses,
+      minAge: args?.idade_minima,
+      maxAge: args?.idade_maxima,
+    });
+    // This tool deliberately does not call Graph: a draft is a DB-only record.
+    const integration = await getMetaAdsIntegration(sb, ctx.userId);
+    const monthStart = new Date();
+    monthStart.setUTCDate(1);
+    monthStart.setUTCHours(0, 0, 0, 0);
+    const { data: committed, error: sumError } = await sb
+      .from("meta_ads_campanhas")
+      .select("gasto_maximo")
+      .eq("user_id", ctx.userId)
+      .gte("aprovado_em", monthStart.toISOString())
+      .in("status", ["aprovado", "publicando", "publicado", "pausado", "ativo"]);
+    if (sumError) throw new Error("Não foi possível consultar o limite mensal.");
+    const alreadyCommitted = (committed ?? []).reduce(
+      (sum: number, item: any) => sum + Number(item.gasto_maximo || 0),
+      0,
+    );
+    const monthlyCap = Number(integration.limite_mensal_anuncios || 200);
+    enforceMonthlyCap(alreadyCommitted, draft.maxSpend, monthlyCap);
+    const storedDraft = {
+      ...draft,
+      _whatsapp_approval: metaApprovalContext(ctx),
+    };
+    const { data, error } = await sb.from("meta_ads_campanhas").insert({
+      user_id: ctx.userId,
+      integration_id: integration.id,
+      nome: draft.name,
+      status: "rascunho",
+      draft_json: storedDraft,
+      orcamento_diario: draft.dailyBudget,
+      gasto_maximo: draft.maxSpend,
+    }).select("id,nome,status,orcamento_diario,gasto_maximo,created_at").single();
+    if (error || !data) throw new Error("Não foi possível salvar o rascunho.");
+    const remaining = Math.max(0, monthlyCap - alreadyCommitted - draft.maxSpend);
+    const mensagem =
+      `Rascunho ${data.id} salvo: ${draft.name}. Orçamento diário: R$ ${draft.dailyBudget.toFixed(2)}. ` +
+      `Gasto máximo: R$ ${draft.maxSpend.toFixed(2)}. Limite mensal: R$ ${monthlyCap.toFixed(2)}; ` +
+      `saldo após este anúncio: R$ ${remaining.toFixed(2)}.\n\n` +
+      "Responda SIM para publicar ou me diga o que mudar";
+    return JSON.stringify({
+      ok: true,
+      status: "rascunho",
+      id: data.id,
+      limite_mensal: monthlyCap,
+      gasto_maximo: draft.maxSpend,
+      saldo_apos_publicacao: remaining,
+      mensagem,
+    });
+  } catch (error) {
+    return JSON.stringify({
+      ok: false,
+      erro: "rascunho_nao_salvo",
+      mensagem: redactSecrets(
+        error instanceof Error ? error.message : error,
+      ),
+    });
+  }
+}
+
+async function latestEligibleMetaDraft(
+  ctx: MetaAdsToolContext,
+): Promise<any | null> {
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await sb.from("meta_ads_campanhas")
+    .select("id,draft_json,created_at,status")
+    .eq("user_id", ctx.userId)
+    .in("status", ["rascunho", "erro"])
+    .gte("created_at", cutoff)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (error) throw new Error("Não foi possível localizar o rascunho.");
+  return (data ?? []).find((row: any) =>
+    metaDraftBelongsToConversation(row, ctx)
+  ) ?? null;
+}
+
+async function toolPublicarAnuncioMeta(
+  args: any,
+  ctx: MetaAdsToolContext,
+  trustedExactSim = false,
+): Promise<string> {
+  if (!isOwner(ctx)) {
+    return JSON.stringify({ ok: false, erro: "acao_restrita_ao_responsavel" });
+  }
+  const draftId = String(args?.id || "").trim();
+  if (
+    !trustedExactSim || args?.confirmacao !== "SIM" || !draftId || !ctx.convId
+  ) {
+    return JSON.stringify({
+      ok: false,
+      erro: "confirmacao_invalida",
+      mensagem: "A publicação exige SIM e o ID do rascunho desta conversa.",
+    });
+  }
+  let reserved = false;
+  let ids: any = null;
+  let token = "";
+  try {
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data: candidate, error: candidateError } = await sb
+      .from("meta_ads_campanhas")
+      .select("id,draft_json,created_at,status")
+      .eq("id", draftId)
+      .eq("user_id", ctx.userId)
+      .in("status", ["rascunho", "erro"])
+      .gte("created_at", cutoff)
+      .maybeSingle();
+    if (
+      candidateError || !candidate ||
+      !metaDraftBelongsToConversation(candidate, ctx)
+    ) {
+      return JSON.stringify({
+        ok: false,
+        erro: "rascunho_inelegivel",
+        mensagem: "O rascunho não pertence a esta conversa, expirou ou já foi publicado.",
+      });
+    }
+    const integration = await getMetaAdsIntegration(sb, ctx.userId);
+    token = integration.access_token;
+    const { data: publication, error: reserveError } = await sb.rpc(
+      "meta_ads_reservar_publicacao",
+      { p_user_id: ctx.userId, p_campanha_id: draftId },
+    );
+    if (reserveError || !publication) {
+      throw new Error(
+        reserveError?.message?.includes("limite")
+          ? "Limite mensal de anúncios excedido."
+          : "O rascunho não pôde ser reservado para publicação.",
+      );
+    }
+    reserved = true;
+    const ready = await checkMetaAdsReadiness(sb, ctx.userId, integration);
+    const draft = validateDraft(publication.draft_json);
+    ids = await publishMetaCampaign(
+      integration.meta_ad_account_id,
+      token,
+      draft,
+      ready,
+    );
+    if (
+      !ids.campaign_id || !ids.adset_id || !ids.creative_id ||
+      !ids.ad_id
+    ) {
+      throw new Error("A Meta não retornou todos os IDs da publicação.");
+    }
+    const { data: saved, error: saveError } = await sb.from(
+      "meta_ads_campanhas",
+    ).update({
+      ...ids,
+      status: "publicado",
+      publicado_em: new Date().toISOString(),
+      erro_em: null,
+      ultimo_erro: null,
+    }).eq("id", draftId).eq("user_id", ctx.userId).eq("status", "publicando")
+      .select("id,status,campaign_id,adset_id,creative_id,ad_id")
+      .single();
+    if (saveError || !saved) {
+      await rollbackMetaEntities(ids, token, graphRequest);
+      ids = null;
+      throw new Error("A publicação foi revertida porque não pôde ser salva.");
+    }
+    return JSON.stringify({
+      ok: true,
+      status: "publicado",
+      id: saved.id,
+      mensagem: "Anúncio publicado e ativado na Meta com sucesso.",
+    });
+  } catch (error) {
+    if (reserved) {
+      await sb.from("meta_ads_campanhas").update({
+        status: "erro",
+        erro_em: new Date().toISOString(),
+        ultimo_erro: redactSecrets(
+          error instanceof Error ? error.message : error,
+        ),
+        ...(ids
+          ? { campaign_id: null, adset_id: null, creative_id: null, ad_id: null }
+          : {}),
+      }).eq("id", draftId).eq("user_id", ctx.userId).eq("status", "publicando");
+    }
+    return JSON.stringify({
+      ok: false,
+      erro: "publicacao_falhou",
+      mensagem: "Não foi possível publicar. A reserva foi liberada com segurança.",
+    });
+  }
+}
+
+async function findLocalMetaCampaign(ctx: MetaAdsToolContext, value: unknown) {
+  const wanted = String(value || "").trim();
+  if (!wanted) return null;
+  const { data, error } = await sb.from("meta_ads_campanhas")
+    .select("id,nome,status,campaign_id,adset_id,creative_id,ad_id")
+    .eq("user_id", ctx.userId)
+    .not("campaign_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (error) throw new Error("Não foi possível consultar a campanha.");
+  return (data ?? []).find((row: any) =>
+    row.id === wanted || row.campaign_id === wanted
+  ) ?? null;
+}
+
+async function toolAcaoCampanhaMeta(
+  action: "pause" | "activate" | "status",
+  args: any,
+  ctx: MetaAdsToolContext,
+): Promise<string> {
+  if (!isOwner(ctx)) {
+    return JSON.stringify({ ok: false, erro: "acao_restrita_ao_responsavel" });
+  }
+  try {
+    const campaign = await findLocalMetaCampaign(ctx, args?.id);
+    if (!campaign?.campaign_id) {
+      return JSON.stringify({ ok: false, erro: "campanha_nao_encontrada" });
+    }
+    const integration = await getMetaAdsIntegration(sb, ctx.userId);
+    const entityIds = {
+      campaign: campaign.campaign_id,
+      adset: campaign.adset_id,
+      ad: campaign.ad_id,
+    };
+    if (action !== "status") {
+      if (!entityIds.adset || !entityIds.ad) {
+        throw new Error("A campanha possui IDs incompletos.");
+      }
+      const target = action === "pause" ? "PAUSED" : "ACTIVE";
+      const order = action === "activate"
+        ? [entityIds.ad, entityIds.adset, entityIds.campaign]
+        : [entityIds.campaign, entityIds.adset, entityIds.ad];
+      for (const id of order) {
+        await graphRequest(id, integration.access_token, {
+          method: "POST",
+          body: new URLSearchParams({ status: target }),
+        });
+      }
+    }
+    const statuses = Object.fromEntries(
+      await Promise.all(
+        Object.entries(entityIds).map(async ([kind, id]) => {
+          const graph = await graphRequest(
+            `${id}?fields=id,status,effective_status`,
+            integration.access_token,
+          );
+          return [kind, {
+            status: graph.status,
+            effective_status: graph.effective_status,
+          }];
+        }),
+      ),
+    );
+    const campaignStatus = String(statuses.campaign?.status || "");
+    const localStatus = campaignStatus === "ACTIVE"
+      ? "ativo"
+      : campaignStatus === "PAUSED"
+      ? "pausado"
+      : null;
+    if (localStatus) {
+      const { error: syncError } = await sb.from("meta_ads_campanhas")
+        .update({ status: localStatus })
+        .eq("id", campaign.id)
+        .eq("user_id", ctx.userId);
+      if (syncError) throw new Error("A Meta respondeu, mas o status local não pôde ser sincronizado.");
+    }
+    return JSON.stringify({
+      ok: true,
+      id: campaign.id,
+      nome: campaign.nome,
+      status_local: localStatus ?? campaign.status,
+      status_meta: statuses,
+      mensagem: action === "pause"
+        ? "Campanha pausada e estado local sincronizado."
+        : action === "activate"
+        ? "Campanha ativada do anúncio para a campanha e estado local sincronizado."
+        : "Status consultado na Meta e estado local sincronizado.",
+    });
+  } catch {
+    return JSON.stringify({
+      ok: false,
+      erro: "acao_meta_falhou",
+      mensagem: "Não foi possível concluir a ação na Meta.",
+    });
+  }
+}
+
+async function toolRelatorioAnunciosMeta(
+  args: any,
+  ctx: MetaAdsToolContext,
+): Promise<string> {
+  if (!isOwner(ctx)) {
+    return JSON.stringify({ ok: false, erro: "acao_restrita_ao_responsavel" });
+  }
+  try {
+    const integration = await getMetaAdsIntegration(sb, ctx.userId);
+    const datePreset = ["today", "yesterday", "last_7d", "last_30d"].includes(
+        String(args?.periodo),
+      )
+      ? String(args.periodo)
+      : "last_7d";
+    const params = new URLSearchParams({
+      fields: "campaign_id,campaign_name,spend,impressions,reach,clicks,actions",
+      date_preset: datePreset,
+      level: "campaign",
+      limit: "100",
+    });
+    const account = String(integration.meta_ad_account_id).startsWith("act_")
+      ? String(integration.meta_ad_account_id)
+      : `act_${integration.meta_ad_account_id}`;
+    const report = await graphRequest(
+      `${account}/insights?${params}`,
+      integration.access_token,
+    );
+    return JSON.stringify({
+      ok: true,
+      periodo: datePreset,
+      campanhas: Array.isArray(report.data) ? report.data : [],
+      mensagem: "Relatório consultado diretamente na Meta Ads.",
+    });
+  } catch {
+    return JSON.stringify({
+      ok: false,
+      erro: "relatorio_indisponivel",
+      mensagem: "Não foi possível consultar o relatório na Meta.",
+    });
+  }
+}
+
+async function publishLatestMetaDraftOnExactSim(
+  text: string,
+  ctx: MetaAdsToolContext,
+): Promise<string | null> {
+  if (text !== "SIM" || !isOwner(ctx)) return null;
+  try {
+    const draft = await latestEligibleMetaDraft(ctx);
+    if (!draft) return null;
+    const result = await toolPublicarAnuncioMeta({
+      confirmacao: "SIM",
+      id: draft.id,
+    }, ctx, true);
+    const parsed = JSON.parse(result);
+    return String(parsed.mensagem || "Não foi possível publicar o anúncio.");
+  } catch {
+    return "Não foi possível localizar ou publicar o rascunho desta conversa.";
+  }
+}
+
 const TOOLS = [
   {
     type: "function",
@@ -9442,6 +9844,93 @@ const TOOLS = [
           melhorar_foto: { type: "boolean", description: "true (padrão) = a IA melhora a foto/ambiente antes de montar. false = usa a foto como está." },
         },
         required: ["titulo"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "rascunho_anuncio_meta",
+      description: "Cria somente um rascunho de campanha Meta Ads, sem chamar a Meta nem publicar. Restrito ao responsável. Valida mídia, orçamento, gasto máximo e limite mensal; depois exige que o responsável responda exatamente SIM.",
+      parameters: {
+        type: "object",
+        properties: {
+          nome: { type: "string", description: "Nome da campanha, de 3 a 120 caracteres." },
+          texto: { type: "string", description: "Texto do anúncio." },
+          midia_url: { type: "string", description: "URL HTTPS da imagem ou vídeo." },
+          tipo_midia: { type: "string", enum: ["image", "video"] },
+          orcamento_diario: { type: "number", description: "Orçamento diário em reais." },
+          gasto_maximo: { type: "number", description: "Compromisso máximo total em reais." },
+          cidades: { type: "array", items: { type: "string" }, description: "IDs de cidades da Meta, se escolhidos." },
+          interesses: { type: "array", items: { type: "string" }, description: "IDs de interesses da Meta, se escolhidos." },
+          idade_minima: { type: "number" },
+          idade_maxima: { type: "number" },
+        },
+        required: ["nome", "texto", "midia_url", "tipo_midia", "orcamento_diario", "gasto_maximo"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "publicar_anuncio_meta",
+      description: "Publica um rascunho Meta Ads desta mesma conversa, com confirmação literal SIM e ID exato. Restrito ao responsável; nunca invente ID nem publique sem confirmação.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "UUID exato retornado por rascunho_anuncio_meta." },
+          confirmacao: { type: "string", enum: ["SIM"], description: "Deve ser literalmente SIM." },
+        },
+        required: ["id", "confirmacao"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "pausar_campanha_meta",
+      description: "Pausa na Meta uma campanha publicada e sincroniza o estado local. Restrito ao responsável.",
+      parameters: {
+        type: "object",
+        properties: { id: { type: "string", description: "UUID local ou ID da campanha na Meta." } },
+        required: ["id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "ativar_campanha_meta",
+      description: "Ativa anúncio, conjunto e campanha na Meta, nessa ordem, e sincroniza o estado local. Restrito ao responsável.",
+      parameters: {
+        type: "object",
+        properties: { id: { type: "string", description: "UUID local ou ID da campanha na Meta." } },
+        required: ["id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "status_campanha_meta",
+      description: "Consulta o status real da campanha, conjunto e anúncio na Meta e sincroniza o estado local. Restrito ao responsável.",
+      parameters: {
+        type: "object",
+        properties: { id: { type: "string", description: "UUID local ou ID da campanha na Meta." } },
+        required: ["id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "relatorio_anuncios_meta",
+      description: "Consulta métricas reais de campanhas diretamente na Meta Ads, sem estimar ou fabricar dados. Restrito ao responsável.",
+      parameters: {
+        type: "object",
+        properties: {
+          periodo: { type: "string", enum: ["today", "yesterday", "last_7d", "last_30d"], description: "Período do relatório; padrão: últimos 7 dias." },
+        },
       },
     },
   },
@@ -10594,6 +11083,15 @@ async function runTool(
     demoTestPhones?: string[];
   },
 ): Promise<{ result: string; imageUrl?: string; interactiveButtons?: WhatsAppInteractiveButtons }> {
+  if (OWNER_ONLY_TOOL_NAMES.has(name) && !isOwner(ctx)) {
+    return {
+      result: JSON.stringify({
+        ok: false,
+        erro: "acao_restrita_ao_responsavel",
+        mensagem: "Essa ação é restrita ao responsável da conta.",
+      }),
+    };
+  }
   if (AMZ_GLOBAL_TOOL_NAMES.has(name) && !hasAmzGlobalToolAccess(ctx)) {
     return { result: JSON.stringify({ erro: "ferramenta_restrita" }) };
   }
@@ -10712,6 +11210,12 @@ async function runTool(
   if (name === "consultar_autopilot") return { result: await toolConsultarAutopilot(ctx) };
   if (name === "consultar_clientes_leads") return { result: await toolConsultarClientesLeads(ctx) };
   if (name === "resumo_plataforma") return { result: await toolResumoPlataforma(ctx) };
+  if (name === "rascunho_anuncio_meta") return { result: await toolRascunhoAnuncioMeta(args ?? {}, ctx) };
+  if (name === "publicar_anuncio_meta") return { result: await toolPublicarAnuncioMeta(args ?? {}, ctx) };
+  if (name === "pausar_campanha_meta") return { result: await toolAcaoCampanhaMeta("pause", args ?? {}, ctx) };
+  if (name === "ativar_campanha_meta") return { result: await toolAcaoCampanhaMeta("activate", args ?? {}, ctx) };
+  if (name === "status_campanha_meta") return { result: await toolAcaoCampanhaMeta("status", args ?? {}, ctx) };
+  if (name === "relatorio_anuncios_meta") return { result: await toolRelatorioAnunciosMeta(args ?? {}, ctx) };
   if (name === "postar_redes_sociais") return { result: await toolPostarRedesSociais(args ?? {}, ctx) };
   if (name === "confirmar_postagem_redes") return { result: await toolConfirmarPostagemRedes(args ?? {}, ctx) };
   if (name === "agendar_post_pendente") return { result: await toolAgendarPostPendente(args ?? {}, ctx) };
@@ -10781,6 +11285,13 @@ async function callGemini(
   const senderIsOwner = isOwner(toolCtx);
   const senderIsAmzProspect = !senderIsOwner
     && toolCtx.userId === ADMIN_AMZ_USER_ID;
+  if (!hasMedia && typeof userContent === "string") {
+    const metaApprovalReply = await publishLatestMetaDraftOnExactSim(
+      userContent,
+      toolCtx,
+    );
+    if (metaApprovalReply) return { text: metaApprovalReply };
+  }
   const nowSP = new Date().toLocaleString("pt-BR", {
     timeZone: "America/Sao_Paulo",
     weekday: "long", day: "2-digit", month: "2-digit", year: "numeric",
@@ -11917,6 +12428,22 @@ async function callGemini(
           };
         }
         const { result, imageUrl, interactiveButtons } = await runTool(name, args, toolCtx);
+        if (name === "rascunho_anuncio_meta") {
+          try {
+            const parsed = JSON.parse(result);
+            return {
+              text: String(parsed?.mensagem || "Não foi possível salvar o rascunho."),
+              forwardProof,
+              forwardAttempted,
+            };
+          } catch {
+            return {
+              text: "Não foi possível salvar o rascunho.",
+              forwardProof,
+              forwardAttempted,
+            };
+          }
+        }
         const blocked = deterministicDemoBlockedResponse(
           name,
           result,
@@ -12759,6 +13286,53 @@ async function processOne(queueId: string) {
     const fromIsOwner = tenantOwnerMatchesPhone(_tenantOwner, row.from_number)
       || (isAmzTenantEarly && isAmzOwnerAltPhone(row.from_number));
 
+    // Meta Ads approval has priority over every pending conversational flow.
+    // Only the literal plain-text "SIM" from this tenant's owner can reach
+    // publication; the selected draft is additionally tied to this phone and
+    // conversation by toolPublicarAnuncioMeta.
+    if (
+      fromIsOwner && row.message_type === "text" && userText === "SIM"
+    ) {
+      const metaApprovalReply = await publishLatestMetaDraftOnExactSim(
+        userText,
+        {
+          userId,
+          fromNumber: row.from_number,
+          convId: conv.id,
+        },
+      );
+      if (metaApprovalReply) {
+        const { data: outMsg } = await sb.from("whatsapp_cloud_messages")
+          .insert({
+            conversation_id: conv.id,
+            user_id: userId,
+            direction: "outbound",
+            sender: "agent",
+            content: metaApprovalReply,
+            message_type: "text",
+          })
+          .select("id")
+          .single();
+        const sentId = await sendWhatsApp(
+          userId,
+          row.from_number,
+          metaApprovalReply,
+        );
+        if (sentId && outMsg?.id) {
+          await sb.from("whatsapp_cloud_messages").update({ wamid: sentId })
+            .eq("id", outMsg.id);
+        }
+        await sb.from("whatsapp_cloud_conversations")
+          .update({ last_message_at: new Date().toISOString() })
+          .eq("id", conv.id);
+        await doneQueue(row.id);
+        return {
+          ok: true,
+          meta_ads_approval: true,
+          reply_preview: metaApprovalReply.slice(0, 120),
+        };
+      }
+    }
 
     // =====================================================================
     // OPT-IN GATE (Fase 1 — Meta oficial)

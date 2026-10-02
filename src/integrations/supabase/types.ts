@@ -3832,6 +3832,11 @@ export type Database = {
           lomadee_app_token: string | null
           lomadee_connected_at: string | null
           lomadee_source_id: string | null
+          limite_mensal_anuncios: number
+          meta_ad_account_currency: string | null
+          meta_ad_account_id: string | null
+          meta_ad_account_name: string | null
+          meta_ad_accounts: Json
           meta_user_email: string | null
           meta_user_id: string | null
           meta_user_name: string | null
@@ -3851,6 +3856,11 @@ export type Database = {
           lomadee_app_token?: string | null
           lomadee_connected_at?: string | null
           lomadee_source_id?: string | null
+          limite_mensal_anuncios?: number
+          meta_ad_account_currency?: string | null
+          meta_ad_account_id?: string | null
+          meta_ad_account_name?: string | null
+          meta_ad_accounts?: Json
           meta_user_email?: string | null
           meta_user_id?: string | null
           meta_user_name?: string | null
@@ -3870,6 +3880,11 @@ export type Database = {
           lomadee_app_token?: string | null
           lomadee_connected_at?: string | null
           lomadee_source_id?: string | null
+          limite_mensal_anuncios?: number
+          meta_ad_account_currency?: string | null
+          meta_ad_account_id?: string | null
+          meta_ad_account_name?: string | null
+          meta_ad_accounts?: Json
           meta_user_email?: string | null
           meta_user_id?: string | null
           meta_user_name?: string | null
@@ -5415,6 +5430,77 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      meta_ads_campanhas: {
+        Row: {
+          ad_id: string | null
+          adset_id: string | null
+          aprovado_em: string | null
+          campaign_id: string | null
+          created_at: string
+          creative_id: string | null
+          draft_json: Json
+          erro_em: string | null
+          gasto_maximo: number
+          id: string
+          integration_id: string
+          nome: string
+          orcamento_diario: number
+          publicado_em: string | null
+          status: string
+          ultimo_erro: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ad_id?: string | null
+          adset_id?: string | null
+          aprovado_em?: string | null
+          campaign_id?: string | null
+          created_at?: string
+          creative_id?: string | null
+          draft_json: Json
+          erro_em?: string | null
+          gasto_maximo: number
+          id?: string
+          integration_id: string
+          nome: string
+          orcamento_diario: number
+          publicado_em?: string | null
+          status?: string
+          ultimo_erro?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ad_id?: string | null
+          adset_id?: string | null
+          aprovado_em?: string | null
+          campaign_id?: string | null
+          created_at?: string
+          creative_id?: string | null
+          draft_json?: Json
+          erro_em?: string | null
+          gasto_maximo?: number
+          id?: string
+          integration_id?: string
+          nome?: string
+          orcamento_diario?: number
+          publicado_em?: string | null
+          status?: string
+          ultimo_erro?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_ads_campanhas_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "integrations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       midias_whatsapp: {
         Row: {
@@ -10574,6 +10660,10 @@ export type Database = {
       }
       limpar_estados_antigos_afiliado: { Args: never; Returns: number }
       limpar_webhook_dedup_antigos: { Args: never; Returns: number }
+      meta_ads_reservar_publicacao: {
+        Args: { p_campanha_id: string; p_user_id: string }
+        Returns: Database["public"]["Tables"]["meta_ads_campanhas"]["Row"]
+      }
       move_to_dlq: {
         Args: {
           dlq_name: string

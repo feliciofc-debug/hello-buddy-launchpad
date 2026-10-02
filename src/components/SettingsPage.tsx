@@ -1,4 +1,4 @@
-import { ArrowLeft, Loader2, Linkedin } from 'lucide-react';
+import { ArrowLeft, Loader2, Linkedin, Megaphone } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -10,6 +10,24 @@ import { buildTikTokAuthUrl } from "@/config/tiktok";
 import { isCustomAuth } from "@/config/runtime-config";
 import { buildMetaAuthUrl } from "@/config/meta";
 
+type MetaAdsAccount = {
+  id: string;
+  name?: string;
+  currency?: string;
+};
+
+type MetaAdsConnection = {
+  id: string;
+  is_active: boolean | null;
+  meta_user_name: string | null;
+  meta_ad_account_id: string | null;
+  meta_ad_account_name: string | null;
+  meta_ad_account_currency: string | null;
+  meta_ad_accounts: MetaAdsAccount[];
+  limite_mensal_anuncios: number;
+  token_expires_at: string | null;
+};
+
 const SettingsPage = () => {
   const navigate = useNavigate();
   const customAuth = isCustomAuth();
@@ -17,6 +35,10 @@ const SettingsPage = () => {
   const [metaConnection, setMetaConnection] = useState<any>(null);
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [metaAdsConnection, setMetaAdsConnection] = useState<MetaAdsConnection | null>(null);
+  const [loadingMetaAds, setLoadingMetaAds] = useState(true);
+  const [savingMetaAds, setSavingMetaAds] = useState(false);
+  const [monthlyAdsLimit, setMonthlyAdsLimit] = useState('200');
   const [tiktokConnection, setTiktokConnection] = useState<any>(null);
   const [loadingTiktok, setLoadingTiktok] = useState(true);
   const [disconnectingTiktok, setDisconnectingTiktok] = useState(false);
@@ -24,6 +46,87 @@ const SettingsPage = () => {
   const [loadingLinkedin, setLoadingLinkedin] = useState(true);
   const [connectingLinkedin, setConnectingLinkedin] = useState(false);
   const [disconnectingLinkedin, setDisconnectingLinkedin] = useState(false);
+
+  const fetchMetaAdsConnection = async () => {
+    setLoadingMetaAds(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setLoadingMetaAds(false);
+      return;
+    }
+    const { data, error } = await supabase
+      .from('integrations')
+      .select('id,platform,is_active,meta_user_name,meta_ad_account_id,meta_ad_account_name,meta_ad_account_currency,meta_ad_accounts,limite_mensal_anuncios,token_expires_at')
+      .eq('user_id', user.id)
+      .eq('platform', 'meta_ads')
+      .maybeSingle();
+    if (error) console.error('Erro ao buscar Meta Ads:', error);
+    setMetaAdsConnection(data ? {
+      ...data,
+      meta_ad_accounts: Array.isArray(data.meta_ad_accounts)
+        ? data.meta_ad_accounts as unknown as MetaAdsAccount[]
+        : [],
+    } : null);
+    setMonthlyAdsLimit(String(data?.limite_mensal_anuncios ?? 200));
+    setLoadingMetaAds(false);
+  };
+
+  const handleConnectMetaAds = async () => {
+    setSavingMetaAds(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('meta-ads-oauth-start', {
+        body: { returnTo: `${window.location.origin}/configuracoes` },
+      });
+      if (error || !data?.authorization_url) throw new Error(data?.error || 'Não foi possível iniciar a conexão.');
+      window.location.href = data.authorization_url;
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao conectar o Meta Ads.');
+      setSavingMetaAds(false);
+    }
+  };
+
+  const saveMetaAdsSettings = async (accountId?: string) => {
+    if (!metaAdsConnection) return;
+    const limit = Number(monthlyAdsLimit);
+    if (!Number.isFinite(limit) || limit <= 0) {
+      toast.error('Informe um limite mensal maior que zero.');
+      return;
+    }
+    const selectedId = accountId || metaAdsConnection.meta_ad_account_id;
+    const account = metaAdsConnection.meta_ad_accounts.find((item) => item.id === selectedId);
+    setSavingMetaAds(true);
+    const { error } = await supabase
+      .from('integrations')
+      .update({
+        meta_ad_account_id: selectedId,
+        meta_ad_account_name: account?.name || metaAdsConnection.meta_ad_account_name,
+        meta_ad_account_currency: account?.currency || metaAdsConnection.meta_ad_account_currency,
+        limite_mensal_anuncios: limit,
+      })
+      .eq('id', metaAdsConnection.id)
+      .eq('platform', 'meta_ads');
+    setSavingMetaAds(false);
+    if (error) toast.error('Não foi possível salvar as preferências do Meta Ads.');
+    else {
+      toast.success('Preferências do Meta Ads salvas.');
+      await fetchMetaAdsConnection();
+    }
+  };
+
+  const handleDisconnectMetaAds = async () => {
+    if (!window.confirm('Desconectar somente a integração Meta Ads?')) return;
+    setSavingMetaAds(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    const { error } = await supabase.from('integrations').delete()
+      .eq('user_id', user?.id || '')
+      .eq('platform', 'meta_ads');
+    setSavingMetaAds(false);
+    if (error) toast.error('Não foi possível desconectar o Meta Ads.');
+    else {
+      setMetaAdsConnection(null);
+      toast.success('Meta Ads desconectado. A conexão orgânica foi preservada.');
+    }
+  };
 
   const fetchLinkedinConnection = async () => {
     setLoadingLinkedin(true);
@@ -109,6 +212,7 @@ const SettingsPage = () => {
       setLoadingMeta(false);
     };
     fetchMetaConnection();
+    fetchMetaAdsConnection();
     fetchTiktokConnection();
     fetchLinkedinConnection();
 
@@ -138,6 +242,14 @@ const SettingsPage = () => {
       toast.error('Erro ao conectar TikTok: ' + decodeURIComponent(params.get('error') || ''));
       window.history.replaceState({}, '', window.location.pathname);
     }
+    if (params.get('meta_ads') === 'connected') {
+      toast.success('Meta Ads conectado com sucesso.');
+      window.history.replaceState({}, '', window.location.pathname);
+      fetchMetaAdsConnection();
+    } else if (params.get('meta_ads') === 'error') {
+      toast.error('Não foi possível conectar o Meta Ads.');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
   }, []);
 
   const handleConnect = async () => {
@@ -157,7 +269,7 @@ const SettingsPage = () => {
     setDisconnecting(true);
     try {
       const { error: e1 } = await supabase.from('meta_connections').delete().eq('user_id', user.id);
-      const { error: e2 } = await supabase.from('integrations').delete().eq('user_id', user.id).like('platform', 'meta%');
+      const { error: e2 } = await supabase.from('integrations').delete().eq('user_id', user.id).eq('platform', 'meta');
       if (e1) console.error('Erro meta_connections:', e1);
       if (e2) console.error('Erro integrations:', e2);
       setMetaConnection(null);
@@ -237,6 +349,7 @@ const SettingsPage = () => {
           </TabsList>
 
           <TabsContent value="meta">
+            <div className="space-y-6">
             <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">
               <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">{t('settings.meta_business_title')}</h2>
 
@@ -299,6 +412,55 @@ const SettingsPage = () => {
                   </button>
                 </div>
               )}
+            </div>
+            <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md border-l-4 border-blue-600">
+              <h2 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white flex items-center gap-2">
+                <Megaphone className="w-5 h-5 text-blue-600" /> Meta Ads
+              </h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+                Conexão separada para relatórios e criação de anúncios. Ela não altera sua integração orgânica de Facebook e Instagram.
+              </p>
+              {loadingMetaAds ? (
+                <div className="flex items-center gap-2 text-gray-500"><Loader2 className="w-5 h-5 animate-spin" /> Carregando conexão…</div>
+              ) : metaAdsConnection ? (
+                <div className="space-y-5">
+                  <span className="inline-flex rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800">✅ Conectado</span>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Conta de anúncios</label>
+                      <select
+                        className="w-full rounded-md border border-gray-300 bg-white p-2 dark:border-gray-600 dark:bg-gray-900"
+                        value={metaAdsConnection.meta_ad_account_id || ''}
+                        onChange={(event) => {
+                          const account = metaAdsConnection.meta_ad_accounts.find((item) => item.id === event.target.value);
+                          setMetaAdsConnection({ ...metaAdsConnection, meta_ad_account_id: event.target.value, meta_ad_account_name: account?.name, meta_ad_account_currency: account?.currency });
+                        }}
+                      >
+                        {metaAdsConnection.meta_ad_accounts.map((account) => (
+                          <option key={account.id} value={account.id}>{account.name || account.id} {account.currency ? `(${account.currency})` : ''}</option>
+                        ))}
+                      </select>
+                      <p className="mt-1 text-xs text-gray-500">Atual: {metaAdsConnection.meta_ad_account_name || metaAdsConnection.meta_ad_account_id}</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Limite mensal de anúncios (R$)</label>
+                      <input className="w-full rounded-md border border-gray-300 bg-white p-2 dark:border-gray-600 dark:bg-gray-900" type="number" min="1" step="0.01" value={monthlyAdsLimit} onChange={(event) => setMonthlyAdsLimit(event.target.value)} />
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <button onClick={() => saveMetaAdsSettings()} disabled={savingMetaAds} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-2 px-4 rounded">Salvar Meta Ads</button>
+                    <button onClick={() => navigate('/anuncios-meta')} className="bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 font-bold py-2 px-4 rounded">Abrir painel</button>
+                    <button onClick={handleConnectMetaAds} disabled={savingMetaAds} className="bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 font-bold py-2 px-4 rounded">Reconectar</button>
+                    <button onClick={handleDisconnectMetaAds} disabled={savingMetaAds} className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold py-2 px-4 rounded">Desconectar Meta Ads</button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <span className="inline-flex rounded-full bg-gray-100 px-3 py-1 text-sm text-gray-600 mb-4">Não conectado</span>
+                  <div><button onClick={handleConnectMetaAds} disabled={savingMetaAds} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-2 px-4 rounded">{savingMetaAds ? 'Conectando…' : 'Conectar Meta Ads'}</button></div>
+                </div>
+              )}
+            </div>
             </div>
           </TabsContent>
 

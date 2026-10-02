@@ -31,6 +31,7 @@ import Campanhas from "./pages/Campanhas";
 import MeusProdutos from "./pages/MeusProdutos";
 import Midias from "./pages/Midias";
 import GoogleAds from "./pages/GoogleAds";
+import AnunciosMeta from "./pages/AnunciosMeta";
 import Analytics from "./pages/Analytics";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
@@ -161,6 +162,7 @@ const App = () => (
           <Route path="/campanhas" element={<Campanhas />} />
           <Route path="/campanhas/google-ads" element={<GoogleAds />} />
           <Route path="/google-ads" element={<GoogleAds />} />
+          <Route path="/anuncios-meta" element={<AnunciosMeta />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/meus-produtos" element={<MeusProdutos />} />
           <Route path="/midias" element={<Midias />} />

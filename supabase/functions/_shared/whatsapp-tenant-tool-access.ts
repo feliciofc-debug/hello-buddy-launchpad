@@ -5,6 +5,15 @@ export const AMZ_GLOBAL_TOOL_NAMES = new Set([
   "criar_cobranca_amz",
 ]);
 
+export const OWNER_ONLY_TOOL_NAMES = new Set([
+  "rascunho_anuncio_meta",
+  "publicar_anuncio_meta",
+  "pausar_campanha_meta",
+  "ativar_campanha_meta",
+  "status_campanha_meta",
+  "relatorio_anuncios_meta",
+]);
+
 export type TenantToolAccessContext = {
   userId: string;
   isOwner: boolean;
@@ -37,8 +46,11 @@ export function filterToolsForTenant<T extends ToolDefinition>(
   tools: readonly T[],
   context: TenantToolAccessContext,
 ): T[] {
-  if (canUseAmzGlobalTools(context)) return [...tools];
-  return tools.filter((tool) =>
-    !AMZ_GLOBAL_TOOL_NAMES.has(String(tool.function?.name ?? ""))
-  );
+  const canUseAmz = canUseAmzGlobalTools(context);
+  return tools.filter((tool) => {
+    const name = String(tool.function?.name ?? "");
+    if (!context.isOwner && OWNER_ONLY_TOOL_NAMES.has(name)) return false;
+    if (!canUseAmz && AMZ_GLOBAL_TOOL_NAMES.has(name)) return false;
+    return true;
+  });
 }
