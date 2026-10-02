@@ -15,6 +15,9 @@ verify_jwt = false
 [functions.meta-ads-oauth-callback]
 verify_jwt = false
 
+[functions.meta-ads-oauth-start]
+verify_jwt = true
+
 [functions.hotmart-auth]
 verify_jwt = false
 

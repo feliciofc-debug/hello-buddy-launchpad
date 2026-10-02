@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+import { verifyMetaAdsOAuthState } from "../_shared/meta-ads-oauth-state.ts";
 
 const GRAPH_VERSION = "v25.0";
 const SITE_URL = Deno.env.get("APP_SITE_URL") ??
@@ -49,9 +50,21 @@ serve(async (req) => {
 
     const code = requestUrl.searchParams.get("code");
     const state = requestUrl.searchParams.get("state");
-    if (!code || !state || !/^[0-9a-f-]{36}$/i.test(state)) {
+    if (!code || !state) {
       throw new Error("Retorno de autenticação inválido");
     }
+    const verifiedState = await verifyMetaAdsOAuthState({
+      state,
+      secret: appSecret,
+    });
+    if (!verifiedState.ok) {
+      throw new Error(
+        verifiedState.reason === "expired"
+          ? "State OAuth expirado"
+          : "State OAuth inválido",
+      );
+    }
+    const userId = verifiedState.userId;
 
     const shortTokenUrl = new URL(
       `https://graph.facebook.com/${GRAPH_VERSION}/oauth/access_token`,
@@ -103,7 +116,7 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceKey);
     const { error } = await supabase.from("integrations").upsert({
-      user_id: state,
+      user_id: userId,
       platform: "meta_ads",
       access_token: accessToken,
       token_expires_at: expiresAt,

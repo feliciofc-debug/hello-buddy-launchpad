@@ -107,3 +107,31 @@ Deno.test("cache de 10 minutos evita repetir chamadas", async () => {
   assertEquals(second, first);
   assertEquals(fetches, 2);
 });
+
+Deno.test("erros da Meta não entram no cache", async () => {
+  clearMetaAdsReportCache();
+  let fetches = 0;
+  const run = () =>
+    getMetaAdsReport({
+      userId: "tenant",
+      period: "hoje",
+      now: Date.parse("2026-10-02T10:00:00Z"),
+      loadIntegration: async () => ({
+        access_token: "segredo",
+        token_expires_at: "2026-11-02T10:00:00Z",
+        ad_account_id: "act_error",
+        is_active: true,
+      }),
+      fetchImpl: async () => {
+        fetches++;
+        return Response.json(
+          { error: { code: 613, message: "rate limit" } },
+          { status: 429 },
+        );
+      },
+    });
+
+  await run();
+  await run();
+  assertEquals(fetches, 2);
+});

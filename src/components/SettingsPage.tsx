@@ -9,7 +9,6 @@ import { MarcaPersonalizacao } from './MarcaPersonalizacao';
 import { buildTikTokAuthUrl } from "@/config/tiktok";
 import { isCustomAuth } from "@/config/runtime-config";
 import { buildMetaAuthUrl } from "@/config/meta";
-import { buildMetaAdsAuthUrl } from "@/config/meta-ads";
 
 type MetaAdsAccount = {
   id: string;
@@ -207,12 +206,16 @@ const SettingsPage = () => {
   };
 
   const handleConnectMetaAds = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      toast.error('Você precisa estar logado para conectar.');
-      return;
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        'meta-ads-oauth-start',
+      );
+      if (error) throw error;
+      if (!data?.auth_url) throw new Error('URL de autorização ausente');
+      window.location.href = data.auth_url;
+    } catch {
+      toast.error('Não foi possível iniciar a conexão com o Meta Ads.');
     }
-    window.location.href = buildMetaAdsAuthUrl(user.id);
   };
 
   const handleSelectMetaAdsAccount = async (accountId: string) => {

@@ -303,6 +303,6 @@ export async function getMetaAdsReport(input: {
       : code === "META_TOKEN"
       ? `A conexão do Meta Ads venceu ou está sem permissão. Reconecte em ${CONNECT_URL}`
       : "Não consegui consultar o Meta Ads agora. Tente novamente em alguns minutos.";
-    return cacheSet(cacheKey, message, now);
+    return message;
   }
 }
