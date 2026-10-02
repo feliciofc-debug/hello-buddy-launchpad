@@ -19,6 +19,7 @@ import { wipe } from "@remotion/transitions/wipe";
 import { font } from "../../font";
 import { ehClaro, rgba, textoSobre } from "../agente/contraste";
 import {
+  aplicarFundoPaleta,
   Backdrop,
   CTA_FRAMES,
   CtaCena,
@@ -28,6 +29,7 @@ import {
   Legendas,
   TrilhaSonora,
   type Cta,
+  type FundoMotion,
   type Hook,
   type Paleta,
 } from "../base";
@@ -47,6 +49,7 @@ export type TemplateInstitucionalProps = {
   blocos: BlocoArgumento[];
   selo?: { valor: string; rotulo?: string } | null;
   visual_limpo?: boolean;
+  fundo?: FundoMotion;
   /** 1, 2 ou 3 — arranjo de cena */
   arranjo?: number;
   /** frames por bloco; vídeo mais longo respira um pouco mais em cada cena */
@@ -278,7 +281,8 @@ const Selo: React.FC<{ c: Paleta; valor: string; rotulo?: string }> = ({ c, valo
 const timing = springTiming({ config: { damping: 200 }, durationInFrames: TRANSICAO });
 
 export const TemplateInstitucional: React.FC<TemplateInstitucionalProps> = (props) => {
-  const { cores: c, marca, logoUrl, site, trilhaUrl, trilha_volume, hook, cta, legendas, selo } = props;
+  const { marca, logoUrl, site, trilhaUrl, trilha_volume, hook, cta, legendas, selo } = props;
+  const c = aplicarFundoPaleta(props.cores, props.fundo);
   const blocos = (props.blocos || []).filter((b) => b && b.titulo);
   const arranjo = props.arranjo === 2 || props.arranjo === 3 ? props.arranjo : 1;
   const lista = blocos.length ? blocos : [{ titulo: "Tecnologia própria", apoio: "Feito para o seu negócio." }];

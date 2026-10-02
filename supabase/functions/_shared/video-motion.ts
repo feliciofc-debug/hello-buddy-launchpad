@@ -15,6 +15,7 @@ export type Mensagem = { de: "dono" | "agente"; texto: string };
 
 /** Estilos da biblioteca de templates. `conversa` é o histórico (celular + chat). */
 export type EstiloMotion = "conversa" | "institucional" | "lista";
+export type FundoMotion = "escuro" | "claro";
 
 export const ESTILOS_MOTION: EstiloMotion[] = ["conversa", "institucional", "lista"];
 
@@ -91,12 +92,22 @@ export function estiloPedidoNoTexto(texto: string): EstiloMotion | null {
   return null;
 }
 
+/** Fundo pedido explicitamente em texto livre; menções soltas a cores não contam. */
+export function fundoPedidoNoTexto(texto: string): FundoMotion | null {
+  const t = String(texto ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const match = t.match(/\b(?:fundo|background)(?:\s+(?:na\s+cor|cor))?\s+(branco|claro|preto|escuro)\b/);
+  if (!match) return null;
+  return match[1] === "branco" || match[1] === "claro" ? "claro" : "escuro";
+}
+
 export type MotionProps = {
   marca: string;
   /** estilo/template desta peça */
   estilo?: EstiloMotion;
   /** duração pedida; define o volume de conteúdo do roteiro */
   duracao?: DuracaoMotion;
+  /** fundo neutro forçado pelo usuário; ausente preserva a paleta original */
+  fundo?: FundoMotion;
   /** frames por cena, derivado da duração (lido pelos templates Remotion) */
   ritmo?: number;
   /** arranjo de cena dentro do estilo (1, 2 ou 3) */
@@ -495,6 +506,7 @@ export function normalizarProps(
     marca,
     estilo,
     duracao,
+    fundo: bruto?.fundo === "claro" || bruto?.fundo === "escuro" ? bruto.fundo : undefined,
     ritmo: RITMO_POR_DURACAO[duracao][estilo],
     arranjo,
     blocos: blocosFinais,

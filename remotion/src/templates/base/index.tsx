@@ -30,6 +30,35 @@ export type Paleta = {
   suave: string;
 };
 
+export type FundoMotion = "escuro" | "claro";
+
+/**
+ * Força somente as superfícies neutras. As cores da marca continuam intactas.
+ * Sem `fundo`, devolve a própria paleta para manter o visual legado idêntico.
+ */
+export function aplicarFundoPaleta(c: Paleta, fundo?: FundoMotion): Paleta {
+  if (!fundo) return c;
+  return fundo === "claro"
+    ? {
+      ...c,
+      bg: "#f8fafc",
+      bg2: "#ffffff",
+      panel: "#ffffff",
+      line: "#d7dee8",
+      texto: "#151515",
+      suave: "#4b5563",
+    }
+    : {
+      ...c,
+      bg: "#0b0f14",
+      bg2: "#151b24",
+      panel: "#111821",
+      line: "#2b3645",
+      texto: "#f4f7fb",
+      suave: "#aab7c7",
+    };
+}
+
 export type Cta = {
   frase: string;
   sub?: string;
@@ -46,7 +75,7 @@ export type Hook = {
 
 // ---------- fundo (3 variantes de arranjo) ----------
 
-export const Backdrop: React.FC<{ c: Paleta; arranjo?: number }> = ({ c, arranjo = 1 }) => {
+export const Backdrop: React.FC<{ c: Paleta; arranjo?: number; limpo?: boolean }> = ({ c, arranjo = 1 }) => {
   const frame = useCurrentFrame();
   const drift = Math.sin(frame / 90) * 40;
   const claro = ehClaro(c.bg);

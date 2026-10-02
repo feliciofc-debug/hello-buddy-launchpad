@@ -20,6 +20,7 @@ import { slide } from "@remotion/transitions/slide";
 import { fade } from "@remotion/transitions/fade";
 import { font } from "../../font";
 import { ehClaro, fundoLegenda, rgba, textoLegivelSobre, textoSobre } from "./contraste";
+import { aplicarFundoPaleta, type FundoMotion } from "../base";
 
 // ---------- contrato de props ----------
 
@@ -42,6 +43,7 @@ export type TemplateAgenteProps = {
   site?: string; // opcional — site DO CLIENTE, nunca fallback de outra marca
   trilhaUrl?: string;
   trilha_volume?: number;
+  fundo?: FundoMotion;
   cores: Paleta;
   hook: { kicker: string; linhas: string[]; destaque?: string; sub?: string };
   chat: { titulo: string; tituloDestaque?: string; mensagens: Mensagem[] };
@@ -563,7 +565,8 @@ const LinhaLegenda: React.FC<{ c: Paleta; text: string }> = ({ c, text }) => {
 const timing = springTiming({ config: { damping: 200 }, durationInFrames: TRANSICAO });
 
 export const TemplateAgente: React.FC<TemplateAgenteProps> = (props) => {
-  const { cores: c, marca, logoUrl, site, trilhaUrl, trilha_volume, hook, chat, cta, legendas } = props;
+  const { marca, logoUrl, site, trilhaUrl, trilha_volume, hook, chat, cta, legendas } = props;
+  const c = aplicarFundoPaleta(props.cores, props.fundo);
   const total = framesTemplateAgente(props);
   const legendasValidas = (legendas || []).filter((l) => l && l.trim().length > 0);
   const volumeBase = Math.min(1, Math.max(0, trilha_volume ?? 0.28));

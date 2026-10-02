@@ -16,12 +16,14 @@ import {
   duracaoPedidaNoTexto,
   ESTILOS_MOTION,
   estiloPedidoNoTexto,
+  fundoPedidoNoTexto,
   gerarRoteiroMotion,
   normalizarProps,
   nomesOficiais,
   TEMPLATE_POR_ESTILO,
   type DuracaoMotion,
   type EstiloMotion,
+  type FundoMotion,
   type MotionProps,
 } from "./video-motion.ts";
 import { getTenantLogo } from "./tenant-logo.ts";
@@ -64,6 +66,8 @@ export type EnfileirarInput = {
   arranjo?: number | null;
   /** duração: "curto" (padrão), "medio" ou "longo" */
   duracao?: string | null;
+  /** fundo neutro explícito; ausente mantém a paleta original */
+  fundo?: FundoMotion | null;
   /** duração exata pedida no WhatsApp */
   duracaoAlvoSegundos?: number | null;
   /** frases fornecidas pelo dono que a IA deve copiar literalmente */
@@ -347,6 +351,11 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
   const { sb, userId, tema } = input;
   const duracaoAlvoSegundos = input.duracaoAlvoSegundos ?? (input.props as any)?.duracao_alvo_segundos;
   const frasesLiterais = input.frasesLiterais ?? (input.props as any)?.frases_literais;
+  const fundo: FundoMotion | undefined = input.fundo === "claro" || input.fundo === "escuro"
+    ? input.fundo
+    : (input.props as any)?.fundo === "claro" || (input.props as any)?.fundo === "escuro"
+      ? (input.props as any).fundo
+      : fundoPedidoNoTexto(tema) ?? undefined;
   const semLogoTenant = input.semLogoTenant === true || (input.props as any)?.sem_logo_tenant === true;
   const logoSolicitada = input.logoPath ?? (input.props as any)?.logo_path;
   const logo = await resolverLogoMotion(sb, userId, {
@@ -370,7 +379,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
     const p: any = input.props;
     const nomes = nomesOficiais(String(p?.marca ?? input.nomeFallback ?? ""), tema);
     props = aplicarDuracaoAlvo(aplicarFrasesLiterais(normalizarProps(
-      { ...p, cores: input.cores ?? p?.cores },
+      { ...p, fundo, cores: input.cores ?? p?.cores },
       {
         marca: String(p?.marca ?? ""),
         site: String(p?.site ?? ""),
@@ -394,7 +403,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
       frasesLiterais,
     });
     props = aplicarDuracaoAlvo(aplicarFrasesLiterais(normalizarProps(
-      { ...r.props, cores: input.cores ?? r.props.cores },
+      { ...r.props, fundo, cores: input.cores ?? r.props.cores },
       {
         marca: r.props.marca,
         site: r.props.site,
@@ -412,6 +421,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
   // A trilha fica referenciada por ID/path seguro; a URL temporária só nasce no claim.
   props = {
     ...props,
+    fundo,
     site: props.site || "",
     logo_path: logo?.path,
     logoUrl: logo?.url,
@@ -580,6 +590,7 @@ export async function enfileirarVideoMotion(input: EnfileirarInput): Promise<Enf
         estilo: props.estilo ?? "conversa",
         arranjo: props.arranjo ?? 1,
         duracao: props.duracao ?? "curto",
+        fundo: props.fundo ?? null,
         duracao_alvo_segundos: props.duracao_alvo_segundos ?? null,
         render_minutos_estimado: minutosRenderEstimado(duracaoEstimada(props)),
       },

@@ -18,6 +18,7 @@ import { wipe } from "@remotion/transitions/wipe";
 import { font } from "../../font";
 import { ehClaro, rgba, textoSobre } from "../agente/contraste";
 import {
+  aplicarFundoPaleta,
   Backdrop,
   CTA_FRAMES,
   CtaCena,
@@ -27,6 +28,7 @@ import {
   Legendas,
   TrilhaSonora,
   type Cta,
+  type FundoMotion,
   type Hook,
   type Paleta,
 } from "../base";
@@ -48,6 +50,7 @@ export type TemplateListaProps = {
   rotulo?: string;
   arranjo?: number;
   visual_limpo?: boolean;
+  fundo?: FundoMotion;
   /** frames por item; vídeo mais longo respira um pouco mais em cada cena */
   ritmo?: number;
 };
@@ -279,7 +282,8 @@ const ItemTelaCheia: React.FC<{ c: Paleta; item: ItemLista; indice: number; tota
 const timing = springTiming({ config: { damping: 200 }, durationInFrames: TRANSICAO });
 
 export const TemplateLista: React.FC<TemplateListaProps> = (props) => {
-  const { cores: c, marca, logoUrl, site, trilhaUrl, trilha_volume, hook, cta, legendas, rotulo } = props;
+  const { marca, logoUrl, site, trilhaUrl, trilha_volume, hook, cta, legendas, rotulo } = props;
+  const c = aplicarFundoPaleta(props.cores, props.fundo);
   const itens = (props.itens || []).filter((i) => i && i.titulo);
   const lista = itens.length ? itens : [{ titulo: "Primeiro passo", apoio: "Comece por aqui." }];
   const arranjo = props.arranjo === 2 || props.arranjo === 3 ? props.arranjo : 1;

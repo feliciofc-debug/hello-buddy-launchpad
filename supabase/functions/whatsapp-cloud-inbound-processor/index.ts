@@ -238,12 +238,14 @@ import {
   duracaoEstimada,
   duracaoPedidaNoTexto,
   estiloPedidoNoTexto,
+  fundoPedidoNoTexto,
   normalizarSiteMotion,
   PALETA_PADRAO,
   ROTULO_DURACAO,
   ROTULO_ESTILO,
   type DuracaoMotion,
   type EstiloMotion,
+  type FundoMotion,
   type MotionProps,
 } from "../_shared/video-motion.ts";
 import {
@@ -2456,6 +2458,7 @@ type AgentConvState = {
 type PendingVideoSetupStage =
   | "awaiting_tema"
   | "awaiting_template"
+  | "awaiting_background"
   | "awaiting_track"
   | "awaiting_track_more"
   | "awaiting_identity"
@@ -2476,6 +2479,7 @@ type PendingVideoSetupState = {
   tema: string;
   pedido_original: string;
   estilo?: EstiloMotion;
+  fundo?: FundoMotion;
   trilha_id?: string | null;
   trilha_nome?: string;
   sem_trilha?: boolean;
@@ -8333,6 +8337,39 @@ async function askVideoTemplate(
   });
 }
 
+async function askVideoBackground(
+  ctx: { userId: string; fromNumber: string },
+): Promise<void> {
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-send-message`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${SERVICE_KEY}`,
+      "apikey": SERVICE_KEY,
+    },
+    body: JSON.stringify({
+      user_id: ctx.userId,
+      to: ctx.fromNumber,
+      skip_log: false,
+      log_sender: "agent",
+      message: "Qual fundo você quer no vídeo?",
+      interactive_buttons: {
+        header: "🎨 Fundo do vídeo",
+        body: "Qual fundo você quer no vídeo?",
+        footer: "A cor da marca continua nos destaques",
+        buttons: [
+          { id: "video_background_dark", title: "Fundo escuro" },
+          { id: "video_background_light", title: "Fundo claro" },
+        ],
+      },
+    }),
+    signal: AbortSignal.timeout(20000),
+  });
+  if (!response.ok) {
+    throw new Error(`seletor_fundo_video_falhou_${response.status}: ${(await response.text()).slice(0, 160)}`);
+  }
+}
+
 async function askVideoTrack(
   ctx: { userId: string; fromNumber: string },
   tracks: TrilhaVideoOption[],
@@ -8582,6 +8619,7 @@ function formatVideoDraft(props: any, tema: string, duracao: number, paleta?: st
 type VideoDraftOptions = {
   textoCores?: string;
   estilo?: string | null;
+  fundo?: FundoMotion;
   duracao?: string | null;
   duracaoAlvoSegundos?: number;
   frasesLiterais?: string[];
@@ -8614,6 +8652,7 @@ async function criarRascunhoVideoMotion(
     nomeFallback: null,
     cores: options.cores ?? pedidas?.cores ?? null,
     estilo: options.estilo ?? null,
+    fundo: options.fundo,
     duracao: options.duracao ?? null,
     duracaoAlvoSegundos: options.duracaoAlvoSegundos,
     frasesLiterais: options.frasesLiterais,
@@ -8762,6 +8801,7 @@ async function finalizeVideoSetup(
   const result = await criarRascunhoVideoMotion(ctx, setup.tema, {
     textoCores: setup.pedido_original,
     estilo: setup.estilo,
+    fundo: setup.fundo,
     duracao: setup.duracao,
     duracaoAlvoSegundos: setup.duracao_alvo_segundos,
     frasesLiterais: setup.frases_literais,
@@ -8791,6 +8831,13 @@ async function advanceVideoSetup(
     if (!await persistVideoSetup(ctx, next)) return "Não consegui guardar o pedido antes de perguntar o formato. Tente novamente.";
     await askVideoTemplate(ctx, setup.tema);
     return "Escolha o formato visual na lista acima 👆";
+  }
+
+  if (!setup.fundo) {
+    const next = { ...setup, stage: "awaiting_background" as const };
+    if (!await persistVideoSetup(ctx, next)) return "Não consegui guardar o formato antes de perguntar o fundo. Tente novamente.";
+    await askVideoBackground(ctx);
+    return "Escolha o fundo do vídeo nos botões acima 👆";
   }
 
   if (!setup.trilha_id && setup.sem_trilha !== true) {
@@ -8836,7 +8883,7 @@ async function advanceVideoSetup(
 async function startVideoSetup(
   ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
   originalRequest: string,
-  explicit?: { tema?: string; estilo?: string | null; duracao?: string | null; cores?: string },
+  explicit?: { tema?: string; estilo?: string | null; duracao?: string | null; cores?: string; fundo?: string | null },
 ): Promise<string> {
   if (!isOwner(ctx)) return "Esse recurso é exclusivo do responsável da conta.";
   if (!ctx.convId) return "Não consegui identificar esta conversa para guardar as escolhas do vídeo. Tente novamente.";
@@ -8886,6 +8933,9 @@ async function startVideoSetup(
     tema,
     pedido_original: full,
     estilo: explicitStyle ?? estiloPedidoNoTexto(full) ?? undefined,
+    fundo: explicit?.fundo === "claro" || explicit?.fundo === "escuro"
+      ? explicit.fundo
+      : fundoPedidoNoTexto(full) ?? undefined,
     trilha_id: inferredTrack?.id,
     trilha_nome: inferredTrack?.nome,
     sem_trilha: inferredTrack?.sem === true,
@@ -9036,6 +9086,19 @@ async function handlePendingVideoSetup(
       return "Não reconheci o formato. Escolha uma opção na lista acima.";
     }
     return await advanceVideoSetup(ctx, { ...setup, estilo });
+  }
+
+  if (setup.stage === "awaiting_background") {
+    const fundo = interactiveId === "video_background_light" || /^fundo claro$/.test(n)
+      ? "claro"
+      : interactiveId === "video_background_dark" || /^fundo escuro$/.test(n)
+        ? "escuro"
+        : fundoPedidoNoTexto(response);
+    if (!fundo) {
+      await askVideoBackground(ctx);
+      return "Não reconheci o fundo. Escolha *Fundo escuro* ou *Fundo claro*.";
+    }
+    return await advanceVideoSetup(ctx, { ...setup, fundo });
   }
 
   if (setup.stage === "awaiting_track" || setup.stage === "awaiting_track_more") {
@@ -10128,7 +10191,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "criar_video_animado",
-      description: "🎬 Inicia a criação de vídeo Motion para o RESPONSÁVEL. O sistema pergunta por listas interativas, uma de cada vez, o template visual, a trilha e a identidade que ainda não estiverem explícitos no pedido; só então gera o roteiro para aprovação. NUNCA pule essas perguntas, NUNCA renderize sem APROVADO e não use para clientes. Preserve literalmente frases ditadas pelo responsável e qualquer duração exata em segundos.",
+      description: "🎬 Inicia a criação de vídeo Motion para o RESPONSÁVEL. O sistema pergunta por listas interativas, uma de cada vez, o template visual, o fundo, a trilha e a identidade que ainda não estiverem explícitos no pedido; só então gera o roteiro para aprovação. NUNCA pule essas perguntas, NUNCA renderize sem APROVADO e não use para clientes. Preserve literalmente frases ditadas pelo responsável e qualquer duração exata em segundos.",
       parameters: {
         type: "object",
         properties: {
@@ -10136,6 +10199,7 @@ const TOOLS = [
           cores: { type: "string", description: "Trecho LITERAL do pedido que menciona cores, com rótulos e hex se houver. Ex: 'fundo #ffffff, fundo 2 #fff5f5, destaque #E30613, apoio #ff4d57' ou 'vermelho e branco'. Deixe vazio se ele não citou cor nenhuma." },
           duracao: { type: "string", enum: ["curto", "medio", "longo"], description: "Duração SE ele pediu: 'curto' (~25s, padrão para redes), 'medio' (~45s), 'longo' (~75s, apresentação comercial). Vídeo mais longo tem MAIS conteúdo e demora mais para renderizar. Omita quando ele não pedir." },
           estilo: { type: "string", enum: ["auto", "conversa", "institucional", "lista"], description: "Formato do vídeo SE ele pediu: 'conversa' (celular com balões de WhatsApp), 'institucional' (tipografia grande, argumentos, selo/dado), 'lista' (itens numerados, '3 motivos', 'passo a passo'). Use 'auto' quando ele não pedir formato — a plataforma escolhe pelo tema." },
+          fundo: { type: "string", enum: ["claro", "escuro"], description: "Fundo somente quando o responsável disser fundo branco/claro ou preto/escuro. Omita para o sistema perguntar com dois botões." },
         },
         required: ["tema"],
       },
@@ -11388,12 +11452,13 @@ async function runTool(
     return {
       result: await startVideoSetup(
         ctx,
-        [args?.tema, args?.cores, args?.duracao, args?.estilo].filter(Boolean).join(" "),
+        [args?.tema, args?.cores, args?.duracao, args?.estilo, args?.fundo ? `fundo ${args.fundo}` : ""].filter(Boolean).join(" "),
         {
           tema: String(args?.tema ?? ""),
           cores: String(args?.cores ?? ""),
           estilo: typeof args?.estilo === "string" ? args.estilo : null,
           duracao: typeof args?.duracao === "string" ? args.duracao : null,
+          fundo: typeof args?.fundo === "string" ? args.fundo : null,
         },
       ),
     };
