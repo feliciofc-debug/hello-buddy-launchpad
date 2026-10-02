@@ -304,6 +304,7 @@ export default function DashboardMetricas() {
     { id: 'midias', icon: Images, label: t('nav.media'), path: '/midias' },
     { id: 'ia-marketing', icon: Zap, label: t('nav.ia_marketing'), path: '/ia-marketing' },
     { id: 'redes-sociais', icon: Share2, label: t('nav.social_networks'), path: '/redes-sociais' },
+    { id: 'anuncios-meta', icon: Megaphone, label: 'Anúncios Meta', path: '/anuncios-meta' },
     { id: 'whatsapp', icon: MessageCircle, label: t('nav.whatsapp'), path: '/whatsapp-painel' },
     { id: 'whatsapp-templates', icon: MessageCircle, label: t('nav.whatsapp_templates'), path: '/pj/whatsapp-templates' },
     { id: 'ebook-presente', icon: Gift, label: t('nav.gift_ebook'), path: '/pj/ebook-presente' },
@@ -318,7 +319,7 @@ export default function DashboardMetricas() {
       : []),
   ];
 
-  const menuItems = menuItemsAll.filter((item) => item.id === 'admin' || item.id === 'contatos-comerciais' || item.id === 'clientes-segmentos' || item.id === 'whatsapp-templates' || item.id === 'ebook-presente' || item.id === 'minha-empresa' || isMenuAllowed(item.id));
+  const menuItems = menuItemsAll.filter((item) => item.id === 'admin' || item.id === 'contatos-comerciais' || item.id === 'clientes-segmentos' || item.id === 'whatsapp-templates' || item.id === 'ebook-presente' || item.id === 'minha-empresa' || (item.id === 'anuncios-meta' && isMenuAllowed('configuracoes')) || isMenuAllowed(item.id));
 
   // Componente de campanhas em andamento
   const CampanhasEmAndamentoSection = ({ navigate }: { navigate: (path: string) => void }) => {

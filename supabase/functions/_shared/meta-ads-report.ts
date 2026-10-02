@@ -37,7 +37,7 @@ type CacheEntry = { expiresAt: number; value: string };
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const reportCache = new Map<string, CacheEntry>();
 
-const PERIOD_META: Record<
+export const META_ADS_PERIODS: Record<
   MetaAdsPeriod,
   { preset: string; label: string }
 > = {
@@ -49,7 +49,7 @@ const PERIOD_META: Record<
 };
 
 const CONNECT_URL = "https://www.amzofertas.com.br/configuracoes";
-const INSIGHT_FIELDS = [
+export const META_ADS_INSIGHT_FIELDS = [
   "spend",
   "impressions",
   "reach",
@@ -112,7 +112,7 @@ function integer(value: unknown): string {
   return Math.round(number(value)).toLocaleString("pt-BR");
 }
 
-function actionValue(
+export function metaAdsActionValue(
   rows: MetaAdsInsight["actions"],
   actionType: string,
 ): number | null {
@@ -131,9 +131,9 @@ function relevantResults(insight: MetaAdsInsight): string[] {
   ];
   const lines: string[] = [];
   for (const definition of definitions) {
-    const total = actionValue(insight.actions, definition.type);
+    const total = metaAdsActionValue(insight.actions, definition.type);
     if (total === null) continue;
-    const cost = actionValue(
+    const cost = metaAdsActionValue(
       insight.cost_per_action_type,
       definition.type,
     );
@@ -143,8 +143,8 @@ function relevantResults(insight: MetaAdsInsight): string[] {
       }`,
     );
   }
-  const roas = actionValue(insight.purchase_roas, "omni_purchase") ??
-    actionValue(insight.purchase_roas, "purchase");
+  const roas = metaAdsActionValue(insight.purchase_roas, "omni_purchase") ??
+    metaAdsActionValue(insight.purchase_roas, "purchase");
   if (roas !== null) lines.push(`ROAS de compras: ${decimal(roas)}x`);
   return lines;
 }
@@ -155,7 +155,7 @@ export function formatMetaAdsReport(input: {
   account?: MetaAdsInsight | null;
   campaigns?: MetaAdsInsight[];
 }): string {
-  const label = PERIOD_META[input.period].label;
+  const label = META_ADS_PERIODS[input.period].label;
   const account = input.account;
   if (!account) {
     return `📊 Meta Ads — ${label}\n\nNão houve dados de anúncios nesse período.`;
@@ -250,11 +250,11 @@ export async function getMetaAdsReport(input: {
     url.searchParams.set(
       "fields",
       level === "campaign"
-        ? `campaign_id,campaign_name,${INSIGHT_FIELDS}`
-        : INSIGHT_FIELDS,
+        ? `campaign_id,campaign_name,${META_ADS_INSIGHT_FIELDS}`
+        : META_ADS_INSIGHT_FIELDS,
     );
     url.searchParams.set("level", level);
-    url.searchParams.set("date_preset", PERIOD_META[period].preset);
+    url.searchParams.set("date_preset", META_ADS_PERIODS[period].preset);
     url.searchParams.set("limit", level === "campaign" ? "5" : "1");
     if (level === "campaign") {
       url.searchParams.set("sort", "spend_descending");

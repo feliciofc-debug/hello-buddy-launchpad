@@ -1,0 +1,354 @@
+import {
+  META_ADS_INSIGHT_FIELDS,
+  META_ADS_PERIODS,
+  metaAdsActionValue,
+  normalizeMetaAdsPeriod,
+  type MetaAdsInsight,
+  type MetaAdsIntegration,
+  type MetaAdsPeriod,
+} from "./meta-ads-report.ts";
+
+const CACHE_TTL_MS = 10 * 60 * 1000;
+const cache = new Map<
+  string,
+  { expiresAt: number; value: MetaAdsDashboardSuccess }
+>();
+
+type MetricSummary = {
+  spend: number;
+  impressions: number;
+  reach: number;
+  frequency: number;
+  clicks: number;
+  ctr: number;
+  cpc: number;
+  cpm: number;
+  conversations: number | null;
+  leads: number | null;
+  purchases: number | null;
+  roas: number | null;
+  result_type: "conversation" | "lead" | "purchase" | null;
+  results: number | null;
+  cost_per_result: number | null;
+};
+
+export type MetaAdsDashboardSuccess = {
+  ok: true;
+  cached: boolean;
+  period: MetaAdsPeriod;
+  account: {
+    id: string;
+    name: string | null;
+    currency: string;
+  };
+  has_data: boolean;
+  summary: MetricSummary | null;
+  daily: Array<{
+    date: string;
+    spend: number;
+    clicks: number;
+    conversations: number;
+  }>;
+  campaigns: Array<{
+    id: string;
+    name: string;
+    status: string;
+    spend: number;
+    clicks: number;
+    ctr: number;
+    cpc: number;
+    result_type: MetricSummary["result_type"];
+    results: number | null;
+    cost_per_result: number | null;
+  }>;
+};
+
+export type MetaAdsDashboardError = {
+  ok: false;
+  code:
+    | "not_connected"
+    | "account_not_selected"
+    | "token_expired"
+    | "permission"
+    | "rate_limit"
+    | "request_failed";
+  message: string;
+};
+
+export type MetaAdsDashboardResult =
+  | MetaAdsDashboardSuccess
+  | MetaAdsDashboardError;
+
+function number(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function resultMetrics(insight: MetaAdsInsight): Pick<
+  MetricSummary,
+  "result_type" | "results" | "cost_per_result"
+> {
+  const definitions = [
+    {
+      type: "onsite_conversion.messaging_conversation_started_7d",
+      result_type: "conversation" as const,
+    },
+    { type: "lead", result_type: "lead" as const },
+    { type: "purchase", result_type: "purchase" as const },
+  ];
+  for (const definition of definitions) {
+    const results = metaAdsActionValue(insight.actions, definition.type);
+    if (results === null) continue;
+    const explicitCost = metaAdsActionValue(
+      insight.cost_per_action_type,
+      definition.type,
+    );
+    return {
+      result_type: definition.result_type,
+      results,
+      cost_per_result: explicitCost ??
+        (results > 0 ? number(insight.spend) / results : null),
+    };
+  }
+  return { result_type: null, results: null, cost_per_result: null };
+}
+
+export function formatMetaAdsDashboardSummary(
+  insight: MetaAdsInsight,
+): MetricSummary {
+  const result = resultMetrics(insight);
+  return {
+    spend: number(insight.spend),
+    impressions: number(insight.impressions),
+    reach: number(insight.reach),
+    frequency: number(insight.frequency),
+    clicks: number(insight.clicks),
+    ctr: number(insight.ctr),
+    cpc: number(insight.cpc),
+    cpm: number(insight.cpm),
+    conversations: metaAdsActionValue(
+      insight.actions,
+      "onsite_conversion.messaging_conversation_started_7d",
+    ),
+    leads: metaAdsActionValue(insight.actions, "lead"),
+    purchases: metaAdsActionValue(insight.actions, "purchase"),
+    roas: metaAdsActionValue(insight.purchase_roas, "omni_purchase") ??
+      metaAdsActionValue(insight.purchase_roas, "purchase"),
+    ...result,
+  };
+}
+
+function graphError(response: Response, body: any): MetaAdsDashboardError {
+  const code = Number(body?.error?.code || 0);
+  if ([17, 613, 80004].includes(code) || response.status === 429) {
+    return {
+      ok: false,
+      code: "rate_limit",
+      message:
+        "A Meta limitou as consultas agora. Aguarde alguns minutos e tente novamente.",
+    };
+  }
+  if ([102, 190].includes(code) || response.status === 401) {
+    return {
+      ok: false,
+      code: "token_expired",
+      message: "A conexão do Meta Ads venceu. Reconecte em Configurações.",
+    };
+  }
+  if (code === 200 || response.status === 403) {
+    return {
+      ok: false,
+      code: "permission",
+      message:
+        "A conexão do Meta Ads está sem permissão para ler anúncios. Reconecte em Configurações.",
+    };
+  }
+  return {
+    ok: false,
+    code: "request_failed",
+    message: "Não foi possível consultar a Meta agora. Tente novamente.",
+  };
+}
+
+export function clearMetaAdsDashboardCache(): void {
+  cache.clear();
+}
+
+export async function getMetaAdsDashboard(input: {
+  userId: string;
+  period?: unknown;
+  loadIntegration: (
+    userId: string,
+  ) => Promise<MetaAdsIntegration | null>;
+  fetchImpl?: typeof fetch;
+  now?: number;
+}): Promise<MetaAdsDashboardResult> {
+  const period = normalizeMetaAdsPeriod(input.period);
+  const now = input.now ?? Date.now();
+  const integration = await input.loadIntegration(input.userId);
+  if (!integration?.is_active || !integration.access_token) {
+    return {
+      ok: false,
+      code: "not_connected",
+      message: "Conecte o Meta Ads em Configurações para ver os relatórios.",
+    };
+  }
+  const expiresAt = Date.parse(String(integration.token_expires_at ?? ""));
+  if (Number.isFinite(expiresAt) && expiresAt <= now) {
+    return {
+      ok: false,
+      code: "token_expired",
+      message: "A conexão do Meta Ads venceu. Reconecte em Configurações.",
+    };
+  }
+  if (!integration.ad_account_id) {
+    return {
+      ok: false,
+      code: "account_not_selected",
+      message: "Selecione uma conta de anúncios em Configurações.",
+    };
+  }
+
+  const cacheKey = `${integration.ad_account_id}:${period}`;
+  const cached = cache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return { ...cached.value, cached: true };
+  }
+  if (cached) cache.delete(cacheKey);
+
+  const fetchImpl = input.fetchImpl ?? fetch;
+  const graph = async (
+    path: string,
+    params: Record<string, string>,
+  ): Promise<any> => {
+    const url = new URL(`https://graph.facebook.com/v25.0/${path}`);
+    Object.entries(params).forEach(([key, value]) =>
+      url.searchParams.set(key, value)
+    );
+    url.searchParams.set("access_token", integration.access_token);
+    const response = await fetchImpl(url);
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || body?.error) throw graphError(response, body);
+    return body;
+  };
+
+  try {
+    const common = {
+      date_preset: META_ADS_PERIODS[period].preset,
+    };
+    const accountBody = await graph(
+      `${integration.ad_account_id}/insights`,
+      {
+        ...common,
+        level: "account",
+        fields: META_ADS_INSIGHT_FIELDS,
+        limit: "1",
+      },
+    );
+    const accountInsight = Array.isArray(accountBody?.data)
+      ? accountBody.data[0] as MetaAdsInsight | undefined
+      : undefined;
+
+    if (!accountInsight) {
+      const empty: MetaAdsDashboardSuccess = {
+        ok: true,
+        cached: false,
+        period,
+        account: {
+          id: integration.ad_account_id,
+          name: integration.ad_account_name ?? null,
+          currency: integration.ad_account_currency || "BRL",
+        },
+        has_data: false,
+        summary: null,
+        daily: [],
+        campaigns: [],
+      };
+      cache.set(cacheKey, { value: empty, expiresAt: now + CACHE_TTL_MS });
+      return empty;
+    }
+
+    const [dailyBody, campaignBody, statusesBody] = await Promise.all([
+      graph(`${integration.ad_account_id}/insights`, {
+        ...common,
+        level: "account",
+        fields: "date_start,date_stop,spend,clicks,actions",
+        time_increment: "1",
+        limit: "100",
+      }),
+      graph(`${integration.ad_account_id}/insights`, {
+        ...common,
+        level: "campaign",
+        fields: `campaign_id,campaign_name,${META_ADS_INSIGHT_FIELDS}`,
+        sort: "spend_descending",
+        limit: "100",
+      }),
+      graph(`${integration.ad_account_id}/campaigns`, {
+        fields: "id,name,effective_status",
+        limit: "500",
+      }),
+    ]);
+
+    const statuses = new Map<string, string>(
+      (Array.isArray(statusesBody?.data) ? statusesBody.data : [])
+        .map((campaign: any) => [
+          String(campaign.id),
+          String(campaign.effective_status || "UNKNOWN"),
+        ]),
+    );
+    const daily = (Array.isArray(dailyBody?.data) ? dailyBody.data : [])
+      .map((row: MetaAdsInsight & { date_start?: string }) => ({
+        date: String(row.date_start || ""),
+        spend: number(row.spend),
+        clicks: number(row.clicks),
+        conversations: metaAdsActionValue(
+          row.actions,
+          "onsite_conversion.messaging_conversation_started_7d",
+        ) ?? 0,
+      }));
+    const campaigns = (Array.isArray(campaignBody?.data)
+      ? campaignBody.data as MetaAdsInsight[]
+      : [])
+      .map((campaign) => ({
+        id: String(campaign.campaign_id || ""),
+        name: String(campaign.campaign_name || "Campanha sem nome"),
+        status: statuses.get(String(campaign.campaign_id || "")) || "UNKNOWN",
+        spend: number(campaign.spend),
+        clicks: number(campaign.clicks),
+        ctr: number(campaign.ctr),
+        cpc: number(campaign.cpc),
+        ...resultMetrics(campaign),
+      }));
+
+    const result: MetaAdsDashboardSuccess = {
+      ok: true,
+      cached: false,
+      period,
+      account: {
+        id: integration.ad_account_id,
+        name: integration.ad_account_name ?? null,
+        currency: integration.ad_account_currency || "BRL",
+      },
+      has_data: true,
+      summary: formatMetaAdsDashboardSummary(accountInsight),
+      daily,
+      campaigns,
+    };
+    cache.set(cacheKey, { value: result, expiresAt: now + CACHE_TTL_MS });
+    return result;
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "ok" in error &&
+      (error as MetaAdsDashboardError).ok === false
+    ) {
+      return error as MetaAdsDashboardError;
+    }
+    return {
+      ok: false,
+      code: "request_failed",
+      message: "Não foi possível consultar a Meta agora. Tente novamente.",
+    };
+  }
+}
