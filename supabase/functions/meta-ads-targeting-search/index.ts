@@ -30,6 +30,9 @@ type GraphTarget = {
   audience_size_lower_bound?: unknown;
   audience_size_upper_bound?: unknown;
   region?: unknown;
+  city?: unknown;
+  country?: unknown;
+  country_code?: unknown;
   country_name?: unknown;
   children?: unknown;
 };
@@ -67,6 +70,11 @@ const targets = (value: unknown, maximum: number) => {
 const mapTarget = (item: GraphTarget) => {
   const lower = Number(item.audience_size_lower_bound);
   const upper = Number(item.audience_size_upper_bound);
+  const audienceScope = item.city
+    ? "city"
+    : item.country || item.country_code || item.country_name
+    ? "country"
+    : null;
   const hasLower = item.audience_size_lower_bound !== null &&
     item.audience_size_lower_bound !== undefined && Number.isFinite(lower);
   const hasUpper = item.audience_size_upper_bound !== null &&
@@ -74,10 +82,13 @@ const mapTarget = (item: GraphTarget) => {
   return {
     id: String(item.key ?? item.id ?? ""),
     name: String(item.name ?? ""),
-    ...(hasLower && lower >= 0
-      ? { audience_size_lower_bound: lower }
+    ...(audienceScope && hasLower && lower >= 0
+      ? {
+        audience_size_lower_bound: lower,
+        audience_size_scope: audienceScope,
+      }
       : {}),
-    ...(hasUpper && upper >= 0
+    ...(audienceScope && hasUpper && upper >= 0
       ? { audience_size_upper_bound: upper }
       : {}),
   };

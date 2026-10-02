@@ -102,11 +102,18 @@ type TargetingOption = {
   key?: string;
   audience_size_lower_bound?: number;
   audience_size_upper_bound?: number;
+  audience_size_scope?: "country" | "city";
 };
 
 type AudienceEstimate = {
   audience_size_lower_bound: number;
   audience_size_upper_bound: number;
+};
+
+type MonthlyAvailability = {
+  monthly_cap: number;
+  spent: number;
+  available: number;
 };
 
 type CampaignDraft = {
@@ -178,6 +185,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   funding_source_required: "Adicione uma forma de pagamento à conta de anúncios.",
   monthly_cap_exceeded: "Esta campanha ultrapassa seu limite mensal de anúncios.",
   token_expired: "Sua conexão com o Meta expirou. Reconecte a conta.",
+  unauthorized: "Sua sessão expirou. Entre novamente.",
   explicit_confirmation_required: "Confirme a publicação para continuar.",
   ad_account_not_active: "Sua conta de anúncios não está ativa.",
   invalid_draft: "Revise os campos da campanha.",
@@ -197,7 +205,12 @@ async function getCampaignError(
       // Keep the response body already returned by the client.
     }
   }
-  const code = String(payload?.error ?? payload?.code ?? "request_failed");
+  const code = String(
+    payload?.error ?? payload?.code ??
+      (context instanceof Response && context.status === 401
+        ? "unauthorized"
+        : "request_failed"),
+  );
   return {
     code,
     message: String(payload?.message ?? ERROR_MESSAGES[code] ?? fallback),
@@ -240,36 +253,95 @@ const STATUS_LABELS: Record<string, string> = {
 const INTEREST_PRESETS = [
   {
     name: "Profissionais liberais",
-    terms: [
-      "Odontologia",
-      "Psicologia",
-      "Advocacia",
-      "Nutrição",
-      "Fisioterapia",
-      "Contabilidade",
-      "Arquitetura",
+    queries: [
+      ["Odontologia", "Dentista"],
+      ["Psicologia"],
+      ["Direito"],
+      ["Nutrição"],
+      ["Fisioterapia"],
+      ["Contabilidade"],
+      ["Arquitetura"],
     ],
   },
   {
     name: "Empreendedores e pequenos negócios",
-    terms: ["Empreendedorismo", "Pequena empresa", "Marketing digital"],
+    queries: [["Empreendedorismo"], ["Pequena empresa"], ["Marketing digital"]],
   },
   {
     name: "Comércio local",
-    terms: ["Varejo", "Compras", "Moda", "Restaurantes"],
+    queries: [["Varejo"], ["Compras"], ["Moda"], ["Restaurantes"]],
   },
   {
     name: "Beleza e estética",
-    terms: ["Salão de beleza", "Estética", "Cosméticos"],
+    queries: [["Salão de beleza"], ["Estética"], ["Cosméticos"]],
   },
 ] as const;
 
 const audienceRange = (option: TargetingOption) => {
+  if (!option.audience_size_scope) return null;
   const lower = option.audience_size_lower_bound;
   const upper = option.audience_size_upper_bound;
   return Number.isFinite(lower) && Number.isFinite(upper)
     ? `${integer(lower)}–${integer(upper)} pessoas`
     : null;
+};
+
+const normalizeTargetingName = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLocaleLowerCase("pt-BR")
+    .trim();
+
+const UNSAFE_PRESET_TERMS = [
+  "faculdade",
+  "ensino superior",
+  "estudante",
+  "curso",
+  "universidade",
+];
+
+const editDistance = (left: string, right: string) => {
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    const current = [leftIndex];
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      current[rightIndex] = Math.min(
+        current[rightIndex - 1] + 1,
+        previous[rightIndex] + 1,
+        previous[rightIndex - 1] +
+          (left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1),
+      );
+    }
+    previous.splice(0, previous.length, ...current);
+  }
+  return previous[right.length];
+};
+
+const closestSafeInterest = (
+  options: TargetingOption[],
+  queries: readonly string[],
+) => {
+  const normalizedQueries = queries.map(normalizeTargetingName);
+  return options
+    .filter((option) => {
+      const name = normalizeTargetingName(option.name);
+      return !UNSAFE_PRESET_TERMS.some((term) => name.includes(term));
+    })
+    .map((option) => {
+      const name = normalizeTargetingName(option.name);
+      const score = Math.min(...normalizedQueries.map((query) =>
+        name === query
+          ? 0
+          : name.startsWith(query)
+          ? 10 + Math.abs(name.length - query.length)
+          : name.includes(query)
+          ? 20 + Math.abs(name.length - query.length)
+          : 100 + editDistance(name, query)
+      ));
+      return { option, score };
+    })
+    .sort((left, right) => left.score - right.score)[0]?.option ?? null;
 };
 
 export default function MetaAdsDashboard() {
@@ -314,6 +386,11 @@ export default function MetaAdsDashboard() {
   >(null);
   const [audienceEstimate, setAudienceEstimate] = useState<AudienceEstimate | null>(null);
   const [audienceEstimateLoading, setAudienceEstimateLoading] = useState(false);
+  const [monthlyAvailability, setMonthlyAvailability] =
+    useState<MonthlyAvailability | null>(null);
+  const [monthlyAvailabilityLoading, setMonthlyAvailabilityLoading] =
+    useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [dailyBudget, setDailyBudget] = useState("20");
   const [durationDays, setDurationDays] = useState("7");
   const [draft, setDraft] = useState<CampaignDraft | null>(null);
@@ -328,6 +405,14 @@ export default function MetaAdsDashboard() {
 
   const selectedMediaId = selectedMedia?.id ?? "";
   const totalBudget = (Number(dailyBudget) || 0) * (Number(durationDays) || 0);
+  const exceedsMonthlyAvailability = Boolean(
+    monthlyAvailability && totalBudget > monthlyAvailability.available,
+  );
+  const suggestedDailyBudget = monthlyAvailability && Number(durationDays) > 0
+    ? Math.floor(
+      monthlyAvailability.available / Number(durationDays) * 100,
+    ) / 100
+    : 0;
 
   const openWizard = () => {
     setShowWizard(true);
@@ -348,7 +433,19 @@ export default function MetaAdsDashboard() {
         "meta-ads-targeting-search",
         { body: { type, query: searchedTerm } },
       );
-      if (invokeError) throw invokeError;
+      if (invokeError || !response?.ok) {
+        const failure = await getCampaignError(
+          invokeError,
+          response,
+          "Não foi possível consultar as opções do Meta.",
+        );
+        if (failure.code === "unauthorized") {
+          setSessionExpired(true);
+        } else {
+          toast.error(failure.message);
+        }
+        return;
+      }
       const options = (response?.data ?? response?.options ?? []) as TargetingOption[];
       if (type === "city") setCities(options);
       else if (type === "interest") setInterests(options);
@@ -363,23 +460,37 @@ export default function MetaAdsDashboard() {
     }
   };
 
-  const selectInterestPreset = async (terms: readonly string[]) => {
+  const selectInterestPreset = async (
+    queryGroups: readonly (readonly string[])[],
+  ) => {
     setTargetingLoading("interest");
     setInterestFocused(false);
     try {
-      const resolved = await Promise.all(terms.map(async (term) => {
-        try {
-          const { data: response, error: invokeError } =
-            await supabase.functions.invoke("meta-ads-targeting-search", {
-              body: { type: "interest", query: term },
-            });
-          if (invokeError) return null;
-          const options = (response?.data ?? []) as TargetingOption[];
-          return options[0] ?? null;
-        } catch {
-          return null;
-        }
-      }));
+      const resolved = await Promise.all(
+        queryGroups.map(async (queries) => {
+          const results = await Promise.all(queries.map(async (query) => {
+            try {
+              const { data: response, error: invokeError } =
+                await supabase.functions.invoke("meta-ads-targeting-search", {
+                  body: { type: "interest", query },
+                });
+              if (invokeError || !response?.ok) {
+                const failure = await getCampaignError(
+                  invokeError,
+                  response,
+                  "Não foi possível consultar as opções do Meta.",
+                );
+                if (failure.code === "unauthorized") setSessionExpired(true);
+                return [] as TargetingOption[];
+              }
+              return (response?.data ?? []) as TargetingOption[];
+            } catch {
+              return [] as TargetingOption[];
+            }
+          }));
+          return closestSafeInterest(results.flat(), queries);
+        }),
+      );
       setSelectedInterests((current) => {
         const next = [...current];
         const ids = new Set(current.map((item) => item.id));
@@ -405,8 +516,17 @@ export default function MetaAdsDashboard() {
     let active = true;
     void supabase.functions.invoke("meta-ads-targeting-search", {
       body: { type: "interest_suggestion", interest_list: interestList },
-    }).then(({ data: response, error: invokeError }) => {
-      if (!active || invokeError) return;
+    }).then(async ({ data: response, error: invokeError }) => {
+      if (!active) return;
+      if (invokeError || !response?.ok) {
+        const failure = await getCampaignError(
+          invokeError,
+          response,
+          "Não foi possível consultar as sugestões do Meta.",
+        );
+        if (active && failure.code === "unauthorized") setSessionExpired(true);
+        return;
+      }
       const selected = new Set(interestList);
       const suggestions = ((response?.data ?? []) as TargetingOption[])
         .filter((item) => !selected.has(item.id));
@@ -440,8 +560,19 @@ export default function MetaAdsDashboard() {
           },
         });
       if (!active) return;
+      if (invokeError || !response?.ok) {
+        const failure = await getCampaignError(
+          invokeError,
+          response,
+          "Não foi possível calcular o público.",
+        );
+        if (failure.code === "unauthorized") setSessionExpired(true);
+        setAudienceEstimate(null);
+        setAudienceEstimateLoading(false);
+        return;
+      }
       if (
-        !invokeError && response?.available &&
+        response?.available &&
         Number.isFinite(response.audience_size_lower_bound) &&
         Number.isFinite(response.audience_size_upper_bound)
       ) {
@@ -468,6 +599,43 @@ export default function MetaAdsDashboard() {
     ageMax,
     gender,
   ]);
+
+  useEffect(() => {
+    if (step !== 2) return;
+    let active = true;
+    const loadAvailability = async () => {
+      setMonthlyAvailabilityLoading(true);
+      const { data: response, error: invokeError } =
+        await supabase.functions.invoke("meta-ads-draft", {
+          body: { action: "availability" },
+        });
+      if (!active) return;
+      if (invokeError || !response?.ok) {
+        const failure = await getCampaignError(
+          invokeError,
+          response,
+          "Não foi possível consultar o limite mensal.",
+        );
+        setMonthlyAvailability(null);
+        if (failure.code === "unauthorized") {
+          setSessionExpired(true);
+        } else {
+          setActionError(failure);
+        }
+      } else {
+        setMonthlyAvailability({
+          monthly_cap: Number(response.monthly_cap || 0),
+          spent: Number(response.spent || 0),
+          available: Number(response.available || 0),
+        });
+      }
+      setMonthlyAvailabilityLoading(false);
+    };
+    void loadAvailability();
+    return () => {
+      active = false;
+    };
+  }, [step]);
 
   const campaignPayload = (copy?: { title: string; text: string }) => ({
     name: copy?.title || draft?.title ||
@@ -528,7 +696,18 @@ export default function MetaAdsDashboard() {
             },
           },
         );
-      if (generationError) throw generationError;
+      if (generationError || !generated) {
+        const failure = await getCampaignError(
+          generationError,
+          generated,
+          "Não foi possível gerar o texto do anúncio.",
+        );
+        if (failure.code === "unauthorized") {
+          setSessionExpired(true);
+          return;
+        }
+        throw new Error(failure.message);
+      }
       const content = typeof generated?.content === "string"
         ? generated.content
         : "";
@@ -546,7 +725,11 @@ export default function MetaAdsDashboard() {
           "Não foi possível gerar o rascunho.",
         );
         setActionError(failure);
-        toast.error(failure.message);
+        if (failure.code === "unauthorized") {
+          setSessionExpired(true);
+        } else {
+          toast.error(failure.message);
+        }
         return;
       }
       const result = response.data?.rascunho ?? response.draft ?? response;
@@ -584,7 +767,11 @@ export default function MetaAdsDashboard() {
           "Não foi possível salvar suas alterações.",
         );
         setActionError(failure);
-        toast.error(failure.message);
+        if (failure.code === "unauthorized") {
+          setSessionExpired(true);
+        } else {
+          toast.error(failure.message);
+        }
         return;
       }
       const { data: response, error: invokeError } = await supabase.functions.invoke(
@@ -598,7 +785,11 @@ export default function MetaAdsDashboard() {
           "Não foi possível gerar a prévia.",
         );
         setActionError(failure);
-        toast.error(failure.message);
+        if (failure.code === "unauthorized") {
+          setSessionExpired(true);
+        } else {
+          toast.error(failure.message);
+        }
         return;
       }
       if (!Array.isArray(response.previews) || !response.previews.length) {
@@ -635,7 +826,11 @@ export default function MetaAdsDashboard() {
         if (failure.code === "funding_source_required") {
           setPaymentDialogOpen(true);
         }
-        toast.error(failure.message);
+        if (failure.code === "unauthorized") {
+          setSessionExpired(true);
+        } else {
+          toast.error(failure.message);
+        }
         return;
       }
       const graph = response.graph as Record<string, unknown> | undefined;
@@ -677,7 +872,18 @@ export default function MetaAdsDashboard() {
         await supabase.functions.invoke("meta-ads-payment-status", {
           body: {},
         });
-      if (invokeError || !response?.ok) throw invokeError ?? new Error("status_failed");
+      if (invokeError || !response?.ok) {
+        const failure = await getCampaignError(
+          invokeError,
+          response,
+          "Não foi possível verificar o pagamento na Meta.",
+        );
+        if (failure.code === "unauthorized") {
+          setSessionExpired(true);
+          return null;
+        }
+        throw new Error(failure.message);
+      }
       const status = response as PaymentStatus;
       setPaymentStatus(status);
       if (showSuccess) {
@@ -688,8 +894,12 @@ export default function MetaAdsDashboard() {
         }
       }
       return status;
-    } catch {
-      toast.error("Não foi possível verificar o pagamento na Meta.");
+    } catch (paymentError) {
+      toast.error(
+        paymentError instanceof Error
+          ? paymentError.message
+          : "Não foi possível verificar o pagamento na Meta.",
+      );
       return null;
     } finally {
       setPaymentOAuthLoading(false);
@@ -724,9 +934,22 @@ export default function MetaAdsDashboard() {
         await supabase.functions.invoke("meta-ads-insights", {
           body: { period },
         });
-      if (invokeError) throw invokeError;
+      if (invokeError) {
+        const failure = await getCampaignError(
+          invokeError,
+          response,
+          "Não foi possível carregar os anúncios agora.",
+        );
+        if (failure.code === "unauthorized") setSessionExpired(true);
+        setData(null);
+        setError({ ok: false, code: failure.code, message: failure.message });
+        return;
+      }
       if (!response?.ok) {
         setData(null);
+        if (response?.code === "unauthorized" || response?.error === "unauthorized") {
+          setSessionExpired(true);
+        }
         setError(response as DashboardError);
       } else {
         setData(response as DashboardData);
@@ -876,6 +1099,15 @@ export default function MetaAdsDashboard() {
             </Button>
           </div>
         </div>
+
+        {sessionExpired && (
+          <div className="flex flex-col gap-3 rounded-md border border-red-300 bg-red-50 p-4 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200 sm:flex-row sm:items-center sm:justify-between">
+            <p className="font-medium">Sua sessão expirou. Entre novamente.</p>
+            <Button variant="outline" onClick={() => navigate("/login")}>
+              Ir para o login
+            </Button>
+          </div>
+        )}
 
         {showWizard && (
           <Card>
@@ -1071,12 +1303,12 @@ export default function MetaAdsDashboard() {
                             key={group.name}
                             type="button"
                             onMouseDown={(event) => event.preventDefault()}
-                            onClick={() => void selectInterestPreset(group.terms)}
+                            onClick={() => void selectInterestPreset(group.queries)}
                             className="block w-full rounded border px-3 py-2 text-left hover:bg-muted"
                           >
                             <span className="block text-sm font-medium">{group.name}</span>
                             <span className="block text-xs text-muted-foreground">
-                              {group.terms.join(", ")}
+                              {group.queries.map((queries) => queries.join(" / ")).join(", ")}
                             </span>
                           </button>
                         ))}
@@ -1302,9 +1534,54 @@ export default function MetaAdsDashboard() {
                       onChange={(event) => setDurationDays(event.target.value)}
                     />
                   </div>
-                  <div className="rounded-md bg-muted p-4 md:col-span-2">
+                  <div
+                    className={`rounded-md border p-4 md:col-span-2 ${
+                      exceedsMonthlyAvailability
+                        ? "border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950"
+                        : "border-transparent bg-muted"
+                    }`}
+                  >
+                    {monthlyAvailabilityLoading ? (
+                      <p className="mb-3 text-sm text-muted-foreground">
+                        Consultando limite mensal...
+                      </p>
+                    ) : monthlyAvailability && (
+                      <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                        <p
+                          className={`text-sm ${
+                            exceedsMonthlyAvailability
+                              ? "font-medium text-red-700 dark:text-red-300"
+                              : "text-muted-foreground"
+                          }`}
+                        >
+                          Limite do mês: {money(monthlyAvailability.monthly_cap)}
+                          {" · "}Já gasto neste mês: {money(monthlyAvailability.spent)}
+                          {" · "}Ainda cabe: {money(monthlyAvailability.available)}
+                        </p>
+                        <Button
+                          variant="link"
+                          className="h-auto justify-start p-0"
+                          onClick={() => navigate("/configuracoes")}
+                        >
+                          Alterar limite
+                        </Button>
+                      </div>
+                    )}
                     <p className="text-sm text-muted-foreground">Gasto máximo desta campanha</p>
-                    <p className="text-2xl font-bold">{money(totalBudget)}</p>
+                    <p
+                      className={`text-2xl font-bold ${
+                        exceedsMonthlyAvailability
+                          ? "text-red-700 dark:text-red-300"
+                          : ""
+                      }`}
+                    >
+                      {money(totalBudget)}
+                    </p>
+                    {exceedsMonthlyAvailability && (
+                      <p className="mt-2 text-sm font-medium text-red-700 dark:text-red-300">
+                        Para caber no mês, use até {money(suggestedDailyBudget)} por dia.
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
@@ -1507,7 +1784,13 @@ export default function MetaAdsDashboard() {
                           !(Number(radiusKm) >= 1 && Number(radiusKm) <= 80) ||
                           !(Number(ageMin) >= 18 && Number(ageMax) <= 65) ||
                           Number(ageMin) > Number(ageMax))) ||
-                        (step === 2 && (!(Number(dailyBudget) > 0) || !(Number(durationDays) > 0)))}
+                        (step === 2 && (
+                          !(Number(dailyBudget) > 0) ||
+                          !(Number(durationDays) > 0) ||
+                          monthlyAvailabilityLoading ||
+                          !monthlyAvailability ||
+                          exceedsMonthlyAvailability
+                        ))}
                     >
                       Continuar
                     </Button>

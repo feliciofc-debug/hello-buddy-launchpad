@@ -1,7 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import {
+  calculateMetaAdsMonthlyAvailability,
   metaAdsMaximumSpend,
+  metaGraphRequest,
+  publicMetaAdsError,
   validateMetaAdsDraft,
 } from "../_shared/meta-ads-create.ts";
 
@@ -36,7 +39,9 @@ serve(async (req) => {
   const admin = createClient(url, service);
   const { data: integration, error: integrationError } = await admin
     .from("integrations")
-    .select("id")
+    .select(
+      "id,access_token,token_expires_at,ad_account_id,limite_mensal_anuncios",
+    )
     .eq("user_id", user.id)
     .eq("platform", "meta_ads")
     .eq("is_active", true)
@@ -62,6 +67,99 @@ serve(async (req) => {
   }
 
   const body = await req.json().catch(() => ({}));
+  if (req.method === "POST" && body?.action === "availability") {
+    if (!integration.access_token || !integration.ad_account_id) {
+      return json({ error: "meta_ads_not_ready" }, 409);
+    }
+    const expiresAt = Date.parse(String(integration.token_expires_at ?? ""));
+    if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) {
+      return json({ error: "token_expired" }, 401);
+    }
+    const { data: platformRows, error: capLoadError } = await admin
+      .from("meta_ads_campanhas")
+      .select("id,campaign_id,gasto_maximo,status")
+      .eq("user_id", user.id)
+      .in("status", ["publicando", "publicado", "pausado"]);
+    if (capLoadError) {
+      return json({ error: "monthly_cap_check_failed" }, 500);
+    }
+    let actualSpent = 0;
+    const activeCampaigns: Array<{
+      maximumSpend: number;
+      lifetimeSpent: number;
+    }> = [];
+    try {
+      const accountInsights = await metaGraphRequest(
+        `${integration.ad_account_id}/insights`,
+        {
+          accessToken: integration.access_token,
+          params: {
+            fields: "spend",
+            level: "account",
+            date_preset: "this_month",
+            limit: 1,
+          },
+        },
+      );
+      actualSpent = Number(accountInsights?.data?.[0]?.spend || 0);
+      await Promise.all(
+        (platformRows ?? [])
+          .filter((platform) =>
+            platform.status !== "publicando" && platform.campaign_id
+          )
+          .map(async (platform) => {
+            const campaign = await metaGraphRequest(
+              String(platform.campaign_id),
+              {
+                accessToken: integration.access_token,
+                params: { fields: "effective_status" },
+              },
+            );
+            if (campaign?.effective_status !== "ACTIVE") return;
+            const insights = await metaGraphRequest(
+              `${platform.campaign_id}/insights`,
+              {
+                accessToken: integration.access_token,
+                params: {
+                  fields: "spend",
+                  date_preset: "maximum",
+                  limit: 1,
+                },
+              },
+            );
+            activeCampaigns.push({
+              maximumSpend: Number(platform.gasto_maximo || 0),
+              lifetimeSpent: Number(insights?.data?.[0]?.spend || 0),
+            });
+          }),
+      );
+    } catch (error) {
+      const safe = publicMetaAdsError(error);
+      return json({ ok: false, ...safe }, 502);
+    }
+    const now = new Date();
+    const daysInMonth = new Date(Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth() + 1,
+      0,
+    )).getUTCDate();
+    const availability = calculateMetaAdsMonthlyAvailability({
+      monthlyCap: integration.limite_mensal_anuncios,
+      actualSpent,
+      activeCampaigns,
+      inFlightReservations: (platformRows ?? [])
+        .filter((platform) => platform.status === "publicando")
+        .map((platform) => platform.gasto_maximo),
+      daysRemaining: daysInMonth - now.getUTCDate() + 1,
+    });
+    return json({
+      ok: true,
+      action: "availability",
+      monthly_cap: availability.cap,
+      spent: availability.spent,
+      available: availability.available,
+    });
+  }
   const id = String(body?.id ?? queryId ?? "");
   if (req.method === "DELETE") {
     if (!id) return json({ error: "id_required" }, 400);
