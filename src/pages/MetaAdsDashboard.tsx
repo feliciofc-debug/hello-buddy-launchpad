@@ -7,7 +7,6 @@ import {
   DollarSign,
   Eye,
   ExternalLink,
-  Image as ImageIcon,
   Loader2,
   MessageCircle,
   MousePointerClick,
@@ -35,6 +34,18 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  MediaPicker,
+  type MetaAdsMedia,
+} from "@/components/meta-ads/MediaPicker";
 import { toast } from "sonner";
 
 type Period = "hoje" | "ontem" | "7_dias" | "30_dias" | "este_mes";
@@ -83,17 +94,6 @@ type DashboardError = {
   ok: false;
   code: string;
   message: string;
-};
-
-type MediaItem = {
-  id: string;
-  midia_url: string;
-  thumbnail_url: string | null;
-  arquivo_nome: string | null;
-  legenda_gerada: string | null;
-  contexto_original: string | null;
-  tipo: string;
-  created_at: string;
 };
 
 type TargetingOption = {
@@ -218,9 +218,11 @@ export default function MetaAdsDashboard() {
   const [ageMax, setAgeMax] = useState("65");
   const [gender, setGender] = useState<Gender>("all");
   const [specialCategory, setSpecialCategory] = useState<SpecialCategory>("");
-  const [media, setMedia] = useState<MediaItem[]>([]);
-  const [mediaLoading, setMediaLoading] = useState(false);
-  const [selectedMediaId, setSelectedMediaId] = useState("");
+  const [selectedMedia, setSelectedMedia] = useState<MetaAdsMedia | null>(null);
+  const [productTitle, setProductTitle] = useState("");
+  const [productPrice, setProductPrice] = useState("");
+  const [productRating, setProductRating] = useState("");
+  const [productLink, setProductLink] = useState("");
   const [cityQuery, setCityQuery] = useState("");
   const [interestQuery, setInterestQuery] = useState("");
   const [cities, setCities] = useState<TargetingOption[]>([]);
@@ -235,30 +237,14 @@ export default function MetaAdsDashboard() {
   const [wizardLoading, setWizardLoading] = useState<"draft" | "preview" | "publish" | null>(null);
   const [published, setPublished] = useState(false);
   const [actionError, setActionError] = useState<CampaignActionError | null>(null);
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [paymentOAuthLoading, setPaymentOAuthLoading] = useState(false);
 
-  const selectedMedia = media.find((item) => item.id === selectedMediaId);
+  const selectedMediaId = selectedMedia?.id ?? "";
   const totalBudget = (Number(dailyBudget) || 0) * (Number(durationDays) || 0);
 
-  const openWizard = async () => {
+  const openWizard = () => {
     setShowWizard(true);
-    if (media.length || mediaLoading) return;
-    setMediaLoading(true);
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth.user) {
-      toast.error("Entre novamente para criar uma campanha.");
-      setMediaLoading(false);
-      return;
-    }
-    const { data: items, error: mediaError } = await supabase
-      .from("midias_whatsapp")
-      .select("id, midia_url, thumbnail_url, arquivo_nome, legenda_gerada, contexto_original, tipo, created_at")
-      .eq("user_id", auth.user.id)
-      .in("tipo", ["foto", "imagem", "video"])
-      .order("created_at", { ascending: false })
-      .limit(60);
-    if (mediaError) toast.error("Não foi possível carregar suas mídias.");
-    setMedia((items as MediaItem[] | null) ?? []);
-    setMediaLoading(false);
   };
 
   const searchTargeting = async (type: "city" | "interest") => {
@@ -281,12 +267,14 @@ export default function MetaAdsDashboard() {
     }
   };
 
-  const campaignPayload = () => ({
-    name: draft?.title || `Campanha ${selectedCity?.name || "Meta Ads"}`,
+  const campaignPayload = (copy?: { title: string; text: string }) => ({
+    name: copy?.title || draft?.title ||
+      `Campanha ${selectedCity?.name || "Meta Ads"}`,
     objective,
-    primary_text: draft?.text || selectedMedia?.legenda_gerada ||
+    primary_text: copy?.text || draft?.text || selectedMedia?.legenda_gerada ||
       selectedMedia?.contexto_original || "Conheça esta novidade.",
-    headline: draft?.title || selectedMedia?.arquivo_nome || "Conheça esta novidade",
+    headline: copy?.title || draft?.title || selectedMedia?.arquivo_nome ||
+      "Conheça esta novidade",
     media_id: selectedMediaId,
     media_url: selectedMedia?.midia_url,
     media_type: selectedMedia?.tipo === "video" ? "video" : "image",
@@ -303,17 +291,50 @@ export default function MetaAdsDashboard() {
     special_ad_categories: specialCategory ? [specialCategory] : [],
   });
 
+  const deriveHeadline = (content: string) => {
+    const firstGeneratedLine = content
+      .split(/\r?\n/)
+      .map((line) => line.replace(/^[\s#>*_-]+/, "").trim())
+      .find(Boolean);
+    return (productTitle.trim() || firstGeneratedLine || "Conheça esta novidade")
+      .slice(0, 255);
+  };
+
   const generateDraft = async () => {
     if (!selectedMediaId) {
       toast.error("Selecione uma mídia para o anúncio.");
       return;
     }
+    if (!productTitle.trim()) {
+      toast.error("Informe o nome do produto ou serviço.");
+      return;
+    }
     setActionError(null);
     setWizardLoading("draft");
     try {
+      const { data: generated, error: generationError } =
+        await supabase.functions.invoke(
+          "gerar-conteudo-ia",
+          {
+            body: {
+              productTitle,
+              productPrice,
+              productRating,
+              productLink,
+              platform: "facebook",
+            },
+          },
+        );
+      if (generationError) throw generationError;
+      const content = typeof generated?.content === "string"
+        ? generated.content
+        : "";
+      if (!content.trim()) throw new Error("A IA não retornou conteúdo.");
+      const copy = { title: deriveHeadline(content), text: content };
+
       const { data: response, error: invokeError } = await supabase.functions.invoke(
         "meta-ads-draft",
-        { body: { draft: campaignPayload(), generate_copy: true } },
+        { body: { id: draft?.id, draft: campaignPayload(copy) } },
       );
       if (invokeError || !response?.ok) {
         const failure = await getCampaignError(
@@ -328,15 +349,13 @@ export default function MetaAdsDashboard() {
       const result = response.data?.rascunho ?? response.draft ?? response;
       setDraft({
         id: response.data?.id ?? response.campaign_id ?? result.id,
-        title: result.headline ?? result.title ?? result.titulo ?? "",
-        text: result.primary_text ?? result.text ?? result.texto ?? "",
+        title: result.headline ?? copy.title,
+        text: result.primary_text ?? copy.text,
         preview: result.preview,
       });
       setOfficialPreview(null);
       setPublished(false);
-      toast.success(response.copy_generated
-        ? "Texto criado. Você pode editar."
-        : "Rascunho criado. Você pode editar o texto.");
+      toast.success("Texto criado e rascunho salvo. Você pode editar.");
     } catch (draftError) {
       toast.error(draftError instanceof Error && draftError.message
         ? draftError.message
@@ -410,6 +429,29 @@ export default function MetaAdsDashboard() {
           "Não foi possível publicar a campanha.",
         );
         setActionError(failure);
+        if (failure.code === "funding_source_required") {
+          setPaymentDialogOpen(true);
+        }
+        toast.error(failure.message);
+        return;
+      }
+      const graph = response.graph as Record<string, unknown> | undefined;
+      const publicationComplete = [
+        "campaign_id",
+        "adset_id",
+        "creative_id",
+        "ad_id",
+      ].every((key) =>
+        typeof graph?.[key] === "string" &&
+        (graph[key] as string).trim().length > 0
+      );
+      if (!publicationComplete) {
+        const failure = {
+          code: "incomplete_publish_response",
+          message:
+            "A Meta não confirmou todos os itens da campanha. Atualize a página antes de tentar novamente.",
+        };
+        setActionError(failure);
         toast.error(failure.message);
         return;
       }
@@ -422,6 +464,22 @@ export default function MetaAdsDashboard() {
         : "Não foi possível publicar a campanha.");
     } finally {
       setWizardLoading(null);
+    }
+  };
+
+  const requestPaymentAuthorization = async () => {
+    setPaymentOAuthLoading(true);
+    try {
+      const { data: response, error: invokeError } =
+        await supabase.functions.invoke("meta-ads-oauth-start", {
+          body: { request_ads_payment: true },
+        });
+      if (invokeError) throw invokeError;
+      if (!response?.auth_url) throw new Error("URL de autorização ausente");
+      window.location.href = response.auth_url;
+    } catch {
+      toast.error("Não foi possível iniciar a autorização de pagamento.");
+      setPaymentOAuthLoading(false);
     }
   };
 
@@ -830,59 +888,62 @@ export default function MetaAdsDashboard() {
 
               {step === 3 && (
                 <div className="space-y-6">
-                  <div className="space-y-3">
-                    <Label>Escolha uma mídia recebida no seu WhatsApp</Label>
-                    {mediaLoading ? (
-                      <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" /> Carregando mídias...
-                      </p>
-                    ) : media.length ? (
-                      <div className="grid max-h-72 grid-cols-2 gap-3 overflow-y-auto md:grid-cols-4">
-                        {media.map((item) => (
-                          <button
-                            key={item.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedMediaId(item.id);
-                              setDraft(null);
-                              setOfficialPreview(null);
-                            }}
-                            className={`overflow-hidden rounded-md border-2 text-left ${
-                              selectedMediaId === item.id ? "border-blue-600" : "border-transparent"
-                            }`}
-                          >
-                            {item.tipo === "video" ? (
-                              <video
-                                src={item.midia_url}
-                                poster={item.thumbnail_url ?? undefined}
-                                className="aspect-square w-full object-cover"
-                              />
-                            ) : (
-                              <img
-                                src={item.thumbnail_url || item.midia_url}
-                                alt={item.arquivo_nome || "Mídia do WhatsApp"}
-                                className="aspect-square w-full object-cover"
-                              />
-                            )}
-                            <span className="block truncate p-2 text-xs">
-                              {item.arquivo_nome || item.tipo}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="rounded-md border border-dashed p-6 text-center">
-                        <ImageIcon className="mx-auto mb-2 h-6 w-6 text-muted-foreground" />
-                        <p className="text-sm">Nenhuma imagem ou vídeo recebido.</p>
-                        <Button variant="link" onClick={() => navigate("/whatsapp")}>
-                          Abrir WhatsApp
-                        </Button>
-                      </div>
-                    )}
+                  <MediaPicker
+                    selectedId={selectedMediaId}
+                    onSelect={(item) => {
+                      setSelectedMedia(item);
+                      setDraft(null);
+                      setOfficialPreview(null);
+                    }}
+                    onOpenWhatsApp={() => navigate("/whatsapp")}
+                  />
+
+                  <div className="grid gap-4 rounded-md border p-4 md:grid-cols-2">
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="product-title">Produto ou serviço</Label>
+                      <Input
+                        id="product-title"
+                        value={productTitle}
+                        onChange={(event) => setProductTitle(event.target.value)}
+                        placeholder="Ex.: Consultoria de marketing"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="product-price">Preço</Label>
+                      <Input
+                        id="product-price"
+                        value={productPrice}
+                        onChange={(event) => setProductPrice(event.target.value)}
+                        placeholder="Ex.: R$ 99,90"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="product-rating">Avaliação</Label>
+                      <Input
+                        id="product-rating"
+                        value={productRating}
+                        onChange={(event) => setProductRating(event.target.value)}
+                        placeholder="Ex.: 4,8"
+                      />
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="product-link">Link do produto ou serviço</Label>
+                      <Input
+                        id="product-link"
+                        type="url"
+                        value={productLink}
+                        onChange={(event) => setProductLink(event.target.value)}
+                        placeholder="https://seusite.com/produto"
+                      />
+                    </div>
                   </div>
 
                   {!draft ? (
-                    <Button onClick={generateDraft} disabled={!selectedMediaId || !!wizardLoading}>
+                    <Button
+                      onClick={generateDraft}
+                      disabled={!selectedMediaId || !productTitle.trim() ||
+                        !!wizardLoading}
+                    >
                       {wizardLoading === "draft" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       Gerar título e texto com IA
                     </Button>
@@ -971,14 +1032,6 @@ export default function MetaAdsDashboard() {
                     {actionError.message}
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    {actionError.billingUrl && (
-                      <Button asChild>
-                        <a href={actionError.billingUrl} target="_blank" rel="noreferrer">
-                          Configurar pagamento
-                          <ExternalLink className="ml-2 h-4 w-4" />
-                        </a>
-                      </Button>
-                    )}
                     {actionError.code === "whatsapp_not_ready" && (
                       <Button
                         variant="outline"
@@ -1041,6 +1094,41 @@ export default function MetaAdsDashboard() {
             </CardContent>
           </Card>
         )}
+
+        <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Autorizar pagamento de anúncios</DialogTitle>
+              <DialogDescription>
+                A conta de anúncios precisa de autorização para consultar e
+                configurar a forma de pagamento antes da publicação.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:space-x-0">
+              {actionError?.billingUrl && (
+                <Button variant="outline" asChild>
+                  <a
+                    href={actionError.billingUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Plano B: abrir cobrança no Ads Manager
+                    <ExternalLink className="ml-2 h-4 w-4" />
+                  </a>
+                </Button>
+              )}
+              <Button
+                onClick={requestPaymentAuthorization}
+                disabled={paymentOAuthLoading}
+              >
+                {paymentOAuthLoading && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                Autorizar pagamento com a Meta
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {loading ? (
           <Card>

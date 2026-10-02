@@ -1,7 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import {
-  generateMetaAdsCopy,
   metaAdsMaximumSpend,
   validateMetaAdsDraft,
 } from "../_shared/meta-ads-create.ts";
@@ -82,16 +81,6 @@ serve(async (req) => {
   const draftInput = supplied && typeof supplied === "object"
     ? { ...supplied }
     : {};
-  let copyGenerated = false;
-  if (body?.generate_copy === true) {
-    const copy = await generateMetaAdsCopy({
-      draft: draftInput,
-      apiKey: Deno.env.get("LOVABLE_API_KEY"),
-    });
-    draftInput.primary_text = copy.primary_text;
-    draftInput.headline = copy.headline;
-    copyGenerated = copy.generated;
-  }
   const validated = validateMetaAdsDraft(draftInput);
   if (!validated.ok) return json(validated, 400);
   const draft = validated.draft;
@@ -115,12 +104,12 @@ serve(async (req) => {
       .maybeSingle();
     if (error) return json({ error: "draft_save_failed" }, 500);
     if (!data) return json({ error: "not_found_or_not_draft" }, 404);
-    return json({ ok: true, data, copy_generated: copyGenerated });
+    return json({ ok: true, data });
   }
   const { data, error } = await admin.from("meta_ads_campanhas")
     .insert(values)
     .select("id,rascunho,status,gasto_maximo,criado_em")
     .single();
   if (error) return json({ error: "draft_save_failed" }, 500);
-  return json({ ok: true, data, copy_generated: copyGenerated }, 201);
+  return json({ ok: true, data }, 201);
 });

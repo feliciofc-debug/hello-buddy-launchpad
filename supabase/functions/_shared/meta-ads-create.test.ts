@@ -6,8 +6,8 @@ import {
   buildMetaAdsPayloads,
   calculateMetaAdsMonthlyAvailability,
   checkMetaAdsMonthlyCap,
+  hasCompleteMetaAdsEntityIds,
   hasExplicitMetaAdsPublishConfirmation,
-  generateMetaAdsCopy,
   type MetaAdsDraft,
   metaAdsMaximumSpend,
   publishMetaAdsCampaign,
@@ -129,15 +129,39 @@ Deno.test("calcula teto com gasto real e saldo apenas de campanhas ativas", () =
         { maximumSpend: 200, lifetimeSpent: 80 },
         { maximumSpend: 100, lifetimeSpent: 130 },
       ],
+      inFlightReservations: [40],
       daysRemaining: 10,
     }),
     {
       cap: 500,
       spent: 120,
-      reservedRemaining: 120,
-      available: 260,
-      suggestedDaily: 26,
+      activeReservedRemaining: 120,
+      inFlightReserved: 40,
+      reservedRemaining: 160,
+      available: 220,
+      suggestedDaily: 22,
     },
+  );
+});
+
+Deno.test("exige os quatro IDs Graph antes de concluir publicação", () => {
+  assertEquals(
+    hasCompleteMetaAdsEntityIds({
+      campaign_id: "c1",
+      adset_id: "s1",
+      creative_id: "cr1",
+      ad_id: "a1",
+    }),
+    true,
+  );
+  assertEquals(
+    hasCompleteMetaAdsEntityIds({
+      campaign_id: "c1",
+      adset_id: "s1",
+      creative_id: "",
+      ad_id: "a1",
+    }),
+    false,
   );
 });
 
@@ -196,50 +220,6 @@ Deno.test("site usa tráfego, link clicks e destino HTTPS sem WhatsApp", () => {
   assertEquals(
     payloads.creative.object_story_spec.link_data?.link,
     "https://example.com/oferta",
-  );
-});
-
-Deno.test("geração de copy usa JSON editável e recua para texto fornecido", async () => {
-  const generated = await generateMetaAdsCopy({
-    apiKey: "server-secret",
-    draft,
-    fetchImpl: async (_input, init) => {
-      assertEquals(
-        (init?.headers as Record<string, string>).Authorization,
-        "Bearer server-secret",
-      );
-      return Response.json({
-        choices: [{
-          message: {
-            tool_calls: [{
-              function: {
-                arguments: JSON.stringify({
-                  primary_text: "Texto criado",
-                  headline: "Título criado",
-                }),
-              },
-            }],
-          },
-        }],
-      });
-    },
-  });
-  assertEquals(generated, {
-    primary_text: "Texto criado",
-    headline: "Título criado",
-    generated: true,
-  });
-  assertEquals(
-    await generateMetaAdsCopy({
-      draft,
-      apiKey: "server-secret",
-      fetchImpl: async () => new Response("indisponível", { status: 503 }),
-    }),
-    {
-      primary_text: draft.primary_text,
-      headline: draft.headline,
-      generated: false,
-    },
   );
 });
 

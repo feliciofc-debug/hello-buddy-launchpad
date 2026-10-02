@@ -4,11 +4,11 @@ import { createMetaAdsOAuthState } from "../_shared/meta-ads-oauth-state.ts";
 
 const REDIRECT_URI =
   "https://www.amzofertas.com.br/auth/callback/meta-ads";
-const SCOPES = [
+const BASE_SCOPES = [
   "ads_read",
   "ads_management",
   "business_management",
-].join(",");
+];
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -41,6 +41,10 @@ serve(async (req) => {
     });
     const { data: { user }, error } = await supabase.auth.getUser();
     if (error || !user) return json({ error: "unauthorized" }, 401);
+    const body = await req.json().catch(() => ({}));
+    const scopes = body?.request_ads_payment === true
+      ? [...BASE_SCOPES, "ads_payment"]
+      : BASE_SCOPES;
 
     const state = await createMetaAdsOAuthState({
       userId: user.id,
@@ -51,9 +55,12 @@ serve(async (req) => {
     );
     authUrl.searchParams.set("client_id", appId);
     authUrl.searchParams.set("redirect_uri", REDIRECT_URI);
-    authUrl.searchParams.set("scope", SCOPES);
+    authUrl.searchParams.set("scope", scopes.join(","));
     authUrl.searchParams.set("response_type", "code");
     authUrl.searchParams.set("state", state);
+    if (body?.request_ads_payment === true) {
+      authUrl.searchParams.set("auth_type", "rerequest");
+    }
 
     return json({ auth_url: authUrl.toString() });
   } catch {

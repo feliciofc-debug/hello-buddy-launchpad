@@ -71,10 +71,14 @@ serve(async (req) => {
         ? "publicado"
         : campaign.status;
       if (localStatus !== campaign.status) {
-        await admin.from("meta_ads_campanhas").update({
-          status: localStatus,
-          atualizado_em: new Date().toISOString(),
-        }).eq("id", campaign.id).eq("user_id", user.id);
+        const { error: updateError } = await admin.from("meta_ads_campanhas")
+          .update({
+            status: localStatus,
+            atualizado_em: new Date().toISOString(),
+          }).eq("id", campaign.id).eq("user_id", user.id);
+        if (updateError) {
+          return json({ error: "campaign_status_save_failed" }, 500);
+        }
       }
       return json({
         ok: true,
@@ -98,11 +102,16 @@ serve(async (req) => {
       });
     }
     const localStatus = action === "pause" ? "pausado" : "publicado";
-    await admin.from("meta_ads_campanhas").update({
+    const { data: saved, error: saveError } = await admin.from(
+      "meta_ads_campanhas",
+    ).update({
       status: localStatus,
       atualizado_em: new Date().toISOString(),
       erro: null,
-    }).eq("id", campaign.id).eq("user_id", user.id);
+    }).eq("id", campaign.id).eq("user_id", user.id).select("id").maybeSingle();
+    if (saveError || !saved) {
+      return json({ error: "campaign_status_save_failed" }, 500);
+    }
     return json({ ok: true, id: campaign.id, status: localStatus });
   } catch (error) {
     const safe = publicMetaAdsError(error);

@@ -137,12 +137,18 @@ import {
 } from "../_shared/meta-ads-report.ts";
 import {
   calculateMetaAdsMonthlyAvailability,
+  hasCompleteMetaAdsEntityIds,
   metaAdsMaximumSpend,
   metaGraphRequest,
   publishMetaAdsCampaign,
   publicMetaAdsError,
+  rollbackMetaAdsCampaign,
   validateMetaAdsDraft,
 } from "../_shared/meta-ads-create.ts";
+import {
+  isLiteralMetaAdsApproval,
+  latestMetaAdsWhatsappApproval,
+} from "../_shared/meta-ads-whatsapp-approval.ts";
 import { dedupeConsecutiveReplyText } from "../_shared/reply-dedupe.ts";
 import {
   formatScheduledDate,
@@ -3337,13 +3343,16 @@ async function metaAdsGraph(
 async function loadMetaAdsMonthlyAvailability(
   integration: MetaAdsIntegrationRow,
   userId: string,
-): Promise<ReturnType<typeof calculateMetaAdsMonthlyAvailability>> {
+): Promise<
+  ReturnType<typeof calculateMetaAdsMonthlyAvailability> & {
+    observedCampaignIds: string[];
+  }
+> {
   const { data: platformRows, error } = await sb
     .from("meta_ads_campanhas")
-    .select("campaign_id,gasto_maximo")
+    .select("id,campaign_id,gasto_maximo,status")
     .eq("user_id", userId)
-    .in("status", ["publicado", "pausado"])
-    .not("campaign_id", "is", null);
+    .in("status", ["publicando", "publicado", "pausado"]);
   if (error) throw new Error("META_REQUEST");
 
   const accountInsights = await metaAdsGraph(
@@ -3363,48 +3372,63 @@ async function loadMetaAdsMonthlyAvailability(
     maximumSpend: number;
     lifetimeSpent: number;
   }> = [];
-  await Promise.all((platformRows ?? []).map(async (platform: any) => {
-    const campaign = await metaAdsGraph(
-      integration,
-      String(platform.campaign_id),
-      { params: { fields: "effective_status" } },
-    );
-    if (campaign?.effective_status !== "ACTIVE") return;
-    const insights = await metaAdsGraph(
-      integration,
-      `${platform.campaign_id}/insights`,
-      {
-        params: {
-          fields: "spend",
-          date_preset: "maximum",
-          limit: "1",
+  await Promise.all((platformRows ?? [])
+    .filter((platform: any) =>
+      platform.status !== "publicando" && platform.campaign_id
+    )
+    .map(async (platform: any) => {
+      const campaign = await metaAdsGraph(
+        integration,
+        String(platform.campaign_id),
+        { params: { fields: "effective_status" } },
+      );
+      if (campaign?.effective_status !== "ACTIVE") return;
+      const insights = await metaAdsGraph(
+        integration,
+        `${platform.campaign_id}/insights`,
+        {
+          params: {
+            fields: "spend",
+            date_preset: "maximum",
+            limit: "1",
+          },
         },
-      },
-    );
-    activeCampaigns.push({
-      maximumSpend: Number(platform.gasto_maximo ?? 0),
-      lifetimeSpent: Number(insights?.data?.[0]?.spend ?? 0),
-    });
-  }));
+      );
+      activeCampaigns.push({
+        maximumSpend: Number(platform.gasto_maximo ?? 0),
+        lifetimeSpent: Number(insights?.data?.[0]?.spend ?? 0),
+      });
+    }));
   const now = new Date();
   const daysInMonth = new Date(Date.UTC(
     now.getUTCFullYear(),
     now.getUTCMonth() + 1,
     0,
   )).getUTCDate();
-  return calculateMetaAdsMonthlyAvailability({
-    monthlyCap: integration.limite_mensal_anuncios,
-    actualSpent,
-    activeCampaigns,
-    daysRemaining: daysInMonth - now.getUTCDate() + 1,
-  });
+  return {
+    ...calculateMetaAdsMonthlyAvailability({
+      monthlyCap: integration.limite_mensal_anuncios,
+      actualSpent,
+      activeCampaigns,
+      inFlightReservations: (platformRows ?? [])
+        .filter((platform: any) => platform.status === "publicando")
+        .map((platform: any) => platform.gasto_maximo),
+      daysRemaining: daysInMonth - now.getUTCDate() + 1,
+    }),
+    observedCampaignIds: (platformRows ?? [])
+      .filter((platform: any) => platform.status !== "publicando")
+      .map((platform: any) => String(platform.id)),
+  };
 }
 
 function metaAdsSafeError(error: unknown): string {
   return publicMetaAdsError(error).message;
 }
 
-async function findLatestMetaAdsDraft(ctx: MetaAdsToolContext): Promise<any | null> {
+async function findLatestMetaAdsDraft(
+  ctx: MetaAdsToolContext,
+  message: unknown,
+): Promise<any | null> {
   let query = sb
     .from("meta_ads_campanhas")
     .select("id, user_id, rascunho, status, orcamento_diario, duracao_dias, gasto_maximo, aprovado_em, criado_em")
@@ -3412,14 +3436,18 @@ async function findLatestMetaAdsDraft(ctx: MetaAdsToolContext): Promise<any | nu
     .eq("status", "rascunho")
     .is("aprovado_em", null)
     .gte("criado_em", new Date(Date.now() - META_ADS_DRAFT_MAX_AGE_MS).toISOString())
-    .order("criado_em", { ascending: false })
-    .limit(1);
+    .order("criado_em", { ascending: false });
   if (ctx.convId) query = query.eq("rascunho->>conversation_id", ctx.convId);
-  const { data, error } = await query.maybeSingle();
+  const { data, error } = await query;
   if (error || !data) return null;
-  const draftPhone = String(data.rascunho?.solicitante_telefone ?? "");
-  if (!draftPhone || !ownerPhonesEquivalent(draftPhone, ctx.fromNumber)) return null;
-  return data;
+  return latestMetaAdsWhatsappApproval({
+    message,
+    isOwner: isOwner(ctx),
+    ownerPhone: ctx.fromNumber,
+    conversationId: ctx.convId,
+    drafts: data,
+    phonesEquivalent: ownerPhonesEquivalent,
+  });
 }
 
 async function toolRascunhoAnuncioMeta(
@@ -3458,7 +3486,9 @@ async function toolRascunhoAnuncioMeta(
   const integrationProblem = metaAdsIntegrationProblem(integration);
   if (integrationProblem || !integration) return integrationProblem!;
 
-  let availability: ReturnType<typeof calculateMetaAdsMonthlyAvailability>;
+  let availability: Awaited<
+    ReturnType<typeof loadMetaAdsMonthlyAvailability>
+  >;
   try {
     availability = await loadMetaAdsMonthlyAvailability(
       integration,
@@ -3515,10 +3545,10 @@ async function toolPublicarAnuncioMeta(
   ctx: MetaAdsToolContext,
 ): Promise<string> {
   if (!isOwner(ctx)) return "Essa ferramenta é restrita ao responsável da conta.";
-  if (String(args?.confirmacao ?? "").trim().toUpperCase() !== "SIM") {
+  if (!isLiteralMetaAdsApproval(args?.confirmacao)) {
     return "Para publicar o último rascunho, responda exatamente SIM.";
   }
-  const draft = await findLatestMetaAdsDraft(ctx);
+  const draft = await findLatestMetaAdsDraft(ctx, args?.confirmacao);
   if (!draft) {
     return "Não encontrei um rascunho desta conversa aguardando um SIM explícito nas últimas 24 horas.";
   }
@@ -3534,7 +3564,9 @@ async function toolPublicarAnuncioMeta(
     return `Não publiquei: o rascunho precisa ser corrigido (${validated.errors.join(", ")}).`;
   }
 
-  let availability: ReturnType<typeof calculateMetaAdsMonthlyAvailability>;
+  let availability: Awaited<
+    ReturnType<typeof loadMetaAdsMonthlyAvailability>
+  >;
   try {
     const account = await metaAdsGraph(
       integration,
@@ -3582,19 +3614,38 @@ async function toolPublicarAnuncioMeta(
     return "Não publiquei: a configuração do WhatsApp da conta está incompleta.";
   }
 
-  const approvedAt = new Date().toISOString();
-  const { data: claimed, error: claimError } = await sb
-    .from("meta_ads_campanhas")
-    .update({ aprovado_em: approvedAt, atualizado_em: approvedAt })
-    .eq("id", draft.id)
-    .eq("user_id", ctx.userId)
-    .eq("status", "rascunho")
-    .is("aprovado_em", null)
-    .select("id")
-    .maybeSingle();
-  if (claimError || !claimed) {
+  const committedWithoutInflight = Math.round(
+    (availability.spent + availability.activeReservedRemaining) * 100,
+  ) / 100;
+  const { data: reservation, error: reservationError } = await sb.rpc(
+    "reserve_meta_ads_publish",
+    {
+      p_user_id: ctx.userId,
+      p_campaign_id: draft.id,
+      p_committed_without_inflight: committedWithoutInflight,
+      p_observed_campaign_ids: availability.observedCampaignIds,
+    },
+  );
+  if (reservationError) {
+    return "Não consegui reservar o orçamento com segurança. Nenhum anúncio foi publicado.";
+  }
+  if (!reservation?.ok) {
+    if (reservation?.reason === "monthly_cap_exceeded") {
+      return "Não publiquei: outra publicação em andamento reservou o saldo disponível do teto mensal.";
+    }
     return "Esse rascunho já foi confirmado ou não está mais disponível.";
   }
+
+  const releaseReservation = async (errorCode: string): Promise<boolean> => {
+    const { data, error } = await sb.from("meta_ads_campanhas").update({
+      status: "rascunho",
+      aprovado_em: null,
+      erro: errorCode,
+      atualizado_em: new Date().toISOString(),
+    }).eq("id", draft.id).eq("user_id", ctx.userId)
+      .eq("status", "publicando").select("id").maybeSingle();
+    return !error && Boolean(data);
+  };
 
   try {
     const ids = await publishMetaAdsCampaign({
@@ -3604,19 +3655,46 @@ async function toolPublicarAnuncioMeta(
       whatsappPhoneNumber: whatsapp?.display_phone,
       draft: validated.draft,
     });
-    await sb.from("meta_ads_campanhas").update({
+    if (!hasCompleteMetaAdsEntityIds(ids)) {
+      const rolledBack = await rollbackMetaAdsCampaign(
+        ids,
+        integration.access_token,
+      );
+      const safeToRelease = !String(ids?.campaign_id ?? "") || rolledBack;
+      const released = safeToRelease
+        ? await releaseReservation("incomplete_graph_ids")
+        : false;
+      return released
+        ? "A Meta não confirmou todos os IDs da campanha. A publicação foi desfeita e o rascunho foi preservado."
+        : "A publicação falhou e a reserva exige verificação manual.";
+    }
+    const { data: saved, error: saveError } = await sb.from(
+      "meta_ads_campanhas",
+    ).update({
       status: "publicado",
       ...ids,
       erro: null,
       atualizado_em: new Date().toISOString(),
-    }).eq("id", draft.id).eq("user_id", ctx.userId);
-    return `✅ Anúncio publicado. Campanha: ${ids.campaign_id || "criada com sucesso"}.`;
+    }).eq("id", draft.id).eq("user_id", ctx.userId)
+      .eq("status", "publicando").select("id").maybeSingle();
+    if (saveError || !saved) {
+      const rolledBack = await rollbackMetaAdsCampaign(
+        ids,
+        integration.access_token,
+      );
+      const released = rolledBack
+        ? await releaseReservation("publish_state_save_failed")
+        : false;
+      return rolledBack && released
+        ? "Não consegui salvar a publicação com segurança. A campanha na Meta foi desfeita e o rascunho foi preservado."
+        : "Não consegui confirmar a publicação; a campanha e a reserva exigem verificação manual.";
+    }
+    return `✅ Anúncio publicado. Campanha: ${ids.campaign_id}.`;
   } catch (error) {
-    await sb.from("meta_ads_campanhas").update({
-      aprovado_em: null,
-      erro: publicMetaAdsError(error).code,
-      atualizado_em: new Date().toISOString(),
-    }).eq("id", draft.id).eq("user_id", ctx.userId).eq("status", "rascunho");
+    const released = await releaseReservation(publicMetaAdsError(error).code);
+    if (!released) {
+      return "A publicação falhou e a reserva exige verificação manual.";
+    }
     return `${publicMetaAdsError(error).message} O rascunho foi preservado.`;
   }
 }
@@ -3665,10 +3743,16 @@ async function toolAlterarStatusCampanhaMeta(
         params: { fields: "id,name,status,effective_status" },
       });
     if (status) {
-      await sb.from("meta_ads_campanhas").update({
+      const { data: saved, error: saveError } = await sb.from(
+        "meta_ads_campanhas",
+      ).update({
         status: status === "PAUSED" ? "pausado" : "publicado",
         atualizado_em: new Date().toISOString(),
-      }).eq("id", campaign.id).eq("user_id", ctx.userId);
+      }).eq("id", campaign.id).eq("user_id", ctx.userId)
+        .select("id").maybeSingle();
+      if (saveError || !saved) {
+        return "A Meta alterou a campanha, mas não consegui salvar o novo status local. Verifique antes de tentar novamente.";
+      }
       return status === "PAUSED"
         ? `⏸️ Campanha ${campaign.campaign_id} pausada.`
         : `▶️ Campanha ${campaign.campaign_id} ativada.`;
@@ -12497,10 +12581,9 @@ async function callGemini(
     : null;
   const explicitMetaAdsSim = senderIsOwner
     && !hasMedia
-    && typeof userContent === "string"
-    && userContent.trim().toUpperCase() === "SIM";
+    && isLiteralMetaAdsApproval(userContent);
   const pendingMetaAdsDraft = explicitMetaAdsSim
-    ? await findLatestMetaAdsDraft(toolCtx)
+    ? await findLatestMetaAdsDraft(toolCtx, userContent)
     : null;
   const requiredMetaAdsTool = pendingMetaAdsDraft
     ? "publicar_anuncio_meta"

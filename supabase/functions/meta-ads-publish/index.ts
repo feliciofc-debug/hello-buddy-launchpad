@@ -2,11 +2,13 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import {
   calculateMetaAdsMonthlyAvailability,
+  hasCompleteMetaAdsEntityIds,
   hasExplicitMetaAdsPublishConfirmation,
   metaAdsMaximumSpend,
   metaGraphRequest,
   publicMetaAdsError,
   publishMetaAdsCampaign,
+  rollbackMetaAdsCampaign,
   validateMetaAdsDraft,
 } from "../_shared/meta-ads-create.ts";
 
@@ -113,10 +115,9 @@ serve(async (req) => {
 
   const { data: platformRows, error: capLoadError } = await admin
     .from("meta_ads_campanhas")
-    .select("campaign_id,gasto_maximo")
+    .select("id,campaign_id,gasto_maximo,status")
     .eq("user_id", user.id)
-    .in("status", ["publicado", "pausado"])
-    .not("campaign_id", "is", null);
+    .in("status", ["publicando", "publicado", "pausado"]);
   if (capLoadError) return json({ error: "monthly_cap_check_failed" }, 500);
   let actualSpent = 0;
   const activeCampaigns: Array<{
@@ -137,24 +138,33 @@ serve(async (req) => {
       },
     );
     actualSpent = Number(accountInsights?.data?.[0]?.spend || 0);
-    await Promise.all((platformRows ?? []).map(async (platform: any) => {
-      const campaign = await metaGraphRequest(String(platform.campaign_id), {
-        accessToken: integration.access_token,
-        params: { fields: "effective_status" },
-      });
-      if (campaign?.effective_status !== "ACTIVE") return;
-      const insights = await metaGraphRequest(
-        `${platform.campaign_id}/insights`,
-        {
-          accessToken: integration.access_token,
-          params: { fields: "spend", date_preset: "maximum", limit: 1 },
-        },
-      );
-      activeCampaigns.push({
-        maximumSpend: Number(platform.gasto_maximo || 0),
-        lifetimeSpent: Number(insights?.data?.[0]?.spend || 0),
-      });
-    }));
+    await Promise.all(
+      (platformRows ?? [])
+        .filter((platform: any) =>
+          platform.status !== "publicando" && platform.campaign_id
+        )
+        .map(async (platform: any) => {
+          const campaign = await metaGraphRequest(
+            String(platform.campaign_id),
+            {
+              accessToken: integration.access_token,
+              params: { fields: "effective_status" },
+            },
+          );
+          if (campaign?.effective_status !== "ACTIVE") return;
+          const insights = await metaGraphRequest(
+            `${platform.campaign_id}/insights`,
+            {
+              accessToken: integration.access_token,
+              params: { fields: "spend", date_preset: "maximum", limit: 1 },
+            },
+          );
+          activeCampaigns.push({
+            maximumSpend: Number(platform.gasto_maximo || 0),
+            lifetimeSpent: Number(insights?.data?.[0]?.spend || 0),
+          });
+        }),
+    );
   } catch (error) {
     const safe = publicMetaAdsError(error);
     return json({ ok: false, ...safe }, 502);
@@ -169,6 +179,9 @@ serve(async (req) => {
     monthlyCap: integration.limite_mensal_anuncios,
     actualSpent,
     activeCampaigns,
+    inFlightReservations: (platformRows ?? [])
+      .filter((platform: any) => platform.status === "publicando")
+      .map((platform: any) => platform.gasto_maximo),
     daysRemaining: daysInMonth - now.getUTCDate() + 1,
   });
   const maximumSpend = metaAdsMaximumSpend(validated.draft);
@@ -181,6 +194,41 @@ serve(async (req) => {
     }, 409);
   }
 
+  const committedWithoutInflight = Math.round(
+    (availability.spent + availability.activeReservedRemaining) * 100,
+  ) / 100;
+  const { data: reservation, error: reservationError } = await admin.rpc(
+    "reserve_meta_ads_publish",
+    {
+      p_user_id: user.id,
+      p_campaign_id: draftId,
+      p_committed_without_inflight: committedWithoutInflight,
+      p_observed_campaign_ids: (platformRows ?? [])
+        .filter((platform: any) => platform.status !== "publicando")
+        .map((platform: any) => platform.id),
+    },
+  );
+  if (reservationError) {
+    return json({ error: "publish_reservation_failed" }, 500);
+  }
+  if (!reservation?.ok) {
+    return json({
+      error: reservation?.reason ?? "draft_already_processed",
+      reservation,
+    }, reservation?.reason === "monthly_cap_exceeded" ? 409 : 409);
+  }
+
+  const releaseReservation = async (errorCode: string) => {
+    const { data, error } = await admin.from("meta_ads_campanhas").update({
+      status: "rascunho",
+      aprovado_em: null,
+      erro: errorCode,
+      atualizado_em: new Date().toISOString(),
+    }).eq("id", draftId).eq("user_id", user.id).eq("status", "publicando")
+      .select("id").maybeSingle();
+    return !error && Boolean(data);
+  };
+
   try {
     const ids = await publishMetaAdsCampaign({
       accessToken: integration.access_token,
@@ -189,6 +237,21 @@ serve(async (req) => {
       whatsappPhoneNumber: whatsapp?.display_phone,
       draft: validated.draft,
     });
+    if (!hasCompleteMetaAdsEntityIds(ids)) {
+      const rolledBack = await rollbackMetaAdsCampaign(
+        ids,
+        integration.access_token,
+      );
+      const safeToRelease = !String(ids?.campaign_id ?? "") || rolledBack;
+      const released = safeToRelease
+        ? await releaseReservation("incomplete_graph_ids")
+        : false;
+      return json({
+        error: released
+          ? "incomplete_graph_ids"
+          : "publish_reservation_release_failed",
+      }, 500);
+    }
     const approvedAt = new Date().toISOString();
     const { data: saved, error: saveError } = await admin
       .from("meta_ads_campanhas")
@@ -202,15 +265,22 @@ serve(async (req) => {
       })
       .eq("id", draftId)
       .eq("user_id", user.id)
-      .eq("status", "rascunho")
+      .eq("status", "publicando")
       .select("id")
       .maybeSingle();
     if (saveError || !saved) {
-      await metaGraphRequest(ids.campaign_id, {
-        accessToken: integration.access_token,
-        method: "DELETE",
-      }).catch(() => undefined);
-      return json({ error: "publish_state_save_failed" }, 500);
+      const rolledBack = await rollbackMetaAdsCampaign(
+        ids,
+        integration.access_token,
+      );
+      const released = rolledBack
+        ? await releaseReservation("publish_state_save_failed")
+        : false;
+      return json({
+        error: "publish_state_save_failed",
+        graph_rollback: rolledBack,
+        reservation_released: released,
+      }, 500);
     }
     return json({
       ok: true,
@@ -226,11 +296,13 @@ serve(async (req) => {
     });
   } catch (error) {
     const safe = publicMetaAdsError(error);
-    await admin.from("meta_ads_campanhas").update({
-      status: "erro",
-      erro: safe.message,
-      atualizado_em: new Date().toISOString(),
-    }).eq("id", draftId).eq("user_id", user.id).eq("status", "rascunho");
+    const released = await releaseReservation(safe.code);
+    if (!released) {
+      return json({
+        ok: false,
+        error: "publish_reservation_release_failed",
+      }, 500);
+    }
     return json({ ok: false, ...safe }, 502);
   }
 });

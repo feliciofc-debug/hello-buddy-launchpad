@@ -50,6 +50,18 @@ export type MetaAdsEntityIds = {
   ad_id: string;
 };
 
+export function hasCompleteMetaAdsEntityIds(
+  value: Partial<MetaAdsEntityIds> | null | undefined,
+): boolean {
+  return Boolean(
+    value &&
+      String(value.campaign_id ?? "").trim() &&
+      String(value.adset_id ?? "").trim() &&
+      String(value.creative_id ?? "").trim() &&
+      String(value.ad_id ?? "").trim(),
+  );
+}
+
 export type MetaGraphError = Error & {
   graphCode?: number;
   graphSubcode?: number;
@@ -107,90 +119,6 @@ function specialCategories(value: unknown): MetaAdsSpecialCategory[] {
     .filter((item): item is MetaAdsSpecialCategory =>
       SPECIAL_CATEGORIES.has(item as MetaAdsSpecialCategory)
     );
-}
-
-export async function generateMetaAdsCopy(input: {
-  draft: Record<string, unknown>;
-  apiKey?: string;
-  fetchImpl?: typeof fetch;
-}): Promise<{ primary_text: string; headline: string; generated: boolean }> {
-  const fallback = {
-    primary_text: cleanText(input.draft.primary_text, MAX_TEXT),
-    headline: cleanText(input.draft.headline, 255),
-    generated: false,
-  };
-  if (!input.apiKey) return fallback;
-  try {
-    const response = await (input.fetchImpl ?? fetch)(
-      "https://ai.gateway.lovable.dev/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${input.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          temperature: 0.7,
-          max_tokens: 800,
-          messages: [
-            {
-              role: "system",
-              content:
-                "Crie copy objetiva para anúncio em português do Brasil. Não invente preço, prazo, garantia ou alegações. Retorne somente pelo tool call.",
-            },
-            {
-              role: "user",
-              content: JSON.stringify({
-                campaign_name: cleanText(input.draft.name, NAME_MAX),
-                objective: input.draft.objective === "site"
-                  ? "site"
-                  : "whatsapp",
-                description: cleanText(input.draft.description, 1_000),
-                supplied_primary_text: fallback.primary_text,
-                supplied_headline: fallback.headline,
-              }),
-            },
-          ],
-          tools: [{
-            type: "function",
-            function: {
-              name: "create_meta_ad_copy",
-              description: "Cria texto e título editáveis para um anúncio.",
-              parameters: {
-                type: "object",
-                properties: {
-                  primary_text: { type: "string", maxLength: MAX_TEXT },
-                  headline: { type: "string", maxLength: 255 },
-                },
-                required: ["primary_text", "headline"],
-                additionalProperties: false,
-              },
-            },
-          }],
-          tool_choice: {
-            type: "function",
-            function: { name: "create_meta_ad_copy" },
-          },
-        }),
-      },
-    );
-    if (!response.ok) return fallback;
-    const result = await response.json().catch(() => ({}));
-    const raw = result?.choices?.[0]?.message?.tool_calls?.[0]?.function
-      ?.arguments;
-    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-    const primaryText = cleanText(parsed?.primary_text, MAX_TEXT);
-    const headline = cleanText(parsed?.headline, 255);
-    if (!primaryText || !headline) return fallback;
-    return {
-      primary_text: primaryText,
-      headline,
-      generated: true,
-    };
-  } catch {
-    return fallback;
-  }
 }
 
 export function validateMetaAdsDraft(
@@ -338,21 +266,33 @@ export function calculateMetaAdsMonthlyAvailability(input: {
     maximumSpend: unknown;
     lifetimeSpent: unknown;
   }>;
+  inFlightReservations?: unknown[];
   daysRemaining?: number;
 }): {
   cap: number;
   spent: number;
+  activeReservedRemaining: number;
+  inFlightReserved: number;
   reservedRemaining: number;
   available: number;
   suggestedDaily: number;
 } {
   const cap = Math.max(0, finiteNumber(input.monthlyCap) || 0);
   const spent = Math.max(0, finiteNumber(input.actualSpent) || 0);
-  const reservedRemaining = input.activeCampaigns.reduce((total, campaign) => {
-    const maximum = Math.max(0, finiteNumber(campaign.maximumSpend) || 0);
-    const lifetime = Math.max(0, finiteNumber(campaign.lifetimeSpent) || 0);
-    return total + Math.max(0, maximum - lifetime);
-  }, 0);
+  const activeReservedRemaining = input.activeCampaigns.reduce(
+    (total, campaign) => {
+      const maximum = Math.max(0, finiteNumber(campaign.maximumSpend) || 0);
+      const lifetime = Math.max(0, finiteNumber(campaign.lifetimeSpent) || 0);
+      return total + Math.max(0, maximum - lifetime);
+    },
+    0,
+  );
+  const inFlightReserved = (input.inFlightReservations ?? []).reduce(
+    (total: number, reservation) =>
+      total + Math.max(0, finiteNumber(reservation) || 0),
+    0,
+  );
+  const reservedRemaining = activeReservedRemaining + inFlightReserved;
   const available = Math.max(
     0,
     Math.round((cap - spent - reservedRemaining) * 100) / 100,
@@ -364,6 +304,8 @@ export function calculateMetaAdsMonthlyAvailability(input: {
   return {
     cap,
     spent: Math.round(spent * 100) / 100,
+    activeReservedRemaining: Math.round(activeReservedRemaining * 100) / 100,
+    inFlightReserved: Math.round(inFlightReserved * 100) / 100,
     reservedRemaining: Math.round(reservedRemaining * 100) / 100,
     available,
     suggestedDaily: Math.floor(available / daysRemaining * 100) / 100,
@@ -617,6 +559,25 @@ async function deleteGraphEntity(
     });
   } catch {
     // Rollback is best-effort; preserve the original publish error.
+  }
+}
+
+export async function rollbackMetaAdsCampaign(
+  ids: Partial<MetaAdsEntityIds> | null | undefined,
+  accessToken: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<boolean> {
+  const campaignId = String(ids?.campaign_id ?? "").trim();
+  if (!campaignId) return false;
+  try {
+    await metaGraphRequest(campaignId, {
+      accessToken,
+      method: "DELETE",
+      fetchImpl,
+    });
+    return true;
+  } catch {
+    return false;
   }
 }
 
