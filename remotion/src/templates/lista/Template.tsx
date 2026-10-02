@@ -297,10 +297,11 @@ export const TemplateLista: React.FC<TemplateListaProps> = (props) => {
         <TransitionSeries.Sequence durationInFrames={HOOK_FRAMES}>
           <HookCena c={c} arranjo={arranjo === 3 ? 2 : 1} logoUrl={logoUrl} {...hook} />
         </TransitionSeries.Sequence>
-        <TransitionSeries.Transition
-          presentation={arranjo === 3 ? wipe({ direction: "from-bottom" }) : slide({ direction: "from-bottom" })}
-          timing={timing}
-        />
+        {arranjo === 3 ? (
+          <TransitionSeries.Transition presentation={wipe({ direction: "from-bottom" })} timing={timing} />
+        ) : (
+          <TransitionSeries.Transition presentation={slide({ direction: "from-bottom" })} timing={timing} />
+        )}
         {arranjo === 3 ? (
           lista.map((item, i) => (
             <TransitionSeries.Sequence key={`item-${i}`} durationInFrames={ritmo}>

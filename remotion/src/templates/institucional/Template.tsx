@@ -297,10 +297,11 @@ export const TemplateInstitucional: React.FC<TemplateInstitucionalProps> = (prop
         <TransitionSeries.Sequence durationInFrames={HOOK_FRAMES}>
           <HookCena c={c} arranjo={arranjo} logoUrl={logoUrl} {...hook} />
         </TransitionSeries.Sequence>
-        <TransitionSeries.Transition
-          presentation={arranjo === 2 ? wipe({ direction: "from-bottom" }) : slide({ direction: "from-bottom" })}
-          timing={timing}
-        />
+        {arranjo === 2 ? (
+          <TransitionSeries.Transition presentation={wipe({ direction: "from-bottom" })} timing={timing} />
+        ) : (
+          <TransitionSeries.Transition presentation={slide({ direction: "from-bottom" })} timing={timing} />
+        )}
         {arranjo === 2 ? (
           lista.map((b, i) => (
             <TransitionSeries.Sequence key={`bloco-${i}`} durationInFrames={ritmo}>
