@@ -3,6 +3,7 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  applyMetaAdsMediaToCreative,
   buildMetaAdsPayloads,
   calculateMetaAdsMonthlyAvailability,
   checkMetaAdsMonthlyCap,
@@ -12,7 +13,10 @@ import {
   isMetaAdsCampaignEnded,
   type MetaAdsDraft,
   metaAdsMaximumSpend,
+  metaGraphRequest,
   publishMetaAdsCampaign,
+  publicMetaAdsError,
+  uploadMetaAdsMedia,
   validateMetaAdsDraft,
 } from "./meta-ads-create.ts";
 
@@ -284,6 +288,156 @@ Deno.test("site usa tráfego, link clicks e destino HTTPS sem WhatsApp", () => {
     payloads.creative.object_story_spec.link_data?.link,
     "https://example.com/oferta",
   );
+});
+
+Deno.test("vídeo espera ficar pronto e sempre recebe uma capa", async () => {
+  let statusChecks = 0;
+  let sleeps = 0;
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith("/advideos") && init?.method === "POST") {
+      return Response.json({ id: "video_1" });
+    }
+    if (url.pathname.endsWith("/video_1")) {
+      statusChecks++;
+      return Response.json({
+        status: {
+          video_status: statusChecks === 1 ? "processing" : "ready",
+        },
+      });
+    }
+    if (url.pathname.endsWith("/video_1/thumbnails")) {
+      return Response.json({
+        data: [
+          { uri: "https://cdn.example.test/other.jpg" },
+          {
+            uri: "https://cdn.example.test/preferred.jpg",
+            is_preferred: true,
+          },
+        ],
+      });
+    }
+    throw new Error(`unexpected request: ${url.pathname}`);
+  };
+  const videoDraft: MetaAdsDraft = {
+    ...draft,
+    media_type: "video",
+    media_url: "https://cdn.example.test/anuncio.mp4",
+  };
+  const context = {
+    accessToken: "secret",
+    adAccountId: "act_1",
+    pageId: "page_1",
+    whatsappPhoneNumber: "5511999999999",
+    draft: videoDraft,
+  };
+  const media = await uploadMetaAdsMedia(context, fetchImpl, {
+    pollIntervalMs: 3_000,
+    timeoutMs: 90_000,
+    sleepImpl: () => {
+      sleeps++;
+      return Promise.resolve();
+    },
+  });
+  assertEquals(statusChecks, 2);
+  assertEquals(sleeps, 1);
+  assertEquals(media, {
+    videoId: "video_1",
+    videoThumbnailUrl: "https://cdn.example.test/preferred.jpg",
+  });
+
+  const creative = structuredClone(buildMetaAdsPayloads(context).creative);
+  applyMetaAdsMediaToCreative(creative, "video", media);
+  assertEquals(creative.object_story_spec.video_data?.video_id, "video_1");
+  const videoData = creative.object_story_spec.video_data as Record<
+    string,
+    unknown
+  >;
+  assert(
+    Boolean(videoData.image_url || videoData.image_hash),
+    "payload de vídeo precisa ter image_url ou image_hash",
+  );
+  assertEquals(
+    videoData.image_url,
+    "https://cdn.example.test/preferred.jpg",
+  );
+});
+
+Deno.test("vídeo usa thumbnail da plataforma como image_hash se a Meta não gerar capa", async () => {
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const url = new URL(String(input));
+    if (url.hostname === "thumb.example.test") {
+      return new Response(new Uint8Array([1, 2, 3]), {
+        headers: { "content-type": "image/jpeg" },
+      });
+    }
+    if (url.pathname.endsWith("/advideos") && init?.method === "POST") {
+      return Response.json({ id: "video_2" });
+    }
+    if (url.pathname.endsWith("/video_2")) {
+      return Response.json({ status: { video_status: "ready" } });
+    }
+    if (url.pathname.endsWith("/video_2/thumbnails")) {
+      return Response.json({ data: [] });
+    }
+    if (url.pathname.endsWith("/adimages")) {
+      return Response.json({ images: { creative: { hash: "cover_hash" } } });
+    }
+    throw new Error(`unexpected request: ${url.pathname}`);
+  };
+  const videoDraft: MetaAdsDraft = {
+    ...draft,
+    media_type: "video",
+    media_url: "https://cdn.example.test/anuncio.mp4",
+    thumbnail_url: "https://thumb.example.test/capa.jpg",
+  };
+  const context = {
+    accessToken: "secret",
+    adAccountId: "act_1",
+    pageId: "page_1",
+    draft: videoDraft,
+  };
+  const media = await uploadMetaAdsMedia(context, fetchImpl);
+  assertEquals(media, { videoId: "video_2", imageHash: "cover_hash" });
+  const creative = structuredClone(buildMetaAdsPayloads(context).creative);
+  applyMetaAdsMediaToCreative(creative, "video", media);
+  const videoData = creative.object_story_spec.video_data as Record<
+    string,
+    unknown
+  >;
+  assertEquals(videoData.image_hash, "cover_hash");
+  assertEquals(Boolean(videoData.image_url), false);
+});
+
+Deno.test("erro detalhado da Meta chega sanitizado ao front", async () => {
+  let caught: unknown;
+  try {
+    await metaGraphRequest("act_1/generatepreviews", {
+      accessToken: "secret-token",
+      method: "POST",
+      stage: "generatepreviews",
+      fetchImpl: () =>
+        Promise.resolve(Response.json({
+          error: {
+            code: 100,
+            error_subcode: 1815010,
+            error_user_title: "Vídeo indisponível",
+            error_user_msg:
+              "Aguarde o processamento em https://example.test/video?token=segredo",
+            message: "Falhou access_token=secret-token",
+          },
+        }, { status: 400 })),
+    });
+  } catch (error) {
+    caught = error;
+  }
+  assert(caught);
+  const safe = publicMetaAdsError(caught);
+  assertEquals(safe.code, "meta_request_failed");
+  assert(safe.message.includes("Vídeo indisponível"));
+  assert(safe.message.includes("Aguarde o processamento"));
+  assertEquals(safe.message.includes("secret-token"), false);
+  assertEquals(safe.message.includes("https://"), false);
 });
 
 Deno.test("publica em ordem e só ativa após criar o anúncio", async () => {

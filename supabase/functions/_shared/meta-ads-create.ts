@@ -15,6 +15,7 @@ export type MetaAdsDraft = {
   description?: string;
   media_url: string;
   media_type: "image" | "video";
+  thumbnail_url?: string;
   media_id?: string;
   media_source?:
     | "midias_whatsapp"
@@ -73,7 +74,11 @@ export function hasCompleteMetaAdsEntityIds(
 export type MetaGraphError = Error & {
   graphCode?: number;
   graphSubcode?: number;
+  graphUserTitle?: string;
+  graphUserMessage?: string;
+  graphMessage?: string;
   status?: number;
+  publicCode?: string;
 };
 
 const MAX_DAILY_BUDGET = 1_000_000;
@@ -163,6 +168,7 @@ export function validateMetaAdsDraft(
     description: cleanText(input.description, 255) || undefined,
     media_url: validHttpsUrl(input.media_url),
     media_type: mediaType as "image" | "video",
+    thumbnail_url: validHttpsUrl(input.thumbnail_url) || undefined,
     media_id: cleanText(input.media_id, 100) || undefined,
     media_source: [
         "midias_whatsapp",
@@ -491,18 +497,50 @@ export function buildMetaAdsPayloads(context: MetaAdsPublishContext) {
   };
 }
 
+function sanitizeMetaErrorText(value: unknown, max = 500): string {
+  return cleanText(value, max)
+    .replace(
+      /access_token(?:=|%3D|:\s*)[^&\s"'<>]+/gi,
+      "access_token=[redacted]",
+    )
+    .replace(/https?:\/\/[^\s"'<>]+/gi, "[link removido]")
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function safeGraphMessage(
   body: { error?: { message?: unknown } } | null,
   fallback: string,
 ): string {
-  const message = cleanText(body?.error?.message, 500);
-  // Meta error messages can echo request values. Never allow credentials into errors.
-  return message
-    ? message.replace(
-      /access_token(?:=|%3D)[^&\s]+/gi,
-      "access_token=[redacted]",
-    )
-    : fallback;
+  return sanitizeMetaErrorText(body?.error?.message) || fallback;
+}
+
+export type MetaAdsGraphStage =
+  | "upload_video"
+  | "wait_video"
+  | "generatepreviews"
+  | "campaign"
+  | "adset"
+  | "creative"
+  | "ad"
+  | "activate";
+
+export function logMetaAdsStageError(
+  stage: MetaAdsGraphStage,
+  error: unknown,
+): void {
+  const graph = error as MetaGraphError;
+  console.error("[meta-ads] Meta Graph request failed", {
+    stage,
+    status: Number(graph?.status || 0) || undefined,
+    code: Number(graph?.graphCode || 0) || undefined,
+    error_subcode: Number(graph?.graphSubcode || 0) || undefined,
+    error_user_title: sanitizeMetaErrorText(graph?.graphUserTitle) || undefined,
+    error_user_msg: sanitizeMetaErrorText(graph?.graphUserMessage) || undefined,
+    message: sanitizeMetaErrorText(graph?.graphMessage || graph?.message) ||
+      undefined,
+  });
 }
 
 // Graph responses vary by endpoint; callers validate the fields they consume.
@@ -514,6 +552,7 @@ export async function metaGraphRequest(
     params?: Record<string, unknown>;
     fetchImpl?: typeof fetch;
     formData?: FormData;
+    stage?: MetaAdsGraphStage;
   },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any> {
@@ -554,21 +593,123 @@ export async function metaGraphRequest(
   const response = await fetchImpl(url, init);
   const body = await response.json().catch(() => ({}));
   if (!response.ok || body?.error) {
+    const graphBody = body?.error ?? {};
     const error = new Error(
       safeGraphMessage(body, `Meta Graph HTTP ${response.status}`),
     ) as MetaGraphError;
-    error.graphCode = Number(body?.error?.code || 0);
-    error.graphSubcode = Number(body?.error?.error_subcode || 0);
+    error.graphCode = Number(graphBody.code || 0);
+    error.graphSubcode = Number(graphBody.error_subcode || 0);
+    error.graphUserTitle = sanitizeMetaErrorText(graphBody.error_user_title);
+    error.graphUserMessage = sanitizeMetaErrorText(graphBody.error_user_msg);
+    error.graphMessage = sanitizeMetaErrorText(graphBody.message);
     error.status = response.status;
+    if (options.stage) logMetaAdsStageError(options.stage, error);
     throw error;
   }
   return body;
 }
 
+export type MetaAdsUploadedMedia = {
+  imageHash?: string;
+  videoId?: string;
+  videoThumbnailUrl?: string;
+};
+
+export async function waitForMetaAdsVideoReady(
+  videoId: string,
+  options: {
+    accessToken: string;
+    fetchImpl?: typeof fetch;
+    sleepImpl?: (milliseconds: number) => Promise<void>;
+    pollIntervalMs?: number;
+    timeoutMs?: number;
+  },
+): Promise<void> {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const sleepImpl = options.sleepImpl ??
+    ((milliseconds: number) =>
+      new Promise((resolve) => setTimeout(resolve, milliseconds)));
+  const pollIntervalMs = options.pollIntervalMs ?? 3_000;
+  const timeoutMs = options.timeoutMs ?? 90_000;
+  const maxAttempts = Math.max(
+    1,
+    Math.floor(timeoutMs / Math.max(1, pollIntervalMs)) + 1,
+  );
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const result = await metaGraphRequest(videoId, {
+      accessToken: options.accessToken,
+      params: { fields: "status" },
+      fetchImpl,
+      stage: "wait_video",
+    });
+    const status = String(
+      result?.status?.video_status ?? result?.status ?? "",
+    ).toLowerCase();
+    if (status === "ready") return;
+    if (status === "error") {
+      const error = new Error(
+        "A Meta não conseguiu processar o vídeo enviado.",
+      ) as MetaGraphError;
+      error.publicCode = "video_processing_failed";
+      logMetaAdsStageError("wait_video", error);
+      throw error;
+    }
+    if (attempt + 1 < maxAttempts) await sleepImpl(pollIntervalMs);
+  }
+  const error = new Error(
+    "A Meta demorou mais de 90 segundos para processar o vídeo. Tente novamente.",
+  ) as MetaGraphError;
+  error.publicCode = "video_processing_timeout";
+  logMetaAdsStageError("wait_video", error);
+  throw error;
+}
+
+async function uploadMetaAdsImageUrl(
+  account: string,
+  accessToken: string,
+  imageUrl: string,
+  fetchImpl: typeof fetch,
+): Promise<string> {
+  const mediaResponse = await fetchImpl(imageUrl, { redirect: "follow" });
+  if (!mediaResponse.ok) {
+    throw new Error("Não foi possível baixar a imagem de capa do vídeo.");
+  }
+  const contentType = mediaResponse.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().startsWith("image/")) {
+    throw new Error("A capa do vídeo não é uma imagem válida.");
+  }
+  const bytes = await mediaResponse.arrayBuffer();
+  if (bytes.byteLength > 30 * 1024 * 1024) {
+    throw new Error("A imagem de capa excede o limite de 30 MB.");
+  }
+  const form = new FormData();
+  form.set("filename", new Blob([bytes], { type: contentType }), "creative");
+  const result = await metaGraphRequest(`${account}/adimages`, {
+    accessToken,
+    method: "POST",
+    formData: form,
+    fetchImpl,
+    stage: "upload_video",
+  });
+  const images = result?.images && Object.values(result.images);
+  const firstImage = Array.isArray(images) && images[0] &&
+      typeof images[0] === "object"
+    ? images[0] as { hash?: unknown }
+    : null;
+  const hash = firstImage ? String(firstImage.hash || "") : "";
+  if (!hash) throw new Error("Meta não retornou o hash da imagem de capa.");
+  return hash;
+}
+
 export async function uploadMetaAdsMedia(
   context: MetaAdsPublishContext,
   fetchImpl: typeof fetch,
-): Promise<{ imageHash?: string; videoId?: string }> {
+  options: {
+    sleepImpl?: (milliseconds: number) => Promise<void>;
+    pollIntervalMs?: number;
+    timeoutMs?: number;
+  } = {},
+): Promise<MetaAdsUploadedMedia> {
   const account = context.adAccountId;
   if (context.draft.media_type === "video") {
     const result = await metaGraphRequest(`${account}/advideos`, {
@@ -576,9 +717,48 @@ export async function uploadMetaAdsMedia(
       method: "POST",
       params: { file_url: context.draft.media_url },
       fetchImpl,
+      stage: "upload_video",
     });
     if (!result?.id) throw new Error("Meta não retornou o vídeo enviado");
-    return { videoId: String(result.id) };
+    const videoId = String(result.id);
+    await waitForMetaAdsVideoReady(videoId, {
+      accessToken: context.accessToken,
+      fetchImpl,
+      ...options,
+    });
+    const thumbnailResult = await metaGraphRequest(`${videoId}/thumbnails`, {
+      accessToken: context.accessToken,
+      params: { fields: "uri,is_preferred" },
+      fetchImpl,
+      stage: "wait_video",
+    });
+    const thumbnails = Array.isArray(thumbnailResult?.data)
+      ? thumbnailResult.data as Array<{
+        uri?: unknown;
+        is_preferred?: unknown;
+      }>
+      : [];
+    const preferred = thumbnails.find((item) => item?.is_preferred === true);
+    const videoThumbnailUrl = validHttpsUrl(
+      preferred?.uri ?? thumbnails.find((item) => validHttpsUrl(item?.uri))?.uri,
+    );
+    if (videoThumbnailUrl) return { videoId, videoThumbnailUrl };
+    const fallbackThumbnail = validHttpsUrl(context.draft.thumbnail_url);
+    if (fallbackThumbnail) {
+      const imageHash = await uploadMetaAdsImageUrl(
+        account,
+        context.accessToken,
+        fallbackThumbnail,
+        fetchImpl,
+      );
+      return { videoId, imageHash };
+    }
+    const error = new Error(
+      "A Meta processou o vídeo, mas não gerou uma imagem de capa.",
+    ) as MetaGraphError;
+    error.publicCode = "video_thumbnail_required";
+    logMetaAdsStageError("wait_video", error);
+    throw error;
   }
 
   const mediaResponse = await fetchImpl(context.draft.media_url, {
@@ -604,6 +784,7 @@ export async function uploadMetaAdsMedia(
     method: "POST",
     formData: form,
     fetchImpl,
+    stage: "creative",
   });
   const images = result?.images && Object.values(result.images);
   const firstImage = Array.isArray(images) && images[0] &&
@@ -615,6 +796,33 @@ export async function uploadMetaAdsMedia(
     : "";
   if (!hash) throw new Error("Meta não retornou o hash da imagem");
   return { imageHash: hash };
+}
+
+export function applyMetaAdsMediaToCreative(
+  creative: ReturnType<typeof buildMetaAdsPayloads>["creative"],
+  mediaType: MetaAdsDraft["media_type"],
+  media: MetaAdsUploadedMedia,
+): void {
+  if (mediaType === "image") {
+    if (!media.imageHash) throw new Error("A imagem do anúncio está sem hash.");
+    creative.object_story_spec.link_data!.image_hash = media.imageHash;
+    return;
+  }
+  if (
+    !media.videoId || (!media.videoThumbnailUrl && !media.imageHash)
+  ) {
+    throw new Error("O vídeo do anúncio está sem uma imagem de capa.");
+  }
+  const videoData = creative.object_story_spec.video_data! as Record<
+    string,
+    unknown
+  >;
+  videoData.video_id = media.videoId;
+  if (media.videoThumbnailUrl) {
+    videoData.image_url = media.videoThumbnailUrl;
+  } else {
+    videoData.image_hash = media.imageHash;
+  }
 }
 
 async function deleteGraphEntity(
@@ -654,13 +862,18 @@ export async function rollbackMetaAdsCampaign(
 
 export async function publishMetaAdsCampaign(
   context: MetaAdsPublishContext,
-  options: { fetchImpl?: typeof fetch } = {},
+  options: {
+    fetchImpl?: typeof fetch;
+    sleepImpl?: (milliseconds: number) => Promise<void>;
+    pollIntervalMs?: number;
+    timeoutMs?: number;
+  } = {},
 ): Promise<MetaAdsEntityIds> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const created: string[] = [];
-  let uploadedMedia: { imageHash?: string; videoId?: string } | null = null;
+  let uploadedMedia: MetaAdsUploadedMedia | null = null;
   try {
-    const media = await uploadMetaAdsMedia(context, fetchImpl);
+    const media = await uploadMetaAdsMedia(context, fetchImpl, options);
     uploadedMedia = media;
     const payloads = buildMetaAdsPayloads(context);
 
@@ -671,6 +884,7 @@ export async function publishMetaAdsCampaign(
         method: "POST",
         params: payloads.campaign,
         fetchImpl,
+        stage: "campaign",
       },
     );
     if (!campaign?.id) throw new Error("Meta não retornou a campanha");
@@ -682,18 +896,18 @@ export async function publishMetaAdsCampaign(
       method: "POST",
       params: { ...payloads.adset, campaign_id: campaignId },
       fetchImpl,
+      stage: "adset",
     });
     if (!adset?.id) throw new Error("Meta não retornou o conjunto");
     const adsetId = String(adset.id);
     created.push(adsetId);
 
     const creativePayload = structuredClone(payloads.creative);
-    if (context.draft.media_type === "image") {
-      creativePayload.object_story_spec.link_data!.image_hash = media
-        .imageHash!;
-    } else {
-      creativePayload.object_story_spec.video_data!.video_id = media.videoId!;
-    }
+    applyMetaAdsMediaToCreative(
+      creativePayload,
+      context.draft.media_type,
+      media,
+    );
     const creative = await metaGraphRequest(
       `${context.adAccountId}/adcreatives`,
       {
@@ -701,6 +915,7 @@ export async function publishMetaAdsCampaign(
         method: "POST",
         params: creativePayload,
         fetchImpl,
+        stage: "creative",
       },
     );
     if (!creative?.id) throw new Error("Meta não retornou o criativo");
@@ -716,6 +931,7 @@ export async function publishMetaAdsCampaign(
         creative: { creative_id: creativeId },
       },
       fetchImpl,
+      stage: "ad",
     });
     if (!ad?.id) throw new Error("Meta não retornou o anúncio");
     const adId = String(ad.id);
@@ -728,6 +944,7 @@ export async function publishMetaAdsCampaign(
         method: "POST",
         params: { status: "ACTIVE" },
         fetchImpl,
+        stage: "activate",
       });
     }
     return {
@@ -746,7 +963,8 @@ export async function publishMetaAdsCampaign(
         context.accessToken,
         fetchImpl,
       );
-    } else if (uploadedMedia?.imageHash) {
+    }
+    if (uploadedMedia?.imageHash) {
       try {
         await metaGraphRequest(`${context.adAccountId}/adimages`, {
           accessToken: context.accessToken,
@@ -767,30 +985,51 @@ export function publicMetaAdsError(error: unknown): {
   message: string;
 } {
   const graph = error as MetaGraphError;
+  if (graph?.publicCode) {
+    return {
+      code: graph.publicCode,
+      message: sanitizeMetaErrorText(graph.message) ||
+        "A Meta não concluiu o processamento do vídeo.",
+    };
+  }
+  const details = [
+    sanitizeMetaErrorText(graph?.graphUserTitle),
+    sanitizeMetaErrorText(graph?.graphUserMessage),
+  ].filter((value, index, values) =>
+    Boolean(value) && values.indexOf(value) === index
+  ).join(" — ");
+  const withDetails = (message: string) =>
+    details ? `${message} ${details}` : message;
   if (
     [17, 613, 80004].includes(Number(graph?.graphCode)) || graph?.status === 429
   ) {
     return {
       code: "rate_limit",
-      message:
+      message: withDetails(
         "A Meta limitou as solicitações. Tente novamente em alguns minutos.",
+      ),
     };
   }
   if ([102, 190].includes(Number(graph?.graphCode)) || graph?.status === 401) {
     return {
       code: "token_expired",
-      message: "A conexão do Meta Ads venceu. Reconecte em Configurações.",
+      message: withDetails(
+        "A conexão do Meta Ads venceu. Reconecte em Configurações.",
+      ),
     };
   }
   if (graph?.graphCode === 200 || graph?.status === 403) {
     return {
       code: "permission",
-      message: "A conexão não tem as permissões necessárias para esta ação.",
+      message: withDetails(
+        "A conexão não tem as permissões necessárias para esta ação.",
+      ),
     };
   }
   return {
     code: "meta_request_failed",
-    message:
+    message: withDetails(
       "A Meta não concluiu a solicitação. Revise a campanha e tente novamente.",
+    ),
   };
 }

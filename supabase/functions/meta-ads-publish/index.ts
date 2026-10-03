@@ -88,12 +88,35 @@ serve(async (req) => {
       whatsapp.is_active !== true)
   ) return json({ error: "whatsapp_not_ready" }, 409);
 
-  let accessibleDraft = validated.draft;
+  let draftWithThumbnail = validated.draft;
+  if (
+    validated.draft.media_type === "video" &&
+    validated.draft.media_source === "midias_whatsapp" &&
+    validated.draft.media_id
+  ) {
+    const { data: sourceMedia } = await admin.from("midias_whatsapp")
+      .select("thumbnail_url")
+      .eq("id", validated.draft.media_id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    const thumbnailUrl = String(sourceMedia?.thumbnail_url ?? "").trim();
+    try {
+      if (new URL(thumbnailUrl).protocol === "https:") {
+        draftWithThumbnail = {
+          ...validated.draft,
+          thumbnail_url: thumbnailUrl,
+        };
+      }
+    } catch {
+      // A miniatura gerada pela Meta continua sendo a primeira opção.
+    }
+  }
+  let accessibleDraft = draftWithThumbnail;
   try {
     accessibleDraft = await resolveMetaAdsMediaUrl(
       admin,
       user.id,
-      validated.draft,
+      draftWithThumbnail,
     );
   } catch (error) {
     if (error instanceof MetaAdsMediaError) {

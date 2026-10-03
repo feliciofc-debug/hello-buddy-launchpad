@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import {
+  applyMetaAdsMediaToCreative,
   buildMetaAdsPayloads,
   metaGraphRequest,
   publicMetaAdsError,
@@ -77,10 +78,33 @@ serve(async (req) => {
   ) return json({ error: "whatsapp_not_ready" }, 409);
 
   try {
+    let draftWithThumbnail = validated.draft;
+    if (
+      validated.draft.media_type === "video" &&
+      validated.draft.media_source === "midias_whatsapp" &&
+      validated.draft.media_id
+    ) {
+      const { data: sourceMedia } = await admin.from("midias_whatsapp")
+        .select("thumbnail_url")
+        .eq("id", validated.draft.media_id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      const thumbnailUrl = String(sourceMedia?.thumbnail_url ?? "").trim();
+      try {
+        if (new URL(thumbnailUrl).protocol === "https:") {
+          draftWithThumbnail = {
+            ...validated.draft,
+            thumbnail_url: thumbnailUrl,
+          };
+        }
+      } catch {
+        // A miniatura da Meta ainda pode ser usada.
+      }
+    }
     const accessibleDraft = await resolveMetaAdsMediaUrl(
       admin,
       user.id,
-      validated.draft,
+      draftWithThumbnail,
     );
     const context = {
       accessToken: integration.access_token,
@@ -91,11 +115,11 @@ serve(async (req) => {
     };
     const media = await uploadMetaAdsMedia(context, fetch);
     const creative = structuredClone(buildMetaAdsPayloads(context).creative);
-    if (validated.draft.media_type === "image") {
-      creative.object_story_spec.link_data!.image_hash = media.imageHash!;
-    } else {
-      creative.object_story_spec.video_data!.video_id = media.videoId!;
-    }
+    applyMetaAdsMediaToCreative(
+      creative,
+      accessibleDraft.media_type,
+      media,
+    );
     const formats = [
       { key: "feed", ad_format: "MOBILE_FEED_STANDARD" },
       { key: "stories", ad_format: "INSTAGRAM_STORY" },
@@ -110,6 +134,7 @@ serve(async (req) => {
             creative,
             ad_format: format.ad_format,
           },
+          stage: "generatepreviews",
         },
       );
       return {
