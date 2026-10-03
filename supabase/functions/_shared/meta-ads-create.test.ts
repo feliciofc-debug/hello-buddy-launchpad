@@ -414,7 +414,7 @@ Deno.test("erro detalhado da Meta chega sanitizado ao front", async () => {
   try {
     await metaGraphRequest("act_1/generatepreviews", {
       accessToken: "secret-token",
-      method: "POST",
+      method: "GET",
       stage: "generatepreviews",
       fetchImpl: () =>
         Promise.resolve(Response.json({
@@ -438,6 +438,41 @@ Deno.test("erro detalhado da Meta chega sanitizado ao front", async () => {
   assert(safe.message.includes("Aguarde o processamento"));
   assertEquals(safe.message.includes("secret-token"), false);
   assertEquals(safe.message.includes("https://"), false);
+});
+
+Deno.test("generatepreviews usa GET com creative serializado na query", async () => {
+  let requestUrl = "";
+  let requestMethod = "";
+  const creative = {
+    object_story_spec: {
+      page_id: "page_1",
+      video_data: { video_id: "video_1", image_url: "https://example.test/capa.jpg" },
+    },
+  };
+  await metaGraphRequest("act_1/generatepreviews", {
+    accessToken: "secret",
+    method: "GET",
+    params: {
+      creative,
+      ad_format: "MOBILE_FEED_STANDARD",
+    },
+    fetchImpl: (input, init) => {
+      requestUrl = String(input);
+      requestMethod = init?.method ?? "";
+      return Promise.resolve(Response.json({ data: [{ body: "<iframe />" }] }));
+    },
+  });
+  const parsedUrl = new URL(requestUrl);
+  assertEquals(requestMethod, "GET");
+  assertEquals(
+    parsedUrl.searchParams.get("creative"),
+    JSON.stringify(creative),
+  );
+  assertEquals(
+    parsedUrl.searchParams.get("ad_format"),
+    "MOBILE_FEED_STANDARD",
+  );
+  assertEquals(parsedUrl.searchParams.has("access_token"), false);
 });
 
 Deno.test("publica em ordem e só ativa após criar o anúncio", async () => {

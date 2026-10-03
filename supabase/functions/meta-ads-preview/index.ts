@@ -129,7 +129,7 @@ serve(async (req) => {
         `${integration.ad_account_id}/generatepreviews`,
         {
           accessToken: integration.access_token,
-          method: "POST",
+          method: "GET",
           params: {
             creative,
             ad_format: format.ad_format,
