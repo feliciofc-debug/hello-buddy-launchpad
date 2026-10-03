@@ -29,6 +29,9 @@ export type BlocoMotion = { titulo: string; apoio?: string; icone?: string };
 export type CenaMotion = {
   numero: number;
   texto: string;
+  texto_tela?: string;
+  destaque?: string;
+  narracao?: string;
   inicio_segundos?: number;
   fim_segundos?: number;
 };
@@ -111,18 +114,73 @@ export function cenasPedidasNoTexto(texto: string): CenaMotion[] {
   const pattern =
     /(?:^|\n)\s*cena\s*(\d+)(?:\s*[\[(]?\s*(\d+)\s*(?:-|–|a|até)\s*(\d+)\s*s(?:egundos?)?\s*[\])]?)?\s*[:\-–]?\s*/gimu;
   const matches = [...source.matchAll(pattern)];
+  const limparCampo = (value: string): string => {
+    let cleaned = value.trim().replace(/^[\s,;:.-]+/, "").trim();
+    const quoted = cleaned.match(/^["“”'‘’](.*?)["“”'‘’]\s*[.;]?\s*$/su);
+    if (quoted) return quoted[1].trim();
+    return cleaned
+      .replace(/^["“”'‘’]+|["“”'‘’]+\s*[.;]?\s*$/gu, "")
+      .trim();
+  };
+  const interpretar = (body: string) => {
+    const labels =
+      [...body.matchAll(
+        /\b(t[ií]tulo|texto|tela|narra[cç][aã]o|locu[cç][aã]o|fala|(?:com\s+)?destaque(?:\s+em\s+[\p{L}\s-]+)?)\s*:\s*/giu,
+      )];
+    let textoTela = "";
+    let destaque = "";
+    let narracao = "";
+    for (let labelIndex = 0; labelIndex < labels.length; labelIndex++) {
+      const label = labels[labelIndex];
+      const start = Number(label.index ?? 0) + label[0].length;
+      const end = labelIndex + 1 < labels.length
+        ? Number(labels[labelIndex + 1].index ?? body.length)
+        : body.length;
+      const value = limparCampo(body.slice(start, end));
+      const normalized = String(label[1]).normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "").toLowerCase();
+      if (normalized.includes("destaque")) destaque = value;
+      else if (/narracao|locucao|fala/.test(normalized)) narracao = value;
+      else textoTela = value;
+    }
+    if (!textoTela && labels.length === 0) {
+      const cleaned = limparCampo(body);
+      const sentence = cleaned.match(/^(.+?[.!?])(?:\s+|$)([\s\S]*)$/u);
+      const first = sentence?.[1]?.trim() || cleaned;
+      if (first.length <= 100) {
+        textoTela = first;
+        narracao = sentence?.[2]?.trim() || "";
+      } else {
+        const words = cleaned.split(/\s+/);
+        textoTela = words.slice(0, 8).join(" ");
+        narracao = words.slice(8).join(" ");
+      }
+    }
+    return {
+      textoTela: limparCampo(textoTela),
+      destaque: limparCampo(destaque),
+      narracao: limparCampo(narracao),
+    };
+  };
   return matches.map((match, index) => {
     const start = Number(match.index ?? 0) + match[0].length;
     const end = index + 1 < matches.length
       ? Number(matches[index + 1].index ?? source.length)
       : source.length;
+    const fields = interpretar(source.slice(start, end).trim());
     return {
       numero: Number(match[1]),
-      texto: source.slice(start, end).trim(),
+      texto: [fields.textoTela, fields.destaque, fields.narracao]
+        .filter(Boolean).join(" "),
+      texto_tela: fields.textoTela || undefined,
+      destaque: fields.destaque || undefined,
+      narracao: fields.narracao || undefined,
       inicio_segundos: match[2] ? Number(match[2]) : undefined,
       fim_segundos: match[3] ? Number(match[3]) : undefined,
     };
-  }).filter((cena) => cena.texto.length > 0);
+  }).filter((cena) =>
+    Boolean(cena.texto_tela || cena.destaque || cena.narracao)
+  );
 }
 
 export function removerDestaqueDuplicado(
@@ -185,6 +243,11 @@ export type MotionProps = {
   /** Persistidas no rascunho para sobreviver à aprovação e renormalização. */
   frases_literais?: string[];
   roteiro_cenas?: CenaMotion[];
+  legendas_timeline?: Array<{
+    texto: string;
+    inicio_segundos?: number;
+    fim_segundos?: number;
+  }>;
   /** Identidade de terceiro: impede fallback para a logo do tenant. */
   sem_logo_tenant?: boolean;
   site?: string;
@@ -531,6 +594,9 @@ export function normalizarProps(
     roteiro_cenas: Array.isArray(bruto?.roteiro_cenas)
       ? bruto.roteiro_cenas
       : undefined,
+    legendas_timeline: Array.isArray(bruto?.legendas_timeline)
+      ? bruto.legendas_timeline
+      : undefined,
     // Não remover a chave quando estiver vazio. O Remotion combina inputProps
     // com defaultProps; uma chave ausente poderia ressuscitar um site antigo
     // existente no bundle em cache da VPS.
@@ -652,21 +718,79 @@ export function aplicarCenasLiterais(
   cenas?: CenaMotion[] | null,
 ): MotionProps {
   if (!cenas?.length) return props;
-  const fim = Math.max(
-    0,
-    ...cenas.map((cena) => Number(cena.fim_segundos ?? 0)),
+  const ordered = [...cenas].sort((a, b) => a.numero - b.numero);
+  const first = ordered[0];
+  const last = ordered.at(-1)!;
+  const middle = ordered.slice(1, -1);
+  const normalize = (value: string) =>
+    value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const shortSentence = (value?: string): string | undefined => {
+    const cleaned = String(value ?? "").trim();
+    if (!cleaned) return undefined;
+    const sentence = cleaned.match(/^.+?[.!?](?:\s|$)/u)?.[0]?.trim() ||
+      cleaned;
+    if (sentence.length <= 120) return sentence;
+    const words = sentence.split(/\s+/);
+    let output = "";
+    for (const word of words) {
+      if (`${output} ${word}`.trim().length > 117) break;
+      output = `${output} ${word}`.trim();
+    }
+    return output ? `${output.replace(/[,:;\s]+$/, "")}…` : undefined;
+  };
+  const iconFor = (cena: CenaMotion): string => {
+    const topic = normalize(
+      `${cena.texto_tela ?? ""} ${cena.destaque ?? ""} ${cena.narracao ?? ""}`,
+    );
+    if (/\b(whatsapp|mensagem|audio|conversa|chat)\b/.test(topic)) return "chat";
+    if (/\b(tempo|hora|rapido|segundo|agenda)\b/.test(topic)) return "relogio";
+    if (/\b(resultado|metrica|grafico|crescimento|numero)\b/.test(topic)) return "grafico";
+    if (/\b(seguranca|protecao|privacidade|dados)\b/.test(topic)) return "escudo";
+    if (/\b(selo|certificado|qualidade|garantia)\b/.test(topic)) return "selo";
+    if (/\b(meta|objetivo|alvo|conversao|venda)\b/.test(topic)) return "alvo";
+    if (/\b(ia|inteligencia artificial|automacao|sistema|tecnologia)\b/.test(topic)) return "engrenagem";
+    return "check";
+  };
+  const firstText = first.texto_tela || first.destaque || "";
+  const firstLines = removerDestaqueDuplicado(
+    firstText ? [firstText] : [],
+    first.destaque,
   );
+  const kicker = normalize(props.marca) === normalize(firstText)
+    ? ""
+    : props.marca;
+  const narrationScenes = ordered.filter((cena) => cena.narracao);
+  const fim = Number(last.fim_segundos ?? 0);
   const next: MotionProps = {
     ...props,
-    estilo: "lista",
-    arranjo: 3,
-    roteiro_cenas: cenas.map((cena) => ({ ...cena })),
-    itens: cenas.map((cena) => ({
-      titulo: `Cena ${cena.numero}`,
-      apoio: cena.texto,
-      icone: "check",
+    estilo: "institucional",
+    arranjo: 2,
+    roteiro_cenas: ordered.map((cena) => ({ ...cena })),
+    hook: {
+      kicker,
+      linhas: firstLines,
+      destaque: first.destaque,
+      sub: shortSentence(first.narracao),
+    },
+    blocos: middle.map((cena) => ({
+      titulo: cena.texto_tela || cena.destaque || "",
+      apoio: shortSentence(cena.narracao),
+      icone: iconFor(cena),
     })),
-    legendas: cenas.map((cena) => cena.texto),
+    itens: undefined,
+    selo: undefined,
+    cta: {
+      ...props.cta,
+      frase: last.texto_tela || last.destaque || "",
+      sub: shortSentence(last.narracao),
+    },
+    legendas: narrationScenes.map((cena) => cena.narracao!),
+    legendas_timeline: narrationScenes.map((cena) => ({
+      texto: cena.narracao!,
+      inicio_segundos: cena.inicio_segundos,
+      fim_segundos: cena.fim_segundos,
+    })),
   };
   return fim > 0 ? aplicarDuracaoAlvo(next, fim) : next;
 }

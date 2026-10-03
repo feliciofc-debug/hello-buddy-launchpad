@@ -44,19 +44,73 @@ Deno.test("refazer troca somente o fundo e preserva todo o roteiro", () => {
 });
 
 Deno.test("roteiro ditado preserva todas as cenas e duração", () => {
-  const script = Array.from({ length: 8 }, (_, index) => {
-    const start = index * 7;
-    const end = index === 7 ? 60 : (index + 1) * 7;
-    return `Cena ${index + 1} (${start}-${end}s): Narração literal ${index + 1}. Texto literal ${index + 1}.`;
-  }).join("\n");
+  const script = `Cena 1 (0-5s): Título: "Sem tempo para cuidar do" com destaque em laranja: "marketing?". Narração: "Você cuida do seu negócio. E o marketing, quem cuida?"
+Cena 2 (5-12s): Texto: "Tudo pelo WhatsApp". Narração: "Com a AMZ Ofertas, seu marketing inteiro funciona pelo WhatsApp. É só mandar uma mensagem ou um áudio."
+Cena 8 (52-60s): Texto: "AMZ Ofertas – seu marketing no WhatsApp". Narração: "AMZ Ofertas. Seu marketing com inteligência artificial, direto no WhatsApp. Peça sua demonstração."`;
   const cenas = cenasPedidasNoTexto(script);
-  assertEquals(cenas.length, 8);
+  assertEquals(cenas.length, 3);
   const props = aplicarCenasLiterais(base, cenas);
-  assertEquals(props.estilo, "lista");
-  assertEquals(props.arranjo, 3);
+  assertEquals(props.estilo, "institucional");
+  assertEquals(props.arranjo, 2);
   assertEquals(props.roteiro_cenas, cenas);
-  assertEquals(props.itens?.map((item) => item.apoio), cenas.map((cena) => cena.texto));
+  assertEquals(props.hook, {
+    kicker: "Marca do cliente",
+    linhas: ["Sem tempo para cuidar do"],
+    destaque: "marketing?",
+    sub: "Você cuida do seu negócio.",
+  });
+  assertEquals(props.blocos, [{
+    titulo: "Tudo pelo WhatsApp",
+    apoio:
+      "Com a AMZ Ofertas, seu marketing inteiro funciona pelo WhatsApp.",
+    icone: "chat",
+  }]);
+  assertEquals(props.cta.frase, "AMZ Ofertas – seu marketing no WhatsApp");
+  assertEquals(props.cta.sub, "AMZ Ofertas.");
+  assertEquals(props.itens, undefined);
+  assertEquals(props.legendas, cenas.map((cena) => cena.narracao));
+  assertEquals(props.legendas_timeline?.at(-1), {
+    texto:
+      "AMZ Ofertas. Seu marketing com inteligência artificial, direto no WhatsApp. Peça sua demonstração.",
+    inicio_segundos: 52,
+    fim_segundos: 60,
+  });
   assertEquals(props.duracao_alvo_segundos, 60);
+
+  const renderedTexts = [
+    props.hook.kicker,
+    ...props.hook.linhas,
+    props.hook.destaque,
+    props.hook.sub,
+    ...(props.blocos ?? []).flatMap((block) => [
+      block.titulo,
+      block.apoio,
+    ]),
+    props.cta.frase,
+    props.cta.sub,
+    ...props.legendas,
+  ].filter((value): value is string => Boolean(value));
+  for (
+    const forbidden of [
+      "Texto:",
+      "Narração:",
+      "Título:",
+      "Cena ",
+      "Passo ",
+      '"',
+      "“",
+      "”",
+    ]
+  ) {
+    assertEquals(
+      renderedTexts.some((text) => text.includes(forbidden)),
+      false,
+    );
+  }
+  assertEquals(
+    renderedTexts.join(" ").match(/marketing\?/gi)?.length,
+    1,
+  );
 });
 
 Deno.test("normalização não inventa blocos ou mensagens genéricas", () => {
