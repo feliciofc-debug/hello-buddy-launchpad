@@ -266,7 +266,13 @@ const ItemTelaCheia: React.FC<{ c: Paleta; item: ItemLista; indice: number; tota
           style={{
             marginTop: 26,
             color: c.suave,
-            fontSize: 38,
+            fontSize: item.apoio.length > 220
+              ? 25
+              : item.apoio.length > 140
+              ? 29
+              : item.apoio.length > 80
+              ? 33
+              : 38,
             lineHeight: 1.3,
             maxWidth: 840,
             opacity: interpolate(frame, [14, 34], [0, 1], { extrapolateRight: "clamp" }),
@@ -285,7 +291,12 @@ export const TemplateLista: React.FC<TemplateListaProps> = (props) => {
   const { marca, logoUrl, site, trilhaUrl, trilha_volume, hook, cta, legendas, rotulo } = props;
   const c = aplicarFundoPaleta(props.cores, props.fundo);
   const itens = (props.itens || []).filter((i) => i && i.titulo);
-  const lista = itens.length ? itens : [{ titulo: "Primeiro passo", apoio: "Comece por aqui." }];
+  const lista = itens.length
+    ? itens
+    : [{
+      titulo: [...(hook.linhas || []), hook.destaque].filter(Boolean).join(" "),
+      apoio: hook.sub,
+    }];
   const arranjo = props.arranjo === 2 || props.arranjo === 3 ? props.arranjo : 1;
   const total = framesTemplateLista({ ...props, itens: lista });
   const ritmo = ritmoLista({ ...props, itens: lista });

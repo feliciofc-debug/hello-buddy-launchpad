@@ -9,6 +9,7 @@ import {
   checkMetaAdsReactivationAvailability,
   hasCompleteMetaAdsEntityIds,
   hasExplicitMetaAdsPublishConfirmation,
+  isMetaAdsCampaignEnded,
   type MetaAdsDraft,
   metaAdsMaximumSpend,
   publishMetaAdsCampaign,
@@ -167,6 +168,20 @@ Deno.test("reativação usa somente o gasto máximo ainda não consumido", () =>
     }),
     { ok: false, requested: 120, available: 119.99 },
   );
+});
+
+Deno.test("não permite reativar campanha cuja data de término passou", () => {
+  const now = Date.parse("2026-10-03T00:00:00Z");
+  assertEquals(isMetaAdsCampaignEnded({
+    approvedAt: "2026-09-01T00:00:00Z",
+    durationDays: 14,
+    now,
+  }), true);
+  assertEquals(isMetaAdsCampaignEnded({
+    approvedAt: "2026-10-01T00:00:00Z",
+    durationDays: 14,
+    now,
+  }), false);
 });
 
 Deno.test("exige os quatro IDs Graph antes de concluir publicação", () => {

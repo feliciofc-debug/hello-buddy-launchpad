@@ -285,7 +285,12 @@ export const TemplateInstitucional: React.FC<TemplateInstitucionalProps> = (prop
   const c = aplicarFundoPaleta(props.cores, props.fundo);
   const blocos = (props.blocos || []).filter((b) => b && b.titulo);
   const arranjo = props.arranjo === 2 || props.arranjo === 3 ? props.arranjo : 1;
-  const lista = blocos.length ? blocos : [{ titulo: "Tecnologia própria", apoio: "Feito para o seu negócio." }];
+  const lista = blocos.length
+    ? blocos
+    : [{
+      titulo: [...(hook.linhas || []), hook.destaque].filter(Boolean).join(" "),
+      apoio: hook.sub,
+    }];
   const total = framesTemplateInstitucional({ ...props, blocos: lista });
   const ritmo = ritmoInstitucional({ ...props, blocos: lista });
   const duracaoBlocos = lista.length * ritmo;

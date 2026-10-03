@@ -21,6 +21,7 @@ import { fade } from "@remotion/transitions/fade";
 import { font } from "../../font";
 import { ehClaro, fundoLegenda, rgba, textoLegivelSobre, textoSobre } from "./contraste";
 import { aplicarFundoPaleta, type FundoMotion } from "../base";
+import { stripDuplicateHighlight } from "../base/hook-text";
 
 // ---------- contrato de props ----------
 
@@ -145,6 +146,7 @@ const Hook: React.FC<{ c: Paleta } & TemplateAgenteProps["hook"]> = ({
   const barra = spring({ frame: frame - 34, fps, config: { damping: 18, stiffness: 120 } });
   const s = interpolate(frame, [48, 76], [0, 1], { extrapolateRight: "clamp" });
   const float = Math.sin(frame / 22) * 6;
+  const safeLines = stripDuplicateHighlight(linhas, destaque);
 
   return (
     <AbsoluteFill style={{ ...font, padding: "0 92px", justifyContent: "center" }}>
@@ -164,7 +166,7 @@ const Hook: React.FC<{ c: Paleta } & TemplateAgenteProps["hook"]> = ({
         style={{
           marginTop: 26,
           color: c.texto,
-          fontSize: linhas.some((l) => l.length > 14) ? 92 : 116,
+          fontSize: safeLines.some((l) => l.length > 14) ? 92 : 116,
           fontWeight: 800,
           lineHeight: 1.03,
           letterSpacing: -3,
@@ -172,7 +174,7 @@ const Hook: React.FC<{ c: Paleta } & TemplateAgenteProps["hook"]> = ({
           transform: `translateY(${interpolate(t, [0, 1], [70, float])}px)`,
         }}
       >
-        {linhas.map((l, i) => (
+        {safeLines.map((l, i) => (
           <div key={`${i}-${l}`}>{l}</div>
         ))}
         {destaque ? <div style={{ color: c.destaque }}>{destaque}</div> : null}

@@ -139,6 +139,7 @@ import {
   calculateMetaAdsMonthlyAvailability,
   checkMetaAdsReactivationAvailability,
   hasCompleteMetaAdsEntityIds,
+  isMetaAdsCampaignEnded,
   metaAdsMaximumSpend,
   metaGraphRequest,
   publishMetaAdsCampaign,
@@ -231,6 +232,8 @@ import {
 } from "../_shared/video-legenda-flow.ts";
 import { botoesLegendaParaLogo } from "../_shared/video-legenda-logo.ts";
 import {
+  aplicarAjusteRoteiroMotion,
+  buscarBaseRefazerVideoMotion,
   enfileirarVideoMotion,
   minutosRenderEstimado,
   montarRoteiroMotion,
@@ -238,6 +241,7 @@ import {
 import {
   duracaoEstimada,
   duracaoPedidaNoTexto,
+  cenasPedidasNoTexto,
   estiloPedidoNoTexto,
   fundoPedidoNoTexto,
   normalizarSiteMotion,
@@ -245,6 +249,7 @@ import {
   ROTULO_DURACAO,
   ROTULO_ESTILO,
   type DuracaoMotion,
+  type CenaMotion,
   type EstiloMotion,
   type FundoMotion,
   type MotionProps,
@@ -264,6 +269,7 @@ import {
   clientLogoUploadFollowUp,
   extractVideoClientName,
   hasUsableVideoTopic,
+  isVideoMotionRedoRequest,
   isVideoMotionRequest,
   isSameVideoBrandName,
   resolveAutomaticVideoSiteIdentity,
@@ -2500,6 +2506,7 @@ type PendingVideoSetupState = {
   duracao?: DuracaoMotion;
   duracao_alvo_segundos?: number;
   frases_literais?: string[];
+  roteiro_cenas?: CenaMotion[];
   created_at: string;
 };
 
@@ -3724,7 +3731,7 @@ async function findMetaAdsCampaign(
 ): Promise<any | null> {
   let query = sb
     .from("meta_ads_campanhas")
-    .select("id, campaign_id, adset_id, ad_id, rascunho, status, gasto_maximo, criado_em")
+    .select("id, campaign_id, adset_id, ad_id, rascunho, status, gasto_maximo, aprovado_em, duracao_dias, criado_em")
     .eq("user_id", ctx.userId)
     .not("campaign_id", "is", null);
   const value = String(reference ?? "").trim();
@@ -3748,6 +3755,15 @@ async function toolAlterarStatusCampanhaMeta(
   const campaign = await findMetaAdsCampaign(args?.campanha_id, ctx);
   if (!campaign?.campaign_id) {
     return "Não encontrei essa campanha Meta Ads nesta conta.";
+  }
+  if (
+    status === "ACTIVE" &&
+    isMetaAdsCampaignEnded({
+      approvedAt: campaign.aprovado_em,
+      durationDays: campaign.duracao_dias,
+    })
+  ) {
+    return "Campanha encerrada. Crie uma nova campanha.";
   }
   const integration = await loadMetaAdsIntegration(ctx.userId);
   const integrationProblem = metaAdsIntegrationProblem(integration);
@@ -8019,8 +8035,13 @@ async function persistVideoSetup(
 
 function extractVideoTargetSeconds(text: string): number | undefined {
   const match = String(text).match(/\b(\d{1,3}(?:[,.]\d+)?)\s*(?:s|seg(?:undo)?s?)\b/i);
-  if (!match) return undefined;
-  const value = Number(match[1].replace(",", "."));
+  const minutes = String(text).match(
+    /\b(\d{1,2}(?:[,.]\d+)?)\s*(?:min|minuto|minutos)\b/i,
+  );
+  if (!match && !minutes) return undefined;
+  const value = match
+    ? Number(match[1].replace(",", "."))
+    : Number(minutes![1].replace(",", ".")) * 60;
   return Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
@@ -8651,6 +8672,7 @@ type VideoDraftOptions = {
   duracao?: string | null;
   duracaoAlvoSegundos?: number;
   frasesLiterais?: string[];
+  cenas?: CenaMotion[];
   trilhaId?: string | null;
   semTrilha?: boolean;
   cores?: MotionProps["cores"];
@@ -8684,6 +8706,7 @@ async function criarRascunhoVideoMotion(
     duracao: options.duracao ?? null,
     duracaoAlvoSegundos: options.duracaoAlvoSegundos,
     frasesLiterais: options.frasesLiterais,
+    cenas: options.cenas,
     trilhaId: options.trilhaId,
     semTrilha: options.semTrilha,
     marca: options.marca,
@@ -8833,6 +8856,7 @@ async function finalizeVideoSetup(
     duracao: setup.duracao,
     duracaoAlvoSegundos: setup.duracao_alvo_segundos,
     frasesLiterais: setup.frases_literais,
+    cenas: setup.roteiro_cenas,
     trilhaId: setup.trilha_id,
     semTrilha: setup.sem_trilha === true,
     cores: setup.cores,
@@ -8953,7 +8977,15 @@ async function startVideoSetup(
       : undefined;
   const textColors = extrairCoresDoTexto(`${explicit?.cores ?? ""} ${full}`);
   const durationTarget = extractVideoTargetSeconds(full);
-  if (durationTarget != null && (durationTarget < 20 || durationTarget > 95)) {
+  const roteiroCenas = cenasPedidasNoTexto(originalRequest);
+  const sceneDuration = roteiroCenas.length
+    ? Math.max(0, ...roteiroCenas.map((cena) => cena.fim_segundos ?? 0))
+    : 0;
+  const resolvedDurationTarget = durationTarget ?? (sceneDuration || undefined);
+  if (
+    resolvedDurationTarget != null &&
+    (resolvedDurationTarget < 20 || resolvedDurationTarget > 95)
+  ) {
     return "Hoje os templates animados suportam duração exata entre 20 e 95 segundos. Diga uma duração dentro desse intervalo.";
   }
   const setup: PendingVideoSetupState = {
@@ -8975,8 +9007,12 @@ async function startVideoSetup(
     duracao: typeof explicit?.duracao === "string" && ["curto", "medio", "longo"].includes(explicit.duracao)
       ? explicit.duracao as DuracaoMotion
       : duracaoPedidaNoTexto(full) ?? undefined,
-    duracao_alvo_segundos: durationTarget,
-    frases_literais: extractVideoLiteralPhrases(full),
+    duracao_alvo_segundos: resolvedDurationTarget,
+    frases_literais: [
+      ...extractVideoLiteralPhrases(full),
+      ...roteiroCenas.map((cena) => cena.texto),
+    ],
+    roteiro_cenas: roteiroCenas.length ? roteiroCenas : undefined,
     created_at: new Date().toISOString(),
   };
   return await advanceVideoSetup(ctx, setup);
@@ -9444,6 +9480,67 @@ async function buscarRascunhoVideo(ctx: { userId: string; fromNumber: string }):
     return null;
   }
   return data?.[0] ?? null;
+}
+
+async function refazerVideoMotion(
+  ctx: { userId: string; fromNumber: string },
+  ajuste: string,
+): Promise<string> {
+  if (!isOwner(ctx)) {
+    return "Esse recurso é exclusivo do responsável da conta.";
+  }
+  const base = await buscarBaseRefazerVideoMotion(
+    sb,
+    ctx.userId,
+    ctx.fromNumber,
+  );
+  if (!base) {
+    return "Não encontrei um vídeo anterior para refazer. Qual vídeo você quer refazer?";
+  }
+  const adjusted = aplicarAjusteRoteiroMotion(base.props, ajuste);
+  if (!adjusted.changed) {
+    return "Qual mudança você quer fazer no último vídeo? Diga, por exemplo, o novo fundo, título, destaque ou a cena que deve ser corrigida.";
+  }
+  const token = base.source === "draft" &&
+      base.status === "aguardando_aprovacao" && base.token
+    ? base.token
+    : videoDraftToken();
+  let id = base.id;
+  if (base.source === "draft" && base.status === "aguardando_aprovacao") {
+    const { data, error } = await sb.from("video_motion_rascunhos").update({
+      props: adjusted.props,
+      legenda_post: base.legendaPost || null,
+      expira_em: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+    }).eq("id", base.id).eq("user_id", ctx.userId)
+      .eq("status", "aguardando_aprovacao").select("id").maybeSingle();
+    if (error || !data) {
+      return "Não consegui atualizar o último roteiro. Nenhum vídeo foi renderizado.";
+    }
+  } else {
+    const { data, error } = await sb.from("video_motion_rascunhos").insert({
+      user_id: ctx.userId,
+      telefone: ctx.fromNumber,
+      token,
+      tema: base.tema,
+      props: adjusted.props,
+      legenda_post: base.legendaPost || null,
+      formato: base.formato || "reels",
+      status: "aguardando_aprovacao",
+    }).select("id").single();
+    if (error || !data) {
+      return "Não consegui salvar a nova versão do roteiro. Nenhum vídeo foi renderizado.";
+    }
+    id = data.id;
+  }
+  const segundos = duracaoEstimada(adjusted.props);
+  return `${
+    formatVideoDraft(
+      adjusted.props,
+      base.tema,
+      segundos,
+      `fundo ${adjusted.props.cores.bg}, destaque ${adjusted.props.cores.destaque}`,
+    )
+  }\n\nAjustei somente o que você pediu no roteiro ${id}.\nCódigo de aprovação: *${token}*`;
 }
 
 async function confirmarRascunhoVideo(ctx: { userId: string; fromNumber: string }, cancelar = false): Promise<string> {
@@ -11708,6 +11805,9 @@ async function callGemini(
     }
     if (pendingVideoDraft && isVideoApproval(userContent)) {
       return { text: await confirmarRascunhoVideo(toolCtx) };
+    }
+    if (remetenteEhDono && isVideoMotionRedoRequest(userContent)) {
+      return { text: await refazerVideoMotion(toolCtx, userContent) };
     }
     if (pendingVideoSetup) {
       return { text: await handlePendingVideoSetup(toolCtx, pendingVideoSetup, userContent) };

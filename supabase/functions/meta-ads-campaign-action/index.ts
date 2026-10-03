@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import {
   calculateMetaAdsMonthlyAvailability,
   checkMetaAdsReactivationAvailability,
+  isMetaAdsCampaignEnded,
   metaGraphRequest,
   publicMetaAdsError,
 } from "../_shared/meta-ads-create.ts";
@@ -127,7 +128,7 @@ serve(async (req) => {
   const admin = createClient(url, service);
   const [campaignResult, integrationResult] = await Promise.all([
     admin.from("meta_ads_campanhas")
-      .select("id,status,campaign_id,adset_id,ad_id,gasto_maximo")
+      .select("id,status,campaign_id,adset_id,ad_id,gasto_maximo,aprovado_em,duracao_dias")
       .eq("id", id).eq("user_id", user.id).maybeSingle(),
     admin.from("integrations").select("access_token,token_expires_at,ad_account_id,limite_mensal_anuncios")
       .eq("user_id", user.id).eq("platform", "meta_ads")
@@ -140,6 +141,18 @@ serve(async (req) => {
   const expiresAt = Date.parse(String(integration.token_expires_at ?? ""));
   if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) {
     return json({ error: "token_expired" }, 401);
+  }
+  if (
+    action === "activate" &&
+    isMetaAdsCampaignEnded({
+      approvedAt: campaign.aprovado_em,
+      durationDays: campaign.duracao_dias,
+    })
+  ) {
+    return json({
+      error: "campaign_ended",
+      message: "Campanha encerrada. Crie uma nova campanha.",
+    }, 409);
   }
 
   try {

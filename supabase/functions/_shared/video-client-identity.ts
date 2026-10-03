@@ -54,6 +54,16 @@ export function shouldStartVideoSetup(text: string): boolean {
   return isVideoScript || sceneCount >= 2;
 }
 
+export function isVideoMotionRedoRequest(text: string): boolean {
+  const normalized = normalizedIntent(text);
+  const redo = /\b(refaz|refazer|fazer de novo|faz de novo|corrig[ei]|corrige|ajusta|ajustar|troca|trocar|muda|mudar)\b/
+    .test(normalized);
+  const video = /\b(video|roteiro|cena|titulo|destaque|fundo)\b/.test(
+    normalized,
+  );
+  return redo && video;
+}
+
 export function hasUsableVideoTopic(topic: string): boolean {
   const normalized = normalizedIntent(topic);
   return normalized.length >= 4 &&

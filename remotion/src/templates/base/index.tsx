@@ -18,6 +18,7 @@ import {
 import { font } from "../../font";
 import { ehClaro, fundoLegenda, rgba, textoSobre } from "../agente/contraste";
 import { computeHookLayout } from "./hook-layout";
+import { stripDuplicateHighlight } from "./hook-text";
 
 export type Paleta = {
   bg: string;
@@ -223,11 +224,12 @@ export const HookCena: React.FC<{ c: Paleta; arranjo?: number; logoUrl?: string 
   const float = Math.sin(frame / 22) * 6;
   const centralizado = arranjo === 2;
   const logoAbertura = spring({ frame, fps, config: { damping: 16, stiffness: 130 } });
+  const safeLines = stripDuplicateHighlight(linhas, destaque);
   const layout = computeHookLayout({
     width,
     height,
     kicker,
-    lines: linhas,
+    lines: safeLines,
     highlight: destaque,
     sub,
     hasLogo: Boolean(logoUrl),

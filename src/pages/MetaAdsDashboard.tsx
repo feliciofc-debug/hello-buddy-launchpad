@@ -1099,9 +1099,8 @@ export default function MetaAdsDashboard() {
       `Campanha ${selectedCity?.name || "Meta Ads"}`,
     objective,
     primary_text: copy?.text || draft?.text || selectedMedia?.legenda_gerada ||
-      selectedMedia?.contexto_original || "Conheça esta novidade.",
-    headline: copy?.title || draft?.title || productTitle.trim() ||
-      "Conheça esta novidade",
+      selectedMedia?.contexto_original || "",
+    headline: copy?.title || draft?.title || productTitle.trim() || "",
     media_id: selectedMediaId,
     media_source: selectedMedia?.media_source,
     media_bucket: selectedMedia?.media_bucket,
@@ -1127,7 +1126,7 @@ export default function MetaAdsDashboard() {
       .split(/\r?\n/)
       .map((line) => line.replace(/^[\s#>*_-]+/, "").trim())
       .find(Boolean);
-    return (productTitle.trim() || firstGeneratedLine || "Conheça esta novidade")
+    return (productTitle.trim() || firstGeneratedLine || "")
       .slice(0, 255);
   };
 
@@ -2195,14 +2194,50 @@ export default function MetaAdsDashboard() {
 
               {step === 3 && (
                 <div className="space-y-6">
-                  <MediaPicker
-                    selectedId={selectedMediaId}
-                    onSelect={(item) => {
-                      setSelectedMedia(item);
-                      setDraft(null);
-                      setOfficialPreview(null);
-                    }}
-                  />
+                  {selectedMedia ? (
+                    <div className="space-y-3 rounded-lg border p-4">
+                      <p className="font-medium text-green-700 dark:text-green-300">
+                        ✅ Mídia selecionada
+                      </p>
+                      {selectedMedia.tipo === "video"
+                        ? (
+                          <video
+                            src={selectedMedia.midia_url}
+                            className="max-h-[32rem] w-full rounded-lg bg-black object-contain"
+                            autoPlay
+                            loop
+                            muted
+                            playsInline
+                            controls
+                          />
+                        )
+                        : (
+                          <img
+                            src={selectedMedia.midia_url}
+                            alt={selectedMedia.display_name}
+                            className="max-h-[32rem] w-full rounded-lg object-contain"
+                          />
+                        )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedMedia(null);
+                          setOfficialPreview(null);
+                        }}
+                      >
+                        Trocar mídia
+                      </Button>
+                    </div>
+                  ) : (
+                    <MediaPicker
+                      selectedId={selectedMediaId}
+                      onSelect={(item) => {
+                        setSelectedMedia(item);
+                        setOfficialPreview(null);
+                      }}
+                    />
+                  )}
 
                   <div className="grid gap-4 rounded-md border p-4 md:grid-cols-2">
                     <div className="space-y-2 md:col-span-2">
@@ -2237,8 +2272,43 @@ export default function MetaAdsDashboard() {
                     </div>
                   </div>
 
-                  {!draft ? (
+                  <div className="grid gap-6 md:grid-cols-2">
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="ad-title">Título do anúncio</Label>
+                        <Input
+                          id="ad-title"
+                          value={draft?.title ?? ""}
+                          onChange={(event) => {
+                            setDraft({
+                              id: draft?.id ?? serverDraftId ?? "",
+                              title: event.target.value,
+                              text: draft?.text ?? "",
+                            });
+                            setOfficialPreview(null);
+                          }}
+                          placeholder="Escreva ou cole o título"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="ad-text">Texto principal</Label>
+                        <Textarea
+                          id="ad-text"
+                          rows={6}
+                          value={draft?.text ?? ""}
+                          onChange={(event) => {
+                            setDraft({
+                              id: draft?.id ?? serverDraftId ?? "",
+                              title: draft?.title ?? "",
+                              text: event.target.value,
+                            });
+                            setOfficialPreview(null);
+                          }}
+                          placeholder="Escreva ou cole o texto principal"
+                        />
+                      </div>
                     <Button
+                      variant="outline"
                       onClick={generateDraft}
                       disabled={!selectedMediaId || !productTitle.trim() ||
                         !serverDraftId || !!wizardLoading}
@@ -2247,39 +2317,13 @@ export default function MetaAdsDashboard() {
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       )}
                       {serverDraftId
-                        ? "Gerar título e texto com IA"
+                        ? draft
+                          ? "Gerar outra sugestão com IA"
+                          : "Gerar título e texto com IA (opcional)"
                         : "Salvando rascunho..."}
                     </Button>
-                  ) : (
-                    <div className="grid gap-6 md:grid-cols-2">
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="ad-title">Título</Label>
-                          <Input
-                            id="ad-title"
-                            value={draft.title}
-                            onChange={(event) => {
-                              setDraft({ ...draft, title: event.target.value });
-                              setOfficialPreview(null);
-                            }}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="ad-text">Texto principal</Label>
-                          <Textarea
-                            id="ad-text"
-                            rows={6}
-                            value={draft.text}
-                            onChange={(event) => {
-                              setDraft({ ...draft, text: event.target.value });
-                              setOfficialPreview(null);
-                            }}
-                          />
-                        </div>
-                        <Button variant="outline" onClick={generateDraft} disabled={!!wizardLoading}>
-                          Gerar outra sugestão
-                        </Button>
-                      </div>
+                    </div>
+                    {draft?.title.trim() && draft.text.trim() && (
                       <div className="space-y-4">
                         <div className="rounded-lg border bg-background p-4">
                           {selectedMedia && (
@@ -2324,8 +2368,8 @@ export default function MetaAdsDashboard() {
                           </div>
                         )}
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               )}
 

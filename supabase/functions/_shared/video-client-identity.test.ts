@@ -6,10 +6,23 @@ import {
   hasUsableVideoTopic,
   isSameVideoBrandName,
   isVideoMotionRequest,
+  isVideoMotionRedoRequest,
   resolveAutomaticVideoSiteIdentity,
   selectVideoClientLogo,
   shouldStartVideoSetup,
 } from "./video-client-identity.ts";
+
+Deno.test("reconhece pedido para refazer vídeo sem tratar como criação nova", () => {
+  assertEquals(
+    isVideoMotionRedoRequest("Refaz o vídeo com fundo branco"),
+    true,
+  );
+  assertEquals(
+    isVideoMotionRedoRequest("Corrige o título do vídeo"),
+    true,
+  );
+  assertEquals(isVideoMotionRedoRequest("Crie um vídeo novo"), false);
+});
 
 Deno.test("extrai o cliente em pedidos reais sem confundir duração, assunto ou formato", () => {
   assertEquals(

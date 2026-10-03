@@ -355,6 +355,18 @@ export function checkMetaAdsReactivationAvailability(input: {
   return { ok: requested <= available, requested, available };
 }
 
+export function isMetaAdsCampaignEnded(input: {
+  approvedAt: unknown;
+  durationDays: unknown;
+  now?: number;
+}): boolean {
+  const approvedAt = Date.parse(String(input.approvedAt ?? ""));
+  const durationDays = Math.floor(finiteNumber(input.durationDays));
+  if (!Number.isFinite(approvedAt) || durationDays < 1) return false;
+  return approvedAt + durationDays * 86_400_000 <=
+    (input.now ?? Date.now());
+}
+
 export function buildMetaAdsPayloads(context: MetaAdsPublishContext) {
   const { draft, pageId, whatsappPhoneNumber } = context;
   const isWhatsapp = draft.objective !== "site";
