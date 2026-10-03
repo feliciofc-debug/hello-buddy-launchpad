@@ -19,6 +19,7 @@ import { wipe } from "@remotion/transitions/wipe";
 import { font } from "../../font";
 import { ehClaro, rgba, textoSobre } from "../agente/contraste";
 import {
+  aplicarFundoPaleta,
   Backdrop,
   CTA_FRAMES,
   CtaCena,
@@ -28,6 +29,7 @@ import {
   Legendas,
   TrilhaSonora,
   type Cta,
+  type FundoMotion,
   type Hook,
   type Paleta,
 } from "../base";
@@ -45,7 +47,9 @@ export type TemplateInstitucionalProps = {
   cta: Cta;
   legendas?: string[];
   blocos: BlocoArgumento[];
-  selo?: { valor: string; rotulo?: string };
+  selo?: { valor: string; rotulo?: string } | null;
+  visual_limpo?: boolean;
+  fundo?: FundoMotion;
   /** 1, 2 ou 3 — arranjo de cena */
   arranjo?: number;
   /** frames por bloco; vídeo mais longo respira um pouco mais em cada cena */
@@ -277,25 +281,32 @@ const Selo: React.FC<{ c: Paleta; valor: string; rotulo?: string }> = ({ c, valo
 const timing = springTiming({ config: { damping: 200 }, durationInFrames: TRANSICAO });
 
 export const TemplateInstitucional: React.FC<TemplateInstitucionalProps> = (props) => {
-  const { cores: c, marca, logoUrl, site, trilhaUrl, trilha_volume, hook, cta, legendas, selo } = props;
+  const { marca, logoUrl, site, trilhaUrl, trilha_volume, hook, cta, legendas, selo } = props;
+  const c = aplicarFundoPaleta(props.cores, props.fundo);
   const blocos = (props.blocos || []).filter((b) => b && b.titulo);
   const arranjo = props.arranjo === 2 || props.arranjo === 3 ? props.arranjo : 1;
-  const lista = blocos.length ? blocos : [{ titulo: "Tecnologia própria", apoio: "Feito para o seu negócio." }];
+  const lista = blocos.length
+    ? blocos
+    : [{
+      titulo: [...(hook.linhas || []), hook.destaque].filter(Boolean).join(" "),
+      apoio: hook.sub,
+    }];
   const total = framesTemplateInstitucional({ ...props, blocos: lista });
   const ritmo = ritmoInstitucional({ ...props, blocos: lista });
   const duracaoBlocos = lista.length * ritmo;
 
   return (
     <AbsoluteFill>
-      <Backdrop c={c} arranjo={arranjo} />
+      <Backdrop c={c} arranjo={arranjo} limpo={props.visual_limpo === true} />
       <TransitionSeries>
         <TransitionSeries.Sequence durationInFrames={HOOK_FRAMES}>
           <HookCena c={c} arranjo={arranjo} logoUrl={logoUrl} {...hook} />
         </TransitionSeries.Sequence>
-        <TransitionSeries.Transition
-          presentation={arranjo === 2 ? wipe({ direction: "from-bottom" }) : slide({ direction: "from-bottom" })}
-          timing={timing}
-        />
+        {arranjo === 2 ? (
+          <TransitionSeries.Transition presentation={wipe({ direction: "from-bottom" })} timing={timing} />
+        ) : (
+          <TransitionSeries.Transition presentation={slide({ direction: "from-bottom" })} timing={timing} />
+        )}
         {arranjo === 2 ? (
           lista.map((b, i) => (
             <TransitionSeries.Sequence key={`bloco-${i}`} durationInFrames={ritmo}>
@@ -347,11 +358,11 @@ export const PROPS_INSTITUCIONAL_EXEMPLO: TemplateInstitucionalProps = {
     sub: "Infraestrutura própria e integração oficial.",
   },
   blocos: [
-    { titulo: "Integração oficial", apoio: "Conexão homologada, sem atalhos.", icone: "escudo" },
+    { titulo: "Integração por API", apoio: "Conexão estável, sem atalhos.", icone: "escudo" },
     { titulo: "Dados isolados", apoio: "Cada empresa no seu próprio ambiente.", icone: "engrenagem" },
     { titulo: "Resposta em segundos", apoio: "Atendimento no horário do cliente.", icone: "relogio" },
   ],
-  selo: { valor: "Tech Provider", rotulo: "verificado pela Meta" },
+  selo: null,
   cta: { frase: "Conheça a plataforma.", sub: "Fale com o nosso time." },
   legendas: ["Segurança de verdade.", "Integração oficial.", "Cada empresa isolada.", "Resposta em segundos."],
   arranjo: 1,

@@ -1,5 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  getValidTikTokAccessToken,
+  TIKTOK_RECONNECT_MESSAGE,
+  TIKTOK_TEMPORARILY_UNAVAILABLE_MESSAGE,
+} from "../_shared/tiktok-token.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -20,8 +25,12 @@ interface PostRequest {
   is_commercial_content?: boolean;
   brand_organic?: boolean;
   branded_content?: boolean;
-  // Origem: "manual" (tela com UX de compliance) ou "scheduled" (cron -> sempre rascunho)
-  source?: "manual" | "scheduled";
+  consented_at?: string;
+  scheduled_record_table?: "social_posts_queue" | "videos_agendados";
+  scheduled_record_id?: string;
+  // Scheduled só pode fazer Direct Post com consentimento persistido no registro.
+  // Autopilot sempre usa o inbox/rascunho.
+  source?: "manual" | "scheduled" | "autopilot";
 }
 
 serve(async (req) => {
@@ -47,13 +56,37 @@ serve(async (req) => {
       is_commercial_content = false,
       brand_organic = false,
       branded_content = false,
+      consented_at,
+      scheduled_record_table,
+      scheduled_record_id,
       source = "manual",
     } = body;
 
-    // Defesa em profundidade: o caminho automático (agendamento) NUNCA publica direto.
+    // Defesa em profundidade: piloto automático nunca publica direto. Um
+    // agendamento só pode usar Direct Post com privacidade e consentimento
+    // explícitos, persistidos no próprio registro e enviados pelo executor.
     let post_mode = body.post_mode;
-    if (source === "scheduled" && post_mode !== "draft") {
-      console.log(`🔒 Coerção: source="scheduled" recebeu post_mode="${post_mode}" -> forçando "draft"`);
+    let persistedScheduledConsent = false;
+    if (
+      source === "scheduled"
+      && scheduled_record_id
+      && (scheduled_record_table === "social_posts_queue" || scheduled_record_table === "videos_agendados")
+    ) {
+      const { data: scheduledRecord } = await supabase
+        .from(scheduled_record_table)
+        .select("user_id, tiktok_privacy_level, tiktok_consented_at")
+        .eq("id", scheduled_record_id)
+        .eq("user_id", user_id)
+        .maybeSingle();
+      persistedScheduledConsent = !!(
+        scheduledRecord?.tiktok_consented_at
+        && scheduledRecord?.tiktok_privacy_level
+        && scheduledRecord.tiktok_privacy_level === privacy_level
+        && scheduledRecord.tiktok_consented_at === consented_at
+      );
+    }
+    if (source === "autopilot" || (source === "scheduled" && !persistedScheduledConsent)) {
+      console.log(`🔒 Coerção TikTok: source="${source}" sem consentimento completo -> rascunho`);
       post_mode = "draft";
     }
 
@@ -95,31 +128,23 @@ serve(async (req) => {
       );
     }
 
-    // Buscar token do usuário
-    const { data: integration, error: integrationError } = await supabase
-      .from("integrations")
-      .select("*")
-      .eq("user_id", user_id)
-      .eq("platform", "tiktok")
-      .eq("is_active", true)
-      .single();
-
-    if (integrationError || !integration) {
+    const token = await getValidTikTokAccessToken(supabase, user_id);
+    if (!token.ok) {
       return new Response(
-        JSON.stringify({ success: false, error: "TikTok não conectado. Por favor, conecte sua conta primeiro." }),
+        JSON.stringify({
+          success: false,
+          error: token.error,
+          message: token.error === "tiktok_reconnect_required"
+            ? TIKTOK_RECONNECT_MESSAGE
+            : token.error === "tiktok_temporarily_unavailable"
+              ? TIKTOK_TEMPORARILY_UNAVAILABLE_MESSAGE
+              : "TikTok não conectado.",
+        }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const accessToken = integration.access_token;
-
-    // Verificar se token expirou
-    if (integration.token_expires_at && new Date(integration.token_expires_at) < new Date()) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Token expirado. Por favor, reconecte sua conta TikTok." }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    const accessToken = token.accessToken;
 
     // Direct Post só aceita valores anunciados por creator_info para esta conta.
     // Consulta em tempo real para não usar opção antiga ou de outro perfil.
@@ -141,8 +166,14 @@ serve(async (req) => {
         allowed: allowedPrivacy,
       });
       if (!creatorResponse.ok || creatorData?.error?.code && creatorData.error.code !== "ok") {
+        const reconnectRequired = creatorResponse.status === 401
+          || creatorData?.error?.code === "access_token_invalid";
         return new Response(
-          JSON.stringify({ success: false, error: creatorData?.error?.message || "Não foi possível consultar a privacidade disponível no TikTok." }),
+          JSON.stringify({
+            success: false,
+            error: reconnectRequired ? "tiktok_reconnect_required" : (creatorData?.error?.message || "Não foi possível consultar a privacidade disponível no TikTok."),
+            message: reconnectRequired ? TIKTOK_RECONNECT_MESSAGE : undefined,
+          }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -260,13 +291,19 @@ serve(async (req) => {
       let errorMessage = `Erro ao iniciar upload no TikTok (status ${initResponse.status})`;
       switch (initErrorCode) {
         case "access_token_invalid":
-          errorMessage = "Token inválido. Reconecte sua conta TikTok.";
+          errorMessage = TIKTOK_RECONNECT_MESSAGE;
           break;
         case "rate_limit_exceeded":
           errorMessage = "Limite de requisições atingido. Tente novamente em alguns minutos.";
           break;
         case "spam_risk_too_many_posts":
           errorMessage = "Muitas publicações recentes. Aguarde um pouco.";
+          break;
+        case "spam_risk_too_many_pending_share":
+          errorMessage = "Há muitos envios pendentes no TikTok. Aguarde antes de tentar novamente.";
+          break;
+        case "reached_active_user_cap":
+          errorMessage = "O TikTok pediu para adiar este envio. Tente novamente mais tarde.";
           break;
         case "unaudited_client_can_only_post_to_private_accounts":
           errorMessage = "A conta TikTok precisa estar configurada como privada para publicar durante os testes. Ative 'Conta Privada' nas configurações do TikTok.";
@@ -354,7 +391,7 @@ serve(async (req) => {
         is_commercial_content: !!is_commercial_content,
         brand_organic: !!brand_organic,
         branded_content: !!branded_content,
-        consent_accepted_at: source === "manual" ? new Date().toISOString() : null,
+        consent_accepted_at: consented_at || (source === "manual" ? new Date().toISOString() : null),
         source,
         tiktok_response: initData,
         status: "processing",
@@ -373,8 +410,8 @@ serve(async (req) => {
         success: true,
         direct_post: directPost,
         message: directPost
-          ? "Vídeo publicado no TikTok!"
-          : "Vídeo enviado para os rascunhos do TikTok. Abra o app TikTok (Caixa de entrada) e toque em publicar para ir ao perfil.",
+          ? "Vídeo enviado ao TikTok e em processamento."
+          : "Vídeo enviado ao TikTok. O rascunho está sendo preparado para a caixa de entrada.",
         publish_id: publishId,
         post_row_id: postRow?.id ?? null,
       }),

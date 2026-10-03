@@ -18,6 +18,7 @@ import { wipe } from "@remotion/transitions/wipe";
 import { font } from "../../font";
 import { ehClaro, rgba, textoSobre } from "../agente/contraste";
 import {
+  aplicarFundoPaleta,
   Backdrop,
   CTA_FRAMES,
   CtaCena,
@@ -27,6 +28,7 @@ import {
   Legendas,
   TrilhaSonora,
   type Cta,
+  type FundoMotion,
   type Hook,
   type Paleta,
 } from "../base";
@@ -47,6 +49,8 @@ export type TemplateListaProps = {
   /** rótulo da lista, ex.: "3 motivos", "4 passos" */
   rotulo?: string;
   arranjo?: number;
+  visual_limpo?: boolean;
+  fundo?: FundoMotion;
   /** frames por item; vídeo mais longo respira um pouco mais em cada cena */
   ritmo?: number;
 };
@@ -262,7 +266,13 @@ const ItemTelaCheia: React.FC<{ c: Paleta; item: ItemLista; indice: number; tota
           style={{
             marginTop: 26,
             color: c.suave,
-            fontSize: 38,
+            fontSize: item.apoio.length > 220
+              ? 25
+              : item.apoio.length > 140
+              ? 29
+              : item.apoio.length > 80
+              ? 33
+              : 38,
             lineHeight: 1.3,
             maxWidth: 840,
             opacity: interpolate(frame, [14, 34], [0, 1], { extrapolateRight: "clamp" }),
@@ -278,24 +288,31 @@ const ItemTelaCheia: React.FC<{ c: Paleta; item: ItemLista; indice: number; tota
 const timing = springTiming({ config: { damping: 200 }, durationInFrames: TRANSICAO });
 
 export const TemplateLista: React.FC<TemplateListaProps> = (props) => {
-  const { cores: c, marca, logoUrl, site, trilhaUrl, trilha_volume, hook, cta, legendas, rotulo } = props;
+  const { marca, logoUrl, site, trilhaUrl, trilha_volume, hook, cta, legendas, rotulo } = props;
+  const c = aplicarFundoPaleta(props.cores, props.fundo);
   const itens = (props.itens || []).filter((i) => i && i.titulo);
-  const lista = itens.length ? itens : [{ titulo: "Primeiro passo", apoio: "Comece por aqui." }];
+  const lista = itens.length
+    ? itens
+    : [{
+      titulo: [...(hook.linhas || []), hook.destaque].filter(Boolean).join(" "),
+      apoio: hook.sub,
+    }];
   const arranjo = props.arranjo === 2 || props.arranjo === 3 ? props.arranjo : 1;
   const total = framesTemplateLista({ ...props, itens: lista });
   const ritmo = ritmoLista({ ...props, itens: lista });
 
   return (
     <AbsoluteFill>
-      <Backdrop c={c} arranjo={arranjo} />
+      <Backdrop c={c} arranjo={arranjo} limpo={props.visual_limpo === true} />
       <TransitionSeries>
         <TransitionSeries.Sequence durationInFrames={HOOK_FRAMES}>
           <HookCena c={c} arranjo={arranjo === 3 ? 2 : 1} logoUrl={logoUrl} {...hook} />
         </TransitionSeries.Sequence>
-        <TransitionSeries.Transition
-          presentation={arranjo === 3 ? wipe({ direction: "from-bottom" }) : slide({ direction: "from-bottom" })}
-          timing={timing}
-        />
+        {arranjo === 3 ? (
+          <TransitionSeries.Transition presentation={wipe({ direction: "from-bottom" })} timing={timing} />
+        ) : (
+          <TransitionSeries.Transition presentation={slide({ direction: "from-bottom" })} timing={timing} />
+        )}
         {arranjo === 3 ? (
           lista.map((item, i) => (
             <TransitionSeries.Sequence key={`item-${i}`} durationInFrames={ritmo}>

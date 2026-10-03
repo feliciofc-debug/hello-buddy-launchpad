@@ -17,6 +17,8 @@ import {
 } from "remotion";
 import { font } from "../../font";
 import { ehClaro, fundoLegenda, rgba, textoSobre } from "../agente/contraste";
+import { computeHookLayout } from "./hook-layout";
+import { stripDuplicateHighlight } from "./hook-text";
 
 export type Paleta = {
   bg: string;
@@ -28,6 +30,35 @@ export type Paleta = {
   texto: string;
   suave: string;
 };
+
+export type FundoMotion = "escuro" | "claro";
+
+/**
+ * Força somente as superfícies neutras. As cores da marca continuam intactas.
+ * Sem `fundo`, devolve a própria paleta para manter o visual legado idêntico.
+ */
+export function aplicarFundoPaleta(c: Paleta, fundo?: FundoMotion): Paleta {
+  if (!fundo) return c;
+  return fundo === "claro"
+    ? {
+      ...c,
+      bg: "#f8fafc",
+      bg2: "#ffffff",
+      panel: "#ffffff",
+      line: "#d7dee8",
+      texto: "#151515",
+      suave: "#4b5563",
+    }
+    : {
+      ...c,
+      bg: "#0b0f14",
+      bg2: "#151b24",
+      panel: "#111821",
+      line: "#2b3645",
+      texto: "#f4f7fb",
+      suave: "#aab7c7",
+    };
+}
 
 export type Cta = {
   frase: string;
@@ -45,7 +76,7 @@ export type Hook = {
 
 // ---------- fundo (3 variantes de arranjo) ----------
 
-export const Backdrop: React.FC<{ c: Paleta; arranjo?: number }> = ({ c, arranjo = 1 }) => {
+export const Backdrop: React.FC<{ c: Paleta; arranjo?: number; limpo?: boolean }> = ({ c, arranjo = 1 }) => {
   const frame = useCurrentFrame();
   const drift = Math.sin(frame / 90) * 40;
   const claro = ehClaro(c.bg);
@@ -62,7 +93,7 @@ export const Backdrop: React.FC<{ c: Paleta; arranjo?: number }> = ({ c, arranjo
       {arranjo === 3 ? (
         <AbsoluteFill
           style={{
-            opacity: claro ? 0.5 : 0.3,
+            opacity: 0,
             backgroundImage: `repeating-linear-gradient(135deg, ${c.line} 0px, ${c.line} 2px, transparent 2px, transparent 26px)`,
             transform: `translateY(${(frame * 0.25) % 26}px)`,
           }}
@@ -70,7 +101,7 @@ export const Backdrop: React.FC<{ c: Paleta; arranjo?: number }> = ({ c, arranjo
       ) : (
         <AbsoluteFill
           style={{
-            opacity: claro ? 0.55 : 0.35,
+            opacity: 0,
             backgroundImage: `linear-gradient(${c.line} 1px, transparent 1px), linear-gradient(90deg, ${c.line} 1px, transparent 1px)`,
             backgroundSize: "72px 72px",
             transform: `translateY(${((frame * 0.35) % 72) - 72}px)`,
@@ -185,112 +216,137 @@ export const HookCena: React.FC<{ c: Paleta; arranjo?: number; logoUrl?: string 
   sub,
 }) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { fps, width, height } = useVideoConfig();
   const k = spring({ frame, fps, config: { damping: 200 } });
   const t = spring({ frame: frame - 10, fps, config: { damping: 200 } });
   const barra = spring({ frame: frame - 34, fps, config: { damping: 18, stiffness: 120 } });
   const s = interpolate(frame, [48, 76], [0, 1], { extrapolateRight: "clamp" });
   const float = Math.sin(frame / 22) * 6;
   const centralizado = arranjo === 2;
-
-  // Logo do cliente já na abertura: centralizada e a ~1/3 da altura.
   const logoAbertura = spring({ frame, fps, config: { damping: 16, stiffness: 130 } });
+  const safeLines = stripDuplicateHighlight(linhas, destaque);
+  const layout = computeHookLayout({
+    width,
+    height,
+    kicker,
+    lines: safeLines,
+    highlight: destaque,
+    sub,
+    hasLogo: Boolean(logoUrl),
+  });
 
   return (
     <AbsoluteFill
       style={{
         ...font,
-        padding: "0 92px",
+        padding: `0 ${layout.horizontalPadding}px`,
         justifyContent: "center",
         alignItems: centralizado ? "center" : "flex-start",
         textAlign: centralizado ? "center" : "left",
       }}
     >
-      {logoUrl ? (
-        <div
-          style={{
-            position: "absolute",
-            top: "33%",
-            left: 0,
-            right: 0,
-            display: "flex",
-            justifyContent: "center",
-            transform: `translateY(-50%) scale(${logoAbertura})`,
-            opacity: logoAbertura,
-          }}
-        >
+      <div
+        data-hook-safe-layout
+        style={{
+          width: "100%",
+          maxHeight: layout.safeHeight,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: centralizado ? "center" : "flex-start",
+          justifyContent: "center",
+        }}
+      >
+        {logoUrl ? (
           <div
+            data-hook-logo
             style={{
+              flexShrink: 0,
+              alignSelf: centralizado ? "center" : "flex-start",
+              display: "flex",
+              justifyContent: "center",
               background: rgba(c.panel, ehClaro(c.bg) ? 0.9 : 0.68),
               border: `1px solid ${c.line}`,
-              borderRadius: 34,
-              padding: "18px 26px",
+              borderRadius: Math.max(16, Math.round(layout.logoHeight * 0.15)),
+              padding: `${Math.max(8, Math.round(layout.logoHeight * 0.08))}px ${Math.max(12, Math.round(layout.logoHeight * 0.12))}px`,
+              transform: `scale(${logoAbertura})`,
+              transformOrigin: centralizado ? "center bottom" : "left bottom",
+              opacity: logoAbertura,
+              marginBottom: layout.gapAfterLogo,
             }}
           >
-            <Img src={logoUrl} style={{ height: 220, maxWidth: 640, objectFit: "contain" }} />
+            <Img
+              src={logoUrl}
+              style={{
+                height: layout.logoHeight,
+                maxWidth: width - layout.horizontalPadding * 2,
+                objectFit: "contain",
+                display: "block",
+              }}
+            />
           </div>
-        </div>
-      ) : null}
-      <div
-        style={{
-          marginTop: logoUrl ? 430 : 0,
-          alignSelf: centralizado ? "center" : "flex-start",
-        }}
-      >
-      <div
-        style={{
-          color: c.suave,
-          fontSize: 30,
-          letterSpacing: 8,
-          textTransform: "uppercase",
-          opacity: k,
-          transform: `translateX(${interpolate(k, [0, 1], [centralizado ? 0 : -40, 0])}px)`,
-        }}
-      >
-        {kicker}
-      </div>
-      <div
-        style={{
-          marginTop: 26,
-          color: c.texto,
-          fontSize: linhas.some((l) => l.length > 14) ? 92 : 112,
-          fontWeight: 800,
-          lineHeight: 1.03,
-          letterSpacing: -3,
-          opacity: t,
-          transform: `translateY(${interpolate(t, [0, 1], [70, float])}px)`,
-        }}
-      >
-        {linhas.map((l, i) => (
-          <div key={`${i}-${l}`}>{l}</div>
-        ))}
-        {destaque ? <div style={{ color: c.destaque }}>{destaque}</div> : null}
-      </div>
-      <div
-        style={{
-          height: 12,
-          width: 420 * barra,
-          background: `linear-gradient(90deg, ${c.destaque}, ${c.destaqueSoft})`,
-          borderRadius: 8,
-          marginTop: 42,
-        }}
-      />
-      {sub ? (
+        ) : null}
         <div
+          data-hook-kicker
           style={{
-            marginTop: 38,
             color: c.suave,
-            fontSize: 38,
-            lineHeight: 1.3,
-            whiteSpace: "pre-line",
-            maxWidth: 860,
-            opacity: s,
-            transform: `translateY(${interpolate(s, [0, 1], [24, 0])}px)`,
+            fontSize: layout.kickerFontSize,
+            letterSpacing: Math.max(3, Math.round(layout.kickerFontSize * 0.27)),
+            lineHeight: 1.25,
+            textTransform: "uppercase",
+            opacity: k,
+            textWrap: "balance",
+            transform: `translateX(${interpolate(k, [0, 1], [centralizado ? 0 : -40, 0])}px)`,
           }}
         >
-          {sub}
+          {kicker}
         </div>
-      ) : null}
+        <div
+          data-hook-title
+          style={{
+            marginTop: layout.gapAfterKicker,
+            color: c.texto,
+            fontSize: layout.titleFontSize,
+            fontWeight: 800,
+            lineHeight: 1.04,
+            letterSpacing: Math.max(-3, -layout.titleFontSize * 0.027),
+            opacity: t,
+            transform: `translateY(${interpolate(t, [0, 1], [70, float])}px)`,
+          }}
+        >
+          {layout.lines.map((line, index) => (
+            <div key={`${index}-${line}`} style={{ textWrap: "balance" }}>
+              {line}
+            </div>
+          ))}
+          {destaque ? <div style={{ color: c.destaque, textWrap: "balance" }}>{destaque}</div> : null}
+        </div>
+        <div
+          style={{
+            flexShrink: 0,
+            height: layout.barHeight,
+            width: Math.min(width * 0.39, 420) * barra,
+            background: `linear-gradient(90deg, ${c.destaque}, ${c.destaqueSoft})`,
+            borderRadius: layout.barHeight,
+            marginTop: layout.gapAfterTitle,
+          }}
+        />
+        {sub ? (
+          <div
+            style={{
+              marginTop: layout.gapAfterBar,
+              color: c.suave,
+              fontSize: layout.subFontSize,
+              lineHeight: 1.3,
+              whiteSpace: "pre-line",
+              maxWidth: width - layout.horizontalPadding * 2,
+              opacity: s,
+              textWrap: "balance",
+              transform: `translateY(${interpolate(s, [0, 1], [24, 0])}px)`,
+            }}
+          >
+            {sub}
+          </div>
+        ) : null}
       </div>
     </AbsoluteFill>
   );

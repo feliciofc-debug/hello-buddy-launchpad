@@ -30,6 +30,15 @@ function normalizarTelefoneUI(phone: string) {
   return somenteDigitos;
 }
 
+function chaveTelefoneUI(phone: string) {
+  const normalized = normalizarTelefoneUI(phone);
+  if (!normalized.startsWith('55') || (normalized.length !== 12 && normalized.length !== 13)) return normalized;
+  const subscriber = normalized.slice(4);
+  return subscriber.length === 9 && subscriber.startsWith('9')
+    ? `${normalized.slice(0, 4)}${subscriber.slice(1)}`
+    : normalized;
+}
+
 interface WhatsAppGroup {
 
   id: string;
@@ -877,18 +886,38 @@ _Escolha quantidade e finalize!_ ✅`;
       .from('pj_lista_membros')
       .select('telefone, nome, opt_in_status')
       .in('lista_id', listasContatoIds);
+    const { data: recusadosTenant, error: recusadosError } = await supabase
+      .from('pj_lista_membros')
+      .select('telefone, nome, opt_in_status')
+      .eq('user_id', user.id)
+      .eq('opt_in_status', 'recusado');
+    if (recusadosError) {
+      console.error('Falha ao verificar recusas permanentes:', recusadosError);
+      toast.error('Não foi possível validar os contatos recusados. Tente novamente.');
+      return;
+    }
 
     // Dedup canônico + separação por opt-in
-    const mapaContatos = new Map<string, { nome: string; status: string }>();
+    const mapaContatos = new Map<string, { telefone: string; nome: string; status: string }>();
     for (const m of membros || []) {
       const tel = normalizarTelefone(String(m.telefone || ''));
       if (!tel) continue;
-      const anterior = mapaContatos.get(tel);
+      const key = chaveTelefoneUI(tel);
+      const anterior = mapaContatos.get(key);
       // 'recusado' (STOP) sempre prevalece
       const status = anterior?.status === 'recusado' || m.opt_in_status === 'recusado'
         ? 'recusado'
         : (m.opt_in_status === 'confirmado' || anterior?.status === 'confirmado' ? 'confirmado' : (m.opt_in_status || 'pendente'));
-      mapaContatos.set(tel, { nome: (m.nome || anterior?.nome || '').trim(), status });
+      mapaContatos.set(key, {
+        telefone: !anterior || tel.length > anterior.telefone.length ? tel : anterior.telefone,
+        nome: (m.nome || anterior?.nome || '').trim(),
+        status,
+      });
+    }
+    for (const m of recusadosTenant || []) {
+      const key = chaveTelefoneUI(String(m.telefone || ''));
+      const existing = mapaContatos.get(key);
+      if (existing) mapaContatos.set(key, { ...existing, status: 'recusado' });
     }
 
     // ---- Janela de 24h: quem falou com o agente nas últimas 24h ----
@@ -901,7 +930,7 @@ _Escolha quantidade e finalize!_ ✅`;
         .eq('user_id', user.id);
 
       const idParaNumero = new Map<string, string>();
-      (convs || []).forEach((c: any) => idParaNumero.set(c.id, normalizarTelefone(String(c.contact_number || ''))));
+      (convs || []).forEach((c: any) => idParaNumero.set(c.id, chaveTelefoneUI(String(c.contact_number || ''))));
 
       if (idParaNumero.size > 0) {
         const { data: inbounds } = await supabase
@@ -990,7 +1019,8 @@ _Escolha quantidade e finalize!_ ✅`;
     let enviados = 0;
     let falhas = 0;
 
-    for (const [phone, info] of elegiveis) {
+    for (const [, info] of elegiveis) {
+      const phone = info.telefone;
       let nomeContato = info.nome;
       if (!nomeContato) {
         try {

@@ -1,6 +1,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { decode as base64Decode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
+import {
+  colorsFromLogoDataUrl,
+  dataUrlToImageBytes,
+  loadTenantBrandAssets,
+} from "../_shared/brand-assets.ts";
+import { generateMarketingImage } from "../_shared/marketing-image-generator.ts";
+import {
+  fetchBrandSiteIdentity,
+  type BrandSiteIdentity,
+} from "../_shared/brand-site-identity.ts";
+import { setTenantLogo } from "../_shared/tenant-logo.ts";
+import { trimLogoImage } from "../_shared/logo-image-trim.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -75,131 +86,25 @@ function buildConceptKeywords(text: string): string {
   return compact.slice(0, 600);
 }
 
-function hasMatch(text: string, patterns: RegExp[]): boolean {
-  return patterns.some((pattern) => pattern.test(text));
-}
-
-function isPortraitEditRequest(text: string, imageCount: number): boolean {
-  if (imageCount === 0) return false;
-
-  const normalized = text.toLowerCase();
-  const identityPatterns = [
-    /use minha própria foto/i,
-    /use minha propria foto/i,
-    /minha foto/i,
-    /meu rosto/i,
-    /minha identidade/i,
-    /meus traços/i,
-    /meus tracos/i,
-    /não crie outra pessoa/i,
-    /nao crie outra pessoa/i,
-    /preserve meu rosto/i,
-    /preserve minha identidade/i,
-    /sou eu/i,
-    /me coloque/i,
-    /me deixa/i,
-    /me deixe/i,
-    /retrato executivo/i,
-  ];
-
-  const appearancePatterns = [
-    /mais cabelo/i,
-    /cabelo/i,
-    /óculos/i,
-    /oculos/i,
-    /camisa/i,
-    /terno/i,
-    /escritório/i,
-    /escritorio/i,
-    /executivo/i,
-    /jovial/i,
-    /magro/i,
-    /magra/i,
-    /dentes/i,
-    /sorriso/i,
-    /ultrarrealista/i,
-    /fotográfico/i,
-    /fotografico/i,
-  ];
-
-  const firstPersonHints = [' meu ', ' minha ', ' comigo ', ' mim ', ' me '].some((token) =>
-    ` ${normalized} `.includes(token)
+function aiServiceError(status: number, operation: "imagem" | "texto"): Error {
+  if (status === 402) {
+    return new Error(
+      "O saldo disponível para o serviço de IA acabou. Tente novamente mais tarde ou fale com o suporte.",
+    );
+  }
+  if (status === 429) {
+    return new Error(
+      "A IA atingiu um limite temporário de solicitações. Aguarde alguns instantes e tente novamente.",
+    );
+  }
+  if (status >= 500) {
+    return new Error(
+      `O modelo de ${operation === "imagem" ? "imagem" : "texto"} não respondeu agora. Tente novamente em alguns minutos.`,
+    );
+  }
+  return new Error(
+    `Não consegui gerar ${operation === "imagem" ? "a imagem" : "os textos"} agora. Revise o pedido e tente novamente.`,
   );
-
-  return hasMatch(text, identityPatterns) || (firstPersonHints && hasMatch(text, appearancePatterns));
-}
-
-function isScenePreservationRequest(text: string, imageCount: number): boolean {
-  if (imageCount === 0) return false;
-  const normalized = (text || '').toLowerCase();
-
-  // Sinais explícitos de preservação do cenário/local original
-  const preservePatterns = [
-    /manter (a |o )?(foto|imagem|cen[áa]rio|ambiente|local|lugar|fachada|original)/i,
-    /preserv[ae] (a |o )?(foto|imagem|cen[áa]rio|ambiente|local|lugar|fachada|original)/i,
-    /mesma (foto|imagem|cena|fachada|loja|ambiente)/i,
-    /mesmo (local|lugar|ambiente|cen[áa]rio)/i,
-    /(esta|essa) (foto|imagem|fachada|loja)/i,
-    /(originalidade|fiel ao original|sem mudar (o )?(local|cen[áa]rio|ambiente))/i,
-    /melhorar (as )?cores/i,
-    /melhorar (a )?(qualidade|ilumina[çc][ãa]o|design)/i,
-    /(deixar|deixe|deixa) (mais )?(bonita|bonito|profissional)/i,
-    /minha (loja|fachada|empresa|fabrica|f[áa]brica|oficina|cl[íi]nica|escrit[óo]rio)/i,
-    /(fachada|loja|estabelecimento|com[ée]rcio|pet ?shop|mercearia|padaria|restaurante|barbearia|sal[ãa]o)/i,
-  ];
-
-  return hasMatch(text, preservePatterns);
-}
-
-function buildScenePreservationPrompt(userPrompt: string, hasLogoReference: boolean, supportImageCount: number): string {
-  return `Edite a PRIMEIRA imagem enviada mantendo-a como BASE FIEL e RECONHECÍVEL da composição final.
-
-O LOCAL/CENÁRIO/AMBIENTE da foto original deve continuar sendo o MESMO lugar, com a MESMA arquitetura, MESMO enquadramento geral, MESMOS elementos estruturais (paredes, fachada, vitrine, prateleiras, mobiliário, produtos visíveis, placas, totens, postes, calçada, céu, vegetação) e MESMA composição.
-
-REGRAS INEGOCIÁVEIS:
-- NÃO troque o local por outro
-- NÃO invente uma loja/ambiente diferente
-- NÃO remova nem mova elementos estruturais importantes
-- NÃO altere a arquitetura, formato do imóvel ou disposição dos produtos
-- NÃO adicione pessoas, animais ou veículos que não estavam na cena original
-- NÃO transforme em ilustração, 3D, cartoon ou render artificial
-- O resultado deve parecer claramente a MESMA foto, apenas tratada profissionalmente
-
-PERMITIDO (melhorias sutis e realistas):
-- Corrigir e equilibrar cores, contraste, saturação e temperatura
-- Melhorar iluminação natural, remover sombras duras, suavizar reflexos
-- Limpar ruído, fios elétricos bagunçados no primeiro plano se atrapalharem leitura, sujeira pontual e elementos visualmente poluentes pequenos
-- Realçar nitidez, texturas reais (tinta, madeira, metal, vidro)
-- Deixar a fachada/letreiro/logo da loja mais legível, vibrante e bem acabada SEM redesenhá-los do zero — apenas como retoque/restauração fotográfica
-- Aplicar acabamento de fotografia comercial profissional, 8K, ultra-realista
-
-${supportImageCount > 0 ? `IMAGENS DE APOIO:\n- As ${supportImageCount} imagem(ns) adicional(is) servem apenas como referência secundária e NUNCA substituem a cena da primeira foto.\n\n` : ''}${hasLogoReference ? `LOGO / MARCA:\n- A última imagem enviada é a logo oficial. Use-a APENAS para refinar/atualizar o letreiro existente da fachada, mantendo posição, escala e perspectiva originais. Não crie letreiros novos em outros lugares.\n\n` : ''}TEXTO NA IMAGEM:
-- Preserve textos já existentes na fachada/letreiro originais (nome da loja, telefones, categorias) com a mesma grafia
-- NÃO adicione textos promocionais, slogans, preços ou legendas novas
-
-INSTRUÇÕES DO USUÁRIO — siga com máxima fidelidade dentro das regras acima:
-${userPrompt}`;
-}
-
-function buildPortraitEditPrompt(userPrompt: string, hasLogoReference: boolean, supportImageCount: number): string {
-  return `Edite a PRIMEIRA imagem enviada usando-a como BASE PRINCIPAL da composição final.
-
-A pessoa da primeira foto deve continuar claramente sendo a MESMA pessoa na imagem final. Preserve rosto, identidade, traços naturais, expressão geral e reconhecibilidade.
-
-REGRAS INEGOCIÁVEIS:
-- NÃO crie outra pessoa
-- NÃO troque o rosto
-- NÃO altere traços faciais essenciais
-- NÃO rejuvenesça ou emagreça de forma exagerada
-- NÃO plastifique a pele
-- NÃO faça caricatura, ilustração, cartoon ou visual artificial
-- Ajustes em cabelo, dentes, óculos, roupa, postura, iluminação e cenário devem ser sutis, elegantes e realistas
-- Se o usuário pedir enquadramento mais aberto ou “mais ao longe”, mostre mais do ambiente e reduza o tamanho relativo da pessoa no quadro
-- Priorize fotografia corporativa premium, ultrarrealista, natural, 8K, iluminação profissional de estúdio, materiais e texturas reais
-- Mantenha proporções humanas corretas, mãos normais, olhos normais e apenas um rosto
-
-${supportImageCount > 0 ? `IMAGENS DE APOIO:\n- As ${supportImageCount} imagem(ns) adicional(is) servem apenas como referência secundária e NUNCA substituem a pessoa da primeira foto.\n\n` : ''}${hasLogoReference ? `LOGO / MARCA:\n- A última imagem enviada é uma referência da marca. Use-a apenas para integrar a identidade visual ao cenário de forma corporativa, elegante e coerente com o ambiente.\n\n` : `MARCA / IDENTIDADE VISUAL:\n- Se o usuário pedir logo ou identidade visual no ambiente, represente isso como branding corporativo premium no cenário.\n\n`}INSTRUÇÕES DO USUÁRIO — siga com máxima fidelidade:
-${userPrompt}`;
 }
 
 function escapeRegExp(value: string) {
@@ -321,6 +226,48 @@ function sanitizePostPayload(posts: Record<string, Record<string, string>>, sour
   return sanitized;
 }
 
+async function authenticatedUserId(
+  req: Request,
+  supabaseUrl: string,
+  anonKey: string,
+): Promise<string | null> {
+  const authorization = req.headers.get("authorization") || "";
+  if (!authorization) return null;
+  const authClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: authorization } },
+  });
+  const { data, error } = await authClient.auth.getUser();
+  if (error) return null;
+  return data?.user?.id ?? null;
+}
+
+async function saveSiteLogoForTenant(
+  supabaseAdmin: any,
+  userId: string,
+  dataUrl: string,
+): Promise<boolean> {
+  const decoded = dataUrlToImageBytes(dataUrl);
+  if (!decoded || decoded.bytes.length > 5 * 1024 * 1024) return false;
+  const processed = await trimLogoImage(decoded.bytes, decoded.mime);
+  const extension = processed.mime === "image/jpeg"
+    ? "jpg"
+    : processed.mime === "image/svg+xml"
+    ? "svg"
+    : "png";
+  const storagePath = `${userId}/ia-marketing/${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${extension}`;
+  const { error } = await supabaseAdmin.storage.from("tenant-logos").upload(
+    storagePath,
+    processed.bytes,
+    { contentType: processed.mime, upsert: false },
+  );
+  if (error) throw new Error(`Não consegui salvar a logo: ${error.message}`);
+  return await setTenantLogo(supabaseAdmin, userId, {
+    storagePath,
+    fileName: `logo-site.${extension}`,
+    mimeType: processed.mime,
+  });
+}
+
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -328,7 +275,55 @@ serve(async (req) => {
   }
 
   try {
-    const { url, images = [], logo = null, source = 'generic' } = await req.json();
+    const payload = await req.json();
+    const {
+      url,
+      images = [],
+      logo = null,
+      source = 'generic',
+      action,
+      site_url: actionSiteUrl,
+      logo_data_url: actionLogoDataUrl,
+      use_saved_logo = false,
+      brand_site_url = null,
+    } = payload;
+    const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !SUPABASE_ANON_KEY) {
+      throw new Error("O serviço de IA está temporariamente indisponível. Tente novamente em alguns minutos.");
+    }
+    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const userId = await authenticatedUserId(req, SUPABASE_URL, SUPABASE_ANON_KEY);
+    if (!userId) throw new Error("Sua sessão expirou. Entre novamente.");
+
+    if (action === "brand_assets") {
+      const assets = await loadTenantBrandAssets(supabaseAdmin, userId);
+      return new Response(JSON.stringify({
+        success: true,
+        has_logo: Boolean(assets.logoDataUrl),
+        logo_preview: assets.logoDataUrl,
+        colors: assets.colors,
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    if (action === "preview_site_identity") {
+      const identity = await fetchBrandSiteIdentity(String(actionSiteUrl || ""));
+      return new Response(JSON.stringify({ success: true, identity }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    if (action === "save_site_logo") {
+      const saved = await saveSiteLogoForTenant(
+        supabaseAdmin,
+        userId,
+        String(actionLogoDataUrl || ""),
+      );
+      if (!saved) throw new Error("A imagem encontrada não pôde ser salva como logo.");
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     console.log('🔍 Analisando:', url, '| Imagens referência:', images.length, '| Logo:', logo ? 'SIM' : 'NÃO', '| Source:', source);
 
     if (!url) {
@@ -337,19 +332,35 @@ serve(async (req) => {
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY não configurada');
+      console.error("[analisar-produto] credencial do serviço de IA ausente");
+      throw new Error('O serviço de IA está temporariamente indisponível. Tente novamente em alguns minutos.');
     }
 
     let finalImages = images;
     let generatedImage: string | null = null;
+    let logoAppliedServerSide = false;
+    let brandApplicationMode = "none";
+    let siteIdentity: BrandSiteIdentity | null = null;
+    let logoDataUrl: string | null = typeof logo === "string" ? logo : null;
+    let brandColors: string[] = [];
+    const tenantAssets = await loadTenantBrandAssets(supabaseAdmin, userId, {
+      includeLogo: Boolean(use_saved_logo),
+    });
+    const brandName = tenantAssets.brandName;
+    if (use_saved_logo && userId) {
+      logoDataUrl = tenantAssets.logoDataUrl;
+      brandColors = tenantAssets.colors;
+    } else if (brand_site_url) {
+      siteIdentity = await fetchBrandSiteIdentity(String(brand_site_url));
+      brandColors = siteIdentity.colors;
+    }
+    if (!brandColors.length && logoDataUrl) {
+      brandColors = await colorsFromLogoDataUrl(logoDataUrl);
+    }
 
     // Verificar se é uma URL válida ou apenas um prompt de texto
     const isUrl = url.match(/^https?:\/\//i);
-    const portraitEditMode = !isUrl && isPortraitEditRequest(url, images.length);
-    const scenePreservationMode = !isUrl && !portraitEditMode && isScenePreservationRequest(url, images.length);
-    // Se a logo vai ser enviada para a IA (não-SVG), não sobrepor no frontend
-    const logoWillBeSentToAI = typeof logo === 'string' && !logo.startsWith('data:image/svg');
-    let applyLogoOverlay = !portraitEditMode && !scenePreservationMode && !logoWillBeSentToAI;
+    const applyLogoOverlay = false;
     
     // DETECTAR IDIOMA DO PROMPT DO USUÁRIO
     const detectLanguage = (text: string): string => {
@@ -368,242 +379,36 @@ serve(async (req) => {
     const detectedLanguage = detectLanguage(url);
     console.log('🌍 Idioma detectado:', detectedLanguage);
 
-    // SEMPRE gera imagem quando não é URL (com ou sem logo)
+    // SEMPRE gera imagem quando não é URL (com ou sem logo), usando o mesmo
+    // motor server-side do agente do WhatsApp.
     if (!isUrl) {
-      const referenceImage = images[0] || null;
-      const supportImages = referenceImage ? images.slice(1) : [];
-      const logoReferenceForAI = typeof logo === 'string' && !logo.startsWith('data:image/svg') ? logo : null;
-
-      if (referenceImage) {
-        console.log(
-          portraitEditMode
-            ? '🧑‍💼 Foto base detectada! Gerando edição fiel do retrato...'
-            : '🎨 Imagem de referência detectada! Gerando imagem usando como inspiração...'
-        );
-      } else {
-        console.log('🎨 Nenhuma referência, gerando imagem do zero...');
-      }
-
-      let imageGenMessages: any[] = [];
-
-      if (portraitEditMode && referenceImage) {
-        imageGenMessages = [
-          {
-            role: 'system',
-            content: 'Você é um editor fotográfico especializado em retratos executivos ultrarrealistas. Sua prioridade máxima é preservar a identidade real da pessoa da primeira foto. Nunca substitua a pessoa, nunca gere outro rosto e nunca entregue resultado artificial.'
-          },
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: buildPortraitEditPrompt(url, Boolean(logoReferenceForAI), supportImages.length)
-              },
-              {
-                type: 'image_url',
-                image_url: { url: referenceImage }
-              },
-              ...supportImages.map((image: string) => ({
-                type: 'image_url',
-                image_url: { url: image }
-              })),
-              ...(logoReferenceForAI
-                ? [{ type: 'image_url', image_url: { url: logoReferenceForAI } }]
-                : []),
-            ]
-          }
-        ];
-      } else if (scenePreservationMode && referenceImage) {
-        console.log('🏪 Modo PRESERVAÇÃO DE CENA ativado — mantendo local original e apenas refinando cores/qualidade/logo.');
-        imageGenMessages = [
-          {
-            role: 'system',
-            content: 'Você é um retocador fotográfico profissional especializado em fotografia comercial de fachadas, lojas e ambientes reais. Sua prioridade máxima é PRESERVAR a cena original da primeira foto exatamente como ela é (mesmo local, mesma arquitetura, mesmos elementos), aplicando apenas correções fotográficas profissionais (cor, luz, nitidez, limpeza visual) e refinamento sutil de letreiro/logo. Nunca substitua o local, nunca invente uma loja diferente, nunca gere ilustração ou render 3D.'
-          },
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: buildScenePreservationPrompt(url, Boolean(logoReferenceForAI), supportImages.length)
-              },
-              { type: 'image_url', image_url: { url: referenceImage } },
-              ...supportImages.map((image: string) => ({
-                type: 'image_url',
-                image_url: { url: image }
-              })),
-              ...(logoReferenceForAI
-                ? [{ type: 'image_url', image_url: { url: logoReferenceForAI } }]
-                : []),
-            ]
-          }
-        ];
-      } else {
-        const userPromptRaw = (url || '').toString().trim();
-        const conceptKeywords = buildConceptKeywords(url);
-        const hasLogo = Boolean(logoReferenceForAI);
-        const imagePrompt = referenceImage
-          ? `PRIMARY USER REQUEST (follow LITERALLY and FAITHFULLY — this is the most important instruction):
-"${userPromptRaw}"
-
-Generate a single ultra-realistic photographic image that depicts EXACTLY what the user described above. Every element mentioned (objects, scenery, atmosphere, action) MUST be present in the final image.
-
-STYLE: Ultra-realistic, photographic quality, 8K resolution, professional photography lighting, real materials and textures. NO cartoon, NO illustration, NO vector, NO clip art.
-
-REFERENCE IMAGE RULES:
-- Use the reference image only as visual inspiration for the subject when relevant
-- Do NOT copy the reference if it conflicts with the user request — the user request ALWAYS wins
-
-${hasLogo ? `LOGO / BRAND IDENTITY (CRITICAL):
-- The LAST image provided is the company LOGO
-- Incorporate it EXACTLY as it appears (same colors, font, design)
-- Place it in a natural, visible position
-- Do NOT modify, redraw or reinterpret the logo
-` : ''}CRITICAL RULES:
-- ABSOLUTELY NO TEXT of any kind${hasLogo ? ' EXCEPT the logo' : ''}
-- NO slogans, captions, labels, watermarks${hasLogo ? ' besides the logo' : ''}
-- The image must be text-free${hasLogo ? ' except the logo' : ''}`
-          : `PRIMARY USER REQUEST (follow LITERALLY and FAITHFULLY — this is the most important instruction):
-"${userPromptRaw}"
-
-Generate a single ultra-realistic photographic image that depicts EXACTLY what the user described above. Every element mentioned (objects, scenery, atmosphere, action, location like "lua", "praia", "espaço" etc.) MUST be present and clearly recognizable in the final image. Do NOT replace the requested scene with a generic marketing/product photo.
-
-STYLE: Ultra-realistic, photographic quality, 8K resolution, cinematic lighting, real materials and textures. NO cartoon, NO illustration, NO vector, NO clip art.
-
-Concept summary for reinforcement: ${conceptKeywords}.
-
-${hasLogo ? `LOGO / BRAND IDENTITY (CRITICAL):
-- The image provided is the company LOGO
-- Incorporate it EXACTLY as it appears (same colors, font, design)
-- Place it in a natural, visible position
-- Do NOT modify, redraw or reinterpret the logo
-` : ''}CRITICAL RULES:
-- ABSOLUTELY NO TEXT of any kind${hasLogo ? ' EXCEPT the logo' : ''}
-- NO slogans, captions, labels, watermarks${hasLogo ? ' besides the logo' : ''}
-- Communicate through visual composition only`;
-
-        // Build content array with images
-        const contentParts: any[] = [];
-        
-        if (referenceImage) {
-          contentParts.push({ type: 'image_url', image_url: { url: referenceImage } });
-        }
-        
-        // Add support images
-        supportImages.forEach((img: string) => {
-          contentParts.push({ type: 'image_url', image_url: { url: img } });
-        });
-        
-        // Add logo as last image so AI can reproduce it
-        if (logoReferenceForAI) {
-          contentParts.push({ type: 'image_url', image_url: { url: logoReferenceForAI } });
-        }
-        
-        contentParts.push({ type: 'text', text: imagePrompt });
-
-        imageGenMessages = [
-          {
-            role: 'user',
-            content: contentParts.length > 1 ? contentParts : imagePrompt
-          }
-        ];
-      }
-
-      console.log(
-        '🎨 Iniciando geração de imagem...',
-        portraitEditMode ? 'MODO EDIÇÃO DE RETRATO' : referenceImage ? 'COM referência' : 'SEM referência',
-        '| Logo enviada para IA:', logoReferenceForAI ? 'SIM' : 'NÃO'
-      );
-
-      // Chamar API de geração de imagem
-      const imageGenResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-3.1-flash-image-preview",
-          messages: imageGenMessages,
-          modalities: ["image", "text"]
-        }),
+      const result = await generateMarketingImage({
+        prompt: String(url),
+        references: images,
+        logoDataUrl,
+        brandColors,
+        brandName,
+        apiKey: LOVABLE_API_KEY,
       });
-
-      if (!imageGenResponse.ok) {
-        const errorText = await imageGenResponse.text();
-        console.error('❌ Erro ao gerar imagem:', errorText);
-        
-        if (imageGenResponse.status === 429) {
-          throw new Error('Limite de geração de imagens atingido. Aguarde alguns segundos.');
-        }
-        if (imageGenResponse.status === 402) {
-          throw new Error('Créditos insuficientes. Adicione créditos em Settings → Workspace → Usage.');
-        }
-        
-        throw new Error(`Erro ao gerar imagem: ${imageGenResponse.status}`);
-      }
-
-      const imageGenData = await imageGenResponse.json();
-      console.log('✅ Imagem gerada com sucesso!');
-      console.log('🔍 Response da API:', JSON.stringify(imageGenData).substring(0, 200));
-      
-      // Extrair a imagem gerada (base64)
-      const generatedImageUrl = imageGenData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-      if (generatedImageUrl) {
-        // Upload base64 para Storage público para que Instagram/Facebook aceitem a URL
-        try {
-          const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
-          const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-          const supabaseStorage = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-          
-          // Extrair dados base64 (remover prefixo data:image/...)
-          let base64Data = generatedImageUrl;
-          let mimeType = 'image/png';
-          if (base64Data.startsWith('data:')) {
-            const match = base64Data.match(/^data:(image\/\w+);base64,(.+)$/);
-            if (match) {
-              mimeType = match[1];
-              base64Data = match[2];
-            }
-          }
-          
-          const imageBytes = base64Decode(base64Data);
-          const fileName = `ia-marketing/${Date.now()}-${Math.random().toString(36).substring(7)}.png`;
-          
-          const { error: uploadError } = await supabaseStorage.storage
-            .from('produtos')
-            .upload(fileName, imageBytes, { contentType: mimeType, upsert: true });
-          
-          if (!uploadError) {
-            const { data: publicUrlData } = supabaseStorage.storage
-              .from('produtos')
-              .getPublicUrl(fileName);
-            
-            if (publicUrlData?.publicUrl) {
-              generatedImage = publicUrlData.publicUrl;
-              finalImages = [generatedImage];
-              console.log('✅ Imagem salva no Storage público:', generatedImage);
-            } else {
-              generatedImage = generatedImageUrl;
-              finalImages = [generatedImageUrl];
-              console.warn('⚠️ Upload OK mas sem URL pública, usando base64');
-            }
-          } else {
-            console.warn('⚠️ Erro no upload para Storage:', uploadError.message);
-            generatedImage = generatedImageUrl;
-            finalImages = [generatedImageUrl];
-          }
-        } catch (uploadErr) {
-          console.warn('⚠️ Falha ao fazer upload para Storage, usando base64:', uploadErr);
-          generatedImage = generatedImageUrl;
-          finalImages = [generatedImageUrl];
-        }
-        
-        console.log('🖼️ Imagem gerada adicionada:', generatedImage ? 'SIM' : 'NÃO');
-      } else {
-        console.warn('⚠️ API retornou sucesso mas sem imagem no response');
-        console.warn('⚠️ Estrutura do response:', JSON.stringify(imageGenData));
-      }
+      logoAppliedServerSide = result.logoApplied;
+      brandApplicationMode = result.brandApplicationMode;
+      console.log(
+        "🎨 Imagem gerada pelo motor compartilhado:",
+        result.mode,
+        "| modelo:",
+        result.model,
+        "| marca aplicada:",
+        result.logoApplied,
+      );
+      const fileName = `ia-marketing/${Date.now()}-${Math.random().toString(36).substring(7)}.png`;
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from("produtos")
+        .upload(fileName, result.bytes, { contentType: result.mimeType, upsert: true });
+      if (uploadError) throw new Error(`Não consegui salvar a imagem gerada: ${uploadError.message}`);
+      const { data: publicUrlData } = supabaseAdmin.storage.from("produtos").getPublicUrl(fileName);
+      if (!publicUrlData?.publicUrl) throw new Error("Não consegui obter a URL da imagem gerada.");
+      generatedImage = publicUrlData.publicUrl;
+      finalImages = [generatedImage];
     }
     
     // Se não for URL e tiver imagens (enviadas ou geradas), usar análise direta de imagem
@@ -707,15 +512,7 @@ Retorne APENAS um JSON válido no formato:
       if (!response.ok) {
         const errorText = await response.text();
         console.error('Erro na Lovable AI:', response.status, errorText);
-        
-        if (response.status === 429) {
-          throw new Error('Limite de requisições atingido. Aguarde alguns segundos e tente novamente.');
-        }
-        if (response.status === 402) {
-          throw new Error('Créditos insuficientes. Adicione créditos em Settings -> Workspace -> Usage.');
-        }
-        
-        throw new Error(`Erro na IA: ${response.status}`);
+        throw aiServiceError(response.status, "texto");
       }
 
       const data = await response.json();
@@ -745,7 +542,19 @@ Retorne APENAS um JSON válido no formato:
           story: posts.story,
           whatsapp: posts.whatsapp || { opcaoA: '', opcaoB: '', opcaoC: '' },
           generatedImage: generatedImage,
-          applyLogoOverlay
+          applyLogoOverlay,
+          brandIdentity: {
+            colors: brandColors,
+            logoApplied: logoAppliedServerSide,
+            applicationMode: brandApplicationMode,
+            message: brandApplicationMode === "in_scene_verified"
+                || brandApplicationMode === "in_scene_retry_verified"
+              ? "Apliquei sua logo na cena."
+              : logoAppliedServerSide
+              ? "Apliquei sua logo sobre a imagem."
+              : null,
+            siteLogo: siteIdentity?.logo_data_url ?? null,
+          },
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -885,7 +694,7 @@ Retorne APENAS um JSON válido no formato:
         if (!response.ok) {
           const errorText = await response.text();
           console.error('Erro na Lovable AI:', response.status, errorText);
-          throw new Error(`Erro na IA: ${response.status}`);
+          throw aiServiceError(response.status, "texto");
         }
 
         const data = await response.json();
@@ -1242,15 +1051,7 @@ Retorne APENAS um JSON válido no formato:
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Erro na Lovable AI:', response.status, errorText);
-      
-      if (response.status === 429) {
-        throw new Error('Limite de requisições atingido. Aguarde alguns segundos e tente novamente.');
-      }
-      if (response.status === 402) {
-        throw new Error('Créditos insuficientes. Adicione créditos em Settings -> Workspace -> Usage.');
-      }
-      
-      throw new Error(`Erro na IA: ${response.status}`);
+      throw aiServiceError(response.status, "texto");
     }
 
     const data = await response.json();
@@ -1289,14 +1090,15 @@ Retorne APENAS um JSON válido no formato:
 
   } catch (error) {
     console.error('❌ Erro na função analisar-produto:', error);
+    const message = error instanceof Error ? error.message : 'Erro desconhecido';
     return new Response(
       JSON.stringify({ 
         success: false,
-        error: error instanceof Error ? error.message : 'Erro desconhecido'
+        error: message,
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500
+        status: message === "Sua sessão expirou. Entre novamente." ? 401 : 500,
       }
     );
   }

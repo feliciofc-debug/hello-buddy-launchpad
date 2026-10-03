@@ -20,6 +20,8 @@ import { slide } from "@remotion/transitions/slide";
 import { fade } from "@remotion/transitions/fade";
 import { font } from "../../font";
 import { ehClaro, fundoLegenda, rgba, textoLegivelSobre, textoSobre } from "./contraste";
+import { aplicarFundoPaleta, type FundoMotion } from "../base";
+import { stripDuplicateHighlight } from "../base/hook-text";
 
 // ---------- contrato de props ----------
 
@@ -42,6 +44,7 @@ export type TemplateAgenteProps = {
   site?: string; // opcional — site DO CLIENTE, nunca fallback de outra marca
   trilhaUrl?: string;
   trilha_volume?: number;
+  fundo?: FundoMotion;
   cores: Paleta;
   hook: { kicker: string; linhas: string[]; destaque?: string; sub?: string };
   chat: { titulo: string; tituloDestaque?: string; mensagens: Mensagem[] };
@@ -143,6 +146,7 @@ const Hook: React.FC<{ c: Paleta } & TemplateAgenteProps["hook"]> = ({
   const barra = spring({ frame: frame - 34, fps, config: { damping: 18, stiffness: 120 } });
   const s = interpolate(frame, [48, 76], [0, 1], { extrapolateRight: "clamp" });
   const float = Math.sin(frame / 22) * 6;
+  const safeLines = stripDuplicateHighlight(linhas, destaque);
 
   return (
     <AbsoluteFill style={{ ...font, padding: "0 92px", justifyContent: "center" }}>
@@ -162,7 +166,7 @@ const Hook: React.FC<{ c: Paleta } & TemplateAgenteProps["hook"]> = ({
         style={{
           marginTop: 26,
           color: c.texto,
-          fontSize: linhas.some((l) => l.length > 14) ? 92 : 116,
+          fontSize: safeLines.some((l) => l.length > 14) ? 92 : 116,
           fontWeight: 800,
           lineHeight: 1.03,
           letterSpacing: -3,
@@ -170,7 +174,7 @@ const Hook: React.FC<{ c: Paleta } & TemplateAgenteProps["hook"]> = ({
           transform: `translateY(${interpolate(t, [0, 1], [70, float])}px)`,
         }}
       >
-        {linhas.map((l, i) => (
+        {safeLines.map((l, i) => (
           <div key={`${i}-${l}`}>{l}</div>
         ))}
         {destaque ? <div style={{ color: c.destaque }}>{destaque}</div> : null}
@@ -563,7 +567,8 @@ const LinhaLegenda: React.FC<{ c: Paleta; text: string }> = ({ c, text }) => {
 const timing = springTiming({ config: { damping: 200 }, durationInFrames: TRANSICAO });
 
 export const TemplateAgente: React.FC<TemplateAgenteProps> = (props) => {
-  const { cores: c, marca, logoUrl, site, trilhaUrl, trilha_volume, hook, chat, cta, legendas } = props;
+  const { marca, logoUrl, site, trilhaUrl, trilha_volume, hook, chat, cta, legendas } = props;
+  const c = aplicarFundoPaleta(props.cores, props.fundo);
   const total = framesTemplateAgente(props);
   const legendasValidas = (legendas || []).filter((l) => l && l.trim().length > 0);
   const volumeBase = Math.min(1, Math.max(0, trilha_volume ?? 0.28));

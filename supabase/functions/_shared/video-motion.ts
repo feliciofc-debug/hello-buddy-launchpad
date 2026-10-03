@@ -15,6 +15,7 @@ export type Mensagem = { de: "dono" | "agente"; texto: string };
 
 /** Estilos da biblioteca de templates. `conversa` é o histórico (celular + chat). */
 export type EstiloMotion = "conversa" | "institucional" | "lista";
+export type FundoMotion = "escuro" | "claro";
 
 export const ESTILOS_MOTION: EstiloMotion[] = ["conversa", "institucional", "lista"];
 
@@ -25,6 +26,15 @@ export const TEMPLATE_POR_ESTILO: Record<EstiloMotion, string> = {
 };
 
 export type BlocoMotion = { titulo: string; apoio?: string; icone?: string };
+export type CenaMotion = {
+  numero: number;
+  texto: string;
+  texto_tela?: string;
+  destaque?: string;
+  narracao?: string;
+  inicio_segundos?: number;
+  fim_segundos?: number;
+};
 
 const ICONES_OK = [
   "raio",
@@ -91,12 +101,121 @@ export function estiloPedidoNoTexto(texto: string): EstiloMotion | null {
   return null;
 }
 
+/** Fundo pedido explicitamente em texto livre; menções soltas a cores não contam. */
+export function fundoPedidoNoTexto(texto: string): FundoMotion | null {
+  const t = String(texto ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const match = t.match(/\b(?:fundo|background)(?:\s+(?:na\s+cor|cor|para|por))?\s+(branco|claro|preto|escuro)\b/);
+  if (!match) return null;
+  return match[1] === "branco" || match[1] === "claro" ? "claro" : "escuro";
+}
+
+export function cenasPedidasNoTexto(texto: string): CenaMotion[] {
+  const source = String(texto ?? "");
+  const pattern =
+    /(?:^|\n)\s*cena\s*(\d+)(?:\s*[\[(]?\s*(\d+)\s*(?:-|–|a|até)\s*(\d+)\s*s(?:egundos?)?\s*[\])]?)?\s*[:\-–]?\s*/gimu;
+  const matches = [...source.matchAll(pattern)];
+  const limparCampo = (value: string): string => {
+    let cleaned = value.trim().replace(/^[\s,;:.-]+/, "").trim();
+    const quoted = cleaned.match(/^["“”'‘’](.*?)["“”'‘’]\s*[.;]?\s*$/su);
+    if (quoted) return quoted[1].trim();
+    return cleaned
+      .replace(/^["“”'‘’]+|["“”'‘’]+\s*[.;]?\s*$/gu, "")
+      .trim();
+  };
+  const interpretar = (body: string) => {
+    const labels =
+      [...body.matchAll(
+        /\b(t[ií]tulo|texto|tela|narra[cç][aã]o|locu[cç][aã]o|fala|(?:com\s+)?destaque(?:\s+em\s+[\p{L}\s-]+)?)\s*:\s*/giu,
+      )];
+    let textoTela = "";
+    let destaque = "";
+    let narracao = "";
+    for (let labelIndex = 0; labelIndex < labels.length; labelIndex++) {
+      const label = labels[labelIndex];
+      const start = Number(label.index ?? 0) + label[0].length;
+      const end = labelIndex + 1 < labels.length
+        ? Number(labels[labelIndex + 1].index ?? body.length)
+        : body.length;
+      const value = limparCampo(body.slice(start, end));
+      const normalized = String(label[1]).normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "").toLowerCase();
+      if (normalized.includes("destaque")) destaque = value;
+      else if (/narracao|locucao|fala/.test(normalized)) narracao = value;
+      else textoTela = value;
+    }
+    if (!textoTela && labels.length === 0) {
+      const cleaned = limparCampo(body);
+      const sentence = cleaned.match(/^(.+?[.!?])(?:\s+|$)([\s\S]*)$/u);
+      const first = sentence?.[1]?.trim() || cleaned;
+      if (first.length <= 100) {
+        textoTela = first;
+        narracao = sentence?.[2]?.trim() || "";
+      } else {
+        const words = cleaned.split(/\s+/);
+        textoTela = words.slice(0, 8).join(" ");
+        narracao = words.slice(8).join(" ");
+      }
+    }
+    return {
+      textoTela: limparCampo(textoTela),
+      destaque: limparCampo(destaque),
+      narracao: limparCampo(narracao),
+    };
+  };
+  return matches.map((match, index) => {
+    const start = Number(match.index ?? 0) + match[0].length;
+    const end = index + 1 < matches.length
+      ? Number(matches[index + 1].index ?? source.length)
+      : source.length;
+    const fields = interpretar(source.slice(start, end).trim());
+    return {
+      numero: Number(match[1]),
+      texto: [fields.textoTela, fields.destaque, fields.narracao]
+        .filter(Boolean).join(" "),
+      texto_tela: fields.textoTela || undefined,
+      destaque: fields.destaque || undefined,
+      narracao: fields.narracao || undefined,
+      inicio_segundos: match[2] ? Number(match[2]) : undefined,
+      fim_segundos: match[3] ? Number(match[3]) : undefined,
+    };
+  }).filter((cena) =>
+    Boolean(cena.texto_tela || cena.destaque || cena.narracao)
+  );
+}
+
+export function removerDestaqueDuplicado(
+  linhas: string[],
+  destaque?: string,
+): string[] {
+  if (!destaque || linhas.length === 0) return linhas;
+  const normalizar = (value: string) =>
+    value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const next = [...linhas];
+  const ultima = next.at(-1)!;
+  const palavras = ultima.split(/\s+/);
+  const destaqueNormalizado = normalizar(destaque);
+  for (let inicio = 0; inicio < palavras.length; inicio++) {
+    if (normalizar(palavras.slice(inicio).join(" ")) !== destaqueNormalizado) {
+      continue;
+    }
+    const prefixo = palavras.slice(0, inicio).join(" ")
+      .replace(/[\s,.;:!?\-–—]+$/, "");
+    if (prefixo) next[next.length - 1] = prefixo;
+    else next.pop();
+    break;
+  }
+  return next;
+}
+
 export type MotionProps = {
   marca: string;
   /** estilo/template desta peça */
   estilo?: EstiloMotion;
   /** duração pedida; define o volume de conteúdo do roteiro */
   duracao?: DuracaoMotion;
+  /** fundo neutro forçado pelo usuário; ausente preserva a paleta original */
+  fundo?: FundoMotion;
   /** frames por cena, derivado da duração (lido pelos templates Remotion) */
   ritmo?: number;
   /** arranjo de cena dentro do estilo (1, 2 ou 3) */
@@ -123,6 +242,12 @@ export type MotionProps = {
   duracao_alvo_segundos?: number;
   /** Persistidas no rascunho para sobreviver à aprovação e renormalização. */
   frases_literais?: string[];
+  roteiro_cenas?: CenaMotion[];
+  legendas_timeline?: Array<{
+    texto: string;
+    inicio_segundos?: number;
+    fim_segundos?: number;
+  }>;
   /** Identidade de terceiro: impede fallback para a logo do tenant. */
   sem_logo_tenant?: boolean;
   site?: string;
@@ -391,23 +516,11 @@ export function normalizarProps(
     .map((l: unknown) => limpar(l, 60))
     .filter(Boolean);
   const hookDestaque = limpar(bruto?.hook?.destaque, 22) || undefined;
-  const normalizarTrechoHook = (value: string) =>
-    value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
-      .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-  const linhasSemDestaque = [...linhasCompletas];
-  if (hookDestaque && linhasSemDestaque.length > 0) {
-    const ultima = linhasSemDestaque.at(-1)!;
-    const palavras = ultima.split(/\s+/);
-    const destaqueNormalizado = normalizarTrechoHook(hookDestaque);
-    for (let inicio = 0; inicio < palavras.length; inicio++) {
-      if (normalizarTrechoHook(palavras.slice(inicio).join(" ")) !== destaqueNormalizado) continue;
-      const prefixo = palavras.slice(0, inicio).join(" ").replace(/[\s,.;:!?\-–—]+$/, "");
-      if (prefixo) linhasSemDestaque[linhasSemDestaque.length - 1] = prefixo;
-      else linhasSemDestaque.pop();
-      break;
-    }
-  }
-  const linhas = linhasSemDestaque.map((linha) => limpar(linha, 22)).filter(Boolean);
+  const linhasSemDestaque = removerDestaqueDuplicado(
+    linhasCompletas,
+    hookDestaque,
+  );
+  const linhas = linhasSemDestaque.map((linha) => limpar(linha, 60)).filter(Boolean);
 
   const legendas = (Array.isArray(bruto?.legendas) ? bruto.legendas : [])
     .slice(0, volume.legendas)
@@ -439,39 +552,6 @@ export function normalizarProps(
   const itens = listaDe(bruto?.itens, volume.itens);
   const seloValor = limpar(bruto?.selo?.valor, 22);
 
-  // Reserva usada só quando a IA devolveu menos conteúdo do que a duração pede.
-  const RESERVA_BLOCOS: BlocoMotion[] = [
-    { titulo: "Tecnologia própria", apoio: "Feita para o seu negócio.", icone: "engrenagem" },
-    { titulo: "Atendimento imediato", apoio: "Resposta em segundos.", icone: "relogio" },
-    { titulo: "Processo seguro", apoio: "Dados isolados por empresa.", icone: "escudo" },
-    { titulo: "Acompanhamento real", apoio: "Você vê o que foi feito.", icone: "grafico" },
-    { titulo: "Time no seu tom", apoio: "A comunicação da sua marca.", icone: "chat" },
-    { titulo: "Sem retrabalho", apoio: "Aprovação em um toque.", icone: "check" },
-    { titulo: "Foco no resultado", apoio: "Cada peça com objetivo claro.", icone: "alvo" },
-    { titulo: "Rotina previsível", apoio: "Conteúdo saindo toda semana.", icone: "selo" },
-  ];
-  const RESERVA_ITENS: BlocoMotion[] = [
-    { titulo: "Você pede", apoio: "Uma frase basta.", icone: "chat" },
-    { titulo: "A plataforma escreve", apoio: "No tom da sua marca.", icone: "engrenagem" },
-    { titulo: "Você aprova", apoio: "Revisa e libera.", icone: "check" },
-    { titulo: "Publicação agendada", apoio: "No melhor horário.", icone: "relogio" },
-    { titulo: "Resultado medido", apoio: "Você vê o alcance.", icone: "grafico" },
-    { titulo: "Ajuste rápido", apoio: "O que funciona, repete.", icone: "alvo" },
-    { titulo: "Tudo registrado", apoio: "Histórico sempre à mão.", icone: "selo" },
-    { titulo: "Sem depender de alguém", apoio: "A rotina não para.", icone: "escudo" },
-  ];
-  // A duração define o VOLUME: completamos até o mínimo do preset, nunca
-  // esticando o tempo de cada cena.
-  const completar = (base: BlocoMotion[], reserva: BlocoMotion[], alvo: number): BlocoMotion[] => {
-    const out = [...base];
-    for (const r of reserva) {
-      if (out.length >= alvo) break;
-      if (!out.some((b) => b.titulo.toLowerCase() === r.titulo.toLowerCase())) out.push(r);
-    }
-    return out.slice(0, alvo);
-  };
-  const minimo = duracao === "curto" ? 3 : duracao === "medio" ? 6 : 9;
-
   // Arranjo: o pedido manda; sem pedido, sorteia para dois vídeos seguidos do
   // mesmo estilo não saírem com o mesmo visual.
   const arranjoBruto = Number(ctx.arranjo ?? bruto?.arranjo);
@@ -480,10 +560,10 @@ export function normalizarProps(
     : 1 + Math.floor(Math.random() * 3);
 
   const blocosFinais = estilo === "institucional"
-    ? completar(blocos, RESERVA_BLOCOS, Math.max(minimo, Math.min(blocos.length || minimo, volume.blocos)))
+    ? blocos.slice(0, volume.blocos)
     : undefined;
   const itensFinais = estilo === "lista"
-    ? completar(itens, RESERVA_ITENS, Math.max(minimo, Math.min(itens.length || minimo, volume.itens)))
+    ? itens.slice(0, volume.itens)
     : undefined;
 
   // Muitos blocos/itens não cabem empilhados na tela: usa o arranjo de uma
@@ -495,6 +575,7 @@ export function normalizarProps(
     marca,
     estilo,
     duracao,
+    fundo: bruto?.fundo === "claro" || bruto?.fundo === "escuro" ? bruto.fundo : undefined,
     ritmo: RITMO_POR_DURACAO[duracao][estilo],
     arranjo,
     blocos: blocosFinais,
@@ -510,6 +591,12 @@ export function normalizarProps(
     trilha_volume: typeof bruto?.trilha_volume === "number"
       ? Math.min(1, Math.max(0, bruto.trilha_volume))
       : 0.28,
+    roteiro_cenas: Array.isArray(bruto?.roteiro_cenas)
+      ? bruto.roteiro_cenas
+      : undefined,
+    legendas_timeline: Array.isArray(bruto?.legendas_timeline)
+      ? bruto.legendas_timeline
+      : undefined,
     // Não remover a chave quando estiver vazio. O Remotion combina inputProps
     // com defaultProps; uma chave ausente poderia ressuscitar um site antigo
     // existente no bundle em cache da VPS.
@@ -517,39 +604,19 @@ export function normalizarProps(
     cores,
     hook: {
       kicker: limpar(bruto?.hook?.kicker, 28) || marca,
-      linhas: linhas.length ? linhas : ["Seu negócio", "no automático."],
+      linhas: linhas.length ? linhas : [marca],
       destaque: hookDestaque,
       sub: limpar(bruto?.hook?.sub, 90) || undefined,
     },
     chat: {
-      titulo: limpar(bruto?.chat?.titulo, 30) || "Tudo pelo",
-      tituloDestaque: limpar(bruto?.chat?.tituloDestaque, 18) || "WhatsApp",
+      titulo: limpar(bruto?.chat?.titulo, 30) || marca,
+      tituloDestaque: limpar(bruto?.chat?.tituloDestaque, 18) || undefined,
       mensagens: (() => {
-        const reserva: Mensagem[] = [
-          { de: "dono", texto: "posta isso hoje às 19h" },
-          { de: "agente", texto: "Fechado. Escrevi a legenda e agendei para 19:00." },
-          { de: "dono", texto: "manda a versão para o Instagram também" },
-          { de: "agente", texto: "Pronto. Adaptei o texto e deixei na fila." },
-          { de: "dono", texto: "e se eu quiser mudar depois?" },
-          { de: "agente", texto: "Você edita e aprova aqui mesmo, em um toque." },
-          { de: "dono", texto: "como vejo o resultado?" },
-          { de: "agente", texto: "Te mando o alcance de cada publicação." },
-          { de: "dono", texto: "pode repetir toda semana" },
-          { de: "agente", texto: "Combinado. A rotina já está programada." },
-          { de: "dono", texto: "obrigado" },
-          { de: "agente", texto: "Estou por aqui sempre que precisar." },
-        ];
-        const alvo = duracao === "curto" ? 4 : duracao === "medio" ? 8 : 12;
-        const out = [...mensagens];
-        for (const m of reserva) {
-          if (out.length >= alvo) break;
-          if (!out.some((x) => x.texto.toLowerCase() === m.texto.toLowerCase())) out.push(m);
-        }
-        return out.slice(0, Math.max(alvo, Math.min(mensagens.length, volume.mensagens)));
+        return mensagens.slice(0, volume.mensagens);
       })(),
     },
     cta: {
-      frase: limpar(bruto?.cta?.frase, 44) || "Fale com a gente.",
+      frase: limpar(bruto?.cta?.frase, 44),
       sub: limpar(bruto?.cta?.sub, 58) || undefined,
       // Vídeo de prospecção: sem contato do tenant. O campo fica vazio para o
       // usuário preencher o contato do próprio cliente.
@@ -644,6 +711,88 @@ export function aplicarFrasesLiterais(props: MotionProps, frases?: string[] | nu
     if (!serializado().includes(frase)) next.legendas.push(frase);
   }
   return { ...next, frases_literais: obrigatorias };
+}
+
+export function aplicarCenasLiterais(
+  props: MotionProps,
+  cenas?: CenaMotion[] | null,
+): MotionProps {
+  if (!cenas?.length) return props;
+  const ordered = [...cenas].sort((a, b) => a.numero - b.numero);
+  const first = ordered[0];
+  const last = ordered.at(-1)!;
+  const middle = ordered.slice(1, -1);
+  const normalize = (value: string) =>
+    value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const shortSentence = (value?: string): string | undefined => {
+    const cleaned = String(value ?? "").trim();
+    if (!cleaned) return undefined;
+    const sentence = cleaned.match(/^.+?[.!?](?:\s|$)/u)?.[0]?.trim() ||
+      cleaned;
+    if (sentence.length <= 120) return sentence;
+    const words = sentence.split(/\s+/);
+    let output = "";
+    for (const word of words) {
+      if (`${output} ${word}`.trim().length > 117) break;
+      output = `${output} ${word}`.trim();
+    }
+    return output ? `${output.replace(/[,:;\s]+$/, "")}…` : undefined;
+  };
+  const iconFor = (cena: CenaMotion): string => {
+    const topic = normalize(
+      `${cena.texto_tela ?? ""} ${cena.destaque ?? ""} ${cena.narracao ?? ""}`,
+    );
+    if (/\b(whatsapp|mensagem|audio|conversa|chat)\b/.test(topic)) return "chat";
+    if (/\b(tempo|hora|rapido|segundo|agenda)\b/.test(topic)) return "relogio";
+    if (/\b(resultado|metrica|grafico|crescimento|numero)\b/.test(topic)) return "grafico";
+    if (/\b(seguranca|protecao|privacidade|dados)\b/.test(topic)) return "escudo";
+    if (/\b(selo|certificado|qualidade|garantia)\b/.test(topic)) return "selo";
+    if (/\b(meta|objetivo|alvo|conversao|venda)\b/.test(topic)) return "alvo";
+    if (/\b(ia|inteligencia artificial|automacao|sistema|tecnologia)\b/.test(topic)) return "engrenagem";
+    return "check";
+  };
+  const firstText = first.texto_tela || first.destaque || "";
+  const firstLines = removerDestaqueDuplicado(
+    firstText ? [firstText] : [],
+    first.destaque,
+  );
+  const kicker = normalize(props.marca) === normalize(firstText)
+    ? ""
+    : props.marca;
+  const narrationScenes = ordered.filter((cena) => cena.narracao);
+  const fim = Number(last.fim_segundos ?? 0);
+  const next: MotionProps = {
+    ...props,
+    estilo: "institucional",
+    arranjo: 2,
+    roteiro_cenas: ordered.map((cena) => ({ ...cena })),
+    hook: {
+      kicker,
+      linhas: firstLines,
+      destaque: first.destaque,
+      sub: shortSentence(first.narracao),
+    },
+    blocos: middle.map((cena) => ({
+      titulo: cena.texto_tela || cena.destaque || "",
+      apoio: shortSentence(cena.narracao),
+      icone: iconFor(cena),
+    })),
+    itens: undefined,
+    selo: undefined,
+    cta: {
+      ...props.cta,
+      frase: last.texto_tela || last.destaque || "",
+      sub: shortSentence(last.narracao),
+    },
+    legendas: narrationScenes.map((cena) => cena.narracao!),
+    legendas_timeline: narrationScenes.map((cena) => ({
+      texto: cena.narracao!,
+      inicio_segundos: cena.inicio_segundos,
+      fim_segundos: cena.fim_segundos,
+    })),
+  };
+  return fim > 0 ? aplicarDuracaoAlvo(next, fim) : next;
 }
 
 /** Rótulo do estilo para mensagens ao usuário. */
@@ -761,6 +910,7 @@ DURAÇÃO PEDIDA: ${segundos}. O vídeo mais longo precisa de MAIS conteúdo, nu
 No institucional, só preencha "selo" com dado REAL do contexto acima; sem dado confiável, deixe vazio — nunca invente número, percentual ou certificação.
 ${politicaCertificacao}
 Regras: número par de mensagens no chat, alternando dono/agente, frases COMPLETAS dentro do limite de caracteres (nunca corte no meio de palavra), sem emoji nos textos do vídeo, sem promessa de resultado garantido, sem inventar preço.
+Use SOMENTE fatos e frases do TEMA PEDIDO e do contexto real do negócio acima. É proibido completar espaço ou duração com frases genéricas como "Planejamento completo", "Produção profissional", "Acompanhamento contínuo" ou qualquer benefício não informado. Se o contexto não sustentar uma afirmação, omita o bloco em vez de inventar.
 O leitor é um profissional: proibido gíria e informalidade exagerada ("tá insano", "bora", "top", "sem neura"). Se o tom da marca for institucional ou formal, escreva formal.
 O nome da marca identifica QUEM fala, nunca o objeto da ação: escreva "publicação concluída", "campanha aprovada", jamais "${nome} concluída" ou "${nome} aprovada".
 Nunca atribua a automação a outra empresa, plataforma, rede social ou ferramenta citada no site do cliente, nem escreva "o sistema ${nome}". Fale do resultado ("o agente agenda", "o conteúdo sai no horário") sem citar nome de plataforma.
@@ -804,24 +954,20 @@ Português correto: o verbo é "publicado" ("o conteúdo foi criado, aprovado e 
   // Fallback determinístico — ainda personalizado com o nome do negócio.
   const props = aplicarDuracaoAlvo(aplicarFrasesLiterais(normalizarProps(
     {
+      estilo: base.estilo ?? "lista",
       hook: {
         kicker: nome.slice(0, 24),
-        linhas: [tema.split(/\s+/).slice(0, 2).join(" "), "sem complicação."],
-        destaque: "Hoje.",
-        sub: ctx.diferenciais?.slice(0, 80) || "Atendimento direto pelo WhatsApp.",
+        linhas: dividirFraseLiteral(cortarFrase(tema, 60)),
+        sub: terceiro ? undefined : ctx.diferenciais?.slice(0, 80),
       },
       chat: {
-        titulo: "Atendimento pelo",
-        tituloDestaque: "WhatsApp",
-        mensagens: [
-          { de: "dono", texto: `quero saber sobre ${tema.slice(0, 60)}` },
-          { de: "agente", texto: "Te explico agora e já deixo tudo agendado." },
-          { de: "dono", texto: "pode me mandar as opções?" },
-          { de: "agente", texto: "Mandei. Qualquer dúvida, é só responder aqui." },
-        ],
+        titulo: nome,
+        mensagens: [{ de: "dono", texto: cortarFrase(tema, 110) }],
       },
-      cta: { frase: "Fale com a gente.", sub: cortarFrase(nome, 55), telefone: base.telefone },
-      legendas: [cortarFrase(tema, 60), "Atendimento pelo WhatsApp.", "Simples e rápido."],
+      blocos: [{ titulo: cortarFrase(tema, 30) }],
+      itens: [{ titulo: cortarFrase(tema, 30) }],
+      cta: { frase: "", telefone: base.telefone },
+      legendas: [cortarFrase(tema, 60)],
     },
     base,
   ), frasesObrigatorias), opts?.duracaoAlvoSegundos);

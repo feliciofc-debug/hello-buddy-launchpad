@@ -30,12 +30,47 @@ type Message = {
   created_at: string;
 };
 
+type OptInStatus = "confirmado" | "recusado";
+
+const phoneVariants = (phone: string): string[] => {
+  const digits = String(phone || "").replace(/\D/g, "");
+  if (!digits) return [];
+
+  const local = digits.startsWith("55") && (digits.length === 12 || digits.length === 13)
+    ? digits.slice(2)
+    : digits;
+  const localVariants = new Set([local]);
+  if (local.length === 10) {
+    localVariants.add(`${local.slice(0, 2)}9${local.slice(2)}`);
+  } else if (local.length === 11 && local[2] === "9") {
+    localVariants.add(`${local.slice(0, 2)}${local.slice(3)}`);
+  }
+
+  const variants = new Set<string>([digits]);
+  for (const value of localVariants) {
+    variants.add(value);
+    variants.add(`55${value}`);
+    variants.add(`+55${value}`);
+  }
+  return [...variants];
+};
+
+const strongestOptInStatus = (
+  current: OptInStatus | undefined,
+  next: string | null | undefined,
+): OptInStatus | undefined => {
+  if (current === "recusado" || next === "recusado") return "recusado";
+  if (current === "confirmado" || next === "confirmado") return "confirmado";
+  return undefined;
+};
+
 const FILTERS = [
   { value: "todas", label: "Todas" },
   { value: "responderam", label: "Responderam" },
   { value: "campanha", label: "Campanhas" },
   { value: "ia", label: "IA atendendo" },
   { value: "humano", label: "Você atendendo" },
+  { value: "aceitaram", label: "Aceitaram" },
 ] as const;
 
 
@@ -52,6 +87,7 @@ export default function AtendimentoCloud() {
   const [loading, setLoading] = useState(true);
   const [campanhaConvIds, setCampanhaConvIds] = useState<Set<string>>(new Set());
   const [respondidasIds, setRespondidasIds] = useState<Set<string>>(new Set());
+  const [optInByConversation, setOptInByConversation] = useState<Map<string, OptInStatus>>(new Map());
   const threadRef = useRef<HTMLDivElement>(null);
   const respondidasRef = useRef<Set<string>>(new Set());
   const primeiroLoadRef = useRef(true);
@@ -93,8 +129,41 @@ export default function AtendimentoCloud() {
         return;
       }
       const convs: Conversation[] = ((data as any) || []) as Conversation[];
+
+      const memberStatusByPhone = new Map<string, OptInStatus>();
+      const { data: members, error: membersError } = await supabase
+        .from("pj_lista_membros")
+        .select("telefone, opt_in_status")
+        .eq("user_id", userId)
+        .in("opt_in_status", ["confirmado", "recusado"]);
+      if (membersError) {
+        console.error(membersError);
+      } else {
+        for (const member of members || []) {
+          for (const variant of phoneVariants(member.telefone || "")) {
+            const status = strongestOptInStatus(
+              memberStatusByPhone.get(variant),
+              member.opt_in_status,
+            );
+            if (status) memberStatusByPhone.set(variant, status);
+          }
+        }
+      }
+
+      const nextOptInByConversation = new Map<string, OptInStatus>();
+      for (const conversation of convs) {
+        let status: OptInStatus | undefined;
+        for (const variant of phoneVariants(conversation.contact_number)) {
+          status = strongestOptInStatus(
+            status,
+            memberStatusByPhone.get(variant),
+          );
+        }
+        if (status) nextOptInByConversation.set(conversation.id, status);
+      }
       if (mounted) {
         setConversations(convs);
+        setOptInByConversation(nextOptInByConversation);
         setLoading(false);
       }
 
@@ -221,10 +290,23 @@ export default function AtendimentoCloud() {
       : filter === "ia" ? conversations.filter((c) => c.status === "active")
       : filter === "humano" ? conversations.filter((c) => c.status === "handoff")
       : filter === "responderam" ? conversations.filter((c) => respondidasIds.has(c.id))
+      : filter === "aceitaram" ? conversations.filter((c) => optInByConversation.get(c.id) === "confirmado")
       : conversations;
-    // Quem respondeu sempre em evidência no topo
-    return [...base].sort((a, b) => Number(respondidasIds.has(b.id)) - Number(respondidasIds.has(a.id)));
-  }, [conversations, filter, campanhaConvIds, respondidasIds]);
+    return [...base].sort((a, b) => {
+      const acceptedDifference =
+        Number(optInByConversation.get(b.id) === "confirmado") -
+        Number(optInByConversation.get(a.id) === "confirmado");
+      if (acceptedDifference !== 0) return acceptedDifference;
+      if (
+        optInByConversation.get(a.id) === "confirmado" &&
+        optInByConversation.get(b.id) === "confirmado"
+      ) {
+        return new Date(b.last_message_at || b.created_at).getTime() -
+          new Date(a.last_message_at || a.created_at).getTime();
+      }
+      return Number(respondidasIds.has(b.id)) - Number(respondidasIds.has(a.id));
+    });
+  }, [conversations, filter, campanhaConvIds, respondidasIds, optInByConversation]);
 
 
   // 24h window from last inbound message
@@ -246,8 +328,9 @@ export default function AtendimentoCloud() {
       campanha: conversations.filter((c) => campanhaConvIds.has(c.id)).length,
       ia: conversations.filter((c) => c.status === "active").length,
       humano: conversations.filter((c) => c.status === "handoff").length,
+      aceitaram: conversations.filter((c) => optInByConversation.get(c.id) === "confirmado").length,
     }),
-    [conversations, campanhaConvIds, respondidasIds]
+    [conversations, campanhaConvIds, respondidasIds, optInByConversation]
   );
 
 
@@ -347,7 +430,7 @@ export default function AtendimentoCloud() {
         <Card className="md:col-span-1 flex flex-col overflow-hidden">
           <div className="p-3 border-b">
             <Tabs value={filter} onValueChange={(v) => setFilter(v as any)}>
-              <TabsList className="w-full grid grid-cols-5">
+              <TabsList className="w-full h-auto grid grid-cols-3 gap-1">
                 {FILTERS.map((f) => (
                   <TabsTrigger key={f.value} value={f.value} className="text-xs">
                     {f.label}
@@ -365,6 +448,7 @@ export default function AtendimentoCloud() {
             ) : (
               filtered.map((c) => {
                 const respondeu = respondidasIds.has(c.id);
+                const optInStatus = optInByConversation.get(c.id);
                 return (
                 <button
                   key={c.id}
@@ -384,6 +468,15 @@ export default function AtendimentoCloud() {
                       <div className={`truncate text-sm ${respondeu ? "font-bold" : "font-medium"}`}>
                         {c.contact_name || c.contact_number}
                       </div>
+                      {optInStatus && (
+                        <span
+                          className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${
+                            optInStatus === "confirmado" ? "bg-green-500" : "bg-red-500"
+                          }`}
+                          title={optInStatus === "confirmado" ? "Aceitou" : "Recusou"}
+                          aria-label={optInStatus === "confirmado" ? "Aceitou" : "Recusou"}
+                        />
+                      )}
                     </div>
                     <div className="flex items-center gap-1">
                       {campanhaConvIds.has(c.id) && (
@@ -432,6 +525,12 @@ export default function AtendimentoCloud() {
 
                 </div>
                 <div className="flex items-center gap-2">
+                  {optInByConversation.get(selected.id) === "confirmado" && (
+                    <Badge className="bg-green-600 text-white">Aceitou</Badge>
+                  )}
+                  {optInByConversation.get(selected.id) === "recusado" && (
+                    <Badge className="bg-red-600 text-white">Recusou</Badge>
+                  )}
                   {statusBadge(selected.status)}
                   {selected.status === "handoff" ? (
                     <Button size="sm" variant="outline" onClick={() => updateStatus("active")}>

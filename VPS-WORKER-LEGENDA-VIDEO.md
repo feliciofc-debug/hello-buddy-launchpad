@@ -113,9 +113,8 @@ enable='between(t,0.00,2.40)', ... " \
 Onde: `FS = max(fontsize_min, largura * fontsize_ratio)`,
 `BW = max(3, FS * contorno_ratio)`, `PAD = FS * caixa_padding_ratio`,
 `Y = altura * pos_y_ratio` deslocado por linha em `FS * 1.28`.
-Cada linha é medida pela largura real da fonte com Pillow e só é aceita quando
-`largura_do_texto + 2 * padding + 2 * contorno <= 84% da largura do vídeo`.
-Máximo de 80 segmentos e 3 linhas por segmento.
+As linhas são quebradas com `textwrap` usando `max_chars_linha`, sem Pillow.
+Máximo de 80 segmentos e `max_linhas` por segmento.
 
 ## 4. Variáveis do `.env`
 
@@ -152,7 +151,7 @@ services:
     command: >
       bash -lc "apt-get update &&
       apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core &&
-      pip install --no-cache-dir requests pillow &&
+      pip install --no-cache-dir requests &&
       python -u worker.py"
     deploy:
       resources:
@@ -162,6 +161,12 @@ services:
 ```
 
 `worker.py`:
+
+> A fonte oficial agora é o arquivo versionado
+> `vps/render-worker/worker.py`. Copie esse arquivo para
+> `/opt/render-worker/worker.py`; o bloco abaixo documenta a versão original
+> do worker e não deve mais ser usado para atualização da VPS. O container de
+> produção instala somente `requests`; ele **não instala Pillow**.
 
 ```python
 import os, time, json, glob, shutil, subprocess, tempfile, requests
@@ -307,6 +312,28 @@ Subir:
 
 ```bash
 docker compose up -d && docker logs -f render-worker
+```
+
+### Logo opcional da conta
+
+Quando o job devolvido pelo claim contém `logo`, o worker versionado:
+
+- baixa a URL assinada da logo (validade de 1 hora);
+- redimensiona mantendo a proporção, limitada a 38% da largura e 14% da altura;
+- posiciona no canto superior esquerdo, com margens de 5% na horizontal e 4%
+  na vertical;
+- aplica logo e legenda no mesmo filtro/encode do FFmpeg, preservando a
+  transparência do PNG.
+
+Falha de download ou de overlay gera apenas um aviso no log. Nesse caso o
+worker repete o render sem logo, para que a logo nunca derrube o vídeo.
+
+Para atualizar e validar antes de reiniciar:
+
+```bash
+cp vps/render-worker/worker.py /opt/render-worker/worker.py
+python -m unittest vps/render-worker/test_worker.py
+docker compose -f /opt/render-worker/docker-compose.yml up -d
 ```
 
 Teste de conectividade (deve devolver `{"success":true,"job":null}`):

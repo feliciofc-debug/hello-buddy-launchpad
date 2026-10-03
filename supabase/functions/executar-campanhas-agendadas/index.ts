@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+import { brazilianPhoneKey } from "../_shared/owner-phone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -468,19 +469,25 @@ serve(async (req) => {
           for (const r of optinRows || []) {
             const n = normalizePhone(String(r.telefone || ''));
             if (!n) continue;
-            if (r.opt_in_status === 'confirmado') confirmados.add(n);
-            else recusados.add(n);
+            const key = brazilianPhoneKey(n) || n;
+            if (r.opt_in_status === 'confirmado') confirmados.add(key);
+            else recusados.add(key);
           }
 
           // Dedup canônico por telefone normalizado
-          const dedupSet = new Set<string>();
+          const dedupMap = new Map<string, string>();
           for (const raw of [...contatosWhatsappGroups, ...contatosPJListas]) {
             const n = normalizePhone(String(raw || ''));
-            if (n) dedupSet.add(n);
+            if (!n) continue;
+            const key = brazilianPhoneKey(n) || n;
+            const current = dedupMap.get(key);
+            if (!current || n.length > current.length) dedupMap.set(key, n);
           }
 
-          const bruto = Array.from(dedupSet);
-          const todosContatos = bruto.filter(p => confirmados.has(p) && !recusados.has(p));
+          const bruto = Array.from(dedupMap.entries());
+          const todosContatos = bruto
+            .filter(([key]) => confirmados.has(key) && !recusados.has(key))
+            .map(([, phone]) => phone);
           const bloqueadosOptin = bruto.length - todosContatos.length;
 
           const totalBruto = contatosWhatsappGroups.length + contatosPJListas.length;
@@ -701,6 +708,30 @@ serve(async (req) => {
     // 🚫 REMOVIDO: chamada ao executar-envio-programado (afiliado/Baileys).
     // 🚫 REMOVIDO: fila anti-bloqueio do Baileys (processar-fila-afiliado).
     // Migração definitiva para Meta Cloud API oficial — nenhuma fila local é processada aqui.
+    // A mesma batida do cron processa a fila oficial da IA Marketing.
+    try {
+      const campaignWorker = await fetch(
+        `${supabaseUrl}/functions/v1/whatsapp-campanha-processar`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${supabaseKey}`,
+            apikey: supabaseKey,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ batch_limit: 25 }),
+        },
+      );
+      if (!campaignWorker.ok) {
+        console.error(
+          "[ia-marketing-whatsapp] worker falhou:",
+          campaignWorker.status,
+          (await campaignWorker.text()).slice(0, 300),
+        );
+      }
+    } catch (workerError) {
+      console.error("[ia-marketing-whatsapp] worker indisponível:", workerError);
+    }
 
 
     return new Response(

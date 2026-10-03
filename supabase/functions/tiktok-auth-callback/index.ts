@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { getTikTokOAuthCredentials } from '../_shared/tiktok-token.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -38,16 +39,11 @@ serve(async (req) => {
     // ===== Switch de ambiente: sandbox | producao =====
     // TIKTOK_ENV (secret) define qual par de credenciais usar.
     // Fallback: TIKTOK_CLIENT_KEY / TIKTOK_CLIENT_SECRET (produção legado).
-    const TIKTOK_ENV = (Deno.env.get('TIKTOK_ENV') || 'sandbox').toLowerCase()
-    const isSandbox = TIKTOK_ENV !== 'producao' && TIKTOK_ENV !== 'production'
-
-    const TIKTOK_CLIENT_KEY = isSandbox
-      ? (Deno.env.get('TIKTOK_CLIENT_KEY_SANDBOX') || 'sbawx08s3trep7gfvg')
-      : (Deno.env.get('TIKTOK_CLIENT_KEY') || 'aw2ouo90dyp4ju9w')
-
-    const TIKTOK_CLIENT_SECRET = isSandbox
-      ? Deno.env.get('TIKTOK_CLIENT_SECRET_SANDBOX')
-      : Deno.env.get('TIKTOK_CLIENT_SECRET')
+    const {
+      isSandbox,
+      clientKey: TIKTOK_CLIENT_KEY,
+      clientSecret: TIKTOK_CLIENT_SECRET,
+    } = getTikTokOAuthCredentials()
 
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
@@ -116,7 +112,7 @@ serve(async (req) => {
     })
 
     const tokenData: TikTokTokenResponse = await tokenResponse.json()
-    console.log('📦 Token response:', JSON.stringify(tokenData, null, 2))
+    console.log('📦 Token response recebida:', { status: tokenResponse.status, ok: tokenResponse.ok })
 
     if (tokenData.error) {
       console.error('❌ TikTok token error:', tokenData.error)
@@ -141,8 +137,11 @@ serve(async (req) => {
     // Save to database
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     
+    const expiresInSeconds = Number(expires_in)
     const expiresAt = new Date()
-    expiresAt.setSeconds(expiresAt.getSeconds() + expires_in)
+    expiresAt.setSeconds(
+      expiresAt.getSeconds() + (Number.isFinite(expiresInSeconds) ? expiresInSeconds : 86400),
+    )
 
     console.log('📅 Token expira em:', expiresAt.toISOString())
 

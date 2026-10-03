@@ -9,22 +9,29 @@
 // ============================================================
 
 import {
+  aplicarCenasLiterais,
   aplicarDuracaoAlvo,
   aplicarFrasesLiterais,
+  cenasPedidasNoTexto,
   DURACOES_MOTION,
   duracaoEstimada,
   duracaoPedidaNoTexto,
   ESTILOS_MOTION,
   estiloPedidoNoTexto,
+  fundoPedidoNoTexto,
   gerarRoteiroMotion,
   normalizarProps,
   nomesOficiais,
+  removerDestaqueDuplicado,
   TEMPLATE_POR_ESTILO,
   type DuracaoMotion,
+  type CenaMotion,
   type EstiloMotion,
+  type FundoMotion,
   type MotionProps,
 } from "./video-motion.ts";
 import { getTenantLogo } from "./tenant-logo.ts";
+import { AMZ_TENANT_ID } from "./amz-tenant.ts";
 
 export const PLATAFORMAS_OK = ["instagram", "facebook", "linkedin", "tiktok"];
 
@@ -63,10 +70,14 @@ export type EnfileirarInput = {
   arranjo?: number | null;
   /** duração: "curto" (padrão), "medio" ou "longo" */
   duracao?: string | null;
+  /** fundo neutro explícito; ausente mantém a paleta original */
+  fundo?: FundoMotion | null;
   /** duração exata pedida no WhatsApp */
   duracaoAlvoSegundos?: number | null;
   /** frases fornecidas pelo dono que a IA deve copiar literalmente */
   frasesLiterais?: string[] | null;
+  /** cenas ditadas literalmente pelo dono */
+  cenas?: CenaMotion[] | null;
   /** logo específica desta peça (prospecção), sempre dentro da pasta do usuário */
   logoPath?: string | null;
   /** identidade de terceiro: nunca cair na logo cadastrada do tenant */
@@ -95,6 +106,140 @@ export type EnfileirarResult =
     usou_ia: boolean;
   }
   | { ok: false; status: number; error: string; motivo?: string };
+
+export type VideoMotionRedoBase = {
+  source: "draft" | "job";
+  id: string;
+  tema: string;
+  props: MotionProps;
+  legendaPost: string;
+  formato: string;
+  createdAt: string;
+  status: string;
+  token?: string;
+};
+
+export async function buscarBaseRefazerVideoMotion(
+  sb: any,
+  userId: string,
+  telefone: string,
+): Promise<VideoMotionRedoBase | null> {
+  const [draftResult, jobResult] = await Promise.all([
+    sb.from("video_motion_rascunhos")
+      .select("id,tema,props,legenda_post,formato,status,token,created_at")
+      .eq("user_id", userId)
+      .eq("telefone", telefone)
+      .in("status", ["aguardando_aprovacao", "aprovado"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    sb.from("video_motion_jobs")
+      .select("id,titulo,props,legenda_post,formato,status,created_at")
+      .eq("user_id", userId)
+      .eq("telefone", telefone)
+      .eq("status", "concluido")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  const candidates: VideoMotionRedoBase[] = [];
+  if (draftResult.data?.props) {
+    candidates.push({
+      source: "draft",
+      id: String(draftResult.data.id),
+      tema: String(draftResult.data.tema ?? ""),
+      props: draftResult.data.props as MotionProps,
+      legendaPost: String(draftResult.data.legenda_post ?? ""),
+      formato: String(draftResult.data.formato ?? "reels"),
+      createdAt: String(draftResult.data.created_at ?? ""),
+      status: String(draftResult.data.status ?? ""),
+      token: String(draftResult.data.token ?? ""),
+    });
+  }
+  if (jobResult.data?.props) {
+    candidates.push({
+      source: "job",
+      id: String(jobResult.data.id),
+      tema: String(jobResult.data.titulo ?? ""),
+      props: jobResult.data.props as MotionProps,
+      legendaPost: String(jobResult.data.legenda_post ?? ""),
+      formato: String(jobResult.data.formato ?? "reels"),
+      createdAt: String(jobResult.data.created_at ?? ""),
+      status: String(jobResult.data.status ?? ""),
+    });
+  }
+  return candidates.sort((a, b) =>
+    Date.parse(b.createdAt) - Date.parse(a.createdAt)
+  )[0] ?? null;
+}
+
+export function aplicarAjusteRoteiroMotion(
+  base: MotionProps,
+  ajuste: string,
+): { props: MotionProps; changed: boolean } {
+  let props = structuredClone(base);
+  let changed = false;
+  const fundo = fundoPedidoNoTexto(ajuste);
+  if (fundo) {
+    props.fundo = fundo;
+    changed = true;
+  }
+  const quotedReplacement = ajuste.match(
+    /\b(?:troca|trocar|substitui|substituir|corrige|corrigir)\s+["“]([^"”]+)["”]\s+(?:por|para)\s+["“]([^"”]+)["”]/iu,
+  );
+  if (quotedReplacement) {
+    const before = quotedReplacement[1];
+    const after = quotedReplacement[2];
+    const replaceStrings = (value: unknown): unknown => {
+      if (typeof value === "string") return value.split(before).join(after);
+      if (Array.isArray(value)) return value.map(replaceStrings);
+      if (value && typeof value === "object") {
+        return Object.fromEntries(
+          Object.entries(value).map(([key, item]) => [
+            key,
+            replaceStrings(item),
+          ]),
+        );
+      }
+      return value;
+    };
+    props = replaceStrings(props) as MotionProps;
+    changed = true;
+  }
+  const title = ajuste.match(
+    /\b(?:t[ií]tulo|gancho)\s*(?:para|por|:)\s*["“]?(.+?)["”]?\s*$/iu,
+  )?.[1]?.trim();
+  if (title) {
+    props.hook = { ...props.hook, linhas: [title] };
+    changed = true;
+  }
+  const highlight = ajuste.match(
+    /\bdestaque\s*(?:para|por|:)\s*["“]?(.+?)["”]?\s*$/iu,
+  )?.[1]?.trim();
+  if (highlight) {
+    props.hook = { ...props.hook, destaque: highlight };
+    changed = true;
+  }
+  const cenas = cenasPedidasNoTexto(ajuste);
+  if (cenas.length) {
+    props = aplicarCenasLiterais(props, cenas);
+    changed = true;
+  }
+  props.hook = {
+    ...props.hook,
+    linhas: removerDestaqueDuplicado(
+      props.hook.linhas,
+      props.hook.destaque,
+    ),
+  };
+  if (
+    !changed &&
+    /\b(refaz|refazer|faz de novo|fazer de novo)\b/iu.test(ajuste)
+  ) {
+    changed = true;
+  }
+  return { props, changed };
+}
 
 export async function logoDoTenant(sb: any, userId: string): Promise<string | undefined> {
   return (await getTenantLogo(sb, userId))?.storage_path;
@@ -346,6 +491,12 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
   const { sb, userId, tema } = input;
   const duracaoAlvoSegundos = input.duracaoAlvoSegundos ?? (input.props as any)?.duracao_alvo_segundos;
   const frasesLiterais = input.frasesLiterais ?? (input.props as any)?.frases_literais;
+  const cenas = input.cenas ?? (input.props as any)?.roteiro_cenas;
+  const fundo: FundoMotion | undefined = input.fundo === "claro" || input.fundo === "escuro"
+    ? input.fundo
+    : (input.props as any)?.fundo === "claro" || (input.props as any)?.fundo === "escuro"
+      ? (input.props as any).fundo
+      : fundoPedidoNoTexto(tema) ?? undefined;
   const semLogoTenant = input.semLogoTenant === true || (input.props as any)?.sem_logo_tenant === true;
   const logoSolicitada = input.logoPath ?? (input.props as any)?.logo_path;
   const logo = await resolverLogoMotion(sb, userId, {
@@ -369,7 +520,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
     const p: any = input.props;
     const nomes = nomesOficiais(String(p?.marca ?? input.nomeFallback ?? ""), tema);
     props = aplicarDuracaoAlvo(aplicarFrasesLiterais(normalizarProps(
-      { ...p, cores: input.cores ?? p?.cores },
+      { ...p, fundo, cores: input.cores ?? p?.cores },
       {
         marca: String(p?.marca ?? ""),
         site: String(p?.site ?? ""),
@@ -393,7 +544,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
       frasesLiterais,
     });
     props = aplicarDuracaoAlvo(aplicarFrasesLiterais(normalizarProps(
-      { ...r.props, cores: input.cores ?? r.props.cores },
+      { ...r.props, fundo, cores: input.cores ?? r.props.cores },
       {
         marca: r.props.marca,
         site: r.props.site,
@@ -410,7 +561,8 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
   // `site` precisa existir mesmo vazio para sobrescrever defaultProps antigos do bundle.
   // A trilha fica referenciada por ID/path seguro; a URL temporária só nasce no claim.
   props = {
-    ...props,
+    ...aplicarCenasLiterais(props, cenas),
+    fundo,
     site: props.site || "",
     logo_path: logo?.path,
     logoUrl: logo?.url,
@@ -542,6 +694,19 @@ export async function enfileirarVideoMotion(input: EnfileirarInput): Promise<Enf
       .filter((p) => PLATAFORMAS_OK.includes(p))
     : [];
 
+  if (
+    plataformas.includes("tiktok")
+    && userId.toLowerCase() !== AMZ_TENANT_ID.toLowerCase()
+    && /\btech\s*provider\b|amzofertas\.com\.br|\bamz\s+ofertas\b/i.test(JSON.stringify(props))
+  ) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Este template contém marca do provedor e não pode ser enviado ao TikTok. Remova o selo, site ou marca AMZ e gere novamente.",
+      motivo: "tiktok_provider_branding",
+    };
+  }
+
   const { data: job, error: insErr } = await sb
     .from("video_motion_jobs")
     .insert({
@@ -566,6 +731,7 @@ export async function enfileirarVideoMotion(input: EnfileirarInput): Promise<Enf
         estilo: props.estilo ?? "conversa",
         arranjo: props.arranjo ?? 1,
         duracao: props.duracao ?? "curto",
+        fundo: props.fundo ?? null,
         duracao_alvo_segundos: props.duracao_alvo_segundos ?? null,
         render_minutos_estimado: minutosRenderEstimado(duracaoEstimada(props)),
       },

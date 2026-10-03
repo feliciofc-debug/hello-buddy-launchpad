@@ -23,6 +23,9 @@ import { Separator } from "@/components/ui/separator";
 import { getSafeProductLink, getSanitizedProductLinks } from "@/lib/product-links";
 import { sanitizeGeneratedPostText, sanitizeGeneratedPostVariations } from "@/lib/social-post-sanitizer";
 import { prepareImageForInstagramPublish } from "@/lib/prepareImageForInstagramPublish";
+import { BrandImageSettings } from "@/components/BrandImageSettings";
+import { useBrandImageSettings } from "@/hooks/useBrandImageSettings";
+import { edgeFunctionErrorMessage } from "@/lib/edge-function-error";
 
 interface PostVariations {
   opcaoA: string;
@@ -43,22 +46,29 @@ interface ProductAnalysis {
   story: PostVariations;
   whatsapp: PostVariations;
   generatedImage?: string | null;
-  applyLogoOverlay?: boolean;
 }
 
 const IAMarketing = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { isTrial, trial, canUseIAMarketing, canPostToday, isTrialExpired, incrementImageUsage, incrementPostUsage, trialDaysRemaining } = useTrialConfig();
-  const { iaUsado, iaLimite, canGenerate, remaining, incrementUsage: incrementIAUsage } = useIALimit();
+  const {
+    iaUsado,
+    iaLimite,
+    iaStatus,
+    iaError,
+    canGenerate,
+    remaining,
+    incrementUsage: incrementIAUsage,
+  } = useIALimit();
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [resultado, setResultado] = useState<ProductAnalysis | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [userType, setUserType] = useState<string>('empresa');
-  const [logoFile, setLogoFile] = useState<File | null>(null);
   const [referenceFiles, setReferenceFiles] = useState<File[]>([]);
+  const brandSettings = useBrandImageSettings();
   const [publicandoFacebook, setPublicandoFacebook] = useState(false);
   const [publicandoInstagram, setPublicandoInstagram] = useState(false);
   const [publicandoTodas, setPublicandoTodas] = useState(false);
@@ -105,7 +115,12 @@ const IAMarketing = () => {
     }
 
     // PJ limit guard - check monthly IA image limit (all clients)
-    if (!canGenerate()) {
+    if (iaStatus === "loading") return;
+    if (iaStatus === "error") {
+      toast.error(iaError || "Não consegui verificar seu limite agora. Tente novamente.");
+      return;
+    }
+    if (!canGenerate() && iaUsado >= iaLimite) {
       toast.error(t('ai_marketing.ia_limit', { limit: iaLimite }));
       return;
     }
@@ -140,9 +155,6 @@ const IAMarketing = () => {
         referenceFiles.filter(f => f.type.startsWith('image/')).map(fileToBase64)
       );
 
-      // Converter logo separadamente
-      const logoBase64 = logoFile ? await fileToBase64(logoFile) : null;
-
       // 🚀 PILAR 1: Detectar se é URL da Shopee
       const isShopeeUrl = url.trim().toLowerCase().includes('shopee.com');
       
@@ -150,12 +162,19 @@ const IAMarketing = () => {
         body: { 
           url: url.trim(),
           images: imagesBase64,
-          logo: logoBase64,
+          use_saved_logo: brandSettings.useSavedLogo,
+          brand_site_url: brandSettings.useSavedLogo ? null : brandSettings.siteUrl.trim() || null,
           source: isShopeeUrl ? 'shopee' : 'generic'
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        throw new Error(await edgeFunctionErrorMessage(
+          error,
+          data,
+          "Não consegui gerar a imagem agora. Tente novamente.",
+        ));
+      }
       
       if (!data.success) {
         throw new Error(data.error || 'Erro ao analisar produto');
@@ -178,10 +197,7 @@ const IAMarketing = () => {
         story: sanitizedGeneratedPosts.story,
         whatsapp: sanitizedGeneratedPosts.whatsapp,
         generatedImage: data.generatedImage || null,
-        applyLogoOverlay: data.applyLogoOverlay !== false
       };
-
-      // Logo é incorporada pela IA na geração — sem overlay no frontend
 
       setResultado(analysisResult);
       
@@ -251,39 +267,6 @@ const IAMarketing = () => {
 
   const removeReferenceFile = (index: number) => {
     setReferenceFiles(prev => prev.filter((_, i) => i !== index));
-  };
-
-  // Composite logo over generated image using Canvas
-  const compositeImageWithLogo = async (baseImageUrl: string, logoBase64: string): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) { reject('No canvas context'); return; }
-
-      const baseImg = new Image();
-      baseImg.crossOrigin = 'anonymous';
-      baseImg.onload = () => {
-        canvas.width = baseImg.width;
-        canvas.height = baseImg.height;
-        ctx.drawImage(baseImg, 0, 0);
-
-        const logoImg = new Image();
-        logoImg.onload = () => {
-          const logoMaxWidth = canvas.width * 0.2;
-          const logoScale = Math.min(logoMaxWidth / logoImg.width, 1);
-          const logoW = logoImg.width * logoScale;
-          const logoH = logoImg.height * logoScale;
-          const logoX = canvas.width - logoW - 20;
-          const logoY = canvas.height - logoH - 20;
-          ctx.drawImage(logoImg, logoX, logoY, logoW, logoH);
-          resolve(canvas.toDataURL('image/png'));
-        };
-        logoImg.onerror = () => resolve(baseImageUrl);
-        logoImg.src = logoBase64;
-      };
-      baseImg.onerror = () => reject('Failed to load base image');
-      baseImg.src = baseImageUrl;
-    });
   };
 
   const handleCopy = (text: string, type: string) => {
@@ -510,7 +493,7 @@ const IAMarketing = () => {
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 p-4 md:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto">
         {/* PJ IA Limit Banner */}
-        {!isTrial && iaLimite < 9999 && (
+        {!isTrial && iaStatus === "ready" && iaLimite < 9999 && (
           <div className={`mb-4 p-3 rounded-lg border ${remaining() === 0 ? 'bg-destructive/10 border-destructive' : 'bg-muted/50 border-border'}`}>
             <div className="flex items-center justify-between">
               <span className="text-sm">
@@ -520,6 +503,11 @@ const IAMarketing = () => {
                 <span className="text-sm font-medium text-destructive">{t('ai_marketing.limit_reached')}</span>
               )}
             </div>
+          </div>
+        )}
+        {!isTrial && iaStatus === "error" && (
+          <div className="mb-4 rounded-lg border border-amber-500 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-100">
+            {iaError || "Não consegui verificar seu limite agora. Tente novamente."}
           </div>
         )}
         {isTrial && trial && (
@@ -579,39 +567,41 @@ const IAMarketing = () => {
                     disabled={loading}
                   />
                   
-                  {/* Upload de Logo e Imagens de Referência */}
+                  {/* Marca cadastrada e imagens de referência */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Upload de Logo */}
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">Logo da empresa</Label>
-                      <p className="text-xs text-muted-foreground">A logo será aplicada sobre a imagem gerada sem nenhuma alteração</p>
-                      <div className="border-2 border-dashed rounded-lg p-3 min-h-[80px] flex items-center justify-center">
-                        {logoFile ? (
-                          <div className="relative inline-block">
-                            <img src={URL.createObjectURL(logoFile)} className="h-16 w-16 object-contain rounded" alt="Logo" />
-                            <button
-                              type="button"
-                              onClick={() => setLogoFile(null)}
-                              className="absolute -right-2 -top-2 h-5 w-5 p-0 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center text-xs"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </div>
-                        ) : (
-                          <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
-                            <Upload className="h-4 w-4" />
-                            <span>Anexar logo</span>
-                            <input type="file" accept="image/png,image/webp,image/svg+xml" className="hidden"
-                              onChange={(e) => { const f = e.target.files?.[0]; if (f) setLogoFile(f); }} />
-                          </label>
-                        )}
-                      </div>
-                    </div>
+                    <BrandImageSettings
+                      hasSavedLogo={brandSettings.hasSavedLogo}
+                      useSavedLogo={brandSettings.useSavedLogo}
+                      onUseSavedLogoChange={brandSettings.setUseSavedLogo}
+                      savedLogoPreview={brandSettings.savedLogoPreview}
+                      savedColors={brandSettings.savedColors}
+                      siteUrl={brandSettings.siteUrl}
+                      onSiteUrlChange={brandSettings.setSiteUrl}
+                      sitePreview={brandSettings.sitePreview}
+                      loading={brandSettings.loadingBrand}
+                      readingSite={brandSettings.readingSite}
+                      savingLogo={brandSettings.savingLogo}
+                      onPreviewSite={async () => {
+                        try {
+                          await brandSettings.previewSite();
+                        } catch (error) {
+                          toast.error(error instanceof Error ? error.message : "Não foi possível ler o site.");
+                        }
+                      }}
+                      onSaveSiteLogo={async () => {
+                        try {
+                          await brandSettings.saveSiteLogo();
+                          toast.success("Logo salva na sua marca.");
+                        } catch (error) {
+                          toast.error(error instanceof Error ? error.message : "Não foi possível salvar a logo.");
+                        }
+                      }}
+                    />
 
                     {/* Upload de Imagens de Referência */}
                     <div className="space-y-2">
                       <Label className="text-sm font-medium">Foto base / referências</Label>
-                      <p className="text-xs text-muted-foreground">A 1ª foto pode ser usada como base principal da edição; as demais servem de apoio visual (até 4)</p>
+                      <p className="text-xs text-muted-foreground">A 1ª foto é preservada como base principal e harmonizada com a marca; até 3 fotos adicionais servem de apoio.</p>
                       <div className="border-2 border-dashed rounded-lg p-3 min-h-[80px]">
                         {referenceFiles.length < 4 && (
                           <div className="flex items-center justify-center mb-2">
@@ -645,11 +635,16 @@ const IAMarketing = () => {
                   
                   <Button
                     onClick={handleAnalyze}
-                    disabled={loading || !url.trim()}
+                    disabled={loading || !url.trim() || iaStatus === "loading"}
                     size="lg"
                     className="w-full text-lg py-6 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
                   >
-                    {loading ? (
+                    {iaStatus === "loading" ? (
+                      <>
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                        Verificando seu plano...
+                      </>
+                    ) : loading ? (
                       <>
                         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                         {t('publish.analyzing')}
@@ -707,7 +702,7 @@ const IAMarketing = () => {
                         </button>
                       </div>
 
-                      <p className="text-xs text-gray-500 mt-2">Dica: Copie a imagem, abra o Canva, cole com Ctrl+V e adicione sua logo e texto.</p>
+                      <p className="text-xs text-gray-500 mt-2">A marca cadastrada, quando ativada, já é aplicada no servidor sem redesenhar a logo.</p>
                       <Button
                         onClick={handleDownloadImage}
                         className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"

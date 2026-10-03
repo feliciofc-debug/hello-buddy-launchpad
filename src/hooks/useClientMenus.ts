@@ -31,6 +31,7 @@ const routeToMenuId: Record<string, string> = {
   '/biblioteca': 'ia-marketing',
   '/analytics': 'dashboard',
   '/google-ads': 'configuracoes',
+  '/anuncios-meta': 'configuracoes',
   '/lomadee': 'produtos',
   '/marketplace': 'produtos',
   '/produtos': 'produtos',

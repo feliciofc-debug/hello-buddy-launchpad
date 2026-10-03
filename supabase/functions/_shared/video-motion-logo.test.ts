@@ -18,12 +18,12 @@ Deno.test("normaliza site em Markdown para URL limpa", () => {
 Deno.test("remove destaque repetido do fim das linhas do hook", () => {
   const props = normalizarProps({
     hook: {
-      linhas: ["Iluminação que transforma."],
-      destaque: "transforma.",
+      linhas: ["Sem tempo para cuidar do marketing?"],
+      destaque: "marketing?",
     },
   }, { marca: "Casarão Lustres" });
-  assertEquals(props.hook.linhas, ["Iluminação que"]);
-  assertEquals(props.hook.destaque, "transforma.");
+  assertEquals(props.hook.linhas, ["Sem tempo para cuidar do"]);
+  assertEquals(props.hook.destaque, "marketing?");
 });
 
 function fakeSupabase(rows: Record<string, unknown>) {

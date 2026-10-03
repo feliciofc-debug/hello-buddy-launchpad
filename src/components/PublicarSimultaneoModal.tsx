@@ -324,6 +324,7 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
             page_id: pageId,
             post_text: facebookText,
             image_url: latestImages[0] || null,
+            image_urls: latestImages.length >= 2 ? latestImages : null,
             link_url: incluirLink ? linkProduto : null,
             scheduled_at: scheduledAt,
           }, modoEnvio === "agora");
@@ -359,9 +360,8 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
             platform: "instagram",
             page_id: pageId,
             post_text: instagramText,
-            // Igual ao modal individual: o agendamento de carrossel registra
-            // somente a primeira foto porque a fila não possui image_urls.
             image_url: instagramImages[0],
+            image_urls: instagramImages.length >= 2 ? instagramImages : null,
             link_url: incluirLink ? linkProduto : null,
             scheduled_at: scheduledAt,
           }, modoEnvio === "agora");

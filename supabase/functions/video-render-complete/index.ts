@@ -12,6 +12,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { autorizarWorker, renderCors, respJson } from "../_shared/render-auth.ts";
 import { linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
 import { syncProdutoVideoFromMidia } from "../_shared/sync-produto-video.ts";
+import { rememberDeliveredMediaInteraction } from "../_shared/whatsapp-last-media-interaction.ts";
 
 const MAX_TENTATIVAS = 3;
 
@@ -20,10 +21,11 @@ async function avisarCliente(
   job: any,
   message: string,
   videoUrl?: string,
-) {
-  if (!job.telefone) return;
+  mediaId?: string,
+): Promise<boolean> {
+  if (!job.telefone) return false;
   try {
-    await supabase.functions.invoke("whatsapp-send-message", {
+    const { error } = await supabase.functions.invoke("whatsapp-send-message", {
       body: {
         user_id: job.user_id,
         to: job.telefone,
@@ -31,8 +33,21 @@ async function avisarCliente(
         ...(videoUrl ? { video_url: videoUrl } : {}),
       },
     });
+    if (error) throw error;
+    if (mediaId) {
+      const remembered = await rememberDeliveredMediaInteraction(supabase, {
+        userId: job.user_id,
+        contactNumber: job.telefone,
+        mediaId,
+      });
+      if (!remembered) {
+        console.warn("[video-render-complete] não atualizou last_media_interaction");
+      }
+    }
+    return true;
   } catch (e) {
     console.error("[video-render-complete] aviso WhatsApp falhou:", e);
+    return false;
   }
 }
 
@@ -190,6 +205,7 @@ Deno.serve(async (req) => {
         job,
         `🎬 Pronto! Legenda queimada na tela. *Não publiquei em lugar nenhum.*${blocoCodigo}${blocoLegenda}`,
         videoUrl,
+        midiaId || undefined,
       );
     } else {
       const nomes = plataformas
@@ -202,6 +218,7 @@ Deno.serve(async (req) => {
         job,
         `🎬 Vídeo pronto com a legenda na tela. *Ainda não publiquei nada.*${blocoCodigo}${blocoLegenda}\n\nResponda *APROVAR* que eu publico como *${nomeFormato}* no ${nomes}, ou *CANCELAR* e nada vai ao ar.`,
         videoUrl,
+        midiaId || undefined,
       );
     }
 

@@ -16,6 +16,7 @@
     "@remotion/google-fonts": "^4.0.520",
     "@remotion/renderer": "^4.0.520",
     "@remotion/transitions": "^4.0.520",
+    "playwright": "^1.63.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "remotion": "^4.0.520"

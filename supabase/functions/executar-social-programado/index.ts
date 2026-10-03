@@ -1,9 +1,151 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { normalizeImageUrls } from '../_shared/social-schedule.ts'
+import { buildScheduledPostNotification } from '../_shared/social-post-notification.ts'
+import { publishScheduledTikTok } from '../_shared/tiktok-scheduled-publish.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+}
+
+const RESULT_TEMPLATE_NAME = 'amz_post_agendado_resultado'
+
+async function hasRecentInbound(supabase: any, userId: string, phone: string, now: Date): Promise<boolean> {
+  const { data: conversation } = await supabase
+    .from('whatsapp_cloud_conversations')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('contact_number', phone)
+    .maybeSingle()
+  if (!conversation?.id) return false
+  const since = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString()
+  const { data: inbound } = await supabase
+    .from('whatsapp_cloud_messages')
+    .select('id')
+    .eq('conversation_id', conversation.id)
+    .eq('direction', 'inbound')
+    .gte('created_at', since)
+    .limit(1)
+  return (inbound?.length ?? 0) > 0
+}
+
+async function notifyScheduledSocialToken(
+  supabase: any,
+  supabaseUrl: string,
+  serviceKey: string,
+  userId: string,
+  token: string,
+  now: Date,
+) {
+  const { data: rows, error } = await supabase
+    .from('social_posts_queue')
+    .select('id, platform, status, scheduled_at, error_message, fb_post_id, notificado_em, solicitante_telefone, tiktok_publish_status, tiktok_fail_reason')
+    .eq('user_id', userId)
+    .eq('approval_token', token)
+  if (error || !rows?.length) return
+
+  const notification = buildScheduledPostNotification(rows)
+  if (!notification) return
+
+  const claimedAt = new Date().toISOString()
+  const ids = rows.map((row: any) => row.id)
+  const { data: claimed, error: claimError } = await supabase
+    .from('social_posts_queue')
+    .update({ notificado_em: claimedAt, updated_at: claimedAt })
+    .in('id', ids)
+    .is('notificado_em', null)
+    .select('id')
+  if (claimError || (claimed?.length ?? 0) !== ids.length) return
+
+  const phone = String(rows.find((row: any) => row.solicitante_telefone)?.solicitante_telefone || '')
+  let deliveredOrHandled = false
+  try {
+    if (!phone) {
+      console.warn('[social-notify][sem_solicitante]', { userId, token })
+      deliveredOrHandled = true
+      return
+    }
+
+    if (await hasRecentInbound(supabase, userId, phone, now)) {
+      const response = await fetch(`${supabaseUrl}/functions/v1/whatsapp-send-message`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, to: phone, message: notification.text }),
+      })
+      const result = await response.json().catch(() => ({}))
+      deliveredOrHandled = response.ok && result?.success !== false
+      if (!deliveredOrHandled) console.error('[social-notify][falha_texto_livre]', { userId, token, motivo: result?.motivo })
+      return
+    }
+
+    const { data: template } = await supabase
+      .from('whatsapp_templates')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('nome_meta', RESULT_TEMPLATE_NAME)
+      .eq('idioma', 'pt_BR')
+      .eq('status_meta', 'aprovado')
+      .maybeSingle()
+    if (!template?.id) {
+      console.warn('[social-notify][sem_template_fora_janela]', { userId, token })
+      deliveredOrHandled = true
+      return
+    }
+    const response = await fetch(`${supabaseUrl}/functions/v1/whatsapp-cloud-send-template`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: userId,
+        to: phone,
+        template_id: template.id,
+        variaveis: [notification.scheduledDateText, notification.templateResult],
+        tipo: 'social_post_agendado_resultado',
+        registrar: true,
+      }),
+    })
+    const result = await response.json().catch(() => ({}))
+    deliveredOrHandled = response.ok && result?.success === true
+    if (!deliveredOrHandled) console.error('[social-notify][falha_template]', { userId, token, motivo: result?.motivo })
+  } catch (notifyError) {
+    console.error('[social-notify][erro]', { userId, token, error: (notifyError as Error).message })
+  } finally {
+    if (!deliveredOrHandled) {
+      await supabase.from('social_posts_queue')
+        .update({ notificado_em: null })
+        .in('id', ids)
+        .eq('notificado_em', claimedAt)
+    }
+  }
+}
+
+async function notifyTikTokDeferred(
+  supabase: any,
+  supabaseUrl: string,
+  serviceKey: string,
+  post: any,
+  message: string,
+  now: Date,
+) {
+  const phone = String(post.solicitante_telefone || "")
+  if (!phone || !(await hasRecentInbound(supabase, post.user_id, phone, now))) {
+    console.warn('[tiktok-scheduled][adiado_sem_janela_whatsapp]', { userId: post.user_id, postId: post.id })
+    return
+  }
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/whatsapp-send-message`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: post.user_id,
+        to: phone,
+        message: `⚠️ O TikTok pediu para adiar seu post agendado: ${message} Vou tentar novamente automaticamente.`,
+      }),
+    })
+    if (!response.ok) console.error('[tiktok-scheduled][falha_aviso_adiamento]', { postId: post.id })
+  } catch (error) {
+    console.error('[tiktok-scheduled][erro_aviso_adiamento]', { postId: post.id, error: (error as Error).message })
+  }
 }
 
 serve(async (req) => {
@@ -45,7 +187,13 @@ serve(async (req) => {
       .from('social_posts_queue')
       .select('*')
       .eq('status', 'pendente')
-      .or(`scheduled_at.is.null,scheduled_at.lte.${now.toISOString()}`)
+      .or([
+        'and(scheduled_at.is.null,tiktok_next_retry_at.is.null)',
+        `and(scheduled_at.is.null,tiktok_next_retry_at.lte.${now.toISOString()})`,
+        `and(scheduled_at.lte.${now.toISOString()},tiktok_next_retry_at.is.null)`,
+        `and(scheduled_at.lte.${now.toISOString()},tiktok_next_retry_at.lte.${now.toISOString()})`,
+      ].join(','))
+      .order('scheduled_at', { ascending: true, nullsFirst: true })
       .limit(10)
 
     if (fetchError) {
@@ -57,6 +205,13 @@ serve(async (req) => {
 
       for (const post of pendingPosts) {
         try {
+          if (
+            post.platform === 'tiktok'
+            && post.tiktok_next_retry_at
+            && new Date(post.tiktok_next_retry_at).getTime() > now.getTime()
+          ) {
+            continue
+          }
           if (post.produto_id && post.produto_source === 'produtos') {
             const { data: produto, error: produtoError } = await supabase
               .from('produtos')
@@ -94,6 +249,7 @@ serve(async (req) => {
             .eq('id', post.id)
 
           let publishResult: any
+          const imageUrls = normalizeImageUrls(post.image_urls)
 
           if (post.platform === 'facebook') {
             const response = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-post`, {
@@ -106,15 +262,20 @@ serve(async (req) => {
                 message: post.post_text,
                 page_id: post.page_id || '',
                 user_id: post.user_id,
-                image_url: post.image_url || undefined,
+                ...(imageUrls.length >= 2
+                  ? { image_urls: imageUrls }
+                  : post.video_url
+                  ? { video_url: post.video_url }
+                  : { image_url: post.image_url || undefined }),
               })
             })
             publishResult = await response.json()
           } else if (post.platform === 'instagram') {
-            if (!post.image_url) {
-              throw new Error('Instagram requer imagem')
+            if (!post.image_url && !post.video_url && imageUrls.length < 2) {
+              throw new Error('Instagram requer imagem, vídeo ou carrossel')
             }
-            const response = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-instagram`, {
+            const isCarousel = imageUrls.length >= 2
+            const response = await fetch(`${SUPABASE_URL}/functions/v1/${isCarousel ? 'meta-publish-carousel' : 'meta-publish-instagram'}`, {
               method: 'POST',
               headers: {
                 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
@@ -122,9 +283,17 @@ serve(async (req) => {
               },
                body: JSON.stringify({
                  caption: post.post_text,
-                 image_url: post.image_url,
                  user_id: post.user_id,
                  produto_id: post.produto_id || undefined,
+                 ...(isCarousel
+                   ? { image_urls: imageUrls }
+                   : post.video_url
+                   ? {
+                     video_url: post.video_url,
+                     creation_id: post.instagram_creation_id || undefined,
+                     queue_row_id: post.id,
+                   }
+                   : { image_url: post.image_url }),
                })
             })
             publishResult = await response.json()
@@ -150,6 +319,120 @@ serve(async (req) => {
                 .update({ linkedin_post_urn: publishResult.post_urn })
                 .eq('id', post.id)
             }
+          } else if (post.platform === 'tiktok') {
+            if (!post.video_url) throw new Error('O TikTok aceita apenas vídeo neste agendamento')
+            const tiktokResult = await publishScheduledTikTok(
+              {
+                supabase,
+                supabaseUrl: SUPABASE_URL,
+                serviceKey: SUPABASE_SERVICE_ROLE_KEY,
+                now,
+              },
+              {
+                userId: post.user_id,
+                videoUrl: post.video_url,
+                title: post.post_text || '',
+                source: 'scheduled',
+                privacyLevel: post.tiktok_privacy_level,
+                consentedAt: post.tiktok_consented_at,
+                isCommercialContent: post.tiktok_is_commercial_content,
+                brandOrganic: post.tiktok_brand_organic,
+                brandedContent: post.tiktok_branded_content,
+                videoDurationSec: post.tiktok_video_duration_sec,
+                publishId: post.tiktok_publish_id,
+                postRowId: post.tiktok_post_row_id,
+                processingStartedAt: post.tiktok_processing_started_at,
+                scheduledAt: post.scheduled_at,
+                recordTable: 'social_posts_queue',
+                recordId: post.id,
+              },
+            )
+            const tiktokUpdate = {
+              tiktok_publish_id: tiktokResult.publishId || post.tiktok_publish_id || null,
+              tiktok_post_row_id: tiktokResult.postRowId || post.tiktok_post_row_id || null,
+              tiktok_publish_status: tiktokResult.publishStatus || null,
+              tiktok_processing_started_at: tiktokResult.processingStartedAt
+                || post.tiktok_processing_started_at
+                || null,
+              tiktok_fail_reason: tiktokResult.failReason || null,
+              tiktok_next_retry_at: tiktokResult.retryAt || null,
+              tiktok_retry_count: tiktokResult.state === 'retry'
+                ? Number(post.tiktok_retry_count || 0) + 1
+                : Number(post.tiktok_retry_count || 0),
+              error_message: tiktokResult.state === 'failed' ? tiktokResult.message : null,
+              updated_at: new Date().toISOString(),
+            }
+            if (tiktokResult.state === 'processing' || tiktokResult.state === 'retry') {
+              if (
+                tiktokResult.state === 'retry'
+                && Number(post.tiktok_retry_count || 0) === 0
+                && tiktokResult.retryAt
+                && new Date(tiktokResult.retryAt).getTime() - now.getTime() >= 45 * 60 * 1000
+              ) {
+                await notifyTikTokDeferred(
+                  supabase,
+                  SUPABASE_URL,
+                  SUPABASE_SERVICE_ROLE_KEY,
+                  post,
+                  tiktokResult.message,
+                  now,
+                )
+              }
+              await supabase.from('social_posts_queue')
+                .update({
+                  ...tiktokUpdate,
+                  status: 'pendente',
+                  tiktok_next_retry_at: tiktokResult.retryAt
+                    || new Date(Date.now() + 60_000).toISOString(),
+                })
+                .eq('id', post.id)
+              results.push({
+                id: post.id,
+                platform: post.platform,
+                success: false,
+                retryable: true,
+                state: tiktokResult.state,
+              })
+              continue
+            }
+            if (tiktokResult.state === 'failed') {
+              await supabase.from('social_posts_queue')
+                .update({ ...tiktokUpdate, status: 'erro' })
+                .eq('id', post.id)
+              results.push({ id: post.id, platform: post.platform, success: false, error: tiktokResult.message })
+              continue
+            }
+            publishResult = {
+              success: true,
+              tiktok_state: tiktokResult.state,
+              tiktok_update: tiktokUpdate,
+            }
+          } else {
+            throw new Error(`Plataforma não suportada pelo executor: ${post.platform}`)
+          }
+
+          if (
+            post.platform === 'instagram'
+            && publishResult?.retryable === true
+            && typeof publishResult?.creation_id === 'string'
+          ) {
+            await supabase.from('social_posts_queue')
+              .update({
+                status: 'pendente',
+                error_message: publishResult.error || 'Instagram ainda está processando o vídeo',
+                instagram_creation_id: publishResult.creation_id,
+                instagram_container_status: publishResult.container_status || 'IN_PROGRESS',
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', post.id)
+            results.push({
+              id: post.id,
+              platform: post.platform,
+              success: false,
+              retryable: true,
+              creation_id: publishResult.creation_id,
+            })
+            continue
           }
 
           if (publishResult?.success || publishResult?.post_id) {
@@ -158,7 +441,14 @@ serve(async (req) => {
                 status: 'publicado',
                 fb_post_id: publishResult.post_id || publishResult.id,
                 published_at: now.toISOString(),
-                updated_at: now.toISOString()
+                updated_at: now.toISOString(),
+                ...(post.platform === 'instagram'
+                  ? {
+                    instagram_creation_id: null,
+                    instagram_container_status: 'PUBLISHED',
+                  }
+                  : {}),
+                ...(post.platform === 'tiktok' ? publishResult.tiktok_update : {}),
               })
               .eq('id', post.id)
 
@@ -181,6 +471,18 @@ serve(async (req) => {
             .eq('id', post.id)
 
           results.push({ id: post.id, platform: post.platform, success: false, error: errorMsg })
+        }
+      }
+
+      const notificationGroups = new Map<string, string>()
+      for (const post of pendingPosts) {
+        if (post.approval_token) notificationGroups.set(String(post.approval_token), String(post.user_id))
+      }
+      for (const [token, userId] of notificationGroups) {
+        try {
+          await notifyScheduledSocialToken(supabase, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, userId, token, now)
+        } catch (notifyError) {
+          console.error('[social-notify][nao_bloqueia_executor]', { userId, token, error: (notifyError as Error).message })
         }
       }
     }

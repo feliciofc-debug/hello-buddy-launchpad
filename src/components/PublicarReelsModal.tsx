@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -35,6 +37,22 @@ interface PublishResult {
   facebook?: { ok: boolean; postId?: string; error?: string };
   instagram?: { ok: boolean; postId?: string; error?: string };
 }
+
+interface TikTokCreatorInfo {
+  creator_nickname: string | null;
+  privacy_level_options: string[];
+  comment_disabled: boolean;
+  duet_disabled: boolean;
+  stitch_disabled: boolean;
+  max_video_post_duration_sec: number | null;
+}
+
+const TIKTOK_PRIVACY_LABELS: Record<string, string> = {
+  PUBLIC_TO_EVERYONE: "Público",
+  MUTUAL_FOLLOW_FRIENDS: "Amigos que também seguem você",
+  FOLLOWER_OF_CREATOR: "Seguidores",
+  SELF_ONLY: "Somente eu",
+};
 
 interface PublicarReelsModalProps {
   open: boolean;
@@ -78,6 +96,16 @@ export function PublicarReelsModal({
   const [whatsappLink, setWhatsappLink] = useState("");
   const [postFacebook, setPostFacebook] = useState(!publicadoFacebook);
   const [postInstagram, setPostInstagram] = useState(!publicadoInstagram);
+  const [postTikTok, setPostTikTok] = useState(false);
+  const [tiktokCreator, setTikTokCreator] = useState<TikTokCreatorInfo | null>(null);
+  const [loadingTikTokCreator, setLoadingTikTokCreator] = useState(false);
+  const [tiktokCreatorError, setTikTokCreatorError] = useState("");
+  const [tiktokPrivacyLevel, setTikTokPrivacyLevel] = useState("");
+  const [tiktokCommercialDeclaration, setTikTokCommercialDeclaration] = useState("");
+  const [tiktokMusicConsent, setTikTokMusicConsent] = useState(false);
+  const [tiktokAllowComment, setTikTokAllowComment] = useState(false);
+  const [tiktokAllowDuet, setTikTokAllowDuet] = useState(false);
+  const [tiktokAllowStitch, setTikTokAllowStitch] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [generatingCaption, setGeneratingCaption] = useState(false);
   const [captionOptions, setCaptionOptions] = useState<string[]>([]);
@@ -107,11 +135,56 @@ export function PublicarReelsModal({
   const productName = produto?.nome || produto?.titulo || "";
   const productLink = produto?.link || produto?.link_afiliado || produto?.link_marketplace || "";
 
+  const carregarTikTokCreator = async (userId: string): Promise<TikTokCreatorInfo | null> => {
+    setLoadingTikTokCreator(true);
+    setTikTokCreatorError("");
+    try {
+      const { data, error } = await supabase.functions.invoke("tiktok-creator-info", {
+        body: { user_id: userId },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.message || data?.error || "Não foi possível consultar a conta TikTok");
+
+      const creator: TikTokCreatorInfo = {
+        creator_nickname: data.creator_nickname ?? null,
+        privacy_level_options: Array.isArray(data.privacy_level_options)
+          ? data.privacy_level_options.filter((value: unknown): value is string => typeof value === "string")
+          : [],
+        comment_disabled: !!data.comment_disabled,
+        duet_disabled: !!data.duet_disabled,
+        stitch_disabled: !!data.stitch_disabled,
+        max_video_post_duration_sec:
+          typeof data.max_video_post_duration_sec === "number"
+            ? data.max_video_post_duration_sec
+            : null,
+      };
+      setTikTokCreator(creator);
+      return creator;
+    } catch (error: unknown) {
+      setTikTokCreator(null);
+      setTikTokCreatorError(
+        error instanceof Error ? error.message : "Não foi possível consultar a conta TikTok",
+      );
+      return null;
+    } finally {
+      setLoadingTikTokCreator(false);
+    }
+  };
+
   useEffect(() => {
     if (open) {
       // Reset checkboxes baseado no estado atual de publicação ao abrir
       setPostFacebook(!publicadoFacebook);
       setPostInstagram(!publicadoInstagram);
+      setPostTikTok(false);
+      setTikTokCreator(null);
+      setTikTokCreatorError("");
+      setTikTokPrivacyLevel("");
+      setTikTokCommercialDeclaration("");
+      setTikTokMusicConsent(false);
+      setTikTokAllowComment(false);
+      setTikTokAllowDuet(false);
+      setTikTokAllowStitch(false);
       setAgendar(false);
       setScheduledDate("");
       setScheduledTime("");
@@ -121,6 +194,7 @@ export function PublicarReelsModal({
         const { data: { user } } = await supabase.auth.getUser();
         let defaultWhats = "";
         if (user) {
+          void carregarTikTokCreator(user.id);
           const { data: prof } = await supabase
             .from("profiles")
             .select("whatsapp_link_default" as any)
@@ -384,7 +458,7 @@ export function PublicarReelsModal({
   };
 
   // Validação client-side da duração do vídeo (Instagram: 3-90s, Facebook: até 900s)
-  const validarDuracao = (): Promise<{ ok: boolean; error?: string }> => {
+  const validarDuracao = (): Promise<{ ok: boolean; error?: string; duration?: number }> => {
     return new Promise((resolve) => {
       if (!hasPreloadedVideo) {
         resolve({ ok: true }); // upload manual: confia no FFmpeg
@@ -392,27 +466,36 @@ export function PublicarReelsModal({
       }
       const v = document.createElement("video");
       v.preload = "metadata";
+      let settled = false;
+      const finish = (result: { ok: boolean; error?: string; duration?: number }) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timeout);
+        v.src = "";
+        resolve(result);
+      };
+      const timeout = window.setTimeout(() => finish({ ok: true }), 8000);
       v.onloadedmetadata = () => {
         const dur = v.duration;
         if (!isFinite(dur) || dur <= 0) {
-          resolve({ ok: true }); // não conseguiu ler, deixa API validar
+          finish({ ok: true }); // não conseguiu ler, deixa as APIs atuais validarem
           return;
         }
         if (dur < 3) {
-          resolve({ ok: false, error: `Vídeo muito curto (${dur.toFixed(1)}s). Mínimo: 3 segundos.` });
+          finish({ ok: false, error: `Vídeo muito curto (${dur.toFixed(1)}s). Mínimo: 3 segundos.` });
           return;
         }
         if (postInstagram && dur > 90) {
-          resolve({ ok: false, error: `Vídeo muito longo para Instagram (${dur.toFixed(1)}s). Máximo: 90s. Desmarque IG ou regenere o reel.` });
+          finish({ ok: false, error: `Vídeo muito longo para Instagram (${dur.toFixed(1)}s). Máximo: 90s. Desmarque IG ou regenere o reel.` });
           return;
         }
         if (postFacebook && dur > 900) {
-          resolve({ ok: false, error: `Vídeo muito longo para Facebook Reels (${dur.toFixed(1)}s). Máximo: 15 minutos.` });
+          finish({ ok: false, error: `Vídeo muito longo para Facebook Reels (${dur.toFixed(1)}s). Máximo: 15 minutos.` });
           return;
         }
-        resolve({ ok: true });
+        finish({ ok: true, duration: dur });
       };
-      v.onerror = () => resolve({ ok: true }); // erro de leitura: deixa API validar
+      v.onerror = () => finish({ ok: true }); // erro de leitura: deixa API validar
       v.src = videoUrl!;
     });
   };
@@ -513,8 +596,12 @@ export function PublicarReelsModal({
       toast.error("Escreva uma legenda");
       return;
     }
-    if (!postFacebook && !postInstagram) {
+    if (!postFacebook && !postInstagram && !(agendar && postTikTok)) {
       toast.error("Selecione pelo menos uma rede social");
+      return;
+    }
+    if (postTikTok && !agendar) {
+      toast.error("O TikTok está disponível somente para agendamento.");
       return;
     }
 
@@ -546,6 +633,55 @@ export function PublicarReelsModal({
     if (!validacao.ok) {
       toast.error(validacao.error || "Vídeo inválido");
       return;
+    }
+
+    let creatorTikTokAtual = tiktokCreator;
+    if (agendar && postTikTok) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Usuário não autenticado");
+        return;
+      }
+      // Consulta novamente no momento do agendamento: limites e opções podem mudar no TikTok.
+      creatorTikTokAtual = await carregarTikTokCreator(user.id);
+      if (!creatorTikTokAtual) {
+        toast.error("Não foi possível validar sua conta TikTok. Tente novamente.");
+        return;
+      }
+      if (!tiktokPrivacyLevel) {
+        toast.error("Escolha a privacidade do TikTok.");
+        return;
+      }
+      if (!creatorTikTokAtual.privacy_level_options.includes(tiktokPrivacyLevel)) {
+        toast.error("A opção de privacidade escolhida não está mais disponível.");
+        setTikTokPrivacyLevel("");
+        return;
+      }
+      if (!tiktokCommercialDeclaration) {
+        toast.error("Informe a declaração de conteúdo comercial do TikTok.");
+        return;
+      }
+      if (tiktokCommercialDeclaration === "third_party" && tiktokPrivacyLevel === "SELF_ONLY") {
+        toast.error("Conteúdo de outra marca não pode usar a privacidade “Somente eu”.");
+        return;
+      }
+      if (!tiktokMusicConsent) {
+        toast.error("Confirme o Music Usage do TikTok para agendar.");
+        return;
+      }
+      if (validacao.duration == null) {
+        toast.error("Não foi possível verificar a duração do vídeo para o TikTok.");
+        return;
+      }
+      if (
+        creatorTikTokAtual.max_video_post_duration_sec != null &&
+        validacao.duration > creatorTikTokAtual.max_video_post_duration_sec
+      ) {
+        toast.error(
+          `Vídeo muito longo para esta conta TikTok. Máximo: ${creatorTikTokAtual.max_video_post_duration_sec}s.`,
+        );
+        return;
+      }
     }
 
     setUploading(true);
@@ -592,16 +728,34 @@ export function PublicarReelsModal({
 
       // Se for agendamento, salvar no banco e sair
       if (agendar && scheduledFor) {
+        const canaisAgendados: string[] = [...platforms];
+        if (postTikTok) canaisAgendados.push("tiktok");
+        const isOwnBrand = tiktokCommercialDeclaration === "own_brand";
+        const isThirdParty = tiktokCommercialDeclaration === "third_party";
         const { error: agErr } = await supabase.from("videos_agendados").insert({
           user_id: user.id,
           tipo: "reels",
           video_url: publishVideoUrl!,
           video_nome: videoNome || null,
           caption: buildFinalCaption(caption),
-          canais: platforms,
+          canais: canaisAgendados,
           produto_id: produto?.id || null,
           scheduled_for: scheduledFor.toISOString(),
           status: "pendente",
+          tiktok_privacy_level: postTikTok ? tiktokPrivacyLevel : null,
+          tiktok_is_commercial_content: postTikTok ? isOwnBrand || isThirdParty : null,
+          tiktok_brand_organic: postTikTok ? isOwnBrand : null,
+          tiktok_branded_content: postTikTok ? isThirdParty : null,
+          tiktok_consented_at: postTikTok ? new Date().toISOString() : null,
+          tiktok_creator_nickname: postTikTok ? creatorTikTokAtual?.creator_nickname || null : null,
+          tiktok_video_duration_sec: postTikTok ? validacao.duration ?? null : null,
+          metadata: postTikTok
+            ? {
+                tiktok_disable_comment: !tiktokAllowComment,
+                tiktok_disable_duet: !tiktokAllowDuet,
+                tiktok_disable_stitch: !tiktokAllowStitch,
+              }
+            : null,
         });
         if (agErr) throw agErr;
         toast.success(`📅 Reels agendado para ${scheduledFor.toLocaleString("pt-BR")}`);
@@ -1020,7 +1174,27 @@ export function PublicarReelsModal({
                   )}
                 </label>
               </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="reels-tiktok"
+                  checked={postTikTok}
+                  disabled={!agendar}
+                  onCheckedChange={(v) => setPostTikTok(!!v)}
+                />
+                <label
+                  htmlFor="reels-tiktok"
+                  className={`text-sm flex items-center gap-1 ${agendar ? "cursor-pointer" : "opacity-60 cursor-not-allowed"}`}
+                >
+                  <span className="font-semibold">♪</span>
+                  TikTok (agendamento)
+                </label>
+              </div>
             </div>
+            {!agendar && (
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                Ative “Agendar para depois” para selecionar o TikTok. A publicação imediata não é alterada.
+              </p>
+            )}
           </div>
 
           {/* Agendamento (apenas vídeos pré-carregados) */}
@@ -1029,7 +1203,10 @@ export function PublicarReelsModal({
               <label className="flex items-center gap-2 cursor-pointer">
                 <Checkbox
                   checked={agendar}
-                  onCheckedChange={(c) => setAgendar(!!c)}
+                  onCheckedChange={(c) => {
+                    setAgendar(!!c);
+                    if (!c) setPostTikTok(false);
+                  }}
                   disabled={uploading}
                 />
                 <CalendarClock className="h-4 w-4" />
@@ -1058,6 +1235,112 @@ export function PublicarReelsModal({
                     />
                   </div>
                 </div>
+              )}
+
+              {agendar && postTikTok && (
+                <Card className="ml-6 p-3 space-y-4">
+                  <div>
+                    <p className="text-sm font-medium">Configuração do TikTok</p>
+                    {loadingTikTokCreator ? (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                        <Loader2 className="h-3 w-3 animate-spin" /> Consultando conta em tempo real...
+                      </p>
+                    ) : tiktokCreator ? (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Conta: <span className="font-medium text-foreground">{tiktokCreator.creator_nickname || "Sem apelido"}</span>
+                      </p>
+                    ) : (
+                      <Alert variant="destructive" className="mt-2">
+                        <AlertDescription className="text-xs">
+                          {tiktokCreatorError || "Conta TikTok indisponível."}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Privacidade (obrigatória)</Label>
+                    <RadioGroup value={tiktokPrivacyLevel} onValueChange={setTikTokPrivacyLevel}>
+                      {tiktokCreator?.privacy_level_options.map((option) => (
+                        <div key={option} className="flex items-center gap-2">
+                          <RadioGroupItem value={option} id={`schedule-tiktok-${option}`} />
+                          <Label htmlFor={`schedule-tiktok-${option}`} className="font-normal cursor-pointer">
+                            {TIKTOK_PRIVACY_LABELS[option] || option}
+                          </Label>
+                        </div>
+                      ))}
+                    </RadioGroup>
+                    {!tiktokPrivacyLevel && (
+                      <p className="text-xs text-muted-foreground">Nenhuma opção é selecionada automaticamente.</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Declaração de conteúdo comercial (obrigatória)</Label>
+                    <RadioGroup
+                      value={tiktokCommercialDeclaration}
+                      onValueChange={setTikTokCommercialDeclaration}
+                    >
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem value="non_commercial" id="tiktok-non-commercial" />
+                        <Label htmlFor="tiktok-non-commercial" className="font-normal cursor-pointer">
+                          Não é conteúdo comercial
+                        </Label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem value="own_brand" id="tiktok-own-brand" />
+                        <Label htmlFor="tiktok-own-brand" className="font-normal cursor-pointer">
+                          Promove minha própria marca
+                        </Label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem value="third_party" id="tiktok-third-party" />
+                        <Label htmlFor="tiktok-third-party" className="font-normal cursor-pointer">
+                          Promove uma marca ou terceiro
+                        </Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label>Interações (desligadas por padrão)</Label>
+                    {[
+                      ["Comentários", tiktokAllowComment, setTikTokAllowComment, tiktokCreator?.comment_disabled],
+                      ["Duetos", tiktokAllowDuet, setTikTokAllowDuet, tiktokCreator?.duet_disabled],
+                      ["Stitch", tiktokAllowStitch, setTikTokAllowStitch, tiktokCreator?.stitch_disabled],
+                    ].map(([label, checked, setter, disabled]) => (
+                      <div key={label as string} className="flex items-center justify-between">
+                        <Label className="font-normal">{label as string}</Label>
+                        <Switch
+                          checked={checked as boolean}
+                          disabled={!!disabled}
+                          onCheckedChange={setter as (value: boolean) => void}
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex items-start gap-2 rounded-md border p-3">
+                    <Checkbox
+                      id="tiktok-music-consent"
+                      checked={tiktokMusicConsent}
+                      onCheckedChange={(value) => setTikTokMusicConsent(!!value)}
+                    />
+                    <Label htmlFor="tiktok-music-consent" className="text-xs font-normal cursor-pointer">
+                      Confirmo que li e concordo com o{" "}
+                      <a
+                        href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline text-primary"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        Music Usage Confirmation
+                      </a>{" "}
+                      do TikTok.
+                    </Label>
+                  </div>
+                </Card>
               )}
             </div>
           )}

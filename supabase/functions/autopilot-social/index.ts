@@ -695,6 +695,7 @@ serve(async (req) => {
                 const canais: string[] = []
                 if (config.postar_facebook) canais.push('facebook')
                 if (config.postar_instagram) canais.push('instagram')
+                if ((config as any).postar_tiktok === true) canais.push('tiktok')
 
                 if (canais.length === 0) {
                   console.log('⚠️ [AUTOPILOT VIDEOS] Nenhum canal habilitado — pulando vídeos')
@@ -758,6 +759,9 @@ serve(async (req) => {
                           scheduled_for: horarioVid.toISOString(),
                           status: 'pendente',
                           tentativas: 0,
+                          tiktok_privacy_level: (config as any).postar_tiktok
+                            ? ((config as any).tiktok_privacy_level || null)
+                            : null,
                           metadata: { source: 'autopilot', autopilot_config_id: config.id },
                         })
 

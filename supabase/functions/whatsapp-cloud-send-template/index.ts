@@ -16,7 +16,7 @@
 //
 // Saída (SEMPRE HTTP 200):
 //   { success: true,  message_id }
-//   { success: false, motivo, categoria: 'config'|'template'|'token'|'numero'|'rede' }
+//   { success: false, motivo, categoria: 'config'|'template'|'token'|'numero'|'rede'|'rate_limit'|'quality' }
 //
 // Regras:
 //   - Token/phone_number_id SEMPRE do tenant (whatsapp_config .eq user_id).
@@ -61,10 +61,13 @@ function dateKeySP(d = new Date()): string {
 }
 
 // Classifica erro da Graph API para o executor decidir pausar ou seguir.
-function classifyMetaError(status: number, err: any): "token" | "template" | "numero" | "rede" {
+function classifyMetaError(status: number, err: any): "token" | "template" | "numero" | "rede" | "rate_limit" | "quality" {
   const code = Number(err?.code ?? 0);
   const sub = Number(err?.error_subcode ?? 0);
   const msg = String(err?.message || "").toLowerCase();
+
+  if (status === 429 || code === 4 || code === 80007 || code === 130429) return "rate_limit";
+  if (code === 131048 || code === 131049 || msg.includes("quality")) return "quality";
 
   // Token inválido/expirado, permissão, conta bloqueada → PAUSA a campanha
   if (status === 401 || status === 403) return "token";
@@ -193,7 +196,7 @@ Deno.serve(async (req) => {
 
     let messageId: string | null = null;
     let motivo = "";
-    let categoria: "token" | "template" | "numero" | "rede" = "rede";
+    let categoria: "token" | "template" | "numero" | "rede" | "rate_limit" | "quality" = "rede";
 
     try {
       const r = await fetch(`${META_API}/${cfg.phone_number_id}/messages`, {

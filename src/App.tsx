@@ -24,6 +24,7 @@ import Configuracoes from "./pages/Configuracoes";
 
 import SettingsPage from "./components/SettingsPage";
 import AuthCallbackMetaPage from "./pages/AuthCallbackMetaPage";
+import AuthCallbackMetaAdsPage from "./pages/AuthCallbackMetaAdsPage";
 import IAMarketing from "./pages/IAMarketing";
 import RedesSociais from "./pages/RedesSociais";
 import Biblioteca from "./pages/Biblioteca";
@@ -31,6 +32,7 @@ import Campanhas from "./pages/Campanhas";
 import MeusProdutos from "./pages/MeusProdutos";
 import Midias from "./pages/Midias";
 import GoogleAds from "./pages/GoogleAds";
+import MetaAdsDashboard from "./pages/MetaAdsDashboard";
 import Analytics from "./pages/Analytics";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
@@ -155,12 +157,14 @@ const App = () => (
             <Route path="/campanhas/:id/leads" element={<CampanhaLeads />} />
             <Route path="/campanhas/:campanhaId/leads-descobertos" element={<LeadsDescobertos />} />
             <Route path="/auth/callback/meta" element={<AuthCallbackMetaPage />} />
+            <Route path="/auth/callback/meta-ads" element={<AuthCallbackMetaAdsPage />} />
             <Route path="/ia-marketing" element={<IAMarketing />} />
             <Route path="/configuracoes/redes-sociais" element={<RedesSociais />} />
             <Route path="/biblioteca" element={<Biblioteca />} />
           <Route path="/campanhas" element={<Campanhas />} />
           <Route path="/campanhas/google-ads" element={<GoogleAds />} />
           <Route path="/google-ads" element={<GoogleAds />} />
+          <Route path="/anuncios-meta" element={<MetaAdsDashboard />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/meus-produtos" element={<MeusProdutos />} />
           <Route path="/midias" element={<Midias />} />

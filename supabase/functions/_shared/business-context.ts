@@ -151,7 +151,7 @@ export async function getTenantBusinessContext(
 // ============================================================
 // PROMPT DO CARROSSEL — MESMA METODOLOGIA DA PLATAFORMA
 // Espelha o prompt usado no app (src/components/CarouselGenerator.tsx):
-// capa + N content densos (4-5 tópicos por card) + cta, emojis por linha.
+// capa + N content densos (4-5 tópicos por card) + cta, sem emojis.
 // ============================================================
 export function buildCarouselPrompt(opts: {
   tema: string;
@@ -165,12 +165,12 @@ export function buildCarouselPrompt(opts: {
   const waLink = opts.business?.atendimentoWaLink || null;
   const ctaBlock = tel && waLink
     ? `\nCTA DE ATENDIMENTO (OBRIGATÓRIO):
-- No slide "cta", convide para falar no WhatsApp e mostre o número ${tel} numa linha do body. Ex.: body "💬 Fale com a gente no WhatsApp\\n📱 ${tel}", ctaLabel "Falar no WhatsApp".
+- No slide "cta", convide para falar no WhatsApp e mostre o número ${tel} numa linha do body. Ex.: body "Fale com a gente no WhatsApp\\n${tel}", ctaLabel "Falar no WhatsApp".
 - NÃO escreva o endereço https://wa.me dentro da arte (fica ilegível) — só a chamada + o número.
 - Na "caption", inclua exatamente esta linha antes das hashtags: "Fale com a gente no WhatsApp 👉 ${waLink}".
 - É proibido usar qualquer outro número, link ou canal de contato que não seja esse.\n`
     : `\nCTA DE ATENDIMENTO:
-- No slide "cta", convide para chamar no WhatsApp de forma genérica ("💬 Chama a gente no WhatsApp"), SEM número e SEM link — o contato do negócio não está cadastrado.
+- No slide "cta", convide para chamar no WhatsApp de forma genérica ("Chama a gente no WhatsApp"), SEM número e SEM link — o contato do negócio não está cadastrado.
 - É proibido inventar telefone, link ou canal de contato.\n`;
 
 
@@ -206,8 +206,27 @@ REGRAS:
 - Cada slide content deve ter 4 linhas curtas no body (mínimo 4, máximo 5), separadas por \\n — cada linha é um TÓPICO objetivo, nunca uma frase solta.
 - A capa deve parecer manchete de campanha premium.
 - Legenda com 2 parágrafos + 8-12 hashtags.
-- EMOJIS OBRIGATÓRIOS: Coloque um emoji relevante no INÍCIO de cada título (cover, content e cta). Ex: "🚀 5 Motivos para...", "✅ Automatize suas vendas", "🎯 Comece agora".
-- Nos bullets do body dos slides content, comece CADA linha com um emoji diferente e relevante ao contexto. Ex: "✅ Publicação automática\\n📊 Relatórios em tempo real\\n🎯 Segmentação inteligente\\n💰 Economia de tempo".
-- Use emojis variados e contextuais — evite repetir o mesmo emoji.
+- É PROIBIDO usar emojis nos títulos e no body dos slides; a fonte do render não possui glifos de emoji.
+- Escreva os tópicos sem marcador. O render adiciona o marcador visual automaticamente.
 ${opts.business?.promptBlock ? "- O conteúdo deve falar do negócio descrito no CONTEXTO REAL DO NEGÓCIO. Não invente nome de produto, cliente, número ou prêmio que não esteja lá.\n" : "- Não invente nomes de produtos, números ou prêmios: fale em benefícios verificáveis e genéricos do tema.\n"}- Responda APENAS JSON válido.`;
+}
+
+export function buildProspectDemoCarouselPrompt(params: {
+  tema: string;
+  ramo?: string | null;
+  numSlides: number;
+}): string {
+  const prospectContext = params.ramo?.trim()
+    ? `${params.tema}\n\nRAMO INFORMADO PELO PROSPECT: ${params.ramo.trim()}`
+    : params.tema;
+  return `${buildCarouselPrompt({
+    tema: prospectContext,
+    numSlides: Math.min(5, params.numSlides),
+    business: null,
+  })}
+
+REGRAS DA DEMONSTRAÇÃO:
+- O assunto principal é o pedido atual do prospect.
+- Não cite a marca da plataforma, nem use marca, arroba, telefone, site ou link de WhatsApp.
+- A legenda deve ser neutra, como exemplo que o prospect possa adaptar.`;
 }

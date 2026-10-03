@@ -34,6 +34,7 @@ import {
   type RenderContext,
   type RenderSlide,
 } from "../_shared/carousel-templates/darkPremium.ts";
+import { sanitizeCarouselSlides } from "../_shared/carousel-content.ts";
 import { getTenantLogoDataUrl } from "../_shared/tenant-logo.ts";
 
 const corsHeaders = {
@@ -144,7 +145,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    const list: RenderSlide[] = slides.slice(0, MAX_SLIDES).map((s: any, i: number) => ({
+    const sanitizedSlides = sanitizeCarouselSlides(slides.slice(0, MAX_SLIDES));
+    const list: RenderSlide[] = sanitizedSlides.map((s: any, i: number) => ({
       type: (s?.type === "cover" || s?.type === "cta" ? s.type : "content") as RenderSlide["type"],
       title: String(s?.title ?? "").slice(0, 160),
       body: s?.body ? String(s.body).slice(0, 900) : undefined,

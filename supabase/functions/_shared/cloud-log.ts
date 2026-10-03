@@ -12,6 +12,18 @@ export function normalizePhoneBR(raw: string): string {
   return only.startsWith("55") ? only : `55${only}`;
 }
 
+export function shouldLogOutboundMessage(skipLog: unknown): boolean {
+  return skipLog !== true;
+}
+
+export function processorSkipOutboundLog(alreadyLogged = true): boolean {
+  return alreadyLogged;
+}
+
+export function outboundLogSender(value: unknown): "agent" | "campanha" {
+  return value === "agent" ? "agent" : "campanha";
+}
+
 export async function logOutboundMessage(
   sb: any,
   params: {
@@ -27,6 +39,22 @@ export async function logOutboundMessage(
   try {
     const phone = normalizePhoneBR(params.phone);
     if (!params.userId || !phone) return;
+
+    const wamid = String(params.wamid || "").trim();
+    if (wamid) {
+      const { data: duplicate, error: duplicateError } = await sb
+        .from("whatsapp_cloud_messages")
+        .select("id")
+        .eq("user_id", params.userId)
+        .eq("wamid", wamid)
+        .limit(1)
+        .maybeSingle();
+      if (duplicateError) {
+        console.error("[cloud-log] falha ao verificar wamid existente:", duplicateError.message);
+        return;
+      }
+      if (duplicate?.id) return;
+    }
 
     const now = new Date().toISOString();
 
@@ -63,7 +91,7 @@ export async function logOutboundMessage(
       sender: params.sender || "campanha",
       content: params.content || "",
       message_type: params.messageType || "text",
-      wamid: params.wamid ?? null,
+      wamid: wamid || null,
     });
 
     await sb

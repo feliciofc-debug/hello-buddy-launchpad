@@ -12,6 +12,15 @@ verify_jwt = false
 [functions.meta-auth-callback]
 verify_jwt = false
 
+[functions.meta-ads-oauth-callback]
+verify_jwt = false
+
+[functions.meta-ads-oauth-start]
+verify_jwt = true
+
+[functions.meta-ads-insights]
+verify_jwt = true
+
 [functions.hotmart-auth]
 verify_jwt = false
 
@@ -208,6 +217,12 @@ verify_jwt = false
 [functions.executar-campanhas-agendadas]
 verify_jwt = false
 
+[functions.whatsapp-campanha-enviar]
+verify_jwt = false
+
+[functions.whatsapp-campanha-processar]
+verify_jwt = false
+
 [functions.gerar-video]
 verify_jwt = false
 [functions.insert-produto-afiliado]
@@ -293,3 +308,21 @@ verify_jwt = false
 
 [functions.site-identidade-status]
 verify_jwt = false
+
+[functions.meta-ads-targeting-search]
+verify_jwt = true
+
+[functions.meta-ads-draft]
+verify_jwt = true
+
+[functions.meta-ads-preview]
+verify_jwt = true
+
+[functions.meta-ads-publish]
+verify_jwt = true
+
+[functions.meta-ads-payment-status]
+verify_jwt = true
+
+[functions.meta-ads-campaign-action]
+verify_jwt = true

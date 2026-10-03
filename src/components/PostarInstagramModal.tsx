@@ -243,6 +243,7 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
         page_id: pageId || "",
         post_text: captionFinal,
         image_url: finalImageUrls[0] || null,
+        image_urls: finalImageUrls.length >= 2 ? finalImageUrls : null,
         link_url: incluirLink ? linkProduto : null,
         scheduled_at: scheduledAt,
       }, modoEnvio === "agora");

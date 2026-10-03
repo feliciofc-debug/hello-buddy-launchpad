@@ -8,13 +8,15 @@ const META_SCOPES = [
   "business_management",
 ].join(",");
 
-export const metaRedirectUri = (origin = window.location.origin) =>
-  new URL("/auth/callback/meta", origin).toString();
+export const META_REDIRECT_URI =
+  "https://www.amzofertas.com.br/auth/callback/meta";
 
-export function buildMetaAuthUrl(state: string, origin = window.location.origin): string {
+export const metaRedirectUri = () => META_REDIRECT_URI;
+
+export function buildMetaAuthUrl(state: string): string {
   const url = new URL("https://www.facebook.com/v25.0/dialog/oauth");
   url.searchParams.set("client_id", META_APP_ID);
-  url.searchParams.set("redirect_uri", metaRedirectUri(origin));
+  url.searchParams.set("redirect_uri", META_REDIRECT_URI);
   url.searchParams.set("scope", META_SCOPES);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("state", state);

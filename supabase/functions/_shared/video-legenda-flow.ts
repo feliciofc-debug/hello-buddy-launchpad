@@ -12,6 +12,10 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { COPY_STYLE_PADRAO, type CopyStyle, getCopyStyle } from "./copy-style.ts";
+import {
+  metadataEscolhaLogo,
+  type VideoLegendaLogoAsset,
+} from "./video-legenda-logo.ts";
 
 const sb = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -340,7 +344,7 @@ function detectarEscolha(texto: string): number | null {
 }
 
 function ehConfirmacao(texto: string): boolean {
-  return /\b(sim|pode|publica(r)?|posta(r)?|manda(r)?|envia(r)?|autorizo|confirmo|vai|bora|ok)\b/i.test(
+  return /\b(sim|pode|publica(r)?|posta(r)?|manda(r)?|envia(r)?|autorizo|confirmo|vai|bora|ok|com\s+logo|sem\s+logo)\b/i.test(
     texto || "",
   );
 }
@@ -560,6 +564,7 @@ export async function tratarRespostaFluxoLegenda(params: {
   userId: string;
   telefone: string;
   texto: string;
+  logo?: VideoLegendaLogoAsset | null;
 }): Promise<string | null> {
   const { data: job } = await sb
     .from("video_render_jobs")
@@ -676,14 +681,20 @@ export async function tratarRespostaFluxoLegenda(params: {
           ...(job.metadata || {}),
           copy_letra: letra,
           plataformas_pedidas: alvo.plataformas_pedidas,
+          ...(params.logo
+            ? { logo_bucket: params.logo.bucket, logo_path: params.logo.path }
+            : {}),
         },
       })
       .eq("id", job.id);
 
     // Uma linha curta + UMA pergunta. Sem reimprimir a copy.
+    const confirmar = params.logo
+      ? "Escolha *Gerar com logo* ou *Gerar sem logo*. Se responder só *ENVIAR* ou *PUBLICAR*, gero sem logo."
+      : "Responda *ENVIAR* (só te devolvo o vídeo legendado) ou *PUBLICAR* (te mando pra aprovar e só então publico).";
     return `Legenda *${letra}* registrada ✅ — vai ${
       declararDestino(alvo.formato, alvo.plataformas_pedidas)
-    }\n\nResponda *ENVIAR* (só te devolvo o vídeo legendado) ou *PUBLICAR* (te mando pra aprovar e só então publico).`;
+    }\n\n${confirmar}`;
   }
 
   // ---- aguardando confirmação de publicação ----
@@ -715,6 +726,7 @@ export async function tratarRespostaFluxoLegenda(params: {
           formato: alvo.formato,
           enfileirado_at: new Date().toISOString(),
           plataformas: publicar ? destino : [],
+          metadata: metadataEscolhaLogo(job.metadata, params.texto),
         })
         .eq("id", job.id);
 

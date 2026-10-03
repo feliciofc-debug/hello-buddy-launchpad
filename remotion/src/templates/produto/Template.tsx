@@ -31,6 +31,7 @@ import {
 import { font } from "../../font";
 import { ehClaro, fundoLegenda, rgba, textoSobre } from "../agente/contraste";
 import type { Paleta } from "../agente/Template";
+import { aplicarFundoPaleta, type FundoMotion } from "../base";
 
 export type TemplateProdutoProps = {
   marca: string;
@@ -38,6 +39,7 @@ export type TemplateProdutoProps = {
   site?: string;
   trilhaUrl?: string;
   trilha_volume?: number;
+  fundo?: FundoMotion;
   /** "padrao" hoje; "premium" fica reservado para a fase 2 (IA de vídeo). */
   nivel?: "padrao" | "premium";
   cores: Paleta;
@@ -608,7 +610,8 @@ const LinhaLegenda: React.FC<{ c: Paleta; text: string }> = ({ c, text }) => {
 // ---------- composição ----------
 
 export const TemplateProduto: React.FC<TemplateProdutoProps> = (props) => {
-  const { cores: c, produto, legendas, trilhaUrl } = props;
+  const { produto, legendas, trilhaUrl } = props;
+  const c = aplicarFundoPaleta(props.cores, props.fundo);
   const total = framesTemplateProduto(props);
   const temFicha = (produto.bullets?.length ?? 0) > 0;
   const temPreco = Boolean(produto.preco);

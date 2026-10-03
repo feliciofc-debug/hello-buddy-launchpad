@@ -6,6 +6,8 @@ interface IALimitState {
   usado: number;
   mesReferencia: string;
   loaded: boolean;
+  status: "loading" | "ready" | "error";
+  error: string | null;
 }
 
 /**
@@ -19,26 +21,51 @@ export function useIALimit() {
     usado: 0,
     mesReferencia: "",
     loaded: false,
+    status: "loading",
+    error: null,
   });
   const [userId, setUserId] = useState<string | null>(null);
 
   const mesAtual = new Date().toISOString().slice(0, 7); // "YYYY-MM"
 
   const load = useCallback(async () => {
+    setState((current) => ({
+      ...current,
+      loaded: false,
+      status: "loading",
+      error: null,
+    }));
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        setUserId(null);
+        setState((current) => ({
+          ...current,
+          loaded: true,
+          status: "error",
+          error: "Não consegui verificar seu limite agora. Entre novamente e tente de novo.",
+        }));
+        return;
+      }
       setUserId(user.id);
 
       const { data, error } = await supabase
         .from("pj_clientes_config")
         .select("limite_imagens_ia_mes, imagens_ia_mes_atual, mes_referencia_ia")
         .eq("user_id", user.id)
-        .single();
+        .maybeSingle();
 
-      if (!data || error) {
+      if (error) throw error;
+      if (!data) {
         // Sem config PJ = sem limite (VIP/bypass)
-        setState({ limite: 9999, usado: 0, mesReferencia: mesAtual, loaded: true });
+        setState({
+          limite: 9999,
+          usado: 0,
+          mesReferencia: mesAtual,
+          loaded: true,
+          status: "ready",
+          error: null,
+        });
         return;
       }
 
@@ -61,18 +88,24 @@ export function useIALimit() {
         usado,
         mesReferencia: mesAtual,
         loaded: true,
+        status: "ready",
+        error: null,
       });
     } catch (err) {
       console.error("Erro ao carregar limite IA:", err);
-      setState((s) => ({ ...s, loaded: true }));
+      setState((current) => ({
+        ...current,
+        loaded: true,
+        status: "error",
+        error: "Não consegui verificar seu limite agora. Tente novamente.",
+      }));
     }
   }, [mesAtual]);
 
   useEffect(() => { load(); }, [load]);
 
   const canGenerate = (): boolean => {
-    if (!state.loaded) return false;
-    return state.usado < state.limite;
+    return state.status === "ready" && state.usado < state.limite;
   };
 
   const remaining = (): number => {
@@ -98,6 +131,8 @@ export function useIALimit() {
     iaLimite: state.limite,
     iaUsado: state.usado,
     iaLoaded: state.loaded,
+    iaStatus: state.status,
+    iaError: state.error,
     canGenerate,
     remaining,
     incrementUsage,

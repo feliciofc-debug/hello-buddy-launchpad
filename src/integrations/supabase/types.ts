@@ -1057,6 +1057,7 @@ export type Database = {
           postar_facebook: boolean | null
           postar_instagram: boolean | null
           postar_linkedin: boolean
+          postar_tiktok: boolean
           postar_videos: boolean
           posts_por_dia: number
           produto_fonte: string
@@ -1064,6 +1065,7 @@ export type Database = {
           proxima_execucao: string | null
           repetir_ciclo: boolean | null
           total_publicados: number | null
+          tiktok_privacy_level: string | null
           ultima_execucao: string | null
           ultimo_produto_index: number | null
           ultimo_video_index: number
@@ -1088,6 +1090,7 @@ export type Database = {
           postar_facebook?: boolean | null
           postar_instagram?: boolean | null
           postar_linkedin?: boolean
+          postar_tiktok?: boolean
           postar_videos?: boolean
           posts_por_dia?: number
           produto_fonte?: string
@@ -1095,6 +1098,7 @@ export type Database = {
           proxima_execucao?: string | null
           repetir_ciclo?: boolean | null
           total_publicados?: number | null
+          tiktok_privacy_level?: string | null
           ultima_execucao?: string | null
           ultimo_produto_index?: number | null
           ultimo_video_index?: number
@@ -1119,6 +1123,7 @@ export type Database = {
           postar_facebook?: boolean | null
           postar_instagram?: boolean | null
           postar_linkedin?: boolean
+          postar_tiktok?: boolean
           postar_videos?: boolean
           posts_por_dia?: number
           produto_fonte?: string
@@ -1126,6 +1131,7 @@ export type Database = {
           proxima_execucao?: string | null
           repetir_ciclo?: boolean | null
           total_publicados?: number | null
+          tiktok_privacy_level?: string | null
           ultima_execucao?: string | null
           ultimo_produto_index?: number | null
           ultimo_video_index?: number
@@ -3818,10 +3824,15 @@ export type Database = {
       integrations: {
         Row: {
           access_token: string
+          ad_account_currency: string | null
+          ad_account_id: string | null
+          ad_account_name: string | null
+          ad_accounts: Json
           created_at: string | null
           expires_at: string | null
           id: string
           is_active: boolean | null
+          limite_mensal_anuncios: number
           lomadee_affiliate_id: string | null
           lomadee_app_token: string | null
           lomadee_connected_at: string | null
@@ -3837,10 +3848,15 @@ export type Database = {
         }
         Insert: {
           access_token: string
+          ad_account_currency?: string | null
+          ad_account_id?: string | null
+          ad_account_name?: string | null
+          ad_accounts?: Json
           created_at?: string | null
           expires_at?: string | null
           id?: string
           is_active?: boolean | null
+          limite_mensal_anuncios?: number
           lomadee_affiliate_id?: string | null
           lomadee_app_token?: string | null
           lomadee_connected_at?: string | null
@@ -3856,10 +3872,15 @@ export type Database = {
         }
         Update: {
           access_token?: string
+          ad_account_currency?: string | null
+          ad_account_id?: string | null
+          ad_account_name?: string | null
+          ad_accounts?: Json
           created_at?: string | null
           expires_at?: string | null
           id?: string
           is_active?: boolean | null
+          limite_mensal_anuncios?: number
           lomadee_affiliate_id?: string | null
           lomadee_app_token?: string | null
           lomadee_connected_at?: string | null
@@ -5344,6 +5365,60 @@ export type Database = {
           strategy?: Json | null
           user_id?: string | null
           wuzapi_response?: Json | null
+        }
+        Relationships: []
+      }
+      meta_ads_campanhas: {
+        Row: {
+          ad_id: string | null
+          adset_id: string | null
+          aprovado_em: string | null
+          atualizado_em: string
+          campaign_id: string | null
+          creative_id: string | null
+          criado_em: string
+          duracao_dias: number
+          erro: string | null
+          gasto_maximo: number
+          id: string
+          orcamento_diario: number
+          rascunho: Json
+          status: string
+          user_id: string
+        }
+        Insert: {
+          ad_id?: string | null
+          adset_id?: string | null
+          aprovado_em?: string | null
+          atualizado_em?: string
+          campaign_id?: string | null
+          creative_id?: string | null
+          criado_em?: string
+          duracao_dias?: number
+          erro?: string | null
+          gasto_maximo?: number
+          id?: string
+          orcamento_diario?: number
+          rascunho?: Json
+          status?: string
+          user_id: string
+        }
+        Update: {
+          ad_id?: string | null
+          adset_id?: string | null
+          aprovado_em?: string | null
+          atualizado_em?: string
+          campaign_id?: string | null
+          creative_id?: string | null
+          criado_em?: string
+          duracao_dias?: number
+          erro?: string | null
+          gasto_maximo?: number
+          id?: string
+          orcamento_diario?: number
+          rascunho?: Json
+          status?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -7600,12 +7675,14 @@ export type Database = {
           fb_post_id: string | null
           id: string
           image_url: string | null
+          image_urls: Json | null
           link_no_primeiro_comentario: boolean | null
           link_url: string | null
           linkedin_post_urn: string | null
           origem_fluxo: string
           page_id: string | null
           platform: string
+          notificado_em: string | null
           post_text: string | null
           post_text_linkedin: string | null
           produto_id: string | null
@@ -7613,6 +7690,21 @@ export type Database = {
           published_at: string | null
           scheduled_at: string | null
           status: string | null
+          solicitante_telefone: string | null
+          tiktok_brand_organic: boolean
+          tiktok_branded_content: boolean
+          tiktok_consented_at: string | null
+          tiktok_creator_nickname: string | null
+          tiktok_fail_reason: string | null
+          tiktok_is_commercial_content: boolean
+          tiktok_next_retry_at: string | null
+          tiktok_post_row_id: string | null
+          tiktok_processing_started_at: string | null
+          tiktok_privacy_level: string | null
+          tiktok_publish_id: string | null
+          tiktok_publish_status: string | null
+          tiktok_retry_count: number
+          tiktok_video_duration_sec: number | null
           updated_at: string | null
           user_id: string
           video_url: string | null
@@ -7630,12 +7722,14 @@ export type Database = {
           fb_post_id?: string | null
           id?: string
           image_url?: string | null
+          image_urls?: Json | null
           link_no_primeiro_comentario?: boolean | null
           link_url?: string | null
           linkedin_post_urn?: string | null
           origem_fluxo?: string
           page_id?: string | null
           platform?: string
+          notificado_em?: string | null
           post_text?: string | null
           post_text_linkedin?: string | null
           produto_id?: string | null
@@ -7643,6 +7737,21 @@ export type Database = {
           published_at?: string | null
           scheduled_at?: string | null
           status?: string | null
+          solicitante_telefone?: string | null
+          tiktok_brand_organic?: boolean
+          tiktok_branded_content?: boolean
+          tiktok_consented_at?: string | null
+          tiktok_creator_nickname?: string | null
+          tiktok_fail_reason?: string | null
+          tiktok_is_commercial_content?: boolean
+          tiktok_next_retry_at?: string | null
+          tiktok_post_row_id?: string | null
+          tiktok_processing_started_at?: string | null
+          tiktok_privacy_level?: string | null
+          tiktok_publish_id?: string | null
+          tiktok_publish_status?: string | null
+          tiktok_retry_count?: number
+          tiktok_video_duration_sec?: number | null
           updated_at?: string | null
           user_id: string
           video_url?: string | null
@@ -7660,12 +7769,14 @@ export type Database = {
           fb_post_id?: string | null
           id?: string
           image_url?: string | null
+          image_urls?: Json | null
           link_no_primeiro_comentario?: boolean | null
           link_url?: string | null
           linkedin_post_urn?: string | null
           origem_fluxo?: string
           page_id?: string | null
           platform?: string
+          notificado_em?: string | null
           post_text?: string | null
           post_text_linkedin?: string | null
           produto_id?: string | null
@@ -7673,6 +7784,21 @@ export type Database = {
           published_at?: string | null
           scheduled_at?: string | null
           status?: string | null
+          solicitante_telefone?: string | null
+          tiktok_brand_organic?: boolean
+          tiktok_branded_content?: boolean
+          tiktok_consented_at?: string | null
+          tiktok_creator_nickname?: string | null
+          tiktok_fail_reason?: string | null
+          tiktok_is_commercial_content?: boolean
+          tiktok_next_retry_at?: string | null
+          tiktok_post_row_id?: string | null
+          tiktok_processing_started_at?: string | null
+          tiktok_privacy_level?: string | null
+          tiktok_publish_id?: string | null
+          tiktok_publish_status?: string | null
+          tiktok_retry_count?: number
+          tiktok_video_duration_sec?: number | null
           updated_at?: string | null
           user_id?: string
           video_url?: string | null
@@ -8977,6 +9103,7 @@ export type Database = {
         Row: {
           canais: string[]
           caption: string | null
+          completed_channels: string[]
           created_at: string
           erro: string | null
           id: string
@@ -8988,6 +9115,20 @@ export type Database = {
           scheduled_for: string
           status: string
           tentativas: number
+          tiktok_brand_organic: boolean | null
+          tiktok_branded_content: boolean | null
+          tiktok_consented_at: string | null
+          tiktok_creator_nickname: string | null
+          tiktok_fail_reason: string | null
+          tiktok_is_commercial_content: boolean | null
+          tiktok_next_retry_at: string | null
+          tiktok_post_row_id: string | null
+          tiktok_processing_started_at: string | null
+          tiktok_privacy_level: string | null
+          tiktok_publish_id: string | null
+          tiktok_publish_status: string | null
+          tiktok_retry_count: number
+          tiktok_video_duration_sec: number | null
           tipo: string
           updated_at: string
           user_id: string
@@ -8997,6 +9138,7 @@ export type Database = {
         Insert: {
           canais?: string[]
           caption?: string | null
+          completed_channels?: string[]
           created_at?: string
           erro?: string | null
           id?: string
@@ -9008,6 +9150,20 @@ export type Database = {
           scheduled_for: string
           status?: string
           tentativas?: number
+          tiktok_brand_organic?: boolean | null
+          tiktok_branded_content?: boolean | null
+          tiktok_consented_at?: string | null
+          tiktok_creator_nickname?: string | null
+          tiktok_fail_reason?: string | null
+          tiktok_is_commercial_content?: boolean | null
+          tiktok_next_retry_at?: string | null
+          tiktok_post_row_id?: string | null
+          tiktok_processing_started_at?: string | null
+          tiktok_privacy_level?: string | null
+          tiktok_publish_id?: string | null
+          tiktok_publish_status?: string | null
+          tiktok_retry_count?: number
+          tiktok_video_duration_sec?: number | null
           tipo: string
           updated_at?: string
           user_id: string
@@ -9017,6 +9173,7 @@ export type Database = {
         Update: {
           canais?: string[]
           caption?: string | null
+          completed_channels?: string[]
           created_at?: string
           erro?: string | null
           id?: string
@@ -9028,6 +9185,20 @@ export type Database = {
           scheduled_for?: string
           status?: string
           tentativas?: number
+          tiktok_brand_organic?: boolean | null
+          tiktok_branded_content?: boolean | null
+          tiktok_consented_at?: string | null
+          tiktok_creator_nickname?: string | null
+          tiktok_fail_reason?: string | null
+          tiktok_is_commercial_content?: boolean | null
+          tiktok_next_retry_at?: string | null
+          tiktok_post_row_id?: string | null
+          tiktok_processing_started_at?: string | null
+          tiktok_privacy_level?: string | null
+          tiktok_publish_id?: string | null
+          tiktok_publish_status?: string | null
+          tiktok_retry_count?: number
+          tiktok_video_duration_sec?: number | null
           tipo?: string
           updated_at?: string
           user_id?: string
@@ -9334,6 +9505,7 @@ export type Database = {
           agent_name: string | null
           cargo: string | null
           created_at: string
+          demo_test_phones: string[]
           greeting: string | null
           handoff_rules: Json | null
           id: string
@@ -9356,6 +9528,7 @@ export type Database = {
           agent_name?: string | null
           cargo?: string | null
           created_at?: string
+          demo_test_phones?: string[]
           greeting?: string | null
           handoff_rules?: Json | null
           id?: string
@@ -9378,6 +9551,7 @@ export type Database = {
           agent_name?: string | null
           cargo?: string | null
           created_at?: string
+          demo_test_phones?: string[]
           greeting?: string | null
           handoff_rules?: Json | null
           id?: string

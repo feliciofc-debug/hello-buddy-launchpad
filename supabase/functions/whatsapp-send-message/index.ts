@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { toMetaSafeImageUrl } from '../_shared/meta-media.ts'
-import { logOutboundMessage } from '../_shared/cloud-log.ts'
+import { logOutboundMessage, outboundLogSender, shouldLogOutboundMessage } from '../_shared/cloud-log.ts'
 
 
 
@@ -24,12 +24,17 @@ serve(async (req) => {
     const {
       user_id, to, message, template_name, template_language,
       image_url, video_url, document_url, document_filename,
+      skip_log, log_sender,
       // vCard (cartão de contato clicável) — Meta Cloud API type:contacts
       contact_card, // { nome: string, telefone: string }
       // Lista interativa (1 toque) — usada p/ escolher cor do carrossel, etc.
       // { body: string, button: string, header?: string, footer?: string,
       //   rows: [{ id, title, description? }] }  (máx 10 rows)
       interactive_list,
+      // Botões de resposta rápida (máx 3).
+      // { body: string, header?: string, footer?: string,
+      //   buttons: [{ id, title }] }
+      interactive_buttons,
     } = body
 
 
@@ -68,7 +73,31 @@ serve(async (req) => {
 
     let messagePayload: any
 
-    if (interactive_list?.rows?.length) {
+    if (interactive_buttons?.buttons?.length) {
+      const buttons = interactive_buttons.buttons.slice(0, 3).map((button: any, index: number) => ({
+        type: 'reply',
+        reply: {
+          id: String(button?.id ?? `action_${index}`).slice(0, 256),
+          title: String(button?.title ?? `Opção ${index + 1}`).slice(0, 20),
+        },
+      }))
+      messagePayload = {
+        messaging_product: 'whatsapp',
+        to: to.replace(/\D/g, ''),
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          ...(interactive_buttons.header
+            ? { header: { type: 'text', text: String(interactive_buttons.header).slice(0, 60) } }
+            : {}),
+          body: { text: String(message || interactive_buttons.body || 'Escolha uma opção').slice(0, 1024) },
+          ...(interactive_buttons.footer
+            ? { footer: { text: String(interactive_buttons.footer).slice(0, 60) } }
+            : {}),
+          action: { buttons },
+        },
+      }
+    } else if (interactive_list?.rows?.length) {
       // ============================================================
       // LISTA INTERATIVA (type:interactive/list) — 1 toque, até 10 opções.
       // Usada quando 3 reply-buttons não bastam (ex: paleta de cores).
@@ -192,16 +221,19 @@ serve(async (req) => {
 
     console.log('✅ Mensagem enviada:', result.messages?.[0]?.id)
 
-    // Registra no monitor de conversas (para acompanhar campanhas em tempo real)
-    await logOutboundMessage(supabase, {
-      userId: user_id,
-      phone: String(to),
-      content: message || (interactive_list ? `🎨 ${interactive_list.body || 'lista de opções'}` : (document_url ? `📄 ${document_filename || 'documento'}` : (video_url ? '🎬 vídeo' : (image_url ? '🖼️ imagem' : (contact_card ? '📇 cartão de contato' : ''))))),
-      messageType: interactive_list ? 'interactive' : document_url ? 'document' : video_url ? 'video' : image_url ? 'image' : contact_card ? 'contacts' : template_name ? 'template' : 'text',
+    // O processor já registra a própria resposta; campanhas e convites
+    // continuam usando este log central.
+    if (shouldLogOutboundMessage(skip_log)) {
+      await logOutboundMessage(supabase, {
+        userId: user_id,
+        phone: String(to),
+        content: message || (interactive_list ? `🎨 ${interactive_list.body || 'lista de opções'}` : (document_url ? `📄 ${document_filename || 'documento'}` : (video_url ? '🎬 vídeo' : (image_url ? '🖼️ imagem' : (contact_card ? '📇 cartão de contato' : ''))))),
+        messageType: interactive_list ? 'interactive' : document_url ? 'document' : video_url ? 'video' : image_url ? 'image' : contact_card ? 'contacts' : template_name ? 'template' : 'text',
 
-      wamid: result.messages?.[0]?.id ?? null,
-      sender: 'campanha',
-    })
+        wamid: result.messages?.[0]?.id ?? null,
+        sender: outboundLogSender(log_sender),
+      })
+    }
 
     return new Response(JSON.stringify({
       success: true,

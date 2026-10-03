@@ -37,6 +37,8 @@ export const AutopilotConfig = () => {
     ultimo_produto_index: 0,
     modo_geracao: "padrao" as "padrao" | "engajamento",
     postar_videos: false,
+    postar_tiktok: false,
+    tiktok_privacy_level: "",
     videos_por_dia: 1,
   });
 
@@ -147,6 +149,8 @@ export const AutopilotConfig = () => {
         ativo: config.ativo,
         modo_geracao: config.modo_geracao,
         postar_videos: config.postar_videos,
+        postar_tiktok: config.postar_tiktok,
+        tiktok_privacy_level: config.tiktok_privacy_level || null,
         videos_por_dia: config.videos_por_dia,
         updated_at: new Date().toISOString(),
       };
@@ -365,20 +369,61 @@ export const AutopilotConfig = () => {
           </div>
 
           {config.postar_videos && (
-            <div className="space-y-2 pl-3 border-l-2 border-purple-500/40">
-              <Label>Reels por dia</Label>
-              <Select
-                value={String(config.videos_por_dia)}
-                onValueChange={(v) => setConfig(prev => ({ ...prev, videos_por_dia: parseInt(v) }))}
-              >
-                <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
-                <SelectContent className="bg-background">
-                  <SelectItem value="1">1 Reel por dia</SelectItem>
-                  <SelectItem value="2">2 Reels por dia</SelectItem>
-                  <SelectItem value="3">3 Reels por dia</SelectItem>
-                  <SelectItem value="5">5 Reels por dia</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="space-y-4 pl-3 border-l-2 border-purple-500/40">
+              <div className="space-y-2">
+                <Label>Reels por dia</Label>
+                <Select
+                  value={String(config.videos_por_dia)}
+                  onValueChange={(v) => setConfig(prev => ({ ...prev, videos_por_dia: parseInt(v) }))}
+                >
+                  <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-background">
+                    <SelectItem value="1">1 Reel por dia</SelectItem>
+                    <SelectItem value="2">2 Reels por dia</SelectItem>
+                    <SelectItem value="3">3 Reels por dia</SelectItem>
+                    <SelectItem value="5">5 Reels por dia</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-3 rounded-lg border bg-background p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <Label className="text-sm font-semibold">Enviar vídeos ao TikTok</Label>
+                    <p className="text-[11px] text-muted-foreground">
+                      O piloto envia somente para os rascunhos/inbox do TikTok. Ele não publica diretamente.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={config.postar_tiktok}
+                    onCheckedChange={(v) => setConfig(prev => ({ ...prev, postar_tiktok: v }))}
+                  />
+                </div>
+
+                {config.postar_tiktok && (
+                  <div className="space-y-2">
+                    <Label>Preferência de privacidade no TikTok</Label>
+                    <Select
+                      value={config.tiktok_privacy_level}
+                      onValueChange={(v) => setConfig(prev => ({ ...prev, tiktok_privacy_level: v }))}
+                    >
+                      <SelectTrigger className="bg-background">
+                        <SelectValue placeholder="Escolha uma preferência (opcional)" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-background">
+                        <SelectItem value="PUBLIC_TO_EVERYONE">Público</SelectItem>
+                        <SelectItem value="MUTUAL_FOLLOW_FRIENDS">Amigos que também seguem você</SelectItem>
+                        <SelectItem value="FOLLOWER_OF_CREATOR">Seguidores</SelectItem>
+                        <SelectItem value="SELF_ONLY">Somente eu</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11px] text-muted-foreground">
+                      Esta é apenas uma preferência para o rascunho. A privacidade final é confirmada no TikTok; não há direct post.
+                    </p>
+                  </div>
+                )}
+              </div>
+
               {totalVideos === 0 && (
                 <p className="text-[11px] text-orange-500">
                   ⚠️ Nenhum vídeo disponível. Faça upload em "Vídeos Enviados" para o autopilot pegar.

@@ -17,6 +17,10 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { AMZ_KNOWLEDGE } from "./agent-soul.ts";
 import { AMZ_TENANT_ID as ADMIN_AMZ_USER_ID } from "./amz-tenant.ts";
+import {
+  normalizeOwnerPhone,
+  ownerPhonesEquivalent,
+} from "./owner-phone.ts";
 
 // Constante legacy (Felicio) — MANTIDA só para retrocompatibilidade em
 // imports antigos. NÃO usar como fonte de verdade em código novo — sempre
@@ -24,15 +28,15 @@ import { AMZ_TENANT_ID as ADMIN_AMZ_USER_ID } from "./amz-tenant.ts";
 export const OWNER_PHONE = "5521967520706";
 export const AGENT_PHONE = "5521980804901";
 
-// Números ADICIONAIS do Felicio no tenant AMZ. O 5521995379550 é o número
-// comercial dele que atende a plataforma Comex IA — é o MESMO dono, então
-// precisa ser reconhecido como chefe (nunca como lead/cliente).
-export const OWNER_ALT_PHONES_AMZ: Record<string, string> = {
-  "5521995379550": "número comercial do Felicio (plataforma Comex IA)",
-};
+// Números adicionais do dono no tenant AMZ. Vazio por enquanto: números de
+// teste devem seguir o fluxo normal de cliente/estranho.
+export const OWNER_ALT_PHONES_AMZ: Record<string, string> = {};
 
 export function isAmzOwnerAltPhone(phone: string): boolean {
-  return Object.prototype.hasOwnProperty.call(OWNER_ALT_PHONES_AMZ, normalizePhone(phone));
+  return Object.prototype.hasOwnProperty.call(
+    OWNER_ALT_PHONES_AMZ,
+    normalizeOwnerPhone(phone),
+  );
 }
 
 
@@ -46,8 +50,13 @@ export type AmzContext = {
 
 export type TenantOwner = { phone: string | null; name: string | null; altPhones: string[] };
 
-function normalizePhone(p: string): string {
-  return (p || "").replace(/\D/g, "");
+export function tenantOwnerMatchesPhone(
+  owner: TenantOwner,
+  phone: unknown,
+): boolean {
+  return [owner.phone, ...owner.altPhones].some((candidate) =>
+    ownerPhonesEquivalent(candidate, phone)
+  );
 }
 
 // Fonte factual única. Duplicar este conteúdo aqui já fez contexto dinâmico
@@ -57,15 +66,30 @@ const AMZ_PLATFORM_FAQ = AMZ_KNOWLEDGE;
 // ---------------------------------------------------------------------------
 // Cache leve por invocação da edge function.
 // ---------------------------------------------------------------------------
-const _ownerCache = new Map<string, TenantOwner>();
+const OWNER_CACHE_TTL_MS = 5_000;
+const _ownerCache = new Map<
+  string,
+  { owner: TenantOwner; expiresAt: number }
+>();
+
+export function clearTenantOwnerCache(tenantUserId?: string): void {
+  if (tenantUserId) {
+    _ownerCache.delete(tenantUserId);
+    return;
+  }
+  _ownerCache.clear();
+}
 
 export async function resolveTenantOwner(
   sb: SupabaseClient,
   tenantUserId: string,
+  options: { fresh?: boolean } = {},
 ): Promise<TenantOwner> {
   if (!tenantUserId) return { phone: null, name: null, altPhones: [] };
   const cached = _ownerCache.get(tenantUserId);
-  if (cached) return cached;
+  if (!options.fresh && cached && cached.expiresAt > Date.now()) {
+    return cached.owner;
+  }
 
   try {
     const { data } = await sb
@@ -75,11 +99,20 @@ export async function resolveTenantOwner(
       .maybeSingle();
 
     const owner: TenantOwner = {
-      phone: normalizePhone(data?.owner_phone || "") || null,
+      phone: normalizeOwnerPhone(data?.owner_phone) || null,
       name: (data?.owner_name || null) as string | null,
-      altPhones: Array.from(new Set(((data?.owner_alt_phones || []) as string[]).map(normalizePhone).filter(Boolean))),
+      altPhones: Array.from(
+        new Set(
+          ((data?.owner_alt_phones || []) as string[])
+            .map(normalizeOwnerPhone)
+            .filter(Boolean),
+        ),
+      ),
     };
-    _ownerCache.set(tenantUserId, owner);
+    _ownerCache.set(tenantUserId, {
+      owner,
+      expiresAt: Date.now() + OWNER_CACHE_TTL_MS,
+    });
     return owner;
   } catch (e) {
     console.error("[amz-context] resolveTenantOwner:", e);
@@ -95,13 +128,13 @@ export async function buildAmzContext(
   contactPhone: string,
   tenantUserId: string,
 ): Promise<AmzContext> {
-  const phone = normalizePhone(contactPhone);
+  const phone = normalizeOwnerPhone(contactPhone);
   const isAmzTenant = tenantUserId === ADMIN_AMZ_USER_ID;
   const owner = await resolveTenantOwner(sb, tenantUserId);
 
   // ---------- OWNER (dono do tenant) ----------
   const isAltOwner = isAmzTenant && isAmzOwnerAltPhone(phone);
-  if ((owner.phone && phone === owner.phone) || owner.altPhones.includes(phone) || isAltOwner) {
+  if (tenantOwnerMatchesPhone(owner, phone) || isAltOwner) {
     if (isAmzTenant) {
       const stats = await collectOwnerStats(sb);
       const block = [
@@ -158,7 +191,7 @@ export async function buildAmzContext(
         .eq("user_id", ADMIN_AMZ_USER_ID)
         .eq("ativo", true);
       const parceiro = (parceiros ?? []).find((c: any) => {
-        const cd = normalizePhone(c.whatsapp || "");
+        const cd = normalizeOwnerPhone(c.whatsapp || "");
         if (!cd) return false;
         return cd === phone || cd.slice(-10) === tail10 || cd.slice(-8) === tail8;
       });
@@ -382,6 +415,6 @@ async function collectClientContext(sb: SupabaseClient, phone: string): Promise<
 export const STRANGER_MSG =
   "Oi! Sou o Pietro, assistente da AMZ Ofertas Pro 👋\n\n" +
   "Vejo que você ainda não é nosso cliente. Se quiser conhecer a plataforma " +
-  "(marketing automatizado + WhatsApp com IA), chama o Felicio direto:\n\n" +
+  "(marketing automatizado + WhatsApp com IA), fala com um consultor da AMZ:\n\n" +
   "📱 wa.me/5521980804901\n\n" +
   "Um abraço!";

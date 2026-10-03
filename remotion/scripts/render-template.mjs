@@ -70,6 +70,12 @@ await renderMedia({
   composition: compositionFinal,
   serveUrl,
   codec: "h264",
+  // Perfil inicial adequado para WhatsApp: reduz bastante o arquivo sem
+  // sacrificar a legibilidade de tipografia e logos.
+  crf: 27,
+  x264Preset: "medium",
+  audioBitrate: "128k",
+  pixelFormat: "yuv420p",
   inputProps,
   outputLocation: outPath,
   puppeteerInstance: browser,
