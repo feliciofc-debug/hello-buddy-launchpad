@@ -477,12 +477,7 @@ export function buildMetaAdsPayloads(context: MetaAdsPublishContext) {
         }
         : undefined,
     },
-    degrees_of_freedom_spec: {
-      creative_features_spec: {
-        standard_enhancements: { enroll_status: "OPT_OUT" },
-        multi_advertiser_ads: { enroll_status: "OPT_OUT" },
-      },
-    },
+    contextual_multi_ads: { enroll_status: "OPT_OUT" },
   };
   return {
     campaign,

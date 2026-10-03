@@ -220,15 +220,13 @@ Deno.test("payload usa padrões fixos, pausados e desliga expansões", () => {
   assertEquals(payloads.campaign.status, "PAUSED");
   assertEquals(payloads.adset.status, "PAUSED");
   assertEquals(payloads.ad.status, "PAUSED");
+  assertEquals("degrees_of_freedom_spec" in payloads.creative, false);
+  const serializedCreative = JSON.stringify(payloads.creative);
+  assertEquals(serializedCreative.includes('"multi_advertiser_ads"'), false);
+  assertEquals(serializedCreative.includes('"standard_enhancements"'), false);
   assertEquals(
-    payloads.creative.degrees_of_freedom_spec.creative_features_spec
-      .standard_enhancements.enroll_status,
-    "OPT_OUT",
-  );
-  assertEquals(
-    payloads.creative.degrees_of_freedom_spec.creative_features_spec
-      .multi_advertiser_ads.enroll_status,
-    "OPT_OUT",
+    payloads.creative.contextual_multi_ads,
+    { enroll_status: "OPT_OUT" },
   );
   assertEquals(payloads.adset.bid_strategy, "LOWEST_COST_WITHOUT_CAP");
   assertEquals(payloads.adset.targeting.age_min, 18);
