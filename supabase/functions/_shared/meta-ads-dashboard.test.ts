@@ -134,7 +134,8 @@ Deno.test("mescla campanhas da plataforma sem gasto e campanhas externas", () =>
 
 Deno.test("campanha recém-publicada aparece em análise sem insights", async () => {
   clearMetaAdsDashboardCache();
-  const now = Date.parse("2026-10-03T12:00:00Z");
+  // 02:30 UTC ainda é 23:30 do dia anterior em São Paulo.
+  const now = Date.parse("2026-10-04T02:30:00Z");
   let observedPeriod: Record<string, unknown> | null = null;
   const result = await getMetaAdsDashboard({
     userId: "tenant",
