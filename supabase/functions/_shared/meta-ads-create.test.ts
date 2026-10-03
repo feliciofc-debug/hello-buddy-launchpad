@@ -235,9 +235,20 @@ Deno.test("payload usa padrões fixos, pausados e desliga expansões", () => {
     { id: "6002714895372", name: "Compradores envolvidos" },
   ]);
   assertEquals(payloads.adset.targeting_automation.advantage_audience, 0);
-  assert(
-    payloads.creative.object_story_spec.link_data?.call_to_action.value.link
-      .includes("text=Ol%C3%A1"),
+  assertEquals(
+    payloads.adset.promoted_object?.whatsapp_phone_number,
+    "5511999999999",
+  );
+  assertEquals(
+    payloads.creative.object_story_spec.link_data?.link,
+    "https://api.whatsapp.com/send",
+  );
+  assertEquals(
+    payloads.creative.object_story_spec.link_data?.call_to_action,
+    {
+      type: "WHATSAPP_MESSAGE",
+      value: { app_destination: "WHATSAPP" },
+    },
   );
 });
 

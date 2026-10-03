@@ -2358,7 +2358,7 @@ export default function MetaAdsDashboard() {
                             <div className="space-y-3 rounded-md border border-green-500 bg-green-50 p-4 dark:bg-green-950">
                             <p className="font-medium text-green-800 dark:text-green-200">
                               <Check className="mr-2 inline h-4 w-4" />
-                              Prévia oficial pronta. Revise e publique explicitamente.
+                              Prévia gerada. Confira acima se a Meta não mostrou nenhum aviso antes de publicar.
                             </p>
                             <Button onClick={publishCampaign} disabled={!!wizardLoading || published}>
                               {wizardLoading === "publish" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

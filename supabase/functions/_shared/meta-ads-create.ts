@@ -381,18 +381,13 @@ export function buildMetaAdsPayloads(context: MetaAdsPublishContext) {
   const ageMax = draft.age_max ?? 65;
   const categories = draft.special_ad_categories ?? [];
   const whatsappDigits = String(whatsappPhoneNumber ?? "").replace(/\D/g, "");
-  const whatsappLink = `https://wa.me/${whatsappDigits}${
-    draft.whatsapp_message
-      ? `?text=${encodeURIComponent(draft.whatsapp_message)}`
-      : ""
-  }`;
   const destinationLink = isWhatsapp
-    ? whatsappLink
+    ? "https://api.whatsapp.com/send"
     : String(draft.destination_url);
   const callToAction = {
     type: isWhatsapp ? "WHATSAPP_MESSAGE" : "LEARN_MORE",
     value: isWhatsapp
-      ? { app_destination: "WHATSAPP", link: destinationLink }
+      ? { app_destination: "WHATSAPP" }
       : { link: destinationLink },
   };
   const endTime = new Date(Date.now() + draft.duration_days * 86_400_000)
@@ -420,7 +415,7 @@ export function buildMetaAdsPayloads(context: MetaAdsPublishContext) {
     promoted_object: isWhatsapp
       ? {
         page_id: pageId,
-        whatsapp_phone_number: whatsappPhoneNumber,
+        whatsapp_phone_number: whatsappDigits,
       }
       : undefined,
     targeting: {
