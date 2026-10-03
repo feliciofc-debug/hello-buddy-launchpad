@@ -76,40 +76,6 @@ export function normalizeMetaAdsPeriod(value: unknown): MetaAdsPeriod {
   return "7_dias";
 }
 
-const SAO_PAULO_TIME_ZONE = "America/Sao_Paulo";
-
-function dateInTimeZone(timestamp: number, timeZone: string): string {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date(timestamp));
-  const values = Object.fromEntries(
-    parts.map((part) => [part.type, part.value]),
-  );
-  return `${values.year}-${values.month}-${values.day}`;
-}
-
-export function metaAdsPeriodParams(
-  period: MetaAdsPeriod,
-  now: number,
-): Record<string, string> {
-  if (period !== "7_dias") {
-    return { date_preset: META_ADS_PERIODS[period].preset };
-  }
-  const today = dateInTimeZone(now, SAO_PAULO_TIME_ZONE);
-  const [year, month, day] = today.split("-").map(Number);
-  const localCalendarDay = Date.UTC(year, month - 1, day);
-  return {
-    time_range: JSON.stringify({
-      since: new Date(localCalendarDay - 6 * 86_400_000)
-        .toISOString().slice(0, 10),
-      until: today,
-    }),
-  };
-}
-
 export function isMetaAdsReportRequest(value: unknown): boolean {
   const text = String(value ?? "")
     .normalize("NFD")
@@ -270,10 +236,7 @@ export async function getMetaAdsReport(input: {
     return `Escolha uma conta de anúncios em ${CONNECT_URL}`;
   }
 
-  const periodParams = metaAdsPeriodParams(period, now);
-  const cacheKey = `${integration.ad_account_id}:${period}:${
-    periodParams.time_range ?? periodParams.date_preset
-  }`;
+  const cacheKey = `${integration.ad_account_id}:${period}`;
   const cached = cacheGet(cacheKey, now);
   if (cached) return cached;
 
@@ -291,9 +254,7 @@ export async function getMetaAdsReport(input: {
         : META_ADS_INSIGHT_FIELDS,
     );
     url.searchParams.set("level", level);
-    Object.entries(periodParams).forEach(([key, value]) =>
-      url.searchParams.set(key, value)
-    );
+    url.searchParams.set("date_preset", META_ADS_PERIODS[period].preset);
     url.searchParams.set("limit", level === "campaign" ? "5" : "1");
     if (level === "campaign") {
       url.searchParams.set("sort", "spend_descending");

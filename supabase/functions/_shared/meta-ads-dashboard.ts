@@ -1,7 +1,7 @@
 import {
   META_ADS_INSIGHT_FIELDS,
+  META_ADS_PERIODS,
   metaAdsActionValue,
-  metaAdsPeriodParams,
   normalizeMetaAdsPeriod,
   type MetaAdsInsight,
   type MetaAdsIntegration,
@@ -204,7 +204,22 @@ const emptySummary = (): MetricSummary => ({
   cost_per_result: null,
 });
 
-export const metaAdsDashboardPeriodParams = metaAdsPeriodParams;
+export function metaAdsDashboardPeriodParams(
+  period: MetaAdsPeriod,
+  now: number,
+): Record<string, string> {
+  if (period !== "7_dias") {
+    return { date_preset: META_ADS_PERIODS[period].preset };
+  }
+  const date = (timestamp: number) =>
+    new Date(timestamp).toISOString().slice(0, 10);
+  return {
+    time_range: JSON.stringify({
+      since: date(now - 6 * 86_400_000),
+      until: date(now),
+    }),
+  };
+}
 
 export function mergeMetaAdsDashboardCampaigns(input: {
   insights: MetaAdsInsight[];

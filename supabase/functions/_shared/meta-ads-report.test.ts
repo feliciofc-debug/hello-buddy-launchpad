@@ -7,7 +7,6 @@ import {
   formatMetaAdsReport,
   getMetaAdsReport,
   isMetaAdsReportRequest,
-  metaAdsPeriodParams,
 } from "./meta-ads-report.ts";
 
 Deno.test("formata relatório Meta Ads com métricas e campanhas", () => {
@@ -107,53 +106,6 @@ Deno.test("cache de 10 minutos evita repetir chamadas", async () => {
   const second = await run();
   assertEquals(second, first);
   assertEquals(fetches, 2);
-});
-
-Deno.test("relatório de 7 dias inclui hoje no fuso de São Paulo", async () => {
-  clearMetaAdsReportCache();
-  const now = Date.parse("2026-10-04T02:30:00Z");
-  const periods: Array<Record<string, unknown>> = [];
-  const report = await getMetaAdsReport({
-    userId: "tenant",
-    period: "7_dias",
-    now,
-    loadIntegration: async () => ({
-      access_token: "segredo",
-      token_expires_at: "2026-11-02T10:00:00Z",
-      ad_account_id: "act_sao_paulo",
-      is_active: true,
-    }),
-    fetchImpl: async (url) => {
-      const parsed = new URL(String(url));
-      periods.push({
-        datePreset: parsed.searchParams.get("date_preset"),
-        timeRange: JSON.parse(
-          parsed.searchParams.get("time_range") || "{}",
-        ),
-      });
-      return Response.json({
-        data: parsed.searchParams.get("level") === "account"
-          ? [{ spend: "0", impressions: "0", reach: "0", clicks: "0" }]
-          : [],
-      });
-    },
-  });
-
-  assertStringIncludes(report, "últimos 7 dias");
-  assertEquals(metaAdsPeriodParams("7_dias", now), {
-    time_range:
-      '{"since":"2026-09-27","until":"2026-10-03"}',
-  });
-  assertEquals(periods, [
-    {
-      datePreset: null,
-      timeRange: { since: "2026-09-27", until: "2026-10-03" },
-    },
-    {
-      datePreset: null,
-      timeRange: { since: "2026-09-27", until: "2026-10-03" },
-    },
-  ]);
 });
 
 Deno.test("erros da Meta não entram no cache", async () => {

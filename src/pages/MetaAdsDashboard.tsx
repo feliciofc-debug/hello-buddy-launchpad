@@ -426,9 +426,6 @@ export default function MetaAdsDashboard() {
   const [serverDraftId, setServerDraftId] = useState<string | null>(null);
   const [serverDrafts, setServerDrafts] = useState<ServerDraft[]>([]);
   const [serverDraftsLoading, setServerDraftsLoading] = useState(true);
-  const [serverDraftsError, setServerDraftsError] = useState<string | null>(
-    null,
-  );
   const [step, setStep] = useState(0);
   const [objective, setObjective] = useState<CampaignObjective>("whatsapp");
   const [destinationUrl, setDestinationUrl] = useState("");
@@ -478,10 +475,8 @@ export default function MetaAdsDashboard() {
   const [paymentOAuthLoading, setPaymentOAuthLoading] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | null>(null);
   const [facebookSdkReady, setFacebookSdkReady] = useState(false);
-  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const restoringHistoryRef = useRef(false);
   const wizardStateRef = useRef<WizardAutosave | null>(null);
-  const dashboardRequestInFlightRef = useRef(false);
 
   const selectedMediaId = selectedMedia?.id ?? "";
   const totalBudget = (Number(dailyBudget) || 0) * (Number(durationDays) || 0);
@@ -674,34 +669,22 @@ export default function MetaAdsDashboard() {
 
   const loadServerDrafts = useCallback(async () => {
     setServerDraftsLoading(true);
-    setServerDraftsError(null);
-    try {
-      const { data: response, error: invokeError } =
-        await supabase.functions.invoke("meta-ads-draft", {
-          body: { action: "list" },
-        });
-      if (invokeError || !response?.ok) {
-        const failure = await getCampaignError(
-          invokeError,
-          response,
-          "Não foi possível carregar os rascunhos.",
-        );
-        if (failure.code === "unauthorized") setSessionExpired(true);
-        setServerDrafts([]);
-        setServerDraftsError(
-          "Não foi possível carregar os rascunhos. Tente atualizar.",
-        );
-      } else {
-        setServerDrafts((response.data ?? []) as ServerDraft[]);
-      }
-    } catch {
-      setServerDrafts([]);
-      setServerDraftsError(
-        "Não foi possível carregar os rascunhos. Tente atualizar.",
+    const { data: response, error: invokeError } =
+      await supabase.functions.invoke("meta-ads-draft", {
+        body: { action: "list" },
+      });
+    if (invokeError || !response?.ok) {
+      const failure = await getCampaignError(
+        invokeError,
+        response,
+        "Não foi possível carregar os rascunhos.",
       );
-    } finally {
-      setServerDraftsLoading(false);
+      if (failure.code === "unauthorized") setSessionExpired(true);
+      setServerDrafts([]);
+    } else {
+      setServerDrafts((response.data ?? []) as ServerDraft[]);
     }
+    setServerDraftsLoading(false);
   }, []);
 
   useEffect(() => {
@@ -1507,8 +1490,6 @@ export default function MetaAdsDashboard() {
   };
 
   const load = useCallback(async (refresh = false) => {
-    if (dashboardRequestInFlightRef.current) return;
-    dashboardRequestInFlightRef.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -1542,7 +1523,6 @@ export default function MetaAdsDashboard() {
         setError({ ok: false, code: failure.code, message: failure.message });
       } else {
         setData(response as DashboardData);
-        setLastUpdatedAt(new Date());
       }
     } catch {
       setData(null);
@@ -1552,38 +1532,12 @@ export default function MetaAdsDashboard() {
         message: "Não foi possível carregar os anúncios agora.",
       });
     } finally {
-      dashboardRequestInFlightRef.current = false;
       setLoading(false);
     }
   }, [period, selectedCampaignId]);
 
   useEffect(() => {
     void load();
-  }, [load]);
-
-  useEffect(() => {
-    let intervalId: number | null = null;
-    const stop = () => {
-      if (intervalId !== null) window.clearInterval(intervalId);
-      intervalId = null;
-    };
-    const start = () => {
-      stop();
-      if (document.visibilityState !== "visible") return;
-      intervalId = window.setInterval(() => {
-        void load(true);
-      }, 5 * 60 * 1000);
-    };
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") start();
-      else stop();
-    };
-    start();
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      stop();
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
   }, [load]);
 
   const changeCampaignStatus = async (
@@ -1791,15 +1745,6 @@ export default function MetaAdsDashboard() {
               />
               Atualizar
             </Button>
-            {lastUpdatedAt && (
-              <span className="whitespace-nowrap text-xs text-muted-foreground">
-                Atualizado às{" "}
-                {lastUpdatedAt.toLocaleTimeString("pt-BR", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </span>
-            )}
           </div>
         </div>
 
@@ -2525,10 +2470,6 @@ export default function MetaAdsDashboard() {
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Carregando rascunhos...
-              </p>
-            ) : serverDraftsError ? (
-              <p className="text-sm text-muted-foreground">
-                {serverDraftsError}
               </p>
             ) : serverDrafts.length ? (
               <div className="space-y-3">
