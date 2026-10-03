@@ -6,6 +6,7 @@ import {
   clearMetaAdsDashboardCache,
   formatMetaAdsDashboardSummary,
   getMetaAdsDashboard,
+  mergeMetaAdsDashboardCampaigns,
 } from "./meta-ads-dashboard.ts";
 
 Deno.test("formata métricas do painel Meta Ads sem inventar resultados", () => {
@@ -85,6 +86,48 @@ Deno.test("token vencido bloqueia consulta e orienta reconexão", async () => {
     assertStringIncludes(result.message, "Reconecte");
   }
   assertEquals(fetches, 0);
+});
+
+Deno.test("mescla campanhas da plataforma sem gasto e campanhas externas", () => {
+  const campaigns = mergeMetaAdsDashboardCampaigns({
+    insights: [{
+      campaign_id: "external-1",
+      campaign_name: "Criada no Gerenciador",
+      spend: "12.50",
+      clicks: "4",
+    }],
+    graphCampaigns: [
+      { id: "platform-1", name: "Campanha AMZ", effective_status: "PAUSED" },
+      { id: "external-1", name: "Criada no Gerenciador", effective_status: "ACTIVE" },
+    ],
+    platformCampaigns: [{
+      id: "local-1",
+      campaign_id: "platform-1",
+      status: "pausado",
+      rascunho: { name: "Campanha AMZ" },
+    }],
+  });
+
+  assertEquals(campaigns.length, 2);
+  assertEquals(campaigns.find((row) => row.id === "platform-1"), {
+    id: "platform-1",
+    graph_id: "platform-1",
+    platform_id: "local-1",
+    source: "platform",
+    name: "Campanha AMZ",
+    status: "PAUSED",
+    spend: 0,
+    clicks: 0,
+    ctr: 0,
+    cpc: 0,
+    result_type: null,
+    results: null,
+    cost_per_result: null,
+  });
+  assertEquals(
+    campaigns.find((row) => row.id === "external-1")?.source,
+    "meta",
+  );
 });
 
 Deno.test("painel reutiliza por 10 minutos apenas resposta de sucesso", async () => {

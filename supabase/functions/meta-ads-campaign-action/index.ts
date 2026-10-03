@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import {
+  calculateMetaAdsMonthlyAvailability,
+  checkMetaAdsReactivationAvailability,
   metaGraphRequest,
   publicMetaAdsError,
 } from "../_shared/meta-ads-create.ts";
@@ -15,6 +17,90 @@ const json = (body: unknown, status = 200) =>
     status,
     headers: { ...CORS, "Content-Type": "application/json" },
   });
+
+async function reactivationAvailability(input: {
+  admin: any;
+  userId: string;
+  integration: {
+    access_token: string;
+    ad_account_id: string;
+    limite_mensal_anuncios: number | string | null;
+  };
+  campaign: {
+    id: string;
+    campaign_id: string;
+    gasto_maximo: number | string | null;
+  };
+}) {
+  const { data: rows, error } = await input.admin
+    .from("meta_ads_campanhas")
+    .select("id,campaign_id,gasto_maximo,status")
+    .eq("user_id", input.userId)
+    .in("status", ["publicando", "publicado", "pausado"]);
+  if (error) throw new Error("monthly_cap_check_failed");
+  const accountInsights = await metaGraphRequest(
+    `${input.integration.ad_account_id}/insights`,
+    {
+      accessToken: input.integration.access_token,
+      params: {
+        fields: "spend",
+        level: "account",
+        date_preset: "this_month",
+        limit: 1,
+      },
+    },
+  );
+  const activeCampaigns: Array<{
+    maximumSpend: number;
+    lifetimeSpent: number;
+  }> = [];
+  await Promise.all((rows ?? [])
+    .filter((row: any) =>
+      row.id !== input.campaign.id && row.status !== "publicando" &&
+      row.campaign_id
+    )
+    .map(async (row: any) => {
+      const remote = await metaGraphRequest(String(row.campaign_id), {
+        accessToken: input.integration.access_token,
+        params: { fields: "effective_status" },
+      });
+      if (remote?.effective_status !== "ACTIVE") return;
+      const insights = await metaGraphRequest(
+        `${row.campaign_id}/insights`,
+        {
+          accessToken: input.integration.access_token,
+          params: { fields: "spend", date_preset: "maximum", limit: 1 },
+        },
+      );
+      activeCampaigns.push({
+        maximumSpend: Number(row.gasto_maximo ?? 0),
+        lifetimeSpent: Number(insights?.data?.[0]?.spend ?? 0),
+      });
+    }));
+  const candidateInsights = await metaGraphRequest(
+    `${input.campaign.campaign_id}/insights`,
+    {
+      accessToken: input.integration.access_token,
+      params: { fields: "spend", date_preset: "maximum", limit: 1 },
+    },
+  );
+  const availability = calculateMetaAdsMonthlyAvailability({
+    monthlyCap: input.integration.limite_mensal_anuncios,
+    actualSpent: Number(accountInsights?.data?.[0]?.spend ?? 0),
+    activeCampaigns,
+    inFlightReservations: (rows ?? [])
+      .filter((row: any) => row.status === "publicando")
+      .map((row: any) => row.gasto_maximo),
+  });
+  return {
+    ...availability,
+    ...checkMetaAdsReactivationAvailability({
+      maximumSpend: input.campaign.gasto_maximo,
+      lifetimeSpent: candidateInsights?.data?.[0]?.spend,
+      available: availability.available,
+    }),
+  };
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
@@ -41,9 +127,9 @@ serve(async (req) => {
   const admin = createClient(url, service);
   const [campaignResult, integrationResult] = await Promise.all([
     admin.from("meta_ads_campanhas")
-      .select("id,status,campaign_id,adset_id,ad_id")
+      .select("id,status,campaign_id,adset_id,ad_id,gasto_maximo")
       .eq("id", id).eq("user_id", user.id).maybeSingle(),
-    admin.from("integrations").select("access_token,token_expires_at")
+    admin.from("integrations").select("access_token,token_expires_at,ad_account_id,limite_mensal_anuncios")
       .eq("user_id", user.id).eq("platform", "meta_ads")
       .eq("is_active", true).maybeSingle(),
   ]);
@@ -90,6 +176,33 @@ serve(async (req) => {
     }
 
     const desired = action === "pause" ? "PAUSED" : "ACTIVE";
+    if (action === "activate") {
+      if (!integration.ad_account_id) {
+        return json({ error: "account_not_selected" }, 409);
+      }
+      const availability = await reactivationAvailability({
+        admin,
+        userId: user.id,
+        integration: {
+          access_token: integration.access_token,
+          ad_account_id: integration.ad_account_id,
+          limite_mensal_anuncios: integration.limite_mensal_anuncios,
+        },
+        campaign: {
+          id: campaign.id,
+          campaign_id: campaign.campaign_id,
+          gasto_maximo: campaign.gasto_maximo,
+        },
+      });
+      if (!availability.ok) {
+        return json({
+          error: "monthly_cap_exceeded",
+          message:
+            `Esta campanha ainda pode gastar até ${availability.requested.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}, mas restam ${availability.available.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} no limite mensal.`,
+          ...availability,
+        }, 409);
+      }
+    }
     // On activation, restore children before the campaign parent.
     const ids = action === "activate"
       ? [campaign.ad_id, campaign.adset_id, campaign.campaign_id]

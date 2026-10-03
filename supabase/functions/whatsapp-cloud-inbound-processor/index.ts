@@ -137,6 +137,7 @@ import {
 } from "../_shared/meta-ads-report.ts";
 import {
   calculateMetaAdsMonthlyAvailability,
+  checkMetaAdsReactivationAvailability,
   hasCompleteMetaAdsEntityIds,
   metaAdsMaximumSpend,
   metaGraphRequest,
@@ -3723,7 +3724,7 @@ async function findMetaAdsCampaign(
 ): Promise<any | null> {
   let query = sb
     .from("meta_ads_campanhas")
-    .select("id, campaign_id, rascunho, status, criado_em")
+    .select("id, campaign_id, adset_id, ad_id, rascunho, status, gasto_maximo, criado_em")
     .eq("user_id", ctx.userId)
     .not("campaign_id", "is", null);
   const value = String(reference ?? "").trim();
@@ -3752,14 +3753,41 @@ async function toolAlterarStatusCampanhaMeta(
   const integrationProblem = metaAdsIntegrationProblem(integration);
   if (integrationProblem || !integration) return integrationProblem!;
   try {
-    const result = status
-      ? await metaAdsGraph(integration, campaign.campaign_id, {
-        method: "POST",
-        params: { status },
-      })
-      : await metaAdsGraph(integration, campaign.campaign_id, {
+    if (status === "ACTIVE") {
+      const availability = await loadMetaAdsMonthlyAvailability(
+        integration,
+        ctx.userId,
+      );
+      const insights = await metaAdsGraph(
+        integration,
+        `${campaign.campaign_id}/insights`,
+        { params: { fields: "spend", date_preset: "maximum", limit: "1" } },
+      );
+      const reactivation = checkMetaAdsReactivationAvailability({
+        maximumSpend: campaign.gasto_maximo,
+        lifetimeSpent: insights?.data?.[0]?.spend,
+        available: availability.available,
+      });
+      if (!reactivation.ok) {
+        return `Não reativei: esta campanha ainda pode gastar até ${metaAdsBrl(reactivation.requested)}, mas restam ${metaAdsBrl(reactivation.available)} no teto mensal de ${metaAdsBrl(availability.cap)}.`;
+      }
+    }
+    let result: any;
+    if (status) {
+      const ids = status === "ACTIVE"
+        ? [campaign.ad_id, campaign.adset_id, campaign.campaign_id]
+        : [campaign.campaign_id];
+      for (const graphId of ids.filter(Boolean)) {
+        result = await metaAdsGraph(integration, String(graphId), {
+          method: "POST",
+          params: { status },
+        });
+      }
+    } else {
+      result = await metaAdsGraph(integration, campaign.campaign_id, {
         params: { fields: "id,name,status,effective_status" },
       });
+    }
     if (status) {
       const { data: saved, error: saveError } = await sb.from(
         "meta_ads_campanhas",

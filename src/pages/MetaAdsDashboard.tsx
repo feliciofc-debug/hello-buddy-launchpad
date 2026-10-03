@@ -10,6 +10,8 @@ import {
   Loader2,
   MessageCircle,
   MousePointerClick,
+  Pause,
+  Play,
   Plus,
   RefreshCw,
   Search,
@@ -79,6 +81,9 @@ type DashboardData = {
   }>;
   campaigns: Array<{
     id: string;
+    graph_id: string | null;
+    platform_id: string | null;
+    source: "platform" | "meta";
     name: string;
     status: string;
     spend: number;
@@ -285,8 +290,10 @@ const decimal = (value: number | null | undefined) =>
 const STATUS_LABELS: Record<string, string> = {
   ACTIVE: "Ativa",
   PAUSED: "Pausada",
-  ARCHIVED: "Arquivada",
-  DELETED: "Excluída",
+  ARCHIVED: "Encerrada",
+  DELETED: "Encerrada",
+  COMPLETED: "Encerrada",
+  ERROR: "Erro",
   CAMPAIGN_PAUSED: "Pausada",
   ADSET_PAUSED: "Conjunto pausado",
 };
@@ -385,6 +392,12 @@ export default function MetaAdsDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<DashboardError | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(
+    null,
+  );
+  const [campaignActionLoading, setCampaignActionLoading] = useState<
+    string | null
+  >(null);
   const [showWizard, setShowWizard] = useState(false);
   const [resumePromptOpen, setResumePromptOpen] = useState(false);
   const [savedWizard, setSavedWizard] = useState<WizardAutosave | null>(null);
@@ -1457,13 +1470,17 @@ export default function MetaAdsDashboard() {
     });
   };
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (refresh = false) => {
     setLoading(true);
     setError(null);
     try {
       const { data: response, error: invokeError } =
         await supabase.functions.invoke("meta-ads-insights", {
-          body: { period },
+          body: {
+            period,
+            campaign_id: selectedCampaignId,
+            refresh,
+          },
         });
       if (invokeError) {
         const failure = await getCampaignError(
@@ -1498,11 +1515,53 @@ export default function MetaAdsDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [period]);
+  }, [period, selectedCampaignId]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const changeCampaignStatus = async (
+    campaign: DashboardData["campaigns"][number],
+    action: "pause" | "activate",
+  ) => {
+    if (!campaign.platform_id) return;
+    const verb = action === "pause" ? "pausar" : "reativar";
+    const consequence = action === "pause"
+      ? "A entrega será interrompida e deixará de consumir orçamento."
+      : "A campanha voltará a entregar e poderá consumir o orçamento restante.";
+    if (!window.confirm(
+      `Deseja ${verb} “${campaign.name}”?\n\n${consequence}`,
+    )) return;
+    setCampaignActionLoading(campaign.platform_id);
+    try {
+      const { data: response, error: invokeError } =
+        await supabase.functions.invoke("meta-ads-campaign-action", {
+          body: { id: campaign.platform_id, action },
+        });
+      if (invokeError || !response?.ok) {
+        const failure = await getCampaignError(
+          invokeError,
+          response,
+          `Não foi possível ${verb} a campanha.`,
+        );
+        if (failure.code === "unauthorized") setSessionExpired(true);
+        throw new Error(failure.message);
+      }
+      toast.success(
+        action === "pause" ? "Campanha pausada." : "Campanha reativada.",
+      );
+      await load(true);
+    } catch (campaignError) {
+      toast.error(
+        campaignError instanceof Error
+          ? campaignError.message
+          : `Não foi possível ${verb} a campanha.`,
+      );
+    } finally {
+      setCampaignActionLoading(null);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -1530,6 +1589,11 @@ export default function MetaAdsDashboard() {
     };
   }, []);
 
+  const selectedCampaign = selectedCampaignId
+    ? data?.campaigns.find((campaign) =>
+      campaign.graph_id === selectedCampaignId
+    ) ?? null
+    : null;
   const metrics = data?.summary;
   const cards = metrics
     ? [
@@ -1652,7 +1716,11 @@ export default function MetaAdsDashboard() {
                 </option>
               ))}
             </select>
-            <Button variant="outline" onClick={load} disabled={loading}>
+            <Button
+              variant="outline"
+              onClick={() => void load(true)}
+              disabled={loading}
+            >
               <RefreshCw
                 className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`}
               />
@@ -2496,6 +2564,24 @@ export default function MetaAdsDashboard() {
           </Card>
         ) : data && metrics ? (
           <>
+            {selectedCampaign && (
+              <Card>
+                <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">
+                      Métricas da campanha
+                    </p>
+                    <p className="font-semibold">{selectedCampaign.name}</p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={() => setSelectedCampaignId(null)}
+                  >
+                    Ver todas
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {cards.map((card) => (
                 <Card key={card.label}>
@@ -2514,7 +2600,10 @@ export default function MetaAdsDashboard() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Gasto x conversas por dia</CardTitle>
+                <CardTitle>
+                  Gasto x conversas por dia
+                  {selectedCampaign ? ` — ${selectedCampaign.name}` : ""}
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 {chartData.length ? (
@@ -2582,23 +2671,48 @@ export default function MetaAdsDashboard() {
                         <th className="py-3 pr-4 text-right">CTR</th>
                         <th className="py-3 pr-4 text-right">CPC</th>
                         <th className="py-3 pr-4 text-right">Resultados</th>
-                        <th className="py-3 text-right">Custo/resultado</th>
+                        <th className="py-3 pr-4 text-right">Custo/resultado</th>
+                        <th className="py-3 text-right">Ações</th>
                       </tr>
                     </thead>
                     <tbody>
                       {data.campaigns.map((campaign) => (
-                        <tr key={campaign.id} className="border-b last:border-0">
+                        <tr
+                          key={campaign.id}
+                          className={`border-b last:border-0 ${
+                            selectedCampaignId === campaign.graph_id
+                              ? "bg-muted/60"
+                              : ""
+                          }`}
+                        >
                           <td className="py-3 pr-4 font-medium">
-                            {campaign.name}
+                            {campaign.graph_id ? (
+                              <button
+                                type="button"
+                                className="text-left text-blue-700 hover:underline dark:text-blue-300"
+                                onClick={() =>
+                                  setSelectedCampaignId(campaign.graph_id)}
+                              >
+                                {campaign.name}
+                              </button>
+                            ) : campaign.name}
                           </td>
                           <td className="py-3 pr-4">
-                            <Badge
-                              variant={campaign.status === "ACTIVE"
-                                ? "default"
-                                : "secondary"}
-                            >
-                              {STATUS_LABELS[campaign.status] || campaign.status}
-                            </Badge>
+                            <div className="flex flex-wrap gap-1">
+                              <Badge
+                                variant={campaign.status === "ACTIVE"
+                                  ? "default"
+                                  : campaign.status === "ERROR"
+                                  ? "destructive"
+                                  : "secondary"}
+                              >
+                                {STATUS_LABELS[campaign.status] ||
+                                  campaign.status}
+                              </Badge>
+                              {campaign.source === "meta" && (
+                                <Badge variant="outline">Criada na Meta</Badge>
+                              )}
+                            </div>
                           </td>
                           <td className="py-3 pr-4 text-right">
                             {money(campaign.spend)}
@@ -2617,10 +2731,44 @@ export default function MetaAdsDashboard() {
                               ? "—"
                               : integer(campaign.results)}
                           </td>
-                          <td className="py-3 text-right">
+                          <td className="py-3 pr-4 text-right">
                             {campaign.cost_per_result === null
                               ? "—"
                               : money(campaign.cost_per_result)}
+                          </td>
+                          <td className="py-3 text-right">
+                            {campaign.source === "platform" &&
+                                campaign.platform_id &&
+                                campaign.graph_id &&
+                                ["ACTIVE", "PAUSED"].includes(campaign.status)
+                              ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={campaignActionLoading ===
+                                    campaign.platform_id}
+                                  onClick={() =>
+                                    void changeCampaignStatus(
+                                      campaign,
+                                      campaign.status === "ACTIVE"
+                                        ? "pause"
+                                        : "activate",
+                                    )}
+                                >
+                                  {campaignActionLoading ===
+                                      campaign.platform_id
+                                    ? (
+                                      <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                                    )
+                                    : campaign.status === "ACTIVE"
+                                    ? <Pause className="mr-1 h-3.5 w-3.5" />
+                                    : <Play className="mr-1 h-3.5 w-3.5" />}
+                                  {campaign.status === "ACTIVE"
+                                    ? "Pausar"
+                                    : "Reativar"}
+                                </Button>
+                              )
+                              : <span className="text-muted-foreground">—</span>}
                           </td>
                         </tr>
                       ))}
@@ -2628,7 +2776,7 @@ export default function MetaAdsDashboard() {
                   </table>
                 ) : (
                   <p className="py-8 text-center text-muted-foreground">
-                    Nenhuma campanha com entrega no período.
+                    Nenhuma campanha encontrada.
                   </p>
                 )}
               </CardContent>

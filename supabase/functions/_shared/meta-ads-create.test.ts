@@ -6,6 +6,7 @@ import {
   buildMetaAdsPayloads,
   calculateMetaAdsMonthlyAvailability,
   checkMetaAdsMonthlyCap,
+  checkMetaAdsReactivationAvailability,
   hasCompleteMetaAdsEntityIds,
   hasExplicitMetaAdsPublishConfirmation,
   type MetaAdsDraft,
@@ -146,6 +147,25 @@ Deno.test("calcula teto com gasto real e saldo apenas de campanhas ativas", () =
       available: 220,
       suggestedDaily: 22,
     },
+  );
+});
+
+Deno.test("reativação usa somente o gasto máximo ainda não consumido", () => {
+  assertEquals(
+    checkMetaAdsReactivationAvailability({
+      maximumSpend: 300,
+      lifetimeSpent: 180,
+      available: 120,
+    }),
+    { ok: true, requested: 120, available: 120 },
+  );
+  assertEquals(
+    checkMetaAdsReactivationAvailability({
+      maximumSpend: 300,
+      lifetimeSpent: 180,
+      available: 119.99,
+    }),
+    { ok: false, requested: 120, available: 119.99 },
   );
 });
 

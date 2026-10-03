@@ -332,6 +332,29 @@ export function calculateMetaAdsMonthlyAvailability(input: {
   };
 }
 
+export function checkMetaAdsReactivationAvailability(input: {
+  maximumSpend: unknown;
+  lifetimeSpent: unknown;
+  available: unknown;
+}): {
+  ok: boolean;
+  requested: number;
+  available: number;
+} {
+  const requested = Math.max(
+    0,
+    Math.round(
+      (finiteNumber(input.maximumSpend) -
+        finiteNumber(input.lifetimeSpent)) * 100,
+    ) / 100,
+  );
+  const available = Math.max(
+    0,
+    Math.round(finiteNumber(input.available) * 100) / 100,
+  );
+  return { ok: requested <= available, requested, available };
+}
+
 export function buildMetaAdsPayloads(context: MetaAdsPublishContext) {
   const { draft, pageId, whatsappPhoneNumber } = context;
   const isWhatsapp = draft.objective !== "site";

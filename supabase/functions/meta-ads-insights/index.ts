@@ -38,6 +38,8 @@ serve(async (req) => {
   const result = await getMetaAdsDashboard({
     userId: user.id,
     period: body?.period,
+    campaignId: body?.campaign_id,
+    refresh: body?.refresh === true,
     loadIntegration: async (userId) => {
       const { data, error } = await admin
         .from("integrations")
@@ -48,6 +50,15 @@ serve(async (req) => {
         .maybeSingle();
       if (error) return null;
       return data;
+    },
+    loadPlatformCampaigns: async (userId) => {
+      const { data, error } = await admin
+        .from("meta_ads_campanhas")
+        .select("id,campaign_id,status,rascunho")
+        .eq("user_id", userId)
+        .in("status", ["publicando", "publicado", "pausado", "erro", "expirado"]);
+      if (error) return [];
+      return data ?? [];
     },
   });
   return json(result);
