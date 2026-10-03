@@ -56,6 +56,7 @@ export type MetaAdsDashboardSuccess = {
     source: "platform" | "meta";
     name: string;
     status: string;
+    has_insights: boolean;
     spend: number;
     clicks: number;
     ctr: number;
@@ -69,6 +70,7 @@ export type MetaAdsDashboardSuccess = {
 export type MetaAdsPlatformCampaign = {
   id: string;
   campaign_id: string | null;
+  ad_id?: string | null;
   status: string;
   rascunho?: { name?: string } | null;
 };
@@ -202,6 +204,23 @@ const emptySummary = (): MetricSummary => ({
   cost_per_result: null,
 });
 
+export function metaAdsDashboardPeriodParams(
+  period: MetaAdsPeriod,
+  now: number,
+): Record<string, string> {
+  if (period !== "7_dias") {
+    return { date_preset: META_ADS_PERIODS[period].preset };
+  }
+  const date = (timestamp: number) =>
+    new Date(timestamp).toISOString().slice(0, 10);
+  return {
+    time_range: JSON.stringify({
+      since: date(now - 6 * 86_400_000),
+      until: date(now),
+    }),
+  };
+}
+
 export function mergeMetaAdsDashboardCampaigns(input: {
   insights: MetaAdsInsight[];
   graphCampaigns: Array<{
@@ -251,6 +270,7 @@ export function mergeMetaAdsDashboardCampaigns(input: {
                 ? "ACTIVE"
                 : "UNKNOWN"),
           ),
+        has_insights: Boolean(insight),
         spend: number(insight?.spend),
         clicks: number(insight?.clicks),
         ctr: number(insight?.ctr),
@@ -276,8 +296,9 @@ export function mergeMetaAdsDashboardCampaigns(input: {
         : platform.status === "expirado"
         ? "COMPLETED"
         : platform.status === "publicado"
-        ? "ACTIVE"
+        ? "PENDING_REVIEW"
         : "UNKNOWN",
+      has_insights: false,
       spend: 0,
       clicks: 0,
       ctr: 0,
@@ -359,9 +380,7 @@ export async function getMetaAdsDashboard(input: {
   };
 
   try {
-    const common = {
-      date_preset: META_ADS_PERIODS[period].preset,
-    };
+    const common = metaAdsDashboardPeriodParams(period, now);
     const [accountBody, platformCampaigns] = await Promise.all([
       graph(
       `${campaignId ?? integration.ad_account_id}/insights`,
@@ -409,13 +428,44 @@ export async function getMetaAdsDashboard(input: {
           "onsite_conversion.messaging_conversation_started_7d",
         ) ?? 0,
       }));
+    const graphCampaigns = Array.isArray(statusesBody?.data)
+      ? statusesBody.data
+      : [];
+    const platformStatuses = await Promise.allSettled(
+      platformCampaigns
+        .filter((campaign) => campaign.campaign_id)
+        .map(async (campaign) => ({
+          campaign,
+          remote: await graph(
+            String(campaign.ad_id || campaign.campaign_id),
+            { fields: "id,effective_status" },
+          ),
+        })),
+    );
+    for (const status of platformStatuses) {
+      if (status.status !== "fulfilled") continue;
+      const campaignId = String(status.value.campaign.campaign_id);
+      const existing = graphCampaigns.find((campaign: { id?: unknown }) =>
+        String(campaign.id || "") === campaignId
+      );
+      const effectiveStatus = String(
+        status.value.remote?.effective_status || "",
+      );
+      if (existing && effectiveStatus) {
+        existing.effective_status = effectiveStatus;
+      } else if (!existing) {
+        graphCampaigns.push({
+          id: campaignId,
+          name: status.value.campaign.rascunho?.name,
+          effective_status: effectiveStatus || undefined,
+        });
+      }
+    }
     const campaigns = mergeMetaAdsDashboardCampaigns({
       insights: Array.isArray(campaignBody?.data)
         ? campaignBody.data as MetaAdsInsight[]
         : [],
-      graphCampaigns: Array.isArray(statusesBody?.data)
-        ? statusesBody.data
-        : [],
+      graphCampaigns,
       platformCampaigns,
     });
 

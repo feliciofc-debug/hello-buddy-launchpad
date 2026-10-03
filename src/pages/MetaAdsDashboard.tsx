@@ -86,6 +86,7 @@ type DashboardData = {
     source: "platform" | "meta";
     name: string;
     status: string;
+    has_insights: boolean;
     spend: number;
     clicks: number;
     ctr: number;
@@ -290,13 +291,32 @@ const decimal = (value: number | null | undefined) =>
 const STATUS_LABELS: Record<string, string> = {
   ACTIVE: "Ativa",
   PAUSED: "Pausada",
-  ARCHIVED: "Encerrada",
-  DELETED: "Encerrada",
-  COMPLETED: "Encerrada",
+  PENDING_REVIEW: "Em análise",
+  IN_PROCESS: "Em análise",
+  PREAPPROVED: "Em análise",
+  PENDING_BILLING_INFO: "Em análise",
+  DISAPPROVED: "Reprovada",
+  ARCHIVED: "Concluída",
+  DELETED: "Concluída",
+  COMPLETED: "Concluída",
   ERROR: "Erro",
+  WITH_ISSUES: "Erro",
   CAMPAIGN_PAUSED: "Pausada",
   ADSET_PAUSED: "Conjunto pausado",
 };
+const PAUSABLE_CAMPAIGN_STATUSES = new Set([
+  "ACTIVE",
+  "PENDING_REVIEW",
+  "IN_PROCESS",
+  "PREAPPROVED",
+  "PENDING_BILLING_INFO",
+  "WITH_ISSUES",
+]);
+const REACTIVATABLE_CAMPAIGN_STATUSES = new Set([
+  "PAUSED",
+  "CAMPAIGN_PAUSED",
+  "ADSET_PAUSED",
+]);
 
 const INTEREST_PRESETS = [
   {
@@ -1397,7 +1417,7 @@ export default function MetaAdsDashboard() {
         current.filter((row) => row.id !== (serverDraftId ?? draft.id))
       );
       toast.success("Campanha publicada.");
-      await load();
+      await load(true);
     } catch (publishError) {
       toast.error(publishError instanceof Error && publishError.message
         ? publishError.message
@@ -2596,7 +2616,7 @@ export default function MetaAdsDashboard() {
               )}
             </CardContent>
           </Card>
-        ) : data && !data.has_data ? (
+        ) : data && data.campaigns.length === 0 ? (
           <Card>
             <CardContent className="py-16 text-center">
               <BarChart3 className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
@@ -2759,16 +2779,24 @@ export default function MetaAdsDashboard() {
                             </div>
                           </td>
                           <td className="py-3 pr-4 text-right">
-                            {money(campaign.spend)}
+                            {campaign.has_insights
+                              ? money(campaign.spend)
+                              : "—"}
                           </td>
                           <td className="py-3 pr-4 text-right">
-                            {integer(campaign.clicks)}
+                            {campaign.has_insights
+                              ? integer(campaign.clicks)
+                              : "—"}
                           </td>
                           <td className="py-3 pr-4 text-right">
-                            {decimal(campaign.ctr)}%
+                            {campaign.has_insights
+                              ? `${decimal(campaign.ctr)}%`
+                              : "—"}
                           </td>
                           <td className="py-3 pr-4 text-right">
-                            {money(campaign.cpc)}
+                            {campaign.has_insights
+                              ? money(campaign.cpc)
+                              : "—"}
                           </td>
                           <td className="py-3 pr-4 text-right">
                             {campaign.results === null
@@ -2784,7 +2812,12 @@ export default function MetaAdsDashboard() {
                             {campaign.source === "platform" &&
                                 campaign.platform_id &&
                                 campaign.graph_id &&
-                                ["ACTIVE", "PAUSED"].includes(campaign.status)
+                                (PAUSABLE_CAMPAIGN_STATUSES.has(
+                                  campaign.status,
+                                ) ||
+                                  REACTIVATABLE_CAMPAIGN_STATUSES.has(
+                                    campaign.status,
+                                  ))
                               ? (
                                 <Button
                                   size="sm"
@@ -2794,9 +2827,11 @@ export default function MetaAdsDashboard() {
                                   onClick={() =>
                                     void changeCampaignStatus(
                                       campaign,
-                                      campaign.status === "ACTIVE"
-                                        ? "pause"
-                                        : "activate",
+                                      REACTIVATABLE_CAMPAIGN_STATUSES.has(
+                                          campaign.status,
+                                        )
+                                        ? "activate"
+                                        : "pause",
                                     )}
                                 >
                                   {campaignActionLoading ===
@@ -2804,12 +2839,16 @@ export default function MetaAdsDashboard() {
                                     ? (
                                       <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
                                     )
-                                    : campaign.status === "ACTIVE"
-                                    ? <Pause className="mr-1 h-3.5 w-3.5" />
-                                    : <Play className="mr-1 h-3.5 w-3.5" />}
-                                  {campaign.status === "ACTIVE"
-                                    ? "Pausar"
-                                    : "Reativar"}
+                                    : REACTIVATABLE_CAMPAIGN_STATUSES.has(
+                                        campaign.status,
+                                      )
+                                    ? <Play className="mr-1 h-3.5 w-3.5" />
+                                    : <Pause className="mr-1 h-3.5 w-3.5" />}
+                                  {REACTIVATABLE_CAMPAIGN_STATUSES.has(
+                                      campaign.status,
+                                    )
+                                    ? "Reativar"
+                                    : "Pausar"}
                                 </Button>
                               )
                               : <span className="text-muted-foreground">—</span>}

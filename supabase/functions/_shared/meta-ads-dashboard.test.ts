@@ -6,6 +6,7 @@ import {
   clearMetaAdsDashboardCache,
   formatMetaAdsDashboardSummary,
   getMetaAdsDashboard,
+  metaAdsDashboardPeriodParams,
   mergeMetaAdsDashboardCampaigns,
 } from "./meta-ads-dashboard.ts";
 
@@ -116,6 +117,7 @@ Deno.test("mescla campanhas da plataforma sem gasto e campanhas externas", () =>
     source: "platform",
     name: "Campanha AMZ",
     status: "PAUSED",
+    has_insights: false,
     spend: 0,
     clicks: 0,
     ctr: 0,
@@ -128,6 +130,86 @@ Deno.test("mescla campanhas da plataforma sem gasto e campanhas externas", () =>
     campaigns.find((row) => row.id === "external-1")?.source,
     "meta",
   );
+});
+
+Deno.test("campanha recém-publicada aparece em análise sem insights", async () => {
+  clearMetaAdsDashboardCache();
+  const now = Date.parse("2026-10-03T12:00:00Z");
+  let observedPeriod: Record<string, unknown> | null = null;
+  const result = await getMetaAdsDashboard({
+    userId: "tenant",
+    period: "7_dias",
+    now,
+    loadIntegration: async () => ({
+      access_token: "segredo",
+      token_expires_at: "2026-11-01T00:00:00Z",
+      ad_account_id: "act_new",
+      is_active: true,
+    }),
+    loadPlatformCampaigns: async () => [{
+      id: "local-new",
+      campaign_id: "campaign-new",
+      ad_id: "ad-new",
+      status: "publicado",
+      rascunho: { name: "Campanha nova" },
+    }],
+    fetchImpl: async (url) => {
+      const parsed = new URL(String(url));
+      if (!observedPeriod && parsed.pathname.endsWith("/insights")) {
+        observedPeriod = JSON.parse(
+          parsed.searchParams.get("time_range") || "{}",
+        );
+      }
+      if (parsed.pathname.endsWith("/campaigns")) {
+        return Response.json({
+          data: [{
+            id: "campaign-new",
+            name: "Campanha nova",
+            effective_status: "ACTIVE",
+          }],
+        });
+      }
+      if (parsed.pathname.endsWith("/ad-new")) {
+        return Response.json({
+          id: "ad-new",
+          effective_status: "PENDING_REVIEW",
+        });
+      }
+      return Response.json({ data: [] });
+    },
+  });
+
+  assertEquals(metaAdsDashboardPeriodParams("7_dias", now), {
+    time_range: JSON.stringify({
+      since: "2026-09-27",
+      until: "2026-10-03",
+    }),
+  });
+  assertEquals(observedPeriod, {
+    since: "2026-09-27",
+    until: "2026-10-03",
+  });
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    assertEquals(result.has_data, true);
+    assertEquals(result.summary?.spend, 0);
+    assertEquals(result.campaigns, [{
+      id: "campaign-new",
+      graph_id: "campaign-new",
+      platform_id: "local-new",
+      source: "platform",
+      name: "Campanha nova",
+      status: "PENDING_REVIEW",
+      has_insights: false,
+      spend: 0,
+      clicks: 0,
+      ctr: 0,
+      cpc: 0,
+      result_type: null,
+      results: null,
+      cost_per_result: null,
+    }]);
+  }
 });
 
 Deno.test("painel reutiliza por 10 minutos apenas resposta de sucesso", async () => {
