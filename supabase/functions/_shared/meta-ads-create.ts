@@ -396,6 +396,7 @@ export function buildMetaAdsPayloads(context: MetaAdsPublishContext) {
   const campaign = {
     name: draft.name,
     objective: isWhatsapp ? "OUTCOME_ENGAGEMENT" : "OUTCOME_TRAFFIC",
+    is_adset_budget_sharing_enabled: false,
     ...(maximumSpend >= 600
       ? { spend_cap: Math.round(maximumSpend * 100) }
       : {}),
@@ -444,8 +445,8 @@ export function buildMetaAdsPayloads(context: MetaAdsPublishContext) {
       publisher_platforms: ["facebook", "instagram"],
       facebook_positions: ["feed", "story"],
       instagram_positions: ["stream", "story"],
+      targeting_automation: { advantage_audience: 0 },
     },
-    targeting_automation: { advantage_audience: 0 },
     status: "PAUSED",
   };
   const commonCreative = {

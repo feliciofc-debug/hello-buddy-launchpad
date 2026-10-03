@@ -218,6 +218,7 @@ Deno.test("payload usa padrões fixos, pausados e desliga expansões", () => {
     draft,
   });
   assertEquals(payloads.campaign.status, "PAUSED");
+  assertEquals(payloads.campaign.is_adset_budget_sharing_enabled, false);
   assertEquals(payloads.adset.status, "PAUSED");
   assertEquals(payloads.ad.status, "PAUSED");
   assertEquals("degrees_of_freedom_spec" in payloads.creative, false);
@@ -234,7 +235,10 @@ Deno.test("payload usa padrões fixos, pausados e desliga expansões", () => {
   assertEquals(payloads.adset.targeting.behaviors, [
     { id: "6002714895372", name: "Compradores envolvidos" },
   ]);
-  assertEquals(payloads.adset.targeting_automation.advantage_audience, 0);
+  assertEquals(payloads.adset.targeting.targeting_automation, {
+    advantage_audience: 0,
+  });
+  assertEquals("targeting_automation" in payloads.adset, false);
   assertEquals(
     payloads.adset.promoted_object?.whatsapp_phone_number,
     "5511999999999",
