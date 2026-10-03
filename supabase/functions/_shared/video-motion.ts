@@ -101,7 +101,7 @@ export function estiloPedidoNoTexto(texto: string): EstiloMotion | null {
 /** Fundo pedido explicitamente em texto livre; menções soltas a cores não contam. */
 export function fundoPedidoNoTexto(texto: string): FundoMotion | null {
   const t = String(texto ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  const match = t.match(/\b(?:fundo|background)(?:\s+(?:na\s+cor|cor))?\s+(branco|claro|preto|escuro)\b/);
+  const match = t.match(/\b(?:fundo|background)(?:\s+(?:na\s+cor|cor|para|por))?\s+(branco|claro|preto|escuro)\b/);
   if (!match) return null;
   return match[1] === "branco" || match[1] === "claro" ? "claro" : "escuro";
 }

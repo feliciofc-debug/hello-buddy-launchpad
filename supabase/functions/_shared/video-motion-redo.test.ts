@@ -30,7 +30,10 @@ const base: MotionProps = {
 };
 
 Deno.test("refazer troca somente o fundo e preserva todo o roteiro", () => {
-  const result = aplicarAjusteRoteiroMotion(base, "Refaz com fundo branco");
+  const result = aplicarAjusteRoteiroMotion(
+    base,
+    "Refaz e troca o fundo para branco",
+  );
   assertEquals(result.changed, true);
   assertEquals(result.props.fundo, "claro");
   assertEquals(result.props.hook, base.hook);
