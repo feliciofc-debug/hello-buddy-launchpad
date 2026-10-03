@@ -54,7 +54,9 @@ serve(async (req) => {
     loadPlatformCampaigns: async (userId) => {
       const { data, error } = await admin
         .from("meta_ads_campanhas")
-        .select("id,campaign_id,ad_id,status,rascunho")
+        .select(
+          "id,campaign_id,ad_id,status,rascunho,orcamento_diario,duracao_dias,gasto_maximo,aprovado_em",
+        )
         .eq("user_id", userId)
         .in("status", ["publicando", "publicado", "pausado", "erro", "expirado"]);
       if (error) return [];

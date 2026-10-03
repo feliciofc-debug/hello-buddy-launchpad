@@ -56,6 +56,13 @@ export type MetaAdsDashboardSuccess = {
     source: "platform" | "meta";
     name: string;
     status: string;
+    platform_status: string | null;
+    daily_budget: number | null;
+    duration_days: number | null;
+    maximum_spend: number | null;
+    approved_at: string | null;
+    ends_at: string | null;
+    draft: Record<string, unknown> | null;
     has_insights: boolean;
     spend: number;
     clicks: number;
@@ -72,7 +79,11 @@ export type MetaAdsPlatformCampaign = {
   campaign_id: string | null;
   ad_id?: string | null;
   status: string;
-  rascunho?: { name?: string } | null;
+  rascunho?: ({ name?: string } & Record<string, unknown>) | null;
+  orcamento_diario?: unknown;
+  duracao_dias?: unknown;
+  gasto_maximo?: unknown;
+  aprovado_em?: string | null;
 };
 
 export type MetaAdsDashboardError = {
@@ -230,6 +241,35 @@ export function mergeMetaAdsDashboardCampaigns(input: {
   }>;
   platformCampaigns: MetaAdsPlatformCampaign[];
 }): MetaAdsDashboardSuccess["campaigns"] {
+  const platformDetails = (platform?: MetaAdsPlatformCampaign) => {
+    if (!platform) {
+      return {
+        platform_status: null,
+        daily_budget: null,
+        duration_days: null,
+        maximum_spend: null,
+        approved_at: null,
+        ends_at: null,
+        draft: null,
+      };
+    }
+    const durationDays = Math.max(0, Math.floor(number(platform.duracao_dias)));
+    const approvedAt = platform.aprovado_em
+      ? String(platform.aprovado_em)
+      : null;
+    const approvedTimestamp = Date.parse(approvedAt ?? "");
+    return {
+      platform_status: platform.status,
+      daily_budget: number(platform.orcamento_diario),
+      duration_days: durationDays,
+      maximum_spend: number(platform.gasto_maximo),
+      approved_at: approvedAt,
+      ends_at: Number.isFinite(approvedTimestamp) && durationDays > 0
+        ? new Date(approvedTimestamp + durationDays * 86_400_000).toISOString()
+        : null,
+      draft: platform.rascunho ?? null,
+    };
+  };
   const insights = new Map(
     input.insights.map((row) => [String(row.campaign_id || ""), row]),
   );
@@ -270,6 +310,7 @@ export function mergeMetaAdsDashboardCampaigns(input: {
                 ? "ACTIVE"
                 : "UNKNOWN"),
           ),
+        ...platformDetails(platform),
         has_insights: Boolean(insight),
         spend: number(insight?.spend),
         clicks: number(insight?.clicks),
@@ -298,6 +339,7 @@ export function mergeMetaAdsDashboardCampaigns(input: {
         : platform.status === "publicado"
         ? "PENDING_REVIEW"
         : "UNKNOWN",
+      ...platformDetails(platform),
       has_insights: false,
       spend: 0,
       clicks: 0,

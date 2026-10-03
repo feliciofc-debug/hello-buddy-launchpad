@@ -86,6 +86,13 @@ type DashboardData = {
     source: "platform" | "meta";
     name: string;
     status: string;
+    platform_status: string | null;
+    daily_budget: number | null;
+    duration_days: number | null;
+    maximum_spend: number | null;
+    approved_at: string | null;
+    ends_at: string | null;
+    draft: Record<string, unknown> | null;
     has_insights: boolean;
     spend: number;
     clicks: number;
@@ -318,6 +325,22 @@ const REACTIVATABLE_CAMPAIGN_STATUSES = new Set([
   "ADSET_PAUSED",
 ]);
 
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+
+const targetingNames = (value: unknown): string =>
+  Array.isArray(value)
+    ? value.map((item) => String(asRecord(item)?.name ?? "")).filter(Boolean)
+      .join(", ")
+    : "";
+
+const campaignDate = (value: string | null): string =>
+  value
+    ? new Date(value).toLocaleDateString("pt-BR")
+    : "—";
+
 const INTEREST_PRESETS = [
   {
     name: "Profissionais liberais",
@@ -415,6 +438,9 @@ export default function MetaAdsDashboard() {
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(
     null,
   );
+  const [selectedPlatformCampaignId, setSelectedPlatformCampaignId] = useState<
+    string | null
+  >(null);
   const [campaignActionLoading, setCampaignActionLoading] = useState<
     string | null
   >(null);
@@ -477,6 +503,9 @@ export default function MetaAdsDashboard() {
   const [facebookSdkReady, setFacebookSdkReady] = useState(false);
   const restoringHistoryRef = useRef(false);
   const wizardStateRef = useRef<WizardAutosave | null>(null);
+  const wizardGuardEnabledRef = useRef(false);
+  const wizardHistoryGuardRef = useRef(false);
+  const wizardAutosaveTimeoutRef = useRef<number | null>(null);
 
   const selectedMediaId = selectedMedia?.id ?? "";
   const totalBudget = (Number(dailyBudget) || 0) * (Number(durationDays) || 0);
@@ -542,6 +571,7 @@ export default function MetaAdsDashboard() {
     serverDraftId,
   ]);
   wizardStateRef.current = wizardState;
+  wizardGuardEnabledRef.current = wizardStarted && !published;
 
   const resetWizard = () => {
     setStep(0);
@@ -647,6 +677,13 @@ export default function MetaAdsDashboard() {
         "Sair? Seu progresso fica salvo e você pode continuar depois.",
       )
     ) return;
+    if (storageKey && wizardStarted && !published) {
+      const saved = { ...wizardState, updatedAt: new Date().toISOString() };
+      localStorage.setItem(storageKey, JSON.stringify(saved));
+      setSavedWizard(saved);
+    }
+    wizardGuardEnabledRef.current = false;
+    setWizardStarted(false);
     setShowWizard(false);
   };
 
@@ -667,45 +704,64 @@ export default function MetaAdsDashboard() {
     navigate(path);
   };
 
-  const loadServerDrafts = useCallback(async () => {
+  const loadServerDrafts = useCallback(async (): Promise<
+    ServerDraft[] | null
+  > => {
     setServerDraftsLoading(true);
-    const { data: response, error: invokeError } =
-      await supabase.functions.invoke("meta-ads-draft", {
-        body: { action: "list" },
-      });
-    if (invokeError || !response?.ok) {
-      const failure = await getCampaignError(
-        invokeError,
-        response,
-        "Não foi possível carregar os rascunhos.",
-      );
-      if (failure.code === "unauthorized") setSessionExpired(true);
+    try {
+      const { data: response, error: invokeError } =
+        await supabase.functions.invoke("meta-ads-draft", {
+          body: { action: "list" },
+        });
+      if (invokeError || !response?.ok) {
+        const failure = await getCampaignError(
+          invokeError,
+          response,
+          "Não foi possível carregar os rascunhos.",
+        );
+        if (failure.code === "unauthorized") setSessionExpired(true);
+        setServerDrafts([]);
+        return null;
+      }
+      const rows = (response.data ?? []) as ServerDraft[];
+      setServerDrafts(rows);
+      return rows;
+    } catch {
       setServerDrafts([]);
-    } else {
-      setServerDrafts((response.data ?? []) as ServerDraft[]);
+      return null;
+    } finally {
+      setServerDraftsLoading(false);
     }
-    setServerDraftsLoading(false);
   }, []);
 
   useEffect(() => {
     let active = true;
-    void supabase.auth.getUser().then(({ data: auth }) => {
+    void (async () => {
+      const { data: auth } = await supabase.auth.getUser();
       if (!active || !auth.user) return;
       setUserId(auth.user.id);
+      const drafts = await loadServerDrafts();
+      if (!active) return;
       const key = `meta_ads_wizard_${auth.user.id}`;
       try {
         const parsed = JSON.parse(
           localStorage.getItem(key) ?? "null",
         ) as WizardAutosave | null;
         if (parsed?.version === 1) {
+          if (parsed.serverDraftId) {
+            if (!drafts) return;
+            if (!drafts.some((row) => row.id === parsed.serverDraftId)) {
+              localStorage.removeItem(key);
+              return;
+            }
+          }
           setSavedWizard(parsed);
           setResumePromptOpen(true);
         }
       } catch {
         localStorage.removeItem(key);
       }
-    });
-    void loadServerDrafts();
+    })();
     return () => {
       active = false;
     };
@@ -812,17 +868,23 @@ export default function MetaAdsDashboard() {
 
   useEffect(() => {
     if (!storageKey || !wizardStarted || published) return;
-    const timeout = window.setTimeout(() => {
+    wizardAutosaveTimeoutRef.current = window.setTimeout(() => {
       const saved = { ...wizardState, updatedAt: new Date().toISOString() };
       localStorage.setItem(storageKey, JSON.stringify(saved));
       setSavedWizard(saved);
     }, 500);
-    return () => window.clearTimeout(timeout);
+    return () => {
+      if (wizardAutosaveTimeoutRef.current !== null) {
+        window.clearTimeout(wizardAutosaveTimeoutRef.current);
+        wizardAutosaveTimeoutRef.current = null;
+      }
+    };
   }, [storageKey, wizardStarted, published, wizardState]);
 
   useEffect(() => {
     if (!wizardStarted || published) return;
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!wizardGuardEnabledRef.current) return;
       if (storageKey && wizardStateRef.current) {
         localStorage.setItem(
           storageKey,
@@ -847,7 +909,9 @@ export default function MetaAdsDashboard() {
       "",
       window.location.href,
     );
+    wizardHistoryGuardRef.current = true;
     const handlePopState = () => {
+      if (!wizardGuardEnabledRef.current) return;
       if (restoringHistoryRef.current) {
         restoringHistoryRef.current = false;
         return;
@@ -874,7 +938,16 @@ export default function MetaAdsDashboard() {
       }
     };
     window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      if (
+        wizardHistoryGuardRef.current &&
+        window.history.state?.metaAdsWizardGuard
+      ) {
+        wizardHistoryGuardRef.current = false;
+        window.history.back();
+      }
+    };
   }, [wizardStarted, published, storageKey]);
 
   useEffect(() => {
@@ -1409,13 +1482,21 @@ export default function MetaAdsDashboard() {
         toast.error(failure.message);
         return;
       }
-      setPublished(true);
-      setWizardStarted(false);
-      setSavedWizard(null);
+      const publishedDraftId = serverDraftId ?? draft.id;
+      wizardGuardEnabledRef.current = false;
+      if (wizardAutosaveTimeoutRef.current !== null) {
+        window.clearTimeout(wizardAutosaveTimeoutRef.current);
+        wizardAutosaveTimeoutRef.current = null;
+      }
       if (storageKey) localStorage.removeItem(storageKey);
+      setSavedWizard(null);
       setServerDrafts((current) =>
-        current.filter((row) => row.id !== (serverDraftId ?? draft.id))
+        current.filter((row) => row.id !== publishedDraftId)
       );
+      setWizardStarted(false);
+      setShowWizard(false);
+      setResumePromptOpen(false);
+      resetWizard();
       toast.success("Campanha publicada.");
       await load(true);
     } catch (publishError) {
@@ -1613,6 +1694,33 @@ export default function MetaAdsDashboard() {
       campaign.graph_id === selectedCampaignId
     ) ?? null
     : null;
+  const platformCampaigns = (data?.campaigns ?? []).filter((campaign) =>
+    campaign.source === "platform" &&
+    ["publicado", "pausado", "expirado"].includes(
+      campaign.platform_status ?? "",
+    )
+  );
+  const selectedPlatformCampaign = selectedPlatformCampaignId
+    ? platformCampaigns.find((campaign) =>
+      campaign.platform_id === selectedPlatformCampaignId
+    ) ?? null
+    : null;
+  const selectedCampaignDraft = selectedPlatformCampaign?.draft ?? null;
+  const selectedWizardState = asRecord(
+    selectedCampaignDraft?.wizard_state,
+  );
+  const selectedSavedMedia = asRecord(selectedWizardState?.selectedMedia);
+  const selectedMediaThumbnail = String(
+    selectedSavedMedia?.thumbnail_url ??
+      selectedCampaignDraft?.thumbnail_url ??
+      (selectedCampaignDraft?.media_type === "image"
+        ? selectedCampaignDraft?.media_url
+        : "") ??
+      "",
+  );
+  const selectedMediaUrl = String(
+    selectedCampaignDraft?.media_url ?? selectedSavedMedia?.midia_url ?? "",
+  );
   const metrics = data?.summary;
   const cards = metrics
     ? [
@@ -2592,6 +2700,245 @@ export default function MetaAdsDashboard() {
           </DialogContent>
         </Dialog>
 
+        {platformCampaigns.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Minhas campanhas</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {platformCampaigns.map((campaign) => (
+                <button
+                  key={campaign.platform_id ?? campaign.id}
+                  type="button"
+                  className={`rounded-lg border p-4 text-left transition-colors hover:bg-muted/50 ${
+                    selectedPlatformCampaignId === campaign.platform_id
+                      ? "border-primary bg-muted/40"
+                      : ""
+                  }`}
+                  onClick={() => {
+                    setSelectedPlatformCampaignId(campaign.platform_id);
+                    setSelectedCampaignId(campaign.graph_id);
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="font-semibold">{campaign.name}</p>
+                    <Badge
+                      variant={campaign.status === "ACTIVE"
+                        ? "default"
+                        : campaign.status === "ERROR" ||
+                            campaign.status === "DISAPPROVED"
+                        ? "destructive"
+                        : "secondary"}
+                    >
+                      {STATUS_LABELS[campaign.status] || campaign.status}
+                    </Badge>
+                  </div>
+                  <div className="mt-3 space-y-1 text-sm text-muted-foreground">
+                    <p>
+                      Orçamento diário:{" "}
+                      {campaign.daily_budget === null
+                        ? "—"
+                        : money(campaign.daily_budget)}
+                    </p>
+                    <p>
+                      Período: {campaignDate(campaign.approved_at)}–{campaignDate(
+                        campaign.ends_at,
+                      )}
+                    </p>
+                    <p>
+                      Gasto máximo:{" "}
+                      {campaign.maximum_spend === null
+                        ? "—"
+                        : money(campaign.maximum_spend)}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {selectedPlatformCampaign && (
+          <Card>
+            <CardHeader className="flex flex-row items-start justify-between gap-4">
+              <div>
+                <CardTitle>{selectedPlatformCampaign.name}</CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Detalhes salvos da campanha
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setSelectedPlatformCampaignId(null);
+                  setSelectedCampaignId(null);
+                }}
+              >
+                Fechar
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2 rounded-md border p-4 text-sm">
+                  <p>
+                    <span className="font-medium">Objetivo:</span>{" "}
+                    {selectedCampaignDraft?.objective === "site"
+                      ? "Visitas ao site"
+                      : "Conversas no WhatsApp"}
+                  </p>
+                  <p>
+                    <span className="font-medium">Cidade:</span>{" "}
+                    {targetingNames(selectedCampaignDraft?.cities) || "—"}
+                    {selectedCampaignDraft?.radius_km
+                      ? ` · raio de ${selectedCampaignDraft.radius_km} km`
+                      : ""}
+                  </p>
+                  <p>
+                    <span className="font-medium">Idades:</span>{" "}
+                    {String(selectedCampaignDraft?.age_min ?? "—")}–{String(
+                      selectedCampaignDraft?.age_max ?? "—",
+                    )}
+                  </p>
+                  <p>
+                    <span className="font-medium">Gênero:</span>{" "}
+                    {selectedCampaignDraft?.gender === "male"
+                      ? "Masculino"
+                      : selectedCampaignDraft?.gender === "female"
+                      ? "Feminino"
+                      : "Todos"}
+                  </p>
+                  <p>
+                    <span className="font-medium">Interesses:</span>{" "}
+                    {targetingNames(selectedCampaignDraft?.interests) ||
+                      "Nenhum"}
+                  </p>
+                  <p>
+                    <span className="font-medium">Comportamentos:</span>{" "}
+                    {targetingNames(selectedCampaignDraft?.behaviors) ||
+                      "Nenhum"}
+                  </p>
+                </div>
+                <div className="space-y-3 rounded-md border p-4">
+                  <p className="text-sm font-medium">Mídia do anúncio</p>
+                  {selectedMediaThumbnail ? (
+                    <img
+                      src={selectedMediaThumbnail}
+                      alt={`Mídia de ${selectedPlatformCampaign.name}`}
+                      className="max-h-56 w-full rounded-md object-contain"
+                    />
+                  ) : selectedCampaignDraft?.media_type === "video" &&
+                      selectedMediaUrl ? (
+                    <video
+                      src={selectedMediaUrl}
+                      muted
+                      controls
+                      className="max-h-56 w-full rounded-md"
+                    />
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Miniatura indisponível.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-md border p-4">
+                <div>
+                  <p className="text-xs font-medium uppercase text-muted-foreground">
+                    Título
+                  </p>
+                  <p>{String(selectedCampaignDraft?.headline ?? "—")}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium uppercase text-muted-foreground">
+                    Texto principal
+                  </p>
+                  <p className="whitespace-pre-wrap">
+                    {String(selectedCampaignDraft?.primary_text ?? "—")}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-3 font-medium">Métricas da campanha</p>
+                {loading ? (
+                  <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Atualizando métricas...
+                  </p>
+                ) : metrics ? (
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                    <div className="rounded-md border p-3">
+                      <p className="text-xs text-muted-foreground">Gasto</p>
+                      <p className="font-semibold">{money(metrics.spend)}</p>
+                    </div>
+                    <div className="rounded-md border p-3">
+                      <p className="text-xs text-muted-foreground">Impressões</p>
+                      <p className="font-semibold">
+                        {integer(metrics.impressions)}
+                      </p>
+                    </div>
+                    <div className="rounded-md border p-3">
+                      <p className="text-xs text-muted-foreground">Cliques</p>
+                      <p className="font-semibold">{integer(metrics.clicks)}</p>
+                    </div>
+                    <div className="rounded-md border p-3">
+                      <p className="text-xs text-muted-foreground">Resultados</p>
+                      <p className="font-semibold">
+                        {metrics.results === null
+                          ? "—"
+                          : integer(metrics.results)}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Ainda não há métricas para esta campanha.
+                  </p>
+                )}
+              </div>
+
+              {selectedPlatformCampaign.platform_id &&
+                  selectedPlatformCampaign.graph_id &&
+                  (PAUSABLE_CAMPAIGN_STATUSES.has(
+                    selectedPlatformCampaign.status,
+                  ) ||
+                    REACTIVATABLE_CAMPAIGN_STATUSES.has(
+                      selectedPlatformCampaign.status,
+                    )) && (
+                <Button
+                  variant="outline"
+                  disabled={campaignActionLoading ===
+                    selectedPlatformCampaign.platform_id}
+                  onClick={() =>
+                    void changeCampaignStatus(
+                      selectedPlatformCampaign,
+                      REACTIVATABLE_CAMPAIGN_STATUSES.has(
+                          selectedPlatformCampaign.status,
+                        )
+                        ? "activate"
+                        : "pause",
+                    )}
+                >
+                  {campaignActionLoading ===
+                      selectedPlatformCampaign.platform_id
+                    ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    : REACTIVATABLE_CAMPAIGN_STATUSES.has(
+                        selectedPlatformCampaign.status,
+                      )
+                    ? <Play className="mr-2 h-4 w-4" />
+                    : <Pause className="mr-2 h-4 w-4" />}
+                  {REACTIVATABLE_CAMPAIGN_STATUSES.has(
+                      selectedPlatformCampaign.status,
+                    )
+                    ? "Reativar"
+                    : "Pausar"}
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {loading ? (
           <Card>
             <CardContent className="py-16 flex items-center justify-center gap-2 text-muted-foreground">
@@ -2628,7 +2975,7 @@ export default function MetaAdsDashboard() {
           </Card>
         ) : data && metrics ? (
           <>
-            {selectedCampaign && (
+            {selectedCampaign && !selectedPlatformCampaign && (
               <Card>
                 <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
