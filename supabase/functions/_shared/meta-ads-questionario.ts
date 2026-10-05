@@ -1,0 +1,323 @@
+import type { MetaAdsDraft, MetaAdsTarget } from "./meta-ads-create.ts";
+
+export const META_ADS_QUESTIONARIO_TTL_MS = 24 * 60 * 60 * 1000;
+export const META_ADS_QUESTIONARIO_PREFIX = "meta_ads_q:";
+
+export type MetaAdsQuestionarioEtapa =
+  | "objetivo"
+  | "url_site"
+  | "publico"
+  | "cidade"
+  | "confirmar_cidade"
+  | "raio"
+  | "idade"
+  | "idade_personalizada"
+  | "orcamento"
+  | "duracao"
+  | "midia"
+  | "texto"
+  | "texto_manual"
+  | "resumo";
+
+export type MetaAdsQuestionarioMidia = {
+  id: string;
+  url: string;
+  tipo: "image" | "video";
+  titulo: string;
+  thumbnail_url?: string;
+};
+
+export type MetaAdsQuestionario = {
+  etapa: MetaAdsQuestionarioEtapa;
+  criado_em: string;
+  atualizado_em: string;
+  objetivo?: "whatsapp" | "site";
+  destination_url?: string;
+  pacote_publico?: string;
+  publicos_sugeridos?: Array<{ nome: string; interesses: MetaAdsTarget[] }>;
+  interesses?: MetaAdsTarget[];
+  cidades_encontradas?: MetaAdsTarget[];
+  cidade?: MetaAdsTarget;
+  raio_km?: number;
+  age_min?: number;
+  age_max?: number;
+  orcamento_diario?: number;
+  duracao_dias?: number;
+  midia?: MetaAdsQuestionarioMidia;
+  titulo?: string;
+  texto_principal?: string;
+  resumo_hash?: string;
+};
+
+export type QuestionarioRow = {
+  id: string;
+  status?: string | null;
+  criado_em?: string | null;
+  rascunho?: Record<string, unknown> | null;
+};
+
+export type QuestionarioList = {
+  body: string;
+  button: string;
+  header?: string;
+  footer?: string;
+  section_title?: string;
+  rows: Array<{ id: string; title: string; description?: string }>;
+};
+
+export type QuestionarioButtons = {
+  body: string;
+  header?: string;
+  footer?: string;
+  buttons: Array<{ id: string; title: string }>;
+};
+
+function normalizar(value: unknown): string {
+  return String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function limitar(value: unknown, maximum: number): string {
+  return String(value ?? "").trim().slice(0, maximum);
+}
+
+export function isMetaAdsQuestionarioTrigger(text: unknown): boolean {
+  const value = normalizar(text);
+  return /\b(?:criar|fazer|montar|nova?|quero)\b.*\b(?:anuncio|campanha)\b/.test(value) ||
+    /\b(?:anuncio|campanha)\b.*\b(?:meta ads|facebook|instagram)\b/.test(value);
+}
+
+export function isMetaAdsQuestionarioCancel(text: unknown): boolean {
+  const value = normalizar(text).replace(/<<interactive_id:[^>]+>>/g, "").trim();
+  return /^(?:cancelar|cancela|desistir|parar|meta_ads_q:cancelar)$/.test(value) ||
+    interactiveId(text) === `${META_ADS_QUESTIONARIO_PREFIX}cancelar`;
+}
+
+export function isMetaAdsQuestionarioResume(text: unknown): boolean {
+  const value = normalizar(text);
+  return interactiveId(text) === `${META_ADS_QUESTIONARIO_PREFIX}continuar` ||
+    /\bcontinuar (?:a |o )?(?:campanha|anuncio)\b/.test(value);
+}
+
+export function interactiveId(text: unknown): string | null {
+  const match = String(text ?? "").match(/<<INTERACTIVE_ID:([^>]+)>>/i);
+  return match?.[1]?.trim() || null;
+}
+
+export function metaAdsQuestionarioExpirado(
+  questionario: MetaAdsQuestionario | null | undefined,
+  now = new Date(),
+): boolean {
+  if (!questionario?.criado_em) return true;
+  const created = Date.parse(questionario.criado_em);
+  return !Number.isFinite(created) || created > now.getTime() ||
+    now.getTime() - created > META_ADS_QUESTIONARIO_TTL_MS;
+}
+
+export function questionarioAtivo(
+  rows: QuestionarioRow[],
+  now = new Date(),
+): QuestionarioRow | null {
+  return rows
+    .filter((row) =>
+      row.status === "rascunho" &&
+      row.rascunho?.questionario &&
+      !metaAdsQuestionarioExpirado(
+        row.rascunho.questionario as MetaAdsQuestionario,
+        now,
+      )
+    )
+    .sort((a, b) =>
+      Date.parse(String(b.criado_em ?? "")) -
+      Date.parse(String(a.criado_em ?? ""))
+    )[0] ?? null;
+}
+
+export function novoMetaAdsQuestionario(now = new Date()): MetaAdsQuestionario {
+  const iso = now.toISOString();
+  return { etapa: "objetivo", criado_em: iso, atualizado_em: iso };
+}
+
+export function questionarioList(input: {
+  body: string;
+  button?: string;
+  header?: string;
+  footer?: string;
+  sectionTitle?: string;
+  rows: Array<{ id: string; title: string; description?: string }>;
+}): QuestionarioList {
+  return {
+    body: limitar(input.body, 1024),
+    button: limitar(input.button || "Escolher", 20),
+    header: input.header ? limitar(input.header, 60) : undefined,
+    footer: input.footer ? limitar(input.footer, 60) : undefined,
+    section_title: input.sectionTitle
+      ? limitar(input.sectionTitle, 24)
+      : undefined,
+    rows: input.rows.slice(0, 10).map((row) => ({
+      id: limitar(row.id, 200),
+      title: limitar(row.title, 24),
+      description: row.description
+        ? limitar(row.description, 72)
+        : undefined,
+    })),
+  };
+}
+
+export function questionarioButtons(input: {
+  body: string;
+  header?: string;
+  footer?: string;
+  buttons: Array<{ id: string; title: string }>;
+}): QuestionarioButtons {
+  return {
+    body: limitar(input.body, 1024),
+    header: input.header ? limitar(input.header, 60) : undefined,
+    footer: input.footer ? limitar(input.footer, 60) : undefined,
+    buttons: input.buttons.slice(0, 3).map((button) => ({
+      id: limitar(button.id, 200),
+      title: limitar(button.title, 20),
+    })),
+  };
+}
+
+export function metaAdsQuestionarioContinuarButtons(): QuestionarioButtons {
+  return questionarioButtons({
+    body: "Sua campanha ficou salva. Quer continuar de onde parou?",
+    buttons: [{
+      id: `${META_ADS_QUESTIONARIO_PREFIX}continuar`,
+      title: "Continuar campanha",
+    }],
+  });
+}
+
+export function respostaPertenceAoQuestionario(
+  text: unknown,
+  etapa: MetaAdsQuestionarioEtapa,
+): boolean {
+  const id = interactiveId(text);
+  if (id?.startsWith(META_ADS_QUESTIONARIO_PREFIX)) return true;
+  const value = normalizar(text);
+  if (!value) return etapa === "midia";
+  if (isMetaAdsQuestionarioCancel(value) || isMetaAdsQuestionarioResume(value)) {
+    return true;
+  }
+  if (["cidade", "url_site", "idade_personalizada", "texto_manual"].includes(etapa)) {
+    return !/^(?:como|quando|onde|porque|por que|qual|quem|voce|você)\b.*\?$/.test(
+      String(text).trim(),
+    );
+  }
+  if (etapa === "orcamento") return /\d/.test(value);
+  return false;
+}
+
+export function filtrarInteressesValidados(
+  requested: string[],
+  found: MetaAdsTarget[],
+): MetaAdsTarget[] {
+  const wanted = requested.map(normalizar);
+  const seen = new Set<string>();
+  return found.filter((item) => {
+    if (!item?.id || !item?.name || seen.has(item.id)) return false;
+    const name = normalizar(item.name);
+    if (!wanted.some((term) => name === term || name.includes(term) || term.includes(name))) {
+      return false;
+    }
+    seen.add(item.id);
+    return true;
+  });
+}
+
+export function metaAdsQuestionarioBudget(input: {
+  daily: unknown;
+  duration: unknown;
+  available: unknown;
+}): { ok: true; maximumSpend: number } | {
+  ok: false;
+  maximumSpend: number;
+  available: number;
+} {
+  const daily = Number(input.daily);
+  const duration = Math.trunc(Number(input.duration));
+  const available = Math.max(0, Number(input.available) || 0);
+  const maximumSpend = Math.round(daily * duration * 100) / 100;
+  return Number.isFinite(maximumSpend) && maximumSpend > 0 &&
+      maximumSpend <= available
+    ? { ok: true, maximumSpend }
+    : { ok: false, maximumSpend, available };
+}
+
+export function metaAdsQuestionarioResumo(
+  questionario: MetaAdsQuestionario,
+): string {
+  const objetivo = questionario.objetivo === "site"
+    ? `Visitas ao site (${questionario.destination_url})`
+    : "Conversas no WhatsApp";
+  const publico = questionario.interesses?.length
+    ? questionario.interesses.map((item) => item.name).join(", ")
+    : "Público amplo";
+  const genero = "Todos";
+  const total = (questionario.orcamento_diario ?? 0) *
+    (questionario.duracao_dias ?? 0);
+  return [
+    "Resumo da campanha",
+    `Objetivo: ${objetivo}`,
+    `Público: ${publico}`,
+    `Local: ${questionario.cidade?.name ?? "—"} · ${questionario.raio_km ?? 0} km`,
+    `Idade: ${questionario.age_min ?? 18}–${questionario.age_max ?? 65} · ${genero}`,
+    `Orçamento: R$ ${(questionario.orcamento_diario ?? 0).toFixed(2).replace(".", ",")}/dia × ${questionario.duracao_dias ?? 0} dias = R$ ${total.toFixed(2).replace(".", ",")}`,
+    `Mídia: ${questionario.midia?.titulo ?? "—"}`,
+    `Título: ${questionario.titulo ?? "—"}`,
+    `Texto: ${questionario.texto_principal ?? "—"}`,
+  ].join("\n");
+}
+
+export function metaAdsQuestionarioResumoHash(
+  questionario: MetaAdsQuestionario,
+): string {
+  const text = metaAdsQuestionarioResumo(questionario);
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index++) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+export function metaAdsDraftDoQuestionario(
+  questionario: MetaAdsQuestionario,
+  input: { conversationId: string; ownerPhone: string },
+): MetaAdsDraft & {
+  questionario: MetaAdsQuestionario;
+  conversation_id: string;
+  solicitante_telefone: string;
+} {
+  if (
+    !questionario.objetivo || !questionario.cidade || !questionario.midia ||
+    !questionario.orcamento_diario || !questionario.duracao_dias ||
+    !questionario.titulo || !questionario.texto_principal
+  ) throw new Error("questionario_incompleto");
+  return {
+    name: questionario.titulo,
+    objective: questionario.objetivo,
+    primary_text: questionario.texto_principal,
+    headline: questionario.titulo,
+    media_url: questionario.midia.url,
+    media_type: questionario.midia.tipo,
+    thumbnail_url: questionario.midia.thumbnail_url,
+    media_id: questionario.midia.id,
+    media_source: "midias_whatsapp",
+    daily_budget: questionario.orcamento_diario,
+    duration_days: questionario.duracao_dias,
+    cities: [questionario.cidade],
+    interests: questionario.interesses ?? [],
+    destination_url: questionario.destination_url,
+    radius_km: questionario.raio_km ?? 25,
+    age_min: questionario.age_min ?? 18,
+    age_max: questionario.age_max ?? 65,
+    special_ad_categories: [],
+    questionario,
+    conversation_id: input.conversationId,
+    solicitante_telefone: input.ownerPhone,
+  };
+}

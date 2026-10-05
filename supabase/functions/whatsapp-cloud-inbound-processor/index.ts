@@ -151,6 +151,26 @@ import {
   isLiteralMetaAdsApproval,
   latestMetaAdsWhatsappApproval,
 } from "../_shared/meta-ads-whatsapp-approval.ts";
+import {
+  filtrarInteressesValidados,
+  interactiveId as metaAdsQuestionarioInteractiveId,
+  isMetaAdsQuestionarioCancel,
+  isMetaAdsQuestionarioResume,
+  isMetaAdsQuestionarioTrigger,
+  metaAdsDraftDoQuestionario,
+  metaAdsQuestionarioBudget,
+  metaAdsQuestionarioContinuarButtons,
+  metaAdsQuestionarioExpirado,
+  metaAdsQuestionarioResumo,
+  metaAdsQuestionarioResumoHash,
+  novoMetaAdsQuestionario,
+  questionarioAtivo,
+  questionarioButtons,
+  questionarioList,
+  respostaPertenceAoQuestionario,
+  type MetaAdsQuestionario,
+  type MetaAdsQuestionarioMidia,
+} from "../_shared/meta-ads-questionario.ts";
 import { dedupeConsecutiveReplyText } from "../_shared/reply-dedupe.ts";
 import {
   formatScheduledDate,
@@ -506,7 +526,7 @@ function extractText(payload: any): string {
   if (payload.interactive?.list_reply?.title) {
     const title = String(payload.interactive.list_reply.title);
     const id = String(payload.interactive.list_reply.id || "");
-    return /^(?:video_|tiktok_(?:privacy|disclosure):)/i.test(id)
+    return /^(?:video_|tiktok_(?:privacy|disclosure):|meta_ads_q:)/i.test(id)
       ? `${title}\n<<INTERACTIVE_ID:${id}>>`
       : title;
   }
@@ -3723,6 +3743,668 @@ async function toolPublicarAnuncioMeta(
     }
     return `${publicMetaAdsError(error).message} O rascunho foi preservado.`;
   }
+}
+
+type MetaAdsQuestionarioProcessorResult = {
+  handled: boolean;
+  text?: string;
+  interactiveList?: WhatsAppInteractiveList;
+  interactiveButtons?: WhatsAppInteractiveButtons;
+  summaryDraftId?: string;
+  offerResume?: boolean;
+};
+
+function metaAdsQuestionarioOption(text: string): string {
+  const id = metaAdsQuestionarioInteractiveId(text);
+  return id?.startsWith("meta_ads_q:") ? id.slice("meta_ads_q:".length) : "";
+}
+
+function metaAdsQuestionarioPrompt(
+  questionario: MetaAdsQuestionario,
+  available?: number,
+): Omit<MetaAdsQuestionarioProcessorResult, "handled"> {
+  const prefix = "meta_ads_q:";
+  switch (questionario.etapa) {
+    case "objetivo":
+      return {
+        text: "Vamos lá! O que você quer com esse anúncio?",
+        interactiveList: questionarioList({
+          body: "Escolha o objetivo da campanha:",
+          rows: [
+            { id: `${prefix}objetivo:whatsapp`, title: "Conversas no WhatsApp" },
+            { id: `${prefix}objetivo:site`, title: "Visitas ao site" },
+          ],
+        }),
+      };
+    case "url_site":
+      return { text: "Qual é a URL completa do site? Envie começando com https://." };
+    case "publico":
+      return {
+        text: "Sugeri públicos com interesses que encontrei na Meta. Qual você prefere?",
+        interactiveList: questionarioList({
+          body: "Escolha um público:",
+          rows: [
+            ...(questionario.publicos_sugeridos ?? []).slice(0, 3).map((
+              pacote,
+              index,
+            ) => ({
+              id: `${prefix}publico:${index}`,
+              title: pacote.nome,
+              description: pacote.interesses.map((item) => item.name).join(", "),
+            })),
+            {
+              id: `${prefix}publico:amplo`,
+              title: "Público amplo",
+              description: "A Meta escolhe o público",
+            },
+          ],
+        }),
+      };
+    case "cidade":
+      return { text: "Qual cidade você quer alcançar?" };
+    case "confirmar_cidade":
+      return {
+        text: "Qual destas cidades é a certa?",
+        interactiveList: questionarioList({
+          body: "Confirme a cidade:",
+          rows: (questionario.cidades_encontradas ?? []).slice(0, 3).map((
+            city,
+            index,
+          ) => ({
+            id: `${prefix}cidade:${index}`,
+            title: city.name,
+          })),
+        }),
+      };
+    case "raio":
+      return {
+        text: `Qual raio ao redor de ${questionario.cidade?.name ?? "essa cidade"}?`,
+        interactiveButtons: questionarioButtons({
+          body: "Escolha o raio:",
+          buttons: [10, 25, 40].map((radius) => ({
+            id: `${prefix}raio:${radius}`,
+            title: `${radius} km`,
+          })),
+        }),
+      };
+    case "idade":
+      return {
+        text: "Qual faixa de idade?",
+        interactiveList: questionarioList({
+          body: "Escolha a faixa etária:",
+          rows: [
+            ["18-65", "18–65"],
+            ["25-55", "25–55"],
+            ["28-60", "28–60"],
+            ["35-65", "35–65"],
+            ["outra", "Outra"],
+          ].map(([value, title]) => ({
+            id: `${prefix}idade:${value}`,
+            title,
+          })),
+        }),
+      };
+    case "idade_personalizada":
+      return { text: "Digite a faixa de idade, por exemplo: 30-55." };
+    case "orcamento":
+      return {
+        text: "Quanto você quer investir por dia? Escolha ou digite outro valor.",
+        interactiveButtons: questionarioButtons({
+          body: "Orçamento diário:",
+          buttons: [10, 20, 30].map((amount) => ({
+            id: `${prefix}orcamento:${amount}`,
+            title: `R$ ${amount}`,
+          })),
+        }),
+      };
+    case "duracao":
+      return {
+        text: `Por quantos dias?${Number.isFinite(available) ? ` Você tem ${metaAdsBrl(available)} disponíveis no teto mensal.` : ""}`,
+        interactiveList: questionarioList({
+          body: "Escolha a duração:",
+          rows: [7, 15, 30].map((days) => ({
+            id: `${prefix}duracao:${days}`,
+            title: `${days} dias`,
+          })),
+        }),
+      };
+    case "midia":
+      return { text: "Escolha uma das suas mídias recentes. Se a lista estiver vazia, envie uma imagem ou um vídeo aqui." };
+    case "texto":
+      return {
+        text: `Escrevi este anúncio:\n\n*${questionario.titulo}*\n${questionario.texto_principal}`,
+        interactiveButtons: questionarioButtons({
+          body: "O que deseja fazer com o texto?",
+          buttons: [
+            { id: `${prefix}texto:aprovar`, title: "Aprovar" },
+            { id: `${prefix}texto:reescrever`, title: "Reescrever" },
+            { id: `${prefix}texto:manual`, title: "Eu escrevo" },
+          ],
+        }),
+      };
+    case "texto_manual":
+      return {
+        text: "Envie o título na primeira linha e o texto principal nas linhas seguintes.",
+      };
+    case "resumo":
+      return {
+        text: metaAdsQuestionarioResumo(questionario),
+        interactiveButtons: questionarioButtons({
+          body: "Confira o resumo. Nada será publicado sem sua confirmação.",
+          buttons: [
+            { id: `${prefix}publicar:${questionario.resumo_hash}`, title: "Publicar" },
+            { id: `${prefix}ajustar`, title: "Ajustar" },
+            { id: `${prefix}cancelar`, title: "Cancelar" },
+          ],
+        }),
+      };
+  }
+}
+
+async function metaAdsQuestionarioInteresses(
+  integration: MetaAdsIntegrationRow,
+  userId: string,
+): Promise<Array<{ nome: string; interesses: Array<{ id: string; name: string }> }>> {
+  const context = await getTenantBusinessContext(sb, userId, {
+    incluirProdutos: true,
+  });
+  const terms = [
+    context.segmento,
+    ...(context.publicoAlvo ?? "").split(/[,;/]|\be\b/),
+    ...context.produtos.slice(0, 2),
+  ].map((term) => String(term ?? "").trim()).filter((term) => term.length >= 3)
+    .slice(0, 3);
+  const packages: Array<{
+    nome: string;
+    interesses: Array<{ id: string; name: string }>;
+  }> = [];
+  for (const term of terms) {
+    try {
+      const result = await metaAdsGraph(integration, "search", {
+        params: {
+          type: "adinterest",
+          q: term,
+          locale: "pt_BR",
+          limit: "5",
+        },
+      });
+      const found = (Array.isArray(result?.data) ? result.data : []).map((
+        item: any,
+      ) => ({
+        id: String(item.id ?? item.key ?? ""),
+        name: String(item.name ?? ""),
+      })).filter((item: any) => item.id && item.name);
+      const validated = filtrarInteressesValidados(
+        found.map((item: any) => item.name),
+        found,
+      ).slice(0, 3);
+      if (validated.length) {
+        packages.push({
+          nome: validated[0].name.slice(0, 24),
+          interesses: validated,
+        });
+      }
+    } catch (error) {
+      console.warn("[meta-ads-questionario][interest_search]", metaAdsSafeError(error));
+    }
+  }
+  return packages.slice(0, 3);
+}
+
+async function metaAdsQuestionarioMidias(
+  userId: string,
+): Promise<MetaAdsQuestionarioMidia[]> {
+  const { data, error } = await sb.from("midias_whatsapp")
+    .select("id,tipo,midia_url,contexto_original,legenda_gerada,created_at")
+    .eq("user_id", userId)
+    .in("tipo", ["foto", "video"])
+    .order("created_at", { ascending: false })
+    .limit(10);
+  if (error) return [];
+  return (data ?? []).map((item: any, index: number) => ({
+    id: String(item.id),
+    url: String(item.midia_url),
+    tipo: item.tipo === "video" ? "video" : "image",
+    titulo: String(
+      item.contexto_original || item.legenda_gerada ||
+        `${item.tipo === "video" ? "Vídeo" : "Imagem"} ${index + 1}`,
+    ).replace(/\s+/g, " ").slice(0, 24),
+  })).filter((item: MetaAdsQuestionarioMidia) =>
+    item.id && /^https:\/\//i.test(item.url)
+  );
+}
+
+async function metaAdsQuestionarioGerarTexto(
+  userId: string,
+  questionario: MetaAdsQuestionario,
+): Promise<{ titulo: string; texto: string } | null> {
+  const context = await getTenantBusinessContext(sb, userId, {
+    incluirProdutos: true,
+  });
+  if (!context.promptBlock) return null;
+  try {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        temperature: 0.4,
+        messages: [{
+          role: "system",
+          content: "Crie copy curta para Meta Ads. Use SOMENTE os fatos fornecidos. Não invente preço, promoção, avaliação, depoimento, prazo, resultado ou promessa. Responda só JSON válido: {\"titulo\":\"...\",\"texto\":\"...\"}.",
+        }, {
+          role: "user",
+          content: `${context.promptBlock}\nObjetivo: ${questionario.objetivo === "site" ? "visitas ao site" : "conversas no WhatsApp"}.`,
+        }],
+      }),
+    });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const raw = String(payload?.choices?.[0]?.message?.content ?? "")
+      .replace(/^```json\s*|\s*```$/g, "").trim();
+    const parsed = JSON.parse(raw);
+    const titulo = String(parsed?.titulo ?? "").trim().slice(0, 255);
+    const texto = String(parsed?.texto ?? "").trim().slice(0, 2_000);
+    return titulo && texto ? { titulo, texto } : null;
+  } catch (error) {
+    console.warn("[meta-ads-questionario][copy]", (error as Error).message);
+    return null;
+  }
+}
+
+async function processMetaAdsQuestionario(input: {
+  userId: string;
+  fromNumber: string;
+  conversationId: string;
+  text: string;
+  owner: boolean;
+}): Promise<MetaAdsQuestionarioProcessorResult> {
+  const ctx: MetaAdsToolContext = {
+    userId: input.userId,
+    fromNumber: input.fromNumber,
+    convId: input.conversationId,
+  };
+  const { data: rows } = await sb.from("meta_ads_campanhas")
+    .select("id,status,rascunho,criado_em")
+    .eq("user_id", input.userId)
+    .eq("status", "rascunho")
+    .order("criado_em", { ascending: false })
+    .limit(20);
+  let row = questionarioAtivo(rows ?? []);
+  const trigger = isMetaAdsQuestionarioTrigger(input.text);
+  if (!row && !trigger) return { handled: false };
+  if (!input.owner) {
+    return trigger
+      ? { handled: true, text: "A criação de anúncios é restrita ao responsável da conta." }
+      : { handled: false };
+  }
+
+  const integration = await loadMetaAdsIntegration(input.userId);
+  const integrationProblem = metaAdsIntegrationProblem(integration);
+  if (trigger && (!integration || integrationProblem)) {
+    return { handled: true, text: integrationProblem! };
+  }
+
+  if (!row) {
+    const questionario = novoMetaAdsQuestionario();
+    const { data: created, error } = await sb.from("meta_ads_campanhas").insert({
+      user_id: input.userId,
+      status: "rascunho",
+      rascunho: {
+        questionario,
+        conversation_id: input.conversationId,
+        solicitante_telefone: input.fromNumber,
+      },
+    }).select("id,status,rascunho,criado_em").single();
+    if (error || !created) {
+      return { handled: true, text: "Não consegui iniciar a campanha agora. Tente novamente." };
+    }
+    row = created;
+    return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
+  }
+
+  let questionario = row.rascunho?.questionario as MetaAdsQuestionario;
+  if (metaAdsQuestionarioExpirado(questionario)) {
+    await sb.from("meta_ads_campanhas").delete().eq("id", row.id)
+      .eq("user_id", input.userId).eq("status", "rascunho");
+    return {
+      handled: true,
+      text: "Esse questionário expirou após 24 horas. Peça para criar um anúncio e começamos de novo.",
+    };
+  }
+  if (isMetaAdsQuestionarioCancel(input.text)) {
+    await sb.from("meta_ads_campanhas").delete().eq("id", row.id)
+      .eq("user_id", input.userId).eq("status", "rascunho");
+    return { handled: true, text: "Campanha cancelada. Nada foi publicado." };
+  }
+  if (isMetaAdsQuestionarioResume(input.text) || trigger) {
+    if (questionario.etapa === "midia") {
+      const midias = await metaAdsQuestionarioMidias(input.userId);
+      return {
+        handled: true,
+        ...metaAdsQuestionarioPrompt(questionario),
+        interactiveList: midias.length
+          ? questionarioList({
+            body: "Escolha uma mídia:",
+            rows: midias.map((media, index) => ({
+              id: `meta_ads_q:midia:${index}`,
+              title: media.titulo,
+              description: media.tipo === "video" ? "Vídeo" : "Imagem",
+            })),
+          })
+          : undefined,
+      };
+    }
+    return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
+  }
+  if (!respostaPertenceAoQuestionario(input.text, questionario.etapa)) {
+    return { handled: false, offerResume: true };
+  }
+
+  const option = metaAdsQuestionarioOption(input.text);
+  const now = new Date().toISOString();
+  const update = async (
+    patch: Partial<MetaAdsQuestionario>,
+    draftPatch: Record<string, unknown> = {},
+  ) => {
+    questionario = { ...questionario, ...patch, atualizado_em: now };
+    const rascunho = {
+      ...(row!.rascunho ?? {}),
+      ...draftPatch,
+      questionario,
+      conversation_id: input.conversationId,
+      solicitante_telefone: input.fromNumber,
+    };
+    await sb.from("meta_ads_campanhas").update({
+      rascunho,
+      atualizado_em: now,
+      ...(questionario.orcamento_diario
+        ? { orcamento_diario: questionario.orcamento_diario }
+        : {}),
+      ...(questionario.duracao_dias
+        ? {
+          duracao_dias: questionario.duracao_dias,
+          gasto_maximo: questionario.orcamento_diario! *
+            questionario.duracao_dias,
+        }
+        : {}),
+    }).eq("id", row!.id).eq("user_id", input.userId).eq("status", "rascunho");
+  };
+
+  if (questionario.etapa === "objetivo") {
+    const objective = option === "objetivo:site"
+      ? "site"
+      : option === "objetivo:whatsapp" ? "whatsapp" : null;
+    if (!objective) return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
+    if (objective === "site") {
+      await update({ objetivo: objective, etapa: "url_site" });
+    } else {
+      const packages = await metaAdsQuestionarioInteresses(integration!, input.userId);
+      await update({
+        objetivo: objective,
+        publicos_sugeridos: packages,
+        etapa: "publico",
+      });
+    }
+  } else if (questionario.etapa === "url_site") {
+    let url = "";
+    try {
+      const parsed = new URL(input.text.trim());
+      if (parsed.protocol === "https:") url = parsed.toString();
+    } catch { /* mensagem abaixo */ }
+    if (!url) return { handled: true, text: "Envie uma URL pública completa começando com https://." };
+    const packages = await metaAdsQuestionarioInteresses(integration!, input.userId);
+    await update({
+      destination_url: url,
+      publicos_sugeridos: packages,
+      etapa: "publico",
+    });
+  } else if (questionario.etapa === "publico") {
+    const key = option.replace("publico:", "");
+    if (key === "amplo") {
+      await update({ pacote_publico: "Público amplo", interesses: [], etapa: "cidade" });
+    } else {
+      const index = Number(key);
+      const pacote = questionario.publicos_sugeridos?.[index];
+      if (!pacote) return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
+      await update({
+        pacote_publico: pacote.nome,
+        interesses: pacote.interesses,
+        etapa: "cidade",
+      });
+    }
+  } else if (questionario.etapa === "cidade") {
+    try {
+      const result = await metaAdsGraph(integration!, "search", {
+        params: {
+          type: "adgeolocation",
+          location_types: JSON.stringify(["city"]),
+          q: input.text.trim(),
+          country_code: "BR",
+          locale: "pt_BR",
+          limit: "3",
+        },
+      });
+      const cities = (result?.data ?? []).map((item: any) => ({
+        id: String(item.key ?? item.id ?? ""),
+        name: [item.name, item.region].filter(Boolean).join(" - "),
+      })).filter((city: any) => city.id && city.name).slice(0, 3);
+      if (!cities.length) {
+        return { handled: true, text: "Não encontrei essa cidade na Meta. Digite o nome e o estado, por exemplo: Niterói, RJ." };
+      }
+      await update({ cidades_encontradas: cities, etapa: "confirmar_cidade" });
+    } catch (error) {
+      return { handled: true, text: metaAdsSafeError(error) };
+    }
+  } else if (questionario.etapa === "confirmar_cidade") {
+    const index = Number(option.replace("cidade:", ""));
+    const city = questionario.cidades_encontradas?.[index];
+    if (!city) return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
+    await update({ cidade: city, etapa: "raio" });
+  } else if (questionario.etapa === "raio") {
+    const radius = Number(option.replace("raio:", ""));
+    if (![10, 25, 40].includes(radius)) {
+      return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
+    }
+    await update({ raio_km: radius, etapa: "idade" });
+  } else if (questionario.etapa === "idade") {
+    const value = option.replace("idade:", "");
+    if (value === "outra") {
+      await update({ etapa: "idade_personalizada" });
+    } else {
+      const match = value.match(/^(\d{2})-(\d{2})$/);
+      if (!match) return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
+      await update({
+        age_min: Number(match[1]),
+        age_max: Number(match[2]),
+        etapa: "orcamento",
+      });
+    }
+  } else if (questionario.etapa === "idade_personalizada") {
+    const match = input.text.match(/\b(\d{2})\s*[-–a]\s*(\d{2})\b/i);
+    const minimum = Number(match?.[1]);
+    const maximum = Number(match?.[2]);
+    if (!match || minimum < 18 || maximum > 65 || minimum > maximum) {
+      return { handled: true, text: "Digite uma faixa válida entre 18 e 65 anos, por exemplo: 30-55." };
+    }
+    await update({ age_min: minimum, age_max: maximum, etapa: "orcamento" });
+  } else if (questionario.etapa === "orcamento") {
+    const amount = Number(
+      (option.replace("orcamento:", "") || input.text).replace(/[^\d,.-]/g, "")
+        .replace(",", "."),
+    );
+    if (!Number.isFinite(amount) || amount < 1) {
+      return { handled: true, text: "Digite um orçamento diário válido, por exemplo: 20." };
+    }
+    await update({ orcamento_diario: amount, etapa: "duracao" });
+    let availability;
+    try {
+      availability = await loadMetaAdsMonthlyAvailability(integration!, input.userId);
+    } catch { /* a publicação fará nova checagem obrigatória */ }
+    return {
+      handled: true,
+      ...metaAdsQuestionarioPrompt(questionario, availability?.available),
+    };
+  } else if (questionario.etapa === "duracao") {
+    const duration = Number(option.replace("duracao:", ""));
+    if (![7, 15, 30].includes(duration)) {
+      return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
+    }
+    let availability;
+    try {
+      availability = await loadMetaAdsMonthlyAvailability(integration!, input.userId);
+    } catch (error) {
+      return { handled: true, text: metaAdsSafeError(error) };
+    }
+    const budget = metaAdsQuestionarioBudget({
+      daily: questionario.orcamento_diario,
+      duration,
+      available: availability.available,
+    });
+    if (!budget.ok) {
+      return {
+        handled: true,
+        text: `Esse anúncio pode gastar ${metaAdsBrl(budget.maximumSpend)}, mas há ${metaAdsBrl(budget.available)} disponíveis no teto mensal. Escolha menos dias ou cancele e recomece com outro orçamento.`,
+        ...metaAdsQuestionarioPrompt(questionario, availability.available),
+      };
+    }
+    await update({ duracao_dias: duration, etapa: "midia" });
+    const midias = await metaAdsQuestionarioMidias(input.userId);
+    return {
+      handled: true,
+      ...metaAdsQuestionarioPrompt(questionario),
+      interactiveList: midias.length
+        ? questionarioList({
+          body: "Escolha uma mídia:",
+          rows: midias.map((media, index) => ({
+            id: `meta_ads_q:midia:${index}`,
+            title: media.titulo,
+            description: media.tipo === "video" ? "Vídeo" : "Imagem",
+          })),
+        })
+        : undefined,
+    };
+  } else if (questionario.etapa === "midia") {
+    const midias = await metaAdsQuestionarioMidias(input.userId);
+    const index = Number(option.replace("midia:", ""));
+    const selected = Number.isInteger(index) ? midias[index] : undefined;
+    if (!selected) {
+      return {
+        handled: true,
+        ...metaAdsQuestionarioPrompt(questionario),
+        interactiveList: midias.length
+          ? questionarioList({
+            body: "Escolha uma mídia:",
+            rows: midias.map((media, mediaIndex) => ({
+              id: `meta_ads_q:midia:${mediaIndex}`,
+              title: media.titulo,
+              description: media.tipo === "video" ? "Vídeo" : "Imagem",
+            })),
+          })
+          : undefined,
+      };
+    }
+    const copy = await metaAdsQuestionarioGerarTexto(input.userId, questionario);
+    if (!copy) {
+      await update({ midia: selected, etapa: "texto_manual" });
+      return {
+        handled: true,
+        text: "Não há informações suficientes da empresa para criar um texto sem inventar. Envie o título na primeira linha e o texto principal nas linhas seguintes.",
+      };
+    }
+    await update({
+      midia: selected,
+      titulo: copy.titulo,
+      texto_principal: copy.texto,
+      etapa: "texto",
+    });
+  } else if (questionario.etapa === "texto") {
+    const action = option.replace("texto:", "");
+    if (action === "manual") {
+      await update({ etapa: "texto_manual" });
+    } else if (action === "reescrever") {
+      const copy = await metaAdsQuestionarioGerarTexto(input.userId, questionario);
+      if (!copy) return { handled: true, text: "Não consegui reescrever agora. Você pode escolher “Eu escrevo”." };
+      await update({ titulo: copy.titulo, texto_principal: copy.texto });
+    } else if (action === "aprovar") {
+      const resumoHash = metaAdsQuestionarioResumoHash(questionario);
+      await update({ etapa: "resumo", resumo_hash: resumoHash });
+      const fullDraft = metaAdsDraftDoQuestionario(questionario, {
+        conversationId: input.conversationId,
+        ownerPhone: input.fromNumber,
+      });
+      await sb.from("meta_ads_campanhas").update({
+        rascunho: fullDraft,
+        orcamento_diario: fullDraft.daily_budget,
+        duracao_dias: fullDraft.duration_days,
+        gasto_maximo: metaAdsMaximumSpend(fullDraft),
+        atualizado_em: now,
+      }).eq("id", row.id).eq("user_id", input.userId).eq("status", "rascunho");
+      return {
+        handled: true,
+        ...metaAdsQuestionarioPrompt(questionario),
+        summaryDraftId: row.id,
+      };
+    } else return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
+  } else if (questionario.etapa === "texto_manual") {
+    const lines = input.text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+    if (lines.length < 2) {
+      return { handled: true, text: "Envie o título na primeira linha e o texto principal a partir da segunda linha." };
+    }
+    await update({
+      titulo: lines[0].slice(0, 255),
+      texto_principal: lines.slice(1).join("\n").slice(0, 2_000),
+      etapa: "texto",
+    });
+  } else if (questionario.etapa === "resumo") {
+    if (option === "ajustar") {
+      return {
+        handled: true,
+        text: "O que você quer ajustar?",
+        interactiveList: questionarioList({
+          body: "Escolha uma etapa:",
+          rows: [
+            ["publico", "Público"],
+            ["cidade", "Cidade e raio"],
+            ["idade", "Idade"],
+            ["orcamento", "Orçamento e duração"],
+            ["midia", "Mídia"],
+            ["texto", "Texto"],
+          ].map(([stage, title]) => ({
+            id: `meta_ads_q:ajustar:${stage}`,
+            title,
+          })),
+        }),
+      };
+    }
+    if (option.startsWith("ajustar:")) {
+      const selected = option.slice("ajustar:".length);
+      const stage = selected === "publico" || selected === "cidade" ||
+          selected === "idade" || selected === "orcamento" ||
+          selected === "midia" || selected === "texto"
+        ? selected
+        : null;
+      if (!stage) return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
+      await update({ etapa: stage });
+    } else if (option.startsWith("publicar:")) {
+      const hash = option.slice("publicar:".length);
+      if (!hash || hash !== questionario.resumo_hash ||
+        hash !== metaAdsQuestionarioResumoHash(questionario)) {
+        return { handled: true, text: "O resumo mudou ou expirou. Revise a campanha antes de publicar." };
+      }
+      return {
+        handled: true,
+        text: await toolPublicarAnuncioMeta({
+          confirmacao: "SIM",
+          rascunho_id: row.id,
+        }, ctx),
+      };
+    } else return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
+  }
+  return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
 }
 
 async function findMetaAdsCampaign(
@@ -16109,6 +16791,33 @@ Regras:
 
     // === ESTADO PERSISTENTE DA CONVERSA (comprovante de encaminhamento + decisões) ===
     const agentState = await loadAgentState(sb, convStateIdentity);
+    let metaAdsQuestionarioResult: MetaAdsQuestionarioProcessorResult = {
+      handled: false,
+    };
+    try {
+      metaAdsQuestionarioResult = await processMetaAdsQuestionario({
+        userId,
+        fromNumber: row.from_number,
+        conversationId: conv.id,
+        text: audioTranscript || userText,
+        owner: fromIsOwner,
+      });
+    } catch (error) {
+      console.error(
+        "[meta-ads-questionario][process]",
+        (error as Error).message,
+      );
+      if (
+        fromIsOwner &&
+        (isMetaAdsQuestionarioTrigger(userText) ||
+          metaAdsQuestionarioInteractiveId(userText)?.startsWith("meta_ads_q:"))
+      ) {
+        metaAdsQuestionarioResult = {
+          handled: true,
+          text: "Não consegui continuar a campanha agora. Tente novamente em alguns segundos.",
+        };
+      }
+    }
     let persistedForward = (agentState.forward ?? null) as { protocolo?: string; destinatario?: string; wamid?: string | null; at?: string } | null;
     if (!persistedForward?.protocolo && !fromIsOwner) {
       const recovered = await recoverForwardProof(userId, row.from_number);
@@ -16169,23 +16878,33 @@ Regras:
     let forwardAttempted = false;
     let metaAdsSummaryDraftId: string | undefined;
     try {
-      const aiResult = await callGemini(systemPromptWithDate, history, userContent, media.length > 0, {
-        userId,
-        fromNumber: row.from_number,
-        media,
-        convId: conv.id,
-        agentState,
-        demoTestPhones: Array.isArray((agent as any).demo_test_phones)
-          ? (agent as any).demo_test_phones
-          : [],
-      });
-      reply = aiResult.text;
-      generatedImageUrl = aiResult.imageUrl;
-      interactiveList = aiResult.interactiveList;
-      interactiveButtons = aiResult.interactiveButtons;
-      forwardProof = aiResult.forwardProof;
-      forwardAttempted = !!aiResult.forwardAttempted;
-      metaAdsSummaryDraftId = aiResult.metaAdsSummaryDraftId;
+      if (metaAdsQuestionarioResult.handled) {
+        reply = metaAdsQuestionarioResult.text ??
+          "Vamos continuar sua campanha.";
+        interactiveList = metaAdsQuestionarioResult.interactiveList;
+        interactiveButtons = metaAdsQuestionarioResult.interactiveButtons;
+        metaAdsSummaryDraftId = metaAdsQuestionarioResult.summaryDraftId;
+      } else {
+        const aiResult = await callGemini(systemPromptWithDate, history, userContent, media.length > 0, {
+          userId,
+          fromNumber: row.from_number,
+          media,
+          convId: conv.id,
+          agentState,
+          demoTestPhones: Array.isArray((agent as any).demo_test_phones)
+            ? (agent as any).demo_test_phones
+            : [],
+        });
+        reply = aiResult.text;
+        generatedImageUrl = aiResult.imageUrl;
+        interactiveList = aiResult.interactiveList;
+        interactiveButtons = metaAdsQuestionarioResult.offerResume
+          ? metaAdsQuestionarioContinuarButtons()
+          : aiResult.interactiveButtons;
+        forwardProof = aiResult.forwardProof;
+        forwardAttempted = !!aiResult.forwardAttempted;
+        metaAdsSummaryDraftId = aiResult.metaAdsSummaryDraftId;
+      }
     } catch (e) {
       const aiError = String((e as Error).message ?? e).slice(0, 300);
       console.error("[processor][ai_fallback]", aiError);
