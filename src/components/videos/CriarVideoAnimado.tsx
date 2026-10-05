@@ -124,6 +124,7 @@ export const CriarVideoAnimado = () => {
       .from('tenant_logos')
       .select('storage_path')
       .eq('user_id', user.id)
+      .eq('variant', 'default')
       .eq('ativo', true)
       .maybeSingle();
     const path = data?.storage_path;
@@ -262,9 +263,19 @@ export const CriarVideoAnimado = () => {
       if (uploadError) throw uploadError;
 
       if (definirComoMarca) {
-        const { error: deleteError } = await supabase.from('tenant_logos').delete().eq('user_id', user.id);
+        const { error: deleteError } = await supabase.from('tenant_logos')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('variant', 'default');
         if (deleteError) throw deleteError;
-        const { error: insertError } = await supabase.from('tenant_logos').insert({ user_id: user.id, storage_path: novoPath, file_name: file.name, mime_type: file.type, ativo: true });
+        const { error: insertError } = await supabase.from('tenant_logos').insert({
+          user_id: user.id,
+          storage_path: novoPath,
+          file_name: file.name,
+          mime_type: file.type,
+          variant: 'default',
+          ativo: true,
+        });
         if (insertError) throw insertError;
         if (logoPath) await supabase.storage.from('tenant-logos').remove([logoPath]);
       }
