@@ -308,6 +308,10 @@ import {
   saveClientBrandIdentity,
 } from "../_shared/client-brand-identity.ts";
 import {
+  anuncioClientColors,
+  buildAnuncioBrandPlan,
+} from "../_shared/anuncio-client-brand.ts";
+import {
   canRunClientLogoRegistrationShortcut,
   classifyCreativeMediaRequest,
   clientLogoUploadFollowUp,
@@ -11397,19 +11401,25 @@ const TOOLS = [
     type: "function",
     function: {
       name: "criar_anuncio",
-      description: "🏷️ Monta um ANÚNCIO PROFISSIONAL de produto (arte pronta pra vender) a partir de uma FOTO enviada + os dados que o responsável falar. Use quando ele disser 'faz um anúncio disso', 'monta a arte desse carro/imóvel/produto', 'cria anúncio com esses dados'. Serve pra qualquer nicho: veículo (km, ano, dono), imóvel (m², quartos, vaga), máquina (horas, ano), produto de loja (garantia, parcelas). O texto, o preço e a LOGO do cliente entram por template (exatos, nunca desenhados pela IA); a IA só melhora a foto. NUNCA invente dado que o usuário não falou. Restrito ao responsável da conta.",
+      description: "🏷️ Monta um ANÚNCIO PROFISSIONAL de produto (arte pronta pra vender) a partir de uma FOTO enviada + somente os dados que o responsável falar. Use quando ele disser 'faz um anúncio disso', 'monta a arte desse carro/imóvel/produto', 'cria anúncio com esses dados'. Quando disser 'anúncio para a loja X' ou 'com a logo do cliente X', passe cliente='X'; a identidade dessa loja substitui a do tenant e nunca pode cair na logo do tenant. Serve pra veículo, imóvel, máquina ou produto de loja. O texto, preços e logo entram por template (exatos, nunca desenhados pela IA); a IA só melhora a foto. NUNCA invente FIPE, preço, ano, quilometragem ou itens. Restrito ao responsável da conta.",
       parameters: {
         type: "object",
         properties: {
           titulo: { type: "string", description: "Nome do produto em destaque (ex: 'HYUNDAI CRETA 1.0 TURBO', 'APARTAMENTO 2 QUARTOS')." },
+          cliente: { type: "string", description: "Nome da loja/cliente cuja identidade deve ser usada. Passe quando o dono disser 'para a loja X' ou 'com a logo do cliente X'. Sem cliente, usa a marca do próprio tenant." },
+          site: { type: "string", description: "Site público da loja/cliente, somente quando informado pelo dono. Usado para extrair e salvar logo e cores se o cliente ainda não tiver logo cadastrada." },
           subtitulo: { type: "string", description: "Complemento curto (ex: 'AUTOMÁTICO 2023/2023', 'BAIRRO CENTRO'). Vazio se não souber." },
+          ano: { type: "string", description: "Ano para o selo, somente se o dono informou (ex: '2023/2023'). Nunca inferir." },
           itens: {
             type: "array",
             description: "Lista de 4 a 8 destaques EXATAMENTE como o usuário falou (ex: '38 MIL KM', 'ÚNICO DONO', 'PNEUS NOVOS', 'IPVA PAGO'). Não invente.",
             items: { type: "string" },
           },
           preco: { type: "string", description: "Preço formatado (ex: 'R$ 118.900,00'). Vazio se ele não disse o preço." },
-          preco_label: { type: "string", description: "Rótulo acima do preço (ex: 'À VISTA', 'VALOR', 'A PARTIR DE'). Padrão: VALOR." },
+          preco_label: { type: "string", description: "Rótulo acima do preço principal (ex: 'HOJE', 'À VISTA'). Vazio se não foi informado." },
+          preco_referencia: { type: "string", description: "Preço de referência riscado, somente se o dono informou." },
+          preco_referencia_label: { type: "string", description: "Origem/rótulo do preço de referência (ex: 'FIPE'), somente se o dono informou." },
+          preco_referencia_obs: { type: "string", description: "Observação factual do preço de referência (ex: 'sem blindagem'), somente se o dono informou." },
           badge: { type: "string", description: "Selo de destaque, se houver (ex: 'PINTURA 100% ORIGINAL', 'ÚLTIMA UNIDADE')." },
           telefone: { type: "string", description: "Telefone de contato pra arte, se o usuário informou." },
           instagram: { type: "string", description: "@ do Instagram pra arte, se o usuário informou. Vazio = uso o do cadastro." },
@@ -12201,13 +12211,111 @@ async function toolCriarCarrossel(
 // ============================================================
 const ANUNCIO_MAX_DIA = 20;
 
+async function resolveAnuncioClientIdentity(input: {
+  userId: string;
+  clientName?: string;
+  site?: string;
+}): Promise<
+  | { mode: "tenant"; businessName: null; logoPath: null; colors: string[] }
+  | { mode: "client"; businessName: string; logoPath: string; colors: string[] }
+  | { mode: "missing"; message: string }
+> {
+  const clientName = String(input.clientName || "").replace(/\s+/g, " ").trim().slice(0, 100);
+  let saved = clientName
+    ? await findClientBrandIdentity(sb, input.userId, {
+    name: clientName,
+    site: input.site,
+  })
+    : null;
+  const plan = buildAnuncioBrandPlan({
+    clientName,
+    site: input.site,
+    saved,
+  });
+  if (plan.mode === "tenant") {
+    return { mode: "tenant", businessName: null, logoPath: null, colors: [] };
+  }
+  if (plan.mode === "client") {
+    return {
+      mode: "client",
+      businessName: plan.businessName,
+      logoPath: plan.logoPath,
+      colors: plan.colors,
+    };
+  }
+  if (plan.mode === "missing") {
+    return {
+      mode: "missing",
+      message: `Não encontrei uma logo cadastrada para ${clientName}. Envie o site da loja ou a logo dizendo “salva essa como logo do cliente ${clientName}”. Não usei a logo da sua empresa.`,
+    };
+  }
+
+  try {
+    const fastIdentity = await fetchBrandSiteIdentity(plan.site);
+    const identity = await completeSiteIdentityWithRenderedPage(
+      sb,
+      input.userId,
+      fastIdentity,
+    );
+    const automatic = resolveAutomaticVideoSiteIdentity({
+      requestedClientName: clientName,
+      siteBrandName: identity.brand_name,
+      siteUrl: identity.url,
+      colors: identity.colors,
+      logoConfidence: identity.logo_confidence,
+      logoDataUrl: identity.logo_data_url,
+    });
+    const logoPath = automatic.useSiteLogo
+      ? await uploadClientLogoData(
+        input.userId,
+        identity.logo_data_url,
+        "client-brands",
+      )
+      : undefined;
+    saved = await saveClientBrandIdentity(sb, {
+      userId: input.userId,
+      clientName,
+      siteUrl: identity.url,
+      logoPath,
+      identity: {
+        ...identity,
+        logo_origem: logoPath ? "site" : undefined,
+      } as unknown as Record<string, unknown>,
+    });
+    const colors = automatic.colors.length
+      ? automatic.colors.map((color) => color.toUpperCase())
+      : anuncioClientColors(saved.identity);
+    if (saved.logo_path) {
+      return {
+        mode: "client",
+        businessName: saved.client_name || clientName,
+        logoPath: saved.logo_path,
+        colors,
+      };
+    }
+  } catch (error) {
+    console.warn("[criar_anuncio][client-site]", (error as Error).message);
+  }
+
+  return {
+    mode: "missing",
+    message: `Não consegui obter uma logo válida de ${clientName} pelo site informado. Envie a logo dizendo “salva essa como logo do cliente ${clientName}”. Não usei a logo da sua empresa.`,
+  };
+}
+
 async function toolCriarAnuncio(
   args: {
     titulo?: string;
+    cliente?: string;
+    site?: string;
     subtitulo?: string;
     itens?: string[];
+    ano?: string;
     preco?: string;
     preco_label?: string;
+    preco_referencia?: string;
+    preco_referencia_label?: string;
+    preco_referencia_obs?: string;
     badge?: string;
     telefone?: string;
     instagram?: string;
@@ -12233,6 +12341,17 @@ async function toolCriarAnuncio(
     }
 
     const formato = (args?.formato || "").toLowerCase() === "story" ? "story" : "feed";
+    const anuncioIdentity = await resolveAnuncioClientIdentity({
+      userId: ctx.userId,
+      clientName: args?.cliente,
+      site: args?.site,
+    });
+    if (anuncioIdentity.mode === "missing") {
+      return JSON.stringify({
+        erro: "identidade_cliente_ausente",
+        instrucao: anuncioIdentity.message,
+      });
+    }
 
     // 1) FOTO — turno atual; senão, última foto recente da biblioteca (30 min)
     let fotoUrl: string | null = null;
@@ -12309,9 +12428,9 @@ async function toolCriarAnuncio(
     }
 
     // 4) Identidade do tenant (nome do negócio / @ / telefone)
-    let businessName: string | null = null;
+    let businessName: string | null = anuncioIdentity.businessName;
     let instagram = (args?.instagram || "").trim() || null;
-    try {
+    if (anuncioIdentity.mode === "tenant") try {
       const { data: conn } = await sb
         .from("meta_connections")
         .select("page_name, ig_username")
@@ -12344,12 +12463,20 @@ async function toolCriarAnuncio(
       titulo,
       subtitulo: args?.subtitulo || null,
       itens,
+      ano: args?.ano || null,
       preco: args?.preco || null,
       preco_label: args?.preco_label || null,
+      preco_referencia: args?.preco_referencia || null,
+      preco_referencia_label: args?.preco_referencia_label || null,
+      preco_referencia_obs: args?.preco_referencia_obs || null,
       badge: args?.badge || null,
       telefone,
       instagram,
       business_name: businessName,
+      logo_path: anuncioIdentity.logoPath,
+      logo_source: anuncioIdentity.mode,
+      primary_color: anuncioIdentity.colors[1] || anuncioIdentity.colors[0] || undefined,
+      accent_color: anuncioIdentity.colors[0] || undefined,
       foto_url: fotoFinal,
       formato,
       incluir_logo: true,

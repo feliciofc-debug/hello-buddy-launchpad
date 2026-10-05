@@ -13,7 +13,10 @@
  *   titulo: string,                      // ex: "HYUNDAI CRETA 1.0 TURBO"
  *   subtitulo?: string,                  // ex: "AUTOMÁTICO 2023/2023"
  *   itens?: [{ texto, rotulo? }] | string[],
+ *   ano?: string,
  *   preco?: string, preco_label?: string,
+ *   preco_referencia?: string, preco_referencia_label?: string,
+ *   preco_referencia_obs?: string,
  *   badge?: string,                      // ex: "PINTURA 100% ORIGINAL"
  *   telefone?: string, instagram?: string, site?: string,
  *   business_name?: string,
@@ -21,7 +24,9 @@
  *   foto_base64?: string,                // alternativa (data URL ou base64 puro)
  *   formato?: "feed" | "story",          // default feed (1080x1080)
  *   primary_color?: string, accent_color?: string,
- *   incluir_logo?: boolean               // default true
+ *   incluir_logo?: boolean,              // default true
+ *   logo_path?: string,                  // logo de cliente no bucket tenant-logos
+ *   logo_source?: "tenant" | "client"   // client nunca cai no fallback do tenant
  * }
  *
  * Resposta: { success: true, image_url, formato, width, height }
@@ -112,6 +117,21 @@ async function fotoParaDataUrl(fotoUrl?: string, fotoBase64?: string): Promise<s
   }
 }
 
+async function logoPathParaDataUrl(
+  supabase: any,
+  userId: string,
+  rawPath: unknown,
+): Promise<string | null> {
+  const path = String(rawPath ?? "");
+  if (!path || !path.startsWith(`${userId}/`)) return null;
+  const { data, error } = await supabase.storage.from("tenant-logos").download(path);
+  if (error || !data) return null;
+  const bytes = new Uint8Array(await data.arrayBuffer());
+  if (!bytes.length) return null;
+  const mime = String((data as any)?.type || "image/png");
+  return `data:${mime};base64,${toBase64(bytes)}`;
+}
+
 function normalizeItens(raw: unknown): AnuncioItem[] {
   if (!Array.isArray(raw)) return [];
   return raw
@@ -159,7 +179,11 @@ Deno.serve(async (req) => {
     let logoDataUrl: string | null = null;
     if (body?.incluir_logo !== false) {
       try {
-        logoDataUrl = await getTenantLogoDataUrl(supabase, user_id);
+        logoDataUrl = body?.logo_path
+          ? await logoPathParaDataUrl(supabase, user_id, body.logo_path)
+          : body?.logo_source === "client"
+          ? null
+          : await getTenantLogoDataUrl(supabase, user_id);
       } catch (e) {
         console.warn("[render-anuncio-produto] logo indisponível:", (e as Error).message);
       }
@@ -175,8 +199,16 @@ Deno.serve(async (req) => {
       titulo,
       subtitulo: body?.subtitulo ? String(body.subtitulo).slice(0, 60) : null,
       itens: normalizeItens(body?.itens),
+      ano: body?.ano ? String(body.ano).slice(0, 16) : null,
       preco: body?.preco ? String(body.preco).slice(0, 24) : null,
       precoLabel: body?.preco_label ? String(body.preco_label).slice(0, 24) : null,
+      precoReferencia: body?.preco_referencia ? String(body.preco_referencia).slice(0, 24) : null,
+      precoReferenciaLabel: body?.preco_referencia_label
+        ? String(body.preco_referencia_label).slice(0, 18)
+        : null,
+      precoReferenciaObs: body?.preco_referencia_obs
+        ? String(body.preco_referencia_obs).slice(0, 30)
+        : null,
       badge: body?.badge ? String(body.badge).slice(0, 34) : null,
       telefone: body?.telefone ? String(body.telefone).slice(0, 24) : null,
       instagram: body?.instagram ? String(body.instagram).slice(0, 30) : null,
