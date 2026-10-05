@@ -19,9 +19,28 @@ function normalizeText(value: string): string {
     .trim();
 }
 
+export function isProductAdCreativeRequest(value: string): boolean {
+  const text = normalizeText(value);
+  if (!text) return false;
+  const creative = /\b(anuncio|arte|banner|card|peca|criativo)\b/.test(text);
+  const product =
+    /\b(carro|veiculo|automovel|moto|produto|loja|preco|fipe|quilometragem|km|ano)\b/.test(text);
+  return creative && product;
+}
+
+export function shouldImproveProductAdPhoto(value: string): boolean {
+  const text = normalizeText(value);
+  return !/\b(?:usa|usar|use|mantem|manter|mantenha)\s+(?:a\s+)?foto\s+como\s+(?:ela\s+)?esta\b/.test(text) &&
+    !/\bsem\s+(?:melhorar|editar|alterar|mexer\s+n[oa])\s+(?:a\s+)?foto\b/.test(text);
+}
+
 export function isImageCompositionIntent(value: string): boolean {
   const text = normalizeText(value);
-  if (!text || /\b(video|reels?|animad[oa]|animacao)\b/.test(text)) return false;
+  if (
+    !text ||
+    isProductAdCreativeRequest(value) ||
+    /\b(video|reels?|animad[oa]|animacao)\b/.test(text)
+  ) return false;
 
   const action =
     /\b(coloca|colocar|ponha|poe|por|instala|instalar|simula|simular|insere|inserir|aplica|aplicar|monta|montar)\b/.test(text) ||

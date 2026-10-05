@@ -264,8 +264,10 @@ import {
   IMAGE_COMPOSITION_ESTIMATED_COST_USD,
   IMAGE_COMPOSITION_MODEL,
   isImageCompositionIntent,
+  isProductAdCreativeRequest,
   requestedCompositionResolution,
   selectCatalogProduct,
+  shouldImproveProductAdPhoto,
   type ImageCompositionResolution,
 } from "../_shared/image-composition.ts";
 import {
@@ -323,6 +325,7 @@ import {
   cleanReceivedMediaDescription,
   recognizedMediaReply,
 } from "../_shared/media-received-copy.ts";
+import { imageUploadMetadata } from "../_shared/image-file-format.ts";
 import {
   canRunClientLogoRegistrationShortcut,
   classifyCreativeMediaRequest,
@@ -1410,9 +1413,11 @@ async function toolGerarImagem(
       apiKey: LOVABLE_API_KEY,
     });
     const bytes = generated.bytes;
-    const mime = generated.mimeType;
+    const imageFormat = imageUploadMetadata(bytes, generated.mimeType);
+    if (!imageFormat) return JSON.stringify({ erro: "imagem_gerada_invalida" });
+    const mime = imageFormat.mime;
     const logoAplicada = generated.logoApplied;
-    const fileName = `midias/${ctx.userId}/ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+    const fileName = `midias/${ctx.userId}/ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${imageFormat.extension}`;
     const { error: upErr } = await sb.storage.from("produtos").upload(fileName, bytes, { contentType: mime, upsert: true });
     if (upErr) return JSON.stringify({ erro: `upload_falhou: ${upErr.message}` });
     const { data: pub } = sb.storage.from("produtos").getPublicUrl(fileName);
@@ -1850,7 +1855,10 @@ async function toolEditarImagem(
       if (m) { mime = m[1]; b64 = m[2]; }
     }
     const bytes = base64Decode(b64);
-    const fileName = `whatsapp-ai/${ctx.userId}/edit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+    const imageFormat = imageUploadMetadata(bytes, mime);
+    if (!imageFormat) return JSON.stringify({ erro: "imagem_editada_invalida" });
+    mime = imageFormat.mime;
+    const fileName = `whatsapp-ai/${ctx.userId}/edit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${imageFormat.extension}`;
     const { error: upErr } = await sb.storage.from("produtos").upload(fileName, bytes, { contentType: mime, upsert: true });
     if (upErr) return JSON.stringify({ erro: `upload_falhou: ${upErr.message}` });
     const { data: pub } = sb.storage.from("produtos").getPublicUrl(fileName);
@@ -2097,9 +2105,12 @@ async function composeProductInEnvironment(params: {
 
     const match = generated.dataUrl.match(/^data:(image\/[\w.+-]+);base64,(.+)$/);
     if (!match) throw new Error("imagem_gerada_em_formato_invalido");
-    const mime = match[1];
+    let mime = match[1];
     const bytes = base64Decode(match[2]);
-    const fileName = `whatsapp-ai/${params.userId}/composition-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+    const imageFormat = imageUploadMetadata(bytes, mime);
+    if (!imageFormat) throw new Error("imagem_gerada_em_formato_invalido");
+    mime = imageFormat.mime;
+    const fileName = `whatsapp-ai/${params.userId}/composition-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${imageFormat.extension}`;
     const { error: uploadError } = await sb.storage
       .from("produtos")
       .upload(fileName, bytes, { contentType: mime, upsert: false });
@@ -13625,7 +13636,12 @@ async function callGemini(
     // Precedência de mídia do dono: gerar > postar > editar. Uma geração
     // encadeada com post salva a nova imagem em /midias e usa exatamente esse
     // ID na prévia, sem deixar os atalhos capturarem uma mídia anterior.
-    if (remetenteEhDono && (ownerMediaIntent.action === "generate" || ownerMediaIntent.action === "generate_and_post")) {
+    const productAdCreativeRequest = isProductAdCreativeRequest(userContent);
+    if (
+      remetenteEhDono
+      && !productAdCreativeRequest
+      && (ownerMediaIntent.action === "generate" || ownerMediaIntent.action === "generate_and_post")
+    ) {
       const imagePrompt = userContent.split(/\b(?:depois|em seguida|na sequência)\b/i)[0].trim();
       console.log("[pietro][forced_image_generation]", { chainedPost: ownerMediaIntent.action === "generate_and_post" });
       const prepared = await prepareWhatsAppImageGeneration({
@@ -13801,7 +13817,8 @@ async function callGemini(
     // Composição produto+ambiente tem prioridade sobre forced_image_edit.
     // Diferentemente da edição comum, este fluxo exige DUAS referências e
     // nunca pode degradar silenciosamente para ficha técnica de uma só foto.
-    const imageCompositionIntent = isImageCompositionIntent(userContent);
+    const imageCompositionIntent = !productAdCreativeRequest &&
+      isImageCompositionIntent(userContent);
     if (imageCompositionIntent && !remetenteEhDono) {
       deferRestrictedShortcutToModel(true);
     }
@@ -14337,6 +14354,14 @@ async function callGemini(
         const name = tc.function?.name;
         let args: any = {};
         try { args = JSON.parse(tc.function?.arguments ?? "{}"); } catch { /* ignore */ }
+        args ??= {};
+        if (
+          name === "criar_anuncio" &&
+          typeof userContent === "string" &&
+          !shouldImproveProductAdPhoto(userContent)
+        ) {
+          args.melhorar_foto = false;
+        }
         if (name === "publicar_anuncio_meta") {
           args.confirmacao = typeof userContent === "string"
             ? userContent.trim()

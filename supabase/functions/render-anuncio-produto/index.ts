@@ -43,6 +43,10 @@ import {
   buildAnuncio,
 } from "../_shared/anuncio-templates/darkGold.ts";
 import { selectAnuncioPhoto } from "../_shared/anuncio-photo.ts";
+import {
+  normalizeImageDataUrl,
+  renderableImageDataUrl,
+} from "../_shared/renderable-image.ts";
 import { getTenantLogoDataUrl } from "../_shared/tenant-logo.ts";
 
 const corsHeaders = {
@@ -91,27 +95,26 @@ function normalizeHex(value: unknown, fallback: string): string {
   return /^#?[0-9a-fA-F]{6}$/.test(v) ? (v.startsWith("#") ? v : `#${v}`) : fallback;
 }
 
-function toBase64(buf: Uint8Array): string {
-  let bin = "";
-  const CHUNK = 8192;
-  for (let i = 0; i < buf.length; i += CHUNK) bin += String.fromCharCode(...buf.subarray(i, i + CHUNK));
-  return btoa(bin);
-}
-
 /** Satori só aceita imagem embutida de forma confiável → tudo vira data URL. */
 async function fotoParaDataUrl(fotoUrl?: string, fotoBase64?: string): Promise<string | null> {
+  const logInvalid = (message: string) =>
+    console.warn(`[render-anuncio-produto] ${message}`);
   if (fotoBase64) {
-    if (fotoBase64.startsWith("data:")) return fotoBase64;
-    return `data:image/jpeg;base64,${fotoBase64}`;
+    return await normalizeImageDataUrl(
+      fotoBase64.startsWith("data:")
+        ? fotoBase64
+        : `data:image/jpeg;base64,${fotoBase64}`,
+      "foto",
+      logInvalid,
+    );
   }
   if (!fotoUrl || !/^https?:\/\//i.test(fotoUrl)) return null;
   try {
     const res = await fetch(fotoUrl, { signal: AbortSignal.timeout(25000) });
     if (!res.ok) throw new Error(`foto ${res.status}`);
-    const mime = res.headers.get("content-type") || "image/jpeg";
     const buf = new Uint8Array(await res.arrayBuffer());
     if (!buf.length) return null;
-    return `data:${mime.split(";")[0]};base64,${toBase64(buf)}`;
+    return await renderableImageDataUrl(buf, "foto", logInvalid);
   } catch (e) {
     console.warn("[render-anuncio-produto] foto indisponível:", (e as Error).message);
     return null;
@@ -146,8 +149,11 @@ async function logoPathParaDataUrl(
   if (error || !data) return null;
   const bytes = new Uint8Array(await data.arrayBuffer());
   if (!bytes.length) return null;
-  const mime = String((data as any)?.type || "image/png");
-  return `data:${mime};base64,${toBase64(bytes)}`;
+  return await renderableImageDataUrl(
+    bytes,
+    "logo",
+    (message) => console.warn(`[render-anuncio-produto] ${message}`),
+  );
 }
 
 function normalizeItens(raw: unknown): AnuncioItem[] {
@@ -197,11 +203,18 @@ Deno.serve(async (req) => {
     let logoDataUrl: string | null = null;
     if (body?.incluir_logo !== false) {
       try {
-        logoDataUrl = body?.logo_path
+        const rawLogoDataUrl = body?.logo_path
           ? await logoPathParaDataUrl(supabase, user_id, body.logo_path)
           : body?.logo_source === "client"
           ? null
           : await getTenantLogoDataUrl(supabase, user_id);
+        logoDataUrl = rawLogoDataUrl
+          ? await normalizeImageDataUrl(
+            rawLogoDataUrl,
+            "logo",
+            (message) => console.warn(`[render-anuncio-produto] ${message}`),
+          )
+          : null;
       } catch (e) {
         console.warn("[render-anuncio-produto] logo indisponível:", (e as Error).message);
       }
@@ -217,6 +230,20 @@ Deno.serve(async (req) => {
       ensureWasm(),
     ]);
     const fotoDataUrl = fotoResult.dataUrl;
+    if (!fotoDataUrl) {
+      console.error("[render-anuncio-produto] foto inválida: melhorada e original indisponíveis");
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "foto inválida; envie novamente a foto original",
+          foto_source: "none",
+        }),
+        {
+          status: 422,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
 
     const data: AnuncioData = {
       titulo,

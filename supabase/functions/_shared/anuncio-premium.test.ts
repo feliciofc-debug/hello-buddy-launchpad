@@ -20,6 +20,16 @@ import {
   recognizedMediaReply,
 } from "./media-received-copy.ts";
 import {
+  isImageCompositionIntent,
+  isProductAdCreativeRequest,
+  shouldImproveProductAdPhoto,
+} from "./image-composition.ts";
+import { imageUploadMetadata } from "./image-file-format.ts";
+import {
+  normalizeImageDataUrl,
+  renderableImageDataUrl,
+} from "./renderable-image.ts";
+import {
   ANUNCIO_FOOTER_BOXES,
   type AnuncioData,
   anuncioSize,
@@ -175,6 +185,22 @@ Deno.test("falha da foto melhorada usa a original", async () => {
   assertEquals(selected, { value: "original-data", source: "original" });
 });
 
+Deno.test("bytes inválidos da melhorada caem na foto original válida", async () => {
+  const original = await fetchJpegPhoto();
+  const selected = await selectAnuncioPhoto({
+    preferred: "improved",
+    original: "original",
+    load: (value) =>
+      renderableImageDataUrl(
+        value === "improved" ? new Uint8Array([1, 2, 3]) : original,
+        "foto",
+        () => undefined,
+      ),
+  });
+  assertEquals(selected.source, "original");
+  assert(selected.value?.startsWith("data:image/jpeg;base64,"));
+});
+
 function overlaps(
   first: { x: number; y: number; width: number; height: number },
   second: { x: number; y: number; width: number; height: number },
@@ -316,18 +342,27 @@ Deno.test("mensagem de mídia reconhecida remove marcador e não corta frase", (
 
 let renderWasmReady: Promise<void> | null = null;
 
+async function fetchJpegPhoto(): Promise<Uint8Array> {
+  const response = await fetch(
+    "https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=1200&fm=jpg&fit=crop",
+  );
+  assert(response.ok);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  assertEquals(imageUploadMetadata(bytes)?.mime, "image/jpeg");
+  return bytes;
+}
+
 async function renderTemplateWithRealPhoto(
   formato: "feed" | "story",
+  photoDataUrl?: string,
 ): Promise<Image> {
-  const photoResponse = await fetch(
-    "https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=1200&auto=format&fit=crop",
-  );
-  assert(photoResponse.ok);
-  const photoBytes = new Uint8Array(await photoResponse.arrayBuffer());
-  const photoMime = photoResponse.headers.get("content-type") || "image/jpeg";
-  let binary = "";
-  for (let offset = 0; offset < photoBytes.length; offset += 8192) {
-    binary += String.fromCharCode(...photoBytes.subarray(offset, offset + 8192));
+  if (!photoDataUrl) {
+    const photoBytes = await fetchJpegPhoto();
+    let binary = "";
+    for (let offset = 0; offset < photoBytes.length; offset += 8192) {
+      binary += String.fromCharCode(...photoBytes.subarray(offset, offset + 8192));
+    }
+    photoDataUrl = `data:image/jpeg;base64,${btoa(binary)}`;
   }
   const font = await (await fetch(
     "https://cdn.jsdelivr.net/npm/@fontsource/inter@4.5.15/files/inter-latin-700-normal.woff",
@@ -335,7 +370,7 @@ async function renderTemplateWithRealPhoto(
   const { width, height } = anuncioSize(formato);
   const tree = buildAnuncio(baseData({
     formato,
-    fotoDataUrl: `data:${photoMime};base64,${btoa(binary)}`,
+    fotoDataUrl,
     subtitulo: "AUTOMÁTICO • BLINDADO",
     ano: "2023/2023",
     itens: ["38 MIL KM", "ÚNICO DONO", "REVISADO", "PNEUS NOVOS"].map(
@@ -379,9 +414,55 @@ function regionDeviation(
   );
 }
 
-Deno.test("foto real permanece visível e não uniforme em feed e story", async () => {
-  const feed = await renderTemplateWithRealPhoto("feed");
-  const story = await renderTemplateWithRealPhoto("story");
+Deno.test("JPEG rotulado como PNG usa MIME real e permanece visível", async () => {
+  const jpeg = await fetchJpegPhoto();
+  let binary = "";
+  for (let offset = 0; offset < jpeg.length; offset += 8192) {
+    binary += String.fromCharCode(...jpeg.subarray(offset, offset + 8192));
+  }
+  const normalized = await normalizeImageDataUrl(
+    `data:image/png;base64,${btoa(binary)}`,
+    "foto",
+  );
+  assert(normalized?.startsWith("data:image/jpeg;base64,"));
+  const feed = await renderTemplateWithRealPhoto("feed", normalized!);
+  const story = await renderTemplateWithRealPhoto("story", normalized!);
   assert(regionDeviation(feed, { x: 140, y: 270, width: 800, height: 340 }) > 12);
   assert(regionDeviation(story, { x: 140, y: 380, width: 800, height: 620 }) > 12);
+});
+
+Deno.test("WEBP é convertido para PNG renderizável", async () => {
+  const response = await fetch("https://www.gstatic.com/webp/gallery/1.webp");
+  assert(response.ok);
+  const normalized = await renderableImageDataUrl(
+    new Uint8Array(await response.arrayBuffer()),
+    "foto",
+  );
+  assert(normalized?.startsWith("data:image/png;base64,"));
+  const bytes = Uint8Array.from(
+    atob(normalized!.split(",")[1]),
+    (character) => character.charCodeAt(0),
+  );
+  const decoded = await Image.decode(bytes);
+  assert(decoded.width > 1 && decoded.height > 1);
+});
+
+Deno.test("upload usa MIME e extensão detectados nos bytes", () => {
+  const mislabeledJpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0]);
+  assertEquals(imageUploadMetadata(mislabeledJpeg, "image/png"), {
+    mime: "image/jpeg",
+    extension: "jpg",
+  });
+});
+
+Deno.test("arte de produto tem prioridade e respeita foto sem melhoria", () => {
+  const request =
+    "Monta a arte desse carro: Jeep Compass. Usa a foto como está";
+  assert(isProductAdCreativeRequest(request));
+  assertEquals(isImageCompositionIntent(request), false);
+  assertEquals(shouldImproveProductAdPhoto(request), false);
+  assertEquals(
+    shouldImproveProductAdPhoto("Monta um anúncio desse carro e melhora a foto"),
+    true,
+  );
 });
