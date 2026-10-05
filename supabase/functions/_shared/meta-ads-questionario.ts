@@ -108,6 +108,9 @@ export function isMetaAdsQuestionarioTrigger(text: unknown): boolean {
   const metaChannel = /\b(?:meta|facebook|instagram)\b/;
   const visualCreation =
     /\b(?:arte|imagem|card|banner|criativo|design|foto)\b/;
+  if (/\b(?:anunciar|anuncie)\b/.test(value) && metaChannel.test(value)) {
+    return true;
+  }
   return adIntent.test(value) && metaChannel.test(value) &&
     !visualCreation.test(value);
 }

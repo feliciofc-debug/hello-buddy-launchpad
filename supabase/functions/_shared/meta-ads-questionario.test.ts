@@ -156,6 +156,10 @@ Deno.test("gatilho exige intenção clara de anúncio pago", () => {
     true,
   );
   assertEquals(
+    isMetaAdsQuestionarioTrigger("quero anunciar esta foto no Instagram"),
+    true,
+  );
+  assertEquals(
     isMetaAdsQuestionarioTrigger("quero saber da campanha"),
     false,
   );
