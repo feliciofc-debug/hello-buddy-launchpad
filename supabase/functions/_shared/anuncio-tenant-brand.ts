@@ -11,9 +11,14 @@ export function shouldAskAmzAnuncioClient(input: {
 
 export function amzAnuncioClientButtons() {
   return {
-    body: "Se este anúncio for da própria AMZ, confirme abaixo.",
+    body: "Para qual loja é esse anúncio?",
     buttons: [
+      { id: "anuncio_other_store", title: "Informar outra loja" },
       { id: "anuncio_use_amz", title: "Usar marca da AMZ" },
     ],
   };
+}
+
+export function anuncioSuccessMessage(): string {
+  return "Pronto! Ficou assim. Quer publicar no feed ou no story?";
 }

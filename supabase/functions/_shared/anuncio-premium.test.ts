@@ -10,9 +10,15 @@ import {
 } from "./anuncio-client-brand.ts";
 import { selectAnuncioPhoto } from "./anuncio-photo.ts";
 import {
+  anuncioSuccessMessage,
   amzAnuncioClientButtons,
   shouldAskAmzAnuncioClient,
 } from "./anuncio-tenant-brand.ts";
+import { selectRecentOriginalPhoto } from "./anuncio-source-media.ts";
+import {
+  cleanReceivedMediaDescription,
+  recognizedMediaReply,
+} from "./media-received-copy.ts";
 import {
   ANUNCIO_FOOTER_BOXES,
   type AnuncioData,
@@ -209,6 +215,7 @@ Deno.test("tenant AMZ sem cliente pergunta a loja e botão libera marca AMZ", ()
     amzTenantId: "amz",
   }), true);
   assertEquals(amzAnuncioClientButtons().buttons, [
+    { id: "anuncio_other_store", title: "Informar outra loja" },
     { id: "anuncio_use_amz", title: "Usar marca da AMZ" },
   ]);
   assertEquals(shouldAskAmzAnuncioClient({
@@ -220,6 +227,91 @@ Deno.test("tenant AMZ sem cliente pergunta a loja e botão libera marca AMZ", ()
     tenantId: "outro",
     amzTenantId: "amz",
   }), false);
+});
+
+Deno.test("fallback do anúncio escolhe foto original e ignora arte gerada", () => {
+  const selected = selectRecentOriginalPhoto({
+    nowMs: Date.parse("2026-10-05T18:00:00Z"),
+    candidates: [
+      {
+        id: "arte",
+        tipo: "foto",
+        origem: "anuncio_produto",
+        midia_url: "https://cdn.example/arte-preta.png",
+        created_at: "2026-10-05T17:59:00Z",
+      },
+      {
+        id: "jeep",
+        tipo: "foto",
+        origem: "whatsapp",
+        midia_url: "https://cdn.example/jeep.jpg",
+        created_at: "2026-10-05T17:40:00Z",
+      },
+    ],
+  });
+  assertEquals(selected?.id, "jeep");
+});
+
+Deno.test("reenvio deduplicado torna a mesma foto a mais recente", () => {
+  const selected = selectRecentOriginalPhoto({
+    nowMs: Date.parse("2026-10-05T18:00:00Z"),
+    lastInteraction: {
+      media_id: "jeep-antigo",
+      at: "2026-10-05T17:59:30Z",
+    },
+    candidates: [
+      {
+        id: "outra-original",
+        tipo: "foto",
+        origem: "whatsapp",
+        midia_url: "https://cdn.example/outra.jpg",
+        created_at: "2026-10-05T17:58:00Z",
+      },
+      {
+        id: "jeep-antigo",
+        tipo: "foto",
+        origem: "whatsapp",
+        midia_url: "https://cdn.example/jeep.jpg",
+        created_at: "2026-10-05T14:44:00Z",
+      },
+    ],
+  });
+  assertEquals(selected?.id, "jeep-antigo");
+});
+
+Deno.test("sem foto original recente o anúncio pede nova foto", () => {
+  assertEquals(selectRecentOriginalPhoto({
+    nowMs: Date.parse("2026-10-05T18:00:00Z"),
+    candidates: [{
+      id: "arte",
+      tipo: "foto",
+      origem: "anuncio_produto",
+      midia_url: "https://cdn.example/arte.png",
+      created_at: "2026-10-05T17:59:00Z",
+    }],
+  }), null);
+});
+
+Deno.test("confirmação AMZ é amigável e não vaza instrução interna", () => {
+  const message = anuncioSuccessMessage();
+  assertEquals(
+    message,
+    "Pronto! Ficou assim. Quer publicar no feed ou no story?",
+  );
+  assert(!/instrucao|enviado ao usuario|diga em/i.test(message));
+});
+
+Deno.test("mensagem de mídia reconhecida remove marcador e não corta frase", () => {
+  const description =
+    cleanReceivedMediaDescription('[visão] Esta foto real de produto captura um Jeep branco em uma garagem bem iluminada.');
+  assertEquals(
+    description,
+    "Esta foto real de produto captura um Jeep branco em uma garagem bem iluminada.",
+  );
+  const reply = recognizedMediaReply({ type: "foto", description });
+  assert(!reply.includes("[visão]"));
+  assert(reply.includes("garagem bem iluminada."));
+  assert(!reply.includes(" - ID "));
 });
 
 let renderWasmReady: Promise<void> | null = null;

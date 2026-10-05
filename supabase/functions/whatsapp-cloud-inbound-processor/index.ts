@@ -312,9 +312,17 @@ import {
   buildAnuncioBrandPlan,
 } from "../_shared/anuncio-client-brand.ts";
 import {
+  anuncioSuccessMessage,
   amzAnuncioClientButtons,
   shouldAskAmzAnuncioClient,
 } from "../_shared/anuncio-tenant-brand.ts";
+import {
+  selectRecentOriginalPhoto,
+} from "../_shared/anuncio-source-media.ts";
+import {
+  cleanReceivedMediaDescription,
+  recognizedMediaReply,
+} from "../_shared/media-received-copy.ts";
 import {
   canRunClientLogoRegistrationShortcut,
   classifyCreativeMediaRequest,
@@ -1711,6 +1719,7 @@ async function toolEditarImagem(
     modo?: string;
     preservarAmbiente?: boolean;
     registrarNaBiblioteca?: boolean;
+    imageInputUrl?: string;
   },
 ): Promise<string> {
   if (!isOwner({ userId: ctx.userId, fromNumber: ctx.fromNumber || "" })) {
@@ -1724,6 +1733,8 @@ async function toolEditarImagem(
   const img = (ctx.media || []).slice().reverse().find((m) => m.kind === "image");
   if (img) {
     imageInput = `data:${img.mime};base64,${img.base64}`;
+  } else if (/^https?:\/\//i.test(String(ctx.imageInputUrl || ""))) {
+    imageInput = String(ctx.imageInputUrl);
   } else {
     try {
       const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
@@ -6410,12 +6421,12 @@ function nomeCurtoMidia(row: any): string {
     limpar(row?.legenda_gerada),
   ];
   const base = candidatos.find((value) => value && !/^sem contexto$/i.test(value));
-  if (base) return base.slice(0, 45);
+  if (base) return cleanReceivedMediaDescription(base);
 
   const tags = Array.isArray(row?.tags_ia)
     ? row.tags_ia.map(limpar).filter(Boolean).slice(0, 3).join(", ")
     : "";
-  if (tags) return tags.slice(0, 45);
+  if (tags) return tags;
 
   const data = row?.created_at
     ? new Date(row.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
@@ -8360,7 +8371,10 @@ function respostaMidiaSalva(salvos: MidiaSalva[], descricaoVisual?: string, reme
     : [];
   if (reconhecidas.length === salvos.length && reconhecidas.length > 0) {
     return reconhecidas.map((item) =>
-      `Peguei: ${item.nome || (item.tipo === "video" ? "Vídeo" : "Imagem")} - ${item.rotulo || (item.tipo === "video" ? "Vídeo" : "Imagem")} - ID ${idCurto(item.id)}. Se pedir para publicar, é essa que eu uso.`
+      recognizedMediaReply({
+        type: item.tipo,
+        description: item.nome,
+      })
     ).join("\n");
   }
   const blocoCodigos = salvos
@@ -12219,6 +12233,46 @@ async function toolCriarCarrossel(
 // ============================================================
 const ANUNCIO_MAX_DIA = 20;
 
+async function buscarFotoOriginalRecenteParaAnuncio(ctx: {
+  userId: string;
+  fromNumber: string;
+  agentState?: AgentConvState;
+}): Promise<string | null> {
+  const { data: recent, error } = await sb
+    .from("midias_whatsapp")
+    .select("id, tipo, origem, midia_url, telefone_origem, created_at")
+    .eq("user_id", ctx.userId)
+    .eq("telefone_origem", ctx.fromNumber)
+    .eq("tipo", "foto")
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error) throw new Error(error.message);
+
+  const interaction = ctx.agentState?.last_media_interaction ?? null;
+  const candidates = [...(recent ?? [])];
+  const interactedId = String(interaction?.media_id || "");
+  const interactedAt = Date.parse(String(interaction?.at || ""));
+  if (
+    interactedId &&
+    Number.isFinite(interactedAt) &&
+    Date.now() - interactedAt <= 30 * 60 * 1000 &&
+    !candidates.some((media: any) => media.id === interactedId)
+  ) {
+    const { data: interacted } = await sb
+      .from("midias_whatsapp")
+      .select("id, tipo, origem, midia_url, telefone_origem, created_at")
+      .eq("id", interactedId)
+      .eq("user_id", ctx.userId)
+      .eq("telefone_origem", ctx.fromNumber)
+      .maybeSingle();
+    if (interacted) candidates.push(interacted);
+  }
+  return selectRecentOriginalPhoto({
+    candidates,
+    lastInteraction: interaction,
+  })?.midia_url ?? null;
+}
+
 async function resolveAnuncioClientIdentity(input: {
   userId: string;
   clientName?: string;
@@ -12351,7 +12405,7 @@ async function toolCriarAnuncio(
     if (titulo.length < 2) {
       return JSON.stringify({
         erro: "titulo_ausente",
-        instrucao: "Pergunte em 1 linha qual é o produto (modelo/nome) antes de montar o anúncio.",
+        mensagem: "Qual é o produto ou modelo que deve aparecer no anúncio?",
       });
     }
 
@@ -12397,7 +12451,7 @@ async function toolCriarAnuncio(
     if (anuncioIdentity.mode === "missing") {
       return JSON.stringify({
         erro: "identidade_cliente_ausente",
-        instrucao: anuncioIdentity.message,
+        mensagem: anuncioIdentity.message,
       });
     }
 
@@ -12421,17 +12475,7 @@ async function toolCriarAnuncio(
     }
     if (!fotoUrl) {
       try {
-        const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-        const { data: rec } = await sb
-          .from("midias_whatsapp")
-          .select("midia_url, created_at")
-          .eq("user_id", ctx.userId)
-          .eq("telefone_origem", ctx.fromNumber)
-          .eq("tipo", "foto")
-          .gte("created_at", cutoff)
-          .order("created_at", { ascending: false })
-          .limit(1);
-        if (rec?.[0]?.midia_url) fotoUrl = rec[0].midia_url as string;
+        fotoUrl = await buscarFotoOriginalRecenteParaAnuncio(ctx);
       } catch (e) {
         console.warn("[criar_anuncio] fallback midias falhou:", (e as Error).message);
       }
@@ -12439,7 +12483,7 @@ async function toolCriarAnuncio(
     if (!fotoUrl) {
       return JSON.stringify({
         erro: "sem_foto",
-        instrucao: "Peça em 1 linha que ele mande a FOTO do produto (pode ser do celular) e depois repita os dados.",
+        mensagem: "Me mande a foto original do produto ou veículo para montar o anúncio.",
       });
     }
 
@@ -12466,7 +12510,16 @@ async function toolCriarAnuncio(
       try {
         const raw = await toolEditarImagem(
           `Prepare esta foto de ${titulo} para um anúncio comercial premium: recorte/valorize o produto principal, ambiente elegante de showroom com piso reflexivo, iluminação de estúdio, fundo escuro sofisticado e levemente desfocado. É a MESMA unidade da foto original (mesma cor, mesmos detalhes, mesma placa) — não troque por outro modelo.`,
-          { userId: ctx.userId, fromNumber: ctx.fromNumber, media: ctx.media, textos: [], modo: "anuncio", preservarAmbiente: false, registrarNaBiblioteca: false },
+          {
+            userId: ctx.userId,
+            fromNumber: ctx.fromNumber,
+            media: ctx.media,
+            textos: [],
+            modo: "anuncio",
+            preservarAmbiente: false,
+            registrarNaBiblioteca: false,
+            imageInputUrl: fotoUrl,
+          },
         );
         const parsed = JSON.parse(raw);
         if (parsed?.image_url) {
@@ -12576,9 +12629,9 @@ async function toolCriarAnuncio(
       logo_aplicada: !!render.logo_aplicada,
       midia_id: midiaId,
       itens_usados: itens.length,
-      instrucao: render.logo_aplicada
-        ? "O anúncio já foi ENVIADO ao usuário com a logomarca da empresa. Diga em 1-2 linhas que ficou pronto, pergunte se está aprovado e ofereça publicar no Instagram/story (ele pode dizer 'posta essa imagem')."
-        : "O anúncio foi ENVIADO ao usuário, MAS sem logomarca (nenhuma cadastrada nesta conta). Avise em 1 linha que ele pode cadastrar a logo em Minha Marca no painel e pedir de novo, e ofereça publicar.",
+      mensagem: render.logo_aplicada
+        ? anuncioSuccessMessage()
+        : "Pronto! O anúncio ficou sem logo porque não há uma marca cadastrada. Quer publicar no feed ou no story?",
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message).slice(0, 250) });
@@ -13079,7 +13132,7 @@ async function callGemini(
     }
     if (pendingAnuncioCliente) {
       const interactiveId = userContent.match(
-        /<<INTERACTIVE_ID:(anuncio_use_amz)>>/i,
+        /<<INTERACTIVE_ID:(anuncio_(?:use_amz|other_store))>>/i,
       )?.[1]?.toLowerCase();
       const age = Date.now() -
         new Date(pendingAnuncioCliente.created_at).getTime();
@@ -13098,6 +13151,11 @@ async function callGemini(
         }
         return {
           text: "Esse pedido de anúncio expirou. Envie a foto e os dados novamente.",
+        };
+      }
+      if (interactiveId === "anuncio_other_store") {
+        return {
+          text: "Me mande o nome e o site da loja.",
         };
       }
       const site = extractPublicSiteUrl(userContent);
@@ -13150,10 +13208,9 @@ async function callGemini(
         }
         return {
           text: String(
-            parsed?.instrucao || parsed?.mensagem ||
-              (parsed?.ok
-                ? "Anúncio pronto. Confira a arte antes de publicar."
-                : "Não consegui concluir o anúncio."),
+            parsed?.ok
+              ? anuncioSuccessMessage()
+              : parsed?.mensagem || "Não consegui concluir o anúncio.",
           ),
           imageUrl: parsed?.image_url,
         };
