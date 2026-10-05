@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { getCopyStyle, userIdDoRequest } from '../_shared/copy-style.ts'
+import { buildMetodoAmzBlock } from '../_shared/metodo-amz.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -19,8 +20,12 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     )
     const copyStyle = neutralCopy
-      ? { promptBlock: '' }
-      : await getCopyStyle(sbAdmin, userIdBody || userIdDoRequest(req))
+      ? { promptBlock: buildMetodoAmzBlock({ tipo: 'carrossel' }) }
+      : await getCopyStyle(
+        sbAdmin,
+        userIdBody || userIdDoRequest(req),
+        { tipo: 'carrossel' },
+      )
     if (!prompt || !tema) {
       return new Response(JSON.stringify({ error: 'prompt e tema são obrigatórios' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }

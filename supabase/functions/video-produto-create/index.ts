@@ -65,7 +65,9 @@ Deno.serve(async (req) => {
     let marcaFinal = marcaDigitada;
     if (!marcaFinal) {
       try {
-        const ctxTenant = await getTenantBusinessContext(sb, user.id, {});
+        const ctxTenant = await getTenantBusinessContext(sb, user.id, {
+          tipoCriativo: "roteiro",
+        });
         marcaFinal = String(ctxTenant?.nome ?? "").trim();
       } catch (_e) {
         marcaFinal = "";

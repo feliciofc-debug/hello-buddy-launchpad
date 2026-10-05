@@ -148,6 +148,10 @@ import {
   validateMetaAdsDraft,
 } from "../_shared/meta-ads-create.ts";
 import {
+  buildMetodoAmzReviewPrompt,
+  revisarComMetodoAmz,
+} from "../_shared/metodo-amz.ts";
+import {
   isLiteralMetaAdsApproval,
   latestMetaAdsWhatsappApproval,
 } from "../_shared/meta-ads-whatsapp-approval.ts";
@@ -3979,35 +3983,66 @@ async function metaAdsQuestionarioGerarTexto(
 ): Promise<{ titulo: string; texto: string } | null> {
   const context = await getTenantBusinessContext(sb as any, userId, {
     incluirProdutos: true,
+    tipoCriativo: "anuncio",
   });
-  if (!context.promptBlock) return null;
+  if (
+    !context.nome && !context.segmento && !context.sobre &&
+    !context.diferenciais && !context.publicoAlvo && !context.produtos.length
+  ) return null;
   try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        temperature: 0.4,
-        messages: [{
-          role: "system",
-          content: "Crie copy curta para Meta Ads. Use SOMENTE os fatos fornecidos. Não invente preço, promoção, avaliação, depoimento, prazo, resultado ou promessa. Responda só JSON válido: {\"titulo\":\"...\",\"texto\":\"...\"}.",
-        }, {
-          role: "user",
-          content: `${context.promptBlock}\nObjetivo: ${questionario.objetivo === "site" ? "visitas ao site" : "conversas no WhatsApp"}.`,
-        }],
-      }),
+    const gerarCopy = async (
+      system: string,
+      user: string,
+    ): Promise<{ titulo: string; texto: string }> => {
+      const response = await fetch(
+        "https://ai.gateway.lovable.dev/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash",
+            temperature: 0.4,
+            messages: [
+              { role: "system", content: system },
+              { role: "user", content: user },
+            ],
+          }),
+        },
+      );
+      if (!response.ok) throw new Error(`copy_http_${response.status}`);
+      const payload = await response.json();
+      const raw = String(payload?.choices?.[0]?.message?.content ?? "")
+        .replace(/^```json\s*|\s*```$/g, "").trim();
+      const parsed = JSON.parse(raw);
+      const titulo = String(parsed?.titulo ?? "").trim().slice(0, 255);
+      const texto = String(parsed?.texto ?? "").trim().slice(0, 2_000);
+      if (!titulo || !texto) throw new Error("copy_invalida");
+      return { titulo, texto };
+    };
+    const objetivo = questionario.objetivo === "site"
+      ? "visitas ao site"
+      : "conversas no WhatsApp";
+    const primeiraVersao = await gerarCopy(
+      "Crie copy curta para Meta Ads. Use SOMENTE os fatos fornecidos. Não invente preço, promoção, avaliação, depoimento, prazo, resultado ou promessa. Responda só JSON válido: {\"titulo\":\"...\",\"texto\":\"...\"}.",
+      `${context.promptBlock}\nObjetivo: ${objetivo}.`,
+    );
+    return await revisarComMetodoAmz({
+      tipo: "anuncio",
+      primeiraVersao,
+      revisar: async (draft) =>
+        await gerarCopy(
+          "Revise uma copy de Meta Ads. Preserve os fatos e devolva somente JSON válido com titulo e texto.",
+          `${context.promptBlock}\nObjetivo: ${objetivo}.\n\n${
+            buildMetodoAmzReviewPrompt({
+              tipo: "anuncio",
+              primeiraVersao: draft,
+            })
+          }`,
+        ),
     });
-    if (!response.ok) return null;
-    const payload = await response.json();
-    const raw = String(payload?.choices?.[0]?.message?.content ?? "")
-      .replace(/^```json\s*|\s*```$/g, "").trim();
-    const parsed = JSON.parse(raw);
-    const titulo = String(parsed?.titulo ?? "").trim().slice(0, 255);
-    const texto = String(parsed?.texto ?? "").trim().slice(0, 2_000);
-    return titulo && texto ? { titulo, texto } : null;
   } catch (error) {
     console.warn("[meta-ads-questionario][copy]", (error as Error).message);
     return null;
@@ -11707,7 +11742,10 @@ async function toolCriarCarrossel(
     //     4-5 tópicos densos por card) + CONTEXTO REAL do negócio do tenant.
     const business = demoProspect
       ? null
-      : await getTenantBusinessContext(sb, ctx.userId, { nomeFallback: businessName });
+      : await getTenantBusinessContext(sb, ctx.userId, {
+        nomeFallback: businessName,
+        tipoCriativo: "carrossel",
+      });
     const prospectBranch = demoProspect
       ? await loadProspectCarouselBranch(ctx.userId, ctx.fromNumber)
       : null;

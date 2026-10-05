@@ -80,7 +80,9 @@ serve(async (req) => {
     if (!LOVABLE_API_KEY) return ok({ success: false, error: 'LOVABLE_API_KEY não configurada' });
 
     const sbAdmin = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey);
-    const copyStyle = await getCopyStyle(sbAdmin, userId);
+    const copyStyle = await getCopyStyle(sbAdmin, userId, {
+      tipo: "linkedin",
+    });
 
     // Contexto de produto (opcional, isolado por user_id, NUNCA preço)
     let blocoProduto = '';

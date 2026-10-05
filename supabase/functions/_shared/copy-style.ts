@@ -10,6 +10,12 @@
 // NUNCA número/constante fixa no código.
 // ============================================================
 
+import {
+  buildMetodoAmzBlock,
+  type MetodoAmzEstilo,
+  type MetodoAmzTipo,
+} from "./metodo-amz.ts";
+
 export type VozCopy = "empresa" | "pessoa";
 
 export type CopyStyle = {
@@ -34,7 +40,7 @@ export const COPY_STYLE_PADRAO: CopyStyle = {
   regras: null,
   template: null,
   assinar: false,
-  promptBlock: "",
+  promptBlock: buildMetodoAmzBlock({ tipo: "post" }),
 };
 
 /** Extrai o user_id (sub) do JWT do request, sem chamada de rede. */
@@ -65,12 +71,15 @@ export function renderCopyTemplate(
     .replace(/\{\{\s*NOME_CONSULTOR\s*\}\}/g, vars.assinatura || "");
 }
 
-function montarPromptBlock(
+export function montarPromptBlock(
   voz: VozCopy,
   assinatura: string | null,
   link: string | null,
   regras: string | null,
   template: string | null,
+  metodo: { tipo: MetodoAmzTipo; estilo?: MetodoAmzEstilo } = {
+    tipo: "post",
+  },
 ): string {
   // Template COMPARTILHADO do segmento: substitui as regras genéricas de voz.
   if (template && template.trim()) {
@@ -82,6 +91,7 @@ function montarPromptBlock(
         regras.trim(),
       );
     }
+    bloco.push("", buildMetodoAmzBlock(metodo));
     bloco.push("");
     return bloco.join("\n");
   }
@@ -134,12 +144,26 @@ function montarPromptBlock(
     );
   }
 
+  linhas.push("", buildMetodoAmzBlock(metodo));
   linhas.push("");
   return linhas.join("\n");
 }
 
-export async function getCopyStyle(sb: any, userId: string | null | undefined): Promise<CopyStyle> {
-  if (!userId) return COPY_STYLE_PADRAO;
+export async function getCopyStyle(
+  sb: any,
+  userId: string | null | undefined,
+  metodo: { tipo?: MetodoAmzTipo; estilo?: MetodoAmzEstilo } = {},
+): Promise<CopyStyle> {
+  const metodoFinal: { tipo: MetodoAmzTipo; estilo?: MetodoAmzEstilo } = {
+    tipo: metodo.tipo ?? "post",
+    estilo: metodo.estilo,
+  };
+  if (!userId) {
+    return {
+      ...COPY_STYLE_PADRAO,
+      promptBlock: buildMetodoAmzBlock(metodoFinal),
+    };
+  }
 
   let voz: VozCopy = "empresa";
   let assinatura: string | null = null;
@@ -210,7 +234,14 @@ export async function getCopyStyle(sb: any, userId: string | null | undefined): 
     regras,
     template,
     assinar: Boolean(template && assinatura),
-    promptBlock: montarPromptBlock(voz, assinatura, link, regras, template),
+    promptBlock: montarPromptBlock(
+      voz,
+      assinatura,
+      link,
+      regras,
+      template,
+      metodoFinal,
+    ),
   };
 }
 
