@@ -30,7 +30,10 @@ import {
   type FundoMotion,
   type MotionProps,
 } from "./video-motion.ts";
-import { getTenantLogo } from "./tenant-logo.ts";
+import {
+  getTenantLogo,
+  getTenantLogoForBackground,
+} from "./tenant-logo.ts";
 import { AMZ_TENANT_ID } from "./amz-tenant.ts";
 
 export const PLATAFORMAS_OK = ["instagram", "facebook", "linkedin", "tiktok"];
@@ -241,8 +244,19 @@ export function aplicarAjusteRoteiroMotion(
   return { props, changed };
 }
 
-export async function logoDoTenant(sb: any, userId: string): Promise<string | undefined> {
-  return (await getTenantLogo(sb, userId))?.storage_path;
+export async function logoDoTenant(
+  sb: any,
+  userId: string,
+  background?: "claro" | "escuro",
+): Promise<string | undefined> {
+  const logo = background
+    ? await getTenantLogoForBackground(
+      sb,
+      userId,
+      background === "claro" ? "light" : "dark",
+    )
+    : await getTenantLogo(sb, userId);
+  return logo?.storage_path;
 }
 
 type LogoMotionResolvida = {
@@ -358,6 +372,7 @@ export async function resolverLogoMotion(
     explicitPath?: unknown;
     explicitUrl?: unknown;
     clientIdentity?: boolean;
+    background?: "claro" | "escuro";
   },
 ): Promise<LogoMotionResolvida | null> {
   const explicitPath = await logoPathExiste(sb, userId, params.explicitPath);
@@ -378,6 +393,15 @@ export async function resolverLogoMotion(
 
   // Marca de cliente nunca herda identidade, perfil ou storage da AMZ/tenant.
   if (params.clientIdentity) return null;
+
+  const variantPath = params.background
+    ? await logoPathExiste(
+      sb,
+      userId,
+      await logoDoTenant(sb, userId, params.background),
+    )
+    : null;
+  if (variantPath) return { path: variantPath, origem: "tenant_logos" };
 
   const siteIdentity = await logoDaIdentidadeSite(sb, userId);
   if (siteIdentity) return { url: siteIdentity, origem: "site_identity" };
@@ -503,6 +527,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
     explicitPath: logoSolicitada,
     explicitUrl: (input.props as any)?.logoUrl,
     clientIdentity: semLogoTenant,
+    background: fundo,
   });
   if (logo) {
     console.log(`[video-motion][logo] tenant=${userId} origem=${logo.origem}`);

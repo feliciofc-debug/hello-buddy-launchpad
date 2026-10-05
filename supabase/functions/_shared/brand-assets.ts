@@ -1,10 +1,15 @@
 import {
   extractDominantLogoColorsFromBytes,
 } from "./brand-image-engine.ts";
-import { getTenantLogoDataUrl } from "./tenant-logo.ts";
+import {
+  getTenantLogoDataUrl,
+  getTenantLogoDataUrlForBackground,
+} from "./tenant-logo.ts";
 
 export type TenantBrandAssets = {
   logoDataUrl: string | null;
+  logoForLightBackgroundDataUrl: string | null;
+  logoForDarkBackgroundDataUrl: string | null;
   colors: string[];
   brandName: string | null;
 };
@@ -85,9 +90,14 @@ export async function loadTenantBrandAssets(
   userId: string,
   options: { includeLogo?: boolean } = {},
 ): Promise<TenantBrandAssets> {
-  const logoDataUrl = options.includeLogo === false
-    ? null
-    : await getTenantLogoDataUrl(supabase, userId);
+  const [logoDataUrl, logoForLightBackgroundDataUrl, logoForDarkBackgroundDataUrl] =
+    options.includeLogo === false
+      ? [null, null, null]
+      : await Promise.all([
+        getTenantLogoDataUrl(supabase, userId),
+        getTenantLogoDataUrlForBackground(supabase, userId, "light"),
+        getTenantLogoDataUrlForBackground(supabase, userId, "dark"),
+      ]);
   const { data, error } = await supabase
     .from("empresa_config")
     .select("nome_empresa, paleta_marca, identidade_site")
@@ -115,5 +125,11 @@ export async function loadTenantBrandAssets(
       // Nome é um reforço de grafia; sua ausência não pode misturar tenants.
     }
   }
-  return { logoDataUrl, colors, brandName };
+  return {
+    logoDataUrl,
+    logoForLightBackgroundDataUrl,
+    logoForDarkBackgroundDataUrl,
+    colors,
+    brandName,
+  };
 }

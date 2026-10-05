@@ -110,8 +110,9 @@ export function readableAccent(
   let textColor = valid;
   let adjusted = false;
   if (contrastRatio(textColor, background) < 4.5) {
+    const target = luminance(background) > 0.45 ? "#000000" : "#FFFFFF";
     for (let step = 1; step <= 10; step++) {
-      const candidate = mix(valid, "#FFFFFF", step / 10);
+      const candidate = mix(valid, target, step / 10);
       if (contrastRatio(candidate, background) >= 4.5) {
         textColor = candidate;
         adjusted = candidate !== valid;

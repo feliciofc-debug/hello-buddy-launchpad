@@ -682,7 +682,13 @@ export async function tratarRespostaFluxoLegenda(params: {
           copy_letra: letra,
           plataformas_pedidas: alvo.plataformas_pedidas,
           ...(params.logo
-            ? { logo_bucket: params.logo.bucket, logo_path: params.logo.path }
+            ? {
+              logo_bucket: params.logo.bucket,
+              logo_path: params.logo.path,
+              logo_light_background_path:
+                params.logo.lightBackgroundPath,
+              logo_dark_background_path: params.logo.darkBackgroundPath,
+            }
             : {}),
         },
       })
@@ -726,7 +732,7 @@ export async function tratarRespostaFluxoLegenda(params: {
           formato: alvo.formato,
           enfileirado_at: new Date().toISOString(),
           plataformas: publicar ? destino : [],
-          metadata: metadataEscolhaLogo(job.metadata, params.texto),
+          metadata: metadataEscolhaLogo(job.metadata, params.texto, params.logo),
         })
         .eq("id", job.id);
 

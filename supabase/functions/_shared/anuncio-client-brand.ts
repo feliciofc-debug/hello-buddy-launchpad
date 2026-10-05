@@ -1,4 +1,5 @@
 import type { ClientBrandIdentity } from "./client-brand-identity.ts";
+import { clientLogoPath } from "./client-brand-identity.ts";
 
 export type AnuncioBrandPlan =
   | { mode: "tenant" }
@@ -29,15 +30,17 @@ export function buildAnuncioBrandPlan(input: {
   clientName?: string | null;
   site?: string | null;
   saved?: ClientBrandIdentity | null;
+  background?: "light" | "dark";
 }): AnuncioBrandPlan {
   const businessName = String(input.clientName || "")
     .replace(/\s+/g, " ").trim().slice(0, 100);
   if (!businessName) return { mode: "tenant" };
-  if (input.saved?.logo_path) {
+  const logoPath = clientLogoPath(input.saved, input.background);
+  if (logoPath) {
     return {
       mode: "client",
       businessName: input.saved.client_name || businessName,
-      logoPath: input.saved.logo_path,
+      logoPath,
       colors: anuncioClientColors(input.saved.identity),
     };
   }

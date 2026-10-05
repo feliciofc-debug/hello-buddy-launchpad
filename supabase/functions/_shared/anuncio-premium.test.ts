@@ -37,6 +37,18 @@ import {
   contrastRatio,
   readableAccent,
 } from "./anuncio-templates/darkGold.ts";
+import { buildImpactoAnuncio } from "./anuncio-templates/impacto.ts";
+import { buildCatalogoAnuncio } from "./anuncio-templates/catalogo.ts";
+import { buildDestaqueAnuncio } from "./anuncio-templates/destaque.ts";
+import {
+  ANUNCIO_LAYOUT_BOXES,
+  type AnuncioEstilo,
+} from "./anuncio-templates/premiumLayout.ts";
+import {
+  anuncioStyleFromText,
+  otherAnuncioStyles,
+  savedClientAnuncioStyle,
+} from "./anuncio-style.ts";
 
 const savedBase = {
   user_id: "tenant-1",
@@ -75,6 +87,30 @@ Deno.test("cliente sem logo usa site informado ou salvo para extração", () => 
       site: "https://loja.example",
     },
   );
+});
+
+Deno.test("anúncio escolhe a variante da logo pelo fundo", () => {
+  const saved = {
+    ...savedBase,
+    logo_path: "tenant/default.png",
+    identity: {
+      logo_fundo_claro_path: "tenant/light.png",
+      logo_fundo_escuro_path: "tenant/dark.png",
+    },
+  };
+  const light = buildAnuncioBrandPlan({
+    clientName: "Loja Premium",
+    saved,
+    background: "light",
+  });
+  const dark = buildAnuncioBrandPlan({
+    clientName: "Loja Premium",
+    saved,
+    background: "dark",
+  });
+  assert(light.mode === "client" && dark.mode === "client");
+  assertEquals(light.logoPath, "tenant/light.png");
+  assertEquals(dark.logoPath, "tenant/dark.png");
 });
 
 Deno.test("cliente sem logo e sem site bloqueia fallback do tenant", () => {
@@ -465,4 +501,86 @@ Deno.test("arte de produto tem prioridade e respeita foto sem melhoria", () => {
     shouldImproveProductAdPhoto("Monta um anúncio desse carro e melhora a foto"),
     true,
   );
+});
+
+const premiumBuilders = {
+  impacto: buildImpactoAnuncio,
+  catalogo: buildCatalogoAnuncio,
+  destaque: buildDestaqueAnuncio,
+};
+
+Deno.test("templates mantêm todas as caixas de texto fora do veículo", () => {
+  for (const style of Object.keys(premiumBuilders) as AnuncioEstilo[]) {
+    for (const format of ["feed", "story"] as const) {
+      const layout = ANUNCIO_LAYOUT_BOXES[style][format];
+      for (const textBox of layout.text) {
+        assertEquals(overlaps(layout.vehicle, textBox), false);
+      }
+    }
+  }
+});
+
+Deno.test("templates omitem campos ausentes e preço nunca quebra linha", () => {
+  for (const builder of Object.values(premiumBuilders)) {
+    const absent = flatten(builder(baseData()));
+    const content = absent.map((node) =>
+      typeof node.props?.children === "string" ? node.props.children : ""
+    ).join(" ");
+    assert(!content.includes("FIPE"));
+    assert(!content.includes("HOJE"));
+
+    const priced = flatten(builder(baseData({
+      preco: "R$ 123.456,78",
+      precoLabel: "HOJE",
+    })));
+    const priceNode = priced.find((node) =>
+      node.props?.children === "R$ 123.456,78"
+    );
+    assertEquals(priceNode?.props?.style?.whiteSpace, "nowrap");
+  }
+});
+
+Deno.test("os três templates renderizam a foto em feed e story", async () => {
+  const jpeg = await fetchJpegPhoto();
+  const photoDataUrl = await renderableImageDataUrl(jpeg, "foto");
+  const font = await (await fetch(
+    "https://cdn.jsdelivr.net/npm/@fontsource/inter@4.5.15/files/inter-latin-700-normal.woff",
+  )).arrayBuffer();
+  renderWasmReady ??= initWasm(fetch(
+    "https://cdn.jsdelivr.net/npm/@resvg/resvg-wasm@2.6.2/index_bg.wasm",
+  ));
+  await renderWasmReady;
+
+  for (const style of Object.keys(premiumBuilders) as AnuncioEstilo[]) {
+    for (const format of ["feed", "story"] as const) {
+      const { width, height } = anuncioSize(format);
+      const tree = premiumBuilders[style](baseData({
+        formato: format,
+        fotoDataUrl,
+        subtitulo: "AUTOMÁTICO • BLINDADO",
+        preco: "R$ 99.900",
+        ano: "2023",
+      }));
+      const svg = await satori(tree as any, {
+        width,
+        height,
+        fonts: [{ name: "Inter", data: font, weight: 700, style: "normal" }],
+      });
+      const rendered = await Image.decode(
+        new Resvg(svg, { fitTo: { mode: "width", value: width } }).render()
+          .asPng(),
+      );
+      const vehicle = ANUNCIO_LAYOUT_BOXES[style][format].vehicle;
+      assert(regionDeviation(rendered, vehicle) > 10);
+    }
+  }
+});
+
+Deno.test("estilo explícito e preferência do cliente são reutilizados", () => {
+  assertEquals(anuncioStyleFromText("monta no estilo catálogo"), "catalogo");
+  assertEquals(savedClientAnuncioStyle({
+    ...savedBase,
+    identity: { preferred_ad_style: "impacto" },
+  }), "impacto");
+  assertEquals(otherAnuncioStyles("impacto"), ["catalogo", "destaque"]);
 });

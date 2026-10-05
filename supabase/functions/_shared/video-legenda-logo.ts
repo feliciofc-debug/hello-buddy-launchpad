@@ -1,6 +1,8 @@
 export interface VideoLegendaLogoAsset {
   bucket: string;
   path: string;
+  lightBackgroundPath?: string;
+  darkBackgroundPath?: string;
 }
 
 export const VIDEO_LEGENDA_LOGO_BUTTONS = [
@@ -32,7 +34,17 @@ export function detectarEscolhaLogo(texto: string): boolean | null {
 export function metadataEscolhaLogo(
   metadata: Record<string, unknown> | null | undefined,
   texto: string,
+  logo?: VideoLegendaLogoAsset | null,
 ): Record<string, unknown> {
   const escolha = detectarEscolhaLogo(texto);
-  return { ...(metadata || {}), com_logo: escolha === true };
+  return {
+    ...(metadata || {}),
+    com_logo: escolha === true,
+    ...(logo?.lightBackgroundPath
+      ? { logo_light_background_path: logo.lightBackgroundPath }
+      : {}),
+    ...(logo?.darkBackgroundPath
+      ? { logo_dark_background_path: logo.darkBackgroundPath }
+      : {}),
+  };
 }

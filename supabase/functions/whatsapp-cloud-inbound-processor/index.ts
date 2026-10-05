@@ -308,6 +308,8 @@ import {
   findClientBrandIdentity,
   listClientBrandIdentityMatches,
   saveClientBrandIdentity,
+  clientLogoPath,
+  type ClientBrandIdentity,
 } from "../_shared/client-brand-identity.ts";
 import {
   anuncioClientColors,
@@ -319,6 +321,16 @@ import {
   shouldAskAmzAnuncioClient,
 } from "../_shared/anuncio-tenant-brand.ts";
 import {
+  ANUNCIO_STYLES,
+  type AnuncioStyle,
+  anuncioStyleButtons,
+  anuncioStyleFromText,
+  getTenantAnuncioStyle,
+  otherAnuncioStyles,
+  savedClientAnuncioStyle,
+  saveTenantAnuncioStyle,
+} from "../_shared/anuncio-style.ts";
+import {
   selectRecentOriginalPhoto,
 } from "../_shared/anuncio-source-media.ts";
 import {
@@ -326,6 +338,7 @@ import {
   recognizedMediaReply,
 } from "../_shared/media-received-copy.ts";
 import { imageUploadMetadata } from "../_shared/image-file-format.ts";
+import { detectLogoVariantRequest } from "../_shared/logo-variant.ts";
 import {
   canRunClientLogoRegistrationShortcut,
   classifyCreativeMediaRequest,
@@ -1386,6 +1399,8 @@ async function toolGerarImagem(
     const shouldResolveBrand = shouldUseLogo
       || (ctx.demonstracao === true && (ctx.brandColors?.length ?? 0) > 0);
     let logoDataUrl: string | null = null;
+    let logoForLightBackgroundDataUrl: string | null = null;
+    let logoForDarkBackgroundDataUrl: string | null = null;
     let brandColors: string[] = ctx.brandColors ?? [];
     let brandName: string | null = null;
     if (shouldResolveBrand) {
@@ -1394,6 +1409,10 @@ async function toolGerarImagem(
         : await loadTenantBrandAssets(sb, ctx.userId);
       const resolvedBrand = resolveWhatsAppGeneratorBrand(ctx, assets);
       logoDataUrl = resolvedBrand.logoDataUrl;
+      logoForLightBackgroundDataUrl =
+        resolvedBrand.logoForLightBackgroundDataUrl;
+      logoForDarkBackgroundDataUrl =
+        resolvedBrand.logoForDarkBackgroundDataUrl;
       brandColors = resolvedBrand.brandColors;
       brandName = resolvedBrand.brandName;
       console.log("[gerar_imagem] marca padrão, logo encontrada:", !!logoDataUrl);
@@ -1408,6 +1427,8 @@ async function toolGerarImagem(
       prompt: clean,
       references: ctx.references,
       logoDataUrl,
+      logoForLightBackgroundDataUrl,
+      logoForDarkBackgroundDataUrl,
       brandColors,
       brandName,
       apiKey: LOVABLE_API_KEY,
@@ -2535,8 +2556,22 @@ type AgentConvState = {
     args: Record<string, unknown>;
     created_at: string;
   } | null;
-  pending_client_logo?: { logo_path: string; created_at: string } | null;
-  pending_client_logo_intent?: { client_name: string; created_at: string } | null;
+  pending_anuncio_styles?: {
+    render_payload: Record<string, unknown>;
+    client_name?: string | null;
+    shown_styles: AnuncioStyle[];
+    created_at: string;
+  } | null;
+  pending_client_logo?: {
+    logo_path: string;
+    created_at: string;
+    variant?: "default" | "light_background" | "dark_background";
+  } | null;
+  pending_client_logo_intent?: {
+    client_name: string;
+    created_at: string;
+    variant?: "default" | "light_background" | "dark_background";
+  } | null;
   pending_brand_generation?: PendingBrandGeneration | null;
   pending_meta_ads_ambiguity?: MetaAdsQuestionarioAmbiguidade | null;
   pending_meta_ads_limit?: MetaAdsLimitProposal | null;
@@ -2580,6 +2615,8 @@ type PendingVideoSetupState = {
   site?: string;
   tom_de_voz?: string;
   logo_path?: string;
+  logo_light_background_path?: string;
+  logo_dark_background_path?: string;
   site_logo_candidate_path?: string;
   identity_summary?: string;
   palette_options?: VideoPaletteOption[];
@@ -9320,7 +9357,10 @@ async function uploadClientLogoFromMediaUrl(userId: string, mediaUrl: string): P
 }
 
 async function toolRegistrarLogoCliente(
-  args: { cliente?: string },
+  args: {
+    cliente?: string;
+    variante?: "default" | "light_background" | "dark_background";
+  },
   ctx: { userId: string; fromNumber: string; agentState?: AgentConvState },
 ): Promise<string> {
   if (!isOwner(ctx)) {
@@ -9368,11 +9408,17 @@ async function toolRegistrarLogoCliente(
     });
   }
   try {
-    const previousLogoPath = matches[0]?.logo_path;
+    const variant = args.variante ?? "default";
+    const previousLogoPath = variant === "light_background"
+      ? String(matches[0]?.identity?.logo_fundo_claro_path || "")
+      : variant === "dark_background"
+      ? String(matches[0]?.identity?.logo_fundo_escuro_path || "")
+      : matches[0]?.logo_path;
     const saved = await saveClientBrandIdentity(sb, {
       userId: ctx.userId,
       clientName,
       logoPath,
+      logoVariant: variant,
       identity: { logo_origem: "whatsapp_manual", source_media_id: latest.midia.id },
     });
     if (
@@ -9802,7 +9848,7 @@ async function prepareClientSiteIdentity(
     site: identity.url,
   });
   const manualLogoPath = savedIdentity?.identity?.logo_origem === "whatsapp_manual"
-    ? savedIdentity.logo_path || undefined
+    ? clientLogoPath(savedIdentity) || undefined
     : undefined;
   const uploadedSiteLogoPath = !manualLogoPath
       && automatic.useSiteLogo
@@ -9859,6 +9905,18 @@ async function prepareClientSiteIdentity(
     site: identity.url,
     marca: automatic.clientName,
     logo_path: logoPath,
+    logo_light_background_path: savedIdentity
+      ? clientLogoPath(savedIdentity, "light") || undefined
+      : undefined,
+    logo_dark_background_path: savedIdentity
+      ? clientLogoPath(savedIdentity, "dark") || undefined
+      : undefined,
+    logo_light_background_path: savedIdentity
+      ? clientLogoPath(savedIdentity, "light") || undefined
+      : undefined,
+    logo_dark_background_path: savedIdentity
+      ? clientLogoPath(savedIdentity, "dark") || undefined
+      : undefined,
     site_logo_candidate_path: undefined,
     identity_summary: identitySummary,
     palette_options: paletteOptions,
@@ -9893,7 +9951,13 @@ async function finalizeVideoSetup(
     marca: setup.identidade === "client" ? setup.marca : undefined,
     site: setup.identidade === "client" ? setup.site : undefined,
     tomDeVoz: setup.tom_de_voz,
-    logoPath: setup.logo_path,
+    logoPath: setup.identidade === "client"
+      ? (setup.fundo === "claro"
+        ? setup.logo_light_background_path
+        : setup.fundo === "escuro"
+        ? setup.logo_dark_background_path
+        : setup.logo_path) || setup.logo_path
+      : setup.logo_path,
     semLogoTenant: setup.identidade === "client",
     identidadeResumo: setup.identity_summary,
     formato: setup.formato ?? "reels",
@@ -10295,14 +10359,18 @@ async function handlePendingVideoSetup(
     const url = extractPublicSiteUrl(response);
     if (!url) {
       const saved = await findClientBrandIdentity(sb, ctx.userId, { name: response });
-      if (!saved?.logo_path) {
+      if (!clientLogoPath(saved)) {
         return "Não encontrei uma identidade salva com esse nome. Envie a URL do site ou o nome exato do cliente.";
       }
       if (saved.site_url) {
         return await prepareClientSiteIdentity(ctx, {
           ...setup,
           marca: saved.client_name,
-          logo_path: saved.logo_path,
+          logo_path: clientLogoPath(saved) || undefined,
+          logo_light_background_path:
+            clientLogoPath(saved, "light") || undefined,
+          logo_dark_background_path:
+            clientLogoPath(saved, "dark") || undefined,
         }, saved.site_url);
       }
       const savedColors = Array.isArray(saved.identity?.colors)
@@ -10312,14 +10380,18 @@ async function handlePendingVideoSetup(
         : [];
       const options = paletteOptionsFromColors(savedColors);
       const applied = [
-        saved.logo_path ? "logo salva do cliente" : null,
+        clientLogoPath(saved) ? "logo salva do cliente" : null,
         savedColors.length ? `cores ${savedColors.slice(0, 4).join(" · ")}` : null,
       ].filter(Boolean).join(" + ") || "paleta automática sem logo";
       const next = {
         ...setup,
         stage: "awaiting_palette_confirmation" as const,
         marca: saved.client_name,
-        logo_path: saved.logo_path,
+        logo_path: clientLogoPath(saved) || undefined,
+        logo_light_background_path:
+          clientLogoPath(saved, "light") || undefined,
+        logo_dark_background_path:
+          clientLogoPath(saved, "dark") || undefined,
         cores: options.length ? paletteFromOptions(options) : undefined,
         palette_options: options,
         identity_summary: `${saved.client_name} — ${applied}`,
@@ -11288,11 +11360,12 @@ const TOOLS = [
     type: "function",
     function: {
       name: "registrar_logo_cliente",
-      description: "CADASTRA DE VERDADE a última FOTO desta conversa como logo de um cliente do responsável. Use quando o DONO disser 'guarde/salve/registre/cadastre/use essa como logo do cliente X', inclusive quando a foto veio na mensagem anterior. Só confirme que guardou se esta ferramenta retornar ok=true; se retornar erro, repita a mensagem de erro e NUNCA finja sucesso.",
+      description: "CADASTRA DE VERDADE a última FOTO desta conversa como logo de um cliente do responsável. Use quando o DONO disser 'guarde/salve/registre/cadastre/use essa como logo do cliente X', inclusive para as versões 'fundo claro' e 'fundo escuro'. Só confirme que guardou se esta ferramenta retornar ok=true.",
       parameters: {
         type: "object",
         properties: {
           cliente: { type: "string", description: "Nome exato da empresa/cliente citado pelo responsável, ex.: Casarão Lustres." },
+          variante: { type: "string", enum: ["default", "light_background", "dark_background"], description: "Versão da logo: fundo claro usa texto escuro; fundo escuro usa texto claro." },
         },
         required: ["cliente"],
       },
@@ -11457,6 +11530,7 @@ const TOOLS = [
           telefone: { type: "string", description: "Telefone de contato pra arte, se o usuário informou." },
           instagram: { type: "string", description: "@ do Instagram pra arte, se o usuário informou. Vazio = uso o do cadastro." },
           formato: { type: "string", description: "'feed' (quadrado, padrão) ou 'story' (9:16 vertical)." },
+          estilo: { type: "string", enum: ["impacto", "catalogo", "destaque"], description: "Estilo visual quando o dono pedir diretamente. Sem estilo, respeite a preferência salva ou mostre os três." },
           melhorar_foto: { type: "boolean", description: "true (padrão) = a IA melhora a foto/ambiente antes de montar. false = usa a foto como está." },
         },
         required: ["titulo"],
@@ -12244,6 +12318,27 @@ async function toolCriarCarrossel(
 // ============================================================
 const ANUNCIO_MAX_DIA = 20;
 
+async function enviarPreviewEstilosAnuncio(
+  ctx: { userId: string; fromNumber: string },
+  renders: Array<{ style: AnuncioStyle; render: { image_url: string } }>,
+): Promise<void> {
+  for (const { style, render } of renders) {
+    const label = style === "catalogo"
+      ? "Catálogo"
+      : style[0].toUpperCase() + style.slice(1);
+    await sendWhatsApp(
+      ctx.userId,
+      ctx.fromNumber,
+      label,
+      render.image_url,
+      undefined,
+      undefined,
+      { alreadyLogged: false },
+    );
+    await wait(250);
+  }
+}
+
 async function buscarFotoOriginalRecenteParaAnuncio(ctx: {
   userId: string;
   fromNumber: string;
@@ -12291,8 +12386,8 @@ async function resolveAnuncioClientIdentity(input: {
   clientName?: string;
   site?: string;
 }): Promise<
-  | { mode: "tenant"; businessName: null; logoPath: null; colors: string[] }
-  | { mode: "client"; businessName: string; logoPath: string; colors: string[] }
+  | { mode: "tenant"; businessName: null; logoPath: null; colors: string[]; identity: null }
+  | { mode: "client"; businessName: string; logoPath: string; colors: string[]; identity: ClientBrandIdentity }
   | { mode: "missing"; message: string }
 > {
   const clientName = String(input.clientName || "").replace(/\s+/g, " ").trim().slice(0, 100);
@@ -12308,7 +12403,7 @@ async function resolveAnuncioClientIdentity(input: {
     saved,
   });
   if (plan.mode === "tenant") {
-    return { mode: "tenant", businessName: null, logoPath: null, colors: [] };
+    return { mode: "tenant", businessName: null, logoPath: null, colors: [], identity: null };
   }
   if (plan.mode === "client") {
     return {
@@ -12316,6 +12411,7 @@ async function resolveAnuncioClientIdentity(input: {
       businessName: plan.businessName,
       logoPath: plan.logoPath,
       colors: plan.colors,
+      identity: saved!,
     };
   }
   if (plan.mode === "missing") {
@@ -12366,6 +12462,7 @@ async function resolveAnuncioClientIdentity(input: {
         businessName: saved.client_name || clientName,
         logoPath: saved.logo_path,
         colors,
+        identity: saved,
       };
     }
   } catch (error) {
@@ -12395,6 +12492,7 @@ async function toolCriarAnuncio(
     telefone?: string;
     instagram?: string;
     formato?: string;
+    estilo?: string;
     melhorar_foto?: boolean;
     _usar_marca_tenant?: boolean;
   },
@@ -12467,6 +12565,13 @@ async function toolCriarAnuncio(
         mensagem: anuncioIdentity.message,
       });
     }
+    const requestedStyle = ANUNCIO_STYLES.includes(args?.estilo as AnuncioStyle)
+      ? args?.estilo as AnuncioStyle
+      : null;
+    const savedStyle = anuncioIdentity.mode === "client"
+      ? savedClientAnuncioStyle(anuncioIdentity.identity)
+      : await getTenantAnuncioStyle(sb, ctx.userId);
+    const singleStyle = requestedStyle ?? savedStyle;
 
     // 1) FOTO — turno atual; senão, última foto recente da biblioteca (30 min)
     let fotoUrl: string | null = null;
@@ -12580,8 +12685,8 @@ async function toolCriarAnuncio(
       .filter(Boolean)
       .slice(0, 8);
 
-    // 5) RENDER — texto/preço/logo por template (exatos)
-    const render = await callEdge("render-anuncio-produto", {
+    // 5) RENDER — a foto é melhorada uma vez e reutilizada nos templates.
+    const renderPayload: Record<string, unknown> = {
       user_id: ctx.userId,
       titulo,
       subtitulo: args?.subtitulo || null,
@@ -12596,7 +12701,6 @@ async function toolCriarAnuncio(
       telefone,
       instagram,
       business_name: businessName,
-      logo_path: anuncioIdentity.logoPath,
       logo_source: anuncioIdentity.mode,
       primary_color: anuncioIdentity.colors[1] || anuncioIdentity.colors[0] || undefined,
       accent_color: anuncioIdentity.colors[0] || undefined,
@@ -12605,46 +12709,97 @@ async function toolCriarAnuncio(
       foto_source: fotoSource,
       formato,
       incluir_logo: true,
-    }, 120000);
+    };
+    const styles = singleStyle ? [singleStyle] : [...ANUNCIO_STYLES];
+    const renders = await Promise.all(styles.map(async (style) => {
+      const background = style === "catalogo" ? "light" : "dark";
+      const logoPath = anuncioIdentity.mode === "client"
+        ? clientLogoPath(anuncioIdentity.identity, background)
+        : null;
+      const render = await callEdge("render-anuncio-produto", {
+        ...renderPayload,
+        estilo: style,
+        logo_path: logoPath,
+      }, 120000);
+      if (!render?.success || !render?.image_url) {
+        throw new Error(String(render?.error || `falha no estilo ${style}`));
+      }
+      return { style, render };
+    }));
 
-    if (!render?.success || !render?.image_url) {
-      return JSON.stringify({ erro: "falha_no_render", detalhe: String(render?.error || "erro desconhecido").slice(0, 200) });
-    }
-    console.log(
-      `[criar_anuncio] render concluído foto_source=${String(render.foto_source || fotoSource)}`,
-    );
-
-    // 6) Salva na biblioteca /midias pra poder publicar depois
-    let midiaId: string | null = null;
-    try {
-      const { data: mid } = await sb
-        .from("midias_whatsapp")
-        .insert({
+    // 6) Salva todos os estilos na biblioteca.
+    const savedMedia = await Promise.all(renders.map(async ({ style, render }) => {
+      try {
+        const { data: mid } = await sb.from("midias_whatsapp").insert({
           user_id: ctx.userId,
           telefone_origem: ctx.fromNumber,
           tipo: "foto",
           midia_url: render.image_url,
-          contexto_original: `Anúncio ${formato}: ${titulo}`,
+          contexto_original: `Anúncio ${style} ${formato}: ${titulo}`,
           origem: "anuncio_produto",
           status: "pendente",
-        })
-        .select("id")
-        .maybeSingle();
-      midiaId = mid?.id ?? null;
-    } catch (e) {
-      console.warn("[criar_anuncio] salvar na biblioteca falhou:", (e as Error).message);
+        }).select("id").maybeSingle();
+        return mid?.id ?? null;
+      } catch (e) {
+        console.warn("[criar_anuncio] salvar na biblioteca falhou:", (e as Error).message);
+        return null;
+      }
+    }));
+
+    if (requestedStyle) {
+      if (anuncioIdentity.mode === "client") {
+        await saveClientBrandIdentity(sb, {
+          userId: ctx.userId,
+          clientName: anuncioIdentity.businessName,
+          identity: { preferred_ad_style: requestedStyle },
+        });
+      } else {
+        await saveTenantAnuncioStyle(sb, ctx.userId, requestedStyle);
+      }
     }
+
+    if (ctx.convId) {
+      const conversation = {
+        id: ctx.convId,
+        userId: ctx.userId,
+        contactNumber: ctx.fromNumber,
+      };
+      const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+      const pending = {
+        render_payload: renderPayload,
+        client_name: args?.cliente || null,
+        shown_styles: styles,
+        created_at: new Date().toISOString(),
+      };
+      await saveAgentState(sb, conversation, { pending_anuncio_styles: pending }, current);
+      current.pending_anuncio_styles = pending;
+      ctx.agentState = current;
+    }
+
+    if (renders.length > 1) {
+      await enviarPreviewEstilosAnuncio(ctx, renders);
+    }
+    const only = renders[0];
 
     return JSON.stringify({
       ok: true,
-      image_url: render.image_url,
+      image_url: renders.length === 1 ? only.render.image_url : undefined,
+      image_urls: renders.map(({ render }) => render.image_url),
+      estilos: styles,
       formato,
-      logo_aplicada: !!render.logo_aplicada,
-      midia_id: midiaId,
+      logo_aplicada: renders.every(({ render }) => !!render.logo_aplicada),
+      midia_id: renders.length === 1 ? savedMedia[0] : null,
+      midia_ids: savedMedia.filter(Boolean),
       itens_usados: itens.length,
-      mensagem: render.logo_aplicada
-        ? anuncioSuccessMessage()
-        : "Pronto! O anúncio ficou sem logo porque não há uma marca cadastrada. Quer publicar no feed ou no story?",
+      mensagem: renders.length > 1
+        ? "Preparei os três estilos com a mesma foto. Qual você prefere?"
+        : anuncioSuccessMessage(),
+      interactive_buttons: renders.length > 1
+        ? anuncioStyleButtons()
+        : {
+          body: "Quer comparar com os outros moldes?",
+          buttons: [{ id: "anuncio_other_styles", title: "Ver outros estilos" }],
+        },
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message).slice(0, 250) });
@@ -13094,6 +13249,9 @@ async function callGemini(
       : null;
     const pendingClientLogo = remetenteEhDono ? toolCtx.agentState?.pending_client_logo : null;
     const pendingClientLogoIntent = remetenteEhDono ? toolCtx.agentState?.pending_client_logo_intent : null;
+    const pendingAnuncioStyles = remetenteEhDono
+      ? toolCtx.agentState?.pending_anuncio_styles
+      : null;
     const pendingBrandGeneration = remetenteEhDono ? toolCtx.agentState?.pending_brand_generation : null;
     const latestPendingSocial = remetenteEhDono
       ? await findLatestPendingSocialToken(toolCtx.userId, toolCtx.fromNumber)
@@ -13142,6 +13300,94 @@ async function callGemini(
     }
     if (remetenteEhDono && isVideoMotionRedoRequest(userContent)) {
       return { text: await refazerVideoMotion(toolCtx, userContent) };
+    }
+    const anuncioStyleInteractive = userContent.match(
+      /<<INTERACTIVE_ID:anuncio_style:(impacto|catalogo|destaque)>>/i,
+    )?.[1]?.toLowerCase() as AnuncioStyle | undefined;
+    const wantsOtherAnuncioStyles =
+      /<<INTERACTIVE_ID:anuncio_other_styles>>/i.test(userContent);
+    if (anuncioStyleInteractive && pendingAnuncioStyles) {
+      const client = pendingAnuncioStyles.client_name
+        ? await findClientBrandIdentity(sb, toolCtx.userId, {
+          name: pendingAnuncioStyles.client_name,
+        })
+        : null;
+      if (client) {
+        await saveClientBrandIdentity(sb, {
+          userId: toolCtx.userId,
+          clientName: client.client_name,
+          identity: { preferred_ad_style: anuncioStyleInteractive },
+        });
+      } else {
+        await saveTenantAnuncioStyle(
+          sb,
+          toolCtx.userId,
+          anuncioStyleInteractive,
+        );
+      }
+      return {
+        text:
+          `Fechado — salvei *${anuncioStyleInteractive}* como seu estilo preferido. Nos próximos anúncios vou direto nele.`,
+        interactiveButtons: {
+          body: "Se quiser comparar novamente:",
+          buttons: [{
+            id: "anuncio_other_styles",
+            title: "Ver outros estilos",
+          }],
+        },
+      };
+    }
+    if (wantsOtherAnuncioStyles && pendingAnuncioStyles) {
+      const age = Date.now() -
+        new Date(pendingAnuncioStyles.created_at).getTime();
+      if (Number.isFinite(age) && age <= 2 * 60 * 60 * 1000) {
+        const preferred = pendingAnuncioStyles.shown_styles[0];
+        const styles = pendingAnuncioStyles.shown_styles.length === 1
+          ? otherAnuncioStyles(preferred)
+          : ANUNCIO_STYLES;
+        const client = pendingAnuncioStyles.client_name
+          ? await findClientBrandIdentity(sb, toolCtx.userId, {
+            name: pendingAnuncioStyles.client_name,
+          })
+          : null;
+        const renders = await Promise.all(styles.map(async (style) => {
+          const logoPath = client
+            ? clientLogoPath(
+              client,
+              style === "catalogo" ? "light" : "dark",
+            )
+            : null;
+          const render = await callEdge("render-anuncio-produto", {
+            ...pendingAnuncioStyles.render_payload,
+            estilo: style,
+            logo_path: logoPath,
+          }, 120000);
+          return { style, render };
+        }));
+        const urls = renders.map(({ render }) => render?.image_url).filter(Boolean);
+        if (urls.length === styles.length) {
+          await enviarPreviewEstilosAnuncio(
+            toolCtx,
+            renders as Array<{
+              style: AnuncioStyle;
+              render: { image_url: string };
+            }>,
+          );
+          return {
+            text: "Aqui estão os outros estilos. Qual você prefere?",
+            interactiveButtons: {
+              body: "Qual você prefere?",
+              buttons: styles.map((style) => ({
+                id: `anuncio_style:${style}`,
+                title: style === "catalogo"
+                  ? "Catálogo"
+                  : style[0].toUpperCase() + style.slice(1),
+              })),
+            },
+          };
+        }
+      }
+      return { text: "Esse anúncio não está mais disponível para comparar. Me envie o pedido novamente." };
     }
     if (pendingAnuncioCliente) {
       const interactiveId = userContent.match(
@@ -13466,6 +13712,10 @@ async function callGemini(
             storagePath: candidatePath,
             fileName: `logo-whatsapp.${extension}`,
             mimeType: candidateMime,
+            variant: detectLogoVariantRequest(
+              pendingBrandGeneration.original_request ||
+                pendingBrandGeneration.prompt,
+            ) ?? "default",
           });
           if (!saved) {
             return { text: "Não consegui salvar essa logo com segurança. Seu cadastro não foi alterado." };
@@ -13749,6 +13999,7 @@ async function callGemini(
           userId: toolCtx.userId,
           clientName: matches[0]?.client_name || clientName,
           logoPath: pendingClientLogo.logo_path,
+          logoVariant: pendingClientLogo.variant ?? "default",
           identity: { logo_origem: "whatsapp_manual" },
         });
         if (conversation) {
@@ -13774,7 +14025,10 @@ async function callGemini(
       if (!clientName) {
         return { text: "De qual cliente é essa logo? Diga o nome da empresa para eu associar a última foto." };
       }
-      const raw = await toolRegistrarLogoCliente({ cliente: clientName }, toolCtx);
+      const raw = await toolRegistrarLogoCliente({
+        cliente: clientName,
+        variante: detectLogoVariantRequest(userContent) ?? "default",
+      }, toolCtx);
       try {
         const result = JSON.parse(raw);
         const uploadFollowUp = clientLogoUploadFollowUp(
@@ -13789,6 +14043,7 @@ async function callGemini(
             const pendingIntent = {
               client_name: clientName,
               created_at: new Date().toISOString(),
+              variant: detectLogoVariantRequest(userContent) ?? "default",
             };
             await saveAgentState(sb, conversation, {
               pending_client_logo_intent: pendingIntent,
@@ -14361,6 +14616,16 @@ async function callGemini(
           !shouldImproveProductAdPhoto(userContent)
         ) {
           args.melhorar_foto = false;
+        }
+        if (name === "criar_anuncio" && typeof userContent === "string") {
+          args.estilo = anuncioStyleFromText(userContent) ?? args.estilo;
+        }
+        if (
+          name === "registrar_logo_cliente" &&
+          typeof userContent === "string"
+        ) {
+          args.variante =
+            detectLogoVariantRequest(userContent) ?? args.variante ?? "default";
         }
         if (name === "publicar_anuncio_meta") {
           args.confirmacao = typeof userContent === "string"
@@ -16126,6 +16391,7 @@ async function processOne(queueId: string) {
                   pending_client_logo: {
                     logo_path: logoPath,
                     created_at: new Date().toISOString(),
+                    variant: pendingClientLogoIntent.variant ?? "default",
                   },
                 }, freshAgentState);
                 reply = `Encontrei mais de um cliente parecido: ${matches.map((item) => item.client_name).join(", ")}. De qual deles é a logo?`;
@@ -16134,6 +16400,7 @@ async function processOne(queueId: string) {
                   userId,
                   clientName: matches[0]?.client_name || pendingClientLogoIntent.client_name,
                   logoPath,
+                  logoVariant: pendingClientLogoIntent.variant ?? "default",
                   identity: { logo_origem: "whatsapp_manual" },
                 });
                 await saveAgentState(sb, stateConversation, {
@@ -16272,6 +16539,8 @@ async function processOne(queueId: string) {
         && !!incomingLogo
         && isClientLogoRegistrationRequest(contexto);
       if (clientLogoRequest && incomingLogo) {
+        const requestedLogoVariant =
+          detectLogoVariantRequest(contexto) ?? "default";
         const logoPath = await uploadClientLogoData(
           userId,
           `data:${incomingLogo.mime};base64,${incomingLogo.base64}`,
@@ -16284,7 +16553,11 @@ async function processOne(queueId: string) {
           reply = "Não consegui salvar essa logo. Envie em PNG, JPEG ou WEBP com até 5 MB.";
         } else if (!clientName) {
           await saveAgentState(sb, stateConversation, {
-            pending_client_logo: { logo_path: logoPath, created_at: new Date().toISOString() },
+            pending_client_logo: {
+              logo_path: logoPath,
+              created_at: new Date().toISOString(),
+              variant: requestedLogoVariant,
+            },
           }, freshAgentState);
           reply = "Guardei o arquivo, mas ainda não associei a nenhuma identidade. De qual cliente é essa logo?";
         } else {
@@ -16292,7 +16565,11 @@ async function processOne(queueId: string) {
             const matches = await listClientBrandIdentityMatches(sb, userId, clientName);
             if (matches.length > 1) {
               await saveAgentState(sb, stateConversation, {
-                pending_client_logo: { logo_path: logoPath, created_at: new Date().toISOString() },
+                pending_client_logo: {
+                  logo_path: logoPath,
+                  created_at: new Date().toISOString(),
+                  variant: requestedLogoVariant,
+                },
               }, freshAgentState);
               reply = `Encontrei mais de um cliente parecido: ${matches.map((item) => item.client_name).join(", ")}. De qual deles é a logo?`;
             } else {
@@ -16300,6 +16577,7 @@ async function processOne(queueId: string) {
                 userId,
                 clientName: matches[0]?.client_name || clientName,
                 logoPath,
+                logoVariant: requestedLogoVariant,
                 identity: { logo_origem: "whatsapp_manual" },
               });
               await saveAgentState(sb, stateConversation, { pending_client_logo: null }, freshAgentState);
@@ -16309,7 +16587,11 @@ async function processOne(queueId: string) {
           } catch (error) {
             console.error("[client-brand][logo-save]", error);
             await saveAgentState(sb, stateConversation, {
-              pending_client_logo: { logo_path: logoPath, created_at: new Date().toISOString() },
+              pending_client_logo: {
+                logo_path: logoPath,
+                created_at: new Date().toISOString(),
+                variant: requestedLogoVariant,
+              },
             }, freshAgentState);
             reply = "Salvei o arquivo, mas não consegui associá-lo à identidade. Confirme o nome do cliente para eu tentar novamente.";
           }
@@ -16640,7 +16922,15 @@ async function processOne(queueId: string) {
     // A queima da legenda roda no worker da VPS — nada depende do navegador.
     // ============================================================
     if (fromIsOwner && userText.trim()) {
-      const videoLegendaLogo = await getTenantLogoStorageLocation(sb, userId);
+      const [videoLegendaLogo, lightLogo, darkLogo] = await Promise.all([
+        getTenantLogoStorageLocation(sb, userId),
+        getTenantLogoStorageLocation(sb, userId, "light"),
+        getTenantLogoStorageLocation(sb, userId, "dark"),
+      ]);
+      if (videoLegendaLogo) {
+        videoLegendaLogo.lightBackgroundPath = lightLogo?.path;
+        videoLegendaLogo.darkBackgroundPath = darkLogo?.path;
+      }
       const fluxoReply = await tratarRespostaFluxoLegenda({
         userId,
         telefone: row.from_number,

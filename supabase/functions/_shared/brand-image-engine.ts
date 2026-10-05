@@ -1,4 +1,8 @@
 import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
+import {
+  logoBackgroundFromLuminance,
+  pickLogoVariant,
+} from "./logo-variant.ts";
 
 export type BrandImageFormat = "original" | "feed" | "story";
 export type LogoCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
@@ -697,12 +701,43 @@ async function decodeLogo(logoBytes: Uint8Array): Promise<Image> {
 export async function applyBrandLogo(
   baseBytes: Uint8Array,
   logoBytes: Uint8Array,
-  options: { format?: BrandImageFormat } = {},
+  options: {
+    format?: BrandImageFormat;
+    logoForLightBackgroundBytes?: Uint8Array | null;
+    logoForDarkBackgroundBytes?: Uint8Array | null;
+  } = {},
 ): Promise<BrandImageResult> {
   let base = await Image.decode(baseBytes);
   base = fitBaseImage(base, options.format ?? "original");
   let logo = await decodeLogo(logoBytes);
-  const card = detectLogoCardBackground(logo.bitmap, logo.width, logo.height);
+  let card = detectLogoCardBackground(logo.bitmap, logo.width, logo.height);
+  let decision = selectLogoPlacement(
+    base.bitmap,
+    base.width,
+    base.height,
+    logo.width,
+    logo.height,
+    options.format ?? "original",
+    card.color,
+  );
+  const selectedBytes = pickLogoVariant({
+    default: logoBytes,
+    light_background: options.logoForLightBackgroundBytes,
+    dark_background: options.logoForDarkBackgroundBytes,
+  }, logoBackgroundFromLuminance(decision.luminance));
+  if (selectedBytes && selectedBytes !== logoBytes) {
+    logo = await decodeLogo(selectedBytes);
+    card = detectLogoCardBackground(logo.bitmap, logo.width, logo.height);
+    decision = selectLogoPlacement(
+      base.bitmap,
+      base.width,
+      base.height,
+      logo.width,
+      logo.height,
+      options.format ?? "original",
+      card.color,
+    );
+  }
   const cleaned = card.detected
     ? { bitmap: new Uint8ClampedArray(logo.bitmap), removed: false, alreadyTransparent: true }
     : removeSolidLogoBackground(logo.bitmap, logo.width, logo.height);
@@ -712,15 +747,6 @@ export async function applyBrandLogo(
   const backgroundRemoved = !card.detected && !cleaned.alreadyTransparent && cleaned.removed;
   if (!cleaned.alreadyTransparent) logo.bitmap.set(cleaned.bitmap);
 
-  const decision = selectLogoPlacement(
-    base.bitmap,
-    base.width,
-    base.height,
-    logo.width,
-    logo.height,
-    options.format ?? "original",
-    card.color,
-  );
   const placement = decision.placement;
   resizeLogoHighQuality(logo, placement.width, placement.height);
   placement.width = logo.width;

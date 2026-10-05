@@ -14,6 +14,7 @@ const ACEITOS = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
 export default function LogoMarcaPJ() {
   const navigate = useNavigate();
   const fileRef = useRef<HTMLInputElement>(null);
+  const darkFileRef = useRef<HTMLInputElement>(null);
 
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -22,19 +23,24 @@ export default function LogoMarcaPJ() {
   const [path, setPath] = useState<string | null>(null);
   const [nomeArquivo, setNomeArquivo] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [darkPath, setDarkPath] = useState<string | null>(null);
+  const [darkPreviewUrl, setDarkPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
     load();
   }, []);
 
-  const gerarPreview = async (storagePath: string) => {
+  const gerarPreview = async (
+    storagePath: string,
+    setter = setPreviewUrl,
+  ) => {
     const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(storagePath, 600);
     if (error) {
       console.error("[logo-marca] preview:", error.message);
-      setPreviewUrl(null);
+      setter(null);
       return;
     }
-    setPreviewUrl(data?.signedUrl ?? null);
+    setter(data?.signedUrl ?? null);
   };
 
   const load = async () => {
@@ -49,22 +55,28 @@ export default function LogoMarcaPJ() {
       // Escopo por tenant: sempre por user_id (RLS reforça no banco).
       const { data, error } = await supabase
         .from("tenant_logos")
-        .select("id, storage_path, file_name")
+        .select("id, storage_path, file_name, variant")
         .eq("user_id", user.id)
         .eq("ativo", true)
-        .maybeSingle();
+        .in("variant", ["default", "dark_background"]);
 
       if (error) throw error;
 
-      if (data?.storage_path) {
-        setPath(data.storage_path);
-        setNomeArquivo(data.file_name ?? null);
-        await gerarPreview(data.storage_path);
+      const current = data?.find((item) => item.variant === "default");
+      const dark = data?.find((item) => item.variant === "dark_background");
+      if (current?.storage_path) {
+        setPath(current.storage_path);
+        setNomeArquivo(current.file_name ?? null);
+        await gerarPreview(current.storage_path);
       } else {
         setPath(null);
         setNomeArquivo(null);
         setPreviewUrl(null);
       }
+      setDarkPath(dark?.storage_path ?? null);
+      if (dark?.storage_path) {
+        await gerarPreview(dark.storage_path, setDarkPreviewUrl);
+      } else setDarkPreviewUrl(null);
     } catch (e: any) {
       console.error("[logo-marca] load:", e?.message);
       toast.error("Não foi possível carregar sua marca");
@@ -73,7 +85,10 @@ export default function LogoMarcaPJ() {
     }
   };
 
-  const handleUpload = async (file: File) => {
+  const handleUpload = async (
+    file: File,
+    variant: "default" | "dark_background" = "default",
+  ) => {
     if (!userId) return;
 
     if (!ACEITOS.includes(file.type)) {
@@ -89,31 +104,38 @@ export default function LogoMarcaPJ() {
     try {
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-").slice(-80);
       // Prefixo com o user_id = isolamento por tenant no Storage (bucket privado).
-      const novoPath = `${userId}/${Date.now()}-${safeName}`;
+      const novoPath = `${userId}/${variant}/${Date.now()}-${safeName}`;
 
       const { error: upErr } = await supabase.storage
         .from(BUCKET)
         .upload(novoPath, file, { contentType: file.type, upsert: false });
       if (upErr) throw upErr;
 
-      // Uma logo ativa por tenant: substitui o registro anterior.
-      await supabase.from("tenant_logos").delete().eq("user_id", userId);
+      const previousPath = variant === "default" ? path : darkPath;
+      await supabase.from("tenant_logos").delete().eq("user_id", userId)
+        .eq("variant", variant);
       const { error: insErr } = await supabase.from("tenant_logos").insert({
         user_id: userId,
         storage_path: novoPath,
         file_name: file.name,
         mime_type: file.type,
+        variant,
         ativo: true,
       });
       if (insErr) throw insErr;
 
-      if (path && path !== novoPath) {
-        await supabase.storage.from(BUCKET).remove([path]);
+      if (previousPath && previousPath !== novoPath) {
+        await supabase.storage.from(BUCKET).remove([previousPath]);
       }
 
-      setPath(novoPath);
-      setNomeArquivo(file.name);
-      await gerarPreview(novoPath);
+      if (variant === "default") {
+        setPath(novoPath);
+        setNomeArquivo(file.name);
+        await gerarPreview(novoPath);
+      } else {
+        setDarkPath(novoPath);
+        await gerarPreview(novoPath, setDarkPreviewUrl);
+      }
       toast.success("Marca salva! Peça ao seu agente para usar quando quiser.");
     } catch (e: any) {
       console.error("[logo-marca] upload:", e?.message);
@@ -121,6 +143,7 @@ export default function LogoMarcaPJ() {
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
+      if (darkFileRef.current) darkFileRef.current.value = "";
     }
   };
 
@@ -200,6 +223,49 @@ export default function LogoMarcaPJ() {
                   <span className="text-xs">As imagens sairão sem marca</span>
                 </div>
               )}
+            </div>
+
+            <div className="space-y-3 border-t border-border pt-5">
+              <div>
+                <p className="text-sm font-medium text-foreground">Logo para fundo escuro</p>
+                <p className="text-xs text-muted-foreground">
+                  Use a versão com texto claro. Sem ela, continuaremos usando a logo principal.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {["bg-white", "bg-black"].map((background) => (
+                  <div
+                    key={background}
+                    className={`${background} rounded-lg border min-h-28 p-4 flex items-center justify-center`}
+                  >
+                    {(darkPreviewUrl || previewUrl) ? (
+                      <img
+                        src={darkPreviewUrl || previewUrl || ""}
+                        alt="Prévia da logo"
+                        className="max-h-20 max-w-full object-contain"
+                      />
+                    ) : <ImageIcon className="h-8 w-8 text-muted-foreground" />}
+                  </div>
+                ))}
+              </div>
+              <input
+                ref={darkFileRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleUpload(file, "dark_background");
+                }}
+              />
+              <Button
+                variant="outline"
+                onClick={() => darkFileRef.current?.click()}
+                disabled={uploading}
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                {darkPath ? "Trocar logo para fundo escuro" : "Enviar logo para fundo escuro"}
+              </Button>
             </div>
 
             {nomeArquivo && (

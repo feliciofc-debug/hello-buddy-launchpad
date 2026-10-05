@@ -8271,6 +8271,7 @@ export type Database = {
           storage_path: string
           updated_at: string
           user_id: string
+          variant: string
         }
         Insert: {
           ativo?: boolean
@@ -8281,6 +8282,7 @@ export type Database = {
           storage_path: string
           updated_at?: string
           user_id: string
+          variant?: string
         }
         Update: {
           ativo?: boolean
@@ -8291,6 +8293,7 @@ export type Database = {
           storage_path?: string
           updated_at?: string
           user_id?: string
+          variant?: string
         }
         Relationships: []
       }

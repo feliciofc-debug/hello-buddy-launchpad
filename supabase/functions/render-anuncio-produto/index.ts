@@ -40,14 +40,17 @@ import {
   type AnuncioFormato,
   type AnuncioItem,
   anuncioSize,
-  buildAnuncio,
 } from "../_shared/anuncio-templates/darkGold.ts";
+import { buildImpactoAnuncio } from "../_shared/anuncio-templates/impacto.ts";
+import { buildCatalogoAnuncio } from "../_shared/anuncio-templates/catalogo.ts";
+import { buildDestaqueAnuncio } from "../_shared/anuncio-templates/destaque.ts";
+import type { AnuncioEstilo } from "../_shared/anuncio-templates/premiumLayout.ts";
 import { selectAnuncioPhoto } from "../_shared/anuncio-photo.ts";
 import {
   normalizeImageDataUrl,
   renderableImageDataUrl,
 } from "../_shared/renderable-image.ts";
-import { getTenantLogoDataUrl } from "../_shared/tenant-logo.ts";
+import { getTenantLogoDataUrlForBackground } from "../_shared/tenant-logo.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -195,6 +198,12 @@ Deno.serve(async (req) => {
     }
 
     const formato: AnuncioFormato = body?.formato === "story" ? "story" : "feed";
+    const estilo: AnuncioEstilo = ["impacto", "catalogo", "destaque"].includes(
+        body?.estilo,
+      )
+      ? body.estilo
+      : "destaque";
+    const background = estilo === "catalogo" ? "light" : "dark";
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -207,7 +216,11 @@ Deno.serve(async (req) => {
           ? await logoPathParaDataUrl(supabase, user_id, body.logo_path)
           : body?.logo_source === "client"
           ? null
-          : await getTenantLogoDataUrl(supabase, user_id);
+          : await getTenantLogoDataUrlForBackground(
+            supabase,
+            user_id,
+            background,
+          );
         logoDataUrl = rawLogoDataUrl
           ? await normalizeImageDataUrl(
             rawLogoDataUrl,
@@ -267,12 +280,20 @@ Deno.serve(async (req) => {
       fotoDataUrl,
       logoDataUrl,
       primaryColor: normalizeHex(body?.primary_color, "#8A6A12"),
-      accentColor: normalizeHex(body?.accent_color, "#E8B93B"),
+      accentColor: normalizeHex(
+        body?.accent_color,
+        estilo === "impacto" ? "#F2B544" : "#F36812",
+      ),
       formato,
     };
 
     const { width, height } = anuncioSize(formato);
-    const svg = await satori(buildAnuncio(data) as any, { width, height, fonts: fonts as any });
+    const tree = estilo === "impacto"
+      ? buildImpactoAnuncio(data)
+      : estilo === "catalogo"
+      ? buildCatalogoAnuncio(data)
+      : buildDestaqueAnuncio(data);
+    const svg = await satori(tree as any, { width, height, fonts: fonts as any });
     const png = new Resvg(svg, { fitTo: { mode: "width", value: width } }).render().asPng();
 
     const path = `anuncios/${user_id}/anuncio-${formato}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
@@ -293,6 +314,7 @@ Deno.serve(async (req) => {
         success: true,
         image_url: pub.publicUrl,
         formato,
+        estilo,
         width,
         height,
         logo_aplicada: !!logoDataUrl,

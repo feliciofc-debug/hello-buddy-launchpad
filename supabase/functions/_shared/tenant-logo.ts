@@ -5,12 +5,18 @@
 // SEM FALLBACK: tenant sem logo => retorna null e NENHUMA logo é aplicada.
 // Jamais usar a logo de outro tenant (nem a da conta admin).
 // ============================================================================
+import {
+  type LogoBackground,
+  type LogoVariant,
+  logoVariantForBackground,
+} from "./logo-variant.ts";
 
 export interface TenantLogo {
   id: string;
   storage_path: string;
   file_name: string | null;
   mime_type: string | null;
+  variant: LogoVariant;
 }
 
 const BUCKET = "tenant-logos";
@@ -18,15 +24,22 @@ const BUCKET = "tenant-logos";
 export interface TenantLogoStorageLocation {
   bucket: string;
   path: string;
+  lightBackgroundPath?: string;
+  darkBackgroundPath?: string;
 }
 
 /** Logo ativa do tenant, ou null se ele não configurou (feature opcional). */
-export async function getTenantLogo(sb: any, userId: string): Promise<TenantLogo | null> {
+export async function getTenantLogo(
+  sb: any,
+  userId: string,
+  variant: LogoVariant = "default",
+): Promise<TenantLogo | null> {
   if (!userId) return null;
   const { data, error } = await sb
     .from("tenant_logos")
-    .select("id, storage_path, file_name, mime_type, ativo, user_id")
+    .select("id, storage_path, file_name, mime_type, variant, ativo, user_id")
     .eq("user_id", userId)
+    .eq("variant", variant)
     .eq("ativo", true)
     .maybeSingle();
 
@@ -45,7 +58,17 @@ export async function getTenantLogo(sb: any, userId: string): Promise<TenantLogo
     storage_path: data.storage_path,
     file_name: data.file_name ?? null,
     mime_type: data.mime_type ?? null,
+    variant: (data.variant || "default") as LogoVariant,
   };
+}
+
+export async function getTenantLogoForBackground(
+  sb: any,
+  userId: string,
+  background: LogoBackground,
+): Promise<TenantLogo | null> {
+  return await getTenantLogo(sb, userId, logoVariantForBackground(background))
+    ?? await getTenantLogo(sb, userId);
 }
 
 /** URL assinada de curta duração (bucket privado). null se não houver logo. */
@@ -72,8 +95,11 @@ export async function getTenantLogoSignedUrl(
 export async function getTenantLogoStorageLocation(
   sb: any,
   userId: string,
+  background?: LogoBackground,
 ): Promise<TenantLogoStorageLocation | null> {
-  const logo = await getTenantLogo(sb, userId);
+  const logo = background
+    ? await getTenantLogoForBackground(sb, userId, background)
+    : await getTenantLogo(sb, userId);
   if (logo) return { bucket: BUCKET, path: logo.storage_path };
 
   const { data, error } = await sb
@@ -144,22 +170,47 @@ export async function getTenantLogoDataUrl(sb: any, userId: string): Promise<str
   return `data:${mime};base64,${btoa(bin)}`;
 }
 
+export async function getTenantLogoDataUrlForBackground(
+  sb: any,
+  userId: string,
+  background: LogoBackground,
+): Promise<string | null> {
+  const logo = await getTenantLogoForBackground(sb, userId, background);
+  if (!logo) return await getProfileLogoDataUrl(sb, userId);
+  const { data, error } = await sb.storage.from(BUCKET).download(logo.storage_path);
+  if (error || !data) return await getTenantLogoDataUrl(sb, userId);
+  const bytes = new Uint8Array(await data.arrayBuffer());
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 8192) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
+  }
+  return `data:${logo.mime_type || (data as any)?.type || "image/png"};base64,${btoa(binary)}`;
+}
+
 /** Salva/substitui a logo ativa do tenant (usado pela tela e pelo agente). */
 export async function setTenantLogo(
   sb: any,
   userId: string,
-  params: { storagePath: string; fileName?: string | null; mimeType?: string | null },
+  params: {
+    storagePath: string;
+    fileName?: string | null;
+    mimeType?: string | null;
+    variant?: LogoVariant;
+  },
 ): Promise<boolean> {
   if (!userId || !params.storagePath.startsWith(`${userId}/`)) return false;
   try {
-    const anterior = await getTenantLogo(sb, userId);
+    const variant = params.variant ?? "default";
+    const anterior = await getTenantLogo(sb, userId, variant);
 
-    await sb.from("tenant_logos").delete().eq("user_id", userId);
+    await sb.from("tenant_logos").delete().eq("user_id", userId)
+      .eq("variant", variant);
     const { error } = await sb.from("tenant_logos").insert({
       user_id: userId,
       storage_path: params.storagePath,
       file_name: params.fileName ?? null,
       mime_type: params.mimeType ?? null,
+      variant,
       ativo: true,
     });
     if (error) throw error;

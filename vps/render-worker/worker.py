@@ -57,12 +57,11 @@ def comando_ffmpeg(src, dst, vf, threads, w, h, logo_path=None, logo=None):
                   "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
                   "-movflags", "+faststart", dst]
 
-def baixar_logo(logo, d):
-    if not logo or not logo.get("download_url"):
+def baixar_logo_url(url, path):
+    if not url:
         return None
     try:
-        path = f"{d}/logo"
-        with requests.get(logo["download_url"], stream=True, timeout=120) as r:
+        with requests.get(url, stream=True, timeout=120) as r:
             r.raise_for_status()
             with open(path, "wb") as f:
                 for chunk in r.iter_content(1 << 20):
@@ -71,6 +70,32 @@ def baixar_logo(logo, d):
     except Exception as e:
         print("aviso: logo nao baixada; video segue sem logo:", e, flush=True)
         return None
+
+def luminancia_canto(src):
+    try:
+        cmd = [
+            "ffmpeg", "-v", "error", "-i", src, "-frames:v", "1",
+            "-vf", "crop=iw*0.38:ih*0.14:iw*0.05:ih*0.04,scale=1:1,format=rgb24",
+            "-f", "rawvideo", "pipe:1",
+        ]
+        pixel = subprocess.run(cmd, capture_output=True, check=True, timeout=30).stdout[:3]
+        if len(pixel) == 3:
+            return (0.2126 * pixel[0] + 0.7152 * pixel[1] + 0.0722 * pixel[2]) / 255
+    except Exception as e:
+        print("aviso: luminancia da logo indisponivel:", e, flush=True)
+    return 0.5
+
+def baixar_logo(logo, d, src=None):
+    if not logo:
+        return None
+    url = logo.get("download_url")
+    if src:
+        luminancia = luminancia_canto(src)
+        if luminancia >= 0.52:
+            url = logo.get("light_background_download_url") or url
+        else:
+            url = logo.get("dark_background_download_url") or url
+    return baixar_logo_url(url, f"{d}/logo")
 
 def limpar_orfaos():
     limite = time.time() - TMP_MAX_H * 3600
@@ -94,7 +119,7 @@ def processar(job):
         vf = filtros(job["segmentos"], job["estilo"], w, h)
         threads = str(job["estilo"].get("threads", THREADS))
         logo = job.get("logo")
-        logo_path = baixar_logo(logo, d)
+        logo_path = baixar_logo(logo, d, src)
         try:
             subprocess.run(comando_ffmpeg(src, dst, vf, threads, w, h, logo_path, logo),
                            check=True, capture_output=True, text=True, timeout=1800)

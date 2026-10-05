@@ -8,6 +8,25 @@ export type ClientBrandIdentity = {
   identity?: Record<string, unknown> | null;
 };
 
+export type ClientLogoVariant = "default" | "light_background" | "dark_background";
+
+export function clientLogoPath(
+  identity: ClientBrandIdentity | null | undefined,
+  background?: "light" | "dark",
+): string | null {
+  if (!identity) return null;
+  const key = background === "light"
+    ? "logo_fundo_claro_path"
+    : background === "dark"
+    ? "logo_fundo_escuro_path"
+    : null;
+  return (key ? String(identity.identity?.[key] || "") : "")
+    || identity.logo_path
+    || String(identity.identity?.logo_fundo_escuro_path || "")
+    || String(identity.identity?.logo_fundo_claro_path || "")
+    || null;
+}
+
 export function normalizeClientBrandName(value: unknown): string {
   return String(value ?? "")
     .normalize("NFD")
@@ -111,6 +130,7 @@ export async function saveClientBrandIdentity(
     clientName: string;
     siteUrl?: string | null;
     logoPath?: string | null;
+    logoVariant?: ClientLogoVariant;
     identity?: Record<string, unknown> | null;
   },
 ): Promise<ClientBrandIdentity> {
@@ -126,13 +146,22 @@ export async function saveClientBrandIdentity(
   const incomingOrigin = String(input.identity?.logo_origem || "");
   const incomingTemporary = String(input.logoPath || "").includes("/video-site/");
   const preserveManualLogo = existingOrigin === "whatsapp_manual" && incomingOrigin !== "whatsapp_manual";
-  const logoPath = incomingTemporary || preserveManualLogo
-    ? existing?.logo_path || null
-    : input.logoPath || existing?.logo_path || null;
   const mergedIdentity = {
     ...((existing?.identity && typeof existing.identity === "object") ? existing.identity : {}),
     ...((input.identity && typeof input.identity === "object") ? input.identity : {}),
   };
+  const logoVariant = input.logoVariant ?? "default";
+  if (input.logoPath && logoVariant === "light_background") {
+    mergedIdentity.logo_fundo_claro_path = input.logoPath;
+  }
+  if (input.logoPath && logoVariant === "dark_background") {
+    mergedIdentity.logo_fundo_escuro_path = input.logoPath;
+  }
+  const logoPath = logoVariant === "default"
+    ? (incomingTemporary || preserveManualLogo
+      ? existing?.logo_path || null
+      : input.logoPath || existing?.logo_path || null)
+    : existing?.logo_path || null;
   if (preserveManualLogo) mergedIdentity.logo_origem = "whatsapp_manual";
   const payload = {
     user_id: input.userId,

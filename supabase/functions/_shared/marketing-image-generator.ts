@@ -24,6 +24,8 @@ export type MarketingImageRequest = {
   prompt: string;
   references?: string[];
   logoDataUrl?: string | null;
+  logoForLightBackgroundDataUrl?: string | null;
+  logoForDarkBackgroundDataUrl?: string | null;
   brandColors?: string[];
   cardBackgroundHex?: string | null;
   brandName?: string | null;
@@ -385,6 +387,12 @@ export async function generateMarketingImage(
     throw new Error("O serviço de IA está temporariamente indisponível. Tente novamente em alguns minutos.");
   }
   const logoAsset = dataUrlToImageBytes(request.logoDataUrl);
+  const lightBackgroundLogo = dataUrlToImageBytes(
+    request.logoForLightBackgroundDataUrl,
+  );
+  const darkBackgroundLogo = dataUrlToImageBytes(
+    request.logoForDarkBackgroundDataUrl,
+  );
   const card = logoAsset
     ? await inspectLogoCardFromBytes(logoAsset.bytes)
     : null;
@@ -493,7 +501,11 @@ export async function generateMarketingImage(
   let logoApplicationFailed = false;
   if (logoAsset) {
     try {
-      const branded = await applyBrandLogo(bytes, logoAsset.bytes, { format: baseline.format });
+      const branded = await applyBrandLogo(bytes, logoAsset.bytes, {
+        format: baseline.format,
+        logoForLightBackgroundBytes: lightBackgroundLogo?.bytes,
+        logoForDarkBackgroundBytes: darkBackgroundLogo?.bytes,
+      });
       bytes = branded.bytes;
       mimeType = "image/png";
       logoApplied = true;

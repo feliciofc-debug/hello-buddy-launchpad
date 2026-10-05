@@ -387,6 +387,12 @@ serve(async (req) => {
         prompt: String(url),
         references: images,
         logoDataUrl,
+        logoForLightBackgroundDataUrl: use_saved_logo
+          ? tenantAssets.logoForLightBackgroundDataUrl
+          : logoDataUrl,
+        logoForDarkBackgroundDataUrl: use_saved_logo
+          ? tenantAssets.logoForDarkBackgroundDataUrl
+          : logoDataUrl,
         brandColors,
         brandName,
         apiKey: LOVABLE_API_KEY,
