@@ -95,6 +95,10 @@ export type MetaAdsLimitProposal = {
   criado_em: string;
 };
 
+export type MetaAdsLimitValueRequest = {
+  criado_em: string;
+};
+
 export type MetaAdsLimitAction = {
   action: "confirm" | "cancel";
   proposal: MetaAdsLimitProposal;
@@ -447,6 +451,67 @@ export function metaAdsQuestionarioBudget(input: {
       maximumSpend <= available
     ? { ok: true, maximumSpend }
     : { ok: false, maximumSpend, available };
+}
+
+export function metaAdsMaximoDiarioParaSeteDias(
+  available: unknown,
+): number {
+  const value = Math.max(0, Number(available) || 0);
+  return Math.max(1, Math.floor(value / 7));
+}
+
+export function avaliarMetaAdsOrcamentoMinimo(input: {
+  daily: unknown;
+  available: unknown;
+}): {
+  ok: boolean;
+  exhausted: boolean;
+  maximumDaily: number;
+  available: number;
+} {
+  const available = Math.max(0, Number(input.available) || 0);
+  const daily = Number(input.daily);
+  return {
+    ok: Number.isFinite(daily) && daily >= 1 && daily * 7 <= available,
+    exhausted: available < 7,
+    maximumDaily: metaAdsMaximoDiarioParaSeteDias(available),
+    available,
+  };
+}
+
+export function metaAdsBudgetRecoveryButtons(
+  exhausted: boolean,
+): QuestionarioButtons {
+  return questionarioButtons({
+    body: exhausted
+      ? "O limite mensal está esgotado. O que deseja fazer?"
+      : "Esse orçamento não cabe no limite mensal. O que deseja fazer?",
+    buttons: [
+      ...(exhausted
+        ? []
+        : [{
+          id: `${META_ADS_QUESTIONARIO_PREFIX}budget:mudar`,
+          title: "Mudar orçamento",
+        }]),
+      {
+        id: `${META_ADS_QUESTIONARIO_PREFIX}budget:aumentar_limite`,
+        title: "Aumentar limite",
+      },
+      { id: `${META_ADS_QUESTIONARIO_PREFIX}cancelar`, title: "Cancelar" },
+    ],
+  });
+}
+
+export function voltarMetaAdsQuestionarioParaOrcamento(
+  questionario: MetaAdsQuestionario,
+  now = new Date(),
+): MetaAdsQuestionario {
+  return avancarMetaAdsQuestionario(
+    questionario,
+    "orcamento",
+    {},
+    now,
+  );
 }
 
 export function metaAdsQuestionarioResumo(

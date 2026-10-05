@@ -157,6 +157,7 @@ import {
 } from "../_shared/meta-ads-whatsapp-approval.ts";
 import {
   avancarMetaAdsQuestionario,
+  avaliarMetaAdsOrcamentoMinimo,
   filtrarInteressesValidados,
   interactiveId as metaAdsQuestionarioInteractiveId,
   isMetaAdsQuestionarioAmbiguousRequest,
@@ -164,14 +165,17 @@ import {
   isMetaAdsQuestionarioResume,
   isMetaAdsQuestionarioTrigger,
   isMetaAdsLimitChangeRequest,
+  metaAdsBudgetRecoveryButtons,
   metaAdsDraftDoQuestionario,
   metaAdsLimitProposalButtons,
+  metaAdsMaximoDiarioParaSeteDias,
   metaAdsQuestionarioAmbiguityButtons,
   metaAdsQuestionarioBudget,
   metaAdsQuestionarioContinuarButtons,
   metaAdsQuestionarioExpirado,
   metaAdsQuestionarioResumo,
   metaAdsQuestionarioResumoHash,
+  META_ADS_LIMIT_PROPOSAL_TTL_MS,
   novoMetaAdsQuestionario,
   questionarioAtivo,
   questionarioButtons,
@@ -182,8 +186,10 @@ import {
   type MetaAdsQuestionario,
   type MetaAdsQuestionarioAmbiguidade,
   type MetaAdsLimitProposal,
+  type MetaAdsLimitValueRequest,
   type MetaAdsQuestionarioMidia,
   validarNovoLimiteMensalAnuncios,
+  voltarMetaAdsQuestionarioParaOrcamento,
 } from "../_shared/meta-ads-questionario.ts";
 import { dedupeConsecutiveReplyText } from "../_shared/reply-dedupe.ts";
 import {
@@ -2494,6 +2500,7 @@ type AgentConvState = {
   pending_brand_generation?: PendingBrandGeneration | null;
   pending_meta_ads_ambiguity?: MetaAdsQuestionarioAmbiguidade | null;
   pending_meta_ads_limit?: MetaAdsLimitProposal | null;
+  pending_meta_ads_limit_value?: MetaAdsLimitValueRequest | null;
   brand_image_preference?: WhatsAppBrandPreference | null;
   [k: string]: unknown;
 };
@@ -3849,6 +3856,7 @@ type MetaAdsQuestionarioProcessorResult = {
   summaryDraftId?: string;
   offerResume?: boolean;
   ambiguityOriginal?: string;
+  requestLimitValue?: boolean;
 };
 
 async function applyMetaAdsLimitAction(input: {
@@ -4461,6 +4469,20 @@ async function processMetaAdsQuestionario(input: {
     }
     await update({ age_min: minimum, age_max: maximum, etapa: "orcamento" });
   } else if (questionario.etapa === "orcamento") {
+    if (option === "budget:mudar") {
+      return {
+        handled: true,
+        text: "Digite o novo orçamento diário em reais.",
+      };
+    }
+    if (option === "budget:aumentar_limite") {
+      return {
+        handled: true,
+        text:
+          "Qual deve ser o novo limite mensal de anúncios? Digite um valor entre R$ 50 e R$ 10.000.",
+        requestLimitValue: true,
+      };
+    }
     const amount = Number(
       (option.replace("orcamento:", "") || input.text).replace(/[^\d,.-]/g, "")
         .replace(",", "."),
@@ -4468,16 +4490,53 @@ async function processMetaAdsQuestionario(input: {
     if (!Number.isFinite(amount) || amount < 1) {
       return { handled: true, text: "Digite um orçamento diário válido, por exemplo: 20." };
     }
-    await update({ orcamento_diario: amount, etapa: "duracao" });
     let availability;
     try {
       availability = await loadMetaAdsMonthlyAvailability(integration!, input.userId);
-    } catch { /* a publicação fará nova checagem obrigatória */ }
+    } catch (error) {
+      return { handled: true, text: metaAdsSafeError(error) };
+    }
+    const minimumBudget = avaliarMetaAdsOrcamentoMinimo({
+      daily: amount,
+      available: availability.available,
+    });
+    const available = minimumBudget.available;
+    if (minimumBudget.exhausted) {
+      return {
+        handled: true,
+        text: `O limite mensal está esgotado: há apenas ${metaAdsBrl(available)} disponíveis, menos que o mínimo de R$ 1,00 por dia durante 7 dias. Nenhum anúncio foi publicado.`,
+        interactiveButtons: metaAdsBudgetRecoveryButtons(true),
+      };
+    }
+    const maxDaily = minimumBudget.maximumDaily;
+    if (!minimumBudget.ok) {
+      return {
+        handled: true,
+        text: `Com ${metaAdsBrl(available)} disponíveis, o orçamento diário máximo que cabe em 7 dias é ${metaAdsBrl(maxDaily)}. Digite um valor de até ${metaAdsBrl(maxDaily)}.`,
+        interactiveButtons: metaAdsBudgetRecoveryButtons(false),
+      };
+    }
+    await update({ orcamento_diario: amount, etapa: "duracao" });
     return {
       handled: true,
-      ...metaAdsQuestionarioPrompt(questionario, availability?.available),
+      ...metaAdsQuestionarioPrompt(questionario, available),
     };
   } else if (questionario.etapa === "duracao") {
+    if (option === "budget:mudar") {
+      await update(voltarMetaAdsQuestionarioParaOrcamento(questionario));
+      return {
+        handled: true,
+        text: "Digite o novo orçamento diário em reais.",
+      };
+    }
+    if (option === "budget:aumentar_limite") {
+      return {
+        handled: true,
+        text:
+          "Qual deve ser o novo limite mensal de anúncios? Digite um valor entre R$ 50 e R$ 10.000.",
+        requestLimitValue: true,
+      };
+    }
     const duration = Number(
       option.replace("duracao:", "") ||
         input.text.replace(/\D/g, ""),
@@ -4497,14 +4556,15 @@ async function processMetaAdsQuestionario(input: {
       available: availability.available,
     });
     if (!budget.ok) {
-      const prompt = metaAdsQuestionarioPrompt(
-        questionario,
-        availability.available,
-      );
+      const available = availability.available;
+      const exhausted = available < 7;
+      const maxDaily = metaAdsMaximoDiarioParaSeteDias(available);
       return {
         handled: true,
-        ...prompt,
-        text: `Esse anúncio pode gastar ${metaAdsBrl(budget.maximumSpend)}, mas há ${metaAdsBrl(budget.available)} disponíveis no teto mensal. Escolha menos dias ou cancele e recomece com outro orçamento.\n\n${prompt.text}`,
+        text: exhausted
+          ? `O limite mensal está esgotado: há apenas ${metaAdsBrl(available)} disponíveis, menos que o mínimo de R$ 1,00 por dia durante 7 dias. Nenhum anúncio foi publicado.`
+          : `Esse anúncio pode gastar ${metaAdsBrl(budget.maximumSpend)}, mas há ${metaAdsBrl(available)} disponíveis no teto mensal. O orçamento diário máximo que cabe em 7 dias é ${metaAdsBrl(maxDaily)}.`,
+        interactiveButtons: metaAdsBudgetRecoveryButtons(exhausted),
       };
     }
     await update({ duracao_dias: duration, etapa: "midia" });
@@ -17065,55 +17125,104 @@ Regras:
       handled: false,
     };
     try {
-      const limitAction = resolveMetaAdsLimitAction({
-        text: userText,
-        pending: agentState.pending_meta_ads_limit,
-        isOwner: fromIsOwner,
-      });
-      if (limitAction) {
-        metaAdsQuestionarioResult = await applyMetaAdsLimitAction({
-          ...limitAction,
-          ctx: {
-            userId,
-            fromNumber: row.from_number,
-            convId: conv.id,
-            agentState,
-          },
-          conversation: convStateIdentity,
+      const pendingLimitValueCreated = Date.parse(String(
+        agentState.pending_meta_ads_limit_value?.criado_em ?? "",
+      ));
+      const pendingLimitValueIsFresh = fromIsOwner &&
+        Number.isFinite(pendingLimitValueCreated) &&
+        Date.now() - pendingLimitValueCreated <=
+          META_ADS_LIMIT_PROPOSAL_TTL_MS;
+      if (
+        pendingLimitValueIsFresh &&
+        !/^(?:cancelar|cancela)$/i.test(userText.trim())
+      ) {
+        const proposed = await toolProporLimiteMensalMetaAds(userText, {
+          userId,
+          fromNumber: row.from_number,
+          convId: conv.id,
           agentState,
         });
-      } else {
-        const ambiguityChoice = resolveMetaAdsQuestionarioAmbiguity({
-          text: userText,
-          pending: agentState.pending_meta_ads_ambiguity,
-        });
-        if (ambiguityChoice) {
-          agentState.pending_meta_ads_ambiguity = null;
+        let parsed: any = {};
+        try {
+          parsed = JSON.parse(proposed.result);
+        } catch { /* mensagens de validação são texto simples */ }
+        metaAdsQuestionarioResult = {
+          handled: true,
+          text: String(parsed?.mensagem || proposed.result),
+          interactiveButtons: proposed.interactiveButtons,
+        };
+        if (proposed.interactiveButtons) {
+          agentState.pending_meta_ads_limit_value = null;
           await saveAgentState(
             sb,
             convStateIdentity,
-            { pending_meta_ads_ambiguity: null },
+            { pending_meta_ads_limit_value: null },
             agentState,
           );
-          if (ambiguityChoice.destino === "jarvis") {
-            metaAdsJarvisOriginalText = ambiguityChoice.textoOriginal;
+        }
+      } else {
+        if (
+          agentState.pending_meta_ads_limit_value &&
+          /^(?:cancelar|cancela)$/i.test(userText.trim())
+        ) {
+          agentState.pending_meta_ads_limit_value = null;
+          await saveAgentState(
+            sb,
+            convStateIdentity,
+            { pending_meta_ads_limit_value: null },
+            agentState,
+          );
+        }
+        const limitAction = resolveMetaAdsLimitAction({
+          text: userText,
+          pending: agentState.pending_meta_ads_limit,
+          isOwner: fromIsOwner,
+        });
+        if (limitAction) {
+          metaAdsQuestionarioResult = await applyMetaAdsLimitAction({
+            ...limitAction,
+            ctx: {
+              userId,
+              fromNumber: row.from_number,
+              convId: conv.id,
+              agentState,
+            },
+            conversation: convStateIdentity,
+            agentState,
+          });
+        } else {
+          const ambiguityChoice = resolveMetaAdsQuestionarioAmbiguity({
+            text: userText,
+            pending: agentState.pending_meta_ads_ambiguity,
+          });
+          if (ambiguityChoice) {
+            agentState.pending_meta_ads_ambiguity = null;
+            await saveAgentState(
+              sb,
+              convStateIdentity,
+              { pending_meta_ads_ambiguity: null },
+              agentState,
+            );
+            if (ambiguityChoice.destino === "jarvis") {
+              metaAdsJarvisOriginalText = ambiguityChoice.textoOriginal;
+            } else {
+              metaAdsQuestionarioResult = await processMetaAdsQuestionario({
+                userId,
+                fromNumber: row.from_number,
+                conversationId: conv.id,
+                text: userText,
+                owner: fromIsOwner,
+              });
+            }
           } else {
             metaAdsQuestionarioResult = await processMetaAdsQuestionario({
               userId,
               fromNumber: row.from_number,
               conversationId: conv.id,
-              text: userText,
+              text: audioTranscript || userText,
               owner: fromIsOwner,
             });
           }
-        } else {
-          metaAdsQuestionarioResult = await processMetaAdsQuestionario({
-            userId,
-            fromNumber: row.from_number,
-            conversationId: conv.id,
-            text: audioTranscript || userText,
-            owner: fromIsOwner,
-          });
         }
       }
       if (metaAdsQuestionarioResult.ambiguityOriginal) {
@@ -17126,6 +17235,16 @@ Regras:
           sb,
           convStateIdentity,
           { pending_meta_ads_ambiguity: pending },
+          agentState,
+        );
+      }
+      if (metaAdsQuestionarioResult.requestLimitValue) {
+        const pending = { criado_em: new Date().toISOString() };
+        agentState.pending_meta_ads_limit_value = pending;
+        await saveAgentState(
+          sb,
+          convStateIdentity,
+          { pending_meta_ads_limit_value: pending },
           agentState,
         );
       }

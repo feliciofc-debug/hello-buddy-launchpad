@@ -4,13 +4,16 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   avancarMetaAdsQuestionario,
+  avaliarMetaAdsOrcamentoMinimo,
   filtrarInteressesValidados,
   isMetaAdsQuestionarioAmbiguousRequest,
   isMetaAdsQuestionarioCancel,
   isMetaAdsLimitChangeRequest,
   isMetaAdsQuestionarioResume,
   isMetaAdsQuestionarioTrigger,
+  metaAdsBudgetRecoveryButtons,
   metaAdsLimitProposalButtons,
+  metaAdsMaximoDiarioParaSeteDias,
   metaAdsQuestionarioAmbiguityButtons,
   metaAdsQuestionarioBudget,
   metaAdsQuestionarioContinuarButtons,
@@ -23,6 +26,7 @@ import {
   resolveMetaAdsQuestionarioAmbiguity,
   respostaPertenceAoQuestionario,
   validarNovoLimiteMensalAnuncios,
+  voltarMetaAdsQuestionarioParaOrcamento,
 } from "./meta-ads-questionario.ts";
 
 Deno.test("questionário avança por respostas próprias e permite cancelar", () => {
@@ -261,4 +265,54 @@ Deno.test("alteração de limite exige dono e botão vinculado à proposta", () 
   assertEquals(metaAdsLimitProposalButtons(proposal.token).buttons.map((
     button,
   ) => button.title), ["Confirmar", "Cancelar"]);
+});
+
+Deno.test("excesso na duração oferece recuperação e volta ao orçamento", () => {
+  const buttons = metaAdsBudgetRecoveryButtons(false);
+  assertEquals(buttons.buttons.map((button) => button.title), [
+    "Mudar orçamento",
+    "Aumentar limite",
+    "Cancelar",
+  ]);
+  const durationState = {
+    ...novoMetaAdsQuestionario(new Date("2026-10-05T12:00:00.000Z")),
+    etapa: "duracao" as const,
+    cidade: { id: "1", name: "Niterói" },
+    orcamento_diario: 10,
+  };
+  const changed = voltarMetaAdsQuestionarioParaOrcamento(
+    durationState,
+    new Date("2026-10-05T12:01:00.000Z"),
+  );
+  assertEquals(changed.etapa, "orcamento");
+  assertEquals(changed.cidade, durationState.cidade);
+  assertEquals(changed.orcamento_diario, 10);
+  assertEquals(metaAdsMaximoDiarioParaSeteDias(20), 2);
+});
+
+Deno.test("orçamento que não cabe em sete dias é recusado imediatamente", () => {
+  assertEquals(avaliarMetaAdsOrcamentoMinimo({
+    daily: 10,
+    available: 20,
+  }), {
+    ok: false,
+    exhausted: false,
+    maximumDaily: 2,
+    available: 20,
+  });
+  assertEquals(avaliarMetaAdsOrcamentoMinimo({
+    daily: 2,
+    available: 20,
+  }).ok, true);
+});
+
+Deno.test("limite mensal esgotado oferece somente aumentar ou cancelar", () => {
+  assertEquals(avaliarMetaAdsOrcamentoMinimo({
+    daily: 1,
+    available: 6.99,
+  }).exhausted, true);
+  assertEquals(
+    metaAdsBudgetRecoveryButtons(true).buttons.map((button) => button.title),
+    ["Aumentar limite", "Cancelar"],
+  );
 });
