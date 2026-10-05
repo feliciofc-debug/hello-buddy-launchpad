@@ -9911,12 +9911,6 @@ async function prepareClientSiteIdentity(
     logo_dark_background_path: savedIdentity
       ? clientLogoPath(savedIdentity, "dark") || undefined
       : undefined,
-    logo_light_background_path: savedIdentity
-      ? clientLogoPath(savedIdentity, "light") || undefined
-      : undefined,
-    logo_dark_background_path: savedIdentity
-      ? clientLogoPath(savedIdentity, "dark") || undefined
-      : undefined,
     site_logo_candidate_path: undefined,
     identity_summary: identitySummary,
     palette_options: paletteOptions,
@@ -10359,7 +10353,7 @@ async function handlePendingVideoSetup(
     const url = extractPublicSiteUrl(response);
     if (!url) {
       const saved = await findClientBrandIdentity(sb, ctx.userId, { name: response });
-      if (!clientLogoPath(saved)) {
+      if (!saved || !clientLogoPath(saved)) {
         return "Não encontrei uma identidade salva com esse nome. Envie a URL do site ou o nome exato do cliente.";
       }
       if (saved.site_url) {

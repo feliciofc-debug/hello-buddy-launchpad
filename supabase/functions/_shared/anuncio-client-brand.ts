@@ -35,13 +35,14 @@ export function buildAnuncioBrandPlan(input: {
   const businessName = String(input.clientName || "")
     .replace(/\s+/g, " ").trim().slice(0, 100);
   if (!businessName) return { mode: "tenant" };
-  const logoPath = clientLogoPath(input.saved, input.background);
+  const saved = input.saved;
+  const logoPath = clientLogoPath(saved, input.background);
   if (logoPath) {
     return {
       mode: "client",
-      businessName: input.saved.client_name || businessName,
+      businessName: saved?.client_name || businessName,
       logoPath,
-      colors: anuncioClientColors(input.saved.identity),
+      colors: anuncioClientColors(saved?.identity),
     };
   }
   const site = String(input.site || input.saved?.site_url || "").trim();

@@ -97,7 +97,10 @@ Deno.serve(async (req) => {
     const bloqueio = await checarLimitesMotion(sb, user.id, "plataforma", tema);
     if (bloqueio) return json({ success: false, error: bloqueio.error, motivo: bloqueio.motivo }, bloqueio.status);
 
-    const logoPath = await logoDoTenant(sb, user.id, props.fundo);
+    const requestedBackground = body?.fundo === "claro" || body?.fundo === "escuro"
+      ? body.fundo
+      : undefined;
+    const logoPath = await logoDoTenant(sb, user.id, requestedBackground);
     const trilha = await resolverTrilha(sb, user.id, {
       sb,
       userId: user.id,

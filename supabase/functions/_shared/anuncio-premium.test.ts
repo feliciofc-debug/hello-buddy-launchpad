@@ -556,7 +556,7 @@ Deno.test("os três templates renderizam a foto em feed e story", async () => {
       const { width, height } = anuncioSize(format);
       const tree = premiumBuilders[style](baseData({
         formato: format,
-        fotoDataUrl,
+        fotoDataUrl: photoDataUrl,
         subtitulo: "AUTOMÁTICO • BLINDADO",
         preco: "R$ 99.900",
         ano: "2023",
