@@ -159,10 +159,12 @@ import {
   avancarMetaAdsQuestionario,
   filtrarInteressesValidados,
   interactiveId as metaAdsQuestionarioInteractiveId,
+  isMetaAdsQuestionarioAmbiguousRequest,
   isMetaAdsQuestionarioCancel,
   isMetaAdsQuestionarioResume,
   isMetaAdsQuestionarioTrigger,
   metaAdsDraftDoQuestionario,
+  metaAdsQuestionarioAmbiguityButtons,
   metaAdsQuestionarioBudget,
   metaAdsQuestionarioContinuarButtons,
   metaAdsQuestionarioExpirado,
@@ -172,8 +174,10 @@ import {
   questionarioAtivo,
   questionarioButtons,
   questionarioList,
+  resolveMetaAdsQuestionarioAmbiguity,
   respostaPertenceAoQuestionario,
   type MetaAdsQuestionario,
+  type MetaAdsQuestionarioAmbiguidade,
   type MetaAdsQuestionarioMidia,
 } from "../_shared/meta-ads-questionario.ts";
 import { dedupeConsecutiveReplyText } from "../_shared/reply-dedupe.ts";
@@ -2483,6 +2487,7 @@ type AgentConvState = {
   pending_client_logo?: { logo_path: string; created_at: string } | null;
   pending_client_logo_intent?: { client_name: string; created_at: string } | null;
   pending_brand_generation?: PendingBrandGeneration | null;
+  pending_meta_ads_ambiguity?: MetaAdsQuestionarioAmbiguidade | null;
   brand_image_preference?: WhatsAppBrandPreference | null;
   [k: string]: unknown;
 };
@@ -3757,6 +3762,7 @@ type MetaAdsQuestionarioProcessorResult = {
   interactiveButtons?: WhatsAppInteractiveButtons;
   summaryDraftId?: string;
   offerResume?: boolean;
+  ambiguityOriginal?: string;
 };
 
 function metaAdsQuestionarioOption(text: string): string {
@@ -4069,11 +4075,20 @@ async function processMetaAdsQuestionario(input: {
     .limit(20);
   let row = questionarioAtivo(rows ?? []);
   const trigger = isMetaAdsQuestionarioTrigger(input.text);
-  if (!row && !trigger) return { handled: false };
+  const ambiguous = isMetaAdsQuestionarioAmbiguousRequest(input.text);
+  if (!row && !trigger && !ambiguous) return { handled: false };
   if (!input.owner) {
     return trigger
       ? { handled: true, text: "A criação de anúncios é restrita ao responsável da conta." }
       : { handled: false };
+  }
+  if (!row && ambiguous) {
+    return {
+      handled: true,
+      text: "Só para confirmar:",
+      interactiveButtons: metaAdsQuestionarioAmbiguityButtons(),
+      ambiguityOriginal: input.text,
+    };
   }
 
   const integration = await loadMetaAdsIntegration(input.userId);
@@ -16864,17 +16879,56 @@ Regras:
 
     // === ESTADO PERSISTENTE DA CONVERSA (comprovante de encaminhamento + decisões) ===
     const agentState = await loadAgentState(sb, convStateIdentity);
+    let metaAdsJarvisOriginalText: string | undefined;
     let metaAdsQuestionarioResult: MetaAdsQuestionarioProcessorResult = {
       handled: false,
     };
     try {
-      metaAdsQuestionarioResult = await processMetaAdsQuestionario({
-        userId,
-        fromNumber: row.from_number,
-        conversationId: conv.id,
-        text: audioTranscript || userText,
-        owner: fromIsOwner,
+      const ambiguityChoice = resolveMetaAdsQuestionarioAmbiguity({
+        text: userText,
+        pending: agentState.pending_meta_ads_ambiguity,
       });
+      if (ambiguityChoice) {
+        agentState.pending_meta_ads_ambiguity = null;
+        await saveAgentState(
+          sb,
+          convStateIdentity,
+          { pending_meta_ads_ambiguity: null },
+          agentState,
+        );
+        if (ambiguityChoice.destino === "jarvis") {
+          metaAdsJarvisOriginalText = ambiguityChoice.textoOriginal;
+        } else {
+          metaAdsQuestionarioResult = await processMetaAdsQuestionario({
+            userId,
+            fromNumber: row.from_number,
+            conversationId: conv.id,
+            text: userText,
+            owner: fromIsOwner,
+          });
+        }
+      } else {
+        metaAdsQuestionarioResult = await processMetaAdsQuestionario({
+          userId,
+          fromNumber: row.from_number,
+          conversationId: conv.id,
+          text: audioTranscript || userText,
+          owner: fromIsOwner,
+        });
+      }
+      if (metaAdsQuestionarioResult.ambiguityOriginal) {
+        const pending = {
+          texto_original: metaAdsQuestionarioResult.ambiguityOriginal,
+          criado_em: new Date().toISOString(),
+        };
+        agentState.pending_meta_ads_ambiguity = pending;
+        await saveAgentState(
+          sb,
+          convStateIdentity,
+          { pending_meta_ads_ambiguity: pending },
+          agentState,
+        );
+      }
     } catch (error) {
       console.error(
         "[meta-ads-questionario][process]",
@@ -16938,9 +16992,10 @@ Regras:
       }));
 
     // PASSO 9 — IA (multimodal)
-    const userTextComAudio = audioTranscript
-      ? `${userText ? `${userText}\n\n` : ""}🎙️ TRANSCRIÇÃO DO ÁUDIO QUE O USUÁRIO ENVIOU (já transcrito pelo sistema — use como se ele tivesse digitado; se ele pediu a transcrição, devolva este texto): "${audioTranscript}"`
-      : userText;
+    const userTextComAudio = metaAdsJarvisOriginalText ??
+      (audioTranscript
+        ? `${userText ? `${userText}\n\n` : ""}🎙️ TRANSCRIÇÃO DO ÁUDIO QUE O USUÁRIO ENVIOU (já transcrito pelo sistema — use como se ele tivesse digitado; se ele pediu a transcrição, devolva este texto): "${audioTranscript}"`
+        : userText);
     const userContent = buildUserContent(userTextComAudio, media);
 
     let reply = "";

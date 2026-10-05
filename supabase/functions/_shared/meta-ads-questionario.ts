@@ -72,6 +72,18 @@ export type QuestionarioButtons = {
   buttons: Array<{ id: string; title: string }>;
 };
 
+export type MetaAdsQuestionarioAmbiguidade = {
+  texto_original: string;
+  criado_em: string;
+};
+
+export type MetaAdsQuestionarioAmbiguidadeEscolha = {
+  destino: "meta_ads" | "jarvis";
+  textoOriginal: string;
+} | null;
+
+export const META_ADS_AMBIGUIDADE_TTL_MS = 15 * 60 * 1000;
+
 function normalizar(value: unknown): string {
   return String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .toLowerCase().replace(/\s+/g, " ").trim();
@@ -82,9 +94,92 @@ function limitar(value: unknown, maximum: number): string {
 }
 
 export function isMetaAdsQuestionarioTrigger(text: unknown): boolean {
-  const value = normalizar(text);
-  return /\b(?:criar|fazer|montar|nova?|quero)\b.*\b(?:anuncio|campanha)\b/.test(value) ||
-    /\b(?:anuncio|campanha)\b.*\b(?:meta ads|facebook|instagram)\b/.test(value);
+  if (
+    interactiveId(text) ===
+      `${META_ADS_QUESTIONARIO_PREFIX}ambiguidade:meta`
+  ) return true;
+  const value = normalizar(text)
+    .replace(/<<interactive_id:[^>]+>>/g, "").trim();
+  if (!value || isMetaAdsQuestionarioConsulta(value)) return false;
+  const paidTerms =
+    /\b(?:meta ads|facebook ads|instagram ads|anuncio pago|anuncios pagos|campanha de anuncios|campanha paga|trafego pago|impulsionar|impulsione|impulsionamento|patrocinad[oa]s?|patrocinar)\b/;
+  if (paidTerms.test(value)) return true;
+  const adIntent = /\b(?:anunciar|anuncie|anuncio|anuncios|campanha)\b/;
+  const metaChannel = /\b(?:meta|facebook|instagram)\b/;
+  const visualCreation =
+    /\b(?:arte|imagem|card|banner|criativo|design|foto)\b/;
+  return adIntent.test(value) && metaChannel.test(value) &&
+    !visualCreation.test(value);
+}
+
+function isMetaAdsQuestionarioConsulta(value: string): boolean {
+  return /^(?:como|quando|onde|qual|quais|por que|porque)\b/.test(value) ||
+    /\b(?:como esta|quero saber|consultar|consulta|relatorio|metricas|desempenho|resultado|status|quanto gast|campanha atual|minha campanha)\b/.test(
+      value,
+    );
+}
+
+export function isMetaAdsQuestionarioAmbiguousRequest(
+  text: unknown,
+): boolean {
+  const value = normalizar(text)
+    .replace(/<<interactive_id:[^>]+>>/g, "").trim();
+  if (
+    !value || isMetaAdsQuestionarioTrigger(value) ||
+    isMetaAdsQuestionarioConsulta(value)
+  ) return false;
+  if (
+    /\b(?:whatsapp|zap)\b/.test(value) ||
+    /\b(?:arte|imagem|card|banner|criativo|design|foto)\b/.test(value)
+  ) return false;
+  return /\b(?:criar|cria|crie|fazer|faz|faca|montar|monte|quero|nova?)\b.*\b(?:anuncio|anuncios|campanha)\b/.test(
+    value,
+  );
+}
+
+export function metaAdsQuestionarioAmbiguityButtons(): QuestionarioButtons {
+  return questionarioButtons({
+    body: "Você quer criar um anúncio pago na Meta ou uma arte de anúncio?",
+    buttons: [
+      {
+        id: `${META_ADS_QUESTIONARIO_PREFIX}ambiguidade:meta`,
+        title: "Anúncio pago (Meta)",
+      },
+      {
+        id: `${META_ADS_QUESTIONARIO_PREFIX}ambiguidade:arte`,
+        title: "Arte de anúncio",
+      },
+      {
+        id: `${META_ADS_QUESTIONARIO_PREFIX}ambiguidade:outra`,
+        title: "Outra coisa",
+      },
+    ],
+  });
+}
+
+export function resolveMetaAdsQuestionarioAmbiguity(input: {
+  text: unknown;
+  pending?: MetaAdsQuestionarioAmbiguidade | null;
+  now?: Date;
+}): MetaAdsQuestionarioAmbiguidadeEscolha {
+  if (!input.pending?.texto_original || !input.pending.criado_em) return null;
+  const created = Date.parse(input.pending.criado_em);
+  const now = (input.now ?? new Date()).getTime();
+  if (
+    !Number.isFinite(created) || created > now ||
+    now - created > META_ADS_AMBIGUIDADE_TTL_MS
+  ) return null;
+  const id = interactiveId(input.text);
+  if (id === `${META_ADS_QUESTIONARIO_PREFIX}ambiguidade:meta`) {
+    return { destino: "meta_ads", textoOriginal: input.pending.texto_original };
+  }
+  if (
+    id === `${META_ADS_QUESTIONARIO_PREFIX}ambiguidade:arte` ||
+    id === `${META_ADS_QUESTIONARIO_PREFIX}ambiguidade:outra`
+  ) {
+    return { destino: "jarvis", textoOriginal: input.pending.texto_original };
+  }
+  return null;
 }
 
 export function isMetaAdsQuestionarioCancel(text: unknown): boolean {

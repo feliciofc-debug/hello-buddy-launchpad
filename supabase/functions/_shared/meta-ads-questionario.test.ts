@@ -5,8 +5,11 @@ import {
 import {
   avancarMetaAdsQuestionario,
   filtrarInteressesValidados,
+  isMetaAdsQuestionarioAmbiguousRequest,
   isMetaAdsQuestionarioCancel,
   isMetaAdsQuestionarioResume,
+  isMetaAdsQuestionarioTrigger,
+  metaAdsQuestionarioAmbiguityButtons,
   metaAdsQuestionarioBudget,
   metaAdsQuestionarioContinuarButtons,
   metaAdsQuestionarioExpirado,
@@ -14,6 +17,7 @@ import {
   questionarioAtivo,
   questionarioButtons,
   questionarioList,
+  resolveMetaAdsQuestionarioAmbiguity,
   respostaPertenceAoQuestionario,
 } from "./meta-ads-questionario.ts";
 
@@ -140,4 +144,62 @@ Deno.test("listas e botões respeitam limites do WhatsApp", () => {
   });
   assertEquals(buttons.buttons.length, 3);
   assert(buttons.buttons.every((button) => button.title.length <= 20));
+});
+
+Deno.test("gatilho exige intenção clara de anúncio pago", () => {
+  assertEquals(
+    isMetaAdsQuestionarioTrigger("cria um anúncio desse produto"),
+    false,
+  );
+  assertEquals(
+    isMetaAdsQuestionarioTrigger("quero anunciar no Instagram"),
+    true,
+  );
+  assertEquals(
+    isMetaAdsQuestionarioTrigger("quero saber da campanha"),
+    false,
+  );
+  assertEquals(
+    isMetaAdsQuestionarioTrigger("como está minha campanha no Meta Ads?"),
+    false,
+  );
+  assertEquals(
+    isMetaAdsQuestionarioTrigger("quero uma campanha de WhatsApp"),
+    false,
+  );
+});
+
+Deno.test("pedido ambíguo oferece três caminhos", () => {
+  assert(isMetaAdsQuestionarioAmbiguousRequest(
+    "cria um anúncio desse produto",
+  ));
+  const buttons = metaAdsQuestionarioAmbiguityButtons();
+  assertEquals(buttons.buttons.map((button) => button.title), [
+    "Anúncio pago (Meta)",
+    "Arte de anúncio",
+    "Outra coisa",
+  ]);
+});
+
+Deno.test("Arte de anúncio volta ao Jarvis com o pedido original", () => {
+  const pending = {
+    texto_original: "cria um anúncio desse produto",
+    criado_em: "2026-10-05T12:00:00.000Z",
+  };
+  const choice = resolveMetaAdsQuestionarioAmbiguity({
+    text:
+      "Arte de anúncio\n<<INTERACTIVE_ID:meta_ads_q:ambiguidade:arte>>",
+    pending,
+    now: new Date("2026-10-05T12:01:00.000Z"),
+  });
+  assertEquals(choice, {
+    destino: "jarvis",
+    textoOriginal: "cria um anúncio desse produto",
+  });
+  assertEquals(
+    isMetaAdsQuestionarioTrigger(
+      "Anúncio pago (Meta)\n<<INTERACTIVE_ID:meta_ads_q:ambiguidade:meta>>",
+    ),
+    true,
+  );
 });
