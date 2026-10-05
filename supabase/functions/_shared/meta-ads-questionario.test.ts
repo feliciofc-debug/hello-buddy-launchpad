@@ -3,6 +3,7 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  avancarMetaAdsQuestionario,
   filtrarInteressesValidados,
   isMetaAdsQuestionarioCancel,
   isMetaAdsQuestionarioResume,
@@ -17,6 +18,26 @@ import {
 } from "./meta-ads-questionario.ts";
 
 Deno.test("questionário avança por respostas próprias e permite cancelar", () => {
+  const initial = novoMetaAdsQuestionario(
+    new Date("2026-10-03T12:00:00.000Z"),
+  );
+  const audience = avancarMetaAdsQuestionario(
+    initial,
+    "publico",
+    { objetivo: "whatsapp" },
+    new Date("2026-10-03T12:01:00.000Z"),
+  );
+  const city = avancarMetaAdsQuestionario(
+    audience,
+    "cidade",
+    { interesses: [] },
+    new Date("2026-10-03T12:02:00.000Z"),
+  );
+  assertEquals(initial.etapa, "objetivo");
+  assertEquals(audience.etapa, "publico");
+  assertEquals(city.etapa, "cidade");
+  assertEquals(city.objetivo, "whatsapp");
+  assertEquals(city.criado_em, initial.criado_em);
   assert(respostaPertenceAoQuestionario(
     "Conversas\n<<INTERACTIVE_ID:meta_ads_q:objetivo:whatsapp>>",
     "objetivo",
@@ -59,6 +80,11 @@ Deno.test("mudança de assunto não avança e botão retoma questionário", () =
     respostaPertenceAoQuestionario("Como está o relatório de hoje?", "objetivo"),
     false,
   );
+  assertEquals(
+    respostaPertenceAoQuestionario("Me manda o relatório da campanha", "cidade"),
+    false,
+  );
+  assertEquals(respostaPertenceAoQuestionario("Niterói, RJ", "cidade"), true);
   assert(isMetaAdsQuestionarioResume(
     "Continuar campanha\n<<INTERACTIVE_ID:meta_ads_q:continuar>>",
   ));

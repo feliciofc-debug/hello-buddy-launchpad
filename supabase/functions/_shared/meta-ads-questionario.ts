@@ -138,6 +138,21 @@ export function novoMetaAdsQuestionario(now = new Date()): MetaAdsQuestionario {
   return { etapa: "objetivo", criado_em: iso, atualizado_em: iso };
 }
 
+export function avancarMetaAdsQuestionario(
+  atual: MetaAdsQuestionario,
+  etapa: MetaAdsQuestionarioEtapa,
+  valores: Partial<MetaAdsQuestionario> = {},
+  now = new Date(),
+): MetaAdsQuestionario {
+  return {
+    ...atual,
+    ...valores,
+    etapa,
+    criado_em: atual.criado_em,
+    atualizado_em: now.toISOString(),
+  };
+}
+
 export function questionarioList(input: {
   body: string;
   button?: string;
@@ -202,11 +217,25 @@ export function respostaPertenceAoQuestionario(
   if (isMetaAdsQuestionarioCancel(value) || isMetaAdsQuestionarioResume(value)) {
     return true;
   }
-  if (["cidade", "url_site", "idade_personalizada", "texto_manual"].includes(etapa)) {
-    return !/^(?:como|quando|onde|porque|por que|qual|quem|voce|você)\b.*\?$/.test(
-      String(text).trim(),
-    );
+  if (etapa === "objetivo") return /^(?:whatsapp|conversas?|site|visitas?)$/.test(value);
+  if (etapa === "publico") return value === "publico amplo";
+  if (etapa === "cidade") {
+    return value.length <= 80 && !/[?]/.test(value) &&
+      !/\b(?:relatorio|campanha atual|pausar|reativar|publicar|anuncio atual|quanto gastou|me manda|me mostre|preciso|quero saber)\b/.test(value);
   }
+  if (etapa === "url_site") {
+    return /^(?:https?:\/\/|www\.)|(?:^|\s)[^\s]+\.[a-z]{2,}(?:\/\S*)?$/i
+      .test(String(text).trim());
+  }
+  if (etapa === "idade_personalizada") {
+    return /\b\d{2}\s*[-–a]\s*\d{2}\b/i.test(value);
+  }
+  if (etapa === "texto_manual") {
+    return String(text).split(/\n+/).filter((line) => line.trim()).length >= 2;
+  }
+  if (etapa === "raio" || etapa === "duracao") return /\d/.test(value);
+  if (etapa === "idade") return /\d{2}\s*[-–a]\s*\d{2}|^outra$/.test(value);
+  if (etapa === "texto") return /^(?:aprovar|reescrever|eu escrevo)$/.test(value);
   if (etapa === "orcamento") return /\d/.test(value);
   return false;
 }

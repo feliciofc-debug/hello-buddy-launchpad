@@ -152,6 +152,7 @@ import {
   latestMetaAdsWhatsappApproval,
 } from "../_shared/meta-ads-whatsapp-approval.ts";
 import {
+  avancarMetaAdsQuestionario,
   filtrarInteressesValidados,
   interactiveId as metaAdsQuestionarioInteractiveId,
   isMetaAdsQuestionarioCancel,
@@ -3905,7 +3906,7 @@ async function metaAdsQuestionarioInteresses(
   integration: MetaAdsIntegrationRow,
   userId: string,
 ): Promise<Array<{ nome: string; interesses: Array<{ id: string; name: string }> }>> {
-  const context = await getTenantBusinessContext(sb, userId, {
+  const context = await getTenantBusinessContext(sb as any, userId, {
     incluirProdutos: true,
   });
   const terms = [
@@ -3961,7 +3962,7 @@ async function metaAdsQuestionarioMidias(
     .order("created_at", { ascending: false })
     .limit(10);
   if (error) return [];
-  return (data ?? []).map((item: any, index: number) => ({
+  return (data ?? []).map((item: any, index: number): MetaAdsQuestionarioMidia => ({
     id: String(item.id),
     url: String(item.midia_url),
     tipo: item.tipo === "video" ? "video" : "image",
@@ -3969,16 +3970,14 @@ async function metaAdsQuestionarioMidias(
       item.contexto_original || item.legenda_gerada ||
         `${item.tipo === "video" ? "Vídeo" : "Imagem"} ${index + 1}`,
     ).replace(/\s+/g, " ").slice(0, 24),
-  })).filter((item: MetaAdsQuestionarioMidia) =>
-    item.id && /^https:\/\//i.test(item.url)
-  );
+  })).filter((item) => Boolean(item.id) && /^https:\/\//i.test(item.url));
 }
 
 async function metaAdsQuestionarioGerarTexto(
   userId: string,
   questionario: MetaAdsQuestionario,
 ): Promise<{ titulo: string; texto: string } | null> {
-  const context = await getTenantBusinessContext(sb, userId, {
+  const context = await getTenantBusinessContext(sb as any, userId, {
     incluirProdutos: true,
   });
   if (!context.promptBlock) return null;
@@ -4080,6 +4079,9 @@ async function processMetaAdsQuestionario(input: {
       .eq("user_id", input.userId).eq("status", "rascunho");
     return { handled: true, text: "Campanha cancelada. Nada foi publicado." };
   }
+  if (!integration || integrationProblem) {
+    return { handled: true, text: integrationProblem! };
+  }
   if (isMetaAdsQuestionarioResume(input.text) || trigger) {
     if (questionario.etapa === "midia") {
       const midias = await metaAdsQuestionarioMidias(input.userId);
@@ -4089,8 +4091,8 @@ async function processMetaAdsQuestionario(input: {
         interactiveList: midias.length
           ? questionarioList({
             body: "Escolha uma mídia:",
-            rows: midias.map((media, index) => ({
-              id: `meta_ads_q:midia:${index}`,
+            rows: midias.map((media) => ({
+              id: `meta_ads_q:midia:${media.id}`,
               title: media.titulo,
               description: media.tipo === "video" ? "Vídeo" : "Imagem",
             })),
@@ -4098,7 +4100,11 @@ async function processMetaAdsQuestionario(input: {
           : undefined,
       };
     }
-    return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
+    return {
+      handled: true,
+      ...metaAdsQuestionarioPrompt(questionario),
+      summaryDraftId: questionario.etapa === "resumo" ? row.id : undefined,
+    };
   }
   if (!respostaPertenceAoQuestionario(input.text, questionario.etapa)) {
     return { handled: false, offerResume: true };
@@ -4110,7 +4116,12 @@ async function processMetaAdsQuestionario(input: {
     patch: Partial<MetaAdsQuestionario>,
     draftPatch: Record<string, unknown> = {},
   ) => {
-    questionario = { ...questionario, ...patch, atualizado_em: now };
+    questionario = avancarMetaAdsQuestionario(
+      questionario,
+      patch.etapa ?? questionario.etapa,
+      patch,
+      new Date(now),
+    );
     const rascunho = {
       ...(row!.rascunho ?? {}),
       ...draftPatch,
@@ -4135,9 +4146,14 @@ async function processMetaAdsQuestionario(input: {
   };
 
   if (questionario.etapa === "objetivo") {
-    const objective = option === "objetivo:site"
+    const typedObjective = normalizePt(input.text);
+    const objective = option === "objetivo:site" ||
+        /^(?:site|visitas?)$/.test(typedObjective)
       ? "site"
-      : option === "objetivo:whatsapp" ? "whatsapp" : null;
+      : option === "objetivo:whatsapp" ||
+          /^(?:whatsapp|conversas?)$/.test(typedObjective)
+      ? "whatsapp"
+      : null;
     if (!objective) return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
     if (objective === "site") {
       await update({ objetivo: objective, etapa: "url_site" });
@@ -4164,7 +4180,7 @@ async function processMetaAdsQuestionario(input: {
     });
   } else if (questionario.etapa === "publico") {
     const key = option.replace("publico:", "");
-    if (key === "amplo") {
+    if (key === "amplo" || normalizePt(input.text) === "publico amplo") {
       await update({ pacote_publico: "Público amplo", interesses: [], etapa: "cidade" });
     } else {
       const index = Number(key);
@@ -4205,13 +4221,17 @@ async function processMetaAdsQuestionario(input: {
     if (!city) return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
     await update({ cidade: city, etapa: "raio" });
   } else if (questionario.etapa === "raio") {
-    const radius = Number(option.replace("raio:", ""));
+    const radius = Number(
+      option.replace("raio:", "") ||
+        input.text.replace(/\D/g, ""),
+    );
     if (![10, 25, 40].includes(radius)) {
       return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
     }
     await update({ raio_km: radius, etapa: "idade" });
   } else if (questionario.etapa === "idade") {
-    const value = option.replace("idade:", "");
+    const value = option.replace("idade:", "") ||
+      normalizePt(input.text).replace(/\s*(?:–|\ba\b)\s*/g, "-");
     if (value === "outra") {
       await update({ etapa: "idade_personalizada" });
     } else {
@@ -4249,7 +4269,10 @@ async function processMetaAdsQuestionario(input: {
       ...metaAdsQuestionarioPrompt(questionario, availability?.available),
     };
   } else if (questionario.etapa === "duracao") {
-    const duration = Number(option.replace("duracao:", ""));
+    const duration = Number(
+      option.replace("duracao:", "") ||
+        input.text.replace(/\D/g, ""),
+    );
     if (![7, 15, 30].includes(duration)) {
       return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
     }
@@ -4265,10 +4288,14 @@ async function processMetaAdsQuestionario(input: {
       available: availability.available,
     });
     if (!budget.ok) {
+      const prompt = metaAdsQuestionarioPrompt(
+        questionario,
+        availability.available,
+      );
       return {
         handled: true,
-        text: `Esse anúncio pode gastar ${metaAdsBrl(budget.maximumSpend)}, mas há ${metaAdsBrl(budget.available)} disponíveis no teto mensal. Escolha menos dias ou cancele e recomece com outro orçamento.`,
-        ...metaAdsQuestionarioPrompt(questionario, availability.available),
+        ...prompt,
+        text: `Esse anúncio pode gastar ${metaAdsBrl(budget.maximumSpend)}, mas há ${metaAdsBrl(budget.available)} disponíveis no teto mensal. Escolha menos dias ou cancele e recomece com outro orçamento.\n\n${prompt.text}`,
       };
     }
     await update({ duracao_dias: duration, etapa: "midia" });
@@ -4279,8 +4306,8 @@ async function processMetaAdsQuestionario(input: {
       interactiveList: midias.length
         ? questionarioList({
           body: "Escolha uma mídia:",
-          rows: midias.map((media, index) => ({
-            id: `meta_ads_q:midia:${index}`,
+          rows: midias.map((media) => ({
+            id: `meta_ads_q:midia:${media.id}`,
             title: media.titulo,
             description: media.tipo === "video" ? "Vídeo" : "Imagem",
           })),
@@ -4289,8 +4316,8 @@ async function processMetaAdsQuestionario(input: {
     };
   } else if (questionario.etapa === "midia") {
     const midias = await metaAdsQuestionarioMidias(input.userId);
-    const index = Number(option.replace("midia:", ""));
-    const selected = Number.isInteger(index) ? midias[index] : undefined;
+    const mediaId = option.replace("midia:", "");
+    const selected = midias.find((media) => media.id === mediaId);
     if (!selected) {
       return {
         handled: true,
@@ -4298,8 +4325,8 @@ async function processMetaAdsQuestionario(input: {
         interactiveList: midias.length
           ? questionarioList({
             body: "Escolha uma mídia:",
-            rows: midias.map((media, mediaIndex) => ({
-              id: `meta_ads_q:midia:${mediaIndex}`,
+            rows: midias.map((media) => ({
+              id: `meta_ads_q:midia:${media.id}`,
               title: media.titulo,
               description: media.tipo === "video" ? "Vídeo" : "Imagem",
             })),
@@ -4322,7 +4349,8 @@ async function processMetaAdsQuestionario(input: {
       etapa: "texto",
     });
   } else if (questionario.etapa === "texto") {
-    const action = option.replace("texto:", "");
+    const action = option.replace("texto:", "") || normalizePt(input.text)
+      .replace("eu escrevo", "manual");
     if (action === "manual") {
       await update({ etapa: "texto_manual" });
     } else if (action === "reescrever") {
@@ -4395,12 +4423,19 @@ async function processMetaAdsQuestionario(input: {
         hash !== metaAdsQuestionarioResumoHash(questionario)) {
         return { handled: true, text: "O resumo mudou ou expirou. Revise a campanha antes de publicar." };
       }
+      const publishResult = await toolPublicarAnuncioMeta({
+        confirmacao: "SIM",
+        rascunho_id: row.id,
+      }, ctx);
+      if (publishResult.startsWith("✅")) {
+        return { handled: true, text: publishResult };
+      }
+      const retryPrompt = metaAdsQuestionarioPrompt(questionario);
       return {
         handled: true,
-        text: await toolPublicarAnuncioMeta({
-          confirmacao: "SIM",
-          rascunho_id: row.id,
-        }, ctx),
+        ...retryPrompt,
+        text: `${publishResult}\n\n${retryPrompt.text}`,
+        summaryDraftId: row.id,
       };
     } else return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
   }
