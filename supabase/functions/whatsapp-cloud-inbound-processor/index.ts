@@ -12244,6 +12244,7 @@ async function buscarFotoOriginalRecenteParaAnuncio(ctx: {
     .eq("user_id", ctx.userId)
     .eq("telefone_origem", ctx.fromNumber)
     .eq("tipo", "foto")
+    .eq("origem", "whatsapp")
     .order("created_at", { ascending: false })
     .limit(20);
   if (error) throw new Error(error.message);
@@ -12264,6 +12265,7 @@ async function buscarFotoOriginalRecenteParaAnuncio(ctx: {
       .eq("id", interactedId)
       .eq("user_id", ctx.userId)
       .eq("telefone_origem", ctx.fromNumber)
+      .eq("origem", "whatsapp")
       .maybeSingle();
     if (interacted) candidates.push(interacted);
   }
