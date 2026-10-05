@@ -9,6 +9,32 @@ function normalizeText(value: unknown): string {
     .trim();
 }
 
+export function isWhatsAppOptOutRequest(input: {
+  text: unknown;
+  isOwner: boolean;
+  isStopButton?: boolean;
+}): boolean {
+  if (input.isStopButton) return true;
+  const text = normalizeText(input.text);
+  if (input.isOwner) {
+    return text === "stop" ||
+      /\b(?:parar|pare|nao quero|deixar|deixe)\s+de\s+receber\b/.test(text) ||
+      /\b(?:sair|remover|tirar|descadastrar(?:-me)?)\s+(?:da|dessa|desta|de)\s+(?:lista|campanhas?|mensagens?)\b/
+        .test(text);
+  }
+  return new Set([
+    "pare",
+    "parar",
+    "sair",
+    "stop",
+    "cancelar",
+    "descadastrar",
+    "descadastrar-me",
+    "remover",
+    "nao quero",
+  ]).has(text);
+}
+
 export function isLikelyBusinessAutoReply(input: {
   text: unknown;
   invitationSentAt: string | null | undefined;

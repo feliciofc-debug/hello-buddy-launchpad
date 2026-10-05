@@ -1,9 +1,11 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   canRunClientLogoRegistrationShortcut,
+  classifyCreativeMediaRequest,
   clientLogoUploadFollowUp,
   extractVideoClientName,
   hasUsableVideoTopic,
+  isClearlyDifferentFromPendingVideo,
   isSameVideoBrandName,
   isVideoMotionRequest,
   isVideoMotionRedoRequest,
@@ -232,6 +234,29 @@ Deno.test("publicação de vídeo existente não abre criação de vídeo", () =
 
 Deno.test("pedido de vídeo de não-dono continua identificável para orientação", () => {
   assertEquals(isVideoMotionRequest("faz um vídeo pra mim"), true);
+});
+
+Deno.test("pedido explícito de arte não é desviado pela palavra vídeo na descrição", () => {
+  const pedido =
+    "Cria uma arte de anúncio em que aparecem prontos um post, um vídeo e um anúncio";
+  assertEquals(classifyCreativeMediaRequest(pedido), "image");
+  assertEquals(isVideoMotionRequest(pedido), false);
+  assertEquals(shouldStartVideoSetup(pedido), false);
+});
+
+Deno.test("pedido realmente ambíguo entre vídeo e imagem é identificado", () => {
+  assertEquals(
+    classifyCreativeMediaRequest("Quero criar um conteúdo em vídeo ou imagem"),
+    "ambiguous",
+  );
+});
+
+Deno.test("pedido novo de arte interrompe escolha pendente sem parecer trilha", () => {
+  assertEquals(
+    isClearlyDifferentFromPendingVideo("Cria uma arte para divulgar o produto"),
+    true,
+  );
+  assertEquals(isClearlyDifferentFromPendingVideo("Sem trilha"), false);
 });
 
 Deno.test("cadastro de logo sem foto oferece continuação clara", () => {

@@ -20,7 +20,10 @@ import {
   ownerPhoneVariants,
   ownerPhonesEquivalent,
 } from "../_shared/owner-phone.ts";
-import { isLikelyBusinessAutoReply } from "../_shared/whatsapp-opt-in-gate.ts";
+import {
+  isLikelyBusinessAutoReply,
+  isWhatsAppOptOutRequest,
+} from "../_shared/whatsapp-opt-in-gate.ts";
 import {
   buildCarouselPrompt,
   buildProspectDemoCarouselPrompt,
@@ -306,9 +309,11 @@ import {
 } from "../_shared/client-brand-identity.ts";
 import {
   canRunClientLogoRegistrationShortcut,
+  classifyCreativeMediaRequest,
   clientLogoUploadFollowUp,
   extractVideoClientName,
   hasUsableVideoTopic,
+  isClearlyDifferentFromPendingVideo,
   isVideoMotionRedoRequest,
   isVideoMotionRequest,
   isSameVideoBrandName,
@@ -2495,6 +2500,7 @@ type AgentConvState = {
   pending_image_composition?: { media_ids: string[]; at: string } | null;
   pending_carousel?: PendingCarouselState | null;
   pending_video_setup?: PendingVideoSetupState | null;
+  pending_creative_media_ambiguity?: { original_request: string; created_at: string } | null;
   pending_client_logo?: { logo_path: string; created_at: string } | null;
   pending_client_logo_intent?: { client_name: string; created_at: string } | null;
   pending_brand_generation?: PendingBrandGeneration | null;
@@ -2550,6 +2556,7 @@ type PendingVideoSetupState = {
   duracao_alvo_segundos?: number;
   frases_literais?: string[];
   roteiro_cenas?: CenaMotion[];
+  interrupted_request?: string;
   created_at: string;
 };
 
@@ -10004,6 +10011,57 @@ async function startVideoSetup(
   return await advanceVideoSetup(ctx, setup);
 }
 
+function pendingVideoInterruptionButtons(): WhatsAppInteractiveButtons {
+  return {
+    header: "Vídeo em andamento",
+    body: "Você quer continuar o vídeo ou cancelar esse rascunho e fazer o novo pedido?",
+    buttons: [
+      { id: "video_pending_continue", title: "Continuar vídeo" },
+      { id: "video_pending_replace", title: "Cancelar e fazer" },
+    ],
+  };
+}
+
+async function resumePendingVideoSetup(
+  ctx: { userId: string; fromNumber: string },
+  setup: PendingVideoSetupState,
+): Promise<string> {
+  if (setup.stage === "awaiting_tema") return "Qual é o tema do vídeo? Pode enviar o roteiro completo.";
+  if (setup.stage === "awaiting_template") {
+    await askVideoTemplate(ctx, setup.tema);
+    return "Continuando o vídeo: escolha o formato na lista acima.";
+  }
+  if (setup.stage === "awaiting_background") {
+    await askVideoBackground(ctx);
+    return "Continuando o vídeo: escolha o fundo acima.";
+  }
+  if (setup.stage === "awaiting_track" || setup.stage === "awaiting_track_more") {
+    await askVideoTrack(ctx, await listVideoTracks(ctx.userId), setup.track_page ?? 0);
+    return "Continuando o vídeo: escolha a trilha acima.";
+  }
+  if (setup.stage === "awaiting_identity") {
+    await askVideoIdentity(ctx);
+    return "Continuando o vídeo: escolha a identidade acima.";
+  }
+  if (setup.stage === "awaiting_site_url") {
+    return "Continuando o vídeo: qual é o site ou o nome do cliente?";
+  }
+  if (setup.stage === "awaiting_site_logo_confirmation" && setup.site_logo_candidate_path) {
+    await askSiteLogoConfirmation(ctx, setup.site_logo_candidate_path);
+    return "Continuando o vídeo: confirme a logo acima.";
+  }
+  if (setup.stage === "awaiting_palette_primary") {
+    await askPalettePrimary(ctx, setup.palette_candidates ?? [], setup.palette_options ?? [], setup.logo_path);
+    return "Continuando o vídeo: escolha a cor principal acima.";
+  }
+  if (setup.stage === "awaiting_palette_secondary" && setup.palette_primary) {
+    await askPaletteSecondary(ctx, setup.palette_candidates ?? [], setup.palette_primary);
+    return "Continuando o vídeo: escolha a cor secundária acima.";
+  }
+  await askSitePaletteConfirmation(ctx, setup.palette_options ?? [], false, setup.logo_path);
+  return "Continuando o vídeo: confirme as cores acima.";
+}
+
 function paletteFamily(hex: string): "vermelho" | "laranja" | "amarelo" | "verde" | "azul" | "roxo" | "rosa" | "neutro" {
   if (paletteSaturation(hex) < 0.18) return "neutro";
   const [r, g, b] = rgbPalette(hex).map((value) => value / 255);
@@ -12769,6 +12827,9 @@ async function callGemini(
     const prospectAmz = !remetenteEhDono && toolCtx.userId === ADMIN_AMZ_USER_ID;
     const pendingCarousel = remetenteEhDono || prospectAmz ? toolCtx.agentState?.pending_carousel : null;
     const pendingVideoSetup = remetenteEhDono ? toolCtx.agentState?.pending_video_setup : null;
+    const pendingCreativeMediaAmbiguity = remetenteEhDono
+      ? toolCtx.agentState?.pending_creative_media_ambiguity
+      : null;
     const pendingClientLogo = remetenteEhDono ? toolCtx.agentState?.pending_client_logo : null;
     const pendingClientLogoIntent = remetenteEhDono ? toolCtx.agentState?.pending_client_logo_intent : null;
     const pendingBrandGeneration = remetenteEhDono ? toolCtx.agentState?.pending_brand_generation : null;
@@ -12821,7 +12882,94 @@ async function callGemini(
       return { text: await refazerVideoMotion(toolCtx, userContent) };
     }
     if (pendingVideoSetup) {
+      const videoInteractiveId = extractVideoInteractiveId(userContent);
+      if (videoInteractiveId === "video_pending_continue") {
+        const resumed = { ...pendingVideoSetup, interrupted_request: undefined };
+        await persistVideoSetup(toolCtx, resumed);
+        return { text: await resumePendingVideoSetup(toolCtx, resumed) };
+      }
+      if (
+        videoInteractiveId === "video_pending_replace" &&
+        pendingVideoSetup.interrupted_request
+      ) {
+        const deferredRequest = pendingVideoSetup.interrupted_request;
+        await persistVideoSetup(toolCtx, null);
+        return await callGemini(systemPrompt, history, deferredRequest, false, {
+          ...toolCtx,
+          agentState: { ...toolCtx.agentState, pending_video_setup: null },
+        });
+      }
+      if (isClearlyDifferentFromPendingVideo(userContent)) {
+        const interrupted = { ...pendingVideoSetup, interrupted_request: userContent };
+        await persistVideoSetup(toolCtx, interrupted);
+        return {
+          text: "Você ainda tem um vídeo em andamento. Quer continuar ou cancelar esse rascunho e fazer o novo pedido?",
+          interactiveButtons: pendingVideoInterruptionButtons(),
+        };
+      }
       return { text: await handlePendingVideoSetup(toolCtx, pendingVideoSetup, userContent) };
+    }
+    const mediaChoiceId = userContent.match(
+      /<<INTERACTIVE_ID:(creative_media_(?:video|image))>>/i,
+    )?.[1]?.toLowerCase();
+    if (pendingCreativeMediaAmbiguity && mediaChoiceId) {
+      const age = Date.now() -
+        new Date(pendingCreativeMediaAmbiguity.created_at).getTime();
+      const original = pendingCreativeMediaAmbiguity.original_request;
+      const conversation = toolCtx.convId
+        ? { id: toolCtx.convId, userId: toolCtx.userId, contactNumber: toolCtx.fromNumber }
+        : null;
+      if (conversation) {
+        await saveAgentState(
+          sb,
+          conversation,
+          { pending_creative_media_ambiguity: null },
+          toolCtx.agentState ?? {},
+        );
+      }
+      if (!Number.isFinite(age) || age > 2 * 60 * 60 * 1000) {
+        return { text: "Essa escolha expirou. Envie o pedido novamente." };
+      }
+      const clarified = mediaChoiceId.endsWith("video")
+        ? `Crie um vídeo. Pedido original: ${original}`
+        : `Crie uma imagem/arte. Pedido original: ${original}`;
+      return await callGemini(systemPrompt, history, clarified, false, {
+        ...toolCtx,
+        agentState: {
+          ...toolCtx.agentState,
+          pending_creative_media_ambiguity: null,
+        },
+      });
+    }
+    if (
+      remetenteEhDono &&
+      classifyCreativeMediaRequest(userContent) === "ambiguous"
+    ) {
+      const pending = {
+        original_request: userContent,
+        created_at: new Date().toISOString(),
+      };
+      const conversation = toolCtx.convId
+        ? { id: toolCtx.convId, userId: toolCtx.userId, contactNumber: toolCtx.fromNumber }
+        : null;
+      if (conversation) {
+        await saveAgentState(
+          sb,
+          conversation,
+          { pending_creative_media_ambiguity: pending },
+          toolCtx.agentState ?? {},
+        );
+      }
+      return {
+        text: "Você quer criar um vídeo ou uma imagem/arte?",
+        interactiveButtons: {
+          body: "Escolha o formato para eu seguir com o pedido.",
+          buttons: [
+            { id: "creative_media_video", title: "Vídeo" },
+            { id: "creative_media_image", title: "Imagem/arte" },
+          ],
+        },
+      };
     }
     if (!remetenteEhDono && isVideoMotionRequest(userContent)) {
       deferRestrictedShortcutToModel(true);
@@ -14816,10 +14964,6 @@ async function processOne(queueId: string) {
         )
           .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
-        const STOP_TOKENS = new Set([
-          "pare", "parar", "sair", "stop", "cancelar", "descadastrar",
-          "descadastrar-me", "remover", "nao quero", "não quero",
-        ]);
         const SIM_TOKENS = new Set([
           "sim", "s", "ok", "pode", "pode sim", "aceito", "confirmo",
           "quero", "aceitar", "confirmar", "sim, quero!", "sim quero",
@@ -14839,7 +14983,10 @@ async function processOne(queueId: string) {
           buttonId === "OPTIN_STOP" ||
           buttonId === "STOP" ||
           NEGATIVE_BUTTON_PREFIXES.some((p) => buttonTextNorm.startsWith(p));
-        const isStopText = STOP_TOKENS.has(normalized);
+        const isStopText = isWhatsAppOptOutRequest({
+          text: rawText,
+          isOwner: fromIsOwner,
+        });
         const isSimButton = buttonId === "OPTIN_SIM" ||
           (!!buttonTextNorm && !isStopButton &&
             POSITIVE_BUTTON_PREFIXES.some((p) => buttonTextNorm.startsWith(p)));

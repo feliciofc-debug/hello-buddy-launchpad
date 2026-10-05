@@ -1,5 +1,8 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { isLikelyBusinessAutoReply } from "./whatsapp-opt-in-gate.ts";
+import {
+  isLikelyBusinessAutoReply,
+  isWhatsAppOptOutRequest,
+} from "./whatsapp-opt-in-gate.ts";
 
 const invitationSentAt = "2026-10-01T14:00:00.000Z";
 
@@ -47,5 +50,35 @@ Deno.test("resposta humana fora da janela curta segue para a regra normal", () =
       receivedAt: "2026-10-01T14:10:00.000Z",
     }),
     false,
+  );
+});
+
+Deno.test("cancelar do dono não vira opt-out, mas pedido explícito vira", () => {
+  assertEquals(
+    isWhatsAppOptOutRequest({ text: "cancelar", isOwner: true }),
+    false,
+  );
+  assertEquals(
+    isWhatsAppOptOutRequest({ text: "parar de receber", isOwner: true }),
+    true,
+  );
+  assertEquals(
+    isWhatsAppOptOutRequest({ text: "sair da lista", isOwner: true }),
+    true,
+  );
+  assertEquals(
+    isWhatsAppOptOutRequest({ text: "stop", isOwner: true }),
+    true,
+  );
+});
+
+Deno.test("STOP de contato comum mantém comportamento atual", () => {
+  assertEquals(
+    isWhatsAppOptOutRequest({ text: "cancelar", isOwner: false }),
+    true,
+  );
+  assertEquals(
+    isWhatsAppOptOutRequest({ text: "pare", isOwner: false }),
+    true,
   );
 });

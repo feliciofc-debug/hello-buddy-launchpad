@@ -24,7 +24,38 @@ function normalizedIntent(value: unknown): string {
     .toLowerCase();
 }
 
+export type CreativeMediaRequest = "video" | "image" | "ambiguous" | null;
+
+export function classifyCreativeMediaRequest(text: string): CreativeMediaRequest {
+  const normalized = normalizedIntent(text)
+    .replace(/^jarvis[,.!:\s-]*/, "")
+    .replace(/^por favor[,.!:\s-]*/, "")
+    .trim();
+  const creation = /\b(faz|faca|fazer|cria|criar|crie|monta|monte|gera|gere|produz|produza|quero|preciso)\b/
+    .test(normalized);
+  if (!creation) return null;
+
+  const explicitImageLead =
+    /^(?:(?:eu\s+)?quero\s+(?:que\s+voce\s+)?)?(?:faz|faca|fazer|cria|criar|crie|monta|monte|gera|gere|produz|produza)\s+(?:uma?\s+)?(?:arte|imagem|foto|banner|card|post\s+estatico)\b/
+      .test(normalized);
+  if (explicitImageLead) return "image";
+  const explicitVideoLead =
+    /^(?:(?:eu\s+)?quero\s+(?:que\s+voce\s+)?)?(?:faz|faca|fazer|cria|criar|crie|monta|monte|gera|gere|produz|produza)\s+(?:uma?\s+)?(?:video|motion|animacao|reels?\s+animado)\b/
+      .test(normalized);
+  if (explicitVideoLead) return "video";
+
+  const image = /\b(arte|imagem|foto|banner|card|post\s+estatico)\b/.test(normalized);
+  const video = /\b(video|motion|animacao|animacoes|animado|animada|reels?\s+animado)\b/
+    .test(normalized);
+  if (image && video) return "ambiguous";
+  if (image) return "image";
+  if (video) return "video";
+  return null;
+}
+
 export function isVideoMotionRequest(text: string): boolean {
+  const mediaRequest = classifyCreativeMediaRequest(text);
+  if (mediaRequest === "image" || mediaRequest === "ambiguous") return false;
   const normalized = normalizedIntent(text);
   const requestsExistingVideoDelivery =
     /\b(postar|publicar|posta|publica|agendar|agenda|mandar|manda|enviar|envia)\b/
@@ -46,12 +77,25 @@ export function isVideoMotionRequest(text: string): boolean {
 }
 
 export function shouldStartVideoSetup(text: string): boolean {
+  const mediaRequest = classifyCreativeMediaRequest(text);
+  if (mediaRequest === "image" || mediaRequest === "ambiguous") return false;
   if (isVideoMotionRequest(text)) return true;
   const normalized = normalizedIntent(text);
   const sceneCount = normalized.match(/\bcena\s*\d+\b/g)?.length ?? 0;
   const isVideoScript = /\broteiros?\b/.test(normalized) &&
     /\b(video|motion|animad[oa]s?|cenas?)\b/.test(normalized);
   return isVideoScript || sceneCount >= 2;
+}
+
+export function isClearlyDifferentFromPendingVideo(text: string): boolean {
+  if (/<<INTERACTIVE_ID:video_/i.test(String(text))) return false;
+  const mediaRequest = classifyCreativeMediaRequest(text);
+  if (mediaRequest === "image" || mediaRequest === "ambiguous") return true;
+  const normalized = normalizedIntent(text);
+  return /\b(?:cria|criar|crie|faz|fazer|faca|gera|gerar|gere|monta|montar|monte|quero|preciso)\b/
+      .test(normalized) &&
+    /\b(?:anuncio\s+pago|campanha\s+de\s+anuncios|meta\s+ads|facebook\s+ads|instagram\s+ads|trafego\s+pago|relatorio|carrossel|texto|legenda)\b/
+      .test(normalized);
 }
 
 export function isVideoMotionRedoRequest(text: string): boolean {
