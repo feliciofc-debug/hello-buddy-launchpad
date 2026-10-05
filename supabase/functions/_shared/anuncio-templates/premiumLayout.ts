@@ -108,7 +108,7 @@ function yearBadge(d: AnuncioData, accent: string, light: boolean): Node | null 
   return d.ano
     ? text(d.ano, {
       color: light ? "#111113" : "#FFFFFF",
-      border: light ? undefined : `3px solid ${accent}`,
+      ...(!light ? { border: `3px solid ${accent}` } : {}),
       backgroundColor: light ? "#FFFFFF" : "transparent",
       borderRadius: 999,
       padding: "10px 20px",
@@ -261,9 +261,12 @@ function items(
       display: "flex",
       alignItems: "center",
       width: style === "catalogo" ? "31%" : style === "destaque" ? "47%" : "auto",
-      minWidth: style === "impacto" ? 180 : undefined,
-      borderLeft: style === "destaque" ? `5px solid ${accent}` : undefined,
-      border: style === "impacto" ? "1px solid #333338" : undefined,
+      ...(style === "impacto"
+        ? { minWidth: 180, border: "1px solid #333338" }
+        : {}),
+      ...(style === "destaque"
+        ? { borderLeft: `5px solid ${accent}` }
+        : {}),
       borderRadius: style === "impacto" ? 30 : 0,
       backgroundColor: style === "impacto" ? "#1A1A1D" : "transparent",
       padding: style === "impacto" ? "11px 18px" : "10px 12px",
