@@ -23,6 +23,7 @@ import {
   questionarioButtons,
   questionarioList,
   resolveMetaAdsLimitAction,
+  resolveMetaAdsLimitValueInput,
   resolveMetaAdsQuestionarioAmbiguity,
   respostaPertenceAoQuestionario,
   validarNovoLimiteMensalAnuncios,
@@ -315,4 +316,26 @@ Deno.test("limite mensal esgotado oferece somente aumentar ou cancelar", () => {
     metaAdsBudgetRecoveryButtons(true).buttons.map((button) => button.title),
     ["Aumentar limite", "Cancelar"],
   );
+});
+
+Deno.test("espera do novo limite só captura mensagem com número", () => {
+  const pending = { criado_em: "2026-10-05T12:00:00.000Z" };
+  assertEquals(resolveMetaAdsLimitValueInput({
+    text: "bom dia",
+    pending,
+    isOwner: true,
+    now: new Date("2026-10-05T12:01:00.000Z"),
+  }), "clear");
+  assertEquals(resolveMetaAdsLimitValueInput({
+    text: "300",
+    pending,
+    isOwner: true,
+    now: new Date("2026-10-05T12:01:00.000Z"),
+  }), "consume");
+  assertEquals(resolveMetaAdsLimitValueInput({
+    text: "O novo limite pode ser 300 reais",
+    pending,
+    isOwner: true,
+    now: new Date("2026-10-05T12:01:00.000Z"),
+  }), "consume");
 });

@@ -104,6 +104,8 @@ export type MetaAdsLimitAction = {
   proposal: MetaAdsLimitProposal;
 } | null;
 
+export type MetaAdsLimitValueInputAction = "consume" | "clear" | "ignore";
+
 function normalizar(value: unknown): string {
   return String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .toLowerCase().replace(/\s+/g, " ").trim();
@@ -262,6 +264,22 @@ export function resolveMetaAdsLimitAction(input: {
     return { action: "cancel", proposal: input.pending };
   }
   return null;
+}
+
+export function resolveMetaAdsLimitValueInput(input: {
+  text: unknown;
+  pending?: MetaAdsLimitValueRequest | null;
+  isOwner: boolean;
+  now?: Date;
+}): MetaAdsLimitValueInputAction {
+  if (!input.isOwner || !input.pending?.criado_em) return "ignore";
+  const created = Date.parse(input.pending.criado_em);
+  const now = (input.now ?? new Date()).getTime();
+  if (
+    !Number.isFinite(created) || created > now ||
+    now - created > META_ADS_LIMIT_PROPOSAL_TTL_MS
+  ) return "clear";
+  return /\d/.test(String(input.text ?? "")) ? "consume" : "clear";
 }
 
 export function isMetaAdsQuestionarioCancel(text: unknown): boolean {

@@ -175,12 +175,12 @@ import {
   metaAdsQuestionarioExpirado,
   metaAdsQuestionarioResumo,
   metaAdsQuestionarioResumoHash,
-  META_ADS_LIMIT_PROPOSAL_TTL_MS,
   novoMetaAdsQuestionario,
   questionarioAtivo,
   questionarioButtons,
   questionarioList,
   resolveMetaAdsLimitAction,
+  resolveMetaAdsLimitValueInput,
   resolveMetaAdsQuestionarioAmbiguity,
   respostaPertenceAoQuestionario,
   type MetaAdsQuestionario,
@@ -17125,18 +17125,14 @@ Regras:
       handled: false,
     };
     try {
-      const pendingLimitValueCreated = Date.parse(String(
-        agentState.pending_meta_ads_limit_value?.criado_em ?? "",
-      ));
-      const pendingLimitValueIsFresh = fromIsOwner &&
-        Number.isFinite(pendingLimitValueCreated) &&
-        Date.now() - pendingLimitValueCreated <=
-          META_ADS_LIMIT_PROPOSAL_TTL_MS;
-      if (
-        pendingLimitValueIsFresh &&
-        !/^(?:cancelar|cancela)$/i.test(userText.trim())
-      ) {
-        const proposed = await toolProporLimiteMensalMetaAds(userText, {
+      const limitValueText = audioTranscript || userText;
+      const limitValueAction = resolveMetaAdsLimitValueInput({
+        text: limitValueText,
+        pending: agentState.pending_meta_ads_limit_value,
+        isOwner: fromIsOwner,
+      });
+      if (limitValueAction === "consume") {
+        const proposed = await toolProporLimiteMensalMetaAds(limitValueText, {
           userId,
           fromNumber: row.from_number,
           convId: conv.id,
@@ -17161,10 +17157,7 @@ Regras:
           );
         }
       } else {
-        if (
-          agentState.pending_meta_ads_limit_value &&
-          /^(?:cancelar|cancela)$/i.test(userText.trim())
-        ) {
+        if (limitValueAction === "clear") {
           agentState.pending_meta_ads_limit_value = null;
           await saveAgentState(
             sb,
