@@ -117,6 +117,17 @@ Deno.test("site sem logo confiável segue somente com cores e nome do site", () 
   );
 });
 
+Deno.test("ícone de confiança média nunca é usado como logo automática", () => {
+  const identity = resolveAutomaticVideoSiteIdentity({
+    siteBrandName: "Marca do Site",
+    siteUrl: "https://marca.example",
+    colors: ["#123456"],
+    logoConfidence: "medium",
+    logoDataUrl: "data:image/png;base64,RkFWSUNPTg==",
+  });
+  assertEquals(identity.useSiteLogo, false);
+});
+
 Deno.test("atalho de cadastro não captura fluxo de vídeo nem respostas interativas", () => {
   assertEquals(
     canRunClientLogoRegistrationShortcut({

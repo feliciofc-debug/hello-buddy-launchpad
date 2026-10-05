@@ -100,6 +100,17 @@ Deno.test("extrai logo de alta confiança do JSON-LD de organização", () => {
   assertEquals(identity.logo_confidence, "high");
 });
 
+Deno.test("aceita logo JSON-LD em string para Store", () => {
+  const identity = extractBrandIdentityFromHtml(
+    `<script type="application/ld+json">
+      { "@type": "Store", "logo": "https://cdn.example/logo-loja.png" }
+    </script>`,
+    "https://loja.example/",
+  );
+  assertEquals(identity.logo_url, "https://cdn.example/logo-loja.png");
+  assertEquals(identity.logo_confidence, "high");
+});
+
 Deno.test("extrai og:logo como alta confiança", () => {
   const identity = extractBrandIdentityFromHtml(
     `<meta property="og:logo" content="/marca/logo.svg">
