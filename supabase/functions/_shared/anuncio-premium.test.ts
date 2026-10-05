@@ -12,6 +12,7 @@ import { selectAnuncioPhoto } from "./anuncio-photo.ts";
 import {
   anuncioSuccessMessage,
   amzAnuncioClientButtons,
+  amzMissingClientLogoButtons,
   shouldAskAmzAnuncioClient,
 } from "./anuncio-tenant-brand.ts";
 import { selectRecentOriginalPhoto } from "./anuncio-source-media.ts";
@@ -289,6 +290,15 @@ Deno.test("tenant AMZ sem cliente pergunta a loja e botão libera marca AMZ", ()
     tenantId: "outro",
     amzTenantId: "amz",
   }), false);
+});
+
+Deno.test("logo inválida no site oferece envio manual ou marca AMZ sem favicon", () => {
+  const buttons = amzMissingClientLogoButtons();
+  assertEquals(buttons.buttons, [
+    { id: "anuncio_send_client_logo", title: "Enviar logo agora" },
+    { id: "anuncio_use_amz", title: "Usar marca da AMZ" },
+  ]);
+  assert(buttons.buttons.every((button) => button.title.length <= 20));
 });
 
 Deno.test("fallback do anúncio escolhe foto original e ignora arte gerada", () => {

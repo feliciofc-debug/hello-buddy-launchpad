@@ -318,6 +318,7 @@ import {
 import {
   anuncioSuccessMessage,
   amzAnuncioClientButtons,
+  amzMissingClientLogoButtons,
   shouldAskAmzAnuncioClient,
 } from "../_shared/anuncio-tenant-brand.ts";
 import {
@@ -12554,9 +12555,32 @@ async function toolCriarAnuncio(
       site: args?.site,
     });
     if (anuncioIdentity.mode === "missing") {
+      if (ctx.userId === ADMIN_AMZ_USER_ID && ctx.convId) {
+        const conversation = {
+          id: ctx.convId,
+          userId: ctx.userId,
+          contactNumber: ctx.fromNumber,
+        };
+        const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+        const pending = {
+          args: { ...args },
+          created_at: new Date().toISOString(),
+        };
+        await saveAgentState(
+          sb,
+          conversation,
+          { pending_anuncio_cliente: pending },
+          current,
+        );
+        current.pending_anuncio_cliente = pending;
+        ctx.agentState = current;
+      }
       return JSON.stringify({
         erro: "identidade_cliente_ausente",
         mensagem: anuncioIdentity.message,
+        ...(ctx.userId === ADMIN_AMZ_USER_ID
+          ? { interactive_buttons: amzMissingClientLogoButtons() }
+          : {}),
       });
     }
     const requestedStyle = ANUNCIO_STYLES.includes(args?.estilo as AnuncioStyle)
@@ -13385,7 +13409,7 @@ async function callGemini(
     }
     if (pendingAnuncioCliente) {
       const interactiveId = userContent.match(
-        /<<INTERACTIVE_ID:(anuncio_(?:use_amz|other_store))>>/i,
+        /<<INTERACTIVE_ID:(anuncio_(?:use_amz|other_store|send_client_logo))>>/i,
       )?.[1]?.toLowerCase();
       const age = Date.now() -
         new Date(pendingAnuncioCliente.created_at).getTime();
@@ -13409,6 +13433,41 @@ async function callGemini(
       if (interactiveId === "anuncio_other_store") {
         return {
           text: "Me mande o nome e o site da loja.",
+        };
+      }
+      if (interactiveId === "anuncio_send_client_logo") {
+        const clientName = compactSpaces(
+          String(pendingAnuncioCliente.args.cliente || ""),
+        ).slice(0, 100);
+        if (toolCtx.convId && clientName) {
+          const pendingIntent = {
+            client_name: clientName,
+            created_at: new Date().toISOString(),
+            variant: "default" as const,
+          };
+          await saveAgentState(
+            sb,
+            {
+              id: toolCtx.convId,
+              userId: toolCtx.userId,
+              contactNumber: toolCtx.fromNumber,
+            },
+            {
+              pending_anuncio_cliente: null,
+              pending_client_logo_intent: pendingIntent,
+            },
+            toolCtx.agentState ?? {},
+          );
+          if (toolCtx.agentState) {
+            toolCtx.agentState.pending_anuncio_cliente = null;
+            toolCtx.agentState.pending_client_logo_intent = pendingIntent;
+          }
+          return {
+            text: `Envie agora a logo de ${clientName} em PNG, JPEG ou WEBP.`,
+          };
+        }
+        return {
+          text: "Envie a logo dizendo o nome da loja, por exemplo: “salva essa como logo do cliente Loja X”.",
         };
       }
       const site = extractPublicSiteUrl(userContent);
@@ -13445,8 +13504,12 @@ async function callGemini(
         }
         const mergedArgs = {
           ...pendingAnuncioCliente.args,
-          ...(interactiveId
-            ? { _usar_marca_tenant: true }
+          ...(interactiveId === "anuncio_use_amz"
+            ? {
+              cliente: undefined,
+              site: undefined,
+              _usar_marca_tenant: true,
+            }
             : { cliente: clientName, site }),
         };
         const result = await toolCriarAnuncio(mergedArgs as any, {
@@ -13466,6 +13529,7 @@ async function callGemini(
               : parsed?.mensagem || "Não consegui concluir o anúncio.",
           ),
           imageUrl: parsed?.image_url,
+          interactiveButtons: parsed?.interactive_buttons,
         };
       }
     }

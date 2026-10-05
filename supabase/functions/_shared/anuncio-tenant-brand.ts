@@ -19,6 +19,16 @@ export function amzAnuncioClientButtons() {
   };
 }
 
+export function amzMissingClientLogoButtons() {
+  return {
+    body: "Como deseja continuar?",
+    buttons: [
+      { id: "anuncio_send_client_logo", title: "Enviar logo agora" },
+      { id: "anuncio_use_amz", title: "Usar marca da AMZ" },
+    ],
+  };
+}
+
 export function anuncioSuccessMessage(): string {
   return "Pronto! Ficou assim. Quer publicar no feed ou no story?";
 }
