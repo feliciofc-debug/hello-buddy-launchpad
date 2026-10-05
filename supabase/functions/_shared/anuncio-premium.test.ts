@@ -370,7 +370,7 @@ async function renderTemplateWithRealPhoto(
   const { width, height } = anuncioSize(formato);
   const tree = buildAnuncio(baseData({
     formato,
-    fotoDataUrl,
+    fotoDataUrl: photoDataUrl,
     subtitulo: "AUTOMÁTICO • BLINDADO",
     ano: "2023/2023",
     itens: ["38 MIL KM", "ÚNICO DONO", "REVISADO", "PNEUS NOVOS"].map(
