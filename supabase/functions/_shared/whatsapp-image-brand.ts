@@ -176,12 +176,12 @@ export function resolveWhatsAppGeneratorBrand(input: {
   }
   return {
     logoDataUrl: input.logoDataUrl ?? tenantAssets?.logoDataUrl ?? null,
-    logoForLightBackgroundDataUrl:
+    logoForLightBackgroundDataUrl: input.logoDataUrl ??
       tenantAssets?.logoForLightBackgroundDataUrl ??
-      input.logoDataUrl ?? tenantAssets?.logoDataUrl ?? null,
-    logoForDarkBackgroundDataUrl:
+      tenantAssets?.logoDataUrl ?? null,
+    logoForDarkBackgroundDataUrl: input.logoDataUrl ??
       tenantAssets?.logoForDarkBackgroundDataUrl ??
-      input.logoDataUrl ?? tenantAssets?.logoDataUrl ?? null,
+      tenantAssets?.logoDataUrl ?? null,
     brandColors: input.brandColors?.length ? input.brandColors : tenantAssets?.colors ?? [],
     brandName: input.brandName ?? tenantAssets?.brandName ?? null,
   };

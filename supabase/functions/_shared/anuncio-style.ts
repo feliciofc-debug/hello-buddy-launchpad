@@ -73,8 +73,9 @@ export async function saveTenantAnuncioStyle(
       typeof data.identidade_site === "object"
     ? data.identidade_site
     : {};
-  const { error } = await sb.from("empresa_config").update({
+  const { error } = await sb.from("empresa_config").upsert({
+    user_id: userId,
     identidade_site: { ...identity, preferred_ad_style: style },
-  }).eq("user_id", userId);
+  }, { onConflict: "user_id" });
   if (error) throw new Error(error.message);
 }

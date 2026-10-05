@@ -7,7 +7,10 @@ import {
   logoVariantForBackground,
   pickLogoVariant,
 } from "./logo-variant.ts";
-import { clientLogoPath } from "./client-brand-identity.ts";
+import {
+  clientLogoPath,
+  extractClientNameFromLogoRequest,
+} from "./client-brand-identity.ts";
 
 Deno.test("anúncio e vídeo escolhem a logo correspondente ao fundo", () => {
   const logos = {
@@ -39,6 +42,12 @@ Deno.test("cadastro pelo WhatsApp reconhece as duas versões", () => {
   assertEquals(
     detectLogoVariantRequest("logo para fundo escuro do cliente Loja X"),
     "dark_background",
+  );
+  assertEquals(
+    extractClientNameFromLogoRequest(
+      "essa é a logo para fundo escuro do cliente Loja X",
+    ),
+    "Loja X",
   );
 });
 
