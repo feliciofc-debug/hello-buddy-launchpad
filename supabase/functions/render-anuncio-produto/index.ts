@@ -42,6 +42,7 @@ import {
   anuncioSize,
   buildAnuncio,
 } from "../_shared/anuncio-templates/darkGold.ts";
+import { selectAnuncioPhoto } from "../_shared/anuncio-photo.ts";
 import { getTenantLogoDataUrl } from "../_shared/tenant-logo.ts";
 
 const corsHeaders = {
@@ -117,6 +118,23 @@ async function fotoParaDataUrl(fotoUrl?: string, fotoBase64?: string): Promise<s
   }
 }
 
+async function fotoComFallbackParaDataUrl(
+  fotoUrl?: string,
+  fotoBase64?: string,
+  fotoOriginalUrl?: string,
+): Promise<{ dataUrl: string | null; source: "improved" | "original" | "none" }> {
+  if (fotoBase64) {
+    const embedded = await fotoParaDataUrl(undefined, fotoBase64);
+    if (embedded) return { dataUrl: embedded, source: "improved" };
+  }
+  const selected = await selectAnuncioPhoto({
+    preferred: fotoUrl,
+    original: fotoOriginalUrl,
+    load: (url) => fotoParaDataUrl(url, undefined),
+  });
+  return { dataUrl: selected.value, source: selected.source };
+}
+
 async function logoPathParaDataUrl(
   supabase: any,
   userId: string,
@@ -189,11 +207,16 @@ Deno.serve(async (req) => {
       }
     }
 
-    const [fotoDataUrl, fonts] = await Promise.all([
-      fotoParaDataUrl(body?.foto_url, body?.foto_base64),
+    const [fotoResult, fonts] = await Promise.all([
+      fotoComFallbackParaDataUrl(
+        body?.foto_url,
+        body?.foto_base64,
+        body?.foto_url_original,
+      ),
       loadFonts(),
       ensureWasm(),
     ]);
+    const fotoDataUrl = fotoResult.dataUrl;
 
     const data: AnuncioData = {
       titulo,
@@ -234,7 +257,9 @@ Deno.serve(async (req) => {
     const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
     if (!pub?.publicUrl) throw new Error("Falha ao gerar URL pública do anúncio");
 
-    console.log(`✅ [render-anuncio-produto] ${formato} ${png.length} bytes — logo=${!!logoDataUrl} foto=${!!fotoDataUrl}`);
+    console.log(
+      `✅ [render-anuncio-produto] ${formato} ${png.length} bytes — logo=${!!logoDataUrl} foto=${!!fotoDataUrl} foto_source=${fotoResult.source}`,
+    );
 
     return new Response(
       JSON.stringify({
@@ -245,6 +270,7 @@ Deno.serve(async (req) => {
         height,
         logo_aplicada: !!logoDataUrl,
         foto_aplicada: !!fotoDataUrl,
+        foto_source: fotoResult.source,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );

@@ -140,11 +140,15 @@ export function rgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-/** Foto do produto + véu escuro pro texto respirar. */
-function fotoBloco(d: AnuncioData, style: Record<string, unknown>, veil: "left" | "bottom"): Node {
+/** Foto do produto com escurecimento restrito às bordas. */
+function fotoBloco(d: AnuncioData, style: Record<string, unknown>): Node {
   const children: Node[] = [];
   if (d.fotoDataUrl) {
-    children.push(img(d.fotoDataUrl, { position: "absolute", top: 0, left: 0, width: "100%", height: "100%" }));
+    children.push(img(d.fotoDataUrl, {
+      width: "100%",
+      height: "100%",
+      flexShrink: 0,
+    }));
   } else {
     children.push(
       el("div", {
@@ -158,18 +162,46 @@ function fotoBloco(d: AnuncioData, style: Record<string, unknown>, veil: "left" 
       }),
     );
   }
+  children.push(el("div", {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: "100%",
+    height: "10%",
+    display: "flex",
+    backgroundImage:
+      "linear-gradient(180deg, rgba(8,9,11,0.48) 0%, rgba(8,9,11,0) 100%)",
+  }));
+  children.push(el("div", {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    width: "100%",
+    height: "14%",
+    display: "flex",
+    backgroundImage:
+      "linear-gradient(0deg, rgba(8,9,11,0.58) 0%, rgba(8,9,11,0) 100%)",
+  }));
+  children.push(el("div", {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: "7%",
+    height: "100%",
+    display: "flex",
+    backgroundImage:
+      "linear-gradient(90deg, rgba(8,9,11,0.42) 0%, rgba(8,9,11,0) 100%)",
+  }));
   children.push(
     el("div", {
       position: "absolute",
       top: 0,
-      left: 0,
-      width: "100%",
+      right: 0,
+      width: "7%",
       height: "100%",
       display: "flex",
       backgroundImage:
-        veil === "left"
-          ? "linear-gradient(90deg, rgba(8,9,11,0.96) 0%, rgba(8,9,11,0.55) 32%, rgba(8,9,11,0.05) 62%, rgba(8,9,11,0.35) 100%)"
-          : "linear-gradient(180deg, rgba(8,9,11,0.25) 0%, rgba(8,9,11,0.05) 40%, rgba(8,9,11,0.92) 88%, rgba(8,9,11,1) 100%)",
+        "linear-gradient(270deg, rgba(8,9,11,0.42) 0%, rgba(8,9,11,0) 100%)",
     }),
   );
   return el("div", { position: "absolute", display: "flex", overflow: "hidden", ...style }, children);
@@ -495,6 +527,57 @@ function rodape(d: AnuncioData, style: Record<string, unknown>, compact: boolean
   return [el("div", { display: "flex", flexWrap: "wrap", gap: 12, ...style }, chips)];
 }
 
+export const ANUNCIO_FOOTER_BOXES = {
+  feed: {
+    logo: { x: 390, y: 902, width: 300, height: 78 },
+    contacts: { x: 58, y: 990, width: 964, height: 48 },
+  },
+  story: {
+    logo: { x: 365, y: 1695, width: 350, height: 115 },
+    contacts: { x: 68, y: 1825, width: 944, height: 54 },
+  },
+} as const;
+
+function footerFaixas(d: AnuncioData, formato: AnuncioFormato): Node {
+  const boxes = ANUNCIO_FOOTER_BOXES[formato];
+  const compact = formato === "feed";
+  return el("div", {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: formato === "feed" ? 1080 : 1080,
+    height: formato === "feed" ? 1080 : 1920,
+    display: "flex",
+  }, [
+    el("div", {
+      position: "absolute",
+      left: boxes.logo.x,
+      top: boxes.logo.y,
+      width: boxes.logo.width,
+      height: boxes.logo.height,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      overflow: "hidden",
+    }, logoBloco(d, {
+      width: "100%",
+      height: "100%",
+      maxWidth: boxes.logo.width,
+      maxHeight: boxes.logo.height,
+    })),
+    el("div", {
+      position: "absolute",
+      left: boxes.contacts.x,
+      top: boxes.contacts.y,
+      width: boxes.contacts.width,
+      height: boxes.contacts.height,
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+    }, rodape(d, { justifyContent: "center" }, compact)),
+  ]);
+}
+
 // ---------------------------------------------------------------- FEED 1:1
 function feed(d: AnuncioData): Node {
   const { width, height } = anuncioSize("feed");
@@ -514,12 +597,12 @@ function feed(d: AnuncioData): Node {
     },
     [
       fotoBloco(d, {
-        top: 225,
+        top: 210,
         left: 48,
         width: width - 96,
-        height: 440,
+        height: 475,
         borderRadius: 28,
-      }, "bottom"),
+      }),
       el("div", {
         position: "absolute",
         top: 0,
@@ -548,9 +631,9 @@ function feed(d: AnuncioData): Node {
       ),
       el("div", {
         position: "absolute",
-        top: 680,
+        top: 705,
         left: 58,
-        width: width - 116,
+        width: 560,
         display: "flex",
         flexWrap: "wrap",
         justifyContent: "space-between",
@@ -558,9 +641,9 @@ function feed(d: AnuncioData): Node {
       }, itemColumns),
       el("div", {
         position: "absolute",
-        left: 58,
-        bottom: 55,
-        width: width - 116,
+        left: 650,
+        top: 705,
+        width: 372,
         display: "flex",
         justifyContent: "space-between",
         alignItems: "flex-end",
@@ -569,17 +652,8 @@ function feed(d: AnuncioData): Node {
           ...precoBloco(d, true),
           ...badgeBloco(d, true),
         ]),
-        el("div", { display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 12 }, [
-          ...rodape(d, {}, true),
-        ]),
       ]),
-      ...logoBloco(d, {
-        position: "absolute",
-        bottom: 48,
-        left: 425,
-        width: 230,
-        height: 78,
-      }),
+      footerFaixas(d, "feed"),
     ],
   );
 }
@@ -603,12 +677,12 @@ function story(d: AnuncioData): Node {
     },
     [
       fotoBloco(d, {
-        top: 330,
+        top: 300,
         left: 54,
         width: width - 108,
-        height: 760,
+        height: 840,
         borderRadius: 34,
-      }, "bottom"),
+      }),
       el("div", {
         position: "absolute",
         top: 0,
@@ -637,7 +711,7 @@ function story(d: AnuncioData): Node {
       ),
       el("div", {
         position: "absolute",
-        top: 1120,
+        top: 1170,
         left: 68,
         width: width - 136,
         display: "flex",
@@ -648,7 +722,7 @@ function story(d: AnuncioData): Node {
       el("div", {
         position: "absolute",
         left: 68,
-        bottom: 185,
+        top: 1470,
         width: width - 136,
         display: "flex",
         justifyContent: "space-between",
@@ -658,15 +732,8 @@ function story(d: AnuncioData): Node {
           ...precoBloco(d, false),
           ...badgeBloco(d, false),
         ]),
-        ...rodape(d, {}, false),
       ]),
-      ...logoBloco(d, {
-        position: "absolute",
-        bottom: 54,
-        left: 390,
-        width: 300,
-        height: 100,
-      }),
+      footerFaixas(d, "story"),
     ],
   );
 }

@@ -312,6 +312,10 @@ import {
   buildAnuncioBrandPlan,
 } from "../_shared/anuncio-client-brand.ts";
 import {
+  amzAnuncioClientButtons,
+  shouldAskAmzAnuncioClient,
+} from "../_shared/anuncio-tenant-brand.ts";
+import {
   canRunClientLogoRegistrationShortcut,
   classifyCreativeMediaRequest,
   clientLogoUploadFollowUp,
@@ -2505,6 +2509,10 @@ type AgentConvState = {
   pending_carousel?: PendingCarouselState | null;
   pending_video_setup?: PendingVideoSetupState | null;
   pending_creative_media_ambiguity?: { original_request: string; created_at: string } | null;
+  pending_anuncio_cliente?: {
+    args: Record<string, unknown>;
+    created_at: string;
+  } | null;
   pending_client_logo?: { logo_path: string; created_at: string } | null;
   pending_client_logo_intent?: { client_name: string; created_at: string } | null;
   pending_brand_generation?: PendingBrandGeneration | null;
@@ -12321,8 +12329,15 @@ async function toolCriarAnuncio(
     instagram?: string;
     formato?: string;
     melhorar_foto?: boolean;
+    _usar_marca_tenant?: boolean;
   },
-  ctx: { userId: string; fromNumber: string; media?: MediaExtract[] },
+  ctx: {
+    userId: string;
+    fromNumber: string;
+    media?: MediaExtract[];
+    convId?: string;
+    agentState?: AgentConvState;
+  },
 ): Promise<string> {
   try {
     if (!isOwner(ctx)) {
@@ -12337,6 +12352,39 @@ async function toolCriarAnuncio(
       return JSON.stringify({
         erro: "titulo_ausente",
         instrucao: "Pergunte em 1 linha qual é o produto (modelo/nome) antes de montar o anúncio.",
+      });
+    }
+
+    if (shouldAskAmzAnuncioClient({
+      tenantId: ctx.userId,
+      amzTenantId: ADMIN_AMZ_USER_ID,
+      clientName: args?.cliente,
+      useTenantBrand: args?._usar_marca_tenant,
+    })) {
+      if (ctx.convId) {
+        const conversation = {
+          id: ctx.convId,
+          userId: ctx.userId,
+          contactNumber: ctx.fromNumber,
+        };
+        const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+        const pending = {
+          args: { ...args },
+          created_at: new Date().toISOString(),
+        };
+        await saveAgentState(
+          sb,
+          conversation,
+          { pending_anuncio_cliente: pending },
+          current,
+        );
+        current.pending_anuncio_cliente = pending;
+        ctx.agentState = current;
+      }
+      return JSON.stringify({
+        erro: "cliente_loja_necessario",
+        mensagem: "Para qual loja é esse anúncio? Me mande o nome e o site da loja.",
+        interactive_buttons: amzAnuncioClientButtons(),
       });
     }
 
@@ -12413,6 +12461,7 @@ async function toolCriarAnuncio(
 
     // 3) IA melhora SÓ a foto (nada de texto na imagem)
     let fotoFinal = fotoUrl;
+    let fotoSource: "improved" | "original" = "original";
     if (args?.melhorar_foto !== false) {
       try {
         const raw = await toolEditarImagem(
@@ -12420,12 +12469,20 @@ async function toolCriarAnuncio(
           { userId: ctx.userId, fromNumber: ctx.fromNumber, media: ctx.media, textos: [], modo: "anuncio", preservarAmbiente: false, registrarNaBiblioteca: false },
         );
         const parsed = JSON.parse(raw);
-        if (parsed?.image_url) fotoFinal = parsed.image_url;
-        else console.warn("[criar_anuncio] melhoria da foto falhou:", parsed?.erro);
+        if (parsed?.image_url) {
+          fotoFinal = parsed.image_url;
+          fotoSource = "improved";
+          console.log("[criar_anuncio] melhoria da foto concluída; usando foto melhorada");
+        } else {
+          console.warn("[criar_anuncio] melhoria da foto falhou; usando original:", parsed?.erro);
+        }
       } catch (e) {
-        console.warn("[criar_anuncio] melhoria da foto exceção:", (e as Error).message);
+        console.warn("[criar_anuncio] melhoria da foto lançou exceção; usando original:", (e as Error).message);
       }
+    } else {
+      console.log("[criar_anuncio] melhoria desativada; usando foto original");
     }
+    console.log(`[criar_anuncio] foto selecionada=${fotoSource}`);
 
     // 4) Identidade do tenant (nome do negócio / @ / telefone)
     let businessName: string | null = anuncioIdentity.businessName;
@@ -12478,6 +12535,8 @@ async function toolCriarAnuncio(
       primary_color: anuncioIdentity.colors[1] || anuncioIdentity.colors[0] || undefined,
       accent_color: anuncioIdentity.colors[0] || undefined,
       foto_url: fotoFinal,
+      foto_url_original: fotoUrl,
+      foto_source: fotoSource,
       formato,
       incluir_logo: true,
     }, 120000);
@@ -12485,6 +12544,9 @@ async function toolCriarAnuncio(
     if (!render?.success || !render?.image_url) {
       return JSON.stringify({ erro: "falha_no_render", detalhe: String(render?.error || "erro desconhecido").slice(0, 200) });
     }
+    console.log(
+      `[criar_anuncio] render concluído foto_source=${String(render.foto_source || fotoSource)}`,
+    );
 
     // 6) Salva na biblioteca /midias pra poder publicar depois
     let midiaId: string | null = null;
@@ -12868,7 +12930,11 @@ async function runTool(
   if (name === "criar_anuncio") {
     const r = await toolCriarAnuncio(args ?? {}, ctx);
     let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}
-    return { result: r, imageUrl: parsed?.image_url };
+    return {
+      result: r,
+      imageUrl: parsed?.image_url,
+      interactiveButtons: parsed?.interactive_buttons,
+    };
   }
 
   if (name === "encaminhar_recado_ao_dono") return { result: await toolEncaminharRecadoAoDono(args ?? {}, ctx) };
@@ -12954,6 +13020,9 @@ async function callGemini(
     const prospectAmz = !remetenteEhDono && toolCtx.userId === ADMIN_AMZ_USER_ID;
     const pendingCarousel = remetenteEhDono || prospectAmz ? toolCtx.agentState?.pending_carousel : null;
     const pendingVideoSetup = remetenteEhDono ? toolCtx.agentState?.pending_video_setup : null;
+    const pendingAnuncioCliente = remetenteEhDono
+      ? toolCtx.agentState?.pending_anuncio_cliente
+      : null;
     const pendingCreativeMediaAmbiguity = remetenteEhDono
       ? toolCtx.agentState?.pending_creative_media_ambiguity
       : null;
@@ -13007,6 +13076,88 @@ async function callGemini(
     }
     if (remetenteEhDono && isVideoMotionRedoRequest(userContent)) {
       return { text: await refazerVideoMotion(toolCtx, userContent) };
+    }
+    if (pendingAnuncioCliente) {
+      const interactiveId = userContent.match(
+        /<<INTERACTIVE_ID:(anuncio_use_amz)>>/i,
+      )?.[1]?.toLowerCase();
+      const age = Date.now() -
+        new Date(pendingAnuncioCliente.created_at).getTime();
+      if (!Number.isFinite(age) || age > 2 * 60 * 60 * 1000) {
+        if (toolCtx.convId) {
+          await saveAgentState(
+            sb,
+            {
+              id: toolCtx.convId,
+              userId: toolCtx.userId,
+              contactNumber: toolCtx.fromNumber,
+            },
+            { pending_anuncio_cliente: null },
+            toolCtx.agentState ?? {},
+          );
+        }
+        return {
+          text: "Esse pedido de anúncio expirou. Envie a foto e os dados novamente.",
+        };
+      }
+      const site = extractPublicSiteUrl(userContent);
+      if (interactiveId || site) {
+        const clientName = site
+          ? compactSpaces(
+            userContent
+              .replace(/<<INTERACTIVE_ID:[^>]+>>/gi, "")
+              .replace(
+                /https?:\/\/[^\s<>"']+|(?:www\.)?[a-z0-9][a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s<>"']*)?/i,
+                " ",
+              )
+              .replace(/\b(?:site|loja|cliente|é|e|da|do|para|pra)\b/gi, " "),
+          ).replace(/^[\s:,-]+|[\s:,-]+$/g, "").slice(0, 100)
+          : "";
+        if (site && clientName.length < 2) {
+          return {
+            text: "Me diga também o nome da loja junto com o site.",
+            interactiveButtons: amzAnuncioClientButtons(),
+          };
+        }
+        if (toolCtx.convId) {
+          await saveAgentState(
+            sb,
+            {
+              id: toolCtx.convId,
+              userId: toolCtx.userId,
+              contactNumber: toolCtx.fromNumber,
+            },
+            { pending_anuncio_cliente: null },
+            toolCtx.agentState ?? {},
+          );
+          if (toolCtx.agentState) toolCtx.agentState.pending_anuncio_cliente = null;
+        }
+        const mergedArgs = {
+          ...pendingAnuncioCliente.args,
+          ...(interactiveId
+            ? { _usar_marca_tenant: true }
+            : { cliente: clientName, site }),
+        };
+        const result = await toolCriarAnuncio(mergedArgs as any, {
+          ...toolCtx,
+          media: [],
+        });
+        let parsed: any = {};
+        try {
+          parsed = JSON.parse(result);
+        } catch {
+          return { text: result };
+        }
+        return {
+          text: String(
+            parsed?.instrucao || parsed?.mensagem ||
+              (parsed?.ok
+                ? "Anúncio pronto. Confira a arte antes de publicar."
+                : "Não consegui concluir o anúncio."),
+          ),
+          imageUrl: parsed?.image_url,
+        };
+      }
     }
     if (pendingVideoSetup) {
       const videoInteractiveId = extractVideoInteractiveId(userContent);
