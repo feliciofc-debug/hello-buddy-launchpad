@@ -514,10 +514,10 @@ function feed(d: AnuncioData): Node {
     },
     [
       fotoBloco(d, {
-        top: 245,
+        top: 225,
         left: 48,
         width: width - 96,
-        height: 470,
+        height: 440,
         borderRadius: 28,
       }, "bottom"),
       el("div", {
@@ -548,7 +548,7 @@ function feed(d: AnuncioData): Node {
       ),
       el("div", {
         position: "absolute",
-        top: 730,
+        top: 680,
         left: 58,
         width: width - 116,
         display: "flex",
