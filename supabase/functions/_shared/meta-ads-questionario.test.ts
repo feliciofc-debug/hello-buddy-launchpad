@@ -7,8 +7,10 @@ import {
   filtrarInteressesValidados,
   isMetaAdsQuestionarioAmbiguousRequest,
   isMetaAdsQuestionarioCancel,
+  isMetaAdsLimitChangeRequest,
   isMetaAdsQuestionarioResume,
   isMetaAdsQuestionarioTrigger,
+  metaAdsLimitProposalButtons,
   metaAdsQuestionarioAmbiguityButtons,
   metaAdsQuestionarioBudget,
   metaAdsQuestionarioContinuarButtons,
@@ -17,8 +19,10 @@ import {
   questionarioAtivo,
   questionarioButtons,
   questionarioList,
+  resolveMetaAdsLimitAction,
   resolveMetaAdsQuestionarioAmbiguity,
   respostaPertenceAoQuestionario,
+  validarNovoLimiteMensalAnuncios,
 } from "./meta-ads-questionario.ts";
 
 Deno.test("questionário avança por respostas próprias e permite cancelar", () => {
@@ -206,4 +210,55 @@ Deno.test("Arte de anúncio volta ao Jarvis com o pedido original", () => {
     ),
     true,
   );
+});
+
+Deno.test("limite mensal aceita somente valores de R$ 50 a R$ 10.000", () => {
+  assert(isMetaAdsLimitChangeRequest(
+    "quero aumentar meu limite mensal de anúncios para 300",
+  ));
+  assertEquals(validarNovoLimiteMensalAnuncios(49.99), null);
+  assertEquals(validarNovoLimiteMensalAnuncios(50), 50);
+  assertEquals(validarNovoLimiteMensalAnuncios("R$ 300,00"), 300);
+  assertEquals(validarNovoLimiteMensalAnuncios(10_000), 10_000);
+  assertEquals(validarNovoLimiteMensalAnuncios(10_000.01), null);
+});
+
+Deno.test("alteração de limite exige dono e botão vinculado à proposta", () => {
+  const proposal = {
+    token: "abc123",
+    limite_atual: 200,
+    novo_limite: 300,
+    gasto_mes: 80,
+    criado_em: "2026-10-05T12:00:00.000Z",
+  };
+  const confirmation =
+    "Confirmar\n<<INTERACTIVE_ID:meta_ads_limit:confirm:abc123>>";
+  assertEquals(resolveMetaAdsLimitAction({
+    text: confirmation,
+    pending: proposal,
+    isOwner: false,
+    now: new Date("2026-10-05T12:01:00.000Z"),
+  }), null);
+  assertEquals(resolveMetaAdsLimitAction({
+    text: "Confirmar",
+    pending: proposal,
+    isOwner: true,
+    now: new Date("2026-10-05T12:01:00.000Z"),
+  }), null);
+  assertEquals(resolveMetaAdsLimitAction({
+    text:
+      "Confirmar\n<<INTERACTIVE_ID:meta_ads_limit:confirm:outra-proposta>>",
+    pending: proposal,
+    isOwner: true,
+    now: new Date("2026-10-05T12:01:00.000Z"),
+  }), null);
+  assertEquals(resolveMetaAdsLimitAction({
+    text: confirmation,
+    pending: proposal,
+    isOwner: true,
+    now: new Date("2026-10-05T12:01:00.000Z"),
+  }), { action: "confirm", proposal });
+  assertEquals(metaAdsLimitProposalButtons(proposal.token).buttons.map((
+    button,
+  ) => button.title), ["Confirmar", "Cancelar"]);
 });

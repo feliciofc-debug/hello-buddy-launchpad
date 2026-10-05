@@ -10,6 +10,7 @@ import {
 const ADMIN_AMZ_USER_ID = "tenant-amz";
 const META_ADS_OWNER_TOOLS = [
   "relatorio_anuncios_meta",
+  "alterar_limite_mensal_anuncios",
   "rascunho_anuncio_meta",
   "publicar_anuncio_meta",
   "pausar_campanha_meta",

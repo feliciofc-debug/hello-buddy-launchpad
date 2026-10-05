@@ -163,7 +163,9 @@ import {
   isMetaAdsQuestionarioCancel,
   isMetaAdsQuestionarioResume,
   isMetaAdsQuestionarioTrigger,
+  isMetaAdsLimitChangeRequest,
   metaAdsDraftDoQuestionario,
+  metaAdsLimitProposalButtons,
   metaAdsQuestionarioAmbiguityButtons,
   metaAdsQuestionarioBudget,
   metaAdsQuestionarioContinuarButtons,
@@ -174,11 +176,14 @@ import {
   questionarioAtivo,
   questionarioButtons,
   questionarioList,
+  resolveMetaAdsLimitAction,
   resolveMetaAdsQuestionarioAmbiguity,
   respostaPertenceAoQuestionario,
   type MetaAdsQuestionario,
   type MetaAdsQuestionarioAmbiguidade,
+  type MetaAdsLimitProposal,
   type MetaAdsQuestionarioMidia,
+  validarNovoLimiteMensalAnuncios,
 } from "../_shared/meta-ads-questionario.ts";
 import { dedupeConsecutiveReplyText } from "../_shared/reply-dedupe.ts";
 import {
@@ -2488,6 +2493,7 @@ type AgentConvState = {
   pending_client_logo_intent?: { client_name: string; created_at: string } | null;
   pending_brand_generation?: PendingBrandGeneration | null;
   pending_meta_ads_ambiguity?: MetaAdsQuestionarioAmbiguidade | null;
+  pending_meta_ads_limit?: MetaAdsLimitProposal | null;
   brand_image_preference?: WhatsAppBrandPreference | null;
   [k: string]: unknown;
 };
@@ -3316,6 +3322,7 @@ type MetaAdsToolContext = {
   userId: string;
   fromNumber: string;
   convId?: string;
+  agentState?: AgentConvState;
 };
 
 type MetaAdsIntegrationRow = {
@@ -3465,6 +3472,85 @@ async function loadMetaAdsMonthlyAvailability(
 
 function metaAdsSafeError(error: unknown): string {
   return publicMetaAdsError(error).message;
+}
+
+async function toolProporLimiteMensalMetaAds(
+  value: unknown,
+  ctx: MetaAdsToolContext,
+): Promise<{
+  result: string;
+  interactiveButtons?: WhatsAppInteractiveButtons;
+}> {
+  if (!isOwner(ctx)) {
+    return { result: "Essa ferramenta é restrita ao responsável da conta." };
+  }
+  const novoLimite = validarNovoLimiteMensalAnuncios(value);
+  if (novoLimite === null) {
+    return {
+      result:
+        "O limite mensal de anúncios deve ficar entre R$ 50,00 e R$ 10.000,00. Nenhuma alteração foi feita.",
+    };
+  }
+  if (!ctx.convId) {
+    return {
+      result:
+        "Não consegui vincular a confirmação a esta conversa. Nenhuma alteração foi feita.",
+    };
+  }
+  const integration = await loadMetaAdsIntegration(ctx.userId);
+  const integrationProblem = metaAdsIntegrationProblem(integration);
+  if (integrationProblem || !integration) {
+    return { result: integrationProblem! };
+  }
+  let availability: Awaited<
+    ReturnType<typeof loadMetaAdsMonthlyAvailability>
+  >;
+  try {
+    availability = await loadMetaAdsMonthlyAvailability(
+      integration,
+      ctx.userId,
+    );
+  } catch (error) {
+    return { result: metaAdsSafeError(error) };
+  }
+  const proposal: MetaAdsLimitProposal = {
+    token: crypto.randomUUID().replace(/-/g, "").slice(0, 12),
+    limite_atual: Number(integration.limite_mensal_anuncios ?? 200),
+    novo_limite: novoLimite,
+    gasto_mes: availability.spent,
+    criado_em: new Date().toISOString(),
+  };
+  const conversation: ConversationStateIdentity = {
+    id: ctx.convId,
+    userId: ctx.userId,
+    contactNumber: ctx.fromNumber,
+  };
+  const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+  const saved = await saveAgentState(
+    sb,
+    conversation,
+    { pending_meta_ads_limit: proposal },
+    current,
+  );
+  if (!saved) {
+    return {
+      result:
+        "Não consegui guardar a proposta com segurança. Nenhuma alteração foi feita.",
+    };
+  }
+  if (ctx.agentState) ctx.agentState.pending_meta_ads_limit = proposal;
+  const mensagem = [
+    "Proposta de alteração do limite mensal de anúncios:",
+    `Limite atual: ${metaAdsBrl(proposal.limite_atual)}`,
+    `Gasto neste mês: ${metaAdsBrl(proposal.gasto_mes)}`,
+    `Novo limite: ${metaAdsBrl(proposal.novo_limite)}`,
+    "",
+    "O limite só será alterado após sua confirmação.",
+  ].join("\n");
+  return {
+    result: JSON.stringify({ ok: true, mensagem }),
+    interactiveButtons: metaAdsLimitProposalButtons(proposal.token),
+  };
 }
 
 async function findLatestMetaAdsDraft(
@@ -3764,6 +3850,76 @@ type MetaAdsQuestionarioProcessorResult = {
   offerResume?: boolean;
   ambiguityOriginal?: string;
 };
+
+async function applyMetaAdsLimitAction(input: {
+  action: "confirm" | "cancel";
+  proposal: MetaAdsLimitProposal;
+  ctx: MetaAdsToolContext;
+  conversation: ConversationStateIdentity;
+  agentState: AgentConvState;
+}): Promise<MetaAdsQuestionarioProcessorResult> {
+  const clearPending = async () => {
+    input.agentState.pending_meta_ads_limit = null;
+    await saveAgentState(
+      sb,
+      input.conversation,
+      { pending_meta_ads_limit: null },
+      input.agentState,
+    );
+  };
+  if (!isOwner(input.ctx)) {
+    return {
+      handled: true,
+      text: "Essa alteração é restrita ao responsável da conta.",
+    };
+  }
+  if (input.action === "cancel") {
+    await clearPending();
+    return {
+      handled: true,
+      text: "Alteração cancelada. O limite mensal não foi modificado.",
+    };
+  }
+  const integration = await loadMetaAdsIntegration(input.ctx.userId);
+  const integrationProblem = metaAdsIntegrationProblem(integration);
+  if (integrationProblem || !integration) {
+    return { handled: true, text: integrationProblem! };
+  }
+  const { data, error } = await sb.from("integrations")
+    .update({
+      limite_mensal_anuncios: input.proposal.novo_limite,
+    })
+    .eq("user_id", input.ctx.userId)
+    .eq("platform", "meta_ads")
+    .eq("is_active", true)
+    .select("id")
+    .maybeSingle();
+  if (error || !data) {
+    return {
+      handled: true,
+      text: "Não consegui alterar o limite mensal. Tente confirmar novamente.",
+    };
+  }
+  await clearPending();
+
+  const { data: draftRows } = await sb.from("meta_ads_campanhas")
+    .select("id,status,rascunho,criado_em")
+    .eq("user_id", input.ctx.userId)
+    .eq("status", "rascunho")
+    .order("criado_em", { ascending: false })
+    .limit(20);
+  const hasActiveQuestionnaire = Boolean(questionarioAtivo(draftRows ?? []));
+  return {
+    handled: true,
+    text: [
+      `Limite mensal de anúncios alterado para ${metaAdsBrl(input.proposal.novo_limite)}.`,
+      "Confira também o limite de gastos da conta no Faturamento da Meta, que é aplicado pela própria Meta.",
+    ].join("\n\n"),
+    interactiveButtons: hasActiveQuestionnaire
+      ? metaAdsQuestionarioContinuarButtons()
+      : undefined,
+  };
+}
 
 function metaAdsQuestionarioOption(text: string): string {
   const id = metaAdsQuestionarioInteractiveId(text);
@@ -4128,6 +4284,9 @@ async function processMetaAdsQuestionario(input: {
     await sb.from("meta_ads_campanhas").delete().eq("id", row.id)
       .eq("user_id", input.userId).eq("status", "rascunho");
     return { handled: true, text: "Campanha cancelada. Nada foi publicado." };
+  }
+  if (isMetaAdsLimitChangeRequest(input.text)) {
+    return { handled: false };
   }
   if (!integration || integrationProblem) {
     return { handled: true, text: integrationProblem! };
@@ -10601,6 +10760,25 @@ const TOOLS = [
   {
     type: "function",
     function: {
+      name: "alterar_limite_mensal_anuncios",
+      description: "[SOMENTE DONO] Propõe alterar a trava mensal de gasto em Meta Ads da plataforma. Mostra limite atual, gasto do mês e novo valor. NUNCA altera sem o dono tocar no botão Confirmar vinculado à proposta.",
+      parameters: {
+        type: "object",
+        properties: {
+          novo_limite: {
+            type: "number",
+            minimum: 50,
+            maximum: 10000,
+            description: "Novo limite mensal em reais, entre 50 e 10000.",
+          },
+        },
+        required: ["novo_limite"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "rascunho_anuncio_meta",
       description: "[SOMENTE DONO] Salva no banco um rascunho de campanha Meta Ads e mostra orçamento, gasto do mês, teto mensal e gasto máximo. Esta chamada NUNCA publica. Use também para aplicar mudanças pedidas a um rascunho.",
       parameters: {
@@ -12387,6 +12565,9 @@ async function runTool(
   if (name === "consultar_noticias") return { result: await toolConsultarNoticias(args?.tema ?? "") };
   if (name === "rastrear_correios") return { result: await toolRastrearCorreios(args?.codigo ?? "") };
   if (name === "calcular_rota") return { result: await toolCalcularRota(args?.origem ?? "", args?.destino ?? "", ctx) };
+  if (name === "alterar_limite_mensal_anuncios") {
+    return await toolProporLimiteMensalMetaAds(args?.novo_limite, ctx);
+  }
   if (name === "relatorio_anuncios_meta") {
     return {
       result: await toolRelatorioAnunciosMeta(args?.periodo, ctx),
@@ -16884,37 +17065,56 @@ Regras:
       handled: false,
     };
     try {
-      const ambiguityChoice = resolveMetaAdsQuestionarioAmbiguity({
+      const limitAction = resolveMetaAdsLimitAction({
         text: userText,
-        pending: agentState.pending_meta_ads_ambiguity,
+        pending: agentState.pending_meta_ads_limit,
+        isOwner: fromIsOwner,
       });
-      if (ambiguityChoice) {
-        agentState.pending_meta_ads_ambiguity = null;
-        await saveAgentState(
-          sb,
-          convStateIdentity,
-          { pending_meta_ads_ambiguity: null },
+      if (limitAction) {
+        metaAdsQuestionarioResult = await applyMetaAdsLimitAction({
+          ...limitAction,
+          ctx: {
+            userId,
+            fromNumber: row.from_number,
+            convId: conv.id,
+            agentState,
+          },
+          conversation: convStateIdentity,
           agentState,
-        );
-        if (ambiguityChoice.destino === "jarvis") {
-          metaAdsJarvisOriginalText = ambiguityChoice.textoOriginal;
+        });
+      } else {
+        const ambiguityChoice = resolveMetaAdsQuestionarioAmbiguity({
+          text: userText,
+          pending: agentState.pending_meta_ads_ambiguity,
+        });
+        if (ambiguityChoice) {
+          agentState.pending_meta_ads_ambiguity = null;
+          await saveAgentState(
+            sb,
+            convStateIdentity,
+            { pending_meta_ads_ambiguity: null },
+            agentState,
+          );
+          if (ambiguityChoice.destino === "jarvis") {
+            metaAdsJarvisOriginalText = ambiguityChoice.textoOriginal;
+          } else {
+            metaAdsQuestionarioResult = await processMetaAdsQuestionario({
+              userId,
+              fromNumber: row.from_number,
+              conversationId: conv.id,
+              text: userText,
+              owner: fromIsOwner,
+            });
+          }
         } else {
           metaAdsQuestionarioResult = await processMetaAdsQuestionario({
             userId,
             fromNumber: row.from_number,
             conversationId: conv.id,
-            text: userText,
+            text: audioTranscript || userText,
             owner: fromIsOwner,
           });
         }
-      } else {
-        metaAdsQuestionarioResult = await processMetaAdsQuestionario({
-          userId,
-          fromNumber: row.from_number,
-          conversationId: conv.id,
-          text: audioTranscript || userText,
-          owner: fromIsOwner,
-        });
       }
       if (metaAdsQuestionarioResult.ambiguityOriginal) {
         const pending = {

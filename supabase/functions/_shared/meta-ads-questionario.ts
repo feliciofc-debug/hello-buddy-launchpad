@@ -83,6 +83,22 @@ export type MetaAdsQuestionarioAmbiguidadeEscolha = {
 } | null;
 
 export const META_ADS_AMBIGUIDADE_TTL_MS = 15 * 60 * 1000;
+export const META_ADS_LIMIT_PROPOSAL_TTL_MS = 15 * 60 * 1000;
+export const META_ADS_LIMIT_MIN = 50;
+export const META_ADS_LIMIT_MAX = 10_000;
+
+export type MetaAdsLimitProposal = {
+  token: string;
+  limite_atual: number;
+  novo_limite: number;
+  gasto_mes: number;
+  criado_em: string;
+};
+
+export type MetaAdsLimitAction = {
+  action: "confirm" | "cancel";
+  proposal: MetaAdsLimitProposal;
+} | null;
 
 function normalizar(value: unknown): string {
   return String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -181,6 +197,65 @@ export function resolveMetaAdsQuestionarioAmbiguity(input: {
     id === `${META_ADS_QUESTIONARIO_PREFIX}ambiguidade:outra`
   ) {
     return { destino: "jarvis", textoOriginal: input.pending.texto_original };
+  }
+  return null;
+}
+
+export function validarNovoLimiteMensalAnuncios(
+  value: unknown,
+): number | null {
+  const parsed = typeof value === "string"
+    ? Number(value.replace(/[^\d,.-]/g, "").replace(",", "."))
+    : Number(value);
+  if (
+    !Number.isFinite(parsed) || parsed < META_ADS_LIMIT_MIN ||
+    parsed > META_ADS_LIMIT_MAX
+  ) return null;
+  return Math.round(parsed * 100) / 100;
+}
+
+export function isMetaAdsLimitChangeRequest(text: unknown): boolean {
+  const value = normalizar(text)
+    .replace(/<<interactive_id:[^>]+>>/g, "").trim();
+  return /\b(?:aumentar|aumenta|alterar|altera|mudar|muda|ajustar|ajusta|subir|definir|trocar)\b.*\blimite\b/.test(
+    value,
+  ) &&
+    /\b(?:anuncio|anuncios|meta|campanha|mensal)\b/.test(value);
+}
+
+export function metaAdsLimitProposalButtons(
+  token: string,
+): QuestionarioButtons {
+  return questionarioButtons({
+    body: "Confirma a alteração do limite mensal de anúncios?",
+    buttons: [
+      { id: `meta_ads_limit:confirm:${token}`, title: "Confirmar" },
+      { id: `meta_ads_limit:cancel:${token}`, title: "Cancelar" },
+    ],
+  });
+}
+
+export function resolveMetaAdsLimitAction(input: {
+  text: unknown;
+  pending?: MetaAdsLimitProposal | null;
+  isOwner: boolean;
+  now?: Date;
+}): MetaAdsLimitAction {
+  if (!input.isOwner || !input.pending?.token || !input.pending.criado_em) {
+    return null;
+  }
+  const created = Date.parse(input.pending.criado_em);
+  const now = (input.now ?? new Date()).getTime();
+  if (
+    !Number.isFinite(created) || created > now ||
+    now - created > META_ADS_LIMIT_PROPOSAL_TTL_MS
+  ) return null;
+  const id = interactiveId(input.text);
+  if (id === `meta_ads_limit:confirm:${input.pending.token}`) {
+    return { action: "confirm", proposal: input.pending };
+  }
+  if (id === `meta_ads_limit:cancel:${input.pending.token}`) {
+    return { action: "cancel", proposal: input.pending };
   }
   return null;
 }
