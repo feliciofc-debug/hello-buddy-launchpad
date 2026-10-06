@@ -13752,6 +13752,22 @@ async function callGemini(
   const senderIsOwner = isOwner(toolCtx);
   const senderIsAmzProspect = !senderIsOwner
     && toolCtx.userId === ADMIN_AMZ_USER_ID;
+  const multimodalText = Array.isArray(userContent)
+    ? userContent
+      .filter((part: any) => part?.type === "text")
+      .map((part: any) => String(part.text || ""))
+      .join(" ")
+    : "";
+  if (hasMedia && senderIsOwner && /\bfipe\b/i.test(multimodalText)) {
+    const response = await toolConsultarFipe({}, toolCtx);
+    return {
+      text: response.result,
+      interactiveList: response.interactiveList,
+    };
+  }
+  if (hasMedia && senderIsOwner && toolCtx.agentState?.pending_fipe) {
+    await persistFipeState(toolCtx, null);
+  }
   const nowSP = new Date().toLocaleString("pt-BR", {
     timeZone: "America/Sao_Paulo",
     weekday: "long", day: "2-digit", month: "2-digit", year: "numeric",

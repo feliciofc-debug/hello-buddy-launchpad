@@ -9,7 +9,7 @@ export type StoreReply =
 function cleanStoreNameAroundSite(value: string): string {
   let name = value.replace(/\s+/g, " ").trim();
   const looseWords =
-    "(?:o\\s+site\\s+[ée]|o\\s+site|site|loja|cliente|[ée]|e|da|do|de|para|pra)";
+    "(?:o\\s+site\\s+[ée]|o\\s+site|site|cliente|[ée]|e|da|do|de|para|pra)";
   for (let pass = 0; pass < 4; pass++) {
     const previous = name;
     name = name
