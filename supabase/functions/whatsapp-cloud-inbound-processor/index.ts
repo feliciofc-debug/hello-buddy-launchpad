@@ -36,6 +36,25 @@ import {
   sanitizeProspectDemoSlides,
   sendCarouselCardsInOrder,
 } from "../_shared/carousel-content.ts";
+import {
+  addVehicleCarouselPhotos,
+  buildVehicleCarouselSlides,
+  hasVehicleCarouselData,
+  isVehiclePhotoCarouselRequest,
+  parseVehicleCarouselData,
+  validPendingVehicleCarousel,
+  vehicleCarouselCollectionButtons,
+  vehicleCarouselDataButtons,
+  vehicleCarouselDeliveryButtons,
+  vehicleCarouselFormatButtons,
+  vehicleCarouselPhotoButtons,
+  VEHICLE_CAROUSEL_MAX_PHOTOS,
+  VEHICLE_CAROUSEL_MIN_PHOTOS,
+  type PendingVehicleCarousel,
+  type VehicleCarouselData,
+  type VehicleCarouselPhoto,
+  type VehiclePhotoView,
+} from "../_shared/vehicle-carousel.ts";
 
 // ---------------------------------------------------------------------------
 // Multi-tenant owner registry (populado no início de cada processMessage).
@@ -2640,6 +2659,7 @@ type AgentConvState = {
   last_media_interaction?: { media_id: string; at: string };
   pending_image_composition?: { media_ids: string[]; at: string } | null;
   pending_carousel?: PendingCarouselState | null;
+  pending_carrossel_veiculo?: PendingVehicleCarousel | null;
   pending_video_setup?: PendingVideoSetupState | null;
   pending_creative_media_ambiguity?: { original_request: string; created_at: string } | null;
   pending_anuncio_cliente?: {
@@ -6498,22 +6518,34 @@ async function publicarEmRede(
   try {
     const commonHeaders = { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY } as const;
     if (produto.midia_tipo === "carrossel") {
-      if (rede !== "instagram") {
-        return { rede, ok: false, status: 0, resposta: { error: "Carrossel por WhatsApp está disponível apenas no Instagram." } };
-      }
       const imageUrls = Array.isArray(produto.image_urls) ? produto.image_urls.filter(Boolean) : [];
       if (imageUrls.length < 2) {
         return { rede, ok: false, status: 0, resposta: { error: "Não encontrei todos os cards do carrossel aprovado." } };
       }
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-carousel`, {
+      if (rede !== "instagram" && rede !== "facebook") {
+        return { rede, ok: false, status: 0, resposta: { error: "Carrossel disponível apenas no Instagram e Facebook." } };
+      }
+      const endpoint = rede === "instagram"
+        ? "meta-publish-carousel"
+        : "meta-publish-post";
+      const body = rede === "instagram"
+        ? { user_id: userId, image_urls: imageUrls, caption: script }
+        : { user_id: userId, image_urls: imageUrls, message: script };
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/${endpoint}`, {
         method: "POST",
         headers: commonHeaders,
-        body: JSON.stringify({ user_id: userId, image_urls: imageUrls, caption: script }),
+        body: JSON.stringify(body),
       });
       const txt = await res.text();
       let j: any = {};
       try { j = JSON.parse(txt); } catch {}
-      return { rede, ok: res.ok && j?.success !== false && !!(j?.id || j?.post_id), status: res.status, resposta: j };
+      return {
+        rede,
+        ok: res.ok && j?.success !== false &&
+          (rede === "facebook" || !!(j?.id || j?.post_id)),
+        status: res.status,
+        resposta: j,
+      };
     }
 
     const isVideo = produto.midia_tipo === "video";
@@ -12269,6 +12301,450 @@ async function toolRegistrarLeadNovo(
 // ============================================================
 const CARROSSEL_MAX_DIA = 5; // guardrail simples por tenant/dia
 
+async function persistVehicleCarousel(
+  ctx: {
+    userId: string;
+    fromNumber: string;
+    convId?: string;
+    agentState?: AgentConvState;
+  },
+  state: PendingVehicleCarousel | null,
+): Promise<void> {
+  if (!ctx.convId) throw new Error("conversa_sem_id");
+  const conversation = {
+    id: ctx.convId,
+    userId: ctx.userId,
+    contactNumber: ctx.fromNumber,
+  };
+  const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+  const saved = await saveAgentState(sb, conversation, {
+    pending_carrossel_veiculo: state,
+  }, current);
+  if (!saved) throw new Error("estado_carrossel_veiculo_nao_persistido");
+  current.pending_carrossel_veiculo = state;
+  ctx.agentState = current;
+}
+
+function vehicleCarouselDataFromAgentState(
+  state: AgentConvState | undefined,
+): { data: VehicleCarouselData; clientName?: string | null } | null {
+  const last = validLastAnuncio(state?.last_anuncio)
+    ? state!.last_anuncio!
+    : null;
+  const lastFipe = state?.last_fipe;
+  const fipeFresh = lastFipe &&
+    Date.now() - new Date(lastFipe.created_at).getTime() <= 24 * 60 * 60 * 1000;
+  if (last) {
+    const d = last.data;
+    const title = String(d.titulo || "");
+    const fipeMatches = fipeFresh &&
+      normalizePt(title).includes(normalizePt(lastFipe!.queryModel || lastFipe!.model));
+    return {
+      data: {
+        titulo: title || undefined,
+        ano: String(d.ano || "") || undefined,
+        preco: String(d.preco || "") || undefined,
+        fipe: String(
+          d.fipe || d.preco_referencia ||
+            (fipeMatches ? lastFipe!.price : "") || "",
+        ) || undefined,
+        fipe_mes: String(
+          d.preco_referencia_obs ||
+            (fipeMatches ? lastFipe!.referenceMonth : "") || "",
+        ) || undefined,
+        quilometragem: String(d.quilometragem || "") || undefined,
+        cambio: String(d.cambio || "") || undefined,
+        motor: String(d.motor || "") || undefined,
+        documentacao: String(d.documentacao || "") || undefined,
+        condicoes: Array.isArray(d.condicoes)
+          ? d.condicoes.map(String)
+          : undefined,
+        contato: String(d.telefone || "") || undefined,
+        opcionais: [
+          ...(Array.isArray(d.opcionais) ? d.opcionais.map(String) : []),
+          ...(Array.isArray(d.itens) ? d.itens.map(String) : []),
+          ...(Array.isArray(d.ficha) ? d.ficha.map(String) : []),
+        ],
+      },
+      clientName: last.client_name,
+    };
+  }
+  if (fipeFresh) {
+    return {
+      data: {
+        titulo: `${lastFipe!.brand} ${lastFipe!.model}`.trim(),
+        ano: String(lastFipe!.modelYear || "") || undefined,
+        fipe: lastFipe!.price,
+        fipe_mes: lastFipe!.referenceMonth,
+        motor: lastFipe!.fuel,
+      },
+    };
+  }
+  return null;
+}
+
+async function askVehicleCarouselData(
+  state: PendingVehicleCarousel,
+  ctx: {
+    userId: string;
+    fromNumber: string;
+    convId?: string;
+    agentState?: AgentConvState;
+  },
+): Promise<{
+  text: string;
+  interactiveButtons?: WhatsAppInteractiveButtons;
+}> {
+  const suggested = vehicleCarouselDataFromAgentState(ctx.agentState);
+  if (suggested) {
+    const next = {
+      ...state,
+      stage: "data_choice" as const,
+      suggested_data: suggested.data,
+      client_name: suggested.clientName,
+      created_at: new Date().toISOString(),
+    };
+    await persistVehicleCarousel(ctx, next);
+    return {
+      text: "Encontrei dados recentes deste veículo. Quer aproveitar?",
+      interactiveButtons: vehicleCarouselDataButtons(),
+    };
+  }
+  const next = {
+    ...state,
+    stage: "awaiting_data" as const,
+    created_at: new Date().toISOString(),
+  };
+  await persistVehicleCarousel(ctx, next);
+  return {
+    text:
+      "Me mande em uma mensagem os dados que tiver: modelo, ano, km, câmbio, preço, condições e contato. O que não informar não aparece.",
+  };
+}
+
+async function askVehicleCarouselPhotoOrFormat(
+  state: PendingVehicleCarousel,
+  ctx: {
+    userId: string;
+    fromNumber: string;
+    convId?: string;
+    agentState?: AgentConvState;
+  },
+): Promise<{
+  text: string;
+  interactiveButtons?: WhatsAppInteractiveButtons;
+}> {
+  const preference = await getTenantAnuncioPhotoPreference(sb, ctx.userId);
+  if (!preference) {
+    const next = {
+      ...state,
+      stage: "photo_choice" as const,
+      created_at: new Date().toISOString(),
+    };
+    await persistVehicleCarousel(ctx, next);
+    return {
+      text:
+        "Como quer as fotos? Melhorar só muda fundo e luz; o veículo fica igual.",
+      interactiveButtons: vehicleCarouselPhotoButtons(),
+    };
+  }
+  const next = {
+    ...state,
+    stage: "format_choice" as const,
+    photo_preference: preference,
+    created_at: new Date().toISOString(),
+  };
+  await persistVehicleCarousel(ctx, next);
+  return {
+    text: "Qual formato do carrossel?",
+    interactiveButtons: vehicleCarouselFormatButtons(),
+  };
+}
+
+async function analyzeVehicleCarouselPhoto(
+  imageUrl: string,
+): Promise<{
+  view: VehiclePhotoView;
+  box: [number, number, number, number] | null;
+}> {
+  const prompt =
+    'Analise esta foto de veículo. Responda SOMENTE JSON: {"view":"Frente|Lateral|Traseira|3/4|Interior|Painel|Bancos|Porta-malas|Motor|Rodas|Veículo","box_2d":[ymin,xmin,ymax,xmax]}. Use apenas um dos valores de view. A caixa 0–1000 deve conter o veículo ou componente principal inteiro. Não descreva conservação nem opcionais.';
+  try {
+    const response = await fetch(
+      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Lovable-API-Key": LOVABLE_API_KEY,
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3-flash-preview",
+          temperature: 0,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              { type: "image_url", image_url: { url: imageUrl } },
+            ],
+          }],
+        }),
+        signal: AbortSignal.timeout(20_000),
+      },
+    );
+    if (!response.ok) throw new Error(`visao_${response.status}`);
+    const result = await response.json();
+    const raw = String(result?.choices?.[0]?.message?.content || "")
+      .replace(/```(?:json)?|```/gi, "").trim();
+    const parsed = JSON.parse(raw);
+    const allowed: VehiclePhotoView[] = [
+      "Frente",
+      "Lateral",
+      "Traseira",
+      "3/4",
+      "Interior",
+      "Painel",
+      "Bancos",
+      "Porta-malas",
+      "Motor",
+      "Rodas",
+      "Veículo",
+    ];
+    const view = allowed.includes(parsed?.view) ? parsed.view : "Veículo";
+    const box = parseFotoBoxFromVisionResponse(JSON.stringify(parsed));
+    return {
+      view,
+      box: box
+        ? [box.ymin, box.xmin, box.ymax, box.xmax]
+        : null,
+    };
+  } catch (error) {
+    console.warn("[vehicle-carousel][vision]", (error as Error).message);
+    return { view: "Veículo", box: null };
+  }
+}
+
+async function renderVehicleCarousel(
+  state: PendingVehicleCarousel,
+  ctx: {
+    userId: string;
+    fromNumber: string;
+    convId?: string;
+    agentState?: AgentConvState;
+  },
+): Promise<{
+  text: string;
+  interactiveButtons?: WhatsAppInteractiveButtons;
+}> {
+  if (!state.data || state.photos.length < VEHICLE_CAROUSEL_MIN_PHOTOS) {
+    return { text: "Preciso de pelo menos 3 fotos e dos dados do veículo." };
+  }
+  const rendering = {
+    ...state,
+    stage: "rendering" as const,
+    created_at: new Date().toISOString(),
+  };
+  await persistVehicleCarousel(ctx, rendering);
+  const processed: VehicleCarouselPhoto[] = [];
+  for (const photo of state.photos.slice(0, VEHICLE_CAROUSEL_MAX_PHOTOS)) {
+    let url = photo.url;
+    if (state.photo_preference === "melhorada") {
+      try {
+        const edited = JSON.parse(await toolEditarImagem(
+          productAdPhotoImprovementPrompt(state.data.titulo || "veículo"),
+          {
+            userId: ctx.userId,
+            fromNumber: ctx.fromNumber,
+            media: [],
+            textos: [],
+            modo: "anuncio",
+            preservarAmbiente: false,
+            registrarNaBiblioteca: false,
+            imageInputUrl: photo.url,
+          },
+        ));
+        if (edited?.image_url) url = edited.image_url;
+      } catch (error) {
+        console.warn(
+          "[vehicle-carousel][photo-improvement]",
+          (error as Error).message,
+        );
+      }
+    }
+    const analysis = await analyzeVehicleCarouselPhoto(url);
+    processed.push({ ...photo, url, ...analysis });
+  }
+  const slides = buildVehicleCarouselSlides({
+    photos: processed,
+    data: state.data,
+  });
+  const client = state.client_name
+    ? await findClientBrandIdentity(sb, ctx.userId, { name: state.client_name })
+    : null;
+  const logoPath = client ? clientLogoPath(client, "dark", true) : null;
+  const render = await callEdge("render-carousel-slides", {
+    user_id: ctx.userId,
+    slides,
+    template: "vehicle-photo",
+    format: state.format,
+    logo_path: logoPath,
+    incluir_logo: true,
+  }, 240_000);
+  const imageUrls = Array.isArray(render?.image_urls)
+    ? render.image_urls.filter(Boolean)
+    : [];
+  if (imageUrls.length !== slides.length) {
+    throw new Error("não consegui renderizar todas as páginas do carrossel");
+  }
+  const mediaId = await registrarCarrosselNaBiblioteca(
+    ctx,
+    state.data.titulo || "Veículo",
+    imageUrls,
+  );
+  const factualData = {
+    ...state.data,
+    telefone: state.data.contato,
+  };
+  const caption = generateVehicleAdCaptions(factualData).A;
+  await enviarPreviewCarrossel(ctx, imageUrls);
+  const delivered = {
+    ...state,
+    stage: "delivered" as const,
+    photos: processed,
+    media_id: mediaId,
+    image_urls: imageUrls,
+    caption,
+    created_at: new Date().toISOString(),
+  };
+  await persistVehicleCarousel(ctx, delivered);
+  return {
+    text: `Carrossel pronto com ${imageUrls.length} páginas.\n\n${caption}`,
+    interactiveButtons: vehicleCarouselDeliveryButtons(),
+  };
+}
+
+function vehicleCarouselNetworkButtons(
+  connected: AnuncioPostNetwork[],
+): WhatsAppInteractiveButtons {
+  const base = anuncioPostNetworkButtons(connected);
+  return {
+    ...base,
+    buttons: base.buttons.map((button) => ({
+      ...button,
+      id: button.id.replace(
+        "anuncio_post:networks:",
+        "vehicle_carousel:networks:",
+      ),
+    })),
+  };
+}
+
+async function prepareVehicleCarouselSocial(
+  state: PendingVehicleCarousel,
+  networks: AnuncioPostNetwork[],
+  ctx: {
+    userId: string;
+    fromNumber: string;
+    convId?: string;
+    agentState?: AgentConvState;
+  },
+): Promise<string> {
+  if (
+    !state.media_id || !state.image_urls?.length || !state.data ||
+    !state.caption
+  ) {
+    return JSON.stringify({
+      erro: "carrossel_veiculo_incompleto",
+      mensagem: "Não encontrei o carrossel completo para publicar.",
+    });
+  }
+  const captions = generateVehicleAdCaptions({
+    ...state.data,
+    telefone: state.data.contato,
+  });
+  const variantes = Object.fromEntries(
+    networks.map((network) => [network, { ...captions }]),
+  ) as Record<string, PostVariantes>;
+  const scripts = Object.fromEntries(
+    networks.map((network) => [network, captions.A]),
+  );
+  const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+  const pending: PendingSocialPost = {
+    produto: {
+      id: state.media_id,
+      source: "carrossel_whatsapp",
+      nome: `Carrossel: ${state.data.titulo || "Veículo"}`,
+      descricao: JSON.stringify(state.data),
+      imagem_url: state.image_urls[0],
+      image_urls: state.image_urls,
+      midia_tipo: "carrossel",
+    },
+    tom: "beneficio",
+    redes: networks,
+    scripts,
+    variantes,
+    userId: ctx.userId,
+    requesterPhone: ctx.fromNumber,
+    createdAt: Date.now(),
+    formato: "feed",
+    midiaTipo: "carrossel",
+    briefing: JSON.stringify(state.data).slice(0, 1200),
+  };
+  const queueRows = await persistPendingSocialPost(token, pending);
+  PENDING_POSTS.set(token, { ...pending, queueRows });
+  if (!ctx.convId) throw new Error("conversa_sem_id");
+  const conversation = {
+    id: ctx.convId,
+    userId: ctx.userId,
+    contactNumber: ctx.fromNumber,
+  };
+  const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+  const vehicleState = {
+    ...state,
+    stage: "caption_choice" as const,
+    token,
+    created_at: new Date().toISOString(),
+  };
+  const carouselState: PendingCarouselState = {
+    stage: "awaiting_confirmation",
+    tema: state.data.titulo || "Veículo",
+    caption: state.caption,
+    media_id: state.media_id,
+    image_urls: state.image_urls,
+    token,
+    facebook_requested: networks.includes("facebook"),
+    created_at: new Date().toISOString(),
+  };
+  const saved = await saveAgentState(sb, conversation, {
+    pending_carrossel_veiculo: vehicleState,
+    pending_carousel: carouselState,
+  }, current);
+  if (!saved) {
+    PENDING_POSTS.delete(token);
+    await sb.from("social_posts_queue").update({
+      status: "cancelado",
+      error_message: "estado_carrossel_veiculo_nao_persistido",
+      updated_at: new Date().toISOString(),
+    }).in("id", queueRows.map((row) => row.id)).eq("user_id", ctx.userId);
+    throw new Error("não consegui salvar a aprovação do carrossel");
+  }
+  current.pending_carrossel_veiculo = vehicleState;
+  current.pending_carousel = carouselState;
+  ctx.agentState = current;
+  return JSON.stringify({
+    status: "aguardando_escolha_variante",
+    fonte: "carrossel_veiculo",
+    carrossel: true,
+    token,
+    cards: state.image_urls.length,
+    media_id: state.media_id,
+    media_code: idCurto(state.media_id),
+    formato: "feed",
+    redes: networks,
+    variantes,
+  });
+}
+
 async function callEdge(fn: string, payload: any, timeoutMs = 120000): Promise<any> {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/${fn}`, {
     method: "POST",
@@ -14286,6 +14762,12 @@ async function callGemini(
     const remetenteEhDono = isOwner(toolCtx);
     const prospectAmz = !remetenteEhDono && toolCtx.userId === ADMIN_AMZ_USER_ID;
     const pendingCarousel = remetenteEhDono || prospectAmz ? toolCtx.agentState?.pending_carousel : null;
+    const pendingVehicleCarousel = remetenteEhDono &&
+        validPendingVehicleCarousel(
+          toolCtx.agentState?.pending_carrossel_veiculo,
+        )
+      ? toolCtx.agentState!.pending_carrossel_veiculo!
+      : null;
     const pendingVideoSetup = remetenteEhDono ? toolCtx.agentState?.pending_video_setup : null;
     const pendingAnuncioCliente = remetenteEhDono
       ? toolCtx.agentState?.pending_anuncio_cliente
@@ -14337,6 +14819,9 @@ async function callGemini(
     const anuncioPhotoInteractiveId = userContent.match(
       /<<INTERACTIVE_ID:(anuncio_photo(?::|_pref:)[^>]+)>>/i,
     )?.[1]?.toLowerCase() || "";
+    const vehicleCarouselInteractiveId = userContent.match(
+      /<<INTERACTIVE_ID:(vehicle_carousel:[^>]+)>>/i,
+    )?.[1]?.toLowerCase() || "";
     const socialActionInteractive = socialInteractiveId.match(/^social_(publish|publish_confirm|schedule):([a-f0-9]{8})$/i);
     const socialVariantInteractive = socialInteractiveId.match(/^social_variant:([ABC]):([a-f0-9]{8})$/i);
     const previousHistoryMessage = history.at(-1);
@@ -14366,6 +14851,283 @@ async function callGemini(
     }
     if (remetenteEhDono && isVideoMotionRedoRequest(userContent)) {
       return { text: await refazerVideoMotion(toolCtx, userContent) };
+    }
+    if (
+      remetenteEhDono &&
+      !pendingVehicleCarousel &&
+      isVehiclePhotoCarouselRequest(userContent)
+    ) {
+      const last = vehicleCarouselDataFromAgentState(toolCtx.agentState);
+      const state: PendingVehicleCarousel = {
+        stage: "collecting",
+        photos: [],
+        format: "portrait",
+        client_name: last?.clientName,
+        created_at: new Date().toISOString(),
+      };
+      await persistVehicleCarousel(toolCtx, state);
+      return {
+        text:
+          "Me manda até 8 fotos do veículo. Quando terminar, toque em Pronto.",
+        interactiveButtons: vehicleCarouselCollectionButtons(),
+      };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel &&
+      vehicleCarouselInteractiveId === "vehicle_carousel:cancel"
+    ) {
+      if (pendingVehicleCarousel.token) {
+        await toolConfirmarPostagemRedes({
+          token: pendingVehicleCarousel.token,
+          cancelar: true,
+        }, toolCtx);
+      }
+      await persistVehicleCarousel(toolCtx, null);
+      return { text: "Carrossel cancelado." };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel?.stage === "collecting" &&
+      vehicleCarouselInteractiveId === "vehicle_carousel:photos:done"
+    ) {
+      if (
+        pendingVehicleCarousel.photos.length < VEHICLE_CAROUSEL_MIN_PHOTOS
+      ) {
+        return {
+          text: `Me mande pelo menos ${VEHICLE_CAROUSEL_MIN_PHOTOS} fotos. Recebi ${pendingVehicleCarousel.photos.length} até agora.`,
+          interactiveButtons: vehicleCarouselCollectionButtons(),
+        };
+      }
+      return await askVehicleCarouselData(pendingVehicleCarousel, toolCtx);
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel?.stage === "data_choice" &&
+      vehicleCarouselInteractiveId === "vehicle_carousel:data:last"
+    ) {
+      const next = {
+        ...pendingVehicleCarousel,
+        data: pendingVehicleCarousel.suggested_data || {},
+        suggested_data: undefined,
+        created_at: new Date().toISOString(),
+      };
+      return await askVehicleCarouselPhotoOrFormat(next, toolCtx);
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel?.stage === "data_choice" &&
+      vehicleCarouselInteractiveId === "vehicle_carousel:data:new"
+    ) {
+      const next = {
+        ...pendingVehicleCarousel,
+        stage: "awaiting_data" as const,
+        suggested_data: undefined,
+        created_at: new Date().toISOString(),
+      };
+      await persistVehicleCarousel(toolCtx, next);
+      return {
+        text:
+          "Me mande em uma mensagem os dados que tiver: modelo, ano, km, câmbio, preço, condições e contato. O que não informar não aparece.",
+      };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel?.stage === "awaiting_data" &&
+      !vehicleCarouselInteractiveId &&
+      hasVehicleCarouselData(userContent)
+    ) {
+      const data = parseVehicleCarouselData(userContent);
+      const next = {
+        ...pendingVehicleCarousel,
+        data,
+        created_at: new Date().toISOString(),
+      };
+      return await askVehicleCarouselPhotoOrFormat(next, toolCtx);
+    }
+    const vehiclePhotoChoice = vehicleCarouselInteractiveId.match(
+      /^vehicle_carousel:photo:(melhorada|original)$/,
+    )?.[1] as AnuncioPhotoPreference | undefined;
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel?.stage === "photo_choice" &&
+      vehiclePhotoChoice
+    ) {
+      await saveTenantAnuncioPhotoPreference(
+        sb,
+        toolCtx.userId,
+        vehiclePhotoChoice,
+      );
+      const next = {
+        ...pendingVehicleCarousel,
+        stage: "format_choice" as const,
+        photo_preference: vehiclePhotoChoice,
+        created_at: new Date().toISOString(),
+      };
+      await persistVehicleCarousel(toolCtx, next);
+      return {
+        text: "Qual formato do carrossel?",
+        interactiveButtons: vehicleCarouselFormatButtons(),
+      };
+    }
+    const vehicleFormat = vehicleCarouselInteractiveId.match(
+      /^vehicle_carousel:format:(portrait|square)$/,
+    )?.[1] as "portrait" | "square" | undefined;
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel?.stage === "format_choice" &&
+      vehicleFormat
+    ) {
+      try {
+        return await renderVehicleCarousel({
+          ...pendingVehicleCarousel,
+          format: vehicleFormat,
+        }, toolCtx);
+      } catch (error) {
+        await persistVehicleCarousel(toolCtx, null);
+        return {
+          text:
+            `Não consegui montar o carrossel: ${(error as Error).message}.`,
+        };
+      }
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel?.stage === "delivered" &&
+      vehicleCarouselInteractiveId === "vehicle_carousel:deliver"
+    ) {
+      if (pendingVehicleCarousel.image_urls?.length) {
+        await enviarPreviewCarrossel(
+          toolCtx,
+          pendingVehicleCarousel.image_urls,
+        );
+      }
+      await persistVehicleCarousel(toolCtx, null);
+      return {
+        text:
+          `Álbum pronto para encaminhar.${pendingVehicleCarousel.caption ? `\n\n${pendingVehicleCarousel.caption}` : ""}`,
+      };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel?.stage === "delivered" &&
+      vehicleCarouselInteractiveId === "vehicle_carousel:save"
+    ) {
+      await persistVehicleCarousel(toolCtx, null);
+      return { text: "Salvei o carrossel na biblioteca. Nada foi publicado." };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel?.stage === "delivered" &&
+      vehicleCarouselInteractiveId === "vehicle_carousel:publish"
+    ) {
+      const connected = await connectedAnuncioNetworks(toolCtx.userId);
+      if (!connected.length) {
+        return { text: "Não encontrei Facebook nem Instagram conectados." };
+      }
+      const next = {
+        ...pendingVehicleCarousel,
+        stage: "network_choice" as const,
+        created_at: new Date().toISOString(),
+      };
+      await persistVehicleCarousel(toolCtx, next);
+      return {
+        text: "Em quais redes?",
+        interactiveButtons: vehicleCarouselNetworkButtons(connected),
+      };
+    }
+    const vehicleNetworks = vehicleCarouselInteractiveId.match(
+      /^vehicle_carousel:networks:(both|instagram|facebook)$/,
+    )?.[1];
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel?.stage === "network_choice" &&
+      vehicleNetworks
+    ) {
+      const connected = await connectedAnuncioNetworks(toolCtx.userId);
+      const requested: AnuncioPostNetwork[] = vehicleNetworks === "both"
+        ? ["facebook", "instagram"]
+        : [vehicleNetworks as AnuncioPostNetwork];
+      const networks = requested.filter((network) =>
+        connected.includes(network)
+      );
+      const raw = await prepareVehicleCarouselSocial(
+        pendingVehicleCarousel,
+        networks,
+        toolCtx,
+      );
+      return {
+        text: formatSocialPostToolResult(raw),
+        interactiveButtons: interactiveButtonsFromSocialResult(raw),
+      };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel?.stage === "caption_choice" &&
+      pendingVehicleCarousel.token &&
+      socialVariantInteractive?.[2]?.toLowerCase() ===
+        pendingVehicleCarousel.token
+    ) {
+      const option = socialVariantInteractive[1].toUpperCase() as
+        | "A"
+        | "B"
+        | "C";
+      const selected = await toolEscolherVariantePost({
+        token: pendingVehicleCarousel.token,
+        opcao: option,
+      }, toolCtx);
+      const parsed = JSON.parse(selected);
+      if (parsed?.status !== "variante_selecionada") {
+        return { text: formatSocialPostToolResult(selected) };
+      }
+      const next = {
+        ...pendingVehicleCarousel,
+        stage: "approval" as const,
+        created_at: new Date().toISOString(),
+      };
+      await persistVehicleCarousel(toolCtx, next);
+      return {
+        text:
+          `Resumo: carrossel de *${pendingVehicleCarousel.data?.titulo || "veículo"}*, ${pendingVehicleCarousel.image_urls?.length || 0} páginas, ${parsed?.preview ? Object.keys(parsed.preview).join(" + ") : "redes selecionadas"}, legenda *Opção ${option}*. Nada foi publicado ainda.`,
+        interactiveButtons: {
+          body: "Revise e confirme:",
+          buttons: [
+            {
+              id:
+                `vehicle_carousel:confirm:${pendingVehicleCarousel.token}`,
+              title: "Publicar",
+            },
+            {
+              id: `vehicle_carousel:cancel:${pendingVehicleCarousel.token}`,
+              title: "Cancelar",
+            },
+          ],
+        },
+      };
+    }
+    const vehiclePublishAction = vehicleCarouselInteractiveId.match(
+      /^vehicle_carousel:(confirm|cancel):([a-f0-9]{8})$/,
+    );
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel?.stage === "approval" &&
+      pendingVehicleCarousel.token &&
+      vehiclePublishAction?.[2] === pendingVehicleCarousel.token
+    ) {
+      const result = await toolConfirmarPostagemRedes({
+        token: pendingVehicleCarousel.token,
+        cancelar: vehiclePublishAction[1] === "cancel",
+      }, toolCtx);
+      await persistVehicleCarousel(toolCtx, null);
+      return { text: formatSocialPostToolResult(result) };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel &&
+      !vehicleCarouselInteractiveId
+    ) {
+      // Texto de outro assunto abandona o fluxo sem insistir.
+      await persistVehicleCarousel(toolCtx, null);
     }
     const anuncioPhotoRedo = anuncioPhotoInteractiveId.match(
       /^anuncio_photo:redo:(melhorada|original)$/,
@@ -18532,6 +19294,123 @@ async function processOne(queueId: string) {
           error: detail,
           notified_sender: notifiedSender,
         };
+      }
+      const pendingVehicleCollection = fromIsOwner &&
+          validPendingVehicleCarousel(
+            freshAgentState.pending_carrossel_veiculo,
+          ) &&
+          freshAgentState.pending_carrossel_veiculo?.stage === "collecting"
+        ? freshAgentState.pending_carrossel_veiculo
+        : null;
+      if (pendingVehicleCollection) {
+        const savedPhotoIds = salvos
+          .filter((item) => item.tipo === "foto")
+          .map((item) => item.id);
+        const { data: incomingRows, error: incomingRowsError } =
+          savedPhotoIds.length
+            ? await sb.from("midias_whatsapp")
+              .select("id, origem")
+              .eq("user_id", userId)
+              .in("id", savedPhotoIds)
+            : { data: [], error: null };
+        if (incomingRowsError) {
+          throw new Error(
+            `falha_ao_validar_fotos_carrossel: ${incomingRowsError.message}`,
+          );
+        }
+        const whatsappPhotoIds = new Set(
+          (incomingRows || [])
+            .filter((item) => item.origem === "whatsapp")
+            .map((item) => item.id),
+        );
+        const incomingPhotos = salvos
+          .filter((item) =>
+            item.tipo === "foto" && whatsappPhotoIds.has(item.id)
+          )
+          .map((item) => ({ id: item.id, url: item.url }));
+        if (incomingPhotos.length > 0) {
+          const added = addVehicleCarouselPhotos(
+            pendingVehicleCollection.photos,
+            incomingPhotos,
+          );
+          const updatedCollection = {
+            ...pendingVehicleCollection,
+            photos: added.photos,
+            created_at: new Date().toISOString(),
+          };
+          await persistVehicleCarousel({
+            userId,
+            fromNumber: row.from_number,
+            convId: conv.id,
+            agentState: freshAgentState,
+          }, updatedCollection);
+          const full = added.photos.length >= VEHICLE_CAROUSEL_MAX_PHOTOS;
+          const next = full
+            ? await askVehicleCarouselData(updatedCollection, {
+              userId,
+              fromNumber: row.from_number,
+              convId: conv.id,
+              agentState: freshAgentState,
+            })
+            : {
+              text:
+                `Recebi ${added.photos.length} de até ${VEHICLE_CAROUSEL_MAX_PHOTOS} fotos.`,
+              interactiveButtons: vehicleCarouselCollectionButtons(),
+            };
+          const warning = added.ignored > 0 ? "Usei as 8 primeiras.\n\n" : "";
+          const reply = `${warning}${next.text}`;
+          const { data: outMsg } = await sb
+            .from("whatsapp_cloud_messages")
+            .insert({
+              conversation_id: conv.id,
+              user_id: userId,
+              direction: "outbound",
+              sender: "agent",
+              content: reply,
+              message_type: next.interactiveButtons ? "interactive" : "text",
+            })
+            .select("id")
+            .single();
+          try {
+            const sentId = await sendWhatsApp(
+              userId,
+              row.from_number,
+              reply,
+              undefined,
+              undefined,
+              next.interactiveButtons,
+            );
+            if (sentId && outMsg?.id) {
+              await sb.from("whatsapp_cloud_messages")
+                .update({ wamid: sentId })
+                .eq("id", outMsg.id);
+            }
+          } catch (error) {
+            const sendError = error instanceof Error
+              ? error.message
+              : String(error);
+            await failQueue(row.id, `send_failed: ${sendError}`);
+            return {
+              ok: false,
+              reason: "send_failed",
+              error: sendError,
+            };
+          }
+          await doneQueue(row.id);
+          return {
+            ok: true,
+            vehicle_carousel_collecting: !full,
+            vehicle_carousel_photos: added.photos.length,
+          };
+        }
+        // Vídeo ou outra mídia não pertence à coleta de fotos. Abandona o
+        // estado para que o pedido atual siga pelo roteamento normal.
+        await persistVehicleCarousel({
+          userId,
+          fromNumber: row.from_number,
+          convId: conv.id,
+          agentState: freshAgentState,
+        }, null);
       }
       if (fromIsOwner) {
         await Promise.all(

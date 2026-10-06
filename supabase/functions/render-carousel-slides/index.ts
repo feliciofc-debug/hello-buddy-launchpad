@@ -27,6 +27,7 @@
 import satori from "https://esm.sh/satori@0.10.13";
 import { initWasm, Resvg } from "https://esm.sh/@resvg/resvg-wasm@2.6.2";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
 import {
   buildDarkPremiumSlide,
   CARD_HEIGHT,
@@ -35,7 +36,21 @@ import {
   type RenderSlide,
 } from "../_shared/carousel-templates/darkPremium.ts";
 import { sanitizeCarouselSlides } from "../_shared/carousel-content.ts";
-import { getTenantLogoDataUrl } from "../_shared/tenant-logo.ts";
+import { buildVehiclePhotoSlide } from "../_shared/carousel-templates/vehiclePhoto.ts";
+import {
+  calculatePhotoFrame,
+  frameContainsObject,
+} from "../_shared/anuncio-photo-framing.ts";
+import {
+  type VehicleCarouselFormat,
+  vehicleCarouselLayout,
+  type VehicleCarouselSlide,
+} from "../_shared/vehicle-carousel.ts";
+import { renderableImageDataUrl } from "../_shared/renderable-image.ts";
+import {
+  getTenantLogoDataUrl,
+  getTenantLogoDataUrlForBackground,
+} from "../_shared/tenant-logo.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -47,15 +62,37 @@ const BUCKET = "carousels";
 const MAX_SLIDES = 10;
 
 const FONT_URLS: Array<{ weight: number; url: string }> = [
-  { weight: 400, url: "https://cdn.jsdelivr.net/npm/@fontsource/inter@4.5.15/files/inter-latin-400-normal.woff" },
-  { weight: 500, url: "https://cdn.jsdelivr.net/npm/@fontsource/inter@4.5.15/files/inter-latin-500-normal.woff" },
-  { weight: 700, url: "https://cdn.jsdelivr.net/npm/@fontsource/inter@4.5.15/files/inter-latin-700-normal.woff" },
-  { weight: 800, url: "https://cdn.jsdelivr.net/npm/@fontsource/inter@4.5.15/files/inter-latin-800-normal.woff" },
-  { weight: 900, url: "https://cdn.jsdelivr.net/npm/@fontsource/inter@4.5.15/files/inter-latin-900-normal.woff" },
+  {
+    weight: 400,
+    url:
+      "https://cdn.jsdelivr.net/npm/@fontsource/inter@4.5.15/files/inter-latin-400-normal.woff",
+  },
+  {
+    weight: 500,
+    url:
+      "https://cdn.jsdelivr.net/npm/@fontsource/inter@4.5.15/files/inter-latin-500-normal.woff",
+  },
+  {
+    weight: 700,
+    url:
+      "https://cdn.jsdelivr.net/npm/@fontsource/inter@4.5.15/files/inter-latin-700-normal.woff",
+  },
+  {
+    weight: 800,
+    url:
+      "https://cdn.jsdelivr.net/npm/@fontsource/inter@4.5.15/files/inter-latin-800-normal.woff",
+  },
+  {
+    weight: 900,
+    url:
+      "https://cdn.jsdelivr.net/npm/@fontsource/inter@4.5.15/files/inter-latin-900-normal.woff",
+  },
 ];
 
 // Caches de módulo: fontes e WASM sobrevivem entre invocações do mesmo isolate.
-let fontsCache: Array<{ name: string; weight: number; style: "normal"; data: ArrayBuffer }> | null = null;
+let fontsCache:
+  | Array<{ name: string; weight: number; style: "normal"; data: ArrayBuffer }>
+  | null = null;
 let wasmReady: Promise<void> | null = null;
 
 async function loadFonts() {
@@ -63,8 +100,15 @@ async function loadFonts() {
   const loaded = await Promise.all(
     FONT_URLS.map(async ({ weight, url }) => {
       const res = await fetch(url);
-      if (!res.ok) throw new Error(`Falha ao baixar fonte ${weight} (${res.status})`);
-      return { name: "Inter", weight, style: "normal" as const, data: await res.arrayBuffer() };
+      if (!res.ok) {
+        throw new Error(`Falha ao baixar fonte ${weight} (${res.status})`);
+      }
+      return {
+        name: "Inter",
+        weight,
+        style: "normal" as const,
+        data: await res.arrayBuffer(),
+      };
     }),
   );
   fontsCache = loaded;
@@ -74,7 +118,9 @@ async function loadFonts() {
 function ensureWasm() {
   if (!wasmReady) {
     wasmReady = initWasm(
-      fetch("https://cdn.jsdelivr.net/npm/@resvg/resvg-wasm@2.6.2/index_bg.wasm"),
+      fetch(
+        "https://cdn.jsdelivr.net/npm/@resvg/resvg-wasm@2.6.2/index_bg.wasm",
+      ),
     ).catch((err) => {
       wasmReady = null;
       throw err;
@@ -86,7 +132,109 @@ function ensureWasm() {
 function normalizeHex(value: unknown, fallback: string): string {
   if (typeof value !== "string") return fallback;
   const v = value.trim();
-  return /^#?[0-9a-fA-F]{6}$/.test(v) ? (v.startsWith("#") ? v : `#${v}`) : fallback;
+  return /^#?[0-9a-fA-F]{6}$/.test(v)
+    ? (v.startsWith("#") ? v : `#${v}`)
+    : fallback;
+}
+
+function dataUrlBytes(dataUrl: string): Uint8Array {
+  const encoded = dataUrl.split(",", 2)[1] || "";
+  return Uint8Array.from(
+    atob(encoded),
+    (character) => character.charCodeAt(0),
+  );
+}
+
+async function imageUrlToDataUrl(url: string): Promise<string> {
+  const response = await fetch(url, { signal: AbortSignal.timeout(25_000) });
+  if (!response.ok) throw new Error(`foto ${response.status}`);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const dataUrl = await renderableImageDataUrl(
+    bytes,
+    "foto do carrossel",
+    (message) => console.warn(`[render-carousel-slides] ${message}`),
+  );
+  if (!dataUrl) throw new Error("foto do carrossel inválida");
+  return dataUrl;
+}
+
+function edgeAverageColor(image: Image): number {
+  const border = Math.max(
+    1,
+    Math.round(Math.min(image.width, image.height) * 0.04),
+  );
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+  let count = 0;
+  for (let y = 0; y < image.height; y++) {
+    for (let x = 0; x < image.width; x++) {
+      if (
+        x >= border && x < image.width - border &&
+        y >= border && y < image.height - border
+      ) continue;
+      const offset = (y * image.width + x) * 4;
+      if (image.bitmap[offset + 3] === 0) continue;
+      red += image.bitmap[offset];
+      green += image.bitmap[offset + 1];
+      blue += image.bitmap[offset + 2];
+      count++;
+    }
+  }
+  return Image.rgbToColor(
+    count ? Math.round(red / count) : 20,
+    count ? Math.round(green / count) : 20,
+    count ? Math.round(blue / count) : 20,
+  );
+}
+
+async function composeVehiclePhoto(
+  slide: VehicleCarouselSlide,
+  format: VehicleCarouselFormat,
+): Promise<string> {
+  const dataUrl = await imageUrlToDataUrl(slide.photo_url);
+  const source = await Image.decode(dataUrlBytes(dataUrl));
+  const layout = vehicleCarouselLayout(format);
+  const plan = calculatePhotoFrame({
+    sourceWidth: source.width,
+    sourceHeight: source.height,
+    targetWidth: layout.width,
+    targetHeight: layout.photoHeight,
+    fotoBox: slide.photo_box,
+  });
+  if (!frameContainsObject(plan, layout.width, layout.photoHeight)) {
+    throw new Error("enquadramento cortaria o veículo");
+  }
+  const canvas = new Image(layout.width, layout.photoHeight);
+  canvas.fill(edgeAverageColor(source));
+  canvas.composite(
+    source.resize(plan.resizedWidth, plan.resizedHeight),
+    plan.x,
+    plan.y,
+  );
+  const png = await canvas.encode();
+  let binary = "";
+  for (let offset = 0; offset < png.length; offset += 8192) {
+    binary += String.fromCharCode(...png.subarray(offset, offset + 8192));
+  }
+  return `data:image/png;base64,${btoa(binary)}`;
+}
+
+async function logoPathDataUrl(
+  supabase: any,
+  userId: string,
+  rawPath: unknown,
+): Promise<string | null> {
+  const path = String(rawPath || "");
+  if (!path || !path.startsWith(`${userId}/`)) return null;
+  const { data, error } = await supabase.storage.from("tenant-logos").download(
+    path,
+  );
+  if (error || !data) return null;
+  return await renderableImageDataUrl(
+    new Uint8Array(await data.arrayBuffer()),
+    "logo",
+  );
 }
 
 Deno.serve(async (req) => {
@@ -113,17 +261,24 @@ Deno.serve(async (req) => {
       });
     }
     if (!Array.isArray(slides) || slides.length === 0) {
-      return new Response(JSON.stringify({ error: "slides é obrigatório (array não vazio)" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "slides é obrigatório (array não vazio)" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
-    if (template !== "dark-premium") {
+    if (template !== "dark-premium" && template !== "vehicle-photo") {
       return new Response(
         JSON.stringify({
-          error: `Template "${template}" ainda não está disponível no render server-side. Use "dark-premium".`,
+          error:
+            `Template "${template}" ainda não está disponível no render server-side.`,
         }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
       );
     }
 
@@ -135,19 +290,93 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // Logo do PRÓPRIO tenant (sem fallback cross-tenant; helper já garante isolamento)
+    // Logo do PRÓPRIO tenant/cliente, sempre isolada na pasta do tenant.
     let logoDataUrl: string | null = null;
     if (incluir_logo) {
       try {
-        logoDataUrl = await getTenantLogoDataUrl(supabase, user_id);
+        logoDataUrl = template === "vehicle-photo"
+          ? await logoPathDataUrl(supabase, user_id, body?.logo_path) ??
+            await getTenantLogoDataUrlForBackground(
+              supabase,
+              user_id,
+              "dark",
+              true,
+            )
+          : await getTenantLogoDataUrl(supabase, user_id);
       } catch (err) {
         console.warn("[render-carousel-slides] logo indisponível:", err);
       }
     }
 
+    if (template === "vehicle-photo") {
+      const format: VehicleCarouselFormat = body?.format === "square"
+        ? "square"
+        : "portrait";
+      const rawSlides = slides.slice(0, 8) as VehicleCarouselSlide[];
+      if (
+        rawSlides.some((slide) =>
+          !slide?.photo_url || !/^https?:\/\//i.test(slide.photo_url)
+        )
+      ) {
+        throw new Error("todos os slides precisam de photo_url pública");
+      }
+      const layout = vehicleCarouselLayout(format);
+      const [fonts] = await Promise.all([loadFonts(), ensureWasm()]);
+      const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const imageUrls: string[] = [];
+      for (let i = 0; i < rawSlides.length; i++) {
+        const photoDataUrl = await composeVehiclePhoto(rawSlides[i], format);
+        const tree = buildVehiclePhotoSlide({
+          slide: rawSlides[i],
+          format,
+          photoDataUrl,
+          logoDataUrl,
+          totalSlides: rawSlides.length,
+        });
+        const svg = await satori(tree as any, {
+          width: layout.width,
+          height: layout.height,
+          fonts: fonts as any,
+        });
+        const png = new Resvg(svg, {
+          fitTo: { mode: "width", value: layout.width },
+        }).render().asPng();
+        const path = `${user_id}/${stamp}/slide-${
+          String(i + 1).padStart(2, "0")
+        }.png`;
+        const { error } = await supabase.storage.from(BUCKET).upload(
+          path,
+          png,
+          {
+            contentType: "image/png",
+            upsert: true,
+          },
+        );
+        if (error) {
+          throw new Error(`Falha ao subir slide ${i + 1}: ${error.message}`);
+        }
+        const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
+        imageUrls.push(data.publicUrl);
+      }
+      return new Response(
+        JSON.stringify({
+          success: true,
+          image_urls: imageUrls,
+          count: imageUrls.length,
+          template,
+          format,
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
     const sanitizedSlides = sanitizeCarouselSlides(slides.slice(0, MAX_SLIDES));
     const list: RenderSlide[] = sanitizedSlides.map((s: any, i: number) => ({
-      type: (s?.type === "cover" || s?.type === "cta" ? s.type : "content") as RenderSlide["type"],
+      type: (s?.type === "cover" || s?.type === "cta"
+        ? s.type
+        : "content") as RenderSlide["type"],
       title: String(s?.title ?? "").slice(0, 160),
       body: s?.body ? String(s.body).slice(0, 900) : undefined,
       number: typeof s?.number === "number" ? s.number : i,
@@ -179,20 +408,35 @@ Deno.serve(async (req) => {
         fitTo: { mode: "width", value: CARD_WIDTH },
       }).render().asPng();
 
-      const path = `${user_id}/${stamp}/slide-${String(i + 1).padStart(2, "0")}.png`;
+      const path = `${user_id}/${stamp}/slide-${
+        String(i + 1).padStart(2, "0")
+      }.png`;
       const { error: upErr } = await supabase.storage
         .from(BUCKET)
         .upload(path, png, { contentType: "image/png", upsert: true });
-      if (upErr) throw new Error(`Falha ao subir slide ${i + 1}: ${upErr.message}`);
+      if (upErr) {
+        throw new Error(`Falha ao subir slide ${i + 1}: ${upErr.message}`);
+      }
 
       const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-      if (!data?.publicUrl) throw new Error(`Falha ao gerar URL pública do slide ${i + 1}`);
+      if (!data?.publicUrl) {
+        throw new Error(`Falha ao gerar URL pública do slide ${i + 1}`);
+      }
       imageUrls.push(data.publicUrl);
-      console.log(`✅ [render-carousel-slides] slide ${i + 1}/${list.length} (${png.length} bytes)`);
+      console.log(
+        `✅ [render-carousel-slides] slide ${
+          i + 1
+        }/${list.length} (${png.length} bytes)`,
+      );
     }
 
     return new Response(
-      JSON.stringify({ success: true, image_urls: imageUrls, count: imageUrls.length, template }),
+      JSON.stringify({
+        success: true,
+        image_urls: imageUrls,
+        count: imageUrls.length,
+        template,
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error) {
