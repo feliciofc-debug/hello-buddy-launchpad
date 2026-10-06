@@ -19702,6 +19702,12 @@ async function processOne(queueId: string) {
         !hasBlockingFlowForAutomaticVehicleBatch(freshAgentState)
       ) {
         await wait(8_000);
+        const inboundCreatedAt = Date.parse(String(row.created_at || ""));
+        const sequenceUpperBound = new Date(
+          (Number.isFinite(inboundCreatedAt)
+            ? inboundCreatedAt
+            : Date.now()) + 60 * 1000,
+        ).toISOString();
         const [recentPhotos, refreshedState, newerInbound] = await Promise.all([
           recentWhatsAppVehiclePhotos({
             userId,
@@ -19715,6 +19721,7 @@ async function processOne(queueId: string) {
             .eq("from_number", row.from_number)
             .eq("message_type", "image")
             .gt("created_at", row.created_at || new Date().toISOString())
+            .lte("created_at", sequenceUpperBound)
             .limit(1),
         ]);
         if (!hasBlockingFlowForAutomaticVehicleBatch(refreshedState)) {
