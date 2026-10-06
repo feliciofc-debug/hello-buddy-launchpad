@@ -299,6 +299,7 @@ Deno.serve(async (req) => {
             supabase,
             user_id,
             background,
+            true,
           );
         logoDataUrl = rawLogoDataUrl
           ? await normalizeImageDataUrl(
@@ -359,6 +360,11 @@ Deno.serve(async (req) => {
       titulo,
       subtitulo: body?.subtitulo ? String(body.subtitulo).slice(0, 60) : null,
       itens: normalizeItens(body?.itens),
+      ficha: Array.isArray(body?.ficha)
+        ? body.ficha.map((item: unknown) =>
+          String(item || "").replace(/\s+/g, " ").trim()
+        ).filter(Boolean).slice(0, 20)
+        : [],
       ano: body?.ano ? String(body.ano).slice(0, 16) : null,
       preco: body?.preco ? String(body.preco).slice(0, 24) : null,
       precoLabel: body?.preco_label ? String(body.preco_label).slice(0, 24) : null,
@@ -377,6 +383,7 @@ Deno.serve(async (req) => {
       fotoDataUrl,
       fotoPrecomposed,
       logoDataUrl,
+      logoIsIcon: body?.logo_is_icon === true,
       primaryColor: normalizeHex(body?.primary_color, "#8A6A12"),
       accentColor: normalizeHex(
         body?.accent_color,

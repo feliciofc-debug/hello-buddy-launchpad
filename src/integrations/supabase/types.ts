@@ -8264,8 +8264,10 @@ export type Database = {
       tenant_logos: {
         Row: {
           ativo: boolean
+          background_warning: string | null
           created_at: string
           file_name: string | null
+          generated_automatically: boolean
           id: string
           mime_type: string | null
           storage_path: string
@@ -8275,8 +8277,10 @@ export type Database = {
         }
         Insert: {
           ativo?: boolean
+          background_warning?: string | null
           created_at?: string
           file_name?: string | null
+          generated_automatically?: boolean
           id?: string
           mime_type?: string | null
           storage_path: string
@@ -8286,8 +8290,10 @@ export type Database = {
         }
         Update: {
           ativo?: boolean
+          background_warning?: string | null
           created_at?: string
           file_name?: string | null
+          generated_automatically?: boolean
           id?: string
           mime_type?: string | null
           storage_path?: string

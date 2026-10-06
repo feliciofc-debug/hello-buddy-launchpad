@@ -10,6 +10,10 @@ import {
   type LogoVariant,
   logoVariantForBackground,
 } from "./logo-variant.ts";
+import {
+  deriveDarkBackgroundLogo,
+  removeSolidLogoBackground,
+} from "./logo-background.ts";
 
 export interface TenantLogo {
   id: string;
@@ -17,6 +21,8 @@ export interface TenantLogo {
   file_name: string | null;
   mime_type: string | null;
   variant: LogoVariant;
+  generated_automatically: boolean;
+  background_warning: string | null;
 }
 
 const BUCKET = "tenant-logos";
@@ -37,7 +43,7 @@ export async function getTenantLogo(
   if (!userId) return null;
   const { data, error } = await sb
     .from("tenant_logos")
-    .select("id, storage_path, file_name, mime_type, variant, ativo, user_id")
+    .select("id, storage_path, file_name, mime_type, variant, ativo, user_id, generated_automatically, background_warning")
     .eq("user_id", userId)
     .eq("variant", variant)
     .eq("ativo", true)
@@ -59,6 +65,8 @@ export async function getTenantLogo(
     file_name: data.file_name ?? null,
     mime_type: data.mime_type ?? null,
     variant: (data.variant || "default") as LogoVariant,
+    generated_automatically: data.generated_automatically === true,
+    background_warning: data.background_warning ?? null,
   };
 }
 
@@ -66,8 +74,18 @@ export async function getTenantLogoForBackground(
   sb: any,
   userId: string,
   background: LogoBackground,
+  allowAutomaticallyGeneratedDark = false,
 ): Promise<TenantLogo | null> {
-  return await getTenantLogo(sb, userId, logoVariantForBackground(background))
+  const variant = await getTenantLogo(
+    sb,
+    userId,
+    logoVariantForBackground(background),
+  );
+  return (variant?.generated_automatically &&
+      background === "dark" &&
+      !allowAutomaticallyGeneratedDark
+    ? null
+    : variant)
     ?? await getTenantLogo(sb, userId);
 }
 
@@ -174,8 +192,14 @@ export async function getTenantLogoDataUrlForBackground(
   sb: any,
   userId: string,
   background: LogoBackground,
+  allowAutomaticallyGeneratedDark = false,
 ): Promise<string | null> {
-  const logo = await getTenantLogoForBackground(sb, userId, background);
+  const logo = await getTenantLogoForBackground(
+    sb,
+    userId,
+    background,
+    allowAutomaticallyGeneratedDark,
+  );
   if (!logo) return await getProfileLogoDataUrl(sb, userId);
   const { data, error } = await sb.storage.from(BUCKET).download(logo.storage_path);
   if (error || !data) return await getTenantLogoDataUrl(sb, userId);
@@ -202,21 +226,83 @@ export async function setTenantLogo(
   try {
     const variant = params.variant ?? "default";
     const anterior = await getTenantLogo(sb, userId, variant);
+    const { data: source, error: downloadError } = await sb.storage
+      .from(BUCKET)
+      .download(params.storagePath);
+    if (downloadError || !source) throw downloadError ?? new Error("logo ausente");
+    const originalBytes = new Uint8Array(await source.arrayBuffer());
+    const processed = await removeSolidLogoBackground(
+      originalBytes,
+      params.mimeType || (source as any)?.type || "application/octet-stream",
+    );
+    let storagePath = params.storagePath;
+    if (processed.changed) {
+      storagePath = `${userId}/${variant}/${Date.now()}-${
+        crypto.randomUUID().slice(0, 8)
+      }-sem-fundo.png`;
+      const { error: uploadError } = await sb.storage.from(BUCKET).upload(
+        storagePath,
+        processed.bytes,
+        { contentType: "image/png", upsert: false },
+      );
+      if (uploadError) throw uploadError;
+    }
 
     await sb.from("tenant_logos").delete().eq("user_id", userId)
       .eq("variant", variant);
     const { error } = await sb.from("tenant_logos").insert({
       user_id: userId,
-      storage_path: params.storagePath,
+      storage_path: storagePath,
       file_name: params.fileName ?? null,
-      mime_type: params.mimeType ?? null,
+      mime_type: processed.changed ? "image/png" : params.mimeType ?? null,
       variant,
       ativo: true,
+      generated_automatically: false,
+      background_warning: processed.warning,
     });
     if (error) throw error;
 
-    if (anterior?.storage_path && anterior.storage_path !== params.storagePath) {
+    if (anterior?.storage_path && anterior.storage_path !== storagePath) {
       await sb.storage.from(BUCKET).remove([anterior.storage_path]);
+    }
+    if (storagePath !== params.storagePath) {
+      await sb.storage.from(BUCKET).remove([params.storagePath]);
+    }
+
+    if (variant === "default") {
+      const dark = await getTenantLogo(sb, userId, "dark_background");
+      if (!dark || dark.generated_automatically) {
+        if (dark?.storage_path) {
+          await sb.from("tenant_logos").delete().eq("user_id", userId)
+            .eq("variant", "dark_background");
+          await sb.storage.from(BUCKET).remove([dark.storage_path]);
+        }
+        if (processed.warning) return true;
+        const derived = await deriveDarkBackgroundLogo(processed.bytes);
+        if (derived.generated) {
+          const darkPath = `${userId}/dark_background/${Date.now()}-${
+            crypto.randomUUID().slice(0, 8)
+          }-automatica.png`;
+          const { error: darkUploadError } = await sb.storage.from(BUCKET)
+            .upload(darkPath, derived.bytes, {
+              contentType: "image/png",
+              upsert: false,
+            });
+          if (darkUploadError) throw darkUploadError;
+          const { error: darkInsertError } = await sb.from("tenant_logos")
+            .insert({
+              user_id: userId,
+              storage_path: darkPath,
+              file_name: params.fileName ?? null,
+              mime_type: "image/png",
+              variant: "dark_background",
+              ativo: true,
+              generated_automatically: true,
+              background_warning: null,
+            });
+          if (darkInsertError) throw darkInsertError;
+        }
+      }
     }
     return true;
   } catch (e) {

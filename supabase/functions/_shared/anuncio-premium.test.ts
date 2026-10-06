@@ -16,6 +16,11 @@ import {
   parseFotoBoxFromVisionResponse,
 } from "./anuncio-photo-framing.ts";
 import {
+  classifyStoreReply,
+  storeNameFromSite,
+} from "./anuncio-store-flow.ts";
+import { buildVehicleAdContent } from "./anuncio-vehicle-details.ts";
+import {
   anuncioSuccessMessage,
   amzAnuncioClientButtons,
   amzMissingClientLogoButtons,
@@ -621,6 +626,131 @@ Deno.test("template usa fill só para foto já composta e contain como fallback"
   }))).find((node) => node.props?.src === "data:image/png;base64,ORIGINAL");
   assertEquals(composed?.props?.style?.objectFit, "fill");
   assertEquals(fallback?.props?.style?.objectFit, "contain");
+});
+
+Deno.test("site sozinho fornece nome e nome sozinho pergunta site uma vez", () => {
+  assertEquals(
+    storeNameFromSite("https://lojaexemplo.com.br", "Loja Exemplo | Veículos"),
+    "Loja Exemplo | Veículos",
+  );
+  assertEquals(
+    classifyStoreReply({
+      text: "https://lojaexemplo.com.br",
+      site: "https://lojaexemplo.com.br",
+    }),
+    {
+      action: "site",
+      site: "https://lojaexemplo.com.br",
+      name: null,
+    },
+  );
+  assertEquals(classifyStoreReply({ text: "Loja Exemplo" }), {
+    action: "ask_site",
+    name: "Loja Exemplo",
+  });
+  assertEquals(classifyStoreReply({
+    text: "não",
+    storedName: "Loja Exemplo",
+    askedSite: true,
+  }), {
+    action: "name_only",
+    name: "Loja Exemplo",
+  });
+});
+
+Deno.test("14 dados viram no máximo 8 destaques e o restante fica na ficha", () => {
+  const supplied = {
+    versao: "Longitude",
+    motor: "2.0 Turbo",
+    cambio: "Automático",
+    quilometragem: "38 mil km",
+    cor: "Preto",
+    donos: "Único dono",
+    documentacao: "IPVA pago",
+    revisoes: "Revisado",
+    pneus: "Pneus novos",
+    opcionais: ["Blindado", "Teto solar", "Banco em couro"],
+    condicoes: ["Aceita troca", "Financia"],
+    itens: ["Chave reserva"],
+  };
+  const content = buildVehicleAdContent(supplied);
+  assertEquals(content.highlights.length, 8);
+  assert(content.ficha.length > 0);
+  const delivered = [...content.highlights, ...content.ficha];
+  for (
+    const value of [
+      supplied.motor,
+      supplied.cambio,
+      supplied.quilometragem,
+      supplied.cor,
+      supplied.donos,
+      supplied.documentacao,
+      supplied.revisoes,
+      supplied.pneus,
+      ...supplied.opcionais,
+      ...supplied.condicoes,
+      ...supplied.itens,
+    ]
+  ) assert(delivered.includes(value), value);
+  assertEquals(content.subtitle, "Longitude • 2.0 Turbo");
+});
+
+Deno.test("três dados informados produzem somente três destaques", () => {
+  const content = buildVehicleAdContent({
+    quilometragem: "40 mil km",
+    cambio: "Automático",
+    motor: "1.3 Turbo",
+  });
+  assertEquals(content.highlights, ["40 mil km", "Automático", "1.3 Turbo"]);
+  assertEquals(content.ficha, []);
+});
+
+Deno.test("logo quadrada mostra nome e logo horizontal não repete", () => {
+  const iconNodes = flatten(buildCatalogoAnuncio(baseData({
+    logoDataUrl: "data:image/png;base64,ICONE",
+    logoIsIcon: true,
+    businessName: "AMZ Ofertas",
+  })));
+  assert(iconNodes.some((node) => node.props?.children === "AMZ Ofertas"));
+  const icon = iconNodes.find((node) => node.props?.src === "data:image/png;base64,ICONE");
+  assertEquals(icon?.props?.style?.width, 72);
+
+  const horizontalNodes = flatten(buildCatalogoAnuncio(baseData({
+    logoDataUrl: "data:image/png;base64,HORIZONTAL",
+    logoIsIcon: false,
+    businessName: "AMZ Ofertas",
+  })));
+  assertEquals(
+    horizontalNodes.some((node) => node.props?.children === "AMZ Ofertas"),
+    false,
+  );
+});
+
+Deno.test("Destaque mantém tarja do preço compacta após seis itens longos", () => {
+  const nodes = flatten(buildDestaqueAnuncio(baseData({
+    accentColor: "#F36812",
+    preco: "R$ 118.900",
+    ficha: ["Manual e chave reserva"],
+    itens: Array.from(
+      { length: 6 },
+      (_, index) => ({ texto: `Destaque longo ${index + 1}` }),
+    ),
+  })));
+  const stripe = nodes.find((node) =>
+    node.props?.style?.backgroundColor === "#F36812" &&
+    node.props?.style?.alignSelf === "flex-end"
+  );
+  assertEquals(stripe?.props?.style?.maxWidth, "45%");
+  assertEquals(stripe?.props?.style?.padding, "12px 24px 12px 28px");
+  assertEquals(stripe?.props?.style?.marginLeft, undefined);
+  const itemNodes = nodes.filter((node) =>
+    typeof node.props?.children === "string" &&
+    node.props.children.startsWith("DESTAQUE LONGO")
+  );
+  assert(itemNodes.every((node) => Number(node.props?.style?.fontSize) >= 16));
+  assert(nodes.some((node) =>
+    String(node.props?.children || "").startsWith("Ficha:")
+  ));
 });
 
 Deno.test("templates omitem campos ausentes e preço nunca quebra linha", () => {

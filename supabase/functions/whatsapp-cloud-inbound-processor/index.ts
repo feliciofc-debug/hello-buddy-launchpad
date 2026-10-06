@@ -338,6 +338,11 @@ import {
   parseFotoBoxFromVisionResponse,
   type FotoBox,
 } from "../_shared/anuncio-photo-framing.ts";
+import { buildVehicleAdContent } from "../_shared/anuncio-vehicle-details.ts";
+import {
+  classifyStoreReply,
+  storeNameFromSite,
+} from "../_shared/anuncio-store-flow.ts";
 import {
   cleanReceivedMediaDescription,
   recognizedMediaReply,
@@ -360,7 +365,7 @@ import {
   videoSiteDomain,
 } from "../_shared/video-client-identity.ts";
 import { completeSiteIdentityWithRenderedPage } from "../_shared/video-site-identity.ts";
-import { trimLogoImage } from "../_shared/logo-image-trim.ts";
+import { removeSolidLogoBackground } from "../_shared/logo-background.ts";
 
 import {
   entregarEbookTenant,
@@ -2560,6 +2565,9 @@ type AgentConvState = {
   pending_anuncio_cliente?: {
     args: Record<string, unknown>;
     created_at: string;
+    awaiting_store_details?: boolean;
+    store_name?: string;
+    asked_site?: boolean;
   } | null;
   pending_anuncio_styles?: {
     render_payload: Record<string, unknown>;
@@ -2576,6 +2584,7 @@ type AgentConvState = {
     client_name: string;
     created_at: string;
     variant?: "default" | "light_background" | "dark_background";
+    anuncio_args?: Record<string, unknown>;
   } | null;
   pending_brand_generation?: PendingBrandGeneration | null;
   pending_meta_ads_ambiguity?: MetaAdsQuestionarioAmbiguidade | null;
@@ -9353,7 +9362,7 @@ async function uploadClientLogoData(
   const mime = match[1].toLowerCase();
   const bytes = base64Decode(match[2]);
   if (bytes.length > 5 * 1024 * 1024) return undefined;
-  const processed = await trimLogoImage(bytes, mime);
+  const processed = await removeSolidLogoBackground(bytes, mime);
   const ext = processed.mime === "image/jpeg"
     ? "jpg"
     : processed.mime === "image/svg+xml" ? "svg" : processed.mime.split("/")[1];
@@ -9389,7 +9398,7 @@ async function uploadClientLogoFromMediaUrl(userId: string, mediaUrl: string): P
     if (!/^image\/(?:png|jpeg|webp|svg\+xml)$/i.test(mime)) return null;
     const bytes = new Uint8Array(await response.arrayBuffer());
     if (!bytes.length || bytes.length > 5 * 1024 * 1024) return null;
-    const processed = await trimLogoImage(bytes, mime);
+    const processed = await removeSolidLogoBackground(bytes, mime);
     const ext = processed.mime === "image/jpeg"
       ? "jpg"
       : processed.mime === "image/svg+xml" ? "svg" : processed.mime.split("/")[1];
@@ -9488,7 +9497,11 @@ async function toolRegistrarLogoCliente(
       client_name: saved.client_name,
       logo_path: saved.logo_path,
       source_media_id: latest.midia.id,
-      mensagem: `Guardei como logo do ${saved.client_name}. Vou usar nos vídeos e posts desse cliente.`,
+      mensagem: `Guardei como logo do ${saved.client_name}. Vou usar nos vídeos e posts desse cliente.${
+        saved.identity?.logo_background_warning
+          ? `\n\n${saved.identity.logo_background_warning}`
+          : ""
+      }`,
     });
   } catch (error) {
     await sb.storage.from("tenant-logos").remove([logoPath]);
@@ -11560,11 +11573,23 @@ const TOOLS = [
       parameters: {
         type: "object",
         properties: {
-          titulo: { type: "string", description: "Nome do produto em destaque (ex: 'HYUNDAI CRETA 1.0 TURBO', 'APARTAMENTO 2 QUARTOS')." },
+          titulo: { type: "string", description: "Nome/modelo em destaque sem repetir ano, versão ou motor (ex: 'HYUNDAI CRETA', 'APARTAMENTO 2 QUARTOS')." },
           cliente: { type: "string", description: "Nome da loja/cliente cuja identidade deve ser usada. Passe quando o dono disser 'para a loja X' ou 'com a logo do cliente X'. Sem cliente, usa a marca do próprio tenant." },
           site: { type: "string", description: "Site público da loja/cliente, somente quando informado pelo dono. Usado para extrair e salvar logo e cores se o cliente ainda não tiver logo cadastrada." },
-          subtitulo: { type: "string", description: "Complemento curto (ex: 'AUTOMÁTICO 2023/2023', 'BAIRRO CENTRO'). Vazio se não souber." },
+          subtitulo: { type: "string", description: "Complemento curto sem repetir o ano (ex: 'BAIRRO CENTRO'). Para veículo, prefira os campos versão e motor. Vazio se não souber." },
           ano: { type: "string", description: "Ano para o selo, somente se o dono informou (ex: '2023/2023'). Nunca inferir." },
+          versao: { type: "string", description: "Versão exata do veículo, somente se informada." },
+          motor: { type: "string", description: "Motor exato, somente se informado." },
+          cambio: { type: "string", description: "Câmbio, somente se informado." },
+          quilometragem: { type: "string", description: "Quilometragem exata, somente se informada." },
+          cor: { type: "string", description: "Cor, somente se informada." },
+          donos: { type: "string", description: "Número de donos, somente se informado." },
+          documentacao: { type: "string", description: "Situação documental, somente se informada." },
+          revisoes: { type: "string", description: "Informação de revisões, somente se informada." },
+          pneus: { type: "string", description: "Condição dos pneus, somente se informada." },
+          opcionais: { type: "array", items: { type: "string" }, description: "Itens e opcionais exatamente informados." },
+          condicoes: { type: "array", items: { type: "string" }, description: "Condições informadas de troca, financiamento ou entrada." },
+          fipe: { type: "string", description: "Valor FIPE, somente quando o dono informou explicitamente." },
           itens: {
             type: "array",
             description: "Lista de 4 a 8 destaques EXATAMENTE como o usuário falou (ex: '38 MIL KM', 'ÚNICO DONO', 'PNEUS NOVOS', 'IPVA PAGO'). Não invente.",
@@ -12434,9 +12459,10 @@ async function resolveAnuncioClientIdentity(input: {
   userId: string;
   clientName?: string;
   site?: string;
+  allowNameOnly?: boolean;
 }): Promise<
   | { mode: "tenant"; businessName: null; logoPath: null; colors: string[]; identity: null }
-  | { mode: "client"; businessName: string; logoPath: string; colors: string[]; identity: ClientBrandIdentity }
+  | { mode: "client"; businessName: string; logoPath: string | null; colors: string[]; identity: ClientBrandIdentity }
   | { mode: "missing"; message: string }
 > {
   const clientName = String(input.clientName || "").replace(/\s+/g, " ").trim().slice(0, 100);
@@ -12464,6 +12490,19 @@ async function resolveAnuncioClientIdentity(input: {
     };
   }
   if (plan.mode === "missing") {
+    if (input.allowNameOnly && clientName) {
+      saved = await saveClientBrandIdentity(sb, {
+        userId: input.userId,
+        clientName,
+      });
+      return {
+        mode: "client",
+        businessName: saved.client_name || clientName,
+        logoPath: null,
+        colors: [],
+        identity: saved,
+      };
+    }
     return {
       mode: "missing",
       message: `Não encontrei uma logo cadastrada para ${clientName}. Envie o site da loja ou a logo dizendo “salva essa como logo do cliente ${clientName}”. Não usei a logo da sua empresa.`,
@@ -12531,6 +12570,18 @@ async function toolCriarAnuncio(
     site?: string;
     subtitulo?: string;
     itens?: string[];
+    versao?: string;
+    motor?: string;
+    cambio?: string;
+    quilometragem?: string;
+    cor?: string;
+    donos?: string;
+    documentacao?: string;
+    revisoes?: string;
+    pneus?: string;
+    opcionais?: string[];
+    condicoes?: string[];
+    fipe?: string;
     ano?: string;
     preco?: string;
     preco_label?: string;
@@ -12544,6 +12595,7 @@ async function toolCriarAnuncio(
     estilo?: string;
     melhorar_foto?: boolean;
     _usar_marca_tenant?: boolean;
+    _usar_apenas_nome_cliente?: boolean;
   },
   ctx: {
     userId: string;
@@ -12607,6 +12659,7 @@ async function toolCriarAnuncio(
       userId: ctx.userId,
       clientName: args?.cliente,
       site: args?.site,
+      allowNameOnly: args?._usar_apenas_nome_cliente,
     });
     if (anuncioIdentity.mode === "missing") {
       if (ctx.userId === ADMIN_AMZ_USER_ID && ctx.convId) {
@@ -12760,27 +12813,37 @@ async function toolCriarAnuncio(
       } catch { /* opcional */ }
     }
 
-    const itens = (Array.isArray(args?.itens) ? args!.itens! : [])
-      .map((i) => String(i || "").trim())
-      .filter(Boolean)
-      .slice(0, 8);
+    const vehicleContent = buildVehicleAdContent(args);
+    const itens = vehicleContent.highlights;
+    const fallbackSubtitle = String(args?.subtitulo || "")
+      .replace(String(args?.ano || ""), "")
+      .replace(/\s*[•|,-]\s*$/, "")
+      .trim() || null;
 
     // 5) RENDER — a foto é melhorada uma vez e reutilizada nos templates.
     const renderPayload: Record<string, unknown> = {
       user_id: ctx.userId,
       titulo,
-      subtitulo: args?.subtitulo || null,
+      subtitulo: vehicleContent.subtitle || fallbackSubtitle,
       itens,
+      ficha: vehicleContent.ficha,
       ano: args?.ano || null,
       preco: args?.preco || null,
       preco_label: args?.preco_label || null,
-      preco_referencia: args?.preco_referencia || null,
-      preco_referencia_label: args?.preco_referencia_label || null,
+      preco_referencia: args?.preco_referencia || args?.fipe || null,
+      preco_referencia_label: args?.preco_referencia_label ||
+        (args?.fipe ? "FIPE" : null),
       preco_referencia_obs: args?.preco_referencia_obs || null,
       badge: args?.badge || null,
       telefone,
       instagram,
       business_name: businessName,
+      logo_is_icon: anuncioIdentity.mode === "client"
+        ? (() => {
+          const ratio = Number(anuncioIdentity.identity.identity?.logo_aspect_ratio);
+          return Number.isFinite(ratio) && ratio >= 0.8 && ratio <= 1.25;
+        })()
+        : false,
       logo_source: anuncioIdentity.mode,
       primary_color: anuncioIdentity.colors[1] || anuncioIdentity.colors[0] || undefined,
       accent_color: anuncioIdentity.colors[0] || undefined,
@@ -12797,7 +12860,7 @@ async function toolCriarAnuncio(
     const renders = await Promise.all(styles.map(async (style) => {
       const background = style === "catalogo" ? "light" : "dark";
       const logoPath = anuncioIdentity.mode === "client"
-        ? clientLogoPath(anuncioIdentity.identity, background)
+        ? clientLogoPath(anuncioIdentity.identity, background, true)
         : null;
       const render = await callEdge("render-anuncio-produto", {
         ...renderPayload,
@@ -13438,6 +13501,7 @@ async function callGemini(
             ? clientLogoPath(
               client,
               style === "catalogo" ? "light" : "dark",
+              true,
             )
             : null;
           const render = await callEdge("render-anuncio-produto", {
@@ -13496,6 +13560,25 @@ async function callGemini(
         };
       }
       if (interactiveId === "anuncio_other_store") {
+        if (toolCtx.convId) {
+          const nextPending = {
+            ...pendingAnuncioCliente,
+            awaiting_store_details: true,
+          };
+          await saveAgentState(
+            sb,
+            {
+              id: toolCtx.convId,
+              userId: toolCtx.userId,
+              contactNumber: toolCtx.fromNumber,
+            },
+            { pending_anuncio_cliente: nextPending },
+            toolCtx.agentState ?? {},
+          );
+          if (toolCtx.agentState) {
+            toolCtx.agentState.pending_anuncio_cliente = nextPending;
+          }
+        }
         return {
           text: "Me mande o nome e o site da loja.",
         };
@@ -13509,6 +13592,7 @@ async function callGemini(
             client_name: clientName,
             created_at: new Date().toISOString(),
             variant: "default" as const,
+            anuncio_args: { ...pendingAnuncioCliente.args },
           };
           await saveAgentState(
             sb,
@@ -13535,24 +13619,60 @@ async function callGemini(
           text: "Envie a logo dizendo o nome da loja, por exemplo: “salva essa como logo do cliente Loja X”.",
         };
       }
+      const plainStoreReply = compactSpaces(
+        userContent.replace(/<<INTERACTIVE_ID:[^>]+>>/gi, ""),
+      ).replace(/^[\s:,-]+|[\s:,-]+$/g, "");
       const site = extractPublicSiteUrl(userContent);
-      if (interactiveId || site) {
-        const clientName = site
-          ? compactSpaces(
-            userContent
-              .replace(/<<INTERACTIVE_ID:[^>]+>>/gi, "")
-              .replace(
-                /https?:\/\/[^\s<>"']+|(?:www\.)?[a-z0-9][a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s<>"']*)?/i,
-                " ",
-              )
-              .replace(/\b(?:site|loja|cliente|é|e|da|do|para|pra)\b/gi, " "),
-          ).replace(/^[\s:,-]+|[\s:,-]+$/g, "").slice(0, 100)
-          : "";
-        if (site && clientName.length < 2) {
-          return {
-            text: "Me diga também o nome da loja junto com o site.",
-            interactiveButtons: amzAnuncioClientButtons(),
+      const storeReply = classifyStoreReply({
+        text: plainStoreReply,
+        site,
+        storedName: pendingAnuncioCliente.store_name,
+        askedSite: pendingAnuncioCliente.asked_site,
+      });
+      const declinedSite = storeReply.action === "name_only";
+      if (
+        pendingAnuncioCliente.awaiting_store_details &&
+        storeReply.action === "ask_site" &&
+        !interactiveId
+      ) {
+        const storeName = storeReply.name;
+        if (storeName.length >= 2 && toolCtx.convId) {
+          const nextPending = {
+            ...pendingAnuncioCliente,
+            store_name: storeName,
+            asked_site: true,
           };
+          await saveAgentState(
+            sb,
+            {
+              id: toolCtx.convId,
+              userId: toolCtx.userId,
+              contactNumber: toolCtx.fromNumber,
+            },
+            { pending_anuncio_cliente: nextPending },
+            toolCtx.agentState ?? {},
+          );
+          if (toolCtx.agentState) {
+            toolCtx.agentState.pending_anuncio_cliente = nextPending;
+          }
+          return {
+            text: "Tem site? Se tiver, me mande o link. Se não tiver, responda 'não' que eu uso só o nome.",
+          };
+        }
+      }
+      if (interactiveId || site || declinedSite) {
+        let clientName = storeReply.action === "site"
+          ? storeReply.name || ""
+          : storeReply.action === "name_only"
+          ? storeReply.name
+          : pendingAnuncioCliente.store_name || "";
+        if (site && clientName.length < 2) {
+          try {
+            const siteIdentity = await fetchBrandSiteIdentity(site);
+            clientName = storeNameFromSite(site, siteIdentity.brand_name);
+          } catch {
+            clientName = storeNameFromSite(site);
+          }
         }
         if (toolCtx.convId) {
           await saveAgentState(
@@ -13576,6 +13696,13 @@ async function callGemini(
               _usar_marca_tenant: true,
             }
             : { cliente: clientName, site }),
+          ...(declinedSite
+            ? {
+              cliente: pendingAnuncioCliente.store_name,
+              site: undefined,
+              _usar_apenas_nome_cliente: true,
+            }
+            : {}),
         };
         const result = await toolCriarAnuncio(mergedArgs as any, {
           ...toolCtx,
@@ -14129,7 +14256,11 @@ async function callGemini(
           await saveAgentState(sb, conversation, { pending_client_logo: null }, toolCtx.agentState ?? {});
         }
         return {
-          text: `Guardei como logo do ${saved.client_name}. Vou usar nos vídeos e posts desse cliente.`,
+          text: `Guardei como logo do ${saved.client_name}. Vou usar nos vídeos e posts desse cliente.${
+            saved.identity?.logo_background_warning
+              ? `\n\n${saved.identity.logo_background_warning}`
+              : ""
+          }`,
         };
       } catch (error) {
         console.error("[client-brand][pending-logo-save]", error);
@@ -16501,6 +16632,8 @@ async function processOne(queueId: string) {
           );
           let registered = false;
           let reply = "Não consegui salvar essa logo. Envie em PNG, JPEG ou WEBP com até 5 MB.";
+          let resumedImageUrl: string | undefined;
+          let resumedButtons: WhatsAppInteractiveButtons | undefined;
           if (logoPath) {
             try {
               const matches = await listClientBrandIdentityMatches(
@@ -16530,8 +16663,36 @@ async function processOne(queueId: string) {
                   pending_client_logo_intent: null,
                   pending_client_logo: null,
                 }, freshAgentState);
+                freshAgentState.pending_client_logo_intent = null;
                 registered = true;
-                reply = `Guardei como logo do ${saved.client_name}. Vou usar nos vídeos e posts desse cliente.`;
+                reply = `Guardei como logo do ${saved.client_name}. Vou usar nos vídeos e posts desse cliente.${
+                  saved.identity?.logo_background_warning
+                    ? `\n\n${saved.identity.logo_background_warning}`
+                    : ""
+                }`;
+                if (pendingClientLogoIntent.anuncio_args) {
+                  const resumed = await toolCriarAnuncio({
+                    ...pendingClientLogoIntent.anuncio_args,
+                    cliente: saved.client_name,
+                    site: saved.site_url || undefined,
+                  } as any, {
+                    userId,
+                    fromNumber: row.from_number,
+                    media: [],
+                    convId: conv.id,
+                    agentState: freshAgentState,
+                  });
+                  try {
+                    const parsed = JSON.parse(resumed);
+                    reply = parsed?.ok
+                      ? `Logo salva. ${parsed.mensagem}`
+                      : `${reply}\n\n${parsed?.mensagem || "Não consegui retomar o anúncio."}`;
+                    resumedImageUrl = parsed?.image_url;
+                    resumedButtons = parsed?.interactive_buttons;
+                  } catch {
+                    reply = `${reply}\n\n${resumed}`;
+                  }
+                }
               }
             } catch (error) {
               console.error("[client-brand][pending-intent-save]", error);
@@ -16553,7 +16714,14 @@ async function processOne(queueId: string) {
             .select("id")
             .single();
           try {
-            const sentId = await sendWhatsApp(userId, row.from_number, reply);
+            const sentId = await sendWhatsApp(
+              userId,
+              row.from_number,
+              reply,
+              resumedImageUrl,
+              undefined,
+              resumedButtons,
+            );
             if (sentId && outMsg?.id) {
               await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
             }
@@ -16705,7 +16873,11 @@ async function processOne(queueId: string) {
               });
               await saveAgentState(sb, stateConversation, { pending_client_logo: null }, freshAgentState);
               clientLogoRegistered = true;
-              reply = `Guardei como logo do ${saved.client_name}. Vou usar nos vídeos e posts desse cliente.`;
+              reply = `Guardei como logo do ${saved.client_name}. Vou usar nos vídeos e posts desse cliente.${
+                saved.identity?.logo_background_warning
+                  ? `\n\n${saved.identity.logo_background_warning}`
+                  : ""
+              }`;
             }
           } catch (error) {
             console.error("[client-brand][logo-save]", error);

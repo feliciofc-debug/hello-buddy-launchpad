@@ -24,7 +24,10 @@ export default function LogoMarcaPJ() {
   const [nomeArquivo, setNomeArquivo] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [darkPath, setDarkPath] = useState<string | null>(null);
+  const [darkNomeArquivo, setDarkNomeArquivo] = useState<string | null>(null);
   const [darkPreviewUrl, setDarkPreviewUrl] = useState<string | null>(null);
+  const [darkGenerated, setDarkGenerated] = useState(false);
+  const [backgroundWarning, setBackgroundWarning] = useState<string | null>(null);
 
   useEffect(() => {
     load();
@@ -55,7 +58,7 @@ export default function LogoMarcaPJ() {
       // Escopo por tenant: sempre por user_id (RLS reforça no banco).
       const { data, error } = await supabase
         .from("tenant_logos")
-        .select("id, storage_path, file_name, variant")
+        .select("id, storage_path, file_name, variant, generated_automatically, background_warning")
         .eq("user_id", user.id)
         .eq("ativo", true)
         .in("variant", ["default", "dark_background"]);
@@ -64,6 +67,7 @@ export default function LogoMarcaPJ() {
 
       const current = data?.find((item) => item.variant === "default");
       const dark = data?.find((item) => item.variant === "dark_background");
+      setBackgroundWarning(current?.background_warning || dark?.background_warning || null);
       if (current?.storage_path) {
         setPath(current.storage_path);
         setNomeArquivo(current.file_name ?? null);
@@ -74,6 +78,8 @@ export default function LogoMarcaPJ() {
         setPreviewUrl(null);
       }
       setDarkPath(dark?.storage_path ?? null);
+      setDarkNomeArquivo(dark?.file_name ?? null);
+      setDarkGenerated(dark?.generated_automatically === true);
       if (dark?.storage_path) {
         await gerarPreview(dark.storage_path, setDarkPreviewUrl);
       } else setDarkPreviewUrl(null);
@@ -104,38 +110,28 @@ export default function LogoMarcaPJ() {
     try {
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-").slice(-80);
       // Prefixo com o user_id = isolamento por tenant no Storage (bucket privado).
-      const novoPath = `${userId}/${variant}/${Date.now()}-${safeName}`;
+      const novoPath = `${userId}/incoming/${Date.now()}-${safeName}`;
 
       const { error: upErr } = await supabase.storage
         .from(BUCKET)
         .upload(novoPath, file, { contentType: file.type, upsert: false });
       if (upErr) throw upErr;
 
-      const previousPath = variant === "default" ? path : darkPath;
-      await supabase.from("tenant_logos").delete().eq("user_id", userId)
-        .eq("variant", variant);
-      const { error: insErr } = await supabase.from("tenant_logos").insert({
-        user_id: userId,
-        storage_path: novoPath,
-        file_name: file.name,
-        mime_type: file.type,
-        variant,
-        ativo: true,
-      });
-      if (insErr) throw insErr;
-
-      if (previousPath && previousPath !== novoPath) {
-        await supabase.storage.from(BUCKET).remove([previousPath]);
+      const { data: managed, error: manageError } = await supabase.functions
+        .invoke("manage-tenant-logo", {
+          body: {
+            action: "set",
+            storage_path: novoPath,
+            file_name: file.name,
+            mime_type: file.type,
+            variant,
+          },
+        });
+      if (manageError || !managed?.ok) {
+        await supabase.storage.from(BUCKET).remove([novoPath]);
+        throw manageError || new Error(managed?.error || "Falha ao processar a logo");
       }
-
-      if (variant === "default") {
-        setPath(novoPath);
-        setNomeArquivo(file.name);
-        await gerarPreview(novoPath);
-      } else {
-        setDarkPath(novoPath);
-        await gerarPreview(novoPath, setDarkPreviewUrl);
-      }
+      await load();
       toast.success("Marca salva! Peça ao seu agente para usar quando quiser.");
     } catch (e: any) {
       console.error("[logo-marca] upload:", e?.message);
@@ -148,15 +144,23 @@ export default function LogoMarcaPJ() {
   };
 
   const handleRemover = async () => {
-    if (!userId || !path) return;
-    if (!window.confirm("Remover sua marca? As imagens passam a sair sem marca.")) return;
+    if (!userId || (!path && !darkPath)) return;
+    if (!window.confirm("Remover as duas logos? As imagens passam a sair sem marca.")) return;
     setRemovendo(true);
     try {
-      await supabase.from("tenant_logos").delete().eq("user_id", userId);
-      await supabase.storage.from(BUCKET).remove([path]);
+      const { data, error } = await supabase.functions.invoke(
+        "manage-tenant-logo",
+        { body: { action: "remove" } },
+      );
+      if (error || !data?.ok) throw error || new Error(data?.error || "Erro ao remover");
       setPath(null);
       setNomeArquivo(null);
       setPreviewUrl(null);
+      setDarkPath(null);
+      setDarkNomeArquivo(null);
+      setDarkPreviewUrl(null);
+      setDarkGenerated(false);
+      setBackgroundWarning(null);
       toast.success("Marca removida.");
     } catch (e: any) {
       console.error("[logo-marca] remover:", e?.message);
@@ -176,7 +180,7 @@ export default function LogoMarcaPJ() {
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
-      <div className="max-w-2xl mx-auto space-y-6">
+      <div className="max-w-5xl mx-auto space-y-6">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard")}>
             <ArrowLeft className="h-5 w-5" />
@@ -209,99 +213,102 @@ export default function LogoMarcaPJ() {
           </CardHeader>
 
           <CardContent className="space-y-6">
-            <div className="border-2 border-dashed border-border rounded-lg p-6 min-h-[180px] flex items-center justify-center bg-muted/40">
-              {previewUrl ? (
-                <img
-                  src={previewUrl}
-                  alt={nomeArquivo || "Logo da empresa"}
-                  className="max-h-36 max-w-full object-contain"
-                />
-              ) : (
-                <div className="flex flex-col items-center text-muted-foreground text-center">
-                  <ImageIcon className="h-10 w-10 mb-2" />
-                  <span className="text-sm">Nenhuma marca enviada</span>
-                  <span className="text-xs">As imagens sairão sem marca</span>
-                </div>
-              )}
-            </div>
+            <p className="text-sm font-medium text-foreground">
+              Use PNG com fundo transparente (só as letras e o ícone).
+            </p>
 
-            <div className="space-y-3 border-t border-border pt-5">
-              <div>
-                <p className="text-sm font-medium text-foreground">Logo para fundo escuro</p>
-                <p className="text-xs text-muted-foreground">
-                  Use a versão com texto claro. Sem ela, continuaremos usando a logo principal.
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="rounded-lg border border-border p-4 space-y-4">
+                <p className="font-medium text-foreground">Logo para fundo claro</p>
+                <div className="rounded-lg border min-h-44 p-5 flex items-center justify-center bg-white">
+                  {previewUrl ? (
+                    <img
+                      src={previewUrl}
+                      alt={nomeArquivo || "Logo para fundo claro"}
+                      className="max-h-32 max-w-full object-contain"
+                    />
+                  ) : <ImageIcon className="h-10 w-10 text-slate-400" />}
+                </div>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) handleUpload(file, "default");
+                  }}
+                />
+                <Button
+                  className="w-full"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={uploading}
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  {path ? "Trocar" : "Enviar logo para fundo claro"}
+                </Button>
+                <p className="text-xs text-muted-foreground truncate min-h-4">
+                  {nomeArquivo ? `Arquivo: ${nomeArquivo}` : ""}
                 </p>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                {["bg-white", "bg-black"].map((background) => (
-                  <div
-                    key={background}
-                    className={`${background} rounded-lg border min-h-28 p-4 flex items-center justify-center`}
-                  >
-                    {(darkPreviewUrl || previewUrl) ? (
-                      <img
-                        src={darkPreviewUrl || previewUrl || ""}
-                        alt="Prévia da logo"
-                        className="max-h-20 max-w-full object-contain"
-                      />
-                    ) : <ImageIcon className="h-8 w-8 text-muted-foreground" />}
-                  </div>
-                ))}
+
+              <div className="rounded-lg border border-border p-4 space-y-4">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-medium text-foreground">Logo para fundo escuro</p>
+                  {darkGenerated && (
+                    <Badge variant="secondary">Gerada automaticamente</Badge>
+                  )}
+                </div>
+                <div className="rounded-lg border min-h-44 p-5 flex items-center justify-center bg-black">
+                  {(darkPreviewUrl || previewUrl) ? (
+                    <img
+                      src={darkPreviewUrl || previewUrl || ""}
+                      alt={darkNomeArquivo || "Logo para fundo escuro"}
+                      className="max-h-32 max-w-full object-contain"
+                    />
+                  ) : <ImageIcon className="h-10 w-10 text-slate-500" />}
+                </div>
+                <input
+                  ref={darkFileRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) handleUpload(file, "dark_background");
+                  }}
+                />
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => darkFileRef.current?.click()}
+                  disabled={uploading}
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  {darkPath ? "Trocar" : "Enviar logo para fundo escuro"}
+                </Button>
+                <p className="text-xs text-muted-foreground truncate min-h-4">
+                  {darkNomeArquivo ? `Arquivo: ${darkNomeArquivo}` : ""}
+                </p>
               </div>
-              <input
-                ref={darkFileRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleUpload(file, "dark_background");
-                }}
-              />
-              <Button
-                variant="outline"
-                onClick={() => darkFileRef.current?.click()}
-                disabled={uploading}
-              >
-                <Upload className="h-4 w-4 mr-2" />
-                {darkPath ? "Trocar logo para fundo escuro" : "Enviar logo para fundo escuro"}
-              </Button>
             </div>
 
-            {nomeArquivo && (
-              <p className="text-xs text-muted-foreground truncate">Arquivo: {nomeArquivo}</p>
+            {backgroundWarning && (
+              <p className="text-sm text-amber-700 dark:text-amber-400">
+                {backgroundWarning}
+              </p>
             )}
 
-            <div className="flex flex-wrap gap-3">
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleUpload(f);
-                }}
-              />
-              <Button onClick={() => fileRef.current?.click()} disabled={uploading}>
-                {uploading ? (
+            {(path || darkPath) && (
+              <Button variant="destructive" onClick={handleRemover} disabled={removendo}>
+                {removendo ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
-                  <Upload className="h-4 w-4 mr-2" />
+                  <Trash2 className="h-4 w-4 mr-2" />
                 )}
-                {path ? "Trocar marca" : "Enviar marca"}
+                Remover logos
               </Button>
-              {path && (
-                <Button variant="destructive" onClick={handleRemover} disabled={removendo}>
-                  {removendo ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Trash2 className="h-4 w-4 mr-2" />
-                  )}
-                  Remover
-                </Button>
-              )}
-            </div>
+            )}
 
             <div className="space-y-1 text-sm text-muted-foreground border-t border-border pt-4">
               <p>Recomendado: PNG com fundo transparente, boa resolução.</p>

@@ -1,3 +1,8 @@
+import {
+  deriveDarkBackgroundLogo,
+  removeSolidLogoBackground,
+} from "./logo-background.ts";
+
 export type ClientBrandIdentity = {
   id?: string;
   user_id: string;
@@ -10,19 +15,74 @@ export type ClientBrandIdentity = {
 
 export type ClientLogoVariant = "default" | "light_background" | "dark_background";
 
+async function processClientLogo(
+  sb: any,
+  userId: string,
+  path: string,
+  variant: ClientLogoVariant,
+): Promise<{
+  path: string;
+  warning: string | null;
+  width?: number;
+  height?: number;
+  bytes: Uint8Array;
+}> {
+  if (!path.startsWith(`${userId}/`)) throw new Error("logo fora do tenant");
+  const { data, error } = await sb.storage.from("tenant-logos").download(path);
+  if (error || !data) throw error ?? new Error("logo não encontrada");
+  const bytes = new Uint8Array(await data.arrayBuffer());
+  const processed = await removeSolidLogoBackground(
+    bytes,
+    (data as any)?.type || "application/octet-stream",
+  );
+  if (!processed.changed) {
+    return {
+      path,
+      warning: processed.warning,
+      width: processed.width,
+      height: processed.height,
+      bytes: processed.bytes,
+    };
+  }
+  const processedPath = `${userId}/client-brands/${Date.now()}-${
+    crypto.randomUUID().slice(0, 8)
+  }-${variant}-sem-fundo.png`;
+  const { error: uploadError } = await sb.storage.from("tenant-logos").upload(
+    processedPath,
+    processed.bytes,
+    { contentType: "image/png", upsert: false },
+  );
+  if (uploadError) throw uploadError;
+  await sb.storage.from("tenant-logos").remove([path]);
+  return {
+    path: processedPath,
+    warning: null,
+    width: processed.width,
+    height: processed.height,
+    bytes: processed.bytes,
+  };
+}
+
 export function clientLogoPath(
   identity: ClientBrandIdentity | null | undefined,
   background?: "light" | "dark",
+  allowAutomaticallyGeneratedDark = false,
 ): string | null {
   if (!identity) return null;
+  const automaticDark = background === "dark" &&
+    identity.identity?.logo_fundo_escuro_gerada_automaticamente === true;
   const key = background === "light"
     ? "logo_fundo_claro_path"
     : background === "dark"
+      && (!automaticDark || allowAutomaticallyGeneratedDark)
     ? "logo_fundo_escuro_path"
     : null;
+  const darkFallback = !automaticDark || allowAutomaticallyGeneratedDark
+    ? String(identity.identity?.logo_fundo_escuro_path || "")
+    : "";
   return (key ? String(identity.identity?.[key] || "") : "")
     || identity.logo_path
-    || String(identity.identity?.logo_fundo_escuro_path || "")
+    || darkFallback
     || String(identity.identity?.logo_fundo_claro_path || "")
     || null;
 }
@@ -146,22 +206,76 @@ export async function saveClientBrandIdentity(
   const incomingOrigin = String(input.identity?.logo_origem || "");
   const incomingTemporary = String(input.logoPath || "").includes("/video-site/");
   const preserveManualLogo = existingOrigin === "whatsapp_manual" && incomingOrigin !== "whatsapp_manual";
+  const logoVariant = input.logoVariant ?? "default";
+  const shouldProcessLogo = input.logoPath &&
+    (logoVariant !== "default" || (!incomingTemporary && !preserveManualLogo));
+  const processedLogo = shouldProcessLogo
+    ? await processClientLogo(
+      sb,
+      input.userId,
+      input.logoPath!,
+      logoVariant,
+    )
+    : null;
   const mergedIdentity = {
     ...((existing?.identity && typeof existing.identity === "object") ? existing.identity : {}),
     ...((input.identity && typeof input.identity === "object") ? input.identity : {}),
   };
-  const logoVariant = input.logoVariant ?? "default";
-  if (input.logoPath && logoVariant === "light_background") {
-    mergedIdentity.logo_fundo_claro_path = input.logoPath;
+  if (processedLogo) {
+    mergedIdentity.logo_background_warning = processedLogo.warning;
+    if (processedLogo.width && processedLogo.height) {
+      mergedIdentity.logo_width = processedLogo.width;
+      mergedIdentity.logo_height = processedLogo.height;
+      mergedIdentity.logo_aspect_ratio =
+        processedLogo.width / processedLogo.height;
+    }
   }
-  if (input.logoPath && logoVariant === "dark_background") {
-    mergedIdentity.logo_fundo_escuro_path = input.logoPath;
+  if (processedLogo && logoVariant === "light_background") {
+    mergedIdentity.logo_fundo_claro_path = processedLogo.path;
+  }
+  if (processedLogo && logoVariant === "dark_background") {
+    mergedIdentity.logo_fundo_escuro_path = processedLogo.path;
+    mergedIdentity.logo_fundo_escuro_gerada_automaticamente = false;
   }
   const logoPath = logoVariant === "default"
     ? (incomingTemporary || preserveManualLogo
       ? existing?.logo_path || null
-      : input.logoPath || existing?.logo_path || null)
+      : processedLogo?.path || existing?.logo_path || null)
     : existing?.logo_path || null;
+  if (
+    processedLogo &&
+    logoVariant === "default" &&
+    !preserveManualLogo
+  ) {
+    const existingDarkPath = String(
+      existing?.identity?.logo_fundo_escuro_path || "",
+    );
+    const existingDarkAutomatic =
+      existing?.identity?.logo_fundo_escuro_gerada_automaticamente === true;
+    if (!existingDarkPath || existingDarkAutomatic) {
+      if (existingDarkPath && existingDarkPath.startsWith(`${input.userId}/`)) {
+        await sb.storage.from("tenant-logos").remove([existingDarkPath]);
+      }
+      delete mergedIdentity.logo_fundo_escuro_path;
+      delete mergedIdentity.logo_fundo_escuro_gerada_automaticamente;
+      const derived = processedLogo.warning
+        ? null
+        : await deriveDarkBackgroundLogo(processedLogo.bytes);
+      if (derived?.generated) {
+        const darkPath = `${input.userId}/client-brands/${Date.now()}-${
+          crypto.randomUUID().slice(0, 8)
+        }-dark-automatica.png`;
+        const { error: darkUploadError } = await sb.storage.from("tenant-logos")
+          .upload(darkPath, derived.bytes, {
+            contentType: "image/png",
+            upsert: false,
+          });
+        if (darkUploadError) throw darkUploadError;
+        mergedIdentity.logo_fundo_escuro_path = darkPath;
+        mergedIdentity.logo_fundo_escuro_gerada_automaticamente = true;
+      }
+    }
+  }
   if (preserveManualLogo) mergedIdentity.logo_origem = "whatsapp_manual";
   const payload = {
     user_id: input.userId,

@@ -82,17 +82,35 @@ function text(
 
 function logo(d: AnuncioData, dark: boolean): Node | null {
   if (d.logoDataUrl) {
-    return {
+    const image = {
       type: "img",
       props: {
         src: d.logoDataUrl,
         style: {
-          width: 220,
+          width: d.logoIsIcon ? 72 : 220,
           height: 72,
           objectFit: "contain",
           objectPosition: "left center",
         },
       },
+    };
+    if (d.logoIsIcon && d.businessName) {
+      return el("div", {
+        display: "flex",
+        alignItems: "center",
+        gap: 14,
+      }, [
+        image,
+        text(d.businessName, {
+          color: dark ? "#FFFFFF" : "#151517",
+          fontSize: 25,
+          fontWeight: 900,
+          whiteSpace: "nowrap",
+        }),
+      ]);
+    }
+    return {
+      ...image,
     };
   }
   return d.businessName
@@ -164,20 +182,26 @@ function titleBlock(
   accent: string,
   maxWidth = 790,
 ): Node {
+  const withoutYear = (value: string) =>
+    (d.ano ? value.replace(d.ano, "") : value)
+      .replace(/^[\s•|,-]+|[\s•|,-]+$/g, "")
+      .replace(/\s{2,}/g, " ");
+  const title = withoutYear(d.titulo);
+  const subtitle = d.subtitulo ? withoutYear(d.subtitulo) : "";
   return el("div", {
     display: "flex",
     flexDirection: "column",
     maxWidth,
   }, [
-    text(d.titulo.toUpperCase(), {
+    text(title.toUpperCase(), {
       color,
-      fontSize: d.titulo.length > 28 ? 48 : 62,
+      fontSize: title.length > 28 ? 48 : 62,
       lineHeight: 1,
       fontWeight: 900,
       letterSpacing: -1,
     }),
-    ...(d.subtitulo
-      ? [text(d.subtitulo.toUpperCase().replace(/\s*[|·]\s*/g, " • "), {
+    ...(subtitle
+      ? [text(subtitle.toUpperCase().replace(/\s*[|·]\s*/g, " • "), {
         color: accent,
         marginTop: 12,
         fontSize: 25,
@@ -251,6 +275,10 @@ function items(
   dark: boolean,
 ): Node | null {
   if (!d.itens.length) return null;
+  const longest = Math.max(...d.itens.map((item) => item.texto.length));
+  const itemFontSize = style === "destaque"
+    ? Math.max(16, longest > 22 || d.itens.length > 5 ? 16 : 20)
+    : 20;
   return el("div", {
     display: "flex",
     flexWrap: "wrap",
@@ -271,7 +299,7 @@ function items(
       backgroundColor: style === "impacto" ? "#1A1A1D" : "transparent",
       padding: style === "impacto" ? "11px 18px" : "10px 12px",
       color: dark ? "#FFFFFF" : "#262629",
-      fontSize: 20,
+      fontSize: itemFontSize,
       fontWeight: 800,
     }, [
       ...(style === "catalogo"
@@ -286,6 +314,36 @@ function items(
       item.texto.toUpperCase(),
     ])
   ));
+}
+
+function ficha(d: AnuncioData, dark: boolean): Node | null {
+  if (!d.ficha?.length) return null;
+  return text(`Ficha: ${d.ficha.join(" • ")}`, {
+    color: dark ? "#B8B8BD" : "#5F5F65",
+    fontSize: 15,
+    lineHeight: 1.3,
+    marginTop: 10,
+    width: "100%",
+  });
+}
+
+function details(
+  d: AnuncioData,
+  style: AnuncioEstilo,
+  accent: string,
+  dark: boolean,
+): Node | null {
+  const content = [
+    items(d, style, accent, dark),
+    ficha(d, dark),
+  ].filter(Boolean);
+  return content.length
+    ? el("div", {
+      display: "flex",
+      flexDirection: "column",
+      width: "100%",
+    }, content)
+    : null;
 }
 
 export function buildPremiumAnuncio(
@@ -326,7 +384,7 @@ export function buildPremiumAnuncio(
         left: 48, right: 48, top: story ? 1190 : 716, bottom: story ? 60 : 48,
         justifyContent: "space-between",
       }, [
-        items(d, style, detail, true),
+        details(d, style, detail, true),
         el("div", { display: "flex", justifyContent: "space-between", alignItems: "flex-end" }, [
           priceBlock(d, { value: "#FFFFFF", label: accentText, reference: "#A7A7AB" }),
           el("div", { display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10 }, [
@@ -349,7 +407,7 @@ export function buildPremiumAnuncio(
         left: 48, right: 48, top: story ? 1136 : 676, bottom: story ? 60 : 40,
         justifyContent: "space-between",
       }, [
-        items(d, style, detail, false),
+        details(d, style, detail, false),
         el("div", {
           display: "flex", justifyContent: "space-between", alignItems: "flex-end",
           borderTop: "2px solid #D5D5D1", paddingTop: 20,
@@ -370,11 +428,16 @@ export function buildPremiumAnuncio(
         left: 48, right: 48, top: story ? 1030 : 604, bottom: story ? 54 : 42,
       }, [
         titleBlock(d, "#FFFFFF", "#A7A7AD"),
-        el("div", { display: "flex", marginTop: story ? 34 : 18 }, items(d, style, detail, true)),
+        el(
+          "div",
+          { display: "flex", marginTop: story ? 34 : 18 },
+          details(d, style, detail, true),
+        ),
         el("div", {
-          display: "flex", marginTop: "auto", marginLeft: 260,
+          display: "flex", marginTop: "auto", alignSelf: "flex-end",
           marginRight: -48, borderRadius: "32px 0 0 32px",
-          backgroundColor: detail, padding: "20px 34px",
+          backgroundColor: detail, padding: "12px 24px 12px 28px",
+          maxWidth: "45%",
           justifyContent: "flex-end",
         }, priceBlock(d, { value: accent.onAccentColor, label: accent.onAccentColor, reference: accent.onAccentColor }, "right")),
         el("div", { display: "flex", marginTop: 18 }, contacts(d, "#C8C8CC")),

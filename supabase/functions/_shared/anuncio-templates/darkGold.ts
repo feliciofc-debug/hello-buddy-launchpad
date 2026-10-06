@@ -24,6 +24,7 @@ export interface AnuncioData {
   titulo: string;
   subtitulo?: string | null;
   itens: AnuncioItem[];
+  ficha?: string[];
   ano?: string | null;
   preco?: string | null;
   precoLabel?: string | null;
@@ -38,6 +39,7 @@ export interface AnuncioData {
   fotoDataUrl?: string | null;
   fotoPrecomposed?: boolean;
   logoDataUrl?: string | null;
+  logoIsIcon?: boolean;
   primaryColor: string;
   accentColor: string;
   formato: AnuncioFormato;

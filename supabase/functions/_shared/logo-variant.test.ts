@@ -69,3 +69,18 @@ Deno.test("cliente usa variante e cai na logo atual quando ausente", () => {
     "default.png",
   );
 });
+
+Deno.test("variante escura automática fica restrita ao anúncio de imagem", () => {
+  const identity = {
+    user_id: "tenant",
+    client_name: "Loja",
+    normalized_name: "loja",
+    logo_path: "default.png",
+    identity: {
+      logo_fundo_escuro_path: "dark-auto.png",
+      logo_fundo_escuro_gerada_automaticamente: true,
+    },
+  };
+  assertEquals(clientLogoPath(identity, "dark"), "default.png");
+  assertEquals(clientLogoPath(identity, "dark", true), "dark-auto.png");
+});

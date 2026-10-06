@@ -197,8 +197,12 @@ export function extractBrandIdentityFromHtml(
     const key = attribute(tag, "property") || attribute(tag, "name");
     return /^(?:og:site_name|application-name)$/i.test(key);
   });
+  const title = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1]
+    ?.replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim() ?? "";
   const brandName = cleanSiteBrandName(
-    (siteNameTag && attribute(siteNameTag, "content")) || "",
+    (siteNameTag && attribute(siteNameTag, "content")) || title,
   );
   for (const tag of themeTags) {
     if (attribute(tag, "name").toLowerCase() !== "theme-color") continue;
