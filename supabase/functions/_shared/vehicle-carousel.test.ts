@@ -37,7 +37,9 @@ import {
   vehiclePhotoBatchButtons,
   vehiclePhotoBatchNewTopicReset,
   vehiclePhotoBatchOfferMessage,
+  vehiclePhotoCountLabel,
   vehiclePhotoCaption,
+  vehiclePhotosFromQueueEvents,
   vehicleSingleRepeatedPhotoButtons,
 } from "./vehicle-carousel.ts";
 
@@ -347,6 +349,70 @@ Deno.test("lote misto informa somente as duas fotos repetidas", () => {
   assertStringIncludes(
     vehiclePhotoBatchOfferMessage(planned.state),
     "(2 delas você já tinha me mandado antes.)",
+  );
+});
+
+Deno.test("eventos paralelos repetidos formam um lote único com quatro fotos", () => {
+  const result = vehiclePhotosFromQueueEvents(
+    photos.slice(0, 4).map((photo, index) => ({
+      queue_id: `queue-${index}`,
+      media_id: photo.id,
+      media_url: photo.url,
+      reused: true,
+      event_created_at: `2026-10-06T15:00:0${3 - index}.000Z`,
+    })),
+  );
+  assertEquals(result.map((photo) => photo.id), [
+    "photo-4",
+    "photo-3",
+    "photo-2",
+    "photo-1",
+  ]);
+  assert(result.every((photo) => photo.reused));
+});
+
+Deno.test("eventos paralelos novos e mistos preservam N=4", () => {
+  const events = photos.slice(0, 4).map((photo, index) => ({
+    queue_id: `queue-${index}`,
+    media_id: photo.id,
+    media_url: photo.url,
+    reused: index < 2,
+    event_created_at: `2026-10-06T15:00:0${index}.000Z`,
+  }));
+  assertEquals(vehiclePhotosFromQueueEvents(events).length, 4);
+  assertEquals(
+    vehiclePhotosFromQueueEvents(
+      events.map((event) => ({ ...event, reused: false })),
+    ).length,
+    4,
+  );
+});
+
+Deno.test("três fotos concorrentes entram na coleta sem duplicar", () => {
+  const concurrent = [
+    photos.slice(0, 1),
+    photos.slice(1, 2),
+    photos.slice(2, 3),
+  ];
+  const merged = addVehicleCarouselPhotos([], concurrent.flat()).photos;
+  assertEquals(merged.map((photo) => photo.id), [
+    "photo-1",
+    "photo-2",
+    "photo-3",
+  ]);
+});
+
+Deno.test("contagem de fotos usa singular e plural corretos", () => {
+  assertEquals(vehiclePhotoCountLabel(1), "1 foto");
+  assertEquals(vehiclePhotoCountLabel(4), "4 fotos");
+  assertStringIncludes(
+    vehiclePhotoBatchOfferMessage({
+      stage: "offered",
+      photos: photos.slice(0, 1),
+      created_at: new Date().toISOString(),
+      last_photo_at: new Date().toISOString(),
+    }),
+    "Recebi 1 foto.",
   );
 });
 

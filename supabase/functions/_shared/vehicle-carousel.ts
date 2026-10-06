@@ -100,6 +100,14 @@ export type PendingVehiclePhotoBatch = {
   last_photo_at: string;
 };
 
+export type VehiclePhotoQueueEvent = {
+  queue_id: string;
+  media_id: string;
+  media_url: string;
+  reused?: boolean;
+  event_created_at: string;
+};
+
 function normalize(value: string): string {
   return String(value || "").normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -281,13 +289,34 @@ export function vehiclePhotoBatchOfferMessage(
   state: PendingVehiclePhotoBatch,
 ): string {
   const reusedCount = state.reused_photo_ids?.length ?? 0;
-  return `Recebi ${state.photos.length} fotos. O que quer fazer?${
+  return `Recebi ${vehiclePhotoCountLabel(state.photos.length)}. O que quer fazer?${
     reusedCount > 0
       ? `\n\n(${reusedCount} ${
         reusedCount === 1 ? "dela você já tinha" : "delas você já tinha"
       } me mandado antes.)`
       : ""
   }`;
+}
+
+export function vehiclePhotoCountLabel(count: number): string {
+  return `${count} ${count === 1 ? "foto" : "fotos"}`;
+}
+
+export function vehiclePhotosFromQueueEvents(
+  events: VehiclePhotoQueueEvent[],
+): VehicleCarouselPhoto[] {
+  const ordered = [...events].sort((a, b) =>
+    a.event_created_at.localeCompare(b.event_created_at) ||
+    a.queue_id.localeCompare(b.queue_id)
+  );
+  return addVehicleCarouselPhotos(
+    [],
+    ordered.map((event) => ({
+      id: event.media_id,
+      url: event.media_url,
+      reused: event.reused === true,
+    })),
+  ).photos;
 }
 
 export const SINGLE_REPEATED_VEHICLE_PHOTO_MESSAGE =
