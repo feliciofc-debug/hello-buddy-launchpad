@@ -5,7 +5,9 @@ import {
 import satori from "https://esm.sh/satori@0.10.13";
 import { initWasm, Resvg } from "https://esm.sh/@resvg/resvg-wasm@2.6.2";
 import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
-import { buildAnuncioBrandPlan } from "./anuncio-client-brand.ts";
+import {
+  buildAnuncioBrandPlan,
+} from "./anuncio-client-brand.ts";
 import { selectAnuncioPhoto } from "./anuncio-photo.ts";
 import {
   calculatePhotoFrame,
@@ -14,12 +16,15 @@ import {
   parseFotoBoxFromVisionResponse,
 } from "./anuncio-photo-framing.ts";
 import { productAdPhotoImprovementPrompt } from "./anuncio-photo-prompt.ts";
-import { classifyStoreReply, storeNameFromSite } from "./anuncio-store-flow.ts";
+import {
+  classifyStoreReply,
+  storeNameFromSite,
+} from "./anuncio-store-flow.ts";
 import { buildVehicleAdContent } from "./anuncio-vehicle-details.ts";
 import {
+  anuncioSuccessMessage,
   amzAnuncioClientButtons,
   amzMissingClientLogoButtons,
-  anuncioSuccessMessage,
   shouldAskAmzAnuncioClient,
 } from "./anuncio-tenant-brand.ts";
 import { selectRecentOriginalPhoto } from "./anuncio-source-media.ts";
@@ -164,20 +169,13 @@ Deno.test("campos opcionais ausentes não aparecem no template", () => {
   assert(!text.includes("VALOR"));
   assert(!text.includes("HOJE"));
   assert(!text.includes("2023"));
-  assertEquals(
-    nodes.some((node) => node.props?.style?.textDecoration === "line-through"),
-    false,
-  );
+  assertEquals(nodes.some((node) => node.props?.style?.textDecoration === "line-through"), false);
 });
 
 Deno.test("preço de referência só aparece riscado quando informado", () => {
-  const withoutReference = flatten(
-    buildAnuncio(baseData({ preco: "R$ 99.900" })),
-  );
+  const withoutReference = flatten(buildAnuncio(baseData({ preco: "R$ 99.900" })));
   assertEquals(
-    withoutReference.some((node) =>
-      node.props?.style?.textDecoration === "line-through"
-    ),
+    withoutReference.some((node) => node.props?.style?.textDecoration === "line-through"),
     false,
   );
 
@@ -189,9 +187,7 @@ Deno.test("preço de referência só aparece riscado quando informado", () => {
     precoReferenciaObs: "sem blindagem",
   })));
   assert(
-    withReference.some((node) =>
-      node.props?.style?.textDecoration === "line-through"
-    ),
+    withReference.some((node) => node.props?.style?.textDecoration === "line-through"),
   );
 });
 
@@ -266,17 +262,11 @@ function overlaps(
 
 Deno.test("rodapé reserva faixas sem sobrepor logo e contatos", () => {
   assertEquals(
-    overlaps(
-      ANUNCIO_FOOTER_BOXES.feed.logo,
-      ANUNCIO_FOOTER_BOXES.feed.contacts,
-    ),
+    overlaps(ANUNCIO_FOOTER_BOXES.feed.logo, ANUNCIO_FOOTER_BOXES.feed.contacts),
     false,
   );
   assertEquals(
-    overlaps(
-      ANUNCIO_FOOTER_BOXES.story.logo,
-      ANUNCIO_FOOTER_BOXES.story.contacts,
-    ),
+    overlaps(ANUNCIO_FOOTER_BOXES.story.logo, ANUNCIO_FOOTER_BOXES.story.contacts),
     false,
   );
 });
@@ -295,32 +285,23 @@ Deno.test("logo horizontal usa contain e preserva proporção", () => {
 });
 
 Deno.test("tenant AMZ sem cliente pergunta a loja e botão libera marca AMZ", () => {
-  assertEquals(
-    shouldAskAmzAnuncioClient({
-      tenantId: "amz",
-      amzTenantId: "amz",
-    }),
-    true,
-  );
+  assertEquals(shouldAskAmzAnuncioClient({
+    tenantId: "amz",
+    amzTenantId: "amz",
+  }), true);
   assertEquals(amzAnuncioClientButtons().buttons, [
     { id: "anuncio_other_store", title: "Informar outra loja" },
     { id: "anuncio_use_amz", title: "Usar marca da AMZ" },
   ]);
-  assertEquals(
-    shouldAskAmzAnuncioClient({
-      tenantId: "amz",
-      amzTenantId: "amz",
-      useTenantBrand: true,
-    }),
-    false,
-  );
-  assertEquals(
-    shouldAskAmzAnuncioClient({
-      tenantId: "outro",
-      amzTenantId: "amz",
-    }),
-    false,
-  );
+  assertEquals(shouldAskAmzAnuncioClient({
+    tenantId: "amz",
+    amzTenantId: "amz",
+    useTenantBrand: true,
+  }), false);
+  assertEquals(shouldAskAmzAnuncioClient({
+    tenantId: "outro",
+    amzTenantId: "amz",
+  }), false);
 });
 
 Deno.test("logo inválida no site oferece envio manual ou marca AMZ sem favicon", () => {
@@ -383,19 +364,16 @@ Deno.test("reenvio deduplicado torna a mesma foto a mais recente", () => {
 });
 
 Deno.test("sem foto original recente o anúncio pede nova foto", () => {
-  assertEquals(
-    selectRecentOriginalPhoto({
-      nowMs: Date.parse("2026-10-05T18:00:00Z"),
-      candidates: [{
-        id: "arte",
-        tipo: "foto",
-        origem: "anuncio_produto",
-        midia_url: "https://cdn.example/arte.png",
-        created_at: "2026-10-05T17:59:00Z",
-      }],
-    }),
-    null,
-  );
+  assertEquals(selectRecentOriginalPhoto({
+    nowMs: Date.parse("2026-10-05T18:00:00Z"),
+    candidates: [{
+      id: "arte",
+      tipo: "foto",
+      origem: "anuncio_produto",
+      midia_url: "https://cdn.example/arte.png",
+      created_at: "2026-10-05T17:59:00Z",
+    }],
+  }), null);
 });
 
 Deno.test("confirmação AMZ é amigável e não vaza instrução interna", () => {
@@ -408,9 +386,8 @@ Deno.test("confirmação AMZ é amigável e não vaza instrução interna", () =
 });
 
 Deno.test("mensagem de mídia reconhecida remove marcador e não corta frase", () => {
-  const description = cleanReceivedMediaDescription(
-    "[visão] Esta foto real de produto captura um Jeep branco em uma garagem bem iluminada.",
-  );
+  const description =
+    cleanReceivedMediaDescription('[visão] Esta foto real de produto captura um Jeep branco em uma garagem bem iluminada.');
   assertEquals(
     description,
     "Esta foto real de produto captura um Jeep branco em uma garagem bem iluminada.",
@@ -441,9 +418,7 @@ async function renderTemplateWithRealPhoto(
     const photoBytes = await fetchJpegPhoto();
     let binary = "";
     for (let offset = 0; offset < photoBytes.length; offset += 8192) {
-      binary += String.fromCharCode(
-        ...photoBytes.subarray(offset, offset + 8192),
-      );
+      binary += String.fromCharCode(...photoBytes.subarray(offset, offset + 8192));
     }
     photoDataUrl = `data:image/jpeg;base64,${btoa(binary)}`;
   }
@@ -510,12 +485,8 @@ Deno.test("JPEG rotulado como PNG usa MIME real e permanece visível", async () 
   assert(normalized?.startsWith("data:image/jpeg;base64,"));
   const feed = await renderTemplateWithRealPhoto("feed", normalized!);
   const story = await renderTemplateWithRealPhoto("story", normalized!);
-  assert(
-    regionDeviation(feed, { x: 140, y: 270, width: 800, height: 340 }) > 12,
-  );
-  assert(
-    regionDeviation(story, { x: 140, y: 380, width: 800, height: 620 }) > 12,
-  );
+  assert(regionDeviation(feed, { x: 140, y: 270, width: 800, height: 340 }) > 12);
+  assert(regionDeviation(story, { x: 140, y: 380, width: 800, height: 620 }) > 12);
 });
 
 Deno.test("WEBP é convertido para PNG renderizável", async () => {
@@ -549,9 +520,7 @@ Deno.test("arte de produto tem prioridade e respeita foto sem melhoria", () => {
   assertEquals(isImageCompositionIntent(request), false);
   assertEquals(shouldImproveProductAdPhoto(request), false);
   assertEquals(
-    shouldImproveProductAdPhoto(
-      "Monta um anúncio desse carro e melhora a foto",
-    ),
+    shouldImproveProductAdPhoto("Monta um anúncio desse carro e melhora a foto"),
     true,
   );
 });
@@ -651,25 +620,15 @@ Deno.test("parser valida box_2d e conferência rejeita corte", () => {
     ),
     { ymin: 50, xmin: 80, ymax: 950, xmax: 920 },
   );
-  assertEquals(
-    parseFotoBoxFromVisionResponse('{"box_2d":[0,0,1200,900]}'),
-    null,
-  );
-  assertEquals(
-    frameContainsObject(
-      {
-        mode: "box",
-        resizedWidth: 1200,
-        resizedHeight: 900,
-        x: -100,
-        y: 0,
-        transformedBox: { x: -4, y: 10, width: 900, height: 390 },
-      },
-      984,
-      420,
-    ),
-    false,
-  );
+  assertEquals(parseFotoBoxFromVisionResponse('{"box_2d":[0,0,1200,900]}'), null);
+  assertEquals(frameContainsObject({
+    mode: "box",
+    resizedWidth: 1200,
+    resizedHeight: 900,
+    x: -100,
+    y: 0,
+    transformedBox: { x: -4, y: 10, width: 900, height: 390 },
+  }, 984, 420), false);
 });
 
 Deno.test("template usa fill só para foto já composta e contain como fallback", () => {
@@ -704,39 +663,30 @@ Deno.test("site sozinho fornece nome e nome sozinho pergunta site uma vez", () =
     action: "ask_site",
     name: "Loja Exemplo",
   });
-  assertEquals(
-    classifyStoreReply({
-      text: "não",
-      storedName: "Loja Exemplo",
-      askedSite: true,
-    }),
-    {
-      action: "name_only",
-      name: "Loja Exemplo",
-    },
-  );
-  assertEquals(
-    classifyStoreReply({
-      text: "AMZ Ofertas, site amzofertas.com.br",
-      site: "https://amzofertas.com.br",
-    }),
-    {
-      action: "site",
-      site: "https://amzofertas.com.br",
-      name: "AMZ Ofertas",
-    },
-  );
-  assertEquals(
-    classifyStoreReply({
-      text: "o site da Loja X é lojax.com.br",
-      site: "https://lojax.com.br",
-    }),
-    {
-      action: "site",
-      site: "https://lojax.com.br",
-      name: "Loja X",
-    },
-  );
+  assertEquals(classifyStoreReply({
+    text: "não",
+    storedName: "Loja Exemplo",
+    askedSite: true,
+  }), {
+    action: "name_only",
+    name: "Loja Exemplo",
+  });
+  assertEquals(classifyStoreReply({
+    text: "AMZ Ofertas, site amzofertas.com.br",
+    site: "https://amzofertas.com.br",
+  }), {
+    action: "site",
+    site: "https://amzofertas.com.br",
+    name: "AMZ Ofertas",
+  });
+  assertEquals(classifyStoreReply({
+    text: "o site da Loja X é lojax.com.br",
+    site: "https://lojax.com.br",
+  }), {
+    action: "site",
+    site: "https://lojax.com.br",
+    name: "Loja X",
+  });
 });
 
 Deno.test("14 dados viram no máximo 8 destaques e o restante fica na ficha", () => {
@@ -815,9 +765,7 @@ Deno.test("logo quadrada mostra nome e logo horizontal não repete", () => {
     businessName: "AMZ Ofertas",
   })));
   assert(iconNodes.some((node) => node.props?.children === "AMZ Ofertas"));
-  const icon = iconNodes.find((node) =>
-    node.props?.src === "data:image/png;base64,ICONE"
-  );
+  const icon = iconNodes.find((node) => node.props?.src === "data:image/png;base64,ICONE");
   assertEquals(icon?.props?.style?.width, 72);
 
   const horizontalNodes = flatten(buildCatalogoAnuncio(baseData({
@@ -853,11 +801,9 @@ Deno.test("Destaque mantém tarja do preço compacta após seis itens longos", (
     node.props.children.startsWith("DESTAQUE LONGO")
   );
   assert(itemNodes.every((node) => Number(node.props?.style?.fontSize) >= 16));
-  assert(
-    nodes.some((node) =>
-      String(node.props?.children || "").startsWith("Ficha:")
-    ),
-  );
+  assert(nodes.some((node) =>
+    String(node.props?.children || "").startsWith("Ficha:")
+  ));
   const fichaNode = nodes.find((node) =>
     String(node.props?.children || "").startsWith("Ficha:")
   );
@@ -869,9 +815,7 @@ Deno.test("Catálogo usa fundo branco e selo do ano legível", () => {
     ano: "2021/2022",
     accentColor: "#F36812",
   })));
-  assert(
-    nodes.some((node) => node.props?.style?.backgroundColor === "#FFFFFF"),
-  );
+  assert(nodes.some((node) => node.props?.style?.backgroundColor === "#FFFFFF"));
   const badge = nodes.find((node) => node.props?.children === "2021/2022");
   assertEquals(badge?.props?.style?.color, "#111113");
   assertEquals(badge?.props?.style?.backgroundColor, "transparent");
@@ -936,12 +880,9 @@ Deno.test("os três templates renderizam a foto em feed e story", async () => {
 
 Deno.test("estilo explícito e preferência do cliente são reutilizados", () => {
   assertEquals(anuncioStyleFromText("monta no estilo catálogo"), "catalogo");
-  assertEquals(
-    savedClientAnuncioStyle({
-      ...savedBase,
-      identity: { preferred_ad_style: "impacto" },
-    }),
-    "impacto",
-  );
+  assertEquals(savedClientAnuncioStyle({
+    ...savedBase,
+    identity: { preferred_ad_style: "impacto" },
+  }), "impacto");
   assertEquals(otherAnuncioStyles("impacto"), ["catalogo", "destaque"]);
 });

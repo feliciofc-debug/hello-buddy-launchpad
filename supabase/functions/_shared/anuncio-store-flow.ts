@@ -13,14 +13,8 @@ function cleanStoreNameAroundSite(value: string): string {
   for (let pass = 0; pass < 4; pass++) {
     const previous = name;
     name = name
-      .replace(
-        new RegExp(`^[\\s,.:;|–—-]*(?:${looseWords})\\b[\\s,.:;|–—-]*`, "i"),
-        "",
-      )
-      .replace(
-        new RegExp(`[\\s,.:;|–—-]*(?:${looseWords})[\\s,.:;|–—-]*$`, "i"),
-        "",
-      )
+      .replace(new RegExp(`^[\\s,.:;|–—-]*(?:${looseWords})\\b[\\s,.:;|–—-]*`, "i"), "")
+      .replace(new RegExp(`[\\s,.:;|–—-]*(?:${looseWords})[\\s,.:;|–—-]*$`, "i"), "")
       .replace(/^[\s,.:;|–—-]+|[\s,.:;|–—-]+$/g, "")
       .trim();
     if (name === previous) break;
@@ -69,5 +63,7 @@ export function classifyStoreReply(input: {
     .replace(/^(?:nome(?:\s+da\s+loja)?|cliente)\s*[:=-]\s*/i, "")
     .trim()
     .slice(0, 100);
-  return name.length >= 2 ? { action: "ask_site", name } : { action: "ignore" };
+  return name.length >= 2
+    ? { action: "ask_site", name }
+    : { action: "ignore" };
 }
