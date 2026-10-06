@@ -332,6 +332,21 @@ import {
   saveTenantAnuncioStyle,
 } from "../_shared/anuncio-style.ts";
 import {
+  anuncioCaptionExtraList,
+  anuncioFinalApprovalButtons,
+  anuncioPostActionButtons,
+  anuncioPostFormatButtons,
+  anuncioPostNetworkButtons,
+  generateVehicleAdCaptions,
+  parseAnuncioPostRequest,
+  shouldBindPostToLastAnuncio,
+  validLastAnuncio,
+  type AnuncioPostNetwork,
+  type LastAnuncio,
+  type LastAnuncioImage,
+  type PendingAnuncioPost,
+} from "../_shared/anuncio-social-flow.ts";
+import {
   selectRecentOriginalPhoto,
 } from "../_shared/anuncio-source-media.ts";
 import {
@@ -614,7 +629,7 @@ function extractText(payload: any): string {
   if (payload.interactive?.list_reply?.title) {
     const title = String(payload.interactive.list_reply.title);
     const id = String(payload.interactive.list_reply.id || "");
-    return /^(?:video_|fipe_|tiktok_(?:privacy|disclosure):|meta_ads_q:)/i.test(id)
+    return /^(?:video_|fipe_|anuncio_post:|tiktok_(?:privacy|disclosure):|meta_ads_q:)/i.test(id)
       ? `${title}\n<<INTERACTIVE_ID:${id}>>`
       : title;
   }
@@ -2628,8 +2643,12 @@ type AgentConvState = {
     render_payload: Record<string, unknown>;
     client_name?: string | null;
     shown_styles: AnuncioStyle[];
+    images?: LastAnuncioImage[];
+    data?: Record<string, unknown>;
     created_at: string;
   } | null;
+  last_anuncio?: LastAnuncio | null;
+  pending_anuncio_post?: PendingAnuncioPost | null;
   pending_client_logo?: {
     logo_path: string;
     created_at: string;
@@ -5900,6 +5919,258 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
 
   if (error) throw new Error(`não consegui salvar o token de confirmação: ${error.message}`);
   return (data ?? []).map((r: any) => ({ id: r.id, platform: r.platform }));
+}
+
+async function persistAnuncioFlowState(
+  ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
+  patch: Pick<AgentConvState, "last_anuncio" | "pending_anuncio_post">,
+): Promise<void> {
+  if (!ctx.convId) return;
+  const conversation = {
+    id: ctx.convId,
+    userId: ctx.userId,
+    contactNumber: ctx.fromNumber,
+  };
+  const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+  await saveAgentState(sb, conversation, patch, current);
+  Object.assign(current, patch);
+  ctx.agentState = current;
+}
+
+async function connectedAnuncioNetworks(
+  userId: string,
+): Promise<AnuncioPostNetwork[]> {
+  const { data, error } = await sb.from("meta_connections")
+    .select("page_id, ig_account_id")
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .maybeSingle();
+  if (error) throw new Error(`não consegui consultar as redes conectadas: ${error.message}`);
+  const networks: AnuncioPostNetwork[] = [];
+  if (data?.page_id) networks.push("facebook");
+  if (data?.ig_account_id) networks.push("instagram");
+  return networks;
+}
+
+async function ensureLastAnuncioImage(
+  last: LastAnuncio,
+  style: AnuncioStyle,
+  formato: "feed" | "story",
+  ctx: { userId: string; fromNumber: string },
+): Promise<LastAnuncioImage> {
+  const existing = last.images.find((image) =>
+    image.style === style && image.formato === formato
+  );
+  if (existing) return existing;
+  if (!last.render_payload) {
+    throw new Error(`não tenho os dados necessários para gerar a versão ${formato}`);
+  }
+  const client = last.client_name
+    ? await findClientBrandIdentity(sb, ctx.userId, { name: last.client_name })
+    : null;
+  const logoPath = client
+    ? clientLogoPath(client, style === "catalogo" ? "light" : "dark", true)
+    : null;
+  const render = await callEdge("render-anuncio-produto", {
+    ...last.render_payload,
+    formato,
+    estilo: style,
+    logo_path: logoPath,
+  }, 120000);
+  if (!render?.success || !render?.image_url) {
+    throw new Error(String(render?.error || `falha ao gerar ${formato}`));
+  }
+  const { data: media, error } = await sb.from("midias_whatsapp").insert({
+    user_id: ctx.userId,
+    telefone_origem: ctx.fromNumber,
+    tipo: "foto",
+    midia_url: render.image_url,
+    contexto_original: `Anúncio ${style} ${formato}: ${String(last.data.titulo || "")}`,
+    origem: "anuncio_produto",
+    status: "pendente",
+  }).select("id").maybeSingle();
+  if (error) throw new Error(`não consegui salvar a versão ${formato}: ${error.message}`);
+  const image = {
+    style,
+    formato,
+    id: String(media?.id || ""),
+    url: String(render.image_url),
+  } satisfies LastAnuncioImage;
+  last.images.push(image);
+  return image;
+}
+
+async function prepareAnuncioSocialPosts(input: {
+  last: LastAnuncio;
+  action: "publish" | "schedule";
+  format: "feed" | "story" | "feed_story";
+  networks: AnuncioPostNetwork[];
+  ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState };
+}): Promise<{ raw: string; pending: PendingAnuncioPost }> {
+  const { last, action, format, networks, ctx } = input;
+  const style = last.selected_style;
+  if (!style) throw new Error("escolha primeiro um dos estilos do anúncio");
+  if (!networks.length) throw new Error("nenhuma das redes pedidas está conectada");
+
+  const captions = generateVehicleAdCaptions(last.data);
+  const variantes = Object.fromEntries(networks.map((network) => [
+    network,
+    { ...captions },
+  ])) as Record<string, PostVariantes>;
+  const formats: Array<"feed" | "story"> = format === "feed_story"
+    ? ["feed", "story"]
+    : [format];
+  const tokens: string[] = [];
+
+  for (const postFormat of formats) {
+    const image = await ensureLastAnuncioImage(last, style, postFormat, ctx);
+    const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+    const scripts = Object.fromEntries(
+      networks.map((network) => [network, captions.A]),
+    );
+    const pending: PendingSocialPost = {
+      produto: {
+        id: image.id || null,
+        source: "anuncio_produto",
+        nome: String(last.data.titulo || "Anúncio"),
+        descricao: JSON.stringify(last.data),
+        imagem_url: image.url,
+        ativo: true,
+        midia_tipo: "foto",
+      },
+      tom: "beneficio",
+      redes: networks,
+      scripts,
+      variantes,
+      userId: ctx.userId,
+      requesterPhone: ctx.fromNumber,
+      createdAt: Date.now(),
+      formato: postFormat,
+      midiaTipo: "foto",
+      briefing: JSON.stringify(last.data).slice(0, 1200),
+    };
+    const queueRows = await persistPendingSocialPost(token, pending);
+    PENDING_POSTS.set(token, { ...pending, queueRows });
+    tokens.push(token);
+  }
+
+  const flow: PendingAnuncioPost = {
+    stage: "captions",
+    action,
+    format,
+    networks,
+    token: tokens[0],
+    extra_tokens: tokens.slice(1),
+    created_at: new Date().toISOString(),
+  };
+  await persistAnuncioFlowState(ctx, {
+    last_anuncio: last,
+    pending_anuncio_post: flow,
+  });
+  return {
+    pending: flow,
+    raw: JSON.stringify({
+      status: "aguardando_escolha_variante",
+      fonte: "last_anuncio",
+      token: tokens[0],
+      formato: formats[0],
+      produto: {
+        nome: String(last.data.titulo || "Anúncio"),
+        imagem_url: last.images.find((image) =>
+          image.style === style && image.formato === formats[0]
+        )?.url,
+      },
+      redes: networks,
+      variantes,
+    }),
+  };
+}
+
+function anuncioPostSummary(
+  last: LastAnuncio,
+  pending: PendingAnuncioPost,
+  option: string,
+): string {
+  const style = last.selected_style || "anúncio";
+  const format = pending.format === "feed_story"
+    ? "Feed + Story"
+    : pending.format === "story"
+    ? "Story"
+    : "Feed";
+  const networks = (pending.networks ?? []).map((network) =>
+    network === "facebook" ? "Facebook" : "Instagram"
+  ).join(" + ");
+  return `Resumo: *${String(last.data.titulo || "Anúncio")}* — estilo *${style}*, ${format}, ${networks}, legenda *Opção ${option}*. Nada foi publicado ainda.`;
+}
+
+async function deliverAnuncioCaptionChoices(
+  raw: string,
+  ctx: { userId: string; fromNumber: string },
+): Promise<{
+  text: string;
+  interactiveButtons?: WhatsAppInteractiveButtons;
+  interactiveList?: WhatsAppInteractiveList;
+}> {
+  const text = formatSocialPostToolResult(raw);
+  const buttons = interactiveButtonsFromSocialResult(raw);
+  try {
+    await sendWhatsApp(
+      ctx.userId,
+      ctx.fromNumber,
+      text,
+      undefined,
+      undefined,
+      buttons,
+      { alreadyLogged: false },
+    );
+    return {
+      text: "Se quiser, posso gerar outras opções ou você pode escrever a sua.",
+      interactiveList: anuncioCaptionExtraList(),
+    };
+  } catch (error) {
+    console.warn("[anuncio_post][caption_buttons_send_failed]", (error as Error).message);
+    return { text, interactiveButtons: buttons };
+  }
+}
+
+async function replaceAnuncioPendingCaptions(
+  tokens: string[],
+  captions: PostVariantes,
+  ctx: { userId: string; fromNumber: string },
+  selected?: "A" | "B" | "C",
+): Promise<void> {
+  for (const token of tokens) {
+    const current = PENDING_POSTS.get(token) ??
+      await loadPendingSocialPost(token, ctx.userId);
+    if (!current) throw new Error("preview de publicação expirado");
+    const variantes = Object.fromEntries(
+      current.redes.map((network) => [network, { ...captions }]),
+    );
+    const option = selected ?? "A";
+    const scripts = Object.fromEntries(
+      current.redes.map((network) => [network, captions[option]]),
+    );
+    const updated: PendingSocialPost = {
+      ...current,
+      variantes,
+      scripts,
+      variantSelecionada: selected,
+    };
+    const updateErrors = await Promise.all((current.queueRows ?? []).map(
+      async (row) => {
+        const { error } = await sb.from("social_posts_queue").update({
+          post_text: scripts[row.platform],
+          updated_at: new Date().toISOString(),
+        }).eq("id", row.id).eq("user_id", ctx.userId)
+          .eq("status", "aguardando_confirmacao");
+        return error?.message;
+      },
+    ));
+    const error = updateErrors.find(Boolean);
+    if (error) throw new Error(error);
+    PENDING_POSTS.set(token, updated);
+    await updatePendingSocialPostMarker(token, updated);
+  }
 }
 
 function carouselCardIndex(row: any): number {
@@ -13211,6 +13482,35 @@ async function toolCriarAnuncio(
       .replace(String(args?.ano || ""), "")
       .replace(/\s*[•|,-]\s*$/, "")
       .trim() || null;
+    const anuncioData: Record<string, unknown> = {
+      titulo,
+      subtitulo: vehicleContent.subtitle || fallbackSubtitle,
+      versao: args?.versao,
+      motor: args?.motor,
+      cambio: args?.cambio,
+      quilometragem: args?.quilometragem,
+      cor: args?.cor,
+      donos: args?.donos,
+      documentacao: args?.documentacao,
+      opcionais: args?.opcionais,
+      revisoes: args?.revisoes,
+      pneus: args?.pneus,
+      condicoes: args?.condicoes,
+      itens,
+      ficha: vehicleContent.ficha,
+      ano: args?.ano,
+      preco: args?.preco,
+      fipe: args?.fipe || (
+        String(args?.preco_referencia_label || "").toUpperCase() === "FIPE"
+          ? args?.preco_referencia
+          : undefined
+      ),
+      preco_referencia: args?.preco_referencia,
+      preco_referencia_label: args?.preco_referencia_label,
+      preco_referencia_obs: args?.preco_referencia_obs,
+      telefone,
+      instagram,
+    };
 
     // 5) RENDER — a foto é melhorada uma vez e reutilizada nos templates.
     const renderPayload: Record<string, unknown> = {
@@ -13303,14 +13603,42 @@ async function toolCriarAnuncio(
         contactNumber: ctx.fromNumber,
       };
       const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+      const images = renders.map(({ style, render }, index) => ({
+        style,
+        formato,
+        id: String(savedMedia[index] || ""),
+        url: String(render.image_url),
+      })) satisfies LastAnuncioImage[];
+      const lastAnuncio: LastAnuncio = {
+        images,
+        selected_style: renders.length === 1 ? styles[0] : undefined,
+        data: anuncioData,
+        render_payload: renderPayload,
+        client_name: args?.cliente || null,
+        created_at: new Date().toISOString(),
+      };
       const pending = {
         render_payload: renderPayload,
         client_name: args?.cliente || null,
         shown_styles: styles,
-        created_at: new Date().toISOString(),
+        images,
+        data: anuncioData,
+        created_at: lastAnuncio.created_at,
       };
-      await saveAgentState(sb, conversation, { pending_anuncio_styles: pending }, current);
+      const pendingPost: PendingAnuncioPost | null = renders.length === 1
+        ? {
+          stage: "action",
+          created_at: lastAnuncio.created_at,
+        }
+        : null;
+      await saveAgentState(sb, conversation, {
+        pending_anuncio_styles: pending,
+        last_anuncio: lastAnuncio,
+        pending_anuncio_post: pendingPost,
+      }, current);
       current.pending_anuncio_styles = pending;
+      current.last_anuncio = lastAnuncio;
+      current.pending_anuncio_post = pendingPost;
       ctx.agentState = current;
     }
 
@@ -13334,10 +13662,7 @@ async function toolCriarAnuncio(
         : anuncioSuccessMessage(),
       interactive_buttons: renders.length > 1
         ? anuncioStyleButtons()
-        : {
-          body: "Quer comparar com os outros moldes?",
-          buttons: [{ id: "anuncio_other_styles", title: "Ver outros estilos" }],
-        },
+        : anuncioPostActionButtons(),
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message).slice(0, 250) });
@@ -13822,6 +14147,14 @@ async function callGemini(
     const pendingAnuncioStyles = remetenteEhDono
       ? toolCtx.agentState?.pending_anuncio_styles
       : null;
+    const lastAnuncio = remetenteEhDono && validLastAnuncio(
+        toolCtx.agentState?.last_anuncio,
+      )
+      ? toolCtx.agentState!.last_anuncio!
+      : null;
+    const pendingAnuncioPost = remetenteEhDono
+      ? toolCtx.agentState?.pending_anuncio_post
+      : null;
     const pendingBrandGeneration = remetenteEhDono ? toolCtx.agentState?.pending_brand_generation : null;
     const pendingFipe = remetenteEhDono
       ? toolCtx.agentState?.pending_fipe
@@ -13844,6 +14177,9 @@ async function callGemini(
     const normalizedInput = normalizePt(userContent);
     const brandInteractiveId = userContent.match(/<<INTERACTIVE_ID:(brand_[^>]+)>>/i)?.[1]?.toLowerCase() || "";
     const socialInteractiveId = userContent.match(/<<INTERACTIVE_ID:(social_[^>]+)>>/i)?.[1] || "";
+    const anuncioPostInteractiveId = userContent.match(
+      /<<INTERACTIVE_ID:(anuncio_post:[^>]+)>>/i,
+    )?.[1]?.toLowerCase() || "";
     const socialActionInteractive = socialInteractiveId.match(/^social_(publish|publish_confirm|schedule):([a-f0-9]{8})$/i);
     const socialVariantInteractive = socialInteractiveId.match(/^social_variant:([ABC]):([a-f0-9]{8})$/i);
     const previousHistoryMessage = history.at(-1);
@@ -13975,11 +14311,7 @@ async function callGemini(
           return { text: raw };
         }
         return {
-          text: String(
-            parsed?.ok
-              ? anuncioSuccessMessage()
-              : parsed?.mensagem || "Não consegui concluir o anúncio.",
-          ),
+          text: String(parsed?.mensagem || "Não consegui concluir o anúncio."),
           imageUrl: parsed?.image_url,
           interactiveButtons: parsed?.interactive_buttons,
         };
@@ -14013,16 +14345,31 @@ async function callGemini(
           anuncioStyleInteractive,
         );
       }
+      const selectedImage = pendingAnuncioStyles.images?.find((image) =>
+        image.style === anuncioStyleInteractive
+      );
+      const lastAnuncio: LastAnuncio = {
+        images: pendingAnuncioStyles.images ?? [],
+        selected_style: anuncioStyleInteractive,
+        data: pendingAnuncioStyles.data ?? {},
+        render_payload: pendingAnuncioStyles.render_payload,
+        client_name: pendingAnuncioStyles.client_name,
+        created_at: pendingAnuncioStyles.created_at,
+      };
+      const pendingPost: PendingAnuncioPost = {
+        stage: "action",
+        created_at: new Date().toISOString(),
+      };
+      await persistAnuncioFlowState(toolCtx, {
+        last_anuncio: lastAnuncio,
+        pending_anuncio_post: pendingPost,
+      });
+      if (selectedImage?.id) {
+        await rememberLastMediaInteraction(toolCtx, selectedImage.id);
+      }
       return {
-        text:
-          `Fechado — salvei *${anuncioStyleInteractive}* como seu estilo preferido. Nos próximos anúncios vou direto nele.`,
-        interactiveButtons: {
-          body: "Se quiser comparar novamente:",
-          buttons: [{
-            id: "anuncio_other_styles",
-            title: "Ver outros estilos",
-          }],
-        },
+        text: `${anuncioSuccessMessage()} Salvei *${anuncioStyleInteractive}* como seu estilo preferido.`,
+        interactiveButtons: anuncioPostActionButtons(),
       };
     }
     if (wantsOtherAnuncioStyles && pendingAnuncioStyles) {
@@ -14077,6 +14424,97 @@ async function callGemini(
         }
       }
       return { text: "Esse anúncio não está mais disponível para comparar. Me envie o pedido novamente." };
+    }
+    if (remetenteEhDono && anuncioPostInteractiveId && lastAnuncio) {
+      const action = anuncioPostInteractiveId.match(
+        /^anuncio_post:action:(publish|schedule|save)$/,
+      )?.[1] as "publish" | "schedule" | "save" | undefined;
+      if (action === "save") {
+        await persistAnuncioFlowState(toolCtx, {
+          last_anuncio: lastAnuncio,
+          pending_anuncio_post: null,
+        });
+        return { text: "Salvei o anúncio. Quando quiser publicar, é só pedir usando o estilo escolhido." };
+      }
+      if (action === "publish" || action === "schedule") {
+        const next: PendingAnuncioPost = {
+          stage: "format",
+          action,
+          created_at: new Date().toISOString(),
+        };
+        await persistAnuncioFlowState(toolCtx, {
+          last_anuncio: lastAnuncio,
+          pending_anuncio_post: next,
+        });
+        return {
+          text: action === "publish"
+            ? "Certo. Onde você quer publicar?"
+            : "Certo. Qual formato você quer agendar?",
+          interactiveButtons: anuncioPostFormatButtons(),
+        };
+      }
+
+      const format = anuncioPostInteractiveId.match(
+        /^anuncio_post:format:(feed|story|feed_story)$/,
+      )?.[1] as "feed" | "story" | "feed_story" | undefined;
+      if (format && pendingAnuncioPost?.action) {
+        const connected = await connectedAnuncioNetworks(toolCtx.userId);
+        if (!connected.length) {
+          await persistAnuncioFlowState(toolCtx, {
+            last_anuncio: lastAnuncio,
+            pending_anuncio_post: null,
+          });
+          return { text: "Não encontrei Facebook nem Instagram conectados nessa conta." };
+        }
+        const next: PendingAnuncioPost = {
+          ...pendingAnuncioPost,
+          stage: "networks",
+          format,
+          created_at: new Date().toISOString(),
+        };
+        await persistAnuncioFlowState(toolCtx, {
+          last_anuncio: lastAnuncio,
+          pending_anuncio_post: next,
+        });
+        return {
+          text: "Agora escolha as redes.",
+          interactiveButtons: anuncioPostNetworkButtons(connected),
+        };
+      }
+
+      const networkChoice = anuncioPostInteractiveId.match(
+        /^anuncio_post:networks:(both|instagram|facebook)$/,
+      )?.[1];
+      if (
+        networkChoice &&
+        pendingAnuncioPost?.action &&
+        pendingAnuncioPost.format
+      ) {
+        const connected = await connectedAnuncioNetworks(toolCtx.userId);
+        const requested: AnuncioPostNetwork[] = networkChoice === "both"
+          ? ["facebook", "instagram"]
+          : [networkChoice as AnuncioPostNetwork];
+        const networks = requested.filter((network) =>
+          connected.includes(network)
+        );
+        if (!networks.length) {
+          return { text: "Essa rede não está conectada. Escolha uma das redes disponíveis." };
+        }
+        try {
+          const prepared = await prepareAnuncioSocialPosts({
+            last: lastAnuncio,
+            action: pendingAnuncioPost.action === "schedule"
+              ? "schedule"
+              : "publish",
+            format: pendingAnuncioPost.format,
+            networks,
+            ctx: toolCtx,
+          });
+          return await deliverAnuncioCaptionChoices(prepared.raw, toolCtx);
+        } catch (error) {
+          return { text: `Não consegui preparar a publicação: ${(error as Error).message}. Nada foi publicado.` };
+        }
+      }
     }
     if (pendingAnuncioCliente) {
       const interactiveId = userContent.match(
@@ -14257,11 +14695,7 @@ async function callGemini(
           return { text: result };
         }
         return {
-          text: String(
-            parsed?.ok
-              ? anuncioSuccessMessage()
-              : parsed?.mensagem || "Não consegui concluir o anúncio.",
-          ),
+          text: String(parsed?.mensagem || "Não consegui concluir o anúncio."),
           imageUrl: parsed?.image_url,
           interactiveButtons: parsed?.interactive_buttons,
         };
@@ -14555,6 +14989,320 @@ async function callGemini(
         const result = await toolCancelarAgendamentoPost({ token: standaloneScheduleToken }, toolCtx);
         const parsed = JSON.parse(result);
         return { text: String(parsed?.mensagem || "Não consegui cancelar o agendamento.") };
+      }
+    }
+    const anuncioPostTokens = pendingAnuncioPost?.token
+      ? [
+        pendingAnuncioPost.token,
+        ...(pendingAnuncioPost.extra_tokens ?? []),
+      ]
+      : [];
+    if (
+      remetenteEhDono &&
+      lastAnuncio &&
+      pendingAnuncioPost &&
+      anuncioPostInteractiveId === "anuncio_post:caption:regenerate" &&
+      anuncioPostTokens.length
+    ) {
+      const captions = generateVehicleAdCaptions(lastAnuncio.data, Date.now());
+      try {
+        await replaceAnuncioPendingCaptions(
+          anuncioPostTokens,
+          captions,
+          toolCtx,
+        );
+        const primary = PENDING_POSTS.get(anuncioPostTokens[0]);
+        const raw = JSON.stringify({
+          status: "aguardando_escolha_variante",
+          token: anuncioPostTokens[0],
+          formato: primary?.formato || "feed",
+          redes: primary?.redes || pendingAnuncioPost.networks,
+          variantes: primary?.variantes,
+        });
+        return await deliverAnuncioCaptionChoices(raw, toolCtx);
+      } catch (error) {
+        return { text: `Não consegui gerar outras opções: ${(error as Error).message}.` };
+      }
+    }
+    if (
+      remetenteEhDono &&
+      lastAnuncio &&
+      pendingAnuncioPost &&
+      anuncioPostInteractiveId === "anuncio_post:caption:custom" &&
+      anuncioPostTokens.length
+    ) {
+      const next = {
+        ...pendingAnuncioPost,
+        stage: "custom_caption" as const,
+        created_at: new Date().toISOString(),
+      };
+      await persistAnuncioFlowState(toolCtx, {
+        last_anuncio: lastAnuncio,
+        pending_anuncio_post: next,
+      });
+      return { text: "Escreva a legenda exatamente como quer publicar." };
+    }
+    if (
+      remetenteEhDono &&
+      lastAnuncio &&
+      pendingAnuncioPost?.stage === "custom_caption" &&
+      anuncioPostTokens.length &&
+      !anuncioPostInteractiveId
+    ) {
+      const caption = compactSpaces(userContent);
+      if (caption.length < 2) {
+        return { text: "Escreva a legenda que você quer usar." };
+      }
+      try {
+        await replaceAnuncioPendingCaptions(
+          anuncioPostTokens,
+          { A: caption.slice(0, 600), B: caption.slice(0, 600), C: caption.slice(0, 600) },
+          toolCtx,
+          "A",
+        );
+        if (pendingAnuncioPost.action === "schedule") {
+          const next = {
+            ...pendingAnuncioPost,
+            stage: "schedule_time" as const,
+            created_at: new Date().toISOString(),
+          };
+          await persistAnuncioFlowState(toolCtx, {
+            last_anuncio: lastAnuncio,
+            pending_anuncio_post: next,
+          });
+          return { text: "Legenda salva. Para quando? Informe o dia/mês e a hora. Ex.: 30/09 às 10h." };
+        }
+        const next = {
+          ...pendingAnuncioPost,
+          stage: "approval" as const,
+          created_at: new Date().toISOString(),
+        };
+        await persistAnuncioFlowState(toolCtx, {
+          last_anuncio: lastAnuncio,
+          pending_anuncio_post: next,
+        });
+        return {
+          text: anuncioPostSummary(lastAnuncio, next, "personalizada"),
+          interactiveButtons: anuncioFinalApprovalButtons(anuncioPostTokens[0]),
+        };
+      } catch (error) {
+        return { text: `Não consegui salvar essa legenda: ${(error as Error).message}.` };
+      }
+    }
+    const anuncioConfirm = anuncioPostInteractiveId.match(
+      /^anuncio_post:(confirm|cancel):([a-f0-9]{8})$/,
+    );
+    if (
+      remetenteEhDono &&
+      lastAnuncio &&
+      pendingAnuncioPost &&
+      anuncioConfirm &&
+      anuncioPostTokens.includes(anuncioConfirm[2])
+    ) {
+      const cancel = anuncioConfirm[1] === "cancel";
+      const results: string[] = [];
+      for (const token of anuncioPostTokens) {
+        results.push(await toolConfirmarPostagemRedes({
+          token,
+          cancelar: cancel,
+        }, toolCtx));
+      }
+      await persistAnuncioFlowState(toolCtx, {
+        last_anuncio: lastAnuncio,
+        pending_anuncio_post: null,
+      });
+      if (cancel) return { text: "Publicação cancelada. Nada foi enviado." };
+      return {
+        text: results.map(formatSocialPostToolResult).join("<<SPLIT>>"),
+      };
+    }
+    if (
+      remetenteEhDono &&
+      lastAnuncio &&
+      pendingAnuncioPost?.stage === "schedule_time" &&
+      anuncioPostTokens.length &&
+      !anuncioPostInteractiveId
+    ) {
+      const dateText = userContent.replace(/<<INTERACTIVE_ID:[^>]+>>/gi, "").trim();
+      if (parseSaoPauloDateTime(dateText)) {
+        const results: string[] = [];
+        for (const token of anuncioPostTokens) {
+          results.push(await toolAgendarPostPendente({
+            token,
+            data_hora_sp: dateText,
+          }, toolCtx));
+        }
+        await persistAnuncioFlowState(toolCtx, {
+          last_anuncio: lastAnuncio,
+          pending_anuncio_post: null,
+        });
+        return {
+          text: results.map(formatSocialPostToolResult).join("<<SPLIT>>"),
+        };
+      }
+      await persistAnuncioFlowState(toolCtx, {
+        last_anuncio: lastAnuncio,
+        pending_anuncio_post: null,
+      });
+    }
+    if (
+      remetenteEhDono &&
+      lastAnuncio &&
+      pendingAnuncioPost &&
+      socialVariantInteractive &&
+      anuncioPostTokens.includes(socialVariantInteractive[2].toLowerCase())
+    ) {
+      const option = socialVariantInteractive[1].toUpperCase() as "A" | "B" | "C";
+      for (const token of anuncioPostTokens) {
+        await toolEscolherVariantePost({ token, opcao: option }, toolCtx);
+      }
+      if (pendingAnuncioPost.action === "schedule") {
+        const next = {
+          ...pendingAnuncioPost,
+          stage: "schedule_time" as const,
+          created_at: new Date().toISOString(),
+        };
+        await persistAnuncioFlowState(toolCtx, {
+          last_anuncio: lastAnuncio,
+          pending_anuncio_post: next,
+        });
+        return {
+          text: `Opção ${option} selecionada. Para quando? Informe o dia/mês e a hora. Ex.: 30/09 às 10h.`,
+        };
+      }
+      const next = {
+        ...pendingAnuncioPost,
+        stage: "approval" as const,
+        created_at: new Date().toISOString(),
+      };
+      await persistAnuncioFlowState(toolCtx, {
+        last_anuncio: lastAnuncio,
+        pending_anuncio_post: next,
+      });
+      return {
+        text: anuncioPostSummary(lastAnuncio, next, option),
+        interactiveButtons: anuncioFinalApprovalButtons(anuncioPostTokens[0]),
+      };
+    }
+    if (remetenteEhDono && lastAnuncio && !anuncioPostInteractiveId) {
+      const request = parseAnuncioPostRequest(userContent);
+      const socialRequest = detectSocialPostIntent(userContent);
+      const hasAnuncioPostAnswer = !!request.action || !!request.format ||
+        request.networks.length > 0 || !!request.style;
+      const refersToLastAnuncio = shouldBindPostToLastAnuncio({
+        requestText: userContent,
+        explicitProduct: socialRequest?.temProduto
+          ? socialRequest.produto
+          : undefined,
+        anuncioTitle: String(lastAnuncio.data.titulo || ""),
+        pendingFlow: !!pendingAnuncioPost,
+      });
+      if (
+        refersToLastAnuncio &&
+        hasAnuncioPostAnswer &&
+        (request.action || pendingAnuncioPost)
+      ) {
+        const selectedStyle = request.style ?? lastAnuncio.selected_style;
+        const selectedImageExists = selectedStyle &&
+          lastAnuncio.images.some((image) => image.style === selectedStyle);
+        if (!selectedStyle || !selectedImageExists) {
+          return {
+            text: "Escolha primeiro o estilo do anúncio.",
+            interactiveButtons: anuncioStyleButtons(),
+          };
+        }
+        lastAnuncio.selected_style = selectedStyle;
+        const action = request.action ?? pendingAnuncioPost?.action;
+        if (action === "save") {
+          await persistAnuncioFlowState(toolCtx, {
+            last_anuncio: lastAnuncio,
+            pending_anuncio_post: null,
+          });
+          return { text: "Salvei o anúncio. Nada foi publicado." };
+        }
+        if (!action) {
+          const next: PendingAnuncioPost = {
+            stage: "action",
+            created_at: new Date().toISOString(),
+          };
+          await persistAnuncioFlowState(toolCtx, {
+            last_anuncio: lastAnuncio,
+            pending_anuncio_post: next,
+          });
+          return {
+            text: "O que você quer fazer com este anúncio?",
+            interactiveButtons: anuncioPostActionButtons(),
+          };
+        }
+        const format = request.format ?? pendingAnuncioPost?.format;
+        if (!format) {
+          const next: PendingAnuncioPost = {
+            ...pendingAnuncioPost,
+            stage: "format",
+            action,
+            created_at: new Date().toISOString(),
+          };
+          await persistAnuncioFlowState(toolCtx, {
+            last_anuncio: lastAnuncio,
+            pending_anuncio_post: next,
+          });
+          return {
+            text: "Em qual formato?",
+            interactiveButtons: anuncioPostFormatButtons(),
+          };
+        }
+        const connected = await connectedAnuncioNetworks(toolCtx.userId);
+        const requestedNetworks = request.networks.length
+          ? request.networks
+          : pendingAnuncioPost?.networks ?? [];
+        const networks = requestedNetworks.filter((network) =>
+          connected.includes(network)
+        );
+        if (!networks.length) {
+          const next: PendingAnuncioPost = {
+            ...pendingAnuncioPost,
+            stage: "networks",
+            action,
+            format,
+            created_at: new Date().toISOString(),
+          };
+          await persistAnuncioFlowState(toolCtx, {
+            last_anuncio: lastAnuncio,
+            pending_anuncio_post: next,
+          });
+          return {
+            text: connected.length
+              ? "Em quais redes?"
+              : "Não encontrei Facebook nem Instagram conectados nessa conta.",
+            interactiveButtons: connected.length
+              ? anuncioPostNetworkButtons(connected)
+              : undefined,
+          };
+        }
+        try {
+          const prepared = await prepareAnuncioSocialPosts({
+            last: lastAnuncio,
+            action: action === "schedule" ? "schedule" : "publish",
+            format,
+            networks,
+            ctx: toolCtx,
+          });
+          return await deliverAnuncioCaptionChoices(prepared.raw, toolCtx);
+        } catch (error) {
+          return { text: `Não consegui preparar a publicação: ${(error as Error).message}. Nada foi publicado.` };
+        }
+      }
+      if (
+        pendingAnuncioPost &&
+        !["custom_caption", "schedule_time"].includes(
+          pendingAnuncioPost.stage,
+        )
+      ) {
+        // Um assunto diferente encerra este assistente sem sequestrar a conversa.
+        await persistAnuncioFlowState(toolCtx, {
+          last_anuncio: lastAnuncio,
+          pending_anuncio_post: null,
+        });
       }
     }
     if (

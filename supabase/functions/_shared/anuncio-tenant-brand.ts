@@ -30,5 +30,5 @@ export function amzMissingClientLogoButtons() {
 }
 
 export function anuncioSuccessMessage(): string {
-  return "Pronto! Ficou assim. Quer publicar no feed ou no story?";
+  return "Pronto! Ficou assim.";
 }
