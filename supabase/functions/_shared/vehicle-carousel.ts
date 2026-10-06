@@ -23,6 +23,7 @@ export type VehiclePhotoView =
 export type VehicleCarouselPhoto = {
   id: string;
   url: string;
+  reused?: boolean;
   view?: VehiclePhotoView;
   box?: [number, number, number, number] | null;
 };
@@ -80,6 +81,8 @@ export type PendingVehicleCarousel = {
 export type PendingVehiclePhotoBatch = {
   stage: "collecting" | "offered";
   photos: VehicleCarouselPhoto[];
+  event_ids?: string[];
+  reused_photo_ids?: string[];
   created_at: string;
   last_photo_at: string;
 };
@@ -221,9 +224,39 @@ export function vehicleCarouselDeliveryButtons() {
   };
 }
 
+export function vehicleSingleRepeatedPhotoButtons() {
+  return {
+    body: "Escolha o que quer fazer com esta foto:",
+    buttons: [
+      { id: "vehicle_photo_batch:ad", title: "Anúncio" },
+      { id: "vehicle_photo_batch:carousel", title: "Carrossel" },
+      { id: "vehicle_photo_batch:none", title: "Nada agora" },
+    ],
+  };
+}
+
+export function vehiclePhotoBatchOfferMessage(
+  state: PendingVehiclePhotoBatch,
+): string {
+  const reusedCount = state.reused_photo_ids?.length ?? 0;
+  return `Recebi ${state.photos.length} fotos. O que quer fazer?${
+    reusedCount > 0
+      ? `\n\n(${reusedCount} ${
+        reusedCount === 1 ? "dela você já tinha" : "delas você já tinha"
+      } me mandado antes.)`
+      : ""
+  }`;
+}
+
+export const SINGLE_REPEATED_VEHICLE_PHOTO_MESSAGE =
+  "Essa foto você já tinha me mandado. Quer usar ela agora?";
+
 export function planVehiclePhotoBatch(input: {
   previous?: PendingVehiclePhotoBatch | null;
   recentPhotos: VehicleCarouselPhoto[];
+  incomingPhotos?: VehicleCarouselPhoto[];
+  currentEventId?: string;
+  reusedPhotoIds?: string[];
   currentPhotoId?: string;
   hasNewerQueuedPhoto?: boolean;
   now?: Date;
@@ -233,18 +266,32 @@ export function planVehiclePhotoBatch(input: {
   currentPhotoIsLatest: boolean;
 } {
   const now = input.now ?? new Date();
-  const currentPhotoIsLatest = !!input.currentPhotoId &&
-    input.recentPhotos.at(-1)?.id === input.currentPhotoId;
-  const shouldOffer = input.recentPhotos.length >= 2 &&
+  const photos = addVehicleCarouselPhotos(
+    input.previous?.photos ?? [],
+    [...input.recentPhotos, ...(input.incomingPhotos ?? [])],
+  ).photos;
+  const eventIds = [
+    ...(input.previous?.event_ids ?? []),
+    ...(input.currentEventId ? [input.currentEventId] : []),
+  ].filter((id, index, all) => id && all.indexOf(id) === index);
+  const reusedPhotoIds = [
+    ...(input.previous?.reused_photo_ids ?? []),
+    ...(input.reusedPhotoIds ?? []),
+  ].filter((id, index, all) => id && all.indexOf(id) === index);
+  const currentPhotoIsLatest = !input.hasNewerQueuedPhoto &&
+    (!!input.currentEventId || (!!input.currentPhotoId &&
+      photos.at(-1)?.id === input.currentPhotoId));
+  const shouldOffer = photos.length >= 2 &&
     currentPhotoIsLatest &&
-    !input.hasNewerQueuedPhoto &&
     input.previous?.stage !== "offered";
   return {
     state: {
       stage: input.previous?.stage === "offered" || shouldOffer
         ? "offered"
         : "collecting",
-      photos: addVehicleCarouselPhotos([], input.recentPhotos).photos,
+      photos,
+      event_ids: eventIds,
+      reused_photo_ids: reusedPhotoIds,
       created_at: input.previous?.created_at || now.toISOString(),
       last_photo_at: now.toISOString(),
     },

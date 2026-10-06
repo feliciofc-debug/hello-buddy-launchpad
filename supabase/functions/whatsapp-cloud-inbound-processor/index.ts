@@ -52,9 +52,12 @@ import {
   vehicleCarouselFormatButtons,
   vehicleCarouselPhotoButtons,
   vehicleCarouselStartState,
+  vehiclePhotoBatchOfferMessage,
   vehiclePhotoBatchButtons,
+  vehicleSingleRepeatedPhotoButtons,
   VEHICLE_CAROUSEL_MAX_PHOTOS,
   VEHICLE_CAROUSEL_MIN_PHOTOS,
+  SINGLE_REPEATED_VEHICLE_PHOTO_MESSAGE,
   type PendingVehicleCarousel,
   type PendingVehiclePhotoBatch,
   type VehicleCarouselData,
@@ -416,6 +419,7 @@ import {
 } from "../_shared/fipe-ad.ts";
 import {
   cleanReceivedMediaDescription,
+  createRecentAutomaticMessageGuard,
   recognizedMediaReply,
 } from "../_shared/media-received-copy.ts";
 import { imageUploadMetadata } from "../_shared/image-file-format.ts";
@@ -17955,6 +17959,8 @@ async function callGemini(
 }
 
 
+const recentAutomaticMessageGuard = createRecentAutomaticMessageGuard();
+
 async function sendWhatsApp(
   user_id: string,
   to: string,
@@ -17968,6 +17974,21 @@ async function sendWhatsApp(
   },
 ): Promise<string | null> {
   const dedupedMessage = dedupeConsecutiveReplyText(message);
+  const automaticMessageKey = JSON.stringify([
+    user_id,
+    String(to || "").replace(/\D/g, ""),
+    dedupedMessage,
+    imageUrl || null,
+    interactiveList || null,
+    interactiveButtons || null,
+  ]);
+  const automaticClaim = recentAutomaticMessageGuard.claim(
+    automaticMessageKey,
+  );
+  if (!automaticClaim.allowed) {
+    console.log("[processor][automatic_reply_dedup] suprimida_em_30s");
+    return automaticClaim.receipt;
+  }
   const chunks = splitWhatsAppText(dedupedMessage);
   if (chunks.length > 1) {
     console.warn(`[processor][meta_text_split] chars=${message.length} chunks=${chunks.length}`);
@@ -18009,6 +18030,10 @@ async function sendWhatsApp(
       throw new Error(`send_invalid_response: ${txt.slice(0, 200)}`);
     }
   }
+  recentAutomaticMessageGuard.complete(
+    automaticMessageKey,
+    firstMessageId,
+  );
   return firstMessageId;
 }
 
@@ -19556,7 +19581,11 @@ async function processOne(queueId: string) {
         .filter((item) =>
           item.tipo === "foto" && whatsappPhotoIds.has(item.id)
         )
-        .map((item) => ({ id: item.id, url: item.url }));
+        .map((item) => ({
+          id: item.id,
+          url: item.url,
+          reused: item.reutilizada === true,
+        }));
       const vehicleFlowCtx = {
         userId,
         fromNumber: row.from_number,
@@ -19699,38 +19728,47 @@ async function processOne(queueId: string) {
           const plannedBatch = planVehiclePhotoBatch({
             previous: previousBatch,
             recentPhotos,
+            incomingPhotos,
+            currentEventId: row.wamid || row.id,
+            reusedPhotoIds: incomingPhotos
+              .filter((photo) => photo.reused)
+              .map((photo) => photo.id),
             currentPhotoId: incomingPhotos.at(-1)?.id,
             hasNewerQueuedPhoto,
           });
           const batch = plannedBatch.state;
           await persistVehiclePhotoBatch(vehicleFlowCtx, batch);
           if (plannedBatch.shouldOffer) {
-            const reply =
-              `Recebi ${recentPhotos.length} fotos. O que quer fazer?`;
             await sendVehicleFlowReply({
               conversationId: conv.id,
               userId,
               to: row.from_number,
-              text: reply,
+              text: vehiclePhotoBatchOfferMessage(batch),
               buttons: vehiclePhotoBatchButtons(),
             });
           } else if (
-            recentPhotos.length === 1 &&
+            batch.photos.length === 1 &&
             plannedBatch.currentPhotoIsLatest &&
             !hasNewerQueuedPhoto
           ) {
+            const repeated = (batch.reused_photo_ids?.length ?? 0) > 0;
             await sendVehicleFlowReply({
               conversationId: conv.id,
               userId,
               to: row.from_number,
-              text: "Recebi a foto.",
+              text: repeated
+                ? SINGLE_REPEATED_VEHICLE_PHOTO_MESSAGE
+                : "Recebi a foto.",
+              buttons: repeated
+                ? vehicleSingleRepeatedPhotoButtons()
+                : undefined,
             });
           }
           await doneQueue(row.id);
           return {
             ok: true,
             vehicle_photo_batch: batch.stage,
-            vehicle_photo_count: recentPhotos.length,
+            vehicle_photo_count: batch.photos.length,
           };
         }
       }

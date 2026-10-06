@@ -15,6 +15,7 @@ import {
   isVehiclePhotoCarouselRequest,
   parseVehicleCarouselData,
   planVehiclePhotoBatch,
+  SINGLE_REPEATED_VEHICLE_PHOTO_MESSAGE,
   validPendingVehicleCarousel,
   vehicleCarouselAdStateReset,
   vehicleCarouselCollectionButtons,
@@ -23,7 +24,9 @@ import {
   vehicleCarouselLayout,
   vehicleCarouselStartState,
   vehiclePhotoBatchButtons,
+  vehiclePhotoBatchOfferMessage,
   vehiclePhotoCaption,
+  vehicleSingleRepeatedPhotoButtons,
 } from "./vehicle-carousel.ts";
 
 const photos = Array.from({ length: 9 }, (_, index) => ({
@@ -201,4 +204,63 @@ Deno.test("quatro fotos em sequência produzem uma única oferta", () => {
     currentPhotoId: photos[4].id,
   });
   assertEquals(afterOffer.shouldOffer, false);
+});
+
+Deno.test("cinco fotos repetidas entram no lote e geram uma única mensagem", () => {
+  let previous: ReturnType<typeof planVehiclePhotoBatch>["state"] | null = null;
+  let offers = 0;
+  for (let index = 0; index < 5; index++) {
+    const photo = photos[index];
+    const planned = planVehiclePhotoBatch({
+      previous,
+      recentPhotos: [],
+      incomingPhotos: [photo],
+      currentEventId: `wamid-${index}`,
+      reusedPhotoIds: [photo.id],
+      hasNewerQueuedPhoto: index < 4,
+      now: new Date(2_000 + index),
+    });
+    previous = planned.state;
+    if (planned.shouldOffer) offers++;
+  }
+  assertEquals(previous?.photos.length, 5);
+  assertEquals(previous?.reused_photo_ids?.length, 5);
+  assertEquals(offers, 1);
+  assertStringIncludes(
+    vehiclePhotoBatchOfferMessage(previous!),
+    "Recebi 5 fotos. O que quer fazer?",
+  );
+});
+
+Deno.test("lote misto informa somente as duas fotos repetidas", () => {
+  const planned = planVehiclePhotoBatch({
+    recentPhotos: photos.slice(0, 3),
+    incomingPhotos: photos.slice(3, 5),
+    currentEventId: "wamid-final",
+    reusedPhotoIds: photos.slice(3, 5).map((photo) => photo.id),
+  });
+  assertEquals(planned.state.photos.length, 5);
+  assertStringIncludes(
+    vehiclePhotoBatchOfferMessage(planned.state),
+    "(2 delas você já tinha me mandado antes.)",
+  );
+});
+
+Deno.test("foto única repetida usa aviso correto e três botões", () => {
+  const planned = planVehiclePhotoBatch({
+    recentPhotos: [],
+    incomingPhotos: [photos[0]],
+    currentEventId: "wamid-single",
+    reusedPhotoIds: [photos[0].id],
+  });
+  assertEquals(planned.shouldOffer, false);
+  assertEquals(planned.state.reused_photo_ids, ["photo-1"]);
+  assertEquals(
+    SINGLE_REPEATED_VEHICLE_PHOTO_MESSAGE,
+    "Essa foto você já tinha me mandado. Quer usar ela agora?",
+  );
+  assertEquals(
+    vehicleSingleRepeatedPhotoButtons().buttons.map((button) => button.title),
+    ["Anúncio", "Carrossel", "Nada agora"],
+  );
 });
