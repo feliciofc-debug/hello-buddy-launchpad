@@ -41,8 +41,10 @@ import {
   blockingVehiclePhotoFlow,
   buildVehicleCarouselSlides,
   expiredAnuncioPendingPatch,
+  hasEnoughVehicleCarouselPhotos,
   hasVehicleCarouselData,
   isVehiclePhotoCarouselRequest,
+  isVehiclePhotoCarouselTextRequest,
   parseVehicleCarouselData,
   planVehiclePhotoBatch,
   validPendingVehicleCarousel,
@@ -52,6 +54,7 @@ import {
   vehicleCarouselDataButtons,
   vehicleCarouselDeliveryButtons,
   vehicleCarouselFormatButtons,
+  vehicleCarouselNeedMoreButtons,
   vehicleCarouselPhotoButtons,
   vehicleCarouselStartState,
   vehiclePhotoBatchOfferMessage,
@@ -15035,7 +15038,7 @@ async function callGemini(
     if (
       remetenteEhDono &&
       !pendingVehicleCarousel &&
-      isVehiclePhotoCarouselRequest(userContent)
+      isVehiclePhotoCarouselTextRequest(userContent)
     ) {
       const recentPhotos = await recentWhatsAppVehiclePhotos({
         userId: toolCtx.userId,
@@ -15127,14 +15130,25 @@ async function callGemini(
     if (
       remetenteEhDono &&
       pendingVehicleCarousel?.stage === "collecting" &&
+      vehicleCarouselInteractiveId === "vehicle_carousel:photos:add"
+    ) {
+      return {
+        text: "Pode mandar as fotos. Quando terminar, toque em Pronto.",
+        interactiveButtons: vehicleCarouselCollectionButtons(),
+      };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel?.stage === "collecting" &&
       vehicleCarouselInteractiveId === "vehicle_carousel:photos:done"
     ) {
-      if (
-        pendingVehicleCarousel.photos.length < VEHICLE_CAROUSEL_MIN_PHOTOS
-      ) {
+      if (!hasEnoughVehicleCarouselPhotos(pendingVehicleCarousel.photos.length)) {
+        const needMore = vehicleCarouselNeedMoreButtons(
+          pendingVehicleCarousel.photos.length,
+        );
         return {
-          text: `Me mande pelo menos ${VEHICLE_CAROUSEL_MIN_PHOTOS} fotos. Recebi ${pendingVehicleCarousel.photos.length} até agora.`,
-          interactiveButtons: vehicleCarouselCollectionButtons(),
+          text: needMore.body,
+          interactiveButtons: needMore,
         };
       }
       return await askVehicleCarouselData(pendingVehicleCarousel, toolCtx);

@@ -3,7 +3,7 @@ import type { AnuncioPhotoPreference } from "./anuncio-style.ts";
 export const VEHICLE_CAROUSEL_TTL_MS = 30 * 60 * 1000;
 export const VEHICLE_PHOTO_BATCH_TTL_MS = 3 * 60 * 1000;
 export const VEHICLE_CAROUSEL_MAX_PHOTOS = 8;
-export const VEHICLE_CAROUSEL_MIN_PHOTOS = 3;
+export const VEHICLE_CAROUSEL_MIN_PHOTOS = 2;
 export const VEHICLE_CAROUSEL_STRIP_RATIO = 0.18;
 
 export type VehicleCarouselFormat = "portrait" | "square";
@@ -102,6 +102,11 @@ export function isVehiclePhotoCarouselRequest(text: string): boolean {
     /\b(carro|veiculo|automovel|fotos?|moto(?:cicleta)?)\b/.test(value);
 }
 
+export function isVehiclePhotoCarouselTextRequest(text: string): boolean {
+  return !/<<INTERACTIVE_ID:/i.test(text) &&
+    isVehiclePhotoCarouselRequest(text);
+}
+
 export function vehicleCarouselStartState(
   photos: VehicleCarouselPhoto[] = [],
   clientName?: string | null,
@@ -178,6 +183,24 @@ export function vehicleCarouselCollectionButtons() {
       { id: "vehicle_carousel:cancel", title: "Cancelar" },
     ],
   };
+}
+
+export function vehicleCarouselNeedMoreButtons(received: number) {
+  return {
+    body:
+      `Preciso de pelo menos ${VEHICLE_CAROUSEL_MIN_PHOTOS} fotos. Recebi ${received} até agora.`,
+    buttons: [
+      {
+        id: "vehicle_carousel:photos:add",
+        title: "Adicionar fotos",
+      },
+      { id: "vehicle_carousel:cancel", title: "Cancelar" },
+    ],
+  };
+}
+
+export function hasEnoughVehicleCarouselPhotos(count: number): boolean {
+  return count >= VEHICLE_CAROUSEL_MIN_PHOTOS;
 }
 
 export function vehicleCarouselDataButtons() {

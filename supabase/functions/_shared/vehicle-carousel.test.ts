@@ -13,8 +13,10 @@ import {
   blockingVehiclePhotoFlow,
   buildVehicleCarouselSlides,
   expiredAnuncioPendingPatch,
+  hasEnoughVehicleCarouselPhotos,
   hasVehicleCarouselData,
   isVehiclePhotoCarouselRequest,
+  isVehiclePhotoCarouselTextRequest,
   parseVehicleCarouselData,
   planVehiclePhotoBatch,
   SINGLE_REPEATED_VEHICLE_PHOTO_MESSAGE,
@@ -24,6 +26,7 @@ import {
   vehicleCarouselDeliveryButtons,
   vehicleCarouselDimensions,
   vehicleCarouselLayout,
+  vehicleCarouselNeedMoreButtons,
   vehicleCarouselStartState,
   vehiclePhotoBatchButtons,
   vehiclePhotoBatchNewTopicReset,
@@ -145,6 +148,11 @@ Deno.test("gatilho, TTL, formatos e botões respeitam o fluxo", () => {
   }
   assert(isVehiclePhotoCarouselRequest("álbum de fotos da moto"));
   assert(isVehiclePhotoCarouselRequest("galeria de fotos do veículo"));
+  assert(
+    !isVehiclePhotoCarouselTextRequest(
+      "Carrossel de fotos\n<<INTERACTIVE_ID:vehicle_photo_batch:carousel>>",
+    ),
+  );
   assert(!isVehiclePhotoCarouselRequest("publique esta foto"));
   assert(hasVehicleCarouselData("modelo: Onix, ano: 2022"));
   assert(
@@ -207,6 +215,34 @@ Deno.test("quatro fotos em sequência produzem uma única oferta", () => {
     currentPhotoId: photos[4].id,
   });
   assertEquals(afterOffer.shouldOffer, false);
+});
+
+Deno.test("botão do lote transfere exatamente as fotos para o carrossel", () => {
+  const batch = planVehiclePhotoBatch({
+    recentPhotos: photos.slice(0, 4),
+    currentEventId: "wamid-final",
+  }).state;
+  const carousel = vehicleCarouselStartState(batch.photos);
+  assertEquals(
+    carousel.photos.map((photo) => photo.id),
+    batch.photos.map((photo) => photo.id),
+  );
+  assertEquals(carousel.photos.length, 4);
+  assert(hasEnoughVehicleCarouselPhotos(carousel.photos.length));
+});
+
+Deno.test("carrossel aceita duas fotos e oferece adicionar quando faltar", () => {
+  assert(hasEnoughVehicleCarouselPhotos(2));
+  assert(!hasEnoughVehicleCarouselPhotos(1));
+  const prompt = vehicleCarouselNeedMoreButtons(1);
+  assertEquals(
+    prompt.body,
+    "Preciso de pelo menos 2 fotos. Recebi 1 até agora.",
+  );
+  assertEquals(prompt.buttons.map((button) => button.title), [
+    "Adicionar fotos",
+    "Cancelar",
+  ]);
 });
 
 Deno.test("cinco fotos repetidas entram no lote e geram uma única mensagem", () => {
