@@ -1,6 +1,7 @@
 import type { AnuncioPhotoPreference } from "./anuncio-style.ts";
 
 export const VEHICLE_CAROUSEL_TTL_MS = 30 * 60 * 1000;
+export const VEHICLE_PHOTO_BATCH_TTL_MS = 3 * 60 * 1000;
 export const VEHICLE_CAROUSEL_MAX_PHOTOS = 8;
 export const VEHICLE_CAROUSEL_MIN_PHOTOS = 3;
 export const VEHICLE_CAROUSEL_STRIP_RATIO = 0.18;
@@ -76,6 +77,13 @@ export type PendingVehicleCarousel = {
   created_at: string;
 };
 
+export type PendingVehiclePhotoBatch = {
+  stage: "collecting" | "offered";
+  photos: VehicleCarouselPhoto[];
+  created_at: string;
+  last_photo_at: string;
+};
+
 function normalize(value: string): string {
   return String(value || "").normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -83,8 +91,64 @@ function normalize(value: string): string {
 
 export function isVehiclePhotoCarouselRequest(text: string): boolean {
   const value = normalize(text);
-  return /\bcarrossel\b/.test(value) &&
-    /\b(carro|veiculo|automovel|fotos?)\b/.test(value);
+  const carouselWord =
+    /\b(carrossel|carrosel|carrocel|carossel|carosel|carroussel|carousel)\b/
+      .test(value) ||
+    /\b(album|galeria)\s+de\s+fotos?\b/.test(value);
+  return carouselWord &&
+    /\b(carro|veiculo|automovel|fotos?|moto(?:cicleta)?)\b/.test(value);
+}
+
+export function vehicleCarouselStartState(
+  photos: VehicleCarouselPhoto[] = [],
+  clientName?: string | null,
+  now = new Date(),
+): PendingVehicleCarousel {
+  return {
+    stage: "collecting",
+    photos: addVehicleCarouselPhotos([], photos).photos,
+    format: "portrait",
+    client_name: clientName,
+    created_at: now.toISOString(),
+  };
+}
+
+export function vehicleCarouselAdStateReset() {
+  return {
+    pending_anuncio_cliente: null,
+    pending_anuncio_styles: null,
+    pending_anuncio_photo: null,
+    pending_anuncio_post: null,
+  } as const;
+}
+
+export function validPendingVehiclePhotoBatch(
+  state: PendingVehiclePhotoBatch | null | undefined,
+  nowMs = Date.now(),
+): state is PendingVehiclePhotoBatch {
+  const updated = new Date(state?.last_photo_at || "").getTime();
+  return !!state && Number.isFinite(updated) && updated <= nowMs &&
+    nowMs - updated <= VEHICLE_PHOTO_BATCH_TTL_MS;
+}
+
+export function vehiclePhotoBatchButtons() {
+  return {
+    body: "Recebi várias fotos. Escolha o que quer fazer:",
+    buttons: [
+      {
+        id: "vehicle_photo_batch:carousel",
+        title: "Carrossel de fotos",
+      },
+      {
+        id: "vehicle_photo_batch:ad",
+        title: "Anúncio (1 foto)",
+      },
+      {
+        id: "vehicle_photo_batch:none",
+        title: "Nada agora",
+      },
+    ],
+  };
 }
 
 export function validPendingVehicleCarousel(
@@ -154,6 +218,38 @@ export function vehicleCarouselDeliveryButtons() {
       { id: "vehicle_carousel:publish", title: "Publicar nas redes" },
       { id: "vehicle_carousel:save", title: "Só salvar" },
     ],
+  };
+}
+
+export function planVehiclePhotoBatch(input: {
+  previous?: PendingVehiclePhotoBatch | null;
+  recentPhotos: VehicleCarouselPhoto[];
+  currentPhotoId?: string;
+  hasNewerQueuedPhoto?: boolean;
+  now?: Date;
+}): {
+  state: PendingVehiclePhotoBatch;
+  shouldOffer: boolean;
+  currentPhotoIsLatest: boolean;
+} {
+  const now = input.now ?? new Date();
+  const currentPhotoIsLatest = !!input.currentPhotoId &&
+    input.recentPhotos.at(-1)?.id === input.currentPhotoId;
+  const shouldOffer = input.recentPhotos.length >= 2 &&
+    currentPhotoIsLatest &&
+    !input.hasNewerQueuedPhoto &&
+    input.previous?.stage !== "offered";
+  return {
+    state: {
+      stage: input.previous?.stage === "offered" || shouldOffer
+        ? "offered"
+        : "collecting",
+      photos: addVehicleCarouselPhotos([], input.recentPhotos).photos,
+      created_at: input.previous?.created_at || now.toISOString(),
+      last_photo_at: now.toISOString(),
+    },
+    shouldOffer,
+    currentPhotoIsLatest,
   };
 }
 

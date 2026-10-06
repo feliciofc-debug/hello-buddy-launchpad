@@ -14,11 +14,15 @@ import {
   hasVehicleCarouselData,
   isVehiclePhotoCarouselRequest,
   parseVehicleCarouselData,
+  planVehiclePhotoBatch,
   validPendingVehicleCarousel,
+  vehicleCarouselAdStateReset,
   vehicleCarouselCollectionButtons,
   vehicleCarouselDeliveryButtons,
   vehicleCarouselDimensions,
   vehicleCarouselLayout,
+  vehicleCarouselStartState,
+  vehiclePhotoBatchButtons,
   vehiclePhotoCaption,
 } from "./vehicle-carousel.ts";
 
@@ -120,7 +124,21 @@ Deno.test("parser não inventa campos ausentes", () => {
 });
 
 Deno.test("gatilho, TTL, formatos e botões respeitam o fluxo", () => {
-  assert(isVehiclePhotoCarouselRequest("quero um carrossel de fotos do carro"));
+  for (
+    const spelling of [
+      "carrossel",
+      "carrosel",
+      "carrocel",
+      "carossel",
+      "carosel",
+      "carroussel",
+      "carousel",
+    ]
+  ) {
+    assert(isVehiclePhotoCarouselRequest(`quero um ${spelling} do carro`));
+  }
+  assert(isVehiclePhotoCarouselRequest("álbum de fotos da moto"));
+  assert(isVehiclePhotoCarouselRequest("galeria de fotos do veículo"));
   assert(!isVehiclePhotoCarouselRequest("publique esta foto"));
   assert(hasVehicleCarouselData("modelo: Onix, ano: 2022"));
   assert(
@@ -141,4 +159,46 @@ Deno.test("gatilho, TTL, formatos e botões respeitam o fluxo", () => {
   });
   assert(vehicleCarouselCollectionButtons().buttons.length <= 3);
   assert(vehicleCarouselDeliveryButtons().buttons.length <= 3);
+  assertEquals(vehiclePhotoBatchButtons().buttons.length, 3);
+});
+
+Deno.test("pedido na legenda inicia com a própria foto incluída", () => {
+  const state = vehicleCarouselStartState(photos.slice(0, 1));
+  assertEquals(state.stage, "collecting");
+  assertEquals(state.photos.map((photo) => photo.id), ["photo-1"]);
+});
+
+Deno.test("pedido de carrossel descarta estados pendentes do anúncio", () => {
+  assertEquals(vehicleCarouselAdStateReset(), {
+    pending_anuncio_cliente: null,
+    pending_anuncio_styles: null,
+    pending_anuncio_photo: null,
+    pending_anuncio_post: null,
+  });
+});
+
+Deno.test("quatro fotos em sequência produzem uma única oferta", () => {
+  let previous: ReturnType<typeof planVehiclePhotoBatch>["state"] | null = null;
+  let offers = 0;
+  for (let index = 0; index < 4; index++) {
+    const planned = planVehiclePhotoBatch({
+      previous,
+      recentPhotos: photos.slice(0, index + 1),
+      currentPhotoId: photos[index].id,
+      hasNewerQueuedPhoto: index < 3,
+      now: new Date(1_000 + index),
+    });
+    previous = planned.state;
+    if (planned.shouldOffer) offers++;
+  }
+  assertEquals(previous?.photos.length, 4);
+  assertEquals(previous?.stage, "offered");
+  assertEquals(offers, 1);
+
+  const afterOffer = planVehiclePhotoBatch({
+    previous,
+    recentPhotos: photos.slice(0, 5),
+    currentPhotoId: photos[4].id,
+  });
+  assertEquals(afterOffer.shouldOffer, false);
 });

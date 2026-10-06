@@ -42,15 +42,21 @@ import {
   hasVehicleCarouselData,
   isVehiclePhotoCarouselRequest,
   parseVehicleCarouselData,
+  planVehiclePhotoBatch,
   validPendingVehicleCarousel,
+  validPendingVehiclePhotoBatch,
+  vehicleCarouselAdStateReset,
   vehicleCarouselCollectionButtons,
   vehicleCarouselDataButtons,
   vehicleCarouselDeliveryButtons,
   vehicleCarouselFormatButtons,
   vehicleCarouselPhotoButtons,
+  vehicleCarouselStartState,
+  vehiclePhotoBatchButtons,
   VEHICLE_CAROUSEL_MAX_PHOTOS,
   VEHICLE_CAROUSEL_MIN_PHOTOS,
   type PendingVehicleCarousel,
+  type PendingVehiclePhotoBatch,
   type VehicleCarouselData,
   type VehicleCarouselPhoto,
   type VehiclePhotoView,
@@ -2660,6 +2666,7 @@ type AgentConvState = {
   pending_image_composition?: { media_ids: string[]; at: string } | null;
   pending_carousel?: PendingCarouselState | null;
   pending_carrossel_veiculo?: PendingVehicleCarousel | null;
+  pending_vehicle_photo_batch?: PendingVehiclePhotoBatch | null;
   pending_video_setup?: PendingVideoSetupState | null;
   pending_creative_media_ambiguity?: { original_request: string; created_at: string } | null;
   pending_anuncio_cliente?: {
@@ -12307,6 +12314,144 @@ async function toolRegistrarLeadNovo(
 // ============================================================
 const CARROSSEL_MAX_DIA = 5; // guardrail simples por tenant/dia
 
+async function recentWhatsAppVehiclePhotos(input: {
+  userId: string;
+  fromNumber: string;
+  windowMs: number;
+}): Promise<VehicleCarouselPhoto[]> {
+  const since = new Date(Date.now() - input.windowMs).toISOString();
+  const { data, error } = await sb.from("midias_whatsapp")
+    .select("id, midia_url, created_at")
+    .eq("user_id", input.userId)
+    .eq("telefone_origem", input.fromNumber)
+    .eq("tipo", "foto")
+    .eq("origem", "whatsapp")
+    .gte("created_at", since)
+    .order("created_at", { ascending: true })
+    .limit(VEHICLE_CAROUSEL_MAX_PHOTOS);
+  if (error) throw new Error(`fotos_recentes_indisponiveis: ${error.message}`);
+  return (data || [])
+    .filter((item) => item.id && item.midia_url)
+    .map((item) => ({ id: item.id, url: item.midia_url }));
+}
+
+function hasBlockingFlowForAutomaticVehicleBatch(
+  state: AgentConvState,
+): boolean {
+  return !!(
+    state.pending_carousel ||
+    state.pending_carrossel_veiculo ||
+    state.pending_video_setup ||
+    state.pending_creative_media_ambiguity ||
+    state.pending_anuncio_cliente ||
+    state.pending_anuncio_styles ||
+    state.pending_anuncio_photo ||
+    state.pending_anuncio_post ||
+    state.pending_client_logo ||
+    state.pending_client_logo_intent ||
+    state.pending_brand_generation ||
+    state.pending_fipe ||
+    state.pending_meta_ads_ambiguity ||
+    state.pending_meta_ads_limit ||
+    state.pending_meta_ads_limit_value
+  );
+}
+
+async function startVehicleCarouselFlow(
+  ctx: {
+    userId: string;
+    fromNumber: string;
+    convId?: string;
+    agentState?: AgentConvState;
+  },
+  photos: VehicleCarouselPhoto[],
+  reason: string,
+): Promise<PendingVehicleCarousel> {
+  if (!ctx.convId) throw new Error("conversa_sem_id");
+  const conversation = {
+    id: ctx.convId,
+    userId: ctx.userId,
+    contactNumber: ctx.fromNumber,
+  };
+  const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+  const last = vehicleCarouselDataFromAgentState(current);
+  const state = vehicleCarouselStartState(photos, last?.clientName);
+  const patch: Partial<AgentConvState> = {
+    pending_carrossel_veiculo: state,
+    pending_vehicle_photo_batch: null,
+    ...vehicleCarouselAdStateReset(),
+  };
+  const saved = await saveAgentState(sb, conversation, patch, current);
+  if (!saved) throw new Error("estado_carrossel_veiculo_nao_persistido");
+  Object.assign(current, patch);
+  ctx.agentState = current;
+  console.log(`[carrossel] gatilho=sim motivo=${reason}`);
+  console.log(
+    `[carrossel] fotos=${state.photos.length} estagio=${state.stage}`,
+  );
+  return state;
+}
+
+async function persistVehiclePhotoBatch(
+  ctx: {
+    userId: string;
+    fromNumber: string;
+    convId?: string;
+    agentState?: AgentConvState;
+  },
+  state: PendingVehiclePhotoBatch | null,
+): Promise<void> {
+  if (!ctx.convId) throw new Error("conversa_sem_id");
+  const conversation = {
+    id: ctx.convId,
+    userId: ctx.userId,
+    contactNumber: ctx.fromNumber,
+  };
+  const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+  const saved = await saveAgentState(sb, conversation, {
+    pending_vehicle_photo_batch: state,
+  }, current);
+  if (!saved) throw new Error("estado_lote_fotos_nao_persistido");
+  current.pending_vehicle_photo_batch = state;
+  ctx.agentState = current;
+  console.log(
+    `[carrossel] fotos=${state?.photos.length ?? 0} estagio=${
+      state?.stage ?? "descartado"
+    }`,
+  );
+}
+
+async function sendVehicleFlowReply(input: {
+  conversationId: string;
+  userId: string;
+  to: string;
+  text: string;
+  buttons?: WhatsAppInteractiveButtons;
+}): Promise<void> {
+  const { data: outMsg } = await sb.from("whatsapp_cloud_messages").insert({
+    conversation_id: input.conversationId,
+    user_id: input.userId,
+    direction: "outbound",
+    sender: "agent",
+    content: input.text,
+    message_type: input.buttons ? "interactive" : "text",
+  }).select("id").single();
+  const sentId = await sendWhatsApp(
+    input.userId,
+    input.to,
+    input.text,
+    undefined,
+    undefined,
+    input.buttons,
+  );
+  if (sentId && outMsg?.id) {
+    await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq(
+      "id",
+      outMsg.id,
+    );
+  }
+}
+
 async function persistVehicleCarousel(
   ctx: {
     userId: string;
@@ -14785,6 +14930,12 @@ async function callGemini(
         )
       ? toolCtx.agentState!.pending_carrossel_veiculo!
       : null;
+    const pendingVehiclePhotoBatch = remetenteEhDono &&
+        validPendingVehiclePhotoBatch(
+          toolCtx.agentState?.pending_vehicle_photo_batch,
+        )
+      ? toolCtx.agentState!.pending_vehicle_photo_batch!
+      : null;
     const pendingVideoSetup = remetenteEhDono ? toolCtx.agentState?.pending_video_setup : null;
     const pendingAnuncioCliente = remetenteEhDono
       ? toolCtx.agentState?.pending_anuncio_cliente
@@ -14839,6 +14990,9 @@ async function callGemini(
     const vehicleCarouselInteractiveId = userContent.match(
       /<<INTERACTIVE_ID:(vehicle_carousel:[^>]+)>>/i,
     )?.[1]?.toLowerCase() || "";
+    const vehiclePhotoBatchInteractiveId = userContent.match(
+      /<<INTERACTIVE_ID:(vehicle_photo_batch:[^>]+)>>/i,
+    )?.[1]?.toLowerCase() || "";
     const socialActionInteractive = socialInteractiveId.match(/^social_(publish|publish_confirm|schedule):([a-f0-9]{8})$/i);
     const socialVariantInteractive = socialInteractiveId.match(/^social_variant:([ABC]):([a-f0-9]{8})$/i);
     const previousHistoryMessage = history.at(-1);
@@ -14874,20 +15028,78 @@ async function callGemini(
       !pendingVehicleCarousel &&
       isVehiclePhotoCarouselRequest(userContent)
     ) {
-      const last = vehicleCarouselDataFromAgentState(toolCtx.agentState);
-      const state: PendingVehicleCarousel = {
-        stage: "collecting",
-        photos: [],
-        format: "portrait",
-        client_name: last?.clientName,
-        created_at: new Date().toISOString(),
-      };
-      await persistVehicleCarousel(toolCtx, state);
+      const recentPhotos = await recentWhatsAppVehiclePhotos({
+        userId: toolCtx.userId,
+        fromNumber: toolCtx.fromNumber,
+        windowMs: 3 * 60 * 1000,
+      });
+      const state = await startVehicleCarouselFlow(
+        toolCtx,
+        recentPhotos,
+        recentPhotos.length ? "texto_com_fotos_recentes" : "texto_explicito",
+      );
       return {
-        text:
-          "Me manda até 8 fotos do veículo. Quando terminar, toque em Pronto.",
+        text: state.photos.length
+          ? `Recebi ${state.photos.length} foto${
+            state.photos.length === 1 ? "" : "s"
+          }. Manda mais ou toque em Pronto.`
+          : "Me manda até 8 fotos do veículo. Quando terminar, toque em Pronto.",
         interactiveButtons: vehicleCarouselCollectionButtons(),
       };
+    }
+    if (remetenteEhDono && !pendingVehicleCarousel) {
+      console.log("[carrossel] gatilho=não motivo=texto_sem_pedido");
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehiclePhotoBatch &&
+      vehiclePhotoBatchInteractiveId === "vehicle_photo_batch:carousel"
+    ) {
+      const state = await startVehicleCarouselFlow(
+        toolCtx,
+        pendingVehiclePhotoBatch.photos,
+        "botao_lote_fotos",
+      );
+      return {
+        text: `Recebi ${state.photos.length} fotos. Manda mais ou toque em Pronto.`,
+        interactiveButtons: vehicleCarouselCollectionButtons(),
+      };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehiclePhotoBatch &&
+      vehiclePhotoBatchInteractiveId === "vehicle_photo_batch:ad"
+    ) {
+      const firstPhoto = pendingVehiclePhotoBatch.photos[0];
+      if (toolCtx.convId) {
+        const conversation = {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        };
+        const current = toolCtx.agentState!;
+        const interaction = firstPhoto
+          ? { media_id: firstPhoto.id, at: new Date().toISOString() }
+          : undefined;
+        await saveAgentState(sb, conversation, {
+          pending_vehicle_photo_batch: null,
+          ...(interaction ? { last_media_interaction: interaction } : {}),
+        }, current);
+        current.pending_vehicle_photo_batch = null;
+        if (interaction) current.last_media_interaction = interaction;
+      }
+      return {
+        text:
+          "Vou usar a primeira foto. Me mande modelo, ano, preço e os outros dados que quiser mostrar no anúncio.",
+      };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehiclePhotoBatch &&
+      vehiclePhotoBatchInteractiveId === "vehicle_photo_batch:none"
+    ) {
+      await persistVehiclePhotoBatch(toolCtx, null);
+      return { text: "Certo. As fotos ficaram salvas na biblioteca." };
     }
     if (
       remetenteEhDono &&
@@ -15145,6 +15357,14 @@ async function callGemini(
     ) {
       // Texto de outro assunto abandona o fluxo sem insistir.
       await persistVehicleCarousel(toolCtx, null);
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehiclePhotoBatch &&
+      !vehiclePhotoBatchInteractiveId
+    ) {
+      // A oferta automática também não prende a conversa.
+      await persistVehiclePhotoBatch(toolCtx, null);
     }
     const anuncioPhotoRedo = anuncioPhotoInteractiveId.match(
       /^anuncio_photo:redo:(melhorada|original)$/,
@@ -19312,6 +19532,75 @@ async function processOne(queueId: string) {
           notified_sender: notifiedSender,
         };
       }
+      const savedPhotoIds = salvos
+        .filter((item) => item.tipo === "foto")
+        .map((item) => item.id);
+      const { data: incomingRows, error: incomingRowsError } =
+        savedPhotoIds.length
+          ? await sb.from("midias_whatsapp")
+            .select("id, origem")
+            .eq("user_id", userId)
+            .in("id", savedPhotoIds)
+          : { data: [], error: null };
+      if (incomingRowsError) {
+        throw new Error(
+          `falha_ao_validar_fotos_carrossel: ${incomingRowsError.message}`,
+        );
+      }
+      const whatsappPhotoIds = new Set(
+        (incomingRows || [])
+          .filter((item) => item.origem === "whatsapp")
+          .map((item) => item.id),
+      );
+      const incomingPhotos = salvos
+        .filter((item) =>
+          item.tipo === "foto" && whatsappPhotoIds.has(item.id)
+        )
+        .map((item) => ({ id: item.id, url: item.url }));
+      const vehicleFlowCtx = {
+        userId,
+        fromNumber: row.from_number,
+        convId: conv.id,
+        agentState: freshAgentState,
+      };
+      const captionStartsVehicleCarousel = fromIsOwner &&
+        incomingPhotos.length > 0 &&
+        isVehiclePhotoCarouselRequest(contexto);
+      if (captionStartsVehicleCarousel) {
+        const recentPhotos = await recentWhatsAppVehiclePhotos({
+          userId,
+          fromNumber: row.from_number,
+          windowMs: 3 * 60 * 1000,
+        });
+        const state = await startVehicleCarouselFlow(
+          vehicleFlowCtx,
+          recentPhotos,
+          "legenda_da_foto",
+        );
+        const reply = `Recebi ${state.photos.length} foto${
+          state.photos.length === 1 ? "" : "s"
+        }. Manda mais ou toque em Pronto.`;
+        await sendVehicleFlowReply({
+          conversationId: conv.id,
+          userId,
+          to: row.from_number,
+          text: reply,
+          buttons: vehicleCarouselCollectionButtons(),
+        });
+        await doneQueue(row.id);
+        return {
+          ok: true,
+          vehicle_carousel_collecting: true,
+          vehicle_carousel_photos: state.photos.length,
+        };
+      }
+      if (fromIsOwner && incomingPhotos.length > 0) {
+        console.log(
+          `[carrossel] gatilho=não motivo=${
+            contexto ? "legenda_sem_pedido" : "foto_sem_texto"
+          }`,
+        );
+      }
       const pendingVehicleCollection = fromIsOwner &&
           validPendingVehicleCarousel(
             freshAgentState.pending_carrossel_veiculo,
@@ -19320,31 +19609,6 @@ async function processOne(queueId: string) {
         ? freshAgentState.pending_carrossel_veiculo
         : null;
       if (pendingVehicleCollection) {
-        const savedPhotoIds = salvos
-          .filter((item) => item.tipo === "foto")
-          .map((item) => item.id);
-        const { data: incomingRows, error: incomingRowsError } =
-          savedPhotoIds.length
-            ? await sb.from("midias_whatsapp")
-              .select("id, origem")
-              .eq("user_id", userId)
-              .in("id", savedPhotoIds)
-            : { data: [], error: null };
-        if (incomingRowsError) {
-          throw new Error(
-            `falha_ao_validar_fotos_carrossel: ${incomingRowsError.message}`,
-          );
-        }
-        const whatsappPhotoIds = new Set(
-          (incomingRows || [])
-            .filter((item) => item.origem === "whatsapp")
-            .map((item) => item.id),
-        );
-        const incomingPhotos = salvos
-          .filter((item) =>
-            item.tipo === "foto" && whatsappPhotoIds.has(item.id)
-          )
-          .map((item) => ({ id: item.id, url: item.url }));
         if (incomingPhotos.length > 0) {
           const added = addVehicleCarouselPhotos(
             pendingVehicleCollection.photos,
@@ -19355,20 +19619,16 @@ async function processOne(queueId: string) {
             photos: added.photos,
             created_at: new Date().toISOString(),
           };
-          await persistVehicleCarousel({
-            userId,
-            fromNumber: row.from_number,
-            convId: conv.id,
-            agentState: freshAgentState,
-          }, updatedCollection);
+          await persistVehicleCarousel(vehicleFlowCtx, updatedCollection);
+          console.log(
+            `[carrossel] fotos=${added.photos.length} estagio=collecting`,
+          );
           const full = added.photos.length >= VEHICLE_CAROUSEL_MAX_PHOTOS;
           const next = full
-            ? await askVehicleCarouselData(updatedCollection, {
-              userId,
-              fromNumber: row.from_number,
-              convId: conv.id,
-              agentState: freshAgentState,
-            })
+            ? await askVehicleCarouselData(
+              updatedCollection,
+              vehicleFlowCtx,
+            )
             : {
               text:
                 `Recebi ${added.photos.length} de até ${VEHICLE_CAROUSEL_MAX_PHOTOS} fotos.`,
@@ -19376,32 +19636,14 @@ async function processOne(queueId: string) {
             };
           const warning = added.ignored > 0 ? "Usei as 8 primeiras.\n\n" : "";
           const reply = `${warning}${next.text}`;
-          const { data: outMsg } = await sb
-            .from("whatsapp_cloud_messages")
-            .insert({
-              conversation_id: conv.id,
-              user_id: userId,
-              direction: "outbound",
-              sender: "agent",
-              content: reply,
-              message_type: next.interactiveButtons ? "interactive" : "text",
-            })
-            .select("id")
-            .single();
           try {
-            const sentId = await sendWhatsApp(
+            await sendVehicleFlowReply({
+              conversationId: conv.id,
               userId,
-              row.from_number,
-              reply,
-              undefined,
-              undefined,
-              next.interactiveButtons,
-            );
-            if (sentId && outMsg?.id) {
-              await sb.from("whatsapp_cloud_messages")
-                .update({ wamid: sentId })
-                .eq("id", outMsg.id);
-            }
+              to: row.from_number,
+              text: reply,
+              buttons: next.interactiveButtons,
+            });
           } catch (error) {
             const sendError = error instanceof Error
               ? error.message
@@ -19422,12 +19664,75 @@ async function processOne(queueId: string) {
         }
         // Vídeo ou outra mídia não pertence à coleta de fotos. Abandona o
         // estado para que o pedido atual siga pelo roteamento normal.
-        await persistVehicleCarousel({
-          userId,
-          fromNumber: row.from_number,
-          convId: conv.id,
-          agentState: freshAgentState,
-        }, null);
+        await persistVehicleCarousel(vehicleFlowCtx, null);
+      }
+      if (
+        fromIsOwner &&
+        incomingPhotos.length > 0 &&
+        !contexto &&
+        !hasBlockingFlowForAutomaticVehicleBatch(freshAgentState)
+      ) {
+        await wait(8_000);
+        const [recentPhotos, refreshedState, newerInbound] = await Promise.all([
+          recentWhatsAppVehiclePhotos({
+            userId,
+            fromNumber: row.from_number,
+            windowMs: 60 * 1000,
+          }),
+          loadAgentState(sb, stateConversation),
+          sb.from("whatsapp_cloud_inbound_queue")
+            .select("id")
+            .eq("phone_number_id", row.phone_number_id)
+            .eq("from_number", row.from_number)
+            .eq("message_type", "image")
+            .gt("created_at", row.created_at || new Date().toISOString())
+            .limit(1),
+        ]);
+        if (!hasBlockingFlowForAutomaticVehicleBatch(refreshedState)) {
+          vehicleFlowCtx.agentState = refreshedState;
+          const previousBatch = validPendingVehiclePhotoBatch(
+              refreshedState.pending_vehicle_photo_batch,
+            )
+            ? refreshedState.pending_vehicle_photo_batch
+            : null;
+          const hasNewerQueuedPhoto = !!newerInbound.data?.length;
+          const plannedBatch = planVehiclePhotoBatch({
+            previous: previousBatch,
+            recentPhotos,
+            currentPhotoId: incomingPhotos.at(-1)?.id,
+            hasNewerQueuedPhoto,
+          });
+          const batch = plannedBatch.state;
+          await persistVehiclePhotoBatch(vehicleFlowCtx, batch);
+          if (plannedBatch.shouldOffer) {
+            const reply =
+              `Recebi ${recentPhotos.length} fotos. O que quer fazer?`;
+            await sendVehicleFlowReply({
+              conversationId: conv.id,
+              userId,
+              to: row.from_number,
+              text: reply,
+              buttons: vehiclePhotoBatchButtons(),
+            });
+          } else if (
+            recentPhotos.length === 1 &&
+            plannedBatch.currentPhotoIsLatest &&
+            !hasNewerQueuedPhoto
+          ) {
+            await sendVehicleFlowReply({
+              conversationId: conv.id,
+              userId,
+              to: row.from_number,
+              text: "Recebi a foto.",
+            });
+          }
+          await doneQueue(row.id);
+          return {
+            ok: true,
+            vehicle_photo_batch: batch.stage,
+            vehicle_photo_count: recentPhotos.length,
+          };
+        }
       }
       if (fromIsOwner) {
         await Promise.all(
