@@ -7,7 +7,7 @@ import unittest
 MODULE_PATH = pathlib.Path(__file__).with_name("worker.py")
 SOURCE = MODULE_PATH.read_text(encoding="utf-8")
 TREE = ast.parse(SOURCE)
-TESTED_FUNCTIONS = {"esc", "comando_ffmpeg"}
+TESTED_FUNCTIONS = {"esc", "comando_ffmpeg", "baixar_logo"}
 FUNCTION_TREE = ast.Module(
     body=[
         node for node in TREE.body
@@ -55,6 +55,28 @@ class FfmpegCommandTest(unittest.TestCase):
 
     def test_percent_is_escaped_for_drawtext(self):
         self.assertEqual(WORKER["esc"]("Desconto de 50%"), "Desconto de 50\\\\%")
+
+    def test_logo_download_never_uses_dark_background_variant(self):
+        downloaded = []
+        WORKER["baixar_logo_url"] = lambda url, path: downloaded.append((url, path)) or path
+        path = WORKER["baixar_logo"]({
+            "download_url": "https://example.com/default.png",
+            "light_background_download_url": "https://example.com/light.png",
+            "dark_background_download_url": "https://example.com/dark.png",
+        }, "/tmp/job", "video.mp4")
+        self.assertEqual(path, "/tmp/job/logo")
+        self.assertEqual(downloaded, [
+            ("https://example.com/light.png", "/tmp/job/logo"),
+        ])
+
+    def test_logo_download_falls_back_to_default(self):
+        downloaded = []
+        WORKER["baixar_logo_url"] = lambda url, path: downloaded.append(url) or path
+        WORKER["baixar_logo"]({
+            "download_url": "https://example.com/default.png",
+            "dark_background_download_url": "https://example.com/dark.png",
+        }, "/tmp/job", "video.mp4")
+        self.assertEqual(downloaded, ["https://example.com/default.png"])
 
 
 if __name__ == "__main__":

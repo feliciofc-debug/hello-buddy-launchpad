@@ -71,30 +71,10 @@ def baixar_logo_url(url, path):
         print("aviso: logo nao baixada; video segue sem logo:", e, flush=True)
         return None
 
-def luminancia_canto(src):
-    try:
-        cmd = [
-            "ffmpeg", "-v", "error", "-i", src, "-frames:v", "1",
-            "-vf", "crop=iw*0.38:ih*0.14:iw*0.05:ih*0.04,scale=1:1,format=rgb24",
-            "-f", "rawvideo", "pipe:1",
-        ]
-        pixel = subprocess.run(cmd, capture_output=True, check=True, timeout=30).stdout[:3]
-        if len(pixel) == 3:
-            return (0.2126 * pixel[0] + 0.7152 * pixel[1] + 0.0722 * pixel[2]) / 255
-    except Exception as e:
-        print("aviso: luminancia da logo indisponivel:", e, flush=True)
-    return 0.5
-
 def baixar_logo(logo, d, src=None):
     if not logo:
         return None
-    url = logo.get("download_url")
-    if src:
-        luminancia = luminancia_canto(src)
-        if luminancia >= 0.52:
-            url = logo.get("light_background_download_url") or url
-        else:
-            url = logo.get("dark_background_download_url") or url
+    url = logo.get("light_background_download_url") or logo.get("download_url")
     return baixar_logo_url(url, f"{d}/logo")
 
 def limpar_orfaos():
