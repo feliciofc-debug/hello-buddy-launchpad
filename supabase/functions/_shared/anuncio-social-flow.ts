@@ -37,12 +37,15 @@ export type PendingAnuncioPost = {
     | "captions"
     | "approval"
     | "custom_caption"
-    | "schedule_time";
+    | "schedule_time"
+    | "schedule_approval";
   action?: AnuncioPostAction;
   format?: AnuncioPostFormat;
   networks?: AnuncioPostNetwork[];
   token?: string;
   extra_tokens?: string[];
+  scheduled_at?: string;
+  selected_option?: "A" | "B" | "C" | "personalizada";
   created_at: string;
 };
 
@@ -65,9 +68,9 @@ export function parseAnuncioPostRequest(text: string): AnuncioPostRequest {
   const normalized = normalize(text);
   const action = /\b(?:agendar|agenda|agende)\b/.test(normalized)
     ? "schedule"
-    : /\b(?:so\s+salvar|salvar|guardar)\b/.test(normalized)
+    : /\b(?:so\s+salvar|salvar|salve|guardar)\b/.test(normalized)
     ? "save"
-    : /\b(?:postar|posta|publicar|publique|publica)\b/.test(normalized)
+    : /\b(?:postar|posta|poste|publicar|publique|publica)\b/.test(normalized)
     ? "publish"
     : undefined;
   const hasFeed = /\bfeed\b/.test(normalized);
@@ -99,9 +102,10 @@ export function shouldBindPostToLastAnuncio(input: {
   pendingFlow?: boolean;
 }): boolean {
   const parsed = parseAnuncioPostRequest(input.requestText);
-  if (parsed.style) return true;
   const product = normalize(input.explicitProduct || "").trim();
-  if (!product) return input.pendingFlow === true || parsed.action !== undefined;
+  if (!product) {
+    return input.pendingFlow === true || parsed.action !== undefined;
+  }
   if (
     /^(?:esse|essa|este|esta|isso|o|a)?\s*(?:anuncio|arte|carro|veiculo|imagem|foto)$/
       .test(product)
@@ -113,8 +117,15 @@ export function shouldBindPostToLastAnuncio(input: {
   const significantProductWords = product.split(/\s+/).filter((word) =>
     word.length >= 3
   );
-  return significantProductWords.length > 0 &&
+  const matchesTitle = significantProductWords.length > 0 &&
     significantProductWords.every((word) => title.includes(word));
+  if (matchesTitle) return true;
+  // O estilo só vincula o último anúncio quando não existe outro produto
+  // explícito. Ex.: "COMEXIA no estilo impacto" continua sendo COMEXIA.
+  const styleOnlyProduct = product
+    .replace(/^(?:o|a|no|na)?\s*(?:estilo|modelo)\s+/, "")
+    .trim();
+  return parsed.style === styleOnlyProduct;
 }
 
 export function anuncioPostActionButtons() {
@@ -128,10 +139,12 @@ export function anuncioPostActionButtons() {
   };
 }
 
-export function anuncioPostFormatButtons() {
+export function anuncioPostFormatButtons(schedule = false) {
   return {
-    body: "Em qual formato?",
-    buttons: [
+    body: schedule
+      ? "Agendamento pelo WhatsApp está disponível apenas para Feed."
+      : "Em qual formato?",
+    buttons: schedule ? [{ id: "anuncio_post:format:feed", title: "Feed" }] : [
       { id: "anuncio_post:format:feed", title: "Feed" },
       { id: "anuncio_post:format:story", title: "Story" },
       { id: "anuncio_post:format:feed_story", title: "Feed + Story" },
@@ -183,6 +196,25 @@ export function anuncioFinalApprovalButtons(token: string) {
     body: "Revise o resumo e confirme:",
     buttons: [
       { id: `anuncio_post:confirm:${token}`, title: "Publicar" },
+      { id: `anuncio_post:cancel:${token}`, title: "Cancelar" },
+    ],
+  };
+}
+
+export function anuncioScheduleApprovalButtons(token: string) {
+  return {
+    body: "Revise o resumo e confirme:",
+    buttons: [
+      { id: `anuncio_post:schedule_confirm:${token}`, title: "Agendar" },
+      { id: `anuncio_post:cancel:${token}`, title: "Cancelar" },
+    ],
+  };
+}
+
+export function anuncioScheduleTimeButtons(token: string) {
+  return {
+    body: "Envie a data e hora ou cancele.",
+    buttons: [
       { id: `anuncio_post:cancel:${token}`, title: "Cancelar" },
     ],
   };

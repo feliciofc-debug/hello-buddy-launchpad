@@ -337,6 +337,8 @@ import {
   anuncioPostActionButtons,
   anuncioPostFormatButtons,
   anuncioPostNetworkButtons,
+  anuncioScheduleApprovalButtons,
+  anuncioScheduleTimeButtons,
   generateVehicleAdCaptions,
   parseAnuncioPostRequest,
   shouldBindPostToLastAnuncio,
@@ -5932,7 +5934,10 @@ async function persistAnuncioFlowState(
     contactNumber: ctx.fromNumber,
   };
   const current = ctx.agentState ?? await loadAgentState(sb, conversation);
-  await saveAgentState(sb, conversation, patch, current);
+  const saved = await saveAgentState(sb, conversation, patch, current);
+  if (!saved) {
+    throw new Error("não consegui salvar o estado do anúncio");
+  }
   Object.assign(current, patch);
   ctx.agentState = current;
 }
@@ -6011,6 +6016,11 @@ async function prepareAnuncioSocialPosts(input: {
   const style = last.selected_style;
   if (!style) throw new Error("escolha primeiro um dos estilos do anúncio");
   if (!networks.length) throw new Error("nenhuma das redes pedidas está conectada");
+  if (action === "schedule" && format !== "feed") {
+    throw new Error(
+      "agendamento pelo WhatsApp está disponível apenas para Feed",
+    );
+  }
 
   const captions = generateVehicleAdCaptions(last.data);
   const variantes = Object.fromEntries(networks.map((network) => [
@@ -6022,68 +6032,81 @@ async function prepareAnuncioSocialPosts(input: {
     : [format];
   const tokens: string[] = [];
 
-  for (const postFormat of formats) {
-    const image = await ensureLastAnuncioImage(last, style, postFormat, ctx);
-    const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    const scripts = Object.fromEntries(
-      networks.map((network) => [network, captions.A]),
-    );
-    const pending: PendingSocialPost = {
-      produto: {
-        id: image.id || null,
-        source: "anuncio_produto",
-        nome: String(last.data.titulo || "Anúncio"),
-        descricao: JSON.stringify(last.data),
-        imagem_url: image.url,
-        ativo: true,
-        midia_tipo: "foto",
-      },
-      tom: "beneficio",
-      redes: networks,
-      scripts,
-      variantes,
-      userId: ctx.userId,
-      requesterPhone: ctx.fromNumber,
-      createdAt: Date.now(),
-      formato: postFormat,
-      midiaTipo: "foto",
-      briefing: JSON.stringify(last.data).slice(0, 1200),
-    };
-    const queueRows = await persistPendingSocialPost(token, pending);
-    PENDING_POSTS.set(token, { ...pending, queueRows });
-    tokens.push(token);
-  }
+  try {
+    for (const postFormat of formats) {
+      const image = await ensureLastAnuncioImage(last, style, postFormat, ctx);
+      const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+      const scripts = Object.fromEntries(
+        networks.map((network) => [network, captions.A]),
+      );
+      const pending: PendingSocialPost = {
+        produto: {
+          id: image.id || null,
+          source: "anuncio_produto",
+          nome: String(last.data.titulo || "Anúncio"),
+          descricao: JSON.stringify(last.data),
+          imagem_url: image.url,
+          ativo: true,
+          midia_tipo: "foto",
+        },
+        tom: "beneficio",
+        redes: networks,
+        scripts,
+        variantes,
+        userId: ctx.userId,
+        requesterPhone: ctx.fromNumber,
+        createdAt: Date.now(),
+        formato: postFormat,
+        midiaTipo: "foto",
+        briefing: JSON.stringify(last.data).slice(0, 1200),
+      };
+      const queueRows = await persistPendingSocialPost(token, pending);
+      PENDING_POSTS.set(token, { ...pending, queueRows });
+      tokens.push(token);
+    }
 
-  const flow: PendingAnuncioPost = {
-    stage: "captions",
-    action,
-    format,
-    networks,
-    token: tokens[0],
-    extra_tokens: tokens.slice(1),
-    created_at: new Date().toISOString(),
-  };
-  await persistAnuncioFlowState(ctx, {
-    last_anuncio: last,
-    pending_anuncio_post: flow,
-  });
-  return {
-    pending: flow,
-    raw: JSON.stringify({
-      status: "aguardando_escolha_variante",
-      fonte: "last_anuncio",
+    const flow: PendingAnuncioPost = {
+      stage: "captions",
+      action,
+      format,
+      networks,
       token: tokens[0],
-      formato: formats[0],
-      produto: {
-        nome: String(last.data.titulo || "Anúncio"),
-        imagem_url: last.images.find((image) =>
-          image.style === style && image.formato === formats[0]
-        )?.url,
-      },
-      redes: networks,
-      variantes,
-    }),
-  };
+      extra_tokens: tokens.slice(1),
+      created_at: new Date().toISOString(),
+    };
+    await persistAnuncioFlowState(ctx, {
+      last_anuncio: last,
+      pending_anuncio_post: flow,
+    });
+    return {
+      pending: flow,
+      raw: JSON.stringify({
+        status: "aguardando_escolha_variante",
+        fonte: "last_anuncio",
+        token: tokens[0],
+        formato: formats[0],
+        produto: {
+          nome: String(last.data.titulo || "Anúncio"),
+          imagem_url: last.images.find((image) =>
+            image.style === style && image.formato === formats[0]
+          )?.url,
+        },
+        redes: networks,
+        variantes,
+      }),
+    };
+  } catch (error) {
+    if (tokens.length) {
+      await sb.from("social_posts_queue").update({
+        status: "cancelado",
+        error_message: "preparo_anuncio_incompleto",
+        updated_at: new Date().toISOString(),
+      }).eq("user_id", ctx.userId).in("approval_token", tokens)
+        .eq("status", "aguardando_confirmacao");
+      for (const token of tokens) PENDING_POSTS.delete(token);
+    }
+    throw error;
+  }
 }
 
 function anuncioPostSummary(
@@ -6100,7 +6123,10 @@ function anuncioPostSummary(
   const networks = (pending.networks ?? []).map((network) =>
     network === "facebook" ? "Facebook" : "Instagram"
   ).join(" + ");
-  return `Resumo: *${String(last.data.titulo || "Anúncio")}* — estilo *${style}*, ${format}, ${networks}, legenda *Opção ${option}*. Nada foi publicado ainda.`;
+  const scheduled = pending.scheduled_at
+    ? `, agendado para *${pending.scheduled_at}*`
+    : "";
+  return `Resumo: *${String(last.data.titulo || "Anúncio")}* — estilo *${style}*, ${format}, ${networks}, legenda *Opção ${option}*${scheduled}. Nada foi publicado nem agendado ainda.`;
 }
 
 async function deliverAnuncioCaptionChoices(
@@ -13631,11 +13657,16 @@ async function toolCriarAnuncio(
           created_at: lastAnuncio.created_at,
         }
         : null;
-      await saveAgentState(sb, conversation, {
+      const stateSaved = await saveAgentState(sb, conversation, {
         pending_anuncio_styles: pending,
         last_anuncio: lastAnuncio,
         pending_anuncio_post: pendingPost,
       }, current);
+      if (!stateSaved) {
+        throw new Error(
+          "não consegui salvar o anúncio para continuar a escolha e publicação",
+        );
+      }
       current.pending_anuncio_styles = pending;
       current.last_anuncio = lastAnuncio;
       current.pending_anuncio_post = pendingPost;
@@ -14450,7 +14481,7 @@ async function callGemini(
           text: action === "publish"
             ? "Certo. Onde você quer publicar?"
             : "Certo. Qual formato você quer agendar?",
-          interactiveButtons: anuncioPostFormatButtons(),
+          interactiveButtons: anuncioPostFormatButtons(action === "schedule"),
         };
       }
 
@@ -14458,6 +14489,13 @@ async function callGemini(
         /^anuncio_post:format:(feed|story|feed_story)$/,
       )?.[1] as "feed" | "story" | "feed_story" | undefined;
       if (format && pendingAnuncioPost?.action) {
+        if (pendingAnuncioPost.action === "schedule" && format !== "feed") {
+          return {
+            text:
+              "Story ainda não pode ser agendado pelo WhatsApp. Para agendar, escolha Feed; para Story, use Publicar agora.",
+            interactiveButtons: anuncioPostFormatButtons(true),
+          };
+        }
         const connected = await connectedAnuncioNetworks(toolCtx.userId);
         if (!connected.length) {
           await persistAnuncioFlowState(toolCtx, {
@@ -15064,17 +15102,24 @@ async function callGemini(
           const next = {
             ...pendingAnuncioPost,
             stage: "schedule_time" as const,
+            selected_option: "personalizada" as const,
             created_at: new Date().toISOString(),
           };
           await persistAnuncioFlowState(toolCtx, {
             last_anuncio: lastAnuncio,
             pending_anuncio_post: next,
           });
-          return { text: "Legenda salva. Para quando? Informe o dia/mês e a hora. Ex.: 30/09 às 10h." };
+          return {
+            text: "Legenda salva. Para quando? Informe o dia/mês e a hora. Ex.: 30/09 às 10h.",
+            interactiveButtons: anuncioScheduleTimeButtons(
+              anuncioPostTokens[0],
+            ),
+          };
         }
         const next = {
           ...pendingAnuncioPost,
           stage: "approval" as const,
+          selected_option: "personalizada" as const,
           created_at: new Date().toISOString(),
         };
         await persistAnuncioFlowState(toolCtx, {
@@ -15088,6 +15133,63 @@ async function callGemini(
       } catch (error) {
         return { text: `Não consegui salvar essa legenda: ${(error as Error).message}.` };
       }
+    }
+    const anuncioScheduleConfirm = anuncioPostInteractiveId.match(
+      /^anuncio_post:schedule_confirm:([a-f0-9]{8})$/,
+    );
+    if (
+      remetenteEhDono &&
+      lastAnuncio &&
+      pendingAnuncioPost?.stage === "schedule_approval" &&
+      pendingAnuncioPost.scheduled_at &&
+      anuncioScheduleConfirm &&
+      anuncioPostTokens.includes(anuncioScheduleConfirm[1])
+    ) {
+      const loaded = await Promise.all(anuncioPostTokens.map((token) =>
+        loadPendingSocialPost(token, toolCtx.userId)
+      ));
+      if (
+        loaded.some((post) =>
+          !post ||
+          post.formato !== "feed" ||
+          !canRunSocialPostAction(post.variantSelecionada)
+        )
+      ) {
+        return {
+          text:
+            "Não consegui validar todos os itens desse agendamento. Nada foi agendado.",
+        };
+      }
+      const results: string[] = [];
+      for (const token of anuncioPostTokens) {
+        results.push(await toolAgendarPostPendente({
+          token,
+          data_hora_sp: pendingAnuncioPost.scheduled_at,
+        }, toolCtx));
+      }
+      const allScheduled = results.every((result) => {
+        try {
+          return JSON.parse(result)?.status === "agendado";
+        } catch {
+          return false;
+        }
+      });
+      if (allScheduled) {
+        await persistAnuncioFlowState(toolCtx, {
+          last_anuncio: lastAnuncio,
+          pending_anuncio_post: null,
+        });
+      }
+      return {
+        text: results.map(formatSocialPostToolResult).join("<<SPLIT>>"),
+        ...(!allScheduled
+          ? {
+            interactiveButtons: anuncioScheduleApprovalButtons(
+              anuncioPostTokens[0],
+            ),
+          }
+          : {}),
+      };
     }
     const anuncioConfirm = anuncioPostInteractiveId.match(
       /^anuncio_post:(confirm|cancel):([a-f0-9]{8})$/,
@@ -15125,25 +15227,32 @@ async function callGemini(
     ) {
       const dateText = userContent.replace(/<<INTERACTIVE_ID:[^>]+>>/gi, "").trim();
       if (parseSaoPauloDateTime(dateText)) {
-        const results: string[] = [];
-        for (const token of anuncioPostTokens) {
-          results.push(await toolAgendarPostPendente({
-            token,
-            data_hora_sp: dateText,
-          }, toolCtx));
-        }
+        const next = {
+          ...pendingAnuncioPost,
+          stage: "schedule_approval" as const,
+          scheduled_at: dateText,
+          created_at: new Date().toISOString(),
+        };
         await persistAnuncioFlowState(toolCtx, {
           last_anuncio: lastAnuncio,
-          pending_anuncio_post: null,
+          pending_anuncio_post: next,
         });
         return {
-          text: results.map(formatSocialPostToolResult).join("<<SPLIT>>"),
+          text: anuncioPostSummary(
+            lastAnuncio,
+            next,
+            pendingAnuncioPost.selected_option || "selecionada",
+          ),
+          interactiveButtons: anuncioScheduleApprovalButtons(
+            anuncioPostTokens[0],
+          ),
         };
       }
-      await persistAnuncioFlowState(toolCtx, {
-        last_anuncio: lastAnuncio,
-        pending_anuncio_post: null,
-      });
+      return {
+        text:
+          "Não entendi a data. Informe dia/mês e hora, por exemplo: 30/09 às 10h.",
+        interactiveButtons: anuncioScheduleTimeButtons(anuncioPostTokens[0]),
+      };
     }
     if (
       remetenteEhDono &&
@@ -15160,6 +15269,7 @@ async function callGemini(
         const next = {
           ...pendingAnuncioPost,
           stage: "schedule_time" as const,
+          selected_option: option,
           created_at: new Date().toISOString(),
         };
         await persistAnuncioFlowState(toolCtx, {
@@ -15168,11 +15278,15 @@ async function callGemini(
         });
         return {
           text: `Opção ${option} selecionada. Para quando? Informe o dia/mês e a hora. Ex.: 30/09 às 10h.`,
+          interactiveButtons: anuncioScheduleTimeButtons(
+            anuncioPostTokens[0],
+          ),
         };
       }
       const next = {
         ...pendingAnuncioPost,
         stage: "approval" as const,
+        selected_option: option,
         created_at: new Date().toISOString(),
       };
       await persistAnuncioFlowState(toolCtx, {
@@ -15248,7 +15362,24 @@ async function callGemini(
           });
           return {
             text: "Em qual formato?",
-            interactiveButtons: anuncioPostFormatButtons(),
+            interactiveButtons: anuncioPostFormatButtons(action === "schedule"),
+          };
+        }
+        if (action === "schedule" && format !== "feed") {
+          const next: PendingAnuncioPost = {
+            ...pendingAnuncioPost,
+            stage: "format",
+            action,
+            created_at: new Date().toISOString(),
+          };
+          await persistAnuncioFlowState(toolCtx, {
+            last_anuncio: lastAnuncio,
+            pending_anuncio_post: next,
+          });
+          return {
+            text:
+              "Story ainda não pode ser agendado pelo WhatsApp. Para agendar, escolha Feed; para Story, use Publicar agora.",
+            interactiveButtons: anuncioPostFormatButtons(true),
           };
         }
         const connected = await connectedAnuncioNetworks(toolCtx.userId);

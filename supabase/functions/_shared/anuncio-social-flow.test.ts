@@ -9,6 +9,8 @@ import {
   anuncioPostActionButtons,
   anuncioPostFormatButtons,
   anuncioPostNetworkButtons,
+  anuncioScheduleApprovalButtons,
+  anuncioScheduleTimeButtons,
   chooseAnuncioPostSource,
   generateVehicleAdCaptions,
   type LastAnuncio,
@@ -84,6 +86,18 @@ Deno.test("pedido completo detecta estilo, formato, redes e ação", () => {
       networks: ["facebook", "instagram"],
     },
   );
+  assertEquals(parseAnuncioPostRequest("Poste no feed e story do Instagram"), {
+    action: "publish",
+    style: undefined,
+    format: "feed_story",
+    networks: ["instagram"],
+  });
+  assertEquals(parseAnuncioPostRequest("Salve o anúncio"), {
+    action: "save",
+    style: undefined,
+    format: undefined,
+    networks: [],
+  });
 });
 
 Deno.test("fluxo do anúncio não sequestra pedido de outro produto", () => {
@@ -91,6 +105,13 @@ Deno.test("fluxo do anúncio não sequestra pedido de outro produto", () => {
     shouldBindPostToLastAnuncio({
       requestText: "Postar impacto no feed do Facebook e Instagram",
       explicitProduct: "impacto",
+      anuncioTitle: "Citroën C3 Picasso",
+    }),
+  );
+  assert(
+    shouldBindPostToLastAnuncio({
+      requestText: "Postar no estilo impacto no feed",
+      explicitProduct: "no estilo impacto",
       anuncioTitle: "Citroën C3 Picasso",
     }),
   );
@@ -104,6 +125,14 @@ Deno.test("fluxo do anúncio não sequestra pedido de outro produto", () => {
   assert(
     !shouldBindPostToLastAnuncio({
       requestText: "Postar COMEXIA no feed",
+      explicitProduct: "COMEXIA",
+      anuncioTitle: "Citroën C3 Picasso",
+      pendingFlow: true,
+    }),
+  );
+  assert(
+    !shouldBindPostToLastAnuncio({
+      requestText: "Postar COMEXIA no feed no estilo impacto",
       explicitProduct: "COMEXIA",
       anuncioTitle: "Citroën C3 Picasso",
       pendingFlow: true,
@@ -157,6 +186,10 @@ Deno.test("cada etapa oferece os controles exigidos", () => {
     ["Feed", "Story", "Feed + Story"],
   );
   assertEquals(
+    anuncioPostFormatButtons(true).buttons.map((button) => button.title),
+    ["Feed"],
+  );
+  assertEquals(
     anuncioPostNetworkButtons(["facebook", "instagram"]).buttons.map((
       button,
     ) => button.title),
@@ -177,5 +210,17 @@ Deno.test("cada etapa oferece os controles exigidos", () => {
       button.title
     ),
     ["Publicar", "Cancelar"],
+  );
+  assertEquals(
+    anuncioScheduleApprovalButtons("deadbeef").buttons.map((button) =>
+      button.title
+    ),
+    ["Agendar", "Cancelar"],
+  );
+  assertEquals(
+    anuncioScheduleTimeButtons("deadbeef").buttons.map((button) =>
+      button.title
+    ),
+    ["Cancelar"],
   );
 });
