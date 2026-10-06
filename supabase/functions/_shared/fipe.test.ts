@@ -43,8 +43,11 @@ Deno.test("normalização encontra variantes de C3 PICASSO", async () => {
 });
 
 Deno.test("pedido falado do C3 Picasso normaliza ano e filtra versões automáticas", () => {
-  const input = parseFipeRequestText(
-    "me passa a fipe do c3 picasso dois mil e catorze automático",
+  const spoken = "me passa a fipe do c3 picasso dois mil e catorze automático";
+  const input = parseFipeRequestText(spoken);
+  assertEquals(
+    parseFipeRequestText(`🎙️ Áudio transcrito: ${spoken}`),
+    input,
   );
   assertEquals(input.marca, "Citroën");
   assertEquals(input.modelo, "C3 Picasso");
