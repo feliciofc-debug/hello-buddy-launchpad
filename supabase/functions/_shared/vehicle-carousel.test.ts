@@ -7,16 +7,21 @@ import {
   calculatePhotoFrame,
   frameContainsObject,
 } from "./anuncio-photo-framing.ts";
-import { buildVehiclePhotoSlide } from "./carousel-templates/vehiclePhoto.ts";
+import {
+  buildDarkPremiumVehicleSlide,
+  darkPremiumVehiclePhotoRegion,
+} from "./carousel-templates/darkPremium.ts";
 import {
   addVehicleCarouselPhotos,
   blockingVehiclePhotoFlow,
+  buildVehicleCarouselContentPrompt,
   buildVehicleCarouselSlides,
   expiredAnuncioPendingPatch,
   hasEnoughVehicleCarouselPhotos,
   hasVehicleCarouselData,
   isVehiclePhotoCarouselRequest,
   isVehiclePhotoCarouselTextRequest,
+  isGeneratedVehicleCopySafe,
   parseVehicleCarouselData,
   planVehiclePhotoBatch,
   SINGLE_REPEATED_VEHICLE_PHOTO_MESSAGE,
@@ -27,6 +32,7 @@ import {
   vehicleCarouselDimensions,
   vehicleCarouselLayout,
   vehicleCarouselNeedMoreButtons,
+  vehicleCarouselPhotoButtons,
   vehicleCarouselStartState,
   vehiclePhotoBatchButtons,
   vehiclePhotoBatchNewTopicReset,
@@ -40,9 +46,9 @@ const photos = Array.from({ length: 9 }, (_, index) => ({
   url: `https://example.com/${index + 1}.jpg`,
 }));
 
-Deno.test("três fotos viram capa, conteúdo e página final", () => {
+Deno.test("quatro fotos viram capa, três conteúdos e CTA", () => {
   const slides = buildVehicleCarouselSlides({
-    photos: photos.slice(0, 3),
+    photos: photos.slice(0, 4),
     data: {
       titulo: "Citroën C3 Picasso",
       ano: "2014",
@@ -50,14 +56,17 @@ Deno.test("três fotos viram capa, conteúdo e página final", () => {
       contato: "(21) 99999-0000",
     },
   });
-  assertEquals(slides.length, 3);
+  assertEquals(slides.length, 5);
   assertEquals(slides.map((slide) => slide.type), [
     "cover",
+    "content",
+    "content",
     "content",
     "cta",
   ]);
   assertStringIncludes(slides[0].title, "Citroën C3 Picasso");
-  assertEquals(slides[2].body, "(21) 99999-0000");
+  assertEquals(slides[4].body, "(21) 99999-0000");
+  assertEquals(slides[4].photo_url, undefined);
 });
 
 Deno.test("nove fotos preservam a ordem das oito primeiras e avisam uma ignorada", () => {
@@ -82,30 +91,86 @@ Deno.test("legenda visual usa somente opcionais informados relacionados", () => 
   );
 });
 
-Deno.test("faixa ocupa no máximo 18% e fica separada da foto", () => {
+Deno.test("Dark Premium mantém foto protagonista e texto fora da foto", () => {
   for (const format of ["portrait", "square"] as const) {
     const layout = vehicleCarouselLayout(format);
-    assert(layout.stripHeight / layout.height <= 0.18);
-    assertEquals(layout.photoHeight + layout.stripHeight, layout.height);
-    assert(layout.fontSize >= 22);
-
-    const tree = buildVehiclePhotoSlide({
-      slide: {
+    const cover = darkPremiumVehiclePhotoRegion(
+      "cover",
+      layout.width,
+      layout.height,
+    )!;
+    const content = darkPremiumVehiclePhotoRegion(
+      "content",
+      layout.width,
+      layout.height,
+    )!;
+    assert(cover.height / layout.height >= 0.55);
+    assert(content.height / layout.height >= 0.5);
+    const tree = buildDarkPremiumVehicleSlide(
+      {
         type: "content",
-        photo_url: photos[0].url,
         title: "Interior",
         number: 1,
       },
-      format,
-      photoDataUrl: "data:image/png;base64,AA==",
-      totalSlides: 3,
-    });
+      {
+        width: layout.width,
+        height: layout.height,
+        photoDataUrl: "data:image/png;base64,AA==",
+        totalSlides: 3,
+        primaryColor: "#6366F1",
+        secondaryColor: "#8B5CF6",
+      },
+    );
     const children = tree.props.children as Array<Record<string, unknown>>;
-    const image = children[0] as { props: { style: Record<string, unknown> } };
-    const strip = children[1] as { props: { style: Record<string, unknown> } };
-    assertEquals(image.props.style.height, layout.photoHeight);
-    assertEquals(strip.props.style.height, layout.stripHeight);
+    const image = children.find((node: any) => node.type === "img") as any;
+    assertEquals(image.props.style.height, content.height);
+    const text = children.find((node: any) =>
+      node.props?.style?.top === content.y + content.height + 30
+    ) as any;
+    assert(text);
   }
+});
+
+Deno.test("carrossel sempre oferece foto original primeiro", () => {
+  const buttons = vehicleCarouselPhotoButtons();
+  assertEquals(buttons.body, "Como quer as fotos do carrossel?");
+  assertEquals(buttons.buttons.map((button) => button.title), [
+    "Foto original",
+    "Melhorar fundo e luz",
+  ]);
+});
+
+Deno.test("prompt factual e filtro rejeitam invenções", () => {
+  const data = {
+    titulo: "C3 Picasso",
+    ano: "2014",
+    cambio: "automático",
+  };
+  const prompt = buildVehicleCarouselContentPrompt({
+    data,
+    photos: [{ ...photos[0], view: "Frente" }, {
+      ...photos[1],
+      view: "Interior",
+    }],
+  });
+  assertStringIncludes(prompt, "EXATAMENTE 3 slides");
+  assertStringIncludes(prompt, "SOMENTE os fatos");
+  assert(!isGeneratedVehicleCopySafe("Carro impecável", data));
+  assert(!isGeneratedVehicleCopySafe("Bancos em couro", data));
+  const slides = buildVehicleCarouselSlides({
+    photos: photos.slice(0, 2),
+    data,
+    generated: {
+      slides: [
+        { type: "cover", title: "C3 Picasso 2014" },
+        { type: "content", title: "Interior", body: "Bancos em couro" },
+        { type: "cta", title: "Oferta imperdível" },
+      ],
+    },
+  });
+  const allText = JSON.stringify(slides).toLowerCase();
+  assert(!allText.includes("bancos em couro"));
+  assert(!allText.includes("imperdível"));
 });
 
 Deno.test("enquadramento mantém a caixa do veículo dentro da região da foto", () => {

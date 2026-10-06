@@ -30,6 +30,7 @@ export type VehicleCarouselPhoto = {
 
 export type VehicleCarouselData = {
   titulo?: string;
+  versao?: string;
   ano?: string;
   preco?: string;
   fipe?: string;
@@ -37,7 +38,9 @@ export type VehicleCarouselData = {
   quilometragem?: string;
   cambio?: string;
   motor?: string;
+  donos?: string;
   documentacao?: string;
+  revisoes?: string;
   condicoes?: string[];
   contato?: string;
   opcionais?: string[];
@@ -45,12 +48,22 @@ export type VehicleCarouselData = {
 
 export type VehicleCarouselSlide = {
   type: "cover" | "content" | "cta";
-  photo_url: string;
+  photo_url?: string;
   photo_box?: [number, number, number, number] | null;
   title: string;
   body?: string;
   reference?: string;
   number: number;
+};
+
+export type GeneratedCarouselContent = {
+  slides?: Array<{
+    type?: "cover" | "content" | "cta";
+    title?: string;
+    body?: string;
+    number?: number;
+  }>;
+  caption?: string;
 };
 
 export type PendingVehicleCarousel = {
@@ -218,16 +231,15 @@ export function vehicleCarouselDataButtons() {
 
 export function vehicleCarouselPhotoButtons() {
   return {
-    body:
-      "Como quer as fotos? Melhorar só muda fundo e luz; o veículo fica igual.",
+    body: "Como quer as fotos do carrossel?",
     buttons: [
+      {
+        id: "vehicle_carousel:photo:original",
+        title: "Foto original",
+      },
       {
         id: "vehicle_carousel:photo:melhorada",
         title: "Melhorar fundo e luz",
-      },
-      {
-        id: "vehicle_carousel:photo:original",
-        title: "Usar foto original",
       },
     ],
   };
@@ -436,7 +448,7 @@ export function parseVehicleCarouselData(text: string): VehicleCarouselData {
     .replace(/\s+/g, " ")
     .trim();
   const knownLabels =
-    "modelo|ano|km|quilometragem|c[aâ]mbio|motor|pre[cç]o|valor|fipe|documenta[cç][aã]o|itens|opcionais|condi[cç][oõ]es?|contato|telefone";
+    "modelo|vers[aã]o|ano|km|quilometragem|c[aâ]mbio|motor|donos?|documenta[cç][aã]o|revis[oõ]es?|pre[cç]o|valor|fipe|itens|opcionais|condi[cç][oõ]es?|contato|telefone";
   const field = (label: string) =>
     source.match(
       new RegExp(
@@ -457,7 +469,10 @@ export function parseVehicleCarouselData(text: string): VehicleCarouselData {
     source.match(/(?:\+?55\s*)?\(?\d{2}\)?\s*\d{4,5}[-\s]?\d{4}/)?.[0];
   const motor = field("motor") ||
     source.match(/\b\d[.,]\d\s*(?:turbo|flex|diesel|gasolina)?\b/i)?.[0];
+  const versao = field("vers[aã]o");
+  const donos = field("donos?");
   const documentacao = field("documenta[cç][aã]o");
+  const revisoes = field("revis[oõ]es?");
   const opcionais = field("(?:itens|opcionais)");
   const condicoesRaw = field("condi[cç][oõ]es?") ||
     source.match(
@@ -477,13 +492,16 @@ export function parseVehicleCarouselData(text: string): VehicleCarouselData {
   }
   return {
     ...(titulo ? { titulo: titulo.slice(0, 100) } : {}),
+    ...(versao ? { versao } : {}),
     ...(ano ? { ano } : {}),
     ...(quilometragem ? { quilometragem } : {}),
     ...(cambio ? { cambio } : {}),
     ...(motor ? { motor } : {}),
+    ...(donos ? { donos } : {}),
     ...(preco ? { preco } : {}),
     ...(fipe ? { fipe } : {}),
     ...(documentacao ? { documentacao } : {}),
+    ...(revisoes ? { revisoes } : {}),
     ...(opcionais
       ? { opcionais: opcionais.split(/\s*(?:,|;)\s*/).filter(Boolean) }
       : {}),
@@ -501,6 +519,77 @@ export function hasVehicleCarouselData(text: string): boolean {
   return /\b(modelo|ano|km|quilometragem|cambio|motor|preco|valor|fipe|documentacao|itens|opcionais|condicoes?|contato|telefone)\b/
     .test(value) ||
     /\b(?:19|20)\d{2}\b|\bR\$\s*\d|\b\d+\s*(?:mil\s*)?km\b/i.test(text);
+}
+
+function factualVehicleLines(data: VehicleCarouselData): string[] {
+  return [
+    data.quilometragem,
+    data.cambio,
+    data.motor,
+    data.donos,
+    data.documentacao,
+    data.revisoes,
+    ...values(data.opcionais),
+    ...values(data.condicoes),
+  ].filter((value): value is string => Boolean(value));
+}
+
+export function buildVehicleCarouselContentPrompt(input: {
+  data: VehicleCarouselData;
+  photos: VehicleCarouselPhoto[];
+}): string {
+  const facts = JSON.stringify(input.data);
+  const views = input.photos.map((photo, index) =>
+    `${index + 1}: ${photo.view || "Veículo"}`
+  ).join("\n");
+  const total = input.photos.length + 1;
+  return `Crie o conteúdo de um carrossel premium de veículo com EXATAMENTE ${total} slides: 1 cover, ${
+    Math.max(0, input.photos.length - 1)
+  } content e 1 cta.
+Use SOMENTE os fatos no JSON abaixo. Campo ausente não pode aparecer nem ser inferido.
+Dados informados: ${facts}
+Fotos, em ordem:
+${views}
+A cover usa a foto 1 e deve conter somente modelo, versão, ano e preço informados.
+Cada content corresponde às fotos 2 em diante: título curto ligado ao tipo visual e 2–3 linhas apenas com fatos informados relacionados ao que aparece. Não atribua opcional a uma foto sem relação.
+A cta deve conter apenas FIPE com mês, condições e contato informados; ctaLabel será "CHAMAR NO WHATSAPP".
+Pode transformar apenas estes fatos em benefícios diretos: automático = conforto no trânsito; IPVA pago = sem gasto desse imposto agora; revisões em dia = manutenção informada; espaço interno apenas se o modelo for explicitamente uma minivan.
+PROIBIDO inventar ou usar: impecável, zero defeitos, estado de zero, único dono (salvo se informado), imperdível, garantia (salvo se informada), conservação, urgência, avaliação ou depoimento.
+Sem emojis nos slides. A legenda segue as mesmas regras e só pode usar esses fatos.`;
+}
+
+const UNSUPPORTED_VEHICLE_CLAIMS = [
+  "impecavel",
+  "zero defeitos",
+  "estado de zero",
+  "imperdivel",
+  "unico no mercado",
+  "melhor preco",
+];
+
+export function isGeneratedVehicleCopySafe(
+  text: string,
+  data: VehicleCarouselData,
+): boolean {
+  const copy = normalize(text);
+  if (UNSUPPORTED_VEHICLE_CLAIMS.some((claim) => copy.includes(claim))) {
+    return false;
+  }
+  const facts = normalize(JSON.stringify(data));
+  if (copy.includes("unico dono") && !facts.includes("unico dono")) return false;
+  if (copy.includes("garantia") && !facts.includes("garantia")) return false;
+  const optionalClaims = [
+    "bancos em couro",
+    "teto solar",
+    "sensor de estacionamento",
+    "camera de re",
+    "central multimidia",
+    "ipva pago",
+    "revisoes em dia",
+  ];
+  return !optionalClaims.some((claim) =>
+    copy.includes(claim) && !facts.includes(claim)
+  );
 }
 
 function values(value: unknown): string[] {
@@ -544,48 +633,63 @@ export function vehiclePhotoCaption(
 export function buildVehicleCarouselSlides(input: {
   photos: VehicleCarouselPhoto[];
   data: VehicleCarouselData;
+  generated?: GeneratedCarouselContent | null;
 }): VehicleCarouselSlide[] {
-  const total = Math.min(VEHICLE_CAROUSEL_MAX_PHOTOS, input.photos.length);
-  return input.photos.slice(0, total).map((photo, index) => {
-    if (index === 0) {
-      return {
-        type: "cover",
-        photo_url: photo.url,
-        photo_box: photo.box,
-        title: [input.data.titulo, input.data.ano].filter(Boolean).join(" • "),
-        body: input.data.preco,
-        reference: input.data.fipe
-          ? `FIPE ${input.data.fipe}${
-            input.data.fipe_mes ? ` (${input.data.fipe_mes})` : ""
-          }`
-          : undefined,
-        number: index + 1,
-      };
-    }
-    if (index === total - 1) {
-      const facts = [
-        input.data.quilometragem,
-        input.data.cambio,
-        input.data.documentacao,
-        ...values(input.data.condicoes),
-      ].filter(Boolean).slice(0, 4);
-      return {
-        type: "cta",
-        photo_url: photo.url,
-        photo_box: photo.box,
-        title: facts.join(" • "),
-        body: input.data.contato,
-        number: index + 1,
-      };
-    }
-    return {
+  const photos = input.photos.slice(0, VEHICLE_CAROUSEL_MAX_PHOTOS);
+  const generated = input.generated?.slides ?? [];
+  const safeGenerated = (type: VehicleCarouselSlide["type"], index: number) => {
+    const candidate = generated.filter((slide) => slide.type === type)[index];
+    const text = `${candidate?.title || ""}\n${candidate?.body || ""}`;
+    return candidate && isGeneratedVehicleCopySafe(text, input.data)
+      ? candidate
+      : null;
+  };
+  const coverGenerated = safeGenerated("cover", 0);
+  const slides: VehicleCarouselSlide[] = [{
+    type: "cover",
+    photo_url: photos[0]?.url,
+    photo_box: photos[0]?.box,
+    title: coverGenerated?.title ||
+      [input.data.titulo, input.data.versao, input.data.ano].filter(Boolean)
+        .join(" • "),
+    body: coverGenerated?.body || input.data.preco,
+    reference: input.data.fipe
+      ? `FIPE ${input.data.fipe}${
+        input.data.fipe_mes ? ` (${input.data.fipe_mes})` : ""
+      }`
+      : undefined,
+    number: 1,
+  }];
+  photos.slice(1).forEach((photo, index) => {
+    const candidate = safeGenerated("content", index);
+    const related = relatedFact(photo.view || "Veículo", input.data);
+    slides.push({
       type: "content",
       photo_url: photo.url,
       photo_box: photo.box,
-      title: vehiclePhotoCaption(photo.view || "Veículo", input.data),
-      number: index + 1,
-    };
+      title: candidate?.title ||
+        vehiclePhotoCaption(photo.view || "Veículo", input.data),
+      body: candidate?.body || related,
+      number: slides.length + 1,
+    });
   });
+  const ctaGenerated = safeGenerated("cta", 0);
+  const ctaFacts = [
+    input.data.fipe
+      ? `FIPE ${input.data.fipe}${
+        input.data.fipe_mes ? ` (${input.data.fipe_mes})` : ""
+      }`
+      : undefined,
+    ...values(input.data.condicoes),
+    input.data.contato,
+  ].filter(Boolean);
+  slides.push({
+    type: "cta",
+    title: ctaGenerated?.title || "Fale com a gente",
+    body: ctaGenerated?.body || ctaFacts.join("\n"),
+    number: slides.length + 1,
+  });
+  return slides;
 }
 
 export function vehicleCarouselDimensions(format: VehicleCarouselFormat) {

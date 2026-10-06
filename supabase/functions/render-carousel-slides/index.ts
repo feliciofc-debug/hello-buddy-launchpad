@@ -30,20 +30,21 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
 import {
   buildDarkPremiumSlide,
+  buildDarkPremiumVehicleSlide,
   CARD_HEIGHT,
   CARD_WIDTH,
+  darkPremiumVehiclePhotoRegion,
   type RenderContext,
   type RenderSlide,
 } from "../_shared/carousel-templates/darkPremium.ts";
 import { sanitizeCarouselSlides } from "../_shared/carousel-content.ts";
-import { buildVehiclePhotoSlide } from "../_shared/carousel-templates/vehiclePhoto.ts";
 import {
   calculatePhotoFrame,
   frameContainsObject,
 } from "../_shared/anuncio-photo-framing.ts";
 import {
   type VehicleCarouselFormat,
-  vehicleCarouselLayout,
+  vehicleCarouselDimensions,
   type VehicleCarouselSlide,
 } from "../_shared/vehicle-carousel.ts";
 import { renderableImageDataUrl } from "../_shared/renderable-image.ts";
@@ -190,22 +191,23 @@ function edgeAverageColor(image: Image): number {
 
 async function composeVehiclePhoto(
   slide: VehicleCarouselSlide,
-  format: VehicleCarouselFormat,
+  targetWidth: number,
+  targetHeight: number,
 ): Promise<string> {
+  if (!slide.photo_url) throw new Error("slide sem foto");
   const dataUrl = await imageUrlToDataUrl(slide.photo_url);
   const source = await Image.decode(dataUrlBytes(dataUrl));
-  const layout = vehicleCarouselLayout(format);
   const plan = calculatePhotoFrame({
     sourceWidth: source.width,
     sourceHeight: source.height,
-    targetWidth: layout.width,
-    targetHeight: layout.photoHeight,
+    targetWidth,
+    targetHeight,
     fotoBox: slide.photo_box,
   });
-  if (!frameContainsObject(plan, layout.width, layout.photoHeight)) {
+  if (!frameContainsObject(plan, targetWidth, targetHeight)) {
     throw new Error("enquadramento cortaria o veículo");
   }
-  const canvas = new Image(layout.width, layout.photoHeight);
+  const canvas = new Image(targetWidth, targetHeight);
   canvas.fill(edgeAverageColor(source));
   canvas.composite(
     source.resize(plan.resizedWidth, plan.resizedHeight),
@@ -248,6 +250,7 @@ Deno.serve(async (req) => {
       user_id,
       slides,
       template = "dark-premium",
+      vehicle_mode = false,
       businessName,
       profileHandle,
       ctaLabel,
@@ -269,7 +272,7 @@ Deno.serve(async (req) => {
         },
       );
     }
-    if (template !== "dark-premium" && template !== "vehicle-photo") {
+    if (template !== "dark-premium") {
       return new Response(
         JSON.stringify({
           error:
@@ -294,7 +297,7 @@ Deno.serve(async (req) => {
     let logoDataUrl: string | null = null;
     if (incluir_logo) {
       try {
-        logoDataUrl = template === "vehicle-photo"
+        logoDataUrl = vehicle_mode
           ? await logoPathDataUrl(supabase, user_id, body?.logo_path) ??
             await getTenantLogoDataUrlForBackground(
               supabase,
@@ -308,30 +311,47 @@ Deno.serve(async (req) => {
       }
     }
 
-    if (template === "vehicle-photo") {
+    if (vehicle_mode) {
       const format: VehicleCarouselFormat = body?.format === "square"
         ? "square"
         : "portrait";
-      const rawSlides = slides.slice(0, 8) as VehicleCarouselSlide[];
+      const rawSlides = slides.slice(0, MAX_SLIDES) as VehicleCarouselSlide[];
       if (
         rawSlides.some((slide) =>
-          !slide?.photo_url || !/^https?:\/\//i.test(slide.photo_url)
+          slide?.type !== "cta" &&
+          (!slide?.photo_url || !/^https?:\/\//i.test(slide.photo_url))
         )
       ) {
-        throw new Error("todos os slides precisam de photo_url pública");
+        throw new Error("slides de foto precisam de photo_url pública");
       }
-      const layout = vehicleCarouselLayout(format);
+      const layout = vehicleCarouselDimensions(format);
       const [fonts] = await Promise.all([loadFonts(), ensureWasm()]);
       const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const imageUrls: string[] = [];
       for (let i = 0; i < rawSlides.length; i++) {
-        const photoDataUrl = await composeVehiclePhoto(rawSlides[i], format);
-        const tree = buildVehiclePhotoSlide({
-          slide: rawSlides[i],
-          format,
+        const region = darkPremiumVehiclePhotoRegion(
+          rawSlides[i].type,
+          layout.width,
+          layout.height,
+        );
+        const photoDataUrl = region
+          ? await composeVehiclePhoto(
+            rawSlides[i],
+            region.width,
+            region.height,
+          )
+          : null;
+        const tree = buildDarkPremiumVehicleSlide(rawSlides[i], {
+          width: layout.width,
+          height: layout.height,
+          primaryColor,
+          secondaryColor,
           photoDataUrl,
           logoDataUrl,
           totalSlides: rawSlides.length,
+          businessName: businessName ?? null,
+          profileHandle: profileHandle ?? null,
+          ctaLabel: ctaLabel ?? "CHAMAR NO WHATSAPP",
         });
         const svg = await satori(tree as any, {
           width: layout.width,

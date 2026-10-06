@@ -39,12 +39,14 @@ import {
 import {
   addVehicleCarouselPhotos,
   blockingVehiclePhotoFlow,
+  buildVehicleCarouselContentPrompt,
   buildVehicleCarouselSlides,
   expiredAnuncioPendingPatch,
   hasEnoughVehicleCarouselPhotos,
   hasVehicleCarouselData,
   isVehiclePhotoCarouselRequest,
   isVehiclePhotoCarouselTextRequest,
+  isGeneratedVehicleCopySafe,
   parseVehicleCarouselData,
   planVehiclePhotoBatch,
   validPendingVehicleCarousel,
@@ -12590,30 +12592,17 @@ async function askVehicleCarouselPhotoOrFormat(
   text: string;
   interactiveButtons?: WhatsAppInteractiveButtons;
 }> {
-  const preference = await getTenantAnuncioPhotoPreference(sb, ctx.userId);
-  if (!preference) {
-    const next = {
-      ...state,
-      stage: "photo_choice" as const,
-      created_at: new Date().toISOString(),
-    };
-    await persistVehicleCarousel(ctx, next);
-    return {
-      text:
-        "Como quer as fotos? Melhorar só muda fundo e luz; o veículo fica igual.",
-      interactiveButtons: vehicleCarouselPhotoButtons(),
-    };
-  }
   const next = {
     ...state,
-    stage: "format_choice" as const,
-    photo_preference: preference,
+    stage: "photo_choice" as const,
+    photo_preference: undefined,
     created_at: new Date().toISOString(),
   };
   await persistVehicleCarousel(ctx, next);
   return {
-    text: "Qual formato do carrossel?",
-    interactiveButtons: vehicleCarouselFormatButtons(),
+    text:
+      "Como quer as fotos do carrossel? Melhorar só muda fundo e luz; o veículo fica igual.",
+    interactiveButtons: vehicleCarouselPhotoButtons(),
   };
 }
 
@@ -12693,7 +12682,10 @@ async function renderVehicleCarousel(
   interactiveButtons?: WhatsAppInteractiveButtons;
 }> {
   if (!state.data || state.photos.length < VEHICLE_CAROUSEL_MIN_PHOTOS) {
-    return { text: "Preciso de pelo menos 3 fotos e dos dados do veículo." };
+    return {
+      text:
+        `Preciso de pelo menos ${VEHICLE_CAROUSEL_MIN_PHOTOS} fotos e dos dados do veículo.`,
+    };
   }
   const rendering = {
     ...state,
@@ -12730,9 +12722,35 @@ async function renderVehicleCarousel(
     const analysis = await analyzeVehicleCarouselPhoto(url);
     processed.push({ ...photo, url, ...analysis });
   }
+  let generated: {
+    slides?: Array<{
+      type?: "cover" | "content" | "cta";
+      title?: string;
+      body?: string;
+      number?: number;
+    }>;
+    caption?: string;
+  } | null = null;
+  try {
+    generated = await callEdge("gerar-carousel-content", {
+      user_id: ctx.userId,
+      tema: state.data.titulo || "Veículo",
+      prompt: buildVehicleCarouselContentPrompt({
+        photos: processed,
+        data: state.data,
+      }),
+      neutral_copy: false,
+    }, 90_000);
+  } catch (error) {
+    console.warn(
+      "[vehicle-carousel][content-fallback]",
+      (error as Error).message,
+    );
+  }
   const slides = buildVehicleCarouselSlides({
     photos: processed,
     data: state.data,
+    generated,
   });
   const client = state.client_name
     ? await findClientBrandIdentity(sb, ctx.userId, { name: state.client_name })
@@ -12741,10 +12759,12 @@ async function renderVehicleCarousel(
   const render = await callEdge("render-carousel-slides", {
     user_id: ctx.userId,
     slides,
-    template: "vehicle-photo",
+    template: "dark-premium",
+    vehicle_mode: true,
     format: state.format,
     logo_path: logoPath,
     incluir_logo: true,
+    ctaLabel: "CHAMAR NO WHATSAPP",
   }, 240_000);
   const imageUrls = Array.isArray(render?.image_urls)
     ? render.image_urls.filter(Boolean)
@@ -12761,7 +12781,11 @@ async function renderVehicleCarousel(
     ...state.data,
     telefone: state.data.contato,
   };
-  const caption = generateVehicleAdCaptions(factualData).A;
+  const generatedCaption = String(generated?.caption || "").trim();
+  const caption = generatedCaption &&
+      isGeneratedVehicleCopySafe(generatedCaption, state.data)
+    ? generatedCaption
+    : generateVehicleAdCaptions(factualData).A;
   await enviarPreviewCarrossel(ctx, imageUrls);
   const delivered = {
     ...state,
@@ -15205,11 +15229,6 @@ async function callGemini(
       pendingVehicleCarousel?.stage === "photo_choice" &&
       vehiclePhotoChoice
     ) {
-      await saveTenantAnuncioPhotoPreference(
-        sb,
-        toolCtx.userId,
-        vehiclePhotoChoice,
-      );
       const next = {
         ...pendingVehicleCarousel,
         stage: "format_choice" as const,
