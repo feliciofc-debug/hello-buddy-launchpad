@@ -521,19 +521,6 @@ export function hasVehicleCarouselData(text: string): boolean {
     /\b(?:19|20)\d{2}\b|\bR\$\s*\d|\b\d+\s*(?:mil\s*)?km\b/i.test(text);
 }
 
-function factualVehicleLines(data: VehicleCarouselData): string[] {
-  return [
-    data.quilometragem,
-    data.cambio,
-    data.motor,
-    data.donos,
-    data.documentacao,
-    data.revisoes,
-    ...values(data.opcionais),
-    ...values(data.condicoes),
-  ].filter((value): value is string => Boolean(value));
-}
-
 export function buildVehicleCarouselContentPrompt(input: {
   data: VehicleCarouselData;
   photos: VehicleCarouselPhoto[];
@@ -587,8 +574,36 @@ export function isGeneratedVehicleCopySafe(
     "ipva pago",
     "revisoes em dia",
   ];
-  return !optionalClaims.some((claim) =>
+  if (optionalClaims.some((claim) =>
     copy.includes(claim) && !facts.includes(claim)
+  )) return false;
+
+  const factValues = Object.values(data).flatMap((value) =>
+    Array.isArray(value) ? value : value ? [value] : []
+  ).map((value) => normalize(String(value))).filter(Boolean);
+  const titleWords = normalize(data.titulo || "").split(/\s+/)
+    .filter((word) => word.length >= 3);
+  const structural = [
+    "frente",
+    "lateral",
+    "traseira",
+    "3/4",
+    "interior",
+    "painel",
+    "bancos",
+    "porta-malas",
+    "motor",
+    "rodas",
+    "veiculo",
+    "fale com a gente",
+    "chamar no whatsapp",
+  ];
+  const grounded = [...factValues, ...titleWords, ...structural];
+  const claims = copy.split(/[\n.!?]+/).map((part) =>
+    part.replace(/^[•\-–—\s]+/, "").trim()
+  ).filter(Boolean);
+  return claims.every((claim) =>
+    grounded.some((fact) => fact && claim.includes(fact))
   );
 }
 
