@@ -267,7 +267,6 @@ import {
   isProductAdCreativeRequest,
   requestedCompositionResolution,
   selectCatalogProduct,
-  shouldImproveProductAdPhoto,
   type ImageCompositionResolution,
 } from "../_shared/image-composition.ts";
 import {
@@ -324,12 +323,21 @@ import {
 import {
   ANUNCIO_STYLES,
   type AnuncioStyle,
+  type AnuncioPhotoPreference,
+  anuncioPhotoChoiceButtons,
+  anuncioPhotoDirectiveFromText,
+  anuncioPhotoPreferenceConfirmationButtons,
+  anuncioPhotoRedoButtons,
   anuncioStyleButtons,
   anuncioStyleFromText,
+  getTenantAnuncioPhotoPreference,
   getTenantAnuncioStyle,
   otherAnuncioStyles,
+  resolveAnuncioPhotoPreference,
+  saveTenantAnuncioPhotoPreference,
   savedClientAnuncioStyle,
   saveTenantAnuncioStyle,
+  shouldImproveAnuncioPhoto,
 } from "../_shared/anuncio-style.ts";
 import {
   anuncioCaptionExtraList,
@@ -2643,10 +2651,18 @@ type AgentConvState = {
   } | null;
   pending_anuncio_styles?: {
     render_payload: Record<string, unknown>;
+    source_args?: Record<string, unknown>;
     client_name?: string | null;
     shown_styles: AnuncioStyle[];
     images?: LastAnuncioImage[];
     data?: Record<string, unknown>;
+    photo_preference_used?: AnuncioPhotoPreference;
+    created_at: string;
+  } | null;
+  pending_anuncio_photo?: {
+    stage: "choice" | "preference_confirmation";
+    args?: Record<string, unknown>;
+    preference?: AnuncioPhotoPreference;
     created_at: string;
   } | null;
   last_anuncio?: LastAnuncio | null;
@@ -11978,7 +11994,7 @@ const TOOLS = [
           instagram: { type: "string", description: "@ do Instagram pra arte, se o usuário informou. Vazio = uso o do cadastro." },
           formato: { type: "string", description: "'feed' (quadrado, padrão) ou 'story' (9:16 vertical)." },
           estilo: { type: "string", enum: ["impacto", "catalogo", "destaque"], description: "Estilo visual quando o dono pedir diretamente. Sem estilo, respeite a preferência salva ou mostre os três." },
-          melhorar_foto: { type: "boolean", description: "true (padrão) = a IA melhora a foto/ambiente antes de montar. false = usa a foto como está." },
+          melhorar_foto: { type: "boolean", description: "Passe true somente se o usuário pedir explicitamente para melhorar fundo/luz; passe false somente se ele pedir foto original/sem melhorar. Se ele não disser nada, OMITA para o sistema usar a preferência salva ou perguntar por botões." },
         },
         required: ["titulo"],
       },
@@ -13234,6 +13250,10 @@ async function toolCriarAnuncio(
     formato?: string;
     estilo?: string;
     melhorar_foto?: boolean;
+    _foto_resolvida?: boolean;
+    _foto_url_original?: string;
+    _mostrar_tres_estilos?: boolean;
+    _refazer_foto?: boolean;
     _usar_marca_tenant?: boolean;
     _usar_apenas_nome_cliente?: boolean;
     _fipe_choice?: "queried" | "supplied";
@@ -13385,10 +13405,13 @@ async function toolCriarAnuncio(
     const savedStyle = anuncioIdentity.mode === "client"
       ? savedClientAnuncioStyle(anuncioIdentity.identity)
       : await getTenantAnuncioStyle(sb, ctx.userId);
-    const singleStyle = requestedStyle ?? savedStyle;
+    const singleStyle = args?._mostrar_tres_estilos
+      ? null
+      : requestedStyle ?? savedStyle;
 
     // 1) FOTO — turno atual; senão, última foto recente da biblioteca (30 min)
-    let fotoUrl: string | null = null;
+    let fotoUrl: string | null = String(args?._foto_url_original || "").trim() ||
+      null;
     const imgAtual = (ctx.media || []).slice().reverse().find((m) => m.kind === "image");
     if (imgAtual?.base64) {
       try {
@@ -13418,6 +13441,55 @@ async function toolCriarAnuncio(
         mensagem: "Me mande a foto original do produto ou veículo para montar o anúncio.",
       });
     }
+
+    const argumentPhotoPreference: AnuncioPhotoPreference | null =
+      typeof args?.melhorar_foto === "boolean"
+        ? (args.melhorar_foto ? "melhorada" : "original")
+        : null;
+    const savedPhotoPreference = argumentPhotoPreference
+      ? null
+      : await getTenantAnuncioPhotoPreference(sb, ctx.userId);
+    const photoPreference = resolveAnuncioPhotoPreference({
+      explicit: argumentPhotoPreference,
+      saved: savedPhotoPreference,
+    });
+    if (!photoPreference) {
+      if (!ctx.convId) {
+        return JSON.stringify({
+          erro: "preferencia_foto_necessaria",
+          mensagem:
+            "Como quer a foto do anúncio? Melhorar só muda fundo e luz; o veículo fica igual.",
+          interactive_buttons: anuncioPhotoChoiceButtons(),
+        });
+      }
+      const conversation = {
+        id: ctx.convId,
+        userId: ctx.userId,
+        contactNumber: ctx.fromNumber,
+      };
+      const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+      const pendingPhoto = {
+        stage: "choice" as const,
+        args: { ...args, _foto_url_original: fotoUrl },
+        created_at: new Date().toISOString(),
+      };
+      const saved = await saveAgentState(sb, conversation, {
+        pending_anuncio_photo: pendingPhoto,
+      }, current);
+      if (!saved) {
+        throw new Error("não consegui salvar a escolha pendente da foto");
+      }
+      current.pending_anuncio_photo = pendingPhoto;
+      ctx.agentState = current;
+      return JSON.stringify({
+        status: "aguardando_preferencia_foto",
+        mensagem:
+          "Como quer a foto do anúncio? Melhorar só muda fundo e luz; o veículo fica igual.",
+        interactive_buttons: anuncioPhotoChoiceButtons(),
+      });
+    }
+    args.melhorar_foto = shouldImproveAnuncioPhoto(photoPreference);
+    args._foto_resolvida = true;
 
     // 2) Guardrail simples de volume/dia
     try {
@@ -13645,10 +13717,18 @@ async function toolCriarAnuncio(
       };
       const pending = {
         render_payload: renderPayload,
+        source_args: {
+          ...args,
+          _foto_url_original: fotoUrl,
+          _foto_resolvida: true,
+          _mostrar_tres_estilos: true,
+          _refazer_foto: false,
+        },
         client_name: args?.cliente || null,
         shown_styles: styles,
         images,
         data: anuncioData,
+        photo_preference_used: photoPreference,
         created_at: lastAnuncio.created_at,
       };
       const pendingPost: PendingAnuncioPost | null = renders.length === 1
@@ -13657,10 +13737,18 @@ async function toolCriarAnuncio(
           created_at: lastAnuncio.created_at,
         }
         : null;
+      const pendingPhoto = args?._refazer_foto
+        ? {
+          stage: "preference_confirmation" as const,
+          preference: photoPreference,
+          created_at: lastAnuncio.created_at,
+        }
+        : null;
       const stateSaved = await saveAgentState(sb, conversation, {
         pending_anuncio_styles: pending,
         last_anuncio: lastAnuncio,
         pending_anuncio_post: pendingPost,
+        pending_anuncio_photo: pendingPhoto,
       }, current);
       if (!stateSaved) {
         throw new Error(
@@ -13670,11 +13758,21 @@ async function toolCriarAnuncio(
       current.pending_anuncio_styles = pending;
       current.last_anuncio = lastAnuncio;
       current.pending_anuncio_post = pendingPost;
+      current.pending_anuncio_photo = pendingPhoto;
       ctx.agentState = current;
     }
 
     if (renders.length > 1) {
       await enviarPreviewEstilosAnuncio(ctx, renders);
+      await sendWhatsApp(
+        ctx.userId,
+        ctx.fromNumber,
+        "Preparei os três estilos com a mesma foto. Qual você prefere?",
+        undefined,
+        undefined,
+        anuncioStyleButtons(),
+        { alreadyLogged: false },
+      );
     }
     const only = renders[0];
 
@@ -13689,10 +13787,14 @@ async function toolCriarAnuncio(
       midia_ids: savedMedia.filter(Boolean),
       itens_usados: itens.length,
       mensagem: renders.length > 1
-        ? "Preparei os três estilos com a mesma foto. Qual você prefere?"
+        ? args?._refazer_foto
+          ? "Quer usar sempre assim?"
+          : "Se quiser, também posso refazer usando a outra opção de foto."
         : anuncioSuccessMessage(),
       interactive_buttons: renders.length > 1
-        ? anuncioStyleButtons()
+        ? args?._refazer_foto
+          ? anuncioPhotoPreferenceConfirmationButtons(photoPreference)
+          : anuncioPhotoRedoButtons(photoPreference)
         : anuncioPostActionButtons(),
     });
   } catch (e) {
@@ -14162,6 +14264,24 @@ async function callGemini(
   let blockModelPendingTextActions = hasMedia;
   let modelPendingActionNotice = "";
 
+  if (
+    hasMedia &&
+    isOwner(toolCtx) &&
+    toolCtx.agentState?.pending_anuncio_photo &&
+    toolCtx.convId
+  ) {
+    const conversation = {
+      id: toolCtx.convId,
+      userId: toolCtx.userId,
+      contactNumber: toolCtx.fromNumber,
+    };
+    const current = toolCtx.agentState;
+    await saveAgentState(sb, conversation, {
+      pending_anuncio_photo: null,
+    }, current);
+    current.pending_anuncio_photo = null;
+  }
+
   if (!hasMedia && typeof userContent === "string") {
     const remetenteEhDono = isOwner(toolCtx);
     const prospectAmz = !remetenteEhDono && toolCtx.userId === ADMIN_AMZ_USER_ID;
@@ -14177,6 +14297,9 @@ async function callGemini(
     const pendingClientLogoIntent = remetenteEhDono ? toolCtx.agentState?.pending_client_logo_intent : null;
     const pendingAnuncioStyles = remetenteEhDono
       ? toolCtx.agentState?.pending_anuncio_styles
+      : null;
+    const pendingAnuncioPhoto = remetenteEhDono
+      ? toolCtx.agentState?.pending_anuncio_photo
       : null;
     const lastAnuncio = remetenteEhDono && validLastAnuncio(
         toolCtx.agentState?.last_anuncio,
@@ -14211,6 +14334,9 @@ async function callGemini(
     const anuncioPostInteractiveId = userContent.match(
       /<<INTERACTIVE_ID:(anuncio_post:[^>]+)>>/i,
     )?.[1]?.toLowerCase() || "";
+    const anuncioPhotoInteractiveId = userContent.match(
+      /<<INTERACTIVE_ID:(anuncio_photo(?::|_pref:)[^>]+)>>/i,
+    )?.[1]?.toLowerCase() || "";
     const socialActionInteractive = socialInteractiveId.match(/^social_(publish|publish_confirm|schedule):([a-f0-9]{8})$/i);
     const socialVariantInteractive = socialInteractiveId.match(/^social_variant:([ABC]):([a-f0-9]{8})$/i);
     const previousHistoryMessage = history.at(-1);
@@ -14240,6 +14366,172 @@ async function callGemini(
     }
     if (remetenteEhDono && isVideoMotionRedoRequest(userContent)) {
       return { text: await refazerVideoMotion(toolCtx, userContent) };
+    }
+    const anuncioPhotoRedo = anuncioPhotoInteractiveId.match(
+      /^anuncio_photo:redo:(melhorada|original)$/,
+    )?.[1] as AnuncioPhotoPreference | undefined;
+    if (
+      remetenteEhDono &&
+      anuncioPhotoRedo &&
+      pendingAnuncioStyles?.source_args
+    ) {
+      const age = Date.now() -
+        new Date(pendingAnuncioStyles.created_at).getTime();
+      if (!Number.isFinite(age) || age > 2 * 60 * 60 * 1000) {
+        return {
+          text:
+            "Esse anúncio não está mais disponível para refazer. Envie a foto e os dados novamente.",
+        };
+      }
+      const raw = await toolCriarAnuncio({
+        ...pendingAnuncioStyles.source_args,
+        melhorar_foto: shouldImproveAnuncioPhoto(anuncioPhotoRedo),
+        _foto_resolvida: true,
+        _mostrar_tres_estilos: true,
+        _refazer_foto: true,
+        estilo: undefined,
+      } as any, {
+        ...toolCtx,
+        media: [],
+      });
+      let parsed: any = {};
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        return { text: raw };
+      }
+      return {
+        text: String(
+          parsed?.mensagem || "Não consegui refazer o anúncio.",
+        ),
+        imageUrl: parsed?.image_url,
+        interactiveButtons: parsed?.interactive_buttons,
+      };
+    }
+    const anuncioPhotoChoice = anuncioPhotoInteractiveId.match(
+      /^anuncio_photo:(melhorada|original)$/,
+    )?.[1] as AnuncioPhotoPreference | undefined;
+    if (
+      remetenteEhDono &&
+      anuncioPhotoChoice &&
+      pendingAnuncioPhoto?.stage === "choice" &&
+      pendingAnuncioPhoto.args
+    ) {
+      const age = Date.now() -
+        new Date(pendingAnuncioPhoto.created_at).getTime();
+      if (!Number.isFinite(age) || age > 2 * 60 * 60 * 1000) {
+        return {
+          text:
+            "Essa escolha expirou. Envie a foto e os dados do anúncio novamente.",
+        };
+      }
+      await saveTenantAnuncioPhotoPreference(
+        sb,
+        toolCtx.userId,
+        anuncioPhotoChoice,
+      );
+      if (toolCtx.convId) {
+        const conversation = {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        };
+        const current = toolCtx.agentState ??
+          await loadAgentState(sb, conversation);
+        const saved = await saveAgentState(sb, conversation, {
+          pending_anuncio_photo: null,
+        }, current);
+        if (!saved) {
+          return {
+            text:
+              "Salvei sua preferência, mas não consegui retomar esse anúncio. Envie o pedido novamente.",
+          };
+        }
+        current.pending_anuncio_photo = null;
+        toolCtx.agentState = current;
+      }
+      const raw = await toolCriarAnuncio({
+        ...pendingAnuncioPhoto.args,
+        melhorar_foto: shouldImproveAnuncioPhoto(anuncioPhotoChoice),
+        _foto_resolvida: true,
+      } as any, toolCtx);
+      let parsed: any = {};
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        return { text: raw };
+      }
+      return {
+        text: String(
+          parsed?.mensagem || "Não consegui concluir o anúncio.",
+        ),
+        imageUrl: parsed?.image_url,
+        interactiveButtons: parsed?.interactive_buttons,
+      };
+    }
+    const anuncioPhotoAlways = anuncioPhotoInteractiveId.match(
+      /^anuncio_photo_pref:always:(melhorada|original)$/,
+    )?.[1] as AnuncioPhotoPreference | undefined;
+    const anuncioPhotoOnce =
+      anuncioPhotoInteractiveId === "anuncio_photo_pref:once";
+    if (
+      remetenteEhDono &&
+      pendingAnuncioPhoto?.stage === "preference_confirmation" &&
+      (anuncioPhotoAlways || anuncioPhotoOnce)
+    ) {
+      if (anuncioPhotoAlways) {
+        await saveTenantAnuncioPhotoPreference(
+          sb,
+          toolCtx.userId,
+          anuncioPhotoAlways,
+        );
+      }
+      if (toolCtx.convId) {
+        const conversation = {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        };
+        const current = toolCtx.agentState ??
+          await loadAgentState(sb, conversation);
+        const saved = await saveAgentState(sb, conversation, {
+          pending_anuncio_photo: null,
+        }, current);
+        if (!saved) {
+          return {
+            text:
+              "Não consegui concluir essa escolha agora. Tente novamente.",
+          };
+        }
+        current.pending_anuncio_photo = null;
+        toolCtx.agentState = current;
+      }
+      return {
+        text: anuncioPhotoAlways
+          ? `Certo — vou usar a foto ${anuncioPhotoAlways} nos próximos anúncios.`
+          : "Certo — usei assim só desta vez e mantive sua preferência anterior.",
+      };
+    }
+    if (
+      remetenteEhDono &&
+      pendingAnuncioPhoto &&
+      !anuncioPhotoInteractiveId
+    ) {
+      // A pergunta da foto não sequestra outro assunto.
+      if (toolCtx.convId) {
+        const conversation = {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        };
+        const current = toolCtx.agentState ??
+          await loadAgentState(sb, conversation);
+        await saveAgentState(sb, conversation, {
+          pending_anuncio_photo: null,
+        }, current);
+        current.pending_anuncio_photo = null;
+        toolCtx.agentState = current;
+      }
     }
     if (pendingFipe) {
       const age = Date.now() - new Date(pendingFipe.created_at).getTime();
@@ -16285,14 +16577,15 @@ async function callGemini(
         let args: any = {};
         try { args = JSON.parse(tc.function?.arguments ?? "{}"); } catch { /* ignore */ }
         args ??= {};
-        if (
-          name === "criar_anuncio" &&
-          typeof userContent === "string" &&
-          !shouldImproveProductAdPhoto(userContent)
-        ) {
-          args.melhorar_foto = false;
-        }
         if (name === "criar_anuncio" && typeof userContent === "string") {
+          const photoDirective = anuncioPhotoDirectiveFromText(userContent);
+          if (photoDirective) {
+            args.melhorar_foto = shouldImproveAnuncioPhoto(photoDirective);
+            args._foto_resolvida = true;
+          } else {
+            delete args.melhorar_foto;
+            delete args._foto_resolvida;
+          }
           args.estilo = anuncioStyleFromText(userContent) ?? args.estilo;
         }
         if (
