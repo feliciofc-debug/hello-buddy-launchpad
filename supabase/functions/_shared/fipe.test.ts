@@ -9,6 +9,12 @@ import {
   fipePhotoSuggestionMessage,
 } from "./fipe.ts";
 import { decideFipeForAd, type LastFipeResult } from "./fipe-ad.ts";
+import {
+  filterFipeModelCandidates,
+  normalizeFipeEngine,
+  normalizeFipeYear,
+  parseFipeRequestText,
+} from "./fipe-input.ts";
 
 function jsonResponse(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {
@@ -34,6 +40,46 @@ Deno.test("normalização encontra variantes de C3 PICASSO", async () => {
   });
   const models = await client.listarModelos("13", "C3 PICASSO");
   assertEquals(models.map((item) => item.code), ["5611", "5551"]);
+});
+
+Deno.test("pedido falado do C3 Picasso normaliza ano e filtra versões automáticas", () => {
+  const input = parseFipeRequestText(
+    "me passa a fipe do c3 picasso dois mil e catorze automático",
+  );
+  assertEquals(input.marca, "Citroën");
+  assertEquals(input.modelo, "C3 Picasso");
+  assertEquals(input.ano_modelo, "2014");
+  assertEquals(input.cambio, "automatico");
+  const versions = filterFipeModelCandidates([
+    { code: "5611", name: "C3 Picasso Excl. 1.6 Flex 16V 5p Aut." },
+    { code: "5551", name: "C3 Picasso Exclusive 1.6 Flex 16V 5p Mec" },
+    { code: "5552", name: "C3 Picasso GLX 1.6 Flex 16V 5p Aut." },
+  ], input);
+  assertEquals(versions.map((item) => item.code), ["5611", "5552"]);
+});
+
+Deno.test("pedido falado do Onix normaliza 2022 e motor 1.0", () => {
+  const input = parseFipeRequestText(
+    "fipe do onix vinte e dois um ponto zero",
+  );
+  assertEquals(input.marca, "Chevrolet");
+  assertEquals(input.modelo, "Onix");
+  assertEquals(input.ano_modelo, "2022");
+  assertEquals(input.motor, "1.0");
+  const versions = filterFipeModelCandidates([
+    { code: "a", name: "ONIX HATCH 1.0 12V Flex 5p Mec." },
+    { code: "b", name: "ONIX HATCH 1.4 8V FlexPower 5p Aut." },
+  ], input);
+  assertEquals(versions.map((item) => item.code), ["a"]);
+});
+
+Deno.test("ano curto e números de motor falados são normalizados", () => {
+  assertEquals(normalizeFipeYear("C3 Picasso 14"), "2014");
+  assertEquals(normalizeFipeYear("dois mil e quatorze"), "2014");
+  assertEquals(normalizeFipeYear("vinte e quatro"), "2024");
+  assertEquals(normalizeFipeEngine("um ponto seis"), "1.6");
+  assertEquals(normalizeFipeEngine("um seis"), "1.6");
+  assertEquals(normalizeFipeEngine("um ponto zero"), "1.0");
 });
 
 Deno.test("cache de listas evita a segunda chamada", async () => {

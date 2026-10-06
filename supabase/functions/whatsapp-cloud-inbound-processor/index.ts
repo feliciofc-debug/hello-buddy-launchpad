@@ -355,6 +355,12 @@ import {
   type FipePrice,
 } from "../_shared/fipe.ts";
 import {
+  filterFipeModelCandidates,
+  normalizeFipeLookupInput,
+  parseFipeRequestText,
+  type FipeLookupInput,
+} from "../_shared/fipe-input.ts";
+import {
   decideFipeForAd,
   type LastFipeResult,
 } from "../_shared/fipe-ad.ts";
@@ -11620,7 +11626,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "consultar_fipe",
-      description: "Consulta o preço oficial FIPE de veículo para o responsável do tenant. Use quando ele pedir FIPE por marca/modelo ou enviar uma foto e perguntar a FIPE. Pela foto, o sistema apenas sugere o veículo e pede confirmação de ano/modelo e versão; nunca afirme o ano exato pela imagem.",
+      description: "Consulta o preço oficial FIPE de veículo para o responsável do tenant. Use quando ele pedir FIPE por texto ou ÁUDIO transcrito, por marca/modelo ou enviar uma foto e perguntar a FIPE. Preserve números falados por extenso nos argumentos; o sistema normaliza ano, motor e câmbio. Pela foto, apenas sugere o veículo e pede confirmação de ano/modelo e versão; nunca afirme o ano exato pela imagem.",
       parameters: {
         type: "object",
         properties: {
@@ -11629,6 +11635,8 @@ const TOOLS = [
           versao: { type: "string", description: "Versão, se informada." },
           ano_modelo: { type: "string", description: "Ano/modelo, se informado. Nunca inferir pela foto." },
           combustivel: { type: "string", description: "Combustível, se informado." },
+          cambio: { type: "string", description: "Câmbio informado, por exemplo automático ou manual." },
+          motor: { type: "string", description: "Motor informado, inclusive por extenso, por exemplo 'um ponto zero'." },
         },
       },
     },
@@ -12808,13 +12816,7 @@ async function identifyFipeVehicleFromPhoto(
 }
 
 async function toolConsultarFipe(
-  args: {
-    marca?: string;
-    modelo?: string;
-    versao?: string;
-    ano_modelo?: string;
-    combustivel?: string;
-  },
+  rawArgs: FipeLookupInput,
   ctx: {
     userId: string;
     fromNumber: string;
@@ -12824,6 +12826,7 @@ async function toolConsultarFipe(
   },
 ): Promise<FipeToolResponse> {
   try {
+    const args = normalizeFipeLookupInput(rawArgs ?? {});
     const photo = (ctx.media || []).find((item) => item.kind === "image");
     if (photo && (!args?.marca || !args?.modelo)) {
       const suggestion = await identifyFipeVehicleFromPhoto(photo);
@@ -12856,7 +12859,10 @@ async function toolConsultarFipe(
       return { result: `Não encontrei a marca “${marca}” na tabela FIPE.` };
     }
     const queryModel = [modelo, args?.versao].filter(Boolean).join(" ");
-    const models = await listarModelos(brand.code, queryModel);
+    const rankedModels = await listarModelos(brand.code, queryModel);
+    const models = args.motor || args.cambio
+      ? filterFipeModelCandidates(rankedModels, args)
+      : rankedModels;
     if (!models.length) {
       return {
         result:
@@ -13759,7 +13765,10 @@ async function callGemini(
       .join(" ")
     : "";
   if (hasMedia && senderIsOwner && /\bfipe\b/i.test(multimodalText)) {
-    const response = await toolConsultarFipe({}, toolCtx);
+    const response = await toolConsultarFipe(
+      parseFipeRequestText(multimodalText),
+      toolCtx,
+    );
     return {
       text: response.result,
       interactiveList: response.interactiveList,
