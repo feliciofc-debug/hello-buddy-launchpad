@@ -552,6 +552,26 @@ Deno.test("foto 4:3 mantém caixa alta inteira dentro do Catálogo feed", () => 
   assert(plan.transformedBox.y + plan.transformedBox.height <= target.height);
 });
 
+Deno.test("enquadramento medido contém o veículo em todos os estilos e formatos", () => {
+  for (const style of Object.keys(ANUNCIO_LAYOUT_BOXES) as AnuncioEstilo[]) {
+    for (const format of ["feed", "story"] as const) {
+      const target = ANUNCIO_LAYOUT_BOXES[style][format].vehicle;
+      const plan = calculatePhotoFrame({
+        sourceWidth: 1200,
+        sourceHeight: 900,
+        targetWidth: target.width,
+        targetHeight: target.height,
+        fotoBox: [50, 80, 950, 920],
+      });
+      assertEquals(plan.mode, "box", `${style}/${format}`);
+      assert(
+        frameContainsObject(plan, target.width, target.height),
+        `${style}/${format}`,
+      );
+    }
+  }
+});
+
 Deno.test("foto sem caixa ou com caixa inválida usa contain", () => {
   for (const fotoBox of [undefined, [-1, 20, 800, 900], [500, 20, 100, 900]]) {
     const plan = calculatePhotoFrame({
