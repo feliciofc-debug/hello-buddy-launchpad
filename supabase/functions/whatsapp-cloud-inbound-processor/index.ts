@@ -7949,15 +7949,21 @@ async function toolConfirmarPostagemRedes(
 
   if (p.midiaTipo === "carrossel") {
     const queueIds = p.queueRows?.map((row) => row.id).filter(Boolean) ?? [];
-    if (queueIds.length !== 1) return JSON.stringify({ erro: "fila_confirmacao_ausente", mensagem: "Não encontrei a fila deste preview. Não publiquei nada." });
+    if (queueIds.length !== p.redes.length || queueIds.length === 0) {
+      return JSON.stringify({
+        erro: "fila_confirmacao_ausente",
+        mensagem:
+          "Não encontrei a fila completa deste preview. Não publiquei nada.",
+      });
+    }
     const { data: claimed, error: claimError } = await sb.from("social_posts_queue")
       .update({ status: "publicando", updated_at: new Date().toISOString() })
-      .eq("id", queueIds[0])
+      .in("id", queueIds)
       .eq("user_id", ctx.userId)
       .eq("status", "aguardando_confirmacao")
       .select("id");
     if (claimError) return JSON.stringify({ erro: "falha_ao_reservar_publicacao", mensagem: `Não publiquei porque não consegui reservar este preview: ${claimError.message}` });
-    if ((claimed?.length ?? 0) !== 1) {
+    if ((claimed?.length ?? 0) !== queueIds.length) {
       return JSON.stringify({ erro: "confirmacao_ja_processada", mensagem: "Este preview já foi confirmado ou está sendo publicado. Não enviei de novo." });
     }
   }
@@ -14710,6 +14716,17 @@ async function callGemini(
   }
   if (hasMedia && senderIsOwner && toolCtx.agentState?.pending_fipe) {
     await persistFipeState(toolCtx, null);
+  }
+  const audioOnly = !!toolCtx.media?.length &&
+    toolCtx.media.every((item) => item.kind === "audio");
+  if (hasMedia && audioOnly && multimodalText) {
+    const transcript = multimodalText.match(
+      /TRANSCRIÇÃO DO ÁUDIO[^:]*:\s*"([\s\S]*)"\s*$/i,
+    )?.[1]?.trim();
+    // Áudio transcrito participa dos mesmos atalhos determinísticos do texto.
+    // A mídia continua disponível no contexto caso o modelo seja necessário.
+    userContent = transcript || multimodalText;
+    hasMedia = false;
   }
   const nowSP = new Date().toLocaleString("pt-BR", {
     timeZone: "America/Sao_Paulo",

@@ -151,7 +151,7 @@ async function imageUrlToDataUrl(url: string): Promise<string> {
   const bytes = new Uint8Array(await response.arrayBuffer());
   const dataUrl = await renderableImageDataUrl(
     bytes,
-    "foto do carrossel",
+    "foto",
     (message) => console.warn(`[render-carousel-slides] ${message}`),
   );
   if (!dataUrl) throw new Error("foto do carrossel inválida");
