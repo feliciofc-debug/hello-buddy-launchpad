@@ -56,6 +56,7 @@ import {
   vehicleCarouselStartState,
   vehiclePhotoBatchOfferMessage,
   vehiclePhotoBatchButtons,
+  vehiclePhotoBatchNewTopicReset,
   vehicleSingleRepeatedPhotoButtons,
   VEHICLE_CAROUSEL_MAX_PHOTOS,
   VEHICLE_CAROUSEL_MIN_PHOTOS,
@@ -12409,7 +12410,7 @@ async function persistVehiclePhotoBatch(
   const current = ctx.agentState ?? await loadAgentState(sb, conversation);
   const patch: Partial<AgentConvState> = {
     pending_vehicle_photo_batch: state,
-    ...(resetAdState ? vehicleCarouselAdStateReset() : {}),
+    ...(resetAdState ? vehiclePhotoBatchNewTopicReset() : {}),
   };
   const saved = await saveAgentState(sb, conversation, patch, current);
   if (!saved) throw new Error("estado_lote_fotos_nao_persistido");
@@ -19662,10 +19663,8 @@ async function processOne(queueId: string) {
         );
       }
       const pendingVehicleCollection = fromIsOwner &&
-          validPendingVehicleCarousel(
-            freshAgentState.pending_carrossel_veiculo,
-          ) &&
-          freshAgentState.pending_carrossel_veiculo?.stage === "collecting"
+          blockingVehiclePhotoFlow(freshAgentState) ===
+            "pending_carrossel_veiculo"
         ? freshAgentState.pending_carrossel_veiculo
         : null;
       if (pendingVehicleCollection) {

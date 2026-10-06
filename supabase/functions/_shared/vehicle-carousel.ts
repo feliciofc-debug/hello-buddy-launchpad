@@ -125,6 +125,13 @@ export function vehicleCarouselAdStateReset() {
   } as const;
 }
 
+export function vehiclePhotoBatchNewTopicReset() {
+  return {
+    ...vehicleCarouselAdStateReset(),
+    pending_carrossel_veiculo: null,
+  } as const;
+}
+
 export function validPendingVehiclePhotoBatch(
   state: PendingVehiclePhotoBatch | null | undefined,
   nowMs = Date.now(),

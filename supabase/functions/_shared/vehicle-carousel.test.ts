@@ -26,6 +26,7 @@ import {
   vehicleCarouselLayout,
   vehicleCarouselStartState,
   vehiclePhotoBatchButtons,
+  vehiclePhotoBatchNewTopicReset,
   vehiclePhotoBatchOfferMessage,
   vehiclePhotoCaption,
   vehicleSingleRepeatedPhotoButtons,
@@ -277,6 +278,10 @@ Deno.test("post de anúncio antigo não bloqueia lote e é descartado ao oferece
   };
   assertEquals(blockingVehiclePhotoFlow(state, now), null);
   assertEquals(vehicleCarouselAdStateReset().pending_anuncio_post, null);
+  assertEquals(
+    vehiclePhotoBatchNewTopicReset().pending_carrossel_veiculo,
+    null,
+  );
   assertEquals(expiredAnuncioPendingPatch(state, now), {});
   assertEquals(
     expiredAnuncioPendingPatch({
@@ -301,6 +306,17 @@ Deno.test("somente fluxos recentes que esperam mídia bloqueiam o lote", () => {
       },
     }, now),
     "pending_carrossel_veiculo",
+  );
+  assertEquals(
+    blockingVehiclePhotoFlow({
+      pending_carrossel_veiculo: {
+        stage: "collecting",
+        photos: [],
+        format: "portrait",
+        created_at: "2026-10-06T14:19:00.000Z",
+      },
+    }, now),
+    null,
   );
   assertEquals(
     blockingVehiclePhotoFlow({
