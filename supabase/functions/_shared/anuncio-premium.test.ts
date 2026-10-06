@@ -10,6 +10,12 @@ import {
 } from "./anuncio-client-brand.ts";
 import { selectAnuncioPhoto } from "./anuncio-photo.ts";
 import {
+  calculatePhotoFrame,
+  frameContainsObject,
+  normalizeFotoBox,
+  parseFotoBoxFromVisionResponse,
+} from "./anuncio-photo-framing.ts";
+import {
   anuncioSuccessMessage,
   amzAnuncioClientButtons,
   amzMissingClientLogoButtons,
@@ -528,6 +534,73 @@ Deno.test("templates mantêm todas as caixas de texto fora do veículo", () => {
       }
     }
   }
+});
+
+Deno.test("foto 4:3 mantém caixa alta inteira dentro do Catálogo feed", () => {
+  const target = ANUNCIO_LAYOUT_BOXES.catalogo.feed.vehicle;
+  const plan = calculatePhotoFrame({
+    sourceWidth: 1200,
+    sourceHeight: 900,
+    targetWidth: target.width,
+    targetHeight: target.height,
+    fotoBox: [50, 80, 950, 920],
+  });
+  assertEquals(plan.mode, "box");
+  assert(frameContainsObject(plan, target.width, target.height));
+  assert(plan.transformedBox);
+  assert(plan.transformedBox.y >= 0);
+  assert(plan.transformedBox.y + plan.transformedBox.height <= target.height);
+});
+
+Deno.test("foto sem caixa ou com caixa inválida usa contain", () => {
+  for (const fotoBox of [undefined, [-1, 20, 800, 900], [500, 20, 100, 900]]) {
+    const plan = calculatePhotoFrame({
+      sourceWidth: 1200,
+      sourceHeight: 900,
+      targetWidth: 984,
+      targetHeight: 420,
+      fotoBox,
+    });
+    assertEquals(plan.mode, "contain");
+    assert(plan.resizedWidth <= 984);
+    assert(plan.resizedHeight <= 420);
+  }
+  assertEquals(normalizeFotoBox([50, 80, 950, 920]), {
+    ymin: 50,
+    xmin: 80,
+    ymax: 950,
+    xmax: 920,
+  });
+});
+
+Deno.test("parser valida box_2d e conferência rejeita corte", () => {
+  assertEquals(
+    parseFotoBoxFromVisionResponse(
+      '```json\n{"box_2d":[50,80,950,920]}\n```',
+    ),
+    { ymin: 50, xmin: 80, ymax: 950, xmax: 920 },
+  );
+  assertEquals(parseFotoBoxFromVisionResponse('{"box_2d":[0,0,1200,900]}'), null);
+  assertEquals(frameContainsObject({
+    mode: "box",
+    resizedWidth: 1200,
+    resizedHeight: 900,
+    x: -100,
+    y: 0,
+    transformedBox: { x: -4, y: 10, width: 900, height: 390 },
+  }, 984, 420), false);
+});
+
+Deno.test("template usa fill só para foto já composta e contain como fallback", () => {
+  const composed = flatten(buildCatalogoAnuncio(baseData({
+    fotoDataUrl: "data:image/png;base64,COMPOSTA",
+    fotoPrecomposed: true,
+  }))).find((node) => node.props?.src === "data:image/png;base64,COMPOSTA");
+  const fallback = flatten(buildCatalogoAnuncio(baseData({
+    fotoDataUrl: "data:image/png;base64,ORIGINAL",
+  }))).find((node) => node.props?.src === "data:image/png;base64,ORIGINAL");
+  assertEquals(composed?.props?.style?.objectFit, "fill");
+  assertEquals(fallback?.props?.style?.objectFit, "contain");
 });
 
 Deno.test("templates omitem campos ausentes e preço nunca quebra linha", () => {

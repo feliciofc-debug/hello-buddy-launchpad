@@ -129,7 +129,7 @@ function vehicle(d: AnuncioData, box: Box, rounded: boolean): Node {
         style: {
           width: "100%",
           height: "100%",
-          objectFit: "cover",
+          objectFit: d.fotoPrecomposed ? "fill" : "contain",
           objectPosition: "center center",
         },
       },

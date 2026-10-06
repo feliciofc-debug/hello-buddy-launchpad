@@ -36,6 +36,7 @@ export interface AnuncioData {
   site?: string | null;
   businessName?: string | null;
   fotoDataUrl?: string | null;
+  fotoPrecomposed?: boolean;
   logoDataUrl?: string | null;
   primaryColor: string;
   accentColor: string;

@@ -335,6 +335,10 @@ import {
   selectRecentOriginalPhoto,
 } from "../_shared/anuncio-source-media.ts";
 import {
+  parseFotoBoxFromVisionResponse,
+  type FotoBox,
+} from "../_shared/anuncio-photo-framing.ts";
+import {
   cleanReceivedMediaDescription,
   recognizedMediaReply,
 } from "../_shared/media-received-copy.ts";
@@ -5194,6 +5198,56 @@ async function descreverImagemVisao(imageUrl: string): Promise<string> {
     console.warn("[visao] erro:", (e as Error).message);
     return "";
   }
+}
+
+async function detectarCaixaProdutoVisao(
+  imageUrl: string,
+): Promise<FotoBox | null> {
+  const prompt =
+    'Localize o objeto ou veículo principal desta foto. Responda SOMENTE JSON no formato {"box_2d":[ymin,xmin,ymax,xmax]}, com coordenadas normalizadas de 0 a 1000. A caixa deve incluir o objeto inteiro, inclusive rodas, retrovisores e sombra visível. Se não houver um único objeto principal identificável, responda {"box_2d":null}.';
+  for (
+    const model of [
+      "google/gemini-3-flash-preview",
+      "google/gemini-3.6-flash",
+    ]
+  ) {
+    try {
+      const response = await fetch(
+        "https://ai.gateway.lovable.dev/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Lovable-API-Key": LOVABLE_API_KEY,
+          },
+          body: JSON.stringify({
+            model,
+            temperature: 0,
+            messages: [{
+              role: "user",
+              content: [
+                { type: "text", text: prompt },
+                { type: "image_url", image_url: { url: imageUrl } },
+              ],
+            }],
+          }),
+          signal: AbortSignal.timeout(20_000),
+        },
+      );
+      if (!response.ok) continue;
+      const data = await response.json();
+      const raw = String(data?.choices?.[0]?.message?.content || "");
+      const box = parseFotoBoxFromVisionResponse(raw);
+      if (box) return box;
+    } catch (error) {
+      console.warn(
+        "[criar_anuncio][foto-box]",
+        model,
+        (error as Error).message,
+      );
+    }
+  }
+  return null;
 }
 
 
@@ -12672,6 +12726,14 @@ async function toolCriarAnuncio(
       console.log("[criar_anuncio] melhoria desativada; usando foto original");
     }
     console.log(`[criar_anuncio] foto selecionada=${fotoSource}`);
+    const fotoBox = await detectarCaixaProdutoVisao(fotoFinal);
+    console.log(
+      `[criar_anuncio] foto_box=${
+        fotoBox
+          ? [fotoBox.ymin, fotoBox.xmin, fotoBox.ymax, fotoBox.xmax].join(",")
+          : "ausente; usando contain"
+      }`,
+    );
 
     // 4) Identidade do tenant (nome do negócio / @ / telefone)
     let businessName: string | null = anuncioIdentity.businessName;
@@ -12725,6 +12787,9 @@ async function toolCriarAnuncio(
       foto_url: fotoFinal,
       foto_url_original: fotoUrl,
       foto_source: fotoSource,
+      foto_box: fotoBox
+        ? [fotoBox.ymin, fotoBox.xmin, fotoBox.ymax, fotoBox.xmax]
+        : null,
       formato,
       incluir_logo: true,
     };

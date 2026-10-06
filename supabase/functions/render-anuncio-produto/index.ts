@@ -22,6 +22,7 @@
  *   business_name?: string,
  *   foto_url?: string,                   // foto do produto (http/https)
  *   foto_base64?: string,                // alternativa (data URL ou base64 puro)
+ *   foto_box?: [ymin, xmin, ymax, xmax], // objeto principal, normalizado 0–1000
  *   formato?: "feed" | "story",          // default feed (1080x1080)
  *   primary_color?: string, accent_color?: string,
  *   incluir_logo?: boolean,              // default true
@@ -35,6 +36,7 @@
 import satori from "https://esm.sh/satori@0.10.13";
 import { initWasm, Resvg } from "https://esm.sh/@resvg/resvg-wasm@2.6.2";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { Image } from "https://deno.land/x/imagescript@1.2.15/mod.ts";
 import {
   type AnuncioData,
   type AnuncioFormato,
@@ -44,7 +46,14 @@ import {
 import { buildImpactoAnuncio } from "../_shared/anuncio-templates/impacto.ts";
 import { buildCatalogoAnuncio } from "../_shared/anuncio-templates/catalogo.ts";
 import { buildDestaqueAnuncio } from "../_shared/anuncio-templates/destaque.ts";
-import type { AnuncioEstilo } from "../_shared/anuncio-templates/premiumLayout.ts";
+import {
+  ANUNCIO_LAYOUT_BOXES,
+  type AnuncioEstilo,
+} from "../_shared/anuncio-templates/premiumLayout.ts";
+import {
+  calculatePhotoFrame,
+  frameContainsObject,
+} from "../_shared/anuncio-photo-framing.ts";
 import { selectAnuncioPhoto } from "../_shared/anuncio-photo.ts";
 import {
   normalizeImageDataUrl,
@@ -139,6 +148,76 @@ async function fotoComFallbackParaDataUrl(
     load: (url) => fotoParaDataUrl(url, undefined),
   });
   return { dataUrl: selected.value, source: selected.source };
+}
+
+function dataUrlBytes(dataUrl: string): Uint8Array {
+  const encoded = dataUrl.split(",", 2)[1] || "";
+  return Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
+}
+
+function edgeAverageColor(image: Image): number {
+  const border = Math.max(1, Math.round(Math.min(image.width, image.height) * 0.04));
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+  let count = 0;
+  for (let y = 0; y < image.height; y++) {
+    for (let x = 0; x < image.width; x++) {
+      if (
+        x >= border &&
+        x < image.width - border &&
+        y >= border &&
+        y < image.height - border
+      ) continue;
+      const offset = (y * image.width + x) * 4;
+      if (image.bitmap[offset + 3] === 0) continue;
+      red += image.bitmap[offset];
+      green += image.bitmap[offset + 1];
+      blue += image.bitmap[offset + 2];
+      count++;
+    }
+  }
+  return Image.rgbToColor(
+    count ? Math.round(red / count) : 24,
+    count ? Math.round(green / count) : 24,
+    count ? Math.round(blue / count) : 24,
+  );
+}
+
+async function composePhotoForTemplate(input: {
+  dataUrl: string;
+  estilo: AnuncioEstilo;
+  formato: AnuncioFormato;
+  fotoBox?: unknown;
+}): Promise<{ dataUrl: string; mode: "box" | "contain" }> {
+  const source = await Image.decode(dataUrlBytes(input.dataUrl));
+  const target = ANUNCIO_LAYOUT_BOXES[input.estilo][input.formato].vehicle;
+  const plan = calculatePhotoFrame({
+    sourceWidth: source.width,
+    sourceHeight: source.height,
+    targetWidth: target.width,
+    targetHeight: target.height,
+    fotoBox: input.fotoBox,
+  });
+  if (!frameContainsObject(plan, target.width, target.height)) {
+    throw new Error("enquadramento não contém integralmente o objeto");
+  }
+  const canvas = new Image(target.width, target.height);
+  canvas.fill(edgeAverageColor(source));
+  canvas.composite(
+    source.resize(plan.resizedWidth, plan.resizedHeight),
+    plan.x,
+    plan.y,
+  );
+  const png = await canvas.encode();
+  let binary = "";
+  for (let offset = 0; offset < png.length; offset += 8192) {
+    binary += String.fromCharCode(...png.subarray(offset, offset + 8192));
+  }
+  return {
+    dataUrl: `data:image/png;base64,${btoa(binary)}`,
+    mode: plan.mode,
+  };
 }
 
 async function logoPathParaDataUrl(
@@ -242,8 +321,7 @@ Deno.serve(async (req) => {
       loadFonts(),
       ensureWasm(),
     ]);
-    const fotoDataUrl = fotoResult.dataUrl;
-    if (!fotoDataUrl) {
+    if (!fotoResult.dataUrl) {
       console.error("[render-anuncio-produto] foto inválida: melhorada e original indisponíveis");
       return new Response(
         JSON.stringify({
@@ -255,6 +333,25 @@ Deno.serve(async (req) => {
           status: 422,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         },
+      );
+    }
+    let fotoDataUrl = fotoResult.dataUrl;
+    let fotoPrecomposed = false;
+    let frameMode: "box" | "contain" | "template_contain" = "template_contain";
+    try {
+      const composed = await composePhotoForTemplate({
+        dataUrl: fotoDataUrl,
+        estilo,
+        formato,
+        fotoBox: body?.foto_box,
+      });
+      fotoDataUrl = composed.dataUrl;
+      fotoPrecomposed = true;
+      frameMode = composed.mode;
+    } catch (error) {
+      console.warn(
+        "[render-anuncio-produto] composição medida falhou; usando contain no template:",
+        (error as Error).message,
       );
     }
 
@@ -278,6 +375,7 @@ Deno.serve(async (req) => {
       site: body?.site ? String(body.site).slice(0, 30) : null,
       businessName: body?.business_name ? String(body.business_name).slice(0, 40) : null,
       fotoDataUrl,
+      fotoPrecomposed,
       logoDataUrl,
       primaryColor: normalizeHex(body?.primary_color, "#8A6A12"),
       accentColor: normalizeHex(
@@ -306,7 +404,7 @@ Deno.serve(async (req) => {
     if (!pub?.publicUrl) throw new Error("Falha ao gerar URL pública do anúncio");
 
     console.log(
-      `✅ [render-anuncio-produto] ${formato} ${png.length} bytes — logo=${!!logoDataUrl} foto=${!!fotoDataUrl} foto_source=${fotoResult.source}`,
+      `✅ [render-anuncio-produto] ${formato} ${png.length} bytes — logo=${!!logoDataUrl} foto=${!!fotoDataUrl} foto_source=${fotoResult.source} frame=${frameMode}`,
     );
 
     return new Response(
@@ -320,6 +418,7 @@ Deno.serve(async (req) => {
         logo_aplicada: !!logoDataUrl,
         foto_aplicada: !!fotoDataUrl,
         foto_source: fotoResult.source,
+        frame_mode: frameMode,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
