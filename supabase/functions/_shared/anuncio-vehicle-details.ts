@@ -22,7 +22,8 @@ export type VehicleAdContent = {
 function values(value: unknown): string[] {
   const source = Array.isArray(value) ? value : value == null ? [] : [value];
   return source
-    .map((item) => String(item || "").replace(/\s+/g, " ").trim())
+    .flatMap((item) => String(item || "").split(","))
+    .map((item) => item.replace(/\s+/g, " ").trim())
     .filter(Boolean);
 }
 
@@ -65,7 +66,9 @@ export function buildVehicleAdContent(
     if (!all.includes(item) || highlights.includes(item)) continue;
     highlights.push(item);
   }
-  const ficha = all.filter((item) => !highlights.includes(item));
+  const ficha = all
+    .filter((item) => !highlights.includes(item))
+    .map((item) => item.toUpperCase());
   return {
     subtitle: unique([...versao, ...motor]).join(" • ") || null,
     highlights,

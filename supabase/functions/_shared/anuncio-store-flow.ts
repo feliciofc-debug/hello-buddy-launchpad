@@ -6,6 +6,28 @@ export type StoreReply =
   | { action: "name_only"; name: string }
   | { action: "ignore" };
 
+function cleanStoreNameAroundSite(value: string): string {
+  let name = value.replace(/\s+/g, " ").trim();
+  const looseWords =
+    "(?:o\\s+site\\s+[ée]|o\\s+site|site|loja|cliente|[ée]|e|da|do|de|para|pra)";
+  for (let pass = 0; pass < 4; pass++) {
+    const previous = name;
+    name = name
+      .replace(
+        new RegExp(`^[\\s,.:;|–—-]*(?:${looseWords})\\b[\\s,.:;|–—-]*`, "i"),
+        "",
+      )
+      .replace(
+        new RegExp(`[\\s,.:;|–—-]*(?:${looseWords})[\\s,.:;|–—-]*$`, "i"),
+        "",
+      )
+      .replace(/^[\s,.:;|–—-]+|[\s,.:;|–—-]+$/g, "")
+      .trim();
+    if (name === previous) break;
+  }
+  return name;
+}
+
 export function storeNameFromSite(
   site: string,
   siteBrandName?: string | null,
@@ -28,13 +50,12 @@ export function classifyStoreReply(input: {
         /https?:\/\/[^\s<>"']+|(?:www\.)?[a-z0-9][a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s<>"']*)?/i,
         " ",
       )
-      .replace(/^(?:site|cliente)\s*[:=-]\s*/i, "")
-      .replace(/\s+/g, " ")
-      .trim();
+      .replace(/\s+/g, " ");
     return {
       action: "site",
       site: input.site,
-      name: input.storedName?.trim() || withoutSite.slice(0, 100) || null,
+      name: input.storedName?.trim() ||
+        cleanStoreNameAroundSite(withoutSite).slice(0, 100) || null,
     };
   }
   if (
@@ -48,7 +69,5 @@ export function classifyStoreReply(input: {
     .replace(/^(?:nome(?:\s+da\s+loja)?|cliente)\s*[:=-]\s*/i, "")
     .trim()
     .slice(0, 100);
-  return name.length >= 2
-    ? { action: "ask_site", name }
-    : { action: "ignore" };
+  return name.length >= 2 ? { action: "ask_site", name } : { action: "ignore" };
 }

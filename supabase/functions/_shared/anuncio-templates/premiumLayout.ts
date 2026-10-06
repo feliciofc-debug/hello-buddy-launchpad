@@ -122,11 +122,16 @@ function logo(d: AnuncioData, dark: boolean): Node | null {
     : null;
 }
 
-function yearBadge(d: AnuncioData, accent: string, light: boolean): Node | null {
+function yearBadge(
+  d: AnuncioData,
+  accent: string,
+  light: boolean,
+  outlinedLight = false,
+): Node | null {
   return d.ano
     ? text(d.ano, {
-      color: light ? "#111113" : "#FFFFFF",
-      ...(!light ? { border: `3px solid ${accent}` } : {}),
+      color: light || outlinedLight ? "#111113" : "#FFFFFF",
+      ...(!light || outlinedLight ? { border: `3px solid ${accent}` } : {}),
       backgroundColor: light ? "#FFFFFF" : "transparent",
       borderRadius: 999,
       padding: "10px 20px",
@@ -225,7 +230,9 @@ function priceBlock(
   }, [
     ...(d.precoReferencia
       ? [text(
-        `${d.precoReferenciaLabel ? `${d.precoReferenciaLabel} ` : ""}${d.precoReferencia}${
+        `${
+          d.precoReferenciaLabel ? `${d.precoReferenciaLabel} ` : ""
+        }${d.precoReferencia}${
           d.precoReferenciaObs ? ` (${d.precoReferenciaObs})` : ""
         }`,
         {
@@ -279,52 +286,65 @@ function items(
   const itemFontSize = style === "destaque"
     ? Math.max(16, longest > 22 || d.itens.length > 5 ? 16 : 20)
     : 20;
-  return el("div", {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: style === "catalogo" ? 12 : 14,
-    width: "100%",
-  }, d.itens.map((item) =>
-    el("div", {
+  return el(
+    "div",
+    {
       display: "flex",
-      alignItems: "center",
-      width: style === "catalogo" ? "31%" : style === "destaque" ? "47%" : "auto",
-      ...(style === "impacto"
-        ? { minWidth: 180, border: "1px solid #333338" }
-        : {}),
-      ...(style === "destaque"
-        ? { borderLeft: `5px solid ${accent}` }
-        : {}),
-      borderRadius: style === "impacto" ? 30 : 0,
-      backgroundColor: style === "impacto" ? "#1A1A1D" : "transparent",
-      padding: style === "impacto" ? "11px 18px" : "10px 12px",
-      color: dark ? "#FFFFFF" : "#262629",
-      fontSize: itemFontSize,
-      fontWeight: 800,
-    }, [
-      ...(style === "catalogo"
-        ? [el("div", {
-          width: 9,
-          height: 9,
-          borderRadius: 9,
-          backgroundColor: accent,
-          marginRight: 10,
-        })]
-        : []),
-      item.texto.toUpperCase(),
-    ])
-  ));
+      flexWrap: "wrap",
+      gap: style === "catalogo" ? 12 : 14,
+      width: "100%",
+    },
+    d.itens.map((item) =>
+      el("div", {
+        display: "flex",
+        alignItems: "center",
+        width: style === "catalogo"
+          ? "31%"
+          : style === "destaque"
+          ? "47%"
+          : "auto",
+        ...(style === "impacto"
+          ? { minWidth: 180, border: "1px solid #333338" }
+          : {}),
+        ...(style === "destaque" ? { borderLeft: `5px solid ${accent}` } : {}),
+        borderRadius: style === "impacto" ? 30 : 0,
+        backgroundColor: style === "impacto" ? "#1A1A1D" : "transparent",
+        padding: style === "impacto" ? "11px 18px" : "10px 12px",
+        color: dark ? "#FFFFFF" : "#262629",
+        fontSize: itemFontSize,
+        fontWeight: 800,
+      }, [
+        ...(style === "catalogo"
+          ? [el("div", {
+            width: 9,
+            height: 9,
+            borderRadius: 9,
+            backgroundColor: accent,
+            marginRight: 10,
+          })]
+          : []),
+        item.texto.toUpperCase(),
+      ])
+    ),
+  );
 }
 
-function ficha(d: AnuncioData, dark: boolean): Node | null {
+function ficha(
+  d: AnuncioData,
+  dark: boolean,
+  maxWidth?: string,
+): Node | null {
   if (!d.ficha?.length) return null;
-  return text(`Ficha: ${d.ficha.join(" • ")}`, {
-    color: dark ? "#B8B8BD" : "#5F5F65",
-    fontSize: 15,
-    lineHeight: 1.3,
-    marginTop: 10,
-    width: "100%",
-  });
+  return text(
+    `Ficha: ${d.ficha.map((item) => item.toUpperCase()).join(" • ")}`,
+    {
+      color: dark ? "#B8B8BD" : "#5F5F65",
+      fontSize: 15,
+      lineHeight: 1.3,
+      marginTop: 10,
+      width: maxWidth || "100%",
+    },
+  );
 }
 
 function details(
@@ -335,7 +355,13 @@ function details(
 ): Node | null {
   const content = [
     items(d, style, accent, dark),
-    ficha(d, dark),
+    ficha(
+      d,
+      dark,
+      style === "destaque" && (d.preco || d.precoReferencia)
+        ? "55%"
+        : undefined,
+    ),
   ].filter(Boolean);
   return content.length
     ? el("div", {
@@ -354,12 +380,15 @@ export function buildPremiumAnuncio(
   const layout = ANUNCIO_LAYOUT_BOXES[style][d.formato];
   const light = style === "catalogo";
   const defaults = style === "impacto" ? "#F2B544" : "#F36812";
-  const accent = readableAccent(d.accentColor || defaults, light ? "#F4F4F2" : "#101012");
+  const accent = readableAccent(
+    d.accentColor || defaults,
+    light ? "#FFFFFF" : "#101012",
+  );
   const detail = /^#[0-9A-F]{6}$/i.test(d.accentColor)
     ? d.accentColor
     : defaults;
   const accentText = accent.textColor;
-  const bg = light ? "#F4F4F2" : style === "impacto" ? "#0B0B0C" : "#101012";
+  const bg = light ? "#FFFFFF" : style === "impacto" ? "#0B0B0C" : "#101012";
   const nodes: Node[] = [
     el("div", {
       display: "flex",
@@ -375,73 +404,177 @@ export function buildPremiumAnuncio(
 
   if (style === "impacto") {
     nodes.push(
-      el("div", {
-        position: "absolute", display: "flex", left: 48, right: 48, top: story ? 54 : 42,
-        justifyContent: "space-between", alignItems: "flex-start",
-      }, [titleBlock(d, "#FFFFFF", accentText), yearBadge(d, detail, false)].filter(Boolean)),
-      el("div", {
-        position: "absolute", display: "flex", flexDirection: "column",
-        left: 48, right: 48, top: story ? 1190 : 716, bottom: story ? 60 : 48,
-        justifyContent: "space-between",
-      }, [
-        details(d, style, detail, true),
-        el("div", { display: "flex", justifyContent: "space-between", alignItems: "flex-end" }, [
-          priceBlock(d, { value: "#FFFFFF", label: accentText, reference: "#A7A7AB" }),
-          el("div", { display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10 }, [
-            logo(d, true),
-            contacts(d, "#D1D1D4"),
-          ].filter(Boolean)),
-        ].filter(Boolean)),
-      ].filter(Boolean)),
+      el(
+        "div",
+        {
+          position: "absolute",
+          display: "flex",
+          left: 48,
+          right: 48,
+          top: story ? 54 : 42,
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+        },
+        [titleBlock(d, "#FFFFFF", accentText), yearBadge(d, detail, false)]
+          .filter(Boolean),
+      ),
+      el(
+        "div",
+        {
+          position: "absolute",
+          display: "flex",
+          flexDirection: "column",
+          left: 48,
+          right: 48,
+          top: story ? 1190 : 716,
+          bottom: story ? 60 : 48,
+          justifyContent: "space-between",
+        },
+        [
+          details(d, style, detail, true),
+          el(
+            "div",
+            {
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-end",
+            },
+            [
+              priceBlock(d, {
+                value: "#FFFFFF",
+                label: accentText,
+                reference: "#A7A7AB",
+              }),
+              el(
+                "div",
+                {
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-end",
+                  gap: 10,
+                },
+                [
+                  logo(d, true),
+                  contacts(d, "#D1D1D4"),
+                ].filter(Boolean),
+              ),
+            ].filter(Boolean),
+          ),
+        ].filter(Boolean),
+      ),
     );
   } else if (style === "catalogo") {
     nodes.push(
-      el("div", { position: "absolute", display: "flex", top: 0, left: 0, right: 0, height: 10, backgroundColor: detail }),
       el("div", {
-        position: "absolute", display: "flex", left: 48, right: 48, top: story ? 30 : 24,
-        justifyContent: "space-between", alignItems: "flex-start",
-      }, [logo(d, false), yearBadge(d, detail, false)].filter(Boolean)),
-      el("div", { position: "absolute", display: "flex", left: 48, top: story ? 135 : 105 }, titleBlock(d, "#18181B", accentText)),
+        position: "absolute",
+        display: "flex",
+        top: 0,
+        left: 0,
+        right: 0,
+        height: 10,
+        backgroundColor: detail,
+      }),
       el("div", {
-        position: "absolute", display: "flex", flexDirection: "column",
-        left: 48, right: 48, top: story ? 1136 : 676, bottom: story ? 60 : 40,
+        position: "absolute",
+        display: "flex",
+        left: 48,
+        right: 48,
+        top: story ? 30 : 24,
         justifyContent: "space-between",
-      }, [
-        details(d, style, detail, false),
-        el("div", {
-          display: "flex", justifyContent: "space-between", alignItems: "flex-end",
-          borderTop: "2px solid #D5D5D1", paddingTop: 20,
-        }, [
-          contacts(d, "#55555B"),
-          priceBlock(d, { value: "#18181B", label: accentText, reference: "#77777C" }, "right"),
-        ].filter(Boolean)),
-      ].filter(Boolean)),
+        alignItems: "flex-start",
+      }, [logo(d, false), yearBadge(d, detail, false, true)].filter(Boolean)),
+      el("div", {
+        position: "absolute",
+        display: "flex",
+        left: 48,
+        top: story ? 135 : 105,
+      }, titleBlock(d, "#18181B", accentText)),
+      el(
+        "div",
+        {
+          position: "absolute",
+          display: "flex",
+          flexDirection: "column",
+          left: 48,
+          right: 48,
+          top: story ? 1136 : 676,
+          bottom: story ? 60 : 40,
+          justifyContent: "space-between",
+        },
+        [
+          details(d, style, detail, false),
+          el(
+            "div",
+            {
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-end",
+              borderTop: "2px solid #D5D5D1",
+              paddingTop: 20,
+            },
+            [
+              contacts(d, "#55555B"),
+              priceBlock(d, {
+                value: "#18181B",
+                label: accentText,
+                reference: "#77777C",
+              }, "right"),
+            ].filter(Boolean),
+          ),
+        ].filter(Boolean),
+      ),
     );
   } else {
     nodes.push(
       el("div", {
-        position: "absolute", display: "flex", left: 48, right: 48, top: story ? 36 : 28,
-        justifyContent: "space-between", alignItems: "center",
+        position: "absolute",
+        display: "flex",
+        left: 48,
+        right: 48,
+        top: story ? 36 : 28,
+        justifyContent: "space-between",
+        alignItems: "center",
       }, [logo(d, true), yearBadge(d, detail, true)].filter(Boolean)),
-      el("div", {
-        position: "absolute", display: "flex", flexDirection: "column",
-        left: 48, right: 48, top: story ? 1030 : 604, bottom: story ? 54 : 42,
-      }, [
-        titleBlock(d, "#FFFFFF", "#A7A7AD"),
-        el(
-          "div",
-          { display: "flex", marginTop: story ? 34 : 18 },
-          details(d, style, detail, true),
-        ),
-        el("div", {
-          display: "flex", marginTop: "auto", alignSelf: "flex-end",
-          marginRight: -48, borderRadius: "32px 0 0 32px",
-          backgroundColor: detail, padding: "12px 24px 12px 28px",
-          maxWidth: "45%",
-          justifyContent: "flex-end",
-        }, priceBlock(d, { value: accent.onAccentColor, label: accent.onAccentColor, reference: accent.onAccentColor }, "right")),
-        el("div", { display: "flex", marginTop: 18 }, contacts(d, "#C8C8CC")),
-      ].filter(Boolean)),
+      el(
+        "div",
+        {
+          position: "absolute",
+          display: "flex",
+          flexDirection: "column",
+          left: 48,
+          right: 48,
+          top: story ? 1030 : 604,
+          bottom: story ? 54 : 42,
+        },
+        [
+          titleBlock(d, "#FFFFFF", "#A7A7AD"),
+          el(
+            "div",
+            { display: "flex", marginTop: story ? 34 : 18 },
+            details(d, style, detail, true),
+          ),
+          el(
+            "div",
+            {
+              display: "flex",
+              marginTop: "auto",
+              alignSelf: "flex-end",
+              marginRight: -48,
+              borderRadius: "32px 0 0 32px",
+              backgroundColor: detail,
+              padding: "12px 24px 12px 28px",
+              maxWidth: "45%",
+              justifyContent: "flex-end",
+            },
+            priceBlock(d, {
+              value: accent.onAccentColor,
+              label: accent.onAccentColor,
+              reference: accent.onAccentColor,
+            }, "right"),
+          ),
+          el("div", { display: "flex", marginTop: 18 }, contacts(d, "#C8C8CC")),
+        ].filter(Boolean),
+      ),
     );
   }
 
