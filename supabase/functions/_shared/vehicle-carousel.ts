@@ -251,6 +251,89 @@ export function vehiclePhotoBatchOfferMessage(
 export const SINGLE_REPEATED_VEHICLE_PHOTO_MESSAGE =
   "Essa foto você já tinha me mandado. Quer usar ela agora?";
 
+type PendingWithTimestamp =
+  | {
+    stage?: string;
+    created_at?: string;
+    at?: string;
+    identidade?: string;
+  }
+  | null
+  | undefined;
+
+export type VehicleBatchFlowState = {
+  pending_carrossel_veiculo?: PendingVehicleCarousel | null;
+  pending_image_composition?: PendingWithTimestamp;
+  pending_client_logo_intent?: PendingWithTimestamp;
+  pending_brand_generation?: PendingWithTimestamp;
+  pending_video_setup?: PendingWithTimestamp;
+  pending_anuncio_photo?: PendingWithTimestamp;
+  pending_anuncio_cliente?: PendingWithTimestamp;
+  pending_anuncio_styles?: PendingWithTimestamp;
+  pending_anuncio_post?: PendingWithTimestamp;
+  [key: string]: unknown;
+};
+
+function pendingAgeMs(
+  value: PendingWithTimestamp,
+  nowMs: number,
+): number {
+  const timestamp = new Date(value?.created_at || value?.at || "").getTime();
+  return Number.isFinite(timestamp) && timestamp <= nowMs
+    ? nowMs - timestamp
+    : Number.POSITIVE_INFINITY;
+}
+
+export function blockingVehiclePhotoFlow(
+  state: VehicleBatchFlowState,
+  nowMs = Date.now(),
+): string | null {
+  const recent = (value: PendingWithTimestamp) =>
+    pendingAgeMs(value, nowMs) <= 10 * 60 * 1000;
+  if (
+    state.pending_carrossel_veiculo?.stage === "collecting" &&
+    recent(state.pending_carrossel_veiculo)
+  ) return "pending_carrossel_veiculo";
+  if (recent(state.pending_image_composition)) {
+    return "pending_image_composition";
+  }
+  if (recent(state.pending_client_logo_intent)) {
+    return "pending_client_logo";
+  }
+  if (
+    state.pending_brand_generation?.stage === "awaiting_logo_upload" &&
+    recent(state.pending_brand_generation)
+  ) return "pending_brand_generation";
+  if (
+    state.pending_video_setup?.identidade === "client" &&
+    recent(state.pending_video_setup)
+  ) return "pending_video_setup";
+  if (
+    state.pending_anuncio_photo?.stage === "awaiting_photo" &&
+    recent(state.pending_anuncio_photo)
+  ) return "pending_anuncio_photo";
+  return null;
+}
+
+export function expiredAnuncioPendingPatch(
+  state: VehicleBatchFlowState,
+  nowMs = Date.now(),
+): Record<string, null> {
+  const patch: Record<string, null> = {};
+  const candidates = {
+    pending_anuncio_post: state.pending_anuncio_post,
+    pending_anuncio_styles: state.pending_anuncio_styles,
+    pending_anuncio_photo: state.pending_anuncio_photo,
+    pending_anuncio_cliente: state.pending_anuncio_cliente,
+  };
+  for (const [key, value] of Object.entries(candidates)) {
+    if (value && pendingAgeMs(value, nowMs) > 30 * 60 * 1000) {
+      patch[key] = null;
+    }
+  }
+  return patch;
+}
+
 export function planVehiclePhotoBatch(input: {
   previous?: PendingVehiclePhotoBatch | null;
   recentPhotos: VehicleCarouselPhoto[];

@@ -10,7 +10,9 @@ import {
 import { buildVehiclePhotoSlide } from "./carousel-templates/vehiclePhoto.ts";
 import {
   addVehicleCarouselPhotos,
+  blockingVehiclePhotoFlow,
   buildVehicleCarouselSlides,
+  expiredAnuncioPendingPatch,
   hasVehicleCarouselData,
   isVehiclePhotoCarouselRequest,
   parseVehicleCarouselData,
@@ -262,5 +264,58 @@ Deno.test("foto única repetida usa aviso correto e três botões", () => {
   assertEquals(
     vehicleSingleRepeatedPhotoButtons().buttons.map((button) => button.title),
     ["Anúncio", "Carrossel", "Nada agora"],
+  );
+});
+
+Deno.test("post de anúncio antigo não bloqueia lote e é descartado ao oferecer", () => {
+  const now = Date.parse("2026-10-06T14:30:00.000Z");
+  const state = {
+    pending_anuncio_post: {
+      stage: "action",
+      created_at: "2026-10-06T14:15:00.000Z",
+    },
+  };
+  assertEquals(blockingVehiclePhotoFlow(state, now), null);
+  assertEquals(vehicleCarouselAdStateReset().pending_anuncio_post, null);
+  assertEquals(expiredAnuncioPendingPatch(state, now), {});
+  assertEquals(
+    expiredAnuncioPendingPatch({
+      pending_anuncio_post: {
+        stage: "action",
+        created_at: "2026-10-06T13:59:00.000Z",
+      },
+    }, now),
+    { pending_anuncio_post: null },
+  );
+});
+
+Deno.test("somente fluxos recentes que esperam mídia bloqueiam o lote", () => {
+  const now = Date.parse("2026-10-06T14:30:00.000Z");
+  assertEquals(
+    blockingVehiclePhotoFlow({
+      pending_carrossel_veiculo: {
+        stage: "collecting",
+        photos: [],
+        format: "portrait",
+        created_at: "2026-10-06T14:25:00.000Z",
+      },
+    }, now),
+    "pending_carrossel_veiculo",
+  );
+  assertEquals(
+    blockingVehiclePhotoFlow({
+      pending_client_logo_intent: {
+        created_at: "2026-10-06T14:25:00.000Z",
+      },
+    }, now),
+    "pending_client_logo",
+  );
+  assertEquals(
+    blockingVehiclePhotoFlow({
+      pending_fipe: {
+        created_at: "2026-10-06T14:29:00.000Z",
+      },
+    }, now),
+    null,
   );
 });
