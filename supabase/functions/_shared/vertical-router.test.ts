@@ -3,18 +3,24 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  activeDemoSegment,
   applyVerticalStatePatch,
+  businessSegmentButtons,
+  demoSegmentConfirmationButtons,
   explicitVerticalIntent,
   isAutomotiveTenant,
   migrateVerticalState,
+  parseDemoSegmentCommand,
   parseVerticalVisionResult,
   resolveVertical,
   scopedVerticalState,
   verticalChoiceButtons,
+  withDemoModeLabel,
 } from "./vertical-router.ts";
 import {
   generalSpecialistAllowsTool,
   generalSpecialistPhotoButtons,
+  generalSpecialistPrompt,
   generalState,
 } from "./vertical-general/index.ts";
 import {
@@ -54,18 +60,13 @@ Deno.test("perfil da revenda é viés de veículo; hospital e loja são gerais",
 });
 
 Deno.test("visão separa carro de caneca e baixa confiança pede confirmação", () => {
-  assertEquals(
-    resolveVertical({
-      tenantSegment: "Loja",
-      vision: { route: "veiculo", confidence: 0.98 },
-    }),
-    {
-      route: "veiculo",
-      confidence: 0.98,
-      reason: "visao",
-      needsConfirmation: false,
-    },
-  );
+  const vehicle = resolveVertical({
+    tenantSegment: "Revenda de veículos",
+    vision: { route: "veiculo", confidence: 0.98 },
+  });
+  assertEquals(vehicle.route, "veiculo");
+  assertEquals(vehicle.confidence, 0.98);
+  assertEquals(vehicle.needsConfirmation, false);
   assertEquals(
     resolveVertical({
       tenantSegment: "Revenda",
@@ -75,7 +76,7 @@ Deno.test("visão separa carro de caneca e baixa confiança pede confirmação",
   );
   assertEquals(
     resolveVertical({
-      tenantSegment: "Loja",
+      tenantSegment: "Revenda de veículos",
       vision: { route: "veiculo", confidence: 0.4 },
     }).needsConfirmation,
     true,
@@ -84,6 +85,23 @@ Deno.test("visão separa carro de caneca e baixa confiança pede confirmação",
     verticalChoiceButtons().buttons.map((button) => button.title),
     ["É um veículo", "É outro produto"],
   );
+});
+
+Deno.test("ramos automotivos adjacentes não são classificados como revenda", () => {
+  for (
+    const segment of [
+      "Consórcio de veículos",
+      "Seguradora automotiva",
+      "Financeira de carros",
+      "Autoescola",
+      "Oficina automotiva",
+      "Lava-jato",
+      "Locadora de veículos",
+      "Auto center e auto peças",
+    ]
+  ) {
+    assertEquals(isAutomotiveTenant(segment), false, segment);
+  }
 });
 
 Deno.test("parser de visão aceita somente classificação factual", () => {
@@ -183,5 +201,154 @@ Deno.test("especialistas expõem somente ferramentas e botões da própria verti
   assertEquals(
     vehicleSpecialistPhotoButtons().buttons.map((button) => button.title),
     ["Anúncio", "Carrossel", "Nada agora"],
+  );
+});
+
+Deno.test("consórcio com foto de carro permanece no especialista geral", () => {
+  const decision = resolveVertical({
+    tenantSegment: "Consórcio Ademicon",
+    vision: { route: "veiculo", confidence: 0.99 },
+  });
+  assertEquals(decision.route, "geral");
+  assertEquals(decision.explicitFipe, false);
+  assertEquals(decision.reason, "ramo_nao_automotivo");
+});
+
+Deno.test("consórcio acessa FIPE somente por pedido explícito", () => {
+  const decision = resolveVertical({
+    tenantSegment: "Consórcio",
+    text: "qual a FIPE do Onix 2022?",
+  });
+  assertEquals(decision.route, "geral");
+  assertEquals(decision.explicitFipe, true);
+  assertEquals(decision.reason, "fipe_explicita_fora_revenda");
+});
+
+Deno.test("revenda usa visão para separar carro de caneca", () => {
+  assertEquals(
+    resolveVertical({
+      tenantSegment: "Revenda de veículos",
+      vision: { route: "veiculo", confidence: 0.98 },
+    }).route,
+    "veiculo",
+  );
+  assertEquals(
+    resolveVertical({
+      tenantSegment: "Revenda de veículos",
+      vision: { route: "geral", confidence: 0.98 },
+    }).route,
+    "geral",
+  );
+});
+
+Deno.test("tenant sem ramo recebe pergunta única por botões", () => {
+  const decision = resolveVertical({
+    tenantSegment: null,
+    vision: { route: "veiculo", confidence: 0.99 },
+  });
+  assertEquals(decision.needsSegmentConfirmation, true);
+  assertEquals(
+    businessSegmentButtons().buttons.map((button) => button.title),
+    ["Revenda de veículos", "Outro ramo"],
+  );
+});
+
+Deno.test("admin sem ramo permanece automático pela visão", () => {
+  assertEquals(
+    resolveVertical({
+      isAdmin: true,
+      tenantSegment: null,
+      vision: { route: "veiculo", confidence: 0.98 },
+    }).route,
+    "veiculo",
+  );
+  assertEquals(
+    resolveVertical({
+      isAdmin: true,
+      tenantSegment: null,
+      vision: { route: "geral", confidence: 0.98 },
+    }).route,
+    "geral",
+  );
+});
+
+Deno.test("modo demonstração fixa ramo por seis horas e expira", () => {
+  const now = Date.parse("2026-10-07T13:00:00.000Z");
+  const demo = {
+    segment: "consórcio",
+    expires_at: "2026-10-07T19:00:00.000Z",
+  };
+  const active = resolveVertical({
+    isAdmin: true,
+    demoSegment: demo,
+    vision: { route: "veiculo", confidence: 0.99 },
+    nowMs: now,
+  });
+  assertEquals(active.route, "geral");
+  assertEquals(active.demoMode, true);
+  const expired = resolveVertical({
+    isAdmin: true,
+    demoSegment: demo,
+    vision: { route: "veiculo", confidence: 0.99 },
+    nowMs: Date.parse("2026-10-07T19:00:00.001Z"),
+  });
+  assertEquals(expired.route, "veiculo");
+  assertEquals(expired.demoMode, undefined);
+  assertEquals(
+    withDemoModeLabel("Recebi a foto.", active),
+    "Modo demonstração: consórcio\n\nRecebi a foto.",
+  );
+});
+
+Deno.test("comandos de demonstração e confirmação são determinísticos", () => {
+  assertEquals(parseDemoSegmentCommand("demonstrar como consórcio"), {
+    action: "set",
+    segment: "consorcio",
+  });
+  assertEquals(parseDemoSegmentCommand("sair da demonstração"), {
+    action: "exit",
+  });
+  assertEquals(
+    demoSegmentConfirmationButtons().buttons.map((button) => button.title),
+    ["Confirmar", "Cancelar"],
+  );
+  assertEquals(
+    activeDemoSegment({
+      vertical_router: {
+        demo_segment: {
+          segment: "seguradora",
+          expires_at: "2026-10-07T19:00:00.000Z",
+        },
+      },
+    }, Date.parse("2026-10-07T18:59:59.000Z")),
+    "seguradora",
+  );
+});
+
+Deno.test("comando de demonstração não altera decisão de conta cliente", () => {
+  const command = parseDemoSegmentCommand(
+    "demonstrar como revenda de veículos",
+  );
+  assertEquals(command?.action, "set");
+  const decision = resolveVertical({
+    isAdmin: false,
+    tenantSegment: "Consórcio",
+    text: "demonstrar como revenda de veículos",
+    vision: { route: "veiculo", confidence: 0.99 },
+  });
+  assertEquals(decision.route, "geral");
+});
+
+Deno.test("especialista geral recebe contexto do ramo sem transformar carro em venda", () => {
+  const prompt = generalSpecialistPrompt("Consórcio Ademicon");
+  assert(
+    prompt.includes("Contexto obrigatório do negócio: Consórcio Ademicon"),
+  );
+  assert(prompt.includes("não ofereça FIPE, km, repasse"));
+  assert(prompt.includes("Não ofereça nem consulte FIPE automaticamente"));
+  assert(
+    generalSpecialistPrompt("Consórcio", true).includes(
+      "consulta de FIPE foi pedida explicitamente",
+    ),
   );
 });

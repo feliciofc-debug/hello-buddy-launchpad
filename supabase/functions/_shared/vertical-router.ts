@@ -5,6 +5,10 @@ export type VerticalDecision = {
   confidence: number;
   reason: string;
   needsConfirmation: boolean;
+  needsSegmentConfirmation?: boolean;
+  explicitFipe?: boolean;
+  effectiveSegment?: string | null;
+  demoMode?: boolean;
 };
 
 export type VerticalVisionResult = {
@@ -24,6 +28,15 @@ export type VerticalNamespacedState = Record<string, unknown> & {
     } | null;
     last_route?: InboundVertical;
     updated_at?: string;
+    pending_segment_choice?: boolean;
+    demo_segment?: {
+      segment: string;
+      expires_at: string;
+    } | null;
+    pending_demo_segment?: {
+      segment: string;
+      created_at: string;
+    } | null;
   } | null;
 };
 
@@ -83,7 +96,13 @@ function normalize(value: string): string {
 
 export function isAutomotiveTenant(segment?: string | null): boolean {
   const value = normalize(segment || "");
-  return /\b(automotiv|veicul|carro|moto|concessionaria|revenda|seminov|auto center|auto pecas)\b/
+  if (
+    /\b(consorcio|segur\w*|financeir\w*|autoescola|oficina|lava[\s-]?jato|locadora|aluguel|auto center|auto pecas)\b/
+      .test(value)
+  ) {
+    return false;
+  }
+  return /\b(concessionaria|revenda|seminovos?|automotiv|veiculos?|carros?|motos?|caminhoes?)\b/
     .test(value);
 }
 
@@ -171,14 +190,109 @@ export function resolveVertical(input: {
   tenantSegment?: string | null;
   vision?: VerticalVisionResult | null;
   selectedRoute?: InboundVertical | null;
+  isAdmin?: boolean;
+  demoSegment?: { segment: string; expires_at: string } | null;
+  nowMs?: number;
 }): VerticalDecision {
+  const nowMs = input.nowMs ?? Date.now();
+  const demoActive = !!input.isAdmin && !!input.demoSegment?.segment &&
+    new Date(input.demoSegment.expires_at).getTime() > nowMs;
+  const effectiveSegment = demoActive
+    ? input.demoSegment!.segment
+    : input.tenantSegment;
   const explicit = explicitVerticalIntent(input.text || "");
+  const explicitFipe = /\b(fipe|tabela\s+fipe)\b/.test(
+    normalize(input.text || ""),
+  );
+
+  // A conta admin é uma vitrine genérica: sem demo fixada, a visão/pedido
+  // escolhe livremente a vertical.
+  if (input.isAdmin && !demoActive) {
+    if (explicit) {
+      return {
+        route: explicit.route,
+        confidence: 1,
+        reason: explicit.reason,
+        needsConfirmation: false,
+        explicitFipe,
+        effectiveSegment: null,
+      };
+    }
+    if (input.selectedRoute) {
+      return {
+        route: input.selectedRoute,
+        confidence: 1,
+        reason: "escolha_usuario",
+        needsConfirmation: false,
+        explicitFipe,
+        effectiveSegment: null,
+      };
+    }
+    if (input.vision) {
+      const confidence = clampConfidence(input.vision.confidence);
+      return {
+        route: input.vision.route,
+        confidence,
+        reason: confidence >= 0.65
+          ? input.vision.reason || "visao_admin"
+          : "visao_baixa_confianca",
+        needsConfirmation: confidence < 0.65,
+        explicitFipe,
+        effectiveSegment: null,
+      };
+    }
+    return {
+      route: "geral",
+      confidence: 0.7,
+      reason: "admin_automatico_sem_foto",
+      needsConfirmation: false,
+      explicitFipe,
+      effectiveSegment: null,
+    };
+  }
+
+  if (!String(effectiveSegment || "").trim()) {
+    return {
+      route: "geral",
+      confidence: 0,
+      reason: "ramo_nao_configurado",
+      needsConfirmation: false,
+      needsSegmentConfirmation: true,
+      explicitFipe,
+      effectiveSegment: null,
+      demoMode: demoActive,
+    };
+  }
+
+  const automotive = isAutomotiveTenant(effectiveSegment);
+  // Fora de revenda, inclusive consórcio/seguro/oficina/locadora, a foto
+  // continua no especialista geral. FIPE explícita é uma capacidade pontual,
+  // não uma troca para o especialista de veículos.
+  if (!automotive) {
+    return {
+      route: "geral",
+      confidence: 1,
+      reason: explicitFipe
+        ? "fipe_explicita_fora_revenda"
+        : demoActive
+        ? "ramo_demo_nao_automotivo"
+        : "ramo_nao_automotivo",
+      needsConfirmation: false,
+      explicitFipe,
+      effectiveSegment,
+      demoMode: demoActive,
+    };
+  }
+
   if (explicit) {
     return {
       route: explicit.route,
       confidence: 1,
       reason: explicit.reason,
       needsConfirmation: false,
+      explicitFipe,
+      effectiveSegment,
+      demoMode: demoActive,
     };
   }
   if (input.selectedRoute) {
@@ -187,6 +301,9 @@ export function resolveVertical(input: {
       confidence: 1,
       reason: "escolha_usuario",
       needsConfirmation: false,
+      explicitFipe,
+      effectiveSegment,
+      demoMode: demoActive,
     };
   }
   if (input.vision) {
@@ -197,21 +314,29 @@ export function resolveVertical(input: {
         confidence,
         reason: input.vision.reason || "visao",
         needsConfirmation: false,
+        explicitFipe,
+        effectiveSegment,
+        demoMode: demoActive,
       };
     }
     return {
-      route: isAutomotiveTenant(input.tenantSegment) ? "veiculo" : "geral",
+      route: automotive ? "veiculo" : "geral",
       confidence,
       reason: "visao_baixa_confianca",
       needsConfirmation: true,
+      explicitFipe,
+      effectiveSegment,
+      demoMode: demoActive,
     };
   }
-  const automotive = isAutomotiveTenant(input.tenantSegment);
   return {
-    route: automotive ? "veiculo" : "geral",
-    confidence: automotive ? 0.8 : 0.7,
-    reason: automotive ? "segmento_automotivo" : "segmento_geral",
+    route: "veiculo",
+    confidence: 0.8,
+    reason: demoActive ? "ramo_demo_revenda" : "ramo_revenda",
     needsConfirmation: false,
+    explicitFipe,
+    effectiveSegment,
+    demoMode: demoActive,
   };
 }
 
@@ -324,4 +449,71 @@ export function verticalChoiceButtons() {
       { id: "vertical:general", title: "É outro produto" },
     ],
   };
+}
+
+export function businessSegmentButtons() {
+  return {
+    body: "Qual é o ramo principal deste negócio?",
+    buttons: [
+      {
+        id: "vertical_segment:automotive",
+        title: "Revenda de veículos",
+      },
+      { id: "vertical_segment:other", title: "Outro ramo" },
+    ],
+  };
+}
+
+export function parseDemoSegmentCommand(
+  text: string,
+): { action: "set"; segment: string } | { action: "exit" } | null {
+  const value = normalize(text)
+    .replace(/<<interactive_id:[^>]+>>/g, "")
+    .trim();
+  if (
+    /\b(sair|encerrar|desativar)\s+(?:do\s+)?modo\s+demonstracao\b/.test(
+      value,
+    ) ||
+    /^sair da demonstracao$/.test(value)
+  ) {
+    return { action: "exit" };
+  }
+  const match = value.match(
+    /\bdemonstrar\s+como\s+(.+?)(?:[.!?]|$)/,
+  );
+  if (!match?.[1]) return null;
+  const segment = match[1]
+    .replace(/^uma?\s+/, "")
+    .replace(/\brevenda\b(?!\s+de)/, "revenda de veículos")
+    .trim()
+    .slice(0, 100);
+  return segment ? { action: "set", segment } : null;
+}
+
+export function demoSegmentConfirmationButtons() {
+  return {
+    body: "Ativar este ramo por 6 horas?",
+    buttons: [
+      { id: "vertical_demo:confirm", title: "Confirmar" },
+      { id: "vertical_demo:cancel", title: "Cancelar" },
+    ],
+  };
+}
+
+export function activeDemoSegment(
+  state: VerticalNamespacedState,
+  nowMs = Date.now(),
+): string | null {
+  const demo = state.vertical_router?.demo_segment;
+  if (!demo?.segment) return null;
+  return new Date(demo.expires_at).getTime() > nowMs ? demo.segment : null;
+}
+
+export function withDemoModeLabel(
+  text: string,
+  decision: Pick<VerticalDecision, "demoMode" | "effectiveSegment">,
+): string {
+  if (!decision.demoMode || !decision.effectiveSegment) return text;
+  const label = `Modo demonstração: ${decision.effectiveSegment}`;
+  return text.startsWith(label) ? text : `${label}\n\n${text}`;
 }
