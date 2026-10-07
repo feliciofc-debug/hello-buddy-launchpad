@@ -12,8 +12,16 @@ import {
   scopedVerticalState,
   verticalChoiceButtons,
 } from "./vertical-router.ts";
-import { generalState } from "./vertical-general/index.ts";
-import { vehicleState } from "./vertical-vehicle/index.ts";
+import {
+  generalSpecialistAllowsTool,
+  generalSpecialistPhotoButtons,
+  generalState,
+} from "./vertical-general/index.ts";
+import {
+  vehicleSpecialistAllowsTool,
+  vehicleSpecialistPhotoButtons,
+  vehicleState,
+} from "./vertical-vehicle/index.ts";
 
 Deno.test("pedidos explícitos escolhem o especialista correto", () => {
   for (
@@ -161,4 +169,19 @@ Deno.test("carrossel de veículo aberto mais garrafa mantém estados isolados", 
   );
   assertEquals(vehicleState(persisted).pending_single_photo, undefined);
   assertEquals(generalState(persisted).pending_carrossel_veiculo, undefined);
+});
+
+Deno.test("especialistas expõem somente ferramentas e botões da própria vertical", () => {
+  assertEquals(generalSpecialistAllowsTool("consultar_fipe"), false);
+  assertEquals(generalSpecialistAllowsTool("criar_carrossel"), true);
+  assertEquals(vehicleSpecialistAllowsTool("consultar_fipe"), true);
+  assertEquals(vehicleSpecialistAllowsTool("criar_carrossel"), false);
+  assertEquals(
+    generalSpecialistPhotoButtons().buttons.map((button) => button.title),
+    ["Anúncio", "Editar imagem", "Post nas redes"],
+  );
+  assertEquals(
+    vehicleSpecialistPhotoButtons().buttons.map((button) => button.title),
+    ["Anúncio", "Carrossel", "Nada agora"],
+  );
 });

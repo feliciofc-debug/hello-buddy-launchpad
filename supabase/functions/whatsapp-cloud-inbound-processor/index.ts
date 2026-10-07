@@ -63,7 +63,6 @@ import {
   vehiclePhotoBatchButtons,
   vehiclePhotoBatchNewTopicReset,
   vehiclePhotoCountLabel,
-  vehicleSingleRepeatedPhotoButtons,
   vehiclePhotosFromQueueEvents,
   VEHICLE_CAROUSEL_MAX_PHOTOS,
   VEHICLE_CAROUSEL_MIN_PHOTOS,
@@ -278,10 +277,7 @@ import {
   socialInteractiveButtonsFromResult,
 } from "../_shared/social-approval-flow.ts";
 import { exactSocialMedia } from "../_shared/social-media-snapshot.ts";
-import {
-  singlePhotoActionButtons,
-  singlePhotoFormatButtons,
-} from "../_shared/single-photo-flow.ts";
+import { singlePhotoFormatButtons } from "../_shared/single-photo-flow.ts";
 import {
   applyVerticalStatePatch,
   migrateVerticalState,
@@ -294,8 +290,16 @@ import {
   type InboundVertical,
   type VerticalDecision,
 } from "../_shared/vertical-router.ts";
-import { generalSpecialistPrompt } from "../_shared/vertical-general/index.ts";
-import { vehicleSpecialistPrompt } from "../_shared/vertical-vehicle/index.ts";
+import {
+  generalSpecialistAllowsTool,
+  generalSpecialistPhotoButtons,
+  generalSpecialistPrompt,
+} from "../_shared/vertical-general/index.ts";
+import {
+  vehicleSpecialistAllowsTool,
+  vehicleSpecialistPhotoButtons,
+  vehicleSpecialistPrompt,
+} from "../_shared/vertical-vehicle/index.ts";
 import {
   canUseAmbiguousPendingReply,
   classifyExplicitPendingPostCommand,
@@ -15195,6 +15199,7 @@ async function callGemini(
     convId?: string;
     agentState?: AgentConvState;
     demoTestPhones?: string[];
+    vertical?: InboundVertical;
   },
 ): Promise<{
   text: string;
@@ -18021,9 +18026,9 @@ async function callGemini(
     "postar_midia_biblioteca",
     "publicar_linkedin",
   ]);
-  const unavailableForVertical = activeVertical === "veiculo"
-    ? new Set(["criar_carrossel"])
-    : new Set(["consultar_fipe"]);
+  const verticalAllowsTool = activeVertical === "veiculo"
+    ? vehicleSpecialistAllowsTool
+    : generalSpecialistAllowsTool;
   const availableTools = filterToolsForTenant(TOOLS, {
     userId: toolCtx.userId,
     isOwner: isOwner(toolCtx),
@@ -18031,7 +18036,7 @@ async function callGemini(
   }).filter((tool: any) =>
     (!restrictedNonOwnerCapabilityTurn ||
       !unavailableForRestrictedNonOwner.has(tool?.function?.name)) &&
-    !unavailableForVertical.has(tool?.function?.name)
+    verticalAllowsTool(tool?.function?.name)
   );
   const requiredProspectSiteUrl = senderIsAmzProspect
       && typeof userContent === "string"
@@ -20238,7 +20243,7 @@ async function processOne(queueId: string) {
           text: description
             ? `Recebi a foto. Estou vendo: ${description.trim()}`
             : "Recebi a foto e salvei como a mídia mais recente.",
-          buttons: singlePhotoActionButtons(),
+          buttons: generalSpecialistPhotoButtons(),
         });
         await doneQueue(row.id);
         return {
@@ -20453,8 +20458,8 @@ async function processOne(queueId: string) {
                   ? `Recebi a foto. Estou vendo: ${description.trim()}`
                   : "Recebi a foto e salvei como a mídia mais recente.",
                 buttons: repeated
-                  ? vehicleSingleRepeatedPhotoButtons()
-                  : singlePhotoActionButtons(),
+                  ? vehicleSpecialistPhotoButtons()
+                  : generalSpecialistPhotoButtons(),
               });
             }
             const awaitingMore = !queueBatch.shouldOffer;
@@ -21946,7 +21951,7 @@ Regras:
         }, agentState);
         verticalChoiceResolution = {
           text: "Certo. Vou tratar esta foto como produto geral.",
-          buttons: singlePhotoActionButtons(),
+          buttons: generalSpecialistPhotoButtons(),
         };
       } else {
         await saveAgentState(sb, convStateIdentity, {
@@ -21963,7 +21968,7 @@ Regras:
         }, agentState);
         verticalChoiceResolution = {
           text: "Certo. Vou tratar esta foto como veículo.",
-          buttons: vehicleSingleRepeatedPhotoButtons(),
+          buttons: vehicleSpecialistPhotoButtons(),
         };
       }
     } else if (

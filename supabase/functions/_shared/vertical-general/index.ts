@@ -2,6 +2,7 @@ import type {
   InboundVertical,
   VerticalNamespacedState,
 } from "../vertical-router.ts";
+import { singlePhotoActionButtons } from "../single-photo-flow.ts";
 
 export const GENERAL_VERTICAL: InboundVertical = "geral";
 
@@ -25,4 +26,12 @@ export function generalSpecialistPrompt(): string {
     "Ferramentas próprias: análise, edição de cenário, post, carrossel premium e anúncio de produto.",
     "Nunca leia FIPE, anúncio, lote ou carrossel da vertical de veículos.",
   ].join("\n");
+}
+
+export function generalSpecialistAllowsTool(toolName: string): boolean {
+  return toolName !== "consultar_fipe";
+}
+
+export function generalSpecialistPhotoButtons() {
+  return singlePhotoActionButtons();
 }
