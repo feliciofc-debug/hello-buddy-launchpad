@@ -32,11 +32,15 @@ Deno.test("escolher B libera publicar/agendar e mantém B", () => {
     selectSocialVariantScripts(variants, selected),
     "Texto da opção B",
   );
-  assertEquals(socialApprovalButtons(selected), ["publish", "schedule"]);
+  assertEquals(socialApprovalButtons(selected), [
+    "publish",
+    "schedule",
+    "cancel",
+  ]);
 });
 
 Deno.test("Story escolhido oferece somente publicar agora", () => {
-  assertEquals(socialApprovalButtons("C", true), ["publish"]);
+  assertEquals(socialApprovalButtons("C", true), ["publish", "cancel"]);
 });
 
 Deno.test("carrossel recebe botões A/B/C e depois ações de publicar ou agendar", () => {
@@ -64,8 +68,9 @@ Deno.test("carrossel recebe botões A/B/C e depois ações de publicar ou agenda
   assertEquals(
     socialInteractiveButtonsFromResult(selectedB)?.buttons,
     [
-      { id: `social_publish:${token}`, title: "Publicar agora" },
+      { id: `social_publish:${token}`, title: "Publicar" },
       { id: `social_schedule:${token}`, title: "Agendar" },
+      { id: `social_cancel:${token}`, title: "Cancelar" },
     ],
   );
 });

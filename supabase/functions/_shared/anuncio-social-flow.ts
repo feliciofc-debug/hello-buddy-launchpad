@@ -143,7 +143,7 @@ export function anuncioPostFormatButtons(schedule = false) {
   return {
     body: schedule
       ? "Agendamento pelo WhatsApp está disponível apenas para Feed."
-      : "Em qual formato?",
+      : "Selecione uma opção.",
     buttons: schedule ? [{ id: "anuncio_post:format:feed", title: "Feed" }] : [
       { id: "anuncio_post:format:feed", title: "Feed" },
       { id: "anuncio_post:format:story", title: "Story" },

@@ -277,6 +277,11 @@ import {
   selectSocialVariantScripts,
   socialInteractiveButtonsFromResult,
 } from "../_shared/social-approval-flow.ts";
+import { exactSocialMedia } from "../_shared/social-media-snapshot.ts";
+import {
+  singlePhotoActionButtons,
+  singlePhotoFormatButtons,
+} from "../_shared/single-photo-flow.ts";
 import {
   canUseAmbiguousPendingReply,
   classifyExplicitPendingPostCommand,
@@ -2677,6 +2682,12 @@ type AgentConvState = {
   decisao?: { valor?: string; at?: string };
   site_link_enviado?: boolean;
   last_media_interaction?: { media_id: string; at: string };
+  pending_single_photo?: {
+    media_id: string;
+    stage: "actions" | "networks" | "format";
+    networks?: AnuncioPostNetwork[];
+    created_at: string;
+  } | null;
   pending_image_composition?: { media_ids: string[]; at: string } | null;
   pending_carousel?: PendingCarouselState | null;
   pending_carrossel_veiculo?: PendingVehicleCarousel | null;
@@ -5848,6 +5859,7 @@ type PendingSocialPost = {
   tiktokBrandedContent?: boolean;
   tiktokConsentedAt?: string;
   pendingTikTokScheduledAt?: string;
+  previewedAt?: string;
 };
 const PENDING_POSTS = new Map<string, PendingSocialPost>();
 function pendingCleanup() {
@@ -5875,10 +5887,11 @@ type PendingPostMarkerState = {
   tiktokBrandedContent?: boolean;
   tiktokConsentedAt?: string;
   pendingTikTokScheduledAt?: string;
+  previewedAt?: string;
 };
 
 function encodePendingPostState(state?: PendingPostMarkerState): string {
-  if (!state || (!state.variantes && !state.variantSelecionada && state.incluirCtaWhatsapp === undefined && !state.tom && !state.briefing && !state.tiktokPrivacyLevel && !state.tiktokPrivacyOptions?.length && !state.pendingTikTokScheduledAt)) return "";
+  if (!state || (!state.variantes && !state.variantSelecionada && state.incluirCtaWhatsapp === undefined && !state.tom && !state.briefing && !state.tiktokPrivacyLevel && !state.tiktokPrivacyOptions?.length && !state.pendingTikTokScheduledAt && !state.previewedAt)) return "";
   try {
     const json = JSON.stringify(state);
     const bytes = new TextEncoder().encode(json);
@@ -5967,6 +5980,7 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
       tiktokBrandedContent: pending.tiktokBrandedContent,
       tiktokConsentedAt: pending.tiktokConsentedAt,
       pendingTikTokScheduledAt: pending.pendingTikTokScheduledAt,
+      previewedAt: pending.previewedAt,
     }),
     updated_at: new Date().toISOString(),
   }));
@@ -6216,6 +6230,22 @@ async function deliverAnuncioCaptionChoices(
   }
 }
 
+async function sendAnuncioExactPreviews(
+  tokens: string[],
+  ctx: { userId: string; fromNumber: string },
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  for (const token of tokens) {
+    const pending = PENDING_POSTS.get(token) ??
+      await loadPendingSocialPost(token, ctx.userId);
+    if (!pending) {
+      return { ok: false, message: "Não encontrei a mídia exata deste preview. Nada foi publicado." };
+    }
+    const sent = await sendExactPendingSocialPreview(token, pending, ctx);
+    if (!sent.ok) return sent;
+  }
+  return { ok: true };
+}
+
 async function replaceAnuncioPendingCaptions(
   tokens: string[],
   captions: PostVariantes,
@@ -6238,6 +6268,7 @@ async function replaceAnuncioPendingCaptions(
       variantes,
       scripts,
       variantSelecionada: selected,
+      previewedAt: undefined,
     };
     const updateErrors = await Promise.all((current.queueRows ?? []).map(
       async (row) => {
@@ -6354,7 +6385,97 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
     tiktokBrandedContent: state?.tiktokBrandedContent,
     tiktokConsentedAt: state?.tiktokConsentedAt,
     pendingTikTokScheduledAt: state?.pendingTikTokScheduledAt,
+    previewedAt: state?.previewedAt,
   };
+}
+
+function pendingSocialCaption(pending: PendingSocialPost): string {
+  return Object.values(pending.scripts ?? {})
+    .find((value): value is string => typeof value === "string" && !!value.trim())
+    ?.trim() || "";
+}
+
+function pendingSocialPreviewSummary(pending: PendingSocialPost): string {
+  const networks = pending.redes.map((network) =>
+    network === "facebook" ? "Facebook"
+      : network === "instagram" ? "Instagram"
+      : network === "linkedin" ? "LinkedIn"
+      : network === "tiktok" ? "TikTok"
+      : network
+  ).join(" + ");
+  const format = pending.formato === "story" ? "Story"
+    : pending.formato === "reels" ? "Reels"
+    : "Feed";
+  const caption = pendingSocialCaption(pending);
+  return `Prévia exata da publicação\nRedes: ${networks || "não informadas"}\nFormato: ${format}${caption ? `\n\nLegenda:\n${caption}` : ""}`;
+}
+
+async function sendExactPendingSocialPreview(
+  token: string,
+  pending: PendingSocialPost,
+  ctx: { userId: string; fromNumber: string },
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const media = exactSocialMedia(pending);
+  if (!media.ok) {
+    return { ok: false, message: "Não encontrei a mídia exata deste preview. Nada foi publicado. Gere a prévia novamente." };
+  }
+  try {
+    for (let index = 0; index < media.urls.length; index++) {
+      await sendWhatsApp(
+        ctx.userId,
+        ctx.fromNumber,
+        index === 0 ? pendingSocialPreviewSummary(pending) : `Mídia ${index + 1} de ${media.urls.length}`,
+        media.urls[index],
+        undefined,
+        undefined,
+        { alreadyLogged: false },
+      );
+    }
+    pending.previewedAt = new Date().toISOString();
+    PENDING_POSTS.set(token, pending);
+    await updatePendingSocialPostMarker(token, pending);
+    console.log(`[publicar][preview] token=${token} urls=${media.urls.length} redes=${pending.redes.join("+")} formato=${pending.formato || "feed"} fluxo=${media.flow}`);
+    return { ok: true };
+  } catch (error) {
+    console.error("[publicar][preview_failed]", { token, error: (error as Error).message });
+    return { ok: false, message: "Não consegui enviar a prévia exata da mídia. Nada foi publicado; tente novamente." };
+  }
+}
+
+async function discardOldMediaPublicationFlows(
+  conversation: ConversationStateIdentity,
+  current: AgentConvState,
+): Promise<AgentConvState> {
+  const activeVehicleCollection = current.pending_carrossel_veiculo?.stage === "collecting";
+  const patch: AgentConvState = {
+    pending_anuncio_post: null,
+    pending_anuncio_styles: null,
+    pending_carousel: null,
+    pending_vehicle_photo_batch: null,
+    pending_single_photo: null,
+    pending_creative_media_ambiguity: null,
+    ...(!activeVehicleCollection ? { pending_carrossel_veiculo: null } : {}),
+  };
+  const tokens = [
+    current.pending_anuncio_post?.token,
+    ...(current.pending_anuncio_post?.extra_tokens ?? []),
+    current.pending_carousel?.token,
+    current.pending_carrossel_veiculo?.token,
+  ].filter((token): token is string => !!token);
+  for (const token of tokens) PENDING_POSTS.delete(token);
+  const { data, error } = await sb.from("social_posts_queue")
+    .update({ status: "cancelado", error_message: "cancelado_por_nova_midia", updated_at: new Date().toISOString() })
+    .eq("user_id", conversation.userId)
+    .eq("solicitante_telefone", conversation.contactNumber)
+    .eq("status", "aguardando_confirmacao")
+    .select("approval_token");
+  if (error) throw new Error(`falha_ao_isolar_nova_midia:${error.message}`);
+  for (const row of data ?? []) {
+    if (row.approval_token) PENDING_POSTS.delete(String(row.approval_token));
+  }
+  const saved = await saveAgentState(sb, conversation, patch, current);
+  if (!saved) throw new Error("falha_ao_limpar_fluxos_antigos");
+  return { ...current, ...patch };
 }
 
 async function updatePersistedSocialPostRows(
@@ -6401,6 +6522,7 @@ async function updatePersistedSocialPostRows(
                 tiktokBrandedContent: pending.tiktokBrandedContent,
                 tiktokConsentedAt: pending.tiktokConsentedAt,
                 pendingTikTokScheduledAt: pending.pendingTikTokScheduledAt,
+                previewedAt: pending.previewedAt,
               },
             )
             : (result.resposta?.error || result.resposta?.message || `falha_${result.status || "sem_status"}`),
@@ -7424,6 +7546,7 @@ async function updatePendingSocialPostMarker(token: string, pending: PendingSoci
     tiktokBrandedContent: pending.tiktokBrandedContent,
     tiktokConsentedAt: pending.tiktokConsentedAt,
     pendingTikTokScheduledAt: pending.pendingTikTokScheduledAt,
+    previewedAt: pending.previewedAt,
   });
   const rowIds = pending.queueRows?.map((r) => r.id).filter(Boolean) ?? [];
   if (rowIds.length > 0) {
@@ -7922,22 +8045,20 @@ async function toolConfirmarPostagemRedes(
   if (!canRunSocialPostAction(p.variantSelecionada)) {
     return variantSelectionRequiredResult(token, p);
   }
-
-  if (p.midiaTipo === "carrossel") {
-    const carouselState = ctx.agentState?.pending_carousel;
-    if (
-      carouselState?.token !== token
-      || carouselState.media_id !== p.produto?.id
-      || !Array.isArray(carouselState.image_urls)
-      || carouselState.image_urls.length < 2
-    ) {
-      return JSON.stringify({
-        erro: "snapshot_carrossel_indisponivel",
-        mensagem: "Não encontrei o snapshot exato dos cards que você aprovou. Não publiquei nada; gere a prévia novamente.",
-      });
-    }
-    p.produto.image_urls = [...carouselState.image_urls];
+  if (!p.previewedAt) {
+    return JSON.stringify({
+      erro: "preview_obrigatorio_ausente",
+      mensagem: "Não consegui confirmar que a mídia exata foi mostrada neste preview. Nada foi publicado; escolha a legenda novamente para rever a mídia.",
+    });
   }
+  const exactMedia = exactSocialMedia(p);
+  if (!exactMedia.ok) {
+    return JSON.stringify({
+      erro: exactMedia.error,
+      mensagem: "Não encontrei a mídia exata deste preview. Nada foi publicado. Gere a prévia novamente.",
+    });
+  }
+  console.log(`[publicar] token=${token} urls=${JSON.stringify(exactMedia.urls)} redes=${p.redes.join("+")} formato=${p.formato || "feed"} fluxo=${exactMedia.flow}`);
 
   if (p.redes.includes("tiktok")) {
     if (p.produto?.midia_tipo !== "video" && p.midiaTipo !== "video") {
@@ -8073,6 +8194,13 @@ async function toolAgendarPostPendente(
   if (!canRunSocialPostAction(pending.variantSelecionada)) {
     return variantSelectionRequiredResult(token, pending);
   }
+  if (!pending.previewedAt) {
+    return JSON.stringify({
+      ok: false,
+      erro: "preview_obrigatorio_ausente",
+      mensagem: "Não consegui confirmar que a mídia exata foi mostrada neste preview. Nada foi agendado; escolha a legenda novamente para rever a mídia.",
+    });
+  }
   if (pending.formato === "story") {
     return JSON.stringify({
       ok: false,
@@ -8152,15 +8280,16 @@ async function toolAgendarPostPendente(
     });
   }
 
-  let imageUrls = Array.isArray(pending.produto?.image_urls)
-    ? pending.produto.image_urls.filter((url: unknown): url is string => typeof url === "string" && !!url.trim())
-    : [];
-  if (pending.midiaTipo === "carrossel" && imageUrls.length < 2 && pending.produto?.id) {
-    imageUrls = await loadCarouselImageUrls(ctx.userId, pending.produto.id);
+  const exactMedia = exactSocialMedia(pending);
+  if (!exactMedia.ok) {
+    return JSON.stringify({
+      ok: false,
+      erro: exactMedia.error,
+      mensagem: "Não encontrei a mídia exata deste preview. Nada foi agendado. Gere a prévia novamente.",
+    });
   }
-  if (pending.midiaTipo === "carrossel" && imageUrls.length < 2) {
-    return JSON.stringify({ ok: false, erro: "carrossel_incompleto", mensagem: "Não encontrei todos os cards do carrossel; gere a prévia novamente." });
-  }
+  const imageUrls = exactMedia.mediaType === "carrossel" ? exactMedia.urls : [];
+  console.log(`[publicar] token=${token} urls=${JSON.stringify(exactMedia.urls)} redes=${scheduledNetworks.join("+")} formato=${pending.formato || "feed"} fluxo=${exactMedia.flow}:agendamento`);
 
   const rowIds = (pending.queueRows ?? [])
     .filter((row) => scheduledNetworks.includes(row.platform))
@@ -8683,6 +8812,7 @@ async function toolRevisarPostPendente(
     scripts,
     variantes,
     variantSelecionada: undefined,
+    previewedAt: undefined,
     incluirCtaWhatsapp: incluirCta,
   };
   PENDING_POSTS.set(token, atualizado);
@@ -8723,7 +8853,7 @@ async function toolEscolherVariantePost(
     Object.entries(p.variantes).map(([r, v]) => [r, selectSocialVariantScripts(v, opcao)])
   );
 
-  const atualizado: PendingSocialPost = { ...p, scripts, variantSelecionada: opcao };
+  const atualizado: PendingSocialPost = { ...p, scripts, variantSelecionada: opcao, previewedAt: undefined };
   const marker = pendingPostMarker(token, atualizado.produto?.nome, atualizado.formato || "feed", atualizado.midiaTipo || atualizado.produto?.midia_tipo || "foto", {
     variantes: atualizado.variantes,
     variantSelecionada: atualizado.variantSelecionada,
@@ -15052,6 +15182,7 @@ async function callGemini(
         )
       ? toolCtx.agentState!.pending_vehicle_photo_batch!
       : null;
+    const pendingSinglePhoto = remetenteEhDono ? toolCtx.agentState?.pending_single_photo : null;
     const pendingVideoSetup = remetenteEhDono ? toolCtx.agentState?.pending_video_setup : null;
     const pendingAnuncioCliente = remetenteEhDono
       ? toolCtx.agentState?.pending_anuncio_cliente
@@ -15109,7 +15240,10 @@ async function callGemini(
     const vehiclePhotoBatchInteractiveId = userContent.match(
       /<<INTERACTIVE_ID:(vehicle_photo_batch:[^>]+)>>/i,
     )?.[1]?.toLowerCase() || "";
-    const socialActionInteractive = socialInteractiveId.match(/^social_(publish|publish_confirm|schedule):([a-f0-9]{8})$/i);
+    const singlePhotoInteractiveId = userContent.match(
+      /<<INTERACTIVE_ID:(single_photo:[^>]+)>>/i,
+    )?.[1]?.toLowerCase() || "";
+    const socialActionInteractive = socialInteractiveId.match(/^social_(publish|publish_confirm|schedule|cancel):([a-f0-9]{8})$/i);
     const socialVariantInteractive = socialInteractiveId.match(/^social_variant:([ABC]):([a-f0-9]{8})$/i);
     const previousHistoryMessage = history.at(-1);
     const previousTurnAskedVideoTheme = previousHistoryMessage?.role === "assistant"
@@ -15239,6 +15373,67 @@ async function callGemini(
       await persistVehiclePhotoBatch(toolCtx, null);
       return { text: "Certo. As fotos ficaram salvas na biblioteca." };
     }
+    if (remetenteEhDono && pendingSinglePhoto && singlePhotoInteractiveId === "single_photo:ad") {
+      if (toolCtx.convId) {
+        await saveAgentState(sb, { id: toolCtx.convId, userId: toolCtx.userId, contactNumber: toolCtx.fromNumber }, { pending_single_photo: null }, toolCtx.agentState ?? {});
+        if (toolCtx.agentState) toolCtx.agentState.pending_single_photo = null;
+      }
+      return { text: "Me mande em uma mensagem os dados reais do anúncio: título, preço, itens e condições. Vou usar esta foto." };
+    }
+    if (remetenteEhDono && pendingSinglePhoto && singlePhotoInteractiveId === "single_photo:edit") {
+      if (toolCtx.convId) {
+        await saveAgentState(sb, { id: toolCtx.convId, userId: toolCtx.userId, contactNumber: toolCtx.fromNumber }, { pending_single_photo: null }, toolCtx.agentState ?? {});
+        if (toolCtx.agentState) toolCtx.agentState.pending_single_photo = null;
+      }
+      return { text: "O que você quer mudar nesta foto? Diga somente as alterações desejadas." };
+    }
+    if (remetenteEhDono && pendingSinglePhoto && singlePhotoInteractiveId === "single_photo:post") {
+      const connected = await connectedAnuncioNetworks(toolCtx.userId);
+      if (!connected.length) return { text: "Não encontrei Facebook nem Instagram conectados nessa conta." };
+      const next = { ...pendingSinglePhoto, stage: "networks" as const, created_at: new Date().toISOString() };
+      if (toolCtx.convId) {
+        await saveAgentState(sb, { id: toolCtx.convId, userId: toolCtx.userId, contactNumber: toolCtx.fromNumber }, { pending_single_photo: next }, toolCtx.agentState ?? {});
+        if (toolCtx.agentState) toolCtx.agentState.pending_single_photo = next;
+      }
+      const networkButtons = anuncioPostNetworkButtons(connected);
+      return {
+        text: "Em quais redes?",
+        interactiveButtons: {
+          ...networkButtons,
+          buttons: networkButtons.buttons.map((button) => ({
+            ...button,
+            id: button.id.replace("anuncio_post:networks:", "single_photo:networks:"),
+          })),
+        },
+      };
+    }
+    const singlePhotoNetworks = singlePhotoInteractiveId.match(/^single_photo:networks:(both|instagram|facebook)$/)?.[1];
+    if (remetenteEhDono && pendingSinglePhoto?.stage === "networks" && singlePhotoNetworks) {
+      const networks: AnuncioPostNetwork[] = singlePhotoNetworks === "both"
+        ? ["facebook", "instagram"]
+        : [singlePhotoNetworks as AnuncioPostNetwork];
+      const next = { ...pendingSinglePhoto, stage: "format" as const, networks, created_at: new Date().toISOString() };
+      if (toolCtx.convId) {
+        await saveAgentState(sb, { id: toolCtx.convId, userId: toolCtx.userId, contactNumber: toolCtx.fromNumber }, { pending_single_photo: next }, toolCtx.agentState ?? {});
+        if (toolCtx.agentState) toolCtx.agentState.pending_single_photo = next;
+      }
+      return { text: "Em qual formato?", interactiveButtons: singlePhotoFormatButtons() };
+    }
+    const singlePhotoFormat = singlePhotoInteractiveId.match(/^single_photo:format:(feed|story)$/)?.[1] as "feed" | "story" | undefined;
+    if (remetenteEhDono && pendingSinglePhoto?.stage === "format" && pendingSinglePhoto.networks?.length && singlePhotoFormat) {
+      const raw = await toolPostarMidiaBiblioteca({
+        midia_id: pendingSinglePhoto.media_id,
+        pedido_original: `esta foto no ${singlePhotoFormat}`,
+        redes: pendingSinglePhoto.networks,
+        formato: singlePhotoFormat,
+        tom: "beneficio",
+      }, toolCtx);
+      if (toolCtx.convId) {
+        await saveAgentState(sb, { id: toolCtx.convId, userId: toolCtx.userId, contactNumber: toolCtx.fromNumber }, { pending_single_photo: null }, toolCtx.agentState ?? {});
+        if (toolCtx.agentState) toolCtx.agentState.pending_single_photo = null;
+      }
+      return { text: formatSocialPostToolResult(raw), interactiveButtons: interactiveButtonsFromSocialResult(raw) };
+    }
     if (
       remetenteEhDono &&
       pendingVehicleCarousel &&
@@ -15314,6 +15509,17 @@ async function callGemini(
         created_at: new Date().toISOString(),
       };
       await persistVehicleCarousel(toolCtx, next);
+      const exactPending = PENDING_POSTS.get(pendingVehicleCarousel.token) ??
+        await loadPendingSocialPost(pendingVehicleCarousel.token, toolCtx.userId);
+      if (!exactPending) {
+        return { text: "Não encontrei a mídia exata deste preview. Nada foi publicado." };
+      }
+      const preview = await sendExactPendingSocialPreview(
+        pendingVehicleCarousel.token,
+        exactPending,
+        toolCtx,
+      );
+      if (!preview.ok) return { text: preview.message };
       return {
         text:
           "Me mande em uma mensagem os dados que tiver: modelo, ano, km, câmbio, preço, condições e contato. O que não informar não aparece.",
@@ -16571,6 +16777,8 @@ async function callGemini(
           last_anuncio: lastAnuncio,
           pending_anuncio_post: next,
         });
+        const preview = await sendAnuncioExactPreviews(anuncioPostTokens, toolCtx);
+        if (!preview.ok) return { text: preview.message };
         return {
           text: anuncioPostSummary(lastAnuncio, next, "personalizada"),
           interactiveButtons: anuncioFinalApprovalButtons(anuncioPostTokens[0]),
@@ -16682,6 +16890,8 @@ async function callGemini(
           last_anuncio: lastAnuncio,
           pending_anuncio_post: next,
         });
+        const preview = await sendAnuncioExactPreviews(anuncioPostTokens, toolCtx);
+        if (!preview.ok) return { text: preview.message };
         return {
           text: anuncioPostSummary(
             lastAnuncio,
@@ -16738,6 +16948,8 @@ async function callGemini(
         last_anuncio: lastAnuncio,
         pending_anuncio_post: next,
       });
+      const preview = await sendAnuncioExactPreviews(anuncioPostTokens, toolCtx);
+      if (!preview.ok) return { text: preview.message };
       return {
         text: anuncioPostSummary(lastAnuncio, next, option),
         interactiveButtons: anuncioFinalApprovalButtons(anuncioPostTokens[0]),
@@ -16897,6 +17109,11 @@ async function callGemini(
         token,
         opcao: socialVariantInteractive[1],
       }, toolCtx);
+      const selectedPending = PENDING_POSTS.get(token) ??
+        await loadPendingSocialPost(token, toolCtx.userId);
+      if (!selectedPending) return { text: "Não encontrei a mídia exata deste preview. Nada foi publicado." };
+      const preview = await sendExactPendingSocialPreview(token, selectedPending, toolCtx);
+      if (!preview.ok) return { text: preview.message };
       return {
         text: `${pending ? `Vou usar ${describeLoadedPendingSocialPost(pending)}.\n\n` : ""}${formatSocialPostToolResult(result)}`,
         interactiveButtons: interactiveButtonsFromSocialResult(result),
@@ -16909,6 +17126,10 @@ async function callGemini(
         interactiveList: interactiveListFromSocialResult(result),
         interactiveButtons: interactiveButtonsFromSocialResult(result),
       };
+    }
+    if (remetenteEhDono && socialActionInteractive?.[1]?.toLowerCase() === "cancel") {
+      const result = await toolConfirmarPostagemRedes({ token: socialActionInteractive[2], cancelar: true }, toolCtx);
+      return { text: formatSocialPostToolResult(result) };
     }
     if (remetenteEhDono && socialActionInteractive?.[1]?.toLowerCase() === "publish") {
       const token = socialActionInteractive[2].toLowerCase();
@@ -17326,6 +17547,11 @@ async function callGemini(
     if (variantChoice) {
       console.log("[pietro][forced_social_variant_choice]", { token: recentPendingSocialToken, opcao: variantChoice });
       const variantResult = await toolEscolherVariantePost({ token: recentPendingSocialToken!, opcao: variantChoice }, toolCtx);
+      const selectedPending = PENDING_POSTS.get(recentPendingSocialToken!) ??
+        await loadPendingSocialPost(recentPendingSocialToken!, toolCtx.userId);
+      if (!selectedPending) return { text: "Não encontrei a mídia exata deste preview. Nada foi publicado." };
+      const preview = await sendExactPendingSocialPreview(recentPendingSocialToken!, selectedPending, toolCtx);
+      if (!preview.ok) return { text: preview.message };
       return {
         text: `${latestPendingNotice}${formatSocialPostToolResult(variantResult)}`,
         interactiveButtons: interactiveButtonsFromSocialResult(variantResult),
@@ -19766,6 +19992,19 @@ async function processOne(queueId: string) {
       if (incomingPhotos[0]) {
         await registerVehiclePhotoQueueEvent(row.id, incomingPhotos[0]);
       }
+      if (fromIsOwner && incomingPhotos.length > 0) {
+        const latestIncoming = incomingPhotos.at(-1)!;
+        const hasNewPhoto = incomingPhotos.some((photo) => !photo.reused);
+        const activeVehicleCollection = freshAgentState.pending_carrossel_veiculo?.stage === "collecting";
+        if (hasNewPhoto && !activeVehicleCollection) {
+          const isolated = await discardOldMediaPublicationFlows(stateConversation, freshAgentState);
+          Object.assign(freshAgentState, isolated);
+        }
+        const interaction = { media_id: latestIncoming.id, at: new Date().toISOString() };
+        const saved = await saveAgentState(sb, stateConversation, { last_media_interaction: interaction }, freshAgentState);
+        if (!saved) throw new Error("ultima_midia_nao_persistida");
+        freshAgentState.last_media_interaction = interaction;
+      }
       const vehicleFlowCtx = {
         userId,
         fromNumber: row.from_number,
@@ -19940,16 +20179,33 @@ async function processOne(queueId: string) {
               plannedBatch.currentPhotoIsLatest
             ) {
               const repeated = (batch.reused_photo_ids?.length ?? 0) > 0;
+              let description = "";
+              if (!repeated) {
+                try {
+                  description = await descreverFotosSalvas(freshLibraryMedia, salvos, contexto, userId);
+                } catch (error) {
+                  console.warn("[processor][single_photo_vision_failed]", (error as Error).message);
+                }
+                const singlePhoto = {
+                  media_id: batch.photos[0].id,
+                  stage: "actions" as const,
+                  created_at: new Date().toISOString(),
+                };
+                await saveAgentState(sb, stateConversation, { pending_single_photo: singlePhoto }, refreshedState);
+                refreshedState.pending_single_photo = singlePhoto;
+              }
               await sendVehicleFlowReply({
                 conversationId: conv.id,
                 userId,
                 to: row.from_number,
                 text: repeated
                   ? SINGLE_REPEATED_VEHICLE_PHOTO_MESSAGE
-                  : "Recebi a foto.",
+                  : description
+                  ? `Recebi a foto. Estou vendo: ${description.trim()}`
+                  : "Recebi a foto e salvei como a mídia mais recente.",
                 buttons: repeated
                   ? vehicleSingleRepeatedPhotoButtons()
-                  : undefined,
+                  : singlePhotoActionButtons(),
               });
             }
             const awaitingMore = !queueBatch.shouldOffer;
