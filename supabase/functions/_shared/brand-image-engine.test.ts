@@ -1,8 +1,12 @@
-import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
 import {
   applyBrandLogo,
   buildBrandGenerationGuidance,
+  calculateFixedTopLeftLogoPlacement,
   calculateLogoPlacement,
   detectLogoCardBackground,
   featherLogoCardEdges,
@@ -11,7 +15,11 @@ import {
   shouldApplyBranding,
 } from "./brand-image-engine.ts";
 
-function pixel(image: Image, x: number, y: number): [number, number, number, number] {
+function pixel(
+  image: Image,
+  x: number,
+  y: number,
+): [number, number, number, number] {
   const offset = (y * image.width + x) * 4;
   return [
     image.bitmap[offset],
@@ -32,6 +40,14 @@ Deno.test("posição e tamanho da logo se adaptam a proporções diferentes", ()
   assert(story.width >= 237 && story.width <= 281);
   assert(landscape.x >= 64 && landscape.x <= 72);
   assert(landscape.width >= 352 && landscape.width <= 400);
+});
+
+Deno.test("sobreposição explícita fixa a logo em 22% com margem de 4%", () => {
+  const placement = calculateFixedTopLeftLogoPlacement(1000, 800, 500, 100);
+  assertEquals(placement.corner, "top-left");
+  assertEquals(placement.x, 40);
+  assertEquals(placement.y, 40);
+  assertEquals(placement.width, 220);
 });
 
 Deno.test("remove fundo sólido conectado às bordas sem apagar a marca", () => {
@@ -96,7 +112,11 @@ Deno.test("detecta cartão e applyBrandLogo preserva seu fundo", async () => {
   logo.drawBox(30, 28, 32, 34, 0xf0961eff);
   logo.drawBox(76, 30, 125, 9, 0xffffffff);
   logo.drawBox(76, 49, 100, 7, 0xffffffff);
-  const detection = detectLogoCardBackground(logo.bitmap, logo.width, logo.height);
+  const detection = detectLogoCardBackground(
+    logo.bitmap,
+    logo.width,
+    logo.height,
+  );
   assertEquals(detection.detected, true);
   assertEquals(detection.hex, "#181c24");
 
@@ -183,6 +203,52 @@ Deno.test("não cria moldura em área escura e lisa", async () => {
   assertEquals(result.vignetteUsed, false);
 });
 
+Deno.test("modo fixo preserva pixels fora da logo e escolhe variante pela área", async () => {
+  const transparentLogo = async (color: number) => {
+    const image = new Image(200, 80);
+    image.fill(0x00000000);
+    image.drawBox(20, 20, 160, 40, color);
+    return new Uint8Array(await image.encode());
+  };
+  const defaultLogo = await transparentLogo(0xff0000ff);
+  const blackLogo = await transparentLogo(0x151517ff);
+  const whiteLogo = await transparentLogo(0xffffffff);
+
+  for (
+    const [background, expected] of [
+      [0xeeeeeeff, [21, 21, 23]],
+      [0x151820ff, [255, 255, 255]],
+    ] as const
+  ) {
+    const base = new Image(600, 500);
+    base.fill(background);
+    const result = await applyBrandLogo(
+      new Uint8Array(await base.encode()),
+      defaultLogo,
+      {
+        fixedTopLeft: true,
+        logoForLightBackgroundBytes: blackLogo,
+        logoForDarkBackgroundBytes: whiteLogo,
+      },
+    );
+    assertEquals(result.placement.corner, "top-left");
+    assertEquals(result.panelUsed, false);
+    assertEquals(result.vignetteUsed, false);
+    const output = await Image.decode(result.bytes);
+    assertEquals(pixel(output, 500, 400), pixel(base, 500, 400));
+    assertEquals(
+      pixel(output, result.placement.x + 2, result.placement.y + 2),
+      pixel(base, result.placement.x + 2, result.placement.y + 2),
+    );
+    const logoCenter = pixel(
+      output,
+      result.placement.x + Math.floor(result.placement.width / 2),
+      result.placement.y + Math.floor(result.placement.height / 2),
+    );
+    assertEquals(logoCenter.slice(0, 3), [...expected]);
+  }
+});
+
 Deno.test("story mantém a logo fora da faixa inferior de dezoito por cento", () => {
   const image = new Image(1080, 1920);
   image.fill(0xeeeeeeff);
@@ -195,7 +261,9 @@ Deno.test("story mantém a logo fora da faixa inferior de dezoito por cento", ()
     100,
     "story",
   );
-  assert(decision.placement.y + decision.placement.height <= image.height * 0.82);
+  assert(
+    decision.placement.y + decision.placement.height <= image.height * 0.82,
+  );
 });
 
 Deno.test("salvaguardas mantêm original quando remoção é menor que 3% ou maior que 92%", () => {
@@ -248,9 +316,18 @@ Deno.test("aplica logo depois do enquadramento final de feed e story", async () 
 });
 
 Deno.test("sem logo e sem cores não aplica marca", () => {
-  assertEquals(shouldApplyBranding({ useLogo: false, hasLogo: false, colors: [] }), false);
-  assertEquals(shouldApplyBranding({ useLogo: true, hasLogo: true, colors: [] }), true);
-  const guidance = buildBrandGenerationGuidance([], { hasLogo: true, hasBasePhoto: false });
+  assertEquals(
+    shouldApplyBranding({ useLogo: false, hasLogo: false, colors: [] }),
+    false,
+  );
+  assertEquals(
+    shouldApplyBranding({ useLogo: true, hasLogo: true, colors: [] }),
+    true,
+  );
+  const guidance = buildBrandGenerationGuidance([], {
+    hasLogo: true,
+    hasBasePhoto: false,
+  });
   assert(guidance.includes("ESCURA e LISA"));
   assert(guidance.includes("sem luzes, janelas"));
 });

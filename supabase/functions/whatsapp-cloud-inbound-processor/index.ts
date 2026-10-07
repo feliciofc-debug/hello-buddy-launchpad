@@ -110,6 +110,7 @@ import {
   buildBrandGenerationGuidance,
 } from "../_shared/brand-image-engine.ts";
 import {
+  dataUrlToImageBytes,
   loadTenantBrandAssets,
 } from "../_shared/brand-assets.ts";
 import {
@@ -290,6 +291,7 @@ import {
   scopedVerticalState,
   isVerticalStateKey,
   verticalChoiceButtons,
+  verticalAdDetailsPrompt,
   verticalVisionPrompt,
   withDemoModeLabel,
   type InboundVertical,
@@ -325,16 +327,20 @@ import {
 } from "../_shared/linkedin-approval.ts";
 import { buildSocialQueueNetworkRows } from "../_shared/social-queue.ts";
 import {
-  catalogImageUrl,
   environmentLikelihood,
   IMAGE_COMPOSITION_ESTIMATED_COST_USD,
   IMAGE_COMPOSITION_MODEL,
+  isExplicitTwoImageCompositionRequest,
   isImageCompositionIntent,
   isProductAdCreativeRequest,
   requestedCompositionResolution,
-  selectCatalogProduct,
   type ImageCompositionResolution,
 } from "../_shared/image-composition.ts";
+import {
+  logoPlacementMode,
+  logoRequestIncludesPublication,
+  LOGO_PRODUCT_SIMULATION_NOTICE,
+} from "../_shared/logo-placement-intent.ts";
 import {
   iniciarFluxoLegendaVideo,
   resolverVideoLegendado,
@@ -2053,6 +2059,137 @@ async function toolEditarImagem(
   }
 }
 
+async function toolApplyTenantLogoOverlay(
+  prompt: string,
+  ctx: {
+    userId: string;
+    fromNumber: string;
+    media?: MediaExtract[];
+    agentState?: AgentConvState;
+  },
+): Promise<string> {
+  if (!isOwner(ctx)) {
+    return JSON.stringify({ ok: false, erro: "acao_restrita_ao_responsavel" });
+  }
+  let sourceBytes: Uint8Array | null = null;
+  const current = (ctx.media || []).slice().reverse().find((item) =>
+    item.kind === "image"
+  );
+  if (current) {
+    sourceBytes = base64Decode(current.base64);
+  } else {
+    const interactionId = String(
+      ctx.agentState?.last_media_interaction?.media_id || "",
+    ).trim();
+    let query = sb.from("midias_whatsapp")
+      .select("id, midia_url, created_at")
+      .eq("user_id", ctx.userId)
+      .eq("telefone_origem", ctx.fromNumber)
+      .eq("tipo", "foto");
+    query = interactionId
+      ? query.eq("id", interactionId)
+      : query.gte(
+        "created_at",
+        new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+      ).order("created_at", { ascending: false }).limit(1);
+    const { data, error } = await query.maybeSingle();
+    if (error) {
+      return JSON.stringify({ ok: false, erro: "foto_recente_indisponivel" });
+    }
+    if (data?.midia_url) {
+      const response = await fetch(String(data.midia_url), {
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (response.ok) {
+        sourceBytes = new Uint8Array(await response.arrayBuffer());
+      }
+    }
+  }
+  if (!sourceBytes?.length) {
+    return JSON.stringify({ ok: false, erro: "sem_imagem" });
+  }
+
+  const assets = await loadTenantBrandAssets(sb, ctx.userId, {
+    includeLogo: true,
+  });
+  const defaultLogo = dataUrlToImageBytes(assets.logoDataUrl);
+  if (!defaultLogo) {
+    return JSON.stringify({ ok: false, erro: "sem_logo_cadastrada" });
+  }
+  const lightLogo = dataUrlToImageBytes(
+    assets.logoForLightBackgroundDataUrl,
+  );
+  const darkLogo = dataUrlToImageBytes(
+    assets.logoForDarkBackgroundDataUrl,
+  );
+  try {
+    const branded = await applyBrandLogo(sourceBytes, defaultLogo.bytes, {
+      fixedTopLeft: true,
+      logoForLightBackgroundBytes: lightLogo?.bytes,
+      logoForDarkBackgroundBytes: darkLogo?.bytes,
+    });
+    const imageFormat = imageUploadMetadata(branded.bytes, "image/png");
+    if (!imageFormat) {
+      return JSON.stringify({ ok: false, erro: "imagem_com_logo_invalida" });
+    }
+    const path =
+      `whatsapp-ai/${ctx.userId}/logo-overlay-${Date.now()}-${
+        crypto.randomUUID().slice(0, 8)
+      }.${imageFormat.extension}`;
+    const { error: uploadError } = await sb.storage.from("produtos").upload(
+      path,
+      branded.bytes,
+      { contentType: imageFormat.mime, upsert: false },
+    );
+    if (uploadError) {
+      return JSON.stringify({
+        ok: false,
+        erro: `upload_falhou:${uploadError.message}`,
+      });
+    }
+    const { data: publicData } = sb.storage.from("produtos").getPublicUrl(path);
+    if (!publicData?.publicUrl) {
+      return JSON.stringify({ ok: false, erro: "sem_url_publica" });
+    }
+    const { data: mediaRow, error: mediaError } = await sb
+      .from("midias_whatsapp")
+      .insert({
+        user_id: ctx.userId,
+        origem: "logo_overlay",
+        telefone_origem: ctx.fromNumber,
+        tipo: "foto",
+        midia_url: publicData.publicUrl,
+        mime_type: imageFormat.mime,
+        tamanho_bytes: branded.bytes.length,
+        contexto_original: prompt.slice(0, 1500),
+        status: "pendente",
+      })
+      .select("id")
+      .single();
+    if (mediaError || !mediaRow?.id) {
+      return JSON.stringify({
+        ok: false,
+        erro: `registro_midia_falhou:${
+          mediaError?.message || "id ausente"
+        }`,
+      });
+    }
+    return JSON.stringify({
+      ok: true,
+      image_url: publicData.publicUrl,
+      midia_id: mediaRow.id,
+      placement: branded.placement,
+      panel_used: branded.panelUsed,
+      vignette_used: branded.vignetteUsed,
+    });
+  } catch (error) {
+    return JSON.stringify({
+      ok: false,
+      erro: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 type CompositionSource = {
   id: string | null;
   url: string;
@@ -2120,28 +2257,6 @@ async function resolveCompositionSources(
     photos = [...recent, ...photos].filter(
       (photo, index, all) => all.findIndex((candidate) => candidate.id === photo.id) === index,
     ).slice(-2);
-  }
-
-  const { data: products, error: productError } = await sb
-    .from("produtos")
-    .select("id, nome, imagem_url, imagens")
-    .eq("user_id", userId)
-    .eq("ativo", true)
-    .limit(500);
-  if (productError) {
-    console.warn("[image_composition][catalog_lookup_failed]", productError.message);
-  }
-  const catalogProduct = selectCatalogProduct(requestText, products ?? []);
-  const catalogUrl = catalogProduct ? catalogImageUrl(catalogProduct) : null;
-
-  if (catalogProduct && catalogUrl && photos.length >= 1) {
-    const environment = [...photos].sort(
-      (a, b) => environmentLikelihood(b.context || "") - environmentLikelihood(a.context || ""),
-    )[0];
-    return {
-      environment,
-      product: { id: null, url: catalogUrl, context: catalogProduct.nome, productId: catalogProduct.id },
-    };
   }
 
   if (photos.length < 2) return null;
@@ -15435,7 +15550,34 @@ async function callGemini(
     if (pendingVideoDraft && isVideoApproval(userContent)) {
       return { text: await confirmarRascunhoVideo(toolCtx) };
     }
-    if (remetenteEhDono && isVideoMotionRedoRequest(userContent)) {
+    let videoMotionRedo = remetenteEhDono &&
+      isVideoMotionRedoRequest(userContent);
+    if (
+      remetenteEhDono &&
+      !videoMotionRedo &&
+      /\b(refaz|refazer|corrig[ei]|corrige|ajusta|ajustar|troca|trocar|muda|mudar)\b/
+        .test(normalizedInput) &&
+      !/\b(foto|imagem)\b/.test(normalizedInput)
+    ) {
+      const { data: latestMedia } = await sb.from("midias_whatsapp")
+        .select("tipo, origem, created_at")
+        .eq("user_id", toolCtx.userId)
+        .eq("telefone_origem", toolCtx.fromNumber)
+        .in("tipo", ["foto", "video"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const latestGeneratedVideoAt =
+        latestMedia?.tipo === "video" &&
+          latestMedia?.origem === "ia_video_motion"
+          ? latestMedia.created_at
+          : null;
+      videoMotionRedo = isVideoMotionRedoRequest(
+        userContent,
+        latestGeneratedVideoAt,
+      );
+    }
+    if (videoMotionRedo) {
       return { text: await refazerVideoMotion(toolCtx, userContent) };
     }
     if (
@@ -15526,8 +15668,7 @@ async function callGemini(
         if (interaction) current.last_media_interaction = interaction;
       }
       return {
-        text:
-          "Vou usar a primeira foto. Me mande modelo, ano, preço e os outros dados que quiser mostrar no anúncio.",
+        text: verticalAdDetailsPrompt(activeVertical),
       };
     }
     if (
@@ -17581,6 +17722,7 @@ async function callGemini(
     // nunca pode degradar silenciosamente para ficha técnica de uma só foto.
     const imageCompositionIntent = !productAdCreativeRequest &&
       isImageCompositionIntent(userContent);
+    let compositionFallsBackToEdit = false;
     if (imageCompositionIntent && !remetenteEhDono) {
       deferRestrictedShortcutToModel(true);
     }
@@ -17601,38 +17743,51 @@ async function callGemini(
           preferredMediaIds,
         );
         if (!sources) {
-          return {
-            text: "Me manda duas fotos: uma do ambiente e outra do produto exato que você quer colocar nele.",
-          };
+          if (isExplicitTwoImageCompositionRequest(userContent)) {
+            return {
+              text: "Me manda duas fotos: uma do ambiente e outra do produto exato que você quer colocar nele.",
+            };
+          }
+          compositionFallsBackToEdit = true;
         }
-        const result = await composeProductInEnvironment({
-          userId: toolCtx.userId,
-          fromNumber: toolCtx.fromNumber,
-          conversationId: toolCtx.convId || null,
-          requestText: userContent,
-          ...sources,
-        });
-        if (!result.ok) return { text: result.message };
-        if (toolCtx.convId) {
-          const conversation = {
-            id: toolCtx.convId,
+        if (sources) {
+          const result = await composeProductInEnvironment({
             userId: toolCtx.userId,
-            contactNumber: toolCtx.fromNumber,
+            fromNumber: toolCtx.fromNumber,
+            conversationId: toolCtx.convId || null,
+            requestText: userContent,
+            ...sources,
+          });
+          if (!result.ok) return { text: result.message };
+          if (toolCtx.convId) {
+            const conversation = {
+              id: toolCtx.convId,
+              userId: toolCtx.userId,
+              contactNumber: toolCtx.fromNumber,
+            };
+            const current = toolCtx.agentState ??
+              await loadAgentState(sb, conversation);
+            const interaction = {
+              media_id: result.mediaId,
+              at: new Date().toISOString(),
+            };
+            await saveAgentState(sb, conversation, {
+              pending_image_composition: null,
+              last_media_interaction: interaction,
+            }, current);
+            current.pending_image_composition = null;
+            current.last_media_interaction = interaction;
+            toolCtx.agentState = current;
+          }
+          return {
+            text: `Pronto — mantive o ambiente e inseri o produto de referência. É uma simulação ilustrativa.${
+              result.resolution === "2K"
+                ? " Gerei em alta resolução."
+                : ""
+            }<<SPLIT>>${linhaCodigoMidia(result.mediaId, "foto")}`,
+            imageUrl: result.imageUrl,
           };
-          const current = toolCtx.agentState ?? await loadAgentState(sb, conversation);
-          const interaction = { media_id: result.mediaId, at: new Date().toISOString() };
-          await saveAgentState(sb, conversation, {
-            pending_image_composition: null,
-            last_media_interaction: interaction,
-          }, current);
-          current.pending_image_composition = null;
-          current.last_media_interaction = interaction;
-          toolCtx.agentState = current;
         }
-        return {
-          text: `Pronto — mantive o ambiente e inseri o produto de referência. É uma simulação ilustrativa.${result.resolution === "2K" ? " Gerei em alta resolução." : ""}<<SPLIT>>${linhaCodigoMidia(result.mediaId, "foto")}`,
-          imageUrl: result.imageUrl,
-        };
       } catch (error) {
         console.error("[image_composition][route_failed]", error);
         return {
@@ -17658,9 +17813,10 @@ async function callGemini(
     // Edição de foto recente é determinística: o modelo não pode apenas prometer
     // que vai trabalhar em segundo plano. A própria ferramenta busca a última
     // foto do tenant (janela de 30 min) e devolve a imagem pronta neste turno.
-    const pedidoEdicaoFoto = ownerMediaIntent.action === "edit";
-    const pedidoLogoNaFoto = pedidoEdicaoFoto
-      && /\b(?:logo|logotipo|logomarca|marca)\b/i.test(userContent);
+    const logoMode = logoPlacementMode(userContent);
+    const pedidoLogoNaFoto = logoMode !== null;
+    const pedidoEdicaoFoto = ownerMediaIntent.action === "edit" ||
+      compositionFallsBackToEdit || pedidoLogoNaFoto;
     let temFotoParaEditar = (toolCtx.media || []).some((m) => m.kind === "image");
     if (remetenteEhDono && pedidoEdicaoFoto && !temFotoParaEditar) {
       const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
@@ -17681,26 +17837,65 @@ async function callGemini(
       }
     }
     if (remetenteEhDono && pedidoEdicaoFoto && temFotoParaEditar && !isCarrosselRequest(userContent)) {
-      // Pedido de LOGO tem prioridade absoluta: a foto original é mantida e só a marca é aplicada.
       const trocarCenario = !pedidoLogoNaFoto && /\b(?:cen[aá]rio|ambiente|fundo|est[uú]dio|showroom)\b/i.test(userContent);
-      const modoForcado = pedidoLogoNaFoto ? "aplicar_logo" : trocarCenario ? "ficha_tecnica" : "melhoria";
+      const modoForcado = logoMode === "object"
+        ? "aplicar_logo"
+        : trocarCenario
+        ? "ficha_tecnica"
+        : "melhoria";
       console.log(`[processor][forced_image_edit] modo=${modoForcado}`);
-      const raw = await toolEditarImagem(userContent, {
-        userId: toolCtx.userId,
-        fromNumber: toolCtx.fromNumber,
-        media: toolCtx.media,
-        textos: [],
-        modo: modoForcado,
-        preservarAmbiente: trocarCenario ? false : undefined,
-      });
+      const raw = logoMode === "top-left"
+        ? await toolApplyTenantLogoOverlay(userContent, toolCtx)
+        : await toolEditarImagem(userContent, {
+          userId: toolCtx.userId,
+          fromNumber: toolCtx.fromNumber,
+          media: toolCtx.media,
+          textos: [],
+          modo: modoForcado,
+          preservarAmbiente: trocarCenario ? false : undefined,
+        });
       let parsed: any = {};
       try { parsed = JSON.parse(raw); } catch { /* resposta inválida tratada abaixo */ }
       if (parsed?.image_url) {
         if (parsed?.midia_id) await rememberLastMediaInteraction(toolCtx, parsed.midia_id);
         const codigo = parsed?.midia_id ? `<<SPLIT>>${linhaCodigoMidia(parsed.midia_id, "foto")}` : "";
+        if (
+          logoMode === "top-left" && parsed?.midia_id &&
+          logoRequestIncludesPublication(userContent)
+        ) {
+          const social = detectSocialPostIntent(userContent) ?? {
+            produto: "",
+            tom: "informativo",
+            redes: ["facebook", "instagram"],
+            temProduto: false,
+            formato: detectSocialPostFormat(userContent) ?? "feed",
+          };
+          const postResult = await toolPostarMidiaBiblioteca({
+            midia_id: parsed.midia_id,
+            pedido_original: userContent,
+            legenda: cleanMediaPostLegenda(userContent),
+            briefing: extractSocialPostBriefing(userContent),
+            tom: social.tom,
+            redes: social.redes.length
+              ? social.redes
+              : ["facebook", "instagram"],
+            formato: social.formato ?? "feed",
+            incluir_cta_whatsapp: detectWantsWhatsappCta(userContent),
+          }, toolCtx);
+          return {
+            text:
+              `Pronto — coloquei a marca no canto superior esquerdo, sem alterar o restante da imagem.\n\n${
+                formatSocialPostToolResult(postResult)
+              }`,
+            imageUrl: parsed.image_url,
+            interactiveButtons: interactiveButtonsFromSocialResult(postResult),
+          };
+        }
         return {
-          text: pedidoLogoNaFoto
-            ? `Pronto — apliquei a marca na sua foto original, sem mudar nada mais na imagem.${codigo}`
+          text: logoMode === "object"
+            ? `Pronto — apliquei a marca no objeto. ${LOGO_PRODUCT_SIMULATION_NOTICE}${codigo}`
+            : logoMode === "top-left"
+            ? `Pronto — coloquei a marca no canto superior esquerdo, sem alterar o restante da imagem.${codigo}`
             : `Pronto — deixei a foto em um cenário profissional para divulgação.${codigo}`,
           imageUrl: parsed.image_url,
         };
@@ -20719,11 +20914,16 @@ async function processOne(queueId: string) {
       await saveAgentState(sb, stateConversation, freshStatePatch, freshAgentState);
       Object.assign(freshAgentState, freshStatePatch);
       const freshImageIntent = classifyOwnerMediaIntent(contexto);
+      const freshLogoMode = logoPlacementMode(contexto);
       if (
         fromIsOwner
         && savedPhotos.length > 0
         && !isImageCompositionIntent(contexto)
-        && (freshImageIntent.action === "generate" || freshImageIntent.action === "edit")
+        && (
+          freshImageIntent.action === "generate" ||
+          freshImageIntent.action === "edit" ||
+          freshLogoMode !== null
+        )
       ) {
         const generationCtx = {
           userId,
@@ -20731,15 +20931,81 @@ async function processOne(queueId: string) {
           convId: conv.id,
           agentState: freshAgentState,
         };
-        const prepared = await prepareWhatsAppImageGeneration({
-          prompt: contexto,
-          ctx: generationCtx,
-          references: savedPhotos.map((item) => item.url),
-        });
-        const completed = prepared.deferred
-          ? { text: prepared.text, imageUrl: prepared.imageUrl }
-          : completedWhatsAppImageResponse(prepared.raw, detectWhatsAppBrandDirective(contexto) === "none");
-        const buttons = prepared.deferred ? prepared.interactiveButtons : undefined;
+        let completed: { text: string; imageUrl?: string };
+        let buttons: WhatsAppInteractiveButtons | undefined;
+        let deferred = false;
+        if (freshLogoMode) {
+          const raw = freshLogoMode === "top-left"
+            ? await toolApplyTenantLogoOverlay(contexto, {
+              ...generationCtx,
+              media: freshLibraryMedia,
+            })
+            : await toolEditarImagem(contexto, {
+              userId,
+              fromNumber: row.from_number,
+              media: freshLibraryMedia,
+              textos: [],
+              modo: "aplicar_logo",
+            });
+          let logoResult: any = {};
+          try {
+            logoResult = JSON.parse(raw);
+          } catch {
+            // mensagem honesta abaixo
+          }
+          completed = logoResult?.image_url
+            ? {
+              text: freshLogoMode === "object"
+                ? `Pronto — apliquei a marca no objeto. ${LOGO_PRODUCT_SIMULATION_NOTICE}`
+                : "Pronto — coloquei a marca no canto superior esquerdo, sem alterar o restante da imagem.",
+              imageUrl: logoResult.image_url,
+            }
+            : { text: mensagemErroEdicaoImagem(logoResult) };
+          if (logoResult?.midia_id) {
+            await rememberLastMediaInteraction(
+              generationCtx,
+              logoResult.midia_id,
+            );
+          }
+          if (
+            freshLogoMode === "top-left" && logoResult?.midia_id &&
+            logoRequestIncludesPublication(contexto)
+          ) {
+            const social = detectSocialPostIntent(contexto) ?? {
+              produto: "",
+              tom: "informativo",
+              redes: ["facebook", "instagram"],
+              temProduto: false,
+              formato: detectSocialPostFormat(contexto) ?? "feed",
+            };
+            const postResult = await toolPostarMidiaBiblioteca({
+              midia_id: logoResult.midia_id,
+              pedido_original: contexto,
+              legenda: cleanMediaPostLegenda(contexto),
+              tom: social.tom,
+              redes: social.redes,
+              formato: social.formato ?? "feed",
+            }, generationCtx);
+            completed.text += `\n\n${formatSocialPostToolResult(postResult)}`;
+            buttons = interactiveButtonsFromSocialResult(postResult);
+          }
+        } else {
+          const prepared = await prepareWhatsAppImageGeneration({
+            prompt: contexto,
+            ctx: generationCtx,
+            references: savedPhotos.map((item) => item.url),
+          });
+          deferred = prepared.deferred;
+          completed = prepared.deferred
+            ? { text: prepared.text, imageUrl: prepared.imageUrl }
+            : completedWhatsAppImageResponse(
+              prepared.raw,
+              detectWhatsAppBrandDirective(contexto) === "none",
+            );
+          buttons = prepared.deferred
+            ? prepared.interactiveButtons
+            : undefined;
+        }
         const { data: outMsg } = await sb
           .from("whatsapp_cloud_messages")
           .insert({
@@ -20777,8 +21043,8 @@ async function processOne(queueId: string) {
         await doneQueue(row.id);
         return {
           ok: true,
-          generated_from_fresh_photo: !prepared.deferred,
-          awaiting_brand_choice: prepared.deferred,
+          generated_from_fresh_photo: !deferred,
+          awaiting_brand_choice: deferred,
         };
       }
       if (fromIsOwner && isImageCompositionIntent(contexto) && savedPhotos.length > 0) {
@@ -20794,7 +21060,39 @@ async function processOne(queueId: string) {
             pendingMediaIds,
           );
           if (!sources) {
-            compositionReply = "Recebi a foto. Agora me manda também a foto do ambiente e a do produto que você quer simular.";
+            if (isExplicitTwoImageCompositionRequest(contexto)) {
+              compositionReply =
+                "Recebi a foto. Agora me manda também a segunda foto para fazer a composição.";
+            } else {
+              const editedRaw = await toolEditarImagem(contexto, {
+                userId,
+                fromNumber: row.from_number,
+                media: freshLibraryMedia,
+                textos: [],
+                modo: "melhoria",
+              });
+              let edited: any = {};
+              try {
+                edited = JSON.parse(editedRaw);
+              } catch {
+                // mensagem honesta abaixo
+              }
+              compositionReply = edited?.image_url
+                ? "Pronto — editei esta foto conforme o pedido."
+                : mensagemErroEdicaoImagem(edited);
+              compositionImageUrl = edited?.image_url;
+              compositionMediaId = edited?.midia_id;
+              if (compositionMediaId) {
+                const interaction = {
+                  media_id: compositionMediaId,
+                  at: new Date().toISOString(),
+                };
+                await saveAgentState(sb, stateConversation, {
+                  pending_image_composition: null,
+                  last_media_interaction: interaction,
+                }, freshAgentState);
+              }
+            }
           } else {
             const result = await composeProductInEnvironment({
               userId,

@@ -7,8 +7,8 @@ import {
   hasUsableVideoTopic,
   isClearlyDifferentFromPendingVideo,
   isSameVideoBrandName,
-  isVideoMotionRequest,
   isVideoMotionRedoRequest,
+  isVideoMotionRequest,
   resolveAutomaticVideoSiteIdentity,
   selectVideoClientLogo,
   shouldStartVideoSetup,
@@ -22,6 +22,26 @@ Deno.test("reconhece pedido para refazer vídeo sem tratar como criação nova",
   assertEquals(
     isVideoMotionRedoRequest("Corrige o título do vídeo"),
     true,
+  );
+  assertEquals(
+    isVideoMotionRedoRequest("Troca o cenário desta foto: mesa de café"),
+    false,
+  );
+  assertEquals(
+    isVideoMotionRedoRequest(
+      "muda o fundo",
+      "2026-10-07T13:55:00.000Z",
+      Date.parse("2026-10-07T14:00:00.000Z"),
+    ),
+    true,
+  );
+  assertEquals(
+    isVideoMotionRedoRequest(
+      "muda o fundo desta imagem",
+      "2026-10-07T13:55:00.000Z",
+      Date.parse("2026-10-07T14:00:00.000Z"),
+    ),
+    false,
   );
   assertEquals(isVideoMotionRedoRequest("Crie um vídeo novo"), false);
 });

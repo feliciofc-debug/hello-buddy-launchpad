@@ -517,3 +517,9 @@ export function withDemoModeLabel(
   const label = `Modo demonstração: ${decision.effectiveSegment}`;
   return text.startsWith(label) ? text : `${label}\n\n${text}`;
 }
+
+export function verticalAdDetailsPrompt(route: InboundVertical): string {
+  return route === "veiculo"
+    ? "Vou usar a primeira foto. Me mande modelo, ano, preço e os outros dados que quiser mostrar no anúncio."
+    : "Vou usar a primeira foto. Me mande nome do produto, preço e condições.";
+}

@@ -26,13 +26,16 @@ function normalizedIntent(value: unknown): string {
 
 export type CreativeMediaRequest = "video" | "image" | "ambiguous" | null;
 
-export function classifyCreativeMediaRequest(text: string): CreativeMediaRequest {
+export function classifyCreativeMediaRequest(
+  text: string,
+): CreativeMediaRequest {
   const normalized = normalizedIntent(text)
     .replace(/^jarvis[,.!:\s-]*/, "")
     .replace(/^por favor[,.!:\s-]*/, "")
     .trim();
-  const creation = /\b(faz|faca|fazer|cria|criar|crie|monta|monte|gera|gere|produz|produza|quero|preciso)\b/
-    .test(normalized);
+  const creation =
+    /\b(faz|faca|fazer|cria|criar|crie|monta|monte|gera|gere|produz|produza|quero|preciso)\b/
+      .test(normalized);
   if (!creation) return null;
 
   const explicitImageLead =
@@ -44,9 +47,12 @@ export function classifyCreativeMediaRequest(text: string): CreativeMediaRequest
       .test(normalized);
   if (explicitVideoLead) return "video";
 
-  const image = /\b(arte|imagem|foto|banner|card|post\s+estatico)\b/.test(normalized);
-  const video = /\b(video|motion|animacao|animacoes|animado|animada|reels?\s+animado)\b/
-    .test(normalized);
+  const image = /\b(arte|imagem|foto|banner|card|post\s+estatico)\b/.test(
+    normalized,
+  );
+  const video =
+    /\b(video|motion|animacao|animacoes|animado|animada|reels?\s+animado)\b/
+      .test(normalized);
   if (image && video) return "ambiguous";
   if (image) return "image";
   if (video) return "video";
@@ -93,19 +99,36 @@ export function isClearlyDifferentFromPendingVideo(text: string): boolean {
   if (mediaRequest === "image" || mediaRequest === "ambiguous") return true;
   const normalized = normalizedIntent(text);
   return /\b(?:cria|criar|crie|faz|fazer|faca|gera|gerar|gere|monta|montar|monte|quero|preciso)\b/
-      .test(normalized) &&
+    .test(normalized) &&
     /\b(?:anuncio\s+pago|campanha\s+de\s+anuncios|meta\s+ads|facebook\s+ads|instagram\s+ads|trafego\s+pago|relatorio|carrossel|texto|legenda)\b/
       .test(normalized);
 }
 
-export function isVideoMotionRedoRequest(text: string): boolean {
+export function isVideoMotionRedoRequest(
+  text: string,
+  lastGeneratedVideoAt?: string | null,
+  nowMs = Date.now(),
+): boolean {
   const normalized = normalizedIntent(text);
-  const redo = /\b(refaz|refazer|fazer de novo|faz de novo|corrig[ei]|corrige|ajusta|ajustar|troca|trocar|muda|mudar)\b/
-    .test(normalized);
-  const video = /\b(video|roteiro|cena|titulo|destaque|fundo)\b/.test(
+  if (
+    /\b(foto|imagem|desta foto|dessa foto|nesta imagem|nessa imagem)\b/.test(
+      normalized,
+    )
+  ) {
+    return false;
+  }
+  const redo =
+    /\b(refaz|refazer|fazer de novo|faz de novo|corrig[ei]|corrige|ajusta|ajustar|troca|trocar|muda|mudar)\b/
+      .test(normalized);
+  if (!redo) return false;
+  const video = /\b(video|roteiro|cena)\b/.test(
     normalized,
   );
-  return redo && video;
+  if (video) return true;
+  const createdAt = Date.parse(String(lastGeneratedVideoAt || ""));
+  return Number.isFinite(createdAt) &&
+    createdAt <= nowMs &&
+    nowMs - createdAt <= 30 * 60 * 1000;
 }
 
 export function hasUsableVideoTopic(topic: string): boolean {

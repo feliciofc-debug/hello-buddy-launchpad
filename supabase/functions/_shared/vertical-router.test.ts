@@ -14,6 +14,7 @@ import {
   parseVerticalVisionResult,
   resolveVertical,
   scopedVerticalState,
+  verticalAdDetailsPrompt,
   verticalChoiceButtons,
   withDemoModeLabel,
 } from "./vertical-router.ts";
@@ -350,5 +351,15 @@ Deno.test("especialista geral recebe contexto do ramo sem transformar carro em v
     generalSpecialistPrompt("Consórcio", true).includes(
       "consulta de FIPE foi pedida explicitamente",
     ),
+  );
+});
+
+Deno.test("pedido de dados do anúncio respeita a vertical", () => {
+  assertEquals(
+    verticalAdDetailsPrompt("geral"),
+    "Vou usar a primeira foto. Me mande nome do produto, preço e condições.",
+  );
+  assert(
+    verticalAdDetailsPrompt("veiculo").includes("modelo, ano, preço"),
   );
 });
