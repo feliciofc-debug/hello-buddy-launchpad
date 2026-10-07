@@ -283,6 +283,20 @@ import {
   singlePhotoFormatButtons,
 } from "../_shared/single-photo-flow.ts";
 import {
+  applyVerticalStatePatch,
+  migrateVerticalState,
+  parseVerticalVisionResult,
+  resolveVertical,
+  scopedVerticalState,
+  isVerticalStateKey,
+  verticalChoiceButtons,
+  verticalVisionPrompt,
+  type InboundVertical,
+  type VerticalDecision,
+} from "../_shared/vertical-router.ts";
+import { generalSpecialistPrompt } from "../_shared/vertical-general/index.ts";
+import { vehicleSpecialistPrompt } from "../_shared/vertical-vehicle/index.ts";
+import {
   canUseAmbiguousPendingReply,
   classifyExplicitPendingPostCommand,
   isPendingInteractionRecent,
@@ -2678,6 +2692,17 @@ type PendingFipeState =
   };
 
 type AgentConvState = {
+  vehicle?: Record<string, unknown>;
+  general?: Record<string, unknown>;
+  vertical_router?: {
+    pending_choice?: {
+      media_id?: string;
+      media_url?: string;
+      created_at: string;
+    } | null;
+    last_route?: InboundVertical;
+    updated_at?: string;
+  } | null;
   forward?: { protocolo?: string; destinatario?: string; wamid?: string | null; at?: string };
   decisao?: { valor?: string; at?: string };
   site_link_enviado?: boolean;
@@ -2828,7 +2853,9 @@ async function saveAgentState(
   current: AgentConvState = {},
 ): Promise<boolean> {
   try {
-    const nextState = { ...current, ...patch };
+    const nextState = applyVerticalStatePatch(current, patch);
+    const verticalScope = (current as Record<string, unknown>)
+      .__vertical_scope as InboundVertical | undefined;
     const { error } = await sb
       .from("whatsapp_cloud_conversations")
       .update({ agent_state: nextState })
@@ -2846,13 +2873,27 @@ async function saveAgentState(
       .maybeSingle();
     if (verifyError) throw verifyError;
     const saved = (verified?.agent_state ?? {}) as AgentConvState;
+    if (verticalScope) {
+      (current as Record<string, unknown>).__vertical_root = saved;
+      current.vehicle = saved.vehicle;
+      current.general = saved.general;
+      current.vertical_router = saved.vertical_router;
+    }
     for (const key of Object.keys(patch)) {
-      if (!Object.prototype.hasOwnProperty.call(saved, key)) {
+      const actual = verticalScope && isVerticalStateKey(key)
+        ? (verticalScope === "veiculo" ? saved.vehicle : saved.general)?.[key]
+        : saved[key];
+      const exists = verticalScope && isVerticalStateKey(key)
+        ? Object.prototype.hasOwnProperty.call(
+          verticalScope === "veiculo" ? saved.vehicle ?? {} : saved.general ?? {},
+          key,
+        )
+        : Object.prototype.hasOwnProperty.call(saved, key);
+      if (!exists) {
         throw new Error(`state_key_not_persisted:${key}`);
       }
 
       const expected = patch[key];
-      const actual = saved[key];
       const discriminators = ["token", "created_at", "at", "protocolo", "media_id"]
         .filter((field) =>
           expected !== null
@@ -2904,6 +2945,89 @@ async function rememberLastMediaInteraction(
     ctx.agentState = current;
   }
   return saved;
+}
+
+async function tenantVerticalSegment(userId: string): Promise<string | null> {
+  const { data, error } = await sb.from("empresa_config")
+    .select("segmento")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) {
+    console.warn("[vertical] segmento_indisponivel");
+    return null;
+  }
+  return String(data?.segmento || "").trim() || null;
+}
+
+async function classifyPhotoVertical(
+  media: MediaExtract | undefined,
+): Promise<ReturnType<typeof parseVerticalVisionResult>> {
+  if (!media || media.kind !== "image") return null;
+  try {
+    const response = await fetch(
+      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: MODEL_FAST,
+          temperature: 0,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "text", text: verticalVisionPrompt() },
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:${media.mime};base64,${media.base64}`,
+                },
+              },
+            ],
+          }],
+        }),
+        signal: AbortSignal.timeout(30_000),
+      },
+    );
+    if (!response.ok) {
+      console.warn(`[vertical] visao_falhou status=${response.status}`);
+      return null;
+    }
+    const body = await response.json();
+    return parseVerticalVisionResult(
+      String(body?.choices?.[0]?.message?.content || ""),
+    );
+  } catch (error) {
+    console.warn("[vertical] visao_falhou", (error as Error).message);
+    return null;
+  }
+}
+
+async function scopedConversationState(
+  conversation: ConversationStateIdentity,
+  raw: AgentConvState,
+  route: InboundVertical,
+): Promise<AgentConvState> {
+  const migrated = migrateVerticalState(raw);
+  if (migrated.changed) {
+    const { error } = await sb.from("whatsapp_cloud_conversations")
+      .update({ agent_state: migrated.state })
+      .eq("id", conversation.id)
+      .eq("user_id", conversation.userId)
+      .eq("contact_number", conversation.contactNumber);
+    if (error) {
+      throw new Error(`vertical_state_migration_failed:${error.message}`);
+    }
+  }
+  return scopedVerticalState(migrated.state, route) as AgentConvState;
+}
+
+function logVerticalDecision(decision: VerticalDecision): void {
+  console.log(
+    `[vertical] rota=${decision.route} motivo=${decision.reason} confianca=${decision.confidence.toFixed(2)}`,
+  );
 }
 
 // ---- Registro de lead encaminhado (não depende do WhatsApp do dono) -------
@@ -6463,15 +6587,18 @@ async function discardOldMediaPublicationFlows(
     current.pending_carrossel_veiculo?.token,
   ].filter((token): token is string => !!token);
   for (const token of tokens) PENDING_POSTS.delete(token);
-  const { data, error } = await sb.from("social_posts_queue")
-    .update({ status: "cancelado", error_message: "cancelado_por_nova_midia", updated_at: new Date().toISOString() })
-    .eq("user_id", conversation.userId)
-    .eq("solicitante_telefone", conversation.contactNumber)
-    .eq("status", "aguardando_confirmacao")
-    .select("approval_token");
-  if (error) throw new Error(`falha_ao_isolar_nova_midia:${error.message}`);
-  for (const row of data ?? []) {
-    if (row.approval_token) PENDING_POSTS.delete(String(row.approval_token));
+  if (tokens.length > 0) {
+    const { data, error } = await sb.from("social_posts_queue")
+      .update({ status: "cancelado", error_message: "cancelado_por_nova_midia", updated_at: new Date().toISOString() })
+      .eq("user_id", conversation.userId)
+      .eq("solicitante_telefone", conversation.contactNumber)
+      .in("approval_token", tokens)
+      .eq("status", "aguardando_confirmacao")
+      .select("approval_token");
+    if (error) throw new Error(`falha_ao_isolar_nova_midia:${error.message}`);
+    for (const row of data ?? []) {
+      if (row.approval_token) PENDING_POSTS.delete(String(row.approval_token));
+    }
   }
   const saved = await saveAgentState(sb, conversation, patch, current);
   if (!saved) throw new Error("falha_ao_limpar_fluxos_antigos");
@@ -14842,6 +14969,7 @@ async function runTool(
     convId?: string;
     agentState?: AgentConvState;
     demoTestPhones?: string[];
+    vertical?: InboundVertical;
   },
 ): Promise<{
   result: string;
@@ -15079,6 +15207,7 @@ async function callGemini(
 }> {
   let forwardProof: string | undefined;
   let forwardAttempted = false;
+  const activeVertical = toolCtx.vertical ?? "geral";
   const senderIsOwner = isOwner(toolCtx);
   const senderIsAmzProspect = !senderIsOwner
     && toolCtx.userId === ADMIN_AMZ_USER_ID;
@@ -15088,7 +15217,10 @@ async function callGemini(
       .map((part: any) => String(part.text || ""))
       .join(" ")
     : "";
-  if (hasMedia && senderIsOwner && /\bfipe\b/i.test(multimodalText)) {
+  if (
+    activeVertical === "veiculo" && hasMedia && senderIsOwner &&
+    /\bfipe\b/i.test(multimodalText)
+  ) {
     const response = await toolConsultarFipe(
       parseFipeRequestText(multimodalText),
       toolCtx,
@@ -15118,8 +15250,14 @@ async function callGemini(
     hour: "2-digit", minute: "2-digit",
   });
   const timeHeader = `Data/hora atual em São Paulo: ${nowSP}. Use isto para resolver expressões como "hoje", "amanhã", "daqui a X min" ao chamar ferramentas de agendamento.`;
+  const specialistPrompt = activeVertical === "veiculo"
+    ? vehicleSpecialistPrompt()
+    : generalSpecialistPrompt();
   const messages: any[] = [
-    { role: "system", content: `${timeHeader}\n\n${systemPrompt}` },
+    {
+      role: "system",
+      content: `${timeHeader}\n\n${specialistPrompt}\n\n${systemPrompt}`,
+    },
     ...history,
     { role: "user", content: userContent },
   ];
@@ -17883,13 +18021,17 @@ async function callGemini(
     "postar_midia_biblioteca",
     "publicar_linkedin",
   ]);
+  const unavailableForVertical = activeVertical === "veiculo"
+    ? new Set(["criar_carrossel"])
+    : new Set(["consultar_fipe"]);
   const availableTools = filterToolsForTenant(TOOLS, {
     userId: toolCtx.userId,
     isOwner: isOwner(toolCtx),
     adminAmzUserId: ADMIN_AMZ_USER_ID,
   }).filter((tool: any) =>
-    !restrictedNonOwnerCapabilityTurn
-    || !unavailableForRestrictedNonOwner.has(tool?.function?.name)
+    (!restrictedNonOwnerCapabilityTurn ||
+      !unavailableForRestrictedNonOwner.has(tool?.function?.name)) &&
+    !unavailableForVertical.has(tool?.function?.name)
   );
   const requiredProspectSiteUrl = senderIsAmzProspect
       && typeof userContent === "string"
@@ -19560,7 +19702,28 @@ async function processOne(queueId: string) {
         userId,
         contactNumber: row.from_number,
       };
-      const freshAgentState = await loadAgentState(sb, stateConversation);
+      const rawFreshAgentState = await loadAgentState(sb, stateConversation);
+      const [verticalSegment, verticalVision] = fromIsOwner
+        ? await Promise.all([
+          tenantVerticalSegment(userId),
+          classifyPhotoVertical(
+            freshLibraryMedia.find((item) => item.kind === "image"),
+          ),
+        ])
+        : [null, null] as const;
+      const verticalDecision = resolveVertical({
+        text: contexto,
+        tenantSegment: verticalSegment,
+        vision: verticalVision,
+      });
+      if (fromIsOwner) logVerticalDecision(verticalDecision);
+      const freshAgentState = fromIsOwner
+        ? await scopedConversationState(
+          stateConversation,
+          rawFreshAgentState,
+          verticalDecision.route,
+        )
+        : rawFreshAgentState;
       if (fromIsOwner) {
         await clearExpiredAnuncioPendingState(
           stateConversation,
@@ -20006,6 +20169,84 @@ async function processOne(queueId: string) {
         if (!saved) throw new Error("ultima_midia_nao_persistida");
         freshAgentState.last_media_interaction = interaction;
       }
+      if (
+        fromIsOwner &&
+        incomingPhotos.length > 0 &&
+        verticalDecision.needsConfirmation
+      ) {
+        const latest = incomingPhotos.at(-1)!;
+        const routerState = {
+          ...(freshAgentState.vertical_router ?? {}),
+          pending_choice: {
+            media_id: latest.id,
+            media_url: latest.url,
+            created_at: new Date().toISOString(),
+          },
+          updated_at: new Date().toISOString(),
+        };
+        await saveAgentState(
+          sb,
+          stateConversation,
+          { vertical_router: routerState },
+          freshAgentState,
+        );
+        await sendVehicleFlowReply({
+          conversationId: conv.id,
+          userId,
+          to: row.from_number,
+          text: "Só para eu encaminhar ao especialista certo:",
+          buttons: verticalChoiceButtons(),
+        });
+        await doneQueue(row.id);
+        return { ok: true, vertical_confirmation: true };
+      }
+      const immediateGeneralPhoto = fromIsOwner &&
+        verticalDecision.route === "geral" &&
+        incomingPhotos.length > 0 &&
+        !contexto;
+      if (immediateGeneralPhoto) {
+        let description = "";
+        try {
+          description = await descreverFotosSalvas(
+            freshLibraryMedia,
+            salvos,
+            contexto,
+            userId,
+          );
+        } catch (error) {
+          console.warn(
+            "[vertical][general][vision_failed]",
+            (error as Error).message,
+          );
+        }
+        const latest = incomingPhotos.at(-1)!;
+        const pending = {
+          media_id: latest.id,
+          stage: "actions" as const,
+          created_at: new Date().toISOString(),
+        };
+        await saveAgentState(
+          sb,
+          stateConversation,
+          { pending_single_photo: pending },
+          freshAgentState,
+        );
+        await sendVehicleFlowReply({
+          conversationId: conv.id,
+          userId,
+          to: row.from_number,
+          text: description
+            ? `Recebi a foto. Estou vendo: ${description.trim()}`
+            : "Recebi a foto e salvei como a mídia mais recente.",
+          buttons: singlePhotoActionButtons(),
+        });
+        await doneQueue(row.id);
+        return {
+          ok: true,
+          vertical: "geral",
+          general_single_photo: true,
+        };
+      }
       const vehicleFlowCtx = {
         userId,
         fromNumber: row.from_number,
@@ -20013,6 +20254,7 @@ async function processOne(queueId: string) {
         agentState: freshAgentState,
       };
       const captionStartsVehicleCarousel = fromIsOwner &&
+        verticalDecision.route === "veiculo" &&
         incomingPhotos.length > 0 &&
         isVehiclePhotoCarouselRequest(contexto);
       if (captionStartsVehicleCarousel) {
@@ -20050,6 +20292,7 @@ async function processOne(queueId: string) {
         );
       }
       const pendingVehicleCollection = fromIsOwner &&
+          verticalDecision.route === "veiculo" &&
           blockingVehiclePhotoFlow(freshAgentState) ===
             "pending_carrossel_veiculo"
         ? freshAgentState.pending_carrossel_veiculo
@@ -20127,7 +20370,12 @@ async function processOne(queueId: string) {
         // estado para que o pedido atual siga pelo roteamento normal.
         await persistVehicleCarousel(vehicleFlowCtx, null);
       }
-      if (fromIsOwner && incomingPhotos.length > 0 && !contexto) {
+      if (
+        fromIsOwner &&
+        verticalDecision.route === "veiculo" &&
+        incomingPhotos.length > 0 &&
+        !contexto
+      ) {
         const initialBlocker = blockingVehiclePhotoFlow(freshAgentState);
         if (initialBlocker) {
           console.log(
@@ -21645,7 +21893,93 @@ Regras:
     }
 
     // === ESTADO PERSISTENTE DA CONVERSA (comprovante de encaminhamento + decisões) ===
-    const agentState = await loadAgentState(sb, convStateIdentity);
+    const rawAgentState = await loadAgentState(sb, convStateIdentity);
+    const migratedAgentState = migrateVerticalState(rawAgentState).state as AgentConvState;
+    const verticalChoiceId = userText.match(
+      /<<INTERACTIVE_ID:vertical:(vehicle|general)>>/i,
+    )?.[1]?.toLowerCase();
+    const selectedVertical = verticalChoiceId === "vehicle"
+      ? "veiculo"
+      : verticalChoiceId === "general"
+      ? "geral"
+      : /<<INTERACTIVE_ID:/i.test(userText) ||
+          /\b(essa|esta|esse|este)\s+(foto|imagem|midia|mídia)\b/i.test(userText)
+      ? migratedAgentState.vertical_router?.last_route ?? null
+      : null;
+    const textVerticalDecision = resolveVertical({
+      text: audioTranscript || userText,
+      tenantSegment: fromIsOwner
+        ? await tenantVerticalSegment(userId)
+        : null,
+      selectedRoute: selectedVertical,
+    });
+    if (fromIsOwner) logVerticalDecision(textVerticalDecision);
+    const agentState = fromIsOwner
+      ? await scopedConversationState(
+        convStateIdentity,
+        migratedAgentState,
+        textVerticalDecision.route,
+      )
+      : migratedAgentState;
+    let verticalChoiceResolution: {
+      text: string;
+      buttons: WhatsAppInteractiveButtons;
+    } | null = null;
+    const pendingVerticalChoice =
+      migratedAgentState.vertical_router?.pending_choice;
+    if (fromIsOwner && verticalChoiceId && pendingVerticalChoice?.media_id) {
+      const now = new Date().toISOString();
+      const routerState = {
+        ...(agentState.vertical_router ?? {}),
+        pending_choice: null,
+        last_route: textVerticalDecision.route,
+        updated_at: now,
+      };
+      if (textVerticalDecision.route === "geral") {
+        await saveAgentState(sb, convStateIdentity, {
+          vertical_router: routerState,
+          pending_single_photo: {
+            media_id: pendingVerticalChoice.media_id,
+            stage: "actions",
+            created_at: now,
+          },
+        }, agentState);
+        verticalChoiceResolution = {
+          text: "Certo. Vou tratar esta foto como produto geral.",
+          buttons: singlePhotoActionButtons(),
+        };
+      } else {
+        await saveAgentState(sb, convStateIdentity, {
+          vertical_router: routerState,
+          pending_vehicle_photo_batch: {
+            stage: "offered",
+            photos: [{
+              id: pendingVerticalChoice.media_id,
+              url: pendingVerticalChoice.media_url || "",
+            }],
+            created_at: now,
+            last_photo_at: now,
+          },
+        }, agentState);
+        verticalChoiceResolution = {
+          text: "Certo. Vou tratar esta foto como veículo.",
+          buttons: vehicleSingleRepeatedPhotoButtons(),
+        };
+      }
+    } else if (
+      fromIsOwner &&
+      pendingVerticalChoice &&
+      !verticalChoiceId &&
+      userText.trim()
+    ) {
+      await saveAgentState(sb, convStateIdentity, {
+        vertical_router: {
+          ...(agentState.vertical_router ?? {}),
+          pending_choice: null,
+          updated_at: new Date().toISOString(),
+        },
+      }, agentState);
+    }
     let metaAdsJarvisOriginalText: string | undefined;
     let metaAdsQuestionarioResult: MetaAdsQuestionarioProcessorResult = {
       handled: false,
@@ -21844,7 +22178,10 @@ Regras:
     let forwardAttempted = false;
     let metaAdsSummaryDraftId: string | undefined;
     try {
-      if (metaAdsQuestionarioResult.handled) {
+      if (verticalChoiceResolution) {
+        reply = verticalChoiceResolution.text;
+        interactiveButtons = verticalChoiceResolution.buttons;
+      } else if (metaAdsQuestionarioResult.handled) {
         reply = metaAdsQuestionarioResult.text ??
           "Vamos continuar sua campanha.";
         interactiveList = metaAdsQuestionarioResult.interactiveList;
@@ -21857,6 +22194,7 @@ Regras:
           media,
           convId: conv.id,
           agentState,
+          vertical: textVerticalDecision.route,
           demoTestPhones: Array.isArray((agent as any).demo_test_phones)
             ? (agent as any).demo_test_phones
             : [],
