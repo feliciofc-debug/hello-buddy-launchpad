@@ -386,13 +386,11 @@ export async function resolverLogoMotion(
   // Marca de cliente nunca herda identidade, perfil ou storage da AMZ/tenant.
   if (params.clientIdentity) return null;
 
-  const variantPath = params.background
-    ? await logoPathExiste(
-      sb,
-      userId,
-      await logoDoTenant(sb, userId, params.background),
-    )
-    : null;
+  const variantPath = await logoPathExiste(
+    sb,
+    userId,
+    await logoDoTenant(sb, userId, params.background),
+  );
   if (variantPath) return { path: variantPath, origem: "tenant_logos" };
 
   const siteIdentity = await logoDaIdentidadeSite(sb, userId);
@@ -400,9 +398,6 @@ export async function resolverLogoMotion(
 
   const profileLogo = await logoDoPerfil(sb, userId);
   if (profileLogo) return { url: profileLogo, origem: "profile" };
-
-  const tenantPath = await logoPathExiste(sb, userId, await logoDoTenant(sb, userId));
-  if (tenantPath) return { path: tenantPath, origem: "tenant_logos" };
 
   const userLogo = await logoOrfaEmUserLogos(sb, userId);
   if (userLogo) return { url: userLogo, origem: "user_logos" };

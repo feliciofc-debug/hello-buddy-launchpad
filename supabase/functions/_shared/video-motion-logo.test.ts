@@ -84,22 +84,28 @@ Deno.test("identidade de cliente nunca cai na logo do tenant", async () => {
 });
 
 Deno.test("vídeo prefere a variante video do tenant", async () => {
-  const { client } = fakeSupabase({
-    tenant_logos: {
-      id: "logo-video",
-      user_id: USER_ID,
-      storage_path: `${USER_ID}/video/manual.png`,
-      file_name: "manual.png",
-      mime_type: "image/png",
-      variant: "video",
-      ativo: true,
-      generated_automatically: false,
-      background_warning: null,
-    },
-  });
-  const result = await resolverLogoMotion(client, USER_ID, {});
-  assertEquals(result?.origem, "tenant_logos");
-  assertEquals(result?.path, `${USER_ID}/video/manual.png`);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(new Uint8Array([1]));
+  try {
+    const { client } = fakeSupabase({
+      tenant_logos: {
+        id: "logo-video",
+        user_id: USER_ID,
+        storage_path: `${USER_ID}/video/manual.png`,
+        file_name: "manual.png",
+        mime_type: "image/png",
+        variant: "video",
+        ativo: true,
+        generated_automatically: false,
+        background_warning: null,
+      },
+    });
+    const result = await resolverLogoMotion(client, USER_ID, {});
+    assertEquals(result?.origem, "tenant_logos");
+    assertEquals(result?.path, `${USER_ID}/video/manual.png`);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 Deno.test("usa identidade do site e depois profile como fallback", async () => {
