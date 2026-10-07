@@ -15509,13 +15509,14 @@ async function callGemini(
         created_at: new Date().toISOString(),
       };
       await persistVehicleCarousel(toolCtx, next);
-      const exactPending = PENDING_POSTS.get(pendingVehicleCarousel.token) ??
-        await loadPendingSocialPost(pendingVehicleCarousel.token, toolCtx.userId);
+      const approvalToken = pendingVehicleCarousel.token!;
+      const exactPending = PENDING_POSTS.get(approvalToken) ??
+        await loadPendingSocialPost(approvalToken, toolCtx.userId);
       if (!exactPending) {
         return { text: "Não encontrei a mídia exata deste preview. Nada foi publicado." };
       }
       const preview = await sendExactPendingSocialPreview(
-        pendingVehicleCarousel.token,
+        approvalToken,
         exactPending,
         toolCtx,
       );
