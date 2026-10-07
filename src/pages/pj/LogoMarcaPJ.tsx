@@ -15,6 +15,7 @@ export default function LogoMarcaPJ() {
   const navigate = useNavigate();
   const fileRef = useRef<HTMLInputElement>(null);
   const darkFileRef = useRef<HTMLInputElement>(null);
+  const videoFileRef = useRef<HTMLInputElement>(null);
 
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -27,6 +28,10 @@ export default function LogoMarcaPJ() {
   const [darkNomeArquivo, setDarkNomeArquivo] = useState<string | null>(null);
   const [darkPreviewUrl, setDarkPreviewUrl] = useState<string | null>(null);
   const [darkGenerated, setDarkGenerated] = useState(false);
+  const [videoPath, setVideoPath] = useState<string | null>(null);
+  const [videoNomeArquivo, setVideoNomeArquivo] = useState<string | null>(null);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
+  const [videoGenerated, setVideoGenerated] = useState(false);
   const [backgroundWarning, setBackgroundWarning] = useState<string | null>(null);
 
   useEffect(() => {
@@ -61,13 +66,17 @@ export default function LogoMarcaPJ() {
         .select("id, storage_path, file_name, variant, generated_automatically, background_warning")
         .eq("user_id", user.id)
         .eq("ativo", true)
-        .in("variant", ["default", "dark_background"]);
+        .in("variant", ["default", "dark_background", "video"]);
 
       if (error) throw error;
 
       const current = data?.find((item) => item.variant === "default");
       const dark = data?.find((item) => item.variant === "dark_background");
-      setBackgroundWarning(current?.background_warning || dark?.background_warning || null);
+      const video = data?.find((item) => item.variant === "video");
+      setBackgroundWarning(
+        current?.background_warning || dark?.background_warning ||
+          video?.background_warning || null,
+      );
       if (current?.storage_path) {
         setPath(current.storage_path);
         setNomeArquivo(current.file_name ?? null);
@@ -83,6 +92,12 @@ export default function LogoMarcaPJ() {
       if (dark?.storage_path) {
         await gerarPreview(dark.storage_path, setDarkPreviewUrl);
       } else setDarkPreviewUrl(null);
+      setVideoPath(video?.storage_path ?? null);
+      setVideoNomeArquivo(video?.file_name ?? null);
+      setVideoGenerated(video?.generated_automatically === true);
+      if (video?.storage_path) {
+        await gerarPreview(video.storage_path, setVideoPreviewUrl);
+      } else setVideoPreviewUrl(null);
     } catch (e: any) {
       console.error("[logo-marca] load:", e?.message);
       toast.error("Não foi possível carregar sua marca");
@@ -93,7 +108,7 @@ export default function LogoMarcaPJ() {
 
   const handleUpload = async (
     file: File,
-    variant: "default" | "dark_background" = "default",
+    variant: "default" | "dark_background" | "video" = "default",
   ) => {
     if (!userId) return;
 
@@ -140,12 +155,13 @@ export default function LogoMarcaPJ() {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
       if (darkFileRef.current) darkFileRef.current.value = "";
+      if (videoFileRef.current) videoFileRef.current.value = "";
     }
   };
 
   const handleRemover = async () => {
-    if (!userId || (!path && !darkPath)) return;
-    if (!window.confirm("Remover as duas logos? As imagens passam a sair sem marca.")) return;
+    if (!userId || (!path && !darkPath && !videoPath)) return;
+    if (!window.confirm("Remover todas as logos? As imagens passam a sair sem marca.")) return;
     setRemovendo(true);
     try {
       const { data, error } = await supabase.functions.invoke(
@@ -160,6 +176,10 @@ export default function LogoMarcaPJ() {
       setDarkNomeArquivo(null);
       setDarkPreviewUrl(null);
       setDarkGenerated(false);
+      setVideoPath(null);
+      setVideoNomeArquivo(null);
+      setVideoPreviewUrl(null);
+      setVideoGenerated(false);
       setBackgroundWarning(null);
       toast.success("Marca removida.");
     } catch (e: any) {
@@ -217,7 +237,7 @@ export default function LogoMarcaPJ() {
               Use PNG com fundo transparente (só as letras e o ícone).
             </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="rounded-lg border border-border p-4 space-y-4">
                 <p className="font-medium text-foreground">Logo para fundo claro</p>
                 <div className="rounded-lg border min-h-44 p-5 flex items-center justify-center bg-white">
@@ -291,6 +311,49 @@ export default function LogoMarcaPJ() {
                   {darkNomeArquivo ? `Arquivo: ${darkNomeArquivo}` : ""}
                 </p>
               </div>
+
+              <div className="rounded-lg border border-border p-4 space-y-4">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-medium text-foreground">Logo para vídeo</p>
+                  {videoGenerated && (
+                    <Badge variant="secondary">Gerada automaticamente</Badge>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground min-h-8">
+                  Usada nos vídeos. Prefira letras claras e vivas com sombra suave.
+                </p>
+                <div className="rounded-lg border min-h-44 p-5 flex items-center justify-center bg-neutral-500">
+                  {(videoPreviewUrl || previewUrl) ? (
+                    <img
+                      src={videoPreviewUrl || previewUrl || ""}
+                      alt={videoNomeArquivo || "Logo para vídeo"}
+                      className="max-h-32 max-w-full object-contain"
+                    />
+                  ) : <ImageIcon className="h-10 w-10 text-neutral-300" />}
+                </div>
+                <input
+                  ref={videoFileRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) handleUpload(file, "video");
+                  }}
+                />
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => videoFileRef.current?.click()}
+                  disabled={uploading}
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  {videoPath ? "Trocar" : "Enviar logo para vídeo"}
+                </Button>
+                <p className="text-xs text-muted-foreground truncate min-h-4">
+                  {videoNomeArquivo ? `Arquivo: ${videoNomeArquivo}` : ""}
+                </p>
+              </div>
             </div>
 
             {backgroundWarning && (
@@ -299,7 +362,7 @@ export default function LogoMarcaPJ() {
               </p>
             )}
 
-            {(path || darkPath) && (
+            {(path || darkPath || videoPath) && (
               <Button variant="destructive" onClick={handleRemover} disabled={removendo}>
                 {removendo ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />

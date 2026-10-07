@@ -53,8 +53,18 @@ Deno.serve(async (request) => {
     }
 
     const storagePath = String(body?.storage_path || "");
-    const variant = body?.variant === "dark_background"
-      ? "dark_background"
+    const requestedVariant = String(body?.variant || "default");
+    const variant = [
+        "default",
+        "light_background",
+        "dark_background",
+        "video",
+      ].includes(requestedVariant)
+      ? requestedVariant as
+        | "default"
+        | "light_background"
+        | "dark_background"
+        | "video"
       : "default";
     if (!storagePath.startsWith(`${userId}/incoming/`)) {
       throw new Error("arquivo fora da pasta de entrada do tenant");
@@ -70,7 +80,12 @@ Deno.serve(async (request) => {
       .select("id, storage_path, file_name, mime_type, variant, generated_automatically, background_warning")
       .eq("user_id", userId)
       .eq("ativo", true)
-      .in("variant", ["default", "dark_background"]);
+      .in("variant", [
+        "default",
+        "light_background",
+        "dark_background",
+        "video",
+      ]);
     if (error) throw error;
     return new Response(JSON.stringify({ ok: true, logos }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

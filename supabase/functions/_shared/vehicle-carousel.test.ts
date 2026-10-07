@@ -416,6 +416,36 @@ Deno.test("contagem de fotos usa singular e plural corretos", () => {
   );
 });
 
+Deno.test("observação de repetidas só aparece quando parte do lote é repetida", () => {
+  const base = {
+    stage: "offered" as const,
+    photos: photos.slice(0, 5),
+    created_at: new Date().toISOString(),
+    last_photo_at: new Date().toISOString(),
+  };
+  assert(
+    !vehiclePhotoBatchOfferMessage({
+      ...base,
+      reused_photo_ids: photos.slice(0, 5).map((photo) => photo.id),
+    }).includes("já tinha"),
+  );
+  assertStringIncludes(
+    vehiclePhotoBatchOfferMessage({
+      ...base,
+      reused_photo_ids: photos.slice(0, 2).map((photo) => photo.id),
+    }),
+    "(2 delas você já tinha me mandado antes.)",
+  );
+});
+
+Deno.test("botões de coleta não repetem pedido para enviar fotos", () => {
+  assert(
+    !vehicleCarouselCollectionButtons().body.includes(
+      "Envie as fotos em ordem",
+    ),
+  );
+});
+
 Deno.test("foto única repetida usa aviso correto e três botões", () => {
   const planned = planVehiclePhotoBatch({
     recentPhotos: [],

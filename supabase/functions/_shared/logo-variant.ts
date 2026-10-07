@@ -1,5 +1,9 @@
 export type LogoBackground = "light" | "dark";
-export type LogoVariant = "default" | "light_background" | "dark_background";
+export type LogoVariant =
+  | "default"
+  | "light_background"
+  | "dark_background"
+  | "video";
 
 export function logoVariantForBackground(
   background: LogoBackground,
@@ -8,7 +12,7 @@ export function logoVariantForBackground(
 }
 
 export function logoBackgroundFromLuminance(luminance: number): LogoBackground {
-  return Number.isFinite(luminance) && luminance >= 0.52 ? "light" : "dark";
+  return Number.isFinite(luminance) && luminance >= 0.55 ? "light" : "dark";
 }
 
 export function pickLogoVariant<T>(
@@ -22,6 +26,9 @@ export function detectLogoVariantRequest(text: string): LogoVariant | null {
   const normalized = String(text || "").normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "").toLowerCase();
   if (!/\b(?:logo|logomarca|logotipo)\b/.test(normalized)) return null;
+  if (/\b(?:video|videos|reel|reels)\b/.test(normalized)) {
+    return "video";
+  }
   if (/\bfundo\s+(?:claro|branco)\b/.test(normalized)) {
     return "light_background";
   }

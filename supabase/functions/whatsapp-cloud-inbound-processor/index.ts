@@ -2711,12 +2711,12 @@ type AgentConvState = {
   pending_client_logo?: {
     logo_path: string;
     created_at: string;
-    variant?: "default" | "light_background" | "dark_background";
+    variant?: "default" | "light_background" | "dark_background" | "video";
   } | null;
   pending_client_logo_intent?: {
     client_name: string;
     created_at: string;
-    variant?: "default" | "light_background" | "dark_background";
+    variant?: "default" | "light_background" | "dark_background" | "video";
     anuncio_args?: Record<string, unknown>;
   } | null;
   pending_brand_generation?: PendingBrandGeneration | null;
@@ -9852,7 +9852,7 @@ async function uploadClientLogoFromMediaUrl(userId: string, mediaUrl: string): P
 async function toolRegistrarLogoCliente(
   args: {
     cliente?: string;
-    variante?: "default" | "light_background" | "dark_background";
+    variante?: "default" | "light_background" | "dark_background" | "video";
   },
   ctx: { userId: string; fromNumber: string; agentState?: AgentConvState },
 ): Promise<string> {
@@ -10857,7 +10857,7 @@ async function handlePendingVideoSetup(
         return await prepareClientSiteIdentity(ctx, {
           ...setup,
           marca: saved.client_name,
-          logo_path: clientLogoPath(saved) || undefined,
+          logo_path: clientLogoPath(saved, "video") || undefined,
           logo_light_background_path:
             clientLogoPath(saved, "light") || undefined,
           logo_dark_background_path:
@@ -10878,7 +10878,7 @@ async function handlePendingVideoSetup(
         ...setup,
         stage: "awaiting_palette_confirmation" as const,
         marca: saved.client_name,
-        logo_path: clientLogoPath(saved) || undefined,
+        logo_path: clientLogoPath(saved, "video") || undefined,
         logo_light_background_path:
           clientLogoPath(saved, "light") || undefined,
         logo_dark_background_path:
@@ -11856,7 +11856,7 @@ const TOOLS = [
         type: "object",
         properties: {
           cliente: { type: "string", description: "Nome exato da empresa/cliente citado pelo responsável, ex.: Casarão Lustres." },
-          variante: { type: "string", enum: ["default", "light_background", "dark_background"], description: "Versão da logo: fundo claro usa texto escuro; fundo escuro usa texto claro." },
+          variante: { type: "string", enum: ["default", "light_background", "dark_background", "video"], description: "Versão da logo: fundo claro usa texto escuro; fundo escuro e vídeo usam texto claro." },
         },
         required: ["cliente"],
       },
@@ -15174,10 +15174,33 @@ async function callGemini(
         pendingVehiclePhotoBatch.photos,
         "botao_lote_fotos",
       );
+      const next = await askVehicleCarouselData(state, toolCtx);
+      const buttons = next.interactiveButtons
+        ? {
+          ...next.interactiveButtons,
+          buttons: state.photos.length < VEHICLE_CAROUSEL_MAX_PHOTOS
+            ? [
+              ...next.interactiveButtons.buttons,
+              {
+                id: "vehicle_carousel:photos:add",
+                title: "Adicionar fotos",
+              },
+            ].slice(0, 3)
+            : next.interactiveButtons.buttons,
+        }
+        : state.photos.length < VEHICLE_CAROUSEL_MAX_PHOTOS
+        ? {
+          body: "Se quiser, adicione mais fotos antes de informar os dados.",
+          buttons: [{
+            id: "vehicle_carousel:photos:add",
+            title: "Adicionar fotos",
+          }],
+        }
+        : undefined;
       return {
         text:
-          `Recebi ${vehiclePhotoCountLabel(state.photos.length)}. Manda mais ou toque em Pronto.`,
-        interactiveButtons: vehicleCarouselCollectionButtons(),
+          `Carrossel com ${vehiclePhotoCountLabel(state.photos.length)}.\n\n${next.text}`,
+        interactiveButtons: buttons,
       };
     }
     if (
@@ -15232,9 +15255,19 @@ async function callGemini(
     }
     if (
       remetenteEhDono &&
-      pendingVehicleCarousel?.stage === "collecting" &&
+      pendingVehicleCarousel &&
+      ["collecting", "data_choice", "awaiting_data"].includes(
+        pendingVehicleCarousel.stage,
+      ) &&
       vehicleCarouselInteractiveId === "vehicle_carousel:photos:add"
     ) {
+      if (pendingVehicleCarousel.stage !== "collecting") {
+        await persistVehicleCarousel(toolCtx, {
+          ...pendingVehicleCarousel,
+          stage: "collecting",
+          created_at: new Date().toISOString(),
+        });
+      }
       return {
         text: "Pode mandar as fotos. Quando terminar, toque em Pronto.",
         interactiveButtons: vehicleCarouselCollectionButtons(),
@@ -20360,7 +20393,7 @@ async function processOne(queueId: string) {
     // ============================================================
     if (fromIsOwner && userText.trim()) {
       const [videoLegendaLogo, lightLogo, darkLogo] = await Promise.all([
-        getTenantLogoStorageLocation(sb, userId),
+        getTenantLogoStorageLocation(sb, userId, "video"),
         getTenantLogoStorageLocation(sb, userId, "light"),
         getTenantLogoStorageLocation(sb, userId, "dark"),
       ]);

@@ -1,5 +1,5 @@
 import {
-  deriveDarkBackgroundLogo,
+  deriveLogoVariant,
   removeSolidLogoBackground,
 } from "./logo-background.ts";
 
@@ -13,7 +13,11 @@ export type ClientBrandIdentity = {
   identity?: Record<string, unknown> | null;
 };
 
-export type ClientLogoVariant = "default" | "light_background" | "dark_background";
+export type ClientLogoVariant =
+  | "default"
+  | "light_background"
+  | "dark_background"
+  | "video";
 
 async function processClientLogo(
   sb: any,
@@ -65,10 +69,15 @@ async function processClientLogo(
 
 export function clientLogoPath(
   identity: ClientBrandIdentity | null | undefined,
-  background?: "light" | "dark",
-  allowAutomaticallyGeneratedDark = false,
+  background?: "light" | "dark" | "video",
+  allowAutomaticallyGeneratedDark = true,
 ): string | null {
   if (!identity) return null;
+  if (background === "video") {
+    return String(identity.identity?.logo_video_path || "") ||
+      identity.logo_path ||
+      null;
+  }
   const automaticDark = background === "dark" &&
     identity.identity?.logo_fundo_escuro_gerada_automaticamente === true;
   const key = background === "light"
@@ -232,10 +241,15 @@ export async function saveClientBrandIdentity(
   }
   if (processedLogo && logoVariant === "light_background") {
     mergedIdentity.logo_fundo_claro_path = processedLogo.path;
+    mergedIdentity.logo_fundo_claro_gerada_automaticamente = false;
   }
   if (processedLogo && logoVariant === "dark_background") {
     mergedIdentity.logo_fundo_escuro_path = processedLogo.path;
     mergedIdentity.logo_fundo_escuro_gerada_automaticamente = false;
+  }
+  if (processedLogo && logoVariant === "video") {
+    mergedIdentity.logo_video_path = processedLogo.path;
+    mergedIdentity.logo_video_gerada_automaticamente = false;
   }
   const logoPath = logoVariant === "default"
     ? (incomingTemporary || preserveManualLogo
@@ -247,33 +261,50 @@ export async function saveClientBrandIdentity(
     logoVariant === "default" &&
     !preserveManualLogo
   ) {
-    const existingDarkPath = String(
-      existing?.identity?.logo_fundo_escuro_path || "",
-    );
-    const existingDarkAutomatic =
-      existing?.identity?.logo_fundo_escuro_gerada_automaticamente === true;
-    if (!existingDarkPath || existingDarkAutomatic) {
-      if (existingDarkPath && existingDarkPath.startsWith(`${input.userId}/`)) {
-        await sb.storage.from("tenant-logos").remove([existingDarkPath]);
+    const targets = [
+      {
+        variant: "light_background" as const,
+        pathKey: "logo_fundo_claro_path",
+        automaticKey: "logo_fundo_claro_gerada_automaticamente",
+      },
+      {
+        variant: "dark_background" as const,
+        pathKey: "logo_fundo_escuro_path",
+        automaticKey: "logo_fundo_escuro_gerada_automaticamente",
+      },
+      {
+        variant: "video" as const,
+        pathKey: "logo_video_path",
+        automaticKey: "logo_video_gerada_automaticamente",
+      },
+    ];
+    for (const target of targets) {
+      const existingPath = String(existing?.identity?.[target.pathKey] || "");
+      const existingAutomatic =
+        existing?.identity?.[target.automaticKey] === true;
+      if (existingPath && !existingAutomatic) continue;
+      if (existingPath.startsWith(`${input.userId}/`)) {
+        await sb.storage.from("tenant-logos").remove([existingPath]);
       }
-      delete mergedIdentity.logo_fundo_escuro_path;
-      delete mergedIdentity.logo_fundo_escuro_gerada_automaticamente;
-      const derived = processedLogo.warning
-        ? null
-        : await deriveDarkBackgroundLogo(processedLogo.bytes);
-      if (derived?.generated) {
-        const darkPath = `${input.userId}/client-brands/${Date.now()}-${
-          crypto.randomUUID().slice(0, 8)
-        }-dark-automatica.png`;
-        const { error: darkUploadError } = await sb.storage.from("tenant-logos")
-          .upload(darkPath, derived.bytes, {
-            contentType: "image/png",
-            upsert: false,
-          });
-        if (darkUploadError) throw darkUploadError;
-        mergedIdentity.logo_fundo_escuro_path = darkPath;
-        mergedIdentity.logo_fundo_escuro_gerada_automaticamente = true;
-      }
+      delete mergedIdentity[target.pathKey];
+      delete mergedIdentity[target.automaticKey];
+      if (processedLogo.warning) continue;
+      const derived = await deriveLogoVariant(
+        processedLogo.bytes,
+        target.variant,
+      );
+      if (!derived.generated) continue;
+      const generatedPath = `${input.userId}/client-brands/${Date.now()}-${
+        crypto.randomUUID().slice(0, 8)
+      }-${target.variant}-automatica.png`;
+      const { error: uploadError } = await sb.storage.from("tenant-logos")
+        .upload(generatedPath, derived.bytes, {
+          contentType: "image/png",
+          upsert: false,
+        });
+      if (uploadError) throw uploadError;
+      mergedIdentity[target.pathKey] = generatedPath;
+      mergedIdentity[target.automaticKey] = true;
     }
   }
   if (preserveManualLogo) mergedIdentity.logo_origem = "whatsapp_manual";

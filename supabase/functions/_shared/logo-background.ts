@@ -12,6 +12,7 @@ export type LogoBackgroundResult = {
   warning: string | null;
   width?: number;
   height?: number;
+  failureReason?: string;
 };
 
 export type DarkLogoResult = {
@@ -36,6 +37,21 @@ async function decodeLogo(bytes: Uint8Array): Promise<Image | null> {
   if (!format || format.mime === "image/svg+xml") return null;
   const decoded = format.mime === "image/webp" ? await webp_to_png(bytes) : bytes;
   return await Image.decode(decoded);
+}
+
+function sourceHasAlpha(bytes: Uint8Array): boolean {
+  const format = detectImageFormat(bytes);
+  if (!format || format.mime === "image/jpeg") return false;
+  if (format.mime === "image/png") {
+    const colorType = bytes.length > 25 ? bytes[25] : -1;
+    if (colorType === 4 || colorType === 6) return true;
+    if (colorType === 3) {
+      const ascii = new TextDecoder().decode(bytes);
+      return ascii.includes("tRNS");
+    }
+    return false;
+  }
+  return true;
 }
 
 function borderOffsets(width: number, height: number): number[] {
@@ -170,11 +186,17 @@ export async function removeSolidLogoBackground(
     if (!image) {
       return { bytes, mime, changed: false, warning: null };
     }
+    const hasSourceAlpha = sourceHasAlpha(bytes);
+    if (!hasSourceAlpha) {
+      for (let offset = 3; offset < image.bitmap.length; offset += 4) {
+        image.bitmap[offset] = 255;
+      }
+    }
     const border = dominantBorderColor(
       image.bitmap,
       borderOffsets(image.width, image.height),
     );
-    if (border.transparentRatio > 0) {
+    if (hasSourceAlpha && border.transparentRatio > 0) {
       return {
         bytes,
         mime,
@@ -205,9 +227,191 @@ export async function removeSolidLogoBackground(
       height: trimmed.height,
     };
   } catch (error) {
-    console.warn("[logo-background] mantendo original:", (error as Error).message);
-    return { bytes, mime, changed: false, warning: LOGO_BACKGROUND_WARNING };
+    const reason = error instanceof Error ? error.message : String(error);
+    console.warn(`[logo-background] falhou motivo=${reason}`);
+    return {
+      bytes,
+      mime,
+      changed: false,
+      warning: LOGO_BACKGROUND_WARNING,
+      failureReason: reason,
+    };
   }
+}
+
+export type GeneratedLogoVariant = "video" | "dark_background" | "light_background";
+
+function blurAlpha(
+  alpha: Uint8ClampedArray,
+  width: number,
+  height: number,
+  radius: number,
+): Uint8ClampedArray {
+  if (radius <= 0) return alpha.slice();
+  const horizontal = new Float64Array(alpha.length);
+  const output = new Uint8ClampedArray(alpha.length);
+  for (let y = 0; y < height; y++) {
+    let sum = 0;
+    for (let x = -radius; x <= radius; x++) {
+      sum += alpha[y * width + Math.max(0, Math.min(width - 1, x))];
+    }
+    for (let x = 0; x < width; x++) {
+      horizontal[y * width + x] = sum / (radius * 2 + 1);
+      sum -= alpha[y * width + Math.max(0, x - radius)];
+      sum += alpha[y * width + Math.min(width - 1, x + radius + 1)];
+    }
+  }
+  for (let x = 0; x < width; x++) {
+    let sum = 0;
+    for (let y = -radius; y <= radius; y++) {
+      sum += horizontal[Math.max(0, Math.min(height - 1, y)) * width + x];
+    }
+    for (let y = 0; y < height; y++) {
+      output[y * width + x] = Math.round(sum / (radius * 2 + 1));
+      sum -= horizontal[Math.max(0, y - radius) * width + x];
+      sum += horizontal[Math.min(height - 1, y + radius + 1) * width + x];
+    }
+  }
+  return output;
+}
+
+function overPixel(
+  bitmap: Uint8Array | Uint8ClampedArray,
+  offset: number,
+  red: number,
+  green: number,
+  blue: number,
+  alpha: number,
+) {
+  const sourceAlpha = Math.max(0, Math.min(255, alpha)) / 255;
+  const destinationAlpha = bitmap[offset + 3] / 255;
+  const outputAlpha = sourceAlpha + destinationAlpha * (1 - sourceAlpha);
+  if (outputAlpha <= 0) return;
+  bitmap[offset] = Math.round(
+    (red * sourceAlpha + bitmap[offset] * destinationAlpha *
+      (1 - sourceAlpha)) / outputAlpha,
+  );
+  bitmap[offset + 1] = Math.round(
+    (green * sourceAlpha + bitmap[offset + 1] * destinationAlpha *
+      (1 - sourceAlpha)) / outputAlpha,
+  );
+  bitmap[offset + 2] = Math.round(
+    (blue * sourceAlpha + bitmap[offset + 2] * destinationAlpha *
+      (1 - sourceAlpha)) / outputAlpha,
+  );
+  bitmap[offset + 3] = Math.round(outputAlpha * 255);
+}
+
+export async function deriveLogoVariant(
+  bytes: Uint8Array,
+  variant: GeneratedLogoVariant,
+): Promise<DarkLogoResult> {
+  const source = await decodeLogo(bytes);
+  if (!source) {
+    return {
+      bytes,
+      mime: "image/png",
+      generated: false,
+      darkPixelRatio: 0,
+    };
+  }
+  let opaque = 0;
+  let neutral = 0;
+  for (let offset = 0; offset < source.bitmap.length; offset += 4) {
+    if (source.bitmap[offset + 3] <= 20) continue;
+    opaque++;
+    if (
+      relativeLuminance(
+          source.bitmap[offset],
+          source.bitmap[offset + 1],
+          source.bitmap[offset + 2],
+        ) < 0.58 &&
+      saturation(
+          source.bitmap[offset],
+          source.bitmap[offset + 1],
+          source.bitmap[offset + 2],
+        ) < 0.25
+    ) neutral++;
+  }
+  const ratio = opaque ? neutral / opaque : 0;
+  const blurRadius = Math.max(
+    1,
+    Math.round(source.width * (variant === "light_background" ? 0.007 : 0.008)),
+  );
+  const offsetX = variant === "light_background"
+    ? 0
+    : Math.round(source.width * 0.002);
+  const offsetY = variant === "light_background"
+    ? 0
+    : Math.round(source.width * 0.0035);
+  const padding = blurRadius * 3 + Math.max(Math.abs(offsetX), Math.abs(offsetY));
+  const output = new Image(
+    source.width + padding * 2,
+    source.height + padding * 2,
+  );
+  output.fill(Image.rgbaToColor(0, 0, 0, 0));
+  const alpha = new Uint8ClampedArray(source.width * source.height);
+  for (let pixel = 0; pixel < alpha.length; pixel++) {
+    alpha[pixel] = source.bitmap[pixel * 4 + 3];
+  }
+  const blurred = blurAlpha(alpha, source.width, source.height, blurRadius);
+  const effectWhite = variant === "light_background";
+  for (let y = 0; y < source.height; y++) {
+    for (let x = 0; x < source.width; x++) {
+      const effectAlpha = Math.round(
+        blurred[y * source.width + x] * (effectWhite ? 0.85 : 0.75),
+      );
+      const targetX = x + padding + offsetX;
+      const targetY = y + padding + offsetY;
+      if (
+        targetX < 0 || targetY < 0 || targetX >= output.width ||
+        targetY >= output.height
+      ) continue;
+      overPixel(
+        output.bitmap,
+        (targetY * output.width + targetX) * 4,
+        effectWhite ? 255 : 0,
+        effectWhite ? 255 : 0,
+        effectWhite ? 255 : 0,
+        effectAlpha,
+      );
+    }
+  }
+  for (let y = 0; y < source.height; y++) {
+    for (let x = 0; x < source.width; x++) {
+      const sourceOffset = (y * source.width + x) * 4;
+      const alphaValue = source.bitmap[sourceOffset + 3];
+      if (alphaValue <= 0) continue;
+      let red = source.bitmap[sourceOffset];
+      let green = source.bitmap[sourceOffset + 1];
+      let blue = source.bitmap[sourceOffset + 2];
+      if (
+        relativeLuminance(red, green, blue) < 0.58 &&
+        saturation(red, green, blue) < 0.25
+      ) {
+        const replacement = variant === "light_background" ? 21 : 255;
+        red = replacement;
+        green = replacement;
+        blue = variant === "light_background" ? 23 : replacement;
+      }
+      overPixel(
+        output.bitmap,
+        ((y + padding) * output.width + x + padding) * 4,
+        red,
+        green,
+        blue,
+        alphaValue,
+      );
+    }
+  }
+  return {
+    bytes: new Uint8Array(await output.encode()),
+    mime: "image/png",
+    generated: true,
+    darkPixelRatio: ratio,
+    width: output.width,
+    height: output.height,
+  };
 }
 
 function relativeLuminance(red: number, green: number, blue: number): number {
@@ -229,69 +433,8 @@ function saturation(red: number, green: number, blue: number): number {
 export async function deriveDarkBackgroundLogo(
   bytes: Uint8Array,
 ): Promise<DarkLogoResult> {
-  const image = await decodeLogo(bytes);
-  if (!image) {
-    return {
-      bytes,
-      mime: "image/png",
-      generated: false,
-      darkPixelRatio: 0,
-    };
-  }
-  let opaque = 0;
-  let dark = 0;
-  for (let offset = 0; offset < image.bitmap.length; offset += 4) {
-    if (image.bitmap[offset + 3] <= 20) continue;
-    opaque++;
-    if (
-      relativeLuminance(
-          image.bitmap[offset],
-          image.bitmap[offset + 1],
-          image.bitmap[offset + 2],
-        ) < 0.25 &&
-      saturation(
-          image.bitmap[offset],
-          image.bitmap[offset + 1],
-          image.bitmap[offset + 2],
-        ) < 0.25
-    ) dark++;
-  }
-  const darkPixelRatio = opaque ? dark / opaque : 0;
-  if (darkPixelRatio < 0.15) {
-    return {
-      bytes,
-      mime: "image/png",
-      generated: false,
-      darkPixelRatio,
-      width: image.width,
-      height: image.height,
-    };
-  }
-  for (let offset = 0; offset < image.bitmap.length; offset += 4) {
-    if (
-      image.bitmap[offset + 3] > 20 &&
-      relativeLuminance(
-          image.bitmap[offset],
-          image.bitmap[offset + 1],
-          image.bitmap[offset + 2],
-        ) < 0.25 &&
-      saturation(
-          image.bitmap[offset],
-          image.bitmap[offset + 1],
-          image.bitmap[offset + 2],
-        ) < 0.25
-    ) {
-      image.bitmap[offset] = 255;
-      image.bitmap[offset + 1] = 255;
-      image.bitmap[offset + 2] = 255;
-    }
-  }
-  return {
-    bytes: new Uint8Array(await image.encode()),
-    mime: "image/png",
-    generated: true,
-    darkPixelRatio,
-    width: image.width,
-    height: image.height,
-  };
+  const result = await deriveLogoVariant(bytes, "dark_background");
+  return result.darkPixelRatio >= 0.15
+    ? result
+    : { ...result, generated: false, bytes };
 }

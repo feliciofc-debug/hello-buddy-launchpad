@@ -198,7 +198,7 @@ export function validPendingVehicleCarousel(
 
 export function vehicleCarouselCollectionButtons() {
   return {
-    body: "Envie as fotos em ordem e toque em Pronto quando terminar.",
+    body: "Você pode usar até 8 fotos por carrossel.",
     buttons: [
       { id: "vehicle_carousel:photos:done", title: "Pronto" },
       { id: "vehicle_carousel:cancel", title: "Cancelar" },
@@ -290,7 +290,7 @@ export function vehiclePhotoBatchOfferMessage(
 ): string {
   const reusedCount = state.reused_photo_ids?.length ?? 0;
   return `Recebi ${vehiclePhotoCountLabel(state.photos.length)}. O que quer fazer?${
-    reusedCount > 0
+    reusedCount > 0 && reusedCount < state.photos.length
       ? `\n\n(${reusedCount} ${
         reusedCount === 1 ? "dela você já tinha" : "delas você já tinha"
       } me mandado antes.)`

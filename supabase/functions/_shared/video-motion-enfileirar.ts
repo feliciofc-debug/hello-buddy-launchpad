@@ -30,10 +30,7 @@ import {
   type FundoMotion,
   type MotionProps,
 } from "./video-motion.ts";
-import {
-  getTenantLogo,
-  getTenantLogoForBackground,
-} from "./tenant-logo.ts";
+import { getTenantLogo } from "./tenant-logo.ts";
 import { AMZ_TENANT_ID } from "./amz-tenant.ts";
 
 export const PLATAFORMAS_OK = ["instagram", "facebook", "linkedin", "tiktok"];
@@ -247,15 +244,10 @@ export function aplicarAjusteRoteiroMotion(
 export async function logoDoTenant(
   sb: any,
   userId: string,
-  background?: "claro" | "escuro",
+  _background?: "claro" | "escuro",
 ): Promise<string | undefined> {
-  const logo = background
-    ? await getTenantLogoForBackground(
-      sb,
-      userId,
-      background === "claro" ? "light" : "dark",
-    )
-    : await getTenantLogo(sb, userId);
+  const logo = await getTenantLogo(sb, userId, "video") ??
+    await getTenantLogo(sb, userId);
   return logo?.storage_path;
 }
 

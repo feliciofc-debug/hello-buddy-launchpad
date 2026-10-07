@@ -4,8 +4,9 @@ export type DetectedImageFormat = {
     | "image/png"
     | "image/webp"
     | "image/gif"
+    | "image/heic"
     | "image/svg+xml";
-  extension: "jpg" | "png" | "webp" | "gif" | "svg";
+  extension: "jpg" | "png" | "webp" | "gif" | "heic" | "svg";
 };
 
 const ASCII_DECODER = new TextDecoder();
@@ -35,6 +36,13 @@ export function detectImageFormat(
     ASCII_DECODER.decode(bytes.subarray(0, 4)) === "RIFF" &&
     ASCII_DECODER.decode(bytes.subarray(8, 12)) === "WEBP"
   ) return { mime: "image/webp", extension: "webp" };
+  if (
+    bytes.length >= 12 &&
+    ASCII_DECODER.decode(bytes.subarray(4, 8)) === "ftyp" &&
+    /^(?:hei[cfmxs]|hev[cf]|mif1|msf1)$/i.test(
+      ASCII_DECODER.decode(bytes.subarray(8, 12)),
+    )
+  ) return { mime: "image/heic", extension: "heic" };
   if (
     bytes.length >= 6 &&
     /^GIF8[79]a$/.test(ASCII_DECODER.decode(bytes.subarray(0, 6)))

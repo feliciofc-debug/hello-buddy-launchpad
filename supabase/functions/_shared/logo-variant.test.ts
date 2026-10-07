@@ -27,6 +27,23 @@ Deno.test("anúncio e vídeo escolhem a logo correspondente ao fundo", () => {
 Deno.test("arte escolhe variante pela luminância da região da logo", () => {
   assertEquals(logoBackgroundFromLuminance(0.82), "light");
   assertEquals(logoBackgroundFromLuminance(0.18), "dark");
+  assertEquals(logoBackgroundFromLuminance(0.54), "dark");
+  assertEquals(logoBackgroundFromLuminance(0.55), "light");
+});
+
+Deno.test("vídeo do cliente prefere variante própria e cai na principal", () => {
+  const identity = {
+    user_id: "tenant",
+    client_name: "Loja",
+    normalized_name: "loja",
+    logo_path: "default.png",
+    identity: { logo_video_path: "video.png" },
+  };
+  assertEquals(clientLogoPath(identity, "video"), "video.png");
+  assertEquals(
+    clientLogoPath({ ...identity, identity: {} }, "video"),
+    "default.png",
+  );
 });
 
 Deno.test("sem variantes mantém a logo atual", () => {
@@ -70,7 +87,7 @@ Deno.test("cliente usa variante e cai na logo atual quando ausente", () => {
   );
 });
 
-Deno.test("variante escura automática fica restrita ao anúncio de imagem", () => {
+Deno.test("variante escura automática é usada em imagens", () => {
   const identity = {
     user_id: "tenant",
     client_name: "Loja",
@@ -81,6 +98,6 @@ Deno.test("variante escura automática fica restrita ao anúncio de imagem", () 
       logo_fundo_escuro_gerada_automaticamente: true,
     },
   };
-  assertEquals(clientLogoPath(identity, "dark"), "default.png");
+  assertEquals(clientLogoPath(identity, "dark"), "dark-auto.png");
   assertEquals(clientLogoPath(identity, "dark", true), "dark-auto.png");
 });

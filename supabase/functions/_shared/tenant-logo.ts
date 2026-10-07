@@ -11,7 +11,7 @@ import {
   logoVariantForBackground,
 } from "./logo-variant.ts";
 import {
-  deriveDarkBackgroundLogo,
+  deriveLogoVariant,
   removeSolidLogoBackground,
 } from "./logo-background.ts";
 
@@ -32,6 +32,7 @@ export interface TenantLogoStorageLocation {
   path: string;
   lightBackgroundPath?: string;
   darkBackgroundPath?: string;
+  videoPath?: string;
 }
 
 /** Logo ativa do tenant, ou null se ele não configurou (feature opcional). */
@@ -74,7 +75,7 @@ export async function getTenantLogoForBackground(
   sb: any,
   userId: string,
   background: LogoBackground,
-  allowAutomaticallyGeneratedDark = false,
+  allowAutomaticallyGeneratedDark = true,
 ): Promise<TenantLogo | null> {
   const variant = await getTenantLogo(
     sb,
@@ -113,9 +114,12 @@ export async function getTenantLogoSignedUrl(
 export async function getTenantLogoStorageLocation(
   sb: any,
   userId: string,
-  background?: LogoBackground,
+  background?: LogoBackground | "video",
 ): Promise<TenantLogoStorageLocation | null> {
-  const logo = background
+  const logo = background === "video"
+    ? await getTenantLogo(sb, userId, "video") ??
+      await getTenantLogo(sb, userId)
+    : background
     ? await getTenantLogoForBackground(sb, userId, background)
     : await getTenantLogo(sb, userId);
   if (logo) return { bucket: BUCKET, path: logo.storage_path };
@@ -192,7 +196,7 @@ export async function getTenantLogoDataUrlForBackground(
   sb: any,
   userId: string,
   background: LogoBackground,
-  allowAutomaticallyGeneratedDark = false,
+  allowAutomaticallyGeneratedDark = true,
 ): Promise<string | null> {
   const logo = await getTenantLogoForBackground(
     sb,
@@ -269,38 +273,53 @@ export async function setTenantLogo(
       await sb.storage.from(BUCKET).remove([params.storagePath]);
     }
 
-    if (variant === "default") {
-      const dark = await getTenantLogo(sb, userId, "dark_background");
-      if (!dark || dark.generated_automatically) {
-        if (dark?.storage_path) {
-          await sb.from("tenant_logos").delete().eq("user_id", userId)
-            .eq("variant", "dark_background");
-          await sb.storage.from(BUCKET).remove([dark.storage_path]);
-        }
-        if (processed.warning) return true;
-        const derived = await deriveDarkBackgroundLogo(processed.bytes);
-        if (derived.generated) {
-          const darkPath = `${userId}/dark_background/${Date.now()}-${
+    if (variant === "default" && !processed.warning) {
+      for (
+        const targetVariant of [
+          "light_background",
+          "dark_background",
+          "video",
+        ] as const
+      ) {
+        const existingVariant = await getTenantLogo(
+          sb,
+          userId,
+          targetVariant,
+        );
+        if (!existingVariant || existingVariant.generated_automatically) {
+          if (existingVariant?.storage_path) {
+            await sb.from("tenant_logos").delete().eq("user_id", userId)
+              .eq("variant", targetVariant);
+            await sb.storage.from(BUCKET).remove([
+              existingVariant.storage_path,
+            ]);
+          }
+          const derived = await deriveLogoVariant(
+            processed.bytes,
+            targetVariant,
+          );
+          if (!derived.generated) continue;
+          const targetPath = `${userId}/${targetVariant}/${Date.now()}-${
             crypto.randomUUID().slice(0, 8)
           }-automatica.png`;
-          const { error: darkUploadError } = await sb.storage.from(BUCKET)
-            .upload(darkPath, derived.bytes, {
+          const { error: targetUploadError } = await sb.storage.from(BUCKET)
+            .upload(targetPath, derived.bytes, {
               contentType: "image/png",
               upsert: false,
             });
-          if (darkUploadError) throw darkUploadError;
-          const { error: darkInsertError } = await sb.from("tenant_logos")
+          if (targetUploadError) throw targetUploadError;
+          const { error: targetInsertError } = await sb.from("tenant_logos")
             .insert({
               user_id: userId,
-              storage_path: darkPath,
+              storage_path: targetPath,
               file_name: params.fileName ?? null,
               mime_type: "image/png",
-              variant: "dark_background",
+              variant: targetVariant,
               ativo: true,
               generated_automatically: true,
               background_warning: null,
             });
-          if (darkInsertError) throw darkInsertError;
+          if (targetInsertError) throw targetInsertError;
         }
       }
     }
