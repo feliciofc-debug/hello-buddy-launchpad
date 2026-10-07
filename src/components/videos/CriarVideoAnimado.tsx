@@ -258,30 +258,40 @@ export const CriarVideoAnimado = () => {
     setSubindoLogo(true);
     try {
       const nome = file.name.replace(/[^a-zA-Z0-9._-]/g, '-').slice(-80);
-      const novoPath = `${user.id}/${Date.now()}-${nome}`;
+      const novoPath = definirComoMarca
+        ? `${user.id}/incoming/${Date.now()}-${nome}`
+        : `${user.id}/video-site/${Date.now()}-${nome}`;
       const { error: uploadError } = await supabase.storage.from('tenant-logos').upload(novoPath, file, { contentType: file.type });
       if (uploadError) throw uploadError;
 
+      let selectedPath = novoPath;
       if (definirComoMarca) {
-        const { error: deleteError } = await supabase.from('tenant_logos')
-          .delete()
-          .eq('user_id', user.id)
-          .eq('variant', 'default');
-        if (deleteError) throw deleteError;
-        const { error: insertError } = await supabase.from('tenant_logos').insert({
-          user_id: user.id,
-          storage_path: novoPath,
-          file_name: file.name,
-          mime_type: file.type,
-          variant: 'default',
-          ativo: true,
-        });
-        if (insertError) throw insertError;
-        if (logoPath) await supabase.storage.from('tenant-logos').remove([logoPath]);
+        const { data: managed, error: manageError } = await supabase.functions
+          .invoke('manage-tenant-logo', {
+            body: {
+              action: 'set',
+              storage_path: novoPath,
+              file_name: file.name,
+              mime_type: file.type,
+              variant: 'default',
+            },
+          });
+        if (manageError || !managed?.ok) {
+          await supabase.storage.from('tenant-logos').remove([novoPath]);
+          throw manageError || new Error(managed?.error || 'Falha ao processar a logo');
+        }
+        const videoLogo = managed.logos?.find((item: { variant?: string }) =>
+          item.variant === 'video'
+        );
+        const defaultLogo = managed.logos?.find((item: { variant?: string }) =>
+          item.variant === 'default'
+        );
+        selectedPath = videoLogo?.storage_path || defaultLogo?.storage_path;
+        if (!selectedPath) throw new Error('Logo processada sem arquivo');
       }
 
-      const { data: signed } = await supabase.storage.from('tenant-logos').createSignedUrl(novoPath, 3600);
-      setLogoPath(novoPath);
+      const { data: signed } = await supabase.storage.from('tenant-logos').createSignedUrl(selectedPath, 3600);
+      setLogoPath(selectedPath);
       setLogoUrl(signed?.signedUrl ?? null);
       toast.success(definirComoMarca ? 'Logo do cliente anexada.' : 'Logo do site aplicada a este vídeo.');
     } catch (e: any) {

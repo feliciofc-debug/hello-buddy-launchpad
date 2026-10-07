@@ -74,7 +74,7 @@ def baixar_logo_url(url, path):
 def baixar_logo(logo, d, src=None):
     if not logo:
         return None
-    url = logo.get("light_background_download_url") or logo.get("download_url")
+    url = logo.get("download_url")
     return baixar_logo_url(url, f"{d}/logo")
 
 def limpar_orfaos():

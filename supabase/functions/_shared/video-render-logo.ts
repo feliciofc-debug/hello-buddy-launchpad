@@ -1,6 +1,5 @@
 export interface VideoRenderLogoClaim {
   download_url: string;
-  light_background_download_url?: string;
   posicao: "canto_superior_esquerdo";
   largura_ratio: 0.38;
   margem_ratio: 0.04;
@@ -33,19 +32,8 @@ export async function buildVideoRenderLogoClaim(
 
   const downloadUrl = await sign(bucket, path, 3600);
   if (!downloadUrl) return null;
-  const signVariant = async (value: unknown) => {
-    const variantPath = String(value || "");
-    if (!variantPath.startsWith(`${userId}/`)) return undefined;
-    return await sign(bucket, variantPath, 3600) ?? undefined;
-  };
-  const lightBackgroundUrl = await signVariant(
-    metadata.logo_light_background_path,
-  );
   return {
     download_url: downloadUrl,
-    ...(lightBackgroundUrl
-      ? { light_background_download_url: lightBackgroundUrl }
-      : {}),
     posicao: "canto_superior_esquerdo",
     largura_ratio: 0.38,
     margem_ratio: 0.04,

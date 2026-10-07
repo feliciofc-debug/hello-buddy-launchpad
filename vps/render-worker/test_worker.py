@@ -56,7 +56,7 @@ class FfmpegCommandTest(unittest.TestCase):
     def test_percent_is_escaped_for_drawtext(self):
         self.assertEqual(WORKER["esc"]("Desconto de 50%"), "Desconto de 50\\\\%")
 
-    def test_logo_download_never_uses_dark_background_variant(self):
+    def test_logo_download_uses_video_claim_primary_variant(self):
         downloaded = []
         WORKER["baixar_logo_url"] = lambda url, path: downloaded.append((url, path)) or path
         path = WORKER["baixar_logo"]({
@@ -66,7 +66,7 @@ class FfmpegCommandTest(unittest.TestCase):
         }, "/tmp/job", "video.mp4")
         self.assertEqual(path, "/tmp/job/logo")
         self.assertEqual(downloaded, [
-            ("https://example.com/light.png", "/tmp/job/logo"),
+            ("https://example.com/default.png", "/tmp/job/logo"),
         ])
 
     def test_logo_download_falls_back_to_default(self):

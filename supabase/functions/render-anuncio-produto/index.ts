@@ -36,7 +36,7 @@
 import satori from "https://esm.sh/satori@0.10.13";
 import { initWasm, Resvg } from "https://esm.sh/@resvg/resvg-wasm@2.6.2";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { Image } from "https://deno.land/x/imagescript@1.2.15/mod.ts";
+import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
 import {
   type AnuncioData,
   type AnuncioFormato,
