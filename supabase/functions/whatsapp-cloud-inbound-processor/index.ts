@@ -73,6 +73,16 @@ import {
   type VehicleCarouselPhoto,
   type VehiclePhotoView,
 } from "../_shared/vehicle-carousel.ts";
+import {
+  hasSpecificVehicleModel,
+  isGenericVehicleTitle,
+  parseVehicleIdentification,
+  resolveVehicleAdTitle,
+  vehicleIdentificationButtons,
+  vehicleIdentificationPrompt,
+  vehicleIdentificationQuestion,
+  type VehicleIdentification,
+} from "../_shared/vehicle-identification.ts";
 
 // ---------------------------------------------------------------------------
 // Multi-tenant owner registry (populado no início de cada processMessage).
@@ -2850,6 +2860,15 @@ type AgentConvState = {
   pending_carousel?: PendingCarouselState | null;
   pending_carrossel_veiculo?: PendingVehicleCarousel | null;
   pending_vehicle_photo_batch?: PendingVehiclePhotoBatch | null;
+  pending_vehicle_identification?: {
+    identification: VehicleIdentification;
+    media_ids: string[];
+    target: "single_ad" | "carousel";
+    confirmed?: boolean;
+    confirmed_title?: string;
+    awaiting_correction?: boolean;
+    created_at: string;
+  } | null;
   pending_video_setup?: PendingVideoSetupState | null;
   pending_creative_media_ambiguity?: { original_request: string; created_at: string } | null;
   pending_anuncio_cliente?: {
@@ -3136,6 +3155,115 @@ async function classifyPhotoVertical(
     console.warn("[vertical] visao_falhou", (error as Error).message);
     return null;
   }
+}
+
+async function identifyVehiclePhoto(
+  source: MediaExtract | string | undefined,
+): Promise<VehicleIdentification | null> {
+  if (!source) return null;
+  const imageUrl = typeof source === "string"
+    ? source
+    : source.kind === "image"
+    ? `data:${source.mime};base64,${source.base64}`
+    : null;
+  if (!imageUrl) return null;
+  try {
+    const response = await fetch(
+      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: MODEL_DEEP,
+          temperature: 0,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "text", text: vehicleIdentificationPrompt() },
+              { type: "image_url", image_url: { url: imageUrl } },
+            ],
+          }],
+        }),
+        signal: AbortSignal.timeout(45_000),
+      },
+    );
+    if (!response.ok) {
+      console.warn(
+        `[vehicle-identification] falhou status=${response.status}`,
+      );
+      return null;
+    }
+    const body = await response.json();
+    return parseVehicleIdentification(
+      String(body?.choices?.[0]?.message?.content || ""),
+    );
+  } catch (error) {
+    console.warn(
+      "[vehicle-identification] falhou",
+      error instanceof Error ? error.message : String(error),
+    );
+    return null;
+  }
+}
+
+async function beginVehicleIdentification(
+  ctx: {
+    userId: string;
+    fromNumber: string;
+    convId?: string;
+    agentState?: AgentConvState;
+  },
+  params: {
+    photos: Array<{ id: string; url: string }>;
+    target: "single_ad" | "carousel";
+    originalMedia?: MediaExtract;
+  },
+): Promise<{
+  text: string;
+  interactiveButtons?: WhatsAppInteractiveButtons;
+}> {
+  const first = params.photos[0];
+  const identification = await identifyVehiclePhoto(
+    params.originalMedia ?? first?.url,
+  ) ?? {
+    marca: null,
+    modelo: null,
+    geracao_ou_faixa_de_anos: null,
+    cor: null,
+    carroceria: null,
+    confianca: "baixa" as const,
+    pistas_visuais: [],
+  };
+  const pending = {
+    identification,
+    media_ids: params.photos.map((photo) => photo.id),
+    target: params.target,
+    created_at: new Date().toISOString(),
+  };
+  if (ctx.convId) {
+    const conversation = {
+      id: ctx.convId,
+      userId: ctx.userId,
+      contactNumber: ctx.fromNumber,
+    };
+    const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+    await saveAgentState(sb, conversation, {
+      pending_vehicle_identification: pending,
+    }, current);
+    current.pending_vehicle_identification = pending;
+    ctx.agentState = current;
+  }
+  const canConfirm = identification.confianca !== "baixa" &&
+    hasSpecificVehicleModel(identification);
+  return {
+    text: vehicleIdentificationQuestion(identification),
+    interactiveButtons: canConfirm
+      ? vehicleIdentificationButtons()
+      : undefined,
+  };
 }
 
 async function scopedConversationState(
@@ -13157,6 +13285,15 @@ async function renderVehicleCarousel(
         `Preciso de pelo menos ${VEHICLE_CAROUSEL_MIN_PHOTOS} fotos e dos dados do veículo.`,
     };
   }
+  if (
+    !state.data.titulo ||
+    isGenericVehicleTitle(state.data.titulo)
+  ) {
+    return {
+      text:
+        "Não vou gerar o carrossel sem marca e modelo confirmados. Qual é a marca, o modelo, a versão e o ano?",
+    };
+  }
   const rendering = {
     ...state,
     stage: "rendering" as const,
@@ -14400,13 +14537,47 @@ async function toolCriarAnuncio(
       });
     }
 
-    const titulo = (args?.titulo || "").trim();
+    const verticalScope = (ctx.agentState as Record<string, unknown> | undefined)
+      ?.__vertical_scope as InboundVertical | undefined;
+    const pendingVehicleIdentification =
+      ctx.agentState?.pending_vehicle_identification;
+    const titleResolution = verticalScope === "veiculo"
+      ? resolveVehicleAdTitle({
+        requestedTitle: args?.titulo,
+        identification: pendingVehicleIdentification,
+      })
+      : null;
+    if (titleResolution && !titleResolution.ok) {
+      return JSON.stringify({
+        erro: "modelo_veiculo_nao_confirmado",
+        mensagem: titleResolution.reason === "unconfirmed_suggestion"
+          ? "A identificação pela foto é apenas uma sugestão. Confirme ou corrija a marca e o modelo antes de gerar o anúncio."
+          : "Não vou gerar o anúncio com um título genérico. Confirme a marca e o modelo exatos do veículo.",
+      });
+    }
+    let titulo = titleResolution?.ok
+      ? titleResolution.title
+      : (args?.titulo || "").trim();
     if (titulo.length < 2) {
       return JSON.stringify({
         erro: "titulo_ausente",
         mensagem: "Qual é o produto ou modelo que deve aparecer no anúncio?",
       });
     }
+    const titleParts = [titulo];
+    for (const value of [args.versao, args.ano]) {
+      const text = String(value || "").trim();
+      if (
+        text &&
+        !titleParts.join(" ").toLocaleLowerCase("pt-BR").includes(
+          text.toLocaleLowerCase("pt-BR"),
+        )
+      ) {
+        titleParts.push(text);
+      }
+    }
+    args.titulo = titleParts.join(" ").trim() || titulo;
+    titulo = args.titulo;
 
     const suppliedFipe = args?.fipe ||
       (String(args?.preco_referencia_label || "").toUpperCase() === "FIPE"
@@ -14875,6 +15046,7 @@ async function toolCriarAnuncio(
         last_anuncio: lastAnuncio,
         pending_anuncio_post: pendingPost,
         pending_anuncio_photo: pendingPhoto,
+        pending_vehicle_identification: null,
       }, current);
       if (!stateSaved) {
         throw new Error(
@@ -14885,6 +15057,7 @@ async function toolCriarAnuncio(
       current.last_anuncio = lastAnuncio;
       current.pending_anuncio_post = pendingPost;
       current.pending_anuncio_photo = pendingPhoto;
+      current.pending_vehicle_identification = null;
       ctx.agentState = current;
     }
 
@@ -15462,6 +15635,9 @@ async function callGemini(
         )
       ? toolCtx.agentState!.pending_vehicle_photo_batch!
       : null;
+    const pendingVehicleIdentification = remetenteEhDono
+      ? toolCtx.agentState?.pending_vehicle_identification
+      : null;
     const pendingSinglePhoto = remetenteEhDono ? toolCtx.agentState?.pending_single_photo : null;
     const pendingVideoSetup = remetenteEhDono ? toolCtx.agentState?.pending_video_setup : null;
     const pendingAnuncioCliente = remetenteEhDono
@@ -15519,6 +15695,9 @@ async function callGemini(
     )?.[1]?.toLowerCase() || "";
     const vehiclePhotoBatchInteractiveId = userContent.match(
       /<<INTERACTIVE_ID:(vehicle_photo_batch:[^>]+)>>/i,
+    )?.[1]?.toLowerCase() || "";
+    const vehicleIdentificationInteractiveId = userContent.match(
+      /<<INTERACTIVE_ID:(vehicle_identification:[^>]+)>>/i,
     )?.[1]?.toLowerCase() || "";
     const singlePhotoInteractiveId = userContent.match(
       /<<INTERACTIVE_ID:(single_photo:[^>]+)>>/i,
@@ -15582,6 +15761,186 @@ async function callGemini(
     }
     if (
       remetenteEhDono &&
+      pendingVehicleIdentification &&
+      vehicleIdentificationInteractiveId ===
+        "vehicle_identification:correct"
+    ) {
+      if (toolCtx.convId) {
+        const next = {
+          ...pendingVehicleIdentification,
+          awaiting_correction: true,
+          created_at: new Date().toISOString(),
+        };
+        await saveAgentState(sb, {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        }, { pending_vehicle_identification: next }, toolCtx.agentState ?? {});
+        if (toolCtx.agentState) {
+          toolCtx.agentState.pending_vehicle_identification = next;
+        }
+      }
+      return {
+        text:
+          "Qual é a marca, o modelo, a versão e o ano? Vou usar exatamente o que você informar.",
+      };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleIdentification &&
+      vehicleIdentificationInteractiveId ===
+        "vehicle_identification:confirm"
+    ) {
+      const identity = pendingVehicleIdentification.identification;
+      const confirmedTitle = `${identity.marca || ""} ${
+        identity.modelo || ""
+      }`.trim();
+      if (!confirmedTitle || isGenericVehicleTitle(confirmedTitle)) {
+        return {
+          text:
+            "Não consegui identificar o modelo com segurança. Qual é a marca, o modelo e o ano?",
+        };
+      }
+      if (
+        pendingVehicleIdentification.target === "carousel" &&
+        pendingVehicleCarousel
+      ) {
+        const next = {
+          ...pendingVehicleCarousel,
+          stage: "awaiting_data" as const,
+          data: {
+            ...(pendingVehicleCarousel.data ?? {}),
+            titulo: confirmedTitle,
+            ...(identity.cor ? { cor: identity.cor } : {}),
+          },
+          created_at: new Date().toISOString(),
+        };
+        await persistVehicleCarousel(toolCtx, next);
+        if (toolCtx.convId) {
+          await saveAgentState(sb, {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          }, { pending_vehicle_identification: null }, toolCtx.agentState ?? {});
+        }
+        return {
+          text:
+            `Confirmado: ${confirmedTitle}. Agora me mande versão, ano, km, câmbio, preço, condições e contato. O que não informar não aparece.`,
+        };
+      }
+      const next = {
+        ...pendingVehicleIdentification,
+        confirmed: true,
+        confirmed_title: confirmedTitle,
+        awaiting_correction: false,
+        created_at: new Date().toISOString(),
+      };
+      if (toolCtx.convId) {
+        await saveAgentState(sb, {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        }, { pending_vehicle_identification: next }, toolCtx.agentState ?? {});
+        if (toolCtx.agentState) {
+          toolCtx.agentState.pending_vehicle_identification = next;
+        }
+      }
+      return {
+        text:
+          `Confirmado: ${confirmedTitle}. Agora me mande versão, ano, km, preço e os outros dados reais do anúncio.`,
+      };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleIdentification &&
+      !vehicleIdentificationInteractiveId &&
+      !/<<INTERACTIVE_ID:/i.test(userContent) &&
+      userContent.trim() &&
+      (
+        pendingVehicleIdentification.awaiting_correction ||
+        pendingVehicleIdentification.identification.confianca === "baixa"
+      )
+    ) {
+      const corrected = parseVehicleCarouselData(userContent);
+      const confirmedTitle = String(
+        corrected.titulo || userContent.split(/[,\n;]/)[0] || "",
+      ).trim().slice(0, 100);
+      if (!confirmedTitle || isGenericVehicleTitle(confirmedTitle)) {
+        return {
+          text:
+            "Preciso da marca e do modelo exatos, por exemplo: Fiat Grand Siena. Qual é?",
+        };
+      }
+      if (
+        pendingVehicleIdentification.target === "carousel" &&
+        pendingVehicleCarousel
+      ) {
+        const next = {
+          ...pendingVehicleCarousel,
+          stage: "awaiting_data" as const,
+          data: {
+            ...(pendingVehicleCarousel.data ?? {}),
+            ...corrected,
+            titulo: confirmedTitle,
+          },
+          created_at: new Date().toISOString(),
+        };
+        await persistVehicleCarousel(toolCtx, next);
+        if (toolCtx.convId) {
+          await saveAgentState(sb, {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          }, { pending_vehicle_identification: null }, toolCtx.agentState ?? {});
+        }
+        return {
+          text:
+            `Modelo corrigido para ${confirmedTitle}. Me mande os outros dados reais que quiser mostrar.`,
+        };
+      }
+      const next = {
+        ...pendingVehicleIdentification,
+        confirmed: true,
+        confirmed_title: confirmedTitle,
+        awaiting_correction: false,
+        created_at: new Date().toISOString(),
+      };
+      if (toolCtx.convId) {
+        await saveAgentState(sb, {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        }, { pending_vehicle_identification: next }, toolCtx.agentState ?? {});
+        if (toolCtx.agentState) {
+          toolCtx.agentState.pending_vehicle_identification = next;
+        }
+      }
+      return {
+        text:
+          `Modelo corrigido para ${confirmedTitle}. Agora me mande preço, km e condições.`,
+      };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleIdentification &&
+      !pendingVehicleIdentification.confirmed &&
+      !vehicleIdentificationInteractiveId
+    ) {
+      return {
+        text: vehicleIdentificationQuestion(
+          pendingVehicleIdentification.identification,
+        ),
+        interactiveButtons:
+          pendingVehicleIdentification.identification.confianca !== "baixa" &&
+            hasSpecificVehicleModel(
+              pendingVehicleIdentification.identification,
+            )
+            ? vehicleIdentificationButtons()
+            : undefined,
+      };
+    }
+    if (
+      remetenteEhDono &&
       !pendingVehicleCarousel &&
       isVehiclePhotoCarouselTextRequest(userContent)
     ) {
@@ -15615,33 +15974,14 @@ async function callGemini(
         pendingVehiclePhotoBatch.photos,
         "botao_lote_fotos",
       );
-      const next = await askVehicleCarouselData(state, toolCtx);
-      const buttons = next.interactiveButtons
-        ? {
-          ...next.interactiveButtons,
-          buttons: state.photos.length < VEHICLE_CAROUSEL_MAX_PHOTOS
-            ? [
-              ...next.interactiveButtons.buttons,
-              {
-                id: "vehicle_carousel:photos:add",
-                title: "Adicionar fotos",
-              },
-            ].slice(0, 3)
-            : next.interactiveButtons.buttons,
-        }
-        : state.photos.length < VEHICLE_CAROUSEL_MAX_PHOTOS
-        ? {
-          body: "Se quiser, adicione mais fotos antes de informar os dados.",
-          buttons: [{
-            id: "vehicle_carousel:photos:add",
-            title: "Adicionar fotos",
-          }],
-        }
-        : undefined;
+      const identification = await beginVehicleIdentification(toolCtx, {
+        photos: state.photos,
+        target: "carousel",
+      });
       return {
         text:
-          `Carrossel com ${vehiclePhotoCountLabel(state.photos.length)}.\n\n${next.text}`,
-        interactiveButtons: buttons,
+          `Carrossel com ${vehiclePhotoCountLabel(state.photos.length)}.\n\n${identification.text}`,
+        interactiveButtons: identification.interactiveButtons,
       };
     }
     if (
@@ -15667,9 +16007,10 @@ async function callGemini(
         current.pending_vehicle_photo_batch = null;
         if (interaction) current.last_media_interaction = interaction;
       }
-      return {
-        text: verticalAdDetailsPrompt(activeVertical),
-      };
+      return await beginVehicleIdentification(toolCtx, {
+        photos: pendingVehiclePhotoBatch.photos,
+        target: "single_ad",
+      });
     }
     if (
       remetenteEhDono &&
@@ -15788,7 +16129,10 @@ async function callGemini(
           interactiveButtons: needMore,
         };
       }
-      return await askVehicleCarouselData(pendingVehicleCarousel, toolCtx);
+      return await beginVehicleIdentification(toolCtx, {
+        photos: pendingVehicleCarousel.photos,
+        target: "carousel",
+      });
     }
     if (
       remetenteEhDono &&
@@ -20706,20 +21050,20 @@ async function processOne(queueId: string) {
               plannedBatch.currentPhotoIsLatest
             ) {
               const repeated = (batch.reused_photo_ids?.length ?? 0) > 0;
-              let description = "";
+              let identification:
+                | Awaited<ReturnType<typeof beginVehicleIdentification>>
+                | null = null;
               if (!repeated) {
-                try {
-                  description = await descreverFotosSalvas(freshLibraryMedia, salvos, contexto, userId);
-                } catch (error) {
-                  console.warn("[processor][single_photo_vision_failed]", (error as Error).message);
-                }
-                const singlePhoto = {
-                  media_id: batch.photos[0].id,
-                  stage: "actions" as const,
-                  created_at: new Date().toISOString(),
-                };
-                await saveAgentState(sb, stateConversation, { pending_single_photo: singlePhoto }, refreshedState);
-                refreshedState.pending_single_photo = singlePhoto;
+                identification = await beginVehicleIdentification(
+                  vehicleFlowCtx,
+                  {
+                    photos: batch.photos,
+                    target: "single_ad",
+                    originalMedia: freshLibraryMedia.find((item) =>
+                      item.kind === "image"
+                    ),
+                  },
+                );
               }
               await sendVehicleFlowReply({
                 conversationId: conv.id,
@@ -20728,14 +21072,13 @@ async function processOne(queueId: string) {
                 text: withDemoModeLabel(
                   repeated
                     ? SINGLE_REPEATED_VEHICLE_PHOTO_MESSAGE
-                    : description
-                    ? `Recebi a foto. Estou vendo: ${description.trim()}`
-                    : "Recebi a foto e salvei como a mídia mais recente.",
+                    : identification?.text ||
+                      "Não consegui identificar o modelo com segurança. Qual é a marca, o modelo e o ano?",
                   verticalDecision,
                 ),
                 buttons: repeated
                   ? vehicleSpecialistPhotoButtons()
-                  : generalSpecialistPhotoButtons(),
+                  : identification?.interactiveButtons,
               });
             }
             const awaitingMore = !queueBatch.shouldOffer;

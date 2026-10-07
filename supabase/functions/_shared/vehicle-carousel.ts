@@ -1,4 +1,5 @@
 import type { AnuncioPhotoPreference } from "./anuncio-style.ts";
+import { isGenericVehicleTitle } from "./vehicle-identification.ts";
 
 export const VEHICLE_CAROUSEL_TTL_MS = 30 * 60 * 1000;
 export const VEHICLE_PHOTO_BATCH_TTL_MS = 3 * 60 * 1000;
@@ -289,7 +290,9 @@ export function vehiclePhotoBatchOfferMessage(
   state: PendingVehiclePhotoBatch,
 ): string {
   const reusedCount = state.reused_photo_ids?.length ?? 0;
-  return `Recebi ${vehiclePhotoCountLabel(state.photos.length)}. O que quer fazer?${
+  return `Recebi ${
+    vehiclePhotoCountLabel(state.photos.length)
+  }. O que quer fazer?${
     reusedCount > 0 && reusedCount < state.photos.length
       ? `\n\n(${reusedCount} ${
         reusedCount === 1 ? "dela você já tinha" : "delas você já tinha"
@@ -588,11 +591,19 @@ export function isGeneratedVehicleCopySafe(
   data: VehicleCarouselData,
 ): boolean {
   const copy = normalize(text);
+  if (
+    /\b(veiculo sedan|carro hatch)\b/.test(copy) ||
+    /^(sedan|hatch|suv)\b/.test(copy)
+  ) {
+    return false;
+  }
   if (UNSUPPORTED_VEHICLE_CLAIMS.some((claim) => copy.includes(claim))) {
     return false;
   }
   const facts = normalize(JSON.stringify(data));
-  if (copy.includes("unico dono") && !facts.includes("unico dono")) return false;
+  if (copy.includes("unico dono") && !facts.includes("unico dono")) {
+    return false;
+  }
   if (copy.includes("garantia") && !facts.includes("garantia")) return false;
   const optionalClaims = [
     "bancos em couro",
@@ -603,9 +614,11 @@ export function isGeneratedVehicleCopySafe(
     "ipva pago",
     "revisoes em dia",
   ];
-  if (optionalClaims.some((claim) =>
-    copy.includes(claim) && !facts.includes(claim)
-  )) return false;
+  if (
+    optionalClaims.some((claim) =>
+      copy.includes(claim) && !facts.includes(claim)
+    )
+  ) return false;
 
   const factValues = Object.values(data).flatMap((value) =>
     Array.isArray(value) ? value : value ? [value] : []
@@ -689,11 +702,15 @@ export function buildVehicleCarouselSlides(input: {
       : null;
   };
   const coverGenerated = safeGenerated("cover", 0);
+  const generatedCoverTitle = coverGenerated?.title &&
+      !isGenericVehicleTitle(coverGenerated.title)
+    ? coverGenerated.title
+    : undefined;
   const slides: VehicleCarouselSlide[] = [{
     type: "cover",
     photo_url: photos[0]?.url,
     photo_box: photos[0]?.box,
-    title: coverGenerated?.title ||
+    title: generatedCoverTitle ||
       [input.data.titulo, input.data.versao, input.data.ano].filter(Boolean)
         .join(" • "),
     body: coverGenerated?.body || input.data.preco,

@@ -43,6 +43,7 @@ export type VerticalNamespacedState = Record<string, unknown> & {
 export const VEHICLE_STATE_KEYS = new Set([
   "pending_carrossel_veiculo",
   "pending_vehicle_photo_batch",
+  "pending_vehicle_identification",
   "pending_fipe",
   "last_fipe",
   "last_anuncio",

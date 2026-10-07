@@ -19,9 +19,9 @@ import {
   expiredAnuncioPendingPatch,
   hasEnoughVehicleCarouselPhotos,
   hasVehicleCarouselData,
+  isGeneratedVehicleCopySafe,
   isVehiclePhotoCarouselRequest,
   isVehiclePhotoCarouselTextRequest,
-  isGeneratedVehicleCopySafe,
   parseVehicleCarouselData,
   planVehiclePhotoBatch,
   SINGLE_REPEATED_VEHICLE_PHOTO_MESSAGE,
@@ -37,8 +37,8 @@ import {
   vehiclePhotoBatchButtons,
   vehiclePhotoBatchNewTopicReset,
   vehiclePhotoBatchOfferMessage,
-  vehiclePhotoCountLabel,
   vehiclePhotoCaption,
+  vehiclePhotoCountLabel,
   vehiclePhotosFromQueueEvents,
   vehicleSingleRepeatedPhotoButtons,
 } from "./vehicle-carousel.ts";
@@ -173,6 +173,30 @@ Deno.test("prompt factual e filtro rejeitam invenções", () => {
   const allText = JSON.stringify(slides).toLowerCase();
   assert(!allText.includes("bancos em couro"));
   assert(!allText.includes("imperdível"));
+});
+
+Deno.test("capa nunca aceita título genérico de categoria", () => {
+  const slides = buildVehicleCarouselSlides({
+    photos: [
+      { id: "1", url: "https://example.test/lateral.jpg" },
+      { id: "2", url: "https://example.test/frente.jpg" },
+    ],
+    data: {
+      titulo: "Fiat Grand Siena",
+      ano: "2018",
+      preco: "R$ 49.900",
+    },
+    generated: {
+      slides: [{
+        type: "cover",
+        title: "VEÍCULO SEDAN",
+        body: "R$ 49.900",
+      }],
+      caption: "Fiat Grand Siena 2018",
+    },
+  });
+  assertEquals(slides[0].title, "Fiat Grand Siena • 2018");
+  assertEquals(slides[0].title?.includes("VEÍCULO SEDAN"), false);
 });
 
 Deno.test("enquadramento mantém a caixa do veículo dentro da região da foto", () => {
