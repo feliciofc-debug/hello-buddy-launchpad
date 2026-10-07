@@ -10,6 +10,8 @@ export type VehicleIdentification = {
   pistas_visuais: string[];
 };
 
+export const VEHICLE_IDENTIFICATION_TTL_MS = 30 * 60 * 1000;
+
 const GENERIC_VEHICLE_TITLES = new Set([
   "veiculo",
   "veiculo sedan",
@@ -33,6 +35,72 @@ function normalize(value: string): string {
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+export function validPendingVehicleIdentification(
+  value: { created_at?: string } | null | undefined,
+  nowMs = Date.now(),
+): boolean {
+  const createdAt = Date.parse(String(value?.created_at || ""));
+  return Number.isFinite(createdAt) && createdAt <= nowMs &&
+    nowMs - createdAt <= VEHICLE_IDENTIFICATION_TTL_MS;
+}
+
+export function isVehicleIdentificationConfirmation(
+  text: string,
+  identification?: VehicleIdentification | null,
+): boolean {
+  const value = normalize(text.replace(/<<interactive_id:[^>]+>>/gi, ""));
+  if (/^(sim|isso|correto|confirmo|confirmado|pode confirmar)\b/.test(value)) {
+    return true;
+  }
+  const model = normalize(identification?.modelo || "");
+  return Boolean(
+    model &&
+      /\b(e|eh|parece|modelo)\b/.test(value) &&
+      value.includes(model),
+  );
+}
+
+export function isVehicleIdentificationAbandonRequest(text: string): boolean {
+  const value = normalize(text.replace(/<<interactive_id:[^>]+>>/gi, ""));
+  return /\b(edita|editar|edite|tira|tirar|remove|remover|troca|trocar)\b[\s\S]{0,40}\b(foto|imagem|fundo|cenario)\b/
+    .test(value) ||
+    /\b(faz|fazer|cria|criar|publica|publicar|posta|postar)\b[\s\S]{0,30}\b(post|video|reels)\b/
+      .test(value);
+}
+
+const KNOWN_VEHICLE_BRANDS =
+  /\b(abarth|audi|bmw|byd|caoa|chery|chevrolet|citroen|fiat|ford|honda|hyundai|jeep|kia|land rover|mercedes|mitsubishi|nissan|peugeot|porsche|ram|renault|toyota|volkswagen|volvo|vw|yamaha)\b/i;
+
+export function looksLikeVehicleMakeModel(text: string): boolean {
+  const clean = String(text || "")
+    .replace(/<<interactive_id:[^>]+>>/gi, "")
+    .replace(/^(?:e|é|eh)\s+(?:um|uma)\s+/i, "")
+    .replace(/\b(?:ano|km|quilometragem|preco|valor)\s*[:=-].*$/i, "")
+    .replace(/[,\n;].*$/, "")
+    .trim();
+  if (!clean || isVehicleIdentificationAbandonRequest(clean)) return false;
+  if (KNOWN_VEHICLE_BRANDS.test(clean)) {
+    return clean.split(/\s+/).filter(Boolean).length >= 2;
+  }
+  return /^[A-ZÀ-Ý][\p{L}\d-]+(?:\s+[A-ZÀ-Ý][\p{L}\d-]+){1,3}$/u.test(
+    clean,
+  );
+}
+
+export function explicitVehiclePriceChoice(text: string): string | null {
+  const value = normalize(text);
+  return /\b(sem preco|consulte|consultar valor|sob consulta)\b/.test(value)
+    ? "Consulte"
+    : null;
+}
+
+export function resolveVehiclePrice(
+  value: string | null | undefined,
+): { ok: true; value: string } | { ok: false } {
+  const price = String(value || "").trim();
+  return price ? { ok: true, value: price } : { ok: false };
 }
 
 export function vehicleIdentificationPrompt(): string {

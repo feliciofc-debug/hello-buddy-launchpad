@@ -11,7 +11,7 @@ export function shouldAskAmzAnuncioClient(input: {
 
 export function amzAnuncioClientButtons() {
   return {
-    body: "Para qual loja é esse anúncio?",
+    body: "Escolha uma opção:",
     buttons: [
       { id: "anuncio_other_store", title: "Informar outra loja" },
       { id: "anuncio_use_amz", title: "Usar marca da AMZ" },

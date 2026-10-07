@@ -11,6 +11,7 @@ import {
   anuncioPostNetworkButtons,
   anuncioScheduleApprovalButtons,
   anuncioScheduleTimeButtons,
+  canOfferAnuncioPostActions,
   chooseAnuncioPostSource,
   generateVehicleAdCaptions,
   type LastAnuncio,
@@ -18,6 +19,17 @@ import {
   shouldBindPostToLastAnuncio,
   validLastAnuncio,
 } from "./anuncio-social-flow.ts";
+
+Deno.test("ações de publicação só são liberadas depois de todas as prévias", () => {
+  assertEquals(
+    canOfferAnuncioPostActions({ previewsSent: 0, expectedPreviews: 1 }),
+    false,
+  );
+  assertEquals(
+    canOfferAnuncioPostActions({ previewsSent: 1, expectedPreviews: 1 }),
+    true,
+  );
+});
 
 function lastAnuncio(createdAt = "2026-10-06T12:00:00.000Z"): LastAnuncio {
   return {

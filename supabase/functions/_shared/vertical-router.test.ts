@@ -4,6 +4,7 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   activeDemoSegment,
+  activePendingVerticalRoute,
   applyVerticalStatePatch,
   businessSegmentButtons,
   demoSegmentConfirmationButtons,
@@ -43,6 +44,56 @@ Deno.test("pedidos explícitos escolhem o especialista correto", () => {
   }
   assertEquals(
     explicitVerticalIntent("troca o fundo da caneca")?.route,
+    "geral",
+  );
+  assertEquals(
+    explicitVerticalIntent(
+      "<<INTERACTIVE_ID:vehicle_identification:confirm>>",
+    )?.route,
+    "veiculo",
+  );
+});
+
+Deno.test("pendente ativo retoma a vertical certa sem sequestrar pedido explícito", () => {
+  const now = Date.parse("2026-10-07T15:00:00.000Z");
+  const state = {
+    vehicle: {
+      pending_vehicle_identification: {
+        created_at: "2026-10-07T14:55:00.000Z",
+      },
+    },
+    general: {},
+  };
+  assertEquals(activePendingVerticalRoute(state, now), "veiculo");
+  assertEquals(
+    resolveVertical({
+      isAdmin: true,
+      pendingRoute: activePendingVerticalRoute(state, now),
+      text: "2014, 80 mil km, R$ 45.900",
+    }).route,
+    "veiculo",
+  );
+  assertEquals(
+    resolveVertical({
+      isAdmin: true,
+      pendingRoute: "veiculo",
+      text: "edita essa foto e tira o fundo",
+    }).route,
+    "geral",
+  );
+  assertEquals(
+    activePendingVerticalRoute(state, now + 31 * 60 * 1000),
+    null,
+  );
+  assertEquals(
+    activePendingVerticalRoute({
+      vehicle: {},
+      general: {
+        pending_single_photo: {
+          created_at: "2026-10-07T14:59:00.000Z",
+        },
+      },
+    }, now),
     "geral",
   );
 });

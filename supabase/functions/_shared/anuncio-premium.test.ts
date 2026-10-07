@@ -307,6 +307,10 @@ Deno.test("tenant AMZ sem cliente pergunta a loja e botão libera marca AMZ", ()
     { id: "anuncio_use_amz", title: "Usar marca da AMZ" },
   ]);
   assertEquals(
+    amzAnuncioClientButtons().body.includes("Para qual loja"),
+    false,
+  );
+  assertEquals(
     shouldAskAmzAnuncioClient({
       tenantId: "amz",
       amzTenantId: "amz",

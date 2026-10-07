@@ -39,6 +39,7 @@ export type VehicleCarouselData = {
   quilometragem?: string;
   cambio?: string;
   motor?: string;
+  cor?: string;
   donos?: string;
   documentacao?: string;
   revisoes?: string;

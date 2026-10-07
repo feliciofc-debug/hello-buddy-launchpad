@@ -74,10 +74,16 @@ import {
   type VehiclePhotoView,
 } from "../_shared/vehicle-carousel.ts";
 import {
+  explicitVehiclePriceChoice,
   hasSpecificVehicleModel,
+  isVehicleIdentificationAbandonRequest,
+  isVehicleIdentificationConfirmation,
   isGenericVehicleTitle,
+  looksLikeVehicleMakeModel,
   parseVehicleIdentification,
   resolveVehicleAdTitle,
+  resolveVehiclePrice,
+  validPendingVehicleIdentification,
   vehicleIdentificationButtons,
   vehicleIdentificationPrompt,
   vehicleIdentificationQuestion,
@@ -119,6 +125,8 @@ import {
   applyBrandLogo,
   buildBrandGenerationGuidance,
 } from "../_shared/brand-image-engine.ts";
+import { sceneEditDirective } from "../_shared/image-edit-instruction.ts";
+import { appendWhatsappCtaInPublishingOrder } from "../_shared/social-caption-order.ts";
 import {
   dataUrlToImageBytes,
   loadTenantBrandAssets,
@@ -290,10 +298,12 @@ import {
 import { exactSocialMedia } from "../_shared/social-media-snapshot.ts";
 import { singlePhotoFormatButtons } from "../_shared/single-photo-flow.ts";
 import {
+  activePendingVerticalRoute,
   applyVerticalStatePatch,
   activeDemoSegment,
   businessSegmentButtons,
   demoSegmentConfirmationButtons,
+  explicitVerticalIntent,
   parseDemoSegmentCommand,
   migrateVerticalState,
   parseVerticalVisionResult,
@@ -429,6 +439,7 @@ import {
   anuncioPostNetworkButtons,
   anuncioScheduleApprovalButtons,
   anuncioScheduleTimeButtons,
+  canOfferAnuncioPostActions,
   generateVehicleAdCaptions,
   parseAnuncioPostRequest,
   shouldBindPostToLastAnuncio,
@@ -1967,12 +1978,10 @@ async function toolEditarImagem(
 - Reproduza a logo EXATAMENTE como está no arquivo de referência: mesmas cores, mesma tipografia, mesmo símbolo, mesmas proporções. É PROIBIDO redesenhar, estilizar, traduzir, reescrever o nome ou inventar variação.
 - Nada mais na imagem pode ser alterado.`
     : isAnuncio
-    ? `\n\n🎯 MODO ANÚNCIO/FICHA TÉCNICA — TROCA TOTAL DE AMBIENTE (obrigatório):
+    ? `\n\n🎯 MODO TROCA DE AMBIENTE:
 - RECORTE o produto principal da foto e DESCARTE COMPLETAMENTE o cenário original.
 - É PROIBIDO deixar qualquer resquício do local original: fios, tomadas, televisão, monitor, móveis, mesa, sofá, cortina, parede de casa, chão de casa, rodapé, roupa, pessoas ao fundo, papel, embalagens soltas, objetos de fundo, reflexo do ambiente antigo.
-- SUBSTITUA por um set comercial limpo: fundo de estúdio sólido/gradiente sofisticado (ou showroom, quando for veículo), piso levemente reflexivo, iluminação de estúdio com sombra suave sob o produto, profundidade de campo rasa.
-- O RESULTADO deve parecer foto de catálogo/e-commerce profissional: fundo totalmente controlado, zero bagunça, zero distração.
-- Preserve 100% o PRODUTO em si: mesma marca, mesmo rótulo, mesmas cores, mesmo formato, mesmos textos da embalagem, mesma unidade (não troque por outro modelo, não redesenhe o rótulo).`
+${sceneEditDirective(clean)}`
     : modo === "figurino" || modo === "fantasia" || modo === "roupa"
     ? `\n\n🎯 MODO FIGURINO: troque APENAS a roupa/fantasia da pessoa conforme o pedido. É OBRIGATÓRIO manter o MESMO rosto, mesma idade, mesmo corte de cabelo, mesma pele, mesma pose e o MESMO AMBIENTE/fundo (mesmos móveis, mesma luz, mesmo enquadramento). Não troque o cenário, não deixe a pessoa parecida com outra criança/adulto, não gere desenho — fotorealista.`
     : `\n\n🎯 MODO MELHORIA: eleve a qualidade (nitidez, cor, luz, composição) mantendo a cena reconhecível.`;
@@ -2867,6 +2876,7 @@ type AgentConvState = {
     confirmed?: boolean;
     confirmed_title?: string;
     awaiting_correction?: boolean;
+    data?: VehicleCarouselData;
     created_at: string;
   } | null;
   pending_video_setup?: PendingVideoSetupState | null;
@@ -5988,14 +5998,7 @@ async function buscarTelefoneAgenteTenant(userId: string): Promise<string | null
 }
 
 function appendWhatsappCta(script: string, phoneDigits: string): string {
-  if (!script || !phoneDigits) return script;
-  // Sanduíche idempotente: remove QUALQUER CTA "📱 Fale comigo no WhatsApp: wa.me/..."
-  // já presente (topo, meio ou fim, com qualquer número), e reaplica exatamente
-  // um CTA no início e um no fim. Evita triplicação em regenerações/revisões.
-  const ctaRegex = /\s*📱\s*Fale comigo no WhatsApp:\s*wa\.me\/\d+\s*/gi;
-  const clean = script.replace(ctaRegex, "\n").replace(/\n{3,}/g, "\n\n").trim();
-  const cta = `📱 Fale comigo no WhatsApp: wa.me/${phoneDigits}`;
-  return `${cta}\n\n${clean}\n\n${cta}`;
+  return appendWhatsappCtaInPublishingOrder(script, phoneDigits);
 }
 
 // Detecta pedido explícito do dono pra incluir CTA de WhatsApp no post.
@@ -14047,7 +14050,8 @@ const ANUNCIO_MAX_DIA = 20;
 async function enviarPreviewEstilosAnuncio(
   ctx: { userId: string; fromNumber: string },
   renders: Array<{ style: AnuncioStyle; render: { image_url: string } }>,
-): Promise<void> {
+): Promise<number> {
+  let sent = 0;
   for (const { style, render } of renders) {
     const label = style === "catalogo"
       ? "Catálogo"
@@ -14061,8 +14065,10 @@ async function enviarPreviewEstilosAnuncio(
       undefined,
       { alreadyLogged: false },
     );
+    sent += 1;
     await wait(250);
   }
+  return sent;
 }
 
 async function buscarFotoOriginalRecenteParaAnuncio(ctx: {
@@ -14541,6 +14547,27 @@ async function toolCriarAnuncio(
       ?.__vertical_scope as InboundVertical | undefined;
     const pendingVehicleIdentification =
       ctx.agentState?.pending_vehicle_identification;
+    if (
+      verticalScope === "veiculo" &&
+      pendingVehicleIdentification?.confirmed &&
+      pendingVehicleIdentification.data
+    ) {
+      for (
+        const [key, value] of Object.entries(
+          pendingVehicleIdentification.data,
+        )
+      ) {
+        const target = args as Record<string, unknown>;
+        if (
+          value !== undefined &&
+          value !== null &&
+          String(value).trim() &&
+          !String(target[key] ?? "").trim()
+        ) {
+          target[key] = value;
+        }
+      }
+    }
     const titleResolution = verticalScope === "veiculo"
       ? resolveVehicleAdTitle({
         requestedTitle: args?.titulo,
@@ -14564,6 +14591,17 @@ async function toolCriarAnuncio(
         mensagem: "Qual é o produto ou modelo que deve aparecer no anúncio?",
       });
     }
+    const vehiclePrice = verticalScope === "veiculo"
+      ? resolveVehiclePrice(args.preco)
+      : null;
+    if (vehiclePrice && !vehiclePrice.ok) {
+      return JSON.stringify({
+        erro: "preco_veiculo_ausente",
+        mensagem:
+          "Qual é o preço? Se não quiser informar, escolha “Sem preço” ou “Consulte”.",
+      });
+    }
+    if (vehiclePrice?.ok) args.preco = vehiclePrice.value;
     const titleParts = [titulo];
     for (const value of [args.versao, args.ano]) {
       const text = String(value || "").trim();
@@ -15061,8 +15099,21 @@ async function toolCriarAnuncio(
       ctx.agentState = current;
     }
 
+    // A prévia sempre sai antes de qualquer controle de publicação. O retorno
+    // não carrega image_url para impedir que o chamador envie a mesma arte de
+    // novo junto dos botões.
+    const previewsSent = await enviarPreviewEstilosAnuncio(ctx, renders);
+    if (
+      !canOfferAnuncioPostActions({
+        previewsSent,
+        expectedPreviews: renders.length,
+      })
+    ) {
+      throw new Error(
+        "não consegui entregar todas as prévias; ações de publicação bloqueadas",
+      );
+    }
     if (renders.length > 1) {
-      await enviarPreviewEstilosAnuncio(ctx, renders);
       await sendWhatsApp(
         ctx.userId,
         ctx.fromNumber,
@@ -15073,11 +15124,9 @@ async function toolCriarAnuncio(
         { alreadyLogged: false },
       );
     }
-    const only = renders[0];
-
     return JSON.stringify({
       ok: true,
-      image_url: renders.length === 1 ? only.render.image_url : undefined,
+      preview_sent: true,
       image_urls: renders.map(({ render }) => render.image_url),
       estilos: styles,
       formato,
@@ -15635,9 +15684,25 @@ async function callGemini(
         )
       ? toolCtx.agentState!.pending_vehicle_photo_batch!
       : null;
-    const pendingVehicleIdentification = remetenteEhDono
+    let pendingVehicleIdentification = remetenteEhDono
       ? toolCtx.agentState?.pending_vehicle_identification
       : null;
+    if (
+      pendingVehicleIdentification &&
+      !validPendingVehicleIdentification(pendingVehicleIdentification)
+    ) {
+      if (toolCtx.convId) {
+        await saveAgentState(sb, {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        }, { pending_vehicle_identification: null }, toolCtx.agentState ?? {});
+      }
+      if (toolCtx.agentState) {
+        toolCtx.agentState.pending_vehicle_identification = null;
+      }
+      pendingVehicleIdentification = null;
+    }
     const pendingSinglePhoto = remetenteEhDono ? toolCtx.agentState?.pending_single_photo : null;
     const pendingVideoSetup = remetenteEhDono ? toolCtx.agentState?.pending_video_setup : null;
     const pendingAnuncioCliente = remetenteEhDono
@@ -15710,6 +15775,36 @@ async function callGemini(
         normalizePt(String(previousHistoryMessage.content ?? "")),
       );
     const ownerMediaIntent = classifyOwnerMediaIntent(userContent);
+    if (
+      remetenteEhDono &&
+      ownerMediaIntent.action === "edit" &&
+      (
+        pendingAnuncioCliente ||
+        pendingAnuncioStyles ||
+        pendingAnuncioPhoto ||
+        pendingAnuncioPost
+      ) &&
+      toolCtx.convId
+    ) {
+      const cleared = {
+        pending_anuncio_cliente: null,
+        pending_anuncio_styles: null,
+        pending_anuncio_photo: null,
+        pending_anuncio_post: null,
+      };
+      await saveAgentState(sb, {
+        id: toolCtx.convId,
+        userId: toolCtx.userId,
+        contactNumber: toolCtx.fromNumber,
+      }, cleared, toolCtx.agentState ?? {});
+      return await callGemini(systemPrompt, history, userContent, false, {
+        ...toolCtx,
+        agentState: {
+          ...(toolCtx.agentState ?? {}),
+          ...cleared,
+        },
+      });
+    }
     const explicitPendingCommand = classifyExplicitPendingPostCommand(userContent, hasMedia);
     const anyPendingInteractive = !!socialInteractiveId || !!tiktokInteractiveId(userContent);
     modelPendingActionNotice = explicitPendingCommand && latestPendingSocial
@@ -15759,6 +15854,101 @@ async function callGemini(
     if (videoMotionRedo) {
       return { text: await refazerVideoMotion(toolCtx, userContent) };
     }
+
+    const vehicleDataFromText = (text: string): VehicleCarouselData => {
+      const data = parseVehicleCarouselData(text);
+      const explicitPrice = explicitVehiclePriceChoice(text);
+      return explicitPrice ? { ...data, preco: explicitPrice } : data;
+    };
+    const saveVehicleIdentification = async (
+      next: typeof pendingVehicleIdentification,
+    ) => {
+      if (!toolCtx.convId) return;
+      await saveAgentState(sb, {
+        id: toolCtx.convId,
+        userId: toolCtx.userId,
+        contactNumber: toolCtx.fromNumber,
+      }, { pending_vehicle_identification: next }, toolCtx.agentState ?? {});
+      if (toolCtx.agentState) {
+        toolCtx.agentState.pending_vehicle_identification = next;
+      }
+      pendingVehicleIdentification = next;
+    };
+    const confirmVehicleIdentification = async (
+      correctedTitle?: string,
+      suppliedData: VehicleCarouselData = {},
+    ) => {
+      if (!pendingVehicleIdentification) {
+        return { text: "Não encontrei uma identificação de veículo pendente." };
+      }
+      const identity = pendingVehicleIdentification.identification;
+      const confirmedTitle = String(
+        correctedTitle ||
+          `${identity.marca || ""} ${identity.modelo || ""}`,
+      ).trim();
+      if (
+        !(correctedTitle
+          ? looksLikeVehicleMakeModel(confirmedTitle)
+          : hasSpecificVehicleModel(identity)) ||
+        isGenericVehicleTitle(confirmedTitle)
+      ) {
+        return {
+          text:
+            "Preciso da marca e do modelo exatos, por exemplo: Fiat Grand Siena. Qual é?",
+        };
+      }
+      const mergedData: VehicleCarouselData = {
+        ...(pendingVehicleIdentification.data ?? {}),
+        ...suppliedData,
+        titulo: confirmedTitle,
+        ...(identity.cor && !suppliedData.cor ? { cor: identity.cor } : {}),
+      };
+      const missing = [
+        !mergedData.ano ? "ano" : "",
+        !mergedData.quilometragem ? "quilometragem" : "",
+        !mergedData.preco ? "preço" : "",
+      ].filter(Boolean);
+      if (
+        pendingVehicleIdentification.target === "carousel" &&
+        pendingVehicleCarousel
+      ) {
+        await persistVehicleCarousel(toolCtx, {
+          ...pendingVehicleCarousel,
+          stage: "awaiting_data" as const,
+          data: {
+            ...(pendingVehicleCarousel.data ?? {}),
+            ...mergedData,
+          },
+          created_at: new Date().toISOString(),
+        });
+        await saveVehicleIdentification(null);
+      } else {
+        await saveVehicleIdentification({
+          ...pendingVehicleIdentification,
+          confirmed: true,
+          confirmed_title: confirmedTitle,
+          awaiting_correction: false,
+          data: mergedData,
+          created_at: new Date().toISOString(),
+        });
+      }
+      return {
+        text: missing.length
+          ? `Confirmado: ${confirmedTitle}. Falta informar: ${
+            missing.join(", ")
+          }.`
+          : `Confirmado: ${confirmedTitle}. Guardei ano, quilometragem e preço.`,
+      };
+    };
+
+    if (
+      remetenteEhDono &&
+      pendingVehicleIdentification &&
+      !vehicleIdentificationInteractiveId &&
+      isVehicleIdentificationAbandonRequest(userContent)
+    ) {
+      await saveVehicleIdentification(null);
+    }
     if (
       remetenteEhDono &&
       pendingVehicleIdentification &&
@@ -15791,64 +15981,21 @@ async function callGemini(
       vehicleIdentificationInteractiveId ===
         "vehicle_identification:confirm"
     ) {
-      const identity = pendingVehicleIdentification.identification;
-      const confirmedTitle = `${identity.marca || ""} ${
-        identity.modelo || ""
-      }`.trim();
-      if (!confirmedTitle || isGenericVehicleTitle(confirmedTitle)) {
-        return {
-          text:
-            "Não consegui identificar o modelo com segurança. Qual é a marca, o modelo e o ano?",
-        };
-      }
-      if (
-        pendingVehicleIdentification.target === "carousel" &&
-        pendingVehicleCarousel
-      ) {
-        const next = {
-          ...pendingVehicleCarousel,
-          stage: "awaiting_data" as const,
-          data: {
-            ...(pendingVehicleCarousel.data ?? {}),
-            titulo: confirmedTitle,
-            ...(identity.cor ? { cor: identity.cor } : {}),
-          },
-          created_at: new Date().toISOString(),
-        };
-        await persistVehicleCarousel(toolCtx, next);
-        if (toolCtx.convId) {
-          await saveAgentState(sb, {
-            id: toolCtx.convId,
-            userId: toolCtx.userId,
-            contactNumber: toolCtx.fromNumber,
-          }, { pending_vehicle_identification: null }, toolCtx.agentState ?? {});
-        }
-        return {
-          text:
-            `Confirmado: ${confirmedTitle}. Agora me mande versão, ano, km, câmbio, preço, condições e contato. O que não informar não aparece.`,
-        };
-      }
-      const next = {
-        ...pendingVehicleIdentification,
-        confirmed: true,
-        confirmed_title: confirmedTitle,
-        awaiting_correction: false,
-        created_at: new Date().toISOString(),
-      };
-      if (toolCtx.convId) {
-        await saveAgentState(sb, {
-          id: toolCtx.convId,
-          userId: toolCtx.userId,
-          contactNumber: toolCtx.fromNumber,
-        }, { pending_vehicle_identification: next }, toolCtx.agentState ?? {});
-        if (toolCtx.agentState) {
-          toolCtx.agentState.pending_vehicle_identification = next;
-        }
-      }
-      return {
-        text:
-          `Confirmado: ${confirmedTitle}. Agora me mande versão, ano, km, preço e os outros dados reais do anúncio.`,
-      };
+      return await confirmVehicleIdentification();
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleIdentification &&
+      !vehicleIdentificationInteractiveId &&
+      !/<<INTERACTIVE_ID:/i.test(userContent) &&
+      isVehicleIdentificationConfirmation(
+        userContent,
+        pendingVehicleIdentification.identification,
+      )
+    ) {
+      const { titulo: _ignoredSuggestion, ...suppliedData } =
+        vehicleDataFromText(userContent);
+      return await confirmVehicleIdentification(undefined, suppliedData);
     }
     if (
       remetenteEhDono &&
@@ -15861,63 +16008,46 @@ async function callGemini(
         pendingVehicleIdentification.identification.confianca === "baixa"
       )
     ) {
-      const corrected = parseVehicleCarouselData(userContent);
+      const corrected = vehicleDataFromText(userContent);
       const confirmedTitle = String(
         corrected.titulo || userContent.split(/[,\n;]/)[0] || "",
       ).trim().slice(0, 100);
-      if (!confirmedTitle || isGenericVehicleTitle(confirmedTitle)) {
+      if (
+        !looksLikeVehicleMakeModel(confirmedTitle) ||
+        isGenericVehicleTitle(confirmedTitle)
+      ) {
         return {
           text:
             "Preciso da marca e do modelo exatos, por exemplo: Fiat Grand Siena. Qual é?",
         };
       }
-      if (
-        pendingVehicleIdentification.target === "carousel" &&
-        pendingVehicleCarousel
-      ) {
-        const next = {
-          ...pendingVehicleCarousel,
-          stage: "awaiting_data" as const,
-          data: {
-            ...(pendingVehicleCarousel.data ?? {}),
-            ...corrected,
-            titulo: confirmedTitle,
-          },
-          created_at: new Date().toISOString(),
-        };
-        await persistVehicleCarousel(toolCtx, next);
-        if (toolCtx.convId) {
-          await saveAgentState(sb, {
-            id: toolCtx.convId,
-            userId: toolCtx.userId,
-            contactNumber: toolCtx.fromNumber,
-          }, { pending_vehicle_identification: null }, toolCtx.agentState ?? {});
-        }
-        return {
-          text:
-            `Modelo corrigido para ${confirmedTitle}. Me mande os outros dados reais que quiser mostrar.`,
-        };
-      }
+      return await confirmVehicleIdentification(confirmedTitle, corrected);
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleIdentification &&
+      !pendingVehicleIdentification.confirmed &&
+      !vehicleIdentificationInteractiveId &&
+      hasVehicleCarouselData(userContent)
+    ) {
+      const { titulo: _ignoredTitle, ...suppliedData } =
+        vehicleDataFromText(userContent);
       const next = {
         ...pendingVehicleIdentification,
-        confirmed: true,
-        confirmed_title: confirmedTitle,
-        awaiting_correction: false,
+        data: {
+          ...(pendingVehicleIdentification.data ?? {}),
+          ...suppliedData,
+        },
         created_at: new Date().toISOString(),
       };
-      if (toolCtx.convId) {
-        await saveAgentState(sb, {
-          id: toolCtx.convId,
-          userId: toolCtx.userId,
-          contactNumber: toolCtx.fromNumber,
-        }, { pending_vehicle_identification: next }, toolCtx.agentState ?? {});
-        if (toolCtx.agentState) {
-          toolCtx.agentState.pending_vehicle_identification = next;
-        }
-      }
+      await saveVehicleIdentification(next);
+      const identity = pendingVehicleIdentification.identification;
+      const suggestedTitle = `${identity.marca || ""} ${
+        identity.modelo || ""
+      }`.trim();
       return {
-        text:
-          `Modelo corrigido para ${confirmedTitle}. Agora me mande preço, km e condições.`,
+        text: `Guardei os dados. Confirma que é um ${suggestedTitle}?`,
+        interactiveButtons: vehicleIdentificationButtons(),
       };
     }
     if (
@@ -18240,7 +18370,7 @@ async function callGemini(
             ? `Pronto — apliquei a marca no objeto. ${LOGO_PRODUCT_SIMULATION_NOTICE}${codigo}`
             : logoMode === "top-left"
             ? `Pronto — coloquei a marca no canto superior esquerdo, sem alterar o restante da imagem.${codigo}`
-            : `Pronto — deixei a foto em um cenário profissional para divulgação.${codigo}`,
+            : `Pronto — apliquei o cenário que você pediu, mantendo o produto.${codigo}`,
           imageUrl: parsed.image_url,
         };
       }
@@ -20301,6 +20431,20 @@ async function processOne(queueId: string) {
         demoSegment: rawFreshAgentState.vertical_router?.demo_segment ?? null,
       });
       if (fromIsOwner) logVerticalDecision(verticalDecision);
+      if (
+        fromIsOwner &&
+        !verticalDecision.needsConfirmation &&
+        !verticalDecision.needsSegmentConfirmation
+      ) {
+        rawFreshAgentState.vertical_router = {
+          ...(rawFreshAgentState.vertical_router ?? {}),
+          last_route: verticalDecision.route,
+          updated_at: new Date().toISOString(),
+        };
+        await saveAgentState(sb, stateConversation, {
+          vertical_router: rawFreshAgentState.vertical_router,
+        }, rawFreshAgentState);
+      }
       const freshAgentState = fromIsOwner
         ? await scopedConversationState(
           stateConversation,
@@ -22774,9 +22918,38 @@ Regras:
       text: audioTranscript || userText,
       tenantSegment,
       selectedRoute: selectedVertical,
+      pendingRoute: fromIsOwner
+        ? activePendingVerticalRoute(migratedAgentState)
+        : null,
       isAdmin: isAdminTenant,
       demoSegment: routerStateForTurn.demo_segment ?? null,
     });
+    const explicitTextVertical = explicitVerticalIntent(
+      audioTranscript || userText,
+    );
+    if (
+      fromIsOwner &&
+      explicitTextVertical?.route === "geral" &&
+      (
+        migratedAgentState.vehicle?.pending_vehicle_identification ||
+        migratedAgentState.vehicle?.pending_anuncio_cliente ||
+        migratedAgentState.vehicle?.pending_anuncio_styles ||
+        migratedAgentState.vehicle?.pending_anuncio_photo ||
+        migratedAgentState.vehicle?.pending_anuncio_post
+      )
+    ) {
+      migratedAgentState.vehicle = {
+        ...migratedAgentState.vehicle,
+        pending_vehicle_identification: null,
+        pending_anuncio_cliente: null,
+        pending_anuncio_styles: null,
+        pending_anuncio_photo: null,
+        pending_anuncio_post: null,
+      };
+      await saveAgentState(sb, convStateIdentity, {
+        vehicle: migratedAgentState.vehicle,
+      }, rawAgentState);
+    }
     if (
       fromIsOwner &&
       textVerticalDecision.needsSegmentConfirmation &&

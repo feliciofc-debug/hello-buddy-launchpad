@@ -111,7 +111,7 @@ export function explicitVerticalIntent(
   text: string,
 ): { route: InboundVertical; reason: string } | null {
   const value = normalize(text);
-  if (/<<interactive_id:vehicle_(?:carousel|photo_batch):/.test(value)) {
+  if (/<<interactive_id:vehicle_[a-z0-9_]+:/.test(value)) {
     return { route: "veiculo", reason: "botao_veiculo" };
   }
   if (/<<interactive_id:single_photo:/.test(value)) {
@@ -138,11 +138,71 @@ export function explicitVerticalIntent(
     /\b(trocar|mudar|remover|melhorar)\b[\s\S]{0,30}\b(cenario|fundo|foto|imagem)\b/
       .test(
         value,
+      ) ||
+    /\b(edita|editar|edite)\b[\s\S]{0,40}\b(foto|imagem)\b/.test(value) ||
+    /\b(faz|fazer|cria|criar|publica|publicar|posta|postar)\b[\s\S]{0,30}\b(post|video|reels)\b/
+      .test(
+        value,
       )
   ) {
     return { route: "geral", reason: "pedido_explicito_geral" };
   }
   return null;
+}
+
+const PENDING_VERTICAL_TTL_MS = 30 * 60 * 1000;
+
+function pendingUpdatedAt(value: unknown): number | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const timestamp = record.created_at ?? record.updated_at ?? record.at;
+  const parsed = Date.parse(String(timestamp || ""));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function newestActivePending(
+  bucket: Record<string, unknown> | undefined,
+  keys: Set<string>,
+  nowMs: number,
+): number | null {
+  let newest: number | null = null;
+  for (const key of keys) {
+    if (!key.startsWith("pending_")) continue;
+    const value = bucket?.[key];
+    const updatedAt = pendingUpdatedAt(value);
+    if (
+      updatedAt !== null &&
+      updatedAt <= nowMs &&
+      nowMs - updatedAt <= PENDING_VERTICAL_TTL_MS
+    ) {
+      newest = newest === null ? updatedAt : Math.max(newest, updatedAt);
+    }
+  }
+  return newest;
+}
+
+export function activePendingVerticalRoute(
+  input: VerticalNamespacedState,
+  nowMs = Date.now(),
+): InboundVertical | null {
+  const state = migrateVerticalState(input).state;
+  const vehicleAt = newestActivePending(
+    state.vehicle,
+    new Set([...VEHICLE_STATE_KEYS, ...AMBIGUOUS_AD_STATE_KEYS]),
+    nowMs,
+  );
+  const generalAt = newestActivePending(
+    state.general,
+    new Set([...GENERAL_STATE_KEYS, ...AMBIGUOUS_AD_STATE_KEYS]),
+    nowMs,
+  );
+  if (vehicleAt === null && generalAt === null) return null;
+  if (vehicleAt !== null && generalAt === null) return "veiculo";
+  if (generalAt !== null && vehicleAt === null) return "geral";
+  if (vehicleAt === generalAt && state.vertical_router?.last_route) {
+    return state.vertical_router.last_route;
+  }
+  return Number(vehicleAt) > Number(generalAt) ? "veiculo" : "geral";
 }
 
 function clampConfidence(value: number): number {
@@ -191,6 +251,7 @@ export function resolveVertical(input: {
   tenantSegment?: string | null;
   vision?: VerticalVisionResult | null;
   selectedRoute?: InboundVertical | null;
+  pendingRoute?: InboundVertical | null;
   isAdmin?: boolean;
   demoSegment?: { segment: string; expires_at: string } | null;
   nowMs?: number;
@@ -224,6 +285,16 @@ export function resolveVertical(input: {
         route: input.selectedRoute,
         confidence: 1,
         reason: "escolha_usuario",
+        needsConfirmation: false,
+        explicitFipe,
+        effectiveSegment: null,
+      };
+    }
+    if (input.pendingRoute) {
+      return {
+        route: input.pendingRoute,
+        confidence: 1,
+        reason: "pendente_ativo",
         needsConfirmation: false,
         explicitFipe,
         effectiveSegment: null,
@@ -301,6 +372,17 @@ export function resolveVertical(input: {
       route: input.selectedRoute,
       confidence: 1,
       reason: "escolha_usuario",
+      needsConfirmation: false,
+      explicitFipe,
+      effectiveSegment,
+      demoMode: demoActive,
+    };
+  }
+  if (input.pendingRoute) {
+    return {
+      route: input.pendingRoute,
+      confidence: 1,
+      reason: "pendente_ativo",
       needsConfirmation: false,
       explicitFipe,
       effectiveSegment,

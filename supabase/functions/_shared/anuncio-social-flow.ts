@@ -139,6 +139,14 @@ export function anuncioPostActionButtons() {
   };
 }
 
+export function canOfferAnuncioPostActions(input: {
+  previewsSent: number;
+  expectedPreviews: number;
+}): boolean {
+  return input.expectedPreviews > 0 &&
+    input.previewsSent === input.expectedPreviews;
+}
+
 export function anuncioPostFormatButtons(schedule = false) {
   return {
     body: schedule

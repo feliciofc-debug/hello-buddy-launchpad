@@ -223,6 +223,15 @@ Deno.test("parser não inventa campos ausentes", () => {
   assertEquals(data.opcionais, undefined);
 });
 
+Deno.test("dados enviados junto da confirmação são preservados", () => {
+  const data = parseVehicleCarouselData(
+    "sim, 2014, 80 mil km, R$ 45.900",
+  );
+  assertEquals(data.ano, "2014");
+  assertEquals(data.quilometragem, "80 mil km");
+  assertEquals(data.preco, "R$ 45.900");
+});
+
 Deno.test("gatilho, TTL, formatos e botões respeitam o fluxo", () => {
   for (
     const spelling of [
