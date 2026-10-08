@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, MessageCircle, Users, Send, Smartphone, BookOpen, Megaphone, Loader2, Settings, CheckCircle2, ExternalLink, Shield, Bot, Inbox, PlugZap, Sparkles, Copy, Check, Link2, Download, QrCode } from "lucide-react";
+import ConectarWhatsAppCloud from "@/components/ConectarWhatsAppCloud";
+import { ArrowLeft, MessageCircle, Users, Send, Smartphone, BookOpen, Megaphone, Loader2, Settings, CheckCircle2, ExternalLink, Shield, Bot, Inbox, PlugZap, Sparkles, Copy, Check, Link2, Download, QrCode, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 
 interface WhatsAppConfig {
@@ -51,7 +53,8 @@ export default function WhatsAppPainel() {
   const [stats, setStats] = useState({ enviadas: 0, grupos: 0, campanhasAtivas: 0, conversasAtivas: 0 });
   const [agentActive, setAgentActive] = useState<boolean | null>(null);
   const [whatsappConfig, setWhatsappConfig] = useState<WhatsAppConfig | null>(null);
-  const [showConfig, setShowConfig] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showManualConfig, setShowManualConfig] = useState(false);
   const [saving, setSaving] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [linkPost, setLinkPost] = useState('');
@@ -75,6 +78,14 @@ export default function WhatsAppPainel() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+
+      const { data: adminRole } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("role", "admin")
+        .maybeSingle();
+      setIsAdmin(Boolean(adminRole) || user.email === "expo@atombrasildigital.com");
 
       const { count: enviadas } = await supabase
         .from("fila_atendimento_pj" as any)
@@ -225,7 +236,7 @@ export default function WhatsAppPainel() {
       if (!data?.success) throw new Error(data?.error || 'Verification error');
 
       toast.success(`✅ ${t('whatsapp.connected_success')} ${data.business_name || data.verified_name || ''}`);
-      setShowConfig(false);
+      setShowManualConfig(false);
       loadData();
     } catch (err: any) {
       toast.error(err.message || 'Error verifying connection');
@@ -356,19 +367,18 @@ export default function WhatsAppPainel() {
       <div id="conectar-numero-card" />
 
 
-      {/* WhatsApp Cloud API Config Card */}
-      <Card className="border-green-200 dark:border-green-800">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Settings className="h-5 w-5" />
-            {t('whatsapp.config_title')}
-          </CardTitle>
-          <CardDescription>
-            {t('whatsapp.config_desc')}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {whatsappConfig?.is_active ? (
+      {whatsappConfig?.is_active ? (
+        <Card className="border-green-200 dark:border-green-800">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5" />
+              {t('whatsapp.config_title')}
+            </CardTitle>
+            <CardDescription>
+              {t('whatsapp.config_desc')}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
             <div className="space-y-4">
               <div className="flex items-center gap-4 p-4 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
                 <CheckCircle2 className="h-10 w-10 text-green-500 flex-shrink-0" />
@@ -379,32 +389,47 @@ export default function WhatsAppPainel() {
                 <Badge className="bg-green-500 text-white">{t('whatsapp.connected_badge')}</Badge>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => setShowConfig(true)}>
-                  <Settings className="h-4 w-4 mr-1" /> {t('whatsapp.reconfigure')}
-                </Button>
+                {isAdmin && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setShowManualConfig(true);
+                      setTimeout(() => document.getElementById("manual-whatsapp-config")?.scrollIntoView({ behavior: "smooth" }), 0);
+                    }}
+                  >
+                    <Settings className="h-4 w-4 mr-1" /> {t('whatsapp.reconfigure')}
+                  </Button>
+                )}
                 <Button variant="destructive" size="sm" onClick={handleDisconnect}>
                   {t('whatsapp.disconnect')}
                 </Button>
               </div>
             </div>
-          ) : showConfig ? (
-            <div className="space-y-6">
-              <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                <p className="font-semibold text-sm mb-2">📋 {t('whatsapp.how_to_config')}</p>
-                <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
-                  <li>
-                    {t('whatsapp.config_step_1')}{' '}
-                    <a href="https://business.facebook.com" target="_blank" rel="noopener noreferrer" className="text-primary underline inline-flex items-center gap-1">
-                      business.facebook.com <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </li>
-                  <li>{t('whatsapp.config_step_2')}</li>
-                  <li>{t('whatsapp.config_step_3')}</li>
-                  <li>{t('whatsapp.config_step_4')}</li>
-                  <li>{t('whatsapp.config_step_5')}</li>
-                </ol>
-              </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <ConectarWhatsAppCloud />
+      )}
 
+      {isAdmin && (
+        <Collapsible
+          id="manual-whatsapp-config"
+          open={showManualConfig}
+          onOpenChange={setShowManualConfig}
+          className="rounded-lg border bg-card"
+        >
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" className="w-full justify-between px-6 py-6">
+              <span className="flex items-center gap-2">
+                <Shield className="h-4 w-4" />
+                Conexão manual (suporte)
+              </span>
+              <ChevronDown className={`h-4 w-4 transition-transform ${showManualConfig ? "rotate-180" : ""}`} />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="space-y-6 border-t p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>{t('whatsapp.phone_number_id')} *</Label>
@@ -446,24 +471,12 @@ export default function WhatsAppPainel() {
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />}
                   {saving ? t('whatsapp.verifying') : t('whatsapp.save_verify')}
                 </Button>
-                <Button variant="ghost" onClick={() => setShowConfig(false)}>{t('whatsapp.cancel')}</Button>
+                <Button variant="ghost" onClick={() => setShowManualConfig(false)}>{t('whatsapp.cancel')}</Button>
               </div>
             </div>
-          ) : (
-            <div className="text-center py-6 space-y-4">
-              <Smartphone className="h-12 w-12 mx-auto text-muted-foreground" />
-              <div>
-                <p className="font-medium text-foreground">{t('whatsapp.not_connected_business')}</p>
-                <p className="text-sm text-muted-foreground">{t('whatsapp.config_meta_desc')}</p>
-              </div>
-              <Button onClick={() => setShowConfig(true)} className="gap-2">
-                <Settings className="h-4 w-4" />
-                {t('whatsapp.config_business_btn')}
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
 
       {/* Link do WhatsApp do Agente */}
       <Card className="border-green-200 dark:border-green-800">
@@ -564,7 +577,10 @@ export default function WhatsAppPainel() {
                   Conecte um número oficial para gerar o link direto do agente.
                 </p>
               </div>
-              <Button onClick={() => setShowConfig(true)} className="gap-2">
+              <Button
+                onClick={() => document.getElementById("conectar-numero-card")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                className="gap-2"
+              >
                 <PlugZap className="h-4 w-4" />
                 Conectar WhatsApp
               </Button>
