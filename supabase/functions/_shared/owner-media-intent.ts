@@ -126,6 +126,11 @@ export function hasSocialPostRequest(text: string): boolean {
   return imperativeAtStart || explicitMediaTarget || socialDestination;
 }
 
+export function hasVideoPublicationRequest(text: string): boolean {
+  const value = normalizeIntentText(text);
+  return hasSocialPostRequest(text) && /\b(?:video|reels?)\b/.test(value);
+}
+
 export function hasGeneratedImagePostChain(text: string): boolean {
   const value = normalizeIntentText(text);
   return /\b(?:depois|em seguida|na sequencia)\b.{0,40}\b(?:cria|crie|criar|faz|faca|fazer|monta|monte|montar)\b.{0,20}\bpost\b/

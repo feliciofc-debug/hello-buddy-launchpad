@@ -114,7 +114,9 @@ export function explicitVerticalIntent(
   if (/<<interactive_id:vehicle_[a-z0-9_]+:/.test(value)) {
     return { route: "veiculo", reason: "botao_veiculo" };
   }
-  if (/<<interactive_id:single_photo:/.test(value)) {
+  if (
+    /<<interactive_id:(?:single_photo|ready_media):/.test(value)
+  ) {
     return { route: "geral", reason: "botao_geral" };
   }
   if (
