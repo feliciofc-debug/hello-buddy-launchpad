@@ -16,9 +16,7 @@ import {
   selectPublicationMediaId,
 } from "./owner-media-intent.ts";
 import { logoPlacementMode } from "./logo-placement-intent.ts";
-import {
-  isProductAdCreativeRequest,
-} from "./image-composition.ts";
+import { isProductAdCreativeRequest } from "./image-composition.ts";
 import { hasExplicitSceneDescription } from "./image-edit-instruction.ts";
 import { isVehiclePhotoCarouselRequest } from "./vehicle-carousel.ts";
 import { isVideoMotionRequest } from "./video-client-identity.ts";
@@ -31,9 +29,12 @@ import {
   resolveCarouselColorPlan,
   safeCarouselThemeSummary,
 } from "./carousel-colors.ts";
+import { safeMetaDiagnosticPayload } from "./whatsapp-interactive-safe.ts";
 import {
-  safeMetaDiagnosticPayload,
-} from "./whatsapp-interactive-safe.ts";
+  carouselStyleFallbackButtons,
+  carouselStyleListPayload,
+  resolveCarouselStyleRequest,
+} from "./carousel-styles.ts";
 import {
   parseVerticalVisionResult,
   resolveVertical,
@@ -261,21 +262,24 @@ Deno.test("golden do seletor de cor preserva marca, Unicode e fallback", async (
     assertEquals(buttonsSent, 1);
   });
 
-  await t.step("falha de lista e botões segue automaticamente sem erro técnico", async () => {
-    let notice = "";
-    const delivery = await deliverCarouselColorSelector({
-      sendList: () => Promise.reject(new Error("Meta #131000")),
-      sendButtons: () => Promise.reject(new Error("Meta #131000")),
-      notifyAutomatic: () => {
-        notice =
-          "Não consegui abrir as opções de cor. Vou usar a cor da marca e seguir.";
-        return Promise.resolve();
-      },
-    });
-    assertEquals(delivery, "automatic");
-    assert(!/131000|seletor_cor_falhou|[{"]/.test(notice));
-    assert(notice.includes("Vou usar a cor da marca"));
-  });
+  await t.step(
+    "falha de lista e botões segue automaticamente sem erro técnico",
+    async () => {
+      let notice = "";
+      const delivery = await deliverCarouselColorSelector({
+        sendList: () => Promise.reject(new Error("Meta #131000")),
+        sendButtons: () => Promise.reject(new Error("Meta #131000")),
+        notifyAutomatic: () => {
+          notice =
+            "Não consegui abrir as opções de cor. Vou usar a cor da marca e seguir.";
+          return Promise.resolve();
+        },
+      });
+      assertEquals(delivery, "automatic");
+      assert(!/131000|seletor_cor_falhou|[{"]/.test(notice));
+      assert(notice.includes("Vou usar a cor da marca"));
+    },
+  );
 
   await t.step("diagnóstico mascara telefone e token", () => {
     const safe = safeMetaDiagnosticPayload({
@@ -286,4 +290,57 @@ Deno.test("golden do seletor de cor preserva marca, Unicode e fallback", async (
     assertEquals(safe.to, "*********1234");
     assertEquals(safe.access_token, "[REDACTED]");
   });
+});
+
+Deno.test("golden de estilo e fundo do carrossel", async (t) => {
+  const styleCases = [
+    {
+      text: "carrossel com fundo branco",
+      template: "clean-bright",
+      backgroundColor: "#FFFFFF",
+    },
+    {
+      text: "carrossel fundo laranja",
+      template: "clean-bright",
+      backgroundColor: "#F36812",
+    },
+    {
+      text: "carrossel com a identidade visual do nosso site",
+      template: "clean-bright",
+      backgroundColor: null,
+    },
+  ] as const;
+  for (const testCase of styleCases) {
+    await t.step(testCase.text, () => {
+      const plan = resolveCarouselStyleRequest({ request: testCase.text });
+      assertEquals(plan.template, testCase.template);
+      assertEquals(plan.backgroundColor, testCase.backgroundColor);
+      assertEquals(plan.needsSelector, false);
+    });
+  }
+
+  await t.step("pedido sem estilo envia uma lista com os cinco estilos", () => {
+    const plan = resolveCarouselStyleRequest({
+      request: "crie um carrossel sobre atendimento",
+    });
+    assertEquals(plan.needsSelector, true);
+    assertEquals(plan.template, null);
+    assertEquals(carouselStyleListPayload().rows.length, 5);
+    assertEquals(
+      carouselStyleFallbackButtons().buttons.map((button) => button.title),
+      ["Escuro premium", "Claro clean", "Colorido vibrante"],
+    );
+  });
+
+  await t.step(
+    "identidade visual usa marca sem seletor separado de cor",
+    () => {
+      const color = resolveCarouselColorPlan({
+        request: "carrossel com a identidade visual do nosso site",
+        brandColors: ["#F36812"],
+      });
+      assertEquals(color.shouldAsk, false);
+      assertEquals(color.color?.primaryColor, "#F36812");
+    },
+  );
 });

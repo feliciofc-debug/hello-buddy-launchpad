@@ -13,6 +13,7 @@
  */
 
 import { carouselBodyLines } from "../carousel-content.ts";
+import { contrastPalette } from "./shared.ts";
 
 export type SlideType = "cover" | "content" | "cta";
 
@@ -31,6 +32,7 @@ export interface RenderContext {
   businessName?: string | null;
   profileHandle?: string | null;
   ctaLabel?: string | null;
+  backgroundColor?: string | null;
 }
 
 export interface VehicleRenderContext extends RenderContext {
@@ -53,7 +55,10 @@ function el(
   style: Record<string, unknown>,
   children?: unknown,
 ): Node {
-  return { type, props: { style, ...(children !== undefined ? { children } : {}) } };
+  return {
+    type,
+    props: { style, ...(children !== undefined ? { children } : {}) },
+  };
 }
 
 /** #RRGGBB + alpha(0..1) -> rgba(...) — Satori não entende "#RRGGBB20". */
@@ -88,7 +93,8 @@ function accentBar(primary: string, secondary: string): Node {
     left: 0,
     width: CARD_WIDTH,
     height: 6,
-    backgroundImage: `linear-gradient(90deg, ${primary}, ${secondary}, ${primary})`,
+    backgroundImage:
+      `linear-gradient(90deg, ${primary}, ${secondary}, ${primary})`,
   });
 }
 
@@ -112,17 +118,25 @@ function logoImg(
   dataUrl: string,
   style: Record<string, unknown>,
 ): Node {
-  return { type: "img", props: { src: dataUrl, style: { objectFit: "contain", ...style } } };
+  return {
+    type: "img",
+    props: { src: dataUrl, style: { objectFit: "contain", ...style } },
+  };
 }
 
-const baseCard = (primary: string, secondary: string, extra: Record<string, unknown>) => ({
+const baseCard = (
+  primary: string,
+  secondary: string,
+  extra: Record<string, unknown>,
+) => ({
   width: CARD_WIDTH,
   height: CARD_HEIGHT,
   position: "relative" as const,
   display: "flex",
   fontFamily: FONT_FAMILY,
   backgroundColor: "#0F172A",
-  backgroundImage: `linear-gradient(145deg, #0F172A 0%, #1E293B 50%, #0F172A 100%)`,
+  backgroundImage:
+    `linear-gradient(145deg, #0F172A 0%, #1E293B 50%, #0F172A 100%)`,
   padding: 80,
   ...extra,
 });
@@ -164,7 +178,12 @@ function cover(slide: RenderSlide, ctx: RenderContext): Node {
       padding: "12px 32px",
       marginBottom: 44,
     }, [
-      el("div", { width: 10, height: 10, borderRadius: 10, backgroundColor: p }),
+      el("div", {
+        width: 10,
+        height: 10,
+        borderRadius: 10,
+        backgroundColor: p,
+      }),
       el("div", {
         display: "flex",
         color: p,
@@ -229,14 +248,26 @@ function cover(slide: RenderSlide, ctx: RenderContext): Node {
   );
 
   if (ctx.logoDataUrl) {
-    children.push(logoImg(ctx.logoDataUrl, { position: "absolute", top: 44, left: 60, width: 220, height: 110 }));
+    children.push(
+      logoImg(ctx.logoDataUrl, {
+        position: "absolute",
+        top: 44,
+        left: 60,
+        width: 220,
+        height: 110,
+      }),
+    );
   }
 
-  return el("div", baseCard(p, s, {
-    flexDirection: "column",
-    justifyContent: "center",
-    alignItems: "center",
-  }), children);
+  return el(
+    "div",
+    baseCard(p, s, {
+      flexDirection: "column",
+      justifyContent: "center",
+      alignItems: "center",
+    }),
+    children,
+  );
 }
 
 // ---------- CONTENT ----------
@@ -255,16 +286,25 @@ function content(slide: RenderSlide, ctx: RenderContext): Node {
     }),
     circle(300, rgba(p, 0.1), { top: -100, right: -100 }),
     // Number badge
-    el("div", {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      width: 96,
-      height: 96,
-      borderRadius: 24,
-      backgroundImage: `linear-gradient(135deg, ${p}, ${s})`,
-      marginBottom: 40,
-    }, el("div", { display: "flex", color: "#FFFFFF", fontSize: 46, fontWeight: 900 }, String(slide.number ?? 1))),
+    el(
+      "div",
+      {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 96,
+        height: 96,
+        borderRadius: 24,
+        backgroundImage: `linear-gradient(135deg, ${p}, ${s})`,
+        marginBottom: 40,
+      },
+      el("div", {
+        display: "flex",
+        color: "#FFFFFF",
+        fontSize: 46,
+        fontWeight: 900,
+      }, String(slide.number ?? 1)),
+    ),
     // Título
     el("div", {
       display: "flex",
@@ -288,45 +328,53 @@ function content(slide: RenderSlide, ctx: RenderContext): Node {
 
   if (lines.length > 1) {
     children.push(
-      el("div", {
-        display: "flex",
-        flexDirection: "column",
-        flexGrow: 1,
-        justifyContent: "center",
-        marginBottom: 170,
-        gap: 18,
-      }, lines.slice(0, 5).map((line) =>
-        el("div", {
+      el(
+        "div",
+        {
           display: "flex",
-          alignItems: "center",
-          gap: 22,
-          backgroundColor: "rgba(255,255,255,0.05)",
-          border: "2px solid rgba(255,255,255,0.08)",
-          borderRadius: 22,
-          padding: "24px 32px",
-        }, [
+          flexDirection: "column",
+          flexGrow: 1,
+          justifyContent: "center",
+          marginBottom: 170,
+          gap: 18,
+        },
+        lines.slice(0, 5).map((line) =>
           el("div", {
             display: "flex",
-            color: "rgba(255,255,255,0.92)",
-            fontSize: lines.length > 3 ? 30 : 34,
-            fontWeight: 500,
-            lineHeight: 1.35,
-          }, line.startsWith("• ") ? line : `• ${line}`),
-        ])
-      )),
+            alignItems: "center",
+            gap: 22,
+            backgroundColor: "rgba(255,255,255,0.05)",
+            border: "2px solid rgba(255,255,255,0.08)",
+            borderRadius: 22,
+            padding: "24px 32px",
+          }, [
+            el("div", {
+              display: "flex",
+              color: "rgba(255,255,255,0.92)",
+              fontSize: lines.length > 3 ? 30 : 34,
+              fontWeight: 500,
+              lineHeight: 1.35,
+            }, line.startsWith("• ") ? line : `• ${line}`),
+          ])
+        ),
+      ),
     );
   } else if (lines.length === 1) {
     children.push(
-      el("div", {
-        display: "flex",
-        flexGrow: 1,
-        alignItems: "flex-start",
-      }, el("div", {
-        display: "flex",
-        color: "rgba(255,255,255,0.82)",
-        fontSize: lines[0].length > 260 ? 28 : 34,
-        lineHeight: 1.6,
-      }, lines[0])),
+      el(
+        "div",
+        {
+          display: "flex",
+          flexGrow: 1,
+          alignItems: "flex-start",
+        },
+        el("div", {
+          display: "flex",
+          color: "rgba(255,255,255,0.82)",
+          fontSize: lines[0].length > 260 ? 28 : 34,
+          lineHeight: 1.6,
+        }, lines[0]),
+      ),
     );
   }
 
@@ -342,13 +390,26 @@ function content(slide: RenderSlide, ctx: RenderContext): Node {
   );
 
   if (ctx.logoDataUrl) {
-    children.push(logoImg(ctx.logoDataUrl, { position: "absolute", bottom: 46, right: 60, width: 170, height: 80, opacity: 0.7 }));
+    children.push(
+      logoImg(ctx.logoDataUrl, {
+        position: "absolute",
+        bottom: 46,
+        right: 60,
+        width: 170,
+        height: 80,
+        opacity: 0.7,
+      }),
+    );
   }
 
-  return el("div", baseCard(p, s, {
-    flexDirection: "column",
-    backgroundImage: `linear-gradient(165deg, #0F172A 0%, #1E293B 100%)`,
-  }), children);
+  return el(
+    "div",
+    baseCard(p, s, {
+      flexDirection: "column",
+      backgroundImage: `linear-gradient(165deg, #0F172A 0%, #1E293B 100%)`,
+    }),
+    children,
+  );
 }
 
 // ---------- CTA ----------
@@ -374,37 +435,59 @@ function cta(slide: RenderSlide, ctx: RenderContext): Node {
   if (slide.body) {
     const lines = carouselBodyLines(slide.body);
     children.push(
-      el("div", {
-        display: "flex",
-        flexDirection: "column",
-        color: "rgba(255,255,255,0.6)",
-        fontSize: 28,
-        textAlign: "center",
-        lineHeight: 1.6,
-        marginBottom: 50,
-        maxWidth: 800,
-        gap: 12,
-      }, lines.map((line) =>
-        el("div", { display: "flex" }, line.startsWith("• ") ? line : `• ${line}`)
-      )),
+      el(
+        "div",
+        {
+          display: "flex",
+          flexDirection: "column",
+          color: "rgba(255,255,255,0.6)",
+          fontSize: 28,
+          textAlign: "center",
+          lineHeight: 1.6,
+          marginBottom: 50,
+          maxWidth: 800,
+          gap: 12,
+        },
+        lines.map((line) =>
+          el(
+            "div",
+            { display: "flex" },
+            line.startsWith("• ") ? line : `• ${line}`,
+          )
+        ),
+      ),
     );
   }
 
   children.push(
-    el("div", {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundImage: `linear-gradient(135deg, ${p}, ${s})`,
-      borderRadius: 60,
-      padding: "26px 64px",
-    }, el("div", { display: "flex", color: "#FFFFFF", fontSize: 30, fontWeight: 700, letterSpacing: 1 },
-      (ctx.ctaLabel || "SAIBA MAIS").toUpperCase())),
+    el(
+      "div",
+      {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundImage: `linear-gradient(135deg, ${p}, ${s})`,
+        borderRadius: 60,
+        padding: "26px 64px",
+      },
+      el("div", {
+        display: "flex",
+        color: "#FFFFFF",
+        fontSize: 30,
+        fontWeight: 700,
+        letterSpacing: 1,
+      }, (ctx.ctaLabel || "SAIBA MAIS").toUpperCase()),
+    ),
   );
 
   if (ctx.profileHandle) {
     children.push(
-      el("div", { display: "flex", color: "rgba(255,255,255,0.45)", fontSize: 24, marginTop: 42 }, ctx.profileHandle),
+      el("div", {
+        display: "flex",
+        color: "rgba(255,255,255,0.45)",
+        fontSize: 24,
+        marginTop: 42,
+      }, ctx.profileHandle),
     );
   }
 
@@ -420,21 +503,90 @@ function cta(slide: RenderSlide, ctx: RenderContext): Node {
   );
 
   if (ctx.logoDataUrl) {
-    children.push(logoImg(ctx.logoDataUrl, { position: "absolute", bottom: 46, right: 60, width: 170, height: 80, opacity: 0.7 }));
+    children.push(
+      logoImg(ctx.logoDataUrl, {
+        position: "absolute",
+        bottom: 46,
+        right: 60,
+        width: 170,
+        height: 80,
+        opacity: 0.7,
+      }),
+    );
   }
 
-  return el("div", baseCard(p, s, {
-    flexDirection: "column",
-    justifyContent: "center",
-    alignItems: "center",
-  }), children);
+  return el(
+    "div",
+    baseCard(p, s, {
+      flexDirection: "column",
+      justifyContent: "center",
+      alignItems: "center",
+    }),
+    children,
+  );
 }
 
 /** Monta a árvore Satori de um slide do template dark-premium. */
-export function buildDarkPremiumSlide(slide: RenderSlide, ctx: RenderContext): Node {
-  if (slide.type === "cover") return cover(slide, ctx);
-  if (slide.type === "cta") return cta(slide, ctx);
-  return content(slide, ctx);
+export function buildDarkPremiumSlide(
+  slide: RenderSlide,
+  ctx: RenderContext,
+): Node {
+  const tree = slide.type === "cover"
+    ? cover(slide, ctx)
+    : slide.type === "cta"
+    ? cta(slide, ctx)
+    : content(slide, ctx);
+  return ctx.backgroundColor
+    ? applyCustomBackground(tree, ctx.backgroundColor, true)
+    : tree;
+}
+
+function applyCustomBackground(
+  node: Node,
+  backgroundColor: string,
+  root = false,
+): Node {
+  const palette = contrastPalette(backgroundColor);
+  const style = {
+    ...(node.props.style as Record<string, unknown> ?? {}),
+  };
+  if (root) {
+    style.backgroundColor = backgroundColor;
+    delete style.backgroundImage;
+  }
+  if (
+    style.color === "#FFFFFF" ||
+    style.color === "#FFF" ||
+    String(style.color || "").startsWith("rgba(255,255,255")
+  ) {
+    style.color = String(style.color || "").includes("0.")
+      ? palette.muted
+      : palette.text;
+  }
+  if (
+    style.backgroundColor === "rgba(255,255,255,0.05)" ||
+    style.backgroundColor === "rgba(255,255,255,0.04)"
+  ) {
+    style.backgroundColor = palette.card;
+  }
+  const children = node.props.children;
+  const mapped = Array.isArray(children)
+    ? children.map((child) =>
+      child && typeof child === "object" && "type" in child
+        ? applyCustomBackground(child as Node, backgroundColor)
+        : child
+    )
+    : children && typeof children === "object" && "type" in children
+    ? applyCustomBackground(children as Node, backgroundColor)
+    : children;
+  return {
+    ...node,
+    props: {
+      ...node.props,
+      style,
+      ...(children !== undefined ? { children: mapped } : {}),
+    },
+  };
 }
 
 export function darkPremiumVehiclePhotoRegion(
@@ -511,18 +663,22 @@ export function buildDarkPremiumVehicleSlide(
           lineHeight: 1.1,
         }, slide.title),
         ...(slide.body
-          ? [el("div", {
-            display: "flex",
-            flexDirection: "column",
-            color: "rgba(255,255,255,0.78)",
-            fontSize: 30,
-            lineHeight: 1.5,
-            textAlign: "center",
-            marginTop: 34,
-            gap: 10,
-          }, carouselBodyLines(slide.body).slice(0, 5).map((line) =>
-            el("div", { display: "flex" }, line)
-          ))]
+          ? [el(
+            "div",
+            {
+              display: "flex",
+              flexDirection: "column",
+              color: "rgba(255,255,255,0.78)",
+              fontSize: 30,
+              lineHeight: 1.5,
+              textAlign: "center",
+              marginTop: 34,
+              gap: 10,
+            },
+            carouselBodyLines(slide.body).slice(0, 5).map((line) =>
+              el("div", { display: "flex" }, line)
+            ),
+          )]
           : []),
         el("div", {
           display: "flex",
@@ -555,35 +711,43 @@ export function buildDarkPremiumVehicleSlide(
           lineHeight: 1.12,
         }, slide.title),
         ...(slide.body
-          ? [el("div", {
-            display: "flex",
-            flexDirection: "column",
-            color: "rgba(255,255,255,0.76)",
-            fontSize: 27,
-            lineHeight: 1.35,
-            marginTop: 18,
-            gap: 7,
-          }, carouselBodyLines(slide.body).slice(0, 3).map((line) =>
-            el("div", { display: "flex" }, line)
-          ))]
+          ? [el(
+            "div",
+            {
+              display: "flex",
+              flexDirection: "column",
+              color: "rgba(255,255,255,0.76)",
+              fontSize: 27,
+              lineHeight: 1.35,
+              marginTop: 18,
+              gap: 7,
+            },
+            carouselBodyLines(slide.body).slice(0, 3).map((line) =>
+              el("div", { display: "flex" }, line)
+            ),
+          )]
           : []),
       ]),
     );
   }
 
   children.push(
-    el("div", {
-      position: "absolute",
-      bottom: 34,
-      left: 0,
-      width,
-      display: "flex",
-      justifyContent: "center",
-    }, progressDots(
-      Math.max(0, (slide.number ?? 1) - 1),
-      ctx.totalSlides,
-      p,
-    )),
+    el(
+      "div",
+      {
+        position: "absolute",
+        bottom: 34,
+        left: 0,
+        width,
+        display: "flex",
+        justifyContent: "center",
+      },
+      progressDots(
+        Math.max(0, (slide.number ?? 1) - 1),
+        ctx.totalSlides,
+        p,
+      ),
+    ),
   );
   if (ctx.logoDataUrl) {
     children.push(logoImg(ctx.logoDataUrl, {

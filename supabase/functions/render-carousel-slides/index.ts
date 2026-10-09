@@ -5,14 +5,17 @@
  * possa ser disparado pelo WhatsApp/JARVIS. Pipeline:
  *   Satori (árvore de layout → SVG)  →  resvg-wasm (SVG → PNG)  →  Storage (URL pública)
  *
- * FASE 4A: apenas o template "dark-premium". Os outros 4 serão portados depois
- * que o fluxo provar valor ponta a ponta.
+ * Templates de marketing disponíveis: dark-premium, clean-bright,
+ * gradient-vibrant, elegant-serif e neon-tech. O carrossel de veículos
+ * permanece isolado no dark-premium.
  *
  * Body:
  * {
  *   user_id: string,                 // obrigatório (multi-tenant, isola pasta no storage)
  *   slides: [{ type, title, body?, number? }],
- *   template?: "dark-premium",
+ *   template?: "dark-premium" | "clean-bright" | "gradient-vibrant"
+ *     | "elegant-serif" | "neon-tech",
+ *   backgroundColor?: string,        // #RRGGBB, opcional
  *   primaryColor?: string,           // #RRGGBB
  *   secondaryColor?: string,         // #RRGGBB
  *   businessName?: string,
@@ -37,14 +40,23 @@ import {
   type RenderContext,
   type RenderSlide,
 } from "../_shared/carousel-templates/darkPremium.ts";
+import { buildCleanBrightSlide } from "../_shared/carousel-templates/cleanBright.ts";
+import { buildGradientVibrantSlide } from "../_shared/carousel-templates/gradientVibrant.ts";
+import { buildElegantSerifSlide } from "../_shared/carousel-templates/elegantSerif.ts";
+import { buildNeonTechSlide } from "../_shared/carousel-templates/neonTech.ts";
+import { relativeLuminance } from "../_shared/carousel-templates/shared.ts";
+import {
+  type CarouselTemplate,
+  normalizeCarouselTemplate,
+} from "../_shared/carousel-styles.ts";
 import { sanitizeCarouselSlides } from "../_shared/carousel-content.ts";
 import {
   calculatePhotoFrame,
   frameContainsObject,
 } from "../_shared/anuncio-photo-framing.ts";
 import {
-  type VehicleCarouselFormat,
   vehicleCarouselDimensions,
+  type VehicleCarouselFormat,
   type VehicleCarouselSlide,
 } from "../_shared/vehicle-carousel.ts";
 import { renderableImageDataUrl } from "../_shared/renderable-image.ts";
@@ -62,31 +74,42 @@ const corsHeaders = {
 const BUCKET = "carousels";
 const MAX_SLIDES = 10;
 
-const FONT_URLS: Array<{ weight: number; url: string }> = [
+const FONT_URLS: Array<{ name: string; weight: number; url: string }> = [
   {
+    name: "Inter",
     weight: 400,
     url:
       "https://cdn.jsdelivr.net/npm/@fontsource/inter@4.5.15/files/inter-latin-400-normal.woff",
   },
   {
+    name: "Inter",
     weight: 500,
     url:
       "https://cdn.jsdelivr.net/npm/@fontsource/inter@4.5.15/files/inter-latin-500-normal.woff",
   },
   {
+    name: "Inter",
     weight: 700,
     url:
       "https://cdn.jsdelivr.net/npm/@fontsource/inter@4.5.15/files/inter-latin-700-normal.woff",
   },
   {
+    name: "Inter",
     weight: 800,
     url:
       "https://cdn.jsdelivr.net/npm/@fontsource/inter@4.5.15/files/inter-latin-800-normal.woff",
   },
   {
+    name: "Inter",
     weight: 900,
     url:
       "https://cdn.jsdelivr.net/npm/@fontsource/inter@4.5.15/files/inter-latin-900-normal.woff",
+  },
+  {
+    name: "Georgia",
+    weight: 700,
+    url:
+      "https://cdn.jsdelivr.net/npm/@fontsource/playfair-display@5.0.18/files/playfair-display-latin-700-normal.woff",
   },
 ];
 
@@ -99,13 +122,13 @@ let wasmReady: Promise<void> | null = null;
 async function loadFonts() {
   if (fontsCache) return fontsCache;
   const loaded = await Promise.all(
-    FONT_URLS.map(async ({ weight, url }) => {
+    FONT_URLS.map(async ({ name, weight, url }) => {
       const res = await fetch(url);
       if (!res.ok) {
         throw new Error(`Falha ao baixar fonte ${weight} (${res.status})`);
       }
       return {
-        name: "Inter",
+        name,
         weight,
         style: "normal" as const,
         data: await res.arrayBuffer(),
@@ -136,6 +159,35 @@ function normalizeHex(value: unknown, fallback: string): string {
   return /^#?[0-9a-fA-F]{6}$/.test(v)
     ? (v.startsWith("#") ? v : `#${v}`)
     : fallback;
+}
+
+function normalizeOptionalHex(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const normalized = normalizeHex(value, "");
+  return normalized || null;
+}
+
+const TEMPLATE_BUILDERS: Record<
+  CarouselTemplate,
+  (slide: RenderSlide, context: RenderContext) => unknown
+> = {
+  "dark-premium": buildDarkPremiumSlide,
+  "clean-bright": buildCleanBrightSlide,
+  "gradient-vibrant": buildGradientVibrantSlide,
+  "elegant-serif": buildElegantSerifSlide,
+  "neon-tech": buildNeonTechSlide,
+};
+
+function logoBackgroundFor(
+  template: CarouselTemplate,
+  backgroundColor: string | null,
+): "light" | "dark" {
+  if (backgroundColor) {
+    return relativeLuminance(backgroundColor) >= 0.5 ? "light" : "dark";
+  }
+  return template === "clean-bright" || template === "elegant-serif"
+    ? "light"
+    : "dark";
 }
 
 function dataUrlBytes(dataUrl: string): Uint8Array {
@@ -272,11 +324,11 @@ Deno.serve(async (req) => {
         },
       );
     }
-    if (template !== "dark-premium") {
+    const selectedTemplate = normalizeCarouselTemplate(template);
+    if (!selectedTemplate) {
       return new Response(
         JSON.stringify({
-          error:
-            `Template "${template}" ainda não está disponível no render server-side.`,
+          error: `Template "${template}" inválido.`,
         }),
         {
           status: 400,
@@ -287,6 +339,7 @@ Deno.serve(async (req) => {
 
     const primaryColor = normalizeHex(body?.primaryColor, "#6366F1");
     const secondaryColor = normalizeHex(body?.secondaryColor, "#8B5CF6");
+    const backgroundColor = normalizeOptionalHex(body?.backgroundColor);
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -305,7 +358,12 @@ Deno.serve(async (req) => {
               "dark",
               true,
             )
-          : await getTenantLogoDataUrl(supabase, user_id);
+          : await getTenantLogoDataUrlForBackground(
+            supabase,
+            user_id,
+            logoBackgroundFor(selectedTemplate, backgroundColor),
+            true,
+          ) ?? await getTenantLogoDataUrl(supabase, user_id);
       } catch (err) {
         console.warn("[render-carousel-slides] logo indisponível:", err);
       }
@@ -410,6 +468,7 @@ Deno.serve(async (req) => {
       businessName: businessName ?? null,
       profileHandle: profileHandle ?? null,
       ctaLabel: ctaLabel ?? null,
+      backgroundColor,
     };
 
     const [fonts] = await Promise.all([loadFonts(), ensureWasm()]);
@@ -418,7 +477,7 @@ Deno.serve(async (req) => {
     const imageUrls: string[] = [];
 
     for (let i = 0; i < list.length; i++) {
-      const tree = buildDarkPremiumSlide(list[i], ctx);
+      const tree = TEMPLATE_BUILDERS[selectedTemplate](list[i], ctx);
       const svg = await satori(tree as any, {
         width: CARD_WIDTH,
         height: CARD_HEIGHT,
@@ -455,7 +514,7 @@ Deno.serve(async (req) => {
         success: true,
         image_urls: imageUrls,
         count: imageUrls.length,
-        template,
+        template: selectedTemplate,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
