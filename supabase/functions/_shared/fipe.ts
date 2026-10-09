@@ -4,7 +4,7 @@ const DEFAULT_BASE_URL = "https://fipe.parallelum.com.br/api/v2";
 const LIST_TTL_MS = 12 * 60 * 60 * 1000;
 const FIPE_TOKEN_KEY = "FIPE_API_TOKEN";
 const FIPE_ENV_FILE = "/root/amz-functions.env";
-let cachedFileToken: string | null | undefined;
+let cachedFileToken: string | undefined;
 
 export type FipeListItem = { code: string; name: string };
 export type FipeReference = { code: string; month: string };
@@ -97,7 +97,7 @@ export function fipeModelPageRows(
 }
 
 function readFipeTokenFromFile(): string | null {
-  if (cachedFileToken !== undefined) return cachedFileToken;
+  if (cachedFileToken) return cachedFileToken;
   try {
     const contents = Deno.readTextFileSync(FIPE_ENV_FILE);
     const numericValue = parseNumericEnvFileKey(contents, FIPE_TOKEN_KEY);
@@ -119,7 +119,7 @@ function readFipeTokenFromFile(): string | null {
   } catch {
     // Edge Functions não possuem necessariamente o arquivo do servidor.
   }
-  return cachedFileToken = null;
+  return null;
 }
 
 function resolveFipeToken(explicitToken: string | null | undefined): string | null {
