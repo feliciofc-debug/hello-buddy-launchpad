@@ -9,6 +9,7 @@ import {
   fipeModelPageRows,
   fipePhotoSuggestionMessage,
   fipePriceRetryButtons,
+  formatFipeResult,
 } from "./fipe.ts";
 import { decideFipeForAd, type LastFipeResult } from "./fipe-ad.ts";
 import {
@@ -309,4 +310,19 @@ Deno.test("identificação pela foto é sempre apresentada como sugestão", () =
   assert(message.startsWith("Parece um Citroën C3 Picasso"));
   assert(message.includes("a partir de 2011"));
   assert(message.endsWith("Confirma o ano/modelo e a versão?"));
+});
+
+Deno.test("resultado separa ano do veículo e referência da tabela", () => {
+  const message = formatFipeResult({
+    brand: "Honda",
+    model: "Civic Coupe Si 1.5 TB 16V 208cv Mec. 2p",
+    modelYear: 2019,
+    fuel: "Gasolina",
+    price: "R$ 158.548,00",
+    referenceMonth: "outubro de 2026",
+    codeFipe: "014099-6",
+  });
+  assert(message.includes("Ano/modelo: *2019*"));
+  assert(message.includes("Tabela FIPE de referência"));
+  assert(message.includes("outubro/2026"));
 });

@@ -18,6 +18,17 @@ export type FipePrice = {
   codeFipe: string;
 };
 
+export function formatFipeResult(result: FipePrice): string {
+  const reference = String(result.referenceMonth || "")
+    .replace(/\s+de\s+/i, "/");
+  return [
+    `🚗 *${result.brand} ${result.model}*`,
+    `📅 Ano/modelo: *${result.modelYear}* · ${result.fuel}`,
+    `💰 Valor FIPE: *${result.price}*`,
+    `_Tabela FIPE de referência: ${reference} · código ${result.codeFipe}_`,
+  ].join("\n");
+}
+
 type FetchLike = typeof fetch;
 type CacheEntry<T> = { value: T; expiresAt: number };
 

@@ -491,6 +491,7 @@ import {
   fipeModelPageRows,
   fipePhotoSuggestionMessage,
   fipePriceRetryButtons,
+  formatFipeResult,
   listarAnos,
   listarMarcas,
   listarModelos,
@@ -14492,10 +14493,6 @@ async function persistFipeState(
   ctx.agentState = current;
 }
 
-function fipeResultText(result: FipePrice): string {
-  return `FIPE ${result.referenceMonth}: ${result.price} — ${result.brand} ${result.model} ${result.modelYear} ${result.fuel} (código ${result.codeFipe})`;
-}
-
 async function finishFipeLookup(
   ctx: {
     userId: string;
@@ -14533,7 +14530,7 @@ async function finishFipeLookup(
     created_at: new Date().toISOString(),
   };
   await persistFipeState(ctx, null, last);
-  return { result: fipeResultText(result) };
+  return { result: formatFipeResult(result) };
 }
 
 async function continueFipeWithModel(
