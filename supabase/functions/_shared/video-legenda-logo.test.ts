@@ -32,6 +32,7 @@ Deno.test("confirmação com logo persiste a escolha no metadata do job", () => 
   const metadata = metadataEscolhaLogo(
     { logo_bucket: "tenant-logos", logo_path: "tenant/logo.png" },
     "Gerar com logo\n<<INTERACTIVE_ID:video_legenda_com_logo>>",
+    { bucket: "tenant-logos", path: "tenant/video.png" },
   );
   assertEquals(metadata.com_logo, true);
   assertEquals(metadata.logo_bucket, "tenant-logos");
