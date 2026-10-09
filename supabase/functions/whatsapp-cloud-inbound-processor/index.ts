@@ -498,7 +498,6 @@ import {
 } from "../_shared/fipe.ts";
 import {
   filterFipeModelCandidates,
-  filterFipeYearCandidates,
   normalizeFipeLookupInput,
   normalizeFipeYear,
   parseFipeRequestText,
@@ -508,7 +507,7 @@ import {
   createFipePriceRetryState,
   filterFipeModelsByYear,
   fipeModelDecision,
-  fipeYearDecision,
+  fipeYearAvailabilityDecision,
   fipeInputFromTextAndBrands,
   isExplicitFipeRequest,
   isFipePhotoReference,
@@ -14551,33 +14550,34 @@ async function continueFipeWithModel(
   },
 ): Promise<FipeToolResponse> {
   const availableYears = await listarAnos(input.brand.code, input.model.code);
-  const years = input.requestedYear || input.requestedFuel
-    ? filterFipeYearCandidates(availableYears, input.requestedYear, input.requestedFuel)
-    : availableYears;
-  const yearDecision = fipeYearDecision(years);
+  const yearDecision = fipeYearAvailabilityDecision(
+    availableYears,
+    input.requestedYear,
+    input.requestedFuel,
+  );
   if (yearDecision.action === "none") {
-    if (input.requestedYear && availableYears.length > 0) {
-      const pending: PendingFipeState = {
-        stage: "year",
-        brand: input.brand,
-        model: input.model,
-        years: availableYears.slice(0, 10),
-        queryModel: input.queryModel,
-        created_at: new Date().toISOString(),
-      };
-      await persistFipeState(ctx, pending);
-      return {
-        result: `Essa versão não tem ${input.requestedYear}. Escolha o ano:`,
-        interactiveList: {
-          body: "Qual é o ano/modelo e combustível?",
-          button: "Escolher ano",
-          section_title: "Anos disponíveis",
-          rows: fipeListRows(pending.years, "fipe_year"),
-        },
-      };
-    }
     return {
       result: "Não encontrei anos disponíveis para essa versão.",
+    };
+  }
+  if (yearDecision.action === "requested_unavailable") {
+    const pending: PendingFipeState = {
+      stage: "year",
+      brand: input.brand,
+      model: input.model,
+      years: yearDecision.years.slice(0, 10),
+      queryModel: input.queryModel,
+      created_at: new Date().toISOString(),
+    };
+    await persistFipeState(ctx, pending);
+    return {
+      result: `Essa versão não tem ${input.requestedYear}. Escolha o ano:`,
+      interactiveList: {
+        body: "Qual é o ano/modelo e combustível?",
+        button: "Escolher ano",
+        section_title: "Anos disponíveis",
+        rows: fipeListRows(pending.years, "fipe_year"),
+      },
     };
   }
   if (yearDecision.action === "price") {

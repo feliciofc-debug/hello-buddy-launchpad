@@ -5,6 +5,7 @@ import {
   fipeInputFromConfirmedVehicle,
   fipeInputFromTextAndBrands,
   fipeModelDecision,
+  fipeYearAvailabilityDecision,
   fipeYearDecision,
   isExplicitFipeRequest,
   isFipePhotoReference,
@@ -174,8 +175,8 @@ Deno.test("versão sem o ano conserva seus anos como saída", () => {
     { code: "2017-1", name: "2017 Gasolina" },
   ];
   assertEquals(
-    fipeYearDecision(availableYears),
-    { action: "choose", years: availableYears },
+    fipeYearAvailabilityDecision(availableYears, "2023"),
+    { action: "requested_unavailable", years: availableYears },
   );
 });
 

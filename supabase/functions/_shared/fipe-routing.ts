@@ -76,6 +76,31 @@ export function fipeYearDecision(years: FipeListItem[]):
   return { action: "none" };
 }
 
+export function fipeYearAvailabilityDecision(
+  availableYears: FipeListItem[],
+  requestedYear?: string,
+  requestedFuel?: string,
+):
+  | { action: "price"; year: FipeListItem }
+  | { action: "choose"; years: FipeListItem[] }
+  | { action: "requested_unavailable"; years: FipeListItem[] }
+  | { action: "none" } {
+  const matchingYears = requestedYear || requestedFuel
+    ? filterFipeYearCandidates(
+      availableYears,
+      requestedYear,
+      requestedFuel,
+    )
+    : availableYears;
+  const decision = fipeYearDecision(matchingYears);
+  if (
+    decision.action === "none" && requestedYear && availableYears.length > 0
+  ) {
+    return { action: "requested_unavailable", years: availableYears };
+  }
+  return decision;
+}
+
 export function fipeModelDecision(models: FipeListItem[]):
   | { action: "continue"; model: FipeListItem }
   | { action: "choose"; models: FipeListItem[] }
