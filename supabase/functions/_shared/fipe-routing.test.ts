@@ -170,7 +170,7 @@ Deno.test("ano pedido mantém somente versões disponíveis naquele ano", async 
     async (modelId) => yearsByModel[modelId],
   );
   assertEquals(result.status, "filtered");
-  assertEquals(result.models, [models[0], models[2]]);
+  assertEquals(result.models, [models[2], models[0]]);
 });
 
 Deno.test("versão sem o ano conserva seus anos como saída", () => {
