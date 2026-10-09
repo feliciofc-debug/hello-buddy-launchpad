@@ -252,11 +252,11 @@ function cover(
       backgroundColor: spec.vibrant
         ? "rgba(255,255,255,0.15)"
         : rgba(ctx.primaryColor, 0.1),
-      border: spec.neon
-        ? `2px solid ${rgba(ctx.primaryColor, 0.55)}`
+      ...(spec.neon
+        ? { border: `2px solid ${rgba(ctx.primaryColor, 0.55)}` }
         : spec.vibrant
-        ? "2px solid rgba(255,255,255,0.25)"
-        : undefined,
+        ? { border: "2px solid rgba(255,255,255,0.25)" }
+        : {}),
       borderRadius: spec.neon ? 4 : spec.vibrant ? 50 : 12,
       padding: "12px 30px",
       marginBottom: 40,
@@ -370,11 +370,11 @@ function content(
         : spec.neon
         ? rgba(ctx.primaryColor, 0.1)
         : ctx.primaryColor,
-      border: spec.vibrant
-        ? "2px solid rgba(255,255,255,0.3)"
+      ...(spec.vibrant
+        ? { border: "2px solid rgba(255,255,255,0.3)" }
         : spec.neon
-        ? `2px solid ${ctx.primaryColor}`
-        : undefined,
+        ? { border: `2px solid ${ctx.primaryColor}` }
+        : {}),
       color: spec.neon ? ctx.primaryColor : "#FFFFFF",
       fontSize: 40,
       fontWeight: 900,
@@ -485,9 +485,9 @@ function cta(
       : spec.serif || spec.neon
       ? "transparent"
       : ctx.primaryColor,
-    border: spec.serif || spec.neon
-      ? `3px solid ${ctx.primaryColor}`
-      : undefined,
+    ...(spec.serif || spec.neon
+      ? { border: `3px solid ${ctx.primaryColor}` }
+      : {}),
     borderRadius: spec.serif ? 4 : spec.neon ? 8 : 60,
     padding: spec.serif ? "20px 56px" : "24px 60px",
     color: spec.vibrant
