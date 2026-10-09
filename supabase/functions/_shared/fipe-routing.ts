@@ -18,7 +18,7 @@ export type ConfirmedVehicleForFipe = {
     motor?: string;
     cambio?: string;
   } | null;
-} | null;
+} | null | undefined;
 
 export function isExplicitFipeRequest(text: unknown): boolean {
   const value = String(text ?? "").normalize("NFD")
