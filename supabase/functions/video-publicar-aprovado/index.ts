@@ -5,10 +5,15 @@
 // ============================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  friendlyMetaVideoPublishError,
+  validateMetaVideoForPublishing,
+} from "../_shared/meta-video-requirements.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
 
 function resp(body: unknown, status = 200) {
@@ -36,7 +41,11 @@ Deno.serve(async (req) => {
       .eq("id", job_id)
       .maybeSingle();
     if (!job) throw new Error("job não encontrado");
-    if (!["aguardando_aprovacao", "aprovado", "erro_publicacao"].includes(job.status)) {
+    if (
+      !["aguardando_aprovacao", "aprovado", "erro_publicacao"].includes(
+        job.status,
+      )
+    ) {
       throw new Error(`job em status inválido para publicar: ${job.status}`);
     }
 
@@ -47,17 +56,27 @@ Deno.serve(async (req) => {
         .from("video_render_jobs")
         .update({
           status: "erro_publicacao",
-          erro_mensagem: "sem vídeo legendado (resultado_bucket/resultado_path nulos) — publicação bloqueada",
+          erro_mensagem:
+            "sem vídeo legendado (resultado_bucket/resultado_path nulos) — publicação bloqueada",
         })
         .eq("id", job.id);
-      return resp({ success: false, error: "job sem vídeo legendado — nada foi publicado" });
+      return resp({
+        success: false,
+        error: "job sem vídeo legendado — nada foi publicado",
+      });
     }
 
     const bucket = job.resultado_bucket;
-    const { data: pub } = supabase.storage.from(bucket).getPublicUrl(job.resultado_path);
+    const { data: pub } = supabase.storage.from(bucket).getPublicUrl(
+      job.resultado_path,
+    );
     const videoUrl = pub?.publicUrl;
-    if (!videoUrl) throw new Error("URL pública do vídeo legendado indisponível");
-    console.log(`[video-publicar-aprovado] publicando LEGENDADO ${bucket}/${job.resultado_path}`);
+    if (!videoUrl) {
+      throw new Error("URL pública do vídeo legendado indisponível");
+    }
+    console.log(
+      `[video-publicar-aprovado] publicando LEGENDADO ${bucket}/${job.resultado_path}`,
+    );
 
     // Destino resolvido: só publica onde foi pedido.
     const pedidas: string[] = Array.isArray(job.metadata?.plataformas_pedidas)
@@ -71,7 +90,42 @@ Deno.serve(async (req) => {
 
     const formato = String(job.formato || "feed").toLowerCase();
     const ehStory = formato === "story";
-    console.log(`[video-publicar-aprovado] formato=${formato} plataformas=${plataformas.join(",")}`);
+    console.log(
+      `[video-publicar-aprovado] formato=${formato} plataformas=${
+        plataformas.join(",")
+      }`,
+    );
+
+    let sizeBytes = Number(job.metadata?.video_output?.size_bytes);
+    if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) {
+      try {
+        const head = await fetch(videoUrl, { method: "HEAD" });
+        sizeBytes = Number(head.headers.get("content-length"));
+      } catch {
+        sizeBytes = Number.NaN;
+      }
+    }
+    const validation = validateMetaVideoForPublishing({
+      format: formato,
+      path: job.resultado_path,
+      durationSeconds: job.duracao_segundos,
+      output: job.metadata?.video_output,
+      sizeBytes,
+    });
+    if (!validation.ok) {
+      const message =
+        `Não publiquei o vídeo: ${validation.message} Gere novamente e tente de novo.`;
+      await supabase.from("video_render_jobs").update({
+        status: "erro_publicacao",
+        erro_mensagem: validation.message,
+      }).eq("id", job.id);
+      if (job.telefone) {
+        await supabase.functions.invoke("whatsapp-send-message", {
+          body: { user_id: job.user_id, to: job.telefone, message },
+        });
+      }
+      return resp({ success: false, error: validation.message });
+    }
 
     const publicados: string[] = [];
     const erros: string[] = [];
@@ -79,34 +133,58 @@ Deno.serve(async (req) => {
     if (ehStory) {
       // STORY: função dedicada, aceita os dois canais de uma vez.
       try {
-        const { data: res, error: sErr } = await supabase.functions.invoke("meta-publish-story", {
-          body: { video_url: videoUrl, user_id: job.user_id, canais: plataformas },
-        });
+        const { data: res, error: sErr } = await supabase.functions.invoke(
+          "meta-publish-story",
+          {
+            body: {
+              video_url: videoUrl,
+              user_id: job.user_id,
+              canais: plataformas,
+            },
+          },
+        );
         if (sErr) throw sErr;
         for (const plataforma of plataformas) {
           const r = res?.[plataforma];
           if (r?.ok) publicados.push(plataforma);
-          else erros.push(`${plataforma} (story): ${r?.error || res?.error || "falhou"}`);
+          else {
+            erros.push(
+              friendlyMetaVideoPublishError(
+                plataforma,
+                r?.error || res?.error || "falhou",
+              ),
+            );
+          }
         }
       } catch (e) {
-        erros.push(`story: ${(e as Error)?.message || "erro"}`);
+        erros.push(friendlyMetaVideoPublishError("story", e));
       }
     } else {
       for (const plataforma of plataformas) {
         try {
-          const { data: res, error: pErr } = await supabase.functions.invoke("meta-publish-reels", {
-            body: {
-              platform: plataforma,
-              video_url: videoUrl,
-              caption: job.copy_escolhida || job.caption || " ",
-              user_id: job.user_id,
+          const { data: res, error: pErr } = await supabase.functions.invoke(
+            "meta-publish-reels",
+            {
+              body: {
+                platform: plataforma,
+                video_url: videoUrl,
+                caption: job.copy_escolhida || job.caption || " ",
+                user_id: job.user_id,
+              },
             },
-          });
+          );
           if (pErr) throw pErr;
           if (res?.success) publicados.push(plataforma);
-          else erros.push(`${plataforma}: ${res?.error || "falhou"}`);
+          else {
+            erros.push(
+              friendlyMetaVideoPublishError(
+                plataforma,
+                res?.error || "falhou",
+              ),
+            );
+          }
         } catch (e) {
-          erros.push(`${plataforma}: ${(e as Error)?.message || "erro"}`);
+          erros.push(friendlyMetaVideoPublishError(plataforma, e));
         }
       }
     }
@@ -114,17 +192,34 @@ Deno.serve(async (req) => {
     await supabase
       .from("video_render_jobs")
       .update({
-        status: publicados.length > 0 ? "publicado" : "erro_publicacao",
+        status: erros.length === 0 && publicados.length === plataformas.length
+          ? "publicado"
+          : "erro_publicacao",
         erro_mensagem: erros.length ? erros.join(" | ") : null,
       })
       .eq("id", job.id);
 
     if (job.telefone) {
-      const msg = publicados.length > 0
-        ? `✅ Publicado como *${ehStory ? "STORY" : "REELS"}* com a legenda na tela em: ${publicados
+      const msg = erros.length === 0 &&
+          publicados.length === plataformas.length
+        ? `✅ Publicado como *${
+          ehStory ? "STORY" : "REELS"
+        }* com a legenda na tela em: ${
+          publicados
             .map((p) => (p === "instagram" ? "Instagram" : "Facebook"))
-            .join(" e ")}.`
-        : `A publicação falhou: ${erros.join(" | ")}\n\nMe responda *APROVAR* que eu tento de novo.`;
+            .join(" e ")
+        }.`
+        : `${
+          publicados.length
+            ? `Publiquei em ${
+              publicados.map((p) =>
+                p === "instagram" ? "Instagram" : "Facebook"
+              ).join(" e ")
+            }, mas não nas demais redes.`
+            : "Não publiquei o vídeo."
+        }\n\n${
+          erros.join(" | ")
+        }\n\nMe responda *APROVAR* que eu tento de novo.`;
       try {
         await supabase.functions.invoke("whatsapp-send-message", {
           body: { user_id: job.user_id, to: job.telefone, message: msg },
@@ -134,7 +229,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    return resp({ success: publicados.length > 0, plataformas: publicados, erros });
+    return resp({
+      success: erros.length === 0 && publicados.length === plataformas.length,
+      plataformas: publicados,
+      erros,
+    });
   } catch (e) {
     console.error("[video-publicar-aprovado] erro:", e);
     return resp({ success: false, error: (e as Error)?.message || "erro" });

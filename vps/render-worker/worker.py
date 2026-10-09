@@ -39,6 +39,38 @@ def dimensoes(path):
     st = json.loads(r.stdout)["streams"][0]
     return int(st["width"]), int(st["height"])
 
+def alvo_meta(formato):
+    return (1080, 1920) if str(formato or "").lower() in ("story", "reels") else (1080, 1350)
+
+def filtro_meta(vf, target_w, target_h):
+    base = (
+        f"scale={target_w}:{target_h}:force_original_aspect_ratio=decrease,"
+        f"pad={target_w}:{target_h}:(ow-iw)/2:(oh-ih)/2:black,setsar=1"
+    )
+    return f"{base},{vf}" if vf else base
+
+def metadados_saida(path):
+    r = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries",
+         "stream=codec_type,codec_name,width,height:format=duration,size",
+         "-of", "json", path],
+        capture_output=True, text=True, check=True,
+    )
+    data = json.loads(r.stdout)
+    streams = data.get("streams", [])
+    video = next((s for s in streams if s.get("codec_type") == "video"), {})
+    audio = next((s for s in streams if s.get("codec_type") == "audio"), None)
+    fmt = data.get("format", {})
+    return {
+        "width": int(video.get("width") or 0),
+        "height": int(video.get("height") or 0),
+        "video_codec": video.get("codec_name"),
+        "audio_codec": audio.get("codec_name") if audio else None,
+        "has_audio": audio is not None,
+        "duration_seconds": float(fmt.get("duration") or 0),
+        "size_bytes": int(fmt.get("size") or os.path.getsize(path)),
+    }
+
 def comando_ffmpeg(src, dst, vf, threads, w, h, logo_path=None, logo=None):
     # Sem logo: comando identico ao anterior. Com logo: mesma passada da legenda.
     cmd = ["ffmpeg", "-y", "-i", src]
@@ -96,30 +128,29 @@ def processar(job):
                 for chunk in r.iter_content(1 << 20):
                     f.write(chunk)
         w, h = dimensoes(src)
-        vf = filtros(job["segmentos"], job["estilo"], w, h)
+        target_w, target_h = alvo_meta(job.get("formato"))
+        vf = filtro_meta(
+            filtros(job["segmentos"], job["estilo"], target_w, target_h),
+            target_w,
+            target_h,
+        )
         threads = str(job["estilo"].get("threads", THREADS))
         logo = job.get("logo")
         logo_path = baixar_logo(logo, d, src)
-        try:
-            subprocess.run(comando_ffmpeg(src, dst, vf, threads, w, h, logo_path, logo),
-                           check=True, capture_output=True, text=True, timeout=1800)
-        except subprocess.CalledProcessError as e:
-            if not logo_path:
-                raise
-            print("aviso: logo falhou no video; refazendo sem logo:", (e.stderr or "")[-300:], flush=True)
-            if os.path.exists(dst):
-                os.remove(dst)
-            subprocess.run(comando_ffmpeg(src, dst, vf, threads, w, h),
-                           check=True, capture_output=True, text=True, timeout=1800)
+        if logo and not logo_path:
+            raise RuntimeError("logo de vídeo não pôde ser baixada")
+        subprocess.run(
+            comando_ffmpeg(
+                src, dst, vf, threads, target_w, target_h, logo_path, logo
+            ),
+            check=True, capture_output=True, text=True, timeout=1800,
+        )
         up = job["upload"]
         with open(dst, "rb") as f:
             r = requests.put(up["url"], data=f,
                              headers={"Content-Type": up["content_type"]}, timeout=1800)
             r.raise_for_status()
-        dur = subprocess.run(["ffprobe", "-v", "error", "-show_entries",
-                              "format=duration", "-of", "csv=p=0", dst],
-                             capture_output=True, text=True).stdout.strip()
-        return up["bucket"], up["path"], float(dur or 0)
+        return up["bucket"], up["path"], metadados_saida(dst)
 
 os.makedirs(TMP, exist_ok=True)
 print("render-worker iniciado", flush=True)
@@ -135,9 +166,11 @@ while True:
             time.sleep(POLL); continue
         print("job", job["id"], flush=True)
         try:
-            bucket, path, dur = processar(job)
+            bucket, path, output = processar(job)
             body = {"job_id": job["id"], "success": True, "resultado_bucket": bucket,
-                    "resultado_path": path, "duracao_segundos": dur}
+                    "resultado_path": path,
+                    "duracao_segundos": output["duration_seconds"],
+                    "video_output": output}
         except subprocess.CalledProcessError as e:
             body = {"job_id": job["id"], "success": False,
                     "erro": (e.stderr or "")[-500:] or "ffmpeg falhou"}

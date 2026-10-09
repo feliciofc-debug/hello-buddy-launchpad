@@ -325,16 +325,22 @@ Quando o job devolvido pelo claim contém `logo`, o worker versionado:
 - aplica logo e legenda no mesmo filtro/encode do FFmpeg, preservando a
   transparência do PNG.
 
-Falha de download ou de overlay gera apenas um aviso no log. Nesse caso o
-worker repete o render sem logo, para que a logo nunca derrube o vídeo.
+Falha de download ou de overlay interrompe a tentativa. O job volta para a
+fila e nunca entrega silenciosamente um vídeo que deveria ter logo sem a marca.
+O worker também normaliza a saída para 1080x1920 (Story/Reels) ou 1080x1350
+(feed), MP4 H.264 + AAC, `yuv420p` e `faststart`.
 
 Para atualizar e validar antes de reiniciar:
 
 ```bash
-cp vps/render-worker/worker.py /opt/render-worker/worker.py
-python -m unittest vps/render-worker/test_worker.py
-docker compose -f /opt/render-worker/docker-compose.yml up -d
+cd /caminho/do/repositorio
+python3 -m unittest vps/render-worker/test_worker.py
+sudo install -m 0644 vps/render-worker/worker.py /opt/render-worker/worker.py
+sudo docker compose -f /opt/render-worker/docker-compose.yml up -d --force-recreate render-worker
+sudo docker compose -f /opt/render-worker/docker-compose.yml logs --tail=50 render-worker
 ```
+
+O log final precisa conter `render-worker iniciado`.
 
 Teste de conectividade (deve devolver `{"success":true,"job":null}`):
 

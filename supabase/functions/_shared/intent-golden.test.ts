@@ -43,6 +43,7 @@ import {
   INSTAGRAM_IMAGE_MIME,
   instagramImageStoragePath,
 } from "./prepareImageForInstagram.ts";
+import { metadataEscolhaLogo } from "./video-legenda-logo.ts";
 import {
   parseVerticalVisionResult,
   resolveVertical,
@@ -385,4 +386,13 @@ Deno.test("golden de carrossel de veículo normaliza mídia do Instagram", () =>
     assertEquals(INSTAGRAM_IMAGE_MIME, "image/jpeg");
     assert(path.endsWith(".jpg"), `${source} precisa sair como JPEG`);
   }
+});
+
+Deno.test("golden de vídeo legendado aplica variante video da logo", () => {
+  const metadata = metadataEscolhaLogo(
+    {},
+    "PUBLICAR",
+    { bucket: "tenant-logos", path: "tenant/video.png" },
+  );
+  assertEquals(metadata.com_logo, true);
 });

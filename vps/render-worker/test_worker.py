@@ -7,7 +7,9 @@ import unittest
 MODULE_PATH = pathlib.Path(__file__).with_name("worker.py")
 SOURCE = MODULE_PATH.read_text(encoding="utf-8")
 TREE = ast.parse(SOURCE)
-TESTED_FUNCTIONS = {"esc", "comando_ffmpeg", "baixar_logo"}
+TESTED_FUNCTIONS = {
+    "esc", "comando_ffmpeg", "baixar_logo", "alvo_meta", "filtro_meta"
+}
 FUNCTION_TREE = ast.Module(
     body=[
         node for node in TREE.body
@@ -77,6 +79,14 @@ class FfmpegCommandTest(unittest.TestCase):
             "dark_background_download_url": "https://example.com/dark.png",
         }, "/tmp/job", "video.mp4")
         self.assertEqual(downloaded, ["https://example.com/default.png"])
+
+    def test_meta_frame_uses_9_16_for_story_and_reels(self):
+        self.assertEqual(WORKER["alvo_meta"]("story"), (1080, 1920))
+        self.assertEqual(WORKER["alvo_meta"]("reels"), (1080, 1920))
+        self.assertEqual(WORKER["alvo_meta"]("feed"), (1080, 1350))
+        video_filter = WORKER["filtro_meta"]("drawtext=test", 1080, 1920)
+        self.assertIn("force_original_aspect_ratio=decrease", video_filter)
+        self.assertIn("pad=1080:1920", video_filter)
 
 
 if __name__ == "__main__":

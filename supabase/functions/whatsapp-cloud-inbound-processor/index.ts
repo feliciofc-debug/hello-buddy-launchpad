@@ -382,7 +382,6 @@ import {
   resolverVideoLegendado,
   tratarRespostaFluxoLegenda,
 } from "../_shared/video-legenda-flow.ts";
-import { botoesLegendaParaLogo } from "../_shared/video-legenda-logo.ts";
 import {
   aplicarAjusteRoteiroMotion,
   buscarBaseRefazerVideoMotion,
@@ -22095,14 +22094,6 @@ async function processOne(queueId: string) {
       });
       if (fluxoReply) {
         console.log("[processor][video_legenda_flow] resposta determinística do fluxo de legenda");
-        const availableLogoButtons = botoesLegendaParaLogo(videoLegendaLogo);
-        const logoButtons: WhatsAppInteractiveButtons | undefined =
-          availableLogoButtons && /^Legenda \*[ABC]\* registrada/u.test(fluxoReply)
-            ? {
-              body: fluxoReply,
-              buttons: availableLogoButtons,
-            }
-            : undefined;
         const { data: outMsg } = await sb
           .from("whatsapp_cloud_messages")
           .insert({
@@ -22111,7 +22102,7 @@ async function processOne(queueId: string) {
             direction: "outbound",
             sender: "agent",
             content: fluxoReply,
-            message_type: logoButtons ? "interactive" : "text",
+            message_type: "text",
           })
           .select("id")
           .single();
@@ -22122,7 +22113,7 @@ async function processOne(queueId: string) {
           fluxoReply,
           undefined,
           undefined,
-          logoButtons,
+          undefined,
         );
         if (sentFlowId && outMsg?.id) {
           await sb.from("whatsapp_cloud_messages").update({ wamid: sentFlowId }).eq("id", outMsg.id);
