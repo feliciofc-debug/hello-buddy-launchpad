@@ -177,7 +177,6 @@ Deno.serve(async (req) => {
           `🎬 Vídeo animado pronto. *Ainda não publiquei nada.*${blocoCodigo}${blocoLegenda}\n\nResponda *APROVAR* que eu publico como *${nomeFormato}* no ${nomes}, ou *CANCELAR* e nada vai ao ar.`,
           videoUrl,
           midiaId || undefined,
-          midiaId ? readyMediaActionButtons(midiaId, "video") : undefined,
         );
       }
       return respJson({
@@ -323,7 +322,6 @@ Deno.serve(async (req) => {
           `🎬 Vídeo animado pronto. *Ainda não publiquei nada.*${blocoCodigo}${blocoLegenda}\n\nResponda *APROVAR* que eu publico como *${nomeFormato}* no ${nomes}, ou *CANCELAR* e nada vai ao ar.`,
           videoUrl,
           midiaId || undefined,
-          midiaId ? readyMediaActionButtons(midiaId, "video") : undefined,
         );
       }
     }

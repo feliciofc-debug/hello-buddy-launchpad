@@ -290,6 +290,7 @@ import {
   hasImageGenerationRequest,
   hasSocialPostRequest,
   hasVideoPublicationRequest,
+  isCarouselLibraryMedia,
   selectLatestImplicitMediaId,
   selectPublicationMediaId,
 } from "../_shared/owner-media-intent.ts";
@@ -6722,6 +6723,7 @@ async function loadCarouselImageUrls(userId: string, parentId: string): Promise<
       .select("id, midia_url, contexto_original, created_at")
       .eq("user_id", userId)
       .eq("midia_pai_id", parentId)
+      .eq("origem", "carrossel_whatsapp_card")
       .order("created_at", { ascending: true }),
   ]);
   if (parentError || childrenError) {
@@ -8076,11 +8078,7 @@ async function publishLinkedInImmediately(
           `Não publiquei: você pediu uma imagem, mas a última produção desta conversa é ${mediaTipo}. Reenvie a imagem ou informe o código dela.`,
         );
       }
-      if (
-        resolved.midia.origem === "carrossel_whatsapp"
-        || resolved.midia.origem === "carrossel_whatsapp_card"
-        || resolved.midia.midia_pai_id
-      ) {
+      if (isCarouselLibraryMedia(resolved.midia)) {
         return await fail("carrossel_linkedin_nao_suportado", "Não publiquei: carrossel pelo LinkedIn ainda não está habilitado.");
       }
       if (resolved.midia.tipo === "video") {
@@ -9795,7 +9793,7 @@ async function toolPostarMidiaBiblioteca(
       });
     }
 
-    if (midia.origem === "carrossel_whatsapp" || midia.origem === "carrossel_whatsapp_card" || midia.midia_pai_id) {
+    if (isCarouselLibraryMedia(midia)) {
       const parentId = midia.midia_pai_id || midia.id;
       const requestedNetworks = (args?.redes ?? [])
         .map(canonicalSocialNetwork)

@@ -279,7 +279,6 @@ Deno.serve(async (req) => {
         `🎬 Vídeo pronto com a legenda na tela. *Ainda não publiquei nada.*${blocoCodigo}${blocoLegenda}\n\nResponda *APROVAR* que eu publico como *${nomeFormato}* no ${nomes}, ou *CANCELAR* e nada vai ao ar.`,
         videoUrl,
         midiaId || undefined,
-        midiaId ? readyMediaActionButtons(midiaId, "video") : undefined,
       );
     }
 

@@ -10,6 +10,18 @@ export type OwnerMediaIntent = {
   mediaStrategy: "generated" | "last" | null;
 };
 
+export function isCarouselLibraryMedia(media: {
+  origem?: string | null;
+  tipo?: string | null;
+  midia_pai_id?: string | null;
+} | null): boolean {
+  return media?.tipo !== "video" &&
+    (
+      media?.origem === "carrossel_whatsapp" ||
+      media?.origem === "carrossel_whatsapp_card"
+    );
+}
+
 export function selectLatestImplicitMediaId(
   newestSavedMedia: { id?: string | null; created_at?: string | null } | null,
   lastInteraction: { media_id?: string | null; at?: string | null } | null,

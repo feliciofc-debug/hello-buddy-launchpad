@@ -5,6 +5,7 @@ import {
   hasDirectedImageEditRequest,
   hasImageGenerationRequest,
   hasSocialPostRequest,
+  isCarouselLibraryMedia,
   selectLatestImplicitMediaId,
   selectPublicationMediaId,
 } from "./owner-media-intent.ts";
@@ -216,5 +217,23 @@ Deno.test("não trata oração descritiva como comando de post", () => {
       "A AMZ ajuda porque ele cria e publica os posts da empresa.",
     ),
     { action: null, mediaStrategy: null },
+  );
+});
+
+Deno.test("vídeo legendado com mídia-mãe nunca é classificado como carrossel", () => {
+  assertEquals(
+    isCarouselLibraryMedia({
+      origem: "video_legendado",
+      tipo: "video",
+      midia_pai_id: "video-original",
+    }),
+    false,
+  );
+  assertEquals(
+    isCarouselLibraryMedia({
+      origem: "carrossel_whatsapp_card",
+      tipo: "foto",
+    }),
+    true,
   );
 });
