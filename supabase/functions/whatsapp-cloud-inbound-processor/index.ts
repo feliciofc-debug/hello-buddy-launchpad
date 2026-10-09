@@ -20,7 +20,10 @@ import {
   ownerPhoneVariants,
   ownerPhonesEquivalent,
 } from "../_shared/owner-phone.ts";
-import { isLikelyBusinessAutoReply } from "../_shared/whatsapp-opt-in-gate.ts";
+import {
+  isLikelyBusinessAutoReply,
+  isWhatsAppOptOutRequest,
+} from "../_shared/whatsapp-opt-in-gate.ts";
 import {
   buildCarouselPrompt,
   buildProspectDemoCarouselPrompt,
@@ -33,6 +36,59 @@ import {
   sanitizeProspectDemoSlides,
   sendCarouselCardsInOrder,
 } from "../_shared/carousel-content.ts";
+import {
+  addVehicleCarouselPhotos,
+  blockingVehiclePhotoFlow,
+  buildVehicleCarouselContentPrompt,
+  buildVehicleCarouselSlides,
+  expiredAnuncioPendingPatch,
+  hasEnoughVehicleCarouselPhotos,
+  hasVehicleCarouselData,
+  isVehiclePhotoCarouselRequest,
+  isVehiclePhotoCarouselTextRequest,
+  isGeneratedVehicleCopySafe,
+  parseVehicleCarouselData,
+  planVehiclePhotoBatch,
+  validPendingVehicleCarousel,
+  validPendingVehiclePhotoBatch,
+  vehicleCarouselAdStateReset,
+  vehicleCarouselCollectionButtons,
+  vehicleCarouselDataButtons,
+  vehicleCarouselDeliveryButtons,
+  vehicleCarouselFormatButtons,
+  vehicleCarouselNeedMoreButtons,
+  vehicleCarouselPhotoButtons,
+  vehicleCarouselStartState,
+  vehiclePhotoBatchOfferMessage,
+  vehiclePhotoBatchButtons,
+  vehiclePhotoBatchNewTopicReset,
+  vehiclePhotoCountLabel,
+  vehiclePhotosFromQueueEvents,
+  VEHICLE_CAROUSEL_MAX_PHOTOS,
+  VEHICLE_CAROUSEL_MIN_PHOTOS,
+  SINGLE_REPEATED_VEHICLE_PHOTO_MESSAGE,
+  type PendingVehicleCarousel,
+  type PendingVehiclePhotoBatch,
+  type VehicleCarouselData,
+  type VehicleCarouselPhoto,
+  type VehiclePhotoView,
+} from "../_shared/vehicle-carousel.ts";
+import {
+  explicitVehiclePriceChoice,
+  hasSpecificVehicleModel,
+  isVehicleIdentificationAbandonRequest,
+  isVehicleIdentificationConfirmation,
+  isGenericVehicleTitle,
+  looksLikeVehicleMakeModel,
+  parseVehicleIdentification,
+  resolveVehicleAdTitle,
+  resolveVehiclePrice,
+  validPendingVehicleIdentification,
+  vehicleIdentificationButtons,
+  vehicleIdentificationPrompt,
+  vehicleIdentificationQuestion,
+  type VehicleIdentification,
+} from "../_shared/vehicle-identification.ts";
 
 // ---------------------------------------------------------------------------
 // Multi-tenant owner registry (populado no início de cada processMessage).
@@ -69,7 +125,10 @@ import {
   applyBrandLogo,
   buildBrandGenerationGuidance,
 } from "../_shared/brand-image-engine.ts";
+import { sceneEditDirective } from "../_shared/image-edit-instruction.ts";
+import { appendWhatsappCtaInPublishingOrder } from "../_shared/social-caption-order.ts";
 import {
+  dataUrlToImageBytes,
   loadTenantBrandAssets,
 } from "../_shared/brand-assets.ts";
 import {
@@ -78,7 +137,23 @@ import {
 } from "../_shared/brand-site-identity.ts";
 import { generateMarketingImage } from "../_shared/marketing-image-generator.ts";
 import { setTenantLogo } from "../_shared/tenant-logo.ts";
-import { carouselColorRows, resolveCarouselColor } from "../_shared/carousel-colors.ts";
+import {
+  AMZ_CAROUSEL_COLOR,
+  carouselColorFallbackButtons,
+  carouselColorListPayload,
+  deliverCarouselColorSelector,
+  detectExplicitCarouselColor,
+  DEFAULT_CAROUSEL_COLOR,
+  resolveCarouselColor,
+  resolveCarouselColorPlan,
+} from "../_shared/carousel-colors.ts";
+import {
+  carouselStyleFallbackButtons,
+  carouselStyleListPayload,
+  type CarouselTemplate,
+  resolveCarouselStyleReply,
+  resolveCarouselStyleRequest,
+} from "../_shared/carousel-styles.ts";
 import { processorSkipOutboundLog } from "../_shared/cloud-log.ts";
 import { gerarVarianteFacebookFeed } from "../_shared/varianteFacebookFeed.ts";
 import { idCurto, linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
@@ -148,9 +223,49 @@ import {
   validateMetaAdsDraft,
 } from "../_shared/meta-ads-create.ts";
 import {
+  buildMetodoAmzReviewPrompt,
+  revisarComMetodoAmz,
+} from "../_shared/metodo-amz.ts";
+import {
   isLiteralMetaAdsApproval,
   latestMetaAdsWhatsappApproval,
 } from "../_shared/meta-ads-whatsapp-approval.ts";
+import {
+  avancarMetaAdsQuestionario,
+  avaliarMetaAdsOrcamentoMinimo,
+  filtrarInteressesValidados,
+  interactiveId as metaAdsQuestionarioInteractiveId,
+  isMetaAdsQuestionarioAmbiguousRequest,
+  isMetaAdsQuestionarioCancel,
+  isMetaAdsQuestionarioResume,
+  isMetaAdsQuestionarioTrigger,
+  isMetaAdsLimitChangeRequest,
+  metaAdsBudgetRecoveryButtons,
+  metaAdsDraftDoQuestionario,
+  metaAdsLimitProposalButtons,
+  metaAdsMaximoDiarioParaSeteDias,
+  metaAdsQuestionarioAmbiguityButtons,
+  metaAdsQuestionarioBudget,
+  metaAdsQuestionarioContinuarButtons,
+  metaAdsQuestionarioExpirado,
+  metaAdsQuestionarioResumo,
+  metaAdsQuestionarioResumoHash,
+  novoMetaAdsQuestionario,
+  questionarioAtivo,
+  questionarioButtons,
+  questionarioList,
+  resolveMetaAdsLimitAction,
+  resolveMetaAdsLimitValueInput,
+  resolveMetaAdsQuestionarioAmbiguity,
+  respostaPertenceAoQuestionario,
+  type MetaAdsQuestionario,
+  type MetaAdsQuestionarioAmbiguidade,
+  type MetaAdsLimitProposal,
+  type MetaAdsLimitValueRequest,
+  type MetaAdsQuestionarioMidia,
+  validarNovoLimiteMensalAnuncios,
+  voltarMetaAdsQuestionarioParaOrcamento,
+} from "../_shared/meta-ads-questionario.ts";
 import { dedupeConsecutiveReplyText } from "../_shared/reply-dedupe.ts";
 import {
   formatScheduledDate,
@@ -196,6 +311,38 @@ import {
   selectSocialVariantScripts,
   socialInteractiveButtonsFromResult,
 } from "../_shared/social-approval-flow.ts";
+import { exactSocialMedia } from "../_shared/social-media-snapshot.ts";
+import { singlePhotoFormatButtons } from "../_shared/single-photo-flow.ts";
+import {
+  activePendingVerticalRoute,
+  applyVerticalStatePatch,
+  activeDemoSegment,
+  businessSegmentButtons,
+  demoSegmentConfirmationButtons,
+  explicitVerticalIntent,
+  parseDemoSegmentCommand,
+  migrateVerticalState,
+  parseVerticalVisionResult,
+  resolveVertical,
+  scopedVerticalState,
+  isVerticalStateKey,
+  verticalChoiceButtons,
+  verticalAdDetailsPrompt,
+  verticalVisionPrompt,
+  withDemoModeLabel,
+  type InboundVertical,
+  type VerticalDecision,
+} from "../_shared/vertical-router.ts";
+import {
+  generalSpecialistAllowsTool,
+  generalSpecialistPhotoButtons,
+  generalSpecialistPrompt,
+} from "../_shared/vertical-general/index.ts";
+import {
+  vehicleSpecialistAllowsTool,
+  vehicleSpecialistPhotoButtons,
+  vehicleSpecialistPrompt,
+} from "../_shared/vertical-vehicle/index.ts";
 import {
   canUseAmbiguousPendingReply,
   classifyExplicitPendingPostCommand,
@@ -216,21 +363,25 @@ import {
 } from "../_shared/linkedin-approval.ts";
 import { buildSocialQueueNetworkRows } from "../_shared/social-queue.ts";
 import {
-  catalogImageUrl,
   environmentLikelihood,
   IMAGE_COMPOSITION_ESTIMATED_COST_USD,
   IMAGE_COMPOSITION_MODEL,
+  isExplicitTwoImageCompositionRequest,
   isImageCompositionIntent,
+  isProductAdCreativeRequest,
   requestedCompositionResolution,
-  selectCatalogProduct,
   type ImageCompositionResolution,
 } from "../_shared/image-composition.ts";
+import {
+  logoPlacementMode,
+  logoRequestIncludesPublication,
+  LOGO_PRODUCT_SIMULATION_NOTICE,
+} from "../_shared/logo-placement-intent.ts";
 import {
   iniciarFluxoLegendaVideo,
   resolverVideoLegendado,
   tratarRespostaFluxoLegenda,
 } from "../_shared/video-legenda-flow.ts";
-import { botoesLegendaParaLogo } from "../_shared/video-legenda-logo.ts";
 import {
   aplicarAjusteRoteiroMotion,
   buscarBaseRefazerVideoMotion,
@@ -263,12 +414,108 @@ import {
   findClientBrandIdentity,
   listClientBrandIdentityMatches,
   saveClientBrandIdentity,
+  clientLogoPath,
+  type ClientBrandIdentity,
 } from "../_shared/client-brand-identity.ts";
 import {
+  anuncioClientColors,
+  buildAnuncioBrandPlan,
+} from "../_shared/anuncio-client-brand.ts";
+import {
+  anuncioSuccessMessage,
+  amzAnuncioClientButtons,
+  amzMissingClientLogoButtons,
+  shouldAskAmzAnuncioClient,
+} from "../_shared/anuncio-tenant-brand.ts";
+import {
+  ANUNCIO_STYLES,
+  type AnuncioStyle,
+  type AnuncioPhotoPreference,
+  anuncioPhotoChoiceButtons,
+  anuncioPhotoDirectiveFromText,
+  anuncioPhotoPreferenceConfirmationButtons,
+  anuncioPhotoRedoButtons,
+  anuncioStyleButtons,
+  anuncioStyleFromText,
+  getTenantAnuncioPhotoPreference,
+  getTenantAnuncioStyle,
+  otherAnuncioStyles,
+  resolveAnuncioPhotoPreference,
+  saveTenantAnuncioPhotoPreference,
+  savedClientAnuncioStyle,
+  saveTenantAnuncioStyle,
+  shouldImproveAnuncioPhoto,
+} from "../_shared/anuncio-style.ts";
+import {
+  anuncioCaptionExtraList,
+  anuncioFinalApprovalButtons,
+  anuncioPostActionButtons,
+  anuncioPostFormatButtons,
+  anuncioPostNetworkButtons,
+  anuncioScheduleApprovalButtons,
+  anuncioScheduleTimeButtons,
+  canOfferAnuncioPostActions,
+  generateVehicleAdCaptions,
+  parseAnuncioPostRequest,
+  shouldBindPostToLastAnuncio,
+  validLastAnuncio,
+  type AnuncioPostNetwork,
+  type LastAnuncio,
+  type LastAnuncioImage,
+  type PendingAnuncioPost,
+} from "../_shared/anuncio-social-flow.ts";
+import {
+  selectRecentOriginalPhoto,
+} from "../_shared/anuncio-source-media.ts";
+import {
+  parseFotoBoxFromVisionResponse,
+  type FotoBox,
+} from "../_shared/anuncio-photo-framing.ts";
+import { productAdPhotoImprovementPrompt } from "../_shared/anuncio-photo-prompt.ts";
+import { buildVehicleAdContent } from "../_shared/anuncio-vehicle-details.ts";
+import {
+  classifyStoreReply,
+  storeNameFromSite,
+} from "../_shared/anuncio-store-flow.ts";
+import {
+  buscarMarca,
+  consultarPreco,
+  fipeListRows,
+  fipePhotoSuggestionMessage,
+  listarAnos,
+  listarModelos,
+  type FipeListItem,
+  type FipePrice,
+} from "../_shared/fipe.ts";
+import {
+  filterFipeModelCandidates,
+  normalizeFipeLookupInput,
+  parseFipeRequestText,
+  type FipeLookupInput,
+} from "../_shared/fipe-input.ts";
+import {
+  fipeInputFromConfirmedVehicle,
+  isExplicitFipeRequest,
+  vehicleFipeTurn,
+} from "../_shared/fipe-routing.ts";
+import {
+  decideFipeForAd,
+  type LastFipeResult,
+} from "../_shared/fipe-ad.ts";
+import {
+  cleanReceivedMediaDescription,
+  createRecentAutomaticMessageGuard,
+  recognizedMediaReply,
+} from "../_shared/media-received-copy.ts";
+import { imageUploadMetadata } from "../_shared/image-file-format.ts";
+import { detectLogoVariantRequest } from "../_shared/logo-variant.ts";
+import {
   canRunClientLogoRegistrationShortcut,
+  classifyCreativeMediaRequest,
   clientLogoUploadFollowUp,
   extractVideoClientName,
   hasUsableVideoTopic,
+  isClearlyDifferentFromPendingVideo,
   isVideoMotionRedoRequest,
   isVideoMotionRequest,
   isSameVideoBrandName,
@@ -278,7 +525,7 @@ import {
   videoSiteDomain,
 } from "../_shared/video-client-identity.ts";
 import { completeSiteIdentityWithRenderedPage } from "../_shared/video-site-identity.ts";
-import { trimLogoImage } from "../_shared/logo-image-trim.ts";
+import { removeSolidLogoBackground } from "../_shared/logo-background.ts";
 
 import {
   entregarEbookTenant,
@@ -506,7 +753,7 @@ function extractText(payload: any): string {
   if (payload.interactive?.list_reply?.title) {
     const title = String(payload.interactive.list_reply.title);
     const id = String(payload.interactive.list_reply.id || "");
-    return /^(?:video_|tiktok_(?:privacy|disclosure):)/i.test(id)
+    return /^(?:video_|fipe_|anuncio_post:|carrossel_(?:estilo|cor)_|tiktok_(?:privacy|disclosure):|meta_ads_q:)/i.test(id)
       ? `${title}\n<<INTERACTIVE_ID:${id}>>`
       : title;
   }
@@ -1322,6 +1569,8 @@ async function toolGerarImagem(
     const shouldResolveBrand = shouldUseLogo
       || (ctx.demonstracao === true && (ctx.brandColors?.length ?? 0) > 0);
     let logoDataUrl: string | null = null;
+    let logoForLightBackgroundDataUrl: string | null = null;
+    let logoForDarkBackgroundDataUrl: string | null = null;
     let brandColors: string[] = ctx.brandColors ?? [];
     let brandName: string | null = null;
     if (shouldResolveBrand) {
@@ -1330,6 +1579,10 @@ async function toolGerarImagem(
         : await loadTenantBrandAssets(sb, ctx.userId);
       const resolvedBrand = resolveWhatsAppGeneratorBrand(ctx, assets);
       logoDataUrl = resolvedBrand.logoDataUrl;
+      logoForLightBackgroundDataUrl =
+        resolvedBrand.logoForLightBackgroundDataUrl;
+      logoForDarkBackgroundDataUrl =
+        resolvedBrand.logoForDarkBackgroundDataUrl;
       brandColors = resolvedBrand.brandColors;
       brandName = resolvedBrand.brandName;
       console.log("[gerar_imagem] marca padrão, logo encontrada:", !!logoDataUrl);
@@ -1344,14 +1597,18 @@ async function toolGerarImagem(
       prompt: clean,
       references: ctx.references,
       logoDataUrl,
+      logoForLightBackgroundDataUrl,
+      logoForDarkBackgroundDataUrl,
       brandColors,
       brandName,
       apiKey: LOVABLE_API_KEY,
     });
     const bytes = generated.bytes;
-    const mime = generated.mimeType;
+    const imageFormat = imageUploadMetadata(bytes, generated.mimeType);
+    if (!imageFormat) return JSON.stringify({ erro: "imagem_gerada_invalida" });
+    const mime = imageFormat.mime;
     const logoAplicada = generated.logoApplied;
-    const fileName = `midias/${ctx.userId}/ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+    const fileName = `midias/${ctx.userId}/ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${imageFormat.extension}`;
     const { error: upErr } = await sb.storage.from("produtos").upload(fileName, bytes, { contentType: mime, upsert: true });
     if (upErr) return JSON.stringify({ erro: `upload_falhou: ${upErr.message}` });
     const { data: pub } = sb.storage.from("produtos").getPublicUrl(fileName);
@@ -1658,6 +1915,7 @@ async function toolEditarImagem(
     modo?: string;
     preservarAmbiente?: boolean;
     registrarNaBiblioteca?: boolean;
+    imageInputUrl?: string;
   },
 ): Promise<string> {
   if (!isOwner({ userId: ctx.userId, fromNumber: ctx.fromNumber || "" })) {
@@ -1671,6 +1929,8 @@ async function toolEditarImagem(
   const img = (ctx.media || []).slice().reverse().find((m) => m.kind === "image");
   if (img) {
     imageInput = `data:${img.mime};base64,${img.base64}`;
+  } else if (/^https?:\/\//i.test(String(ctx.imageInputUrl || ""))) {
+    imageInput = String(ctx.imageInputUrl);
   } else {
     try {
       const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
@@ -1738,12 +1998,10 @@ async function toolEditarImagem(
 - Reproduza a logo EXATAMENTE como está no arquivo de referência: mesmas cores, mesma tipografia, mesmo símbolo, mesmas proporções. É PROIBIDO redesenhar, estilizar, traduzir, reescrever o nome ou inventar variação.
 - Nada mais na imagem pode ser alterado.`
     : isAnuncio
-    ? `\n\n🎯 MODO ANÚNCIO/FICHA TÉCNICA — TROCA TOTAL DE AMBIENTE (obrigatório):
+    ? `\n\n🎯 MODO TROCA DE AMBIENTE:
 - RECORTE o produto principal da foto e DESCARTE COMPLETAMENTE o cenário original.
 - É PROIBIDO deixar qualquer resquício do local original: fios, tomadas, televisão, monitor, móveis, mesa, sofá, cortina, parede de casa, chão de casa, rodapé, roupa, pessoas ao fundo, papel, embalagens soltas, objetos de fundo, reflexo do ambiente antigo.
-- SUBSTITUA por um set comercial limpo: fundo de estúdio sólido/gradiente sofisticado (ou showroom, quando for veículo), piso levemente reflexivo, iluminação de estúdio com sombra suave sob o produto, profundidade de campo rasa.
-- O RESULTADO deve parecer foto de catálogo/e-commerce profissional: fundo totalmente controlado, zero bagunça, zero distração.
-- Preserve 100% o PRODUTO em si: mesma marca, mesmo rótulo, mesmas cores, mesmo formato, mesmos textos da embalagem, mesma unidade (não troque por outro modelo, não redesenhe o rótulo).`
+${sceneEditDirective(clean)}`
     : modo === "figurino" || modo === "fantasia" || modo === "roupa"
     ? `\n\n🎯 MODO FIGURINO: troque APENAS a roupa/fantasia da pessoa conforme o pedido. É OBRIGATÓRIO manter o MESMO rosto, mesma idade, mesmo corte de cabelo, mesma pele, mesma pose e o MESMO AMBIENTE/fundo (mesmos móveis, mesma luz, mesmo enquadramento). Não troque o cenário, não deixe a pessoa parecida com outra criança/adulto, não gere desenho — fotorealista.`
     : `\n\n🎯 MODO MELHORIA: eleve a qualidade (nitidez, cor, luz, composição) mantendo a cena reconhecível.`;
@@ -1786,7 +2044,10 @@ async function toolEditarImagem(
       if (m) { mime = m[1]; b64 = m[2]; }
     }
     const bytes = base64Decode(b64);
-    const fileName = `whatsapp-ai/${ctx.userId}/edit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+    const imageFormat = imageUploadMetadata(bytes, mime);
+    if (!imageFormat) return JSON.stringify({ erro: "imagem_editada_invalida" });
+    mime = imageFormat.mime;
+    const fileName = `whatsapp-ai/${ctx.userId}/edit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${imageFormat.extension}`;
     const { error: upErr } = await sb.storage.from("produtos").upload(fileName, bytes, { contentType: mime, upsert: true });
     if (upErr) return JSON.stringify({ erro: `upload_falhou: ${upErr.message}` });
     const { data: pub } = sb.storage.from("produtos").getPublicUrl(fileName);
@@ -1834,6 +2095,137 @@ async function toolEditarImagem(
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
+  }
+}
+
+async function toolApplyTenantLogoOverlay(
+  prompt: string,
+  ctx: {
+    userId: string;
+    fromNumber: string;
+    media?: MediaExtract[];
+    agentState?: AgentConvState;
+  },
+): Promise<string> {
+  if (!isOwner(ctx)) {
+    return JSON.stringify({ ok: false, erro: "acao_restrita_ao_responsavel" });
+  }
+  let sourceBytes: Uint8Array | null = null;
+  const current = (ctx.media || []).slice().reverse().find((item) =>
+    item.kind === "image"
+  );
+  if (current) {
+    sourceBytes = base64Decode(current.base64);
+  } else {
+    const interactionId = String(
+      ctx.agentState?.last_media_interaction?.media_id || "",
+    ).trim();
+    let query = sb.from("midias_whatsapp")
+      .select("id, midia_url, created_at")
+      .eq("user_id", ctx.userId)
+      .eq("telefone_origem", ctx.fromNumber)
+      .eq("tipo", "foto");
+    query = interactionId
+      ? query.eq("id", interactionId)
+      : query.gte(
+        "created_at",
+        new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+      ).order("created_at", { ascending: false }).limit(1);
+    const { data, error } = await query.maybeSingle();
+    if (error) {
+      return JSON.stringify({ ok: false, erro: "foto_recente_indisponivel" });
+    }
+    if (data?.midia_url) {
+      const response = await fetch(String(data.midia_url), {
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (response.ok) {
+        sourceBytes = new Uint8Array(await response.arrayBuffer());
+      }
+    }
+  }
+  if (!sourceBytes?.length) {
+    return JSON.stringify({ ok: false, erro: "sem_imagem" });
+  }
+
+  const assets = await loadTenantBrandAssets(sb, ctx.userId, {
+    includeLogo: true,
+  });
+  const defaultLogo = dataUrlToImageBytes(assets.logoDataUrl);
+  if (!defaultLogo) {
+    return JSON.stringify({ ok: false, erro: "sem_logo_cadastrada" });
+  }
+  const lightLogo = dataUrlToImageBytes(
+    assets.logoForLightBackgroundDataUrl,
+  );
+  const darkLogo = dataUrlToImageBytes(
+    assets.logoForDarkBackgroundDataUrl,
+  );
+  try {
+    const branded = await applyBrandLogo(sourceBytes, defaultLogo.bytes, {
+      fixedTopLeft: true,
+      logoForLightBackgroundBytes: lightLogo?.bytes,
+      logoForDarkBackgroundBytes: darkLogo?.bytes,
+    });
+    const imageFormat = imageUploadMetadata(branded.bytes, "image/png");
+    if (!imageFormat) {
+      return JSON.stringify({ ok: false, erro: "imagem_com_logo_invalida" });
+    }
+    const path =
+      `whatsapp-ai/${ctx.userId}/logo-overlay-${Date.now()}-${
+        crypto.randomUUID().slice(0, 8)
+      }.${imageFormat.extension}`;
+    const { error: uploadError } = await sb.storage.from("produtos").upload(
+      path,
+      branded.bytes,
+      { contentType: imageFormat.mime, upsert: false },
+    );
+    if (uploadError) {
+      return JSON.stringify({
+        ok: false,
+        erro: `upload_falhou:${uploadError.message}`,
+      });
+    }
+    const { data: publicData } = sb.storage.from("produtos").getPublicUrl(path);
+    if (!publicData?.publicUrl) {
+      return JSON.stringify({ ok: false, erro: "sem_url_publica" });
+    }
+    const { data: mediaRow, error: mediaError } = await sb
+      .from("midias_whatsapp")
+      .insert({
+        user_id: ctx.userId,
+        origem: "logo_overlay",
+        telefone_origem: ctx.fromNumber,
+        tipo: "foto",
+        midia_url: publicData.publicUrl,
+        mime_type: imageFormat.mime,
+        tamanho_bytes: branded.bytes.length,
+        contexto_original: prompt.slice(0, 1500),
+        status: "pendente",
+      })
+      .select("id")
+      .single();
+    if (mediaError || !mediaRow?.id) {
+      return JSON.stringify({
+        ok: false,
+        erro: `registro_midia_falhou:${
+          mediaError?.message || "id ausente"
+        }`,
+      });
+    }
+    return JSON.stringify({
+      ok: true,
+      image_url: publicData.publicUrl,
+      midia_id: mediaRow.id,
+      placement: branded.placement,
+      panel_used: branded.panelUsed,
+      vignette_used: branded.vignetteUsed,
+    });
+  } catch (error) {
+    return JSON.stringify({
+      ok: false,
+      erro: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
@@ -1904,28 +2296,6 @@ async function resolveCompositionSources(
     photos = [...recent, ...photos].filter(
       (photo, index, all) => all.findIndex((candidate) => candidate.id === photo.id) === index,
     ).slice(-2);
-  }
-
-  const { data: products, error: productError } = await sb
-    .from("produtos")
-    .select("id, nome, imagem_url, imagens")
-    .eq("user_id", userId)
-    .eq("ativo", true)
-    .limit(500);
-  if (productError) {
-    console.warn("[image_composition][catalog_lookup_failed]", productError.message);
-  }
-  const catalogProduct = selectCatalogProduct(requestText, products ?? []);
-  const catalogUrl = catalogProduct ? catalogImageUrl(catalogProduct) : null;
-
-  if (catalogProduct && catalogUrl && photos.length >= 1) {
-    const environment = [...photos].sort(
-      (a, b) => environmentLikelihood(b.context || "") - environmentLikelihood(a.context || ""),
-    )[0];
-    return {
-      environment,
-      product: { id: null, url: catalogUrl, context: catalogProduct.nome, productId: catalogProduct.id },
-    };
   }
 
   if (photos.length < 2) return null;
@@ -2033,9 +2403,12 @@ async function composeProductInEnvironment(params: {
 
     const match = generated.dataUrl.match(/^data:(image\/[\w.+-]+);base64,(.+)$/);
     if (!match) throw new Error("imagem_gerada_em_formato_invalido");
-    const mime = match[1];
+    let mime = match[1];
     const bytes = base64Decode(match[2]);
-    const fileName = `whatsapp-ai/${params.userId}/composition-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+    const imageFormat = imageUploadMetadata(bytes, mime);
+    if (!imageFormat) throw new Error("imagem_gerada_em_formato_invalido");
+    mime = imageFormat.mime;
+    const fileName = `whatsapp-ai/${params.userId}/composition-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${imageFormat.extension}`;
     const { error: uploadError } = await sb.storage
       .from("produtos")
       .upload(fileName, bytes, { contentType: mime, upsert: false });
@@ -2418,10 +2791,14 @@ function buildForwardProof(wamid?: string | null): string {
 
 // ---- Estado persistente da conversa (comprovantes + decisões) -------------
 type PendingCarouselState = {
-  stage: "awaiting_color" | "awaiting_confirmation";
+  stage: "awaiting_style" | "awaiting_color" | "awaiting_confirmation";
   tema: string;
   num_slides?: number;
   cor?: string;
+  cor_marca?: string;
+  cor_secundaria_marca?: string;
+  template?: CarouselTemplate;
+  background_color?: string;
   slides?: any[];
   caption?: string;
   media_id?: string;
@@ -2447,17 +2824,129 @@ type PendingBrandGeneration = {
   logo_candidate_mime?: string;
 };
 
+type PendingFipeState =
+  | {
+    stage: "model";
+    brand: FipeListItem;
+    models: FipeListItem[];
+    requestedYear?: string;
+    requestedFuel?: string;
+    queryModel: string;
+    created_at: string;
+  }
+  | {
+    stage: "year";
+    brand: FipeListItem;
+    model: FipeListItem;
+    years: FipeListItem[];
+    queryModel: string;
+    created_at: string;
+  }
+  | {
+    stage: "photo_confirmation";
+    brand: string;
+    model: string;
+    earliestYear?: number;
+    created_at: string;
+  }
+  | {
+    stage: "ad_difference";
+    args: Record<string, unknown>;
+    queriedValue: string;
+    suppliedValue: string;
+    referenceMonth: string;
+    created_at: string;
+  };
+
 type AgentConvState = {
+  vehicle?: Record<string, unknown>;
+  general?: Record<string, unknown>;
+  vertical_router?: {
+    pending_choice?: {
+      media_id?: string;
+      media_url?: string;
+      created_at: string;
+    } | null;
+    last_route?: InboundVertical;
+    updated_at?: string;
+    pending_segment_choice?: boolean;
+    demo_segment?: {
+      segment: string;
+      expires_at: string;
+    } | null;
+    pending_demo_segment?: {
+      segment: string;
+      created_at: string;
+    } | null;
+  } | null;
   forward?: { protocolo?: string; destinatario?: string; wamid?: string | null; at?: string };
   decisao?: { valor?: string; at?: string };
   site_link_enviado?: boolean;
   last_media_interaction?: { media_id: string; at: string };
+  pending_single_photo?: {
+    media_id: string;
+    stage: "actions" | "networks" | "format";
+    networks?: AnuncioPostNetwork[];
+    created_at: string;
+  } | null;
   pending_image_composition?: { media_ids: string[]; at: string } | null;
   pending_carousel?: PendingCarouselState | null;
+  pending_carrossel_veiculo?: PendingVehicleCarousel | null;
+  pending_vehicle_photo_batch?: PendingVehiclePhotoBatch | null;
+  pending_vehicle_identification?: {
+    identification: VehicleIdentification;
+    media_ids: string[];
+    target: "single_ad" | "carousel";
+    confirmed?: boolean;
+    confirmed_title?: string;
+    awaiting_correction?: boolean;
+    data?: VehicleCarouselData;
+    created_at: string;
+  } | null;
   pending_video_setup?: PendingVideoSetupState | null;
-  pending_client_logo?: { logo_path: string; created_at: string } | null;
-  pending_client_logo_intent?: { client_name: string; created_at: string } | null;
+  pending_creative_media_ambiguity?: { original_request: string; created_at: string } | null;
+  pending_anuncio_cliente?: {
+    args: Record<string, unknown>;
+    created_at: string;
+    awaiting_store_details?: boolean;
+    store_name?: string;
+    asked_site?: boolean;
+  } | null;
+  pending_anuncio_styles?: {
+    render_payload: Record<string, unknown>;
+    source_args?: Record<string, unknown>;
+    client_name?: string | null;
+    shown_styles: AnuncioStyle[];
+    images?: LastAnuncioImage[];
+    data?: Record<string, unknown>;
+    photo_preference_used?: AnuncioPhotoPreference;
+    created_at: string;
+  } | null;
+  pending_anuncio_photo?: {
+    stage: "choice" | "preference_confirmation";
+    args?: Record<string, unknown>;
+    preference?: AnuncioPhotoPreference;
+    created_at: string;
+  } | null;
+  last_anuncio?: LastAnuncio | null;
+  pending_anuncio_post?: PendingAnuncioPost | null;
+  pending_client_logo?: {
+    logo_path: string;
+    created_at: string;
+    variant?: "default" | "light_background" | "dark_background" | "video";
+  } | null;
+  pending_client_logo_intent?: {
+    client_name: string;
+    created_at: string;
+    variant?: "default" | "light_background" | "dark_background" | "video";
+    anuncio_args?: Record<string, unknown>;
+  } | null;
   pending_brand_generation?: PendingBrandGeneration | null;
+  pending_fipe?: PendingFipeState | null;
+  last_fipe?: LastFipeResult | null;
+  pending_meta_ads_ambiguity?: MetaAdsQuestionarioAmbiguidade | null;
+  pending_meta_ads_limit?: MetaAdsLimitProposal | null;
+  pending_meta_ads_limit_value?: MetaAdsLimitValueRequest | null;
   brand_image_preference?: WhatsAppBrandPreference | null;
   [k: string]: unknown;
 };
@@ -2497,6 +2986,8 @@ type PendingVideoSetupState = {
   site?: string;
   tom_de_voz?: string;
   logo_path?: string;
+  logo_light_background_path?: string;
+  logo_dark_background_path?: string;
   site_logo_candidate_path?: string;
   identity_summary?: string;
   palette_options?: VideoPaletteOption[];
@@ -2507,6 +2998,7 @@ type PendingVideoSetupState = {
   duracao_alvo_segundos?: number;
   frases_literais?: string[];
   roteiro_cenas?: CenaMotion[];
+  interrupted_request?: string;
   created_at: string;
 };
 
@@ -2547,7 +3039,9 @@ async function saveAgentState(
   current: AgentConvState = {},
 ): Promise<boolean> {
   try {
-    const nextState = { ...current, ...patch };
+    const nextState = applyVerticalStatePatch(current, patch);
+    const verticalScope = (current as Record<string, unknown>)
+      .__vertical_scope as InboundVertical | undefined;
     const { error } = await sb
       .from("whatsapp_cloud_conversations")
       .update({ agent_state: nextState })
@@ -2565,13 +3059,27 @@ async function saveAgentState(
       .maybeSingle();
     if (verifyError) throw verifyError;
     const saved = (verified?.agent_state ?? {}) as AgentConvState;
+    if (verticalScope) {
+      (current as Record<string, unknown>).__vertical_root = saved;
+      current.vehicle = saved.vehicle;
+      current.general = saved.general;
+      current.vertical_router = saved.vertical_router;
+    }
     for (const key of Object.keys(patch)) {
-      if (!Object.prototype.hasOwnProperty.call(saved, key)) {
+      const actual = verticalScope && isVerticalStateKey(key)
+        ? (verticalScope === "veiculo" ? saved.vehicle : saved.general)?.[key]
+        : saved[key];
+      const exists = verticalScope && isVerticalStateKey(key)
+        ? Object.prototype.hasOwnProperty.call(
+          verticalScope === "veiculo" ? saved.vehicle ?? {} : saved.general ?? {},
+          key,
+        )
+        : Object.prototype.hasOwnProperty.call(saved, key);
+      if (!exists) {
         throw new Error(`state_key_not_persisted:${key}`);
       }
 
       const expected = patch[key];
-      const actual = saved[key];
       const discriminators = ["token", "created_at", "at", "protocolo", "media_id"]
         .filter((field) =>
           expected !== null
@@ -2623,6 +3131,198 @@ async function rememberLastMediaInteraction(
     ctx.agentState = current;
   }
   return saved;
+}
+
+async function tenantVerticalSegment(userId: string): Promise<string | null> {
+  const { data, error } = await sb.from("empresa_config")
+    .select("segmento")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) {
+    console.warn("[vertical] segmento_indisponivel");
+    return null;
+  }
+  return String(data?.segmento || "").trim() || null;
+}
+
+async function classifyPhotoVertical(
+  media: MediaExtract | undefined,
+): Promise<ReturnType<typeof parseVerticalVisionResult>> {
+  if (!media || media.kind !== "image") return null;
+  try {
+    const response = await fetch(
+      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: MODEL_FAST,
+          temperature: 0,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "text", text: verticalVisionPrompt() },
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:${media.mime};base64,${media.base64}`,
+                },
+              },
+            ],
+          }],
+        }),
+        signal: AbortSignal.timeout(30_000),
+      },
+    );
+    if (!response.ok) {
+      console.warn(`[vertical] visao_falhou status=${response.status}`);
+      return null;
+    }
+    const body = await response.json();
+    return parseVerticalVisionResult(
+      String(body?.choices?.[0]?.message?.content || ""),
+    );
+  } catch (error) {
+    console.warn("[vertical] visao_falhou", (error as Error).message);
+    return null;
+  }
+}
+
+async function identifyVehiclePhoto(
+  source: MediaExtract | string | undefined,
+): Promise<VehicleIdentification | null> {
+  if (!source) return null;
+  const imageUrl = typeof source === "string"
+    ? source
+    : source.kind === "image"
+    ? `data:${source.mime};base64,${source.base64}`
+    : null;
+  if (!imageUrl) return null;
+  try {
+    const response = await fetch(
+      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: MODEL_DEEP,
+          temperature: 0,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "text", text: vehicleIdentificationPrompt() },
+              { type: "image_url", image_url: { url: imageUrl } },
+            ],
+          }],
+        }),
+        signal: AbortSignal.timeout(45_000),
+      },
+    );
+    if (!response.ok) {
+      console.warn(
+        `[vehicle-identification] falhou status=${response.status}`,
+      );
+      return null;
+    }
+    const body = await response.json();
+    return parseVehicleIdentification(
+      String(body?.choices?.[0]?.message?.content || ""),
+    );
+  } catch (error) {
+    console.warn(
+      "[vehicle-identification] falhou",
+      error instanceof Error ? error.message : String(error),
+    );
+    return null;
+  }
+}
+
+async function beginVehicleIdentification(
+  ctx: {
+    userId: string;
+    fromNumber: string;
+    convId?: string;
+    agentState?: AgentConvState;
+  },
+  params: {
+    photos: Array<{ id: string; url: string }>;
+    target: "single_ad" | "carousel";
+    originalMedia?: MediaExtract;
+  },
+): Promise<{
+  text: string;
+  interactiveButtons?: WhatsAppInteractiveButtons;
+}> {
+  const first = params.photos[0];
+  const identification = await identifyVehiclePhoto(
+    params.originalMedia ?? first?.url,
+  ) ?? {
+    marca: null,
+    modelo: null,
+    geracao_ou_faixa_de_anos: null,
+    cor: null,
+    carroceria: null,
+    confianca: "baixa" as const,
+    pistas_visuais: [],
+  };
+  const pending = {
+    identification,
+    media_ids: params.photos.map((photo) => photo.id),
+    target: params.target,
+    created_at: new Date().toISOString(),
+  };
+  if (ctx.convId) {
+    const conversation = {
+      id: ctx.convId,
+      userId: ctx.userId,
+      contactNumber: ctx.fromNumber,
+    };
+    const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+    await saveAgentState(sb, conversation, {
+      pending_vehicle_identification: pending,
+    }, current);
+    current.pending_vehicle_identification = pending;
+    ctx.agentState = current;
+  }
+  const canConfirm = identification.confianca !== "baixa" &&
+    hasSpecificVehicleModel(identification);
+  return {
+    text: vehicleIdentificationQuestion(identification),
+    interactiveButtons: canConfirm
+      ? vehicleIdentificationButtons()
+      : undefined,
+  };
+}
+
+async function scopedConversationState(
+  conversation: ConversationStateIdentity,
+  raw: AgentConvState,
+  route: InboundVertical,
+): Promise<AgentConvState> {
+  const migrated = migrateVerticalState(raw);
+  if (migrated.changed) {
+    const { error } = await sb.from("whatsapp_cloud_conversations")
+      .update({ agent_state: migrated.state })
+      .eq("id", conversation.id)
+      .eq("user_id", conversation.userId)
+      .eq("contact_number", conversation.contactNumber);
+    if (error) {
+      throw new Error(`vertical_state_migration_failed:${error.message}`);
+    }
+  }
+  return scopedVerticalState(migrated.state, route) as AgentConvState;
+}
+
+function logVerticalDecision(decision: VerticalDecision): void {
+  console.log(
+    `[vertical] rota=${decision.route} motivo=${decision.reason} confianca=${decision.confidence.toFixed(2)}`,
+  );
 }
 
 // ---- Registro de lead encaminhado (não depende do WhatsApp do dono) -------
@@ -3286,6 +3986,7 @@ type MetaAdsToolContext = {
   userId: string;
   fromNumber: string;
   convId?: string;
+  agentState?: AgentConvState;
 };
 
 type MetaAdsIntegrationRow = {
@@ -3435,6 +4136,85 @@ async function loadMetaAdsMonthlyAvailability(
 
 function metaAdsSafeError(error: unknown): string {
   return publicMetaAdsError(error).message;
+}
+
+async function toolProporLimiteMensalMetaAds(
+  value: unknown,
+  ctx: MetaAdsToolContext,
+): Promise<{
+  result: string;
+  interactiveButtons?: WhatsAppInteractiveButtons;
+}> {
+  if (!isOwner(ctx)) {
+    return { result: "Essa ferramenta é restrita ao responsável da conta." };
+  }
+  const novoLimite = validarNovoLimiteMensalAnuncios(value);
+  if (novoLimite === null) {
+    return {
+      result:
+        "O limite mensal de anúncios deve ficar entre R$ 50,00 e R$ 10.000,00. Nenhuma alteração foi feita.",
+    };
+  }
+  if (!ctx.convId) {
+    return {
+      result:
+        "Não consegui vincular a confirmação a esta conversa. Nenhuma alteração foi feita.",
+    };
+  }
+  const integration = await loadMetaAdsIntegration(ctx.userId);
+  const integrationProblem = metaAdsIntegrationProblem(integration);
+  if (integrationProblem || !integration) {
+    return { result: integrationProblem! };
+  }
+  let availability: Awaited<
+    ReturnType<typeof loadMetaAdsMonthlyAvailability>
+  >;
+  try {
+    availability = await loadMetaAdsMonthlyAvailability(
+      integration,
+      ctx.userId,
+    );
+  } catch (error) {
+    return { result: metaAdsSafeError(error) };
+  }
+  const proposal: MetaAdsLimitProposal = {
+    token: crypto.randomUUID().replace(/-/g, "").slice(0, 12),
+    limite_atual: Number(integration.limite_mensal_anuncios ?? 200),
+    novo_limite: novoLimite,
+    gasto_mes: availability.spent,
+    criado_em: new Date().toISOString(),
+  };
+  const conversation: ConversationStateIdentity = {
+    id: ctx.convId,
+    userId: ctx.userId,
+    contactNumber: ctx.fromNumber,
+  };
+  const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+  const saved = await saveAgentState(
+    sb,
+    conversation,
+    { pending_meta_ads_limit: proposal },
+    current,
+  );
+  if (!saved) {
+    return {
+      result:
+        "Não consegui guardar a proposta com segurança. Nenhuma alteração foi feita.",
+    };
+  }
+  if (ctx.agentState) ctx.agentState.pending_meta_ads_limit = proposal;
+  const mensagem = [
+    "Proposta de alteração do limite mensal de anúncios:",
+    `Limite atual: ${metaAdsBrl(proposal.limite_atual)}`,
+    `Gasto neste mês: ${metaAdsBrl(proposal.gasto_mes)}`,
+    `Novo limite: ${metaAdsBrl(proposal.novo_limite)}`,
+    "",
+    "O limite só será alterado após sua confirmação.",
+  ].join("\n");
+  return {
+    result: JSON.stringify({ ok: true, mensagem }),
+    interactiveButtons: metaAdsLimitProposalButtons(proposal.token),
+  };
 }
 
 async function findLatestMetaAdsDraft(
@@ -3723,6 +4503,869 @@ async function toolPublicarAnuncioMeta(
     }
     return `${publicMetaAdsError(error).message} O rascunho foi preservado.`;
   }
+}
+
+type MetaAdsQuestionarioProcessorResult = {
+  handled: boolean;
+  text?: string;
+  interactiveList?: WhatsAppInteractiveList;
+  interactiveButtons?: WhatsAppInteractiveButtons;
+  summaryDraftId?: string;
+  offerResume?: boolean;
+  ambiguityOriginal?: string;
+  requestLimitValue?: boolean;
+};
+
+async function applyMetaAdsLimitAction(input: {
+  action: "confirm" | "cancel";
+  proposal: MetaAdsLimitProposal;
+  ctx: MetaAdsToolContext;
+  conversation: ConversationStateIdentity;
+  agentState: AgentConvState;
+}): Promise<MetaAdsQuestionarioProcessorResult> {
+  const clearPending = async () => {
+    input.agentState.pending_meta_ads_limit = null;
+    await saveAgentState(
+      sb,
+      input.conversation,
+      { pending_meta_ads_limit: null },
+      input.agentState,
+    );
+  };
+  if (!isOwner(input.ctx)) {
+    return {
+      handled: true,
+      text: "Essa alteração é restrita ao responsável da conta.",
+    };
+  }
+  if (input.action === "cancel") {
+    await clearPending();
+    return {
+      handled: true,
+      text: "Alteração cancelada. O limite mensal não foi modificado.",
+    };
+  }
+  const integration = await loadMetaAdsIntegration(input.ctx.userId);
+  const integrationProblem = metaAdsIntegrationProblem(integration);
+  if (integrationProblem || !integration) {
+    return { handled: true, text: integrationProblem! };
+  }
+  const { data, error } = await sb.from("integrations")
+    .update({
+      limite_mensal_anuncios: input.proposal.novo_limite,
+    })
+    .eq("user_id", input.ctx.userId)
+    .eq("platform", "meta_ads")
+    .eq("is_active", true)
+    .select("id")
+    .maybeSingle();
+  if (error || !data) {
+    return {
+      handled: true,
+      text: "Não consegui alterar o limite mensal. Tente confirmar novamente.",
+    };
+  }
+  await clearPending();
+
+  const { data: draftRows } = await sb.from("meta_ads_campanhas")
+    .select("id,status,rascunho,criado_em")
+    .eq("user_id", input.ctx.userId)
+    .eq("status", "rascunho")
+    .order("criado_em", { ascending: false })
+    .limit(20);
+  const hasActiveQuestionnaire = Boolean(questionarioAtivo(draftRows ?? []));
+  return {
+    handled: true,
+    text: [
+      `Limite mensal de anúncios alterado para ${metaAdsBrl(input.proposal.novo_limite)}.`,
+      "Confira também o limite de gastos da conta no Faturamento da Meta, que é aplicado pela própria Meta.",
+    ].join("\n\n"),
+    interactiveButtons: hasActiveQuestionnaire
+      ? metaAdsQuestionarioContinuarButtons()
+      : undefined,
+  };
+}
+
+function metaAdsQuestionarioOption(text: string): string {
+  const id = metaAdsQuestionarioInteractiveId(text);
+  return id?.startsWith("meta_ads_q:") ? id.slice("meta_ads_q:".length) : "";
+}
+
+function metaAdsQuestionarioPrompt(
+  questionario: MetaAdsQuestionario,
+  available?: number,
+): Omit<MetaAdsQuestionarioProcessorResult, "handled"> {
+  const prefix = "meta_ads_q:";
+  switch (questionario.etapa) {
+    case "objetivo":
+      return {
+        text: "Vamos lá! O que você quer com esse anúncio?",
+        interactiveList: questionarioList({
+          body: "Escolha o objetivo da campanha:",
+          rows: [
+            { id: `${prefix}objetivo:whatsapp`, title: "Conversas no WhatsApp" },
+            { id: `${prefix}objetivo:site`, title: "Visitas ao site" },
+          ],
+        }),
+      };
+    case "url_site":
+      return { text: "Qual é a URL completa do site? Envie começando com https://." };
+    case "publico":
+      return {
+        text: "Sugeri públicos com interesses que encontrei na Meta. Qual você prefere?",
+        interactiveList: questionarioList({
+          body: "Escolha um público:",
+          rows: [
+            ...(questionario.publicos_sugeridos ?? []).slice(0, 3).map((
+              pacote,
+              index,
+            ) => ({
+              id: `${prefix}publico:${index}`,
+              title: pacote.nome,
+              description: pacote.interesses.map((item) => item.name).join(", "),
+            })),
+            {
+              id: `${prefix}publico:amplo`,
+              title: "Público amplo",
+              description: "A Meta escolhe o público",
+            },
+          ],
+        }),
+      };
+    case "cidade":
+      return { text: "Qual cidade você quer alcançar?" };
+    case "confirmar_cidade":
+      return {
+        text: "Qual destas cidades é a certa?",
+        interactiveList: questionarioList({
+          body: "Confirme a cidade:",
+          rows: (questionario.cidades_encontradas ?? []).slice(0, 3).map((
+            city,
+            index,
+          ) => ({
+            id: `${prefix}cidade:${index}`,
+            title: city.name,
+          })),
+        }),
+      };
+    case "raio":
+      return {
+        text: `Qual raio ao redor de ${questionario.cidade?.name ?? "essa cidade"}?`,
+        interactiveButtons: questionarioButtons({
+          body: "Escolha o raio:",
+          buttons: [10, 25, 40].map((radius) => ({
+            id: `${prefix}raio:${radius}`,
+            title: `${radius} km`,
+          })),
+        }),
+      };
+    case "idade":
+      return {
+        text: "Qual faixa de idade?",
+        interactiveList: questionarioList({
+          body: "Escolha a faixa etária:",
+          rows: [
+            ["18-65", "18–65"],
+            ["25-55", "25–55"],
+            ["28-60", "28–60"],
+            ["35-65", "35–65"],
+            ["outra", "Outra"],
+          ].map(([value, title]) => ({
+            id: `${prefix}idade:${value}`,
+            title,
+          })),
+        }),
+      };
+    case "idade_personalizada":
+      return { text: "Digite a faixa de idade, por exemplo: 30-55." };
+    case "orcamento":
+      return {
+        text: "Quanto você quer investir por dia? Escolha ou digite outro valor.",
+        interactiveButtons: questionarioButtons({
+          body: "Orçamento diário:",
+          buttons: [10, 20, 30].map((amount) => ({
+            id: `${prefix}orcamento:${amount}`,
+            title: `R$ ${amount}`,
+          })),
+        }),
+      };
+    case "duracao":
+      return {
+        text: `Por quantos dias?${Number.isFinite(available) ? ` Você tem ${metaAdsBrl(available)} disponíveis no teto mensal.` : ""}`,
+        interactiveList: questionarioList({
+          body: "Escolha a duração:",
+          rows: [7, 15, 30].map((days) => ({
+            id: `${prefix}duracao:${days}`,
+            title: `${days} dias`,
+          })),
+        }),
+      };
+    case "midia":
+      return { text: "Escolha uma das suas mídias recentes. Se a lista estiver vazia, envie uma imagem ou um vídeo aqui." };
+    case "texto":
+      return {
+        text: `Escrevi este anúncio:\n\n*${questionario.titulo}*\n${questionario.texto_principal}`,
+        interactiveButtons: questionarioButtons({
+          body: "O que deseja fazer com o texto?",
+          buttons: [
+            { id: `${prefix}texto:aprovar`, title: "Aprovar" },
+            { id: `${prefix}texto:reescrever`, title: "Reescrever" },
+            { id: `${prefix}texto:manual`, title: "Eu escrevo" },
+          ],
+        }),
+      };
+    case "texto_manual":
+      return {
+        text: "Envie o título na primeira linha e o texto principal nas linhas seguintes.",
+      };
+    case "resumo":
+      return {
+        text: metaAdsQuestionarioResumo(questionario),
+        interactiveButtons: questionarioButtons({
+          body: "Confira o resumo. Nada será publicado sem sua confirmação.",
+          buttons: [
+            { id: `${prefix}publicar:${questionario.resumo_hash}`, title: "Publicar" },
+            { id: `${prefix}ajustar`, title: "Ajustar" },
+            { id: `${prefix}cancelar`, title: "Cancelar" },
+          ],
+        }),
+      };
+  }
+}
+
+async function metaAdsQuestionarioInteresses(
+  integration: MetaAdsIntegrationRow,
+  userId: string,
+): Promise<Array<{ nome: string; interesses: Array<{ id: string; name: string }> }>> {
+  const context = await getTenantBusinessContext(sb as any, userId, {
+    incluirProdutos: true,
+  });
+  const terms = [
+    context.segmento,
+    ...(context.publicoAlvo ?? "").split(/[,;/]|\be\b/),
+    ...context.produtos.slice(0, 2),
+  ].map((term) => String(term ?? "").trim()).filter((term) => term.length >= 3)
+    .slice(0, 3);
+  const packages: Array<{
+    nome: string;
+    interesses: Array<{ id: string; name: string }>;
+  }> = [];
+  for (const term of terms) {
+    try {
+      const result = await metaAdsGraph(integration, "search", {
+        params: {
+          type: "adinterest",
+          q: term,
+          locale: "pt_BR",
+          limit: "5",
+        },
+      });
+      const found = (Array.isArray(result?.data) ? result.data : []).map((
+        item: any,
+      ) => ({
+        id: String(item.id ?? item.key ?? ""),
+        name: String(item.name ?? ""),
+      })).filter((item: any) => item.id && item.name);
+      const validated = filtrarInteressesValidados(
+        found.map((item: any) => item.name),
+        found,
+      ).slice(0, 3);
+      if (validated.length) {
+        packages.push({
+          nome: validated[0].name.slice(0, 24),
+          interesses: validated,
+        });
+      }
+    } catch (error) {
+      console.warn("[meta-ads-questionario][interest_search]", metaAdsSafeError(error));
+    }
+  }
+  return packages.slice(0, 3);
+}
+
+async function metaAdsQuestionarioMidias(
+  userId: string,
+): Promise<MetaAdsQuestionarioMidia[]> {
+  const { data, error } = await sb.from("midias_whatsapp")
+    .select("id,tipo,midia_url,contexto_original,legenda_gerada,created_at")
+    .eq("user_id", userId)
+    .in("tipo", ["foto", "video"])
+    .order("created_at", { ascending: false })
+    .limit(10);
+  if (error) return [];
+  return (data ?? []).map((item: any, index: number): MetaAdsQuestionarioMidia => ({
+    id: String(item.id),
+    url: String(item.midia_url),
+    tipo: item.tipo === "video" ? "video" : "image",
+    titulo: String(
+      item.contexto_original || item.legenda_gerada ||
+        `${item.tipo === "video" ? "Vídeo" : "Imagem"} ${index + 1}`,
+    ).replace(/\s+/g, " ").slice(0, 24),
+  })).filter((item) => Boolean(item.id) && /^https:\/\//i.test(item.url));
+}
+
+async function metaAdsQuestionarioGerarTexto(
+  userId: string,
+  questionario: MetaAdsQuestionario,
+): Promise<{ titulo: string; texto: string } | null> {
+  const context = await getTenantBusinessContext(sb as any, userId, {
+    incluirProdutos: true,
+    tipoCriativo: "anuncio",
+  });
+  if (
+    !context.nome && !context.segmento && !context.sobre &&
+    !context.diferenciais && !context.publicoAlvo && !context.produtos.length
+  ) return null;
+  try {
+    const gerarCopy = async (
+      system: string,
+      user: string,
+    ): Promise<{ titulo: string; texto: string }> => {
+      const response = await fetch(
+        "https://ai.gateway.lovable.dev/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash",
+            temperature: 0.4,
+            messages: [
+              { role: "system", content: system },
+              { role: "user", content: user },
+            ],
+          }),
+        },
+      );
+      if (!response.ok) throw new Error(`copy_http_${response.status}`);
+      const payload = await response.json();
+      const raw = String(payload?.choices?.[0]?.message?.content ?? "")
+        .replace(/^```json\s*|\s*```$/g, "").trim();
+      const parsed = JSON.parse(raw);
+      const titulo = String(parsed?.titulo ?? "").trim().slice(0, 255);
+      const texto = String(parsed?.texto ?? "").trim().slice(0, 2_000);
+      if (!titulo || !texto) throw new Error("copy_invalida");
+      return { titulo, texto };
+    };
+    const objetivo = questionario.objetivo === "site"
+      ? "visitas ao site"
+      : "conversas no WhatsApp";
+    const primeiraVersao = await gerarCopy(
+      "Crie copy curta para Meta Ads. Use SOMENTE os fatos fornecidos. Não invente preço, promoção, avaliação, depoimento, prazo, resultado ou promessa. Responda só JSON válido: {\"titulo\":\"...\",\"texto\":\"...\"}.",
+      `${context.promptBlock}\nObjetivo: ${objetivo}.`,
+    );
+    return await revisarComMetodoAmz({
+      tipo: "anuncio",
+      primeiraVersao,
+      revisar: async (draft) =>
+        await gerarCopy(
+          "Revise uma copy de Meta Ads. Preserve os fatos e devolva somente JSON válido com titulo e texto.",
+          `${context.promptBlock}\nObjetivo: ${objetivo}.\n\n${
+            buildMetodoAmzReviewPrompt({
+              tipo: "anuncio",
+              primeiraVersao: draft,
+            })
+          }`,
+        ),
+    });
+  } catch (error) {
+    console.warn("[meta-ads-questionario][copy]", (error as Error).message);
+    return null;
+  }
+}
+
+async function processMetaAdsQuestionario(input: {
+  userId: string;
+  fromNumber: string;
+  conversationId: string;
+  text: string;
+  owner: boolean;
+}): Promise<MetaAdsQuestionarioProcessorResult> {
+  const ctx: MetaAdsToolContext = {
+    userId: input.userId,
+    fromNumber: input.fromNumber,
+    convId: input.conversationId,
+  };
+  const { data: rows } = await sb.from("meta_ads_campanhas")
+    .select("id,status,rascunho,criado_em")
+    .eq("user_id", input.userId)
+    .eq("status", "rascunho")
+    .order("criado_em", { ascending: false })
+    .limit(20);
+  let row = questionarioAtivo(rows ?? []);
+  const trigger = isMetaAdsQuestionarioTrigger(input.text);
+  const ambiguous = isMetaAdsQuestionarioAmbiguousRequest(input.text);
+  if (!row && !trigger && !ambiguous) return { handled: false };
+  if (!input.owner) {
+    return trigger
+      ? { handled: true, text: "A criação de anúncios é restrita ao responsável da conta." }
+      : { handled: false };
+  }
+  if (!row && ambiguous) {
+    return {
+      handled: true,
+      text: "Só para confirmar:",
+      interactiveButtons: metaAdsQuestionarioAmbiguityButtons(input.text),
+      ambiguityOriginal: input.text,
+    };
+  }
+
+  const integration = await loadMetaAdsIntegration(input.userId);
+  const integrationProblem = metaAdsIntegrationProblem(integration);
+  if (trigger && (!integration || integrationProblem)) {
+    return { handled: true, text: integrationProblem! };
+  }
+
+  if (!row) {
+    const questionario = novoMetaAdsQuestionario();
+    const { data: created, error } = await sb.from("meta_ads_campanhas").insert({
+      user_id: input.userId,
+      status: "rascunho",
+      rascunho: {
+        questionario,
+        conversation_id: input.conversationId,
+        solicitante_telefone: input.fromNumber,
+      },
+    }).select("id,status,rascunho,criado_em").single();
+    if (error || !created) {
+      return { handled: true, text: "Não consegui iniciar a campanha agora. Tente novamente." };
+    }
+    row = created;
+    return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
+  }
+
+  let questionario = row.rascunho?.questionario as MetaAdsQuestionario;
+  if (metaAdsQuestionarioExpirado(questionario)) {
+    await sb.from("meta_ads_campanhas").delete().eq("id", row.id)
+      .eq("user_id", input.userId).eq("status", "rascunho");
+    return {
+      handled: true,
+      text: "Esse questionário expirou após 24 horas. Peça para criar um anúncio e começamos de novo.",
+    };
+  }
+  if (isMetaAdsQuestionarioCancel(input.text)) {
+    await sb.from("meta_ads_campanhas").delete().eq("id", row.id)
+      .eq("user_id", input.userId).eq("status", "rascunho");
+    return { handled: true, text: "Campanha cancelada. Nada foi publicado." };
+  }
+  if (isMetaAdsLimitChangeRequest(input.text)) {
+    return { handled: false };
+  }
+  if (!integration || integrationProblem) {
+    return { handled: true, text: integrationProblem! };
+  }
+  if (isMetaAdsQuestionarioResume(input.text) || trigger) {
+    if (questionario.etapa === "midia") {
+      const midias = await metaAdsQuestionarioMidias(input.userId);
+      return {
+        handled: true,
+        ...metaAdsQuestionarioPrompt(questionario),
+        interactiveList: midias.length
+          ? questionarioList({
+            body: "Escolha uma mídia:",
+            rows: midias.map((media) => ({
+              id: `meta_ads_q:midia:${media.id}`,
+              title: media.titulo,
+              description: media.tipo === "video" ? "Vídeo" : "Imagem",
+            })),
+          })
+          : undefined,
+      };
+    }
+    return {
+      handled: true,
+      ...metaAdsQuestionarioPrompt(questionario),
+      summaryDraftId: questionario.etapa === "resumo" ? row.id : undefined,
+    };
+  }
+  if (!respostaPertenceAoQuestionario(input.text, questionario.etapa)) {
+    return { handled: false, offerResume: true };
+  }
+
+  const option = metaAdsQuestionarioOption(input.text);
+  const now = new Date().toISOString();
+  const update = async (
+    patch: Partial<MetaAdsQuestionario>,
+    draftPatch: Record<string, unknown> = {},
+  ) => {
+    questionario = avancarMetaAdsQuestionario(
+      questionario,
+      patch.etapa ?? questionario.etapa,
+      patch,
+      new Date(now),
+    );
+    const rascunho = {
+      ...(row!.rascunho ?? {}),
+      ...draftPatch,
+      questionario,
+      conversation_id: input.conversationId,
+      solicitante_telefone: input.fromNumber,
+    };
+    await sb.from("meta_ads_campanhas").update({
+      rascunho,
+      atualizado_em: now,
+      ...(questionario.orcamento_diario
+        ? { orcamento_diario: questionario.orcamento_diario }
+        : {}),
+      ...(questionario.duracao_dias
+        ? {
+          duracao_dias: questionario.duracao_dias,
+          gasto_maximo: questionario.orcamento_diario! *
+            questionario.duracao_dias,
+        }
+        : {}),
+    }).eq("id", row!.id).eq("user_id", input.userId).eq("status", "rascunho");
+  };
+
+  if (questionario.etapa === "objetivo") {
+    const typedObjective = normalizePt(input.text);
+    const objective = option === "objetivo:site" ||
+        /^(?:site|visitas?)$/.test(typedObjective)
+      ? "site"
+      : option === "objetivo:whatsapp" ||
+          /^(?:whatsapp|conversas?)$/.test(typedObjective)
+      ? "whatsapp"
+      : null;
+    if (!objective) return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
+    if (objective === "site") {
+      await update({ objetivo: objective, etapa: "url_site" });
+    } else {
+      const packages = await metaAdsQuestionarioInteresses(integration!, input.userId);
+      await update({
+        objetivo: objective,
+        publicos_sugeridos: packages,
+        etapa: "publico",
+      });
+    }
+  } else if (questionario.etapa === "url_site") {
+    let url = "";
+    try {
+      const parsed = new URL(input.text.trim());
+      if (parsed.protocol === "https:") url = parsed.toString();
+    } catch { /* mensagem abaixo */ }
+    if (!url) return { handled: true, text: "Envie uma URL pública completa começando com https://." };
+    const packages = await metaAdsQuestionarioInteresses(integration!, input.userId);
+    await update({
+      destination_url: url,
+      publicos_sugeridos: packages,
+      etapa: "publico",
+    });
+  } else if (questionario.etapa === "publico") {
+    const key = option.replace("publico:", "");
+    if (key === "amplo" || normalizePt(input.text) === "publico amplo") {
+      await update({ pacote_publico: "Público amplo", interesses: [], etapa: "cidade" });
+    } else {
+      const index = Number(key);
+      const pacote = questionario.publicos_sugeridos?.[index];
+      if (!pacote) return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
+      await update({
+        pacote_publico: pacote.nome,
+        interesses: pacote.interesses,
+        etapa: "cidade",
+      });
+    }
+  } else if (questionario.etapa === "cidade") {
+    try {
+      const result = await metaAdsGraph(integration!, "search", {
+        params: {
+          type: "adgeolocation",
+          location_types: JSON.stringify(["city"]),
+          q: input.text.trim(),
+          country_code: "BR",
+          locale: "pt_BR",
+          limit: "3",
+        },
+      });
+      const cities = (result?.data ?? []).map((item: any) => ({
+        id: String(item.key ?? item.id ?? ""),
+        name: [item.name, item.region].filter(Boolean).join(" - "),
+      })).filter((city: any) => city.id && city.name).slice(0, 3);
+      if (!cities.length) {
+        return { handled: true, text: "Não encontrei essa cidade na Meta. Digite o nome e o estado, por exemplo: Niterói, RJ." };
+      }
+      await update({ cidades_encontradas: cities, etapa: "confirmar_cidade" });
+    } catch (error) {
+      return { handled: true, text: metaAdsSafeError(error) };
+    }
+  } else if (questionario.etapa === "confirmar_cidade") {
+    const index = Number(option.replace("cidade:", ""));
+    const city = questionario.cidades_encontradas?.[index];
+    if (!city) return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
+    await update({ cidade: city, etapa: "raio" });
+  } else if (questionario.etapa === "raio") {
+    const radius = Number(
+      option.replace("raio:", "") ||
+        input.text.replace(/\D/g, ""),
+    );
+    if (![10, 25, 40].includes(radius)) {
+      return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
+    }
+    await update({ raio_km: radius, etapa: "idade" });
+  } else if (questionario.etapa === "idade") {
+    const value = option.replace("idade:", "") ||
+      normalizePt(input.text).replace(/\s*(?:–|\ba\b)\s*/g, "-");
+    if (value === "outra") {
+      await update({ etapa: "idade_personalizada" });
+    } else {
+      const match = value.match(/^(\d{2})-(\d{2})$/);
+      if (!match) return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
+      await update({
+        age_min: Number(match[1]),
+        age_max: Number(match[2]),
+        etapa: "orcamento",
+      });
+    }
+  } else if (questionario.etapa === "idade_personalizada") {
+    const match = input.text.match(/\b(\d{2})\s*[-–a]\s*(\d{2})\b/i);
+    const minimum = Number(match?.[1]);
+    const maximum = Number(match?.[2]);
+    if (!match || minimum < 18 || maximum > 65 || minimum > maximum) {
+      return { handled: true, text: "Digite uma faixa válida entre 18 e 65 anos, por exemplo: 30-55." };
+    }
+    await update({ age_min: minimum, age_max: maximum, etapa: "orcamento" });
+  } else if (questionario.etapa === "orcamento") {
+    if (option === "budget:mudar") {
+      return {
+        handled: true,
+        text: "Digite o novo orçamento diário em reais.",
+      };
+    }
+    if (option === "budget:aumentar_limite") {
+      return {
+        handled: true,
+        text:
+          "Qual deve ser o novo limite mensal de anúncios? Digite um valor entre R$ 50 e R$ 10.000.",
+        requestLimitValue: true,
+      };
+    }
+    const amount = Number(
+      (option.replace("orcamento:", "") || input.text).replace(/[^\d,.-]/g, "")
+        .replace(",", "."),
+    );
+    if (!Number.isFinite(amount) || amount < 1) {
+      return { handled: true, text: "Digite um orçamento diário válido, por exemplo: 20." };
+    }
+    let availability;
+    try {
+      availability = await loadMetaAdsMonthlyAvailability(integration!, input.userId);
+    } catch (error) {
+      return { handled: true, text: metaAdsSafeError(error) };
+    }
+    const minimumBudget = avaliarMetaAdsOrcamentoMinimo({
+      daily: amount,
+      available: availability.available,
+    });
+    const available = minimumBudget.available;
+    if (minimumBudget.exhausted) {
+      return {
+        handled: true,
+        text: `O limite mensal está esgotado: há apenas ${metaAdsBrl(available)} disponíveis, menos que o mínimo de R$ 1,00 por dia durante 7 dias. Nenhum anúncio foi publicado.`,
+        interactiveButtons: metaAdsBudgetRecoveryButtons(true),
+      };
+    }
+    const maxDaily = minimumBudget.maximumDaily;
+    if (!minimumBudget.ok) {
+      return {
+        handled: true,
+        text: `Com ${metaAdsBrl(available)} disponíveis, o orçamento diário máximo que cabe em 7 dias é ${metaAdsBrl(maxDaily)}. Digite um valor de até ${metaAdsBrl(maxDaily)}.`,
+        interactiveButtons: metaAdsBudgetRecoveryButtons(false),
+      };
+    }
+    await update({ orcamento_diario: amount, etapa: "duracao" });
+    return {
+      handled: true,
+      ...metaAdsQuestionarioPrompt(questionario, available),
+    };
+  } else if (questionario.etapa === "duracao") {
+    if (option === "budget:mudar") {
+      await update(voltarMetaAdsQuestionarioParaOrcamento(questionario));
+      return {
+        handled: true,
+        text: "Digite o novo orçamento diário em reais.",
+      };
+    }
+    if (option === "budget:aumentar_limite") {
+      return {
+        handled: true,
+        text:
+          "Qual deve ser o novo limite mensal de anúncios? Digite um valor entre R$ 50 e R$ 10.000.",
+        requestLimitValue: true,
+      };
+    }
+    const duration = Number(
+      option.replace("duracao:", "") ||
+        input.text.replace(/\D/g, ""),
+    );
+    if (![7, 15, 30].includes(duration)) {
+      return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
+    }
+    let availability;
+    try {
+      availability = await loadMetaAdsMonthlyAvailability(integration!, input.userId);
+    } catch (error) {
+      return { handled: true, text: metaAdsSafeError(error) };
+    }
+    const budget = metaAdsQuestionarioBudget({
+      daily: questionario.orcamento_diario,
+      duration,
+      available: availability.available,
+    });
+    if (!budget.ok) {
+      const available = availability.available;
+      const exhausted = available < 7;
+      const maxDaily = metaAdsMaximoDiarioParaSeteDias(available);
+      return {
+        handled: true,
+        text: exhausted
+          ? `O limite mensal está esgotado: há apenas ${metaAdsBrl(available)} disponíveis, menos que o mínimo de R$ 1,00 por dia durante 7 dias. Nenhum anúncio foi publicado.`
+          : `Esse anúncio pode gastar ${metaAdsBrl(budget.maximumSpend)}, mas há ${metaAdsBrl(available)} disponíveis no teto mensal. O orçamento diário máximo que cabe em 7 dias é ${metaAdsBrl(maxDaily)}.`,
+        interactiveButtons: metaAdsBudgetRecoveryButtons(exhausted),
+      };
+    }
+    await update({ duracao_dias: duration, etapa: "midia" });
+    const midias = await metaAdsQuestionarioMidias(input.userId);
+    return {
+      handled: true,
+      ...metaAdsQuestionarioPrompt(questionario),
+      interactiveList: midias.length
+        ? questionarioList({
+          body: "Escolha uma mídia:",
+          rows: midias.map((media) => ({
+            id: `meta_ads_q:midia:${media.id}`,
+            title: media.titulo,
+            description: media.tipo === "video" ? "Vídeo" : "Imagem",
+          })),
+        })
+        : undefined,
+    };
+  } else if (questionario.etapa === "midia") {
+    const midias = await metaAdsQuestionarioMidias(input.userId);
+    const mediaId = option.replace("midia:", "");
+    const selected = midias.find((media) => media.id === mediaId);
+    if (!selected) {
+      return {
+        handled: true,
+        ...metaAdsQuestionarioPrompt(questionario),
+        interactiveList: midias.length
+          ? questionarioList({
+            body: "Escolha uma mídia:",
+            rows: midias.map((media) => ({
+              id: `meta_ads_q:midia:${media.id}`,
+              title: media.titulo,
+              description: media.tipo === "video" ? "Vídeo" : "Imagem",
+            })),
+          })
+          : undefined,
+      };
+    }
+    const copy = await metaAdsQuestionarioGerarTexto(input.userId, questionario);
+    if (!copy) {
+      await update({ midia: selected, etapa: "texto_manual" });
+      return {
+        handled: true,
+        text: "Não há informações suficientes da empresa para criar um texto sem inventar. Envie o título na primeira linha e o texto principal nas linhas seguintes.",
+      };
+    }
+    await update({
+      midia: selected,
+      titulo: copy.titulo,
+      texto_principal: copy.texto,
+      etapa: "texto",
+    });
+  } else if (questionario.etapa === "texto") {
+    const action = option.replace("texto:", "") || normalizePt(input.text)
+      .replace("eu escrevo", "manual");
+    if (action === "manual") {
+      await update({ etapa: "texto_manual" });
+    } else if (action === "reescrever") {
+      const copy = await metaAdsQuestionarioGerarTexto(input.userId, questionario);
+      if (!copy) return { handled: true, text: "Não consegui reescrever agora. Você pode escolher “Eu escrevo”." };
+      await update({ titulo: copy.titulo, texto_principal: copy.texto });
+    } else if (action === "aprovar") {
+      const resumoHash = metaAdsQuestionarioResumoHash(questionario);
+      await update({ etapa: "resumo", resumo_hash: resumoHash });
+      const fullDraft = metaAdsDraftDoQuestionario(questionario, {
+        conversationId: input.conversationId,
+        ownerPhone: input.fromNumber,
+      });
+      await sb.from("meta_ads_campanhas").update({
+        rascunho: fullDraft,
+        orcamento_diario: fullDraft.daily_budget,
+        duracao_dias: fullDraft.duration_days,
+        gasto_maximo: metaAdsMaximumSpend(fullDraft),
+        atualizado_em: now,
+      }).eq("id", row.id).eq("user_id", input.userId).eq("status", "rascunho");
+      return {
+        handled: true,
+        ...metaAdsQuestionarioPrompt(questionario),
+        summaryDraftId: row.id,
+      };
+    } else return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
+  } else if (questionario.etapa === "texto_manual") {
+    const lines = input.text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+    if (lines.length < 2) {
+      return { handled: true, text: "Envie o título na primeira linha e o texto principal a partir da segunda linha." };
+    }
+    await update({
+      titulo: lines[0].slice(0, 255),
+      texto_principal: lines.slice(1).join("\n").slice(0, 2_000),
+      etapa: "texto",
+    });
+  } else if (questionario.etapa === "resumo") {
+    if (option === "ajustar") {
+      return {
+        handled: true,
+        text: "O que você quer ajustar?",
+        interactiveList: questionarioList({
+          body: "Escolha uma etapa:",
+          rows: [
+            ["publico", "Público"],
+            ["cidade", "Cidade e raio"],
+            ["idade", "Idade"],
+            ["orcamento", "Orçamento e duração"],
+            ["midia", "Mídia"],
+            ["texto", "Texto"],
+          ].map(([stage, title]) => ({
+            id: `meta_ads_q:ajustar:${stage}`,
+            title,
+          })),
+        }),
+      };
+    }
+    if (option.startsWith("ajustar:")) {
+      const selected = option.slice("ajustar:".length);
+      const stage = selected === "publico" || selected === "cidade" ||
+          selected === "idade" || selected === "orcamento" ||
+          selected === "midia" || selected === "texto"
+        ? selected
+        : null;
+      if (!stage) return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
+      await update({ etapa: stage });
+    } else if (option.startsWith("publicar:")) {
+      const hash = option.slice("publicar:".length);
+      if (!hash || hash !== questionario.resumo_hash ||
+        hash !== metaAdsQuestionarioResumoHash(questionario)) {
+        return { handled: true, text: "O resumo mudou ou expirou. Revise a campanha antes de publicar." };
+      }
+      const publishResult = await toolPublicarAnuncioMeta({
+        confirmacao: "SIM",
+        rascunho_id: row.id,
+      }, ctx);
+      if (publishResult.startsWith("✅")) {
+        return { handled: true, text: publishResult };
+      }
+      const retryPrompt = metaAdsQuestionarioPrompt(questionario);
+      return {
+        handled: true,
+        ...retryPrompt,
+        text: `${publishResult}\n\n${retryPrompt.text}`,
+        summaryDraftId: row.id,
+      };
+    } else return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
+  }
+  return { handled: true, ...metaAdsQuestionarioPrompt(questionario) };
 }
 
 async function findMetaAdsCampaign(
@@ -4131,6 +5774,56 @@ async function descreverImagemVisao(imageUrl: string): Promise<string> {
   }
 }
 
+async function detectarCaixaProdutoVisao(
+  imageUrl: string,
+): Promise<FotoBox | null> {
+  const prompt =
+    'Localize o objeto ou veículo principal desta foto. Responda SOMENTE JSON no formato {"box_2d":[ymin,xmin,ymax,xmax]}, com coordenadas normalizadas de 0 a 1000. A caixa deve incluir o objeto inteiro, inclusive rodas, retrovisores e sombra visível. Se não houver um único objeto principal identificável, responda {"box_2d":null}.';
+  for (
+    const model of [
+      "google/gemini-3-flash-preview",
+      "google/gemini-3.6-flash",
+    ]
+  ) {
+    try {
+      const response = await fetch(
+        "https://ai.gateway.lovable.dev/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Lovable-API-Key": LOVABLE_API_KEY,
+          },
+          body: JSON.stringify({
+            model,
+            temperature: 0,
+            messages: [{
+              role: "user",
+              content: [
+                { type: "text", text: prompt },
+                { type: "image_url", image_url: { url: imageUrl } },
+              ],
+            }],
+          }),
+          signal: AbortSignal.timeout(20_000),
+        },
+      );
+      if (!response.ok) continue;
+      const data = await response.json();
+      const raw = String(data?.choices?.[0]?.message?.content || "");
+      const box = parseFotoBoxFromVisionResponse(raw);
+      if (box) return box;
+    } catch (error) {
+      console.warn(
+        "[criar_anuncio][foto-box]",
+        model,
+        (error as Error).message,
+      );
+    }
+  }
+  return null;
+}
+
 
 
 // ---- VISÃO DO CATÁLOGO (sob demanda) ----
@@ -4329,14 +6022,7 @@ async function buscarTelefoneAgenteTenant(userId: string): Promise<string | null
 }
 
 function appendWhatsappCta(script: string, phoneDigits: string): string {
-  if (!script || !phoneDigits) return script;
-  // Sanduíche idempotente: remove QUALQUER CTA "📱 Fale comigo no WhatsApp: wa.me/..."
-  // já presente (topo, meio ou fim, com qualquer número), e reaplica exatamente
-  // um CTA no início e um no fim. Evita triplicação em regenerações/revisões.
-  const ctaRegex = /\s*📱\s*Fale comigo no WhatsApp:\s*wa\.me\/\d+\s*/gi;
-  const clean = script.replace(ctaRegex, "\n").replace(/\n{3,}/g, "\n\n").trim();
-  const cta = `📱 Fale comigo no WhatsApp: wa.me/${phoneDigits}`;
-  return `${cta}\n\n${clean}\n\n${cta}`;
+  return appendWhatsappCtaInPublishingOrder(script, phoneDigits);
 }
 
 // Detecta pedido explícito do dono pra incluir CTA de WhatsApp no post.
@@ -4585,6 +6271,7 @@ type PendingSocialPost = {
   tiktokBrandedContent?: boolean;
   tiktokConsentedAt?: string;
   pendingTikTokScheduledAt?: string;
+  previewedAt?: string;
 };
 const PENDING_POSTS = new Map<string, PendingSocialPost>();
 function pendingCleanup() {
@@ -4612,10 +6299,11 @@ type PendingPostMarkerState = {
   tiktokBrandedContent?: boolean;
   tiktokConsentedAt?: string;
   pendingTikTokScheduledAt?: string;
+  previewedAt?: string;
 };
 
 function encodePendingPostState(state?: PendingPostMarkerState): string {
-  if (!state || (!state.variantes && !state.variantSelecionada && state.incluirCtaWhatsapp === undefined && !state.tom && !state.briefing && !state.tiktokPrivacyLevel && !state.tiktokPrivacyOptions?.length && !state.pendingTikTokScheduledAt)) return "";
+  if (!state || (!state.variantes && !state.variantSelecionada && state.incluirCtaWhatsapp === undefined && !state.tom && !state.briefing && !state.tiktokPrivacyLevel && !state.tiktokPrivacyOptions?.length && !state.pendingTikTokScheduledAt && !state.previewedAt)) return "";
   try {
     const json = JSON.stringify(state);
     const bytes = new TextEncoder().encode(json);
@@ -4704,6 +6392,7 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
       tiktokBrandedContent: pending.tiktokBrandedContent,
       tiktokConsentedAt: pending.tiktokConsentedAt,
       pendingTikTokScheduledAt: pending.pendingTikTokScheduledAt,
+      previewedAt: pending.previewedAt,
     }),
     updated_at: new Date().toISOString(),
   }));
@@ -4715,6 +6404,299 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
 
   if (error) throw new Error(`não consegui salvar o token de confirmação: ${error.message}`);
   return (data ?? []).map((r: any) => ({ id: r.id, platform: r.platform }));
+}
+
+async function persistAnuncioFlowState(
+  ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
+  patch: Pick<AgentConvState, "last_anuncio" | "pending_anuncio_post">,
+): Promise<void> {
+  if (!ctx.convId) return;
+  const conversation = {
+    id: ctx.convId,
+    userId: ctx.userId,
+    contactNumber: ctx.fromNumber,
+  };
+  const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+  const saved = await saveAgentState(sb, conversation, patch, current);
+  if (!saved) {
+    throw new Error("não consegui salvar o estado do anúncio");
+  }
+  Object.assign(current, patch);
+  ctx.agentState = current;
+}
+
+async function connectedAnuncioNetworks(
+  userId: string,
+): Promise<AnuncioPostNetwork[]> {
+  const { data, error } = await sb.from("meta_connections")
+    .select("page_id, ig_account_id")
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .maybeSingle();
+  if (error) throw new Error(`não consegui consultar as redes conectadas: ${error.message}`);
+  const networks: AnuncioPostNetwork[] = [];
+  if (data?.page_id) networks.push("facebook");
+  if (data?.ig_account_id) networks.push("instagram");
+  return networks;
+}
+
+async function ensureLastAnuncioImage(
+  last: LastAnuncio,
+  style: AnuncioStyle,
+  formato: "feed" | "story",
+  ctx: { userId: string; fromNumber: string },
+): Promise<LastAnuncioImage> {
+  const existing = last.images.find((image) =>
+    image.style === style && image.formato === formato
+  );
+  if (existing) return existing;
+  if (!last.render_payload) {
+    throw new Error(`não tenho os dados necessários para gerar a versão ${formato}`);
+  }
+  const client = last.client_name
+    ? await findClientBrandIdentity(sb, ctx.userId, { name: last.client_name })
+    : null;
+  const logoPath = client
+    ? clientLogoPath(client, style === "catalogo" ? "light" : "dark", true)
+    : null;
+  const render = await callEdge("render-anuncio-produto", {
+    ...last.render_payload,
+    formato,
+    estilo: style,
+    logo_path: logoPath,
+  }, 120000);
+  if (!render?.success || !render?.image_url) {
+    throw new Error(String(render?.error || `falha ao gerar ${formato}`));
+  }
+  const { data: media, error } = await sb.from("midias_whatsapp").insert({
+    user_id: ctx.userId,
+    telefone_origem: ctx.fromNumber,
+    tipo: "foto",
+    midia_url: render.image_url,
+    contexto_original: `Anúncio ${style} ${formato}: ${String(last.data.titulo || "")}`,
+    origem: "anuncio_produto",
+    status: "pendente",
+  }).select("id").maybeSingle();
+  if (error) throw new Error(`não consegui salvar a versão ${formato}: ${error.message}`);
+  const image = {
+    style,
+    formato,
+    id: String(media?.id || ""),
+    url: String(render.image_url),
+  } satisfies LastAnuncioImage;
+  last.images.push(image);
+  return image;
+}
+
+async function prepareAnuncioSocialPosts(input: {
+  last: LastAnuncio;
+  action: "publish" | "schedule";
+  format: "feed" | "story" | "feed_story";
+  networks: AnuncioPostNetwork[];
+  ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState };
+}): Promise<{ raw: string; pending: PendingAnuncioPost }> {
+  const { last, action, format, networks, ctx } = input;
+  const style = last.selected_style;
+  if (!style) throw new Error("escolha primeiro um dos estilos do anúncio");
+  if (!networks.length) throw new Error("nenhuma das redes pedidas está conectada");
+  if (action === "schedule" && format !== "feed") {
+    throw new Error(
+      "agendamento pelo WhatsApp está disponível apenas para Feed",
+    );
+  }
+
+  const captions = generateVehicleAdCaptions(last.data);
+  const variantes = Object.fromEntries(networks.map((network) => [
+    network,
+    { ...captions },
+  ])) as Record<string, PostVariantes>;
+  const formats: Array<"feed" | "story"> = format === "feed_story"
+    ? ["feed", "story"]
+    : [format];
+  const tokens: string[] = [];
+
+  try {
+    for (const postFormat of formats) {
+      const image = await ensureLastAnuncioImage(last, style, postFormat, ctx);
+      const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+      const scripts = Object.fromEntries(
+        networks.map((network) => [network, captions.A]),
+      );
+      const pending: PendingSocialPost = {
+        produto: {
+          id: image.id || null,
+          source: "anuncio_produto",
+          nome: String(last.data.titulo || "Anúncio"),
+          descricao: JSON.stringify(last.data),
+          imagem_url: image.url,
+          ativo: true,
+          midia_tipo: "foto",
+        },
+        tom: "beneficio",
+        redes: networks,
+        scripts,
+        variantes,
+        userId: ctx.userId,
+        requesterPhone: ctx.fromNumber,
+        createdAt: Date.now(),
+        formato: postFormat,
+        midiaTipo: "foto",
+        briefing: JSON.stringify(last.data).slice(0, 1200),
+      };
+      const queueRows = await persistPendingSocialPost(token, pending);
+      PENDING_POSTS.set(token, { ...pending, queueRows });
+      tokens.push(token);
+    }
+
+    const flow: PendingAnuncioPost = {
+      stage: "captions",
+      action,
+      format,
+      networks,
+      token: tokens[0],
+      extra_tokens: tokens.slice(1),
+      created_at: new Date().toISOString(),
+    };
+    await persistAnuncioFlowState(ctx, {
+      last_anuncio: last,
+      pending_anuncio_post: flow,
+    });
+    return {
+      pending: flow,
+      raw: JSON.stringify({
+        status: "aguardando_escolha_variante",
+        fonte: "last_anuncio",
+        token: tokens[0],
+        formato: formats[0],
+        produto: {
+          nome: String(last.data.titulo || "Anúncio"),
+          imagem_url: last.images.find((image) =>
+            image.style === style && image.formato === formats[0]
+          )?.url,
+        },
+        redes: networks,
+        variantes,
+      }),
+    };
+  } catch (error) {
+    if (tokens.length) {
+      await sb.from("social_posts_queue").update({
+        status: "cancelado",
+        error_message: "preparo_anuncio_incompleto",
+        updated_at: new Date().toISOString(),
+      }).eq("user_id", ctx.userId).in("approval_token", tokens)
+        .eq("status", "aguardando_confirmacao");
+      for (const token of tokens) PENDING_POSTS.delete(token);
+    }
+    throw error;
+  }
+}
+
+function anuncioPostSummary(
+  last: LastAnuncio,
+  pending: PendingAnuncioPost,
+  option: string,
+): string {
+  const style = last.selected_style || "anúncio";
+  const format = pending.format === "feed_story"
+    ? "Feed + Story"
+    : pending.format === "story"
+    ? "Story"
+    : "Feed";
+  const networks = (pending.networks ?? []).map((network) =>
+    network === "facebook" ? "Facebook" : "Instagram"
+  ).join(" + ");
+  const scheduled = pending.scheduled_at
+    ? `, agendado para *${pending.scheduled_at}*`
+    : "";
+  return `Resumo: *${String(last.data.titulo || "Anúncio")}* — estilo *${style}*, ${format}, ${networks}, legenda *Opção ${option}*${scheduled}. Nada foi publicado nem agendado ainda.`;
+}
+
+async function deliverAnuncioCaptionChoices(
+  raw: string,
+  ctx: { userId: string; fromNumber: string },
+): Promise<{
+  text: string;
+  interactiveButtons?: WhatsAppInteractiveButtons;
+  interactiveList?: WhatsAppInteractiveList;
+}> {
+  const text = formatSocialPostToolResult(raw);
+  const buttons = interactiveButtonsFromSocialResult(raw);
+  try {
+    await sendWhatsApp(
+      ctx.userId,
+      ctx.fromNumber,
+      text,
+      undefined,
+      undefined,
+      buttons,
+      { alreadyLogged: false },
+    );
+    return {
+      text: "Se quiser, posso gerar outras opções ou você pode escrever a sua.",
+      interactiveList: anuncioCaptionExtraList(),
+    };
+  } catch (error) {
+    console.warn("[anuncio_post][caption_buttons_send_failed]", (error as Error).message);
+    return { text, interactiveButtons: buttons };
+  }
+}
+
+async function sendAnuncioExactPreviews(
+  tokens: string[],
+  ctx: { userId: string; fromNumber: string },
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  for (const token of tokens) {
+    const pending = PENDING_POSTS.get(token) ??
+      await loadPendingSocialPost(token, ctx.userId);
+    if (!pending) {
+      return { ok: false, message: "Não encontrei a mídia exata deste preview. Nada foi publicado." };
+    }
+    const sent = await sendExactPendingSocialPreview(token, pending, ctx);
+    if (!sent.ok) return sent;
+  }
+  return { ok: true };
+}
+
+async function replaceAnuncioPendingCaptions(
+  tokens: string[],
+  captions: PostVariantes,
+  ctx: { userId: string; fromNumber: string },
+  selected?: "A" | "B" | "C",
+): Promise<void> {
+  for (const token of tokens) {
+    const current = PENDING_POSTS.get(token) ??
+      await loadPendingSocialPost(token, ctx.userId);
+    if (!current) throw new Error("preview de publicação expirado");
+    const variantes = Object.fromEntries(
+      current.redes.map((network) => [network, { ...captions }]),
+    );
+    const option = selected ?? "A";
+    const scripts = Object.fromEntries(
+      current.redes.map((network) => [network, captions[option]]),
+    );
+    const updated: PendingSocialPost = {
+      ...current,
+      variantes,
+      scripts,
+      variantSelecionada: selected,
+      previewedAt: undefined,
+    };
+    const updateErrors = await Promise.all((current.queueRows ?? []).map(
+      async (row) => {
+        const { error } = await sb.from("social_posts_queue").update({
+          post_text: scripts[row.platform],
+          updated_at: new Date().toISOString(),
+        }).eq("id", row.id).eq("user_id", ctx.userId)
+          .eq("status", "aguardando_confirmacao");
+        return error?.message;
+      },
+    ));
+    const error = updateErrors.find(Boolean);
+    if (error) throw new Error(error);
+    PENDING_POSTS.set(token, updated);
+    await updatePendingSocialPostMarker(token, updated);
+  }
 }
 
 function carouselCardIndex(row: any): number {
@@ -4815,7 +6797,100 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
     tiktokBrandedContent: state?.tiktokBrandedContent,
     tiktokConsentedAt: state?.tiktokConsentedAt,
     pendingTikTokScheduledAt: state?.pendingTikTokScheduledAt,
+    previewedAt: state?.previewedAt,
   };
+}
+
+function pendingSocialCaption(pending: PendingSocialPost): string {
+  return Object.values(pending.scripts ?? {})
+    .find((value): value is string => typeof value === "string" && !!value.trim())
+    ?.trim() || "";
+}
+
+function pendingSocialPreviewSummary(pending: PendingSocialPost): string {
+  const networks = pending.redes.map((network) =>
+    network === "facebook" ? "Facebook"
+      : network === "instagram" ? "Instagram"
+      : network === "linkedin" ? "LinkedIn"
+      : network === "tiktok" ? "TikTok"
+      : network
+  ).join(" + ");
+  const format = pending.formato === "story" ? "Story"
+    : pending.formato === "reels" ? "Reels"
+    : "Feed";
+  const caption = pendingSocialCaption(pending);
+  return `Prévia exata da publicação\nRedes: ${networks || "não informadas"}\nFormato: ${format}${caption ? `\n\nLegenda:\n${caption}` : ""}`;
+}
+
+async function sendExactPendingSocialPreview(
+  token: string,
+  pending: PendingSocialPost,
+  ctx: { userId: string; fromNumber: string },
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const media = exactSocialMedia(pending);
+  if (!media.ok) {
+    return { ok: false, message: "Não encontrei a mídia exata deste preview. Nada foi publicado. Gere a prévia novamente." };
+  }
+  try {
+    for (let index = 0; index < media.urls.length; index++) {
+      await sendWhatsApp(
+        ctx.userId,
+        ctx.fromNumber,
+        index === 0 ? pendingSocialPreviewSummary(pending) : `Mídia ${index + 1} de ${media.urls.length}`,
+        media.urls[index],
+        undefined,
+        undefined,
+        { alreadyLogged: false },
+      );
+    }
+    pending.previewedAt = new Date().toISOString();
+    PENDING_POSTS.set(token, pending);
+    await updatePendingSocialPostMarker(token, pending);
+    console.log(`[publicar][preview] token=${token} urls=${media.urls.length} redes=${pending.redes.join("+")} formato=${pending.formato || "feed"} fluxo=${media.flow}`);
+    return { ok: true };
+  } catch (error) {
+    console.error("[publicar][preview_failed]", { token, error: (error as Error).message });
+    return { ok: false, message: "Não consegui enviar a prévia exata da mídia. Nada foi publicado; tente novamente." };
+  }
+}
+
+async function discardOldMediaPublicationFlows(
+  conversation: ConversationStateIdentity,
+  current: AgentConvState,
+): Promise<AgentConvState> {
+  const activeVehicleCollection = current.pending_carrossel_veiculo?.stage === "collecting";
+  const patch: AgentConvState = {
+    pending_anuncio_post: null,
+    pending_anuncio_styles: null,
+    pending_carousel: null,
+    pending_vehicle_photo_batch: null,
+    pending_single_photo: null,
+    pending_creative_media_ambiguity: null,
+    ...(!activeVehicleCollection ? { pending_carrossel_veiculo: null } : {}),
+  };
+  const tokens = [
+    current.pending_anuncio_post?.token,
+    ...(current.pending_anuncio_post?.extra_tokens ?? []),
+    current.pending_carousel?.token,
+    current.pending_carrossel_veiculo?.token,
+  ].filter((token): token is string => !!token);
+  for (const token of tokens) PENDING_POSTS.delete(token);
+  if (tokens.length > 0) {
+    const { data, error } = await sb.from("social_posts_queue")
+      .update({ status: "cancelado", error_message: "cancelado_por_nova_midia", updated_at: new Date().toISOString() })
+      .eq("user_id", conversation.userId)
+      .eq("solicitante_telefone", conversation.contactNumber)
+      .in("approval_token", tokens)
+      .eq("status", "aguardando_confirmacao")
+      .select("approval_token");
+    if (error) throw new Error(`falha_ao_isolar_nova_midia:${error.message}`);
+    for (const row of data ?? []) {
+      if (row.approval_token) PENDING_POSTS.delete(String(row.approval_token));
+    }
+  }
+  const saved = await saveAgentState(sb, conversation, patch, current);
+  if (!saved) throw new Error("falha_ao_limpar_fluxos_antigos");
+  return { ...current, ...patch };
 }
 
 async function updatePersistedSocialPostRows(
@@ -4862,6 +6937,7 @@ async function updatePersistedSocialPostRows(
                 tiktokBrandedContent: pending.tiktokBrandedContent,
                 tiktokConsentedAt: pending.tiktokConsentedAt,
                 pendingTikTokScheduledAt: pending.pendingTikTokScheduledAt,
+                previewedAt: pending.previewedAt,
               },
             )
             : (result.resposta?.error || result.resposta?.message || `falha_${result.status || "sem_status"}`),
@@ -5000,22 +7076,34 @@ async function publicarEmRede(
   try {
     const commonHeaders = { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY } as const;
     if (produto.midia_tipo === "carrossel") {
-      if (rede !== "instagram") {
-        return { rede, ok: false, status: 0, resposta: { error: "Carrossel por WhatsApp está disponível apenas no Instagram." } };
-      }
       const imageUrls = Array.isArray(produto.image_urls) ? produto.image_urls.filter(Boolean) : [];
       if (imageUrls.length < 2) {
         return { rede, ok: false, status: 0, resposta: { error: "Não encontrei todos os cards do carrossel aprovado." } };
       }
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-carousel`, {
+      if (rede !== "instagram" && rede !== "facebook") {
+        return { rede, ok: false, status: 0, resposta: { error: "Carrossel disponível apenas no Instagram e Facebook." } };
+      }
+      const endpoint = rede === "instagram"
+        ? "meta-publish-carousel"
+        : "meta-publish-post";
+      const body = rede === "instagram"
+        ? { user_id: userId, image_urls: imageUrls, caption: script }
+        : { user_id: userId, image_urls: imageUrls, message: script };
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/${endpoint}`, {
         method: "POST",
         headers: commonHeaders,
-        body: JSON.stringify({ user_id: userId, image_urls: imageUrls, caption: script }),
+        body: JSON.stringify(body),
       });
       const txt = await res.text();
       let j: any = {};
       try { j = JSON.parse(txt); } catch {}
-      return { rede, ok: res.ok && j?.success !== false && !!(j?.id || j?.post_id), status: res.status, resposta: j };
+      return {
+        rede,
+        ok: res.ok && j?.success !== false &&
+          (rede === "facebook" || !!(j?.id || j?.post_id)),
+        status: res.status,
+        resposta: j,
+      };
     }
 
     const isVideo = produto.midia_tipo === "video";
@@ -5405,12 +7493,12 @@ function nomeCurtoMidia(row: any): string {
     limpar(row?.legenda_gerada),
   ];
   const base = candidatos.find((value) => value && !/^sem contexto$/i.test(value));
-  if (base) return base.slice(0, 45);
+  if (base) return cleanReceivedMediaDescription(base);
 
   const tags = Array.isArray(row?.tags_ia)
     ? row.tags_ia.map(limpar).filter(Boolean).slice(0, 3).join(", ")
     : "";
-  if (tags) return tags.slice(0, 45);
+  if (tags) return tags;
 
   const data = row?.created_at
     ? new Date(row.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
@@ -5873,6 +7961,7 @@ async function updatePendingSocialPostMarker(token: string, pending: PendingSoci
     tiktokBrandedContent: pending.tiktokBrandedContent,
     tiktokConsentedAt: pending.tiktokConsentedAt,
     pendingTikTokScheduledAt: pending.pendingTikTokScheduledAt,
+    previewedAt: pending.previewedAt,
   });
   const rowIds = pending.queueRows?.map((r) => r.id).filter(Boolean) ?? [];
   if (rowIds.length > 0) {
@@ -6371,22 +8460,20 @@ async function toolConfirmarPostagemRedes(
   if (!canRunSocialPostAction(p.variantSelecionada)) {
     return variantSelectionRequiredResult(token, p);
   }
-
-  if (p.midiaTipo === "carrossel") {
-    const carouselState = ctx.agentState?.pending_carousel;
-    if (
-      carouselState?.token !== token
-      || carouselState.media_id !== p.produto?.id
-      || !Array.isArray(carouselState.image_urls)
-      || carouselState.image_urls.length < 2
-    ) {
-      return JSON.stringify({
-        erro: "snapshot_carrossel_indisponivel",
-        mensagem: "Não encontrei o snapshot exato dos cards que você aprovou. Não publiquei nada; gere a prévia novamente.",
-      });
-    }
-    p.produto.image_urls = [...carouselState.image_urls];
+  if (!p.previewedAt) {
+    return JSON.stringify({
+      erro: "preview_obrigatorio_ausente",
+      mensagem: "Não consegui confirmar que a mídia exata foi mostrada neste preview. Nada foi publicado; escolha a legenda novamente para rever a mídia.",
+    });
   }
+  const exactMedia = exactSocialMedia(p);
+  if (!exactMedia.ok) {
+    return JSON.stringify({
+      erro: exactMedia.error,
+      mensagem: "Não encontrei a mídia exata deste preview. Nada foi publicado. Gere a prévia novamente.",
+    });
+  }
+  console.log(`[publicar] token=${token} urls=${JSON.stringify(exactMedia.urls)} redes=${p.redes.join("+")} formato=${p.formato || "feed"} fluxo=${exactMedia.flow}`);
 
   if (p.redes.includes("tiktok")) {
     if (p.produto?.midia_tipo !== "video" && p.midiaTipo !== "video") {
@@ -6419,15 +8506,21 @@ async function toolConfirmarPostagemRedes(
 
   if (p.midiaTipo === "carrossel") {
     const queueIds = p.queueRows?.map((row) => row.id).filter(Boolean) ?? [];
-    if (queueIds.length !== 1) return JSON.stringify({ erro: "fila_confirmacao_ausente", mensagem: "Não encontrei a fila deste preview. Não publiquei nada." });
+    if (queueIds.length !== p.redes.length || queueIds.length === 0) {
+      return JSON.stringify({
+        erro: "fila_confirmacao_ausente",
+        mensagem:
+          "Não encontrei a fila completa deste preview. Não publiquei nada.",
+      });
+    }
     const { data: claimed, error: claimError } = await sb.from("social_posts_queue")
       .update({ status: "publicando", updated_at: new Date().toISOString() })
-      .eq("id", queueIds[0])
+      .in("id", queueIds)
       .eq("user_id", ctx.userId)
       .eq("status", "aguardando_confirmacao")
       .select("id");
     if (claimError) return JSON.stringify({ erro: "falha_ao_reservar_publicacao", mensagem: `Não publiquei porque não consegui reservar este preview: ${claimError.message}` });
-    if ((claimed?.length ?? 0) !== 1) {
+    if ((claimed?.length ?? 0) !== queueIds.length) {
       return JSON.stringify({ erro: "confirmacao_ja_processada", mensagem: "Este preview já foi confirmado ou está sendo publicado. Não enviei de novo." });
     }
   }
@@ -6516,6 +8609,13 @@ async function toolAgendarPostPendente(
   if (!canRunSocialPostAction(pending.variantSelecionada)) {
     return variantSelectionRequiredResult(token, pending);
   }
+  if (!pending.previewedAt) {
+    return JSON.stringify({
+      ok: false,
+      erro: "preview_obrigatorio_ausente",
+      mensagem: "Não consegui confirmar que a mídia exata foi mostrada neste preview. Nada foi agendado; escolha a legenda novamente para rever a mídia.",
+    });
+  }
   if (pending.formato === "story") {
     return JSON.stringify({
       ok: false,
@@ -6595,15 +8695,16 @@ async function toolAgendarPostPendente(
     });
   }
 
-  let imageUrls = Array.isArray(pending.produto?.image_urls)
-    ? pending.produto.image_urls.filter((url: unknown): url is string => typeof url === "string" && !!url.trim())
-    : [];
-  if (pending.midiaTipo === "carrossel" && imageUrls.length < 2 && pending.produto?.id) {
-    imageUrls = await loadCarouselImageUrls(ctx.userId, pending.produto.id);
+  const exactMedia = exactSocialMedia(pending);
+  if (!exactMedia.ok) {
+    return JSON.stringify({
+      ok: false,
+      erro: exactMedia.error,
+      mensagem: "Não encontrei a mídia exata deste preview. Nada foi agendado. Gere a prévia novamente.",
+    });
   }
-  if (pending.midiaTipo === "carrossel" && imageUrls.length < 2) {
-    return JSON.stringify({ ok: false, erro: "carrossel_incompleto", mensagem: "Não encontrei todos os cards do carrossel; gere a prévia novamente." });
-  }
+  const imageUrls = exactMedia.mediaType === "carrossel" ? exactMedia.urls : [];
+  console.log(`[publicar] token=${token} urls=${JSON.stringify(exactMedia.urls)} redes=${scheduledNetworks.join("+")} formato=${pending.formato || "feed"} fluxo=${exactMedia.flow}:agendamento`);
 
   const rowIds = (pending.queueRows ?? [])
     .filter((row) => scheduledNetworks.includes(row.platform))
@@ -7126,6 +9227,7 @@ async function toolRevisarPostPendente(
     scripts,
     variantes,
     variantSelecionada: undefined,
+    previewedAt: undefined,
     incluirCtaWhatsapp: incluirCta,
   };
   PENDING_POSTS.set(token, atualizado);
@@ -7166,7 +9268,7 @@ async function toolEscolherVariantePost(
     Object.entries(p.variantes).map(([r, v]) => [r, selectSocialVariantScripts(v, opcao)])
   );
 
-  const atualizado: PendingSocialPost = { ...p, scripts, variantSelecionada: opcao };
+  const atualizado: PendingSocialPost = { ...p, scripts, variantSelecionada: opcao, previewedAt: undefined };
   const marker = pendingPostMarker(token, atualizado.produto?.nome, atualizado.formato || "feed", atualizado.midiaTipo || atualizado.produto?.midia_tipo || "foto", {
     variantes: atualizado.variantes,
     variantSelecionada: atualizado.variantSelecionada,
@@ -7355,7 +9457,10 @@ function respostaMidiaSalva(salvos: MidiaSalva[], descricaoVisual?: string, reme
     : [];
   if (reconhecidas.length === salvos.length && reconhecidas.length > 0) {
     return reconhecidas.map((item) =>
-      `Peguei: ${item.nome || (item.tipo === "video" ? "Vídeo" : "Imagem")} - ${item.rotulo || (item.tipo === "video" ? "Vídeo" : "Imagem")} - ID ${idCurto(item.id)}. Se pedir para publicar, é essa que eu uso.`
+      recognizedMediaReply({
+        type: item.tipo,
+        description: item.nome,
+      })
     ).join("\n");
   }
   const blocoCodigos = salvos
@@ -8231,7 +10336,7 @@ async function uploadClientLogoData(
   const mime = match[1].toLowerCase();
   const bytes = base64Decode(match[2]);
   if (bytes.length > 5 * 1024 * 1024) return undefined;
-  const processed = await trimLogoImage(bytes, mime);
+  const processed = await removeSolidLogoBackground(bytes, mime);
   const ext = processed.mime === "image/jpeg"
     ? "jpg"
     : processed.mime === "image/svg+xml" ? "svg" : processed.mime.split("/")[1];
@@ -8267,7 +10372,7 @@ async function uploadClientLogoFromMediaUrl(userId: string, mediaUrl: string): P
     if (!/^image\/(?:png|jpeg|webp|svg\+xml)$/i.test(mime)) return null;
     const bytes = new Uint8Array(await response.arrayBuffer());
     if (!bytes.length || bytes.length > 5 * 1024 * 1024) return null;
-    const processed = await trimLogoImage(bytes, mime);
+    const processed = await removeSolidLogoBackground(bytes, mime);
     const ext = processed.mime === "image/jpeg"
       ? "jpg"
       : processed.mime === "image/svg+xml" ? "svg" : processed.mime.split("/")[1];
@@ -8290,7 +10395,10 @@ async function uploadClientLogoFromMediaUrl(userId: string, mediaUrl: string): P
 }
 
 async function toolRegistrarLogoCliente(
-  args: { cliente?: string },
+  args: {
+    cliente?: string;
+    variante?: "default" | "light_background" | "dark_background" | "video";
+  },
   ctx: { userId: string; fromNumber: string; agentState?: AgentConvState },
 ): Promise<string> {
   if (!isOwner(ctx)) {
@@ -8338,11 +10446,17 @@ async function toolRegistrarLogoCliente(
     });
   }
   try {
-    const previousLogoPath = matches[0]?.logo_path;
+    const variant = args.variante ?? "default";
+    const previousLogoPath = variant === "light_background"
+      ? String(matches[0]?.identity?.logo_fundo_claro_path || "")
+      : variant === "dark_background"
+      ? String(matches[0]?.identity?.logo_fundo_escuro_path || "")
+      : matches[0]?.logo_path;
     const saved = await saveClientBrandIdentity(sb, {
       userId: ctx.userId,
       clientName,
       logoPath,
+      logoVariant: variant,
       identity: { logo_origem: "whatsapp_manual", source_media_id: latest.midia.id },
     });
     if (
@@ -8357,7 +10471,11 @@ async function toolRegistrarLogoCliente(
       client_name: saved.client_name,
       logo_path: saved.logo_path,
       source_media_id: latest.midia.id,
-      mensagem: `Guardei como logo do ${saved.client_name}. Vou usar nos vídeos e posts desse cliente.`,
+      mensagem: `Guardei como logo do ${saved.client_name}. Vou usar nos vídeos e posts desse cliente.${
+        saved.identity?.logo_background_warning
+          ? `\n\n${saved.identity.logo_background_warning}`
+          : ""
+      }`,
     });
   } catch (error) {
     await sb.storage.from("tenant-logos").remove([logoPath]);
@@ -8772,7 +10890,7 @@ async function prepareClientSiteIdentity(
     site: identity.url,
   });
   const manualLogoPath = savedIdentity?.identity?.logo_origem === "whatsapp_manual"
-    ? savedIdentity.logo_path || undefined
+    ? clientLogoPath(savedIdentity) || undefined
     : undefined;
   const uploadedSiteLogoPath = !manualLogoPath
       && automatic.useSiteLogo
@@ -8829,6 +10947,12 @@ async function prepareClientSiteIdentity(
     site: identity.url,
     marca: automatic.clientName,
     logo_path: logoPath,
+    logo_light_background_path: savedIdentity
+      ? clientLogoPath(savedIdentity, "light") || undefined
+      : undefined,
+    logo_dark_background_path: savedIdentity
+      ? clientLogoPath(savedIdentity, "dark") || undefined
+      : undefined,
     site_logo_candidate_path: undefined,
     identity_summary: identitySummary,
     palette_options: paletteOptions,
@@ -8863,7 +10987,13 @@ async function finalizeVideoSetup(
     marca: setup.identidade === "client" ? setup.marca : undefined,
     site: setup.identidade === "client" ? setup.site : undefined,
     tomDeVoz: setup.tom_de_voz,
-    logoPath: setup.logo_path,
+    logoPath: setup.identidade === "client"
+      ? (setup.fundo === "claro"
+        ? setup.logo_light_background_path
+        : setup.fundo === "escuro"
+        ? setup.logo_dark_background_path
+        : setup.logo_path) || setup.logo_path
+      : setup.logo_path,
     semLogoTenant: setup.identidade === "client",
     identidadeResumo: setup.identity_summary,
     formato: setup.formato ?? "reels",
@@ -9016,6 +11146,57 @@ async function startVideoSetup(
     created_at: new Date().toISOString(),
   };
   return await advanceVideoSetup(ctx, setup);
+}
+
+function pendingVideoInterruptionButtons(): WhatsAppInteractiveButtons {
+  return {
+    header: "Vídeo em andamento",
+    body: "Você quer continuar o vídeo ou cancelar esse rascunho e fazer o novo pedido?",
+    buttons: [
+      { id: "video_pending_continue", title: "Continuar vídeo" },
+      { id: "video_pending_replace", title: "Cancelar e fazer" },
+    ],
+  };
+}
+
+async function resumePendingVideoSetup(
+  ctx: { userId: string; fromNumber: string },
+  setup: PendingVideoSetupState,
+): Promise<string> {
+  if (setup.stage === "awaiting_tema") return "Qual é o tema do vídeo? Pode enviar o roteiro completo.";
+  if (setup.stage === "awaiting_template") {
+    await askVideoTemplate(ctx, setup.tema);
+    return "Continuando o vídeo: escolha o formato na lista acima.";
+  }
+  if (setup.stage === "awaiting_background") {
+    await askVideoBackground(ctx);
+    return "Continuando o vídeo: escolha o fundo acima.";
+  }
+  if (setup.stage === "awaiting_track" || setup.stage === "awaiting_track_more") {
+    await askVideoTrack(ctx, await listVideoTracks(ctx.userId), setup.track_page ?? 0);
+    return "Continuando o vídeo: escolha a trilha acima.";
+  }
+  if (setup.stage === "awaiting_identity") {
+    await askVideoIdentity(ctx);
+    return "Continuando o vídeo: escolha a identidade acima.";
+  }
+  if (setup.stage === "awaiting_site_url") {
+    return "Continuando o vídeo: qual é o site ou o nome do cliente?";
+  }
+  if (setup.stage === "awaiting_site_logo_confirmation" && setup.site_logo_candidate_path) {
+    await askSiteLogoConfirmation(ctx, setup.site_logo_candidate_path);
+    return "Continuando o vídeo: confirme a logo acima.";
+  }
+  if (setup.stage === "awaiting_palette_primary") {
+    await askPalettePrimary(ctx, setup.palette_candidates ?? [], setup.palette_options ?? [], setup.logo_path);
+    return "Continuando o vídeo: escolha a cor principal acima.";
+  }
+  if (setup.stage === "awaiting_palette_secondary" && setup.palette_primary) {
+    await askPaletteSecondary(ctx, setup.palette_candidates ?? [], setup.palette_primary);
+    return "Continuando o vídeo: escolha a cor secundária acima.";
+  }
+  await askSitePaletteConfirmation(ctx, setup.palette_options ?? [], false, setup.logo_path);
+  return "Continuando o vídeo: confirme as cores acima.";
 }
 
 function paletteFamily(hex: string): "vermelho" | "laranja" | "amarelo" | "verde" | "azul" | "roxo" | "rosa" | "neutro" {
@@ -9214,14 +11395,18 @@ async function handlePendingVideoSetup(
     const url = extractPublicSiteUrl(response);
     if (!url) {
       const saved = await findClientBrandIdentity(sb, ctx.userId, { name: response });
-      if (!saved?.logo_path) {
+      if (!saved || !clientLogoPath(saved)) {
         return "Não encontrei uma identidade salva com esse nome. Envie a URL do site ou o nome exato do cliente.";
       }
       if (saved.site_url) {
         return await prepareClientSiteIdentity(ctx, {
           ...setup,
           marca: saved.client_name,
-          logo_path: saved.logo_path,
+          logo_path: clientLogoPath(saved, "video") || undefined,
+          logo_light_background_path:
+            clientLogoPath(saved, "light") || undefined,
+          logo_dark_background_path:
+            clientLogoPath(saved, "dark") || undefined,
         }, saved.site_url);
       }
       const savedColors = Array.isArray(saved.identity?.colors)
@@ -9231,14 +11416,18 @@ async function handlePendingVideoSetup(
         : [];
       const options = paletteOptionsFromColors(savedColors);
       const applied = [
-        saved.logo_path ? "logo salva do cliente" : null,
+        clientLogoPath(saved) ? "logo salva do cliente" : null,
         savedColors.length ? `cores ${savedColors.slice(0, 4).join(" · ")}` : null,
       ].filter(Boolean).join(" + ") || "paleta automática sem logo";
       const next = {
         ...setup,
         stage: "awaiting_palette_confirmation" as const,
         marca: saved.client_name,
-        logo_path: saved.logo_path,
+        logo_path: clientLogoPath(saved, "video") || undefined,
+        logo_light_background_path:
+          clientLogoPath(saved, "light") || undefined,
+        logo_dark_background_path:
+          clientLogoPath(saved, "dark") || undefined,
         cores: options.length ? paletteFromOptions(options) : undefined,
         palette_options: options,
         identity_summary: `${saved.client_name} — ${applied}`,
@@ -9834,6 +12023,25 @@ const TOOLS = [
   {
     type: "function",
     function: {
+      name: "alterar_limite_mensal_anuncios",
+      description: "[SOMENTE DONO] Propõe alterar a trava mensal de gasto em Meta Ads da plataforma. Mostra limite atual, gasto do mês e novo valor. NUNCA altera sem o dono tocar no botão Confirmar vinculado à proposta.",
+      parameters: {
+        type: "object",
+        properties: {
+          novo_limite: {
+            type: "number",
+            minimum: 50,
+            maximum: 10000,
+            description: "Novo limite mensal em reais, entre 50 e 10000.",
+          },
+        },
+        required: ["novo_limite"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "rascunho_anuncio_meta",
       description: "[SOMENTE DONO] Salva no banco um rascunho de campanha Meta Ads e mostra orçamento, gasto do mês, teto mensal e gasto máximo. Esta chamada NUNCA publica. Use também para aplicar mudanças pedidas a um rascunho.",
       parameters: {
@@ -10188,11 +12396,12 @@ const TOOLS = [
     type: "function",
     function: {
       name: "registrar_logo_cliente",
-      description: "CADASTRA DE VERDADE a última FOTO desta conversa como logo de um cliente do responsável. Use quando o DONO disser 'guarde/salve/registre/cadastre/use essa como logo do cliente X', inclusive quando a foto veio na mensagem anterior. Só confirme que guardou se esta ferramenta retornar ok=true; se retornar erro, repita a mensagem de erro e NUNCA finja sucesso.",
+      description: "CADASTRA DE VERDADE a última FOTO desta conversa como logo de um cliente do responsável. Use quando o DONO disser 'guarde/salve/registre/cadastre/use essa como logo do cliente X', inclusive para as versões 'fundo claro' e 'fundo escuro'. Só confirme que guardou se esta ferramenta retornar ok=true.",
       parameters: {
         type: "object",
         properties: {
           cliente: { type: "string", description: "Nome exato da empresa/cliente citado pelo responsável, ex.: Casarão Lustres." },
+          variante: { type: "string", enum: ["default", "light_background", "dark_background", "video"], description: "Versão da logo: fundo claro usa texto escuro; fundo escuro e vídeo usam texto claro." },
         },
         required: ["cliente"],
       },
@@ -10299,12 +12508,21 @@ const TOOLS = [
     function: {
 
       name: "criar_carrossel",
-      description: "🎠 Gera um CARROSSEL com vários cards separados. Para o dono, cria prévia para aprovação antes de publicar. Para prospect do tenant AMZ, permite UMA demonstração por telefone, mostra os cards e uma legenda, mas NUNCA cria aprovação nem publica. Em outros tenants é restrito ao responsável. FLUXO: 1) primeira chamada sem cor mostra seletor; 2) depois chame com tema + cor.",
+      description: "🎠 Gera um CARROSSEL com vários cards separados. Para o dono, cria prévia para aprovação antes de publicar. Para prospect do tenant AMZ, permite UMA demonstração por telefone, mostra os cards e uma legenda, mas NUNCA cria aprovação nem publica. Em outros tenants é restrito ao responsável. A identidade de marca salva é aplicada automaticamente; só passe cor quando o usuário pedir uma cor explícita.",
       parameters: {
         type: "object",
         properties: {
           tema: { type: "string", description: "Assunto/tema do carrossel, como o usuário pediu (ex: '5 dicas para vender mais no Instagram')." },
-          cor: { type: "string", description: "Cor de destaque escolhida PELO USUÁRIO: azul, verde, laranja, preto, dourado ou roxo. Deixe VAZIO na primeira chamada para eu perguntar com a lista de 1 toque." },
+          cor: { type: "string", description: "Somente a cor explicitamente pedida pelo usuário: azul, verde, laranja, preto, dourado ou roxo. Omita para usar automaticamente a cor da marca ou o seletor resiliente." },
+          template: {
+            type: "string",
+            enum: ["dark-premium", "clean-bright", "gradient-vibrant", "elegant-serif", "neon-tech"],
+            description: "Estilo explicitamente pedido. Omita quando o usuário não escolheu estilo para o sistema enviar a lista oficial.",
+          },
+          backgroundColor: {
+            type: "string",
+            description: "Fundo explicitamente pedido, em #RRGGBB. Omita quando o usuário não pediu fundo.",
+          },
           num_slides: { type: "number", description: "Quantidade pedida, de 3 a 10. Sem pedido explícito, use 7." },
           legenda: { type: "string", description: "Legenda do post, se o usuário ditou uma. Vazio = a IA escreve a legenda com hashtags." },
         },
@@ -10333,25 +12551,63 @@ const TOOLS = [
   {
     type: "function",
     function: {
-      name: "criar_anuncio",
-      description: "🏷️ Monta um ANÚNCIO PROFISSIONAL de produto (arte pronta pra vender) a partir de uma FOTO enviada + os dados que o responsável falar. Use quando ele disser 'faz um anúncio disso', 'monta a arte desse carro/imóvel/produto', 'cria anúncio com esses dados'. Serve pra qualquer nicho: veículo (km, ano, dono), imóvel (m², quartos, vaga), máquina (horas, ano), produto de loja (garantia, parcelas). O texto, o preço e a LOGO do cliente entram por template (exatos, nunca desenhados pela IA); a IA só melhora a foto. NUNCA invente dado que o usuário não falou. Restrito ao responsável da conta.",
+      name: "consultar_fipe",
+      description: "Consulta o preço oficial FIPE de veículo para o responsável do tenant. Use quando ele pedir FIPE por texto ou ÁUDIO transcrito, por marca/modelo ou enviar uma foto e perguntar a FIPE. Preserve números falados por extenso nos argumentos; o sistema normaliza ano, motor e câmbio. Pela foto, apenas sugere o veículo e pede confirmação de ano/modelo e versão; nunca afirme o ano exato pela imagem.",
       parameters: {
         type: "object",
         properties: {
-          titulo: { type: "string", description: "Nome do produto em destaque (ex: 'HYUNDAI CRETA 1.0 TURBO', 'APARTAMENTO 2 QUARTOS')." },
-          subtitulo: { type: "string", description: "Complemento curto (ex: 'AUTOMÁTICO 2023/2023', 'BAIRRO CENTRO'). Vazio se não souber." },
+          marca: { type: "string", description: "Marca informada ou confirmada pelo usuário." },
+          modelo: { type: "string", description: "Modelo informado ou confirmado pelo usuário." },
+          versao: { type: "string", description: "Versão, se informada." },
+          ano_modelo: { type: "string", description: "Ano/modelo, se informado. Nunca inferir pela foto." },
+          combustivel: { type: "string", description: "Combustível, se informado." },
+          cambio: { type: "string", description: "Câmbio informado, por exemplo automático ou manual." },
+          motor: { type: "string", description: "Motor informado, inclusive por extenso, por exemplo 'um ponto zero'." },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "criar_anuncio",
+      description: "🏷️ Monta um ANÚNCIO PROFISSIONAL de produto (arte pronta pra vender) a partir de uma FOTO enviada + somente os dados que o responsável falar. Use quando ele disser 'faz um anúncio disso', 'monta a arte desse carro/imóvel/produto', 'cria anúncio com esses dados'. Quando disser 'anúncio para a loja X' ou 'com a logo do cliente X', passe cliente='X'; a identidade dessa loja substitui a do tenant e nunca pode cair na logo do tenant. Serve pra veículo, imóvel, máquina ou produto de loja. O texto, preços e logo entram por template (exatos, nunca desenhados pela IA); a IA só melhora a foto. NUNCA invente FIPE, preço, ano, quilometragem ou itens. Restrito ao responsável da conta.",
+      parameters: {
+        type: "object",
+        properties: {
+          titulo: { type: "string", description: "Nome/modelo em destaque sem repetir ano, versão ou motor (ex: 'HYUNDAI CRETA', 'APARTAMENTO 2 QUARTOS')." },
+          cliente: { type: "string", description: "Nome da loja/cliente cuja identidade deve ser usada. Passe quando o dono disser 'para a loja X' ou 'com a logo do cliente X'. Sem cliente, usa a marca do próprio tenant." },
+          site: { type: "string", description: "Site público da loja/cliente, somente quando informado pelo dono. Usado para extrair e salvar logo e cores se o cliente ainda não tiver logo cadastrada." },
+          subtitulo: { type: "string", description: "Complemento curto sem repetir o ano (ex: 'BAIRRO CENTRO'). Para veículo, prefira os campos versão e motor. Vazio se não souber." },
+          ano: { type: "string", description: "Ano para o selo, somente se o dono informou (ex: '2023/2023'). Nunca inferir." },
+          versao: { type: "string", description: "Versão exata do veículo, somente se informada." },
+          motor: { type: "string", description: "Motor exato, somente se informado." },
+          cambio: { type: "string", description: "Câmbio, somente se informado." },
+          quilometragem: { type: "string", description: "Quilometragem exata, somente se informada." },
+          cor: { type: "string", description: "Cor, somente se informada." },
+          donos: { type: "string", description: "Número de donos, somente se informado." },
+          documentacao: { type: "string", description: "Situação documental, somente se informada." },
+          revisoes: { type: "string", description: "Informação de revisões, somente se informada." },
+          pneus: { type: "string", description: "Condição dos pneus, somente se informada." },
+          opcionais: { type: "array", items: { type: "string" }, description: "Itens e opcionais exatamente informados." },
+          condicoes: { type: "array", items: { type: "string" }, description: "Condições informadas de troca, financiamento ou entrada." },
+          fipe: { type: "string", description: "Valor FIPE, somente quando o dono informou explicitamente." },
           itens: {
             type: "array",
             description: "Lista de 4 a 8 destaques EXATAMENTE como o usuário falou (ex: '38 MIL KM', 'ÚNICO DONO', 'PNEUS NOVOS', 'IPVA PAGO'). Não invente.",
             items: { type: "string" },
           },
           preco: { type: "string", description: "Preço formatado (ex: 'R$ 118.900,00'). Vazio se ele não disse o preço." },
-          preco_label: { type: "string", description: "Rótulo acima do preço (ex: 'À VISTA', 'VALOR', 'A PARTIR DE'). Padrão: VALOR." },
+          preco_label: { type: "string", description: "Rótulo acima do preço principal (ex: 'HOJE', 'À VISTA'). Vazio se não foi informado." },
+          preco_referencia: { type: "string", description: "Preço de referência riscado, somente se o dono informou." },
+          preco_referencia_label: { type: "string", description: "Origem/rótulo do preço de referência (ex: 'FIPE'), somente se o dono informou." },
+          preco_referencia_obs: { type: "string", description: "Observação factual do preço de referência (ex: 'sem blindagem'), somente se o dono informou." },
           badge: { type: "string", description: "Selo de destaque, se houver (ex: 'PINTURA 100% ORIGINAL', 'ÚLTIMA UNIDADE')." },
           telefone: { type: "string", description: "Telefone de contato pra arte, se o usuário informou." },
           instagram: { type: "string", description: "@ do Instagram pra arte, se o usuário informou. Vazio = uso o do cadastro." },
           formato: { type: "string", description: "'feed' (quadrado, padrão) ou 'story' (9:16 vertical)." },
-          melhorar_foto: { type: "boolean", description: "true (padrão) = a IA melhora a foto/ambiente antes de montar. false = usa a foto como está." },
+          estilo: { type: "string", enum: ["impacto", "catalogo", "destaque"], description: "Estilo visual quando o dono pedir diretamente. Sem estilo, respeite a preferência salva ou mostre os três." },
+          melhorar_foto: { type: "boolean", description: "Passe true somente se o usuário pedir explicitamente para melhorar fundo/luz; passe false somente se ele pedir foto original/sem melhorar. Se ele não disser nada, OMITA para o sistema usar a preferência salva ou perguntar por botões." },
         },
         required: ["titulo"],
       },
@@ -10626,6 +12882,692 @@ async function toolRegistrarLeadNovo(
 // ============================================================
 const CARROSSEL_MAX_DIA = 5; // guardrail simples por tenant/dia
 
+async function recentWhatsAppVehiclePhotos(input: {
+  userId: string;
+  fromNumber: string;
+  windowMs: number;
+}): Promise<VehicleCarouselPhoto[]> {
+  const since = new Date(Date.now() - input.windowMs).toISOString();
+  const { data, error } = await sb.from("midias_whatsapp")
+    .select("id, midia_url, created_at")
+    .eq("user_id", input.userId)
+    .eq("telefone_origem", input.fromNumber)
+    .eq("tipo", "foto")
+    .eq("origem", "whatsapp")
+    .gte("created_at", since)
+    .order("created_at", { ascending: true })
+    .limit(VEHICLE_CAROUSEL_MAX_PHOTOS);
+  if (error) throw new Error(`fotos_recentes_indisponiveis: ${error.message}`);
+  return (data || [])
+    .filter((item) => item.id && item.midia_url)
+    .map((item) => ({ id: item.id, url: item.midia_url }));
+}
+
+async function registerVehiclePhotoQueueEvent(
+  queueId: string,
+  photo: VehicleCarouselPhoto,
+): Promise<void> {
+  const { error } = await sb.from("whatsapp_cloud_inbound_queue").update({
+    vehicle_media_id: photo.id,
+    vehicle_media_reused: photo.reused === true,
+  }).eq("id", queueId);
+  if (error) {
+    throw new Error(`vinculo_evento_midia_falhou: ${error.message}`);
+  }
+}
+
+async function claimVehiclePhotoQueueBatch(
+  queueId: string,
+): Promise<{
+  photos: VehicleCarouselPhoto[];
+  reusedPhotoIds: string[];
+  shouldOffer: boolean;
+}> {
+  const { data: claimed, error } = await sb.rpc(
+    "claim_whatsapp_vehicle_photo_batch",
+    { p_queue_id: queueId },
+  );
+  if (error) throw new Error(`lote_fila_indisponivel: ${error.message}`);
+  const rows = Array.isArray(claimed) ? claimed : [];
+  const mediaIds = [...new Set(
+    rows.map((row: any) => String(row?.media_id || "")).filter(Boolean),
+  )];
+  if (!mediaIds.length) {
+    return { photos: [], reusedPhotoIds: [], shouldOffer: false };
+  }
+  const { data: mediaRows, error: mediaError } = await sb
+    .from("midias_whatsapp")
+    .select("id, midia_url")
+    .in("id", mediaIds);
+  if (mediaError) {
+    throw new Error(`midias_do_lote_indisponiveis: ${mediaError.message}`);
+  }
+  const urlById = new Map(
+    (mediaRows || []).map((media) => [String(media.id), media.midia_url]),
+  );
+  const events = rows.flatMap((row: any) => {
+    const mediaId = String(row?.media_id || "");
+    const mediaUrl = urlById.get(mediaId);
+    return mediaId && mediaUrl
+      ? [{
+        queue_id: String(row.queue_id),
+        media_id: mediaId,
+        media_url: String(mediaUrl),
+        reused: row.reused === true,
+        event_created_at: String(row.event_created_at),
+      }]
+      : [];
+  });
+  return {
+    photos: vehiclePhotosFromQueueEvents(events),
+    reusedPhotoIds: [...new Set(
+      events.filter((event) => event.reused).map((event) => event.media_id),
+    )],
+    shouldOffer: rows.some((row: any) => row?.should_offer === true),
+  };
+}
+
+async function appendVehicleCarouselPhotosAtomically(
+  conversationId: string,
+  photos: VehicleCarouselPhoto[],
+): Promise<PendingVehicleCarousel | null> {
+  const { data, error } = await sb.rpc("append_vehicle_carousel_photos", {
+    p_conversation_id: conversationId,
+    p_photos: photos,
+  });
+  if (error) throw new Error(`coleta_atomica_falhou: ${error.message}`);
+  return data && typeof data === "object"
+    ? data as PendingVehicleCarousel
+    : null;
+}
+
+async function clearExpiredAnuncioPendingState(
+  conversation: ConversationStateIdentity,
+  state: AgentConvState,
+): Promise<void> {
+  const patch = expiredAnuncioPendingPatch(state);
+  if (!Object.keys(patch).length) return;
+  const saved = await saveAgentState(sb, conversation, patch, state);
+  if (!saved) return;
+  Object.assign(state, patch);
+  console.log(
+    `[lote] pendentes_expirados=${Object.keys(patch).join(",")}`,
+  );
+}
+
+async function startVehicleCarouselFlow(
+  ctx: {
+    userId: string;
+    fromNumber: string;
+    convId?: string;
+    agentState?: AgentConvState;
+  },
+  photos: VehicleCarouselPhoto[],
+  reason: string,
+): Promise<PendingVehicleCarousel> {
+  if (!ctx.convId) throw new Error("conversa_sem_id");
+  const conversation = {
+    id: ctx.convId,
+    userId: ctx.userId,
+    contactNumber: ctx.fromNumber,
+  };
+  const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+  const last = vehicleCarouselDataFromAgentState(current);
+  const state = vehicleCarouselStartState(photos, last?.clientName);
+  const patch: Partial<AgentConvState> = {
+    pending_carrossel_veiculo: state,
+    pending_vehicle_photo_batch: null,
+    ...vehicleCarouselAdStateReset(),
+  };
+  const saved = await saveAgentState(sb, conversation, patch, current);
+  if (!saved) throw new Error("estado_carrossel_veiculo_nao_persistido");
+  Object.assign(current, patch);
+  ctx.agentState = current;
+  console.log(`[carrossel] gatilho=sim motivo=${reason}`);
+  console.log(
+    `[carrossel] fotos=${state.photos.length} estagio=${state.stage}`,
+  );
+  return state;
+}
+
+async function persistVehiclePhotoBatch(
+  ctx: {
+    userId: string;
+    fromNumber: string;
+    convId?: string;
+    agentState?: AgentConvState;
+  },
+  state: PendingVehiclePhotoBatch | null,
+  resetAdState = false,
+): Promise<void> {
+  if (!ctx.convId) throw new Error("conversa_sem_id");
+  const conversation = {
+    id: ctx.convId,
+    userId: ctx.userId,
+    contactNumber: ctx.fromNumber,
+  };
+  const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+  const patch: Partial<AgentConvState> = {
+    pending_vehicle_photo_batch: state,
+    ...(resetAdState ? vehiclePhotoBatchNewTopicReset() : {}),
+  };
+  const saved = await saveAgentState(sb, conversation, patch, current);
+  if (!saved) throw new Error("estado_lote_fotos_nao_persistido");
+  Object.assign(current, patch);
+  ctx.agentState = current;
+  console.log(
+    `[carrossel] fotos=${state?.photos.length ?? 0} estagio=${
+      state?.stage ?? "descartado"
+    }`,
+  );
+}
+
+async function sendVehicleFlowReply(input: {
+  conversationId: string;
+  userId: string;
+  to: string;
+  text: string;
+  buttons?: WhatsAppInteractiveButtons;
+}): Promise<void> {
+  const { data: outMsg } = await sb.from("whatsapp_cloud_messages").insert({
+    conversation_id: input.conversationId,
+    user_id: input.userId,
+    direction: "outbound",
+    sender: "agent",
+    content: input.text,
+    message_type: input.buttons ? "interactive" : "text",
+  }).select("id").single();
+  const sentId = await sendWhatsApp(
+    input.userId,
+    input.to,
+    input.text,
+    undefined,
+    undefined,
+    input.buttons,
+  );
+  if (sentId && outMsg?.id) {
+    await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq(
+      "id",
+      outMsg.id,
+    );
+  }
+}
+
+async function persistVehicleCarousel(
+  ctx: {
+    userId: string;
+    fromNumber: string;
+    convId?: string;
+    agentState?: AgentConvState;
+  },
+  state: PendingVehicleCarousel | null,
+): Promise<void> {
+  if (!ctx.convId) throw new Error("conversa_sem_id");
+  const conversation = {
+    id: ctx.convId,
+    userId: ctx.userId,
+    contactNumber: ctx.fromNumber,
+  };
+  const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+  const saved = await saveAgentState(sb, conversation, {
+    pending_carrossel_veiculo: state,
+  }, current);
+  if (!saved) throw new Error("estado_carrossel_veiculo_nao_persistido");
+  current.pending_carrossel_veiculo = state;
+  ctx.agentState = current;
+}
+
+function vehicleCarouselDataFromAgentState(
+  state: AgentConvState | undefined,
+): { data: VehicleCarouselData; clientName?: string | null } | null {
+  const last = validLastAnuncio(state?.last_anuncio)
+    ? state!.last_anuncio!
+    : null;
+  const lastFipe = state?.last_fipe;
+  const fipeFresh = lastFipe &&
+    Date.now() - new Date(lastFipe.created_at).getTime() <= 24 * 60 * 60 * 1000;
+  if (last) {
+    const d = last.data;
+    const title = String(d.titulo || "");
+    const fipeMatches = fipeFresh &&
+      normalizePt(title).includes(normalizePt(lastFipe!.queryModel || lastFipe!.model));
+    return {
+      data: {
+        titulo: title || undefined,
+        ano: String(d.ano || "") || undefined,
+        preco: String(d.preco || "") || undefined,
+        fipe: String(
+          d.fipe || d.preco_referencia ||
+            (fipeMatches ? lastFipe!.price : "") || "",
+        ) || undefined,
+        fipe_mes: String(
+          d.preco_referencia_obs ||
+            (fipeMatches ? lastFipe!.referenceMonth : "") || "",
+        ) || undefined,
+        quilometragem: String(d.quilometragem || "") || undefined,
+        cambio: String(d.cambio || "") || undefined,
+        motor: String(d.motor || "") || undefined,
+        documentacao: String(d.documentacao || "") || undefined,
+        condicoes: Array.isArray(d.condicoes)
+          ? d.condicoes.map(String)
+          : undefined,
+        contato: String(d.telefone || "") || undefined,
+        opcionais: [
+          ...(Array.isArray(d.opcionais) ? d.opcionais.map(String) : []),
+          ...(Array.isArray(d.itens) ? d.itens.map(String) : []),
+          ...(Array.isArray(d.ficha) ? d.ficha.map(String) : []),
+        ],
+      },
+      clientName: last.client_name,
+    };
+  }
+  if (fipeFresh) {
+    return {
+      data: {
+        titulo: `${lastFipe!.brand} ${lastFipe!.model}`.trim(),
+        ano: String(lastFipe!.modelYear || "") || undefined,
+        fipe: lastFipe!.price,
+        fipe_mes: lastFipe!.referenceMonth,
+        motor: lastFipe!.fuel,
+      },
+    };
+  }
+  return null;
+}
+
+async function askVehicleCarouselData(
+  state: PendingVehicleCarousel,
+  ctx: {
+    userId: string;
+    fromNumber: string;
+    convId?: string;
+    agentState?: AgentConvState;
+  },
+): Promise<{
+  text: string;
+  interactiveButtons?: WhatsAppInteractiveButtons;
+}> {
+  const suggested = vehicleCarouselDataFromAgentState(ctx.agentState);
+  if (suggested) {
+    const next = {
+      ...state,
+      stage: "data_choice" as const,
+      suggested_data: suggested.data,
+      client_name: suggested.clientName,
+      created_at: new Date().toISOString(),
+    };
+    await persistVehicleCarousel(ctx, next);
+    return {
+      text: "Encontrei dados recentes deste veículo. Quer aproveitar?",
+      interactiveButtons: vehicleCarouselDataButtons(),
+    };
+  }
+  const next = {
+    ...state,
+    stage: "awaiting_data" as const,
+    created_at: new Date().toISOString(),
+  };
+  await persistVehicleCarousel(ctx, next);
+  return {
+    text:
+      "Me mande em uma mensagem os dados que tiver: modelo, ano, km, câmbio, preço, condições e contato. O que não informar não aparece.",
+  };
+}
+
+async function askVehicleCarouselPhotoOrFormat(
+  state: PendingVehicleCarousel,
+  ctx: {
+    userId: string;
+    fromNumber: string;
+    convId?: string;
+    agentState?: AgentConvState;
+  },
+): Promise<{
+  text: string;
+  interactiveButtons?: WhatsAppInteractiveButtons;
+}> {
+  const next = {
+    ...state,
+    stage: "photo_choice" as const,
+    photo_preference: undefined,
+    created_at: new Date().toISOString(),
+  };
+  await persistVehicleCarousel(ctx, next);
+  return {
+    text:
+      "Como quer as fotos do carrossel? Melhorar só muda fundo e luz; o veículo fica igual.",
+    interactiveButtons: vehicleCarouselPhotoButtons(),
+  };
+}
+
+async function analyzeVehicleCarouselPhoto(
+  imageUrl: string,
+): Promise<{
+  view: VehiclePhotoView;
+  box: [number, number, number, number] | null;
+}> {
+  const prompt =
+    'Analise esta foto de veículo. Responda SOMENTE JSON: {"view":"Frente|Lateral|Traseira|3/4|Interior|Painel|Bancos|Porta-malas|Motor|Rodas|Veículo","box_2d":[ymin,xmin,ymax,xmax]}. Use apenas um dos valores de view. A caixa 0–1000 deve conter o veículo ou componente principal inteiro. Não descreva conservação nem opcionais.';
+  try {
+    const response = await fetch(
+      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Lovable-API-Key": LOVABLE_API_KEY,
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3-flash-preview",
+          temperature: 0,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              { type: "image_url", image_url: { url: imageUrl } },
+            ],
+          }],
+        }),
+        signal: AbortSignal.timeout(20_000),
+      },
+    );
+    if (!response.ok) throw new Error(`visao_${response.status}`);
+    const result = await response.json();
+    const raw = String(result?.choices?.[0]?.message?.content || "")
+      .replace(/```(?:json)?|```/gi, "").trim();
+    const parsed = JSON.parse(raw);
+    const allowed: VehiclePhotoView[] = [
+      "Frente",
+      "Lateral",
+      "Traseira",
+      "3/4",
+      "Interior",
+      "Painel",
+      "Bancos",
+      "Porta-malas",
+      "Motor",
+      "Rodas",
+      "Veículo",
+    ];
+    const view = allowed.includes(parsed?.view) ? parsed.view : "Veículo";
+    const box = parseFotoBoxFromVisionResponse(JSON.stringify(parsed));
+    return {
+      view,
+      box: box
+        ? [box.ymin, box.xmin, box.ymax, box.xmax]
+        : null,
+    };
+  } catch (error) {
+    console.warn("[vehicle-carousel][vision]", (error as Error).message);
+    return { view: "Veículo", box: null };
+  }
+}
+
+async function renderVehicleCarousel(
+  state: PendingVehicleCarousel,
+  ctx: {
+    userId: string;
+    fromNumber: string;
+    convId?: string;
+    agentState?: AgentConvState;
+  },
+): Promise<{
+  text: string;
+  interactiveButtons?: WhatsAppInteractiveButtons;
+}> {
+  if (!state.data || state.photos.length < VEHICLE_CAROUSEL_MIN_PHOTOS) {
+    return {
+      text:
+        `Preciso de pelo menos ${VEHICLE_CAROUSEL_MIN_PHOTOS} fotos e dos dados do veículo.`,
+    };
+  }
+  if (
+    !state.data.titulo ||
+    isGenericVehicleTitle(state.data.titulo)
+  ) {
+    return {
+      text:
+        "Não vou gerar o carrossel sem marca e modelo confirmados. Qual é a marca, o modelo, a versão e o ano?",
+    };
+  }
+  const rendering = {
+    ...state,
+    stage: "rendering" as const,
+    created_at: new Date().toISOString(),
+  };
+  await persistVehicleCarousel(ctx, rendering);
+  const processed: VehicleCarouselPhoto[] = [];
+  for (const photo of state.photos.slice(0, VEHICLE_CAROUSEL_MAX_PHOTOS)) {
+    let url = photo.url;
+    if (state.photo_preference === "melhorada") {
+      try {
+        const edited = JSON.parse(await toolEditarImagem(
+          productAdPhotoImprovementPrompt(state.data.titulo || "veículo"),
+          {
+            userId: ctx.userId,
+            fromNumber: ctx.fromNumber,
+            media: [],
+            textos: [],
+            modo: "anuncio",
+            preservarAmbiente: false,
+            registrarNaBiblioteca: false,
+            imageInputUrl: photo.url,
+          },
+        ));
+        if (edited?.image_url) url = edited.image_url;
+      } catch (error) {
+        console.warn(
+          "[vehicle-carousel][photo-improvement]",
+          (error as Error).message,
+        );
+      }
+    }
+    const analysis = await analyzeVehicleCarouselPhoto(url);
+    processed.push({ ...photo, url, ...analysis });
+  }
+  let generated: {
+    slides?: Array<{
+      type?: "cover" | "content" | "cta";
+      title?: string;
+      body?: string;
+      number?: number;
+    }>;
+    caption?: string;
+  } | null = null;
+  try {
+    generated = await callEdge("gerar-carousel-content", {
+      user_id: ctx.userId,
+      tema: state.data.titulo || "Veículo",
+      prompt: buildVehicleCarouselContentPrompt({
+        photos: processed,
+        data: state.data,
+      }),
+      neutral_copy: false,
+    }, 90_000);
+  } catch (error) {
+    console.warn(
+      "[vehicle-carousel][content-fallback]",
+      (error as Error).message,
+    );
+  }
+  const slides = buildVehicleCarouselSlides({
+    photos: processed,
+    data: state.data,
+    generated,
+  });
+  const client = state.client_name
+    ? await findClientBrandIdentity(sb, ctx.userId, { name: state.client_name })
+    : null;
+  const logoPath = client ? clientLogoPath(client, "dark", true) : null;
+  const render = await callEdge("render-carousel-slides", {
+    user_id: ctx.userId,
+    slides,
+    template: "dark-premium",
+    vehicle_mode: true,
+    format: state.format,
+    logo_path: logoPath,
+    incluir_logo: true,
+    ctaLabel: "CHAMAR NO WHATSAPP",
+  }, 240_000);
+  const imageUrls = Array.isArray(render?.image_urls)
+    ? render.image_urls.filter(Boolean)
+    : [];
+  if (imageUrls.length !== slides.length) {
+    throw new Error("não consegui renderizar todas as páginas do carrossel");
+  }
+  const mediaId = await registrarCarrosselNaBiblioteca(
+    ctx,
+    state.data.titulo || "Veículo",
+    imageUrls,
+  );
+  const factualData = {
+    ...state.data,
+    telefone: state.data.contato,
+  };
+  const generatedCaption = String(generated?.caption || "").trim();
+  const caption = generatedCaption &&
+      isGeneratedVehicleCopySafe(generatedCaption, state.data)
+    ? generatedCaption
+    : generateVehicleAdCaptions(factualData).A;
+  await enviarPreviewCarrossel(ctx, imageUrls);
+  const delivered = {
+    ...state,
+    stage: "delivered" as const,
+    photos: processed,
+    media_id: mediaId,
+    image_urls: imageUrls,
+    caption,
+    created_at: new Date().toISOString(),
+  };
+  await persistVehicleCarousel(ctx, delivered);
+  return {
+    text: `Carrossel pronto com ${imageUrls.length} páginas.\n\n${caption}`,
+    interactiveButtons: vehicleCarouselDeliveryButtons(),
+  };
+}
+
+function vehicleCarouselNetworkButtons(
+  connected: AnuncioPostNetwork[],
+): WhatsAppInteractiveButtons {
+  const base = anuncioPostNetworkButtons(connected);
+  return {
+    ...base,
+    buttons: base.buttons.map((button) => ({
+      ...button,
+      id: button.id.replace(
+        "anuncio_post:networks:",
+        "vehicle_carousel:networks:",
+      ),
+    })),
+  };
+}
+
+async function prepareVehicleCarouselSocial(
+  state: PendingVehicleCarousel,
+  networks: AnuncioPostNetwork[],
+  ctx: {
+    userId: string;
+    fromNumber: string;
+    convId?: string;
+    agentState?: AgentConvState;
+  },
+): Promise<string> {
+  if (
+    !state.media_id || !state.image_urls?.length || !state.data ||
+    !state.caption
+  ) {
+    return JSON.stringify({
+      erro: "carrossel_veiculo_incompleto",
+      mensagem: "Não encontrei o carrossel completo para publicar.",
+    });
+  }
+  const captions = generateVehicleAdCaptions({
+    ...state.data,
+    telefone: state.data.contato,
+  });
+  const variantes = Object.fromEntries(
+    networks.map((network) => [network, { ...captions }]),
+  ) as Record<string, PostVariantes>;
+  const scripts = Object.fromEntries(
+    networks.map((network) => [network, captions.A]),
+  );
+  const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+  const pending: PendingSocialPost = {
+    produto: {
+      id: state.media_id,
+      source: "carrossel_whatsapp",
+      nome: `Carrossel: ${state.data.titulo || "Veículo"}`,
+      descricao: JSON.stringify(state.data),
+      imagem_url: state.image_urls[0],
+      image_urls: state.image_urls,
+      midia_tipo: "carrossel",
+    },
+    tom: "beneficio",
+    redes: networks,
+    scripts,
+    variantes,
+    userId: ctx.userId,
+    requesterPhone: ctx.fromNumber,
+    createdAt: Date.now(),
+    formato: "feed",
+    midiaTipo: "carrossel",
+    briefing: JSON.stringify(state.data).slice(0, 1200),
+  };
+  const queueRows = await persistPendingSocialPost(token, pending);
+  PENDING_POSTS.set(token, { ...pending, queueRows });
+  if (!ctx.convId) throw new Error("conversa_sem_id");
+  const conversation = {
+    id: ctx.convId,
+    userId: ctx.userId,
+    contactNumber: ctx.fromNumber,
+  };
+  const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+  const vehicleState = {
+    ...state,
+    stage: "caption_choice" as const,
+    token,
+    created_at: new Date().toISOString(),
+  };
+  const carouselState: PendingCarouselState = {
+    stage: "awaiting_confirmation",
+    tema: state.data.titulo || "Veículo",
+    caption: state.caption,
+    media_id: state.media_id,
+    image_urls: state.image_urls,
+    token,
+    facebook_requested: networks.includes("facebook"),
+    created_at: new Date().toISOString(),
+  };
+  const saved = await saveAgentState(sb, conversation, {
+    pending_carrossel_veiculo: vehicleState,
+    pending_carousel: carouselState,
+  }, current);
+  if (!saved) {
+    PENDING_POSTS.delete(token);
+    await sb.from("social_posts_queue").update({
+      status: "cancelado",
+      error_message: "estado_carrossel_veiculo_nao_persistido",
+      updated_at: new Date().toISOString(),
+    }).in("id", queueRows.map((row) => row.id)).eq("user_id", ctx.userId);
+    throw new Error("não consegui salvar a aprovação do carrossel");
+  }
+  current.pending_carrossel_veiculo = vehicleState;
+  current.pending_carousel = carouselState;
+  ctx.agentState = current;
+  return JSON.stringify({
+    status: "aguardando_escolha_variante",
+    fonte: "carrossel_veiculo",
+    carrossel: true,
+    token,
+    cards: state.image_urls.length,
+    media_id: state.media_id,
+    media_code: idCurto(state.media_id),
+    formato: "feed",
+    redes: networks,
+    variantes,
+  });
+}
+
 async function callEdge(fn: string, payload: any, timeoutMs = 120000): Promise<any> {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/${fn}`, {
     method: "POST",
@@ -10646,33 +13588,97 @@ async function callEdge(fn: string, payload: any, timeoutMs = 120000): Promise<a
   return json ?? {};
 }
 
-async function sendCarrosselColorPicker(userId: string, to: string, tema: string, demonstracao = false): Promise<void> {
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-send-message`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${SERVICE_KEY}`,
-      "apikey": SERVICE_KEY,
-    },
-    body: JSON.stringify({
-      user_id: userId,
-      to,
-      skip_log: false,
-      log_sender: "agent",
-      interactive_list: {
-        header: "🎨 Cor do carrossel",
-        body: `Beleza! Vou montar o carrossel sobre *${tema.slice(0, 120)}*.\n\nEscolha a cor de destaque — é só 1 toque:`,
-        footer: demonstracao ? "Demonstração: nada será publicado" : "Depois você confere antes de publicar",
-        button: "Escolher cor",
-        section_title: "Cores",
-        rows: carouselColorRows(),
+async function sendCarrosselColorPicker(
+  userId: string,
+  to: string,
+  tema: string,
+  demonstracao = false,
+) {
+  const send = async (payload: Record<string, unknown>) => {
+    const response = await fetch(
+      `${SUPABASE_URL}/functions/v1/whatsapp-send-message`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${SERVICE_KEY}`,
+          "apikey": SERVICE_KEY,
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          to,
+          skip_log: false,
+          log_sender: "agent",
+          ...payload,
+        }),
+        signal: AbortSignal.timeout(20000),
       },
-    }),
-    signal: AbortSignal.timeout(20000),
+    );
+    const responseBody = await response.text();
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${responseBody.slice(0, 500)}`);
+    }
+  };
+  return await deliverCarouselColorSelector({
+    sendList: () =>
+      send({ interactive_list: carouselColorListPayload(tema, demonstracao) }),
+    sendButtons: () =>
+      send({ interactive_buttons: carouselColorFallbackButtons() }),
+    notifyAutomatic: () =>
+      send({
+        message:
+          "Não consegui abrir as opções de cor. Vou usar a cor da marca e seguir.",
+      }),
+    logFailure: (stage, error) =>
+      console.error("[carrossel][seletor_cor_falhou]", {
+        stage,
+        error: error instanceof Error ? error.message : String(error),
+      }),
   });
-  if (!response.ok) {
-    throw new Error(`seletor_cor_falhou_${response.status}: ${(await response.text()).slice(0, 160)}`);
-  }
+}
+
+async function sendCarrosselStylePicker(userId: string, to: string) {
+  const send = async (payload: Record<string, unknown>) => {
+    const response = await fetch(
+      `${SUPABASE_URL}/functions/v1/whatsapp-send-message`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${SERVICE_KEY}`,
+          "apikey": SERVICE_KEY,
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          to,
+          skip_log: false,
+          log_sender: "agent",
+          ...payload,
+        }),
+        signal: AbortSignal.timeout(20_000),
+      },
+    );
+    const responseBody = await response.text();
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${responseBody.slice(0, 500)}`);
+    }
+  };
+  return await deliverCarouselColorSelector({
+    sendList: () =>
+      send({ interactive_list: carouselStyleListPayload() }),
+    sendButtons: () =>
+      send({ interactive_buttons: carouselStyleFallbackButtons() }),
+    notifyAutomatic: () =>
+      send({
+        message:
+          "Não consegui abrir os estilos. Vou seguir com o visual escuro premium.",
+      }),
+    logFailure: (stage, error) =>
+      console.error("[carrossel][seletor_estilo_falhou]", {
+        stage,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+  });
 }
 
 async function registrarCarrosselNaBiblioteca(
@@ -10850,6 +13856,14 @@ async function prepararPreviewCarrosselExistente(
     stage: "awaiting_confirmation",
     tema,
     cor: previous?.media_id === parentId ? previous.cor : undefined,
+    cor_marca: previous?.media_id === parentId ? previous.cor_marca : undefined,
+    cor_secundaria_marca: previous?.media_id === parentId
+      ? previous.cor_secundaria_marca
+      : undefined,
+    template: previous?.media_id === parentId ? previous.template : undefined,
+    background_color: previous?.media_id === parentId
+      ? previous.background_color
+      : undefined,
     slides: previous?.media_id === parentId ? previous.slides : undefined,
     caption: options.legenda || previous?.caption,
     media_id: parentId,
@@ -10893,6 +13907,8 @@ async function toolCriarCarrossel(
   args: {
     tema?: string;
     cor?: string;
+    template?: CarouselTemplate;
+    backgroundColor?: string;
     legenda?: string;
     ajuste?: string;
     slides?: any[];
@@ -10921,16 +13937,88 @@ async function toolCriarCarrossel(
         demoProspect,
       );
 
-    // 1) COR — se não vier (ou vier irreconhecível), manda a LISTA de 1 toque e para aqui.
-    const cor = resolveCarouselColor(args?.cor);
+    // 1) IDENTIDADE + ESTILO — estilo/fundo explícito vence; sem ambos, pergunta uma vez.
+    let brandColors: string[] = [];
+    try {
+      const assets = await loadTenantBrandAssets(sb, ctx.userId, { includeLogo: false });
+      brandColors = assets.colors;
+    } catch (error) {
+      console.error("[carrossel][brand_assets_lookup_failed]", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    const stylePlan = resolveCarouselStyleRequest({
+      request: tema,
+      template: args.template,
+      backgroundColor: args.backgroundColor,
+    });
+    let template = stylePlan.template;
+    const backgroundColor = stylePlan.backgroundColor;
+    if (!template) {
+      if (!ctx.convId) return JSON.stringify({ erro: "conversa_sem_id", mensagem: "Não consegui identificar esta conversa para guardar a escolha do estilo." });
+      const conversation = { id: ctx.convId, userId: ctx.userId, contactNumber: ctx.fromNumber };
+      const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+      const pending: PendingCarouselState = {
+        stage: "awaiting_style",
+        tema,
+        num_slides: numSlides,
+        cor_marca: brandColors[0],
+        cor_secundaria_marca: brandColors[1],
+        caption: args?.legenda,
+        facebook_requested: !!args?.facebook_requested,
+        created_at: new Date().toISOString(),
+      };
+      if (!await saveAgentState(sb, conversation, { pending_carousel: pending }, current)) {
+        return JSON.stringify({ erro: "estado_carrossel_nao_persistido", mensagem: "Não consegui guardar o carrossel antes de pedir o estilo. Tente novamente." });
+      }
+      current.pending_carousel = pending;
+      ctx.agentState = current;
+      const selector = await sendCarrosselStylePicker(ctx.userId, ctx.fromNumber);
+      if (selector !== "automatic") {
+        return JSON.stringify({
+          status: "aguardando_estilo",
+          tema,
+          aviso_facebook: args?.facebook_requested ? "Carrossel pelo WhatsApp está disponível apenas no Instagram." : undefined,
+        });
+      }
+      template = "dark-premium";
+    }
+
+    // 2) COR — cor explícita vence; depois vem a identidade salva do tenant.
+    // Só pergunta quando nenhuma das duas existe.
+    let cor = resolveCarouselColor(args?.cor);
+    if (!cor) {
+      const colorPlan = resolveCarouselColorPlan({
+        explicitColor: args?.cor,
+        request: tema,
+        brandColors,
+        brandFallback: ctx.userId === ADMIN_AMZ_USER_ID
+          ? AMZ_CAROUSEL_COLOR
+          : null,
+      });
+      cor = colorPlan.color;
+      if (cor) {
+        console.log("[carrossel][cor_automatica]", {
+          source: colorPlan.source,
+          color: cor.primaryColor,
+        });
+      }
+    }
     if (!cor) {
       if (!ctx.convId) return JSON.stringify({ erro: "conversa_sem_id", mensagem: "Não consegui identificar esta conversa para guardar a escolha da cor." });
       const conversation = { id: ctx.convId, userId: ctx.userId, contactNumber: ctx.fromNumber };
       const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+      const fallbackColor = ctx.userId === ADMIN_AMZ_USER_ID
+        ? AMZ_CAROUSEL_COLOR
+        : DEFAULT_CAROUSEL_COLOR;
       const pending: PendingCarouselState = {
         stage: "awaiting_color",
         tema,
         num_slides: numSlides,
+        cor_marca: fallbackColor.primaryColor,
+        cor_secundaria_marca: fallbackColor.secondaryColor,
+        template,
+        background_color: backgroundColor ?? undefined,
         caption: args?.legenda,
         facebook_requested: !!args?.facebook_requested,
         created_at: new Date().toISOString(),
@@ -10940,18 +14028,26 @@ async function toolCriarCarrossel(
       }
       current.pending_carousel = pending;
       ctx.agentState = current;
-      await sendCarrosselColorPicker(ctx.userId, ctx.fromNumber, tema, demoProspect);
-      return JSON.stringify({
-        status: "aguardando_cor",
+      const selector = await sendCarrosselColorPicker(
+        ctx.userId,
+        ctx.fromNumber,
         tema,
-        aviso_facebook: args?.facebook_requested ? "Carrossel pelo WhatsApp está disponível apenas no Instagram." : undefined,
-        instrucao:
-          "Já enviei ao usuário uma LISTA de cores (1 toque). NÃO escreva a lista de novo, NÃO repita as opções. Responda no máximo 1 linha curta tipo 'É só escolher a cor aí em cima 👆'. Quando ele responder a cor (ex: 'Azul'), chame criar_carrossel outra vez com tema=\"" +
-          tema.replace(/"/g, "'") + "\" e cor=<a cor escolhida>.",
-      });
+        demoProspect,
+      );
+      if (selector !== "automatic") {
+        return JSON.stringify({
+          status: "aguardando_cor",
+          tema,
+          aviso_facebook: args?.facebook_requested ? "Carrossel pelo WhatsApp está disponível apenas no Instagram." : undefined,
+          instrucao:
+            "Já enviei ao usuário opções de cor. NÃO escreva a lista de novo, NÃO repita as opções. Responda no máximo 1 linha curta. Quando ele responder, chame criar_carrossel outra vez com tema=\"" +
+            tema.replace(/"/g, "'") + "\" e cor=<a cor escolhida>.",
+        });
+      }
+      cor = fallbackColor;
     }
 
-    // 2) Guardrail de volume por tenant/dia
+    // 3) Guardrail de volume por tenant/dia
     const desdeHoje = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { count: feitosHoje } = await sb
       .from("social_posts_queue")
@@ -10967,7 +14063,7 @@ async function toolCriarCarrossel(
       });
     }
 
-    // 3) Identidade do tenant (nome/@ do próprio Instagram conectado)
+    // 4) Identidade do tenant (nome/@ do próprio Instagram conectado)
     const { data: conn } = await sb
       .from("meta_connections")
       .select("page_name, ig_username, ig_account_id")
@@ -10985,12 +14081,15 @@ async function toolCriarCarrossel(
       ? null
       : `@${String(conn.ig_username).replace(/^@/, "")}`;
 
-    // 4) CONTEÚDO dos slides — MESMO gerador E MESMA metodologia do app
+    // 5) CONTEÚDO dos slides — MESMO gerador E MESMA metodologia do app
     //    (buildCarouselPrompt espelha src/components/CarouselGenerator.tsx:
     //     4-5 tópicos densos por card) + CONTEXTO REAL do negócio do tenant.
     const business = demoProspect
       ? null
-      : await getTenantBusinessContext(sb, ctx.userId, { nomeFallback: businessName });
+      : await getTenantBusinessContext(sb, ctx.userId, {
+        nomeFallback: businessName,
+        tipoCriativo: "carrossel",
+      });
     const prospectBranch = demoProspect
       ? await loadProspectCarouselBranch(ctx.userId, ctx.fromNumber)
       : null;
@@ -11046,11 +14145,12 @@ async function toolCriarCarrossel(
       ? sanitizeProspectDemoCaption(generatedCaption, tema)
       : generatedCaption;
 
-    // 5) RENDER server-side (Satori + resvg) — template dark-premium
+    // 6) RENDER server-side (Satori + resvg)
     const render = await callEdge("render-carousel-slides", {
       user_id: ctx.userId,
       slides,
-      template: "dark-premium",
+      template,
+      backgroundColor,
       primaryColor: cor.primaryColor,
       secondaryColor: cor.secondaryColor,
       businessName,
@@ -11103,6 +14203,10 @@ async function toolCriarCarrossel(
         tema,
         num_slides: numSlides,
         cor: cor.label,
+        cor_marca: cor.primaryColor,
+        cor_secundaria_marca: cor.secondaryColor,
+        template,
+        background_color: backgroundColor ?? undefined,
         slides,
         caption,
         media_id: mediaId,
@@ -11135,20 +14239,640 @@ async function toolCriarCarrossel(
 // ============================================================
 const ANUNCIO_MAX_DIA = 20;
 
+async function enviarPreviewEstilosAnuncio(
+  ctx: { userId: string; fromNumber: string },
+  renders: Array<{ style: AnuncioStyle; render: { image_url: string } }>,
+): Promise<number> {
+  let sent = 0;
+  for (const { style, render } of renders) {
+    const label = style === "catalogo"
+      ? "Catálogo"
+      : style[0].toUpperCase() + style.slice(1);
+    await sendWhatsApp(
+      ctx.userId,
+      ctx.fromNumber,
+      label,
+      render.image_url,
+      undefined,
+      undefined,
+      { alreadyLogged: false },
+    );
+    sent += 1;
+    await wait(250);
+  }
+  return sent;
+}
+
+async function buscarFotoOriginalRecenteParaAnuncio(ctx: {
+  userId: string;
+  fromNumber: string;
+  agentState?: AgentConvState;
+}): Promise<string | null> {
+  const { data: recent, error } = await sb
+    .from("midias_whatsapp")
+    .select("id, tipo, origem, midia_url, telefone_origem, created_at")
+    .eq("user_id", ctx.userId)
+    .eq("telefone_origem", ctx.fromNumber)
+    .eq("tipo", "foto")
+    .eq("origem", "whatsapp")
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error) throw new Error(error.message);
+
+  const interaction = ctx.agentState?.last_media_interaction ?? null;
+  const candidates = [...(recent ?? [])];
+  const interactedId = String(interaction?.media_id || "");
+  const interactedAt = Date.parse(String(interaction?.at || ""));
+  if (
+    interactedId &&
+    Number.isFinite(interactedAt) &&
+    Date.now() - interactedAt <= 30 * 60 * 1000 &&
+    !candidates.some((media: any) => media.id === interactedId)
+  ) {
+    const { data: interacted } = await sb
+      .from("midias_whatsapp")
+      .select("id, tipo, origem, midia_url, telefone_origem, created_at")
+      .eq("id", interactedId)
+      .eq("user_id", ctx.userId)
+      .eq("telefone_origem", ctx.fromNumber)
+      .eq("origem", "whatsapp")
+      .maybeSingle();
+    if (interacted) candidates.push(interacted);
+  }
+  return selectRecentOriginalPhoto({
+    candidates,
+    lastInteraction: interaction,
+  })?.midia_url ?? null;
+}
+
+async function resolveAnuncioClientIdentity(input: {
+  userId: string;
+  clientName?: string;
+  site?: string;
+  allowNameOnly?: boolean;
+}): Promise<
+  | { mode: "tenant"; businessName: null; logoPath: null; colors: string[]; identity: null }
+  | { mode: "client"; businessName: string; logoPath: string | null; colors: string[]; identity: ClientBrandIdentity }
+  | { mode: "missing"; message: string }
+> {
+  const clientName = String(input.clientName || "").replace(/\s+/g, " ").trim().slice(0, 100);
+  let saved = clientName
+    ? await findClientBrandIdentity(sb, input.userId, {
+    name: clientName,
+    site: input.site,
+  })
+    : null;
+  const plan = buildAnuncioBrandPlan({
+    clientName,
+    site: input.site,
+    saved,
+  });
+  if (plan.mode === "tenant") {
+    return { mode: "tenant", businessName: null, logoPath: null, colors: [], identity: null };
+  }
+  if (plan.mode === "client") {
+    return {
+      mode: "client",
+      businessName: plan.businessName,
+      logoPath: plan.logoPath,
+      colors: plan.colors,
+      identity: saved!,
+    };
+  }
+  if (plan.mode === "missing") {
+    if (input.allowNameOnly && clientName) {
+      saved = await saveClientBrandIdentity(sb, {
+        userId: input.userId,
+        clientName,
+      });
+      return {
+        mode: "client",
+        businessName: saved.client_name || clientName,
+        logoPath: null,
+        colors: [],
+        identity: saved,
+      };
+    }
+    return {
+      mode: "missing",
+      message: `Não encontrei uma logo cadastrada para ${clientName}. Envie o site da loja ou a logo dizendo “salva essa como logo do cliente ${clientName}”. Não usei a logo da sua empresa.`,
+    };
+  }
+
+  try {
+    const fastIdentity = await fetchBrandSiteIdentity(plan.site);
+    const identity = await completeSiteIdentityWithRenderedPage(
+      sb,
+      input.userId,
+      fastIdentity,
+    );
+    const automatic = resolveAutomaticVideoSiteIdentity({
+      requestedClientName: clientName,
+      siteBrandName: identity.brand_name,
+      siteUrl: identity.url,
+      colors: identity.colors,
+      logoConfidence: identity.logo_confidence,
+      logoDataUrl: identity.logo_data_url,
+    });
+    const logoPath = automatic.useSiteLogo
+      ? await uploadClientLogoData(
+        input.userId,
+        identity.logo_data_url,
+        "client-brands",
+      )
+      : undefined;
+    saved = await saveClientBrandIdentity(sb, {
+      userId: input.userId,
+      clientName,
+      siteUrl: identity.url,
+      logoPath,
+      identity: {
+        ...identity,
+        logo_origem: logoPath ? "site" : undefined,
+      } as unknown as Record<string, unknown>,
+    });
+    const colors = automatic.colors.length
+      ? automatic.colors.map((color) => color.toUpperCase())
+      : anuncioClientColors(saved.identity);
+    if (saved.logo_path) {
+      return {
+        mode: "client",
+        businessName: saved.client_name || clientName,
+        logoPath: saved.logo_path,
+        colors,
+        identity: saved,
+      };
+    }
+  } catch (error) {
+    console.warn("[criar_anuncio][client-site]", (error as Error).message);
+  }
+
+  return {
+    mode: "missing",
+    message: `Não consegui obter uma logo válida de ${clientName} pelo site informado. Envie a logo dizendo “salva essa como logo do cliente ${clientName}”. Não usei a logo da sua empresa.`,
+  };
+}
+
+type FipeToolResponse = {
+  result: string;
+  interactiveList?: WhatsAppInteractiveList;
+};
+
+async function persistFipeState(
+  ctx: {
+    userId: string;
+    fromNumber: string;
+    convId?: string;
+    agentState?: AgentConvState;
+  },
+  pending: PendingFipeState | null,
+  last?: LastFipeResult | null,
+): Promise<void> {
+  if (!ctx.convId) return;
+  const conversation = {
+    id: ctx.convId,
+    userId: ctx.userId,
+    contactNumber: ctx.fromNumber,
+  };
+  const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+  const patch: Partial<AgentConvState> = { pending_fipe: pending };
+  if (last !== undefined) patch.last_fipe = last;
+  await saveAgentState(sb, conversation, patch, current);
+  current.pending_fipe = pending;
+  if (last !== undefined) current.last_fipe = last;
+  ctx.agentState = current;
+}
+
+function fipeResultText(result: FipePrice): string {
+  return `FIPE ${result.referenceMonth}: ${result.price} — ${result.brand} ${result.model} ${result.modelYear} ${result.fuel} (código ${result.codeFipe})`;
+}
+
+async function finishFipeLookup(
+  ctx: {
+    userId: string;
+    fromNumber: string;
+    convId?: string;
+    agentState?: AgentConvState;
+  },
+  input: {
+    brand: FipeListItem;
+    model: FipeListItem;
+    year: FipeListItem;
+    queryModel: string;
+  },
+): Promise<FipeToolResponse> {
+  const result = await consultarPreco({
+    brandId: input.brand.code,
+    modelId: input.model.code,
+    yearId: input.year.code,
+  });
+  const last: LastFipeResult = {
+    ...result,
+    queryBrand: input.brand.name,
+    queryModel: input.queryModel || input.model.name,
+    yearId: input.year.code,
+    created_at: new Date().toISOString(),
+  };
+  await persistFipeState(ctx, null, last);
+  return { result: fipeResultText(result) };
+}
+
+async function continueFipeWithModel(
+  ctx: {
+    userId: string;
+    fromNumber: string;
+    convId?: string;
+    agentState?: AgentConvState;
+  },
+  input: {
+    brand: FipeListItem;
+    model: FipeListItem;
+    queryModel: string;
+    requestedYear?: string;
+    requestedFuel?: string;
+  },
+): Promise<FipeToolResponse> {
+  let years = await listarAnos(
+    input.brand.code,
+    input.model.code,
+    [input.requestedYear, input.requestedFuel].filter(Boolean).join(" "),
+  );
+  if (!years.length && input.requestedYear) {
+    years = await listarAnos(
+      input.brand.code,
+      input.model.code,
+      input.requestedYear,
+    );
+  }
+  if (!years.length) {
+    years = await listarAnos(input.brand.code, input.model.code);
+  }
+  if (years.length === 1) {
+    return await finishFipeLookup(ctx, {
+      brand: input.brand,
+      model: input.model,
+      year: years[0],
+      queryModel: input.queryModel,
+    });
+  }
+  const pending: PendingFipeState = {
+    stage: "year",
+    brand: input.brand,
+    model: input.model,
+    years: years.slice(0, 10),
+    queryModel: input.queryModel,
+    created_at: new Date().toISOString(),
+  };
+  await persistFipeState(ctx, pending);
+  return {
+    result: "Encontrei mais de um ano/combustível. Escolha a opção correta:",
+    interactiveList: {
+      body: "Qual é o ano/modelo e combustível?",
+      button: "Escolher ano",
+      section_title: "Opções FIPE",
+      rows: fipeListRows(pending.years, "fipe_year"),
+    },
+  };
+}
+
+async function identifyFipeVehicleFromPhoto(
+  media: MediaExtract,
+): Promise<{ brand: string; model: string; earliestYear?: number } | null> {
+  if (!media.base64) return null;
+  const imageUrl = `data:${media.mime || "image/jpeg"};base64,${media.base64}`;
+  const prompt =
+    'Identifique apenas como sugestão o veículo principal da foto. Responda SOMENTE JSON: {"brand":"marca","model":"modelo/geração","earliestYear":ano_inicial_no_Brasil_ou_null}. Não afirme o ano exato e não invente versão.';
+  try {
+    const response = await fetch(
+      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Lovable-API-Key": LOVABLE_API_KEY,
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3-flash-preview",
+          temperature: 0,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              { type: "image_url", image_url: { url: imageUrl } },
+            ],
+          }],
+        }),
+        signal: AbortSignal.timeout(20_000),
+      },
+    );
+    if (!response.ok) return null;
+    const data = await response.json();
+    const raw = String(data?.choices?.[0]?.message?.content || "")
+      .replace(/```json\s*|\s*```/gi, "")
+      .trim();
+    const parsed = JSON.parse(raw);
+    const brand = String(parsed?.brand || "").trim();
+    const model = String(parsed?.model || "").trim();
+    const earliestYear = Number(parsed?.earliestYear);
+    if (!brand || !model) return null;
+    return {
+      brand,
+      model,
+      earliestYear: Number.isInteger(earliestYear) &&
+          earliestYear >= 1900 && earliestYear <= new Date().getFullYear() + 1
+        ? earliestYear
+        : undefined,
+    };
+  } catch (error) {
+    console.warn("[fipe][vision]", (error as Error).message);
+    return null;
+  }
+}
+
+async function toolConsultarFipe(
+  rawArgs: FipeLookupInput,
+  ctx: {
+    userId: string;
+    fromNumber: string;
+    media?: MediaExtract[];
+    convId?: string;
+    agentState?: AgentConvState;
+  },
+): Promise<FipeToolResponse> {
+  try {
+    const args = normalizeFipeLookupInput(rawArgs ?? {});
+    const photo = (ctx.media || []).find((item) => item.kind === "image");
+    if (photo && (!args?.marca || !args?.modelo)) {
+      const suggestion = await identifyFipeVehicleFromPhoto(photo);
+      if (!suggestion) {
+        return {
+          result:
+            "Não consegui identificar o veículo com segurança pela foto. Me diga a marca, o modelo, o ano/modelo e a versão.",
+        };
+      }
+      const pending: PendingFipeState = {
+        stage: "photo_confirmation",
+        ...suggestion,
+        created_at: new Date().toISOString(),
+      };
+      await persistFipeState(ctx, pending);
+      return {
+        result: fipePhotoSuggestionMessage(suggestion),
+      };
+    }
+    const marca = String(args?.marca || "").trim();
+    const modelo = String(args?.modelo || "").trim();
+    if (!marca || !modelo) {
+      return {
+        result:
+          "Me diga a marca, o modelo, o ano/modelo e, se souber, a versão do veículo.",
+      };
+    }
+    const brand = await buscarMarca(marca);
+    if (!brand) {
+      return { result: `Não encontrei a marca “${marca}” na tabela FIPE.` };
+    }
+    const queryModel = [modelo, args?.versao].filter(Boolean).join(" ");
+    const rankedModels = await listarModelos(brand.code, queryModel);
+    const models = args.motor || args.cambio
+      ? filterFipeModelCandidates(rankedModels, args)
+      : rankedModels;
+    if (!models.length) {
+      return {
+        result:
+          `Não encontrei “${queryModel}” entre os modelos FIPE da ${brand.name}.`,
+      };
+    }
+    if (models.length > 1) {
+      const pending: PendingFipeState = {
+        stage: "model",
+        brand,
+        models: models.slice(0, 10),
+        requestedYear: args?.ano_modelo,
+        requestedFuel: args?.combustivel,
+        queryModel,
+        created_at: new Date().toISOString(),
+      };
+      await persistFipeState(ctx, pending);
+      return {
+        result: "Encontrei mais de uma versão. Escolha a correta:",
+        interactiveList: {
+          body: `Qual versão do ${modelo}?`,
+          button: "Escolher versão",
+          section_title: "Versões FIPE",
+          rows: fipeListRows(pending.models, "fipe_model"),
+        },
+      };
+    }
+    return await continueFipeWithModel(ctx, {
+      brand,
+      model: models[0],
+      queryModel,
+      requestedYear: args?.ano_modelo,
+      requestedFuel: args?.combustivel,
+    });
+  } catch (error) {
+    console.warn("[fipe][lookup]", (error as Error).message);
+    return {
+      result:
+        "Não consegui consultar a FIPE agora. Tente de novo em alguns minutos.",
+    };
+  }
+}
+
+async function handlePendingFipeTurn(
+  pendingFipe: PendingFipeState,
+  userContent: string,
+  toolCtx: {
+    userId: string;
+    fromNumber: string;
+    convId?: string;
+    agentState?: AgentConvState;
+  },
+): Promise<{
+  text: string;
+  imageUrl?: string;
+  interactiveList?: WhatsAppInteractiveList;
+  interactiveButtons?: WhatsAppInteractiveButtons;
+} | null> {
+  const age = Date.now() - new Date(pendingFipe.created_at).getTime();
+  const fipeInteractiveId = userContent.match(
+    /<<INTERACTIVE_ID:(fipe_(?:model|year):\d+|fipe_ad:(?:queried|supplied))>>/i,
+  )?.[1]?.toLowerCase();
+  if (!Number.isFinite(age) || age > 30 * 60 * 1000) {
+    await persistFipeState(toolCtx, null);
+    return null;
+  }
+  if (pendingFipe.stage === "model" && fipeInteractiveId) {
+    const index = Number(fipeInteractiveId.match(/^fipe_model:(\d+)$/)?.[1]);
+    const model = pendingFipe.models[index];
+    if (!model) {
+      return {
+        text: "Essa versão não está mais disponível. Escolha uma opção da lista.",
+        interactiveList: {
+          body: "Qual é a versão correta?",
+          button: "Escolher versão",
+          section_title: "Versões FIPE",
+          rows: fipeListRows(pendingFipe.models, "fipe_model"),
+        },
+      };
+    }
+    try {
+      const response = await continueFipeWithModel(toolCtx, {
+        brand: pendingFipe.brand,
+        model,
+        queryModel: pendingFipe.queryModel,
+        requestedYear: pendingFipe.requestedYear,
+        requestedFuel: pendingFipe.requestedFuel,
+      });
+      return {
+        text: response.result,
+        interactiveList: response.interactiveList,
+      };
+    } catch (error) {
+      console.warn("[fipe][model-choice]", (error as Error).message);
+      await persistFipeState(toolCtx, null);
+      return {
+        text:
+          "Não consegui consultar a FIPE agora. Tente de novo em alguns minutos.",
+      };
+    }
+  }
+  if (pendingFipe.stage === "year" && fipeInteractiveId) {
+    const index = Number(fipeInteractiveId.match(/^fipe_year:(\d+)$/)?.[1]);
+    const year = pendingFipe.years[index];
+    if (!year) {
+      return {
+        text: "Esse ano não está mais disponível. Escolha uma opção da lista.",
+        interactiveList: {
+          body: "Qual é o ano/modelo e combustível?",
+          button: "Escolher ano",
+          section_title: "Opções FIPE",
+          rows: fipeListRows(pendingFipe.years, "fipe_year"),
+        },
+      };
+    }
+    try {
+      const response = await finishFipeLookup(toolCtx, {
+        brand: pendingFipe.brand,
+        model: pendingFipe.model,
+        year,
+        queryModel: pendingFipe.queryModel,
+      });
+      return { text: response.result };
+    } catch (error) {
+      console.warn("[fipe][year-choice]", (error as Error).message);
+      await persistFipeState(toolCtx, null);
+      return {
+        text:
+          "Não consegui consultar a FIPE agora. Tente de novo em alguns minutos.",
+      };
+    }
+  }
+  if (
+    pendingFipe.stage === "photo_confirmation" &&
+    /\b(?:19|20)\d{2}\b/.test(userContent)
+  ) {
+    const year = userContent.match(/\b(?:19|20)\d{2}\b/)?.[0];
+    const version = compactSpaces(
+      userContent
+        .replace(/<<INTERACTIVE_ID:[^>]+>>/gi, "")
+        .replace(/\b(?:19|20)\d{2}\b/g, " ")
+        .replace(
+          /^(?:sim|confirma|confirmo|modelo|ano|vers[aã]o)\b[\s:,-]*/i,
+          "",
+        ),
+    );
+    const response = await toolConsultarFipe({
+      marca: pendingFipe.brand,
+      modelo: pendingFipe.model,
+      versao: version || undefined,
+      ano_modelo: year,
+    }, toolCtx);
+    return {
+      text: response.result,
+      interactiveList: response.interactiveList,
+    };
+  }
+  if (
+    pendingFipe.stage === "photo_confirmation" &&
+    /\b(?:sim|confirma|confirmo|fipe|vers[aã]o|ano|modelo)\b/i.test(userContent)
+  ) {
+    return { text: "Qual é o ano/modelo? Pela foto eu não afirmo o ano exato." };
+  }
+  if (
+    pendingFipe.stage === "ad_difference" &&
+    fipeInteractiveId?.startsWith("fipe_ad:")
+  ) {
+    const choice = fipeInteractiveId.endsWith(":queried")
+      ? "queried"
+      : "supplied";
+    const resumedArgs = { ...pendingFipe.args, _fipe_choice: choice };
+    await persistFipeState(toolCtx, null);
+    const raw = await toolCriarAnuncio(resumedArgs as any, toolCtx);
+    let parsed: any = {};
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return { text: raw };
+    }
+    return {
+      text: String(parsed?.mensagem || "Não consegui concluir o anúncio."),
+      imageUrl: parsed?.image_url,
+      interactiveButtons: parsed?.interactive_buttons,
+    };
+  }
+  // Outro assunto abandona a FIPE sem capturar o novo pedido.
+  await persistFipeState(toolCtx, null);
+  return null;
+}
+
 async function toolCriarAnuncio(
   args: {
     titulo?: string;
+    cliente?: string;
+    site?: string;
     subtitulo?: string;
     itens?: string[];
+    versao?: string;
+    motor?: string;
+    cambio?: string;
+    quilometragem?: string;
+    cor?: string;
+    donos?: string;
+    documentacao?: string;
+    revisoes?: string;
+    pneus?: string;
+    opcionais?: string[];
+    condicoes?: string[];
+    fipe?: string;
+    ano?: string;
     preco?: string;
     preco_label?: string;
+    preco_referencia?: string;
+    preco_referencia_label?: string;
+    preco_referencia_obs?: string;
     badge?: string;
     telefone?: string;
     instagram?: string;
     formato?: string;
+    estilo?: string;
     melhorar_foto?: boolean;
+    _foto_resolvida?: boolean;
+    _foto_url_original?: string;
+    _mostrar_tres_estilos?: boolean;
+    _refazer_foto?: boolean;
+    _usar_marca_tenant?: boolean;
+    _usar_apenas_nome_cliente?: boolean;
+    _fipe_choice?: "queried" | "supplied";
   },
-  ctx: { userId: string; fromNumber: string; media?: MediaExtract[] },
+  ctx: {
+    userId: string;
+    fromNumber: string;
+    media?: MediaExtract[];
+    convId?: string;
+    agentState?: AgentConvState;
+  },
 ): Promise<string> {
   try {
     if (!isOwner(ctx)) {
@@ -11158,18 +14882,210 @@ async function toolCriarAnuncio(
       });
     }
 
-    const titulo = (args?.titulo || "").trim();
+    const verticalScope = (ctx.agentState as Record<string, unknown> | undefined)
+      ?.__vertical_scope as InboundVertical | undefined;
+    const pendingVehicleIdentification =
+      ctx.agentState?.pending_vehicle_identification;
+    if (
+      verticalScope === "veiculo" &&
+      pendingVehicleIdentification?.confirmed &&
+      pendingVehicleIdentification.data
+    ) {
+      for (
+        const [key, value] of Object.entries(
+          pendingVehicleIdentification.data,
+        )
+      ) {
+        const target = args as Record<string, unknown>;
+        if (
+          value !== undefined &&
+          value !== null &&
+          String(value).trim() &&
+          !String(target[key] ?? "").trim()
+        ) {
+          target[key] = value;
+        }
+      }
+    }
+    const titleResolution = verticalScope === "veiculo"
+      ? resolveVehicleAdTitle({
+        requestedTitle: args?.titulo,
+        identification: pendingVehicleIdentification,
+      })
+      : null;
+    if (titleResolution && !titleResolution.ok) {
+      return JSON.stringify({
+        erro: "modelo_veiculo_nao_confirmado",
+        mensagem: titleResolution.reason === "unconfirmed_suggestion"
+          ? "A identificação pela foto é apenas uma sugestão. Confirme ou corrija a marca e o modelo antes de gerar o anúncio."
+          : "Não vou gerar o anúncio com um título genérico. Confirme a marca e o modelo exatos do veículo.",
+      });
+    }
+    let titulo = titleResolution?.ok
+      ? titleResolution.title
+      : (args?.titulo || "").trim();
     if (titulo.length < 2) {
       return JSON.stringify({
         erro: "titulo_ausente",
-        instrucao: "Pergunte em 1 linha qual é o produto (modelo/nome) antes de montar o anúncio.",
+        mensagem: "Qual é o produto ou modelo que deve aparecer no anúncio?",
+      });
+    }
+    const vehiclePrice = verticalScope === "veiculo"
+      ? resolveVehiclePrice(args.preco)
+      : null;
+    if (vehiclePrice && !vehiclePrice.ok) {
+      return JSON.stringify({
+        erro: "preco_veiculo_ausente",
+        mensagem:
+          "Qual é o preço? Se não quiser informar, escolha “Sem preço” ou “Consulte”.",
+      });
+    }
+    if (vehiclePrice?.ok) args.preco = vehiclePrice.value;
+    const titleParts = [titulo];
+    for (const value of [args.versao, args.ano]) {
+      const text = String(value || "").trim();
+      if (
+        text &&
+        !titleParts.join(" ").toLocaleLowerCase("pt-BR").includes(
+          text.toLocaleLowerCase("pt-BR"),
+        )
+      ) {
+        titleParts.push(text);
+      }
+    }
+    args.titulo = titleParts.join(" ").trim() || titulo;
+    titulo = args.titulo;
+
+    const suppliedFipe = args?.fipe ||
+      (String(args?.preco_referencia_label || "").toUpperCase() === "FIPE"
+        ? args?.preco_referencia
+        : undefined);
+    if (args?._fipe_choice === "queried" && ctx.agentState?.last_fipe) {
+      args.fipe = ctx.agentState.last_fipe.price;
+      args.preco_referencia = undefined;
+      args.preco_referencia_label = "FIPE";
+      args.preco_referencia_obs = ctx.agentState.last_fipe.referenceMonth;
+    } else if (args?._fipe_choice === "supplied") {
+      args.fipe = String(suppliedFipe || "");
+    } else {
+      const fipeDecision = decideFipeForAd({
+        last: ctx.agentState?.last_fipe,
+        titulo: args?.titulo,
+        versao: args?.versao,
+        ano: args?.ano,
+        suppliedFipe,
+      });
+      if (fipeDecision.action === "use_last") {
+        args.fipe = fipeDecision.value;
+        args.preco_referencia_label = "FIPE";
+        args.preco_referencia_obs = fipeDecision.referenceMonth;
+      } else if (fipeDecision.action === "confirm") {
+        const pending: PendingFipeState = {
+          stage: "ad_difference",
+          args: { ...args },
+          queriedValue: fipeDecision.queriedValue,
+          suppliedValue: fipeDecision.suppliedValue,
+          referenceMonth: fipeDecision.referenceMonth,
+          created_at: new Date().toISOString(),
+        };
+        await persistFipeState(ctx, pending);
+        return JSON.stringify({
+          status: "fipe_divergente",
+          mensagem:
+            `A FIPE consultada (${fipeDecision.queriedValue}) difere mais de 5% do valor informado (${fipeDecision.suppliedValue}). Qual devo usar?`,
+          interactive_buttons: {
+            body: "Escolha o valor de referência:",
+            buttons: [
+              { id: "fipe_ad:queried", title: "Usar FIPE consultada" },
+              { id: "fipe_ad:supplied", title: "Usar o meu valor" },
+            ],
+          },
+        });
+      }
+    }
+
+    if (shouldAskAmzAnuncioClient({
+      tenantId: ctx.userId,
+      amzTenantId: ADMIN_AMZ_USER_ID,
+      clientName: args?.cliente,
+      useTenantBrand: args?._usar_marca_tenant,
+    })) {
+      if (ctx.convId) {
+        const conversation = {
+          id: ctx.convId,
+          userId: ctx.userId,
+          contactNumber: ctx.fromNumber,
+        };
+        const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+        const pending = {
+          args: { ...args },
+          created_at: new Date().toISOString(),
+        };
+        await saveAgentState(
+          sb,
+          conversation,
+          { pending_anuncio_cliente: pending },
+          current,
+        );
+        current.pending_anuncio_cliente = pending;
+        ctx.agentState = current;
+      }
+      return JSON.stringify({
+        erro: "cliente_loja_necessario",
+        mensagem: "Para qual loja é esse anúncio? Me mande o nome e o site da loja.",
+        interactive_buttons: amzAnuncioClientButtons(),
       });
     }
 
     const formato = (args?.formato || "").toLowerCase() === "story" ? "story" : "feed";
+    const anuncioIdentity = await resolveAnuncioClientIdentity({
+      userId: ctx.userId,
+      clientName: args?.cliente,
+      site: args?.site,
+      allowNameOnly: args?._usar_apenas_nome_cliente,
+    });
+    if (anuncioIdentity.mode === "missing") {
+      if (ctx.userId === ADMIN_AMZ_USER_ID && ctx.convId) {
+        const conversation = {
+          id: ctx.convId,
+          userId: ctx.userId,
+          contactNumber: ctx.fromNumber,
+        };
+        const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+        const pending = {
+          args: { ...args },
+          created_at: new Date().toISOString(),
+        };
+        await saveAgentState(
+          sb,
+          conversation,
+          { pending_anuncio_cliente: pending },
+          current,
+        );
+        current.pending_anuncio_cliente = pending;
+        ctx.agentState = current;
+      }
+      return JSON.stringify({
+        erro: "identidade_cliente_ausente",
+        mensagem: anuncioIdentity.message,
+        ...(ctx.userId === ADMIN_AMZ_USER_ID
+          ? { interactive_buttons: amzMissingClientLogoButtons() }
+          : {}),
+      });
+    }
+    const requestedStyle = ANUNCIO_STYLES.includes(args?.estilo as AnuncioStyle)
+      ? args?.estilo as AnuncioStyle
+      : null;
+    const savedStyle = anuncioIdentity.mode === "client"
+      ? savedClientAnuncioStyle(anuncioIdentity.identity)
+      : await getTenantAnuncioStyle(sb, ctx.userId);
+    const singleStyle = args?._mostrar_tres_estilos
+      ? null
+      : requestedStyle ?? savedStyle;
 
     // 1) FOTO — turno atual; senão, última foto recente da biblioteca (30 min)
-    let fotoUrl: string | null = null;
+    let fotoUrl: string | null = String(args?._foto_url_original || "").trim() ||
+      null;
     const imgAtual = (ctx.media || []).slice().reverse().find((m) => m.kind === "image");
     if (imgAtual?.base64) {
       try {
@@ -11188,17 +15104,7 @@ async function toolCriarAnuncio(
     }
     if (!fotoUrl) {
       try {
-        const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-        const { data: rec } = await sb
-          .from("midias_whatsapp")
-          .select("midia_url, created_at")
-          .eq("user_id", ctx.userId)
-          .eq("telefone_origem", ctx.fromNumber)
-          .eq("tipo", "foto")
-          .gte("created_at", cutoff)
-          .order("created_at", { ascending: false })
-          .limit(1);
-        if (rec?.[0]?.midia_url) fotoUrl = rec[0].midia_url as string;
+        fotoUrl = await buscarFotoOriginalRecenteParaAnuncio(ctx);
       } catch (e) {
         console.warn("[criar_anuncio] fallback midias falhou:", (e as Error).message);
       }
@@ -11206,9 +15112,58 @@ async function toolCriarAnuncio(
     if (!fotoUrl) {
       return JSON.stringify({
         erro: "sem_foto",
-        instrucao: "Peça em 1 linha que ele mande a FOTO do produto (pode ser do celular) e depois repita os dados.",
+        mensagem: "Me mande a foto original do produto ou veículo para montar o anúncio.",
       });
     }
+
+    const argumentPhotoPreference: AnuncioPhotoPreference | null =
+      typeof args?.melhorar_foto === "boolean"
+        ? (args.melhorar_foto ? "melhorada" : "original")
+        : null;
+    const savedPhotoPreference = argumentPhotoPreference
+      ? null
+      : await getTenantAnuncioPhotoPreference(sb, ctx.userId);
+    const photoPreference = resolveAnuncioPhotoPreference({
+      explicit: argumentPhotoPreference,
+      saved: savedPhotoPreference,
+    });
+    if (!photoPreference) {
+      if (!ctx.convId) {
+        return JSON.stringify({
+          erro: "preferencia_foto_necessaria",
+          mensagem:
+            "Como quer a foto do anúncio? Melhorar só muda fundo e luz; o veículo fica igual.",
+          interactive_buttons: anuncioPhotoChoiceButtons(),
+        });
+      }
+      const conversation = {
+        id: ctx.convId,
+        userId: ctx.userId,
+        contactNumber: ctx.fromNumber,
+      };
+      const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+      const pendingPhoto = {
+        stage: "choice" as const,
+        args: { ...args, _foto_url_original: fotoUrl },
+        created_at: new Date().toISOString(),
+      };
+      const saved = await saveAgentState(sb, conversation, {
+        pending_anuncio_photo: pendingPhoto,
+      }, current);
+      if (!saved) {
+        throw new Error("não consegui salvar a escolha pendente da foto");
+      }
+      current.pending_anuncio_photo = pendingPhoto;
+      ctx.agentState = current;
+      return JSON.stringify({
+        status: "aguardando_preferencia_foto",
+        mensagem:
+          "Como quer a foto do anúncio? Melhorar só muda fundo e luz; o veículo fica igual.",
+        interactive_buttons: anuncioPhotoChoiceButtons(),
+      });
+    }
+    args.melhorar_foto = shouldImproveAnuncioPhoto(photoPreference);
+    args._foto_resolvida = true;
 
     // 2) Guardrail simples de volume/dia
     try {
@@ -11228,24 +15183,50 @@ async function toolCriarAnuncio(
 
     // 3) IA melhora SÓ a foto (nada de texto na imagem)
     let fotoFinal = fotoUrl;
+    let fotoSource: "improved" | "original" = "original";
     if (args?.melhorar_foto !== false) {
       try {
         const raw = await toolEditarImagem(
-          `Prepare esta foto de ${titulo} para um anúncio comercial premium: recorte/valorize o produto principal, ambiente elegante de showroom com piso reflexivo, iluminação de estúdio, fundo escuro sofisticado e levemente desfocado. É a MESMA unidade da foto original (mesma cor, mesmos detalhes, mesma placa) — não troque por outro modelo.`,
-          { userId: ctx.userId, fromNumber: ctx.fromNumber, media: ctx.media, textos: [], modo: "anuncio", preservarAmbiente: false, registrarNaBiblioteca: false },
+          productAdPhotoImprovementPrompt(titulo),
+          {
+            userId: ctx.userId,
+            fromNumber: ctx.fromNumber,
+            media: ctx.media,
+            textos: [],
+            modo: "anuncio",
+            preservarAmbiente: false,
+            registrarNaBiblioteca: false,
+            imageInputUrl: fotoUrl,
+          },
         );
         const parsed = JSON.parse(raw);
-        if (parsed?.image_url) fotoFinal = parsed.image_url;
-        else console.warn("[criar_anuncio] melhoria da foto falhou:", parsed?.erro);
+        if (parsed?.image_url) {
+          fotoFinal = parsed.image_url;
+          fotoSource = "improved";
+          console.log("[criar_anuncio] melhoria da foto concluída; usando foto melhorada");
+        } else {
+          console.warn("[criar_anuncio] melhoria da foto falhou; usando original:", parsed?.erro);
+        }
       } catch (e) {
-        console.warn("[criar_anuncio] melhoria da foto exceção:", (e as Error).message);
+        console.warn("[criar_anuncio] melhoria da foto lançou exceção; usando original:", (e as Error).message);
       }
+    } else {
+      console.log("[criar_anuncio] melhoria desativada; usando foto original");
     }
+    console.log(`[criar_anuncio] foto selecionada=${fotoSource}`);
+    const fotoBox = await detectarCaixaProdutoVisao(fotoFinal);
+    console.log(
+      `[criar_anuncio] foto_box=${
+        fotoBox
+          ? [fotoBox.ymin, fotoBox.xmin, fotoBox.ymax, fotoBox.xmax].join(",")
+          : "ausente; usando contain"
+      }`,
+    );
 
     // 4) Identidade do tenant (nome do negócio / @ / telefone)
-    let businessName: string | null = null;
+    let businessName: string | null = anuncioIdentity.businessName;
     let instagram = (args?.instagram || "").trim() || null;
-    try {
+    if (anuncioIdentity.mode === "tenant") try {
       const { data: conn } = await sb
         .from("meta_connections")
         .select("page_name, ig_username")
@@ -11267,63 +15248,241 @@ async function toolCriarAnuncio(
       } catch { /* opcional */ }
     }
 
-    const itens = (Array.isArray(args?.itens) ? args!.itens! : [])
-      .map((i) => String(i || "").trim())
-      .filter(Boolean)
-      .slice(0, 8);
+    const vehicleContent = buildVehicleAdContent(args);
+    const itens = vehicleContent.highlights;
+    const fallbackSubtitle = String(args?.subtitulo || "")
+      .replace(String(args?.ano || ""), "")
+      .replace(/\s*[•|,-]\s*$/, "")
+      .trim() || null;
+    const anuncioData: Record<string, unknown> = {
+      titulo,
+      subtitulo: vehicleContent.subtitle || fallbackSubtitle,
+      versao: args?.versao,
+      motor: args?.motor,
+      cambio: args?.cambio,
+      quilometragem: args?.quilometragem,
+      cor: args?.cor,
+      donos: args?.donos,
+      documentacao: args?.documentacao,
+      opcionais: args?.opcionais,
+      revisoes: args?.revisoes,
+      pneus: args?.pneus,
+      condicoes: args?.condicoes,
+      itens,
+      ficha: vehicleContent.ficha,
+      ano: args?.ano,
+      preco: args?.preco,
+      fipe: args?.fipe || (
+        String(args?.preco_referencia_label || "").toUpperCase() === "FIPE"
+          ? args?.preco_referencia
+          : undefined
+      ),
+      preco_referencia: args?.preco_referencia,
+      preco_referencia_label: args?.preco_referencia_label,
+      preco_referencia_obs: args?.preco_referencia_obs,
+      telefone,
+      instagram,
+    };
 
-    // 5) RENDER — texto/preço/logo por template (exatos)
-    const render = await callEdge("render-anuncio-produto", {
+    // 5) RENDER — a foto é melhorada uma vez e reutilizada nos templates.
+    const renderPayload: Record<string, unknown> = {
       user_id: ctx.userId,
       titulo,
-      subtitulo: args?.subtitulo || null,
+      subtitulo: vehicleContent.subtitle || fallbackSubtitle,
       itens,
+      ficha: vehicleContent.ficha,
+      ano: args?.ano || null,
       preco: args?.preco || null,
       preco_label: args?.preco_label || null,
+      preco_referencia: args?.preco_referencia || args?.fipe || null,
+      preco_referencia_label: args?.preco_referencia_label ||
+        (args?.fipe ? "FIPE" : null),
+      preco_referencia_obs: args?.preco_referencia_obs || null,
       badge: args?.badge || null,
       telefone,
       instagram,
       business_name: businessName,
+      logo_is_icon: anuncioIdentity.mode === "client"
+        ? (() => {
+          const ratio = Number(anuncioIdentity.identity.identity?.logo_aspect_ratio);
+          return Number.isFinite(ratio) && ratio >= 0.8 && ratio <= 1.25;
+        })()
+        : false,
+      logo_source: anuncioIdentity.mode,
+      primary_color: anuncioIdentity.colors[1] || anuncioIdentity.colors[0] || undefined,
+      accent_color: anuncioIdentity.colors[0] || undefined,
       foto_url: fotoFinal,
+      foto_url_original: fotoUrl,
+      foto_source: fotoSource,
+      foto_box: fotoBox
+        ? [fotoBox.ymin, fotoBox.xmin, fotoBox.ymax, fotoBox.xmax]
+        : null,
       formato,
       incluir_logo: true,
-    }, 120000);
+    };
+    const styles = singleStyle ? [singleStyle] : [...ANUNCIO_STYLES];
+    const renders = await Promise.all(styles.map(async (style) => {
+      const background = style === "catalogo" ? "light" : "dark";
+      const logoPath = anuncioIdentity.mode === "client"
+        ? clientLogoPath(anuncioIdentity.identity, background, true)
+        : null;
+      const render = await callEdge("render-anuncio-produto", {
+        ...renderPayload,
+        estilo: style,
+        logo_path: logoPath,
+      }, 120000);
+      if (!render?.success || !render?.image_url) {
+        throw new Error(String(render?.error || `falha no estilo ${style}`));
+      }
+      return { style, render };
+    }));
 
-    if (!render?.success || !render?.image_url) {
-      return JSON.stringify({ erro: "falha_no_render", detalhe: String(render?.error || "erro desconhecido").slice(0, 200) });
-    }
-
-    // 6) Salva na biblioteca /midias pra poder publicar depois
-    let midiaId: string | null = null;
-    try {
-      const { data: mid } = await sb
-        .from("midias_whatsapp")
-        .insert({
+    // 6) Salva todos os estilos na biblioteca.
+    const savedMedia = await Promise.all(renders.map(async ({ style, render }) => {
+      try {
+        const { data: mid } = await sb.from("midias_whatsapp").insert({
           user_id: ctx.userId,
           telefone_origem: ctx.fromNumber,
           tipo: "foto",
           midia_url: render.image_url,
-          contexto_original: `Anúncio ${formato}: ${titulo}`,
+          contexto_original: `Anúncio ${style} ${formato}: ${titulo}`,
           origem: "anuncio_produto",
           status: "pendente",
-        })
-        .select("id")
-        .maybeSingle();
-      midiaId = mid?.id ?? null;
-    } catch (e) {
-      console.warn("[criar_anuncio] salvar na biblioteca falhou:", (e as Error).message);
+        }).select("id").maybeSingle();
+        return mid?.id ?? null;
+      } catch (e) {
+        console.warn("[criar_anuncio] salvar na biblioteca falhou:", (e as Error).message);
+        return null;
+      }
+    }));
+
+    if (requestedStyle) {
+      if (anuncioIdentity.mode === "client") {
+        await saveClientBrandIdentity(sb, {
+          userId: ctx.userId,
+          clientName: anuncioIdentity.businessName,
+          identity: { preferred_ad_style: requestedStyle },
+        });
+      } else {
+        await saveTenantAnuncioStyle(sb, ctx.userId, requestedStyle);
+      }
     }
 
+    if (ctx.convId) {
+      const conversation = {
+        id: ctx.convId,
+        userId: ctx.userId,
+        contactNumber: ctx.fromNumber,
+      };
+      const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+      const images = renders.map(({ style, render }, index) => ({
+        style,
+        formato,
+        id: String(savedMedia[index] || ""),
+        url: String(render.image_url),
+      })) satisfies LastAnuncioImage[];
+      const lastAnuncio: LastAnuncio = {
+        images,
+        selected_style: renders.length === 1 ? styles[0] : undefined,
+        data: anuncioData,
+        render_payload: renderPayload,
+        client_name: args?.cliente || null,
+        created_at: new Date().toISOString(),
+      };
+      const pending = {
+        render_payload: renderPayload,
+        source_args: {
+          ...args,
+          _foto_url_original: fotoUrl,
+          _foto_resolvida: true,
+          _mostrar_tres_estilos: true,
+          _refazer_foto: false,
+        },
+        client_name: args?.cliente || null,
+        shown_styles: styles,
+        images,
+        data: anuncioData,
+        photo_preference_used: photoPreference,
+        created_at: lastAnuncio.created_at,
+      };
+      const pendingPost: PendingAnuncioPost | null = renders.length === 1
+        ? {
+          stage: "action",
+          created_at: lastAnuncio.created_at,
+        }
+        : null;
+      const pendingPhoto = args?._refazer_foto
+        ? {
+          stage: "preference_confirmation" as const,
+          preference: photoPreference,
+          created_at: lastAnuncio.created_at,
+        }
+        : null;
+      const stateSaved = await saveAgentState(sb, conversation, {
+        pending_anuncio_styles: pending,
+        last_anuncio: lastAnuncio,
+        pending_anuncio_post: pendingPost,
+        pending_anuncio_photo: pendingPhoto,
+        pending_vehicle_identification: null,
+      }, current);
+      if (!stateSaved) {
+        throw new Error(
+          "não consegui salvar o anúncio para continuar a escolha e publicação",
+        );
+      }
+      current.pending_anuncio_styles = pending;
+      current.last_anuncio = lastAnuncio;
+      current.pending_anuncio_post = pendingPost;
+      current.pending_anuncio_photo = pendingPhoto;
+      current.pending_vehicle_identification = null;
+      ctx.agentState = current;
+    }
+
+    // A prévia sempre sai antes de qualquer controle de publicação. O retorno
+    // não carrega image_url para impedir que o chamador envie a mesma arte de
+    // novo junto dos botões.
+    const previewsSent = await enviarPreviewEstilosAnuncio(ctx, renders);
+    if (
+      !canOfferAnuncioPostActions({
+        previewsSent,
+        expectedPreviews: renders.length,
+      })
+    ) {
+      throw new Error(
+        "não consegui entregar todas as prévias; ações de publicação bloqueadas",
+      );
+    }
+    if (renders.length > 1) {
+      await sendWhatsApp(
+        ctx.userId,
+        ctx.fromNumber,
+        "Preparei os três estilos com a mesma foto. Qual você prefere?",
+        undefined,
+        undefined,
+        anuncioStyleButtons(),
+        { alreadyLogged: false },
+      );
+    }
     return JSON.stringify({
       ok: true,
-      image_url: render.image_url,
+      preview_sent: true,
+      image_urls: renders.map(({ render }) => render.image_url),
+      estilos: styles,
       formato,
-      logo_aplicada: !!render.logo_aplicada,
-      midia_id: midiaId,
+      logo_aplicada: renders.every(({ render }) => !!render.logo_aplicada),
+      midia_id: renders.length === 1 ? savedMedia[0] : null,
+      midia_ids: savedMedia.filter(Boolean),
       itens_usados: itens.length,
-      instrucao: render.logo_aplicada
-        ? "O anúncio já foi ENVIADO ao usuário com a logomarca da empresa. Diga em 1-2 linhas que ficou pronto, pergunte se está aprovado e ofereça publicar no Instagram/story (ele pode dizer 'posta essa imagem')."
-        : "O anúncio foi ENVIADO ao usuário, MAS sem logomarca (nenhuma cadastrada nesta conta). Avise em 1 linha que ele pode cadastrar a logo em Minha Marca no painel e pedir de novo, e ofereça publicar.",
+      mensagem: renders.length > 1
+        ? args?._refazer_foto
+          ? "Quer usar sempre assim?"
+          : "Se quiser, também posso refazer usando a outra opção de foto."
+        : anuncioSuccessMessage(),
+      interactive_buttons: renders.length > 1
+        ? args?._refazer_foto
+          ? anuncioPhotoPreferenceConfirmationButtons(photoPreference)
+          : anuncioPhotoRedoButtons(photoPreference)
+        : anuncioPostActionButtons(),
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message).slice(0, 250) });
@@ -11350,11 +15509,6 @@ function requestedFacebook(text: string): boolean {
   return /\b(facebook|face|fb|redes\s+sociais|todas?\s+as\s+redes|instagram\s+e\s+facebook|insta\s+e\s+face)\b/i.test(text || "");
 }
 
-function detectExplicitCarouselColor(text: string): string | undefined {
-  const match = String(text || "").match(/\b(?:cor|fundo|destaque)\s*[:=-]?\s*(azul|verde|laranja|preto|dourado|roxo)\b/i);
-  return match?.[1] && resolveCarouselColor(match[1]) ? match[1] : undefined;
-}
-
 // Extrai o tema do pedido, tirando o "faz um carrossel", o nº de páginas e o "posta no instagram".
 function extractCarrosselTema(text: string): string {
   let t = compactSpaces(text || "").replace(/^jarvis[,.!\s-]*/i, "");
@@ -11373,7 +15527,18 @@ function extractCarrosselTema(text: string): string {
 }
 
 // Resposta curta só com a cor ("Azul", "🟡 Dourado", "quero dourado")
-function detectStandaloneCarrosselColor(text: string): string | null {
+function detectStandaloneCarrosselColor(
+  text: string,
+  brandColor?: string,
+): string | null {
+  const interactive = String(text || "").match(
+    /<<INTERACTIVE_ID:carrossel_cor_(marca|azul|roxo)>>/i,
+  )?.[1]?.toLowerCase();
+  if (interactive === "marca") {
+    return resolveCarouselColor(brandColor)?.primaryColor ??
+      DEFAULT_CAROUSEL_COLOR.primaryColor;
+  }
+  if (interactive) return interactive;
   const raw = compactSpaces(text || "");
   if (!raw || raw.length > 40) return null;
   return resolveCarouselColor(raw) ? raw : null;
@@ -11386,6 +15551,11 @@ function formatCarrosselToolResult(raw: string): string {
     return d?.aviso_facebook
       ? `⚠️ ${d.aviso_facebook}<<SPLIT>>É só escolher a cor aí em cima 👆`
       : "É só escolher a cor aí em cima 👆";
+  }
+  if (d?.status === "aguardando_estilo") {
+    return d?.aviso_facebook
+      ? `⚠️ ${d.aviso_facebook}<<SPLIT>>É só escolher o estilo aí em cima 👆`
+      : "É só escolher o estilo aí em cima 👆";
   }
   if (d?.status === "aguardando_escolha_variante") return formatSocialPostToolResult(raw);
   if (d?.status === "demonstracao_carrossel") {
@@ -11504,8 +15674,16 @@ async function runTool(
     convId?: string;
     agentState?: AgentConvState;
     demoTestPhones?: string[];
+    vertical?: InboundVertical;
+    explicitFipe?: boolean;
+    verticalSegment?: string | null;
   },
-): Promise<{ result: string; imageUrl?: string; interactiveButtons?: WhatsAppInteractiveButtons }> {
+): Promise<{
+  result: string;
+  imageUrl?: string;
+  interactiveButtons?: WhatsAppInteractiveButtons;
+  interactiveList?: WhatsAppInteractiveList;
+}> {
   if (OWNER_ONLY_TOOL_NAMES.has(name) && !isOwner(ctx)) {
     return { result: "Essa ferramenta é restrita ao responsável da conta." };
   }
@@ -11532,13 +15710,21 @@ async function runTool(
   }
   const demonstracao = creativeDecision.mode === "demo";
   const hasFreshLibraryMedia = (ctx.media ?? []).some((m) => m.kind === "image" || m.kind === "video");
-  if (hasFreshLibraryMedia && name !== "salvar_midia_biblioteca" && name !== "encaminhar_recado_ao_dono") {
+  if (
+    hasFreshLibraryMedia &&
+    name !== "salvar_midia_biblioteca" &&
+    name !== "encaminhar_recado_ao_dono" &&
+    name !== "consultar_fipe"
+  ) {
     console.warn(`[pietro][media_guard] bloqueando tool ${name}; mídia nova deve ir para /midias`);
     const result = await toolSalvarMidiaBiblioteca({ contexto: args?.contexto ?? args?.produto ?? args?.query ?? "" }, ctx);
     return { result };
   }
 
   if (name === "consultar_cnpj") return { result: await toolConsultarCnpj(args?.cnpj ?? "") };
+  if (name === "consultar_fipe") {
+    return await toolConsultarFipe(args ?? {}, ctx);
+  }
   if (name === "pesquisar_web") return { result: await toolPesquisarWeb(args?.query ?? "", args?.recencia) };
   if (name === "buscar_lugares_proximos") return { result: await toolBuscarLugaresProximos(ctx, args?.query ?? "", args?.radius_meters) };
   if (name === "gerar_imagem") {
@@ -11617,6 +15803,9 @@ async function runTool(
   if (name === "consultar_noticias") return { result: await toolConsultarNoticias(args?.tema ?? "") };
   if (name === "rastrear_correios") return { result: await toolRastrearCorreios(args?.codigo ?? "") };
   if (name === "calcular_rota") return { result: await toolCalcularRota(args?.origem ?? "", args?.destino ?? "", ctx) };
+  if (name === "alterar_limite_mensal_anuncios") {
+    return await toolProporLimiteMensalMetaAds(args?.novo_limite, ctx);
+  }
   if (name === "relatorio_anuncios_meta") {
     return {
       result: await toolRelatorioAnunciosMeta(args?.periodo, ctx),
@@ -11672,7 +15861,11 @@ async function runTool(
   if (name === "criar_anuncio") {
     const r = await toolCriarAnuncio(args ?? {}, ctx);
     let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}
-    return { result: r, imageUrl: parsed?.image_url };
+    return {
+      result: r,
+      imageUrl: parsed?.image_url,
+      interactiveButtons: parsed?.interactive_buttons,
+    };
   }
 
   if (name === "encaminhar_recado_ao_dono") return { result: await toolEncaminharRecadoAoDono(args ?? {}, ctx) };
@@ -11709,6 +15902,9 @@ async function callGemini(
     convId?: string;
     agentState?: AgentConvState;
     demoTestPhones?: string[];
+    vertical?: InboundVertical;
+    explicitFipe?: boolean;
+    verticalSegment?: string | null;
   },
 ): Promise<{
   text: string;
@@ -11721,17 +15917,58 @@ async function callGemini(
 }> {
   let forwardProof: string | undefined;
   let forwardAttempted = false;
+  const activeVertical = toolCtx.vertical ?? "geral";
   const senderIsOwner = isOwner(toolCtx);
   const senderIsAmzProspect = !senderIsOwner
     && toolCtx.userId === ADMIN_AMZ_USER_ID;
+  const multimodalText = Array.isArray(userContent)
+    ? userContent
+      .filter((part: any) => part?.type === "text")
+      .map((part: any) => String(part.text || ""))
+      .join(" ")
+    : "";
+  if (
+    (activeVertical === "veiculo" || toolCtx.explicitFipe) && hasMedia &&
+    senderIsOwner &&
+    isExplicitFipeRequest(multimodalText)
+  ) {
+    const response = await toolConsultarFipe(
+      parseFipeRequestText(multimodalText),
+      toolCtx,
+    );
+    return {
+      text: response.result,
+      interactiveList: response.interactiveList,
+    };
+  }
+  const audioOnly = !!toolCtx.media?.length &&
+    toolCtx.media.every((item) => item.kind === "audio");
+  if (hasMedia && audioOnly && multimodalText) {
+    const transcript = multimodalText.match(
+      /TRANSCRIÇÃO DO ÁUDIO[^:]*:\s*"([\s\S]*)"\s*$/i,
+    )?.[1]?.trim();
+    // Áudio transcrito participa dos mesmos atalhos determinísticos do texto.
+    // A mídia continua disponível no contexto caso o modelo seja necessário.
+    userContent = transcript || multimodalText;
+    hasMedia = false;
+  }
   const nowSP = new Date().toLocaleString("pt-BR", {
     timeZone: "America/Sao_Paulo",
     weekday: "long", day: "2-digit", month: "2-digit", year: "numeric",
     hour: "2-digit", minute: "2-digit",
   });
   const timeHeader = `Data/hora atual em São Paulo: ${nowSP}. Use isto para resolver expressões como "hoje", "amanhã", "daqui a X min" ao chamar ferramentas de agendamento.`;
+  const specialistPrompt = activeVertical === "veiculo"
+    ? vehicleSpecialistPrompt()
+    : generalSpecialistPrompt(
+      toolCtx.verticalSegment,
+      toolCtx.explicitFipe === true,
+    );
   const messages: any[] = [
-    { role: "system", content: `${timeHeader}\n\n${systemPrompt}` },
+    {
+      role: "system",
+      content: `${timeHeader}\n\n${specialistPrompt}\n\n${systemPrompt}`,
+    },
     ...history,
     { role: "user", content: userContent },
   ];
@@ -11753,14 +15990,94 @@ async function callGemini(
   let blockModelPendingTextActions = hasMedia;
   let modelPendingActionNotice = "";
 
+  if (
+    hasMedia &&
+    isOwner(toolCtx) &&
+    toolCtx.agentState?.pending_anuncio_photo &&
+    toolCtx.convId
+  ) {
+    const conversation = {
+      id: toolCtx.convId,
+      userId: toolCtx.userId,
+      contactNumber: toolCtx.fromNumber,
+    };
+    const current = toolCtx.agentState;
+    await saveAgentState(sb, conversation, {
+      pending_anuncio_photo: null,
+    }, current);
+    current.pending_anuncio_photo = null;
+  }
+
   if (!hasMedia && typeof userContent === "string") {
     const remetenteEhDono = isOwner(toolCtx);
+    if (remetenteEhDono && toolCtx.convId && toolCtx.agentState) {
+      await clearExpiredAnuncioPendingState({
+        id: toolCtx.convId,
+        userId: toolCtx.userId,
+        contactNumber: toolCtx.fromNumber,
+      }, toolCtx.agentState);
+    }
     const prospectAmz = !remetenteEhDono && toolCtx.userId === ADMIN_AMZ_USER_ID;
     const pendingCarousel = remetenteEhDono || prospectAmz ? toolCtx.agentState?.pending_carousel : null;
+    const pendingVehicleCarousel = remetenteEhDono &&
+        validPendingVehicleCarousel(
+          toolCtx.agentState?.pending_carrossel_veiculo,
+        )
+      ? toolCtx.agentState!.pending_carrossel_veiculo!
+      : null;
+    const pendingVehiclePhotoBatch = remetenteEhDono &&
+        validPendingVehiclePhotoBatch(
+          toolCtx.agentState?.pending_vehicle_photo_batch,
+        )
+      ? toolCtx.agentState!.pending_vehicle_photo_batch!
+      : null;
+    let pendingVehicleIdentification = remetenteEhDono
+      ? toolCtx.agentState?.pending_vehicle_identification
+      : null;
+    if (
+      pendingVehicleIdentification &&
+      !validPendingVehicleIdentification(pendingVehicleIdentification)
+    ) {
+      if (toolCtx.convId) {
+        await saveAgentState(sb, {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        }, { pending_vehicle_identification: null }, toolCtx.agentState ?? {});
+      }
+      if (toolCtx.agentState) {
+        toolCtx.agentState.pending_vehicle_identification = null;
+      }
+      pendingVehicleIdentification = null;
+    }
+    const pendingSinglePhoto = remetenteEhDono ? toolCtx.agentState?.pending_single_photo : null;
     const pendingVideoSetup = remetenteEhDono ? toolCtx.agentState?.pending_video_setup : null;
+    const pendingAnuncioCliente = remetenteEhDono
+      ? toolCtx.agentState?.pending_anuncio_cliente
+      : null;
+    const pendingCreativeMediaAmbiguity = remetenteEhDono
+      ? toolCtx.agentState?.pending_creative_media_ambiguity
+      : null;
     const pendingClientLogo = remetenteEhDono ? toolCtx.agentState?.pending_client_logo : null;
     const pendingClientLogoIntent = remetenteEhDono ? toolCtx.agentState?.pending_client_logo_intent : null;
+    const pendingAnuncioStyles = remetenteEhDono
+      ? toolCtx.agentState?.pending_anuncio_styles
+      : null;
+    const pendingAnuncioPhoto = remetenteEhDono
+      ? toolCtx.agentState?.pending_anuncio_photo
+      : null;
+    const lastAnuncio = remetenteEhDono && validLastAnuncio(
+        toolCtx.agentState?.last_anuncio,
+      )
+      ? toolCtx.agentState!.last_anuncio!
+      : null;
+    const pendingAnuncioPost = remetenteEhDono
+      ? toolCtx.agentState?.pending_anuncio_post
+      : null;
     const pendingBrandGeneration = remetenteEhDono ? toolCtx.agentState?.pending_brand_generation : null;
+    const pendingFipe = remetenteEhDono
+      ? toolCtx.agentState?.pending_fipe
+      : null;
     const latestPendingSocial = remetenteEhDono
       ? await findLatestPendingSocialToken(toolCtx.userId, toolCtx.fromNumber)
       : null;
@@ -11779,7 +16096,58 @@ async function callGemini(
     const normalizedInput = normalizePt(userContent);
     const brandInteractiveId = userContent.match(/<<INTERACTIVE_ID:(brand_[^>]+)>>/i)?.[1]?.toLowerCase() || "";
     const socialInteractiveId = userContent.match(/<<INTERACTIVE_ID:(social_[^>]+)>>/i)?.[1] || "";
-    const socialActionInteractive = socialInteractiveId.match(/^social_(publish|publish_confirm|schedule):([a-f0-9]{8})$/i);
+    const anuncioPostInteractiveId = userContent.match(
+      /<<INTERACTIVE_ID:(anuncio_post:[^>]+)>>/i,
+    )?.[1]?.toLowerCase() || "";
+    const anuncioPhotoInteractiveId = userContent.match(
+      /<<INTERACTIVE_ID:(anuncio_photo(?::|_pref:)[^>]+)>>/i,
+    )?.[1]?.toLowerCase() || "";
+    const vehicleCarouselInteractiveId = userContent.match(
+      /<<INTERACTIVE_ID:(vehicle_carousel:[^>]+)>>/i,
+    )?.[1]?.toLowerCase() || "";
+    const vehiclePhotoBatchInteractiveId = userContent.match(
+      /<<INTERACTIVE_ID:(vehicle_photo_batch:[^>]+)>>/i,
+    )?.[1]?.toLowerCase() || "";
+    const vehicleIdentificationInteractiveId = userContent.match(
+      /<<INTERACTIVE_ID:(vehicle_identification:[^>]+)>>/i,
+    )?.[1]?.toLowerCase() || "";
+    const singlePhotoInteractiveId = userContent.match(
+      /<<INTERACTIVE_ID:(single_photo:[^>]+)>>/i,
+    )?.[1]?.toLowerCase() || "";
+    if (pendingFipe) {
+      const response = await handlePendingFipeTurn(
+        pendingFipe,
+        userContent,
+        toolCtx,
+      );
+      if (response) return response;
+    }
+    if (remetenteEhDono && isExplicitFipeRequest(userContent)) {
+      const input = fipeInputFromConfirmedVehicle(
+        userContent,
+        pendingVehicleIdentification,
+      );
+      if (
+        vehicleFipeTurn(userContent, input) === "fipe_ask_year" &&
+        input.marca && input.modelo
+      ) {
+        await persistFipeState(toolCtx, {
+          stage: "photo_confirmation",
+          brand: input.marca,
+          model: input.modelo,
+          created_at: new Date().toISOString(),
+        });
+        return {
+          text: `Qual é o ano/modelo do ${input.marca} ${input.modelo}?`,
+        };
+      }
+      const response = await toolConsultarFipe(input, toolCtx);
+      return {
+        text: response.result,
+        interactiveList: response.interactiveList,
+      };
+    }
+    const socialActionInteractive = socialInteractiveId.match(/^social_(publish|publish_confirm|schedule|cancel):([a-f0-9]{8})$/i);
     const socialVariantInteractive = socialInteractiveId.match(/^social_variant:([ABC]):([a-f0-9]{8})$/i);
     const previousHistoryMessage = history.at(-1);
     const previousTurnAskedVideoTheme = previousHistoryMessage?.role === "assistant"
@@ -11787,6 +16155,36 @@ async function callGemini(
         normalizePt(String(previousHistoryMessage.content ?? "")),
       );
     const ownerMediaIntent = classifyOwnerMediaIntent(userContent);
+    if (
+      remetenteEhDono &&
+      ownerMediaIntent.action === "edit" &&
+      (
+        pendingAnuncioCliente ||
+        pendingAnuncioStyles ||
+        pendingAnuncioPhoto ||
+        pendingAnuncioPost
+      ) &&
+      toolCtx.convId
+    ) {
+      const cleared = {
+        pending_anuncio_cliente: null,
+        pending_anuncio_styles: null,
+        pending_anuncio_photo: null,
+        pending_anuncio_post: null,
+      };
+      await saveAgentState(sb, {
+        id: toolCtx.convId,
+        userId: toolCtx.userId,
+        contactNumber: toolCtx.fromNumber,
+      }, cleared, toolCtx.agentState ?? {});
+      return await callGemini(systemPrompt, history, userContent, false, {
+        ...toolCtx,
+        agentState: {
+          ...(toolCtx.agentState ?? {}),
+          ...cleared,
+        },
+      });
+    }
     const explicitPendingCommand = classifyExplicitPendingPostCommand(userContent, hasMedia);
     const anyPendingInteractive = !!socialInteractiveId || !!tiktokInteractiveId(userContent);
     modelPendingActionNotice = explicitPendingCommand && latestPendingSocial
@@ -11806,11 +16204,1331 @@ async function callGemini(
     if (pendingVideoDraft && isVideoApproval(userContent)) {
       return { text: await confirmarRascunhoVideo(toolCtx) };
     }
-    if (remetenteEhDono && isVideoMotionRedoRequest(userContent)) {
+    let videoMotionRedo = remetenteEhDono &&
+      isVideoMotionRedoRequest(userContent);
+    if (
+      remetenteEhDono &&
+      !videoMotionRedo &&
+      /\b(refaz|refazer|corrig[ei]|corrige|ajusta|ajustar|troca|trocar|muda|mudar)\b/
+        .test(normalizedInput) &&
+      !/\b(foto|imagem)\b/.test(normalizedInput)
+    ) {
+      const { data: latestMedia } = await sb.from("midias_whatsapp")
+        .select("tipo, origem, created_at")
+        .eq("user_id", toolCtx.userId)
+        .eq("telefone_origem", toolCtx.fromNumber)
+        .in("tipo", ["foto", "video"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const latestGeneratedVideoAt =
+        latestMedia?.tipo === "video" &&
+          latestMedia?.origem === "ia_video_motion"
+          ? latestMedia.created_at
+          : null;
+      videoMotionRedo = isVideoMotionRedoRequest(
+        userContent,
+        latestGeneratedVideoAt,
+      );
+    }
+    if (videoMotionRedo) {
       return { text: await refazerVideoMotion(toolCtx, userContent) };
     }
+
+    const vehicleDataFromText = (text: string): VehicleCarouselData => {
+      const data = parseVehicleCarouselData(text);
+      const explicitPrice = explicitVehiclePriceChoice(text);
+      return explicitPrice ? { ...data, preco: explicitPrice } : data;
+    };
+    const saveVehicleIdentification = async (
+      next: typeof pendingVehicleIdentification,
+    ) => {
+      if (!toolCtx.convId) return;
+      await saveAgentState(sb, {
+        id: toolCtx.convId,
+        userId: toolCtx.userId,
+        contactNumber: toolCtx.fromNumber,
+      }, { pending_vehicle_identification: next }, toolCtx.agentState ?? {});
+      if (toolCtx.agentState) {
+        toolCtx.agentState.pending_vehicle_identification = next;
+      }
+      pendingVehicleIdentification = next;
+    };
+    const confirmVehicleIdentification = async (
+      correctedTitle?: string,
+      suppliedData: VehicleCarouselData = {},
+    ) => {
+      if (!pendingVehicleIdentification) {
+        return { text: "Não encontrei uma identificação de veículo pendente." };
+      }
+      const identity = pendingVehicleIdentification.identification;
+      const confirmedTitle = String(
+        correctedTitle ||
+          `${identity.marca || ""} ${identity.modelo || ""}`,
+      ).trim();
+      if (
+        !(correctedTitle
+          ? looksLikeVehicleMakeModel(confirmedTitle)
+          : hasSpecificVehicleModel(identity)) ||
+        isGenericVehicleTitle(confirmedTitle)
+      ) {
+        return {
+          text:
+            "Preciso da marca e do modelo exatos, por exemplo: Fiat Grand Siena. Qual é?",
+        };
+      }
+      const mergedData: VehicleCarouselData = {
+        ...(pendingVehicleIdentification.data ?? {}),
+        ...suppliedData,
+        titulo: confirmedTitle,
+        ...(identity.cor && !suppliedData.cor ? { cor: identity.cor } : {}),
+      };
+      const missing = [
+        !mergedData.ano ? "ano" : "",
+        !mergedData.quilometragem ? "quilometragem" : "",
+        !mergedData.preco ? "preço" : "",
+      ].filter(Boolean);
+      if (
+        pendingVehicleIdentification.target === "carousel" &&
+        pendingVehicleCarousel
+      ) {
+        await persistVehicleCarousel(toolCtx, {
+          ...pendingVehicleCarousel,
+          stage: "awaiting_data" as const,
+          data: {
+            ...(pendingVehicleCarousel.data ?? {}),
+            ...mergedData,
+          },
+          created_at: new Date().toISOString(),
+        });
+        await saveVehicleIdentification(null);
+      } else {
+        await saveVehicleIdentification({
+          ...pendingVehicleIdentification,
+          confirmed: true,
+          confirmed_title: confirmedTitle,
+          awaiting_correction: false,
+          data: mergedData,
+          created_at: new Date().toISOString(),
+        });
+      }
+      return {
+        text: missing.length
+          ? `Confirmado: ${confirmedTitle}. Falta informar: ${
+            missing.join(", ")
+          }.`
+          : `Confirmado: ${confirmedTitle}. Guardei ano, quilometragem e preço.`,
+      };
+    };
+
+    if (
+      remetenteEhDono &&
+      pendingVehicleIdentification &&
+      !vehicleIdentificationInteractiveId &&
+      isVehicleIdentificationAbandonRequest(userContent)
+    ) {
+      await saveVehicleIdentification(null);
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleIdentification &&
+      vehicleIdentificationInteractiveId ===
+        "vehicle_identification:correct"
+    ) {
+      if (toolCtx.convId) {
+        const next = {
+          ...pendingVehicleIdentification,
+          awaiting_correction: true,
+          created_at: new Date().toISOString(),
+        };
+        await saveAgentState(sb, {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        }, { pending_vehicle_identification: next }, toolCtx.agentState ?? {});
+        if (toolCtx.agentState) {
+          toolCtx.agentState.pending_vehicle_identification = next;
+        }
+      }
+      return {
+        text:
+          "Qual é a marca, o modelo, a versão e o ano? Vou usar exatamente o que você informar.",
+      };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleIdentification &&
+      vehicleIdentificationInteractiveId ===
+        "vehicle_identification:confirm"
+    ) {
+      return await confirmVehicleIdentification();
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleIdentification &&
+      !vehicleIdentificationInteractiveId &&
+      !/<<INTERACTIVE_ID:/i.test(userContent) &&
+      isVehicleIdentificationConfirmation(
+        userContent,
+        pendingVehicleIdentification.identification,
+      )
+    ) {
+      const { titulo: _ignoredSuggestion, ...suppliedData } =
+        vehicleDataFromText(userContent);
+      return await confirmVehicleIdentification(undefined, suppliedData);
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleIdentification &&
+      !vehicleIdentificationInteractiveId &&
+      !/<<INTERACTIVE_ID:/i.test(userContent) &&
+      userContent.trim() &&
+      (
+        pendingVehicleIdentification.awaiting_correction ||
+        pendingVehicleIdentification.identification.confianca === "baixa"
+      )
+    ) {
+      const corrected = vehicleDataFromText(userContent);
+      const confirmedTitle = String(
+        corrected.titulo || userContent.split(/[,\n;]/)[0] || "",
+      ).trim().slice(0, 100);
+      if (
+        !looksLikeVehicleMakeModel(confirmedTitle) ||
+        isGenericVehicleTitle(confirmedTitle)
+      ) {
+        return {
+          text:
+            "Preciso da marca e do modelo exatos, por exemplo: Fiat Grand Siena. Qual é?",
+        };
+      }
+      return await confirmVehicleIdentification(confirmedTitle, corrected);
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleIdentification &&
+      !pendingVehicleIdentification.confirmed &&
+      !vehicleIdentificationInteractiveId &&
+      hasVehicleCarouselData(userContent)
+    ) {
+      const { titulo: _ignoredTitle, ...suppliedData } =
+        vehicleDataFromText(userContent);
+      const next = {
+        ...pendingVehicleIdentification,
+        data: {
+          ...(pendingVehicleIdentification.data ?? {}),
+          ...suppliedData,
+        },
+        created_at: new Date().toISOString(),
+      };
+      await saveVehicleIdentification(next);
+      const identity = pendingVehicleIdentification.identification;
+      const suggestedTitle = `${identity.marca || ""} ${
+        identity.modelo || ""
+      }`.trim();
+      return {
+        text: `Guardei os dados. Confirma que é um ${suggestedTitle}?`,
+        interactiveButtons: vehicleIdentificationButtons(),
+      };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleIdentification &&
+      !pendingVehicleIdentification.confirmed &&
+      !vehicleIdentificationInteractiveId
+    ) {
+      return {
+        text: vehicleIdentificationQuestion(
+          pendingVehicleIdentification.identification,
+        ),
+        interactiveButtons:
+          pendingVehicleIdentification.identification.confianca !== "baixa" &&
+            hasSpecificVehicleModel(
+              pendingVehicleIdentification.identification,
+            )
+            ? vehicleIdentificationButtons()
+            : undefined,
+      };
+    }
+    if (
+      remetenteEhDono &&
+      !pendingVehicleCarousel &&
+      isVehiclePhotoCarouselTextRequest(userContent)
+    ) {
+      const recentPhotos = await recentWhatsAppVehiclePhotos({
+        userId: toolCtx.userId,
+        fromNumber: toolCtx.fromNumber,
+        windowMs: 3 * 60 * 1000,
+      });
+      const state = await startVehicleCarouselFlow(
+        toolCtx,
+        recentPhotos,
+        recentPhotos.length ? "texto_com_fotos_recentes" : "texto_explicito",
+      );
+      return {
+        text: state.photos.length
+          ? `Recebi ${vehiclePhotoCountLabel(state.photos.length)}. Manda mais ou toque em Pronto.`
+          : "Me manda até 8 fotos do veículo. Quando terminar, toque em Pronto.",
+        interactiveButtons: vehicleCarouselCollectionButtons(),
+      };
+    }
+    if (remetenteEhDono && !pendingVehicleCarousel) {
+      console.log("[carrossel] gatilho=não motivo=texto_sem_pedido");
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehiclePhotoBatch &&
+      vehiclePhotoBatchInteractiveId === "vehicle_photo_batch:carousel"
+    ) {
+      const state = await startVehicleCarouselFlow(
+        toolCtx,
+        pendingVehiclePhotoBatch.photos,
+        "botao_lote_fotos",
+      );
+      const identification = await beginVehicleIdentification(toolCtx, {
+        photos: state.photos,
+        target: "carousel",
+      });
+      return {
+        text:
+          `Carrossel com ${vehiclePhotoCountLabel(state.photos.length)}.\n\n${identification.text}`,
+        interactiveButtons: identification.interactiveButtons,
+      };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehiclePhotoBatch &&
+      vehiclePhotoBatchInteractiveId === "vehicle_photo_batch:ad"
+    ) {
+      const firstPhoto = pendingVehiclePhotoBatch.photos[0];
+      if (toolCtx.convId) {
+        const conversation = {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        };
+        const current = toolCtx.agentState!;
+        const interaction = firstPhoto
+          ? { media_id: firstPhoto.id, at: new Date().toISOString() }
+          : undefined;
+        await saveAgentState(sb, conversation, {
+          pending_vehicle_photo_batch: null,
+          ...(interaction ? { last_media_interaction: interaction } : {}),
+        }, current);
+        current.pending_vehicle_photo_batch = null;
+        if (interaction) current.last_media_interaction = interaction;
+      }
+      return await beginVehicleIdentification(toolCtx, {
+        photos: pendingVehiclePhotoBatch.photos,
+        target: "single_ad",
+      });
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehiclePhotoBatch &&
+      vehiclePhotoBatchInteractiveId === "vehicle_photo_batch:none"
+    ) {
+      await persistVehiclePhotoBatch(toolCtx, null);
+      return { text: "Certo. As fotos ficaram salvas na biblioteca." };
+    }
+    if (remetenteEhDono && pendingSinglePhoto && singlePhotoInteractiveId === "single_photo:ad") {
+      if (toolCtx.convId) {
+        await saveAgentState(sb, { id: toolCtx.convId, userId: toolCtx.userId, contactNumber: toolCtx.fromNumber }, { pending_single_photo: null }, toolCtx.agentState ?? {});
+        if (toolCtx.agentState) toolCtx.agentState.pending_single_photo = null;
+      }
+      return { text: "Me mande em uma mensagem os dados reais do anúncio: título, preço, itens e condições. Vou usar esta foto." };
+    }
+    if (remetenteEhDono && pendingSinglePhoto && singlePhotoInteractiveId === "single_photo:edit") {
+      if (toolCtx.convId) {
+        await saveAgentState(sb, { id: toolCtx.convId, userId: toolCtx.userId, contactNumber: toolCtx.fromNumber }, { pending_single_photo: null }, toolCtx.agentState ?? {});
+        if (toolCtx.agentState) toolCtx.agentState.pending_single_photo = null;
+      }
+      return { text: "O que você quer mudar nesta foto? Diga somente as alterações desejadas." };
+    }
+    if (remetenteEhDono && pendingSinglePhoto && singlePhotoInteractiveId === "single_photo:post") {
+      const connected = await connectedAnuncioNetworks(toolCtx.userId);
+      if (!connected.length) return { text: "Não encontrei Facebook nem Instagram conectados nessa conta." };
+      const next = { ...pendingSinglePhoto, stage: "networks" as const, created_at: new Date().toISOString() };
+      if (toolCtx.convId) {
+        await saveAgentState(sb, { id: toolCtx.convId, userId: toolCtx.userId, contactNumber: toolCtx.fromNumber }, { pending_single_photo: next }, toolCtx.agentState ?? {});
+        if (toolCtx.agentState) toolCtx.agentState.pending_single_photo = next;
+      }
+      const networkButtons = anuncioPostNetworkButtons(connected);
+      return {
+        text: "Em quais redes?",
+        interactiveButtons: {
+          ...networkButtons,
+          buttons: networkButtons.buttons.map((button) => ({
+            ...button,
+            id: button.id.replace("anuncio_post:networks:", "single_photo:networks:"),
+          })),
+        },
+      };
+    }
+    const singlePhotoNetworks = singlePhotoInteractiveId.match(/^single_photo:networks:(both|instagram|facebook)$/)?.[1];
+    if (remetenteEhDono && pendingSinglePhoto?.stage === "networks" && singlePhotoNetworks) {
+      const networks: AnuncioPostNetwork[] = singlePhotoNetworks === "both"
+        ? ["facebook", "instagram"]
+        : [singlePhotoNetworks as AnuncioPostNetwork];
+      const next = { ...pendingSinglePhoto, stage: "format" as const, networks, created_at: new Date().toISOString() };
+      if (toolCtx.convId) {
+        await saveAgentState(sb, { id: toolCtx.convId, userId: toolCtx.userId, contactNumber: toolCtx.fromNumber }, { pending_single_photo: next }, toolCtx.agentState ?? {});
+        if (toolCtx.agentState) toolCtx.agentState.pending_single_photo = next;
+      }
+      return { text: "Em qual formato?", interactiveButtons: singlePhotoFormatButtons() };
+    }
+    const singlePhotoFormat = singlePhotoInteractiveId.match(/^single_photo:format:(feed|story)$/)?.[1] as "feed" | "story" | undefined;
+    if (remetenteEhDono && pendingSinglePhoto?.stage === "format" && pendingSinglePhoto.networks?.length && singlePhotoFormat) {
+      const raw = await toolPostarMidiaBiblioteca({
+        midia_id: pendingSinglePhoto.media_id,
+        pedido_original: `esta foto no ${singlePhotoFormat}`,
+        redes: pendingSinglePhoto.networks,
+        formato: singlePhotoFormat,
+        tom: "beneficio",
+      }, toolCtx);
+      if (toolCtx.convId) {
+        await saveAgentState(sb, { id: toolCtx.convId, userId: toolCtx.userId, contactNumber: toolCtx.fromNumber }, { pending_single_photo: null }, toolCtx.agentState ?? {});
+        if (toolCtx.agentState) toolCtx.agentState.pending_single_photo = null;
+      }
+      return { text: formatSocialPostToolResult(raw), interactiveButtons: interactiveButtonsFromSocialResult(raw) };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel &&
+      vehicleCarouselInteractiveId === "vehicle_carousel:cancel"
+    ) {
+      if (pendingVehicleCarousel.token) {
+        await toolConfirmarPostagemRedes({
+          token: pendingVehicleCarousel.token,
+          cancelar: true,
+        }, toolCtx);
+      }
+      await persistVehicleCarousel(toolCtx, null);
+      return { text: "Carrossel cancelado." };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel &&
+      ["collecting", "data_choice", "awaiting_data"].includes(
+        pendingVehicleCarousel.stage,
+      ) &&
+      vehicleCarouselInteractiveId === "vehicle_carousel:photos:add"
+    ) {
+      if (pendingVehicleCarousel.stage !== "collecting") {
+        await persistVehicleCarousel(toolCtx, {
+          ...pendingVehicleCarousel,
+          stage: "collecting",
+          created_at: new Date().toISOString(),
+        });
+      }
+      return {
+        text: "Pode mandar as fotos. Quando terminar, toque em Pronto.",
+        interactiveButtons: vehicleCarouselCollectionButtons(),
+      };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel?.stage === "collecting" &&
+      vehicleCarouselInteractiveId === "vehicle_carousel:photos:done"
+    ) {
+      if (!hasEnoughVehicleCarouselPhotos(pendingVehicleCarousel.photos.length)) {
+        const needMore = vehicleCarouselNeedMoreButtons(
+          pendingVehicleCarousel.photos.length,
+        );
+        return {
+          text: needMore.body,
+          interactiveButtons: needMore,
+        };
+      }
+      return await beginVehicleIdentification(toolCtx, {
+        photos: pendingVehicleCarousel.photos,
+        target: "carousel",
+      });
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel?.stage === "data_choice" &&
+      vehicleCarouselInteractiveId === "vehicle_carousel:data:last"
+    ) {
+      const next = {
+        ...pendingVehicleCarousel,
+        data: pendingVehicleCarousel.suggested_data || {},
+        suggested_data: undefined,
+        created_at: new Date().toISOString(),
+      };
+      return await askVehicleCarouselPhotoOrFormat(next, toolCtx);
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel?.stage === "data_choice" &&
+      vehicleCarouselInteractiveId === "vehicle_carousel:data:new"
+    ) {
+      const next = {
+        ...pendingVehicleCarousel,
+        stage: "awaiting_data" as const,
+        suggested_data: undefined,
+        created_at: new Date().toISOString(),
+      };
+      await persistVehicleCarousel(toolCtx, next);
+      const approvalToken = pendingVehicleCarousel.token!;
+      const exactPending = PENDING_POSTS.get(approvalToken) ??
+        await loadPendingSocialPost(approvalToken, toolCtx.userId);
+      if (!exactPending) {
+        return { text: "Não encontrei a mídia exata deste preview. Nada foi publicado." };
+      }
+      const preview = await sendExactPendingSocialPreview(
+        approvalToken,
+        exactPending,
+        toolCtx,
+      );
+      if (!preview.ok) return { text: preview.message };
+      return {
+        text:
+          "Me mande em uma mensagem os dados que tiver: modelo, ano, km, câmbio, preço, condições e contato. O que não informar não aparece.",
+      };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel?.stage === "awaiting_data" &&
+      !vehicleCarouselInteractiveId &&
+      hasVehicleCarouselData(userContent)
+    ) {
+      const data = parseVehicleCarouselData(userContent);
+      const next = {
+        ...pendingVehicleCarousel,
+        data,
+        created_at: new Date().toISOString(),
+      };
+      return await askVehicleCarouselPhotoOrFormat(next, toolCtx);
+    }
+    const vehiclePhotoChoice = vehicleCarouselInteractiveId.match(
+      /^vehicle_carousel:photo:(melhorada|original)$/,
+    )?.[1] as AnuncioPhotoPreference | undefined;
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel?.stage === "photo_choice" &&
+      vehiclePhotoChoice
+    ) {
+      const next = {
+        ...pendingVehicleCarousel,
+        stage: "format_choice" as const,
+        photo_preference: vehiclePhotoChoice,
+        created_at: new Date().toISOString(),
+      };
+      await persistVehicleCarousel(toolCtx, next);
+      return {
+        text: "Qual formato do carrossel?",
+        interactiveButtons: vehicleCarouselFormatButtons(),
+      };
+    }
+    const vehicleFormat = vehicleCarouselInteractiveId.match(
+      /^vehicle_carousel:format:(portrait|square)$/,
+    )?.[1] as "portrait" | "square" | undefined;
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel?.stage === "format_choice" &&
+      vehicleFormat
+    ) {
+      try {
+        return await renderVehicleCarousel({
+          ...pendingVehicleCarousel,
+          format: vehicleFormat,
+        }, toolCtx);
+      } catch (error) {
+        await persistVehicleCarousel(toolCtx, null);
+        return {
+          text:
+            `Não consegui montar o carrossel: ${(error as Error).message}.`,
+        };
+      }
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel?.stage === "delivered" &&
+      vehicleCarouselInteractiveId === "vehicle_carousel:deliver"
+    ) {
+      if (pendingVehicleCarousel.image_urls?.length) {
+        await enviarPreviewCarrossel(
+          toolCtx,
+          pendingVehicleCarousel.image_urls,
+        );
+      }
+      await persistVehicleCarousel(toolCtx, null);
+      return {
+        text:
+          `Álbum pronto para encaminhar.${pendingVehicleCarousel.caption ? `\n\n${pendingVehicleCarousel.caption}` : ""}`,
+      };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel?.stage === "delivered" &&
+      vehicleCarouselInteractiveId === "vehicle_carousel:save"
+    ) {
+      await persistVehicleCarousel(toolCtx, null);
+      return { text: "Salvei o carrossel na biblioteca. Nada foi publicado." };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel?.stage === "delivered" &&
+      vehicleCarouselInteractiveId === "vehicle_carousel:publish"
+    ) {
+      const connected = await connectedAnuncioNetworks(toolCtx.userId);
+      if (!connected.length) {
+        return { text: "Não encontrei Facebook nem Instagram conectados." };
+      }
+      const next = {
+        ...pendingVehicleCarousel,
+        stage: "network_choice" as const,
+        created_at: new Date().toISOString(),
+      };
+      await persistVehicleCarousel(toolCtx, next);
+      return {
+        text: "Em quais redes?",
+        interactiveButtons: vehicleCarouselNetworkButtons(connected),
+      };
+    }
+    const vehicleNetworks = vehicleCarouselInteractiveId.match(
+      /^vehicle_carousel:networks:(both|instagram|facebook)$/,
+    )?.[1];
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel?.stage === "network_choice" &&
+      vehicleNetworks
+    ) {
+      const connected = await connectedAnuncioNetworks(toolCtx.userId);
+      const requested: AnuncioPostNetwork[] = vehicleNetworks === "both"
+        ? ["facebook", "instagram"]
+        : [vehicleNetworks as AnuncioPostNetwork];
+      const networks = requested.filter((network) =>
+        connected.includes(network)
+      );
+      const raw = await prepareVehicleCarouselSocial(
+        pendingVehicleCarousel,
+        networks,
+        toolCtx,
+      );
+      return {
+        text: formatSocialPostToolResult(raw),
+        interactiveButtons: interactiveButtonsFromSocialResult(raw),
+      };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel?.stage === "caption_choice" &&
+      pendingVehicleCarousel.token &&
+      socialVariantInteractive?.[2]?.toLowerCase() ===
+        pendingVehicleCarousel.token
+    ) {
+      const option = socialVariantInteractive[1].toUpperCase() as
+        | "A"
+        | "B"
+        | "C";
+      const selected = await toolEscolherVariantePost({
+        token: pendingVehicleCarousel.token,
+        opcao: option,
+      }, toolCtx);
+      const parsed = JSON.parse(selected);
+      if (parsed?.status !== "variante_selecionada") {
+        return { text: formatSocialPostToolResult(selected) };
+      }
+      const next = {
+        ...pendingVehicleCarousel,
+        stage: "approval" as const,
+        created_at: new Date().toISOString(),
+      };
+      await persistVehicleCarousel(toolCtx, next);
+      return {
+        text:
+          `Resumo: carrossel de *${pendingVehicleCarousel.data?.titulo || "veículo"}*, ${pendingVehicleCarousel.image_urls?.length || 0} páginas, ${parsed?.preview ? Object.keys(parsed.preview).join(" + ") : "redes selecionadas"}, legenda *Opção ${option}*. Nada foi publicado ainda.`,
+        interactiveButtons: {
+          body: "Revise e confirme:",
+          buttons: [
+            {
+              id:
+                `vehicle_carousel:confirm:${pendingVehicleCarousel.token}`,
+              title: "Publicar",
+            },
+            {
+              id: `vehicle_carousel:cancel:${pendingVehicleCarousel.token}`,
+              title: "Cancelar",
+            },
+          ],
+        },
+      };
+    }
+    const vehiclePublishAction = vehicleCarouselInteractiveId.match(
+      /^vehicle_carousel:(confirm|cancel):([a-f0-9]{8})$/,
+    );
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel?.stage === "approval" &&
+      pendingVehicleCarousel.token &&
+      vehiclePublishAction?.[2] === pendingVehicleCarousel.token
+    ) {
+      const result = await toolConfirmarPostagemRedes({
+        token: pendingVehicleCarousel.token,
+        cancelar: vehiclePublishAction[1] === "cancel",
+      }, toolCtx);
+      await persistVehicleCarousel(toolCtx, null);
+      return { text: formatSocialPostToolResult(result) };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleCarousel &&
+      !vehicleCarouselInteractiveId
+    ) {
+      // Texto de outro assunto abandona o fluxo sem insistir.
+      await persistVehicleCarousel(toolCtx, null);
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehiclePhotoBatch &&
+      !vehiclePhotoBatchInteractiveId
+    ) {
+      // A oferta automática também não prende a conversa.
+      await persistVehiclePhotoBatch(toolCtx, null);
+    }
+    const anuncioPhotoRedo = anuncioPhotoInteractiveId.match(
+      /^anuncio_photo:redo:(melhorada|original)$/,
+    )?.[1] as AnuncioPhotoPreference | undefined;
+    if (
+      remetenteEhDono &&
+      anuncioPhotoRedo &&
+      pendingAnuncioStyles?.source_args
+    ) {
+      const age = Date.now() -
+        new Date(pendingAnuncioStyles.created_at).getTime();
+      if (!Number.isFinite(age) || age > 2 * 60 * 60 * 1000) {
+        return {
+          text:
+            "Esse anúncio não está mais disponível para refazer. Envie a foto e os dados novamente.",
+        };
+      }
+      const raw = await toolCriarAnuncio({
+        ...pendingAnuncioStyles.source_args,
+        melhorar_foto: shouldImproveAnuncioPhoto(anuncioPhotoRedo),
+        _foto_resolvida: true,
+        _mostrar_tres_estilos: true,
+        _refazer_foto: true,
+        estilo: undefined,
+      } as any, {
+        ...toolCtx,
+        media: [],
+      });
+      let parsed: any = {};
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        return { text: raw };
+      }
+      return {
+        text: String(
+          parsed?.mensagem || "Não consegui refazer o anúncio.",
+        ),
+        imageUrl: parsed?.image_url,
+        interactiveButtons: parsed?.interactive_buttons,
+      };
+    }
+    const anuncioPhotoChoice = anuncioPhotoInteractiveId.match(
+      /^anuncio_photo:(melhorada|original)$/,
+    )?.[1] as AnuncioPhotoPreference | undefined;
+    if (
+      remetenteEhDono &&
+      anuncioPhotoChoice &&
+      pendingAnuncioPhoto?.stage === "choice" &&
+      pendingAnuncioPhoto.args
+    ) {
+      const age = Date.now() -
+        new Date(pendingAnuncioPhoto.created_at).getTime();
+      if (!Number.isFinite(age) || age > 2 * 60 * 60 * 1000) {
+        return {
+          text:
+            "Essa escolha expirou. Envie a foto e os dados do anúncio novamente.",
+        };
+      }
+      await saveTenantAnuncioPhotoPreference(
+        sb,
+        toolCtx.userId,
+        anuncioPhotoChoice,
+      );
+      if (toolCtx.convId) {
+        const conversation = {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        };
+        const current = toolCtx.agentState ??
+          await loadAgentState(sb, conversation);
+        const saved = await saveAgentState(sb, conversation, {
+          pending_anuncio_photo: null,
+        }, current);
+        if (!saved) {
+          return {
+            text:
+              "Salvei sua preferência, mas não consegui retomar esse anúncio. Envie o pedido novamente.",
+          };
+        }
+        current.pending_anuncio_photo = null;
+        toolCtx.agentState = current;
+      }
+      const raw = await toolCriarAnuncio({
+        ...pendingAnuncioPhoto.args,
+        melhorar_foto: shouldImproveAnuncioPhoto(anuncioPhotoChoice),
+        _foto_resolvida: true,
+      } as any, toolCtx);
+      let parsed: any = {};
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        return { text: raw };
+      }
+      return {
+        text: String(
+          parsed?.mensagem || "Não consegui concluir o anúncio.",
+        ),
+        imageUrl: parsed?.image_url,
+        interactiveButtons: parsed?.interactive_buttons,
+      };
+    }
+    const anuncioPhotoAlways = anuncioPhotoInteractiveId.match(
+      /^anuncio_photo_pref:always:(melhorada|original)$/,
+    )?.[1] as AnuncioPhotoPreference | undefined;
+    const anuncioPhotoOnce =
+      anuncioPhotoInteractiveId === "anuncio_photo_pref:once";
+    if (
+      remetenteEhDono &&
+      pendingAnuncioPhoto?.stage === "preference_confirmation" &&
+      (anuncioPhotoAlways || anuncioPhotoOnce)
+    ) {
+      if (anuncioPhotoAlways) {
+        await saveTenantAnuncioPhotoPreference(
+          sb,
+          toolCtx.userId,
+          anuncioPhotoAlways,
+        );
+      }
+      if (toolCtx.convId) {
+        const conversation = {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        };
+        const current = toolCtx.agentState ??
+          await loadAgentState(sb, conversation);
+        const saved = await saveAgentState(sb, conversation, {
+          pending_anuncio_photo: null,
+        }, current);
+        if (!saved) {
+          return {
+            text:
+              "Não consegui concluir essa escolha agora. Tente novamente.",
+          };
+        }
+        current.pending_anuncio_photo = null;
+        toolCtx.agentState = current;
+      }
+      return {
+        text: anuncioPhotoAlways
+          ? `Certo — vou usar a foto ${anuncioPhotoAlways} nos próximos anúncios.`
+          : "Certo — usei assim só desta vez e mantive sua preferência anterior.",
+      };
+    }
+    if (
+      remetenteEhDono &&
+      pendingAnuncioPhoto &&
+      !anuncioPhotoInteractiveId
+    ) {
+      // A pergunta da foto não sequestra outro assunto.
+      if (toolCtx.convId) {
+        const conversation = {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        };
+        const current = toolCtx.agentState ??
+          await loadAgentState(sb, conversation);
+        await saveAgentState(sb, conversation, {
+          pending_anuncio_photo: null,
+        }, current);
+        current.pending_anuncio_photo = null;
+        toolCtx.agentState = current;
+      }
+    }
+    const anuncioStyleInteractive = userContent.match(
+      /<<INTERACTIVE_ID:anuncio_style:(impacto|catalogo|destaque)>>/i,
+    )?.[1]?.toLowerCase() as AnuncioStyle | undefined;
+    const wantsOtherAnuncioStyles =
+      /<<INTERACTIVE_ID:anuncio_other_styles>>/i.test(userContent);
+    if (anuncioStyleInteractive && pendingAnuncioStyles) {
+      const client = pendingAnuncioStyles.client_name
+        ? await findClientBrandIdentity(sb, toolCtx.userId, {
+          name: pendingAnuncioStyles.client_name,
+        })
+        : null;
+      if (client) {
+        await saveClientBrandIdentity(sb, {
+          userId: toolCtx.userId,
+          clientName: client.client_name,
+          identity: { preferred_ad_style: anuncioStyleInteractive },
+        });
+      } else {
+        await saveTenantAnuncioStyle(
+          sb,
+          toolCtx.userId,
+          anuncioStyleInteractive,
+        );
+      }
+      const selectedImage = pendingAnuncioStyles.images?.find((image) =>
+        image.style === anuncioStyleInteractive
+      );
+      const lastAnuncio: LastAnuncio = {
+        images: pendingAnuncioStyles.images ?? [],
+        selected_style: anuncioStyleInteractive,
+        data: pendingAnuncioStyles.data ?? {},
+        render_payload: pendingAnuncioStyles.render_payload,
+        client_name: pendingAnuncioStyles.client_name,
+        created_at: pendingAnuncioStyles.created_at,
+      };
+      const pendingPost: PendingAnuncioPost = {
+        stage: "action",
+        created_at: new Date().toISOString(),
+      };
+      await persistAnuncioFlowState(toolCtx, {
+        last_anuncio: lastAnuncio,
+        pending_anuncio_post: pendingPost,
+      });
+      if (selectedImage?.id) {
+        await rememberLastMediaInteraction(toolCtx, selectedImage.id);
+      }
+      return {
+        text: `${anuncioSuccessMessage()} Salvei *${anuncioStyleInteractive}* como seu estilo preferido.`,
+        interactiveButtons: anuncioPostActionButtons(),
+      };
+    }
+    if (wantsOtherAnuncioStyles && pendingAnuncioStyles) {
+      const age = Date.now() -
+        new Date(pendingAnuncioStyles.created_at).getTime();
+      if (Number.isFinite(age) && age <= 2 * 60 * 60 * 1000) {
+        const preferred = pendingAnuncioStyles.shown_styles[0];
+        const styles = pendingAnuncioStyles.shown_styles.length === 1
+          ? otherAnuncioStyles(preferred)
+          : ANUNCIO_STYLES;
+        const client = pendingAnuncioStyles.client_name
+          ? await findClientBrandIdentity(sb, toolCtx.userId, {
+            name: pendingAnuncioStyles.client_name,
+          })
+          : null;
+        const renders = await Promise.all(styles.map(async (style) => {
+          const logoPath = client
+            ? clientLogoPath(
+              client,
+              style === "catalogo" ? "light" : "dark",
+              true,
+            )
+            : null;
+          const render = await callEdge("render-anuncio-produto", {
+            ...pendingAnuncioStyles.render_payload,
+            estilo: style,
+            logo_path: logoPath,
+          }, 120000);
+          return { style, render };
+        }));
+        const urls = renders.map(({ render }) => render?.image_url).filter(Boolean);
+        if (urls.length === styles.length) {
+          await enviarPreviewEstilosAnuncio(
+            toolCtx,
+            renders as Array<{
+              style: AnuncioStyle;
+              render: { image_url: string };
+            }>,
+          );
+          return {
+            text: "Aqui estão os outros estilos. Qual você prefere?",
+            interactiveButtons: {
+              body: "Qual você prefere?",
+              buttons: styles.map((style) => ({
+                id: `anuncio_style:${style}`,
+                title: style === "catalogo"
+                  ? "Catálogo"
+                  : style[0].toUpperCase() + style.slice(1),
+              })),
+            },
+          };
+        }
+      }
+      return { text: "Esse anúncio não está mais disponível para comparar. Me envie o pedido novamente." };
+    }
+    if (remetenteEhDono && anuncioPostInteractiveId && lastAnuncio) {
+      const action = anuncioPostInteractiveId.match(
+        /^anuncio_post:action:(publish|schedule|save)$/,
+      )?.[1] as "publish" | "schedule" | "save" | undefined;
+      if (action === "save") {
+        await persistAnuncioFlowState(toolCtx, {
+          last_anuncio: lastAnuncio,
+          pending_anuncio_post: null,
+        });
+        return { text: "Salvei o anúncio. Quando quiser publicar, é só pedir usando o estilo escolhido." };
+      }
+      if (action === "publish" || action === "schedule") {
+        const next: PendingAnuncioPost = {
+          stage: "format",
+          action,
+          created_at: new Date().toISOString(),
+        };
+        await persistAnuncioFlowState(toolCtx, {
+          last_anuncio: lastAnuncio,
+          pending_anuncio_post: next,
+        });
+        return {
+          text: action === "publish"
+            ? "Certo. Onde você quer publicar?"
+            : "Certo. Qual formato você quer agendar?",
+          interactiveButtons: anuncioPostFormatButtons(action === "schedule"),
+        };
+      }
+
+      const format = anuncioPostInteractiveId.match(
+        /^anuncio_post:format:(feed|story|feed_story)$/,
+      )?.[1] as "feed" | "story" | "feed_story" | undefined;
+      if (format && pendingAnuncioPost?.action) {
+        if (pendingAnuncioPost.action === "schedule" && format !== "feed") {
+          return {
+            text:
+              "Story ainda não pode ser agendado pelo WhatsApp. Para agendar, escolha Feed; para Story, use Publicar agora.",
+            interactiveButtons: anuncioPostFormatButtons(true),
+          };
+        }
+        const connected = await connectedAnuncioNetworks(toolCtx.userId);
+        if (!connected.length) {
+          await persistAnuncioFlowState(toolCtx, {
+            last_anuncio: lastAnuncio,
+            pending_anuncio_post: null,
+          });
+          return { text: "Não encontrei Facebook nem Instagram conectados nessa conta." };
+        }
+        const next: PendingAnuncioPost = {
+          ...pendingAnuncioPost,
+          stage: "networks",
+          format,
+          created_at: new Date().toISOString(),
+        };
+        await persistAnuncioFlowState(toolCtx, {
+          last_anuncio: lastAnuncio,
+          pending_anuncio_post: next,
+        });
+        return {
+          text: "Agora escolha as redes.",
+          interactiveButtons: anuncioPostNetworkButtons(connected),
+        };
+      }
+
+      const networkChoice = anuncioPostInteractiveId.match(
+        /^anuncio_post:networks:(both|instagram|facebook)$/,
+      )?.[1];
+      if (
+        networkChoice &&
+        pendingAnuncioPost?.action &&
+        pendingAnuncioPost.format
+      ) {
+        const connected = await connectedAnuncioNetworks(toolCtx.userId);
+        const requested: AnuncioPostNetwork[] = networkChoice === "both"
+          ? ["facebook", "instagram"]
+          : [networkChoice as AnuncioPostNetwork];
+        const networks = requested.filter((network) =>
+          connected.includes(network)
+        );
+        if (!networks.length) {
+          return { text: "Essa rede não está conectada. Escolha uma das redes disponíveis." };
+        }
+        try {
+          const prepared = await prepareAnuncioSocialPosts({
+            last: lastAnuncio,
+            action: pendingAnuncioPost.action === "schedule"
+              ? "schedule"
+              : "publish",
+            format: pendingAnuncioPost.format,
+            networks,
+            ctx: toolCtx,
+          });
+          return await deliverAnuncioCaptionChoices(prepared.raw, toolCtx);
+        } catch (error) {
+          return { text: `Não consegui preparar a publicação: ${(error as Error).message}. Nada foi publicado.` };
+        }
+      }
+    }
+    if (pendingAnuncioCliente) {
+      const interactiveId = userContent.match(
+        /<<INTERACTIVE_ID:(anuncio_(?:use_amz|other_store|send_client_logo))>>/i,
+      )?.[1]?.toLowerCase();
+      const age = Date.now() -
+        new Date(pendingAnuncioCliente.created_at).getTime();
+      if (!Number.isFinite(age) || age > 2 * 60 * 60 * 1000) {
+        if (toolCtx.convId) {
+          await saveAgentState(
+            sb,
+            {
+              id: toolCtx.convId,
+              userId: toolCtx.userId,
+              contactNumber: toolCtx.fromNumber,
+            },
+            { pending_anuncio_cliente: null },
+            toolCtx.agentState ?? {},
+          );
+        }
+        return {
+          text: "Esse pedido de anúncio expirou. Envie a foto e os dados novamente.",
+        };
+      }
+      if (interactiveId === "anuncio_other_store") {
+        if (toolCtx.convId) {
+          const nextPending = {
+            ...pendingAnuncioCliente,
+            awaiting_store_details: true,
+          };
+          await saveAgentState(
+            sb,
+            {
+              id: toolCtx.convId,
+              userId: toolCtx.userId,
+              contactNumber: toolCtx.fromNumber,
+            },
+            { pending_anuncio_cliente: nextPending },
+            toolCtx.agentState ?? {},
+          );
+          if (toolCtx.agentState) {
+            toolCtx.agentState.pending_anuncio_cliente = nextPending;
+          }
+        }
+        return {
+          text: "Me mande o nome e o site da loja.",
+        };
+      }
+      if (interactiveId === "anuncio_send_client_logo") {
+        const clientName = compactSpaces(
+          String(pendingAnuncioCliente.args.cliente || ""),
+        ).slice(0, 100);
+        if (toolCtx.convId && clientName) {
+          const pendingIntent = {
+            client_name: clientName,
+            created_at: new Date().toISOString(),
+            variant: "default" as const,
+            anuncio_args: { ...pendingAnuncioCliente.args },
+          };
+          await saveAgentState(
+            sb,
+            {
+              id: toolCtx.convId,
+              userId: toolCtx.userId,
+              contactNumber: toolCtx.fromNumber,
+            },
+            {
+              pending_anuncio_cliente: null,
+              pending_client_logo_intent: pendingIntent,
+            },
+            toolCtx.agentState ?? {},
+          );
+          if (toolCtx.agentState) {
+            toolCtx.agentState.pending_anuncio_cliente = null;
+            toolCtx.agentState.pending_client_logo_intent = pendingIntent;
+          }
+          return {
+            text: `Envie agora a logo de ${clientName} em PNG, JPEG ou WEBP.`,
+          };
+        }
+        return {
+          text: "Envie a logo dizendo o nome da loja, por exemplo: “salva essa como logo do cliente Loja X”.",
+        };
+      }
+      const plainStoreReply = compactSpaces(
+        userContent.replace(/<<INTERACTIVE_ID:[^>]+>>/gi, ""),
+      ).replace(/^[\s:,-]+|[\s:,-]+$/g, "");
+      const site = extractPublicSiteUrl(userContent);
+      const storeReply = classifyStoreReply({
+        text: plainStoreReply,
+        site,
+        storedName: pendingAnuncioCliente.store_name,
+        askedSite: pendingAnuncioCliente.asked_site,
+      });
+      const declinedSite = storeReply.action === "name_only";
+      if (
+        pendingAnuncioCliente.awaiting_store_details &&
+        storeReply.action === "ask_site" &&
+        !interactiveId
+      ) {
+        const storeName = storeReply.name;
+        if (storeName.length >= 2 && toolCtx.convId) {
+          const nextPending = {
+            ...pendingAnuncioCliente,
+            store_name: storeName,
+            asked_site: true,
+          };
+          await saveAgentState(
+            sb,
+            {
+              id: toolCtx.convId,
+              userId: toolCtx.userId,
+              contactNumber: toolCtx.fromNumber,
+            },
+            { pending_anuncio_cliente: nextPending },
+            toolCtx.agentState ?? {},
+          );
+          if (toolCtx.agentState) {
+            toolCtx.agentState.pending_anuncio_cliente = nextPending;
+          }
+          return {
+            text: "Tem site? Se tiver, me mande o link. Se não tiver, responda 'não' que eu uso só o nome.",
+          };
+        }
+      }
+      if (interactiveId || site || declinedSite) {
+        let clientName = storeReply.action === "site"
+          ? storeReply.name || ""
+          : storeReply.action === "name_only"
+          ? storeReply.name
+          : pendingAnuncioCliente.store_name || "";
+        if (site && clientName.length < 2) {
+          try {
+            const siteIdentity = await fetchBrandSiteIdentity(site);
+            clientName = storeNameFromSite(site, siteIdentity.brand_name);
+          } catch {
+            clientName = storeNameFromSite(site);
+          }
+        }
+        if (toolCtx.convId) {
+          await saveAgentState(
+            sb,
+            {
+              id: toolCtx.convId,
+              userId: toolCtx.userId,
+              contactNumber: toolCtx.fromNumber,
+            },
+            { pending_anuncio_cliente: null },
+            toolCtx.agentState ?? {},
+          );
+          if (toolCtx.agentState) toolCtx.agentState.pending_anuncio_cliente = null;
+        }
+        const mergedArgs = {
+          ...pendingAnuncioCliente.args,
+          ...(interactiveId === "anuncio_use_amz"
+            ? {
+              cliente: undefined,
+              site: undefined,
+              _usar_marca_tenant: true,
+            }
+            : { cliente: clientName, site }),
+          ...(declinedSite
+            ? {
+              cliente: pendingAnuncioCliente.store_name,
+              site: undefined,
+              _usar_apenas_nome_cliente: true,
+            }
+            : {}),
+        };
+        const result = await toolCriarAnuncio(mergedArgs as any, {
+          ...toolCtx,
+          media: [],
+        });
+        let parsed: any = {};
+        try {
+          parsed = JSON.parse(result);
+        } catch {
+          return { text: result };
+        }
+        return {
+          text: String(parsed?.mensagem || "Não consegui concluir o anúncio."),
+          imageUrl: parsed?.image_url,
+          interactiveButtons: parsed?.interactive_buttons,
+        };
+      }
+    }
     if (pendingVideoSetup) {
+      const videoInteractiveId = extractVideoInteractiveId(userContent);
+      if (videoInteractiveId === "video_pending_continue") {
+        const resumed = { ...pendingVideoSetup, interrupted_request: undefined };
+        await persistVideoSetup(toolCtx, resumed);
+        return { text: await resumePendingVideoSetup(toolCtx, resumed) };
+      }
+      if (
+        videoInteractiveId === "video_pending_replace" &&
+        pendingVideoSetup.interrupted_request
+      ) {
+        const deferredRequest = pendingVideoSetup.interrupted_request;
+        await persistVideoSetup(toolCtx, null);
+        return await callGemini(systemPrompt, history, deferredRequest, false, {
+          ...toolCtx,
+          agentState: { ...toolCtx.agentState, pending_video_setup: null },
+        });
+      }
+      if (isClearlyDifferentFromPendingVideo(userContent)) {
+        const interrupted = { ...pendingVideoSetup, interrupted_request: userContent };
+        await persistVideoSetup(toolCtx, interrupted);
+        return {
+          text: "Você ainda tem um vídeo em andamento. Quer continuar ou cancelar esse rascunho e fazer o novo pedido?",
+          interactiveButtons: pendingVideoInterruptionButtons(),
+        };
+      }
       return { text: await handlePendingVideoSetup(toolCtx, pendingVideoSetup, userContent) };
+    }
+    const mediaChoiceId = userContent.match(
+      /<<INTERACTIVE_ID:(creative_media_(?:video|image))>>/i,
+    )?.[1]?.toLowerCase();
+    if (pendingCreativeMediaAmbiguity && mediaChoiceId) {
+      const age = Date.now() -
+        new Date(pendingCreativeMediaAmbiguity.created_at).getTime();
+      const original = pendingCreativeMediaAmbiguity.original_request;
+      const conversation = toolCtx.convId
+        ? { id: toolCtx.convId, userId: toolCtx.userId, contactNumber: toolCtx.fromNumber }
+        : null;
+      if (conversation) {
+        await saveAgentState(
+          sb,
+          conversation,
+          { pending_creative_media_ambiguity: null },
+          toolCtx.agentState ?? {},
+        );
+      }
+      if (!Number.isFinite(age) || age > 2 * 60 * 60 * 1000) {
+        return { text: "Essa escolha expirou. Envie o pedido novamente." };
+      }
+      const clarified = mediaChoiceId.endsWith("video")
+        ? `Crie um vídeo. Pedido original: ${original}`
+        : `Crie uma imagem/arte. Pedido original: ${original}`;
+      return await callGemini(systemPrompt, history, clarified, false, {
+        ...toolCtx,
+        agentState: {
+          ...toolCtx.agentState,
+          pending_creative_media_ambiguity: null,
+        },
+      });
+    }
+    if (
+      remetenteEhDono &&
+      classifyCreativeMediaRequest(userContent) === "ambiguous"
+    ) {
+      const pending = {
+        original_request: userContent,
+        created_at: new Date().toISOString(),
+      };
+      const conversation = toolCtx.convId
+        ? { id: toolCtx.convId, userId: toolCtx.userId, contactNumber: toolCtx.fromNumber }
+        : null;
+      if (conversation) {
+        await saveAgentState(
+          sb,
+          conversation,
+          { pending_creative_media_ambiguity: pending },
+          toolCtx.agentState ?? {},
+        );
+      }
+      return {
+        text: "Você quer criar um vídeo ou uma imagem/arte?",
+        interactiveButtons: {
+          body: "Escolha o formato para eu seguir com o pedido.",
+          buttons: [
+            { id: "creative_media_video", title: "Vídeo" },
+            { id: "creative_media_image", title: "Imagem/arte" },
+          ],
+        },
+      };
     }
     if (!remetenteEhDono && isVideoMotionRequest(userContent)) {
       deferRestrictedShortcutToModel(true);
@@ -11959,6 +17677,10 @@ async function callGemini(
             storagePath: candidatePath,
             fileName: `logo-whatsapp.${extension}`,
             mimeType: candidateMime,
+            variant: detectLogoVariantRequest(
+              pendingBrandGeneration.original_request ||
+                pendingBrandGeneration.prompt,
+            ) ?? "default",
           });
           if (!saved) {
             return { text: "Não consegui salvar essa logo com segurança. Seu cadastro não foi alterado." };
@@ -12008,6 +17730,419 @@ async function callGemini(
         return { text: String(parsed?.mensagem || "Não consegui cancelar o agendamento.") };
       }
     }
+    const anuncioPostTokens = pendingAnuncioPost?.token
+      ? [
+        pendingAnuncioPost.token,
+        ...(pendingAnuncioPost.extra_tokens ?? []),
+      ]
+      : [];
+    if (
+      remetenteEhDono &&
+      lastAnuncio &&
+      pendingAnuncioPost &&
+      anuncioPostInteractiveId === "anuncio_post:caption:regenerate" &&
+      anuncioPostTokens.length
+    ) {
+      const captions = generateVehicleAdCaptions(lastAnuncio.data, Date.now());
+      try {
+        await replaceAnuncioPendingCaptions(
+          anuncioPostTokens,
+          captions,
+          toolCtx,
+        );
+        const primary = PENDING_POSTS.get(anuncioPostTokens[0]);
+        const raw = JSON.stringify({
+          status: "aguardando_escolha_variante",
+          token: anuncioPostTokens[0],
+          formato: primary?.formato || "feed",
+          redes: primary?.redes || pendingAnuncioPost.networks,
+          variantes: primary?.variantes,
+        });
+        return await deliverAnuncioCaptionChoices(raw, toolCtx);
+      } catch (error) {
+        return { text: `Não consegui gerar outras opções: ${(error as Error).message}.` };
+      }
+    }
+    if (
+      remetenteEhDono &&
+      lastAnuncio &&
+      pendingAnuncioPost &&
+      anuncioPostInteractiveId === "anuncio_post:caption:custom" &&
+      anuncioPostTokens.length
+    ) {
+      const next = {
+        ...pendingAnuncioPost,
+        stage: "custom_caption" as const,
+        created_at: new Date().toISOString(),
+      };
+      await persistAnuncioFlowState(toolCtx, {
+        last_anuncio: lastAnuncio,
+        pending_anuncio_post: next,
+      });
+      return { text: "Escreva a legenda exatamente como quer publicar." };
+    }
+    if (
+      remetenteEhDono &&
+      lastAnuncio &&
+      pendingAnuncioPost?.stage === "custom_caption" &&
+      anuncioPostTokens.length &&
+      !anuncioPostInteractiveId
+    ) {
+      const caption = compactSpaces(userContent);
+      if (caption.length < 2) {
+        return { text: "Escreva a legenda que você quer usar." };
+      }
+      try {
+        await replaceAnuncioPendingCaptions(
+          anuncioPostTokens,
+          { A: caption.slice(0, 600), B: caption.slice(0, 600), C: caption.slice(0, 600) },
+          toolCtx,
+          "A",
+        );
+        if (pendingAnuncioPost.action === "schedule") {
+          const next = {
+            ...pendingAnuncioPost,
+            stage: "schedule_time" as const,
+            selected_option: "personalizada" as const,
+            created_at: new Date().toISOString(),
+          };
+          await persistAnuncioFlowState(toolCtx, {
+            last_anuncio: lastAnuncio,
+            pending_anuncio_post: next,
+          });
+          return {
+            text: "Legenda salva. Para quando? Informe o dia/mês e a hora. Ex.: 30/09 às 10h.",
+            interactiveButtons: anuncioScheduleTimeButtons(
+              anuncioPostTokens[0],
+            ),
+          };
+        }
+        const next = {
+          ...pendingAnuncioPost,
+          stage: "approval" as const,
+          selected_option: "personalizada" as const,
+          created_at: new Date().toISOString(),
+        };
+        await persistAnuncioFlowState(toolCtx, {
+          last_anuncio: lastAnuncio,
+          pending_anuncio_post: next,
+        });
+        const preview = await sendAnuncioExactPreviews(anuncioPostTokens, toolCtx);
+        if (!preview.ok) return { text: preview.message };
+        return {
+          text: anuncioPostSummary(lastAnuncio, next, "personalizada"),
+          interactiveButtons: anuncioFinalApprovalButtons(anuncioPostTokens[0]),
+        };
+      } catch (error) {
+        return { text: `Não consegui salvar essa legenda: ${(error as Error).message}.` };
+      }
+    }
+    const anuncioScheduleConfirm = anuncioPostInteractiveId.match(
+      /^anuncio_post:schedule_confirm:([a-f0-9]{8})$/,
+    );
+    if (
+      remetenteEhDono &&
+      lastAnuncio &&
+      pendingAnuncioPost?.stage === "schedule_approval" &&
+      pendingAnuncioPost.scheduled_at &&
+      anuncioScheduleConfirm &&
+      anuncioPostTokens.includes(anuncioScheduleConfirm[1])
+    ) {
+      const loaded = await Promise.all(anuncioPostTokens.map((token) =>
+        loadPendingSocialPost(token, toolCtx.userId)
+      ));
+      if (
+        loaded.some((post) =>
+          !post ||
+          post.formato !== "feed" ||
+          !canRunSocialPostAction(post.variantSelecionada)
+        )
+      ) {
+        return {
+          text:
+            "Não consegui validar todos os itens desse agendamento. Nada foi agendado.",
+        };
+      }
+      const results: string[] = [];
+      for (const token of anuncioPostTokens) {
+        results.push(await toolAgendarPostPendente({
+          token,
+          data_hora_sp: pendingAnuncioPost.scheduled_at,
+        }, toolCtx));
+      }
+      const allScheduled = results.every((result) => {
+        try {
+          return JSON.parse(result)?.status === "agendado";
+        } catch {
+          return false;
+        }
+      });
+      if (allScheduled) {
+        await persistAnuncioFlowState(toolCtx, {
+          last_anuncio: lastAnuncio,
+          pending_anuncio_post: null,
+        });
+      }
+      return {
+        text: results.map(formatSocialPostToolResult).join("<<SPLIT>>"),
+        ...(!allScheduled
+          ? {
+            interactiveButtons: anuncioScheduleApprovalButtons(
+              anuncioPostTokens[0],
+            ),
+          }
+          : {}),
+      };
+    }
+    const anuncioConfirm = anuncioPostInteractiveId.match(
+      /^anuncio_post:(confirm|cancel):([a-f0-9]{8})$/,
+    );
+    if (
+      remetenteEhDono &&
+      lastAnuncio &&
+      pendingAnuncioPost &&
+      anuncioConfirm &&
+      anuncioPostTokens.includes(anuncioConfirm[2])
+    ) {
+      const cancel = anuncioConfirm[1] === "cancel";
+      const results: string[] = [];
+      for (const token of anuncioPostTokens) {
+        results.push(await toolConfirmarPostagemRedes({
+          token,
+          cancelar: cancel,
+        }, toolCtx));
+      }
+      await persistAnuncioFlowState(toolCtx, {
+        last_anuncio: lastAnuncio,
+        pending_anuncio_post: null,
+      });
+      if (cancel) return { text: "Publicação cancelada. Nada foi enviado." };
+      return {
+        text: results.map(formatSocialPostToolResult).join("<<SPLIT>>"),
+      };
+    }
+    if (
+      remetenteEhDono &&
+      lastAnuncio &&
+      pendingAnuncioPost?.stage === "schedule_time" &&
+      anuncioPostTokens.length &&
+      !anuncioPostInteractiveId
+    ) {
+      const dateText = userContent.replace(/<<INTERACTIVE_ID:[^>]+>>/gi, "").trim();
+      if (parseSaoPauloDateTime(dateText)) {
+        const next = {
+          ...pendingAnuncioPost,
+          stage: "schedule_approval" as const,
+          scheduled_at: dateText,
+          created_at: new Date().toISOString(),
+        };
+        await persistAnuncioFlowState(toolCtx, {
+          last_anuncio: lastAnuncio,
+          pending_anuncio_post: next,
+        });
+        const preview = await sendAnuncioExactPreviews(anuncioPostTokens, toolCtx);
+        if (!preview.ok) return { text: preview.message };
+        return {
+          text: anuncioPostSummary(
+            lastAnuncio,
+            next,
+            pendingAnuncioPost.selected_option || "selecionada",
+          ),
+          interactiveButtons: anuncioScheduleApprovalButtons(
+            anuncioPostTokens[0],
+          ),
+        };
+      }
+      return {
+        text:
+          "Não entendi a data. Informe dia/mês e hora, por exemplo: 30/09 às 10h.",
+        interactiveButtons: anuncioScheduleTimeButtons(anuncioPostTokens[0]),
+      };
+    }
+    if (
+      remetenteEhDono &&
+      lastAnuncio &&
+      pendingAnuncioPost &&
+      socialVariantInteractive &&
+      anuncioPostTokens.includes(socialVariantInteractive[2].toLowerCase())
+    ) {
+      const option = socialVariantInteractive[1].toUpperCase() as "A" | "B" | "C";
+      for (const token of anuncioPostTokens) {
+        await toolEscolherVariantePost({ token, opcao: option }, toolCtx);
+      }
+      if (pendingAnuncioPost.action === "schedule") {
+        const next = {
+          ...pendingAnuncioPost,
+          stage: "schedule_time" as const,
+          selected_option: option,
+          created_at: new Date().toISOString(),
+        };
+        await persistAnuncioFlowState(toolCtx, {
+          last_anuncio: lastAnuncio,
+          pending_anuncio_post: next,
+        });
+        return {
+          text: `Opção ${option} selecionada. Para quando? Informe o dia/mês e a hora. Ex.: 30/09 às 10h.`,
+          interactiveButtons: anuncioScheduleTimeButtons(
+            anuncioPostTokens[0],
+          ),
+        };
+      }
+      const next = {
+        ...pendingAnuncioPost,
+        stage: "approval" as const,
+        selected_option: option,
+        created_at: new Date().toISOString(),
+      };
+      await persistAnuncioFlowState(toolCtx, {
+        last_anuncio: lastAnuncio,
+        pending_anuncio_post: next,
+      });
+      const preview = await sendAnuncioExactPreviews(anuncioPostTokens, toolCtx);
+      if (!preview.ok) return { text: preview.message };
+      return {
+        text: anuncioPostSummary(lastAnuncio, next, option),
+        interactiveButtons: anuncioFinalApprovalButtons(anuncioPostTokens[0]),
+      };
+    }
+    if (remetenteEhDono && lastAnuncio && !anuncioPostInteractiveId) {
+      const request = parseAnuncioPostRequest(userContent);
+      const socialRequest = detectSocialPostIntent(userContent);
+      const hasAnuncioPostAnswer = !!request.action || !!request.format ||
+        request.networks.length > 0 || !!request.style;
+      const refersToLastAnuncio = shouldBindPostToLastAnuncio({
+        requestText: userContent,
+        explicitProduct: socialRequest?.temProduto
+          ? socialRequest.produto
+          : undefined,
+        anuncioTitle: String(lastAnuncio.data.titulo || ""),
+        pendingFlow: !!pendingAnuncioPost,
+      });
+      if (
+        refersToLastAnuncio &&
+        hasAnuncioPostAnswer &&
+        (request.action || pendingAnuncioPost)
+      ) {
+        const selectedStyle = request.style ?? lastAnuncio.selected_style;
+        const selectedImageExists = selectedStyle &&
+          lastAnuncio.images.some((image) => image.style === selectedStyle);
+        if (!selectedStyle || !selectedImageExists) {
+          return {
+            text: "Escolha primeiro o estilo do anúncio.",
+            interactiveButtons: anuncioStyleButtons(),
+          };
+        }
+        lastAnuncio.selected_style = selectedStyle;
+        const action = request.action ?? pendingAnuncioPost?.action;
+        if (action === "save") {
+          await persistAnuncioFlowState(toolCtx, {
+            last_anuncio: lastAnuncio,
+            pending_anuncio_post: null,
+          });
+          return { text: "Salvei o anúncio. Nada foi publicado." };
+        }
+        if (!action) {
+          const next: PendingAnuncioPost = {
+            stage: "action",
+            created_at: new Date().toISOString(),
+          };
+          await persistAnuncioFlowState(toolCtx, {
+            last_anuncio: lastAnuncio,
+            pending_anuncio_post: next,
+          });
+          return {
+            text: "O que você quer fazer com este anúncio?",
+            interactiveButtons: anuncioPostActionButtons(),
+          };
+        }
+        const format = request.format ?? pendingAnuncioPost?.format;
+        if (!format) {
+          const next: PendingAnuncioPost = {
+            ...pendingAnuncioPost,
+            stage: "format",
+            action,
+            created_at: new Date().toISOString(),
+          };
+          await persistAnuncioFlowState(toolCtx, {
+            last_anuncio: lastAnuncio,
+            pending_anuncio_post: next,
+          });
+          return {
+            text: "Em qual formato?",
+            interactiveButtons: anuncioPostFormatButtons(action === "schedule"),
+          };
+        }
+        if (action === "schedule" && format !== "feed") {
+          const next: PendingAnuncioPost = {
+            ...pendingAnuncioPost,
+            stage: "format",
+            action,
+            created_at: new Date().toISOString(),
+          };
+          await persistAnuncioFlowState(toolCtx, {
+            last_anuncio: lastAnuncio,
+            pending_anuncio_post: next,
+          });
+          return {
+            text:
+              "Story ainda não pode ser agendado pelo WhatsApp. Para agendar, escolha Feed; para Story, use Publicar agora.",
+            interactiveButtons: anuncioPostFormatButtons(true),
+          };
+        }
+        const connected = await connectedAnuncioNetworks(toolCtx.userId);
+        const requestedNetworks = request.networks.length
+          ? request.networks
+          : pendingAnuncioPost?.networks ?? [];
+        const networks = requestedNetworks.filter((network) =>
+          connected.includes(network)
+        );
+        if (!networks.length) {
+          const next: PendingAnuncioPost = {
+            ...pendingAnuncioPost,
+            stage: "networks",
+            action,
+            format,
+            created_at: new Date().toISOString(),
+          };
+          await persistAnuncioFlowState(toolCtx, {
+            last_anuncio: lastAnuncio,
+            pending_anuncio_post: next,
+          });
+          return {
+            text: connected.length
+              ? "Em quais redes?"
+              : "Não encontrei Facebook nem Instagram conectados nessa conta.",
+            interactiveButtons: connected.length
+              ? anuncioPostNetworkButtons(connected)
+              : undefined,
+          };
+        }
+        try {
+          const prepared = await prepareAnuncioSocialPosts({
+            last: lastAnuncio,
+            action: action === "schedule" ? "schedule" : "publish",
+            format,
+            networks,
+            ctx: toolCtx,
+          });
+          return await deliverAnuncioCaptionChoices(prepared.raw, toolCtx);
+        } catch (error) {
+          return { text: `Não consegui preparar a publicação: ${(error as Error).message}. Nada foi publicado.` };
+        }
+      }
+      if (
+        pendingAnuncioPost &&
+        !["custom_caption", "schedule_time"].includes(
+          pendingAnuncioPost.stage,
+        )
+      ) {
+        // Um assunto diferente encerra este assistente sem sequestrar a conversa.
+        await persistAnuncioFlowState(toolCtx, {
+          last_anuncio: lastAnuncio,
+          pending_anuncio_post: null,
+        });
+      }
+    }
     if (
       remetenteEhDono
       && !latestPendingSocialToken
@@ -12024,6 +18159,11 @@ async function callGemini(
         token,
         opcao: socialVariantInteractive[1],
       }, toolCtx);
+      const selectedPending = PENDING_POSTS.get(token) ??
+        await loadPendingSocialPost(token, toolCtx.userId);
+      if (!selectedPending) return { text: "Não encontrei a mídia exata deste preview. Nada foi publicado." };
+      const preview = await sendExactPendingSocialPreview(token, selectedPending, toolCtx);
+      if (!preview.ok) return { text: preview.message };
       return {
         text: `${pending ? `Vou usar ${describeLoadedPendingSocialPost(pending)}.\n\n` : ""}${formatSocialPostToolResult(result)}`,
         interactiveButtons: interactiveButtonsFromSocialResult(result),
@@ -12036,6 +18176,10 @@ async function callGemini(
         interactiveList: interactiveListFromSocialResult(result),
         interactiveButtons: interactiveButtonsFromSocialResult(result),
       };
+    }
+    if (remetenteEhDono && socialActionInteractive?.[1]?.toLowerCase() === "cancel") {
+      const result = await toolConfirmarPostagemRedes({ token: socialActionInteractive[2], cancelar: true }, toolCtx);
+      return { text: formatSocialPostToolResult(result) };
     }
     if (remetenteEhDono && socialActionInteractive?.[1]?.toLowerCase() === "publish") {
       const token = socialActionInteractive[2].toLowerCase();
@@ -12129,7 +18273,12 @@ async function callGemini(
     // Precedência de mídia do dono: gerar > postar > editar. Uma geração
     // encadeada com post salva a nova imagem em /midias e usa exatamente esse
     // ID na prévia, sem deixar os atalhos capturarem uma mídia anterior.
-    if (remetenteEhDono && (ownerMediaIntent.action === "generate" || ownerMediaIntent.action === "generate_and_post")) {
+    const productAdCreativeRequest = isProductAdCreativeRequest(userContent);
+    if (
+      remetenteEhDono
+      && !productAdCreativeRequest
+      && (ownerMediaIntent.action === "generate" || ownerMediaIntent.action === "generate_and_post")
+    ) {
       const imagePrompt = userContent.split(/\b(?:depois|em seguida|na sequência)\b/i)[0].trim();
       console.log("[pietro][forced_image_generation]", { chainedPost: ownerMediaIntent.action === "generate_and_post" });
       const prepared = await prepareWhatsAppImageGeneration({
@@ -12237,13 +18386,18 @@ async function callGemini(
           userId: toolCtx.userId,
           clientName: matches[0]?.client_name || clientName,
           logoPath: pendingClientLogo.logo_path,
+          logoVariant: pendingClientLogo.variant ?? "default",
           identity: { logo_origem: "whatsapp_manual" },
         });
         if (conversation) {
           await saveAgentState(sb, conversation, { pending_client_logo: null }, toolCtx.agentState ?? {});
         }
         return {
-          text: `Guardei como logo do ${saved.client_name}. Vou usar nos vídeos e posts desse cliente.`,
+          text: `Guardei como logo do ${saved.client_name}. Vou usar nos vídeos e posts desse cliente.${
+            saved.identity?.logo_background_warning
+              ? `\n\n${saved.identity.logo_background_warning}`
+              : ""
+          }`,
         };
       } catch (error) {
         console.error("[client-brand][pending-logo-save]", error);
@@ -12262,7 +18416,10 @@ async function callGemini(
       if (!clientName) {
         return { text: "De qual cliente é essa logo? Diga o nome da empresa para eu associar a última foto." };
       }
-      const raw = await toolRegistrarLogoCliente({ cliente: clientName }, toolCtx);
+      const raw = await toolRegistrarLogoCliente({
+        cliente: clientName,
+        variante: detectLogoVariantRequest(userContent) ?? "default",
+      }, toolCtx);
       try {
         const result = JSON.parse(raw);
         const uploadFollowUp = clientLogoUploadFollowUp(
@@ -12277,6 +18434,7 @@ async function callGemini(
             const pendingIntent = {
               client_name: clientName,
               created_at: new Date().toISOString(),
+              variant: detectLogoVariantRequest(userContent) ?? "default",
             };
             await saveAgentState(sb, conversation, {
               pending_client_logo_intent: pendingIntent,
@@ -12305,7 +18463,9 @@ async function callGemini(
     // Composição produto+ambiente tem prioridade sobre forced_image_edit.
     // Diferentemente da edição comum, este fluxo exige DUAS referências e
     // nunca pode degradar silenciosamente para ficha técnica de uma só foto.
-    const imageCompositionIntent = isImageCompositionIntent(userContent);
+    const imageCompositionIntent = !productAdCreativeRequest &&
+      isImageCompositionIntent(userContent);
+    let compositionFallsBackToEdit = false;
     if (imageCompositionIntent && !remetenteEhDono) {
       deferRestrictedShortcutToModel(true);
     }
@@ -12326,38 +18486,51 @@ async function callGemini(
           preferredMediaIds,
         );
         if (!sources) {
-          return {
-            text: "Me manda duas fotos: uma do ambiente e outra do produto exato que você quer colocar nele.",
-          };
+          if (isExplicitTwoImageCompositionRequest(userContent)) {
+            return {
+              text: "Me manda duas fotos: uma do ambiente e outra do produto exato que você quer colocar nele.",
+            };
+          }
+          compositionFallsBackToEdit = true;
         }
-        const result = await composeProductInEnvironment({
-          userId: toolCtx.userId,
-          fromNumber: toolCtx.fromNumber,
-          conversationId: toolCtx.convId || null,
-          requestText: userContent,
-          ...sources,
-        });
-        if (!result.ok) return { text: result.message };
-        if (toolCtx.convId) {
-          const conversation = {
-            id: toolCtx.convId,
+        if (sources) {
+          const result = await composeProductInEnvironment({
             userId: toolCtx.userId,
-            contactNumber: toolCtx.fromNumber,
+            fromNumber: toolCtx.fromNumber,
+            conversationId: toolCtx.convId || null,
+            requestText: userContent,
+            ...sources,
+          });
+          if (!result.ok) return { text: result.message };
+          if (toolCtx.convId) {
+            const conversation = {
+              id: toolCtx.convId,
+              userId: toolCtx.userId,
+              contactNumber: toolCtx.fromNumber,
+            };
+            const current = toolCtx.agentState ??
+              await loadAgentState(sb, conversation);
+            const interaction = {
+              media_id: result.mediaId,
+              at: new Date().toISOString(),
+            };
+            await saveAgentState(sb, conversation, {
+              pending_image_composition: null,
+              last_media_interaction: interaction,
+            }, current);
+            current.pending_image_composition = null;
+            current.last_media_interaction = interaction;
+            toolCtx.agentState = current;
+          }
+          return {
+            text: `Pronto — mantive o ambiente e inseri o produto de referência. É uma simulação ilustrativa.${
+              result.resolution === "2K"
+                ? " Gerei em alta resolução."
+                : ""
+            }<<SPLIT>>${linhaCodigoMidia(result.mediaId, "foto")}`,
+            imageUrl: result.imageUrl,
           };
-          const current = toolCtx.agentState ?? await loadAgentState(sb, conversation);
-          const interaction = { media_id: result.mediaId, at: new Date().toISOString() };
-          await saveAgentState(sb, conversation, {
-            pending_image_composition: null,
-            last_media_interaction: interaction,
-          }, current);
-          current.pending_image_composition = null;
-          current.last_media_interaction = interaction;
-          toolCtx.agentState = current;
         }
-        return {
-          text: `Pronto — mantive o ambiente e inseri o produto de referência. É uma simulação ilustrativa.${result.resolution === "2K" ? " Gerei em alta resolução." : ""}<<SPLIT>>${linhaCodigoMidia(result.mediaId, "foto")}`,
-          imageUrl: result.imageUrl,
-        };
       } catch (error) {
         console.error("[image_composition][route_failed]", error);
         return {
@@ -12383,9 +18556,10 @@ async function callGemini(
     // Edição de foto recente é determinística: o modelo não pode apenas prometer
     // que vai trabalhar em segundo plano. A própria ferramenta busca a última
     // foto do tenant (janela de 30 min) e devolve a imagem pronta neste turno.
-    const pedidoEdicaoFoto = ownerMediaIntent.action === "edit";
-    const pedidoLogoNaFoto = pedidoEdicaoFoto
-      && /\b(?:logo|logotipo|logomarca|marca)\b/i.test(userContent);
+    const logoMode = logoPlacementMode(userContent);
+    const pedidoLogoNaFoto = logoMode !== null;
+    const pedidoEdicaoFoto = ownerMediaIntent.action === "edit" ||
+      compositionFallsBackToEdit || pedidoLogoNaFoto;
     let temFotoParaEditar = (toolCtx.media || []).some((m) => m.kind === "image");
     if (remetenteEhDono && pedidoEdicaoFoto && !temFotoParaEditar) {
       const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
@@ -12406,27 +18580,66 @@ async function callGemini(
       }
     }
     if (remetenteEhDono && pedidoEdicaoFoto && temFotoParaEditar && !isCarrosselRequest(userContent)) {
-      // Pedido de LOGO tem prioridade absoluta: a foto original é mantida e só a marca é aplicada.
       const trocarCenario = !pedidoLogoNaFoto && /\b(?:cen[aá]rio|ambiente|fundo|est[uú]dio|showroom)\b/i.test(userContent);
-      const modoForcado = pedidoLogoNaFoto ? "aplicar_logo" : trocarCenario ? "ficha_tecnica" : "melhoria";
+      const modoForcado = logoMode === "object"
+        ? "aplicar_logo"
+        : trocarCenario
+        ? "ficha_tecnica"
+        : "melhoria";
       console.log(`[processor][forced_image_edit] modo=${modoForcado}`);
-      const raw = await toolEditarImagem(userContent, {
-        userId: toolCtx.userId,
-        fromNumber: toolCtx.fromNumber,
-        media: toolCtx.media,
-        textos: [],
-        modo: modoForcado,
-        preservarAmbiente: trocarCenario ? false : undefined,
-      });
+      const raw = logoMode === "top-left"
+        ? await toolApplyTenantLogoOverlay(userContent, toolCtx)
+        : await toolEditarImagem(userContent, {
+          userId: toolCtx.userId,
+          fromNumber: toolCtx.fromNumber,
+          media: toolCtx.media,
+          textos: [],
+          modo: modoForcado,
+          preservarAmbiente: trocarCenario ? false : undefined,
+        });
       let parsed: any = {};
       try { parsed = JSON.parse(raw); } catch { /* resposta inválida tratada abaixo */ }
       if (parsed?.image_url) {
         if (parsed?.midia_id) await rememberLastMediaInteraction(toolCtx, parsed.midia_id);
         const codigo = parsed?.midia_id ? `<<SPLIT>>${linhaCodigoMidia(parsed.midia_id, "foto")}` : "";
+        if (
+          logoMode === "top-left" && parsed?.midia_id &&
+          logoRequestIncludesPublication(userContent)
+        ) {
+          const social = detectSocialPostIntent(userContent) ?? {
+            produto: "",
+            tom: "informativo",
+            redes: ["facebook", "instagram"],
+            temProduto: false,
+            formato: detectSocialPostFormat(userContent) ?? "feed",
+          };
+          const postResult = await toolPostarMidiaBiblioteca({
+            midia_id: parsed.midia_id,
+            pedido_original: userContent,
+            legenda: cleanMediaPostLegenda(userContent),
+            briefing: extractSocialPostBriefing(userContent),
+            tom: social.tom,
+            redes: social.redes.length
+              ? social.redes
+              : ["facebook", "instagram"],
+            formato: social.formato ?? "feed",
+            incluir_cta_whatsapp: detectWantsWhatsappCta(userContent),
+          }, toolCtx);
+          return {
+            text:
+              `Pronto — coloquei a marca no canto superior esquerdo, sem alterar o restante da imagem.\n\n${
+                formatSocialPostToolResult(postResult)
+              }`,
+            imageUrl: parsed.image_url,
+            interactiveButtons: interactiveButtonsFromSocialResult(postResult),
+          };
+        }
         return {
-          text: pedidoLogoNaFoto
-            ? `Pronto — apliquei a marca na sua foto original, sem mudar nada mais na imagem.${codigo}`
-            : `Pronto — deixei a foto em um cenário profissional para divulgação.${codigo}`,
+          text: logoMode === "object"
+            ? `Pronto — apliquei a marca no objeto. ${LOGO_PRODUCT_SIMULATION_NOTICE}${codigo}`
+            : logoMode === "top-left"
+            ? `Pronto — coloquei a marca no canto superior esquerdo, sem alterar o restante da imagem.${codigo}`
+            : `Pronto — apliquei o cenário que você pediu, mantendo o produto.${codigo}`,
           imageUrl: parsed.image_url,
         };
       }
@@ -12438,6 +18651,11 @@ async function callGemini(
     if (variantChoice) {
       console.log("[pietro][forced_social_variant_choice]", { token: recentPendingSocialToken, opcao: variantChoice });
       const variantResult = await toolEscolherVariantePost({ token: recentPendingSocialToken!, opcao: variantChoice }, toolCtx);
+      const selectedPending = PENDING_POSTS.get(recentPendingSocialToken!) ??
+        await loadPendingSocialPost(recentPendingSocialToken!, toolCtx.userId);
+      if (!selectedPending) return { text: "Não encontrei a mídia exata deste preview. Nada foi publicado." };
+      const preview = await sendExactPendingSocialPreview(recentPendingSocialToken!, selectedPending, toolCtx);
+      if (!preview.ok) return { text: preview.message };
       return {
         text: `${latestPendingNotice}${formatSocialPostToolResult(variantResult)}`,
         interactiveButtons: interactiveButtonsFromSocialResult(variantResult),
@@ -12513,10 +18731,13 @@ async function callGemini(
       const colorChange = /\b(?:muda|troca|altera|ajusta)(?:\s+a)?(?:\s+cor)?\s+(?:para\s+)?(?:azul|verde|laranja|preto|dourado|roxo)\b|\b(?:na|para\s+a)\s+cor\s+(?:azul|verde|laranja|preto|dourado|roxo)\b/i.test(normalizePt(userContent));
       const novaCor = colorChange && resolveCarouselColor(userContent) ? userContent : pendingCarousel.cor;
       if (!novaCor) return { text: "Qual cor você quer usar no carrossel?" };
+      const styleChange = resolveCarouselStyleRequest({ request: userContent });
       const alsoChangesContent = /\b(card|slide|texto|titulo|chamada|legenda)\b/i.test(userContent);
       const r = await toolCriarCarrossel({
         tema: pendingCarousel.tema,
         cor: novaCor,
+        template: styleChange.explicit ? styleChange.template ?? pendingCarousel.template : pendingCarousel.template,
+        backgroundColor: styleChange.backgroundColor ?? pendingCarousel.background_color,
         num_slides: pendingCarousel.num_slides,
         legenda: pendingCarousel.caption,
         slides: pendingCarousel.slides,
@@ -12553,6 +18774,28 @@ async function callGemini(
       return carouselToolResponse(r);
     }
 
+    // Escolha do estilo enviada pela lista ou pelos botões do WhatsApp.
+    const estiloResposta = pendingCarousel?.stage === "awaiting_style"
+      ? resolveCarouselStyleReply(userContent)
+      : null;
+    if (
+      (remetenteEhDono || toolCtx.userId === ADMIN_AMZ_USER_ID)
+      && pendingCarousel?.stage === "awaiting_style"
+      && estiloResposta
+    ) {
+      console.log("[pietro][carrossel_estilo_escolhido]", { tema: pendingCarousel.tema, template: estiloResposta });
+      const { result: r, imageUrl } = await runTool("criar_carrossel", {
+        tema: pendingCarousel.tema,
+        template: estiloResposta,
+        num_slides: pendingCarousel.num_slides,
+        legenda: pendingCarousel.caption,
+        facebook_requested: pendingCarousel.facebook_requested,
+      }, toolCtx);
+      const blocked = deterministicDemoBlockedResponse("criar_carrossel", r, imageUrl);
+      if (blocked) return blocked;
+      return { ...carouselToolResponse(r), imageUrl };
+    }
+
     // 1) pedido explícito ou detalhado de carrossel
     const carouselRequest = isCarrosselRequest(userContent);
     if (
@@ -12574,13 +18817,21 @@ async function callGemini(
       }
       const tema = extractCarrosselTema(userContent);
       const corPedida = detectExplicitCarouselColor(userContent);
-      console.log("[pietro][forced_carrossel]", { tema, cor: corPedida ? "detectada" : "aguardando" });
+      const stylePlan = resolveCarouselStyleRequest({ request: userContent });
+      console.log("[pietro][forced_carrossel]", {
+        tema,
+        cor: corPedida ? "detectada" : "automática",
+        template: stylePlan.template ?? "aguardando",
+        background_color: stylePlan.backgroundColor,
+      });
       if (tema.length < 3) {
         return { text: "Fechado, carrossel! Sobre qual assunto você quer? (ex: “vantagens da AMZ Ofertas”)" };
       }
       const { result: r, imageUrl } = await runTool("criar_carrossel", {
         tema,
-        cor: corPedida,
+        cor: corPedida?.primaryColor,
+        template: stylePlan.template ?? undefined,
+        backgroundColor: stylePlan.backgroundColor ?? undefined,
         num_slides: requestedCarouselSlideCount(userContent, !remetenteEhDono),
         facebook_requested: requestedFacebook(userContent),
       }, toolCtx);
@@ -12598,7 +18849,12 @@ async function callGemini(
     }
 
     // 2) resposta curta só com a cor, retomando o carrossel pendente
-    const corResposta = pendingCarousel?.stage === "awaiting_color" ? detectStandaloneCarrosselColor(userContent) : null;
+    const corResposta = pendingCarousel?.stage === "awaiting_color"
+      ? detectStandaloneCarrosselColor(
+        userContent,
+        pendingCarousel.cor_marca,
+      )
+      : null;
     if (
       (remetenteEhDono || toolCtx.userId === ADMIN_AMZ_USER_ID)
       && pendingCarousel?.stage === "awaiting_color"
@@ -12608,6 +18864,8 @@ async function callGemini(
       const { result: r, imageUrl } = await runTool("criar_carrossel", {
         tema: pendingCarousel.tema,
         cor: corResposta,
+        template: pendingCarousel.template,
+        backgroundColor: pendingCarousel.background_color,
         num_slides: pendingCarousel.num_slides,
         legenda: pendingCarousel.caption,
         facebook_requested: pendingCarousel.facebook_requested,
@@ -12768,13 +19026,18 @@ async function callGemini(
     "postar_midia_biblioteca",
     "publicar_linkedin",
   ]);
+  const verticalAllowsTool = activeVertical === "veiculo"
+    ? vehicleSpecialistAllowsTool
+    : (toolName: string) =>
+      generalSpecialistAllowsTool(toolName, toolCtx.explicitFipe === true);
   const availableTools = filterToolsForTenant(TOOLS, {
     userId: toolCtx.userId,
     isOwner: isOwner(toolCtx),
     adminAmzUserId: ADMIN_AMZ_USER_ID,
   }).filter((tool: any) =>
-    !restrictedNonOwnerCapabilityTurn
-    || !unavailableForRestrictedNonOwner.has(tool?.function?.name)
+    (!restrictedNonOwnerCapabilityTurn ||
+      !unavailableForRestrictedNonOwner.has(tool?.function?.name)) &&
+    verticalAllowsTool(tool?.function?.name)
   );
   const requiredProspectSiteUrl = senderIsAmzProspect
       && typeof userContent === "string"
@@ -12841,6 +19104,25 @@ async function callGemini(
         const name = tc.function?.name;
         let args: any = {};
         try { args = JSON.parse(tc.function?.arguments ?? "{}"); } catch { /* ignore */ }
+        args ??= {};
+        if (name === "criar_anuncio" && typeof userContent === "string") {
+          const photoDirective = anuncioPhotoDirectiveFromText(userContent);
+          if (photoDirective) {
+            args.melhorar_foto = shouldImproveAnuncioPhoto(photoDirective);
+            args._foto_resolvida = true;
+          } else {
+            delete args.melhorar_foto;
+            delete args._foto_resolvida;
+          }
+          args.estilo = anuncioStyleFromText(userContent) ?? args.estilo;
+        }
+        if (
+          name === "registrar_logo_cliente" &&
+          typeof userContent === "string"
+        ) {
+          args.variante =
+            detectLogoVariantRequest(userContent) ?? args.variante ?? "default";
+        }
         if (name === "publicar_anuncio_meta") {
           args.confirmacao = typeof userContent === "string"
             ? userContent.trim()
@@ -12884,7 +19166,8 @@ async function callGemini(
             forwardAttempted,
           };
         }
-        const { result, imageUrl, interactiveButtons } = await runTool(name, args, toolCtx);
+        const { result, imageUrl, interactiveButtons, interactiveList } =
+          await runTool(name, args, toolCtx);
         if (name === "rascunho_anuncio_meta") {
           metaAdsSummaryDraftId = result.match(
             /Código do rascunho:\s*([0-9a-f-]{36})/i,
@@ -12926,6 +19209,15 @@ async function callGemini(
             text: String(parsed?.mensagem || "Escolha como devo tratar a marca desta imagem."),
             imageUrl: pendingImageUrl,
             interactiveButtons,
+            forwardProof,
+            forwardAttempted,
+          };
+        }
+        if (name === "consultar_fipe") {
+          return {
+            text: result,
+            imageUrl: pendingImageUrl,
+            interactiveList,
             forwardProof,
             forwardAttempted,
           };
@@ -13192,6 +19484,8 @@ async function callGemini(
 }
 
 
+const recentAutomaticMessageGuard = createRecentAutomaticMessageGuard();
+
 async function sendWhatsApp(
   user_id: string,
   to: string,
@@ -13205,6 +19499,21 @@ async function sendWhatsApp(
   },
 ): Promise<string | null> {
   const dedupedMessage = dedupeConsecutiveReplyText(message);
+  const automaticMessageKey = JSON.stringify([
+    user_id,
+    String(to || "").replace(/\D/g, ""),
+    dedupedMessage,
+    imageUrl || null,
+    interactiveList || null,
+    interactiveButtons || null,
+  ]);
+  const automaticClaim = recentAutomaticMessageGuard.claim(
+    automaticMessageKey,
+  );
+  if (!automaticClaim.allowed) {
+    console.log("[processor][automatic_reply_dedup] suprimida_em_30s");
+    return automaticClaim.receipt;
+  }
   const chunks = splitWhatsAppText(dedupedMessage);
   if (chunks.length > 1) {
     console.warn(`[processor][meta_text_split] chars=${message.length} chunks=${chunks.length}`);
@@ -13246,6 +19555,10 @@ async function sendWhatsApp(
       throw new Error(`send_invalid_response: ${txt.slice(0, 200)}`);
     }
   }
+  recentAutomaticMessageGuard.complete(
+    automaticMessageKey,
+    firstMessageId,
+  );
   return firstMessageId;
 }
 
@@ -13805,10 +20118,6 @@ async function processOne(queueId: string) {
         )
           .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
-        const STOP_TOKENS = new Set([
-          "pare", "parar", "sair", "stop", "cancelar", "descadastrar",
-          "descadastrar-me", "remover", "nao quero", "não quero",
-        ]);
         const SIM_TOKENS = new Set([
           "sim", "s", "ok", "pode", "pode sim", "aceito", "confirmo",
           "quero", "aceitar", "confirmar", "sim, quero!", "sim quero",
@@ -13828,7 +20137,10 @@ async function processOne(queueId: string) {
           buttonId === "OPTIN_STOP" ||
           buttonId === "STOP" ||
           NEGATIVE_BUTTON_PREFIXES.some((p) => buttonTextNorm.startsWith(p));
-        const isStopText = STOP_TOKENS.has(normalized);
+        const isStopText = isWhatsAppOptOutRequest({
+          text: rawText,
+          isOwner: fromIsOwner,
+        });
         const isSimButton = buttonId === "OPTIN_SIM" ||
           (!!buttonTextNorm && !isStopButton &&
             POSITIVE_BUTTON_PREFIXES.some((p) => buttonTextNorm.startsWith(p)));
@@ -14396,8 +20708,75 @@ async function processOne(queueId: string) {
         userId,
         contactNumber: row.from_number,
       };
-      const freshAgentState = await loadAgentState(sb, stateConversation);
-      const pendingVideoIdentity = fromIsOwner ? freshAgentState.pending_video_setup : null;
+      const rawFreshAgentState = await loadAgentState(sb, stateConversation);
+      if (
+        fromIsOwner &&
+        userId === ADMIN_AMZ_USER_ID &&
+        rawFreshAgentState.vertical_router?.demo_segment &&
+        !activeDemoSegment(rawFreshAgentState)
+      ) {
+        rawFreshAgentState.vertical_router = {
+          ...(rawFreshAgentState.vertical_router ?? {}),
+          demo_segment: null,
+          updated_at: new Date().toISOString(),
+        };
+        await saveAgentState(sb, stateConversation, {
+          vertical_router: rawFreshAgentState.vertical_router,
+        }, rawFreshAgentState);
+      }
+      const [verticalSegment, verticalVision] = fromIsOwner
+        ? await Promise.all([
+          tenantVerticalSegment(userId),
+          classifyPhotoVertical(
+            freshLibraryMedia.find((item) => item.kind === "image"),
+          ),
+        ])
+        : [null, null] as const;
+      const verticalDecision = resolveVertical({
+        text: contexto,
+        tenantSegment: verticalSegment,
+        vision: verticalVision,
+        isAdmin: userId === ADMIN_AMZ_USER_ID,
+        demoSegment: rawFreshAgentState.vertical_router?.demo_segment ?? null,
+      });
+      if (fromIsOwner) logVerticalDecision(verticalDecision);
+      if (
+        fromIsOwner &&
+        !verticalDecision.needsConfirmation &&
+        !verticalDecision.needsSegmentConfirmation
+      ) {
+        rawFreshAgentState.vertical_router = {
+          ...(rawFreshAgentState.vertical_router ?? {}),
+          last_route: verticalDecision.route,
+          updated_at: new Date().toISOString(),
+        };
+        await saveAgentState(sb, stateConversation, {
+          vertical_router: rawFreshAgentState.vertical_router,
+        }, rawFreshAgentState);
+      }
+      const freshAgentState = fromIsOwner
+        ? await scopedConversationState(
+          stateConversation,
+          rawFreshAgentState,
+          verticalDecision.route,
+        )
+        : rawFreshAgentState;
+      if (fromIsOwner) {
+        await clearExpiredAnuncioPendingState(
+          stateConversation,
+          freshAgentState,
+        );
+      }
+      const rawPendingVideoIdentity = fromIsOwner
+        ? freshAgentState.pending_video_setup
+        : null;
+      const pendingVideoIdentityAge = Date.now() -
+        new Date(rawPendingVideoIdentity?.created_at || "").getTime();
+      const pendingVideoIdentity = rawPendingVideoIdentity &&
+          Number.isFinite(pendingVideoIdentityAge) &&
+          pendingVideoIdentityAge <= 10 * 60 * 1000
+        ? rawPendingVideoIdentity
+        : null;
       const incomingLogo = freshLibraryMedia.find((item) => item.kind === "image");
       const pendingBrandUpload = fromIsOwner
         && !pendingVideoIdentity
@@ -14406,7 +20785,11 @@ async function processOne(queueId: string) {
         : null;
       if (pendingBrandUpload && incomingLogo) {
         const pendingAge = Date.now() - new Date(pendingBrandUpload.created_at).getTime();
-        if (Number.isFinite(pendingAge) && pendingAge <= 30 * 60 * 1000) {
+        if (Number.isFinite(pendingAge) && pendingAge <= 10 * 60 * 1000) {
+          console.log(
+            "[lote] fotos=1 bloqueado_por=pending_brand_generation oferta=não motivo=fluxo_logo",
+          );
+          console.log("[lote] aguardando_mais_fotos=não");
           const logoPath = await uploadClientLogoData(
             userId,
             `data:${incomingLogo.mime};base64,${incomingLogo.base64}`,
@@ -14482,6 +20865,10 @@ async function processOne(queueId: string) {
       }
       const waitingForClientLogo = pendingVideoIdentity?.identidade === "client";
       if (waitingForClientLogo && incomingLogo) {
+        console.log(
+          "[lote] fotos=1 bloqueado_por=pending_video_setup oferta=não motivo=fluxo_logo",
+        );
+        console.log("[lote] aguardando_mais_fotos=não");
         const logoPath = await uploadClientLogoData(
           userId,
           `data:${incomingLogo.mime};base64,${incomingLogo.base64}`,
@@ -14585,7 +20972,11 @@ async function processOne(queueId: string) {
         : null;
       if (pendingClientLogoIntent && incomingLogo) {
         const age = Date.now() - new Date(pendingClientLogoIntent.created_at).getTime();
-        if (Number.isFinite(age) && age <= 24 * 60 * 60 * 1000) {
+        if (Number.isFinite(age) && age <= 10 * 60 * 1000) {
+          console.log(
+            "[lote] fotos=1 bloqueado_por=pending_client_logo oferta=não motivo=fluxo_logo",
+          );
+          console.log("[lote] aguardando_mais_fotos=não");
           const logoPath = await uploadClientLogoData(
             userId,
             `data:${incomingLogo.mime};base64,${incomingLogo.base64}`,
@@ -14593,6 +20984,8 @@ async function processOne(queueId: string) {
           );
           let registered = false;
           let reply = "Não consegui salvar essa logo. Envie em PNG, JPEG ou WEBP com até 5 MB.";
+          let resumedImageUrl: string | undefined;
+          let resumedButtons: WhatsAppInteractiveButtons | undefined;
           if (logoPath) {
             try {
               const matches = await listClientBrandIdentityMatches(
@@ -14606,6 +20999,7 @@ async function processOne(queueId: string) {
                   pending_client_logo: {
                     logo_path: logoPath,
                     created_at: new Date().toISOString(),
+                    variant: pendingClientLogoIntent.variant ?? "default",
                   },
                 }, freshAgentState);
                 reply = `Encontrei mais de um cliente parecido: ${matches.map((item) => item.client_name).join(", ")}. De qual deles é a logo?`;
@@ -14614,14 +21008,43 @@ async function processOne(queueId: string) {
                   userId,
                   clientName: matches[0]?.client_name || pendingClientLogoIntent.client_name,
                   logoPath,
+                  logoVariant: pendingClientLogoIntent.variant ?? "default",
                   identity: { logo_origem: "whatsapp_manual" },
                 });
                 await saveAgentState(sb, stateConversation, {
                   pending_client_logo_intent: null,
                   pending_client_logo: null,
                 }, freshAgentState);
+                freshAgentState.pending_client_logo_intent = null;
                 registered = true;
-                reply = `Guardei como logo do ${saved.client_name}. Vou usar nos vídeos e posts desse cliente.`;
+                reply = `Guardei como logo do ${saved.client_name}. Vou usar nos vídeos e posts desse cliente.${
+                  saved.identity?.logo_background_warning
+                    ? `\n\n${saved.identity.logo_background_warning}`
+                    : ""
+                }`;
+                if (pendingClientLogoIntent.anuncio_args) {
+                  const resumed = await toolCriarAnuncio({
+                    ...pendingClientLogoIntent.anuncio_args,
+                    cliente: saved.client_name,
+                    site: saved.site_url || undefined,
+                  } as any, {
+                    userId,
+                    fromNumber: row.from_number,
+                    media: [],
+                    convId: conv.id,
+                    agentState: freshAgentState,
+                  });
+                  try {
+                    const parsed = JSON.parse(resumed);
+                    reply = parsed?.ok
+                      ? `Logo salva. ${parsed.mensagem}`
+                      : `${reply}\n\n${parsed?.mensagem || "Não consegui retomar o anúncio."}`;
+                    resumedImageUrl = parsed?.image_url;
+                    resumedButtons = parsed?.interactive_buttons;
+                  } catch {
+                    reply = `${reply}\n\n${resumed}`;
+                  }
+                }
               }
             } catch (error) {
               console.error("[client-brand][pending-intent-save]", error);
@@ -14643,7 +21066,14 @@ async function processOne(queueId: string) {
             .select("id")
             .single();
           try {
-            const sentId = await sendWhatsApp(userId, row.from_number, reply);
+            const sentId = await sendWhatsApp(
+              userId,
+              row.from_number,
+              reply,
+              resumedImageUrl,
+              undefined,
+              resumedButtons,
+            );
             if (sentId && outMsg?.id) {
               await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
             }
@@ -14731,6 +21161,411 @@ async function processOne(queueId: string) {
           notified_sender: notifiedSender,
         };
       }
+      const savedPhotoIds = salvos
+        .filter((item) => item.tipo === "foto")
+        .map((item) => item.id);
+      const { data: incomingRows, error: incomingRowsError } =
+        savedPhotoIds.length
+          ? await sb.from("midias_whatsapp")
+            .select("id, origem")
+            .eq("user_id", userId)
+            .in("id", savedPhotoIds)
+          : { data: [], error: null };
+      if (incomingRowsError) {
+        throw new Error(
+          `falha_ao_validar_fotos_carrossel: ${incomingRowsError.message}`,
+        );
+      }
+      const whatsappPhotoIds = new Set(
+        (incomingRows || [])
+          .filter((item) => item.origem === "whatsapp")
+          .map((item) => item.id),
+      );
+      const incomingPhotos = salvos
+        .filter((item) =>
+          item.tipo === "foto" && whatsappPhotoIds.has(item.id)
+        )
+        .map((item) => ({
+          id: item.id,
+          url: item.url,
+          reused: item.reutilizada === true,
+        }));
+      if (incomingPhotos[0]) {
+        await registerVehiclePhotoQueueEvent(row.id, incomingPhotos[0]);
+      }
+      if (fromIsOwner && incomingPhotos.length > 0) {
+        const latestIncoming = incomingPhotos.at(-1)!;
+        const hasNewPhoto = incomingPhotos.some((photo) => !photo.reused);
+        const activeVehicleCollection = freshAgentState.pending_carrossel_veiculo?.stage === "collecting";
+        if (hasNewPhoto && !activeVehicleCollection) {
+          const isolated = await discardOldMediaPublicationFlows(stateConversation, freshAgentState);
+          Object.assign(freshAgentState, isolated);
+        }
+        const interaction = { media_id: latestIncoming.id, at: new Date().toISOString() };
+        const saved = await saveAgentState(sb, stateConversation, { last_media_interaction: interaction }, freshAgentState);
+        if (!saved) throw new Error("ultima_midia_nao_persistida");
+        freshAgentState.last_media_interaction = interaction;
+      }
+      if (
+        fromIsOwner &&
+        incomingPhotos.length > 0 &&
+        verticalDecision.needsSegmentConfirmation
+      ) {
+        const latest = incomingPhotos.at(-1)!;
+        const routerState = {
+          ...(freshAgentState.vertical_router ?? {}),
+          pending_choice: {
+            media_id: latest.id,
+            media_url: latest.url,
+            created_at: new Date().toISOString(),
+          },
+          pending_segment_choice: true,
+          updated_at: new Date().toISOString(),
+        };
+        await saveAgentState(
+          sb,
+          stateConversation,
+          { vertical_router: routerState },
+          freshAgentState,
+        );
+        await sendVehicleFlowReply({
+          conversationId: conv.id,
+          userId,
+          to: row.from_number,
+          text: "Antes de continuar, preciso configurar o ramo uma única vez.",
+          buttons: businessSegmentButtons(),
+        });
+        await doneQueue(row.id);
+        return { ok: true, vertical_segment_confirmation: true };
+      }
+      if (
+        fromIsOwner &&
+        incomingPhotos.length > 0 &&
+        verticalDecision.needsConfirmation
+      ) {
+        const latest = incomingPhotos.at(-1)!;
+        const routerState = {
+          ...(freshAgentState.vertical_router ?? {}),
+          pending_choice: {
+            media_id: latest.id,
+            media_url: latest.url,
+            created_at: new Date().toISOString(),
+          },
+          updated_at: new Date().toISOString(),
+        };
+        await saveAgentState(
+          sb,
+          stateConversation,
+          { vertical_router: routerState },
+          freshAgentState,
+        );
+        await sendVehicleFlowReply({
+          conversationId: conv.id,
+          userId,
+          to: row.from_number,
+          text: "Só para eu encaminhar ao especialista certo:",
+          buttons: verticalChoiceButtons(),
+        });
+        await doneQueue(row.id);
+        return { ok: true, vertical_confirmation: true };
+      }
+      const immediateGeneralPhoto = fromIsOwner &&
+        verticalDecision.route === "geral" &&
+        incomingPhotos.length > 0 &&
+        !contexto;
+      if (immediateGeneralPhoto) {
+        let description = "";
+        try {
+          description = await descreverFotosSalvas(
+            freshLibraryMedia,
+            salvos,
+            contexto,
+            userId,
+          );
+        } catch (error) {
+          console.warn(
+            "[vertical][general][vision_failed]",
+            (error as Error).message,
+          );
+        }
+        const latest = incomingPhotos.at(-1)!;
+        const pending = {
+          media_id: latest.id,
+          stage: "actions" as const,
+          created_at: new Date().toISOString(),
+        };
+        await saveAgentState(
+          sb,
+          stateConversation,
+          { pending_single_photo: pending },
+          freshAgentState,
+        );
+        await sendVehicleFlowReply({
+          conversationId: conv.id,
+          userId,
+          to: row.from_number,
+          text: withDemoModeLabel(
+            description
+              ? `Recebi a foto. Estou vendo: ${description.trim()}`
+              : "Recebi a foto e salvei como a mídia mais recente.",
+            verticalDecision,
+          ),
+          buttons: generalSpecialistPhotoButtons(),
+        });
+        await doneQueue(row.id);
+        return {
+          ok: true,
+          vertical: "geral",
+          general_single_photo: true,
+        };
+      }
+      const vehicleFlowCtx = {
+        userId,
+        fromNumber: row.from_number,
+        convId: conv.id,
+        agentState: freshAgentState,
+      };
+      const captionStartsVehicleCarousel = fromIsOwner &&
+        verticalDecision.route === "veiculo" &&
+        incomingPhotos.length > 0 &&
+        isVehiclePhotoCarouselRequest(contexto);
+      if (captionStartsVehicleCarousel) {
+        const recentPhotos = await recentWhatsAppVehiclePhotos({
+          userId,
+          fromNumber: row.from_number,
+          windowMs: 3 * 60 * 1000,
+        });
+        const state = await startVehicleCarouselFlow(
+          vehicleFlowCtx,
+          addVehicleCarouselPhotos(recentPhotos, incomingPhotos).photos,
+          "legenda_da_foto",
+        );
+        const reply =
+          `Recebi ${vehiclePhotoCountLabel(state.photos.length)}. Manda mais ou toque em Pronto.`;
+        await sendVehicleFlowReply({
+          conversationId: conv.id,
+          userId,
+          to: row.from_number,
+          text: withDemoModeLabel(reply, verticalDecision),
+          buttons: vehicleCarouselCollectionButtons(),
+        });
+        await doneQueue(row.id);
+        return {
+          ok: true,
+          vehicle_carousel_collecting: true,
+          vehicle_carousel_photos: state.photos.length,
+        };
+      }
+      if (fromIsOwner && incomingPhotos.length > 0) {
+        console.log(
+          `[carrossel] gatilho=não motivo=${
+            contexto ? "legenda_sem_pedido" : "foto_sem_texto"
+          }`,
+        );
+      }
+      const pendingVehicleCollection = fromIsOwner &&
+          verticalDecision.route === "veiculo" &&
+          blockingVehiclePhotoFlow(freshAgentState) ===
+            "pending_carrossel_veiculo"
+        ? freshAgentState.pending_carrossel_veiculo
+        : null;
+      if (pendingVehicleCollection) {
+        if (incomingPhotos.length > 0) {
+          const updatedCollection = await appendVehicleCarouselPhotosAtomically(
+            conv.id,
+            incomingPhotos,
+          );
+          if (!updatedCollection) {
+            throw new Error("coleta_carrossel_nao_esta_ativa");
+          }
+          const ignored = Math.max(
+            0,
+            pendingVehicleCollection.photos.length + incomingPhotos.length -
+              updatedCollection.photos.length,
+          );
+          vehicleFlowCtx.agentState = {
+            ...freshAgentState,
+            pending_carrossel_veiculo: updatedCollection,
+          };
+          console.log(
+            `[carrossel] fotos=${updatedCollection.photos.length} estagio=collecting`,
+          );
+          const full = updatedCollection.photos.length >=
+            VEHICLE_CAROUSEL_MAX_PHOTOS;
+          console.log(
+            `[lote] fotos=${updatedCollection.photos.length} bloqueado_por=pending_carrossel_veiculo oferta=não motivo=fotos_na_coleta`,
+          );
+          console.log(
+            `[lote] aguardando_mais_fotos=${full ? "não" : "sim"}`,
+          );
+          const next = full
+            ? await askVehicleCarouselData(
+              updatedCollection,
+              vehicleFlowCtx,
+            )
+            : {
+              text:
+                `Recebi ${
+                  vehiclePhotoCountLabel(updatedCollection.photos.length)
+                }, de até ${VEHICLE_CAROUSEL_MAX_PHOTOS}.`,
+              interactiveButtons: vehicleCarouselCollectionButtons(),
+            };
+          const warning = ignored > 0 ? "Usei as 8 primeiras.\n\n" : "";
+          const reply = `${warning}${next.text}`;
+          try {
+            await sendVehicleFlowReply({
+              conversationId: conv.id,
+              userId,
+              to: row.from_number,
+              text: reply,
+              buttons: next.interactiveButtons,
+            });
+          } catch (error) {
+            const sendError = error instanceof Error
+              ? error.message
+              : String(error);
+            await failQueue(row.id, `send_failed: ${sendError}`);
+            return {
+              ok: false,
+              reason: "send_failed",
+              error: sendError,
+            };
+          }
+          await doneQueue(row.id);
+          return {
+            ok: true,
+            vehicle_carousel_collecting: !full,
+            vehicle_carousel_photos: updatedCollection.photos.length,
+          };
+        }
+        // Vídeo ou outra mídia não pertence à coleta de fotos. Abandona o
+        // estado para que o pedido atual siga pelo roteamento normal.
+        await persistVehicleCarousel(vehicleFlowCtx, null);
+      }
+      if (
+        fromIsOwner &&
+        verticalDecision.route === "veiculo" &&
+        incomingPhotos.length > 0 &&
+        !contexto
+      ) {
+        const initialBlocker = blockingVehiclePhotoFlow(freshAgentState);
+        if (initialBlocker) {
+          console.log(
+            `[lote] fotos=${incomingPhotos.length} bloqueado_por=${initialBlocker} oferta=não motivo=fluxo_midia_recente`,
+          );
+          console.log("[lote] aguardando_mais_fotos=não");
+        } else {
+          await wait(8_000);
+          const [queueBatch, refreshedState] = await Promise.all([
+            claimVehiclePhotoQueueBatch(row.id),
+            loadAgentState(sb, stateConversation),
+          ]);
+          await clearExpiredAnuncioPendingState(
+            stateConversation,
+            refreshedState,
+          );
+          const refreshedBlocker = blockingVehiclePhotoFlow(refreshedState);
+          if (!refreshedBlocker) {
+            vehicleFlowCtx.agentState = refreshedState;
+            const plannedBatch = planVehiclePhotoBatch({
+              previous: null,
+              recentPhotos: queueBatch.photos,
+              currentEventId: row.wamid || row.id,
+              reusedPhotoIds: queueBatch.reusedPhotoIds,
+              currentPhotoId: queueBatch.photos.at(-1)?.id,
+              hasNewerQueuedPhoto: !queueBatch.shouldOffer,
+            });
+            const batch = plannedBatch.state;
+            const sendsSingleRepeatedOffer = batch.photos.length === 1 &&
+              queueBatch.shouldOffer &&
+              (batch.reused_photo_ids?.length ?? 0) > 0;
+            if (queueBatch.shouldOffer) {
+              await persistVehiclePhotoBatch(
+                vehicleFlowCtx,
+                batch,
+                plannedBatch.shouldOffer || sendsSingleRepeatedOffer,
+              );
+            }
+            if (queueBatch.shouldOffer && batch.photos.length >= 2) {
+              await sendVehicleFlowReply({
+                conversationId: conv.id,
+                userId,
+                to: row.from_number,
+                text: withDemoModeLabel(
+                  vehiclePhotoBatchOfferMessage(batch),
+                  verticalDecision,
+                ),
+                buttons: vehiclePhotoBatchButtons(),
+              });
+            } else if (
+              queueBatch.shouldOffer &&
+              batch.photos.length === 1 &&
+              plannedBatch.currentPhotoIsLatest
+            ) {
+              const repeated = (batch.reused_photo_ids?.length ?? 0) > 0;
+              let identification:
+                | Awaited<ReturnType<typeof beginVehicleIdentification>>
+                | null = null;
+              if (!repeated) {
+                identification = await beginVehicleIdentification(
+                  vehicleFlowCtx,
+                  {
+                    photos: batch.photos,
+                    target: "single_ad",
+                    originalMedia: freshLibraryMedia.find((item) =>
+                      item.kind === "image"
+                    ),
+                  },
+                );
+              }
+              await sendVehicleFlowReply({
+                conversationId: conv.id,
+                userId,
+                to: row.from_number,
+                text: withDemoModeLabel(
+                  repeated
+                    ? SINGLE_REPEATED_VEHICLE_PHOTO_MESSAGE
+                    : identification?.text ||
+                      "Não consegui identificar o modelo com segurança. Qual é a marca, o modelo e o ano?",
+                  verticalDecision,
+                ),
+                buttons: repeated
+                  ? vehicleSpecialistPhotoButtons()
+                  : identification?.interactiveButtons,
+              });
+            }
+            const awaitingMore = !queueBatch.shouldOffer;
+            console.log(
+              `[lote] fotos=${batch.photos.length} bloqueado_por=nenhum oferta=${
+                queueBatch.shouldOffer
+                  ? "sim"
+                  : "não"
+              } motivo=${
+                queueBatch.shouldOffer && batch.photos.length >= 2
+                  ? "lote_pronto"
+                  : sendsSingleRepeatedOffer
+                  ? "foto_repetida_unica"
+                  : awaitingMore
+                  ? "debounce"
+                  : "foto_unica"
+              }`,
+            );
+            console.log(
+              `[lote] aguardando_mais_fotos=${awaitingMore ? "sim" : "não"}`,
+            );
+            await doneQueue(row.id);
+            return {
+              ok: true,
+              vehicle_photo_batch: batch.stage,
+              vehicle_photo_count: batch.photos.length,
+            };
+          }
+          console.log(
+            `[lote] fotos=${incomingPhotos.length} bloqueado_por=${refreshedBlocker} oferta=não motivo=fluxo_midia_recente`,
+          );
+          console.log("[lote] aguardando_mais_fotos=não");
+        }
+      }
       if (fromIsOwner) {
         await Promise.all(
           salvos
@@ -14752,6 +21587,8 @@ async function processOne(queueId: string) {
         && !!incomingLogo
         && isClientLogoRegistrationRequest(contexto);
       if (clientLogoRequest && incomingLogo) {
+        const requestedLogoVariant =
+          detectLogoVariantRequest(contexto) ?? "default";
         const logoPath = await uploadClientLogoData(
           userId,
           `data:${incomingLogo.mime};base64,${incomingLogo.base64}`,
@@ -14764,7 +21601,11 @@ async function processOne(queueId: string) {
           reply = "Não consegui salvar essa logo. Envie em PNG, JPEG ou WEBP com até 5 MB.";
         } else if (!clientName) {
           await saveAgentState(sb, stateConversation, {
-            pending_client_logo: { logo_path: logoPath, created_at: new Date().toISOString() },
+            pending_client_logo: {
+              logo_path: logoPath,
+              created_at: new Date().toISOString(),
+              variant: requestedLogoVariant,
+            },
           }, freshAgentState);
           reply = "Guardei o arquivo, mas ainda não associei a nenhuma identidade. De qual cliente é essa logo?";
         } else {
@@ -14772,7 +21613,11 @@ async function processOne(queueId: string) {
             const matches = await listClientBrandIdentityMatches(sb, userId, clientName);
             if (matches.length > 1) {
               await saveAgentState(sb, stateConversation, {
-                pending_client_logo: { logo_path: logoPath, created_at: new Date().toISOString() },
+                pending_client_logo: {
+                  logo_path: logoPath,
+                  created_at: new Date().toISOString(),
+                  variant: requestedLogoVariant,
+                },
               }, freshAgentState);
               reply = `Encontrei mais de um cliente parecido: ${matches.map((item) => item.client_name).join(", ")}. De qual deles é a logo?`;
             } else {
@@ -14780,16 +21625,25 @@ async function processOne(queueId: string) {
                 userId,
                 clientName: matches[0]?.client_name || clientName,
                 logoPath,
+                logoVariant: requestedLogoVariant,
                 identity: { logo_origem: "whatsapp_manual" },
               });
               await saveAgentState(sb, stateConversation, { pending_client_logo: null }, freshAgentState);
               clientLogoRegistered = true;
-              reply = `Guardei como logo do ${saved.client_name}. Vou usar nos vídeos e posts desse cliente.`;
+              reply = `Guardei como logo do ${saved.client_name}. Vou usar nos vídeos e posts desse cliente.${
+                saved.identity?.logo_background_warning
+                  ? `\n\n${saved.identity.logo_background_warning}`
+                  : ""
+              }`;
             }
           } catch (error) {
             console.error("[client-brand][logo-save]", error);
             await saveAgentState(sb, stateConversation, {
-              pending_client_logo: { logo_path: logoPath, created_at: new Date().toISOString() },
+              pending_client_logo: {
+                logo_path: logoPath,
+                created_at: new Date().toISOString(),
+                variant: requestedLogoVariant,
+              },
             }, freshAgentState);
             reply = "Salvei o arquivo, mas não consegui associá-lo à identidade. Confirme o nome do cliente para eu tentar novamente.";
           }
@@ -14856,11 +21710,16 @@ async function processOne(queueId: string) {
       await saveAgentState(sb, stateConversation, freshStatePatch, freshAgentState);
       Object.assign(freshAgentState, freshStatePatch);
       const freshImageIntent = classifyOwnerMediaIntent(contexto);
+      const freshLogoMode = logoPlacementMode(contexto);
       if (
         fromIsOwner
         && savedPhotos.length > 0
         && !isImageCompositionIntent(contexto)
-        && (freshImageIntent.action === "generate" || freshImageIntent.action === "edit")
+        && (
+          freshImageIntent.action === "generate" ||
+          freshImageIntent.action === "edit" ||
+          freshLogoMode !== null
+        )
       ) {
         const generationCtx = {
           userId,
@@ -14868,15 +21727,81 @@ async function processOne(queueId: string) {
           convId: conv.id,
           agentState: freshAgentState,
         };
-        const prepared = await prepareWhatsAppImageGeneration({
-          prompt: contexto,
-          ctx: generationCtx,
-          references: savedPhotos.map((item) => item.url),
-        });
-        const completed = prepared.deferred
-          ? { text: prepared.text, imageUrl: prepared.imageUrl }
-          : completedWhatsAppImageResponse(prepared.raw, detectWhatsAppBrandDirective(contexto) === "none");
-        const buttons = prepared.deferred ? prepared.interactiveButtons : undefined;
+        let completed: { text: string; imageUrl?: string };
+        let buttons: WhatsAppInteractiveButtons | undefined;
+        let deferred = false;
+        if (freshLogoMode) {
+          const raw = freshLogoMode === "top-left"
+            ? await toolApplyTenantLogoOverlay(contexto, {
+              ...generationCtx,
+              media: freshLibraryMedia,
+            })
+            : await toolEditarImagem(contexto, {
+              userId,
+              fromNumber: row.from_number,
+              media: freshLibraryMedia,
+              textos: [],
+              modo: "aplicar_logo",
+            });
+          let logoResult: any = {};
+          try {
+            logoResult = JSON.parse(raw);
+          } catch {
+            // mensagem honesta abaixo
+          }
+          completed = logoResult?.image_url
+            ? {
+              text: freshLogoMode === "object"
+                ? `Pronto — apliquei a marca no objeto. ${LOGO_PRODUCT_SIMULATION_NOTICE}`
+                : "Pronto — coloquei a marca no canto superior esquerdo, sem alterar o restante da imagem.",
+              imageUrl: logoResult.image_url,
+            }
+            : { text: mensagemErroEdicaoImagem(logoResult) };
+          if (logoResult?.midia_id) {
+            await rememberLastMediaInteraction(
+              generationCtx,
+              logoResult.midia_id,
+            );
+          }
+          if (
+            freshLogoMode === "top-left" && logoResult?.midia_id &&
+            logoRequestIncludesPublication(contexto)
+          ) {
+            const social = detectSocialPostIntent(contexto) ?? {
+              produto: "",
+              tom: "informativo",
+              redes: ["facebook", "instagram"],
+              temProduto: false,
+              formato: detectSocialPostFormat(contexto) ?? "feed",
+            };
+            const postResult = await toolPostarMidiaBiblioteca({
+              midia_id: logoResult.midia_id,
+              pedido_original: contexto,
+              legenda: cleanMediaPostLegenda(contexto),
+              tom: social.tom,
+              redes: social.redes,
+              formato: social.formato ?? "feed",
+            }, generationCtx);
+            completed.text += `\n\n${formatSocialPostToolResult(postResult)}`;
+            buttons = interactiveButtonsFromSocialResult(postResult);
+          }
+        } else {
+          const prepared = await prepareWhatsAppImageGeneration({
+            prompt: contexto,
+            ctx: generationCtx,
+            references: savedPhotos.map((item) => item.url),
+          });
+          deferred = prepared.deferred;
+          completed = prepared.deferred
+            ? { text: prepared.text, imageUrl: prepared.imageUrl }
+            : completedWhatsAppImageResponse(
+              prepared.raw,
+              detectWhatsAppBrandDirective(contexto) === "none",
+            );
+          buttons = prepared.deferred
+            ? prepared.interactiveButtons
+            : undefined;
+        }
         const { data: outMsg } = await sb
           .from("whatsapp_cloud_messages")
           .insert({
@@ -14914,8 +21839,8 @@ async function processOne(queueId: string) {
         await doneQueue(row.id);
         return {
           ok: true,
-          generated_from_fresh_photo: !prepared.deferred,
-          awaiting_brand_choice: prepared.deferred,
+          generated_from_fresh_photo: !deferred,
+          awaiting_brand_choice: deferred,
         };
       }
       if (fromIsOwner && isImageCompositionIntent(contexto) && savedPhotos.length > 0) {
@@ -14931,7 +21856,39 @@ async function processOne(queueId: string) {
             pendingMediaIds,
           );
           if (!sources) {
-            compositionReply = "Recebi a foto. Agora me manda também a foto do ambiente e a do produto que você quer simular.";
+            if (isExplicitTwoImageCompositionRequest(contexto)) {
+              compositionReply =
+                "Recebi a foto. Agora me manda também a segunda foto para fazer a composição.";
+            } else {
+              const editedRaw = await toolEditarImagem(contexto, {
+                userId,
+                fromNumber: row.from_number,
+                media: freshLibraryMedia,
+                textos: [],
+                modo: "melhoria",
+              });
+              let edited: any = {};
+              try {
+                edited = JSON.parse(editedRaw);
+              } catch {
+                // mensagem honesta abaixo
+              }
+              compositionReply = edited?.image_url
+                ? "Pronto — editei esta foto conforme o pedido."
+                : mensagemErroEdicaoImagem(edited);
+              compositionImageUrl = edited?.image_url;
+              compositionMediaId = edited?.midia_id;
+              if (compositionMediaId) {
+                const interaction = {
+                  media_id: compositionMediaId,
+                  at: new Date().toISOString(),
+                };
+                await saveAgentState(sb, stateConversation, {
+                  pending_image_composition: null,
+                  last_media_interaction: interaction,
+                }, freshAgentState);
+              }
+            }
           } else {
             const result = await composeProductInEnvironment({
               userId,
@@ -15120,7 +22077,15 @@ async function processOne(queueId: string) {
     // A queima da legenda roda no worker da VPS — nada depende do navegador.
     // ============================================================
     if (fromIsOwner && userText.trim()) {
-      const videoLegendaLogo = await getTenantLogoStorageLocation(sb, userId);
+      const [videoLegendaLogo, lightLogo, darkLogo] = await Promise.all([
+        getTenantLogoStorageLocation(sb, userId, "video"),
+        getTenantLogoStorageLocation(sb, userId, "light"),
+        getTenantLogoStorageLocation(sb, userId, "dark"),
+      ]);
+      if (videoLegendaLogo) {
+        videoLegendaLogo.lightBackgroundPath = lightLogo?.path;
+        videoLegendaLogo.darkBackgroundPath = darkLogo?.path;
+      }
       const fluxoReply = await tratarRespostaFluxoLegenda({
         userId,
         telefone: row.from_number,
@@ -15129,14 +22094,6 @@ async function processOne(queueId: string) {
       });
       if (fluxoReply) {
         console.log("[processor][video_legenda_flow] resposta determinística do fluxo de legenda");
-        const availableLogoButtons = botoesLegendaParaLogo(videoLegendaLogo);
-        const logoButtons: WhatsAppInteractiveButtons | undefined =
-          availableLogoButtons && /^Legenda \*[ABC]\* registrada/u.test(fluxoReply)
-            ? {
-              body: fluxoReply,
-              buttons: availableLogoButtons,
-            }
-            : undefined;
         const { data: outMsg } = await sb
           .from("whatsapp_cloud_messages")
           .insert({
@@ -15145,7 +22102,7 @@ async function processOne(queueId: string) {
             direction: "outbound",
             sender: "agent",
             content: fluxoReply,
-            message_type: logoButtons ? "interactive" : "text",
+            message_type: "text",
           })
           .select("id")
           .single();
@@ -15156,7 +22113,7 @@ async function processOne(queueId: string) {
           fluxoReply,
           undefined,
           undefined,
-          logoButtons,
+          undefined,
         );
         if (sentFlowId && outMsg?.id) {
           await sb.from("whatsapp_cloud_messages").update({ wamid: sentFlowId }).eq("id", outMsg.id);
@@ -16108,7 +23065,425 @@ Regras:
     }
 
     // === ESTADO PERSISTENTE DA CONVERSA (comprovante de encaminhamento + decisões) ===
-    const agentState = await loadAgentState(sb, convStateIdentity);
+    const rawAgentState = await loadAgentState(sb, convStateIdentity);
+    const migratedAgentState = migrateVerticalState(rawAgentState).state as AgentConvState;
+    const isAdminTenant = userId === ADMIN_AMZ_USER_ID;
+    const verticalChoiceId = userText.match(
+      /<<INTERACTIVE_ID:vertical:(vehicle|general)>>/i,
+    )?.[1]?.toLowerCase();
+    const segmentChoiceId = userText.match(
+      /<<INTERACTIVE_ID:vertical_segment:(automotive|other)>>/i,
+    )?.[1]?.toLowerCase();
+    const demoChoiceId = userText.match(
+      /<<INTERACTIVE_ID:vertical_demo:(confirm|cancel)>>/i,
+    )?.[1]?.toLowerCase();
+    const demoCommand = isAdminTenant
+      ? parseDemoSegmentCommand(audioTranscript || userText)
+      : null;
+    let tenantSegment = fromIsOwner
+      ? await tenantVerticalSegment(userId)
+      : null;
+    let routerStateForTurn = {
+      ...(migratedAgentState.vertical_router ?? {}),
+    };
+    if (
+      isAdminTenant &&
+      routerStateForTurn.demo_segment &&
+      !activeDemoSegment(migratedAgentState)
+    ) {
+      routerStateForTurn = {
+        ...routerStateForTurn,
+        demo_segment: null,
+        updated_at: new Date().toISOString(),
+      };
+    }
+    let verticalControlResolution: {
+      text: string;
+      buttons?: WhatsAppInteractiveButtons;
+    } | null = null;
+
+    if (fromIsOwner && !isAdminTenant && segmentChoiceId === "automotive") {
+      tenantSegment = "revenda de veículos";
+      const { error } = await sb.from("empresa_config").upsert({
+        user_id: userId,
+        segmento: tenantSegment,
+      }, { onConflict: "user_id" });
+      if (error) throw new Error(`vertical_segment_save_failed:${error.message}`);
+      routerStateForTurn = {
+        ...routerStateForTurn,
+        pending_segment_choice: false,
+        updated_at: new Date().toISOString(),
+      };
+      verticalControlResolution = {
+        text: "Ramo salvo: revenda de veículos. Não vou perguntar novamente.",
+      };
+    } else if (
+      fromIsOwner && !isAdminTenant && segmentChoiceId === "other"
+    ) {
+      routerStateForTurn = {
+        ...routerStateForTurn,
+        pending_segment_choice: true,
+        updated_at: new Date().toISOString(),
+      };
+      verticalControlResolution = {
+        text: "Qual é o ramo principal do negócio?",
+      };
+    } else if (
+      fromIsOwner &&
+      !isAdminTenant &&
+      routerStateForTurn.pending_segment_choice &&
+      !/<<INTERACTIVE_ID:/i.test(userText) &&
+      userText.trim()
+    ) {
+      tenantSegment = compactSpaces(audioTranscript || userText).slice(0, 100);
+      const { error } = await sb.from("empresa_config").upsert({
+        user_id: userId,
+        segmento: tenantSegment,
+      }, { onConflict: "user_id" });
+      if (error) throw new Error(`vertical_segment_save_failed:${error.message}`);
+      routerStateForTurn = {
+        ...routerStateForTurn,
+        pending_segment_choice: false,
+        updated_at: new Date().toISOString(),
+      };
+      verticalControlResolution = {
+        text: `Ramo salvo: ${tenantSegment}. Não vou perguntar novamente.`,
+      };
+    }
+
+    if (fromIsOwner && isAdminTenant && demoCommand?.action === "set") {
+      routerStateForTurn = {
+        ...routerStateForTurn,
+        pending_demo_segment: {
+          segment: demoCommand.segment,
+          created_at: new Date().toISOString(),
+        },
+        updated_at: new Date().toISOString(),
+      };
+      verticalControlResolution = {
+        text: `Demonstrar como ${demoCommand.segment}?`,
+        buttons: demoSegmentConfirmationButtons(),
+      };
+    } else if (
+      fromIsOwner && isAdminTenant && demoCommand?.action === "exit"
+    ) {
+      routerStateForTurn = {
+        ...routerStateForTurn,
+        demo_segment: null,
+        pending_demo_segment: null,
+        updated_at: new Date().toISOString(),
+      };
+      verticalControlResolution = {
+        text: "Modo demonstração encerrado. Voltei ao modo automático.",
+      };
+    } else if (
+      fromIsOwner && isAdminTenant && demoChoiceId === "confirm" &&
+      routerStateForTurn.pending_demo_segment?.segment
+    ) {
+      const segment = routerStateForTurn.pending_demo_segment.segment;
+      routerStateForTurn = {
+        ...routerStateForTurn,
+        demo_segment: {
+          segment,
+          expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+        },
+        pending_demo_segment: null,
+        updated_at: new Date().toISOString(),
+      };
+      verticalControlResolution = {
+        text: `Modo demonstração: ${segment}`,
+      };
+    } else if (
+      fromIsOwner && isAdminTenant && demoChoiceId === "cancel"
+    ) {
+      routerStateForTurn = {
+        ...routerStateForTurn,
+        pending_demo_segment: null,
+        updated_at: new Date().toISOString(),
+      };
+      verticalControlResolution = {
+        text: "Modo demonstração não alterado.",
+      };
+    }
+
+    migratedAgentState.vertical_router = routerStateForTurn;
+    const selectedVertical = verticalChoiceId === "vehicle"
+      ? "veiculo"
+      : verticalChoiceId === "general"
+      ? "geral"
+      : /<<INTERACTIVE_ID:/i.test(userText) ||
+          /\b(essa|esta|esse|este)\s+(foto|imagem|midia|mídia)\b/i.test(userText)
+      ? migratedAgentState.vertical_router?.last_route ?? null
+      : null;
+    const textVerticalDecision = resolveVertical({
+      text: audioTranscript || userText,
+      tenantSegment,
+      selectedRoute: selectedVertical,
+      pendingRoute: fromIsOwner
+        ? activePendingVerticalRoute(migratedAgentState)
+        : null,
+      isAdmin: isAdminTenant,
+      demoSegment: routerStateForTurn.demo_segment ?? null,
+    });
+    const explicitTextVertical = explicitVerticalIntent(
+      audioTranscript || userText,
+    );
+    if (
+      fromIsOwner &&
+      explicitTextVertical?.route === "geral" &&
+      (
+        migratedAgentState.vehicle?.pending_vehicle_identification ||
+        migratedAgentState.vehicle?.pending_anuncio_cliente ||
+        migratedAgentState.vehicle?.pending_anuncio_styles ||
+        migratedAgentState.vehicle?.pending_anuncio_photo ||
+        migratedAgentState.vehicle?.pending_anuncio_post
+      )
+    ) {
+      migratedAgentState.vehicle = {
+        ...migratedAgentState.vehicle,
+        pending_vehicle_identification: null,
+        pending_anuncio_cliente: null,
+        pending_anuncio_styles: null,
+        pending_anuncio_photo: null,
+        pending_anuncio_post: null,
+      };
+      await saveAgentState(sb, convStateIdentity, {
+        vehicle: migratedAgentState.vehicle,
+      }, rawAgentState);
+    }
+    if (
+      fromIsOwner &&
+      textVerticalDecision.needsSegmentConfirmation &&
+      !verticalControlResolution
+    ) {
+      routerStateForTurn = {
+        ...routerStateForTurn,
+        pending_segment_choice: true,
+        updated_at: new Date().toISOString(),
+      };
+      migratedAgentState.vertical_router = routerStateForTurn;
+      verticalControlResolution = {
+        text: "Antes de continuar, preciso configurar o ramo uma única vez.",
+        buttons: businessSegmentButtons(),
+      };
+    }
+    if (fromIsOwner) logVerticalDecision(textVerticalDecision);
+    const agentState = fromIsOwner
+      ? await scopedConversationState(
+        convStateIdentity,
+        migratedAgentState,
+        textVerticalDecision.route,
+      )
+      : migratedAgentState;
+    let verticalChoiceResolution: {
+      text: string;
+      buttons?: WhatsAppInteractiveButtons;
+    } | null = verticalControlResolution;
+    if (fromIsOwner && verticalControlResolution) {
+      await saveAgentState(sb, convStateIdentity, {
+        vertical_router: routerStateForTurn,
+      }, agentState);
+    }
+    const pendingVerticalChoice =
+      migratedAgentState.vertical_router?.pending_choice;
+    const completedSegmentChoice = !!verticalControlResolution &&
+      routerStateForTurn.pending_segment_choice === false &&
+      !textVerticalDecision.needsSegmentConfirmation;
+    if (
+      fromIsOwner &&
+      (verticalChoiceId || completedSegmentChoice) &&
+      pendingVerticalChoice?.media_id
+    ) {
+      const now = new Date().toISOString();
+      const routerState = {
+        ...(agentState.vertical_router ?? {}),
+        pending_choice: null,
+        last_route: textVerticalDecision.route,
+        updated_at: now,
+      };
+      if (textVerticalDecision.route === "geral") {
+        await saveAgentState(sb, convStateIdentity, {
+          vertical_router: routerState,
+          pending_single_photo: {
+            media_id: pendingVerticalChoice.media_id,
+            stage: "actions",
+            created_at: now,
+          },
+        }, agentState);
+        verticalChoiceResolution = {
+          text: `${verticalControlResolution?.text ? `${verticalControlResolution.text}\n` : ""}Vou tratar esta foto no contexto do seu negócio.`,
+          buttons: generalSpecialistPhotoButtons(),
+        };
+      } else {
+        await saveAgentState(sb, convStateIdentity, {
+          vertical_router: routerState,
+          pending_vehicle_photo_batch: {
+            stage: "offered",
+            photos: [{
+              id: pendingVerticalChoice.media_id,
+              url: pendingVerticalChoice.media_url || "",
+            }],
+            created_at: now,
+            last_photo_at: now,
+          },
+        }, agentState);
+        verticalChoiceResolution = {
+          text: `${verticalControlResolution?.text ? `${verticalControlResolution.text}\n` : ""}Vou tratar esta foto como veículo.`,
+          buttons: vehicleSpecialistPhotoButtons(),
+        };
+      }
+    } else if (
+      fromIsOwner &&
+      pendingVerticalChoice &&
+      !verticalChoiceId &&
+      !/<<INTERACTIVE_ID:/i.test(userText) &&
+      userText.trim()
+    ) {
+      await saveAgentState(sb, convStateIdentity, {
+        vertical_router: {
+          ...(agentState.vertical_router ?? {}),
+          pending_choice: null,
+          updated_at: new Date().toISOString(),
+        },
+      }, agentState);
+    }
+    let metaAdsJarvisOriginalText: string | undefined;
+    let metaAdsQuestionarioResult: MetaAdsQuestionarioProcessorResult = {
+      handled: false,
+    };
+    try {
+      const limitValueText = audioTranscript || userText;
+      const limitValueAction = resolveMetaAdsLimitValueInput({
+        text: limitValueText,
+        pending: agentState.pending_meta_ads_limit_value,
+        isOwner: fromIsOwner,
+      });
+      if (limitValueAction === "consume") {
+        const proposed = await toolProporLimiteMensalMetaAds(limitValueText, {
+          userId,
+          fromNumber: row.from_number,
+          convId: conv.id,
+          agentState,
+        });
+        let parsed: any = {};
+        try {
+          parsed = JSON.parse(proposed.result);
+        } catch { /* mensagens de validação são texto simples */ }
+        metaAdsQuestionarioResult = {
+          handled: true,
+          text: String(parsed?.mensagem || proposed.result),
+          interactiveButtons: proposed.interactiveButtons,
+        };
+        if (proposed.interactiveButtons) {
+          agentState.pending_meta_ads_limit_value = null;
+          await saveAgentState(
+            sb,
+            convStateIdentity,
+            { pending_meta_ads_limit_value: null },
+            agentState,
+          );
+        }
+      } else {
+        if (limitValueAction === "clear") {
+          agentState.pending_meta_ads_limit_value = null;
+          await saveAgentState(
+            sb,
+            convStateIdentity,
+            { pending_meta_ads_limit_value: null },
+            agentState,
+          );
+        }
+        const limitAction = resolveMetaAdsLimitAction({
+          text: userText,
+          pending: agentState.pending_meta_ads_limit,
+          isOwner: fromIsOwner,
+        });
+        if (limitAction) {
+          metaAdsQuestionarioResult = await applyMetaAdsLimitAction({
+            ...limitAction,
+            ctx: {
+              userId,
+              fromNumber: row.from_number,
+              convId: conv.id,
+              agentState,
+            },
+            conversation: convStateIdentity,
+            agentState,
+          });
+        } else {
+          const ambiguityChoice = resolveMetaAdsQuestionarioAmbiguity({
+            text: userText,
+            pending: agentState.pending_meta_ads_ambiguity,
+          });
+          if (ambiguityChoice) {
+            agentState.pending_meta_ads_ambiguity = null;
+            await saveAgentState(
+              sb,
+              convStateIdentity,
+              { pending_meta_ads_ambiguity: null },
+              agentState,
+            );
+            if (ambiguityChoice.destino === "jarvis") {
+              metaAdsJarvisOriginalText = ambiguityChoice.textoOriginal;
+            } else {
+              metaAdsQuestionarioResult = await processMetaAdsQuestionario({
+                userId,
+                fromNumber: row.from_number,
+                conversationId: conv.id,
+                text: userText,
+                owner: fromIsOwner,
+              });
+            }
+          } else {
+            metaAdsQuestionarioResult = await processMetaAdsQuestionario({
+              userId,
+              fromNumber: row.from_number,
+              conversationId: conv.id,
+              text: audioTranscript || userText,
+              owner: fromIsOwner,
+            });
+          }
+        }
+      }
+      if (metaAdsQuestionarioResult.ambiguityOriginal) {
+        const pending = {
+          texto_original: metaAdsQuestionarioResult.ambiguityOriginal,
+          criado_em: new Date().toISOString(),
+        };
+        agentState.pending_meta_ads_ambiguity = pending;
+        await saveAgentState(
+          sb,
+          convStateIdentity,
+          { pending_meta_ads_ambiguity: pending },
+          agentState,
+        );
+      }
+      if (metaAdsQuestionarioResult.requestLimitValue) {
+        const pending = { criado_em: new Date().toISOString() };
+        agentState.pending_meta_ads_limit_value = pending;
+        await saveAgentState(
+          sb,
+          convStateIdentity,
+          { pending_meta_ads_limit_value: pending },
+          agentState,
+        );
+      }
+    } catch (error) {
+      console.error(
+        "[meta-ads-questionario][process]",
+        (error as Error).message,
+      );
+      if (
+        fromIsOwner &&
+        (isMetaAdsQuestionarioTrigger(userText) ||
+          metaAdsQuestionarioInteractiveId(userText)?.startsWith("meta_ads_q:"))
+      ) {
+        metaAdsQuestionarioResult = {
+          handled: true,
+          text: "Não consegui continuar a campanha agora. Tente novamente em alguns segundos.",
+        };
+      }
+    }
     let persistedForward = (agentState.forward ?? null) as { protocolo?: string; destinatario?: string; wamid?: string | null; at?: string } | null;
     if (!persistedForward?.protocolo && !fromIsOwner) {
       const recovered = await recoverForwardProof(userId, row.from_number);
@@ -16156,9 +23531,10 @@ Regras:
       }));
 
     // PASSO 9 — IA (multimodal)
-    const userTextComAudio = audioTranscript
-      ? `${userText ? `${userText}\n\n` : ""}🎙️ TRANSCRIÇÃO DO ÁUDIO QUE O USUÁRIO ENVIOU (já transcrito pelo sistema — use como se ele tivesse digitado; se ele pediu a transcrição, devolva este texto): "${audioTranscript}"`
-      : userText;
+    const userTextComAudio = metaAdsJarvisOriginalText ??
+      (audioTranscript
+        ? `${userText ? `${userText}\n\n` : ""}🎙️ TRANSCRIÇÃO DO ÁUDIO QUE O USUÁRIO ENVIOU (já transcrito pelo sistema — use como se ele tivesse digitado; se ele pediu a transcrição, devolva este texto): "${audioTranscript}"`
+        : userText);
     const userContent = buildUserContent(userTextComAudio, media);
 
     let reply = "";
@@ -16169,29 +23545,52 @@ Regras:
     let forwardAttempted = false;
     let metaAdsSummaryDraftId: string | undefined;
     try {
-      const aiResult = await callGemini(systemPromptWithDate, history, userContent, media.length > 0, {
-        userId,
-        fromNumber: row.from_number,
-        media,
-        convId: conv.id,
-        agentState,
-        demoTestPhones: Array.isArray((agent as any).demo_test_phones)
-          ? (agent as any).demo_test_phones
-          : [],
-      });
-      reply = aiResult.text;
-      generatedImageUrl = aiResult.imageUrl;
-      interactiveList = aiResult.interactiveList;
-      interactiveButtons = aiResult.interactiveButtons;
-      forwardProof = aiResult.forwardProof;
-      forwardAttempted = !!aiResult.forwardAttempted;
-      metaAdsSummaryDraftId = aiResult.metaAdsSummaryDraftId;
+      if (verticalChoiceResolution) {
+        reply = verticalChoiceResolution.text;
+        interactiveButtons = verticalChoiceResolution.buttons;
+      } else if (metaAdsQuestionarioResult.handled) {
+        reply = metaAdsQuestionarioResult.text ??
+          "Vamos continuar sua campanha.";
+        interactiveList = metaAdsQuestionarioResult.interactiveList;
+        interactiveButtons = metaAdsQuestionarioResult.interactiveButtons;
+        metaAdsSummaryDraftId = metaAdsQuestionarioResult.summaryDraftId;
+      } else {
+        const aiResult = await callGemini(systemPromptWithDate, history, userContent, media.length > 0, {
+          userId,
+          fromNumber: row.from_number,
+          media,
+          convId: conv.id,
+          agentState,
+          vertical: textVerticalDecision.route,
+          explicitFipe: textVerticalDecision.explicitFipe,
+          verticalSegment: textVerticalDecision.effectiveSegment,
+          demoTestPhones: Array.isArray((agent as any).demo_test_phones)
+            ? (agent as any).demo_test_phones
+            : [],
+        });
+        reply = aiResult.text;
+        generatedImageUrl = aiResult.imageUrl;
+        interactiveList = aiResult.interactiveList;
+        interactiveButtons = metaAdsQuestionarioResult.offerResume
+          ? metaAdsQuestionarioContinuarButtons()
+          : aiResult.interactiveButtons;
+        forwardProof = aiResult.forwardProof;
+        forwardAttempted = !!aiResult.forwardAttempted;
+        metaAdsSummaryDraftId = aiResult.metaAdsSummaryDraftId;
+      }
     } catch (e) {
       const aiError = String((e as Error).message ?? e).slice(0, 300);
       console.error("[processor][ai_fallback]", aiError);
       reply = inboundFromOwner
         ? "Recebi sua mensagem, mas tive uma instabilidade agora. Me manda de novo em alguns segundos que eu continuo."
         : `Boa tarde! Tudo bem? Posso saber seu nome? Me conta rapidinho o que você precisa — e, pra retorno, uso esse WhatsApp mesmo (${row.from_number}) ou prefere outro telefone?`;
+    }
+    if (
+      fromIsOwner &&
+      textVerticalDecision.demoMode &&
+      !/<<INTERACTIVE_ID:/i.test(userText)
+    ) {
+      reply = withDemoModeLabel(reply, textVerticalDecision);
     }
 
     // ---- Blindagem anti "encaminhamento fantasma" ----------------------------

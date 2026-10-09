@@ -80,6 +80,57 @@ Deno.test("usa favicon grande como fallback de confiança média", () => {
   assertEquals(identity.logo_confidence, "medium");
 });
 
+Deno.test("extrai logo de alta confiança do JSON-LD de organização", () => {
+  const identity = extractBrandIdentityFromHtml(
+    `<script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": ["AutoDealer", "LocalBusiness"],
+            "name": "Loja Premium",
+            "logo": { "@type": "ImageObject", "url": "/assets/logo-loja.webp" }
+          }
+        ]
+      }
+    </script>`,
+    "https://loja.example/veiculos",
+  );
+  assertEquals(identity.logo_url, "https://loja.example/assets/logo-loja.webp");
+  assertEquals(identity.logo_confidence, "high");
+});
+
+Deno.test("aceita logo JSON-LD em string para Store", () => {
+  const identity = extractBrandIdentityFromHtml(
+    `<script type="application/ld+json">
+      { "@type": "Store", "logo": "https://cdn.example/logo-loja.png" }
+    </script>`,
+    "https://loja.example/",
+  );
+  assertEquals(identity.logo_url, "https://cdn.example/logo-loja.png");
+  assertEquals(identity.logo_confidence, "high");
+});
+
+Deno.test("extrai og:logo como alta confiança", () => {
+  const identity = extractBrandIdentityFromHtml(
+    `<meta property="og:logo" content="/marca/logo.svg">
+     <link rel="apple-touch-icon" href="/favicon.png">`,
+    "https://loja.example/",
+  );
+  assertEquals(identity.logo_url, "https://loja.example/marca/logo.svg");
+  assertEquals(identity.logo_confidence, "high");
+});
+
+Deno.test("favicon isolado nunca é promovido a logo de alta confiança", () => {
+  const identity = extractBrandIdentityFromHtml(
+    `<meta name="theme-color" content="#E05220">
+     <link rel="apple-touch-icon" href="/icone-quadrado.png">`,
+    "https://loja.example/",
+  );
+  assertEquals(identity.logo_url, "https://loja.example/icone-quadrado.png");
+  assertEquals(identity.logo_confidence, "medium");
+});
+
 Deno.test("prioriza cores da logo e descarta paleta genérica ausente nela", () => {
   assertEquals(
     prioritizeSiteIdentityColors(

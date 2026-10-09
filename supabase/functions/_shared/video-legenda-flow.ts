@@ -11,7 +11,11 @@
 // ============================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { COPY_STYLE_PADRAO, type CopyStyle, getCopyStyle } from "./copy-style.ts";
+import {
+  COPY_STYLE_PADRAO,
+  type CopyStyle,
+  getCopyStyle,
+} from "./copy-style.ts";
 import {
   metadataEscolhaLogo,
   type VideoLegendaLogoAsset,
@@ -29,8 +33,12 @@ export interface SegmentoLegenda {
 }
 
 /** Extrai bucket/path de uma URL pública ou assinada do Storage. */
-export function bucketPathDeUrl(url: string): { bucket: string; path: string } | null {
-  const m = url.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+?)(?:\?|$)/);
+export function bucketPathDeUrl(
+  url: string,
+): { bucket: string; path: string } | null {
+  const m = url.match(
+    /\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+?)(?:\?|$)/,
+  );
   if (!m) return null;
   return { bucket: m[1], path: decodeURIComponent(m[2]) };
 }
@@ -54,9 +62,13 @@ export async function resolverNomeEmpresa(userId: string): Promise<string> {
       .select("nome_fantasia, nome")
       .eq("id", userId)
       .maybeSingle();
-    return String((prof as any)?.nome_fantasia || (prof as any)?.nome || "").trim();
+    return String((prof as any)?.nome_fantasia || (prof as any)?.nome || "")
+      .trim();
   } catch (e) {
-    console.warn("[video-legenda-flow] nome da empresa indisponível:", (e as Error).message);
+    console.warn(
+      "[video-legenda-flow] nome da empresa indisponível:",
+      (e as Error).message,
+    );
     return "";
   }
 }
@@ -88,26 +100,35 @@ export async function resolverVideoLegendado(
       .getPublicUrl(job.resultado_path);
     return pub?.publicUrl || null;
   } catch (e) {
-    console.warn("[video-legenda-flow] legendado indisponível:", (e as Error).message);
+    console.warn(
+      "[video-legenda-flow] legendado indisponível:",
+      (e as Error).message,
+    );
     return null;
   }
 }
 
-async function transcrever(videoUrl: string, nomeEmpresa?: string): Promise<SegmentoLegenda[]> {
-  const { data, error } = await sb.functions.invoke("video-transcrever-legendas", {
-    body: { video_url: videoUrl, nome_empresa: nomeEmpresa || undefined },
-  });
+async function transcrever(
+  videoUrl: string,
+  nomeEmpresa?: string,
+): Promise<SegmentoLegenda[]> {
+  const { data, error } = await sb.functions.invoke(
+    "video-transcrever-legendas",
+    {
+      body: { video_url: videoUrl, nome_empresa: nomeEmpresa || undefined },
+    },
+  );
   if (error) throw error;
   if (!data?.success) throw new Error(data?.error || "transcrição falhou");
   return (data.segments || []) as SegmentoLegenda[];
 }
 
-
 function textoDaTranscricao(segs: SegmentoLegenda[]): string {
   return segs.map((s) => s.text.replace(/\n/g, " ")).join(" ").trim();
 }
 
-const BLOCO_ACOMPANHA_FALA = `=== A COPY ACOMPANHA A FALA, MAS NÃO A TRANSCREVE ===
+const BLOCO_ACOMPANHA_FALA =
+  `=== A COPY ACOMPANHA A FALA, MAS NÃO A TRANSCREVE ===
 1. Identifique o assunto real tratado na fala.
 2. Escreva sobre ESSE MESMO assunto, com palavras de quem escreve — não de quem falou.
 3. Se a fala tiver um argumento bom, é ele que vira a copy.
@@ -183,23 +204,30 @@ ${style.promptBlock}
 Responda SOMENTE com JSON válido:
 {"opcoes":["copy A","copy B","copy C"]}`;
 
-
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-    }),
-  });
+  const res = await fetch(
+    "https://ai.gateway.lovable.dev/v1/chat/completions",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+      }),
+    },
+  );
   if (!res.ok) throw new Error(`IA falhou: ${res.status}`);
   const json = await res.json();
   let parsed: any = {};
   try {
     parsed = JSON.parse(json?.choices?.[0]?.message?.content || "{}");
   } catch {
-    const m = String(json?.choices?.[0]?.message?.content || "").match(/\{[\s\S]*\}/);
+    const m = String(json?.choices?.[0]?.message?.content || "").match(
+      /\{[\s\S]*\}/,
+    );
     if (m) parsed = JSON.parse(m[0]);
   }
   const opcoes = (parsed?.opcoes || parsed?.options || [])
@@ -218,19 +246,23 @@ Responda SOMENTE com JSON válido:
 const SEGUNDOS_POR_JOB = 60;
 async function avisoDeFila(jobId: string): Promise<string> {
   try {
-    const { data } = await sb.rpc("video_render_fila_posicao", { p_job_id: jobId });
+    const { data } = await sb.rpc("video_render_fila_posicao", {
+      p_job_id: jobId,
+    });
     const pos = Number(data || 1);
     if (pos <= 1) return "";
     const minutos = Math.max(1, Math.ceil(((pos - 1) * SEGUNDOS_POR_JOB) / 60));
-    return `\n\n⏳ Tem ${pos - 1} vídeo${pos - 1 > 1 ? "s" : ""} na frente do seu na fila de renderização — a previsão é começar o seu em cerca de ${minutos} min. Eu te aviso aqui quando ficar pronto, não precisa perguntar.`;
+    return `\n\n⏳ Tem ${pos - 1} vídeo${
+      pos - 1 > 1 ? "s" : ""
+    } na frente do seu na fila de renderização — a previsão é começar o seu em cerca de ${minutos} min. Eu te aviso aqui quando ficar pronto, não precisa perguntar.`;
   } catch (e) {
-    console.warn("[video-legenda-flow] posição na fila indisponível:", (e as Error).message);
+    console.warn(
+      "[video-legenda-flow] posição na fila indisponível:",
+      (e as Error).message,
+    );
     return "";
   }
 }
-
-
-
 
 function montarMensagemOpcoes(opcoes: string[]): string {
   const letras = ["A", "B", "C"];
@@ -254,13 +286,16 @@ export async function iniciarFluxoLegendaVideo(params: {
 }): Promise<string | null> {
   const loc = bucketPathDeUrl(params.videoUrl);
   if (!loc) {
-    console.warn("[video-legenda-flow] URL do vídeo fora do Storage:", params.videoUrl);
+    console.warn(
+      "[video-legenda-flow] URL do vídeo fora do Storage:",
+      params.videoUrl,
+    );
     return null;
   }
 
   // Nome da empresa entra no prompt da transcrição para não sair "Ademicom".
-  const nomeEmpresa =
-    (params.nomeEmpresa || "").trim() || (await resolverNomeEmpresa(params.userId));
+  const nomeEmpresa = (params.nomeEmpresa || "").trim() ||
+    (await resolverNomeEmpresa(params.userId));
 
   // Sem transcrição válida NUNCA se gera copy: o fluxo pergunta do que se trata.
   const SEM_TRANSCRICAO =
@@ -271,7 +306,10 @@ export async function iniciarFluxoLegendaVideo(params: {
   try {
     segmentos = await transcrever(params.videoUrl, nomeEmpresa);
   } catch (e) {
-    console.error("[video-legenda-flow] transcrição falhou:", (e as Error).message);
+    console.error(
+      "[video-legenda-flow] transcrição falhou:",
+      (e as Error).message,
+    );
     return SEM_TRANSCRICAO;
   }
 
@@ -291,12 +329,13 @@ export async function iniciarFluxoLegendaVideo(params: {
       nomeEmpresa || "Sua empresa",
       style,
     );
-
   } catch (e) {
-    console.error("[video-legenda-flow] copies falharam:", (e as Error).message);
+    console.error(
+      "[video-legenda-flow] copies falharam:",
+      (e as Error).message,
+    );
     return "Recebi seu vídeo e transcrevi a fala, mas falhou a geração das legendas. Me responda *TENTAR DE NOVO* que eu refaço.";
   }
-
 
   // Descarta fluxos antigos ainda abertos deste usuário (evita ambiguidade no "A/B/C")
   await sb
@@ -344,9 +383,10 @@ function detectarEscolha(texto: string): number | null {
 }
 
 function ehConfirmacao(texto: string): boolean {
-  return /\b(sim|pode|publica(r)?|posta(r)?|manda(r)?|envia(r)?|autorizo|confirmo|vai|bora|ok|com\s+logo|sem\s+logo)\b/i.test(
-    texto || "",
-  );
+  return /\b(sim|pode|publica(r)?|posta(r)?|manda(r)?|envia(r)?|autorizo|confirmo|vai|bora|ok|com\s+logo|sem\s+logo)\b/i
+    .test(
+      texto || "",
+    );
 }
 
 /**
@@ -355,11 +395,17 @@ function ehConfirmacao(texto: string): boolean {
  */
 function querPublicar(texto: string): boolean {
   const t = texto || "";
-  if (/\bn[ãa]o\s+publica/i.test(t) || /\bsem\s+publicar\b/i.test(t)) return false;
-  if (/\b(s[óo]\s+(me\s+)?(manda|mandar|envia|enviar)|conferir|confiro|revisar)\b/i.test(t)) {
+  if (/\bn[ãa]o\s+publica/i.test(t) || /\bsem\s+publicar\b/i.test(t)) {
     return false;
   }
-  return /\b(publica(r)?|posta(r)?|publique|no\s+ar|instagram|facebook)\b/i.test(t);
+  if (
+    /\b(s[óo]\s+(me\s+)?(manda|mandar|envia|enviar)|conferir|confiro|revisar)\b/i
+      .test(t)
+  ) {
+    return false;
+  }
+  return /\b(publica(r)?|posta(r)?|publique|no\s+ar|instagram|facebook)\b/i
+    .test(t);
 }
 
 /** Termos que indicam que a frase é sobre o fluxo do vídeo (não desistência). */
@@ -384,7 +430,9 @@ function ehCancelamentoExplicito(texto: string): boolean {
       .test(t);
   if (!temTermoDeCancelar) return false;
   // Menciona o fluxo (legenda/story/formato) → é correção de pedido, não desistência.
-  if (PALAVRAS_FLUXO.test(t) && !/\b(cancela|cancelar|descarta|esquece)\b/.test(t)) return false;
+  if (
+    PALAVRAS_FLUXO.test(t) && !/\b(cancela|cancelar|descarta|esquece)\b/.test(t)
+  ) return false;
   return true;
 }
 
@@ -405,7 +453,8 @@ async function cancelarJob(
   motivo: string,
   extra: Record<string, unknown> = {},
 ): Promise<void> {
-  await sb.from("video_render_jobs").update({ status: "cancelado", ...extra }).eq("id", job.id);
+  await sb.from("video_render_jobs").update({ status: "cancelado", ...extra })
+    .eq("id", job.id);
   console.log("[video-legenda-flow][cancelado]", {
     job_id: job.id,
     status_anterior: job.status,
@@ -413,7 +462,6 @@ async function cancelarJob(
     frase: (frase || "").slice(0, 160),
   });
 }
-
 
 /**
  * Passos 3 e 4: interpreta a resposta do dono para um fluxo já aberto.
@@ -433,7 +481,7 @@ function detectarFormato(texto: string): "feed" | "story" | "reels" | null {
 function detectarPlataformas(texto: string): string[] {
   const t = texto || "";
   const ambos = /\b(ambos|as\s+duas|nos\s+dois|todas\s+as\s+redes)\b/i.test(t);
-  
+
   const fb = /\b(facebook|face|fb)\b/i.test(t);
   if (ambos) return ["instagram", "facebook"];
   const out: string[] = [];
@@ -475,15 +523,24 @@ async function aplicarPedidoDeFormato(
   };
   const patch: Record<string, unknown> = {
     formato: novo.formato,
-    metadata: { ...(job.metadata || {}), plataformas_pedidas: novo.plataformas_pedidas },
+    metadata: {
+      ...(job.metadata || {}),
+      plataformas_pedidas: novo.plataformas_pedidas,
+    },
   };
   // Se o job já tem destino definido, o destino também segue a última instrução.
-  if (Array.isArray(job.plataformas) && job.plataformas.length && novo.plataformas_pedidas.length) {
+  if (
+    Array.isArray(job.plataformas) && job.plataformas.length &&
+    novo.plataformas_pedidas.length
+  ) {
     patch.plataformas = novo.plataformas_pedidas;
   }
   await sb.from("video_render_jobs").update(patch).eq("id", job.id);
   job.formato = novo.formato;
-  job.metadata = { ...(job.metadata || {}), plataformas_pedidas: novo.plataformas_pedidas };
+  job.metadata = {
+    ...(job.metadata || {}),
+    plataformas_pedidas: novo.plataformas_pedidas,
+  };
   if (patch.plataformas) job.plataformas = novo.plataformas_pedidas;
   console.log("[video-legenda-flow][formato-atualizado]", {
     job_id: job.id,
@@ -495,14 +552,18 @@ async function aplicarPedidoDeFormato(
 }
 
 /** Declaração obrigatória do que vai ao ar. */
-export function declararDestino(formato?: string | null, plataformas?: string[] | null): string {
-  const redes = (plataformas && plataformas.length ? plataformas : ["instagram", "facebook"]).map(
-    nomeRede,
-  ).join(" e ");
+export function declararDestino(
+  formato?: string | null,
+  plataformas?: string[] | null,
+): string {
+  const redes =
+    (plataformas && plataformas.length
+      ? plataformas
+      : ["instagram", "facebook"]).map(
+        nomeRede,
+      ).join(" e ");
   return `como *${nomeFormato(formato)}* no ${redes}`;
 }
-
-
 
 /** Só ecoa a letra da copy — nunca o texto inteiro. */
 function letraDaCopy(job: any): string {
@@ -523,7 +584,8 @@ async function tratarSemFluxoAberto(params: {
   telefone: string;
   texto: string;
 }): Promise<string | null> {
-  const desde = new Date(Date.now() - JANELA_RETOMADA_MIN * 60_000).toISOString();
+  const desde = new Date(Date.now() - JANELA_RETOMADA_MIN * 60_000)
+    .toISOString();
   const { data: recente } = await sb
     .from("video_render_jobs")
     .select("*")
@@ -535,17 +597,21 @@ async function tratarSemFluxoAberto(params: {
   if (!recente) return null;
 
   const t = params.texto || "";
-  const falaDoVideo =
-    PALAVRAS_FLUXO.test(t) || detectarEscolha(t) !== null || detectarFormato(t) !== null;
+  const falaDoVideo = PALAVRAS_FLUXO.test(t) || detectarEscolha(t) !== null ||
+    detectarFormato(t) !== null;
   if (!falaDoVideo) return null;
   if (recente.status !== "cancelado") return null; // concluído/aprovado: agente segue normal
 
   const opcoes: string[] = recente.metadata?.opcoes || [];
   const querRetomar =
-    /\b(sim|retoma(r)?|reabr(e|ir)|volta(r)?|continua(r)?|pode|isso|quero)\b/i.test(t) &&
+    /\b(sim|retoma(r)?|reabr(e|ir)|volta(r)?|continua(r)?|pode|isso|quero)\b/i
+      .test(t) &&
     !/\bn[ãa]o\s+(quero|precisa)\b/i.test(t);
 
-  if (opcoes.length && (querRetomar || detectarEscolha(t) !== null || detectarFormato(t) !== null)) {
+  if (
+    opcoes.length &&
+    (querRetomar || detectarEscolha(t) !== null || detectarFormato(t) !== null)
+  ) {
     await sb
       .from("video_render_jobs")
       .update({ status: "aguardando_escolha", erro_mensagem: null })
@@ -554,7 +620,9 @@ async function tratarSemFluxoAberto(params: {
       job_id: recente.id,
       frase: t.slice(0, 160),
     });
-    return `Retomei aquele vídeo 👍 (não precisa enviar de novo)\n\n${montarMensagemOpcoes(opcoes)}`;
+    return `Retomei aquele vídeo 👍 (não precisa enviar de novo)\n\n${
+      montarMensagemOpcoes(opcoes)
+    }`;
   }
 
   return "Esse vídeo está como *cancelado*. Quer que eu retome ele? Responda *SIM* que eu reabro com as mesmas legendas — não precisa enviar de novo.";
@@ -583,11 +651,9 @@ export async function tratarRespostaFluxoLegenda(params: {
 
   if (!job) return await tratarSemFluxoAberto(params);
 
-
   // ---- job já na fila / renderizando: nada de reabrir escolhas ----
   if (job.status === "pendente" || job.status === "processando") {
-    const ehSobreOFluxo =
-      detectarEscolha(params.texto) !== null ||
+    const ehSobreOFluxo = detectarEscolha(params.texto) !== null ||
       detectarFormato(params.texto) !== null ||
       detectarPlataformas(params.texto).length > 0;
     if (!ehSobreOFluxo) return null;
@@ -598,11 +664,12 @@ export async function tratarRespostaFluxoLegenda(params: {
     }. Te aviso aqui assim que ficar pronto — a escolha da legenda já está fechada.`;
   }
 
-
   // ---- vídeo já renderizado, esperando APROVAÇÃO do dono para publicar ----
   if (job.status === "aguardando_aprovacao") {
     const t = params.texto || "";
-    const aprovou = /\b(aprovar|aprovado|aprovo|publica(r)?|posta(r)?|pode\s+publicar|libera(do)?|ok|sim)\b/i.test(t) &&
+    const aprovou =
+      /\b(aprovar|aprovado|aprovo|publica(r)?|posta(r)?|pode\s+publicar|libera(do)?|ok|sim)\b/i
+        .test(t) &&
       !/\bn[ãa]o\b/i.test(t);
 
     // Antes de qualquer coisa: se o dono citou formato/rede nesta mensagem, vale.
@@ -616,30 +683,45 @@ export async function tratarRespostaFluxoLegenda(params: {
     if (aprovou) {
       await sb
         .from("video_render_jobs")
-        .update({ status: "aprovado", formato: alvo.formato, plataformas: destinoFinal })
+        .update({
+          status: "aprovado",
+          formato: alvo.formato,
+          plataformas: destinoFinal,
+        })
         .eq("id", job.id);
       sb.functions
         .invoke("video-publicar-aprovado", { body: { job_id: job.id } })
-        .catch((e: any) => console.error("[video-legenda-flow] publicação falhou:", e?.message));
-      return `Aprovado ✅ Publicando ${declararDestino(alvo.formato, destinoFinal)} e te aviso aqui quando estiver no ar.`;
+        .catch((e: any) =>
+          console.error("[video-legenda-flow] publicação falhou:", e?.message)
+        );
+      return `Aprovado ✅ Publicando ${
+        declararDestino(alvo.formato, destinoFinal)
+      } e te aviso aqui quando estiver no ar.`;
     }
     if (ehCancelamentoExplicito(t)) {
-      await cancelarJob(job, t, "cancelamento_explicito_aprovacao", { plataformas: [] });
+      await cancelarJob(job, t, "cancelamento_explicito_aprovacao", {
+        plataformas: [],
+      });
       return "Beleza, *não publiquei nada*. O vídeo legendado já está com você — se quiser tentar outra legenda, me manda o vídeo de novo.";
     }
     if (ehDuvidaDeCancelamento(t)) {
-      return `O vídeo está pronto com a ${letraDaCopy(job)}. ${PERGUNTA_CANCELAR}`;
+      return `O vídeo está pronto com a ${
+        letraDaCopy(job)
+      }. ${PERGUNTA_CANCELAR}`;
     }
 
-    if (detectarEscolha(t) !== null || detectarFormato(t) !== null || detectarPlataformas(t).length) {
-      return `O vídeo está pronto com a ${letraDaCopy(job)}. Responda *APROVAR* que eu publico ${
+    if (
+      detectarEscolha(t) !== null || detectarFormato(t) !== null ||
+      detectarPlataformas(t).length
+    ) {
+      return `O vídeo está pronto com a ${
+        letraDaCopy(job)
+      }. Responda *APROVAR* que eu publico ${
         declararDestino(alvo.formato, destinoFinal)
       }, ou *CANCELAR* e nada vai ao ar.`;
     }
     return null; // não é resposta do fluxo — o agente segue normalmente
-
   }
-
 
   // ---- aguardando escolha da copy ----
   if (job.status === "aguardando_escolha") {
@@ -654,7 +736,9 @@ export async function tratarRespostaFluxoLegenda(params: {
       if (PALAVRAS_FLUXO.test(t) || detectarPlataformas(t).length) {
         const alvo = await aplicarPedidoDeFormato(job, t);
         const anotado = detectarFormato(t) || detectarPlataformas(t).length
-          ? ` e anotei: vai ${declararDestino(alvo.formato, alvo.plataformas_pedidas)}`
+          ? ` e anotei: vai ${
+            declararDestino(alvo.formato, alvo.plataformas_pedidas)
+          }`
           : "";
         return `Mantive esse vídeo aberto${anotado}. A legenda vai *queimada no vídeo* — só me diga qual texto usar: *A*, *B* ou *C*.`;
       }
@@ -682,16 +766,20 @@ export async function tratarRespostaFluxoLegenda(params: {
           copy_letra: letra,
           plataformas_pedidas: alvo.plataformas_pedidas,
           ...(params.logo
-            ? { logo_bucket: params.logo.bucket, logo_path: params.logo.path }
+            ? {
+              logo_bucket: params.logo.bucket,
+              logo_path: params.logo.path,
+              logo_light_background_path: params.logo.lightBackgroundPath,
+              logo_dark_background_path: params.logo.darkBackgroundPath,
+            }
             : {}),
         },
       })
       .eq("id", job.id);
 
     // Uma linha curta + UMA pergunta. Sem reimprimir a copy.
-    const confirmar = params.logo
-      ? "Escolha *Gerar com logo* ou *Gerar sem logo*. Se responder só *ENVIAR* ou *PUBLICAR*, gero sem logo."
-      : "Responda *ENVIAR* (só te devolvo o vídeo legendado) ou *PUBLICAR* (te mando pra aprovar e só então publico).";
+    const confirmar =
+      "Responda *ENVIAR* (só te devolvo o vídeo legendado) ou *PUBLICAR* (te mando pra aprovar e só então publico).";
     return `Legenda *${letra}* registrada ✅ — vai ${
       declararDestino(alvo.formato, alvo.plataformas_pedidas)
     }\n\n${confirmar}`;
@@ -700,15 +788,25 @@ export async function tratarRespostaFluxoLegenda(params: {
   // ---- aguardando confirmação de publicação ----
   if (job.status === "aguardando_confirmacao") {
     // A escolha é definitiva: A/B/C aqui não reabre nada.
-    if (detectarEscolha(params.texto) !== null && !ehConfirmacao(params.texto)) {
-      return `Já está fechado com a ${letraDaCopy(job)}. Responda *ENVIAR* ou *PUBLICAR*.`;
+    if (
+      detectarEscolha(params.texto) !== null && !ehConfirmacao(params.texto)
+    ) {
+      return `Já está fechado com a ${
+        letraDaCopy(job)
+      }. Responda *ENVIAR* ou *PUBLICAR*.`;
     }
     if (ehCancelamentoExplicito(params.texto) && !querPublicar(params.texto)) {
-      await cancelarJob(job, params.texto, "cancelamento_explicito_confirmacao");
+      await cancelarJob(
+        job,
+        params.texto,
+        "cancelamento_explicito_confirmacao",
+      );
       return "Sem problema, não publiquei nada. Quando quiser, me avise.";
     }
     if (ehDuvidaDeCancelamento(params.texto)) {
-      return `Esse vídeo continua fechado com a ${letraDaCopy(job)}. Responda *ENVIAR* ou *PUBLICAR* — ou ${PERGUNTA_CANCELAR}`;
+      return `Esse vídeo continua fechado com a ${
+        letraDaCopy(job)
+      }. Responda *ENVIAR* ou *PUBLICAR* — ou ${PERGUNTA_CANCELAR}`;
     }
 
     if (ehConfirmacao(params.texto)) {
@@ -726,23 +824,29 @@ export async function tratarRespostaFluxoLegenda(params: {
           formato: alvo.formato,
           enfileirado_at: new Date().toISOString(),
           plataformas: publicar ? destino : [],
-          metadata: metadataEscolhaLogo(job.metadata, params.texto),
+          metadata: metadataEscolhaLogo(
+            job.metadata,
+            params.texto,
+            params.logo,
+          ),
         })
         .eq("id", job.id);
 
       const espera = await avisoDeFila(job.id);
       return (publicar
-        ? `Fechado 🎬 Gravando a ${letraDaCopy(job)} no vídeo. Quando terminar, te mando aqui para você aprovar — só publico depois do seu OK, ${
+        ? `Fechado 🎬 Gravando a ${
+          letraDaCopy(job)
+        } no vídeo. Quando terminar, te mando aqui para você aprovar — só publico depois do seu OK, ${
           declararDestino(alvo.formato, destino)
         }.`
-        : `Fechado 🎬 Gravando a ${letraDaCopy(job)} no vídeo e te devolvo o arquivo aqui. *Não vou publicar nada.*`) +
+        : `Fechado 🎬 Gravando a ${
+          letraDaCopy(job)
+        } no vídeo e te devolvo o arquivo aqui. *Não vou publicar nada.*`) +
         espera;
     }
 
     return null;
   }
-
-
 
   return null;
 }

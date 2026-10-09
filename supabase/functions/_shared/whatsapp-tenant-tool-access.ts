@@ -6,7 +6,9 @@ export const AMZ_GLOBAL_TOOL_NAMES = new Set([
 ]);
 
 export const OWNER_ONLY_TOOL_NAMES = new Set([
+  "consultar_fipe",
   "relatorio_anuncios_meta",
+  "alterar_limite_mensal_anuncios",
   "rascunho_anuncio_meta",
   "publicar_anuncio_meta",
   "pausar_campanha_meta",

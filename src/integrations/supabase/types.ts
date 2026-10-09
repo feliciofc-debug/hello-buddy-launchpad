@@ -8264,33 +8264,42 @@ export type Database = {
       tenant_logos: {
         Row: {
           ativo: boolean
+          background_warning: string | null
           created_at: string
           file_name: string | null
+          generated_automatically: boolean
           id: string
           mime_type: string | null
           storage_path: string
           updated_at: string
           user_id: string
+          variant: string
         }
         Insert: {
           ativo?: boolean
+          background_warning?: string | null
           created_at?: string
           file_name?: string | null
+          generated_automatically?: boolean
           id?: string
           mime_type?: string | null
           storage_path: string
           updated_at?: string
           user_id: string
+          variant?: string
         }
         Update: {
           ativo?: boolean
+          background_warning?: string | null
           created_at?: string
           file_name?: string | null
+          generated_automatically?: boolean
           id?: string
           mime_type?: string | null
           storage_path?: string
           updated_at?: string
           user_id?: string
+          variant?: string
         }
         Relationships: []
       }

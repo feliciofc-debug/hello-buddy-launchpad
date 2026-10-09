@@ -1,12 +1,14 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   canRunClientLogoRegistrationShortcut,
+  classifyCreativeMediaRequest,
   clientLogoUploadFollowUp,
   extractVideoClientName,
   hasUsableVideoTopic,
+  isClearlyDifferentFromPendingVideo,
   isSameVideoBrandName,
-  isVideoMotionRequest,
   isVideoMotionRedoRequest,
+  isVideoMotionRequest,
   resolveAutomaticVideoSiteIdentity,
   selectVideoClientLogo,
   shouldStartVideoSetup,
@@ -20,6 +22,26 @@ Deno.test("reconhece pedido para refazer vídeo sem tratar como criação nova",
   assertEquals(
     isVideoMotionRedoRequest("Corrige o título do vídeo"),
     true,
+  );
+  assertEquals(
+    isVideoMotionRedoRequest("Troca o cenário desta foto: mesa de café"),
+    false,
+  );
+  assertEquals(
+    isVideoMotionRedoRequest(
+      "muda o fundo",
+      "2026-10-07T13:55:00.000Z",
+      Date.parse("2026-10-07T14:00:00.000Z"),
+    ),
+    true,
+  );
+  assertEquals(
+    isVideoMotionRedoRequest(
+      "muda o fundo desta imagem",
+      "2026-10-07T13:55:00.000Z",
+      Date.parse("2026-10-07T14:00:00.000Z"),
+    ),
+    false,
   );
   assertEquals(isVideoMotionRedoRequest("Crie um vídeo novo"), false);
 });
@@ -113,6 +135,17 @@ Deno.test("site sem logo confiável segue somente com cores e nome do site", () 
       summary: "Marca do Site — cores #123456 · #abcdef",
     },
   );
+});
+
+Deno.test("ícone de confiança média nunca é usado como logo automática", () => {
+  const identity = resolveAutomaticVideoSiteIdentity({
+    siteBrandName: "Marca do Site",
+    siteUrl: "https://marca.example",
+    colors: ["#123456"],
+    logoConfidence: "medium",
+    logoDataUrl: "data:image/png;base64,RkFWSUNPTg==",
+  });
+  assertEquals(identity.useSiteLogo, false);
 });
 
 Deno.test("atalho de cadastro não captura fluxo de vídeo nem respostas interativas", () => {
@@ -232,6 +265,29 @@ Deno.test("publicação de vídeo existente não abre criação de vídeo", () =
 
 Deno.test("pedido de vídeo de não-dono continua identificável para orientação", () => {
   assertEquals(isVideoMotionRequest("faz um vídeo pra mim"), true);
+});
+
+Deno.test("pedido explícito de arte não é desviado pela palavra vídeo na descrição", () => {
+  const pedido =
+    "Cria uma arte de anúncio em que aparecem prontos um post, um vídeo e um anúncio";
+  assertEquals(classifyCreativeMediaRequest(pedido), "image");
+  assertEquals(isVideoMotionRequest(pedido), false);
+  assertEquals(shouldStartVideoSetup(pedido), false);
+});
+
+Deno.test("pedido realmente ambíguo entre vídeo e imagem é identificado", () => {
+  assertEquals(
+    classifyCreativeMediaRequest("Quero criar um conteúdo em vídeo ou imagem"),
+    "ambiguous",
+  );
+});
+
+Deno.test("pedido novo de arte interrompe escolha pendente sem parecer trilha", () => {
+  assertEquals(
+    isClearlyDifferentFromPendingVideo("Cria uma arte para divulgar o produto"),
+    true,
+  );
+  assertEquals(isClearlyDifferentFromPendingVideo("Sem trilha"), false);
 });
 
 Deno.test("cadastro de logo sem foto oferece continuação clara", () => {

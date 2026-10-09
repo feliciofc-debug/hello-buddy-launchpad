@@ -58,6 +58,36 @@ Deno.test("reencaminhar EA0BEE5B vence imagens geradas depois mesmo com deduplic
   );
 });
 
+Deno.test("foto nova da garrafa vence anúncio e carrossel antigos", () => {
+  assertEquals(
+    selectLatestImplicitMediaId(
+      {
+        id: "CITROEN-CARROSSEL",
+        created_at: "2026-10-07T12:00:00.000Z",
+      },
+      {
+        media_id: "GARRAFA-NOVA",
+        at: "2026-10-07T12:15:00.000Z",
+      },
+    ),
+    "GARRAFA-NOVA",
+  );
+  assertEquals(
+    selectPublicationMediaId({
+      lastInteraction: {
+        media_id: "GARRAFA-NOVA",
+        at: "2026-10-07T12:15:00.000Z",
+      },
+      recentGenerated: {
+        id: "CITROEN-CARROSSEL",
+        created_at: "2026-10-07T12:00:00.000Z",
+      },
+      nowMs: Date.parse("2026-10-07T12:16:00.000Z"),
+    }),
+    "GARRAFA-NOVA",
+  );
+});
+
 Deno.test("linha nova vence quando a interação registrada é mais antiga", () => {
   assertEquals(
     selectLatestImplicitMediaId(
@@ -165,7 +195,14 @@ Deno.test("mantém comandos explícitos de edição dirigidos à foto", () => {
 });
 
 Deno.test("mantém comandos explícitos de publicação", () => {
-  for (const text of ["posta essa no insta", "publica no facebook", "posta no LinkedIn", "publica no lkd"]) {
+  for (
+    const text of [
+      "posta essa no insta",
+      "publica no facebook",
+      "posta no LinkedIn",
+      "publica no lkd",
+    ]
+  ) {
     assertEquals(classifyOwnerMediaIntent(text), {
       action: "post",
       mediaStrategy: "last",

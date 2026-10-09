@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { appendLinkPost } from '../_shared/link-post.ts'
 
-import { prepareImageForInstagramSafe } from "../_shared/prepareImageForInstagram.ts"
+import { prepareImageForInstagram } from "../_shared/prepareImageForInstagram.ts"
 import { InstagramContainerTimeoutError, waitForInstagramContainer } from "../_shared/instagram-container.ts"
 
 const corsHeaders = {
@@ -15,65 +15,17 @@ const SUPABASE_SERVICE_ROLE_KEY_ENV = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
 /**
  * Garante URL compatível com Instagram (não-AVIF, hospedada em CDN confiável).
- * Estratégia em camadas:
- *  1) Se URL já é uma URL do nosso Storage (produtos bucket) → retorna direto
- *  2) Se NÃO é AVIF → retorna sem alteração (Meta aceita)
- *  3) Se é AVIF (Shopee) ou já wrapped em wsrv.nl:
- *     a) Tenta `prepareImageForInstagramSafe` (baixa + decode + reencode JPEG + upload Storage)
- *     b) Se falhar, usa wsrv.nl como último recurso
+ * A Graph API recebe sempre JPEG público do Storage, mesmo quando a origem já
+ * está no nosso bucket. Isso elimina PNG/WebP/HEIC e transparência.
  */
 async function ensureInstagramCompatibleImageUrl(url: string, userId: string): Promise<string> {
-  if (!url) return url
-  try {
-    const lower = url.toLowerCase()
-    // Se já é do nosso Storage, OK
-    if (lower.includes('/storage/v1/object/public/produtos/')) {
-      return url
-    }
-
-    // Detecta AVIF (direto ou já dentro de wrapper wsrv.nl)
-    const isAvif =
-      lower.endsWith('.avif') ||
-      lower.includes('.avif?') ||
-      lower.includes('format=avif') ||
-      lower.includes('.avif&') ||
-      lower.includes('%2eavif') ||
-      (lower.includes('wsrv.nl') && lower.includes('.avif'))
-
-    if (!isAvif) return url
-
-    // Se é wsrv.nl wrapped, extrair URL original AVIF
-    let originalUrl = url
-    if (lower.includes('wsrv.nl/?url=')) {
-      try {
-        const urlObj = new URL(url)
-        const inner = urlObj.searchParams.get('url')
-        if (inner) originalUrl = decodeURIComponent(inner)
-      } catch (_) {
-        // ignore
-      }
-    }
-
-    console.log('🔄 [AVIF] Convertendo via Storage helper:', originalUrl.substring(0, 100))
-    const result = await prepareImageForInstagramSafe(
-      originalUrl,
-      userId,
-      SUPABASE_URL_ENV,
-      SUPABASE_SERVICE_ROLE_KEY_ENV,
-    )
-
-    if (result.converted) {
-      console.log('✅ [AVIF] Convertida e armazenada:', result.url.substring(0, 100))
-      return result.url
-    }
-
-    // Helper falhou → fallback wsrv.nl
-    console.warn('⚠️ [AVIF] Helper não converteu, usando wsrv.nl como fallback')
-    return `https://wsrv.nl/?url=${encodeURIComponent(originalUrl)}&output=jpg&q=90`
-  } catch (e) {
-    console.warn('⚠️ ensureInstagramCompatibleImageUrl falhou, usando URL original:', e)
-    return url
-  }
+  const result = await prepareImageForInstagram(
+    url,
+    userId,
+    SUPABASE_URL_ENV,
+    SUPABASE_SERVICE_ROLE_KEY_ENV,
+  )
+  return result.url
 }
 
 function sanitizePublishText(text?: string | null) {
@@ -339,7 +291,15 @@ async function publishImageToInstagram(
   console.log('📸 Publicando IMAGEM no Instagram...', { igAccountId })
 
   // Camada de segurança: AVIF → conversão real via Storage helper
-  const safeImageUrl = await ensureInstagramCompatibleImageUrl(imageUrl, userId)
+  let safeImageUrl: string
+  try {
+    safeImageUrl = await ensureInstagramCompatibleImageUrl(imageUrl, userId)
+  } catch (error) {
+    console.error('[instagram][prepare-image-1]', error)
+    throw new Error(
+      'Não consegui preparar a imagem 1 para o Instagram. Tente novamente.',
+    )
+  }
 
   let creationId = String(retryCreationId || '').trim()
   if (creationId) {
@@ -378,7 +338,10 @@ async function publishImageToInstagram(
   }
 
   if (containerResult.error) {
-    throw new Error(`Instagram API (container): ${containerResult.error.message}`)
+    console.error('[instagram][container-image-1]', containerResult.error)
+    throw new Error(
+      'O Instagram não aceitou a imagem 1. Tente novamente com outra imagem.',
+    )
   }
 
   creationId = containerResult.id

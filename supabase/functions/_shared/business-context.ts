@@ -8,6 +8,11 @@
 // Sem dados → devolve o que houver; NUNCA usa dados de outro tenant.
 // ============================================================
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
+import {
+  buildMetodoAmzBlock,
+  type MetodoAmzEstilo,
+  type MetodoAmzTipo,
+} from "./metodo-amz.ts";
 
 export type TenantBusinessContext = {
   nome: string | null;
@@ -42,7 +47,12 @@ function formatBrPhone(digits: string): string {
 export async function getTenantBusinessContext(
   sb: SupabaseClient,
   userId: string,
-  opts?: { nomeFallback?: string | null; incluirProdutos?: boolean },
+  opts?: {
+    nomeFallback?: string | null;
+    incluirProdutos?: boolean;
+    tipoCriativo?: MetodoAmzTipo;
+    estiloCriativo?: MetodoAmzEstilo;
+  },
 ): Promise<TenantBusinessContext> {
   let nome = opts?.nomeFallback?.trim() || null;
   let segmento: string | null = null;
@@ -123,12 +133,10 @@ export async function getTenantBusinessContext(
   if (produtos.length) linhas.push(`- Produtos/serviços em destaque: ${produtos.slice(0, 8).join("; ")}`);
   if (atendimentoTelefoneFmt) linhas.push(`- WhatsApp de atendimento: ${atendimentoTelefoneFmt}`);
 
-  const promptBlock = linhas.length
-    ? [
-        "CONTEXTO REAL DO NEGÓCIO (use SOMENTE estes fatos — é proibido inventar produtos, números, prêmios ou marcas que não estejam aqui):",
-        ...linhas,
-      ].join("\n")
-    : "";
+  const promptBlock = buildBusinessPromptBlock(linhas, {
+    tipo: opts?.tipoCriativo ?? "post",
+    estilo: opts?.estiloCriativo,
+  });
 
   return {
     nome,
@@ -145,6 +153,21 @@ export async function getTenantBusinessContext(
     temContexto,
     promptBlock,
   };
+}
+
+export function buildBusinessPromptBlock(
+  linhas: string[],
+  metodo: { tipo: MetodoAmzTipo; estilo?: MetodoAmzEstilo } = {
+    tipo: "post",
+  },
+): string {
+  const contexto = linhas.length
+    ? [
+      "CONTEXTO REAL DO NEGÓCIO (use SOMENTE estes fatos — é proibido inventar produtos, números, prêmios ou marcas que não estejam aqui):",
+      ...linhas,
+    ].join("\n")
+    : "CONTEXTO REAL DO NEGÓCIO: nenhum fato adicional foi cadastrado. Não invente informações para preencher a peça.";
+  return `${contexto}\n\n${buildMetodoAmzBlock(metodo)}`;
 }
 
 

@@ -1,6 +1,7 @@
 // ============================================================================
 // WhatsApp Media Helper — baixa mídia da Graph API e converte para base64.
 // ============================================================================
+import { detectImageFormat } from "./image-file-format.ts";
 
 // A WhatsApp Cloud API limita vídeo recebido a 16MB. 20MB cobre tudo que pode chegar.
 const MAX_MEDIA_BYTES = 20 * 1024 * 1024;
@@ -25,6 +26,36 @@ export type MediaDownloadResult = {
   items: MediaExtract[];
   rejections: MediaRejection[];
 };
+
+function base64Bytes(value: string): Uint8Array {
+  const binary = atob(value);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+export function normalizeImageDocuments(
+  items: MediaExtract[],
+): MediaExtract[] {
+  return items.map((item) => {
+    if (item.kind !== "document") return item;
+    const declaredImage = /^image\/(?:jpe?g|png|webp|heic)$/i.test(item.mime);
+    const imageExtension = /\.(?:jpe?g|png|webp|heic)$/i.test(
+      item.filename || "",
+    );
+    if (!declaredImage && !imageExtension) return item;
+    try {
+      const detected = detectImageFormat(base64Bytes(item.base64));
+      if (
+        !detected ||
+        !["image/jpeg", "image/png", "image/webp", "image/heic"].includes(
+          detected.mime,
+        )
+      ) return item;
+      return { ...item, kind: "image", mime: detected.mime };
+    } catch {
+      return item;
+    }
+  });
+}
 
 export function extractMediaRefs(payload: any): Array<{
   kind: MediaExtract["kind"];
@@ -119,7 +150,7 @@ export async function downloadAllMediaDetailed(
     }
     out.push({ kind: ref.kind, mime: dl.mime || ref.mime, base64: dl.base64, caption: ref.caption, filename: ref.filename });
   }
-  return { items: out, rejections };
+  return { items: normalizeImageDocuments(out), rejections };
 }
 
 export async function downloadAllMedia(

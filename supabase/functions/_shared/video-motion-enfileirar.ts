@@ -241,8 +241,14 @@ export function aplicarAjusteRoteiroMotion(
   return { props, changed };
 }
 
-export async function logoDoTenant(sb: any, userId: string): Promise<string | undefined> {
-  return (await getTenantLogo(sb, userId))?.storage_path;
+export async function logoDoTenant(
+  sb: any,
+  userId: string,
+  _background?: "claro" | "escuro",
+): Promise<string | undefined> {
+  const logo = await getTenantLogo(sb, userId, "video") ??
+    await getTenantLogo(sb, userId);
+  return logo?.storage_path;
 }
 
 type LogoMotionResolvida = {
@@ -358,6 +364,7 @@ export async function resolverLogoMotion(
     explicitPath?: unknown;
     explicitUrl?: unknown;
     clientIdentity?: boolean;
+    background?: "claro" | "escuro";
   },
 ): Promise<LogoMotionResolvida | null> {
   const explicitPath = await logoPathExiste(sb, userId, params.explicitPath);
@@ -379,14 +386,18 @@ export async function resolverLogoMotion(
   // Marca de cliente nunca herda identidade, perfil ou storage da AMZ/tenant.
   if (params.clientIdentity) return null;
 
+  const variantPath = await logoPathExiste(
+    sb,
+    userId,
+    await logoDoTenant(sb, userId, params.background),
+  );
+  if (variantPath) return { path: variantPath, origem: "tenant_logos" };
+
   const siteIdentity = await logoDaIdentidadeSite(sb, userId);
   if (siteIdentity) return { url: siteIdentity, origem: "site_identity" };
 
   const profileLogo = await logoDoPerfil(sb, userId);
   if (profileLogo) return { url: profileLogo, origem: "profile" };
-
-  const tenantPath = await logoPathExiste(sb, userId, await logoDoTenant(sb, userId));
-  if (tenantPath) return { path: tenantPath, origem: "tenant_logos" };
 
   const userLogo = await logoOrfaEmUserLogos(sb, userId);
   if (userLogo) return { url: userLogo, origem: "user_logos" };
@@ -503,6 +514,7 @@ export async function montarRoteiroMotion(input: EnfileirarInput): Promise<{
     explicitPath: logoSolicitada,
     explicitUrl: (input.props as any)?.logoUrl,
     clientIdentity: semLogoTenant,
+    background: fundo,
   });
   if (logo) {
     console.log(`[video-motion][logo] tenant=${userId} origem=${logo.origem}`);

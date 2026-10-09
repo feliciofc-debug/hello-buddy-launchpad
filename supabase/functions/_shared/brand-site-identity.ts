@@ -99,6 +99,59 @@ function absoluteUrl(value: string, base: URL): string | null {
   }
 }
 
+function jsonLdLogoSource(html: string): string {
+  const acceptedTypes = new Set([
+    "organization",
+    "autodealer",
+    "localbusiness",
+    "store",
+  ]);
+  const visit = (value: unknown): string => {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const found = visit(item);
+        if (found) return found;
+      }
+      return "";
+    }
+    if (!value || typeof value !== "object") return "";
+    const record = value as Record<string, unknown>;
+    const rawTypes = Array.isArray(record["@type"])
+      ? record["@type"]
+      : [record["@type"]];
+    const matchesType = rawTypes.some((type) => {
+      const normalized = String(type || "").split(/[\/#]/).at(-1)?.toLowerCase();
+      return normalized ? acceptedTypes.has(normalized) : false;
+    });
+    if (matchesType) {
+      if (typeof record.logo === "string") return record.logo.trim();
+      if (record.logo && typeof record.logo === "object") {
+        const logo = record.logo as Record<string, unknown>;
+        if (typeof logo.url === "string") return logo.url.trim();
+      }
+    }
+    for (const child of Object.values(record)) {
+      const found = visit(child);
+      if (found) return found;
+    }
+    return "";
+  };
+
+  for (
+    const match of html.matchAll(
+      /<script\b[^>]*type=["']application\/ld\+json(?:;\s*[^"']*)?["'][^>]*>([\s\S]*?)<\/script>/gi,
+    )
+  ) {
+    try {
+      const found = visit(JSON.parse(match[1]));
+      if (found) return found;
+    } catch {
+      // JSON-LD inválido não impede as demais fontes de identidade.
+    }
+  }
+  return "";
+}
+
 export function cleanSiteBrandName(value: string): string | null {
   return String(value || "")
     .split(/\s+(?:\||-|–|—)\s+|\s*:\s*/, 1)[0]
@@ -144,8 +197,12 @@ export function extractBrandIdentityFromHtml(
     const key = attribute(tag, "property") || attribute(tag, "name");
     return /^(?:og:site_name|application-name)$/i.test(key);
   });
+  const title = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1]
+    ?.replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim() ?? "";
   const brandName = cleanSiteBrandName(
-    (siteNameTag && attribute(siteNameTag, "content")) || "",
+    (siteNameTag && attribute(siteNameTag, "content")) || title,
   );
   for (const tag of themeTags) {
     if (attribute(tag, "name").toLowerCase() !== "theme-color") continue;
@@ -195,6 +252,18 @@ export function extractBrandIdentityFromHtml(
   let logoConfidence: BrandSiteIdentity["logo_confidence"] = logoSource
     ? "high"
     : "none";
+
+  if (!logoSource) {
+    const ogLogoTag = themeTags.find((tag) =>
+      attribute(tag, "property").toLowerCase() === "og:logo"
+    );
+    logoSource = ogLogoTag ? attribute(ogLogoTag, "content") : "";
+    if (logoSource) logoConfidence = "high";
+  }
+  if (!logoSource) {
+    logoSource = jsonLdLogoSource(html);
+    if (logoSource) logoConfidence = "high";
+  }
 
   if (!logoSource) {
     const linkTags = [...html.matchAll(/<link\b[^>]*>/gi)].map((match) => match[0]);

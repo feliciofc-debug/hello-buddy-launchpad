@@ -13,15 +13,21 @@
  *   titulo: string,                      // ex: "HYUNDAI CRETA 1.0 TURBO"
  *   subtitulo?: string,                  // ex: "AUTOMÁTICO 2023/2023"
  *   itens?: [{ texto, rotulo? }] | string[],
+ *   ano?: string,
  *   preco?: string, preco_label?: string,
+ *   preco_referencia?: string, preco_referencia_label?: string,
+ *   preco_referencia_obs?: string,
  *   badge?: string,                      // ex: "PINTURA 100% ORIGINAL"
  *   telefone?: string, instagram?: string, site?: string,
  *   business_name?: string,
  *   foto_url?: string,                   // foto do produto (http/https)
  *   foto_base64?: string,                // alternativa (data URL ou base64 puro)
+ *   foto_box?: [ymin, xmin, ymax, xmax], // objeto principal, normalizado 0–1000
  *   formato?: "feed" | "story",          // default feed (1080x1080)
  *   primary_color?: string, accent_color?: string,
- *   incluir_logo?: boolean               // default true
+ *   incluir_logo?: boolean,              // default true
+ *   logo_path?: string,                  // logo de cliente no bucket tenant-logos
+ *   logo_source?: "tenant" | "client"   // client nunca cai no fallback do tenant
  * }
  *
  * Resposta: { success: true, image_url, formato, width, height }
@@ -30,14 +36,30 @@
 import satori from "https://esm.sh/satori@0.10.13";
 import { initWasm, Resvg } from "https://esm.sh/@resvg/resvg-wasm@2.6.2";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
 import {
   type AnuncioData,
   type AnuncioFormato,
   type AnuncioItem,
   anuncioSize,
-  buildAnuncio,
 } from "../_shared/anuncio-templates/darkGold.ts";
-import { getTenantLogoDataUrl } from "../_shared/tenant-logo.ts";
+import { buildImpactoAnuncio } from "../_shared/anuncio-templates/impacto.ts";
+import { buildCatalogoAnuncio } from "../_shared/anuncio-templates/catalogo.ts";
+import { buildDestaqueAnuncio } from "../_shared/anuncio-templates/destaque.ts";
+import {
+  ANUNCIO_LAYOUT_BOXES,
+  type AnuncioEstilo,
+} from "../_shared/anuncio-templates/premiumLayout.ts";
+import {
+  calculatePhotoFrame,
+  frameContainsObject,
+} from "../_shared/anuncio-photo-framing.ts";
+import { selectAnuncioPhoto } from "../_shared/anuncio-photo.ts";
+import {
+  normalizeImageDataUrl,
+  renderableImageDataUrl,
+} from "../_shared/renderable-image.ts";
+import { getTenantLogoDataUrlForBackground } from "../_shared/tenant-logo.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -85,31 +107,135 @@ function normalizeHex(value: unknown, fallback: string): string {
   return /^#?[0-9a-fA-F]{6}$/.test(v) ? (v.startsWith("#") ? v : `#${v}`) : fallback;
 }
 
-function toBase64(buf: Uint8Array): string {
-  let bin = "";
-  const CHUNK = 8192;
-  for (let i = 0; i < buf.length; i += CHUNK) bin += String.fromCharCode(...buf.subarray(i, i + CHUNK));
-  return btoa(bin);
-}
-
 /** Satori só aceita imagem embutida de forma confiável → tudo vira data URL. */
 async function fotoParaDataUrl(fotoUrl?: string, fotoBase64?: string): Promise<string | null> {
+  const logInvalid = (message: string) =>
+    console.warn(`[render-anuncio-produto] ${message}`);
   if (fotoBase64) {
-    if (fotoBase64.startsWith("data:")) return fotoBase64;
-    return `data:image/jpeg;base64,${fotoBase64}`;
+    return await normalizeImageDataUrl(
+      fotoBase64.startsWith("data:")
+        ? fotoBase64
+        : `data:image/jpeg;base64,${fotoBase64}`,
+      "foto",
+      logInvalid,
+    );
   }
   if (!fotoUrl || !/^https?:\/\//i.test(fotoUrl)) return null;
   try {
     const res = await fetch(fotoUrl, { signal: AbortSignal.timeout(25000) });
     if (!res.ok) throw new Error(`foto ${res.status}`);
-    const mime = res.headers.get("content-type") || "image/jpeg";
     const buf = new Uint8Array(await res.arrayBuffer());
     if (!buf.length) return null;
-    return `data:${mime.split(";")[0]};base64,${toBase64(buf)}`;
+    return await renderableImageDataUrl(buf, "foto", logInvalid);
   } catch (e) {
     console.warn("[render-anuncio-produto] foto indisponível:", (e as Error).message);
     return null;
   }
+}
+
+async function fotoComFallbackParaDataUrl(
+  fotoUrl?: string,
+  fotoBase64?: string,
+  fotoOriginalUrl?: string,
+): Promise<{ dataUrl: string | null; source: "improved" | "original" | "none" }> {
+  if (fotoBase64) {
+    const embedded = await fotoParaDataUrl(undefined, fotoBase64);
+    if (embedded) return { dataUrl: embedded, source: "improved" };
+  }
+  const selected = await selectAnuncioPhoto({
+    preferred: fotoUrl,
+    original: fotoOriginalUrl,
+    load: (url) => fotoParaDataUrl(url, undefined),
+  });
+  return { dataUrl: selected.value, source: selected.source };
+}
+
+function dataUrlBytes(dataUrl: string): Uint8Array {
+  const encoded = dataUrl.split(",", 2)[1] || "";
+  return Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
+}
+
+function edgeAverageColor(image: Image): number {
+  const border = Math.max(1, Math.round(Math.min(image.width, image.height) * 0.04));
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+  let count = 0;
+  for (let y = 0; y < image.height; y++) {
+    for (let x = 0; x < image.width; x++) {
+      if (
+        x >= border &&
+        x < image.width - border &&
+        y >= border &&
+        y < image.height - border
+      ) continue;
+      const offset = (y * image.width + x) * 4;
+      if (image.bitmap[offset + 3] === 0) continue;
+      red += image.bitmap[offset];
+      green += image.bitmap[offset + 1];
+      blue += image.bitmap[offset + 2];
+      count++;
+    }
+  }
+  return Image.rgbToColor(
+    count ? Math.round(red / count) : 24,
+    count ? Math.round(green / count) : 24,
+    count ? Math.round(blue / count) : 24,
+  );
+}
+
+async function composePhotoForTemplate(input: {
+  dataUrl: string;
+  estilo: AnuncioEstilo;
+  formato: AnuncioFormato;
+  fotoBox?: unknown;
+}): Promise<{ dataUrl: string; mode: "box" | "contain" }> {
+  const source = await Image.decode(dataUrlBytes(input.dataUrl));
+  const target = ANUNCIO_LAYOUT_BOXES[input.estilo][input.formato].vehicle;
+  const plan = calculatePhotoFrame({
+    sourceWidth: source.width,
+    sourceHeight: source.height,
+    targetWidth: target.width,
+    targetHeight: target.height,
+    fotoBox: input.fotoBox,
+  });
+  if (!frameContainsObject(plan, target.width, target.height)) {
+    throw new Error("enquadramento não contém integralmente o objeto");
+  }
+  const canvas = new Image(target.width, target.height);
+  canvas.fill(edgeAverageColor(source));
+  canvas.composite(
+    source.resize(plan.resizedWidth, plan.resizedHeight),
+    plan.x,
+    plan.y,
+  );
+  const png = await canvas.encode();
+  let binary = "";
+  for (let offset = 0; offset < png.length; offset += 8192) {
+    binary += String.fromCharCode(...png.subarray(offset, offset + 8192));
+  }
+  return {
+    dataUrl: `data:image/png;base64,${btoa(binary)}`,
+    mode: plan.mode,
+  };
+}
+
+async function logoPathParaDataUrl(
+  supabase: any,
+  userId: string,
+  rawPath: unknown,
+): Promise<string | null> {
+  const path = String(rawPath ?? "");
+  if (!path || !path.startsWith(`${userId}/`)) return null;
+  const { data, error } = await supabase.storage.from("tenant-logos").download(path);
+  if (error || !data) return null;
+  const bytes = new Uint8Array(await data.arrayBuffer());
+  if (!bytes.length) return null;
+  return await renderableImageDataUrl(
+    bytes,
+    "logo",
+    (message) => console.warn(`[render-anuncio-produto] ${message}`),
+  );
 }
 
 function normalizeItens(raw: unknown): AnuncioItem[] {
@@ -151,6 +277,12 @@ Deno.serve(async (req) => {
     }
 
     const formato: AnuncioFormato = body?.formato === "story" ? "story" : "feed";
+    const estilo: AnuncioEstilo = ["impacto", "catalogo", "destaque"].includes(
+        body?.estilo,
+      )
+      ? body.estilo
+      : "destaque";
+    const background = estilo === "catalogo" ? "light" : "dark";
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -159,38 +291,114 @@ Deno.serve(async (req) => {
     let logoDataUrl: string | null = null;
     if (body?.incluir_logo !== false) {
       try {
-        logoDataUrl = await getTenantLogoDataUrl(supabase, user_id);
+        const rawLogoDataUrl = body?.logo_path
+          ? await logoPathParaDataUrl(supabase, user_id, body.logo_path)
+          : body?.logo_source === "client"
+          ? null
+          : await getTenantLogoDataUrlForBackground(
+            supabase,
+            user_id,
+            background,
+            true,
+          );
+        logoDataUrl = rawLogoDataUrl
+          ? await normalizeImageDataUrl(
+            rawLogoDataUrl,
+            "logo",
+            (message) => console.warn(`[render-anuncio-produto] ${message}`),
+          )
+          : null;
       } catch (e) {
         console.warn("[render-anuncio-produto] logo indisponível:", (e as Error).message);
       }
     }
 
-    const [fotoDataUrl, fonts] = await Promise.all([
-      fotoParaDataUrl(body?.foto_url, body?.foto_base64),
+    const [fotoResult, fonts] = await Promise.all([
+      fotoComFallbackParaDataUrl(
+        body?.foto_url,
+        body?.foto_base64,
+        body?.foto_url_original,
+      ),
       loadFonts(),
       ensureWasm(),
     ]);
+    if (!fotoResult.dataUrl) {
+      console.error("[render-anuncio-produto] foto inválida: melhorada e original indisponíveis");
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "foto inválida; envie novamente a foto original",
+          foto_source: "none",
+        }),
+        {
+          status: 422,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+    let fotoDataUrl = fotoResult.dataUrl;
+    let fotoPrecomposed = false;
+    let frameMode: "box" | "contain" | "template_contain" = "template_contain";
+    try {
+      const composed = await composePhotoForTemplate({
+        dataUrl: fotoDataUrl,
+        estilo,
+        formato,
+        fotoBox: body?.foto_box,
+      });
+      fotoDataUrl = composed.dataUrl;
+      fotoPrecomposed = true;
+      frameMode = composed.mode;
+    } catch (error) {
+      console.warn(
+        "[render-anuncio-produto] composição medida falhou; usando contain no template:",
+        (error as Error).message,
+      );
+    }
 
     const data: AnuncioData = {
       titulo,
       subtitulo: body?.subtitulo ? String(body.subtitulo).slice(0, 60) : null,
       itens: normalizeItens(body?.itens),
+      ficha: Array.isArray(body?.ficha)
+        ? body.ficha.map((item: unknown) =>
+          String(item || "").replace(/\s+/g, " ").trim()
+        ).filter(Boolean).slice(0, 20)
+        : [],
+      ano: body?.ano ? String(body.ano).slice(0, 16) : null,
       preco: body?.preco ? String(body.preco).slice(0, 24) : null,
       precoLabel: body?.preco_label ? String(body.preco_label).slice(0, 24) : null,
+      precoReferencia: body?.preco_referencia ? String(body.preco_referencia).slice(0, 24) : null,
+      precoReferenciaLabel: body?.preco_referencia_label
+        ? String(body.preco_referencia_label).slice(0, 18)
+        : null,
+      precoReferenciaObs: body?.preco_referencia_obs
+        ? String(body.preco_referencia_obs).slice(0, 30)
+        : null,
       badge: body?.badge ? String(body.badge).slice(0, 34) : null,
       telefone: body?.telefone ? String(body.telefone).slice(0, 24) : null,
       instagram: body?.instagram ? String(body.instagram).slice(0, 30) : null,
       site: body?.site ? String(body.site).slice(0, 30) : null,
       businessName: body?.business_name ? String(body.business_name).slice(0, 40) : null,
       fotoDataUrl,
+      fotoPrecomposed,
       logoDataUrl,
+      logoIsIcon: body?.logo_is_icon === true,
       primaryColor: normalizeHex(body?.primary_color, "#8A6A12"),
-      accentColor: normalizeHex(body?.accent_color, "#E8B93B"),
+      accentColor: normalizeHex(
+        body?.accent_color,
+        estilo === "impacto" ? "#F2B544" : "#F36812",
+      ),
       formato,
     };
 
     const { width, height } = anuncioSize(formato);
-    const svg = await satori(buildAnuncio(data) as any, { width, height, fonts: fonts as any });
+    const tree = estilo === "impacto"
+      ? buildImpactoAnuncio(data)
+      : estilo === "catalogo"
+      ? buildCatalogoAnuncio(data)
+      : buildDestaqueAnuncio(data);
+    const svg = await satori(tree as any, { width, height, fonts: fonts as any });
     const png = new Resvg(svg, { fitTo: { mode: "width", value: width } }).render().asPng();
 
     const path = `anuncios/${user_id}/anuncio-${formato}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
@@ -202,17 +410,22 @@ Deno.serve(async (req) => {
     const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
     if (!pub?.publicUrl) throw new Error("Falha ao gerar URL pública do anúncio");
 
-    console.log(`✅ [render-anuncio-produto] ${formato} ${png.length} bytes — logo=${!!logoDataUrl} foto=${!!fotoDataUrl}`);
+    console.log(
+      `✅ [render-anuncio-produto] ${formato} ${png.length} bytes — logo=${!!logoDataUrl} foto=${!!fotoDataUrl} foto_source=${fotoResult.source} frame=${frameMode}`,
+    );
 
     return new Response(
       JSON.stringify({
         success: true,
         image_url: pub.publicUrl,
         formato,
+        estilo,
         width,
         height,
         logo_aplicada: !!logoDataUrl,
         foto_aplicada: !!fotoDataUrl,
+        foto_source: fotoResult.source,
+        frame_mode: frameMode,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );

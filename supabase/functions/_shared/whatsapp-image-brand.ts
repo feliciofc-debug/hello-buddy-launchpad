@@ -154,22 +154,34 @@ export function resolveWhatsAppGeneratorBrand(input: {
   brandName?: string | null;
 }, tenantAssets?: {
   logoDataUrl: string | null;
+  logoForLightBackgroundDataUrl?: string | null;
+  logoForDarkBackgroundDataUrl?: string | null;
   colors: string[];
   brandName: string | null;
 } | null): {
   logoDataUrl: string | null;
+  logoForLightBackgroundDataUrl: string | null;
+  logoForDarkBackgroundDataUrl: string | null;
   brandColors: string[];
   brandName: string | null;
 } {
   if (input.brandSource === "site") {
     return {
       logoDataUrl: input.logoDataUrl ?? null,
+      logoForLightBackgroundDataUrl: input.logoDataUrl ?? null,
+      logoForDarkBackgroundDataUrl: input.logoDataUrl ?? null,
       brandColors: input.brandColors ?? [],
       brandName: input.brandName ?? null,
     };
   }
   return {
     logoDataUrl: input.logoDataUrl ?? tenantAssets?.logoDataUrl ?? null,
+    logoForLightBackgroundDataUrl: input.logoDataUrl ??
+      tenantAssets?.logoForLightBackgroundDataUrl ??
+      tenantAssets?.logoDataUrl ?? null,
+    logoForDarkBackgroundDataUrl: input.logoDataUrl ??
+      tenantAssets?.logoForDarkBackgroundDataUrl ??
+      tenantAssets?.logoDataUrl ?? null,
     brandColors: input.brandColors?.length ? input.brandColors : tenantAssets?.colors ?? [],
     brandName: input.brandName ?? tenantAssets?.brandName ?? null,
   };

@@ -24,15 +24,22 @@ export interface AnuncioData {
   titulo: string;
   subtitulo?: string | null;
   itens: AnuncioItem[];
+  ficha?: string[];
+  ano?: string | null;
   preco?: string | null;
   precoLabel?: string | null;
+  precoReferencia?: string | null;
+  precoReferenciaLabel?: string | null;
+  precoReferenciaObs?: string | null;
   badge?: string | null;
   telefone?: string | null;
   instagram?: string | null;
   site?: string | null;
   businessName?: string | null;
   fotoDataUrl?: string | null;
+  fotoPrecomposed?: boolean;
   logoDataUrl?: string | null;
+  logoIsIcon?: boolean;
   primaryColor: string;
   accentColor: string;
   formato: AnuncioFormato;
@@ -56,6 +63,78 @@ function img(src: string, style: Record<string, unknown>): Node {
   return { type: "img", props: { src, style: { objectFit: "cover", ...style } } };
 }
 
+function rgb(hex: string): [number, number, number] {
+  const normalized = String(hex || "").replace("#", "");
+  const value = /^[0-9a-f]{6}$/i.test(normalized)
+    ? Number.parseInt(normalized, 16)
+    : 0;
+  return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+}
+
+function luminance(hex: string): number {
+  const channels = rgb(hex).map((channel) => {
+    const value = channel / 255;
+    return value <= 0.03928
+      ? value / 12.92
+      : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * channels[0] + 0.7152 * channels[1] +
+    0.0722 * channels[2];
+}
+
+export function contrastRatio(foreground: string, background: string): number {
+  const first = luminance(foreground);
+  const second = luminance(background);
+  return (Math.max(first, second) + 0.05) /
+    (Math.min(first, second) + 0.05);
+}
+
+function mix(hex: string, target: "#FFFFFF" | "#000000", amount: number): string {
+  const source = rgb(hex);
+  const destination = rgb(target);
+  return "#" + source.map((channel, index) =>
+    Math.round(channel + (destination[index] - channel) * amount)
+      .toString(16).padStart(2, "0")
+  ).join("").toUpperCase();
+}
+
+export function readableAccent(
+  requested: string,
+  background = "#08090B",
+): {
+  detailColor: string;
+  textColor: string;
+  onAccentColor: string;
+  adjusted: boolean;
+} {
+  const valid = /^#[0-9a-f]{6}$/i.test(requested)
+    ? requested.toUpperCase()
+    : "#E8B93B";
+  let textColor = valid;
+  let adjusted = false;
+  if (contrastRatio(textColor, background) < 4.5) {
+    const target = luminance(background) > 0.45 ? "#000000" : "#FFFFFF";
+    for (let step = 1; step <= 10; step++) {
+      const candidate = mix(valid, target, step / 10);
+      if (contrastRatio(candidate, background) >= 4.5) {
+        textColor = candidate;
+        adjusted = candidate !== valid;
+        break;
+      }
+    }
+  }
+  if (contrastRatio(textColor, background) < 4.5) {
+    textColor = "#FFFFFF";
+    adjusted = true;
+  }
+  const blackRatio = contrastRatio("#08090B", valid);
+  const whiteRatio = contrastRatio("#FFFFFF", valid);
+  const onAccentColor = blackRatio >= 4.5 || blackRatio >= whiteRatio
+    ? "#08090B"
+    : "#FFFFFF";
+  return { detailColor: valid, textColor, onAccentColor, adjusted };
+}
+
 export function rgba(hex: string, alpha: number): string {
   const h = (hex || "#D4A017").replace("#", "").trim();
   const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
@@ -65,11 +144,15 @@ export function rgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-/** Foto do produto + véu escuro pro texto respirar. */
-function fotoBloco(d: AnuncioData, style: Record<string, unknown>, veil: "left" | "bottom"): Node {
+/** Foto do produto com escurecimento restrito às bordas. */
+function fotoBloco(d: AnuncioData, style: Record<string, unknown>): Node {
   const children: Node[] = [];
   if (d.fotoDataUrl) {
-    children.push(img(d.fotoDataUrl, { position: "absolute", top: 0, left: 0, width: "100%", height: "100%" }));
+    children.push(img(d.fotoDataUrl, {
+      width: "100%",
+      height: "100%",
+      flexShrink: 0,
+    }));
   } else {
     children.push(
       el("div", {
@@ -83,18 +166,46 @@ function fotoBloco(d: AnuncioData, style: Record<string, unknown>, veil: "left" 
       }),
     );
   }
+  children.push(el("div", {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: "100%",
+    height: "10%",
+    display: "flex",
+    backgroundImage:
+      "linear-gradient(180deg, rgba(8,9,11,0.48) 0%, rgba(8,9,11,0) 100%)",
+  }));
+  children.push(el("div", {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    width: "100%",
+    height: "14%",
+    display: "flex",
+    backgroundImage:
+      "linear-gradient(0deg, rgba(8,9,11,0.58) 0%, rgba(8,9,11,0) 100%)",
+  }));
+  children.push(el("div", {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: "7%",
+    height: "100%",
+    display: "flex",
+    backgroundImage:
+      "linear-gradient(90deg, rgba(8,9,11,0.42) 0%, rgba(8,9,11,0) 100%)",
+  }));
   children.push(
     el("div", {
       position: "absolute",
       top: 0,
-      left: 0,
-      width: "100%",
+      right: 0,
+      width: "7%",
       height: "100%",
       display: "flex",
       backgroundImage:
-        veil === "left"
-          ? "linear-gradient(90deg, rgba(8,9,11,0.96) 0%, rgba(8,9,11,0.55) 32%, rgba(8,9,11,0.05) 62%, rgba(8,9,11,0.35) 100%)"
-          : "linear-gradient(180deg, rgba(8,9,11,0.25) 0%, rgba(8,9,11,0.05) 40%, rgba(8,9,11,0.92) 88%, rgba(8,9,11,1) 100%)",
+        "linear-gradient(270deg, rgba(8,9,11,0.42) 0%, rgba(8,9,11,0) 100%)",
     }),
   );
   return el("div", { position: "absolute", display: "flex", overflow: "hidden", ...style }, children);
@@ -130,6 +241,7 @@ function logoBloco(d: AnuncioData, style: Record<string, unknown>): Node[] {
 }
 
 function tituloBloco(d: AnuncioData, big: boolean): Node {
+  const palette = readableAccent(d.accentColor);
   const titulo = d.titulo.toUpperCase().slice(0, 46);
   const fs = big
     ? titulo.length > 26 ? 66 : titulo.length > 18 ? 80 : 92
@@ -147,7 +259,7 @@ function tituloBloco(d: AnuncioData, big: boolean): Node {
       "div",
       {
         display: "flex",
-        color: "#FFFFFF",
+        color: palette.textColor,
         fontSize: fs,
         fontWeight: 900,
         lineHeight: 1.02,
@@ -168,7 +280,8 @@ function tituloBloco(d: AnuncioData, big: boolean): Node {
           fontWeight: 700,
           letterSpacing: 1,
         },
-        d.subtitulo.toUpperCase().slice(0, 60),
+        d.subtitulo.toUpperCase().split(/\s*(?:•|\||,)\s*/).filter(Boolean)
+          .join(" • ").slice(0, 80),
       ),
     );
   }
@@ -176,6 +289,7 @@ function tituloBloco(d: AnuncioData, big: boolean): Node {
 }
 
 function itemLinha(item: AnuncioItem, d: AnuncioData, compact: boolean): Node {
+  const palette = readableAccent(d.accentColor);
   const children: Node[] = [
     el(
       "div",
@@ -184,19 +298,23 @@ function itemLinha(item: AnuncioItem, d: AnuncioData, compact: boolean): Node {
         width: compact ? 30 : 36,
         height: compact ? 30 : 36,
         borderRadius: 36,
-        backgroundColor: rgba(d.accentColor, 0.16),
-        border: `2px solid ${d.accentColor}`,
+        backgroundColor: rgba(palette.detailColor, 0.16),
+        border: `2px solid ${palette.detailColor}`,
         alignItems: "center",
         justifyContent: "center",
         flexShrink: 0,
       },
-      el("div", {
-        display: "flex",
-        width: compact ? 10 : 12,
-        height: compact ? 10 : 12,
-        borderRadius: 12,
-        backgroundColor: d.accentColor,
-      }),
+      el(
+        "div",
+        {
+          display: "flex",
+          color: palette.textColor,
+          fontSize: compact ? 19 : 22,
+          fontWeight: 900,
+          lineHeight: 1,
+        },
+        "✓",
+      ),
     ),
   ];
 
@@ -242,6 +360,7 @@ function itemLinha(item: AnuncioItem, d: AnuncioData, compact: boolean): Node {
 
 function badgeBloco(d: AnuncioData, compact: boolean): Node[] {
   if (!d.badge) return [];
+  const palette = readableAccent(d.accentColor);
   return [
     el(
       "div",
@@ -254,13 +373,13 @@ function badgeBloco(d: AnuncioData, compact: boolean): Node[] {
         paddingLeft: 24,
         paddingRight: 24,
         borderRadius: 999,
-        backgroundColor: d.accentColor,
+        backgroundColor: palette.detailColor,
       },
       el(
         "div",
         {
           display: "flex",
-          color: "#0B0C0E",
+          color: palette.onAccentColor,
           fontSize: compact ? 22 : 26,
           fontWeight: 900,
           letterSpacing: 1,
@@ -271,10 +390,69 @@ function badgeBloco(d: AnuncioData, compact: boolean): Node[] {
   ];
 }
 
+function anoBloco(d: AnuncioData, compact: boolean): Node[] {
+  if (!d.ano) return [];
+  const palette = readableAccent(d.accentColor);
+  return [
+    el(
+      "div",
+      {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        paddingTop: compact ? 9 : 12,
+        paddingBottom: compact ? 9 : 12,
+        paddingLeft: compact ? 18 : 24,
+        paddingRight: compact ? 18 : 24,
+        borderRadius: 999,
+        backgroundColor: palette.detailColor,
+        color: palette.onAccentColor,
+        fontSize: compact ? 24 : 30,
+        fontWeight: 900,
+      },
+      d.ano.slice(0, 16),
+    ),
+  ];
+}
+
 function precoBloco(d: AnuncioData, compact: boolean): Node[] {
   if (!d.preco) return [];
-  const children: Node[] = [
-    el(
+  const palette = readableAccent(d.accentColor);
+  const children: Node[] = [];
+  if (d.precoReferencia) {
+    const referenceParts: Node[] = [];
+    if (d.precoReferenciaLabel) {
+      referenceParts.push(el("div", {
+        display: "flex",
+        color: "rgba(255,255,255,0.68)",
+        fontSize: compact ? 17 : 20,
+        fontWeight: 700,
+        marginRight: 10,
+      }, d.precoReferenciaLabel.toUpperCase().slice(0, 18)));
+    }
+    referenceParts.push(el("div", {
+      display: "flex",
+      color: "rgba(255,255,255,0.72)",
+      fontSize: compact ? 23 : 28,
+      fontWeight: 700,
+      textDecoration: "line-through",
+    }, d.precoReferencia.slice(0, 24)));
+    if (d.precoReferenciaObs) {
+      referenceParts.push(el("div", {
+        display: "flex",
+        color: "rgba(255,255,255,0.58)",
+        fontSize: compact ? 15 : 18,
+        marginLeft: 10,
+      }, `(${d.precoReferenciaObs.slice(0, 30)})`));
+    }
+    children.push(el("div", {
+      display: "flex",
+      alignItems: "center",
+      marginBottom: 5,
+    }, referenceParts));
+  }
+  if (d.precoLabel) {
+    children.push(el(
       "div",
       {
         display: "flex",
@@ -283,13 +461,14 @@ function precoBloco(d: AnuncioData, compact: boolean): Node[] {
         fontWeight: 700,
         letterSpacing: 3,
       },
-      (d.precoLabel || "VALOR").toUpperCase().slice(0, 24),
-    ),
-    el(
+      d.precoLabel.toUpperCase().slice(0, 24),
+    ));
+  }
+  children.push(el(
       "div",
       {
         display: "flex",
-        color: "#FFFFFF",
+        color: palette.textColor,
         fontSize: d.preco.length > 13 ? (compact ? 46 : 58) : d.preco.length > 10 ? (compact ? 54 : 66) : compact ? 64 : 78,
         whiteSpace: "nowrap",
 
@@ -298,8 +477,7 @@ function precoBloco(d: AnuncioData, compact: boolean): Node[] {
         lineHeight: 1.05,
       },
       d.preco,
-    ),
-  ];
+    ));
   return [
     el(
       "div",
@@ -353,20 +531,63 @@ function rodape(d: AnuncioData, style: Record<string, unknown>, compact: boolean
   return [el("div", { display: "flex", flexWrap: "wrap", gap: 12, ...style }, chips)];
 }
 
+export const ANUNCIO_FOOTER_BOXES = {
+  feed: {
+    logo: { x: 390, y: 902, width: 300, height: 78 },
+    contacts: { x: 58, y: 990, width: 964, height: 48 },
+  },
+  story: {
+    logo: { x: 365, y: 1695, width: 350, height: 115 },
+    contacts: { x: 68, y: 1825, width: 944, height: 54 },
+  },
+} as const;
+
+function footerFaixas(d: AnuncioData, formato: AnuncioFormato): Node {
+  const boxes = ANUNCIO_FOOTER_BOXES[formato];
+  const compact = formato === "feed";
+  return el("div", {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: formato === "feed" ? 1080 : 1080,
+    height: formato === "feed" ? 1080 : 1920,
+    display: "flex",
+  }, [
+    el("div", {
+      position: "absolute",
+      left: boxes.logo.x,
+      top: boxes.logo.y,
+      width: boxes.logo.width,
+      height: boxes.logo.height,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      overflow: "hidden",
+    }, logoBloco(d, {
+      width: "100%",
+      height: "100%",
+      maxWidth: boxes.logo.width,
+      maxHeight: boxes.logo.height,
+    })),
+    el("div", {
+      position: "absolute",
+      left: boxes.contacts.x,
+      top: boxes.contacts.y,
+      width: boxes.contacts.width,
+      height: boxes.contacts.height,
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+    }, rodape(d, { justifyContent: "center" }, compact)),
+  ]);
+}
+
 // ---------------------------------------------------------------- FEED 1:1
 function feed(d: AnuncioData): Node {
   const { width, height } = anuncioSize("feed");
-  const panelW = 560;
-
-  const painel: Node[] = [
-    tituloBloco(d, false),
-    el(
-      "div",
-      { display: "flex", flexDirection: "column", gap: 14, marginTop: 26 },
-      d.itens.slice(0, 8).map((i) => itemLinha(i, d, true)),
-    ),
-    ...badgeBloco(d, true),
-  ];
+  const itemColumns = d.itens.slice(0, 8).map((item) =>
+    el("div", { display: "flex", width: "48%" }, itemLinha(item, d, true))
+  );
 
   return el(
     "div",
@@ -379,7 +600,13 @@ function feed(d: AnuncioData): Node {
       backgroundColor: "#08090B",
     },
     [
-      fotoBloco(d, { top: 0, right: 0, width: width - panelW + 200, height }, "left"),
+      fotoBloco(d, {
+        top: 210,
+        left: 48,
+        width: width - 96,
+        height: 475,
+        borderRadius: 28,
+      }),
       el("div", {
         position: "absolute",
         top: 0,
@@ -389,39 +616,48 @@ function feed(d: AnuncioData): Node {
         display: "flex",
         backgroundImage: `linear-gradient(90deg, ${d.accentColor}, ${d.primaryColor}, ${d.accentColor})`,
       }),
-      // painel de texto
       el(
         "div",
         {
           position: "absolute",
-          top: 0,
-          left: 0,
-          width: panelW,
-          height,
+          top: 44,
+          left: 58,
+          width: width - 116,
           display: "flex",
           flexDirection: "column",
-          justifyContent: "space-between",
-          paddingTop: 62,
-          paddingBottom: 54,
-          paddingLeft: 58,
-          paddingRight: 34,
         },
         [
-          el("div", { display: "flex", flexDirection: "column", gap: 20 }, painel),
-          el("div", { display: "flex", flexDirection: "column", gap: 18 }, [
-            ...precoBloco(d, true),
-            ...rodape(d, {}, true),
+          el("div", { display: "flex", justifyContent: "space-between", alignItems: "flex-start" }, [
+            el("div", { display: "flex", width: d.ano ? "78%" : "100%" }, tituloBloco(d, false)),
+            ...anoBloco(d, true),
           ]),
         ],
       ),
-      // logo topo direito
-      ...logoBloco(d, {
+      el("div", {
         position: "absolute",
-        top: 44,
-        right: 52,
-        width: 230,
-        height: 92,
-      }),
+        top: 705,
+        left: 58,
+        width: 560,
+        display: "flex",
+        flexWrap: "wrap",
+        justifyContent: "space-between",
+        rowGap: 14,
+      }, itemColumns),
+      el("div", {
+        position: "absolute",
+        left: 650,
+        top: 705,
+        width: 372,
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "flex-end",
+      }, [
+        el("div", { display: "flex", flexDirection: "column", gap: 10, width: 510 }, [
+          ...precoBloco(d, true),
+          ...badgeBloco(d, true),
+        ]),
+      ]),
+      footerFaixas(d, "feed"),
     ],
   );
 }
@@ -429,7 +665,9 @@ function feed(d: AnuncioData): Node {
 // -------------------------------------------------------------- STORY 9:16
 function story(d: AnuncioData): Node {
   const { width, height } = anuncioSize("story");
-  const fotoH = 1000;
+  const itemColumns = d.itens.slice(0, 8).map((item) =>
+    el("div", { display: "flex", width: "48%" }, itemLinha(item, d, false))
+  );
 
   return el(
     "div",
@@ -442,7 +680,13 @@ function story(d: AnuncioData): Node {
       backgroundColor: "#08090B",
     },
     [
-      fotoBloco(d, { top: 0, left: 0, width, height: fotoH }, "bottom"),
+      fotoBloco(d, {
+        top: 300,
+        left: 54,
+        width: width - 108,
+        height: 840,
+        borderRadius: 34,
+      }),
       el("div", {
         position: "absolute",
         top: 0,
@@ -456,40 +700,44 @@ function story(d: AnuncioData): Node {
         "div",
         {
           position: "absolute",
-          top: fotoH - 210,
-          left: 0,
-          width,
-          height: height - fotoH + 210,
+          top: 70,
+          left: 68,
+          width: width - 136,
           display: "flex",
           flexDirection: "column",
-          justifyContent: "center",
-          paddingTop: 40,
-          paddingBottom: 60,
-          paddingLeft: 72,
-          paddingRight: 72,
-          gap: 26,
         },
         [
-          tituloBloco(d, true),
-          el(
-            "div",
-            { display: "flex", flexDirection: "column", gap: 14 },
-            d.itens.slice(0, 7).map((i) => itemLinha(i, d, false)),
-          ),
-          el("div", { display: "flex", alignItems: "flex-end", gap: 24 }, [
-            ...precoBloco(d, false),
-            ...badgeBloco(d, false),
+          el("div", { display: "flex", justifyContent: "space-between", alignItems: "flex-start" }, [
+            el("div", { display: "flex", width: d.ano ? "76%" : "100%" }, tituloBloco(d, true)),
+            ...anoBloco(d, false),
           ]),
-          ...rodape(d, {}, false),
         ],
       ),
-      ...logoBloco(d, {
+      el("div", {
         position: "absolute",
-        top: 60,
-        right: 64,
-        width: 260,
-        height: 104,
-      }),
+        top: 1170,
+        left: 68,
+        width: width - 136,
+        display: "flex",
+        flexWrap: "wrap",
+        justifyContent: "space-between",
+        rowGap: 22,
+      }, itemColumns),
+      el("div", {
+        position: "absolute",
+        left: 68,
+        top: 1470,
+        width: width - 136,
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "flex-end",
+      }, [
+        el("div", { display: "flex", flexDirection: "column", gap: 14 }, [
+          ...precoBloco(d, false),
+          ...badgeBloco(d, false),
+        ]),
+      ]),
+      footerFaixas(d, "story"),
     ],
   );
 }

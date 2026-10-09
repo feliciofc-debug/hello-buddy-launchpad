@@ -5,6 +5,7 @@ import {
   normalizeClientBrandName,
   saveClientBrandIdentity,
 } from "./client-brand-identity.ts";
+import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
 
 Deno.test("extrai cliente citado no pedido de guardar logo", () => {
   assertEquals(
@@ -45,7 +46,21 @@ Deno.test("normaliza nome para correspondência com domínio", () => {
 
 Deno.test("persiste logo por cliente e recupera antes pelo domínio", async () => {
   const rows: Array<Record<string, unknown>> = [];
+  const logo = new Image(40, 20);
+  logo.fill(Image.rgbaToColor(0, 0, 0, 0));
+  logo.drawBox(8, 5, 24, 10, Image.rgbToColor(20, 20, 20));
+  const logoBytes = new Uint8Array(await logo.encode());
   const sb = {
+    storage: {
+      from: () => ({
+        download: async () => ({
+          data: new Blob([logoBytes], { type: "image/png" }),
+          error: null,
+        }),
+        upload: async () => ({ error: null }),
+        remove: async () => ({ error: null }),
+      }),
+    },
     from: () => ({
       select: () => {
         const query = {

@@ -105,10 +105,57 @@ Deno.test("identidade rápida confiável não abre job de render", async () => {
   const fast: BrandSiteIdentity = {
     ...emptyFastIdentity,
     colors: ["#abcdef"],
+    logo_url: "https://cliente.example/logo.svg",
+    logo_data_url: "data:image/svg+xml;base64,PHN2Zy8+",
+    logo_confidence: "high",
   };
   assertEquals(
     await completeSiteIdentityWithRenderedPage(sb, "tenant-1", fast),
     fast,
   );
   assertEquals(queried, false);
+});
+
+Deno.test("ícone médio e cores ainda passam pela leitura renderizada", async () => {
+  let layerARead = false;
+  let queried = false;
+  const sb = {
+    from: () => {
+      queried = true;
+      return {};
+    },
+  };
+  const fast: BrandSiteIdentity = {
+    ...emptyFastIdentity,
+    colors: ["#e05220"],
+    logo_url: "https://cliente.example/apple-touch-icon.png",
+    logo_data_url: "data:image/png;base64,aWNvbmU=",
+    logo_confidence: "medium",
+  };
+  const renderedLogo = detailedIdentity({
+    parcial: false,
+    logo_url: "https://cliente.example/logo-completa.svg",
+    logo_data_url: "data:image/svg+xml;base64,PHN2Zy8+",
+    cores_detectadas: [
+      { hex: "#e05220", peso: 20, origem: "pagina_renderizada" },
+    ],
+    texto_base: "Identidade renderizada com conteúdo suficiente para dispensar a camada adicional do navegador e validar a logo completa encontrada no cabeçalho.",
+  });
+
+  const result = await completeSiteIdentityWithRenderedPage(
+    sb,
+    "tenant-1",
+    fast,
+    {
+      readLayerA: async () => {
+        layerARead = true;
+        return renderedLogo;
+      },
+    },
+  );
+
+  assertEquals(layerARead, true);
+  assertEquals(queried, false);
+  assertEquals(result.logo_url, "https://cliente.example/logo-completa.svg");
+  assertEquals(result.logo_confidence, "high");
 });

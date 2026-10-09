@@ -38,8 +38,8 @@ function mergeDetailedIdentity(
 }
 
 /**
- * Aciona a leitura renderizada apenas quando a leitura rápida não encontrou
- * logo confiável nem cor. O timeout devolve a melhor identidade disponível,
+ * Aciona a leitura renderizada quando a leitura rápida não encontrou uma
+ * logo confiável. O timeout devolve a melhor identidade disponível,
  * sem transformar a ausência de dados em uma pergunta para o usuário.
  */
 export async function completeSiteIdentityWithRenderedPage(
@@ -48,7 +48,7 @@ export async function completeSiteIdentityWithRenderedPage(
   fast: BrandSiteIdentity,
   options: CompleteSiteIdentityOptions = {},
 ): Promise<BrandSiteIdentity> {
-  if (fast.logo_confidence === "high" || fast.colors.length > 0) return fast;
+  if (fast.logo_confidence === "high") return fast;
 
   const readLayerA = options.readLayerA ?? lerIdentidadeDoSite;
   const detailed = await readLayerA(fast.url);

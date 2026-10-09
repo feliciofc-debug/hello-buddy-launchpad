@@ -9,7 +9,11 @@
 // ============================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { autorizarWorker, renderCors, respJson } from "../_shared/render-auth.ts";
+import {
+  autorizarWorker,
+  renderCors,
+  respJson,
+} from "../_shared/render-auth.ts";
 import { linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
 import { syncProdutoVideoFromMidia } from "../_shared/sync-produto-video.ts";
 import { rememberDeliveredMediaInteraction } from "../_shared/whatsapp-last-media-interaction.ts";
@@ -41,7 +45,9 @@ async function avisarCliente(
         mediaId,
       });
       if (!remembered) {
-        console.warn("[video-render-complete] não atualizou last_media_interaction");
+        console.warn(
+          "[video-render-complete] não atualizou last_media_interaction",
+        );
       }
     }
     return true;
@@ -66,10 +72,15 @@ async function registrarVideoLegendado(
     .maybeSingle();
   if (existente?.id) return existente.id;
 
-  const midiaPaiId = typeof job.metadata?.midia_id === "string" ? job.metadata.midia_id : null;
-  const legenda = job.copy_escolhida || job.caption || "Vídeo com legenda queimada";
+  const midiaPaiId = typeof job.metadata?.midia_id === "string"
+    ? job.metadata.midia_id
+    : null;
+  const legenda = job.copy_escolhida || job.caption ||
+    "Vídeo com legenda queimada";
   const duracaoNumero = duracao == null ? Number.NaN : Number(duracao);
-  const duracaoInteira = Number.isFinite(duracaoNumero) ? Math.round(duracaoNumero) : null;
+  const duracaoInteira = Number.isFinite(duracaoNumero)
+    ? Math.round(duracaoNumero)
+    : null;
   const { data, error } = await supabase
     .from("midias_whatsapp")
     .insert({
@@ -86,11 +97,20 @@ async function registrarVideoLegendado(
     })
     .select("id")
     .single();
-  if (error || !data?.id) throw new Error(`não consegui registrar o vídeo legendado em /midias: ${error?.message || "id ausente"}`);
+  if (error || !data?.id) {
+    throw new Error(
+      `não consegui registrar o vídeo legendado em /midias: ${
+        error?.message || "id ausente"
+      }`,
+    );
+  }
   return data.id;
 }
 
-async function sincronizarAreaDeVideos(supabase: any, midiaId: string): Promise<void> {
+async function sincronizarAreaDeVideos(
+  supabase: any,
+  midiaId: string,
+): Promise<void> {
   try {
     await syncProdutoVideoFromMidia(supabase, midiaId);
   } catch (e) {
@@ -102,7 +122,9 @@ async function sincronizarAreaDeVideos(supabase: any, midiaId: string): Promise<
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: renderCors });
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: renderCors });
+  }
 
   const auth = autorizarWorker(req);
   if (!auth.ok) return respJson({ success: false, error: auth.motivo }, 401);
@@ -120,6 +142,7 @@ Deno.serve(async (req) => {
       resultado_bucket,
       resultado_path,
       duracao_segundos,
+      video_output,
       erro,
     } = body || {};
 
@@ -159,14 +182,22 @@ Deno.serve(async (req) => {
     }
 
     // ---------- SUCESSO ----------
-    if (!resultado_path) throw new Error("resultado_path obrigatório no sucesso");
+    if (!resultado_path) {
+      throw new Error("resultado_path obrigatório no sucesso");
+    }
     const bucket = resultado_bucket || "videos";
 
-    const { data: pub } = supabase.storage.from(bucket).getPublicUrl(resultado_path);
+    const { data: pub } = supabase.storage.from(bucket).getPublicUrl(
+      resultado_path,
+    );
     const videoUrl = pub?.publicUrl;
-    if (!videoUrl) throw new Error("não consegui montar a URL pública do vídeo");
+    if (!videoUrl) {
+      throw new Error("não consegui montar a URL pública do vídeo");
+    }
 
-    const plataformas: string[] = Array.isArray(job.plataformas) ? job.plataformas : [];
+    const plataformas: string[] = Array.isArray(job.plataformas)
+      ? job.plataformas
+      : [];
     const querPublicar = plataformas.length > 0;
 
     // NUNCA publicamos direto após o encode: o dono precisa ver o vídeo e aprovar.
@@ -177,6 +208,10 @@ Deno.serve(async (req) => {
         resultado_bucket: bucket,
         resultado_path,
         duracao_segundos: duracao_segundos ?? null,
+        metadata: {
+          ...(job.metadata || {}),
+          ...(video_output ? { video_output } : {}),
+        },
         concluido_at: new Date().toISOString(),
         erro_mensagem: null,
       })
@@ -189,12 +224,20 @@ Deno.serve(async (req) => {
     let codigoMidia = "";
     let bibliotecaErro: string | null = null;
     try {
-      midiaId = await registrarVideoLegendado(supabase, job, videoUrl, duracao_segundos ?? null);
+      midiaId = await registrarVideoLegendado(
+        supabase,
+        job,
+        videoUrl,
+        duracao_segundos ?? null,
+      );
       codigoMidia = linhaCodigoMidia(midiaId, "video");
       await sincronizarAreaDeVideos(supabase, midiaId);
     } catch (e) {
       bibliotecaErro = e instanceof Error ? e.message : String(e);
-      console.error("[video-render-complete] registro em /midias falhou; entregando MP4 mesmo assim:", bibliotecaErro);
+      console.error(
+        "[video-render-complete] registro em /midias falhou; entregando MP4 mesmo assim:",
+        bibliotecaErro,
+      );
     }
     const blocoCodigo = codigoMidia ? `\n\n${codigoMidia}` : "";
 
@@ -209,10 +252,21 @@ Deno.serve(async (req) => {
       );
     } else {
       const nomes = plataformas
-        .map((p) => (p === "instagram" ? "Instagram" : p === "facebook" ? "Facebook" : p))
+        .map((
+          p,
+        ) => (p === "instagram"
+          ? "Instagram"
+          : p === "facebook"
+          ? "Facebook"
+          : p)
+        )
         .join(" e ");
       const fmt = String(job.formato || "feed").toLowerCase();
-      const nomeFormato = fmt === "story" ? "STORY" : fmt === "reels" ? "REELS" : "FEED";
+      const nomeFormato = fmt === "story"
+        ? "STORY"
+        : fmt === "reels"
+        ? "REELS"
+        : "FEED";
       await avisarCliente(
         supabase,
         job,
@@ -222,7 +276,6 @@ Deno.serve(async (req) => {
       );
     }
 
-
     return respJson({
       success: true,
       aguardando_aprovacao: querPublicar,
@@ -230,7 +283,6 @@ Deno.serve(async (req) => {
       midia_id: midiaId,
       biblioteca_erro: bibliotecaErro,
     });
-
   } catch (e) {
     console.error("[video-render-complete] erro:", e);
     return respJson({

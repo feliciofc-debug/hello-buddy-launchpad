@@ -22,7 +22,8 @@ export type SocialApprovalButton =
   | "variant_B"
   | "variant_C"
   | "publish"
-  | "schedule";
+  | "schedule"
+  | "cancel";
 
 export function socialApprovalButtons(
   selected: unknown,
@@ -31,7 +32,7 @@ export function socialApprovalButtons(
   if (!isExplicitSocialVariant(selected)) {
     return ["variant_A", "variant_B", "variant_C"];
   }
-  return isStory ? ["publish"] : ["publish", "schedule"];
+  return isStory ? ["publish", "cancel"] : ["publish", "schedule", "cancel"];
 }
 
 export type SocialInteractiveButtons = {
@@ -47,21 +48,35 @@ export function socialInteractiveButtonsFromResult(
   try {
     const data = JSON.parse(raw);
     const status = String(data?.status);
-    if (!["aguardando_escolha_variante", "escolha_variante_necessaria", "variante_selecionada"].includes(status)) {
+    if (
+      ![
+        "aguardando_escolha_variante",
+        "escolha_variante_necessaria",
+        "variante_selecionada",
+      ].includes(status)
+    ) {
       return undefined;
     }
     const token = String(data?.token || "").trim().toLowerCase();
     if (!/^[a-f0-9]{8}$/.test(token)) return undefined;
 
-    const selected = status === "variante_selecionada" ? data?.opcao_ativa : undefined;
-    const buttonKeys = socialApprovalButtons(selected, data?.formato === "story");
+    const selected = status === "variante_selecionada"
+      ? data?.opcao_ativa
+      : undefined;
+    const buttonKeys = socialApprovalButtons(
+      selected,
+      data?.formato === "story",
+    );
     if (!selected) {
       return {
         header: "Escolha o texto",
         body: "Antes de publicar ou agendar, escolha uma opção.",
         buttons: buttonKeys.map((key) => {
           const option = key.slice(-1);
-          return { id: `social_variant:${option}:${token}`, title: `Opção ${option}` };
+          return {
+            id: `social_variant:${option}:${token}`,
+            title: `Opção ${option}`,
+          };
         }),
       };
     }
@@ -71,9 +86,13 @@ export function socialInteractiveButtonsFromResult(
       body: data?.formato === "story"
         ? "Story pelo WhatsApp só pode ser publicado agora."
         : "Publique agora ou escolha agendar. Para informar a data por texto, responda: agendar sexta às 10h.",
-      buttons: buttonKeys.map((key) => key === "publish"
-        ? { id: `social_publish:${token}`, title: "Publicar agora" }
-        : { id: `social_schedule:${token}`, title: "Agendar" }),
+      buttons: buttonKeys.map((key) =>
+        key === "publish"
+          ? { id: `social_publish:${token}`, title: "Publicar" }
+          : key === "schedule"
+          ? { id: `social_schedule:${token}`, title: "Agendar" }
+          : { id: `social_cancel:${token}`, title: "Cancelar" }
+      ),
     };
   } catch {
     return undefined;

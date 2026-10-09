@@ -56,3 +56,28 @@ Deno.test("claim ignora logo fora da pasta do tenant", async () => {
   }, () => Promise.resolve("não deve ser usada"));
   assertEquals(logo, null);
 });
+
+Deno.test("claim de vídeo assina somente a variante principal já resolvida", async () => {
+  const signedPaths: string[] = [];
+  const claim = await buildVideoRenderLogoClaim({
+    user_id: USER_ID,
+    metadata: {
+      com_logo: true,
+      logo_bucket: "tenant-logos",
+      logo_path: `${USER_ID}/video.png`,
+      logo_light_background_path: `${USER_ID}/light.png`,
+      logo_dark_background_path: `${USER_ID}/dark.png`,
+    },
+  }, (_bucket, path) => {
+    signedPaths.push(path);
+    return Promise.resolve(`https://storage.example/${path}`);
+  });
+  assertEquals(
+    claim?.download_url,
+    `https://storage.example/${USER_ID}/video.png`,
+  );
+  assertEquals("light_background_download_url" in (claim ?? {}), false);
+  assertEquals("dark_background_download_url" in (claim ?? {}), false);
+  assertEquals(signedPaths.includes(`${USER_ID}/light.png`), false);
+  assertEquals(signedPaths.includes(`${USER_ID}/dark.png`), false);
+});

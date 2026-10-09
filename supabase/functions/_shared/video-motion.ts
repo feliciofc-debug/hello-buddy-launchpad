@@ -10,6 +10,11 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { getTenantBusinessContext } from "./business-context.ts";
 import { AMZ_TENANT_ID } from "./amz-tenant.ts";
+import {
+  buildMetodoAmzBlock,
+  buildMetodoAmzReviewPrompt,
+  revisarComMetodoAmz,
+} from "./metodo-amz.ts";
 
 export type Mensagem = { de: "dono" | "agente"; texto: string };
 
@@ -825,7 +830,10 @@ export async function gerarRoteiroMotion(
     frasesLiterais?: string[] | null;
   },
 ): Promise<{ props: MotionProps; legendaPost: string; usouIA: boolean; nomes: string[] }> {
-  const ctx = await getTenantBusinessContext(sb, userId, { nomeFallback: opts?.nomeFallback });
+  const ctx = await getTenantBusinessContext(sb, userId, {
+    nomeFallback: opts?.nomeFallback,
+    tipoCriativo: "roteiro",
+  });
   // A marca informada no formulário manda: o vídeo é do cliente, não do tenant.
   const marcaInformada = limparBruto(opts?.marca, 60);
   const nome = marcaInformada || ctx.nome || "Sua empresa";
@@ -876,6 +884,8 @@ export async function gerarRoteiroMotion(
 
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
   const instrucao = `Você escreve roteiros de vídeos verticais (${segundos}) para redes sociais.
+${buildMetodoAmzBlock({ tipo: "roteiro" })}
+
 NEGÓCIO: ${nome}${ctx.segmento ? ` — ${ctx.segmento}` : ""}
 ${terceiro ? "" : `${ctx.sobre ? `SOBRE: ${ctx.sobre}\n` : ""}${ctx.diferenciais ? `DIFERENCIAIS: ${ctx.diferenciais}\n` : ""}${ctx.publicoAlvo ? `PÚBLICO: ${ctx.publicoAlvo}\n` : ""}${ctx.produtos.length ? `PRODUTOS: ${ctx.produtos.slice(0, 6).join("; ")}\n` : ""}`}TEMA PEDIDO: ${tema}
 ${tom ? `TOM DE VOZ DA MARCA (obrigatório seguir): ${tom}\n` : ""}
@@ -919,33 +929,51 @@ Português correto: o verbo é "publicado" ("o conteúdo foi criado, aprovado e 
 
   if (apiKey) {
     try {
-      const r = await fetch(GATEWAY, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: MODELO,
-          messages: [{ role: "user", content: instrucao }],
-          response_format: { type: "json_object" },
-        }),
-      });
-
-      if (!r.ok) {
-        const corpo = await r.text();
-        console.warn("[video-motion] IA falhou", r.status, corpo.slice(0, 300));
-      } else {
-        const j = await r.json();
-        const txt = j?.choices?.[0]?.message?.content ?? "";
-        const bruto = JSON.parse(txt.replace(/^```json|```$/g, "").trim());
-        return {
-          props: aplicarDuracaoAlvo(
-            aplicarFrasesLiterais(normalizarProps(bruto, base), frasesObrigatorias),
-            opts?.duracaoAlvoSegundos,
+      const gerarJson = async (prompt: string): Promise<any> => {
+        const response = await fetch(GATEWAY, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: MODELO,
+            messages: [{ role: "user", content: prompt }],
+            response_format: { type: "json_object" },
+          }),
+        });
+        if (!response.ok) {
+          const corpo = await response.text();
+          throw new Error(`IA ${response.status}: ${corpo.slice(0, 300)}`);
+        }
+        const payload = await response.json();
+        const text = payload?.choices?.[0]?.message?.content ?? "";
+        return JSON.parse(text.replace(/^```json|```$/g, "").trim());
+      };
+      const primeiraVersao = await gerarJson(instrucao);
+      const bruto = await revisarComMetodoAmz({
+        tipo: "roteiro",
+        primeiraVersao,
+        revisar: async (draft) =>
+          await gerarJson(
+            `${instrucao}\n\n${buildMetodoAmzReviewPrompt({
+              tipo: "roteiro",
+              primeiraVersao: draft,
+            })}`,
           ),
-          legendaPost: corrigirTexto(limparBruto(bruto?.legenda_post, 1200), nomes),
-          usouIA: true,
+      });
+      return {
+        props: aplicarDuracaoAlvo(
+          aplicarFrasesLiterais(normalizarProps(bruto, base), frasesObrigatorias),
+          opts?.duracaoAlvoSegundos,
+        ),
+        legendaPost: corrigirTexto(
+          limparBruto(bruto?.legenda_post, 1200),
           nomes,
-        };
-      }
+        ),
+        usouIA: true,
+        nomes,
+      };
     } catch (e) {
       console.warn("[video-motion] roteiro IA erro:", (e as Error).message);
     }

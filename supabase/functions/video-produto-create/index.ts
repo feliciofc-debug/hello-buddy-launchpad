@@ -65,7 +65,9 @@ Deno.serve(async (req) => {
     let marcaFinal = marcaDigitada;
     if (!marcaFinal) {
       try {
-        const ctxTenant = await getTenantBusinessContext(sb, user.id, {});
+        const ctxTenant = await getTenantBusinessContext(sb, user.id, {
+          tipoCriativo: "roteiro",
+        });
         marcaFinal = String(ctxTenant?.nome ?? "").trim();
       } catch (_e) {
         marcaFinal = "";
@@ -95,7 +97,10 @@ Deno.serve(async (req) => {
     const bloqueio = await checarLimitesMotion(sb, user.id, "plataforma", tema);
     if (bloqueio) return json({ success: false, error: bloqueio.error, motivo: bloqueio.motivo }, bloqueio.status);
 
-    const logoPath = await logoDoTenant(sb, user.id);
+    const requestedBackground = body?.fundo === "claro" || body?.fundo === "escuro"
+      ? body.fundo
+      : undefined;
+    const logoPath = await logoDoTenant(sb, user.id, requestedBackground);
     const trilha = await resolverTrilha(sb, user.id, {
       sb,
       userId: user.id,

@@ -1,3 +1,8 @@
+import {
+  deriveLogoVariant,
+  removeSolidLogoBackground,
+} from "./logo-background.ts";
+
 export type ClientBrandIdentity = {
   id?: string;
   user_id: string;
@@ -7,6 +12,89 @@ export type ClientBrandIdentity = {
   logo_path?: string | null;
   identity?: Record<string, unknown> | null;
 };
+
+export type ClientLogoVariant =
+  | "default"
+  | "light_background"
+  | "dark_background"
+  | "video";
+
+async function processClientLogo(
+  sb: any,
+  userId: string,
+  path: string,
+  variant: ClientLogoVariant,
+): Promise<{
+  path: string;
+  warning: string | null;
+  width?: number;
+  height?: number;
+  bytes: Uint8Array;
+}> {
+  if (!path.startsWith(`${userId}/`)) throw new Error("logo fora do tenant");
+  const { data, error } = await sb.storage.from("tenant-logos").download(path);
+  if (error || !data) throw error ?? new Error("logo não encontrada");
+  const bytes = new Uint8Array(await data.arrayBuffer());
+  const processed = await removeSolidLogoBackground(
+    bytes,
+    (data as any)?.type || "application/octet-stream",
+  );
+  if (!processed.changed) {
+    return {
+      path,
+      warning: processed.warning,
+      width: processed.width,
+      height: processed.height,
+      bytes: processed.bytes,
+    };
+  }
+  const processedPath = `${userId}/client-brands/${Date.now()}-${
+    crypto.randomUUID().slice(0, 8)
+  }-${variant}-sem-fundo.png`;
+  const { error: uploadError } = await sb.storage.from("tenant-logos").upload(
+    processedPath,
+    processed.bytes,
+    { contentType: "image/png", upsert: false },
+  );
+  if (uploadError) throw uploadError;
+  await sb.storage.from("tenant-logos").remove([path]);
+  return {
+    path: processedPath,
+    warning: null,
+    width: processed.width,
+    height: processed.height,
+    bytes: processed.bytes,
+  };
+}
+
+export function clientLogoPath(
+  identity: ClientBrandIdentity | null | undefined,
+  background?: "light" | "dark" | "video",
+  allowAutomaticallyGeneratedDark = true,
+): string | null {
+  if (!identity) return null;
+  if (background === "video") {
+    return String(identity.identity?.logo_video_path || "") ||
+      identity.logo_path ||
+      null;
+  }
+  const automaticDark = background === "dark" &&
+    identity.identity?.logo_fundo_escuro_gerada_automaticamente === true;
+  const key = background === "light"
+    ? "logo_fundo_claro_path"
+    : background === "dark"
+      && (!automaticDark || allowAutomaticallyGeneratedDark)
+    ? "logo_fundo_escuro_path"
+    : null;
+  const darkFallback = !automaticDark || allowAutomaticallyGeneratedDark
+    ? String(identity.identity?.logo_fundo_escuro_path || "")
+    : "";
+  return (key ? String(identity.identity?.[key] || "") : "")
+    || identity.logo_path
+    || darkFallback
+    || String(identity.identity?.logo_fundo_claro_path || "")
+    || null;
+}
 
 export function normalizeClientBrandName(value: unknown): string {
   return String(value ?? "")
@@ -31,7 +119,7 @@ export function extractClientNameFromLogoRequest(text: string): string | null {
   const input = String(text ?? "").replace(/\s+/g, " ").trim();
   if (!/\b(?:logo|logomarca|logotipo)\b/i.test(input)) return null;
   const match = input.match(
-    /\b(?:logo|logomarca|logotipo)(?:\s+oficial)?\s+(?:(?:e|é)\s+)?(?:d[oa]|de)\s+(.+?)(?=,|[.;]|\s+(?:guard[ae]|salv[ae]|registr[ae]|cadastr[ae]|use|usa|vou usar|para usar)\b|$)/i,
+    /\b(?:logo|logomarca|logotipo)(?:\s+oficial)?(?:\s+para\s+fundo\s+(?:claro|escuro|branco|preto))?\s+(?:(?:e|é)\s+)?(?:d[oa]|de)\s+(?:cliente\s+)?(.+?)(?=,|[.;]|\s+(?:guard[ae]|salv[ae]|registr[ae]|cadastr[ae]|use|usa|vou usar|para usar)\b|$)/i,
   );
   const name = String(match?.[1] ?? "")
     .replace(/^(?:o|a|um|uma|cliente|empresa|marca)\s+/i, "")
@@ -111,6 +199,7 @@ export async function saveClientBrandIdentity(
     clientName: string;
     siteUrl?: string | null;
     logoPath?: string | null;
+    logoVariant?: ClientLogoVariant;
     identity?: Record<string, unknown> | null;
   },
 ): Promise<ClientBrandIdentity> {
@@ -126,13 +215,98 @@ export async function saveClientBrandIdentity(
   const incomingOrigin = String(input.identity?.logo_origem || "");
   const incomingTemporary = String(input.logoPath || "").includes("/video-site/");
   const preserveManualLogo = existingOrigin === "whatsapp_manual" && incomingOrigin !== "whatsapp_manual";
-  const logoPath = incomingTemporary || preserveManualLogo
-    ? existing?.logo_path || null
-    : input.logoPath || existing?.logo_path || null;
+  const logoVariant = input.logoVariant ?? "default";
+  const shouldProcessLogo = input.logoPath &&
+    (logoVariant !== "default" || (!incomingTemporary && !preserveManualLogo));
+  const processedLogo = shouldProcessLogo
+    ? await processClientLogo(
+      sb,
+      input.userId,
+      input.logoPath!,
+      logoVariant,
+    )
+    : null;
   const mergedIdentity = {
     ...((existing?.identity && typeof existing.identity === "object") ? existing.identity : {}),
     ...((input.identity && typeof input.identity === "object") ? input.identity : {}),
   };
+  if (processedLogo) {
+    mergedIdentity.logo_background_warning = processedLogo.warning;
+    if (processedLogo.width && processedLogo.height) {
+      mergedIdentity.logo_width = processedLogo.width;
+      mergedIdentity.logo_height = processedLogo.height;
+      mergedIdentity.logo_aspect_ratio =
+        processedLogo.width / processedLogo.height;
+    }
+  }
+  if (processedLogo && logoVariant === "light_background") {
+    mergedIdentity.logo_fundo_claro_path = processedLogo.path;
+    mergedIdentity.logo_fundo_claro_gerada_automaticamente = false;
+  }
+  if (processedLogo && logoVariant === "dark_background") {
+    mergedIdentity.logo_fundo_escuro_path = processedLogo.path;
+    mergedIdentity.logo_fundo_escuro_gerada_automaticamente = false;
+  }
+  if (processedLogo && logoVariant === "video") {
+    mergedIdentity.logo_video_path = processedLogo.path;
+    mergedIdentity.logo_video_gerada_automaticamente = false;
+  }
+  const logoPath = logoVariant === "default"
+    ? (incomingTemporary || preserveManualLogo
+      ? existing?.logo_path || null
+      : processedLogo?.path || existing?.logo_path || null)
+    : existing?.logo_path || null;
+  if (
+    processedLogo &&
+    logoVariant === "default" &&
+    !preserveManualLogo
+  ) {
+    const targets = [
+      {
+        variant: "light_background" as const,
+        pathKey: "logo_fundo_claro_path",
+        automaticKey: "logo_fundo_claro_gerada_automaticamente",
+      },
+      {
+        variant: "dark_background" as const,
+        pathKey: "logo_fundo_escuro_path",
+        automaticKey: "logo_fundo_escuro_gerada_automaticamente",
+      },
+      {
+        variant: "video" as const,
+        pathKey: "logo_video_path",
+        automaticKey: "logo_video_gerada_automaticamente",
+      },
+    ];
+    for (const target of targets) {
+      const existingPath = String(existing?.identity?.[target.pathKey] || "");
+      const existingAutomatic =
+        existing?.identity?.[target.automaticKey] === true;
+      if (existingPath && !existingAutomatic) continue;
+      if (existingPath.startsWith(`${input.userId}/`)) {
+        await sb.storage.from("tenant-logos").remove([existingPath]);
+      }
+      delete mergedIdentity[target.pathKey];
+      delete mergedIdentity[target.automaticKey];
+      if (processedLogo.warning) continue;
+      const derived = await deriveLogoVariant(
+        processedLogo.bytes,
+        target.variant,
+      );
+      if (!derived.generated) continue;
+      const generatedPath = `${input.userId}/client-brands/${Date.now()}-${
+        crypto.randomUUID().slice(0, 8)
+      }-${target.variant}-automatica.png`;
+      const { error: uploadError } = await sb.storage.from("tenant-logos")
+        .upload(generatedPath, derived.bytes, {
+          contentType: "image/png",
+          upsert: false,
+        });
+      if (uploadError) throw uploadError;
+      mergedIdentity[target.pathKey] = generatedPath;
+      mergedIdentity[target.automaticKey] = true;
+    }
+  }
   if (preserveManualLogo) mergedIdentity.logo_origem = "whatsapp_manual";
   const payload = {
     user_id: input.userId,

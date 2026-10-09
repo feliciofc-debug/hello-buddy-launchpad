@@ -13,6 +13,7 @@
  */
 
 import { carouselBodyLines } from "../carousel-content.ts";
+import { contrastPalette } from "./shared.ts";
 
 export type SlideType = "cover" | "content" | "cta";
 
@@ -31,6 +32,13 @@ export interface RenderContext {
   businessName?: string | null;
   profileHandle?: string | null;
   ctaLabel?: string | null;
+  backgroundColor?: string | null;
+}
+
+export interface VehicleRenderContext extends RenderContext {
+  width: number;
+  height: number;
+  photoDataUrl?: string | null;
 }
 
 export const CARD_WIDTH = 1080;
@@ -426,7 +434,228 @@ function cta(slide: RenderSlide, ctx: RenderContext): Node {
 
 /** Monta a árvore Satori de um slide do template dark-premium. */
 export function buildDarkPremiumSlide(slide: RenderSlide, ctx: RenderContext): Node {
-  if (slide.type === "cover") return cover(slide, ctx);
-  if (slide.type === "cta") return cta(slide, ctx);
-  return content(slide, ctx);
+  const tree = slide.type === "cover"
+    ? cover(slide, ctx)
+    : slide.type === "cta"
+    ? cta(slide, ctx)
+    : content(slide, ctx);
+  return ctx.backgroundColor
+    ? applyCustomBackground(tree, ctx.backgroundColor, true)
+    : tree;
+}
+
+function applyCustomBackground(
+  node: Node,
+  backgroundColor: string,
+  root = false,
+): Node {
+  const palette = contrastPalette(backgroundColor);
+  const style = { ...(node.props.style as Record<string, unknown> ?? {}) };
+  if (root) {
+    style.backgroundColor = backgroundColor;
+    delete style.backgroundImage;
+  }
+  if (
+    style.color === "#FFFFFF" ||
+    style.color === "#FFF" ||
+    String(style.color || "").startsWith("rgba(255,255,255")
+  ) {
+    style.color = String(style.color || "").includes("0.")
+      ? palette.muted
+      : palette.text;
+  }
+  if (
+    style.backgroundColor === "rgba(255,255,255,0.05)" ||
+    style.backgroundColor === "rgba(255,255,255,0.04)"
+  ) {
+    style.backgroundColor = palette.card;
+  }
+  const children = node.props.children;
+  const mapped = Array.isArray(children)
+    ? children.map((child) =>
+      child && typeof child === "object" && "type" in child
+        ? applyCustomBackground(child as Node, backgroundColor)
+        : child
+    )
+    : children && typeof children === "object" && "type" in children
+    ? applyCustomBackground(children as Node, backgroundColor)
+    : children;
+  return {
+    ...node,
+    props: {
+      ...node.props,
+      style,
+      ...(children !== undefined ? { children: mapped } : {}),
+    },
+  };
+}
+
+export function darkPremiumVehiclePhotoRegion(
+  type: SlideType,
+  width: number,
+  height: number,
+) {
+  if (type === "cta") return null;
+  const top = type === "cover" ? 92 : 70;
+  const heightRatio = type === "cover" ? 0.56 : 0.52;
+  return {
+    x: 54,
+    y: top,
+    width: width - 108,
+    height: Math.floor(height * heightRatio),
+  };
+}
+
+/** Dark Premium para veículo: foto e texto ocupam blocos separados. */
+export function buildDarkPremiumVehicleSlide(
+  slide: RenderSlide,
+  ctx: VehicleRenderContext,
+): Node {
+  const { primaryColor: p, secondaryColor: s, width, height } = ctx;
+  const region = darkPremiumVehiclePhotoRegion(slide.type, width, height);
+  const children: Node[] = [
+    circle(360, rgba(p, 0.13), { top: -130, right: -100 }),
+    circle(280, rgba(s, 0.1), { bottom: -90, left: -80 }),
+    el("div", {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      width,
+      height: 6,
+      backgroundImage: `linear-gradient(90deg, ${p}, ${s}, ${p})`,
+    }),
+  ];
+
+  if (region && ctx.photoDataUrl) {
+    children.push({
+      type: "img",
+      props: {
+        src: ctx.photoDataUrl,
+        style: {
+          position: "absolute",
+          left: region.x,
+          top: region.y,
+          width: region.width,
+          height: region.height,
+          objectFit: "fill",
+          borderRadius: 34,
+        },
+      },
+    });
+  }
+
+  if (slide.type === "cta") {
+    children.push(
+      el("div", {
+        position: "absolute",
+        left: 80,
+        right: 80,
+        top: Math.floor(height * 0.25),
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+      }, [
+        el("div", {
+          display: "flex",
+          color: "#FFFFFF",
+          fontSize: 58,
+          fontWeight: 900,
+          textAlign: "center",
+          lineHeight: 1.1,
+        }, slide.title),
+        ...(slide.body
+          ? [el("div", {
+            display: "flex",
+            flexDirection: "column",
+            color: "rgba(255,255,255,0.78)",
+            fontSize: 30,
+            lineHeight: 1.5,
+            textAlign: "center",
+            marginTop: 34,
+            gap: 10,
+          }, carouselBodyLines(slide.body).slice(0, 5).map((line) =>
+            el("div", { display: "flex" }, line)
+          ))]
+          : []),
+        el("div", {
+          display: "flex",
+          marginTop: 46,
+          padding: "24px 48px",
+          borderRadius: 50,
+          backgroundImage: `linear-gradient(135deg, ${p}, ${s})`,
+          color: "#FFFFFF",
+          fontSize: 28,
+          fontWeight: 800,
+        }, (ctx.ctaLabel || "CHAMAR NO WHATSAPP").toUpperCase()),
+      ]),
+    );
+  } else if (region) {
+    const textTop = region.y + region.height + 30;
+    children.push(
+      el("div", {
+        position: "absolute",
+        left: 70,
+        right: 70,
+        top: textTop,
+        display: "flex",
+        flexDirection: "column",
+      }, [
+        el("div", {
+          display: "flex",
+          color: "#FFFFFF",
+          fontSize: slide.title.length > 48 ? 40 : 48,
+          fontWeight: 900,
+          lineHeight: 1.12,
+        }, slide.title),
+        ...(slide.body
+          ? [el("div", {
+            display: "flex",
+            flexDirection: "column",
+            color: "rgba(255,255,255,0.76)",
+            fontSize: 27,
+            lineHeight: 1.35,
+            marginTop: 18,
+            gap: 7,
+          }, carouselBodyLines(slide.body).slice(0, 3).map((line) =>
+            el("div", { display: "flex" }, line)
+          ))]
+          : []),
+      ]),
+    );
+  }
+
+  children.push(
+    el("div", {
+      position: "absolute",
+      bottom: 34,
+      left: 0,
+      width,
+      display: "flex",
+      justifyContent: "center",
+    }, progressDots(
+      Math.max(0, (slide.number ?? 1) - 1),
+      ctx.totalSlides,
+      p,
+    )),
+  );
+  if (ctx.logoDataUrl) {
+    children.push(logoImg(ctx.logoDataUrl, {
+      position: "absolute",
+      top: 20,
+      left: 56,
+      width: 155,
+      height: 62,
+    }));
+  }
+  return el("div", {
+    width,
+    height,
+    position: "relative",
+    display: "flex",
+    fontFamily: FONT_FAMILY,
+    overflow: "hidden",
+    backgroundColor: "#0F172A",
+    backgroundImage:
+      "linear-gradient(145deg, #0F172A 0%, #1E293B 50%, #0F172A 100%)",
+  }, children);
 }

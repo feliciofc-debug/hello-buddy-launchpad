@@ -12,6 +12,7 @@ import {
 } from "../_shared/brand-site-identity.ts";
 import { setTenantLogo } from "../_shared/tenant-logo.ts";
 import { trimLogoImage } from "../_shared/logo-image-trim.ts";
+import { imageUploadMetadata } from "../_shared/image-file-format.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -386,6 +387,12 @@ serve(async (req) => {
         prompt: String(url),
         references: images,
         logoDataUrl,
+        logoForLightBackgroundDataUrl: use_saved_logo
+          ? tenantAssets.logoForLightBackgroundDataUrl
+          : logoDataUrl,
+        logoForDarkBackgroundDataUrl: use_saved_logo
+          ? tenantAssets.logoForDarkBackgroundDataUrl
+          : logoDataUrl,
         brandColors,
         brandName,
         apiKey: LOVABLE_API_KEY,
@@ -400,10 +407,12 @@ serve(async (req) => {
         "| marca aplicada:",
         result.logoApplied,
       );
-      const fileName = `ia-marketing/${Date.now()}-${Math.random().toString(36).substring(7)}.png`;
+      const imageFormat = imageUploadMetadata(result.bytes, result.mimeType);
+      if (!imageFormat) throw new Error("A imagem gerada retornou bytes inválidos.");
+      const fileName = `ia-marketing/${Date.now()}-${Math.random().toString(36).substring(7)}.${imageFormat.extension}`;
       const { error: uploadError } = await supabaseAdmin.storage
         .from("produtos")
-        .upload(fileName, result.bytes, { contentType: result.mimeType, upsert: true });
+        .upload(fileName, result.bytes, { contentType: imageFormat.mime, upsert: true });
       if (uploadError) throw new Error(`Não consegui salvar a imagem gerada: ${uploadError.message}`);
       const { data: publicUrlData } = supabaseAdmin.storage.from("produtos").getPublicUrl(fileName);
       if (!publicUrlData?.publicUrl) throw new Error("Não consegui obter a URL da imagem gerada.");

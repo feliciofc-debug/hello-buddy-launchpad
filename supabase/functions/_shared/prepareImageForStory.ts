@@ -13,7 +13,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 type Image = any;
 
 async function loadImagescript() {
-  const mod = await import("https://deno.land/x/imagescript@1.2.17/mod.ts");
+  const mod = await import("https://deno.land/x/imagescript@1.3.0/mod.ts");
   return { decode: mod.decode, Image: mod.Image };
 }
 
@@ -53,7 +53,9 @@ export async function prepareImageForStory(
   serviceRoleKey: string,
 ): Promise<PrepareResult> {
   if (!imageUrl) throw new Error("imageUrl vazio");
-  if (!/^https?:\/\//i.test(imageUrl)) throw new Error("URL inválida para Story");
+  if (!/^https?:\/\//i.test(imageUrl)) {
+    throw new Error("URL inválida para Story");
+  }
 
   const resp = await fetch(imageUrl);
   if (!resp.ok) throw new Error(`Falha ao baixar imagem (${resp.status})`);
@@ -66,11 +68,6 @@ export async function prepareImageForStory(
   const h = decoded.height;
   const ratio = w / h;
 
-  // Já é 9:16 (com folga mínima) → publica direto
-  if (Math.abs(ratio - STORY_RATIO) <= TOLERANCIA) {
-    return { url: imageUrl, converted: false, reason: "já 9:16" };
-  }
-
   const fundo = corMedia(decoded);
   const escala = Math.min(STORY_W / w, STORY_H / h);
   const novoW = Math.max(1, Math.round(w * escala));
@@ -79,11 +76,17 @@ export async function prepareImageForStory(
 
   const canvas = new Image(STORY_W, STORY_H);
   canvas.fill(fundo);
-  canvas.composite(decoded, Math.floor((STORY_W - novoW) / 2), Math.floor((STORY_H - novoH) / 2));
+  canvas.composite(
+    decoded,
+    Math.floor((STORY_W - novoW) / 2),
+    Math.floor((STORY_H - novoH) / 2),
+  );
 
   const jpeg = await canvas.encodeJPEG(90);
   const supabase = createClient(supabaseUrl, serviceRoleKey);
-  const filename = `${userId}/ig-story/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.jpg`;
+  const filename = `${userId}/ig-story/${Date.now()}-${
+    Math.random().toString(36).slice(2, 10)
+  }.jpg`;
   const { error: upErr } = await supabase.storage
     .from(BUCKET)
     .upload(filename, jpeg, { contentType: "image/jpeg", upsert: true });
@@ -92,7 +95,13 @@ export async function prepareImageForStory(
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(filename);
   if (!data?.publicUrl) throw new Error("Falha ao gerar URL pública do story");
 
-  return { url: data.publicUrl, converted: true, reason: `contain ${w}x${h}` };
+  return {
+    url: data.publicUrl,
+    converted: true,
+    reason: Math.abs(ratio - STORY_RATIO) <= TOLERANCIA
+      ? `jpeg ${w}x${h}`
+      : `contain ${w}x${h}`,
+  };
 }
 
 export async function prepareImageForStorySafe(
@@ -102,10 +111,17 @@ export async function prepareImageForStorySafe(
   serviceRoleKey: string,
 ): Promise<PrepareResult> {
   try {
-    return await prepareImageForStory(imageUrl, userId, supabaseUrl, serviceRoleKey);
+    return await prepareImageForStory(
+      imageUrl,
+      userId,
+      supabaseUrl,
+      serviceRoleKey,
+    );
   } catch (err) {
     console.warn(
-      `[prepareImageForStorySafe] falha (mantendo original): ${err instanceof Error ? err.message : err}`,
+      `[prepareImageForStorySafe] falha (mantendo original): ${
+        err instanceof Error ? err.message : err
+      }`,
     );
     return { url: imageUrl, converted: false, reason: "erro" };
   }
