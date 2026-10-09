@@ -40,6 +40,10 @@ import {
   vehicleFipeTurn,
 } from "./fipe-routing.ts";
 import {
+  INSTAGRAM_IMAGE_MIME,
+  instagramImageStoragePath,
+} from "./prepareImageForInstagram.ts";
+import {
   parseVerticalVisionResult,
   resolveVertical,
 } from "./vertical-router.ts";
@@ -373,4 +377,12 @@ Deno.test("golden FIPE preserva o anúncio de veículo pendente", async (t) => {
     assertEquals(vehicleFipeTurn(text, input), "fipe_lookup");
     assertEquals(input.ano_modelo, "2025");
   });
+});
+
+Deno.test("golden de carrossel de veículo normaliza mídia do Instagram", () => {
+  for (const source of ["carro.png", "carro.webp"]) {
+    const path = instagramImageStoragePath("tenant", 123, source.split(".")[1]);
+    assertEquals(INSTAGRAM_IMAGE_MIME, "image/jpeg");
+    assert(path.endsWith(".jpg"), `${source} precisa sair como JPEG`);
+  }
 });

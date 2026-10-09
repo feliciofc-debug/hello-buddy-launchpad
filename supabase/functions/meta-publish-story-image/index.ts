@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { prepareImageForStorySafe } from '../_shared/prepareImageForStory.ts'
+import { prepareImageForStory } from '../_shared/prepareImageForStory.ts'
 import { InstagramContainerTimeoutError, waitForInstagramContainer } from '../_shared/instagram-container.ts'
 
 const corsHeaders = {
@@ -39,7 +39,12 @@ serve(async (req) => {
 
     // Story é 9:16. Qualquer outra proporção o Instagram ESTICA — então
     // encaixamos a foto inteira num quadro 1080x1920 antes de publicar.
-    const preparada = await prepareImageForStorySafe(image_url, user_id, SUPABASE_URL, SERVICE_KEY)
+    const preparada = await prepareImageForStory(
+      image_url,
+      user_id,
+      SUPABASE_URL,
+      SERVICE_KEY,
+    )
     const storyImageUrl = preparada.url
     console.log(`[story-image] proporcao=${preparada.reason} convertida=${preparada.converted}`)
 
