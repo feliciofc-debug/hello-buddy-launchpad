@@ -22,6 +22,7 @@ const MODEL_ALIASES: Array<{
   { pattern: /\bhb20\b/i, brand: "Hyundai", model: "HB20" },
   { pattern: /\bcreta\b/i, brand: "Hyundai", model: "Creta" },
   { pattern: /\btracker\b/i, brand: "Chevrolet", model: "Tracker" },
+  { pattern: /\btank\s*300\b/i, brand: "GWM", model: "Tank 300" },
 ];
 
 const SMALL_NUMBERS: Record<string, number> = {
