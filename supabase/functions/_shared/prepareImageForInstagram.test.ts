@@ -48,8 +48,9 @@ Deno.test("WebP também é reencodado como JPEG público compatível", async () 
     "https://cdn.example/carro.webp",
     (() => {
       requests += 1;
+      const body = requests === 1 ? webp : convertedPng;
       return Promise.resolve(
-        new Response(requests === 1 ? webp : convertedPng, { status: 200 }),
+        new Response(body.slice().buffer as ArrayBuffer, { status: 200 }),
       );
     }) as typeof fetch,
   );

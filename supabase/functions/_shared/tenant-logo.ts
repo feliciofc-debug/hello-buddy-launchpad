@@ -12,6 +12,7 @@ import {
 } from "./logo-variant.ts";
 import {
   deriveLogoVariant,
+  type GeneratedLogoVariant,
   removeSolidLogoBackground,
 } from "./logo-background.ts";
 
@@ -79,7 +80,9 @@ export async function getTenantLogoForBackground(
   background: LogoBackground,
   allowAutomaticallyGeneratedDark = true,
 ): Promise<TenantLogo | null> {
-  const variantName = logoVariantForBackground(background);
+  const variantName = logoVariantForBackground(
+    background,
+  ) as GeneratedLogoVariant;
   let variant = await getTenantLogo(
     sb,
     userId,
