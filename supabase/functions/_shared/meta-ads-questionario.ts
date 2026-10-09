@@ -115,29 +115,83 @@ function limitar(value: unknown, maximum: number): string {
   return String(value ?? "").trim().slice(0, maximum);
 }
 
+export type ContentCreationKind =
+  | "carousel"
+  | "post"
+  | "story"
+  | "reels"
+  | "video"
+  | "caption"
+  | "art"
+  | "image"
+  | "banner"
+  | "slides";
+
+export function metaAdsCommandText(text: unknown): string {
+  const withoutInteractive = String(text ?? "")
+    .replace(/<<interactive_id:[^>]+>>/gi, "")
+    .replace(/"[^"\n]*"|'[^'\n]*'|“[^”\n]*”|‘[^’\n]*’/g, " ");
+  return normalizar(withoutInteractive.split(/[\n.:]/, 1)[0]);
+}
+
+export function contentCreationCommandKind(
+  text: unknown,
+): ContentCreationKind | null {
+  const command = metaAdsCommandText(text);
+  const creationVerb =
+    /\b(?:cria|crie|criar|faz|faca|fazer|monta|monte|montar|gera|gere|gerar|produz|produza|produzir|quero|preciso)\b/;
+  if (!creationVerb.test(command)) return null;
+  const kinds: Array<[ContentCreationKind, RegExp]> = [
+    ["carousel", /\b(?:carrossel|carrosel|carrocel|carossel|carosel|carroussel|carousel)\b/],
+    ["post", /\bposts?\b/],
+    ["story", /\b(?:story|stories)\b/],
+    ["reels", /\breels?\b/],
+    ["video", /\bvideos?\b/],
+    ["caption", /\blegendas?\b/],
+    ["art", /\bartes?\b/],
+    ["image", /\bimagens?\b/],
+    ["banner", /\bbanners?\b/],
+    ["slides", /\bslides?\b/],
+  ];
+  return kinds.find(([, pattern]) => pattern.test(command))?.[0] ?? null;
+}
+
+export function isContentCreationCommand(text: unknown): boolean {
+  return contentCreationCommandKind(text) !== null;
+}
+
+function hasExplicitPaidCampaignCommand(value: string): boolean {
+  const paidTerms =
+    /\b(?:meta ads|facebook ads|instagram ads|anuncio pago|anuncios pagos|campanha de anuncios|campanha paga|trafego pago|impulsionar|impulsione|impulsiona|impulsionamento|patrocinad[oa]s?|patrocinar)\b/;
+  if (paidTerms.test(value)) return true;
+  const campaignCommand =
+    /\b(?:cria|crie|criar|faz|faca|fazer|monta|monte|montar|quero)\b[\s\S]{0,60}\b(?:campanha|anuncio|anuncios)\b/;
+  const metaChannel = /\b(?:meta|facebook|instagram)\b/;
+  if (/\b(?:anunciar|anuncie)\b/.test(value) && metaChannel.test(value)) {
+    return true;
+  }
+  return campaignCommand.test(value) && metaChannel.test(value);
+}
+
+export function isMetaAdsQuestionarioMixedContentRequest(
+  text: unknown,
+): boolean {
+  if (!isContentCreationCommand(text)) return false;
+  return hasExplicitPaidCampaignCommand(metaAdsCommandText(text));
+}
+
 export function isMetaAdsQuestionarioTrigger(text: unknown): boolean {
   if (
     interactiveId(text) ===
       `${META_ADS_QUESTIONARIO_PREFIX}ambiguidade:meta`
   ) return true;
-  const value = normalizar(text)
-    .replace(/<<interactive_id:[^>]+>>/g, "").trim();
+  const value = metaAdsCommandText(text);
   if (!value || isMetaAdsQuestionarioConsulta(value)) return false;
-  const paidTerms =
-    /\b(?:meta ads|facebook ads|instagram ads|anuncio pago|anuncios pagos|campanha de anuncios|campanha paga|trafego pago|impulsionar|impulsione|impulsionamento|patrocinad[oa]s?|patrocinar)\b/;
-  if (paidTerms.test(value)) return true;
-  const adIntent = /\b(?:anunciar|anuncie|anuncio|anuncios|campanha)\b/;
-  const metaChannel = /\b(?:meta|facebook|instagram)\b/;
-  const visualCreation =
-    /\b(?:arte|imagem|card|banner|criativo|design|foto)\b/;
-  if (/\b(?:anunciar|anuncie)\b/.test(value) && metaChannel.test(value)) {
-    return true;
-  }
-  return adIntent.test(value) && metaChannel.test(value) &&
-    !visualCreation.test(value);
+  if (isContentCreationCommand(value)) return false;
+  return hasExplicitPaidCampaignCommand(value);
 }
 
-function isMetaAdsQuestionarioConsulta(value: string): boolean {
+export function isMetaAdsQuestionarioConsulta(value: string): boolean {
   return /^(?:como|quando|onde|qual|quais|por que|porque)\b/.test(value) ||
     /\b(?:como esta|quero saber|consultar|consulta|relatorio|metricas|desempenho|resultado|status|quanto gast|campanha atual|minha campanha)\b/.test(
       value,
@@ -147,8 +201,8 @@ function isMetaAdsQuestionarioConsulta(value: string): boolean {
 export function isMetaAdsQuestionarioAmbiguousRequest(
   text: unknown,
 ): boolean {
-  const value = normalizar(text)
-    .replace(/<<interactive_id:[^>]+>>/g, "").trim();
+  if (isMetaAdsQuestionarioMixedContentRequest(text)) return true;
+  const value = metaAdsCommandText(text);
   if (
     !value || isMetaAdsQuestionarioTrigger(value) ||
     isMetaAdsQuestionarioConsulta(value)
@@ -162,7 +216,24 @@ export function isMetaAdsQuestionarioAmbiguousRequest(
   );
 }
 
-export function metaAdsQuestionarioAmbiguityButtons(): QuestionarioButtons {
+export function metaAdsQuestionarioAmbiguityButtons(
+  text?: unknown,
+): QuestionarioButtons {
+  if (isMetaAdsQuestionarioMixedContentRequest(text)) {
+    return questionarioButtons({
+      body: "Você quer criar o conteúdo ou iniciar uma campanha paga?",
+      buttons: [
+        {
+          id: `${META_ADS_QUESTIONARIO_PREFIX}ambiguidade:arte`,
+          title: "Criar carrossel",
+        },
+        {
+          id: `${META_ADS_QUESTIONARIO_PREFIX}ambiguidade:meta`,
+          title: "Criar campanha paga",
+        },
+      ],
+    });
+  }
   return questionarioButtons({
     body: "Você quer criar um anúncio pago na Meta ou uma arte de anúncio?",
     buttons: [
@@ -284,7 +355,7 @@ export function resolveMetaAdsLimitValueInput(input: {
 
 export function isMetaAdsQuestionarioCancel(text: unknown): boolean {
   const value = normalizar(text).replace(/<<interactive_id:[^>]+>>/g, "").trim();
-  return /^(?:cancelar|cancela|desistir|parar|meta_ads_q:cancelar)$/.test(value) ||
+  return /^(?:cancelar|cancela|desistir|parar|sair|nao e isso|meta_ads_q:cancelar)[.!?]?$/.test(value) ||
     interactiveId(text) === `${META_ADS_QUESTIONARIO_PREFIX}cancelar`;
 }
 

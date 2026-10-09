@@ -4883,7 +4883,7 @@ async function processMetaAdsQuestionario(input: {
     return {
       handled: true,
       text: "Só para confirmar:",
-      interactiveButtons: metaAdsQuestionarioAmbiguityButtons(),
+      interactiveButtons: metaAdsQuestionarioAmbiguityButtons(input.text),
       ambiguityOriginal: input.text,
     };
   }

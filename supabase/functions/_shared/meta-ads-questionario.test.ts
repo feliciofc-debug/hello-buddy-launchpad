@@ -5,13 +5,17 @@ import {
 import {
   avancarMetaAdsQuestionario,
   avaliarMetaAdsOrcamentoMinimo,
+  contentCreationCommandKind,
   filtrarInteressesValidados,
+  isContentCreationCommand,
   isMetaAdsQuestionarioAmbiguousRequest,
   isMetaAdsQuestionarioCancel,
   isMetaAdsLimitChangeRequest,
+  isMetaAdsQuestionarioMixedContentRequest,
   isMetaAdsQuestionarioResume,
   isMetaAdsQuestionarioTrigger,
   metaAdsBudgetRecoveryButtons,
+  metaAdsCommandText,
   metaAdsLimitProposalButtons,
   metaAdsMaximoDiarioParaSeteDias,
   metaAdsQuestionarioAmbiguityButtons,
@@ -180,6 +184,19 @@ Deno.test("gatilho exige intenção clara de anúncio pago", () => {
     isMetaAdsQuestionarioTrigger("quero uma campanha de WhatsApp"),
     false,
   );
+  assertEquals(
+    isMetaAdsQuestionarioTrigger(
+      "Crie um carrossel para o Instagram. Estrutura: gestor de tráfego cria anúncios e campanhas.",
+    ),
+    false,
+  );
+  assertEquals(
+    isMetaAdsQuestionarioTrigger(
+      "Crie uma campanha no Instagram para vender canecas, orçamento 20 reais por dia",
+    ),
+    true,
+  );
+  assertEquals(isMetaAdsQuestionarioTrigger("impulsiona esse post"), true);
 });
 
 Deno.test("pedido ambíguo oferece três caminhos", () => {
@@ -192,6 +209,40 @@ Deno.test("pedido ambíguo oferece três caminhos", () => {
     "Arte de anúncio",
     "Outra coisa",
   ]);
+});
+
+Deno.test("criação de conteúdo vence palavras pagas presentes no briefing", () => {
+  const request =
+    `Crie um carrossel para o Instagram da AMZ Ofertas, com a identidade visual do nosso site.
+Público: empresários.
+Mensagem central: "A AMZ cria e gerencia campanhas."
+Estrutura (6 slides):
+1. Capa
+4. Gestor de tráfego: cria e gerencia anúncios no Instagram.`;
+  assertEquals(metaAdsCommandText(request), "crie um carrossel para o instagram da amz ofertas, com a identidade visual do nosso site");
+  assertEquals(contentCreationCommandKind(request), "carousel");
+  assert(isContentCreationCommand(request));
+  assertEquals(isMetaAdsQuestionarioTrigger(request), false);
+  assertEquals(isMetaAdsQuestionarioAmbiguousRequest(request), false);
+});
+
+Deno.test("comando com conteúdo e impulsionamento pede escolha em dois botões", () => {
+  const request = "crie um carrossel e impulsione";
+  assert(isMetaAdsQuestionarioMixedContentRequest(request));
+  assertEquals(isMetaAdsQuestionarioTrigger(request), false);
+  assert(isMetaAdsQuestionarioAmbiguousRequest(request));
+  assertEquals(
+    metaAdsQuestionarioAmbiguityButtons(request).buttons.map((button) =>
+      button.title
+    ),
+    ["Criar carrossel", "Criar campanha paga"],
+  );
+});
+
+Deno.test("cancelamento reconhece saídas em linguagem natural", () => {
+  for (const text of ["cancelar", "sair", "não é isso", "Não é isso."]) {
+    assert(isMetaAdsQuestionarioCancel(text));
+  }
 });
 
 Deno.test("Arte de anúncio volta ao Jarvis com o pedido original", () => {
