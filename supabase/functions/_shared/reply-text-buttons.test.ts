@@ -58,7 +58,7 @@ Deno.test("APROVAR, APROVADO, SIM e Sem trilha preservam o texto digitado", () =
       options.map((option) =>
         replyTextFromInteractive(`<<INTERACTIVE_ID:${option.id}>>`)
       ),
-      expected,
+      [...expected],
     );
   }
 });
