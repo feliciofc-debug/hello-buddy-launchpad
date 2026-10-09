@@ -289,9 +289,20 @@ import {
   extractSocialPostBriefing,
   hasImageGenerationRequest,
   hasSocialPostRequest,
+  hasVideoPublicationRequest,
+  isCarouselLibraryMedia,
   selectLatestImplicitMediaId,
   selectPublicationMediaId,
 } from "../_shared/owner-media-intent.ts";
+import {
+  modelMediaIdPresentInUserText,
+  parseReadyMediaAction,
+  readyMediaActionButtons,
+} from "../_shared/ready-media-actions.ts";
+import {
+  replyTextControlsForMessage,
+  replyTextFromInteractive,
+} from "../_shared/reply-text-buttons.ts";
 import {
   classifyPendingBrandReply,
   decideWhatsAppImageBrand,
@@ -6716,6 +6727,7 @@ async function loadCarouselImageUrls(userId: string, parentId: string): Promise<
       .select("id, midia_url, contexto_original, created_at")
       .eq("user_id", userId)
       .eq("midia_pai_id", parentId)
+      .eq("origem", "carrossel_whatsapp_card")
       .order("created_at", { ascending: true }),
   ]);
   if (parentError || childrenError) {
@@ -8070,11 +8082,7 @@ async function publishLinkedInImmediately(
           `Não publiquei: você pediu uma imagem, mas a última produção desta conversa é ${mediaTipo}. Reenvie a imagem ou informe o código dela.`,
         );
       }
-      if (
-        resolved.midia.origem === "carrossel_whatsapp"
-        || resolved.midia.origem === "carrossel_whatsapp_card"
-        || resolved.midia.midia_pai_id
-      ) {
+      if (isCarouselLibraryMedia(resolved.midia)) {
         return await fail("carrossel_linkedin_nao_suportado", "Não publiquei: carrossel pelo LinkedIn ainda não está habilitado.");
       }
       if (resolved.midia.tipo === "video") {
@@ -9789,7 +9797,7 @@ async function toolPostarMidiaBiblioteca(
       });
     }
 
-    if (midia.origem === "carrossel_whatsapp" || midia.origem === "carrossel_whatsapp_card" || midia.midia_pai_id) {
+    if (isCarouselLibraryMedia(midia)) {
       const parentId = midia.midia_pai_id || midia.id;
       const requestedNetworks = (args?.redes ?? [])
         .map(canonicalSocialNetwork)
@@ -16096,6 +16104,7 @@ async function callGemini(
     const normalizedInput = normalizePt(userContent);
     const brandInteractiveId = userContent.match(/<<INTERACTIVE_ID:(brand_[^>]+)>>/i)?.[1]?.toLowerCase() || "";
     const socialInteractiveId = userContent.match(/<<INTERACTIVE_ID:(social_[^>]+)>>/i)?.[1] || "";
+    const readyMediaAction = parseReadyMediaAction(userContent);
     const anuncioPostInteractiveId = userContent.match(
       /<<INTERACTIVE_ID:(anuncio_post:[^>]+)>>/i,
     )?.[1]?.toLowerCase() || "";
@@ -16155,6 +16164,58 @@ async function callGemini(
         normalizePt(String(previousHistoryMessage.content ?? "")),
       );
     const ownerMediaIntent = classifyOwnerMediaIntent(userContent);
+    if (remetenteEhDono && readyMediaAction) {
+      const isVideo = readyMediaAction.mediaType === "video";
+      const postResult = await toolPostarMidiaBiblioteca({
+        midia_id: readyMediaAction.mediaId,
+        pedido_original: userContent,
+        redes: ["facebook", "instagram"],
+        formato: isVideo ? "reels" : "feed",
+        incluir_cta_whatsapp: false,
+      }, toolCtx);
+      const actionLead = readyMediaAction.action === "schedule"
+        ? "Preparei a prévia desta mídia. Depois de escolher a legenda, toque em Agendar."
+        : readyMediaAction.action === "caption"
+        ? "Preparei opções de legenda para esta mídia."
+        : `Preparei a prévia desta mídia para ${
+          isVideo ? "Reels" : "o Feed"
+        } no Facebook e no Instagram.`;
+      return {
+        text: `${actionLead}<<SPLIT>>${formatSocialPostToolResult(postResult)}`,
+        interactiveList: interactiveListFromSocialResult(postResult),
+        interactiveButtons: interactiveButtonsFromSocialResult(postResult),
+      };
+    }
+
+    if (
+      remetenteEhDono &&
+      ownerMediaIntent.action === "post" &&
+      hasVideoPublicationRequest(userContent)
+    ) {
+      const social = detectSocialPostIntent(userContent) ?? {
+        produto: "",
+        tom: "informativo",
+        redes: detectRequestedSocialNetworks(userContent),
+        temProduto: false,
+        formato: detectSocialPostFormat(userContent) ?? "reels",
+      };
+      const postResult = await toolPostarMidiaBiblioteca({
+        pedido_original: userContent,
+        legenda: cleanMediaPostLegenda(userContent),
+        briefing: extractSocialPostBriefing(userContent),
+        tom: social.tom,
+        redes: social.redes.length
+          ? social.redes
+          : ["facebook", "instagram"],
+        formato: social.formato ?? "reels",
+        incluir_cta_whatsapp: detectWantsWhatsappCta(userContent),
+      }, toolCtx);
+      return {
+        text: formatSocialPostToolResult(postResult),
+        interactiveList: interactiveListFromSocialResult(postResult),
+        interactiveButtons: interactiveButtonsFromSocialResult(postResult),
+      };
+    }
     if (
       remetenteEhDono &&
       ownerMediaIntent.action === "edit" &&
@@ -18641,6 +18702,9 @@ async function callGemini(
             ? `Pronto — coloquei a marca no canto superior esquerdo, sem alterar o restante da imagem.${codigo}`
             : `Pronto — apliquei o cenário que você pediu, mantendo o produto.${codigo}`,
           imageUrl: parsed.image_url,
+          interactiveButtons: parsed.midia_id
+            ? readyMediaActionButtons(parsed.midia_id, "foto")
+            : undefined,
         };
       }
       return { text: mensagemErroEdicaoImagem(parsed) };
@@ -18979,6 +19043,7 @@ async function callGemini(
   const model = escolherModelo({ kind: hasMedia ? "multimodal" : "conversation" });
   let pendingImageUrl: string | undefined;
   let pendingMediaCodeBlock = "";
+  let pendingReadyMediaButtons: WhatsAppInteractiveButtons | undefined;
   let pendingDemoSiteBrandResult: Record<string, unknown> | null = null;
   let creativeToolRanThisTurn = false;
   let pendingSocialToken: string | undefined; // token de post aguardando confirmação — anexa <<SPLIT>>pode postar {token} no fim
@@ -19144,9 +19209,11 @@ async function callGemini(
           const originalRequest = typeof userContent === "string" ? userContent : "";
           args.pedido_original = originalRequest;
           const explicitMediaId = extrairIdentificadorMidia(originalRequest);
-          if (explicitMediaId || name === "publicar_linkedin") {
-            args.midia_id = explicitMediaId || undefined;
-          }
+          const literalModelMediaId = modelMediaIdPresentInUserText(
+            originalRequest,
+            args.midia_id,
+          );
+          args.midia_id = explicitMediaId || literalModelMediaId;
         }
         console.log(`[pietro][tool] ${name}`, args);
         if (isCreativeDemoTool(name)) creativeToolRanThisTurn = true;
@@ -19286,6 +19353,12 @@ async function callGemini(
               .at(-1);
             if (lastSelectableIndex != null) {
               await rememberLastMediaInteraction(toolCtx, ids[lastSelectableIndex]);
+              if (name === "editar_imagem") {
+                pendingReadyMediaButtons = readyMediaActionButtons(
+                  ids[lastSelectableIndex],
+                  tipos[lastSelectableIndex] === "video" ? "video" : "foto",
+                );
+              }
             }
             pendingMediaCodeBlock = ids.map((id, index) =>
               linhaCodigoMidia(id, tipos[index] === "video" ? "video" : "foto")
@@ -19465,6 +19538,7 @@ async function callGemini(
     return {
       text,
       imageUrl: pendingImageUrl ?? guardReplayImageUrl,
+      interactiveButtons: pendingReadyMediaButtons,
       forwardProof,
       forwardAttempted,
       metaAdsSummaryDraftId,
@@ -19477,6 +19551,7 @@ async function callGemini(
   return {
     text: pendingMediaCodeBlock ? `${fallbackText}<<SPLIT>>${pendingMediaCodeBlock}` : fallbackText,
     imageUrl: pendingImageUrl,
+    interactiveButtons: pendingReadyMediaButtons,
     forwardProof,
     forwardAttempted,
     metaAdsSummaryDraftId,
@@ -20009,7 +20084,12 @@ async function processOne(queueId: string) {
       contactNumber: row.from_number,
     };
 
-    const userText = extractText(row.payload);
+    let userText = extractText(row.payload);
+    const replyText = replyTextFromInteractive(userText);
+    if (replyText !== null) {
+      userText = replyText;
+      console.log("[processor][reply_text]", replyText);
+    }
     let commercialContactForOwner: any = null;
     let inboundContent = userText || `(${row.message_type ?? "mídia"} sem legenda)`;
     const directNearbySearch = row.message_type === "text" ? detectNearbySearch(userText) : null;
@@ -21762,6 +21842,7 @@ async function processOne(queueId: string) {
               generationCtx,
               logoResult.midia_id,
             );
+            buttons = readyMediaActionButtons(logoResult.midia_id, "foto");
           }
           if (
             freshLogoMode === "top-left" && logoResult?.midia_id &&
@@ -21801,6 +21882,16 @@ async function processOne(queueId: string) {
           buttons = prepared.deferred
             ? prepared.interactiveButtons
             : undefined;
+          if (!prepared.deferred) {
+            try {
+              const parsed = JSON.parse(prepared.raw);
+              if (parsed?.midia_id) {
+                buttons = readyMediaActionButtons(parsed.midia_id, "foto");
+              }
+            } catch {
+              // Resposta sem ID: entrega a imagem normalmente, sem ações vinculadas.
+            }
+          }
         }
         const { data: outMsg } = await sb
           .from("whatsapp_cloud_messages")
@@ -21935,6 +22026,10 @@ async function processOne(queueId: string) {
             row.from_number,
             compositionReply,
             compositionImageUrl,
+            undefined,
+            compositionMediaId
+              ? readyMediaActionButtons(compositionMediaId, "foto")
+              : undefined,
           );
           if (sentId && outMsg?.id) {
             await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
@@ -22053,7 +22148,17 @@ async function processOne(queueId: string) {
 
       let sendError: string | null = null;
       try {
-        const sentId = await sendWhatsApp(userId, row.from_number, reply);
+        const replyControls = videoFlowReply
+          ? replyTextControlsForMessage(reply)
+          : null;
+        const sentId = await sendWhatsApp(
+          userId,
+          row.from_number,
+          reply,
+          undefined,
+          replyControls?.interactiveList,
+          replyControls?.interactiveButtons,
+        );
         if (sentId && outMsg?.id) {
           await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
         }
@@ -22094,6 +22199,7 @@ async function processOne(queueId: string) {
       });
       if (fluxoReply) {
         console.log("[processor][video_legenda_flow] resposta determinística do fluxo de legenda");
+        const replyControls = replyTextControlsForMessage(fluxoReply);
         const { data: outMsg } = await sb
           .from("whatsapp_cloud_messages")
           .insert({
@@ -22112,8 +22218,8 @@ async function processOne(queueId: string) {
           row.from_number,
           fluxoReply,
           undefined,
-          undefined,
-          undefined,
+          replyControls?.interactiveList,
+          replyControls?.interactiveButtons,
         );
         if (sentFlowId && outMsg?.id) {
           await sb.from("whatsapp_cloud_messages").update({ wamid: sentFlowId }).eq("id", outMsg.id);
@@ -23752,6 +23858,11 @@ Regras:
     if (dedupedReply !== reply) {
       console.warn(`[processor][reply_deduplicated] before=${reply.length} after=${dedupedReply.length}`);
       reply = dedupedReply;
+    }
+    if (!interactiveList && !interactiveButtons) {
+      const replyControls = replyTextControlsForMessage(reply);
+      interactiveList = replyControls?.interactiveList;
+      interactiveButtons = replyControls?.interactiveButtons;
     }
 
     // Para leads, a trava de transporte limita cada parte a 700 caracteres e

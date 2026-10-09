@@ -15,6 +15,8 @@ import {
   respJson,
 } from "../_shared/render-auth.ts";
 import { linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
+import { readyMediaActionButtons } from "../_shared/ready-media-actions.ts";
+import { replyTextControlsForMessage } from "../_shared/reply-text-buttons.ts";
 import { syncProdutoVideoFromMidia } from "../_shared/sync-produto-video.ts";
 import { rememberDeliveredMediaInteraction } from "../_shared/whatsapp-last-media-interaction.ts";
 
@@ -26,15 +28,23 @@ async function avisarCliente(
   message: string,
   videoUrl?: string,
   mediaId?: string,
+  interactiveButtons?: ReturnType<typeof readyMediaActionButtons>,
 ): Promise<boolean> {
   if (!job.telefone) return false;
   try {
+    const replyControls = replyTextControlsForMessage(message);
+    const buttons = interactiveButtons ?? replyControls?.interactiveButtons;
     const { error } = await supabase.functions.invoke("whatsapp-send-message", {
       body: {
         user_id: job.user_id,
         to: job.telefone,
         message,
         ...(videoUrl ? { video_url: videoUrl } : {}),
+        ...(buttons
+          ? { interactive_buttons: buttons }
+          : replyControls?.interactiveList
+          ? { interactive_list: replyControls.interactiveList }
+          : {}),
       },
     });
     if (error) throw error;
@@ -249,6 +259,7 @@ Deno.serve(async (req) => {
         `🎬 Pronto! Legenda queimada na tela. *Não publiquei em lugar nenhum.*${blocoCodigo}${blocoLegenda}`,
         videoUrl,
         midiaId || undefined,
+        midiaId ? readyMediaActionButtons(midiaId, "video") : undefined,
       );
     } else {
       const nomes = plataformas
