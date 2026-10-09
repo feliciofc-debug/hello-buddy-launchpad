@@ -242,7 +242,12 @@ function cover(
       fontSize: 24,
     }, [
       el("div", { width: 60, height: 2, backgroundColor: ctx.primaryColor }),
-      "✦",
+      el("div", {
+        width: 10,
+        height: 10,
+        backgroundColor: ctx.primaryColor,
+        transform: "rotate(45deg)",
+      }),
       el("div", { width: 60, height: 2, backgroundColor: ctx.primaryColor }),
     ]));
   } else {
@@ -263,7 +268,7 @@ function cover(
       fontSize: 18,
       fontWeight: 700,
       letterSpacing: 3,
-    }, spec.neon ? `⚡ ${spec.accentLabel}` : spec.accentLabel));
+    }, spec.accentLabel));
   }
   children.push(el("div", {
     display: "flex",
@@ -301,7 +306,7 @@ function cover(
       color: palette.muted,
       fontSize: 16,
       letterSpacing: spec.neon ? 3 : 2,
-    }, spec.neon ? "[ SWIPE → ]" : "DESLIZE →")]),
+      }, spec.neon ? "[ DESLIZE ]" : "DESLIZE")]),
     progressDots(
       0,
       ctx.totalSlides,
