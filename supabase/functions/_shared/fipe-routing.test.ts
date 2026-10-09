@@ -1,4 +1,7 @@
-import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   createFipePriceRetryState,
   filterFipeModelsByYear,
@@ -10,6 +13,7 @@ import {
   isExplicitFipeRequest,
   isFipePhotoReference,
   resolveFipePhotoSource,
+  sortFipeYearsNewestFirst,
   vehicleFipeTurn,
 } from "./fipe-routing.ts";
 
@@ -191,4 +195,98 @@ Deno.test("falha ao consultar anos mantém a lista sem filtro", async () => {
     () => Promise.reject(new Error("api indisponível")),
   );
   assertEquals(result, { status: "fallback", models });
+});
+
+Deno.test("Hilux confere todos os 40 candidatos com concorrência máxima de seis", async () => {
+  const models = Array.from({ length: 40 }, (_, index) => ({
+    code: String(index),
+    name: `Hilux versão ${String(index).padStart(2, "0")}`,
+  }));
+  const matchingCodes = new Set(["18", "22", "27", "31", "35", "39"]);
+  let active = 0;
+  let maxActive = 0;
+  let calls = 0;
+  const result = await filterFipeModelsByYear(
+    models,
+    "2022",
+    async (modelId) => {
+      calls++;
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      active--;
+      return matchingCodes.has(modelId)
+        ? [{ code: "2022-3", name: "2022 Diesel" }]
+        : [{ code: "2021-3", name: "2021 Diesel" }];
+    },
+  );
+  assertEquals(result.status, "filtered");
+  assertEquals(result.models.length, 6);
+  assertEquals(fipeModelDecision(result.models).action, "choose");
+  assertEquals(calls, 40);
+  assert(maxActive <= 6);
+});
+
+Deno.test("Civic e S10 encontram versões do ano depois da posição 15", async () => {
+  for (const [modelName, requestedYear] of [
+    ["Civic", "2019"],
+    ["S10", "2021"],
+  ]) {
+    const models = Array.from({ length: 30 }, (_, index) => ({
+      code: `${modelName}-${index}`,
+      name: `${modelName} versão ${index}`,
+    }));
+    const result = await filterFipeModelsByYear(
+      models,
+      requestedYear,
+      async (modelId) => {
+        const index = Number(modelId.split("-").at(-1));
+        return [{
+          code: index >= 20 ? `${requestedYear}-1` : "2003-1",
+          name: index >= 20
+            ? `${requestedYear} Gasolina`
+            : "2003 Gasolina",
+        }];
+      },
+    );
+    assertEquals(result.status, "filtered");
+    assertEquals(result.models.length, 10);
+    assert(result.models.every((model) =>
+      Number(model.code.split("-").at(-1)) >= 20
+    ));
+  }
+});
+
+Deno.test("timeout parcial volta à lista completa sem decisão automática", async () => {
+  const models = Array.from({ length: 20 }, (_, index) => ({
+    code: String(index),
+    name: `Modelo ${index}`,
+  }));
+  const result = await filterFipeModelsByYear(
+    models,
+    "2019",
+    async (modelId) => {
+      if (modelId === "0") {
+        return [{ code: "2019-1", name: "2019 Gasolina" }];
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return [{ code: "2000-1", name: "2000 Gasolina" }];
+    },
+    { timeoutMs: 2 },
+  );
+  assertEquals(result, { status: "fallback", models });
+  assertEquals(fipeModelDecision(result.models).action, "choose");
+});
+
+Deno.test("anos ficam sem duplicatas e do mais novo para o mais antigo", () => {
+  assertEquals(
+    sortFipeYearsNewestFirst([
+      { code: "2007-1", name: "2007 Gasolina" },
+      { code: "2021-5", name: "2021 Flex" },
+      { code: "2019-1", name: "2019 Gasolina" },
+      { code: "2021-5", name: "2021 Flex" },
+      { code: "1993-1", name: "1993 Gasolina" },
+    ]).map((year) => year.name),
+    ["2021 Flex", "2019 Gasolina", "2007 Gasolina", "1993 Gasolina"],
+  );
 });

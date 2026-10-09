@@ -1,5 +1,10 @@
+import { parseNumericEnvFileKey } from "./env-file-key.ts";
+
 const DEFAULT_BASE_URL = "https://fipe.parallelum.com.br/api/v2";
 const LIST_TTL_MS = 12 * 60 * 60 * 1000;
+const FIPE_TOKEN_KEY = "FIPE_API_TOKEN";
+const FIPE_ENV_FILE = "/root/amz-functions.env";
+let cachedFileToken: string | null | undefined;
 
 export type FipeListItem = { code: string; name: string };
 export type FipeReference = { code: string; month: string };
@@ -67,6 +72,61 @@ export function fipeListRows(
   }));
 }
 
+export function fipeModelPageRows(
+  items: FipeListItem[],
+  offset = 0,
+): Array<{ id: string; title: string; description?: string }> {
+  const remaining = Math.max(0, items.length - offset);
+  const pageSize = remaining > 10 ? 9 : 10;
+  const rows = items.slice(offset, offset + pageSize).map((item, pageIndex) => ({
+    id: `fipe_model:${offset + pageIndex}`,
+    title: item.name.length > 24
+      ? `${item.name.slice(0, 23).trimEnd()}…`
+      : item.name,
+    description: item.name.length > 24 ? item.name.slice(0, 72) : undefined,
+  }));
+  const nextOffset = offset + pageSize;
+  if (nextOffset < items.length) {
+    rows.push({
+      id: `fipe_model:more:${nextOffset}`,
+      title: "Ver mais versões",
+      description: `${items.length - nextOffset} opção(ões) restante(s)`,
+    });
+  }
+  return rows;
+}
+
+function readFipeTokenFromFile(): string | null {
+  if (cachedFileToken !== undefined) return cachedFileToken;
+  try {
+    const contents = Deno.readTextFileSync(FIPE_ENV_FILE);
+    const numericValue = parseNumericEnvFileKey(contents, FIPE_TOKEN_KEY);
+    if (numericValue) return cachedFileToken = numericValue;
+    for (const rawLine of contents.split(/\r?\n/)) {
+      const match = rawLine.trim().match(
+        /^(?:export\s+)?FIPE_API_TOKEN\s*=\s*(.*)$/,
+      );
+      if (!match) continue;
+      const rawValue = match[1].trim();
+      const quoted = rawValue.match(/^(['"])(.*?)\1(?:\s+#.*)?$/);
+      const value = (quoted
+        ? quoted[2]
+        : rawValue.replace(/\s+#.*$/, "")).trim();
+      if (/^[A-Za-z0-9._-]{5,512}$/.test(value)) {
+        return cachedFileToken = value;
+      }
+    }
+  } catch {
+    // Edge Functions não possuem necessariamente o arquivo do servidor.
+  }
+  return cachedFileToken = null;
+}
+
+function resolveFipeToken(explicitToken: string | null | undefined): string | null {
+  if (explicitToken !== undefined) return explicitToken;
+  return Deno.env.get(FIPE_TOKEN_KEY) || readFipeTokenFromFile();
+}
+
 export function fipePhotoSuggestionMessage(input: {
   brand: string;
   model: string;
@@ -113,7 +173,7 @@ export function createFipeClient(options: {
         options.timeoutMs ?? 25_000,
       );
       try {
-        const token = options.token ?? Deno.env.get("FIPE_API_TOKEN");
+        const token = resolveFipeToken(options.token);
         const response = await fetcher(`${baseUrl}${path}`, {
           headers: token ? { "X-Subscription-Token": token } : undefined,
           signal: controller.signal,
@@ -181,6 +241,45 @@ export function createFipeClient(options: {
     return filtroTexto.trim() ? rankFipeItems(models, filtroTexto) : models;
   }
 
+  async function listarAnosMarca(brandId: string): Promise<FipeListItem[]> {
+    return await cachedList<FipeListItem[]>(
+      `brand-years:${brandId}`,
+      `/cars/brands/${encodeURIComponent(brandId)}/years`,
+      "anos",
+    );
+  }
+
+  async function listarModelosPorAno(
+    brandId: string,
+    requestedYear: string,
+    filtroTexto = "",
+  ): Promise<FipeListItem[]> {
+    const yearCodes = (await listarAnosMarca(brandId))
+      .filter((item) => {
+        const year = String(item.name).match(/\b(?:19|20)\d{2}\b/)?.[0] ||
+          String(item.code).match(/^(?:19|20)\d{2}/)?.[0];
+        return year === requestedYear;
+      });
+    const lists = await Promise.all(
+      yearCodes.map((year) =>
+        cachedList<FipeListItem[]>(
+          `year-models:${brandId}:${year.code}`,
+          `/cars/brands/${encodeURIComponent(brandId)}/years/${
+            encodeURIComponent(year.code)
+          }/models`,
+          "modelos",
+        )
+      ),
+    );
+    const unique = new Map<string, FipeListItem>();
+    for (const item of lists.flat()) unique.set(item.code, item);
+    const models = [...unique.values()];
+    const matching = filtroTexto.trim()
+      ? rankFipeItems(models, filtroTexto)
+      : models;
+    return matching.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  }
+
   async function listarAnos(
     brandId: string,
     modelId: string,
@@ -226,6 +325,8 @@ export function createFipeClient(options: {
     buscarMarca,
     listarMarcas,
     listarModelos,
+    listarAnosMarca,
+    listarModelosPorAno,
     listarAnos,
     consultarPreco,
     references,
@@ -237,5 +338,7 @@ const defaultClient = createFipeClient();
 export const buscarMarca = defaultClient.buscarMarca;
 export const listarMarcas = defaultClient.listarMarcas;
 export const listarModelos = defaultClient.listarModelos;
+export const listarAnosMarca = defaultClient.listarAnosMarca;
+export const listarModelosPorAno = defaultClient.listarModelosPorAno;
 export const listarAnos = defaultClient.listarAnos;
 export const consultarPreco = defaultClient.consultarPreco;

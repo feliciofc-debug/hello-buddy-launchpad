@@ -85,18 +85,20 @@ export function fipeYearAvailabilityDecision(
   | { action: "choose"; years: FipeListItem[] }
   | { action: "requested_unavailable"; years: FipeListItem[] }
   | { action: "none" } {
+  const sortedAvailableYears = sortFipeYearsNewestFirst(availableYears);
   const matchingYears = requestedYear || requestedFuel
     ? filterFipeYearCandidates(
-      availableYears,
+      sortedAvailableYears,
       requestedYear,
       requestedFuel,
     )
-    : availableYears;
+    : sortedAvailableYears;
   const decision = fipeYearDecision(matchingYears);
   if (
-    decision.action === "none" && requestedYear && availableYears.length > 0
+    decision.action === "none" && requestedYear &&
+    sortedAvailableYears.length > 0
   ) {
-    return { action: "requested_unavailable", years: availableYears };
+    return { action: "requested_unavailable", years: sortedAvailableYears };
   }
   return decision;
 }
@@ -118,13 +120,32 @@ export type FipeModelsByYearResult =
   }
   | { status: "fallback"; models: FipeListItem[] };
 
+export function sortFipeYearsNewestFirst(
+  years: FipeListItem[],
+): FipeListItem[] {
+  const unique = new Map<string, FipeListItem>();
+  for (const year of years) {
+    const key = year.name.trim().toLocaleLowerCase("pt-BR");
+    if (!unique.has(key)) unique.set(key, year);
+  }
+  const numericYear = (item: FipeListItem) =>
+    Number(item.name.match(/\b(?:19|20)\d{2}\b/)?.[0] || 0);
+  return [...unique.values()].sort((a, b) =>
+    numericYear(b) - numericYear(a) ||
+    b.name.localeCompare(a.name, "pt-BR")
+  );
+}
+
 export async function filterFipeModelsByYear(
   models: FipeListItem[],
   requestedYear: string,
   listYears: (modelId: string) => Promise<FipeListItem[]>,
-  options: { maxCandidates?: number; timeoutMs?: number } = {},
+  options: { concurrency?: number; timeoutMs?: number } = {},
 ): Promise<FipeModelsByYearResult> {
-  const candidates = models.slice(0, options.maxCandidates ?? 15);
+  const entries: Array<
+    { model: FipeListItem; years: FipeListItem[] } | undefined
+  > = new Array(models.length);
+  let nextIndex = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const timeout = new Promise<never>((_, reject) => {
@@ -133,34 +154,37 @@ export async function filterFipeModelsByYear(
         options.timeoutMs ?? 8_000,
       );
     });
-    const entries = await Promise.race([
-      Promise.all(
-        candidates.map(async (model) => ({
-          model,
-          years: await listYears(model.code),
-        })),
-      ),
+    const workers = Array.from(
+      { length: Math.min(options.concurrency ?? 6, models.length) },
+      async () => {
+        while (nextIndex < models.length) {
+          const index = nextIndex++;
+          entries[index] = {
+            model: models[index],
+            years: await listYears(models[index].code),
+          };
+        }
+      },
+    );
+    await Promise.race([
+      Promise.all(workers),
       timeout,
     ]);
     const availableYears: FipeListItem[] = [];
-    const seenYears = new Set<string>();
     const matchingModels: FipeListItem[] = [];
     for (const entry of entries) {
+      if (!entry) continue;
       if (filterFipeYearCandidates(entry.years, requestedYear).length > 0) {
         matchingModels.push(entry.model);
       }
-      for (const year of entry.years) {
-        const key = `${year.code}:${year.name}`;
-        if (!seenYears.has(key)) {
-          seenYears.add(key);
-          availableYears.push(year);
-        }
-      }
+      availableYears.push(...entry.years);
     }
     return {
       status: "filtered",
-      models: matchingModels,
-      availableYears,
+      models: matchingModels.sort((a, b) =>
+        a.name.localeCompare(b.name, "pt-BR")
+      ),
+      availableYears: sortFipeYearsNewestFirst(availableYears),
     };
   } catch {
     return { status: "fallback", models };

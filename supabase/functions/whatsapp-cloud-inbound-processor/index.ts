@@ -488,11 +488,13 @@ import {
   buscarMarca,
   consultarPreco,
   fipeListRows,
+  fipeModelPageRows,
   fipePhotoSuggestionMessage,
   fipePriceRetryButtons,
   listarAnos,
   listarMarcas,
   listarModelos,
+  listarModelosPorAno,
   type FipeListItem,
   type FipePrice,
 } from "../_shared/fipe.ts";
@@ -14608,6 +14610,38 @@ async function continueFipeWithModel(
   };
 }
 
+async function resolveFipeModelsForYear(input: {
+  brand: FipeListItem;
+  models: FipeListItem[];
+  requestedYear: string;
+  queryModel: string;
+}) {
+  try {
+    const modelsByYear = await listarModelosPorAno(
+      input.brand.code,
+      input.requestedYear,
+      input.queryModel,
+    );
+    if (modelsByYear.length > 0) {
+      return {
+        status: "filtered" as const,
+        models: modelsByYear,
+        availableYears: [],
+      };
+    }
+  } catch (error) {
+    console.warn(
+      "[fipe][modelos-por-ano] endpoint indisponível; usando conferência completa",
+      (error as Error).message,
+    );
+  }
+  return await filterFipeModelsByYear(
+    input.models,
+    input.requestedYear,
+    (modelId) => listarAnos(input.brand.code, modelId),
+  );
+}
+
 async function identifyFipeVehicleFromPhoto(
   media: MediaExtract,
 ): Promise<{ brand: string; model: string; earliestYear?: number } | null> {
@@ -14710,14 +14744,17 @@ async function toolConsultarFipe(
     let models = args.motor || args.cambio
       ? filterFipeModelCandidates(rankedModels, args)
       : rankedModels;
+    let yearFilteringComplete = !args?.ano_modelo;
     if (args?.ano_modelo && models.length > 0) {
-      const yearFilterCandidates = models.slice(0, 15);
-      const yearFilter = await filterFipeModelsByYear(
+      const yearFilterCandidates = models;
+      const yearFilter = await resolveFipeModelsForYear({
+        brand,
         models,
-        args.ano_modelo,
-        (modelId) => listarAnos(brand.code, modelId),
-      );
+        requestedYear: args.ano_modelo,
+        queryModel,
+      });
       if (yearFilter.status === "filtered") {
+        yearFilteringComplete = true;
         models = yearFilter.models;
         if (models.length === 0 && yearFilter.availableYears.length > 0) {
           const pending: PendingFipeState = {
@@ -14742,7 +14779,7 @@ async function toolConsultarFipe(
         }
       } else {
         console.warn(
-          "[fipe][anos-dos-modelos] filtro indisponível; usando versões sem filtro",
+          "[fipe][anos-dos-modelos] conferência incompleta; usando versões sem filtro",
         );
       }
     }
@@ -14753,11 +14790,17 @@ async function toolConsultarFipe(
           `Não encontrei “${queryModel}” entre os modelos FIPE da ${brand.name}.`,
       };
     }
-    if (modelDecision.action === "choose") {
+    if (
+      modelDecision.action === "choose" ||
+      (modelDecision.action === "continue" && !yearFilteringComplete)
+    ) {
+      const menuModels = modelDecision.action === "choose"
+        ? modelDecision.models
+        : [modelDecision.model];
       const pending: PendingFipeState = {
         stage: "model",
         brand,
-        models: modelDecision.models.slice(0, 10),
+        models: menuModels,
         requestedYear: args?.ano_modelo,
         requestedFuel: args?.combustivel,
         queryModel,
@@ -14770,7 +14813,7 @@ async function toolConsultarFipe(
           body: `Qual versão do ${modelo}?`,
           button: "Escolher versão",
           section_title: "Versões FIPE",
-          rows: fipeListRows(pending.models, "fipe_model"),
+          rows: fipeModelPageRows(pending.models),
         },
       };
     }
@@ -14807,13 +14850,27 @@ async function handlePendingFipeTurn(
 } | null> {
   const age = Date.now() - new Date(pendingFipe.created_at).getTime();
   const fipeInteractiveId = userContent.match(
-    /<<INTERACTIVE_ID:(fipe_(?:model|year):\d+|fipe_price:retry|fipe_ad:(?:queried|supplied))>>/i,
+    /<<INTERACTIVE_ID:(fipe_model:(?:\d+|more:\d+)|fipe_year:\d+|fipe_price:retry|fipe_ad:(?:queried|supplied))>>/i,
   )?.[1]?.toLowerCase();
   if (!Number.isFinite(age) || age > 30 * 60 * 1000) {
     await persistFipeState(toolCtx, null);
     return null;
   }
   if (pendingFipe.stage === "model" && fipeInteractiveId) {
+    const nextOffset = Number(
+      fipeInteractiveId.match(/^fipe_model:more:(\d+)$/)?.[1],
+    );
+    if (Number.isInteger(nextOffset)) {
+      return {
+        text: "Mais versões disponíveis:",
+        interactiveList: {
+          body: "Qual é a versão correta?",
+          button: "Escolher versão",
+          section_title: "Versões FIPE",
+          rows: fipeModelPageRows(pendingFipe.models, nextOffset),
+        },
+      };
+    }
     const index = Number(fipeInteractiveId.match(/^fipe_model:(\d+)$/)?.[1]);
     const model = pendingFipe.models[index];
     if (!model) {
@@ -14823,7 +14880,7 @@ async function handlePendingFipeTurn(
           body: "Qual é a versão correta?",
           button: "Escolher versão",
           section_title: "Versões FIPE",
-          rows: fipeListRows(pendingFipe.models, "fipe_model"),
+          rows: fipeModelPageRows(pendingFipe.models),
         },
       };
     }
@@ -14864,11 +14921,12 @@ async function handlePendingFipeTurn(
       };
     }
     const requestedYear = normalizeFipeYear(year.name);
-    const yearFilter = await filterFipeModelsByYear(
-      pendingFipe.models,
-      requestedYear || year.name,
-      (modelId) => listarAnos(pendingFipe.brand.code, modelId),
-    );
+    const yearFilter = await resolveFipeModelsForYear({
+      brand: pendingFipe.brand,
+      models: pendingFipe.models,
+      requestedYear: requestedYear || year.name,
+      queryModel: pendingFipe.queryModel,
+    });
     const models = yearFilter.status === "filtered"
       ? yearFilter.models
       : pendingFipe.models;
@@ -14900,7 +14958,7 @@ async function handlePendingFipeTurn(
     const pending: PendingFipeState = {
       stage: "model",
       brand: pendingFipe.brand,
-      models: modelDecision.models.slice(0, 10),
+      models: modelDecision.models,
       requestedYear,
       queryModel: pendingFipe.queryModel,
       created_at: new Date().toISOString(),
@@ -14912,7 +14970,7 @@ async function handlePendingFipeTurn(
         body: "Qual é a versão correta?",
         button: "Escolher versão",
         section_title: "Versões FIPE",
-        rows: fipeListRows(pending.models, "fipe_model"),
+        rows: fipeModelPageRows(pending.models),
       },
     };
   }

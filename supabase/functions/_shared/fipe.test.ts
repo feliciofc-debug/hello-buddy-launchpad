@@ -6,6 +6,7 @@ import {
 import {
   createFipeClient,
   fipeListRows,
+  fipeModelPageRows,
   fipePhotoSuggestionMessage,
   fipePriceRetryButtons,
 } from "./fipe.ts";
@@ -153,6 +154,68 @@ Deno.test("lista interativa FIPE tem no máximo dez opções", () => {
   );
   assertEquals(rows.length, 10);
   assert(rows.every((row) => row.title.length <= 24));
+});
+
+Deno.test("modelos por ano usam o endpoint da marca e unem combustíveis", async () => {
+  const calls: string[] = [];
+  const client = createFipeClient({
+    token: "",
+    fetcher: ((url: string | URL | Request) => {
+      const path = new URL(String(url)).pathname;
+      calls.push(path);
+      if (path.endsWith("/cars/brands/56/years")) {
+        return Promise.resolve(jsonResponse([
+          { code: "2022-1", name: "2022 Gasolina" },
+          { code: "2022-3", name: "2022 Diesel" },
+          { code: "2021-3", name: "2021 Diesel" },
+        ]));
+      }
+      if (path.endsWith("/years/2022-1/models")) {
+        return Promise.resolve(jsonResponse([
+          { code: "g1", name: "HILUX SW4 SRX 4.0 V6" },
+        ]));
+      }
+      if (path.endsWith("/years/2022-3/models")) {
+        return Promise.resolve(jsonResponse([
+          { code: "d3", name: "Hilux GR-S 2.8 Diesel" },
+          { code: "d1", name: "Hilux CD SRV 2.8 Diesel" },
+          { code: "d2", name: "Hilux CD SRX 2.8 Diesel" },
+          { code: "d4", name: "Hilux CD 2.8 Diesel" },
+          { code: "d5", name: "Hilux CS 2.8 Diesel" },
+        ]));
+      }
+      throw new Error(`unexpected ${path}`);
+    }) as typeof fetch,
+  });
+  const models = await client.listarModelosPorAno("56", "2022", "hilux");
+  assertEquals(models.length, 6);
+  assertEquals(
+    models.map((model) => model.name),
+    [...models.map((model) => model.name)].sort((a, b) =>
+      a.localeCompare(b, "pt-BR")
+    ),
+  );
+  assertEquals(calls.some((path) => path.endsWith("/2021-3/models")), false);
+});
+
+Deno.test("menu de versões pagina sem cortar opções em silêncio", () => {
+  const models = Array.from({ length: 23 }, (_, index) => ({
+    code: String(index),
+    name: `Versão ${index}`,
+  }));
+  const firstPage = fipeModelPageRows(models);
+  assertEquals(firstPage.length, 10);
+  assertEquals(firstPage.at(-1)?.id, "fipe_model:more:9");
+  const secondPage = fipeModelPageRows(models, 9);
+  assertEquals(secondPage.at(-1)?.id, "fipe_model:more:18");
+  const thirdPage = fipeModelPageRows(models, 18);
+  assertEquals(thirdPage.map((row) => row.id), [
+    "fipe_model:18",
+    "fipe_model:19",
+    "fipe_model:20",
+    "fipe_model:21",
+    "fipe_model:22",
+  ]);
 });
 
 Deno.test("ano informado com uma opção seleciona direto ano e combustível", () => {
