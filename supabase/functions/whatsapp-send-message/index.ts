@@ -2,6 +2,12 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { toMetaSafeImageUrl } from '../_shared/meta-media.ts'
 import { logOutboundMessage, outboundLogSender, shouldLogOutboundMessage } from '../_shared/cloud-log.ts'
+import {
+  maskPhoneForLog,
+  safeMetaDiagnosticPayload,
+  singleLineInteractiveText,
+  truncateCodePoints,
+} from '../_shared/whatsapp-interactive-safe.ts'
 
 
 
@@ -77,8 +83,8 @@ serve(async (req) => {
       const buttons = interactive_buttons.buttons.slice(0, 3).map((button: any, index: number) => ({
         type: 'reply',
         reply: {
-          id: String(button?.id ?? `action_${index}`).slice(0, 256),
-          title: String(button?.title ?? `Opção ${index + 1}`).slice(0, 20),
+          id: truncateCodePoints(button?.id ?? `action_${index}`, 256),
+          title: singleLineInteractiveText(button?.title ?? `Opção ${index + 1}`, 20),
         },
       }))
       messagePayload = {
@@ -88,11 +94,11 @@ serve(async (req) => {
         interactive: {
           type: 'button',
           ...(interactive_buttons.header
-            ? { header: { type: 'text', text: String(interactive_buttons.header).slice(0, 60) } }
+            ? { header: { type: 'text', text: singleLineInteractiveText(interactive_buttons.header, 60) } }
             : {}),
-          body: { text: String(message || interactive_buttons.body || 'Escolha uma opção').slice(0, 1024) },
+          body: { text: truncateCodePoints(message || interactive_buttons.body || 'Escolha uma opção', 1024) },
           ...(interactive_buttons.footer
-            ? { footer: { text: String(interactive_buttons.footer).slice(0, 60) } }
+            ? { footer: { text: singleLineInteractiveText(interactive_buttons.footer, 60) } }
             : {}),
           action: { buttons },
         },
@@ -103,9 +109,9 @@ serve(async (req) => {
       // Usada quando 3 reply-buttons não bastam (ex: paleta de cores).
       // ============================================================
       const rows = interactive_list.rows.slice(0, 10).map((r: any, i: number) => ({
-        id: String(r?.id ?? `opt_${i}`).slice(0, 200),
-        title: String(r?.title ?? `Opção ${i + 1}`).slice(0, 24),
-        ...(r?.description ? { description: String(r.description).slice(0, 72) } : {}),
+        id: truncateCodePoints(r?.id ?? `opt_${i}`, 200),
+        title: singleLineInteractiveText(r?.title ?? `Opção ${i + 1}`, 24),
+        ...(r?.description ? { description: singleLineInteractiveText(r.description, 72) } : {}),
       }))
       messagePayload = {
         messaging_product: 'whatsapp',
@@ -114,15 +120,15 @@ serve(async (req) => {
         interactive: {
           type: 'list',
           ...(interactive_list.header
-            ? { header: { type: 'text', text: String(interactive_list.header).slice(0, 60) } }
+            ? { header: { type: 'text', text: singleLineInteractiveText(interactive_list.header, 60) } }
             : {}),
-          body: { text: String(interactive_list.body || message || 'Escolha uma opção').slice(0, 1024) },
+          body: { text: truncateCodePoints(interactive_list.body || message || 'Escolha uma opção', 1024) },
           ...(interactive_list.footer
-            ? { footer: { text: String(interactive_list.footer).slice(0, 60) } }
+            ? { footer: { text: singleLineInteractiveText(interactive_list.footer, 60) } }
             : {}),
           action: {
-            button: String(interactive_list.button || 'Escolher').slice(0, 20),
-            sections: [{ title: String(interactive_list.section_title || 'Opções').slice(0, 24), rows }],
+            button: singleLineInteractiveText(interactive_list.button || 'Escolher', 20),
+            sections: [{ title: singleLineInteractiveText(interactive_list.section_title || 'Opções', 24), rows }],
           },
         },
       }
@@ -201,7 +207,7 @@ serve(async (req) => {
       }
     }
 
-    console.log('📱 Enviando WhatsApp para:', to)
+    console.log('📱 Enviando WhatsApp para:', maskPhoneForLog(to))
 
     const response = await fetch(API_URL, {
       method: 'POST',
@@ -212,11 +218,28 @@ serve(async (req) => {
       body: JSON.stringify(messagePayload),
     })
 
-    const result = await response.json()
+    const responseText = await response.text()
+    let result: any
+    try {
+      result = JSON.parse(responseText)
+    } catch {
+      result = { error: { message: truncateCodePoints(responseText, 500) } }
+    }
 
     if (!response.ok) {
-      console.error('❌ Erro WhatsApp API:', result)
-      throw new Error(result.error?.message || 'Erro ao enviar mensagem')
+      const metaError = result?.error ?? {}
+      console.error('[whatsapp-send-message][meta_error]', {
+        status: response.status,
+        error: {
+          message: metaError.message ?? null,
+          type: metaError.type ?? null,
+          code: metaError.code ?? null,
+          error_subcode: metaError.error_subcode ?? null,
+          fbtrace_id: metaError.fbtrace_id ?? null,
+        },
+        payload: safeMetaDiagnosticPayload(messagePayload),
+      })
+      throw new Error('Não foi possível enviar a mensagem agora. Tente novamente.')
     }
 
     console.log('✅ Mensagem enviada:', result.messages?.[0]?.id)

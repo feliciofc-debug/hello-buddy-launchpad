@@ -1,6 +1,9 @@
 // Se um caso falhar, a mudança quebrou um fluxo já validado em produção — corrija o código, não o teste.
 
-import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   contentCreationCommandKind,
   isMetaAdsQuestionarioConsulta,
@@ -19,6 +22,18 @@ import {
 import { hasExplicitSceneDescription } from "./image-edit-instruction.ts";
 import { isVehiclePhotoCarouselRequest } from "./vehicle-carousel.ts";
 import { isVideoMotionRequest } from "./video-client-identity.ts";
+import {
+  AMZ_CAROUSEL_COLOR,
+  carouselColorFallbackButtons,
+  carouselColorListPayload,
+  deliverCarouselColorSelector,
+  detectExplicitCarouselColor,
+  resolveCarouselColorPlan,
+  safeCarouselThemeSummary,
+} from "./carousel-colors.ts";
+import {
+  safeMetaDiagnosticPayload,
+} from "./whatsapp-interactive-safe.ts";
 import {
   parseVerticalVisionResult,
   resolveVertical,
@@ -199,4 +214,76 @@ Deno.test("golden de roteamento preserva fluxos validados em produção", async 
       );
     });
   }
+});
+
+Deno.test("golden do seletor de cor preserva marca, Unicode e fallback", async (t) => {
+  await t.step("identidade visual usa laranja da AMZ sem seletor", () => {
+    const plan = resolveCarouselColorPlan({
+      request: REAL_OWNER_CAROUSEL_REQUEST,
+      brandColors: ["#F36812"],
+      brandFallback: AMZ_CAROUSEL_COLOR,
+    });
+    assertEquals(plan.shouldAsk, false);
+    assertEquals(plan.source, "tenant_brand");
+    assertEquals(plan.color?.primaryColor, "#F36812");
+    assertEquals(
+      detectExplicitCarouselColor("faça o carrossel em azul")?.slug,
+      "azul",
+    );
+  });
+
+  await t.step("tema com emoji no limite não parte surrogate", () => {
+    const theme = `${"a".repeat(59)}🚀 texto que não deve entrar\n**markdown**`;
+    const summary = safeCarouselThemeSummary(theme);
+    const payload = carouselColorListPayload(theme);
+    assertEquals(Array.from(summary).length, 60);
+    assert(summary.endsWith("🚀"));
+    assert(!summary.includes("\uFFFD"));
+    assert(!/[\n*_`~]/.test(payload.body));
+    assert(payload.body.includes(summary));
+  });
+
+  await t.step("falha da lista envia três reply buttons", async () => {
+    let buttonsSent = 0;
+    assertEquals(
+      carouselColorFallbackButtons().buttons.map((button) => button.title),
+      ["Cor da marca", "Azul", "Roxo"],
+    );
+    const delivery = await deliverCarouselColorSelector({
+      sendList: () => Promise.reject(new Error("Meta #131000")),
+      sendButtons: () => {
+        buttonsSent += 1;
+        return Promise.resolve();
+      },
+      notifyAutomatic: () => Promise.resolve(),
+    });
+    assertEquals(delivery, "buttons");
+    assertEquals(buttonsSent, 1);
+  });
+
+  await t.step("falha de lista e botões segue automaticamente sem erro técnico", async () => {
+    let notice = "";
+    const delivery = await deliverCarouselColorSelector({
+      sendList: () => Promise.reject(new Error("Meta #131000")),
+      sendButtons: () => Promise.reject(new Error("Meta #131000")),
+      notifyAutomatic: () => {
+        notice =
+          "Não consegui abrir as opções de cor. Vou usar a cor da marca e seguir.";
+        return Promise.resolve();
+      },
+    });
+    assertEquals(delivery, "automatic");
+    assert(!/131000|seletor_cor_falhou|[{"]/.test(notice));
+    assert(notice.includes("Vou usar a cor da marca"));
+  });
+
+  await t.step("diagnóstico mascara telefone e token", () => {
+    const safe = safeMetaDiagnosticPayload({
+      to: "5521999991234",
+      access_token: "segredo",
+      interactive: { body: { text: "Escolha" } },
+    }) as Record<string, unknown>;
+    assertEquals(safe.to, "*********1234");
+    assertEquals(safe.access_token, "[REDACTED]");
+  });
 });

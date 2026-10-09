@@ -137,7 +137,16 @@ import {
 } from "../_shared/brand-site-identity.ts";
 import { generateMarketingImage } from "../_shared/marketing-image-generator.ts";
 import { setTenantLogo } from "../_shared/tenant-logo.ts";
-import { carouselColorRows, resolveCarouselColor } from "../_shared/carousel-colors.ts";
+import {
+  AMZ_CAROUSEL_COLOR,
+  carouselColorFallbackButtons,
+  carouselColorListPayload,
+  deliverCarouselColorSelector,
+  detectExplicitCarouselColor,
+  DEFAULT_CAROUSEL_COLOR,
+  resolveCarouselColor,
+  resolveCarouselColorPlan,
+} from "../_shared/carousel-colors.ts";
 import { processorSkipOutboundLog } from "../_shared/cloud-log.ts";
 import { gerarVarianteFacebookFeed } from "../_shared/varianteFacebookFeed.ts";
 import { idCurto, linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
@@ -2775,6 +2784,7 @@ type PendingCarouselState = {
   tema: string;
   num_slides?: number;
   cor?: string;
+  cor_marca?: string;
   slides?: any[];
   caption?: string;
   media_id?: string;
@@ -12484,12 +12494,12 @@ const TOOLS = [
     function: {
 
       name: "criar_carrossel",
-      description: "🎠 Gera um CARROSSEL com vários cards separados. Para o dono, cria prévia para aprovação antes de publicar. Para prospect do tenant AMZ, permite UMA demonstração por telefone, mostra os cards e uma legenda, mas NUNCA cria aprovação nem publica. Em outros tenants é restrito ao responsável. FLUXO: 1) primeira chamada sem cor mostra seletor; 2) depois chame com tema + cor.",
+      description: "🎠 Gera um CARROSSEL com vários cards separados. Para o dono, cria prévia para aprovação antes de publicar. Para prospect do tenant AMZ, permite UMA demonstração por telefone, mostra os cards e uma legenda, mas NUNCA cria aprovação nem publica. Em outros tenants é restrito ao responsável. A identidade de marca salva é aplicada automaticamente; só passe cor quando o usuário pedir uma cor explícita.",
       parameters: {
         type: "object",
         properties: {
           tema: { type: "string", description: "Assunto/tema do carrossel, como o usuário pediu (ex: '5 dicas para vender mais no Instagram')." },
-          cor: { type: "string", description: "Cor de destaque escolhida PELO USUÁRIO: azul, verde, laranja, preto, dourado ou roxo. Deixe VAZIO na primeira chamada para eu perguntar com a lista de 1 toque." },
+          cor: { type: "string", description: "Somente a cor explicitamente pedida pelo usuário: azul, verde, laranja, preto, dourado ou roxo. Omita para usar automaticamente a cor da marca ou o seletor resiliente." },
           num_slides: { type: "number", description: "Quantidade pedida, de 3 a 10. Sem pedido explícito, use 7." },
           legenda: { type: "string", description: "Legenda do post, se o usuário ditou uma. Vazio = a IA escreve a legenda com hashtags." },
         },
@@ -13555,33 +13565,53 @@ async function callEdge(fn: string, payload: any, timeoutMs = 120000): Promise<a
   return json ?? {};
 }
 
-async function sendCarrosselColorPicker(userId: string, to: string, tema: string, demonstracao = false): Promise<void> {
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-send-message`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${SERVICE_KEY}`,
-      "apikey": SERVICE_KEY,
-    },
-    body: JSON.stringify({
-      user_id: userId,
-      to,
-      skip_log: false,
-      log_sender: "agent",
-      interactive_list: {
-        header: "🎨 Cor do carrossel",
-        body: `Beleza! Vou montar o carrossel sobre *${tema.slice(0, 120)}*.\n\nEscolha a cor de destaque — é só 1 toque:`,
-        footer: demonstracao ? "Demonstração: nada será publicado" : "Depois você confere antes de publicar",
-        button: "Escolher cor",
-        section_title: "Cores",
-        rows: carouselColorRows(),
+async function sendCarrosselColorPicker(
+  userId: string,
+  to: string,
+  tema: string,
+  demonstracao = false,
+) {
+  const send = async (payload: Record<string, unknown>) => {
+    const response = await fetch(
+      `${SUPABASE_URL}/functions/v1/whatsapp-send-message`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${SERVICE_KEY}`,
+          "apikey": SERVICE_KEY,
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          to,
+          skip_log: false,
+          log_sender: "agent",
+          ...payload,
+        }),
+        signal: AbortSignal.timeout(20000),
       },
-    }),
-    signal: AbortSignal.timeout(20000),
+    );
+    const responseBody = await response.text();
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${responseBody.slice(0, 500)}`);
+    }
+  };
+  return await deliverCarouselColorSelector({
+    sendList: () =>
+      send({ interactive_list: carouselColorListPayload(tema, demonstracao) }),
+    sendButtons: () =>
+      send({ interactive_buttons: carouselColorFallbackButtons() }),
+    notifyAutomatic: () =>
+      send({
+        message:
+          "Não consegui abrir as opções de cor. Vou usar a cor da marca e seguir.",
+      }),
+    logFailure: (stage, error) =>
+      console.error("[carrossel][seletor_cor_falhou]", {
+        stage,
+        error: error instanceof Error ? error.message : String(error),
+      }),
   });
-  if (!response.ok) {
-    throw new Error(`seletor_cor_falhou_${response.status}: ${(await response.text()).slice(0, 160)}`);
-  }
 }
 
 async function registrarCarrosselNaBiblioteca(
@@ -13830,16 +13860,47 @@ async function toolCriarCarrossel(
         demoProspect,
       );
 
-    // 1) COR — se não vier (ou vier irreconhecível), manda a LISTA de 1 toque e para aqui.
-    const cor = resolveCarouselColor(args?.cor);
+    // 1) COR — cor explícita vence; depois vem a identidade salva do tenant.
+    // Só pergunta quando nenhuma das duas existe.
+    let cor = resolveCarouselColor(args?.cor);
+    if (!cor) {
+      let brandColors: string[] = [];
+      try {
+        const assets = await loadTenantBrandAssets(sb, ctx.userId);
+        brandColors = assets.colors;
+      } catch (error) {
+        console.error("[carrossel][brand_color_lookup_failed]", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      const colorPlan = resolveCarouselColorPlan({
+        explicitColor: args?.cor,
+        request: tema,
+        brandColors,
+        brandFallback: ctx.userId === ADMIN_AMZ_USER_ID
+          ? AMZ_CAROUSEL_COLOR
+          : null,
+      });
+      cor = colorPlan.color;
+      if (cor) {
+        console.log("[carrossel][cor_automatica]", {
+          source: colorPlan.source,
+          color: cor.primaryColor,
+        });
+      }
+    }
     if (!cor) {
       if (!ctx.convId) return JSON.stringify({ erro: "conversa_sem_id", mensagem: "Não consegui identificar esta conversa para guardar a escolha da cor." });
       const conversation = { id: ctx.convId, userId: ctx.userId, contactNumber: ctx.fromNumber };
       const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+      const fallbackColor = ctx.userId === ADMIN_AMZ_USER_ID
+        ? AMZ_CAROUSEL_COLOR
+        : DEFAULT_CAROUSEL_COLOR;
       const pending: PendingCarouselState = {
         stage: "awaiting_color",
         tema,
         num_slides: numSlides,
+        cor_marca: fallbackColor.primaryColor,
         caption: args?.legenda,
         facebook_requested: !!args?.facebook_requested,
         created_at: new Date().toISOString(),
@@ -13849,15 +13910,23 @@ async function toolCriarCarrossel(
       }
       current.pending_carousel = pending;
       ctx.agentState = current;
-      await sendCarrosselColorPicker(ctx.userId, ctx.fromNumber, tema, demoProspect);
-      return JSON.stringify({
-        status: "aguardando_cor",
+      const selector = await sendCarrosselColorPicker(
+        ctx.userId,
+        ctx.fromNumber,
         tema,
-        aviso_facebook: args?.facebook_requested ? "Carrossel pelo WhatsApp está disponível apenas no Instagram." : undefined,
-        instrucao:
-          "Já enviei ao usuário uma LISTA de cores (1 toque). NÃO escreva a lista de novo, NÃO repita as opções. Responda no máximo 1 linha curta tipo 'É só escolher a cor aí em cima 👆'. Quando ele responder a cor (ex: 'Azul'), chame criar_carrossel outra vez com tema=\"" +
-          tema.replace(/"/g, "'") + "\" e cor=<a cor escolhida>.",
-      });
+        demoProspect,
+      );
+      if (selector !== "automatic") {
+        return JSON.stringify({
+          status: "aguardando_cor",
+          tema,
+          aviso_facebook: args?.facebook_requested ? "Carrossel pelo WhatsApp está disponível apenas no Instagram." : undefined,
+          instrucao:
+            "Já enviei ao usuário opções de cor. NÃO escreva a lista de novo, NÃO repita as opções. Responda no máximo 1 linha curta. Quando ele responder, chame criar_carrossel outra vez com tema=\"" +
+            tema.replace(/"/g, "'") + "\" e cor=<a cor escolhida>.",
+        });
+      }
+      cor = fallbackColor;
     }
 
     // 2) Guardrail de volume por tenant/dia
@@ -15170,11 +15239,6 @@ function requestedFacebook(text: string): boolean {
   return /\b(facebook|face|fb|redes\s+sociais|todas?\s+as\s+redes|instagram\s+e\s+facebook|insta\s+e\s+face)\b/i.test(text || "");
 }
 
-function detectExplicitCarouselColor(text: string): string | undefined {
-  const match = String(text || "").match(/\b(?:cor|fundo|destaque)\s*[:=-]?\s*(azul|verde|laranja|preto|dourado|roxo)\b/i);
-  return match?.[1] && resolveCarouselColor(match[1]) ? match[1] : undefined;
-}
-
 // Extrai o tema do pedido, tirando o "faz um carrossel", o nº de páginas e o "posta no instagram".
 function extractCarrosselTema(text: string): string {
   let t = compactSpaces(text || "").replace(/^jarvis[,.!\s-]*/i, "");
@@ -15193,7 +15257,18 @@ function extractCarrosselTema(text: string): string {
 }
 
 // Resposta curta só com a cor ("Azul", "🟡 Dourado", "quero dourado")
-function detectStandaloneCarrosselColor(text: string): string | null {
+function detectStandaloneCarrosselColor(
+  text: string,
+  brandColor?: string,
+): string | null {
+  const interactive = String(text || "").match(
+    /<<INTERACTIVE_ID:carrossel_cor_(marca|azul|roxo)>>/i,
+  )?.[1]?.toLowerCase();
+  if (interactive === "marca") {
+    return resolveCarouselColor(brandColor)?.primaryColor ??
+      DEFAULT_CAROUSEL_COLOR.primaryColor;
+  }
+  if (interactive) return interactive;
   const raw = compactSpaces(text || "");
   if (!raw || raw.length > 40) return null;
   return resolveCarouselColor(raw) ? raw : null;
@@ -18529,7 +18604,7 @@ async function callGemini(
       }
       const { result: r, imageUrl } = await runTool("criar_carrossel", {
         tema,
-        cor: corPedida,
+        cor: corPedida?.primaryColor,
         num_slides: requestedCarouselSlideCount(userContent, !remetenteEhDono),
         facebook_requested: requestedFacebook(userContent),
       }, toolCtx);
@@ -18547,7 +18622,12 @@ async function callGemini(
     }
 
     // 2) resposta curta só com a cor, retomando o carrossel pendente
-    const corResposta = pendingCarousel?.stage === "awaiting_color" ? detectStandaloneCarrosselColor(userContent) : null;
+    const corResposta = pendingCarousel?.stage === "awaiting_color"
+      ? detectStandaloneCarrosselColor(
+        userContent,
+        pendingCarousel.cor_marca,
+      )
+      : null;
     if (
       (remetenteEhDono || toolCtx.userId === ADMIN_AMZ_USER_ID)
       && pendingCarousel?.stage === "awaiting_color"
