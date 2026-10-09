@@ -44,7 +44,9 @@ export async function getTenantLogo(
   if (!userId) return null;
   const { data, error } = await sb
     .from("tenant_logos")
-    .select("id, storage_path, file_name, mime_type, variant, ativo, user_id, generated_automatically, background_warning")
+    .select(
+      "id, storage_path, file_name, mime_type, variant, ativo, user_id, generated_automatically, background_warning",
+    )
     .eq("user_id", userId)
     .eq("variant", variant)
     .eq("ativo", true)
@@ -77,17 +79,66 @@ export async function getTenantLogoForBackground(
   background: LogoBackground,
   allowAutomaticallyGeneratedDark = true,
 ): Promise<TenantLogo | null> {
-  const variant = await getTenantLogo(
+  const variantName = logoVariantForBackground(background);
+  let variant = await getTenantLogo(
     sb,
     userId,
-    logoVariantForBackground(background),
+    variantName,
   );
+  if (!variant) {
+    const source = await getTenantLogo(sb, userId);
+    if (source) {
+      try {
+        const { data, error } = await sb.storage.from(BUCKET).download(
+          source.storage_path,
+        );
+        if (!error && data) {
+          const derived = await deriveLogoVariant(
+            new Uint8Array(await data.arrayBuffer()),
+            variantName,
+          );
+          if (derived.generated) {
+            const targetPath = `${userId}/${variantName}/${Date.now()}-${
+              crypto.randomUUID().slice(0, 8)
+            }-automatica.png`;
+            const { error: uploadError } = await sb.storage.from(BUCKET).upload(
+              targetPath,
+              derived.bytes,
+              { contentType: "image/png", upsert: false },
+            );
+            if (!uploadError) {
+              const { error: insertError } = await sb.from("tenant_logos")
+                .insert({
+                  user_id: userId,
+                  storage_path: targetPath,
+                  file_name: source.file_name,
+                  mime_type: "image/png",
+                  variant: variantName,
+                  ativo: true,
+                  generated_automatically: true,
+                  background_warning: null,
+                });
+              if (insertError) {
+                await sb.storage.from(BUCKET).remove([targetPath]);
+              }
+              variant = await getTenantLogo(sb, userId, variantName);
+            }
+          }
+        }
+      } catch (error) {
+        console.warn(
+          `[tenant-logo] não gerou variante ${variantName}:`,
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
+  }
   return (variant?.generated_automatically &&
       background === "dark" &&
       !allowAutomaticallyGeneratedDark
     ? null
-    : variant)
-    ?? await getTenantLogo(sb, userId);
+    : variant) ??
+    await getTenantLogo(sb, userId);
 }
 
 /** URL assinada de curta duração (bucket privado). null se não houver logo. */
@@ -98,7 +149,10 @@ export async function getTenantLogoSignedUrl(
 ): Promise<string | null> {
   const logo = await getTenantLogo(sb, userId);
   if (!logo) return null;
-  const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(logo.storage_path, ttlSeconds);
+  const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(
+    logo.storage_path,
+    ttlSeconds,
+  );
   if (error) {
     console.error("[tenant-logo] signed url falhou:", error.message);
     return null;
@@ -131,13 +185,18 @@ export async function getTenantLogoStorageLocation(
     .maybeSingle();
   const url = String(data?.logo_reel_url || "");
   if (error || !url || !url.includes(`/${userId}/`)) return null;
-  const match = url.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+?)(?:\?|$)/);
+  const match = url.match(
+    /\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+?)(?:\?|$)/,
+  );
   if (!match) return null;
   return { bucket: match[1], path: decodeURIComponent(match[2]) };
 }
 
 /** Logo legada do próprio tenant (tela Configurações → Marca): profiles.logo_reel_url. */
-async function getProfileLogoDataUrl(sb: any, userId: string): Promise<string | null> {
+async function getProfileLogoDataUrl(
+  sb: any,
+  userId: string,
+): Promise<string | null> {
   if (!userId) return null;
   const { data, error } = await sb
     .from("profiles")
@@ -148,7 +207,9 @@ async function getProfileLogoDataUrl(sb: any, userId: string): Promise<string | 
   // Isolamento: a URL precisa pertencer à pasta do próprio tenant.
   const url = String(data.logo_reel_url);
   if (!url.includes(`/${userId}/`)) {
-    console.error("[tenant-logo] logo_reel_url fora do escopo do tenant — ignorando");
+    console.error(
+      "[tenant-logo] logo_reel_url fora do escopo do tenant — ignorando",
+    );
     return null;
   }
   try {
@@ -163,7 +224,10 @@ async function getProfileLogoDataUrl(sb: any, userId: string): Promise<string | 
     const mime = resp.headers.get("content-type") || "image/png";
     return `data:${mime};base64,${btoa(bin)}`;
   } catch (e) {
-    console.error("[tenant-logo] fetch logo_reel_url falhou:", (e as Error).message);
+    console.error(
+      "[tenant-logo] fetch logo_reel_url falhou:",
+      (e as Error).message,
+    );
     return null;
   }
 }
@@ -174,10 +238,15 @@ async function getProfileLogoDataUrl(sb: any, userId: string): Promise<string | 
  * Fonte 1: tenant_logos (tela "Minha Marca"). Fonte 2 (fallback do MESMO
  * tenant): profiles.logo_reel_url (tela Configurações → Marca).
  */
-export async function getTenantLogoDataUrl(sb: any, userId: string): Promise<string | null> {
+export async function getTenantLogoDataUrl(
+  sb: any,
+  userId: string,
+): Promise<string | null> {
   const logo = await getTenantLogo(sb, userId);
   if (!logo) return await getProfileLogoDataUrl(sb, userId);
-  const { data, error } = await sb.storage.from(BUCKET).download(logo.storage_path);
+  const { data, error } = await sb.storage.from(BUCKET).download(
+    logo.storage_path,
+  );
   if (error || !data) {
     console.error("[tenant-logo] download falhou:", error?.message);
     return await getProfileLogoDataUrl(sb, userId);
@@ -205,14 +274,18 @@ export async function getTenantLogoDataUrlForBackground(
     allowAutomaticallyGeneratedDark,
   );
   if (!logo) return await getProfileLogoDataUrl(sb, userId);
-  const { data, error } = await sb.storage.from(BUCKET).download(logo.storage_path);
+  const { data, error } = await sb.storage.from(BUCKET).download(
+    logo.storage_path,
+  );
   if (error || !data) return await getTenantLogoDataUrl(sb, userId);
   const bytes = new Uint8Array(await data.arrayBuffer());
   let binary = "";
   for (let offset = 0; offset < bytes.length; offset += 8192) {
     binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
   }
-  return `data:${logo.mime_type || (data as any)?.type || "image/png"};base64,${btoa(binary)}`;
+  return `data:${logo.mime_type || (data as any)?.type || "image/png"};base64,${
+    btoa(binary)
+  }`;
 }
 
 /** Salva/substitui a logo ativa do tenant (usado pela tela e pelo agente). */
@@ -233,7 +306,9 @@ export async function setTenantLogo(
     const { data: source, error: downloadError } = await sb.storage
       .from(BUCKET)
       .download(params.storagePath);
-    if (downloadError || !source) throw downloadError ?? new Error("logo ausente");
+    if (downloadError || !source) {
+      throw downloadError ?? new Error("logo ausente");
+    }
     const originalBytes = new Uint8Array(await source.arrayBuffer());
     const processed = await removeSolidLogoBackground(
       originalBytes,

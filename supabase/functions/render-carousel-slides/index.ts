@@ -46,6 +46,7 @@ import { buildElegantSerifSlide } from "../_shared/carousel-templates/elegantSer
 import { buildNeonTechSlide } from "../_shared/carousel-templates/neonTech.ts";
 import { relativeLuminance } from "../_shared/carousel-templates/shared.ts";
 import {
+  carouselLogoBackground,
   type CarouselTemplate,
   normalizeCarouselTemplate,
 } from "../_shared/carousel-styles.ts";
@@ -182,12 +183,10 @@ function logoBackgroundFor(
   template: CarouselTemplate,
   backgroundColor: string | null,
 ): "light" | "dark" {
-  if (backgroundColor) {
-    return relativeLuminance(backgroundColor) >= 0.5 ? "light" : "dark";
-  }
-  return template === "clean-bright" || template === "elegant-serif"
-    ? "light"
-    : "dark";
+  return carouselLogoBackground(
+    template,
+    backgroundColor ? relativeLuminance(backgroundColor) >= 0.5 : null,
+  );
 }
 
 function dataUrlBytes(dataUrl: string): Uint8Array {

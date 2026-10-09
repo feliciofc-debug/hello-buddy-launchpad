@@ -31,6 +31,7 @@ import {
 } from "./carousel-colors.ts";
 import { safeMetaDiagnosticPayload } from "./whatsapp-interactive-safe.ts";
 import {
+  carouselLogoBackground,
   carouselStyleFallbackButtons,
   carouselStyleListPayload,
   resolveCarouselStyleRequest,
@@ -395,4 +396,10 @@ Deno.test("golden de vídeo legendado aplica variante video da logo", () => {
     { bucket: "tenant-logos", path: "tenant/video.png" },
   );
   assertEquals(metadata.com_logo, true);
+});
+
+Deno.test("golden da capa dark-premium usa logo para fundo escuro", () => {
+  assertEquals(carouselLogoBackground("dark-premium"), "dark");
+  assertEquals(carouselLogoBackground("dark-premium", false), "dark");
+  assertEquals(carouselLogoBackground("dark-premium", true), "light");
 });

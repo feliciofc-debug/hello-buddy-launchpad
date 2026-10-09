@@ -75,6 +75,18 @@ export function normalizeCarouselTemplate(
   )?.slug ?? null;
 }
 
+export function carouselLogoBackground(
+  template: CarouselTemplate,
+  backgroundIsLight?: boolean | null,
+): "light" | "dark" {
+  if (typeof backgroundIsLight === "boolean") {
+    return backgroundIsLight ? "light" : "dark";
+  }
+  return template === "clean-bright" || template === "elegant-serif"
+    ? "light"
+    : "dark";
+}
+
 export function extractCarouselBackgroundColor(
   request: unknown,
 ): string | null {
