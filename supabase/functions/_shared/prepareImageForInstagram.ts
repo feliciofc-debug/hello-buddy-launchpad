@@ -143,6 +143,31 @@ export async function normalizeInstagramImageBytes(
   };
 }
 
+export async function normalizeInstagramImageFromUrl(
+  imageUrl: string,
+  fetcher: typeof fetch = fetch,
+): Promise<PreparedInstagramImage> {
+  const response = await fetcher(imageUrl);
+  if (!response.ok) {
+    throw new Error(`Falha ao baixar imagem (${response.status})`);
+  }
+  const sourceBytes = new Uint8Array(await response.arrayBuffer());
+  try {
+    return await normalizeInstagramImageBytes(sourceBytes);
+  } catch {
+    const proxy = `https://wsrv.nl/?url=${
+      encodeURIComponent(imageUrl)
+    }&output=jpg&q=90`;
+    const converted = await fetcher(proxy);
+    if (!converted.ok) {
+      throw new Error("Não consegui converter a imagem para JPEG.");
+    }
+    return await normalizeInstagramImageBytes(
+      new Uint8Array(await converted.arrayBuffer()),
+    );
+  }
+}
+
 /**
  * Prepara a imagem pro Instagram. Sempre retorna uma URL pública JPEG válida.
  * Em caso de falha, lança erro — o caller decide se pula o post ou usa imagem original.
@@ -160,44 +185,8 @@ export async function prepareImageForInstagram(
 
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-  // 1) Baixar imagem
-  const resp = await fetch(imageUrl);
-  if (!resp.ok) throw new Error(`Falha ao baixar imagem (${resp.status})`);
-  const contentType = resp.headers.get("content-type") || "";
-  const bytes = new Uint8Array(await resp.arrayBuffer());
-
-  const isAvif = isAvifUrl(imageUrl) || contentType.includes("avif");
-
-  // 2) Decodificar (import dinâmico do imagescript). AVIF entra em fallback JPEG.
-  let sourceBytes = bytes;
-  let normalized: PreparedInstagramImage;
-  try {
-    if (isAvif) {
-      // Shopee CDN: substituir extensão .avif por .jpg força entrega em JPEG
-      const jpegUrl = imageUrl.replace(/\.avif(\?|$)/i, ".jpg$1");
-      console.log(
-        `[prepareImageForInstagram] AVIF detectado, tentando JPEG: ${
-          jpegUrl.slice(0, 100)
-        }`,
-      );
-      const jpegResp = await fetch(jpegUrl);
-      if (!jpegResp.ok) {
-        throw new Error(`Fallback JPEG falhou (${jpegResp.status})`);
-      }
-      sourceBytes = new Uint8Array(await jpegResp.arrayBuffer());
-    }
-    normalized = await normalizeInstagramImageBytes(sourceBytes);
-  } catch {
-    const proxy = `https://wsrv.nl/?url=${
-      encodeURIComponent(imageUrl)
-    }&output=jpg&q=90`;
-    const converted = await fetch(proxy);
-    if (!converted.ok) {
-      throw new Error("Não consegui converter a imagem para JPEG.");
-    }
-    sourceBytes = new Uint8Array(await converted.arrayBuffer());
-    normalized = await normalizeInstagramImageBytes(sourceBytes);
-  }
+  const isAvif = isAvifUrl(imageUrl);
+  const normalized = await normalizeInstagramImageFromUrl(imageUrl);
 
   // 5) Upload no bucket
   const filename = instagramImageStoragePath(userId);
