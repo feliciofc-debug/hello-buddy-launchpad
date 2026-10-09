@@ -500,11 +500,13 @@ import {
   filterFipeModelCandidates,
   filterFipeYearCandidates,
   normalizeFipeLookupInput,
+  normalizeFipeYear,
   parseFipeRequestText,
   type FipeLookupInput,
 } from "../_shared/fipe-input.ts";
 import {
   createFipePriceRetryState,
+  filterFipeModelsByYear,
   fipeModelDecision,
   fipeYearDecision,
   fipeInputFromTextAndBrands,
@@ -2846,6 +2848,14 @@ type PendingFipeState =
     models: FipeListItem[];
     requestedYear?: string;
     requestedFuel?: string;
+    queryModel: string;
+    created_at: string;
+  }
+  | {
+    stage: "model_year";
+    brand: FipeListItem;
+    models: FipeListItem[];
+    years: FipeListItem[];
     queryModel: string;
     created_at: string;
   }
@@ -14546,10 +14556,28 @@ async function continueFipeWithModel(
     : availableYears;
   const yearDecision = fipeYearDecision(years);
   if (yearDecision.action === "none") {
+    if (input.requestedYear && availableYears.length > 0) {
+      const pending: PendingFipeState = {
+        stage: "year",
+        brand: input.brand,
+        model: input.model,
+        years: availableYears.slice(0, 10),
+        queryModel: input.queryModel,
+        created_at: new Date().toISOString(),
+      };
+      await persistFipeState(ctx, pending);
+      return {
+        result: `Essa versão não tem ${input.requestedYear}. Escolha o ano:`,
+        interactiveList: {
+          body: "Qual é o ano/modelo e combustível?",
+          button: "Escolher ano",
+          section_title: "Anos disponíveis",
+          rows: fipeListRows(pending.years, "fipe_year"),
+        },
+      };
+    }
     return {
-      result: input.requestedYear
-        ? `Não encontrei ano/modelo ${input.requestedYear} para essa versão.`
-        : "Não encontrei anos disponíveis para essa versão.",
+      result: "Não encontrei anos disponíveis para essa versão.",
     };
   }
   if (yearDecision.action === "price") {
@@ -14679,9 +14707,45 @@ async function toolConsultarFipe(
     }
     const queryModel = [modelo, args?.versao].filter(Boolean).join(" ");
     const rankedModels = await listarModelos(brand.code, queryModel);
-    const models = args.motor || args.cambio
+    let models = args.motor || args.cambio
       ? filterFipeModelCandidates(rankedModels, args)
       : rankedModels;
+    if (args?.ano_modelo && models.length > 0) {
+      const yearFilterCandidates = models.slice(0, 15);
+      const yearFilter = await filterFipeModelsByYear(
+        models,
+        args.ano_modelo,
+        (modelId) => listarAnos(brand.code, modelId),
+      );
+      if (yearFilter.status === "filtered") {
+        models = yearFilter.models;
+        if (models.length === 0 && yearFilter.availableYears.length > 0) {
+          const pending: PendingFipeState = {
+            stage: "model_year",
+            brand,
+            models: yearFilterCandidates,
+            years: yearFilter.availableYears.slice(0, 10),
+            queryModel,
+            created_at: new Date().toISOString(),
+          };
+          await persistFipeState(ctx, pending);
+          return {
+            result:
+              `Não há ${modelo} ${args.ano_modelo} na tabela FIPE. Anos disponíveis:`,
+            interactiveList: {
+              body: `Qual ano do ${modelo}?`,
+              button: "Escolher ano",
+              section_title: "Anos disponíveis",
+              rows: fipeListRows(pending.years, "fipe_year"),
+            },
+          };
+        }
+      } else {
+        console.warn(
+          "[fipe][anos-dos-modelos] filtro indisponível; usando versões sem filtro",
+        );
+      }
+    }
     const modelDecision = fipeModelDecision(models);
     if (modelDecision.action === "none") {
       return {
@@ -14784,6 +14848,73 @@ async function handlePendingFipeTurn(
           "Não consegui consultar a FIPE agora. Tente de novo em alguns minutos.",
       };
     }
+  }
+  if (pendingFipe.stage === "model_year" && fipeInteractiveId) {
+    const index = Number(fipeInteractiveId.match(/^fipe_year:(\d+)$/)?.[1]);
+    const year = pendingFipe.years[index];
+    if (!year) {
+      return {
+        text: "Esse ano não está mais disponível. Escolha uma opção da lista.",
+        interactiveList: {
+          body: "Qual é o ano/modelo?",
+          button: "Escolher ano",
+          section_title: "Anos disponíveis",
+          rows: fipeListRows(pendingFipe.years, "fipe_year"),
+        },
+      };
+    }
+    const requestedYear = normalizeFipeYear(year.name);
+    const yearFilter = await filterFipeModelsByYear(
+      pendingFipe.models,
+      requestedYear || year.name,
+      (modelId) => listarAnos(pendingFipe.brand.code, modelId),
+    );
+    const models = yearFilter.status === "filtered"
+      ? yearFilter.models
+      : pendingFipe.models;
+    const modelDecision = fipeModelDecision(models);
+    if (modelDecision.action === "none") {
+      return {
+        text: "Não encontrei versões disponíveis para esse ano. Escolha outro ano:",
+        interactiveList: {
+          body: "Qual é o ano/modelo?",
+          button: "Escolher ano",
+          section_title: "Anos disponíveis",
+          rows: fipeListRows(pendingFipe.years, "fipe_year"),
+        },
+      };
+    }
+    if (modelDecision.action === "continue") {
+      const response = await continueFipeWithModel(toolCtx, {
+        brand: pendingFipe.brand,
+        model: modelDecision.model,
+        queryModel: pendingFipe.queryModel,
+        requestedYear,
+      });
+      return {
+        text: response.result,
+        interactiveList: response.interactiveList,
+        interactiveButtons: response.interactiveButtons,
+      };
+    }
+    const pending: PendingFipeState = {
+      stage: "model",
+      brand: pendingFipe.brand,
+      models: modelDecision.models.slice(0, 10),
+      requestedYear,
+      queryModel: pendingFipe.queryModel,
+      created_at: new Date().toISOString(),
+    };
+    await persistFipeState(toolCtx, pending);
+    return {
+      text: "Encontrei mais de uma versão nesse ano. Escolha a correta:",
+      interactiveList: {
+        body: "Qual é a versão correta?",
+        button: "Escolher versão",
+        section_title: "Versões FIPE",
+        rows: fipeListRows(pending.models, "fipe_model"),
+      },
+    };
   }
   if (pendingFipe.stage === "year" && fipeInteractiveId) {
     const index = Number(fipeInteractiveId.match(/^fipe_year:(\d+)$/)?.[1]);

@@ -1,4 +1,5 @@
 import {
+  filterFipeYearCandidates,
   type FipeLookupInput,
   normalizeFipeYear,
   parseFipeRequestText,
@@ -82,6 +83,65 @@ export function fipeModelDecision(models: FipeListItem[]):
   if (models.length === 1) return { action: "continue", model: models[0] };
   if (models.length > 1) return { action: "choose", models };
   return { action: "none" };
+}
+
+export type FipeModelsByYearResult =
+  | {
+    status: "filtered";
+    models: FipeListItem[];
+    availableYears: FipeListItem[];
+  }
+  | { status: "fallback"; models: FipeListItem[] };
+
+export async function filterFipeModelsByYear(
+  models: FipeListItem[],
+  requestedYear: string,
+  listYears: (modelId: string) => Promise<FipeListItem[]>,
+  options: { maxCandidates?: number; timeoutMs?: number } = {},
+): Promise<FipeModelsByYearResult> {
+  const candidates = models.slice(0, options.maxCandidates ?? 15);
+  let timer: number | undefined;
+  try {
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error("fipe_year_filter_timeout")),
+        options.timeoutMs ?? 8_000,
+      );
+    });
+    const entries = await Promise.race([
+      Promise.all(
+        candidates.map(async (model) => ({
+          model,
+          years: await listYears(model.code),
+        })),
+      ),
+      timeout,
+    ]);
+    const availableYears: FipeListItem[] = [];
+    const seenYears = new Set<string>();
+    const matchingModels: FipeListItem[] = [];
+    for (const entry of entries) {
+      if (filterFipeYearCandidates(entry.years, requestedYear).length > 0) {
+        matchingModels.push(entry.model);
+      }
+      for (const year of entry.years) {
+        const key = `${year.code}:${year.name}`;
+        if (!seenYears.has(key)) {
+          seenYears.add(key);
+          availableYears.push(year);
+        }
+      }
+    }
+    return {
+      status: "filtered",
+      models: matchingModels,
+      availableYears,
+    };
+  } catch {
+    return { status: "fallback", models };
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }
 
 export function fipeInputFromConfirmedVehicle(

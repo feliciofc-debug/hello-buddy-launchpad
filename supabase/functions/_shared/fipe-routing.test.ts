@@ -1,6 +1,7 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   createFipePriceRetryState,
+  filterFipeModelsByYear,
   fipeInputFromConfirmedVehicle,
   fipeInputFromTextAndBrands,
   fipeModelDecision,
@@ -142,4 +143,51 @@ Deno.test("versão escolhida e ano com uma opção consulta preço direto", () =
     ]).action,
     "choose",
   );
+});
+
+Deno.test("ano pedido mantém somente versões disponíveis naquele ano", async () => {
+  const models = [
+    { code: "sport", name: "320i Sport" },
+    { code: "gt", name: "320iA GT Sport" },
+    { code: "m", name: "320i M Sport" },
+  ];
+  const yearsByModel: Record<string, Array<{ code: string; name: string }>> = {
+    sport: [{ code: "2023-1", name: "2023 Gasolina" }],
+    gt: [{ code: "2018-1", name: "2018 Gasolina" }],
+    m: [
+      { code: "2023-1", name: "2023 Gasolina" },
+      { code: "2022-1", name: "2022 Gasolina" },
+    ],
+  };
+  const result = await filterFipeModelsByYear(
+    models,
+    "2023",
+    async (modelId) => yearsByModel[modelId],
+  );
+  assertEquals(result.status, "filtered");
+  assertEquals(result.models, [models[0], models[2]]);
+});
+
+Deno.test("versão sem o ano conserva seus anos como saída", () => {
+  const availableYears = [
+    { code: "2018-1", name: "2018 Gasolina" },
+    { code: "2017-1", name: "2017 Gasolina" },
+  ];
+  assertEquals(
+    fipeYearDecision(availableYears),
+    { action: "choose", years: availableYears },
+  );
+});
+
+Deno.test("falha ao consultar anos mantém a lista sem filtro", async () => {
+  const models = [
+    { code: "sport", name: "320i Sport" },
+    { code: "gt", name: "320iA GT Sport" },
+  ];
+  const result = await filterFipeModelsByYear(
+    models,
+    "2023",
+    () => Promise.reject(new Error("api indisponível")),
+  );
+  assertEquals(result, { status: "fallback", models });
 });
