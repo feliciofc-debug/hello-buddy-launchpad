@@ -100,7 +100,7 @@ export async function filterFipeModelsByYear(
   options: { maxCandidates?: number; timeoutMs?: number } = {},
 ): Promise<FipeModelsByYearResult> {
   const candidates = models.slice(0, options.maxCandidates ?? 15);
-  let timer: number | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(
