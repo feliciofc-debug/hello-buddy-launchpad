@@ -5,6 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { RefreshCw, Zap, CheckCircle2, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { getRuntimeConfig } from '@/config/runtime-config';
+
+const FUNCTIONS_URL = `${getRuntimeConfig().supabaseUrl}/functions/v1`;
 
 export function WhatsAppDebugPanel() {
   const [logs, setLogs] = useState<any[]>([]);
@@ -59,12 +62,10 @@ export function WhatsAppDebugPanel() {
 
   const testarWebhook = async () => {
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/wuzapi-webhook`,
-        { method: 'GET' }
-      );
-      
-      const data = await response.json();
+      const { data, error } = await supabase.functions.invoke('wuzapi-webhook', {
+        method: 'GET',
+      });
+      if (error) throw error;
       
       if (data.status === 'online') {
         toast.success('✅ Webhook está ONLINE!');
@@ -136,7 +137,7 @@ export function WhatsAppDebugPanel() {
             <div className="border rounded p-3 bg-blue-50 dark:bg-blue-950">
               <p className="font-medium text-xs mb-2">🔗 Configure no Wuzapi:</p>
               <code className="text-xs bg-white dark:bg-gray-900 p-2 rounded block overflow-x-auto">
-                {import.meta.env.VITE_SUPABASE_URL}/functions/v1/wuzapi-webhook
+                {FUNCTIONS_URL}/wuzapi-webhook
               </code>
             </div>
           )}

@@ -45,7 +45,8 @@ export type TemplateInstitucionalProps = {
   cta: Cta;
   legendas?: string[];
   blocos: BlocoArgumento[];
-  selo?: { valor: string; rotulo?: string };
+  selo?: { valor: string; rotulo?: string } | null;
+  visual_limpo?: boolean;
   /** 1, 2 ou 3 — arranjo de cena */
   arranjo?: number;
   /** frames por bloco; vídeo mais longo respira um pouco mais em cada cena */
@@ -57,7 +58,7 @@ const SELO_FRAMES = 120;
 const TRANSICAO = 30;
 
 export const ritmoInstitucional = (p: TemplateInstitucionalProps) =>
-  p.ritmo && p.ritmo >= 60 && p.ritmo <= 220 ? Math.round(p.ritmo) : BLOCO_FRAMES;
+  p.ritmo && p.ritmo >= 60 && p.ritmo <= 300 ? Math.round(p.ritmo) : BLOCO_FRAMES;
 
 export const framesTemplateInstitucional = (p: TemplateInstitucionalProps) => {
   const blocos = Math.max(1, (p.blocos || []).length);
@@ -287,7 +288,7 @@ export const TemplateInstitucional: React.FC<TemplateInstitucionalProps> = (prop
 
   return (
     <AbsoluteFill>
-      <Backdrop c={c} arranjo={arranjo} />
+      <Backdrop c={c} arranjo={arranjo} limpo={props.visual_limpo === true} />
       <TransitionSeries>
         <TransitionSeries.Sequence durationInFrames={HOOK_FRAMES}>
           <HookCena c={c} arranjo={arranjo} logoUrl={logoUrl} {...hook} />
@@ -347,11 +348,11 @@ export const PROPS_INSTITUCIONAL_EXEMPLO: TemplateInstitucionalProps = {
     sub: "Infraestrutura própria e integração oficial.",
   },
   blocos: [
-    { titulo: "Integração oficial", apoio: "Conexão homologada, sem atalhos.", icone: "escudo" },
+    { titulo: "Integração por API", apoio: "Conexão estável, sem atalhos.", icone: "escudo" },
     { titulo: "Dados isolados", apoio: "Cada empresa no seu próprio ambiente.", icone: "engrenagem" },
     { titulo: "Resposta em segundos", apoio: "Atendimento no horário do cliente.", icone: "relogio" },
   ],
-  selo: { valor: "Tech Provider", rotulo: "verificado pela Meta" },
+  selo: null,
   cta: { frase: "Conheça a plataforma.", sub: "Fale com o nosso time." },
   legendas: ["Segurança de verdade.", "Integração oficial.", "Cada empresa isolada.", "Resposta em segundos."],
   arranjo: 1,

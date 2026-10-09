@@ -121,6 +121,17 @@ const brilho = (hex: string) => {
   return (r * 0.299 + g * 0.587 + b * 0.114) / 255;
 };
 
+const ehNeutra = (hex: string) => saturacao(hex) < 0.16;
+
+// Cores de componentes distribuídas por frameworks. Na Camada A não sabemos
+// se a regra chegou a ser renderizada, então elas não contam como marca.
+// A Camada B pode devolvê-las se estiverem realmente visíveis na página.
+const CORES_FRAMEWORK = new Set([
+  "#d9534f", "#5cb85c", "#337ab7", "#f0ad4e", "#5bc0de", // Bootstrap 3
+  "#dc3545", "#198754", "#0d6efd", "#ffc107", "#0dcaf0", // Bootstrap 5
+  "#32373c", "#0073aa", "#2271b1", // WordPress admin/components
+]);
+
 const distancia = (a: string, b: string) => {
   const [r1, g1, b1] = rgbDe(a);
   const [r2, g2, b2] = rgbDe(b);
@@ -148,7 +159,7 @@ function pesoDaDeclaracao(seletor: string, propriedade: string): number {
   return peso;
 }
 
-function coresDoCss(css: string, acc: Map<string, number>) {
+function coresDoCss(css: string, acc: Map<string, number>, ignorarFramework = true) {
   const blocos = css.split("}");
   for (const bloco of blocos) {
     const i = bloco.indexOf("{");
@@ -166,6 +177,7 @@ function coresDoCss(css: string, acc: Map<string, number>) {
       for (const bruto of achados) {
         const cor = normalizar(bruto.slice(0, 7));
         if (!cor) continue;
+        if (ignorarFramework && CORES_FRAMEWORK.has(cor)) continue;
         acc.set(cor, (acc.get(cor) ?? 0) + peso);
       }
     }
@@ -175,10 +187,12 @@ function coresDoCss(css: string, acc: Map<string, number>) {
 function coresInline(html: string, acc: Map<string, number>) {
   const re = /style=["']([^"']+)["']/gi;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(html))) coresDoCss(`inline{${m[1]}}`, acc);
+  // Inline pertence a um elemento concreto da página; uma cor de framework
+  // que aparece aqui pode ser intencional e permanece como candidata.
+  while ((m = re.exec(html))) coresDoCss(`inline{${m[1]}}`, acc, false);
 }
 
-/** Agrupa tons próximos e devolve as 5 cores principais. */
+/** Agrupa tons próximos, priorizando cores de marca antes dos neutros. */
 function agrupar(acc: Map<string, number>): Array<{ hex: string; peso: number }> {
   const lista = [...acc.entries()]
     .map(([hex, peso]) => ({ hex, peso }))
@@ -191,12 +205,17 @@ function agrupar(acc: Map<string, number>): Array<{ hex: string; peso: number }>
     else grupos.push({ ...c });
     if (grupos.length > 60) break;
   }
-  return grupos.sort((a, b) => b.peso - a.peso).slice(0, 5);
+  const ordenados = grupos.sort((a, b) => b.peso - a.peso);
+  const marca = ordenados.filter((cor) => !ehNeutra(cor.hex));
+  const neutras = ordenados.filter((cor) => ehNeutra(cor.hex));
+  return [...marca.slice(0, 3), ...neutras.slice(0, 2)].slice(0, 5);
 }
 
 /** Escolhe fundo (neutro) e destaque (cor viva) a partir das cores lidas. */
 function montarPaleta(principais: Array<{ hex: string; peso: number }>): CoresVideo {
-  const vivas = principais.filter((c) => saturacao(c.hex) >= 0.25 && brilho(c.hex) > 0.2 && brilho(c.hex) < 0.94);
+  // Azul-marinho e outros tons escuros saturados continuam sendo cores de
+  // marca; brilho baixo, por si só, não os transforma em neutros.
+  const vivas = principais.filter((c) => saturacao(c.hex) >= 0.25 && brilho(c.hex) > 0.08 && brilho(c.hex) < 0.94);
   const neutras = principais.filter((c) => !vivas.includes(c));
 
   const destaque = vivas[0]?.hex;
@@ -206,7 +225,9 @@ function montarPaleta(principais: Array<{ hex: string; peso: number }>): CoresVi
   return paletaAPartirDe({
     bg: fundo ?? "#ffffff",
     destaque: destaque ?? fundo ?? "#1a2332",
-    destaqueSoft: apoio,
+    // A segunda cor da marca entra em bordas e detalhes. `destaqueSoft`
+    // permanece vazio para ser derivado como uma variação do destaque.
+    line: apoio,
   });
 }
 
@@ -318,8 +339,12 @@ function coresDaLogoSvg(dataUrl: string | null, acc: Map<string, number>): void 
     if (!hex) continue;
     vistas.set(hex, (vistas.get(hex) ?? 0) + 1);
   }
-  // A logo pesa como um elemento forte da marca, logo abaixo do fundo do topo.
-  for (const [hex, n] of vistas) acc.set(hex, (acc.get(hex) ?? 0) + Math.min(n, 3) * 6);
+  // A logo é a primeira fonte da identidade. Seu peso precisa superar uma
+  // paleta inteira declarada por bibliotecas CSS.
+  for (const [hex, n] of vistas) {
+    if (ehNeutra(hex)) continue;
+    acc.set(hex, (acc.get(hex) ?? 0) + Math.min(n, 3) * 500);
+  }
 }
 
 /**
@@ -456,12 +481,19 @@ export async function lerIdentidadeDoSite(entrada: string): Promise<IdentidadeSi
       .filter((u): u is string => !!u && !/fonts\.googleapis/.test(u))
       .slice(0, MAX_CSS);
 
-    const folhas = await Promise.all(links.map((u) => buscar(u, controle.signal)));
+    const linksDaMarca = links.filter((u) =>
+      !/(?:^|[/_.-])(bootstrap(?:\.min)?|tailwind(?:\.min)?|wp-includes|wp-admin)(?:[/_.-]|$)/i.test(u)
+    );
+    const folhas = await Promise.all(linksDaMarca.map((u) => buscar(u, controle.signal)));
     css += "\n" + folhas.filter(Boolean).join("\n");
 
     const acc = new Map<string, number>();
     coresDoCss(css, acc);
     coresInline(html, acc);
+    const themeColor = normalizar(meta(html, "theme-color"));
+    if (themeColor && !ehNeutra(themeColor)) {
+      acc.set(themeColor, (acc.get(themeColor) ?? 0) + 750);
+    }
 
 
     const blocos = blocosUteis(html);
@@ -487,10 +519,12 @@ export async function lerIdentidadeDoSite(entrada: string): Promise<IdentidadeSi
       if (!logoUrl) logoUrl = cand;
     }
 
-    // A cor da marca muitas vezes só existe na logo (caso Venâncio: o vermelho
-    // não está no CSS). Só lemos hexadecimais reais do arquivo — nada de IA.
-    coresDaLogoSvg(logoDataUrl, acc);
-    const principais = agrupar(acc);
+    // Se a logo SVG oferece cores utilizáveis, elas são autoritativas. CSS,
+    // widgets e banners só entram quando a logo não fornece nenhuma cor.
+    const coresLogo = new Map<string, number>();
+    coresDaLogoSvg(logoDataUrl, coresLogo);
+    const principaisLogo = agrupar(coresLogo).filter((cor) => !ehNeutra(cor.hex));
+    const principais = principaisLogo.length > 0 ? principaisLogo : agrupar(acc);
 
 
     if (principais.length < 2) {
@@ -582,12 +616,18 @@ export function nomeDeMarca(ogSiteName: string, titulo: string): string {
 
 /** A leitura simples não deu conta? (SPA, bloqueio, paleta pobre) */
 export function precisaCamadaB(id: IdentidadeSite): boolean {
-  return id.cores_detectadas.length < 2 || id.texto_base.length < 120;
+  const coresMarca = id.cores_detectadas.filter((cor) => !ehNeutra(cor.hex));
+  // PNG/JPEG/WebP precisam do Chromium para amostragem dos pixels. Mesmo que
+  // o CSS já tenha duas cores, elas não substituem as cores reais da logo.
+  const logoRaster = !!id.logo_data_url && !/^data:image\/svg\+xml/i.test(id.logo_data_url);
+  return !id.logo_data_url || logoRaster || coresMarca.length < 1 || id.texto_base.length < 120;
 }
 
 export type DadosCamadaB = {
   /** cores lidas da página JÁ RENDERIZADA (hex exatos, com peso) */
   cores?: Array<{ hex: string; peso: number }>;
+  /** cores dominantes não neutras amostradas exclusivamente da logo */
+  logo_cores?: Array<{ hex: string; peso: number }>;
   texto?: string;
   titulo?: string;
   site_name?: string;
@@ -619,12 +659,21 @@ export function mesclarCamadaB(
   ia: AnaliseIA = {},
 ): IdentidadeSite {
   const acc = new Map<string, number>();
-  for (const c of a.cores_detectadas) acc.set(c.hex, (acc.get(c.hex) ?? 0) + c.peso);
-  for (const c of b.cores ?? []) {
+  const coresLogo = (b.logo_cores ?? [])
+    .map((cor) => ({ hex: normalizar(String(cor?.hex ?? "")), peso: Number(cor?.peso) || 1 }))
+    .filter((cor): cor is { hex: string; peso: number } => !!cor.hex && !ehNeutra(cor.hex));
+  // A logo é a fonte autoritativa da marca. Captura, DOM e CSS entram apenas
+  // como fallback quando a logo não forneceu nenhuma cor utilizável.
+  const fonte = coresLogo.length > 0
+    ? coresLogo
+    : [
+      ...a.cores_detectadas,
+      ...(b.cores ?? []).map((cor) => ({ hex: String(cor?.hex ?? ""), peso: Math.max(1, Number(cor?.peso) || 1) * 2 })),
+    ];
+  for (const c of fonte) {
     const hex = normalizar(String(c?.hex ?? ""));
     if (!hex) continue;
-    // o render vale mais do que o CSS bruto: é a cor que o olho vê
-    acc.set(hex, (acc.get(hex) ?? 0) + Math.max(1, Number(c.peso) || 1) * 2);
+    acc.set(hex, (acc.get(hex) ?? 0) + Math.max(1, Number(c.peso) || 1));
   }
   const principais = agrupar(acc);
 
@@ -656,8 +705,10 @@ export function mesclarCamadaB(
       ? a.segmento_sugerido
       : (segmentoDe(textoBase) !== "outros" ? segmentoDe(textoBase) : (ia.segmento || "outros")),
     fontes: [...new Set([...(b.fontes ?? []), ...a.fontes])].slice(0, 4),
-    logo_url: a.logo_url ?? b.logo_url ?? null,
-    logo_data_url: a.logo_data_url ?? b.logo_data_url ?? null,
+    // O navegador enxerga a logo realmente renderizada; ela tem prioridade
+    // sobre favicon/og:image encontrados no HTML bruto.
+    logo_url: b.logo_url ?? a.logo_url ?? null,
+    logo_data_url: b.logo_data_url ?? a.logo_data_url ?? null,
     cores_detectadas: principais,
     paleta: montarPaleta(principais),
     texto_base: textoBase,

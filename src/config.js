@@ -1,1 +1,3 @@
-export const API_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
+import { getRuntimeConfig } from "./config/runtime-config";
+
+export const API_URL = `${getRuntimeConfig().supabaseUrl}/functions/v1`;

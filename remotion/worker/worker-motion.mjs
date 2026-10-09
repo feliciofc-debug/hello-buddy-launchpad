@@ -21,6 +21,11 @@ const exec = promisify(execFile);
 const BASE = process.env.SUPABASE_FUNCTIONS_URL;
 const TOKEN = process.env.VPS_RENDER_TOKEN;
 const INTERVALO_MS = 15000;
+const limiteConfigurado = Number(process.env.WHATSAPP_VIDEO_MAX_BYTES);
+const MAX_VIDEO_BYTES = Number.isFinite(limiteConfigurado) && limiteConfigurado >= 1024 * 1024
+  ? limiteConfigurado
+  : 15 * 1024 * 1024;
+const TARGET_VIDEO_BYTES = Math.min(MAX_VIDEO_BYTES * 0.88, 13.5 * 1024 * 1024);
 
 if (!BASE || !TOKEN) {
   console.error("faltam SUPABASE_FUNCTIONS_URL ou VPS_RENDER_TOKEN");
@@ -46,6 +51,101 @@ async function duracaoSegundos(arquivo) {
   } catch {
     return null;
   }
+}
+
+const tamanhoMb = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
+async function executarFfmpeg(args) {
+  await exec("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", ...args], {
+    timeout: 12 * 60 * 1000,
+    maxBuffer: 1024 * 1024 * 16,
+  });
+}
+
+const substituirArquivo = (origem, destino) => {
+  fs.rmSync(destino, { force: true });
+  fs.renameSync(origem, destino);
+};
+
+async function otimizarVideoParaWhatsApp(outPath, dir) {
+  const tamanhoInicial = fs.statSync(outPath).size;
+  const fastPath = path.join(dir, "out-faststart.mp4");
+
+  if (tamanhoInicial <= MAX_VIDEO_BYTES) {
+    await executarFfmpeg([
+      "-i", outPath,
+      "-map", "0",
+      "-c", "copy",
+      "-movflags", "+faststart",
+      fastPath,
+    ]);
+    substituirArquivo(fastPath, outPath);
+    const tamanhoRemux = fs.statSync(outPath).size;
+    if (tamanhoRemux <= MAX_VIDEO_BYTES) {
+      console.log(`[motion] faststart aplicado (${tamanhoMb(tamanhoRemux)})`);
+      return;
+    }
+  }
+
+  console.warn(
+    `[motion] arquivo acima do limite (${tamanhoMb(tamanhoInicial)}); recomprimindo antes do upload`,
+  );
+  const crfPath = path.join(dir, "out-crf30.mp4");
+  await executarFfmpeg([
+    "-i", outPath,
+    "-map", "0:v:0",
+    "-map", "0:a?",
+    "-c:v", "libx264",
+    "-preset", "medium",
+    "-crf", "30",
+    "-pix_fmt", "yuv420p",
+    "-c:a", "aac",
+    "-b:a", "128k",
+    "-ac", "2",
+    "-movflags", "+faststart",
+    crfPath,
+  ]);
+
+  let escolhido = crfPath;
+  let tamanhoFinal = fs.statSync(crfPath).size;
+  if (tamanhoFinal > MAX_VIDEO_BYTES) {
+    const duracao = await duracaoSegundos(outPath);
+    if (!duracao || duracao <= 0) {
+      throw new Error(`vídeo ainda tem ${tamanhoMb(tamanhoFinal)} e não foi possível medir a duração`);
+    }
+    const totalKbps = Math.floor((TARGET_VIDEO_BYTES * 8) / duracao / 1000);
+    const videoKbps = Math.max(300, totalKbps - 128);
+    const adaptivePath = path.join(dir, "out-adaptive.mp4");
+    console.warn(
+      `[motion] CRF 30 ainda gerou ${tamanhoMb(tamanhoFinal)}; limitando vídeo a ${videoKbps} kbps`,
+    );
+    await executarFfmpeg([
+      "-i", outPath,
+      "-map", "0:v:0",
+      "-map", "0:a?",
+      "-c:v", "libx264",
+      "-preset", "medium",
+      "-b:v", `${videoKbps}k`,
+      "-maxrate", `${Math.round(videoKbps * 1.15)}k`,
+      "-bufsize", `${videoKbps * 2}k`,
+      "-pix_fmt", "yuv420p",
+      "-c:a", "aac",
+      "-b:a", "128k",
+      "-ac", "2",
+      "-movflags", "+faststart",
+      adaptivePath,
+    ]);
+    escolhido = adaptivePath;
+    tamanhoFinal = fs.statSync(adaptivePath).size;
+  }
+
+  if (tamanhoFinal > MAX_VIDEO_BYTES) {
+    throw new Error(
+      `recompressão terminou com ${tamanhoMb(tamanhoFinal)}, acima do limite de ${tamanhoMb(MAX_VIDEO_BYTES)}`,
+    );
+  }
+  substituirArquivo(escolhido, outPath);
+  console.log(`[motion] vídeo otimizado: ${tamanhoMb(tamanhoInicial)} -> ${tamanhoMb(tamanhoFinal)}`);
 }
 
 // ------------------------------------------------------------
@@ -126,6 +226,7 @@ async function processar(job) {
       { maxBuffer: 1024 * 1024 * 32, timeout: 15 * 60 * 1000 },
     );
 
+    await otimizarVideoParaWhatsApp(outPath, dir);
     const bytes = fs.readFileSync(outPath);
     const up = await fetch(job.upload.url, {
       method: "PUT",

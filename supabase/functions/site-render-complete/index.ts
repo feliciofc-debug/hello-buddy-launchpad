@@ -108,6 +108,7 @@ Deno.serve(async (req) => {
 
     const dadosB: DadosCamadaB = {
       cores: Array.isArray(body?.cores) ? body.cores.slice(0, 40) : [],
+      logo_cores: Array.isArray(body?.logo_cores) ? body.logo_cores.slice(0, 8) : [],
       texto: String(body?.texto ?? "").slice(0, 6000),
       titulo: String(body?.titulo ?? ""),
       site_name: String(body?.site_name ?? ""),

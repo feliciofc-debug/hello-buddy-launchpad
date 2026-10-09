@@ -7,9 +7,12 @@ import { useTranslation } from 'react-i18next';
 import { useEffect, useState } from 'react';
 import { MarcaPersonalizacao } from './MarcaPersonalizacao';
 import { buildTikTokAuthUrl } from "@/config/tiktok";
+import { isCustomAuth } from "@/config/runtime-config";
+import { buildMetaAuthUrl } from "@/config/meta";
 
 const SettingsPage = () => {
   const navigate = useNavigate();
+  const customAuth = isCustomAuth();
   const { t, i18n } = useTranslation();
   const [metaConnection, setMetaConnection] = useState<any>(null);
   const [loadingMeta, setLoadingMeta] = useState(true);
@@ -138,13 +141,13 @@ const SettingsPage = () => {
   }, []);
 
   const handleConnect = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user ?? (await supabase.auth.getUser()).data.user;
     if (!user) {
       toast.error(t('settings.login_required_meta'));
       return;
     }
-    const authUrl = `https://www.facebook.com/v25.0/dialog/oauth?client_id=1254152493364240&redirect_uri=${encodeURIComponent('https://www.amzofertas.com.br/auth/callback/meta')}&scope=pages_show_list,pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish,business_management&response_type=code&state=${user.id}`;
-    window.location.href = authUrl;
+    window.location.href = buildMetaAuthUrl(user.id);
   };
 
   const handleDisconnect = async () => {
@@ -208,6 +211,22 @@ const SettingsPage = () => {
         </button>
         
         <h1 className="text-3xl font-bold mb-6 text-gray-900 dark:text-white">{t('settings.api_settings_title')}</h1>
+
+        {customAuth && (
+          <div className="mb-6 p-5 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Segurança da conta</h2>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+              Altere a senha temporária recebida no primeiro acesso.
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate('/alterar-senha')}
+              className="mt-4 bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2 px-4 rounded transition-colors"
+            >
+              Alterar senha
+            </button>
+          </div>
+        )}
 
         <Tabs defaultValue="meta" className="w-full">
           <TabsList className="grid w-full grid-cols-4 mb-8">
