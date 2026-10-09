@@ -193,7 +193,7 @@ export function isMetaAdsQuestionarioTrigger(text: unknown): boolean {
 
 export function isMetaAdsQuestionarioConsulta(value: string): boolean {
   return /^(?:como|quando|onde|qual|quais|por que|porque)\b/.test(value) ||
-    /\b(?:como esta|quero saber|consultar|consulta|relatorio|metricas|desempenho|resultado|status|quanto gast|campanha atual|minha campanha)\b/.test(
+    /\b(?:como esta|quero saber|consultar|consulta|relatorio|metricas|desempenho|resultado|status|quanto gast\w*|campanha atual|minha campanha)\b/.test(
       value,
     );
 }
