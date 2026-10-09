@@ -82,3 +82,4 @@
 - [x] Camada A e B ignoram carrossel/slider/parceiros na busca da logo
 - [x] Cores dominantes da logo (SVG no servidor, pixels no navegador) — nunca por IA
 - [ ] Reiniciar o worker de leitura de site na VPS (pm2 restart amz-site)
+- [x] Gerar link de pagamento de R$ 997,00 no formato /pagar/{subscription_id}
