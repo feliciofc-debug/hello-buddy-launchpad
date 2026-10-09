@@ -10,6 +10,7 @@ import {
   isMetaAdsQuestionarioMixedContentRequest,
   isMetaAdsQuestionarioTrigger,
   metaAdsCommandText,
+  metaAdsQuestionarioAmbiguityButtons,
 } from "./meta-ads-questionario.ts";
 import {
   classifyOwnerMediaIntent,
@@ -402,4 +403,12 @@ Deno.test("golden da capa dark-premium usa logo para fundo escuro", () => {
   assertEquals(carouselLogoBackground("dark-premium"), "dark");
   assertEquals(carouselLogoBackground("dark-premium", false), "dark");
   assertEquals(carouselLogoBackground("dark-premium", true), "light");
+});
+
+Deno.test("golden do pedido misto nomeia o conteúdo no botão", () => {
+  assertEquals(
+    metaAdsQuestionarioAmbiguityButtons("crie um post e impulsione").buttons[0]
+      .title,
+    "Criar post",
+  );
 });

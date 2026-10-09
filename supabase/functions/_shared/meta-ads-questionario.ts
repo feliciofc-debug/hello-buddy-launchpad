@@ -142,7 +142,10 @@ export function contentCreationCommandKind(
     /\b(?:cria|crie|criar|faz|faca|fazer|monta|monte|montar|gera|gere|gerar|produz|produza|produzir|quero|preciso)\b/;
   if (!creationVerb.test(command)) return null;
   const kinds: Array<[ContentCreationKind, RegExp]> = [
-    ["carousel", /\b(?:carrossel|carrosel|carrocel|carossel|carosel|carroussel|carousel)\b/],
+    [
+      "carousel",
+      /\b(?:carrossel|carrosel|carrocel|carossel|carosel|carroussel|carousel)\b/,
+    ],
     ["post", /\bposts?\b/],
     ["story", /\b(?:story|stories)\b/],
     ["reels", /\breels?\b/],
@@ -193,9 +196,10 @@ export function isMetaAdsQuestionarioTrigger(text: unknown): boolean {
 
 export function isMetaAdsQuestionarioConsulta(value: string): boolean {
   return /^(?:como|quando|onde|qual|quais|por que|porque)\b/.test(value) ||
-    /\b(?:como esta|quero saber|consultar|consulta|relatorio|metricas|desempenho|resultado|status|quanto gast\w*|campanha atual|minha campanha)\b/.test(
-      value,
-    );
+    /\b(?:como esta|quero saber|consultar|consulta|relatorio|metricas|desempenho|resultado|status|quanto gast\w*|campanha atual|minha campanha)\b/
+      .test(
+        value,
+      );
 }
 
 export function isMetaAdsQuestionarioAmbiguousRequest(
@@ -211,21 +215,35 @@ export function isMetaAdsQuestionarioAmbiguousRequest(
     /\b(?:whatsapp|zap)\b/.test(value) ||
     /\b(?:arte|imagem|card|banner|criativo|design|foto)\b/.test(value)
   ) return false;
-  return /\b(?:criar|cria|crie|fazer|faz|faca|montar|monte|quero|nova?)\b.*\b(?:anuncio|anuncios|campanha)\b/.test(
-    value,
-  );
+  return /\b(?:criar|cria|crie|fazer|faz|faca|montar|monte|quero|nova?)\b.*\b(?:anuncio|anuncios|campanha)\b/
+    .test(
+      value,
+    );
 }
 
 export function metaAdsQuestionarioAmbiguityButtons(
   text?: unknown,
 ): QuestionarioButtons {
   if (isMetaAdsQuestionarioMixedContentRequest(text)) {
+    const kind = contentCreationCommandKind(text);
+    const contentLabel: Record<ContentCreationKind, string> = {
+      carousel: "Criar carrossel",
+      post: "Criar post",
+      story: "Criar story",
+      reels: "Criar reels",
+      video: "Criar vídeo",
+      caption: "Criar legenda",
+      art: "Criar arte",
+      image: "Criar imagem",
+      banner: "Criar banner",
+      slides: "Criar slides",
+    };
     return questionarioButtons({
       body: "Você quer criar o conteúdo ou iniciar uma campanha paga?",
       buttons: [
         {
           id: `${META_ADS_QUESTIONARIO_PREFIX}ambiguidade:arte`,
-          title: "Criar carrossel",
+          title: kind ? contentLabel[kind] : "Criar conteúdo",
         },
         {
           id: `${META_ADS_QUESTIONARIO_PREFIX}ambiguidade:meta`,
@@ -294,9 +312,10 @@ export function validarNovoLimiteMensalAnuncios(
 export function isMetaAdsLimitChangeRequest(text: unknown): boolean {
   const value = normalizar(text)
     .replace(/<<interactive_id:[^>]+>>/g, "").trim();
-  return /\b(?:aumentar|aumenta|alterar|altera|mudar|muda|ajustar|ajusta|subir|definir|trocar)\b.*\blimite\b/.test(
-    value,
-  ) &&
+  return /\b(?:aumentar|aumenta|alterar|altera|mudar|muda|ajustar|ajusta|subir|definir|trocar)\b.*\blimite\b/
+    .test(
+      value,
+    ) &&
     /\b(?:anuncio|anuncios|meta|campanha|mensal)\b/.test(value);
 }
 
@@ -354,8 +373,10 @@ export function resolveMetaAdsLimitValueInput(input: {
 }
 
 export function isMetaAdsQuestionarioCancel(text: unknown): boolean {
-  const value = normalizar(text).replace(/<<interactive_id:[^>]+>>/g, "").trim();
-  return /^(?:cancelar|cancela|desistir|parar|sair|nao e isso|meta_ads_q:cancelar)[.!?]?$/.test(value) ||
+  const value = normalizar(text).replace(/<<interactive_id:[^>]+>>/g, "")
+    .trim();
+  return /^(?:cancelar|cancela|desistir|parar|sair|nao e isso|meta_ads_q:cancelar)[.!?]?$/
+    .test(value) ||
     interactiveId(text) === `${META_ADS_QUESTIONARIO_PREFIX}cancelar`;
 }
 
@@ -438,9 +459,7 @@ export function questionarioList(input: {
     rows: input.rows.slice(0, 10).map((row) => ({
       id: limitar(row.id, 200),
       title: limitar(row.title, 24),
-      description: row.description
-        ? limitar(row.description, 72)
-        : undefined,
+      description: row.description ? limitar(row.description, 72) : undefined,
     })),
   };
 }
@@ -480,14 +499,19 @@ export function respostaPertenceAoQuestionario(
   if (id?.startsWith(META_ADS_QUESTIONARIO_PREFIX)) return true;
   const value = normalizar(text);
   if (!value) return etapa === "midia";
-  if (isMetaAdsQuestionarioCancel(value) || isMetaAdsQuestionarioResume(value)) {
+  if (
+    isMetaAdsQuestionarioCancel(value) || isMetaAdsQuestionarioResume(value)
+  ) {
     return true;
   }
-  if (etapa === "objetivo") return /^(?:whatsapp|conversas?|site|visitas?)$/.test(value);
+  if (etapa === "objetivo") {
+    return /^(?:whatsapp|conversas?|site|visitas?)$/.test(value);
+  }
   if (etapa === "publico") return value === "publico amplo";
   if (etapa === "cidade") {
     return value.length <= 80 && !/[?]/.test(value) &&
-      !/\b(?:relatorio|campanha atual|pausar|reativar|publicar|anuncio atual|quanto gastou|me manda|me mostre|preciso|quero saber)\b/.test(value);
+      !/\b(?:relatorio|campanha atual|pausar|reativar|publicar|anuncio atual|quanto gastou|me manda|me mostre|preciso|quero saber)\b/
+        .test(value);
   }
   if (etapa === "url_site") {
     return /^(?:https?:\/\/|www\.)|(?:^|\s)[^\s]+\.[a-z]{2,}(?:\/\S*)?$/i
@@ -501,7 +525,9 @@ export function respostaPertenceAoQuestionario(
   }
   if (etapa === "raio" || etapa === "duracao") return /\d/.test(value);
   if (etapa === "idade") return /\d{2}\s*[-–a]\s*\d{2}|^outra$/.test(value);
-  if (etapa === "texto") return /^(?:aprovar|reescrever|eu escrevo)$/.test(value);
+  if (etapa === "texto") {
+    return /^(?:aprovar|reescrever|eu escrevo)$/.test(value);
+  }
   if (etapa === "orcamento") return /\d/.test(value);
   return false;
 }
@@ -515,7 +541,11 @@ export function filtrarInteressesValidados(
   return found.filter((item) => {
     if (!item?.id || !item?.name || seen.has(item.id)) return false;
     const name = normalizar(item.name);
-    if (!wanted.some((term) => name === term || name.includes(term) || term.includes(name))) {
+    if (
+      !wanted.some((term) =>
+        name === term || name.includes(term) || term.includes(name)
+      )
+    ) {
       return false;
     }
     seen.add(item.id);
@@ -576,12 +606,10 @@ export function metaAdsBudgetRecoveryButtons(
       ? "O limite mensal está esgotado. O que deseja fazer?"
       : "Esse orçamento não cabe no limite mensal. O que deseja fazer?",
     buttons: [
-      ...(exhausted
-        ? []
-        : [{
-          id: `${META_ADS_QUESTIONARIO_PREFIX}budget:mudar`,
-          title: "Mudar orçamento",
-        }]),
+      ...(exhausted ? [] : [{
+        id: `${META_ADS_QUESTIONARIO_PREFIX}budget:mudar`,
+        title: "Mudar orçamento",
+      }]),
       {
         id: `${META_ADS_QUESTIONARIO_PREFIX}budget:aumentar_limite`,
         title: "Aumentar limite",
@@ -619,9 +647,17 @@ export function metaAdsQuestionarioResumo(
     "Resumo da campanha",
     `Objetivo: ${objetivo}`,
     `Público: ${publico}`,
-    `Local: ${questionario.cidade?.name ?? "—"} · ${questionario.raio_km ?? 0} km`,
-    `Idade: ${questionario.age_min ?? 18}–${questionario.age_max ?? 65} · ${genero}`,
-    `Orçamento: R$ ${(questionario.orcamento_diario ?? 0).toFixed(2).replace(".", ",")}/dia × ${questionario.duracao_dias ?? 0} dias = R$ ${total.toFixed(2).replace(".", ",")}`,
+    `Local: ${questionario.cidade?.name ?? "—"} · ${
+      questionario.raio_km ?? 0
+    } km`,
+    `Idade: ${questionario.age_min ?? 18}–${
+      questionario.age_max ?? 65
+    } · ${genero}`,
+    `Orçamento: R$ ${
+      (questionario.orcamento_diario ?? 0).toFixed(2).replace(".", ",")
+    }/dia × ${questionario.duracao_dias ?? 0} dias = R$ ${
+      total.toFixed(2).replace(".", ",")
+    }`,
     `Mídia: ${questionario.midia?.titulo ?? "—"}`,
     `Título: ${questionario.titulo ?? "—"}`,
     `Texto: ${questionario.texto_principal ?? "—"}`,

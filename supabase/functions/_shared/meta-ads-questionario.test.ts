@@ -3,14 +3,14 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
-  avancarMetaAdsQuestionario,
   avaliarMetaAdsOrcamentoMinimo,
+  avancarMetaAdsQuestionario,
   contentCreationCommandKind,
   filtrarInteressesValidados,
   isContentCreationCommand,
+  isMetaAdsLimitChangeRequest,
   isMetaAdsQuestionarioAmbiguousRequest,
   isMetaAdsQuestionarioCancel,
-  isMetaAdsLimitChangeRequest,
   isMetaAdsQuestionarioMixedContentRequest,
   isMetaAdsQuestionarioResume,
   isMetaAdsQuestionarioTrigger,
@@ -76,29 +76,38 @@ Deno.test("questionário expira em 24 horas e ignora rascunho expirado", () => {
   );
   assertEquals(metaAdsQuestionarioExpirado(active, now), false);
   assertEquals(metaAdsQuestionarioExpirado(expired, now), true);
-  assertEquals(questionarioAtivo([
-    {
-      id: "expired",
-      status: "rascunho",
-      criado_em: expired.criado_em,
-      rascunho: { questionario: expired },
-    },
-    {
-      id: "active",
-      status: "rascunho",
-      criado_em: active.criado_em,
-      rascunho: { questionario: active },
-    },
-  ], now)?.id, "active");
+  assertEquals(
+    questionarioAtivo([
+      {
+        id: "expired",
+        status: "rascunho",
+        criado_em: expired.criado_em,
+        rascunho: { questionario: expired },
+      },
+      {
+        id: "active",
+        status: "rascunho",
+        criado_em: active.criado_em,
+        rascunho: { questionario: active },
+      },
+    ], now)?.id,
+    "active",
+  );
 });
 
 Deno.test("mudança de assunto não avança e botão retoma questionário", () => {
   assertEquals(
-    respostaPertenceAoQuestionario("Como está o relatório de hoje?", "objetivo"),
+    respostaPertenceAoQuestionario(
+      "Como está o relatório de hoje?",
+      "objetivo",
+    ),
     false,
   );
   assertEquals(
-    respostaPertenceAoQuestionario("Me manda o relatório da campanha", "cidade"),
+    respostaPertenceAoQuestionario(
+      "Me manda o relatório da campanha",
+      "cidade",
+    ),
     false,
   );
   assertEquals(respostaPertenceAoQuestionario("Niterói, RJ", "cidade"), true);
@@ -125,16 +134,22 @@ Deno.test("interesses inexistentes são descartados", () => {
 });
 
 Deno.test("teto mensal bloqueia orçamento que excede o disponível", () => {
-  assertEquals(metaAdsQuestionarioBudget({
-    daily: 20,
-    duration: 15,
-    available: 250,
-  }), { ok: false, maximumSpend: 300, available: 250 });
-  assertEquals(metaAdsQuestionarioBudget({
-    daily: 10,
-    duration: 15,
-    available: 250,
-  }), { ok: true, maximumSpend: 150 });
+  assertEquals(
+    metaAdsQuestionarioBudget({
+      daily: 20,
+      duration: 15,
+      available: 250,
+    }),
+    { ok: false, maximumSpend: 300, available: 250 },
+  );
+  assertEquals(
+    metaAdsQuestionarioBudget({
+      daily: 10,
+      duration: 15,
+      available: 250,
+    }),
+    { ok: true, maximumSpend: 150 },
+  );
 });
 
 Deno.test("listas e botões respeitam limites do WhatsApp", () => {
@@ -219,7 +234,10 @@ Mensagem central: "A AMZ cria e gerencia campanhas."
 Estrutura (6 slides):
 1. Capa
 4. Gestor de tráfego: cria e gerencia anúncios no Instagram.`;
-  assertEquals(metaAdsCommandText(request), "crie um carrossel para o instagram da amz ofertas, com a identidade visual do nosso site");
+  assertEquals(
+    metaAdsCommandText(request),
+    "crie um carrossel para o instagram da amz ofertas, com a identidade visual do nosso site",
+  );
   assertEquals(contentCreationCommandKind(request), "carousel");
   assert(isContentCreationCommand(request));
   assertEquals(isMetaAdsQuestionarioTrigger(request), false);
@@ -239,6 +257,16 @@ Deno.test("comando com conteúdo e impulsionamento pede escolha em dois botões"
   );
 });
 
+Deno.test("botão misto usa o tipo de conteúdo pedido", () => {
+  const buttons = metaAdsQuestionarioAmbiguityButtons(
+    "crie um post e impulsione",
+  );
+  assertEquals(
+    buttons.buttons.map((button) => button.title),
+    ["Criar post", "Criar campanha paga"],
+  );
+});
+
 Deno.test("cancelamento reconhece saídas em linguagem natural", () => {
   for (const text of ["cancelar", "sair", "não é isso", "Não é isso."]) {
     assert(isMetaAdsQuestionarioCancel(text));
@@ -251,8 +279,7 @@ Deno.test("Arte de anúncio volta ao Jarvis com o pedido original", () => {
     criado_em: "2026-10-05T12:00:00.000Z",
   };
   const choice = resolveMetaAdsQuestionarioAmbiguity({
-    text:
-      "Arte de anúncio\n<<INTERACTIVE_ID:meta_ads_q:ambiguidade:arte>>",
+    text: "Arte de anúncio\n<<INTERACTIVE_ID:meta_ads_q:ambiguidade:arte>>",
     pending,
     now: new Date("2026-10-05T12:01:00.000Z"),
   });
@@ -289,34 +316,49 @@ Deno.test("alteração de limite exige dono e botão vinculado à proposta", () 
   };
   const confirmation =
     "Confirmar\n<<INTERACTIVE_ID:meta_ads_limit:confirm:abc123>>";
-  assertEquals(resolveMetaAdsLimitAction({
-    text: confirmation,
-    pending: proposal,
-    isOwner: false,
-    now: new Date("2026-10-05T12:01:00.000Z"),
-  }), null);
-  assertEquals(resolveMetaAdsLimitAction({
-    text: "Confirmar",
-    pending: proposal,
-    isOwner: true,
-    now: new Date("2026-10-05T12:01:00.000Z"),
-  }), null);
-  assertEquals(resolveMetaAdsLimitAction({
-    text:
-      "Confirmar\n<<INTERACTIVE_ID:meta_ads_limit:confirm:outra-proposta>>",
-    pending: proposal,
-    isOwner: true,
-    now: new Date("2026-10-05T12:01:00.000Z"),
-  }), null);
-  assertEquals(resolveMetaAdsLimitAction({
-    text: confirmation,
-    pending: proposal,
-    isOwner: true,
-    now: new Date("2026-10-05T12:01:00.000Z"),
-  }), { action: "confirm", proposal });
-  assertEquals(metaAdsLimitProposalButtons(proposal.token).buttons.map((
-    button,
-  ) => button.title), ["Confirmar", "Cancelar"]);
+  assertEquals(
+    resolveMetaAdsLimitAction({
+      text: confirmation,
+      pending: proposal,
+      isOwner: false,
+      now: new Date("2026-10-05T12:01:00.000Z"),
+    }),
+    null,
+  );
+  assertEquals(
+    resolveMetaAdsLimitAction({
+      text: "Confirmar",
+      pending: proposal,
+      isOwner: true,
+      now: new Date("2026-10-05T12:01:00.000Z"),
+    }),
+    null,
+  );
+  assertEquals(
+    resolveMetaAdsLimitAction({
+      text:
+        "Confirmar\n<<INTERACTIVE_ID:meta_ads_limit:confirm:outra-proposta>>",
+      pending: proposal,
+      isOwner: true,
+      now: new Date("2026-10-05T12:01:00.000Z"),
+    }),
+    null,
+  );
+  assertEquals(
+    resolveMetaAdsLimitAction({
+      text: confirmation,
+      pending: proposal,
+      isOwner: true,
+      now: new Date("2026-10-05T12:01:00.000Z"),
+    }),
+    { action: "confirm", proposal },
+  );
+  assertEquals(
+    metaAdsLimitProposalButtons(proposal.token).buttons.map((
+      button,
+    ) => button.title),
+    ["Confirmar", "Cancelar"],
+  );
 });
 
 Deno.test("excesso na duração oferece recuperação e volta ao orçamento", () => {
@@ -343,26 +385,35 @@ Deno.test("excesso na duração oferece recuperação e volta ao orçamento", ()
 });
 
 Deno.test("orçamento que não cabe em sete dias é recusado imediatamente", () => {
-  assertEquals(avaliarMetaAdsOrcamentoMinimo({
-    daily: 10,
-    available: 20,
-  }), {
-    ok: false,
-    exhausted: false,
-    maximumDaily: 2,
-    available: 20,
-  });
-  assertEquals(avaliarMetaAdsOrcamentoMinimo({
-    daily: 2,
-    available: 20,
-  }).ok, true);
+  assertEquals(
+    avaliarMetaAdsOrcamentoMinimo({
+      daily: 10,
+      available: 20,
+    }),
+    {
+      ok: false,
+      exhausted: false,
+      maximumDaily: 2,
+      available: 20,
+    },
+  );
+  assertEquals(
+    avaliarMetaAdsOrcamentoMinimo({
+      daily: 2,
+      available: 20,
+    }).ok,
+    true,
+  );
 });
 
 Deno.test("limite mensal esgotado oferece somente aumentar ou cancelar", () => {
-  assertEquals(avaliarMetaAdsOrcamentoMinimo({
-    daily: 1,
-    available: 6.99,
-  }).exhausted, true);
+  assertEquals(
+    avaliarMetaAdsOrcamentoMinimo({
+      daily: 1,
+      available: 6.99,
+    }).exhausted,
+    true,
+  );
   assertEquals(
     metaAdsBudgetRecoveryButtons(true).buttons.map((button) => button.title),
     ["Aumentar limite", "Cancelar"],
@@ -371,22 +422,31 @@ Deno.test("limite mensal esgotado oferece somente aumentar ou cancelar", () => {
 
 Deno.test("espera do novo limite só captura mensagem com número", () => {
   const pending = { criado_em: "2026-10-05T12:00:00.000Z" };
-  assertEquals(resolveMetaAdsLimitValueInput({
-    text: "bom dia",
-    pending,
-    isOwner: true,
-    now: new Date("2026-10-05T12:01:00.000Z"),
-  }), "clear");
-  assertEquals(resolveMetaAdsLimitValueInput({
-    text: "300",
-    pending,
-    isOwner: true,
-    now: new Date("2026-10-05T12:01:00.000Z"),
-  }), "consume");
-  assertEquals(resolveMetaAdsLimitValueInput({
-    text: "O novo limite pode ser 300 reais",
-    pending,
-    isOwner: true,
-    now: new Date("2026-10-05T12:01:00.000Z"),
-  }), "consume");
+  assertEquals(
+    resolveMetaAdsLimitValueInput({
+      text: "bom dia",
+      pending,
+      isOwner: true,
+      now: new Date("2026-10-05T12:01:00.000Z"),
+    }),
+    "clear",
+  );
+  assertEquals(
+    resolveMetaAdsLimitValueInput({
+      text: "300",
+      pending,
+      isOwner: true,
+      now: new Date("2026-10-05T12:01:00.000Z"),
+    }),
+    "consume",
+  );
+  assertEquals(
+    resolveMetaAdsLimitValueInput({
+      text: "O novo limite pode ser 300 reais",
+      pending,
+      isOwner: true,
+      now: new Date("2026-10-05T12:01:00.000Z"),
+    }),
+    "consume",
+  );
 });
