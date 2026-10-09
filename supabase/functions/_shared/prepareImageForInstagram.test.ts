@@ -7,7 +7,9 @@ import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
 import {
   normalizeInstagramImageBytes,
   normalizeInstagramImageFromUrl,
+  prepareImageForInstagramSafe,
 } from "./prepareImageForInstagram.ts";
+import { prepareImageForStorySafe } from "./prepareImageForStory.ts";
 
 Deno.test("PNG transparente vira JPEG sRGB com fundo branco e lado mínimo", async () => {
   const source = new Image(100, 100);
@@ -58,4 +60,32 @@ Deno.test("WebP também é reencodado como JPEG público compatível", async () 
   assertEquals(Array.from(prepared.bytes.slice(0, 3)), [0xff, 0xd8, 0xff]);
   assertGreaterOrEqual(prepared.width, 320);
   assert(prepared.bytes.byteLength <= 8 * 1024 * 1024);
+});
+
+Deno.test("falha na conversão de imagem mantém URL original para publicação", async () => {
+  const original = "imagem-sem-url-publica";
+  const prepared = await prepareImageForInstagramSafe(
+    original,
+    "tenant",
+    "https://example.supabase.co",
+    "service-key",
+  );
+
+  assertEquals(prepared.url, original);
+  assertEquals(prepared.converted, false);
+  assert(prepared.reason?.startsWith("error:"));
+});
+
+Deno.test("falha na conversão de Story mantém URL original para publicação", async () => {
+  const original = "story-sem-url-publica";
+  const prepared = await prepareImageForStorySafe(
+    original,
+    "tenant",
+    "https://example.supabase.co",
+    "service-key",
+  );
+
+  assertEquals(prepared.url, original);
+  assertEquals(prepared.converted, false);
+  assert(prepared.reason?.startsWith("error:"));
 });
