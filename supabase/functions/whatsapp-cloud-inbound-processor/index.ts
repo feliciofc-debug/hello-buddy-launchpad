@@ -300,6 +300,10 @@ import {
   readyMediaActionButtons,
 } from "../_shared/ready-media-actions.ts";
 import {
+  replyTextControlsForMessage,
+  replyTextFromInteractive,
+} from "../_shared/reply-text-buttons.ts";
+import {
   classifyPendingBrandReply,
   decideWhatsAppImageBrand,
   detectWhatsAppBrandDirective,
@@ -20080,7 +20084,12 @@ async function processOne(queueId: string) {
       contactNumber: row.from_number,
     };
 
-    const userText = extractText(row.payload);
+    let userText = extractText(row.payload);
+    const replyText = replyTextFromInteractive(userText);
+    if (replyText !== null) {
+      userText = replyText;
+      console.log("[processor][reply_text]", replyText);
+    }
     let commercialContactForOwner: any = null;
     let inboundContent = userText || `(${row.message_type ?? "mídia"} sem legenda)`;
     const directNearbySearch = row.message_type === "text" ? detectNearbySearch(userText) : null;
@@ -22139,7 +22148,17 @@ async function processOne(queueId: string) {
 
       let sendError: string | null = null;
       try {
-        const sentId = await sendWhatsApp(userId, row.from_number, reply);
+        const replyControls = videoFlowReply
+          ? replyTextControlsForMessage(reply)
+          : null;
+        const sentId = await sendWhatsApp(
+          userId,
+          row.from_number,
+          reply,
+          undefined,
+          replyControls?.interactiveList,
+          replyControls?.interactiveButtons,
+        );
         if (sentId && outMsg?.id) {
           await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
         }
@@ -22180,6 +22199,7 @@ async function processOne(queueId: string) {
       });
       if (fluxoReply) {
         console.log("[processor][video_legenda_flow] resposta determinística do fluxo de legenda");
+        const replyControls = replyTextControlsForMessage(fluxoReply);
         const { data: outMsg } = await sb
           .from("whatsapp_cloud_messages")
           .insert({
@@ -22198,8 +22218,8 @@ async function processOne(queueId: string) {
           row.from_number,
           fluxoReply,
           undefined,
-          undefined,
-          undefined,
+          replyControls?.interactiveList,
+          replyControls?.interactiveButtons,
         );
         if (sentFlowId && outMsg?.id) {
           await sb.from("whatsapp_cloud_messages").update({ wamid: sentFlowId }).eq("id", outMsg.id);
@@ -23838,6 +23858,11 @@ Regras:
     if (dedupedReply !== reply) {
       console.warn(`[processor][reply_deduplicated] before=${reply.length} after=${dedupedReply.length}`);
       reply = dedupedReply;
+    }
+    if (!interactiveList && !interactiveButtons) {
+      const replyControls = replyTextControlsForMessage(reply);
+      interactiveList = replyControls?.interactiveList;
+      interactiveButtons = replyControls?.interactiveButtons;
     }
 
     // Para leads, a trava de transporte limita cada parte a 700 caracteres e

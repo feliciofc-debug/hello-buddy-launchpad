@@ -12,6 +12,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { autorizarWorker, renderCors, respJson } from "../_shared/render-auth.ts";
 import { linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
 import { readyMediaActionButtons } from "../_shared/ready-media-actions.ts";
+import { replyTextControlsForMessage } from "../_shared/reply-text-buttons.ts";
 import { syncProdutoVideoFromMidia } from "../_shared/sync-produto-video.ts";
 import { rememberDeliveredMediaInteraction } from "../_shared/whatsapp-last-media-interaction.ts";
 
@@ -27,14 +28,18 @@ async function avisarCliente(
 ): Promise<boolean> {
   if (!job.telefone) return false;
   try {
+    const replyControls = replyTextControlsForMessage(message);
+    const buttons = interactiveButtons ?? replyControls?.interactiveButtons;
     const { error } = await supabase.functions.invoke("whatsapp-send-message", {
       body: {
         user_id: job.user_id,
         to: job.telefone,
         message,
         ...(videoUrl ? { video_url: videoUrl } : {}),
-        ...(interactiveButtons
-          ? { interactive_buttons: interactiveButtons }
+        ...(buttons
+          ? { interactive_buttons: buttons }
+          : replyControls?.interactiveList
+          ? { interactive_list: replyControls.interactiveList }
           : {}),
       },
     });
