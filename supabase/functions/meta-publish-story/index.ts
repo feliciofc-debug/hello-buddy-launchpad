@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { InstagramContainerTimeoutError, waitForInstagramContainer } from '../_shared/instagram-container.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -24,7 +25,7 @@ serve(async (req) => {
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-    const { video_url, user_id, canais } = await req.json()
+    const { video_url, user_id, canais, creation_id, queue_row_id } = await req.json()
 
     if (!video_url) throw new Error('video_url é obrigatório')
     if (!user_id) throw new Error('user_id é obrigatório')
@@ -46,9 +47,26 @@ serve(async (req) => {
 
     if (canais.includes('instagram')) {
       tasks.push(
-        publishInstagramStory(credentials.token, credentials.igId!, video_url)
+        publishInstagramStory(credentials.token, credentials.igId!, video_url, creation_id, async (newCreationId) => {
+          if (!queue_row_id) return
+          const { error } = await supabase.from('social_posts_queue').update({
+            instagram_creation_id: newCreationId,
+            instagram_container_status: 'IN_PROGRESS',
+            updated_at: new Date().toISOString(),
+          }).eq('id', queue_row_id).eq('user_id', user_id).eq('platform', 'instagram')
+          if (error) throw new Error(`Não consegui guardar creation_id do Instagram: ${error.message}`)
+        })
           .then((result) => ({ channel: 'instagram' as Channel, result: { ok: true, story_id: result.story_id } }))
-          .catch((err) => ({ channel: 'instagram' as Channel, result: { ok: false, error: err?.message || String(err) } }))
+          .catch((err) => ({
+            channel: 'instagram' as Channel,
+            result: {
+              ok: false,
+              error: err?.message || String(err),
+              retryable: err instanceof InstagramContainerTimeoutError,
+              creation_id: err instanceof InstagramContainerTimeoutError ? err.creationId : undefined,
+              container_status: err instanceof InstagramContainerTimeoutError ? err.lastStatus : undefined,
+            },
+          }))
       )
     }
 
@@ -154,13 +172,17 @@ async function publishFacebookStory(
 async function publishInstagramStory(
   pageToken: string,
   igAccountId: string,
-  videoUrl: string
+  videoUrl: string,
+  retryCreationId?: string,
+  onContainerCreated?: (creationId: string) => Promise<void>,
 ): Promise<{ story_id: string }> {
   if (!igAccountId) throw new Error('Instagram não conectado para este cliente.')
   console.log('📖 Publicando Instagram Story...', { igAccountId })
 
-  // Container
-  const containerResponse = await fetch(
+  let creationId = String(retryCreationId || '').trim()
+  if (!creationId) {
+    // Container
+    const containerResponse = await fetch(
     `https://graph.facebook.com/v25.0/${igAccountId}/media`,
     {
       method: 'POST',
@@ -171,32 +193,16 @@ async function publishInstagramStory(
         access_token: pageToken
       })
     }
-  )
-  const containerResult = await containerResponse.json()
-  if (containerResult.error) throw new Error(`IG Story container: ${containerResult.error.message}`)
-
-  const creationId = containerResult.id
-
-  // Polling status
-  let containerReady = false
-  let attempts = 0
-  while (!containerReady && attempts < 30) {
-    await new Promise((resolve) => setTimeout(resolve, 3000))
-
-    const statusResponse = await fetch(
-      `https://graph.facebook.com/v25.0/${creationId}?fields=status_code&access_token=${pageToken}`
     )
-    const statusResult = await statusResponse.json()
-
-    if (statusResult.status_code === 'FINISHED') {
-      containerReady = true
-    } else if (statusResult.status_code === 'ERROR') {
-      throw new Error('IG Story: Erro ao processar vídeo. Verifique formato (9:16) e duração (até 60s).')
-    }
-    attempts++
+    const containerResult = await containerResponse.json()
+    if (containerResult.error) throw new Error(`IG Story container: ${containerResult.error.message}`)
+    creationId = containerResult.id
+    await onContainerCreated?.(creationId)
+  } else {
+    console.log('♻️ Reutilizando container Instagram Story:', creationId)
   }
 
-  if (!containerReady) throw new Error('IG Story: Timeout ao processar vídeo')
+  await waitForInstagramContainer(creationId, pageToken, 'story-video')
 
   // Publish
   const publishResponse = await fetch(

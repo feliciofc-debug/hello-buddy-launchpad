@@ -63,6 +63,12 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+    if (content_type !== "video") {
+      return new Response(
+        JSON.stringify({ success: false, error: "O TikTok aceita apenas vídeo neste fluxo de publicação." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Título: limite oficial de 2200 caracteres
     const safeTitle = title.substring(0, 2200);
@@ -113,6 +119,43 @@ serve(async (req) => {
         JSON.stringify({ success: false, error: "Token expirado. Por favor, reconecte sua conta TikTok." }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // Direct Post só aceita valores anunciados por creator_info para esta conta.
+    // Consulta em tempo real para não usar opção antiga ou de outro perfil.
+    if (post_mode === "direct") {
+      const creatorResponse = await fetch("https://open.tiktokapis.com/v2/post/publish/creator_info/query/", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json; charset=UTF-8",
+        },
+      });
+      const creatorData = await creatorResponse.json();
+      const allowedPrivacy = Array.isArray(creatorData?.data?.privacy_level_options)
+        ? creatorData.data.privacy_level_options
+        : [];
+      console.log("🔐 TikTok privacy preflight:", {
+        http_status: creatorResponse.status,
+        requested: privacy_level,
+        allowed: allowedPrivacy,
+      });
+      if (!creatorResponse.ok || creatorData?.error?.code && creatorData.error.code !== "ok") {
+        return new Response(
+          JSON.stringify({ success: false, error: creatorData?.error?.message || "Não foi possível consultar a privacidade disponível no TikTok." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      if (!privacy_level || !allowedPrivacy.includes(privacy_level)) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "A privacidade escolhida não está disponível para esta conta TikTok.",
+            privacy_level_options: allowedPrivacy,
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
     // === PASSO 1: Baixar o vídeo do Supabase Storage ===

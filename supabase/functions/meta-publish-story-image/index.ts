@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { prepareImageForStorySafe } from '../_shared/prepareImageForStory.ts'
+import { InstagramContainerTimeoutError, waitForInstagramContainer } from '../_shared/instagram-container.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -15,7 +16,7 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
 
   try {
-    const { image_url, user_id, link_sticker } = await req.json()
+    const { image_url, user_id, link_sticker, creation_id, queue_row_id } = await req.json()
     if (!image_url) throw new Error('image_url é obrigatório')
     if (!user_id) throw new Error('user_id é obrigatório')
 
@@ -61,58 +62,48 @@ serve(async (req) => {
     const elegivelLink = followers >= 10000
     const warnings: string[] = []
 
-    // 3) Cria container
-    const containerBody: Record<string, any> = {
-      media_type: 'STORIES',
-      image_url: storyImageUrl,
-      access_token: token,
-    }
-    if (link_sticker && elegivelLink) {
-      containerBody.link_sticker = JSON.stringify({ link: link_sticker })
-    } else if (link_sticker && !elegivelLink) {
-      warnings.push('link_sticker omitido — conta não elegível (precisa 10k+ seguidores ou verificada)')
-    }
+    // 3) Cria container, ou reutiliza o que ficou pronto após timeout anterior.
+    let creationId = String(creation_id || '').trim()
+    if (!creationId) {
+      const containerBody: Record<string, any> = {
+        media_type: 'STORIES',
+        image_url: storyImageUrl,
+        access_token: token,
+      }
+      if (link_sticker && elegivelLink) {
+        containerBody.link_sticker = JSON.stringify({ link: link_sticker })
+      } else if (link_sticker && !elegivelLink) {
+        warnings.push('link_sticker omitido — conta não elegível (precisa 10k+ seguidores ou verificada)')
+      }
 
-    const createRes = await fetch(`https://graph.facebook.com/v25.0/${igId}/media`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(containerBody),
-    })
-    const createData = await createRes.json()
-    if (createData.error) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: `IG Story container: ${createData.error.message}`,
-        warnings,
-      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-    }
-
-    const creationId = createData.id
-
-    // 4) Polling status — max 60s (10x6s)
-    let ready = false
-    let lastStatus = ''
-    for (let i = 0; i < 10; i++) {
-      await new Promise((r) => setTimeout(r, 6000))
-      const sRes = await fetch(`https://graph.facebook.com/v25.0/${creationId}?fields=status_code&access_token=${token}`)
-      const sData = await sRes.json()
-      lastStatus = sData.status_code || ''
-      if (lastStatus === 'FINISHED') { ready = true; break }
-      if (lastStatus === 'ERROR') {
+      const createRes = await fetch(`https://graph.facebook.com/v25.0/${igId}/media`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(containerBody),
+      })
+      const createData = await createRes.json()
+      if (createData.error) {
         return new Response(JSON.stringify({
           success: false,
-          error: 'IG Story: erro processando imagem (verifique formato 9:16 e URL pública).',
+          error: `IG Story container: ${createData.error.message}`,
           warnings,
         }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
       }
+      creationId = createData.id
+      if (queue_row_id) {
+        const { error: saveError } = await supabase.from('social_posts_queue').update({
+          instagram_creation_id: creationId,
+          instagram_container_status: 'IN_PROGRESS',
+          updated_at: new Date().toISOString(),
+        }).eq('id', queue_row_id).eq('user_id', user_id).eq('platform', 'instagram')
+        if (saveError) throw new Error(`Não consegui guardar creation_id do Instagram: ${saveError.message}`)
+      }
+    } else {
+      console.log('[story-image] reutilizando creation_id:', creationId)
     }
-    if (!ready) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: `IG Story: timeout no processamento (60s). Último status: ${lastStatus || 'desconhecido'}.`,
-        warnings,
-      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-    }
+
+    // 4) Polling progressivo por até ~5 minutos.
+    await waitForInstagramContainer(creationId, token, 'story-image')
 
     // 5) Publica
     const pubRes = await fetch(`https://graph.facebook.com/v25.0/${igId}/media_publish`, {
@@ -138,9 +129,13 @@ serve(async (req) => {
       warnings,
     }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   } catch (err: any) {
+    const timeout = err instanceof InstagramContainerTimeoutError
     return new Response(JSON.stringify({
       success: false,
-      error: err?.message || 'Erro desconhecido'
-    }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      error: err?.message || 'Erro desconhecido',
+      retryable: timeout,
+      creation_id: timeout ? err.creationId : undefined,
+      container_status: timeout ? err.lastStatus : undefined,
+    }), { status: timeout ? 202 : 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
 })
