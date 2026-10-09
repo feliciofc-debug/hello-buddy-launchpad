@@ -78,11 +78,22 @@ export function fipePhotoSuggestionMessage(input: {
   return `Parece um ${input.brand} ${input.model}${year}. Confirma o ano/modelo e a versão?`;
 }
 
+export function fipePriceRetryButtons() {
+  return {
+    body: "A consulta do preço demorou mais que o esperado.",
+    buttons: [{
+      id: "fipe_price:retry",
+      title: "🔄 Tentar de novo",
+    }],
+  };
+}
+
 export function createFipeClient(options: {
   fetcher?: FetchLike;
   now?: () => number;
   token?: string | null;
   baseUrl?: string;
+  timeoutMs?: number;
 } = {}) {
   const fetcher = options.fetcher ?? fetch;
   const now = options.now ?? Date.now;
@@ -90,11 +101,17 @@ export function createFipeClient(options: {
   const listCache = new Map<string, CacheEntry<unknown>>();
   const priceCache = new Map<string, FipePrice>();
 
-  async function request<T>(path: string): Promise<T> {
+  async function request<T>(
+    path: string,
+    stage: "marcas" | "modelos" | "anos" | "preço",
+  ): Promise<T> {
     let lastError: Error | null = null;
     for (let attempt = 0; attempt < 2; attempt++) {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 10_000);
+      const timer = setTimeout(
+        () => controller.abort(),
+        options.timeoutMs ?? 25_000,
+      );
       try {
         const token = options.token ?? Deno.env.get("FIPE_API_TOKEN");
         const response = await fetcher(`${baseUrl}${path}`, {
@@ -110,6 +127,9 @@ export function createFipeClient(options: {
         return await response.json() as T;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
+        console.warn(
+          `[fipe][${stage}] tentativa ${attempt + 1}/2: ${lastError.message}`,
+        );
         if (attempt === 1 || /fipe_http_4\d\d/.test(lastError.message)) {
           throw lastError;
         }
@@ -120,20 +140,32 @@ export function createFipeClient(options: {
     throw lastError ?? new Error("fipe_request_failed");
   }
 
-  async function cachedList<T>(key: string, path: string): Promise<T> {
+  async function cachedList<T>(
+    key: string,
+    path: string,
+    stage: "marcas" | "modelos" | "anos" | "preço",
+  ): Promise<T> {
     const cached = listCache.get(key);
     if (cached && cached.expiresAt > now()) return cached.value as T;
-    const value = await request<T>(path);
+    const value = await request<T>(path, stage);
     listCache.set(key, { value, expiresAt: now() + LIST_TTL_MS });
     return value;
   }
 
   async function references(): Promise<FipeReference[]> {
-    return await cachedList("references", "/references");
+    return await cachedList("references", "/references", "preço");
+  }
+
+  async function listarMarcas(): Promise<FipeListItem[]> {
+    return await cachedList<FipeListItem[]>(
+      "brands",
+      "/cars/brands",
+      "marcas",
+    );
   }
 
   async function buscarMarca(nome: string): Promise<FipeListItem | null> {
-    const brands = await cachedList<FipeListItem[]>("brands", "/cars/brands");
+    const brands = await listarMarcas();
     return rankFipeItems(brands, nome)[0] ?? null;
   }
 
@@ -144,6 +176,7 @@ export function createFipeClient(options: {
     const models = await cachedList<FipeListItem[]>(
       `models:${brandId}`,
       `/cars/brands/${encodeURIComponent(brandId)}/models`,
+      "modelos",
     );
     return filtroTexto.trim() ? rankFipeItems(models, filtroTexto) : models;
   }
@@ -158,6 +191,7 @@ export function createFipeClient(options: {
       `/cars/brands/${encodeURIComponent(brandId)}/models/${
         encodeURIComponent(modelId)
       }/years`,
+      "anos",
     );
     return filtroTexto.trim() ? rankFipeItems(years, filtroTexto) : years;
   }
@@ -183,13 +217,14 @@ export function createFipeClient(options: {
       : `/cars/brands/${encodeURIComponent(input.brandId || "")}/models/${
         encodeURIComponent(input.modelId || "")
       }/years/${encodeURIComponent(input.yearId)}`;
-    const value = await request<FipePrice>(path);
+    const value = await request<FipePrice>(path, "preço");
     priceCache.set(cacheKey, value);
     return value;
   }
 
   return {
     buscarMarca,
+    listarMarcas,
     listarModelos,
     listarAnos,
     consultarPreco,
@@ -200,6 +235,7 @@ export function createFipeClient(options: {
 const defaultClient = createFipeClient();
 
 export const buscarMarca = defaultClient.buscarMarca;
+export const listarMarcas = defaultClient.listarMarcas;
 export const listarModelos = defaultClient.listarModelos;
 export const listarAnos = defaultClient.listarAnos;
 export const consultarPreco = defaultClient.consultarPreco;

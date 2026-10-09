@@ -120,7 +120,7 @@ export function explicitVerticalIntent(
     return { route: "geral", reason: "botao_geral" };
   }
   if (
-    /\b(fipe|repasse)\b/.test(value) ||
+    /\b(fipe|fipi|fip|repasse)\b/.test(value) ||
     /\b(carrossel|carrosel|carrocel|carossel|carosel|carousel|album|galeria)\b[\s\S]{0,50}\b(carro|veiculo|automovel|moto)\b/
       .test(
         value,

@@ -7,10 +7,12 @@ import {
   createFipeClient,
   fipeListRows,
   fipePhotoSuggestionMessage,
+  fipePriceRetryButtons,
 } from "./fipe.ts";
 import { decideFipeForAd, type LastFipeResult } from "./fipe-ad.ts";
 import {
   filterFipeModelCandidates,
+  filterFipeYearCandidates,
   normalizeFipeEngine,
   normalizeFipeYear,
   parseFipeRequestText,
@@ -112,6 +114,35 @@ Deno.test("erro de rede tenta uma vez de novo e não devolve preço", async () =
   assertEquals(calls, 2);
 });
 
+Deno.test("preço lento usa 25s em produção, tenta duas vezes e oferece retry", async () => {
+  let calls = 0;
+  const client = createFipeClient({
+    token: "",
+    timeoutMs: 1,
+    fetcher: ((_url: string | URL | Request, init?: RequestInit) => {
+      calls++;
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => reject(new DOMException("aborted", "AbortError")),
+        );
+      });
+    }) as typeof fetch,
+  });
+  await assertRejects(() =>
+    client.consultarPreco({
+      brandId: "7",
+      modelId: "123",
+      yearId: "2023-1",
+    })
+  );
+  assertEquals(calls, 2);
+  assertEquals(fipePriceRetryButtons().buttons, [{
+    id: "fipe_price:retry",
+    title: "🔄 Tentar de novo",
+  }]);
+});
+
 Deno.test("lista interativa FIPE tem no máximo dez opções", () => {
   const rows = fipeListRows(
     Array.from({ length: 14 }, (_, index) => ({
@@ -122,6 +153,23 @@ Deno.test("lista interativa FIPE tem no máximo dez opções", () => {
   );
   assertEquals(rows.length, 10);
   assert(rows.every((row) => row.title.length <= 24));
+});
+
+Deno.test("ano informado com uma opção seleciona direto ano e combustível", () => {
+  const years = filterFipeYearCandidates([
+    { code: "2023-1", name: "2023 Gasolina" },
+    { code: "2022-1", name: "2022 Gasolina" },
+  ], "2023");
+  assertEquals(years, [{ code: "2023-1", name: "2023 Gasolina" }]);
+});
+
+Deno.test("ano informado com combustíveis diferentes mantém só aquele ano", () => {
+  const years = filterFipeYearCandidates([
+    { code: "2023-1", name: "2023 Gasolina" },
+    { code: "2023-3", name: "2023 Flex" },
+    { code: "2022-1", name: "2022 Gasolina" },
+  ], "2023");
+  assertEquals(years.map((item) => item.code), ["2023-1", "2023-3"]);
 });
 
 function lastFipe(overrides: Partial<LastFipeResult> = {}): LastFipeResult {
