@@ -289,6 +289,7 @@ Deno.test("lista pós-publicação contém só redes restantes e nunca agenda", 
     connected: ["linkedin"],
   });
   assertEquals(remaining?.body, "Quer publicar também em:");
+  assertEquals(remaining?.send_text_first, true);
   assertEquals(remaining?.rows.map((row) => row.title), ["💼 LinkedIn"]);
   assertEquals(
     anuncioRemainingDestinationsList({

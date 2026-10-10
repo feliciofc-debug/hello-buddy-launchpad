@@ -8001,6 +8001,7 @@ type WhatsAppInteractiveList = {
   header?: string;
   footer?: string;
   section_title?: string;
+  send_text_first?: boolean;
   rows: Array<{ id: string; title: string; description?: string }>;
 };
 
@@ -8008,6 +8009,7 @@ type WhatsAppInteractiveButtons = {
   body: string;
   header?: string;
   footer?: string;
+  send_text_first?: boolean;
   buttons: Array<{ id: string; title: string }>;
 };
 
@@ -20893,6 +20895,12 @@ async function sendWhatsApp(
     if (videoUrl && index === 0) body.video_url = videoUrl;
     if (interactiveList && index === chunks.length - 1) body.interactive_list = interactiveList;
     if (interactiveButtons && index === chunks.length - 1) body.interactive_buttons = interactiveButtons;
+    if (
+      index === chunks.length - 1 &&
+      (interactiveList?.send_text_first || interactiveButtons?.send_text_first)
+    ) {
+      body.send_text_first = true;
+    }
     const res = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-send-message`, {
       method: "POST",
       headers: {

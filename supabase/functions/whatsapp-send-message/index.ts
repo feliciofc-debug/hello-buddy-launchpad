@@ -44,6 +44,8 @@ serve(async (req) => {
       // { body: string, header?: string, footer?: string,
       //   buttons: [{ id, title }] }
       interactive_buttons,
+      // Se true, preserva `message` em um envio anterior ao interativo.
+      send_text_first,
     } = body
 
 
@@ -82,6 +84,8 @@ serve(async (req) => {
     const API_URL = `https://graph.facebook.com/v25.0/${config.phone_number_id}/messages`
 
     let messagePayload: any
+    const separateInteractiveText = send_text_first === true ||
+      [...safeMessage].length > 1024
     const buttonImageUrl = image_url ? toMetaSafeImageUrl(image_url) : undefined
     const mediaButtonPayloads = mediaThenButtonPayloads({
       to,
@@ -110,7 +114,14 @@ serve(async (req) => {
           ...(interactive_buttons.header
             ? { header: { type: 'text', text: singleLineInteractiveText(interactive_buttons.header, 60) } }
             : {}),
-          body: { text: truncateCodePoints(interactive_buttons.body || 'Escolha uma opção', 1024) },
+          body: {
+            text: truncateCodePoints(
+              separateInteractiveText
+                ? (interactive_buttons.body || 'Escolha uma opção')
+                : (safeMessage || interactive_buttons.body || 'Escolha uma opção'),
+              1024,
+            ),
+          },
           ...(interactive_buttons.footer
             ? { footer: { text: singleLineInteractiveText(interactive_buttons.footer, 60) } }
             : {}),
@@ -230,6 +241,7 @@ serve(async (req) => {
         to,
         message: safeMessage,
         interactivePayload: messagePayload,
+        sendTextFirst: send_text_first === true,
       })
       : [messagePayload]
     for (const payload of mediaButtonPayloads ?? textInteractivePayloads) {

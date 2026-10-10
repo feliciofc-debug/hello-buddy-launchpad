@@ -279,6 +279,7 @@ export function anuncioRemainingDestinationsList(input: {
     button: "Escolher rede",
     section_title: "Redes restantes",
     rows,
+    send_text_first: true as const,
   };
 }
 
