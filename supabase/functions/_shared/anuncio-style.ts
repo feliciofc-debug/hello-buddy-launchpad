@@ -23,15 +23,108 @@ export function anuncioStyleFromText(text: string): AnuncioStyle | null {
   return null;
 }
 
-export function anuncioStyleButtons() {
+function styleLabel(style: AnuncioStyle): string {
+  return style === "catalogo"
+    ? "Catálogo"
+    : style[0].toUpperCase() + style.slice(1);
+}
+
+export function anuncioStyleButtons(
+  available: AnuncioStyle[] = ANUNCIO_STYLES,
+  recommended?: AnuncioStyle | null,
+) {
   return {
-    body: "Qual você prefere?",
-    buttons: [
-      { id: "anuncio_style:impacto", title: "Impacto" },
-      { id: "anuncio_style:catalogo", title: "Catálogo" },
-      { id: "anuncio_style:destaque", title: "Destaque" },
-    ],
+    body: recommended && available.includes(recommended)
+      ? `⭐ Recomendo o ${
+        styleLabel(recommended)
+      } para este produto.\n\nQual você prefere?`
+      : "Qual você prefere?",
+    buttons: available.map((style) => ({
+      id: `anuncio_style:${style}`,
+      title: styleLabel(style),
+    })),
   };
+}
+
+function normalizeStyleHint(value: unknown): string {
+  return String(value || "").normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+export function recommendAnuncioStyle(input: {
+  visualDescription?: unknown;
+  title?: unknown;
+  badge?: unknown;
+  preferred?: AnuncioStyle | null;
+}): AnuncioStyle {
+  if (input.preferred && ANUNCIO_STYLES.includes(input.preferred)) {
+    return input.preferred;
+  }
+  const context = normalizeStyleHint(
+    [input.visualDescription, input.title, input.badge].filter(Boolean).join(
+      " ",
+    ),
+  );
+  if (
+    /\b(preco|promocao|promocional|oferta|desconto|liquidacao|leve\s+\d|pague\s+\d)\b/
+      .test(context)
+  ) {
+    return "destaque";
+  }
+  if (
+    /\b(fralda|bebe|infantil|higiene|alimento|comida|bebida|cosmetic|perfume|sabonete|shampoo|creme|claro|branco|pastel)\b/
+      .test(context)
+  ) {
+    return "catalogo";
+  }
+  if (
+    /\b(eletronic|ferrament|interruptor|tomada|maquina|premium|luxo|preto|escuro|metal)\b/
+      .test(context)
+  ) {
+    return "impacto";
+  }
+  return "catalogo";
+}
+
+export function dominantProductAccentColor(
+  visualDescription: unknown,
+  fallback?: string,
+): string | undefined {
+  const description = normalizeStyleHint(visualDescription);
+  const colors: Array<[RegExp, string]> = [
+    [/\b(vermelh|vinho|bordo)\w*\b/, "#B42318"],
+    [/\b(laranja)\w*\b/, "#C2410C"],
+    [/\b(amarel|dourad)\w*\b/, "#A16207"],
+    [/\b(verde)\w*\b/, "#15803D"],
+    [/\b(azul)\w*\b/, "#1D4ED8"],
+    [/\b(roxo|violeta)\w*\b/, "#7E22CE"],
+    [/\b(rosa|pink)\w*\b/, "#BE185D"],
+    [/\b(marrom|bege)\w*\b/, "#92400E"],
+    [/\b(preto|escuro)\w*\b/, "#27272A"],
+    [/\b(branco|claro|cinza)\w*\b/, "#4B5563"],
+  ];
+  return colors.find(([pattern]) => pattern.test(description))?.[1] ||
+    fallback;
+}
+
+export async function renderAnuncioStyleOptions<T>(
+  styles: AnuncioStyle[],
+  render: (style: AnuncioStyle) => Promise<T>,
+): Promise<{
+  successes: Array<{ style: AnuncioStyle; render: T }>;
+  failedStyles: AnuncioStyle[];
+}> {
+  const settled = await Promise.allSettled(
+    styles.map(async (style) => ({ style, render: await render(style) })),
+  );
+  const successes: Array<{ style: AnuncioStyle; render: T }> = [];
+  const failedStyles: AnuncioStyle[] = [];
+  settled.forEach((result, index) => {
+    if (result.status === "fulfilled") successes.push(result.value);
+    else failedStyles.push(styles[index]);
+  });
+  return { successes, failedStyles };
 }
 
 export function otherAnuncioStyles(style: AnuncioStyle): AnuncioStyle[] {

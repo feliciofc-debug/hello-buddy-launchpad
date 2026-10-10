@@ -466,9 +466,12 @@ import {
   anuncioPhotoRedoButtons,
   anuncioStyleButtons,
   anuncioStyleFromText,
+  dominantProductAccentColor,
   getTenantAnuncioPhotoPreference,
   getTenantAnuncioStyle,
   otherAnuncioStyles,
+  recommendAnuncioStyle,
+  renderAnuncioStyleOptions,
   resolveAnuncioPhotoPreference,
   saveTenantAnuncioPhotoPreference,
   savedClientAnuncioStyle,
@@ -15801,9 +15804,9 @@ async function toolCriarAnuncio(
     const savedStyle = anuncioIdentity.mode === "client"
       ? savedClientAnuncioStyle(anuncioIdentity.identity)
       : await getTenantAnuncioStyle(sb, ctx.userId);
-    const singleStyle = args?._mostrar_tres_estilos
-      ? null
-      : requestedStyle ?? savedStyle;
+    // Só um estilo pedido explicitamente pula a comparação. Preferências
+    // salvas servem como recomendação, nunca como escolha automática.
+    const singleStyle = requestedStyle;
 
     // 1) FOTO — turno atual; senão, última foto recente da biblioteca (30 min)
     let fotoUrl: string | null = String(args?._foto_url_original || "").trim() ||
@@ -15936,7 +15939,10 @@ async function toolCriarAnuncio(
       console.log("[criar_anuncio] melhoria desativada; usando foto original");
     }
     console.log(`[criar_anuncio] foto selecionada=${fotoSource}`);
-    const fotoBox = await detectarCaixaProdutoVisao(fotoFinal);
+    const [fotoBox, fotoVisualDescription] = await Promise.all([
+      detectarCaixaProdutoVisao(fotoFinal),
+      descreverProdutoCacheado(fotoFinal),
+    ]);
     console.log(
       `[criar_anuncio] foto_box=${
         fotoBox
@@ -16032,7 +16038,10 @@ async function toolCriarAnuncio(
         : false,
       logo_source: anuncioIdentity.mode,
       primary_color: anuncioIdentity.colors[1] || anuncioIdentity.colors[0] || undefined,
-      accent_color: anuncioIdentity.colors[0] || undefined,
+      accent_color: dominantProductAccentColor(
+        fotoVisualDescription,
+        anuncioIdentity.colors[0] || undefined,
+      ),
       foto_url: fotoFinal,
       foto_url_original: fotoUrl,
       foto_source: fotoSource,
@@ -16042,22 +16051,41 @@ async function toolCriarAnuncio(
       formato,
       incluir_logo: true,
     };
-    const styles = singleStyle ? [singleStyle] : [...ANUNCIO_STYLES];
-    const renders = await Promise.all(styles.map(async (style) => {
-      const background = style === "catalogo" ? "light" : "dark";
-      const logoPath = anuncioIdentity.mode === "client"
-        ? clientLogoPath(anuncioIdentity.identity, background, true)
-        : null;
-      const render = await callEdge("render-anuncio-produto", {
-        ...renderPayload,
-        estilo: style,
-        logo_path: logoPath,
-      }, 120000);
-      if (!render?.success || !render?.image_url) {
-        throw new Error(String(render?.error || `falha no estilo ${style}`));
-      }
-      return { style, render };
-    }));
+    const requestedStyles = singleStyle ? [singleStyle] : [...ANUNCIO_STYLES];
+    const recommendation = recommendAnuncioStyle({
+      visualDescription: fotoVisualDescription,
+      title: titulo,
+      badge: args?.badge,
+      preferred: savedStyle,
+    });
+    const { successes: renders, failedStyles } =
+      await renderAnuncioStyleOptions(requestedStyles, async (style) => {
+        const background = style === "catalogo" ? "light" : "dark";
+        const logoPath = anuncioIdentity.mode === "client"
+          ? clientLogoPath(anuncioIdentity.identity, background, true)
+          : null;
+        const render = await callEdge("render-anuncio-produto", {
+          ...renderPayload,
+          estilo: style,
+          logo_path: logoPath,
+        }, 120000);
+        if (!render?.success || !render?.image_url) {
+          throw new Error(String(render?.error || `falha no estilo ${style}`));
+        }
+        return render;
+      });
+    if (failedStyles.length) {
+      console.warn(
+        `[criar_anuncio] estilos_falharam=${failedStyles.join(",")}`,
+      );
+    }
+    if (!renders.length) {
+      throw new Error("não consegui renderizar nenhum estilo do anúncio");
+    }
+    const renderedStyles = renders.map(({ style }) => style);
+    const shownRecommendation = renderedStyles.includes(recommendation)
+      ? recommendation
+      : renderedStyles[0];
 
     // 6) Salva todos os estilos na biblioteca.
     const savedMedia = await Promise.all(renders.map(async ({ style, render }) => {
@@ -16105,7 +16133,7 @@ async function toolCriarAnuncio(
       })) satisfies LastAnuncioImage[];
       const lastAnuncio: LastAnuncio = {
         images,
-        selected_style: renders.length === 1 ? styles[0] : undefined,
+        selected_style: renders.length === 1 ? renders[0].style : undefined,
         vertical: anuncioVertical,
         niche: contentNiche,
         data: anuncioData,
@@ -16125,7 +16153,7 @@ async function toolCriarAnuncio(
         client_name: args?.cliente || null,
         vertical: anuncioVertical,
         niche: contentNiche,
-        shown_styles: styles,
+        shown_styles: renderedStyles,
         images,
         data: anuncioData,
         photo_preference_used: photoPreference,
@@ -16179,13 +16207,17 @@ async function toolCriarAnuncio(
       );
     }
     if (renders.length > 1) {
+      const styleChoice = anuncioStyleButtons(
+        renderedStyles,
+        shownRecommendation,
+      );
       await sendWhatsApp(
         ctx.userId,
         ctx.fromNumber,
-        "Preparei os três estilos com a mesma foto. Qual você prefere?",
+        styleChoice.body,
         undefined,
         undefined,
-        anuncioStyleButtons(),
+        styleChoice,
         { alreadyLogged: false },
       );
     }
@@ -16193,21 +16225,19 @@ async function toolCriarAnuncio(
       ok: true,
       preview_sent: true,
       image_urls: renders.map(({ render }) => render.image_url),
-      estilos: styles,
+      estilos: renderedStyles,
+      estilos_com_falha: failedStyles,
+      estilo_recomendado: shownRecommendation,
       formato,
       logo_aplicada: renders.every(({ render }) => !!render.logo_aplicada),
       midia_id: renders.length === 1 ? savedMedia[0] : null,
       midia_ids: savedMedia.filter(Boolean),
       itens_usados: itens.length,
       mensagem: renders.length > 1
-        ? args?._refazer_foto
-          ? "Quer usar sempre assim?"
-          : "Se quiser, também posso refazer usando a outra opção de foto."
+        ? "Mostrei as opções disponíveis e aguardo a escolha do estilo."
         : anuncioSuccessMessage(),
       interactive_buttons: renders.length > 1
-        ? args?._refazer_foto
-          ? anuncioPhotoPreferenceConfirmationButtons(photoPreference)
-          : anuncioPhotoRedoButtons(photoPreference)
+        ? undefined
         : anuncioPostActionButtons(),
     });
   } catch (e) {
