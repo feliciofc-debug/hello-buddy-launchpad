@@ -1,0 +1,27 @@
+---
+description: Protege o fluxo FIPE contra alterações e deploys sem autorização expressa
+alwaysApply: true
+---
+
+# Área protegida: FIPE
+
+É PROIBIDO alterar qualquer item abaixo sem autorização expressa do usuário para a tarefa atual:
+
+- `supabase/functions/_shared/fipe*.ts`, incluindo arquivos de teste.
+- `scripts/fipe-smoke.ts`.
+- No arquivo `supabase/functions/whatsapp-cloud-inbound-processor/index.ts`:
+  - `buscarFotoRecenteParaFipe`
+  - `persistFipeState`
+  - `finishFipeLookup`
+  - `continueFipeWithModel`
+  - `resolveFipeModelsForYear`
+  - `identifyFipeVehicleFromPhoto`
+  - `toolConsultarFipe`
+  - `handlePendingFipeTurn`
+  - todos os blocos de roteamento FIPE por texto ou foto.
+
+Se uma tarefa exigir qualquer alteração nessa área, PARE antes de editar e peça autorização expressa ao usuário.
+
+Não faça deploy de alterações relacionadas à FIPE sem autorização expressa. O comando de deploy deve começar com `LIBERAR_PROTEGIDO=sim`; sem essa variável, não prossiga.
+
+Toda tarefa nova deve partir do commit `3c637254` (versão em produção), salvo instrução expressa posterior do usuário.

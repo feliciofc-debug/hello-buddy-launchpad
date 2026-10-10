@@ -289,9 +289,16 @@ import {
   extractSocialPostBriefing,
   hasImageGenerationRequest,
   hasSocialPostRequest,
+  hasVideoPublicationRequest,
+  isCarouselLibraryMedia,
   selectLatestImplicitMediaId,
   selectPublicationMediaId,
 } from "../_shared/owner-media-intent.ts";
+import {
+  modelMediaIdPresentInUserText,
+  parseReadyMediaAction,
+  readyMediaActionButtons,
+} from "../_shared/ready-media-actions.ts";
 import {
   classifyPendingBrandReply,
   decideWhatsAppImageBrand,
@@ -481,21 +488,33 @@ import {
   buscarMarca,
   consultarPreco,
   fipeListRows,
+  fipeModelPageRows,
   fipePhotoSuggestionMessage,
+  fipePriceRetryButtons,
+  formatFipeResult,
   listarAnos,
+  listarMarcas,
   listarModelos,
+  listarModelosPorAno,
   type FipeListItem,
   type FipePrice,
 } from "../_shared/fipe.ts";
 import {
   filterFipeModelCandidates,
   normalizeFipeLookupInput,
+  normalizeFipeYear,
   parseFipeRequestText,
   type FipeLookupInput,
 } from "../_shared/fipe-input.ts";
 import {
-  fipeInputFromConfirmedVehicle,
+  createFipePriceRetryState,
+  filterFipeModelsByYear,
+  fipeModelDecision,
+  fipeYearAvailabilityDecision,
+  fipeInputFromTextAndBrands,
   isExplicitFipeRequest,
+  isFipePhotoReference,
+  resolveFipePhotoSource,
   vehicleFipeTurn,
 } from "../_shared/fipe-routing.ts";
 import {
@@ -2835,6 +2854,14 @@ type PendingFipeState =
     created_at: string;
   }
   | {
+    stage: "model_year";
+    brand: FipeListItem;
+    models: FipeListItem[];
+    years: FipeListItem[];
+    queryModel: string;
+    created_at: string;
+  }
+  | {
     stage: "year";
     brand: FipeListItem;
     model: FipeListItem;
@@ -2847,6 +2874,14 @@ type PendingFipeState =
     brand: string;
     model: string;
     earliestYear?: number;
+    created_at: string;
+  }
+  | {
+    stage: "price_retry";
+    brand: FipeListItem;
+    model: FipeListItem;
+    year: FipeListItem;
+    queryModel: string;
     created_at: string;
   }
   | {
@@ -6716,6 +6751,7 @@ async function loadCarouselImageUrls(userId: string, parentId: string): Promise<
       .select("id, midia_url, contexto_original, created_at")
       .eq("user_id", userId)
       .eq("midia_pai_id", parentId)
+      .eq("origem", "carrossel_whatsapp_card")
       .order("created_at", { ascending: true }),
   ]);
   if (parentError || childrenError) {
@@ -8070,11 +8106,7 @@ async function publishLinkedInImmediately(
           `Não publiquei: você pediu uma imagem, mas a última produção desta conversa é ${mediaTipo}. Reenvie a imagem ou informe o código dela.`,
         );
       }
-      if (
-        resolved.midia.origem === "carrossel_whatsapp"
-        || resolved.midia.origem === "carrossel_whatsapp_card"
-        || resolved.midia.midia_pai_id
-      ) {
+      if (isCarouselLibraryMedia(resolved.midia)) {
         return await fail("carrossel_linkedin_nao_suportado", "Não publiquei: carrossel pelo LinkedIn ainda não está habilitado.");
       }
       if (resolved.midia.tipo === "video") {
@@ -9789,7 +9821,7 @@ async function toolPostarMidiaBiblioteca(
       });
     }
 
-    if (midia.origem === "carrossel_whatsapp" || midia.origem === "carrossel_whatsapp_card" || midia.midia_pai_id) {
+    if (isCarouselLibraryMedia(midia)) {
       const parentId = midia.midia_pai_id || midia.id;
       const requestedNetworks = (args?.redes ?? [])
         .map(canonicalSocialNetwork)
@@ -14305,6 +14337,23 @@ async function buscarFotoOriginalRecenteParaAnuncio(ctx: {
   })?.midia_url ?? null;
 }
 
+async function buscarFotoRecenteParaFipe(ctx: {
+  userId: string;
+  fromNumber: string;
+  agentState?: AgentConvState;
+}): Promise<MediaExtract | null> {
+  const url = await buscarFotoOriginalRecenteParaAnuncio(ctx);
+  if (!url) return null;
+  const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+  if (!response.ok) throw new Error(`foto_recente_http_${response.status}`);
+  const mime = response.headers.get("content-type")?.split(";")[0] || "image/jpeg";
+  return {
+    kind: "image",
+    mime,
+    base64: base64Encode(await response.arrayBuffer()),
+  };
+}
+
 async function resolveAnuncioClientIdentity(input: {
   userId: string;
   clientName?: string;
@@ -14416,6 +14465,7 @@ async function resolveAnuncioClientIdentity(input: {
 type FipeToolResponse = {
   result: string;
   interactiveList?: WhatsAppInteractiveList;
+  interactiveButtons?: WhatsAppInteractiveButtons;
 };
 
 async function persistFipeState(
@@ -14443,10 +14493,6 @@ async function persistFipeState(
   ctx.agentState = current;
 }
 
-function fipeResultText(result: FipePrice): string {
-  return `FIPE ${result.referenceMonth}: ${result.price} — ${result.brand} ${result.model} ${result.modelYear} ${result.fuel} (código ${result.codeFipe})`;
-}
-
 async function finishFipeLookup(
   ctx: {
     userId: string;
@@ -14461,11 +14507,21 @@ async function finishFipeLookup(
     queryModel: string;
   },
 ): Promise<FipeToolResponse> {
-  const result = await consultarPreco({
-    brandId: input.brand.code,
-    modelId: input.model.code,
-    yearId: input.year.code,
-  });
+  let result: FipePrice;
+  try {
+    result = await consultarPreco({
+      brandId: input.brand.code,
+      modelId: input.model.code,
+      yearId: input.year.code,
+    });
+  } catch (error) {
+    console.warn("[fipe][preço]", (error as Error).message);
+    await persistFipeState(ctx, createFipePriceRetryState(input));
+    return {
+      result: "A consulta do preço demorou mais que o esperado. Você pode tentar novamente sem refazer as escolhas.",
+      interactiveButtons: fipePriceRetryButtons(),
+    };
+  }
   const last: LastFipeResult = {
     ...result,
     queryBrand: input.brand.name,
@@ -14474,7 +14530,7 @@ async function finishFipeLookup(
     created_at: new Date().toISOString(),
   };
   await persistFipeState(ctx, null, last);
-  return { result: fipeResultText(result) };
+  return { result: formatFipeResult(result) };
 }
 
 async function continueFipeWithModel(
@@ -14492,26 +14548,42 @@ async function continueFipeWithModel(
     requestedFuel?: string;
   },
 ): Promise<FipeToolResponse> {
-  let years = await listarAnos(
-    input.brand.code,
-    input.model.code,
-    [input.requestedYear, input.requestedFuel].filter(Boolean).join(" "),
+  const availableYears = await listarAnos(input.brand.code, input.model.code);
+  const yearDecision = fipeYearAvailabilityDecision(
+    availableYears,
+    input.requestedYear,
+    input.requestedFuel,
   );
-  if (!years.length && input.requestedYear) {
-    years = await listarAnos(
-      input.brand.code,
-      input.model.code,
-      input.requestedYear,
-    );
+  if (yearDecision.action === "none") {
+    return {
+      result: "Não encontrei anos disponíveis para essa versão.",
+    };
   }
-  if (!years.length) {
-    years = await listarAnos(input.brand.code, input.model.code);
+  if (yearDecision.action === "requested_unavailable") {
+    const pending: PendingFipeState = {
+      stage: "year",
+      brand: input.brand,
+      model: input.model,
+      years: yearDecision.years.slice(0, 10),
+      queryModel: input.queryModel,
+      created_at: new Date().toISOString(),
+    };
+    await persistFipeState(ctx, pending);
+    return {
+      result: `Essa versão não tem ${input.requestedYear}. Escolha o ano:`,
+      interactiveList: {
+        body: "Qual é o ano/modelo e combustível?",
+        button: "Escolher ano",
+        section_title: "Anos disponíveis",
+        rows: fipeListRows(pending.years, "fipe_year"),
+      },
+    };
   }
-  if (years.length === 1) {
+  if (yearDecision.action === "price") {
     return await finishFipeLookup(ctx, {
       brand: input.brand,
       model: input.model,
-      year: years[0],
+      year: yearDecision.year,
       queryModel: input.queryModel,
     });
   }
@@ -14519,7 +14591,7 @@ async function continueFipeWithModel(
     stage: "year",
     brand: input.brand,
     model: input.model,
-    years: years.slice(0, 10),
+    years: yearDecision.years.slice(0, 10),
     queryModel: input.queryModel,
     created_at: new Date().toISOString(),
   };
@@ -14533,6 +14605,38 @@ async function continueFipeWithModel(
       rows: fipeListRows(pending.years, "fipe_year"),
     },
   };
+}
+
+async function resolveFipeModelsForYear(input: {
+  brand: FipeListItem;
+  models: FipeListItem[];
+  requestedYear: string;
+  queryModel: string;
+}) {
+  try {
+    const modelsByYear = await listarModelosPorAno(
+      input.brand.code,
+      input.requestedYear,
+      input.queryModel,
+    );
+    if (modelsByYear.length > 0) {
+      return {
+        status: "filtered" as const,
+        models: modelsByYear,
+        availableYears: [],
+      };
+    }
+  } catch (error) {
+    console.warn(
+      "[fipe][modelos-por-ano] endpoint indisponível; usando conferência completa",
+      (error as Error).message,
+    );
+  }
+  return await filterFipeModelsByYear(
+    input.models,
+    input.requestedYear,
+    (modelId) => listarAnos(input.brand.code, modelId),
+  );
 }
 
 async function identifyFipeVehicleFromPhoto(
@@ -14634,20 +14738,66 @@ async function toolConsultarFipe(
     }
     const queryModel = [modelo, args?.versao].filter(Boolean).join(" ");
     const rankedModels = await listarModelos(brand.code, queryModel);
-    const models = args.motor || args.cambio
+    let models = args.motor || args.cambio
       ? filterFipeModelCandidates(rankedModels, args)
       : rankedModels;
-    if (!models.length) {
+    let yearFilteringComplete = !args?.ano_modelo;
+    if (args?.ano_modelo && models.length > 0) {
+      const yearFilterCandidates = models;
+      const yearFilter = await resolveFipeModelsForYear({
+        brand,
+        models,
+        requestedYear: args.ano_modelo,
+        queryModel,
+      });
+      if (yearFilter.status === "filtered") {
+        yearFilteringComplete = true;
+        models = yearFilter.models;
+        if (models.length === 0 && yearFilter.availableYears.length > 0) {
+          const pending: PendingFipeState = {
+            stage: "model_year",
+            brand,
+            models: yearFilterCandidates,
+            years: yearFilter.availableYears.slice(0, 10),
+            queryModel,
+            created_at: new Date().toISOString(),
+          };
+          await persistFipeState(ctx, pending);
+          return {
+            result:
+              `Não há ${modelo} ${args.ano_modelo} na tabela FIPE. Anos disponíveis:`,
+            interactiveList: {
+              body: `Qual ano do ${modelo}?`,
+              button: "Escolher ano",
+              section_title: "Anos disponíveis",
+              rows: fipeListRows(pending.years, "fipe_year"),
+            },
+          };
+        }
+      } else {
+        console.warn(
+          "[fipe][anos-dos-modelos] conferência incompleta; usando versões sem filtro",
+        );
+      }
+    }
+    const modelDecision = fipeModelDecision(models);
+    if (modelDecision.action === "none") {
       return {
         result:
           `Não encontrei “${queryModel}” entre os modelos FIPE da ${brand.name}.`,
       };
     }
-    if (models.length > 1) {
+    if (
+      modelDecision.action === "choose" ||
+      (modelDecision.action === "continue" && !yearFilteringComplete)
+    ) {
+      const menuModels = modelDecision.action === "choose"
+        ? modelDecision.models
+        : [modelDecision.model];
       const pending: PendingFipeState = {
         stage: "model",
         brand,
-        models: models.slice(0, 10),
+        models: menuModels,
         requestedYear: args?.ano_modelo,
         requestedFuel: args?.combustivel,
         queryModel,
@@ -14660,13 +14810,13 @@ async function toolConsultarFipe(
           body: `Qual versão do ${modelo}?`,
           button: "Escolher versão",
           section_title: "Versões FIPE",
-          rows: fipeListRows(pending.models, "fipe_model"),
+          rows: fipeModelPageRows(pending.models),
         },
       };
     }
     return await continueFipeWithModel(ctx, {
       brand,
-      model: models[0],
+      model: modelDecision.model,
       queryModel,
       requestedYear: args?.ano_modelo,
       requestedFuel: args?.combustivel,
@@ -14697,13 +14847,27 @@ async function handlePendingFipeTurn(
 } | null> {
   const age = Date.now() - new Date(pendingFipe.created_at).getTime();
   const fipeInteractiveId = userContent.match(
-    /<<INTERACTIVE_ID:(fipe_(?:model|year):\d+|fipe_ad:(?:queried|supplied))>>/i,
+    /<<INTERACTIVE_ID:(fipe_model:(?:\d+|more:\d+)|fipe_year:\d+|fipe_price:retry|fipe_ad:(?:queried|supplied))>>/i,
   )?.[1]?.toLowerCase();
   if (!Number.isFinite(age) || age > 30 * 60 * 1000) {
     await persistFipeState(toolCtx, null);
     return null;
   }
   if (pendingFipe.stage === "model" && fipeInteractiveId) {
+    const nextOffset = Number(
+      fipeInteractiveId.match(/^fipe_model:more:(\d+)$/)?.[1],
+    );
+    if (Number.isInteger(nextOffset)) {
+      return {
+        text: "Mais versões disponíveis:",
+        interactiveList: {
+          body: "Qual é a versão correta?",
+          button: "Escolher versão",
+          section_title: "Versões FIPE",
+          rows: fipeModelPageRows(pendingFipe.models, nextOffset),
+        },
+      };
+    }
     const index = Number(fipeInteractiveId.match(/^fipe_model:(\d+)$/)?.[1]);
     const model = pendingFipe.models[index];
     if (!model) {
@@ -14713,7 +14877,7 @@ async function handlePendingFipeTurn(
           body: "Qual é a versão correta?",
           button: "Escolher versão",
           section_title: "Versões FIPE",
-          rows: fipeListRows(pendingFipe.models, "fipe_model"),
+          rows: fipeModelPageRows(pendingFipe.models),
         },
       };
     }
@@ -14728,6 +14892,7 @@ async function handlePendingFipeTurn(
       return {
         text: response.result,
         interactiveList: response.interactiveList,
+        interactiveButtons: response.interactiveButtons,
       };
     } catch (error) {
       console.warn("[fipe][model-choice]", (error as Error).message);
@@ -14737,6 +14902,74 @@ async function handlePendingFipeTurn(
           "Não consegui consultar a FIPE agora. Tente de novo em alguns minutos.",
       };
     }
+  }
+  if (pendingFipe.stage === "model_year" && fipeInteractiveId) {
+    const index = Number(fipeInteractiveId.match(/^fipe_year:(\d+)$/)?.[1]);
+    const year = pendingFipe.years[index];
+    if (!year) {
+      return {
+        text: "Esse ano não está mais disponível. Escolha uma opção da lista.",
+        interactiveList: {
+          body: "Qual é o ano/modelo?",
+          button: "Escolher ano",
+          section_title: "Anos disponíveis",
+          rows: fipeListRows(pendingFipe.years, "fipe_year"),
+        },
+      };
+    }
+    const requestedYear = normalizeFipeYear(year.name);
+    const yearFilter = await resolveFipeModelsForYear({
+      brand: pendingFipe.brand,
+      models: pendingFipe.models,
+      requestedYear: requestedYear || year.name,
+      queryModel: pendingFipe.queryModel,
+    });
+    const models = yearFilter.status === "filtered"
+      ? yearFilter.models
+      : pendingFipe.models;
+    const modelDecision = fipeModelDecision(models);
+    if (modelDecision.action === "none") {
+      return {
+        text: "Não encontrei versões disponíveis para esse ano. Escolha outro ano:",
+        interactiveList: {
+          body: "Qual é o ano/modelo?",
+          button: "Escolher ano",
+          section_title: "Anos disponíveis",
+          rows: fipeListRows(pendingFipe.years, "fipe_year"),
+        },
+      };
+    }
+    if (modelDecision.action === "continue") {
+      const response = await continueFipeWithModel(toolCtx, {
+        brand: pendingFipe.brand,
+        model: modelDecision.model,
+        queryModel: pendingFipe.queryModel,
+        requestedYear,
+      });
+      return {
+        text: response.result,
+        interactiveList: response.interactiveList,
+        interactiveButtons: response.interactiveButtons,
+      };
+    }
+    const pending: PendingFipeState = {
+      stage: "model",
+      brand: pendingFipe.brand,
+      models: modelDecision.models,
+      requestedYear,
+      queryModel: pendingFipe.queryModel,
+      created_at: new Date().toISOString(),
+    };
+    await persistFipeState(toolCtx, pending);
+    return {
+      text: "Encontrei mais de uma versão nesse ano. Escolha a correta:",
+      interactiveList: {
+        body: "Qual é a versão correta?",
+        button: "Escolher versão",
+        section_title: "Versões FIPE",
+        rows: fipeModelPageRows(pending.models),
+      },
+    };
   }
   if (pendingFipe.stage === "year" && fipeInteractiveId) {
     const index = Number(fipeInteractiveId.match(/^fipe_year:(\d+)$/)?.[1]);
@@ -14759,7 +14992,10 @@ async function handlePendingFipeTurn(
         year,
         queryModel: pendingFipe.queryModel,
       });
-      return { text: response.result };
+      return {
+        text: response.result,
+        interactiveButtons: response.interactiveButtons,
+      };
     } catch (error) {
       console.warn("[fipe][year-choice]", (error as Error).message);
       await persistFipeState(toolCtx, null);
@@ -14768,6 +15004,16 @@ async function handlePendingFipeTurn(
           "Não consegui consultar a FIPE agora. Tente de novo em alguns minutos.",
       };
     }
+  }
+  if (
+    pendingFipe.stage === "price_retry" &&
+    fipeInteractiveId === "fipe_price:retry"
+  ) {
+    const response = await finishFipeLookup(toolCtx, pendingFipe);
+    return {
+      text: response.result,
+      interactiveButtons: response.interactiveButtons,
+    };
   }
   if (
     pendingFipe.stage === "photo_confirmation" &&
@@ -14792,6 +15038,7 @@ async function handlePendingFipeTurn(
     return {
       text: response.result,
       interactiveList: response.interactiveList,
+      interactiveButtons: response.interactiveButtons,
     };
   }
   if (
@@ -15928,7 +16175,8 @@ async function callGemini(
       .join(" ")
     : "";
   if (
-    (activeVertical === "veiculo" || toolCtx.explicitFipe) && hasMedia &&
+    (activeVertical === "veiculo" || toolCtx.explicitFipe) &&
+    !!toolCtx.media?.some((item) => item.kind === "image") &&
     senderIsOwner &&
     isExplicitFipeRequest(multimodalText)
   ) {
@@ -15939,6 +16187,7 @@ async function callGemini(
     return {
       text: response.result,
       interactiveList: response.interactiveList,
+      interactiveButtons: response.interactiveButtons,
     };
   }
   const audioOnly = !!toolCtx.media?.length &&
@@ -16096,6 +16345,7 @@ async function callGemini(
     const normalizedInput = normalizePt(userContent);
     const brandInteractiveId = userContent.match(/<<INTERACTIVE_ID:(brand_[^>]+)>>/i)?.[1]?.toLowerCase() || "";
     const socialInteractiveId = userContent.match(/<<INTERACTIVE_ID:(social_[^>]+)>>/i)?.[1] || "";
+    const readyMediaAction = parseReadyMediaAction(userContent);
     const anuncioPostInteractiveId = userContent.match(
       /<<INTERACTIVE_ID:(anuncio_post:[^>]+)>>/i,
     )?.[1]?.toLowerCase() || "";
@@ -16123,29 +16373,58 @@ async function callGemini(
       if (response) return response;
     }
     if (remetenteEhDono && isExplicitFipeRequest(userContent)) {
-      const input = fipeInputFromConfirmedVehicle(
+      let input = fipeInputFromTextAndBrands(
         userContent,
         pendingVehicleIdentification,
+        [],
       );
+      if (!input.marca || !input.modelo) {
+        try {
+          input = fipeInputFromTextAndBrands(
+            userContent,
+            pendingVehicleIdentification,
+            await listarMarcas(),
+          );
+        } catch (error) {
+          console.warn("[fipe][marcas]", (error as Error).message);
+        }
+      }
+      let fipeCtx = toolCtx;
+      const hasCurrentPhoto = (toolCtx.media || []).some((item) =>
+        item.kind === "image"
+      );
+      if (isFipePhotoReference(userContent) && !hasCurrentPhoto) {
+        try {
+          const recentPhoto = await buscarFotoRecenteParaFipe(toolCtx);
+          if (
+            recentPhoto &&
+            resolveFipePhotoSource({
+              text: userContent,
+              hasCurrentPhoto,
+              hasRecentPhoto: true,
+            }) === "recent"
+          ) {
+            fipeCtx = {
+              ...toolCtx,
+              media: [...(toolCtx.media || []), recentPhoto],
+            };
+          }
+        } catch (error) {
+          console.warn("[fipe][foto-recente]", (error as Error).message);
+        }
+      }
       if (
-        vehicleFipeTurn(userContent, input) === "fipe_ask_year" &&
-        input.marca && input.modelo
+        vehicleFipeTurn(userContent, input) === "fipe_lookup" ||
+        (fipeCtx.media || []).some((item) => item.kind === "image")
       ) {
-        await persistFipeState(toolCtx, {
-          stage: "photo_confirmation",
-          brand: input.marca,
-          model: input.modelo,
-          created_at: new Date().toISOString(),
-        });
+        const response = await toolConsultarFipe(input, fipeCtx);
         return {
-          text: `Qual é o ano/modelo do ${input.marca} ${input.modelo}?`,
+          text: response.result,
+          interactiveList: response.interactiveList,
+          interactiveButtons: response.interactiveButtons,
         };
       }
-      const response = await toolConsultarFipe(input, toolCtx);
-      return {
-        text: response.result,
-        interactiveList: response.interactiveList,
-      };
+      console.log("[fipe][fallback-ia] marca/modelo não identificados");
     }
     const socialActionInteractive = socialInteractiveId.match(/^social_(publish|publish_confirm|schedule|cancel):([a-f0-9]{8})$/i);
     const socialVariantInteractive = socialInteractiveId.match(/^social_variant:([ABC]):([a-f0-9]{8})$/i);
@@ -16155,6 +16434,58 @@ async function callGemini(
         normalizePt(String(previousHistoryMessage.content ?? "")),
       );
     const ownerMediaIntent = classifyOwnerMediaIntent(userContent);
+    if (remetenteEhDono && readyMediaAction) {
+      const isVideo = readyMediaAction.mediaType === "video";
+      const postResult = await toolPostarMidiaBiblioteca({
+        midia_id: readyMediaAction.mediaId,
+        pedido_original: userContent,
+        redes: ["facebook", "instagram"],
+        formato: isVideo ? "reels" : "feed",
+        incluir_cta_whatsapp: false,
+      }, toolCtx);
+      const actionLead = readyMediaAction.action === "schedule"
+        ? "Preparei a prévia desta mídia. Depois de escolher a legenda, toque em Agendar."
+        : readyMediaAction.action === "caption"
+        ? "Preparei opções de legenda para esta mídia."
+        : `Preparei a prévia desta mídia para ${
+          isVideo ? "Reels" : "o Feed"
+        } no Facebook e no Instagram.`;
+      return {
+        text: `${actionLead}<<SPLIT>>${formatSocialPostToolResult(postResult)}`,
+        interactiveList: interactiveListFromSocialResult(postResult),
+        interactiveButtons: interactiveButtonsFromSocialResult(postResult),
+      };
+    }
+
+    if (
+      remetenteEhDono &&
+      ownerMediaIntent.action === "post" &&
+      hasVideoPublicationRequest(userContent)
+    ) {
+      const social = detectSocialPostIntent(userContent) ?? {
+        produto: "",
+        tom: "informativo",
+        redes: detectRequestedSocialNetworks(userContent),
+        temProduto: false,
+        formato: detectSocialPostFormat(userContent) ?? "reels",
+      };
+      const postResult = await toolPostarMidiaBiblioteca({
+        pedido_original: userContent,
+        legenda: cleanMediaPostLegenda(userContent),
+        briefing: extractSocialPostBriefing(userContent),
+        tom: social.tom,
+        redes: social.redes.length
+          ? social.redes
+          : ["facebook", "instagram"],
+        formato: social.formato ?? "reels",
+        incluir_cta_whatsapp: detectWantsWhatsappCta(userContent),
+      }, toolCtx);
+      return {
+        text: formatSocialPostToolResult(postResult),
+        interactiveList: interactiveListFromSocialResult(postResult),
+        interactiveButtons: interactiveButtonsFromSocialResult(postResult),
+      };
+    }
     if (
       remetenteEhDono &&
       ownerMediaIntent.action === "edit" &&
@@ -18641,6 +18972,9 @@ async function callGemini(
             ? `Pronto — coloquei a marca no canto superior esquerdo, sem alterar o restante da imagem.${codigo}`
             : `Pronto — apliquei o cenário que você pediu, mantendo o produto.${codigo}`,
           imageUrl: parsed.image_url,
+          interactiveButtons: parsed.midia_id
+            ? readyMediaActionButtons(parsed.midia_id, "foto")
+            : undefined,
         };
       }
       return { text: mensagemErroEdicaoImagem(parsed) };
@@ -18979,6 +19313,7 @@ async function callGemini(
   const model = escolherModelo({ kind: hasMedia ? "multimodal" : "conversation" });
   let pendingImageUrl: string | undefined;
   let pendingMediaCodeBlock = "";
+  let pendingReadyMediaButtons: WhatsAppInteractiveButtons | undefined;
   let pendingDemoSiteBrandResult: Record<string, unknown> | null = null;
   let creativeToolRanThisTurn = false;
   let pendingSocialToken: string | undefined; // token de post aguardando confirmação — anexa <<SPLIT>>pode postar {token} no fim
@@ -19144,9 +19479,11 @@ async function callGemini(
           const originalRequest = typeof userContent === "string" ? userContent : "";
           args.pedido_original = originalRequest;
           const explicitMediaId = extrairIdentificadorMidia(originalRequest);
-          if (explicitMediaId || name === "publicar_linkedin") {
-            args.midia_id = explicitMediaId || undefined;
-          }
+          const literalModelMediaId = modelMediaIdPresentInUserText(
+            originalRequest,
+            args.midia_id,
+          );
+          args.midia_id = explicitMediaId || literalModelMediaId;
         }
         console.log(`[pietro][tool] ${name}`, args);
         if (isCreativeDemoTool(name)) creativeToolRanThisTurn = true;
@@ -19202,6 +19539,16 @@ async function callGemini(
           };
         }
         if (imageUrl) pendingImageUrl = imageUrl;
+        if (name === "consultar_fipe") {
+          return {
+            text: result,
+            imageUrl: pendingImageUrl,
+            interactiveList,
+            interactiveButtons,
+            forwardProof,
+            forwardAttempted,
+          };
+        }
         if (interactiveButtons) {
           let parsed: any = {};
           try { parsed = JSON.parse(result); } catch { /* mensagem padrão abaixo */ }
@@ -19209,15 +19556,6 @@ async function callGemini(
             text: String(parsed?.mensagem || "Escolha como devo tratar a marca desta imagem."),
             imageUrl: pendingImageUrl,
             interactiveButtons,
-            forwardProof,
-            forwardAttempted,
-          };
-        }
-        if (name === "consultar_fipe") {
-          return {
-            text: result,
-            imageUrl: pendingImageUrl,
-            interactiveList,
             forwardProof,
             forwardAttempted,
           };
@@ -19286,6 +19624,12 @@ async function callGemini(
               .at(-1);
             if (lastSelectableIndex != null) {
               await rememberLastMediaInteraction(toolCtx, ids[lastSelectableIndex]);
+              if (name === "editar_imagem") {
+                pendingReadyMediaButtons = readyMediaActionButtons(
+                  ids[lastSelectableIndex],
+                  tipos[lastSelectableIndex] === "video" ? "video" : "foto",
+                );
+              }
             }
             pendingMediaCodeBlock = ids.map((id, index) =>
               linhaCodigoMidia(id, tipos[index] === "video" ? "video" : "foto")
@@ -19465,6 +19809,7 @@ async function callGemini(
     return {
       text,
       imageUrl: pendingImageUrl ?? guardReplayImageUrl,
+      interactiveButtons: pendingReadyMediaButtons,
       forwardProof,
       forwardAttempted,
       metaAdsSummaryDraftId,
@@ -19477,6 +19822,7 @@ async function callGemini(
   return {
     text: pendingMediaCodeBlock ? `${fallbackText}<<SPLIT>>${pendingMediaCodeBlock}` : fallbackText,
     imageUrl: pendingImageUrl,
+    interactiveButtons: pendingReadyMediaButtons,
     forwardProof,
     forwardAttempted,
     metaAdsSummaryDraftId,
@@ -19692,42 +20038,8 @@ async function transcribeAudioMedia(media: MediaExtract[]): Promise<string> {
   const audio = media.find((m) => m.kind === "audio");
   if (!audio?.base64) return "";
 
-  // 1ª via: endpoint dedicado de speech-to-text (determinístico, não depende do modelo "ouvir").
-  try {
-    const bytes = Uint8Array.from(atob(audio.base64), (c) => c.charCodeAt(0));
-    const mime = (audio.mime || "audio/ogg").split(";")[0];
-    const ext = mime.includes("mpeg") || mime.includes("mp3")
-      ? "mp3"
-      : mime.includes("wav")
-      ? "wav"
-      : mime.includes("m4a")
-      ? "m4a"
-      : mime.includes("mp4")
-      ? "mp4"
-      : "ogg";
-    const form = new FormData();
-    form.append("model", "openai/gpt-4o-mini-transcribe");
-    form.append("file", new Blob([bytes], { type: mime }), `audio.${ext}`);
-    const sttRes = await fetch("https://ai.gateway.lovable.dev/v1/audio/transcriptions", {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${LOVABLE_API_KEY}` },
-      body: form,
-    });
-    const sttTxt = await sttRes.text();
-    if (sttRes.ok) {
-      try {
-        const j = JSON.parse(sttTxt);
-        const t = String(j?.text || "").trim();
-        if (t) return t;
-      } catch { /* cai no fallback */ }
-    } else {
-      console.warn(`[processor][stt] ${sttRes.status}: ${sttTxt.slice(0, 200)}`);
-    }
-  } catch (e) {
-    console.warn("[processor][stt] falhou:", (e as Error).message);
-  }
-
-  // 2ª via: modelo multimodal ouvindo o áudio.
+  // O endpoint /audio/transcriptions do gateway atual encaminha multipart para
+  // Gemini e responde 400. Usa diretamente o fallback multimodal que funciona.
   const content = buildUserContent(
     "Transcreva literalmente este áudio de WhatsApp em português do Brasil. Responda somente com a transcrição, sem comentários.",
     [audio],
@@ -21762,6 +22074,7 @@ async function processOne(queueId: string) {
               generationCtx,
               logoResult.midia_id,
             );
+            buttons = readyMediaActionButtons(logoResult.midia_id, "foto");
           }
           if (
             freshLogoMode === "top-left" && logoResult?.midia_id &&
@@ -21801,6 +22114,16 @@ async function processOne(queueId: string) {
           buttons = prepared.deferred
             ? prepared.interactiveButtons
             : undefined;
+          if (!prepared.deferred) {
+            try {
+              const parsed = JSON.parse(prepared.raw);
+              if (parsed?.midia_id) {
+                buttons = readyMediaActionButtons(parsed.midia_id, "foto");
+              }
+            } catch {
+              // Resposta sem ID: entrega a imagem normalmente, sem ações vinculadas.
+            }
+          }
         }
         const { data: outMsg } = await sb
           .from("whatsapp_cloud_messages")
@@ -21935,6 +22258,10 @@ async function processOne(queueId: string) {
             row.from_number,
             compositionReply,
             compositionImageUrl,
+            undefined,
+            compositionMediaId
+              ? readyMediaActionButtons(compositionMediaId, "foto")
+              : undefined,
           );
           if (sentId && outMsg?.id) {
             await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);

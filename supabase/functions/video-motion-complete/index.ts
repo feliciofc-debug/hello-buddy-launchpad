@@ -11,6 +11,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { autorizarWorker, renderCors, respJson } from "../_shared/render-auth.ts";
 import { linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
+import { readyMediaActionButtons } from "../_shared/ready-media-actions.ts";
 import { syncProdutoVideoFromMidia } from "../_shared/sync-produto-video.ts";
 import { rememberDeliveredMediaInteraction } from "../_shared/whatsapp-last-media-interaction.ts";
 
@@ -22,6 +23,7 @@ async function avisarCliente(
   message: string,
   videoUrl?: string,
   mediaId?: string,
+  interactiveButtons?: ReturnType<typeof readyMediaActionButtons>,
 ): Promise<boolean> {
   if (!job.telefone) return false;
   try {
@@ -31,6 +33,9 @@ async function avisarCliente(
         to: job.telefone,
         message,
         ...(videoUrl ? { video_url: videoUrl } : {}),
+        ...(interactiveButtons
+          ? { interactive_buttons: interactiveButtons }
+          : {}),
       },
     });
     if (error) throw error;
@@ -158,6 +163,7 @@ Deno.serve(async (req) => {
           `🎬 Seu vídeo animado ficou pronto. *Não publiquei em lugar nenhum.*${blocoCodigo}${blocoLegenda}`,
           videoUrl,
           midiaId || undefined,
+          midiaId ? readyMediaActionButtons(midiaId, "video") : undefined,
         );
       } else {
         const nomes = plataformas
@@ -300,6 +306,7 @@ Deno.serve(async (req) => {
           `🎬 Seu vídeo animado ficou pronto. *Não publiquei em lugar nenhum.*${blocoCodigo}${blocoLegenda}`,
           videoUrl,
           midiaId || undefined,
+          midiaId ? readyMediaActionButtons(midiaId, "video") : undefined,
         );
       } else {
         const nomes = plataformas

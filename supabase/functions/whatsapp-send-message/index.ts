@@ -8,6 +8,7 @@ import {
   singleLineInteractiveText,
   truncateCodePoints,
 } from '../_shared/whatsapp-interactive-safe.ts'
+import { mediaThenButtonPayloads } from '../_shared/whatsapp-media-buttons.ts'
 
 
 
@@ -78,8 +79,18 @@ serve(async (req) => {
     const API_URL = `https://graph.facebook.com/v25.0/${config.phone_number_id}/messages`
 
     let messagePayload: any
+    const buttonImageUrl = image_url ? toMetaSafeImageUrl(image_url) : undefined
+    const mediaButtonPayloads = mediaThenButtonPayloads({
+      to,
+      message,
+      videoUrl: video_url,
+      imageUrl: buttonImageUrl,
+      interactiveButtons: interactive_buttons,
+    })
 
-    if (interactive_buttons?.buttons?.length) {
+    if (mediaButtonPayloads) {
+      messagePayload = mediaButtonPayloads[0]
+    } else if (interactive_buttons?.buttons?.length) {
       const buttons = interactive_buttons.buttons.slice(0, 3).map((button: any, index: number) => ({
         type: 'reply',
         reply: {
@@ -209,40 +220,44 @@ serve(async (req) => {
 
     console.log('📱 Enviando WhatsApp para:', maskPhoneForLog(to))
 
-    const response = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(messagePayload),
-    })
-
-    const responseText = await response.text()
-    let result: any
-    try {
-      result = JSON.parse(responseText)
-    } catch {
-      result = { error: { message: truncateCodePoints(responseText, 500) } }
-    }
-
-    if (!response.ok) {
-      const metaError = result?.error ?? {}
-      console.error('[whatsapp-send-message][meta_error]', {
-        status: response.status,
-        error: {
-          message: metaError.message ?? null,
-          type: metaError.type ?? null,
-          code: metaError.code ?? null,
-          error_subcode: metaError.error_subcode ?? null,
-          fbtrace_id: metaError.fbtrace_id ?? null,
+    const results: any[] = []
+    for (const payload of mediaButtonPayloads ?? [messagePayload]) {
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
         },
-        payload: safeMetaDiagnosticPayload(messagePayload),
+        body: JSON.stringify(payload),
       })
-      throw new Error('Não foi possível enviar a mensagem agora. Tente novamente.')
-    }
 
-    console.log('✅ Mensagem enviada:', result.messages?.[0]?.id)
+      const responseText = await response.text()
+      let result: any
+      try {
+        result = JSON.parse(responseText)
+      } catch {
+        result = { error: { message: truncateCodePoints(responseText, 500) } }
+      }
+
+      if (!response.ok) {
+        const metaError = result?.error ?? {}
+        console.error('[whatsapp-send-message][meta_error]', {
+          status: response.status,
+          error: {
+            message: metaError.message ?? null,
+            type: metaError.type ?? null,
+            code: metaError.code ?? null,
+            error_subcode: metaError.error_subcode ?? null,
+            fbtrace_id: metaError.fbtrace_id ?? null,
+          },
+          payload: safeMetaDiagnosticPayload(payload),
+        })
+        throw new Error('Não foi possível enviar a mensagem agora. Tente novamente.')
+      }
+      results.push(result)
+      console.log('✅ Mensagem enviada:', result.messages?.[0]?.id)
+    }
+    const result = results[0]
 
     // O processor já registra a própria resposta; campanhas e convites
     // continuam usando este log central.
