@@ -16237,7 +16237,10 @@ async function toolCriarAnuncio(
         anuncioIdentity.colors[0] || undefined,
       ),
       foto_url: fotoFinal,
-      foto_url_original: fotoUrl,
+      foto_url_original: contentNiche === "produto" &&
+          args?.melhorar_foto !== false
+        ? null
+        : fotoUrl,
       foto_source: fotoSource,
       foto_variants: fotoVariants,
       foto_box: fotoBox
@@ -16280,7 +16283,12 @@ async function toolCriarAnuncio(
           foto_url: productPhotoVariantForStyle(style, fotoVariants).url,
           foto_source: productPhotoVariantForStyle(style, fotoVariants).source,
         }, 120000);
-        if (!render?.success || !render?.image_url) {
+        if (
+          !render?.success ||
+          !render?.image_url ||
+          (contentNiche === "produto" && args?.melhorar_foto !== false &&
+            render?.foto_source !== "improved")
+        ) {
           throw new Error(String(render?.error || `falha no estilo ${style}`));
         }
         return render;
@@ -18656,7 +18664,14 @@ async function callGemini(
                 };
               })(),
             }, 120000);
-            if (!render?.success || !render?.image_url) {
+            if (
+              !render?.success ||
+              !render?.image_url ||
+              (pendingAnuncioStyles.niche === "produto" && variants &&
+                productPhotoVariantForStyle(style, variants).source ===
+                  "improved" &&
+                render?.foto_source !== "improved")
+            ) {
               throw new Error(
                 String(render?.error || `falha no estilo ${style}`),
               );

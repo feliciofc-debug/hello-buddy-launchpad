@@ -603,7 +603,7 @@ Deno.test("melhoria de produto nunca recebe instruções automotivas", () => {
     for (const forbidden of ["showroom", "veículo", "pintura", "rodas"]) {
       assertEquals(normalized.includes(forbidden), false);
     }
-    assert(prompt.includes("PROIBIDO adicionar qualquer objeto"));
+    assert(prompt.includes("Não inclua pessoas nem outros produtos de marca"));
     assert(
       prompt.includes(
         "PODE limpar somente sujeira, manchas, poeira, marcas de dedo e reflexos ruins",
