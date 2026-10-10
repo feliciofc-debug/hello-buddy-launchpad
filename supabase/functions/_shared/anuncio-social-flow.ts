@@ -290,6 +290,12 @@ export function anuncioCaptionChoiceMessage(
   ].join("\n\n");
 }
 
+export function anuncioActionAfterCaption(
+  action: AnuncioPostAction | undefined,
+): "publish" | "schedule_time" {
+  return action === "schedule" ? "schedule_time" : "publish";
+}
+
 export function anuncioFinalApprovalButtons(token: string) {
   return {
     body: "Revise o resumo e confirme:",
@@ -479,8 +485,8 @@ export function generateVehicleAdCaptions(
       `🚗 ${model}.`,
       three ? `${three}.` : "",
       price,
-      contact,
       tags,
+      contact,
     ].filter(Boolean).join(" "),
   );
   const b = clip(
@@ -491,8 +497,8 @@ export function generateVehicleAdCaptions(
       benefits.join(" "),
       facts.slice(0, 5).length ? `${facts.slice(0, 5).join(", ")}.` : "",
       price,
-      contact,
       tags,
+      contact,
     ].filter(Boolean).join(" "),
   );
   const c = clip(
@@ -502,8 +508,8 @@ export function generateVehicleAdCaptions(
         : `Que tal conhecer o ${model}?`,
       facts.slice(0, 4).length ? `${facts.slice(0, 4).join(", ")}.` : "",
       price,
-      contact,
       tags,
+      contact,
     ].filter(Boolean).join(" "),
   );
   return { A: a, B: b, C: c };

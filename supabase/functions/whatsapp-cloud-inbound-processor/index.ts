@@ -478,6 +478,7 @@ import {
 import {
   anuncioCaptionExtraList,
   anuncioCaptionChoiceMessage,
+  anuncioActionAfterCaption,
   anuncioContentNiche,
   anuncioFinalApprovalButtons,
   anuncioPostActionButtons,
@@ -6116,6 +6117,22 @@ function detectWantsWhatsappCta(text: string): boolean {
 
 // Gera 3 OPÇÕES (A/B/C) de post curto e engajador — mesmo estilo da plataforma /gerar-posts.
 // A = direto/CTA claro | B = storytelling | C = educativo/interativo
+function contentNicheForContext(ctx: {
+  userId: string;
+  agentState?: AgentConvState;
+}): ContentNiche {
+  const route = (ctx.agentState as Record<string, unknown> | undefined)
+    ?.__vertical_scope as InboundVertical | undefined;
+  return resolveNichoDoConteudo(
+    ctx.userId === ADMIN_AMZ_USER_ID
+      ? "amz"
+      : route === "veiculo"
+      ? "automotivo"
+      : "geral",
+    route === "veiculo" ? "veiculo" : "produto",
+  );
+}
+
 async function gerarTresOpcoesRedeSocial(
   produto: { nome: string; descricao?: string | null; preco?: number | null; link?: string | null; categoria?: string | null; source?: string | null },
   tom: string,
@@ -8499,6 +8516,7 @@ async function toolPrepararLinkedin(
     undefined,
     undefined,
     texto,
+    contentNicheForContext(ctx),
   );
   const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
   const pending: PendingSocialPost = {
@@ -8589,7 +8607,18 @@ async function toolPostarRedesSociais(
         const redeGen = r === "tiktok"
           ? "instagram"
           : (r as "facebook" | "instagram" | "linkedin");
-        return [r, await gerarTresOpcoesRedeSocial(prod, tom, redeGen)] as const;
+        return [
+          r,
+          await gerarTresOpcoesRedeSocial(
+            prod,
+            tom,
+            redeGen,
+            undefined,
+            undefined,
+            undefined,
+            contentNicheForContext(ctx),
+          ),
+        ] as const;
       }),
     );
     let variantes: Record<string, PostVariantes> = Object.fromEntries(variantesEntries);
@@ -9382,7 +9411,18 @@ async function toolRevisarPostPendente(
         const redeGen = r === "tiktok"
           ? "instagram"
           : (r as "facebook" | "instagram" | "linkedin");
-        return [r, await gerarTresOpcoesRedeSocial(produtoLike, tom, redeGen, ajuste, brandCtx, p.briefing)] as const;
+        return [
+          r,
+          await gerarTresOpcoesRedeSocial(
+            produtoLike,
+            tom,
+            redeGen,
+            ajuste,
+            brandCtx,
+            p.briefing,
+            contentNicheForContext(ctx),
+          ),
+        ] as const;
       }),
     );
     variantes = Object.fromEntries(varEntries);
@@ -10411,6 +10451,7 @@ async function toolPostarMidiaBiblioteca(
         undefined,
         brandCtx,
         briefing || undefined,
+        contentNicheForContext(ctx),
       );
       if (!isVideo && descricaoVisual && copyConflitaComImagem(descricaoVisual, options)) {
         console.error(`[pietro][postar_midia] copy ${redeGeracao} REJEITADA por conflito com a imagem; regenerando`);
@@ -10425,6 +10466,7 @@ async function toolPostarMidiaBiblioteca(
           "Fale exclusivamente sobre o produto identificado nesta foto. Não mencione veículos, carros, concessionária, test-drive, quilometragem, ano ou modelo.",
           undefined,
           undefined,
+          contentNicheForContext(ctx),
         );
       }
       return options;
@@ -14285,6 +14327,7 @@ async function prepararPreviewCarrosselExistente(
     options.legenda ? `Use esta orientação do dono na legenda: ${options.legenda}` : undefined,
     undefined,
     options.legenda,
+    contentNicheForContext(ctx),
   );
   const variantes = { instagram: variantesBase };
   const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
@@ -15561,6 +15604,8 @@ async function toolCriarAnuncio(
         : "geral",
       verticalScope === "veiculo" ? "veiculo" : "produto",
     );
+    const anuncioVertical: "veiculo" | "geral" =
+      verticalScope === "veiculo" ? "veiculo" : "geral";
     const pendingVehicleIdentification =
       ctx.agentState?.pending_vehicle_identification;
     if (
@@ -16061,7 +16106,7 @@ async function toolCriarAnuncio(
       const lastAnuncio: LastAnuncio = {
         images,
         selected_style: renders.length === 1 ? styles[0] : undefined,
-        vertical: verticalScope === "veiculo" ? "veiculo" : "geral",
+        vertical: anuncioVertical,
         niche: contentNiche,
         data: anuncioData,
         render_payload: renderPayload,
@@ -16078,7 +16123,7 @@ async function toolCriarAnuncio(
           _refazer_foto: false,
         },
         client_name: args?.cliente || null,
-        vertical: verticalScope === "veiculo" ? "veiculo" : "geral",
+        vertical: anuncioVertical,
         niche: contentNiche,
         shown_styles: styles,
         images,
@@ -18217,9 +18262,7 @@ async function callGemini(
           pending_anuncio_post: next,
         });
         return {
-          text: action === "publish"
-            ? "Certo. Onde você quer publicar?"
-            : "Certo. Qual formato você quer agendar?",
+          text: "Certo. Qual formato você quer agendar?",
           interactiveButtons: anuncioPostFormatButtons(action === "schedule"),
         };
       }
@@ -19072,7 +19115,10 @@ async function callGemini(
       for (const token of anuncioPostTokens) {
         await toolEscolherVariantePost({ token, opcao: option }, toolCtx);
       }
-      if (pendingAnuncioPost.action === "schedule") {
+      if (
+        anuncioActionAfterCaption(pendingAnuncioPost.action) ===
+          "schedule_time"
+      ) {
         const next = {
           ...pendingAnuncioPost,
           stage: "schedule_time" as const,

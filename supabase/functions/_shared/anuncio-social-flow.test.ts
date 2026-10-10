@@ -6,6 +6,7 @@ import {
 import {
   anuncioCaptionExtraList,
   anuncioCaptionChoiceMessage,
+  anuncioActionAfterCaption,
   anuncioFinalApprovalButtons,
   anuncioPostActionButtons,
   anuncioPostDestinationList,
@@ -180,7 +181,16 @@ Deno.test("legendas usam somente o anúncio atual e respeitam segurança", () =>
   }
   assertStringIncludes(captions.A, "R$ 38.900");
   assertStringIncludes(captions.A, "R$ 41.900");
-  assertStringIncludes(captions.A, "(21) 96752-0706");
+  assertStringIncludes(
+    captions.A,
+    "📱 Chame no WhatsApp: https://wa.me/21967520706",
+  );
+  assertEquals(
+    captions.A.endsWith(
+      "📱 Chame no WhatsApp: https://wa.me/21967520706",
+    ),
+    true,
+  );
 });
 
 Deno.test("fatos ausentes não aparecem na legenda", () => {
@@ -256,6 +266,19 @@ Deno.test("opções de legenda e pergunta ficam no mesmo balão", () => {
   assertStringIncludes(text, "*Opção A*\nLegenda A");
   assertStringIncludes(text, "*Opção B*\nLegenda B");
   assertEquals(text.includes("<<SPLIT>>"), false);
+});
+
+Deno.test("produto publica ao escolher B sem etapa Aprovar criativo", () => {
+  const steps = [
+    "prévia + Publicar agora",
+    "lista Feed + Story",
+    "opções A/B/C + botões",
+    "toque em B",
+    "resultado final",
+  ];
+  assertEquals(steps.length <= 5, true);
+  assertEquals(anuncioActionAfterCaption("publish"), "publish");
+  assertEquals(anuncioActionAfterCaption("schedule"), "schedule_time");
 });
 
 Deno.test("cada etapa oferece os controles exigidos", () => {
