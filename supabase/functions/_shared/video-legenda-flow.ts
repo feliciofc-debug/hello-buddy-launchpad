@@ -21,6 +21,7 @@ import {
   type VideoLegendaLogoAsset,
 } from "./video-legenda-logo.ts";
 import { videoCaptionOptionsText } from "./ready-media-actions.ts";
+import { cachedOrTranscribedVideoSegments } from "./video-transcription-flow.ts";
 
 const sb = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -269,6 +270,10 @@ function montarMensagemOpcoes(opcoes: string[]): string {
   return videoCaptionOptionsText(opcoes);
 }
 
+export const VIDEO_SEM_TRANSCRICAO =
+  "Recebi seu vídeo, mas não consegui identificar a fala nele. Do que se trata? " +
+  "Me escreva o tema (uma frase basta) que eu gero as 3 legendas — sem isso eu não invento copy.";
+
 /**
  * Passo 1+2: transcreve o vídeo, gera as 3 copies e cria o job aguardando escolha.
  * Retorna a mensagem a enviar ao dono (ou null se não conseguiu transcrever).
@@ -280,6 +285,7 @@ export async function iniciarFluxoLegendaVideo(params: {
   contexto?: string;
   nomeEmpresa?: string;
   midiaId?: string;
+  temaComoTranscricao?: string;
 }): Promise<string | null> {
   const loc = bucketPathDeUrl(params.videoUrl);
   if (!loc) {
@@ -295,25 +301,47 @@ export async function iniciarFluxoLegendaVideo(params: {
     (await resolverNomeEmpresa(params.userId));
 
   // Sem transcrição válida NUNCA se gera copy: o fluxo pergunta do que se trata.
-  const SEM_TRANSCRICAO =
-    "Recebi seu vídeo, mas não consegui identificar a fala nele. Do que se trata? " +
-    "Me escreva o tema (uma frase basta) que eu gero as 3 legendas — sem isso eu não invento copy.";
-
   let segmentos: SegmentoLegenda[] = [];
-  try {
-    segmentos = await transcrever(params.videoUrl, nomeEmpresa);
-  } catch (e) {
-    console.error(
-      "[video-legenda-flow] transcrição falhou:",
-      (e as Error).message,
-    );
-    return SEM_TRANSCRICAO;
+  let transcricao = String(params.temaComoTranscricao || "").trim();
+  if (!transcricao) {
+    try {
+      const { data: previousJobs, error: cacheError } = await sb
+        .from("video_render_jobs")
+        .select("video_path, segmentos, metadata")
+        .eq("user_id", params.userId)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (cacheError) {
+        console.warn(
+          "[video-legenda-flow] cache indisponível:",
+          cacheError.message,
+        );
+      }
+      const resolved = await cachedOrTranscribedVideoSegments({
+        rows: previousJobs || [],
+        videoPath: loc.path,
+        mediaId: params.midiaId,
+        transcribe: () => transcrever(params.videoUrl, nomeEmpresa),
+      });
+      segmentos = resolved.segments;
+      if (resolved.source === "cache") {
+        console.log("[video-legenda-flow] transcrição reutilizada do cache", {
+          segmentos: segmentos.length,
+        });
+      }
+    } catch (e) {
+      console.error(
+        "[video-legenda-flow] transcrição falhou:",
+        (e as Error).message,
+      );
+      return VIDEO_SEM_TRANSCRICAO;
+    }
+    transcricao = textoDaTranscricao(segmentos);
   }
 
-  const transcricao = textoDaTranscricao(segmentos);
   if (!transcricao) {
     console.log("[video-legenda-flow] vídeo sem fala — pedindo tema ao dono");
-    return SEM_TRANSCRICAO;
+    return VIDEO_SEM_TRANSCRICAO;
   }
 
   const style = await getCopyStyle(sb, params.userId);

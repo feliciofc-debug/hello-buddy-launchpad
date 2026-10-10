@@ -399,7 +399,12 @@ import {
   iniciarFluxoLegendaVideo,
   resolverVideoLegendado,
   tratarRespostaFluxoLegenda,
+  VIDEO_SEM_TRANSCRICAO,
 } from "../_shared/video-legenda-flow.ts";
+import {
+  parseVideoTranscriptionAction,
+  videoTranscriptionRecoveryButtons,
+} from "../_shared/video-transcription-flow.ts";
 import {
   aplicarAjusteRoteiroMotion,
   buscarBaseRefazerVideoMotion,
@@ -2951,6 +2956,10 @@ type AgentConvState = {
   } | null;
   pending_video_setup?: PendingVideoSetupState | null;
   pending_ready_media_schedule?: {
+    media_id: string;
+    created_at: string;
+  } | null;
+  pending_video_transcription_theme?: {
     media_id: string;
     created_at: string;
   } | null;
@@ -16521,6 +16530,7 @@ async function callGemini(
     const readyMediaAction = parseReadyMediaAction(userContent);
     const readyMediaScheduleChoice = parseReadyMediaScheduleChoice(userContent);
     const videoCaptionChoice = parseVideoCaptionChoice(userContent);
+    const videoTranscriptionAction = parseVideoTranscriptionAction(userContent);
     const anuncioPostInteractiveId = userContent.match(
       /<<INTERACTIVE_ID:(anuncio_post:[^>]+)>>/i,
     )?.[1]?.toLowerCase() || "";
@@ -16539,6 +16549,97 @@ async function callGemini(
     const singlePhotoInteractiveId = userContent.match(
       /<<INTERACTIVE_ID:(single_photo:[^>]+)>>/i,
     )?.[1]?.toLowerCase() || "";
+    if (remetenteEhDono && videoTranscriptionAction) {
+      const resolved = await resolverMidiaBibliotecaPorId(
+        toolCtx.userId,
+        videoTranscriptionAction.mediaId,
+      );
+      if (!resolved.midia || resolved.midia.tipo !== "video") {
+        return {
+          text:
+            "Não encontrei esse vídeo para tentar novamente. Envie o vídeo outra vez.",
+        };
+      }
+      if (videoTranscriptionAction.action === "write") {
+        if (toolCtx.convId) {
+          const current = toolCtx.agentState ?? {};
+          await saveAgentState(sb, {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          }, {
+            pending_video_transcription_theme: {
+              media_id: resolved.midia.id,
+              created_at: new Date().toISOString(),
+            },
+          }, current);
+          current.pending_video_transcription_theme = {
+            media_id: resolved.midia.id,
+            created_at: new Date().toISOString(),
+          };
+          toolCtx.agentState = current;
+        }
+        return {
+          text:
+            "Escreva o tema do vídeo em uma frase. Vou usar exatamente esse contexto para criar as 3 legendas.",
+        };
+      }
+      const reply = await iniciarFluxoLegendaVideo({
+        userId: toolCtx.userId,
+        telefone: toolCtx.fromNumber,
+        videoUrl: String(resolved.midia.midia_url),
+        contexto: String(resolved.midia.contexto_original || ""),
+        midiaId: resolved.midia.id,
+      });
+      const text = reply || VIDEO_SEM_TRANSCRICAO;
+      return {
+        text,
+        interactiveButtons: text === VIDEO_SEM_TRANSCRICAO
+          ? videoTranscriptionRecoveryButtons(resolved.midia.id)
+          : videoCaptionChoiceButtons(),
+      };
+    }
+    const pendingVideoTranscriptionTheme = remetenteEhDono
+      ? toolCtx.agentState?.pending_video_transcription_theme
+      : null;
+    if (
+      pendingVideoTranscriptionTheme &&
+      !/<<INTERACTIVE_ID:/i.test(userContent)
+    ) {
+      const resolved = await resolverMidiaBibliotecaPorId(
+        toolCtx.userId,
+        pendingVideoTranscriptionTheme.media_id,
+      );
+      if (toolCtx.convId) {
+        await saveAgentState(sb, {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        }, { pending_video_transcription_theme: null }, toolCtx.agentState ?? {});
+      }
+      if (toolCtx.agentState) {
+        toolCtx.agentState.pending_video_transcription_theme = null;
+      }
+      if (!resolved.midia || resolved.midia.tipo !== "video") {
+        return {
+          text:
+            "Não encontrei esse vídeo. Envie o vídeo novamente junto com o tema.",
+        };
+      }
+      const reply = await iniciarFluxoLegendaVideo({
+        userId: toolCtx.userId,
+        telefone: toolCtx.fromNumber,
+        videoUrl: String(resolved.midia.midia_url),
+        contexto: String(resolved.midia.contexto_original || ""),
+        midiaId: resolved.midia.id,
+        temaComoTranscricao: String(userContent).trim(),
+      });
+      return {
+        text: reply ||
+          "Não consegui criar as legendas agora. Tente novamente em instantes.",
+        interactiveButtons: reply ? videoCaptionChoiceButtons() : undefined,
+      };
+    }
     if (pendingFipe) {
       const response = await handlePendingFipeTurn(
         pendingFipe,
@@ -22720,6 +22821,20 @@ async function processOne(queueId: string) {
           readyMediaButtonsAllowed(fromIsOwner)
         ) {
           const buttons = videoCaptionChoiceButtons();
+          await sendWhatsApp(
+            userId,
+            row.from_number,
+            buttons.body,
+            undefined,
+            undefined,
+            buttons,
+          );
+        } else if (
+          videoFlowReply === VIDEO_SEM_TRANSCRICAO &&
+          videoSalvo?.id &&
+          readyMediaButtonsAllowed(fromIsOwner)
+        ) {
+          const buttons = videoTranscriptionRecoveryButtons(videoSalvo.id);
           await sendWhatsApp(
             userId,
             row.from_number,

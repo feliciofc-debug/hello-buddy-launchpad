@@ -7,36 +7,16 @@
 // ============================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  transcribeVideoWithFallback,
+  type VideoTranscriptSegment,
+} from "../_shared/video-transcription-flow.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
-
-interface Segmento {
-  start: number;
-  end: number;
-  text: string;
-}
-
-function normalizarSegmentos(raw: any[]): Segmento[] {
-  const segs: Segmento[] = [];
-  for (const s of raw || []) {
-    const start = Number(s?.start ?? s?.inicio ?? 0);
-    const end = Number(s?.end ?? s?.fim ?? 0);
-    const text = String(s?.text ?? s?.texto ?? "").trim();
-    if (!text) continue;
-    if (!isFinite(start) || !isFinite(end) || end <= start) continue;
-    segs.push({ start: Math.max(0, start), end, text });
-  }
-  // ordena e remove sobreposição
-  segs.sort((a, b) => a.start - b.start);
-  for (let i = 1; i < segs.length; i++) {
-    if (segs[i].start < segs[i - 1].end) segs[i].start = segs[i - 1].end;
-  }
-  return segs.filter((s) => s.end - s.start >= 0.3);
-}
 
 // ============================================================
 // Rede de segurança do nome da empresa
@@ -66,7 +46,10 @@ const semAcento = (s: string) =>
   s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 /** Corrige grafias quase idênticas ao nome da empresa dentro dos segmentos. */
-function corrigirNomeEmpresa(segs: Segmento[], nomeEmpresa?: string): Segmento[] {
+function corrigirNomeEmpresa(
+  segs: VideoTranscriptSegment[],
+  nomeEmpresa?: string,
+): VideoTranscriptSegment[] {
   const nome = (nomeEmpresa || "").trim();
   if (!nome) return segs;
 
@@ -153,59 +136,22 @@ Responda SOMENTE com JSON válido no formato:
 {"segments":[{"start":0.0,"end":2.4,"text":"texto da legenda"}]}`;
 
 
-    const res = await fetch(
-      "https://ai.gateway.lovable.dev/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-3.6-flash",
-          messages: [
-            {
-              role: "user",
-              content: [
-                { type: "text", text: prompt },
-                { type: "video_url", video_url: { url: urlParaIA } },
-              ],
-            },
-          ],
-          response_format: { type: "json_object" },
-        }),
-      },
-    );
-
-    if (!res.ok) {
-      const errTxt = await res.text();
-      console.error("[legendas] gateway falhou:", res.status, errTxt);
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error:
-            res.status === 429
-              ? "Muitas solicitações agora. Tente novamente em instantes."
-              : res.status === 402
-                ? "Créditos de IA insuficientes para transcrever o vídeo."
-                : "Não consegui transcrever este vídeo. Confira se ele tem áudio e tente novamente.",
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    const json = await res.json();
-    const content: string = json?.choices?.[0]?.message?.content ?? "";
-    let parsed: any = {};
-    try {
-      parsed = JSON.parse(content);
-    } catch {
-      const m = content.match(/\{[\s\S]*\}/);
-      if (m) parsed = JSON.parse(m[0]);
-    }
-
     const segments = corrigirNomeEmpresa(
-      normalizarSegmentos(parsed?.segments || parsed?.segmentos || []),
+      await transcribeVideoWithFallback({
+        endpoint: "https://ai.gateway.lovable.dev/v1/chat/completions",
+        apiKey: LOVABLE_API_KEY,
+        prompt,
+        videoUrl: urlParaIA,
+        logger: (entry) =>
+          console.log("[legendas][tentativa]", {
+            tentativa: entry.attempt,
+            modelo: entry.model,
+            content_chars: entry.contentLength,
+            segmentos: entry.segmentCount,
+            json_valido: entry.validJson,
+            status: entry.status,
+          }),
+      }),
       nomeEmpresa,
     );
 
