@@ -46,6 +46,9 @@ export function metadataEscolhaLogo(
     // O vídeo legendado usa sempre a variante própria para vídeo quando existe.
     // A ausência de logo mantém o fluxo sem overlay, sem misturar tenants.
     com_logo: Boolean(logo?.bucket && logo?.path),
+    ...(logo?.bucket && logo?.path
+      ? { logo_bucket: logo.bucket, logo_path: logo.path }
+      : {}),
     ...(logo?.lightBackgroundPath
       ? { logo_light_background_path: logo.lightBackgroundPath }
       : {}),

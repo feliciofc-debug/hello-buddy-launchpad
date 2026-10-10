@@ -1,8 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { appendLinkPost } from '../_shared/link-post.ts'
+import { fetchMetaPostLink } from '../_shared/meta-post-link.ts'
 
-import { prepareImageForInstagram } from "../_shared/prepareImageForInstagram.ts"
+import { prepareImageForInstagramSafe } from "../_shared/prepareImageForInstagram.ts"
 import { InstagramContainerTimeoutError, waitForInstagramContainer } from "../_shared/instagram-container.ts"
 
 const corsHeaders = {
@@ -14,17 +15,22 @@ const SUPABASE_URL_ENV = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY_ENV = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
 /**
- * Garante URL compatível com Instagram (não-AVIF, hospedada em CDN confiável).
- * A Graph API recebe sempre JPEG público do Storage, mesmo quando a origem já
- * está no nosso bucket. Isso elimina PNG/WebP/HEIC e transparência.
+ * Tenta garantir uma URL JPEG compatível. Se a conversão falhar, preserva o
+ * comportamento anterior e deixa o próprio Instagram validar a URL original.
  */
 async function ensureInstagramCompatibleImageUrl(url: string, userId: string): Promise<string> {
-  const result = await prepareImageForInstagram(
+  const result = await prepareImageForInstagramSafe(
     url,
     userId,
     SUPABASE_URL_ENV,
     SUPABASE_SERVICE_ROLE_KEY_ENV,
   )
+  if (!result.converted) {
+    console.warn('[instagram][prepare-image-fallback] usando URL original', {
+      reason: result.reason,
+      url: url.slice(0, 120),
+    })
+  }
   return result.url
 }
 
@@ -99,7 +105,9 @@ serve(async (req) => {
 
     const body = await req.json()
     const isScheduler = body.source === 'scheduler'
-    const sanitizedCaption = await appendLinkPost(supabase, body.user_id, sanitizePublishText(body.caption))
+    const sanitizedCaption = body.preserve_caption === true
+      ? String(body.caption || '').trim()
+      : await appendLinkPost(supabase, body.user_id, sanitizePublishText(body.caption))
     const saveCreationId = (userId: string, queueRowId?: string) => async (creationId: string) => {
       if (!queueRowId) return
       const { error } = await supabase.from('social_posts_queue').update({
@@ -286,7 +294,7 @@ async function publishImageToInstagram(
   productTags?: Array<{ product_id: string; x: number; y: number }>,
   retryCreationId?: string,
   onContainerCreated?: (creationId: string) => Promise<void>,
-): Promise<{ post_id: string }> {
+): Promise<{ post_id: string; post_url?: string }> {
 
   console.log('📸 Publicando IMAGEM no Instagram...', { igAccountId })
 
@@ -305,7 +313,7 @@ async function publishImageToInstagram(
   if (creationId) {
     console.log('♻️ Reutilizando container de imagem Instagram:', creationId)
     await waitForInstagramContainer(creationId, pageToken, 'feed-image')
-    return await publishContainer(igAccountId, creationId, pageToken)
+    return await publishContainer(igAccountId, creationId, pageToken, true)
   }
 
   // Passo 1: Criar container de mídia
@@ -353,7 +361,7 @@ async function publishImageToInstagram(
   await waitForInstagramContainer(creationId, pageToken, 'feed-image')
 
   // Passo 2: Publicar
-  return await publishContainer(igAccountId, creationId, pageToken)
+  return await publishContainer(igAccountId, creationId, pageToken, true)
 }
 
 // === PUBLICAR VÍDEO (REELS) ===
@@ -422,8 +430,9 @@ async function publishReelsToInstagram(
 async function publishContainer(
   igAccountId: string,
   creationId: string,
-  pageToken: string
-): Promise<{ post_id: string }> {
+  pageToken: string,
+  includePermalink = false,
+): Promise<{ post_id: string; post_url?: string }> {
   console.log('📤 Publicando container no Instagram...')
 
   const publishResponse = await fetch(
@@ -445,5 +454,15 @@ async function publishContainer(
   }
 
   console.log('✅ Publicado no Instagram! Post ID:', publishResult.id)
-  return { post_id: publishResult.id }
+  const postUrl = includePermalink
+    ? await fetchMetaPostLink({
+      postId: publishResult.id,
+      accessToken: pageToken,
+      platform: 'instagram',
+    })
+    : null
+  return {
+    post_id: publishResult.id,
+    ...(postUrl ? { post_url: postUrl } : {}),
+  }
 }

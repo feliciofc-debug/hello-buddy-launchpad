@@ -44,8 +44,8 @@ def alvo_meta(formato):
 
 def filtro_meta(vf, target_w, target_h):
     base = (
-        f"scale={target_w}:{target_h}:force_original_aspect_ratio=decrease,"
-        f"pad={target_w}:{target_h}:(ow-iw)/2:(oh-ih)/2:black,setsar=1"
+        f"scale={target_w}:{target_h}:force_original_aspect_ratio=increase,"
+        f"crop={target_w}:{target_h},setsar=1"
     )
     return f"{base},{vf}" if vf else base
 

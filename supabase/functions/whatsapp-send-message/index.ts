@@ -8,6 +8,9 @@ import {
   singleLineInteractiveText,
   truncateCodePoints,
 } from '../_shared/whatsapp-interactive-safe.ts'
+import { mediaThenButtonPayloads } from '../_shared/whatsapp-media-buttons.ts'
+import { stripInternalWhatsAppSplit } from '../_shared/whatsapp-internal-split.ts'
+import { textThenInteractivePayloads } from '../_shared/whatsapp-text-interactive.ts'
 
 
 
@@ -41,12 +44,15 @@ serve(async (req) => {
       // { body: string, header?: string, footer?: string,
       //   buttons: [{ id, title }] }
       interactive_buttons,
+      // Se true, preserva `message` em um envio anterior ao interativo.
+      send_text_first,
     } = body
 
 
     if (!user_id || !to) {
       throw new Error('user_id e to são obrigatórios')
     }
+    const safeMessage = stripInternalWhatsAppSplit(message)
 
     // Buscar config do WhatsApp do cliente
     const { data: config, error: configError } = await supabase
@@ -78,8 +84,20 @@ serve(async (req) => {
     const API_URL = `https://graph.facebook.com/v25.0/${config.phone_number_id}/messages`
 
     let messagePayload: any
+    const separateInteractiveText = send_text_first === true ||
+      [...safeMessage].length > 1024
+    const buttonImageUrl = image_url ? toMetaSafeImageUrl(image_url) : undefined
+    const mediaButtonPayloads = mediaThenButtonPayloads({
+      to,
+      message: safeMessage,
+      videoUrl: video_url,
+      imageUrl: buttonImageUrl,
+      interactiveButtons: interactive_buttons,
+    })
 
-    if (interactive_buttons?.buttons?.length) {
+    if (mediaButtonPayloads) {
+      messagePayload = mediaButtonPayloads[0]
+    } else if (interactive_buttons?.buttons?.length) {
       const buttons = interactive_buttons.buttons.slice(0, 3).map((button: any, index: number) => ({
         type: 'reply',
         reply: {
@@ -96,7 +114,14 @@ serve(async (req) => {
           ...(interactive_buttons.header
             ? { header: { type: 'text', text: singleLineInteractiveText(interactive_buttons.header, 60) } }
             : {}),
-          body: { text: truncateCodePoints(message || interactive_buttons.body || 'Escolha uma opção', 1024) },
+          body: {
+            text: truncateCodePoints(
+              separateInteractiveText
+                ? (interactive_buttons.body || 'Escolha uma opção')
+                : (safeMessage || interactive_buttons.body || 'Escolha uma opção'),
+              1024,
+            ),
+          },
           ...(interactive_buttons.footer
             ? { footer: { text: singleLineInteractiveText(interactive_buttons.footer, 60) } }
             : {}),
@@ -168,7 +193,7 @@ serve(async (req) => {
         type: 'video',
         video: {
           link: video_url,
-          caption: (message || '').slice(0, 1024),
+          caption: safeMessage.slice(0, 1024),
         }
       }
     } else if (document_url) {
@@ -179,7 +204,7 @@ serve(async (req) => {
         document: {
           link: document_url,
           filename: document_filename || 'documento.pdf',
-          caption: message || '',
+          caption: safeMessage,
         }
       }
     } else if (image_url) {
@@ -194,7 +219,7 @@ serve(async (req) => {
         type: 'image',
         image: {
           link: imagemSegura,
-          caption: message || '',
+          caption: safeMessage,
         }
       }
 
@@ -203,46 +228,59 @@ serve(async (req) => {
         messaging_product: 'whatsapp',
         to: to.replace(/\D/g, ''),
         type: 'text',
-        text: { body: message },
+        text: { body: safeMessage },
       }
     }
 
     console.log('📱 Enviando WhatsApp para:', maskPhoneForLog(to))
 
-    const response = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(messagePayload),
-    })
-
-    const responseText = await response.text()
-    let result: any
-    try {
-      result = JSON.parse(responseText)
-    } catch {
-      result = { error: { message: truncateCodePoints(responseText, 500) } }
-    }
-
-    if (!response.ok) {
-      const metaError = result?.error ?? {}
-      console.error('[whatsapp-send-message][meta_error]', {
-        status: response.status,
-        error: {
-          message: metaError.message ?? null,
-          type: metaError.type ?? null,
-          code: metaError.code ?? null,
-          error_subcode: metaError.error_subcode ?? null,
-          fbtrace_id: metaError.fbtrace_id ?? null,
-        },
-        payload: safeMetaDiagnosticPayload(messagePayload),
+    const results: any[] = []
+    const textInteractivePayloads = !mediaButtonPayloads &&
+        (interactive_buttons?.buttons?.length || interactive_list?.rows?.length)
+      ? textThenInteractivePayloads({
+        to,
+        message: safeMessage,
+        interactivePayload: messagePayload,
+        sendTextFirst: send_text_first === true,
       })
-      throw new Error('Não foi possível enviar a mensagem agora. Tente novamente.')
-    }
+      : [messagePayload]
+    for (const payload of mediaButtonPayloads ?? textInteractivePayloads) {
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
 
-    console.log('✅ Mensagem enviada:', result.messages?.[0]?.id)
+      const responseText = await response.text()
+      let result: any
+      try {
+        result = JSON.parse(responseText)
+      } catch {
+        result = { error: { message: truncateCodePoints(responseText, 500) } }
+      }
+
+      if (!response.ok) {
+        const metaError = result?.error ?? {}
+        console.error('[whatsapp-send-message][meta_error]', {
+          status: response.status,
+          error: {
+            message: metaError.message ?? null,
+            type: metaError.type ?? null,
+            code: metaError.code ?? null,
+            error_subcode: metaError.error_subcode ?? null,
+            fbtrace_id: metaError.fbtrace_id ?? null,
+          },
+          payload: safeMetaDiagnosticPayload(payload),
+        })
+        throw new Error('Não foi possível enviar a mensagem agora. Tente novamente.')
+      }
+      results.push(result)
+      console.log('✅ Mensagem enviada:', result.messages?.[0]?.id)
+    }
+    const result = results[0]
 
     // O processor já registra a própria resposta; campanhas e convites
     // continuam usando este log central.
@@ -250,7 +288,7 @@ serve(async (req) => {
       await logOutboundMessage(supabase, {
         userId: user_id,
         phone: String(to),
-        content: message || (interactive_list ? `🎨 ${interactive_list.body || 'lista de opções'}` : (document_url ? `📄 ${document_filename || 'documento'}` : (video_url ? '🎬 vídeo' : (image_url ? '🖼️ imagem' : (contact_card ? '📇 cartão de contato' : ''))))),
+        content: safeMessage || (interactive_list ? `🎨 ${interactive_list.body || 'lista de opções'}` : (document_url ? `📄 ${document_filename || 'documento'}` : (video_url ? '🎬 vídeo' : (image_url ? '🖼️ imagem' : (contact_card ? '📇 cartão de contato' : ''))))),
         messageType: interactive_list ? 'interactive' : document_url ? 'document' : video_url ? 'video' : image_url ? 'image' : contact_card ? 'contacts' : template_name ? 'template' : 'text',
 
         wamid: result.messages?.[0]?.id ?? null,

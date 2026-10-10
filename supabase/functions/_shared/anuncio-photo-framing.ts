@@ -21,7 +21,7 @@ export type PhotoFramePlan = {
   transformedBox: PixelBox | null;
 };
 
-const OBJECT_PADDING_RATIO = 0.06;
+const OBJECT_PADDING_RATIO = 0.10;
 const EPSILON = 0.75;
 
 export function normalizeFotoBox(value: unknown): FotoBox | null {
@@ -63,6 +63,31 @@ export function parseFotoBoxFromVisionResponse(text: string): FotoBox | null {
     );
     return match ? normalizeFotoBox(match.slice(1).map(Number)) : null;
   }
+}
+
+export async function detectPhotoBoxesByVariant<T>(
+  variants: {
+    clara: { url: string; source: string };
+    escura: { url: string; source: string };
+  },
+  detect: (url: string) => Promise<T | null>,
+): Promise<{ clara: T | null; escura: T | null }> {
+  const [clara, escura] = await Promise.all(
+    (["clara", "escura"] as const).map((variant) => {
+      const photo = variants[variant];
+      return photo.source === "failed" || !photo.url
+        ? Promise.resolve(null)
+        : detect(photo.url);
+    }),
+  );
+  return { clara, escura };
+}
+
+export function photoBoxForStyle<T>(
+  style: "impacto" | "catalogo" | "destaque",
+  boxes: { clara: T | null; escura: T | null },
+): T | null {
+  return style === "catalogo" ? boxes.clara : boxes.escura;
 }
 
 export function frameContainsObject(

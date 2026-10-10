@@ -97,8 +97,18 @@ serve(async (req) => {
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-    const { platform, video_url, caption, user_id, creation_id, queue_row_id } = await req.json()
-    const sanitizedCaption = await appendLinkPost(supabase, user_id, sanitizePublishText(caption))
+    const {
+      platform,
+      video_url,
+      caption,
+      user_id,
+      creation_id,
+      queue_row_id,
+      preserve_caption,
+    } = await req.json()
+    const sanitizedCaption = preserve_caption === true
+      ? String(caption || '').trim()
+      : await appendLinkPost(supabase, user_id, sanitizePublishText(caption))
 
     if (!video_url) throw new Error('video_url é obrigatório')
     if (!caption) throw new Error('caption é obrigatório')
@@ -176,7 +186,7 @@ async function publishFacebookReels(
   pageId: string,
   videoUrl: string,
   caption: string
-): Promise<{ post_id: string }> {
+): Promise<{ post_id: string; post_url: string }> {
   console.log('📹 Publicando Facebook Reels...', { pageId })
 
   const initResponse = await fetch(
@@ -228,7 +238,11 @@ async function publishFacebookReels(
   const publishResult = await publishResponse.json()
   if (publishResult.error) throw new Error(`FB Reels publish: ${publishResult.error.message}`)
 
-  return { post_id: publishResult.video_id || videoId }
+  const postId = publishResult.video_id || videoId
+  return {
+    post_id: postId,
+    post_url: `https://www.facebook.com/reel/${postId}`,
+  }
 }
 
 async function publishInstagramReels(
@@ -238,7 +252,7 @@ async function publishInstagramReels(
   caption: string,
   retryCreationId?: string,
   onContainerCreated?: (creationId: string) => Promise<void>,
-): Promise<{ post_id: string }> {
+): Promise<{ post_id: string; post_url?: string }> {
   console.log('📹 Publicando Instagram Reels...', { igAccountId })
 
   let creationId = String(retryCreationId || '').trim()
@@ -284,5 +298,18 @@ async function publishInstagramReels(
   const publishResult = await publishResponse.json()
   if (publishResult.error) throw new Error(`IG Reels publish: ${publishResult.error.message}`)
 
-  return { post_id: publishResult.id }
+  const postId = publishResult.id
+  let postUrl: string | undefined
+  try {
+    const permalinkResponse = await fetch(
+      `https://graph.facebook.com/v25.0/${postId}?fields=permalink&access_token=${encodeURIComponent(pageToken)}`
+    )
+    const permalinkResult = await permalinkResponse.json()
+    if (typeof permalinkResult?.permalink === 'string') {
+      postUrl = permalinkResult.permalink
+    }
+  } catch (error) {
+    console.warn('⚠️ Não consegui obter permalink do Instagram:', error)
+  }
+  return { post_id: postId, post_url: postUrl }
 }

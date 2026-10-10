@@ -17,7 +17,7 @@ Deno.test("Agendar antes de escolher A/B/C fica bloqueado", () => {
   ]);
 });
 
-Deno.test("escolher B libera publicar/agendar e mantém B", () => {
+Deno.test("escolher B libera publicação direta e mantém B", () => {
   let selected: SocialVariantChoice | undefined;
   selected = "B";
   const variants = {
@@ -32,18 +32,14 @@ Deno.test("escolher B libera publicar/agendar e mantém B", () => {
     selectSocialVariantScripts(variants, selected),
     "Texto da opção B",
   );
-  assertEquals(socialApprovalButtons(selected), [
-    "publish",
-    "schedule",
-    "cancel",
-  ]);
+  assertEquals(socialApprovalButtons(selected), []);
 });
 
-Deno.test("Story escolhido oferece somente publicar agora", () => {
-  assertEquals(socialApprovalButtons("C", true), ["publish", "cancel"]);
+Deno.test("Story escolhido também segue direto sem nova aprovação", () => {
+  assertEquals(socialApprovalButtons("C", true), []);
 });
 
-Deno.test("carrossel recebe botões A/B/C e depois ações de publicar ou agendar", () => {
+Deno.test("post recebe botões A/B/C e não oferece Aprovar criativo depois", () => {
   const token = "abcd1234";
   const carouselPreview = JSON.stringify({
     status: "aguardando_escolha_variante",
@@ -66,12 +62,8 @@ Deno.test("carrossel recebe botões A/B/C e depois ações de publicar ou agenda
     opcao_ativa: "B",
   });
   assertEquals(
-    socialInteractiveButtonsFromResult(selectedB)?.buttons,
-    [
-      { id: `social_publish:${token}`, title: "Publicar" },
-      { id: `social_schedule:${token}`, title: "Agendar" },
-      { id: `social_cancel:${token}`, title: "Cancelar" },
-    ],
+    socialInteractiveButtonsFromResult(selectedB),
+    undefined,
   );
 });
 

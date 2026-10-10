@@ -5,6 +5,10 @@ import {
   TIKTOK_RECONNECT_MESSAGE,
   TIKTOK_TEMPORARILY_UNAVAILABLE_MESSAGE,
 } from "../_shared/tiktok-token.ts";
+import {
+  buildTikTokPhotoPostPayload,
+  tikTokPhotoInitErrorMessage,
+} from "../_shared/tiktok-photo-post.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -15,6 +19,7 @@ interface PostRequest {
   user_id: string;
   content_type: "image" | "video";
   content_url: string;
+  image_urls?: string[];
   title: string;
   post_mode: "direct" | "draft";
   // Compliance UX (Direct Post)
@@ -48,6 +53,7 @@ serve(async (req) => {
       user_id,
       content_type,
       content_url,
+      image_urls,
       title,
       privacy_level,
       disable_comment = false,
@@ -96,9 +102,9 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-    if (content_type !== "video") {
+    if (content_type !== "video" && content_type !== "image") {
       return new Response(
-        JSON.stringify({ success: false, error: "O TikTok aceita apenas vídeo neste fluxo de publicação." }),
+        JSON.stringify({ success: false, error: "Tipo de conteúdo inválido para o TikTok." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -187,6 +193,102 @@ serve(async (req) => {
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
+    }
+
+    if (content_type === "image") {
+      const tiktokEnv = (Deno.env.get("TIKTOK_ENV") || "sandbox").toLowerCase();
+      const isProducao = tiktokEnv === "producao" || tiktokEnv === "production";
+      const directPost = post_mode === "direct";
+      if (directPost && !isProducao && privacy_level && privacy_level !== "SELF_ONLY") {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "Enquanto o app não for auditado pelo TikTok, apenas 'Somente eu' está disponível. Escolha essa opção para publicar em modo de teste.",
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      const privacyLevel = isProducao ? (privacy_level || "SELF_ONLY") : "SELF_ONLY";
+      const photoUrls = Array.isArray(image_urls) && image_urls.length
+        ? image_urls
+        : [content_url];
+      const photoPayload = buildTikTokPhotoPostPayload({
+        imageUrls: photoUrls,
+        caption: safeTitle,
+        directPost,
+        privacyLevel,
+        disableComment: disable_comment,
+        brandOrganic: brand_organic,
+        brandedContent: branded_content,
+      });
+      const initResponse = await fetch(
+        "https://open.tiktokapis.com/v2/post/publish/content/init/",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json; charset=UTF-8",
+          },
+          body: JSON.stringify(photoPayload),
+        },
+      );
+      const initData = await initResponse.json();
+      const initError = initData?.error;
+      if (
+        !initResponse.ok ||
+        (initError?.code && initError.code !== "ok")
+      ) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: tikTokPhotoInitErrorMessage(initResponse.status, initError),
+            tiktok_error: initError ?? null,
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      const publishId = initData?.data?.publish_id;
+      const { data: postRow, error: insertError } = await supabase
+        .from("tiktok_posts")
+        .insert({
+          user_id,
+          content_type,
+          content_url: photoUrls[0],
+          title: safeTitle,
+          post_mode,
+          privacy_level: directPost ? privacyLevel : null,
+          disable_comment: !!disable_comment,
+          disable_duet: false,
+          disable_stitch: false,
+          is_commercial_content: !!is_commercial_content,
+          brand_organic: !!brand_organic,
+          branded_content: !!branded_content,
+          consent_accepted_at: consented_at ||
+            (source === "manual" ? new Date().toISOString() : null),
+          source,
+          tiktok_response: initData,
+          status: "processing",
+          publish_status: "PROCESSING_UPLOAD",
+          publish_id: publishId || null,
+        })
+        .select("id")
+        .single();
+      if (insertError) {
+        console.error("⚠️ Erro ao salvar histórico da foto:", insertError.message);
+      }
+      return new Response(
+        JSON.stringify({
+          success: true,
+          direct_post: directPost,
+          message: directPost
+            ? "Foto enviada ao TikTok e em processamento."
+            : "Foto enviada ao TikTok. O rascunho está sendo preparado para a caixa de entrada.",
+          publish_id: publishId,
+          post_row_id: postRow?.id ?? null,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     // === PASSO 1: Baixar o vídeo do Supabase Storage ===

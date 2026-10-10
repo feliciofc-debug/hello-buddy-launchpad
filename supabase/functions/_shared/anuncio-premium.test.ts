@@ -9,11 +9,22 @@ import { buildAnuncioBrandPlan } from "./anuncio-client-brand.ts";
 import { selectAnuncioPhoto } from "./anuncio-photo.ts";
 import {
   calculatePhotoFrame,
+  detectPhotoBoxesByVariant,
   frameContainsObject,
   normalizeFotoBox,
   parseFotoBoxFromVisionResponse,
+  photoBoxForStyle,
 } from "./anuncio-photo-framing.ts";
-import { productAdPhotoImprovementPrompt } from "./anuncio-photo-prompt.ts";
+import {
+  availableStylesForProductPhoto,
+  failedProductPhotoStyleLabels,
+  generateSafeProductPhotoWithRetry,
+  generatedProductPhotoIsSafe,
+  productAdPhotoImprovementPrompt,
+  productPhotoVariantForStyle,
+  resolveGeneratedProductPhoto,
+  shouldUseLogoEditMode,
+} from "./anuncio-photo-prompt.ts";
 import { classifyStoreReply, storeNameFromSite } from "./anuncio-store-flow.ts";
 import { buildVehicleAdContent } from "./anuncio-vehicle-details.ts";
 import {
@@ -561,7 +572,10 @@ Deno.test("arte de produto tem prioridade e respeita foto sem melhoria", () => {
 });
 
 Deno.test("melhoria do anúncio preserva o estado real do veículo", () => {
-  const prompt = productAdPhotoImprovementPrompt("Jeep Compass");
+  const prompt = productAdPhotoImprovementPrompt(
+    "Jeep Compass",
+    "veiculo",
+  );
   for (
     const expected of [
       "Mude SOMENTE o fundo/ambiente e a iluminação",
@@ -572,6 +586,199 @@ Deno.test("melhoria do anúncio preserva o estado real do veículo", () => {
   ) {
     assert(prompt.includes(expected));
   }
+  assertEquals(prompt.includes("PODE limpar"), false);
+});
+
+Deno.test("melhoria de produto nunca recebe instruções automotivas", () => {
+  const clear = productAdPhotoImprovementPrompt(
+    "Interruptor Tramontina",
+    "produto",
+    "clara",
+  );
+  const dark = productAdPhotoImprovementPrompt(
+    "Interruptor Tramontina",
+    "produto",
+    "escura",
+  );
+  for (const prompt of [clear, dark]) {
+    const normalized = prompt.toLocaleLowerCase("pt-BR");
+    for (const forbidden of ["showroom", "veículo", "pintura", "rodas"]) {
+      assertEquals(normalized.includes(forbidden), false);
+    }
+    assert(prompt.includes("Não inclua pessoas nem outros produtos de marca"));
+    assert(
+      prompt.includes(
+        "PODE limpar somente sujeira, manchas, poeira, marcas de dedo e reflexos ruins",
+      ),
+    );
+    assert(prompt.includes("NÃO esconda defeitos estruturais"));
+    assert(
+      prompt.includes(
+        "PROIBIDO adicionar logotipo, marca, texto, estampa ou qualquer marcação no cenário ou no produto",
+      ),
+    );
+    assert(
+      prompt.includes(
+        "A marca da loja aparece somente no layout da arte, nunca no produto",
+      ),
+    );
+  }
+  assert(clear.includes("versão clara, arejada e iluminada"));
+  assert(clear.includes("parede de sala moderna"));
+  assert(dark.includes("versão escura e sofisticada"));
+  assert(dark.includes("luz de destaque no produto"));
+  assertEquals(shouldUseLogoEditMode("anuncio", clear), false);
+  assertEquals(shouldUseLogoEditMode("", "aplique minha logo"), true);
+});
+
+Deno.test("cenário de caneca conta a história e mantém Catálogo claro", () => {
+  const clear = productAdPhotoImprovementPrompt(
+    "Caneca branca",
+    "produto",
+    "clara",
+    "Caneca de porcelana para café",
+  );
+  const dark = productAdPhotoImprovementPrompt(
+    "Caneca branca",
+    "produto",
+    "escura",
+    "Caneca de porcelana para café",
+  );
+  assert(clear.includes("mesa de café montada"));
+  assert(clear.includes("mármore branco ou bege"));
+  assert(clear.includes("luz natural suave da manhã"));
+  assert(dark.includes("mesa de café montada"));
+  assert(dark.includes("mármore cinza-escuro ou preto"));
+  assert(dark.includes("grãos, bule e guardanapo"));
+  for (const prompt of [clear, dark]) {
+    assert(prompt.includes("Substitua COMPLETAMENTE a superfície e o fundo"));
+    assert(prompt.includes("margem visual de 8-12%"));
+    assert(prompt.includes("não corte nenhuma parte"));
+  }
+});
+
+Deno.test("catálogo usa variante clara e impacto/destaque usam escura", () => {
+  const variants = {
+    clara: { url: "clear.jpg", source: "improved" as const },
+    escura: { url: "dark.jpg", source: "improved" as const },
+  };
+  assertEquals(productPhotoVariantForStyle("catalogo", variants).url, "clear.jpg");
+  assertEquals(productPhotoVariantForStyle("impacto", variants).url, "dark.jpg");
+  assertEquals(productPhotoVariantForStyle("destaque", variants).url, "dark.jpg");
+});
+
+Deno.test("foto gerada com objeto novo é descartada", () => {
+  assertEquals(
+    generatedProductPhotoIsSafe({
+      originalDescription: "Interruptor preto na mão",
+      generatedDescription:
+        "Interruptor preto diante de máquinas em um galpão industrial",
+      requestedText: "anúncio de interruptor",
+    }),
+    false,
+  );
+  assertEquals(
+    generatedProductPhotoIsSafe({
+      originalDescription: "Interruptor preto na mão",
+      generatedDescription:
+        "Interruptor preto intacto em fundo infinito creme com sombra",
+      requestedText: "anúncio de interruptor",
+    }),
+    true,
+  );
+});
+
+Deno.test("logo nova é descartada e a segunda tentativa segura é usada", async () => {
+  const attempts: number[] = [];
+  const result = await generateSafeProductPhotoWithRetry({
+    originalDescription: "Caneca branca lisa, sem estampa",
+    requestedText: "Caneca para personalizar",
+    generate: (attempt) => {
+      attempts.push(attempt);
+      return Promise.resolve(attempt === 1
+        ? {
+          url: "contaminada.jpg",
+          description: "Caneca branca com logotipo AMZ impresso",
+        }
+        : {
+          url: "segura.jpg",
+          description: "Caneca branca lisa em bancada clara de café",
+        });
+    },
+  });
+  assertEquals(attempts, [1, 2]);
+  assertEquals(result.photo, {
+    url: "segura.jpg",
+    source: "improved",
+  });
+});
+
+Deno.test("superfície original persistente força nova tentativa", async () => {
+  const attempts: number[] = [];
+  const result = await generateSafeProductPhotoWithRetry({
+    originalDescription: "Caneca branca sobre mesa de madeira",
+    requestedText: "Caneca para café",
+    generate: (attempt) => {
+      attempts.push(attempt);
+      return Promise.resolve(attempt === 1
+        ? {
+          url: "superficie-original.jpg",
+          description: "Caneca branca sobre mesa de madeira com luz suave",
+        }
+        : {
+          url: "cenario-novo.jpg",
+          description:
+            "Caneca branca em bancada de mármore preto, com grãos de café",
+        });
+    },
+  });
+  assertEquals(attempts, [1, 2]);
+  assertEquals(result.photo, {
+    url: "cenario-novo.jpg",
+    source: "improved",
+  });
+});
+
+Deno.test("variante escura falha duas vezes e omite Impacto e Destaque", async () => {
+  let attempts = 0;
+  const dark = await generateSafeProductPhotoWithRetry({
+    originalDescription: "Caneca branca lisa",
+    generate: () => {
+      attempts++;
+      return Promise.reject(new Error("HTTP 503"));
+    },
+  });
+  assertEquals(attempts, 2);
+  const variants = {
+    clara: { url: "catalogo.jpg", source: "improved" as const },
+    escura: {
+      url: "",
+      source: "failed" as const,
+      failureReason: dark.failureReason,
+    },
+  };
+  assertEquals(
+    availableStylesForProductPhoto(
+      ["impacto", "catalogo", "destaque"],
+      variants,
+    ),
+    ["catalogo"],
+  );
+  assertEquals(failedProductPhotoStyleLabels(variants), [
+    "Impacto",
+    "Destaque",
+  ]);
+});
+
+Deno.test("fallback utilitário preserva original quando explicitamente permitido", () => {
+  assertEquals(
+    resolveGeneratedProductPhoto({
+      originalUrl: "original.jpg",
+      generatedUrl: null,
+      safe: false,
+    }),
+    { url: "original.jpg", source: "original" },
+  );
 });
 
 const premiumBuilders = {
@@ -646,6 +853,27 @@ Deno.test("foto sem caixa ou com caixa inválida usa contain", () => {
     ymax: 950,
     xmax: 920,
   });
+});
+
+Deno.test("enquadramento é detectado separadamente para cada variante", async () => {
+  const calls: string[] = [];
+  const clearBox = { ymin: 80, xmin: 120, ymax: 900, xmax: 840 };
+  const darkBox = { ymin: 100, xmin: 200, ymax: 940, xmax: 900 };
+  const boxes = await detectPhotoBoxesByVariant(
+    {
+      clara: { url: "clara.jpg", source: "improved" },
+      escura: { url: "escura.jpg", source: "improved" },
+    },
+    (url) => {
+      calls.push(url);
+      return Promise.resolve(url === "clara.jpg" ? clearBox : darkBox);
+    },
+  );
+  assertEquals(calls.sort(), ["clara.jpg", "escura.jpg"]);
+  assertEquals(boxes, { clara: clearBox, escura: darkBox });
+  assertEquals(photoBoxForStyle("catalogo", boxes), clearBox);
+  assertEquals(photoBoxForStyle("impacto", boxes), darkBox);
+  assertEquals(photoBoxForStyle("destaque", boxes), darkBox);
 });
 
 Deno.test("parser valida box_2d e conferência rejeita corte", () => {
@@ -810,6 +1038,22 @@ Deno.test("três dados informados produzem somente três destaques", () => {
   });
   assertEquals(content.highlights, ["40 mil km", "Automático", "1.3 Turbo"]);
   assertEquals(content.ficha, []);
+});
+
+Deno.test("arte deduplica chips e não cola cor ao código do modelo", () => {
+  const content = buildVehicleAdContent({
+    versao: "TS-212 RNEGRO",
+    cor: "NEGRO",
+    condicoes: ["3X SEM JUROS", "3x sem juros"],
+    itens: ["  3X   SEM JUROS  "],
+  });
+  assertEquals(content.subtitle, "TS-212 R");
+  assertEquals(
+    content.highlights.filter((item) =>
+      item.toUpperCase().replace(/\s+/g, " ") === "3X SEM JUROS"
+    ).length,
+    1,
+  );
 });
 
 Deno.test("logo quadrada mostra nome e logo horizontal não repete", () => {

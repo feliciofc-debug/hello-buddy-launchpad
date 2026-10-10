@@ -59,7 +59,9 @@ import {
   normalizeImageDataUrl,
   renderableImageDataUrl,
 } from "../_shared/renderable-image.ts";
+import { correctProductColors } from "../_shared/product-photo-studio.ts";
 import { getTenantLogoDataUrlForBackground } from "../_shared/tenant-logo.ts";
+import { normalizedAdChipKey } from "../_shared/anuncio-vehicle-details.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -189,8 +191,18 @@ async function composePhotoForTemplate(input: {
   estilo: AnuncioEstilo;
   formato: AnuncioFormato;
   fotoBox?: unknown;
+  correctColors?: boolean;
 }): Promise<{ dataUrl: string; mode: "box" | "contain" }> {
   const source = await Image.decode(dataUrlBytes(input.dataUrl));
+  if (input.correctColors) {
+    source.bitmap.set(
+      correctProductColors(
+        new Uint8Array(source.bitmap),
+        source.width,
+        source.height,
+      ),
+    );
+  }
   const target = ANUNCIO_LAYOUT_BOXES[input.estilo][input.formato].vehicle;
   const plan = calculatePhotoFrame({
     sourceWidth: source.width,
@@ -240,6 +252,7 @@ async function logoPathParaDataUrl(
 
 function normalizeItens(raw: unknown): AnuncioItem[] {
   if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
   return raw
     .map((i: any): AnuncioItem | null => {
       if (typeof i === "string") {
@@ -251,7 +264,13 @@ function normalizeItens(raw: unknown): AnuncioItem[] {
       const rotulo = String(i?.rotulo ?? i?.label ?? "").trim();
       return { texto: texto.slice(0, 42), rotulo: rotulo ? rotulo.slice(0, 28) : undefined };
     })
-    .filter((i): i is AnuncioItem => !!i)
+    .filter((i): i is AnuncioItem => {
+      if (!i) return false;
+      const key = normalizedAdChipKey(i.texto);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
     .slice(0, 8);
 }
 
@@ -338,13 +357,21 @@ Deno.serve(async (req) => {
     }
     let fotoDataUrl = fotoResult.dataUrl;
     let fotoPrecomposed = false;
-    let frameMode: "box" | "contain" | "template_contain" = "template_contain";
+    let frameMode:
+      | "box"
+      | "contain"
+      | "template_contain" = "template_contain";
+    const accentColor = normalizeHex(
+      body?.accent_color,
+      estilo === "impacto" ? "#F2B544" : "#F36812",
+    );
     try {
       const composed = await composePhotoForTemplate({
         dataUrl: fotoDataUrl,
         estilo,
         formato,
         fotoBox: body?.foto_box,
+        correctColors: fotoResult.source !== "improved",
       });
       fotoDataUrl = composed.dataUrl;
       fotoPrecomposed = true;
@@ -385,10 +412,7 @@ Deno.serve(async (req) => {
       logoDataUrl,
       logoIsIcon: body?.logo_is_icon === true,
       primaryColor: normalizeHex(body?.primary_color, "#8A6A12"),
-      accentColor: normalizeHex(
-        body?.accent_color,
-        estilo === "impacto" ? "#F2B544" : "#F36812",
-      ),
+      accentColor,
       formato,
     };
 

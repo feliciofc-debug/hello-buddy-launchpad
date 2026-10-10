@@ -85,8 +85,10 @@ class FfmpegCommandTest(unittest.TestCase):
         self.assertEqual(WORKER["alvo_meta"]("reels"), (1080, 1920))
         self.assertEqual(WORKER["alvo_meta"]("feed"), (1080, 1350))
         video_filter = WORKER["filtro_meta"]("drawtext=test", 1080, 1920)
-        self.assertIn("force_original_aspect_ratio=decrease", video_filter)
-        self.assertIn("pad=1080:1920", video_filter)
+        self.assertIn("force_original_aspect_ratio=increase", video_filter)
+        self.assertIn("crop=1080:1920", video_filter)
+        self.assertNotIn("pad=", video_filter)
+        self.assertNotIn(":black", video_filter)
 
 
 if __name__ == "__main__":

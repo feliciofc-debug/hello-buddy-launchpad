@@ -5,6 +5,9 @@ import {
   metadataEscolhaLogo,
   VIDEO_LEGENDA_LOGO_BUTTONS,
 } from "./video-legenda-logo.ts";
+import { buildVideoRenderLogoClaim } from "./video-render-logo.ts";
+
+const USER_ID = "11111111-1111-4111-8111-111111111111";
 
 Deno.test("botões de logo cabem no limite do WhatsApp", () => {
   assertEquals(VIDEO_LEGENDA_LOGO_BUTTONS.map((button) => button.title), [
@@ -49,4 +52,43 @@ Deno.test("confirmação comum aplica automaticamente a variante de vídeo", () 
   );
   assertEquals(metadataEscolhaLogo({}, "sim", null).com_logo, false);
   assertEquals(detectarEscolhaLogo("Gerar sem logo"), false);
+});
+
+Deno.test("escolha B salva logo completa e produz claim para o worker", async () => {
+  const metadata = metadataEscolhaLogo(
+    { opcoes: ["Legenda A", "Legenda B", "Legenda C"] },
+    "B",
+    {
+      bucket: "tenant-logos",
+      path: `${USER_ID}/video.png`,
+      lightBackgroundPath: `${USER_ID}/light.png`,
+      darkBackgroundPath: `${USER_ID}/dark.png`,
+    },
+  );
+
+  assertEquals(metadata.com_logo, true);
+  assertEquals(metadata.logo_bucket, "tenant-logos");
+  assertEquals(metadata.logo_path, `${USER_ID}/video.png`);
+  assertEquals(String(metadata.logo_path).startsWith(`${USER_ID}/`), true);
+
+  const claim = await buildVideoRenderLogoClaim(
+    { user_id: USER_ID, metadata },
+    (_bucket, path) => Promise.resolve(`https://storage.example/${path}`),
+  );
+  assertEquals(
+    claim?.download_url,
+    `https://storage.example/${USER_ID}/video.png`,
+  );
+});
+
+Deno.test("escolha sem logo desativa overlay e mantém claim nulo", async () => {
+  const metadata = metadataEscolhaLogo({}, "B", null);
+  assertEquals(metadata.com_logo, false);
+  assertEquals(
+    await buildVideoRenderLogoClaim(
+      { user_id: USER_ID, metadata },
+      () => Promise.resolve("não deve ser usada"),
+    ),
+    null,
+  );
 });

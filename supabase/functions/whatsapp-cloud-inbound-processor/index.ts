@@ -9,6 +9,7 @@ import {
 import { buildSystemPrompt, AMZ_KNOWLEDGE } from "../_shared/agent-soul.ts";
 import { AMZ_TENANT_ID as ADMIN_AMZ_USER_ID } from "../_shared/amz-tenant.ts";
 import {
+  AGENT_PHONE,
   buildAmzContext,
   isAmzOwnerAltPhone,
   OWNER_PHONE,
@@ -125,7 +126,18 @@ import {
   applyBrandLogo,
   buildBrandGenerationGuidance,
 } from "../_shared/brand-image-engine.ts";
-import { sceneEditDirective } from "../_shared/image-edit-instruction.ts";
+import {
+  hasExplicitSceneDescription,
+  sceneEditDirective,
+} from "../_shared/image-edit-instruction.ts";
+import {
+  combineSceneInstructions,
+  estimatedProductSceneCostUsd,
+  planProductSceneAdjustment,
+  PRODUCT_SCENE_IMAGE_MODELS,
+  productSceneScaleDirective,
+  sceneAdjustmentRequiresRegeneration,
+} from "../_shared/product-scene-edit.ts";
 import { appendWhatsappCtaInPublishingOrder } from "../_shared/social-caption-order.ts";
 import {
   dataUrlToImageBytes,
@@ -289,9 +301,31 @@ import {
   extractSocialPostBriefing,
   hasImageGenerationRequest,
   hasSocialPostRequest,
+  hasVideoPublicationRequest,
+  isCarouselLibraryMedia,
   selectLatestImplicitMediaId,
   selectPublicationMediaId,
 } from "../_shared/owner-media-intent.ts";
+import {
+  imageEditRetryButtons,
+  isImageEditRetryAction,
+  modelMediaIdPresentInUserText,
+  parseReadyMediaScheduleChoice,
+  parseReadyMediaAction,
+  parseReadyVideoRerenderAction,
+  parseVideoCaptionChoice,
+  readyMediaActionRoute,
+  readyMediaButtonsAllowed,
+  readyMediaActionButtons,
+  readyMediaScheduleList,
+  readyVideoPublishPlan,
+  readyVideoRerenderButtons,
+  replyTextFromInteractiveId,
+  scheduleSlotSaoPauloText,
+  videoCaptionChoiceButtons,
+  videoCaptionOptionsText,
+} from "../_shared/ready-media-actions.ts";
+import { renderedMetaVideoFormat } from "../_shared/meta-video-requirements.ts";
 import {
   classifyPendingBrandReply,
   decideWhatsAppImageBrand,
@@ -366,6 +400,7 @@ import {
   environmentLikelihood,
   IMAGE_COMPOSITION_ESTIMATED_COST_USD,
   IMAGE_COMPOSITION_MODEL,
+  IMAGE_COMPOSITION_MODELS,
   isExplicitTwoImageCompositionRequest,
   isImageCompositionIntent,
   isProductAdCreativeRequest,
@@ -373,15 +408,24 @@ import {
   type ImageCompositionResolution,
 } from "../_shared/image-composition.ts";
 import {
+  logoImageEditPlan,
   logoPlacementMode,
   logoRequestIncludesPublication,
   LOGO_PRODUCT_SIMULATION_NOTICE,
 } from "../_shared/logo-placement-intent.ts";
 import {
+  bucketPathDeUrl,
   iniciarFluxoLegendaVideo,
   resolverVideoLegendado,
   tratarRespostaFluxoLegenda,
+  VIDEO_SEM_TRANSCRICAO,
 } from "../_shared/video-legenda-flow.ts";
+import {
+  parseVideoTranscriptionAction,
+  videoTranscriptionRecoveryButtons,
+} from "../_shared/video-transcription-flow.ts";
+import { formatVideoPublishMessage } from "../_shared/video-publish-message.ts";
+import { splitInternalWhatsAppMessage } from "../_shared/whatsapp-internal-split.ts";
 import {
   aplicarAjusteRoteiroMotion,
   buscarBaseRefazerVideoMotion,
@@ -437,9 +481,13 @@ import {
   anuncioPhotoRedoButtons,
   anuncioStyleButtons,
   anuncioStyleFromText,
+  dominantProductAccentColor,
   getTenantAnuncioPhotoPreference,
   getTenantAnuncioStyle,
   otherAnuncioStyles,
+  recommendAnuncioStyle,
+  recommendationPreferenceForAccount,
+  renderAnuncioStyleOptions,
   resolveAnuncioPhotoPreference,
   saveTenantAnuncioPhotoPreference,
   savedClientAnuncioStyle,
@@ -448,15 +496,23 @@ import {
 } from "../_shared/anuncio-style.ts";
 import {
   anuncioCaptionExtraList,
+  anuncioCaptionChoiceMessage,
+  anuncioActionAfterCaption,
+  anuncioContentNiche,
   anuncioFinalApprovalButtons,
   anuncioPostActionButtons,
+  anuncioPostDestinationList,
   anuncioPostFormatButtons,
   anuncioPostNetworkButtons,
+  anuncioRemainingDestinationsList,
   anuncioScheduleApprovalButtons,
   anuncioScheduleTimeButtons,
   canOfferAnuncioPostActions,
+  formatBrazilianWhatsappNumber,
+  generateProductAdCaptions,
   generateVehicleAdCaptions,
   parseAnuncioPostRequest,
+  singleWhatsappCtaAtEnd,
   shouldBindPostToLastAnuncio,
   validLastAnuncio,
   type AnuncioPostNetwork,
@@ -465,14 +521,35 @@ import {
   type PendingAnuncioPost,
 } from "../_shared/anuncio-social-flow.ts";
 import {
+  type ContentNiche,
+  resolveNichoDoConteudo,
+} from "../_shared/content-niche.ts";
+import {
   selectRecentOriginalPhoto,
 } from "../_shared/anuncio-source-media.ts";
 import {
+  detectPhotoBoxesByVariant,
   parseFotoBoxFromVisionResponse,
+  photoBoxForStyle,
   type FotoBox,
 } from "../_shared/anuncio-photo-framing.ts";
-import { productAdPhotoImprovementPrompt } from "../_shared/anuncio-photo-prompt.ts";
+import {
+  availableStylesForProductPhoto,
+  failedProductPhotoStyleLabels,
+  generateSafeProductPhotoWithRetry,
+  productAdPhotoImprovementPrompt,
+  productPhotoVariantForStyle,
+  resolveGeneratedProductPhoto,
+  shouldUseLogoEditMode,
+  type ProductPhotoVariant,
+  type ProductPhotoVariants,
+} from "../_shared/anuncio-photo-prompt.ts";
 import { buildVehicleAdContent } from "../_shared/anuncio-vehicle-details.ts";
+import {
+  anuncioArgsFromOwnerData,
+  isPendingAnuncioDataCancellation,
+  pendingAnuncioDataIsActive,
+} from "../_shared/anuncio-data-followup.ts";
 import {
   classifyStoreReply,
   storeNameFromSite,
@@ -481,21 +558,33 @@ import {
   buscarMarca,
   consultarPreco,
   fipeListRows,
+  fipeModelPageRows,
   fipePhotoSuggestionMessage,
+  fipePriceRetryButtons,
+  formatFipeResult,
   listarAnos,
+  listarMarcas,
   listarModelos,
+  listarModelosPorAno,
   type FipeListItem,
   type FipePrice,
 } from "../_shared/fipe.ts";
 import {
   filterFipeModelCandidates,
   normalizeFipeLookupInput,
+  normalizeFipeYear,
   parseFipeRequestText,
   type FipeLookupInput,
 } from "../_shared/fipe-input.ts";
 import {
-  fipeInputFromConfirmedVehicle,
+  createFipePriceRetryState,
+  filterFipeModelsByYear,
+  fipeModelDecision,
+  fipeYearAvailabilityDecision,
+  fipeInputFromTextAndBrands,
   isExplicitFipeRequest,
+  isFipePhotoReference,
+  resolveFipePhotoSource,
   vehicleFipeTurn,
 } from "../_shared/fipe-routing.ts";
 import {
@@ -1916,6 +2005,9 @@ async function toolEditarImagem(
     preservarAmbiente?: boolean;
     registrarNaBiblioteca?: boolean;
     imageInputUrl?: string;
+    sourceMediaId?: string;
+    originalSourceMediaId?: string;
+    libraryContext?: string;
   },
 ): Promise<string> {
   if (!isOwner({ userId: ctx.userId, fromNumber: ctx.fromNumber || "" })) {
@@ -1957,12 +2049,15 @@ async function toolEditarImagem(
 
   const textos = (ctx.textos || []).map((t) => String(t || "").trim()).filter(Boolean).slice(0, 6);
   const modo = (ctx.modo || "").trim().toLowerCase();
-  // 🔒 Pedido de LOGO/MARCA nunca troca a foto: a imagem original é mantida
-  // pixel a pixel e a marca é apenas aplicada sobre ela.
-  const isLogo = modo === "aplicar_logo" || modo === "logo" || modo === "marca" ||
-    /\b(logo|logotipo|marca|logomarca)\b/i.test(clean);
+  const isCompositeLogo = modo === "aplicar_logo_cenario";
+  const isCreativeScene = isCompositeLogo || modo === "cena_produto";
+  // Logo simples preserva a foto; pedido composto recria o cenário e preserva
+  // o produto base enquanto aplica a logo oficial no objeto.
+  const isLogo = isCompositeLogo || shouldUseLogoEditMode(modo, clean);
   const isAnuncio = !isLogo &&
-    (modo === "ficha_tecnica" || modo === "anuncio" || modo === "estudio" || modo === "trocar_ambiente");
+    (modo === "ficha_tecnica" || modo === "anuncio" ||
+      modo === "estudio" || modo === "trocar_ambiente" ||
+      modo === "cena_produto");
   // Em modo anúncio/ficha técnica o ambiente ORIGINAL deve ser descartado por padrão
   // (fios, TV, móveis, bagunça de casa nunca podem aparecer numa arte comercial).
   const preservar = isLogo ? true : isAnuncio ? ctx.preservarAmbiente === true : ctx.preservarAmbiente !== false;
@@ -1970,6 +2065,8 @@ async function toolEditarImagem(
 
   const blocoTexto = textos.length
     ? `\n\n📝 TEXTOS QUE DEVEM APARECER NA IMAGEM (obrigatório, escreva EXATAMENTE assim, sem inventar nem traduzir):\n${textos.map((t) => `- "${t}"`).join("\n")}\nRegras da tipografia:\n- Posicione as informações AO LADO (ou em faixa lateral/inferior) do objeto principal, em área limpa, NUNCA cobrindo o produto, rostos ou placa.\n- Fonte sans-serif moderna, legível, alinhada, hierarquia clara (destaque no dado mais forte).\n- Fundo sutil atrás do texto (faixa translúcida ou bloco sólido) para garantir contraste.\n- Sem erros de ortografia, sem letras cortadas, sem repetir o mesmo texto duas vezes.\n- Não adicione NENHUM outro texto além dos listados acima.`
+    : isLogo
+    ? `\n\nRegras: use somente a logo oficial fornecida como segunda imagem. NÃO adicione nenhum outro texto, palavra, letra, número ou marca d'água.`
     : `\n\nRegras: NÃO inclua texto, palavras, letras, números ou marcas d'água na imagem.`;
 
   // 🔒 A logo NUNCA é desenhada pela IA: usamos o arquivo real do tenant como
@@ -1989,7 +2086,17 @@ async function toolEditarImagem(
     }
   }
 
-  const blocoModo = isLogo
+  const blocoModo = isCompositeLogo
+    ? `\n\n🎯 MODO COMPOSIÇÃO DE CENÁRIO + LOGO NO OBJETO:
+- Você recebeu DUAS imagens: a PRIMEIRA contém o PRODUTO BASE e a SEGUNDA é o ARQUIVO OFICIAL DA LOGO.
+- Faça UMA ÚNICA edição criativa que atenda ao pedido completo.
+${sceneEditDirective(clean)}
+- Preserve o produto base com o mesmo formato, textura, material, proporções internas e detalhes reconhecíveis; ajuste seu tamanho total e posição para a escala real da cena.
+- Aplique a logo oficial no objeto indicado pelo usuário, respeitando perspectiva, curvatura, brilho, textura e sombras naturais, como um mockup realista.
+- Reproduza a logo EXATAMENTE como está no arquivo de referência. Não redesenhe, estilize, traduza ou invente variações.
+- Não transforme a logo em carimbo no canto e não ignore o cenário descrito.
+${productSceneScaleDirective()}`
+    : isLogo
     ? `\n\n🎯 MODO APLICAR LOGO/MARCA — A FOTO ORIGINAL NÃO PODE MUDAR:
 - Você recebeu DUAS imagens: a PRIMEIRA é a FOTO BASE (resultado final) e a SEGUNDA é o ARQUIVO OFICIAL DA LOGO (apenas referência gráfica, nunca entra como cena).
 - Esta é uma EDIÇÃO LOCAL. Devolva EXATAMENTE a MESMA foto recebida, pixel a pixel: mesmo enquadramento, mesmo objeto, mesmo cenário, mesma luz, mesmas sombras, mesmas cores, mesma resolução e mesma proporção.
@@ -2001,12 +2108,15 @@ async function toolEditarImagem(
     ? `\n\n🎯 MODO TROCA DE AMBIENTE:
 - RECORTE o produto principal da foto e DESCARTE COMPLETAMENTE o cenário original.
 - É PROIBIDO deixar qualquer resquício do local original: fios, tomadas, televisão, monitor, móveis, mesa, sofá, cortina, parede de casa, chão de casa, rodapé, roupa, pessoas ao fundo, papel, embalagens soltas, objetos de fundo, reflexo do ambiente antigo.
-${sceneEditDirective(clean)}`
+${sceneEditDirective(clean)}
+${isCreativeScene ? productSceneScaleDirective() : ""}`
     : modo === "figurino" || modo === "fantasia" || modo === "roupa"
     ? `\n\n🎯 MODO FIGURINO: troque APENAS a roupa/fantasia da pessoa conforme o pedido. É OBRIGATÓRIO manter o MESMO rosto, mesma idade, mesmo corte de cabelo, mesma pele, mesma pose e o MESMO AMBIENTE/fundo (mesmos móveis, mesma luz, mesmo enquadramento). Não troque o cenário, não deixe a pessoa parecida com outra criança/adulto, não gere desenho — fotorealista.`
     : `\n\n🎯 MODO MELHORIA: eleve a qualidade (nitidez, cor, luz, composição) mantendo a cena reconhecível.`;
 
-  const blocoPreservar = isLogo
+  const blocoPreservar = isCompositeLogo
+    ? `\n\n🔒 PRESERVAÇÃO DO PRODUTO: recrie o cenário, mas mantenha o produto base reconhecível, com o mesmo formato e textura. A única personalização no produto é a logo oficial pedida.`
+    : isLogo
     ? `\n\n🔒 PRESERVAÇÃO TOTAL: a foto de entrada é a base final. Só a marca/logo é adicionada; todo o resto permanece idêntico.`
     : preservar
     ? `\n\n🔒 PRESERVAÇÃO OBRIGATÓRIA: mantenha o mesmo ambiente/cenário, o mesmo enquadramento e as mesmas pessoas (rosto, feições, tom de pele, cabelo) e o mesmo objeto/produto principal identificáveis. Não substitua por outra pessoa/objeto.`
@@ -2023,7 +2133,7 @@ ${sceneEditDirective(clean)}`
             content: [
               {
                 type: "text",
-                text: `Edite esta foto conforme o pedido abaixo.\n\nPedido: ${clean}${blocoModo}${blocoPreservar}${blocoTexto}${isLogo ? "\n\n📐 FORMATO: mantenha EXATAMENTE a mesma proporção e resolução da foto original — não recorte, não expanda, não reenquadre." : blocoFormatoSocial(clean + " " + modo)}\n\nResultado fotorealista de alta qualidade, pronto para publicação.`,
+                text: `Edite esta foto conforme o pedido abaixo.\n\nPedido: ${clean}${blocoModo}${blocoPreservar}${blocoTexto}${isLogo && !isCompositeLogo ? "\n\n📐 FORMATO: mantenha EXATAMENTE a mesma proporção e resolução da foto original — não recorte, não expanda, não reenquadre." : blocoFormatoSocial(clean + " " + modo)}\n\nResultado fotorealista de alta qualidade, pronto para publicação.`,
               },
               { type: "image_url", image_url: { url: dataUrlInput } },
               ...(logoDataUrl ? [{ type: "image_url", image_url: { url: logoDataUrl } }] : []),
@@ -2033,8 +2143,15 @@ ${sceneEditDirective(clean)}`
         modalities: ["image", "text"],
       },
       "editar_imagem",
+      100000,
+      isCreativeScene ? PRODUCT_SCENE_IMAGE_MODELS : IMAGE_MODELS,
     );
     if (!r.ok) return JSON.stringify({ erro: r.erro, detalhe: r.detalhe, motivo: r.motivo });
+    console.log(
+      `[editar_imagem] model=${r.model} estimated_usd=${
+        estimatedProductSceneCostUsd(r.model, logoDataUrl ? 2 : 1)
+      } creative_scene=${isCreativeScene}`,
+    );
     const dataUrl = r.dataUrl;
 
     let b64 = dataUrl;
@@ -2069,8 +2186,13 @@ ${sceneEditDirective(clean)}`
             midia_url: pub.publicUrl,
             mime_type: mime,
             tamanho_bytes: bytes.length,
-            contexto_original: [clean, textos.length ? `Dados: ${textos.join(" | ")}` : ""].filter(Boolean).join("\n").slice(0, 1500),
+            contexto_original: [
+              ctx.libraryContext || clean,
+              textos.length ? `Dados: ${textos.join(" | ")}` : "",
+            ].filter(Boolean).join("\n").slice(0, 1500),
             status: "pendente",
+            midia_pai_id: ctx.originalSourceMediaId ||
+              ctx.sourceMediaId || null,
           })
           .select("id")
           .maybeSingle();
@@ -2359,6 +2481,7 @@ async function composeProductInEnvironment(params: {
     "IMAGEM 2 = PRODUTO EXATO. Recorte mentalmente o produto e insira-o no ambiente conforme o pedido. Preserve fielmente desenho, cor, material, acabamento e proporções do produto; não invente um modelo parecido.",
     `PEDIDO DO CLIENTE: ${params.requestText}`,
     "Ajuste somente escala, perspectiva, oclusão, sombras e reflexos necessários para a instalação parecer real e coerente com a luz do ambiente.",
+    productSceneScaleDirective(),
     "Não adicione texto, marca d'água, pessoas ou outros produtos. Mantenha a proporção e o enquadramento da IMAGEM 1.",
   ].join("\n\n");
 
@@ -2386,7 +2509,7 @@ async function composeProductInEnvironment(params: {
       },
       "compor_produto_ambiente",
       120000,
-      [IMAGE_COMPOSITION_MODEL],
+      IMAGE_COMPOSITION_MODELS,
     );
     if (!generated.ok) {
       await sb.from("image_compositions").update({
@@ -2435,16 +2558,21 @@ async function composeProductInEnvironment(params: {
       throw new Error(`registro_midia_falhou: ${mediaError?.message || "id ausente"}`);
     }
 
+    const actualEstimatedCost = estimatedProductSceneCostUsd(
+      generated.model,
+      2,
+      resolution,
+    );
     await sb.from("image_compositions").update({
       result_midia_id: mediaRow.id,
       model: generated.model,
       resolution,
-      estimated_cost_usd: estimatedCost,
+      estimated_cost_usd: actualEstimatedCost,
       status: "completed",
       completed_at: new Date().toISOString(),
     }).eq("id", compositionId).eq("user_id", params.userId);
     console.log(
-      `[image_composition] completed id=${compositionId} model=${generated.model} resolution=${resolution} estimated_usd=${estimatedCost}`,
+      `[image_composition] completed id=${compositionId} model=${generated.model} resolution=${resolution} estimated_usd=${actualEstimatedCost}`,
     );
     return { ok: true, imageUrl: publicData.publicUrl, mediaId: mediaRow.id, resolution };
   } catch (error) {
@@ -2835,6 +2963,14 @@ type PendingFipeState =
     created_at: string;
   }
   | {
+    stage: "model_year";
+    brand: FipeListItem;
+    models: FipeListItem[];
+    years: FipeListItem[];
+    queryModel: string;
+    created_at: string;
+  }
+  | {
     stage: "year";
     brand: FipeListItem;
     model: FipeListItem;
@@ -2847,6 +2983,14 @@ type PendingFipeState =
     brand: string;
     model: string;
     earliestYear?: number;
+    created_at: string;
+  }
+  | {
+    stage: "price_retry";
+    brand: FipeListItem;
+    model: FipeListItem;
+    year: FipeListItem;
+    queryModel: string;
     created_at: string;
   }
   | {
@@ -2885,11 +3029,16 @@ type AgentConvState = {
   last_media_interaction?: { media_id: string; at: string };
   pending_single_photo?: {
     media_id: string;
-    stage: "actions" | "networks" | "format";
+    stage: "actions" | "ad_data" | "destination" | "networks" | "format";
     networks?: AnuncioPostNetwork[];
     created_at: string;
   } | null;
   pending_image_composition?: { media_ids: string[]; at: string } | null;
+  pending_image_adjustment?: {
+    media_id: string;
+    created_at: string;
+    prompt?: string;
+  } | null;
   pending_carousel?: PendingCarouselState | null;
   pending_carrossel_veiculo?: PendingVehicleCarousel | null;
   pending_vehicle_photo_batch?: PendingVehiclePhotoBatch | null;
@@ -2904,6 +3053,14 @@ type AgentConvState = {
     created_at: string;
   } | null;
   pending_video_setup?: PendingVideoSetupState | null;
+  pending_ready_media_schedule?: {
+    media_id: string;
+    created_at: string;
+  } | null;
+  pending_video_transcription_theme?: {
+    media_id: string;
+    created_at: string;
+  } | null;
   pending_creative_media_ambiguity?: { original_request: string; created_at: string } | null;
   pending_anuncio_cliente?: {
     args: Record<string, unknown>;
@@ -2916,6 +3073,8 @@ type AgentConvState = {
     render_payload: Record<string, unknown>;
     source_args?: Record<string, unknown>;
     client_name?: string | null;
+    vertical?: "geral" | "veiculo";
+    niche?: ContentNiche;
     shown_styles: AnuncioStyle[];
     images?: LastAnuncioImage[];
     data?: Record<string, unknown>;
@@ -2923,7 +3082,7 @@ type AgentConvState = {
     created_at: string;
   } | null;
   pending_anuncio_photo?: {
-    stage: "choice" | "preference_confirmation";
+    stage: "choice" | "preference_confirmation" | "treatment_retry";
     args?: Record<string, unknown>;
     preference?: AnuncioPhotoPreference;
     created_at: string;
@@ -5778,7 +5937,7 @@ async function detectarCaixaProdutoVisao(
   imageUrl: string,
 ): Promise<FotoBox | null> {
   const prompt =
-    'Localize o objeto ou veículo principal desta foto. Responda SOMENTE JSON no formato {"box_2d":[ymin,xmin,ymax,xmax]}, com coordenadas normalizadas de 0 a 1000. A caixa deve incluir o objeto inteiro, inclusive rodas, retrovisores e sombra visível. Se não houver um único objeto principal identificável, responda {"box_2d":null}.';
+    'Localize o objeto ou veículo principal desta foto. Responda SOMENTE JSON no formato {"box_2d":[ymin,xmin,ymax,xmax]}, com coordenadas normalizadas de 0 a 1000. A caixa deve incluir o objeto inteiro e sua sombra visível: para produtos, inclua alça, borda e toda a embalagem; para veículos, inclua rodas e retrovisores. Se houver dúvida sobre os limites ou não houver um único objeto principal identificável, responda {"box_2d":null}.';
   for (
     const model of [
       "google/gemini-3-flash-preview",
@@ -6041,6 +6200,22 @@ function detectWantsWhatsappCta(text: string): boolean {
 
 // Gera 3 OPÇÕES (A/B/C) de post curto e engajador — mesmo estilo da plataforma /gerar-posts.
 // A = direto/CTA claro | B = storytelling | C = educativo/interativo
+function contentNicheForContext(ctx: {
+  userId: string;
+  agentState?: AgentConvState;
+}): ContentNiche {
+  const route = (ctx.agentState as Record<string, unknown> | undefined)
+    ?.__vertical_scope as InboundVertical | undefined;
+  return resolveNichoDoConteudo(
+    ctx.userId === ADMIN_AMZ_USER_ID
+      ? "amz"
+      : route === "veiculo"
+      ? "automotivo"
+      : "geral",
+    route === "veiculo" ? "veiculo" : "produto",
+  );
+}
+
 async function gerarTresOpcoesRedeSocial(
   produto: { nome: string; descricao?: string | null; preco?: number | null; link?: string | null; categoria?: string | null; source?: string | null },
   tom: string,
@@ -6048,6 +6223,7 @@ async function gerarTresOpcoesRedeSocial(
   ajuste?: string,
   brandContext?: string,
   briefing?: string,
+  niche: ContentNiche = "produto",
 ): Promise<{ A: string; B: string; C: string }> {
   const tomLabel = (tom || "beneficio").toLowerCase();
   const guia: Record<string, string> = {
@@ -6091,7 +6267,7 @@ async function gerarTresOpcoesRedeSocial(
     ? `\n⚠️ ESTE PRODUTO É CONSÓRCIO. PROIBIDO: "estoque limitado", "últimas unidades", "peças", "pronta-entrega". PERMITIDO: carta de crédito, contemplação, parcelas, planejamento, sonho realizado.`
     : "";
 
-  const ehVeiculo = !ehConsorcio && /(ve[ií]culo|carro|autom[oó]vel|seminovo|semi-novo|0km|zero\s*km|hatch|sedan|suv|picape|caminhonete|moto(cicleta)?|c[aâ]mbio|automat[ií]co|flex|turbo|km\s*rodados?|[0-9]{2}\s*mil\s*km|honda|toyota|hyundai|chevrolet|volkswagen|fiat|ford|renault|nissan|jeep|bmw|mercedes|audi|peugeot|citro[eë]n|kia|mitsubishi|civic|corolla|creta|onix|hb20|gol|polo|compass|tracker|t-cross|argo|strada|hilux|ranger|s10)/i.test(descLower)
+  const ehVeiculo = !ehConsorcio && niche === "veiculo"
     ? `
 ========================================
 🚗 ESTE POST É DE VEÍCULO — REGRAS ESPECIAIS (PRIORIDADE ALTA):
@@ -6136,6 +6312,7 @@ REGRAS DURAS (valem pra TODAS as 3 opções):
 ${networkStyle}
 - ${ctaBase}
 - NUNCA invente: preço, desconto, "%", "só hoje", "estoque", "últimas unidades", "vagas limitadas", depoimentos, números de clientes.
+- ${niche === "produto" ? "PROIBIDO escrever número de telefone, URL wa.me ou CTA de WhatsApp; o servidor adiciona o contato correto uma única vez no final." : "Não invente telefone ou link de contato."}
 - NUNCA escreva "Conteúdo da imagem", "Nesta imagem", "A arte mostra" ou qualquer descrição do visual.
 - NUNCA cite o nome do dono/anunciante nem trate o leitor pelo nome próprio (nada de "Felicio, ...") — o post é público, para desconhecidos. O protagonista é o PRODUTO.
 - Se briefing cita PESSOA nomeada (consultor/atleta/cliente), use essa pessoa nas 3 opções.
@@ -6408,7 +6585,10 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
 
 async function persistAnuncioFlowState(
   ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
-  patch: Pick<AgentConvState, "last_anuncio" | "pending_anuncio_post">,
+  patch: Pick<
+    AgentConvState,
+    "last_anuncio" | "pending_anuncio_post" | "pending_anuncio_styles"
+  >,
 ): Promise<void> {
   if (!ctx.convId) return;
   const conversation = {
@@ -6428,15 +6608,41 @@ async function persistAnuncioFlowState(
 async function connectedAnuncioNetworks(
   userId: string,
 ): Promise<AnuncioPostNetwork[]> {
-  const { data, error } = await sb.from("meta_connections")
-    .select("page_id, ig_account_id")
-    .eq("user_id", userId)
-    .eq("is_active", true)
-    .maybeSingle();
-  if (error) throw new Error(`não consegui consultar as redes conectadas: ${error.message}`);
+  const [
+    { data, error },
+    { data: linkedin, error: linkedinError },
+    { data: tiktok, error: tiktokError },
+  ] =
+    await Promise.all([
+      sb.from("meta_connections")
+        .select("page_id, ig_account_id")
+        .eq("user_id", userId)
+        .eq("is_active", true)
+        .maybeSingle(),
+      sb.from("linkedin_connections")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("is_active", true)
+        .maybeSingle(),
+      sb.from("integrations")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("platform", "tiktok")
+        .eq("is_active", true)
+        .maybeSingle(),
+    ]);
+  if (error || linkedinError || tiktokError) {
+    throw new Error(
+      `não consegui consultar as redes conectadas: ${
+        error?.message || linkedinError?.message || tiktokError?.message
+      }`,
+    );
+  }
   const networks: AnuncioPostNetwork[] = [];
   if (data?.page_id) networks.push("facebook");
   if (data?.ig_account_id) networks.push("instagram");
+  if (linkedin?.id) networks.push("linkedin");
+  if (tiktok?.id) networks.push("tiktok");
   return networks;
 }
 
@@ -6459,11 +6665,25 @@ async function ensureLastAnuncioImage(
   const logoPath = client
     ? clientLogoPath(client, style === "catalogo" ? "light" : "dark", true)
     : null;
+  const variants = last.render_payload
+    .foto_variants as ProductPhotoVariants | undefined;
+  const variantBoxes = last.render_payload.foto_variant_boxes as
+    | { clara: unknown; escura: unknown }
+    | undefined;
+  const photo = variants
+    ? productPhotoVariantForStyle(style, variants)
+    : null;
   const render = await callEdge("render-anuncio-produto", {
     ...last.render_payload,
     formato,
     estilo: style,
     logo_path: logoPath,
+    ...(photo?.url && photo.source !== "failed"
+      ? { foto_url: photo.url, foto_source: photo.source }
+      : {}),
+    foto_box: variantBoxes
+      ? photoBoxForStyle(style, variantBoxes)
+      : last.render_payload.foto_box,
   }, 120000);
   if (!render?.success || !render?.image_url) {
     throw new Error(String(render?.error || `falha ao gerar ${formato}`));
@@ -6488,6 +6708,83 @@ async function ensureLastAnuncioImage(
   return image;
 }
 
+const PRODUCT_CAPTION_VEHICLE_LEAK =
+  /\b(c[aâ]mbio|seminovos?|carros?\s*usados?|test-?drive|quilometragem|fipe)\b|🚗/i;
+
+async function generateAnuncioCaptions(
+  last: LastAnuncio,
+  networks: AnuncioPostNetwork[],
+  userId: string,
+  variation = 0,
+): Promise<Record<string, PostVariantes>> {
+  const niche = anuncioContentNiche(last);
+  const phone = userId === ADMIN_AMZ_USER_ID
+    ? AGENT_PHONE
+    : await buscarTelefoneAgenteTenant(userId) ||
+      String(last.data.telefone || "").replace(/\D/g, "");
+  const finish = (captions: PostVariantes): PostVariantes =>
+    Object.fromEntries(
+      Object.entries(captions).map(([key, value]) => [
+        key,
+        singleWhatsappCtaAtEnd(value, phone),
+      ]),
+    ) as PostVariantes;
+  if (niche === "veiculo") {
+    const captions = finish(
+      generateVehicleAdCaptions(last.data, variation, niche),
+    );
+    return Object.fromEntries(
+      networks.map((network) => [network, { ...captions }]),
+    );
+  }
+
+  const fallback = finish(generateProductAdCaptions(last.data));
+  const aiData = Object.fromEntries(
+    Object.entries(last.data).filter(([key]) =>
+      !["telefone", "contato", "link_post"].includes(key)
+    ),
+  );
+  const product = {
+    nome: String(last.data.titulo || "Produto"),
+    descricao: JSON.stringify(aiData),
+    source: "anuncio_produto",
+  };
+  const briefing =
+    `Use somente estes dados fornecidos pelo dono e lidos da foto/embalagem: ${
+      JSON.stringify(aiData)
+    }. Não acrescente característica, benefício ou condição que não esteja nesses dados. Não escreva telefone, número, link wa.me ou CTA de WhatsApp; o servidor adicionará um único CTA no final.`;
+  const entries = await Promise.all(networks.map(async (network) => {
+    try {
+      const generated = finish(
+        await gerarTresOpcoesRedeSocial(
+          product,
+          "beneficio",
+          network === "tiktok" ? "instagram" : network,
+          variation ? `Crie novas abordagens sem mudar os fatos.` : undefined,
+          undefined,
+          briefing,
+          niche,
+        ),
+      );
+      return [
+        network,
+        Object.values(generated).some((caption) =>
+            PRODUCT_CAPTION_VEHICLE_LEAK.test(caption)
+          )
+          ? fallback
+          : generated,
+      ] as const;
+    } catch (error) {
+      console.warn(
+        "[anuncio_post][product_captions_fallback]",
+        (error as Error).message,
+      );
+      return [network, fallback] as const;
+    }
+  }));
+  return Object.fromEntries(entries);
+}
+
 async function prepareAnuncioSocialPosts(input: {
   last: LastAnuncio;
   action: "publish" | "schedule";
@@ -6505,11 +6802,11 @@ async function prepareAnuncioSocialPosts(input: {
     );
   }
 
-  const captions = generateVehicleAdCaptions(last.data);
-  const variantes = Object.fromEntries(networks.map((network) => [
-    network,
-    { ...captions },
-  ])) as Record<string, PostVariantes>;
+  const variantes = await generateAnuncioCaptions(
+    last,
+    networks,
+    ctx.userId,
+  );
   const formats: Array<"feed" | "story"> = format === "feed_story"
     ? ["feed", "story"]
     : [format];
@@ -6520,7 +6817,7 @@ async function prepareAnuncioSocialPosts(input: {
       const image = await ensureLastAnuncioImage(last, style, postFormat, ctx);
       const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
       const scripts = Object.fromEntries(
-        networks.map((network) => [network, captions.A]),
+        networks.map((network) => [network, variantes[network].A]),
       );
       const pending: PendingSocialPost = {
         produto: {
@@ -6614,32 +6911,21 @@ function anuncioPostSummary(
 
 async function deliverAnuncioCaptionChoices(
   raw: string,
-  ctx: { userId: string; fromNumber: string },
+  _ctx: { userId: string; fromNumber: string },
 ): Promise<{
   text: string;
   interactiveButtons?: WhatsAppInteractiveButtons;
   interactiveList?: WhatsAppInteractiveList;
 }> {
-  const text = formatSocialPostToolResult(raw);
-  const buttons = interactiveButtonsFromSocialResult(raw);
+  let parsed: any = {};
   try {
-    await sendWhatsApp(
-      ctx.userId,
-      ctx.fromNumber,
-      text,
-      undefined,
-      undefined,
-      buttons,
-      { alreadyLogged: false },
-    );
-    return {
-      text: "Se quiser, posso gerar outras opções ou você pode escrever a sua.",
-      interactiveList: anuncioCaptionExtraList(),
-    };
-  } catch (error) {
-    console.warn("[anuncio_post][caption_buttons_send_failed]", (error as Error).message);
-    return { text, interactiveButtons: buttons };
+    parsed = JSON.parse(raw);
+  } catch {
+    return { text: "Não consegui montar as opções de legenda." };
   }
+  const text = anuncioCaptionChoiceMessage(parsed.variantes || {});
+  const buttons = interactiveButtonsFromSocialResult(raw);
+  return { text, interactiveButtons: buttons };
 }
 
 async function sendAnuncioExactPreviews(
@@ -6658,9 +6944,88 @@ async function sendAnuncioExactPreviews(
   return { ok: true };
 }
 
+async function markAnuncioPendingAsPreviewed(
+  tokens: string[],
+  userId: string,
+): Promise<void> {
+  for (const token of tokens) {
+    const current = PENDING_POSTS.get(token) ??
+      await loadPendingSocialPost(token, userId);
+    if (!current) throw new Error("preview de publicação expirado");
+    const updated = {
+      ...current,
+      previewedAt: new Date().toISOString(),
+    };
+    PENDING_POSTS.set(token, updated);
+    await updatePendingSocialPostMarker(token, updated);
+  }
+}
+
+function socialResultLink(detail: any): string | null {
+  const response = detail?.resposta || {};
+  return String(
+    response.post_url || response.permalink || response.url ||
+      response.data?.post_url || "",
+  ).trim() || null;
+}
+
+function formatCombinedAnuncioPublishResults(results: string[]): string {
+  const parsed = results.map((result) => {
+    try {
+      return JSON.parse(result);
+    } catch {
+      return { erro: result };
+    }
+  });
+  const successes = parsed.flatMap((item) =>
+    Array.isArray(item.redes_publicadas) ? item.redes_publicadas : []
+  );
+  const failures = parsed.flatMap((item) =>
+    Array.isArray(item.redes_falharam) ? item.redes_falharam : []
+  );
+  const details = parsed.flatMap((item) =>
+    Array.isArray(item.detalhes) ? item.detalhes : []
+  );
+  const blocks: string[] = [];
+  for (const network of [...new Set(successes)]) {
+    const links = details.filter((detail) =>
+      detail?.rede === network && detail?.ok
+    ).map(socialResultLink).filter(Boolean);
+    blocks.push([
+      `✅ *${String(network).toUpperCase()}*`,
+      ...new Set(links),
+    ].join("\n"));
+  }
+  for (const failure of failures) {
+    blocks.push(
+      `❌ *${String(failure.rede || "REDE").toUpperCase()}* — ${
+        String(failure.erro || "não foi possível publicar").slice(0, 120)
+      }`,
+    );
+  }
+  if (!blocks.length) {
+    return parsed.map((item) =>
+      String(item.mensagem || item.erro || "Não consegui publicar.")
+    ).join("\n");
+  }
+  return `🎉 *POSTAGEM REALIZADA COM SUCESSO!* 🎉\n\n${
+    blocks.join("\n\n")
+  }`;
+}
+
+function formatDirectSocialPublishResult(raw: string): string {
+  try {
+    return JSON.parse(raw)?.status === "publicado"
+      ? formatCombinedAnuncioPublishResults([raw])
+      : formatSocialPostToolResult(raw);
+  } catch {
+    return formatSocialPostToolResult(raw);
+  }
+}
+
 async function replaceAnuncioPendingCaptions(
   tokens: string[],
-  captions: PostVariantes,
+  captions: PostVariantes | Record<string, PostVariantes>,
   ctx: { userId: string; fromNumber: string },
   selected?: "A" | "B" | "C",
 ): Promise<void> {
@@ -6668,12 +7033,16 @@ async function replaceAnuncioPendingCaptions(
     const current = PENDING_POSTS.get(token) ??
       await loadPendingSocialPost(token, ctx.userId);
     if (!current) throw new Error("preview de publicação expirado");
+    const shared = "A" in captions ? captions as PostVariantes : null;
     const variantes = Object.fromEntries(
-      current.redes.map((network) => [network, { ...captions }]),
+      current.redes.map((network) => [
+        network,
+        { ...(shared || (captions as Record<string, PostVariantes>)[network]) },
+      ]),
     );
     const option = selected ?? "A";
     const scripts = Object.fromEntries(
-      current.redes.map((network) => [network, captions[option]]),
+      current.redes.map((network) => [network, variantes[network][option]]),
     );
     const updated: PendingSocialPost = {
       ...current,
@@ -6716,6 +7085,7 @@ async function loadCarouselImageUrls(userId: string, parentId: string): Promise<
       .select("id, midia_url, contexto_original, created_at")
       .eq("user_id", userId)
       .eq("midia_pai_id", parentId)
+      .eq("origem", "carrossel_whatsapp_card")
       .order("created_at", { ascending: true }),
   ]);
   if (parentError || childrenError) {
@@ -7072,6 +7442,12 @@ async function publicarEmRede(
   instagramCreationId?: string,
   tiktokPrivacyLevel?: string,
   queueRowId?: string,
+  tiktokCompliance?: {
+    isCommercialContent?: boolean;
+    brandOrganic?: boolean;
+    brandedContent?: boolean;
+    consentedAt?: string;
+  },
 ): Promise<{ rede: string; ok: boolean; status: number; resposta: any; nota?: string }> {
   try {
     const commonHeaders = { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY } as const;
@@ -7258,18 +7634,22 @@ async function publicarEmRede(
       };
     }
     if (rede === "tiktok") {
-      if (!isVideo) {
-        return { rede, ok: false, status: 0, resposta: { error: "TikTok aceita apenas vídeo neste fluxo. Envie um vídeo para publicar." } };
-      }
       const res = await fetch(`${SUPABASE_URL}/functions/v1/tiktok-post-content`, {
         method: "POST", headers: commonHeaders,
         body: JSON.stringify({
           user_id: userId,
-          content_type: "video",
+          content_type: isVideo ? "video" : "image",
           content_url: mediaUrl,
+          image_urls: isVideo
+            ? undefined
+            : (produto.image_urls?.length ? produto.image_urls : [mediaUrl]),
           title: script.slice(0, 2200),
           post_mode: "direct",
           privacy_level: tiktokPrivacyLevel,
+          is_commercial_content: !!tiktokCompliance?.isCommercialContent,
+          brand_organic: !!tiktokCompliance?.brandOrganic,
+          branded_content: !!tiktokCompliance?.brandedContent,
+          consented_at: tiktokCompliance?.consentedAt,
         }),
       });
       const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
@@ -7657,13 +8037,7 @@ function formatSocialPostToolResult(raw: string): string {
 
   if (data?.status === "variante_selecionada") {
     const opcao = data?.opcao_ativa || "A";
-    const preview = Object.entries(data.preview ?? {})
-      .map(([rede, script]) => `*${String(rede).toUpperCase()}*\n${script}`)
-      .join("\n\n");
-    const action = data?.formato === "story"
-      ? "Story pelo WhatsApp só pode ser publicado agora."
-      : "Agora escolha *Publicar agora* ou *Agendar*.";
-    return `✅ Opção *${opcao}* selecionada.<<SPLIT>>${preview}<<SPLIT>>${action}`;
+    return `✅ Opção *${opcao}* selecionada.`;
   }
 
   if (data?.status === "escolha_variante_necessaria") {
@@ -7702,18 +8076,7 @@ function formatSocialPostToolResult(raw: string): string {
   }
 
   if (data?.status === "publicado") {
-    const redesArr = Array.isArray(data.redes_publicadas) ? data.redes_publicadas : [];
-    const redesFmt = redesArr.length
-      ? redesArr.map((r: string) => `✅ *${String(r).toUpperCase()}*`).join("\n")
-      : "⚠️ *nenhuma rede publicou*";
-    const falhas = Array.isArray(data.redes_falharam) && data.redes_falharam.length
-      ? `\n\n❌ *Falhas:*\n${data.redes_falharam.map((f: any) => `• ${f.rede}${f.erro ? ` — ${f.erro}` : ""}`).join("\n")}`
-      : "";
-    const notas = Array.isArray(data.notas) && data.notas.length
-      ? `\n\n${data.notas.map((n: string) => `ℹ️ ${n}`).join("\n")}`
-      : "";
-    const header = redesArr.length ? "🎉 *POSTAGEM REALIZADA COM SUCESSO!* 🎉" : "⚠️ *POSTAGEM NÃO CONCLUÍDA*";
-    return `${header}\n\n📢 *${data.produto?.nome ?? "produto"}*\n\n${redesFmt}${notas}${falhas}`;
+    return formatCombinedAnuncioPublishResults([raw]);
   }
 
   if (data?.status === "cancelado") return "Preview cancelado. Não publiquei nada.";
@@ -7735,6 +8098,7 @@ type WhatsAppInteractiveList = {
   header?: string;
   footer?: string;
   section_title?: string;
+  send_text_first?: boolean;
   rows: Array<{ id: string; title: string; description?: string }>;
 };
 
@@ -7742,6 +8106,7 @@ type WhatsAppInteractiveButtons = {
   body: string;
   header?: string;
   footer?: string;
+  send_text_first?: boolean;
   buttons: Array<{ id: string; title: string }>;
 };
 
@@ -8070,11 +8435,7 @@ async function publishLinkedInImmediately(
           `Não publiquei: você pediu uma imagem, mas a última produção desta conversa é ${mediaTipo}. Reenvie a imagem ou informe o código dela.`,
         );
       }
-      if (
-        resolved.midia.origem === "carrossel_whatsapp"
-        || resolved.midia.origem === "carrossel_whatsapp_card"
-        || resolved.midia.midia_pai_id
-      ) {
+      if (isCarouselLibraryMedia(resolved.midia)) {
         return await fail("carrossel_linkedin_nao_suportado", "Não publiquei: carrossel pelo LinkedIn ainda não está habilitado.");
       }
       if (resolved.midia.tipo === "video") {
@@ -8279,6 +8640,7 @@ async function toolPrepararLinkedin(
     undefined,
     undefined,
     texto,
+    contentNicheForContext(ctx),
   );
   const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
   const pending: PendingSocialPost = {
@@ -8369,7 +8731,18 @@ async function toolPostarRedesSociais(
         const redeGen = r === "tiktok"
           ? "instagram"
           : (r as "facebook" | "instagram" | "linkedin");
-        return [r, await gerarTresOpcoesRedeSocial(prod, tom, redeGen)] as const;
+        return [
+          r,
+          await gerarTresOpcoesRedeSocial(
+            prod,
+            tom,
+            redeGen,
+            undefined,
+            undefined,
+            undefined,
+            contentNicheForContext(ctx),
+          ),
+        ] as const;
       }),
     );
     let variantes: Record<string, PostVariantes> = Object.fromEntries(variantesEntries);
@@ -8476,12 +8849,6 @@ async function toolConfirmarPostagemRedes(
   console.log(`[publicar] token=${token} urls=${JSON.stringify(exactMedia.urls)} redes=${p.redes.join("+")} formato=${p.formato || "feed"} fluxo=${exactMedia.flow}`);
 
   if (p.redes.includes("tiktok")) {
-    if (p.produto?.midia_tipo !== "video" && p.midiaTipo !== "video") {
-      return JSON.stringify({
-        erro: "tiktok_exige_video",
-        mensagem: "O TikTok aceita apenas vídeo neste fluxo. Envie um vídeo antes de publicar no TikTok.",
-      });
-    }
     if (!p.tiktokPrivacyLevel) {
       // A API do TikTok exige creator_info atualizado antes de cada escolha.
       const creatorInfo = await fetchTikTokPrivacyOptions(p.userId);
@@ -8499,7 +8866,7 @@ async function toolConfirmarPostagemRedes(
         status: "aguardando_privacidade_tiktok",
         token,
         privacy_options: creatorInfo.options,
-        mensagem: "Antes de publicar no TikTok, escolha quem poderá ver o vídeo.",
+        mensagem: "Antes de publicar no TikTok, escolha quem poderá ver o conteúdo.",
       });
     }
   }
@@ -8545,6 +8912,14 @@ async function toolConfirmarPostagemRedes(
     r === "instagram" ? p.instagramCreationId : undefined,
     r === "tiktok" ? p.tiktokPrivacyLevel : undefined,
     p.queueRows?.find((row) => row.platform === r)?.id,
+    r === "tiktok"
+      ? {
+        isCommercialContent: p.tiktokIsCommercialContent,
+        brandOrganic: p.tiktokBrandOrganic,
+        brandedContent: p.tiktokBrandedContent,
+        consentedAt: p.tiktokConsentedAt,
+      }
+      : undefined,
   )));
   try {
     await updatePersistedSocialPostRows(p, resultados, token);
@@ -9162,7 +9537,18 @@ async function toolRevisarPostPendente(
         const redeGen = r === "tiktok"
           ? "instagram"
           : (r as "facebook" | "instagram" | "linkedin");
-        return [r, await gerarTresOpcoesRedeSocial(produtoLike, tom, redeGen, ajuste, brandCtx, p.briefing)] as const;
+        return [
+          r,
+          await gerarTresOpcoesRedeSocial(
+            produtoLike,
+            tom,
+            redeGen,
+            ajuste,
+            brandCtx,
+            p.briefing,
+            contentNicheForContext(ctx),
+          ),
+        ] as const;
       }),
     );
     variantes = Object.fromEntries(varEntries);
@@ -9300,8 +9686,28 @@ async function toolEscolherVariantePost(
     opcao_ativa: opcao,
     formato: atualizado.formato || "feed",
     preview: scripts,
-    instrucoes: `Mostre que a Opção ${opcao} está ativa e ofereça publicar agora ou agendar. Se confirmar publicação, chame confirmar_postagem_redes com token="${token}". Se informar uma data futura, chame agendar_post_pendente com o mesmo token. Se pedir ajuste, chame revisar_post_pendente.`,
+    instrucoes:
+      `A Opção ${opcao} foi salva. No fluxo de post comum, publique imediatamente sem pedir nova aprovação.`,
   });
+}
+
+async function escolherVarianteEPublicarPost(
+  args: { token: string; opcao: string },
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  const selected = await toolEscolherVariantePost(args, ctx);
+  try {
+    if (JSON.parse(selected)?.status !== "variante_selecionada") {
+      return selected;
+    }
+  } catch {
+    return selected;
+  }
+  await markAnuncioPendingAsPreviewed(
+    [String(args.token || "").trim().toLowerCase()],
+    ctx.userId,
+  );
+  return await toolConfirmarPostagemRedes({ token: args.token }, ctx);
 }
 
 
@@ -9744,6 +10150,236 @@ async function resolverMidiaParaPublicacao(
   return { midia: null };
 }
 
+type ReadyLegendVideo = {
+  media: any;
+  job: any;
+  caption: string;
+};
+
+async function resolveReadyLegendVideo(
+  userId: string,
+  mediaId: string,
+): Promise<ReadyLegendVideo | null> {
+  const resolved = await resolverMidiaBibliotecaPorId(userId, mediaId);
+  const media = resolved.midia;
+  if (
+    !media || media.tipo !== "video" || media.origem !== "video_legendado"
+  ) {
+    return null;
+  }
+  const location = bucketPathDeUrl(String(media.midia_url || ""));
+  if (!location) return null;
+  const { data: job } = await sb
+    .from("video_render_jobs")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("resultado_bucket", location.bucket)
+    .eq("resultado_path", location.path)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!job) return null;
+  const caption = String(
+    job.copy_escolhida || job.caption || media.contexto_original || "",
+  ).trim();
+  return caption ? { media, job, caption } : null;
+}
+
+async function exactReadyVideoCaption(
+  ready: ReadyLegendVideo,
+  userId: string,
+): Promise<string> {
+  const phone = await buscarTelefoneAgenteTenant(userId);
+  return readyVideoPublishPlan(ready.caption, phone).caption;
+}
+
+async function rerenderReadyLegendVideo(
+  mediaId: string,
+  ctx: { userId: string },
+): Promise<string> {
+  const ready = await resolveReadyLegendVideo(ctx.userId, mediaId);
+  if (!ready) {
+    return "Não encontrei esse vídeo para gerar novamente.";
+  }
+  const { video_output: _oldOutput, ...metadata } = ready.job.metadata || {};
+  const { error } = await sb.from("video_render_jobs").update({
+    status: "pendente",
+    formato: "reels",
+    resultado_bucket: null,
+    resultado_path: null,
+    concluido_at: null,
+    claimed_at: null,
+    tentativas: 0,
+    erro_mensagem: null,
+    metadata,
+  }).eq("id", ready.job.id).eq("user_id", ctx.userId);
+  if (error) {
+    console.error("[ready-video][rerender]", error.message);
+    return "Não consegui iniciar o novo vídeo agora. Tente novamente.";
+  }
+  return "🔄 Gerando novamente em 9:16. Eu aviso aqui quando estiver pronto.";
+}
+
+async function publishReadyLegendVideo(
+  mediaId: string,
+  ctx: { userId: string; fromNumber: string },
+): Promise<{
+  text: string;
+  interactiveButtons?: WhatsAppInteractiveButtons;
+}> {
+  const ready = await resolveReadyLegendVideo(ctx.userId, mediaId);
+  if (!ready) {
+    return {
+      text:
+        "Não encontrei o vídeo legendado ou a legenda escolhida. Nada foi publicado.",
+    };
+  }
+  const networks = await connectedAnuncioNetworks(ctx.userId);
+  if (!networks.length) {
+    return {
+      text: "Não encontrei Facebook nem Instagram conectados nessa conta.",
+    };
+  }
+  const caption = await exactReadyVideoCaption(ready, ctx.userId);
+  const renderedFormat = renderedMetaVideoFormat(
+    ready.job.formato,
+    ready.job.metadata?.video_output,
+  );
+  const { error: updateError } = await sb
+    .from("video_render_jobs")
+    .update({
+      status: "aprovado",
+      formato: renderedFormat,
+      plataformas: networks,
+      copy_escolhida: caption,
+      caption,
+      metadata: {
+        ...(ready.job.metadata || {}),
+        plataformas_pedidas: networks,
+      },
+      erro_mensagem: null,
+    })
+    .eq("id", ready.job.id)
+    .eq("user_id", ctx.userId);
+  if (updateError) {
+    console.error("[ready-video][publish-state]", updateError.message);
+    return {
+      text: "Não consegui preparar a publicação do vídeo. Nada foi publicado.",
+    };
+  }
+  const { data, error } = await sb.functions.invoke(
+    "video-publicar-aprovado",
+    { body: { job_id: ready.job.id, notify_whatsapp: false } },
+  );
+  if (error || !data?.success) {
+    const failures = Array.isArray(data?.erros)
+      ? data.erros.join(" | ")
+      : error?.message || data?.error || "falha desconhecida";
+    const hasNetworkResult = Array.isArray(data?.plataformas) &&
+      (data.plataformas.length > 0 ||
+        (Array.isArray(data?.erros) && data.erros.length > 0));
+    return {
+      text: hasNetworkResult
+        ? formatVideoPublishMessage({
+          published: data.plataformas,
+          links: Array.isArray(data?.links) ? data.links : [],
+          errors: Array.isArray(data?.erros) ? data.erros : [],
+        })
+        : `Não consegui publicar o vídeo: ${failures}`,
+      interactiveButtons: data?.validation_error
+        ? readyVideoRerenderButtons(mediaId)
+        : undefined,
+    };
+  }
+  const published: string[] = Array.isArray(data?.plataformas)
+    ? data.plataformas
+    : networks;
+  return {
+    text: formatVideoPublishMessage({
+      published,
+      links: Array.isArray(data?.links) ? data.links : [],
+    }),
+  };
+}
+
+async function scheduleReadyLegendVideo(
+  mediaId: string,
+  scheduledDate: Date,
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  const ready = await resolveReadyLegendVideo(ctx.userId, mediaId);
+  if (!ready) {
+    return "Não encontrei o vídeo legendado ou a legenda escolhida. Nada foi agendado.";
+  }
+  if (!hasMinimumScheduleLead(scheduledDate)) {
+    return "Escolha um horário com pelo menos 10 minutos de antecedência.";
+  }
+  const networks = await connectedAnuncioNetworks(ctx.userId);
+  if (!networks.length) {
+    return "Não encontrei Facebook nem Instagram conectados nessa conta.";
+  }
+  const caption = await exactReadyVideoCaption(ready, ctx.userId);
+  const renderedFormat = renderedMetaVideoFormat(
+    ready.job.formato,
+    ready.job.metadata?.video_output,
+  );
+  const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+  let scheduleError: any = null;
+  if (renderedFormat === "feed") {
+    const rows = networks.map((platform) => ({
+      user_id: ctx.userId,
+      produto_id: null,
+      produto_source: "video_legendado",
+      platform,
+      post_text: caption,
+      image_url: null,
+      video_url: ready.media.midia_url,
+      approval_token: token,
+      solicitante_telefone: ctx.fromNumber,
+      status: "pendente",
+      scheduled_at: scheduledDate.toISOString(),
+      error_message: null,
+      updated_at: new Date().toISOString(),
+    }));
+    const result = await sb.from("social_posts_queue").insert(rows).select("id");
+    if (result.error || (result.data?.length ?? 0) !== rows.length) {
+      scheduleError = result.error || new Error("fila incompleta");
+    }
+  } else {
+    const result = await sb.from("videos_agendados").insert({
+      user_id: ctx.userId,
+      tipo: renderedFormat,
+      video_url: ready.media.midia_url,
+      caption,
+      canais: networks,
+      scheduled_for: scheduledDate.toISOString(),
+      status: "pendente",
+    }).select("id").maybeSingle();
+    scheduleError = result.error;
+  }
+  if (scheduleError) {
+    console.error(
+      "[ready-video][schedule]",
+      scheduleError?.message || "fila incompleta",
+    );
+    return "Não consegui salvar o agendamento. Nada foi agendado.";
+  }
+  await sb.from("video_render_jobs").update({
+    copy_escolhida: caption,
+    caption,
+    metadata: {
+      ...(ready.job.metadata || {}),
+      agendamento_token: token,
+      agendado_para: scheduledDate.toISOString(),
+      plataformas_pedidas: networks,
+      formato_publicacao: renderedFormat,
+    },
+  }).eq("id", ready.job.id).eq("user_id", ctx.userId);
+  return `✅ Agendado para ${formatScheduledDate(scheduledDate)} no ${
+    formatSocialNetworks(networks)
+  }.`;
+}
+
 async function toolPostarMidiaBiblioteca(
   args: { legenda?: string; nome?: string; preco?: number | string; link?: string; tom?: string; redes?: string[]; midia_id?: string; formato?: string; incluir_cta_whatsapp?: boolean; briefing?: string; usar_contexto_conversa?: boolean; pedido_original?: string },
   ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
@@ -9789,7 +10425,7 @@ async function toolPostarMidiaBiblioteca(
       });
     }
 
-    if (midia.origem === "carrossel_whatsapp" || midia.origem === "carrossel_whatsapp_card" || midia.midia_pai_id) {
+    if (isCarouselLibraryMedia(midia)) {
       const parentId = midia.midia_pai_id || midia.id;
       const requestedNetworks = (args?.redes ?? [])
         .map(canonicalSocialNetwork)
@@ -9961,6 +10597,7 @@ async function toolPostarMidiaBiblioteca(
         undefined,
         brandCtx,
         briefing || undefined,
+        contentNicheForContext(ctx),
       );
       if (!isVideo && descricaoVisual && copyConflitaComImagem(descricaoVisual, options)) {
         console.error(`[pietro][postar_midia] copy ${redeGeracao} REJEITADA por conflito com a imagem; regenerando`);
@@ -9975,6 +10612,7 @@ async function toolPostarMidiaBiblioteca(
           "Fale exclusivamente sobre o produto identificado nesta foto. Não mencione veículos, carros, concessionária, test-drive, quilometragem, ano ou modelo.",
           undefined,
           undefined,
+          contentNicheForContext(ctx),
         );
       }
       return options;
@@ -12381,7 +13019,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "escolher_variante_post",
-      description: "🎯 USE quando o dono responder 'A', 'B', 'C', 'opção B', 'a segunda', 'quero a C' etc para ESCOLHER qual das 3 variantes do post pendente vai publicar. Troca a variante ativa (sem chamar IA). Depois pergunte se pode postar.",
+      description: "🎯 USE quando o dono responder 'A', 'B', 'C', 'opção B', 'a segunda', 'quero a C' etc para ESCOLHER qual das 3 variantes do post pendente será publicada. A escolha publica imediatamente; não peça nova aprovação.",
       parameters: {
         type: "object",
         properties: {
@@ -13342,7 +13980,10 @@ async function renderVehicleCarousel(
     if (state.photo_preference === "melhorada") {
       try {
         const edited = JSON.parse(await toolEditarImagem(
-          productAdPhotoImprovementPrompt(state.data.titulo || "veículo"),
+          productAdPhotoImprovementPrompt(
+            state.data.titulo || "veículo",
+            "veiculo",
+          ),
           {
             userId: ctx.userId,
             fromNumber: ctx.fromNumber,
@@ -13428,7 +14069,11 @@ async function renderVehicleCarousel(
   const caption = generatedCaption &&
       isGeneratedVehicleCopySafe(generatedCaption, state.data)
     ? generatedCaption
-    : generateVehicleAdCaptions(factualData).A;
+    : generateVehicleAdCaptions(
+      factualData,
+      0,
+      resolveNichoDoConteudo("automotivo", "veiculo"),
+    ).A;
   await enviarPreviewCarrossel(ctx, imageUrls);
   const delivered = {
     ...state,
@@ -13484,7 +14129,7 @@ async function prepareVehicleCarouselSocial(
   const captions = generateVehicleAdCaptions({
     ...state.data,
     telefone: state.data.contato,
-  });
+  }, 0, resolveNichoDoConteudo("automotivo", "veiculo"));
   const variantes = Object.fromEntries(
     networks.map((network) => [network, { ...captions }]),
   ) as Record<string, PostVariantes>;
@@ -13831,6 +14476,7 @@ async function prepararPreviewCarrosselExistente(
     options.legenda ? `Use esta orientação do dono na legenda: ${options.legenda}` : undefined,
     undefined,
     options.legenda,
+    contentNicheForContext(ctx),
   );
   const variantes = { instagram: variantesBase };
   const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
@@ -14305,6 +14951,23 @@ async function buscarFotoOriginalRecenteParaAnuncio(ctx: {
   })?.midia_url ?? null;
 }
 
+async function buscarFotoRecenteParaFipe(ctx: {
+  userId: string;
+  fromNumber: string;
+  agentState?: AgentConvState;
+}): Promise<MediaExtract | null> {
+  const url = await buscarFotoOriginalRecenteParaAnuncio(ctx);
+  if (!url) return null;
+  const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+  if (!response.ok) throw new Error(`foto_recente_http_${response.status}`);
+  const mime = response.headers.get("content-type")?.split(";")[0] || "image/jpeg";
+  return {
+    kind: "image",
+    mime,
+    base64: base64Encode(await response.arrayBuffer()),
+  };
+}
+
 async function resolveAnuncioClientIdentity(input: {
   userId: string;
   clientName?: string;
@@ -14416,6 +15079,7 @@ async function resolveAnuncioClientIdentity(input: {
 type FipeToolResponse = {
   result: string;
   interactiveList?: WhatsAppInteractiveList;
+  interactiveButtons?: WhatsAppInteractiveButtons;
 };
 
 async function persistFipeState(
@@ -14443,10 +15107,6 @@ async function persistFipeState(
   ctx.agentState = current;
 }
 
-function fipeResultText(result: FipePrice): string {
-  return `FIPE ${result.referenceMonth}: ${result.price} — ${result.brand} ${result.model} ${result.modelYear} ${result.fuel} (código ${result.codeFipe})`;
-}
-
 async function finishFipeLookup(
   ctx: {
     userId: string;
@@ -14461,11 +15121,21 @@ async function finishFipeLookup(
     queryModel: string;
   },
 ): Promise<FipeToolResponse> {
-  const result = await consultarPreco({
-    brandId: input.brand.code,
-    modelId: input.model.code,
-    yearId: input.year.code,
-  });
+  let result: FipePrice;
+  try {
+    result = await consultarPreco({
+      brandId: input.brand.code,
+      modelId: input.model.code,
+      yearId: input.year.code,
+    });
+  } catch (error) {
+    console.warn("[fipe][preço]", (error as Error).message);
+    await persistFipeState(ctx, createFipePriceRetryState(input));
+    return {
+      result: "A consulta do preço demorou mais que o esperado. Você pode tentar novamente sem refazer as escolhas.",
+      interactiveButtons: fipePriceRetryButtons(),
+    };
+  }
   const last: LastFipeResult = {
     ...result,
     queryBrand: input.brand.name,
@@ -14474,7 +15144,7 @@ async function finishFipeLookup(
     created_at: new Date().toISOString(),
   };
   await persistFipeState(ctx, null, last);
-  return { result: fipeResultText(result) };
+  return { result: formatFipeResult(result) };
 }
 
 async function continueFipeWithModel(
@@ -14492,26 +15162,42 @@ async function continueFipeWithModel(
     requestedFuel?: string;
   },
 ): Promise<FipeToolResponse> {
-  let years = await listarAnos(
-    input.brand.code,
-    input.model.code,
-    [input.requestedYear, input.requestedFuel].filter(Boolean).join(" "),
+  const availableYears = await listarAnos(input.brand.code, input.model.code);
+  const yearDecision = fipeYearAvailabilityDecision(
+    availableYears,
+    input.requestedYear,
+    input.requestedFuel,
   );
-  if (!years.length && input.requestedYear) {
-    years = await listarAnos(
-      input.brand.code,
-      input.model.code,
-      input.requestedYear,
-    );
+  if (yearDecision.action === "none") {
+    return {
+      result: "Não encontrei anos disponíveis para essa versão.",
+    };
   }
-  if (!years.length) {
-    years = await listarAnos(input.brand.code, input.model.code);
+  if (yearDecision.action === "requested_unavailable") {
+    const pending: PendingFipeState = {
+      stage: "year",
+      brand: input.brand,
+      model: input.model,
+      years: yearDecision.years.slice(0, 10),
+      queryModel: input.queryModel,
+      created_at: new Date().toISOString(),
+    };
+    await persistFipeState(ctx, pending);
+    return {
+      result: `Essa versão não tem ${input.requestedYear}. Escolha o ano:`,
+      interactiveList: {
+        body: "Qual é o ano/modelo e combustível?",
+        button: "Escolher ano",
+        section_title: "Anos disponíveis",
+        rows: fipeListRows(pending.years, "fipe_year"),
+      },
+    };
   }
-  if (years.length === 1) {
+  if (yearDecision.action === "price") {
     return await finishFipeLookup(ctx, {
       brand: input.brand,
       model: input.model,
-      year: years[0],
+      year: yearDecision.year,
       queryModel: input.queryModel,
     });
   }
@@ -14519,7 +15205,7 @@ async function continueFipeWithModel(
     stage: "year",
     brand: input.brand,
     model: input.model,
-    years: years.slice(0, 10),
+    years: yearDecision.years.slice(0, 10),
     queryModel: input.queryModel,
     created_at: new Date().toISOString(),
   };
@@ -14533,6 +15219,38 @@ async function continueFipeWithModel(
       rows: fipeListRows(pending.years, "fipe_year"),
     },
   };
+}
+
+async function resolveFipeModelsForYear(input: {
+  brand: FipeListItem;
+  models: FipeListItem[];
+  requestedYear: string;
+  queryModel: string;
+}) {
+  try {
+    const modelsByYear = await listarModelosPorAno(
+      input.brand.code,
+      input.requestedYear,
+      input.queryModel,
+    );
+    if (modelsByYear.length > 0) {
+      return {
+        status: "filtered" as const,
+        models: modelsByYear,
+        availableYears: [],
+      };
+    }
+  } catch (error) {
+    console.warn(
+      "[fipe][modelos-por-ano] endpoint indisponível; usando conferência completa",
+      (error as Error).message,
+    );
+  }
+  return await filterFipeModelsByYear(
+    input.models,
+    input.requestedYear,
+    (modelId) => listarAnos(input.brand.code, modelId),
+  );
 }
 
 async function identifyFipeVehicleFromPhoto(
@@ -14634,20 +15352,66 @@ async function toolConsultarFipe(
     }
     const queryModel = [modelo, args?.versao].filter(Boolean).join(" ");
     const rankedModels = await listarModelos(brand.code, queryModel);
-    const models = args.motor || args.cambio
+    let models = args.motor || args.cambio
       ? filterFipeModelCandidates(rankedModels, args)
       : rankedModels;
-    if (!models.length) {
+    let yearFilteringComplete = !args?.ano_modelo;
+    if (args?.ano_modelo && models.length > 0) {
+      const yearFilterCandidates = models;
+      const yearFilter = await resolveFipeModelsForYear({
+        brand,
+        models,
+        requestedYear: args.ano_modelo,
+        queryModel,
+      });
+      if (yearFilter.status === "filtered") {
+        yearFilteringComplete = true;
+        models = yearFilter.models;
+        if (models.length === 0 && yearFilter.availableYears.length > 0) {
+          const pending: PendingFipeState = {
+            stage: "model_year",
+            brand,
+            models: yearFilterCandidates,
+            years: yearFilter.availableYears.slice(0, 10),
+            queryModel,
+            created_at: new Date().toISOString(),
+          };
+          await persistFipeState(ctx, pending);
+          return {
+            result:
+              `Não há ${modelo} ${args.ano_modelo} na tabela FIPE. Anos disponíveis:`,
+            interactiveList: {
+              body: `Qual ano do ${modelo}?`,
+              button: "Escolher ano",
+              section_title: "Anos disponíveis",
+              rows: fipeListRows(pending.years, "fipe_year"),
+            },
+          };
+        }
+      } else {
+        console.warn(
+          "[fipe][anos-dos-modelos] conferência incompleta; usando versões sem filtro",
+        );
+      }
+    }
+    const modelDecision = fipeModelDecision(models);
+    if (modelDecision.action === "none") {
       return {
         result:
           `Não encontrei “${queryModel}” entre os modelos FIPE da ${brand.name}.`,
       };
     }
-    if (models.length > 1) {
+    if (
+      modelDecision.action === "choose" ||
+      (modelDecision.action === "continue" && !yearFilteringComplete)
+    ) {
+      const menuModels = modelDecision.action === "choose"
+        ? modelDecision.models
+        : [modelDecision.model];
       const pending: PendingFipeState = {
         stage: "model",
         brand,
-        models: models.slice(0, 10),
+        models: menuModels,
         requestedYear: args?.ano_modelo,
         requestedFuel: args?.combustivel,
         queryModel,
@@ -14660,13 +15424,13 @@ async function toolConsultarFipe(
           body: `Qual versão do ${modelo}?`,
           button: "Escolher versão",
           section_title: "Versões FIPE",
-          rows: fipeListRows(pending.models, "fipe_model"),
+          rows: fipeModelPageRows(pending.models),
         },
       };
     }
     return await continueFipeWithModel(ctx, {
       brand,
-      model: models[0],
+      model: modelDecision.model,
       queryModel,
       requestedYear: args?.ano_modelo,
       requestedFuel: args?.combustivel,
@@ -14697,13 +15461,27 @@ async function handlePendingFipeTurn(
 } | null> {
   const age = Date.now() - new Date(pendingFipe.created_at).getTime();
   const fipeInteractiveId = userContent.match(
-    /<<INTERACTIVE_ID:(fipe_(?:model|year):\d+|fipe_ad:(?:queried|supplied))>>/i,
+    /<<INTERACTIVE_ID:(fipe_model:(?:\d+|more:\d+)|fipe_year:\d+|fipe_price:retry|fipe_ad:(?:queried|supplied))>>/i,
   )?.[1]?.toLowerCase();
   if (!Number.isFinite(age) || age > 30 * 60 * 1000) {
     await persistFipeState(toolCtx, null);
     return null;
   }
   if (pendingFipe.stage === "model" && fipeInteractiveId) {
+    const nextOffset = Number(
+      fipeInteractiveId.match(/^fipe_model:more:(\d+)$/)?.[1],
+    );
+    if (Number.isInteger(nextOffset)) {
+      return {
+        text: "Mais versões disponíveis:",
+        interactiveList: {
+          body: "Qual é a versão correta?",
+          button: "Escolher versão",
+          section_title: "Versões FIPE",
+          rows: fipeModelPageRows(pendingFipe.models, nextOffset),
+        },
+      };
+    }
     const index = Number(fipeInteractiveId.match(/^fipe_model:(\d+)$/)?.[1]);
     const model = pendingFipe.models[index];
     if (!model) {
@@ -14713,7 +15491,7 @@ async function handlePendingFipeTurn(
           body: "Qual é a versão correta?",
           button: "Escolher versão",
           section_title: "Versões FIPE",
-          rows: fipeListRows(pendingFipe.models, "fipe_model"),
+          rows: fipeModelPageRows(pendingFipe.models),
         },
       };
     }
@@ -14728,6 +15506,7 @@ async function handlePendingFipeTurn(
       return {
         text: response.result,
         interactiveList: response.interactiveList,
+        interactiveButtons: response.interactiveButtons,
       };
     } catch (error) {
       console.warn("[fipe][model-choice]", (error as Error).message);
@@ -14737,6 +15516,74 @@ async function handlePendingFipeTurn(
           "Não consegui consultar a FIPE agora. Tente de novo em alguns minutos.",
       };
     }
+  }
+  if (pendingFipe.stage === "model_year" && fipeInteractiveId) {
+    const index = Number(fipeInteractiveId.match(/^fipe_year:(\d+)$/)?.[1]);
+    const year = pendingFipe.years[index];
+    if (!year) {
+      return {
+        text: "Esse ano não está mais disponível. Escolha uma opção da lista.",
+        interactiveList: {
+          body: "Qual é o ano/modelo?",
+          button: "Escolher ano",
+          section_title: "Anos disponíveis",
+          rows: fipeListRows(pendingFipe.years, "fipe_year"),
+        },
+      };
+    }
+    const requestedYear = normalizeFipeYear(year.name);
+    const yearFilter = await resolveFipeModelsForYear({
+      brand: pendingFipe.brand,
+      models: pendingFipe.models,
+      requestedYear: requestedYear || year.name,
+      queryModel: pendingFipe.queryModel,
+    });
+    const models = yearFilter.status === "filtered"
+      ? yearFilter.models
+      : pendingFipe.models;
+    const modelDecision = fipeModelDecision(models);
+    if (modelDecision.action === "none") {
+      return {
+        text: "Não encontrei versões disponíveis para esse ano. Escolha outro ano:",
+        interactiveList: {
+          body: "Qual é o ano/modelo?",
+          button: "Escolher ano",
+          section_title: "Anos disponíveis",
+          rows: fipeListRows(pendingFipe.years, "fipe_year"),
+        },
+      };
+    }
+    if (modelDecision.action === "continue") {
+      const response = await continueFipeWithModel(toolCtx, {
+        brand: pendingFipe.brand,
+        model: modelDecision.model,
+        queryModel: pendingFipe.queryModel,
+        requestedYear,
+      });
+      return {
+        text: response.result,
+        interactiveList: response.interactiveList,
+        interactiveButtons: response.interactiveButtons,
+      };
+    }
+    const pending: PendingFipeState = {
+      stage: "model",
+      brand: pendingFipe.brand,
+      models: modelDecision.models,
+      requestedYear,
+      queryModel: pendingFipe.queryModel,
+      created_at: new Date().toISOString(),
+    };
+    await persistFipeState(toolCtx, pending);
+    return {
+      text: "Encontrei mais de uma versão nesse ano. Escolha a correta:",
+      interactiveList: {
+        body: "Qual é a versão correta?",
+        button: "Escolher versão",
+        section_title: "Versões FIPE",
+        rows: fipeModelPageRows(pending.models),
+      },
+    };
   }
   if (pendingFipe.stage === "year" && fipeInteractiveId) {
     const index = Number(fipeInteractiveId.match(/^fipe_year:(\d+)$/)?.[1]);
@@ -14759,7 +15606,10 @@ async function handlePendingFipeTurn(
         year,
         queryModel: pendingFipe.queryModel,
       });
-      return { text: response.result };
+      return {
+        text: response.result,
+        interactiveButtons: response.interactiveButtons,
+      };
     } catch (error) {
       console.warn("[fipe][year-choice]", (error as Error).message);
       await persistFipeState(toolCtx, null);
@@ -14768,6 +15618,16 @@ async function handlePendingFipeTurn(
           "Não consegui consultar a FIPE agora. Tente de novo em alguns minutos.",
       };
     }
+  }
+  if (
+    pendingFipe.stage === "price_retry" &&
+    fipeInteractiveId === "fipe_price:retry"
+  ) {
+    const response = await finishFipeLookup(toolCtx, pendingFipe);
+    return {
+      text: response.result,
+      interactiveButtons: response.interactiveButtons,
+    };
   }
   if (
     pendingFipe.stage === "photo_confirmation" &&
@@ -14792,6 +15652,7 @@ async function handlePendingFipeTurn(
     return {
       text: response.result,
       interactiveList: response.interactiveList,
+      interactiveButtons: response.interactiveButtons,
     };
   }
   if (
@@ -14884,6 +15745,16 @@ async function toolCriarAnuncio(
 
     const verticalScope = (ctx.agentState as Record<string, unknown> | undefined)
       ?.__vertical_scope as InboundVertical | undefined;
+    const contentNiche = resolveNichoDoConteudo(
+      ctx.userId === ADMIN_AMZ_USER_ID
+        ? "amz"
+        : verticalScope === "veiculo"
+        ? "automotivo"
+        : "geral",
+      verticalScope === "veiculo" ? "veiculo" : "produto",
+    );
+    const anuncioVertical: "veiculo" | "geral" =
+      verticalScope === "veiculo" ? "veiculo" : "geral";
     const pendingVehicleIdentification =
       ctx.agentState?.pending_vehicle_identification;
     if (
@@ -15079,9 +15950,9 @@ async function toolCriarAnuncio(
     const savedStyle = anuncioIdentity.mode === "client"
       ? savedClientAnuncioStyle(anuncioIdentity.identity)
       : await getTenantAnuncioStyle(sb, ctx.userId);
-    const singleStyle = args?._mostrar_tres_estilos
-      ? null
-      : requestedStyle ?? savedStyle;
+    // Só um estilo pedido explicitamente pula a comparação. Preferências
+    // salvas servem como recomendação, nunca como escolha automática.
+    const singleStyle = requestedStyle;
 
     // 1) FOTO — turno atual; senão, última foto recente da biblioteca (30 min)
     let fotoUrl: string | null = String(args?._foto_url_original || "").trim() ||
@@ -15181,47 +16052,196 @@ async function toolCriarAnuncio(
       }
     } catch { /* coluna origem pode não existir — guardrail é best-effort */ }
 
-    // 3) IA melhora SÓ a foto (nada de texto na imagem)
-    let fotoFinal = fotoUrl;
-    let fotoSource: "improved" | "original" = "original";
+    // 3) IA melhora SÓ o fundo e a luz. Produto e veículo usam prompts
+    // distintos; produtos recebem variantes clara e escura em paralelo.
+    const originalVisualDescription = contentNiche === "produto"
+      ? await descreverProdutoCacheado(fotoUrl)
+      : "";
+    let fotoVariants: ProductPhotoVariants = {
+      clara: { url: fotoUrl, source: "original" },
+      escura: { url: fotoUrl, source: "original" },
+    };
     if (args?.melhorar_foto !== false) {
-      try {
+      const generate = async (
+        variant: ProductPhotoVariant,
+        attempt: number,
+      ) => {
+        const retryInstruction = attempt > 1
+          ? " Segunda tentativa: siga literalmente todas as proibições e não acrescente nenhuma marcação ao produto."
+          : "";
         const raw = await toolEditarImagem(
-          productAdPhotoImprovementPrompt(titulo),
-          {
-            userId: ctx.userId,
-            fromNumber: ctx.fromNumber,
-            media: ctx.media,
-            textos: [],
-            modo: "anuncio",
-            preservarAmbiente: false,
-            registrarNaBiblioteca: false,
-            imageInputUrl: fotoUrl,
-          },
-        );
-        const parsed = JSON.parse(raw);
-        if (parsed?.image_url) {
-          fotoFinal = parsed.image_url;
-          fotoSource = "improved";
-          console.log("[criar_anuncio] melhoria da foto concluída; usando foto melhorada");
-        } else {
-          console.warn("[criar_anuncio] melhoria da foto falhou; usando original:", parsed?.erro);
+            productAdPhotoImprovementPrompt(
+              titulo,
+              contentNiche,
+              variant,
+              originalVisualDescription,
+            ) +
+              retryInstruction,
+            {
+              userId: ctx.userId,
+              fromNumber: ctx.fromNumber,
+              media: ctx.media,
+              textos: [],
+              modo: "anuncio",
+              preservarAmbiente: false,
+              registrarNaBiblioteca: false,
+              imageInputUrl: fotoUrl,
+            },
+          );
+        let parsed: any;
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          throw new Error("resposta inválida");
         }
-      } catch (e) {
-        console.warn("[criar_anuncio] melhoria da foto lançou exceção; usando original:", (e as Error).message);
+        if (!parsed?.image_url) {
+          throw new Error(
+            String(
+              parsed?.status
+                ? `HTTP ${parsed.status}`
+                : parsed?.erro || parsed?.detalhe || "imagem não retornada",
+            ),
+          );
+        }
+        return {
+          url: String(parsed.image_url),
+          description: contentNiche === "produto"
+            ? await descreverProdutoCacheado(parsed.image_url)
+            : "",
+        };
+      };
+      if (contentNiche === "produto") {
+        const improveProductVariant = async (
+          variant: ProductPhotoVariant,
+        ): Promise<ProductPhotoVariants[ProductPhotoVariant]> => {
+          const result = await generateSafeProductPhotoWithRetry({
+            originalDescription: originalVisualDescription,
+            requestedText: JSON.stringify(args),
+            generate: async (attempt) => await generate(variant, attempt),
+            onFailure: (attempt, reason) => {
+              const safeReason = reason.replace(
+                /https?:\/\/\S+|(?:token|key|authorization)\s*[:=]\s*\S+/gi,
+                "[omitido]",
+              ).slice(0, 180);
+              console.warn(
+                `[criar_anuncio] melhoria ${variant} tentativa=${attempt} falhou: ${safeReason}`,
+              );
+            },
+          });
+          return result.photo ?? {
+            url: "",
+            source: "failed",
+            failureReason: result.failureReason,
+          };
+        };
+        const [clara, escura] = await Promise.all([
+          improveProductVariant("clara"),
+          improveProductVariant("escura"),
+        ]);
+        fotoVariants = { clara, escura };
+      } else {
+        let improved: ProductPhotoVariants[ProductPhotoVariant];
+        try {
+          const generated = await generate("escura", 1);
+          improved = resolveGeneratedProductPhoto({
+            originalUrl: fotoUrl,
+            generatedUrl: generated.url,
+            safe: true,
+          });
+        } catch (error) {
+          console.warn(
+            `[criar_anuncio] melhoria veiculo falhou; usando original: ${
+              String((error as Error).message || error).slice(0, 180)
+            }`,
+          );
+          improved = { url: fotoUrl, source: "original" };
+        }
+        fotoVariants = { clara: improved, escura: improved };
       }
     } else {
       console.log("[criar_anuncio] melhoria desativada; usando foto original");
     }
-    console.log(`[criar_anuncio] foto selecionada=${fotoSource}`);
-    const fotoBox = await detectarCaixaProdutoVisao(fotoFinal);
+    const usableVariant: ProductPhotoVariant | null =
+      fotoVariants.clara.source !== "failed"
+        ? "clara"
+        : fotoVariants.escura.source !== "failed"
+        ? "escura"
+        : null;
+    const usablePhoto = usableVariant ? fotoVariants[usableVariant] : null;
+    if (!usablePhoto) {
+      if (ctx.convId) {
+        const conversation = {
+          id: ctx.convId,
+          userId: ctx.userId,
+          contactNumber: ctx.fromNumber,
+        };
+        const current = ctx.agentState ??
+          await loadAgentState(sb, conversation);
+        const pendingPhoto = {
+          stage: "treatment_retry" as const,
+          args: {
+            ...args,
+            _foto_url_original: fotoUrl,
+            _foto_resolvida: true,
+            melhorar_foto: true,
+          },
+          created_at: new Date().toISOString(),
+        };
+        await saveAgentState(sb, conversation, {
+          pending_anuncio_photo: pendingPhoto,
+        }, current);
+        current.pending_anuncio_photo = pendingPhoto;
+        ctx.agentState = current;
+      }
+      return JSON.stringify({
+        erro: "tratamento_foto_falhou",
+        mensagem:
+          "Não consegui tratar a foto para os estilos Catálogo, Impacto e Destaque.",
+        interactive_buttons: {
+          body: "Quer tentar tratar esta foto novamente?",
+          buttons: [{
+            id: "anuncio_photo:retry_treatment",
+            title: "🔄 Tentar de novo",
+          }],
+        },
+      });
+    }
+    const fotoFinal = usablePhoto.url;
+    const fotoSource = usablePhoto.source;
     console.log(
-      `[criar_anuncio] foto_box=${
-        fotoBox
-          ? [fotoBox.ymin, fotoBox.xmin, fotoBox.ymax, fotoBox.xmax].join(",")
-          : "ausente; usando contain"
-      }`,
+      `[criar_anuncio] fotos clara=${fotoVariants.clara.source} escura=${fotoVariants.escura.source}`,
     );
+    const [detectedVariantBoxes, fotoVisualDescription] = await Promise.all([
+      contentNiche === "produto" && args?.melhorar_foto !== false
+        ? detectPhotoBoxesByVariant(
+          fotoVariants,
+          detectarCaixaProdutoVisao,
+        )
+        : detectarCaixaProdutoVisao(fotoFinal).then((box) => ({
+          clara: box,
+          escura: box,
+        })),
+      originalVisualDescription
+        ? Promise.resolve(originalVisualDescription)
+        : descreverProdutoCacheado(fotoFinal),
+    ]);
+    const serializeFotoBox = (box: FotoBox | null): number[] | null =>
+      box ? [box.ymin, box.xmin, box.ymax, box.xmax] : null;
+    const fotoVariantBoxes = {
+      clara: serializeFotoBox(detectedVariantBoxes.clara),
+      escura: serializeFotoBox(detectedVariantBoxes.escura),
+    };
+    const fotoBox = usableVariant
+      ? fotoVariantBoxes[usableVariant]
+      : null;
+    for (const variant of ["clara", "escura"] as const) {
+      console.log(
+        `[criar_anuncio] foto_box ${variant}=${
+          fotoVariantBoxes[variant]?.join(",") ??
+            "ausente; usando contain"
+        }`,
+      );
+    }
 
     // 4) Identidade do tenant (nome do negócio / @ / telefone)
     let businessName: string | null = anuncioIdentity.businessName;
@@ -15237,13 +16257,16 @@ async function toolCriarAnuncio(
       if (!instagram && conn?.ig_username) instagram = `@${String(conn.ig_username).replace(/^@/, "")}`;
     } catch { /* opcional */ }
 
-    let telefone = (args?.telefone || "").trim() || null;
+    const configuredContact = ctx.userId === ADMIN_AMZ_USER_ID
+      ? AGENT_PHONE
+      : await buscarTelefoneAgenteTenant(ctx.userId);
+    let telefone = formatBrazilianWhatsappNumber(configuredContact) ||
+      formatBrazilianWhatsappNumber(args?.telefone) || null;
     if (!telefone) {
       try {
         const owner = await resolveTenantOwner(sb, ctx.userId);
         if (owner?.phone) {
-          const d = String(owner.phone).replace(/\D/g, "").replace(/^55/, "");
-          if (d.length >= 10) telefone = `(${d.slice(0, 2)}) ${d.slice(2, d.length - 4)}-${d.slice(-4)}`;
+          telefone = formatBrazilianWhatsappNumber(owner.phone) || null;
         }
       } catch { /* opcional */ }
     }
@@ -15310,32 +16333,118 @@ async function toolCriarAnuncio(
         : false,
       logo_source: anuncioIdentity.mode,
       primary_color: anuncioIdentity.colors[1] || anuncioIdentity.colors[0] || undefined,
-      accent_color: anuncioIdentity.colors[0] || undefined,
+      accent_color: dominantProductAccentColor(
+        fotoVisualDescription,
+        anuncioIdentity.colors[0] || undefined,
+      ),
       foto_url: fotoFinal,
-      foto_url_original: fotoUrl,
+      foto_url_original: contentNiche === "produto" &&
+          args?.melhorar_foto !== false
+        ? null
+        : fotoUrl,
       foto_source: fotoSource,
-      foto_box: fotoBox
-        ? [fotoBox.ymin, fotoBox.xmin, fotoBox.ymax, fotoBox.xmax]
-        : null,
+      foto_variants: fotoVariants,
+      foto_variant_boxes: fotoVariantBoxes,
+      foto_box: fotoBox,
       formato,
       incluir_logo: true,
     };
-    const styles = singleStyle ? [singleStyle] : [...ANUNCIO_STYLES];
-    const renders = await Promise.all(styles.map(async (style) => {
-      const background = style === "catalogo" ? "light" : "dark";
-      const logoPath = anuncioIdentity.mode === "client"
-        ? clientLogoPath(anuncioIdentity.identity, background, true)
-        : null;
-      const render = await callEdge("render-anuncio-produto", {
-        ...renderPayload,
-        estilo: style,
-        logo_path: logoPath,
-      }, 120000);
-      if (!render?.success || !render?.image_url) {
-        throw new Error(String(render?.error || `falha no estilo ${style}`));
+    const desiredStyles = singleStyle ? [singleStyle] : [...ANUNCIO_STYLES];
+    const treatmentFailedStyles = contentNiche === "produto" &&
+        args?.melhorar_foto !== false
+      ? failedProductPhotoStyleLabels(fotoVariants)
+      : [];
+    const requestedStyles = contentNiche === "produto" &&
+        args?.melhorar_foto !== false
+      ? availableStylesForProductPhoto(desiredStyles, fotoVariants)
+      : desiredStyles;
+    if (!requestedStyles.length) {
+      if (ctx.convId) {
+        const conversation = {
+          id: ctx.convId,
+          userId: ctx.userId,
+          contactNumber: ctx.fromNumber,
+        };
+        const current = ctx.agentState ??
+          await loadAgentState(sb, conversation);
+        const pendingPhoto = {
+          stage: "treatment_retry" as const,
+          args: {
+            ...args,
+            _foto_url_original: fotoUrl,
+            _foto_resolvida: true,
+            melhorar_foto: true,
+          },
+          created_at: new Date().toISOString(),
+        };
+        await saveAgentState(sb, conversation, {
+          pending_anuncio_photo: pendingPhoto,
+        }, current);
+        current.pending_anuncio_photo = pendingPhoto;
+        ctx.agentState = current;
       }
-      return { style, render };
-    }));
+      return JSON.stringify({
+        erro: "tratamento_estilo_falhou",
+        mensagem: treatmentFailedStyles.map((style) =>
+          `Não consegui tratar a foto para o estilo ${style}.`
+        ).join("\n"),
+        interactive_buttons: {
+          body: "Quer tentar tratar esta foto novamente?",
+          buttons: [{
+            id: "anuncio_photo:retry_treatment",
+            title: "🔄 Tentar de novo",
+          }],
+        },
+      });
+    }
+    const recommendation = recommendAnuncioStyle({
+      visualDescription: fotoVisualDescription,
+      title: titulo,
+      badge: args?.badge,
+      // A agência AMZ cria para produtos diferentes; a preferência global não
+      // deve vencer a recomendação visual de cada produto.
+      preferred: recommendationPreferenceForAccount(
+        ctx.userId,
+        ADMIN_AMZ_USER_ID,
+        savedStyle,
+      ),
+    });
+    const { successes: renders, failedStyles } =
+      await renderAnuncioStyleOptions(requestedStyles, async (style) => {
+        const background = style === "catalogo" ? "light" : "dark";
+        const logoPath = anuncioIdentity.mode === "client"
+          ? clientLogoPath(anuncioIdentity.identity, background, true)
+          : null;
+        const render = await callEdge("render-anuncio-produto", {
+          ...renderPayload,
+          estilo: style,
+          logo_path: logoPath,
+          foto_url: productPhotoVariantForStyle(style, fotoVariants).url,
+          foto_source: productPhotoVariantForStyle(style, fotoVariants).source,
+          foto_box: photoBoxForStyle(style, fotoVariantBoxes),
+        }, 120000);
+        if (
+          !render?.success ||
+          !render?.image_url ||
+          (contentNiche === "produto" && args?.melhorar_foto !== false &&
+            render?.foto_source !== "improved")
+        ) {
+          throw new Error(String(render?.error || `falha no estilo ${style}`));
+        }
+        return render;
+      });
+    if (failedStyles.length) {
+      console.warn(
+        `[criar_anuncio] estilos_falharam=${failedStyles.join(",")}`,
+      );
+    }
+    if (!renders.length) {
+      throw new Error("não consegui renderizar nenhum estilo do anúncio");
+    }
+    const renderedStyles = renders.map(({ style }) => style);
+    const shownRecommendation = renderedStyles.includes(recommendation)
+      ? recommendation
+      : renderedStyles[0];
 
     // 6) Salva todos os estilos na biblioteca.
     const savedMedia = await Promise.all(renders.map(async ({ style, render }) => {
@@ -15383,7 +16492,9 @@ async function toolCriarAnuncio(
       })) satisfies LastAnuncioImage[];
       const lastAnuncio: LastAnuncio = {
         images,
-        selected_style: renders.length === 1 ? styles[0] : undefined,
+        selected_style: renders.length === 1 ? renders[0].style : undefined,
+        vertical: anuncioVertical,
+        niche: contentNiche,
         data: anuncioData,
         render_payload: renderPayload,
         client_name: args?.cliente || null,
@@ -15399,7 +16510,9 @@ async function toolCriarAnuncio(
           _refazer_foto: false,
         },
         client_name: args?.cliente || null,
-        shown_styles: styles,
+        vertical: anuncioVertical,
+        niche: contentNiche,
+        shown_styles: renderedStyles,
         images,
         data: anuncioData,
         photo_preference_used: photoPreference,
@@ -15452,14 +16565,31 @@ async function toolCriarAnuncio(
         "não consegui entregar todas as prévias; ações de publicação bloqueadas",
       );
     }
-    if (renders.length > 1) {
+    if (treatmentFailedStyles.length) {
       await sendWhatsApp(
         ctx.userId,
         ctx.fromNumber,
-        "Preparei os três estilos com a mesma foto. Qual você prefere?",
+        treatmentFailedStyles.map((style) =>
+          `Não consegui tratar a foto para o estilo ${style}.`
+        ).join("\n"),
         undefined,
         undefined,
-        anuncioStyleButtons(),
+        undefined,
+        { alreadyLogged: false },
+      );
+    }
+    if (renders.length > 1) {
+      const styleChoice = anuncioStyleButtons(
+        renderedStyles,
+        shownRecommendation,
+      );
+      await sendWhatsApp(
+        ctx.userId,
+        ctx.fromNumber,
+        styleChoice.body,
+        undefined,
+        undefined,
+        styleChoice,
         { alreadyLogged: false },
       );
     }
@@ -15467,21 +16597,19 @@ async function toolCriarAnuncio(
       ok: true,
       preview_sent: true,
       image_urls: renders.map(({ render }) => render.image_url),
-      estilos: styles,
+      estilos: renderedStyles,
+      estilos_com_falha: [...treatmentFailedStyles, ...failedStyles],
+      estilo_recomendado: shownRecommendation,
       formato,
       logo_aplicada: renders.every(({ render }) => !!render.logo_aplicada),
       midia_id: renders.length === 1 ? savedMedia[0] : null,
       midia_ids: savedMedia.filter(Boolean),
       itens_usados: itens.length,
       mensagem: renders.length > 1
-        ? args?._refazer_foto
-          ? "Quer usar sempre assim?"
-          : "Se quiser, também posso refazer usando a outra opção de foto."
-        : anuncioSuccessMessage(),
+        ? "Mostrei as opções disponíveis e aguardo a escolha do estilo."
+        : "Arte salva na sua biblioteca. O que você quer fazer?",
       interactive_buttons: renders.length > 1
-        ? args?._refazer_foto
-          ? anuncioPhotoPreferenceConfirmationButtons(photoPreference)
-          : anuncioPhotoRedoButtons(photoPreference)
+        ? undefined
         : anuncioPostActionButtons(),
     });
   } catch (e) {
@@ -15850,7 +16978,11 @@ async function runTool(
   if (name === "cancelar_agendamento_post") return { result: await toolCancelarAgendamentoPost(args ?? {}, ctx) };
   if (name === "remarcar_agendamento_post") return { result: await toolRemarcarAgendamentoPost(args ?? {}, ctx) };
   if (name === "revisar_post_pendente") return { result: await toolRevisarPostPendente(args ?? {}, ctx) };
-  if (name === "escolher_variante_post") return { result: await toolEscolherVariantePost(args ?? {}, ctx) };
+  if (name === "escolher_variante_post") {
+    return {
+      result: await escolherVarianteEPublicarPost(args ?? {}, ctx),
+    };
+  }
   if (name === "registrar_logo_cliente") return { result: await toolRegistrarLogoCliente(args ?? {}, ctx) };
   if (name === "salvar_midia_biblioteca") return { result: await toolSalvarMidiaBiblioteca(args ?? {}, ctx) };
   if (name === "postar_midia_biblioteca") return { result: await toolPostarMidiaBiblioteca(args ?? {}, ctx) };
@@ -15909,6 +17041,7 @@ async function callGemini(
 ): Promise<{
   text: string;
   imageUrl?: string;
+  videoUrl?: string;
   forwardProof?: string;
   forwardAttempted?: boolean;
   interactiveList?: WhatsAppInteractiveList;
@@ -15928,7 +17061,8 @@ async function callGemini(
       .join(" ")
     : "";
   if (
-    (activeVertical === "veiculo" || toolCtx.explicitFipe) && hasMedia &&
+    (activeVertical === "veiculo" || toolCtx.explicitFipe) &&
+    !!toolCtx.media?.some((item) => item.kind === "image") &&
     senderIsOwner &&
     isExplicitFipeRequest(multimodalText)
   ) {
@@ -15939,6 +17073,7 @@ async function callGemini(
     return {
       text: response.result,
       interactiveList: response.interactiveList,
+      interactiveButtons: response.interactiveButtons,
     };
   }
   const audioOnly = !!toolCtx.media?.length &&
@@ -16051,6 +17186,9 @@ async function callGemini(
       pendingVehicleIdentification = null;
     }
     const pendingSinglePhoto = remetenteEhDono ? toolCtx.agentState?.pending_single_photo : null;
+    const pendingImageAdjustment = remetenteEhDono
+      ? toolCtx.agentState?.pending_image_adjustment
+      : null;
     const pendingVideoSetup = remetenteEhDono ? toolCtx.agentState?.pending_video_setup : null;
     const pendingAnuncioCliente = remetenteEhDono
       ? toolCtx.agentState?.pending_anuncio_cliente
@@ -16096,6 +17234,12 @@ async function callGemini(
     const normalizedInput = normalizePt(userContent);
     const brandInteractiveId = userContent.match(/<<INTERACTIVE_ID:(brand_[^>]+)>>/i)?.[1]?.toLowerCase() || "";
     const socialInteractiveId = userContent.match(/<<INTERACTIVE_ID:(social_[^>]+)>>/i)?.[1] || "";
+    const readyMediaAction = parseReadyMediaAction(userContent);
+    const imageEditRetryAction = isImageEditRetryAction(userContent);
+    const readyMediaScheduleChoice = parseReadyMediaScheduleChoice(userContent);
+    const readyVideoRerenderAction = parseReadyVideoRerenderAction(userContent);
+    const videoCaptionChoice = parseVideoCaptionChoice(userContent);
+    const videoTranscriptionAction = parseVideoTranscriptionAction(userContent);
     const anuncioPostInteractiveId = userContent.match(
       /<<INTERACTIVE_ID:(anuncio_post:[^>]+)>>/i,
     )?.[1]?.toLowerCase() || "";
@@ -16114,6 +17258,161 @@ async function callGemini(
     const singlePhotoInteractiveId = userContent.match(
       /<<INTERACTIVE_ID:(single_photo:[^>]+)>>/i,
     )?.[1]?.toLowerCase() || "";
+    if (
+      remetenteEhDono &&
+      pendingSinglePhoto?.stage === "ad_data"
+    ) {
+      const active = pendingAnuncioDataIsActive(
+        pendingSinglePhoto.created_at,
+      );
+      const anyInteractiveId = userContent.match(
+        /<<INTERACTIVE_ID:([^>]+)>>/i,
+      )?.[1] || "";
+      const clearPendingAdData = async () => {
+        if (!toolCtx.convId) return;
+        await saveAgentState(
+          sb,
+          {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          },
+          { pending_single_photo: null },
+          toolCtx.agentState ?? {},
+        );
+        if (toolCtx.agentState) {
+          toolCtx.agentState.pending_single_photo = null;
+        }
+      };
+      if (!active || anyInteractiveId) {
+        await clearPendingAdData();
+      } else if (isPendingAnuncioDataCancellation(userContent)) {
+        await clearPendingAdData();
+        return { text: "Certo, cancelei o anúncio." };
+      } else {
+        const anuncioArgs = anuncioArgsFromOwnerData(userContent);
+        if (anuncioArgs) {
+          await clearPendingAdData();
+          console.log("[pietro][deterministic] criar_anuncio dados_pendentes");
+          const raw = await toolCriarAnuncio(anuncioArgs, toolCtx);
+          let parsed: any = {};
+          try {
+            parsed = JSON.parse(raw);
+          } catch {
+            return {
+              text:
+                "Não consegui concluir o anúncio porque a ferramenta devolveu uma resposta inválida.",
+            };
+          }
+          return {
+            text: String(
+              parsed?.mensagem || parsed?.instrucao || parsed?.erro ||
+                "Anúncio processado.",
+            ),
+            interactiveButtons: parsed?.interactive_buttons,
+          };
+        }
+      }
+    }
+    if (remetenteEhDono && readyVideoRerenderAction) {
+      return {
+        text: await rerenderReadyLegendVideo(
+          readyVideoRerenderAction.mediaId,
+          toolCtx,
+        ),
+      };
+    }
+    if (remetenteEhDono && videoTranscriptionAction) {
+      const resolved = await resolverMidiaBibliotecaPorId(
+        toolCtx.userId,
+        videoTranscriptionAction.mediaId,
+      );
+      if (!resolved.midia || resolved.midia.tipo !== "video") {
+        return {
+          text:
+            "Não encontrei esse vídeo para tentar novamente. Envie o vídeo outra vez.",
+        };
+      }
+      if (videoTranscriptionAction.action === "write") {
+        if (toolCtx.convId) {
+          const current = toolCtx.agentState ?? {};
+          await saveAgentState(sb, {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          }, {
+            pending_video_transcription_theme: {
+              media_id: resolved.midia.id,
+              created_at: new Date().toISOString(),
+            },
+          }, current);
+          current.pending_video_transcription_theme = {
+            media_id: resolved.midia.id,
+            created_at: new Date().toISOString(),
+          };
+          toolCtx.agentState = current;
+        }
+        return {
+          text:
+            "Escreva o tema do vídeo em uma frase. Vou usar exatamente esse contexto para criar as 3 legendas.",
+        };
+      }
+      const reply = await iniciarFluxoLegendaVideo({
+        userId: toolCtx.userId,
+        telefone: toolCtx.fromNumber,
+        videoUrl: String(resolved.midia.midia_url),
+        contexto: String(resolved.midia.contexto_original || ""),
+        midiaId: resolved.midia.id,
+      });
+      const text = reply || VIDEO_SEM_TRANSCRICAO;
+      return {
+        text,
+        interactiveButtons: text === VIDEO_SEM_TRANSCRICAO
+          ? videoTranscriptionRecoveryButtons(resolved.midia.id)
+          : videoCaptionChoiceButtons(),
+      };
+    }
+    const pendingVideoTranscriptionTheme = remetenteEhDono
+      ? toolCtx.agentState?.pending_video_transcription_theme
+      : null;
+    if (
+      pendingVideoTranscriptionTheme &&
+      !/<<INTERACTIVE_ID:/i.test(userContent)
+    ) {
+      const resolved = await resolverMidiaBibliotecaPorId(
+        toolCtx.userId,
+        pendingVideoTranscriptionTheme.media_id,
+      );
+      if (toolCtx.convId) {
+        await saveAgentState(sb, {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        }, { pending_video_transcription_theme: null }, toolCtx.agentState ?? {});
+      }
+      if (toolCtx.agentState) {
+        toolCtx.agentState.pending_video_transcription_theme = null;
+      }
+      if (!resolved.midia || resolved.midia.tipo !== "video") {
+        return {
+          text:
+            "Não encontrei esse vídeo. Envie o vídeo novamente junto com o tema.",
+        };
+      }
+      const reply = await iniciarFluxoLegendaVideo({
+        userId: toolCtx.userId,
+        telefone: toolCtx.fromNumber,
+        videoUrl: String(resolved.midia.midia_url),
+        contexto: String(resolved.midia.contexto_original || ""),
+        midiaId: resolved.midia.id,
+        temaComoTranscricao: String(userContent).trim(),
+      });
+      return {
+        text: reply ||
+          "Não consegui criar as legendas agora. Tente novamente em instantes.",
+        interactiveButtons: reply ? videoCaptionChoiceButtons() : undefined,
+      };
+    }
     if (pendingFipe) {
       const response = await handlePendingFipeTurn(
         pendingFipe,
@@ -16123,29 +17422,58 @@ async function callGemini(
       if (response) return response;
     }
     if (remetenteEhDono && isExplicitFipeRequest(userContent)) {
-      const input = fipeInputFromConfirmedVehicle(
+      let input = fipeInputFromTextAndBrands(
         userContent,
         pendingVehicleIdentification,
+        [],
       );
+      if (!input.marca || !input.modelo) {
+        try {
+          input = fipeInputFromTextAndBrands(
+            userContent,
+            pendingVehicleIdentification,
+            await listarMarcas(),
+          );
+        } catch (error) {
+          console.warn("[fipe][marcas]", (error as Error).message);
+        }
+      }
+      let fipeCtx = toolCtx;
+      const hasCurrentPhoto = (toolCtx.media || []).some((item) =>
+        item.kind === "image"
+      );
+      if (isFipePhotoReference(userContent) && !hasCurrentPhoto) {
+        try {
+          const recentPhoto = await buscarFotoRecenteParaFipe(toolCtx);
+          if (
+            recentPhoto &&
+            resolveFipePhotoSource({
+              text: userContent,
+              hasCurrentPhoto,
+              hasRecentPhoto: true,
+            }) === "recent"
+          ) {
+            fipeCtx = {
+              ...toolCtx,
+              media: [...(toolCtx.media || []), recentPhoto],
+            };
+          }
+        } catch (error) {
+          console.warn("[fipe][foto-recente]", (error as Error).message);
+        }
+      }
       if (
-        vehicleFipeTurn(userContent, input) === "fipe_ask_year" &&
-        input.marca && input.modelo
+        vehicleFipeTurn(userContent, input) === "fipe_lookup" ||
+        (fipeCtx.media || []).some((item) => item.kind === "image")
       ) {
-        await persistFipeState(toolCtx, {
-          stage: "photo_confirmation",
-          brand: input.marca,
-          model: input.modelo,
-          created_at: new Date().toISOString(),
-        });
+        const response = await toolConsultarFipe(input, fipeCtx);
         return {
-          text: `Qual é o ano/modelo do ${input.marca} ${input.modelo}?`,
+          text: response.result,
+          interactiveList: response.interactiveList,
+          interactiveButtons: response.interactiveButtons,
         };
       }
-      const response = await toolConsultarFipe(input, toolCtx);
-      return {
-        text: response.result,
-        interactiveList: response.interactiveList,
-      };
+      console.log("[fipe][fallback-ia] marca/modelo não identificados");
     }
     const socialActionInteractive = socialInteractiveId.match(/^social_(publish|publish_confirm|schedule|cancel):([a-f0-9]{8})$/i);
     const socialVariantInteractive = socialInteractiveId.match(/^social_variant:([ABC]):([a-f0-9]{8})$/i);
@@ -16155,6 +17483,402 @@ async function callGemini(
         normalizePt(String(previousHistoryMessage.content ?? "")),
       );
     const ownerMediaIntent = classifyOwnerMediaIntent(userContent);
+    if (remetenteEhDono && videoCaptionChoice) {
+      const ready = await resolveReadyLegendVideo(
+        toolCtx.userId,
+        videoCaptionChoice.mediaId,
+      );
+      if (!ready) {
+        return {
+          text:
+            "Não encontrei esse vídeo legendado ou suas opções. Nada foi alterado.",
+        };
+      }
+      const options: string[] = Array.isArray(ready.job.metadata?.opcoes)
+        ? ready.job.metadata.opcoes
+        : [];
+      const index = ["A", "B", "C"].indexOf(videoCaptionChoice.letter);
+      const caption = String(options[index] || "").trim();
+      if (!caption) {
+        return { text: "Essa opção de legenda não está mais disponível." };
+      }
+      await Promise.all([
+        sb.from("video_render_jobs").update({
+          copy_escolhida: caption,
+          caption,
+          metadata: {
+            ...(ready.job.metadata || {}),
+            copy_letra: videoCaptionChoice.letter,
+          },
+        }).eq("id", ready.job.id).eq("user_id", toolCtx.userId),
+        sb.from("midias_whatsapp").update({
+          contexto_original: caption.slice(0, 1500),
+        }).eq("id", ready.media.id).eq("user_id", toolCtx.userId),
+      ]);
+      return {
+        text:
+          `Legenda ${videoCaptionChoice.letter} escolhida ✅\n\n🎬 Vídeo pronto com a nova legenda de publicação.`,
+        videoUrl: ready.media.midia_url,
+        interactiveButtons: readyMediaActionButtons(
+          ready.media.id,
+          "video",
+        ),
+      };
+    }
+    if (remetenteEhDono && readyMediaScheduleChoice) {
+      if (readyMediaScheduleChoice.slot === "custom") {
+        if (toolCtx.convId) {
+          const current: AgentConvState = toolCtx.agentState ?? {};
+          await saveAgentState(sb, {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          }, {
+            pending_ready_media_schedule: {
+              media_id: readyMediaScheduleChoice.mediaId,
+              created_at: new Date().toISOString(),
+            },
+          }, current);
+          current.pending_ready_media_schedule = {
+            media_id: readyMediaScheduleChoice.mediaId,
+            created_at: new Date().toISOString(),
+          };
+          toolCtx.agentState = current;
+        }
+        return {
+          text:
+            "Qual dia e horário? Ex.: 30/10 às 15h. Vou usar a mesma legenda escolhida.",
+        };
+      }
+      const scheduledDate = parseSaoPauloDateTime(
+        scheduleSlotSaoPauloText(readyMediaScheduleChoice.slot),
+      );
+      if (!scheduledDate) {
+        return { text: "Não consegui interpretar esse horário. Escolha outro." };
+      }
+      return {
+        text: await scheduleReadyLegendVideo(
+          readyMediaScheduleChoice.mediaId,
+          scheduledDate,
+          toolCtx,
+        ),
+      };
+    }
+    const pendingReadySchedule = toolCtx.agentState
+      ?.pending_ready_media_schedule;
+    if (
+      remetenteEhDono && pendingReadySchedule &&
+      !/<<INTERACTIVE_ID:/i.test(userContent)
+    ) {
+      const scheduledDate = parseSaoPauloDateTime(String(userContent).trim());
+      if (scheduledDate) {
+        const text = await scheduleReadyLegendVideo(
+          pendingReadySchedule.media_id,
+          scheduledDate,
+          toolCtx,
+        );
+        if (toolCtx.convId) {
+          await saveAgentState(sb, {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          }, { pending_ready_media_schedule: null }, toolCtx.agentState ?? {});
+          if (toolCtx.agentState) {
+            toolCtx.agentState.pending_ready_media_schedule = null;
+          }
+        }
+        return { text };
+      }
+      return {
+        text:
+          "Não entendi o horário. Informe dia e hora, por exemplo: 30/10 às 15h.",
+      };
+    }
+    if (
+      remetenteEhDono &&
+      readyMediaAction?.action === "edit" &&
+      readyMediaAction.mediaType === "foto"
+    ) {
+      const resolved = await resolverMidiaBibliotecaPorId(
+        toolCtx.userId,
+        readyMediaAction.mediaId,
+      );
+      if (!resolved.midia || resolved.midia.tipo !== "foto") {
+        return {
+          text:
+            "Não encontrei essa foto para ajustar. Envie a imagem novamente.",
+        };
+      }
+      await rememberLastMediaInteraction(toolCtx, readyMediaAction.mediaId);
+      const pending = {
+        media_id: readyMediaAction.mediaId,
+        created_at: new Date().toISOString(),
+      };
+      if (toolCtx.convId) {
+        await saveAgentState(sb, {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        }, { pending_image_adjustment: pending }, toolCtx.agentState ?? {});
+      }
+      if (toolCtx.agentState) {
+        toolCtx.agentState.pending_image_adjustment = pending;
+      }
+      return {
+        text:
+          "O que você quer ajustar nesta imagem? Pode me mandar em texto ou áudio.",
+      };
+    }
+    const pendingImageAdjustmentIsActive = pendingImageAdjustment &&
+      Date.now() - new Date(pendingImageAdjustment.created_at).getTime() <=
+        30 * 60 * 1000;
+    if (
+      remetenteEhDono &&
+      pendingImageAdjustmentIsActive &&
+      (imageEditRetryAction || !/<<INTERACTIVE_ID:/i.test(userContent))
+    ) {
+      const adjustmentPrompt = imageEditRetryAction
+        ? String(pendingImageAdjustment.prompt || "").trim()
+        : String(userContent || "").trim();
+      if (!adjustmentPrompt) {
+        return {
+          text:
+            "Me diga em texto ou áudio qual ajuste você quer fazer na imagem.",
+        };
+      }
+      const resolved = await resolverMidiaBibliotecaPorId(
+        toolCtx.userId,
+        pendingImageAdjustment.media_id,
+      );
+      if (!resolved.midia || resolved.midia.tipo !== "foto") {
+        return {
+          text:
+            "Não encontrei essa foto para ajustar. Envie a imagem novamente.",
+        };
+      }
+      const originalMediaId = String(
+        resolved.midia.midia_pai_id || "",
+      ).trim();
+      let originalResolved = originalMediaId &&
+          originalMediaId !== resolved.midia.id
+        ? await resolverMidiaBibliotecaPorId(
+          toolCtx.userId,
+          originalMediaId,
+        )
+        : { midia: null };
+      if (
+        !originalResolved.midia &&
+        ["ia_edicao", "ia_composicao"].includes(
+          String(resolved.midia.origem || ""),
+        )
+      ) {
+        const cutoff = new Date(
+          new Date(resolved.midia.created_at).getTime() - 2 * 60 * 60 * 1000,
+        ).toISOString();
+        const { data: legacyOriginal } = await sb
+          .from("midias_whatsapp")
+          .select(
+            "id, tipo, origem, midia_pai_id, midia_url, contexto_original, telefone_origem, created_at",
+          )
+          .eq("user_id", toolCtx.userId)
+          .eq("telefone_origem", toolCtx.fromNumber)
+          .eq("tipo", "foto")
+          .gte("created_at", cutoff)
+          .lt("created_at", resolved.midia.created_at)
+          .not("origem", "in", "(ia_edicao,ia_composicao)")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        originalResolved = { midia: legacyOriginal ?? null };
+      }
+      const scenePlan = planProductSceneAdjustment({
+        adjustment: adjustmentPrompt,
+        previousRequest: resolved.midia.contexto_original,
+        currentMediaId: String(resolved.midia.id),
+        currentUrl: String(resolved.midia.midia_url || ""),
+        originalMediaId: originalResolved.midia?.id,
+        originalUrl: originalResolved.midia?.midia_url,
+      });
+      const cumulativeInstruction = combineSceneInstructions(
+        String(resolved.midia.contexto_original || ""),
+        adjustmentPrompt,
+      );
+      await rememberLastMediaInteraction(
+        toolCtx,
+        scenePlan.sourceMediaId,
+      );
+      const editPlan = logoImageEditPlan(scenePlan.instruction);
+      const mode = editPlan.toolMode ??
+        (scenePlan.regenerate ||
+            hasExplicitSceneDescription(scenePlan.instruction)
+          ? "cena_produto"
+          : "melhoria");
+      console.log(
+        `[processor][pending_image_adjustment] pedido_chars=${scenePlan.instruction.length} modo=${mode} source=${
+          scenePlan.regenerate ? "original" : "resultado_anterior"
+        }`,
+      );
+      const raw = editPlan.strategy === "overlay"
+        ? await toolApplyTenantLogoOverlay(scenePlan.instruction, toolCtx)
+        : await toolEditarImagem(scenePlan.instruction, {
+          userId: toolCtx.userId,
+          fromNumber: toolCtx.fromNumber,
+          media: [],
+          textos: [],
+          modo: mode,
+          preservarAmbiente: mode === "cena_produto" ? false : undefined,
+          imageInputUrl: scenePlan.sourceUrl,
+          sourceMediaId: scenePlan.sourceMediaId,
+          originalSourceMediaId: originalResolved.midia?.id ||
+            resolved.midia.midia_pai_id ||
+            resolved.midia.id,
+          libraryContext: cumulativeInstruction,
+        });
+      let parsed: any = {};
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        // resposta inválida tratada como falha abaixo
+      }
+      if (parsed?.image_url) {
+        if (parsed?.midia_id) {
+          await rememberLastMediaInteraction(toolCtx, parsed.midia_id);
+        }
+        if (toolCtx.convId) {
+          await saveAgentState(sb, {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          }, { pending_image_adjustment: null }, toolCtx.agentState ?? {});
+        }
+        if (toolCtx.agentState) {
+          toolCtx.agentState.pending_image_adjustment = null;
+        }
+        const notice = editPlan.logoMode === "object"
+          ? ` ${LOGO_PRODUCT_SIMULATION_NOTICE}`
+          : "";
+        return {
+          text: `Pronto — ajustei a imagem conforme o seu pedido.${notice}`,
+          imageUrl: parsed.image_url,
+          interactiveButtons: parsed?.midia_id
+            ? readyMediaActionButtons(parsed.midia_id, "foto")
+            : undefined,
+        };
+      }
+      const failedPending = {
+        ...pendingImageAdjustment,
+        prompt: adjustmentPrompt,
+        created_at: new Date().toISOString(),
+      };
+      if (toolCtx.convId) {
+        await saveAgentState(sb, {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        }, {
+          pending_image_adjustment: failedPending,
+        }, toolCtx.agentState ?? {});
+      }
+      if (toolCtx.agentState) {
+        toolCtx.agentState.pending_image_adjustment = failedPending;
+      }
+      return {
+        text: mensagemErroEdicaoImagem(parsed),
+        interactiveButtons: imageEditRetryButtons(),
+      };
+    }
+    if (remetenteEhDono && readyMediaAction) {
+      const isVideo = readyMediaAction.mediaType === "video";
+      const readyLegendVideo = isVideo
+        ? await resolveReadyLegendVideo(
+          toolCtx.userId,
+          readyMediaAction.mediaId,
+        )
+        : null;
+      const readyRoute = readyMediaActionRoute({
+        action: readyMediaAction.action,
+        mediaType: readyMediaAction.mediaType,
+        isLegendVideoWithChosenCaption: !!readyLegendVideo,
+      });
+      if (readyLegendVideo && readyRoute !== "social_variants") {
+        if (readyRoute === "direct_video_publish") {
+          return await publishReadyLegendVideo(
+            readyMediaAction.mediaId,
+            toolCtx,
+          );
+        }
+        if (readyRoute === "direct_video_schedule") {
+          return {
+            text: "Escolha quando publicar. Vou usar a mesma legenda.",
+            interactiveList: readyMediaScheduleList(readyMediaAction.mediaId),
+          };
+        }
+        const options = Array.isArray(readyLegendVideo.job.metadata?.opcoes)
+          ? readyLegendVideo.job.metadata.opcoes
+          : [];
+        if (options.length < 3) {
+          return {
+            text:
+              "As opções originais desta legenda não estão mais disponíveis. Envie o vídeo novamente para criar novas opções.",
+          };
+        }
+        return {
+          text: videoCaptionOptionsText(options),
+          interactiveButtons: videoCaptionChoiceButtons(
+            readyMediaAction.mediaId,
+          ),
+        };
+      }
+      const postResult = await toolPostarMidiaBiblioteca({
+        midia_id: readyMediaAction.mediaId,
+        pedido_original: userContent,
+        redes: ["facebook", "instagram"],
+        formato: isVideo ? "reels" : "feed",
+        incluir_cta_whatsapp: false,
+      }, toolCtx);
+      const actionLead = readyMediaAction.action === "schedule"
+        ? "Preparei a prévia desta mídia. Depois de escolher a legenda, toque em Agendar."
+        : readyMediaAction.action === "caption"
+        ? "Preparei opções de legenda para esta mídia."
+        : `Preparei a prévia desta mídia para ${
+          isVideo ? "Reels" : "o Feed"
+        } no Facebook e no Instagram.`;
+      return {
+        text: `${actionLead}<<SPLIT>>${formatSocialPostToolResult(postResult)}`,
+        interactiveList: interactiveListFromSocialResult(postResult),
+        interactiveButtons: interactiveButtonsFromSocialResult(postResult),
+      };
+    }
+
+    if (
+      remetenteEhDono &&
+      ownerMediaIntent.action === "post" &&
+      hasVideoPublicationRequest(userContent)
+    ) {
+      const social = detectSocialPostIntent(userContent) ?? {
+        produto: "",
+        tom: "informativo",
+        redes: detectRequestedSocialNetworks(userContent),
+        temProduto: false,
+        formato: detectSocialPostFormat(userContent) ?? "reels",
+      };
+      const postResult = await toolPostarMidiaBiblioteca({
+        pedido_original: userContent,
+        legenda: cleanMediaPostLegenda(userContent),
+        briefing: extractSocialPostBriefing(userContent),
+        tom: social.tom,
+        redes: social.redes.length
+          ? social.redes
+          : ["facebook", "instagram"],
+        formato: social.formato ?? "reels",
+        incluir_cta_whatsapp: detectWantsWhatsappCta(userContent),
+      }, toolCtx);
+      return {
+        text: formatSocialPostToolResult(postResult),
+        interactiveList: interactiveListFromSocialResult(postResult),
+        interactiveButtons: interactiveButtonsFromSocialResult(postResult),
+      };
+    }
     if (
       remetenteEhDono &&
       ownerMediaIntent.action === "edit" &&
@@ -16532,8 +18256,32 @@ async function callGemini(
     }
     if (remetenteEhDono && pendingSinglePhoto && singlePhotoInteractiveId === "single_photo:ad") {
       if (toolCtx.convId) {
-        await saveAgentState(sb, { id: toolCtx.convId, userId: toolCtx.userId, contactNumber: toolCtx.fromNumber }, { pending_single_photo: null }, toolCtx.agentState ?? {});
-        if (toolCtx.agentState) toolCtx.agentState.pending_single_photo = null;
+        const next = {
+          ...pendingSinglePhoto,
+          stage: "ad_data" as const,
+          created_at: new Date().toISOString(),
+        };
+        const interaction = {
+          media_id: pendingSinglePhoto.media_id,
+          at: new Date().toISOString(),
+        };
+        await saveAgentState(
+          sb,
+          {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          },
+          {
+            pending_single_photo: next,
+            last_media_interaction: interaction,
+          },
+          toolCtx.agentState ?? {},
+        );
+        if (toolCtx.agentState) {
+          toolCtx.agentState.pending_single_photo = next;
+          toolCtx.agentState.last_media_interaction = interaction;
+        }
       }
       return { text: "Me mande em uma mensagem os dados reais do anúncio: título, preço, itens e condições. Vou usar esta foto." };
     }
@@ -16547,21 +18295,83 @@ async function callGemini(
     if (remetenteEhDono && pendingSinglePhoto && singlePhotoInteractiveId === "single_photo:post") {
       const connected = await connectedAnuncioNetworks(toolCtx.userId);
       if (!connected.length) return { text: "Não encontrei Facebook nem Instagram conectados nessa conta." };
-      const next = { ...pendingSinglePhoto, stage: "networks" as const, created_at: new Date().toISOString() };
+      const next = { ...pendingSinglePhoto, stage: "destination" as const, created_at: new Date().toISOString() };
       if (toolCtx.convId) {
         await saveAgentState(sb, { id: toolCtx.convId, userId: toolCtx.userId, contactNumber: toolCtx.fromNumber }, { pending_single_photo: next }, toolCtx.agentState ?? {});
         if (toolCtx.agentState) toolCtx.agentState.pending_single_photo = next;
       }
-      const networkButtons = anuncioPostNetworkButtons(connected);
+      const destinationList = anuncioPostDestinationList({
+        mediaType: "foto",
+        connected,
+      });
       return {
-        text: "Em quais redes?",
-        interactiveButtons: {
-          ...networkButtons,
-          buttons: networkButtons.buttons.map((button) => ({
-            ...button,
-            id: button.id.replace("anuncio_post:networks:", "single_photo:networks:"),
-          })),
+        text: "Onde você quer publicar?",
+        interactiveList: {
+          ...destinationList,
+          rows: destinationList.rows
+            .filter((row) =>
+              !row.id.endsWith("photo_feed_story") &&
+              !row.id.endsWith("schedule")
+            )
+            .map((row) => ({
+              ...row,
+              id: row.id.replace(
+                "anuncio_post:destination:",
+                "single_photo:destination:",
+              ),
+            })),
         },
+      };
+    }
+    const singlePhotoDestination = singlePhotoInteractiveId.match(
+      /^single_photo:destination:(photo_feed|photo_story|photo_linkedin|photo_tiktok)$/,
+    )?.[1];
+    if (
+      remetenteEhDono &&
+      pendingSinglePhoto?.stage === "destination" &&
+      singlePhotoDestination
+    ) {
+      const connected = await connectedAnuncioNetworks(toolCtx.userId);
+      const meta = connected.filter((network) =>
+        network === "facebook" || network === "instagram"
+      );
+      const networks: AnuncioPostNetwork[] =
+        singlePhotoDestination === "photo_linkedin"
+          ? connected.includes("linkedin") ? ["linkedin"] : []
+          : singlePhotoDestination === "photo_tiktok"
+          ? connected.includes("tiktok") ? ["tiktok"] : []
+          : meta;
+      const format = singlePhotoDestination === "photo_story"
+        ? "story"
+        : "feed";
+      if (!networks.length) {
+        return { text: "Esse destino não está conectado." };
+      }
+      const raw = await toolPostarMidiaBiblioteca({
+        midia_id: pendingSinglePhoto.media_id,
+        pedido_original: `esta foto no ${format}`,
+        redes: networks,
+        formato: format,
+        tom: "beneficio",
+      }, toolCtx);
+      if (toolCtx.convId) {
+        await saveAgentState(
+          sb,
+          {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          },
+          { pending_single_photo: null },
+          toolCtx.agentState ?? {},
+        );
+        if (toolCtx.agentState) {
+          toolCtx.agentState.pending_single_photo = null;
+        }
+      }
+      return {
+        text: formatSocialPostToolResult(raw),
+        interactiveButtons: interactiveButtonsFromSocialResult(raw),
       };
     }
     const singlePhotoNetworks = singlePhotoInteractiveId.match(/^single_photo:networks:(both|instagram|facebook)$/)?.[1];
@@ -16887,6 +18697,44 @@ async function callGemini(
       // A oferta automática também não prende a conversa.
       await persistVehiclePhotoBatch(toolCtx, null);
     }
+    if (
+      remetenteEhDono &&
+      anuncioPhotoInteractiveId === "anuncio_photo:retry_treatment" &&
+      pendingAnuncioPhoto?.stage === "treatment_retry" &&
+      pendingAnuncioPhoto.args
+    ) {
+      const age = Date.now() -
+        new Date(pendingAnuncioPhoto.created_at).getTime();
+      if (!Number.isFinite(age) || age > 2 * 60 * 60 * 1000) {
+        return {
+          text:
+            "Essa tentativa expirou. Envie a foto e os dados do anúncio novamente.",
+        };
+      }
+      const raw = await toolCriarAnuncio(
+        {
+          ...pendingAnuncioPhoto.args,
+          melhorar_foto: true,
+          _foto_resolvida: true,
+          _mostrar_tres_estilos: true,
+          estilo: undefined,
+        } as any,
+        { ...toolCtx, media: [] },
+      );
+      let parsed: any = {};
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        return { text: raw };
+      }
+      return {
+        text: String(
+          parsed?.mensagem || parsed?.erro ||
+            "Não consegui tentar o tratamento novamente.",
+        ),
+        interactiveButtons: parsed?.interactive_buttons,
+      };
+    }
     const anuncioPhotoRedo = anuncioPhotoInteractiveId.match(
       /^anuncio_photo:redo:(melhorada|original)$/,
     )?.[1] as AnuncioPhotoPreference | undefined;
@@ -17080,9 +18928,17 @@ async function callGemini(
       const selectedImage = pendingAnuncioStyles.images?.find((image) =>
         image.style === anuncioStyleInteractive
       );
+      if (!selectedImage) {
+        return {
+          text:
+            `Não consegui tratar a foto para o estilo ${anuncioStyleInteractive}.`,
+        };
+      }
       const lastAnuncio: LastAnuncio = {
         images: pendingAnuncioStyles.images ?? [],
         selected_style: anuncioStyleInteractive,
+        vertical: pendingAnuncioStyles.vertical,
+        niche: pendingAnuncioStyles.niche,
         data: pendingAnuncioStyles.data ?? {},
         render_payload: pendingAnuncioStyles.render_payload,
         client_name: pendingAnuncioStyles.client_name,
@@ -17100,7 +18956,7 @@ async function callGemini(
         await rememberLastMediaInteraction(toolCtx, selectedImage.id);
       }
       return {
-        text: `${anuncioSuccessMessage()} Salvei *${anuncioStyleInteractive}* como seu estilo preferido.`,
+        text: `${anuncioSuccessMessage()} Salvei *${anuncioStyleInteractive}* como seu estilo preferido.\n\nArte salva na sua biblioteca. O que você quer fazer?`,
         interactiveButtons: anuncioPostActionButtons(),
       };
     }
@@ -17108,50 +18964,117 @@ async function callGemini(
       const age = Date.now() -
         new Date(pendingAnuncioStyles.created_at).getTime();
       if (Number.isFinite(age) && age <= 2 * 60 * 60 * 1000) {
-        const preferred = pendingAnuncioStyles.shown_styles[0];
-        const styles = pendingAnuncioStyles.shown_styles.length === 1
-          ? otherAnuncioStyles(preferred)
-          : ANUNCIO_STYLES;
+        const selectedStyle = lastAnuncio?.selected_style ??
+          pendingAnuncioStyles.shown_styles[0];
+        const variants = pendingAnuncioStyles.render_payload
+          .foto_variants as ProductPhotoVariants | undefined;
+        const variantBoxes = pendingAnuncioStyles.render_payload
+          .foto_variant_boxes as
+            | { clara: unknown; escura: unknown }
+            | undefined;
+        const otherStyles = otherAnuncioStyles(selectedStyle);
+        const styles = variants
+          ? availableStylesForProductPhoto(otherStyles, variants)
+          : otherStyles;
         const client = pendingAnuncioStyles.client_name
           ? await findClientBrandIdentity(sb, toolCtx.userId, {
             name: pendingAnuncioStyles.client_name,
           })
           : null;
-        const renders = await Promise.all(styles.map(async (style) => {
-          const logoPath = client
-            ? clientLogoPath(
-              client,
-              style === "catalogo" ? "light" : "dark",
-              true,
-            )
-            : null;
-          const render = await callEdge("render-anuncio-produto", {
-            ...pendingAnuncioStyles.render_payload,
-            estilo: style,
-            logo_path: logoPath,
-          }, 120000);
-          return { style, render };
-        }));
-        const urls = renders.map(({ render }) => render?.image_url).filter(Boolean);
-        if (urls.length === styles.length) {
+        const { successes: renders } = await renderAnuncioStyleOptions(
+          styles,
+          async (style) => {
+            const logoPath = client
+              ? clientLogoPath(
+                client,
+                style === "catalogo" ? "light" : "dark",
+                true,
+              )
+              : null;
+            const render = await callEdge("render-anuncio-produto", {
+              ...pendingAnuncioStyles.render_payload,
+              estilo: style,
+              logo_path: logoPath,
+              ...(() => {
+                if (!variants) return {};
+                const photo = productPhotoVariantForStyle(style, variants);
+                if (!photo.url || photo.source === "failed") return {};
+                return {
+                  foto_url: photo.url,
+                  foto_source: photo.source,
+                  foto_box: variantBoxes
+                    ? photoBoxForStyle(style, variantBoxes)
+                    : pendingAnuncioStyles.render_payload.foto_box,
+                };
+              })(),
+            }, 120000);
+            if (
+              !render?.success ||
+              !render?.image_url ||
+              (pendingAnuncioStyles.niche === "produto" && variants &&
+                productPhotoVariantForStyle(style, variants).source ===
+                  "improved" &&
+                render?.foto_source !== "improved")
+            ) {
+              throw new Error(
+                String(render?.error || `falha no estilo ${style}`),
+              );
+            }
+            return render;
+          },
+        );
+        if (renders.length) {
+          const saved = await Promise.all(renders.map(async ({ style, render }) => {
+            const { data } = await sb.from("midias_whatsapp").insert({
+              user_id: toolCtx.userId,
+              telefone_origem: toolCtx.fromNumber,
+              tipo: "foto",
+              midia_url: render.image_url,
+              contexto_original:
+                `Anúncio ${style} ${String(pendingAnuncioStyles.render_payload.formato || "feed")}: ${
+                  String(pendingAnuncioStyles.data?.titulo || "produto")
+                }`,
+              origem: "anuncio_produto",
+              status: "pendente",
+            }).select("id").maybeSingle();
+            return {
+              style,
+              formato: pendingAnuncioStyles.render_payload.formato === "story"
+                ? "story" as const
+                : "feed" as const,
+              id: String(data?.id || ""),
+              url: String(render.image_url),
+            };
+          }));
+          const renderedStyles = renders.map(({ style }) => style);
+          const mergedImages = [
+            ...(pendingAnuncioStyles.images ?? []).filter((image) =>
+              !renderedStyles.includes(image.style)
+            ),
+            ...saved,
+          ];
+          await persistAnuncioFlowState(toolCtx, {
+            pending_anuncio_styles: {
+              ...pendingAnuncioStyles,
+              shown_styles: [
+                ...new Set([
+                  ...pendingAnuncioStyles.shown_styles,
+                  ...renderedStyles,
+                ]),
+              ],
+              images: mergedImages,
+            },
+            ...(lastAnuncio
+              ? { last_anuncio: { ...lastAnuncio, images: mergedImages } }
+              : {}),
+          });
           await enviarPreviewEstilosAnuncio(
             toolCtx,
-            renders as Array<{
-              style: AnuncioStyle;
-              render: { image_url: string };
-            }>,
+            renders,
           );
           return {
             text: "Aqui estão os outros estilos. Qual você prefere?",
-            interactiveButtons: {
-              body: "Qual você prefere?",
-              buttons: styles.map((style) => ({
-                id: `anuncio_style:${style}`,
-                title: style === "catalogo"
-                  ? "Catálogo"
-                  : style[0].toUpperCase() + style.slice(1),
-              })),
-            },
+            interactiveButtons: anuncioStyleButtons(renderedStyles),
           };
         }
       }
@@ -17169,6 +19092,22 @@ async function callGemini(
         return { text: "Salvei o anúncio. Quando quiser publicar, é só pedir usando o estilo escolhido." };
       }
       if (action === "publish" || action === "schedule") {
+        if (action === "publish") {
+          const connected = await connectedAnuncioNetworks(toolCtx.userId);
+          if (!connected.length) {
+            return {
+              text:
+                "Não encontrei nenhuma rede conectada para esta publicação.",
+            };
+          }
+          return {
+            text: "Escolha o destino da publicação.",
+            interactiveList: anuncioPostDestinationList({
+              mediaType: "foto",
+              connected,
+            }),
+          };
+        }
         const next: PendingAnuncioPost = {
           stage: "format",
           action,
@@ -17179,11 +19118,70 @@ async function callGemini(
           pending_anuncio_post: next,
         });
         return {
-          text: action === "publish"
-            ? "Certo. Onde você quer publicar?"
-            : "Certo. Qual formato você quer agendar?",
+          text: "Certo. Qual formato você quer agendar?",
           interactiveButtons: anuncioPostFormatButtons(action === "schedule"),
         };
+      }
+
+      const destination = anuncioPostInteractiveId.match(
+        /^anuncio_post:destination:(photo_feed|photo_feed_story|photo_story|photo_linkedin|photo_tiktok|schedule)$/,
+      )?.[1];
+      if (destination) {
+        if (destination === "schedule") {
+          const next: PendingAnuncioPost = {
+            stage: "format",
+            action: "schedule",
+            created_at: new Date().toISOString(),
+          };
+          await persistAnuncioFlowState(toolCtx, {
+            last_anuncio: lastAnuncio,
+            pending_anuncio_post: next,
+          });
+          return {
+            text: "Qual formato você quer agendar?",
+            interactiveButtons: anuncioPostFormatButtons(true),
+          };
+        }
+        const connected = await connectedAnuncioNetworks(toolCtx.userId);
+        const meta = connected.filter((network) =>
+          network === "facebook" || network === "instagram"
+        );
+        const format = destination === "photo_feed_story"
+          ? "feed_story"
+          : destination === "photo_story"
+          ? "story"
+          : "feed";
+        const networks: AnuncioPostNetwork[] =
+          destination === "photo_linkedin"
+            ? connected.includes("linkedin") ? ["linkedin"] : []
+            : destination === "photo_tiktok"
+            ? connected.includes("tiktok") ? ["tiktok"] : []
+            : meta;
+        if (!networks.length) {
+          return {
+            text:
+              "Esse destino não está conectado. Escolha outra rede disponível.",
+            interactiveList: anuncioPostDestinationList({
+              mediaType: "foto",
+              connected,
+            }),
+          };
+        }
+        try {
+          const prepared = await prepareAnuncioSocialPosts({
+            last: lastAnuncio,
+            action: "publish",
+            format,
+            networks,
+            ctx: toolCtx,
+          });
+          return await deliverAnuncioCaptionChoices(prepared.raw, toolCtx);
+        } catch (error) {
+          return {
+            text:
+              `Não consegui preparar a publicação: ${(error as Error).message}. Nada foi publicado.`,
+          };
+        }
       }
 
       const format = anuncioPostInteractiveId.match(
@@ -17743,7 +19741,12 @@ async function callGemini(
       anuncioPostInteractiveId === "anuncio_post:caption:regenerate" &&
       anuncioPostTokens.length
     ) {
-      const captions = generateVehicleAdCaptions(lastAnuncio.data, Date.now());
+      const captions = await generateAnuncioCaptions(
+        lastAnuncio,
+        pendingAnuncioPost.networks ?? ["facebook", "instagram"],
+        toolCtx.userId,
+        Date.now(),
+      );
       try {
         await replaceAnuncioPendingCaptions(
           anuncioPostTokens,
@@ -17970,7 +19973,10 @@ async function callGemini(
       for (const token of anuncioPostTokens) {
         await toolEscolherVariantePost({ token, opcao: option }, toolCtx);
       }
-      if (pendingAnuncioPost.action === "schedule") {
+      if (
+        anuncioActionAfterCaption(pendingAnuncioPost.action) ===
+          "schedule_time"
+      ) {
         const next = {
           ...pendingAnuncioPost,
           stage: "schedule_time" as const,
@@ -17988,21 +19994,40 @@ async function callGemini(
           ),
         };
       }
-      const next = {
-        ...pendingAnuncioPost,
-        stage: "approval" as const,
-        selected_option: option,
-        created_at: new Date().toISOString(),
-      };
+      await markAnuncioPendingAsPreviewed(
+        anuncioPostTokens,
+        toolCtx.userId,
+      );
+      const results: string[] = [];
+      for (const token of anuncioPostTokens) {
+        results.push(
+          await toolConfirmarPostagemRedes({ token }, toolCtx),
+        );
+      }
       await persistAnuncioFlowState(toolCtx, {
         last_anuncio: lastAnuncio,
-        pending_anuncio_post: next,
+        pending_anuncio_post: null,
       });
-      const preview = await sendAnuncioExactPreviews(anuncioPostTokens, toolCtx);
-      if (!preview.ok) return { text: preview.message };
+      const publishedNetworks = results.flatMap((result) => {
+        try {
+          const data = JSON.parse(result);
+          return Array.isArray(data.redes_publicadas)
+            ? data.redes_publicadas
+            : [];
+        } catch {
+          return [];
+        }
+      });
+      const connected = await connectedAnuncioNetworks(toolCtx.userId);
+      const missing = connected.filter((network) =>
+        !publishedNetworks.includes(network)
+      );
       return {
-        text: anuncioPostSummary(lastAnuncio, next, option),
-        interactiveButtons: anuncioFinalApprovalButtons(anuncioPostTokens[0]),
+        text: formatCombinedAnuncioPublishResults(results),
+        interactiveList: anuncioRemainingDestinationsList({
+          mediaType: "foto",
+          connected: missing,
+        }),
       };
     }
     if (remetenteEhDono && lastAnuncio && !anuncioPostInteractiveId) {
@@ -18057,6 +20082,20 @@ async function callGemini(
         }
         const format = request.format ?? pendingAnuncioPost?.format;
         if (!format) {
+          if (action === "publish") {
+            const connected = await connectedAnuncioNetworks(toolCtx.userId);
+            return {
+              text: connected.length
+                ? "Escolha o destino da publicação."
+                : "Não encontrei nenhuma rede conectada para esta publicação.",
+              interactiveList: connected.length
+                ? anuncioPostDestinationList({
+                  mediaType: "foto",
+                  connected,
+                })
+                : undefined,
+            };
+          }
           const next: PendingAnuncioPost = {
             ...pendingAnuncioPost,
             stage: "format",
@@ -18154,19 +20193,13 @@ async function callGemini(
     }
     if (remetenteEhDono && socialVariantInteractive) {
       const token = socialVariantInteractive[2].toLowerCase();
-      const pending = await loadPendingSocialPost(token, toolCtx.userId);
-      const result = await toolEscolherVariantePost({
+      const result = await escolherVarianteEPublicarPost({
         token,
         opcao: socialVariantInteractive[1],
       }, toolCtx);
-      const selectedPending = PENDING_POSTS.get(token) ??
-        await loadPendingSocialPost(token, toolCtx.userId);
-      if (!selectedPending) return { text: "Não encontrei a mídia exata deste preview. Nada foi publicado." };
-      const preview = await sendExactPendingSocialPreview(token, selectedPending, toolCtx);
-      if (!preview.ok) return { text: preview.message };
       return {
-        text: `${pending ? `Vou usar ${describeLoadedPendingSocialPost(pending)}.\n\n` : ""}${formatSocialPostToolResult(result)}`,
-        interactiveButtons: interactiveButtonsFromSocialResult(result),
+        text: formatDirectSocialPublishResult(result),
+        interactiveList: interactiveListFromSocialResult(result),
       };
     }
     if (remetenteEhDono && socialActionInteractive?.[1]?.toLowerCase() === "publish_confirm") {
@@ -18556,11 +20589,15 @@ async function callGemini(
     // Edição de foto recente é determinística: o modelo não pode apenas prometer
     // que vai trabalhar em segundo plano. A própria ferramenta busca a última
     // foto do tenant (janela de 30 min) e devolve a imagem pronta neste turno.
-    const logoMode = logoPlacementMode(userContent);
+    const logoPlan = logoImageEditPlan(userContent);
+    const logoMode = logoPlan.logoMode;
     const pedidoLogoNaFoto = logoMode !== null;
     const pedidoEdicaoFoto = ownerMediaIntent.action === "edit" ||
       compositionFallsBackToEdit || pedidoLogoNaFoto;
     let temFotoParaEditar = (toolCtx.media || []).some((m) => m.kind === "image");
+    let fotoParaEditarId = String(
+      toolCtx.agentState?.last_media_interaction?.media_id || "",
+    );
     if (remetenteEhDono && pedidoEdicaoFoto && !temFotoParaEditar) {
       const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
       const { data: fotoRecente, error: fotoError } = await sb
@@ -18575,19 +20612,23 @@ async function callGemini(
         .maybeSingle();
       if (fotoError) console.warn("[processor][forced_image_edit][recent_photo_error]", fotoError.message);
       temFotoParaEditar = !!fotoRecente?.id;
+      fotoParaEditarId = String(fotoRecente?.id || fotoParaEditarId);
       if (!temFotoParaEditar) {
         console.log("[processor][forced_image_edit][skipped_no_image]");
       }
     }
     if (remetenteEhDono && pedidoEdicaoFoto && temFotoParaEditar && !isCarrosselRequest(userContent)) {
       const trocarCenario = !pedidoLogoNaFoto && /\b(?:cen[aá]rio|ambiente|fundo|est[uú]dio|showroom)\b/i.test(userContent);
-      const modoForcado = logoMode === "object"
+      const modoForcado = logoPlan.toolMode ??
+        (logoMode === "object"
         ? "aplicar_logo"
         : trocarCenario
-        ? "ficha_tecnica"
-        : "melhoria";
-      console.log(`[processor][forced_image_edit] modo=${modoForcado}`);
-      const raw = logoMode === "top-left"
+        ? "cena_produto"
+        : "melhoria");
+      console.log(
+        `[processor][forced_image_edit] pedido_chars=${userContent.length} modo=${modoForcado}`,
+      );
+      const raw = logoPlan.strategy === "overlay"
         ? await toolApplyTenantLogoOverlay(userContent, toolCtx)
         : await toolEditarImagem(userContent, {
           userId: toolCtx.userId,
@@ -18596,6 +20637,8 @@ async function callGemini(
           textos: [],
           modo: modoForcado,
           preservarAmbiente: trocarCenario ? false : undefined,
+          sourceMediaId: fotoParaEditarId || undefined,
+          originalSourceMediaId: fotoParaEditarId || undefined,
         });
       let parsed: any = {};
       try { parsed = JSON.parse(raw); } catch { /* resposta inválida tratada abaixo */ }
@@ -18636,29 +20679,55 @@ async function callGemini(
         }
         return {
           text: logoMode === "object"
-            ? `Pronto — apliquei a marca no objeto. ${LOGO_PRODUCT_SIMULATION_NOTICE}${codigo}`
+            ? `${
+              logoPlan.hasScene
+                ? "Pronto — montei o cenário e apliquei a marca no objeto."
+                : "Pronto — apliquei a marca no objeto."
+            } ${LOGO_PRODUCT_SIMULATION_NOTICE}${codigo}`
             : logoMode === "top-left"
             ? `Pronto — coloquei a marca no canto superior esquerdo, sem alterar o restante da imagem.${codigo}`
             : `Pronto — apliquei o cenário que você pediu, mantendo o produto.${codigo}`,
           imageUrl: parsed.image_url,
+          interactiveButtons: parsed.midia_id
+            ? readyMediaActionButtons(parsed.midia_id, "foto")
+            : undefined,
         };
       }
-      return { text: mensagemErroEdicaoImagem(parsed) };
+      if (fotoParaEditarId && toolCtx.convId) {
+        const pendingImageAdjustment = {
+          media_id: fotoParaEditarId,
+          created_at: new Date().toISOString(),
+          prompt: userContent,
+        };
+        await saveAgentState(sb, {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        }, {
+          pending_image_adjustment: pendingImageAdjustment,
+        }, toolCtx.agentState ?? {});
+        if (toolCtx.agentState) {
+          toolCtx.agentState.pending_image_adjustment =
+            pendingImageAdjustment;
+        }
+      }
+      return {
+        text: mensagemErroEdicaoImagem(parsed),
+        interactiveButtons: imageEditRetryButtons(),
+      };
     }
 
     // Fluxo A/B/C: resolve seleção e confirmação direto no código, sem depender da IA.
     const variantChoice = recentPendingSocialToken ? detectSocialVariantChoice(userContent) : null;
     if (variantChoice) {
       console.log("[pietro][forced_social_variant_choice]", { token: recentPendingSocialToken, opcao: variantChoice });
-      const variantResult = await toolEscolherVariantePost({ token: recentPendingSocialToken!, opcao: variantChoice }, toolCtx);
-      const selectedPending = PENDING_POSTS.get(recentPendingSocialToken!) ??
-        await loadPendingSocialPost(recentPendingSocialToken!, toolCtx.userId);
-      if (!selectedPending) return { text: "Não encontrei a mídia exata deste preview. Nada foi publicado." };
-      const preview = await sendExactPendingSocialPreview(recentPendingSocialToken!, selectedPending, toolCtx);
-      if (!preview.ok) return { text: preview.message };
+      const variantResult = await escolherVarianteEPublicarPost({
+        token: recentPendingSocialToken!,
+        opcao: variantChoice,
+      }, toolCtx);
       return {
-        text: `${latestPendingNotice}${formatSocialPostToolResult(variantResult)}`,
-        interactiveButtons: interactiveButtonsFromSocialResult(variantResult),
+        text: formatDirectSocialPublishResult(variantResult),
+        interactiveList: interactiveListFromSocialResult(variantResult),
       };
     }
 
@@ -18979,6 +21048,7 @@ async function callGemini(
   const model = escolherModelo({ kind: hasMedia ? "multimodal" : "conversation" });
   let pendingImageUrl: string | undefined;
   let pendingMediaCodeBlock = "";
+  let pendingReadyMediaButtons: WhatsAppInteractiveButtons | undefined;
   let pendingDemoSiteBrandResult: Record<string, unknown> | null = null;
   let creativeToolRanThisTurn = false;
   let pendingSocialToken: string | undefined; // token de post aguardando confirmação — anexa <<SPLIT>>pode postar {token} no fim
@@ -19144,9 +21214,11 @@ async function callGemini(
           const originalRequest = typeof userContent === "string" ? userContent : "";
           args.pedido_original = originalRequest;
           const explicitMediaId = extrairIdentificadorMidia(originalRequest);
-          if (explicitMediaId || name === "publicar_linkedin") {
-            args.midia_id = explicitMediaId || undefined;
-          }
+          const literalModelMediaId = modelMediaIdPresentInUserText(
+            originalRequest,
+            args.midia_id,
+          );
+          args.midia_id = explicitMediaId || literalModelMediaId;
         }
         console.log(`[pietro][tool] ${name}`, args);
         if (isCreativeDemoTool(name)) creativeToolRanThisTurn = true;
@@ -19202,6 +21274,16 @@ async function callGemini(
           };
         }
         if (imageUrl) pendingImageUrl = imageUrl;
+        if (name === "consultar_fipe") {
+          return {
+            text: result,
+            imageUrl: pendingImageUrl,
+            interactiveList,
+            interactiveButtons,
+            forwardProof,
+            forwardAttempted,
+          };
+        }
         if (interactiveButtons) {
           let parsed: any = {};
           try { parsed = JSON.parse(result); } catch { /* mensagem padrão abaixo */ }
@@ -19209,15 +21291,6 @@ async function callGemini(
             text: String(parsed?.mensagem || "Escolha como devo tratar a marca desta imagem."),
             imageUrl: pendingImageUrl,
             interactiveButtons,
-            forwardProof,
-            forwardAttempted,
-          };
-        }
-        if (name === "consultar_fipe") {
-          return {
-            text: result,
-            imageUrl: pendingImageUrl,
-            interactiveList,
             forwardProof,
             forwardAttempted,
           };
@@ -19286,6 +21359,12 @@ async function callGemini(
               .at(-1);
             if (lastSelectableIndex != null) {
               await rememberLastMediaInteraction(toolCtx, ids[lastSelectableIndex]);
+              if (name === "editar_imagem") {
+                pendingReadyMediaButtons = readyMediaActionButtons(
+                  ids[lastSelectableIndex],
+                  tipos[lastSelectableIndex] === "video" ? "video" : "foto",
+                );
+              }
             }
             pendingMediaCodeBlock = ids.map((id, index) =>
               linhaCodigoMidia(id, tipos[index] === "video" ? "video" : "foto")
@@ -19465,6 +21544,7 @@ async function callGemini(
     return {
       text,
       imageUrl: pendingImageUrl ?? guardReplayImageUrl,
+      interactiveButtons: pendingReadyMediaButtons,
       forwardProof,
       forwardAttempted,
       metaAdsSummaryDraftId,
@@ -19477,6 +21557,7 @@ async function callGemini(
   return {
     text: pendingMediaCodeBlock ? `${fallbackText}<<SPLIT>>${pendingMediaCodeBlock}` : fallbackText,
     imageUrl: pendingImageUrl,
+    interactiveButtons: pendingReadyMediaButtons,
     forwardProof,
     forwardAttempted,
     metaAdsSummaryDraftId,
@@ -19497,6 +21578,7 @@ async function sendWhatsApp(
     beforeChunk?: (chunk: string) => Promise<void>;
     alreadyLogged?: boolean;
   },
+  videoUrl?: string,
 ): Promise<string | null> {
   const dedupedMessage = dedupeConsecutiveReplyText(message);
   const automaticMessageKey = JSON.stringify([
@@ -19504,6 +21586,7 @@ async function sendWhatsApp(
     String(to || "").replace(/\D/g, ""),
     dedupedMessage,
     imageUrl || null,
+    videoUrl || null,
     interactiveList || null,
     interactiveButtons || null,
   ]);
@@ -19514,7 +21597,9 @@ async function sendWhatsApp(
     console.log("[processor][automatic_reply_dedup] suprimida_em_30s");
     return automaticClaim.receipt;
   }
-  const chunks = splitWhatsAppText(dedupedMessage);
+  const chunks = splitInternalWhatsAppMessage(dedupedMessage).flatMap((part) =>
+    splitWhatsAppText(part)
+  );
   if (chunks.length > 1) {
     console.warn(`[processor][meta_text_split] chars=${message.length} chunks=${chunks.length}`);
   }
@@ -19531,8 +21616,15 @@ async function sendWhatsApp(
     };
     if (!skipLog) body.log_sender = "agent";
     if (imageUrl && index === 0) body.image_url = imageUrl;
+    if (videoUrl && index === 0) body.video_url = videoUrl;
     if (interactiveList && index === chunks.length - 1) body.interactive_list = interactiveList;
     if (interactiveButtons && index === chunks.length - 1) body.interactive_buttons = interactiveButtons;
+    if (
+      index === chunks.length - 1 &&
+      (interactiveList?.send_text_first || interactiveButtons?.send_text_first)
+    ) {
+      body.send_text_first = true;
+    }
     const res = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-send-message`, {
       method: "POST",
       headers: {
@@ -19692,42 +21784,8 @@ async function transcribeAudioMedia(media: MediaExtract[]): Promise<string> {
   const audio = media.find((m) => m.kind === "audio");
   if (!audio?.base64) return "";
 
-  // 1ª via: endpoint dedicado de speech-to-text (determinístico, não depende do modelo "ouvir").
-  try {
-    const bytes = Uint8Array.from(atob(audio.base64), (c) => c.charCodeAt(0));
-    const mime = (audio.mime || "audio/ogg").split(";")[0];
-    const ext = mime.includes("mpeg") || mime.includes("mp3")
-      ? "mp3"
-      : mime.includes("wav")
-      ? "wav"
-      : mime.includes("m4a")
-      ? "m4a"
-      : mime.includes("mp4")
-      ? "mp4"
-      : "ogg";
-    const form = new FormData();
-    form.append("model", "openai/gpt-4o-mini-transcribe");
-    form.append("file", new Blob([bytes], { type: mime }), `audio.${ext}`);
-    const sttRes = await fetch("https://ai.gateway.lovable.dev/v1/audio/transcriptions", {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${LOVABLE_API_KEY}` },
-      body: form,
-    });
-    const sttTxt = await sttRes.text();
-    if (sttRes.ok) {
-      try {
-        const j = JSON.parse(sttTxt);
-        const t = String(j?.text || "").trim();
-        if (t) return t;
-      } catch { /* cai no fallback */ }
-    } else {
-      console.warn(`[processor][stt] ${sttRes.status}: ${sttTxt.slice(0, 200)}`);
-    }
-  } catch (e) {
-    console.warn("[processor][stt] falhou:", (e as Error).message);
-  }
-
-  // 2ª via: modelo multimodal ouvindo o áudio.
+  // O endpoint /audio/transcriptions do gateway atual encaminha multipart para
+  // Gemini e responde 400. Usa diretamente o fallback multimodal que funciona.
   const content = buildUserContent(
     "Transcreva literalmente este áudio de WhatsApp em português do Brasil. Responda somente com a transcrição, sem comentários.",
     [audio],
@@ -20009,7 +22067,7 @@ async function processOne(queueId: string) {
       contactNumber: row.from_number,
     };
 
-    const userText = extractText(row.payload);
+    const userText = replyTextFromInteractiveId(extractText(row.payload));
     let commercialContactForOwner: any = null;
     let inboundContent = userText || `(${row.message_type ?? "mídia"} sem legenda)`;
     const directNearbySearch = row.message_type === "text" ? detectNearbySearch(userText) : null;
@@ -21710,7 +23768,8 @@ async function processOne(queueId: string) {
       await saveAgentState(sb, stateConversation, freshStatePatch, freshAgentState);
       Object.assign(freshAgentState, freshStatePatch);
       const freshImageIntent = classifyOwnerMediaIntent(contexto);
-      const freshLogoMode = logoPlacementMode(contexto);
+      const freshLogoPlan = logoImageEditPlan(contexto);
+      const freshLogoMode = freshLogoPlan.logoMode;
       if (
         fromIsOwner
         && savedPhotos.length > 0
@@ -21731,7 +23790,12 @@ async function processOne(queueId: string) {
         let buttons: WhatsAppInteractiveButtons | undefined;
         let deferred = false;
         if (freshLogoMode) {
-          const raw = freshLogoMode === "top-left"
+          console.log(
+            `[processor][fresh_image_edit] pedido_chars=${contexto.length} modo=${
+              freshLogoPlan.toolMode ?? "top-left"
+            }`,
+          );
+          const raw = freshLogoPlan.strategy === "overlay"
             ? await toolApplyTenantLogoOverlay(contexto, {
               ...generationCtx,
               media: freshLibraryMedia,
@@ -21741,7 +23805,9 @@ async function processOne(queueId: string) {
               fromNumber: row.from_number,
               media: freshLibraryMedia,
               textos: [],
-              modo: "aplicar_logo",
+              modo: freshLogoPlan.toolMode ?? "aplicar_logo",
+              sourceMediaId: savedPhotos.at(-1)?.id,
+              originalSourceMediaId: savedPhotos.at(-1)?.id,
             });
           let logoResult: any = {};
           try {
@@ -21752,7 +23818,11 @@ async function processOne(queueId: string) {
           completed = logoResult?.image_url
             ? {
               text: freshLogoMode === "object"
-                ? `Pronto — apliquei a marca no objeto. ${LOGO_PRODUCT_SIMULATION_NOTICE}`
+                ? `${
+                  freshLogoPlan.hasScene
+                    ? "Pronto — montei o cenário e apliquei a marca no objeto."
+                    : "Pronto — apliquei a marca no objeto."
+                } ${LOGO_PRODUCT_SIMULATION_NOTICE}`
                 : "Pronto — coloquei a marca no canto superior esquerdo, sem alterar o restante da imagem.",
               imageUrl: logoResult.image_url,
             }
@@ -21762,6 +23832,22 @@ async function processOne(queueId: string) {
               generationCtx,
               logoResult.midia_id,
             );
+            buttons = readyMediaActionButtons(logoResult.midia_id, "foto");
+          } else if (!logoResult?.image_url) {
+            const sourcePhoto = savedPhotos.at(-1);
+            if (sourcePhoto) {
+              const pendingImageAdjustment = {
+                media_id: sourcePhoto.id,
+                created_at: new Date().toISOString(),
+                prompt: contexto,
+              };
+              await saveAgentState(sb, stateConversation, {
+                pending_image_adjustment: pendingImageAdjustment,
+              }, freshAgentState);
+              freshAgentState.pending_image_adjustment =
+                pendingImageAdjustment;
+            }
+            buttons = imageEditRetryButtons();
           }
           if (
             freshLogoMode === "top-left" && logoResult?.midia_id &&
@@ -21801,6 +23887,16 @@ async function processOne(queueId: string) {
           buttons = prepared.deferred
             ? prepared.interactiveButtons
             : undefined;
+          if (!prepared.deferred) {
+            try {
+              const parsed = JSON.parse(prepared.raw);
+              if (parsed?.midia_id) {
+                buttons = readyMediaActionButtons(parsed.midia_id, "foto");
+              }
+            } catch {
+              // Resposta sem ID: entrega a imagem normalmente, sem ações vinculadas.
+            }
+          }
         }
         const { data: outMsg } = await sb
           .from("whatsapp_cloud_messages")
@@ -21865,7 +23961,10 @@ async function processOne(queueId: string) {
                 fromNumber: row.from_number,
                 media: freshLibraryMedia,
                 textos: [],
-                modo: "melhoria",
+                modo: "cena_produto",
+                preservarAmbiente: false,
+                sourceMediaId: savedPhotos.at(-1)?.id,
+                originalSourceMediaId: savedPhotos.at(-1)?.id,
               });
               let edited: any = {};
               try {
@@ -21935,6 +24034,10 @@ async function processOne(queueId: string) {
             row.from_number,
             compositionReply,
             compositionImageUrl,
+            undefined,
+            compositionMediaId
+              ? readyMediaActionButtons(compositionMediaId, "foto")
+              : undefined,
           );
           if (sentId && outMsg?.id) {
             await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
@@ -22054,6 +24157,37 @@ async function processOne(queueId: string) {
       let sendError: string | null = null;
       try {
         const sentId = await sendWhatsApp(userId, row.from_number, reply);
+        if (
+          videoFlowReply &&
+          videoFlowReply.includes("*Opção A*") &&
+          videoFlowReply.includes("*Opção B*") &&
+          videoFlowReply.includes("*Opção C*") &&
+          readyMediaButtonsAllowed(fromIsOwner)
+        ) {
+          const buttons = videoCaptionChoiceButtons();
+          await sendWhatsApp(
+            userId,
+            row.from_number,
+            buttons.body,
+            undefined,
+            undefined,
+            buttons,
+          );
+        } else if (
+          videoFlowReply === VIDEO_SEM_TRANSCRICAO &&
+          videoSalvo?.id &&
+          readyMediaButtonsAllowed(fromIsOwner)
+        ) {
+          const buttons = videoTranscriptionRecoveryButtons(videoSalvo.id);
+          await sendWhatsApp(
+            userId,
+            row.from_number,
+            buttons.body,
+            undefined,
+            undefined,
+            buttons,
+          );
+        }
         if (sentId && outMsg?.id) {
           await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
         }
@@ -23539,6 +25673,7 @@ Regras:
 
     let reply = "";
     let generatedImageUrl: string | undefined;
+    let generatedVideoUrl: string | undefined;
     let interactiveList: WhatsAppInteractiveList | undefined;
     let interactiveButtons: WhatsAppInteractiveButtons | undefined;
     let forwardProof: string | undefined;
@@ -23570,6 +25705,7 @@ Regras:
         });
         reply = aiResult.text;
         generatedImageUrl = aiResult.imageUrl;
+        generatedVideoUrl = aiResult.videoUrl;
         interactiveList = aiResult.interactiveList;
         interactiveButtons = metaAdsQuestionarioResult.offerResume
           ? metaAdsQuestionarioContinuarButtons()
@@ -23771,8 +25907,18 @@ Regras:
         user_id: userId,
         direction: "outbound",
         sender: "agent",
-        content: generatedImageUrl ? `${loggedContent}\n\n[imagem: ${generatedImageUrl}]` : loggedContent,
-        message_type: generatedImageUrl ? "image" : (interactiveList || interactiveButtons) ? "interactive" : "text",
+        content: generatedImageUrl
+          ? `${loggedContent}\n\n[imagem: ${generatedImageUrl}]`
+          : generatedVideoUrl
+          ? `${loggedContent}\n\n[vídeo: ${generatedVideoUrl}]`
+          : loggedContent,
+        message_type: generatedImageUrl
+          ? "image"
+          : generatedVideoUrl
+          ? "video"
+          : (interactiveList || interactiveButtons)
+          ? "interactive"
+          : "text",
       })
       .select("id")
       .single();
@@ -23800,6 +25946,7 @@ Regras:
             await wait(betweenPartsDelayForSenderMs(inboundFromOwner, chunk.length));
           },
         },
+        generatedVideoUrl,
       );
       if (sentId && outMsg?.id) {
         await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
