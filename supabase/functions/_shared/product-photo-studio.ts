@@ -50,14 +50,10 @@ function dominantBorderColor(image: ProductPhotoPixels): {
     bucket.sum[2] += image.bitmap[offset + 2];
     buckets.set(key, bucket);
   }
-  const dominant = [...buckets.values()].sort((a, b) =>
-    b.count - a.count
-  )[0];
+  const dominant = [...buckets.values()].sort((a, b) => b.count - a.count)[0];
   return {
     color: dominant
-      ? dominant.sum.map((value) =>
-        Math.round(value / dominant.count)
-      ) as RGB
+      ? dominant.sum.map((value) => Math.round(value / dominant.count)) as RGB
       : [255, 255, 255],
     ratio: indexes.length && dominant ? dominant.count / indexes.length : 0,
   };
@@ -90,9 +86,10 @@ export function cutOutProductBackground(
   image: ProductPhotoPixels,
 ): ProductCutoutResult {
   const original = new Uint8Array(image.bitmap);
-  const transparent = borderIndexes(image.width, image.height).filter((index) =>
-    original[index * 4 + 3] < 32
-  ).length;
+  const transparent =
+    borderIndexes(image.width, image.height).filter((index) =>
+      original[index * 4 + 3] < 32
+    ).length;
   if (transparent > 0) {
     return {
       bitmap: original,
