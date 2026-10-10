@@ -11,12 +11,14 @@ import {
   modelMediaIdPresentInUserText,
   parseReadyMediaAction,
   parseReadyMediaScheduleChoice,
+  parseReadyVideoRerenderAction,
   parseVideoCaptionChoice,
   readyMediaActionRoute,
   readyMediaButtonsAllowed,
   readyMediaActionButtons,
   readyMediaScheduleList,
   readyVideoPublishPlan,
+  readyVideoRerenderButtons,
   replyTextFromInteractiveId,
   scheduleSlotSaoPauloText,
   videoCaptionChoiceButtons,
@@ -217,4 +219,17 @@ Deno.test("agendar e trocar legenda preservam a opção selecionada", () => {
   const updated = options[["A", "B", "C"].indexOf(choiceC!.letter)];
   assertEquals(updated, "Legenda C");
   assertEquals(readyVideoPublishPlan(updated).caption, "Legenda C");
+});
+
+Deno.test("erro de formato oferece re-render 9:16 vinculado à mídia correta", () => {
+  const buttons = readyVideoRerenderButtons(VIDEO_ID);
+  assertEquals(buttons.buttons.length, 1);
+  assertEquals(buttons.buttons[0].title, "🔄 Refazer em 9:16");
+  assertEquals(buttons.buttons[0].title.length <= 20, true);
+  assertEquals(
+    parseReadyVideoRerenderAction(
+      `<<INTERACTIVE_ID:${buttons.buttons[0].id}>>`,
+    ),
+    { mediaId: VIDEO_ID },
+  );
 });

@@ -22,6 +22,7 @@ import {
 } from "./video-legenda-logo.ts";
 import { videoCaptionOptionsText } from "./ready-media-actions.ts";
 import { cachedOrTranscribedVideoSegments } from "./video-transcription-flow.ts";
+import { initialCaptionVideoFormat } from "./meta-video-requirements.ts";
 
 const sb = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -369,7 +370,7 @@ export async function iniciarFluxoLegendaVideo(params: {
     .eq("user_id", params.userId)
     .in("status", ["aguardando_escolha", "aguardando_confirmacao"]);
 
-  const formatoInicial = detectarFormato(params.contexto || "") || "feed";
+  const formatoInicial = initialCaptionVideoFormat(params.contexto);
   const redesIniciais = detectarPlataformas(params.contexto || "");
 
   const { error } = await sb.from("video_render_jobs").insert({
@@ -467,7 +468,7 @@ async function cancelarJob(
  * Retorna a mensagem a enviar, ou null se a mensagem não pertence a este fluxo
  * (aí o roteador normal do agente segue).
  */
-/** Formato pedido no meio da frase ("no story", "reels"). Padrão: feed. */
+/** Formato pedido no meio da frase ("no story", "reels"). */
 function detectarFormato(texto: string): "feed" | "story" | "reels" | null {
   const t = texto || "";
   if (/\bstor(y|ies|ie)\b/i.test(t)) return "story";
@@ -511,7 +512,7 @@ async function aplicarPedidoDeFormato(
   const fmt = detectarFormato(texto);
   const redes = detectarPlataformas(texto);
   const atual = {
-    formato: job.formato || "feed",
+    formato: job.formato || "reels",
     plataformas_pedidas: (job.metadata?.plataformas_pedidas || []) as string[],
   };
   if (!fmt && redes.length === 0) return atual;

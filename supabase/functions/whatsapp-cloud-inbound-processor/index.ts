@@ -298,17 +298,20 @@ import {
   modelMediaIdPresentInUserText,
   parseReadyMediaScheduleChoice,
   parseReadyMediaAction,
+  parseReadyVideoRerenderAction,
   parseVideoCaptionChoice,
   readyMediaActionRoute,
   readyMediaButtonsAllowed,
   readyMediaActionButtons,
   readyMediaScheduleList,
   readyVideoPublishPlan,
+  readyVideoRerenderButtons,
   replyTextFromInteractiveId,
   scheduleSlotSaoPauloText,
   videoCaptionChoiceButtons,
   videoCaptionOptionsText,
 } from "../_shared/ready-media-actions.ts";
+import { renderedMetaVideoFormat } from "../_shared/meta-video-requirements.ts";
 import {
   classifyPendingBrandReply,
   decideWhatsAppImageBrand,
@@ -9843,24 +9846,63 @@ async function exactReadyVideoCaption(
   return readyVideoPublishPlan(ready.caption, phone).caption;
 }
 
-async function publishReadyLegendVideo(
+async function rerenderReadyLegendVideo(
   mediaId: string,
-  ctx: { userId: string; fromNumber: string },
+  ctx: { userId: string },
 ): Promise<string> {
   const ready = await resolveReadyLegendVideo(ctx.userId, mediaId);
   if (!ready) {
-    return "Não encontrei o vídeo legendado ou a legenda escolhida. Nada foi publicado.";
+    return "Não encontrei esse vídeo para gerar novamente.";
+  }
+  const { video_output: _oldOutput, ...metadata } = ready.job.metadata || {};
+  const { error } = await sb.from("video_render_jobs").update({
+    status: "pendente",
+    formato: "reels",
+    resultado_bucket: null,
+    resultado_path: null,
+    concluido_at: null,
+    claimed_at: null,
+    tentativas: 0,
+    erro_mensagem: null,
+    metadata,
+  }).eq("id", ready.job.id).eq("user_id", ctx.userId);
+  if (error) {
+    console.error("[ready-video][rerender]", error.message);
+    return "Não consegui iniciar o novo vídeo agora. Tente novamente.";
+  }
+  return "🔄 Gerando novamente em 9:16. Eu aviso aqui quando estiver pronto.";
+}
+
+async function publishReadyLegendVideo(
+  mediaId: string,
+  ctx: { userId: string; fromNumber: string },
+): Promise<{
+  text: string;
+  interactiveButtons?: WhatsAppInteractiveButtons;
+}> {
+  const ready = await resolveReadyLegendVideo(ctx.userId, mediaId);
+  if (!ready) {
+    return {
+      text:
+        "Não encontrei o vídeo legendado ou a legenda escolhida. Nada foi publicado.",
+    };
   }
   const networks = await connectedAnuncioNetworks(ctx.userId);
   if (!networks.length) {
-    return "Não encontrei Facebook nem Instagram conectados nessa conta.";
+    return {
+      text: "Não encontrei Facebook nem Instagram conectados nessa conta.",
+    };
   }
   const caption = await exactReadyVideoCaption(ready, ctx.userId);
+  const renderedFormat = renderedMetaVideoFormat(
+    ready.job.formato,
+    ready.job.metadata?.video_output,
+  );
   const { error: updateError } = await sb
     .from("video_render_jobs")
     .update({
       status: "aprovado",
-      formato: "reels",
+      formato: renderedFormat,
       plataformas: networks,
       copy_escolhida: caption,
       caption,
@@ -9874,7 +9916,9 @@ async function publishReadyLegendVideo(
     .eq("user_id", ctx.userId);
   if (updateError) {
     console.error("[ready-video][publish-state]", updateError.message);
-    return "Não consegui preparar a publicação do vídeo. Nada foi publicado.";
+    return {
+      text: "Não consegui preparar a publicação do vídeo. Nada foi publicado.",
+    };
   }
   const { data, error } = await sb.functions.invoke(
     "video-publicar-aprovado",
@@ -9884,7 +9928,12 @@ async function publishReadyLegendVideo(
     const failures = Array.isArray(data?.erros)
       ? data.erros.join(" | ")
       : error?.message || data?.error || "falha desconhecida";
-    return `Não consegui publicar o vídeo: ${failures}`;
+    return {
+      text: `Não consegui publicar o vídeo: ${failures}`,
+      interactiveButtons: data?.validation_error
+        ? readyVideoRerenderButtons(mediaId)
+        : undefined,
+    };
   }
   const published: string[] = Array.isArray(data?.plataformas)
     ? data.plataformas
@@ -9899,7 +9948,10 @@ async function publishReadyLegendVideo(
         `${item.plataforma === "instagram" ? "Instagram" : "Facebook"}: ${item.url}`
       )
     : [];
-  return `✅ Publicado no ${names}${links.length ? `\n${links.join("\n")}` : ""}`;
+  return {
+    text:
+      `✅ Publicado no ${names}${links.length ? `\n${links.join("\n")}` : ""}`,
+  };
 }
 
 async function scheduleReadyLegendVideo(
@@ -9919,27 +9971,49 @@ async function scheduleReadyLegendVideo(
     return "Não encontrei Facebook nem Instagram conectados nessa conta.";
   }
   const caption = await exactReadyVideoCaption(ready, ctx.userId);
+  const renderedFormat = renderedMetaVideoFormat(
+    ready.job.formato,
+    ready.job.metadata?.video_output,
+  );
   const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-  const rows = networks.map((platform) => ({
-    user_id: ctx.userId,
-    produto_id: null,
-    produto_source: "video_legendado",
-    platform,
-    post_text: caption,
-    image_url: null,
-    video_url: ready.media.midia_url,
-    approval_token: token,
-    solicitante_telefone: ctx.fromNumber,
-    status: "pendente",
-    scheduled_at: scheduledDate.toISOString(),
-    error_message: null,
-    updated_at: new Date().toISOString(),
-  }));
-  const { data, error } = await sb.from("social_posts_queue")
-    .insert(rows)
-    .select("id");
-  if (error || (data?.length ?? 0) !== rows.length) {
-    console.error("[ready-video][schedule]", error?.message || "fila incompleta");
+  let scheduleError: any = null;
+  if (renderedFormat === "feed") {
+    const rows = networks.map((platform) => ({
+      user_id: ctx.userId,
+      produto_id: null,
+      produto_source: "video_legendado",
+      platform,
+      post_text: caption,
+      image_url: null,
+      video_url: ready.media.midia_url,
+      approval_token: token,
+      solicitante_telefone: ctx.fromNumber,
+      status: "pendente",
+      scheduled_at: scheduledDate.toISOString(),
+      error_message: null,
+      updated_at: new Date().toISOString(),
+    }));
+    const result = await sb.from("social_posts_queue").insert(rows).select("id");
+    if (result.error || (result.data?.length ?? 0) !== rows.length) {
+      scheduleError = result.error || new Error("fila incompleta");
+    }
+  } else {
+    const result = await sb.from("videos_agendados").insert({
+      user_id: ctx.userId,
+      tipo: renderedFormat,
+      video_url: ready.media.midia_url,
+      caption,
+      canais: networks,
+      scheduled_for: scheduledDate.toISOString(),
+      status: "pendente",
+    }).select("id").maybeSingle();
+    scheduleError = result.error;
+  }
+  if (scheduleError) {
+    console.error(
+      "[ready-video][schedule]",
+      scheduleError?.message || "fila incompleta",
+    );
     return "Não consegui salvar o agendamento. Nada foi agendado.";
   }
   await sb.from("video_render_jobs").update({
@@ -9950,6 +10024,7 @@ async function scheduleReadyLegendVideo(
       agendamento_token: token,
       agendado_para: scheduledDate.toISOString(),
       plataformas_pedidas: networks,
+      formato_publicacao: renderedFormat,
     },
   }).eq("id", ready.job.id).eq("user_id", ctx.userId);
   return `✅ Agendado para ${formatScheduledDate(scheduledDate)} no ${
@@ -16529,6 +16604,7 @@ async function callGemini(
     const socialInteractiveId = userContent.match(/<<INTERACTIVE_ID:(social_[^>]+)>>/i)?.[1] || "";
     const readyMediaAction = parseReadyMediaAction(userContent);
     const readyMediaScheduleChoice = parseReadyMediaScheduleChoice(userContent);
+    const readyVideoRerenderAction = parseReadyVideoRerenderAction(userContent);
     const videoCaptionChoice = parseVideoCaptionChoice(userContent);
     const videoTranscriptionAction = parseVideoTranscriptionAction(userContent);
     const anuncioPostInteractiveId = userContent.match(
@@ -16549,6 +16625,14 @@ async function callGemini(
     const singlePhotoInteractiveId = userContent.match(
       /<<INTERACTIVE_ID:(single_photo:[^>]+)>>/i,
     )?.[1]?.toLowerCase() || "";
+    if (remetenteEhDono && readyVideoRerenderAction) {
+      return {
+        text: await rerenderReadyLegendVideo(
+          readyVideoRerenderAction.mediaId,
+          toolCtx,
+        ),
+      };
+    }
     if (remetenteEhDono && videoTranscriptionAction) {
       const resolved = await resolverMidiaBibliotecaPorId(
         toolCtx.userId,
@@ -16836,12 +16920,10 @@ async function callGemini(
       });
       if (readyLegendVideo && readyRoute !== "social_variants") {
         if (readyRoute === "direct_video_publish") {
-          return {
-            text: await publishReadyLegendVideo(
-              readyMediaAction.mediaId,
-              toolCtx,
-            ),
-          };
+          return await publishReadyLegendVideo(
+            readyMediaAction.mediaId,
+            toolCtx,
+          );
         }
         if (readyRoute === "direct_video_schedule") {
           return {

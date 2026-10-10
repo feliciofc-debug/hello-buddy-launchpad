@@ -40,6 +40,26 @@ export function readyMediaActionButtons(
   };
 }
 
+export function readyVideoRerenderButtons(mediaId: string) {
+  return {
+    body: "Posso ajustar o formato deste vídeo:",
+    buttons: [{
+      id: `ready_media:rerender_reels:video:${mediaId}`,
+      title: "🔄 Refazer em 9:16",
+    }],
+  };
+}
+
+export function parseReadyVideoRerenderAction(
+  text: string,
+): { mediaId: string } | null {
+  const match = String(text || "").match(
+    /<<INTERACTIVE_ID:ready_media:rerender_reels:video:([0-9a-f-]+)>>/i,
+  );
+  if (!match || !MEDIA_ID_RE.test(match[1])) return null;
+  return { mediaId: match[1].toLowerCase() };
+}
+
 export function videoCaptionChoiceButtons(mediaId?: string) {
   return {
     body: "Escolha a legenda:",

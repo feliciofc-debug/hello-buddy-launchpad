@@ -7,8 +7,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   friendlyMetaVideoPublishError,
+  renderedMetaVideoFormat,
+  shouldNotifyVideoPublishCaller,
   validateMetaVideoForPublishing,
 } from "../_shared/meta-video-requirements.ts";
+import { readyVideoRerenderButtons } from "../_shared/ready-media-actions.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -88,7 +91,10 @@ Deno.serve(async (req) => {
         ? job.plataformas
         : ["instagram", "facebook"]);
 
-    const formato = String(job.formato || "feed").toLowerCase();
+    const formato = renderedMetaVideoFormat(
+      job.formato,
+      job.metadata?.video_output,
+    );
     const ehStory = formato === "story";
     console.log(
       `[video-publicar-aprovado] formato=${formato} plataformas=${
@@ -113,18 +119,40 @@ Deno.serve(async (req) => {
       sizeBytes,
     });
     if (!validation.ok) {
-      const message =
-        `Não publiquei o vídeo: ${validation.message} Gere novamente e tente de novo.`;
+      const message = `Não publiquei o vídeo: ${validation.message}`;
       await supabase.from("video_render_jobs").update({
         status: "erro_publicacao",
         erro_mensagem: validation.message,
+        formato,
       }).eq("id", job.id);
-      if (job.telefone) {
+      if (job.telefone && shouldNotifyVideoPublishCaller(notify_whatsapp)) {
+        const { data: renderedMedia } = await supabase
+          .from("midias_whatsapp")
+          .select("id")
+          .eq("user_id", job.user_id)
+          .eq("midia_url", videoUrl)
+          .limit(1)
+          .maybeSingle();
         await supabase.functions.invoke("whatsapp-send-message", {
-          body: { user_id: job.user_id, to: job.telefone, message },
+          body: {
+            user_id: job.user_id,
+            to: job.telefone,
+            message,
+            ...(renderedMedia?.id
+              ? {
+                interactive_buttons: readyVideoRerenderButtons(
+                  renderedMedia.id,
+                ),
+              }
+              : {}),
+          },
         });
       }
-      return resp({ success: false, error: validation.message });
+      return resp({
+        success: false,
+        error: validation.message,
+        validation_error: true,
+      });
     }
 
     const publicados: string[] = [];
@@ -163,17 +191,35 @@ Deno.serve(async (req) => {
     } else {
       for (const plataforma of plataformas) {
         try {
-          const { data: res, error: pErr } = await supabase.functions.invoke(
-            "meta-publish-reels",
-            {
-              body: {
+          const functionName = formato === "feed"
+            ? plataforma === "facebook"
+              ? "meta-publish-post"
+              : "meta-publish-instagram"
+            : "meta-publish-reels";
+          const body = formato === "feed"
+            ? plataforma === "facebook"
+              ? {
+                message: job.copy_escolhida || job.caption || " ",
+                video_url: videoUrl,
+                user_id: job.user_id,
+                preserve_caption: true,
+              }
+              : {
+                caption: job.copy_escolhida || job.caption || " ",
+                video_url: videoUrl,
+                user_id: job.user_id,
+                preserve_caption: true,
+              }
+            : {
                 platform: plataforma,
                 video_url: videoUrl,
                 caption: job.copy_escolhida || job.caption || " ",
                 user_id: job.user_id,
                 preserve_caption: true,
-              },
-            },
+              };
+          const { data: res, error: pErr } = await supabase.functions.invoke(
+            functionName,
+            { body },
           );
           if (pErr) throw pErr;
           if (res?.success) {
@@ -206,7 +252,7 @@ Deno.serve(async (req) => {
       })
       .eq("id", job.id);
 
-    if (job.telefone && notify_whatsapp !== false) {
+    if (job.telefone && shouldNotifyVideoPublishCaller(notify_whatsapp)) {
       const linksText = links.length
         ? `\n${links.map((link) =>
           `${link.plataforma === "instagram" ? "Instagram" : "Facebook"}: ${link.url}`
