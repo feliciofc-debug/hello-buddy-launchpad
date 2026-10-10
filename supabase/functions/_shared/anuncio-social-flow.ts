@@ -3,6 +3,14 @@ import {
   type ContentNiche,
   resolveNichoDoConteudo,
 } from "./content-niche.ts";
+import { normalizeBrazilianWhatsappNumber } from "./anuncio-caption-common.ts";
+import { generateProductAdCaptions } from "./anuncio-produto-captions.ts";
+import {
+  generateVehicleAdCaptions as generateVehicleCaptions,
+} from "./anuncio-veiculo-captions.ts";
+
+export { normalizeBrazilianWhatsappNumber };
+export { generateProductAdCaptions };
 
 export const LAST_ANUNCIO_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -353,35 +361,6 @@ export function anuncioScheduleTimeButtons(token: string) {
   };
 }
 
-function values(value: unknown): string[] {
-  return (Array.isArray(value) ? value : value == null ? [] : [value])
-    .flatMap((item) => String(item).split(","))
-    .map((item) => item.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-}
-
-function hashtags(title: string): string {
-  const clean = normalize(title).replace(/[^a-z0-9 ]/g, " ");
-  const tags = ["seminovos"];
-  if (/\bcitroen\b/.test(clean)) tags.push("citroen");
-  if (/\bc3\s+picasso\b/.test(clean)) tags.push("c3picasso");
-  if (/\bonix\b/.test(clean)) tags.push("onix");
-  tags.push("carrosusados");
-  return [...new Set(tags)].slice(0, 6).map((tag) => `#${tag}`).join(" ");
-}
-
-export function normalizeBrazilianWhatsappNumber(value: unknown): string {
-  let digits = String(value || "").replace(/\D/g, "");
-  if (digits.startsWith("00")) digits = digits.slice(2);
-  if (digits.startsWith("0") && (digits.length === 11 || digits.length === 12)) {
-    digits = digits.slice(1);
-  }
-  if ((digits.length === 12 || digits.length === 13) && digits.startsWith("55")) {
-    return digits;
-  }
-  return digits.length === 10 || digits.length === 11 ? `55${digits}` : "";
-}
-
 export function formatBrazilianWhatsappNumber(value: unknown): string {
   const digits = normalizeBrazilianWhatsappNumber(value).replace(/^55/, "");
   if (digits.length === 11) {
@@ -424,86 +403,6 @@ export function singleWhatsappCtaAtEnd(
   ].filter(Boolean).join("\n\n");
 }
 
-function contactLine(data: Record<string, unknown>): string {
-  const phone = normalizeBrazilianWhatsappNumber(
-    data.telefone || data.contato,
-  );
-  return phone ? `📱 Chame no WhatsApp: https://wa.me/${phone}` : "";
-}
-
-function priceLine(data: Record<string, unknown>): string {
-  const price = String(data.preco || "").trim();
-  const reference = String(data.fipe || data.preco_referencia || "").trim();
-  const referenceLabel = String(
-    data.preco_referencia_label || (data.fipe ? "FIPE" : ""),
-  ).trim();
-  const labeledReference = reference
-    ? `${reference}${referenceLabel ? ` (${referenceLabel})` : ""}`
-    : "";
-  if (price && labeledReference) return `De ${labeledReference} por ${price}.`;
-  if (price) return `Por ${price}.`;
-  if (labeledReference) return `Referência informada: ${labeledReference}.`;
-  return "";
-}
-
-function modelLine(data: Record<string, unknown>): string {
-  const parts: string[] = [];
-  for (const value of [data.titulo, data.versao, data.ano]) {
-    const part = String(value || "").trim();
-    if (!part) continue;
-    const existing = normalize(parts.join(" "));
-    if (!existing.includes(normalize(part))) parts.push(part);
-  }
-  const result = parts.join(" ");
-  return result || "Veículo anunciado";
-}
-
-function factualHighlights(data: Record<string, unknown>): string[] {
-  return [
-    ...new Set([
-      ...values(data.cambio),
-      ...values(data.motor),
-      ...values(data.quilometragem),
-      ...values(data.km),
-      ...values(data.donos),
-      ...values(data.documentacao),
-      ...values(data.revisoes),
-      ...values(data.pneus),
-      ...values(data.opcionais),
-      ...values(data.condicoes),
-      ...values(data.itens),
-      ...values(data.ficha),
-    ]),
-  ];
-}
-
-function benefitSentences(data: Record<string, unknown>): string[] {
-  const source = factualHighlights(data);
-  const normalized = normalize(source.join(" "));
-  const benefits: string[] = [];
-  if (/\bautomatic/.test(normalized)) {
-    benefits.push("Câmbio automático para mais conforto no trânsito.");
-  }
-  if (/\bipva\b.*\bpago\b/.test(normalized)) {
-    benefits.push("IPVA pago: sem esse gasto extra agora.");
-  }
-  if (/\brevis/.test(normalized)) {
-    benefits.push("Revisões informadas ajudam a acompanhar a manutenção.");
-  }
-  if (/\bc3\s+picasso\b/.test(normalize(String(data.titulo || "")))) {
-    benefits.push("Espaço interno de minivan para a rotina da família.");
-  }
-  return benefits;
-}
-
-function clip(value: string): string {
-  const compact = value.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n")
-    .trim();
-  return compact.length <= 600
-    ? compact
-    : compact.slice(0, 597).replace(/\s+\S*$/, "") + "...";
-}
-
 export function anuncioContentNiche(
   last: Pick<LastAnuncio, "niche" | "vertical">,
 ): ContentNiche {
@@ -514,86 +413,13 @@ export function anuncioContentNiche(
   );
 }
 
-function productTags(title: string): string {
-  const words = normalize(title).replace(/[^a-z0-9 ]/g, " ").split(/\s+/)
-    .filter((word) => word.length >= 4)
-    .slice(0, 4);
-  return [...new Set(words)].map((word) => `#${word}`).join(" ");
-}
-
-export function generateProductAdCaptions(
-  data: Record<string, unknown>,
-): { A: string; B: string; C: string } {
-  const title = String(data.titulo || "Produto").trim();
-  const facts = [
-    ...values(data.itens),
-    ...values(data.condicoes),
-    ...values(data.ficha),
-  ];
-  const details = facts.length ? facts.join(", ") + "." : "";
-  const price = String(data.preco || "").trim();
-  const priceText = price ? `Valor informado: ${price}.` : "";
-  const whatsapp = contactLine(data);
-  const tags = productTags(title);
-  const finish = (lead: string) =>
-    clip(
-      [lead, details, priceText, tags, whatsapp].filter(Boolean).join("\n\n"),
-    );
-  return {
-    A: finish(`✨ ${title}`),
-    B: finish(`Conheça ${title}.`),
-    C: finish(`Quer saber mais sobre ${title}?`),
-  };
-}
-
 export function generateVehicleAdCaptions(
   data: Record<string, unknown>,
   variation = 0,
   niche: ContentNiche = "produto",
 ): { A: string; B: string; C: string } {
   if (niche !== "veiculo") return generateProductAdCaptions(data);
-  const model = modelLine(data);
-  const allFacts = factualHighlights(data);
-  const offset = allFacts.length ? Math.abs(variation) % allFacts.length : 0;
-  const facts = [...allFacts.slice(offset), ...allFacts.slice(0, offset)];
-  const three = facts.slice(0, 3).join(", ");
-  const price = priceLine(data);
-  const contact = contactLine(data);
-  const tags = hashtags(String(data.titulo || ""));
-  const benefits = benefitSentences(data);
-  const a = clip(
-    [
-      `🚗 ${model}.`,
-      three ? `${three}.` : "",
-      price,
-      tags,
-      contact,
-    ].filter(Boolean).join(" "),
-  );
-  const b = clip(
-    [
-      variation % 2 === 0
-        ? `Para a rotina: ${model}.`
-        : `Conforto e praticidade no dia a dia: ${model}.`,
-      benefits.join(" "),
-      facts.slice(0, 5).length ? `${facts.slice(0, 5).join(", ")}.` : "",
-      price,
-      tags,
-      contact,
-    ].filter(Boolean).join(" "),
-  );
-  const c = clip(
-    [
-      variation % 2 === 0
-        ? `O ${model} combina com a sua rotina?`
-        : `Que tal conhecer o ${model}?`,
-      facts.slice(0, 4).length ? `${facts.slice(0, 4).join(", ")}.` : "",
-      price,
-      tags,
-      contact,
-    ].filter(Boolean).join(" "),
-  );
-  return { A: a, B: b, C: c };
+  return generateVehicleCaptions(data, variation);
 }
 
 export function chooseAnuncioPostSource<T>(

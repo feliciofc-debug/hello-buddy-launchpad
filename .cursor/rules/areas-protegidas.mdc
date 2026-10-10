@@ -1,0 +1,14 @@
+---
+description: Isolamento obrigatório entre operações de veículo e produto
+alwaysApply: true
+---
+
+# Áreas protegidas e isolamento por nicho
+
+OPERAÇÕES DE VEÍCULO E DE PRODUTO SÃO ISOLADAS.
+
+- Código específico de veículo fica em arquivos `*-veiculo*` / `vehicle-*`.
+- Código específico de produto fica em arquivos `*-produto*` / `product-*`.
+- O nicho é decidido somente por `resolveNichoDoConteudo`.
+- Uma tarefa de um nicho não pode alterar arquivos do outro.
+- Se uma tarefa exigir cruzar essas áreas, pare e peça autorização expressa.

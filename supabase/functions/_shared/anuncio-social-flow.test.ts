@@ -27,6 +27,12 @@ import {
   shouldBindPostToLastAnuncio,
   validLastAnuncio,
 } from "./anuncio-social-flow.ts";
+import {
+  generateProductAdCaptions as generateProductCaptionsDirect,
+} from "./anuncio-produto-captions.ts";
+import {
+  generateVehicleAdCaptions as generateVehicleCaptionsDirect,
+} from "./anuncio-veiculo-captions.ts";
 
 Deno.test("ações de publicação só são liberadas depois de todas as prévias", () => {
   assertEquals(
@@ -233,6 +239,27 @@ Deno.test("interruptor automático usa kit produto sem vazamento automotivo", ()
     true,
   );
   assertEquals(generateProductAdCaptions(data), captions);
+});
+
+Deno.test("roteador social preserva os resultados dos geradores isolados", () => {
+  const vehicle = lastAnuncio().data;
+  const product = {
+    titulo: "Caneca branca",
+    itens: ["Porcelana", "Alça confortável"],
+    preco: "R$ 29,90",
+  };
+  assertEquals(
+    generateVehicleAdCaptions(vehicle, 1, "veiculo"),
+    generateVehicleCaptionsDirect(vehicle, 1),
+  );
+  assertEquals(
+    generateVehicleAdCaptions(product, 0, "produto"),
+    generateProductCaptionsDirect(product),
+  );
+  assertEquals(
+    generateProductAdCaptions(product),
+    generateProductCaptionsDirect(product),
+  );
 });
 
 Deno.test("legenda tem um único CTA E.164 no final e nenhum telefone no corpo", () => {
