@@ -16258,6 +16258,45 @@ async function toolCriarAnuncio(
         args?.melhorar_foto !== false
       ? availableStylesForProductPhoto(desiredStyles, fotoVariants)
       : desiredStyles;
+    if (!requestedStyles.length) {
+      if (ctx.convId) {
+        const conversation = {
+          id: ctx.convId,
+          userId: ctx.userId,
+          contactNumber: ctx.fromNumber,
+        };
+        const current = ctx.agentState ??
+          await loadAgentState(sb, conversation);
+        const pendingPhoto = {
+          stage: "treatment_retry" as const,
+          args: {
+            ...args,
+            _foto_url_original: fotoUrl,
+            _foto_resolvida: true,
+            melhorar_foto: true,
+          },
+          created_at: new Date().toISOString(),
+        };
+        await saveAgentState(sb, conversation, {
+          pending_anuncio_photo: pendingPhoto,
+        }, current);
+        current.pending_anuncio_photo = pendingPhoto;
+        ctx.agentState = current;
+      }
+      return JSON.stringify({
+        erro: "tratamento_estilo_falhou",
+        mensagem: treatmentFailedStyles.map((style) =>
+          `Não consegui tratar a foto para o estilo ${style}.`
+        ).join("\n"),
+        interactive_buttons: {
+          body: "Quer tentar tratar esta foto novamente?",
+          buttons: [{
+            id: "anuncio_photo:retry_treatment",
+            title: "🔄 Tentar de novo",
+          }],
+        },
+      });
+    }
     const recommendation = recommendAnuncioStyle({
       visualDescription: fotoVisualDescription,
       title: titulo,
