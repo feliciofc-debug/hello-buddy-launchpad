@@ -1,5 +1,5 @@
 export type ReadyMediaType = "foto" | "video";
-export type ReadyMediaAction = "publish" | "schedule" | "caption";
+export type ReadyMediaAction = "publish" | "schedule" | "caption" | "edit";
 
 export type ReadyMediaButtonAction = {
   action: ReadyMediaAction;
@@ -33,8 +33,10 @@ export function readyMediaActionButtons(
         title: "🗓️ Agendar",
       },
       {
-        id: `ready_media:caption:${mediaType}:${mediaId}`,
-        title: "✏️ Trocar legenda",
+        id: `ready_media:${mediaType === "foto" ? "edit" : "caption"}:${mediaType}:${mediaId}`,
+        title: mediaType === "foto"
+          ? "🎨 Ajustar imagem"
+          : "✏️ Trocar legenda",
       },
     ],
   };
@@ -48,6 +50,20 @@ export function readyVideoRerenderButtons(mediaId: string) {
       title: "🔄 Refazer em 9:16",
     }],
   };
+}
+
+export function imageEditRetryButtons() {
+  return {
+    body: "Não consegui concluir a edição da imagem.",
+    buttons: [{
+      id: "image_edit:retry",
+      title: "🔄 Tentar de novo",
+    }],
+  };
+}
+
+export function isImageEditRetryAction(text: string): boolean {
+  return /<<INTERACTIVE_ID:image_edit:retry>>/i.test(String(text || ""));
 }
 
 export function parseReadyVideoRerenderAction(
@@ -224,7 +240,7 @@ export function parseReadyMediaAction(
   text: string,
 ): ReadyMediaButtonAction | null {
   const match = String(text || "").match(
-    /<<INTERACTIVE_ID:ready_media:(publish|schedule|caption):(foto|video):([0-9a-f-]+)>>/i,
+    /<<INTERACTIVE_ID:ready_media:(publish|schedule|caption|edit):(foto|video):([0-9a-f-]+)>>/i,
   );
   if (!match || !MEDIA_ID_RE.test(match[3])) return null;
   return {

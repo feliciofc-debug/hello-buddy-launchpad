@@ -296,6 +296,8 @@ import {
   selectPublicationMediaId,
 } from "../_shared/owner-media-intent.ts";
 import {
+  imageEditRetryButtons,
+  isImageEditRetryAction,
   modelMediaIdPresentInUserText,
   parseReadyMediaScheduleChoice,
   parseReadyMediaAction,
@@ -394,6 +396,7 @@ import {
   type ImageCompositionResolution,
 } from "../_shared/image-composition.ts";
 import {
+  logoImageEditPlan,
   logoPlacementMode,
   logoRequestIncludesPublication,
   LOGO_PRODUCT_SIMULATION_NOTICE,
@@ -2031,9 +2034,10 @@ async function toolEditarImagem(
 
   const textos = (ctx.textos || []).map((t) => String(t || "").trim()).filter(Boolean).slice(0, 6);
   const modo = (ctx.modo || "").trim().toLowerCase();
-  // 🔒 Pedido de LOGO/MARCA nunca troca a foto: a imagem original é mantida
-  // pixel a pixel e a marca é apenas aplicada sobre ela.
-  const isLogo = shouldUseLogoEditMode(modo, clean);
+  const isCompositeLogo = modo === "aplicar_logo_cenario";
+  // Logo simples preserva a foto; pedido composto recria o cenário e preserva
+  // o produto base enquanto aplica a logo oficial no objeto.
+  const isLogo = isCompositeLogo || shouldUseLogoEditMode(modo, clean);
   const isAnuncio = !isLogo &&
     (modo === "ficha_tecnica" || modo === "anuncio" || modo === "estudio" || modo === "trocar_ambiente");
   // Em modo anúncio/ficha técnica o ambiente ORIGINAL deve ser descartado por padrão
@@ -2043,6 +2047,8 @@ async function toolEditarImagem(
 
   const blocoTexto = textos.length
     ? `\n\n📝 TEXTOS QUE DEVEM APARECER NA IMAGEM (obrigatório, escreva EXATAMENTE assim, sem inventar nem traduzir):\n${textos.map((t) => `- "${t}"`).join("\n")}\nRegras da tipografia:\n- Posicione as informações AO LADO (ou em faixa lateral/inferior) do objeto principal, em área limpa, NUNCA cobrindo o produto, rostos ou placa.\n- Fonte sans-serif moderna, legível, alinhada, hierarquia clara (destaque no dado mais forte).\n- Fundo sutil atrás do texto (faixa translúcida ou bloco sólido) para garantir contraste.\n- Sem erros de ortografia, sem letras cortadas, sem repetir o mesmo texto duas vezes.\n- Não adicione NENHUM outro texto além dos listados acima.`
+    : isLogo
+    ? `\n\nRegras: use somente a logo oficial fornecida como segunda imagem. NÃO adicione nenhum outro texto, palavra, letra, número ou marca d'água.`
     : `\n\nRegras: NÃO inclua texto, palavras, letras, números ou marcas d'água na imagem.`;
 
   // 🔒 A logo NUNCA é desenhada pela IA: usamos o arquivo real do tenant como
@@ -2062,7 +2068,16 @@ async function toolEditarImagem(
     }
   }
 
-  const blocoModo = isLogo
+  const blocoModo = isCompositeLogo
+    ? `\n\n🎯 MODO COMPOSIÇÃO DE CENÁRIO + LOGO NO OBJETO:
+- Você recebeu DUAS imagens: a PRIMEIRA contém o PRODUTO BASE e a SEGUNDA é o ARQUIVO OFICIAL DA LOGO.
+- Faça UMA ÚNICA edição criativa que atenda ao pedido completo.
+${sceneEditDirective(clean)}
+- Preserve o produto base com o mesmo formato, textura, material, proporções e detalhes reconhecíveis.
+- Aplique a logo oficial no objeto indicado pelo usuário, respeitando perspectiva, curvatura, brilho, textura e sombras naturais, como um mockup realista.
+- Reproduza a logo EXATAMENTE como está no arquivo de referência. Não redesenhe, estilize, traduza ou invente variações.
+- Não transforme a logo em carimbo no canto e não ignore o cenário descrito.`
+    : isLogo
     ? `\n\n🎯 MODO APLICAR LOGO/MARCA — A FOTO ORIGINAL NÃO PODE MUDAR:
 - Você recebeu DUAS imagens: a PRIMEIRA é a FOTO BASE (resultado final) e a SEGUNDA é o ARQUIVO OFICIAL DA LOGO (apenas referência gráfica, nunca entra como cena).
 - Esta é uma EDIÇÃO LOCAL. Devolva EXATAMENTE a MESMA foto recebida, pixel a pixel: mesmo enquadramento, mesmo objeto, mesmo cenário, mesma luz, mesmas sombras, mesmas cores, mesma resolução e mesma proporção.
@@ -2079,7 +2094,9 @@ ${sceneEditDirective(clean)}`
     ? `\n\n🎯 MODO FIGURINO: troque APENAS a roupa/fantasia da pessoa conforme o pedido. É OBRIGATÓRIO manter o MESMO rosto, mesma idade, mesmo corte de cabelo, mesma pele, mesma pose e o MESMO AMBIENTE/fundo (mesmos móveis, mesma luz, mesmo enquadramento). Não troque o cenário, não deixe a pessoa parecida com outra criança/adulto, não gere desenho — fotorealista.`
     : `\n\n🎯 MODO MELHORIA: eleve a qualidade (nitidez, cor, luz, composição) mantendo a cena reconhecível.`;
 
-  const blocoPreservar = isLogo
+  const blocoPreservar = isCompositeLogo
+    ? `\n\n🔒 PRESERVAÇÃO DO PRODUTO: recrie o cenário, mas mantenha o produto base reconhecível, com o mesmo formato e textura. A única personalização no produto é a logo oficial pedida.`
+    : isLogo
     ? `\n\n🔒 PRESERVAÇÃO TOTAL: a foto de entrada é a base final. Só a marca/logo é adicionada; todo o resto permanece idêntico.`
     : preservar
     ? `\n\n🔒 PRESERVAÇÃO OBRIGATÓRIA: mantenha o mesmo ambiente/cenário, o mesmo enquadramento e as mesmas pessoas (rosto, feições, tom de pele, cabelo) e o mesmo objeto/produto principal identificáveis. Não substitua por outra pessoa/objeto.`
@@ -2096,7 +2113,7 @@ ${sceneEditDirective(clean)}`
             content: [
               {
                 type: "text",
-                text: `Edite esta foto conforme o pedido abaixo.\n\nPedido: ${clean}${blocoModo}${blocoPreservar}${blocoTexto}${isLogo ? "\n\n📐 FORMATO: mantenha EXATAMENTE a mesma proporção e resolução da foto original — não recorte, não expanda, não reenquadre." : blocoFormatoSocial(clean + " " + modo)}\n\nResultado fotorealista de alta qualidade, pronto para publicação.`,
+                text: `Edite esta foto conforme o pedido abaixo.\n\nPedido: ${clean}${blocoModo}${blocoPreservar}${blocoTexto}${isLogo && !isCompositeLogo ? "\n\n📐 FORMATO: mantenha EXATAMENTE a mesma proporção e resolução da foto original — não recorte, não expanda, não reenquadre." : blocoFormatoSocial(clean + " " + modo)}\n\nResultado fotorealista de alta qualidade, pronto para publicação.`,
               },
               { type: "image_url", image_url: { url: dataUrlInput } },
               ...(logoDataUrl ? [{ type: "image_url", image_url: { url: logoDataUrl } }] : []),
@@ -2979,6 +2996,11 @@ type AgentConvState = {
     created_at: string;
   } | null;
   pending_image_composition?: { media_ids: string[]; at: string } | null;
+  pending_image_adjustment?: {
+    media_id: string;
+    created_at: string;
+    prompt?: string;
+  } | null;
   pending_carousel?: PendingCarouselState | null;
   pending_carrossel_veiculo?: PendingVehicleCarousel | null;
   pending_vehicle_photo_batch?: PendingVehiclePhotoBatch | null;
@@ -17126,6 +17148,9 @@ async function callGemini(
       pendingVehicleIdentification = null;
     }
     const pendingSinglePhoto = remetenteEhDono ? toolCtx.agentState?.pending_single_photo : null;
+    const pendingImageAdjustment = remetenteEhDono
+      ? toolCtx.agentState?.pending_image_adjustment
+      : null;
     const pendingVideoSetup = remetenteEhDono ? toolCtx.agentState?.pending_video_setup : null;
     const pendingAnuncioCliente = remetenteEhDono
       ? toolCtx.agentState?.pending_anuncio_cliente
@@ -17172,6 +17197,7 @@ async function callGemini(
     const brandInteractiveId = userContent.match(/<<INTERACTIVE_ID:(brand_[^>]+)>>/i)?.[1]?.toLowerCase() || "";
     const socialInteractiveId = userContent.match(/<<INTERACTIVE_ID:(social_[^>]+)>>/i)?.[1] || "";
     const readyMediaAction = parseReadyMediaAction(userContent);
+    const imageEditRetryAction = isImageEditRetryAction(userContent);
     const readyMediaScheduleChoice = parseReadyMediaScheduleChoice(userContent);
     const readyVideoRerenderAction = parseReadyVideoRerenderAction(userContent);
     const videoCaptionChoice = parseVideoCaptionChoice(userContent);
@@ -17528,6 +17554,144 @@ async function callGemini(
       return {
         text:
           "Não entendi o horário. Informe dia e hora, por exemplo: 30/10 às 15h.",
+      };
+    }
+    if (
+      remetenteEhDono &&
+      readyMediaAction?.action === "edit" &&
+      readyMediaAction.mediaType === "foto"
+    ) {
+      const resolved = await resolverMidiaBibliotecaPorId(
+        toolCtx.userId,
+        readyMediaAction.mediaId,
+      );
+      if (!resolved.midia || resolved.midia.tipo !== "foto") {
+        return {
+          text:
+            "Não encontrei essa foto para ajustar. Envie a imagem novamente.",
+        };
+      }
+      await rememberLastMediaInteraction(toolCtx, readyMediaAction.mediaId);
+      const pending = {
+        media_id: readyMediaAction.mediaId,
+        created_at: new Date().toISOString(),
+      };
+      if (toolCtx.convId) {
+        await saveAgentState(sb, {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        }, { pending_image_adjustment: pending }, toolCtx.agentState ?? {});
+      }
+      if (toolCtx.agentState) {
+        toolCtx.agentState.pending_image_adjustment = pending;
+      }
+      return {
+        text:
+          "O que você quer ajustar nesta imagem? Pode me mandar em texto ou áudio.",
+      };
+    }
+    const pendingImageAdjustmentIsActive = pendingImageAdjustment &&
+      Date.now() - new Date(pendingImageAdjustment.created_at).getTime() <=
+        30 * 60 * 1000;
+    if (
+      remetenteEhDono &&
+      pendingImageAdjustmentIsActive &&
+      (imageEditRetryAction || !/<<INTERACTIVE_ID:/i.test(userContent))
+    ) {
+      const adjustmentPrompt = imageEditRetryAction
+        ? String(pendingImageAdjustment.prompt || "").trim()
+        : String(userContent || "").trim();
+      if (!adjustmentPrompt) {
+        return {
+          text:
+            "Me diga em texto ou áudio qual ajuste você quer fazer na imagem.",
+        };
+      }
+      const resolved = await resolverMidiaBibliotecaPorId(
+        toolCtx.userId,
+        pendingImageAdjustment.media_id,
+      );
+      if (!resolved.midia || resolved.midia.tipo !== "foto") {
+        return {
+          text:
+            "Não encontrei essa foto para ajustar. Envie a imagem novamente.",
+        };
+      }
+      await rememberLastMediaInteraction(
+        toolCtx,
+        pendingImageAdjustment.media_id,
+      );
+      const editPlan = logoImageEditPlan(adjustmentPrompt);
+      const mode = editPlan.toolMode ??
+        (hasExplicitSceneDescription(adjustmentPrompt)
+          ? "ficha_tecnica"
+          : "melhoria");
+      console.log(
+        `[processor][pending_image_adjustment] pedido_chars=${adjustmentPrompt.length} modo=${mode}`,
+      );
+      const raw = editPlan.strategy === "overlay"
+        ? await toolApplyTenantLogoOverlay(adjustmentPrompt, toolCtx)
+        : await toolEditarImagem(adjustmentPrompt, {
+          userId: toolCtx.userId,
+          fromNumber: toolCtx.fromNumber,
+          media: [],
+          textos: [],
+          modo: mode,
+          preservarAmbiente: mode === "ficha_tecnica" ? false : undefined,
+          imageInputUrl: String(resolved.midia.midia_url || ""),
+        });
+      let parsed: any = {};
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        // resposta inválida tratada como falha abaixo
+      }
+      if (parsed?.image_url) {
+        if (parsed?.midia_id) {
+          await rememberLastMediaInteraction(toolCtx, parsed.midia_id);
+        }
+        if (toolCtx.convId) {
+          await saveAgentState(sb, {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          }, { pending_image_adjustment: null }, toolCtx.agentState ?? {});
+        }
+        if (toolCtx.agentState) {
+          toolCtx.agentState.pending_image_adjustment = null;
+        }
+        const notice = editPlan.logoMode === "object"
+          ? ` ${LOGO_PRODUCT_SIMULATION_NOTICE}`
+          : "";
+        return {
+          text: `Pronto — ajustei a imagem conforme o seu pedido.${notice}`,
+          imageUrl: parsed.image_url,
+          interactiveButtons: parsed?.midia_id
+            ? readyMediaActionButtons(parsed.midia_id, "foto")
+            : undefined,
+        };
+      }
+      const failedPending = {
+        ...pendingImageAdjustment,
+        prompt: adjustmentPrompt,
+        created_at: new Date().toISOString(),
+      };
+      if (toolCtx.convId) {
+        await saveAgentState(sb, {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        }, {
+          pending_image_adjustment: failedPending,
+        }, toolCtx.agentState ?? {});
+      }
+      if (toolCtx.agentState) {
+        toolCtx.agentState.pending_image_adjustment = failedPending;
+      }
+      return {
+        text: mensagemErroEdicaoImagem(parsed),
+        interactiveButtons: imageEditRetryButtons(),
       };
     }
     if (remetenteEhDono && readyMediaAction) {
@@ -20332,11 +20496,15 @@ async function callGemini(
     // Edição de foto recente é determinística: o modelo não pode apenas prometer
     // que vai trabalhar em segundo plano. A própria ferramenta busca a última
     // foto do tenant (janela de 30 min) e devolve a imagem pronta neste turno.
-    const logoMode = logoPlacementMode(userContent);
+    const logoPlan = logoImageEditPlan(userContent);
+    const logoMode = logoPlan.logoMode;
     const pedidoLogoNaFoto = logoMode !== null;
     const pedidoEdicaoFoto = ownerMediaIntent.action === "edit" ||
       compositionFallsBackToEdit || pedidoLogoNaFoto;
     let temFotoParaEditar = (toolCtx.media || []).some((m) => m.kind === "image");
+    let fotoParaEditarId = String(
+      toolCtx.agentState?.last_media_interaction?.media_id || "",
+    );
     if (remetenteEhDono && pedidoEdicaoFoto && !temFotoParaEditar) {
       const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
       const { data: fotoRecente, error: fotoError } = await sb
@@ -20351,19 +20519,23 @@ async function callGemini(
         .maybeSingle();
       if (fotoError) console.warn("[processor][forced_image_edit][recent_photo_error]", fotoError.message);
       temFotoParaEditar = !!fotoRecente?.id;
+      fotoParaEditarId = String(fotoRecente?.id || fotoParaEditarId);
       if (!temFotoParaEditar) {
         console.log("[processor][forced_image_edit][skipped_no_image]");
       }
     }
     if (remetenteEhDono && pedidoEdicaoFoto && temFotoParaEditar && !isCarrosselRequest(userContent)) {
       const trocarCenario = !pedidoLogoNaFoto && /\b(?:cen[aá]rio|ambiente|fundo|est[uú]dio|showroom)\b/i.test(userContent);
-      const modoForcado = logoMode === "object"
+      const modoForcado = logoPlan.toolMode ??
+        (logoMode === "object"
         ? "aplicar_logo"
         : trocarCenario
         ? "ficha_tecnica"
-        : "melhoria";
-      console.log(`[processor][forced_image_edit] modo=${modoForcado}`);
-      const raw = logoMode === "top-left"
+        : "melhoria");
+      console.log(
+        `[processor][forced_image_edit] pedido_chars=${userContent.length} modo=${modoForcado}`,
+      );
+      const raw = logoPlan.strategy === "overlay"
         ? await toolApplyTenantLogoOverlay(userContent, toolCtx)
         : await toolEditarImagem(userContent, {
           userId: toolCtx.userId,
@@ -20412,7 +20584,11 @@ async function callGemini(
         }
         return {
           text: logoMode === "object"
-            ? `Pronto — apliquei a marca no objeto. ${LOGO_PRODUCT_SIMULATION_NOTICE}${codigo}`
+            ? `${
+              logoPlan.hasScene
+                ? "Pronto — montei o cenário e apliquei a marca no objeto."
+                : "Pronto — apliquei a marca no objeto."
+            } ${LOGO_PRODUCT_SIMULATION_NOTICE}${codigo}`
             : logoMode === "top-left"
             ? `Pronto — coloquei a marca no canto superior esquerdo, sem alterar o restante da imagem.${codigo}`
             : `Pronto — apliquei o cenário que você pediu, mantendo o produto.${codigo}`,
@@ -20422,7 +20598,28 @@ async function callGemini(
             : undefined,
         };
       }
-      return { text: mensagemErroEdicaoImagem(parsed) };
+      if (fotoParaEditarId && toolCtx.convId) {
+        const pendingImageAdjustment = {
+          media_id: fotoParaEditarId,
+          created_at: new Date().toISOString(),
+          prompt: userContent,
+        };
+        await saveAgentState(sb, {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        }, {
+          pending_image_adjustment: pendingImageAdjustment,
+        }, toolCtx.agentState ?? {});
+        if (toolCtx.agentState) {
+          toolCtx.agentState.pending_image_adjustment =
+            pendingImageAdjustment;
+        }
+      }
+      return {
+        text: mensagemErroEdicaoImagem(parsed),
+        interactiveButtons: imageEditRetryButtons(),
+      };
     }
 
     // Fluxo A/B/C: resolve seleção e confirmação direto no código, sem depender da IA.
@@ -23476,7 +23673,8 @@ async function processOne(queueId: string) {
       await saveAgentState(sb, stateConversation, freshStatePatch, freshAgentState);
       Object.assign(freshAgentState, freshStatePatch);
       const freshImageIntent = classifyOwnerMediaIntent(contexto);
-      const freshLogoMode = logoPlacementMode(contexto);
+      const freshLogoPlan = logoImageEditPlan(contexto);
+      const freshLogoMode = freshLogoPlan.logoMode;
       if (
         fromIsOwner
         && savedPhotos.length > 0
@@ -23497,7 +23695,12 @@ async function processOne(queueId: string) {
         let buttons: WhatsAppInteractiveButtons | undefined;
         let deferred = false;
         if (freshLogoMode) {
-          const raw = freshLogoMode === "top-left"
+          console.log(
+            `[processor][fresh_image_edit] pedido_chars=${contexto.length} modo=${
+              freshLogoPlan.toolMode ?? "top-left"
+            }`,
+          );
+          const raw = freshLogoPlan.strategy === "overlay"
             ? await toolApplyTenantLogoOverlay(contexto, {
               ...generationCtx,
               media: freshLibraryMedia,
@@ -23507,7 +23710,7 @@ async function processOne(queueId: string) {
               fromNumber: row.from_number,
               media: freshLibraryMedia,
               textos: [],
-              modo: "aplicar_logo",
+              modo: freshLogoPlan.toolMode ?? "aplicar_logo",
             });
           let logoResult: any = {};
           try {
@@ -23518,7 +23721,11 @@ async function processOne(queueId: string) {
           completed = logoResult?.image_url
             ? {
               text: freshLogoMode === "object"
-                ? `Pronto — apliquei a marca no objeto. ${LOGO_PRODUCT_SIMULATION_NOTICE}`
+                ? `${
+                  freshLogoPlan.hasScene
+                    ? "Pronto — montei o cenário e apliquei a marca no objeto."
+                    : "Pronto — apliquei a marca no objeto."
+                } ${LOGO_PRODUCT_SIMULATION_NOTICE}`
                 : "Pronto — coloquei a marca no canto superior esquerdo, sem alterar o restante da imagem.",
               imageUrl: logoResult.image_url,
             }
@@ -23529,6 +23736,21 @@ async function processOne(queueId: string) {
               logoResult.midia_id,
             );
             buttons = readyMediaActionButtons(logoResult.midia_id, "foto");
+          } else if (!logoResult?.image_url) {
+            const sourcePhoto = savedPhotos.at(-1);
+            if (sourcePhoto) {
+              const pendingImageAdjustment = {
+                media_id: sourcePhoto.id,
+                created_at: new Date().toISOString(),
+                prompt: contexto,
+              };
+              await saveAgentState(sb, stateConversation, {
+                pending_image_adjustment: pendingImageAdjustment,
+              }, freshAgentState);
+              freshAgentState.pending_image_adjustment =
+                pendingImageAdjustment;
+            }
+            buttons = imageEditRetryButtons();
           }
           if (
             freshLogoMode === "top-left" && logoResult?.midia_id &&

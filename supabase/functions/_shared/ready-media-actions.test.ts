@@ -8,6 +8,8 @@ import {
 } from "./owner-media-intent.ts";
 import {
   deliveredMediaState,
+  imageEditRetryButtons,
+  isImageEditRetryAction,
   modelMediaIdPresentInUserText,
   parseReadyMediaAction,
   parseReadyMediaScheduleChoice,
@@ -81,6 +83,34 @@ Deno.test("Publicar agora mantém exatamente o ID da mídia exibida", () => {
     mediaId: VIDEO_ID,
   });
   assertStringIncludes(publish.id, VIDEO_ID);
+});
+
+Deno.test("foto oferece Ajustar imagem e vídeo mantém Trocar legenda", () => {
+  const photoButtons = readyMediaActionButtons(VIDEO_ID, "foto");
+  const videoButtons = readyMediaActionButtons(VIDEO_ID, "video");
+  assertEquals(photoButtons.buttons[2].title, "🎨 Ajustar imagem");
+  assertEquals(videoButtons.buttons[2].title, "✏️ Trocar legenda");
+  assertEquals(
+    parseReadyMediaAction(
+      `<<INTERACTIVE_ID:${photoButtons.buttons[2].id}>>`,
+    ),
+    {
+      action: "edit",
+      mediaType: "foto",
+      mediaId: VIDEO_ID,
+    },
+  );
+});
+
+Deno.test("falha de edição oferece nova tentativa acionável", () => {
+  const retry = imageEditRetryButtons();
+  assertEquals(retry.buttons[0].title, "🔄 Tentar de novo");
+  assertEquals(
+    isImageEditRetryAction(
+      `<<INTERACTIVE_ID:${retry.buttons[0].id}>>`,
+    ),
+    true,
+  );
 });
 
 Deno.test("ID inventado pelo modelo é descartado se não veio do usuário", () => {
