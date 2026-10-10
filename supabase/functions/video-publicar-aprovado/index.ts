@@ -211,12 +211,12 @@ Deno.serve(async (req) => {
                 preserve_caption: true,
               }
             : {
-                platform: plataforma,
-                video_url: videoUrl,
-                caption: job.copy_escolhida || job.caption || " ",
-                user_id: job.user_id,
-                preserve_caption: true,
-              };
+              platform: plataforma,
+              video_url: videoUrl,
+              caption: job.copy_escolhida || job.caption || " ",
+              user_id: job.user_id,
+              preserve_caption: true,
+            };
           const { data: res, error: pErr } = await supabase.functions.invoke(
             functionName,
             { body },
@@ -227,8 +227,7 @@ Deno.serve(async (req) => {
             if (typeof res?.post_url === "string" && res.post_url) {
               links.push({ plataforma, url: res.post_url });
             }
-          }
-          else {
+          } else {
             erros.push(
               friendlyMetaVideoPublishError(
                 plataforma,
@@ -254,9 +253,13 @@ Deno.serve(async (req) => {
 
     if (job.telefone && shouldNotifyVideoPublishCaller(notify_whatsapp)) {
       const linksText = links.length
-        ? `\n${links.map((link) =>
-          `${link.plataforma === "instagram" ? "Instagram" : "Facebook"}: ${link.url}`
-        ).join("\n")}`
+        ? `\n${
+          links.map((link) =>
+            `${
+              link.plataforma === "instagram" ? "Instagram" : "Facebook"
+            }: ${link.url}`
+          ).join("\n")
+        }`
         : "";
       const msg = erros.length === 0 &&
           publicados.length === plataformas.length
