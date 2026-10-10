@@ -136,11 +136,12 @@ export function shouldBindPostToLastAnuncio(input: {
 
 export function anuncioPostActionButtons() {
   return {
-    body: "O que você quer fazer com este anúncio?",
+    body:
+      "Arte salva na sua biblioteca. O que você quer fazer com este anúncio?",
     buttons: [
-      { id: "anuncio_post:action:publish", title: "Publicar agora" },
-      { id: "anuncio_post:action:schedule", title: "Agendar" },
-      { id: "anuncio_post:action:save", title: "Só salvar" },
+      { id: "anuncio_post:action:publish", title: "📤 Publicar agora" },
+      { id: "anuncio_post:action:schedule", title: "🗓️ Agendar" },
+      { id: "anuncio_other_styles", title: "🎨 Trocar estilo" },
     ],
   };
 }

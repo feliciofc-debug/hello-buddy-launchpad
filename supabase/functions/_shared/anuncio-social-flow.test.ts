@@ -284,7 +284,11 @@ Deno.test("produto publica ao escolher B sem etapa Aprovar criativo", () => {
 Deno.test("cada etapa oferece os controles exigidos", () => {
   assertEquals(
     anuncioPostActionButtons().buttons.map((button) => button.title),
-    ["Publicar agora", "Agendar", "Só salvar"],
+    ["📤 Publicar agora", "🗓️ Agendar", "🎨 Trocar estilo"],
+  );
+  assertStringIncludes(
+    anuncioPostActionButtons().body,
+    "Arte salva na sua biblioteca",
   );
   assertEquals(
     anuncioPostFormatButtons().buttons.map((button) => button.title),

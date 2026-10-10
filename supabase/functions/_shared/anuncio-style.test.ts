@@ -6,6 +6,7 @@ import {
   anuncioStyleButtons,
   dominantProductAccentColor,
   recommendAnuncioStyle,
+  recommendationPreferenceForAccount,
   renderAnuncioStyleOptions,
 } from "./anuncio-style.ts";
 
@@ -48,6 +49,31 @@ Deno.test("preferência salva recomenda sem remover as três escolhas", () => {
     "Destaque",
   ]);
   assertStringIncludes(controls.body, "⭐ Recomendo o Impacto");
+});
+
+Deno.test("AMZ recomenda pelo produto e tenant mantém preferência explícita", () => {
+  const agencyPreference = recommendationPreferenceForAccount(
+    "amz-user",
+    "amz-user",
+    "impacto",
+  );
+  assertEquals(agencyPreference, null);
+  assertEquals(
+    recommendAnuncioStyle({
+      title: "Fralda para bebê",
+      visualDescription: "Pacote claro azul-bebê",
+      preferred: agencyPreference,
+    }),
+    "catalogo",
+  );
+  assertEquals(
+    recommendationPreferenceForAccount(
+      "tenant-user",
+      "amz-user",
+      "destaque",
+    ),
+    "destaque",
+  );
 });
 
 Deno.test("pedido explícito pode renderizar somente um estilo", async () => {

@@ -59,6 +59,11 @@ import {
   normalizeImageDataUrl,
   renderableImageDataUrl,
 } from "../_shared/renderable-image.ts";
+import {
+  correctProductColors,
+  cutOutProductBackground,
+  paintProductStudioBackground,
+} from "../_shared/product-photo-studio.ts";
 import { getTenantLogoDataUrlForBackground } from "../_shared/tenant-logo.ts";
 
 const corsHeaders = {
@@ -220,6 +225,94 @@ async function composePhotoForTemplate(input: {
   };
 }
 
+function blendPixel(
+  bitmap: Uint8Array | Uint8ClampedArray,
+  offset: number,
+  color: [number, number, number],
+  alpha: number,
+): void {
+  const amount = Math.max(0, Math.min(1, alpha));
+  for (let channel = 0; channel < 3; channel++) {
+    bitmap[offset + channel] = Math.round(
+      bitmap[offset + channel] * (1 - amount) + color[channel] * amount,
+    );
+  }
+}
+
+function paintSoftProductShadow(
+  canvas: Image,
+  centerX: number,
+  centerY: number,
+  radiusX: number,
+  radiusY: number,
+  color: [number, number, number],
+): void {
+  const minX = Math.max(0, Math.floor(centerX - radiusX));
+  const maxX = Math.min(canvas.width - 1, Math.ceil(centerX + radiusX));
+  const minY = Math.max(0, Math.floor(centerY - radiusY * 2));
+  const maxY = Math.min(canvas.height - 1, Math.ceil(centerY + radiusY * 2));
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      const distance = ((x - centerX) / radiusX) ** 2 +
+        ((y - centerY) / radiusY) ** 2;
+      if (distance > 4) continue;
+      const alpha = Math.exp(-distance * 1.35) * 0.22;
+      blendPixel(canvas.bitmap, (y * canvas.width + x) * 4, color, alpha);
+    }
+  }
+}
+
+async function composeProductStudioPhoto(input: {
+  dataUrl: string;
+  estilo: AnuncioEstilo;
+  formato: AnuncioFormato;
+  accentColor: string;
+}): Promise<string | null> {
+  const source = await Image.decode(dataUrlBytes(input.dataUrl));
+  const cutout = cutOutProductBackground(source);
+  if (!cutout.segmented || !cutout.bounds) return null;
+  source.bitmap.set(
+    correctProductColors(cutout.bitmap, source.width, source.height),
+  );
+  const product = source.crop(
+    cutout.bounds.x,
+    cutout.bounds.y,
+    cutout.bounds.width,
+    cutout.bounds.height,
+  );
+  const target = ANUNCIO_LAYOUT_BOXES[input.estilo][input.formato].vehicle;
+  const canvas = new Image(target.width, target.height);
+  paintProductStudioBackground(canvas, input.estilo, input.accentColor);
+  const maxWidth = Math.round(target.width * 0.86);
+  const maxHeight = Math.round(target.height * 0.84);
+  const scale = Math.min(
+    maxWidth / product.width,
+    maxHeight / product.height,
+  );
+  const width = Math.max(1, Math.round(product.width * scale));
+  const height = Math.max(1, Math.round(product.height * scale));
+  const x = Math.round((target.width - width) / 2);
+  const y = Math.round((target.height - height) / 2 - target.height * 0.015);
+  const palette = input.estilo === "catalogo"
+    ? [90, 95, 105] as [number, number, number]
+    : [0, 0, 0] as [number, number, number];
+  paintSoftProductShadow(
+    canvas,
+    target.width / 2,
+    y + height,
+    Math.max(12, width * 0.34),
+    Math.max(5, target.height * 0.028),
+    palette,
+  );
+  canvas.composite(product.resize(width, height), x, y);
+  const png = await canvas.encode();
+  let binary = "";
+  for (let offset = 0; offset < png.length; offset += 8192) {
+    binary += String.fromCharCode(...png.subarray(offset, offset + 8192));
+  }
+  return `data:image/png;base64,${btoa(binary)}`;
+}
+
 async function logoPathParaDataUrl(
   supabase: any,
   userId: string,
@@ -338,20 +431,40 @@ Deno.serve(async (req) => {
     }
     let fotoDataUrl = fotoResult.dataUrl;
     let fotoPrecomposed = false;
-    let frameMode: "box" | "contain" | "template_contain" = "template_contain";
+    let frameMode:
+      | "studio_cutout"
+      | "box"
+      | "contain"
+      | "template_contain" = "template_contain";
+    const accentColor = normalizeHex(
+      body?.accent_color,
+      estilo === "impacto" ? "#F2B544" : "#F36812",
+    );
     try {
-      const composed = await composePhotoForTemplate({
+      const studioPhoto = await composeProductStudioPhoto({
         dataUrl: fotoDataUrl,
         estilo,
         formato,
-        fotoBox: body?.foto_box,
+        accentColor,
       });
-      fotoDataUrl = composed.dataUrl;
-      fotoPrecomposed = true;
-      frameMode = composed.mode;
+      if (studioPhoto) {
+        fotoDataUrl = studioPhoto;
+        fotoPrecomposed = true;
+        frameMode = "studio_cutout";
+      } else {
+        const composed = await composePhotoForTemplate({
+          dataUrl: fotoDataUrl,
+          estilo,
+          formato,
+          fotoBox: body?.foto_box,
+        });
+        fotoDataUrl = composed.dataUrl;
+        fotoPrecomposed = true;
+        frameMode = composed.mode;
+      }
     } catch (error) {
       console.warn(
-        "[render-anuncio-produto] composição medida falhou; usando contain no template:",
+        "[render-anuncio-produto] recorte/composição falhou; usando foto original:",
         (error as Error).message,
       );
     }
@@ -385,10 +498,7 @@ Deno.serve(async (req) => {
       logoDataUrl,
       logoIsIcon: body?.logo_is_icon === true,
       primaryColor: normalizeHex(body?.primary_color, "#8A6A12"),
-      accentColor: normalizeHex(
-        body?.accent_color,
-        estilo === "impacto" ? "#F2B544" : "#F36812",
-      ),
+      accentColor,
       formato,
     };
 

@@ -471,6 +471,7 @@ import {
   getTenantAnuncioStyle,
   otherAnuncioStyles,
   recommendAnuncioStyle,
+  recommendationPreferenceForAccount,
   renderAnuncioStyleOptions,
   resolveAnuncioPhotoPreference,
   saveTenantAnuncioPhotoPreference,
@@ -16056,7 +16057,13 @@ async function toolCriarAnuncio(
       visualDescription: fotoVisualDescription,
       title: titulo,
       badge: args?.badge,
-      preferred: savedStyle,
+      // A agência AMZ cria para produtos diferentes; a preferência global não
+      // deve vencer a recomendação visual de cada produto.
+      preferred: recommendationPreferenceForAccount(
+        ctx.userId,
+        ADMIN_AMZ_USER_ID,
+        savedStyle,
+      ),
     });
     const { successes: renders, failedStyles } =
       await renderAnuncioStyleOptions(requestedStyles, async (style) => {
@@ -16235,7 +16242,7 @@ async function toolCriarAnuncio(
       itens_usados: itens.length,
       mensagem: renders.length > 1
         ? "Mostrei as opções disponíveis e aguardo a escolha do estilo."
-        : anuncioSuccessMessage(),
+        : "Arte salva na sua biblioteca. O que você quer fazer?",
       interactive_buttons: renders.length > 1
         ? undefined
         : anuncioPostActionButtons(),
@@ -18197,7 +18204,7 @@ async function callGemini(
         await rememberLastMediaInteraction(toolCtx, selectedImage.id);
       }
       return {
-        text: `${anuncioSuccessMessage()} Salvei *${anuncioStyleInteractive}* como seu estilo preferido.`,
+        text: `${anuncioSuccessMessage()} Salvei *${anuncioStyleInteractive}* como seu estilo preferido.\n\nArte salva na sua biblioteca. O que você quer fazer?`,
         interactiveButtons: anuncioPostActionButtons(),
       };
     }
@@ -18205,50 +18212,89 @@ async function callGemini(
       const age = Date.now() -
         new Date(pendingAnuncioStyles.created_at).getTime();
       if (Number.isFinite(age) && age <= 2 * 60 * 60 * 1000) {
-        const preferred = pendingAnuncioStyles.shown_styles[0];
-        const styles = pendingAnuncioStyles.shown_styles.length === 1
-          ? otherAnuncioStyles(preferred)
-          : ANUNCIO_STYLES;
+        const selectedStyle = lastAnuncio?.selected_style ??
+          pendingAnuncioStyles.shown_styles[0];
+        const styles = otherAnuncioStyles(selectedStyle);
         const client = pendingAnuncioStyles.client_name
           ? await findClientBrandIdentity(sb, toolCtx.userId, {
             name: pendingAnuncioStyles.client_name,
           })
           : null;
-        const renders = await Promise.all(styles.map(async (style) => {
-          const logoPath = client
-            ? clientLogoPath(
-              client,
-              style === "catalogo" ? "light" : "dark",
-              true,
-            )
-            : null;
-          const render = await callEdge("render-anuncio-produto", {
-            ...pendingAnuncioStyles.render_payload,
-            estilo: style,
-            logo_path: logoPath,
-          }, 120000);
-          return { style, render };
-        }));
-        const urls = renders.map(({ render }) => render?.image_url).filter(Boolean);
-        if (urls.length === styles.length) {
+        const { successes: renders } = await renderAnuncioStyleOptions(
+          styles,
+          async (style) => {
+            const logoPath = client
+              ? clientLogoPath(
+                client,
+                style === "catalogo" ? "light" : "dark",
+                true,
+              )
+              : null;
+            const render = await callEdge("render-anuncio-produto", {
+              ...pendingAnuncioStyles.render_payload,
+              estilo: style,
+              logo_path: logoPath,
+            }, 120000);
+            if (!render?.success || !render?.image_url) {
+              throw new Error(
+                String(render?.error || `falha no estilo ${style}`),
+              );
+            }
+            return render;
+          },
+        );
+        if (renders.length) {
+          const saved = await Promise.all(renders.map(async ({ style, render }) => {
+            const { data } = await sb.from("midias_whatsapp").insert({
+              user_id: toolCtx.userId,
+              telefone_origem: toolCtx.fromNumber,
+              tipo: "foto",
+              midia_url: render.image_url,
+              contexto_original:
+                `Anúncio ${style} ${String(pendingAnuncioStyles.render_payload.formato || "feed")}: ${
+                  String(pendingAnuncioStyles.data?.titulo || "produto")
+                }`,
+              origem: "anuncio_produto",
+              status: "pendente",
+            }).select("id").maybeSingle();
+            return {
+              style,
+              formato: pendingAnuncioStyles.render_payload.formato === "story"
+                ? "story" as const
+                : "feed" as const,
+              id: String(data?.id || ""),
+              url: String(render.image_url),
+            };
+          }));
+          const renderedStyles = renders.map(({ style }) => style);
+          const mergedImages = [
+            ...(pendingAnuncioStyles.images ?? []).filter((image) =>
+              !renderedStyles.includes(image.style)
+            ),
+            ...saved,
+          ];
+          await persistAnuncioFlowState(toolCtx, {
+            pending_anuncio_styles: {
+              ...pendingAnuncioStyles,
+              shown_styles: [
+                ...new Set([
+                  ...pendingAnuncioStyles.shown_styles,
+                  ...renderedStyles,
+                ]),
+              ],
+              images: mergedImages,
+            },
+            ...(lastAnuncio
+              ? { last_anuncio: { ...lastAnuncio, images: mergedImages } }
+              : {}),
+          });
           await enviarPreviewEstilosAnuncio(
             toolCtx,
-            renders as Array<{
-              style: AnuncioStyle;
-              render: { image_url: string };
-            }>,
+            renders,
           );
           return {
             text: "Aqui estão os outros estilos. Qual você prefere?",
-            interactiveButtons: {
-              body: "Qual você prefere?",
-              buttons: styles.map((style) => ({
-                id: `anuncio_style:${style}`,
-                title: style === "catalogo"
-                  ? "Catálogo"
-                  : style[0].toUpperCase() + style.slice(1),
-              })),
-            },
+            interactiveButtons: anuncioStyleButtons(renderedStyles),
           };
         }
       }

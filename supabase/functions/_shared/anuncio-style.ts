@@ -87,6 +87,14 @@ export function recommendAnuncioStyle(input: {
   return "catalogo";
 }
 
+export function recommendationPreferenceForAccount(
+  userId: string,
+  agencyUserId: string,
+  savedStyle: AnuncioStyle | null,
+): AnuncioStyle | null {
+  return userId === agencyUserId ? null : savedStyle;
+}
+
 export function dominantProductAccentColor(
   visualDescription: unknown,
   fallback?: string,
