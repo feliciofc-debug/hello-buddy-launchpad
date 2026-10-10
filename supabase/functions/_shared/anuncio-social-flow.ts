@@ -266,6 +266,22 @@ export function anuncioPostDestinationList(input: {
   };
 }
 
+export function anuncioRemainingDestinationsList(input: {
+  mediaType: "foto" | "video";
+  connected: Array<"facebook" | "instagram" | "linkedin" | "tiktok">;
+}) {
+  const rows = anuncioPostDestinationList(input).rows.filter((row) =>
+    row.id !== "anuncio_post:destination:schedule"
+  );
+  if (!rows.length) return undefined;
+  return {
+    body: "Quer publicar também em:",
+    button: "Escolher rede",
+    section_title: "Redes restantes",
+    rows,
+  };
+}
+
 export function anuncioCaptionExtraList() {
   return {
     body: "Quer outras opções ou prefere escrever?",
@@ -343,8 +359,64 @@ function hashtags(title: string): string {
   return [...new Set(tags)].slice(0, 6).map((tag) => `#${tag}`).join(" ");
 }
 
+export function normalizeBrazilianWhatsappNumber(value: unknown): string {
+  let digits = String(value || "").replace(/\D/g, "");
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  if (digits.startsWith("0") && (digits.length === 11 || digits.length === 12)) {
+    digits = digits.slice(1);
+  }
+  if ((digits.length === 12 || digits.length === 13) && digits.startsWith("55")) {
+    return digits;
+  }
+  return digits.length === 10 || digits.length === 11 ? `55${digits}` : "";
+}
+
+export function formatBrazilianWhatsappNumber(value: unknown): string {
+  const digits = normalizeBrazilianWhatsappNumber(value).replace(/^55/, "");
+  if (digits.length === 11) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  }
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  }
+  return "";
+}
+
+export function singleWhatsappCtaAtEnd(
+  caption: string,
+  phone: unknown,
+): string {
+  const digits = normalizeBrazilianWhatsappNumber(phone);
+  const body = String(caption || "")
+    .replace(
+      /^.*(?:\+?55[\s.-]*)?(?:\(?\d{2}\)?[\s.-]*)?(?:9?\d{4})[\s.-]+\d{4}.*$/gim,
+      " ",
+    )
+    .replace(
+      /(?:📱\s*)?(?:fale|chame|falar)\s+(?:comigo\s+)?(?:agora\s+)?(?:no|pelo)\s+whatsapp\s*:?\s*(?:https?:\/\/)?wa\.me\/\d+/gi,
+      " ",
+    )
+    .replace(/(?:https?:\/\/)?wa\.me\/\d+/gi, " ")
+    .replace(/\b(?:55)?\d{10,11}\b/g, " ")
+    .replace(
+      /(?:\+?55[\s.-]*)?(?:\(?\d{2}\)?[\s.-]*)?(?:9?\d{4})[\s.-]+\d{4}\b/g,
+      " ",
+    )
+    .replace(/^[ \t]*(?:📱\s*)?whatsapp\s*:?\s*$/gim, " ")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  if (!digits) return body;
+  return [
+    body,
+    `📱 Chame no WhatsApp: https://wa.me/${digits}`,
+  ].filter(Boolean).join("\n\n");
+}
+
 function contactLine(data: Record<string, unknown>): string {
-  const phone = String(data.telefone || data.contato || "").replace(/\D/g, "");
+  const phone = normalizeBrazilianWhatsappNumber(
+    data.telefone || data.contato,
+  );
   return phone ? `📱 Chame no WhatsApp: https://wa.me/${phone}` : "";
 }
 
@@ -450,10 +522,7 @@ export function generateProductAdCaptions(
   const details = facts.length ? facts.join(", ") + "." : "";
   const price = String(data.preco || "").trim();
   const priceText = price ? `Valor informado: ${price}.` : "";
-  const digits = String(data.telefone || data.contato || "").replace(/\D/g, "");
-  const whatsapp = digits
-    ? `📱 Chame no WhatsApp: https://wa.me/${digits}`
-    : "";
+  const whatsapp = contactLine(data);
   const tags = productTags(title);
   const finish = (lead: string) =>
     clip(

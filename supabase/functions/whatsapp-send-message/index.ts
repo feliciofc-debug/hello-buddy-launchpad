@@ -10,6 +10,7 @@ import {
 } from '../_shared/whatsapp-interactive-safe.ts'
 import { mediaThenButtonPayloads } from '../_shared/whatsapp-media-buttons.ts'
 import { stripInternalWhatsAppSplit } from '../_shared/whatsapp-internal-split.ts'
+import { textThenInteractivePayloads } from '../_shared/whatsapp-text-interactive.ts'
 
 
 
@@ -109,7 +110,7 @@ serve(async (req) => {
           ...(interactive_buttons.header
             ? { header: { type: 'text', text: singleLineInteractiveText(interactive_buttons.header, 60) } }
             : {}),
-          body: { text: truncateCodePoints(safeMessage || interactive_buttons.body || 'Escolha uma opção', 1024) },
+          body: { text: truncateCodePoints(interactive_buttons.body || 'Escolha uma opção', 1024) },
           ...(interactive_buttons.footer
             ? { footer: { text: singleLineInteractiveText(interactive_buttons.footer, 60) } }
             : {}),
@@ -223,7 +224,15 @@ serve(async (req) => {
     console.log('📱 Enviando WhatsApp para:', maskPhoneForLog(to))
 
     const results: any[] = []
-    for (const payload of mediaButtonPayloads ?? [messagePayload]) {
+    const textInteractivePayloads = !mediaButtonPayloads &&
+        (interactive_buttons?.buttons?.length || interactive_list?.rows?.length)
+      ? textThenInteractivePayloads({
+        to,
+        message: safeMessage,
+        interactivePayload: messagePayload,
+      })
+      : [messagePayload]
+    for (const payload of mediaButtonPayloads ?? textInteractivePayloads) {
       const response = await fetch(API_URL, {
         method: 'POST',
         headers: {

@@ -9,6 +9,7 @@ import {
 import { buildSystemPrompt, AMZ_KNOWLEDGE } from "../_shared/agent-soul.ts";
 import { AMZ_TENANT_ID as ADMIN_AMZ_USER_ID } from "../_shared/amz-tenant.ts";
 import {
+  AGENT_PHONE,
   buildAmzContext,
   isAmzOwnerAltPhone,
   OWNER_PHONE,
@@ -310,7 +311,6 @@ import {
   scheduleSlotSaoPauloText,
   videoCaptionChoiceButtons,
   videoCaptionOptionsText,
-  whatsappLinkAtCaptionEnd,
 } from "../_shared/ready-media-actions.ts";
 import { renderedMetaVideoFormat } from "../_shared/meta-video-requirements.ts";
 import {
@@ -489,12 +489,15 @@ import {
   anuncioPostDestinationList,
   anuncioPostFormatButtons,
   anuncioPostNetworkButtons,
+  anuncioRemainingDestinationsList,
   anuncioScheduleApprovalButtons,
   anuncioScheduleTimeButtons,
   canOfferAnuncioPostActions,
+  formatBrazilianWhatsappNumber,
   generateProductAdCaptions,
   generateVehicleAdCaptions,
   parseAnuncioPostRequest,
+  singleWhatsappCtaAtEnd,
   shouldBindPostToLastAnuncio,
   validLastAnuncio,
   type AnuncioPostNetwork,
@@ -6240,6 +6243,7 @@ REGRAS DURAS (valem pra TODAS as 3 opções):
 ${networkStyle}
 - ${ctaBase}
 - NUNCA invente: preço, desconto, "%", "só hoje", "estoque", "últimas unidades", "vagas limitadas", depoimentos, números de clientes.
+- ${niche === "produto" ? "PROIBIDO escrever número de telefone, URL wa.me ou CTA de WhatsApp; o servidor adiciona o contato correto uma única vez no final." : "Não invente telefone ou link de contato."}
 - NUNCA escreva "Conteúdo da imagem", "Nesta imagem", "A arte mostra" ou qualquer descrição do visual.
 - NUNCA cite o nome do dono/anunciante nem trate o leitor pelo nome próprio (nada de "Felicio, ...") — o post é público, para desconhecidos. O protagonista é o PRODUTO.
 - Se briefing cita PESSOA nomeada (consultor/atleta/cliente), use essa pessoa nas 3 opções.
@@ -6620,13 +6624,15 @@ async function generateAnuncioCaptions(
   variation = 0,
 ): Promise<Record<string, PostVariantes>> {
   const niche = anuncioContentNiche(last);
-  const phone = String(last.data.telefone || "").replace(/\D/g, "") ||
-    await buscarTelefoneAgenteTenant(userId) || "";
+  const phone = userId === ADMIN_AMZ_USER_ID
+    ? AGENT_PHONE
+    : await buscarTelefoneAgenteTenant(userId) ||
+      String(last.data.telefone || "").replace(/\D/g, "");
   const finish = (captions: PostVariantes): PostVariantes =>
     Object.fromEntries(
       Object.entries(captions).map(([key, value]) => [
         key,
-        whatsappLinkAtCaptionEnd(value, phone),
+        singleWhatsappCtaAtEnd(value, phone),
       ]),
     ) as PostVariantes;
   if (niche === "veiculo") {
@@ -6639,15 +6645,20 @@ async function generateAnuncioCaptions(
   }
 
   const fallback = finish(generateProductAdCaptions(last.data));
+  const aiData = Object.fromEntries(
+    Object.entries(last.data).filter(([key]) =>
+      !["telefone", "contato", "link_post"].includes(key)
+    ),
+  );
   const product = {
     nome: String(last.data.titulo || "Produto"),
-    descricao: JSON.stringify(last.data),
+    descricao: JSON.stringify(aiData),
     source: "anuncio_produto",
   };
   const briefing =
     `Use somente estes dados fornecidos pelo dono e lidos da foto/embalagem: ${
-      JSON.stringify(last.data)
-    }. Não acrescente característica, benefício ou condição que não esteja nesses dados.`;
+      JSON.stringify(aiData)
+    }. Não acrescente característica, benefício ou condição que não esteja nesses dados. Não escreva telefone, número, link wa.me ou CTA de WhatsApp; o servidor adicionará um único CTA no final.`;
   const entries = await Promise.all(networks.map(async (network) => {
     try {
       const generated = finish(
@@ -16022,13 +16033,16 @@ async function toolCriarAnuncio(
       if (!instagram && conn?.ig_username) instagram = `@${String(conn.ig_username).replace(/^@/, "")}`;
     } catch { /* opcional */ }
 
-    let telefone = (args?.telefone || "").trim() || null;
+    const configuredContact = ctx.userId === ADMIN_AMZ_USER_ID
+      ? AGENT_PHONE
+      : await buscarTelefoneAgenteTenant(ctx.userId);
+    let telefone = formatBrazilianWhatsappNumber(configuredContact) ||
+      formatBrazilianWhatsappNumber(args?.telefone) || null;
     if (!telefone) {
       try {
         const owner = await resolveTenantOwner(sb, ctx.userId);
         if (owner?.phone) {
-          const d = String(owner.phone).replace(/\D/g, "").replace(/^55/, "");
-          if (d.length >= 10) telefone = `(${d.slice(0, 2)}) ${d.slice(2, d.length - 4)}-${d.slice(-4)}`;
+          telefone = formatBrazilianWhatsappNumber(owner.phone) || null;
         }
       } catch { /* opcional */ }
     }
@@ -19311,12 +19325,10 @@ async function callGemini(
       );
       return {
         text: formatCombinedAnuncioPublishResults(results),
-        interactiveList: missing.length
-          ? anuncioPostDestinationList({
-            mediaType: "foto",
-            connected: missing,
-          })
-          : undefined,
+        interactiveList: anuncioRemainingDestinationsList({
+          mediaType: "foto",
+          connected: missing,
+        }),
       };
     }
     if (remetenteEhDono && lastAnuncio && !anuncioPostInteractiveId) {

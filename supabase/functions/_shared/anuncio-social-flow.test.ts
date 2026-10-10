@@ -16,8 +16,12 @@ import {
   anuncioScheduleTimeButtons,
   canOfferAnuncioPostActions,
   chooseAnuncioPostSource,
+  formatBrazilianWhatsappNumber,
   generateVehicleAdCaptions,
   generateProductAdCaptions,
+  normalizeBrazilianWhatsappNumber,
+  anuncioRemainingDestinationsList,
+  singleWhatsappCtaAtEnd,
   type LastAnuncio,
   parseAnuncioPostRequest,
   shouldBindPostToLastAnuncio,
@@ -183,11 +187,11 @@ Deno.test("legendas usam somente o anúncio atual e respeitam segurança", () =>
   assertStringIncludes(captions.A, "R$ 41.900");
   assertStringIncludes(
     captions.A,
-    "📱 Chame no WhatsApp: https://wa.me/21967520706",
+    "📱 Chame no WhatsApp: https://wa.me/5521967520706",
   );
   assertEquals(
     captions.A.endsWith(
-      "📱 Chame no WhatsApp: https://wa.me/21967520706",
+      "📱 Chame no WhatsApp: https://wa.me/5521967520706",
     ),
     true,
   );
@@ -231,6 +235,30 @@ Deno.test("interruptor automático usa kit produto sem vazamento automotivo", ()
   assertEquals(generateProductAdCaptions(data), captions);
 });
 
+Deno.test("legenda tem um único CTA E.164 no final e nenhum telefone no corpo", () => {
+  const caption = singleWhatsappCtaAtEnd(
+    "https://wa.me/5521980804901\n\nInterruptor premium.\nLigue para (21) 96752-0706.\n\n📱 Chame no WhatsApp: https://wa.me/21967520706",
+    "(21) 98080-4901",
+  );
+  assertEquals(
+    caption,
+    "Interruptor premium.\n\n📱 Chame no WhatsApp: https://wa.me/5521980804901",
+  );
+  assertEquals(caption.match(/wa\.me\//g)?.length, 1);
+  assertEquals(caption.endsWith("https://wa.me/5521980804901"), true);
+  assertEquals(/wa\.me\/(?!55)/.test(caption), false);
+});
+
+Deno.test("arte e CTA usam o mesmo contato comercial normalizado", () => {
+  const configured = "5521980804901";
+  assertEquals(
+    normalizeBrazilianWhatsappNumber(
+      formatBrazilianWhatsappNumber(configured),
+    ),
+    configured,
+  );
+});
+
 Deno.test("destino curto mostra só redes conectadas", () => {
   const photo = anuncioPostDestinationList({
     mediaType: "foto",
@@ -253,6 +281,22 @@ Deno.test("destino curto mostra só redes conectadas", () => {
     "📱 Story",
     "🗓️ Agendar",
   ]);
+});
+
+Deno.test("lista pós-publicação contém só redes restantes e nunca agenda", () => {
+  const remaining = anuncioRemainingDestinationsList({
+    mediaType: "foto",
+    connected: ["linkedin"],
+  });
+  assertEquals(remaining?.body, "Quer publicar também em:");
+  assertEquals(remaining?.rows.map((row) => row.title), ["💼 LinkedIn"]);
+  assertEquals(
+    anuncioRemainingDestinationsList({
+      mediaType: "foto",
+      connected: [],
+    }),
+    undefined,
+  );
 });
 
 Deno.test("opções de legenda e pergunta ficam no mesmo balão", () => {
