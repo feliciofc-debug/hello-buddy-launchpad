@@ -20,6 +20,7 @@ import {
   metadataEscolhaLogo,
   type VideoLegendaLogoAsset,
 } from "./video-legenda-logo.ts";
+import { videoCaptionOptionsText } from "./ready-media-actions.ts";
 
 const sb = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -265,11 +266,7 @@ async function avisoDeFila(jobId: string): Promise<string> {
 }
 
 function montarMensagemOpcoes(opcoes: string[]): string {
-  const letras = ["A", "B", "C"];
-  const blocos = opcoes
-    .map((o, i) => `*Opção ${letras[i]}*\n${o}`)
-    .join("\n\n———\n\n");
-  return `🎬 Assisti seu vídeo e transcrevi a fala. Fiz 3 legendas:\n\n${blocos}\n\nResponda *A*, *B* ou *C* para escolher.`;
+  return videoCaptionOptionsText(opcoes);
 }
 
 /**
@@ -356,7 +353,7 @@ export async function iniciarFluxoLegendaVideo(params: {
     segmentos,
     status: "aguardando_escolha",
     formato: formatoInicial,
-    // Padrão seguro: NÃO publica. Só publica se o dono pedir "PUBLICAR".
+    // O render apenas devolve o vídeo; publicar/agendar acontece nos botões finais.
     plataformas: [],
     metadata: {
       opcoes,
@@ -380,32 +377,6 @@ function detectarEscolha(texto: string): number | null {
   if (/^(b|op[çc][ãa]o b|2)\b/.test(t) || /\bop[çc][ãa]o b\b/.test(t)) return 1;
   if (/^(c|op[çc][ãa]o c|3)\b/.test(t) || /\bop[çc][ãa]o c\b/.test(t)) return 2;
   return null;
-}
-
-function ehConfirmacao(texto: string): boolean {
-  return /\b(sim|pode|publica(r)?|posta(r)?|manda(r)?|envia(r)?|autorizo|confirmo|vai|bora|ok|com\s+logo|sem\s+logo)\b/i
-    .test(
-      texto || "",
-    );
-}
-
-/**
- * Decide se a confirmação autoriza PUBLICAR ou apenas ENVIAR o vídeo pronto.
- * Padrão seguro: enviar (sem publicar) — só publica se o dono pedir explicitamente.
- */
-function querPublicar(texto: string): boolean {
-  const t = texto || "";
-  if (/\bn[ãa]o\s+publica/i.test(t) || /\bsem\s+publicar\b/i.test(t)) {
-    return false;
-  }
-  if (
-    /\b(s[óo]\s+(me\s+)?(manda|mandar|envia|enviar)|conferir|confiro|revisar)\b/i
-      .test(t)
-  ) {
-    return false;
-  }
-  return /\b(publica(r)?|posta(r)?|publique|no\s+ar|instagram|facebook)\b/i
-    .test(t);
 }
 
 /** Termos que indicam que a frase é sobre o fluxo do vídeo (não desistência). */
@@ -640,8 +611,6 @@ export async function tratarRespostaFluxoLegenda(params: {
     .eq("user_id", params.userId)
     .in("status", [
       "aguardando_escolha",
-      "aguardando_confirmacao",
-      "aguardando_aprovacao",
       "pendente",
       "processando",
     ])
@@ -662,65 +631,6 @@ export async function tratarRespostaFluxoLegenda(params: {
     return `Já estou gravando ${letraDaCopy(job)} no vídeo. Vai ${
       declararDestino(alvo.formato, alvo.plataformas_pedidas)
     }. Te aviso aqui assim que ficar pronto — a escolha da legenda já está fechada.`;
-  }
-
-  // ---- vídeo já renderizado, esperando APROVAÇÃO do dono para publicar ----
-  if (job.status === "aguardando_aprovacao") {
-    const t = params.texto || "";
-    const aprovou =
-      /\b(aprovar|aprovado|aprovo|publica(r)?|posta(r)?|pode\s+publicar|libera(do)?|ok|sim)\b/i
-        .test(t) &&
-      !/\bn[ãa]o\b/i.test(t);
-
-    // Antes de qualquer coisa: se o dono citou formato/rede nesta mensagem, vale.
-    const alvo = await aplicarPedidoDeFormato(job, t);
-    const destinoFinal = alvo.plataformas_pedidas.length
-      ? alvo.plataformas_pedidas
-      : (Array.isArray(job.plataformas) && job.plataformas.length
-        ? job.plataformas
-        : ["instagram", "facebook"]);
-
-    if (aprovou) {
-      await sb
-        .from("video_render_jobs")
-        .update({
-          status: "aprovado",
-          formato: alvo.formato,
-          plataformas: destinoFinal,
-        })
-        .eq("id", job.id);
-      sb.functions
-        .invoke("video-publicar-aprovado", { body: { job_id: job.id } })
-        .catch((e: any) =>
-          console.error("[video-legenda-flow] publicação falhou:", e?.message)
-        );
-      return `Aprovado ✅ Publicando ${
-        declararDestino(alvo.formato, destinoFinal)
-      } e te aviso aqui quando estiver no ar.`;
-    }
-    if (ehCancelamentoExplicito(t)) {
-      await cancelarJob(job, t, "cancelamento_explicito_aprovacao", {
-        plataformas: [],
-      });
-      return "Beleza, *não publiquei nada*. O vídeo legendado já está com você — se quiser tentar outra legenda, me manda o vídeo de novo.";
-    }
-    if (ehDuvidaDeCancelamento(t)) {
-      return `O vídeo está pronto com a ${
-        letraDaCopy(job)
-      }. ${PERGUNTA_CANCELAR}`;
-    }
-
-    if (
-      detectarEscolha(t) !== null || detectarFormato(t) !== null ||
-      detectarPlataformas(t).length
-    ) {
-      return `O vídeo está pronto com a ${
-        letraDaCopy(job)
-      }. Responda *APROVAR* que eu publico ${
-        declararDestino(alvo.formato, destinoFinal)
-      }, ou *CANCELAR* e nada vai ao ar.`;
-    }
-    return null; // não é resposta do fluxo — o agente segue normalmente
   }
 
   // ---- aguardando escolha da copy ----
@@ -760,92 +670,20 @@ export async function tratarRespostaFluxoLegenda(params: {
         caption,
         copy_escolhida: caption,
         formato: alvo.formato,
-        status: "aguardando_confirmacao",
+        status: "pendente",
+        tentativas: 0,
+        erro_mensagem: null,
+        enfileirado_at: new Date().toISOString(),
+        plataformas: [],
         metadata: {
-          ...(job.metadata || {}),
+          ...metadataEscolhaLogo(job.metadata, "ENVIAR", params.logo),
           copy_letra: letra,
           plataformas_pedidas: alvo.plataformas_pedidas,
-          ...(params.logo
-            ? {
-              logo_bucket: params.logo.bucket,
-              logo_path: params.logo.path,
-              logo_light_background_path: params.logo.lightBackgroundPath,
-              logo_dark_background_path: params.logo.darkBackgroundPath,
-            }
-            : {}),
         },
       })
       .eq("id", job.id);
 
-    // Uma linha curta + UMA pergunta. Sem reimprimir a copy.
-    const confirmar =
-      "Responda *ENVIAR* (só te devolvo o vídeo legendado) ou *PUBLICAR* (te mando pra aprovar e só então publico).";
-    return `Legenda *${letra}* registrada ✅ — vai ${
-      declararDestino(alvo.formato, alvo.plataformas_pedidas)
-    }\n\n${confirmar}`;
-  }
-
-  // ---- aguardando confirmação de publicação ----
-  if (job.status === "aguardando_confirmacao") {
-    // A escolha é definitiva: A/B/C aqui não reabre nada.
-    if (
-      detectarEscolha(params.texto) !== null && !ehConfirmacao(params.texto)
-    ) {
-      return `Já está fechado com a ${
-        letraDaCopy(job)
-      }. Responda *ENVIAR* ou *PUBLICAR*.`;
-    }
-    if (ehCancelamentoExplicito(params.texto) && !querPublicar(params.texto)) {
-      await cancelarJob(
-        job,
-        params.texto,
-        "cancelamento_explicito_confirmacao",
-      );
-      return "Sem problema, não publiquei nada. Quando quiser, me avise.";
-    }
-    if (ehDuvidaDeCancelamento(params.texto)) {
-      return `Esse vídeo continua fechado com a ${
-        letraDaCopy(job)
-      }. Responda *ENVIAR* ou *PUBLICAR* — ou ${PERGUNTA_CANCELAR}`;
-    }
-
-    if (ehConfirmacao(params.texto)) {
-      const publicar = querPublicar(params.texto);
-      const alvo = await aplicarPedidoDeFormato(job, params.texto);
-      const destino = alvo.plataformas_pedidas.length
-        ? alvo.plataformas_pedidas
-        : ["instagram", "facebook"];
-      await sb
-        .from("video_render_jobs")
-        .update({
-          status: "pendente",
-          tentativas: 0,
-          erro_mensagem: null,
-          formato: alvo.formato,
-          enfileirado_at: new Date().toISOString(),
-          plataformas: publicar ? destino : [],
-          metadata: metadataEscolhaLogo(
-            job.metadata,
-            params.texto,
-            params.logo,
-          ),
-        })
-        .eq("id", job.id);
-
-      const espera = await avisoDeFila(job.id);
-      return (publicar
-        ? `Fechado 🎬 Gravando a ${
-          letraDaCopy(job)
-        } no vídeo. Quando terminar, te mando aqui para você aprovar — só publico depois do seu OK, ${
-          declararDestino(alvo.formato, destino)
-        }.`
-        : `Fechado 🎬 Gravando a ${
-          letraDaCopy(job)
-        } no vídeo e te devolvo o arquivo aqui. *Não vou publicar nada.*`) +
-        espera;
-    }
-
-    return null;
+    return `Legenda ${letra} escolhida ✅ Gerando o vídeo…`;
   }
 
   return null;

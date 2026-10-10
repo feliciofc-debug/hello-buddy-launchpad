@@ -104,7 +104,9 @@ serve(async (req) => {
 
     const body = await req.json()
     const isScheduler = body.source === 'scheduler'
-    const sanitizedCaption = await appendLinkPost(supabase, body.user_id, sanitizePublishText(body.caption))
+    const sanitizedCaption = body.preserve_caption === true
+      ? String(body.caption || '').trim()
+      : await appendLinkPost(supabase, body.user_id, sanitizePublishText(body.caption))
     const saveCreationId = (userId: string, queueRowId?: string) => async (creationId: string) => {
       if (!queueRowId) return
       const { error } = await supabase.from('social_posts_queue').update({

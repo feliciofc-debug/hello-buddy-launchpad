@@ -200,16 +200,12 @@ Deno.serve(async (req) => {
       throw new Error("não consegui montar a URL pública do vídeo");
     }
 
-    const plataformas: string[] = Array.isArray(job.plataformas)
-      ? job.plataformas
-      : [];
-    const querPublicar = plataformas.length > 0;
-
-    // NUNCA publicamos direto após o encode: o dono precisa ver o vídeo e aprovar.
+    // NUNCA publicamos direto após o encode: o dono recebe o vídeo pronto
+    // e decide pelos botões vinculados exatamente a esta mídia.
     await supabase
       .from("video_render_jobs")
       .update({
-        status: querPublicar ? "aguardando_aprovacao" : "concluido",
+        status: "concluido",
         resultado_bucket: bucket,
         resultado_path,
         duracao_segundos: duracao_segundos ?? null,
@@ -246,45 +242,18 @@ Deno.serve(async (req) => {
     }
     const blocoCodigo = codigoMidia ? `\n\n${codigoMidia}` : "";
 
-    if (!querPublicar) {
-      // Modo "só me devolve": manda o MP4 legendado no WhatsApp, sem publicar nada.
-      await avisarCliente(
-        supabase,
-        job,
-        `🎬 Pronto! Legenda queimada na tela. *Não publiquei em lugar nenhum.*${blocoCodigo}${blocoLegenda}`,
-        videoUrl,
-        midiaId || undefined,
-        midiaId ? readyMediaActionButtons(midiaId, "video") : undefined,
-      );
-    } else {
-      const nomes = plataformas
-        .map((
-          p,
-        ) => (p === "instagram"
-          ? "Instagram"
-          : p === "facebook"
-          ? "Facebook"
-          : p)
-        )
-        .join(" e ");
-      const fmt = String(job.formato || "feed").toLowerCase();
-      const nomeFormato = fmt === "story"
-        ? "STORY"
-        : fmt === "reels"
-        ? "REELS"
-        : "FEED";
-      await avisarCliente(
-        supabase,
-        job,
-        `🎬 Vídeo pronto com a legenda na tela. *Ainda não publiquei nada.*${blocoCodigo}${blocoLegenda}\n\nResponda *APROVAR* que eu publico como *${nomeFormato}* no ${nomes}, ou *CANCELAR* e nada vai ao ar.`,
-        videoUrl,
-        midiaId || undefined,
-      );
-    }
+    await avisarCliente(
+      supabase,
+      job,
+      `🎬 Pronto! Legenda queimada na tela. *Não publiquei em lugar nenhum.*${blocoCodigo}${blocoLegenda}`,
+      videoUrl,
+      midiaId || undefined,
+      midiaId ? readyMediaActionButtons(midiaId, "video") : undefined,
+    );
 
     return respJson({
       success: true,
-      aguardando_aprovacao: querPublicar,
+      aguardando_aprovacao: false,
       video_url: videoUrl,
       midia_id: midiaId,
       biblioteca_erro: bibliotecaErro,

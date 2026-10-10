@@ -79,7 +79,9 @@ serve(async (req) => {
 
     const body = await req.json()
     const isScheduler = body.source === 'scheduler'
-    const sanitizedBodyMessage = await appendLinkPost(supabase, body.user_id, sanitizePublishText(body.message))
+    const sanitizedBodyMessage = body.preserve_caption === true
+      ? String(body.message || '').trim()
+      : await appendLinkPost(supabase, body.user_id, sanitizePublishText(body.message))
 
     let posts: any[] = []
 

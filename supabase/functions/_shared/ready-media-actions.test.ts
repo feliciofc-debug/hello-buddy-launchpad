@@ -10,7 +10,18 @@ import {
   deliveredMediaState,
   modelMediaIdPresentInUserText,
   parseReadyMediaAction,
+  parseReadyMediaScheduleChoice,
+  parseVideoCaptionChoice,
+  readyMediaActionRoute,
+  readyMediaButtonsAllowed,
   readyMediaActionButtons,
+  readyMediaScheduleList,
+  readyVideoPublishPlan,
+  replyTextFromInteractiveId,
+  scheduleSlotSaoPauloText,
+  videoCaptionChoiceButtons,
+  videoCaptionOptionsText,
+  whatsappLinkAtCaptionEnd,
 } from "./ready-media-actions.ts";
 
 const VIDEO_ID = "12345678-1234-4123-8123-123456789abc";
@@ -85,4 +96,87 @@ Deno.test("ID inventado pelo modelo é descartado se não veio do usuário", () 
     ),
     VIDEO_ID,
   );
+});
+
+Deno.test("opções A/B/C preservam a resposta digitada e vinculam troca à mídia", () => {
+  assertEquals(
+    replyTextFromInteractiveId("<<INTERACTIVE_ID:reply_text:B>>"),
+    "B",
+  );
+  assertEquals(
+    videoCaptionChoiceButtons().buttons.map((button) => button.title),
+    ["Opção A", "Opção B", "Opção C"],
+  );
+  const choice = videoCaptionChoiceButtons(VIDEO_ID).buttons[2];
+  assertEquals(
+    parseVideoCaptionChoice(`<<INTERACTIVE_ID:${choice.id}>>`),
+    { letter: "C", mediaId: VIDEO_ID },
+  );
+});
+
+Deno.test("agendamento oferece quatro horários vinculados à mídia", () => {
+  const list = readyMediaScheduleList(VIDEO_ID);
+  assertEquals(list.rows.map((row) => row.title), [
+    "Hoje 18h",
+    "Amanhã 10h",
+    "Amanhã 18h",
+    "Outro horário",
+  ]);
+  assertEquals(
+    parseReadyMediaScheduleChoice(
+      `<<INTERACTIVE_ID:${list.rows[1].id}>>`,
+    ),
+    { slot: "tomorrow_10", mediaId: VIDEO_ID },
+  );
+  assertEquals(
+    scheduleSlotSaoPauloText(
+      "tomorrow_10",
+      new Date("2026-10-09T12:00:00Z"),
+    ),
+    "2026-10-10 10:00",
+  );
+});
+
+Deno.test("link do WhatsApp fica sempre no final da legenda publicada", () => {
+  const caption = whatsappLinkAtCaptionEnd(
+    "📱 Chame no WhatsApp: https://wa.me/5511000000000\n\nLegenda B\n\n#carro",
+    "5592999999999",
+  );
+  assertEquals(
+    caption,
+    "Legenda B\n\n#carro\n\n📱 Chame no WhatsApp: https://wa.me/5592999999999",
+  );
+});
+
+Deno.test("publicação do vídeo usa exatamente a opção escolhida sem novas variantes", () => {
+  const optionB = "O verdadeiro luxo automotivo está nos detalhes.";
+  const plan = readyVideoPublishPlan(optionB);
+  assertEquals(plan.caption, optionB);
+  assertEquals(plan.generateSocialVariants, false);
+  assertEquals(plan.format, "reels");
+  assertEquals(
+    readyMediaActionRoute({
+      action: "publish",
+      mediaType: "video",
+      isLegendVideoWithChosenCaption: true,
+    }),
+    "direct_video_publish",
+  );
+});
+
+Deno.test("lead nunca recebe botões de mídia pronta", () => {
+  assertEquals(readyMediaButtonsAllowed(false), false);
+  assertEquals(readyMediaButtonsAllowed(true), true);
+});
+
+Deno.test("legendas longas ficam completas antes dos botões", () => {
+  const longCaption = "x".repeat(2000);
+  const text = videoCaptionOptionsText([
+    "Opção curta A",
+    longCaption,
+    "Opção curta C",
+  ]);
+  assertStringIncludes(text, longCaption);
+  assertEquals(text.includes("reply_text:"), false);
+  assertEquals(videoCaptionChoiceButtons().body, "Escolha a legenda:");
 });

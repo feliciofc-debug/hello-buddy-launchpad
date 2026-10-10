@@ -296,8 +296,18 @@ import {
 } from "../_shared/owner-media-intent.ts";
 import {
   modelMediaIdPresentInUserText,
+  parseReadyMediaScheduleChoice,
   parseReadyMediaAction,
+  parseVideoCaptionChoice,
+  readyMediaActionRoute,
+  readyMediaButtonsAllowed,
   readyMediaActionButtons,
+  readyMediaScheduleList,
+  readyVideoPublishPlan,
+  replyTextFromInteractiveId,
+  scheduleSlotSaoPauloText,
+  videoCaptionChoiceButtons,
+  videoCaptionOptionsText,
 } from "../_shared/ready-media-actions.ts";
 import {
   classifyPendingBrandReply,
@@ -385,6 +395,7 @@ import {
   LOGO_PRODUCT_SIMULATION_NOTICE,
 } from "../_shared/logo-placement-intent.ts";
 import {
+  bucketPathDeUrl,
   iniciarFluxoLegendaVideo,
   resolverVideoLegendado,
   tratarRespostaFluxoLegenda,
@@ -2939,6 +2950,10 @@ type AgentConvState = {
     created_at: string;
   } | null;
   pending_video_setup?: PendingVideoSetupState | null;
+  pending_ready_media_schedule?: {
+    media_id: string;
+    created_at: string;
+  } | null;
   pending_creative_media_ambiguity?: { original_request: string; created_at: string } | null;
   pending_anuncio_cliente?: {
     args: Record<string, unknown>;
@@ -9776,6 +9791,163 @@ async function resolverMidiaParaPublicacao(
   return { midia: null };
 }
 
+type ReadyLegendVideo = {
+  media: any;
+  job: any;
+  caption: string;
+};
+
+async function resolveReadyLegendVideo(
+  userId: string,
+  mediaId: string,
+): Promise<ReadyLegendVideo | null> {
+  const resolved = await resolverMidiaBibliotecaPorId(userId, mediaId);
+  const media = resolved.midia;
+  if (
+    !media || media.tipo !== "video" || media.origem !== "video_legendado"
+  ) {
+    return null;
+  }
+  const location = bucketPathDeUrl(String(media.midia_url || ""));
+  if (!location) return null;
+  const { data: job } = await sb
+    .from("video_render_jobs")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("resultado_bucket", location.bucket)
+    .eq("resultado_path", location.path)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!job) return null;
+  const caption = String(
+    job.copy_escolhida || job.caption || media.contexto_original || "",
+  ).trim();
+  return caption ? { media, job, caption } : null;
+}
+
+async function exactReadyVideoCaption(
+  ready: ReadyLegendVideo,
+  userId: string,
+): Promise<string> {
+  const phone = await buscarTelefoneAgenteTenant(userId);
+  return readyVideoPublishPlan(ready.caption, phone).caption;
+}
+
+async function publishReadyLegendVideo(
+  mediaId: string,
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  const ready = await resolveReadyLegendVideo(ctx.userId, mediaId);
+  if (!ready) {
+    return "Não encontrei o vídeo legendado ou a legenda escolhida. Nada foi publicado.";
+  }
+  const networks = await connectedAnuncioNetworks(ctx.userId);
+  if (!networks.length) {
+    return "Não encontrei Facebook nem Instagram conectados nessa conta.";
+  }
+  const caption = await exactReadyVideoCaption(ready, ctx.userId);
+  const { error: updateError } = await sb
+    .from("video_render_jobs")
+    .update({
+      status: "aprovado",
+      formato: "reels",
+      plataformas: networks,
+      copy_escolhida: caption,
+      caption,
+      metadata: {
+        ...(ready.job.metadata || {}),
+        plataformas_pedidas: networks,
+      },
+      erro_mensagem: null,
+    })
+    .eq("id", ready.job.id)
+    .eq("user_id", ctx.userId);
+  if (updateError) {
+    console.error("[ready-video][publish-state]", updateError.message);
+    return "Não consegui preparar a publicação do vídeo. Nada foi publicado.";
+  }
+  const { data, error } = await sb.functions.invoke(
+    "video-publicar-aprovado",
+    { body: { job_id: ready.job.id, notify_whatsapp: false } },
+  );
+  if (error || !data?.success) {
+    const failures = Array.isArray(data?.erros)
+      ? data.erros.join(" | ")
+      : error?.message || data?.error || "falha desconhecida";
+    return `Não consegui publicar o vídeo: ${failures}`;
+  }
+  const published: string[] = Array.isArray(data?.plataformas)
+    ? data.plataformas
+    : networks;
+  const names = published.map((network) =>
+    network === "instagram" ? "Instagram" : "Facebook"
+  ).join(" e ");
+  const links = Array.isArray(data?.links)
+    ? data.links
+      .filter((item: any) => typeof item?.url === "string")
+      .map((item: any) =>
+        `${item.plataforma === "instagram" ? "Instagram" : "Facebook"}: ${item.url}`
+      )
+    : [];
+  return `✅ Publicado no ${names}${links.length ? `\n${links.join("\n")}` : ""}`;
+}
+
+async function scheduleReadyLegendVideo(
+  mediaId: string,
+  scheduledDate: Date,
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  const ready = await resolveReadyLegendVideo(ctx.userId, mediaId);
+  if (!ready) {
+    return "Não encontrei o vídeo legendado ou a legenda escolhida. Nada foi agendado.";
+  }
+  if (!hasMinimumScheduleLead(scheduledDate)) {
+    return "Escolha um horário com pelo menos 10 minutos de antecedência.";
+  }
+  const networks = await connectedAnuncioNetworks(ctx.userId);
+  if (!networks.length) {
+    return "Não encontrei Facebook nem Instagram conectados nessa conta.";
+  }
+  const caption = await exactReadyVideoCaption(ready, ctx.userId);
+  const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+  const rows = networks.map((platform) => ({
+    user_id: ctx.userId,
+    produto_id: null,
+    produto_source: "video_legendado",
+    platform,
+    post_text: caption,
+    image_url: null,
+    video_url: ready.media.midia_url,
+    approval_token: token,
+    solicitante_telefone: ctx.fromNumber,
+    status: "pendente",
+    scheduled_at: scheduledDate.toISOString(),
+    error_message: null,
+    updated_at: new Date().toISOString(),
+  }));
+  const { data, error } = await sb.from("social_posts_queue")
+    .insert(rows)
+    .select("id");
+  if (error || (data?.length ?? 0) !== rows.length) {
+    console.error("[ready-video][schedule]", error?.message || "fila incompleta");
+    return "Não consegui salvar o agendamento. Nada foi agendado.";
+  }
+  await sb.from("video_render_jobs").update({
+    copy_escolhida: caption,
+    caption,
+    metadata: {
+      ...(ready.job.metadata || {}),
+      agendamento_token: token,
+      agendado_para: scheduledDate.toISOString(),
+      plataformas_pedidas: networks,
+    },
+  }).eq("id", ready.job.id).eq("user_id", ctx.userId);
+  return `✅ Agendado para ${formatScheduledDate(scheduledDate)} no ${
+    formatSocialNetworks(networks)
+  }.`;
+}
+
 async function toolPostarMidiaBiblioteca(
   args: { legenda?: string; nome?: string; preco?: number | string; link?: string; tom?: string; redes?: string[]; midia_id?: string; formato?: string; incluir_cta_whatsapp?: boolean; briefing?: string; usar_contexto_conversa?: boolean; pedido_original?: string },
   ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
@@ -16156,6 +16328,7 @@ async function callGemini(
 ): Promise<{
   text: string;
   imageUrl?: string;
+  videoUrl?: string;
   forwardProof?: string;
   forwardAttempted?: boolean;
   interactiveList?: WhatsAppInteractiveList;
@@ -16346,6 +16519,8 @@ async function callGemini(
     const brandInteractiveId = userContent.match(/<<INTERACTIVE_ID:(brand_[^>]+)>>/i)?.[1]?.toLowerCase() || "";
     const socialInteractiveId = userContent.match(/<<INTERACTIVE_ID:(social_[^>]+)>>/i)?.[1] || "";
     const readyMediaAction = parseReadyMediaAction(userContent);
+    const readyMediaScheduleChoice = parseReadyMediaScheduleChoice(userContent);
+    const videoCaptionChoice = parseVideoCaptionChoice(userContent);
     const anuncioPostInteractiveId = userContent.match(
       /<<INTERACTIVE_ID:(anuncio_post:[^>]+)>>/i,
     )?.[1]?.toLowerCase() || "";
@@ -16434,8 +16609,161 @@ async function callGemini(
         normalizePt(String(previousHistoryMessage.content ?? "")),
       );
     const ownerMediaIntent = classifyOwnerMediaIntent(userContent);
+    if (remetenteEhDono && videoCaptionChoice) {
+      const ready = await resolveReadyLegendVideo(
+        toolCtx.userId,
+        videoCaptionChoice.mediaId,
+      );
+      if (!ready) {
+        return {
+          text:
+            "Não encontrei esse vídeo legendado ou suas opções. Nada foi alterado.",
+        };
+      }
+      const options: string[] = Array.isArray(ready.job.metadata?.opcoes)
+        ? ready.job.metadata.opcoes
+        : [];
+      const index = ["A", "B", "C"].indexOf(videoCaptionChoice.letter);
+      const caption = String(options[index] || "").trim();
+      if (!caption) {
+        return { text: "Essa opção de legenda não está mais disponível." };
+      }
+      await Promise.all([
+        sb.from("video_render_jobs").update({
+          copy_escolhida: caption,
+          caption,
+          metadata: {
+            ...(ready.job.metadata || {}),
+            copy_letra: videoCaptionChoice.letter,
+          },
+        }).eq("id", ready.job.id).eq("user_id", toolCtx.userId),
+        sb.from("midias_whatsapp").update({
+          contexto_original: caption.slice(0, 1500),
+        }).eq("id", ready.media.id).eq("user_id", toolCtx.userId),
+      ]);
+      return {
+        text:
+          `Legenda ${videoCaptionChoice.letter} escolhida ✅\n\n🎬 Vídeo pronto com a nova legenda de publicação.`,
+        videoUrl: ready.media.midia_url,
+        interactiveButtons: readyMediaActionButtons(
+          ready.media.id,
+          "video",
+        ),
+      };
+    }
+    if (remetenteEhDono && readyMediaScheduleChoice) {
+      if (readyMediaScheduleChoice.slot === "custom") {
+        if (toolCtx.convId) {
+          const current: AgentConvState = toolCtx.agentState ?? {};
+          await saveAgentState(sb, {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          }, {
+            pending_ready_media_schedule: {
+              media_id: readyMediaScheduleChoice.mediaId,
+              created_at: new Date().toISOString(),
+            },
+          }, current);
+          current.pending_ready_media_schedule = {
+            media_id: readyMediaScheduleChoice.mediaId,
+            created_at: new Date().toISOString(),
+          };
+          toolCtx.agentState = current;
+        }
+        return {
+          text:
+            "Qual dia e horário? Ex.: 30/10 às 15h. Vou usar a mesma legenda escolhida.",
+        };
+      }
+      const scheduledDate = parseSaoPauloDateTime(
+        scheduleSlotSaoPauloText(readyMediaScheduleChoice.slot),
+      );
+      if (!scheduledDate) {
+        return { text: "Não consegui interpretar esse horário. Escolha outro." };
+      }
+      return {
+        text: await scheduleReadyLegendVideo(
+          readyMediaScheduleChoice.mediaId,
+          scheduledDate,
+          toolCtx,
+        ),
+      };
+    }
+    const pendingReadySchedule = toolCtx.agentState
+      ?.pending_ready_media_schedule;
+    if (
+      remetenteEhDono && pendingReadySchedule &&
+      !/<<INTERACTIVE_ID:/i.test(userContent)
+    ) {
+      const scheduledDate = parseSaoPauloDateTime(String(userContent).trim());
+      if (scheduledDate) {
+        const text = await scheduleReadyLegendVideo(
+          pendingReadySchedule.media_id,
+          scheduledDate,
+          toolCtx,
+        );
+        if (toolCtx.convId) {
+          await saveAgentState(sb, {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          }, { pending_ready_media_schedule: null }, toolCtx.agentState ?? {});
+          if (toolCtx.agentState) {
+            toolCtx.agentState.pending_ready_media_schedule = null;
+          }
+        }
+        return { text };
+      }
+      return {
+        text:
+          "Não entendi o horário. Informe dia e hora, por exemplo: 30/10 às 15h.",
+      };
+    }
     if (remetenteEhDono && readyMediaAction) {
       const isVideo = readyMediaAction.mediaType === "video";
+      const readyLegendVideo = isVideo
+        ? await resolveReadyLegendVideo(
+          toolCtx.userId,
+          readyMediaAction.mediaId,
+        )
+        : null;
+      const readyRoute = readyMediaActionRoute({
+        action: readyMediaAction.action,
+        mediaType: readyMediaAction.mediaType,
+        isLegendVideoWithChosenCaption: !!readyLegendVideo,
+      });
+      if (readyLegendVideo && readyRoute !== "social_variants") {
+        if (readyRoute === "direct_video_publish") {
+          return {
+            text: await publishReadyLegendVideo(
+              readyMediaAction.mediaId,
+              toolCtx,
+            ),
+          };
+        }
+        if (readyRoute === "direct_video_schedule") {
+          return {
+            text: "Escolha quando publicar. Vou usar a mesma legenda.",
+            interactiveList: readyMediaScheduleList(readyMediaAction.mediaId),
+          };
+        }
+        const options = Array.isArray(readyLegendVideo.job.metadata?.opcoes)
+          ? readyLegendVideo.job.metadata.opcoes
+          : [];
+        if (options.length < 3) {
+          return {
+            text:
+              "As opções originais desta legenda não estão mais disponíveis. Envie o vídeo novamente para criar novas opções.",
+          };
+        }
+        return {
+          text: videoCaptionOptionsText(options),
+          interactiveButtons: videoCaptionChoiceButtons(
+            readyMediaAction.mediaId,
+          ),
+        };
+      }
       const postResult = await toolPostarMidiaBiblioteca({
         midia_id: readyMediaAction.mediaId,
         pedido_original: userContent,
@@ -19843,6 +20171,7 @@ async function sendWhatsApp(
     beforeChunk?: (chunk: string) => Promise<void>;
     alreadyLogged?: boolean;
   },
+  videoUrl?: string,
 ): Promise<string | null> {
   const dedupedMessage = dedupeConsecutiveReplyText(message);
   const automaticMessageKey = JSON.stringify([
@@ -19850,6 +20179,7 @@ async function sendWhatsApp(
     String(to || "").replace(/\D/g, ""),
     dedupedMessage,
     imageUrl || null,
+    videoUrl || null,
     interactiveList || null,
     interactiveButtons || null,
   ]);
@@ -19877,6 +20207,7 @@ async function sendWhatsApp(
     };
     if (!skipLog) body.log_sender = "agent";
     if (imageUrl && index === 0) body.image_url = imageUrl;
+    if (videoUrl && index === 0) body.video_url = videoUrl;
     if (interactiveList && index === chunks.length - 1) body.interactive_list = interactiveList;
     if (interactiveButtons && index === chunks.length - 1) body.interactive_buttons = interactiveButtons;
     const res = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-send-message`, {
@@ -20321,7 +20652,7 @@ async function processOne(queueId: string) {
       contactNumber: row.from_number,
     };
 
-    const userText = extractText(row.payload);
+    const userText = replyTextFromInteractiveId(extractText(row.payload));
     let commercialContactForOwner: any = null;
     let inboundContent = userText || `(${row.message_type ?? "mídia"} sem legenda)`;
     const directNearbySearch = row.message_type === "text" ? detectNearbySearch(userText) : null;
@@ -22381,6 +22712,23 @@ async function processOne(queueId: string) {
       let sendError: string | null = null;
       try {
         const sentId = await sendWhatsApp(userId, row.from_number, reply);
+        if (
+          videoFlowReply &&
+          videoFlowReply.includes("*Opção A*") &&
+          videoFlowReply.includes("*Opção B*") &&
+          videoFlowReply.includes("*Opção C*") &&
+          readyMediaButtonsAllowed(fromIsOwner)
+        ) {
+          const buttons = videoCaptionChoiceButtons();
+          await sendWhatsApp(
+            userId,
+            row.from_number,
+            buttons.body,
+            undefined,
+            undefined,
+            buttons,
+          );
+        }
         if (sentId && outMsg?.id) {
           await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
         }
@@ -23866,6 +24214,7 @@ Regras:
 
     let reply = "";
     let generatedImageUrl: string | undefined;
+    let generatedVideoUrl: string | undefined;
     let interactiveList: WhatsAppInteractiveList | undefined;
     let interactiveButtons: WhatsAppInteractiveButtons | undefined;
     let forwardProof: string | undefined;
@@ -23897,6 +24246,7 @@ Regras:
         });
         reply = aiResult.text;
         generatedImageUrl = aiResult.imageUrl;
+        generatedVideoUrl = aiResult.videoUrl;
         interactiveList = aiResult.interactiveList;
         interactiveButtons = metaAdsQuestionarioResult.offerResume
           ? metaAdsQuestionarioContinuarButtons()
@@ -24098,8 +24448,18 @@ Regras:
         user_id: userId,
         direction: "outbound",
         sender: "agent",
-        content: generatedImageUrl ? `${loggedContent}\n\n[imagem: ${generatedImageUrl}]` : loggedContent,
-        message_type: generatedImageUrl ? "image" : (interactiveList || interactiveButtons) ? "interactive" : "text",
+        content: generatedImageUrl
+          ? `${loggedContent}\n\n[imagem: ${generatedImageUrl}]`
+          : generatedVideoUrl
+          ? `${loggedContent}\n\n[vídeo: ${generatedVideoUrl}]`
+          : loggedContent,
+        message_type: generatedImageUrl
+          ? "image"
+          : generatedVideoUrl
+          ? "video"
+          : (interactiveList || interactiveButtons)
+          ? "interactive"
+          : "text",
       })
       .select("id")
       .single();
@@ -24127,6 +24487,7 @@ Regras:
             await wait(betweenPartsDelayForSenderMs(inboundFromOwner, chunk.length));
           },
         },
+        generatedVideoUrl,
       );
       if (sentId && outMsg?.id) {
         await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);

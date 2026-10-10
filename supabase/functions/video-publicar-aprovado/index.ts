@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
   );
 
   try {
-    const { job_id } = await req.json();
+    const { job_id, notify_whatsapp = true } = await req.json();
     if (!job_id) throw new Error("job_id obrigatório");
 
     const { data: job } = await supabase
@@ -129,6 +129,7 @@ Deno.serve(async (req) => {
 
     const publicados: string[] = [];
     const erros: string[] = [];
+    const links: Array<{ plataforma: string; url: string }> = [];
 
     if (ehStory) {
       // STORY: função dedicada, aceita os dois canais de uma vez.
@@ -170,11 +171,17 @@ Deno.serve(async (req) => {
                 video_url: videoUrl,
                 caption: job.copy_escolhida || job.caption || " ",
                 user_id: job.user_id,
+                preserve_caption: true,
               },
             },
           );
           if (pErr) throw pErr;
-          if (res?.success) publicados.push(plataforma);
+          if (res?.success) {
+            publicados.push(plataforma);
+            if (typeof res?.post_url === "string" && res.post_url) {
+              links.push({ plataforma, url: res.post_url });
+            }
+          }
           else {
             erros.push(
               friendlyMetaVideoPublishError(
@@ -199,16 +206,19 @@ Deno.serve(async (req) => {
       })
       .eq("id", job.id);
 
-    if (job.telefone) {
+    if (job.telefone && notify_whatsapp !== false) {
+      const linksText = links.length
+        ? `\n${links.map((link) =>
+          `${link.plataforma === "instagram" ? "Instagram" : "Facebook"}: ${link.url}`
+        ).join("\n")}`
+        : "";
       const msg = erros.length === 0 &&
           publicados.length === plataformas.length
-        ? `✅ Publicado como *${
-          ehStory ? "STORY" : "REELS"
-        }* com a legenda na tela em: ${
+        ? `✅ Publicado no ${
           publicados
             .map((p) => (p === "instagram" ? "Instagram" : "Facebook"))
             .join(" e ")
-        }.`
+        }${linksText}`
         : `${
           publicados.length
             ? `Publiquei em ${
@@ -233,6 +243,7 @@ Deno.serve(async (req) => {
       success: erros.length === 0 && publicados.length === plataformas.length,
       plataformas: publicados,
       erros,
+      links,
     });
   } catch (e) {
     console.error("[video-publicar-aprovado] erro:", e);
