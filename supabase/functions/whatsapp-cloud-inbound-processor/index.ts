@@ -526,6 +526,11 @@ import {
 } from "../_shared/anuncio-photo-prompt.ts";
 import { buildVehicleAdContent } from "../_shared/anuncio-vehicle-details.ts";
 import {
+  anuncioArgsFromOwnerData,
+  isPendingAnuncioDataCancellation,
+  pendingAnuncioDataIsActive,
+} from "../_shared/anuncio-data-followup.ts";
+import {
   classifyStoreReply,
   storeNameFromSite,
 } from "../_shared/anuncio-store-flow.ts";
@@ -2965,7 +2970,7 @@ type AgentConvState = {
   last_media_interaction?: { media_id: string; at: string };
   pending_single_photo?: {
     media_id: string;
-    stage: "actions" | "networks" | "format";
+    stage: "actions" | "ad_data" | "destination" | "networks" | "format";
     networks?: AnuncioPostNetwork[];
     created_at: string;
   } | null;
@@ -6930,6 +6935,16 @@ function formatCombinedAnuncioPublishResults(results: string[]): string {
   }`;
 }
 
+function formatDirectSocialPublishResult(raw: string): string {
+  try {
+    return JSON.parse(raw)?.status === "publicado"
+      ? formatCombinedAnuncioPublishResults([raw])
+      : formatSocialPostToolResult(raw);
+  } catch {
+    return formatSocialPostToolResult(raw);
+  }
+}
+
 async function replaceAnuncioPendingCaptions(
   tokens: string[],
   captions: PostVariantes | Record<string, PostVariantes>,
@@ -7989,18 +8004,7 @@ function formatSocialPostToolResult(raw: string): string {
   }
 
   if (data?.status === "publicado") {
-    const redesArr = Array.isArray(data.redes_publicadas) ? data.redes_publicadas : [];
-    const redesFmt = redesArr.length
-      ? redesArr.map((r: string) => `✅ *${String(r).toUpperCase()}*`).join("\n")
-      : "⚠️ *nenhuma rede publicou*";
-    const falhas = Array.isArray(data.redes_falharam) && data.redes_falharam.length
-      ? `\n\n❌ *Falhas:*\n${data.redes_falharam.map((f: any) => `• ${f.rede}${f.erro ? ` — ${f.erro}` : ""}`).join("\n")}`
-      : "";
-    const notas = Array.isArray(data.notas) && data.notas.length
-      ? `\n\n${data.notas.map((n: string) => `ℹ️ ${n}`).join("\n")}`
-      : "";
-    const header = redesArr.length ? "🎉 *POSTAGEM REALIZADA COM SUCESSO!* 🎉" : "⚠️ *POSTAGEM NÃO CONCLUÍDA*";
-    return `${header}\n\n📢 *${data.produto?.nome ?? "produto"}*\n\n${redesFmt}${notas}${falhas}`;
+    return formatCombinedAnuncioPublishResults([raw]);
   }
 
   if (data?.status === "cancelado") return "Preview cancelado. Não publiquei nada.";
@@ -9612,6 +9616,25 @@ async function toolEscolherVariantePost(
     preview: scripts,
     instrucoes: `Mostre que a Opção ${opcao} está ativa e ofereça publicar agora ou agendar. Se confirmar publicação, chame confirmar_postagem_redes com token="${token}". Se informar uma data futura, chame agendar_post_pendente com o mesmo token. Se pedir ajuste, chame revisar_post_pendente.`,
   });
+}
+
+async function escolherVarianteEPublicarPost(
+  args: { token: string; opcao: string },
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  const selected = await toolEscolherVariantePost(args, ctx);
+  try {
+    if (JSON.parse(selected)?.status !== "variante_selecionada") {
+      return selected;
+    }
+  } catch {
+    return selected;
+  }
+  await markAnuncioPendingAsPreviewed(
+    [String(args.token || "").trim().toLowerCase()],
+    ctx.userId,
+  );
+  return await toolConfirmarPostagemRedes({ token: args.token }, ctx);
 }
 
 
@@ -12923,7 +12946,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "escolher_variante_post",
-      description: "🎯 USE quando o dono responder 'A', 'B', 'C', 'opção B', 'a segunda', 'quero a C' etc para ESCOLHER qual das 3 variantes do post pendente vai publicar. Troca a variante ativa (sem chamar IA). Depois pergunte se pode postar.",
+      description: "🎯 USE quando o dono responder 'A', 'B', 'C', 'opção B', 'a segunda', 'quero a C' etc para ESCOLHER qual das 3 variantes do post pendente será publicada. A escolha publica imediatamente; não peça nova aprovação.",
       parameters: {
         type: "object",
         properties: {
@@ -16711,7 +16734,11 @@ async function runTool(
   if (name === "cancelar_agendamento_post") return { result: await toolCancelarAgendamentoPost(args ?? {}, ctx) };
   if (name === "remarcar_agendamento_post") return { result: await toolRemarcarAgendamentoPost(args ?? {}, ctx) };
   if (name === "revisar_post_pendente") return { result: await toolRevisarPostPendente(args ?? {}, ctx) };
-  if (name === "escolher_variante_post") return { result: await toolEscolherVariantePost(args ?? {}, ctx) };
+  if (name === "escolher_variante_post") {
+    return {
+      result: await escolherVarianteEPublicarPost(args ?? {}, ctx),
+    };
+  }
   if (name === "registrar_logo_cliente") return { result: await toolRegistrarLogoCliente(args ?? {}, ctx) };
   if (name === "salvar_midia_biblioteca") return { result: await toolSalvarMidiaBiblioteca(args ?? {}, ctx) };
   if (name === "postar_midia_biblioteca") return { result: await toolPostarMidiaBiblioteca(args ?? {}, ctx) };
@@ -16983,6 +17010,62 @@ async function callGemini(
     const singlePhotoInteractiveId = userContent.match(
       /<<INTERACTIVE_ID:(single_photo:[^>]+)>>/i,
     )?.[1]?.toLowerCase() || "";
+    if (
+      remetenteEhDono &&
+      pendingSinglePhoto?.stage === "ad_data"
+    ) {
+      const active = pendingAnuncioDataIsActive(
+        pendingSinglePhoto.created_at,
+      );
+      const anyInteractiveId = userContent.match(
+        /<<INTERACTIVE_ID:([^>]+)>>/i,
+      )?.[1] || "";
+      const clearPendingAdData = async () => {
+        if (!toolCtx.convId) return;
+        await saveAgentState(
+          sb,
+          {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          },
+          { pending_single_photo: null },
+          toolCtx.agentState ?? {},
+        );
+        if (toolCtx.agentState) {
+          toolCtx.agentState.pending_single_photo = null;
+        }
+      };
+      if (!active || anyInteractiveId) {
+        await clearPendingAdData();
+      } else if (isPendingAnuncioDataCancellation(userContent)) {
+        await clearPendingAdData();
+        return { text: "Certo, cancelei o anúncio." };
+      } else {
+        const anuncioArgs = anuncioArgsFromOwnerData(userContent);
+        if (anuncioArgs) {
+          await clearPendingAdData();
+          console.log("[pietro][deterministic] criar_anuncio dados_pendentes");
+          const raw = await toolCriarAnuncio(anuncioArgs, toolCtx);
+          let parsed: any = {};
+          try {
+            parsed = JSON.parse(raw);
+          } catch {
+            return {
+              text:
+                "Não consegui concluir o anúncio porque a ferramenta devolveu uma resposta inválida.",
+            };
+          }
+          return {
+            text: String(
+              parsed?.mensagem || parsed?.instrucao || parsed?.erro ||
+                "Anúncio processado.",
+            ),
+            interactiveButtons: parsed?.interactive_buttons,
+          };
+        }
+      }
+    }
     if (remetenteEhDono && readyVideoRerenderAction) {
       return {
         text: await rerenderReadyLegendVideo(
@@ -17732,8 +17815,32 @@ async function callGemini(
     }
     if (remetenteEhDono && pendingSinglePhoto && singlePhotoInteractiveId === "single_photo:ad") {
       if (toolCtx.convId) {
-        await saveAgentState(sb, { id: toolCtx.convId, userId: toolCtx.userId, contactNumber: toolCtx.fromNumber }, { pending_single_photo: null }, toolCtx.agentState ?? {});
-        if (toolCtx.agentState) toolCtx.agentState.pending_single_photo = null;
+        const next = {
+          ...pendingSinglePhoto,
+          stage: "ad_data" as const,
+          created_at: new Date().toISOString(),
+        };
+        const interaction = {
+          media_id: pendingSinglePhoto.media_id,
+          at: new Date().toISOString(),
+        };
+        await saveAgentState(
+          sb,
+          {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          },
+          {
+            pending_single_photo: next,
+            last_media_interaction: interaction,
+          },
+          toolCtx.agentState ?? {},
+        );
+        if (toolCtx.agentState) {
+          toolCtx.agentState.pending_single_photo = next;
+          toolCtx.agentState.last_media_interaction = interaction;
+        }
       }
       return { text: "Me mande em uma mensagem os dados reais do anúncio: título, preço, itens e condições. Vou usar esta foto." };
     }
@@ -17747,21 +17854,83 @@ async function callGemini(
     if (remetenteEhDono && pendingSinglePhoto && singlePhotoInteractiveId === "single_photo:post") {
       const connected = await connectedAnuncioNetworks(toolCtx.userId);
       if (!connected.length) return { text: "Não encontrei Facebook nem Instagram conectados nessa conta." };
-      const next = { ...pendingSinglePhoto, stage: "networks" as const, created_at: new Date().toISOString() };
+      const next = { ...pendingSinglePhoto, stage: "destination" as const, created_at: new Date().toISOString() };
       if (toolCtx.convId) {
         await saveAgentState(sb, { id: toolCtx.convId, userId: toolCtx.userId, contactNumber: toolCtx.fromNumber }, { pending_single_photo: next }, toolCtx.agentState ?? {});
         if (toolCtx.agentState) toolCtx.agentState.pending_single_photo = next;
       }
-      const networkButtons = anuncioPostNetworkButtons(connected);
+      const destinationList = anuncioPostDestinationList({
+        mediaType: "foto",
+        connected,
+      });
       return {
-        text: "Em quais redes?",
-        interactiveButtons: {
-          ...networkButtons,
-          buttons: networkButtons.buttons.map((button) => ({
-            ...button,
-            id: button.id.replace("anuncio_post:networks:", "single_photo:networks:"),
-          })),
+        text: "Onde você quer publicar?",
+        interactiveList: {
+          ...destinationList,
+          rows: destinationList.rows
+            .filter((row) =>
+              !row.id.endsWith("photo_feed_story") &&
+              !row.id.endsWith("schedule")
+            )
+            .map((row) => ({
+              ...row,
+              id: row.id.replace(
+                "anuncio_post:destination:",
+                "single_photo:destination:",
+              ),
+            })),
         },
+      };
+    }
+    const singlePhotoDestination = singlePhotoInteractiveId.match(
+      /^single_photo:destination:(photo_feed|photo_story|photo_linkedin|photo_tiktok)$/,
+    )?.[1];
+    if (
+      remetenteEhDono &&
+      pendingSinglePhoto?.stage === "destination" &&
+      singlePhotoDestination
+    ) {
+      const connected = await connectedAnuncioNetworks(toolCtx.userId);
+      const meta = connected.filter((network) =>
+        network === "facebook" || network === "instagram"
+      );
+      const networks: AnuncioPostNetwork[] =
+        singlePhotoDestination === "photo_linkedin"
+          ? connected.includes("linkedin") ? ["linkedin"] : []
+          : singlePhotoDestination === "photo_tiktok"
+          ? connected.includes("tiktok") ? ["tiktok"] : []
+          : meta;
+      const format = singlePhotoDestination === "photo_story"
+        ? "story"
+        : "feed";
+      if (!networks.length) {
+        return { text: "Esse destino não está conectado." };
+      }
+      const raw = await toolPostarMidiaBiblioteca({
+        midia_id: pendingSinglePhoto.media_id,
+        pedido_original: `esta foto no ${format}`,
+        redes: networks,
+        formato: format,
+        tom: "beneficio",
+      }, toolCtx);
+      if (toolCtx.convId) {
+        await saveAgentState(
+          sb,
+          {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          },
+          { pending_single_photo: null },
+          toolCtx.agentState ?? {},
+        );
+        if (toolCtx.agentState) {
+          toolCtx.agentState.pending_single_photo = null;
+        }
+      }
+      return {
+        text: formatSocialPostToolResult(raw),
+        interactiveButtons: interactiveButtonsFromSocialResult(raw),
       };
     }
     const singlePhotoNetworks = singlePhotoInteractiveId.match(/^single_photo:networks:(both|instagram|facebook)$/)?.[1];
@@ -19521,19 +19690,13 @@ async function callGemini(
     }
     if (remetenteEhDono && socialVariantInteractive) {
       const token = socialVariantInteractive[2].toLowerCase();
-      const pending = await loadPendingSocialPost(token, toolCtx.userId);
-      const result = await toolEscolherVariantePost({
+      const result = await escolherVarianteEPublicarPost({
         token,
         opcao: socialVariantInteractive[1],
       }, toolCtx);
-      const selectedPending = PENDING_POSTS.get(token) ??
-        await loadPendingSocialPost(token, toolCtx.userId);
-      if (!selectedPending) return { text: "Não encontrei a mídia exata deste preview. Nada foi publicado." };
-      const preview = await sendExactPendingSocialPreview(token, selectedPending, toolCtx);
-      if (!preview.ok) return { text: preview.message };
       return {
-        text: `${pending ? `Vou usar ${describeLoadedPendingSocialPost(pending)}.\n\n` : ""}${formatSocialPostToolResult(result)}`,
-        interactiveButtons: interactiveButtonsFromSocialResult(result),
+        text: formatDirectSocialPublishResult(result),
+        interactiveList: interactiveListFromSocialResult(result),
       };
     }
     if (remetenteEhDono && socialActionInteractive?.[1]?.toLowerCase() === "publish_confirm") {
@@ -20020,15 +20183,13 @@ async function callGemini(
     const variantChoice = recentPendingSocialToken ? detectSocialVariantChoice(userContent) : null;
     if (variantChoice) {
       console.log("[pietro][forced_social_variant_choice]", { token: recentPendingSocialToken, opcao: variantChoice });
-      const variantResult = await toolEscolherVariantePost({ token: recentPendingSocialToken!, opcao: variantChoice }, toolCtx);
-      const selectedPending = PENDING_POSTS.get(recentPendingSocialToken!) ??
-        await loadPendingSocialPost(recentPendingSocialToken!, toolCtx.userId);
-      if (!selectedPending) return { text: "Não encontrei a mídia exata deste preview. Nada foi publicado." };
-      const preview = await sendExactPendingSocialPreview(recentPendingSocialToken!, selectedPending, toolCtx);
-      if (!preview.ok) return { text: preview.message };
+      const variantResult = await escolherVarianteEPublicarPost({
+        token: recentPendingSocialToken!,
+        opcao: variantChoice,
+      }, toolCtx);
       return {
-        text: `${latestPendingNotice}${formatSocialPostToolResult(variantResult)}`,
-        interactiveButtons: interactiveButtonsFromSocialResult(variantResult),
+        text: formatDirectSocialPublishResult(variantResult),
+        interactiveList: interactiveListFromSocialResult(variantResult),
       };
     }
 

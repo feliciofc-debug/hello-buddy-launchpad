@@ -27,12 +27,12 @@ export type SocialApprovalButton =
 
 export function socialApprovalButtons(
   selected: unknown,
-  isStory = false,
+  _isStory = false,
 ): SocialApprovalButton[] {
   if (!isExplicitSocialVariant(selected)) {
     return ["variant_A", "variant_B", "variant_C"];
   }
-  return isStory ? ["publish", "cancel"] : ["publish", "schedule", "cancel"];
+  return [];
 }
 
 export type SocialInteractiveButtons = {
@@ -63,6 +63,7 @@ export function socialInteractiveButtonsFromResult(
     const selected = status === "variante_selecionada"
       ? data?.opcao_ativa
       : undefined;
+    if (selected) return undefined;
     const buttonKeys = socialApprovalButtons(
       selected,
       data?.formato === "story",
@@ -81,19 +82,7 @@ export function socialInteractiveButtonsFromResult(
       };
     }
 
-    return {
-      header: "Aprovar criativo",
-      body: data?.formato === "story"
-        ? "Story pelo WhatsApp só pode ser publicado agora."
-        : "Publique agora ou escolha agendar. Para informar a data por texto, responda: agendar sexta às 10h.",
-      buttons: buttonKeys.map((key) =>
-        key === "publish"
-          ? { id: `social_publish:${token}`, title: "Publicar" }
-          : key === "schedule"
-          ? { id: `social_schedule:${token}`, title: "Agendar" }
-          : { id: `social_cancel:${token}`, title: "Cancelar" }
-      ),
-    };
+    return undefined;
   } catch {
     return undefined;
   }

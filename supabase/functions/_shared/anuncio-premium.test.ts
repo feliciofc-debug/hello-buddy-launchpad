@@ -580,6 +580,7 @@ Deno.test("melhoria do anúncio preserva o estado real do veículo", () => {
   ) {
     assert(prompt.includes(expected));
   }
+  assertEquals(prompt.includes("PODE limpar"), false);
 });
 
 Deno.test("melhoria de produto nunca recebe instruções automotivas", () => {
@@ -599,6 +600,12 @@ Deno.test("melhoria de produto nunca recebe instruções automotivas", () => {
       assertEquals(normalized.includes(forbidden), false);
     }
     assert(prompt.includes("PROIBIDO adicionar qualquer objeto"));
+    assert(
+      prompt.includes(
+        "PODE limpar somente sujeira, manchas, poeira, marcas de dedo e reflexos ruins",
+      ),
+    );
+    assert(prompt.includes("NÃO esconda defeitos estruturais"));
   }
   assert(clear.includes("branco ou creme suave"));
   assert(dark.includes("fundo infinito grafite"));

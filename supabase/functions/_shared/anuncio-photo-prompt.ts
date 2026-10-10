@@ -17,7 +17,7 @@ export function productAdPhotoImprovementPrompt(
   const background = variant === "clara"
     ? "fundo infinito branco ou creme suave, levemente tingido pela cor dominante da embalagem"
     : "fundo infinito grafite, com um brilho de LED sutil atrás do produto";
-  return `Prepare esta foto de ${title} para um anúncio comercial premium. Coloque ESTE produto, exatamente como está (mesma embalagem, textos, cores, logotipo, proporção e ângulo), sobre uma superfície limpa e lisa, em um estúdio fotográfico neutro, com ${background}, iluminação suave de LED e sombra de contato discreta. PROIBIDO adicionar qualquer objeto, máquina, móvel, pessoa, planta ou cenário. Só fundo, luz e sombra. Não redesenhe, não substitua e não altere nenhuma parte do produto.`;
+  return `Prepare esta foto de ${title} para um anúncio comercial premium. Coloque ESTE produto, exatamente como está (mesma embalagem, textos, cores, logotipo, proporção e ângulo), sobre uma superfície limpa e lisa, em um estúdio fotográfico neutro, com ${background}, iluminação suave de LED e sombra de contato discreta. Você PODE limpar somente sujeira, manchas, poeira, marcas de dedo e reflexos ruins. NÃO altere formato, cor, textos, logotipo ou estampa e NÃO esconda defeitos estruturais como trinca, lasca ou quebra. PROIBIDO adicionar qualquer objeto, máquina, móvel, pessoa, planta ou cenário. Só fundo, luz e sombra. Não redesenhe nem substitua nenhuma parte do produto.`;
 }
 
 const CONTAMINATING_OBJECTS = [
