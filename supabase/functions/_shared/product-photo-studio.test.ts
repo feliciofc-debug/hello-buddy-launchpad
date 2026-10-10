@@ -1,6 +1,4 @@
-import {
-  assertEquals,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { correctProductColors } from "./product-photo-studio.ts";
 
 Deno.test("correção determinística não altera transparência nem formato", () => {
