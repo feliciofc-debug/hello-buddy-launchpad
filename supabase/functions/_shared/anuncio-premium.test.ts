@@ -614,7 +614,7 @@ Deno.test("melhoria de produto nunca recebe instruções automotivas", () => {
     assert(prompt.includes("NÃO esconda defeitos estruturais"));
     assert(
       prompt.includes(
-        "PROIBIDO adicionar logotipo, marca, texto, estampa ou qualquer marcação no produto",
+        "PROIBIDO adicionar logotipo, marca, texto, estampa ou qualquer marcação no cenário ou no produto",
       ),
     );
     assert(
