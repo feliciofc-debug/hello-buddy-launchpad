@@ -26,7 +26,11 @@ export type LastAnuncio = {
 
 export type AnuncioPostAction = "publish" | "schedule" | "save";
 export type AnuncioPostFormat = "feed" | "story" | "feed_story";
-export type AnuncioPostNetwork = "facebook" | "instagram" | "linkedin";
+export type AnuncioPostNetwork =
+  | "facebook"
+  | "instagram"
+  | "linkedin"
+  | "tiktok";
 
 export type AnuncioPostRequest = {
   action?: AnuncioPostAction;

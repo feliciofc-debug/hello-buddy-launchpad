@@ -6676,7 +6676,7 @@ async function generateAnuncioCaptions(
         await gerarTresOpcoesRedeSocial(
           product,
           "beneficio",
-          network,
+          network === "tiktok" ? "instagram" : network,
           variation ? `Crie novas abordagens sem mudar os fatos.` : undefined,
           undefined,
           briefing,
