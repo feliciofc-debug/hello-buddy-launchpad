@@ -6505,7 +6505,10 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
 
 async function persistAnuncioFlowState(
   ctx: { userId: string; fromNumber: string; convId?: string; agentState?: AgentConvState },
-  patch: Pick<AgentConvState, "last_anuncio" | "pending_anuncio_post">,
+  patch: Pick<
+    AgentConvState,
+    "last_anuncio" | "pending_anuncio_post" | "pending_anuncio_styles"
+  >,
 ): Promise<void> {
   if (!ctx.convId) return;
   const conversation = {
