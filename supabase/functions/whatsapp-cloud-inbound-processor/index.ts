@@ -7959,13 +7959,7 @@ function formatSocialPostToolResult(raw: string): string {
 
   if (data?.status === "variante_selecionada") {
     const opcao = data?.opcao_ativa || "A";
-    const preview = Object.entries(data.preview ?? {})
-      .map(([rede, script]) => `*${String(rede).toUpperCase()}*\n${script}`)
-      .join("\n\n");
-    const action = data?.formato === "story"
-      ? "Story pelo WhatsApp só pode ser publicado agora."
-      : "Agora escolha *Publicar agora* ou *Agendar*.";
-    return `✅ Opção *${opcao}* selecionada.<<SPLIT>>${preview}<<SPLIT>>${action}`;
+    return `✅ Opção *${opcao}* selecionada.`;
   }
 
   if (data?.status === "escolha_variante_necessaria") {
@@ -9614,7 +9608,8 @@ async function toolEscolherVariantePost(
     opcao_ativa: opcao,
     formato: atualizado.formato || "feed",
     preview: scripts,
-    instrucoes: `Mostre que a Opção ${opcao} está ativa e ofereça publicar agora ou agendar. Se confirmar publicação, chame confirmar_postagem_redes com token="${token}". Se informar uma data futura, chame agendar_post_pendente com o mesmo token. Se pedir ajuste, chame revisar_post_pendente.`,
+    instrucoes:
+      `A Opção ${opcao} foi salva. No fluxo de post comum, publique imediatamente sem pedir nova aprovação.`,
   });
 }
 
