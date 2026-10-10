@@ -126,7 +126,10 @@ import {
   applyBrandLogo,
   buildBrandGenerationGuidance,
 } from "../_shared/brand-image-engine.ts";
-import { sceneEditDirective } from "../_shared/image-edit-instruction.ts";
+import {
+  hasExplicitSceneDescription,
+  sceneEditDirective,
+} from "../_shared/image-edit-instruction.ts";
 import { appendWhatsappCtaInPublishingOrder } from "../_shared/social-caption-order.ts";
 import {
   dataUrlToImageBytes,
