@@ -201,7 +201,9 @@ export async function cachedOrTranscribedVideoSegments(input: {
   videoPath: string;
   mediaId?: string;
   transcribe: () => Promise<VideoTranscriptSegment[]>;
-}): Promise<{ segments: VideoTranscriptSegment[]; source: "cache" | "gateway" }> {
+}): Promise<
+  { segments: VideoTranscriptSegment[]; source: "cache" | "gateway" }
+> {
   const cached = selectCachedVideoTranscript(input.rows, {
     videoPath: input.videoPath,
     mediaId: input.mediaId,

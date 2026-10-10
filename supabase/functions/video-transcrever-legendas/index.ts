@@ -80,11 +80,12 @@ function corrigirNomeEmpresa(
   }));
 
   if (trocas > 0) {
-    console.log(`[legendas] grafia da empresa corrigida em ${trocas} ocorrência(s)`);
+    console.log(
+      `[legendas] grafia da empresa corrigida em ${trocas} ocorrência(s)`,
+    );
   }
   return corrigidos;
 }
-
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -97,7 +98,6 @@ Deno.serve(async (req) => {
       throw new Error("video_url é obrigatório");
     }
     const nomeEmpresa = String(nome_empresa || "").trim().slice(0, 80);
-
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY não configurada");
@@ -122,7 +122,8 @@ Deno.serve(async (req) => {
       /* segue com a URL original */
     }
 
-    const prompt = `Transcreva a FALA deste vídeo em português do Brasil e devolva legendas curtas, prontas para leitura na tela.
+    const prompt =
+      `Transcreva a FALA deste vídeo em português do Brasil e devolva legendas curtas, prontas para leitura na tela.
 
 REGRAS:
 - Divida em blocos de no máximo 40 caracteres no total, usando no máximo 20 caracteres por linha e no máximo 2 linhas separadas por \\n.
@@ -130,11 +131,14 @@ REGRAS:
 - Não invente conteúdo. Se não houver fala, devolva uma lista vazia.
 - Sem emojis, sem marcações, apenas o texto falado com pontuação natural.
 - Transcreva com capitalização natural: primeira letra de cada frase em maiúscula, nomes próprios e marcas com a grafia correta (ex.: WhatsApp, TikTok, Tramontina, AMZ Ofertas). Não escreva em caixa alta.
-${nomeEmpresa ? `- O vídeo é de uma empresa chamada "${nomeEmpresa}". Sempre que esse nome aparecer na fala, escreva exatamente com essa grafia.` : ""}
+${
+        nomeEmpresa
+          ? `- O vídeo é de uma empresa chamada "${nomeEmpresa}". Sempre que esse nome aparecer na fala, escreva exatamente com essa grafia.`
+          : ""
+      }
 
 Responda SOMENTE com JSON válido no formato:
 {"segments":[{"start":0.0,"end":2.4,"text":"texto da legenda"}]}`;
-
 
     const segments = corrigirNomeEmpresa(
       await transcribeVideoWithFallback({
@@ -155,7 +159,6 @@ Responda SOMENTE com JSON válido no formato:
       nomeEmpresa,
     );
 
-
     return new Response(
       JSON.stringify({ success: true, segments }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -167,7 +170,10 @@ Responda SOMENTE com JSON válido no formato:
         success: false,
         error: error instanceof Error ? error.message : "Erro desconhecido",
       }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   }
 });
