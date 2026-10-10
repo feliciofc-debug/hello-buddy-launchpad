@@ -1,10 +1,5 @@
-import {
-  assertEquals,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
-import {
-  aplicarEstiloCopy,
-  type CopyStyle,
-} from "./copy-style.ts";
+import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { aplicarEstiloCopy, type CopyStyle } from "./copy-style.ts";
 
 const style: CopyStyle = {
   voz: "empresa",
