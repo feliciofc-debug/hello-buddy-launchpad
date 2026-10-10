@@ -408,6 +408,7 @@ import {
   parseVideoTranscriptionAction,
   videoTranscriptionRecoveryButtons,
 } from "../_shared/video-transcription-flow.ts";
+import { formatVideoPublishMessage } from "../_shared/video-publish-message.ts";
 import {
   aplicarAjusteRoteiroMotion,
   buscarBaseRefazerVideoMotion,
@@ -9928,8 +9929,17 @@ async function publishReadyLegendVideo(
     const failures = Array.isArray(data?.erros)
       ? data.erros.join(" | ")
       : error?.message || data?.error || "falha desconhecida";
+    const hasNetworkResult = Array.isArray(data?.plataformas) &&
+      (data.plataformas.length > 0 ||
+        (Array.isArray(data?.erros) && data.erros.length > 0));
     return {
-      text: `Não consegui publicar o vídeo: ${failures}`,
+      text: hasNetworkResult
+        ? formatVideoPublishMessage({
+          published: data.plataformas,
+          links: Array.isArray(data?.links) ? data.links : [],
+          errors: Array.isArray(data?.erros) ? data.erros : [],
+        })
+        : `Não consegui publicar o vídeo: ${failures}`,
       interactiveButtons: data?.validation_error
         ? readyVideoRerenderButtons(mediaId)
         : undefined,
@@ -9938,19 +9948,11 @@ async function publishReadyLegendVideo(
   const published: string[] = Array.isArray(data?.plataformas)
     ? data.plataformas
     : networks;
-  const names = published.map((network) =>
-    network === "instagram" ? "Instagram" : "Facebook"
-  ).join(" e ");
-  const links = Array.isArray(data?.links)
-    ? data.links
-      .filter((item: any) => typeof item?.url === "string")
-      .map((item: any) =>
-        `${item.plataforma === "instagram" ? "Instagram" : "Facebook"}: ${item.url}`
-      )
-    : [];
   return {
-    text:
-      `✅ Publicado no ${names}${links.length ? `\n${links.join("\n")}` : ""}`,
+    text: formatVideoPublishMessage({
+      published,
+      links: Array.isArray(data?.links) ? data.links : [],
+    }),
   };
 }
 

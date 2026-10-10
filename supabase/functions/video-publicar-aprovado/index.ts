@@ -12,6 +12,7 @@ import {
   validateMetaVideoForPublishing,
 } from "../_shared/meta-video-requirements.ts";
 import { readyVideoRerenderButtons } from "../_shared/ready-media-actions.ts";
+import { formatVideoPublishMessage } from "../_shared/video-publish-message.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -252,33 +253,11 @@ Deno.serve(async (req) => {
       .eq("id", job.id);
 
     if (job.telefone && shouldNotifyVideoPublishCaller(notify_whatsapp)) {
-      const linksText = links.length
-        ? `\n${
-          links.map((link) =>
-            `${
-              link.plataforma === "instagram" ? "Instagram" : "Facebook"
-            }: ${link.url}`
-          ).join("\n")
-        }`
-        : "";
-      const msg = erros.length === 0 &&
-          publicados.length === plataformas.length
-        ? `✅ Publicado no ${
-          publicados
-            .map((p) => (p === "instagram" ? "Instagram" : "Facebook"))
-            .join(" e ")
-        }${linksText}`
-        : `${
-          publicados.length
-            ? `Publiquei em ${
-              publicados.map((p) =>
-                p === "instagram" ? "Instagram" : "Facebook"
-              ).join(" e ")
-            }, mas não nas demais redes.`
-            : "Não publiquei o vídeo."
-        }\n\n${
-          erros.join(" | ")
-        }\n\nMe responda *APROVAR* que eu tento de novo.`;
+      const msg = formatVideoPublishMessage({
+        published: publicados,
+        links,
+        errors: erros,
+      });
       try {
         await supabase.functions.invoke("whatsapp-send-message", {
           body: { user_id: job.user_id, to: job.telefone, message: msg },
