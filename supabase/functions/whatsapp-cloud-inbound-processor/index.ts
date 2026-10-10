@@ -513,7 +513,9 @@ import {
   selectRecentOriginalPhoto,
 } from "../_shared/anuncio-source-media.ts";
 import {
+  detectPhotoBoxesByVariant,
   parseFotoBoxFromVisionResponse,
+  photoBoxForStyle,
   type FotoBox,
 } from "../_shared/anuncio-photo-framing.ts";
 import {
@@ -5875,7 +5877,7 @@ async function detectarCaixaProdutoVisao(
   imageUrl: string,
 ): Promise<FotoBox | null> {
   const prompt =
-    'Localize o objeto ou veículo principal desta foto. Responda SOMENTE JSON no formato {"box_2d":[ymin,xmin,ymax,xmax]}, com coordenadas normalizadas de 0 a 1000. A caixa deve incluir o objeto inteiro, inclusive rodas, retrovisores e sombra visível. Se não houver um único objeto principal identificável, responda {"box_2d":null}.';
+    'Localize o objeto ou veículo principal desta foto. Responda SOMENTE JSON no formato {"box_2d":[ymin,xmin,ymax,xmax]}, com coordenadas normalizadas de 0 a 1000. A caixa deve incluir o objeto inteiro e sua sombra visível: para produtos, inclua alça, borda e toda a embalagem; para veículos, inclua rodas e retrovisores. Se houver dúvida sobre os limites ou não houver um único objeto principal identificável, responda {"box_2d":null}.';
   for (
     const model of [
       "google/gemini-3-flash-preview",
@@ -6603,11 +6605,25 @@ async function ensureLastAnuncioImage(
   const logoPath = client
     ? clientLogoPath(client, style === "catalogo" ? "light" : "dark", true)
     : null;
+  const variants = last.render_payload
+    .foto_variants as ProductPhotoVariants | undefined;
+  const variantBoxes = last.render_payload.foto_variant_boxes as
+    | { clara: unknown; escura: unknown }
+    | undefined;
+  const photo = variants
+    ? productPhotoVariantForStyle(style, variants)
+    : null;
   const render = await callEdge("render-anuncio-produto", {
     ...last.render_payload,
     formato,
     estilo: style,
     logo_path: logoPath,
+    ...(photo?.url && photo.source !== "failed"
+      ? { foto_url: photo.url, foto_source: photo.source }
+      : {}),
+    foto_box: variantBoxes
+      ? photoBoxForStyle(style, variantBoxes)
+      : last.render_payload.foto_box,
   }, 120000);
   if (!render?.success || !render?.image_url) {
     throw new Error(String(render?.error || `falha ao gerar ${formato}`));
@@ -15994,7 +16010,12 @@ async function toolCriarAnuncio(
           ? " Segunda tentativa: siga literalmente todas as proibições e não acrescente nenhuma marcação ao produto."
           : "";
         const raw = await toolEditarImagem(
-            productAdPhotoImprovementPrompt(titulo, contentNiche, variant) +
+            productAdPhotoImprovementPrompt(
+              titulo,
+              contentNiche,
+              variant,
+              originalVisualDescription,
+            ) +
               retryInstruction,
             {
               userId: ctx.userId,
@@ -16080,11 +16101,13 @@ async function toolCriarAnuncio(
     } else {
       console.log("[criar_anuncio] melhoria desativada; usando foto original");
     }
-    const usablePhoto = fotoVariants.clara.source !== "failed"
-      ? fotoVariants.clara
-      : fotoVariants.escura.source !== "failed"
-      ? fotoVariants.escura
-      : null;
+    const usableVariant: ProductPhotoVariant | null =
+      fotoVariants.clara.source !== "failed"
+        ? "clara"
+        : fotoVariants.escura.source !== "failed"
+        ? "escura"
+        : null;
+    const usablePhoto = usableVariant ? fotoVariants[usableVariant] : null;
     if (!usablePhoto) {
       if (ctx.convId) {
         const conversation = {
@@ -16128,19 +16151,37 @@ async function toolCriarAnuncio(
     console.log(
       `[criar_anuncio] fotos clara=${fotoVariants.clara.source} escura=${fotoVariants.escura.source}`,
     );
-    const [fotoBox, fotoVisualDescription] = await Promise.all([
-      detectarCaixaProdutoVisao(fotoFinal),
+    const [detectedVariantBoxes, fotoVisualDescription] = await Promise.all([
+      contentNiche === "produto" && args?.melhorar_foto !== false
+        ? detectPhotoBoxesByVariant(
+          fotoVariants,
+          detectarCaixaProdutoVisao,
+        )
+        : detectarCaixaProdutoVisao(fotoFinal).then((box) => ({
+          clara: box,
+          escura: box,
+        })),
       originalVisualDescription
         ? Promise.resolve(originalVisualDescription)
         : descreverProdutoCacheado(fotoFinal),
     ]);
-    console.log(
-      `[criar_anuncio] foto_box=${
-        fotoBox
-          ? [fotoBox.ymin, fotoBox.xmin, fotoBox.ymax, fotoBox.xmax].join(",")
-          : "ausente; usando contain"
-      }`,
-    );
+    const serializeFotoBox = (box: FotoBox | null): number[] | null =>
+      box ? [box.ymin, box.xmin, box.ymax, box.xmax] : null;
+    const fotoVariantBoxes = {
+      clara: serializeFotoBox(detectedVariantBoxes.clara),
+      escura: serializeFotoBox(detectedVariantBoxes.escura),
+    };
+    const fotoBox = usableVariant
+      ? fotoVariantBoxes[usableVariant]
+      : null;
+    for (const variant of ["clara", "escura"] as const) {
+      console.log(
+        `[criar_anuncio] foto_box ${variant}=${
+          fotoVariantBoxes[variant]?.join(",") ??
+            "ausente; usando contain"
+        }`,
+      );
+    }
 
     // 4) Identidade do tenant (nome do negócio / @ / telefone)
     let businessName: string | null = anuncioIdentity.businessName;
@@ -16243,9 +16284,8 @@ async function toolCriarAnuncio(
         : fotoUrl,
       foto_source: fotoSource,
       foto_variants: fotoVariants,
-      foto_box: fotoBox
-        ? [fotoBox.ymin, fotoBox.xmin, fotoBox.ymax, fotoBox.xmax]
-        : null,
+      foto_variant_boxes: fotoVariantBoxes,
+      foto_box: fotoBox,
       formato,
       incluir_logo: true,
     };
@@ -16321,6 +16361,7 @@ async function toolCriarAnuncio(
           logo_path: logoPath,
           foto_url: productPhotoVariantForStyle(style, fotoVariants).url,
           foto_source: productPhotoVariantForStyle(style, fotoVariants).source,
+          foto_box: photoBoxForStyle(style, fotoVariantBoxes),
         }, 120000);
         if (
           !render?.success ||
@@ -18670,6 +18711,10 @@ async function callGemini(
           pendingAnuncioStyles.shown_styles[0];
         const variants = pendingAnuncioStyles.render_payload
           .foto_variants as ProductPhotoVariants | undefined;
+        const variantBoxes = pendingAnuncioStyles.render_payload
+          .foto_variant_boxes as
+            | { clara: unknown; escura: unknown }
+            | undefined;
         const otherStyles = otherAnuncioStyles(selectedStyle);
         const styles = variants
           ? availableStylesForProductPhoto(otherStyles, variants)
@@ -18700,6 +18745,9 @@ async function callGemini(
                 return {
                   foto_url: photo.url,
                   foto_source: photo.source,
+                  foto_box: variantBoxes
+                    ? photoBoxForStyle(style, variantBoxes)
+                    : pendingAnuncioStyles.render_payload.foto_box,
                 };
               })(),
             }, 120000);
