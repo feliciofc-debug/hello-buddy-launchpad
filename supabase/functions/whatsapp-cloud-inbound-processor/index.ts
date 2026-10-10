@@ -517,10 +517,13 @@ import {
   type FotoBox,
 } from "../_shared/anuncio-photo-framing.ts";
 import {
-  generatedProductPhotoIsSafe,
+  availableStylesForProductPhoto,
+  failedProductPhotoStyleLabels,
+  generateSafeProductPhotoWithRetry,
   productAdPhotoImprovementPrompt,
   productPhotoVariantForStyle,
   resolveGeneratedProductPhoto,
+  shouldUseLogoEditMode,
   type ProductPhotoVariant,
   type ProductPhotoVariants,
 } from "../_shared/anuncio-photo-prompt.ts";
@@ -2028,8 +2031,7 @@ async function toolEditarImagem(
   const modo = (ctx.modo || "").trim().toLowerCase();
   // 🔒 Pedido de LOGO/MARCA nunca troca a foto: a imagem original é mantida
   // pixel a pixel e a marca é apenas aplicada sobre ela.
-  const isLogo = modo === "aplicar_logo" || modo === "logo" || modo === "marca" ||
-    /\b(logo|logotipo|marca|logomarca)\b/i.test(clean);
+  const isLogo = shouldUseLogoEditMode(modo, clean);
   const isAnuncio = !isLogo &&
     (modo === "ficha_tecnica" || modo === "anuncio" || modo === "estudio" || modo === "trocar_ambiente");
   // Em modo anúncio/ficha técnica o ambiente ORIGINAL deve ser descartado por padrão
@@ -3018,7 +3020,7 @@ type AgentConvState = {
     created_at: string;
   } | null;
   pending_anuncio_photo?: {
-    stage: "choice" | "preference_confirmation";
+    stage: "choice" | "preference_confirmation" | "treatment_retry";
     args?: Record<string, unknown>;
     preference?: AnuncioPhotoPreference;
     created_at: string;
@@ -15984,10 +15986,16 @@ async function toolCriarAnuncio(
       escura: { url: fotoUrl, source: "original" },
     };
     if (args?.melhorar_foto !== false) {
-      const improve = async (variant: ProductPhotoVariant) => {
-        try {
-          const raw = await toolEditarImagem(
-            productAdPhotoImprovementPrompt(titulo, contentNiche, variant),
+      const generate = async (
+        variant: ProductPhotoVariant,
+        attempt: number,
+      ) => {
+        const retryInstruction = attempt > 1
+          ? " Segunda tentativa: siga literalmente todas as proibições e não acrescente nenhuma marcação ao produto."
+          : "";
+        const raw = await toolEditarImagem(
+            productAdPhotoImprovementPrompt(titulo, contentNiche, variant) +
+              retryInstruction,
             {
               userId: ctx.userId,
               fromNumber: ctx.fromNumber,
@@ -15999,52 +16007,124 @@ async function toolCriarAnuncio(
               imageInputUrl: fotoUrl,
             },
           );
-          const parsed = JSON.parse(raw);
-          if (!parsed?.image_url) {
-            throw new Error(String(parsed?.erro || "imagem não retornada"));
-          }
-          if (contentNiche === "produto") {
-            const generatedDescription = await descreverProdutoCacheado(
-              parsed.image_url,
-            );
-            if (
-              !generatedProductPhotoIsSafe({
-                generatedDescription,
-                originalDescription: originalVisualDescription,
-                requestedText: JSON.stringify(args),
-              })
-            ) {
-              throw new Error("a imagem gerada adicionou objetos ao produto");
-            }
-          }
-          return resolveGeneratedProductPhoto({
-            originalUrl: fotoUrl,
-            generatedUrl: parsed.image_url,
-            safe: true,
-          });
-        } catch (e) {
-          console.warn(
-            `[criar_anuncio] melhoria ${variant} descartada; usando original:`,
-            (e as Error).message,
-          );
-          return { url: fotoUrl, source: "original" as const };
+        let parsed: any;
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          throw new Error("resposta inválida");
         }
+        if (!parsed?.image_url) {
+          throw new Error(
+            String(
+              parsed?.status
+                ? `HTTP ${parsed.status}`
+                : parsed?.erro || parsed?.detalhe || "imagem não retornada",
+            ),
+          );
+        }
+        return {
+          url: String(parsed.image_url),
+          description: contentNiche === "produto"
+            ? await descreverProdutoCacheado(parsed.image_url)
+            : "",
+        };
       };
       if (contentNiche === "produto") {
+        const improveProductVariant = async (
+          variant: ProductPhotoVariant,
+        ): Promise<ProductPhotoVariants[ProductPhotoVariant]> => {
+          const result = await generateSafeProductPhotoWithRetry({
+            originalDescription: originalVisualDescription,
+            requestedText: JSON.stringify(args),
+            generate: async (attempt) => await generate(variant, attempt),
+            onFailure: (attempt, reason) => {
+              const safeReason = reason.replace(
+                /https?:\/\/\S+|(?:token|key|authorization)\s*[:=]\s*\S+/gi,
+                "[omitido]",
+              ).slice(0, 180);
+              console.warn(
+                `[criar_anuncio] melhoria ${variant} tentativa=${attempt} falhou: ${safeReason}`,
+              );
+            },
+          });
+          return result.photo ?? {
+            url: "",
+            source: "failed",
+            failureReason: result.failureReason,
+          };
+        };
         const [clara, escura] = await Promise.all([
-          improve("clara"),
-          improve("escura"),
+          improveProductVariant("clara"),
+          improveProductVariant("escura"),
         ]);
         fotoVariants = { clara, escura };
       } else {
-        const improved = await improve("escura");
+        let improved: ProductPhotoVariants[ProductPhotoVariant];
+        try {
+          const generated = await generate("escura", 1);
+          improved = resolveGeneratedProductPhoto({
+            originalUrl: fotoUrl,
+            generatedUrl: generated.url,
+            safe: true,
+          });
+        } catch (error) {
+          console.warn(
+            `[criar_anuncio] melhoria veiculo falhou; usando original: ${
+              String((error as Error).message || error).slice(0, 180)
+            }`,
+          );
+          improved = { url: fotoUrl, source: "original" };
+        }
         fotoVariants = { clara: improved, escura: improved };
       }
     } else {
       console.log("[criar_anuncio] melhoria desativada; usando foto original");
     }
-    const fotoFinal = fotoVariants.clara.url;
-    const fotoSource = fotoVariants.clara.source;
+    const usablePhoto = fotoVariants.clara.source !== "failed"
+      ? fotoVariants.clara
+      : fotoVariants.escura.source !== "failed"
+      ? fotoVariants.escura
+      : null;
+    if (!usablePhoto) {
+      if (ctx.convId) {
+        const conversation = {
+          id: ctx.convId,
+          userId: ctx.userId,
+          contactNumber: ctx.fromNumber,
+        };
+        const current = ctx.agentState ??
+          await loadAgentState(sb, conversation);
+        const pendingPhoto = {
+          stage: "treatment_retry" as const,
+          args: {
+            ...args,
+            _foto_url_original: fotoUrl,
+            _foto_resolvida: true,
+            melhorar_foto: true,
+          },
+          created_at: new Date().toISOString(),
+        };
+        await saveAgentState(sb, conversation, {
+          pending_anuncio_photo: pendingPhoto,
+        }, current);
+        current.pending_anuncio_photo = pendingPhoto;
+        ctx.agentState = current;
+      }
+      return JSON.stringify({
+        erro: "tratamento_foto_falhou",
+        mensagem:
+          "Não consegui tratar a foto para os estilos Catálogo, Impacto e Destaque.",
+        interactive_buttons: {
+          body: "Quer tentar tratar esta foto novamente?",
+          buttons: [{
+            id: "anuncio_photo:retry_treatment",
+            title: "🔄 Tentar de novo",
+          }],
+        },
+      });
+    }
+    const fotoFinal = usablePhoto.url;
+    const fotoSource = usablePhoto.source;
     console.log(
       `[criar_anuncio] fotos clara=${fotoVariants.clara.source} escura=${fotoVariants.escura.source}`,
     );
@@ -16166,7 +16246,15 @@ async function toolCriarAnuncio(
       formato,
       incluir_logo: true,
     };
-    const requestedStyles = singleStyle ? [singleStyle] : [...ANUNCIO_STYLES];
+    const desiredStyles = singleStyle ? [singleStyle] : [...ANUNCIO_STYLES];
+    const treatmentFailedStyles = contentNiche === "produto" &&
+        args?.melhorar_foto !== false
+      ? failedProductPhotoStyleLabels(fotoVariants)
+      : [];
+    const requestedStyles = contentNiche === "produto" &&
+        args?.melhorar_foto !== false
+      ? availableStylesForProductPhoto(desiredStyles, fotoVariants)
+      : desiredStyles;
     const recommendation = recommendAnuncioStyle({
       visualDescription: fotoVisualDescription,
       title: titulo,
@@ -16329,6 +16417,19 @@ async function toolCriarAnuncio(
         "não consegui entregar todas as prévias; ações de publicação bloqueadas",
       );
     }
+    if (treatmentFailedStyles.length) {
+      await sendWhatsApp(
+        ctx.userId,
+        ctx.fromNumber,
+        treatmentFailedStyles.map((style) =>
+          `Não consegui tratar a foto para o estilo ${style}.`
+        ).join("\n"),
+        undefined,
+        undefined,
+        undefined,
+        { alreadyLogged: false },
+      );
+    }
     if (renders.length > 1) {
       const styleChoice = anuncioStyleButtons(
         renderedStyles,
@@ -16349,7 +16450,7 @@ async function toolCriarAnuncio(
       preview_sent: true,
       image_urls: renders.map(({ render }) => render.image_url),
       estilos: renderedStyles,
-      estilos_com_falha: failedStyles,
+      estilos_com_falha: [...treatmentFailedStyles, ...failedStyles],
       estilo_recomendado: shownRecommendation,
       formato,
       logo_aplicada: renders.every(({ render }) => !!render.logo_aplicada),
@@ -18251,6 +18352,44 @@ async function callGemini(
       // A oferta automática também não prende a conversa.
       await persistVehiclePhotoBatch(toolCtx, null);
     }
+    if (
+      remetenteEhDono &&
+      anuncioPhotoInteractiveId === "anuncio_photo:retry_treatment" &&
+      pendingAnuncioPhoto?.stage === "treatment_retry" &&
+      pendingAnuncioPhoto.args
+    ) {
+      const age = Date.now() -
+        new Date(pendingAnuncioPhoto.created_at).getTime();
+      if (!Number.isFinite(age) || age > 2 * 60 * 60 * 1000) {
+        return {
+          text:
+            "Essa tentativa expirou. Envie a foto e os dados do anúncio novamente.",
+        };
+      }
+      const raw = await toolCriarAnuncio(
+        {
+          ...pendingAnuncioPhoto.args,
+          melhorar_foto: true,
+          _foto_resolvida: true,
+          _mostrar_tres_estilos: true,
+          estilo: undefined,
+        } as any,
+        { ...toolCtx, media: [] },
+      );
+      let parsed: any = {};
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        return { text: raw };
+      }
+      return {
+        text: String(
+          parsed?.mensagem || parsed?.erro ||
+            "Não consegui tentar o tratamento novamente.",
+        ),
+        interactiveButtons: parsed?.interactive_buttons,
+      };
+    }
     const anuncioPhotoRedo = anuncioPhotoInteractiveId.match(
       /^anuncio_photo:redo:(melhorada|original)$/,
     )?.[1] as AnuncioPhotoPreference | undefined;
@@ -18444,6 +18583,12 @@ async function callGemini(
       const selectedImage = pendingAnuncioStyles.images?.find((image) =>
         image.style === anuncioStyleInteractive
       );
+      if (!selectedImage) {
+        return {
+          text:
+            `Não consegui tratar a foto para o estilo ${anuncioStyleInteractive}.`,
+        };
+      }
       const lastAnuncio: LastAnuncio = {
         images: pendingAnuncioStyles.images ?? [],
         selected_style: anuncioStyleInteractive,
@@ -18476,7 +18621,12 @@ async function callGemini(
       if (Number.isFinite(age) && age <= 2 * 60 * 60 * 1000) {
         const selectedStyle = lastAnuncio?.selected_style ??
           pendingAnuncioStyles.shown_styles[0];
-        const styles = otherAnuncioStyles(selectedStyle);
+        const variants = pendingAnuncioStyles.render_payload
+          .foto_variants as ProductPhotoVariants | undefined;
+        const otherStyles = otherAnuncioStyles(selectedStyle);
+        const styles = variants
+          ? availableStylesForProductPhoto(otherStyles, variants)
+          : otherStyles;
         const client = pendingAnuncioStyles.client_name
           ? await findClientBrandIdentity(sb, toolCtx.userId, {
             name: pendingAnuncioStyles.client_name,
@@ -18497,10 +18647,9 @@ async function callGemini(
               estilo: style,
               logo_path: logoPath,
               ...(() => {
-                const variants = pendingAnuncioStyles.render_payload
-                  .foto_variants as ProductPhotoVariants | undefined;
-                if (!variants?.clara?.url || !variants?.escura?.url) return {};
+                if (!variants) return {};
                 const photo = productPhotoVariantForStyle(style, variants);
+                if (!photo.url || photo.source === "failed") return {};
                 return {
                   foto_url: photo.url,
                   foto_source: photo.source,

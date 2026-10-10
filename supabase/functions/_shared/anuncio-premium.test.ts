@@ -14,10 +14,14 @@ import {
   parseFotoBoxFromVisionResponse,
 } from "./anuncio-photo-framing.ts";
 import {
+  availableStylesForProductPhoto,
+  failedProductPhotoStyleLabels,
+  generateSafeProductPhotoWithRetry,
   generatedProductPhotoIsSafe,
   productAdPhotoImprovementPrompt,
   productPhotoVariantForStyle,
   resolveGeneratedProductPhoto,
+  shouldUseLogoEditMode,
 } from "./anuncio-photo-prompt.ts";
 import { classifyStoreReply, storeNameFromSite } from "./anuncio-store-flow.ts";
 import { buildVehicleAdContent } from "./anuncio-vehicle-details.ts";
@@ -606,9 +610,23 @@ Deno.test("melhoria de produto nunca recebe instruções automotivas", () => {
       ),
     );
     assert(prompt.includes("NÃO esconda defeitos estruturais"));
+    assert(
+      prompt.includes(
+        "PROIBIDO adicionar logotipo, marca, texto, estampa ou qualquer marcação no produto",
+      ),
+    );
+    assert(
+      prompt.includes(
+        "A marca da loja aparece somente no layout da arte, nunca no produto",
+      ),
+    );
   }
-  assert(clear.includes("branco ou creme suave"));
-  assert(dark.includes("fundo infinito grafite"));
+  assert(clear.includes("ambiente claro, arejado e iluminado"));
+  assert(clear.includes("caneca em bancada clara de café"));
+  assert(dark.includes("ambiente escuro elegante"));
+  assert(dark.includes("luz de destaque no produto"));
+  assertEquals(shouldUseLogoEditMode("anuncio", clear), false);
+  assertEquals(shouldUseLogoEditMode("", "aplique minha logo"), true);
 });
 
 Deno.test("catálogo usa variante clara e impacto/destaque usam escura", () => {
@@ -642,7 +660,63 @@ Deno.test("foto gerada com objeto novo é descartada", () => {
   );
 });
 
-Deno.test("falha na geração mantém a foto original", () => {
+Deno.test("logo nova é descartada e a segunda tentativa segura é usada", async () => {
+  const attempts: number[] = [];
+  const result = await generateSafeProductPhotoWithRetry({
+    originalDescription: "Caneca branca lisa, sem estampa",
+    requestedText: "Caneca para personalizar",
+    generate: (attempt) => {
+      attempts.push(attempt);
+      return Promise.resolve(attempt === 1
+        ? {
+          url: "contaminada.jpg",
+          description: "Caneca branca com logotipo AMZ impresso",
+        }
+        : {
+          url: "segura.jpg",
+          description: "Caneca branca lisa em bancada clara de café",
+        });
+    },
+  });
+  assertEquals(attempts, [1, 2]);
+  assertEquals(result.photo, {
+    url: "segura.jpg",
+    source: "improved",
+  });
+});
+
+Deno.test("variante escura falha duas vezes e omite Impacto e Destaque", async () => {
+  let attempts = 0;
+  const dark = await generateSafeProductPhotoWithRetry({
+    originalDescription: "Caneca branca lisa",
+    generate: () => {
+      attempts++;
+      return Promise.reject(new Error("HTTP 503"));
+    },
+  });
+  assertEquals(attempts, 2);
+  const variants = {
+    clara: { url: "catalogo.jpg", source: "improved" as const },
+    escura: {
+      url: "",
+      source: "failed" as const,
+      failureReason: dark.failureReason,
+    },
+  };
+  assertEquals(
+    availableStylesForProductPhoto(
+      ["impacto", "catalogo", "destaque"],
+      variants,
+    ),
+    ["catalogo"],
+  );
+  assertEquals(failedProductPhotoStyleLabels(variants), [
+    "Impacto",
+    "Destaque",
+  ]);
+});
+
+Deno.test("fallback utilitário preserva original quando explicitamente permitido", () => {
   assertEquals(
     resolveGeneratedProductPhoto({
       originalUrl: "original.jpg",
