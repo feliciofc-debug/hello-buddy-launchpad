@@ -24,42 +24,14 @@ export function productAdPhotoImprovementPrompt(
   title: string,
   niche: ContentNiche = "veiculo",
   variant: ProductPhotoVariant = "escura",
-  visualDescription = "",
 ): string {
   if (niche === "veiculo") {
     return `Prepare esta foto de ${title} para um anúncio comercial premium: recorte/valorize o produto principal, ambiente elegante de showroom com piso reflexivo, iluminação de estúdio, fundo escuro sofisticado e levemente desfocado. Mude SOMENTE o fundo/ambiente e a iluminação. O veículo/produto deve permanecer exatamente como na foto original: mesma pintura e o mesmo brilho real (não deixe a pintura nova nem mais brilhante), mesmos arranhões, amassados, manchas, desgastes e sujeira, mesmas rodas, pneus, adesivos, faixas, acessórios, vidros e placa. Não remova, não corrija, não adicione e não troque nada no veículo. Não altere proporções nem ângulo. É a MESMA unidade da foto original — não troque por outro modelo.`;
   }
-  const context = normalize(`${title} ${visualDescription}`);
-  const category = /\b(caneca|xicara|copo)\b/.test(context)
-    ? "café"
-    : /\b(interruptor|tomada|smart home|casa inteligente)\b/.test(context)
-    ? "casa inteligente"
-    : /\b(fralda|bebe|infantil)\b/.test(context)
-    ? "bebê"
-    : /\b(ferramenta|furadeira|parafusadeira|martelo)\b/.test(context)
-    ? "oficina"
-    : /\b(cosmetico|perfume|creme|maquiagem|shampoo)\b/.test(context)
-    ? "banheiro ou penteadeira"
-    : "uso real do produto";
-  const categoryScene = category === "café"
-    ? "uma mesa de café montada, com alguns grãos, bule e guardanapo sem marca"
-    : category === "casa inteligente"
-    ? "uma parede de sala moderna, com decoração residencial discreta"
-    : category === "bebê"
-    ? "um quarto de bebê suave, com acessórios neutros sem marca"
-    : category === "oficina"
-    ? "uma bancada de oficina organizada, com ferramentas secundárias sem marca"
-    : category === "banheiro ou penteadeira"
-    ? "um banheiro ou penteadeira elegante, com acessórios neutros sem marca"
-    : "um cenário elegante e coerente com o uso real identificado na imagem, com acessórios de apoio sem marca";
-  const scene = category === "café"
-    ? variant === "clara"
-      ? `Monte ${categoryScene}, clara e arejada: bancada de mármore branco ou bege e luz natural suave da manhã`
-      : `Monte ${categoryScene}, escura e sofisticada: bancada de mármore cinza-escuro ou preto, luz quente de destaque e vapor suave`
-    : variant === "clara"
-    ? `Monte ${categoryScene}, em versão clara, arejada e iluminada por luz natural suave`
-    : `Monte ${categoryScene}, em versão escura e sofisticada, com luz de destaque no produto`;
-  return `Prepare esta foto de ${title} para um anúncio comercial premium. Pela imagem, confirme a categoria e o uso do produto; o contexto provável é ${category}. ${scene}. O produto é SEMPRE o protagonista: em foco, maior e mais iluminado; os acessórios são secundários e desfocados. Substitua COMPLETAMENTE a superfície e o fundo da foto original; nunca mantenha mesa, bancada, parede ou tecido originais. Mostre o produto INTEIRO, centralizado, com espaço ao redor e margem visual de 8-12%; não corte nenhuma parte, incluindo alça, borda ou embalagem. Preserve ESTE produto exatamente como está (mesma embalagem, textos, cores, logotipo original, proporção e ângulo). Não inclua pessoas nem outros produtos de marca. PROIBIDO adicionar logotipo, marca, texto, estampa ou qualquer marcação no cenário ou no produto. A marca da loja aparece somente no layout da arte, nunca no produto. Você PODE limpar somente sujeira, manchas, poeira, marcas de dedo e reflexos ruins. NÃO altere formato, cor, textos, logotipo original ou estampa e NÃO esconda defeitos estruturais como trinca, lasca ou quebra. Não redesenhe nem substitua nenhuma parte do produto.`;
+  const background = variant === "clara"
+    ? "Use um ambiente claro, arejado e iluminado, com luz natural suave ou iluminação de estúdio. Pode ser um estúdio neutro ou um cenário leve e elegante coerente com o uso do produto: por exemplo, caneca em bancada clara de café, interruptor em parede de sala moderna e fralda em quarto de bebê claro e suave"
+    : "Use um ambiente escuro elegante, com luz de destaque no produto. Pode ser um estúdio neutro escuro ou um cenário leve e sofisticado coerente com o uso do produto";
+  return `Prepare esta foto de ${title} para um anúncio comercial premium. Coloque ESTE produto, exatamente como está (mesma embalagem, textos, cores, logotipo original, proporção e ângulo), em uma composição fotográfica limpa. ${background}. Use sombra de contato discreta. Não inclua pessoas nem outros produtos de marca. PROIBIDO adicionar logotipo, marca, texto, estampa ou qualquer marcação no produto. A marca da loja aparece somente no layout da arte, nunca no produto. Você PODE limpar somente sujeira, manchas, poeira, marcas de dedo e reflexos ruins. NÃO altere formato, cor, textos, logotipo original ou estampa e NÃO esconda defeitos estruturais como trinca, lasca ou quebra. Não redesenhe nem substitua nenhuma parte do produto.`;
 }
 
 const CONTAMINATING_OBJECTS = [
@@ -69,7 +41,11 @@ const CONTAMINATING_OBJECTS = [
   "galpao",
   "fabrica",
   "linha de producao",
+  "movel",
+  "cadeira",
+  "mesa",
   "pessoa",
+  "planta",
   "veiculo",
   "carro",
   "moto",
@@ -87,15 +63,6 @@ const CONTAMINATING_MARKINGS = [
   "palavra escrita",
   "estampa",
   "rotulo",
-];
-
-const ORIGINAL_SURFACES = [
-  "mesa de madeira",
-  "bancada de madeira",
-  "parede de madeira",
-  "tecido estampado",
-  "toalha estampada",
-  "piso de madeira",
 ];
 
 function normalize(value: unknown): string {
@@ -127,13 +94,9 @@ export function generatedProductPhotoContamination(input: {
     generated.includes(term) && !original.includes(term)
   );
   if (marking) return marking;
-  const originalSurface = ORIGINAL_SURFACES.find((term) =>
-    original.includes(term) && generated.includes(term)
-  );
-  if (originalSurface) return `superfície original: ${originalSurface}`;
   return CONTAMINATING_OBJECTS.find((term) =>
-    generated.includes(term) && !allowedObjects.includes(term)
-  ) || null;
+      generated.includes(term) && !allowedObjects.includes(term)
+    ) || null;
 }
 
 export async function generateSafeProductPhotoWithRetry(input: {
