@@ -6539,7 +6539,11 @@ async function persistAnuncioFlowState(
 async function connectedAnuncioNetworks(
   userId: string,
 ): Promise<AnuncioPostNetwork[]> {
-  const [{ data, error }, { data: linkedin, error: linkedinError }] =
+  const [
+    { data, error },
+    { data: linkedin, error: linkedinError },
+    { data: tiktok, error: tiktokError },
+  ] =
     await Promise.all([
       sb.from("meta_connections")
         .select("page_id, ig_account_id")
@@ -6551,11 +6555,17 @@ async function connectedAnuncioNetworks(
         .eq("user_id", userId)
         .eq("is_active", true)
         .maybeSingle(),
+      sb.from("integrations")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("platform", "tiktok")
+        .eq("is_active", true)
+        .maybeSingle(),
     ]);
-  if (error || linkedinError) {
+  if (error || linkedinError || tiktokError) {
     throw new Error(
       `não consegui consultar as redes conectadas: ${
-        error?.message || linkedinError?.message
+        error?.message || linkedinError?.message || tiktokError?.message
       }`,
     );
   }
@@ -6563,6 +6573,7 @@ async function connectedAnuncioNetworks(
   if (data?.page_id) networks.push("facebook");
   if (data?.ig_account_id) networks.push("instagram");
   if (linkedin?.id) networks.push("linkedin");
+  if (tiktok?.id) networks.push("tiktok");
   return networks;
 }
 
@@ -7338,6 +7349,12 @@ async function publicarEmRede(
   instagramCreationId?: string,
   tiktokPrivacyLevel?: string,
   queueRowId?: string,
+  tiktokCompliance?: {
+    isCommercialContent?: boolean;
+    brandOrganic?: boolean;
+    brandedContent?: boolean;
+    consentedAt?: string;
+  },
 ): Promise<{ rede: string; ok: boolean; status: number; resposta: any; nota?: string }> {
   try {
     const commonHeaders = { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY } as const;
@@ -7524,18 +7541,22 @@ async function publicarEmRede(
       };
     }
     if (rede === "tiktok") {
-      if (!isVideo) {
-        return { rede, ok: false, status: 0, resposta: { error: "TikTok aceita apenas vídeo neste fluxo. Envie um vídeo para publicar." } };
-      }
       const res = await fetch(`${SUPABASE_URL}/functions/v1/tiktok-post-content`, {
         method: "POST", headers: commonHeaders,
         body: JSON.stringify({
           user_id: userId,
-          content_type: "video",
+          content_type: isVideo ? "video" : "image",
           content_url: mediaUrl,
+          image_urls: isVideo
+            ? undefined
+            : (produto.image_urls?.length ? produto.image_urls : [mediaUrl]),
           title: script.slice(0, 2200),
           post_mode: "direct",
           privacy_level: tiktokPrivacyLevel,
+          is_commercial_content: !!tiktokCompliance?.isCommercialContent,
+          brand_organic: !!tiktokCompliance?.brandOrganic,
+          branded_content: !!tiktokCompliance?.brandedContent,
+          consented_at: tiktokCompliance?.consentedAt,
         }),
       });
       const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
@@ -8752,12 +8773,6 @@ async function toolConfirmarPostagemRedes(
   console.log(`[publicar] token=${token} urls=${JSON.stringify(exactMedia.urls)} redes=${p.redes.join("+")} formato=${p.formato || "feed"} fluxo=${exactMedia.flow}`);
 
   if (p.redes.includes("tiktok")) {
-    if (p.produto?.midia_tipo !== "video" && p.midiaTipo !== "video") {
-      return JSON.stringify({
-        erro: "tiktok_exige_video",
-        mensagem: "O TikTok aceita apenas vídeo neste fluxo. Envie um vídeo antes de publicar no TikTok.",
-      });
-    }
     if (!p.tiktokPrivacyLevel) {
       // A API do TikTok exige creator_info atualizado antes de cada escolha.
       const creatorInfo = await fetchTikTokPrivacyOptions(p.userId);
@@ -8775,7 +8790,7 @@ async function toolConfirmarPostagemRedes(
         status: "aguardando_privacidade_tiktok",
         token,
         privacy_options: creatorInfo.options,
-        mensagem: "Antes de publicar no TikTok, escolha quem poderá ver o vídeo.",
+        mensagem: "Antes de publicar no TikTok, escolha quem poderá ver o conteúdo.",
       });
     }
   }
@@ -8821,6 +8836,14 @@ async function toolConfirmarPostagemRedes(
     r === "instagram" ? p.instagramCreationId : undefined,
     r === "tiktok" ? p.tiktokPrivacyLevel : undefined,
     p.queueRows?.find((row) => row.platform === r)?.id,
+    r === "tiktok"
+      ? {
+        isCommercialContent: p.tiktokIsCommercialContent,
+        brandOrganic: p.tiktokBrandOrganic,
+        brandedContent: p.tiktokBrandedContent,
+        consentedAt: p.tiktokConsentedAt,
+      }
+      : undefined,
   )));
   try {
     await updatePersistedSocialPostRows(p, resultados, token);
@@ -18429,7 +18452,7 @@ async function callGemini(
       }
 
       const destination = anuncioPostInteractiveId.match(
-        /^anuncio_post:destination:(photo_feed|photo_feed_story|photo_story|photo_linkedin|schedule)$/,
+        /^anuncio_post:destination:(photo_feed|photo_feed_story|photo_story|photo_linkedin|photo_tiktok|schedule)$/,
       )?.[1];
       if (destination) {
         if (destination === "schedule") {
@@ -18459,6 +18482,8 @@ async function callGemini(
         const networks: AnuncioPostNetwork[] =
           destination === "photo_linkedin"
             ? connected.includes("linkedin") ? ["linkedin"] : []
+            : destination === "photo_tiktok"
+            ? connected.includes("tiktok") ? ["tiktok"] : []
             : meta;
         if (!networks.length) {
           return {

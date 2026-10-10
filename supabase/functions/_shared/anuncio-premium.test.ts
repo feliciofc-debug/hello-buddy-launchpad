@@ -884,6 +884,22 @@ Deno.test("três dados informados produzem somente três destaques", () => {
   assertEquals(content.ficha, []);
 });
 
+Deno.test("arte deduplica chips e não cola cor ao código do modelo", () => {
+  const content = buildVehicleAdContent({
+    versao: "TS-212 RNEGRO",
+    cor: "NEGRO",
+    condicoes: ["3X SEM JUROS", "3x sem juros"],
+    itens: ["  3X   SEM JUROS  "],
+  });
+  assertEquals(content.subtitle, "TS-212 R");
+  assertEquals(
+    content.highlights.filter((item) =>
+      item.toUpperCase().replace(/\s+/g, " ") === "3X SEM JUROS"
+    ).length,
+    1,
+  );
+});
+
 Deno.test("logo quadrada mostra nome e logo horizontal não repete", () => {
   const iconNodes = flatten(buildCatalogoAnuncio(baseData({
     logoDataUrl: "data:image/png;base64,ICONE",

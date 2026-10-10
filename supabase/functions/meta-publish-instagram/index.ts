@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { appendLinkPost } from '../_shared/link-post.ts'
+import { fetchMetaPostLink } from '../_shared/meta-post-link.ts'
 
 import { prepareImageForInstagramSafe } from "../_shared/prepareImageForInstagram.ts"
 import { InstagramContainerTimeoutError, waitForInstagramContainer } from "../_shared/instagram-container.ts"
@@ -293,7 +294,7 @@ async function publishImageToInstagram(
   productTags?: Array<{ product_id: string; x: number; y: number }>,
   retryCreationId?: string,
   onContainerCreated?: (creationId: string) => Promise<void>,
-): Promise<{ post_id: string }> {
+): Promise<{ post_id: string; post_url?: string }> {
 
   console.log('📸 Publicando IMAGEM no Instagram...', { igAccountId })
 
@@ -312,7 +313,7 @@ async function publishImageToInstagram(
   if (creationId) {
     console.log('♻️ Reutilizando container de imagem Instagram:', creationId)
     await waitForInstagramContainer(creationId, pageToken, 'feed-image')
-    return await publishContainer(igAccountId, creationId, pageToken)
+    return await publishContainer(igAccountId, creationId, pageToken, true)
   }
 
   // Passo 1: Criar container de mídia
@@ -360,7 +361,7 @@ async function publishImageToInstagram(
   await waitForInstagramContainer(creationId, pageToken, 'feed-image')
 
   // Passo 2: Publicar
-  return await publishContainer(igAccountId, creationId, pageToken)
+  return await publishContainer(igAccountId, creationId, pageToken, true)
 }
 
 // === PUBLICAR VÍDEO (REELS) ===
@@ -429,8 +430,9 @@ async function publishReelsToInstagram(
 async function publishContainer(
   igAccountId: string,
   creationId: string,
-  pageToken: string
-): Promise<{ post_id: string }> {
+  pageToken: string,
+  includePermalink = false,
+): Promise<{ post_id: string; post_url?: string }> {
   console.log('📤 Publicando container no Instagram...')
 
   const publishResponse = await fetch(
@@ -452,5 +454,15 @@ async function publishContainer(
   }
 
   console.log('✅ Publicado no Instagram! Post ID:', publishResult.id)
-  return { post_id: publishResult.id }
+  const postUrl = includePermalink
+    ? await fetchMetaPostLink({
+      postId: publishResult.id,
+      accessToken: pageToken,
+      platform: 'instagram',
+    })
+    : null
+  return {
+    post_id: publishResult.id,
+    ...(postUrl ? { post_url: postUrl } : {}),
+  }
 }

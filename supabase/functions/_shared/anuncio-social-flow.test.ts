@@ -262,12 +262,13 @@ Deno.test("arte e CTA usam o mesmo contato comercial normalizado", () => {
 Deno.test("destino curto mostra só redes conectadas", () => {
   const photo = anuncioPostDestinationList({
     mediaType: "foto",
-    connected: ["facebook", "instagram"],
+    connected: ["facebook", "instagram", "tiktok"],
   });
   assertEquals(photo.rows.map((row) => row.title), [
     "📤 Face + Insta (Feed)",
     "📤 Face + Insta",
     "📱 Só Story",
+    "🎵 TikTok",
     "🗓️ Agendar",
   ]);
   const video = anuncioPostDestinationList({
@@ -286,11 +287,14 @@ Deno.test("destino curto mostra só redes conectadas", () => {
 Deno.test("lista pós-publicação contém só redes restantes e nunca agenda", () => {
   const remaining = anuncioRemainingDestinationsList({
     mediaType: "foto",
-    connected: ["linkedin"],
+    connected: ["linkedin", "tiktok"],
   });
   assertEquals(remaining?.body, "Quer publicar também em:");
   assertEquals(remaining?.send_text_first, true);
-  assertEquals(remaining?.rows.map((row) => row.title), ["💼 LinkedIn"]);
+  assertEquals(remaining?.rows.map((row) => row.title), [
+    "💼 LinkedIn",
+    "🎵 TikTok",
+  ]);
   assertEquals(
     anuncioRemainingDestinationsList({
       mediaType: "foto",

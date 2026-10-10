@@ -253,6 +253,12 @@ export function anuncioPostDestinationList(input: {
         title: "💼 LinkedIn",
       });
     }
+    if (connected.includes("tiktok")) {
+      rows.push({
+        id: "anuncio_post:destination:photo_tiktok",
+        title: "🎵 TikTok",
+      });
+    }
   }
   rows.push({
     id: "anuncio_post:destination:schedule",

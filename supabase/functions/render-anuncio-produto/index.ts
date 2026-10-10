@@ -61,6 +61,7 @@ import {
 } from "../_shared/renderable-image.ts";
 import { correctProductColors } from "../_shared/product-photo-studio.ts";
 import { getTenantLogoDataUrlForBackground } from "../_shared/tenant-logo.ts";
+import { normalizedAdChipKey } from "../_shared/anuncio-vehicle-details.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -251,6 +252,7 @@ async function logoPathParaDataUrl(
 
 function normalizeItens(raw: unknown): AnuncioItem[] {
   if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
   return raw
     .map((i: any): AnuncioItem | null => {
       if (typeof i === "string") {
@@ -262,7 +264,13 @@ function normalizeItens(raw: unknown): AnuncioItem[] {
       const rotulo = String(i?.rotulo ?? i?.label ?? "").trim();
       return { texto: texto.slice(0, 42), rotulo: rotulo ? rotulo.slice(0, 28) : undefined };
     })
-    .filter((i): i is AnuncioItem => !!i)
+    .filter((i): i is AnuncioItem => {
+      if (!i) return false;
+      const key = normalizedAdChipKey(i.texto);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
     .slice(0, 8);
 }
 
