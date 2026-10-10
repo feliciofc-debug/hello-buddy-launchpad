@@ -310,6 +310,7 @@ import {
   scheduleSlotSaoPauloText,
   videoCaptionChoiceButtons,
   videoCaptionOptionsText,
+  whatsappLinkAtCaptionEnd,
 } from "../_shared/ready-media-actions.ts";
 import { renderedMetaVideoFormat } from "../_shared/meta-video-requirements.ts";
 import {
@@ -409,6 +410,7 @@ import {
   videoTranscriptionRecoveryButtons,
 } from "../_shared/video-transcription-flow.ts";
 import { formatVideoPublishMessage } from "../_shared/video-publish-message.ts";
+import { splitInternalWhatsAppMessage } from "../_shared/whatsapp-internal-split.ts";
 import {
   aplicarAjusteRoteiroMotion,
   buscarBaseRefazerVideoMotion,
@@ -475,13 +477,17 @@ import {
 } from "../_shared/anuncio-style.ts";
 import {
   anuncioCaptionExtraList,
+  anuncioCaptionChoiceMessage,
+  anuncioContentNiche,
   anuncioFinalApprovalButtons,
   anuncioPostActionButtons,
+  anuncioPostDestinationList,
   anuncioPostFormatButtons,
   anuncioPostNetworkButtons,
   anuncioScheduleApprovalButtons,
   anuncioScheduleTimeButtons,
   canOfferAnuncioPostActions,
+  generateProductAdCaptions,
   generateVehicleAdCaptions,
   parseAnuncioPostRequest,
   shouldBindPostToLastAnuncio,
@@ -491,6 +497,10 @@ import {
   type LastAnuncioImage,
   type PendingAnuncioPost,
 } from "../_shared/anuncio-social-flow.ts";
+import {
+  type ContentNiche,
+  resolveNichoDoConteudo,
+} from "../_shared/content-niche.ts";
 import {
   selectRecentOriginalPhoto,
 } from "../_shared/anuncio-source-media.ts";
@@ -2979,6 +2989,8 @@ type AgentConvState = {
     render_payload: Record<string, unknown>;
     source_args?: Record<string, unknown>;
     client_name?: string | null;
+    vertical?: "geral" | "veiculo";
+    niche?: ContentNiche;
     shown_styles: AnuncioStyle[];
     images?: LastAnuncioImage[];
     data?: Record<string, unknown>;
@@ -6111,6 +6123,7 @@ async function gerarTresOpcoesRedeSocial(
   ajuste?: string,
   brandContext?: string,
   briefing?: string,
+  niche: ContentNiche = "produto",
 ): Promise<{ A: string; B: string; C: string }> {
   const tomLabel = (tom || "beneficio").toLowerCase();
   const guia: Record<string, string> = {
@@ -6154,7 +6167,7 @@ async function gerarTresOpcoesRedeSocial(
     ? `\n⚠️ ESTE PRODUTO É CONSÓRCIO. PROIBIDO: "estoque limitado", "últimas unidades", "peças", "pronta-entrega". PERMITIDO: carta de crédito, contemplação, parcelas, planejamento, sonho realizado.`
     : "";
 
-  const ehVeiculo = !ehConsorcio && /(ve[ií]culo|carro|autom[oó]vel|seminovo|semi-novo|0km|zero\s*km|hatch|sedan|suv|picape|caminhonete|moto(cicleta)?|c[aâ]mbio|automat[ií]co|flex|turbo|km\s*rodados?|[0-9]{2}\s*mil\s*km|honda|toyota|hyundai|chevrolet|volkswagen|fiat|ford|renault|nissan|jeep|bmw|mercedes|audi|peugeot|citro[eë]n|kia|mitsubishi|civic|corolla|creta|onix|hb20|gol|polo|compass|tracker|t-cross|argo|strada|hilux|ranger|s10)/i.test(descLower)
+  const ehVeiculo = !ehConsorcio && niche === "veiculo"
     ? `
 ========================================
 🚗 ESTE POST É DE VEÍCULO — REGRAS ESPECIAIS (PRIORIDADE ALTA):
@@ -6491,15 +6504,30 @@ async function persistAnuncioFlowState(
 async function connectedAnuncioNetworks(
   userId: string,
 ): Promise<AnuncioPostNetwork[]> {
-  const { data, error } = await sb.from("meta_connections")
-    .select("page_id, ig_account_id")
-    .eq("user_id", userId)
-    .eq("is_active", true)
-    .maybeSingle();
-  if (error) throw new Error(`não consegui consultar as redes conectadas: ${error.message}`);
+  const [{ data, error }, { data: linkedin, error: linkedinError }] =
+    await Promise.all([
+      sb.from("meta_connections")
+        .select("page_id, ig_account_id")
+        .eq("user_id", userId)
+        .eq("is_active", true)
+        .maybeSingle(),
+      sb.from("linkedin_connections")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("is_active", true)
+        .maybeSingle(),
+    ]);
+  if (error || linkedinError) {
+    throw new Error(
+      `não consegui consultar as redes conectadas: ${
+        error?.message || linkedinError?.message
+      }`,
+    );
+  }
   const networks: AnuncioPostNetwork[] = [];
   if (data?.page_id) networks.push("facebook");
   if (data?.ig_account_id) networks.push("instagram");
+  if (linkedin?.id) networks.push("linkedin");
   return networks;
 }
 
@@ -6551,6 +6579,76 @@ async function ensureLastAnuncioImage(
   return image;
 }
 
+const PRODUCT_CAPTION_VEHICLE_LEAK =
+  /\b(c[aâ]mbio|seminovos?|carros?\s*usados?|test-?drive|quilometragem|fipe)\b|🚗/i;
+
+async function generateAnuncioCaptions(
+  last: LastAnuncio,
+  networks: AnuncioPostNetwork[],
+  userId: string,
+  variation = 0,
+): Promise<Record<string, PostVariantes>> {
+  const niche = anuncioContentNiche(last);
+  const phone = String(last.data.telefone || "").replace(/\D/g, "") ||
+    await buscarTelefoneAgenteTenant(userId) || "";
+  const finish = (captions: PostVariantes): PostVariantes =>
+    Object.fromEntries(
+      Object.entries(captions).map(([key, value]) => [
+        key,
+        whatsappLinkAtCaptionEnd(value, phone),
+      ]),
+    ) as PostVariantes;
+  if (niche === "veiculo") {
+    const captions = finish(
+      generateVehicleAdCaptions(last.data, variation, niche),
+    );
+    return Object.fromEntries(
+      networks.map((network) => [network, { ...captions }]),
+    );
+  }
+
+  const fallback = finish(generateProductAdCaptions(last.data));
+  const product = {
+    nome: String(last.data.titulo || "Produto"),
+    descricao: JSON.stringify(last.data),
+    source: "anuncio_produto",
+  };
+  const briefing =
+    `Use somente estes dados fornecidos pelo dono e lidos da foto/embalagem: ${
+      JSON.stringify(last.data)
+    }. Não acrescente característica, benefício ou condição que não esteja nesses dados.`;
+  const entries = await Promise.all(networks.map(async (network) => {
+    try {
+      const generated = finish(
+        await gerarTresOpcoesRedeSocial(
+          product,
+          "beneficio",
+          network,
+          variation ? `Crie novas abordagens sem mudar os fatos.` : undefined,
+          undefined,
+          briefing,
+          niche,
+        ),
+      );
+      return [
+        network,
+        Object.values(generated).some((caption) =>
+            PRODUCT_CAPTION_VEHICLE_LEAK.test(caption)
+          )
+          ? fallback
+          : generated,
+      ] as const;
+    } catch (error) {
+      console.warn(
+        "[anuncio_post][product_captions_fallback]",
+        (error as Error).message,
+      );
+      return [network, fallback] as const;
+    }
+  }));
+  return Object.fromEntries(entries);
+}
+
 async function prepareAnuncioSocialPosts(input: {
   last: LastAnuncio;
   action: "publish" | "schedule";
@@ -6568,11 +6666,11 @@ async function prepareAnuncioSocialPosts(input: {
     );
   }
 
-  const captions = generateVehicleAdCaptions(last.data);
-  const variantes = Object.fromEntries(networks.map((network) => [
-    network,
-    { ...captions },
-  ])) as Record<string, PostVariantes>;
+  const variantes = await generateAnuncioCaptions(
+    last,
+    networks,
+    ctx.userId,
+  );
   const formats: Array<"feed" | "story"> = format === "feed_story"
     ? ["feed", "story"]
     : [format];
@@ -6583,7 +6681,7 @@ async function prepareAnuncioSocialPosts(input: {
       const image = await ensureLastAnuncioImage(last, style, postFormat, ctx);
       const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
       const scripts = Object.fromEntries(
-        networks.map((network) => [network, captions.A]),
+        networks.map((network) => [network, variantes[network].A]),
       );
       const pending: PendingSocialPost = {
         produto: {
@@ -6677,32 +6775,21 @@ function anuncioPostSummary(
 
 async function deliverAnuncioCaptionChoices(
   raw: string,
-  ctx: { userId: string; fromNumber: string },
+  _ctx: { userId: string; fromNumber: string },
 ): Promise<{
   text: string;
   interactiveButtons?: WhatsAppInteractiveButtons;
   interactiveList?: WhatsAppInteractiveList;
 }> {
-  const text = formatSocialPostToolResult(raw);
-  const buttons = interactiveButtonsFromSocialResult(raw);
+  let parsed: any = {};
   try {
-    await sendWhatsApp(
-      ctx.userId,
-      ctx.fromNumber,
-      text,
-      undefined,
-      undefined,
-      buttons,
-      { alreadyLogged: false },
-    );
-    return {
-      text: "Se quiser, posso gerar outras opções ou você pode escrever a sua.",
-      interactiveList: anuncioCaptionExtraList(),
-    };
-  } catch (error) {
-    console.warn("[anuncio_post][caption_buttons_send_failed]", (error as Error).message);
-    return { text, interactiveButtons: buttons };
+    parsed = JSON.parse(raw);
+  } catch {
+    return { text: "Não consegui montar as opções de legenda." };
   }
+  const text = anuncioCaptionChoiceMessage(parsed.variantes || {});
+  const buttons = interactiveButtonsFromSocialResult(raw);
+  return { text, interactiveButtons: buttons };
 }
 
 async function sendAnuncioExactPreviews(
@@ -6721,9 +6808,78 @@ async function sendAnuncioExactPreviews(
   return { ok: true };
 }
 
+async function markAnuncioPendingAsPreviewed(
+  tokens: string[],
+  userId: string,
+): Promise<void> {
+  for (const token of tokens) {
+    const current = PENDING_POSTS.get(token) ??
+      await loadPendingSocialPost(token, userId);
+    if (!current) throw new Error("preview de publicação expirado");
+    const updated = {
+      ...current,
+      previewedAt: new Date().toISOString(),
+    };
+    PENDING_POSTS.set(token, updated);
+    await updatePendingSocialPostMarker(token, updated);
+  }
+}
+
+function socialResultLink(detail: any): string | null {
+  const response = detail?.resposta || {};
+  return String(
+    response.post_url || response.permalink || response.url ||
+      response.data?.post_url || "",
+  ).trim() || null;
+}
+
+function formatCombinedAnuncioPublishResults(results: string[]): string {
+  const parsed = results.map((result) => {
+    try {
+      return JSON.parse(result);
+    } catch {
+      return { erro: result };
+    }
+  });
+  const successes = parsed.flatMap((item) =>
+    Array.isArray(item.redes_publicadas) ? item.redes_publicadas : []
+  );
+  const failures = parsed.flatMap((item) =>
+    Array.isArray(item.redes_falharam) ? item.redes_falharam : []
+  );
+  const details = parsed.flatMap((item) =>
+    Array.isArray(item.detalhes) ? item.detalhes : []
+  );
+  const blocks: string[] = [];
+  for (const network of [...new Set(successes)]) {
+    const links = details.filter((detail) =>
+      detail?.rede === network && detail?.ok
+    ).map(socialResultLink).filter(Boolean);
+    blocks.push([
+      `✅ *${String(network).toUpperCase()}*`,
+      ...new Set(links),
+    ].join("\n"));
+  }
+  for (const failure of failures) {
+    blocks.push(
+      `❌ *${String(failure.rede || "REDE").toUpperCase()}* — ${
+        String(failure.erro || "não foi possível publicar").slice(0, 120)
+      }`,
+    );
+  }
+  if (!blocks.length) {
+    return parsed.map((item) =>
+      String(item.mensagem || item.erro || "Não consegui publicar.")
+    ).join("\n");
+  }
+  return `🎉 *POSTAGEM REALIZADA COM SUCESSO!* 🎉\n\n${
+    blocks.join("\n\n")
+  }`;
+}
+
 async function replaceAnuncioPendingCaptions(
   tokens: string[],
-  captions: PostVariantes,
+  captions: PostVariantes | Record<string, PostVariantes>,
   ctx: { userId: string; fromNumber: string },
   selected?: "A" | "B" | "C",
 ): Promise<void> {
@@ -6731,12 +6887,16 @@ async function replaceAnuncioPendingCaptions(
     const current = PENDING_POSTS.get(token) ??
       await loadPendingSocialPost(token, ctx.userId);
     if (!current) throw new Error("preview de publicação expirado");
+    const shared = "A" in captions ? captions as PostVariantes : null;
     const variantes = Object.fromEntries(
-      current.redes.map((network) => [network, { ...captions }]),
+      current.redes.map((network) => [
+        network,
+        { ...(shared || (captions as Record<string, PostVariantes>)[network]) },
+      ]),
     );
     const option = selected ?? "A";
     const scripts = Object.fromEntries(
-      current.redes.map((network) => [network, captions[option]]),
+      current.redes.map((network) => [network, variantes[network][option]]),
     );
     const updated: PendingSocialPost = {
       ...current,
@@ -13718,7 +13878,11 @@ async function renderVehicleCarousel(
   const caption = generatedCaption &&
       isGeneratedVehicleCopySafe(generatedCaption, state.data)
     ? generatedCaption
-    : generateVehicleAdCaptions(factualData).A;
+    : generateVehicleAdCaptions(
+      factualData,
+      0,
+      resolveNichoDoConteudo("automotivo", "veiculo"),
+    ).A;
   await enviarPreviewCarrossel(ctx, imageUrls);
   const delivered = {
     ...state,
@@ -13774,7 +13938,7 @@ async function prepareVehicleCarouselSocial(
   const captions = generateVehicleAdCaptions({
     ...state.data,
     telefone: state.data.contato,
-  });
+  }, 0, resolveNichoDoConteudo("automotivo", "veiculo"));
   const variantes = Object.fromEntries(
     networks.map((network) => [network, { ...captions }]),
   ) as Record<string, PostVariantes>;
@@ -15389,6 +15553,14 @@ async function toolCriarAnuncio(
 
     const verticalScope = (ctx.agentState as Record<string, unknown> | undefined)
       ?.__vertical_scope as InboundVertical | undefined;
+    const contentNiche = resolveNichoDoConteudo(
+      ctx.userId === ADMIN_AMZ_USER_ID
+        ? "amz"
+        : verticalScope === "veiculo"
+        ? "automotivo"
+        : "geral",
+      verticalScope === "veiculo" ? "veiculo" : "produto",
+    );
     const pendingVehicleIdentification =
       ctx.agentState?.pending_vehicle_identification;
     if (
@@ -15889,6 +16061,8 @@ async function toolCriarAnuncio(
       const lastAnuncio: LastAnuncio = {
         images,
         selected_style: renders.length === 1 ? styles[0] : undefined,
+        vertical: verticalScope === "veiculo" ? "veiculo" : "geral",
+        niche: contentNiche,
         data: anuncioData,
         render_payload: renderPayload,
         client_name: args?.cliente || null,
@@ -15904,6 +16078,8 @@ async function toolCriarAnuncio(
           _refazer_foto: false,
         },
         client_name: args?.cliente || null,
+        vertical: verticalScope === "veiculo" ? "veiculo" : "geral",
+        niche: contentNiche,
         shown_styles: styles,
         images,
         data: anuncioData,
@@ -17927,6 +18103,8 @@ async function callGemini(
       const lastAnuncio: LastAnuncio = {
         images: pendingAnuncioStyles.images ?? [],
         selected_style: anuncioStyleInteractive,
+        vertical: pendingAnuncioStyles.vertical,
+        niche: pendingAnuncioStyles.niche,
         data: pendingAnuncioStyles.data ?? {},
         render_payload: pendingAnuncioStyles.render_payload,
         client_name: pendingAnuncioStyles.client_name,
@@ -18013,6 +18191,22 @@ async function callGemini(
         return { text: "Salvei o anúncio. Quando quiser publicar, é só pedir usando o estilo escolhido." };
       }
       if (action === "publish" || action === "schedule") {
+        if (action === "publish") {
+          const connected = await connectedAnuncioNetworks(toolCtx.userId);
+          if (!connected.length) {
+            return {
+              text:
+                "Não encontrei nenhuma rede conectada para esta publicação.",
+            };
+          }
+          return {
+            text: "Escolha o destino da publicação.",
+            interactiveList: anuncioPostDestinationList({
+              mediaType: "foto",
+              connected,
+            }),
+          };
+        }
         const next: PendingAnuncioPost = {
           stage: "format",
           action,
@@ -18028,6 +18222,65 @@ async function callGemini(
             : "Certo. Qual formato você quer agendar?",
           interactiveButtons: anuncioPostFormatButtons(action === "schedule"),
         };
+      }
+
+      const destination = anuncioPostInteractiveId.match(
+        /^anuncio_post:destination:(photo_feed|photo_feed_story|photo_story|photo_linkedin|schedule)$/,
+      )?.[1];
+      if (destination) {
+        if (destination === "schedule") {
+          const next: PendingAnuncioPost = {
+            stage: "format",
+            action: "schedule",
+            created_at: new Date().toISOString(),
+          };
+          await persistAnuncioFlowState(toolCtx, {
+            last_anuncio: lastAnuncio,
+            pending_anuncio_post: next,
+          });
+          return {
+            text: "Qual formato você quer agendar?",
+            interactiveButtons: anuncioPostFormatButtons(true),
+          };
+        }
+        const connected = await connectedAnuncioNetworks(toolCtx.userId);
+        const meta = connected.filter((network) =>
+          network === "facebook" || network === "instagram"
+        );
+        const format = destination === "photo_feed_story"
+          ? "feed_story"
+          : destination === "photo_story"
+          ? "story"
+          : "feed";
+        const networks: AnuncioPostNetwork[] =
+          destination === "photo_linkedin"
+            ? connected.includes("linkedin") ? ["linkedin"] : []
+            : meta;
+        if (!networks.length) {
+          return {
+            text:
+              "Esse destino não está conectado. Escolha outra rede disponível.",
+            interactiveList: anuncioPostDestinationList({
+              mediaType: "foto",
+              connected,
+            }),
+          };
+        }
+        try {
+          const prepared = await prepareAnuncioSocialPosts({
+            last: lastAnuncio,
+            action: "publish",
+            format,
+            networks,
+            ctx: toolCtx,
+          });
+          return await deliverAnuncioCaptionChoices(prepared.raw, toolCtx);
+        } catch (error) {
+          return {
+            text:
+              `Não consegui preparar a publicação: ${(error as Error).message}. Nada foi publicado.`,
+          };
+        }
       }
 
       const format = anuncioPostInteractiveId.match(
@@ -18587,7 +18840,12 @@ async function callGemini(
       anuncioPostInteractiveId === "anuncio_post:caption:regenerate" &&
       anuncioPostTokens.length
     ) {
-      const captions = generateVehicleAdCaptions(lastAnuncio.data, Date.now());
+      const captions = await generateAnuncioCaptions(
+        lastAnuncio,
+        pendingAnuncioPost.networks ?? ["facebook", "instagram"],
+        toolCtx.userId,
+        Date.now(),
+      );
       try {
         await replaceAnuncioPendingCaptions(
           anuncioPostTokens,
@@ -18832,21 +19090,42 @@ async function callGemini(
           ),
         };
       }
-      const next = {
-        ...pendingAnuncioPost,
-        stage: "approval" as const,
-        selected_option: option,
-        created_at: new Date().toISOString(),
-      };
+      await markAnuncioPendingAsPreviewed(
+        anuncioPostTokens,
+        toolCtx.userId,
+      );
+      const results: string[] = [];
+      for (const token of anuncioPostTokens) {
+        results.push(
+          await toolConfirmarPostagemRedes({ token }, toolCtx),
+        );
+      }
       await persistAnuncioFlowState(toolCtx, {
         last_anuncio: lastAnuncio,
-        pending_anuncio_post: next,
+        pending_anuncio_post: null,
       });
-      const preview = await sendAnuncioExactPreviews(anuncioPostTokens, toolCtx);
-      if (!preview.ok) return { text: preview.message };
+      const publishedNetworks = results.flatMap((result) => {
+        try {
+          const data = JSON.parse(result);
+          return Array.isArray(data.redes_publicadas)
+            ? data.redes_publicadas
+            : [];
+        } catch {
+          return [];
+        }
+      });
+      const connected = await connectedAnuncioNetworks(toolCtx.userId);
+      const missing = connected.filter((network) =>
+        !publishedNetworks.includes(network)
+      );
       return {
-        text: anuncioPostSummary(lastAnuncio, next, option),
-        interactiveButtons: anuncioFinalApprovalButtons(anuncioPostTokens[0]),
+        text: formatCombinedAnuncioPublishResults(results),
+        interactiveList: missing.length
+          ? anuncioPostDestinationList({
+            mediaType: "foto",
+            connected: missing,
+          })
+          : undefined,
       };
     }
     if (remetenteEhDono && lastAnuncio && !anuncioPostInteractiveId) {
@@ -18901,6 +19180,20 @@ async function callGemini(
         }
         const format = request.format ?? pendingAnuncioPost?.format;
         if (!format) {
+          if (action === "publish") {
+            const connected = await connectedAnuncioNetworks(toolCtx.userId);
+            return {
+              text: connected.length
+                ? "Escolha o destino da publicação."
+                : "Não encontrei nenhuma rede conectada para esta publicação.",
+              interactiveList: connected.length
+                ? anuncioPostDestinationList({
+                  mediaType: "foto",
+                  connected,
+                })
+                : undefined,
+            };
+          }
           const next: PendingAnuncioPost = {
             ...pendingAnuncioPost,
             stage: "format",
@@ -20375,7 +20668,9 @@ async function sendWhatsApp(
     console.log("[processor][automatic_reply_dedup] suprimida_em_30s");
     return automaticClaim.receipt;
   }
-  const chunks = splitWhatsAppText(dedupedMessage);
+  const chunks = splitInternalWhatsAppMessage(dedupedMessage).flatMap((part) =>
+    splitWhatsAppText(part)
+  );
   if (chunks.length > 1) {
     console.warn(`[processor][meta_text_split] chars=${message.length} chunks=${chunks.length}`);
   }

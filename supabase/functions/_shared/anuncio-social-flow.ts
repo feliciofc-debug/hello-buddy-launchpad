@@ -1,4 +1,8 @@
 import type { AnuncioStyle } from "./anuncio-style.ts";
+import {
+  type ContentNiche,
+  resolveNichoDoConteudo,
+} from "./content-niche.ts";
 
 export const LAST_ANUNCIO_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -12,6 +16,8 @@ export type LastAnuncioImage = {
 export type LastAnuncio = {
   images: LastAnuncioImage[];
   selected_style?: AnuncioStyle;
+  vertical?: "geral" | "veiculo";
+  niche?: ContentNiche;
   data: Record<string, unknown>;
   render_payload?: Record<string, unknown>;
   client_name?: string | null;
@@ -20,7 +26,7 @@ export type LastAnuncio = {
 
 export type AnuncioPostAction = "publish" | "schedule" | "save";
 export type AnuncioPostFormat = "feed" | "story" | "feed_story";
-export type AnuncioPostNetwork = "facebook" | "instagram";
+export type AnuncioPostNetwork = "facebook" | "instagram" | "linkedin";
 
 export type AnuncioPostRequest = {
   action?: AnuncioPostAction;
@@ -187,6 +193,78 @@ export function anuncioPostNetworkButtons(
   return { body: "Em quais redes?", buttons };
 }
 
+export function anuncioPostDestinationList(input: {
+  mediaType: "foto" | "video";
+  connected: Array<"facebook" | "instagram" | "linkedin" | "tiktok">;
+}) {
+  const connected = input.connected;
+  const meta = (["facebook", "instagram"] as const).filter((network) =>
+    connected.includes(network)
+  );
+  const metaLabel = meta.length === 2
+    ? "Face + Insta"
+    : meta[0] === "facebook"
+    ? "Facebook"
+    : "Instagram";
+  const rows: Array<{ id: string; title: string; description?: string }> = [];
+  if (input.mediaType === "video") {
+    if (meta.length) {
+      rows.push({
+        id: "anuncio_post:destination:video_reels",
+        title: `🎬 Reels ${metaLabel}`,
+      });
+    }
+    if (connected.includes("tiktok")) {
+      rows.push({
+        id: "anuncio_post:destination:video_tiktok",
+        title: "🎵 TikTok",
+      });
+    }
+    if (connected.includes("linkedin")) {
+      rows.push({
+        id: "anuncio_post:destination:video_linkedin",
+        title: "💼 LinkedIn",
+      });
+    }
+    if (meta.length) {
+      rows.push({
+        id: "anuncio_post:destination:video_story",
+        title: "📱 Story",
+      });
+    }
+  } else {
+    if (meta.length) {
+      rows.push({
+        id: "anuncio_post:destination:photo_feed",
+        title: `📤 ${metaLabel} (Feed)`,
+      }, {
+        id: "anuncio_post:destination:photo_feed_story",
+        title: `📤 ${metaLabel}`,
+        description: "Feed + Story",
+      }, {
+        id: "anuncio_post:destination:photo_story",
+        title: "📱 Só Story",
+      });
+    }
+    if (connected.includes("linkedin")) {
+      rows.push({
+        id: "anuncio_post:destination:photo_linkedin",
+        title: "💼 LinkedIn",
+      });
+    }
+  }
+  rows.push({
+    id: "anuncio_post:destination:schedule",
+    title: "🗓️ Agendar",
+  });
+  return {
+    body: "Onde você quer publicar?",
+    button: "Escolher destino",
+    section_title: "Redes conectadas",
+    rows: rows.slice(0, 10),
+  };
+}
+
 export function anuncioCaptionExtraList() {
   return {
     body: "Quer outras opções ou prefere escrever?",
@@ -197,6 +275,19 @@ export function anuncioCaptionExtraList() {
       { id: "anuncio_post:caption:custom", title: "Escrever a minha" },
     ],
   };
+}
+
+export function anuncioCaptionChoiceMessage(
+  variants: Record<string, { A: string; B: string; C: string }>,
+): string {
+  const first = Object.values(variants)[0];
+  if (!first) return "Não consegui montar as opções de legenda.";
+  return [
+    "Preparei 3 opções de legenda:",
+    `*Opção A*\n${first.A}`,
+    `*Opção B*\n${first.B}`,
+    `*Opção C*\n${first.C}`,
+  ].join("\n\n");
 }
 
 export function anuncioFinalApprovalButtons(token: string) {
@@ -246,8 +337,8 @@ function hashtags(title: string): string {
 }
 
 function contactLine(data: Record<string, unknown>): string {
-  const phone = String(data.telefone || data.contato || "").trim();
-  return phone ? `Chama no WhatsApp: ${phone}.` : "";
+  const phone = String(data.telefone || data.contato || "").replace(/\D/g, "");
+  return phone ? `📱 Chame no WhatsApp: https://wa.me/${phone}` : "";
 }
 
 function priceLine(data: Record<string, unknown>): string {
@@ -323,10 +414,57 @@ function clip(value: string): string {
     : compact.slice(0, 597).replace(/\s+\S*$/, "") + "...";
 }
 
+export function anuncioContentNiche(
+  last: Pick<LastAnuncio, "niche" | "vertical">,
+): ContentNiche {
+  if (last.niche) return last.niche;
+  return resolveNichoDoConteudo(
+    last.vertical === "veiculo" ? "automotivo" : "geral",
+    last.vertical === "veiculo" ? "veiculo" : "produto",
+  );
+}
+
+function productTags(title: string): string {
+  const words = normalize(title).replace(/[^a-z0-9 ]/g, " ").split(/\s+/)
+    .filter((word) => word.length >= 4)
+    .slice(0, 4);
+  return [...new Set(words)].map((word) => `#${word}`).join(" ");
+}
+
+export function generateProductAdCaptions(
+  data: Record<string, unknown>,
+): { A: string; B: string; C: string } {
+  const title = String(data.titulo || "Produto").trim();
+  const facts = [
+    ...values(data.itens),
+    ...values(data.condicoes),
+    ...values(data.ficha),
+  ];
+  const details = facts.length ? facts.join(", ") + "." : "";
+  const price = String(data.preco || "").trim();
+  const priceText = price ? `Valor informado: ${price}.` : "";
+  const digits = String(data.telefone || data.contato || "").replace(/\D/g, "");
+  const whatsapp = digits
+    ? `📱 Chame no WhatsApp: https://wa.me/${digits}`
+    : "";
+  const tags = productTags(title);
+  const finish = (lead: string) =>
+    clip(
+      [lead, details, priceText, tags, whatsapp].filter(Boolean).join("\n\n"),
+    );
+  return {
+    A: finish(`✨ ${title}`),
+    B: finish(`Conheça ${title}.`),
+    C: finish(`Quer saber mais sobre ${title}?`),
+  };
+}
+
 export function generateVehicleAdCaptions(
   data: Record<string, unknown>,
   variation = 0,
+  niche: ContentNiche = "produto",
 ): { A: string; B: string; C: string } {
+  if (niche !== "veiculo") return generateProductAdCaptions(data);
   const model = modelLine(data);
   const allFacts = factualHighlights(data);
   const offset = allFacts.length ? Math.abs(variation) % allFacts.length : 0;

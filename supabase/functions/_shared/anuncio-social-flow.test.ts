@@ -5,8 +5,10 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   anuncioCaptionExtraList,
+  anuncioCaptionChoiceMessage,
   anuncioFinalApprovalButtons,
   anuncioPostActionButtons,
+  anuncioPostDestinationList,
   anuncioPostFormatButtons,
   anuncioPostNetworkButtons,
   anuncioScheduleApprovalButtons,
@@ -14,6 +16,7 @@ import {
   canOfferAnuncioPostActions,
   chooseAnuncioPostSource,
   generateVehicleAdCaptions,
+  generateProductAdCaptions,
   type LastAnuncio,
   parseAnuncioPostRequest,
   shouldBindPostToLastAnuncio,
@@ -153,7 +156,11 @@ Deno.test("fluxo do anúncio não sequestra pedido de outro produto", () => {
 });
 
 Deno.test("legendas usam somente o anúncio atual e respeitam segurança", () => {
-  const captions = generateVehicleAdCaptions(lastAnuncio().data);
+  const captions = generateVehicleAdCaptions(
+    lastAnuncio().data,
+    0,
+    "veiculo",
+  );
   const forbidden = [
     "comexia",
     "impecável",
@@ -180,12 +187,75 @@ Deno.test("fatos ausentes não aparecem na legenda", () => {
   const captions = generateVehicleAdCaptions({
     titulo: "Citroën C3 Picasso",
     cambio: "Automático",
-  });
+  }, 0, "veiculo");
   const text = Object.values(captions).join(" ");
   assert(!text.includes("FIPE"));
   assert(!text.includes("R$"));
   assert(!text.includes("km"));
   assert(!text.includes("garantia"));
+});
+
+Deno.test("interruptor automático usa kit produto sem vazamento automotivo", () => {
+  const data = {
+    titulo: "Interruptor Tramontina",
+    itens: ["Bivolt automático", "Cor branca"],
+    preco: "R$ 49,90",
+    telefone: "5592999999999",
+  };
+  const captions = generateVehicleAdCaptions(data, 0, "produto");
+  const text = Object.values(captions).join(" ").toLocaleLowerCase("pt-BR");
+  for (const forbidden of ["câmbio", "🚗", "seminovos", "carros"]) {
+    assert(!text.includes(forbidden));
+  }
+  assertStringIncludes(text, "interruptor tramontina");
+  assertStringIncludes(
+    captions.A,
+    "📱 Chame no WhatsApp: https://wa.me/5592999999999",
+  );
+  assertEquals(
+    captions.A.endsWith(
+      "📱 Chame no WhatsApp: https://wa.me/5592999999999",
+    ),
+    true,
+  );
+  assertEquals(generateProductAdCaptions(data), captions);
+});
+
+Deno.test("destino curto mostra só redes conectadas", () => {
+  const photo = anuncioPostDestinationList({
+    mediaType: "foto",
+    connected: ["facebook", "instagram"],
+  });
+  assertEquals(photo.rows.map((row) => row.title), [
+    "📤 Face + Insta (Feed)",
+    "📤 Face + Insta",
+    "📱 Só Story",
+    "🗓️ Agendar",
+  ]);
+  const video = anuncioPostDestinationList({
+    mediaType: "video",
+    connected: ["facebook", "instagram", "linkedin", "tiktok"],
+  });
+  assertEquals(video.rows.map((row) => row.title), [
+    "🎬 Reels Face + Insta",
+    "🎵 TikTok",
+    "💼 LinkedIn",
+    "📱 Story",
+    "🗓️ Agendar",
+  ]);
+});
+
+Deno.test("opções de legenda e pergunta ficam no mesmo balão", () => {
+  const text = anuncioCaptionChoiceMessage({
+    facebook: {
+      A: "Legenda A",
+      B: "Legenda B",
+      C: "Legenda C",
+    },
+  });
+  assertStringIncludes(text, "*Opção A*\nLegenda A");
+  assertStringIncludes(text, "*Opção B*\nLegenda B");
+  assertEquals(text.includes("<<SPLIT>>"), false);
 });
 
 Deno.test("cada etapa oferece os controles exigidos", () => {

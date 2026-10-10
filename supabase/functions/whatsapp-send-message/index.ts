@@ -9,6 +9,7 @@ import {
   truncateCodePoints,
 } from '../_shared/whatsapp-interactive-safe.ts'
 import { mediaThenButtonPayloads } from '../_shared/whatsapp-media-buttons.ts'
+import { stripInternalWhatsAppSplit } from '../_shared/whatsapp-internal-split.ts'
 
 
 
@@ -48,6 +49,7 @@ serve(async (req) => {
     if (!user_id || !to) {
       throw new Error('user_id e to são obrigatórios')
     }
+    const safeMessage = stripInternalWhatsAppSplit(message)
 
     // Buscar config do WhatsApp do cliente
     const { data: config, error: configError } = await supabase
@@ -82,7 +84,7 @@ serve(async (req) => {
     const buttonImageUrl = image_url ? toMetaSafeImageUrl(image_url) : undefined
     const mediaButtonPayloads = mediaThenButtonPayloads({
       to,
-      message,
+      message: safeMessage,
       videoUrl: video_url,
       imageUrl: buttonImageUrl,
       interactiveButtons: interactive_buttons,
@@ -107,7 +109,7 @@ serve(async (req) => {
           ...(interactive_buttons.header
             ? { header: { type: 'text', text: singleLineInteractiveText(interactive_buttons.header, 60) } }
             : {}),
-          body: { text: truncateCodePoints(message || interactive_buttons.body || 'Escolha uma opção', 1024) },
+          body: { text: truncateCodePoints(safeMessage || interactive_buttons.body || 'Escolha uma opção', 1024) },
           ...(interactive_buttons.footer
             ? { footer: { text: singleLineInteractiveText(interactive_buttons.footer, 60) } }
             : {}),
@@ -179,7 +181,7 @@ serve(async (req) => {
         type: 'video',
         video: {
           link: video_url,
-          caption: (message || '').slice(0, 1024),
+          caption: safeMessage.slice(0, 1024),
         }
       }
     } else if (document_url) {
@@ -190,7 +192,7 @@ serve(async (req) => {
         document: {
           link: document_url,
           filename: document_filename || 'documento.pdf',
-          caption: message || '',
+          caption: safeMessage,
         }
       }
     } else if (image_url) {
@@ -205,7 +207,7 @@ serve(async (req) => {
         type: 'image',
         image: {
           link: imagemSegura,
-          caption: message || '',
+          caption: safeMessage,
         }
       }
 
@@ -214,7 +216,7 @@ serve(async (req) => {
         messaging_product: 'whatsapp',
         to: to.replace(/\D/g, ''),
         type: 'text',
-        text: { body: message },
+        text: { body: safeMessage },
       }
     }
 
@@ -265,7 +267,7 @@ serve(async (req) => {
       await logOutboundMessage(supabase, {
         userId: user_id,
         phone: String(to),
-        content: message || (interactive_list ? `🎨 ${interactive_list.body || 'lista de opções'}` : (document_url ? `📄 ${document_filename || 'documento'}` : (video_url ? '🎬 vídeo' : (image_url ? '🖼️ imagem' : (contact_card ? '📇 cartão de contato' : ''))))),
+        content: safeMessage || (interactive_list ? `🎨 ${interactive_list.body || 'lista de opções'}` : (document_url ? `📄 ${document_filename || 'documento'}` : (video_url ? '🎬 vídeo' : (image_url ? '🖼️ imagem' : (contact_card ? '📇 cartão de contato' : ''))))),
         messageType: interactive_list ? 'interactive' : document_url ? 'document' : video_url ? 'video' : image_url ? 'image' : contact_card ? 'contacts' : template_name ? 'template' : 'text',
 
         wamid: result.messages?.[0]?.id ?? null,
