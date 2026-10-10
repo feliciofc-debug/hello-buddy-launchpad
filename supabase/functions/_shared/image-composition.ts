@@ -1,4 +1,11 @@
-export const IMAGE_COMPOSITION_MODEL = "google/gemini-3.1-flash-image";
+import {
+  estimatedProductSceneCostUsd,
+  PRODUCT_SCENE_IMAGE_MODELS,
+  PRODUCT_SCENE_PRO_MODEL,
+} from "./product-scene-edit.ts";
+
+export const IMAGE_COMPOSITION_MODEL = PRODUCT_SCENE_PRO_MODEL;
+export const IMAGE_COMPOSITION_MODELS = PRODUCT_SCENE_IMAGE_MODELS;
 
 export type ImageCompositionResolution = "1K" | "2K";
 
@@ -6,10 +13,8 @@ export const IMAGE_COMPOSITION_ESTIMATED_COST_USD: Record<
   ImageCompositionResolution,
   number
 > = {
-  // Duas imagens de entrada: 2 × 1.120 tokens × US$ 0,50/M.
-  // Saída: US$ 0,067 (1K) ou US$ 0,101 (2K). Texto é residual.
-  "1K": 0.06812,
-  "2K": 0.10212,
+  "1K": estimatedProductSceneCostUsd(IMAGE_COMPOSITION_MODEL, 2, "1K"),
+  "2K": estimatedProductSceneCostUsd(IMAGE_COMPOSITION_MODEL, 2, "2K"),
 };
 
 function normalizeText(value: string): string {

@@ -130,6 +130,14 @@ import {
   hasExplicitSceneDescription,
   sceneEditDirective,
 } from "../_shared/image-edit-instruction.ts";
+import {
+  combineSceneInstructions,
+  estimatedProductSceneCostUsd,
+  planProductSceneAdjustment,
+  PRODUCT_SCENE_IMAGE_MODELS,
+  productSceneScaleDirective,
+  sceneAdjustmentRequiresRegeneration,
+} from "../_shared/product-scene-edit.ts";
 import { appendWhatsappCtaInPublishingOrder } from "../_shared/social-caption-order.ts";
 import {
   dataUrlToImageBytes,
@@ -392,6 +400,7 @@ import {
   environmentLikelihood,
   IMAGE_COMPOSITION_ESTIMATED_COST_USD,
   IMAGE_COMPOSITION_MODEL,
+  IMAGE_COMPOSITION_MODELS,
   isExplicitTwoImageCompositionRequest,
   isImageCompositionIntent,
   isProductAdCreativeRequest,
@@ -1996,6 +2005,9 @@ async function toolEditarImagem(
     preservarAmbiente?: boolean;
     registrarNaBiblioteca?: boolean;
     imageInputUrl?: string;
+    sourceMediaId?: string;
+    originalSourceMediaId?: string;
+    libraryContext?: string;
   },
 ): Promise<string> {
   if (!isOwner({ userId: ctx.userId, fromNumber: ctx.fromNumber || "" })) {
@@ -2038,11 +2050,14 @@ async function toolEditarImagem(
   const textos = (ctx.textos || []).map((t) => String(t || "").trim()).filter(Boolean).slice(0, 6);
   const modo = (ctx.modo || "").trim().toLowerCase();
   const isCompositeLogo = modo === "aplicar_logo_cenario";
+  const isCreativeScene = isCompositeLogo || modo === "cena_produto";
   // Logo simples preserva a foto; pedido composto recria o cenário e preserva
   // o produto base enquanto aplica a logo oficial no objeto.
   const isLogo = isCompositeLogo || shouldUseLogoEditMode(modo, clean);
   const isAnuncio = !isLogo &&
-    (modo === "ficha_tecnica" || modo === "anuncio" || modo === "estudio" || modo === "trocar_ambiente");
+    (modo === "ficha_tecnica" || modo === "anuncio" ||
+      modo === "estudio" || modo === "trocar_ambiente" ||
+      modo === "cena_produto");
   // Em modo anúncio/ficha técnica o ambiente ORIGINAL deve ser descartado por padrão
   // (fios, TV, móveis, bagunça de casa nunca podem aparecer numa arte comercial).
   const preservar = isLogo ? true : isAnuncio ? ctx.preservarAmbiente === true : ctx.preservarAmbiente !== false;
@@ -2076,10 +2091,11 @@ async function toolEditarImagem(
 - Você recebeu DUAS imagens: a PRIMEIRA contém o PRODUTO BASE e a SEGUNDA é o ARQUIVO OFICIAL DA LOGO.
 - Faça UMA ÚNICA edição criativa que atenda ao pedido completo.
 ${sceneEditDirective(clean)}
-- Preserve o produto base com o mesmo formato, textura, material, proporções e detalhes reconhecíveis.
+- Preserve o produto base com o mesmo formato, textura, material, proporções internas e detalhes reconhecíveis; ajuste seu tamanho total e posição para a escala real da cena.
 - Aplique a logo oficial no objeto indicado pelo usuário, respeitando perspectiva, curvatura, brilho, textura e sombras naturais, como um mockup realista.
 - Reproduza a logo EXATAMENTE como está no arquivo de referência. Não redesenhe, estilize, traduza ou invente variações.
-- Não transforme a logo em carimbo no canto e não ignore o cenário descrito.`
+- Não transforme a logo em carimbo no canto e não ignore o cenário descrito.
+${productSceneScaleDirective()}`
     : isLogo
     ? `\n\n🎯 MODO APLICAR LOGO/MARCA — A FOTO ORIGINAL NÃO PODE MUDAR:
 - Você recebeu DUAS imagens: a PRIMEIRA é a FOTO BASE (resultado final) e a SEGUNDA é o ARQUIVO OFICIAL DA LOGO (apenas referência gráfica, nunca entra como cena).
@@ -2092,7 +2108,8 @@ ${sceneEditDirective(clean)}
     ? `\n\n🎯 MODO TROCA DE AMBIENTE:
 - RECORTE o produto principal da foto e DESCARTE COMPLETAMENTE o cenário original.
 - É PROIBIDO deixar qualquer resquício do local original: fios, tomadas, televisão, monitor, móveis, mesa, sofá, cortina, parede de casa, chão de casa, rodapé, roupa, pessoas ao fundo, papel, embalagens soltas, objetos de fundo, reflexo do ambiente antigo.
-${sceneEditDirective(clean)}`
+${sceneEditDirective(clean)}
+${isCreativeScene ? productSceneScaleDirective() : ""}`
     : modo === "figurino" || modo === "fantasia" || modo === "roupa"
     ? `\n\n🎯 MODO FIGURINO: troque APENAS a roupa/fantasia da pessoa conforme o pedido. É OBRIGATÓRIO manter o MESMO rosto, mesma idade, mesmo corte de cabelo, mesma pele, mesma pose e o MESMO AMBIENTE/fundo (mesmos móveis, mesma luz, mesmo enquadramento). Não troque o cenário, não deixe a pessoa parecida com outra criança/adulto, não gere desenho — fotorealista.`
     : `\n\n🎯 MODO MELHORIA: eleve a qualidade (nitidez, cor, luz, composição) mantendo a cena reconhecível.`;
@@ -2126,8 +2143,15 @@ ${sceneEditDirective(clean)}`
         modalities: ["image", "text"],
       },
       "editar_imagem",
+      100000,
+      isCreativeScene ? PRODUCT_SCENE_IMAGE_MODELS : IMAGE_MODELS,
     );
     if (!r.ok) return JSON.stringify({ erro: r.erro, detalhe: r.detalhe, motivo: r.motivo });
+    console.log(
+      `[editar_imagem] model=${r.model} estimated_usd=${
+        estimatedProductSceneCostUsd(r.model, logoDataUrl ? 2 : 1)
+      } creative_scene=${isCreativeScene}`,
+    );
     const dataUrl = r.dataUrl;
 
     let b64 = dataUrl;
@@ -2162,8 +2186,13 @@ ${sceneEditDirective(clean)}`
             midia_url: pub.publicUrl,
             mime_type: mime,
             tamanho_bytes: bytes.length,
-            contexto_original: [clean, textos.length ? `Dados: ${textos.join(" | ")}` : ""].filter(Boolean).join("\n").slice(0, 1500),
+            contexto_original: [
+              ctx.libraryContext || clean,
+              textos.length ? `Dados: ${textos.join(" | ")}` : "",
+            ].filter(Boolean).join("\n").slice(0, 1500),
             status: "pendente",
+            midia_pai_id: ctx.originalSourceMediaId ||
+              ctx.sourceMediaId || null,
           })
           .select("id")
           .maybeSingle();
@@ -2452,6 +2481,7 @@ async function composeProductInEnvironment(params: {
     "IMAGEM 2 = PRODUTO EXATO. Recorte mentalmente o produto e insira-o no ambiente conforme o pedido. Preserve fielmente desenho, cor, material, acabamento e proporções do produto; não invente um modelo parecido.",
     `PEDIDO DO CLIENTE: ${params.requestText}`,
     "Ajuste somente escala, perspectiva, oclusão, sombras e reflexos necessários para a instalação parecer real e coerente com a luz do ambiente.",
+    productSceneScaleDirective(),
     "Não adicione texto, marca d'água, pessoas ou outros produtos. Mantenha a proporção e o enquadramento da IMAGEM 1.",
   ].join("\n\n");
 
@@ -2479,7 +2509,7 @@ async function composeProductInEnvironment(params: {
       },
       "compor_produto_ambiente",
       120000,
-      [IMAGE_COMPOSITION_MODEL],
+      IMAGE_COMPOSITION_MODELS,
     );
     if (!generated.ok) {
       await sb.from("image_compositions").update({
@@ -2528,16 +2558,21 @@ async function composeProductInEnvironment(params: {
       throw new Error(`registro_midia_falhou: ${mediaError?.message || "id ausente"}`);
     }
 
+    const actualEstimatedCost = estimatedProductSceneCostUsd(
+      generated.model,
+      2,
+      resolution,
+    );
     await sb.from("image_compositions").update({
       result_midia_id: mediaRow.id,
       model: generated.model,
       resolution,
-      estimated_cost_usd: estimatedCost,
+      estimated_cost_usd: actualEstimatedCost,
       status: "completed",
       completed_at: new Date().toISOString(),
     }).eq("id", compositionId).eq("user_id", params.userId);
     console.log(
-      `[image_composition] completed id=${compositionId} model=${generated.model} resolution=${resolution} estimated_usd=${estimatedCost}`,
+      `[image_composition] completed id=${compositionId} model=${generated.model} resolution=${resolution} estimated_usd=${actualEstimatedCost}`,
     );
     return { ok: true, imageUrl: publicData.publicUrl, mediaId: mediaRow.id, resolution };
   } catch (error) {
@@ -17621,28 +17656,83 @@ async function callGemini(
             "Não encontrei essa foto para ajustar. Envie a imagem novamente.",
         };
       }
+      const originalMediaId = String(
+        resolved.midia.midia_pai_id || "",
+      ).trim();
+      let originalResolved = originalMediaId &&
+          originalMediaId !== resolved.midia.id
+        ? await resolverMidiaBibliotecaPorId(
+          toolCtx.userId,
+          originalMediaId,
+        )
+        : { midia: null };
+      if (
+        !originalResolved.midia &&
+        ["ia_edicao", "ia_composicao"].includes(
+          String(resolved.midia.origem || ""),
+        )
+      ) {
+        const cutoff = new Date(
+          new Date(resolved.midia.created_at).getTime() - 2 * 60 * 60 * 1000,
+        ).toISOString();
+        const { data: legacyOriginal } = await sb
+          .from("midias_whatsapp")
+          .select(
+            "id, tipo, origem, midia_pai_id, midia_url, contexto_original, telefone_origem, created_at",
+          )
+          .eq("user_id", toolCtx.userId)
+          .eq("telefone_origem", toolCtx.fromNumber)
+          .eq("tipo", "foto")
+          .gte("created_at", cutoff)
+          .lt("created_at", resolved.midia.created_at)
+          .not("origem", "in", "(ia_edicao,ia_composicao)")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        originalResolved = { midia: legacyOriginal ?? null };
+      }
+      const scenePlan = planProductSceneAdjustment({
+        adjustment: adjustmentPrompt,
+        previousRequest: resolved.midia.contexto_original,
+        currentMediaId: String(resolved.midia.id),
+        currentUrl: String(resolved.midia.midia_url || ""),
+        originalMediaId: originalResolved.midia?.id,
+        originalUrl: originalResolved.midia?.midia_url,
+      });
+      const cumulativeInstruction = combineSceneInstructions(
+        String(resolved.midia.contexto_original || ""),
+        adjustmentPrompt,
+      );
       await rememberLastMediaInteraction(
         toolCtx,
-        pendingImageAdjustment.media_id,
+        scenePlan.sourceMediaId,
       );
-      const editPlan = logoImageEditPlan(adjustmentPrompt);
+      const editPlan = logoImageEditPlan(scenePlan.instruction);
       const mode = editPlan.toolMode ??
-        (hasExplicitSceneDescription(adjustmentPrompt)
-          ? "ficha_tecnica"
+        (scenePlan.regenerate ||
+            hasExplicitSceneDescription(scenePlan.instruction)
+          ? "cena_produto"
           : "melhoria");
       console.log(
-        `[processor][pending_image_adjustment] pedido_chars=${adjustmentPrompt.length} modo=${mode}`,
+        `[processor][pending_image_adjustment] pedido_chars=${scenePlan.instruction.length} modo=${mode} source=${
+          scenePlan.regenerate ? "original" : "resultado_anterior"
+        }`,
       );
       const raw = editPlan.strategy === "overlay"
-        ? await toolApplyTenantLogoOverlay(adjustmentPrompt, toolCtx)
-        : await toolEditarImagem(adjustmentPrompt, {
+        ? await toolApplyTenantLogoOverlay(scenePlan.instruction, toolCtx)
+        : await toolEditarImagem(scenePlan.instruction, {
           userId: toolCtx.userId,
           fromNumber: toolCtx.fromNumber,
           media: [],
           textos: [],
           modo: mode,
-          preservarAmbiente: mode === "ficha_tecnica" ? false : undefined,
-          imageInputUrl: String(resolved.midia.midia_url || ""),
+          preservarAmbiente: mode === "cena_produto" ? false : undefined,
+          imageInputUrl: scenePlan.sourceUrl,
+          sourceMediaId: scenePlan.sourceMediaId,
+          originalSourceMediaId: originalResolved.midia?.id ||
+            resolved.midia.midia_pai_id ||
+            resolved.midia.id,
+          libraryContext: cumulativeInstruction,
         });
       let parsed: any = {};
       try {
@@ -20533,7 +20623,7 @@ async function callGemini(
         (logoMode === "object"
         ? "aplicar_logo"
         : trocarCenario
-        ? "ficha_tecnica"
+        ? "cena_produto"
         : "melhoria");
       console.log(
         `[processor][forced_image_edit] pedido_chars=${userContent.length} modo=${modoForcado}`,
@@ -20547,6 +20637,8 @@ async function callGemini(
           textos: [],
           modo: modoForcado,
           preservarAmbiente: trocarCenario ? false : undefined,
+          sourceMediaId: fotoParaEditarId || undefined,
+          originalSourceMediaId: fotoParaEditarId || undefined,
         });
       let parsed: any = {};
       try { parsed = JSON.parse(raw); } catch { /* resposta inválida tratada abaixo */ }
@@ -23714,6 +23806,8 @@ async function processOne(queueId: string) {
               media: freshLibraryMedia,
               textos: [],
               modo: freshLogoPlan.toolMode ?? "aplicar_logo",
+              sourceMediaId: savedPhotos.at(-1)?.id,
+              originalSourceMediaId: savedPhotos.at(-1)?.id,
             });
           let logoResult: any = {};
           try {
@@ -23867,7 +23961,10 @@ async function processOne(queueId: string) {
                 fromNumber: row.from_number,
                 media: freshLibraryMedia,
                 textos: [],
-                modo: "melhoria",
+                modo: "cena_produto",
+                preservarAmbiente: false,
+                sourceMediaId: savedPhotos.at(-1)?.id,
+                originalSourceMediaId: savedPhotos.at(-1)?.id,
               });
               let edited: any = {};
               try {

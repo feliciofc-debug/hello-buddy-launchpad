@@ -1,5 +1,8 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  IMAGE_COMPOSITION_ESTIMATED_COST_USD,
+  IMAGE_COMPOSITION_MODEL,
+  IMAGE_COMPOSITION_MODELS,
   isExplicitTwoImageCompositionRequest,
   isImageCompositionIntent,
 } from "./image-composition.ts";
@@ -24,4 +27,14 @@ Deno.test("lustre na sala continua candidato quando existem duas fotos", () => {
     isImageCompositionIntent("coloca esse lustre na sala"),
     true,
   );
+});
+
+Deno.test("composição criativa usa Pro com fallback Flash", () => {
+  assertEquals(IMAGE_COMPOSITION_MODEL, "google/gemini-3-pro-image");
+  assertEquals(IMAGE_COMPOSITION_MODELS, [
+    "google/gemini-3-pro-image",
+    "google/gemini-3.1-flash-image",
+  ]);
+  assertEquals(IMAGE_COMPOSITION_ESTIMATED_COST_USD["2K"] >
+    IMAGE_COMPOSITION_ESTIMATED_COST_USD["1K"], true);
 });
