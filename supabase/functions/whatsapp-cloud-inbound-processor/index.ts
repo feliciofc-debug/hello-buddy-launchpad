@@ -513,7 +513,14 @@ import {
   parseFotoBoxFromVisionResponse,
   type FotoBox,
 } from "../_shared/anuncio-photo-framing.ts";
-import { productAdPhotoImprovementPrompt } from "../_shared/anuncio-photo-prompt.ts";
+import {
+  generatedProductPhotoIsSafe,
+  productAdPhotoImprovementPrompt,
+  productPhotoVariantForStyle,
+  resolveGeneratedProductPhoto,
+  type ProductPhotoVariant,
+  type ProductPhotoVariants,
+} from "../_shared/anuncio-photo-prompt.ts";
 import { buildVehicleAdContent } from "../_shared/anuncio-vehicle-details.ts";
 import {
   classifyStoreReply,
@@ -13841,7 +13848,10 @@ async function renderVehicleCarousel(
     if (state.photo_preference === "melhorada") {
       try {
         const edited = JSON.parse(await toolEditarImagem(
-          productAdPhotoImprovementPrompt(state.data.titulo || "veículo"),
+          productAdPhotoImprovementPrompt(
+            state.data.titulo || "veículo",
+            "veiculo",
+          ),
           {
             userId: ctx.userId,
             fromNumber: ctx.fromNumber,
@@ -15910,42 +15920,85 @@ async function toolCriarAnuncio(
       }
     } catch { /* coluna origem pode não existir — guardrail é best-effort */ }
 
-    // 3) IA melhora SÓ a foto (nada de texto na imagem)
-    let fotoFinal = fotoUrl;
-    let fotoSource: "improved" | "original" = "original";
+    // 3) IA melhora SÓ o fundo e a luz. Produto e veículo usam prompts
+    // distintos; produtos recebem variantes clara e escura em paralelo.
+    const originalVisualDescription = contentNiche === "produto"
+      ? await descreverProdutoCacheado(fotoUrl)
+      : "";
+    let fotoVariants: ProductPhotoVariants = {
+      clara: { url: fotoUrl, source: "original" },
+      escura: { url: fotoUrl, source: "original" },
+    };
     if (args?.melhorar_foto !== false) {
-      try {
-        const raw = await toolEditarImagem(
-          productAdPhotoImprovementPrompt(titulo),
-          {
-            userId: ctx.userId,
-            fromNumber: ctx.fromNumber,
-            media: ctx.media,
-            textos: [],
-            modo: "anuncio",
-            preservarAmbiente: false,
-            registrarNaBiblioteca: false,
-            imageInputUrl: fotoUrl,
-          },
-        );
-        const parsed = JSON.parse(raw);
-        if (parsed?.image_url) {
-          fotoFinal = parsed.image_url;
-          fotoSource = "improved";
-          console.log("[criar_anuncio] melhoria da foto concluída; usando foto melhorada");
-        } else {
-          console.warn("[criar_anuncio] melhoria da foto falhou; usando original:", parsed?.erro);
+      const improve = async (variant: ProductPhotoVariant) => {
+        try {
+          const raw = await toolEditarImagem(
+            productAdPhotoImprovementPrompt(titulo, contentNiche, variant),
+            {
+              userId: ctx.userId,
+              fromNumber: ctx.fromNumber,
+              media: ctx.media,
+              textos: [],
+              modo: "anuncio",
+              preservarAmbiente: false,
+              registrarNaBiblioteca: false,
+              imageInputUrl: fotoUrl,
+            },
+          );
+          const parsed = JSON.parse(raw);
+          if (!parsed?.image_url) {
+            throw new Error(String(parsed?.erro || "imagem não retornada"));
+          }
+          if (contentNiche === "produto") {
+            const generatedDescription = await descreverProdutoCacheado(
+              parsed.image_url,
+            );
+            if (
+              !generatedProductPhotoIsSafe({
+                generatedDescription,
+                originalDescription: originalVisualDescription,
+                requestedText: JSON.stringify(args),
+              })
+            ) {
+              throw new Error("a imagem gerada adicionou objetos ao produto");
+            }
+          }
+          return resolveGeneratedProductPhoto({
+            originalUrl: fotoUrl,
+            generatedUrl: parsed.image_url,
+            safe: true,
+          });
+        } catch (e) {
+          console.warn(
+            `[criar_anuncio] melhoria ${variant} descartada; usando original:`,
+            (e as Error).message,
+          );
+          return { url: fotoUrl, source: "original" as const };
         }
-      } catch (e) {
-        console.warn("[criar_anuncio] melhoria da foto lançou exceção; usando original:", (e as Error).message);
+      };
+      if (contentNiche === "produto") {
+        const [clara, escura] = await Promise.all([
+          improve("clara"),
+          improve("escura"),
+        ]);
+        fotoVariants = { clara, escura };
+      } else {
+        const improved = await improve("escura");
+        fotoVariants = { clara: improved, escura: improved };
       }
     } else {
       console.log("[criar_anuncio] melhoria desativada; usando foto original");
     }
-    console.log(`[criar_anuncio] foto selecionada=${fotoSource}`);
+    const fotoFinal = fotoVariants.clara.url;
+    const fotoSource = fotoVariants.clara.source;
+    console.log(
+      `[criar_anuncio] fotos clara=${fotoVariants.clara.source} escura=${fotoVariants.escura.source}`,
+    );
     const [fotoBox, fotoVisualDescription] = await Promise.all([
       detectarCaixaProdutoVisao(fotoFinal),
-      descreverProdutoCacheado(fotoFinal),
+      originalVisualDescription
+        ? Promise.resolve(originalVisualDescription)
+        : descreverProdutoCacheado(fotoFinal),
     ]);
     console.log(
       `[criar_anuncio] foto_box=${
@@ -16049,6 +16102,7 @@ async function toolCriarAnuncio(
       foto_url: fotoFinal,
       foto_url_original: fotoUrl,
       foto_source: fotoSource,
+      foto_variants: fotoVariants,
       foto_box: fotoBox
         ? [fotoBox.ymin, fotoBox.xmin, fotoBox.ymax, fotoBox.xmax]
         : null,
@@ -16078,6 +16132,8 @@ async function toolCriarAnuncio(
           ...renderPayload,
           estilo: style,
           logo_path: logoPath,
+          foto_url: productPhotoVariantForStyle(style, fotoVariants).url,
+          foto_source: productPhotoVariantForStyle(style, fotoVariants).source,
         }, 120000);
         if (!render?.success || !render?.image_url) {
           throw new Error(String(render?.error || `falha no estilo ${style}`));
@@ -18237,6 +18293,16 @@ async function callGemini(
               ...pendingAnuncioStyles.render_payload,
               estilo: style,
               logo_path: logoPath,
+              ...(() => {
+                const variants = pendingAnuncioStyles.render_payload
+                  .foto_variants as ProductPhotoVariants | undefined;
+                if (!variants?.clara?.url || !variants?.escura?.url) return {};
+                const photo = productPhotoVariantForStyle(style, variants);
+                return {
+                  foto_url: photo.url,
+                  foto_source: photo.source,
+                };
+              })(),
             }, 120000);
             if (!render?.success || !render?.image_url) {
               throw new Error(

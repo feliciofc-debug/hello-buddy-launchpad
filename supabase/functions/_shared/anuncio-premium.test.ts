@@ -13,7 +13,12 @@ import {
   normalizeFotoBox,
   parseFotoBoxFromVisionResponse,
 } from "./anuncio-photo-framing.ts";
-import { productAdPhotoImprovementPrompt } from "./anuncio-photo-prompt.ts";
+import {
+  generatedProductPhotoIsSafe,
+  productAdPhotoImprovementPrompt,
+  productPhotoVariantForStyle,
+  resolveGeneratedProductPhoto,
+} from "./anuncio-photo-prompt.ts";
 import { classifyStoreReply, storeNameFromSite } from "./anuncio-store-flow.ts";
 import { buildVehicleAdContent } from "./anuncio-vehicle-details.ts";
 import {
@@ -561,7 +566,10 @@ Deno.test("arte de produto tem prioridade e respeita foto sem melhoria", () => {
 });
 
 Deno.test("melhoria do anúncio preserva o estado real do veículo", () => {
-  const prompt = productAdPhotoImprovementPrompt("Jeep Compass");
+  const prompt = productAdPhotoImprovementPrompt(
+    "Jeep Compass",
+    "veiculo",
+  );
   for (
     const expected of [
       "Mude SOMENTE o fundo/ambiente e a iluminação",
@@ -572,6 +580,70 @@ Deno.test("melhoria do anúncio preserva o estado real do veículo", () => {
   ) {
     assert(prompt.includes(expected));
   }
+});
+
+Deno.test("melhoria de produto nunca recebe instruções automotivas", () => {
+  const clear = productAdPhotoImprovementPrompt(
+    "Interruptor Tramontina",
+    "produto",
+    "clara",
+  );
+  const dark = productAdPhotoImprovementPrompt(
+    "Interruptor Tramontina",
+    "produto",
+    "escura",
+  );
+  for (const prompt of [clear, dark]) {
+    const normalized = prompt.toLocaleLowerCase("pt-BR");
+    for (const forbidden of ["showroom", "veículo", "pintura", "rodas"]) {
+      assertEquals(normalized.includes(forbidden), false);
+    }
+    assert(prompt.includes("PROIBIDO adicionar qualquer objeto"));
+  }
+  assert(clear.includes("branco ou creme suave"));
+  assert(dark.includes("fundo infinito grafite"));
+});
+
+Deno.test("catálogo usa variante clara e impacto/destaque usam escura", () => {
+  const variants = {
+    clara: { url: "clear.jpg", source: "improved" as const },
+    escura: { url: "dark.jpg", source: "improved" as const },
+  };
+  assertEquals(productPhotoVariantForStyle("catalogo", variants).url, "clear.jpg");
+  assertEquals(productPhotoVariantForStyle("impacto", variants).url, "dark.jpg");
+  assertEquals(productPhotoVariantForStyle("destaque", variants).url, "dark.jpg");
+});
+
+Deno.test("foto gerada com objeto novo é descartada", () => {
+  assertEquals(
+    generatedProductPhotoIsSafe({
+      originalDescription: "Interruptor preto na mão",
+      generatedDescription:
+        "Interruptor preto diante de máquinas em um galpão industrial",
+      requestedText: "anúncio de interruptor",
+    }),
+    false,
+  );
+  assertEquals(
+    generatedProductPhotoIsSafe({
+      originalDescription: "Interruptor preto na mão",
+      generatedDescription:
+        "Interruptor preto intacto em fundo infinito creme com sombra",
+      requestedText: "anúncio de interruptor",
+    }),
+    true,
+  );
+});
+
+Deno.test("falha na geração mantém a foto original", () => {
+  assertEquals(
+    resolveGeneratedProductPhoto({
+      originalUrl: "original.jpg",
+      generatedUrl: null,
+      safe: false,
+    }),
+    { url: "original.jpg", source: "original" },
+  );
 });
 
 const premiumBuilders = {
