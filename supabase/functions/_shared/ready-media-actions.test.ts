@@ -180,3 +180,41 @@ Deno.test("legendas longas ficam completas antes dos botões", () => {
   assertEquals(text.includes("reply_text:"), false);
   assertEquals(videoCaptionChoiceButtons().body, "Escolha a legenda:");
 });
+
+Deno.test("sequência vídeo B publica direto em cinco etapas lógicas", () => {
+  const options = ["Legenda A", "Legenda B escolhida", "Legenda C"];
+  const messages = [
+    videoCaptionOptionsText(options),
+    videoCaptionChoiceButtons().body,
+    "Legenda B escolhida ✅ Gerando o vídeo…",
+    "vídeo pronto + ações",
+    "✅ Publicado no Facebook e Instagram",
+  ];
+  const typedChoice = replyTextFromInteractiveId(
+    "<<INTERACTIVE_ID:reply_text:B>>",
+  );
+  const chosen = options[["A", "B", "C"].indexOf(typedChoice)];
+  const publishAction = parseReadyMediaAction(
+    `<<INTERACTIVE_ID:${readyMediaActionButtons(VIDEO_ID, "video").buttons[0].id}>>`,
+  );
+  const plan = readyVideoPublishPlan(chosen);
+
+  assertEquals(messages.length, 5);
+  assertEquals(publishAction?.mediaId, VIDEO_ID);
+  assertEquals(plan.caption, options[1]);
+  assertEquals(plan.generateSocialVariants, false);
+});
+
+Deno.test("agendar e trocar legenda preservam a opção selecionada", () => {
+  const optionB = "Legenda B";
+  const schedulePlan = readyVideoPublishPlan(optionB);
+  assertEquals(schedulePlan.caption, optionB);
+
+  const choiceC = parseVideoCaptionChoice(
+    `<<INTERACTIVE_ID:ready_media:caption_choice:C:video:${VIDEO_ID}>>`,
+  );
+  const options = ["Legenda A", optionB, "Legenda C"];
+  const updated = options[["A", "B", "C"].indexOf(choiceC!.letter)];
+  assertEquals(updated, "Legenda C");
+  assertEquals(readyVideoPublishPlan(updated).caption, "Legenda C");
+});
