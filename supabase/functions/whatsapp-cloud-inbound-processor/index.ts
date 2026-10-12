@@ -352,6 +352,8 @@ import {
 } from "../_shared/social-library-caption.ts";
 import { exactSocialMedia } from "../_shared/social-media-snapshot.ts";
 import {
+  clearImageEditStateForNewMedia,
+  interiorProjectEditDirective,
   pendingImageEditIsActive,
   shouldOfferSinglePhotoActions,
   singlePhotoEditMode,
@@ -2085,7 +2087,9 @@ async function toolEditarImagem(
   const textos = (ctx.textos || []).map((t) => String(t || "").trim()).filter(Boolean).slice(0, 6);
   const modo = (ctx.modo || "").trim().toLowerCase();
   const isCompositeLogo = modo === "aplicar_logo_cenario";
-  const isCreativeScene = isCompositeLogo || modo === "cena_produto";
+  const isInteriorProject = modo === "projeto_ambiente";
+  const isCreativeScene = isCompositeLogo || modo === "cena_produto" ||
+    isInteriorProject;
   // Logo simples preserva a foto; pedido composto recria o cenário e preserva
   // o produto base enquanto aplica a logo oficial no objeto.
   const isLogo = isCompositeLogo || shouldUseLogoEditMode(modo, clean);
@@ -2139,6 +2143,8 @@ ${productSceneScaleDirective()}`
 - A ÚNICA alteração permitida é APLICAR A LOGO DA SEGUNDA IMAGEM no local pedido, respeitando a curvatura, a perspectiva, o brilho e as sombras da superfície, como se estivesse impressa ali.
 - Reproduza a logo EXATAMENTE como está no arquivo de referência: mesmas cores, mesma tipografia, mesmo símbolo, mesmas proporções. É PROIBIDO redesenhar, estilizar, traduzir, reescrever o nome ou inventar variação.
 - Nada mais na imagem pode ser alterado.`
+    : isInteriorProject
+    ? `\n\n${interiorProjectEditDirective()}`
     : isAnuncio
     ? `\n\n🎯 MODO TROCA DE AMBIENTE:
 - RECORTE o produto principal da foto e DESCARTE COMPLETAMENTE o cenário original.
@@ -2168,7 +2174,11 @@ ${isCreativeScene ? productSceneScaleDirective() : ""}`
             content: [
               {
                 type: "text",
-                text: `Edite esta foto conforme o pedido abaixo.\n\nPedido: ${clean}${blocoModo}${blocoPreservar}${blocoTexto}${isLogo && !isCompositeLogo ? "\n\n📐 FORMATO: mantenha EXATAMENTE a mesma proporção e resolução da foto original — não recorte, não expanda, não reenquadre." : blocoFormatoSocial(clean + " " + modo)}\n\nResultado fotorealista de alta qualidade, pronto para publicação.`,
+                text: `Edite esta foto conforme o pedido abaixo.\n\nPedido: ${clean}${blocoModo}${blocoPreservar}${blocoTexto}${
+                  (isLogo && !isCompositeLogo) || isInteriorProject
+                    ? "\n\n📐 FORMATO: mantenha EXATAMENTE a mesma proporção e resolução da foto original — não recorte, não expanda, não reenquadre."
+                    : blocoFormatoSocial(clean + " " + modo)
+                }\n\nResultado fotorealista de alta qualidade, pronto para publicação.`,
               },
               { type: "image_url", image_url: { url: dataUrlInput } },
               ...(logoDataUrl ? [{ type: "image_url", image_url: { url: logoDataUrl } }] : []),
@@ -7275,6 +7285,7 @@ async function discardOldMediaPublicationFlows(
     pending_carousel: null,
     pending_vehicle_photo_batch: null,
     pending_single_photo: null,
+    ...clearImageEditStateForNewMedia(),
     pending_creative_media_ambiguity: null,
     ...(!activeVehicleCollection ? { pending_carrossel_veiculo: null } : {}),
   };
@@ -17405,7 +17416,14 @@ async function callGemini(
           text: "Me diga em texto ou áudio o que você quer mudar nesta foto.",
         };
       }
-      const mode = singlePhotoEditMode(instruction);
+      const sourceForMode = await resolverMidiaBibliotecaPorId(
+        toolCtx.userId,
+        pendingImageEdit.media_id,
+      );
+      const sourceDescription = savedVisionDescription(
+        sourceForMode.midia?.contexto_original,
+      );
+      const mode = singlePhotoEditMode(instruction, sourceDescription);
       console.log(
         `[processor][pending_image_edit] instruction_chars=${instruction.length} modo=${mode} source_media_id=${pendingImageEdit.media_id}`,
       );
@@ -20863,12 +20881,19 @@ async function callGemini(
     }
     if (remetenteEhDono && pedidoEdicaoFoto && temFotoParaEditar && !isCarrosselRequest(userContent)) {
       const trocarCenario = !pedidoLogoNaFoto && /\b(?:cen[aá]rio|ambiente|fundo|est[uú]dio|showroom)\b/i.test(userContent);
+      const sourceForMode = fotoParaEditarId
+        ? await resolverMidiaBibliotecaPorId(
+          toolCtx.userId,
+          fotoParaEditarId,
+        )
+        : { midia: null };
+      const sourceDescription = savedVisionDescription(
+        sourceForMode.midia?.contexto_original,
+      );
       const modoForcado = logoPlan.toolMode ??
         (logoMode === "object"
         ? "aplicar_logo"
-        : trocarCenario
-        ? "cena_produto"
-        : "melhoria");
+        : singlePhotoEditMode(userContent, sourceDescription));
       console.log(
         `[processor][forced_image_edit] pedido_chars=${userContent.length} modo=${modoForcado}`,
       );
@@ -20880,7 +20905,9 @@ async function callGemini(
           media: toolCtx.media,
           textos: [],
           modo: modoForcado,
-          preservarAmbiente: trocarCenario ? false : undefined,
+          preservarAmbiente: modoForcado === "cena_produto" && trocarCenario
+            ? false
+            : undefined,
           sourceMediaId: temFotoNoTurno
             ? fotoSalvaNesteTurnoId || undefined
             : fotoParaEditarId || undefined,
@@ -23502,8 +23529,7 @@ async function processOne(queueId: string) {
       if (fromIsOwner && incomingPhotos.length > 0) {
         const latestIncoming = incomingPhotos.at(-1)!;
         const hasNewPhoto = incomingPhotos.some((photo) => !photo.reused);
-        const activeVehicleCollection = freshAgentState.pending_carrossel_veiculo?.stage === "collecting";
-        if (hasNewPhoto && !activeVehicleCollection) {
+        if (hasNewPhoto) {
           const isolated = await discardOldMediaPublicationFlows(stateConversation, freshAgentState);
           Object.assign(freshAgentState, isolated);
         }
