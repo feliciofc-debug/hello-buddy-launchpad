@@ -353,6 +353,7 @@ import {
 import { exactSocialMedia } from "../_shared/social-media-snapshot.ts";
 import {
   clearImageEditStateForNewMedia,
+  forcedImageEditMode,
   interiorProjectEditDirective,
   pendingImageEditIsActive,
   shouldOfferSinglePhotoActions,
@@ -20880,7 +20881,6 @@ async function callGemini(
       }
     }
     if (remetenteEhDono && pedidoEdicaoFoto && temFotoParaEditar && !isCarrosselRequest(userContent)) {
-      const trocarCenario = !pedidoLogoNaFoto && /\b(?:cen[aá]rio|ambiente|fundo|est[uú]dio|showroom)\b/i.test(userContent);
       const sourceForMode = fotoParaEditarId
         ? await resolverMidiaBibliotecaPorId(
           toolCtx.userId,
@@ -20893,7 +20893,7 @@ async function callGemini(
       const modoForcado = logoPlan.toolMode ??
         (logoMode === "object"
         ? "aplicar_logo"
-        : singlePhotoEditMode(userContent, sourceDescription));
+        : forcedImageEditMode(userContent, sourceDescription));
       console.log(
         `[processor][forced_image_edit] pedido_chars=${userContent.length} modo=${modoForcado}`,
       );
@@ -20905,7 +20905,7 @@ async function callGemini(
           media: toolCtx.media,
           textos: [],
           modo: modoForcado,
-          preservarAmbiente: modoForcado === "cena_produto" && trocarCenario
+          preservarAmbiente: modoForcado === "cena_produto"
             ? false
             : undefined,
           sourceMediaId: temFotoNoTurno
@@ -23529,9 +23529,21 @@ async function processOne(queueId: string) {
       if (fromIsOwner && incomingPhotos.length > 0) {
         const latestIncoming = incomingPhotos.at(-1)!;
         const hasNewPhoto = incomingPhotos.some((photo) => !photo.reused);
-        if (hasNewPhoto) {
+        const activeVehicleCollection =
+          freshAgentState.pending_carrossel_veiculo?.stage === "collecting";
+        if (hasNewPhoto && !activeVehicleCollection) {
           const isolated = await discardOldMediaPublicationFlows(stateConversation, freshAgentState);
           Object.assign(freshAgentState, isolated);
+        } else if (hasNewPhoto && activeVehicleCollection) {
+          const editStatePatch = clearImageEditStateForNewMedia();
+          const saved = await saveAgentState(
+            sb,
+            stateConversation,
+            editStatePatch,
+            freshAgentState,
+          );
+          if (!saved) throw new Error("estado_edicao_antigo_nao_limpo");
+          Object.assign(freshAgentState, editStatePatch);
         }
         const interaction = { media_id: latestIncoming.id, at: new Date().toISOString() };
         const saved = await saveAgentState(sb, stateConversation, { last_media_interaction: interaction }, freshAgentState);

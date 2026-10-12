@@ -62,15 +62,28 @@ function normalizedEditText(value: string): string {
     .toLowerCase();
 }
 
-export function singlePhotoEditMode(
+function isIsolatedProductContext(
   instruction: string,
   sourceDescription = "",
-): SinglePhotoEditMode {
+): boolean {
+  return /\b(produtos?|embalagens?|frascos?|desodorantes?|cosmeticos?|garrafas?|caixas?|latas?)\b/
+    .test(
+      `${normalizedEditText(instruction)} ${
+        normalizedEditText(sourceDescription)
+      }`,
+    );
+}
+
+export function isInteriorProjectRequest(
+  instruction: string,
+  sourceDescription = "",
+  allowVisionFallback = true,
+): boolean {
   const text = normalizedEditText(instruction);
   const vision = normalizedEditText(sourceDescription);
-  const asksLogo = /\b(logo|logotipo|logomarca)\b/.test(text) ||
-    /\bminha\s+marca\b/.test(text);
-  const asksInteriorProject =
+  if (isIsolatedProductContext(instruction, sourceDescription)) return false;
+
+  const explicitProject =
     /\b(projeto|arquitet[oa]|arquitetura|reforma|armarios?|decoracao|decorar|marcenaria|parede|teto)\b/
       .test(text) ||
     /\biluminacao\s+(?:do|de|para\s+o)\s+ambiente\b/.test(text) ||
@@ -79,20 +92,43 @@ export function singlePhotoEditMode(
   const sourceIsInterior =
     /\b(sala(?:\s+de\s+jantar)?|cozinha|quarto|comodo|ambiente\s+interno|interior\s+(?:de|do|da)|escritorio|loja)\b/
       .test(vision);
-  const asksIsolatedProduct =
-    /\b(produtos?|embalagens?|frascos?|desodorantes?|cosmeticos?|garrafas?|caixas?|latas?|itens?)\b/
-      .test(text);
+  return explicitProject || (allowVisionFallback && sourceIsInterior);
+}
+
+export function singlePhotoEditMode(
+  instruction: string,
+  sourceDescription = "",
+): SinglePhotoEditMode {
+  const text = normalizedEditText(instruction);
+  const asksLogo = /\b(logo|logotipo|logomarca)\b/.test(text) ||
+    /\bminha\s+marca\b/.test(text);
   const asksScene =
-    /\b(ambiente|cenario|fundo|projeto|decoracao|decorar|escritorio|sala|quarto|cozinha|mesa|bancada|piso)\b/
+    /\b(ambiente|cenario|fundo|estudio|showroom|bancada)\b/
       .test(text) ||
-    /^(mantenha|mantem|preserve|crie|cria)\b.{0,80}\b(ambiente|cenario|fundo|projeto|decoracao)\b/
-      .test(text);
+    /^(mantenha|mantem|preserve|crie|cria)\b.{0,80}\b(ambiente|cenario|fundo|estudio|showroom|bancada)\b/
+      .test(text) ||
+    (isIsolatedProductContext(instruction, sourceDescription) &&
+      /\b(projeto|vitrine|decoracao|decorar)\b/.test(text));
   if (asksLogo && asksScene) return "aplicar_logo_cenario";
   if (asksLogo) return "aplicar_logo";
-  if (asksInteriorProject || (sourceIsInterior && !asksIsolatedProduct)) {
+  if (isInteriorProjectRequest(instruction, sourceDescription)) {
     return "projeto_ambiente";
   }
   return asksScene ? "cena_produto" : "melhoria";
+}
+
+export function forcedImageEditMode(
+  instruction: string,
+  sourceDescription = "",
+): "projeto_ambiente" | "cena_produto" | "melhoria" {
+  if (isInteriorProjectRequest(instruction, sourceDescription, false)) {
+    return "projeto_ambiente";
+  }
+  return /\b(?:cen[aá]rio|ambiente|fundo|est[uú]dio|showroom)\b/i.test(
+      instruction,
+    )
+    ? "cena_produto"
+    : "melhoria";
 }
 
 export function interiorProjectEditDirective(): string {

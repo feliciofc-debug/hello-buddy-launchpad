@@ -1,6 +1,7 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   clearImageEditStateForNewMedia,
+  forcedImageEditMode,
   interiorProjectEditDirective,
   pendingImageEditIsActive,
   shouldOfferSinglePhotoActions,
@@ -72,6 +73,11 @@ Deno.test("projeto de ambiente preserva arquitetura e não sequestra produto", (
     ),
     "projeto_ambiente",
   );
+  assertEquals(singlePhotoEditMode("deixa a mesa mais bonita"), "melhoria");
+  assertEquals(
+    singlePhotoEditMode("crie um projeto de vitrine para os produtos"),
+    "cena_produto",
+  );
 
   const directive = interiorProjectEditDirective();
   assertEquals(directive.includes("DESCARTE"), false);
@@ -88,11 +94,45 @@ Deno.test("projeto de ambiente preserva arquitetura e não sequestra produto", (
   );
 });
 
+Deno.test("edição sem botão preserva a decisão validada", () => {
+  assertEquals(
+    forcedImageEditMode(
+      "melhora a foto da mesa",
+      "[visão] sala de jantar com mesa e cadeiras",
+    ),
+    "melhoria",
+  );
+  assertEquals(
+    forcedImageEditMode("troca o fundo para mármore"),
+    "cena_produto",
+  );
+  assertEquals(
+    forcedImageEditMode("faz um projeto com armários para minha sala"),
+    "projeto_ambiente",
+  );
+});
+
 Deno.test("foto nova limpa estados antigos de edição", () => {
   assertEquals(clearImageEditStateForNewMedia(), {
     pending_image_edit: null,
     pending_image_adjustment: null,
   });
+});
+
+Deno.test("limpeza de edição preserva coleta ativa de veículo", () => {
+  const active = {
+    pending_vehicle_photo_batch: { photos: ["frente", "lateral"] },
+    pending_carrossel_veiculo: {
+      stage: "collecting",
+      photos: ["frente"],
+      token: "vehicle-token",
+    },
+    pending_image_edit: { media_id: "foto-antiga" },
+  };
+  const updated = { ...active, ...clearImageEditStateForNewMedia() };
+  assertEquals(updated.pending_vehicle_photo_batch, active.pending_vehicle_photo_batch);
+  assertEquals(updated.pending_carrossel_veiculo, active.pending_carrossel_veiculo);
+  assertEquals(updated.pending_image_edit, null);
 });
 
 Deno.test("menu de foto única não intercepta veículo nem foto com pedido", () => {
