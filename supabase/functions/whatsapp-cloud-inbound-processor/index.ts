@@ -131,6 +131,10 @@ import {
   sceneEditDirective,
 } from "../_shared/image-edit-instruction.ts";
 import {
+  INTERIOR_STRUCTURE_FAILURE_MESSAGE,
+  runInteriorEditValidation,
+} from "../_shared/interior-edit.ts";
+import {
   combineSceneInstructions,
   estimatedProductSceneCostUsd,
   imageModelsForRequest,
@@ -354,7 +358,6 @@ import { exactSocialMedia } from "../_shared/social-media-snapshot.ts";
 import {
   clearImageEditStateForNewMedia,
   forcedImageEditMode,
-  interiorProjectEditDirective,
   pendingImageEditIsActive,
   shouldOfferSinglePhotoActions,
   singlePhotoEditMode,
@@ -2005,6 +2008,66 @@ function completedWhatsAppImageResponse(raw: string, explicitlyUnbranded = false
   };
 }
 
+async function checkInteriorRoomStructure(
+  originalImage: string,
+  generatedImage: string,
+  attempt: 1 | 2,
+): Promise<boolean | null> {
+  const prompt =
+    'Compare as duas fotos. É o mesmo cômodo, com o mesmo ângulo, as mesmas janelas e as mesmas paredes? Responda somente JSON puro: {"mesmo_comodo":true} ou {"mesmo_comodo":false}.';
+  try {
+    const response = await fetch(
+      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: MODEL_FAST,
+          temperature: 0,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              { type: "image_url", image_url: { url: originalImage } },
+              { type: "image_url", image_url: { url: generatedImage } },
+            ],
+          }],
+        }),
+        signal: AbortSignal.timeout(8_000),
+      },
+    );
+    if (!response.ok) {
+      console.warn(
+        `[interior_check] attempt=${attempt} status=${response.status} result=error`,
+      );
+      return null;
+    }
+    const data = await response.json();
+    const content = String(data?.choices?.[0]?.message?.content || "");
+    const jsonText = content.match(/\{[\s\S]*\}/)?.[0] || content;
+    const parsed = JSON.parse(jsonText);
+    const sameRoom = typeof parsed?.mesmo_comodo === "boolean"
+      ? parsed.mesmo_comodo
+      : null;
+    console.log(
+      `[interior_check] attempt=${attempt} result=${
+        sameRoom === null ? "invalid" : sameRoom
+      }`,
+    );
+    return sameRoom;
+  } catch (error) {
+    console.warn(
+      `[interior_check] attempt=${attempt} result=error detail=${
+        String((error as Error).message || error).slice(0, 160)
+      }`,
+    );
+    return null;
+  }
+}
+
 // ---- editar_imagem: edita/melhora foto enviada (turno atual ou última foto recente da biblioteca) ----
 async function toolEditarImagem(
   prompt: string,
@@ -2142,7 +2205,7 @@ ${productSceneScaleDirective()}`
 - Reproduza a logo EXATAMENTE como está no arquivo de referência: mesmas cores, mesma tipografia, mesmo símbolo, mesmas proporções. É PROIBIDO redesenhar, estilizar, traduzir, reescrever o nome ou inventar variação.
 - Nada mais na imagem pode ser alterado.`
     : isInteriorProject
-    ? `\n\n${interiorProjectEditDirective()}`
+    ? ""
     : isAnuncio
     ? `\n\n🎯 MODO TROCA DE AMBIENTE:
 - RECORTE o produto principal da foto e DESCARTE COMPLETAMENTE o cenário original.
@@ -2164,37 +2227,99 @@ ${isCreativeScene ? productSceneScaleDirective() : ""}`
 
   try {
     const dataUrlInput = imageInput;
-    const r = await chamarGatewayImagem(
-      {
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: `Edite esta foto conforme o pedido abaixo.\n\nPedido: ${clean}${blocoModo}${blocoPreservar}${blocoTexto}${
-                  (isLogo && !isCompositeLogo) || isInteriorProject
-                    ? "\n\n📐 FORMATO: mantenha EXATAMENTE a mesma proporção e resolução da foto original — não recorte, não expanda, não reenquadre."
-                    : blocoFormatoSocial(clean + " " + modo)
-                }\n\nResultado fotorealista de alta qualidade, pronto para publicação.`,
-              },
-              { type: "image_url", image_url: { url: dataUrlInput } },
-              ...(logoDataUrl ? [{ type: "image_url", image_url: { url: logoDataUrl } }] : []),
-            ],
-          },
-        ],
-        modalities: ["image", "text"],
-      },
-      "editar_imagem",
-      100000,
-      isCreativeScene ? imageModelsForRequest(clean) : IMAGE_MODELS,
-    );
-    if (!r.ok) return JSON.stringify({ erro: r.erro, detalhe: r.detalhe, motivo: r.motivo });
-    console.log(
-      `[editar_imagem] model=${r.model} estimated_usd=${
-        estimatedProductSceneCostUsd(r.model, logoDataUrl ? 2 : 1)
-      } creative_scene=${isCreativeScene}`,
-    );
+    const imageRequest = (promptText: string) => ({
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: promptText },
+            { type: "image_url", image_url: { url: dataUrlInput } },
+            ...(logoDataUrl
+              ? [{
+                type: "image_url",
+                image_url: { url: logoDataUrl },
+              }]
+              : []),
+          ],
+        },
+      ],
+      modalities: ["image", "text"],
+    });
+    const standardPrompt =
+      `Edite esta foto conforme o pedido abaixo.\n\nPedido: ${clean}${blocoModo}${blocoPreservar}${blocoTexto}${
+        isLogo && !isCompositeLogo
+          ? "\n\n📐 FORMATO: mantenha EXATAMENTE a mesma proporção e resolução da foto original — não recorte, não expanda, não reenquadre."
+          : blocoFormatoSocial(clean + " " + modo)
+      }\n\nResultado fotorealista de alta qualidade, pronto para publicação.`;
+    let r: ImagemGatewayOk | ImagemGatewayErr;
+    if (isInteriorProject) {
+      let selectedInteriorModel: string | null = null;
+      const workflow = await runInteriorEditValidation<ImagemGatewayOk>({
+        ownerRequest: clean,
+        generate: async (promptText) => {
+          const generated = await chamarGatewayImagem(
+            imageRequest(promptText),
+            "editar_imagem",
+            100000,
+            selectedInteriorModel
+              ? [selectedInteriorModel]
+              : imageModelsForRequest(clean),
+          );
+          if (!generated.ok) {
+            return { ok: false, error: generated };
+          }
+          selectedInteriorModel = generated.model;
+          console.log(
+            `[editar_imagem] model=${generated.model} estimated_usd=${
+              estimatedProductSceneCostUsd(generated.model, 1)
+            } creative_scene=true`,
+          );
+          return { ok: true, value: generated };
+        },
+        validate: (generated, attempt) =>
+          checkInteriorRoomStructure(
+            dataUrlInput,
+            generated.dataUrl,
+            attempt,
+          ),
+      });
+      if (!workflow.ok) {
+        if (workflow.reason === "structure_mismatch") {
+          return JSON.stringify({
+            erro: "interior_structure_mismatch",
+            mensagem: INTERIOR_STRUCTURE_FAILURE_MESSAGE,
+          });
+        }
+        const generationError = workflow.error as ImagemGatewayErr;
+        return JSON.stringify({
+          erro: generationError?.erro || "image_gateway_indisponivel",
+          detalhe: generationError?.detalhe,
+          motivo: generationError?.motivo,
+        });
+      }
+      r = workflow.value;
+    } else {
+      r = await chamarGatewayImagem(
+        imageRequest(standardPrompt),
+        "editar_imagem",
+        100000,
+        isCreativeScene ? imageModelsForRequest(clean) : IMAGE_MODELS,
+      );
+    }
+    if (!r.ok) {
+      return JSON.stringify({
+        erro: r.erro,
+        detalhe: r.detalhe,
+        motivo: r.motivo,
+      });
+    }
+    if (!isInteriorProject) {
+      console.log(
+        `[editar_imagem] model=${r.model} estimated_usd=${
+          estimatedProductSceneCostUsd(r.model, logoDataUrl ? 2 : 1)
+        } creative_scene=${isCreativeScene}`,
+      );
+    }
     const dataUrl = r.dataUrl;
 
     let b64 = dataUrl;
@@ -17143,6 +17268,9 @@ function mensagemErroEdicaoImagem(parsed: any): string {
   if (erro === "sem_logo_cadastrada") {
     return "Não encontrei uma logo cadastrada para aplicar. Cadastre a marca ou envie o arquivo da logo.";
   }
+  if (erro === "interior_structure_mismatch") {
+    return INTERIOR_STRUCTURE_FAILURE_MESSAGE;
+  }
   const explicacao = String(parsed?.instrucao || parsed?.motivo || parsed?.detalhe || "").trim();
   return explicacao
     ? `Não consegui concluir a edição: ${explicacao}`
@@ -17432,7 +17560,8 @@ async function callGemini(
         `[processor][pending_image_edit] instruction_chars=${instruction.length} modo=${mode} source_media_id=${pendingImageEdit.media_id}`,
       );
       let parsed: any = {};
-      for (let attempt = 1; attempt <= 2; attempt++) {
+      const toolAttempts = mode === "projeto_ambiente" ? 1 : 2;
+      for (let attempt = 1; attempt <= toolAttempts; attempt++) {
         const raw = await toolEditarImagem(instruction, {
           userId: toolCtx.userId,
           fromNumber: toolCtx.fromNumber,
@@ -17488,7 +17617,9 @@ async function callGemini(
         toolCtx.agentState.pending_image_edit = failedPending;
       }
       return {
-        text: "Não consegui gerar agora.",
+        text: parsed?.erro === "interior_structure_mismatch"
+          ? INTERIOR_STRUCTURE_FAILURE_MESSAGE
+          : "Não consegui gerar agora.",
         interactiveButtons: imageEditRetryButtons(),
       };
     }
