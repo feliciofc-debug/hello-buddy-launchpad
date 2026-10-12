@@ -133,8 +133,8 @@ import {
 import {
   combineSceneInstructions,
   estimatedProductSceneCostUsd,
+  imageModelsForRequest,
   planProductSceneAdjustment,
-  PRODUCT_SCENE_IMAGE_MODELS,
   productSceneScaleDirective,
   sceneAdjustmentRequiresRegeneration,
 } from "../_shared/product-scene-edit.ts";
@@ -411,9 +411,6 @@ import {
 import { buildSocialQueueNetworkRows } from "../_shared/social-queue.ts";
 import {
   environmentLikelihood,
-  IMAGE_COMPOSITION_ESTIMATED_COST_USD,
-  IMAGE_COMPOSITION_MODEL,
-  IMAGE_COMPOSITION_MODELS,
   isExplicitTwoImageCompositionRequest,
   isImageCompositionIntent,
   isProductAdCreativeRequest,
@@ -2190,7 +2187,7 @@ ${isCreativeScene ? productSceneScaleDirective() : ""}`
       },
       "editar_imagem",
       100000,
-      isCreativeScene ? PRODUCT_SCENE_IMAGE_MODELS : IMAGE_MODELS,
+      isCreativeScene ? imageModelsForRequest(clean) : IMAGE_MODELS,
     );
     if (!r.ok) return JSON.stringify({ erro: r.erro, detalhe: r.detalhe, motivo: r.motivo });
     console.log(
@@ -2484,7 +2481,13 @@ async function composeProductInEnvironment(params: {
   product: CompositionSource;
 }): Promise<CompositionResult> {
   const resolution = requestedCompositionResolution(params.requestText);
-  const estimatedCost = IMAGE_COMPOSITION_ESTIMATED_COST_USD[resolution];
+  const compositionModels = imageModelsForRequest(params.requestText);
+  const reservedModel = compositionModels[0];
+  const estimatedCost = estimatedProductSceneCostUsd(
+    reservedModel,
+    2,
+    resolution,
+  );
   const { data: reservationData, error: reservationError } = await sb.rpc(
     "reserve_image_composition",
     {
@@ -2494,7 +2497,7 @@ async function composeProductInEnvironment(params: {
       p_environment_midia_id: params.environment.id,
       p_product_midia_id: params.product.id,
       p_product_id: params.product.productId ?? null,
-      p_model: IMAGE_COMPOSITION_MODEL,
+      p_model: reservedModel,
       p_resolution: resolution,
       p_estimated_cost_usd: estimatedCost,
     },
@@ -2555,7 +2558,7 @@ async function composeProductInEnvironment(params: {
       },
       "compor_produto_ambiente",
       120000,
-      IMAGE_COMPOSITION_MODELS,
+      compositionModels,
     );
     if (!generated.ok) {
       await sb.from("image_compositions").update({

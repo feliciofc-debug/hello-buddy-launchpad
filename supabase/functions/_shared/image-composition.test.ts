@@ -29,11 +29,11 @@ Deno.test("lustre na sala continua candidato quando existem duas fotos", () => {
   );
 });
 
-Deno.test("composição criativa usa Pro com fallback Flash", () => {
-  assertEquals(IMAGE_COMPOSITION_MODEL, "google/gemini-3-pro-image");
+Deno.test("composição criativa usa Flash com fallback Pro", () => {
+  assertEquals(IMAGE_COMPOSITION_MODEL, "google/gemini-3.1-flash-image");
   assertEquals(IMAGE_COMPOSITION_MODELS, [
-    "google/gemini-3-pro-image",
     "google/gemini-3.1-flash-image",
+    "google/gemini-3-pro-image",
   ]);
   assertEquals(IMAGE_COMPOSITION_ESTIMATED_COST_USD["2K"] >
     IMAGE_COMPOSITION_ESTIMATED_COST_USD["1K"], true);

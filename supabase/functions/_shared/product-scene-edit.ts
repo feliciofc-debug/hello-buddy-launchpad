@@ -1,8 +1,11 @@
-// Confirmado no catálogo público /v1/models do gateway em 2026-10-10:
-// saída de imagem premium disponível, com Flash Image como fallback.
+// Confirmado no catálogo público /v1/models do gateway em 2026-10-10.
 export const PRODUCT_SCENE_PRO_MODEL = "google/gemini-3-pro-image";
 export const PRODUCT_SCENE_FLASH_MODEL = "google/gemini-3.1-flash-image";
 export const PRODUCT_SCENE_IMAGE_MODELS = [
+  PRODUCT_SCENE_FLASH_MODEL,
+  PRODUCT_SCENE_PRO_MODEL,
+] as const;
+const PRODUCT_SCENE_MAX_QUALITY_MODELS = [
   PRODUCT_SCENE_PRO_MODEL,
   PRODUCT_SCENE_FLASH_MODEL,
 ] as const;
@@ -33,6 +36,12 @@ function normalize(value: string): string {
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
+}
+
+export function imageModelsForRequest(text: string): readonly string[] {
+  return /\bqualidade\s+maxima\b/.test(normalize(text))
+    ? PRODUCT_SCENE_MAX_QUALITY_MODELS
+    : PRODUCT_SCENE_IMAGE_MODELS;
 }
 
 export function sceneAdjustmentRequiresRegeneration(value: string): boolean {

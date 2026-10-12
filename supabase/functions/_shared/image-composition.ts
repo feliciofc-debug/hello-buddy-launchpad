@@ -1,10 +1,10 @@
 import {
   estimatedProductSceneCostUsd,
+  PRODUCT_SCENE_FLASH_MODEL,
   PRODUCT_SCENE_IMAGE_MODELS,
-  PRODUCT_SCENE_PRO_MODEL,
 } from "./product-scene-edit.ts";
 
-export const IMAGE_COMPOSITION_MODEL = PRODUCT_SCENE_PRO_MODEL;
+export const IMAGE_COMPOSITION_MODEL = PRODUCT_SCENE_FLASH_MODEL;
 export const IMAGE_COMPOSITION_MODELS = PRODUCT_SCENE_IMAGE_MODELS;
 
 export type ImageCompositionResolution = "1K" | "2K";

@@ -6,6 +6,7 @@ import {
 import {
   combineSceneInstructions,
   estimatedProductSceneCostUsd,
+  imageModelsForRequest,
   PRODUCT_SCENE_FLASH_MODEL,
   PRODUCT_SCENE_IMAGE_MODELS,
   PRODUCT_SCENE_PRO_MODEL,
@@ -63,14 +64,25 @@ Deno.test("mudança de objeto usa foto original e ajuste pequeno usa resultado",
   assertEquals(small.instruction, "deixa mais claro");
 });
 
-Deno.test("composição usa Pro primeiro e Flash como fallback", () => {
+Deno.test("cena comum usa Flash e qualidade máxima usa Pro", () => {
   assertEquals(PRODUCT_SCENE_IMAGE_MODELS, [
+    PRODUCT_SCENE_FLASH_MODEL,
+    PRODUCT_SCENE_PRO_MODEL,
+  ]);
+  assertEquals(imageModelsForRequest("crie uma cena elegante"), [
+    PRODUCT_SCENE_FLASH_MODEL,
+    PRODUCT_SCENE_PRO_MODEL,
+  ]);
+  assertEquals(imageModelsForRequest("crie com qualidade máxima"), [
     PRODUCT_SCENE_PRO_MODEL,
     PRODUCT_SCENE_FLASH_MODEL,
   ]);
   assert(
     estimatedProductSceneCostUsd(PRODUCT_SCENE_PRO_MODEL, 2) >
       estimatedProductSceneCostUsd(PRODUCT_SCENE_FLASH_MODEL, 2),
+  );
+  assert(
+    estimatedProductSceneCostUsd(PRODUCT_SCENE_FLASH_MODEL, 1) <= 0.07,
   );
 });
 
