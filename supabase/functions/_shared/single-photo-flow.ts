@@ -19,6 +19,18 @@ export function singlePhotoFormatButtons() {
   };
 }
 
+export function shouldOfferSinglePhotoActions(input: {
+  isOwner: boolean;
+  verticalRoute: "geral" | "veiculo";
+  incomingPhotoCount: number;
+  context: string;
+}): boolean {
+  return input.isOwner &&
+    input.verticalRoute === "geral" &&
+    input.incomingPhotoCount > 0 &&
+    !input.context;
+}
+
 export function pendingImageEditIsActive(
   createdAt: string,
   nowMs = Date.now(),
@@ -40,7 +52,8 @@ export function singlePhotoEditMode(
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
-  const asksLogo = /\b(logo|logotipo|logomarca|marca)\b/.test(text);
+  const asksLogo = /\b(logo|logotipo|logomarca)\b/.test(text) ||
+    /\bminha\s+marca\b/.test(text);
   const asksScene =
     /\b(ambiente|cenario|fundo|projeto|decoracao|decorar|escritorio|sala|quarto|cozinha|mesa|bancada|piso)\b/
       .test(text) ||

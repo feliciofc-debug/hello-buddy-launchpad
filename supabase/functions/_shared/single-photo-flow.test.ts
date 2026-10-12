@@ -1,6 +1,7 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   pendingImageEditIsActive,
+  shouldOfferSinglePhotoActions,
   singlePhotoActionButtons,
   singlePhotoEditMode,
   singlePhotoFormatButtons,
@@ -34,6 +35,8 @@ Deno.test("clique em editar captura qualquer instrução e escolhe o modo", () =
     "aplicar_logo_cenario",
   );
   assertEquals(singlePhotoEditMode("coloque minha logo"), "aplicar_logo");
+  assertEquals(singlePhotoEditMode("destaque a marca Axe"), "melhoria");
+  assertEquals(singlePhotoEditMode("use minha marca"), "aplicar_logo");
   assertEquals(
     pendingImageEditIsActive(
       "2026-10-12T10:00:00.000Z",
@@ -46,6 +49,36 @@ Deno.test("clique em editar captura qualquer instrução e escolhe o modo", () =
       "2026-10-12T10:00:00.000Z",
       Date.parse("2026-10-12T10:30:01.000Z"),
     ),
+    false,
+  );
+});
+
+Deno.test("menu de foto única não intercepta veículo nem foto com pedido", () => {
+  assertEquals(
+    shouldOfferSinglePhotoActions({
+      isOwner: true,
+      verticalRoute: "geral",
+      incomingPhotoCount: 1,
+      context: "",
+    }),
+    true,
+  );
+  assertEquals(
+    shouldOfferSinglePhotoActions({
+      isOwner: true,
+      verticalRoute: "veiculo",
+      incomingPhotoCount: 1,
+      context: "",
+    }),
+    false,
+  );
+  assertEquals(
+    shouldOfferSinglePhotoActions({
+      isOwner: true,
+      verticalRoute: "geral",
+      incomingPhotoCount: 1,
+      context: "coloca minha logo",
+    }),
     false,
   );
 });

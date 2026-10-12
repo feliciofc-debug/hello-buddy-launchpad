@@ -206,6 +206,13 @@ Deno.test("mudança explícita de cenário vence menção de publicação", () =
   });
 });
 
+Deno.test("projeto genérico não vira edição de imagem", () => {
+  assertEquals(
+    classifyOwnerMediaIntent("crie um post sobre o nosso projeto"),
+    { action: null, mediaStrategy: null },
+  );
+});
+
 Deno.test("mantém comandos explícitos de publicação", () => {
   for (
     const text of [

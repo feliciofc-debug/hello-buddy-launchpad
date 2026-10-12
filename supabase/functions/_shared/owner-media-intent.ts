@@ -152,9 +152,9 @@ export function hasGeneratedImagePostChain(text: string): boolean {
 
 function hasExplicitSceneEditRequest(text: string): boolean {
   const value = withoutConversationalPrefix(text);
-  return /\b(?:mantenha|mantem|preserve|crie|cria|troque|troca|mude|muda|ajuste|ajusta)\b.{0,100}\b(?:ambiente|cenario|fundo|decoracao|projeto)\b/
+  return /\b(?:mantenha|mantem|preserve|troque|troca|mude|muda|ajuste|ajusta)\b.{0,100}\b(?:ambiente|cenario|fundo|decoracao)\b/
     .test(value) ||
-    /\b(?:ambiente|cenario|fundo|decoracao|projeto)\b.{0,100}\b(?:mantenha|mantem|preserve|crie|cria|troque|troca|mude|muda|ajuste|ajusta)\b/
+    /\b(?:ambiente|cenario|fundo|decoracao)\b.{0,100}\b(?:mantenha|mantem|preserve|troque|troca|mude|muda|ajuste|ajusta)\b/
       .test(value);
 }
 

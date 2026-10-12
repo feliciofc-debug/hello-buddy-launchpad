@@ -353,6 +353,7 @@ import {
 import { exactSocialMedia } from "../_shared/social-media-snapshot.ts";
 import {
   pendingImageEditIsActive,
+  shouldOfferSinglePhotoActions,
   singlePhotoEditMode,
   singlePhotoFormatButtons,
 } from "../_shared/single-photo-flow.ts";
@@ -2027,9 +2028,16 @@ async function toolEditarImagem(
   const clean = (prompt || "").trim();
   if (!clean) return JSON.stringify({ erro: "prompt vazio" });
 
-  // ID explícito sempre vence. A janela de 30 minutos é apenas último recurso.
+  // A foto do turno atual sempre vence. O ID explícito vem em seguida e a
+  // janela de 30 minutos continua sendo apenas o último recurso.
   let imageInput: string | null = null;
-  if (ctx.sourceMediaId) {
+  const img = (ctx.media || []).slice().reverse().find((m) =>
+    m.kind === "image"
+  );
+  if (img) {
+    imageInput = `data:${img.mime};base64,${img.base64}`;
+  }
+  if (!imageInput && ctx.sourceMediaId) {
     const { data: source, error } = await sb
       .from("midias_whatsapp")
       .select("id, midia_url")
@@ -2045,12 +2053,7 @@ async function toolEditarImagem(
     }
     imageInput = String(source.midia_url);
   }
-  const img = !imageInput
-    ? (ctx.media || []).slice().reverse().find((m) => m.kind === "image")
-    : undefined;
-  if (!imageInput && img) {
-    imageInput = `data:${img.mime};base64,${img.base64}`;
-  } else if (
+  if (
     !imageInput &&
     /^https?:\/\//i.test(String(ctx.imageInputUrl || ""))
   ) {
@@ -20829,7 +20832,13 @@ async function callGemini(
     const pedidoLogoNaFoto = logoMode !== null;
     const pedidoEdicaoFoto = ownerMediaIntent.action === "edit" ||
       compositionFallsBackToEdit || pedidoLogoNaFoto;
-    let temFotoParaEditar = (toolCtx.media || []).some((m) => m.kind === "image");
+    const temFotoNoTurno = (toolCtx.media || []).some((m) =>
+      m.kind === "image"
+    );
+    let temFotoParaEditar = temFotoNoTurno;
+    const fotoSalvaNesteTurnoId = temFotoNoTurno
+      ? String(toolCtx.agentState?.last_media_interaction?.media_id || "")
+      : "";
     let fotoParaEditarId = String(
       toolCtx.agentState?.last_media_interaction?.media_id || "",
     );
@@ -20872,8 +20881,12 @@ async function callGemini(
           textos: [],
           modo: modoForcado,
           preservarAmbiente: trocarCenario ? false : undefined,
-          sourceMediaId: fotoParaEditarId || undefined,
-          originalSourceMediaId: fotoParaEditarId || undefined,
+          sourceMediaId: temFotoNoTurno
+            ? fotoSalvaNesteTurnoId || undefined
+            : fotoParaEditarId || undefined,
+          originalSourceMediaId: temFotoNoTurno
+            ? fotoSalvaNesteTurnoId || undefined
+            : fotoParaEditarId || undefined,
         });
       let parsed: any = {};
       try { parsed = JSON.parse(raw); } catch { /* resposta inválida tratada abaixo */ }
@@ -23454,68 +23467,35 @@ async function processOne(queueId: string) {
           notified_sender: notifiedSender,
         };
       }
-      const incomingPhotos = salvos
+      const savedPhotoIds = salvos
         .filter((item) => item.tipo === "foto")
+        .map((item) => item.id);
+      const { data: incomingRows, error: incomingRowsError } =
+        savedPhotoIds.length
+          ? await sb.from("midias_whatsapp")
+            .select("id, origem")
+            .eq("user_id", userId)
+            .in("id", savedPhotoIds)
+          : { data: [], error: null };
+      if (incomingRowsError) {
+        throw new Error(
+          `falha_ao_validar_fotos_carrossel: ${incomingRowsError.message}`,
+        );
+      }
+      const whatsappPhotoIds = new Set(
+        (incomingRows || [])
+          .filter((item) => item.origem === "whatsapp")
+          .map((item) => item.id),
+      );
+      const incomingPhotos = salvos
+        .filter((item) =>
+          item.tipo === "foto" && whatsappPhotoIds.has(item.id)
+        )
         .map((item) => ({
           id: item.id,
           url: item.url,
           reused: item.reutilizada === true,
         }));
-      if (fromIsOwner && incomingPhotos.length > 0) {
-        let description = "";
-        try {
-          description = await descreverFotosSalvas(
-            freshLibraryMedia,
-            salvos,
-            contexto,
-            userId,
-          );
-        } catch (error) {
-          console.warn(
-            "[owner_photo][vision_failed]",
-            (error as Error).message,
-          );
-        }
-        const latest = incomingPhotos.at(-1)!;
-        const isolated = await discardOldMediaPublicationFlows(
-          stateConversation,
-          freshAgentState,
-        );
-        Object.assign(freshAgentState, isolated);
-        const now = new Date().toISOString();
-        const pending = {
-          media_id: latest.id,
-          stage: "actions" as const,
-          created_at: now,
-        };
-        const interaction = { media_id: latest.id, at: now };
-        const saved = await saveAgentState(
-          sb,
-          stateConversation,
-          {
-            pending_single_photo: pending,
-            last_media_interaction: interaction,
-          },
-          freshAgentState,
-        );
-        if (!saved) throw new Error("estado_foto_unica_nao_persistido");
-        freshAgentState.pending_single_photo = pending;
-        freshAgentState.last_media_interaction = interaction;
-        await sendVehicleFlowReply({
-          conversationId: conv.id,
-          userId,
-          to: row.from_number,
-          text: ownerPhotoReceivedReply(description),
-          buttons: generalSpecialistPhotoButtons(),
-        });
-        await doneQueue(row.id);
-        return {
-          ok: true,
-          owner_photo_recognized: true,
-          reused: latest.reused,
-          media_id: latest.id,
-        };
-      }
       if (incomingPhotos[0]) {
         await registerVehiclePhotoQueueEvent(row.id, incomingPhotos[0]);
       }
@@ -23594,6 +23574,67 @@ async function processOne(queueId: string) {
         });
         await doneQueue(row.id);
         return { ok: true, vertical_confirmation: true };
+      }
+      const immediateGeneralPhoto = shouldOfferSinglePhotoActions({
+        isOwner: fromIsOwner,
+        verticalRoute: verticalDecision.route,
+        incomingPhotoCount: incomingPhotos.length,
+        context: contexto,
+      });
+      if (immediateGeneralPhoto) {
+        let description = "";
+        try {
+          description = await descreverFotosSalvas(
+            freshLibraryMedia,
+            salvos,
+            contexto,
+            userId,
+          );
+        } catch (error) {
+          console.warn(
+            "[vertical][general][vision_failed]",
+            (error as Error).message,
+          );
+        }
+        const latest = incomingPhotos.at(-1)!;
+        const now = new Date().toISOString();
+        const pending = {
+          media_id: latest.id,
+          stage: "actions" as const,
+          created_at: now,
+        };
+        const interaction = { media_id: latest.id, at: now };
+        await saveAgentState(
+          sb,
+          stateConversation,
+          {
+            pending_single_photo: pending,
+            pending_image_edit: null,
+            pending_image_adjustment: null,
+            last_media_interaction: interaction,
+          },
+          freshAgentState,
+        );
+        freshAgentState.pending_single_photo = pending;
+        freshAgentState.pending_image_edit = null;
+        freshAgentState.pending_image_adjustment = null;
+        freshAgentState.last_media_interaction = interaction;
+        await sendVehicleFlowReply({
+          conversationId: conv.id,
+          userId,
+          to: row.from_number,
+          text: withDemoModeLabel(
+            ownerPhotoReceivedReply(description),
+            verticalDecision,
+          ),
+          buttons: generalSpecialistPhotoButtons(),
+        });
+        await doneQueue(row.id);
+        return {
+          ok: true,
+          vertical: "geral",
+          general_single_photo: true,
+        };
       }
       const vehicleFlowCtx = {
         userId,
