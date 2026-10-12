@@ -78,6 +78,20 @@ Deno.test("projeto de ambiente preserva arquitetura e não sequestra produto", (
     singlePhotoEditMode("crie um projeto de vitrine para os produtos"),
     "cena_produto",
   );
+  assertEquals(
+    singlePhotoEditMode(
+      "Projeto de interiores contemporâneo para esta sala de TV com escritório. Manter o mesmo sofá, o teto de madeira, a parede de vidro, o ângulo e o piso.",
+      "[visão] sala com sofá, rack, TV e caixa de som",
+    ),
+    "projeto_ambiente",
+  );
+  assertEquals(
+    singlePhotoEditMode(
+      "deixa mais moderno",
+      "[visão] sala com sofá, TV e caixa de som bluetooth no rack",
+    ),
+    "projeto_ambiente",
+  );
 
   const directive = interiorProjectEditDirective();
   assertEquals(directive.includes("DESCARTE"), false);

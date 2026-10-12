@@ -62,16 +62,16 @@ function normalizedEditText(value: string): string {
     .toLowerCase();
 }
 
-function isIsolatedProductContext(
-  instruction: string,
-  sourceDescription = "",
-): boolean {
+function hasIsolatedProductTerms(value: string): boolean {
   return /\b(produtos?|embalagens?|frascos?|desodorantes?|cosmeticos?|garrafas?|caixas?|latas?)\b/
-    .test(
-      `${normalizedEditText(instruction)} ${
-        normalizedEditText(sourceDescription)
-      }`,
-    );
+    .test(normalizedEditText(value));
+}
+
+function visionHasIsolatedProductTerms(value: string): boolean {
+  const vision = normalizedEditText(value)
+    .replace(/\bcaixa\s+de\s+som(?:\s+bluetooth)?\b/g, " ")
+    .replace(/\bcaixa\s+d\s*agua\b/g, " ");
+  return hasIsolatedProductTerms(vision);
 }
 
 export function isInteriorProjectRequest(
@@ -81,8 +81,6 @@ export function isInteriorProjectRequest(
 ): boolean {
   const text = normalizedEditText(instruction);
   const vision = normalizedEditText(sourceDescription);
-  if (isIsolatedProductContext(instruction, sourceDescription)) return false;
-
   const explicitProject =
     /\b(projeto|arquitet[oa]|arquitetura|reforma|armarios?|decoracao|decorar|marcenaria|parede|teto)\b/
       .test(text) ||
@@ -92,7 +90,12 @@ export function isInteriorProjectRequest(
   const sourceIsInterior =
     /\b(sala(?:\s+de\s+jantar)?|cozinha|quarto|comodo|ambiente\s+interno|interior\s+(?:de|do|da)|escritorio|loja)\b/
       .test(vision);
-  return explicitProject || (allowVisionFallback && sourceIsInterior);
+  const instructionIsProduct = hasIsolatedProductTerms(instruction);
+  if (explicitProject) return !instructionIsProduct;
+  return allowVisionFallback &&
+    sourceIsInterior &&
+    !instructionIsProduct &&
+    !visionHasIsolatedProductTerms(sourceDescription);
 }
 
 export function singlePhotoEditMode(
@@ -107,7 +110,7 @@ export function singlePhotoEditMode(
       .test(text) ||
     /^(mantenha|mantem|preserve|crie|cria)\b.{0,80}\b(ambiente|cenario|fundo|estudio|showroom|bancada)\b/
       .test(text) ||
-    (isIsolatedProductContext(instruction, sourceDescription) &&
+    (hasIsolatedProductTerms(instruction) &&
       /\b(projeto|vitrine|decoracao|decorar)\b/.test(text));
   if (asksLogo && asksScene) return "aplicar_logo_cenario";
   if (asksLogo) return "aplicar_logo";
