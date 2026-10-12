@@ -345,8 +345,17 @@ import {
   selectSocialVariantScripts,
   socialInteractiveButtonsFromResult,
 } from "../_shared/social-approval-flow.ts";
+import {
+  libraryPhotoCaptionSubject,
+  removeUncitedCatalogNames,
+  uncitedCatalogNamesInVariants,
+} from "../_shared/social-library-caption.ts";
 import { exactSocialMedia } from "../_shared/social-media-snapshot.ts";
-import { singlePhotoFormatButtons } from "../_shared/single-photo-flow.ts";
+import {
+  pendingImageEditIsActive,
+  singlePhotoEditMode,
+  singlePhotoFormatButtons,
+} from "../_shared/single-photo-flow.ts";
 import {
   activePendingVerticalRoute,
   applyVerticalStatePatch,
@@ -594,7 +603,9 @@ import {
 import {
   cleanReceivedMediaDescription,
   createRecentAutomaticMessageGuard,
+  ownerPhotoReceivedReply,
   recognizedMediaReply,
+  savedVisionDescription,
 } from "../_shared/media-received-copy.ts";
 import { imageUploadMetadata } from "../_shared/image-file-format.ts";
 import { detectLogoVariantRequest } from "../_shared/logo-variant.ts";
@@ -2016,14 +2027,35 @@ async function toolEditarImagem(
   const clean = (prompt || "").trim();
   if (!clean) return JSON.stringify({ erro: "prompt vazio" });
 
-  // 1) imagem do turno atual; 2) fallback: última foto recente da biblioteca (30 min)
+  // ID explícito sempre vence. A janela de 30 minutos é apenas último recurso.
   let imageInput: string | null = null;
-  const img = (ctx.media || []).slice().reverse().find((m) => m.kind === "image");
-  if (img) {
+  if (ctx.sourceMediaId) {
+    const { data: source, error } = await sb
+      .from("midias_whatsapp")
+      .select("id, midia_url")
+      .eq("id", ctx.sourceMediaId)
+      .eq("user_id", ctx.userId)
+      .eq("tipo", "foto")
+      .maybeSingle();
+    if (error || !source?.midia_url) {
+      return JSON.stringify({
+        erro: "imagem_origem_indisponivel",
+        detalhe: error?.message,
+      });
+    }
+    imageInput = String(source.midia_url);
+  }
+  const img = !imageInput
+    ? (ctx.media || []).slice().reverse().find((m) => m.kind === "image")
+    : undefined;
+  if (!imageInput && img) {
     imageInput = `data:${img.mime};base64,${img.base64}`;
-  } else if (/^https?:\/\//i.test(String(ctx.imageInputUrl || ""))) {
+  } else if (
+    !imageInput &&
+    /^https?:\/\//i.test(String(ctx.imageInputUrl || ""))
+  ) {
     imageInput = String(ctx.imageInputUrl);
-  } else {
+  } else if (!imageInput) {
     try {
       const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
       const { data: rec } = await sb
@@ -3034,6 +3066,11 @@ type AgentConvState = {
     created_at: string;
   } | null;
   pending_image_composition?: { media_ids: string[]; at: string } | null;
+  pending_image_edit?: {
+    media_id: string;
+    created_at: string;
+    prompt?: string;
+  } | null;
   pending_image_adjustment?: {
     media_id: string;
     created_at: string;
@@ -9769,7 +9806,7 @@ async function salvarItemMidiaBiblioteca(
   media: MediaExtract,
   ctx: { userId: string; fromNumber?: string },
   contexto: string,
-): Promise<{ id: string; tipo: "foto" | "video" | "audio"; url: string; reutilizada?: boolean; nome?: string; rotulo?: string }> {
+): Promise<{ id: string; tipo: "foto" | "video" | "audio"; url: string; reutilizada?: boolean; nome?: string; rotulo?: string; contexto_original?: string | null }> {
   const bytes = base64Decode(media.base64);
   const tipoMap = { image: "foto", video: "video", audio: "audio" } as const;
   const tipo = tipoMap[media.kind as keyof typeof tipoMap] || "foto";
@@ -9795,6 +9832,7 @@ async function salvarItemMidiaBiblioteca(
         reutilizada: true,
         nome: nomeCurtoMidia(duplicada),
         rotulo: rotuloMidiaReconhecida(duplicada),
+        contexto_original: duplicada.contexto_original,
       };
     }
   }
@@ -9843,6 +9881,7 @@ type MidiaSalva = {
   reutilizada?: boolean;
   nome?: string;
   rotulo?: string;
+  contexto_original?: string | null;
 };
 
 function respostaMidiaSalva(salvos: MidiaSalva[], descricaoVisual?: string, remetenteEhDono = false): string {
@@ -9900,12 +9939,22 @@ async function descreverFotosSalvas(
   userId: string,
 ): Promise<string> {
   const fotos = medias
-    .map((m, i) => ({ m, id: salvos[i]?.id, tipo: salvos[i]?.tipo, url: salvos[i]?.url, reutilizada: salvos[i]?.reutilizada }))
-    .filter((x) => !x.reutilizada)
+    .map((m, i) => ({
+      m,
+      id: salvos[i]?.id,
+      tipo: salvos[i]?.tipo,
+      url: salvos[i]?.url,
+      reutilizada: salvos[i]?.reutilizada,
+      contextoOriginal: salvos[i]?.contexto_original,
+    }))
     .filter((x) => x.tipo === "foto");
   if (fotos.length === 0) return "";
 
   const descricoes = await Promise.all(fotos.map(async (f) => {
+    const savedDescription = f.reutilizada
+      ? savedVisionDescription(f.contextoOriginal)
+      : "";
+    if (savedDescription) return savedDescription;
     let d = f.url ? await descreverImagemVisao(f.url) : "";
     if (!d) {
       const dataUrl = `data:${f.m.mime};base64,${f.m.base64}`;
@@ -10490,6 +10539,10 @@ async function toolPostarMidiaBiblioteca(
       }
     }
     const contextoUsuario = contextoRaw.replace(/\n?\[visão\][\s\S]*/i, "").trim();
+    const pedidoLiteralDono = pedidoOriginal
+      .replace(/<<INTERACTIVE_ID:[^>]+>>/gi, "")
+      .replace(/\s+/g, " ")
+      .trim();
 
     // BRIEFING DO DONO: texto que ele escreveu e quer que seja a MENSAGEM do post.
     // Vem explícito da tool (briefing/legenda longa) ou do contexto salvo com a mídia.
@@ -10497,7 +10550,11 @@ async function toolPostarMidiaBiblioteca(
     // explicitamente (usar_contexto_conversa === true) e apenas com mensagens
     // POSTERIORES ao envio da mídia — antes disso ela pegava assunto antigo e
     // gerava post totalmente fora de contexto.
-    let briefing = (args?.briefing || "").toString().trim();
+    let briefing = (
+      !isVideo && pedidoLiteralDono
+        ? pedidoLiteralDono
+        : (args?.briefing || "")
+    ).toString().trim();
     const legendaArg = (args?.legenda || "").toString().trim();
     if (!briefing && legendaArg.length >= 120) briefing = legendaArg;
     if (!briefing && contextoUsuario.length >= 120) briefing = contextoUsuario;
@@ -10529,11 +10586,14 @@ async function toolPostarMidiaBiblioteca(
 
     // Foto: a descrição visual SEMPRE entra (mesmo com briefing) — o post é sobre
     // a imagem enviada; o briefing define o ângulo, não substitui o assunto.
-    const nome = (args?.nome
-      || (descricaoVisual ? descricaoVisual.slice(0, 80) : "")
-      || (briefing ? briefing.slice(0, 80) : "")
-      || legendaDono
-      || "Produto").toString().trim().slice(0, 120);
+    const nome = isVideo
+      ? (args?.nome || briefing || legendaDono || "Vídeo").toString().trim()
+        .slice(0, 120)
+      : libraryPhotoCaptionSubject({
+        visualDescription: descricaoVisual,
+        ownerRequest: pedidoLiteralDono,
+        suggestedName: args?.nome,
+      });
     const descricaoFinal = isVideo
       ? legendaDono  // vídeo: usa direto o texto do dono, sem alucinar
       : [legendaDono, descricaoVisual ? `Conteúdo da imagem: ${descricaoVisual}` : ""].filter(Boolean).join("\n").trim();
@@ -10565,6 +10625,18 @@ async function toolPostarMidiaBiblioteca(
     );
     const brandCtx = isBrandContent ? AMZ_BRAND_PITCH : undefined;
     if (isBrandContent) console.log("[pietro][brand_content_detected] injecting AMZ pitch");
+    const catalogNames = !isVideo
+      ? await sb
+        .from("produtos")
+        .select("nome")
+        .eq("user_id", ctx.userId)
+        .eq("ativo", true)
+        .limit(500)
+        .then(({ data }) =>
+          (data ?? []).map((row: any) => String(row.nome || "").trim())
+            .filter(Boolean)
+        )
+      : [];
 
     const midiaUsada = `Usando: ${nomeCurtoMidia(midia)} - ${isVideo ? "Vídeo" : "Imagem"} - ${tempoRelativoMidia(midia.created_at)}`;
     try {
@@ -10614,6 +10686,44 @@ async function toolPostarMidiaBiblioteca(
           undefined,
           contentNicheForContext(ctx),
         );
+      }
+      const uncitedNames = !isVideo
+        ? uncitedCatalogNamesInVariants({
+          variants: options,
+          catalogNames,
+          ownerRequest: pedidoLiteralDono,
+          visualDescription: descricaoVisual,
+        })
+        : [];
+      if (uncitedNames.length) {
+        console.error(
+          `[pietro][postar_midia] copy ${redeGeracao} REJEITADA por produto de catálogo não citado`,
+        );
+        options = await gerarTresOpcoesRedeSocial(
+          {
+            ...produtoLike,
+            nome: descricaoVisual.slice(0, 120),
+            descricao:
+              `Use somente esta descrição visual e o pedido literal do dono.\nImagem: ${descricaoVisual}\nPedido: ${pedidoLiteralDono}`,
+          },
+          tom,
+          redeGeracao,
+          `Não mencione produtos do catálogo que o dono não citou. Nomes proibidos nesta resposta: ${
+            uncitedNames.join(", ")
+          }.`,
+          brandCtx,
+          pedidoLiteralDono || undefined,
+          contentNicheForContext(ctx),
+        );
+        const stillUncited = uncitedCatalogNamesInVariants({
+          variants: options,
+          catalogNames,
+          ownerRequest: pedidoLiteralDono,
+          visualDescription: descricaoVisual,
+        });
+        if (stillUncited.length) {
+          options = removeUncitedCatalogNames(options, stillUncited);
+        }
       }
       return options;
     };
@@ -17186,6 +17296,9 @@ async function callGemini(
       pendingVehicleIdentification = null;
     }
     const pendingSinglePhoto = remetenteEhDono ? toolCtx.agentState?.pending_single_photo : null;
+    let pendingImageEdit = remetenteEhDono
+      ? toolCtx.agentState?.pending_image_edit
+      : null;
     const pendingImageAdjustment = remetenteEhDono
       ? toolCtx.agentState?.pending_image_adjustment
       : null;
@@ -17258,6 +17371,102 @@ async function callGemini(
     const singlePhotoInteractiveId = userContent.match(
       /<<INTERACTIVE_ID:(single_photo:[^>]+)>>/i,
     )?.[1]?.toLowerCase() || "";
+    const clearPendingImageEdit = async () => {
+      if (toolCtx.convId) {
+        await saveAgentState(sb, {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        }, { pending_image_edit: null }, toolCtx.agentState ?? {});
+      }
+      if (toolCtx.agentState) toolCtx.agentState.pending_image_edit = null;
+      pendingImageEdit = null;
+    };
+    if (
+      remetenteEhDono &&
+      pendingImageEdit &&
+      !pendingImageEditIsActive(pendingImageEdit.created_at)
+    ) {
+      await clearPendingImageEdit();
+    }
+    if (
+      remetenteEhDono &&
+      pendingImageEdit &&
+      (imageEditRetryAction || !/<<INTERACTIVE_ID:/i.test(userContent))
+    ) {
+      const instruction = imageEditRetryAction
+        ? String(pendingImageEdit.prompt || "").trim()
+        : String(userContent || "").trim();
+      if (!instruction) {
+        return {
+          text: "Me diga em texto ou áudio o que você quer mudar nesta foto.",
+        };
+      }
+      const mode = singlePhotoEditMode(instruction);
+      console.log(
+        `[processor][pending_image_edit] instruction_chars=${instruction.length} modo=${mode} source_media_id=${pendingImageEdit.media_id}`,
+      );
+      let parsed: any = {};
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        const raw = await toolEditarImagem(instruction, {
+          userId: toolCtx.userId,
+          fromNumber: toolCtx.fromNumber,
+          media: [],
+          textos: [],
+          modo: mode,
+          preservarAmbiente: mode === "cena_produto" ||
+              mode === "aplicar_logo_cenario"
+            ? false
+            : undefined,
+          sourceMediaId: pendingImageEdit.media_id,
+          originalSourceMediaId: pendingImageEdit.media_id,
+          libraryContext: instruction,
+        });
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          parsed = { erro: "resposta_invalida" };
+        }
+        if (parsed?.image_url) break;
+        console.warn(
+          `[processor][pending_image_edit] attempt=${attempt} failed=${
+            String(parsed?.erro || parsed?.motivo || "sem_imagem_gerada")
+          }`,
+        );
+      }
+      if (parsed?.image_url) {
+        await clearPendingImageEdit();
+        if (parsed?.midia_id) {
+          await rememberLastMediaInteraction(toolCtx, parsed.midia_id);
+        }
+        return {
+          text: "Pronto — ajustei a imagem conforme o seu pedido.",
+          imageUrl: parsed.image_url,
+          interactiveButtons: parsed?.midia_id
+            ? readyMediaActionButtons(parsed.midia_id, "foto")
+            : undefined,
+        };
+      }
+      const failedPending = {
+        ...pendingImageEdit,
+        prompt: instruction,
+        created_at: new Date().toISOString(),
+      };
+      if (toolCtx.convId) {
+        await saveAgentState(sb, {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        }, { pending_image_edit: failedPending }, toolCtx.agentState ?? {});
+      }
+      if (toolCtx.agentState) {
+        toolCtx.agentState.pending_image_edit = failedPending;
+      }
+      return {
+        text: "Não consegui gerar agora.",
+        interactiveButtons: imageEditRetryButtons(),
+      };
+    }
     if (
       remetenteEhDono &&
       pendingSinglePhoto?.stage === "ad_data"
@@ -18287,10 +18496,36 @@ async function callGemini(
     }
     if (remetenteEhDono && pendingSinglePhoto && singlePhotoInteractiveId === "single_photo:edit") {
       if (toolCtx.convId) {
-        await saveAgentState(sb, { id: toolCtx.convId, userId: toolCtx.userId, contactNumber: toolCtx.fromNumber }, { pending_single_photo: null }, toolCtx.agentState ?? {});
-        if (toolCtx.agentState) toolCtx.agentState.pending_single_photo = null;
+        const now = new Date().toISOString();
+        const pendingImageEdit = {
+          media_id: pendingSinglePhoto.media_id,
+          created_at: now,
+        };
+        const interaction = {
+          media_id: pendingSinglePhoto.media_id,
+          at: now,
+        };
+        await saveAgentState(
+          sb,
+          {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          },
+          {
+            pending_single_photo: null,
+            pending_image_edit: pendingImageEdit,
+            last_media_interaction: interaction,
+          },
+          toolCtx.agentState ?? {},
+        );
+        if (toolCtx.agentState) {
+          toolCtx.agentState.pending_single_photo = null;
+          toolCtx.agentState.pending_image_edit = pendingImageEdit;
+          toolCtx.agentState.last_media_interaction = interaction;
+        }
       }
-      return { text: "O que você quer mudar nesta foto? Diga somente as alterações desejadas." };
+      return { text: "O que você quer mudar nesta foto?" };
     }
     if (remetenteEhDono && pendingSinglePhoto && singlePhotoInteractiveId === "single_photo:post") {
       const connected = await connectedAnuncioNetworks(toolCtx.userId);
@@ -23219,35 +23454,68 @@ async function processOne(queueId: string) {
           notified_sender: notifiedSender,
         };
       }
-      const savedPhotoIds = salvos
-        .filter((item) => item.tipo === "foto")
-        .map((item) => item.id);
-      const { data: incomingRows, error: incomingRowsError } =
-        savedPhotoIds.length
-          ? await sb.from("midias_whatsapp")
-            .select("id, origem")
-            .eq("user_id", userId)
-            .in("id", savedPhotoIds)
-          : { data: [], error: null };
-      if (incomingRowsError) {
-        throw new Error(
-          `falha_ao_validar_fotos_carrossel: ${incomingRowsError.message}`,
-        );
-      }
-      const whatsappPhotoIds = new Set(
-        (incomingRows || [])
-          .filter((item) => item.origem === "whatsapp")
-          .map((item) => item.id),
-      );
       const incomingPhotos = salvos
-        .filter((item) =>
-          item.tipo === "foto" && whatsappPhotoIds.has(item.id)
-        )
+        .filter((item) => item.tipo === "foto")
         .map((item) => ({
           id: item.id,
           url: item.url,
           reused: item.reutilizada === true,
         }));
+      if (fromIsOwner && incomingPhotos.length > 0) {
+        let description = "";
+        try {
+          description = await descreverFotosSalvas(
+            freshLibraryMedia,
+            salvos,
+            contexto,
+            userId,
+          );
+        } catch (error) {
+          console.warn(
+            "[owner_photo][vision_failed]",
+            (error as Error).message,
+          );
+        }
+        const latest = incomingPhotos.at(-1)!;
+        const isolated = await discardOldMediaPublicationFlows(
+          stateConversation,
+          freshAgentState,
+        );
+        Object.assign(freshAgentState, isolated);
+        const now = new Date().toISOString();
+        const pending = {
+          media_id: latest.id,
+          stage: "actions" as const,
+          created_at: now,
+        };
+        const interaction = { media_id: latest.id, at: now };
+        const saved = await saveAgentState(
+          sb,
+          stateConversation,
+          {
+            pending_single_photo: pending,
+            last_media_interaction: interaction,
+          },
+          freshAgentState,
+        );
+        if (!saved) throw new Error("estado_foto_unica_nao_persistido");
+        freshAgentState.pending_single_photo = pending;
+        freshAgentState.last_media_interaction = interaction;
+        await sendVehicleFlowReply({
+          conversationId: conv.id,
+          userId,
+          to: row.from_number,
+          text: ownerPhotoReceivedReply(description),
+          buttons: generalSpecialistPhotoButtons(),
+        });
+        await doneQueue(row.id);
+        return {
+          ok: true,
+          owner_photo_recognized: true,
+          reused: latest.reused,
+          media_id: latest.id,
+        };
+      }
       if (incomingPhotos[0]) {
         await registerVehiclePhotoQueueEvent(row.id, incomingPhotos[0]);
       }
@@ -23326,56 +23594,6 @@ async function processOne(queueId: string) {
         });
         await doneQueue(row.id);
         return { ok: true, vertical_confirmation: true };
-      }
-      const immediateGeneralPhoto = fromIsOwner &&
-        verticalDecision.route === "geral" &&
-        incomingPhotos.length > 0 &&
-        !contexto;
-      if (immediateGeneralPhoto) {
-        let description = "";
-        try {
-          description = await descreverFotosSalvas(
-            freshLibraryMedia,
-            salvos,
-            contexto,
-            userId,
-          );
-        } catch (error) {
-          console.warn(
-            "[vertical][general][vision_failed]",
-            (error as Error).message,
-          );
-        }
-        const latest = incomingPhotos.at(-1)!;
-        const pending = {
-          media_id: latest.id,
-          stage: "actions" as const,
-          created_at: new Date().toISOString(),
-        };
-        await saveAgentState(
-          sb,
-          stateConversation,
-          { pending_single_photo: pending },
-          freshAgentState,
-        );
-        await sendVehicleFlowReply({
-          conversationId: conv.id,
-          userId,
-          to: row.from_number,
-          text: withDemoModeLabel(
-            description
-              ? `Recebi a foto. Estou vendo: ${description.trim()}`
-              : "Recebi a foto e salvei como a mídia mais recente.",
-            verticalDecision,
-          ),
-          buttons: generalSpecialistPhotoButtons(),
-        });
-        await doneQueue(row.id);
-        return {
-          ok: true,
-          vertical: "geral",
-          general_single_photo: true,
-        };
       }
       const vehicleFlowCtx = {
         userId,

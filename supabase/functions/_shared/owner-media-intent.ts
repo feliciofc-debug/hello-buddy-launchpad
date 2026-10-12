@@ -150,10 +150,20 @@ export function hasGeneratedImagePostChain(text: string): boolean {
     (hasImageGenerationRequest(text) && hasSocialPostRequest(text));
 }
 
+function hasExplicitSceneEditRequest(text: string): boolean {
+  const value = withoutConversationalPrefix(text);
+  return /\b(?:mantenha|mantem|preserve|crie|cria|troque|troca|mude|muda|ajuste|ajusta)\b.{0,100}\b(?:ambiente|cenario|fundo|decoracao|projeto)\b/
+    .test(value) ||
+    /\b(?:ambiente|cenario|fundo|decoracao|projeto)\b.{0,100}\b(?:mantenha|mantem|preserve|crie|cria|troque|troca|mude|muda|ajuste|ajusta)\b/
+      .test(value);
+}
+
 export function hasDirectedImageEditRequest(text: string): boolean {
-  if (hasImageGenerationRequest(text) || hasSocialPostRequest(text)) {
+  if (hasImageGenerationRequest(text)) {
     return false;
   }
+  if (hasExplicitSceneEditRequest(text)) return true;
+  if (hasSocialPostRequest(text)) return false;
   const value = withoutConversationalPrefix(text);
   const match = value.match(
     /^(?:melhora|melhore|melhorar|edita|edite|editar|trata|trate|tratar|ajusta|ajuste|ajustar|transforma|transforme|transformar|coloca|coloque|colocar|troca|troque|trocar|muda|mude|mudar|aplica|aplique|aplicar|adiciona|adicione|adicionar|deixa|deixe|deixar)\b\s*(.{0,45})/,
@@ -179,11 +189,13 @@ export function classifyOwnerMediaIntent(text: string): OwnerMediaIntent {
       mediaStrategy: "generated",
     };
   }
-  if (hasSocialPostRequest(text)) {
-    return { action: "post", mediaStrategy: "last" };
-  }
+  // Uma edição de cenário continua sendo edição mesmo quando o dono explica
+  // que pretende publicar o resultado ao final.
   if (hasDirectedImageEditRequest(text)) {
     return { action: "edit", mediaStrategy: "last" };
+  }
+  if (hasSocialPostRequest(text)) {
+    return { action: "post", mediaStrategy: "last" };
   }
   return { action: null, mediaStrategy: null };
 }

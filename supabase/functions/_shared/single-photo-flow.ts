@@ -18,3 +18,35 @@ export function singlePhotoFormatButtons() {
     ],
   };
 }
+
+export function pendingImageEditIsActive(
+  createdAt: string,
+  nowMs = Date.now(),
+): boolean {
+  const created = new Date(createdAt).getTime();
+  return Number.isFinite(created) &&
+    created <= nowMs &&
+    nowMs - created <= 30 * 60 * 1000;
+}
+
+export function singlePhotoEditMode(
+  instruction: string,
+):
+  | "aplicar_logo"
+  | "aplicar_logo_cenario"
+  | "cena_produto"
+  | "melhoria" {
+  const text = String(instruction || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const asksLogo = /\b(logo|logotipo|logomarca|marca)\b/.test(text);
+  const asksScene =
+    /\b(ambiente|cenario|fundo|projeto|decoracao|decorar|escritorio|sala|quarto|cozinha|mesa|bancada|piso)\b/
+      .test(text) ||
+    /^(mantenha|mantem|preserve|crie|cria)\b.{0,80}\b(ambiente|cenario|fundo|projeto|decoracao)\b/
+      .test(text);
+  if (asksLogo && asksScene) return "aplicar_logo_cenario";
+  if (asksLogo) return "aplicar_logo";
+  return asksScene ? "cena_produto" : "melhoria";
+}

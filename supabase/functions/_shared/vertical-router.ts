@@ -52,6 +52,8 @@ export const VEHICLE_STATE_KEYS = new Set([
 export const GENERAL_STATE_KEYS = new Set([
   "pending_carousel",
   "pending_single_photo",
+  "pending_image_edit",
+  "pending_image_adjustment",
   "pending_image_composition",
   "pending_brand_generation",
   "pending_video_setup",

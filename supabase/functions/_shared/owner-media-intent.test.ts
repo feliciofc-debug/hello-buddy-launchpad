@@ -195,6 +195,17 @@ Deno.test("mantém comandos explícitos de edição dirigidos à foto", () => {
   }
 });
 
+Deno.test("mudança explícita de cenário vence menção de publicação", () => {
+  const request =
+    "Mantenha os produtos originais, crie um ambiente com bancada iluminada para postar no face e instagram";
+  assertEquals(hasSocialPostRequest(request), true);
+  assertEquals(hasDirectedImageEditRequest(request), true);
+  assertEquals(classifyOwnerMediaIntent(request), {
+    action: "edit",
+    mediaStrategy: "last",
+  });
+});
+
 Deno.test("mantém comandos explícitos de publicação", () => {
   for (
     const text of [
