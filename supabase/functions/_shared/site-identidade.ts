@@ -9,6 +9,10 @@
 
 import { paletaAPartirDe, type CoresVideo } from "./video-cores.ts";
 import { trimLogoImage } from "./logo-image-trim.ts";
+import {
+  isPremiumVehicleRetailBusiness,
+  PREMIUM_VEHICLE_RETAIL_SEGMENT,
+} from "./company-service-profile.ts";
 
 export type IdentidadeSite = {
   url: string;
@@ -448,7 +452,10 @@ const SEGMENTOS: Array<[string, RegExp]> = [
   ["servicos-profissionais", /cons[óo]rcio|advocacia|contabilidade|consultoria|seguros|financeir|agência|assessoria/i],
 ];
 
-function segmentoDe(texto: string): string {
+export function segmentoDe(texto: string): string {
+  if (isPremiumVehicleRetailBusiness(texto)) {
+    return PREMIUM_VEHICLE_RETAIL_SEGMENT;
+  }
   // Conta quantas vezes cada segmento aparece: "consórcio" citado 10 vezes
   // pesa mais do que uma menção solta a "veículo".
   let melhor = "outros";
@@ -736,6 +743,12 @@ export function mesclarCamadaB(
   }));
 
   const textoBase = [a.texto_base, b.texto ?? ""].filter(Boolean).join("\n").slice(0, 4000);
+  const segmentoRenderizado = segmentoDe(textoBase);
+  const segmentoSugerido = isPremiumVehicleRetailBusiness(textoBase)
+    ? PREMIUM_VEHICLE_RETAIL_SEGMENT
+    : a.segmento_sugerido !== "outros"
+    ? a.segmento_sugerido
+    : (segmentoRenderizado !== "outros" ? segmentoRenderizado : (ia.segmento || "outros"));
   const nome = nomeDeMarca(b.site_name ?? "", b.titulo ?? "") || a.nome_empresa ||
     (ia.nome_empresa ?? "").trim();
 
@@ -774,9 +787,7 @@ export function mesclarCamadaB(
     diferenciais: preferir(ia.diferenciais, a.diferenciais).slice(0, 500),
     publico_alvo: preferir(ia.publico_alvo, a.publico_alvo).slice(0, 200),
     tom_de_voz: (ia.tom_de_voz || a.tom_de_voz || tomDeVozDe(textoBase)).slice(0, 120),
-    segmento_sugerido: a.segmento_sugerido !== "outros"
-      ? a.segmento_sugerido
-      : (segmentoDe(textoBase) !== "outros" ? segmentoDe(textoBase) : (ia.segmento || "outros")),
+    segmento_sugerido: segmentoSugerido,
     fontes: [...new Set([...(b.fontes ?? []), ...a.fontes])].slice(0, 4),
     // O navegador enxerga a logo realmente renderizada; ela tem prioridade
     // sobre favicon/og:image encontrados no HTML bruto.

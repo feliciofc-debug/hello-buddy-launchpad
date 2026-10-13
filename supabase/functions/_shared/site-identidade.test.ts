@@ -2,6 +2,7 @@ import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   logoDe,
   mesclarCamadaB,
+  segmentoDe,
   type IdentidadeSite,
 } from "./site-identidade.ts";
 import { paletaAPartirDe } from "./video-cores.ts";
@@ -75,4 +76,30 @@ Deno.test("Camada B sem bytes não mistura sua URL com imagem da Camada A", () =
   });
   assertEquals(identidade.logo_url, base.logo_url);
   assertEquals(identidade.logo_data_url, base.logo_data_url);
+});
+
+Deno.test("site de revenda sugere o perfil de veículos premium", () => {
+  assertEquals(
+    segmentoDe("Compra e venda de veículos premium, seminovos e avaliação na troca."),
+    "revenda-veiculos-premium",
+  );
+});
+
+Deno.test("site de autopeças continua no perfil automotivo", () => {
+  assertEquals(
+    segmentoDe("Venda de peças e acessórios para carros, oficina e instalação."),
+    "automotivo",
+  );
+});
+
+Deno.test("Camada B pode refinar automotivo para revenda premium", () => {
+  const base = {
+    ...identidadeBase(),
+    segmento_sugerido: "automotivo",
+    texto_base: "Soluções automotivas.",
+  };
+  const identidade = mesclarCamadaB(base, {
+    texto: "Compra e venda de veículos premium e seminovos.",
+  });
+  assertEquals(identidade.segmento_sugerido, "revenda-veiculos-premium");
 });

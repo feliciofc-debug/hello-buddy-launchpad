@@ -18,6 +18,7 @@ import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-
 import { getCopyStyle } from "./copy-style.ts";
 import { AMZ_TENANT_ID } from "./amz-tenant.ts";
 import { virtualAssistantDisclosure } from "./whatsapp-humanized-delivery.ts";
+import { companyServiceProfilePrompt } from "./company-service-profile.ts";
 
 // Compatibilidade temporária para consumidores externos; o valor agora vem
 // de AMZ_TENANT_ID e nunca mais do UUID Lovable legado.
@@ -533,6 +534,21 @@ export async function buildTenantContext(
   } else {
     blocks.push(`VOCÊ É: ${businessName} (atendente do negócio do cliente).`);
 
+    let serviceProfile: string | null = null;
+    const { data: companyConfig, error: companyConfigError } = await sb
+      .from("empresa_config")
+      .select("segmento, sobre_negocio")
+      .eq("user_id", cfg.user_id)
+      .maybeSingle();
+    if (companyConfigError) {
+      console.warn("[agent-soul] empresa_config indisponível:", companyConfigError.message);
+    } else {
+      serviceProfile = companyServiceProfilePrompt(
+        String(companyConfig?.segmento || ""),
+        String(companyConfig?.sobre_negocio || ""),
+      );
+    }
+
     if (cfg.persona) blocks.push(`PERSONA:\n${cfg.persona}`);
     if (cfg.tone) blocks.push(`TOM DE VOZ: ${cfg.tone}`);
     if (cfg.greeting) blocks.push(`SAUDAÇÃO PADRÃO: ${cfg.greeting}`);
@@ -548,6 +564,7 @@ export async function buildTenantContext(
         blocks.push(`QUANDO TRANSFERIR PRA HUMANO:\n${hr}`);
       }
     }
+    if (serviceProfile) blocks.push(serviceProfile);
   }
 
   // Catálogo (CAMADA 3 do isolamento: estritamente .eq user_id do tenant)
