@@ -13,10 +13,12 @@ TREE = ast.parse(SOURCE)
 TESTED_FUNCTIONS = {
     "esc", "comando_ffmpeg", "baixar_logo", "alvo_meta", "filtro_meta",
     "preview_video_bitrate_kbps", "preview_dimensions", "comando_preview",
+    "gerar_preview_whatsapp",
 }
 TESTED_CONSTANTS = {
     "WHATSAPP_PREVIEW_MAX_BYTES", "WHATSAPP_AUDIO_KBPS",
     "WHATSAPP_VIDEO_MAX_KBPS", "WHATSAPP_RESIZE_THRESHOLD_KBPS",
+    "WHATSAPP_PREVIEW_ATTEMPTS",
 }
 FUNCTION_TREE = ast.Module(
     body=[
@@ -139,6 +141,34 @@ class FfmpegCommandTest(unittest.TestCase):
         self.assertEqual(command[command.index("-bufsize") + 1], "2700k")
         self.assertEqual(command[command.index("-vf") + 1], "scale=720:1280:flags=lanczos")
         self.assertEqual(command[-1], "preview.mp4")
+
+    def test_oversized_preview_reencodes_with_15_percent_less_bitrate(self):
+        commands = []
+        sizes = iter([
+            16 * 1024 * 1024,
+            15 * 1024 * 1024 + 1,
+            15 * 1024 * 1024,
+        ])
+        original_run = WORKER["subprocess"].run
+        original_getsize = WORKER["os"].path.getsize
+        WORKER["subprocess"].run = lambda command, **_kwargs: commands.append(command)
+        WORKER["os"].path.getsize = lambda _path: next(sizes)
+        WORKER["metadados_saida"] = lambda _path: {"size_bytes": 15 * 1024 * 1024}
+        try:
+            output = WORKER["gerar_preview_whatsapp"](
+                "final.mp4", "preview.mp4", 85, 1080, 1920, "3",
+            )
+        finally:
+            WORKER["subprocess"].run = original_run
+            WORKER["os"].path.getsize = original_getsize
+        self.assertEqual(len(commands), 3)
+        bitrates = [
+            int(command[command.index("-b:v") + 1][:-1])
+            for command in commands
+        ]
+        self.assertEqual(bitrates[1], int(bitrates[0] * 0.85))
+        self.assertEqual(bitrates[2], int(bitrates[1] * 0.85))
+        self.assertEqual(output["size_bytes"], 15 * 1024 * 1024)
 
 
 if __name__ == "__main__":
