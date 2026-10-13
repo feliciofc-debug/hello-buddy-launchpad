@@ -52,6 +52,8 @@ export const VEHICLE_STATE_KEYS = new Set([
 export const GENERAL_STATE_KEYS = new Set([
   "pending_carousel",
   "pending_single_photo",
+  "pending_image_edit",
+  "pending_image_adjustment",
   "pending_image_composition",
   "pending_brand_generation",
   "pending_video_setup",
@@ -114,11 +116,13 @@ export function explicitVerticalIntent(
   if (/<<interactive_id:vehicle_[a-z0-9_]+:/.test(value)) {
     return { route: "veiculo", reason: "botao_veiculo" };
   }
-  if (/<<interactive_id:single_photo:/.test(value)) {
+  if (
+    /<<interactive_id:(?:single_photo|ready_media):/.test(value)
+  ) {
     return { route: "geral", reason: "botao_geral" };
   }
   if (
-    /\b(fipe|repasse)\b/.test(value) ||
+    /\b(fipe|fipi|fip|repasse)\b/.test(value) ||
     /\b(carrossel|carrosel|carrocel|carossel|carosel|carousel|album|galeria)\b[\s\S]{0,50}\b(carro|veiculo|automovel|moto)\b/
       .test(
         value,

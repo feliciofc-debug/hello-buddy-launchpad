@@ -6,11 +6,15 @@ import {
 import {
   createFipeClient,
   fipeListRows,
+  fipeModelPageRows,
   fipePhotoSuggestionMessage,
+  fipePriceRetryButtons,
+  formatFipeResult,
 } from "./fipe.ts";
 import { decideFipeForAd, type LastFipeResult } from "./fipe-ad.ts";
 import {
   filterFipeModelCandidates,
+  filterFipeYearCandidates,
   normalizeFipeEngine,
   normalizeFipeYear,
   parseFipeRequestText,
@@ -112,6 +116,35 @@ Deno.test("erro de rede tenta uma vez de novo e não devolve preço", async () =
   assertEquals(calls, 2);
 });
 
+Deno.test("preço lento usa 25s em produção, tenta duas vezes e oferece retry", async () => {
+  let calls = 0;
+  const client = createFipeClient({
+    token: "",
+    timeoutMs: 1,
+    fetcher: ((_url: string | URL | Request, init?: RequestInit) => {
+      calls++;
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => reject(new DOMException("aborted", "AbortError")),
+        );
+      });
+    }) as typeof fetch,
+  });
+  await assertRejects(() =>
+    client.consultarPreco({
+      brandId: "7",
+      modelId: "123",
+      yearId: "2023-1",
+    })
+  );
+  assertEquals(calls, 2);
+  assertEquals(fipePriceRetryButtons().buttons, [{
+    id: "fipe_price:retry",
+    title: "🔄 Tentar de novo",
+  }]);
+});
+
 Deno.test("lista interativa FIPE tem no máximo dez opções", () => {
   const rows = fipeListRows(
     Array.from({ length: 14 }, (_, index) => ({
@@ -122,6 +155,85 @@ Deno.test("lista interativa FIPE tem no máximo dez opções", () => {
   );
   assertEquals(rows.length, 10);
   assert(rows.every((row) => row.title.length <= 24));
+});
+
+Deno.test("modelos por ano usam o endpoint da marca e unem combustíveis", async () => {
+  const calls: string[] = [];
+  const client = createFipeClient({
+    token: "",
+    fetcher: ((url: string | URL | Request) => {
+      const path = new URL(String(url)).pathname;
+      calls.push(path);
+      if (path.endsWith("/cars/brands/56/years")) {
+        return Promise.resolve(jsonResponse([
+          { code: "2022-1", name: "2022 Gasolina" },
+          { code: "2022-3", name: "2022 Diesel" },
+          { code: "2021-3", name: "2021 Diesel" },
+        ]));
+      }
+      if (path.endsWith("/years/2022-1/models")) {
+        return Promise.resolve(jsonResponse([
+          { code: "g1", name: "HILUX SW4 SRX 4.0 V6" },
+        ]));
+      }
+      if (path.endsWith("/years/2022-3/models")) {
+        return Promise.resolve(jsonResponse([
+          { code: "d3", name: "Hilux GR-S 2.8 Diesel" },
+          { code: "d1", name: "Hilux CD SRV 2.8 Diesel" },
+          { code: "d2", name: "Hilux CD SRX 2.8 Diesel" },
+          { code: "d4", name: "Hilux CD 2.8 Diesel" },
+          { code: "d5", name: "Hilux CS 2.8 Diesel" },
+        ]));
+      }
+      throw new Error(`unexpected ${path}`);
+    }) as typeof fetch,
+  });
+  const models = await client.listarModelosPorAno("56", "2022", "hilux");
+  assertEquals(models.length, 6);
+  assertEquals(
+    models.map((model) => model.name),
+    [...models.map((model) => model.name)].sort((a, b) =>
+      a.localeCompare(b, "pt-BR")
+    ),
+  );
+  assertEquals(calls.some((path) => path.endsWith("/2021-3/models")), false);
+});
+
+Deno.test("menu de versões pagina sem cortar opções em silêncio", () => {
+  const models = Array.from({ length: 23 }, (_, index) => ({
+    code: String(index),
+    name: `Versão ${index}`,
+  }));
+  const firstPage = fipeModelPageRows(models);
+  assertEquals(firstPage.length, 10);
+  assertEquals(firstPage.at(-1)?.id, "fipe_model:more:9");
+  const secondPage = fipeModelPageRows(models, 9);
+  assertEquals(secondPage.at(-1)?.id, "fipe_model:more:18");
+  const thirdPage = fipeModelPageRows(models, 18);
+  assertEquals(thirdPage.map((row) => row.id), [
+    "fipe_model:18",
+    "fipe_model:19",
+    "fipe_model:20",
+    "fipe_model:21",
+    "fipe_model:22",
+  ]);
+});
+
+Deno.test("ano informado com uma opção seleciona direto ano e combustível", () => {
+  const years = filterFipeYearCandidates([
+    { code: "2023-1", name: "2023 Gasolina" },
+    { code: "2022-1", name: "2022 Gasolina" },
+  ], "2023");
+  assertEquals(years, [{ code: "2023-1", name: "2023 Gasolina" }]);
+});
+
+Deno.test("ano informado com combustíveis diferentes mantém só aquele ano", () => {
+  const years = filterFipeYearCandidates([
+    { code: "2023-1", name: "2023 Gasolina" },
+    { code: "2023-3", name: "2023 Flex" },
+    { code: "2022-1", name: "2022 Gasolina" },
+  ], "2023");
+  assertEquals(years.map((item) => item.code), ["2023-1", "2023-3"]);
 });
 
 function lastFipe(overrides: Partial<LastFipeResult> = {}): LastFipeResult {
@@ -198,4 +310,19 @@ Deno.test("identificação pela foto é sempre apresentada como sugestão", () =
   assert(message.startsWith("Parece um Citroën C3 Picasso"));
   assert(message.includes("a partir de 2011"));
   assert(message.endsWith("Confirma o ano/modelo e a versão?"));
+});
+
+Deno.test("resultado separa ano do veículo e referência da tabela", () => {
+  const message = formatFipeResult({
+    brand: "Honda",
+    model: "Civic Coupe Si 1.5 TB 16V 208cv Mec. 2p",
+    modelYear: 2019,
+    fuel: "Gasolina",
+    price: "R$ 158.548,00",
+    referenceMonth: "outubro de 2026",
+    codeFipe: "014099-6",
+  });
+  assert(message.includes("Ano/modelo: *2019*"));
+  assert(message.includes("Tabela FIPE de referência"));
+  assert(message.includes("outubro/2026"));
 });

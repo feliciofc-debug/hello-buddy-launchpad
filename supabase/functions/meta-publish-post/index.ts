@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { appendLinkPost } from '../_shared/link-post.ts'
+import { fetchMetaPostLink } from '../_shared/meta-post-link.ts'
 
 
 const corsHeaders = {
@@ -79,7 +80,9 @@ serve(async (req) => {
 
     const body = await req.json()
     const isScheduler = body.source === 'scheduler'
-    const sanitizedBodyMessage = await appendLinkPost(supabase, body.user_id, sanitizePublishText(body.message))
+    const sanitizedBodyMessage = body.preserve_caption === true
+      ? String(body.message || '').trim()
+      : await appendLinkPost(supabase, body.user_id, sanitizePublishText(body.message))
 
     let posts: any[] = []
 
@@ -223,7 +226,7 @@ async function publishToFacebook(
   imageUrl?: string,
   linkUrl?: string,
   videoUrl?: string
-): Promise<{ post_id: string }> {
+): Promise<{ post_id: string; post_url?: string }> {
 
   // === VÍDEO ===
   if (videoUrl) {
@@ -281,7 +284,15 @@ async function publishToFacebook(
     throw new Error(`Facebook API: ${result.error.message}`)
   }
 
-  return { post_id: result.id || result.post_id }
+  const postId = result.id || result.post_id
+  const postUrl = imageUrl
+    ? await fetchMetaPostLink({
+      postId,
+      accessToken: pageToken,
+      platform: 'facebook',
+    })
+    : null
+  return { post_id: postId, ...(postUrl ? { post_url: postUrl } : {}) }
 }
 
 async function publishMultiPhotoToFacebook(
@@ -289,7 +300,7 @@ async function publishMultiPhotoToFacebook(
   pageId: string,
   message: string,
   imageUrls: string[]
-): Promise<{ post_id: string }> {
+): Promise<{ post_id: string; post_url?: string }> {
   console.log(`📸 Publicando ${imageUrls.length} fotos no Facebook como multi-photo post...`)
   
   // Step 1: Upload each photo as unpublished
@@ -336,5 +347,13 @@ async function publishMultiPhotoToFacebook(
   }
 
   console.log('✅ Multi-photo post publicado! ID:', result.id)
-  return { post_id: result.id }
+  const postUrl = await fetchMetaPostLink({
+    postId: result.id,
+    accessToken: pageToken,
+    platform: 'facebook',
+  })
+  return {
+    post_id: result.id,
+    ...(postUrl ? { post_url: postUrl } : {}),
+  }
 }

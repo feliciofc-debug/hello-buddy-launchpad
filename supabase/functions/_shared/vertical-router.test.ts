@@ -36,6 +36,7 @@ Deno.test("pedidos explícitos escolhem o especialista correto", () => {
     const text of [
       "quero um carrossel do carro",
       "consulta a FIPE",
+      "qual a fipi do corolla 2019",
       "anúncio do veículo",
       "é para repasse",
     ]

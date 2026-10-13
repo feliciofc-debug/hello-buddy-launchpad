@@ -8,6 +8,7 @@ import {
   type CampaignDeliveryStatus,
   nextCampaignDeliveryStatus,
 } from "../_shared/whatsapp-marketing-campaign.ts";
+import { hasWhatsappVideoDeliveryFailure } from "../_shared/whatsapp-video-delivery.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -130,6 +131,71 @@ async function triggerProcessor(queueIds: string[]) {
   }
 }
 
+async function notifyFailedVideoDelivery(
+  wamid: string,
+  statusEvent: unknown,
+): Promise<void> {
+  if (!hasWhatsappVideoDeliveryFailure(statusEvent)) return;
+  const { data: message, error } = await supabase
+    .from("whatsapp_cloud_messages")
+    .select(
+      "id, user_id, conversation_id, message_type, metadata, video_fallback_notified_at",
+    )
+    .eq("wamid", wamid)
+    .eq("message_type", "video")
+    .maybeSingle();
+  if (error || !message || message.video_fallback_notified_at) return;
+
+  const fallbackUrl = String(message.metadata?.video_fallback_url || "").trim();
+  const fallbackMessage = String(
+    message.metadata?.video_fallback_message || "",
+  ).trim();
+  if (!fallbackUrl || !fallbackMessage) return;
+
+  // Reserva a notificação antes do envio: webhooks de status podem repetir.
+  const notifiedAt = new Date().toISOString();
+  const { data: claimed, error: claimError } = await supabase
+    .from("whatsapp_cloud_messages")
+    .update({ video_fallback_notified_at: notifiedAt })
+    .eq("id", message.id)
+    .is("video_fallback_notified_at", null)
+    .select("id")
+    .maybeSingle();
+  if (claimError || !claimed?.id) return;
+
+  const { data: conversation } = await supabase
+    .from("whatsapp_cloud_conversations")
+    .select("contact_number")
+    .eq("id", message.conversation_id)
+    .maybeSingle();
+  if (!conversation?.contact_number) return;
+
+  const { error: sendError } = await supabase.functions.invoke(
+    "whatsapp-send-message",
+    {
+      body: {
+        user_id: message.user_id,
+        to: conversation.contact_number,
+        message: fallbackMessage,
+        ...(message.metadata?.interactive_buttons
+          ? { interactive_buttons: message.metadata.interactive_buttons }
+          : {}),
+      },
+    },
+  );
+  if (sendError) {
+    console.error("[wa-cloud-webhook] fallback de vídeo falhou", {
+      wamid,
+      error: sendError.message,
+    });
+  } else {
+    console.warn("[wa-cloud-webhook] vídeo não entregue; link final enviado", {
+      wamid,
+      meta_errors: (statusEvent as any)?.errors || [],
+    });
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -230,6 +296,9 @@ Deno.serve(async (req) => {
           const erroEntrega = statusEntrega === "falhou"
             ? JSON.stringify(statusEvent?.errors || []).slice(0, 1000)
             : null;
+          if (statusEntrega === "falhou") {
+            await notifyFailedVideoDelivery(wamid, statusEvent);
+          }
           const { data: encaminhamento } = await supabase
             .from("lead_encaminhamentos")
             .select("id, user_id, destino_dono, mensagem")

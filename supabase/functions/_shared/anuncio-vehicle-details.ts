@@ -27,11 +27,15 @@ function values(value: unknown): string[] {
     .filter(Boolean);
 }
 
+export function normalizedAdChipKey(item: unknown): string {
+  return String(item || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
 function unique(items: string[]): string[] {
   const keys = new Set<string>();
   return items.filter((item) => {
-    const key = item.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const key = normalizedAdChipKey(item);
     if (!key || keys.has(key)) return false;
     keys.add(key);
     return true;
@@ -41,9 +45,20 @@ function unique(items: string[]): string[] {
 export function buildVehicleAdContent(
   details: VehicleAdDetails,
 ): VehicleAdContent {
-  const versao = values(details.versao);
+  const colors = values(details.cor);
+  const versao = values(details.versao).map((version) => {
+    for (const color of colors) {
+      const escaped = color.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const withoutColor = version.replace(
+        new RegExp(`\\s*${escaped}\\s*$`, "i"),
+        "",
+      ).trim();
+      if (withoutColor && withoutColor !== version) return withoutColor;
+    }
+    return version;
+  });
   const motor = values(details.motor);
-  const prioritized = [
+  const prioritized = unique([
     ...values(details.quilometragem),
     ...values(details.cambio),
     ...motor,
@@ -53,9 +68,9 @@ export function buildVehicleAdContent(
     ...values(details.opcionais),
     ...values(details.condicoes),
     ...values(details.itens),
-  ];
+  ]);
   const secondary = [
-    ...values(details.cor),
+    ...colors,
     ...values(details.pneus),
   ];
   const all = unique([...prioritized, ...secondary]);
@@ -63,7 +78,7 @@ export function buildVehicleAdContent(
   for (const item of prioritized) {
     if (highlights.length >= 8) break;
     if (item.length > 26) continue;
-    if (!all.includes(item) || highlights.includes(item)) continue;
+    if (!all.includes(item)) continue;
     highlights.push(item);
   }
   const ficha = all

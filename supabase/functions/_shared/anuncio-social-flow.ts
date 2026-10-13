@@ -1,4 +1,16 @@
 import type { AnuncioStyle } from "./anuncio-style.ts";
+import {
+  type ContentNiche,
+  resolveNichoDoConteudo,
+} from "./content-niche.ts";
+import { normalizeBrazilianWhatsappNumber } from "./anuncio-caption-common.ts";
+import { generateProductAdCaptions } from "./anuncio-produto-captions.ts";
+import {
+  generateVehicleAdCaptions as generateVehicleCaptions,
+} from "./anuncio-veiculo-captions.ts";
+
+export { normalizeBrazilianWhatsappNumber };
+export { generateProductAdCaptions };
 
 export const LAST_ANUNCIO_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -12,6 +24,8 @@ export type LastAnuncioImage = {
 export type LastAnuncio = {
   images: LastAnuncioImage[];
   selected_style?: AnuncioStyle;
+  vertical?: "geral" | "veiculo";
+  niche?: ContentNiche;
   data: Record<string, unknown>;
   render_payload?: Record<string, unknown>;
   client_name?: string | null;
@@ -20,7 +34,11 @@ export type LastAnuncio = {
 
 export type AnuncioPostAction = "publish" | "schedule" | "save";
 export type AnuncioPostFormat = "feed" | "story" | "feed_story";
-export type AnuncioPostNetwork = "facebook" | "instagram";
+export type AnuncioPostNetwork =
+  | "facebook"
+  | "instagram"
+  | "linkedin"
+  | "tiktok";
 
 export type AnuncioPostRequest = {
   action?: AnuncioPostAction;
@@ -130,11 +148,12 @@ export function shouldBindPostToLastAnuncio(input: {
 
 export function anuncioPostActionButtons() {
   return {
-    body: "O que você quer fazer com este anúncio?",
+    body:
+      "Arte salva na sua biblioteca. O que você quer fazer com este anúncio?",
     buttons: [
-      { id: "anuncio_post:action:publish", title: "Publicar agora" },
-      { id: "anuncio_post:action:schedule", title: "Agendar" },
-      { id: "anuncio_post:action:save", title: "Só salvar" },
+      { id: "anuncio_post:action:publish", title: "📤 Publicar agora" },
+      { id: "anuncio_post:action:schedule", title: "🗓️ Agendar" },
+      { id: "anuncio_other_styles", title: "🎨 Trocar estilo" },
     ],
   };
 }
@@ -187,6 +206,101 @@ export function anuncioPostNetworkButtons(
   return { body: "Em quais redes?", buttons };
 }
 
+export function anuncioPostDestinationList(input: {
+  mediaType: "foto" | "video";
+  connected: Array<"facebook" | "instagram" | "linkedin" | "tiktok">;
+}) {
+  const connected = input.connected;
+  const meta = (["facebook", "instagram"] as const).filter((network) =>
+    connected.includes(network)
+  );
+  const metaLabel = meta.length === 2
+    ? "Face + Insta"
+    : meta[0] === "facebook"
+    ? "Facebook"
+    : "Instagram";
+  const rows: Array<{ id: string; title: string; description?: string }> = [];
+  if (input.mediaType === "video") {
+    if (meta.length) {
+      rows.push({
+        id: "anuncio_post:destination:video_reels",
+        title: `🎬 Reels ${metaLabel}`,
+      });
+    }
+    if (connected.includes("tiktok")) {
+      rows.push({
+        id: "anuncio_post:destination:video_tiktok",
+        title: "🎵 TikTok",
+      });
+    }
+    if (connected.includes("linkedin")) {
+      rows.push({
+        id: "anuncio_post:destination:video_linkedin",
+        title: "💼 LinkedIn",
+      });
+    }
+    if (meta.length) {
+      rows.push({
+        id: "anuncio_post:destination:video_story",
+        title: "📱 Story",
+      });
+    }
+  } else {
+    if (meta.length) {
+      rows.push({
+        id: "anuncio_post:destination:photo_feed",
+        title: `📤 ${metaLabel} (Feed)`,
+      }, {
+        id: "anuncio_post:destination:photo_feed_story",
+        title: `📤 ${metaLabel}`,
+        description: "Feed + Story",
+      }, {
+        id: "anuncio_post:destination:photo_story",
+        title: "📱 Só Story",
+      });
+    }
+    if (connected.includes("linkedin")) {
+      rows.push({
+        id: "anuncio_post:destination:photo_linkedin",
+        title: "💼 LinkedIn",
+      });
+    }
+    if (connected.includes("tiktok")) {
+      rows.push({
+        id: "anuncio_post:destination:photo_tiktok",
+        title: "🎵 TikTok",
+      });
+    }
+  }
+  rows.push({
+    id: "anuncio_post:destination:schedule",
+    title: "🗓️ Agendar",
+  });
+  return {
+    body: "Onde você quer publicar?",
+    button: "Escolher destino",
+    section_title: "Redes conectadas",
+    rows: rows.slice(0, 10),
+  };
+}
+
+export function anuncioRemainingDestinationsList(input: {
+  mediaType: "foto" | "video";
+  connected: Array<"facebook" | "instagram" | "linkedin" | "tiktok">;
+}) {
+  const rows = anuncioPostDestinationList(input).rows.filter((row) =>
+    row.id !== "anuncio_post:destination:schedule"
+  );
+  if (!rows.length) return undefined;
+  return {
+    body: "Quer publicar também em:",
+    button: "Escolher rede",
+    section_title: "Redes restantes",
+    rows,
+    send_text_first: true as const,
+  };
+}
+
 export function anuncioCaptionExtraList() {
   return {
     body: "Quer outras opções ou prefere escrever?",
@@ -197,6 +311,25 @@ export function anuncioCaptionExtraList() {
       { id: "anuncio_post:caption:custom", title: "Escrever a minha" },
     ],
   };
+}
+
+export function anuncioCaptionChoiceMessage(
+  variants: Record<string, { A: string; B: string; C: string }>,
+): string {
+  const first = Object.values(variants)[0];
+  if (!first) return "Não consegui montar as opções de legenda.";
+  return [
+    "Preparei 3 opções de legenda:",
+    `*Opção A*\n${first.A}`,
+    `*Opção B*\n${first.B}`,
+    `*Opção C*\n${first.C}`,
+  ].join("\n\n");
+}
+
+export function anuncioActionAfterCaption(
+  action: AnuncioPostAction | undefined,
+): "publish" | "schedule_time" {
+  return action === "schedule" ? "schedule_time" : "publish";
 }
 
 export function anuncioFinalApprovalButtons(token: string) {
@@ -228,147 +361,65 @@ export function anuncioScheduleTimeButtons(token: string) {
   };
 }
 
-function values(value: unknown): string[] {
-  return (Array.isArray(value) ? value : value == null ? [] : [value])
-    .flatMap((item) => String(item).split(","))
-    .map((item) => item.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-}
-
-function hashtags(title: string): string {
-  const clean = normalize(title).replace(/[^a-z0-9 ]/g, " ");
-  const tags = ["seminovos"];
-  if (/\bcitroen\b/.test(clean)) tags.push("citroen");
-  if (/\bc3\s+picasso\b/.test(clean)) tags.push("c3picasso");
-  if (/\bonix\b/.test(clean)) tags.push("onix");
-  tags.push("carrosusados");
-  return [...new Set(tags)].slice(0, 6).map((tag) => `#${tag}`).join(" ");
-}
-
-function contactLine(data: Record<string, unknown>): string {
-  const phone = String(data.telefone || data.contato || "").trim();
-  return phone ? `Chama no WhatsApp: ${phone}.` : "";
-}
-
-function priceLine(data: Record<string, unknown>): string {
-  const price = String(data.preco || "").trim();
-  const reference = String(data.fipe || data.preco_referencia || "").trim();
-  const referenceLabel = String(
-    data.preco_referencia_label || (data.fipe ? "FIPE" : ""),
-  ).trim();
-  const labeledReference = reference
-    ? `${reference}${referenceLabel ? ` (${referenceLabel})` : ""}`
-    : "";
-  if (price && labeledReference) return `De ${labeledReference} por ${price}.`;
-  if (price) return `Por ${price}.`;
-  if (labeledReference) return `Referência informada: ${labeledReference}.`;
+export function formatBrazilianWhatsappNumber(value: unknown): string {
+  const digits = normalizeBrazilianWhatsappNumber(value).replace(/^55/, "");
+  if (digits.length === 11) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  }
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  }
   return "";
 }
 
-function modelLine(data: Record<string, unknown>): string {
-  const parts: string[] = [];
-  for (const value of [data.titulo, data.versao, data.ano]) {
-    const part = String(value || "").trim();
-    if (!part) continue;
-    const existing = normalize(parts.join(" "));
-    if (!existing.includes(normalize(part))) parts.push(part);
-  }
-  const result = parts.join(" ");
-  return result || "Veículo anunciado";
-}
-
-function factualHighlights(data: Record<string, unknown>): string[] {
-  return [
-    ...new Set([
-      ...values(data.cambio),
-      ...values(data.motor),
-      ...values(data.quilometragem),
-      ...values(data.km),
-      ...values(data.donos),
-      ...values(data.documentacao),
-      ...values(data.revisoes),
-      ...values(data.pneus),
-      ...values(data.opcionais),
-      ...values(data.condicoes),
-      ...values(data.itens),
-      ...values(data.ficha),
-    ]),
-  ];
-}
-
-function benefitSentences(data: Record<string, unknown>): string[] {
-  const source = factualHighlights(data);
-  const normalized = normalize(source.join(" "));
-  const benefits: string[] = [];
-  if (/\bautomatic/.test(normalized)) {
-    benefits.push("Câmbio automático para mais conforto no trânsito.");
-  }
-  if (/\bipva\b.*\bpago\b/.test(normalized)) {
-    benefits.push("IPVA pago: sem esse gasto extra agora.");
-  }
-  if (/\brevis/.test(normalized)) {
-    benefits.push("Revisões informadas ajudam a acompanhar a manutenção.");
-  }
-  if (/\bc3\s+picasso\b/.test(normalize(String(data.titulo || "")))) {
-    benefits.push("Espaço interno de minivan para a rotina da família.");
-  }
-  return benefits;
-}
-
-function clip(value: string): string {
-  const compact = value.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n")
+export function singleWhatsappCtaAtEnd(
+  caption: string,
+  phone: unknown,
+): string {
+  const digits = normalizeBrazilianWhatsappNumber(phone);
+  const body = String(caption || "")
+    .replace(
+      /^.*(?:\+?55[\s.-]*)?(?:\(?\d{2}\)?[\s.-]*)?(?:9?\d{4})[\s.-]+\d{4}.*$/gim,
+      " ",
+    )
+    .replace(
+      /(?:📱\s*)?(?:fale|chame|falar)\s+(?:comigo\s+)?(?:agora\s+)?(?:no|pelo)\s+whatsapp\s*:?\s*(?:https?:\/\/)?wa\.me\/\d+/gi,
+      " ",
+    )
+    .replace(/(?:https?:\/\/)?wa\.me\/\d+/gi, " ")
+    .replace(/\b(?:55)?\d{10,11}\b/g, " ")
+    .replace(
+      /(?:\+?55[\s.-]*)?(?:\(?\d{2}\)?[\s.-]*)?(?:9?\d{4})[\s.-]+\d{4}\b/g,
+      " ",
+    )
+    .replace(/^[ \t]*(?:📱\s*)?whatsapp\s*:?\s*$/gim, " ")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
-  return compact.length <= 600
-    ? compact
-    : compact.slice(0, 597).replace(/\s+\S*$/, "") + "...";
+  if (!digits) return body;
+  return [
+    body,
+    `📱 Chame no WhatsApp: https://wa.me/${digits}`,
+  ].filter(Boolean).join("\n\n");
+}
+
+export function anuncioContentNiche(
+  last: Pick<LastAnuncio, "niche" | "vertical">,
+): ContentNiche {
+  if (last.niche) return last.niche;
+  return resolveNichoDoConteudo(
+    last.vertical === "veiculo" ? "automotivo" : "geral",
+    last.vertical === "veiculo" ? "veiculo" : "produto",
+  );
 }
 
 export function generateVehicleAdCaptions(
   data: Record<string, unknown>,
   variation = 0,
+  niche: ContentNiche = "produto",
 ): { A: string; B: string; C: string } {
-  const model = modelLine(data);
-  const allFacts = factualHighlights(data);
-  const offset = allFacts.length ? Math.abs(variation) % allFacts.length : 0;
-  const facts = [...allFacts.slice(offset), ...allFacts.slice(0, offset)];
-  const three = facts.slice(0, 3).join(", ");
-  const price = priceLine(data);
-  const contact = contactLine(data);
-  const tags = hashtags(String(data.titulo || ""));
-  const benefits = benefitSentences(data);
-  const a = clip(
-    [
-      `🚗 ${model}.`,
-      three ? `${three}.` : "",
-      price,
-      contact,
-      tags,
-    ].filter(Boolean).join(" "),
-  );
-  const b = clip(
-    [
-      variation % 2 === 0
-        ? `Para a rotina: ${model}.`
-        : `Conforto e praticidade no dia a dia: ${model}.`,
-      benefits.join(" "),
-      facts.slice(0, 5).length ? `${facts.slice(0, 5).join(", ")}.` : "",
-      price,
-      contact,
-      tags,
-    ].filter(Boolean).join(" "),
-  );
-  const c = clip(
-    [
-      variation % 2 === 0
-        ? `O ${model} combina com a sua rotina?`
-        : `Que tal conhecer o ${model}?`,
-      facts.slice(0, 4).length ? `${facts.slice(0, 4).join(", ")}.` : "",
-      price,
-      contact,
-      tags,
-    ].filter(Boolean).join(" "),
-  );
-  return { A: a, B: b, C: c };
+  if (niche !== "veiculo") return generateProductAdCaptions(data);
+  return generateVehicleCaptions(data, variation);
 }
 
 export function chooseAnuncioPostSource<T>(

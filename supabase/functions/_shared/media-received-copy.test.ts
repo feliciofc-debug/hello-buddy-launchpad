@@ -5,7 +5,9 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   createRecentAutomaticMessageGuard,
+  ownerPhotoReceivedReply,
   recognizedMediaReply,
+  savedVisionDescription,
 } from "./media-received-copy.ts";
 
 Deno.test("resposta de foto repetida usa concordância correta", () => {
@@ -16,6 +18,20 @@ Deno.test("resposta de foto repetida usa concordância correta", () => {
   assertStringIncludes(reply, "esta imagem");
   assert(!reply.includes("este imagem"));
   assert(!reply.includes("tratá-lo"));
+});
+
+Deno.test("foto reutilizada reaproveita visão salva e mantém resposta padrão", () => {
+  const context =
+    "Foto recebida há 2 dias\n\n[visão] Três desodorantes sobre uma bancada branca.";
+  const description = savedVisionDescription(context);
+  assertEquals(
+    description,
+    "Três desodorantes sobre uma bancada branca.",
+  );
+  assertEquals(
+    ownerPhotoReceivedReply(description),
+    "Recebi a foto. Estou vendo: Três desodorantes sobre uma bancada branca.",
+  );
 });
 
 Deno.test("mensagem automática idêntica não é liberada novamente em 30 segundos", () => {

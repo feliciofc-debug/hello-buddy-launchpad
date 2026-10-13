@@ -39,6 +39,7 @@ import Privacy from "./pages/Privacy";
 import DataDeletion from "./pages/DataDeletion";
 import Security from "./pages/Security";
 import Admin from "./pages/Admin";
+import AdminCriarCliente from "./pages/AdminCriarCliente";
 import AdminWuzapiInstancias from "./pages/AdminWuzapiInstancias";
 import ConfigurarICP from "./pages/ConfigurarICP";
 import CampanhasProspeccao from "./pages/CampanhasProspeccao";
@@ -171,6 +172,7 @@ const App = () => (
             <Route path="/data-deletion" element={<DataDeletion />} />
             <Route path="/security" element={<Security />} />
             <Route path="/admin" element={<Admin />} />
+            <Route path="/admin/criar-cliente" element={<AdminCriarCliente />} />
             <Route path="/admin/importar" element={<AdminImportar />} />
             
             <Route path="/admin/produtos" element={<AdminProdutos />} />

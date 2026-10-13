@@ -4,7 +4,7 @@ const corsHeaders = {
 }
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { appendLinkPost } from '../_shared/link-post.ts'
-import { prepareImageForInstagram } from '../_shared/prepareImageForInstagram.ts'
+import { prepareImageForInstagramSafe } from '../_shared/prepareImageForInstagram.ts'
 
 
 function sanitizePublishText(text?: string | null) {
@@ -96,19 +96,18 @@ Deno.serve(async (req) => {
     // Step 1: Create carousel item containers (with retry for transient errors)
     const childrenIds: string[] = []
     for (let i = 0; i < image_urls.length; i++) {
-      let imageUrl: string
-      try {
-        imageUrl = (await prepareImageForInstagram(
-          image_urls[i],
-          user_id,
-          supabaseUrl,
-          supabaseKey,
-        )).url
-      } catch (error) {
-        console.error(`[instagram-carousel][prepare-item-${i + 1}]`, error)
-        throw new Error(
-          `Não consegui preparar a imagem ${i + 1} do carrossel para o Instagram. Tente novamente.`,
-        )
+      const prepared = await prepareImageForInstagramSafe(
+        image_urls[i],
+        user_id,
+        supabaseUrl,
+        supabaseKey,
+      )
+      const imageUrl = prepared.url
+      if (!prepared.converted) {
+        console.warn(`[instagram-carousel][prepare-item-${i + 1}-fallback] usando URL original`, {
+          reason: prepared.reason,
+          url: image_urls[i].slice(0, 120),
+        })
       }
       console.log(`📸 [${i+1}/${image_urls.length}] Criando container para: ${imageUrl.substring(0, 100)}`)
       

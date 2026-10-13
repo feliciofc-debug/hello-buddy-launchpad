@@ -15,8 +15,11 @@ import {
   respJson,
 } from "../_shared/render-auth.ts";
 import { linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
+import { readyMediaActionButtons } from "../_shared/ready-media-actions.ts";
 import { syncProdutoVideoFromMidia } from "../_shared/sync-produto-video.ts";
 import { rememberDeliveredMediaInteraction } from "../_shared/whatsapp-last-media-interaction.ts";
+import { whatsappVideoFallbackMessage } from "../_shared/whatsapp-video-delivery.ts";
+import { videoRenderWhatsappDelivery } from "../_shared/video-render-delivery.ts";
 
 const MAX_TENTATIVAS = 3;
 
@@ -26,6 +29,8 @@ async function avisarCliente(
   message: string,
   videoUrl?: string,
   mediaId?: string,
+  interactiveButtons?: ReturnType<typeof readyMediaActionButtons>,
+  finalVideoUrl?: string,
 ): Promise<boolean> {
   if (!job.telefone) return false;
   try {
@@ -35,6 +40,15 @@ async function avisarCliente(
         to: job.telefone,
         message,
         ...(videoUrl ? { video_url: videoUrl } : {}),
+        ...(finalVideoUrl
+          ? {
+            video_fallback_url: finalVideoUrl,
+            video_fallback_message: whatsappVideoFallbackMessage(finalVideoUrl),
+          }
+          : {}),
+        ...(interactiveButtons
+          ? { interactive_buttons: interactiveButtons }
+          : {}),
       },
     });
     if (error) throw error;
@@ -141,8 +155,10 @@ Deno.serve(async (req) => {
       success: encodeOk,
       resultado_bucket,
       resultado_path,
+      preview_path,
       duracao_segundos,
       video_output,
+      preview_output,
       erro,
     } = body || {};
 
@@ -194,23 +210,28 @@ Deno.serve(async (req) => {
     if (!videoUrl) {
       throw new Error("não consegui montar a URL pública do vídeo");
     }
+    let previewUrl: string | null = null;
+    if (preview_path) {
+      const { data: previewPub } = supabase.storage.from(bucket).getPublicUrl(
+        preview_path,
+      );
+      previewUrl = previewPub?.publicUrl || null;
+    }
 
-    const plataformas: string[] = Array.isArray(job.plataformas)
-      ? job.plataformas
-      : [];
-    const querPublicar = plataformas.length > 0;
-
-    // NUNCA publicamos direto após o encode: o dono precisa ver o vídeo e aprovar.
+    // NUNCA publicamos direto após o encode: o dono recebe o vídeo pronto
+    // e decide pelos botões vinculados exatamente a esta mídia.
     await supabase
       .from("video_render_jobs")
       .update({
-        status: querPublicar ? "aguardando_aprovacao" : "concluido",
+        status: "concluido",
         resultado_bucket: bucket,
         resultado_path,
         duracao_segundos: duracao_segundos ?? null,
         metadata: {
           ...(job.metadata || {}),
           ...(video_output ? { video_output } : {}),
+          ...(preview_output ? { preview_output } : {}),
+          ...(preview_path ? { whatsapp_preview_path: preview_path } : {}),
         },
         concluido_at: new Date().toISOString(),
         erro_mensagem: null,
@@ -241,45 +262,28 @@ Deno.serve(async (req) => {
     }
     const blocoCodigo = codigoMidia ? `\n\n${codigoMidia}` : "";
 
-    if (!querPublicar) {
-      // Modo "só me devolve": manda o MP4 legendado no WhatsApp, sem publicar nada.
-      await avisarCliente(
-        supabase,
-        job,
-        `🎬 Pronto! Legenda queimada na tela. *Não publiquei em lugar nenhum.*${blocoCodigo}${blocoLegenda}`,
-        videoUrl,
-        midiaId || undefined,
-      );
-    } else {
-      const nomes = plataformas
-        .map((
-          p,
-        ) => (p === "instagram"
-          ? "Instagram"
-          : p === "facebook"
-          ? "Facebook"
-          : p)
-        )
-        .join(" e ");
-      const fmt = String(job.formato || "feed").toLowerCase();
-      const nomeFormato = fmt === "story"
-        ? "STORY"
-        : fmt === "reels"
-        ? "REELS"
-        : "FEED";
-      await avisarCliente(
-        supabase,
-        job,
-        `🎬 Vídeo pronto com a legenda na tela. *Ainda não publiquei nada.*${blocoCodigo}${blocoLegenda}\n\nResponda *APROVAR* que eu publico como *${nomeFormato}* no ${nomes}, ou *CANCELAR* e nada vai ao ar.`,
-        videoUrl,
-        midiaId || undefined,
-      );
-    }
+    const readyMessage =
+      `🎬 Pronto! Legenda queimada na tela. *Não publiquei em lugar nenhum.*${blocoCodigo}${blocoLegenda}`;
+    const delivery = videoRenderWhatsappDelivery(
+      videoUrl,
+      previewUrl,
+      readyMessage,
+    );
+    await avisarCliente(
+      supabase,
+      job,
+      delivery.message,
+      delivery.videoUrl,
+      midiaId || undefined,
+      midiaId ? readyMediaActionButtons(midiaId, "video") : undefined,
+      delivery.fallbackUrl,
+    );
 
     return respJson({
       success: true,
-      aguardando_aprovacao: querPublicar,
+      aguardando_aprovacao: false,
       video_url: videoUrl,
+      preview_url: previewUrl,
       midia_id: midiaId,
       biblioteca_erro: bibliotecaErro,
     });

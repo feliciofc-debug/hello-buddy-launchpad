@@ -366,7 +366,7 @@ Deno.test("golden FIPE preserva o anúncio de veículo pendente", async (t) => {
   await t.step("foto confirmada + pedido FIPE pede somente o ano", () => {
     const text = "qual a fipe desse carro?";
     const input = fipeInputFromConfirmedVehicle(text, confirmed);
-    assertEquals(vehicleFipeTurn(text, input), "fipe_ask_year");
+    assertEquals(vehicleFipeTurn(text, input), "fipe_lookup");
     assertEquals(input.marca, "GWM");
     assertEquals(input.modelo, "Tank 300");
   });

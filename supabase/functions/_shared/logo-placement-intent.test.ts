@@ -1,7 +1,9 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   LOGO_PRODUCT_SIMULATION_NOTICE,
+  logoImageEditPlan,
   logoPlacementMode,
+  logoRequestHasScene,
   logoRequestIncludesPublication,
 } from "./logo-placement-intent.ts";
 
@@ -38,4 +40,19 @@ Deno.test("objeto citado explicitamente mantém aplicação personalizada", () =
     LOGO_PRODUCT_SIMULATION_NOTICE,
     "Isto é uma simulação de produto personalizado.",
   );
+});
+
+Deno.test("pedido composto de cenário e logo na caneca não vira carimbo", () => {
+  const request =
+    "ambiente bonito e elegante com cafeteira expresso em metal prata, estilo moedor de grãos, com a xícara com a logo da AMZ Ofertas, com café saindo da máquina e caindo na xícara da AMZ";
+  assertEquals(logoRequestHasScene(request), true);
+  assertEquals(logoPlacementMode(request), "object");
+  assertEquals(logoImageEditPlan(request), {
+    logoMode: "object",
+    hasScene: true,
+    strategy: "creative-edit",
+    toolMode: "aplicar_logo_cenario",
+  });
+  assertEquals(logoPlacementMode("coloca minha logo"), "top-left");
+  assertEquals(logoImageEditPlan("coloca minha logo").strategy, "overlay");
 });

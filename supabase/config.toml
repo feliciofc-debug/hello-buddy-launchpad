@@ -80,9 +80,6 @@ verify_jwt = false
 [functions.generate-tesmann-content]
 verify_jwt = false
 
-[functions.create-empresa-user]
-verify_jwt = false
-
 [functions.discovery-cnpj]
 verify_jwt = false
 
@@ -137,9 +134,6 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.google-ads-sync-metrics]
-verify_jwt = false
-
-[functions.update-reviewer-password]
 verify_jwt = false
 
 [functions.create-approach-strategy]

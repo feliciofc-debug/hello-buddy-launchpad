@@ -5,6 +5,7 @@ import {
   hasDirectedImageEditRequest,
   hasImageGenerationRequest,
   hasSocialPostRequest,
+  isCarouselLibraryMedia,
   selectLatestImplicitMediaId,
   selectPublicationMediaId,
 } from "./owner-media-intent.ts";
@@ -194,6 +195,24 @@ Deno.test("mantém comandos explícitos de edição dirigidos à foto", () => {
   }
 });
 
+Deno.test("mudança explícita de cenário vence menção de publicação", () => {
+  const request =
+    "Mantenha os produtos originais, crie um ambiente com bancada iluminada para postar no face e instagram";
+  assertEquals(hasSocialPostRequest(request), true);
+  assertEquals(hasDirectedImageEditRequest(request), true);
+  assertEquals(classifyOwnerMediaIntent(request), {
+    action: "edit",
+    mediaStrategy: "last",
+  });
+});
+
+Deno.test("projeto genérico não vira edição de imagem", () => {
+  assertEquals(
+    classifyOwnerMediaIntent("crie um post sobre o nosso projeto"),
+    { action: null, mediaStrategy: null },
+  );
+});
+
 Deno.test("mantém comandos explícitos de publicação", () => {
   for (
     const text of [
@@ -216,5 +235,23 @@ Deno.test("não trata oração descritiva como comando de post", () => {
       "A AMZ ajuda porque ele cria e publica os posts da empresa.",
     ),
     { action: null, mediaStrategy: null },
+  );
+});
+
+Deno.test("vídeo legendado com mídia-mãe nunca é classificado como carrossel", () => {
+  assertEquals(
+    isCarouselLibraryMedia({
+      origem: "video_legendado",
+      tipo: "video",
+      midia_pai_id: "video-original",
+    }),
+    false,
+  );
+  assertEquals(
+    isCarouselLibraryMedia({
+      origem: "carrossel_whatsapp_card",
+      tipo: "foto",
+    }),
+    true,
   );
 });

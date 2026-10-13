@@ -25,6 +25,15 @@ const MODEL_ALIASES: Array<{
   { pattern: /\btank\s*300\b/i, brand: "GWM", model: "Tank 300" },
 ];
 
+const BRAND_ALIASES: Array<{
+  pattern: RegExp;
+  official: RegExp;
+}> = [
+  { pattern: /\b(?:vw|volks)\b/i, official: /\b(?:VW|VOLKSWAGEN)\b/i },
+  { pattern: /\b(?:chevy|gm)\b/i, official: /\bCHEVROLET\b/i },
+  { pattern: /\bmercedes\b/i, official: /\bMERCEDES(?:\s+BENZ)?\b/i },
+];
+
 const SMALL_NUMBERS: Record<string, number> = {
   zero: 0,
   um: 1,
@@ -179,6 +188,76 @@ export function parseFipeRequestText(text: string): FipeLookupInput {
   }, text);
 }
 
+function escaped(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function brandMention(
+  text: string,
+  brands: FipeListItem[],
+): { brand: FipeListItem; matchedText: string } | null {
+  for (const alias of BRAND_ALIASES) {
+    const match = text.match(alias.pattern);
+    if (!match) continue;
+    const brand = brands.find((item) =>
+      alias.official.test(normalizeFipeText(item.name))
+    );
+    if (brand) return { brand, matchedText: match[0] };
+  }
+  const candidates = brands
+    .map((brand) => ({ brand, normalized: plain(brand.name) }))
+    .filter(({ normalized }) => normalized)
+    .sort((a, b) => b.normalized.length - a.normalized.length);
+  for (const candidate of candidates) {
+    const pattern = new RegExp(
+      `(?:^|\\s)(${escaped(candidate.normalized)})(?=\\s|$)`,
+      "i",
+    );
+    const match = text.match(pattern);
+    if (match?.[1]) {
+      return { brand: candidate.brand, matchedText: match[1] };
+    }
+  }
+  return null;
+}
+
+export function parseFipeRequestTextWithBrands(
+  text: string,
+  brands: FipeListItem[],
+): FipeLookupInput {
+  const shortcut = parseFipeRequestText(text);
+  if (shortcut.marca && shortcut.modelo) return shortcut;
+
+  const normalized = plain(text);
+  const mention = brandMention(normalized, brands);
+  if (!mention) return shortcut;
+
+  const year = normalizeFipeYear(text);
+  let model = normalized
+    .replace(
+      new RegExp(`\\b${escaped(plain(mention.matchedText))}\\b`, "i"),
+      " ",
+    )
+    .replace(/\b(?:19|20)\d{2}\b/g, " ")
+    .replace(
+      /\b(?:me\s+passa|qual\s+(?:e|eh|a)|tabela|fipe|fipi|fip|cotacao|cota|consulta|consultar|valor|quanto|ano|modelo|da|do|de|na|no|para|por\s+favor)\b/g,
+      " ",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+  if (year) {
+    model = model.replace(new RegExp(`\\b${escaped(year)}\\b`, "g"), " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  return normalizeFipeLookupInput({
+    marca: mention.brand.name,
+    modelo: model || undefined,
+    ano_modelo: year,
+  }, text);
+}
+
 export function filterFipeModelCandidates(
   candidates: FipeListItem[],
   input: Pick<FipeLookupInput, "motor" | "cambio">,
@@ -203,6 +282,21 @@ export function filterFipeModelCandidates(
     ) {
       return false;
     }
+    return true;
+  });
+}
+
+export function filterFipeYearCandidates(
+  candidates: FipeListItem[],
+  requestedYear?: string,
+  requestedFuel?: string,
+): FipeListItem[] {
+  const year = normalizeFipeYear(requestedYear);
+  const fuel = normalizeFipeText(requestedFuel);
+  return candidates.filter((candidate) => {
+    const value = normalizeFipeText(candidate.name);
+    if (year && !new RegExp(`\\b${year}\\b`).test(value)) return false;
+    if (fuel && !value.includes(fuel)) return false;
     return true;
   });
 }

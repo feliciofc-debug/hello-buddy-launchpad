@@ -118,11 +118,10 @@ export async function prepareImageForStorySafe(
       serviceRoleKey,
     );
   } catch (err) {
+    const reason = err instanceof Error ? err.message : "erro desconhecido";
     console.warn(
-      `[prepareImageForStorySafe] falha (mantendo original): ${
-        err instanceof Error ? err.message : err
-      }`,
+      `[prepareImageForStorySafe] falha (mantendo original): ${reason}`,
     );
-    return { url: imageUrl, converted: false, reason: "erro" };
+    return { url: imageUrl, converted: false, reason: `error:${reason}` };
   }
 }

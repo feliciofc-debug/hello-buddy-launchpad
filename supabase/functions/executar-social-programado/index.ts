@@ -262,6 +262,7 @@ serve(async (req) => {
                 message: post.post_text,
                 page_id: post.page_id || '',
                 user_id: post.user_id,
+                preserve_caption: post.produto_source === 'video_legendado',
                 ...(imageUrls.length >= 2
                   ? { image_urls: imageUrls }
                   : post.video_url
@@ -284,6 +285,7 @@ serve(async (req) => {
                body: JSON.stringify({
                  caption: post.post_text,
                  user_id: post.user_id,
+                 preserve_caption: post.produto_source === 'video_legendado',
                  produto_id: post.produto_id || undefined,
                  ...(isCarousel
                    ? { image_urls: imageUrls }

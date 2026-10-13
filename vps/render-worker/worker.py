@@ -7,6 +7,26 @@ TMP = os.environ.get("TMP_DIR", "/var/lib/render-worker/tmp")
 TMP_MAX_H = float(os.environ.get("TMP_MAX_HORAS", "3"))
 THREADS = os.environ.get("FFMPEG_THREADS", "3")
 H = {"x-render-token": TOKEN, "Content-Type": "application/json"}
+WHATSAPP_PREVIEW_MAX_BYTES = 15 * 1024 * 1024
+WHATSAPP_AUDIO_KBPS = 128
+WHATSAPP_VIDEO_MAX_KBPS = 6000
+WHATSAPP_RESIZE_THRESHOLD_KBPS = 2500
+WHATSAPP_PREVIEW_ATTEMPTS = 3
+
+
+def preview_video_bitrate_kbps(duration_seconds):
+    duration = max(float(duration_seconds or 0), 0.1)
+    total_kbps = WHATSAPP_PREVIEW_MAX_BYTES * 8 / duration / 1000
+    return max(100, min(WHATSAPP_VIDEO_MAX_KBPS,
+                        int(total_kbps - WHATSAPP_AUDIO_KBPS)))
+
+
+def preview_dimensions(width, height, bitrate_kbps):
+    if bitrate_kbps >= WHATSAPP_RESIZE_THRESHOLD_KBPS or width <= 720:
+        return width, height
+    preview_width = 720
+    preview_height = max(2, int(round(height * preview_width / width / 2) * 2))
+    return preview_width, preview_height
 
 def esc(t):
     return (t.replace("\\", "\\\\").replace(":", "\\:")
@@ -39,13 +59,86 @@ def dimensoes(path):
     st = json.loads(r.stdout)["streams"][0]
     return int(st["width"]), int(st["height"])
 
+
+def duracao_video(path):
+    r = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "default=noprint_wrappers=1:nokey=1", path],
+        capture_output=True, text=True, check=True,
+    )
+    return float(r.stdout.strip())
+
+
+def ajustar_segmentos_duracao(segmentos, duracao):
+    dur = float(duracao or 0)
+    if dur <= 0 or not segmentos:
+        return segmentos
+    ordenados = sorted(
+        segmentos, key=lambda s: float(s.get("start") or 0),
+    )
+    fim_original = max(float(s.get("end") or 0) for s in ordenados)
+    if fim_original <= dur * 1.03:
+        return [
+            s for s in ordenados
+            if float(s.get("start") or 0) < dur
+            and float(s.get("end") or 0) > float(s.get("start") or 0)
+        ]
+
+    excesso = fim_original - dur
+    maior_intervalo = float("-inf")
+    inicio_bloco = None
+    for indice in range(1, len(ordenados)):
+        intervalo = (
+            float(ordenados[indice].get("start") or 0)
+            - float(ordenados[indice - 1].get("end") or 0)
+        )
+        if intervalo > maior_intervalo:
+            maior_intervalo = intervalo
+            inicio_bloco = indice
+
+    deslocar_bloco = (
+        inicio_bloco is not None
+        and maior_intervalo >= 5
+        and maior_intervalo >= excesso
+    )
+    fator = dur / fim_original
+    if deslocar_bloco:
+        print(
+            f"legenda realinhada: modo=deslocamento_bloco "
+            f"excesso={excesso:.3f} "
+            f"a_partir_trecho={inicio_bloco + 1}",
+            flush=True,
+        )
+    else:
+        print(
+            f"legenda realinhada: modo=uniforme fator={fator:.6f}",
+            flush=True,
+        )
+
+    ajustados = []
+    for indice, segmento in enumerate(ordenados):
+        if deslocar_bloco:
+            deslocamento = excesso if indice >= inicio_bloco else 0
+            inicio = float(segmento.get("start") or 0) - deslocamento
+            fim = float(segmento.get("end") or 0) - deslocamento
+        else:
+            inicio = float(segmento.get("start") or 0) * fator
+            fim = float(segmento.get("end") or 0) * fator
+        ajustado = dict(segmento)
+        ajustado["start"] = inicio
+        ajustado["end"] = min(dur, fim)
+        if ajustado["start"] < dur and ajustado["end"] > ajustado["start"]:
+            ajustados.append(ajustado)
+    return ajustados
+
+
 def alvo_meta(formato):
     return (1080, 1920) if str(formato or "").lower() in ("story", "reels") else (1080, 1350)
 
 def filtro_meta(vf, target_w, target_h):
     base = (
-        f"scale={target_w}:{target_h}:force_original_aspect_ratio=decrease,"
-        f"pad={target_w}:{target_h}:(ow-iw)/2:(oh-ih)/2:black,setsar=1"
+        f"scale={target_w}:{target_h}:force_original_aspect_ratio=increase,"
+        f"crop={target_w}:{target_h},setsar=1"
     )
     return f"{base},{vf}" if vf else base
 
@@ -89,6 +182,49 @@ def comando_ffmpeg(src, dst, vf, threads, w, h, logo_path=None, logo=None):
                   "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
                   "-movflags", "+faststart", dst]
 
+
+def comando_preview(src, dst, bitrate_kbps, width, height, threads):
+    bitrate = max(100, int(bitrate_kbps))
+    return [
+        "ffmpeg", "-y", "-i", src,
+        "-map", "0:v:0", "-map", "0:a?",
+        "-vf", f"scale={width}:{height}:flags=lanczos",
+        "-threads", str(threads),
+        "-c:v", "libx264", "-preset", "veryfast", "-profile:v", "high",
+        "-b:v", f"{bitrate}k", "-maxrate", f"{bitrate}k",
+        "-bufsize", f"{bitrate * 2}k",
+        "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", f"{WHATSAPP_AUDIO_KBPS}k",
+        "-movflags", "+faststart", dst,
+    ]
+
+
+def gerar_preview_whatsapp(src, dst, duration_seconds, width, height, threads):
+    bitrate = preview_video_bitrate_kbps(duration_seconds)
+    preview_w, preview_h = preview_dimensions(width, height, bitrate)
+    for attempt in range(WHATSAPP_PREVIEW_ATTEMPTS):
+        if attempt:
+            bitrate = max(100, int(bitrate * 0.85))
+        subprocess.run(
+            comando_preview(src, dst, bitrate, preview_w, preview_h, threads),
+            check=True, capture_output=True, text=True, timeout=1800,
+        )
+        size_bytes = os.path.getsize(dst)
+        print(
+            "preview whatsapp",
+            json.dumps({
+                "attempt": attempt + 1,
+                "bitrate_kbps": bitrate,
+                "width": preview_w,
+                "height": preview_h,
+                "size_bytes": size_bytes,
+            }),
+            flush=True,
+        )
+        if size_bytes <= WHATSAPP_PREVIEW_MAX_BYTES:
+            return metadados_saida(dst)
+    raise RuntimeError("prévia do WhatsApp excedeu 15 MB após 3 tentativas")
+
 def baixar_logo_url(url, path):
     if not url:
         return None
@@ -119,18 +255,47 @@ def limpar_orfaos():
         except Exception:
             pass
 
+
+def tentar_preview_whatsapp(job, src, dst, duration, width, height, threads):
+    preview_up = job.get("upload_preview")
+    if not preview_up:
+        print("preview whatsapp ignorada: claim sem upload_preview", flush=True)
+        return None, None
+    try:
+        preview_output = gerar_preview_whatsapp(
+            src, dst, duration, width, height, threads,
+        )
+        with open(dst, "rb") as f:
+            r = requests.put(
+                preview_up["url"],
+                data=f,
+                headers={"Content-Type": preview_up["content_type"]},
+                timeout=1800,
+            )
+            r.raise_for_status()
+        return preview_up["path"], preview_output
+    except Exception as e:
+        print(f"preview whatsapp falhou: {str(e)[:500]}", flush=True)
+        return None, None
+
+
 def processar(job):
     with tempfile.TemporaryDirectory(dir=TMP) as d:
         src, dst = f"{d}/in.mp4", f"{d}/out.mp4"
+        preview_dst = f"{d}/preview-whatsapp.mp4"
         with requests.get(job["video_download_url"], stream=True, timeout=600) as r:
             r.raise_for_status()
             with open(src, "wb") as f:
                 for chunk in r.iter_content(1 << 20):
                     f.write(chunk)
         w, h = dimensoes(src)
+        duracao_entrada = duracao_video(src)
+        segmentos = ajustar_segmentos_duracao(
+            job["segmentos"], duracao_entrada,
+        )
         target_w, target_h = alvo_meta(job.get("formato"))
         vf = filtro_meta(
-            filtros(job["segmentos"], job["estilo"], target_w, target_h),
+            filtros(segmentos, job["estilo"], target_w, target_h),
             target_w,
             target_h,
         )
@@ -145,12 +310,28 @@ def processar(job):
             ),
             check=True, capture_output=True, text=True, timeout=1800,
         )
+        output = metadados_saida(dst)
         up = job["upload"]
         with open(dst, "rb") as f:
             r = requests.put(up["url"], data=f,
                              headers={"Content-Type": up["content_type"]}, timeout=1800)
             r.raise_for_status()
-        return up["bucket"], up["path"], metadados_saida(dst)
+        preview_path, preview_output = tentar_preview_whatsapp(
+            job,
+            dst,
+            preview_dst,
+            output["duration_seconds"],
+            output["width"],
+            output["height"],
+            threads,
+        )
+        return (
+            up["bucket"],
+            up["path"],
+            output,
+            preview_path,
+            preview_output,
+        )
 
 os.makedirs(TMP, exist_ok=True)
 print("render-worker iniciado", flush=True)
@@ -166,11 +347,15 @@ while True:
             time.sleep(POLL); continue
         print("job", job["id"], flush=True)
         try:
-            bucket, path, output = processar(job)
+            bucket, path, output, preview_path, preview_output = processar(job)
             body = {"job_id": job["id"], "success": True, "resultado_bucket": bucket,
                     "resultado_path": path,
                     "duracao_segundos": output["duration_seconds"],
                     "video_output": output}
+            if preview_path:
+                body["preview_path"] = preview_path
+            if preview_output:
+                body["preview_output"] = preview_output
         except subprocess.CalledProcessError as e:
             body = {"job_id": job["id"], "success": False,
                     "erro": (e.stderr or "")[-500:] or "ffmpeg falhou"}

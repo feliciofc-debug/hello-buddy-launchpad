@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Shield, Trash2, AlertTriangle, CheckCircle, Clock, ArrowLeft, RefreshCw, Upload, Package, Users, ListChecks, Send, Flag, BookOpen } from "lucide-react";
+import { Shield, Trash2, AlertTriangle, CheckCircle, Clock, ArrowLeft, RefreshCw, Upload, Package, Users, ListChecks, Send, Flag, BookOpen, UserPlus } from "lucide-react";
 import { FeatureFlagsTab } from "@/components/admin/FeatureFlagsTab";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -274,6 +274,22 @@ export default function Admin() {
       <main className="container mx-auto px-4 py-8">
         {/* Quick Access Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+          <Card
+            className="cursor-pointer hover:border-primary/50 transition-colors"
+            onClick={() => navigate("/admin/criar-cliente")}
+          >
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="p-3 bg-primary/10 rounded-lg">
+                <UserPlus className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Criar cliente</h3>
+                <p className="text-sm text-muted-foreground">
+                  Nova conta de acesso
+                </p>
+              </div>
+            </CardContent>
+          </Card>
           
           <Card 
             className="cursor-pointer hover:border-primary/50 transition-colors"

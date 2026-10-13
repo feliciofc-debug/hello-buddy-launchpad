@@ -10,6 +10,18 @@ export type OwnerMediaIntent = {
   mediaStrategy: "generated" | "last" | null;
 };
 
+export function isCarouselLibraryMedia(media: {
+  origem?: string | null;
+  tipo?: string | null;
+  midia_pai_id?: string | null;
+} | null): boolean {
+  return media?.tipo !== "video" &&
+    (
+      media?.origem === "carrossel_whatsapp" ||
+      media?.origem === "carrossel_whatsapp_card"
+    );
+}
+
 export function selectLatestImplicitMediaId(
   newestSavedMedia: { id?: string | null; created_at?: string | null } | null,
   lastInteraction: { media_id?: string | null; at?: string | null } | null,
@@ -126,6 +138,11 @@ export function hasSocialPostRequest(text: string): boolean {
   return imperativeAtStart || explicitMediaTarget || socialDestination;
 }
 
+export function hasVideoPublicationRequest(text: string): boolean {
+  const value = normalizeIntentText(text);
+  return hasSocialPostRequest(text) && /\b(?:video|reels?)\b/.test(value);
+}
+
 export function hasGeneratedImagePostChain(text: string): boolean {
   const value = normalizeIntentText(text);
   return /\b(?:depois|em seguida|na sequencia)\b.{0,40}\b(?:cria|crie|criar|faz|faca|fazer|monta|monte|montar)\b.{0,20}\bpost\b/
@@ -133,10 +150,20 @@ export function hasGeneratedImagePostChain(text: string): boolean {
     (hasImageGenerationRequest(text) && hasSocialPostRequest(text));
 }
 
+function hasExplicitSceneEditRequest(text: string): boolean {
+  const value = withoutConversationalPrefix(text);
+  return /\b(?:mantenha|mantem|preserve|troque|troca|mude|muda|ajuste|ajusta)\b.{0,100}\b(?:ambiente|cenario|fundo|decoracao)\b/
+    .test(value) ||
+    /\b(?:ambiente|cenario|fundo|decoracao)\b.{0,100}\b(?:mantenha|mantem|preserve|troque|troca|mude|muda|ajuste|ajusta)\b/
+      .test(value);
+}
+
 export function hasDirectedImageEditRequest(text: string): boolean {
-  if (hasImageGenerationRequest(text) || hasSocialPostRequest(text)) {
+  if (hasImageGenerationRequest(text)) {
     return false;
   }
+  if (hasExplicitSceneEditRequest(text)) return true;
+  if (hasSocialPostRequest(text)) return false;
   const value = withoutConversationalPrefix(text);
   const match = value.match(
     /^(?:melhora|melhore|melhorar|edita|edite|editar|trata|trate|tratar|ajusta|ajuste|ajustar|transforma|transforme|transformar|coloca|coloque|colocar|troca|troque|trocar|muda|mude|mudar|aplica|aplique|aplicar|adiciona|adicione|adicionar|deixa|deixe|deixar)\b\s*(.{0,45})/,
@@ -162,11 +189,13 @@ export function classifyOwnerMediaIntent(text: string): OwnerMediaIntent {
       mediaStrategy: "generated",
     };
   }
-  if (hasSocialPostRequest(text)) {
-    return { action: "post", mediaStrategy: "last" };
-  }
+  // Uma edição de cenário continua sendo edição mesmo quando o dono explica
+  // que pretende publicar o resultado ao final.
   if (hasDirectedImageEditRequest(text)) {
     return { action: "edit", mediaStrategy: "last" };
+  }
+  if (hasSocialPostRequest(text)) {
+    return { action: "post", mediaStrategy: "last" };
   }
   return { action: null, mediaStrategy: null };
 }

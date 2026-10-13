@@ -9,6 +9,21 @@ export function cleanReceivedMediaDescription(value: unknown): string {
     .trim();
 }
 
+export function savedVisionDescription(value: unknown): string {
+  const raw = String(value || "");
+  const vision = raw.match(/\[(?:visão|visao)\]\s*([\s\S]+)$/i)?.[1];
+  return cleanReceivedMediaDescription(vision || "");
+}
+
+export function ownerPhotoReceivedReply(value: unknown): string {
+  const description = cleanReceivedMediaDescription(value)
+    .replace(/\s+/g, " ")
+    .trim();
+  return `Recebi a foto. Estou vendo: ${
+    description || "não consegui identificar os detalhes desta imagem"
+  }`;
+}
+
 export function recognizedMediaReply(input: {
   type: "foto" | "video" | "audio";
   description?: string | null;

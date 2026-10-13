@@ -12,6 +12,15 @@ export type MetaVideoValidation = {
   message?: string;
 };
 
+export function initialCaptionVideoFormat(
+  requestText: unknown,
+): "feed" | "story" | "reels" {
+  const text = String(requestText || "");
+  if (/\bstor(y|ies|ie)\b/i.test(text)) return "story";
+  if (/\bfeed\b/i.test(text)) return "feed";
+  return "reels";
+}
+
 export function metaVideoTarget(
   format: unknown,
 ): { width: 1080; height: 1920 | 1350; ratio: number } {
@@ -19,6 +28,30 @@ export function metaVideoTarget(
   return vertical
     ? { width: 1080, height: 1920, ratio: 1080 / 1920 }
     : { width: 1080, height: 1350, ratio: 1080 / 1350 };
+}
+
+export function renderedMetaVideoFormat(
+  jobFormat: unknown,
+  output?: MetaVideoOutput | null,
+): "feed" | "story" | "reels" {
+  const width = Number(output?.width);
+  const height = Number(output?.height);
+  if (Number.isFinite(width) && Number.isFinite(height) && height > 0) {
+    const ratio = width / height;
+    if (Math.abs(ratio - 1080 / 1350) <= 0.01) return "feed";
+    if (Math.abs(ratio - 1080 / 1920) <= 0.01) {
+      return /^story$/i.test(String(jobFormat || "")) ? "story" : "reels";
+    }
+  }
+  if (/^story$/i.test(String(jobFormat || ""))) return "story";
+  if (/^feed$/i.test(String(jobFormat || ""))) return "feed";
+  return "reels";
+}
+
+export function shouldNotifyVideoPublishCaller(
+  notifyWhatsapp: unknown,
+): boolean {
+  return notifyWhatsapp !== false;
 }
 
 export function validateMetaVideoForPublishing(input: {

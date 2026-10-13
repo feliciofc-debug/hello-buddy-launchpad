@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
       return respJson({ success: true, job: null });
     }
 
-    // 5. URL assinada de upload do resultado
+    // 5. URLs assinadas de upload: final em alta qualidade + prévia WhatsApp.
     const nome = `legendados/${job.user_id}/${job.id}.mp4`;
     const { data: up, error: upSignErr } = await supabase.storage
       .from(BUCKET_SAIDA)
@@ -92,6 +92,14 @@ Deno.serve(async (req) => {
       // reencontraria o objeto já existente e a URL falharia sem isto.
       .createSignedUploadUrl(nome, { upsert: true });
     if (upSignErr || !up?.signedUrl) throw upSignErr || new Error("upload url falhou");
+    const previewNome =
+      `legendados/${job.user_id}/${job.id}-whatsapp.mp4`;
+    const { data: previewUp, error: previewUpSignErr } = await supabase.storage
+      .from(BUCKET_SAIDA)
+      .createSignedUploadUrl(previewNome, { upsert: true });
+    if (previewUpSignErr || !previewUp?.signedUrl) {
+      throw previewUpSignErr || new Error("upload url da prévia falhou");
+    }
 
     const logo = await buildVideoRenderLogoClaim(job, async (bucket, path, ttlSeconds) => {
       const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, ttlSeconds);
@@ -112,6 +120,13 @@ Deno.serve(async (req) => {
           token: up.token,
           bucket: BUCKET_SAIDA,
           path: nome,
+          content_type: "video/mp4",
+        },
+        upload_preview: {
+          url: previewUp.signedUrl,
+          token: previewUp.token,
+          bucket: BUCKET_SAIDA,
+          path: previewNome,
           content_type: "video/mp4",
         },
         segmentos: job.segmentos || [],

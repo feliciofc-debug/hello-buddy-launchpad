@@ -18,3 +18,129 @@ export function singlePhotoFormatButtons() {
     ],
   };
 }
+
+export function shouldOfferSinglePhotoActions(input: {
+  isOwner: boolean;
+  verticalRoute: "geral" | "veiculo";
+  incomingPhotoCount: number;
+  context: string;
+}): boolean {
+  return input.isOwner &&
+    input.verticalRoute === "geral" &&
+    input.incomingPhotoCount > 0 &&
+    !input.context;
+}
+
+export function clearImageEditStateForNewMedia() {
+  return {
+    pending_image_edit: null,
+    pending_image_adjustment: null,
+  };
+}
+
+export function pendingImageEditIsActive(
+  createdAt: string,
+  nowMs = Date.now(),
+): boolean {
+  const created = new Date(createdAt).getTime();
+  return Number.isFinite(created) &&
+    created <= nowMs &&
+    nowMs - created <= 30 * 60 * 1000;
+}
+
+export type SinglePhotoEditMode =
+  | "aplicar_logo"
+  | "aplicar_logo_cenario"
+  | "projeto_ambiente"
+  | "cena_produto"
+  | "melhoria";
+
+function normalizedEditText(value: string): string {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function hasIsolatedProductTerms(value: string): boolean {
+  return /\b(produtos?|embalagens?|frascos?|desodorantes?|cosmeticos?|garrafas?|caixas?|latas?)\b/
+    .test(normalizedEditText(value));
+}
+
+function visionHasIsolatedProductTerms(value: string): boolean {
+  const vision = normalizedEditText(value)
+    .replace(/\bcaixa\s+de\s+som(?:\s+bluetooth)?\b/g, " ")
+    .replace(/\bcaixa\s+d\s*agua\b/g, " ");
+  return hasIsolatedProductTerms(vision);
+}
+
+export function isInteriorProjectRequest(
+  instruction: string,
+  sourceDescription = "",
+  allowVisionFallback = true,
+): boolean {
+  const text = normalizedEditText(instruction);
+  const vision = normalizedEditText(sourceDescription);
+  const explicitProject =
+    /\b(projeto|arquitet[oa]|arquitetura|reforma|armarios?|decoracao|decorar|marcenaria|parede|teto)\b/
+      .test(text) ||
+    /\biluminacao\s+(?:do|de|para\s+o)\s+ambiente\b/.test(text) ||
+    /\b(?:minha|meu|nossa|nosso|esta|este|a|o)\s+(?:sala(?:\s+de\s+jantar)?|cozinha|quarto|escritorio|loja)\b/
+      .test(text);
+  const sourceIsInterior =
+    /\b(sala(?:\s+de\s+jantar)?|cozinha|quarto|comodo|ambiente\s+interno|interior\s+(?:de|do|da)|escritorio|loja)\b/
+      .test(vision);
+  const instructionIsProduct = hasIsolatedProductTerms(instruction);
+  if (explicitProject) return !instructionIsProduct;
+  return allowVisionFallback &&
+    sourceIsInterior &&
+    !instructionIsProduct &&
+    !visionHasIsolatedProductTerms(sourceDescription);
+}
+
+export function singlePhotoEditMode(
+  instruction: string,
+  sourceDescription = "",
+): SinglePhotoEditMode {
+  const text = normalizedEditText(instruction);
+  const asksLogo = /\b(logo|logotipo|logomarca)\b/.test(text) ||
+    /\bminha\s+marca\b/.test(text);
+  const asksScene =
+    /\b(ambiente|cenario|fundo|estudio|showroom|bancada)\b/
+      .test(text) ||
+    /^(mantenha|mantem|preserve|crie|cria)\b.{0,80}\b(ambiente|cenario|fundo|estudio|showroom|bancada)\b/
+      .test(text) ||
+    (hasIsolatedProductTerms(instruction) &&
+      /\b(projeto|vitrine|decoracao|decorar)\b/.test(text));
+  if (asksLogo && asksScene) return "aplicar_logo_cenario";
+  if (asksLogo) return "aplicar_logo";
+  if (isInteriorProjectRequest(instruction, sourceDescription)) {
+    return "projeto_ambiente";
+  }
+  return asksScene ? "cena_produto" : "melhoria";
+}
+
+export function forcedImageEditMode(
+  instruction: string,
+  sourceDescription = "",
+): "projeto_ambiente" | "cena_produto" | "melhoria" {
+  if (isInteriorProjectRequest(instruction, sourceDescription, false)) {
+    return "projeto_ambiente";
+  }
+  return /\b(?:cen[aá]rio|ambiente|fundo|est[uú]dio|showroom)\b/i.test(
+      instruction,
+    )
+    ? "cena_produto"
+    : "melhoria";
+}
+
+export function interiorProjectEditDirective(): string {
+  return `🎯 MODO PROJETO DE INTERIORES — é o MESMO cômodo da foto, redecorado:
+- Mantenha EXATAMENTE a arquitetura: mesmas paredes, mesma porta e aberturas, mesmo teto, mesmas dimensões, mesmo ângulo de câmera e enquadramento. É PROIBIDO criar janelas, portas, cortinas ou aberturas que não existem, ampliar o cômodo ou mudar a perspectiva.
+- Mantenha os itens que o dono mandou manter ou tratar (por exemplo: mesa, cadeiras, piso e parede), com o mesmo modelo, material, cor, formato, proporção e posição.
+- "Tratar" significa somente limpar, corrigir luz, brilho e manchas e apresentar melhor o MESMO item; não autoriza substituí-lo.
+- Para o piso original: mantenha o MESMO material, a MESMA cor, o MESMO tamanho e paginação das peças e o MESMO rejunte. É PROIBIDO trocar o piso por outro material, cor ou formato.
+- Aplique SOMENTE o que foi pedido: móveis planejados/armários, decoração, quadros, iluminação e acabamentos, no estilo pedido, encaixados nas paredes existentes.
+- Resultado fotorealista, como foto de projeto de arquitetura daquele mesmo cômodo.
+- Mantenha exatamente o formato e a proporção da foto original.`;
+}

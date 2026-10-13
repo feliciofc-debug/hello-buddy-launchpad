@@ -246,14 +246,15 @@ export async function getCopyStyle(
 }
 
 /**
- * Garante o link no INÍCIO da legenda e a assinatura pessoal no fim.
- * Idempotente: se o link/assinatura já estiverem no texto, não duplica.
+ * Garante o link configurado quando a legenda ainda não tem CTA próprio.
+ * Idempotente: uma legenda com wa.me preserva seu único CTA no fim.
  */
 export function aplicarEstiloCopy(texto: string | null | undefined, style: CopyStyle): string {
   let base = (texto || "").trim();
   if (!base) return style.link || "";
 
-  if (style.link && !base.includes(style.link)) {
+  const hasWhatsappCta = /(?:https?:\/\/)?wa\.me\/\d{10,15}/i.test(base);
+  if (style.link && !base.includes(style.link) && !hasWhatsappCta) {
     // Link sozinho na primeira linha — sem frase de chamada/CTA.
     base = `${style.link}\n\n${base}`;
   }

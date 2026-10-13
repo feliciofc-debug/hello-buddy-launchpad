@@ -1,3 +1,5 @@
+import { deliveredMediaState } from "./ready-media-actions.ts";
+
 export async function rememberDeliveredMediaInteraction(
   supabase: any,
   input: {
@@ -21,19 +23,38 @@ export async function rememberDeliveredMediaInteraction(
       typeof conversation.agent_state === "object"
     ? conversation.agent_state
     : {};
+  const delivered = deliveredMediaState(
+    current,
+    input.mediaId,
+    input.at || new Date().toISOString(),
+  );
   const { error: updateError } = await supabase
     .from("whatsapp_cloud_conversations")
     .update({
-      agent_state: {
-        ...current,
-        last_media_interaction: {
-          media_id: input.mediaId,
-          at: input.at || new Date().toISOString(),
-        },
-      },
+      agent_state: delivered.state,
     })
     .eq("id", conversation.id)
     .eq("user_id", input.userId)
     .eq("contact_number", input.contactNumber);
-  return !updateError;
+  if (updateError) return false;
+
+  if (delivered.cancelledCarouselToken) {
+    const { error: cancelError } = await supabase
+      .from("social_posts_queue")
+      .update({
+        status: "cancelado",
+        error_message: "cancelado_por_video_entregue",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", input.userId)
+      .eq("approval_token", delivered.cancelledCarouselToken)
+      .eq("status", "aguardando_confirmacao");
+    if (cancelError) {
+      console.warn(
+        "[last-media-interaction] não cancelou preview de carrossel anterior:",
+        cancelError.message,
+      );
+    }
+  }
+  return true;
 }

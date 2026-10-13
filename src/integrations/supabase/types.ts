@@ -10464,6 +10464,15 @@ export type Database = {
           user_id: string
         }[]
       }
+      admin_criar_cliente: {
+        Args: {
+          p_email: string
+          p_nome: string
+          p_senha: string
+          p_tipo: string
+        }
+        Returns: string
+      }
       admin_set_video_motion_quota: {
         Args: { p_limite: number; p_user_id: string }
         Returns: undefined
