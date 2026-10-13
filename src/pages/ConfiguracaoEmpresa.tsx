@@ -10,6 +10,11 @@ import { toast } from 'sonner';
 import { ArrowLeft, Building2, Target, Bot, Save, Sparkles, Globe } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ImportarDoSiteModal, type IdentidadeImportada } from '@/components/ImportarDoSiteModal';
+import {
+  PREMIUM_VEHICLE_RETAIL_PROFILE,
+  PREMIUM_VEHICLE_RETAIL_SEGMENT,
+  suggestCompanyServiceProfile,
+} from '../../supabase/functions/_shared/company-service-profile';
 
 export default function ConfiguracaoEmpresa() {
   const [segmentoSelecionado, setSegmentoSelecionado] = useState('outros');
@@ -130,6 +135,10 @@ export default function ConfiguracaoEmpresa() {
   };
 
   const segmento = SEGMENTOS_EMPRESA.find(s => s.id === segmentoSelecionado);
+  const perfilSugerido = suggestCompanyServiceProfile(segmentoSelecionado, sobreNegocio);
+  const sugerirRevendaPremium =
+    segmentoSelecionado === 'automotivo' &&
+    perfilSugerido === PREMIUM_VEHICLE_RETAIL_SEGMENT;
 
   if (loadingData) {
     return (
@@ -269,6 +278,23 @@ export default function ConfiguracaoEmpresa() {
           </p>
         </CardHeader>
         <CardContent>
+          {sugerirRevendaPremium && (
+            <div className="mb-4 rounded-lg border border-primary/30 bg-primary/5 p-4">
+              <p className="font-medium">Perfil recomendado: {PREMIUM_VEHICLE_RETAIL_PROFILE.name}</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                A descrição indica compra e venda de veículos. Este perfil atende como consultor de alto padrão,
+                sem alterar o perfil Automotivo de lojas de peças.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-3"
+                onClick={() => setSegmentoSelecionado(PREMIUM_VEHICLE_RETAIL_SEGMENT)}
+              >
+                Usar perfil recomendado
+              </Button>
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {SEGMENTOS_EMPRESA.map(seg => (
               <div
@@ -307,6 +333,14 @@ export default function ConfiguracaoEmpresa() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {segmento.id === PREMIUM_VEHICLE_RETAIL_SEGMENT && (
+              <div>
+                <p className="font-medium mb-1">🎯 Público:</p>
+                <p className="text-sm text-muted-foreground">
+                  {PREMIUM_VEHICLE_RETAIL_PROFILE.audience}
+                </p>
+              </div>
+            )}
             <div>
               <p className="font-medium mb-1">📝 Estilo de Atendimento:</p>
               <p className="text-sm text-muted-foreground">{segmento.estilo_venda}</p>
@@ -329,7 +363,12 @@ export default function ConfiguracaoEmpresa() {
             <div className="border-t pt-4 mt-4">
               <p className="font-medium mb-2">💬 Exemplo de Conversa:</p>
               <div className="bg-background p-3 rounded space-y-2 text-sm border">
-                <div><strong>Cliente:</strong> Bom dia!</div>
+                <div>
+                  <strong>Cliente:</strong>{' '}
+                  {segmento.id === PREMIUM_VEHICLE_RETAIL_SEGMENT
+                    ? PREMIUM_VEHICLE_RETAIL_PROFILE.customerExample
+                    : 'Bom dia!'}
+                </div>
                 <div><strong>IA:</strong> {
                   segmento.id === 'alimentos-bebidas' ? 'Oi! Tudo ótimo! 😊 Viu nossa promoção? Tá com preço especial hoje!' :
                   segmento.id === 'eletronicos-informatica' ? 'Bom dia! 💻 Vi que você se interessou pelo produto. Posso te passar as especificações técnicas?' :
@@ -338,6 +377,7 @@ export default function ConfiguracaoEmpresa() {
                   segmento.id === 'casa-construcao' ? 'E aí! 👊 Esse material é top, resistente demais. Quer saber mais sobre rendimento?' :
                   segmento.id === 'moda-vestuario' ? 'Oi! 👗 Peça linda né? O caimento é perfeito. Qual seu tamanho?' :
                   segmento.id === 'automotivo' ? 'Fala! 🚗 Esse é original, compatível com vários modelos. Qual seu carro?' :
+                  segmento.id === PREMIUM_VEHICLE_RETAIL_SEGMENT ? PREMIUM_VEHICLE_RETAIL_PROFILE.assistantExample :
                   segmento.id === 'pet-shop' ? 'Oii! 🐾 Seu pet vai amar! É ótimo pra saúde dele. Qual bichinho você tem?' :
                   segmento.id === 'beleza-cosmeticos' ? 'Olá! 💄 Produto maravilhoso, os resultados são incríveis. Qual seu tipo de pele?' :
                   segmento.id === 'esportes-fitness' ? 'E aí, campeão! 💪 Produto top pra sua performance. Qual seu treino?' :
