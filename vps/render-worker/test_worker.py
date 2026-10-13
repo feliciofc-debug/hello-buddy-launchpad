@@ -102,6 +102,7 @@ class FfmpegCommandTest(unittest.TestCase):
 
         replacements = {
             "THREADS": "3",
+            "TMP": tempfile.gettempdir(),
             "requests": FakeRequests(),
             "subprocess": types.SimpleNamespace(run=fake_run),
             "dimensoes": lambda _path: (1080, 1920),
