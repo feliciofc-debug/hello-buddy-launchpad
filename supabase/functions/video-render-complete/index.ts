@@ -18,6 +18,8 @@ import { linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
 import { readyMediaActionButtons } from "../_shared/ready-media-actions.ts";
 import { syncProdutoVideoFromMidia } from "../_shared/sync-produto-video.ts";
 import { rememberDeliveredMediaInteraction } from "../_shared/whatsapp-last-media-interaction.ts";
+import { whatsappVideoFallbackMessage } from "../_shared/whatsapp-video-delivery.ts";
+import { videoRenderWhatsappDelivery } from "../_shared/video-render-delivery.ts";
 
 const MAX_TENTATIVAS = 3;
 
@@ -28,6 +30,7 @@ async function avisarCliente(
   videoUrl?: string,
   mediaId?: string,
   interactiveButtons?: ReturnType<typeof readyMediaActionButtons>,
+  finalVideoUrl?: string,
 ): Promise<boolean> {
   if (!job.telefone) return false;
   try {
@@ -37,6 +40,12 @@ async function avisarCliente(
         to: job.telefone,
         message,
         ...(videoUrl ? { video_url: videoUrl } : {}),
+        ...(finalVideoUrl
+          ? {
+            video_fallback_url: finalVideoUrl,
+            video_fallback_message: whatsappVideoFallbackMessage(finalVideoUrl),
+          }
+          : {}),
         ...(interactiveButtons
           ? { interactive_buttons: interactiveButtons }
           : {}),
@@ -146,8 +155,10 @@ Deno.serve(async (req) => {
       success: encodeOk,
       resultado_bucket,
       resultado_path,
+      preview_path,
       duracao_segundos,
       video_output,
+      preview_output,
       erro,
     } = body || {};
 
@@ -199,6 +210,13 @@ Deno.serve(async (req) => {
     if (!videoUrl) {
       throw new Error("não consegui montar a URL pública do vídeo");
     }
+    let previewUrl: string | null = null;
+    if (preview_path) {
+      const { data: previewPub } = supabase.storage.from(bucket).getPublicUrl(
+        preview_path,
+      );
+      previewUrl = previewPub?.publicUrl || null;
+    }
 
     // NUNCA publicamos direto após o encode: o dono recebe o vídeo pronto
     // e decide pelos botões vinculados exatamente a esta mídia.
@@ -212,6 +230,8 @@ Deno.serve(async (req) => {
         metadata: {
           ...(job.metadata || {}),
           ...(video_output ? { video_output } : {}),
+          ...(preview_output ? { preview_output } : {}),
+          ...(preview_path ? { whatsapp_preview_path: preview_path } : {}),
         },
         concluido_at: new Date().toISOString(),
         erro_mensagem: null,
@@ -242,19 +262,28 @@ Deno.serve(async (req) => {
     }
     const blocoCodigo = codigoMidia ? `\n\n${codigoMidia}` : "";
 
+    const readyMessage =
+      `🎬 Pronto! Legenda queimada na tela. *Não publiquei em lugar nenhum.*${blocoCodigo}${blocoLegenda}`;
+    const delivery = videoRenderWhatsappDelivery(
+      videoUrl,
+      previewUrl,
+      readyMessage,
+    );
     await avisarCliente(
       supabase,
       job,
-      `🎬 Pronto! Legenda queimada na tela. *Não publiquei em lugar nenhum.*${blocoCodigo}${blocoLegenda}`,
-      videoUrl,
+      delivery.message,
+      delivery.videoUrl,
       midiaId || undefined,
       midiaId ? readyMediaActionButtons(midiaId, "video") : undefined,
+      delivery.fallbackUrl,
     );
 
     return respJson({
       success: true,
       aguardando_aprovacao: false,
       video_url: videoUrl,
+      preview_url: previewUrl,
       midia_id: midiaId,
       biblioteca_erro: bibliotecaErro,
     });

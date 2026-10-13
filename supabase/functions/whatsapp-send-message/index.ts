@@ -11,6 +11,11 @@ import {
 import { mediaThenButtonPayloads } from '../_shared/whatsapp-media-buttons.ts'
 import { stripInternalWhatsAppSplit } from '../_shared/whatsapp-internal-split.ts'
 import { textThenInteractivePayloads } from '../_shared/whatsapp-text-interactive.ts'
+import {
+  checkedWhatsappVideoUrl,
+  remoteVideoFitsWhatsapp,
+  whatsappVideoFallbackMessage,
+} from '../_shared/whatsapp-video-delivery.ts'
 
 
 
@@ -33,6 +38,7 @@ serve(async (req) => {
     const {
       user_id, to, message, template_name, template_language,
       image_url, video_url, document_url, document_filename,
+      video_fallback_url, video_fallback_message,
       skip_log, log_sender,
       // vCard (cartão de contato clicável) — Meta Cloud API type:contacts
       contact_card, // { nome: string, telefone: string }
@@ -52,7 +58,25 @@ serve(async (req) => {
     if (!user_id || !to) {
       throw new Error('user_id e to são obrigatórios')
     }
-    const safeMessage = stripInternalWhatsAppSplit(message)
+    let safeMessage = stripInternalWhatsAppSplit(message)
+    let safeVideoUrl = video_url ? String(video_url) : undefined
+    let videoDeliveryCheck:
+      | { fits: boolean; sizeBytes: number | null; reason: string }
+      | null = null
+    if (safeVideoUrl) {
+      videoDeliveryCheck = await remoteVideoFitsWhatsapp(safeVideoUrl)
+      console.log('[whatsapp-send-message][video_size]', {
+        size_bytes: videoDeliveryCheck.sizeBytes,
+        decision: videoDeliveryCheck.reason,
+      })
+      if (!videoDeliveryCheck.fits) {
+        const finalUrl = String(video_fallback_url || safeVideoUrl)
+        safeMessage = stripInternalWhatsAppSplit(
+          video_fallback_message || whatsappVideoFallbackMessage(finalUrl),
+        )
+      }
+      safeVideoUrl = checkedWhatsappVideoUrl(safeVideoUrl, videoDeliveryCheck)
+    }
 
     // Buscar config do WhatsApp do cliente
     const { data: config, error: configError } = await supabase
@@ -90,7 +114,7 @@ serve(async (req) => {
     const mediaButtonPayloads = mediaThenButtonPayloads({
       to,
       message: safeMessage,
-      videoUrl: video_url,
+      videoUrl: safeVideoUrl,
       imageUrl: buttonImageUrl,
       interactiveButtons: interactive_buttons,
     })
@@ -185,14 +209,14 @@ serve(async (req) => {
           phones: [{ phone: `+${telCartao}`, type: 'CELL', wa_id: telCartao }],
         }],
       }
-    } else if (video_url) {
+    } else if (safeVideoUrl) {
       // VÍDEO (type:video) — usado para devolver o vídeo com legenda queimada.
       messagePayload = {
         messaging_product: 'whatsapp',
         to: to.replace(/\D/g, ''),
         type: 'video',
         video: {
-          link: video_url,
+          link: safeVideoUrl,
           caption: safeMessage.slice(0, 1024),
         }
       }
@@ -288,11 +312,21 @@ serve(async (req) => {
       await logOutboundMessage(supabase, {
         userId: user_id,
         phone: String(to),
-        content: safeMessage || (interactive_list ? `🎨 ${interactive_list.body || 'lista de opções'}` : (document_url ? `📄 ${document_filename || 'documento'}` : (video_url ? '🎬 vídeo' : (image_url ? '🖼️ imagem' : (contact_card ? '📇 cartão de contato' : ''))))),
-        messageType: interactive_list ? 'interactive' : document_url ? 'document' : video_url ? 'video' : image_url ? 'image' : contact_card ? 'contacts' : template_name ? 'template' : 'text',
+        content: safeMessage || (interactive_list ? `🎨 ${interactive_list.body || 'lista de opções'}` : (document_url ? `📄 ${document_filename || 'documento'}` : (safeVideoUrl ? '🎬 vídeo' : (image_url ? '🖼️ imagem' : (contact_card ? '📇 cartão de contato' : ''))))),
+        messageType: interactive_list ? 'interactive' : document_url ? 'document' : safeVideoUrl ? 'video' : image_url ? 'image' : contact_card ? 'contacts' : template_name ? 'template' : 'text',
 
         wamid: result.messages?.[0]?.id ?? null,
         sender: outboundLogSender(log_sender),
+        metadata: safeVideoUrl && video_fallback_url
+          ? {
+            video_fallback_url: String(video_fallback_url),
+            video_fallback_message: String(
+              video_fallback_message ||
+                whatsappVideoFallbackMessage(String(video_fallback_url)),
+            ),
+            interactive_buttons: interactive_buttons || null,
+          }
+          : null,
       })
     }
 

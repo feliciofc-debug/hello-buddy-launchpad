@@ -20,7 +20,10 @@ import {
   metadataEscolhaLogo,
   type VideoLegendaLogoAsset,
 } from "./video-legenda-logo.ts";
-import { videoCaptionOptionsText } from "./ready-media-actions.ts";
+import {
+  videoCaptionOptionsText,
+  whatsappLinkAtCaptionEnd,
+} from "./ready-media-actions.ts";
 import { cachedOrTranscribedVideoSegments } from "./video-transcription-flow.ts";
 import { initialCaptionVideoFormat } from "./meta-video-requirements.ts";
 
@@ -170,7 +173,7 @@ NUNCA:
 - A copy TERMINA NO RACIOCÍNIO, nunca em convite vazio nem promessa.
 - Sem urgência artificial ("imperdível", "não perca", "clica agora", "o melhor").
 - No máximo 1 emoji (e quase sempre nenhum).
-- O link, quando houver, fica sozinho na primeira linha.
+- O link de contato, quando houver, aparece uma única vez na última linha.
 
 === FORMATO ===
 - Máximo 500 caracteres por opção.
@@ -204,6 +207,10 @@ Crie 3 opções de legenda para publicar esse vídeo em Instagram/Facebook.
 ${style.template ? BLOCO_ACOMPANHA_FALA : BLOCO_GENERICO}
 
 ${style.promptBlock}
+REGRA SUPERIOR PARA AS OPÇÕES DE VÍDEO: se houver link de WhatsApp, ele aparece
+uma única vez, no FINAL de cada opção, exatamente como
+"📱 Chame no WhatsApp: https://wa.me/<número>". Ignore qualquer regra anterior
+que mande colocar o link no início.
 Responda SOMENTE com JSON válido:
 {"opcoes":["copy A","copy B","copy C"]}`;
 
@@ -238,7 +245,19 @@ Responda SOMENTE com JSON válido:
     .filter(Boolean)
     .slice(0, 3);
   if (opcoes.length === 0) throw new Error("IA não devolveu opções");
-  return opcoes;
+  return videoCaptionsWithWhatsappCtaAtEnd(opcoes, style.link);
+}
+
+export function videoCaptionsWithWhatsappCtaAtEnd(
+  options: string[],
+  configuredLink?: string | null,
+): string[] {
+  const phoneDigits = String(configuredLink || "").match(
+    /(?:https?:\/\/)?wa\.me\/(\d{10,15})/i,
+  )?.[1] || null;
+  return options.map((option) =>
+    whatsappLinkAtCaptionEnd(option, phoneDigits)
+  );
 }
 
 /**

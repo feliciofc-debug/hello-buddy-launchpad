@@ -1,5 +1,8 @@
 import ast
+import json
+import os
 import pathlib
+import subprocess
 import textwrap
 import unittest
 
@@ -8,16 +11,33 @@ MODULE_PATH = pathlib.Path(__file__).with_name("worker.py")
 SOURCE = MODULE_PATH.read_text(encoding="utf-8")
 TREE = ast.parse(SOURCE)
 TESTED_FUNCTIONS = {
-    "esc", "comando_ffmpeg", "baixar_logo", "alvo_meta", "filtro_meta"
+    "esc", "comando_ffmpeg", "baixar_logo", "alvo_meta", "filtro_meta",
+    "preview_video_bitrate_kbps", "preview_dimensions", "comando_preview",
+}
+TESTED_CONSTANTS = {
+    "WHATSAPP_PREVIEW_MAX_BYTES", "WHATSAPP_AUDIO_KBPS",
+    "WHATSAPP_VIDEO_MAX_KBPS", "WHATSAPP_RESIZE_THRESHOLD_KBPS",
 }
 FUNCTION_TREE = ast.Module(
     body=[
         node for node in TREE.body
-        if isinstance(node, ast.FunctionDef) and node.name in TESTED_FUNCTIONS
+        if (
+            isinstance(node, ast.FunctionDef) and node.name in TESTED_FUNCTIONS
+        ) or (
+            isinstance(node, ast.Assign) and any(
+                isinstance(target, ast.Name) and target.id in TESTED_CONSTANTS
+                for target in node.targets
+            )
+        )
     ],
     type_ignores=[],
 )
-WORKER = {"textwrap": textwrap}
+WORKER = {
+    "json": json,
+    "os": os,
+    "subprocess": subprocess,
+    "textwrap": textwrap,
+}
 exec(compile(FUNCTION_TREE, str(MODULE_PATH), "exec"), WORKER)
 
 
@@ -89,6 +109,36 @@ class FfmpegCommandTest(unittest.TestCase):
         self.assertIn("crop=1080:1920", video_filter)
         self.assertNotIn("pad=", video_filter)
         self.assertNotIn(":black", video_filter)
+
+    def test_19_second_preview_stays_at_six_mbps_and_full_resolution(self):
+        bitrate = WORKER["preview_video_bitrate_kbps"](19)
+        self.assertEqual(bitrate, 6000)
+        self.assertEqual(
+            WORKER["preview_dimensions"](1080, 1920, bitrate),
+            (1080, 1920),
+        )
+        estimated_bytes = (bitrate + 128) * 1000 * 19 / 8
+        self.assertLessEqual(estimated_bytes, 15 * 1024 * 1024)
+
+    def test_85_second_preview_is_reduced_to_720_by_1280(self):
+        bitrate = WORKER["preview_video_bitrate_kbps"](85)
+        self.assertLess(bitrate, 2500)
+        self.assertEqual(
+            WORKER["preview_dimensions"](1080, 1920, bitrate),
+            (720, 1280),
+        )
+        estimated_bytes = (bitrate + 128) * 1000 * 85 / 8
+        self.assertLessEqual(estimated_bytes, 15 * 1024 * 1024)
+
+    def test_preview_command_caps_bitrate_and_keeps_final_separate(self):
+        command = WORKER["comando_preview"](
+            "final.mp4", "preview.mp4", 1350, 720, 1280, "3",
+        )
+        self.assertIn("-b:v", command)
+        self.assertEqual(command[command.index("-maxrate") + 1], "1350k")
+        self.assertEqual(command[command.index("-bufsize") + 1], "2700k")
+        self.assertEqual(command[command.index("-vf") + 1], "scale=720:1280:flags=lanczos")
+        self.assertEqual(command[-1], "preview.mp4")
 
 
 if __name__ == "__main__":

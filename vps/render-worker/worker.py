@@ -7,6 +7,26 @@ TMP = os.environ.get("TMP_DIR", "/var/lib/render-worker/tmp")
 TMP_MAX_H = float(os.environ.get("TMP_MAX_HORAS", "3"))
 THREADS = os.environ.get("FFMPEG_THREADS", "3")
 H = {"x-render-token": TOKEN, "Content-Type": "application/json"}
+WHATSAPP_PREVIEW_MAX_BYTES = 15 * 1024 * 1024
+WHATSAPP_AUDIO_KBPS = 128
+WHATSAPP_VIDEO_MAX_KBPS = 6000
+WHATSAPP_RESIZE_THRESHOLD_KBPS = 2500
+WHATSAPP_PREVIEW_ATTEMPTS = 3
+
+
+def preview_video_bitrate_kbps(duration_seconds):
+    duration = max(float(duration_seconds or 0), 0.1)
+    total_kbps = WHATSAPP_PREVIEW_MAX_BYTES * 8 / duration / 1000
+    return max(100, min(WHATSAPP_VIDEO_MAX_KBPS,
+                        int(total_kbps - WHATSAPP_AUDIO_KBPS)))
+
+
+def preview_dimensions(width, height, bitrate_kbps):
+    if bitrate_kbps >= WHATSAPP_RESIZE_THRESHOLD_KBPS or width <= 720:
+        return width, height
+    preview_width = 720
+    preview_height = max(2, int(round(height * preview_width / width / 2) * 2))
+    return preview_width, preview_height
 
 def esc(t):
     return (t.replace("\\", "\\\\").replace(":", "\\:")
@@ -89,6 +109,49 @@ def comando_ffmpeg(src, dst, vf, threads, w, h, logo_path=None, logo=None):
                   "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
                   "-movflags", "+faststart", dst]
 
+
+def comando_preview(src, dst, bitrate_kbps, width, height, threads):
+    bitrate = max(100, int(bitrate_kbps))
+    return [
+        "ffmpeg", "-y", "-i", src,
+        "-map", "0:v:0", "-map", "0:a?",
+        "-vf", f"scale={width}:{height}:flags=lanczos",
+        "-threads", str(threads),
+        "-c:v", "libx264", "-preset", "veryfast", "-profile:v", "high",
+        "-b:v", f"{bitrate}k", "-maxrate", f"{bitrate}k",
+        "-bufsize", f"{bitrate * 2}k",
+        "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", f"{WHATSAPP_AUDIO_KBPS}k",
+        "-movflags", "+faststart", dst,
+    ]
+
+
+def gerar_preview_whatsapp(src, dst, duration_seconds, width, height, threads):
+    bitrate = preview_video_bitrate_kbps(duration_seconds)
+    preview_w, preview_h = preview_dimensions(width, height, bitrate)
+    for attempt in range(WHATSAPP_PREVIEW_ATTEMPTS):
+        if attempt:
+            bitrate = max(100, int(bitrate * 0.85))
+        subprocess.run(
+            comando_preview(src, dst, bitrate, preview_w, preview_h, threads),
+            check=True, capture_output=True, text=True, timeout=1800,
+        )
+        size_bytes = os.path.getsize(dst)
+        print(
+            "preview whatsapp",
+            json.dumps({
+                "attempt": attempt + 1,
+                "bitrate_kbps": bitrate,
+                "width": preview_w,
+                "height": preview_h,
+                "size_bytes": size_bytes,
+            }),
+            flush=True,
+        )
+        if size_bytes <= WHATSAPP_PREVIEW_MAX_BYTES:
+            return metadados_saida(dst)
+    raise RuntimeError("prévia do WhatsApp excedeu 15 MB após 3 tentativas")
+
 def baixar_logo_url(url, path):
     if not url:
         return None
@@ -122,6 +185,7 @@ def limpar_orfaos():
 def processar(job):
     with tempfile.TemporaryDirectory(dir=TMP) as d:
         src, dst = f"{d}/in.mp4", f"{d}/out.mp4"
+        preview_dst = f"{d}/preview-whatsapp.mp4"
         with requests.get(job["video_download_url"], stream=True, timeout=600) as r:
             r.raise_for_status()
             with open(src, "wb") as f:
@@ -145,12 +209,36 @@ def processar(job):
             ),
             check=True, capture_output=True, text=True, timeout=1800,
         )
+        output = metadados_saida(dst)
+        preview_output = gerar_preview_whatsapp(
+            dst,
+            preview_dst,
+            output["duration_seconds"],
+            output["width"],
+            output["height"],
+            threads,
+        )
         up = job["upload"]
         with open(dst, "rb") as f:
             r = requests.put(up["url"], data=f,
                              headers={"Content-Type": up["content_type"]}, timeout=1800)
             r.raise_for_status()
-        return up["bucket"], up["path"], metadados_saida(dst)
+        preview_up = job["upload_preview"]
+        with open(preview_dst, "rb") as f:
+            r = requests.put(
+                preview_up["url"],
+                data=f,
+                headers={"Content-Type": preview_up["content_type"]},
+                timeout=1800,
+            )
+            r.raise_for_status()
+        return (
+            up["bucket"],
+            up["path"],
+            output,
+            preview_up["path"],
+            preview_output,
+        )
 
 os.makedirs(TMP, exist_ok=True)
 print("render-worker iniciado", flush=True)
@@ -166,11 +254,13 @@ while True:
             time.sleep(POLL); continue
         print("job", job["id"], flush=True)
         try:
-            bucket, path, output = processar(job)
+            bucket, path, output, preview_path, preview_output = processar(job)
             body = {"job_id": job["id"], "success": True, "resultado_bucket": bucket,
                     "resultado_path": path,
+                    "preview_path": preview_path,
                     "duracao_segundos": output["duration_seconds"],
-                    "video_output": output}
+                    "video_output": output,
+                    "preview_output": preview_output}
         except subprocess.CalledProcessError as e:
             body = {"job_id": job["id"], "success": False,
                     "erro": (e.stderr or "")[-500:] or "ffmpeg falhou"}

@@ -180,6 +180,26 @@ Deno.test("link do WhatsApp fica sempre no final da legenda publicada", () => {
   );
 });
 
+Deno.test("opções A/B/C de vídeo têm um único link no final de cada legenda", () => {
+  const options = ["A", "B", "C"].map((letter) =>
+    whatsappLinkAtCaptionEnd(
+      `https://wa.me/5511000000000\n\nLegenda ${letter}`,
+      "5592999999999",
+    )
+  );
+  for (const option of options) {
+    assertEquals(option.match(/wa\.me\//g)?.length, 1);
+    assertEquals(
+      option.endsWith(
+        "📱 Chame no WhatsApp: https://wa.me/5592999999999",
+      ),
+      true,
+    );
+  }
+  const text = videoCaptionOptionsText(options);
+  assertEquals(text.match(/wa\.me\//g)?.length, 3);
+});
+
 Deno.test("publicação do vídeo usa exatamente a opção escolhida sem novas variantes", () => {
   const optionB = "O verdadeiro luxo automotivo está nos detalhes.";
   const plan = readyVideoPublishPlan(optionB);

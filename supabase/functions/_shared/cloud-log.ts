@@ -34,6 +34,7 @@ export async function logOutboundMessage(
     wamid?: string | null;
     sender?: string;        // agent | campanha
     contactName?: string | null;
+    metadata?: Record<string, unknown> | null;
   }
 ): Promise<void> {
   try {
@@ -92,6 +93,7 @@ export async function logOutboundMessage(
       content: params.content || "",
       message_type: params.messageType || "text",
       wamid: wamid || null,
+      metadata: params.metadata || {},
     });
 
     await sb
