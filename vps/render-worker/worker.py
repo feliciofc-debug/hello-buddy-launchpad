@@ -182,6 +182,30 @@ def limpar_orfaos():
         except Exception:
             pass
 
+
+def tentar_preview_whatsapp(job, src, dst, duration, width, height, threads):
+    preview_up = job.get("upload_preview")
+    if not preview_up:
+        print("preview whatsapp ignorada: claim sem upload_preview", flush=True)
+        return None, None
+    try:
+        preview_output = gerar_preview_whatsapp(
+            src, dst, duration, width, height, threads,
+        )
+        with open(dst, "rb") as f:
+            r = requests.put(
+                preview_up["url"],
+                data=f,
+                headers={"Content-Type": preview_up["content_type"]},
+                timeout=1800,
+            )
+            r.raise_for_status()
+        return preview_up["path"], preview_output
+    except Exception as e:
+        print(f"preview whatsapp falhou: {str(e)[:500]}", flush=True)
+        return None, None
+
+
 def processar(job):
     with tempfile.TemporaryDirectory(dir=TMP) as d:
         src, dst = f"{d}/in.mp4", f"{d}/out.mp4"
@@ -210,7 +234,13 @@ def processar(job):
             check=True, capture_output=True, text=True, timeout=1800,
         )
         output = metadados_saida(dst)
-        preview_output = gerar_preview_whatsapp(
+        up = job["upload"]
+        with open(dst, "rb") as f:
+            r = requests.put(up["url"], data=f,
+                             headers={"Content-Type": up["content_type"]}, timeout=1800)
+            r.raise_for_status()
+        preview_path, preview_output = tentar_preview_whatsapp(
+            job,
             dst,
             preview_dst,
             output["duration_seconds"],
@@ -218,25 +248,11 @@ def processar(job):
             output["height"],
             threads,
         )
-        up = job["upload"]
-        with open(dst, "rb") as f:
-            r = requests.put(up["url"], data=f,
-                             headers={"Content-Type": up["content_type"]}, timeout=1800)
-            r.raise_for_status()
-        preview_up = job["upload_preview"]
-        with open(preview_dst, "rb") as f:
-            r = requests.put(
-                preview_up["url"],
-                data=f,
-                headers={"Content-Type": preview_up["content_type"]},
-                timeout=1800,
-            )
-            r.raise_for_status()
         return (
             up["bucket"],
             up["path"],
             output,
-            preview_up["path"],
+            preview_path,
             preview_output,
         )
 
@@ -257,10 +273,12 @@ while True:
             bucket, path, output, preview_path, preview_output = processar(job)
             body = {"job_id": job["id"], "success": True, "resultado_bucket": bucket,
                     "resultado_path": path,
-                    "preview_path": preview_path,
                     "duracao_segundos": output["duration_seconds"],
-                    "video_output": output,
-                    "preview_output": preview_output}
+                    "video_output": output}
+            if preview_path:
+                body["preview_path"] = preview_path
+            if preview_output:
+                body["preview_output"] = preview_output
         except subprocess.CalledProcessError as e:
             body = {"job_id": job["id"], "success": False,
                     "erro": (e.stderr or "")[-500:] or "ffmpeg falhou"}
