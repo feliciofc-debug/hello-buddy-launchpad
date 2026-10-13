@@ -190,18 +190,45 @@ class FfmpegCommandTest(unittest.TestCase):
         self.assertNotIn("pad=", video_filter)
         self.assertNotIn(":black", video_filter)
 
-    def test_long_video_segments_are_rescaled_to_real_duration(self):
+    def test_real_long_video_shifts_only_final_block(self):
+        first_block = [
+            {
+                "start": index * 57 / 33,
+                "end": (index + 1) * 57 / 33,
+                "text": f"Trecho {index + 1}",
+            }
+            for index in range(33)
+        ]
+        final_block = [
+            {
+                "start": 104.2 + index * 1.8,
+                "end": 104.2 + (index + 1) * 1.8,
+                "text": f"Trecho {index + 34}",
+            }
+            for index in range(12)
+        ]
+        adjusted = WORKER["ajustar_segmentos_duracao"](
+            first_block + final_block, 84.933,
+        )
+        self.assertEqual(len(adjusted), 45)
+        self.assertEqual(adjusted[0]["start"], 0)
+        self.assertEqual(adjusted[32]["end"], 57)
+        self.assertAlmostEqual(adjusted[33]["start"], 63.333, places=3)
+        self.assertLessEqual(adjusted[-1]["end"], 84.933)
+        self.assertEqual(
+            [item["text"] for item in adjusted],
+            [f"Trecho {index + 1}" for index in range(45)],
+        )
+
+    def test_uniform_stretch_without_large_gap_uses_uniform_fallback(self):
         segments = [
-            {"start": 0, "end": 4, "text": "Primeiro"},
-            {"start": 120, "end": 125.8, "text": "Último"},
+            {"start": 0, "end": 50, "text": "Primeiro"},
+            {"start": 50, "end": 100, "text": "Último"},
         ]
         adjusted = WORKER["ajustar_segmentos_duracao"](segments, 85)
-        self.assertEqual([item["text"] for item in adjusted], [
-            "Primeiro", "Último",
-        ])
+        self.assertAlmostEqual(adjusted[0]["end"], 42.5)
+        self.assertAlmostEqual(adjusted[1]["start"], 42.5)
         self.assertEqual(adjusted[-1]["end"], 85)
-        self.assertAlmostEqual(adjusted[-1]["start"], 120 * 85 / 125.8)
-        self.assertEqual(segments[-1]["end"], 125.8)
 
     def test_segments_inside_real_duration_are_unchanged(self):
         segments = [
@@ -211,6 +238,18 @@ class FfmpegCommandTest(unittest.TestCase):
         self.assertEqual(
             WORKER["ajustar_segmentos_duracao"](segments, 85),
             segments,
+        )
+
+    def test_empty_segments_and_zero_duration_are_unchanged(self):
+        segments = [{"start": 1, "end": 2, "text": "Trecho"}]
+        self.assertIs(
+            WORKER["ajustar_segmentos_duracao"](segments, 0),
+            segments,
+        )
+        empty = []
+        self.assertIs(
+            WORKER["ajustar_segmentos_duracao"](empty, 85),
+            empty,
         )
 
     def test_19_second_preview_stays_at_six_mbps_and_full_resolution(self):

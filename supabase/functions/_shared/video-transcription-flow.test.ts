@@ -138,3 +138,48 @@ Deno.test("segmentos dentro da duração permanecem inalterados", () => {
   assertEquals(fitVideoTranscriptSegmentsToDuration(segments, 85), segments);
   assertEquals(videoTranscriptionDurationPrompt(undefined), "");
 });
+
+Deno.test("caso real mantém 33 trechos e desloca somente o bloco final", () => {
+  const firstBlock = Array.from({ length: 33 }, (_, index) => ({
+    start: index * 57 / 33,
+    end: (index + 1) * 57 / 33,
+    text: `Trecho ${index + 1}`,
+  }));
+  const finalBlock = Array.from({ length: 12 }, (_, index) => ({
+    start: 104.2 + index * 1.8,
+    end: 104.2 + (index + 1) * 1.8,
+    text: `Trecho ${index + 34}`,
+  }));
+
+  const adjusted = fitVideoTranscriptSegmentsToDuration(
+    [...firstBlock, ...finalBlock],
+    84.933,
+  );
+
+  assertEquals(adjusted.length, 45);
+  assertEquals(adjusted[0].start, 0);
+  assertEquals(adjusted[32].end, 57);
+  assertEquals(Math.abs(adjusted[33].start - 63.333) < 0.001, true);
+  assertEquals(adjusted.at(-1)!.end <= 84.933, true);
+  assertEquals(
+    adjusted.map((segment) => segment.text),
+    Array.from({ length: 45 }, (_, index) => `Trecho ${index + 1}`),
+  );
+});
+
+Deno.test("tempos esticados sem intervalo grande usam fallback uniforme", () => {
+  const adjusted = fitVideoTranscriptSegmentsToDuration([
+    { start: 0, end: 50, text: "Primeiro" },
+    { start: 50, end: 100, text: "Último" },
+  ], 85);
+  assertEquals(adjusted, [
+    { start: 0, end: 42.5, text: "Primeiro" },
+    { start: 42.5, end: 85, text: "Último" },
+  ]);
+});
+
+Deno.test("lista vazia e duração zero permanecem inalteradas", () => {
+  const segments = [{ start: 1, end: 2, text: "Trecho" }];
+  assertEquals(fitVideoTranscriptSegmentsToDuration(segments, 0), segments);
+  assertEquals(fitVideoTranscriptSegmentsToDuration([], 85), []);
+});

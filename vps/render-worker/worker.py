@@ -73,23 +73,62 @@ def ajustar_segmentos_duracao(segmentos, duracao):
     dur = float(duracao or 0)
     if dur <= 0 or not segmentos:
         return segmentos
-    fim_original = max(float(s.get("end") or 0) for s in segmentos)
-    fator = dur / fim_original if fim_original > dur * 1.03 else 1.0
-    if fator < 1.0:
+    ordenados = sorted(
+        segmentos, key=lambda s: float(s.get("start") or 0),
+    )
+    fim_original = max(float(s.get("end") or 0) for s in ordenados)
+    if fim_original <= dur * 1.03:
+        return [
+            s for s in ordenados
+            if float(s.get("start") or 0) < dur
+            and float(s.get("end") or 0) > float(s.get("start") or 0)
+        ]
+
+    excesso = fim_original - dur
+    maior_intervalo = float("-inf")
+    inicio_bloco = None
+    for indice in range(1, len(ordenados)):
+        intervalo = (
+            float(ordenados[indice].get("start") or 0)
+            - float(ordenados[indice - 1].get("end") or 0)
+        )
+        if intervalo > maior_intervalo:
+            maior_intervalo = intervalo
+            inicio_bloco = indice
+
+    deslocar_bloco = (
+        inicio_bloco is not None
+        and maior_intervalo >= 5
+        and maior_intervalo >= excesso
+    )
+    fator = dur / fim_original
+    if deslocar_bloco:
         print(
-            f"legenda reescalonada: fator={fator:.6f} "
-            f"dur={dur:.3f} fim_original={fim_original:.3f}",
+            f"legenda realinhada: modo=deslocamento_bloco "
+            f"excesso={excesso:.3f} "
+            f"a_partir_trecho={inicio_bloco + 1}",
             flush=True,
         )
+    else:
+        print(
+            f"legenda realinhada: modo=uniforme fator={fator:.6f}",
+            flush=True,
+        )
+
     ajustados = []
-    for segmento in segmentos:
-        inicio = float(segmento.get("start") or 0) * fator
-        if inicio >= dur:
-            continue
+    for indice, segmento in enumerate(ordenados):
+        if deslocar_bloco:
+            deslocamento = excesso if indice >= inicio_bloco else 0
+            inicio = float(segmento.get("start") or 0) - deslocamento
+            fim = float(segmento.get("end") or 0) - deslocamento
+        else:
+            inicio = float(segmento.get("start") or 0) * fator
+            fim = float(segmento.get("end") or 0) * fator
         ajustado = dict(segmento)
         ajustado["start"] = inicio
-        ajustado["end"] = min(dur, float(segmento.get("end") or 0) * fator)
-        ajustados.append(ajustado)
+        ajustado["end"] = min(dur, fim)
+        if ajustado["start"] < dur and ajustado["end"] > ajustado["start"]:
+            ajustados.append(ajustado)
     return ajustados
 
 

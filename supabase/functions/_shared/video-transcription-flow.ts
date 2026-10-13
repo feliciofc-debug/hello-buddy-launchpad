@@ -51,16 +51,43 @@ export function fitVideoTranscriptSegmentsToDuration(
   if (!Number.isFinite(duration) || duration <= 0 || segments.length === 0) {
     return segments;
   }
-  const greatestEnd = Math.max(...segments.map((segment) => segment.end));
-  const factor = greatestEnd > duration * 1.03
-    ? duration / greatestEnd
-    : 1;
-  return segments
-    .map((segment) => ({
-      ...segment,
-      start: segment.start * factor,
-      end: Math.min(duration, segment.end * factor),
-    }))
+  const ordered = [...segments].sort((a, b) => a.start - b.start);
+  const greatestEnd = Math.max(...ordered.map((segment) => segment.end));
+  if (greatestEnd <= duration * 1.03) {
+    return ordered.filter((segment) =>
+      segment.start < duration && segment.end > segment.start
+    );
+  }
+
+  const excess = greatestEnd - duration;
+  let largestGap = Number.NEGATIVE_INFINITY;
+  let blockStartIndex = -1;
+  for (let index = 1; index < ordered.length; index++) {
+    const gap = ordered[index].start - ordered[index - 1].end;
+    if (gap > largestGap) {
+      largestGap = gap;
+      blockStartIndex = index;
+    }
+  }
+  const shiftFinalBlock = blockStartIndex >= 0 &&
+    largestGap >= 5 &&
+    largestGap >= excess;
+  const factor = duration / greatestEnd;
+
+  return ordered
+    .map((segment, index) => {
+      const shift = shiftFinalBlock && index >= blockStartIndex ? excess : 0;
+      return {
+        ...segment,
+        start: shiftFinalBlock
+          ? segment.start - shift
+          : segment.start * factor,
+        end: Math.min(
+          duration,
+          shiftFinalBlock ? segment.end - shift : segment.end * factor,
+        ),
+      };
+    })
     .filter((segment) =>
       segment.start < duration && segment.end > segment.start
     );
