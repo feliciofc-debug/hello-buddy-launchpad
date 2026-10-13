@@ -117,16 +117,44 @@ export async function resolverVideoLegendado(
 async function transcrever(
   videoUrl: string,
   nomeEmpresa?: string,
+  duracaoSegundos?: number,
 ): Promise<SegmentoLegenda[]> {
   const { data, error } = await sb.functions.invoke(
     "video-transcrever-legendas",
     {
-      body: { video_url: videoUrl, nome_empresa: nomeEmpresa || undefined },
+      body: {
+        video_url: videoUrl,
+        nome_empresa: nomeEmpresa || undefined,
+        duracao_segundos: duracaoSegundos,
+      },
     },
   );
   if (error) throw error;
   if (!data?.success) throw new Error(data?.error || "transcrição falhou");
   return (data.segments || []) as SegmentoLegenda[];
+}
+
+async function duracaoConhecidaDaMidia(
+  userId: string,
+  mediaId?: string,
+): Promise<number | undefined> {
+  if (!mediaId) return undefined;
+  try {
+    const { data } = await sb
+      .from("midias_whatsapp")
+      .select("duracao_segundos")
+      .eq("id", mediaId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    const duration = Number(data?.duracao_segundos);
+    return Number.isFinite(duration) && duration > 0 ? duration : undefined;
+  } catch (error) {
+    console.warn(
+      "[video-legenda-flow] duração da mídia indisponível:",
+      error instanceof Error ? error.message : String(error),
+    );
+    return undefined;
+  }
 }
 
 function textoDaTranscricao(segs: SegmentoLegenda[]): string {
@@ -306,6 +334,7 @@ export async function iniciarFluxoLegendaVideo(params: {
   nomeEmpresa?: string;
   midiaId?: string;
   temaComoTranscricao?: string;
+  duracaoSegundos?: number;
 }): Promise<string | null> {
   const loc = bucketPathDeUrl(params.videoUrl);
   if (!loc) {
@@ -319,6 +348,11 @@ export async function iniciarFluxoLegendaVideo(params: {
   // Nome da empresa entra no prompt da transcrição para não sair "Ademicom".
   const nomeEmpresa = (params.nomeEmpresa || "").trim() ||
     (await resolverNomeEmpresa(params.userId));
+  const duracaoInformada = Number(params.duracaoSegundos);
+  const duracaoSegundos =
+    Number.isFinite(duracaoInformada) && duracaoInformada > 0
+      ? duracaoInformada
+      : await duracaoConhecidaDaMidia(params.userId, params.midiaId);
 
   // Sem transcrição válida NUNCA se gera copy: o fluxo pergunta do que se trata.
   let segmentos: SegmentoLegenda[] = [];
@@ -341,7 +375,8 @@ export async function iniciarFluxoLegendaVideo(params: {
         rows: previousJobs || [],
         videoPath: loc.path,
         mediaId: params.midiaId,
-        transcribe: () => transcrever(params.videoUrl, nomeEmpresa),
+        transcribe: () =>
+          transcrever(params.videoUrl, nomeEmpresa, duracaoSegundos),
       });
       segmentos = resolved.segments;
       if (resolved.source === "cache") {

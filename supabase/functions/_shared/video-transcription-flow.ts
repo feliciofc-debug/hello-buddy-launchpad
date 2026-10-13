@@ -34,6 +34,38 @@ export function normalizeVideoTranscriptSegments(
   return segments.filter((segment) => segment.end - segment.start >= 0.3);
 }
 
+export function videoTranscriptionDurationPrompt(
+  durationSeconds?: number | null,
+): string {
+  const duration = Number(durationSeconds);
+  if (!Number.isFinite(duration) || duration <= 0) return "";
+  const formatted = Number(duration.toFixed(3)).toString();
+  return `O vídeo tem exatamente ${formatted} segundos. Nenhum start ou end pode passar de ${formatted}. Os tempos devem acompanhar a fala em tempo real.`;
+}
+
+export function fitVideoTranscriptSegmentsToDuration(
+  segments: VideoTranscriptSegment[],
+  durationSeconds?: number | null,
+): VideoTranscriptSegment[] {
+  const duration = Number(durationSeconds);
+  if (!Number.isFinite(duration) || duration <= 0 || segments.length === 0) {
+    return segments;
+  }
+  const greatestEnd = Math.max(...segments.map((segment) => segment.end));
+  const factor = greatestEnd > duration * 1.03
+    ? duration / greatestEnd
+    : 1;
+  return segments
+    .map((segment) => ({
+      ...segment,
+      start: segment.start * factor,
+      end: Math.min(duration, segment.end * factor),
+    }))
+    .filter((segment) =>
+      segment.start < duration && segment.end > segment.start
+    );
+}
+
 export function parseVideoTranscriptContent(content: unknown): {
   validJson: boolean;
   segments: VideoTranscriptSegment[];
@@ -65,6 +97,7 @@ export async function transcribeVideoWithFallback(input: {
   apiKey: string;
   prompt: string;
   videoUrl: string;
+  durationSeconds?: number | null;
   models?: string[];
   logger?: (entry: {
     attempt: number;
@@ -96,7 +129,13 @@ export async function transcribeVideoWithFallback(input: {
           messages: [{
             role: "user",
             content: [
-              { type: "text", text: input.prompt },
+              {
+                type: "text",
+                text: [
+                  input.prompt,
+                  videoTranscriptionDurationPrompt(input.durationSeconds),
+                ].filter(Boolean).join("\n\n"),
+              },
               {
                 type: "video_url",
                 video_url: { url: input.videoUrl },
@@ -130,7 +169,12 @@ export async function transcribeVideoWithFallback(input: {
         validJson: parsed.validJson,
         status: response.status,
       });
-      if (parsed.segments.length > 0) return parsed.segments;
+      if (parsed.segments.length > 0) {
+        return fitVideoTranscriptSegmentsToDuration(
+          parsed.segments,
+          input.durationSeconds,
+        );
+      }
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
       input.logger?.({

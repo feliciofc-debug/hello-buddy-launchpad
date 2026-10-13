@@ -17,6 +17,7 @@ TESTED_FUNCTIONS = {
     "esc", "comando_ffmpeg", "baixar_logo", "alvo_meta", "filtro_meta",
     "preview_video_bitrate_kbps", "preview_dimensions", "comando_preview",
     "gerar_preview_whatsapp", "tentar_preview_whatsapp", "processar",
+    "duracao_video", "ajustar_segmentos_duracao",
 }
 TESTED_CONSTANTS = {
     "WHATSAPP_PREVIEW_MAX_BYTES", "WHATSAPP_AUDIO_KBPS",
@@ -106,6 +107,7 @@ class FfmpegCommandTest(unittest.TestCase):
             "requests": FakeRequests(),
             "subprocess": types.SimpleNamespace(run=fake_run),
             "dimensoes": lambda _path: (1080, 1920),
+            "duracao_video": lambda _path: 85,
             "filtros": lambda *_args: "",
             "baixar_logo": lambda *_args: None,
             "metadados_saida": lambda _path: {
@@ -187,6 +189,29 @@ class FfmpegCommandTest(unittest.TestCase):
         self.assertIn("crop=1080:1920", video_filter)
         self.assertNotIn("pad=", video_filter)
         self.assertNotIn(":black", video_filter)
+
+    def test_long_video_segments_are_rescaled_to_real_duration(self):
+        segments = [
+            {"start": 0, "end": 4, "text": "Primeiro"},
+            {"start": 120, "end": 125.8, "text": "Último"},
+        ]
+        adjusted = WORKER["ajustar_segmentos_duracao"](segments, 85)
+        self.assertEqual([item["text"] for item in adjusted], [
+            "Primeiro", "Último",
+        ])
+        self.assertEqual(adjusted[-1]["end"], 85)
+        self.assertAlmostEqual(adjusted[-1]["start"], 120 * 85 / 125.8)
+        self.assertEqual(segments[-1]["end"], 125.8)
+
+    def test_segments_inside_real_duration_are_unchanged(self):
+        segments = [
+            {"start": 0, "end": 2.5, "text": "Primeiro"},
+            {"start": 82, "end": 85, "text": "Último"},
+        ]
+        self.assertEqual(
+            WORKER["ajustar_segmentos_duracao"](segments, 85),
+            segments,
+        )
 
     def test_19_second_preview_stays_at_six_mbps_and_full_resolution(self):
         bitrate = WORKER["preview_video_bitrate_kbps"](19)

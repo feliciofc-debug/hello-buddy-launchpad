@@ -1,8 +1,10 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   cachedOrTranscribedVideoSegments,
+  fitVideoTranscriptSegmentsToDuration,
   parseVideoTranscriptionAction,
   transcribeVideoWithFallback,
+  videoTranscriptionDurationPrompt,
   videoTranscriptionRecoveryButtons,
 } from "./video-transcription-flow.ts";
 
@@ -91,4 +93,48 @@ Deno.test("transcrição válida do mesmo vídeo usa cache sem chamar gateway", 
     text: "Trecho em cache",
   }]);
   assertEquals(gatewayCalls, 0);
+});
+
+Deno.test("transcrição informa duração e reescala tempos esticados pela IA", async () => {
+  let promptSent = "";
+  const segments = await transcribeVideoWithFallback({
+    endpoint: "https://gateway.test",
+    apiKey: "test",
+    prompt: "Transcreva",
+    videoUrl: "https://cdn.test/video.mp4",
+    durationSeconds: 85,
+    fetcher: async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      promptSent = body.messages[0].content[0].text;
+      return gatewayResponse(JSON.stringify({
+        segments: [
+          { start: 0, end: 3, text: "Primeiro" },
+          { start: 120, end: 125.8, text: "Último" },
+        ],
+      }));
+    },
+  });
+
+  assertEquals(
+    promptSent.includes("O vídeo tem exatamente 85 segundos."),
+    true,
+  );
+  assertEquals(
+    promptSent.includes("Nenhum start ou end pode passar de 85."),
+    true,
+  );
+  assertEquals(segments.map((segment) => segment.text), [
+    "Primeiro",
+    "Último",
+  ]);
+  assertEquals(segments.at(-1)?.end, 85);
+});
+
+Deno.test("segmentos dentro da duração permanecem inalterados", () => {
+  const segments = [
+    { start: 0, end: 3, text: "Primeiro" },
+    { start: 82, end: 85, text: "Último" },
+  ];
+  assertEquals(fitVideoTranscriptSegmentsToDuration(segments, 85), segments);
+  assertEquals(videoTranscriptionDurationPrompt(undefined), "");
 });

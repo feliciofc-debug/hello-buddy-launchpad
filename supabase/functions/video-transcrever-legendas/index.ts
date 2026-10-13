@@ -93,11 +93,16 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { video_url, nome_empresa } = await req.json();
+    const { video_url, nome_empresa, duracao_segundos } = await req.json();
     if (!video_url || !/^https?:\/\//i.test(String(video_url))) {
       throw new Error("video_url é obrigatório");
     }
     const nomeEmpresa = String(nome_empresa || "").trim().slice(0, 80);
+    const duracaoNumero = Number(duracao_segundos);
+    const duracaoConhecida =
+      Number.isFinite(duracaoNumero) && duracaoNumero > 0
+        ? duracaoNumero
+        : undefined;
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY não configurada");
@@ -146,6 +151,7 @@ Responda SOMENTE com JSON válido no formato:
         apiKey: LOVABLE_API_KEY,
         prompt,
         videoUrl: urlParaIA,
+        durationSeconds: duracaoConhecida,
         logger: (entry) =>
           console.log("[legendas][tentativa]", {
             tentativa: entry.attempt,

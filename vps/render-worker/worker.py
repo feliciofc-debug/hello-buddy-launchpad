@@ -59,6 +59,40 @@ def dimensoes(path):
     st = json.loads(r.stdout)["streams"][0]
     return int(st["width"]), int(st["height"])
 
+
+def duracao_video(path):
+    r = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "default=noprint_wrappers=1:nokey=1", path],
+        capture_output=True, text=True, check=True,
+    )
+    return float(r.stdout.strip())
+
+
+def ajustar_segmentos_duracao(segmentos, duracao):
+    dur = float(duracao or 0)
+    if dur <= 0 or not segmentos:
+        return segmentos
+    fim_original = max(float(s.get("end") or 0) for s in segmentos)
+    fator = dur / fim_original if fim_original > dur * 1.03 else 1.0
+    if fator < 1.0:
+        print(
+            f"legenda reescalonada: fator={fator:.6f} "
+            f"dur={dur:.3f} fim_original={fim_original:.3f}",
+            flush=True,
+        )
+    ajustados = []
+    for segmento in segmentos:
+        inicio = float(segmento.get("start") or 0) * fator
+        if inicio >= dur:
+            continue
+        ajustado = dict(segmento)
+        ajustado["start"] = inicio
+        ajustado["end"] = min(dur, float(segmento.get("end") or 0) * fator)
+        ajustados.append(ajustado)
+    return ajustados
+
+
 def alvo_meta(formato):
     return (1080, 1920) if str(formato or "").lower() in ("story", "reels") else (1080, 1350)
 
@@ -216,9 +250,13 @@ def processar(job):
                 for chunk in r.iter_content(1 << 20):
                     f.write(chunk)
         w, h = dimensoes(src)
+        duracao_entrada = duracao_video(src)
+        segmentos = ajustar_segmentos_duracao(
+            job["segmentos"], duracao_entrada,
+        )
         target_w, target_h = alvo_meta(job.get("formato"))
         vf = filtro_meta(
-            filtros(job["segmentos"], job["estilo"], target_w, target_h),
+            filtros(segmentos, job["estilo"], target_w, target_h),
             target_w,
             target_h,
         )
