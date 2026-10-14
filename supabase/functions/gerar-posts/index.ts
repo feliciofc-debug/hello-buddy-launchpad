@@ -2,11 +2,71 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCopyStyle, userIdDoRequest } from "../_shared/copy-style.ts";
+import { buildGerarPostsVehiclePrompt } from "../_shared/gerar-posts-vehicle-prompt.ts";
+import { sanitizeVehiclePostsResult } from "../_shared/vehicle-post-caption.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+async function callGerarPostsLovable(prompt: string, apiKey: string): Promise<Record<string, unknown>> {
+  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'google/gemini-2.5-flash',
+      messages: [
+        {
+          role: 'system',
+          content: 'Você é um especialista em marketing digital. Retorne APENAS o JSON solicitado, sem texto adicional, sem introduções, sem repetir o prompt ou instruções.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      temperature: 0.9,
+      max_tokens: 4000,
+      response_format: { type: 'json_object' }
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('Erro na Lovable AI:', response.status, errorText);
+
+    if (response.status === 429) {
+      throw new Error('Limite de requisições excedido. Tente novamente em alguns instantes.');
+    }
+    if (response.status === 402) {
+      throw new Error('Créditos insuficientes. Por favor, adicione créditos ao workspace.');
+    }
+
+    throw new Error(`Erro na API: ${response.status}`);
+  }
+
+  const data = await response.json();
+  let texto = data.choices[0].message.content;
+
+  texto = texto.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+
+  const jsonMatch = texto.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error('Resposta da IA não contém JSON válido');
+  }
+
+  const jsonStr = jsonMatch[0]
+    .replace(/,(\s*[}\]])/g, '$1')
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'")
+    .trim();
+
+  return JSON.parse(jsonStr);
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -14,16 +74,43 @@ serve(async (req) => {
   }
 
   try {
-    const { produto } = await req.json();
+    const body = await req.json();
+    const { produto, item_tipo, veiculo } = body;
     const sbAdmin = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
-    const copyStyle = await getCopyStyle(sbAdmin, produto?.user_id || userIdDoRequest(req));
+    const userId = produto?.user_id || userIdDoRequest(req);
+    const copyStyle = await getCopyStyle(sbAdmin, userId);
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
     if (!LOVABLE_API_KEY) {
       throw new Error('LOVABLE_API_KEY não configurada');
+    }
+
+    if (item_tipo === 'veiculo') {
+      if (!veiculo?.marca || !veiculo?.modelo) {
+        throw new Error('Dados do veículo incompletos.');
+      }
+      let nomeLoja = String(veiculo.nome_loja || '').trim();
+      if (!nomeLoja && userId) {
+        const { data: cfg } = await sbAdmin.from('empresa_config')
+          .select('nome_empresa')
+          .eq('user_id', userId)
+          .maybeSingle();
+        nomeLoja = String(cfg?.nome_empresa || '').trim();
+      }
+      const prompt = buildGerarPostsVehiclePrompt(
+        { ...veiculo, nome_loja: nomeLoja || null },
+        copyStyle,
+      );
+      console.log(`Gerando posts veículo: ${veiculo.marca} ${veiculo.modelo}`);
+      const resultado = await callGerarPostsLovable(prompt, LOVABLE_API_KEY);
+      sanitizeVehiclePostsResult(resultado);
+      return new Response(
+        JSON.stringify({ posts: resultado }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     console.log(`Gerando posts para produto: ${produto.nome}`);
@@ -39,7 +126,6 @@ serve(async (req) => {
     const categLower = categoria.toLowerCase();
     const ehConsorcio = /consorci|consórci/.test(nomeLower + ' ' + descLower + ' ' + categLower);
 
-    // Extrai nomes próprios do briefing (heurística: sequência de palavras Capitalizadas)
     const nomesDetectados: string[] = [];
     if (temBriefing) {
       const matches = descricao.match(/\b[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]+(?:\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]+){0,3}\b/g) || [];
@@ -105,72 +191,8 @@ Retorne APENAS um JSON válido no formato:
   }
 }`;
 
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          {
-            role: 'system',
-            content: 'Você é um especialista em marketing digital. Retorne APENAS o JSON solicitado, sem texto adicional, sem introduções, sem repetir o prompt ou instruções.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: 0.9,
-        max_tokens: 4000,
-        response_format: { type: 'json_object' }
-      }),
-    });
+    const resultado = await callGerarPostsLovable(prompt, LOVABLE_API_KEY);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Erro na Lovable AI:', response.status, errorText);
-      
-      if (response.status === 429) {
-        throw new Error('Limite de requisições excedido. Tente novamente em alguns instantes.');
-      }
-      if (response.status === 402) {
-        throw new Error('Créditos insuficientes. Por favor, adicione créditos ao workspace.');
-      }
-      
-      throw new Error(`Erro na API: ${response.status}`);
-    }
-
-    const data = await response.json();
-    let texto = data.choices[0].message.content;
-    
-    console.log('Resposta da Lovable AI:', texto);
-
-    // Remover marcadores de código markdown (```json e ```)
-    texto = texto.replace(/```json\s*/g, '').replace(/```\s*/g, '');
-    
-    console.log('Texto após remover markdown:', texto);
-
-    // Extrair JSON da resposta
-    const jsonMatch = texto.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error('Resposta da IA não contém JSON válido');
-    }
-
-    // Remover vírgulas extras antes de fechar chaves/colchetes (trailing commas)
-    let jsonStr = jsonMatch[0]
-      .replace(/,(\s*[}\]])/g, '$1')  // Remove trailing commas
-      .replace(/[\u201C\u201D]/g, '"') // Substitui aspas curvas por aspas normais
-      .replace(/[\u2018\u2019]/g, "'") // Substitui aspas simples curvas
-      .trim();
-    
-    console.log('JSON limpo para parse:', jsonStr);
-
-    const resultado = JSON.parse(jsonStr);
-
-    // === Sanitização pós-IA: remove nomes inventados ===
     const nomesPermitidosLower = new Set(nomesDetectados.flatMap(n => n.toLowerCase().split(/\s+/)));
     const blacklistNomes = ['felício','felicio','joão','joao','maria','ana','carlos','pedro','lucas','bruno','rafael','fernando','patrícia','patricia','juliana'];
     const nomesGenericos = /\b[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]{2,}\b/g;
@@ -178,23 +200,19 @@ Retorne APENAS um JSON válido no formato:
     const sanitizar = (s: string): string => {
       if (typeof s !== 'string') return s;
       let out = s;
-      // Remove nomes da blacklist se não estiverem permitidos
       for (const bad of blacklistNomes) {
         if (!nomesPermitidosLower.has(bad)) {
           const re = new RegExp(`\\b${bad}\\b[,]?\\s*`, 'gi');
           out = out.replace(re, '');
         }
       }
-      // Se briefing tem nomes permitidos, substitui qualquer nome próprio não-permitido pelo primeiro nome permitido
       if (nomesDetectados.length > 0) {
         const primeiro = nomesDetectados[0].split(/\s+/)[0];
         out = out.replace(nomesGenericos, (m) => {
           const low = m.toLowerCase();
           if (nomesPermitidosLower.has(low)) return m;
-          // palavras comuns que começam com maiúscula (início de frase, marcas conhecidas) não trocamos
           const permitidosContexto = ['Consórcio','Consorcio','Ademicon','Instagram','Facebook','WhatsApp','Brasil','Você','Voce','Rio','São','Paulo','Marcelo','Martins'];
           if (permitidosContexto.includes(m)) return m;
-          // troca apenas se parecer nome próprio isolado (heurística: 4+ letras)
           if (m.length >= 4 && blacklistNomes.includes(low)) return primeiro;
           return m;
         });
@@ -205,7 +223,8 @@ Retorne APENAS um JSON válido no formato:
     for (const plat of ['instagram','facebook','story']) {
       if (resultado[plat]) {
         for (const opc of ['opcaoA','opcaoB','opcaoC']) {
-          if (resultado[plat][opc]) resultado[plat][opc] = sanitizar(resultado[plat][opc]);
+          const block = resultado[plat] as Record<string, string>;
+          if (block[opc]) block[opc] = sanitizar(block[opc]);
         }
       }
     }

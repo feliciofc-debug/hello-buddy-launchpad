@@ -39,6 +39,11 @@ import {
   publishableImageUrls,
   publishableQueueLink,
 } from "@/lib/publishable-item";
+import { buildGerarPostsInvokeBody } from "@/lib/gerar-posts-invoke";
+import {
+  sanitizeVehiclePostOptions,
+  stripInventedUrlsFromVehicleCaption,
+} from "@/lib/vehicle-post-caption";
 
 interface PostarFacebookModalProps {
   open: boolean;
@@ -160,18 +165,17 @@ export function PostarFacebookModal({
     setGerando(true);
     try {
       const { data, error } = await supabase.functions.invoke("gerar-posts", {
-        body: {
-          produto: {
-            nome: produto.nome,
-            preco: produto.preco,
-            descricao: produto.descricao || "",
-          },
-        },
+        body: buildGerarPostsInvokeBody(produto),
       });
       if (error) throw error;
       const fb = data?.posts?.facebook;
       if (!fb) throw new Error("Nenhum texto gerado para Facebook");
-      setOpcoes({ opcaoA: fb.opcaoA, opcaoB: fb.opcaoB, opcaoC: fb.opcaoC });
+      const opcoes = {
+        opcaoA: fb.opcaoA,
+        opcaoB: fb.opcaoB,
+        opcaoC: fb.opcaoC,
+      };
+      setOpcoes(isVehicle ? sanitizeVehiclePostOptions(opcoes) : opcoes);
       toast.success(t('publish.generated_success'));
     } catch (err: any) {
       console.error("Erro ao gerar texto:", err);
@@ -182,7 +186,7 @@ export function PostarFacebookModal({
   };
 
   const selecionarOpcao = (texto: string) => {
-    setTextoPost(texto);
+    setTextoPost(isVehicle ? stripInventedUrlsFromVehicleCaption(texto) : texto);
   };
 
   const usarPreviewComoTexto = () => {

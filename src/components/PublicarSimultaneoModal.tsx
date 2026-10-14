@@ -49,6 +49,11 @@ import {
   publishableInstagramReference,
   publishableQueueLink,
 } from "@/lib/publishable-item";
+import { buildGerarPostsInvokeBody } from "@/lib/gerar-posts-invoke";
+import {
+  sanitizeVehiclePostOptions,
+  stripInventedUrlsFromVehicleCaption,
+} from "@/lib/vehicle-post-caption";
 
 interface Props {
   open: boolean;
@@ -237,24 +242,19 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
     setGerando(true);
     try {
       const { data, error } = await supabase.functions.invoke("gerar-posts", {
-        body: {
-          produto: {
-            nome: produto.nome,
-            preco: produto.preco,
-            descricao: produto.descricao || "",
-          },
-        },
+        body: buildGerarPostsInvokeBody(produto),
       });
       if (error) throw error;
       const generated = instagram
         ? data?.posts?.instagram
         : data?.posts?.facebook;
       if (!generated) throw new Error("Nenhum texto foi gerado para as redes selecionadas.");
-      setOpcoes({
+      const opcoes = {
         opcaoA: generated.opcaoA,
         opcaoB: generated.opcaoB,
         opcaoC: generated.opcaoC,
-      });
+      };
+      setOpcoes(isVehicle ? sanitizeVehiclePostOptions(opcoes) : opcoes);
       toast.success("Textos gerados com sucesso.");
     } catch (error) {
       toast.error(errorMessage(error));
@@ -523,7 +523,7 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
             {opcoes && (
               <div className="grid gap-2">
                 {(["opcaoA", "opcaoB", "opcaoC"] as const).map((key, index) => (
-                  <Card key={key} className={cn("cursor-pointer", textoPost === opcoes[key] && "ring-2 ring-primary")} onClick={() => setTextoPost(opcoes[key])}>
+                  <Card key={key} className={cn("cursor-pointer", textoPost === opcoes[key] && "ring-2 ring-primary")} onClick={() => setTextoPost(isVehicle ? stripInventedUrlsFromVehicleCaption(opcoes[key]) : opcoes[key])}>
                     <CardContent className="flex items-start gap-2 p-3">
                       <Badge variant="outline">{["Direta", "Storytelling", "Educativa"][index]}</Badge>
                       <p className="line-clamp-3 text-sm">{opcoes[key]}</p>

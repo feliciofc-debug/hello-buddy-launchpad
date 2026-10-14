@@ -171,6 +171,20 @@ function vehicleAsPublishableItem(vehicle: Vehicle): PublishableItem {
   return {
     id: vehicle.id,
     item_tipo: "veiculo",
+    veiculo: {
+      marca: vehicle.marca,
+      modelo: vehicle.modelo,
+      versao: vehicle.versao,
+      ano_fabricacao: vehicle.ano_fabricacao,
+      ano_modelo: vehicle.ano_modelo,
+      km: vehicle.km,
+      cambio: vehicle.cambio,
+      combustivel: vehicle.combustivel,
+      blindado: vehicle.blindado,
+      nivel_blindagem: vehicle.nivel_blindagem,
+      cor: vehicle.cor,
+      opcionais: vehicle.opcionais?.slice(0, 8) ?? [],
+    },
     nome: [vehicle.marca, vehicle.modelo, vehicle.versao]
       .filter(Boolean)
       .join(" "),

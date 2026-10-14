@@ -39,6 +39,11 @@ import {
   publishableInstagramReference,
   publishableQueueLink,
 } from "@/lib/publishable-item";
+import { buildGerarPostsInvokeBody } from "@/lib/gerar-posts-invoke";
+import {
+  sanitizeVehiclePostOptions,
+  stripInventedUrlsFromVehicleCaption,
+} from "@/lib/vehicle-post-caption";
 
 interface PostarInstagramModalProps {
   open: boolean;
@@ -159,18 +164,17 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
     setGerando(true);
     try {
       const { data, error } = await supabase.functions.invoke("gerar-posts", {
-        body: {
-          produto: {
-            nome: produto.nome,
-            preco: produto.preco,
-            descricao: produto.descricao || "",
-          },
-        },
+        body: buildGerarPostsInvokeBody(produto),
       });
       if (error) throw error;
       const ig = data?.posts?.instagram;
       if (!ig) throw new Error("Nenhum texto gerado para Instagram");
-      setOpcoes({ opcaoA: ig.opcaoA, opcaoB: ig.opcaoB, opcaoC: ig.opcaoC });
+      const opcoes = {
+        opcaoA: ig.opcaoA,
+        opcaoB: ig.opcaoB,
+        opcaoC: ig.opcaoC,
+      };
+      setOpcoes(isVehicle ? sanitizeVehiclePostOptions(opcoes) : opcoes);
       toast.success(t('publish.generated_ig_success'));
     } catch (err: any) {
       console.error("Erro ao gerar texto:", err);
@@ -181,7 +185,7 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
   };
 
   const selecionarOpcao = (texto: string) => {
-    setTextoPost(texto);
+    setTextoPost(isVehicle ? stripInventedUrlsFromVehicleCaption(texto) : texto);
   };
 
   const handlePublicar = async () => {

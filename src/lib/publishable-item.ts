@@ -1,8 +1,24 @@
 export type PublishableItemType = "produto" | "veiculo";
 
+export type PublishableVehicleCopy = {
+  marca: string;
+  modelo: string;
+  versao?: string | null;
+  ano_fabricacao?: number | null;
+  ano_modelo?: number | null;
+  km?: number | null;
+  cambio?: string | null;
+  combustivel?: string | null;
+  blindado?: boolean;
+  nivel_blindagem?: string | null;
+  cor?: string | null;
+  opcionais?: string[] | null;
+};
+
 export type PublishableItem = {
   id: string;
   item_tipo?: PublishableItemType;
+  veiculo?: PublishableVehicleCopy;
   nome: string;
   descricao?: string | null;
   preco?: number | null;

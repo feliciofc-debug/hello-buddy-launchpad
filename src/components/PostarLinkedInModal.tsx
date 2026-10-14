@@ -23,6 +23,11 @@ import {
   publishableQueueLink,
   type PublishableItem,
 } from "@/lib/publishable-item";
+import { buildGerarPostsInvokeBody } from "@/lib/gerar-posts-invoke";
+import {
+  sanitizeVehiclePostOptions,
+  stripInventedUrlsFromVehicleCaption,
+} from "@/lib/vehicle-post-caption";
 import {
   clampTimeForToday,
   combineSaoPauloDateTimeToIso,
@@ -91,15 +96,28 @@ export function PostarLinkedInModal({ open, onOpenChange, produto }: PostarLinke
     const temaFinal = tema.trim() || produto.nome;
     setGerando(true);
     try {
-      const { data, error } = await supabase.functions.invoke("gerar-post-linkedin", {
-        body: isVehicle
-          ? { tema: temaFinal, item_tipo: "veiculo", veiculo_id: produto.id }
-          : { tema: temaFinal, produto_id: produto.id },
-      });
-      if (error) throw error;
-      const resp = data as { success?: boolean; opcoes?: { A: string; B: string; C: string }; error?: string } | null;
-      if (!resp?.success || !resp.opcoes) throw new Error(resp?.error || "Falha ao gerar o texto.");
-      setOpcoes(resp.opcoes);
+      if (isVehicle) {
+        const { data, error } = await supabase.functions.invoke("gerar-posts", {
+          body: buildGerarPostsInvokeBody(produto),
+        });
+        if (error) throw error;
+        const li = data?.posts?.linkedin;
+        if (!li) throw new Error("Nenhum texto gerado para LinkedIn.");
+        const opcoes = sanitizeVehiclePostOptions({
+          A: li.opcaoA,
+          B: li.opcaoB,
+          C: li.opcaoC,
+        });
+        setOpcoes(opcoes);
+      } else {
+        const { data, error } = await supabase.functions.invoke("gerar-post-linkedin", {
+          body: { tema: temaFinal, produto_id: produto.id },
+        });
+        if (error) throw error;
+        const resp = data as { success?: boolean; opcoes?: { A: string; B: string; C: string }; error?: string } | null;
+        if (!resp?.success || !resp.opcoes) throw new Error(resp?.error || "Falha ao gerar o texto.");
+        setOpcoes(resp.opcoes);
+      }
     } catch (err: any) {
       console.error("[gerar-post-linkedin]", err);
       toast.error(err.message || "Não foi possível gerar o texto.");
@@ -274,7 +292,9 @@ export function PostarLinkedInModal({ open, onOpenChange, produto }: PostarLinke
                     "cursor-pointer transition-all hover:shadow-md",
                     textoPost === opcoes[key] && "ring-2 ring-primary",
                   )}
-                  onClick={() => setTextoPost(opcoes[key])}
+                  onClick={() => setTextoPost(
+                    isVehicle ? stripInventedUrlsFromVehicleCaption(opcoes[key]) : opcoes[key],
+                  )}
                 >
                   <CardContent className="p-3">
                     <div className="flex items-start gap-2">
