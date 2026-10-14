@@ -4,20 +4,23 @@ type VehiclePublishReference = {
   user_id?: string | null;
 };
 
+type VehicleRowLookup = {
+  data: {
+    id: string;
+    user_id: string;
+    status: string;
+  } | null;
+  error: { message?: string } | null;
+};
+
+type VehicleFilterBuilder = {
+  eq: (column: string, value: string) => VehicleFilterBuilder;
+  maybeSingle: () => PromiseLike<VehicleRowLookup>;
+};
+
 type VehicleLookupClient = {
   from: (table: string) => {
-    select: (columns: string) => {
-      eq: (column: string, value: string) => {
-        maybeSingle: () => PromiseLike<{
-          data: {
-            id: string;
-            user_id: string;
-            status: string;
-          } | null;
-          error: { message?: string } | null;
-        }>;
-      };
-    };
+    select: (columns: string) => VehicleFilterBuilder;
   };
 };
 

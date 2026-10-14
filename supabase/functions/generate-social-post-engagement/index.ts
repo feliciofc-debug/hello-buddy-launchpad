@@ -52,6 +52,20 @@ interface ProdutoLite {
   beneficios?: string | null
 }
 
+type EngagementItem = {
+  id: string
+  nome: string
+  preco: number | null
+  categoria: string | null
+  link: string | null
+  link_marketplace: string | null
+  user_id: string
+  engajamento_estilos: string[] | null
+  descricao?: string | null
+  tags?: string[] | null
+  beneficios?: string | null
+}
+
 interface BlacklistTermo {
   categoria: string
   termo_simples: string | null
@@ -509,19 +523,7 @@ serve(async (req) => {
   } = body
 
   const isVehicleRequest = itemTipoBody === 'veiculo' && String(veiculoIdBody || '').trim()
-  let produto: {
-    id: string
-    nome: string
-    preco: number | null
-    categoria: string | null
-    link: string | null
-    link_marketplace: string | null
-    user_id: string
-    engajamento_estilos: string[] | null
-    descricao?: string | null
-    tags?: string[] | null
-    beneficios?: string | null
-  } | null = null
+  let produto: EngagementItem | null = null
 
   if (isVehicleRequest) {
     const authUserId = userIdDoRequest(req)
@@ -601,7 +603,14 @@ serve(async (req) => {
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       )
     }
-    produto = loadedProduct as typeof produto
+    produto = loadedProduct as unknown as EngagementItem
+  }
+
+  if (!produto) {
+    return new Response(
+      JSON.stringify({ success: false, error: 'Item não encontrado' }),
+      { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    )
   }
 
   const link = produto.link_marketplace || produto.link || ''
@@ -625,7 +634,7 @@ serve(async (req) => {
   if (estiloSolicitado && ESTILOS_VALIDOS.includes(estiloSolicitado)) {
     estiloEscolhido = estiloSolicitado as Estilo
   } else {
-    estiloEscolhido = escolherEstiloAleatorio(produto.engajamento_estilos)
+    estiloEscolhido = escolherEstiloAleatorio(produto.engajamento_estilos ?? undefined)
   }
 
   const produtoLite: ProdutoLite = {
