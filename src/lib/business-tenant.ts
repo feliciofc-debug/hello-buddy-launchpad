@@ -5,7 +5,7 @@ export function isBusinessTenantType(type: string | null | undefined): boolean {
 }
 
 export function businessTenantHomePath(
-  type: string | null | undefined,
-): "/dashboard" | "/veiculos" {
-  return type === VEHICLE_DEALER_TENANT_TYPE ? "/veiculos" : "/dashboard";
+  _type: string | null | undefined,
+): "/dashboard" {
+  return "/dashboard";
 }

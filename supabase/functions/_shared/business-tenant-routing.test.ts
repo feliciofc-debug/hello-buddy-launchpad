@@ -12,9 +12,16 @@ Deno.test("empresa continua entrando pelo dashboard", () => {
   assertEquals(businessTenantHomePath("empresa"), "/dashboard");
 });
 
-Deno.test("revenda entra no estoque de veículos", () => {
+Deno.test("revenda entra no mesmo dashboard da empresa", () => {
   assertEquals(isBusinessTenantType("revenda_veiculos"), true);
-  assertEquals(businessTenantHomePath("revenda_veiculos"), "/veiculos");
+  assertEquals(businessTenantHomePath("revenda_veiculos"), "/dashboard");
+});
+
+Deno.test("login nunca direciona revenda diretamente ao estoque", async () => {
+  const loginSource = await Deno.readTextFile("src/pages/Login.tsx");
+  const helperSource = await Deno.readTextFile("src/lib/business-tenant.ts");
+  assertEquals(loginSource.includes('navigate("/veiculos")'), false);
+  assertEquals(helperSource.includes('return "/veiculos"'), false);
 });
 
 Deno.test("outros tipos não são tenants empresariais", () => {

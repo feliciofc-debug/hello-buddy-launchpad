@@ -1,4 +1,7 @@
-import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   CLIENT_MENU_ROUTES,
   clientTypeLabel,
@@ -12,4 +15,25 @@ Deno.test("rota de estoque usa menu exclusivo de veículos", () => {
 Deno.test("tipo de revenda aparece com nome amigável no admin", () => {
   assertEquals(clientTypeLabel("revenda_veiculos"), "Revenda de veículos");
   assertEquals(clientTypeLabel("empresa"), "empresa");
+});
+
+Deno.test("dashboard posiciona Veículos no lugar de Produtos", async () => {
+  const source = await Deno.readTextFile("src/pages/DashboardMetricas.tsx");
+  const productsItem = source.indexOf(
+    "{ id: 'produtos', icon: Package",
+  );
+  const vehiclesItem = source.indexOf(
+    "{ id: 'veiculos', icon: CarFront",
+  );
+  assert(productsItem >= 0);
+  assert(vehiclesItem > productsItem);
+  assertEquals(
+    source.slice(productsItem, vehiclesItem).includes("id: 'dashboard'"),
+    false,
+  );
+});
+
+Deno.test("estoque de veículos volta para o painel", async () => {
+  const source = await Deno.readTextFile("src/pages/vehicle-inventory.tsx");
+  assert(source.includes('onClick={() => navigate("/dashboard")}'));
 });
