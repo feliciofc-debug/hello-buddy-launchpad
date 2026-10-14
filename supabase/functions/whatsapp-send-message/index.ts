@@ -9,6 +9,7 @@ import {
   truncateCodePoints,
 } from '../_shared/whatsapp-interactive-safe.ts'
 import { mediaThenButtonPayloads } from '../_shared/whatsapp-media-buttons.ts'
+import { buildInteractiveCarouselPayload } from '../_shared/whatsapp-interactive-carousel.ts'
 import { stripInternalWhatsAppSplit } from '../_shared/whatsapp-internal-split.ts'
 import { textThenInteractivePayloads } from '../_shared/whatsapp-text-interactive.ts'
 import {
@@ -50,6 +51,8 @@ serve(async (req) => {
       // { body: string, header?: string, footer?: string,
       //   buttons: [{ id, title }] }
       interactive_buttons,
+      interactive_carousel,
+      allow_carousel_failure,
       // Se true, preserva `message` em um envio anterior ao interativo.
       send_text_first,
     } = body
@@ -247,6 +250,12 @@ serve(async (req) => {
         }
       }
 
+    } else if (interactive_carousel?.cards?.length) {
+      messagePayload = buildInteractiveCarouselPayload({
+        to,
+        body: interactive_carousel.body || safeMessage || 'Veículos disponíveis',
+        cards: interactive_carousel.cards,
+      })
     } else {
       messagePayload = {
         messaging_product: 'whatsapp',
@@ -299,6 +308,22 @@ serve(async (req) => {
           },
           payload: safeMetaDiagnosticPayload(payload),
         })
+        if (
+          allow_carousel_failure === true &&
+          interactive_carousel?.cards?.length &&
+          payload?.type === 'interactive' &&
+          (payload?.interactive as { type?: string } | undefined)?.type === 'carousel'
+        ) {
+          return new Response(JSON.stringify({
+            success: false,
+            carousel_rejected: true,
+            http_status: response.status,
+            meta_error: metaError,
+          }), {
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        }
         throw new Error('Não foi possível enviar a mensagem agora. Tente novamente.')
       }
       results.push(result)
