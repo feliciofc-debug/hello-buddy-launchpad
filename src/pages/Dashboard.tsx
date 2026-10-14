@@ -18,6 +18,7 @@ import { LogsEnvioWuzapi } from '@/components/LogsEnvioWuzapi';
 import { DiagnosticoWuzapi } from '@/components/DiagnosticoWuzapi';
 import { mockProducts, type Marketplace } from '@/data/mockData';
 import { useClientMenus } from '@/hooks/useClientMenus';
+import { isBusinessTenantType } from '@/lib/business-tenant';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -299,7 +300,7 @@ const Dashboard = () => {
             Dashboard
           </a>
           {/* STANDBY - Afiliados
-          {userProfile?.tipo !== 'empresa' && (
+          {!isBusinessTenantType(userProfile?.tipo) && (
             <a
               href="/planos"
               className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
@@ -443,7 +444,7 @@ const Dashboard = () => {
               Biblioteca
             </a>
           )}
-          {isMenuAllowed('analytics') && (userProfile?.tipo === 'empresa' || userProfile?.tipo === 'fabrica' || userProfile?.tipo === 'b2b') && (
+          {isMenuAllowed('analytics') && (isBusinessTenantType(userProfile?.tipo) || userProfile?.tipo === 'fabrica' || userProfile?.tipo === 'b2b') && (
             <a
               href="/analytics"
               className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
@@ -1051,7 +1052,7 @@ const Dashboard = () => {
               {/* ═══════════════════════════════════════════════════════════ */}
               {/* DASHBOARD EMPRESA */}
               {/* ═══════════════════════════════════════════════════════════ */}
-              {userProfile?.tipo === 'empresa' && (
+              {isBusinessTenantType(userProfile?.tipo) && (
                 <div className="space-y-8">
                   {/* Header Banner Empresa */}
                   <div className="bg-gradient-to-r from-blue-500 via-blue-600 to-green-600 rounded-xl shadow-2xl p-8 text-white">

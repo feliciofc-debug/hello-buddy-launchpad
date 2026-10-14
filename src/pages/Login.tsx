@@ -4,6 +4,10 @@ import { Mail, Lock, ArrowLeft, Eye, EyeOff, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { isCustomAuth } from '@/config/runtime-config';
 import { toast } from 'sonner';
+import {
+  businessTenantHomePath,
+  isBusinessTenantType,
+} from '@/lib/business-tenant';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -63,8 +67,12 @@ export default function Login() {
     }
 
     const contasPermanentes = ['expo@atombrasildigital.com', 'renatascarega@gmail.com', 'alessandradiasadm1@gmail.com', 'dudacarega@gmail.com', 'canarimp@gmail.com'];
-    if (contasPermanentes.includes(emailLc) || profile?.tipo === 'b2b' || profile?.tipo === 'parceiro' || profile?.tipo === 'empresa') {
-      navigate(nextPath || '/dashboard');
+    if (isBusinessTenantType(profile?.tipo)) {
+      navigate(businessTenantHomePath(profile?.tipo));
+      return;
+    }
+    if (contasPermanentes.includes(emailLc) || profile?.tipo === 'b2b' || profile?.tipo === 'parceiro') {
+      navigate('/dashboard');
       return;
     }
 
