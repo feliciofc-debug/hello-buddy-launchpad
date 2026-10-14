@@ -12,6 +12,7 @@ import {
   Plus,
   Send,
   ShieldCheck,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -218,6 +219,8 @@ export default function VehicleInventory() {
   const [selected, setSelected] = useState<Vehicle | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState(0);
   const [form, setForm] = useState<VehicleForm>(EMPTY_FORM);
+  const [draftVehicleId, setDraftVehicleId] = useState<string | null>(null);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [publishableItem, setPublishableItem] = useState<PublishableItem | null>(null);
   const [simultaneousOpen, setSimultaneousOpen] = useState(false);
   const [facebookOpen, setFacebookOpen] = useState(false);
@@ -272,12 +275,14 @@ export default function VehicleInventory() {
 
   const openCreate = () => {
     setEditing(null);
+    setDraftVehicleId(crypto.randomUUID());
     setForm(EMPTY_FORM);
     setFormOpen(true);
   };
 
   const openEdit = (vehicle: Vehicle) => {
     setEditing(vehicle);
+    setDraftVehicleId(null);
     setForm(vehicleToForm(vehicle));
     setDetailsOpen(false);
     setFormOpen(true);
@@ -334,6 +339,7 @@ export default function VehicleInventory() {
         : null,
     };
 
+    const vehicleId = editing?.id || draftVehicleId || crypto.randomUUID();
     const result = editing
       ? await supabase
         .from("veiculos_estoque")
@@ -342,7 +348,7 @@ export default function VehicleInventory() {
         .eq("user_id", user.id)
       : await supabase
         .from("veiculos_estoque")
-        .insert({ ...values, user_id: user.id });
+        .insert({ ...values, id: vehicleId, user_id: user.id });
 
     setSaving(false);
     if (result.error) {
@@ -353,6 +359,56 @@ export default function VehicleInventory() {
     toast.success(editing ? "Veículo atualizado." : "Veículo adicionado.");
     setFormOpen(false);
     await loadVehicles();
+  };
+
+  const uploadVehiclePhotos = async (files: FileList | null) => {
+    if (!files?.length) return;
+
+    const { user, reason } = await getVehicleSessionUser();
+    if (!user) {
+      console.warn("[vehicle-inventory] upload cancelado por falta de sessão:", reason);
+      toast.error("Faça login novamente para enviar as fotos.");
+      return;
+    }
+
+    const vehicleId = editing?.id || draftVehicleId || crypto.randomUUID();
+    if (!editing && !draftVehicleId) setDraftVehicleId(vehicleId);
+
+    setUploadingPhotos(true);
+    const uploadedUrls: string[] = [];
+    try {
+      for (const file of Array.from(files)) {
+        const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
+        const fileName = `${Date.now()}-${crypto.randomUUID()}.${extension}`;
+        const filePath = `veiculos/${user.id}/${vehicleId}/${fileName}`;
+        const { error } = await supabase.storage
+          .from("produtos")
+          .upload(filePath, file, {
+            cacheControl: "3600",
+            contentType: file.type,
+            upsert: false,
+          });
+        if (error) throw error;
+
+        const { data } = supabase.storage.from("produtos").getPublicUrl(filePath);
+        uploadedUrls.push(data.publicUrl);
+      }
+
+      setForm((current) => ({
+        ...current,
+        fotos: [...listFromText(current.fotos), ...uploadedUrls].join("\n"),
+      }));
+      toast.success(
+        uploadedUrls.length === 1
+          ? "Foto enviada."
+          : `${uploadedUrls.length} fotos enviadas.`,
+      );
+    } catch (error) {
+      console.error("[vehicle-inventory] falha no upload de fotos:", error);
+      toast.error("Não foi possível enviar as fotos.");
+    } finally {
+      setUploadingPhotos(false);
+    }
   };
 
   const markAsSold = async (vehicle: Vehicle) => {
@@ -756,7 +812,35 @@ export default function VehicleInventory() {
               </FormField>
             )}
             <FormField label="Fotos (uma URL por linha)" className="sm:col-span-2">
-              <Textarea rows={4} value={form.fotos} onChange={(event) => setForm({ ...form, fotos: event.target.value })} />
+              <div className="space-y-2">
+                <Input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  disabled={uploadingPhotos}
+                  onChange={(event) => {
+                    void uploadVehiclePhotos(event.target.files);
+                    event.target.value = "";
+                  }}
+                />
+                {uploadingPhotos && (
+                  <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Enviando fotos...
+                  </p>
+                )}
+                {!uploadingPhotos && (
+                  <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Upload className="h-3.5 w-3.5" />
+                    As fotos enviadas são adicionadas às URLs abaixo.
+                  </p>
+                )}
+                <Textarea
+                  rows={4}
+                  value={form.fotos}
+                  onChange={(event) => setForm({ ...form, fotos: event.target.value })}
+                />
+              </div>
             </FormField>
             <FormField label="Características (separadas por vírgula)" className="sm:col-span-2">
               <Textarea rows={3} value={form.caracteristicas} onChange={(event) => setForm({ ...form, caracteristicas: event.target.value })} />

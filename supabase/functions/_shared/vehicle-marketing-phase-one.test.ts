@@ -144,6 +144,38 @@ Deno.test("migration da fase um é aditiva e mantém produto como default", asyn
   assertStringIncludes(migration, "cancel_vehicle_marketing_on_unavailable");
 });
 
+Deno.test("migrations de veículos não dependem das tabelas do Supabase Storage", async () => {
+  for (
+    const path of [
+      "supabase/migrations/20261014190000_vehicle_marketing_phase_one.sql",
+      "supabase/migrations/20261014200000_vehicle_marketing_phase_one_idempotent.sql",
+    ]
+  ) {
+    const migration = await Deno.readTextFile(path);
+    assertEquals(migration.includes("storage.buckets"), false, path);
+    assertEquals(migration.includes("storage.objects"), false, path);
+  }
+
+  const correction = await Deno.readTextFile(
+    "supabase/migrations/20261014200000_vehicle_marketing_phase_one_idempotent.sql",
+  );
+  assertStringIncludes(correction, "BEGIN;");
+  assertStringIncludes(correction, "COMMIT;");
+  assertStringIncludes(correction, "DROP TRIGGER IF EXISTS");
+  assertStringIncludes(correction, "DROP POLICY IF EXISTS");
+  assertStringIncludes(correction, "CREATE TABLE IF NOT EXISTS");
+});
+
+Deno.test("upload de veículo usa o bucket produtos em subpasta isolada", async () => {
+  const vehiclePage = await Deno.readTextFile("src/pages/vehicle-inventory.tsx");
+  assertStringIncludes(vehiclePage, '.from("produtos")');
+  assertStringIncludes(
+    vehiclePage,
+    "`veiculos/${user.id}/${vehicleId}/${fileName}`",
+  );
+  assertEquals(vehiclePage.includes('.from("veiculos")'), false);
+});
+
 Deno.test("modais de veículo desviam antes de qualquer leitura de produtos", async () => {
   for (
     const path of [
@@ -219,8 +251,10 @@ Deno.test("fase um não conecta veículos a tabelas de produto", async () => {
     "supabase/migrations/20261014190000_vehicle_marketing_phase_one.sql",
   );
 
-  assertEquals(vehiclePage.includes('.from("produtos")'), false);
-  assertEquals(vehiclePage.includes(".from('produtos')"), false);
+  assertEquals(
+    /supabase\s*\.from\(\s*["']produtos["']\s*\)/.test(vehiclePage),
+    false,
+  );
   assertEquals(
     /veiculo_id\s+UUID\s+REFERENCES\s+public\.produtos/i.test(migration),
     false,
