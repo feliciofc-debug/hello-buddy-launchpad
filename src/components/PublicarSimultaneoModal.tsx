@@ -134,6 +134,7 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
   } = useEngagementPostComposer({
     open,
     productId: produto.id,
+    itemTipo: produto.item_tipo,
     initialMode: produto.modo_postagem_fb === "engajamento" ? "engajamento" : "promocional",
     allowedStyles: produto.engajamento_estilos,
   });

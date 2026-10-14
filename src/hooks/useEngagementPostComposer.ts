@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import type { PublishableItemType } from "@/lib/publishable-item";
 import { toast } from "sonner";
 
 export type SocialPostMode = "engajamento" | "promocional";
@@ -31,9 +32,11 @@ function loadJson<T>(key: string, fallback: T): T {
 export function useEngagementPostComposer(params: {
   open: boolean;
   productId: string;
+  itemTipo?: PublishableItemType;
   initialMode: SocialPostMode;
   allowedStyles?: string[] | null;
 }) {
+  const isVehicle = params.itemTipo === "veiculo";
   const [mode, setMode] = useState<SocialPostMode>(params.initialMode);
   const [style, setStyle] = useState("aleatorio");
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -86,7 +89,13 @@ export function useEngagementPostComposer(params: {
     setPreviewFromCache(false);
     try {
       const { data, error } = await supabase.functions.invoke("generate-social-post-engagement", {
-        body: { produto_id: params.productId, estilo: finalStyle },
+        body: isVehicle
+          ? {
+            item_tipo: "veiculo",
+            veiculo_id: params.productId,
+            estilo: finalStyle,
+          }
+          : { produto_id: params.productId, estilo: finalStyle },
       });
       if (error) throw error;
       const response = data as { success?: boolean; caption?: string; estilo?: string; error?: string } | null;
@@ -104,7 +113,7 @@ export function useEngagementPostComposer(params: {
     } finally {
       setPreviewLoading(false);
     }
-  }, [params.productId, style, styles]);
+  }, [isVehicle, params.productId, style, styles]);
 
   return {
     mode,

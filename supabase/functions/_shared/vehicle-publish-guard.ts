@@ -21,6 +21,32 @@ type VehicleLookupClient = {
   };
 };
 
+export async function fetchOwnedVehicleRow<T extends Record<string, unknown>>(
+  supabaseClient: unknown,
+  veiculoId: string,
+  ownerUserId: string,
+  selectColumns: string,
+): Promise<{ data: T | null; errorMessage: string | null }> {
+  const supabase = supabaseClient as VehicleLookupClient;
+  const { data, error } = await supabase
+    .from("veiculos_estoque")
+    .select(selectColumns)
+    .eq("id", veiculoId)
+    .eq("user_id", ownerUserId)
+    .maybeSingle() as {
+      data: T | null;
+      error: { message?: string } | null;
+    };
+
+  if (error) {
+    return {
+      data: null,
+      errorMessage: error.message || "erro desconhecido",
+    };
+  }
+  return { data, errorMessage: null };
+}
+
 export async function assertVehicleCanPublish(
   supabaseClient: unknown,
   reference: VehiclePublishReference,

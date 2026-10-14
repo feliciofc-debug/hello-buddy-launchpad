@@ -1147,27 +1147,30 @@ export type Database = {
           criado_em: string | null
           id: string
           ordem: number | null
-          produto_id: string
+          produto_id: string | null
           texto: string
           user_id: string
+          veiculo_id: string | null
         }
         Insert: {
           ativo?: boolean | null
           criado_em?: string | null
           id?: string
           ordem?: number | null
-          produto_id: string
+          produto_id?: string | null
           texto: string
           user_id: string
+          veiculo_id?: string | null
         }
         Update: {
           ativo?: boolean | null
           criado_em?: string | null
           id?: string
           ordem?: number | null
-          produto_id?: string
+          produto_id?: string | null
           texto?: string
           user_id?: string
+          veiculo_id?: string | null
         }
         Relationships: [
           {
@@ -1175,6 +1178,13 @@ export type Database = {
             columns: ["produto_id"]
             isOneToOne: false
             referencedRelation: "produtos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "autopilot_textos_personalizados_veiculo_id_fkey"
+            columns: ["veiculo_id"]
+            isOneToOne: false
+            referencedRelation: "veiculos_estoque"
             referencedColumns: ["id"]
           },
         ]
@@ -8878,9 +8888,11 @@ export type Database = {
           fotos: string[]
           id: string
           incluir_cta_whatsapp: boolean | null
+          engajamento_estilos: string[] | null
           km: number | null
           marca: string
           modelo: string
+          modo_postagem_fb: string | null
           nivel_blindagem: string | null
           opcionais: string[]
           origem: string | null
@@ -8889,6 +8901,7 @@ export type Database = {
           status: string
           updated_at: string
           url_origem: string | null
+          usa_textos_personalizados: boolean | null
           user_id: string
           vendido_at: string | null
           versao: string | null
@@ -8905,12 +8918,14 @@ export type Database = {
           created_at?: string
           descricao?: string | null
           destaque?: boolean
+          engajamento_estilos?: string[] | null
           fotos?: string[]
           id?: string
           incluir_cta_whatsapp?: boolean | null
           km?: number | null
           marca: string
           modelo: string
+          modo_postagem_fb?: string | null
           nivel_blindagem?: string | null
           opcionais?: string[]
           origem?: string | null
@@ -8919,6 +8934,7 @@ export type Database = {
           status?: string
           updated_at?: string
           url_origem?: string | null
+          usa_textos_personalizados?: boolean | null
           user_id: string
           vendido_at?: string | null
           versao?: string | null
@@ -8935,11 +8951,13 @@ export type Database = {
           created_at?: string
           descricao?: string | null
           destaque?: boolean
+          engajamento_estilos?: string[] | null
           fotos?: string[]
           id?: string
           incluir_cta_whatsapp?: boolean | null
           km?: number | null
           marca?: string
+          modo_postagem_fb?: string | null
           modelo?: string
           nivel_blindagem?: string | null
           opcionais?: string[]
@@ -8949,6 +8967,7 @@ export type Database = {
           status?: string
           updated_at?: string
           url_origem?: string | null
+          usa_textos_personalizados?: boolean | null
           user_id?: string
           vendido_at?: string | null
           versao?: string | null

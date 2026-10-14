@@ -13,6 +13,8 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0'
+import { userIdDoRequest } from '../_shared/copy-style.ts'
+import { fetchOwnedVehicleRow } from '../_shared/vehicle-publish-guard.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -498,27 +500,108 @@ serve(async (req) => {
     )
   }
 
-  const { produto_id, estilo: estiloSolicitado, user_id } = body
+  const {
+    produto_id,
+    veiculo_id: veiculoIdBody,
+    item_tipo: itemTipoBody,
+    estilo: estiloSolicitado,
+    user_id,
+  } = body
 
-  if (!produto_id) {
-    return new Response(
-      JSON.stringify({ success: false, error: 'produto_id obrigatório' }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+  const isVehicleRequest = itemTipoBody === 'veiculo' && String(veiculoIdBody || '').trim()
+  let produto: {
+    id: string
+    nome: string
+    preco: number | null
+    categoria: string | null
+    link: string | null
+    link_marketplace: string | null
+    user_id: string
+    engajamento_estilos: string[] | null
+    descricao?: string | null
+    tags?: string[] | null
+    beneficios?: string | null
+  } | null = null
+
+  if (isVehicleRequest) {
+    const authUserId = userIdDoRequest(req)
+    if (!authUserId) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Não autenticado' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+    const veiculoId = String(veiculoIdBody).trim()
+    const { data: vehicle, errorMessage } = await fetchOwnedVehicleRow<{
+      id: string
+      user_id: string
+      status: string
+      marca: string
+      modelo: string
+      versao: string | null
+      preco: number | null
+      descricao: string | null
+      url_origem: string | null
+      engajamento_estilos: string[] | null
+    }>(
+      supabase,
+      veiculoId,
+      authUserId,
+      'id, user_id, status, marca, modelo, versao, preco, descricao, url_origem, engajamento_estilos',
     )
-  }
+    if (errorMessage) {
+      return new Response(
+        JSON.stringify({ success: false, error: `Não foi possível validar o veículo: ${errorMessage}` }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+    if (!vehicle) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Veículo não encontrado' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+    if (vehicle.status === 'vendido') {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Veículo vendido; publicação cancelada' }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+    const vehicleName = [vehicle.marca, vehicle.modelo, vehicle.versao].filter(Boolean).join(' ')
+    produto = {
+      id: vehicle.id,
+      nome: vehicleName,
+      preco: vehicle.preco,
+      categoria: 'Veículo',
+      link: vehicle.url_origem,
+      link_marketplace: null,
+      user_id: vehicle.user_id,
+      engajamento_estilos: vehicle.engajamento_estilos,
+      descricao: vehicle.descricao,
+      tags: null,
+      beneficios: null,
+    }
+  } else {
+    if (!produto_id) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'produto_id obrigatório' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
 
-  // Carregar produto
-  const { data: produto, error: prodErr } = await supabase
-    .from('produtos')
-    .select('id, nome, preco, categoria, link, link_marketplace, user_id, engajamento_estilos, descricao, tags, beneficios')
-    .eq('id', produto_id)
-    .maybeSingle()
+    const { data: loadedProduct, error: prodErr } = await supabase
+      .from('produtos')
+      .select('id, nome, preco, categoria, link, link_marketplace, user_id, engajamento_estilos, descricao, tags, beneficios')
+      .eq('id', produto_id)
+      .maybeSingle()
 
-  if (prodErr || !produto) {
-    return new Response(
-      JSON.stringify({ success: false, error: 'Produto não encontrado' }),
-      { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-    )
+    if (prodErr || !loadedProduct) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Produto não encontrado' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+    produto = loadedProduct as typeof produto
   }
 
   const link = produto.link_marketplace || produto.link || ''

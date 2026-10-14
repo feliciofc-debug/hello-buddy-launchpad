@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Facebook,
   Instagram,
+  Linkedin,
   Loader2,
   MessageCircle,
   Pencil,
@@ -37,9 +38,13 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { AgendarStoryFotoModal } from "@/components/AgendarStoryFotoModal";
 import { CriarCampanhaWhatsAppModal } from "@/components/CriarCampanhaWhatsAppModal";
 import { PostarFacebookModal } from "@/components/PostarFacebookModal";
 import { PostarInstagramModal } from "@/components/PostarInstagramModal";
+import { PostarLinkedInModal } from "@/components/PostarLinkedInModal";
+import { EngagementModeSelector } from "@/components/produtos/EngagementModeSelector";
+import { TextosPersonalizadosProdutoModal } from "@/components/produtos/TextosPersonalizadosProdutoModal";
 import { ProductImageCarousel } from "@/components/ProductImageCarousel";
 import { PublicarSimultaneoModal } from "@/components/PublicarSimultaneoModal";
 import { supabase } from "@/integrations/supabase/client";
@@ -176,6 +181,9 @@ function vehicleAsPublishableItem(vehicle: Vehicle): PublishableItem {
     link: vehicle.url_origem,
     incluir_cta_whatsapp: vehicle.incluir_cta_whatsapp,
     categoria: "Veículo",
+    modo_postagem_fb: vehicle.modo_postagem_fb ?? null,
+    engajamento_estilos: vehicle.engajamento_estilos ?? null,
+    usa_textos_personalizados: vehicle.usa_textos_personalizados ?? false,
   };
 }
 
@@ -226,6 +234,10 @@ export default function VehicleInventory() {
   const [facebookOpen, setFacebookOpen] = useState(false);
   const [instagramOpen, setInstagramOpen] = useState(false);
   const [campaignOpen, setCampaignOpen] = useState(false);
+  const [engagementOpen, setEngagementOpen] = useState(false);
+  const [textosOpen, setTextosOpen] = useState(false);
+  const [linkedinOpen, setLinkedinOpen] = useState(false);
+  const [storyOpen, setStoryOpen] = useState(false);
 
   const loadVehicles = useCallback(async () => {
     setLoading(true);
@@ -469,13 +481,46 @@ export default function VehicleInventory() {
 
   const openMarketingTool = (
     vehicle: Vehicle,
-    tool: "simultaneous" | "facebook" | "instagram" | "campaign",
+    tool:
+      | "simultaneous"
+      | "facebook"
+      | "instagram"
+      | "campaign"
+      | "engagement"
+      | "linkedin"
+      | "story"
+      | "textos",
   ) => {
     setPublishableItem(vehicleAsPublishableItem(vehicle));
     if (tool === "simultaneous") setSimultaneousOpen(true);
     if (tool === "facebook") setFacebookOpen(true);
     if (tool === "instagram") setInstagramOpen(true);
     if (tool === "campaign") setCampaignOpen(true);
+    if (tool === "engagement") setEngagementOpen(true);
+    if (tool === "linkedin") setLinkedinOpen(true);
+    if (tool === "story") setStoryOpen(true);
+    if (tool === "textos") setTextosOpen(true);
+  };
+
+  const patchVehicleMarketingFlags = (
+    vehicleId: string,
+    patch: Partial<
+      Pick<
+        Vehicle,
+        | "modo_postagem_fb"
+        | "engajamento_estilos"
+        | "usa_textos_personalizados"
+      >
+    >,
+  ) => {
+    setVehicles((current) =>
+      current.map((item) => (item.id === vehicleId ? { ...item, ...patch } : item)),
+    );
+    setPublishableItem((current) =>
+      current && current.id === vehicleId
+        ? { ...current, ...patch }
+        : current,
+    );
   };
 
   return (
@@ -651,6 +696,49 @@ export default function VehicleInventory() {
                         Instagram
                       </Button>
                     </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => openMarketingTool(vehicle, "engagement")}
+                    >
+                      ⚙️ Modo de postagem FB
+                      {vehicle.modo_postagem_fb === "engajamento" && (
+                        <span className="ml-1 rounded bg-blue-500/20 px-1.5 py-0.5 text-[10px]">
+                          ENGAJ.
+                        </span>
+                      )}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => openMarketingTool(vehicle, "linkedin")}
+                    >
+                      <Linkedin className="mr-2 h-4 w-4" />
+                      Post on LinkedIn
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => openMarketingTool(vehicle, "story")}
+                    >
+                      📸 Story Foto (Agendar)
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => openMarketingTool(vehicle, "textos")}
+                    >
+                      📝 Textos Personalizados
+                      {vehicle.usa_textos_personalizados && (
+                        <span className="ml-1 rounded bg-purple-500/20 px-1.5 py-0.5 text-[10px]">
+                          ON
+                        </span>
+                      )}
+                    </Button>
                     <Button
                       size="sm"
                       variant="outline"
@@ -873,6 +961,8 @@ export default function VehicleInventory() {
             open={facebookOpen}
             onOpenChange={setFacebookOpen}
             produto={publishableItem}
+            modo_postagem_fb={publishableItem.modo_postagem_fb ?? null}
+            engajamento_estilos={publishableItem.engajamento_estilos ?? null}
           />
           <PostarInstagramModal
             open={instagramOpen}
@@ -884,6 +974,54 @@ export default function VehicleInventory() {
             onOpenChange={setCampaignOpen}
             produto={publishableItem}
             onSuccess={loadVehicles}
+          />
+          <PostarLinkedInModal
+            open={linkedinOpen}
+            onOpenChange={setLinkedinOpen}
+            produto={publishableItem}
+          />
+          <AgendarStoryFotoModal
+            open={storyOpen}
+            onOpenChange={setStoryOpen}
+            produto={publishableItem}
+          />
+          <EngagementModeSelector
+            open={engagementOpen}
+            onOpenChange={setEngagementOpen}
+            produto={{
+              id: publishableItem.id,
+              nome: publishableItem.nome,
+              item_tipo: "veiculo",
+              modo_postagem_fb: publishableItem.modo_postagem_fb,
+              engajamento_estilos: publishableItem.engajamento_estilos,
+              usa_textos_personalizados: publishableItem.usa_textos_personalizados,
+            }}
+            onSaved={(vehicleId, modo, estilos) => {
+              patchVehicleMarketingFlags(vehicleId, {
+                modo_postagem_fb: modo,
+                engajamento_estilos: modo === "engajamento" ? estilos : publishableItem.engajamento_estilos,
+              });
+            }}
+          />
+          <TextosPersonalizadosProdutoModal
+            open={textosOpen}
+            onOpenChange={(open) => {
+              setTextosOpen(open);
+              if (!open) void loadVehicles();
+            }}
+            produto={{
+              id: publishableItem.id,
+              nome: publishableItem.nome,
+              item_tipo: "veiculo",
+              descricao: publishableItem.descricao,
+              preco: publishableItem.preco,
+              usa_textos_personalizados: publishableItem.usa_textos_personalizados,
+            }}
+            onModoChange={(vehicleId, ativado) => {
+              patchVehicleMarketingFlags(vehicleId, {
+                usa_textos_personalizados: ativado,
+              });
+            }}
           />
         </>
       )}

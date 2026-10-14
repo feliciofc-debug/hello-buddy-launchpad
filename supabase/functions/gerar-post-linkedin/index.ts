@@ -84,10 +84,39 @@ serve(async (req) => {
       tipo: "linkedin",
     });
 
-    // Contexto de produto (opcional, isolado por user_id, NUNCA preço)
+    // Contexto de produto ou veículo (opcional, isolado por user_id, NUNCA preço)
     let blocoProduto = '';
     const produtoId = String(body?.produto_id || '').trim();
-    if (produtoId && userId) {
+    const veiculoId = String(body?.veiculo_id || '').trim();
+    const itemTipo = String(body?.item_tipo || '').trim();
+
+    if (itemTipo === 'veiculo' && veiculoId) {
+      if (!userId) {
+        return ok({ success: false, error: 'Não autenticado' });
+      }
+      const { data: vehicle } = await sbAdmin
+        .from('veiculos_estoque')
+        .select('marca, modelo, versao, descricao, status')
+        .eq('id', veiculoId)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (vehicle?.status === 'vendido') {
+        return ok({ success: false, error: 'Veículo vendido' });
+      }
+      if (vehicle) {
+        const nomeVeiculo = [vehicle.marca, vehicle.modelo, vehicle.versao]
+          .filter(Boolean)
+          .join(' ');
+        blocoProduto = [
+          '',
+          '=== CONTEXTO (o veículo é CONTEXTO, nunca a oferta) ===',
+          `Nome: ${nomeVeiculo}`,
+          'Categoria: Veículo',
+          vehicle.descricao ? `Descrição: ${vehicle.descricao}` : '',
+          '',
+        ].filter(Boolean).join('\n');
+      }
+    } else if (produtoId && userId) {
       const { data: produto } = await sbAdmin
         .from('produtos')
         .select('nome, categoria, descricao')

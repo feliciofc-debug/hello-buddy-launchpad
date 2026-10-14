@@ -90,6 +90,7 @@ export function PostarFacebookModal({
   } = useEngagementPostComposer({
     open,
     productId: produto.id,
+    itemTipo: produto.item_tipo,
     initialMode: isEngagementProduct ? "engajamento" : "promocional",
     allowedStyles: engajamento_estilos,
   });
@@ -459,7 +460,7 @@ export function PostarFacebookModal({
         </div>
 
         {/* ───────── Cenário B: escolha do modo de postagem ───────── */}
-        {isEngagementProduct && !isVehicle && (
+        {isEngagementProduct && (
           <div className="space-y-2 rounded-lg border border-border p-3">
             <Label className="text-sm font-medium">Como você quer publicar este post?</Label>
             <RadioGroup

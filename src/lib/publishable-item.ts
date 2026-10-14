@@ -16,6 +16,7 @@ export type PublishableItem = {
   categoria?: string;
   modo_postagem_fb?: string | null;
   engajamento_estilos?: string[] | null;
+  usa_textos_personalizados?: boolean | null;
   ig_product_id?: string | null;
 };
 
