@@ -380,7 +380,7 @@ export default function VehicleInventory() {
       for (const file of Array.from(files)) {
         const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
         const fileName = `${Date.now()}-${crypto.randomUUID()}.${extension}`;
-        const filePath = `veiculos/${user.id}/${vehicleId}/${fileName}`;
+        const filePath = `${user.id}/veiculos/${vehicleId}/${fileName}`;
         const { error } = await supabase.storage
           .from("produtos")
           .upload(filePath, file, {

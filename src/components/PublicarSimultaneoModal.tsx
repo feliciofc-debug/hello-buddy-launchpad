@@ -269,12 +269,12 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
     for (let index = 0; index < adjusted.length; index++) {
       const path = `${userId}/ig-adjusted/${Date.now()}-${crypto.randomUUID()}-${index}.jpg`;
       const { error } = await supabase.storage
-        .from(isVehicle ? "veiculos" : "produtos")
+        .from("produtos")
         .upload(path, adjusted[index].blob, { contentType: "image/jpeg" });
       if (error) throw error;
       urls.push(
         supabase.storage
-          .from(isVehicle ? "veiculos" : "produtos")
+          .from("produtos")
           .getPublicUrl(path).data.publicUrl,
       );
     }

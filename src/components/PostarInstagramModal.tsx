@@ -224,11 +224,11 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
           const adj = imagesToUpload[i];
           const fname = `${user.id}/ig-adjusted/${Date.now()}-${i}.jpg`;
           const { error: upErr } = await supabase.storage
-            .from(isVehicle ? "veiculos" : "produtos")
+            .from("produtos")
             .upload(fname, adj.blob, { contentType: "image/jpeg" });
           if (upErr) throw upErr;
           const { data: urlData } = supabase.storage
-            .from(isVehicle ? "veiculos" : "produtos")
+            .from("produtos")
             .getPublicUrl(fname);
           uploadedUrls.push(urlData.publicUrl);
         }

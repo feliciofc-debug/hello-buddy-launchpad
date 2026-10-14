@@ -166,12 +166,27 @@ Deno.test("migrations de veículos não dependem das tabelas do Supabase Storage
   assertStringIncludes(correction, "CREATE TABLE IF NOT EXISTS");
 });
 
+Deno.test("modais Meta de veículo gravam ig-adjusted no bucket produtos", async () => {
+  for (
+    const path of [
+      "src/components/PublicarSimultaneoModal.tsx",
+      "src/components/PostarInstagramModal.tsx",
+    ]
+  ) {
+    const source = await Deno.readTextFile(path);
+    assertEquals(source.includes('.from("veiculos")'), false, path);
+    assertEquals(source.includes(".from('veiculos')"), false, path);
+    assertStringIncludes(source, '.from("produtos")', path);
+    assertStringIncludes(source, "/ig-adjusted/", path);
+  }
+});
+
 Deno.test("upload de veículo usa o bucket produtos em subpasta isolada", async () => {
   const vehiclePage = await Deno.readTextFile("src/pages/vehicle-inventory.tsx");
   assertStringIncludes(vehiclePage, '.from("produtos")');
   assertStringIncludes(
     vehiclePage,
-    "`veiculos/${user.id}/${vehicleId}/${fileName}`",
+    "`${user.id}/veiculos/${vehicleId}/${fileName}`",
   );
   assertEquals(vehiclePage.includes('.from("veiculos")'), false);
 });
