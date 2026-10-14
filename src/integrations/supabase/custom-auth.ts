@@ -238,8 +238,23 @@ export class CustomAuthClient {
         return { data: { user: null }, error };
       }
 
-      const payload = (await response.json()) as { user: ApiUser };
-      const user = buildUser(payload.user, token);
+      const payload = (await response.json()) as
+        | ApiUser
+        | { user?: ApiUser }
+        | null;
+      const raw: ApiUser | null = payload && "user" in payload
+        ? payload.user ?? null
+        : payload as ApiUser | null;
+      if (!raw?.id) {
+        return {
+          data: { user: null },
+          error: new CustomAuthError(
+            "Resposta de usuário inválida: campo id ausente",
+            502,
+          ),
+        };
+      }
+      const user = buildUser(raw, token);
       if (this.session) {
         this.persist({ ...this.session, user });
       }

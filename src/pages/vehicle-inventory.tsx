@@ -138,6 +138,32 @@ function formatKm(value: number | null): string {
   return `${new Intl.NumberFormat("pt-BR").format(value)} km`;
 }
 
+async function getVehicleSessionUser() {
+  const { data: sessionData, error: sessionError } =
+    await supabase.auth.getSession();
+  const sessionUser = sessionData.session?.user ?? null;
+  if (!sessionUser) {
+    return {
+      user: null,
+      reason: sessionError?.message || "sessão local ausente",
+    };
+  }
+
+  const { data: verifiedData, error: verificationError } =
+    await supabase.auth.getUser();
+  if (verificationError) {
+    console.warn(
+      "[vehicle-inventory] validação complementar do usuário falhou:",
+      verificationError.message,
+    );
+  }
+
+  return {
+    user: verifiedData.user ?? sessionUser,
+    reason: null,
+  };
+}
+
 export default function VehicleInventory() {
   const navigate = useNavigate();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -155,8 +181,12 @@ export default function VehicleInventory() {
 
   const loadVehicles = useCallback(async () => {
     setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
+    const { user, reason } = await getVehicleSessionUser();
     if (!user) {
+      console.warn(
+        "[vehicle-inventory] redirecionando para login:",
+        reason,
+      );
       navigate("/login");
       return;
     }
@@ -221,8 +251,12 @@ export default function VehicleInventory() {
     }
 
     setSaving(true);
-    const { data: { user } } = await supabase.auth.getUser();
+    const { user, reason } = await getVehicleSessionUser();
     if (!user) {
+      console.warn(
+        "[vehicle-inventory] redirecionando para login:",
+        reason,
+      );
       setSaving(false);
       navigate("/login");
       return;
@@ -277,8 +311,14 @@ export default function VehicleInventory() {
   };
 
   const markAsSold = async (vehicle: Vehicle) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const { user, reason } = await getVehicleSessionUser();
+    if (!user) {
+      console.warn(
+        "[vehicle-inventory] ação cancelada por falta de sessão:",
+        reason,
+      );
+      return;
+    }
     const { error } = await supabase
       .from("veiculos_estoque")
       .update({
