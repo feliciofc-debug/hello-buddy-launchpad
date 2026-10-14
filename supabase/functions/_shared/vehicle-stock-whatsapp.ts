@@ -47,12 +47,40 @@ export function isVitrineInteractiveId(id: string): boolean {
   return String(id || "").toLowerCase().startsWith(VITRINE_ID_PREFIX);
 }
 
+export function resolveVitrineInboundButtonId(payload: unknown): string {
+  if (!payload || typeof payload !== "object") return "";
+  const record = payload as {
+    interactive?: { button_reply?: { id?: string } };
+    button?: { payload?: string };
+  };
+  const interactiveId = String(record.interactive?.button_reply?.id ?? "");
+  if (isVitrineInteractiveId(interactiveId)) return interactiveId;
+  const carouselPayload = String(record.button?.payload ?? "");
+  if (isVitrineInteractiveId(carouselPayload)) return carouselPayload;
+  return interactiveId || carouselPayload || "";
+}
+
+/** Quick reply de carrossel Meta: type button + button.payload (não interactive.button_reply). */
+export function formatCarouselVitrineButtonText(
+  button: { payload?: string; text?: string } | undefined,
+): string | null {
+  if (!button?.payload) return null;
+  const id = String(button.payload);
+  if (!isVitrineInteractiveId(id)) return null;
+  const text = String(button.text ?? "").trim();
+  return text ? `${text}\n<<INTERACTIVE_ID:${id}>>` : `<<INTERACTIVE_ID:${id}>>`;
+}
+
 export function extractVitrineInteractiveId(input: {
   userText?: string;
   buttonId?: string;
   listId?: string;
+  inboundPayload?: unknown;
 }): string | null {
-  const direct = input.buttonId || input.listId || "";
+  const fromPayload = input.inboundPayload
+    ? resolveVitrineInboundButtonId(input.inboundPayload)
+    : "";
+  const direct = fromPayload || input.buttonId || input.listId || "";
   if (isVitrineInteractiveId(direct)) return String(direct);
   const match = String(input.userText || "").match(
     /<<INTERACTIVE_ID:(veiculo_vitrine:[^>]+)>>/i,

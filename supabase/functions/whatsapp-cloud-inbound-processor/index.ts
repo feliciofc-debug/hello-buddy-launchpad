@@ -91,7 +91,10 @@ import {
   type VehicleIdentification,
 } from "../_shared/vehicle-identification.ts";
 import { executeVehicleStockShowcase } from "../_shared/vehicle-stock-showcase-bridge.ts";
-import { extractVitrineInteractiveId } from "../_shared/vehicle-stock-whatsapp.ts";
+import {
+  extractVitrineInteractiveId,
+  formatCarouselVitrineButtonText,
+} from "../_shared/vehicle-stock-whatsapp.ts";
 
 // ---------------------------------------------------------------------------
 // Multi-tenant owner registry (populado no início de cada processMessage).
@@ -850,6 +853,8 @@ async function groupIfNewerLeadTextExists(row: QueueRow): Promise<boolean> {
 function extractText(payload: any): string {
   if (!payload) return "";
   if (payload.text?.body) return payload.text.body;
+  const vitrineButtonText = formatCarouselVitrineButtonText(payload.button);
+  if (vitrineButtonText) return vitrineButtonText;
   if (payload.button?.text) return payload.button.text;
   if (payload.interactive?.button_reply?.title) {
     const title = String(payload.interactive.button_reply.title);
@@ -22379,12 +22384,11 @@ async function tryProcessVehicleStockShowcase(input: {
   earlyInteractiveOnly: boolean;
   agentStateSeed?: AgentConvState;
 }): Promise<{ handled: boolean; preview?: string }> {
-  const buttonId = String(input.row.payload?.interactive?.button_reply?.id ?? "");
   const listId = String(input.row.payload?.interactive?.list_reply?.id ?? "");
   const vitrineId = extractVitrineInteractiveId({
     userText: input.userText,
-    buttonId,
     listId,
+    inboundPayload: input.row.payload,
   });
   if (input.earlyInteractiveOnly && !vitrineId) {
     return { handled: false };
@@ -22420,8 +22424,8 @@ async function tryProcessVehicleStockShowcase(input: {
       },
     },
     userText: input.userText,
-    buttonId,
     listId,
+    inboundPayload: input.row.payload,
     forceInteractive: input.earlyInteractiveOnly && !!vitrineId,
   });
   return { handled: result.handled, preview: result.replyPreview };
@@ -22591,12 +22595,11 @@ async function processOne(queueId: string) {
 
     // Vitrine estoque (cliente): botões/listas veiculo_vitrine:* ANTES de opt-in/LLM.
     if (!fromIsOwner) {
-      const vitrineButtonId = String(row.payload?.interactive?.button_reply?.id ?? "");
       const vitrineListId = String(row.payload?.interactive?.list_reply?.id ?? "");
       const vitrineInteractiveEarly = extractVitrineInteractiveId({
         userText,
-        buttonId: vitrineButtonId,
         listId: vitrineListId,
+        inboundPayload: row.payload,
       });
       if (vitrineInteractiveEarly) {
         try {

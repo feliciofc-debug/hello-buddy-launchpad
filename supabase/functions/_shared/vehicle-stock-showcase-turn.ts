@@ -59,8 +59,8 @@ export type ShowcaseTurnDeps = {
 
 export type ShowcaseTurnInput = {
   userText: string;
-  buttonId?: string;
   listId?: string;
+  inboundPayload?: unknown;
   contactName?: string | null;
   fromNumber: string;
   forceInteractive?: boolean;
@@ -87,8 +87,8 @@ export async function runVehicleStockShowcaseTurn(
 
   const vitrineId = extractVitrineInteractiveId({
     userText: input.userText,
-    buttonId: input.buttonId,
     listId: input.listId,
+    inboundPayload: input.inboundPayload,
   });
   const explicit = isExplicitVehicleShowcaseRequest(input.userText, flags);
 

@@ -163,15 +163,15 @@ export function buildShowcaseDeps(ctx: ShowcaseBridgeContext): ShowcaseTurnDeps 
 export async function executeVehicleStockShowcase(input: {
   ctx: ShowcaseBridgeContext;
   userText: string;
-  buttonId?: string;
   listId?: string;
+  inboundPayload?: unknown;
   forceInteractive?: boolean;
 }) {
   const deps = buildShowcaseDeps(input.ctx);
   return runVehicleStockShowcaseTurn({
     userText: input.userText,
-    buttonId: input.buttonId,
     listId: input.listId,
+    inboundPayload: input.inboundPayload,
     contactName: input.ctx.contactName,
     fromNumber: input.ctx.to,
     forceInteractive: input.forceInteractive,

@@ -7,10 +7,12 @@ import {
 import {
   buildRecadoInteresse,
   extractVitrineInteractiveId,
+  formatCarouselVitrineButtonText,
   formatDetailLines,
   isExplicitVehicleShowcaseRequest,
   isVitrineInteractiveId,
   marcaToSlug,
+  resolveVitrineInboundButtonId,
   shouldEnterShowcase,
   shouldOfferVehicleShowcase,
   vitrineButtonId,
@@ -48,6 +50,32 @@ Deno.test("ids veiculo_vitrine", () => {
     }),
     id,
   );
+});
+
+Deno.test("carrossel type button: payload veiculo_vitrine é reconhecido", () => {
+  const uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+  const payload = {
+    button: {
+      payload: `veiculo_vitrine:detalhe:${uuid}`,
+      text: "Ver detalhes",
+    },
+  };
+  assertEquals(
+    formatCarouselVitrineButtonText(payload.button),
+    `Ver detalhes\n<<INTERACTIVE_ID:veiculo_vitrine:detalhe:${uuid}>>`,
+  );
+  assertEquals(
+    extractVitrineInteractiveId({ inboundPayload: payload }),
+    `veiculo_vitrine:detalhe:${uuid}`,
+  );
+  assertEquals(resolveVitrineInboundButtonId(payload), `veiculo_vitrine:detalhe:${uuid}`);
+});
+
+Deno.test("type button sem prefixo vitrine mantém só o texto", () => {
+  const payload = { button: { payload: "OPTIN_SIM", text: "Sim, quero!" } };
+  assertEquals(formatCarouselVitrineButtonText(payload.button), null);
+  assertEquals(resolveVitrineInboundButtonId(payload), "OPTIN_SIM");
+  assertEquals(extractVitrineInteractiveId({ inboundPayload: payload }), null);
 });
 
 Deno.test("ficha não inclui procedência por origem/url", () => {
