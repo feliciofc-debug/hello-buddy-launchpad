@@ -32,21 +32,18 @@ import {
   markSocialPostPublished,
 } from "@/lib/social-post-queue";
 import { useEngagementPostComposer } from "@/hooks/useEngagementPostComposer";
-
-interface Produto {
-  id: string;
-  nome: string;
-  descricao?: string | null;
-  preco?: number | null;
-  imagem_url?: string | null;
-  link?: string | null;
-  link_marketplace?: string | null;
-}
+import {
+  isVehiclePublishableItem,
+  type PublishableItem,
+  publishableInstagramReference,
+  publishableImageUrls,
+  publishableQueueLink,
+} from "@/lib/publishable-item";
 
 interface PostarFacebookModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  produto: Produto;
+  produto: PublishableItem;
   /** Quando 'engajamento', habilita Cenário B (escolha Engajamento/Promocional). Default: 'promocional' (Cenário A). */
   modo_postagem_fb?: string | null;
   /** Estilos permitidos pro produto (subset de ESTILOS_ENGAJAMENTO). Filtra o dropdown. */
@@ -60,6 +57,7 @@ export function PostarFacebookModal({
   modo_postagem_fb,
   engajamento_estilos,
 }: PostarFacebookModalProps) {
+  const isVehicle = isVehiclePublishableItem(produto);
   const { t } = useTranslation();
   const [gerando, setGerando] = useState(false);
   const [publicando, setPublicando] = useState(false);
@@ -97,6 +95,10 @@ export function PostarFacebookModal({
   });
 
   const loadAllImages = useCallback(async () => {
+    if (isVehicle) {
+      setAllImages(publishableImageUrls(produto));
+      return;
+    }
     try {
       const { data } = await supabase
         .from('produtos')
@@ -112,7 +114,7 @@ export function PostarFacebookModal({
       const fallback = getAllProductImages(produto.imagem_url || null, (produto as any).imagens);
       setAllImages(fallback);
     }
-  }, [produto.id, produto.imagem_url]);
+  }, [isVehicle, produto]);
 
   useEffect(() => {
     if (open) loadAllImages();
@@ -233,8 +235,7 @@ export function PostarFacebookModal({
 
       queueId = await createSocialPostQueueEntry({
         user_id: user.id,
-        produto_id: produto.id,
-        produto_source: "produtos",
+        ...publishableQueueLink(produto),
         platform: "facebook",
         page_id: pageId || "",
         post_text: mensagemFinal,
@@ -246,6 +247,9 @@ export function PostarFacebookModal({
 
       if (modoEnvio === "agora") {
         let externalPostId: string | null = null;
+        const vehicleReference = isVehicle
+          ? publishableInstagramReference(produto)
+          : {};
         if (imagesToPublish.length >= 2) {
           console.log(`📸 Publicando carrossel Facebook com ${imagesToPublish.length} fotos`);
           const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-post", {
@@ -253,6 +257,7 @@ export function PostarFacebookModal({
               message: mensagemFinal,
               user_id: user.id,
               image_urls: imagesToPublish,
+              ...vehicleReference,
             },
           });
           if (pubError) throw pubError;
@@ -266,6 +271,7 @@ export function PostarFacebookModal({
               page_id: pageId || "",
               user_id: user.id,
               image_url: imagesToPublish[0] || undefined,
+              ...vehicleReference,
             },
           });
           if (pubError) throw pubError;
@@ -453,7 +459,7 @@ export function PostarFacebookModal({
         </div>
 
         {/* ───────── Cenário B: escolha do modo de postagem ───────── */}
-        {isEngagementProduct && (
+        {isEngagementProduct && !isVehicle && (
           <div className="space-y-2 rounded-lg border border-border p-3">
             <Label className="text-sm font-medium">Como você quer publicar este post?</Label>
             <RadioGroup
@@ -523,7 +529,11 @@ export function PostarFacebookModal({
                 disabled={!temLink}
               />
               <Label htmlFor="incluir-link" className={cn("text-sm cursor-pointer", !temLink && "text-muted-foreground")}>
-                {temLink ? t('publish.include_product_link') : t('publish.no_link_available')}
+                {temLink
+                  ? t('publish.include_product_link')
+                  : isVehicle
+                    ? 'Veículo sem link'
+                    : t('publish.no_link_available')}
               </Label>
             </div>
           </div>

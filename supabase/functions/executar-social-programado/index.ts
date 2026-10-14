@@ -243,6 +243,37 @@ serve(async (req) => {
 
             console.log(`🔐 Produto validado para post ${post.id}: ${produto.nome}`)
           }
+          if (post.item_tipo === 'veiculo' && post.veiculo_id) {
+            const { data: vehicle, error: vehicleError } = await supabase
+              .from('veiculos_estoque')
+              .select('id, user_id, marca, modelo, status')
+              .eq('id', post.veiculo_id)
+              .maybeSingle()
+
+            if (vehicleError) {
+              throw new Error(`Erro ao validar veículo ${post.veiculo_id}: ${vehicleError.message}`)
+            }
+
+            if (!vehicle || vehicle.status === 'vendido') {
+              const reason = vehicle ? 'veiculo_vendido' : 'veiculo_removido'
+              console.log(`⚠️ Veículo ${post.veiculo_id} indisponível, cancelando post ${post.id}`)
+              await supabase.from('social_posts_queue')
+                .update({
+                  status: 'cancelado',
+                  error_message: reason,
+                  updated_at: now.toISOString()
+                })
+                .eq('id', post.id)
+              results.push({ id: post.id, platform: post.platform, success: false, cancelled: true, reason })
+              continue
+            }
+
+            if (vehicle.user_id !== post.user_id) {
+              throw new Error(`Veículo ${post.veiculo_id} pertence a outro usuário e foi bloqueado`)
+            }
+
+            console.log(`🔐 Veículo validado para post ${post.id}: ${vehicle.marca} ${vehicle.modelo}`)
+          }
 
           await supabase.from('social_posts_queue')
             .update({ status: 'publicando', updated_at: now.toISOString() })
@@ -262,6 +293,8 @@ serve(async (req) => {
                 message: post.post_text,
                 page_id: post.page_id || '',
                 user_id: post.user_id,
+                item_tipo: post.item_tipo || undefined,
+                veiculo_id: post.veiculo_id || undefined,
                 preserve_caption: post.produto_source === 'video_legendado',
                 ...(imageUrls.length >= 2
                   ? { image_urls: imageUrls }
@@ -287,6 +320,8 @@ serve(async (req) => {
                  user_id: post.user_id,
                  preserve_caption: post.produto_source === 'video_legendado',
                  produto_id: post.produto_id || undefined,
+                 item_tipo: post.item_tipo || undefined,
+                 veiculo_id: post.veiculo_id || undefined,
                  ...(isCarousel
                    ? { image_urls: imageUrls }
                    : post.video_url

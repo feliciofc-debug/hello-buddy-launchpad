@@ -32,7 +32,7 @@ interface Props {
   imagem_url: string | null;
   imagens: any;
   alt: string;
-  size?: 'sm' | 'md';
+  size?: 'sm' | 'md' | 'card';
 }
 
 export function getAllProductImages(imagem_url: string | null, imagens: any): string[] {
@@ -43,7 +43,11 @@ export function ProductImageCarousel({ imagem_url, imagens, alt, size = 'sm' }: 
   const allImages = normalizeImages(imagem_url, imagens);
   const [current, setCurrent] = useState(0);
 
-  const sizeClass = size === 'md' ? 'w-24 h-24' : 'w-16 h-16';
+  const sizeClass = size === 'card'
+    ? 'w-full aspect-[4/3]'
+    : size === 'md'
+      ? 'w-24 h-24'
+      : 'w-16 h-16';
 
   if (allImages.length === 0) {
     return <ImageIcon className={`${sizeClass} text-muted-foreground`} />;

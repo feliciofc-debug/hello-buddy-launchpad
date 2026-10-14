@@ -4,9 +4,13 @@ import {
   ArrowLeft,
   CarFront,
   CheckCircle2,
+  Facebook,
+  Instagram,
   Loader2,
+  MessageCircle,
   Pencil,
   Plus,
+  Send,
   ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -31,8 +35,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { CriarCampanhaWhatsAppModal } from "@/components/CriarCampanhaWhatsAppModal";
+import { PostarFacebookModal } from "@/components/PostarFacebookModal";
+import { PostarInstagramModal } from "@/components/PostarInstagramModal";
+import { ProductImageCarousel } from "@/components/ProductImageCarousel";
+import { PublicarSimultaneoModal } from "@/components/PublicarSimultaneoModal";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
+import type { PublishableItem } from "@/lib/publishable-item";
 
 type Vehicle = Database["public"]["Tables"]["veiculos_estoque"]["Row"];
 type VehicleStatus = "disponivel" | "reservado" | "vendido";
@@ -138,6 +149,35 @@ function formatKm(value: number | null): string {
   return `${new Intl.NumberFormat("pt-BR").format(value)} km`;
 }
 
+function vehicleAsPublishableItem(vehicle: Vehicle): PublishableItem {
+  const facts = [
+    vehicle.ano_fabricacao || vehicle.ano_modelo
+      ? `Ano ${vehicle.ano_fabricacao || "—"}/${vehicle.ano_modelo || "—"}`
+      : null,
+    vehicle.km != null ? formatKm(vehicle.km) : null,
+    vehicle.cor ? `Cor ${vehicle.cor}` : null,
+    vehicle.cambio ? `Câmbio ${vehicle.cambio}` : null,
+    vehicle.blindado
+      ? `Blindado${vehicle.nivel_blindagem ? ` ${vehicle.nivel_blindagem}` : ""}`
+      : null,
+  ].filter(Boolean);
+
+  return {
+    id: vehicle.id,
+    item_tipo: "veiculo",
+    nome: [vehicle.marca, vehicle.modelo, vehicle.versao]
+      .filter(Boolean)
+      .join(" "),
+    descricao: [vehicle.descricao, ...facts].filter(Boolean).join("\n"),
+    preco: vehicle.preco,
+    imagem_url: vehicle.fotos[0] || null,
+    imagens: vehicle.fotos,
+    link: vehicle.url_origem,
+    incluir_cta_whatsapp: vehicle.incluir_cta_whatsapp,
+    categoria: "Veículo",
+  };
+}
+
 async function getVehicleSessionUser() {
   const { data: sessionData, error: sessionError } =
     await supabase.auth.getSession();
@@ -178,6 +218,11 @@ export default function VehicleInventory() {
   const [selected, setSelected] = useState<Vehicle | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState(0);
   const [form, setForm] = useState<VehicleForm>(EMPTY_FORM);
+  const [publishableItem, setPublishableItem] = useState<PublishableItem | null>(null);
+  const [simultaneousOpen, setSimultaneousOpen] = useState(false);
+  const [facebookOpen, setFacebookOpen] = useState(false);
+  const [instagramOpen, setInstagramOpen] = useState(false);
+  const [campaignOpen, setCampaignOpen] = useState(false);
 
   const loadVehicles = useCallback(async () => {
     setLoading(true);
@@ -337,6 +382,46 @@ export default function VehicleInventory() {
     await loadVehicles();
   };
 
+  const setVehicleWhatsappCta = async (vehicle: Vehicle, checked: boolean) => {
+    const { user, reason } = await getVehicleSessionUser();
+    if (!user) {
+      console.warn("[vehicle-inventory] CTA cancelado por falta de sessão:", reason);
+      return;
+    }
+    const { error } = await supabase
+      .from("veiculos_estoque")
+      .update({ incluir_cta_whatsapp: checked })
+      .eq("id", vehicle.id)
+      .eq("user_id", user.id);
+    if (error) {
+      toast.error("Não foi possível atualizar o Chama no WhatsApp.");
+      return;
+    }
+    setVehicles((current) =>
+      current.map((item) =>
+        item.id === vehicle.id
+          ? { ...item, incluir_cta_whatsapp: checked }
+          : item
+      )
+    );
+    toast.success(
+      checked
+        ? "Chama no WhatsApp ativado para este veículo."
+        : "Chama no WhatsApp desativado.",
+    );
+  };
+
+  const openMarketingTool = (
+    vehicle: Vehicle,
+    tool: "simultaneous" | "facebook" | "instagram" | "campaign",
+  ) => {
+    setPublishableItem(vehicleAsPublishableItem(vehicle));
+    if (tool === "simultaneous") setSimultaneousOpen(true);
+    if (tool === "facebook") setFacebookOpen(true);
+    if (tool === "instagram") setInstagramOpen(true);
+    if (tool === "campaign") setCampaignOpen(true);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-background/95">
@@ -423,10 +508,11 @@ export default function VehicleInventory() {
               >
                 <div className="aspect-[4/3] bg-muted">
                   {vehicle.fotos[0] ? (
-                    <img
-                      src={vehicle.fotos[0]}
+                    <ProductImageCarousel
+                      imagem_url={vehicle.fotos[0]}
+                      imagens={vehicle.fotos}
                       alt={`${vehicle.marca} ${vehicle.modelo}`}
-                      className="h-full w-full object-cover"
+                      size="card"
                     />
                   ) : (
                     <div className="flex h-full items-center justify-center">
@@ -462,6 +548,64 @@ export default function VehicleInventory() {
                     </Badge>
                   )}
                   <p className="text-xl font-bold text-primary">{formatPrice(vehicle.preco)}</p>
+                  {vehicle.status === "vendido" ? (
+                    <p className="border-t pt-3 text-sm text-muted-foreground">
+                      Publicações e campanhas encerradas para este veículo vendido.
+                    </p>
+                  ) : (
+                    <div
+                      className="space-y-2 border-t pt-3"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                    <label className="flex items-center justify-between gap-3 text-sm">
+                      <span className="flex items-center gap-2">
+                        <MessageCircle className="h-4 w-4" />
+                        Incluir Chama no WhatsApp
+                      </span>
+                      <Switch
+                        checked={vehicle.incluir_cta_whatsapp === true}
+                        onCheckedChange={(checked) =>
+                          void setVehicleWhatsappCta(vehicle, checked)}
+                      />
+                    </label>
+                    <Button
+                      size="sm"
+                      className="w-full gap-2 bg-gradient-to-r from-blue-600 to-pink-600 text-white"
+                      onClick={() => openMarketingTool(vehicle, "simultaneous")}
+                    >
+                      <Facebook className="h-4 w-4" />
+                      <Instagram className="h-4 w-4" />
+                      Facebook + Instagram
+                    </Button>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openMarketingTool(vehicle, "facebook")}
+                      >
+                        <Facebook className="mr-2 h-4 w-4" />
+                        Facebook
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openMarketingTool(vehicle, "instagram")}
+                      >
+                        <Instagram className="mr-2 h-4 w-4" />
+                        Instagram
+                      </Button>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => openMarketingTool(vehicle, "campaign")}
+                    >
+                      <Send className="mr-2 h-4 w-4" />
+                      Campanha WhatsApp
+                    </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             ))}
@@ -633,6 +777,32 @@ export default function VehicleInventory() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {publishableItem && (
+        <>
+          <PublicarSimultaneoModal
+            open={simultaneousOpen}
+            onOpenChange={setSimultaneousOpen}
+            produto={publishableItem}
+          />
+          <PostarFacebookModal
+            open={facebookOpen}
+            onOpenChange={setFacebookOpen}
+            produto={publishableItem}
+          />
+          <PostarInstagramModal
+            open={instagramOpen}
+            onOpenChange={setInstagramOpen}
+            produto={publishableItem}
+          />
+          <CriarCampanhaWhatsAppModal
+            open={campaignOpen}
+            onOpenChange={setCampaignOpen}
+            produto={publishableItem}
+            onSuccess={loadVehicles}
+          />
+        </>
+      )}
     </div>
   );
 }

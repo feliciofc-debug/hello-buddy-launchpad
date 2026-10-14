@@ -7676,6 +7676,7 @@ export type Database = {
           id: string
           image_url: string | null
           image_urls: Json | null
+          item_tipo: string | null
           link_no_primeiro_comentario: boolean | null
           link_url: string | null
           linkedin_post_urn: string | null
@@ -7707,6 +7708,7 @@ export type Database = {
           tiktok_video_duration_sec: number | null
           updated_at: string | null
           user_id: string
+          veiculo_id: string | null
           video_url: string | null
         }
         Insert: {
@@ -7723,6 +7725,7 @@ export type Database = {
           id?: string
           image_url?: string | null
           image_urls?: Json | null
+          item_tipo?: string | null
           link_no_primeiro_comentario?: boolean | null
           link_url?: string | null
           linkedin_post_urn?: string | null
@@ -7754,6 +7757,7 @@ export type Database = {
           tiktok_video_duration_sec?: number | null
           updated_at?: string | null
           user_id: string
+          veiculo_id?: string | null
           video_url?: string | null
         }
         Update: {
@@ -7770,6 +7774,7 @@ export type Database = {
           id?: string
           image_url?: string | null
           image_urls?: Json | null
+          item_tipo?: string | null
           link_no_primeiro_comentario?: boolean | null
           link_url?: string | null
           linkedin_post_urn?: string | null
@@ -7801,6 +7806,7 @@ export type Database = {
           tiktok_video_duration_sec?: number | null
           updated_at?: string | null
           user_id?: string
+          veiculo_id?: string | null
           video_url?: string | null
         }
         Relationships: []
@@ -8750,6 +8756,112 @@ export type Database = {
         }
         Relationships: []
       }
+      veiculos_campanhas_recorrentes: {
+        Row: {
+          ativa: boolean | null
+          autopilot: boolean | null
+          canal: string | null
+          created_at: string | null
+          data_inicio: string
+          dias_semana: number[] | null
+          frequencia: string
+          horarios: string[]
+          id: string
+          intervalo_minutos: number | null
+          item_tipo: string | null
+          listas_ids: string[]
+          max_envios_dia: number | null
+          mensagem_template: string
+          nome: string
+          pj_grupos_ids: string[] | null
+          proxima_execucao: string | null
+          status: string | null
+          template_id: string | null
+          total_enviados: number | null
+          ultima_execucao: string | null
+          updated_at: string | null
+          user_id: string
+          veiculo_id: string
+          vendedor_id: string | null
+        }
+        Insert: {
+          ativa?: boolean | null
+          autopilot?: boolean | null
+          canal?: string | null
+          created_at?: string | null
+          data_inicio: string
+          dias_semana?: number[] | null
+          frequencia: string
+          horarios?: string[]
+          id?: string
+          intervalo_minutos?: number | null
+          item_tipo?: string | null
+          listas_ids: string[]
+          max_envios_dia?: number | null
+          mensagem_template: string
+          nome: string
+          pj_grupos_ids?: string[] | null
+          proxima_execucao?: string | null
+          status?: string | null
+          template_id?: string | null
+          total_enviados?: number | null
+          ultima_execucao?: string | null
+          updated_at?: string | null
+          user_id: string
+          veiculo_id: string
+          vendedor_id?: string | null
+        }
+        Update: {
+          ativa?: boolean | null
+          autopilot?: boolean | null
+          canal?: string | null
+          created_at?: string | null
+          data_inicio?: string
+          dias_semana?: number[] | null
+          frequencia?: string
+          horarios?: string[]
+          id?: string
+          intervalo_minutos?: number | null
+          item_tipo?: string | null
+          listas_ids?: string[]
+          max_envios_dia?: number | null
+          mensagem_template?: string
+          nome?: string
+          pj_grupos_ids?: string[] | null
+          proxima_execucao?: string | null
+          status?: string | null
+          template_id?: string | null
+          total_enviados?: number | null
+          ultima_execucao?: string | null
+          updated_at?: string | null
+          user_id?: string
+          veiculo_id?: string
+          vendedor_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "veiculos_campanhas_recorrentes_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "veiculos_campanhas_recorrentes_veiculo_id_fkey"
+            columns: ["veiculo_id"]
+            isOneToOne: false
+            referencedRelation: "veiculos_estoque"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "veiculos_campanhas_recorrentes_vendedor_id_fkey"
+            columns: ["vendedor_id"]
+            isOneToOne: false
+            referencedRelation: "vendedores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       veiculos_estoque: {
         Row: {
           ano_fabricacao: number | null
@@ -8765,6 +8877,7 @@ export type Database = {
           destaque: boolean
           fotos: string[]
           id: string
+          incluir_cta_whatsapp: boolean | null
           km: number | null
           marca: string
           modelo: string
@@ -8794,6 +8907,7 @@ export type Database = {
           destaque?: boolean
           fotos?: string[]
           id?: string
+          incluir_cta_whatsapp?: boolean | null
           km?: number | null
           marca: string
           modelo: string
@@ -8823,6 +8937,7 @@ export type Database = {
           destaque?: boolean
           fotos?: string[]
           id?: string
+          incluir_cta_whatsapp?: boolean | null
           km?: number | null
           marca?: string
           modelo?: string

@@ -21,6 +21,11 @@ import { Plus, X, Sparkles, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { salvarCampanhaNaBiblioteca } from '@/lib/bibliotecaCampanhas';
+import {
+  isVehiclePublishableItem,
+  type PublishableItem,
+  publishableCampaignReference,
+} from '@/lib/publishable-item';
 
 /** Normalização canônica de telefone (módulo, usada também no render) */
 function normalizarTelefoneUI(phone: string) {
@@ -73,17 +78,7 @@ interface Vendedor {
   ativo: boolean;
 }
 
-interface Product {
-  id: string;
-  nome: string;
-  descricao: string | null;
-  preco: number | null;
-  imagem_url: string | null;
-  estoque?: number;
-  especificacoes?: string | null;
-  categoria?: string;
-  link_marketplace?: string | null;
-}
+type Product = PublishableItem;
 
 interface Campanha {
   id: string;
@@ -125,6 +120,11 @@ export function CriarCampanhaWhatsAppModal({
     console.error('❌ PRODUTO INVÁLIDO - Modal não pode abrir sem produto');
     return null;
   }
+  const isVehicle = isVehiclePublishableItem(produto);
+  const campaignTable = isVehicle
+    ? 'veiculos_campanhas_recorrentes'
+    : 'campanhas_recorrentes';
+  const campaignItemReference = publishableCampaignReference(produto);
   
   const [frequencia, setFrequencia] = useState<'agora' | 'uma_vez' | 'diario' | 'semanal' | 'personalizado' | 'teste'>('agora');
   const [dataInicio, setDataInicio] = useState('');
@@ -182,7 +182,7 @@ export function CriarCampanhaWhatsAppModal({
   // que o cliente recebe (caption da foto na janela de 24h).
   // ============================================================
   const comLinkDoProduto = (texto: string) => {
-    const link = (produto.link_marketplace || '').trim();
+    const link = (produto.link || produto.link_marketplace || '').trim();
     if (!link) return texto;
     if (texto.includes(link)) return texto;
     return `${texto.trim()}\n\n👉 ${link}`;
@@ -972,10 +972,10 @@ _Escolha quantidade e finalize!_ ✅`;
 
     // Registrar a campanha (histórico/biblioteca) já no canal oficial
     const { data: campanhaTemp, error: erroCampanha } = await supabase
-      .from('campanhas_recorrentes')
+      .from(campaignTable as any)
       .insert({
         user_id: user.id,
-        produto_id: produto.id,
+        ...campaignItemReference,
         nome: `Envio Imediato - ${produto.nome}`,
         listas_ids: listasSelecionadas,
         frequencia: 'uma_vez',
@@ -995,7 +995,7 @@ _Escolha quantidade e finalize!_ ✅`;
       console.error('❌ Erro ao criar registro da campanha:', erroCampanha);
     }
 
-    if (campanhaTemp) {
+    if (campanhaTemp && !isVehicle) {
       await salvarCampanhaNaBiblioteca({
         produto: {
           id: produto.id,
@@ -1084,7 +1084,7 @@ _Escolha quantidade e finalize!_ ✅`;
 
     if (campanhaTemp?.id) {
       await supabase
-        .from('campanhas_recorrentes')
+        .from(campaignTable as any)
         .update({ total_enviados: enviados })
         .eq('id', campanhaTemp.id);
     }
@@ -1212,7 +1212,7 @@ _Escolha quantidade e finalize!_ ✅`;
     if (campanhaExistente) {
       // Atualizar campanha existente
       const { data: campanhaAtualizada, error } = await supabase
-        .from('campanhas_recorrentes')
+        .from(campaignTable as any)
         .update({
           nome: `Campanha ${produto.nome}`,
           listas_ids: listasSelecionadas,
@@ -1238,10 +1238,10 @@ _Escolha quantidade e finalize!_ ✅`;
     } else {
       // Criar nova campanha
       const { data: novaCampanha, error } = await supabase
-        .from('campanhas_recorrentes')
+        .from(campaignTable as any)
         .insert({
           user_id: user.id,
-          produto_id: produto.id,
+          ...campaignItemReference,
           nome: `Campanha ${produto.nome}`,
           listas_ids: listasSelecionadas,
           frequencia: frequencia,
@@ -1264,7 +1264,7 @@ _Escolha quantidade e finalize!_ ✅`;
       console.log('✨ Nova campanha criada:', novaCampanha);
       
       // Salvar na biblioteca automaticamente
-      await salvarCampanhaNaBiblioteca({
+      if (!isVehicle) await salvarCampanhaNaBiblioteca({
         produto: {
           id: produto.id,
           nome: produto.nome,

@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { appendLinkPost } from '../_shared/link-post.ts'
 import { fetchMetaPostLink } from '../_shared/meta-post-link.ts'
+import { assertVehicleCanPublish } from '../_shared/vehicle-publish-guard.ts'
 
 
 const corsHeaders = {
@@ -79,6 +80,7 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
     const body = await req.json()
+    await assertVehicleCanPublish(supabase, body)
     const isScheduler = body.source === 'scheduler'
     const sanitizedBodyMessage = body.preserve_caption === true
       ? String(body.message || '').trim()
@@ -126,6 +128,7 @@ serve(async (req) => {
 
     for (const post of posts) {
       try {
+        await assertVehicleCanPublish(supabase, post)
         const sanitizedPostText = await appendLinkPost(supabase, post.user_id, sanitizePublishText(post.post_text))
 
         await supabase.from('social_posts_queue')
