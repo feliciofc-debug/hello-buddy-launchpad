@@ -2,6 +2,7 @@ export const PREMIUM_VEHICLE_RETAIL_SEGMENT = "revenda-veiculos-premium";
 
 export const PREMIUM_VEHICLE_RETAIL_PROFILE = {
   name: "Revenda de veículos premium",
+  segmentName: "Revenda de automóveis",
   audience: "Clientes de altíssimo padrão e classe média alta",
   tone:
     "Consultor de alto padrão: elegante, discreto, cordial e preciso. Trata por você com polidez, sem gírias, com mensagens curtas e bem escritas.",

@@ -280,7 +280,7 @@ export default function ConfiguracaoEmpresa() {
         <CardContent>
           {sugerirRevendaPremium && (
             <div className="mb-4 rounded-lg border border-primary/30 bg-primary/5 p-4">
-              <p className="font-medium">Perfil recomendado: {PREMIUM_VEHICLE_RETAIL_PROFILE.name}</p>
+              <p className="font-medium">Perfil recomendado: {PREMIUM_VEHICLE_RETAIL_PROFILE.segmentName}</p>
               <p className="mt-1 text-sm text-muted-foreground">
                 A descrição indica compra e venda de veículos. Este perfil atende como consultor de alto padrão,
                 sem alterar o perfil Automotivo de lojas de peças.

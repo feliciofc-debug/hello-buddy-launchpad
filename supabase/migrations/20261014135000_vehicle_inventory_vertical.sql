@@ -121,9 +121,3 @@ ALTER TABLE public.profiles
       'revenda_veiculos'
     )
   );
-
-UPDATE public.profiles AS profile
-SET tipo = 'revenda_veiculos'
-FROM auth.users AS auth_user
-WHERE profile.id = auth_user.id
-  AND lower(auth_user.email) = 'royal4x4@royal4x4.com.br';

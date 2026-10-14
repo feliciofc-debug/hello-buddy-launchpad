@@ -1,3 +1,8 @@
+import {
+  isPremiumVehicleRetailBusiness,
+  PREMIUM_VEHICLE_RETAIL_SEGMENT,
+} from "../../supabase/functions/_shared/company-service-profile.ts";
+
 export const CLIENT_MENU_ROUTES: Record<string, string> = {
   "/dashboard": "dashboard",
   "/meus-produtos": "produtos",
@@ -32,4 +37,34 @@ export const CLIENT_TYPE_LABELS: Record<string, string> = {
 
 export function clientTypeLabel(clientType: string): string {
   return CLIENT_TYPE_LABELS[clientType] || clientType;
+}
+
+export function usesVehicleInventoryMenu(
+  clientType: string | null | undefined,
+  segment: string | null | undefined,
+  businessText: string | null | undefined,
+): boolean {
+  if (clientType === "revenda_veiculos") return true;
+  if (segment === PREMIUM_VEHICLE_RETAIL_SEGMENT) return true;
+  return segment === "automotivo" &&
+    isPremiumVehicleRetailBusiness(businessText || "");
+}
+
+export function menusForBusinessSegment(
+  menus: string[],
+  clientType: string | null | undefined,
+  segment: string | null | undefined,
+  businessText: string | null | undefined,
+): string[] {
+  const vehicleInventory = usesVehicleInventoryMenu(
+    clientType,
+    segment,
+    businessText,
+  );
+  const sourceMenu = vehicleInventory ? "produtos" : "veiculos";
+  const targetMenu = vehicleInventory ? "veiculos" : "produtos";
+  const resolved = menus.map((menu) =>
+    menu === sourceMenu ? targetMenu : menu
+  );
+  return [...new Set(resolved)];
 }

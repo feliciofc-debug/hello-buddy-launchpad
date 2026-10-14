@@ -77,6 +77,7 @@ export default function AdminCriarCliente() {
         const { data, error } = await supabase
           .from("client_menu_config")
           .select("tipo_cliente, empresa_nome")
+          .neq("tipo_cliente", "revenda_veiculos")
           .order("tipo_cliente");
         if (error) throw error;
         setClientTypes(data || []);

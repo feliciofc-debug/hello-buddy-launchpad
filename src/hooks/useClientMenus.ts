@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { CLIENT_MENU_ROUTES } from '@/lib/client-menu-routes';
+import {
+  CLIENT_MENU_ROUTES,
+  menusForBusinessSegment,
+} from '@/lib/client-menu-routes';
+import { VEHICLE_DEALER_TENANT_TYPE } from '@/lib/business-tenant';
 
 interface MenuConfig {
   tipo_cliente: string;
@@ -20,30 +24,62 @@ export function useClientMenus(userTipo: string | null | undefined, userNomeFant
       }
 
       try {
-        // Buscar configuração de menus para o tipo de cliente
-        const { data, error } = await supabase
-          .from('client_menu_config')
-          .select('*')
-          .eq('tipo_cliente', userTipo)
-          .maybeSingle();
+        const configType = userTipo === VEHICLE_DEALER_TENANT_TYPE
+          ? 'empresa'
+          : userTipo;
+        const [{ data, error }, { data: sessionData }] = await Promise.all([
+          supabase
+            .from('client_menu_config')
+            .select('*')
+            .eq('tipo_cliente', configType)
+            .maybeSingle(),
+          supabase.auth.getSession(),
+        ]);
 
         if (error) {
           console.error('Erro ao buscar config de menus:', error);
         }
 
-        if (data) {
-          setMenuConfig(data as MenuConfig);
-        } else {
-          // Se não encontrou config específica, usar config padrão (afiliado = todos menus)
-          console.log(`Nenhuma config encontrada para tipo "${userTipo}", usando padrão`);
-          setMenuConfig({
+        let segment: string | null = null;
+        let businessText: string | null = null;
+        const userId = sessionData.session?.user.id;
+        if (userId) {
+          const { data: companyConfig, error: companyError } = await supabase
+            .from('empresa_config')
+            .select('segmento, sobre_negocio')
+            .eq('user_id', userId)
+            .maybeSingle();
+          if (companyError) {
+            console.warn('Erro ao buscar segmento da empresa:', companyError);
+          } else {
+            segment = companyConfig?.segmento ?? null;
+            businessText = companyConfig?.sobre_negocio ?? null;
+          }
+        }
+
+        const baseConfig: MenuConfig = data
+          ? data as MenuConfig
+          : {
             tipo_cliente: userTipo,
             menus_permitidos: [
               'dashboard', 'produtos', 'midias', 'ia-marketing', 'redes-sociais', 'whatsapp', 'integracoes', 'configuracoes'
             ],
             empresa_nome: 'AMZ Ofertas'
-          });
+          };
+
+        if (!data) {
+          console.log(`Nenhuma config encontrada para tipo "${userTipo}", usando padrão`);
         }
+
+        setMenuConfig({
+          ...baseConfig,
+          menus_permitidos: menusForBusinessSegment(
+            baseConfig.menus_permitidos,
+            userTipo,
+            segment,
+            businessText,
+          ),
+        });
       } catch (err) {
         console.error('Erro:', err);
       } finally {

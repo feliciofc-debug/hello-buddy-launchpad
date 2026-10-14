@@ -54,7 +54,7 @@ export const SEGMENTOS_EMPRESA = [
   },
   {
     id: 'automotivo',
-    nome: '🚗 Automotivo',
+    nome: '🚗 Automotivo (peças e acessórios)',
     descricao: 'Peças, acessórios, produtos automotivos',
     tom: 'tecnico-pratico',
     vocabulario: ['compatível', 'original', 'durabilidade', 'instalação', 'garantia'],
@@ -62,8 +62,8 @@ export const SEGMENTOS_EMPRESA = [
   },
   {
     id: PREMIUM_VEHICLE_RETAIL_SEGMENT,
-    nome: `🚙 ${PREMIUM_VEHICLE_RETAIL_PROFILE.name}`,
-    descricao: 'Compra, venda e troca de veículos premium',
+    nome: `🚙 ${PREMIUM_VEHICLE_RETAIL_PROFILE.segmentName}`,
+    descricao: 'Compra, venda e troca de automóveis',
     tom: 'elegante-discreto',
     vocabulario: [...PREMIUM_VEHICLE_RETAIL_PROFILE.vocabulary],
     estilo_venda: PREMIUM_VEHICLE_RETAIL_PROFILE.tone

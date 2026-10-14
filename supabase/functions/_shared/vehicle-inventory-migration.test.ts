@@ -40,7 +40,7 @@ Deno.test("tipo de revenda troca produtos por veículos no menu", () => {
   assertStringIncludes(migration, "CHECK (\n    tipo IS NULL OR tipo IN (");
 });
 
-Deno.test("Royal passa para o tipo de revenda de veículos", () => {
-  assertStringIncludes(migration, "SET tipo = 'revenda_veiculos'");
-  assertStringIncludes(migration, "royal4x4@royal4x4.com.br");
+Deno.test("migration não muda contas empresa para o tipo legado", () => {
+  assertEquals(migration.includes("SET tipo = 'revenda_veiculos'"), false);
+  assertEquals(migration.includes("royal4x4@royal4x4.com.br"), false);
 });

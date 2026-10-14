@@ -5,9 +5,11 @@ veículos. Automóveis não são produtos do catálogo geral.
 
 ## Limites da arquitetura
 
-- O tipo de cliente `revenda_veiculos` define os menus disponíveis no painel.
-- `empresa_config.segmento` define somente o tom do atendimento. Segmento não
-  concede menus nem escolhe tabelas.
+- A conta usa `profiles.tipo = empresa`, como os demais tenants empresariais.
+- `empresa_config.segmento` define o tom e troca somente o menu `produtos` por
+  `veiculos` quando o negócio é uma revenda de automóveis.
+- O tipo legado `revenda_veiculos` continua aceito apenas por compatibilidade e
+  recebe o mesmo menu de veículos.
 - `public.veiculos_estoque` é o único estoque de veículos.
 - A tabela `public.produtos` nunca recebe automóveis.
 - O especialista de veículos do Jarvis, em
@@ -28,9 +30,10 @@ veículos. Automóveis não são produtos do catálogo geral.
 
 | Conceito | Responsabilidade |
 | --- | --- |
-| `profiles.tipo = revenda_veiculos` | Libera o menu `veiculos` e oculta `produtos` |
-| `client_menu_config` | Define os menus do tipo de cliente |
-| `empresa_config.segmento` | Define voz, vocabulário e perfil de atendimento |
+| `profiles.tipo = empresa` | Identifica a conta como tenant empresarial |
+| `client_menu_config` | Define os menus-base da plataforma |
+| `empresa_config.segmento` | Define voz e troca Produtos por Veículos para revendas |
+| `profiles.tipo = revenda_veiculos` | Compatibilidade com contas legadas |
 | `veiculos_estoque` | Guarda a ficha e as fotos dos veículos do tenant |
 
 ## Build de produção do front

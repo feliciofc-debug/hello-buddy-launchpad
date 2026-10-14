@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
-import { Bell, User, Menu, X, Package, UserCircle, DollarSign, TrendingUp, Target, BarChart3, ShoppingBag, LogOut, Moon, Sun, Settings, MessageCircle, Bot, Instagram, BookOpen, Megaphone, CreditCard, Users, Award, MapPin, Star, Calendar, FileText, Download, Plus, Eye, UserPlus, Package2, Link2, Send, Video, Building2, Sparkles, Smartphone, Shield, Briefcase } from 'lucide-react';
+import { Bell, User, Menu, X, Package, UserCircle, DollarSign, TrendingUp, Target, BarChart3, ShoppingBag, LogOut, Moon, Sun, Settings, MessageCircle, Bot, Instagram, BookOpen, Megaphone, CreditCard, Users, Award, MapPin, Star, Calendar, FileText, Download, Plus, Eye, UserPlus, Package2, Link2, Send, Video, Building2, Sparkles, Smartphone, Shield, Briefcase, CarFront } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart as RechartsBarChart, Bar, Legend } from 'recharts';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTheme } from 'next-themes';
@@ -470,6 +470,19 @@ const Dashboard = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
               </svg>
               📦 Meus Produtos
+            </a>
+          )}
+          {isMenuAllowed('veiculos') && (
+            <a
+              href="/veiculos"
+              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                window.location.pathname === '/veiculos'
+                  ? 'bg-blue-500 text-white'
+                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              <CarFront size={20} />
+              Veículos
             </a>
           )}
           {isMenuAllowed('buscar-cnpj') && (

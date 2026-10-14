@@ -5,7 +5,7 @@ import { getSegmentoById } from "./segments.ts";
 Deno.test("perfil automotivo de peças permanece inalterado", () => {
   assertEquals(getSegmentoById("automotivo"), {
     id: "automotivo",
-    nome: "🚗 Automotivo",
+    nome: "🚗 Automotivo (peças e acessórios)",
     descricao: "Peças, acessórios, produtos automotivos",
     tom: "tecnico-pratico",
     vocabulario: ["compatível", "original", "durabilidade", "instalação", "garantia"],
@@ -13,9 +13,10 @@ Deno.test("perfil automotivo de peças permanece inalterado", () => {
   });
 });
 
-Deno.test("perfil de revenda premium é separado do perfil de peças", () => {
+Deno.test("revenda de automóveis é opção separada do perfil de peças", () => {
   const perfil = getSegmentoById("revenda-veiculos-premium");
-  assertEquals(perfil?.descricao, "Compra, venda e troca de veículos premium");
+  assertEquals(perfil?.nome, "🚙 Revenda de automóveis");
+  assertEquals(perfil?.descricao, "Compra, venda e troca de automóveis");
   assertEquals(perfil?.vocabulario.includes("laudo cautelar"), true);
   assertEquals(perfil?.vocabulario.includes("test drive"), true);
   assertEquals(perfil?.estilo_venda.includes("elegante"), true);
