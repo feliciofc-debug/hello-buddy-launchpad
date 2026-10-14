@@ -23,10 +23,20 @@ Deno.test("shouldOfferVehicleShowcase — revenda ou demo", () => {
 });
 
 Deno.test("intent explícita de estoque", () => {
-  assert(isExplicitVehicleShowcaseRequest("Quero ver os carros"));
-  assert(isExplicitVehicleShowcaseRequest("ver carros disponíveis"));
-  assertFalse(isExplicitVehicleShowcaseRequest("qual a fipe do civic"));
-  assertFalse(isExplicitVehicleShowcaseRequest("montar carrossel do carro"));
+  const revenda = { segmento: "revenda de veículos", vitrine_veiculos_demo: false };
+  assert(isExplicitVehicleShowcaseRequest("Quero ver os carros", revenda));
+  assert(isExplicitVehicleShowcaseRequest("ver carros disponíveis", revenda));
+  assert(isExplicitVehicleShowcaseRequest("o que tem na loja", revenda));
+  assert(isExplicitVehicleShowcaseRequest("ver o estoque", revenda));
+  assertFalse(isExplicitVehicleShowcaseRequest("qual a fipe do civic", revenda));
+  assertFalse(isExplicitVehicleShowcaseRequest("montar carrossel do carro", revenda));
+});
+
+Deno.test("conta demo não-automotiva ignora gatilhos genéricos de loja", () => {
+  const demo = { segmento: "loja de produtos", vitrine_veiculos_demo: true };
+  assertFalse(isExplicitVehicleShowcaseRequest("o que tem na loja", demo));
+  assertFalse(isExplicitVehicleShowcaseRequest("ver o estoque", demo));
+  assert(isExplicitVehicleShowcaseRequest("ver carros", demo));
 });
 
 Deno.test("ids veiculo_vitrine", () => {
@@ -100,19 +110,31 @@ Deno.test("recado de interesse inclui carro e preço", () => {
   assertStringIncludes(recado, "5521999999999");
 });
 
-Deno.test("demo exige intent explícita se segmento não automotivo", () => {
+Deno.test("pending ativo não abre vitrine sem botão nem texto explícito", () => {
+  const flags = { segmento: "revenda de veículos", vitrine_veiculos_demo: false };
+  assertFalse(shouldEnterShowcase({
+    flags,
+    explicitText: false,
+    vitrineInteractiveId: null,
+  }));
+  assertFalse(shouldEnterShowcase({
+    flags,
+    explicitText: isExplicitVehicleShowcaseRequest("aceita troca?", flags),
+    vitrineInteractiveId: null,
+  }));
+});
+
+Deno.test("demo exige intent explícita de veículo se segmento não automotivo", () => {
   const flags = { segmento: "padaria", vitrine_veiculos_demo: true };
   assertFalse(shouldEnterShowcase({
     flags,
     explicitText: false,
     vitrineInteractiveId: null,
-    pending: null,
   }));
   assert(shouldEnterShowcase({
     flags,
-    explicitText: true,
+    explicitText: isExplicitVehicleShowcaseRequest("ver carros", flags),
     vitrineInteractiveId: null,
-    pending: null,
   }));
 });
 

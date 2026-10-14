@@ -9,7 +9,6 @@ import {
   isExplicitVehicleShowcaseRequest,
   marcaToSlug,
   parseVitrineButtonId,
-  pendingIsActive,
   PendingVitrineEstoque,
   shouldEnterShowcase,
   shouldOfferVehicleShowcase,
@@ -20,10 +19,7 @@ import {
   VITRINE_CAROUSEL_PAGE_SIZE,
   VITRINE_ID_PREFIX,
 } from "./vehicle-stock-whatsapp.ts";
-import {
-  buildInteractiveCarouselPayload,
-  CarouselCardInput,
-} from "./whatsapp-interactive-carousel.ts";
+import type { CarouselCardInput } from "./whatsapp-interactive-carousel.ts";
 
 export type ShowcaseSendResult = {
   ok: boolean;
@@ -89,15 +85,13 @@ export async function runVehicleStockShowcaseTurn(
     buttonId: input.buttonId,
     listId: input.listId,
   });
-  const pending = input.deps.getPending();
-  const explicit = isExplicitVehicleShowcaseRequest(input.userText);
+  const explicit = isExplicitVehicleShowcaseRequest(input.userText, flags);
 
   if (
     !shouldEnterShowcase({
       flags,
       explicitText: explicit,
       vitrineInteractiveId: vitrineId,
-      pending,
     })
   ) {
     return { handled: false };
@@ -112,7 +106,7 @@ export async function runVehicleStockShowcaseTurn(
     return result;
   }
 
-  if (explicit || pendingIsActive(pending)) {
+  if (explicit) {
     const marcas = await input.deps.loadMarcas();
     if (!marcas.length) {
       await input.deps.sendText(

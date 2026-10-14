@@ -60,28 +60,50 @@ export function extractVitrineInteractiveId(input: {
   return match?.[1] ?? null;
 }
 
-const SHOWCASE_TEXT = [
+/** Gatilhos que mencionam carro/veículo explicitamente (conta demo não automotiva). */
+const SHOWCASE_TEXT_VEHICLE_SPECIFIC = [
   /\bver\s+carros?\b/,
   /\bquero\s+ver\s+(os\s+)?carros?\b/,
   /\bestoque\s+de\s+veiculos?\b/,
   /\bcarros?\s+disponiveis\b/,
   /\bveiculos?\s+disponiveis\b/,
-  /\bo\s+que\s+tem\s+na\s+loja\b/,
   /\bmostrar?\s+veiculos?\b/,
   /\bmostrar?\s+carros?\b/,
   /\bver\s+veiculos?\b/,
+];
+
+/** Só tenants automotivos (expo genérica de “loja”/“estoque” não dispara vitrine). */
+const SHOWCASE_TEXT_AUTOMOTIVE_EXTRA = [
+  /\bo\s+que\s+tem\s+na\s+loja\b/,
   /\bver\s+o\s+estoque\b/,
 ];
 
-export function isExplicitVehicleShowcaseRequest(text: string): boolean {
-  const value = String(text || "")
+function normalizedShowcaseText(text: string): string {
+  return String(text || "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/<<INTERACTIVE_ID:[^>]+>>/gi, "")
     .toLowerCase()
     .trim();
+}
+
+export function isExplicitVehicleShowcaseRequest(
+  text: string,
+  flags?: VehicleShowcaseTenantFlags,
+): boolean {
+  const value = normalizedShowcaseText(text);
   if (!value) return false;
-  return SHOWCASE_TEXT.some((re) => re.test(value));
+
+  const automotive = isAutomotiveTenant(flags?.segmento ?? null);
+  const demoOnly = flags?.vitrine_veiculos_demo === true && !automotive;
+
+  const vehicleSpecific = SHOWCASE_TEXT_VEHICLE_SPECIFIC.some((re) => re.test(value));
+  if (demoOnly) return vehicleSpecific;
+
+  const patterns = automotive
+    ? [...SHOWCASE_TEXT_VEHICLE_SPECIFIC, ...SHOWCASE_TEXT_AUTOMOTIVE_EXTRA]
+    : SHOWCASE_TEXT_VEHICLE_SPECIFIC;
+  return patterns.some((re) => re.test(value));
 }
 
 export function marcaToSlug(marca: string): string {
@@ -242,16 +264,12 @@ export function shouldEnterShowcase(input: {
   flags: VehicleShowcaseTenantFlags;
   explicitText: boolean;
   vitrineInteractiveId: string | null;
-  pending: PendingVitrineEstoque | null | undefined;
 }): boolean {
   if (!shouldOfferVehicleShowcase(input.flags)) return false;
   if (input.vitrineInteractiveId) return true;
-  if (pendingIsActive(input.pending)) return true;
   if (!input.explicitText) return false;
-  if (input.flags.vitrine_veiculos_demo && !isAutomotiveTenant(input.flags.segmento)) {
-    return true;
-  }
   if (isAutomotiveTenant(input.flags.segmento)) return true;
+  if (input.flags.vitrine_veiculos_demo) return true;
   return false;
 }
 
