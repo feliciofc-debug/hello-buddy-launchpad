@@ -1,0 +1,121 @@
+import {
+  assert,
+  assertEquals,
+  assertFalse,
+  assertStringIncludes,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  buildRecadoInteresse,
+  extractVitrineInteractiveId,
+  formatDetailLines,
+  isExplicitVehicleShowcaseRequest,
+  isVitrineInteractiveId,
+  marcaToSlug,
+  shouldEnterShowcase,
+  shouldOfferVehicleShowcase,
+  vitrineButtonId,
+} from "./vehicle-stock-whatsapp.ts";
+
+Deno.test("shouldOfferVehicleShowcase — revenda ou demo", () => {
+  assert(shouldOfferVehicleShowcase({ segmento: "revenda de veículos", vitrine_veiculos_demo: false }));
+  assert(shouldOfferVehicleShowcase({ segmento: "restaurante", vitrine_veiculos_demo: true }));
+  assertFalse(shouldOfferVehicleShowcase({ segmento: "restaurante", vitrine_veiculos_demo: false }));
+});
+
+Deno.test("intent explícita de estoque", () => {
+  assert(isExplicitVehicleShowcaseRequest("Quero ver os carros"));
+  assert(isExplicitVehicleShowcaseRequest("ver carros disponíveis"));
+  assertFalse(isExplicitVehicleShowcaseRequest("qual a fipe do civic"));
+  assertFalse(isExplicitVehicleShowcaseRequest("montar carrossel do carro"));
+});
+
+Deno.test("ids veiculo_vitrine", () => {
+  assert(isVitrineInteractiveId("veiculo_vitrine:detalhe:abc"));
+  const id = vitrineButtonId("interesse", "uuid-1");
+  assertEquals(
+    extractVitrineInteractiveId({
+      userText: `Tenho interesse\n<<INTERACTIVE_ID:${id}>>`,
+    }),
+    id,
+  );
+});
+
+Deno.test("ficha não inclui procedência por origem/url", () => {
+  const lines = formatDetailLines({
+    id: "1",
+    marca: "Honda",
+    modelo: "Civic",
+    versao: "EX",
+    ano_fabricacao: 2020,
+    ano_modelo: 2020,
+    km: 10000,
+    preco: 120000,
+    cor: "Preto",
+    cambio: "Automático",
+    combustivel: "Flex",
+    portas: 4,
+    blindado: false,
+    nivel_blindagem: null,
+    opcionais: [],
+    caracteristicas: [],
+    descricao: "Único dono",
+    fotos: [],
+    status: "disponivel",
+  });
+  const joined = lines.join("\n").toLowerCase();
+  assertFalse(joined.includes("procedência"));
+  assertFalse(joined.includes("origem"));
+  assertStringIncludes(joined, "honda");
+});
+
+Deno.test("recado de interesse inclui carro e preço", () => {
+  const recado = buildRecadoInteresse({
+    contactName: "Ana",
+    fromNumber: "5521999999999",
+    vehicle: {
+      id: "v1",
+      marca: "VW",
+      modelo: "Golf",
+      versao: "Highline",
+      ano_fabricacao: 2019,
+      ano_modelo: 2019,
+      km: 50000,
+      preco: 95000,
+      cor: null,
+      cambio: null,
+      combustivel: null,
+      portas: null,
+      blindado: false,
+      nivel_blindagem: null,
+      opcionais: null,
+      caracteristicas: null,
+      descricao: null,
+      fotos: null,
+      status: "disponivel",
+    },
+  });
+  assert(recado.length >= 15);
+  assertStringIncludes(recado.toLowerCase(), "interesse");
+  assertStringIncludes(recado, "Golf");
+  assertStringIncludes(recado, "5521999999999");
+});
+
+Deno.test("demo exige intent explícita se segmento não automotivo", () => {
+  const flags = { segmento: "padaria", vitrine_veiculos_demo: true };
+  assertFalse(shouldEnterShowcase({
+    flags,
+    explicitText: false,
+    vitrineInteractiveId: null,
+    pending: null,
+  }));
+  assert(shouldEnterShowcase({
+    flags,
+    explicitText: true,
+    vitrineInteractiveId: null,
+    pending: null,
+  }));
+});
+
+Deno.test("marca slug roundtrip", () => {
+  assertEquals(marcaToSlug("Mercedes-Benz"), "mercedes_benz");
+});
