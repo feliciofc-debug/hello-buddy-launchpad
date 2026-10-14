@@ -24,6 +24,7 @@ import {
   type AdminClientValidation,
   validateAdminClientInput,
 } from "@/lib/admin-client-validation";
+import { clientTypeLabel } from "@/lib/client-menu-routes";
 
 type ClientType = {
   tipo_cliente: string;
@@ -231,7 +232,7 @@ export default function AdminCriarCliente() {
                         key={item.tipo_cliente}
                         value={item.tipo_cliente}
                       >
-                        {item.tipo_cliente}
+                        {clientTypeLabel(item.tipo_cliente)}
                         {item.empresa_nome
                           ? ` — ${item.empresa_nome}`
                           : ""}

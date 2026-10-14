@@ -8750,6 +8750,96 @@ export type Database = {
         }
         Relationships: []
       }
+      veiculos_estoque: {
+        Row: {
+          ano_fabricacao: number | null
+          ano_modelo: number | null
+          blindado: boolean
+          cambio: string | null
+          caracteristicas: string[]
+          codigo_origem: string | null
+          combustivel: string | null
+          cor: string | null
+          created_at: string
+          descricao: string | null
+          destaque: boolean
+          fotos: string[]
+          id: string
+          km: number | null
+          marca: string
+          modelo: string
+          nivel_blindagem: string | null
+          opcionais: string[]
+          origem: string | null
+          portas: number | null
+          preco: number | null
+          status: string
+          updated_at: string
+          url_origem: string | null
+          user_id: string
+          vendido_at: string | null
+          versao: string | null
+        }
+        Insert: {
+          ano_fabricacao?: number | null
+          ano_modelo?: number | null
+          blindado?: boolean
+          cambio?: string | null
+          caracteristicas?: string[]
+          codigo_origem?: string | null
+          combustivel?: string | null
+          cor?: string | null
+          created_at?: string
+          descricao?: string | null
+          destaque?: boolean
+          fotos?: string[]
+          id?: string
+          km?: number | null
+          marca: string
+          modelo: string
+          nivel_blindagem?: string | null
+          opcionais?: string[]
+          origem?: string | null
+          portas?: number | null
+          preco?: number | null
+          status?: string
+          updated_at?: string
+          url_origem?: string | null
+          user_id: string
+          vendido_at?: string | null
+          versao?: string | null
+        }
+        Update: {
+          ano_fabricacao?: number | null
+          ano_modelo?: number | null
+          blindado?: boolean
+          cambio?: string | null
+          caracteristicas?: string[]
+          codigo_origem?: string | null
+          combustivel?: string | null
+          cor?: string | null
+          created_at?: string
+          descricao?: string | null
+          destaque?: boolean
+          fotos?: string[]
+          id?: string
+          km?: number | null
+          marca?: string
+          modelo?: string
+          nivel_blindagem?: string | null
+          opcionais?: string[]
+          origem?: string | null
+          portas?: number | null
+          preco?: number | null
+          status?: string
+          updated_at?: string
+          url_origem?: string | null
+          user_id?: string
+          vendido_at?: string | null
+          versao?: string | null
+        }
+        Relationships: []
+      }
       vendedor_metas: {
         Row: {
           comissao_gerada: number | null

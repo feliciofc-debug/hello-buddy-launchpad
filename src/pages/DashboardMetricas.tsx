@@ -44,6 +44,7 @@ import {
   Plug,
   Briefcase,
   Gift,
+  CarFront,
 } from 'lucide-react';
 import NotificationCenter from '@/components/NotificationCenter';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
@@ -301,6 +302,7 @@ export default function DashboardMetricas() {
   const menuItemsAll = [
     { id: 'dashboard', icon: BarChart3, label: t('nav.dashboard'), path: '/dashboard' },
     { id: 'produtos', icon: Package, label: t('nav.products'), path: '/meus-produtos' },
+    { id: 'veiculos', icon: CarFront, label: t('nav.vehicles'), path: '/veiculos' },
     { id: 'midias', icon: Images, label: t('nav.media'), path: '/midias' },
     { id: 'ia-marketing', icon: Zap, label: t('nav.ia_marketing'), path: '/ia-marketing' },
     { id: 'redes-sociais', icon: Share2, label: t('nav.social_networks'), path: '/redes-sociais' },

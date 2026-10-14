@@ -1,41 +1,12 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { CLIENT_MENU_ROUTES } from '@/lib/client-menu-routes';
 
 interface MenuConfig {
   tipo_cliente: string;
   menus_permitidos: string[];
   empresa_nome: string;
 }
-
-// Mapeamento de rotas para IDs de menu
-const routeToMenuId: Record<string, string> = {
-  '/dashboard': 'dashboard',
-  '/meus-produtos': 'produtos',
-  '/midias': 'midias',
-  '/ia-marketing': 'ia-marketing',
-  '/redes-sociais': 'redes-sociais',
-  '/whatsapp-painel': 'whatsapp',
-  '/configuracoes': 'configuracoes',
-
-  // Rotas legadas (continuam funcionando)
-  '/pj/listas-contatos': 'whatsapp',
-  '/pj/whatsapp-automacao': 'whatsapp',
-  '/whatsapp': 'whatsapp',
-  '/configuracoes-whatsapp': 'whatsapp',
-  '/configuracoes/redes-sociais': 'redes-sociais',
-  '/ia-conversas': 'ia-marketing',
-  '/campanhas-prospeccao': 'whatsapp',
-  '/prospects': 'whatsapp',
-  '/leads-funil': 'whatsapp',
-  '/vendedores': 'configuracoes',
-  '/biblioteca': 'ia-marketing',
-  '/analytics': 'dashboard',
-  '/google-ads': 'configuracoes',
-  '/anuncios-meta': 'configuracoes',
-  '/lomadee': 'produtos',
-  '/marketplace': 'produtos',
-  '/produtos': 'produtos',
-};
 
 export function useClientMenus(userTipo: string | null | undefined, userNomeFantasia?: string | null) {
   const [menuConfig, setMenuConfig] = useState<MenuConfig | null>(null);
@@ -91,7 +62,7 @@ export function useClientMenus(userTipo: string | null | undefined, userNomeFant
 
   // Função para verificar se uma rota está permitida
   const isRouteAllowed = (route: string): boolean => {
-    const menuId = routeToMenuId[route];
+    const menuId = CLIENT_MENU_ROUTES[route];
     if (!menuId) return true; // Rotas não mapeadas são permitidas
     return isMenuAllowed(menuId);
   };

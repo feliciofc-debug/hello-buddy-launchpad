@@ -30,6 +30,7 @@ import RedesSociais from "./pages/RedesSociais";
 import Biblioteca from "./pages/Biblioteca";
 import Campanhas from "./pages/Campanhas";
 import MeusProdutos from "./pages/MeusProdutos";
+import VehicleInventory from "./pages/vehicle-inventory";
 import Midias from "./pages/Midias";
 import GoogleAds from "./pages/GoogleAds";
 import MetaAdsDashboard from "./pages/MetaAdsDashboard";
@@ -168,6 +169,7 @@ const App = () => (
           <Route path="/anuncios-meta" element={<MetaAdsDashboard />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/meus-produtos" element={<MeusProdutos />} />
+          <Route path="/veiculos" element={<VehicleInventory />} />
           <Route path="/midias" element={<Midias />} />
             <Route path="/data-deletion" element={<DataDeletion />} />
             <Route path="/security" element={<Security />} />
