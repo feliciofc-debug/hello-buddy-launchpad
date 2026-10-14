@@ -190,7 +190,8 @@ export const AutopilotConfig = () => {
           .from("autopilot_textos_personalizados" as any)
           .select("*", { count: "exact", head: true })
           .eq("user_id", user.id)
-          .eq("ativo", true);
+          .eq("ativo", true)
+          .not("produto_id", "is", null);
         if (!count || count === 0) {
           toast.error("Adicione pelo menos 1 texto personalizado ou ligue a IA");
           return;

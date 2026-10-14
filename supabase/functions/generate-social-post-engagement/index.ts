@@ -700,7 +700,7 @@ serve(async (req) => {
       // Log e devolve erro
       await supabase.from('engagement_post_logs').insert({
         user_id: userIdLog,
-        produto_id: produto.id,
+        produto_id: isVehicleRequest ? null : produto.id,
         tipo_chamada: 'manual',
         estilo_usado: estiloEscolhido,
         tentativas,
@@ -724,7 +724,7 @@ serve(async (req) => {
   // Log final
   const { error: logErr } = await supabase.from('engagement_post_logs').insert({
     user_id: userIdLog,
-    produto_id: produto.id,
+    produto_id: isVehicleRequest ? null : produto.id,
     tipo_chamada: 'manual',
     estilo_usado: estiloEscolhido,
     tentativas,

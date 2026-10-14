@@ -83,6 +83,22 @@ Deno.test("story de veículo grava metadata com veiculo_id e produto_id null", a
   assertStringIncludes(source, "vehiclePhotos.length > 1");
 });
 
+Deno.test("log de engajamento não grava id de veículo em produto_id", async () => {
+  const source = await Deno.readTextFile(
+    "supabase/functions/generate-social-post-engagement/index.ts",
+  );
+  const inserts = source.match(/engagement_post_logs'\)\.insert\(\{[\s\S]*?\}\)/g) || [];
+  assert(inserts.length >= 2, "esperados dois inserts em engagement_post_logs");
+  for (const block of inserts) {
+    assertStringIncludes(block, "produto_id: isVehicleRequest ? null : produto.id");
+  }
+});
+
+Deno.test("AutopilotConfig conta só textos personalizados de produto", async () => {
+  const source = await Deno.readTextFile("src/components/AutopilotConfig.tsx");
+  assertStringIncludes(source, '.not("produto_id", "is", null)');
+});
+
 Deno.test("edges validam veículo pelo dono autenticado", async () => {
   const linkedin = await Deno.readTextFile(
     "supabase/functions/gerar-post-linkedin/index.ts",
