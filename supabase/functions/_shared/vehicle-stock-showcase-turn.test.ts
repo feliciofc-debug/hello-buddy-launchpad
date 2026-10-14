@@ -16,6 +16,7 @@ function stubDeps(overrides: Partial<ShowcaseTurnDeps> = {}): ShowcaseTurnDeps {
     sendList: noop,
     sendButtons: noop,
     sendImage: noop,
+    sendImageHeaderButtons: noop,
     sendCarousel: noop,
     encaminharRecado: async () => ({ ok: true }),
     savePending: async () => {},

@@ -46,6 +46,11 @@ export type ShowcaseTurnDeps = {
     imageUrl?: string,
   ) => Promise<ShowcaseSendResult>;
   sendImage: (imageUrl: string, caption?: string) => Promise<ShowcaseSendResult>;
+  sendImageHeaderButtons: (
+    body: string,
+    buttons: Array<{ id: string; title: string }>,
+    imageUrl: string,
+  ) => Promise<ShowcaseSendResult>;
   sendCarousel: (body: string, cards: CarouselCardInput[]) => Promise<ShowcaseSendResult>;
   encaminharRecado: (recado: string) => Promise<{ ok: boolean; protocolo?: string }>;
   savePending: (pending: PendingVitrineEstoque | null) => Promise<void>;
@@ -262,23 +267,35 @@ async function sendMarcaCarousel(
     ],
   }));
 
-  const carouselResult = allHavePhotos
+  const canCarousel = allHavePhotos && vehicles.length >= 2;
+  const carouselResult = canCarousel
     ? await input.deps.sendCarousel(body, cards)
-    : { ok: false as const, httpStatus: 400, metaError: { message: "no_card_images" } };
+    : { ok: false as const, httpStatus: 400, metaError: { message: "carousel_skip" } };
   if (!carouselResult.ok) {
     console.warn("[vehicle-vitrine][carousel_rejected]", {
       status: carouselResult.httpStatus,
       error: carouselResult.metaError,
     });
     for (const v of vehicles.slice(0, 5)) {
-      await input.deps.sendButtons(
+      const photo = v.fotos?.[0];
+      if (!photo) {
+        await input.deps.sendButtons(
+          formatCardBody(v),
+          [
+            { id: vitrineButtonId("detalhe", v.id), title: "Detalhes" },
+            { id: vitrineButtonId("interesse", v.id), title: "Tenho interesse" },
+          ],
+        );
+        continue;
+      }
+      await input.deps.sendImageHeaderButtons(
         formatCardBody(v),
         [
           { id: vitrineButtonId("fotos", v.id), title: "Fotos" },
           { id: vitrineButtonId("detalhe", v.id), title: "Detalhes" },
           { id: vitrineButtonId("interesse", v.id), title: "Tenho interesse" },
         ],
-        v.fotos?.[0] || undefined,
+        photo,
       );
     }
   }

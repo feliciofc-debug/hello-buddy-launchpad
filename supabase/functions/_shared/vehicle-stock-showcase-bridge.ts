@@ -126,12 +126,19 @@ export function buildShowcaseDeps(ctx: ShowcaseBridgeContext): ShowcaseTurnDeps 
     }),
     sendButtons: (body, buttons, imageUrl) => postSendMessage(ctx, {
       message: body,
-      ...(imageUrl ? { image_url: imageUrl } : {}),
       interactive_buttons: {
         body,
         buttons,
+        ...(imageUrl ? { header_image_url: imageUrl } : {}),
       },
-      ...(imageUrl ? { send_text_first: true } : {}),
+    }),
+    sendImageHeaderButtons: (body, buttons, imageUrl) => postSendMessage(ctx, {
+      message: body,
+      interactive_buttons: {
+        body,
+        buttons,
+        header_image_url: imageUrl,
+      },
     }),
     sendImage: (imageUrl, caption) => postSendMessage(ctx, {
       message: caption || "",

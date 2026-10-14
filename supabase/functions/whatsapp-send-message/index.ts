@@ -113,14 +113,21 @@ serve(async (req) => {
     let messagePayload: any
     const separateInteractiveText = send_text_first === true ||
       [...safeMessage].length > 1024
-    const buttonImageUrl = image_url ? toMetaSafeImageUrl(image_url) : undefined
-    const mediaButtonPayloads = mediaThenButtonPayloads({
-      to,
-      message: safeMessage,
-      videoUrl: safeVideoUrl,
-      imageUrl: buttonImageUrl,
-      interactiveButtons: interactive_buttons,
-    })
+    const headerImageFromButtons = interactive_buttons?.header_image_url
+      ? toMetaSafeImageUrl(String(interactive_buttons.header_image_url))
+      : undefined
+    const buttonImageUrl = !headerImageFromButtons && image_url
+      ? toMetaSafeImageUrl(image_url)
+      : undefined
+    const mediaButtonPayloads = !headerImageFromButtons
+      ? mediaThenButtonPayloads({
+        to,
+        message: safeMessage,
+        videoUrl: safeVideoUrl,
+        imageUrl: buttonImageUrl,
+        interactiveButtons: interactive_buttons,
+      })
+      : null
 
     if (mediaButtonPayloads) {
       messagePayload = mediaButtonPayloads[0]
@@ -138,7 +145,9 @@ serve(async (req) => {
         type: 'interactive',
         interactive: {
           type: 'button',
-          ...(interactive_buttons.header
+          ...(headerImageFromButtons
+            ? { header: { type: 'image', image: { link: headerImageFromButtons } } }
+            : interactive_buttons.header
             ? { header: { type: 'text', text: singleLineInteractiveText(interactive_buttons.header, 60) } }
             : {}),
           body: {
