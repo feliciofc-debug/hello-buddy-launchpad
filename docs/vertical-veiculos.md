@@ -219,6 +219,14 @@ Suítes novas: `vehicle-stock-whatsapp.test.ts`. Regressão esperada: `vertical-
 | Dono / produtos / FIPE | Gate `fromIsOwner`; zero mudança no ramo dono. |
 | Performance | Queries indexadas (`idx_veiculos_estoque_user_status`, `user_marca_modelo`); paginar carrossel. |
 
+### Demonstração (como testar)
+
+O processor trata mensagens do **dono** (`owner_phone`) com fluxos de FIPE, anúncio,
+carrossel de marketing etc. A vitrine WhatsApp de estoque é **somente para clientes**
+(`fromIsOwner === false`). Para validar a demo (`vitrine_veiculos_demo` ou segmento
+revenda), use **outro celular** (não cadastrado como dono) e envie intent explícita
+(ex.: “ver carros”) ou toque nos botões `veiculo_vitrine:*`.
+
 ### Áreas travadas
 
 FIPE, anúncio/captions, edição de imagem, vídeo e Autopilot de produtos permanecem

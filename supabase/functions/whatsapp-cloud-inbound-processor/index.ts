@@ -90,6 +90,8 @@ import {
   vehicleIdentificationQuestion,
   type VehicleIdentification,
 } from "../_shared/vehicle-identification.ts";
+import { executeVehicleStockShowcase } from "../_shared/vehicle-stock-showcase-bridge.ts";
+import { extractVitrineInteractiveId } from "../_shared/vehicle-stock-whatsapp.ts";
 
 // ---------------------------------------------------------------------------
 // Multi-tenant owner registry (populado no início de cada processMessage).
@@ -857,7 +859,7 @@ function extractText(payload: any): string {
   if (payload.interactive?.list_reply?.title) {
     const title = String(payload.interactive.list_reply.title);
     const id = String(payload.interactive.list_reply.id || "");
-    return /^(?:video_|fipe_|anuncio_post:|carrossel_(?:estilo|cor)_|tiktok_(?:privacy|disclosure):|meta_ads_q:)/i.test(id)
+    return /^(?:video_|fipe_|anuncio_post:|carrossel_(?:estilo|cor)_|tiktok_(?:privacy|disclosure):|meta_ads_q:|veiculo_vitrine:)/i.test(id)
       ? `${title}\n<<INTERACTIVE_ID:${id}>>`
       : title;
   }
@@ -22368,6 +22370,63 @@ async function answerOwnerCommercialStatus(userId: string, text: string): Promis
   return `Sim, chefe — o ${contato.nome} respondeu (${when}).\n\nResposta: ${preview || "áudio recebido"}${assistantUnderstanding ? `\n\nEntendimento do Jarvis: ${assistantUnderstanding}` : ""}`;
 }
 
+async function tryProcessVehicleStockShowcase(input: {
+  row: QueueRow;
+  convStateIdentity: ConversationStateIdentity;
+  userId: string;
+  userText: string;
+  contactName: string | null;
+  earlyInteractiveOnly: boolean;
+  agentStateSeed?: AgentConvState;
+}): Promise<{ handled: boolean; preview?: string }> {
+  const buttonId = String(input.row.payload?.interactive?.button_reply?.id ?? "");
+  const listId = String(input.row.payload?.interactive?.list_reply?.id ?? "");
+  const vitrineId = extractVitrineInteractiveId({
+    userText: input.userText,
+    buttonId,
+    listId,
+  });
+  if (input.earlyInteractiveOnly && !vitrineId) {
+    return { handled: false };
+  }
+  const baseState = input.agentStateSeed ??
+    (migrateVerticalState(await loadAgentState(sb, input.convStateIdentity)).state as AgentConvState);
+  const result = await executeVehicleStockShowcase({
+    ctx: {
+      sb,
+      userId: input.userId,
+      to: input.row.from_number,
+      contactName: input.contactName,
+      supabaseUrl: SUPABASE_URL,
+      serviceKey: SERVICE_KEY,
+      agentState: baseState as Record<string, unknown>,
+      loadAgentState: async () => {
+        const st = await loadAgentState(sb, input.convStateIdentity);
+        return migrateVerticalState(st).state as Record<string, unknown>;
+      },
+      saveAgentStatePatch: async (patch, current) => saveAgentState(
+        sb,
+        input.convStateIdentity,
+        patch as AgentConvState,
+        current as AgentConvState,
+      ),
+      encaminharRecado: async (recado) => {
+        const raw = await toolEncaminharRecadoAoDono(
+          { recado },
+          { userId: input.userId, fromNumber: input.row.from_number },
+        );
+        const parsed = JSON.parse(raw);
+        return { ok: parsed?.ok === true, protocolo: parsed?.protocolo };
+      },
+    },
+    userText: input.userText,
+    buttonId,
+    listId,
+    forceInteractive: input.earlyInteractiveOnly && !!vitrineId,
+  });
+  return { handled: result.handled, preview: result.replyPreview };
+}
+
 async function processOne(queueId: string) {
   const { data: claimed, error: claimErr } = await sb
     .from("whatsapp_cloud_inbound_queue")
@@ -22530,6 +22589,39 @@ async function processOne(queueId: string) {
     const fromIsOwner = tenantOwnerMatchesPhone(_tenantOwner, row.from_number)
       || (isAmzTenantEarly && isAmzOwnerAltPhone(row.from_number));
 
+    // Vitrine estoque (cliente): botões/listas veiculo_vitrine:* ANTES de opt-in/LLM.
+    if (!fromIsOwner) {
+      const vitrineButtonId = String(row.payload?.interactive?.button_reply?.id ?? "");
+      const vitrineListId = String(row.payload?.interactive?.list_reply?.id ?? "");
+      const vitrineInteractiveEarly = extractVitrineInteractiveId({
+        userText,
+        buttonId: vitrineButtonId,
+        listId: vitrineListId,
+      });
+      if (vitrineInteractiveEarly) {
+        try {
+          const vitrineEarly = await tryProcessVehicleStockShowcase({
+            row,
+            convStateIdentity,
+            userId,
+            userText,
+            contactName,
+            earlyInteractiveOnly: true,
+          });
+          if (vitrineEarly.handled) {
+            stopTypingHeartbeat();
+            await doneQueue(row.id);
+            return {
+              ok: true,
+              vehicle_vitrine_early: true,
+              preview: vitrineEarly.preview,
+            };
+          }
+        } catch (e) {
+          console.error("[vehicle-vitrine][early]", (e as Error).message);
+        }
+      }
+    }
 
     // =====================================================================
     // OPT-IN GATE (Fase 1 — Meta oficial)
@@ -26047,6 +26139,30 @@ Regras:
           handled: true,
           text: "Não consegui continuar a campanha agora. Tente novamente em alguns segundos.",
         };
+      }
+    }
+    if (!fromIsOwner && !metaAdsQuestionarioResult.handled) {
+      try {
+        const vitrineLate = await tryProcessVehicleStockShowcase({
+          row,
+          convStateIdentity,
+          userId,
+          userText,
+          contactName,
+          earlyInteractiveOnly: false,
+          agentStateSeed: agentState,
+        });
+        if (vitrineLate.handled) {
+          stopTypingHeartbeat();
+          await doneQueue(row.id);
+          return {
+            ok: true,
+            vehicle_vitrine: true,
+            preview: vitrineLate.preview,
+          };
+        }
+      } catch (e) {
+        console.error("[vehicle-vitrine][late]", (e as Error).message);
       }
     }
     let persistedForward = (agentState.forward ?? null) as { protocolo?: string; destinatario?: string; wamid?: string | null; at?: string } | null;
