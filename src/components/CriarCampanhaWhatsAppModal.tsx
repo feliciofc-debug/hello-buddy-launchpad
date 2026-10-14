@@ -182,7 +182,11 @@ export function CriarCampanhaWhatsAppModal({
   // que o cliente recebe (caption da foto na janela de 24h).
   // ============================================================
   const comLinkDoProduto = (texto: string) => {
-    const link = (produto.link || produto.link_marketplace || '').trim();
+    const link = (
+      isVehicle
+        ? produto.link || produto.link_marketplace || ''
+        : produto.link_marketplace || ''
+    ).trim();
     if (!link) return texto;
     if (texto.includes(link)) return texto;
     return `${texto.trim()}\n\n👉 ${link}`;
