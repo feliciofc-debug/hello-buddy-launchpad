@@ -77,3 +77,69 @@ test("login mantém Authorization com relógio do navegador duas horas adiantado
   await expect(page).toHaveURL(/\/dashboard$/);
   expect(profileAuthorizations).toEqual([`Bearer ${ACCESS_TOKEN}`]);
 });
+
+test("401 de função preserva sessão e 401 do REST desloga", async ({ page }) => {
+  const warnings: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "warning") warnings.push(message.text());
+  });
+
+  await page.addInitScript(({ token, userId }) => {
+    localStorage.setItem(
+      "amz-custom-auth-session-v1:https://api.amzofertas.com.br",
+      JSON.stringify({
+        access_token: token,
+        refresh_token: "",
+        token_type: "bearer",
+        expires_in: 3600,
+        expires_at: Math.floor(Date.now() / 1000) + 3540,
+        user: {
+          id: userId,
+          email: "auth-test@example.com",
+          aud: "authenticated",
+          role: "authenticated",
+          app_metadata: { provider: "email" },
+          user_metadata: {},
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      }),
+    );
+  }, { token: ACCESS_TOKEN, userId: USER_ID });
+
+  await page.route(`${API_ORIGIN}/functions/v1/linkedin-publish`, async (route) => {
+    await route.fulfill({
+      status: 401,
+      json: { message: "Token do LinkedIn expirado" },
+    });
+  });
+  await page.route(`${API_ORIGIN}/rest/v1/produtos**`, async (route) => {
+    await route.fulfill({
+      status: 401,
+      json: { message: "JWT da plataforma inválido" },
+    });
+  });
+
+  await page.goto("/login");
+
+  const sessionAfterFunction = await page.evaluate(async () => {
+    const { supabase } = await import("/src/integrations/supabase/client.ts");
+    await supabase.functions.invoke("linkedin-publish", { body: {} });
+    return (await supabase.auth.getSession()).data.session?.access_token ?? null;
+  });
+  expect(sessionAfterFunction).toBe(ACCESS_TOKEN);
+  expect(
+    warnings.some((warning) =>
+      warning.includes(
+        "401 não encerrou a sessão em endpoint não autoritativo /functions/v1/linkedin-publish",
+      )
+    ),
+  ).toBe(true);
+
+  const sessionAfterRest = await page.evaluate(async () => {
+    const { supabase } = await import("/src/integrations/supabase/client.ts");
+    await supabase.from("produtos").select("id");
+    return (await supabase.auth.getSession()).data.session?.access_token ?? null;
+  });
+  expect(sessionAfterRest).toBeNull();
+});

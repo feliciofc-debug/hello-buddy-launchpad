@@ -43,9 +43,22 @@ const createTokenFetch = (auth: CustomAuthClient): typeof fetch => {
 
     const response = await fetch(input, { ...init, headers });
     if (accessToken && response.status === 401) {
-      auth.rejectSession(`servidor respondeu 401 em ${requestUrl.pathname}`);
-      if (window.location.pathname !== "/login") {
-        window.location.assign("/login");
+      const rejectsSession =
+        requestUrl.origin === apiUrl.origin &&
+        (requestUrl.pathname.startsWith("/rest/v1/") ||
+          requestUrl.pathname === "/rest/v1" ||
+          requestUrl.pathname.startsWith("/auth/v1/") ||
+          requestUrl.pathname === "/auth/v1");
+      if (rejectsSession) {
+        auth.rejectSession(`servidor respondeu 401 em ${requestUrl.pathname}`);
+        if (window.location.pathname !== "/login") {
+          window.location.assign("/login");
+        }
+      } else {
+        console.warn(
+          "[custom-auth] 401 não encerrou a sessão em endpoint não autoritativo",
+          requestUrl.pathname,
+        );
       }
     }
     return response;
