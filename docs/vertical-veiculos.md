@@ -57,3 +57,69 @@ nomes (nunca registrar seus valores neste documento):
 - `VITE_WUZAPI_URL`
 - `VITE_WUZAPI_TOKEN`
 - `VITE_WUZAPI_INSTANCE_ID`
+
+## Vitrine WhatsApp (cliente final — estoque)
+
+Fluxo tipo Magalu para quem **pergunta explicitamente** por carros no WhatsApp.
+Dados **somente** de `veiculos_estoque`; nunca `produtos`.
+
+### Quem pode usar a vitrine
+
+| Modo | Condição |
+| --- | --- |
+| Revenda (produção) | `empresa_config.segmento` = revenda de automóveis (ou equivalente já usado no front) |
+| Demonstração | `empresa_config.vitrine_veiculos_demo = true` em **uma conta específica** (ativada por SQL; sem tela no painel) |
+
+Migration idempotente (no LOTE da vitrine):  
+`ALTER TABLE public.empresa_config ADD COLUMN IF NOT EXISTS vitrine_veiculos_demo BOOLEAN NOT NULL DEFAULT false;`
+
+Ativação manual (exemplo):
+
+```sql
+UPDATE public.empresa_config
+SET vitrine_veiculos_demo = true
+WHERE user_id = '<uuid-do-tenant>';
+```
+
+### Chave de demonstração (comportamento)
+
+Com `vitrine_veiculos_demo = true`:
+
+1. **Só** mensagens com **intenção explícita de ver estoque** entram na vitrine
+   (lista de marcas → carrossel por marca). Exemplos de gatilho (normalizar acento/caixa):
+   - “ver carros”, “quero ver os carros”, “estoque de veículos”, “carros disponíveis”,
+     “o que tem na loja”, “mostrar veículos”.
+2. **Qualquer outra mensagem** (FIPE, anúncio, foto, produto, saudação, dúvida geral)
+   segue o **fluxo atual do Jarvis**, sem roteamento para vitrine, sem mudar prompts
+   ou tools existentes.
+
+Com `vitrine_veiculos_demo = false` (default): contas fora do segmento revenda
+**nunca** entram na vitrine.
+
+Implementação sugerida: função pura `isExplicitVehicleShowcaseRequest(text)` +
+`shouldOfferVehicleShowcase(tenant)` → `(segmento revenda OR vitrine_veiculos_demo)`.
+Checar **antes** de desviar o processor; se falso, `return` cedo e não alterar estado.
+
+### Fluxo da vitrine (sem etapa de modelos)
+
+1. Lista de **marcas** (só marcas com veículos `disponivel` no tenant).
+2. Cliente escolhe a marca → enviar **todos** os carros da marca em **carrossel
+   interativo** Cloud API (`interactive` carousel): card = foto principal + texto
+   (marca/modelo/versão, ano, km, câmbio, cor, preço) + 2 quick_reply:
+   `[📋 Ver detalhes]` · `[💬 Tenho interesse]`.
+3. Se houver mais carros que o limite de cards por mensagem, blocos + botão
+   **Ver mais carros**.
+4. **Ver detalhes** → galeria de fotos + lista “Detalhes do veículo”; rótulo
+   **Voltar às marcas** (não “Voltar aos modelos”).
+5. **Tenho interesse** → handoff/consultor (fluxo de lead já existente).
+
+Limites e fallback: validar na [documentação oficial Meta](https://developers.facebook.com/docs/whatsapp/cloud-api/messages/interactive-media-carousel-messages)
+(2–10 cards, corpo da mensagem até 1024 chars, corpo do card até 160 chars,
+janela de 24h para mensagens de sessão). Confirmar em sandbox se o carrossel de
+sessão aceita 2× `quick_reply` por card; se não, fallback = card individual com
+imagem + 3 botões: Fotos / Detalhes / Tenho interesse.
+
+### Áreas travadas
+
+FIPE, anúncio/captions, edição de imagem, vídeo e Autopilot de produtos permanecem
+como hoje; a vitrine não substitui esses fluxos.
