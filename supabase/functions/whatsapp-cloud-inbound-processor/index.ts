@@ -99,6 +99,7 @@ import {
   extractVitrineInteractiveId,
   formatCarouselVitrineButtonText,
   shouldRunVitrineEarlyCapture,
+  vitrineFormNeedsAudioTranscriptBeforeShowcase,
 } from "../_shared/vehicle-stock-whatsapp.ts";
 
 // ---------------------------------------------------------------------------
@@ -22619,7 +22620,9 @@ async function processOne(queueId: string) {
         vitrineInteractiveId: vitrineInteractiveEarly,
         pending: pendingVitrineEarly,
       });
-      if (vitrineEarlyCapture) {
+      const deferVitrineEarlyForAudio = row.message_type === "audio" &&
+        vitrineFormNeedsAudioTranscriptBeforeShowcase(pendingVitrineEarly);
+      if (vitrineEarlyCapture && !deferVitrineEarlyForAudio) {
         try {
           const vitrineEarly = await tryProcessVehicleStockShowcase({
             row,
@@ -23258,6 +23261,40 @@ async function processOne(queueId: string) {
         console.log(`[processor][audio] transcricao_len=${audioTranscript.length}`);
       } catch (e) {
         console.warn("[processor][audio-transcribe] falhou:", (e as Error).message);
+      }
+    }
+
+    if (!fromIsOwner && audioTranscript) {
+      try {
+        const vitrineStateAfterAudio = migrateVerticalState(
+          await loadAgentState(sb, convStateIdentity),
+        ).state as AgentConvState;
+        const pendingAfterAudio = getPendingVitrineEstoque(
+          vitrineStateAfterAudio as Record<string, unknown>,
+        );
+        if (vitrineFormNeedsAudioTranscriptBeforeShowcase(pendingAfterAudio)) {
+          const vitrinePostAudio = await tryProcessVehicleStockShowcase({
+            row,
+            convStateIdentity,
+            userId,
+            userText: inboundContent,
+            contactName,
+            earlyInteractiveOnly: false,
+            allowEarlyFormCapture: true,
+            agentStateSeed: vitrineStateAfterAudio,
+          });
+          if (vitrinePostAudio.handled) {
+            stopTypingHeartbeat();
+            await doneQueue(row.id);
+            return {
+              ok: true,
+              vehicle_vitrine_post_audio: true,
+              preview: vitrinePostAudio.preview,
+            };
+          }
+        }
+      } catch (e) {
+        console.error("[vehicle-vitrine][post-audio]", (e as Error).message);
       }
     }
 

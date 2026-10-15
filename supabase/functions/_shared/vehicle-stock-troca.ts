@@ -4,6 +4,7 @@ import type {
   VeiculoVitrineRow,
   VitrineEstoqueForm,
 } from "./vehicle-stock-whatsapp.ts";
+import { formatRecadoClienteLine } from "./vehicle-stock-cliente-nome.ts";
 import { vehicleTitle } from "./vehicle-stock-whatsapp.ts";
 
 export const VITRINE_TROCA_KBB_URL = "https://www.kbb.com.br/";
@@ -375,13 +376,18 @@ export function trocaClienteMessageAllowed(text: string): boolean {
 }
 
 export function buildRecadoTrocaAvaliacao(input: {
+  clienteNome: string;
   contactName?: string | null;
   fromNumber: string;
   vehicleEstoque: VeiculoVitrineRow;
   form: VitrineEstoqueForm;
 }): string {
-  const nome = (input.contactName || "").trim() || "Cliente";
   const tituloEstoque = vehicleTitle(input.vehicleEstoque);
+  const clienteLine = formatRecadoClienteLine({
+    clienteNome: input.clienteNome,
+    contactName: input.contactName,
+    fromNumber: input.fromNumber,
+  });
   const fotos = input.form.fotos ?? [];
   const linhasFotos = fotos.map((f, i) => {
     const slot = VITRINE_TROCA_FOTO_SLOTS.find((s) => s.id === f.slot);
@@ -400,9 +406,8 @@ export function buildRecadoTrocaAvaliacao(input: {
   const obs = (input.form.observacoes || "").trim() || "—";
   const internas = (input.form.troca_observacoes_internas ?? []).filter(Boolean);
   return [
-    `Nome: ${nome}`,
-    `Telefone: ${input.fromNumber}`,
-    `Cliente ${nome} (${input.fromNumber}) pediu avaliação na troca.`,
+    clienteLine,
+    "Pediu avaliação na troca.",
     `Veículo de interesse (estoque): ${tituloEstoque} (id ${input.vehicleEstoque.id})`,
     `Carro na troca: ${input.form.modelo_ano ?? "—"} | km ${input.form.km ?? "—"} | placa ${input.form.placa ?? "—"}`,
     "Fotos (ordem):",

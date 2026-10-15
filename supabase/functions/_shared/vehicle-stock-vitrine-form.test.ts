@@ -76,6 +76,26 @@ Deno.test("early capture: visita não captura texto livre", () => {
   }));
 });
 
+Deno.test("early capture: cliente_nome captura texto", () => {
+  const pending = {
+    stage: "detalhe" as const,
+    offset: 0,
+    updated_at: new Date().toISOString(),
+    form: {
+      flow: "cliente_nome" as const,
+      step: "nome",
+      veiculo_id: "v1",
+      resume: { kind: "interesse" as const, vehicleId: "v1" },
+      updated_at: new Date().toISOString(),
+    },
+  };
+  assert(shouldRunVitrineEarlyCapture({
+    userText: "Ana",
+    vitrineInteractiveId: null,
+    pending,
+  }));
+});
+
 Deno.test("early capture: troca texto só nas etapas de formulário", () => {
   assert(vitrineFormStepExpectsText("modelo_ano"));
   assertFalse(vitrineFormStepExpectsText("dia"));
@@ -100,6 +120,12 @@ Deno.test("early capture: troca texto só nas etapas de formulário", () => {
 Deno.test("financiamento one-shot encaminha e confirma", async () => {
   let recadoDono = "";
   let msgCliente = "";
+  let pendingStore: PendingVitrineEstoque | null = {
+    stage: "detalhe",
+    offset: 0,
+    updated_at: new Date().toISOString(),
+    cliente_nome: "Paula",
+  };
   const vehicle: VeiculoVitrineRow = {
     id: "v-fin",
     marca: "BMW",
@@ -146,8 +172,10 @@ Deno.test("financiamento one-shot encaminha e confirma", async () => {
       recadoDono = r;
       return { ok: true };
     },
-    savePending: async () => {},
-    getPending: () => null,
+    savePending: async (p) => {
+      pendingStore = p;
+    },
+    getPending: () => pendingStore,
     pause: async () => {},
   };
   const result = await runVehicleStockShowcaseTurn({
@@ -261,6 +289,7 @@ Deno.test("visita_dia: id real do builder → parse → handler turno", async ()
       stage: "detalhe",
       offset: 0,
       updated_at: new Date().toISOString(),
+      cliente_nome: "Rita",
       form: {
         flow: "visita",
         step: "turno",
@@ -310,6 +339,7 @@ Deno.test("visita turno duplicado não encaminha recado duas vezes", async () =>
     stage: "detalhe",
     offset: 0,
     updated_at: new Date().toISOString(),
+    cliente_nome: "Dedup",
     form: {
       flow: "visita",
       step: "turno",

@@ -1,4 +1,9 @@
 import { isAutomotiveTenant } from "./vertical-router.ts";
+import type { VitrineRecadoResume } from "./vehicle-stock-cliente-nome.ts";
+import {
+  formatRecadoClienteLine,
+  vitrineNomeParaRecado,
+} from "./vehicle-stock-cliente-nome.ts";
 
 export const VITRINE_ID_PREFIX = "veiculo_vitrine:";
 
@@ -28,6 +33,10 @@ export type PendingVitrineEstoque = {
   carousel_ids?: string[] | null;
   carousel_index?: number | null;
   form?: VitrineEstoqueForm | null;
+  /** Formulário da vitrine pausado enquanto pergunta o nome (ex.: troca). */
+  form_suspend_backup?: VitrineEstoqueForm | null;
+  /** Nome preferido do cliente para recados (Commit D). */
+  cliente_nome?: string | null;
   /** Recados ao dono já enviados (anti-duplicidade). */
   recados_idempotencia?: Array<{ key: string; at: string }>;
   updated_at: string;
@@ -36,9 +45,10 @@ export type PendingVitrineEstoque = {
 export type VitrineVisitaTurno = "manha" | "tarde";
 
 export type VitrineEstoqueForm = {
-  flow: "visita" | "troca" | "financiamento";
+  flow: "visita" | "troca" | "financiamento" | "cliente_nome";
   step: string;
   veiculo_id: string;
+  resume?: VitrineRecadoResume;
   dia_iso?: string;
   turno?: VitrineVisitaTurno;
   updated_at: string;
@@ -571,36 +581,44 @@ export function vehicleTitle(v: VeiculoVitrineRow): string {
 }
 
 export function buildRecadoInteresse(input: {
+  clienteNome: string;
   contactName?: string | null;
   fromNumber: string;
   vehicle: VeiculoVitrineRow;
 }): string {
-  const nome = (input.contactName || "").trim() || "Cliente";
   const titulo = vehicleTitle(input.vehicle);
   const preco = formatPrecoBrl(input.vehicle.preco);
+  const clienteLine = formatRecadoClienteLine({
+    clienteNome: input.clienteNome,
+    contactName: input.contactName,
+    fromNumber: input.fromNumber,
+  });
   return [
-    `Nome: ${nome}`,
-    `Telefone: ${input.fromNumber}`,
-    `Cliente ${nome} (${input.fromNumber}) tem interesse no ${titulo} – ${preco}.`,
+    clienteLine,
+    `Tem interesse no ${titulo} – ${preco}.`,
     `Veículo (estoque): ${input.vehicle.id}`,
     "Ação: retornar o contato do cliente.",
   ].join("\n");
 }
 
 export function buildRecadoConsultor(input: {
+  clienteNome: string;
   contactName?: string | null;
   fromNumber: string;
   vehicle?: VeiculoVitrineRow | null;
   marca?: string | null;
 }): string {
-  const nome = (input.contactName || "").trim() || "Cliente";
   const ctx = input.vehicle
     ? `${vehicleTitle(input.vehicle)} – ${formatPrecoBrl(input.vehicle.preco)}`
     : (input.marca ? `marca ${input.marca}` : "vitrine de veículos");
+  const clienteLine = formatRecadoClienteLine({
+    clienteNome: input.clienteNome,
+    contactName: input.contactName,
+    fromNumber: input.fromNumber,
+  });
   return [
-    `Nome: ${nome}`,
-    `Telefone: ${input.fromNumber}`,
-    `Cliente ${nome} (${input.fromNumber}) pediu falar com consultor sobre ${ctx}.`,
+    clienteLine,
+    `Pediu falar com consultor sobre ${ctx}.`,
     input.vehicle ? `Veículo (estoque): ${input.vehicle.id}` : null,
     "Ação: retornar o contato do cliente.",
   ].filter(Boolean).join("\n");
@@ -642,7 +660,9 @@ export function isVitrineFormControlText(
 export function pendingFormIsActive(
   pending: PendingVitrineEstoque | null | undefined,
 ): pending is PendingVitrineEstoque & { form: VitrineEstoqueForm } {
-  return !!pending?.form?.veiculo_id && !!pending.form.updated_at;
+  if (!pending?.form?.updated_at) return false;
+  if (pending.form.flow === "cliente_nome") return true;
+  return !!pending.form.veiculo_id;
 }
 
 export function pendingFormExpired(
@@ -675,7 +695,25 @@ export function shouldRunVitrineEarlyCapture(input: {
   ) {
     return true;
   }
+  if (
+    input.pending.form.flow === "cliente_nome" &&
+    input.pending.form.step === "nome"
+  ) {
+    return true;
+  }
   return false;
+}
+
+export function vitrineFormNeedsAudioTranscriptBeforeShowcase(
+  pending: PendingVitrineEstoque | null | undefined,
+): boolean {
+  if (!pendingFormIsActive(pending)) return false;
+  if (pendingFormExpired(pending.form)) return false;
+  if (pending.form.flow === "cliente_nome" && pending.form.step === "nome") {
+    return true;
+  }
+  return pending.form.flow === "troca" &&
+    vitrineFormStepExpectsText(pending.form.step);
 }
 
 /** Próximos N dias úteis a partir de AMANHÃ (exclui domingo). */
@@ -763,18 +801,22 @@ export function visitaTurnoLabel(turno: VitrineVisitaTurno): string {
 }
 
 export function buildRecadoVisita(input: {
+  clienteNome: string;
   contactName?: string | null;
   fromNumber: string;
   vehicle: VeiculoVitrineRow;
   diaIso: string;
   turno: VitrineVisitaTurno;
 }): string {
-  const nome = (input.contactName || "").trim() || "Cliente";
   const titulo = vehicleTitle(input.vehicle);
+  const clienteLine = formatRecadoClienteLine({
+    clienteNome: input.clienteNome,
+    contactName: input.contactName,
+    fromNumber: input.fromNumber,
+  });
   return [
-    `Nome: ${nome}`,
-    `Telefone: ${input.fromNumber}`,
-    `Cliente ${nome} (${input.fromNumber}) quer agendar visita/test drive.`,
+    clienteLine,
+    "Quer agendar visita/test drive.",
     `Veículo: ${titulo} (id ${input.vehicle.id})`,
     `Dia: ${formatVisitaDiaLabel(input.diaIso)} (${input.diaIso})`,
     `Turno: ${visitaTurnoLabel(input.turno)}`,
@@ -783,38 +825,46 @@ export function buildRecadoVisita(input: {
 }
 
 export function buildRecadoFinanciamento(input: {
+  clienteNome: string;
   contactName?: string | null;
   fromNumber: string;
   vehicle: VeiculoVitrineRow;
 }): string {
-  const nome = (input.contactName || "").trim() || "Cliente";
   const titulo = vehicleTitle(input.vehicle);
+  const clienteLine = formatRecadoClienteLine({
+    clienteNome: input.clienteNome,
+    contactName: input.contactName,
+    fromNumber: input.fromNumber,
+  });
   return [
-    `Nome: ${nome}`,
-    `Telefone: ${input.fromNumber}`,
-    `Cliente ${nome} (${input.fromNumber}) quer simular financiamento do ${titulo}.`,
+    clienteLine,
+    `Quer simular financiamento do ${titulo}.`,
     `Veículo (estoque): ${input.vehicle.id}`,
     "Ação: retornar contato com simulação.",
   ].join("\n");
 }
 
 export function buildRecadoFormCancelado(input: {
+  clienteNome: string;
   contactName?: string | null;
   fromNumber: string;
   vehicle?: VeiculoVitrineRow | null;
   form: VitrineEstoqueForm;
 }): string {
-  const nome = (input.contactName || "").trim() || "Cliente";
   const titulo = input.vehicle ? vehicleTitle(input.vehicle) : input.form.veiculo_id;
+  const clienteLine = formatRecadoClienteLine({
+    clienteNome: input.clienteNome,
+    contactName: input.contactName,
+    fromNumber: input.fromNumber,
+  });
   const extras: string[] = [];
   if (input.form.dia_iso) {
     extras.push(`Dia escolhido: ${formatVisitaDiaLabel(input.form.dia_iso)}`);
   }
   if (input.form.turno) extras.push(`Turno: ${visitaTurnoLabel(input.form.turno)}`);
   return [
-    `Nome: ${nome}`,
-    `Telefone: ${input.fromNumber}`,
-    `Cliente ${nome} cancelou/saiu de um fluxo da vitrine (${input.form.flow}, etapa ${input.form.step}).`,
+    clienteLine,
+    `Cancelou/saiu de um fluxo da vitrine (${input.form.flow}, etapa ${input.form.step}).`,
     `Veículo: ${titulo}`,
     ...extras,
     "Ação: retomar contato se fizer sentido.",

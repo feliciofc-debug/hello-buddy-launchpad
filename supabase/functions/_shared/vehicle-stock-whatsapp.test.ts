@@ -273,6 +273,7 @@ Deno.test("ficha não inclui procedência por origem/url", () => {
 
 Deno.test("recado de interesse inclui carro e preço", () => {
   const recado = buildRecadoInteresse({
+    clienteNome: "Ana",
     contactName: "Ana",
     fromNumber: "5521999999999",
     vehicle: {

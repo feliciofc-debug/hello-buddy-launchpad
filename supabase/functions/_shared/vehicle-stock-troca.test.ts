@@ -216,6 +216,7 @@ Deno.test("recado ao avaliador inclui link KBB e visão", () => {
     status: "disponivel",
   };
   const recado = buildRecadoTrocaAvaliacao({
+    clienteNome: "Ana",
     contactName: "Ana",
     fromNumber: "5521999999999",
     vehicleEstoque: vehicle,

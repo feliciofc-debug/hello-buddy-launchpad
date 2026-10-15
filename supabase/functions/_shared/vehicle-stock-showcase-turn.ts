@@ -58,6 +58,16 @@ import {
   VITRINE_TROCA_FOTO_SLOTS,
 } from "./vehicle-stock-troca.ts";
 import type { CarouselCardInput } from "./whatsapp-interactive-carousel.ts";
+import {
+  isClienteNomeForm,
+  sanitizeClienteNomeResposta,
+  vehicleIdForClienteNomeForm,
+  vitrineClienteNomeSalvo,
+  vitrineContactNameFallback,
+  vitrineNomeParaRecado,
+  VITRINE_CLIENTE_NOME_PROMPT,
+  type VitrineRecadoResume,
+} from "./vehicle-stock-cliente-nome.ts";
 
 export type ShowcaseSendResult = {
   ok: boolean;
@@ -155,6 +165,80 @@ async function vitrineNotifyOwner(
   return { duplicate: false, notified: true };
 }
 
+async function beginClienteNomeGate(
+  input: ShowcaseTurnInput,
+  resume: VitrineRecadoResume,
+): Promise<ShowcaseTurnOutput | null> {
+  const pending = basePending(input.deps.getPending());
+  if (vitrineClienteNomeSalvo(pending)) return null;
+  const now = new Date().toISOString();
+  const suspendBackup = pending.form?.flow && pending.form.flow !== "cliente_nome"
+    ? pending.form
+    : pending.form_suspend_backup ?? null;
+  await input.deps.savePending({
+    ...pending,
+    form_suspend_backup: suspendBackup,
+    form: {
+      flow: "cliente_nome",
+      step: "nome",
+      veiculo_id: vehicleIdForClienteNomeForm(resume),
+      resume,
+      updated_at: now,
+    },
+    updated_at: now,
+  });
+  await input.deps.sendText(VITRINE_CLIENTE_NOME_PROMPT);
+  return { handled: true, replyPreview: "cliente_nome_prompt" };
+}
+
+async function resumeVitrineRecado(
+  input: ShowcaseTurnInput,
+  resume: VitrineRecadoResume,
+): Promise<ShowcaseTurnOutput> {
+  switch (resume.kind) {
+    case "interesse":
+      return await completeHandoffVehicle(input, resume.vehicleId, "interesse");
+    case "consultor":
+      if (resume.vehicleId) {
+        return await completeHandoffVehicle(input, resume.vehicleId, "consultor");
+      }
+      return await completeHandoffConsultorGeral(input);
+    case "financiamento":
+      return await completeFinanciamentoSimples(input, resume.vehicleId);
+    case "visita":
+      return await completeVisitaAgendada(
+        input,
+        resume.diaIso,
+        resume.turno,
+      );
+    case "troca_confirm":
+      return await completeTrocaRecado(input);
+  }
+}
+
+async function handleClienteNomeStep(
+  input: ShowcaseTurnInput,
+  pending: PendingVitrineEstoque,
+): Promise<ShowcaseTurnOutput> {
+  const form = pending.form;
+  if (!isClienteNomeForm(form)) {
+    return { handled: false };
+  }
+  const resume = form.resume;
+  const parsed = sanitizeClienteNomeResposta(input.userText);
+  const nome = parsed || vitrineContactNameFallback(input.contactName);
+  const now = new Date().toISOString();
+  const restoredForm = pending.form_suspend_backup ?? null;
+  await input.deps.savePending({
+    ...pending,
+    cliente_nome: nome,
+    form: restoredForm,
+    form_suspend_backup: null,
+    updated_at: now,
+  });
+  return resumeVitrineRecado(input, resume);
+}
+
 export async function runVehicleStockShowcaseTurn(
   input: ShowcaseTurnInput,
 ): Promise<ShowcaseTurnOutput> {
@@ -172,12 +256,52 @@ export async function runVehicleStockShowcaseTurn(
 
   let pending = input.deps.getPending() ?? null;
   if (pending?.form && pendingFormExpired(pending.form)) {
+    if (isClienteNomeForm(pending.form)) {
+      const resume = pending.form.resume;
+      const fallback = vitrineContactNameFallback(input.contactName);
+      const restoredForm = pending.form_suspend_backup ?? null;
+      pending = {
+        ...pending,
+        cliente_nome: vitrineClienteNomeSalvo(pending)
+          ? pending.cliente_nome
+          : (String(pending.cliente_nome || "").trim() || fallback),
+        form: restoredForm,
+        form_suspend_backup: null,
+      };
+      await input.deps.savePending(pending);
+      return resumeVitrineRecado(input, resume);
+    }
     pending = { ...pending, form: null };
     await input.deps.savePending(pending);
   }
 
   const formControl = isVitrineFormControlText(input.userText);
-  if (pendingFormIsActive(pending) && formControl) {
+  if (
+    pendingFormIsActive(pending) &&
+    pending.form.flow === "cliente_nome" &&
+    formControl
+  ) {
+    return await handleClienteNomeFormControl(input, pending, formControl);
+  }
+
+  if (
+    pendingFormIsActive(pending) &&
+    pending.form.flow === "cliente_nome" &&
+    (vitrineId || explicit) &&
+    !formControl
+  ) {
+    const fallback = vitrineContactNameFallback(input.contactName);
+    pending = {
+      ...pending,
+      cliente_nome: vitrineClienteNomeSalvo(pending)
+        ? pending.cliente_nome
+        : (String(pending.cliente_nome || "").trim() || fallback),
+      form: null,
+      form_suspend_backup: null,
+      updated_at: new Date().toISOString(),
+    };
+    await input.deps.savePending(pending);
+  } else if (pendingFormIsActive(pending) && formControl) {
     return await handleFormControl(input, pending, formControl);
   }
 
@@ -202,6 +326,15 @@ export async function runVehicleStockShowcaseTurn(
       return { handled: true, replyPreview: "troca_aguardando_foto" };
     }
     return { handled: false };
+  }
+
+  if (
+    input.allowEarlyFormCapture &&
+    pendingFormIsActive(pending) &&
+    pending.form.flow === "cliente_nome" &&
+    !vitrineId
+  ) {
+    return await handleClienteNomeStep(input, pending);
   }
 
   if (
@@ -496,13 +629,39 @@ async function finalizeVisita(
     await input.deps.sendText("Não encontrei o veículo.");
     return { handled: true };
   }
+  const gate = await beginClienteNomeGate(input, {
+    kind: "visita",
+    vehicleId,
+    diaIso,
+    turno,
+  });
+  if (gate) return gate;
+  return completeVisitaAgendada(input, diaIso, turno);
+}
+
+async function completeVisitaAgendada(
+  input: ShowcaseTurnInput,
+  diaIso: string,
+  turno: VitrineVisitaTurno,
+): Promise<ShowcaseTurnOutput> {
+  const pending = input.deps.getPending();
+  const vehicleId = pending?.form?.veiculo_id ?? pending?.veiculo_id;
+  if (!vehicleId) {
+    await input.deps.sendText("Não encontrei o veículo.");
+    return { handled: true };
+  }
   const vehicle = await input.deps.loadVeiculoById(vehicleId);
   if (!vehicle) {
     await input.deps.sendText("Esse veículo não está mais disponível.");
     return { handled: true };
   }
   const flags = await input.deps.loadTenantFlags();
+  const clienteNome = vitrineNomeParaRecado({
+    pending: input.deps.getPending(),
+    contactName: input.contactName,
+  });
   const recado = buildRecadoVisita({
+    clienteNome,
     contactName: input.contactName,
     fromNumber: input.fromNumber,
     vehicle,
@@ -542,13 +701,30 @@ async function handleFinanciamentoSimples(
   input: ShowcaseTurnInput,
   vehicleId: string,
 ): Promise<ShowcaseTurnOutput> {
+  const gate = await beginClienteNomeGate(input, {
+    kind: "financiamento",
+    vehicleId,
+  });
+  if (gate) return gate;
+  return completeFinanciamentoSimples(input, vehicleId);
+}
+
+async function completeFinanciamentoSimples(
+  input: ShowcaseTurnInput,
+  vehicleId: string,
+): Promise<ShowcaseTurnOutput> {
   const vehicle = await input.deps.loadVeiculoById(vehicleId);
   if (!vehicle) {
     await input.deps.sendText("Esse veículo não está mais disponível.");
     return { handled: true };
   }
   const flags = await input.deps.loadTenantFlags();
+  const clienteNome = vitrineNomeParaRecado({
+    pending: input.deps.getPending(),
+    contactName: input.contactName,
+  });
   const recado = buildRecadoFinanciamento({
+    clienteNome,
     contactName: input.contactName,
     fromNumber: input.fromNumber,
     vehicle,
@@ -629,6 +805,14 @@ async function handleTrocaTextStep(
 async function finalizeTrocaFlow(
   input: ShowcaseTurnInput,
 ): Promise<ShowcaseTurnOutput> {
+  const gate = await beginClienteNomeGate(input, { kind: "troca_confirm" });
+  if (gate) return gate;
+  return completeTrocaRecado(input);
+}
+
+async function completeTrocaRecado(
+  input: ShowcaseTurnInput,
+): Promise<ShowcaseTurnOutput> {
   const pending = input.deps.getPending();
   const form = pending?.form;
   const vehicleId = form?.veiculo_id ?? pending?.veiculo_id;
@@ -642,7 +826,12 @@ async function finalizeTrocaFlow(
     return { handled: true };
   }
   const flags = await input.deps.loadTenantFlags();
+  const clienteNome = vitrineNomeParaRecado({
+    pending,
+    contactName: input.contactName,
+  });
   const recado = buildRecadoTrocaAvaliacao({
+    clienteNome,
     contactName: input.contactName,
     fromNumber: input.fromNumber,
     vehicleEstoque: vehicle,
@@ -772,6 +961,48 @@ export async function applyTrocaPhotoAndReply(
   return { handled: true, replyPreview: `troca_foto_${slotDef.id}` };
 }
 
+async function handleClienteNomeFormControl(
+  input: ShowcaseTurnInput,
+  pending: PendingVitrineEstoque,
+  kind: "cancelar" | "consultor",
+): Promise<ShowcaseTurnOutput> {
+  const form = pending.form;
+  if (!isClienteNomeForm(form)) {
+    return { handled: false };
+  }
+  const fallback = vitrineContactNameFallback(input.contactName);
+  const now = new Date().toISOString();
+  await input.deps.savePending({
+    ...pending,
+    cliente_nome: vitrineClienteNomeSalvo(pending)
+      ? pending.cliente_nome
+      : fallback,
+    form: null,
+    form_suspend_backup: null,
+    updated_at: now,
+  });
+  if (kind === "cancelar") {
+    await input.deps.sendText(
+      "Sem problemas — cancelei por aqui. Se quiser, digite *ver carros* para explorar o estoque de novo.",
+    );
+    return { handled: true, replyPreview: "cliente_nome_cancel" };
+  }
+  const resume = form.resume;
+  switch (resume.kind) {
+    case "consultor":
+      if (resume.vehicleId) {
+        return completeHandoffVehicle(input, resume.vehicleId, "consultor");
+      }
+      return completeHandoffConsultorGeral(input);
+    case "interesse":
+    case "financiamento":
+    case "visita":
+      return completeHandoffVehicle(input, resume.vehicleId, "consultor");
+    case "troca_confirm":
+      return completeHandoffConsultorGeral(input);
+  }
+}
+
 async function handleFormControl(
   input: ShowcaseTurnInput,
   pending: PendingVitrineEstoque,
@@ -782,14 +1013,20 @@ async function handleFormControl(
     ? await input.deps.loadVeiculoById(vehicleId)
     : null;
   const flags = await input.deps.loadTenantFlags();
+  const clienteNome = vitrineNomeParaRecado({
+    pending,
+    contactName: input.contactName,
+  });
   const recado = kind === "cancelar"
     ? buildRecadoFormCancelado({
+      clienteNome,
       contactName: input.contactName,
       fromNumber: input.fromNumber,
       vehicle,
       form: pending.form!,
     })
     : buildRecadoConsultor({
+      clienteNome,
       contactName: input.contactName,
       fromNumber: input.fromNumber,
       vehicle,
@@ -1041,19 +1278,37 @@ async function handoffVehicle(
   vehicleId: string,
   kind: "interesse" | "consultor",
 ): Promise<ShowcaseTurnOutput> {
+  const gate = await beginClienteNomeGate(input, kind === "interesse"
+    ? { kind: "interesse", vehicleId }
+    : { kind: "consultor", vehicleId });
+  if (gate) return gate;
+  return completeHandoffVehicle(input, vehicleId, kind);
+}
+
+async function completeHandoffVehicle(
+  input: ShowcaseTurnInput,
+  vehicleId: string,
+  kind: "interesse" | "consultor",
+): Promise<ShowcaseTurnOutput> {
   const vehicle = await input.deps.loadVeiculoById(vehicleId);
   if (!vehicle) {
     await input.deps.sendText("Esse veículo não está mais disponível.");
     return { handled: true };
   }
   const flags = await input.deps.loadTenantFlags();
+  const clienteNome = vitrineNomeParaRecado({
+    pending: input.deps.getPending(),
+    contactName: input.contactName,
+  });
   const recado = kind === "interesse"
     ? buildRecadoInteresse({
+      clienteNome,
       contactName: input.contactName,
       fromNumber: input.fromNumber,
       vehicle,
     })
     : buildRecadoConsultor({
+      clienteNome,
       contactName: input.contactName,
       fromNumber: input.fromNumber,
       vehicle,
@@ -1085,8 +1340,26 @@ async function handoffVehicle(
 
 async function handoffConsultorGeral(input: ShowcaseTurnInput): Promise<ShowcaseTurnOutput> {
   const pending = input.deps.getPending();
+  const vehicleId = pending?.veiculo_id ?? null;
+  const gate = await beginClienteNomeGate(input, {
+    kind: "consultor",
+    vehicleId,
+  });
+  if (gate) return gate;
+  return completeHandoffConsultorGeral(input);
+}
+
+async function completeHandoffConsultorGeral(
+  input: ShowcaseTurnInput,
+): Promise<ShowcaseTurnOutput> {
+  const pending = input.deps.getPending();
   const flags = await input.deps.loadTenantFlags();
+  const clienteNome = vitrineNomeParaRecado({
+    pending,
+    contactName: input.contactName,
+  });
   const recado = buildRecadoConsultor({
+    clienteNome,
     contactName: input.contactName,
     fromNumber: input.fromNumber,
     marca: pending?.marca ?? null,
