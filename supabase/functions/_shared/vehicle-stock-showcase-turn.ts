@@ -611,19 +611,16 @@ async function handleTrocaTextStep(
   if (done) {
     return await finalizeTrocaFlow(input);
   }
-  if (reply) {
-    await input.deps.sendText(reply);
+  if (form.step === "fotos") {
+    const slot = currentTrocaFotoSlot(form);
+    if (slot) await sendTrocaFotoSlotPrompt(input, slot);
+    return { handled: true, replyPreview: `troca_${form.step}` };
   }
   if (form.step === "observacoes") {
     await input.deps.sendButtons(promptTrocaObservacoes(), [
       { id: vitrineButtonId("troca_obs", "pular"), title: "Pular" },
     ]);
     return { handled: true, replyPreview: "troca_observacoes" };
-  }
-  if (form.step === "fotos") {
-    const slot = currentTrocaFotoSlot(form);
-    if (slot) await sendTrocaFotoSlotPrompt(input, slot);
-    return { handled: true, replyPreview: `troca_${form.step}` };
   }
   if (reply) await input.deps.sendText(reply);
   return { handled: true, replyPreview: `troca_${form.step}` };
@@ -755,7 +752,7 @@ export async function applyTrocaPhotoAndReply(
   }
   const now = new Date().toISOString();
   let nextForm = appendTrocaInternalNotes(form, photo.internalNotes ?? [], now);
-  const { form: afterPhoto, reply, nextSlot } = advanceTrocaAfterPhoto({
+  const { form: afterPhoto, nextSlot } = advanceTrocaAfterPhoto({
     form: nextForm,
     slot: slotDef.id,
     url: photo.url,
@@ -771,8 +768,6 @@ export async function applyTrocaPhotoAndReply(
   }
   if (nextSlot) {
     await sendTrocaFotoSlotPrompt(input, nextSlot);
-  } else {
-    await input.deps.sendText(reply);
   }
   return { handled: true, replyPreview: `troca_foto_${slotDef.id}` };
 }

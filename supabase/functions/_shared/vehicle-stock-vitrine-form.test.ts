@@ -16,9 +16,16 @@ import {
   vitrineButtonId,
   vitrineFormStepExpectsText,
 } from "./vehicle-stock-whatsapp.ts";
-import { runVehicleStockShowcaseTurn } from "./vehicle-stock-showcase-turn.ts";
+import {
+  applyTrocaPhotoAndReply,
+  applyTrocaPhotoReprompt,
+  runVehicleStockShowcaseTurn,
+} from "./vehicle-stock-showcase-turn.ts";
 import type { ShowcaseTurnDeps } from "./vehicle-stock-showcase-turn.ts";
-import type { VeiculoVitrineRow } from "./vehicle-stock-whatsapp.ts";
+import type {
+  PendingVitrineEstoque,
+  VeiculoVitrineRow,
+} from "./vehicle-stock-whatsapp.ts";
 
 Deno.test("visitas começam amanhã e pulam domingo", () => {
   const sundayUtc = Date.parse("2026-10-18T15:00:00.000Z");
@@ -350,4 +357,219 @@ Deno.test("visita turno duplicado não encaminha recado duas vezes", async () =>
     });
   }
   assertEquals(encaminhamentos, 1);
+});
+
+function trocaVehicle(): VeiculoVitrineRow {
+  return {
+    id: "v-troca",
+    marca: "BMW",
+    modelo: "X1",
+    versao: null,
+    ano_fabricacao: 2022,
+    ano_modelo: 2022,
+    km: 1000,
+    preco: 300000,
+    cor: null,
+    cambio: null,
+    combustivel: null,
+    portas: null,
+    blindado: false,
+    nivel_blindagem: null,
+    opcionais: null,
+    caracteristicas: null,
+    descricao: null,
+    fotos: null,
+    status: "disponivel",
+  };
+}
+
+function trocaDepsWithOutboundCounter(stored: {
+  pending: PendingVitrineEstoque | null;
+}) {
+  let textSends = 0;
+  let buttonSends = 0;
+  const noop = async () => ({ ok: true as const, messageId: "x" });
+  const vehicle = trocaVehicle();
+  const deps: ShowcaseTurnDeps = {
+    loadTenantFlags: async () => ({
+      segmento: "revenda de veículos",
+      vitrine_veiculos_demo: false,
+      nome_empresa: "Prime Motors",
+    }),
+    loadMarcas: async () => [],
+    loadPrecosDisponiveis: async () => [],
+    loadVeiculosByMarca: async () => [],
+    loadVeiculosByFaixa: async () => [],
+    loadVeiculoById: async (id) => (id === vehicle.id ? vehicle : null),
+    sendText: async () => {
+      textSends += 1;
+      return { ok: true };
+    },
+    sendMenu: noop,
+    sendButtons: async () => {
+      buttonSends += 1;
+      return { ok: true };
+    },
+    sendImage: noop,
+    sendImageHeaderButtons: noop,
+    sendCarousel: noop,
+    encaminharRecado: async () => ({ ok: true }),
+    savePending: async (p) => {
+      if (p) stored.pending = p;
+    },
+    getPending: () => stored.pending ?? undefined,
+    pause: async () => {},
+  };
+  return {
+    deps,
+    counts: () => ({ textSends, buttonSends }),
+    resetCounts: () => {
+      textSends = 0;
+      buttonSends = 0;
+    },
+  };
+}
+
+Deno.test("troca: cada passo de texto envia uma única mensagem ao cliente", async () => {
+  const now = new Date().toISOString();
+  const stored = {
+    pending: {
+      stage: "detalhe" as const,
+      offset: 0,
+      updated_at: now,
+      form: {
+        flow: "troca" as const,
+        step: "modelo_ano",
+        veiculo_id: "v-troca",
+        updated_at: now,
+      },
+    } satisfies PendingVitrineEstoque,
+  };
+  const { deps, counts, resetCounts } = trocaDepsWithOutboundCounter(stored);
+
+  await runVehicleStockShowcaseTurn({
+    userText: "Civic 2018",
+    fromNumber: "5521999999999",
+    allowEarlyFormCapture: true,
+    deps,
+  });
+  assertEquals(counts().textSends, 1);
+  assertEquals(counts().buttonSends, 0);
+
+  resetCounts();
+  await runVehicleStockShowcaseTurn({
+    userText: "85000",
+    fromNumber: "5521999999999",
+    allowEarlyFormCapture: true,
+    deps,
+  });
+  assertEquals(counts().textSends, 1);
+  assertEquals(counts().buttonSends, 0);
+
+  resetCounts();
+  await runVehicleStockShowcaseTurn({
+    userText: "ABC1D23",
+    fromNumber: "5521999999999",
+    allowEarlyFormCapture: true,
+    deps,
+  });
+  assertEquals(counts().textSends, 1);
+  assertEquals(counts().buttonSends, 0);
+});
+
+Deno.test("troca: após foto avança com uma única mensagem", async () => {
+  const now = new Date().toISOString();
+  const stored = {
+    pending: {
+      stage: "detalhe" as const,
+      offset: 0,
+      updated_at: now,
+      form: {
+        flow: "troca" as const,
+        step: "fotos",
+        veiculo_id: "v-troca",
+        foto_slot_index: 0,
+        fotos: [],
+        updated_at: now,
+      },
+    } satisfies PendingVitrineEstoque,
+  };
+  const { deps, counts } = trocaDepsWithOutboundCounter(stored);
+  const turnInput = {
+    userText: "",
+    fromNumber: "5521999999999",
+    deps,
+  };
+  await applyTrocaPhotoAndReply(turnInput, {
+    url: "https://example.com/frente.jpg",
+  });
+  assertEquals(counts().textSends, 1);
+  assertEquals(counts().buttonSends, 0);
+});
+
+Deno.test("troca: reprompt envia uma única mensagem", async () => {
+  const now = new Date().toISOString();
+  const stored = {
+    pending: {
+      stage: "detalhe" as const,
+      offset: 0,
+      updated_at: now,
+      form: {
+        flow: "troca" as const,
+        step: "fotos",
+        veiculo_id: "v-troca",
+        foto_slot_index: 0,
+        foto_slot_retries: 1,
+        fotos: [],
+        updated_at: now,
+      },
+    } satisfies PendingVitrineEstoque,
+  };
+  const { deps, counts } = trocaDepsWithOutboundCounter(stored);
+  await applyTrocaPhotoReprompt(
+    { userText: "", fromNumber: "5521999999999", deps },
+    stored.pending!.form!,
+    "Pode mandar de novo a frente?",
+  );
+  assertEquals(counts().textSends, 1);
+  assertEquals(counts().buttonSends, 0);
+});
+
+Deno.test("financiamento envia uma confirmação ao cliente", async () => {
+  let textSends = 0;
+  const vehicle = trocaVehicle();
+  vehicle.id = "v-fin";
+  const noop = async () => ({ ok: true as const, messageId: "x" });
+  const deps: ShowcaseTurnDeps = {
+    loadTenantFlags: async () => ({
+      segmento: "revenda de veículos",
+      vitrine_veiculos_demo: false,
+      nome_empresa: "Prime Motors",
+    }),
+    loadMarcas: async () => [],
+    loadPrecosDisponiveis: async () => [],
+    loadVeiculosByMarca: async () => [],
+    loadVeiculosByFaixa: async () => [],
+    loadVeiculoById: async (id) => (id === "v-fin" ? vehicle : null),
+    sendText: async () => {
+      textSends += 1;
+      return { ok: true };
+    },
+    sendMenu: noop,
+    sendButtons: noop,
+    sendImage: noop,
+    sendImageHeaderButtons: noop,
+    sendCarousel: noop,
+    encaminharRecado: async () => ({ ok: true }),
+    savePending: async () => {},
+    getPending: () => null,
+    pause: async () => {},
+  };
+  await runVehicleStockShowcaseTurn({
+    userText: "<<INTERACTIVE_ID:veiculo_vitrine:acao:financiamento:v-fin>>",
+    fromNumber: "5521999999999",
+    forceInteractive: true,
+    deps,
+  });
+  assertEquals(textSends, 1);
 });
