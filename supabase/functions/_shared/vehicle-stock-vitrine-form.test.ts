@@ -117,7 +117,7 @@ Deno.test("early capture: troca texto só nas etapas de formulário", () => {
   }));
 });
 
-Deno.test("financiamento inicia com LGPD (ficha conversacional)", async () => {
+Deno.test("financiamento inicia com escolha preencher ou consultor", async () => {
   let msgCliente = "";
   let pendingStore: PendingVitrineEstoque | null = null;
   const vehicle: VeiculoVitrineRow = {
@@ -182,9 +182,9 @@ Deno.test("financiamento inicia com LGPD (ficha conversacional)", async () => {
     deps,
   });
   assertEquals(result.handled, true);
-  assertEquals(result.replyPreview, "financiamento_lgpd");
-  assert(msgCliente.toLowerCase().includes("lgpd"));
-  assertEquals(pendingStore?.form?.flow, "financiamento");
+  assertEquals(result.replyPreview, "financiamento_modo");
+  assert(msgCliente.toLowerCase().includes("consultor"));
+  assertEquals(pendingStore?.form?.step, "modo");
 });
 
 Deno.test("lista detalhe usa título Financiamento", () => {

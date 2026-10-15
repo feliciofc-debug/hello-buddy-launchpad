@@ -51,6 +51,13 @@ export function maskCpfForDisplay(cpf: string): string {
   return `***.***.${d.slice(6, 9)}-**`;
 }
 
+/** Resumo ao cliente: ***.***.123-45 */
+export function maskCpfForClienteResumo(cpf: string): string {
+  const d = digitsOnly(cpf);
+  if (d.length !== 11) return "—";
+  return `***.***.${d.slice(6, 9)}-${d.slice(9, 11)}`;
+}
+
 export function maskCnpjForDisplay(cnpj: string): string {
   const d = digitsOnly(cnpj);
   if (d.length !== 14) return "***";

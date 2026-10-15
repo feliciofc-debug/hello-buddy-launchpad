@@ -241,6 +241,13 @@ function buildShowcaseDeps(ctx: ShowcaseBridgeContext): ShowcaseTurnDeps {
           cpf_cnpj: row.cpf_cnpj,
           data_nascimento: row.data_nascimento,
           email: row.email,
+          tempo_residencia: row.tempo_residencia,
+          perfil: row.perfil,
+          empresa: row.empresa,
+          tempo_trabalho: row.tempo_trabalho,
+          cnpj: row.cnpj,
+          tempo_empresa: row.tempo_empresa,
+          possui_cnh: row.possui_cnh,
           cep: row.cep,
           logradouro: row.logradouro,
           numero: row.numero,
@@ -249,9 +256,11 @@ function buildShowcaseDeps(ctx: ShowcaseBridgeContext): ShowcaseTurnDeps {
           cidade: row.cidade,
           uf: row.uf,
           renda_mensal: row.renda_mensal,
+          referencia_nome: row.referencia_nome,
           telefone_referencia: row.telefone_referencia,
           entrada: row.entrada,
           prazo_meses: row.prazo_meses,
+          campos_pendentes: row.campos_pendentes,
         })
         .select("id")
         .single();

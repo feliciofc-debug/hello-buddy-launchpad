@@ -71,17 +71,25 @@ import {
 import {
   advanceFinanciamentoAfterText,
   applyFinanciamentoCepLookup,
+  applyFinanciamentoCnh,
   applyFinanciamentoLgpdChoice,
+  applyFinanciamentoModo,
+  applyFinanciamentoPerfil,
   applyFinanciamentoPrazo,
-  applyFinanciamentoTipoPessoa,
+  beginFinanciamentoCorrecao,
   buildFinanciamentoFichaRow,
+  buildFinanciamentoResumoText,
   buildRecadoFinanciamentoFichaSemPii,
   confirmacaoFinanciamentoFicha,
   FINANCIAMENTO_LGPD_BODY,
+  FINANCIAMENTO_MODO_BODY,
   FINANCIAMENTO_PRAZO_OPTIONS,
+  FIN_CORRECTABLE_FIELDS,
   mergePendingForFinanciamentoStart,
   promptFinanciamentoStep,
+  skipFinanciamentoInteractiveStep,
   type FinanciamentoFichaRow,
+  type FinanciamentoPerfil,
 } from "./vehicle-stock-financiamento.ts";
 import { safeErrorMessage } from "./pii-log-sanitize.ts";
 
@@ -339,8 +347,11 @@ export async function runVehicleStockShowcaseTurn(
     !input.allowEarlyFormCapture &&
     !vitrineFinanciamentoStepExpectsText(pending.form.step)
   ) {
+    if (normalizeVitrineText(input.userText) === "pular") {
+      return await handleFinanciamentoInteractivePular(input, pending);
+    }
     await input.deps.sendText(
-      "Escolha uma opção acima ou digite *cancelar* para sair.",
+      "Escolha uma opção acima, digite *pular* se aplicável, ou *cancelar*.",
     );
     return { handled: true, replyPreview: "financiamento_aguardando_botao" };
   }
@@ -569,12 +580,32 @@ async function handleVitrineAction(input: ShowcaseTurnInput & {
     return await startFinanciamentoFlow(input, parts[1]);
   }
 
+  if (action === "fin_modo" && parts[0]) {
+    return await handleFinanciamentoModo(input, parts[0] as "preencher" | "consultor");
+  }
+
   if (action === "fin_lgpd" && parts[0]) {
     return await handleFinanciamentoLgpd(input, parts[0] === "sim");
   }
 
-  if (action === "fin_tipo" && (parts[0] === "pf" || parts[0] === "pj")) {
-    return await handleFinanciamentoTipo(input, parts[0]);
+  if (action === "fin_perfil" && parts[0]) {
+    return await handleFinanciamentoPerfil(input, parts[0] as FinanciamentoPerfil);
+  }
+
+  if (action === "fin_cnh" && parts[0]) {
+    return await handleFinanciamentoCnh(input, parts[0] === "sim");
+  }
+
+  if (action === "fin_confirm") {
+    return await finalizeFinanciamentoFicha(input);
+  }
+
+  if (action === "fin_corrigir") {
+    return await handleFinanciamentoCorrigirMenu(input);
+  }
+
+  if (action === "fin_edit" && parts[0]) {
+    return await handleFinanciamentoEditField(input, parts[0]);
   }
 
   if (action === "fin_prazo" && parts[0]) {
@@ -765,11 +796,22 @@ async function startFinanciamentoFlow(
   const now = new Date().toISOString();
   const next = mergePendingForFinanciamentoStart(pending, vehicle, now);
   await input.deps.savePending(next);
-  await input.deps.sendButtons(FINANCIAMENTO_LGPD_BODY, [
-    { id: vitrineButtonId("fin_lgpd", "sim"), title: "Sim, continuar" },
-    { id: vitrineButtonId("fin_lgpd", "nao"), title: "Não" },
+  await input.deps.sendButtons(FINANCIAMENTO_MODO_BODY, [
+    { id: vitrineButtonId("fin_modo", "preencher"), title: "📝 Preencher por aqui" },
+    { id: vitrineButtonId("fin_modo", "consultor"), title: "👤 Falar consultor" },
   ]);
-  return { handled: true, replyPreview: "financiamento_lgpd" };
+  return { handled: true, replyPreview: "financiamento_modo" };
+}
+
+async function sendFinanciamentoResumo(
+  input: ShowcaseTurnInput,
+  form: import("./vehicle-stock-whatsapp.ts").VitrineEstoqueForm,
+): Promise<void> {
+  const body = buildFinanciamentoResumoText(form);
+  await input.deps.sendButtons(body, [
+    { id: vitrineButtonId("fin_confirm", "ok"), title: "✅ Confirmar" },
+    { id: vitrineButtonId("fin_corrigir", "ok"), title: "✏️ Corrigir algo" },
+  ]);
 }
 
 async function sendFinanciamentoStepPrompt(
@@ -777,11 +819,50 @@ async function sendFinanciamentoStepPrompt(
   form: import("./vehicle-stock-whatsapp.ts").VitrineEstoqueForm,
 ): Promise<void> {
   const pending = input.deps.getPending();
-  if (form.step === "tipo_pessoa") {
-    await input.deps.sendButtons("Você financia como pessoa física ou jurídica?", [
-      { id: vitrineButtonId("fin_tipo", "pf"), title: "Pessoa física" },
-      { id: vitrineButtonId("fin_tipo", "pj"), title: "Pessoa jurídica" },
+  if (form.step === "lgpd") {
+    await input.deps.sendButtons(FINANCIAMENTO_LGPD_BODY, [
+      { id: vitrineButtonId("fin_lgpd", "sim"), title: "Sim, continuar" },
+      { id: vitrineButtonId("fin_lgpd", "nao"), title: "Não" },
     ]);
+    return;
+  }
+  if (form.step === "perfil") {
+    const rows = [
+      { id: vitrineButtonId("fin_perfil", "assalariado"), title: "Assalariado", description: "Carteira assinada" },
+      { id: vitrineButtonId("fin_perfil", "autonomo"), title: "Autônomo", description: "MEI / autônomo" },
+      { id: vitrineButtonId("fin_perfil", "empresario"), title: "Empresário", description: "Sócio / empresa" },
+      { id: vitrineButtonId("fin_perfil", "aposentado"), title: "Aposentado", description: "Aposentadoria/pensão" },
+    ];
+    await input.deps.sendMenu(
+      "Qual seu *perfil* profissional? (ou digite *pular*)",
+      [{ title: "Perfil", rows }],
+      "Escolher perfil",
+    );
+    return;
+  }
+  if (form.step === "cnh") {
+    await input.deps.sendButtons("Você possui *CNH*? (ou digite *pular*)", [
+      { id: vitrineButtonId("fin_cnh", "sim"), title: "Sim" },
+      { id: vitrineButtonId("fin_cnh", "nao"), title: "Não" },
+    ]);
+    return;
+  }
+  if (form.step === "resumo") {
+    await sendFinanciamentoResumo(input, form);
+    return;
+  }
+  if (form.step === "corrigir_menu") {
+    await input.deps.sendMenu(
+      "Qual campo deseja corrigir?",
+      [{
+        title: "Campos",
+        rows: FIN_CORRECTABLE_FIELDS.map((f) => ({
+          id: vitrineButtonId("fin_edit", f.key),
+          title: f.label,
+        })),
+      }],
+      "Corrigir",
+    );
     return;
   }
   if (form.step === "prazo") {
@@ -798,6 +879,38 @@ async function sendFinanciamentoStepPrompt(
     return;
   }
   await input.deps.sendText(promptFinanciamentoStep(form, pending));
+}
+
+async function handleFinanciamentoModo(
+  input: ShowcaseTurnInput,
+  modo: "preencher" | "consultor",
+): Promise<ShowcaseTurnOutput> {
+  const pending = input.deps.getPending();
+  const form = pending?.form;
+  if (!form || form.flow !== "financiamento" || form.step !== "modo") {
+    return { handled: true, replyPreview: "financiamento_modo_ignored" };
+  }
+  const now = new Date().toISOString();
+  const { form: next, consultor } = applyFinanciamentoModo(form, modo, now);
+  if (consultor) {
+    await input.deps.savePending({ ...pending!, form: null, updated_at: now });
+    return completeHandoffVehicle(input, form.veiculo_id, "consultor");
+  }
+  await input.deps.savePending({ ...pending!, form: next, updated_at: now });
+  await sendFinanciamentoStepPrompt(input, next);
+  return { handled: true, replyPreview: "financiamento_lgpd" };
+}
+
+async function handleFinanciamentoInteractivePular(
+  input: ShowcaseTurnInput,
+  pending: PendingVitrineEstoque,
+): Promise<ShowcaseTurnOutput> {
+  const form = pending.form!;
+  const now = new Date().toISOString();
+  const advanced = skipFinanciamentoInteractiveStep(form, form.step, now);
+  await input.deps.savePending({ ...pending, form: advanced.form, updated_at: now });
+  await sendFinanciamentoStepPrompt(input, advanced.form);
+  return { handled: true, replyPreview: `financiamento_pular_${form.step}` };
 }
 
 async function handleFinanciamentoLgpd(
@@ -829,23 +942,70 @@ async function handleFinanciamentoLgpd(
   }
   await input.deps.savePending({ ...pending!, form: next, updated_at: now });
   await sendFinanciamentoStepPrompt(input, next);
-  return { handled: true, replyPreview: "financiamento_tipo" };
+  return { handled: true, replyPreview: `financiamento_${next.step}` };
 }
 
-async function handleFinanciamentoTipo(
+async function handleFinanciamentoPerfil(
   input: ShowcaseTurnInput,
-  tipo: "pf" | "pj",
+  perfil: FinanciamentoPerfil,
 ): Promise<ShowcaseTurnOutput> {
   const pending = input.deps.getPending();
   const form = pending?.form;
-  if (!form || form.flow !== "financiamento" || form.step !== "tipo_pessoa") {
-    return { handled: true, replyPreview: "financiamento_tipo_ignored" };
+  if (!form || form.flow !== "financiamento" || form.step !== "perfil") {
+    return { handled: true, replyPreview: "financiamento_perfil_ignored" };
   }
   const now = new Date().toISOString();
-  const next = applyFinanciamentoTipoPessoa(form, tipo, pending, now);
+  const next = applyFinanciamentoPerfil(form, perfil, now);
   await input.deps.savePending({ ...pending!, form: next, updated_at: now });
   await sendFinanciamentoStepPrompt(input, next);
   return { handled: true, replyPreview: `financiamento_${next.step}` };
+}
+
+async function handleFinanciamentoCnh(
+  input: ShowcaseTurnInput,
+  possui: boolean,
+): Promise<ShowcaseTurnOutput> {
+  const pending = input.deps.getPending();
+  const form = pending?.form;
+  if (!form || form.flow !== "financiamento" || form.step !== "cnh") {
+    return { handled: true, replyPreview: "financiamento_cnh_ignored" };
+  }
+  const now = new Date().toISOString();
+  const next = applyFinanciamentoCnh(form, possui, now);
+  await input.deps.savePending({ ...pending!, form: next, updated_at: now });
+  await sendFinanciamentoStepPrompt(input, next);
+  return { handled: true, replyPreview: "financiamento_referencia_nome" };
+}
+
+async function handleFinanciamentoCorrigirMenu(
+  input: ShowcaseTurnInput,
+): Promise<ShowcaseTurnOutput> {
+  const pending = input.deps.getPending();
+  const form = pending?.form;
+  if (!form || form.flow !== "financiamento") {
+    return { handled: true };
+  }
+  const now = new Date().toISOString();
+  const next = { ...form, step: "corrigir_menu", updated_at: now };
+  await input.deps.savePending({ ...pending!, form: next, updated_at: now });
+  await sendFinanciamentoStepPrompt(input, next);
+  return { handled: true, replyPreview: "financiamento_corrigir_menu" };
+}
+
+async function handleFinanciamentoEditField(
+  input: ShowcaseTurnInput,
+  fieldKey: string,
+): Promise<ShowcaseTurnOutput> {
+  const pending = input.deps.getPending();
+  const form = pending?.form;
+  if (!form || form.flow !== "financiamento") {
+    return { handled: true };
+  }
+  const now = new Date().toISOString();
+  const next = beginFinanciamentoCorrecao(form, fieldKey, now);
+  await input.deps.savePending({ ...pending!, form: next, updated_at: now });
+  await sendFinanciamentoStepPrompt(input, next);
+  return { handled: true, replyPreview: `financiamento_edit_${fieldKey}` };
 }
 
 async function handleFinanciamentoPrazo(
@@ -858,16 +1018,14 @@ async function handleFinanciamentoPrazo(
     return { handled: true, replyPreview: "financiamento_prazo_ignored" };
   }
   const now = new Date().toISOString();
-  const { form: next, reply, done } = applyFinanciamentoPrazo(form, prazo, now);
+  const { form: next, reply } = applyFinanciamentoPrazo(form, prazo, now);
   if (reply) {
     await input.deps.sendText(reply);
     return { handled: true, replyPreview: "financiamento_prazo_invalido" };
   }
   await input.deps.savePending({ ...pending!, form: next, updated_at: now });
-  if (done) {
-    return finalizeFinanciamentoFicha(input);
-  }
-  return { handled: true, replyPreview: "financiamento_prazo" };
+  await sendFinanciamentoStepPrompt(input, next);
+  return { handled: true, replyPreview: "financiamento_resumo" };
 }
 
 async function handleFinanciamentoTextStep(
@@ -905,9 +1063,6 @@ async function handleFinanciamentoTextStep(
     form: advanced.form,
     updated_at: now,
   });
-  if (advanced.done) {
-    return finalizeFinanciamentoFicha(input);
-  }
   if (advanced.reply) {
     await input.deps.sendText(advanced.reply);
     return { handled: true, replyPreview: `financiamento_${advanced.form.step}` };
@@ -939,7 +1094,7 @@ async function finalizeFinanciamentoFicha(
   });
   if (!row) {
     await input.deps.sendText(
-      "Faltou alguma informação. Digite *cancelar* e comece de novo, por favor.",
+      "Não foi possível fechar a ficha. Toque em *Financiamento* e tente de novo.",
     );
     return { handled: true, replyPreview: "financiamento_incompleto" };
   }
@@ -962,6 +1117,7 @@ async function finalizeFinanciamentoFicha(
     fromNumber: input.fromNumber,
     vehicle,
     fichaId,
+    camposPendentes: row.campos_pendentes,
   });
   const idemKey = buildVitrineRecadoIdempotencyKey({
     acao: "financiamento",

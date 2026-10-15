@@ -1,5 +1,13 @@
 BEGIN;
 
+CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE TABLE IF NOT EXISTS public.financiamento_fichas (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -8,24 +16,39 @@ CREATE TABLE IF NOT EXISTS public.financiamento_fichas (
   whatsapp_contact_name text,
   cliente_nome_vitrine text,
   lgpd_aceite_em timestamptz NOT NULL,
-  tipo_pessoa text NOT NULL
+  tipo_pessoa text
     CONSTRAINT financiamento_fichas_tipo_pessoa_check
-    CHECK (tipo_pessoa IN ('pf', 'pj')),
-  nome_completo text NOT NULL,
-  cpf_cnpj text NOT NULL,
+    CHECK (tipo_pessoa IS NULL OR tipo_pessoa IN ('pf', 'pj')),
+  nome_completo text,
+  cpf_cnpj text,
   data_nascimento date,
-  email text NOT NULL,
-  cep text NOT NULL,
-  logradouro text NOT NULL,
-  numero text NOT NULL,
+  email text,
+  tempo_residencia text,
+  perfil text
+    CONSTRAINT financiamento_fichas_perfil_check
+    CHECK (
+      perfil IS NULL OR perfil IN (
+        'assalariado', 'autonomo', 'empresario', 'aposentado'
+      )
+    ),
+  empresa text,
+  tempo_trabalho text,
+  cnpj text,
+  tempo_empresa text,
+  possui_cnh boolean,
+  cep text,
+  logradouro text,
+  numero text,
   complemento text,
-  bairro text NOT NULL,
-  cidade text NOT NULL,
-  uf text NOT NULL,
-  renda_mensal numeric(14, 2) NOT NULL,
-  telefone_referencia text NOT NULL,
+  bairro text,
+  cidade text,
+  uf text,
+  renda_mensal numeric(14, 2),
+  referencia_nome text,
+  telefone_referencia text,
   entrada numeric(14, 2),
-  prazo_meses integer NOT NULL,
+  prazo_meses integer,
+  campos_pendentes text[] NOT NULL DEFAULT '{}',
   status text NOT NULL DEFAULT 'pendente'
     CONSTRAINT financiamento_fichas_status_check
     CHECK (status IN ('pendente', 'em_analise', 'concluida', 'cancelada')),

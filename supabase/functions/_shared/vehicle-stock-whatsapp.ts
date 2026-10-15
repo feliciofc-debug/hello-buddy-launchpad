@@ -75,10 +75,19 @@ export type VitrineEstoqueForm = {
   troca_observacoes_internas?: string[];
   lgpd_aceite_em?: string;
   tipo_pessoa?: "pf" | "pj";
+  campos_pendentes?: string[];
+  fin_corrigindo?: boolean;
   nome_completo?: string;
   cpf_cnpj?: string;
   data_nascimento?: string;
   email?: string;
+  tempo_residencia?: string;
+  perfil?: "assalariado" | "autonomo" | "empresario" | "aposentado";
+  empresa?: string;
+  tempo_trabalho?: string;
+  cnpj?: string;
+  tempo_empresa?: string;
+  possui_cnh?: boolean;
   cep?: string;
   logradouro?: string;
   numero?: string;
@@ -87,6 +96,7 @@ export type VitrineEstoqueForm = {
   cidade?: string;
   uf?: string;
   renda_mensal?: string;
+  referencia_nome?: string;
   telefone_referencia?: string;
   entrada?: string;
   prazo_meses?: string;
@@ -703,10 +713,16 @@ export function vitrineFinanciamentoStepExpectsText(step: string): boolean {
     "cpf_cnpj",
     "data_nascimento",
     "email",
+    "tempo_residencia",
+    "empresa",
+    "tempo_trabalho",
+    "cnpj",
+    "tempo_empresa",
     "cep",
     "numero",
     "complemento",
     "renda",
+    "referencia_nome",
     "telefone_referencia",
     "entrada",
   ].includes(step);
