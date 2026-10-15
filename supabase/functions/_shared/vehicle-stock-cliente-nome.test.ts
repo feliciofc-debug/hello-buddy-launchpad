@@ -22,7 +22,7 @@ Deno.test("formatRecadoClienteLine usa perfil e telefone", () => {
   });
   assertStringIncludes(line, "Cliente: Maria");
   assertStringIncludes(line, "perfil: Mari Whats");
-  assertStringIncludes(line, "5521999999999");
+  assertStringIncludes(line, "55 21 99999-9999");
 });
 
 Deno.test("interesse: pergunta nome uma vez e conclui com recado", async () => {

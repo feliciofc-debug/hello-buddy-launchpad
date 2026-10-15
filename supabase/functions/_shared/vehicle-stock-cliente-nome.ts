@@ -3,6 +3,7 @@ import type {
   VitrineEstoqueForm,
   VitrineVisitaTurno,
 } from "./vehicle-stock-whatsapp.ts";
+import { formatRecadoWhatsAppPhone } from "./vehicle-stock-vitrine-recado.ts";
 
 export const VITRINE_CLIENTE_NOME_PROMPT =
   "Perfeito! Para eu passar ao nosso consultor, como posso te chamar? 😊";
@@ -47,7 +48,7 @@ export function formatRecadoClienteLine(input: {
   fromNumber: string;
 }): string {
   const perfil = String(input.contactName || "").trim() || "—";
-  return `Cliente: ${input.clienteNome} (perfil: ${perfil}) · ${input.fromNumber}`;
+  return `Cliente: ${input.clienteNome} (perfil: ${perfil}) · ${formatRecadoWhatsAppPhone(input.fromNumber)}`;
 }
 
 export function sanitizeClienteNomeResposta(text: string): string {

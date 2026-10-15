@@ -20,8 +20,12 @@ import type {
   VeiculoVitrineRow,
   VitrineEstoqueForm,
 } from "./vehicle-stock-whatsapp.ts";
-import { formatRecadoClienteLine } from "./vehicle-stock-cliente-nome.ts";
-import { vehicleTitle as vehicleTitleFn } from "./vehicle-stock-whatsapp.ts";
+import { vehicleTitle as vehicleTitleFn, formatPrecoBrl } from "./vehicle-stock-whatsapp.ts";
+import {
+  buildFinanciamentoFichaPanelUrl,
+  buildVitrineRecadoAcao,
+  buildVitrineRecadoHeader,
+} from "./vehicle-stock-vitrine-recado.ts";
 
 export type FinanciamentoPerfil =
   | "assalariado"
@@ -945,24 +949,20 @@ export function buildRecadoFinanciamentoFichaSemPii(input: {
   vehicle: VeiculoVitrineRow;
   fichaId: string;
   camposPendentes?: string[];
+  appBaseUrl?: string | null;
 }): string {
   const titulo = vehicleTitleFn(input.vehicle);
-  const clienteLine = formatRecadoClienteLine({
-    clienteNome: input.clienteNome,
-    contactName: input.contactName,
-    fromNumber: input.fromNumber,
-  });
+  const preco = formatPrecoBrl(input.vehicle.preco);
+  const fichaUrl = buildFinanciamentoFichaPanelUrl(input.fichaId, input.appBaseUrl);
   const pend = input.camposPendentes?.length
-    ? `Pendências para consultor: ${input.camposPendentes.join(", ")}.`
+    ? `📋 Pendências para consultor: ${input.camposPendentes.join(", ")}.`
     : null;
   return [
-    clienteLine,
-    `Enviou ficha de financiamento do ${titulo}.`,
-    `Veículo (estoque): ${input.vehicle.id}`,
-    `Ficha (painel): ${input.fichaId}`,
+    buildVitrineRecadoHeader("financiamento_ficha", input),
+    `🚗 ${titulo} · ${preco}`,
+    `📄 Ver ficha completa: ${fichaUrl}`,
     pend,
-    "Dados sensíveis só no painel /veiculos/financiamento — não replicar por WhatsApp.",
-    "Ação: analisar simulação e retornar contato.",
+    buildVitrineRecadoAcao("financiamento_ficha"),
   ].filter(Boolean).join("\n");
 }
 

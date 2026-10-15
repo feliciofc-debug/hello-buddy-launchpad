@@ -1,9 +1,12 @@
 import { isAutomotiveTenant } from "./vertical-router.ts";
 import type { VitrineRecadoResume } from "./vehicle-stock-cliente-nome.ts";
 import {
-  formatRecadoClienteLine,
   vitrineNomeParaRecado,
 } from "./vehicle-stock-cliente-nome.ts";
+import {
+  buildVitrineRecadoAcao,
+  buildVitrineRecadoHeader,
+} from "./vehicle-stock-vitrine-recado.ts";
 
 export const VITRINE_ID_PREFIX = "veiculo_vitrine:";
 
@@ -615,16 +618,10 @@ export function buildRecadoInteresse(input: {
 }): string {
   const titulo = vehicleTitle(input.vehicle);
   const preco = formatPrecoBrl(input.vehicle.preco);
-  const clienteLine = formatRecadoClienteLine({
-    clienteNome: input.clienteNome,
-    contactName: input.contactName,
-    fromNumber: input.fromNumber,
-  });
   return [
-    clienteLine,
-    `Tem interesse no ${titulo} – ${preco}.`,
-    `Veículo (estoque): ${input.vehicle.id}`,
-    "Ação: retornar o contato do cliente.",
+    buildVitrineRecadoHeader("interesse", input),
+    `🚗 ${titulo} · ${preco}`,
+    buildVitrineRecadoAcao("interesse"),
   ].join("\n");
 }
 
@@ -635,20 +632,16 @@ export function buildRecadoConsultor(input: {
   vehicle?: VeiculoVitrineRow | null;
   marca?: string | null;
 }): string {
-  const ctx = input.vehicle
-    ? `${vehicleTitle(input.vehicle)} – ${formatPrecoBrl(input.vehicle.preco)}`
-    : (input.marca ? `marca ${input.marca}` : "vitrine de veículos");
-  const clienteLine = formatRecadoClienteLine({
-    clienteNome: input.clienteNome,
-    contactName: input.contactName,
-    fromNumber: input.fromNumber,
-  });
+  const vehicleLine = input.vehicle
+    ? `🚗 ${vehicleTitle(input.vehicle)} · ${formatPrecoBrl(input.vehicle.preco)}`
+    : input.marca
+    ? `🚗 Marca ${input.marca} · vitrine de veículos`
+    : "🚗 Vitrine de veículos";
   return [
-    clienteLine,
-    `Pediu falar com consultor sobre ${ctx}.`,
-    input.vehicle ? `Veículo (estoque): ${input.vehicle.id}` : null,
-    "Ação: retornar o contato do cliente.",
-  ].filter(Boolean).join("\n");
+    buildVitrineRecadoHeader("consultor", input),
+    vehicleLine,
+    buildVitrineRecadoAcao("consultor"),
+  ].join("\n");
 }
 
 export function confirmacaoComNomeLoja(nomeEmpresa?: string | null): string {
@@ -870,18 +863,12 @@ export function buildRecadoVisita(input: {
   turno: VitrineVisitaTurno;
 }): string {
   const titulo = vehicleTitle(input.vehicle);
-  const clienteLine = formatRecadoClienteLine({
-    clienteNome: input.clienteNome,
-    contactName: input.contactName,
-    fromNumber: input.fromNumber,
-  });
+  const preco = formatPrecoBrl(input.vehicle.preco);
   return [
-    clienteLine,
-    "Quer agendar visita/test drive.",
-    `Veículo: ${titulo} (id ${input.vehicle.id})`,
-    `Dia: ${formatVisitaDiaLabel(input.diaIso)} (${input.diaIso})`,
-    `Turno: ${visitaTurnoLabel(input.turno)}`,
-    "Ação: confirmar horário com o cliente.",
+    buildVitrineRecadoHeader("visita", input),
+    `🚗 ${titulo} · ${preco}`,
+    `📆 ${formatVisitaDiaLabel(input.diaIso)}, turno da ${visitaTurnoLabel(input.turno)}`,
+    buildVitrineRecadoAcao("visita"),
   ].join("\n");
 }
 
@@ -892,16 +879,11 @@ export function buildRecadoFinanciamento(input: {
   vehicle: VeiculoVitrineRow;
 }): string {
   const titulo = vehicleTitle(input.vehicle);
-  const clienteLine = formatRecadoClienteLine({
-    clienteNome: input.clienteNome,
-    contactName: input.contactName,
-    fromNumber: input.fromNumber,
-  });
+  const preco = formatPrecoBrl(input.vehicle.preco);
   return [
-    clienteLine,
-    `Quer simular financiamento do ${titulo}.`,
-    `Veículo (estoque): ${input.vehicle.id}`,
-    "Ação: retornar contato com simulação.",
+    buildVitrineRecadoHeader("financiamento", input),
+    `🚗 ${titulo} · ${preco}`,
+    buildVitrineRecadoAcao("financiamento"),
   ].join("\n");
 }
 
@@ -912,24 +894,23 @@ export function buildRecadoFormCancelado(input: {
   vehicle?: VeiculoVitrineRow | null;
   form: VitrineEstoqueForm;
 }): string {
-  const titulo = input.vehicle ? vehicleTitle(input.vehicle) : input.form.veiculo_id;
-  const clienteLine = formatRecadoClienteLine({
-    clienteNome: input.clienteNome,
-    contactName: input.contactName,
-    fromNumber: input.fromNumber,
-  });
-  const extras: string[] = [];
-  if (input.form.dia_iso) {
-    extras.push(`Dia escolhido: ${formatVisitaDiaLabel(input.form.dia_iso)}`);
+  const lines: string[] = [
+    buildVitrineRecadoHeader("fluxo_cancelado", input),
+    `ℹ️ Fluxo: ${input.form.flow} · etapa ${input.form.step}`,
+  ];
+  if (input.vehicle) {
+    lines.push(
+      `🚗 ${vehicleTitle(input.vehicle)} · ${formatPrecoBrl(input.vehicle.preco)}`,
+    );
   }
-  if (input.form.turno) extras.push(`Turno: ${visitaTurnoLabel(input.form.turno)}`);
-  return [
-    clienteLine,
-    `Cancelou/saiu de um fluxo da vitrine (${input.form.flow}, etapa ${input.form.step}).`,
-    `Veículo: ${titulo}`,
-    ...extras,
-    "Ação: retomar contato se fizer sentido.",
-  ].join("\n");
+  if (input.form.dia_iso) {
+    lines.push(`📆 Dia escolhido: ${formatVisitaDiaLabel(input.form.dia_iso)}`);
+  }
+  if (input.form.turno) {
+    lines.push(`📆 Turno: ${visitaTurnoLabel(input.form.turno)}`);
+  }
+  lines.push(buildVitrineRecadoAcao("fluxo_cancelado"));
+  return lines.join("\n");
 }
 
 export function confirmacaoVisitaAgendada(

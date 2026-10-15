@@ -301,7 +301,8 @@ Deno.test("recado de interesse inclui carro e preço", () => {
   assert(recado.length >= 15);
   assertStringIncludes(recado.toLowerCase(), "interesse");
   assertStringIncludes(recado, "Golf");
-  assertStringIncludes(recado, "5521999999999");
+  assertStringIncludes(recado, "55 21 99999-9999");
+  assertFalse(recado.includes("Veículo (estoque):"));
 });
 
 Deno.test("pending ativo não abre vitrine sem botão nem texto explícito", () => {

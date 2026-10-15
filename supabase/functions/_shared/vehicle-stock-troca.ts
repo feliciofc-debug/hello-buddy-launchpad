@@ -4,7 +4,11 @@ import type {
   VeiculoVitrineRow,
   VitrineEstoqueForm,
 } from "./vehicle-stock-whatsapp.ts";
-import { formatRecadoClienteLine } from "./vehicle-stock-cliente-nome.ts";
+import {
+  buildVitrineRecadoAcao,
+  buildVitrineRecadoHeader,
+} from "./vehicle-stock-vitrine-recado.ts";
+import { formatPrecoBrl } from "./vehicle-stock-whatsapp.ts";
 import { vehicleTitle } from "./vehicle-stock-whatsapp.ts";
 
 export const VITRINE_TROCA_KBB_URL = "https://www.kbb.com.br/";
@@ -383,11 +387,7 @@ export function buildRecadoTrocaAvaliacao(input: {
   form: VitrineEstoqueForm;
 }): string {
   const tituloEstoque = vehicleTitle(input.vehicleEstoque);
-  const clienteLine = formatRecadoClienteLine({
-    clienteNome: input.clienteNome,
-    contactName: input.contactName,
-    fromNumber: input.fromNumber,
-  });
+  const precoEstoque = formatPrecoBrl(input.vehicleEstoque.preco);
   const fotos = input.form.fotos ?? [];
   const linhasFotos = fotos.map((f, i) => {
     const slot = VITRINE_TROCA_FOTO_SLOTS.find((s) => s.id === f.slot);
@@ -406,18 +406,17 @@ export function buildRecadoTrocaAvaliacao(input: {
   const obs = (input.form.observacoes || "").trim() || "—";
   const internas = (input.form.troca_observacoes_internas ?? []).filter(Boolean);
   return [
-    clienteLine,
-    "Pediu avaliação na troca.",
-    `Veículo de interesse (estoque): ${tituloEstoque} (id ${input.vehicleEstoque.id})`,
-    `Carro na troca: ${input.form.modelo_ano ?? "—"} | km ${input.form.km ?? "—"} | placa ${input.form.placa ?? "—"}`,
-    "Fotos (ordem):",
+    buildVitrineRecadoHeader("troca", input),
+    `🚗 Interesse: ${tituloEstoque} · ${precoEstoque}`,
+    `🔁 Carro na troca: ${input.form.modelo_ano ?? "—"} · km ${input.form.km ?? "—"} · placa ${input.form.placa ?? "—"}`,
+    "📷 Fotos (ordem):",
     ...(linhasFotos.length ? linhasFotos : ["—"]),
-    `Observações do cliente: ${obs}`,
+    `💬 Observações do cliente: ${obs}`,
     ...(internas.length
-      ? ["Observações internas (visão):", ...internas.map((n) => `• ${n}`)]
+      ? ["🔍 Observações internas (visão):", ...internas.map((n) => `• ${n}`)]
       : []),
-    `Referência manual (sem consulta automática): ${VITRINE_TROCA_KBB_URL}`,
-    "Ação: avaliar e retornar contato ao cliente.",
+    `🔗 Referência manual: ${VITRINE_TROCA_KBB_URL}`,
+    buildVitrineRecadoAcao("troca"),
   ].join("\n");
 }
 
