@@ -1,16 +1,19 @@
 import {
   applyTrocaPhotoAndReply,
+  applyTrocaPhotoReprompt,
   runVehicleStockShowcaseTurn,
   ShowcaseSendResult,
   ShowcaseTurnDeps,
   VEHICLE_SELECT,
 } from "./vehicle-stock-showcase-turn.ts";
 import {
+  appendTrocaInternalNotes,
   buildTrocaStoragePath,
   currentTrocaFotoSlot,
+  evaluateTrocaPhotoVision,
   shouldCaptureVitrineTrocaPhoto,
 } from "./vehicle-stock-troca.ts";
-import { createLovableTrocaVisionClient } from "./vehicle-stock-troca-vision.ts";
+import { analyzeTrocaPhotoVision } from "./vehicle-stock-troca-vision.ts";
 import {
   FaixaPrecoId,
   isTransientVitrineSendFailure,
@@ -111,24 +114,24 @@ function faixaQuery(sb: any, userId: string, faixa: FaixaPrecoId) {
   } else {
     q = q.gt("preco", 600_000);
   }
-  return q.order("preco", { ascending: true })
-    .order("destaque", { ascending: false })
-    .order("updated_at", { ascending: false });
+  return q.order("destaque", { ascending: false })
+    .order("updated_at", { ascending: false })
+    .order("preco", { ascending: true });
 }
 
-export function buildShowcaseDeps(ctx: ShowcaseBridgeContext): ShowcaseTurnDeps {
+function buildShowcaseDeps(ctx: ShowcaseBridgeContext): ShowcaseTurnDeps {
   let stateRef = ctx.agentState;
   return {
-    loadTenantFlags: async (): Promise<VehicleShowcaseTenantFlags> => {
+    loadTenantFlags: async () => {
       const { data } = await ctx.sb.from("empresa_config")
-        .select("segmento,vitrine_veiculos_demo,nome_empresa")
+        .select("segmento, vitrine_veiculos_demo, nome_empresa")
         .eq("user_id", ctx.userId)
         .maybeSingle();
       return {
-        segmento: String(data?.segmento || "").trim() || null,
+        segmento: data?.segmento ?? null,
         vitrine_veiculos_demo: data?.vitrine_veiculos_demo === true,
-        nome_empresa: String(data?.nome_empresa || "").trim() || null,
-      };
+        nome_empresa: data?.nome_empresa ?? null,
+      } satisfies VehicleShowcaseTenantFlags;
     },
     loadMarcas: async () => {
       const { data } = await ctx.sb.from("veiculos_estoque")
@@ -223,6 +226,12 @@ export function buildShowcaseDeps(ctx: ShowcaseBridgeContext): ShowcaseTurnDeps 
   };
 }
 
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
 export async function processVitrineTrocaInboundPhoto(input: {
   ctx: ShowcaseBridgeContext;
   userText: string;
@@ -266,19 +275,62 @@ export async function processVitrineTrocaInboundPhoto(input: {
   const url = pub?.publicUrl;
   if (!url) return { handled: false };
 
-  let visionView: string | undefined;
-  if (input.visionApiKey) {
-    const vision = createLovableTrocaVisionClient({ apiKey: input.visionApiKey });
-    visionView = (await vision(url)).view;
-  }
-
   const deps = buildShowcaseDeps(input.ctx);
-  const result = await applyTrocaPhotoAndReply({
+  const turnInput = {
     userText: input.userText,
     fromNumber: input.ctx.to,
     contactName: input.ctx.contactName,
     deps,
-  }, { url, visionView });
+  };
+
+  const now = new Date().toISOString();
+  let analysis = {
+    ok: false,
+    view: null,
+    nitida: null,
+    km_lido: null,
+    luzes_alerta: null,
+    avarias: null,
+    unavailable: true,
+  } as import("./vehicle-stock-troca-vision.ts").TrocaVisionAnalysis;
+
+  if (input.visionApiKey) {
+    analysis = await analyzeTrocaPhotoVision({
+      apiKey: input.visionApiKey,
+      mime: contentType,
+      base64: bytesToBase64(input.bytes),
+      slotLabel: slot.label,
+    });
+  }
+
+  const decision = evaluateTrocaPhotoVision({
+    form: pending.form,
+    slotId: slot.id,
+    analysis,
+    now,
+  });
+
+  if (decision.action === "reprompt") {
+    const result = await applyTrocaPhotoReprompt(
+      turnInput,
+      decision.form,
+      decision.clientMessage,
+    );
+    return { handled: result.handled, preview: result.replyPreview };
+  }
+
+  const formReady = appendTrocaInternalNotes(
+    decision.form,
+    decision.internalNotes,
+    now,
+  );
+  await deps.savePending({ ...pending, form: formReady, updated_at: now });
+
+  const result = await applyTrocaPhotoAndReply(turnInput, {
+    url,
+    vision: decision.visionMeta,
+    internalNotes: [],
+  });
 
   return { handled: result.handled, preview: result.replyPreview };
 }

@@ -45,12 +45,16 @@ import {
 import {
   advanceTrocaAfterPhoto,
   advanceTrocaAfterText,
+  advanceTrocaSkipOptionalSlot,
+  appendTrocaInternalNotes,
   buildRecadoTrocaAvaliacao,
   confirmacaoTrocaCliente,
+  currentTrocaFotoSlot,
   mergePendingForTrocaStart,
   promptTrocaModeloAno,
   promptTrocaObservacoes,
   skipTrocaObservacoes,
+  type TrocaFotoVisionMeta,
   VITRINE_TROCA_FOTO_SLOTS,
 } from "./vehicle-stock-troca.ts";
 import type { CarouselCardInput } from "./whatsapp-interactive-carousel.ts";
@@ -362,6 +366,10 @@ async function handleVitrineAction(input: ShowcaseTurnInput & {
     return await startTrocaFlow(input, parts[1]);
   }
 
+  if (action === "troca_foto" && parts[0] === "pular" && parts[1]) {
+    return await skipTrocaOptionalFoto(input, parts[1]);
+  }
+
   if (action === "troca_obs" && parts[0] === "pular") {
     const pendingCtx = input.deps.getPending();
     if (
@@ -612,6 +620,12 @@ async function handleTrocaTextStep(
     ]);
     return { handled: true, replyPreview: "troca_observacoes" };
   }
+  if (form.step === "fotos") {
+    const slot = currentTrocaFotoSlot(form);
+    if (slot) await sendTrocaFotoSlotPrompt(input, slot);
+    return { handled: true, replyPreview: `troca_${form.step}` };
+  }
+  if (reply) await input.deps.sendText(reply);
   return { handled: true, replyPreview: `troca_${form.step}` };
 }
 
@@ -664,37 +678,102 @@ async function finalizeTrocaFlow(
   };
 }
 
+async function sendTrocaFotoSlotPrompt(
+  input: ShowcaseTurnInput,
+  slot: (typeof VITRINE_TROCA_FOTO_SLOTS)[number],
+): Promise<void> {
+  if (slot.optional) {
+    await input.deps.sendButtons(slot.prompt, [
+      { id: vitrineButtonId("troca_foto", `pular:${slot.id}`), title: "Pular" },
+    ]);
+  } else {
+    await input.deps.sendText(slot.prompt);
+  }
+}
+
+async function skipTrocaOptionalFoto(
+  input: ShowcaseTurnInput,
+  slotId: string,
+): Promise<ShowcaseTurnOutput> {
+  const pending = input.deps.getPending();
+  const form = pending?.form;
+  if (!form || form.flow !== "troca" || form.step !== "fotos") {
+    return { handled: true, replyPreview: "troca_skip_ignored" };
+  }
+  const now = new Date().toISOString();
+  const advanced = advanceTrocaSkipOptionalSlot(
+    form,
+    slotId as import("./vehicle-stock-troca.ts").TrocaFotoSlotId,
+    now,
+  );
+  if (!advanced) {
+    await input.deps.sendText("Este passo não pode ser pulado. Envie a foto, por favor.");
+    return { handled: true, replyPreview: "troca_skip_rejected" };
+  }
+  await input.deps.savePending({
+    ...pending!,
+    form: advanced.form,
+    updated_at: now,
+  });
+  if (advanced.form.step === "observacoes") {
+    await input.deps.sendButtons(promptTrocaObservacoes(), [
+      { id: vitrineButtonId("troca_obs", "pular"), title: "Pular" },
+    ]);
+    return { handled: true, replyPreview: "troca_observacoes" };
+  }
+  if (advanced.nextSlot) {
+    await sendTrocaFotoSlotPrompt(input, advanced.nextSlot);
+  }
+  return { handled: true, replyPreview: `troca_skip_${slotId}` };
+}
+
+export async function applyTrocaPhotoReprompt(
+  input: ShowcaseTurnInput,
+  form: import("./vehicle-stock-whatsapp.ts").VitrineEstoqueForm,
+  clientMessage: string,
+): Promise<ShowcaseTurnOutput> {
+  const pending = input.deps.getPending();
+  if (!pending) return { handled: false };
+  const now = new Date().toISOString();
+  await input.deps.savePending({ ...pending, form, updated_at: now });
+  await input.deps.sendText(clientMessage);
+  return { handled: true, replyPreview: "troca_foto_reprompt" };
+}
+
 export async function applyTrocaPhotoAndReply(
   input: ShowcaseTurnInput,
-  photo: { url: string; visionView?: string },
+  photo: { url: string; vision?: TrocaFotoVisionMeta; internalNotes?: string[] },
 ): Promise<ShowcaseTurnOutput> {
   const pending = input.deps.getPending();
   const form = pending?.form;
   if (!form || form.flow !== "troca" || form.step !== "fotos") {
     return { handled: false };
   }
-  const slotDef = VITRINE_TROCA_FOTO_SLOTS[form.foto_slot_index ?? 0];
+  const slotDef = currentTrocaFotoSlot(form);
   if (!slotDef) {
     return { handled: false };
   }
   const now = new Date().toISOString();
-  const { form: nextForm, reply } = advanceTrocaAfterPhoto({
-    form,
+  let nextForm = appendTrocaInternalNotes(form, photo.internalNotes ?? [], now);
+  const { form: afterPhoto, reply, nextSlot } = advanceTrocaAfterPhoto({
+    form: nextForm,
     slot: slotDef.id,
     url: photo.url,
-    visionView: photo.visionView as
-      | import("./vehicle-stock-troca-vision.ts").TrocaVisionView
-      | undefined,
+    vision: photo.vision,
     now,
   });
-  await input.deps.savePending({ ...pending!, form: nextForm, updated_at: now });
-  if (nextForm.step === "observacoes") {
+  await input.deps.savePending({ ...pending!, form: afterPhoto, updated_at: now });
+  if (afterPhoto.step === "observacoes") {
     await input.deps.sendButtons(promptTrocaObservacoes(), [
       { id: vitrineButtonId("troca_obs", "pular"), title: "Pular" },
     ]);
     return { handled: true, replyPreview: "troca_observacoes" };
   }
-  await input.deps.sendText(reply);
+  if (nextSlot) {
+    await sendTrocaFotoSlotPrompt(input, nextSlot);
+  } else {
+    await input.deps.sendText(reply);
+  }
   return { handled: true, replyPreview: `troca_foto_${slotDef.id}` };
 }
 

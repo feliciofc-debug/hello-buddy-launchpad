@@ -47,12 +47,22 @@ export type VitrineEstoqueForm = {
   placa?: string;
   troca_sessao_id?: string;
   foto_slot_index?: number;
+  foto_slot_retries?: number;
   fotos?: Array<{
     slot: string;
     url: string;
-    vision_view?: string;
+    vision?: {
+      view?: string | null;
+      nitida?: boolean | null;
+      km_lido?: number | null;
+      luzes_alerta?: boolean | null;
+      avarias?: string | null;
+      visao_indisponivel?: boolean;
+      nota_avaliador?: string | null;
+    };
   }>;
   observacoes?: string;
+  troca_observacoes_internas?: string[];
 };
 
 export const VITRINE_FORM_TTL_MS = 15 * 60 * 1000;
