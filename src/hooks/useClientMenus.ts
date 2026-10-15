@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import {
   CLIENT_MENU_ROUTES,
   menusForBusinessSegment,
+  shouldShowFinanciamentosMenu,
 } from '@/lib/client-menu-routes';
 import { VEHICLE_DEALER_TENANT_TYPE } from '@/lib/business-tenant';
 
@@ -15,6 +16,9 @@ interface MenuConfig {
 export function useClientMenus(userTipo: string | null | undefined, userNomeFantasia?: string | null) {
   const [menuConfig, setMenuConfig] = useState<MenuConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [vitrineVeiculosDemo, setVitrineVeiculosDemo] = useState(false);
+  const [businessSegment, setBusinessSegment] = useState<string | null>(null);
+  const [businessText, setBusinessText] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchMenuConfig = async () => {
@@ -46,7 +50,7 @@ export function useClientMenus(userTipo: string | null | undefined, userNomeFant
         if (userId) {
           const { data: companyConfig, error: companyError } = await supabase
             .from('empresa_config')
-            .select('segmento, sobre_negocio')
+            .select('segmento, sobre_negocio, vitrine_veiculos_demo')
             .eq('user_id', userId)
             .maybeSingle();
           if (companyError) {
@@ -54,6 +58,9 @@ export function useClientMenus(userTipo: string | null | undefined, userNomeFant
           } else {
             segment = companyConfig?.segmento ?? null;
             businessText = companyConfig?.sobre_negocio ?? null;
+            setVitrineVeiculosDemo(companyConfig?.vitrine_veiculos_demo === true);
+            setBusinessSegment(segment);
+            setBusinessText(businessText);
           }
         }
 
@@ -106,11 +113,19 @@ export function useClientMenus(userTipo: string | null | undefined, userNomeFant
   // Priorizar nome_fantasia do perfil do usuário sobre a config genérica
   const empresaNome = userNomeFantasia || menuConfig?.empresa_nome || 'AMZ Ofertas';
 
+  const showFinanciamentosMenu = shouldShowFinanciamentosMenu(
+    userTipo,
+    businessSegment,
+    businessText,
+    vitrineVeiculosDemo,
+  );
+
   return {
     menuConfig,
     isLoading,
     isMenuAllowed,
     isRouteAllowed,
-    empresaNome
+    empresaNome,
+    showFinanciamentosMenu,
   };
 }

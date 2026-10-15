@@ -51,6 +51,17 @@ export function usesVehicleInventoryMenu(
     isPremiumVehicleRetailBusiness(businessText || "");
 }
 
+/** Menu Financiamentos: revenda (mesma regra do estoque) ou conta demo vitrine. */
+export function shouldShowFinanciamentosMenu(
+  clientType: string | null | undefined,
+  segment: string | null | undefined,
+  businessText: string | null | undefined,
+  vitrineVeiculosDemo: boolean,
+): boolean {
+  if (vitrineVeiculosDemo) return true;
+  return usesVehicleInventoryMenu(clientType, segment, businessText);
+}
+
 export function menusForBusinessSegment(
   menus: string[],
   clientType: string | null | undefined,

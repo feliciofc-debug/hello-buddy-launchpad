@@ -1,16 +1,29 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Loader2, Printer } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { maskCnpjForDisplay, maskCpfForDisplay } from "@/lib/brazil-doc-mask";
+import {
+  FINANCIAMENTO_FICHA_STATUS_OPTIONS,
+  notifyFinanciamentoFichasChanged,
+  type FinanciamentoFichaStatus,
+} from "@/lib/financiamento-fichas-menu";
+import { useFinanciamentoPendingCount } from "@/hooks/useFinanciamentoPendingCount";
 
 type FinanciamentoFicha = {
   id: string;
   created_at: string;
-  status: string;
+  status: FinanciamentoFichaStatus;
   nome_completo: string | null;
   tipo_pessoa: string | null;
   cpf_cnpj: string | null;
@@ -68,7 +81,25 @@ function formatMoney(value: number | null | undefined): string {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-function FichaDetail({ ficha }: { ficha: FinanciamentoFicha }) {
+function statusLabel(status: FinanciamentoFichaStatus): string {
+  switch (status) {
+    case "pendente": return "Nova";
+    case "em_analise": return "Em análise";
+    case "concluida": return "Concluída";
+    case "cancelada": return "Cancelada";
+    default: return status;
+  }
+}
+
+function FichaDetail({
+  ficha,
+  onStatusChange,
+  statusSaving,
+}: {
+  ficha: FinanciamentoFicha;
+  onStatusChange: (status: FinanciamentoFichaStatus) => void;
+  statusSaving: boolean;
+}) {
   const vehicleLabel = ficha.veiculos_estoque
     ? `${ficha.veiculos_estoque.marca} ${ficha.veiculos_estoque.modelo}${
       ficha.veiculos_estoque.versao ? ` ${ficha.veiculos_estoque.versao}` : ""
@@ -85,11 +116,33 @@ function FichaDetail({ ficha }: { ficha: FinanciamentoFicha }) {
       </div>
       <Card className="print:shadow-none print:border">
         <CardHeader>
-          <CardTitle>{ficha.nome_completo ?? "Cliente (nome pendente)"}</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Status: {ficha.status} · LGPD:{" "}
-            {new Date(ficha.lgpd_aceite_em).toLocaleString("pt-BR")}
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-3 print:block">
+            <div>
+              <CardTitle>{ficha.nome_completo ?? "Cliente (nome pendente)"}</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                LGPD: {new Date(ficha.lgpd_aceite_em).toLocaleString("pt-BR")}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 print:hidden">
+              <span className="text-sm text-muted-foreground">Status</span>
+              <Select
+                value={ficha.status}
+                onValueChange={(v) => onStatusChange(v as FinanciamentoFichaStatus)}
+                disabled={statusSaving}
+              >
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FINANCIAMENTO_FICHA_STATUS_OPTIONS.filter((o) => o.value !== "all").map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
           {(ficha.campos_pendentes?.length ?? 0) > 0 && (
             <div className="mt-2 flex flex-wrap gap-1">
               <span className="text-xs font-medium text-amber-700">Pendente consultor:</span>
@@ -138,6 +191,11 @@ export default function VehicleFinancingFichasPage() {
   const [loading, setLoading] = useState(true);
   const [fichas, setFichas] = useState<FinanciamentoFicha[]>([]);
   const [selected, setSelected] = useState<FinanciamentoFicha | null>(null);
+  const [statusFilter, setStatusFilter] = useState<FinanciamentoFichaStatus | "all">("all");
+  const [statusSaving, setStatusSaving] = useState(false);
+  const autoOpenedRef = useRef<string | null>(null);
+
+  useFinanciamentoPendingCount(true);
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -177,14 +235,52 @@ export default function VehicleFinancingFichasPage() {
     setLoading(false);
   }, []);
 
+  const updateFichaStatus = useCallback(async (
+    fichaId: string,
+    status: FinanciamentoFichaStatus,
+  ) => {
+    setStatusSaving(true);
+    const { data, error } = await supabase
+      .from("financiamento_fichas" as "veiculos_estoque")
+      .update({ status })
+      .eq("id", fichaId)
+      .select(`
+        *,
+        veiculos_estoque ( marca, modelo, versao, ano_modelo, preco )
+      `)
+      .maybeSingle();
+    setStatusSaving(false);
+    if (error || !data) {
+      console.error(error);
+      return;
+    }
+    const next = data as unknown as FinanciamentoFicha;
+    setSelected(next);
+    setFichas((prev) => prev.map((f) => (f.id === fichaId ? { ...f, status: next.status } : f)));
+    notifyFinanciamentoFichasChanged();
+  }, []);
+
   useEffect(() => {
     if (id) {
       loadOne(id);
     } else {
       setSelected(null);
+      autoOpenedRef.current = null;
       loadList();
     }
   }, [id, loadList, loadOne]);
+
+  useEffect(() => {
+    if (!selected || selected.status !== "pendente" || !id) return;
+    if (autoOpenedRef.current === selected.id) return;
+    autoOpenedRef.current = selected.id;
+    void updateFichaStatus(selected.id, "em_analise");
+  }, [selected, id, updateFichaStatus]);
+
+  const filteredFichas = useMemo(() => {
+    if (statusFilter === "all") return fichas;
+    return fichas.filter((f) => f.status === statusFilter);
+  }, [fichas, statusFilter]);
 
   const listBody = useMemo(() => {
     if (loading && !id) {
@@ -194,16 +290,16 @@ export default function VehicleFinancingFichasPage() {
         </div>
       );
     }
-    if (!fichas.length) {
+    if (!filteredFichas.length) {
       return (
         <p className="text-muted-foreground py-8 text-center">
-          Nenhuma ficha de financiamento ainda.
+          Nenhuma ficha neste filtro.
         </p>
       );
     }
     return (
       <ul className="divide-y rounded-md border">
-        {fichas.map((f) => (
+        {filteredFichas.map((f) => (
           <li key={f.id}>
             <button
               type="button"
@@ -211,13 +307,21 @@ export default function VehicleFinancingFichasPage() {
               onClick={() => navigate(`/veiculos/financiamento/${f.id}`)}
             >
               <div>
-                <p className="font-medium">{f.nome_completo ?? "Sem nome"}</p>
+                <p className="font-medium flex items-center gap-2 flex-wrap">
+                  {f.nome_completo ?? "Sem nome"}
+                  {f.status === "pendente" && (
+                    <Badge className="bg-red-600 hover:bg-red-600">Nova</Badge>
+                  )}
+                </p>
                 <p className="text-sm text-muted-foreground">
                   {new Date(f.created_at).toLocaleString("pt-BR")} · {f.whatsapp_from}
+                  {f.veiculos_estoque
+                    ? ` · ${f.veiculos_estoque.marca} ${f.veiculos_estoque.modelo}`
+                    : ""}
                 </p>
               </div>
               <div className="flex flex-col items-end gap-1">
-                <span className="text-xs uppercase text-muted-foreground">{f.status}</span>
+                <span className="text-xs text-muted-foreground">{statusLabel(f.status)}</span>
                 {(f.campos_pendentes?.length ?? 0) > 0 && (
                   <Badge variant="outline" className="text-amber-800 border-amber-300">
                     {f.campos_pendentes!.length} pendente(s)
@@ -229,7 +333,7 @@ export default function VehicleFinancingFichasPage() {
         ))}
       </ul>
     );
-  }, [fichas, id, loading, navigate]);
+  }, [filteredFichas, id, loading, navigate]);
 
   return (
     <div className="container max-w-4xl py-6 print:max-w-none print:py-0">
@@ -260,10 +364,22 @@ export default function VehicleFinancingFichasPage() {
 
       {!id ? (
         <>
-          <h1 className="text-2xl font-bold mb-2">Financiamento</h1>
-          <p className="text-muted-foreground mb-6 text-sm">
+          <h1 className="text-2xl font-bold mb-2">Financiamentos</h1>
+          <p className="text-muted-foreground mb-4 text-sm">
             Fichas enviadas pelos clientes na vitrine WhatsApp.
           </p>
+          <div className="flex flex-wrap gap-2 mb-6">
+            {FINANCIAMENTO_FICHA_STATUS_OPTIONS.map((opt) => (
+              <Button
+                key={opt.value}
+                size="sm"
+                variant={statusFilter === opt.value ? "default" : "outline"}
+                onClick={() => setStatusFilter(opt.value)}
+              >
+                {opt.label}
+              </Button>
+            ))}
+          </div>
           {listBody}
         </>
       ) : loading ? (
@@ -271,7 +387,11 @@ export default function VehicleFinancingFichasPage() {
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       ) : selected ? (
-        <FichaDetail ficha={selected} />
+        <FichaDetail
+          ficha={selected}
+          statusSaving={statusSaving}
+          onStatusChange={(status) => void updateFichaStatus(selected.id, status)}
+        />
       ) : (
         <p className="text-muted-foreground">Ficha não encontrada.</p>
       )}

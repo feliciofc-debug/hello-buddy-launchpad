@@ -18,6 +18,7 @@ import { LogsEnvioWuzapi } from '@/components/LogsEnvioWuzapi';
 import { DiagnosticoWuzapi } from '@/components/DiagnosticoWuzapi';
 import { mockProducts, type Marketplace } from '@/data/mockData';
 import { useClientMenus } from '@/hooks/useClientMenus';
+import { useFinanciamentoPendingCount } from '@/hooks/useFinanciamentoPendingCount';
 import { isBusinessTenantType } from '@/lib/business-tenant';
 
 const Dashboard = () => {
@@ -30,7 +31,11 @@ const Dashboard = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   // Hook para gerenciar menus baseado no tipo de cliente
-  const { isMenuAllowed, empresaNome } = useClientMenus(userProfile?.tipo, userProfile?.nome_fantasia);
+  const { isMenuAllowed, empresaNome, showFinanciamentosMenu } = useClientMenus(
+    userProfile?.tipo,
+    userProfile?.nome_fantasia,
+  );
+  const { badgeLabel: financiamentoBadge } = useFinanciamentoPendingCount(showFinanciamentosMenu);
 
   // Calcular métricas reais baseadas nos produtos (SEMPRE executado - antes do early return)
   const metrics = useMemo(() => {
@@ -482,7 +487,25 @@ const Dashboard = () => {
               }`}
             >
               <CarFront size={20} />
-              Veículos
+              Estoque de Veículos
+            </a>
+          )}
+          {showFinanciamentosMenu && (
+            <a
+              href="/veiculos/financiamento"
+              className={`relative w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                window.location.pathname.startsWith('/veiculos/financiamento')
+                  ? 'bg-blue-500 text-white'
+                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              <FileText size={20} />
+              Financiamentos
+              {financiamentoBadge && (
+                <span className="absolute top-1.5 right-2 min-w-[1.125rem] h-[1.125rem] px-0.5 rounded-full bg-red-600 text-white text-[10px] font-bold flex items-center justify-center">
+                  {financiamentoBadge}
+                </span>
+              )}
             </a>
           )}
           {isMenuAllowed('buscar-cnpj') && (

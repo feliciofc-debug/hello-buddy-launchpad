@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useTranslation } from 'react-i18next';
 import { useClientMenus } from '@/hooks/useClientMenus';
@@ -45,7 +45,9 @@ import {
   Briefcase,
   Gift,
   CarFront,
+  FileText,
 } from 'lucide-react';
+import { useFinanciamentoPendingCount } from '@/hooks/useFinanciamentoPendingCount';
 import NotificationCenter from '@/components/NotificationCenter';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -138,7 +140,14 @@ export default function DashboardMetricas() {
   const nomeExibicao =
     userProfile?.nome_fantasia || userProfile?.nome || userEmail?.split('@')[0] || '';
 
-  const { isMenuAllowed, empresaNome } = useClientMenus(userProfile?.tipo, userProfile?.nome_fantasia);
+  const { isMenuAllowed, empresaNome, showFinanciamentosMenu } = useClientMenus(
+    userProfile?.tipo,
+    userProfile?.nome_fantasia,
+  );
+  const { badgeLabel: financiamentoBadge } = useFinanciamentoPendingCount(
+    showFinanciamentosMenu,
+  );
+  const location = useLocation();
 
   const carregarPerfil = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -321,7 +330,32 @@ export default function DashboardMetricas() {
       : []),
   ];
 
-  const menuItems = menuItemsAll.filter((item) => item.id === 'admin' || item.id === 'contatos-comerciais' || item.id === 'clientes-segmentos' || item.id === 'whatsapp-templates' || item.id === 'ebook-presente' || item.id === 'minha-empresa' || (item.id === 'anuncios-meta' && isMenuAllowed('configuracoes')) || isMenuAllowed(item.id));
+  const menuItems = useMemo(() => {
+    const filtered = menuItemsAll.filter((item) =>
+      item.id === 'admin' ||
+      item.id === 'contatos-comerciais' ||
+      item.id === 'clientes-segmentos' ||
+      item.id === 'whatsapp-templates' ||
+      item.id === 'ebook-presente' ||
+      item.id === 'minha-empresa' ||
+      (item.id === 'anuncios-meta' && isMenuAllowed('configuracoes')) ||
+      isMenuAllowed(item.id)
+    );
+    if (!showFinanciamentosMenu) return filtered;
+    const out: typeof filtered = [];
+    for (const item of filtered) {
+      out.push(item);
+      if (item.id === 'veiculos') {
+        out.push({
+          id: 'financiamentos',
+          icon: FileText,
+          label: t('nav.financing'),
+          path: '/veiculos/financiamento',
+        });
+      }
+    }
+    return out;
+  }, [isMenuAllowed, showFinanciamentosMenu]);
 
   // Componente de campanhas em andamento
   const CampanhasEmAndamentoSection = ({ navigate }: { navigate: (path: string) => void }) => {
@@ -426,23 +460,38 @@ export default function DashboardMetricas() {
 
           {/* Menu Items */}
           <nav className="flex-1 p-4 space-y-1">
-            {menuItems.map((item) => (
+            {menuItems.map((item) => {
+              const active = item.path === '/dashboard'
+                ? location.pathname === '/dashboard'
+                : location.pathname === item.path ||
+                  (item.path === '/veiculos/financiamento' &&
+                    location.pathname.startsWith('/veiculos/financiamento'));
+              const showBadge = item.id === 'financiamentos' && financiamentoBadge;
+              return (
               <Link
                 key={item.path}
                 to={item.path}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                className={`relative flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
                   (item as any).highlight 
                     ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold shadow-md hover:shadow-lg' 
-                    : item.path === '/dashboard' 
+                    : active
                       ? 'bg-primary/10 text-primary' 
                       : 'text-muted-foreground hover:bg-muted'
                 }`}
                 onClick={() => setIsMenuOpen(false)}
               >
-                <item.icon className="w-5 h-5" />
+                <item.icon className="w-5 h-5 shrink-0" />
                 <span>{item.label}</span>
+                {showBadge && (
+                  <span
+                    className="absolute -top-0.5 right-1 min-w-[1.125rem] h-[1.125rem] px-0.5 rounded-full bg-red-600 text-white text-[10px] font-bold flex items-center justify-center shadow-sm ring-2 ring-card"
+                    aria-label={`${financiamentoBadge} fichas novas`}
+                  >
+                    {financiamentoBadge}
+                  </span>
+                )}
               </Link>
-            ))}
+            );})}
           </nav>
 
           {/* Logout */}
