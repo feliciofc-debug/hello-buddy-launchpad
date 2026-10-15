@@ -164,16 +164,26 @@ serve(async (req) => {
           action: { buttons },
         },
       }
-    } else if (interactive_list?.rows?.length) {
+    } else if (interactive_list?.sections?.length || interactive_list?.rows?.length) {
       // ============================================================
       // LISTA INTERATIVA (type:interactive/list) — 1 toque, até 10 opções.
       // Usada quando 3 reply-buttons não bastam (ex: paleta de cores).
       // ============================================================
-      const rows = interactive_list.rows.slice(0, 10).map((r: any, i: number) => ({
-        id: truncateCodePoints(r?.id ?? `opt_${i}`, 200),
-        title: singleLineInteractiveText(r?.title ?? `Opção ${i + 1}`, 24),
-        ...(r?.description ? { description: singleLineInteractiveText(r.description, 72) } : {}),
-      }))
+      const mapRows = (rows: any[]) =>
+        rows.slice(0, 10).map((r: any, i: number) => ({
+          id: truncateCodePoints(r?.id ?? `opt_${i}`, 200),
+          title: singleLineInteractiveText(r?.title ?? `Opção ${i + 1}`, 24),
+          ...(r?.description ? { description: singleLineInteractiveText(r.description, 72) } : {}),
+        }))
+      const sections = interactive_list.sections?.length
+        ? interactive_list.sections.map((section: any, sIdx: number) => ({
+          title: singleLineInteractiveText(section?.title ?? `Seção ${sIdx + 1}`, 24),
+          rows: mapRows(section?.rows ?? []),
+        })).filter((section: { rows: unknown[] }) => section.rows.length > 0)
+        : [{
+          title: singleLineInteractiveText(interactive_list.section_title || 'Opções', 24),
+          rows: mapRows(interactive_list.rows ?? []),
+        }]
       messagePayload = {
         messaging_product: 'whatsapp',
         to: to.replace(/\D/g, ''),
@@ -189,7 +199,7 @@ serve(async (req) => {
             : {}),
           action: {
             button: singleLineInteractiveText(interactive_list.button || 'Escolher', 20),
-            sections: [{ title: singleLineInteractiveText(interactive_list.section_title || 'Opções', 24), rows }],
+            sections,
           },
         },
       }

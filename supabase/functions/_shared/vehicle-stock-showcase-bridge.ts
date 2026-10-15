@@ -5,10 +5,12 @@ import {
   VEHICLE_SELECT,
 } from "./vehicle-stock-showcase-turn.ts";
 import {
+  FaixaPrecoId,
   PendingVitrineEstoque,
   VehicleShowcaseTenantFlags,
   VeiculoVitrineRow,
 } from "./vehicle-stock-whatsapp.ts";
+
 export type ShowcaseBridgeContext = {
   sb: any;
   userId: string;
@@ -68,17 +70,36 @@ function pendingFromState(state: Record<string, unknown>): PendingVitrineEstoque
   return pending ?? null;
 }
 
+function faixaQuery(sb: any, userId: string, faixa: FaixaPrecoId) {
+  let q = sb.from("veiculos_estoque")
+    .select(VEHICLE_SELECT)
+    .eq("user_id", userId)
+    .eq("status", "disponivel")
+    .not("preco", "is", null);
+  if (faixa === "ate_300") {
+    q = q.lte("preco", 300_000);
+  } else if (faixa === "300_600") {
+    q = q.gt("preco", 300_000).lte("preco", 600_000);
+  } else {
+    q = q.gt("preco", 600_000);
+  }
+  return q.order("preco", { ascending: true })
+    .order("destaque", { ascending: false })
+    .order("updated_at", { ascending: false });
+}
+
 export function buildShowcaseDeps(ctx: ShowcaseBridgeContext): ShowcaseTurnDeps {
   let stateRef = ctx.agentState;
   return {
     loadTenantFlags: async (): Promise<VehicleShowcaseTenantFlags> => {
       const { data } = await ctx.sb.from("empresa_config")
-        .select("segmento,vitrine_veiculos_demo")
+        .select("segmento,vitrine_veiculos_demo,nome_empresa")
         .eq("user_id", ctx.userId)
         .maybeSingle();
       return {
         segmento: String(data?.segmento || "").trim() || null,
         vitrine_veiculos_demo: data?.vitrine_veiculos_demo === true,
+        nome_empresa: String(data?.nome_empresa || "").trim() || null,
       };
     },
     loadMarcas: async () => {
@@ -93,6 +114,15 @@ export function buildShowcaseDeps(ctx: ShowcaseBridgeContext): ShowcaseTurnDeps 
       }
       return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
     },
+    loadPrecosDisponiveis: async () => {
+      const { data } = await ctx.sb.from("veiculos_estoque")
+        .select("preco")
+        .eq("user_id", ctx.userId)
+        .eq("status", "disponivel");
+      return (data ?? [])
+        .map((row: { preco?: number | null }) => row.preco)
+        .filter((p): p is number => p != null && Number.isFinite(Number(p)));
+    },
     loadVeiculosByMarca: async (marca, offset, limit) => {
       const { data } = await ctx.sb.from("veiculos_estoque")
         .select(VEHICLE_SELECT)
@@ -102,6 +132,11 @@ export function buildShowcaseDeps(ctx: ShowcaseBridgeContext): ShowcaseTurnDeps 
         .order("destaque", { ascending: false })
         .order("updated_at", { ascending: false })
         .order("preco", { ascending: true })
+        .range(offset, offset + limit - 1);
+      return (data ?? []) as VeiculoVitrineRow[];
+    },
+    loadVeiculosByFaixa: async (faixa, offset, limit) => {
+      const { data } = await faixaQuery(ctx.sb, ctx.userId, faixa)
         .range(offset, offset + limit - 1);
       return (data ?? []) as VeiculoVitrineRow[];
     },
@@ -115,13 +150,12 @@ export function buildShowcaseDeps(ctx: ShowcaseBridgeContext): ShowcaseTurnDeps 
       return (data as VeiculoVitrineRow | null) ?? null;
     },
     sendText: (text) => postSendMessage(ctx, { message: text }),
-    sendList: (body, rows) => postSendMessage(ctx, {
+    sendMenu: (body, sections, button) => postSendMessage(ctx, {
       message: body,
       interactive_list: {
         body,
-        button: "Ver marcas",
-        section_title: "Marcas",
-        rows,
+        button: button || "Ver opções",
+        sections,
       },
     }),
     sendButtons: (body, buttons, imageUrl) => postSendMessage(ctx, {
@@ -157,6 +191,7 @@ export function buildShowcaseDeps(ctx: ShowcaseBridgeContext): ShowcaseTurnDeps 
       await ctx.saveAgentStatePatch({ vehicle }, current);
     },
     getPending: () => pendingFromState(stateRef),
+    pause: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   };
 }
 

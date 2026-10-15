@@ -1,11 +1,15 @@
 import {
-  brandListRows,
+  activeFaixasFromCounts,
+  buildDetalheVehicleListRows,
   buildRecadoConsultor,
   buildRecadoInteresse,
-  CLIENT_HANDOFF_CONFIRMATION,
+  buildShowcaseMenuSections,
+  confirmacaoComNomeLoja,
+  countVehiclesByFaixa,
   extractVitrineInteractiveId,
+  FaixaPrecoId,
   formatCardBody,
-  formatDetailLines,
+  formatFichaElegante,
   isExplicitVehicleShowcaseRequest,
   marcaToSlug,
   parseVitrineButtonId,
@@ -16,7 +20,9 @@ import {
   VehicleShowcaseTenantFlags,
   VeiculoVitrineRow,
   vitrineButtonId,
+  VITRINE_ACAO_EM_BREVE,
   VITRINE_CAROUSEL_PAGE_SIZE,
+  VITRINE_CAROUSEL_POST_DELAY_MS,
   VITRINE_ID_PREFIX,
 } from "./vehicle-stock-whatsapp.ts";
 import type { CarouselCardInput } from "./whatsapp-interactive-carousel.ts";
@@ -31,15 +37,24 @@ export type ShowcaseSendResult = {
 export type ShowcaseTurnDeps = {
   loadTenantFlags: () => Promise<VehicleShowcaseTenantFlags>;
   loadMarcas: () => Promise<string[]>;
+  loadPrecosDisponiveis: () => Promise<number[]>;
   loadVeiculosByMarca: (
     marca: string,
     offset: number,
     limit: number,
   ) => Promise<VeiculoVitrineRow[]>;
+  loadVeiculosByFaixa: (
+    faixa: FaixaPrecoId,
+    offset: number,
+    limit: number,
+  ) => Promise<VeiculoVitrineRow[]>;
   loadVeiculoById: (id: string) => Promise<VeiculoVitrineRow | null>;
   sendText: (text: string) => Promise<ShowcaseSendResult>;
-  sendList: (body: string, rows: Array<{ id: string; title: string; description?: string }>) =>
-    Promise<ShowcaseSendResult>;
+  sendMenu: (
+    body: string,
+    sections: Array<{ title: string; rows: Array<{ id: string; title: string; description?: string }> }>,
+    button?: string,
+  ) => Promise<ShowcaseSendResult>;
   sendButtons: (
     body: string,
     buttons: Array<{ id: string; title: string }>,
@@ -55,6 +70,7 @@ export type ShowcaseTurnDeps = {
   encaminharRecado: (recado: string) => Promise<{ ok: boolean; protocolo?: string }>;
   savePending: (pending: PendingVitrineEstoque | null) => Promise<void>;
   getPending: () => PendingVitrineEstoque | null | undefined;
+  pause: (ms: number) => Promise<void>;
 };
 
 export type ShowcaseTurnInput = {
@@ -112,27 +128,43 @@ export async function runVehicleStockShowcaseTurn(
   }
 
   if (explicit) {
-    const marcas = await input.deps.loadMarcas();
-    if (!marcas.length) {
-      await input.deps.sendText(
-        "No momento não temos veículos disponíveis no estoque. Posso ajudar em algo mais?",
-      );
-      await input.deps.savePending(null);
-      return { handled: true, replyPreview: "estoque_vazio" };
-    }
-    await input.deps.savePending({
-      stage: "marcas",
-      offset: 0,
-      updated_at: new Date().toISOString(),
-    });
-    await input.deps.sendList(
-      "Escolha uma marca para ver os carros disponíveis:",
-      brandListRows(marcas),
-    );
-    return { handled: true, replyPreview: "marcas" };
+    return await openShowcaseMenu(input, 0);
   }
 
   return { handled: false };
+}
+
+async function openShowcaseMenu(
+  input: ShowcaseTurnInput,
+  marcaOffset: number,
+): Promise<ShowcaseTurnOutput> {
+  const marcas = await input.deps.loadMarcas();
+  if (!marcas.length) {
+    await input.deps.sendText(
+      "No momento não temos veículos disponíveis no estoque. Posso ajudar em algo mais?",
+    );
+    await input.deps.savePending(null);
+    return { handled: true, replyPreview: "estoque_vazio" };
+  }
+  const precos = await input.deps.loadPrecosDisponiveis();
+  const faixas = activeFaixasFromCounts(countVehiclesByFaixa(precos));
+  const { sections } = buildShowcaseMenuSections({
+    marcas,
+    marcaOffset,
+    faixasAtivas: faixas,
+  });
+  await input.deps.savePending({
+    stage: "menu",
+    offset: 0,
+    marca_offset: marcaOffset,
+    updated_at: new Date().toISOString(),
+  });
+  await input.deps.sendMenu(
+    "Como prefere explorar nosso estoque?",
+    sections,
+    "Ver opções",
+  );
+  return { handled: true, replyPreview: "menu" };
 }
 
 async function handleVitrineAction(input: ShowcaseTurnInput & {
@@ -147,17 +179,26 @@ async function handleVitrineAction(input: ShowcaseTurnInput & {
   const { action, parts } = parseVitrineButtonId(id);
   const marcas = await input.deps.loadMarcas();
 
-  if (action === "voltar_marcas" || action === "marcas") {
-    await input.deps.savePending({
-      stage: "marcas",
-      offset: 0,
-      updated_at: new Date().toISOString(),
-    });
-    await input.deps.sendList(
-      "Escolha uma marca:",
-      brandListRows(marcas),
-    );
-    return { handled: true, replyPreview: "voltar_marcas" };
+  if (
+    action === "voltar_marcas" ||
+    action === "marcas" ||
+    (action === "acao" && parts[0] === "inicio")
+  ) {
+    return await openShowcaseMenu(input, 0);
+  }
+
+  if (action === "menu_marcas" && parts[0] != null) {
+    const offset = Number.parseInt(parts[0], 10) || 0;
+    return await openShowcaseMenu(input, offset);
+  }
+
+  if (action === "faixa" && parts[0]) {
+    const faixa = parts[0] as FaixaPrecoId;
+    if (!["ate_300", "300_600", "acima_600"].includes(faixa)) {
+      await input.deps.sendText("Faixa inválida. Escolha outra opção no menu.");
+      return { handled: true };
+    }
+    return await sendFaixaCarousel(input, faixa, 0);
   }
 
   if (action === "marca" && parts[0]) {
@@ -170,8 +211,12 @@ async function handleVitrineAction(input: ShowcaseTurnInput & {
   }
 
   if (action === "mais" && parts[0] && parts[1] != null) {
-    const marca = slugToMarcaCandidates(parts[0], marcas);
+    const slugOrFaixa = parts[0];
     const offset = Number.parseInt(parts[1], 10) || 0;
+    if (["ate_300", "300_600", "acima_600"].includes(slugOrFaixa)) {
+      return await sendFaixaCarousel(input, slugOrFaixa as FaixaPrecoId, offset);
+    }
+    const marca = slugToMarcaCandidates(slugOrFaixa, marcas);
     if (!marca) {
       await input.deps.sendText("Não encontrei essa marca.");
       return { handled: true };
@@ -180,29 +225,8 @@ async function handleVitrineAction(input: ShowcaseTurnInput & {
   }
 
   if (action === "detalhe" && parts[0]) {
-    const vehicle = await input.deps.loadVeiculoById(parts[0]);
-    if (!vehicle) {
-      await input.deps.sendText("Esse veículo não está mais disponível.");
-      return { handled: true };
-    }
-    await input.deps.savePending({
-      stage: "detalhe",
-      marca: vehicle.marca,
-      offset: 0,
-      veiculo_id: vehicle.id,
-      updated_at: new Date().toISOString(),
-    });
-    const detail = formatDetailLines(vehicle).join("\n");
-    await input.deps.sendButtons(
-      detail,
-      [
-        { id: vitrineButtonId("interesse", vehicle.id), title: "Tenho interesse" },
-        { id: vitrineButtonId("consultor", vehicle.id), title: "Falar consultor" },
-        { id: vitrineButtonId("voltar_marcas"), title: "Voltar marcas" },
-      ],
-      vehicle.fotos?.[0] || undefined,
-    );
-    return { handled: true, replyPreview: "detalhe" };
+    const ctx = input.deps.getPending();
+    return await sendVehicleDetail(input, parts[0], ctx ?? undefined);
   }
 
   if (action === "fotos" && parts[0]) {
@@ -211,7 +235,7 @@ async function handleVitrineAction(input: ShowcaseTurnInput & {
       await input.deps.sendText("Não há fotos cadastradas para este veículo.");
       return { handled: true };
     }
-    for (const url of vehicle.fotos.slice(0, 5)) {
+    for (const url of vehicle.fotos.slice(0, 8)) {
       await input.deps.sendImage(url);
     }
     return { handled: true, replyPreview: "fotos" };
@@ -227,34 +251,106 @@ async function handleVitrineAction(input: ShowcaseTurnInput & {
     return await handoffConsultorGeral(input);
   }
 
+  if (action === "acao" && parts[0] === "proximo" && parts[1]) {
+    return await showNextVehicle(input, parts[1]);
+  }
+
+  if (action === "acao" && ["troca", "visita", "financiamento"].includes(parts[0])) {
+    await input.deps.sendText(VITRINE_ACAO_EM_BREVE);
+    return { handled: true, replyPreview: `acao_${parts[0]}_em_breve` };
+  }
+
   return { handled: false };
 }
 
-async function sendMarcaCarousel(
+async function showNextVehicle(
   input: ShowcaseTurnInput,
-  marca: string,
-  offset: number,
+  currentId: string,
 ): Promise<ShowcaseTurnOutput> {
-  const vehicles = await input.deps.loadVeiculosByMarca(
-    marca,
-    offset,
-    VITRINE_CAROUSEL_PAGE_SIZE,
+  const pending = input.deps.getPending();
+  const ids = pending?.carousel_ids ?? [];
+  const idx = ids.indexOf(currentId);
+  const nextId = idx >= 0 && idx + 1 < ids.length ? ids[idx + 1] : null;
+  if (!nextId) {
+    await input.deps.sendText("Este é o último carro desta lista. Quer ver outra marca ou faixa?");
+    await input.deps.sendButtons(
+      "Voltar ao menu:",
+      [{ id: vitrineButtonId("acao", "inicio"), title: "Voltar ao início" }],
+    );
+    return { handled: true, replyPreview: "proximo_fim" };
+  }
+  return await sendVehicleDetail(input, nextId, {
+    ...pending,
+    carousel_index: idx + 1,
+  } as PendingVitrineEstoque);
+}
+
+async function sendVehicleDetail(
+  input: ShowcaseTurnInput,
+  vehicleId: string,
+  pendingCtx: PendingVitrineEstoque | null | undefined,
+): Promise<ShowcaseTurnOutput> {
+  const vehicle = await input.deps.loadVeiculoById(vehicleId);
+  if (!vehicle) {
+    await input.deps.sendText("Esse veículo não está mais disponível.");
+    return { handled: true };
+  }
+
+  const carouselIds = pendingCtx?.carousel_ids ?? [vehicleId];
+  const carouselIndex = pendingCtx?.carousel_ids
+    ? carouselIds.indexOf(vehicleId)
+    : 0;
+
+  await input.deps.savePending({
+    stage: "detalhe",
+    marca: vehicle.marca,
+    faixa: pendingCtx?.faixa ?? null,
+    filtro_tipo: pendingCtx?.filtro_tipo ?? null,
+    offset: pendingCtx?.offset ?? 0,
+    marca_offset: pendingCtx?.marca_offset ?? 0,
+    veiculo_id: vehicle.id,
+    carousel_ids: carouselIds,
+    carousel_index: carouselIndex >= 0 ? carouselIndex : 0,
+    updated_at: new Date().toISOString(),
+  });
+
+  const fotos = (vehicle.fotos || []).filter(Boolean);
+  for (const url of fotos.slice(0, 8)) {
+    await input.deps.sendImage(url);
+  }
+
+  await input.deps.sendText(formatFichaElegante(vehicle));
+
+  await input.deps.sendMenu(
+    "Detalhes do veículo",
+    [{ title: "O que deseja fazer?", rows: buildDetalheVehicleListRows(vehicle.id) }],
+    "Escolher",
   );
+
+  return { handled: true, replyPreview: "detalhe" };
+}
+
+async function deliverVehicleCarousel(
+  input: ShowcaseTurnInput,
+  opts: {
+    vehicles: VeiculoVitrineRow[];
+    body: string;
+    pending: PendingVitrineEstoque;
+    maisIdSuffix: string;
+    emptyMessage: string;
+  },
+): Promise<ShowcaseTurnOutput> {
+  const { vehicles, body, pending, maisIdSuffix, emptyMessage } = opts;
   if (!vehicles.length) {
-    await input.deps.sendText(`Não há carros disponíveis da ${marca} no momento.`);
+    await input.deps.sendText(emptyMessage);
     return { handled: true, replyPreview: "carrossel_vazio" };
   }
 
   await input.deps.savePending({
-    stage: "carrossel",
-    marca,
-    offset,
+    ...pending,
+    carousel_ids: vehicles.map((v) => v.id),
     updated_at: new Date().toISOString(),
   });
-
-  const body = offset > 0
-    ? `Mais carros ${marca} (${offset + 1}–${offset + vehicles.length}):`
-    : `Carros ${marca} disponíveis:`;
 
   const allHavePhotos = vehicles.every((v) => !!v.fotos?.[0]);
   const cards: CarouselCardInput[] = vehicles.map((v, index) => ({
@@ -271,6 +367,7 @@ async function sendMarcaCarousel(
   const carouselResult = canCarousel
     ? await input.deps.sendCarousel(body, cards)
     : { ok: false as const, httpStatus: 400, metaError: { message: "carousel_skip" } };
+
   if (!carouselResult.ok) {
     console.warn("[vehicle-vitrine][carousel_rejected]", {
       status: carouselResult.httpStatus,
@@ -300,13 +397,15 @@ async function sendMarcaCarousel(
     }
   }
 
-  const nextOffset = offset + vehicles.length;
+  await input.deps.pause(VITRINE_CAROUSEL_POST_DELAY_MS);
+
+  const nextOffset = pending.offset + vehicles.length;
   const hasMore = vehicles.length >= VITRINE_CAROUSEL_PAGE_SIZE;
   if (hasMore) {
     await input.deps.sendButtons(
-      "Quer ver mais carros desta marca?",
+      "Quer ver mais carros?",
       [{
-        id: vitrineButtonId("mais", `${marcaToSlug(marca)}:${nextOffset}`),
+        id: vitrineButtonId("mais", `${maisIdSuffix}:${nextOffset}`),
         title: "Ver mais carros",
       }],
     );
@@ -317,7 +416,67 @@ async function sendMarcaCarousel(
     );
   }
 
-  return { handled: true, replyPreview: `carrossel_${marca}` };
+  return { handled: true, replyPreview: `carrossel_${maisIdSuffix}` };
+}
+
+async function sendMarcaCarousel(
+  input: ShowcaseTurnInput,
+  marca: string,
+  offset: number,
+): Promise<ShowcaseTurnOutput> {
+  const vehicles = await input.deps.loadVeiculosByMarca(
+    marca,
+    offset,
+    VITRINE_CAROUSEL_PAGE_SIZE,
+  );
+  const body = offset > 0
+    ? `Mais carros ${marca} (${offset + 1}–${offset + vehicles.length}):`
+    : `Carros ${marca} disponíveis:`;
+
+  return deliverVehicleCarousel(input, {
+    vehicles,
+    body,
+    pending: {
+      stage: "carrossel_marca",
+      marca,
+      filtro_tipo: "marca",
+      offset,
+      marca_offset: input.deps.getPending()?.marca_offset ?? 0,
+      updated_at: new Date().toISOString(),
+    },
+    maisIdSuffix: marcaToSlug(marca),
+    emptyMessage: `Não há carros disponíveis da ${marca} no momento.`,
+  });
+}
+
+async function sendFaixaCarousel(
+  input: ShowcaseTurnInput,
+  faixa: FaixaPrecoId,
+  offset: number,
+): Promise<ShowcaseTurnOutput> {
+  const vehicles = await input.deps.loadVeiculosByFaixa(
+    faixa,
+    offset,
+    VITRINE_CAROUSEL_PAGE_SIZE,
+  );
+  const body = offset > 0
+    ? `Mais carros nesta faixa (${offset + 1}–${offset + vehicles.length}):`
+    : "Carros nesta faixa de preço:";
+
+  return deliverVehicleCarousel(input, {
+    vehicles,
+    body,
+    pending: {
+      stage: "carrossel_faixa",
+      faixa,
+      filtro_tipo: "faixa",
+      offset,
+      marca_offset: input.deps.getPending()?.marca_offset ?? 0,
+      updated_at: new Date().toISOString(),
+    },
+    maisIdSuffix: faixa,
+    emptyMessage: "Não há carros disponíveis nesta faixa no momento.",
+  });
 }
 
 async function handoffVehicle(
@@ -330,6 +489,7 @@ async function handoffVehicle(
     await input.deps.sendText("Esse veículo não está mais disponível.");
     return { handled: true };
   }
+  const flags = await input.deps.loadTenantFlags();
   const recado = kind === "interesse"
     ? buildRecadoInteresse({
       contactName: input.contactName,
@@ -349,8 +509,9 @@ async function handoffVehicle(
     veiculo_id: vehicle.id,
     updated_at: new Date().toISOString(),
   });
+  const confirm = confirmacaoComNomeLoja(flags.nome_empresa);
   if (fwd.ok) {
-    await input.deps.sendText(CLIENT_HANDOFF_CONFIRMATION);
+    await input.deps.sendText(confirm);
   } else {
     await input.deps.sendText(
       "Recebi seu interesse! Não consegui avisar a loja agora — tente novamente em instantes.",
@@ -361,14 +522,16 @@ async function handoffVehicle(
 
 async function handoffConsultorGeral(input: ShowcaseTurnInput): Promise<ShowcaseTurnOutput> {
   const pending = input.deps.getPending();
+  const flags = await input.deps.loadTenantFlags();
   const recado = buildRecadoConsultor({
     contactName: input.contactName,
     fromNumber: input.fromNumber,
     marca: pending?.marca ?? null,
   });
   const fwd = await input.deps.encaminharRecado(recado);
+  const confirm = confirmacaoComNomeLoja(flags.nome_empresa);
   if (fwd.ok) {
-    await input.deps.sendText(CLIENT_HANDOFF_CONFIRMATION);
+    await input.deps.sendText(confirm);
   } else {
     await input.deps.sendText(
       "Não consegui avisar a loja agora — tente novamente em instantes.",

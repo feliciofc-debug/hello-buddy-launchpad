@@ -5,15 +5,132 @@ export const VITRINE_ID_PREFIX = "veiculo_vitrine:";
 export type VehicleShowcaseTenantFlags = {
   segmento: string | null;
   vitrine_veiculos_demo: boolean;
+  nome_empresa?: string | null;
 };
 
+export type FaixaPrecoId = "ate_300" | "300_600" | "acima_600";
+
 export type PendingVitrineEstoque = {
-  stage: "marcas" | "carrossel" | "detalhe" | "handoff";
+  stage:
+    | "menu"
+    | "carrossel_marca"
+    | "carrossel_faixa"
+    | "detalhe"
+    | "handoff"
+    | "marcas"
+    | "carrossel";
   marca?: string | null;
+  faixa?: FaixaPrecoId | null;
+  filtro_tipo?: "marca" | "faixa" | null;
   offset: number;
+  marca_offset?: number;
   veiculo_id?: string | null;
+  carousel_ids?: string[] | null;
+  carousel_index?: number | null;
   updated_at: string;
 };
+
+export type ShowcaseListRow = {
+  id: string;
+  title: string;
+  description?: string;
+};
+
+export type ShowcaseMenuSection = {
+  title: string;
+  rows: ShowcaseListRow[];
+};
+
+const FAIXA_ORDER: FaixaPrecoId[] = ["ate_300", "300_600", "acima_600"];
+
+export function faixaPrecoLabel(faixa: FaixaPrecoId): string {
+  switch (faixa) {
+    case "ate_300":
+      return "Até R$ 300 mil";
+    case "300_600":
+      return "R$ 300–600 mil";
+    case "acima_600":
+      return "Acima de R$ 600 mil";
+  }
+}
+
+export function classifyPrecoFaixa(preco: number | null | undefined): FaixaPrecoId | null {
+  if (preco == null || !Number.isFinite(Number(preco))) return null;
+  const p = Number(preco);
+  if (p <= 300_000) return "ate_300";
+  if (p <= 600_000) return "300_600";
+  return "acima_600";
+}
+
+export function countVehiclesByFaixa(
+  precos: Array<number | null | undefined>,
+): Record<FaixaPrecoId, number> {
+  const out: Record<FaixaPrecoId, number> = {
+    ate_300: 0,
+    "300_600": 0,
+    acima_600: 0,
+  };
+  for (const preco of precos) {
+    const faixa = classifyPrecoFaixa(preco);
+    if (faixa) out[faixa] += 1;
+  }
+  return out;
+}
+
+export function activeFaixasFromCounts(
+  counts: Record<FaixaPrecoId, number>,
+): FaixaPrecoId[] {
+  return FAIXA_ORDER.filter((f) => counts[f] > 0);
+}
+
+/** Menu inicial: seções Por marca + Por faixa, total ≤10 rows. */
+export function buildShowcaseMenuSections(input: {
+  marcas: string[];
+  marcaOffset?: number;
+  faixasAtivas: FaixaPrecoId[];
+}): {
+  sections: ShowcaseMenuSection[];
+  hasMoreMarcas: boolean;
+} {
+  const marcaOffset = input.marcaOffset ?? 0;
+  const faixaRows: ShowcaseListRow[] = input.faixasAtivas.map((faixa) => ({
+    id: vitrineButtonId("faixa", faixa),
+    title: faixaPrecoLabel(faixa).slice(0, 24),
+    description: "Ver carros nesta faixa",
+  }));
+
+  const maxRows = 10;
+  let slotsForMarcas = Math.max(0, maxRows - faixaRows.length);
+  const remainingMarcas = input.marcas.length - marcaOffset;
+  const needsMoreRow = remainingMarcas > slotsForMarcas;
+  if (needsMoreRow && slotsForMarcas > 0) slotsForMarcas -= 1;
+
+  const marcasSlice = input.marcas.slice(marcaOffset, marcaOffset + slotsForMarcas);
+  const hasMoreMarcas = marcaOffset + marcasSlice.length < input.marcas.length;
+
+  const marcaRows: ShowcaseListRow[] = marcasSlice.map((marca) => ({
+    id: vitrineButtonId("marca", marcaToSlug(marca)),
+    title: marca.slice(0, 24),
+    description: "Ver carros desta marca",
+  }));
+
+  if (hasMoreMarcas) {
+    marcaRows.push({
+      id: vitrineButtonId("menu_marcas", String(marcaOffset + marcasSlice.length)),
+      title: "Ver mais marcas",
+      description: "Outras marcas disponíveis",
+    });
+  }
+
+  const sections: ShowcaseMenuSection[] = [];
+  if (faixaRows.length) {
+    sections.push({ title: "Por faixa de preço", rows: faixaRows });
+  }
+  if (marcaRows.length) {
+    sections.push({ title: "Por marca", rows: marcaRows });
+  }
+  return { sections, hasMoreMarcas };
+}
 
 export type VeiculoVitrineRow = {
   id: string;
@@ -201,30 +318,95 @@ function truncateCardText(text: string): string {
   return `${t.slice(0, 157)}...`;
 }
 
-export function formatDetailLines(v: VeiculoVitrineRow): string[] {
-  const lines: string[] = [
-    `*${[v.marca, v.modelo, v.versao].filter(Boolean).join(" ")}*`,
-    `Ano: ${formatAno(v)}`,
-    v.km != null ? `Km: ${v.km.toLocaleString("pt-BR")}` : null,
-    v.preco != null ? `Preço: ${formatPrecoBrl(v.preco)}` : null,
-    v.cor ? `Cor: ${v.cor}` : null,
-    v.cambio ? `Câmbio: ${v.cambio}` : null,
-    v.combustivel ? `Combustível: ${v.combustivel}` : null,
-    v.portas != null ? `Portas: ${v.portas}` : null,
-    v.blindado ? `Blindado: sim${v.nivel_blindagem ? ` (${v.nivel_blindagem})` : ""}` : null,
-  ].filter((line): line is string => !!line);
+/** Título legível (case normal, sem caixa alta forçada). */
+export function vehicleDisplayTitle(v: VeiculoVitrineRow): string {
+  return [v.marca, v.modelo, v.versao].filter(Boolean).join(" ");
+}
 
-  const opcionais = (v.opcionais || []).filter(Boolean);
-  if (opcionais.length) lines.push(`Opcionais: ${opcionais.slice(0, 12).join(", ")}`);
-  const caracteristicas = (v.caracteristicas || []).filter(Boolean);
-  if (caracteristicas.length) {
-    lines.push(`Características: ${caracteristicas.slice(0, 12).join(", ")}`);
+export function formatFichaElegante(v: VeiculoVitrineRow): string {
+  const lines: string[] = [`*${vehicleDisplayTitle(v)}*`];
+
+  const specs: string[] = [];
+  specs.push(`📅 Ano · ${formatAno(v)}`);
+  if (v.km != null) specs.push(`🛣️ Km · ${v.km.toLocaleString("pt-BR")}`);
+  if (v.cambio) specs.push(`⚙️ Câmbio · ${v.cambio}`);
+  if (v.combustivel) specs.push(`⛽ Combustível · ${v.combustivel}`);
+  if (v.preco != null) specs.push(`💰 Preço · ${formatPrecoBrl(v.preco)}`);
+  if (specs.length) lines.push(specs.join("\n"));
+
+  if (v.cor) lines.push(`Cor · ${v.cor}`);
+  if (v.portas != null) lines.push(`Portas · ${v.portas}`);
+  if (v.blindado) {
+    lines.push(
+      `Blindado · sim${v.nivel_blindagem ? ` (${v.nivel_blindagem})` : ""}`,
+    );
   }
+
+  const opcionais = (v.opcionais || []).filter(Boolean).slice(0, 8);
+  if (opcionais.length) {
+    lines.push("");
+    lines.push("✨ Opcionais");
+    for (const item of opcionais) lines.push(`• ${item}`);
+  }
+
+  const diferenciais = (v.caracteristicas || []).filter(Boolean).slice(0, 8);
+  if (diferenciais.length) {
+    lines.push("");
+    lines.push("✅ Diferenciais");
+    for (const item of diferenciais) lines.push(`• ${item}`);
+  }
+
   if (v.descricao?.trim()) {
+    lines.push("");
     lines.push(v.descricao.trim().slice(0, 500));
   }
-  // Procedência: sem coluna dedicada; origem/url_origem não são exibidas ao cliente.
-  return lines;
+
+  return lines.join("\n");
+}
+
+/** @deprecated use formatFichaElegante — mantido p/ testes legados */
+export function formatDetailLines(v: VeiculoVitrineRow): string[] {
+  return formatFichaElegante(v).split("\n");
+}
+
+export function buildDetalheVehicleListRows(vehicleId: string): ShowcaseListRow[] {
+  return [
+    {
+      id: vitrineButtonId("acao", `troca:${vehicleId}`),
+      title: "🔄 Avaliar troca",
+      description: "Avaliar meu carro na troca",
+    },
+    {
+      id: vitrineButtonId("acao", `visita:${vehicleId}`),
+      title: "📅 Agendar visita",
+      description: "Agendar visita ou test drive",
+    },
+    {
+      id: vitrineButtonId("acao", `financiamento:${vehicleId}`),
+      title: "💰 Simular finan.",
+      description: "Simular financiamento deste carro",
+    },
+    {
+      id: vitrineButtonId("consultor", vehicleId),
+      title: "👤 Falar consultor",
+      description: "Falar com um consultor humano",
+    },
+    {
+      id: vitrineButtonId("interesse", vehicleId),
+      title: "💬 Tenho interesse",
+      description: "Quero saber mais sobre este carro",
+    },
+    {
+      id: vitrineButtonId("acao", `proximo:${vehicleId}`),
+      title: "➡️ Próximo carro",
+      description: "Ver o próximo da lista",
+    },
+    {
+      id: vitrineButtonId("acao", "inicio"),
+      title: "⬅️ Voltar ao início",
+      description: "Voltar ao menu de marcas e faixas",
+    },
+  ];
 }
 
 export function vehicleTitle(v: VeiculoVitrineRow): string {
@@ -267,16 +449,15 @@ export function buildRecadoConsultor(input: {
   ].filter(Boolean).join("\n");
 }
 
-export const CLIENT_HANDOFF_CONFIRMATION =
-  "Perfeito! Um consultor vai falar com você em instantes.";
-
-export function brandListRows(marcas: string[]) {
-  return marcas.slice(0, 10).map((marca) => ({
-    id: vitrineButtonId("marca", marcaToSlug(marca)),
-    title: marca.slice(0, 24),
-    description: "Ver carros desta marca",
-  }));
+export function confirmacaoComNomeLoja(nomeEmpresa?: string | null): string {
+  const nome = String(nomeEmpresa || "").trim() || "nossa loja";
+  return `Perfeito! A equipe da ${nome} vai falar com você em instantes.`;
 }
+
+export const VITRINE_ACAO_EM_BREVE =
+  "Essa opção será liberada em breve. Enquanto isso, toque em *Falar consultor* ou *Tenho interesse*.";
+
+export const VITRINE_CAROUSEL_POST_DELAY_MS = 1500;
 
 export function pendingIsActive(
   pending: PendingVitrineEstoque | null | undefined,

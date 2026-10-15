@@ -5,16 +5,21 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  activeFaixasFromCounts,
   buildRecadoInteresse,
+  buildShowcaseMenuSections,
+  confirmacaoComNomeLoja,
+  countVehiclesByFaixa,
   extractVitrineInteractiveId,
   formatCarouselVitrineButtonText,
-  formatDetailLines,
+  formatFichaElegante,
   isExplicitVehicleShowcaseRequest,
   isVitrineInteractiveId,
   marcaToSlug,
   resolveVitrineInboundButtonId,
   shouldEnterShowcase,
   shouldOfferVehicleShowcase,
+  vehicleDisplayTitle,
   vitrineButtonId,
 } from "./vehicle-stock-whatsapp.ts";
 
@@ -78,8 +83,71 @@ Deno.test("type button sem prefixo vitrine mantém só o texto", () => {
   assertEquals(extractVitrineInteractiveId({ inboundPayload: payload }), null);
 });
 
+Deno.test("menu inicial respeita no máximo 10 linhas", () => {
+  const marcas = Array.from({ length: 20 }, (_, i) => `Marca${i}`);
+  const faixas = activeFaixasFromCounts(countVehiclesByFaixa([100_000, 400_000, 800_000]));
+  const { sections } = buildShowcaseMenuSections({ marcas, marcaOffset: 0, faixasAtivas: faixas });
+  const totalRows = sections.reduce((n, s) => n + s.rows.length, 0);
+  assert(totalRows <= 10);
+  assert(sections.some((s) => s.title.includes("faixa")));
+  assert(sections.some((s) => s.title.includes("marca")));
+});
+
+Deno.test("ficha elegante usa título normal e ícones", () => {
+  const ficha = formatFichaElegante({
+    id: "1",
+    marca: "Porsche",
+    modelo: "911",
+    versao: "Carrera 3.0 PDK",
+    ano_fabricacao: 2022,
+    ano_modelo: 2022,
+    km: 12000,
+    preco: 890000,
+    cor: null,
+    cambio: "PDK",
+    combustivel: "Gasolina",
+    portas: null,
+    blindado: false,
+    nivel_blindagem: null,
+    opcionais: ["Teto solar"],
+    caracteristicas: ["Revisado"],
+    descricao: null,
+    fotos: [],
+    status: "disponivel",
+  });
+  assertEquals(vehicleDisplayTitle({
+    id: "1",
+    marca: "Porsche",
+    modelo: "911",
+    versao: "Carrera 3.0 PDK",
+    ano_fabricacao: 2022,
+    ano_modelo: 2022,
+    km: null,
+    preco: null,
+    cor: null,
+    cambio: null,
+    combustivel: null,
+    portas: null,
+    blindado: false,
+    nivel_blindagem: null,
+    opcionais: null,
+    caracteristicas: null,
+    descricao: null,
+    fotos: null,
+    status: "disponivel",
+  }), "Porsche 911 Carrera 3.0 PDK");
+  assertStringIncludes(ficha, "📅 Ano");
+  assertStringIncludes(ficha, "✨ Opcionais");
+  assertStringIncludes(ficha, "✅ Diferenciais");
+  assertFalse(ficha.includes("PORSCHE 911"));
+});
+
+Deno.test("confirmação usa nome da loja", () => {
+  assertStringIncludes(confirmacaoComNomeLoja("Auto Prime"), "Auto Prime");
+});
+
 Deno.test("ficha não inclui procedência por origem/url", () => {
-  const lines = formatDetailLines({
+  const lines = formatFichaElegante({
     id: "1",
     marca: "Honda",
     modelo: "Civic",
@@ -100,7 +168,7 @@ Deno.test("ficha não inclui procedência por origem/url", () => {
     fotos: [],
     status: "disponivel",
   });
-  const joined = lines.join("\n").toLowerCase();
+  const joined = lines.toLowerCase();
   assertFalse(joined.includes("procedência"));
   assertFalse(joined.includes("origem"));
   assertStringIncludes(joined, "honda");
