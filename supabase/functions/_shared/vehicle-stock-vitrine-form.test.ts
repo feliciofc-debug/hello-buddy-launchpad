@@ -247,7 +247,7 @@ Deno.test("visita_dia: id real do builder → parse → handler turno", async ()
   const depsTurno: ShowcaseTurnDeps = {
     ...deps,
     sendText: async (t) => {
-      confirmou = t.includes("Visita agendada");
+      confirmou = t.includes("Nosso consultor vai entrar em contato");
       return { ok: true };
     },
     getPending: () => ({
@@ -272,4 +272,82 @@ Deno.test("visita_dia: id real do builder → parse → handler turno", async ()
   assertEquals(turnoResult.handled, true);
   assertEquals(turnoResult.replyPreview, "visita_confirmada");
   assert(confirmou);
+});
+
+Deno.test("visita turno duplicado não encaminha recado duas vezes", async () => {
+  let encaminhamentos = 0;
+  const iso = "2026-10-17";
+  const turnoId = vitrineButtonId("visita_turno", `${iso}:manha`);
+  const vehicle: VeiculoVitrineRow = {
+    id: "v-dedup",
+    marca: "BMW",
+    modelo: "X1",
+    versao: null,
+    ano_fabricacao: 2022,
+    ano_modelo: 2022,
+    km: 1000,
+    preco: 200000,
+    cor: null,
+    cambio: null,
+    combustivel: null,
+    portas: null,
+    blindado: false,
+    nivel_blindagem: null,
+    opcionais: null,
+    caracteristicas: null,
+    descricao: null,
+    fotos: null,
+    status: "disponivel",
+  };
+  let storedPending: import("./vehicle-stock-whatsapp.ts").PendingVitrineEstoque = {
+    stage: "detalhe",
+    offset: 0,
+    updated_at: new Date().toISOString(),
+    form: {
+      flow: "visita",
+      step: "turno",
+      veiculo_id: "v-dedup",
+      dia_iso: iso,
+      updated_at: new Date().toISOString(),
+    },
+  };
+  const noop = async () => ({ ok: true as const, messageId: "x" });
+  const deps = (): ShowcaseTurnDeps => ({
+    loadTenantFlags: async () => ({
+      segmento: "revenda de veículos",
+      vitrine_veiculos_demo: false,
+      nome_empresa: "Loja",
+    }),
+    loadMarcas: async () => [],
+    loadPrecosDisponiveis: async () => [],
+    loadVeiculosByMarca: async () => [],
+    loadVeiculosByFaixa: async () => [],
+    loadVeiculoById: async () => vehicle,
+    sendText: noop,
+    sendMenu: noop,
+    sendButtons: noop,
+    sendImage: noop,
+    sendImageHeaderButtons: noop,
+    sendCarousel: noop,
+    encaminharRecado: async () => {
+      encaminhamentos += 1;
+      return { ok: true };
+    },
+    savePending: async (p) => {
+      if (p) storedPending = p;
+    },
+    getPending: () => storedPending,
+    pause: async () => {},
+  });
+
+  const sharedDeps = deps();
+  for (let i = 0; i < 2; i++) {
+    await runVehicleStockShowcaseTurn({
+      userText: `<<INTERACTIVE_ID:${turnoId}>>`,
+      fromNumber: "5521888777666",
+      forceInteractive: true,
+      deps: sharedDeps,
+    });
+  }
+  assertEquals(encaminhamentos, 1);
 });

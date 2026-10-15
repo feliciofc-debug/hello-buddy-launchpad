@@ -28,6 +28,8 @@ export type PendingVitrineEstoque = {
   carousel_ids?: string[] | null;
   carousel_index?: number | null;
   form?: VitrineEstoqueForm | null;
+  /** Recados ao dono já enviados (anti-duplicidade). */
+  recados_idempotencia?: Array<{ key: string; at: string }>;
   updated_at: string;
 };
 
@@ -46,6 +48,74 @@ export type VitrineEstoqueForm = {
 };
 
 export const VITRINE_FORM_TTL_MS = 15 * 60 * 1000;
+export const VITRINE_RECADO_IDEMPOTENCY_MS = 10 * 60 * 1000;
+
+export const VITRINE_SEND_RETRY_DELAYS_MS = [1500, 3000] as const;
+export const VITRINE_TRANSIENT_META_CODES = [131000, 131016, 130429] as const;
+
+export function isTransientVitrineSendFailure(result: {
+  httpStatus?: number;
+  metaError?: unknown;
+}): boolean {
+  if (result.httpStatus != null && result.httpStatus >= 500) return true;
+  const blob = typeof result.metaError === "string"
+    ? result.metaError
+    : JSON.stringify(result.metaError ?? "");
+  return VITRINE_TRANSIENT_META_CODES.some((code) =>
+    blob.includes(String(code))
+  );
+}
+
+export type VitrineRecadoAcao =
+  | "visita"
+  | "financiamento"
+  | "interesse"
+  | "consultor";
+
+export function buildVitrineRecadoIdempotencyKey(input: {
+  acao: VitrineRecadoAcao;
+  fromNumber: string;
+  veiculoId: string;
+  diaIso?: string;
+  turno?: string;
+}): string {
+  const phone = String(input.fromNumber || "").replace(/\D/g, "");
+  const base = `${input.acao}:${phone}:${input.veiculoId}`;
+  if (input.acao === "visita" && input.diaIso && input.turno) {
+    return `${base}:${input.diaIso}:${input.turno}`;
+  }
+  return base;
+}
+
+export function vitrineRecadoJaEnviado(
+  pending: PendingVitrineEstoque | null | undefined,
+  key: string,
+  nowMs = Date.now(),
+): boolean {
+  const list = pending?.recados_idempotencia ?? [];
+  return list.some((entry) => {
+    if (entry.key !== key) return false;
+    const at = Date.parse(entry.at);
+    return Number.isFinite(at) && nowMs - at <= VITRINE_RECADO_IDEMPOTENCY_MS;
+  });
+}
+
+export function registerVitrineRecadoIdempotency(
+  pending: PendingVitrineEstoque,
+  key: string,
+  nowMs = Date.now(),
+): PendingVitrineEstoque {
+  const now = new Date(nowMs).toISOString();
+  const kept = (pending.recados_idempotencia ?? []).filter((entry) => {
+    const at = Date.parse(entry.at);
+    return Number.isFinite(at) && nowMs - at <= VITRINE_RECADO_IDEMPOTENCY_MS;
+  });
+  return {
+    ...pending,
+    recados_idempotencia: [...kept, { key, at: now }],
+    updated_at: now,
+  };
+}
 
 export type ShowcaseListRow = {
   id: string;
@@ -329,19 +399,15 @@ function isValidCalendarDate(iso: string): boolean {
     dt.getUTCDate() === d;
 }
 
-const VEHICLE_TITLE_ACRONYMS = new Set([
-  "AWD", "CDI", "EV", "EX", "GTI", "HSE", "LE", "LX", "MHEV", "MPV", "PDK", "SE",
-  "SUV", "TDI", "TSI", "DX",
-]);
-
 function formatVehicleTitleToken(token: string): string {
   if (/\d/.test(token)) return token;
   if (/^\d+x\d+$/i.test(token)) return token.toUpperCase();
   if (token.includes("-")) {
     return token.split("-").map((seg) => formatVehicleTitleToken(seg)).join("-");
   }
-  const upper = token.toUpperCase();
-  if (VEHICLE_TITLE_ACRONYMS.has(upper)) return upper;
+  if (/^[A-Za-z]{1,4}$/.test(token) && token === token.toUpperCase()) {
+    return token.toUpperCase();
+  }
   const lower = token.toLowerCase();
   return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
@@ -737,7 +803,7 @@ export function confirmacaoVisitaAgendada(
   turno: VitrineVisitaTurno,
 ): string {
   const nome = String(nomeEmpresa || "").trim() || "nossa loja";
-  return `Visita agendada com a ${nome}! Te esperamos ${formatVisitaDiaLabel(diaIso)}, período da ${visitaTurnoLabel(turno)}. Qualquer dúvida, estamos por aqui.`;
+  return `Visita agendada com a ${nome}! Te esperamos ${formatVisitaDiaLabel(diaIso)}, período da ${visitaTurnoLabel(turno)}. Nosso consultor vai entrar em contato em breve para confirmar. 😊`;
 }
 
 export function confirmacaoFinanciamento(

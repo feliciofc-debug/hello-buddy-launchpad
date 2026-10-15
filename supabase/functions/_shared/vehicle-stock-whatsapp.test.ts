@@ -14,6 +14,10 @@ import {
   formatCarouselVitrineButtonText,
   formatFichaElegante,
   formatVehicleDisplayTitle,
+  isTransientVitrineSendFailure,
+  registerVitrineRecadoIdempotency,
+  vitrineRecadoJaEnviado,
+  buildVitrineRecadoIdempotencyKey,
   isExplicitVehicleShowcaseRequest,
   isVitrineInteractiveId,
   marcaToSlug,
@@ -94,13 +98,25 @@ Deno.test("menu inicial respeita no máximo 10 linhas", () => {
   assert(sections.some((s) => s.title.includes("marca")));
 });
 
-Deno.test("formatVehicleDisplayTitle preserva siglas e normaliza palavras", () => {
+Deno.test("formatVehicleDisplayTitle preserva siglas curtas em caixa alta", () => {
+  assertEquals(formatVehicleDisplayTitle("Cadillac SRX Luxury"), "Cadillac SRX Luxury");
   assertEquals(
     formatVehicleDisplayTitle(
-      "LAND ROVER RANGE ROVER EVOQUE 2.0 P300 GASOLINA MHEV R-Dynamic HSE AWD Automático",
+      "RANGE ROVER 2.0 P300 MHEV HSE AWD Automático",
     ),
-    "Land Rover Range Rover Evoque 2.0 P300 Gasolina MHEV R-Dynamic HSE AWD Automático",
+    "Range Rover 2.0 P300 MHEV HSE AWD Automático",
   );
+});
+
+Deno.test("isTransientVitrineSendFailure detecta Meta 131000 e HTTP 5xx", () => {
+  assert(isTransientVitrineSendFailure({
+    httpStatus: 500,
+    metaError: "(#131000) Something went wrong",
+  }));
+  assertFalse(isTransientVitrineSendFailure({
+    httpStatus: 400,
+    metaError: "invalid parameter",
+  }));
 });
 
 Deno.test("ficha elegante usa título normal e ícones", () => {
@@ -177,6 +193,22 @@ Deno.test("ficha blindado e descricao em formato normal", () => {
   assertStringIncludes(ficha, "🛡️ Blindado");
   assertStringIncludes(ficha, "Blindagem Completa · Vidros Escuros");
   assertFalse(ficha.includes("BLINDAGEM COMPLETA"));
+});
+
+Deno.test("idempotência de recado bloqueia duplicata em 10 min", () => {
+  const key = buildVitrineRecadoIdempotencyKey({
+    acao: "visita",
+    fromNumber: "5521999999999",
+    veiculoId: "v1",
+    diaIso: "2026-10-17",
+    turno: "manha",
+  });
+  let pending = registerVitrineRecadoIdempotency({
+    stage: "detalhe",
+    offset: 0,
+    updated_at: new Date().toISOString(),
+  }, key);
+  assert(vitrineRecadoJaEnviado(pending, key));
 });
 
 Deno.test("confirmação usa nome da loja", () => {

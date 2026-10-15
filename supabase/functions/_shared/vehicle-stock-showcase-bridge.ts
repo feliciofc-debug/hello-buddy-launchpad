@@ -6,9 +6,11 @@ import {
 } from "./vehicle-stock-showcase-turn.ts";
 import {
   FaixaPrecoId,
+  isTransientVitrineSendFailure,
   PendingVitrineEstoque,
   VehicleShowcaseTenantFlags,
   VeiculoVitrineRow,
+  VITRINE_SEND_RETRY_DELAYS_MS,
 } from "./vehicle-stock-whatsapp.ts";
 
 export type ShowcaseBridgeContext = {
@@ -27,7 +29,7 @@ export type ShowcaseBridgeContext = {
   encaminharRecado: (recado: string) => Promise<{ ok: boolean; protocolo?: string }>;
 };
 
-async function postSendMessage(
+async function postSendMessageOnce(
   ctx: ShowcaseBridgeContext,
   body: Record<string, unknown>,
 ): Promise<ShowcaseSendResult> {
@@ -62,6 +64,19 @@ async function postSendMessage(
     };
   }
   return { ok: true, messageId: parsed.message_id ?? null };
+}
+
+async function postSendMessage(
+  ctx: ShowcaseBridgeContext,
+  body: Record<string, unknown>,
+): Promise<ShowcaseSendResult> {
+  let last = await postSendMessageOnce(ctx, body);
+  for (const delayMs of VITRINE_SEND_RETRY_DELAYS_MS) {
+    if (last.ok || !isTransientVitrineSendFailure(last)) break;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    last = await postSendMessageOnce(ctx, body);
+  }
+  return last;
 }
 
 export function getPendingVitrineEstoque(

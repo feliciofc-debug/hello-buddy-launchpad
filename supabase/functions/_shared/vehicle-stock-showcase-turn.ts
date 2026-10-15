@@ -9,10 +9,13 @@ import {
   buildRecadoVisita,
   buildShowcaseMenuSections,
   buildVisitaDiaListRows,
+  buildVitrineRecadoIdempotencyKey,
   confirmacaoComNomeLoja,
   confirmacaoFinanciamento,
   confirmacaoVisitaAgendada,
   countVehiclesByFaixa,
+  registerVitrineRecadoIdempotency,
+  vitrineRecadoJaEnviado,
   extractVitrineInteractiveId,
   FaixaPrecoId,
   formatCardBody,
@@ -107,6 +110,35 @@ const VEHICLE_SELECT =
   "id,marca,modelo,versao,ano_fabricacao,ano_modelo,km,preco,cor,cambio,combustivel,portas,blindado,nivel_blindagem,opcionais,caracteristicas,descricao,fotos,status";
 
 export { VEHICLE_SELECT };
+
+function basePending(
+  pending: PendingVitrineEstoque | null | undefined,
+): PendingVitrineEstoque {
+  return pending ?? {
+    stage: "detalhe",
+    offset: 0,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+/** Recado ao dono com trava de 10 min (mesmo cliente + veículo + ação). */
+async function vitrineNotifyOwner(
+  input: ShowcaseTurnInput,
+  key: string,
+  recado: string,
+): Promise<{ duplicate: boolean; notified: boolean }> {
+  let pending = basePending(input.deps.getPending());
+  if (vitrineRecadoJaEnviado(pending, key)) {
+    return { duplicate: true, notified: true };
+  }
+  const fwd = await input.deps.encaminharRecado(recado);
+  if (!fwd.ok) {
+    return { duplicate: false, notified: false };
+  }
+  pending = registerVitrineRecadoIdempotency(pending, key);
+  await input.deps.savePending(pending);
+  return { duplicate: false, notified: true };
+}
 
 export async function runVehicleStockShowcaseTurn(
   input: ShowcaseTurnInput,
@@ -418,23 +450,33 @@ async function finalizeVisita(
     diaIso,
     turno,
   });
-  const fwd = await input.deps.encaminharRecado(recado);
+  const idemKey = buildVitrineRecadoIdempotencyKey({
+    acao: "visita",
+    fromNumber: input.fromNumber,
+    veiculoId: vehicle.id,
+    diaIso,
+    turno,
+  });
+  const notify = await vitrineNotifyOwner(input, idemKey, recado);
+  const after = input.deps.getPending() ?? basePending(pending);
   await input.deps.savePending({
-    ...(pending ?? { stage: "detalhe", offset: 0, updated_at: new Date().toISOString() }),
+    ...after,
     form: null,
     stage: "handoff",
     veiculo_id: vehicle.id,
     updated_at: new Date().toISOString(),
   });
   const msg = confirmacaoVisitaAgendada(flags.nome_empresa, diaIso, turno);
-  if (fwd.ok) {
-    await input.deps.sendText(msg);
-  } else {
+  const sent = await input.deps.sendText(msg);
+  if (!sent.ok && !notify.notified && !notify.duplicate) {
     await input.deps.sendText(
       "Recebi sua preferência de horário, mas não consegui avisar a loja agora — tente novamente em instantes.",
     );
   }
-  return { handled: true, replyPreview: "visita_confirmada" };
+  return {
+    handled: true,
+    replyPreview: notify.duplicate ? "visita_confirmada_dedup" : "visita_confirmada",
+  };
 }
 
 async function handleFinanciamentoSimples(
@@ -452,19 +494,23 @@ async function handleFinanciamentoSimples(
     fromNumber: input.fromNumber,
     vehicle,
   });
-  const fwd = await input.deps.encaminharRecado(recado);
-  const pending = input.deps.getPending();
+  const idemKey = buildVitrineRecadoIdempotencyKey({
+    acao: "financiamento",
+    fromNumber: input.fromNumber,
+    veiculoId: vehicle.id,
+  });
+  const notify = await vitrineNotifyOwner(input, idemKey, recado);
+  const after = input.deps.getPending() ?? basePending(input.deps.getPending());
   await input.deps.savePending({
-    ...(pending ?? { stage: "detalhe", offset: 0, updated_at: new Date().toISOString() }),
+    ...after,
     form: null,
     stage: "handoff",
     veiculo_id: vehicle.id,
     updated_at: new Date().toISOString(),
   });
   const msg = confirmacaoFinanciamento(flags.nome_empresa);
-  if (fwd.ok) {
-    await input.deps.sendText(msg);
-  } else {
+  const sent = await input.deps.sendText(msg);
+  if (!sent.ok && !notify.notified && !notify.duplicate) {
     await input.deps.sendText(
       "Recebi seu pedido de simulação, mas não consegui avisar a loja agora — tente novamente em instantes.",
     );
@@ -495,7 +541,16 @@ async function handleFormControl(
       vehicle,
       marca: pending.marca ?? null,
     });
-  await input.deps.encaminharRecado(recado);
+  if (kind === "cancelar") {
+    await input.deps.encaminharRecado(recado);
+  } else {
+    const idemKey = buildVitrineRecadoIdempotencyKey({
+      acao: "consultor",
+      fromNumber: input.fromNumber,
+      veiculoId: vehicle?.id ?? vehicleId ?? "geral",
+    });
+    await vitrineNotifyOwner(input, idemKey, recado);
+  }
   await input.deps.savePending({
     ...pending,
     form: null,
@@ -749,8 +804,15 @@ async function handoffVehicle(
       fromNumber: input.fromNumber,
       vehicle,
     });
-  const fwd = await input.deps.encaminharRecado(recado);
+  const idemKey = buildVitrineRecadoIdempotencyKey({
+    acao: kind,
+    fromNumber: input.fromNumber,
+    veiculoId: vehicle.id,
+  });
+  const notify = await vitrineNotifyOwner(input, idemKey, recado);
+  const after = input.deps.getPending() ?? basePending(null);
   await input.deps.savePending({
+    ...after,
     stage: "handoff",
     marca: vehicle.marca,
     offset: 0,
@@ -758,9 +820,8 @@ async function handoffVehicle(
     updated_at: new Date().toISOString(),
   });
   const confirm = confirmacaoComNomeLoja(flags.nome_empresa);
-  if (fwd.ok) {
-    await input.deps.sendText(confirm);
-  } else {
+  const sent = await input.deps.sendText(confirm);
+  if (!sent.ok && !notify.notified && !notify.duplicate) {
     await input.deps.sendText(
       "Recebi seu interesse! Não consegui avisar a loja agora — tente novamente em instantes.",
     );
@@ -776,11 +837,16 @@ async function handoffConsultorGeral(input: ShowcaseTurnInput): Promise<Showcase
     fromNumber: input.fromNumber,
     marca: pending?.marca ?? null,
   });
-  const fwd = await input.deps.encaminharRecado(recado);
+  const vehicleId = pending?.veiculo_id ?? "geral";
+  const idemKey = buildVitrineRecadoIdempotencyKey({
+    acao: "consultor",
+    fromNumber: input.fromNumber,
+    veiculoId: String(vehicleId),
+  });
+  const notify = await vitrineNotifyOwner(input, idemKey, recado);
   const confirm = confirmacaoComNomeLoja(flags.nome_empresa);
-  if (fwd.ok) {
-    await input.deps.sendText(confirm);
-  } else {
+  const sent = await input.deps.sendText(confirm);
+  if (!sent.ok && !notify.notified && !notify.duplicate) {
     await input.deps.sendText(
       "Não consegui avisar a loja agora — tente novamente em instantes.",
     );
