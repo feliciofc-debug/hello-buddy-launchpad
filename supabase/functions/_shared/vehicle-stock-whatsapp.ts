@@ -320,8 +320,53 @@ export function formatAno(v: VeiculoVitrineRow): string {
   return "—";
 }
 
+function isValidCalendarDate(iso: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return false;
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y &&
+    dt.getUTCMonth() === m - 1 &&
+    dt.getUTCDate() === d;
+}
+
+const VEHICLE_TITLE_ACRONYMS = new Set([
+  "AWD", "CDI", "EV", "EX", "GTI", "HSE", "LE", "LX", "MHEV", "MPV", "PDK", "SE",
+  "SUV", "TDI", "TSI", "DX",
+]);
+
+function formatVehicleTitleToken(token: string): string {
+  if (/\d/.test(token)) return token;
+  if (/^\d+x\d+$/i.test(token)) return token.toUpperCase();
+  if (token.includes("-")) {
+    return token.split("-").map((seg) => formatVehicleTitleToken(seg)).join("-");
+  }
+  const upper = token.toUpperCase();
+  if (VEHICLE_TITLE_ACRONYMS.has(upper)) return upper;
+  const lower = token.toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+/** Palavras comuns: 1ª maiúscula; siglas/códigos (HSE, P300, 4x4…) preservados. */
+export function formatVehicleDisplayTitle(raw: string): string {
+  return String(raw || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(formatVehicleTitleToken)
+    .join(" ");
+}
+
+export function formatDescricaoVeiculo(text: string): string {
+  return String(text || "")
+    .trim()
+    .split(/\s*·\s*/)
+    .filter(Boolean)
+    .map((chunk) => formatVehicleDisplayTitle(chunk))
+    .join(" · ");
+}
+
 export function formatCardBody(v: VeiculoVitrineRow): string {
-  const titulo = [v.marca, v.modelo, v.versao].filter(Boolean).join(" ");
+  const titulo = vehicleDisplayTitle(v);
   const km = v.km != null ? `${v.km.toLocaleString("pt-BR")} km` : null;
   const extras = [formatAno(v), km, v.cambio, v.cor, formatPrecoBrl(v.preco)]
     .filter(Boolean)
@@ -337,7 +382,8 @@ function truncateCardText(text: string): string {
 
 /** Título legível (case normal, sem caixa alta forçada). */
 export function vehicleDisplayTitle(v: VeiculoVitrineRow): string {
-  return [v.marca, v.modelo, v.versao].filter(Boolean).join(" ");
+  const raw = [v.marca, v.modelo, v.versao].filter(Boolean).join(" ");
+  return formatVehicleDisplayTitle(raw);
 }
 
 export function formatFichaElegante(v: VeiculoVitrineRow): string {
@@ -346,17 +392,25 @@ export function formatFichaElegante(v: VeiculoVitrineRow): string {
   const specs: string[] = [];
   specs.push(`📅 Ano · ${formatAno(v)}`);
   if (v.km != null) specs.push(`🛣️ Km · ${v.km.toLocaleString("pt-BR")}`);
-  if (v.cambio) specs.push(`⚙️ Câmbio · ${v.cambio}`);
-  if (v.combustivel) specs.push(`⛽ Combustível · ${v.combustivel}`);
+  if (v.cambio) specs.push(`⚙️ Câmbio · ${formatVehicleDisplayTitle(v.cambio)}`);
+  if (v.combustivel) {
+    specs.push(`⛽ Combustível · ${formatVehicleDisplayTitle(v.combustivel)}`);
+  }
   if (v.preco != null) specs.push(`💰 Preço · ${formatPrecoBrl(v.preco)}`);
   if (specs.length) lines.push(specs.join("\n"));
 
-  if (v.cor) lines.push(`Cor · ${v.cor}`);
+  if (v.cor) lines.push(`Cor · ${formatVehicleDisplayTitle(v.cor)}`);
   if (v.portas != null) lines.push(`Portas · ${v.portas}`);
   if (v.blindado) {
-    lines.push(
-      `Blindado · sim${v.nivel_blindagem ? ` (${v.nivel_blindagem})` : ""}`,
-    );
+    const extra = v.nivel_blindagem
+      ? ` · ${formatDescricaoVeiculo(v.nivel_blindagem)}`
+      : "";
+    lines.push(`🛡️ Blindado${extra}`);
+  }
+
+  if (v.descricao?.trim()) {
+    lines.push("");
+    lines.push(formatDescricaoVeiculo(v.descricao.trim().slice(0, 500)));
   }
 
   const opcionais = (v.opcionais || []).filter(Boolean).slice(0, 8);
@@ -371,11 +425,6 @@ export function formatFichaElegante(v: VeiculoVitrineRow): string {
     lines.push("");
     lines.push("✅ Diferenciais");
     for (const item of diferenciais) lines.push(`• ${item}`);
-  }
-
-  if (v.descricao?.trim()) {
-    lines.push("");
-    lines.push(v.descricao.trim().slice(0, 500));
   }
 
   return lines.join("\n");
@@ -427,7 +476,9 @@ export function buildDetalheVehicleListRows(vehicleId: string): ShowcaseListRow[
 }
 
 export function vehicleTitle(v: VeiculoVitrineRow): string {
-  return [v.marca, v.modelo, v.versao, formatAno(v)].filter(Boolean).join(" ");
+  const base = vehicleDisplayTitle(v);
+  const ano = formatAno(v);
+  return ano && ano !== "—" ? `${base} ${ano}` : base;
 }
 
 export function buildRecadoInteresse(input: {
@@ -589,9 +640,32 @@ export function buildVisitaDiaListRows(isoDates: string[]): ShowcaseListRow[] {
 }
 
 export function parseIsoDateFromButtonParts(parts: string[]): string | null {
-  if (parts.length < 3) return null;
-  const iso = `${parts[0]}-${parts[1]}-${parts[2]}`;
-  return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : null;
+  if (parts.length >= 1 && /^\d{4}-\d{2}-\d{2}$/.test(parts[0])) {
+    return isValidCalendarDate(parts[0]) ? parts[0] : null;
+  }
+  if (parts.length >= 3) {
+    const iso = `${parts[0]}-${parts[1]}-${parts[2]}`;
+    return isValidCalendarDate(iso) ? iso : null;
+  }
+  return null;
+}
+
+export function parseVisitaTurnoFromButtonParts(
+  parts: string[],
+): { iso: string; turno: VitrineVisitaTurno } | null {
+  if (parts.length >= 2 && /^\d{4}-\d{2}-\d{2}$/.test(parts[0])) {
+    const turno = parts[1];
+    if (turno !== "manha" && turno !== "tarde") return null;
+    if (!isValidCalendarDate(parts[0])) return null;
+    return { iso: parts[0], turno };
+  }
+  if (parts.length >= 4) {
+    const iso = parseIsoDateFromButtonParts(parts.slice(0, 3));
+    const turno = parts[3];
+    if (!iso || (turno !== "manha" && turno !== "tarde")) return null;
+    return { iso, turno };
+  }
+  return null;
 }
 
 export function visitaTurnoLabel(turno: VitrineVisitaTurno): string {

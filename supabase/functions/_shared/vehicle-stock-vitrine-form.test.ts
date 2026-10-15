@@ -6,9 +6,14 @@ import {
 import {
   buildDetalheVehicleListRows,
   buildProximosDiasUteisVisita,
+  buildVisitaDiaListRows,
   isVitrineFormControlText,
+  parseIsoDateFromButtonParts,
+  parseVisitaTurnoFromButtonParts,
+  parseVitrineButtonId,
   pendingFormIsActive,
   shouldRunVitrineEarlyCapture,
+  vitrineButtonId,
   vitrineFormStepExpectsText,
 } from "./vehicle-stock-whatsapp.ts";
 import { runVehicleStockShowcaseTurn } from "./vehicle-stock-showcase-turn.ts";
@@ -154,4 +159,117 @@ Deno.test("lista detalhe usa título Financiamento", () => {
     r.id.includes("financiamento")
   );
   assertEquals(row?.title, "💰 Financiamento");
+});
+
+Deno.test("visita_dia: id real do builder → parse → handler turno", async () => {
+  const iso = "2026-10-17";
+  const dayRow = buildVisitaDiaListRows([iso])[0];
+  const { action, parts } = parseVitrineButtonId(dayRow.id);
+  assertEquals(action, "visita_dia");
+  assertEquals(parseIsoDateFromButtonParts(parts), iso);
+
+  let sentButtons = false;
+  const vehicle: VeiculoVitrineRow = {
+    id: "v-vis",
+    marca: "Land Rover",
+    modelo: "Range Rover Evoque",
+    versao: "2.0 P300",
+    ano_fabricacao: 2023,
+    ano_modelo: 2023,
+    km: 1000,
+    preco: 400000,
+    cor: null,
+    cambio: "Automático",
+    combustivel: "Gasolina",
+    portas: 4,
+    blindado: false,
+    nivel_blindagem: null,
+    opcionais: null,
+    caracteristicas: null,
+    descricao: null,
+    fotos: null,
+    status: "disponivel",
+  };
+  const noop = async () => ({ ok: true as const, messageId: "x" });
+  const deps: ShowcaseTurnDeps = {
+    loadTenantFlags: async () => ({
+      segmento: "revenda de veículos",
+      vitrine_veiculos_demo: false,
+      nome_empresa: "Loja Teste",
+    }),
+    loadMarcas: async () => [],
+    loadPrecosDisponiveis: async () => [],
+    loadVeiculosByMarca: async () => [],
+    loadVeiculosByFaixa: async () => [],
+    loadVeiculoById: async () => vehicle,
+    sendText: noop,
+    sendMenu: noop,
+    sendButtons: async () => {
+      sentButtons = true;
+      return { ok: true };
+    },
+    sendImage: noop,
+    sendImageHeaderButtons: noop,
+    sendCarousel: noop,
+    encaminharRecado: async () => ({ ok: true }),
+    savePending: async () => {},
+    getPending: () => ({
+      stage: "detalhe",
+      offset: 0,
+      updated_at: new Date().toISOString(),
+      form: {
+        flow: "visita",
+        step: "dia",
+        veiculo_id: "v-vis",
+        updated_at: new Date().toISOString(),
+      },
+    }),
+    pause: async () => {},
+  };
+
+  const dayResult = await runVehicleStockShowcaseTurn({
+    userText: `<<INTERACTIVE_ID:${dayRow.id}>>`,
+    fromNumber: "5521999999999",
+    forceInteractive: true,
+    deps,
+  });
+  assertEquals(dayResult.handled, true);
+  assertEquals(dayResult.replyPreview, "visita_turno");
+  assert(sentButtons);
+
+  const turnoId = vitrineButtonId("visita_turno", `${iso}:manha`);
+  const turnoParsed = parseVitrineButtonId(turnoId);
+  assertEquals(turnoParsed.action, "visita_turno");
+  assertEquals(parseVisitaTurnoFromButtonParts(turnoParsed.parts)?.iso, iso);
+  assertEquals(parseVisitaTurnoFromButtonParts(turnoParsed.parts)?.turno, "manha");
+
+  let confirmou = false;
+  const depsTurno: ShowcaseTurnDeps = {
+    ...deps,
+    sendText: async (t) => {
+      confirmou = t.includes("Visita agendada");
+      return { ok: true };
+    },
+    getPending: () => ({
+      stage: "detalhe",
+      offset: 0,
+      updated_at: new Date().toISOString(),
+      form: {
+        flow: "visita",
+        step: "turno",
+        veiculo_id: "v-vis",
+        dia_iso: iso,
+        updated_at: new Date().toISOString(),
+      },
+    }),
+  };
+  const turnoResult = await runVehicleStockShowcaseTurn({
+    userText: `<<INTERACTIVE_ID:${turnoId}>>`,
+    fromNumber: "5521999999999",
+    forceInteractive: true,
+    deps: depsTurno,
+  });
+  assertEquals(turnoResult.handled, true);
+  assertEquals(turnoResult.replyPreview, "visita_confirmada");
+  assert(confirmou);
 });

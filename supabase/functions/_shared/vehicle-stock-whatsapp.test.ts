@@ -13,6 +13,7 @@ import {
   extractVitrineInteractiveId,
   formatCarouselVitrineButtonText,
   formatFichaElegante,
+  formatVehicleDisplayTitle,
   isExplicitVehicleShowcaseRequest,
   isVitrineInteractiveId,
   marcaToSlug,
@@ -93,6 +94,15 @@ Deno.test("menu inicial respeita no máximo 10 linhas", () => {
   assert(sections.some((s) => s.title.includes("marca")));
 });
 
+Deno.test("formatVehicleDisplayTitle preserva siglas e normaliza palavras", () => {
+  assertEquals(
+    formatVehicleDisplayTitle(
+      "LAND ROVER RANGE ROVER EVOQUE 2.0 P300 GASOLINA MHEV R-Dynamic HSE AWD Automático",
+    ),
+    "Land Rover Range Rover Evoque 2.0 P300 Gasolina MHEV R-Dynamic HSE AWD Automático",
+  );
+});
+
 Deno.test("ficha elegante usa título normal e ícones", () => {
   const ficha = formatFichaElegante({
     id: "1",
@@ -140,6 +150,33 @@ Deno.test("ficha elegante usa título normal e ícones", () => {
   assertStringIncludes(ficha, "✨ Opcionais");
   assertStringIncludes(ficha, "✅ Diferenciais");
   assertFalse(ficha.includes("PORSCHE 911"));
+});
+
+Deno.test("ficha blindado e descricao em formato normal", () => {
+  const ficha = formatFichaElegante({
+    id: "1",
+    marca: "Volvo",
+    modelo: "XC90",
+    versao: null,
+    ano_fabricacao: 2020,
+    ano_modelo: 2020,
+    km: 1000,
+    preco: 300000,
+    cor: null,
+    cambio: null,
+    combustivel: null,
+    portas: null,
+    blindado: true,
+    nivel_blindagem: "Solution Place · PROTECHTOR EVO",
+    opcionais: null,
+    caracteristicas: null,
+    descricao: "BLINDAGEM COMPLETA · VIDROS ESCUROS",
+    fotos: [],
+    status: "disponivel",
+  });
+  assertStringIncludes(ficha, "🛡️ Blindado");
+  assertStringIncludes(ficha, "Blindagem Completa · Vidros Escuros");
+  assertFalse(ficha.includes("BLINDAGEM COMPLETA"));
 });
 
 Deno.test("confirmação usa nome da loja", () => {

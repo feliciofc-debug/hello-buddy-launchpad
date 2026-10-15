@@ -21,6 +21,7 @@ import {
   isVitrineFormControlText,
   marcaToSlug,
   parseIsoDateFromButtonParts,
+  parseVisitaTurnoFromButtonParts,
   parseVitrineButtonId,
   pendingFormExpired,
   pendingFormIsActive,
@@ -312,13 +313,12 @@ async function handleVitrineAction(input: ShowcaseTurnInput & {
   }
 
   if (action === "visita_turno") {
-    const iso = parseIsoDateFromButtonParts(parts);
-    const turno = parts[3] as VitrineVisitaTurno | undefined;
-    if (!iso || (turno !== "manha" && turno !== "tarde")) {
+    const parsed = parseVisitaTurnoFromButtonParts(parts);
+    if (!parsed) {
       await input.deps.sendText("Não reconheci o turno. Toque em Manhã ou Tarde.");
       return { handled: true };
     }
-    return await finalizeVisita(input, iso, turno);
+    return await finalizeVisita(input, parsed.iso, parsed.turno);
   }
 
   return { handled: false };
