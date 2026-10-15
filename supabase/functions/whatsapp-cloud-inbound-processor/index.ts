@@ -90,10 +90,14 @@ import {
   vehicleIdentificationQuestion,
   type VehicleIdentification,
 } from "../_shared/vehicle-identification.ts";
-import { executeVehicleStockShowcase } from "../_shared/vehicle-stock-showcase-bridge.ts";
+import {
+  executeVehicleStockShowcase,
+  getPendingVitrineEstoque,
+} from "../_shared/vehicle-stock-showcase-bridge.ts";
 import {
   extractVitrineInteractiveId,
   formatCarouselVitrineButtonText,
+  shouldRunVitrineEarlyCapture,
 } from "../_shared/vehicle-stock-whatsapp.ts";
 
 // ---------------------------------------------------------------------------
@@ -22382,6 +22386,7 @@ async function tryProcessVehicleStockShowcase(input: {
   userText: string;
   contactName: string | null;
   earlyInteractiveOnly: boolean;
+  allowEarlyFormCapture?: boolean;
   agentStateSeed?: AgentConvState;
 }): Promise<{ handled: boolean; preview?: string }> {
   const listId = String(input.row.payload?.interactive?.list_reply?.id ?? "");
@@ -22390,7 +22395,7 @@ async function tryProcessVehicleStockShowcase(input: {
     listId,
     inboundPayload: input.row.payload,
   });
-  if (input.earlyInteractiveOnly && !vitrineId) {
+  if (input.earlyInteractiveOnly && !vitrineId && !input.allowEarlyFormCapture) {
     return { handled: false };
   }
   const baseState = input.agentStateSeed ??
@@ -22427,6 +22432,7 @@ async function tryProcessVehicleStockShowcase(input: {
     listId,
     inboundPayload: input.row.payload,
     forceInteractive: input.earlyInteractiveOnly && !!vitrineId,
+    allowEarlyFormCapture: input.allowEarlyFormCapture === true,
   });
   return { handled: result.handled, preview: result.replyPreview };
 }
@@ -22593,7 +22599,7 @@ async function processOne(queueId: string) {
     const fromIsOwner = tenantOwnerMatchesPhone(_tenantOwner, row.from_number)
       || (isAmzTenantEarly && isAmzOwnerAltPhone(row.from_number));
 
-    // Vitrine estoque (cliente): botões/listas veiculo_vitrine:* ANTES de opt-in/LLM.
+    // Vitrine estoque (cliente): interativos + cancelar/consultor (+ texto troca no C) ANTES de opt-in/LLM.
     if (!fromIsOwner) {
       const vitrineListId = String(row.payload?.interactive?.list_reply?.id ?? "");
       const vitrineInteractiveEarly = extractVitrineInteractiveId({
@@ -22601,7 +22607,18 @@ async function processOne(queueId: string) {
         listId: vitrineListId,
         inboundPayload: row.payload,
       });
-      if (vitrineInteractiveEarly) {
+      const vitrineStateEarly = migrateVerticalState(
+        await loadAgentState(sb, convStateIdentity),
+      ).state as AgentConvState;
+      const pendingVitrineEarly = getPendingVitrineEstoque(
+        vitrineStateEarly as Record<string, unknown>,
+      );
+      const vitrineEarlyCapture = shouldRunVitrineEarlyCapture({
+        userText,
+        vitrineInteractiveId: vitrineInteractiveEarly,
+        pending: pendingVitrineEarly,
+      });
+      if (vitrineEarlyCapture) {
         try {
           const vitrineEarly = await tryProcessVehicleStockShowcase({
             row,
@@ -22609,7 +22626,9 @@ async function processOne(queueId: string) {
             userId,
             userText,
             contactName,
-            earlyInteractiveOnly: true,
+            earlyInteractiveOnly: !!vitrineInteractiveEarly,
+            allowEarlyFormCapture: vitrineEarlyCapture && !vitrineInteractiveEarly,
+            agentStateSeed: vitrineStateEarly,
           });
           if (vitrineEarly.handled) {
             stopTypingHeartbeat();

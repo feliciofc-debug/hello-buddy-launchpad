@@ -123,3 +123,24 @@ Deno.test("detalhe envia galeria, ficha e lista interativa", async () => {
   assertEquals(calls.includes("ficha"), true);
   assertEquals(calls.includes("menu:7"), true);
 });
+
+Deno.test("visita: texto livre com form ativo não é capturado", async () => {
+  const result = await runVehicleStockShowcaseTurn({
+    userText: "quero mudar de assunto",
+    fromNumber: "5521999999999",
+    deps: stubDeps({
+      getPending: () => ({
+        stage: "detalhe",
+        offset: 0,
+        updated_at: new Date().toISOString(),
+        form: {
+          flow: "visita",
+          step: "dia",
+          veiculo_id: "v1",
+          updated_at: new Date().toISOString(),
+        },
+      }),
+    }),
+  });
+  assertEquals(result.handled, false);
+});

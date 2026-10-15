@@ -1,18 +1,29 @@
 import {
   activeFaixasFromCounts,
   buildDetalheVehicleListRows,
+  buildProximosDiasUteisVisita,
   buildRecadoConsultor,
+  buildRecadoFinanciamento,
+  buildRecadoFormCancelado,
   buildRecadoInteresse,
+  buildRecadoVisita,
   buildShowcaseMenuSections,
+  buildVisitaDiaListRows,
   confirmacaoComNomeLoja,
+  confirmacaoFinanciamento,
+  confirmacaoVisitaAgendada,
   countVehiclesByFaixa,
   extractVitrineInteractiveId,
   FaixaPrecoId,
   formatCardBody,
   formatFichaElegante,
   isExplicitVehicleShowcaseRequest,
+  isVitrineFormControlText,
   marcaToSlug,
+  parseIsoDateFromButtonParts,
   parseVitrineButtonId,
+  pendingFormExpired,
+  pendingFormIsActive,
   PendingVitrineEstoque,
   shouldEnterShowcase,
   shouldOfferVehicleShowcase,
@@ -24,6 +35,8 @@ import {
   VITRINE_CAROUSEL_PAGE_SIZE,
   VITRINE_CAROUSEL_POST_DELAY_MS,
   VITRINE_ID_PREFIX,
+  vehicleDisplayTitle,
+  VitrineVisitaTurno,
 } from "./vehicle-stock-whatsapp.ts";
 import type { CarouselCardInput } from "./whatsapp-interactive-carousel.ts";
 
@@ -80,6 +93,7 @@ export type ShowcaseTurnInput = {
   contactName?: string | null;
   fromNumber: string;
   forceInteractive?: boolean;
+  allowEarlyFormCapture?: boolean;
   deps: ShowcaseTurnDeps;
 };
 
@@ -108,12 +122,32 @@ export async function runVehicleStockShowcaseTurn(
   });
   const explicit = isExplicitVehicleShowcaseRequest(input.userText, flags);
 
+  let pending = input.deps.getPending() ?? null;
+  if (pending?.form && pendingFormExpired(pending.form)) {
+    pending = { ...pending, form: null };
+    await input.deps.savePending(pending);
+  }
+
+  const formControl = isVitrineFormControlText(input.userText);
+  if (pendingFormIsActive(pending) && formControl) {
+    return await handleFormControl(input, pending, formControl);
+  }
+
+  if (
+    pendingFormIsActive(pending) &&
+    pending.form.flow === "visita" &&
+    !vitrineId
+  ) {
+    return { handled: false };
+  }
+
   if (
     !shouldEnterShowcase({
       flags,
       explicitText: explicit,
       vitrineInteractiveId: vitrineId,
-    })
+    }) &&
+    !(input.allowEarlyFormCapture && pendingFormIsActive(pending))
   ) {
     return { handled: false };
   }
@@ -255,12 +289,226 @@ async function handleVitrineAction(input: ShowcaseTurnInput & {
     return await showNextVehicle(input, parts[1]);
   }
 
-  if (action === "acao" && ["troca", "visita", "financiamento"].includes(parts[0])) {
+  if (action === "acao" && parts[0] === "troca" && parts[1]) {
     await input.deps.sendText(VITRINE_ACAO_EM_BREVE);
-    return { handled: true, replyPreview: `acao_${parts[0]}_em_breve` };
+    return { handled: true, replyPreview: "acao_troca_em_breve" };
+  }
+
+  if (action === "acao" && parts[0] === "visita" && parts[1]) {
+    return await startVisitaFlow(input, parts[1]);
+  }
+
+  if (action === "acao" && parts[0] === "financiamento" && parts[1]) {
+    return await handleFinanciamentoSimples(input, parts[1]);
+  }
+
+  if (action === "visita_dia") {
+    const iso = parseIsoDateFromButtonParts(parts);
+    if (!iso) {
+      await input.deps.sendText("Não reconheci esse dia. Escolha outra data na lista.");
+      return { handled: true };
+    }
+    return await handleVisitaDiaEscolhido(input, iso);
+  }
+
+  if (action === "visita_turno") {
+    const iso = parseIsoDateFromButtonParts(parts);
+    const turno = parts[3] as VitrineVisitaTurno | undefined;
+    if (!iso || (turno !== "manha" && turno !== "tarde")) {
+      await input.deps.sendText("Não reconheci o turno. Toque em Manhã ou Tarde.");
+      return { handled: true };
+    }
+    return await finalizeVisita(input, iso, turno);
   }
 
   return { handled: false };
+}
+
+async function startVisitaFlow(
+  input: ShowcaseTurnInput,
+  vehicleId: string,
+): Promise<ShowcaseTurnOutput> {
+  const vehicle = await input.deps.loadVeiculoById(vehicleId);
+  if (!vehicle) {
+    await input.deps.sendText("Esse veículo não está mais disponível.");
+    return { handled: true };
+  }
+  const pending = input.deps.getPending();
+  const dias = buildProximosDiasUteisVisita(6);
+  const now = new Date().toISOString();
+  await input.deps.savePending({
+    stage: pending?.stage ?? "detalhe",
+    marca: pending?.marca ?? vehicle.marca,
+    faixa: pending?.faixa ?? null,
+    filtro_tipo: pending?.filtro_tipo ?? null,
+    offset: pending?.offset ?? 0,
+    marca_offset: pending?.marca_offset ?? 0,
+    veiculo_id: vehicle.id,
+    carousel_ids: pending?.carousel_ids ?? null,
+    carousel_index: pending?.carousel_index ?? null,
+    form: {
+      flow: "visita",
+      step: "dia",
+      veiculo_id: vehicle.id,
+      updated_at: now,
+    },
+    updated_at: now,
+  });
+  await input.deps.sendMenu(
+    `Agendar visita ou test drive — ${vehicleDisplayTitle(vehicle)}`,
+    [{ title: "Próximos dias", rows: buildVisitaDiaListRows(dias) }],
+    "Escolher dia",
+  );
+  return { handled: true, replyPreview: "visita_dia" };
+}
+
+async function handleVisitaDiaEscolhido(
+  input: ShowcaseTurnInput,
+  diaIso: string,
+): Promise<ShowcaseTurnOutput> {
+  const pending = input.deps.getPending();
+  const vehicleId = pending?.form?.veiculo_id ?? pending?.veiculo_id;
+  if (!vehicleId) {
+    await input.deps.sendText("Não encontrei o veículo. Toque em Ver detalhes de novo.");
+    return { handled: true };
+  }
+  const now = new Date().toISOString();
+  await input.deps.savePending({
+    ...(pending ?? { stage: "detalhe", offset: 0, updated_at: now }),
+    form: {
+      flow: "visita",
+      step: "turno",
+      veiculo_id: vehicleId,
+      dia_iso: diaIso,
+      updated_at: now,
+    },
+    updated_at: now,
+  });
+  await input.deps.sendButtons(
+    "Qual turno prefere?",
+    [
+      { id: vitrineButtonId("visita_turno", `${diaIso}:manha`), title: "Manhã" },
+      { id: vitrineButtonId("visita_turno", `${diaIso}:tarde`), title: "Tarde" },
+    ],
+  );
+  return { handled: true, replyPreview: "visita_turno" };
+}
+
+async function finalizeVisita(
+  input: ShowcaseTurnInput,
+  diaIso: string,
+  turno: VitrineVisitaTurno,
+): Promise<ShowcaseTurnOutput> {
+  const pending = input.deps.getPending();
+  const vehicleId = pending?.form?.veiculo_id ?? pending?.veiculo_id;
+  if (!vehicleId) {
+    await input.deps.sendText("Não encontrei o veículo.");
+    return { handled: true };
+  }
+  const vehicle = await input.deps.loadVeiculoById(vehicleId);
+  if (!vehicle) {
+    await input.deps.sendText("Esse veículo não está mais disponível.");
+    return { handled: true };
+  }
+  const flags = await input.deps.loadTenantFlags();
+  const recado = buildRecadoVisita({
+    contactName: input.contactName,
+    fromNumber: input.fromNumber,
+    vehicle,
+    diaIso,
+    turno,
+  });
+  const fwd = await input.deps.encaminharRecado(recado);
+  await input.deps.savePending({
+    ...(pending ?? { stage: "detalhe", offset: 0, updated_at: new Date().toISOString() }),
+    form: null,
+    stage: "handoff",
+    veiculo_id: vehicle.id,
+    updated_at: new Date().toISOString(),
+  });
+  const msg = confirmacaoVisitaAgendada(flags.nome_empresa, diaIso, turno);
+  if (fwd.ok) {
+    await input.deps.sendText(msg);
+  } else {
+    await input.deps.sendText(
+      "Recebi sua preferência de horário, mas não consegui avisar a loja agora — tente novamente em instantes.",
+    );
+  }
+  return { handled: true, replyPreview: "visita_confirmada" };
+}
+
+async function handleFinanciamentoSimples(
+  input: ShowcaseTurnInput,
+  vehicleId: string,
+): Promise<ShowcaseTurnOutput> {
+  const vehicle = await input.deps.loadVeiculoById(vehicleId);
+  if (!vehicle) {
+    await input.deps.sendText("Esse veículo não está mais disponível.");
+    return { handled: true };
+  }
+  const flags = await input.deps.loadTenantFlags();
+  const recado = buildRecadoFinanciamento({
+    contactName: input.contactName,
+    fromNumber: input.fromNumber,
+    vehicle,
+  });
+  const fwd = await input.deps.encaminharRecado(recado);
+  const pending = input.deps.getPending();
+  await input.deps.savePending({
+    ...(pending ?? { stage: "detalhe", offset: 0, updated_at: new Date().toISOString() }),
+    form: null,
+    stage: "handoff",
+    veiculo_id: vehicle.id,
+    updated_at: new Date().toISOString(),
+  });
+  const msg = confirmacaoFinanciamento(flags.nome_empresa);
+  if (fwd.ok) {
+    await input.deps.sendText(msg);
+  } else {
+    await input.deps.sendText(
+      "Recebi seu pedido de simulação, mas não consegui avisar a loja agora — tente novamente em instantes.",
+    );
+  }
+  return { handled: true, replyPreview: "financiamento" };
+}
+
+async function handleFormControl(
+  input: ShowcaseTurnInput,
+  pending: PendingVitrineEstoque,
+  kind: "cancelar" | "consultor",
+): Promise<ShowcaseTurnOutput> {
+  const vehicleId = pending.form?.veiculo_id ?? pending.veiculo_id;
+  const vehicle = vehicleId
+    ? await input.deps.loadVeiculoById(vehicleId)
+    : null;
+  const flags = await input.deps.loadTenantFlags();
+  const recado = kind === "cancelar"
+    ? buildRecadoFormCancelado({
+      contactName: input.contactName,
+      fromNumber: input.fromNumber,
+      vehicle,
+      form: pending.form!,
+    })
+    : buildRecadoConsultor({
+      contactName: input.contactName,
+      fromNumber: input.fromNumber,
+      vehicle,
+      marca: pending.marca ?? null,
+    });
+  await input.deps.encaminharRecado(recado);
+  await input.deps.savePending({
+    ...pending,
+    form: null,
+    updated_at: new Date().toISOString(),
+  });
+  if (kind === "cancelar") {
+    await input.deps.sendText(
+      "Sem problemas — cancelei por aqui. Se quiser, digite *ver carros* para explorar o estoque de novo.",
+    );
+  } else {
+    await input.deps.sendText(confirmacaoComNomeLoja(flags.nome_empresa));
+  }
+  return { handled: true, replyPreview: `form_${kind}` };
 }
 
 async function showNextVehicle(

@@ -27,8 +27,25 @@ export type PendingVitrineEstoque = {
   veiculo_id?: string | null;
   carousel_ids?: string[] | null;
   carousel_index?: number | null;
+  form?: VitrineEstoqueForm | null;
   updated_at: string;
 };
+
+export type VitrineVisitaTurno = "manha" | "tarde";
+
+export type VitrineEstoqueForm = {
+  flow: "visita" | "troca" | "financiamento";
+  step: string;
+  veiculo_id: string;
+  dia_iso?: string;
+  turno?: VitrineVisitaTurno;
+  updated_at: string;
+  modelo_ano?: string;
+  km?: string;
+  placa?: string;
+};
+
+export const VITRINE_FORM_TTL_MS = 15 * 60 * 1000;
 
 export type ShowcaseListRow = {
   id: string;
@@ -383,7 +400,7 @@ export function buildDetalheVehicleListRows(vehicleId: string): ShowcaseListRow[
     },
     {
       id: vitrineButtonId("acao", `financiamento:${vehicleId}`),
-      title: "💰 Simular finan.",
+      title: "💰 Financiamento",
       description: "Simular financiamento deste carro",
     },
     {
@@ -458,6 +475,203 @@ export const VITRINE_ACAO_EM_BREVE =
   "Essa opção será liberada em breve. Enquanto isso, toque em *Falar consultor* ou *Tenho interesse*.";
 
 export const VITRINE_CAROUSEL_POST_DELAY_MS = 1500;
+
+const TZ_SAO_PAULO = "America/Sao_Paulo";
+
+export function normalizeVitrineText(text: string): string {
+  return String(text || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/<<INTERACTIVE_ID:[^>]+>>/gi, "")
+    .toLowerCase()
+    .trim();
+}
+
+export function isVitrineFormControlText(
+  text: string,
+): "cancelar" | "consultor" | null {
+  const value = normalizeVitrineText(text);
+  if (!value) return null;
+  if (/^(cancelar|cancela|sair|desistir)$/.test(value)) return "cancelar";
+  if (
+    /\b(falar com consultor|falar consultor|consultor humano|quero consultor)\b/.test(value)
+  ) return "consultor";
+  return null;
+}
+
+export function pendingFormIsActive(
+  pending: PendingVitrineEstoque | null | undefined,
+): pending is PendingVitrineEstoque & { form: VitrineEstoqueForm } {
+  return !!pending?.form?.veiculo_id && !!pending.form.updated_at;
+}
+
+export function pendingFormExpired(
+  form: VitrineEstoqueForm,
+  nowMs = Date.now(),
+): boolean {
+  const updated = Date.parse(form.updated_at);
+  if (!Number.isFinite(updated)) return true;
+  return nowMs - updated > VITRINE_FORM_TTL_MS;
+}
+
+/** Etapas da troca (Commit C) que capturam texto livre — visita não entra aqui. */
+export function vitrineFormStepExpectsText(step: string): boolean {
+  return step === "modelo_ano" || step === "km" || step === "placa";
+}
+
+export function shouldRunVitrineEarlyCapture(input: {
+  userText: string;
+  vitrineInteractiveId: string | null;
+  pending: PendingVitrineEstoque | null | undefined;
+}): boolean {
+  if (input.vitrineInteractiveId) return true;
+  if (!pendingFormIsActive(input.pending)) return false;
+  if (pendingFormExpired(input.pending.form)) return false;
+  if (isVitrineFormControlText(input.userText)) return true;
+  if (
+    input.pending.form.flow === "troca" &&
+    vitrineFormStepExpectsText(input.pending.form.step)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Próximos N dias úteis a partir de AMANHÃ (exclui domingo). */
+export function buildProximosDiasUteisVisita(
+  count: number,
+  nowMs = Date.now(),
+  timeZone = TZ_SAO_PAULO,
+): string[] {
+  const out: string[] = [];
+  const weekdayFmt = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    weekday: "short",
+  });
+  const isoFmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  for (let dayOffset = 1; out.length < count && dayOffset < 40; dayOffset++) {
+    const instant = new Date(nowMs + dayOffset * 86_400_000);
+    if (weekdayFmt.format(instant) === "Sun") continue;
+    out.push(isoFmt.format(instant));
+  }
+  return out;
+}
+
+export function formatVisitaDiaLabel(
+  isoDate: string,
+  timeZone = TZ_SAO_PAULO,
+): string {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  const instant = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  const weekday = new Intl.DateTimeFormat("pt-BR", {
+    timeZone,
+    weekday: "short",
+  }).format(instant);
+  const dayMonth = new Intl.DateTimeFormat("pt-BR", {
+    timeZone,
+    day: "2-digit",
+    month: "2-digit",
+  }).format(instant);
+  return `${weekday} ${dayMonth}`.replace(/\./g, "");
+}
+
+export function buildVisitaDiaListRows(isoDates: string[]): ShowcaseListRow[] {
+  return isoDates.map((iso) => ({
+    id: vitrineButtonId("visita_dia", iso),
+    title: formatVisitaDiaLabel(iso).slice(0, 24),
+    description: "Escolher este dia",
+  }));
+}
+
+export function parseIsoDateFromButtonParts(parts: string[]): string | null {
+  if (parts.length < 3) return null;
+  const iso = `${parts[0]}-${parts[1]}-${parts[2]}`;
+  return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : null;
+}
+
+export function visitaTurnoLabel(turno: VitrineVisitaTurno): string {
+  return turno === "manha" ? "manhã" : "tarde";
+}
+
+export function buildRecadoVisita(input: {
+  contactName?: string | null;
+  fromNumber: string;
+  vehicle: VeiculoVitrineRow;
+  diaIso: string;
+  turno: VitrineVisitaTurno;
+}): string {
+  const nome = (input.contactName || "").trim() || "Cliente";
+  const titulo = vehicleTitle(input.vehicle);
+  return [
+    `Nome: ${nome}`,
+    `Telefone: ${input.fromNumber}`,
+    `Cliente ${nome} (${input.fromNumber}) quer agendar visita/test drive.`,
+    `Veículo: ${titulo} (id ${input.vehicle.id})`,
+    `Dia: ${formatVisitaDiaLabel(input.diaIso)} (${input.diaIso})`,
+    `Turno: ${visitaTurnoLabel(input.turno)}`,
+    "Ação: confirmar horário com o cliente.",
+  ].join("\n");
+}
+
+export function buildRecadoFinanciamento(input: {
+  contactName?: string | null;
+  fromNumber: string;
+  vehicle: VeiculoVitrineRow;
+}): string {
+  const nome = (input.contactName || "").trim() || "Cliente";
+  const titulo = vehicleTitle(input.vehicle);
+  return [
+    `Nome: ${nome}`,
+    `Telefone: ${input.fromNumber}`,
+    `Cliente ${nome} (${input.fromNumber}) quer simular financiamento do ${titulo}.`,
+    `Veículo (estoque): ${input.vehicle.id}`,
+    "Ação: retornar contato com simulação.",
+  ].join("\n");
+}
+
+export function buildRecadoFormCancelado(input: {
+  contactName?: string | null;
+  fromNumber: string;
+  vehicle?: VeiculoVitrineRow | null;
+  form: VitrineEstoqueForm;
+}): string {
+  const nome = (input.contactName || "").trim() || "Cliente";
+  const titulo = input.vehicle ? vehicleTitle(input.vehicle) : input.form.veiculo_id;
+  const extras: string[] = [];
+  if (input.form.dia_iso) {
+    extras.push(`Dia escolhido: ${formatVisitaDiaLabel(input.form.dia_iso)}`);
+  }
+  if (input.form.turno) extras.push(`Turno: ${visitaTurnoLabel(input.form.turno)}`);
+  return [
+    `Nome: ${nome}`,
+    `Telefone: ${input.fromNumber}`,
+    `Cliente ${nome} cancelou/saiu de um fluxo da vitrine (${input.form.flow}, etapa ${input.form.step}).`,
+    `Veículo: ${titulo}`,
+    ...extras,
+    "Ação: retomar contato se fizer sentido.",
+  ].join("\n");
+}
+
+export function confirmacaoVisitaAgendada(
+  nomeEmpresa: string | null | undefined,
+  diaIso: string,
+  turno: VitrineVisitaTurno,
+): string {
+  const nome = String(nomeEmpresa || "").trim() || "nossa loja";
+  return `Visita agendada com a ${nome}! Te esperamos ${formatVisitaDiaLabel(diaIso)}, período da ${visitaTurnoLabel(turno)}. Qualquer dúvida, estamos por aqui.`;
+}
+
+export function confirmacaoFinanciamento(
+  nomeEmpresa: string | null | undefined,
+): string {
+  const nome = String(nomeEmpresa || "").trim() || "nossa loja";
+  return `Obrigado! A ${nome} recebeu seu pedido de simulação de financiamento. Um consultor retorna em instantes.`;
+}
 
 export function pendingIsActive(
   pending: PendingVitrineEstoque | null | undefined,

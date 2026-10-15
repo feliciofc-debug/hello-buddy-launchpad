@@ -64,10 +64,16 @@ async function postSendMessage(
   return { ok: true, messageId: parsed.message_id ?? null };
 }
 
-function pendingFromState(state: Record<string, unknown>): PendingVitrineEstoque | null {
+export function getPendingVitrineEstoque(
+  state: Record<string, unknown>,
+): PendingVitrineEstoque | null {
   const vehicle = state.vehicle as Record<string, unknown> | undefined;
   const pending = vehicle?.pending_vitrine_estoque as PendingVitrineEstoque | undefined;
   return pending ?? null;
+}
+
+function pendingFromState(state: Record<string, unknown>): PendingVitrineEstoque | null {
+  return getPendingVitrineEstoque(state);
 }
 
 function faixaQuery(sb: any, userId: string, faixa: FaixaPrecoId) {
@@ -201,6 +207,7 @@ export async function executeVehicleStockShowcase(input: {
   listId?: string;
   inboundPayload?: unknown;
   forceInteractive?: boolean;
+  allowEarlyFormCapture?: boolean;
 }) {
   const deps = buildShowcaseDeps(input.ctx);
   return runVehicleStockShowcaseTurn({
@@ -210,6 +217,7 @@ export async function executeVehicleStockShowcase(input: {
     contactName: input.ctx.contactName,
     fromNumber: input.ctx.to,
     forceInteractive: input.forceInteractive,
+    allowEarlyFormCapture: input.allowEarlyFormCapture,
     deps,
   });
 }
