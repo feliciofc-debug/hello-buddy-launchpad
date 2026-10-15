@@ -1,9 +1,16 @@
 import {
+  applyTrocaPhotoAndReply,
   runVehicleStockShowcaseTurn,
   ShowcaseSendResult,
   ShowcaseTurnDeps,
   VEHICLE_SELECT,
 } from "./vehicle-stock-showcase-turn.ts";
+import {
+  buildTrocaStoragePath,
+  currentTrocaFotoSlot,
+  shouldCaptureVitrineTrocaPhoto,
+} from "./vehicle-stock-troca.ts";
+import { createLovableTrocaVisionClient } from "./vehicle-stock-troca-vision.ts";
 import {
   FaixaPrecoId,
   isTransientVitrineSendFailure,
@@ -214,6 +221,66 @@ export function buildShowcaseDeps(ctx: ShowcaseBridgeContext): ShowcaseTurnDeps 
     getPending: () => pendingFromState(stateRef),
     pause: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   };
+}
+
+export async function processVitrineTrocaInboundPhoto(input: {
+  ctx: ShowcaseBridgeContext;
+  userText: string;
+  bytes: Uint8Array;
+  mime: string;
+  visionApiKey?: string | null;
+}): Promise<{ handled: boolean; preview?: string }> {
+  const state = await input.ctx.loadAgentState();
+  const pending = getPendingVitrineEstoque(state);
+  if (!shouldCaptureVitrineTrocaPhoto(pending) || !pending?.form) {
+    return { handled: false };
+  }
+  const slot = currentTrocaFotoSlot(pending.form);
+  if (!slot) return { handled: false };
+
+  const sessionId = pending.form.troca_sessao_id ?? crypto.randomUUID();
+  if (!pending.form.troca_sessao_id) {
+    const now = new Date().toISOString();
+    await input.ctx.saveAgentStatePatch({
+      vehicle: {
+        ...(state.vehicle as Record<string, unknown> ?? {}),
+        pending_vitrine_estoque: {
+          ...pending,
+          form: { ...pending.form, troca_sessao_id: sessionId, updated_at: now },
+          updated_at: now,
+        },
+      },
+    }, state);
+  }
+
+  const path = buildTrocaStoragePath(input.ctx.userId, sessionId, slot.id);
+  const contentType = input.mime.startsWith("image/") ? input.mime : "image/jpeg";
+  const { error: upErr } = await input.ctx.sb.storage
+    .from("produtos")
+    .upload(path, input.bytes, { contentType, upsert: true });
+  if (upErr) {
+    console.error("[vehicle-vitrine][troca-upload]", upErr.message);
+    return { handled: false };
+  }
+  const { data: pub } = input.ctx.sb.storage.from("produtos").getPublicUrl(path);
+  const url = pub?.publicUrl;
+  if (!url) return { handled: false };
+
+  let visionView: string | undefined;
+  if (input.visionApiKey) {
+    const vision = createLovableTrocaVisionClient({ apiKey: input.visionApiKey });
+    visionView = (await vision(url)).view;
+  }
+
+  const deps = buildShowcaseDeps(input.ctx);
+  const result = await applyTrocaPhotoAndReply({
+    userText: input.userText,
+    fromNumber: input.ctx.to,
+    contactName: input.ctx.contactName,
+    deps,
+  }, { url, visionView });
+
+  return { handled: result.handled, preview: result.replyPreview };
 }
 
 export async function executeVehicleStockShowcase(input: {

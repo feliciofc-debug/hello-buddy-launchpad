@@ -29,19 +29,30 @@ import {
   pendingFormExpired,
   pendingFormIsActive,
   PendingVitrineEstoque,
+  vitrineFormStepExpectsText,
   shouldEnterShowcase,
   shouldOfferVehicleShowcase,
   slugToMarcaCandidates,
   VehicleShowcaseTenantFlags,
   VeiculoVitrineRow,
   vitrineButtonId,
-  VITRINE_ACAO_EM_BREVE,
   VITRINE_CAROUSEL_PAGE_SIZE,
   VITRINE_CAROUSEL_POST_DELAY_MS,
   VITRINE_ID_PREFIX,
   vehicleDisplayTitle,
   VitrineVisitaTurno,
 } from "./vehicle-stock-whatsapp.ts";
+import {
+  advanceTrocaAfterPhoto,
+  advanceTrocaAfterText,
+  buildRecadoTrocaAvaliacao,
+  confirmacaoTrocaCliente,
+  mergePendingForTrocaStart,
+  promptTrocaModeloAno,
+  promptTrocaObservacoes,
+  skipTrocaObservacoes,
+  VITRINE_TROCA_FOTO_SLOTS,
+} from "./vehicle-stock-troca.ts";
 import type { CarouselCardInput } from "./whatsapp-interactive-carousel.ts";
 
 export type ShowcaseSendResult = {
@@ -172,6 +183,31 @@ export async function runVehicleStockShowcaseTurn(
     !vitrineId
   ) {
     return { handled: false };
+  }
+
+  if (
+    pendingFormIsActive(pending) &&
+    pending.form.flow === "troca" &&
+    !vitrineId &&
+    !input.allowEarlyFormCapture
+  ) {
+    if (pending.form.step === "fotos") {
+      await input.deps.sendText(
+        "Estou aguardando a foto desta etapa. Envie uma imagem ou digite *cancelar*.",
+      );
+      return { handled: true, replyPreview: "troca_aguardando_foto" };
+    }
+    return { handled: false };
+  }
+
+  if (
+    input.allowEarlyFormCapture &&
+    pendingFormIsActive(pending) &&
+    pending.form.flow === "troca" &&
+    !vitrineId &&
+    vitrineFormStepExpectsText(pending.form.step)
+  ) {
+    return await handleTrocaTextStep(input, pending);
   }
 
   if (
@@ -323,8 +359,23 @@ async function handleVitrineAction(input: ShowcaseTurnInput & {
   }
 
   if (action === "acao" && parts[0] === "troca" && parts[1]) {
-    await input.deps.sendText(VITRINE_ACAO_EM_BREVE);
-    return { handled: true, replyPreview: "acao_troca_em_breve" };
+    return await startTrocaFlow(input, parts[1]);
+  }
+
+  if (action === "troca_obs" && parts[0] === "pular") {
+    const pendingCtx = input.deps.getPending();
+    if (
+      pendingCtx?.form?.flow === "troca" &&
+      pendingCtx.form.step === "observacoes"
+    ) {
+      const now = new Date().toISOString();
+      await input.deps.savePending({
+        ...pendingCtx,
+        form: skipTrocaObservacoes(pendingCtx.form, now),
+        updated_at: now,
+      });
+    }
+    return await finalizeTrocaFlow(input);
   }
 
   if (action === "acao" && parts[0] === "visita" && parts[1]) {
@@ -516,6 +567,135 @@ async function handleFinanciamentoSimples(
     );
   }
   return { handled: true, replyPreview: "financiamento" };
+}
+
+async function startTrocaFlow(
+  input: ShowcaseTurnInput,
+  vehicleId: string,
+): Promise<ShowcaseTurnOutput> {
+  const vehicle = await input.deps.loadVeiculoById(vehicleId);
+  if (!vehicle) {
+    await input.deps.sendText("Esse veículo não está mais disponível.");
+    return { handled: true };
+  }
+  const pending = input.deps.getPending();
+  const sessionId = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await input.deps.savePending(
+    mergePendingForTrocaStart(pending, vehicle, sessionId, now),
+  );
+  await input.deps.sendText(promptTrocaModeloAno(vehicle));
+  return { handled: true, replyPreview: "troca_modelo_ano" };
+}
+
+async function handleTrocaTextStep(
+  input: ShowcaseTurnInput,
+  pending: PendingVitrineEstoque,
+): Promise<ShowcaseTurnOutput> {
+  const text = input.userText.trim();
+  if (!text) {
+    await input.deps.sendText("Pode digitar a resposta ou *cancelar*.");
+    return { handled: true, replyPreview: "troca_texto_vazio" };
+  }
+  const now = new Date().toISOString();
+  const { form, reply, done } = advanceTrocaAfterText(pending.form!, text, now);
+  await input.deps.savePending({ ...pending, form, updated_at: now });
+  if (done) {
+    return await finalizeTrocaFlow(input);
+  }
+  if (reply) {
+    await input.deps.sendText(reply);
+  }
+  if (form.step === "observacoes") {
+    await input.deps.sendButtons(promptTrocaObservacoes(), [
+      { id: vitrineButtonId("troca_obs", "pular"), title: "Pular" },
+    ]);
+    return { handled: true, replyPreview: "troca_observacoes" };
+  }
+  return { handled: true, replyPreview: `troca_${form.step}` };
+}
+
+async function finalizeTrocaFlow(
+  input: ShowcaseTurnInput,
+): Promise<ShowcaseTurnOutput> {
+  const pending = input.deps.getPending();
+  const form = pending?.form;
+  const vehicleId = form?.veiculo_id ?? pending?.veiculo_id;
+  if (!form || form.flow !== "troca" || !vehicleId) {
+    await input.deps.sendText("Não encontrei os dados da troca. Toque em *Avaliar troca* de novo.");
+    return { handled: true };
+  }
+  const vehicle = await input.deps.loadVeiculoById(vehicleId);
+  if (!vehicle) {
+    await input.deps.sendText("Esse veículo não está mais disponível.");
+    return { handled: true };
+  }
+  const flags = await input.deps.loadTenantFlags();
+  const recado = buildRecadoTrocaAvaliacao({
+    contactName: input.contactName,
+    fromNumber: input.fromNumber,
+    vehicleEstoque: vehicle,
+    form,
+  });
+  const idemKey = buildVitrineRecadoIdempotencyKey({
+    acao: "troca",
+    fromNumber: input.fromNumber,
+    veiculoId: vehicle.id,
+  });
+  const notify = await vitrineNotifyOwner(input, idemKey, recado);
+  const now = new Date().toISOString();
+  await input.deps.savePending({
+    ...(pending ?? { stage: "handoff", offset: 0, updated_at: now }),
+    form: null,
+    stage: "handoff",
+    veiculo_id: vehicle.id,
+    updated_at: now,
+  });
+  const msg = confirmacaoTrocaCliente(flags.nome_empresa);
+  const sent = await input.deps.sendText(msg);
+  if (!sent.ok && !notify.notified && !notify.duplicate) {
+    await input.deps.sendText(
+      "Recebi seus dados, mas não consegui avisar a loja agora — tente novamente em instantes.",
+    );
+  }
+  return {
+    handled: true,
+    replyPreview: notify.duplicate ? "troca_confirmada_dedup" : "troca_confirmada",
+  };
+}
+
+export async function applyTrocaPhotoAndReply(
+  input: ShowcaseTurnInput,
+  photo: { url: string; visionView?: string },
+): Promise<ShowcaseTurnOutput> {
+  const pending = input.deps.getPending();
+  const form = pending?.form;
+  if (!form || form.flow !== "troca" || form.step !== "fotos") {
+    return { handled: false };
+  }
+  const slotDef = VITRINE_TROCA_FOTO_SLOTS[form.foto_slot_index ?? 0];
+  if (!slotDef) {
+    return { handled: false };
+  }
+  const now = new Date().toISOString();
+  const { form: nextForm, reply } = advanceTrocaAfterPhoto({
+    form,
+    slot: slotDef.id,
+    url: photo.url,
+    visionView: photo.visionView as
+      | import("./vehicle-stock-troca-vision.ts").TrocaVisionView
+      | undefined,
+    now,
+  });
+  await input.deps.savePending({ ...pending!, form: nextForm, updated_at: now });
+  if (nextForm.step === "observacoes") {
+    await input.deps.sendButtons(promptTrocaObservacoes(), [
+      { id: vitrineButtonId("troca_obs", "pular"), title: "Pular" },
+    ]);
+    return { handled: true, replyPreview: "troca_observacoes" };
+  }
+  await input.deps.sendText(reply);
+  return { handled: true, replyPreview: `troca_foto_${slotDef.id}` };
 }
 
 async function handleFormControl(

@@ -45,6 +45,14 @@ export type VitrineEstoqueForm = {
   modelo_ano?: string;
   km?: string;
   placa?: string;
+  troca_sessao_id?: string;
+  foto_slot_index?: number;
+  fotos?: Array<{
+    slot: string;
+    url: string;
+    vision_view?: string;
+  }>;
+  observacoes?: string;
 };
 
 export const VITRINE_FORM_TTL_MS = 15 * 60 * 1000;
@@ -70,7 +78,8 @@ export type VitrineRecadoAcao =
   | "visita"
   | "financiamento"
   | "interesse"
-  | "consultor";
+  | "consultor"
+  | "troca";
 
 export function buildVitrineRecadoIdempotencyKey(input: {
   acao: VitrineRecadoAcao;
@@ -400,8 +409,9 @@ function isValidCalendarDate(iso: string): boolean {
 }
 
 function formatVehicleTitleToken(token: string): string {
-  if (/\d/.test(token)) return token;
   if (/^\d+x\d+$/i.test(token)) return token.toUpperCase();
+  if (/[A-Za-z]/.test(token) && /\d/.test(token)) return token;
+  if (/\d/.test(token) && !/[A-Za-z]/.test(token)) return token;
   if (token.includes("-")) {
     return token.split("-").map((seg) => formatVehicleTitleToken(seg)).join("-");
   }
@@ -412,7 +422,7 @@ function formatVehicleTitleToken(token: string): string {
   return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 
-/** Palavras comuns: 1ª maiúscula; siglas/códigos (HSE, P300, 4x4…) preservados. */
+/** Palavras comuns: 1ª maiúscula; siglas/códigos (HSE, P300, XDRIVE40I…) preservados. */
 export function formatVehicleDisplayTitle(raw: string): string {
   return String(raw || "")
     .trim()
@@ -446,10 +456,13 @@ function truncateCardText(text: string): string {
   return `${t.slice(0, 157)}...`;
 }
 
-/** Título legível (case normal, sem caixa alta forçada). */
+/** Título legível — marca exatamente como cadastrada; modelo/versão formatados. */
 export function vehicleDisplayTitle(v: VeiculoVitrineRow): string {
-  const raw = [v.marca, v.modelo, v.versao].filter(Boolean).join(" ");
-  return formatVehicleDisplayTitle(raw);
+  const marca = String(v.marca || "").trim();
+  const rest = formatVehicleDisplayTitle(
+    [v.modelo, v.versao].filter(Boolean).join(" "),
+  );
+  return [marca, rest].filter(Boolean).join(" ");
 }
 
 export function formatFichaElegante(v: VeiculoVitrineRow): string {
@@ -633,7 +646,8 @@ export function pendingFormExpired(
 
 /** Etapas da troca (Commit C) que capturam texto livre — visita não entra aqui. */
 export function vitrineFormStepExpectsText(step: string): boolean {
-  return step === "modelo_ano" || step === "km" || step === "placa";
+  return step === "modelo_ano" || step === "km" || step === "placa" ||
+    step === "observacoes";
 }
 
 export function shouldRunVitrineEarlyCapture(input: {

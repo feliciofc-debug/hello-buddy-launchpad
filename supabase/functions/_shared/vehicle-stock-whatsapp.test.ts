@@ -106,6 +106,34 @@ Deno.test("formatVehicleDisplayTitle preserva siglas curtas em caixa alta", () =
     ),
     "Range Rover 2.0 P300 MHEV HSE AWD Automático",
   );
+  assertEquals(formatVehicleDisplayTitle("BMW X1 XDRIVE40I"), "BMW X1 XDRIVE40I");
+});
+
+Deno.test("vehicleDisplayTitle mantém marca cadastrada", () => {
+  assertEquals(
+    vehicleDisplayTitle({
+      id: "1",
+      marca: "BMW",
+      modelo: "x1",
+      versao: "xDrive40i",
+      ano_fabricacao: 2022,
+      ano_modelo: 2022,
+      km: null,
+      preco: null,
+      cor: null,
+      cambio: null,
+      combustivel: null,
+      portas: null,
+      blindado: false,
+      nivel_blindagem: null,
+      opcionais: null,
+      caracteristicas: null,
+      descricao: null,
+      fotos: null,
+      status: "disponivel",
+    }),
+    "BMW x1 xDrive40i",
+  );
 });
 
 Deno.test("isTransientVitrineSendFailure detecta Meta 131000 e HTTP 5xx", () => {

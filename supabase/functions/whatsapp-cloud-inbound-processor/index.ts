@@ -93,6 +93,7 @@ import {
 import {
   executeVehicleStockShowcase,
   getPendingVitrineEstoque,
+  processVitrineTrocaInboundPhoto,
 } from "../_shared/vehicle-stock-showcase-bridge.ts";
 import {
   extractVitrineInteractiveId,
@@ -23342,6 +23343,60 @@ async function processOne(queueId: string) {
           verticalDecision.route,
         )
         : rawFreshAgentState;
+
+      // Vitrine troca (cliente): fotos do formulário ANTES da biblioteca /midias.
+      if (!fromIsOwner && freshLibraryMedia.some((m) => m.kind === "image")) {
+        const trocaImage = freshLibraryMedia.find((m) => m.kind === "image");
+        if (trocaImage?.base64) {
+          try {
+            const trocaPhoto = await processVitrineTrocaInboundPhoto({
+              ctx: {
+                sb,
+                userId,
+                to: row.from_number,
+                contactName: contactName ?? undefined,
+                supabaseUrl: SUPABASE_URL,
+                serviceKey: SERVICE_KEY,
+                agentState: freshAgentState as Record<string, unknown>,
+                loadAgentState: async () => {
+                  const st = await loadAgentState(sb, stateConversation);
+                  return st as Record<string, unknown>;
+                },
+                saveAgentStatePatch: async (patch, current) => saveAgentState(
+                  sb,
+                  stateConversation,
+                  patch as AgentConvState,
+                  current as AgentConvState,
+                ),
+                encaminharRecado: async (recado) => {
+                  const raw = await toolEncaminharRecadoAoDono(
+                    { recado },
+                    { userId, fromNumber: row.from_number },
+                  );
+                  const parsed = JSON.parse(raw);
+                  return { ok: parsed?.ok === true, protocolo: parsed?.protocolo };
+                },
+              },
+              userText,
+              bytes: base64Decode(trocaImage.base64),
+              mime: trocaImage.mime,
+              visionApiKey: LOVABLE_API_KEY,
+            });
+            if (trocaPhoto.handled) {
+              stopTypingHeartbeat();
+              await doneQueue(row.id);
+              return {
+                ok: true,
+                vehicle_vitrine_troca_photo: true,
+                preview: trocaPhoto.preview,
+              };
+            }
+          } catch (e) {
+            console.error("[vehicle-vitrine][troca-photo]", (e as Error).message);
+          }
+        }
+      }
+
       if (fromIsOwner) {
         await clearExpiredAnuncioPendingState(
           stateConversation,
