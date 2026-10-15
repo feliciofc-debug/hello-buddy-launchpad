@@ -73,6 +73,23 @@ export type VitrineEstoqueForm = {
   }>;
   observacoes?: string;
   troca_observacoes_internas?: string[];
+  lgpd_aceite_em?: string;
+  tipo_pessoa?: "pf" | "pj";
+  nome_completo?: string;
+  cpf_cnpj?: string;
+  data_nascimento?: string;
+  email?: string;
+  cep?: string;
+  logradouro?: string;
+  numero?: string;
+  complemento?: string;
+  bairro?: string;
+  cidade?: string;
+  uf?: string;
+  renda_mensal?: string;
+  telefone_referencia?: string;
+  entrada?: string;
+  prazo_meses?: string;
 };
 
 export const VITRINE_FORM_TTL_MS = 15 * 60 * 1000;
@@ -680,6 +697,21 @@ export function vitrineFormStepExpectsText(step: string): boolean {
     step === "observacoes";
 }
 
+export function vitrineFinanciamentoStepExpectsText(step: string): boolean {
+  return [
+    "nome_completo",
+    "cpf_cnpj",
+    "data_nascimento",
+    "email",
+    "cep",
+    "numero",
+    "complemento",
+    "renda",
+    "telefone_referencia",
+    "entrada",
+  ].includes(step);
+}
+
 export function shouldRunVitrineEarlyCapture(input: {
   userText: string;
   vitrineInteractiveId: string | null;
@@ -701,6 +733,12 @@ export function shouldRunVitrineEarlyCapture(input: {
   ) {
     return true;
   }
+  if (
+    input.pending.form.flow === "financiamento" &&
+    vitrineFinanciamentoStepExpectsText(input.pending.form.step)
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -710,6 +748,12 @@ export function vitrineFormNeedsAudioTranscriptBeforeShowcase(
   if (!pendingFormIsActive(pending)) return false;
   if (pendingFormExpired(pending.form)) return false;
   if (pending.form.flow === "cliente_nome" && pending.form.step === "nome") {
+    return true;
+  }
+  if (
+    pending.form.flow === "financiamento" &&
+    vitrineFinanciamentoStepExpectsText(pending.form.step)
+  ) {
     return true;
   }
   return pending.form.flow === "troca" &&

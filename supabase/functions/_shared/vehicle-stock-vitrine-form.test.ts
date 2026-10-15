@@ -117,15 +117,9 @@ Deno.test("early capture: troca texto só nas etapas de formulário", () => {
   }));
 });
 
-Deno.test("financiamento one-shot encaminha e confirma", async () => {
-  let recadoDono = "";
+Deno.test("financiamento inicia com LGPD (ficha conversacional)", async () => {
   let msgCliente = "";
-  let pendingStore: PendingVitrineEstoque | null = {
-    stage: "detalhe",
-    offset: 0,
-    updated_at: new Date().toISOString(),
-    cliente_nome: "Paula",
-  };
+  let pendingStore: PendingVitrineEstoque | null = null;
   const vehicle: VeiculoVitrineRow = {
     id: "v-fin",
     marca: "BMW",
@@ -164,19 +158,22 @@ Deno.test("financiamento one-shot encaminha e confirma", async () => {
       return { ok: true };
     },
     sendMenu: noop,
-    sendButtons: noop,
+    sendButtons: async (body) => {
+      msgCliente = body;
+      return { ok: true };
+    },
     sendImage: noop,
     sendImageHeaderButtons: noop,
     sendCarousel: noop,
-    encaminharRecado: async (r) => {
-      recadoDono = r;
-      return { ok: true };
-    },
+    encaminharRecado: async () => ({ ok: true }),
     savePending: async (p) => {
       pendingStore = p;
     },
     getPending: () => pendingStore,
     pause: async () => {},
+    userId: "user-test",
+    fetchViaCep: async () => null,
+    saveFinanciamentoFicha: async () => ({ id: "ficha-1" }),
   };
   const result = await runVehicleStockShowcaseTurn({
     userText: "<<INTERACTIVE_ID:veiculo_vitrine:acao:financiamento:v-fin>>",
@@ -185,8 +182,9 @@ Deno.test("financiamento one-shot encaminha e confirma", async () => {
     deps,
   });
   assertEquals(result.handled, true);
-  assert(recadoDono.toLowerCase().includes("financiamento"));
-  assert(msgCliente.includes("Prime Motors"));
+  assertEquals(result.replyPreview, "financiamento_lgpd");
+  assert(msgCliente.toLowerCase().includes("lgpd"));
+  assertEquals(pendingStore?.form?.flow, "financiamento");
 });
 
 Deno.test("lista detalhe usa título Financiamento", () => {
@@ -260,6 +258,9 @@ Deno.test("visita_dia: id real do builder → parse → handler turno", async ()
       },
     }),
     pause: async () => {},
+    userId: "user-test",
+    fetchViaCep: async () => null,
+    saveFinanciamentoFicha: async () => ({ id: "ficha-1" }),
   };
 
   const dayResult = await runVehicleStockShowcaseTurn({
@@ -375,6 +376,9 @@ Deno.test("visita turno duplicado não encaminha recado duas vezes", async () =>
     },
     getPending: () => storedPending,
     pause: async () => {},
+    userId: "user-test",
+    fetchViaCep: async () => null,
+    saveFinanciamentoFicha: async () => ({ id: "ficha-1" }),
   });
 
   const sharedDeps = deps();
@@ -449,6 +453,9 @@ function trocaDepsWithOutboundCounter(stored: {
     },
     getPending: () => stored.pending ?? undefined,
     pause: async () => {},
+    userId: "user-test",
+    fetchViaCep: async () => null,
+    saveFinanciamentoFicha: async () => ({ id: "ficha-1" }),
   };
   return {
     deps,
@@ -565,8 +572,8 @@ Deno.test("troca: reprompt envia uma única mensagem", async () => {
   assertEquals(counts().buttonSends, 0);
 });
 
-Deno.test("financiamento envia uma confirmação ao cliente", async () => {
-  let textSends = 0;
+Deno.test("financiamento envia uma única mensagem ao iniciar", async () => {
+  let buttonSends = 0;
   const vehicle = trocaVehicle();
   vehicle.id = "v-fin";
   const noop = async () => ({ ok: true as const, messageId: "x" });
@@ -581,12 +588,12 @@ Deno.test("financiamento envia uma confirmação ao cliente", async () => {
     loadVeiculosByMarca: async () => [],
     loadVeiculosByFaixa: async () => [],
     loadVeiculoById: async (id) => (id === "v-fin" ? vehicle : null),
-    sendText: async () => {
-      textSends += 1;
+    sendText: noop,
+    sendMenu: noop,
+    sendButtons: async () => {
+      buttonSends += 1;
       return { ok: true };
     },
-    sendMenu: noop,
-    sendButtons: noop,
     sendImage: noop,
     sendImageHeaderButtons: noop,
     sendCarousel: noop,
@@ -594,6 +601,9 @@ Deno.test("financiamento envia uma confirmação ao cliente", async () => {
     savePending: async () => {},
     getPending: () => null,
     pause: async () => {},
+    userId: "user-test",
+    fetchViaCep: async () => null,
+    saveFinanciamentoFicha: async () => ({ id: "ficha-1" }),
   };
   await runVehicleStockShowcaseTurn({
     userText: "<<INTERACTIVE_ID:veiculo_vitrine:acao:financiamento:v-fin>>",
@@ -601,5 +611,5 @@ Deno.test("financiamento envia uma confirmação ao cliente", async () => {
     forceInteractive: true,
     deps,
   });
-  assertEquals(textSends, 1);
+  assertEquals(buttonSends, 1);
 });

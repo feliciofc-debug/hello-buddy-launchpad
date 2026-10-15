@@ -555,10 +555,15 @@ export default function VehicleInventory() {
               </p>
             </div>
           </div>
-          <Button onClick={openCreate}>
-            <Plus className="mr-2 h-4 w-4" />
-            Adicionar veículo
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={() => navigate("/veiculos/financiamento")}>
+              Financiamento
+            </Button>
+            <Button onClick={openCreate}>
+              <Plus className="mr-2 h-4 w-4" />
+              Adicionar veículo
+            </Button>
+          </div>
         </div>
       </header>
 

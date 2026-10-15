@@ -7,6 +7,7 @@ export const CLIENT_MENU_ROUTES: Record<string, string> = {
   "/dashboard": "dashboard",
   "/meus-produtos": "produtos",
   "/veiculos": "veiculos",
+  "/veiculos/financiamento": "veiculos",
   "/midias": "midias",
   "/ia-marketing": "ia-marketing",
   "/redes-sociais": "redes-sociais",

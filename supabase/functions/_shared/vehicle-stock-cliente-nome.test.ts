@@ -80,6 +80,9 @@ Deno.test("interesse: pergunta nome uma vez e conclui com recado", async () => {
     },
     getPending: () => pending,
     pause: async () => {},
+    userId: "user-test",
+    fetchViaCep: async () => null,
+    saveFinanciamentoFicha: async () => ({ id: "ficha-1" }),
   };
 
   const interesseId =
@@ -179,6 +182,9 @@ Deno.test("interesse: resposta vazia usa contactName no recado", async () => {
     },
     getPending: () => pending,
     pause: async () => {},
+    userId: "user-test",
+    fetchViaCep: async () => null,
+    saveFinanciamentoFicha: async () => ({ id: "ficha-1" }),
   };
 
   await runVehicleStockShowcaseTurn({

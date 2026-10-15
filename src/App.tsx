@@ -31,6 +31,7 @@ import Biblioteca from "./pages/Biblioteca";
 import Campanhas from "./pages/Campanhas";
 import MeusProdutos from "./pages/MeusProdutos";
 import VehicleInventory from "./pages/vehicle-inventory";
+import VehicleFinancingFichasPage from "./pages/vehicle-financing-fichas";
 import Midias from "./pages/Midias";
 import GoogleAds from "./pages/GoogleAds";
 import MetaAdsDashboard from "./pages/MetaAdsDashboard";
@@ -170,6 +171,8 @@ const App = () => (
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/meus-produtos" element={<MeusProdutos />} />
           <Route path="/veiculos" element={<VehicleInventory />} />
+          <Route path="/veiculos/financiamento" element={<VehicleFinancingFichasPage />} />
+          <Route path="/veiculos/financiamento/:id" element={<VehicleFinancingFichasPage />} />
           <Route path="/midias" element={<Midias />} />
             <Route path="/data-deletion" element={<DataDeletion />} />
             <Route path="/security" element={<Security />} />

@@ -14,6 +14,8 @@ import {
   shouldCaptureVitrineTrocaPhoto,
 } from "./vehicle-stock-troca.ts";
 import { analyzeTrocaPhotoVision } from "./vehicle-stock-troca-vision.ts";
+import { fetchViaCep } from "./viacep-client.ts";
+import type { FinanciamentoFichaRow } from "./vehicle-stock-financiamento.ts";
 import {
   FaixaPrecoId,
   isTransientVitrineSendFailure,
@@ -223,6 +225,41 @@ function buildShowcaseDeps(ctx: ShowcaseBridgeContext): ShowcaseTurnDeps {
     },
     getPending: () => pendingFromState(stateRef),
     pause: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    userId: ctx.userId,
+    fetchViaCep: (cep) => fetchViaCep(cep),
+    saveFinanciamentoFicha: async (row: FinanciamentoFichaRow) => {
+      const { data, error } = await ctx.sb.from("financiamento_fichas")
+        .insert({
+          user_id: row.user_id,
+          veiculo_id: row.veiculo_id,
+          whatsapp_from: row.whatsapp_from,
+          whatsapp_contact_name: row.whatsapp_contact_name,
+          cliente_nome_vitrine: row.cliente_nome_vitrine,
+          lgpd_aceite_em: row.lgpd_aceite_em,
+          tipo_pessoa: row.tipo_pessoa,
+          nome_completo: row.nome_completo,
+          cpf_cnpj: row.cpf_cnpj,
+          data_nascimento: row.data_nascimento,
+          email: row.email,
+          cep: row.cep,
+          logradouro: row.logradouro,
+          numero: row.numero,
+          complemento: row.complemento,
+          bairro: row.bairro,
+          cidade: row.cidade,
+          uf: row.uf,
+          renda_mensal: row.renda_mensal,
+          telefone_referencia: row.telefone_referencia,
+          entrada: row.entrada,
+          prazo_meses: row.prazo_meses,
+        })
+        .select("id")
+        .single();
+      if (error || !data?.id) {
+        throw new Error(error?.message || "financiamento_ficha_insert_failed");
+      }
+      return { id: String(data.id) };
+    },
   };
 }
 

@@ -54,6 +54,9 @@ function stubDeps(overrides: Partial<ShowcaseTurnDeps> = {}): ShowcaseTurnDeps {
       updated_at: new Date().toISOString(),
     }),
     pause: async () => {},
+    userId: "user-test",
+    fetchViaCep: async () => null,
+    saveFinanciamentoFicha: async () => ({ id: "ficha-1" }),
     ...overrides,
   };
 }
