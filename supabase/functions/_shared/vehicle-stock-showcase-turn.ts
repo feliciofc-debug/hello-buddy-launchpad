@@ -1054,6 +1054,11 @@ async function handleFinanciamentoTextStep(
     }
     advanced = applyFinanciamentoCepLookup(advanced.form, addr, now);
     if (advanced.reply && !addr) {
+      await input.deps.savePending({
+        ...pending,
+        form: advanced.form,
+        updated_at: now,
+      });
       await input.deps.sendText(advanced.reply);
       return { handled: true, replyPreview: "financiamento_cep_fail" };
     }

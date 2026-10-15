@@ -110,6 +110,7 @@ export function financiamentoFormStepExpectsText(step: string): boolean {
     "cnpj",
     "tempo_empresa",
     "cep",
+    "endereco_livre",
     "numero",
     "complemento",
     "renda",
@@ -253,8 +254,75 @@ export function stepAfterPerfil(
     case "empresario":
       return "cnpj";
     default:
-      return "cep";
+      return "renda";
   }
+}
+
+/** Sequência prevista após aceite LGPD (passos de texto/interação, sem modo/LGPD). */
+export function financiamentoStepSequenceAfterLgpd(
+  perfil: FinanciamentoPerfil,
+): string[] {
+  const common: string[] = [
+    "nome_completo",
+    "cpf_cnpj",
+    "data_nascimento",
+    "email",
+    "cep",
+    "numero",
+    "complemento",
+    "tempo_residencia",
+    "perfil",
+  ];
+  let perfilSteps: string[] = [];
+  switch (perfil) {
+    case "assalariado":
+      perfilSteps = ["empresa", "tempo_trabalho"];
+      break;
+    case "autonomo":
+    case "empresario":
+      perfilSteps = ["cnpj", "tempo_empresa"];
+      break;
+    case "aposentado":
+      perfilSteps = [];
+      break;
+  }
+  const tail = [
+    "renda",
+    "cnh",
+    "referencia_nome",
+    "telefone_referencia",
+    "entrada",
+    "prazo",
+    "resumo",
+  ];
+  return [...common, ...perfilSteps, ...tail];
+}
+
+export function parseEnderecoLivreInput(text: string): {
+  logradouro: string;
+  numero?: string;
+  bairro?: string;
+  cidade?: string;
+  uf?: string;
+} {
+  const parts = text.split(",").map((s) => s.trim()).filter(Boolean);
+  if (parts.length >= 4) {
+    const cidadeUf = parts[3];
+    const [cidade, uf] = cidadeUf.includes("/")
+      ? cidadeUf.split("/").map((s) => s.trim())
+      : [cidadeUf, undefined];
+    return {
+      logradouro: parts[0],
+      numero: parts[1],
+      bairro: parts[2],
+      cidade,
+      uf: uf?.slice(0, 2),
+    };
+  }
+  if (parts.length === 3) {
+    return { logradouro: parts[0], bairro: parts[1], cidade: parts[2] };
+  }
+  return { logradouro: text.slice(0, 200) };
 }
 
 export function applyFinanciamentoPerfil(
@@ -364,7 +432,7 @@ export function advanceFinanciamentoAfterText(
     }
     case "email": {
       if (skip) {
-        return skipField(form, "email", "tempo_residencia", now);
+        return skipField(form, "email", "cep", now);
       }
       if (!isValidEmail(value)) {
         return { form, reply: "E-mail inválido ou digite *pular*." };
@@ -377,7 +445,7 @@ export function advanceFinanciamentoAfterText(
             campos_pendentes: clearPendente(form, "email"),
           },
           {},
-          "tempo_residencia",
+          "cep",
           now,
         ),
       };
@@ -418,7 +486,7 @@ export function advanceFinanciamentoAfterText(
     }
     case "tempo_trabalho": {
       if (skip) {
-        return skipField(form, "tempo_trabalho", "cep", now);
+        return skipField(form, "tempo_trabalho", "renda", now);
       }
       const tt = value.slice(0, 80);
       if (tt.length < 2) {
@@ -428,7 +496,7 @@ export function advanceFinanciamentoAfterText(
         form: afterField(
           { ...form, tempo_trabalho: tt, campos_pendentes: clearPendente(form, "tempo_trabalho") },
           {},
-          "cep",
+          "renda",
           now,
         ),
       };
@@ -455,7 +523,7 @@ export function advanceFinanciamentoAfterText(
     }
     case "tempo_empresa": {
       if (skip) {
-        return skipField(form, "tempo_empresa", "cep", now);
+        return skipField(form, "tempo_empresa", "renda", now);
       }
       const te = value.slice(0, 80);
       if (te.length < 2) {
@@ -465,16 +533,52 @@ export function advanceFinanciamentoAfterText(
         form: afterField(
           { ...form, tempo_empresa: te, campos_pendentes: clearPendente(form, "tempo_empresa") },
           {},
-          "cep",
+          "renda",
+          now,
+        ),
+      };
+    }
+    case "endereco_livre": {
+      if (skip) {
+        return skipField(form, "endereco", "tempo_residencia", now, [
+          "logradouro", "numero", "bairro", "cidade", "uf", "cep",
+        ]);
+      }
+      const parsed = parseEnderecoLivreInput(value);
+      if (parsed.logradouro.length < 5) {
+        return {
+          form,
+          reply:
+            "Envie rua, número, bairro e cidade separados por vírgula, ou *pular*.",
+        };
+      }
+      return {
+        form: afterField(
+          {
+            ...form,
+            logradouro: parsed.logradouro,
+            numero: parsed.numero,
+            bairro: parsed.bairro,
+            cidade: parsed.cidade,
+            uf: parsed.uf,
+            campos_pendentes: clearPendente(form, "cep"),
+          },
+          {},
+          "tempo_residencia",
           now,
         ),
       };
     }
     case "cep": {
       if (skip) {
-        return skipField(form, "cep", "renda", now, [
-          "cep", "logradouro", "numero", "bairro", "cidade", "uf", "complemento",
-        ]);
+        return {
+          form: afterField(
+            { ...form, campos_pendentes: markPendente(form, "cep") },
+            {},
+            "endereco_livre",
+            now,
+          ),
+        };
       }
       if (!isValidCep(value)) {
         return { form, reply: "CEP inválido. Envie 8 dígitos ou *pular*." };
@@ -508,13 +612,13 @@ export function advanceFinanciamentoAfterText(
     }
     case "complemento": {
       if (skip) {
-        return skipField(form, "complemento", "renda", now, ["complemento"]);
+        return skipField(form, "complemento", "tempo_residencia", now, ["complemento"]);
       }
       return {
         form: afterField(
           { ...form, complemento: value.slice(0, 80), campos_pendentes: clearPendente(form, "complemento") },
           {},
-          "renda",
+          "tempo_residencia",
           now,
         ),
       };
@@ -613,10 +717,16 @@ export function applyFinanciamentoCepLookup(
   now: string,
 ): AdvanceFinanciamentoResult {
   if (!addr) {
+    const next = afterField(
+      { ...form, campos_pendentes: markPendente(form, "cep") },
+      {},
+      "endereco_livre",
+      now,
+    );
     return {
-      form,
+      form: next,
       reply:
-        "Não encontrei esse CEP. Confira os números, digite *pular* ou tente de novo.",
+        "Não encontrei esse CEP. Envie seu *endereço completo* (rua, número, bairro, cidade) ou *pular*.",
     };
   }
   const summary =
@@ -759,7 +869,9 @@ export function promptFinanciamentoStep(
     case "tempo_empresa":
       return "Há quanto tempo nessa atividade? (ou *pular*)";
     case "cep":
-      return "Qual o *CEP*? (ou *pular*)";
+      return "Qual o seu *CEP*? Com ele eu completo seu endereço automaticamente 😊 (ou *pular*)";
+    case "endereco_livre":
+      return "Envie seu *endereço completo*: rua, número, bairro e cidade (separe por vírgulas) ou *pular*";
     case "numero":
       return "Número do endereço (ou *pular*)";
     case "complemento":
@@ -860,7 +972,7 @@ export function skipFinanciamentoInteractiveStep(
   now: string,
 ): AdvanceFinanciamentoResult {
   if (step === "perfil") {
-    return skipField(form, "perfil", "cep", now, ["perfil"]);
+    return skipField(form, "perfil", "renda", now, ["perfil"]);
   }
   if (step === "cnh") {
     return skipField(form, "possui_cnh", "referencia_nome", now, ["possui_cnh"]);

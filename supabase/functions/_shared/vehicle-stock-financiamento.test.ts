@@ -8,6 +8,7 @@ import {
   beginFinanciamentoCorrecao,
   buildFinanciamentoFichaRow,
   buildFinanciamentoResumoText,
+  financiamentoStepSequenceAfterLgpd,
   mergePendingForFinanciamentoStart,
 } from "./vehicle-stock-financiamento.ts";
 
@@ -81,6 +82,51 @@ Deno.test("resumo mascara CPF e não mostra renda completa", () => {
   assert(text.includes("***.***."));
   assert(text.includes("Informada") || text.includes("pendente"));
 });
+
+Deno.test("após e-mail o próximo passo é CEP (não tempo de residência)", () => {
+  const form = baseForm("email");
+  const next = advanceFinanciamentoAfterText(form, "ana@test.com", NOW, {});
+  assertEquals(next.form.step, "cep");
+});
+
+Deno.test("complemento leva a tempo de residência antes do perfil", () => {
+  const form = {
+    ...baseForm("complemento"),
+    cep: "01310100",
+    logradouro: "Av Paulista",
+    bairro: "Bela Vista",
+    cidade: "São Paulo",
+    uf: "SP",
+    numero: "1000",
+  };
+  const next = advanceFinanciamentoAfterText(form, "apto 12", NOW, {});
+  assertEquals(next.form.step, "tempo_residencia");
+});
+
+const PERFIS = ["assalariado", "autonomo", "empresario", "aposentado"] as const;
+
+for (const perfil of PERFIS) {
+  Deno.test(`sequência LGPD→resumo inclui CEP/endereço antes de tempo_residencia (${perfil})`, () => {
+    const seq = financiamentoStepSequenceAfterLgpd(perfil);
+    const iEmail = seq.indexOf("email");
+    const iCep = seq.indexOf("cep");
+    const iCompl = seq.indexOf("complemento");
+    const iTempo = seq.indexOf("tempo_residencia");
+    const iPerfil = seq.indexOf("perfil");
+    const iResumo = seq.indexOf("resumo");
+    assert(iEmail >= 0 && iCep > iEmail, "CEP após e-mail");
+    assert(iCompl > iCep, "complemento após CEP");
+    assert(iTempo > iCompl, "tempo residência após complemento");
+    assert(iPerfil > iTempo, "perfil após tempo residência");
+    assert(iResumo === seq.length - 1, "termina em resumo");
+    if (perfil === "assalariado") {
+      assert(seq.includes("empresa") && seq.includes("tempo_trabalho"));
+    }
+    if (perfil === "autonomo" || perfil === "empresario") {
+      assert(seq.includes("cnpj") && seq.includes("tempo_empresa"));
+    }
+  });
+}
 
 Deno.test("merge inicia no passo modo", () => {
   const pending = mergePendingForFinanciamentoStart(null, {
