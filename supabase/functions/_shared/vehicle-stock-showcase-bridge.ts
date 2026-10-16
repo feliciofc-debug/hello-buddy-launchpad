@@ -24,6 +24,7 @@ import {
   VeiculoVitrineRow,
   VITRINE_SEND_RETRY_DELAYS_MS,
 } from "./vehicle-stock-whatsapp.ts";
+import { safeErrorMessage } from "./pii-log-sanitize.ts";
 import { handleVitrineCrmAfterEvent } from "./vitrine-crm-schedule.ts";
 import type { VitrineEvento } from "./vitrine-eventos.ts";
 
@@ -239,14 +240,16 @@ function buildShowcaseDeps(ctx: ShowcaseBridgeContext): ShowcaseTurnDeps {
     userId: ctx.userId,
     fetchViaCep: (cep) => fetchViaCep(cep),
     trackVitrineCrmEvent: (evento: VitrineEvento, veiculoId, vehicleLabel) => {
-      void handleVitrineCrmAfterEvent(ctx.sb, {
+      handleVitrineCrmAfterEvent(ctx.sb, {
         userId: ctx.userId,
         contactNumber: ctx.to,
         contactName: ctx.contactName,
         evento,
         veiculoId: veiculoId ?? null,
         vehicleLabel: vehicleLabel ?? null,
-      });
+      }).catch((e) =>
+        console.warn("[vitrine-crm] evento:", safeErrorMessage(e))
+      );
     },
     saveFinanciamentoFicha: async (row: FinanciamentoFichaRow) => {
       const { data, error } = await ctx.sb.from("financiamento_fichas")

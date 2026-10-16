@@ -101,18 +101,25 @@ async function runEventPurgeIfNeeded(sb: any, now: Date): Promise<void> {
   }, { onConflict: "key" });
 }
 
+async function claimLeadMornoDue(sb: any, now: Date): Promise<Record<string, unknown>[]> {
+  const ts = now.toISOString();
+  const { data } = await sb.from("vitrine_lead_morno_agenda")
+    .update({ status: "processing", updated_at: ts })
+    .eq("status", "pending")
+    .lte("run_at", ts)
+    .select("*")
+    .limit(40);
+  return (data ?? []) as Record<string, unknown>[];
+}
+
 async function processLeadMornoDue(
   sb: any,
   env: VitrineCrmTickEnv,
   now: Date,
 ): Promise<number> {
-  const { data: due } = await sb.from("vitrine_lead_morno_agenda")
-    .select("*")
-    .eq("status", "pending")
-    .lte("run_at", now.toISOString())
-    .limit(40);
+  const due = await claimLeadMornoDue(sb, now);
   let sent = 0;
-  for (const row of due ?? []) {
+  for (const row of due) {
     const cfg = await loadVitrineCrmTenantConfig(sb, row.user_id);
     if (!cfg.usesVehicleStock || !cfg.leadMornoAtivo) {
       await sb.from("vitrine_lead_morno_agenda").update({
@@ -161,7 +168,17 @@ async function processLeadMornoDue(
       userId: row.user_id,
       message: msg,
     });
-    if (!ok) continue;
+    if (!ok) {
+      console.warn(
+        "[vitrine-crm] lead morno owner send failed (ex.: janela 24h Meta); agenda marcada done",
+        { userId: row.user_id, contact: phone },
+      );
+      await sb.from("vitrine_lead_morno_agenda").update({
+        status: "done",
+        updated_at: now.toISOString(),
+      }).eq("user_id", row.user_id).eq("contact_number", row.contact_number);
+      continue;
+    }
     await sb.from("vitrine_lead_morno_enviados").insert({
       user_id: row.user_id,
       contact_number: phone,
@@ -175,18 +192,25 @@ async function processLeadMornoDue(
   return sent;
 }
 
+async function claimRetomadaDue(sb: any, now: Date): Promise<Record<string, unknown>[]> {
+  const ts = now.toISOString();
+  const { data } = await sb.from("vitrine_retomada_agenda")
+    .update({ status: "processing", updated_at: ts })
+    .eq("status", "pending")
+    .lte("run_at", ts)
+    .select("*")
+    .limit(40);
+  return (data ?? []) as Record<string, unknown>[];
+}
+
 async function processRetomadaDue(
   sb: any,
   env: VitrineCrmTickEnv,
   now: Date,
 ): Promise<number> {
-  const { data: due } = await sb.from("vitrine_retomada_agenda")
-    .select("*")
-    .eq("status", "pending")
-    .lte("run_at", now.toISOString())
-    .limit(40);
+  const due = await claimRetomadaDue(sb, now);
   let sent = 0;
-  for (const row of due ?? []) {
+  for (const row of due) {
     const cfg = await loadVitrineCrmTenantConfig(sb, row.user_id);
     if (!cfg.usesVehicleStock || !cfg.retomadaAtiva) {
       await sb.from("vitrine_retomada_agenda").update({
@@ -315,7 +339,16 @@ async function processDailyResumos(
       userId,
       message: msg,
     });
-    if (!ok) continue;
+    if (!ok) {
+      console.warn(
+        "[vitrine-crm] resumo diário owner send failed (ex.: janela 24h Meta); não re-tenta hoje",
+        { userId },
+      );
+      await sb.from("empresa_config").update({
+        vitrine_resumo_ultimo_dia_sp: today,
+      }).eq("user_id", userId);
+      continue;
+    }
     await sb.from("empresa_config").update({
       vitrine_resumo_ultimo_dia_sp: today,
     }).eq("user_id", userId);

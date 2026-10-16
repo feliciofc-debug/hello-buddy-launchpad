@@ -22708,9 +22708,13 @@ async function processOne(queueId: string) {
         (row.message_type === "text" || row.message_type === "audio") &&
         isVitrineRetomadaOptOutText(userText)
       ) {
-        const crmGate = await loadTenantVehicleStockGate(sb, userId);
-        if (crmGate.usesVehicleStock) {
-          await setVitrineRetomadaOptOut(sb, userId, row.from_number);
+        try {
+          const crmGate = await loadTenantVehicleStockGate(sb, userId);
+          if (crmGate.usesVehicleStock) {
+            await setVitrineRetomadaOptOut(sb, userId, row.from_number);
+          }
+        } catch (e) {
+          console.warn("[vitrine-crm] opt-out:", (e as Error).message);
         }
       }
       const vitrineListId = String(row.payload?.interactive?.list_reply?.id ?? "");

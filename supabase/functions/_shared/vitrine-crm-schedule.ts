@@ -21,79 +21,83 @@ export async function handleVitrineCrmAfterEvent(
     vehicleLabel?: string | null;
   },
 ): Promise<void> {
-  await insertVitrineEvento(sb, {
-    userId: input.userId,
-    contactNumber: input.contactNumber,
-    evento: input.evento,
-    veiculoId: input.veiculoId,
-  });
+  try {
+    await insertVitrineEvento(sb, {
+      userId: input.userId,
+      contactNumber: input.contactNumber,
+      evento: input.evento,
+      veiculoId: input.veiculoId,
+    });
 
-  const cfg = await loadVitrineCrmTenantConfig(sb, input.userId);
-  if (!cfg.usesVehicleStock) return;
+    const cfg = await loadVitrineCrmTenantConfig(sb, input.userId);
+    if (!cfg.usesVehicleStock) return;
 
-  const phone = normalizePhoneBR(input.contactNumber);
-  if (!phone) return;
-  const now = new Date().toISOString();
-  const runLead = new Date(Date.now() + LEAD_MORNO_DELAY_MS).toISOString();
-  const runRetomada = new Date(Date.now() + RETOMADA_DELAY_MS).toISOString();
-  const name = String(input.contactName || "").trim() || null;
-  const client = sb as {
-    from: (t: string) => {
-      upsert: (row: Record<string, unknown>, opts?: { onConflict?: string }) => Promise<{ error?: { message: string } | null }>;
-      update: (row: Record<string, unknown>) => {
-        eq: (c: string, v: string) => {
-          eq: (c2: string, v2: string) => Promise<{ error?: { message: string } | null }>;
+    const phone = normalizePhoneBR(input.contactNumber);
+    if (!phone) return;
+    const now = new Date().toISOString();
+    const runLead = new Date(Date.now() + LEAD_MORNO_DELAY_MS).toISOString();
+    const runRetomada = new Date(Date.now() + RETOMADA_DELAY_MS).toISOString();
+    const name = String(input.contactName || "").trim() || null;
+    const client = sb as {
+      from: (t: string) => {
+        upsert: (row: Record<string, unknown>, opts?: { onConflict?: string }) => Promise<{ error?: { message: string } | null }>;
+        update: (row: Record<string, unknown>) => {
+          eq: (c: string, v: string) => {
+            eq: (c2: string, v2: string) => Promise<{ error?: { message: string } | null }>;
+          };
         };
       };
     };
-  };
 
-  if (VITRINE_WARM_EVENTS.has(input.evento) && cfg.leadMornoAtivo) {
-    await client.from("vitrine_lead_morno_agenda").upsert({
-      user_id: input.userId,
-      contact_number: phone,
-      contact_name: name,
-      run_at: runLead,
-      status: "pending",
-      updated_at: now,
-    }, { onConflict: "user_id,contact_number" });
-  }
+    if (VITRINE_WARM_EVENTS.has(input.evento) && cfg.leadMornoAtivo) {
+      await client.from("vitrine_lead_morno_agenda").upsert({
+        user_id: input.userId,
+        contact_number: phone,
+        contact_name: name,
+        run_at: runLead,
+        status: "pending",
+        updated_at: now,
+      }, { onConflict: "user_id,contact_number" });
+    }
 
-  if (
-    VITRINE_WARM_EVENTS.has(input.evento) &&
-    cfg.retomadaAtiva &&
-    input.veiculoId
-  ) {
-    await client.from("vitrine_retomada_agenda").upsert({
-      user_id: input.userId,
-      contact_number: phone,
-      veiculo_id: input.veiculoId,
-      contact_name: name,
-      vehicle_label: input.vehicleLabel ?? null,
-      run_at: runRetomada,
-      status: "pending",
-      updated_at: now,
-    }, { onConflict: "user_id,contact_number,veiculo_id" });
-  }
+    if (
+      VITRINE_WARM_EVENTS.has(input.evento) &&
+      cfg.retomadaAtiva &&
+      input.veiculoId
+    ) {
+      await client.from("vitrine_retomada_agenda").upsert({
+        user_id: input.userId,
+        contact_number: phone,
+        veiculo_id: input.veiculoId,
+        contact_name: name,
+        vehicle_label: input.vehicleLabel ?? null,
+        run_at: runRetomada,
+        status: "pending",
+        updated_at: now,
+      }, { onConflict: "user_id,contact_number,veiculo_id" });
+    }
 
-  if (VITRINE_CONVERSION_EVENTS.has(input.evento)) {
-    await client.from("vitrine_lead_morno_agenda").upsert({
-      user_id: input.userId,
-      contact_number: phone,
-      contact_name: name,
-      run_at: runLead,
-      status: "cancelled",
-      updated_at: now,
-    }, { onConflict: "user_id,contact_number" });
+    if (VITRINE_CONVERSION_EVENTS.has(input.evento)) {
+      await client.from("vitrine_lead_morno_agenda").upsert({
+        user_id: input.userId,
+        contact_number: phone,
+        contact_name: name,
+        run_at: runLead,
+        status: "cancelled",
+        updated_at: now,
+      }, { onConflict: "user_id,contact_number" });
 
-    await client.from("vitrine_retomada_agenda").update({
-      status: "cancelled",
-      updated_at: now,
-    }).eq("user_id", input.userId).eq("contact_number", phone);
+      await client.from("vitrine_retomada_agenda").update({
+        status: "cancelled",
+        updated_at: now,
+      }).eq("user_id", input.userId).eq("contact_number", phone);
+    }
+  } catch (e) {
+    console.warn("[vitrine-crm] after-event:", (e as Error).message);
   }
 }
 
-/** Opt-out de retomada (parar / não quero). */
+/** Opt-out de retomada — só frases exatas (comando inteiro). */
 export async function setVitrineRetomadaOptOut(
   sb: { from: (t: string) => unknown },
   userId: string,
@@ -123,6 +127,17 @@ export async function setVitrineRetomadaOptOut(
   }).eq("user_id", userId).eq("contact_number", phone);
 }
 
+const VITRINE_RETOMADA_OPT_OUT_EXACT = new Set([
+  "parar",
+  "pare",
+  "stop",
+  "nao quero mais",
+  "sem interesse",
+  "para de mandar",
+  "nao me mande mais",
+  "descadastrar",
+]);
+
 export function isVitrineRetomadaOptOutText(text: string): boolean {
   const v = String(text || "")
     .normalize("NFD")
@@ -131,9 +146,5 @@ export function isVitrineRetomadaOptOutText(text: string): boolean {
     .replace(/<<INTERACTIVE_ID:[^>]+>>/gi, "")
     .trim();
   if (!v) return false;
-  if (/^(parar|pare|stop|cancelar|nao quero|não quero|nao quero mais|sem interesse)$/.test(v)) {
-    return true;
-  }
-  if (/\b(nao quero|não quero|para de mandar|nao me mande)\b/.test(v)) return true;
-  return false;
+  return VITRINE_RETOMADA_OPT_OUT_EXACT.has(v);
 }
