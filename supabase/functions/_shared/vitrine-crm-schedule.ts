@@ -1,0 +1,139 @@
+import { normalizePhoneBR } from "./cloud-log.ts";
+import {
+  insertVitrineEvento,
+  VITRINE_CONVERSION_EVENTS,
+  VITRINE_WARM_EVENTS,
+  type VitrineEvento,
+} from "./vitrine-eventos.ts";
+import { loadVitrineCrmTenantConfig } from "./vitrine-crm-config.ts";
+
+const LEAD_MORNO_DELAY_MS = 10 * 60 * 1000;
+const RETOMADA_DELAY_MS = 2 * 60 * 60 * 1000;
+
+export async function handleVitrineCrmAfterEvent(
+  sb: { from: (t: string) => unknown },
+  input: {
+    userId: string;
+    contactNumber: string;
+    contactName?: string | null;
+    evento: VitrineEvento;
+    veiculoId?: string | null;
+    vehicleLabel?: string | null;
+  },
+): Promise<void> {
+  await insertVitrineEvento(sb, {
+    userId: input.userId,
+    contactNumber: input.contactNumber,
+    evento: input.evento,
+    veiculoId: input.veiculoId,
+  });
+
+  const cfg = await loadVitrineCrmTenantConfig(sb, input.userId);
+  if (!cfg.usesVehicleStock) return;
+
+  const phone = normalizePhoneBR(input.contactNumber);
+  if (!phone) return;
+  const now = new Date().toISOString();
+  const runLead = new Date(Date.now() + LEAD_MORNO_DELAY_MS).toISOString();
+  const runRetomada = new Date(Date.now() + RETOMADA_DELAY_MS).toISOString();
+  const name = String(input.contactName || "").trim() || null;
+  const client = sb as {
+    from: (t: string) => {
+      upsert: (row: Record<string, unknown>, opts?: { onConflict?: string }) => Promise<{ error?: { message: string } | null }>;
+      update: (row: Record<string, unknown>) => {
+        eq: (c: string, v: string) => {
+          eq: (c2: string, v2: string) => Promise<{ error?: { message: string } | null }>;
+        };
+      };
+    };
+  };
+
+  if (VITRINE_WARM_EVENTS.has(input.evento) && cfg.leadMornoAtivo) {
+    await client.from("vitrine_lead_morno_agenda").upsert({
+      user_id: input.userId,
+      contact_number: phone,
+      contact_name: name,
+      run_at: runLead,
+      status: "pending",
+      updated_at: now,
+    }, { onConflict: "user_id,contact_number" });
+  }
+
+  if (
+    VITRINE_WARM_EVENTS.has(input.evento) &&
+    cfg.retomadaAtiva &&
+    input.veiculoId
+  ) {
+    await client.from("vitrine_retomada_agenda").upsert({
+      user_id: input.userId,
+      contact_number: phone,
+      veiculo_id: input.veiculoId,
+      contact_name: name,
+      vehicle_label: input.vehicleLabel ?? null,
+      run_at: runRetomada,
+      status: "pending",
+      updated_at: now,
+    }, { onConflict: "user_id,contact_number,veiculo_id" });
+  }
+
+  if (VITRINE_CONVERSION_EVENTS.has(input.evento)) {
+    await client.from("vitrine_lead_morno_agenda").upsert({
+      user_id: input.userId,
+      contact_number: phone,
+      contact_name: name,
+      run_at: runLead,
+      status: "cancelled",
+      updated_at: now,
+    }, { onConflict: "user_id,contact_number" });
+
+    await client.from("vitrine_retomada_agenda").update({
+      status: "cancelled",
+      updated_at: now,
+    }).eq("user_id", input.userId).eq("contact_number", phone);
+  }
+}
+
+/** Opt-out de retomada (parar / não quero). */
+export async function setVitrineRetomadaOptOut(
+  sb: { from: (t: string) => unknown },
+  userId: string,
+  contactNumber: string,
+): Promise<void> {
+  const phone = normalizePhoneBR(contactNumber);
+  if (!phone) return;
+  const client = sb as {
+    from: (t: string) => {
+      upsert: (row: Record<string, unknown>, opts?: { onConflict?: string }) => Promise<unknown>;
+      update: (row: Record<string, unknown>) => {
+        eq: (c: string, v: string) => {
+          eq: (c2: string, v2: string) => Promise<unknown>;
+        };
+      };
+    };
+  };
+  await client.from("vitrine_contato_prefs").upsert({
+    user_id: userId,
+    contact_number: phone,
+    retomada_opt_out: true,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "user_id,contact_number" });
+  await client.from("vitrine_retomada_agenda").update({
+    status: "cancelled",
+    updated_at: new Date().toISOString(),
+  }).eq("user_id", userId).eq("contact_number", phone);
+}
+
+export function isVitrineRetomadaOptOutText(text: string): boolean {
+  const v = String(text || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/<<INTERACTIVE_ID:[^>]+>>/gi, "")
+    .trim();
+  if (!v) return false;
+  if (/^(parar|pare|stop|cancelar|nao quero|não quero|nao quero mais|sem interesse)$/.test(v)) {
+    return true;
+  }
+  if (/\b(nao quero|não quero|para de mandar|nao me mande)\b/.test(v)) return true;
+  return false;
+}

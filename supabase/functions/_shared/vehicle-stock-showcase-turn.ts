@@ -73,6 +73,7 @@ import {
 } from "./vehicle-stock-cliente-nome.ts";
 import { stripAudioTranscriptPrefix } from "./vitrine-inbound-text.ts";
 import { isFinanciamentoSpokenSkip } from "./vitrine-spoken-input.ts";
+import type { VitrineEvento } from "./vitrine-eventos.ts";
 import {
   advanceFinanciamentoAfterText,
   applyFinanciamentoCepLookup,
@@ -146,6 +147,11 @@ export type ShowcaseTurnDeps = {
   fetchViaCep: (cep: string) => Promise<import("./viacep-client.ts").ViaCepAddress | null>;
   saveFinanciamentoFicha: (row: FinanciamentoFichaRow) => Promise<{ id: string }>;
   userId: string;
+  trackVitrineCrmEvent?: (
+    evento: VitrineEvento,
+    veiculoId?: string | null,
+    vehicleLabel?: string | null,
+  ) => void | Promise<void>;
 };
 
 export type ShowcaseAudience = "cliente" | "dono";
@@ -164,6 +170,20 @@ export type ShowcaseTurnInput = {
 
 function isOwnerAudience(input: ShowcaseTurnInput): boolean {
   return input.audience === "dono";
+}
+
+async function trackClienteCrmEvent(
+  input: ShowcaseTurnInput,
+  evento: VitrineEvento,
+  veiculoId?: string | null,
+  vehicleLabel?: string | null,
+): Promise<void> {
+  if (isOwnerAudience(input) || !input.deps.trackVitrineCrmEvent) return;
+  try {
+    await input.deps.trackVitrineCrmEvent(evento, veiculoId ?? null, vehicleLabel ?? null);
+  } catch {
+    /* auditoria — não bloqueia vitrine */
+  }
 }
 
 async function ownerClientPreviewStub(
@@ -600,6 +620,12 @@ async function handleVitrineAction(input: ShowcaseTurnInput & {
     for (const url of vehicle.fotos.slice(0, 8)) {
       await input.deps.sendImage(url);
     }
+    await trackClienteCrmEvent(
+      input,
+      "fotos",
+      vehicle.id,
+      vehicleDisplayTitle(vehicle),
+    );
     return { handled: true, replyPreview: "fotos" };
   }
 
@@ -841,6 +867,12 @@ async function completeVisitaAgendada(
       "Recebi sua preferência de horário, mas não consegui avisar a loja agora — tente novamente em instantes.",
     );
   }
+  await trackClienteCrmEvent(
+    input,
+    "visita",
+    vehicle.id,
+    vehicleDisplayTitle(vehicle),
+  );
   return {
     handled: true,
     replyPreview: notify.duplicate ? "visita_confirmada_dedup" : "visita_confirmada",
@@ -865,6 +897,12 @@ async function startFinanciamentoFlow(
     { id: vitrineButtonId("fin_modo", "preencher"), title: "📝 Preencher por aqui" },
     { id: vitrineButtonId("fin_modo", "consultor"), title: "👤 Falar consultor" },
   ]);
+  await trackClienteCrmEvent(
+    input,
+    "financiamento",
+    vehicle.id,
+    vehicleDisplayTitle(vehicle),
+  );
   return { handled: true, replyPreview: "financiamento_modo" };
 }
 
@@ -1237,6 +1275,12 @@ async function startTrocaFlow(
     mergePendingForTrocaStart(pending, vehicle, sessionId, now),
   );
   await input.deps.sendText(promptTrocaModeloAno(vehicle));
+  await trackClienteCrmEvent(
+    input,
+    "troca",
+    vehicle.id,
+    vehicleDisplayTitle(vehicle),
+  );
   return { handled: true, replyPreview: "troca_modelo_ano" };
 }
 
@@ -1607,6 +1651,12 @@ async function sendVehicleDetail(
     "Escolher",
   );
 
+  await trackClienteCrmEvent(
+    input,
+    "detalhe",
+    vehicle.id,
+    vehicleDisplayTitle(vehicle),
+  );
   return { handled: true, replyPreview: "detalhe" };
 }
 
@@ -1696,6 +1746,11 @@ async function deliverVehicleCarousel(
     );
   }
 
+  if (pending.filtro_tipo === "faixa") {
+    await trackClienteCrmEvent(input, "faixa", null);
+  } else if (pending.filtro_tipo === "marca") {
+    await trackClienteCrmEvent(input, "marca", null);
+  }
   return { handled: true, replyPreview: `carrossel_${maisIdSuffix}` };
 }
 
@@ -1820,6 +1875,12 @@ async function completeHandoffVehicle(
       "Recebi seu interesse! Não consegui avisar a loja agora — tente novamente em instantes.",
     );
   }
+  await trackClienteCrmEvent(
+    input,
+    kind,
+    vehicle.id,
+    vehicleDisplayTitle(vehicle),
+  );
   return { handled: true, replyPreview: kind };
 }
 
@@ -1862,5 +1923,7 @@ async function completeHandoffConsultorGeral(
       "Não consegui avisar a loja agora — tente novamente em instantes.",
     );
   }
+  const vid = pending?.veiculo_id ?? null;
+  await trackClienteCrmEvent(input, "consultor", vid);
   return { handled: true, replyPreview: "consultor" };
 }
