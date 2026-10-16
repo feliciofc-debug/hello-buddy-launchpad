@@ -107,7 +107,8 @@ Deno.test("hook central aplica segmento a todos os consumidores de menu", async 
   const legacyDashboard = await Deno.readTextFile("src/pages/Dashboard.tsx");
   assert(hook.includes(".from('empresa_config')"));
   assert(hook.includes(".select('segmento, sobre_negocio, vitrine_veiculos_demo')"));
-  assert(hook.includes("shouldShowFinanciamentosMenu"));
+  assert(hook.includes("resolveVitrineSidebarFlags"));
+  assert(hook.includes("vitrineSidebarContext"));
   assert(hook.includes("menusForBusinessSegment("));
   assert(hook.includes("userTipo === VEHICLE_DEALER_TENANT_TYPE"));
   assert(legacyDashboard.includes("isMenuAllowed('veiculos')"));

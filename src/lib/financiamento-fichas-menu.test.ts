@@ -4,6 +4,7 @@ import {
   formatFinanciamentoPendingBadge,
   shouldShowFinanciamentosMenu,
 } from "./financiamento-fichas-menu.ts";
+import { injectVitrineSidebarMenuItems } from "./vitrine-sidebar-menu.ts";
 import { PREMIUM_VEHICLE_RETAIL_SEGMENT } from "../../supabase/functions/_shared/company-service-profile.ts";
 
 Deno.test("badge oculto sem pendentes; 9+ acima de 9", () => {
@@ -56,4 +57,54 @@ Deno.test("Financiamentos oculto: produtos sem demo", () => {
       false,
     ),
   );
+});
+
+Deno.test("inject menu: revenda insere Financiamentos após veiculos", () => {
+  const base = [{ id: "dashboard" }, { id: "veiculos" }, { id: "whatsapp" }];
+  const out = injectVitrineSidebarMenuItems(base, {
+    clientType: "revenda_veiculos",
+    segment: null,
+    businessText: null,
+    vitrineVeiculosDemo: false,
+    vehicleStockItem: { id: "veiculos" },
+    financingItem: { id: "financiamentos" },
+  });
+  assertEquals(out.map((i) => i.id), [
+    "dashboard",
+    "veiculos",
+    "financiamentos",
+    "whatsapp",
+  ]);
+});
+
+Deno.test("inject menu: demo produtos insere Estoque e Financiamentos após produtos", () => {
+  const base = [{ id: "dashboard" }, { id: "produtos" }, { id: "whatsapp" }];
+  const out = injectVitrineSidebarMenuItems(base, {
+    clientType: "empresa",
+    segment: "padaria",
+    businessText: "doces",
+    vitrineVeiculosDemo: true,
+    vehicleStockItem: { id: "veiculos" },
+    financingItem: { id: "financiamentos" },
+  });
+  assertEquals(out.map((i) => i.id), [
+    "dashboard",
+    "produtos",
+    "veiculos",
+    "financiamentos",
+    "whatsapp",
+  ]);
+});
+
+Deno.test("inject menu: produtos sem demo não altera lista", () => {
+  const base = [{ id: "dashboard" }, { id: "produtos" }];
+  const out = injectVitrineSidebarMenuItems(base, {
+    clientType: "empresa",
+    segment: "padaria",
+    businessText: "doces",
+    vitrineVeiculosDemo: false,
+    vehicleStockItem: { id: "veiculos" },
+    financingItem: { id: "financiamentos" },
+  });
+  assertEquals(out.map((i) => i.id), ["dashboard", "produtos"]);
 });

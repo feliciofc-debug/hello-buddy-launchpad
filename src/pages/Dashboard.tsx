@@ -31,7 +31,12 @@ const Dashboard = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   // Hook para gerenciar menus baseado no tipo de cliente
-  const { isMenuAllowed, empresaNome, showFinanciamentosMenu } = useClientMenus(
+  const {
+    isMenuAllowed,
+    empresaNome,
+    showFinanciamentosMenu,
+    showDemoVehicleStockAfterProdutos,
+  } = useClientMenus(
     userProfile?.tipo,
     userProfile?.nome_fantasia,
   );
@@ -475,6 +480,19 @@ const Dashboard = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
               </svg>
               📦 Meus Produtos
+            </a>
+          )}
+          {showDemoVehicleStockAfterProdutos && (
+            <a
+              href="/veiculos"
+              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                window.location.pathname === '/veiculos'
+                  ? 'bg-blue-500 text-white'
+                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              <CarFront size={20} />
+              Estoque de Veículos
             </a>
           )}
           {isMenuAllowed('veiculos') && (

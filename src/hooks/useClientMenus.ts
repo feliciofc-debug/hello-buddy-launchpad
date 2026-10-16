@@ -3,8 +3,9 @@ import { supabase } from '@/integrations/supabase/client';
 import {
   CLIENT_MENU_ROUTES,
   menusForBusinessSegment,
-  shouldShowFinanciamentosMenu,
+  usesVehicleInventoryMenu,
 } from '@/lib/client-menu-routes';
+import { resolveVitrineSidebarFlags } from '@/lib/vitrine-sidebar-menu';
 import { VEHICLE_DEALER_TENANT_TYPE } from '@/lib/business-tenant';
 
 interface MenuConfig {
@@ -113,12 +114,19 @@ export function useClientMenus(userTipo: string | null | undefined, userNomeFant
   // Priorizar nome_fantasia do perfil do usuário sobre a config genérica
   const empresaNome = userNomeFantasia || menuConfig?.empresa_nome || 'AMZ Ofertas';
 
-  const showFinanciamentosMenu = shouldShowFinanciamentosMenu(
-    userTipo,
-    businessSegment,
+  const sidebarFlags = resolveVitrineSidebarFlags({
+    clientType: userTipo,
+    segment: businessSegment,
     businessText,
     vitrineVeiculosDemo,
-  );
+  });
+
+  const vitrineSidebarContext = {
+    clientType: userTipo,
+    segment: businessSegment,
+    businessText,
+    vitrineVeiculosDemo,
+  };
 
   return {
     menuConfig,
@@ -126,6 +134,14 @@ export function useClientMenus(userTipo: string | null | undefined, userNomeFant
     isMenuAllowed,
     isRouteAllowed,
     empresaNome,
-    showFinanciamentosMenu,
+    showFinanciamentosMenu: sidebarFlags.showFinanciamentosMenu,
+    showDemoVehicleStockAfterProdutos: sidebarFlags.showDemoVehicleStockAfterProdutos,
+    usesVehicleInventoryMenu: usesVehicleInventoryMenu(
+      userTipo,
+      businessSegment,
+      businessText,
+    ),
+    vitrineVeiculosDemo,
+    vitrineSidebarContext,
   };
 }

@@ -48,6 +48,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { useFinanciamentoPendingCount } from '@/hooks/useFinanciamentoPendingCount';
+import { injectVitrineSidebarMenuItems } from '@/lib/vitrine-sidebar-menu';
 import NotificationCenter from '@/components/NotificationCenter';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -140,7 +141,12 @@ export default function DashboardMetricas() {
   const nomeExibicao =
     userProfile?.nome_fantasia || userProfile?.nome || userEmail?.split('@')[0] || '';
 
-  const { isMenuAllowed, empresaNome, showFinanciamentosMenu } = useClientMenus(
+  const {
+    isMenuAllowed,
+    empresaNome,
+    showFinanciamentosMenu,
+    vitrineSidebarContext,
+  } = useClientMenus(
     userProfile?.tipo,
     userProfile?.nome_fantasia,
   );
@@ -341,21 +347,22 @@ export default function DashboardMetricas() {
       (item.id === 'anuncios-meta' && isMenuAllowed('configuracoes')) ||
       isMenuAllowed(item.id)
     );
-    if (!showFinanciamentosMenu) return filtered;
-    const out: typeof filtered = [];
-    for (const item of filtered) {
-      out.push(item);
-      if (item.id === 'veiculos') {
-        out.push({
-          id: 'financiamentos',
-          icon: FileText,
-          label: t('nav.financing'),
-          path: '/veiculos/financiamento',
-        });
-      }
-    }
-    return out;
-  }, [isMenuAllowed, showFinanciamentosMenu]);
+    return injectVitrineSidebarMenuItems(filtered, {
+      ...vitrineSidebarContext,
+      vehicleStockItem: {
+        id: 'veiculos',
+        icon: CarFront,
+        label: t('nav.vehicles'),
+        path: '/veiculos',
+      },
+      financingItem: {
+        id: 'financiamentos',
+        icon: FileText,
+        label: t('nav.financing'),
+        path: '/veiculos/financiamento',
+      },
+    });
+  }, [isMenuAllowed, showFinanciamentosMenu, t, vitrineSidebarContext]);
 
   // Componente de campanhas em andamento
   const CampanhasEmAndamentoSection = ({ navigate }: { navigate: (path: string) => void }) => {
