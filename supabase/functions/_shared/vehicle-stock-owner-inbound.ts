@@ -64,27 +64,34 @@ export function isOwnerVitrineTextRequest(
   return isExplicitVehicleShowcaseRequest(text, flags);
 }
 
+const ACTION_VERB_PATTERN =
+  /\b(cria|criar|crie|faz|faca|fazer|gera|gerar|post|posta|postar|publica|publicar|anuncio|arte|story|stories|reels|video|foto|imagem|legenda|campanha|dispara|disparar|edita|editar|manda|mandar|envia|enviar|agenda|agendar|lembra|lembrete)\b/;
+
+export function ownerStockBlockedByActionVerb(text: string): boolean {
+  const value = normalize(text);
+  return ACTION_VERB_PATTERN.test(value);
+}
+
+export function hasExplicitOwnerStockSearchContext(value: string): boolean {
+  if (/\bestoque\b/.test(value)) return true;
+  const hasHave = /\b(tenho|temos|tem)\b/.test(value);
+  const hasCtx =
+    /\b(algum|alguma|disponivel|no estoque|pra vender|a venda)\b/.test(value);
+  return hasHave && hasCtx;
+}
+
 export function classifyOwnerStockIntent(
   text: string,
   flags: VehicleShowcaseTenantFlags,
 ): OwnerStockIntent {
   const value = normalize(text);
   if (!value) return "none";
+  if (ownerStockBlockedByActionVerb(text)) return "none";
   if (VENDIDOS_PATTERNS.some((re) => re.test(value))) return "vendidos";
   if (RESUMO_PATTERNS.some((re) => re.test(value))) return "resumo";
   if (isOwnerVitrineTextRequest(text, flags)) return "vitrine";
-  if (looksLikeOwnerVehicleSearch(value)) return "busca";
+  if (hasExplicitOwnerStockSearchContext(value)) return "busca";
   return "none";
-}
-
-function looksLikeOwnerVehicleSearch(value: string): boolean {
-  if (/\b(tenho|tem|quanto|preco|valor|custa|disponivel)\b/.test(value)) {
-    return true;
-  }
-  if (/\b(bmw|mercedes|porsche|land rover|defender|911|x6|audi|jeep|toyota|honda|fiat|vw|volkswagen)\b/.test(value)) {
-    return true;
-  }
-  return /\b(carro|veiculo|modelo)\b/.test(value);
 }
 
 export function shouldDeferOwnerStockShortcut(input: {

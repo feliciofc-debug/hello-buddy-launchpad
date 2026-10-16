@@ -4,6 +4,7 @@ import {
   formatOwnerStockSearchReply,
   formatOwnerStockSummary,
   formatOwnerVendidosCount,
+  rankOwnerStockMatches,
   shouldDeferOwnerStockShortcut,
 } from "./vehicle-stock-owner-inbound.ts";
 import {
@@ -164,6 +165,9 @@ export async function tryProcessOwnerVehicleStockInbound(input: {
       all.filter((v) => v.status === "vendido").length,
     );
   } else if (intent === "busca") {
+    const disponiveis = all.filter((v) => v.status === "disponivel");
+    const matches = rankOwnerStockMatches(input.userText, disponiveis);
+    if (!matches.length) return { handled: false };
     reply = formatOwnerStockSearchReply(input.userText, all);
   } else {
     return { handled: false };

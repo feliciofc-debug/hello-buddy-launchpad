@@ -1,4 +1,5 @@
 import { digitsOnly } from "./brazil-person-doc.ts";
+import { parseSpokenBirthDateInput } from "./vitrine-spoken-input.ts";
 
 const EMAIL_RE =
   /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
@@ -29,14 +30,17 @@ export function isValidIsoDate(value: string): boolean {
     dt.getUTCDate() === d;
 }
 
-/** Aceita DD/MM/AAAA ou AAAA-MM-DD */
+/** Aceita DD/MM/AAAA, AAAA-MM-DD ou data falada (ex.: 15 de março de 1980). */
 export function parseBirthDateInput(text: string): string | null {
   const raw = String(text || "").trim();
   if (isValidIsoDate(raw)) return raw;
   const br = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (!br) return null;
-  const iso = `${br[3]}-${br[2]}-${br[1]}`;
-  return isValidIsoDate(iso) ? iso : null;
+  if (br) {
+    const iso = `${br[3]}-${br[2]}-${br[1]}`;
+    return isValidIsoDate(iso) ? iso : null;
+  }
+  const spoken = parseSpokenBirthDateInput(raw);
+  return spoken && isValidIsoDate(spoken) ? spoken : null;
 }
 
 export function isValidBrazilMobilePhone(phone: string): boolean {

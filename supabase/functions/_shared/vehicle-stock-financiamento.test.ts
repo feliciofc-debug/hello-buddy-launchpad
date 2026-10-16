@@ -25,6 +25,17 @@ function baseForm(step: string) {
   };
 }
 
+Deno.test("e-mail falado normaliza arroba e ponto", () => {
+  const form = baseForm("email");
+  const next = advanceFinanciamentoAfterText(
+    form,
+    "ana ponto silva arroba gmail ponto com",
+    NOW,
+    { skipOptional: false },
+  );
+  assertEquals(next.form.email, "ana.silva@gmail.com");
+});
+
 Deno.test("pular e-mail permite salvar ficha só com LGPD", () => {
   let form = baseForm("email");
   const skipped = advanceFinanciamentoAfterText(form, "pular", NOW, { skipOptional: true });

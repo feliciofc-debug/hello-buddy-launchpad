@@ -14,6 +14,11 @@ import {
   parseMoneyBrl,
   parsePrazoMeses,
 } from "./contact-validators.ts";
+import { stripAudioTranscriptPrefix } from "./vitrine-inbound-text.ts";
+import {
+  isFinanciamentoSpokenSkip,
+  normalizeSpokenEmail,
+} from "./vitrine-spoken-input.ts";
 import type { ViaCepAddress } from "./viacep-client.ts";
 import type {
   PendingVitrineEstoque,
@@ -376,8 +381,15 @@ export function advanceFinanciamentoAfterText(
   now: string,
   ctx: { pending?: PendingVitrineEstoque | null; skipOptional?: boolean },
 ): AdvanceFinanciamentoResult {
-  const value = String(text || "").trim();
-  const skip = ctx.skipOptional === true;
+  const raw = stripAudioTranscriptPrefix(text)
+    .replace(/<<INTERACTIVE_ID:[^>]+>>/gi, "")
+    .trim();
+  const skip = ctx.skipOptional === true ||
+    isFinanciamentoSpokenSkip(raw);
+  let value = raw;
+  if (form.step === "email") {
+    value = normalizeSpokenEmail(raw);
+  }
 
   switch (form.step) {
     case "nome_completo": {
