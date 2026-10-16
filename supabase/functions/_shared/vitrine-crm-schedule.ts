@@ -5,6 +5,11 @@ import {
   VITRINE_WARM_EVENTS,
   type VitrineEvento,
 } from "./vitrine-eventos.ts";
+import {
+  notifyLeadAoVivoIfDue,
+  shouldScheduleLeadMornoForWarmEvent,
+  type VitrineCrmNotifyEnv,
+} from "./vitrine-crm-ao-vivo.ts";
 import { loadVitrineCrmTenantConfig } from "./vitrine-crm-config.ts";
 
 const LEAD_MORNO_DELAY_MS = 10 * 60 * 1000;
@@ -19,6 +24,7 @@ export async function handleVitrineCrmAfterEvent(
     evento: VitrineEvento;
     veiculoId?: string | null;
     vehicleLabel?: string | null;
+    notifyEnv?: VitrineCrmNotifyEnv;
   },
 ): Promise<void> {
   try {
@@ -49,7 +55,11 @@ export async function handleVitrineCrmAfterEvent(
       };
     };
 
-    if (VITRINE_WARM_EVENTS.has(input.evento) && cfg.leadMornoAtivo) {
+    if (shouldScheduleLeadMornoForWarmEvent({
+      evento: input.evento,
+      leadMornoAtivo: cfg.leadMornoAtivo,
+      leadAoVivo: cfg.leadAoVivo,
+    })) {
       await client.from("vitrine_lead_morno_agenda").upsert({
         user_id: input.userId,
         contact_number: phone,
@@ -58,6 +68,22 @@ export async function handleVitrineCrmAfterEvent(
         status: "pending",
         updated_at: now,
       }, { onConflict: "user_id,contact_number" });
+    }
+
+    if (
+      cfg.leadAoVivo &&
+      VITRINE_WARM_EVENTS.has(input.evento) &&
+      input.veiculoId &&
+      input.notifyEnv
+    ) {
+      void notifyLeadAoVivoIfDue(sb, input.notifyEnv, {
+        userId: input.userId,
+        contactNumber: input.contactNumber,
+        contactName: input.contactName,
+        evento: input.evento,
+        veiculoId: input.veiculoId,
+        vehicleLabel: input.vehicleLabel,
+      }).catch((e) => console.warn("[vitrine-crm] ao-vivo async:", (e as Error).message));
     }
 
     if (

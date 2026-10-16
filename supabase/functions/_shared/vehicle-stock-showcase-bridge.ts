@@ -247,6 +247,10 @@ function buildShowcaseDeps(ctx: ShowcaseBridgeContext): ShowcaseTurnDeps {
         evento,
         veiculoId: veiculoId ?? null,
         vehicleLabel: vehicleLabel ?? null,
+        notifyEnv: {
+          supabaseUrl: ctx.supabaseUrl,
+          serviceKey: ctx.serviceKey,
+        },
       }).catch((e) =>
         console.warn("[vitrine-crm] evento:", safeErrorMessage(e))
       );
