@@ -95,6 +95,10 @@ import {
   getPendingVitrineEstoque,
   processVitrineTrocaInboundPhoto,
 } from "../_shared/vehicle-stock-showcase-bridge.ts";
+import {
+  shouldFireSilvesterExtractHook,
+  silvesterDossieEnabledForTenant,
+} from "../_shared/silvester-dossie-gate.ts";
 import { loadTenantVehicleStockGate } from "../_shared/vehicle-inventory-tenant.ts";
 import {
   toolConsultarEstoqueVeiculos,
@@ -25891,7 +25895,14 @@ Regras:
     // === SILVESTER DOSSIÊ — fire-and-forget ===
     // Para conversas com CLIENTE (não-dono), dispara extração/atualização de dossiê em background.
     // Não bloqueia a resposta ao cliente. Roda para texto E mídia.
-    if (!inboundFromOwner && tenantOwnerPhone) {
+    const silvesterEnabled = await silvesterDossieEnabledForTenant(sb, userId);
+    if (
+      shouldFireSilvesterExtractHook({
+        inboundFromOwner,
+        tenantOwnerPhone,
+        silvesterEnabled,
+      })
+    ) {
       try {
         // Coleta mídias JÁ salvas (fotos/PDFs) da biblioteca dessa conversa (últimos 10min)
         const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
