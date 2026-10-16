@@ -47,6 +47,7 @@ import { EngagementModeSelector } from "@/components/produtos/EngagementModeSele
 import { TextosPersonalizadosProdutoModal } from "@/components/produtos/TextosPersonalizadosProdutoModal";
 import { ProductImageCarousel } from "@/components/ProductImageCarousel";
 import { PublicarSimultaneoModal } from "@/components/PublicarSimultaneoModal";
+import { snapshotInputFiles } from "@/lib/file-input-snapshot";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import type { PublishableItem } from "@/lib/publishable-item";
@@ -387,8 +388,8 @@ export default function VehicleInventory() {
     await loadVehicles();
   };
 
-  const uploadVehiclePhotos = async (files: FileList | null) => {
-    if (!files?.length) return;
+  const uploadVehiclePhotos = async (files: File[]) => {
+    if (!files.length) return;
 
     const { user, reason } = await getVehicleSessionUser();
     if (!user) {
@@ -403,7 +404,7 @@ export default function VehicleInventory() {
     setUploadingPhotos(true);
     const uploadedUrls: string[] = [];
     try {
-      for (const file of Array.from(files)) {
+      for (const file of files) {
         const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
         const fileName = `${Date.now()}-${crypto.randomUUID()}.${extension}`;
         const filePath = `${user.id}/veiculos/${vehicleId}/${fileName}`;
@@ -926,8 +927,9 @@ export default function VehicleInventory() {
                   multiple
                   disabled={uploadingPhotos}
                   onChange={(event) => {
-                    void uploadVehiclePhotos(event.target.files);
+                    const lista = snapshotInputFiles(event.target.files);
                     event.target.value = "";
+                    void uploadVehiclePhotos(lista);
                   }}
                 />
                 {uploadingPhotos && (
