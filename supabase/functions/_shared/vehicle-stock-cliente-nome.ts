@@ -12,33 +12,40 @@ export const VITRINE_CLIENTE_NOME_OPCIONAL_PROMPT =
 /** @deprecated fluxo bloqueante; mantido só para testes legados. */
 export const VITRINE_CLIENTE_NOME_PROMPT = VITRINE_CLIENTE_NOME_OPCIONAL_PROMPT;
 
-const NON_NAME_BLOCKLIST = new Set([
-  "ok",
-  "obrigado",
-  "obrigada",
-  "valeu",
-  "sim",
-  "nao",
-  "não",
-  "beleza",
-  "show",
-  "top",
-  "blz",
-  "oi",
-  "ola",
-  "olá",
-  "bom dia",
-  "boa tarde",
-  "boa noite",
+const NON_NAME_PHRASE_BLOCKLIST = new Set([
   "ver carros",
   "menu",
   "voltar",
   "cancelar",
+  "bom dia",
+  "boa tarde",
+  "boa noite",
+]);
+
+/** Qualquer token normalizado nesta lista invalida a resposta inteira. */
+const REJECT_NAME_WORDS = new Set([
+  "quero", "queria", "gostaria", "ver", "tem", "tenho", "temos", "mais", "outro", "outra",
+  "outros", "outras", "carro", "carros", "veiculo", "veiculos", "financiar", "financiamento",
+  "troca", "trocar", "visita", "agendar", "agenda", "quando", "onde", "como", "qual", "quais",
+  "pode", "posso", "preciso", "vou", "vai", "ser", "esta", "estou", "ainda", "depois", "agora",
+  "hoje", "amanha", "sabado", "domingo", "segunda", "terca", "quarta", "quinta", "sexta",
+  "manha", "tarde", "noite", "foto", "fotos", "detalhes", "valor", "preco", "entrada", "parcela",
+  "ok", "obrigado", "obrigada", "valeu", "sim", "nao", "certo", "beleza", "perfeito", "legal",
+  "show", "top", "blz", "oi", "ola", "tchau", "me", "meu", "minha", "voce", "voces", "pra",
+  "para", "com", "sem", "e", "o", "a", "de", "do", "da", "que",
 ]);
 
 const NAME_CHARS_RE = /^[\p{L}\s'\u2019-]+$/u;
 const EMOJI_ONLY_RE =
   /^[\p{Emoji}\p{Emoji_Presentation}\p{Extended_Pictographic}\s]+$/u;
+
+const PRESENTATION_PATTERNS: RegExp[] = [
+  /^(?:meu nome (?:e|é))\s+(.+)$/iu,
+  /^me chamo\s+(.+)$/iu,
+  /^sou\s+(?:o|a)\s+(.+)$/iu,
+  /^pode me chamar de\s+(.+)$/iu,
+  /^aqui (?:e|é)\s+(.+)$/iu,
+];
 
 function normalizeForBlocklist(text: string): string {
   return text
@@ -48,19 +55,38 @@ function normalizeForBlocklist(text: string): string {
     .trim();
 }
 
+function extractPresentedName(text: string): string {
+  const trimmed = text.trim();
+  for (const re of PRESENTATION_PATTERNS) {
+    const m = trimmed.match(re);
+    if (m?.[1]) return m[1].trim();
+  }
+  return trimmed;
+}
+
+function hasRejectedNameWord(text: string): boolean {
+  const words = text.split(/\s+/).filter(Boolean);
+  for (const w of words) {
+    if (REJECT_NAME_WORDS.has(normalizeForBlocklist(w))) return true;
+  }
+  return false;
+}
+
 /** Aceita só respostas que parecem nome próprio (form opcional pós-confirmação). */
 export function parseOptionalClienteNome(text: string): string | null {
   let parsed = stripAudioTranscriptPrefix(text)
     .replace(/<<INTERACTIVE_ID:[^>]+>>/gi, "")
     .trim();
+  if (!parsed) return null;
+  parsed = extractPresentedName(parsed);
   if (!parsed || parsed.length < 2 || parsed.length > 40) return null;
   if (EMOJI_ONLY_RE.test(parsed)) return null;
   if (parsed.includes("?")) return null;
-  const blockKey = normalizeForBlocklist(parsed);
-  if (NON_NAME_BLOCKLIST.has(blockKey)) return null;
-  if (/\b(preco|preço|valor|quanto|custa)\b/i.test(blockKey)) return null;
+  const phraseKey = normalizeForBlocklist(parsed);
+  if (NON_NAME_PHRASE_BLOCKLIST.has(phraseKey)) return null;
+  if (hasRejectedNameWord(parsed)) return null;
   const words = parsed.split(/\s+/).filter(Boolean);
-  if (words.length < 1 || words.length > 4) return null;
+  if (words.length < 1 || words.length > 3) return null;
   if (!NAME_CHARS_RE.test(parsed)) return null;
   return parsed;
 }

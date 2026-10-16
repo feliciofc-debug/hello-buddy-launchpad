@@ -15,11 +15,20 @@ import type {
   VeiculoVitrineRow,
 } from "./vehicle-stock-whatsapp.ts";
 
-Deno.test("parseOptionalClienteNome rejeita agradecimentos e perguntas", () => {
+Deno.test("parseOptionalClienteNome rejeita frases e aceita nomes", () => {
   assertEquals(parseOptionalClienteNome("obrigado"), null);
   assertEquals(parseOptionalClienteNome("qual o preço?"), null);
   assertEquals(parseOptionalClienteNome("ok"), null);
+  assertEquals(parseOptionalClienteNome("quero ver mais"), null);
+  assertEquals(parseOptionalClienteNome("tem outro?"), null);
+  assertEquals(parseOptionalClienteNome("quero financiar"), null);
+  assertEquals(parseOptionalClienteNome("pode ser sábado"), null);
+  assertEquals(parseOptionalClienteNome("ok obrigado"), null);
+  assertEquals(parseOptionalClienteNome("Carlos"), "Carlos");
   assertEquals(parseOptionalClienteNome("Ana Paula"), "Ana Paula");
+  assertEquals(parseOptionalClienteNome("meu nome é Ana Paula"), "Ana Paula");
+  assertEquals(parseOptionalClienteNome("me chamo joão"), "joão");
+  assertEquals(parseOptionalClienteNome("sou o Fred"), "Fred");
 });
 
 Deno.test("formatRecadoClienteLine usa perfil e telefone", () => {
