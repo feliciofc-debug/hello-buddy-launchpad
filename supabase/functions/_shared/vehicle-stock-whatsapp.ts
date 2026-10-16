@@ -48,7 +48,7 @@ export type PendingVitrineEstoque = {
 export type VitrineVisitaTurno = "manha" | "tarde";
 
 export type VitrineEstoqueForm = {
-  flow: "visita" | "troca" | "financiamento" | "cliente_nome";
+  flow: "visita" | "troca" | "financiamento" | "cliente_nome" | "cliente_nome_opcional";
   step: string;
   veiculo_id: string;
   resume?: VitrineRecadoResume;
@@ -682,6 +682,7 @@ export function pendingFormIsActive(
 ): pending is PendingVitrineEstoque & { form: VitrineEstoqueForm } {
   if (!pending?.form?.updated_at) return false;
   if (pending.form.flow === "cliente_nome") return true;
+  if (pending.form.flow === "cliente_nome_opcional") return true;
   return !!pending.form.veiculo_id;
 }
 
@@ -738,7 +739,8 @@ export function shouldRunVitrineEarlyCapture(input: {
     return true;
   }
   if (
-    input.pending.form.flow === "cliente_nome" &&
+    (input.pending.form.flow === "cliente_nome" ||
+      input.pending.form.flow === "cliente_nome_opcional") &&
     input.pending.form.step === "nome"
   ) {
     return true;
@@ -757,7 +759,11 @@ export function vitrineFormNeedsAudioTranscriptBeforeShowcase(
 ): boolean {
   if (!pendingFormIsActive(pending)) return false;
   if (pendingFormExpired(pending.form)) return false;
-  if (pending.form.flow === "cliente_nome" && pending.form.step === "nome") {
+  if (
+    (pending.form.flow === "cliente_nome" ||
+      pending.form.flow === "cliente_nome_opcional") &&
+    pending.form.step === "nome"
+  ) {
     return true;
   }
   if (

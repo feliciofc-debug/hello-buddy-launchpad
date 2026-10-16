@@ -59,15 +59,20 @@ import {
 } from "./vehicle-stock-troca.ts";
 import type { CarouselCardInput } from "./whatsapp-interactive-carousel.ts";
 import {
+  isClienteNomeCaptureForm,
   isClienteNomeForm,
+  isClienteNomeOpcionalForm,
+  parseOptionalClienteNome,
   sanitizeClienteNomeResposta,
   vehicleIdForClienteNomeForm,
   vitrineClienteNomeSalvo,
   vitrineContactNameFallback,
   vitrineNomeParaRecado,
-  VITRINE_CLIENTE_NOME_PROMPT,
+  VITRINE_CLIENTE_NOME_OPCIONAL_PROMPT,
   type VitrineRecadoResume,
 } from "./vehicle-stock-cliente-nome.ts";
+import { stripAudioTranscriptPrefix } from "./vitrine-inbound-text.ts";
+import { isFinanciamentoSpokenSkip } from "./vitrine-spoken-input.ts";
 import {
   advanceFinanciamentoAfterText,
   applyFinanciamentoCepLookup,
@@ -210,31 +215,36 @@ async function vitrineNotifyOwner(
   return { duplicate: false, notified: true };
 }
 
-async function beginClienteNomeGate(
+async function beginClienteNomeOpcional(
   input: ShowcaseTurnInput,
-  resume: VitrineRecadoResume,
+  vehicleId: string,
 ): Promise<ShowcaseTurnOutput | null> {
   if (isOwnerAudience(input)) return null;
   const pending = basePending(input.deps.getPending());
   if (vitrineClienteNomeSalvo(pending)) return null;
   const now = new Date().toISOString();
-  const suspendBackup = pending.form?.flow && pending.form.flow !== "cliente_nome"
-    ? pending.form
-    : pending.form_suspend_backup ?? null;
   await input.deps.savePending({
     ...pending,
-    form_suspend_backup: suspendBackup,
     form: {
-      flow: "cliente_nome",
+      flow: "cliente_nome_opcional",
       step: "nome",
-      veiculo_id: vehicleIdForClienteNomeForm(resume),
-      resume,
+      veiculo_id: vehicleId,
       updated_at: now,
     },
     updated_at: now,
   });
-  await input.deps.sendText(VITRINE_CLIENTE_NOME_PROMPT);
-  return { handled: true, replyPreview: "cliente_nome_prompt" };
+  await input.deps.sendText(VITRINE_CLIENTE_NOME_OPCIONAL_PROMPT);
+  return { handled: true, replyPreview: "cliente_nome_opcional_prompt" };
+}
+
+async function maybeOfferOptionalClienteNome(
+  input: ShowcaseTurnInput,
+  vehicleId: string,
+  after: ShowcaseTurnOutput,
+): Promise<ShowcaseTurnOutput> {
+  if (!after.handled) return after;
+  const optional = await beginClienteNomeOpcional(input, vehicleId);
+  return optional ?? after;
 }
 
 async function resumeVitrineRecado(
@@ -267,6 +277,28 @@ async function handleClienteNomeStep(
   pending: PendingVitrineEstoque,
 ): Promise<ShowcaseTurnOutput> {
   const form = pending.form;
+  if (isClienteNomeOpcionalForm(form)) {
+    const nome = parseOptionalClienteNome(input.userText);
+    const now = new Date().toISOString();
+    if (!nome) {
+      await input.deps.savePending({
+        ...pending,
+        form: null,
+        form_suspend_backup: null,
+        updated_at: now,
+      });
+      return { handled: false };
+    }
+    await input.deps.savePending({
+      ...pending,
+      cliente_nome: nome,
+      form: null,
+      form_suspend_backup: null,
+      updated_at: now,
+    });
+    await input.deps.sendText(`Obrigado, ${nome.split(/\s+/)[0]}! 😊`);
+    return { handled: true, replyPreview: "cliente_nome_opcional_salvo" };
+  }
   if (!isClienteNomeForm(form)) {
     return { handled: false };
   }
@@ -288,6 +320,10 @@ async function handleClienteNomeStep(
 export async function runVehicleStockShowcaseTurn(
   input: ShowcaseTurnInput,
 ): Promise<ShowcaseTurnOutput> {
+  input = {
+    ...input,
+    userText: stripAudioTranscriptPrefix(input.userText),
+  };
   if (isOwnerAudience(input)) {
     input = { ...input, allowEarlyFormCapture: false };
   }
@@ -314,29 +350,19 @@ export async function runVehicleStockShowcaseTurn(
     await input.deps.savePending(pending);
   }
   if (pending?.form && pendingFormExpired(pending.form)) {
-    if (isClienteNomeForm(pending.form)) {
-      const resume = pending.form.resume;
-      const fallback = vitrineContactNameFallback(input.contactName);
-      const restoredForm = pending.form_suspend_backup ?? null;
-      pending = {
-        ...pending,
-        cliente_nome: vitrineClienteNomeSalvo(pending)
-          ? pending.cliente_nome
-          : (String(pending.cliente_nome || "").trim() || fallback),
-        form: restoredForm,
-        form_suspend_backup: null,
-      };
-      await input.deps.savePending(pending);
-      return resumeVitrineRecado(input, resume);
-    }
-    pending = { ...pending, form: null };
+    pending = {
+      ...pending,
+      form: null,
+      form_suspend_backup: null,
+      updated_at: new Date().toISOString(),
+    };
     await input.deps.savePending(pending);
   }
 
   const formControl = isVitrineFormControlText(input.userText);
   if (
     pendingFormIsActive(pending) &&
-    pending.form.flow === "cliente_nome" &&
+    isClienteNomeCaptureForm(pending.form) &&
     formControl
   ) {
     return await handleClienteNomeFormControl(input, pending, formControl);
@@ -344,16 +370,12 @@ export async function runVehicleStockShowcaseTurn(
 
   if (
     pendingFormIsActive(pending) &&
-    pending.form.flow === "cliente_nome" &&
+    pending.form.flow === "cliente_nome_opcional" &&
     (vitrineId || explicit) &&
     !formControl
   ) {
-    const fallback = vitrineContactNameFallback(input.contactName);
     pending = {
       ...pending,
-      cliente_nome: vitrineClienteNomeSalvo(pending)
-        ? pending.cliente_nome
-        : (String(pending.cliente_nome || "").trim() || fallback),
       form: null,
       form_suspend_backup: null,
       updated_at: new Date().toISOString(),
@@ -405,7 +427,7 @@ export async function runVehicleStockShowcaseTurn(
   if (
     input.allowEarlyFormCapture &&
     pendingFormIsActive(pending) &&
-    pending.form.flow === "cliente_nome" &&
+    isClienteNomeCaptureForm(pending.form) &&
     !vitrineId
   ) {
     return await handleClienteNomeStep(input, pending);
@@ -763,14 +785,8 @@ async function finalizeVisita(
     await input.deps.sendText("Não encontrei o veículo.");
     return { handled: true };
   }
-  const gate = await beginClienteNomeGate(input, {
-    kind: "visita",
-    vehicleId,
-    diaIso,
-    turno,
-  });
-  if (gate) return gate;
-  return completeVisitaAgendada(input, diaIso, turno);
+  const done = await completeVisitaAgendada(input, diaIso, turno);
+  return maybeOfferOptionalClienteNome(input, vehicleId, done);
 }
 
 async function completeVisitaAgendada(
@@ -1082,7 +1098,8 @@ async function handleFinanciamentoTextStep(
   pending: PendingVitrineEstoque,
 ): Promise<ShowcaseTurnOutput> {
   const form = pending.form!;
-  const skip = normalizeVitrineText(input.userText) === "pular";
+  const skip = normalizeVitrineText(input.userText) === "pular" ||
+    isFinanciamentoSpokenSkip(input.userText);
   const now = new Date().toISOString();
   let advanced = advanceFinanciamentoAfterText(
     form,
@@ -1256,9 +1273,10 @@ async function handleTrocaTextStep(
 async function finalizeTrocaFlow(
   input: ShowcaseTurnInput,
 ): Promise<ShowcaseTurnOutput> {
-  const gate = await beginClienteNomeGate(input, { kind: "troca_confirm" });
-  if (gate) return gate;
-  return completeTrocaRecado(input);
+  const pending = input.deps.getPending();
+  const vehicleId = pending?.form?.veiculo_id ?? pending?.veiculo_id ?? "troca";
+  const done = await completeTrocaRecado(input);
+  return maybeOfferOptionalClienteNome(input, String(vehicleId), done);
 }
 
 async function completeTrocaRecado(
@@ -1418,6 +1436,22 @@ async function handleClienteNomeFormControl(
   kind: "cancelar" | "consultor",
 ): Promise<ShowcaseTurnOutput> {
   const form = pending.form;
+  if (isClienteNomeOpcionalForm(form)) {
+    const now = new Date().toISOString();
+    await input.deps.savePending({
+      ...pending,
+      form: null,
+      form_suspend_backup: null,
+      updated_at: now,
+    });
+    if (kind === "cancelar") {
+      await input.deps.sendText(
+        "Sem problemas — cancelei por aqui. Se quiser, digite *ver carros* para explorar o estoque de novo.",
+      );
+      return { handled: true, replyPreview: "cliente_nome_opcional_cancel" };
+    }
+    return completeHandoffConsultorGeral(input);
+  }
   if (!isClienteNomeForm(form)) {
     return { handled: false };
   }
@@ -1731,11 +1765,8 @@ async function handoffVehicle(
   kind: "interesse" | "consultor",
 ): Promise<ShowcaseTurnOutput> {
   if (isOwnerAudience(input)) return ownerClientPreviewStub(input);
-  const gate = await beginClienteNomeGate(input, kind === "interesse"
-    ? { kind: "interesse", vehicleId }
-    : { kind: "consultor", vehicleId });
-  if (gate) return gate;
-  return completeHandoffVehicle(input, vehicleId, kind);
+  const done = await completeHandoffVehicle(input, vehicleId, kind);
+  return maybeOfferOptionalClienteNome(input, vehicleId, done);
 }
 
 async function completeHandoffVehicle(
@@ -1796,12 +1827,9 @@ async function handoffConsultorGeral(input: ShowcaseTurnInput): Promise<Showcase
   if (isOwnerAudience(input)) return ownerClientPreviewStub(input);
   const pending = input.deps.getPending();
   const vehicleId = pending?.veiculo_id ?? null;
-  const gate = await beginClienteNomeGate(input, {
-    kind: "consultor",
-    vehicleId,
-  });
-  if (gate) return gate;
-  return completeHandoffConsultorGeral(input);
+  const done = await completeHandoffConsultorGeral(input);
+  const vid = vehicleId ?? "geral";
+  return maybeOfferOptionalClienteNome(input, String(vid), done);
 }
 
 async function completeHandoffConsultorGeral(

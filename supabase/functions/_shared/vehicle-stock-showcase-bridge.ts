@@ -52,7 +52,16 @@ async function postSendMessageOnce(
       Authorization: `Bearer ${ctx.serviceKey}`,
       apikey: ctx.serviceKey,
     },
-    body: JSON.stringify({ user_id: ctx.userId, to: ctx.to, skip_log: true, ...body }),
+    // logOutboundMessage (cloud-log.ts) só upsert conversa por user_id+telefone,
+    // insere whatsapp_cloud_messages e atualiza last_message_at — sem Silvester/hooks.
+    // O processor não reenvia quando a vitrine já handled; dedup por wamid evita duplicata.
+    body: JSON.stringify({
+      user_id: ctx.userId,
+      to: ctx.to,
+      skip_log: false,
+      log_sender: "agent",
+      ...body,
+    }),
   });
   const txt = await res.text();
   let parsed: any = {};

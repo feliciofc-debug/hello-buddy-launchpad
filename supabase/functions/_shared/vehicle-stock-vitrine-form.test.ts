@@ -76,16 +76,15 @@ Deno.test("early capture: visita não captura texto livre", () => {
   }));
 });
 
-Deno.test("early capture: cliente_nome captura texto", () => {
+Deno.test("early capture: cliente_nome_opcional captura texto", () => {
   const pending = {
     stage: "detalhe" as const,
     offset: 0,
     updated_at: new Date().toISOString(),
     form: {
-      flow: "cliente_nome" as const,
+      flow: "cliente_nome_opcional" as const,
       step: "nome",
       veiculo_id: "v1",
-      resume: { kind: "interesse" as const, vehicleId: "v1" },
       updated_at: new Date().toISOString(),
     },
   };
