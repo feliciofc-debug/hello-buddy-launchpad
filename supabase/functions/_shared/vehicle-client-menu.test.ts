@@ -6,8 +6,8 @@ import {
   CLIENT_MENU_ROUTES,
   clientTypeLabel,
   menusForBusinessSegment,
-  usesVehicleInventoryMenu,
 } from "../../../src/lib/client-menu-routes.ts";
+import { usesVehicleInventoryMenu } from "./vehicle-inventory-tenant.ts";
 
 Deno.test("rota de estoque usa menu exclusivo de veículos", () => {
   assertEquals(CLIENT_MENU_ROUTES["/veiculos"], "veiculos");

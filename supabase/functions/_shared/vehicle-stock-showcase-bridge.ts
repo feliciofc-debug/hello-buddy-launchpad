@@ -388,6 +388,7 @@ export async function executeVehicleStockShowcase(input: {
   inboundPayload?: unknown;
   forceInteractive?: boolean;
   allowEarlyFormCapture?: boolean;
+  audience?: import("./vehicle-stock-showcase-turn.ts").ShowcaseAudience;
 }) {
   const deps = buildShowcaseDeps(input.ctx);
   return runVehicleStockShowcaseTurn({
@@ -398,6 +399,7 @@ export async function executeVehicleStockShowcase(input: {
     fromNumber: input.ctx.to,
     forceInteractive: input.forceInteractive,
     allowEarlyFormCapture: input.allowEarlyFormCapture,
+    audience: input.audience ?? "cliente",
     deps,
   });
 }

@@ -95,6 +95,11 @@ import {
   getPendingVitrineEstoque,
   processVitrineTrocaInboundPhoto,
 } from "../_shared/vehicle-stock-showcase-bridge.ts";
+import { loadTenantVehicleStockGate } from "../_shared/vehicle-inventory-tenant.ts";
+import {
+  toolConsultarEstoqueVeiculos,
+  tryProcessOwnerVehicleStockInbound,
+} from "../_shared/vehicle-stock-owner-handler.ts";
 import {
   extractVitrineInteractiveId,
   formatCarouselVitrineButtonText,
@@ -5918,6 +5923,12 @@ async function resolveScope(ctx: { userId: string; fromNumber: string }): Promis
 
 async function toolConsultarEstoque(query: string, ctx: { userId: string; fromNumber: string }): Promise<string> {
   const q = (query || "").trim();
+  if (isOwner(ctx)) {
+    const gate = await loadTenantVehicleStockGate(sb, ctx.userId);
+    if (gate.usesVehicleStock) {
+      return toolConsultarEstoqueVeiculos(q, sb, ctx.userId);
+    }
+  }
   const { isAdmin } = await resolveScope(ctx);
   try {
     // SEMPRE filtra pelo user_id do próprio dono da conta.
@@ -22381,6 +22392,88 @@ async function answerOwnerCommercialStatus(userId: string, text: string): Promis
   return `Sim, chefe — o ${contato.nome} respondeu (${when}).\n\nResposta: ${preview || "áudio recebido"}${assistantUnderstanding ? `\n\nEntendimento do Jarvis: ${assistantUnderstanding}` : ""}`;
 }
 
+async function tryProcessOwnerVehicleStockShortcut(input: {
+  row: QueueRow;
+  convStateIdentity: ConversationStateIdentity;
+  userId: string;
+  userText: string;
+  contactName: string | null;
+  convId: string;
+  hasInboundMedia: boolean;
+}): Promise<{ handled: boolean; preview?: string }> {
+  const baseState = migrateVerticalState(
+    await loadAgentState(sb, input.convStateIdentity),
+  ).state as AgentConvState;
+  const ownerStock = await tryProcessOwnerVehicleStockInbound({
+    sb,
+    userId: input.userId,
+    userText: input.userText,
+    hasInboundMedia: input.hasInboundMedia,
+    row: input.row,
+    contactName: input.contactName,
+    agentState: baseState as Record<string, unknown>,
+    supabaseUrl: SUPABASE_URL,
+    serviceKey: SERVICE_KEY,
+    loadAgentState: async () => {
+      const st = await loadAgentState(sb, input.convStateIdentity);
+      return migrateVerticalState(st).state as Record<string, unknown>;
+    },
+    saveAgentStatePatch: async (patch, current) => saveAgentState(
+      sb,
+      input.convStateIdentity,
+      patch as AgentConvState,
+      current as AgentConvState,
+    ),
+    encaminharRecado: async (recado) => {
+      const raw = await toolEncaminharRecadoAoDono(
+        { recado },
+        { userId: input.userId, fromNumber: input.row.from_number },
+      );
+      const parsed = JSON.parse(raw);
+      return { ok: parsed?.ok === true, protocolo: parsed?.protocolo };
+    },
+  });
+  if (!ownerStock.handled) return { handled: false };
+  if (ownerStock.reply) {
+    const { data: outMsg } = await sb
+      .from("whatsapp_cloud_messages")
+      .insert({
+        conversation_id: input.convId,
+        user_id: input.userId,
+        direction: "outbound",
+        sender: "agent",
+        content: ownerStock.reply,
+        message_type: "text",
+      })
+      .select("id")
+      .single();
+    let sendError: string | null = null;
+    try {
+      const sentId = await sendWhatsApp(
+        input.userId,
+        input.row.from_number,
+        ownerStock.reply,
+      );
+      if (sentId && outMsg?.id) {
+        await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq(
+          "id",
+          outMsg.id,
+        );
+      }
+    } catch (e) {
+      sendError = String((e as Error).message ?? e);
+    }
+    await sb.from("whatsapp_cloud_conversations").update({
+      last_message_at: new Date().toISOString(),
+    }).eq("id", input.convId);
+    if (sendError) {
+      await failQueue(input.row.id, `send_failed: ${sendError}`);
+      return { handled: true, preview: ownerStock.preview };
+    }
+  }
+  return { handled: true, preview: ownerStock.preview };
+}
+
 async function tryProcessVehicleStockShowcase(input: {
   row: QueueRow;
   convStateIdentity: ConversationStateIdentity;
@@ -23073,6 +23166,35 @@ async function processOne(queueId: string) {
       }
     }
 
+    if (
+      fromIsOwner &&
+      (row.message_type === "text" || row.message_type === "interactive") &&
+      userText.trim()
+    ) {
+      try {
+        const ownerStockEarly = await tryProcessOwnerVehicleStockShortcut({
+          row,
+          convStateIdentity,
+          userId,
+          userText,
+          contactName,
+          convId: conv.id,
+          hasInboundMedia: false,
+        });
+        if (ownerStockEarly.handled) {
+          stopTypingHeartbeat();
+          await doneQueue(row.id);
+          return {
+            ok: true,
+            owner_vehicle_stock: true,
+            preview: ownerStockEarly.preview,
+          };
+        }
+      } catch (e) {
+        console.error("[owner-vehicle-stock][early]", (e as Error).message);
+      }
+    }
+
     // Atalho determinístico: pedidos explícitos de lugar próximo não dependem da IA chamar tool.
     // Isso evita respostas falsas de "permissão bloqueada" quando a localização já está salva.
     if (directNearbySearch && userId) {
@@ -23261,6 +23383,31 @@ async function processOne(queueId: string) {
         console.log(`[processor][audio] transcricao_len=${audioTranscript.length}`);
       } catch (e) {
         console.warn("[processor][audio-transcribe] falhou:", (e as Error).message);
+      }
+    }
+
+    if (fromIsOwner && audioTranscript?.trim()) {
+      try {
+        const ownerStockAudio = await tryProcessOwnerVehicleStockShortcut({
+          row,
+          convStateIdentity,
+          userId,
+          userText: audioTranscript,
+          contactName,
+          convId: conv.id,
+          hasInboundMedia: false,
+        });
+        if (ownerStockAudio.handled) {
+          stopTypingHeartbeat();
+          await doneQueue(row.id);
+          return {
+            ok: true,
+            owner_vehicle_stock_audio: true,
+            preview: ownerStockAudio.preview,
+          };
+        }
+      } catch (e) {
+        console.error("[owner-vehicle-stock][audio]", (e as Error).message);
       }
     }
 
@@ -25580,6 +25727,21 @@ Regras:
     }).format(new Date());
     const dateBlock = `\n\nCONTEXTO TEMPORAL (IMPORTANTE):\n- Data e hora atual em São Paulo: ${nowSP}.\n- Use SEMPRE esta data como referência de "hoje", "ontem", "esta semana", "este ano".\n- Para qualquer pergunta sobre notícias, eventos, cotações, clima, preços, jogos, agenda ou "o que está acontecendo", chame pesquisar_web com termos incluindo o ano/mês atual e passe recencia="d" (últimas 24h) ou "w" (última semana) quando fizer sentido. NUNCA responda de memória sobre fatos recentes.`;
     const inboundFromOwner = fromIsOwner;
+    let vehicleStockOwnerBlock = "";
+    if (inboundFromOwner) {
+      try {
+        const vehicleGate = await loadTenantVehicleStockGate(sb, userId);
+        if (vehicleGate.usesVehicleStock) {
+          vehicleStockOwnerBlock =
+            "\n\nESTOQUE DE VEÍCULOS (DONO — REGRA FIXA):\n" +
+            "- Os automóveis cadastrados ficam em veiculos_estoque (menu Veículos), NÃO na tabela produtos.\n" +
+            "- Para totais, busca por modelo/marca ou vendidos, chame consultar_estoque (retorna veiculos_estoque).\n" +
+            "- Nunca responda \"não encontrei veículos no catálogo de produtos\" — produtos e veículos são bases separadas.";
+        }
+      } catch (e) {
+        console.warn("[owner-vehicle-stock][prompt]", (e as Error).message);
+      }
+    }
     let mediaBlock = media.length > 0
       ? inboundFromOwner
         ? `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- O DONO/RESPONSÁVEL ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Foto/vídeo/áudio recebido é MÍDIA LIVRE da biblioteca — NÃO é um produto do catálogo.\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE. Passe em "contexto" o que ele falou (ou "sem contexto" se só mandou o arquivo).\n- É PROIBIDO chamar postar_redes_sociais quando há mídia nova enviada nesta mensagem — aquela tool é SÓ pra produtos do catálogo, nunca pra mídia recém-enviada.\n- 🏷️ ANÚNCIO: se ele pedir arte/anúncio de produto (veículo, imóvel, máquina, item de loja) e passar dados (modelo, ano, km, preço, garantia), chame criar_anuncio DEPOIS de salvar, NESTA MESMA RESPOSTA — 'titulo' = modelo, 'subtitulo' = ano/câmbio, cada dado citado em 'itens' exatamente como ele escreveu, 'preco' com o valor dito. Nunca invente dado.\n- 🎨 EDIÇÃO: se ele pedir para MELHORAR a foto, escrever dados na imagem (km, ano/modelo, "único dono", preço) ou trocar roupa/fantasia mantendo o ambiente, chame editar_imagem DEPOIS de salvar. Coloque cada dado citado por ele em "textos" (exatamente como ele escreveu) e escolha modo='ficha_tecnica' (produto/veículo — TROCA o ambiente por estúdio/showroom limpo, tirando fios, TV, móveis e bagunça da foto) ou modo='figurino' (troca de roupa mantendo rosto e cenário). Se ele pedir 'ambiente bonito', 'fundo profissional' ou 'ambiente para anúncio', use modo='ficha_tecnica' e NÃO passe preservar_ambiente.\n- ⛔ REGRA DE PUBLICAÇÃO PÓS-EDIÇÃO: se você chamou editar_imagem (ou criar_anuncio) e ele pedir pra POSTAR, a mídia a publicar é SEMPRE a versão TRATADA — chame postar_midia_biblioteca passando o midia_id retornado por aquela tool. É PROIBIDO publicar a foto original enviada por ele.\n- Depois de salvar, responda curto. Só fale de publicar/reusar porque o remetente é o responsável da conta.`
@@ -26306,7 +26468,7 @@ Regras:
         ? `\n\n=== IDENTIDADE FINAL (PRIORIDADE MÁXIMA) ===\n- isOwner=true. Você é JARVIS e pode tratar o remetente como dono/chefe.`
         : `\n\n=== IDENTIDADE E FORMATO FINAL (PRIORIDADE MÁXIMA) ===\n- isOwner=false. Você é PIETRO EUGENIO, assistente virtual da AMZ.\n- Ignore qualquer persona do tenant, contexto ou histórico que diga que você é Jarvis.\n- Nunca use "chefe", "dono" ou tratamento de proprietário com este remetente.\n- Máximo 3 linhas e 350 caracteres por mensagem, uma pergunta, sem listas, títulos ou negrito e no máximo 1 emoji.\n- Se precisar continuar, use no máximo 3 partes com <<SPLIT>>.`
       : "";
-    const systemPromptWithDate = systemPrompt + dateBlock + antiPromessaBlock + antiRecusaBlock + ownerHintBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock + ebookBlock + estadoBlock + amzIdentityGuard;
+    const systemPromptWithDate = systemPrompt + dateBlock + antiPromessaBlock + antiRecusaBlock + ownerHintBlock + vehicleStockOwnerBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock + ebookBlock + estadoBlock + amzIdentityGuard;
     console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPromptWithDate.length} forwardState=${!!persistedForward?.protocolo} decisao=${decisaoAnterior?.valor ?? "-"}`);
 
     // Histórico

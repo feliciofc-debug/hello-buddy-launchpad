@@ -92,6 +92,7 @@ import {
   type FinanciamentoPerfil,
 } from "./vehicle-stock-financiamento.ts";
 import { safeErrorMessage } from "./pii-log-sanitize.ts";
+import { OWNER_VITRINE_CLIENT_PREVIEW_MSG } from "./vehicle-stock-owner-inbound.ts";
 
 export type ShowcaseSendResult = {
   ok: boolean;
@@ -142,6 +143,8 @@ export type ShowcaseTurnDeps = {
   userId: string;
 };
 
+export type ShowcaseAudience = "cliente" | "dono";
+
 export type ShowcaseTurnInput = {
   userText: string;
   listId?: string;
@@ -150,8 +153,20 @@ export type ShowcaseTurnInput = {
   fromNumber: string;
   forceInteractive?: boolean;
   allowEarlyFormCapture?: boolean;
+  audience?: ShowcaseAudience;
   deps: ShowcaseTurnDeps;
 };
+
+function isOwnerAudience(input: ShowcaseTurnInput): boolean {
+  return input.audience === "dono";
+}
+
+async function ownerClientPreviewStub(
+  input: ShowcaseTurnInput,
+): Promise<ShowcaseTurnOutput> {
+  await input.deps.sendText(OWNER_VITRINE_CLIENT_PREVIEW_MSG);
+  return { handled: true, replyPreview: "owner_client_preview" };
+}
 
 export type ShowcaseTurnOutput = {
   handled: boolean;
@@ -179,6 +194,9 @@ async function vitrineNotifyOwner(
   key: string,
   recado: string,
 ): Promise<{ duplicate: boolean; notified: boolean }> {
+  if (isOwnerAudience(input)) {
+    return { duplicate: false, notified: false };
+  }
   let pending = basePending(input.deps.getPending());
   if (vitrineRecadoJaEnviado(pending, key)) {
     return { duplicate: true, notified: true };
@@ -196,6 +214,7 @@ async function beginClienteNomeGate(
   input: ShowcaseTurnInput,
   resume: VitrineRecadoResume,
 ): Promise<ShowcaseTurnOutput | null> {
+  if (isOwnerAudience(input)) return null;
   const pending = basePending(input.deps.getPending());
   if (vitrineClienteNomeSalvo(pending)) return null;
   const now = new Date().toISOString();
@@ -269,8 +288,11 @@ async function handleClienteNomeStep(
 export async function runVehicleStockShowcaseTurn(
   input: ShowcaseTurnInput,
 ): Promise<ShowcaseTurnOutput> {
+  if (isOwnerAudience(input)) {
+    input = { ...input, allowEarlyFormCapture: false };
+  }
   const flags = await input.deps.loadTenantFlags();
-  if (!shouldOfferVehicleShowcase(flags)) {
+  if (!shouldOfferVehicleShowcase(flags) && !isOwnerAudience(input)) {
     return { handled: false };
   }
 
@@ -282,6 +304,15 @@ export async function runVehicleStockShowcaseTurn(
   const explicit = isExplicitVehicleShowcaseRequest(input.userText, flags);
 
   let pending = input.deps.getPending() ?? null;
+  if (isOwnerAudience(input) && pending?.form) {
+    pending = {
+      ...pending,
+      form: null,
+      form_suspend_backup: null,
+      updated_at: new Date().toISOString(),
+    };
+    await input.deps.savePending(pending);
+  }
   if (pending?.form && pendingFormExpired(pending.form)) {
     if (isClienteNomeForm(pending.form)) {
       const resume = pending.form.resume;
@@ -400,12 +431,14 @@ export async function runVehicleStockShowcaseTurn(
     return await handleTrocaTextStep(input, pending);
   }
 
+  const entersShowcase = shouldEnterShowcase({
+    flags,
+    explicitText: explicit,
+    vitrineInteractiveId: vitrineId,
+  }) ||
+    (isOwnerAudience(input) && (!!vitrineId || explicit));
   if (
-    !shouldEnterShowcase({
-      flags,
-      explicitText: explicit,
-      vitrineInteractiveId: vitrineId,
-    }) &&
+    !entersShowcase &&
     !(input.allowEarlyFormCapture && pendingFormIsActive(pending))
   ) {
     return { handled: false };
@@ -470,6 +503,20 @@ async function handleVitrineAction(input: ShowcaseTurnInput & {
   }
 
   const { action, parts } = parseVitrineButtonId(id);
+  if (isOwnerAudience(input)) {
+    const clientOnly =
+      action === "interesse" ||
+      action === "consultor" ||
+      (action === "acao" &&
+        ["troca", "visita", "financiamento"].includes(parts[0] ?? "")) ||
+      action === "fin_modo" ||
+      action.startsWith("fin_") ||
+      action === "visita_dia" ||
+      action === "visita_turno" ||
+      action === "troca_foto" ||
+      action === "troca_obs";
+    if (clientOnly) return ownerClientPreviewStub(input);
+  }
   const marcas = await input.deps.loadMarcas();
 
   if (
@@ -638,6 +685,7 @@ async function startVisitaFlow(
   input: ShowcaseTurnInput,
   vehicleId: string,
 ): Promise<ShowcaseTurnOutput> {
+  if (isOwnerAudience(input)) return ownerClientPreviewStub(input);
   const vehicle = await input.deps.loadVeiculoById(vehicleId);
   if (!vehicle) {
     await input.deps.sendText("Esse veículo não está mais disponível.");
@@ -787,6 +835,7 @@ async function startFinanciamentoFlow(
   input: ShowcaseTurnInput,
   vehicleId: string,
 ): Promise<ShowcaseTurnOutput> {
+  if (isOwnerAudience(input)) return ownerClientPreviewStub(input);
   const vehicle = await input.deps.loadVeiculoById(vehicleId);
   if (!vehicle) {
     await input.deps.sendText("Esse veículo não está mais disponível.");
@@ -1158,6 +1207,7 @@ async function startTrocaFlow(
   input: ShowcaseTurnInput,
   vehicleId: string,
 ): Promise<ShowcaseTurnOutput> {
+  if (isOwnerAudience(input)) return ownerClientPreviewStub(input);
   const vehicle = await input.deps.loadVeiculoById(vehicleId);
   if (!vehicle) {
     await input.deps.sendText("Esse veículo não está mais disponível.");
@@ -1680,6 +1730,7 @@ async function handoffVehicle(
   vehicleId: string,
   kind: "interesse" | "consultor",
 ): Promise<ShowcaseTurnOutput> {
+  if (isOwnerAudience(input)) return ownerClientPreviewStub(input);
   const gate = await beginClienteNomeGate(input, kind === "interesse"
     ? { kind: "interesse", vehicleId }
     : { kind: "consultor", vehicleId });
@@ -1692,6 +1743,7 @@ async function completeHandoffVehicle(
   vehicleId: string,
   kind: "interesse" | "consultor",
 ): Promise<ShowcaseTurnOutput> {
+  if (isOwnerAudience(input)) return ownerClientPreviewStub(input);
   const vehicle = await input.deps.loadVeiculoById(vehicleId);
   if (!vehicle) {
     await input.deps.sendText("Esse veículo não está mais disponível.");
@@ -1741,6 +1793,7 @@ async function completeHandoffVehicle(
 }
 
 async function handoffConsultorGeral(input: ShowcaseTurnInput): Promise<ShowcaseTurnOutput> {
+  if (isOwnerAudience(input)) return ownerClientPreviewStub(input);
   const pending = input.deps.getPending();
   const vehicleId = pending?.veiculo_id ?? null;
   const gate = await beginClienteNomeGate(input, {
@@ -1754,6 +1807,7 @@ async function handoffConsultorGeral(input: ShowcaseTurnInput): Promise<Showcase
 async function completeHandoffConsultorGeral(
   input: ShowcaseTurnInput,
 ): Promise<ShowcaseTurnOutput> {
+  if (isOwnerAudience(input)) return ownerClientPreviewStub(input);
   const pending = input.deps.getPending();
   const flags = await input.deps.loadTenantFlags();
   const clienteNome = vitrineNomeParaRecado({
