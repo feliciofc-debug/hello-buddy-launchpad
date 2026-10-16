@@ -123,6 +123,35 @@ function buildTemplateParams(
   return chaves.map((k) => valores[k.replace(/[{}\s]/g, '').toLowerCase()] ?? '');
 }
 
+export function campaignStorageTable(campaign: {
+  item_tipo?: string | null;
+}): "campanhas_recorrentes" | "veiculos_campanhas_recorrentes" {
+  return campaign.item_tipo === "veiculo"
+    ? "veiculos_campanhas_recorrentes"
+    : "campanhas_recorrentes";
+}
+
+export function vehicleToCampaignItem(vehicle: {
+  id: string;
+  marca: string;
+  modelo: string;
+  versao?: string | null;
+  descricao?: string | null;
+  preco?: number | null;
+  fotos?: string[] | null;
+}) {
+  return {
+    id: vehicle.id,
+    nome: [vehicle.marca, vehicle.modelo, vehicle.versao]
+      .filter(Boolean)
+      .join(" "),
+    descricao: vehicle.descricao ?? null,
+    preco: vehicle.preco ?? null,
+    imagem_url: vehicle.fotos?.[0] ?? null,
+    imagens: vehicle.fotos ?? [],
+  };
+}
+
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -159,7 +188,7 @@ serve(async (req) => {
     console.log(`⏰ Hora atual (SP): ${currentTime}, Dia da semana (SP): ${currentDay}`);
 
     // Buscar campanhas ativas
-    const { data: campanhas, error: fetchError } = await supabase
+    const { data: productCampaigns, error: fetchError } = await supabase
       .from("campanhas_recorrentes")
       .select(`
         *,
@@ -173,6 +202,44 @@ serve(async (req) => {
       throw fetchError;
     }
 
+    const {
+      data: rawVehicleCampaigns,
+      error: vehicleCampaignError,
+    } = await supabase
+      .from("veiculos_campanhas_recorrentes")
+      .select(`
+        *,
+        veiculos_estoque(
+          id,
+          user_id,
+          marca,
+          modelo,
+          versao,
+          descricao,
+          preco,
+          fotos,
+          status
+        )
+      `)
+      .eq("ativa", true)
+      .lte("data_inicio", currentDate);
+
+    if (vehicleCampaignError) {
+      console.error(
+        "⚠️ Erro ao buscar campanhas de veículos; produtos seguem normalmente:",
+        vehicleCampaignError,
+      );
+    }
+
+    const vehicleCampaigns = (rawVehicleCampaigns || []).map((campaign: any) => ({
+      ...campaign,
+      item_tipo: "veiculo",
+      produtos: campaign.veiculos_estoque
+        ? vehicleToCampaignItem(campaign.veiculos_estoque)
+        : null,
+    }));
+    const campanhas = [...(productCampaigns || []), ...vehicleCampaigns];
+
     console.log(`📋 Encontradas ${campanhas?.length || 0} campanhas ativas`);
 
     let executadas = 0;
@@ -180,6 +247,29 @@ serve(async (req) => {
 
     for (const campanha of campanhas || []) {
       try {
+        if (campanha.item_tipo === "veiculo") {
+          const vehicle = campanha.veiculos_estoque;
+          if (!vehicle || vehicle.status === "vendido") {
+            const reason = vehicle ? "veiculo_vendido" : "veiculo_removido";
+            console.log(
+              `⚠️ Veículo da campanha ${campanha.id} indisponível (${reason}); cancelando.`,
+            );
+            await supabase
+              .from("veiculos_campanhas_recorrentes")
+              .update({
+                ativa: false,
+                status: "cancelada",
+                updated_at: now.toISOString(),
+              })
+              .eq("id", campanha.id);
+            continue;
+          }
+          if (vehicle.user_id !== campanha.user_id) {
+            throw new Error(
+              `Veículo ${vehicle.id} pertence a outro usuário e foi bloqueado`,
+            );
+          }
+        }
         // ============================================================
         // AUTOPILOT — detecção + travas pré-loop (só se autopilot=true)
         // ============================================================
@@ -215,7 +305,7 @@ serve(async (req) => {
             );
             if (amanha) {
               await supabase
-                .from('campanhas_recorrentes')
+                .from(campaignStorageTable(campanha))
                 .update({
                   ultima_execucao: now.toISOString(),
                   proxima_execucao: amanha,
@@ -692,7 +782,7 @@ serve(async (req) => {
 
 
         await supabase
-          .from("campanhas_recorrentes")
+          .from(campaignStorageTable(campanha))
           .update(updateData)
           .eq("id", campanha.id);
 

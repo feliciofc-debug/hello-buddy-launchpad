@@ -5,6 +5,7 @@ const corsHeaders = {
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { appendLinkPost } from '../_shared/link-post.ts'
 import { prepareImageForInstagramSafe } from '../_shared/prepareImageForInstagram.ts'
+import { assertVehicleCanPublish } from '../_shared/vehicle-publish-guard.ts'
 
 
 function sanitizePublishText(text?: string | null) {
@@ -72,7 +73,14 @@ Deno.serve(async (req) => {
   }
 
   try {
-     const { user_id, image_urls, caption, produto_id } = await req.json()
+     const {
+       user_id,
+       image_urls,
+       caption,
+       produto_id,
+       item_tipo,
+       veiculo_id,
+     } = await req.json()
      let sanitizedCaption = sanitizePublishText(caption)
      if (!user_id || !image_urls?.length) {
       return new Response(JSON.stringify({ error: 'user_id e image_urls são obrigatórios' }), {
@@ -83,6 +91,19 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
+     await assertVehicleCanPublish(supabase, {
+       item_tipo,
+       veiculo_id,
+       user_id,
+     })
+     if (item_tipo === 'veiculo' && image_urls.length > 10) {
+      return new Response(JSON.stringify({
+        error: 'O Instagram aceita no máximo 10 fotos por carrossel.',
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+     }
      sanitizedCaption = await appendLinkPost(supabase, user_id, sanitizedCaption)
      const productTags = await getProductTags(supabase, user_id, produto_id)
 

@@ -221,6 +221,17 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ ok: false, error: "missing user_id/telefone_cliente" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    const { data: tenantCfg } = await sb.from("empresa_config")
+      .select("silvester_dossie_ativo")
+      .eq("user_id", user_id)
+      .maybeSingle();
+    if (tenantCfg?.silvester_dossie_ativo !== true) {
+      return new Response(
+        JSON.stringify({ ok: true, skipped: "flag_off" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const dossie = await getOrCreateDossie(user_id, telefone_cliente, nome_cliente);
     console.log("[silvester] dossie", dossie.id, "score inicial", dossie.completeness_score);
 

@@ -24,6 +24,7 @@ type ErrorResponse = {
 };
 
 const STORAGE_KEY_PREFIX = "amz-custom-auth-session-v1";
+const EXPIRY_MARGIN_SECONDS = 60;
 
 class CustomAuthError extends Error {
   status: number;
@@ -73,37 +74,46 @@ const buildUser = (apiUser: ApiUser, token: string): User => {
 };
 
 const buildSession = (response: LoginResponse): Session => {
-  const claims = decodeJwtPayload(response.access_token);
-  const claimExpiry = Number(claims.exp);
-  const expiresAt =
-    response.expires_at ||
-    (Number.isFinite(claimExpiry) ? claimExpiry : Math.floor(Date.now() / 1000) + response.expires_in);
+  const responseExpiresIn = Number(response.expires_in);
+  const expiresIn = Number.isFinite(responseExpiresIn) && responseExpiresIn > 0
+    ? responseExpiresIn
+    : 3600;
+  const expiresAt = Math.floor(Date.now() / 1000) +
+    Math.max(0, expiresIn - EXPIRY_MARGIN_SECONDS);
 
   return {
     access_token: response.access_token,
     refresh_token: "",
     token_type: "bearer",
-    expires_in: response.expires_in,
+    expires_in: expiresIn,
     expires_at: expiresAt,
     user: buildUser(response.user, response.access_token),
   };
 };
-
-const isExpired = (session: Session) =>
-  typeof session.expires_at === "number" && session.expires_at <= Math.floor(Date.now() / 1000);
 
 const readStoredSession = (storageKey: string): Session | null => {
   try {
     const raw = localStorage.getItem(storageKey);
     if (!raw) return null;
     const session = JSON.parse(raw) as Session;
-    if (!session?.access_token || !session?.user || isExpired(session)) {
+    if (!session?.access_token || !session?.user) {
+      console.warn(
+        "[custom-auth] Sessão salva descartada: token ou usuário ausente",
+      );
       localStorage.removeItem(storageKey);
       return null;
     }
     return session;
-  } catch {
-    localStorage.removeItem(storageKey);
+  } catch (error) {
+    console.warn(
+      "[custom-auth] Sessão salva descartada: armazenamento inválido ou indisponível",
+      error,
+    );
+    try {
+      localStorage.removeItem(storageKey);
+    } catch {
+      // O navegador pode bloquear completamente o localStorage.
+    }
     return null;
   }
 };
@@ -128,10 +138,17 @@ export class CustomAuthClient {
 
   private persist(session: Session | null) {
     this.session = session;
-    if (session) {
-      localStorage.setItem(this.storageKey, JSON.stringify(session));
-    } else {
-      localStorage.removeItem(this.storageKey);
+    try {
+      if (session) {
+        localStorage.setItem(this.storageKey, JSON.stringify(session));
+      } else {
+        localStorage.removeItem(this.storageKey);
+      }
+    } catch (error) {
+      console.warn(
+        "[custom-auth] localStorage indisponível; mantendo sessão apenas em memória",
+        error,
+      );
     }
   }
 
@@ -145,8 +162,11 @@ export class CustomAuthClient {
     }
   }
 
-  private clearSession(notify = true) {
+  private clearSession(reason: string, notify = true) {
     const hadSession = Boolean(this.session);
+    if (hadSession) {
+      console.warn(`[custom-auth] Sessão descartada: ${reason}`);
+    }
     this.persist(null);
     if (notify && hadSession) this.notify("SIGNED_OUT", null);
   }
@@ -157,10 +177,11 @@ export class CustomAuthClient {
   }
 
   getAccessToken() {
-    if (this.session && isExpired(this.session)) {
-      this.clearSession();
-    }
     return this.session?.access_token ?? null;
+  }
+
+  rejectSession(reason: string) {
+    this.clearSession(reason);
   }
 
   async signInWithPassword(credentials: { email: string; password: string }) {
@@ -203,14 +224,11 @@ export class CustomAuthClient {
   }
 
   async signOut() {
-    this.clearSession();
+    this.clearSession("logout solicitado");
     return { error: null };
   }
 
   async getSession() {
-    if (this.session && isExpired(this.session)) {
-      this.clearSession();
-    }
     return { data: { session: this.session }, error: null };
   }
 
@@ -219,7 +237,7 @@ export class CustomAuthClient {
     if (!token) {
       return {
         data: { user: null },
-        error: new CustomAuthError("Sessão ausente ou expirada", 401),
+        error: new CustomAuthError("Sessão ausente", 401),
       };
     }
 
@@ -234,12 +252,29 @@ export class CustomAuthClient {
 
       if (!response.ok) {
         const error = await this.parseError(response);
-        if (response.status === 401) this.clearSession();
+        if (response.status === 401) {
+          this.clearSession("servidor rejeitou o token em /auth/v1/user");
+        }
         return { data: { user: null }, error };
       }
 
-      const payload = (await response.json()) as { user: ApiUser };
-      const user = buildUser(payload.user, token);
+      const payload = (await response.json()) as
+        | ApiUser
+        | { user?: ApiUser }
+        | null;
+      const raw: ApiUser | null = payload && "user" in payload
+        ? payload.user ?? null
+        : payload as ApiUser | null;
+      if (!raw?.id) {
+        return {
+          data: { user: null },
+          error: new CustomAuthError(
+            "Resposta de usuário inválida: campo id ausente",
+            502,
+          ),
+        };
+      }
+      const user = buildUser(raw, token);
       if (this.session) {
         this.persist({ ...this.session, user });
       }
@@ -270,7 +305,7 @@ export class CustomAuthClient {
   }
 
   async refreshSession() {
-    this.clearSession();
+    this.clearSession("refresh não suportado pelo auth próprio");
     if (window.location.pathname !== "/login") {
       window.location.assign("/login");
     }
@@ -285,7 +320,7 @@ export class CustomAuthClient {
     if (!token) {
       return {
         data: { user: null },
-        error: new CustomAuthError("Sessão ausente ou expirada", 401),
+        error: new CustomAuthError("Sessão ausente", 401),
       };
     }
     if (!attributes.password) {
@@ -309,7 +344,11 @@ export class CustomAuthClient {
 
       if (!response.ok) {
         const error = await this.parseError(response);
-        if (response.status === 401) this.clearSession();
+        if (response.status === 401) {
+          this.clearSession(
+            "servidor rejeitou o token em /auth/v1/user/password",
+          );
+        }
         return { data: { user: null }, error };
       }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
-import { Bell, User, Menu, X, Package, UserCircle, DollarSign, TrendingUp, Target, BarChart3, ShoppingBag, LogOut, Moon, Sun, Settings, MessageCircle, Bot, Instagram, BookOpen, Megaphone, CreditCard, Users, Award, MapPin, Star, Calendar, FileText, Download, Plus, Eye, UserPlus, Package2, Link2, Send, Video, Building2, Sparkles, Smartphone, Shield, Briefcase } from 'lucide-react';
+import { Bell, User, Menu, X, Package, UserCircle, DollarSign, TrendingUp, Target, BarChart3, ShoppingBag, LogOut, Moon, Sun, Settings, MessageCircle, Bot, Instagram, BookOpen, Megaphone, CreditCard, Users, Award, MapPin, Star, Calendar, FileText, Download, Plus, Eye, UserPlus, Package2, Link2, Send, Video, Building2, Sparkles, Smartphone, Shield, Briefcase, CarFront } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart as RechartsBarChart, Bar, Legend } from 'recharts';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTheme } from 'next-themes';
@@ -18,6 +18,8 @@ import { LogsEnvioWuzapi } from '@/components/LogsEnvioWuzapi';
 import { DiagnosticoWuzapi } from '@/components/DiagnosticoWuzapi';
 import { mockProducts, type Marketplace } from '@/data/mockData';
 import { useClientMenus } from '@/hooks/useClientMenus';
+import { useFinanciamentoPendingCount } from '@/hooks/useFinanciamentoPendingCount';
+import { isBusinessTenantType } from '@/lib/business-tenant';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -29,7 +31,16 @@ const Dashboard = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   // Hook para gerenciar menus baseado no tipo de cliente
-  const { isMenuAllowed, empresaNome } = useClientMenus(userProfile?.tipo, userProfile?.nome_fantasia);
+  const {
+    isMenuAllowed,
+    empresaNome,
+    showFinanciamentosMenu,
+    showDemoVehicleStockAfterProdutos,
+  } = useClientMenus(
+    userProfile?.tipo,
+    userProfile?.nome_fantasia,
+  );
+  const { badgeLabel: financiamentoBadge } = useFinanciamentoPendingCount(showFinanciamentosMenu);
 
   // Calcular métricas reais baseadas nos produtos (SEMPRE executado - antes do early return)
   const metrics = useMemo(() => {
@@ -299,7 +310,7 @@ const Dashboard = () => {
             Dashboard
           </a>
           {/* STANDBY - Afiliados
-          {userProfile?.tipo !== 'empresa' && (
+          {!isBusinessTenantType(userProfile?.tipo) && (
             <a
               href="/planos"
               className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
@@ -443,7 +454,7 @@ const Dashboard = () => {
               Biblioteca
             </a>
           )}
-          {isMenuAllowed('analytics') && (userProfile?.tipo === 'empresa' || userProfile?.tipo === 'fabrica' || userProfile?.tipo === 'b2b') && (
+          {isMenuAllowed('analytics') && (isBusinessTenantType(userProfile?.tipo) || userProfile?.tipo === 'fabrica' || userProfile?.tipo === 'b2b') && (
             <a
               href="/analytics"
               className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
@@ -469,6 +480,50 @@ const Dashboard = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
               </svg>
               📦 Meus Produtos
+            </a>
+          )}
+          {showDemoVehicleStockAfterProdutos && (
+            <a
+              href="/veiculos"
+              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                window.location.pathname === '/veiculos'
+                  ? 'bg-blue-500 text-white'
+                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              <CarFront size={20} />
+              Estoque de Veículos
+            </a>
+          )}
+          {isMenuAllowed('veiculos') && (
+            <a
+              href="/veiculos"
+              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                window.location.pathname === '/veiculos'
+                  ? 'bg-blue-500 text-white'
+                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              <CarFront size={20} />
+              Estoque de Veículos
+            </a>
+          )}
+          {showFinanciamentosMenu && (
+            <a
+              href="/veiculos/financiamento"
+              className={`relative w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                window.location.pathname.startsWith('/veiculos/financiamento')
+                  ? 'bg-blue-500 text-white'
+                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              <FileText size={20} />
+              Financiamentos
+              {financiamentoBadge && (
+                <span className="absolute top-1.5 right-2 min-w-[1.125rem] h-[1.125rem] px-0.5 rounded-full bg-red-600 text-white text-[10px] font-bold flex items-center justify-center">
+                  {financiamentoBadge}
+                </span>
+              )}
             </a>
           )}
           {isMenuAllowed('buscar-cnpj') && (
@@ -1051,7 +1106,7 @@ const Dashboard = () => {
               {/* ═══════════════════════════════════════════════════════════ */}
               {/* DASHBOARD EMPRESA */}
               {/* ═══════════════════════════════════════════════════════════ */}
-              {userProfile?.tipo === 'empresa' && (
+              {isBusinessTenantType(userProfile?.tipo) && (
                 <div className="space-y-8">
                   {/* Header Banner Empresa */}
                   <div className="bg-gradient-to-r from-blue-500 via-blue-600 to-green-600 rounded-xl shadow-2xl p-8 text-white">

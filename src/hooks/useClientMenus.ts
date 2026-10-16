@@ -1,5 +1,12 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import {
+  CLIENT_MENU_ROUTES,
+  menusForBusinessSegment,
+  usesVehicleInventoryMenu,
+} from '@/lib/client-menu-routes';
+import { resolveVitrineSidebarFlags } from '@/lib/vitrine-sidebar-menu';
+import { VEHICLE_DEALER_TENANT_TYPE } from '@/lib/business-tenant';
 
 interface MenuConfig {
   tipo_cliente: string;
@@ -7,39 +14,12 @@ interface MenuConfig {
   empresa_nome: string;
 }
 
-// Mapeamento de rotas para IDs de menu
-const routeToMenuId: Record<string, string> = {
-  '/dashboard': 'dashboard',
-  '/meus-produtos': 'produtos',
-  '/midias': 'midias',
-  '/ia-marketing': 'ia-marketing',
-  '/redes-sociais': 'redes-sociais',
-  '/whatsapp-painel': 'whatsapp',
-  '/configuracoes': 'configuracoes',
-
-  // Rotas legadas (continuam funcionando)
-  '/pj/listas-contatos': 'whatsapp',
-  '/pj/whatsapp-automacao': 'whatsapp',
-  '/whatsapp': 'whatsapp',
-  '/configuracoes-whatsapp': 'whatsapp',
-  '/configuracoes/redes-sociais': 'redes-sociais',
-  '/ia-conversas': 'ia-marketing',
-  '/campanhas-prospeccao': 'whatsapp',
-  '/prospects': 'whatsapp',
-  '/leads-funil': 'whatsapp',
-  '/vendedores': 'configuracoes',
-  '/biblioteca': 'ia-marketing',
-  '/analytics': 'dashboard',
-  '/google-ads': 'configuracoes',
-  '/anuncios-meta': 'configuracoes',
-  '/lomadee': 'produtos',
-  '/marketplace': 'produtos',
-  '/produtos': 'produtos',
-};
-
 export function useClientMenus(userTipo: string | null | undefined, userNomeFantasia?: string | null) {
   const [menuConfig, setMenuConfig] = useState<MenuConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [vitrineVeiculosDemo, setVitrineVeiculosDemo] = useState(false);
+  const [businessSegment, setBusinessSegment] = useState<string | null>(null);
+  const [businessText, setBusinessText] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchMenuConfig = async () => {
@@ -49,30 +29,65 @@ export function useClientMenus(userTipo: string | null | undefined, userNomeFant
       }
 
       try {
-        // Buscar configuração de menus para o tipo de cliente
-        const { data, error } = await supabase
-          .from('client_menu_config')
-          .select('*')
-          .eq('tipo_cliente', userTipo)
-          .maybeSingle();
+        const configType = userTipo === VEHICLE_DEALER_TENANT_TYPE
+          ? 'empresa'
+          : userTipo;
+        const [{ data, error }, { data: sessionData }] = await Promise.all([
+          supabase
+            .from('client_menu_config')
+            .select('*')
+            .eq('tipo_cliente', configType)
+            .maybeSingle(),
+          supabase.auth.getSession(),
+        ]);
 
         if (error) {
           console.error('Erro ao buscar config de menus:', error);
         }
 
-        if (data) {
-          setMenuConfig(data as MenuConfig);
-        } else {
-          // Se não encontrou config específica, usar config padrão (afiliado = todos menus)
-          console.log(`Nenhuma config encontrada para tipo "${userTipo}", usando padrão`);
-          setMenuConfig({
+        let segment: string | null = null;
+        let businessText: string | null = null;
+        const userId = sessionData.session?.user.id;
+        if (userId) {
+          const { data: companyConfig, error: companyError } = await supabase
+            .from('empresa_config')
+            .select('segmento, sobre_negocio, vitrine_veiculos_demo')
+            .eq('user_id', userId)
+            .maybeSingle();
+          if (companyError) {
+            console.warn('Erro ao buscar segmento da empresa:', companyError);
+          } else {
+            segment = companyConfig?.segmento ?? null;
+            businessText = companyConfig?.sobre_negocio ?? null;
+            setVitrineVeiculosDemo(companyConfig?.vitrine_veiculos_demo === true);
+            setBusinessSegment(segment);
+            setBusinessText(businessText);
+          }
+        }
+
+        const baseConfig: MenuConfig = data
+          ? data as MenuConfig
+          : {
             tipo_cliente: userTipo,
             menus_permitidos: [
               'dashboard', 'produtos', 'midias', 'ia-marketing', 'redes-sociais', 'whatsapp', 'integracoes', 'configuracoes'
             ],
             empresa_nome: 'AMZ Ofertas'
-          });
+          };
+
+        if (!data) {
+          console.log(`Nenhuma config encontrada para tipo "${userTipo}", usando padrão`);
         }
+
+        setMenuConfig({
+          ...baseConfig,
+          menus_permitidos: menusForBusinessSegment(
+            baseConfig.menus_permitidos,
+            userTipo,
+            segment,
+            businessText,
+          ),
+        });
       } catch (err) {
         console.error('Erro:', err);
       } finally {
@@ -91,7 +106,7 @@ export function useClientMenus(userTipo: string | null | undefined, userNomeFant
 
   // Função para verificar se uma rota está permitida
   const isRouteAllowed = (route: string): boolean => {
-    const menuId = routeToMenuId[route];
+    const menuId = CLIENT_MENU_ROUTES[route];
     if (!menuId) return true; // Rotas não mapeadas são permitidas
     return isMenuAllowed(menuId);
   };
@@ -99,11 +114,34 @@ export function useClientMenus(userTipo: string | null | undefined, userNomeFant
   // Priorizar nome_fantasia do perfil do usuário sobre a config genérica
   const empresaNome = userNomeFantasia || menuConfig?.empresa_nome || 'AMZ Ofertas';
 
+  const sidebarFlags = resolveVitrineSidebarFlags({
+    clientType: userTipo,
+    segment: businessSegment,
+    businessText,
+    vitrineVeiculosDemo,
+  });
+
+  const vitrineSidebarContext = {
+    clientType: userTipo,
+    segment: businessSegment,
+    businessText,
+    vitrineVeiculosDemo,
+  };
+
   return {
     menuConfig,
     isLoading,
     isMenuAllowed,
     isRouteAllowed,
-    empresaNome
+    empresaNome,
+    showFinanciamentosMenu: sidebarFlags.showFinanciamentosMenu,
+    showDemoVehicleStockAfterProdutos: sidebarFlags.showDemoVehicleStockAfterProdutos,
+    usesVehicleInventoryMenu: usesVehicleInventoryMenu(
+      userTipo,
+      businessSegment,
+      businessText,
+    ),
+    vitrineVeiculosDemo,
+    vitrineSidebarContext,
   };
 }

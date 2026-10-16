@@ -31,10 +31,37 @@ const createTokenFetch = (auth: CustomAuthClient): typeof fetch => {
 
     const headers = new Headers(input instanceof Request ? input.headers : undefined);
     new Headers(init?.headers).forEach((value, key) => headers.set(key, value));
+    const accessToken = auth.getAccessToken();
+    if (!accessToken) {
+      console.warn(
+        "[custom-auth] Requisição autenticável sem sessão; usando chave anon",
+        requestUrl.pathname,
+      );
+    }
     headers.set("apikey", config.supabaseAnonKey);
-    headers.set("Authorization", `Bearer ${auth.getAccessToken() || config.supabaseAnonKey}`);
+    headers.set("Authorization", `Bearer ${accessToken || config.supabaseAnonKey}`);
 
-    return fetch(input, { ...init, headers });
+    const response = await fetch(input, { ...init, headers });
+    if (accessToken && response.status === 401) {
+      const rejectsSession =
+        requestUrl.origin === apiUrl.origin &&
+        (requestUrl.pathname.startsWith("/rest/v1/") ||
+          requestUrl.pathname === "/rest/v1" ||
+          requestUrl.pathname.startsWith("/auth/v1/") ||
+          requestUrl.pathname === "/auth/v1");
+      if (rejectsSession) {
+        auth.rejectSession(`servidor respondeu 401 em ${requestUrl.pathname}`);
+        if (window.location.pathname !== "/login") {
+          window.location.assign("/login");
+        }
+      } else {
+        console.warn(
+          "[custom-auth] 401 não encerrou a sessão em endpoint não autoritativo",
+          requestUrl.pathname,
+        );
+      }
+    }
+    return response;
   };
 };
 

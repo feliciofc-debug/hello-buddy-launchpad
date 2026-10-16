@@ -9,6 +9,7 @@ import {
   truncateCodePoints,
 } from '../_shared/whatsapp-interactive-safe.ts'
 import { mediaThenButtonPayloads } from '../_shared/whatsapp-media-buttons.ts'
+import { buildInteractiveCarouselPayload } from '../_shared/whatsapp-interactive-carousel.ts'
 import { stripInternalWhatsAppSplit } from '../_shared/whatsapp-internal-split.ts'
 import { textThenInteractivePayloads } from '../_shared/whatsapp-text-interactive.ts'
 import {
@@ -50,6 +51,8 @@ serve(async (req) => {
       // { body: string, header?: string, footer?: string,
       //   buttons: [{ id, title }] }
       interactive_buttons,
+      interactive_carousel,
+      allow_carousel_failure,
       // Se true, preserva `message` em um envio anterior ao interativo.
       send_text_first,
     } = body
@@ -110,14 +113,21 @@ serve(async (req) => {
     let messagePayload: any
     const separateInteractiveText = send_text_first === true ||
       [...safeMessage].length > 1024
-    const buttonImageUrl = image_url ? toMetaSafeImageUrl(image_url) : undefined
-    const mediaButtonPayloads = mediaThenButtonPayloads({
-      to,
-      message: safeMessage,
-      videoUrl: safeVideoUrl,
-      imageUrl: buttonImageUrl,
-      interactiveButtons: interactive_buttons,
-    })
+    const headerImageFromButtons = interactive_buttons?.header_image_url
+      ? toMetaSafeImageUrl(String(interactive_buttons.header_image_url))
+      : undefined
+    const buttonImageUrl = !headerImageFromButtons && image_url
+      ? toMetaSafeImageUrl(image_url)
+      : undefined
+    const mediaButtonPayloads = !headerImageFromButtons
+      ? mediaThenButtonPayloads({
+        to,
+        message: safeMessage,
+        videoUrl: safeVideoUrl,
+        imageUrl: buttonImageUrl,
+        interactiveButtons: interactive_buttons,
+      })
+      : null
 
     if (mediaButtonPayloads) {
       messagePayload = mediaButtonPayloads[0]
@@ -135,7 +145,9 @@ serve(async (req) => {
         type: 'interactive',
         interactive: {
           type: 'button',
-          ...(interactive_buttons.header
+          ...(headerImageFromButtons
+            ? { header: { type: 'image', image: { link: headerImageFromButtons } } }
+            : interactive_buttons.header
             ? { header: { type: 'text', text: singleLineInteractiveText(interactive_buttons.header, 60) } }
             : {}),
           body: {
@@ -152,16 +164,26 @@ serve(async (req) => {
           action: { buttons },
         },
       }
-    } else if (interactive_list?.rows?.length) {
+    } else if (interactive_list?.sections?.length || interactive_list?.rows?.length) {
       // ============================================================
       // LISTA INTERATIVA (type:interactive/list) — 1 toque, até 10 opções.
       // Usada quando 3 reply-buttons não bastam (ex: paleta de cores).
       // ============================================================
-      const rows = interactive_list.rows.slice(0, 10).map((r: any, i: number) => ({
-        id: truncateCodePoints(r?.id ?? `opt_${i}`, 200),
-        title: singleLineInteractiveText(r?.title ?? `Opção ${i + 1}`, 24),
-        ...(r?.description ? { description: singleLineInteractiveText(r.description, 72) } : {}),
-      }))
+      const mapRows = (rows: any[]) =>
+        rows.slice(0, 10).map((r: any, i: number) => ({
+          id: truncateCodePoints(r?.id ?? `opt_${i}`, 200),
+          title: singleLineInteractiveText(r?.title ?? `Opção ${i + 1}`, 24),
+          ...(r?.description ? { description: singleLineInteractiveText(r.description, 72) } : {}),
+        }))
+      const sections = interactive_list.sections?.length
+        ? interactive_list.sections.map((section: any, sIdx: number) => ({
+          title: singleLineInteractiveText(section?.title ?? `Seção ${sIdx + 1}`, 24),
+          rows: mapRows(section?.rows ?? []),
+        })).filter((section: { rows: unknown[] }) => section.rows.length > 0)
+        : [{
+          title: singleLineInteractiveText(interactive_list.section_title || 'Opções', 24),
+          rows: mapRows(interactive_list.rows ?? []),
+        }]
       messagePayload = {
         messaging_product: 'whatsapp',
         to: to.replace(/\D/g, ''),
@@ -177,7 +199,7 @@ serve(async (req) => {
             : {}),
           action: {
             button: singleLineInteractiveText(interactive_list.button || 'Escolher', 20),
-            sections: [{ title: singleLineInteractiveText(interactive_list.section_title || 'Opções', 24), rows }],
+            sections,
           },
         },
       }
@@ -247,6 +269,12 @@ serve(async (req) => {
         }
       }
 
+    } else if (interactive_carousel?.cards?.length) {
+      messagePayload = buildInteractiveCarouselPayload({
+        to,
+        body: interactive_carousel.body || safeMessage || 'Veículos disponíveis',
+        cards: interactive_carousel.cards,
+      })
     } else {
       messagePayload = {
         messaging_product: 'whatsapp',
@@ -299,6 +327,22 @@ serve(async (req) => {
           },
           payload: safeMetaDiagnosticPayload(payload),
         })
+        if (
+          allow_carousel_failure === true &&
+          interactive_carousel?.cards?.length &&
+          payload?.type === 'interactive' &&
+          (payload?.interactive as { type?: string } | undefined)?.type === 'carousel'
+        ) {
+          return new Response(JSON.stringify({
+            success: false,
+            carousel_rejected: true,
+            http_status: response.status,
+            meta_error: metaError,
+          }), {
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        }
         throw new Error('Não foi possível enviar a mensagem agora. Tente novamente.')
       }
       results.push(result)

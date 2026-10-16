@@ -48,6 +48,7 @@ const ESTILOS: EstiloOpcao[] = [
 interface ProdutoMin {
   id: string;
   nome: string;
+  item_tipo?: 'produto' | 'veiculo';
   modo_postagem_fb?: string | null;
   engajamento_estilos?: string[] | null;
   usa_textos_personalizados?: boolean | null;
@@ -170,6 +171,8 @@ export function EngagementModeSelector({
     return estilosSelecionados.length >= 1;
   }, [modo, estilosSelecionados]);
 
+  const isVehicle = produto?.item_tipo === 'veiculo';
+
   const handleSalvar = async () => {
     console.log('[EngagementModeSelector] handleSalvar invoked', { produto, modo, estilosSelecionados });
     if (!produto) return;
@@ -186,8 +189,9 @@ export function EngagementModeSelector({
         update.engajamento_estilos = estilosSelecionados;
       }
       console.log('[EngagementModeSelector] sending update', { id: produto.id, update });
+      const table = isVehicle ? 'veiculos_estoque' : 'produtos';
       const { data, error } = await supabase
-        .from('produtos')
+        .from(table)
         .update(update)
         .eq('id', produto.id)
         .select('id, modo_postagem_fb, engajamento_estilos');
@@ -251,10 +255,16 @@ export function EngagementModeSelector({
       const { data, error } = await supabase.functions.invoke(
         'generate-social-post-engagement',
         {
-          body: {
-            produto_id: produto.id,
-            estilo: estiloSorteado,
-          },
+          body: isVehicle
+            ? {
+              item_tipo: 'veiculo',
+              veiculo_id: produto.id,
+              estilo: estiloSorteado,
+            }
+            : {
+              produto_id: produto.id,
+              estilo: estiloSorteado,
+            },
         },
       );
       if (error) throw error;

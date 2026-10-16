@@ -6,20 +6,29 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import {
+  isVehiclePublishableItem,
+  publishableImageUrls,
+  type PublishableItem,
+} from '@/lib/publishable-item';
 import { Loader2, Calendar as CalendarIcon, Instagram } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
-interface Produto {
-  id: string;
-  nome: string;
-  imagem_url?: string | null;
-  link?: string | null;
-  link_marketplace?: string | null;
-}
+type StoryProduto = Pick<
+  PublishableItem,
+  'id' | 'nome' | 'imagem_url' | 'link' | 'link_marketplace' | 'item_tipo' | 'imagens'
+>;
 
 interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  produto: Produto;
+  produto: StoryProduto;
 }
 
 // Ajusta imagem para 1080x1920 com padding preto
@@ -54,6 +63,10 @@ function nowPlusFiveMinLocal(): string {
 }
 
 export function AgendarStoryFotoModal({ open, onOpenChange, produto }: Props) {
+  const isVehicle = isVehiclePublishableItem(produto);
+  const vehiclePhotos = isVehicle ? publishableImageUrls(produto) : [];
+  const [selectedPhotoUrl, setSelectedPhotoUrl] = useState<string>('');
+  const activeImageUrl = selectedPhotoUrl || produto.imagem_url || vehiclePhotos[0] || null;
   const [scheduledAt, setScheduledAt] = useState<string>(nowPlusFiveMinLocal());
   const [usarLink, setUsarLink] = useState(false);
   const [linkUrl, setLinkUrl] = useState<string>('');
@@ -72,22 +85,31 @@ export function AgendarStoryFotoModal({ open, onOpenChange, produto }: Props) {
     setLinkUrl(linkPadrao);
     setPreviewUrl(null);
     setPreviewBlob(null);
-    if (produto.imagem_url) {
-      setGerandoPreview(true);
-      adjustToStory(produto.imagem_url)
-        .then(blob => {
-          setPreviewBlob(blob);
-          setPreviewUrl(URL.createObjectURL(blob));
-        })
-        .catch(e => toast.error('Erro ao preparar preview: ' + e.message))
-        .finally(() => setGerandoPreview(false));
-    }
+    const initialPhoto = isVehicle
+      ? (vehiclePhotos[0] || produto.imagem_url || '')
+      : (produto.imagem_url || '');
+    setSelectedPhotoUrl(initialPhoto);
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, produto.id]);
 
+  useEffect(() => {
+    if (!open || !activeImageUrl) return;
+    setGerandoPreview(true);
+    adjustToStory(activeImageUrl)
+      .then(blob => {
+        setPreviewBlob(blob);
+        setPreviewUrl((current) => {
+          if (current) URL.revokeObjectURL(current);
+          return URL.createObjectURL(blob);
+        });
+      })
+      .catch(e => toast.error('Erro ao preparar preview: ' + e.message))
+      .finally(() => setGerandoPreview(false));
+  }, [activeImageUrl, open]);
+
   const handleAgendar = async () => {
-    if (!produto.imagem_url) { toast.error('Produto sem imagem'); return; }
+    if (!activeImageUrl) { toast.error(isVehicle ? 'Veículo sem imagem' : 'Produto sem imagem'); return; }
     if (!previewBlob) { toast.error('Preview ainda não pronto'); return; }
     const sched = new Date(scheduledAt);
     if (isNaN(sched.getTime())) { toast.error('Data inválida'); return; }
@@ -123,11 +145,18 @@ export function AgendarStoryFotoModal({ open, onOpenChange, produto }: Props) {
         video_url: publicUrl,
         video_nome: produto.nome,
         canais: ['instagram'],
-        produto_id: produto.id,
+        produto_id: isVehicle ? null : produto.id,
         scheduled_for: sched.toISOString(),
         status: 'pendente',
         link_sticker: usarLink ? linkUrl : null,
-        metadata: { origem: 'manual', produto_nome: produto.nome },
+        metadata: isVehicle
+          ? {
+            origem: 'manual',
+            produto_nome: produto.nome,
+            item_tipo: 'veiculo',
+            veiculo_id: produto.id,
+          }
+          : { origem: 'manual', produto_nome: produto.nome },
       } as any);
       if (insErr) throw insErr;
 
@@ -152,6 +181,23 @@ export function AgendarStoryFotoModal({ open, onOpenChange, produto }: Props) {
         </DialogHeader>
 
         <div className="space-y-4">
+          {isVehicle && vehiclePhotos.length > 1 && (
+            <div>
+              <Label className="text-xs text-muted-foreground">Foto do veículo</Label>
+              <Select value={selectedPhotoUrl} onValueChange={setSelectedPhotoUrl}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Escolha a foto" />
+                </SelectTrigger>
+                <SelectContent>
+                  {vehiclePhotos.map((url, index) => (
+                    <SelectItem key={`${url}-${index}`} value={url}>
+                      Foto {index + 1}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div>
             <Label className="text-xs text-muted-foreground">Preview 9:16 (1080×1920)</Label>
             <div className="mt-1 mx-auto bg-black rounded-lg overflow-hidden" style={{ width: 180, height: 320 }}>

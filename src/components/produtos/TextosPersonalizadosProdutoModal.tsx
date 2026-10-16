@@ -22,6 +22,7 @@ interface TextoItem {
 interface ProdutoLite {
   id: string;
   nome: string;
+  item_tipo?: "produto" | "veiculo";
   descricao?: string | null;
   preco?: number | null;
   usa_textos_personalizados?: boolean;
@@ -35,6 +36,7 @@ interface Props {
 }
 
 export const TextosPersonalizadosProdutoModal = ({ open, onOpenChange, produto, onModoChange }: Props) => {
+  const isVehicle = produto?.item_tipo === "veiculo";
   const [loading, setLoading] = useState(true);
   const [savingIdx, setSavingIdx] = useState<number | null>(null);
   const [textos, setTextos] = useState<TextoItem[]>([]);
@@ -53,11 +55,14 @@ export const TextosPersonalizadosProdutoModal = ({ open, onOpenChange, produto, 
     if (!produto) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("autopilot_textos_personalizados" as any)
         .select("*")
-        .eq("produto_id", produto.id)
         .order("criado_em", { ascending: true });
+      query = isVehicle
+        ? query.eq("veiculo_id", produto.id)
+        : query.eq("produto_id", produto.id);
+      const { data, error } = await query;
 
       if (error) throw error;
 
@@ -153,9 +158,12 @@ export const TextosPersonalizadosProdutoModal = ({ open, onOpenChange, produto, 
         if (error) throw error;
         setTextos(prev => prev.map((t, i) => i === idx ? { ...t, texto, dirty: false } : t));
       } else {
+        const insertPayload = isVehicle
+          ? { user_id: user.id, veiculo_id: produto.id, texto, ativo: true }
+          : { user_id: user.id, produto_id: produto.id, texto, ativo: true };
         const { data, error } = await supabase
           .from("autopilot_textos_personalizados" as any)
-          .insert({ user_id: user.id, produto_id: produto.id, texto, ativo: true } as any)
+          .insert(insertPayload as any)
           .select()
           .single();
         if (error) throw error;
@@ -219,8 +227,9 @@ export const TextosPersonalizadosProdutoModal = ({ open, onOpenChange, produto, 
         return;
       }
 
+      const ownerTable = isVehicle ? "veiculos_estoque" : "produtos";
       const { data, error } = await supabase
-        .from("produtos")
+        .from(ownerTable)
         .update({ usa_textos_personalizados: novo })
         .eq("id", produto.id)
         .select("id, usa_textos_personalizados")
@@ -254,7 +263,8 @@ export const TextosPersonalizadosProdutoModal = ({ open, onOpenChange, produto, 
             <FileText className="h-5 w-5" /> Textos Personalizados
           </DialogTitle>
           <p className="text-sm text-muted-foreground">
-            Produto: <span className="font-medium text-foreground">{produto.nome}</span>
+            {isVehicle ? "Veículo" : "Produto"}:{" "}
+            <span className="font-medium text-foreground">{produto.nome}</span>
           </p>
         </DialogHeader>
 

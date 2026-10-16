@@ -4,6 +4,10 @@ import { Mail, Lock, ArrowLeft, Eye, EyeOff, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { isCustomAuth } from '@/config/runtime-config';
 import { toast } from 'sonner';
+import {
+  businessTenantHomePath,
+  isBusinessTenantType,
+} from '@/lib/business-tenant';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -34,14 +38,37 @@ export default function Login() {
     const emailLc = (email || '').trim().toLowerCase();
     const nextPath = getSafeNextPath();
 
-    // Verificar perfil do usuário
-    const { data: profile } = await supabase
+    const loadProfile = () => supabase
       .from('profiles')
       .select('tipo, validade_acesso')
       .eq('id', userId)
       .maybeSingle();
 
-    if (profile?.validade_acesso) {
+    let { data: profile, error: profileError } = await loadProfile();
+    if (!profile) {
+      console.warn(
+        '[login] Perfil vazio após autenticação; repetindo uma vez.',
+        profileError?.message || 'RLS retornou vazio',
+      );
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const retry = await loadProfile();
+      profile = retry.data;
+      profileError = retry.error;
+    }
+
+    if (!profile) {
+      console.error(
+        '[login] Não foi possível validar o perfil autenticado.',
+        profileError?.message || 'Perfil vazio após duas tentativas',
+      );
+      toast.error(
+        'Login concluído, mas não foi possível validar seu perfil. Atualize a página e tente novamente.',
+      );
+      routedRef.current = false;
+      return;
+    }
+
+    if (profile.validade_acesso) {
       const validade = new Date(profile.validade_acesso);
       if (validade < new Date()) {
         await supabase.auth.signOut();
@@ -51,7 +78,7 @@ export default function Login() {
       }
     }
 
-    if (profile?.tipo === 'afiliado_admin' || profile?.tipo === 'afiliado') {
+    if (profile.tipo === 'afiliado_admin' || profile.tipo === 'afiliado') {
       navigate('/afiliado/dashboard');
       return;
     }
@@ -63,8 +90,12 @@ export default function Login() {
     }
 
     const contasPermanentes = ['expo@atombrasildigital.com', 'renatascarega@gmail.com', 'alessandradiasadm1@gmail.com', 'dudacarega@gmail.com', 'canarimp@gmail.com'];
-    if (contasPermanentes.includes(emailLc) || profile?.tipo === 'b2b' || profile?.tipo === 'parceiro' || profile?.tipo === 'empresa') {
-      navigate(nextPath || '/dashboard');
+    if (isBusinessTenantType(profile?.tipo)) {
+      navigate(businessTenantHomePath(profile?.tipo));
+      return;
+    }
+    if (contasPermanentes.includes(emailLc) || profile.tipo === 'b2b' || profile.tipo === 'parceiro') {
+      navigate('/dashboard');
       return;
     }
 

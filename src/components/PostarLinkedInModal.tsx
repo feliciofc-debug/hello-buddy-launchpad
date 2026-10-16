@@ -18,6 +18,17 @@ import { CalendarIcon, Sparkles, Loader2, Linkedin, Send, Clock, AlertTriangle }
 import { cn } from "@/lib/utils";
 import { getAllProductImages } from "@/components/ProductImageCarousel";
 import {
+  isVehiclePublishableItem,
+  publishableImageUrls,
+  publishableQueueLink,
+  type PublishableItem,
+} from "@/lib/publishable-item";
+import { buildGerarPostsInvokeBody } from "@/lib/gerar-posts-invoke";
+import {
+  sanitizeVehiclePostOptions,
+  stripInventedUrlsFromVehicleCaption,
+} from "@/lib/vehicle-post-caption";
+import {
   clampTimeForToday,
   combineSaoPauloDateTimeToIso,
   generateTimeOptions,
@@ -29,23 +40,14 @@ import {
 
 const LIMITE_TEXTO = 3000;
 
-interface Produto {
-  id: string;
-  nome: string;
-  descricao?: string | null;
-  preco?: number | null;
-  imagem_url?: string | null;
-  link?: string | null;
-  link_marketplace?: string | null;
-}
-
 interface PostarLinkedInModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  produto: Produto;
+  produto: PublishableItem;
 }
 
 export function PostarLinkedInModal({ open, onOpenChange, produto }: PostarLinkedInModalProps) {
+  const isVehicle = isVehiclePublishableItem(produto);
   const [gerando, setGerando] = useState(false);
   const [publicando, setPublicando] = useState(false);
   const [opcoes, setOpcoes] = useState<{ A: string; B: string; C: string } | null>(null);
@@ -65,9 +67,14 @@ export function PostarLinkedInModal({ open, onOpenChange, produto }: PostarLinke
   // LinkedIn não tem carrossel: apenas a primeira imagem do produto.
   useEffect(() => {
     if (!open) return;
-    const imgs = getAllProductImages(produto.imagem_url ?? null, (produto as any).imagens) || [];
+    if (isVehicle) {
+      const imgs = publishableImageUrls(produto);
+      setImagem(imgs[0] || produto.imagem_url || null);
+      return;
+    }
+    const imgs = getAllProductImages(produto.imagem_url ?? null, produto.imagens) || [];
     setImagem(imgs[0] || produto.imagem_url || null);
-  }, [open, produto]);
+  }, [open, produto, isVehicle]);
 
   useEffect(() => {
     if (!open) return;
@@ -89,13 +96,28 @@ export function PostarLinkedInModal({ open, onOpenChange, produto }: PostarLinke
     const temaFinal = tema.trim() || produto.nome;
     setGerando(true);
     try {
-      const { data, error } = await supabase.functions.invoke("gerar-post-linkedin", {
-        body: { tema: temaFinal, produto_id: produto.id },
-      });
-      if (error) throw error;
-      const resp = data as { success?: boolean; opcoes?: { A: string; B: string; C: string }; error?: string } | null;
-      if (!resp?.success || !resp.opcoes) throw new Error(resp?.error || "Falha ao gerar o texto.");
-      setOpcoes(resp.opcoes);
+      if (isVehicle) {
+        const { data, error } = await supabase.functions.invoke("gerar-posts", {
+          body: buildGerarPostsInvokeBody(produto),
+        });
+        if (error) throw error;
+        const li = data?.posts?.linkedin;
+        if (!li) throw new Error("Nenhum texto gerado para LinkedIn.");
+        const opcoes = sanitizeVehiclePostOptions({
+          A: li.opcaoA,
+          B: li.opcaoB,
+          C: li.opcaoC,
+        });
+        setOpcoes(opcoes);
+      } else {
+        const { data, error } = await supabase.functions.invoke("gerar-post-linkedin", {
+          body: { tema: temaFinal, produto_id: produto.id },
+        });
+        if (error) throw error;
+        const resp = data as { success?: boolean; opcoes?: { A: string; B: string; C: string }; error?: string } | null;
+        if (!resp?.success || !resp.opcoes) throw new Error(resp?.error || "Falha ao gerar o texto.");
+        setOpcoes(resp.opcoes);
+      }
     } catch (err: any) {
       console.error("[gerar-post-linkedin]", err);
       toast.error(err.message || "Não foi possível gerar o texto.");
@@ -133,12 +155,25 @@ export function PostarLinkedInModal({ open, onOpenChange, produto }: PostarLinke
 
       const imageUrl = incluirImagem ? imagem : null;
 
+      if (isVehicle) {
+        const { data: vehicleRow, error: vehicleError } = await supabase
+          .from("veiculos_estoque")
+          .select("status")
+          .eq("id", produto.id)
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (vehicleError) throw vehicleError;
+        if (!vehicleRow) throw new Error("Veículo não encontrado.");
+        if (vehicleRow.status === "vendido") {
+          throw new Error("Veículo vendido; publicação cancelada.");
+        }
+      }
+
       const { data: fila, error: insertError } = await supabase
         .from("social_posts_queue" as any)
         .insert({
           user_id: user.id,
-          produto_id: produto.id,
-          produto_source: "produtos",
+          ...publishableQueueLink(produto),
           platform: "linkedin",
           post_text: mensagemFinal,
           post_text_linkedin: mensagemFinal,
@@ -257,7 +292,9 @@ export function PostarLinkedInModal({ open, onOpenChange, produto }: PostarLinke
                     "cursor-pointer transition-all hover:shadow-md",
                     textoPost === opcoes[key] && "ring-2 ring-primary",
                   )}
-                  onClick={() => setTextoPost(opcoes[key])}
+                  onClick={() => setTextoPost(
+                    isVehicle ? stripInventedUrlsFromVehicleCaption(opcoes[key]) : opcoes[key],
+                  )}
                 >
                   <CardContent className="p-3">
                     <div className="flex items-start gap-2">

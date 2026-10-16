@@ -4,6 +4,8 @@ import type { Database } from "@/integrations/supabase/types";
 type QueueInsert = Database["public"]["Tables"]["social_posts_queue"]["Insert"];
 type SocialPostQueuePayload = Omit<QueueInsert, "status" | "image_urls"> & {
   image_urls?: string[] | null;
+  item_tipo?: "produto" | "veiculo" | null;
+  veiculo_id?: string | null;
 };
 
 export async function createSocialPostQueueEntry(

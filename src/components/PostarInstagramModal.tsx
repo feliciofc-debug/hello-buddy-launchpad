@@ -32,25 +32,27 @@ import {
   markSocialPostFailed,
   markSocialPostPublished,
 } from "@/lib/social-post-queue";
-
-interface Produto {
-  id: string;
-  nome: string;
-  descricao?: string | null;
-  preco?: number | null;
-  imagem_url?: string | null;
-  link?: string | null;
-  link_marketplace?: string | null;
-  ig_product_id?: string | null;
-}
+import {
+  isVehiclePublishableItem,
+  type PublishableItem,
+  publishableImageUrls,
+  publishableInstagramReference,
+  publishableQueueLink,
+} from "@/lib/publishable-item";
+import { buildGerarPostsInvokeBody } from "@/lib/gerar-posts-invoke";
+import {
+  sanitizeVehiclePostOptions,
+  stripInventedUrlsFromVehicleCaption,
+} from "@/lib/vehicle-post-caption";
 
 interface PostarInstagramModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  produto: Produto;
+  produto: PublishableItem;
 }
 
 export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInstagramModalProps) {
+  const isVehicle = isVehiclePublishableItem(produto);
   const { t } = useTranslation();
   const [gerando, setGerando] = useState(false);
   const [publicando, setPublicando] = useState(false);
@@ -71,6 +73,10 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
   const [ajustando, setAjustando] = useState(false);
 
   const loadAllImages = useCallback(async () => {
+    if (isVehicle) {
+      setAllImages(publishableImageUrls(produto));
+      return;
+    }
     try {
       const { data } = await supabase
         .from('produtos')
@@ -86,7 +92,7 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
       const fallback = getAllProductImages(produto.imagem_url || null, (produto as any).imagens);
       setAllImages(fallback);
     }
-  }, [produto.id, produto.imagem_url]);
+  }, [isVehicle, produto]);
 
   useEffect(() => {
     if (open) loadAllImages();
@@ -158,18 +164,17 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
     setGerando(true);
     try {
       const { data, error } = await supabase.functions.invoke("gerar-posts", {
-        body: {
-          produto: {
-            nome: produto.nome,
-            preco: produto.preco,
-            descricao: produto.descricao || "",
-          },
-        },
+        body: buildGerarPostsInvokeBody(produto),
       });
       if (error) throw error;
       const ig = data?.posts?.instagram;
       if (!ig) throw new Error("Nenhum texto gerado para Instagram");
-      setOpcoes({ opcaoA: ig.opcaoA, opcaoB: ig.opcaoB, opcaoC: ig.opcaoC });
+      const opcoes = {
+        opcaoA: ig.opcaoA,
+        opcaoB: ig.opcaoB,
+        opcaoC: ig.opcaoC,
+      };
+      setOpcoes(isVehicle ? sanitizeVehiclePostOptions(opcoes) : opcoes);
       toast.success(t('publish.generated_ig_success'));
     } catch (err: any) {
       console.error("Erro ao gerar texto:", err);
@@ -180,7 +185,7 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
   };
 
   const selecionarOpcao = (texto: string) => {
-    setTextoPost(texto);
+    setTextoPost(isVehicle ? stripInventedUrlsFromVehicleCaption(texto) : texto);
   };
 
   const handlePublicar = async () => {
@@ -212,18 +217,23 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
         return;
       }
 
-      let finalImageUrls = allImages;
+      let finalImageUrls = isVehicle ? allImages.slice(0, 10) : allImages;
       if (ajusteAuto && adjustedImages && adjustedImages.length > 0) {
         toast.info(t('publish.adjusting_images'));
         const uploadedUrls: string[] = [];
-        for (let i = 0; i < adjustedImages.length; i++) {
-          const adj = adjustedImages[i];
+        const imagesToUpload = isVehicle
+          ? adjustedImages.slice(0, 10)
+          : adjustedImages;
+        for (let i = 0; i < imagesToUpload.length; i++) {
+          const adj = imagesToUpload[i];
           const fname = `${user.id}/ig-adjusted/${Date.now()}-${i}.jpg`;
           const { error: upErr } = await supabase.storage
             .from("produtos")
             .upload(fname, adj.blob, { contentType: "image/jpeg" });
           if (upErr) throw upErr;
-          const { data: urlData } = supabase.storage.from("produtos").getPublicUrl(fname);
+          const { data: urlData } = supabase.storage
+            .from("produtos")
+            .getPublicUrl(fname);
           uploadedUrls.push(urlData.publicUrl);
         }
         finalImageUrls = uploadedUrls;
@@ -237,8 +247,7 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
 
       queueId = await createSocialPostQueueEntry({
         user_id: user.id,
-        produto_id: produto.id,
-        produto_source: "produtos",
+        ...publishableQueueLink(produto),
         platform: "instagram",
         page_id: pageId || "",
         post_text: captionFinal,
@@ -249,28 +258,33 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
       }, modoEnvio === "agora");
 
       if (modoEnvio === "agora") {
+        const itemReference = publishableInstagramReference(produto);
         if (finalImageUrls.length >= 2) {
           console.log(`📸 Publicando carrossel Instagram com ${finalImageUrls.length} fotos`);
-          const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-carousel", {
-            body: {
-               caption: captionFinal,
-               image_urls: finalImageUrls,
-               user_id: user.id,
-               produto_id: produto.id,
-             },
-          });
+          const body = {
+            caption: captionFinal,
+            image_urls: finalImageUrls,
+            user_id: user.id,
+            ...itemReference,
+          };
+          const { data: pubData, error: pubError } = await supabase.functions.invoke(
+            "meta-publish-carousel",
+            { body },
+          );
           if (pubError) throw pubError;
           if (!pubData?.success) throw new Error(pubData?.error || "Erro ao publicar carrossel");
           toast.success(t('publish.carousel_published_ig', { count: finalImageUrls.length }));
         } else {
-          const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-instagram", {
-            body: {
-               caption: captionFinal,
-               image_url: finalImageUrls[0],
-               user_id: user.id,
-               produto_id: produto.id,
-             },
-          });
+          const body = {
+            caption: captionFinal,
+            image_url: finalImageUrls[0],
+            user_id: user.id,
+            ...itemReference,
+          };
+          const { data: pubData, error: pubError } = await supabase.functions.invoke(
+            "meta-publish-instagram",
+            { body },
+          );
           if (pubError) throw pubError;
           if (!pubData?.success) throw new Error(pubData?.error || "Erro ao publicar no Instagram");
           toast.success(t('publish.published_ig'));

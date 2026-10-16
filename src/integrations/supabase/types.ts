@@ -1147,27 +1147,30 @@ export type Database = {
           criado_em: string | null
           id: string
           ordem: number | null
-          produto_id: string
+          produto_id: string | null
           texto: string
           user_id: string
+          veiculo_id: string | null
         }
         Insert: {
           ativo?: boolean | null
           criado_em?: string | null
           id?: string
           ordem?: number | null
-          produto_id: string
+          produto_id?: string | null
           texto: string
           user_id: string
+          veiculo_id?: string | null
         }
         Update: {
           ativo?: boolean | null
           criado_em?: string | null
           id?: string
           ordem?: number | null
-          produto_id?: string
+          produto_id?: string | null
           texto?: string
           user_id?: string
+          veiculo_id?: string | null
         }
         Relationships: [
           {
@@ -1175,6 +1178,13 @@ export type Database = {
             columns: ["produto_id"]
             isOneToOne: false
             referencedRelation: "produtos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "autopilot_textos_personalizados_veiculo_id_fkey"
+            columns: ["veiculo_id"]
+            isOneToOne: false
+            referencedRelation: "veiculos_estoque"
             referencedColumns: ["id"]
           },
         ]
@@ -7676,6 +7686,7 @@ export type Database = {
           id: string
           image_url: string | null
           image_urls: Json | null
+          item_tipo: string | null
           link_no_primeiro_comentario: boolean | null
           link_url: string | null
           linkedin_post_urn: string | null
@@ -7707,6 +7718,7 @@ export type Database = {
           tiktok_video_duration_sec: number | null
           updated_at: string | null
           user_id: string
+          veiculo_id: string | null
           video_url: string | null
         }
         Insert: {
@@ -7723,6 +7735,7 @@ export type Database = {
           id?: string
           image_url?: string | null
           image_urls?: Json | null
+          item_tipo?: string | null
           link_no_primeiro_comentario?: boolean | null
           link_url?: string | null
           linkedin_post_urn?: string | null
@@ -7754,6 +7767,7 @@ export type Database = {
           tiktok_video_duration_sec?: number | null
           updated_at?: string | null
           user_id: string
+          veiculo_id?: string | null
           video_url?: string | null
         }
         Update: {
@@ -7770,6 +7784,7 @@ export type Database = {
           id?: string
           image_url?: string | null
           image_urls?: Json | null
+          item_tipo?: string | null
           link_no_primeiro_comentario?: boolean | null
           link_url?: string | null
           linkedin_post_urn?: string | null
@@ -7801,6 +7816,7 @@ export type Database = {
           tiktok_video_duration_sec?: number | null
           updated_at?: string | null
           user_id?: string
+          veiculo_id?: string | null
           video_url?: string | null
         }
         Relationships: []
@@ -8747,6 +8763,214 @@ export type Database = {
           validated_by?: string | null
           valor_compra?: number | null
           whatsapp_cliente?: string
+        }
+        Relationships: []
+      }
+      veiculos_campanhas_recorrentes: {
+        Row: {
+          ativa: boolean | null
+          autopilot: boolean | null
+          canal: string | null
+          created_at: string | null
+          data_inicio: string
+          dias_semana: number[] | null
+          frequencia: string
+          horarios: string[]
+          id: string
+          intervalo_minutos: number | null
+          item_tipo: string | null
+          listas_ids: string[]
+          max_envios_dia: number | null
+          mensagem_template: string
+          nome: string
+          pj_grupos_ids: string[] | null
+          proxima_execucao: string | null
+          status: string | null
+          template_id: string | null
+          total_enviados: number | null
+          ultima_execucao: string | null
+          updated_at: string | null
+          user_id: string
+          veiculo_id: string
+          vendedor_id: string | null
+        }
+        Insert: {
+          ativa?: boolean | null
+          autopilot?: boolean | null
+          canal?: string | null
+          created_at?: string | null
+          data_inicio: string
+          dias_semana?: number[] | null
+          frequencia: string
+          horarios?: string[]
+          id?: string
+          intervalo_minutos?: number | null
+          item_tipo?: string | null
+          listas_ids: string[]
+          max_envios_dia?: number | null
+          mensagem_template: string
+          nome: string
+          pj_grupos_ids?: string[] | null
+          proxima_execucao?: string | null
+          status?: string | null
+          template_id?: string | null
+          total_enviados?: number | null
+          ultima_execucao?: string | null
+          updated_at?: string | null
+          user_id: string
+          veiculo_id: string
+          vendedor_id?: string | null
+        }
+        Update: {
+          ativa?: boolean | null
+          autopilot?: boolean | null
+          canal?: string | null
+          created_at?: string | null
+          data_inicio?: string
+          dias_semana?: number[] | null
+          frequencia?: string
+          horarios?: string[]
+          id?: string
+          intervalo_minutos?: number | null
+          item_tipo?: string | null
+          listas_ids?: string[]
+          max_envios_dia?: number | null
+          mensagem_template?: string
+          nome?: string
+          pj_grupos_ids?: string[] | null
+          proxima_execucao?: string | null
+          status?: string | null
+          template_id?: string | null
+          total_enviados?: number | null
+          ultima_execucao?: string | null
+          updated_at?: string | null
+          user_id?: string
+          veiculo_id?: string
+          vendedor_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "veiculos_campanhas_recorrentes_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "veiculos_campanhas_recorrentes_veiculo_id_fkey"
+            columns: ["veiculo_id"]
+            isOneToOne: false
+            referencedRelation: "veiculos_estoque"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "veiculos_campanhas_recorrentes_vendedor_id_fkey"
+            columns: ["vendedor_id"]
+            isOneToOne: false
+            referencedRelation: "vendedores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      veiculos_estoque: {
+        Row: {
+          ano_fabricacao: number | null
+          ano_modelo: number | null
+          blindado: boolean
+          cambio: string | null
+          caracteristicas: string[]
+          codigo_origem: string | null
+          combustivel: string | null
+          cor: string | null
+          created_at: string
+          descricao: string | null
+          destaque: boolean
+          fotos: string[]
+          id: string
+          incluir_cta_whatsapp: boolean | null
+          engajamento_estilos: string[] | null
+          km: number | null
+          marca: string
+          modelo: string
+          modo_postagem_fb: string | null
+          nivel_blindagem: string | null
+          opcionais: string[]
+          origem: string | null
+          portas: number | null
+          preco: number | null
+          status: string
+          updated_at: string
+          url_origem: string | null
+          usa_textos_personalizados: boolean | null
+          user_id: string
+          vendido_at: string | null
+          versao: string | null
+        }
+        Insert: {
+          ano_fabricacao?: number | null
+          ano_modelo?: number | null
+          blindado?: boolean
+          cambio?: string | null
+          caracteristicas?: string[]
+          codigo_origem?: string | null
+          combustivel?: string | null
+          cor?: string | null
+          created_at?: string
+          descricao?: string | null
+          destaque?: boolean
+          engajamento_estilos?: string[] | null
+          fotos?: string[]
+          id?: string
+          incluir_cta_whatsapp?: boolean | null
+          km?: number | null
+          marca: string
+          modelo: string
+          modo_postagem_fb?: string | null
+          nivel_blindagem?: string | null
+          opcionais?: string[]
+          origem?: string | null
+          portas?: number | null
+          preco?: number | null
+          status?: string
+          updated_at?: string
+          url_origem?: string | null
+          usa_textos_personalizados?: boolean | null
+          user_id: string
+          vendido_at?: string | null
+          versao?: string | null
+        }
+        Update: {
+          ano_fabricacao?: number | null
+          ano_modelo?: number | null
+          blindado?: boolean
+          cambio?: string | null
+          caracteristicas?: string[]
+          codigo_origem?: string | null
+          combustivel?: string | null
+          cor?: string | null
+          created_at?: string
+          descricao?: string | null
+          destaque?: boolean
+          engajamento_estilos?: string[] | null
+          fotos?: string[]
+          id?: string
+          incluir_cta_whatsapp?: boolean | null
+          km?: number | null
+          marca?: string
+          modo_postagem_fb?: string | null
+          modelo?: string
+          nivel_blindagem?: string | null
+          opcionais?: string[]
+          origem?: string | null
+          portas?: number | null
+          preco?: number | null
+          status?: string
+          updated_at?: string
+          url_origem?: string | null
+          usa_textos_personalizados?: boolean | null
+          user_id?: string
+          vendido_at?: string | null
+          versao?: string | null
         }
         Relationships: []
       }

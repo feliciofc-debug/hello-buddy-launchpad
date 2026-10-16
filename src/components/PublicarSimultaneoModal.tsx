@@ -42,24 +42,23 @@ import {
   markSocialPostFailed,
   markSocialPostPublished,
 } from "@/lib/social-post-queue";
-
-interface Produto {
-  id: string;
-  nome: string;
-  descricao: string | null;
-  preco: number | null;
-  imagem_url: string | null;
-  link?: string | null;
-  link_marketplace?: string | null;
-  imagens?: unknown;
-  modo_postagem_fb?: string | null;
-  engajamento_estilos?: string[] | null;
-}
+import {
+  isVehiclePublishableItem,
+  type PublishableItem,
+  publishableImageUrls,
+  publishableInstagramReference,
+  publishableQueueLink,
+} from "@/lib/publishable-item";
+import { buildGerarPostsInvokeBody } from "@/lib/gerar-posts-invoke";
+import {
+  sanitizeVehiclePostOptions,
+  stripInventedUrlsFromVehicleCaption,
+} from "@/lib/vehicle-post-caption";
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  produto: Produto;
+  produto: PublishableItem;
 }
 
 type GeneratedOptions = { opcaoA: string; opcaoB: string; opcaoC: string };
@@ -88,7 +87,10 @@ function normalizeStoredImages(value: unknown): string[] {
   return [];
 }
 
-function getAllImageUrls(produto: Pick<Produto, "imagem_url" | "imagens">): string[] {
+function getAllImageUrls(produto: PublishableItem): string[] {
+  if (isVehiclePublishableItem(produto)) {
+    return publishableImageUrls(produto);
+  }
   return [...new Set([
     ...(produto.imagem_url?.trim() ? [produto.imagem_url.trim()] : []),
     ...normalizeStoredImages(produto.imagens),
@@ -100,6 +102,7 @@ function errorMessage(error: unknown): string {
 }
 
 export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) {
+  const isVehicle = isVehiclePublishableItem(produto);
   const linkProduto = produto.link || produto.link_marketplace || null;
   const [textoPost, setTextoPost] = useState("");
   const [opcoes, setOpcoes] = useState<GeneratedOptions | null>(null);
@@ -136,6 +139,7 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
   } = useEngagementPostComposer({
     open,
     productId: produto.id,
+    itemTipo: produto.item_tipo,
     initialMode: produto.modo_postagem_fb === "engajamento" ? "engajamento" : "promocional",
     allowedStyles: produto.engajamento_estilos,
   });
@@ -143,13 +147,22 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
   const loadLatestProductImages = useCallback(async () => {
     setCarregandoFotos(true);
     try {
+      if (isVehicle) {
+        const images = getAllImageUrls(produto);
+        setAllImages(images);
+        return images;
+      }
       const { data, error } = await supabase
         .from("produtos")
         .select("imagem_url, imagens")
         .eq("id", produto.id)
         .single();
       if (error) throw error;
-      const images = getAllImageUrls({ imagem_url: data?.imagem_url ?? null, imagens: data?.imagens });
+      const images = getAllImageUrls({
+        ...produto,
+        imagem_url: data?.imagem_url ?? null,
+        imagens: data?.imagens,
+      });
       setAllImages(images);
       return images;
     } catch (error) {
@@ -160,7 +173,7 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
     } finally {
       setCarregandoFotos(false);
     }
-  }, [produto]);
+  }, [isVehicle, produto]);
 
   useEffect(() => {
     if (!open) return;
@@ -229,24 +242,19 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
     setGerando(true);
     try {
       const { data, error } = await supabase.functions.invoke("gerar-posts", {
-        body: {
-          produto: {
-            nome: produto.nome,
-            preco: produto.preco,
-            descricao: produto.descricao || "",
-          },
-        },
+        body: buildGerarPostsInvokeBody(produto),
       });
       if (error) throw error;
       const generated = instagram
         ? data?.posts?.instagram
         : data?.posts?.facebook;
       if (!generated) throw new Error("Nenhum texto foi gerado para as redes selecionadas.");
-      setOpcoes({
+      const opcoes = {
         opcaoA: generated.opcaoA,
         opcaoB: generated.opcaoB,
         opcaoC: generated.opcaoC,
-      });
+      };
+      setOpcoes(isVehicle ? sanitizeVehiclePostOptions(opcoes) : opcoes);
       toast.success("Textos gerados com sucesso.");
     } catch (error) {
       toast.error(errorMessage(error));
@@ -265,7 +273,11 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
         .from("produtos")
         .upload(path, adjusted[index].blob, { contentType: "image/jpeg" });
       if (error) throw error;
-      urls.push(supabase.storage.from("produtos").getPublicUrl(path).data.publicUrl);
+      urls.push(
+        supabase.storage
+          .from("produtos")
+          .getPublicUrl(path).data.publicUrl,
+      );
     }
     return urls;
   };
@@ -297,8 +309,11 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
         throw new Error("O Instagram exige pelo menos uma imagem. Marque “Incluir imagem do produto”.");
       }
 
+      const instagramSourceImages = isVehicle
+        ? latestImages.slice(0, 10)
+        : latestImages;
       const instagramImages = instagram
-        ? await uploadAdjustedInstagramImages(user.id, latestImages)
+        ? await uploadAdjustedInstagramImages(user.id, instagramSourceImages)
         : [];
       const scheduledAt = modoEnvio === "agendar" && dataAgendamento
         ? combineSaoPauloDateTimeToIso(
@@ -316,10 +331,12 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
       const publishFacebook = async (): Promise<NetworkResult> => {
         let queueId: string | null = null;
         try {
+          const vehicleReference = isVehicle
+            ? publishableInstagramReference(produto)
+            : {};
           queueId = await createSocialPostQueueEntry({
             user_id: user.id,
-            produto_id: produto.id,
-            produto_source: "produtos",
+            ...publishableQueueLink(produto),
             platform: "facebook",
             page_id: pageId,
             post_text: facebookText,
@@ -335,6 +352,7 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
               message: facebookText,
               user_id: user.id,
               page_id: pageId,
+              ...vehicleReference,
               ...(latestImages.length >= 2
                 ? { image_urls: latestImages }
                 : { image_url: latestImages[0] || undefined }),
@@ -355,8 +373,7 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
         try {
           queueId = await createSocialPostQueueEntry({
             user_id: user.id,
-            produto_id: produto.id,
-            produto_source: "produtos",
+            ...publishableQueueLink(produto),
             platform: "instagram",
             page_id: pageId,
             post_text: instagramText,
@@ -370,9 +387,10 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
           const functionName = instagramImages.length >= 2
             ? "meta-publish-carousel"
             : "meta-publish-instagram";
+          const itemReference = publishableInstagramReference(produto);
           const body = instagramImages.length >= 2
-            ? { caption: instagramText, image_urls: instagramImages, user_id: user.id, produto_id: produto.id }
-            : { caption: instagramText, image_url: instagramImages[0], user_id: user.id, produto_id: produto.id };
+            ? { caption: instagramText, image_urls: instagramImages, user_id: user.id, ...itemReference }
+            : { caption: instagramText, image_url: instagramImages[0], user_id: user.id, ...itemReference };
           const { data, error } = await supabase.functions.invoke(functionName, { body });
           if (error) throw error;
           if (!data?.success) throw new Error(data?.error || "Erro ao publicar no Instagram");
@@ -454,21 +472,23 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
           </div>
         </div>
 
-        <div className="space-y-2 rounded-lg border p-3">
-          <Label>Como você quer publicar este post?</Label>
-          <RadioGroup value={mode} onValueChange={(value) => setMode(value as typeof mode)} className="space-y-2">
-            <label className="flex cursor-pointer items-start gap-3 rounded-md border p-2">
-              <RadioGroupItem value="engajamento" className="mt-0.5" />
-              <span className="text-sm"><b>🎯 Modo Engajamento</b><br /><span className="text-xs text-muted-foreground">Caption sem preço, focada no estilo escolhido.</span></span>
-            </label>
-            <label className="flex cursor-pointer items-start gap-3 rounded-md border p-2">
-              <RadioGroupItem value="promocional" className="mt-0.5" />
-              <span className="text-sm"><b>💰 Modo Promocional</b><br /><span className="text-xs text-muted-foreground">Texto tradicional com oferta, imagem e link.</span></span>
-            </label>
-          </RadioGroup>
-        </div>
+        {!isVehicle && (
+          <div className="space-y-2 rounded-lg border p-3">
+            <Label>Como você quer publicar este post?</Label>
+            <RadioGroup value={mode} onValueChange={(value) => setMode(value as typeof mode)} className="space-y-2">
+              <label className="flex cursor-pointer items-start gap-3 rounded-md border p-2">
+                <RadioGroupItem value="engajamento" className="mt-0.5" />
+                <span className="text-sm"><b>🎯 Modo Engajamento</b><br /><span className="text-xs text-muted-foreground">Caption sem preço, focada no estilo escolhido.</span></span>
+              </label>
+              <label className="flex cursor-pointer items-start gap-3 rounded-md border p-2">
+                <RadioGroupItem value="promocional" className="mt-0.5" />
+                <span className="text-sm"><b>💰 Modo Promocional</b><br /><span className="text-xs text-muted-foreground">Texto tradicional com oferta, imagem e link.</span></span>
+              </label>
+            </RadioGroup>
+          </div>
+        )}
 
-        {mode === "engajamento" ? (
+        {!isVehicle && mode === "engajamento" ? (
           <div className="space-y-3 rounded-lg border border-blue-500/30 bg-blue-500/5 p-3">
             <Label>Estilo da caption</Label>
             <Select value={style} onValueChange={setStyle}>
@@ -503,7 +523,7 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
             {opcoes && (
               <div className="grid gap-2">
                 {(["opcaoA", "opcaoB", "opcaoC"] as const).map((key, index) => (
-                  <Card key={key} className={cn("cursor-pointer", textoPost === opcoes[key] && "ring-2 ring-primary")} onClick={() => setTextoPost(opcoes[key])}>
+                  <Card key={key} className={cn("cursor-pointer", textoPost === opcoes[key] && "ring-2 ring-primary")} onClick={() => setTextoPost(isVehicle ? stripInventedUrlsFromVehicleCaption(opcoes[key]) : opcoes[key])}>
                     <CardContent className="flex items-start gap-2 p-3">
                       <Badge variant="outline">{["Direta", "Storytelling", "Educativa"][index]}</Badge>
                       <p className="line-clamp-3 text-sm">{opcoes[key]}</p>
@@ -524,11 +544,11 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
         <div className="flex flex-wrap gap-4">
           <label className="flex cursor-pointer items-center gap-2">
             <Checkbox checked={incluirImagem} onCheckedChange={(value) => setIncluirImagem(!!value)} />
-            Incluir imagem do produto
+            Incluir imagem do {isVehicle ? "veículo" : "produto"}
           </label>
           <label className={cn("flex items-center gap-2", linkProduto ? "cursor-pointer" : "text-muted-foreground")}>
             <Checkbox checked={incluirLink} onCheckedChange={(value) => setIncluirLink(!!value)} disabled={!linkProduto} />
-            {linkProduto ? "Incluir link" : "Produto sem link"}
+            {linkProduto ? "Incluir link" : `${isVehicle ? "Veículo" : "Produto"} sem link`}
           </label>
         </div>
 
