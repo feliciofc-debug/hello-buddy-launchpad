@@ -21,6 +21,7 @@ import { useClientMenus } from '@/hooks/useClientMenus';
 import { useFinanciamentoPendingCount } from '@/hooks/useFinanciamentoPendingCount';
 import { isBusinessTenantType } from '@/lib/business-tenant';
 import { GestaoDashboardResultadoWidget } from '@/components/gestao/GestaoDashboardResultadoWidget';
+import { GestaoSidebarNav } from '@/components/gestao/GestaoSidebarNav';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -529,17 +530,9 @@ const Dashboard = () => {
             </a>
           )}
           {showGestaoLucroMenu && (
-            <a
-              href="/gestao/lucro"
-              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-                window.location.pathname.startsWith('/gestao/lucro')
-                  ? 'bg-blue-500 text-white'
-                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-              }`}
-            >
-              <TrendingUp size={20} />
-              Gestão · Lucro
-            </a>
+            <div className="py-2">
+              <GestaoSidebarNav />
+            </div>
           )}
           {isMenuAllowed('buscar-cnpj') && (
             <a

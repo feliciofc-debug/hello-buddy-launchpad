@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowUpRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { formatGestaoMoney, formatGestaoPct } from "@/lib/gestao-format.ts";
@@ -21,6 +21,8 @@ type Props = {
   onNavigateVendidos?: () => void;
   onNavigateEstoque?: () => void;
   onNavigateResultado?: () => void;
+  onEmitirNota?: () => void;
+  onVerVendas?: () => void;
 };
 
 function DeltaBadge({
@@ -75,8 +77,9 @@ function BigMetric({
       <button
         type="button"
         onClick={onClick}
-        className="rounded-xl border bg-card p-4 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="group relative rounded-xl border bg-card p-4 text-left transition-colors hover:border-primary/50 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
       >
+        <ArrowUpRight className="absolute right-3 top-3 h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
         {inner}
       </button>
     );
@@ -95,24 +98,37 @@ export function GestaoResultadoMesStrip({
   onNavigateVendidos,
   onNavigateEstoque,
   onNavigateResultado,
+  onEmitirNota,
+  onVerVendas,
 }: Props) {
   const { dre } = metrics;
   const prev = prevMetrics.dre;
   const empty = dre.qtdVendas === 0;
 
-  const nfeLine = focusConnected === false || focusConnected === null
-    ? (
-      <p className="text-[11px] text-muted-foreground">
-        <Link to="/configuracoes/integracoes" className="underline hover:text-foreground">
-          Conecte a emissão de NF-e
-        </Link>
-      </p>
-    )
-    : (
-      <p className="text-[11px] text-muted-foreground">
-        Notas fiscais emitidas: {metrics.nfesEmitidas} de {metrics.vendasComNfeAlvo} vendas
-      </p>
-    );
+  const nfeLine = variant === "page" ? (
+    <div className="mt-2 space-y-1">
+      {focusConnected === false || focusConnected === null ? (
+        <p className="text-[11px] text-muted-foreground">
+          <Link to="/configuracoes/integracoes" className="underline hover:text-foreground">
+            Conecte a emissão de NF-e
+          </Link>
+        </p>
+      ) : (
+        <p className="text-[11px] text-muted-foreground">
+          Notas fiscais emitidas: {metrics.nfesEmitidas} de {metrics.vendasComNfeAlvo} vendas
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2 text-xs">
+        <button type="button" className="font-medium text-primary underline-offset-2 hover:underline" onClick={onEmitirNota}>
+          Emitir nota
+        </button>
+        <span className="text-muted-foreground">·</span>
+        <button type="button" className="font-medium text-primary underline-offset-2 hover:underline" onClick={onVerVendas ?? onNavigateVendidos}>
+          Ver vendas
+        </button>
+      </div>
+    </div>
+  ) : null;
 
   return (
     <section className="space-y-3">
@@ -168,7 +184,7 @@ export function GestaoResultadoMesStrip({
               value={formatGestaoMoney(dre.faturamento)}
               onClick={onNavigateVendidos}
               delta={{ current: dre.faturamento, previous: prev.faturamento }}
-              sub={variant === "page" ? nfeLine : undefined}
+              sub={nfeLine}
             />
             <BigMetric
               label="Lucro líquido da loja"
@@ -187,6 +203,7 @@ export function GestaoResultadoMesStrip({
             <BigMetric
               label="Carros vendidos"
               value={String(dre.qtdVendas)}
+              onClick={onNavigateVendidos}
               delta={{ current: dre.qtdVendas, previous: prev.qtdVendas }}
             />
             <BigMetric
