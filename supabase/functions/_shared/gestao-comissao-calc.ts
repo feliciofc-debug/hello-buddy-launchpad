@@ -15,11 +15,13 @@ export type GestaoComissaoRegraJson = {
   gerentePctSobreVenda: number | null;
 };
 
+export type ComissaoRegraModo = "pct_venda" | "pct_lucro" | "fixo" | "faixas";
+
 export const DEFAULT_COMISSAO_REGRA: GestaoComissaoRegraJson = {
-  pctSobreVenda: null,
-  pctSobreLucro: 1,
+  pctSobreVenda: 1,
+  pctSobreLucro: null,
   fixoPorCarro: null,
-  usarFaixasMargem: true,
+  usarFaixasMargem: false,
   faixasMargem: [
     { margemMinInclusive: 0, margemMaxExclusive: 5, pctSobreLucro: 0.5 },
     { margemMinInclusive: 5, margemMaxExclusive: 10, pctSobreLucro: 1 },
@@ -111,7 +113,57 @@ export function normalizeComissaoRegra(raw: Partial<GestaoComissaoRegraJson>): G
     faixasMargem: raw.faixasMargem?.length
       ? raw.faixasMargem
       : DEFAULT_COMISSAO_REGRA.faixasMargem,
-    usarFaixasMargem: raw.usarFaixasMargem ?? (raw.faixasMargem?.length ? true : DEFAULT_COMISSAO_REGRA.usarFaixasMargem),
+    usarFaixasMargem: raw.usarFaixasMargem ?? false,
     gerentePctSobreVenda: raw.gerentePctSobreVenda ?? null,
+  };
+}
+
+export function detectComissaoRegraModo(regra: GestaoComissaoRegraJson): ComissaoRegraModo {
+  const r = normalizeComissaoRegra(regra);
+  if (r.usarFaixasMargem && r.faixasMargem.length > 0) return "faixas";
+  if (r.fixoPorCarro != null && r.fixoPorCarro > 0) return "fixo";
+  if (r.pctSobreVenda != null && r.pctSobreVenda > 0) return "pct_venda";
+  if (r.pctSobreLucro != null && r.pctSobreLucro > 0) return "pct_lucro";
+  return "pct_venda";
+}
+
+export function applyComissaoRegraModo(
+  regra: GestaoComissaoRegraJson,
+  modo: ComissaoRegraModo,
+): GestaoComissaoRegraJson {
+  const base = normalizeComissaoRegra(regra);
+  if (modo === "pct_venda") {
+    return {
+      ...base,
+      pctSobreVenda: base.pctSobreVenda ?? 1,
+      pctSobreLucro: null,
+      fixoPorCarro: null,
+      usarFaixasMargem: false,
+    };
+  }
+  if (modo === "pct_lucro") {
+    return {
+      ...base,
+      pctSobreVenda: null,
+      pctSobreLucro: base.pctSobreLucro ?? 1,
+      fixoPorCarro: null,
+      usarFaixasMargem: false,
+    };
+  }
+  if (modo === "fixo") {
+    return {
+      ...base,
+      pctSobreVenda: null,
+      pctSobreLucro: null,
+      fixoPorCarro: base.fixoPorCarro ?? 1000,
+      usarFaixasMargem: false,
+    };
+  }
+  return {
+    ...base,
+    pctSobreVenda: null,
+    pctSobreLucro: null,
+    fixoPorCarro: null,
+    usarFaixasMargem: true,
   };
 }

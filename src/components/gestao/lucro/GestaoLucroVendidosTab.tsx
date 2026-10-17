@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import type { GestaoVeiculoEnriched } from "@/lib/gestao-lucro-types.ts";
 import { vehicleDays, vehicleLabel } from "@/lib/gestao-lucro-data.ts";
@@ -7,6 +7,7 @@ import {
   formatGestaoPct,
   gestaoLucroTone,
 } from "@/lib/gestao-format.ts";
+import { GestaoVendaRaioXPanel } from "@/components/gestao/lucro/GestaoVendaRaioXPanel.tsx";
 
 function monthBounds(): { start: string; end: string } {
   const now = new Date();
@@ -79,19 +80,34 @@ export function GestaoLucroVendidosTab({ veiculos, periodStart, periodEnd }: Pro
           </thead>
           <tbody>
             {sold.map((v) => (
-              <tr key={v.id} className="border-b">
-                <td className="py-2 pr-3 font-medium">{vehicleLabel(v)}</td>
-                <td className="py-2 pr-3">{v.dataVenda}</td>
-                <td className="py-2 pr-3">{formatGestaoMoney(v.valorVenda)}</td>
-                <td className={`py-2 pr-3 ${gestaoLucroTone(v.lucro.lucroLiquido)}`}>
-                  {formatGestaoMoney(v.lucro.lucroLiquido)}
-                </td>
-                <td className={`py-2 pr-3 ${gestaoLucroTone(v.lucro.margemPct)}`}>
-                  {formatGestaoPct(v.lucro.margemPct)}
-                </td>
-                <td className="py-2 pr-3">{v.lucro.diasEstoque ?? vehicleDays(v)}</td>
-                <td className="py-2">{v.vendedor ?? "—"}</td>
-              </tr>
+              <Fragment key={v.id}>
+                <tr className="border-b">
+                  <td className="py-2 pr-3 font-medium">{vehicleLabel(v)}</td>
+                  <td className="py-2 pr-3">{v.dataVenda}</td>
+                  <td className="py-2 pr-3">{formatGestaoMoney(v.valorVenda)}</td>
+                  <td className={`py-2 pr-3 ${gestaoLucroTone(v.lucro.lucroLiquido)}`}>
+                    {formatGestaoMoney(v.lucro.lucroLiquido)}
+                  </td>
+                  <td className={`py-2 pr-3 ${gestaoLucroTone(v.lucro.margemPct)}`}>
+                    {formatGestaoPct(v.lucro.margemPct)}
+                  </td>
+                  <td className="py-2 pr-3">{v.lucro.diasEstoque ?? vehicleDays(v)}</td>
+                  <td className="py-2">{v.vendedor ?? "—"}</td>
+                </tr>
+                <tr className="border-b bg-muted/20">
+                  <td colSpan={7} className="p-3">
+                    <GestaoVendaRaioXPanel
+                      compact
+                      valorVenda={v.valorVenda}
+                      valorCompra={v.valorCompra}
+                      despesas={v.despesas.map((d) => ({
+                        valor: Number(d.valor),
+                        categoria: d.categoria,
+                      }))}
+                    />
+                  </td>
+                </tr>
+              </Fragment>
             ))}
           </tbody>
           <tfoot>

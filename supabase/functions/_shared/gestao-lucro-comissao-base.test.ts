@@ -26,7 +26,7 @@ Deno.test("recalcular comissão 3x mantém o mesmo valor (sem base circular)", (
       valorVenda,
       lucroLiquido: lucroBase,
       margemPct: margem,
-      regra: DEFAULT_COMISSAO_REGRA,
+      regra: { ...DEFAULT_COMISSAO_REGRA, usarFaixasMargem: true, pctSobreVenda: null },
     }).total
   );
   assertEquals(vals[0], vals[1]);

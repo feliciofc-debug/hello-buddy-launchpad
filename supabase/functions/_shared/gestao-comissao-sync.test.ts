@@ -18,7 +18,7 @@ Deno.test("plano de comissão gera lançamento vendedor", () => {
     dataDespesa: "2026-02-01",
   });
   assertEquals(plan.lancamentos.length, 1);
-  assertEquals(plan.lancamentos[0].valor, 150);
+  assertEquals(plan.lancamentos[0].valor, 1_000);
 });
 
 Deno.test("applyGestaoComissaoSync 3x mantém mesmo valor e uma despesa ativa", async () => {

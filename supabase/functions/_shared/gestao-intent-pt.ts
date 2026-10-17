@@ -15,7 +15,9 @@ export type GestaoIntentKind =
   | "ranking_vendedores"
   | "vendedor_mes"
   | "comissao_mes"
-  | "meta_bateu";
+  | "meta_bateu"
+  | "venda_raiox"
+  | "piores_negocios_mes";
 
 export type GestaoIntent = {
   kind: GestaoIntentKind;
@@ -74,6 +76,10 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
     return { ...empty, kind: "meta_bateu", vehicleHint };
   }
 
+  if (/\bpiores\s+negocios(\s+do\s+mes)?\b|\bpior\s+negocio\b/.test(t)) {
+    return { ...empty, kind: "piores_negocios_mes", vehicleHint };
+  }
+
   const vendedorHint = vendedorHintFromText(text);
   if (
     (/\bquanto\s+(o|a)\s+\w+\s+vendeu\b|\bvendas?\s+do\s+\w+/i.test(text) ||
@@ -81,6 +87,10 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
     vendedorHint.length >= 2
   ) {
     return { ...empty, kind: "vendedor_mes", vendedorHint, vehicleHint };
+  }
+
+  if (/\bcomo\s+foi\s+a\s+venda\b/.test(t) && vehicleHint.length >= 2) {
+    return { ...empty, kind: "venda_raiox", vehicleHint };
   }
 
   if (

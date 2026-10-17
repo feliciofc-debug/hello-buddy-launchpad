@@ -42,6 +42,7 @@ import { parseGestaoMoneyField } from "@/lib/gestao-money.ts";
 import { loadGestaoVendedores, loadComissaoRegra, type GestaoVendedor } from "@/lib/gestao-equipe-load.ts";
 import { calcGestaoComissao } from "../../../../supabase/functions/_shared/gestao-comissao-calc.ts";
 import { comissaoLucroBase } from "@/lib/gestao-comissao-lucro.ts";
+import { GestaoVendaRaioXPanel } from "@/components/gestao/lucro/GestaoVendaRaioXPanel.tsx";
 import { syncComissaoAfterVenda } from "@/lib/gestao-comissao-client.ts";
 
 type Props = {
@@ -302,6 +303,17 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
                 <p className="font-semibold">{formatGestaoMoney(lucro.totalDespesas)}</p>
               </div>
             </div>
+
+            {lucro.vendido && (
+              <GestaoVendaRaioXPanel
+                valorVenda={veiculo.valorVenda}
+                valorCompra={veiculo.valorCompra}
+                despesas={veiculo.despesas.map((d) => ({
+                  valor: Number(d.valor),
+                  categoria: d.categoria,
+                }))}
+              />
+            )}
 
             <section className="space-y-2">
               <h3 className="text-sm font-semibold">Compra</h3>

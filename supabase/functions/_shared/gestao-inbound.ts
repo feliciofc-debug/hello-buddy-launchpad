@@ -37,6 +37,12 @@ import {
 } from "./gestao-equipe-inbound.ts";
 import { matchGestaoVendedor, type GestaoVendedorRow } from "./gestao-vendedor-match.ts";
 import { competenciaFromDate } from "./gestao-meta-calc.ts";
+import {
+  calcVendaRaioX,
+  formatRaioXWhatsApp,
+  rankPioresNegocios,
+  type GestaoVendaRaioXRankItem,
+} from "./gestao-venda-raio-x.ts";
 export const GESTAO_PENDING_TTL_MS = 10 * 60 * 1000;
 export const GESTAO_DESFAZER_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -163,6 +169,84 @@ async function fetchLucroVeiculo(
     ? formatBrl(lucro.investido)
     : "custo pendente";
   return `${label}: lucro projetado ${formatGestaoMoney(lucro.lucroProjetado)} (investido ${investidoTxt}).`;
+}
+
+async function fetchVendaRaioxVeiculo(
+  sb: unknown,
+  userId: string,
+  veiculoId: string,
+  veiculo: GestaoVeiculoRow,
+): Promise<string> {
+  const client = sb as GestaoDb;
+  const [{ data: compra }, { data: despesas }, { data: venda }] = await Promise.all([
+    client.from("veiculo_compra").select("valor_compra")
+      .eq("user_id", userId).eq("veiculo_id", veiculoId).maybeSingle(),
+    client.from("veiculo_despesas").select("valor, categoria")
+      .eq("user_id", userId).eq("veiculo_id", veiculoId).is("deleted_at", null),
+    client.from("veiculo_venda").select("valor_venda")
+      .eq("user_id", userId).eq("veiculo_id", veiculoId).maybeSingle(),
+  ]);
+  if (!venda) {
+    return `${formatGestaoVeiculoLabel(veiculo)} ainda não tem venda registrada.`;
+  }
+  const dList = (despesas ?? []).map((d: Record<string, unknown>) => ({
+    valor: Number(d.valor),
+    categoria: String(d.categoria ?? ""),
+  }));
+  const raio = calcVendaRaioX({
+    valorVenda: Number(venda.valor_venda),
+    valorCompra: compra ? Number(compra.valor_compra) : null,
+    despesas: dList,
+  });
+  if (!raio) return "Não consegui calcular o raio-X desta venda.";
+  return formatRaioXWhatsApp(formatGestaoVeiculoLabel(veiculo), raio);
+}
+
+async function fetchPioresNegociosMes(sb: unknown, userId: string): Promise<string> {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+  const client = sb as GestaoDb;
+  const vehicles = await loadVehicles(sb, userId);
+  const byId = new Map(vehicles.map((v) => [v.id, v]));
+  const { data: vendas } = await client.from("veiculo_venda").select("veiculo_id, valor_venda, data_venda")
+    .eq("user_id", userId).gte("data_venda", start).lte("data_venda", end);
+  const items: GestaoVendaRaioXRankItem[] = [];
+  for (const v of vendas ?? []) {
+    const vid = String(v.veiculo_id);
+    const veiculo = byId.get(vid);
+    const [{ data: compra }, { data: despesas }] = await Promise.all([
+      client.from("veiculo_compra").select("valor_compra")
+        .eq("user_id", userId).eq("veiculo_id", vid).maybeSingle(),
+      client.from("veiculo_despesas").select("valor, categoria")
+        .eq("user_id", userId).eq("veiculo_id", vid).is("deleted_at", null),
+    ]);
+    const dList = (despesas ?? []).map((d: Record<string, unknown>) => ({
+      valor: Number(d.valor),
+      categoria: String(d.categoria ?? ""),
+    }));
+    const raio = calcVendaRaioX({
+      valorVenda: Number(v.valor_venda),
+      valorCompra: compra ? Number(compra.valor_compra) : null,
+      despesas: dList,
+    });
+    if (!raio || raio.lucroFinal == null) continue;
+    items.push({
+      ...raio,
+      veiculoId: vid,
+      label: veiculo ? formatGestaoVeiculoLabel(veiculo) : vid,
+      vendedorId: null,
+      vendedorNome: null,
+      dataVenda: String(v.data_venda),
+    });
+  }
+  const worst = rankPioresNegocios(items, 3);
+  if (!worst.length) return "Nenhuma venda no mês com lucro calculável.";
+  const lines = worst.map((w, i) => {
+    const motivo = w.motivoProvavel ? ` — ${w.motivoProvavel}` : "";
+    return `${i + 1}. ${w.label}: lucro final ${formatBrl(w.lucroFinal ?? 0)} (comissão ${formatBrl(w.comissao)})${motivo}`;
+  });
+  return `Piores negócios do mês:\n${lines.join("\n")}`;
 }
 
 async function fetchDespesasVeiculo(
@@ -637,8 +721,19 @@ export async function tryProcessGestaoLucroInbound(input: {
     };
   }
 
+  if (intent.kind === "piores_negocios_mes") {
+    const reply = await fetchPioresNegociosMes(input.sb, input.userId);
+    return { handled: true, reply };
+  }
+
   const vehicles = await loadVehicles(input.sb, input.userId);
   const matches = rankGestaoVeiculoMatches(intent.vehicleHint, vehicles);
+
+  if (intent.kind === "venda_raiox") {
+    if (!matches[0]) return { handled: true, reply: "Não achei esse veículo no estoque." };
+    const reply = await fetchVendaRaioxVeiculo(input.sb, input.userId, matches[0].id, matches[0]);
+    return { handled: true, reply };
+  }
 
   if (intent.kind === "lucro_veiculo") {
     if (!matches[0]) return { handled: true, reply: "Não achei esse veículo no estoque." };
