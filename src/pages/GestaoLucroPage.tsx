@@ -15,6 +15,8 @@ import { GestaoBatchDespesaDialog } from "@/components/gestao/lucro/GestaoBatchD
 import { GestaoImportPlanilhaDialog } from "@/components/gestao/lucro/GestaoImportPlanilhaDialog.tsx";
 import { GestaoEquipeTab } from "@/components/gestao/lucro/GestaoEquipeTab.tsx";
 import { GestaoFinanceiroTab } from "@/components/gestao/lucro/GestaoFinanceiroTab.tsx";
+import { GestaoContratosTab } from "@/components/gestao/lucro/GestaoContratosTab.tsx";
+import { useGestaoZapsignConnection } from "@/components/integracoes/useGestaoZapsignConnection";
 import { loadGestaoLucroBundle } from "@/lib/gestao-lucro-data.ts";
 import { buildGestaoLucroAlerts } from "@/lib/gestao-lucro-alerts.ts";
 import type { GestaoLucroAlertKind } from "@/lib/gestao-lucro-types.ts";
@@ -42,6 +44,7 @@ export default function GestaoLucroPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [despesaPreselect, setDespesaPreselect] = useState<string | null>(null);
   const { start, end } = monthBounds();
+  const zapsign = useGestaoZapsignConnection();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -158,12 +161,15 @@ export default function GestaoLucroPage() {
             />
 
             <Tabs value={tab} onValueChange={setTab}>
-              <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+              <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-7">
                 <TabsTrigger value="estoque">Estoque</TabsTrigger>
                 <TabsTrigger value="vendidos">Vendidos</TabsTrigger>
                 <TabsTrigger value="despesas">Despesas</TabsTrigger>
                 <TabsTrigger value="equipe">Equipe</TabsTrigger>
                 <TabsTrigger value="financeiro">Financeiro</TabsTrigger>
+                {zapsign.status?.connected && (
+                  <TabsTrigger value="contratos">Contratos</TabsTrigger>
+                )}
                 <TabsTrigger value="relatorios">Relatórios</TabsTrigger>
               </TabsList>
 
@@ -194,6 +200,11 @@ export default function GestaoLucroPage() {
               <TabsContent value="financeiro" className="mt-4">
                 {userId && <GestaoFinanceiroTab userId={userId} veiculos={veiculos} />}
               </TabsContent>
+              {zapsign.status?.connected && (
+                <TabsContent value="contratos" className="mt-4">
+                  {userId && <GestaoContratosTab userId={userId} veiculos={veiculos} />}
+                </TabsContent>
+              )}
               <TabsContent value="relatorios" className="mt-4">
                 <GestaoLucroRelatoriosTab veiculos={veiculos} />
               </TabsContent>
