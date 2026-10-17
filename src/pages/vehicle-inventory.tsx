@@ -54,6 +54,10 @@ import type { PublishableItem } from "@/lib/publishable-item";
 import { MlInventoryStrip } from "@/components/ml/MlInventoryStrip";
 import { MlQuestionsPanel } from "@/components/ml/MlQuestionsPanel";
 import { MlVehicleActions, type VeiculoPortalMl } from "@/components/ml/MlVehicleActions";
+import {
+  WebmotorsVehicleActions,
+  type VeiculoPortalWebmotors,
+} from "@/components/webmotors/WebmotorsVehicleActions";
 
 type Vehicle = Database["public"]["Tables"]["veiculos_estoque"]["Row"];
 type VehicleStatus = "disponivel" | "reservado" | "vendido";
@@ -259,28 +263,38 @@ export default function VehicleInventory() {
   const [storyOpen, setStoryOpen] = useState(false);
   const [mlConnected, setMlConnected] = useState(false);
   const [mlPortals, setMlPortals] = useState<Record<string, VeiculoPortalMl>>({});
+  const [wmConnected, setWmConnected] = useState(false);
+  const [wmPortals, setWmPortals] = useState<Record<string, VeiculoPortalWebmotors>>({});
 
-  const loadMlMeta = useCallback(async () => {
-    const { data: st } = await supabase.functions.invoke("ml-status");
-    setMlConnected(!!st?.connected);
+  const loadPortalMeta = useCallback(async () => {
+    const [{ data: stMl }, { data: stWm }] = await Promise.all([
+      supabase.functions.invoke("ml-status"),
+      supabase.functions.invoke("webmotors-status"),
+    ]);
+    setMlConnected(!!stMl?.connected);
+    setWmConnected(!!stWm?.connected);
     const { data: portals } = await supabase
       .from("veiculos_portais" as "veiculos_estoque")
-      .select("veiculo_id, status, permalink, last_error")
-      .eq("portal", "mercadolivre");
-    const map: Record<string, VeiculoPortalMl> = {};
+      .select("veiculo_id, portal, status, permalink, last_error");
+    const mlMap: Record<string, VeiculoPortalMl> = {};
+    const wmMap: Record<string, VeiculoPortalWebmotors> = {};
     for (const row of (portals ?? []) as Array<{
       veiculo_id: string;
+      portal: string;
       status: string;
       permalink: string | null;
       last_error: string | null;
     }>) {
-      map[row.veiculo_id] = {
+      const entry = {
         status: row.status,
         permalink: row.permalink,
         last_error: row.last_error,
       };
+      if (row.portal === "mercadolivre") mlMap[row.veiculo_id] = entry;
+      if (row.portal === "webmotors") wmMap[row.veiculo_id] = entry;
     }
-    setMlPortals(map);
+    setMlPortals(mlMap);
+    setWmPortals(wmMap);
   }, []);
 
   const loadVehicles = useCallback(async () => {
@@ -307,9 +321,9 @@ export default function VehicleInventory() {
     } else {
       setVehicles(data || []);
     }
-    await loadMlMeta();
+    await loadPortalMeta();
     setLoading(false);
-  }, [loadMlMeta, navigate]);
+  }, [loadPortalMeta, navigate]);
 
   useEffect(() => {
     void loadVehicles();
@@ -775,7 +789,13 @@ export default function VehicleInventory() {
                       veiculoId={vehicle.id}
                       portal={mlPortals[vehicle.id] ?? null}
                       mlConnected={mlConnected}
-                      onChanged={() => void loadMlMeta()}
+                      onChanged={() => void loadPortalMeta()}
+                    />
+                    <WebmotorsVehicleActions
+                      veiculoId={vehicle.id}
+                      portal={wmPortals[vehicle.id] ?? null}
+                      wmConnected={wmConnected}
+                      onChanged={() => void loadPortalMeta()}
                     />
                     <Button
                       size="sm"

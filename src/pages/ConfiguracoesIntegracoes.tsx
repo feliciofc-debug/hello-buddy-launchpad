@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { MlIntegrationCard } from "@/components/ml/MlIntegrationCard";
+import { WebmotorsIntegrationCard } from "@/components/webmotors/WebmotorsIntegrationCard";
 import {
   PLANNED_PORTAL_INTEGRATIONS,
   PORTAL_STATUS_LABEL,
@@ -66,6 +67,8 @@ export default function ConfiguracoesIntegracoes() {
         </div>
 
         <MlIntegrationCard />
+
+        <WebmotorsIntegrationCard />
 
         {PLANNED_PORTAL_INTEGRATIONS.map((portal) => (
           <PlannedPortalCard

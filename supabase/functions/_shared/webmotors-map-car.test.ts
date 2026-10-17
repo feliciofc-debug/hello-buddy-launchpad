@@ -1,0 +1,77 @@
+import { assertEquals, assertThrows } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assertWebmotorsPayloadPublicOnly,
+  mapVehicleToWebmotorsCar,
+  webmotorsPricesFromEstoque,
+} from "./webmotors-map-car.ts";
+import type { VeiculoEstoqueRow } from "./webmotors-vehicle-types.ts";
+import { webmotorsPublicObservacao } from "./webmotors-text.ts";
+
+const baseVehicle: VeiculoEstoqueRow = {
+  id: "v1",
+  user_id: "u1",
+  marca: "Toyota",
+  modelo: "Corolla",
+  versao: "XEi",
+  ano_fabricacao: 2022,
+  ano_modelo: 2023,
+  km: 10000,
+  preco: 120000,
+  cor: "Prata",
+  combustivel: "Flex",
+  cambio: "Automatico",
+  portas: 4,
+  blindado: false,
+  opcionais: [],
+  descricao: "Veículo revisado, pronto para uso.",
+  fotos: ["https://cdn.example.com/foto.jpg"],
+  status: "disponivel",
+};
+
+const catalog = {
+  marcas: [{ codigo: 1, nome: "Toyota" }],
+  modelos: [{ codigo: 10, nome: "Corolla" }],
+  versoes: [{ codigo: 100, nome: "XEi 2.0" }],
+  cores: [{ codigo: 5, nome: "Prata" }],
+  combustiveis: [{ codigo: 3, nome: "Flex" }],
+  cambios: [{ codigo: 2, nome: "Automatico" }],
+  portas: [4],
+  modalidades: [{ codigo: 7, nome: "Premium" }],
+  opcionais: [],
+};
+
+Deno.test("Observacao usa somente descricao publica do veiculo", () => {
+  const r = mapVehicleToWebmotorsCar({
+    vehicle: baseVehicle,
+    manualMap: {
+      codigo_marca: 1,
+      codigo_modelo: 10,
+      codigo_versao: 100,
+      codigo_cor: 5,
+      codigo_combustivel: 3,
+      codigo_cambio: 2,
+      codigo_modalidade: 7,
+      nr_portas: 4,
+      opcionais: [],
+      mapping_source: "manual",
+    },
+    catalog,
+    defaultModalidade: 7,
+  });
+  if (!r.ok) throw new Error(JSON.stringify(r.blocking));
+  assertEquals(r.payload.Observacao, baseVehicle.descricao);
+  assertEquals(r.payload.Observacao.includes("Ano 2022"), false);
+  assertWebmotorsPayloadPublicOnly(r.payload);
+});
+
+Deno.test("Observacao rejeita termos internos proibidos", () => {
+  assertThrows(
+    () => webmotorsPublicObservacao("Carro com custo abaixo da FIPE"),
+    Error,
+  );
+});
+
+Deno.test("PrecoVenda vem do estoque AMZ", () => {
+  const p = webmotorsPricesFromEstoque(99990.5);
+  assertEquals(p?.precoVenda, 99990.5);
+});
