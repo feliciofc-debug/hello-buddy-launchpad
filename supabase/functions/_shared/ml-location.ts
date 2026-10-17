@@ -11,6 +11,86 @@ export type MlLocationJson = {
   };
 };
 
+/** CEP brasileiro: 8 dígitos (aceita máscara). */
+export function normalizeBrazilCep(raw: string): string | null {
+  const digits = String(raw ?? "").replace(/\D/g, "");
+  if (digits.length !== 8) return null;
+  return digits;
+}
+
+export function formatBrazilCep(digits: string): string {
+  const d = digits.replace(/\D/g, "");
+  if (d.length !== 8) return digits;
+  return `${d.slice(0, 5)}-${d.slice(5)}`;
+}
+
+type MlLocRef = { id?: string; name?: string };
+
+function readLocRef(value: unknown): MlLocRef | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const o = value as Record<string, unknown>;
+  const id = o.id != null ? String(o.id).trim() : "";
+  const name = o.name != null ? String(o.name).trim() : "";
+  if (!id && !name) return undefined;
+  return { id: id || undefined, name: name || undefined };
+}
+
+/** Resposta GET /countries/BR/zip_codes/{cep} (e extended_attributes quando presente). */
+export function parseMlZipCodeApiResponse(body: unknown): MlLocationJson | null {
+  if (!body || typeof body !== "object") return null;
+  const root = body as Record<string, unknown>;
+  const ext = root.extended_attributes as Record<string, unknown> | undefined;
+
+  const zipRaw = String(root.zip_code ?? "").replace(/\D/g, "");
+  const zip_code = zipRaw.length === 8 ? zipRaw : undefined;
+
+  const city = readLocRef(root.city);
+  const state = readLocRef(root.state);
+  const country = readLocRef(root.country) ?? { id: "BR", name: "Brasil" };
+
+  let neighborhood = readLocRef(root.neighborhood);
+  if (!neighborhood?.id && ext?.neighborhood && typeof ext.neighborhood === "object") {
+    neighborhood = readLocRef(ext.neighborhood) ?? neighborhood;
+  }
+
+  let cityName = city?.name;
+  if (!cityName && ext?.city_name) cityName = String(ext.city_name).trim() || undefined;
+
+  const cityId = city?.id ?? "";
+  const stateId = state?.id ?? "";
+
+  if (!cityId && !stateId && !cityName && !state?.name) return null;
+
+  const loc: NonNullable<MlLocationJson["location"]> = {
+    zip_code,
+    country: { id: country.id ?? "BR", name: country.name ?? "Brasil" },
+  };
+  if (stateId || state?.name) {
+    loc.state = { id: stateId, name: state?.name ?? undefined };
+  }
+  if (cityId || cityName) {
+    loc.city = { id: cityId, name: cityName ?? undefined };
+  }
+  if (neighborhood?.id) {
+    loc.neighborhood = { id: neighborhood.id, name: neighborhood.name ?? undefined };
+  }
+
+  return {
+    source: "tenant_override",
+    updated_at: new Date().toISOString(),
+    location: loc,
+  };
+}
+
+export function mlZipCodeLookupErrorMessage(status: number, payload: unknown): string {
+  if (status === 404) return "CEP não encontrado. Confira os 8 dígitos e tente de novo.";
+  const msg = payload && typeof payload === "object"
+    ? String((payload as Record<string, unknown>).message ?? "")
+    : "";
+  if (msg.toLowerCase().includes("zip")) return "CEP inválido. Use o formato 00000-000.";
+  return "Não foi possível consultar este CEP no Mercado Livre. Tente novamente.";
+}
+
 export function parseMlUserLocation(me: Record<string, unknown>): MlLocationJson | null {
   const addr = me.address as Record<string, unknown> | undefined;
   const city = addr?.city as Record<string, unknown> | string | undefined;
@@ -33,6 +113,46 @@ export function parseMlUserLocation(me: Record<string, unknown>): MlLocationJson
       state: { id: stateId, name: stateName || undefined },
     },
   };
+}
+
+export function hasMlLocationTenantOverride(json: unknown): boolean {
+  return (json as MlLocationJson | null)?.source === "tenant_override";
+}
+
+/** OAuth callback: perfil ML só grava se a loja não tiver CEP (tenant_override). */
+export function mlLocationToPersistAfterOAuth(
+  existingMlLocationJson: unknown,
+  profileLocation: MlLocationJson | null,
+): MlLocationJson | null {
+  if (!profileLocation) return null;
+  if (hasMlLocationTenantOverride(existingMlLocationJson)) return null;
+  return profileLocation;
+}
+
+/** Rótulo curto para UI: "Cidade/UF" (UF quando state.id é BR-XX). */
+export function mlLocationPlaceLabel(json: unknown): string | null {
+  const loc = (json as MlLocationJson | null)?.location;
+  if (!loc) return null;
+  const cityName = String(loc.city?.name ?? "").trim();
+  const stateId = String(loc.state?.id ?? "").trim();
+  const uf = stateId.match(/^BR-([A-Z]{2})$/i)?.[1]?.toUpperCase();
+  const stateLabel = uf ?? String(loc.state?.name ?? "").trim();
+  if (!cityName && !stateLabel) return null;
+  if (cityName && stateLabel) return `${cityName}/${stateLabel}`;
+  return cityName || stateLabel;
+}
+
+export function mlLocationCityName(json: unknown): string | null {
+  const name = String((json as MlLocationJson | null)?.location?.city?.name ?? "").trim();
+  return name || null;
+}
+
+export function mlLocationStateName(json: unknown): string | null {
+  const loc = (json as MlLocationJson | null)?.location;
+  if (!loc?.state) return null;
+  const uf = String(loc.state.id ?? "").trim().match(/^BR-([A-Z]{2})$/i)?.[1]?.toUpperCase();
+  const name = String(loc.state.name ?? "").trim();
+  return (uf ?? name) || null;
 }
 
 export function hasPublishableMlLocation(json: unknown): boolean {

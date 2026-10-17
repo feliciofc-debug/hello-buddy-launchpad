@@ -46,7 +46,10 @@ export function mapStockFieldToMlAttributeId(field: string): string | null {
 export function buildMlAttributes(
   v: VeiculoEstoqueRow,
   attrs: MlCategoryAttribute[],
-): { attributes: Array<Record<string, unknown>>; blocking: MlMapResult extends { ok: false; blocking: infer B } ? B : never } {
+): {
+  attributes: Array<Record<string, unknown>>;
+  blocking: Array<{ field: string; attribute_id: string; message: string; allowed?: string[] }>;
+} {
   const blocking: Array<{ field: string; attribute_id: string; message: string; allowed?: string[] }> = [];
   const stockMap: Record<string, string | number | null> = {
     marca: v.marca,

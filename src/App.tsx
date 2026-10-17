@@ -54,6 +54,7 @@ import MarketplacePublico from "./pages/MarketplacePublico";
 import AdminProdutos from "./pages/AdminProdutos";
 import OnboardingWhatsApp from "./pages/OnboardingWhatsApp";
 import ConfiguracaoEmpresa from "./pages/ConfiguracaoEmpresa";
+import ConfiguracoesIntegracoes from "./pages/ConfiguracoesIntegracoes";
 import IAConversas from "./pages/IAConversas";
 import Plataforma from "./pages/site/Plataforma";
 import Integracoes from "./pages/site/Integracoes";
@@ -149,6 +150,7 @@ const App = () => (
             <Route path="/dashboard-antigo" element={<Dashboard />} />
             <Route path="/produtos" element={<ProductsPage />} />
             <Route path="/configuracoes" element={<SettingsPage />} />
+            <Route path="/configuracoes/integracoes" element={<ConfiguracoesIntegracoes />} />
             <Route path="/configuracoes-icp" element={<ConfigurarICP />} />
             <Route path="/configurar-icp" element={<ConfigurarICP />} />
             <Route path="/whatsapp" element={<WhatsAppPage />} />

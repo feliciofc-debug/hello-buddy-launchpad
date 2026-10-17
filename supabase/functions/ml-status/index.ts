@@ -1,6 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { corsHeaders } from "../_shared/cors.ts";
-import { hasPublishableMlLocation } from "../_shared/ml-location.ts";
+import {
+  hasPublishableMlLocation,
+  mlLocationCityName,
+  mlLocationPlaceLabel,
+  mlLocationStateName,
+} from "../_shared/ml-location.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -32,12 +37,18 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     const status = conta?.status ?? "revoked";
+    const locJson = cfg?.ml_location_json;
+    const locZip = (locJson as { location?: { zip_code?: string } } | null)?.location?.zip_code ?? null;
     return new Response(JSON.stringify({
       success: true,
       connected: status === "active" || status === "needs_reauth",
       nickname: conta?.nickname ?? null,
       status,
-      has_location: hasPublishableMlLocation(cfg?.ml_location_json),
+      has_location: hasPublishableMlLocation(locJson),
+      store_zip: locZip,
+      location_place: mlLocationPlaceLabel(locJson),
+      location_city_name: mlLocationCityName(locJson),
+      location_state_name: mlLocationStateName(locJson),
       updated_at: conta?.updated_at ?? null,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {

@@ -13,6 +13,7 @@ export const CLIENT_MENU_ROUTES: Record<string, string> = {
   "/redes-sociais": "redes-sociais",
   "/whatsapp-painel": "whatsapp",
   "/configuracoes": "configuracoes",
+  "/configuracoes/integracoes": "configuracoes",
   "/pj/listas-contatos": "whatsapp",
   "/pj/whatsapp-automacao": "whatsapp",
   "/whatsapp": "whatsapp",

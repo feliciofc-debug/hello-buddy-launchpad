@@ -6,7 +6,7 @@ import {
   mlClientId,
   mlClientSecret,
 } from "../_shared/ml-config.ts";
-import { parseMlUserLocation } from "../_shared/ml-location.ts";
+import { mlLocationToPersistAfterOAuth, parseMlUserLocation } from "../_shared/ml-location.ts";
 import { isMlOAuthStateExpired, mlOAuthStateExpiryCutoffIso } from "../_shared/ml-oauth-state.ts";
 import { saveMlContaTokens } from "../_shared/ml-token.ts";
 
@@ -88,10 +88,15 @@ Deno.serve(async (req) => {
     const detailRes = await fetch(`${ML_API_BASE}/users/${mlUserId}`, {
       headers: { Authorization: `Bearer ${token.access_token}` },
     });
-    let loc = parseMlUserLocation(me as Record<string, unknown>);
+    let profileLoc = parseMlUserLocation(me as Record<string, unknown>);
     if (detailRes.ok) {
-      loc = parseMlUserLocation(await detailRes.json()) ?? loc;
+      profileLoc = parseMlUserLocation(await detailRes.json()) ?? profileLoc;
     }
+    const { data: cfgRow } = await admin.from("empresa_config")
+      .select("ml_location_json")
+      .eq("user_id", stateRow.user_id)
+      .maybeSingle();
+    const loc = mlLocationToPersistAfterOAuth(cfgRow?.ml_location_json, profileLoc);
     if (loc) {
       await admin.from("empresa_config").update({ ml_location_json: loc }).eq("user_id", stateRow.user_id);
     }
