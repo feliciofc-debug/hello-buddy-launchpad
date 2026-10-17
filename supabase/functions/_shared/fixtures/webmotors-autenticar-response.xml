@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <autenticarResponse xmlns="www.webmotors.com.br/wsLoginSistemaRevendedor">
+      <autenticarResult>
+        <HashAutenticacao>abc123hash</HashAutenticacao>
+        <CodigoRetorno>0</CodigoRetorno>
+      </autenticarResult>
+    </autenticarResponse>
+  </soap:Body>
+</soap:Envelope>
