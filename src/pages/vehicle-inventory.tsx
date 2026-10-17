@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   CarFront,
@@ -51,6 +51,9 @@ import { snapshotInputFiles } from "@/lib/file-input-snapshot";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import type { PublishableItem } from "@/lib/publishable-item";
+import { MlConnectPanel } from "@/components/ml/MlConnectPanel";
+import { MlQuestionsPanel } from "@/components/ml/MlQuestionsPanel";
+import { MlVehicleActions, type VeiculoPortalMl } from "@/components/ml/MlVehicleActions";
 
 type Vehicle = Database["public"]["Tables"]["veiculos_estoque"]["Row"];
 type VehicleStatus = "disponivel" | "reservado" | "vendido";
@@ -230,6 +233,7 @@ async function getVehicleSessionUser() {
 
 export default function VehicleInventory() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -253,6 +257,31 @@ export default function VehicleInventory() {
   const [textosOpen, setTextosOpen] = useState(false);
   const [linkedinOpen, setLinkedinOpen] = useState(false);
   const [storyOpen, setStoryOpen] = useState(false);
+  const [mlConnected, setMlConnected] = useState(false);
+  const [mlPortals, setMlPortals] = useState<Record<string, VeiculoPortalMl>>({});
+
+  const loadMlMeta = useCallback(async () => {
+    const { data: st } = await supabase.functions.invoke("ml-status");
+    setMlConnected(!!st?.connected);
+    const { data: portals } = await supabase
+      .from("veiculos_portais" as "veiculos_estoque")
+      .select("veiculo_id, status, permalink, last_error")
+      .eq("portal", "mercadolivre");
+    const map: Record<string, VeiculoPortalMl> = {};
+    for (const row of (portals ?? []) as Array<{
+      veiculo_id: string;
+      status: string;
+      permalink: string | null;
+      last_error: string | null;
+    }>) {
+      map[row.veiculo_id] = {
+        status: row.status,
+        permalink: row.permalink,
+        last_error: row.last_error,
+      };
+    }
+    setMlPortals(map);
+  }, []);
 
   const loadVehicles = useCallback(async () => {
     setLoading(true);
@@ -278,12 +307,25 @@ export default function VehicleInventory() {
     } else {
       setVehicles(data || []);
     }
+    await loadMlMeta();
     setLoading(false);
-  }, [navigate]);
+  }, [loadMlMeta, navigate]);
 
   useEffect(() => {
     void loadVehicles();
   }, [loadVehicles]);
+
+  useEffect(() => {
+    const ml = searchParams.get("ml");
+    if (!ml) return;
+    if (ml === "conectado") toast.success("Mercado Livre conectado.");
+    else if (ml === "erro") {
+      toast.error(`Mercado Livre: ${searchParams.get("motivo") ?? "erro"}`);
+    }
+    searchParams.delete("ml");
+    searchParams.delete("motivo");
+    setSearchParams(searchParams, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const brands = useMemo(
     () => [...new Set(vehicles.map((vehicle) => vehicle.marca))].sort(),
@@ -386,6 +428,12 @@ export default function VehicleInventory() {
     toast.success(editing ? "Veículo atualizado." : "Veículo adicionado.");
     setFormOpen(false);
     await loadVehicles();
+    if (editing?.id && mlPortals[editing.id]) {
+      await supabase.functions.invoke("ml-vehicle-sync", {
+        body: { veiculo_id: editing.id },
+      });
+      await loadMlMeta();
+    }
   };
 
   const uploadVehiclePhotos = async (files: File[]) => {
@@ -569,6 +617,7 @@ export default function VehicleInventory() {
       </header>
 
       <main className="container mx-auto space-y-6 px-4 py-8">
+        <MlConnectPanel />
         <Card>
           <CardContent className="grid gap-4 p-4 md:grid-cols-3">
             <div>
@@ -716,6 +765,12 @@ export default function VehicleInventory() {
                         Instagram
                       </Button>
                     </div>
+                    <MlVehicleActions
+                      veiculoId={vehicle.id}
+                      portal={mlPortals[vehicle.id] ?? null}
+                      mlConnected={mlConnected}
+                      onChanged={() => void loadMlMeta()}
+                    />
                     <Button
                       size="sm"
                       variant="outline"
@@ -775,6 +830,8 @@ export default function VehicleInventory() {
             ))}
           </div>
         )}
+
+        <MlQuestionsPanel />
       </main>
 
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
