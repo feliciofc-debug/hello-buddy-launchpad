@@ -39,6 +39,11 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { GestaoMoneyInput } from "@/components/gestao/lucro/GestaoMoneyInput.tsx";
 import { parseGestaoMoneyField } from "@/lib/gestao-money.ts";
+import { loadGestaoVendedores, loadComissaoRegra, type GestaoVendedor } from "@/lib/gestao-equipe-load.ts";
+import { calcGestaoComissao } from "../../../../supabase/functions/_shared/gestao-comissao-calc.ts";
+import { comissaoLucroBase } from "@/lib/gestao-comissao-lucro.ts";
+import { GestaoVendaRaioXPanel } from "@/components/gestao/lucro/GestaoVendaRaioXPanel.tsx";
+import { syncComissaoAfterVenda } from "@/lib/gestao-comissao-client.ts";
 
 type Props = {
   open: boolean;
@@ -54,6 +59,7 @@ function origemLabel(o: string): string {
     whatsapp_texto: "WhatsApp (texto)",
     whatsapp_audio: "WhatsApp (áudio)",
     whatsapp_foto: "WhatsApp (foto)",
+    automatica: "Automática (comissão)",
   };
   return map[o] ?? o;
 }
@@ -69,6 +75,16 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
     categoria: "outros",
     descricao: "",
   });
+  const [vendedores, setVendedores] = useState<GestaoVendedor[]>([]);
+  const [vendedorId, setVendedorId] = useState<string>("");
+  const [comissaoConfirmOpen, setComissaoConfirmOpen] = useState(false);
+  const [comissaoPreview, setComissaoPreview] = useState(0);
+  const [comissaoOverride, setComissaoOverride] = useState("");
+
+  useEffect(() => {
+    if (!userId) return;
+    void loadGestaoVendedores(userId).then(setVendedores);
+  }, [userId]);
 
   useEffect(() => {
     if (!veiculo) return;
@@ -85,6 +101,7 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
       forma: "",
       marcar: false,
     });
+    setVendedorId(veiculo.vendedor_id ?? "");
   }, [veiculo]);
 
   const saveCompra = useCallback(async () => {
@@ -158,21 +175,55 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
     onSaved();
   };
 
-  const saveVenda = async () => {
+  const prepareVenda = async () => {
+    if (!veiculo) return;
+    const valor = parseGestaoMoneyField(venda.valor);
+    if (valor == null) {
+      toast.error("Informe o valor de venda.");
+      return;
+    }
+    if (vendedorId) {
+      const regra = await loadComissaoRegra(userId, vendedorId);
+      const { lucroLiquido, margemPct } = comissaoLucroBase({
+        valorCompra: veiculo.valorCompra,
+        valorVenda: valor,
+        despesas: veiculo.despesas.map((d) => ({
+          valor: Number(d.valor),
+          categoria: d.categoria,
+          origem_lancamento: d.origem_lancamento,
+        })),
+      });
+      const prev = calcGestaoComissao({
+        valorVenda: valor,
+        lucroLiquido,
+        margemPct,
+        regra,
+      });
+      setComissaoPreview(prev.total);
+      setComissaoOverride(String(prev.total));
+      setComissaoConfirmOpen(true);
+      return;
+    }
+    await commitVenda(null);
+  };
+
+  const commitVenda = async (overrideComissao: number | null) => {
     if (!veiculo) return;
     setBusy(true);
     const valor = parseGestaoMoneyField(venda.valor);
     if (valor == null) {
-      toast.error("Informe o valor de venda.");
       setBusy(false);
+      toast.error("Valor inválido.");
       return;
     }
+    const vend = vendedores.find((x) => x.id === vendedorId);
     const { error } = await supabase.from("veiculo_venda" as "veiculos_estoque").upsert({
       user_id: userId,
       veiculo_id: veiculo.id,
       valor_venda: valor,
       data_venda: venda.data,
-      vendedor: venda.vendedor.trim() || null,
+      vendedor: vend?.nome ?? (venda.vendedor.trim() || null),
+      vendedor_id: vendedorId || null,
       forma_pagamento: venda.forma.trim() || null,
       marcou_vendido: venda.marcar,
     }, { onConflict: "user_id,veiculo_id" });
@@ -187,8 +238,22 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
         vendido_at: new Date().toISOString(),
       }).eq("id", veiculo.id);
     }
+    const comTotal = await syncComissaoAfterVenda({
+      userId,
+      veiculoId: veiculo.id,
+      vendedorId: vendedorId || null,
+      valorVenda: valor,
+      dataVenda: venda.data,
+      valorComissaoOverride: overrideComissao,
+      statusVeiculo: venda.marcar ? "vendido" : veiculo.status,
+    });
     setBusy(false);
-    toast.success("Venda registrada.");
+    setComissaoConfirmOpen(false);
+    toast.success(
+      comTotal > 0
+        ? `Venda registrada. Comissão ${formatGestaoMoney(comTotal)} lançada no carro.`
+        : "Venda registrada.",
+    );
     onSaved();
   };
 
@@ -238,6 +303,17 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
                 <p className="font-semibold">{formatGestaoMoney(lucro.totalDespesas)}</p>
               </div>
             </div>
+
+            {lucro.vendido && (
+              <GestaoVendaRaioXPanel
+                valorVenda={veiculo.valorVenda}
+                valorCompra={veiculo.valorCompra}
+                despesas={veiculo.despesas.map((d) => ({
+                  valor: Number(d.valor),
+                  categoria: d.categoria,
+                }))}
+              />
+            )}
 
             <section className="space-y-2">
               <h3 className="text-sm font-semibold">Compra</h3>
@@ -323,11 +399,16 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
                 value={venda.data}
                 onChange={(e) => setVenda({ ...venda, data: e.target.value })}
               />
-              <Input
-                placeholder="Vendedor"
-                value={venda.vendedor}
-                onChange={(e) => setVenda({ ...venda, vendedor: e.target.value })}
-              />
+              <Label className="text-xs">Vendedor</Label>
+              <Select value={vendedorId || "none"} onValueChange={(v) => setVendedorId(v === "none" ? "" : v)}>
+                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sem vendedor</SelectItem>
+                  {vendedores.filter((v) => v.ativo).map((v) => (
+                    <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
@@ -336,7 +417,7 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
                 />
                 Marcar como vendido no estoque
               </label>
-              <Button size="sm" disabled={busy} onClick={() => void saveVenda()}>
+              <Button size="sm" disabled={busy} onClick={() => void prepareVenda()}>
                 Registrar venda
               </Button>
             </section>
@@ -348,6 +429,35 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
           )}
         </SheetContent>
       </Sheet>
+
+      <AlertDialog open={comissaoConfirmOpen} onOpenChange={setComissaoConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar comissão</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                <p>
+                  Comissão calculada: <strong>{formatGestaoMoney(comissaoPreview)}</strong>
+                </p>
+                <p>Será lançada automaticamente como despesa do carro (categoria comissão).</p>
+                <GestaoMoneyInput
+                  label="Ajustar valor (opcional)"
+                  value={comissaoOverride}
+                  onChange={setComissaoOverride}
+                />
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => void commitVenda(parseGestaoMoneyField(comissaoOverride) ?? comissaoPreview)}
+            >
+              Confirmar venda
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
         <AlertDialogContent>

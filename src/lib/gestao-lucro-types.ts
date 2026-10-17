@@ -35,6 +35,7 @@ export type GestaoVeiculoEnriched = GestaoVeiculoBase & {
   valorVenda: number | null;
   dataVenda: string | null;
   vendedor: string | null;
+  vendedor_id: string | null;
   despesas: GestaoDespesaRow[];
   lucro: GestaoLucroComputed;
 };
