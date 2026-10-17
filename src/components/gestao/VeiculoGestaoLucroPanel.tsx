@@ -224,7 +224,10 @@ export function VeiculoGestaoLucroPanel(props: Props) {
 
       <div className="grid gap-3 rounded-lg border p-3 sm:grid-cols-2">
         <div className="sm:col-span-2 text-xs font-medium text-muted-foreground">Resultado</div>
-        <Metric label="Investido" value={formatGestaoMoney(lucro.investido)} />
+        <Metric
+          label="Investido"
+          value={lucro.custoCompraPendente ? "Custo pendente" : formatGestaoMoney(lucro.investido)}
+        />
         {lucro.vendido ? (
           <>
             <Metric label="Lucro líquido" value={formatGestaoMoney(lucro.lucroLiquido)} />

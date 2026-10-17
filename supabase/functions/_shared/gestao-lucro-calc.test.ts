@@ -32,3 +32,19 @@ Deno.test("nao vendido: lucro projetado com preco anunciado", () => {
 Deno.test("placaFinalLabel ultimos 4", () => {
   assertEquals(placaFinalLabel("ABC-1D23"), "1D23");
 });
+
+Deno.test("sem valor de compra: custo pendente, sem investido nem lucro projetado", () => {
+  const r = calcGestaoLucro({
+    valorCompra: null,
+    despesas: [{ valor: 2000 }],
+    valorVenda: null,
+    precoAnunciado: 90000,
+    dataCompra: null,
+    dataVenda: null,
+    statusVeiculo: "disponivel",
+  });
+  assertEquals(r.custoCompraPendente, true);
+  assertEquals(r.investido, null);
+  assertEquals(r.lucroProjetado, null);
+  assertEquals(r.totalDespesas, 2000);
+});

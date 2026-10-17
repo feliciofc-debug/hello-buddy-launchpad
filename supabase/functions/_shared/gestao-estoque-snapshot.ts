@@ -17,6 +17,11 @@ export type GestaoEstoqueStatusSlice = {
 
 export type GestaoEstoqueIdadeFaixa = "0-30" | "31-60" | "61-90" | "90+";
 
+export type GestaoEstoqueCustoPendente = {
+  quantidade: number;
+  valorAnunciado: number;
+};
+
 export type GestaoEstoqueSnapshot = {
   totais: {
     quantidade: number;
@@ -24,6 +29,7 @@ export type GestaoEstoqueSnapshot = {
     valorCusto: number;
     lucroProjetado: number;
   };
+  custoPendente: GestaoEstoqueCustoPendente;
   porStatus: {
     disponivel: GestaoEstoqueStatusSlice;
     reservado: GestaoEstoqueStatusSlice;
@@ -73,8 +79,13 @@ export function gestaoEstoqueIdadeFaixa(days: number): GestaoEstoqueIdadeFaixa {
   return "90+";
 }
 
+function hasCompra(v: GestaoEstoqueVeiculoInput): boolean {
+  return v.valorCompra != null;
+}
+
 function investido(v: GestaoEstoqueVeiculoInput): number {
-  return (v.valorCompra ?? 0) + (v.despesasTotal ?? 0);
+  if (!hasCompra(v)) return 0;
+  return (v.valorCompra as number) + (v.despesasTotal ?? 0);
 }
 
 function venda(v: GestaoEstoqueVeiculoInput): number {
@@ -101,12 +112,19 @@ export function buildGestaoEstoqueSnapshot(
 
   let totalVenda = 0;
   let totalCusto = 0;
+  let pendenteQtd = 0;
+  let pendenteAnunciado = 0;
 
   for (const v of active) {
     const vv = venda(v);
+    const pending = !hasCompra(v);
+    if (pending) {
+      pendenteQtd += 1;
+      pendenteAnunciado += vv;
+    }
     const cc = investido(v);
     totalVenda += vv;
-    totalCusto += cc;
+    if (!pending) totalCusto += cc;
 
     const statusKey = v.status === "reservado" ? "reservado" : "disponivel";
     const st = porStatus[statusKey];
@@ -136,7 +154,11 @@ export function buildGestaoEstoqueSnapshot(
       quantidade: active.length,
       valorVenda: totalVenda,
       valorCusto: totalCusto,
-      lucroProjetado: totalVenda - totalCusto,
+      lucroProjetado: totalVenda - totalCusto - pendenteAnunciado,
+    },
+    custoPendente: {
+      quantidade: pendenteQtd,
+      valorAnunciado: pendenteAnunciado,
     },
     porStatus,
     porIdade: FAIXAS.map((faixa) => {

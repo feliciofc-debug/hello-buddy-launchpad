@@ -12,13 +12,15 @@ export type GestaoLucroInput = {
 
 export type GestaoLucroResult = {
   totalDespesas: number;
-  investido: number;
+  /** null quando falta valor de compra (custo pendente) */
+  investido: number | null;
   lucroBruto: number | null;
   lucroLiquido: number | null;
   margemPct: number | null;
   diasEstoque: number | null;
   lucroProjetado: number | null;
   vendido: boolean;
+  custoCompraPendente: boolean;
 };
 
 function sumDespesas(despesas: GestaoDespesaLine[]): number {
@@ -34,9 +36,10 @@ function daysBetween(start: string, end: string): number | null {
 }
 
 export function calcGestaoLucro(input: GestaoLucroInput): GestaoLucroResult {
+  const custoCompraPendente = input.valorCompra == null;
   const compra = input.valorCompra ?? 0;
   const totalDespesas = sumDespesas(input.despesas);
-  const investido = compra + totalDespesas;
+  const investido = custoCompraPendente ? null : compra + totalDespesas;
   const vendido = input.statusVeiculo === "vendido" || input.valorVenda != null;
   const venda = input.valorVenda;
 
@@ -45,12 +48,16 @@ export function calcGestaoLucro(input: GestaoLucroInput): GestaoLucroResult {
   let margemPct: number | null = null;
   let lucroProjetado: number | null = null;
 
-  if (venda != null && venda > 0) {
+  if (!custoCompraPendente && venda != null && venda > 0) {
     lucroBruto = venda - compra;
-    lucroLiquido = venda - investido;
+    lucroLiquido = venda - (investido as number);
     margemPct = (lucroLiquido / venda) * 100;
-  } else if (input.precoAnunciado != null && input.precoAnunciado > 0) {
-    lucroProjetado = input.precoAnunciado - investido;
+  } else if (
+    !custoCompraPendente &&
+    input.precoAnunciado != null &&
+    input.precoAnunciado > 0
+  ) {
+    lucroProjetado = input.precoAnunciado - (investido as number);
   }
 
   const endDate = input.dataVenda ?? new Date().toISOString().slice(0, 10);
@@ -67,6 +74,7 @@ export function calcGestaoLucro(input: GestaoLucroInput): GestaoLucroResult {
     diasEstoque,
     lucroProjetado,
     vendido,
+    custoCompraPendente,
   };
 }
 

@@ -97,9 +97,10 @@ async function fetchLucroVeiculo(
       lucro.margemPct?.toFixed(1) ?? "—"
     }%).`;
   }
-  return `${label}: lucro projetado ${formatGestaoMoney(lucro.lucroProjetado)} (investido ${
-    formatBrl(lucro.investido)
-  }).`;
+  const investidoTxt = lucro.investido != null
+    ? formatBrl(lucro.investido)
+    : "custo pendente";
+  return `${label}: lucro projetado ${formatGestaoMoney(lucro.lucroProjetado)} (investido ${investidoTxt}).`;
 }
 
 async function fetchDespesasVeiculo(

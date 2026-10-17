@@ -21,7 +21,7 @@ type Props = {
 };
 
 export function EstoqueHojeCard({ snapshot, showDetailLink, compact }: Props) {
-  const { totais, porStatus, porIdade, porMarca } = snapshot;
+  const { totais, porStatus, porIdade, porMarca, custoPendente } = snapshot;
   const topMarcas = porMarca.slice(0, 6);
   const maxMarcaVenda = topMarcas[0]?.valorVenda ?? 1;
 
@@ -65,6 +65,14 @@ export function EstoqueHojeCard({ snapshot, showDetailLink, compact }: Props) {
             highlight
           />
         </div>
+
+        {custoPendente.quantidade > 0 && (
+          <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+            {custoPendente.quantidade} carro(s) com custo pendente (
+            {formatGestaoMoney(custoPendente.valorAnunciado)} anunciados) — não entram no
+            custo investido nem no lucro projetado até informar a compra.
+          </p>
+        )}
 
         {!compact && (
           <>

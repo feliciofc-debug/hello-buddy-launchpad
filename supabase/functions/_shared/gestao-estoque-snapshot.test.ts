@@ -50,3 +50,32 @@ Deno.test("snapshot separa disponível e reservado e lucro projetado", () => {
   assertEquals(snap.porStatus.reservado.valorVenda, 100_000);
   assertEquals(snap.porMarca[0].marca, "BMW");
 });
+
+Deno.test("custo pendente não entra no custo nem no lucro projetado", () => {
+  const snap = buildGestaoEstoqueSnapshot([
+    {
+      id: "1",
+      marca: "VW",
+      preco: 80_000,
+      status: "disponivel",
+      dataCompra: null,
+      valorCompra: null,
+      despesasTotal: 3_000,
+    },
+    {
+      id: "2",
+      marca: "Honda",
+      preco: 120_000,
+      status: "disponivel",
+      dataCompra: "2026-01-01",
+      valorCompra: 90_000,
+      despesasTotal: 0,
+    },
+  ], Date.parse("2026-02-01"));
+
+  assertEquals(snap.custoPendente.quantidade, 1);
+  assertEquals(snap.custoPendente.valorAnunciado, 80_000);
+  assertEquals(snap.totais.valorVenda, 200_000);
+  assertEquals(snap.totais.valorCusto, 90_000);
+  assertEquals(snap.totais.lucroProjetado, 30_000);
+});
