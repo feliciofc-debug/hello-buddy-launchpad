@@ -1,6 +1,7 @@
 export type VeiculoEstoqueRow = {
   id: string;
   user_id: string;
+  segmento?: string | null;
   marca: string;
   modelo: string;
   versao: string | null;
@@ -11,6 +12,8 @@ export type VeiculoEstoqueRow = {
   combustivel: string | null;
   cambio: string | null;
   portas: number | null;
+  cilindrada_cc?: number | null;
+  estilo_moto?: string | null;
   cor: string | null;
   descricao: string | null;
   fotos: string[];

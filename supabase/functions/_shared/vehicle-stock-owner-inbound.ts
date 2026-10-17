@@ -12,9 +12,20 @@ import {
 export type OwnerStockIntent =
   | "vitrine"
   | "resumo"
+  | "resumo_moto"
   | "busca"
   | "vendidos"
   | "none";
+
+export type OwnerStockSegmentFilter = "carro" | "moto" | null;
+
+const RESUMO_MOTO_PATTERNS = [
+  /\bquantas motos\b/,
+  /\bquais motos tenho\b/,
+  /\bquantidade de motos\b/,
+  /\bestoque de motos\b/,
+  /\bmeu estoque de motos\b/,
+];
 
 function normalize(text: string): string {
   return String(text || "")
@@ -88,6 +99,7 @@ export function classifyOwnerStockIntent(
   if (!value) return "none";
   if (ownerStockBlockedByActionVerb(text)) return "none";
   if (VENDIDOS_PATTERNS.some((re) => re.test(value))) return "vendidos";
+  if (RESUMO_MOTO_PATTERNS.some((re) => re.test(value))) return "resumo_moto";
   if (RESUMO_PATTERNS.some((re) => re.test(value))) return "resumo";
   if (isOwnerVitrineTextRequest(text, flags)) return "vitrine";
   if (hasExplicitOwnerStockSearchContext(value)) return "busca";
@@ -129,18 +141,30 @@ export function shouldDeferOwnerStockShortcut(input: {
   return false;
 }
 
+export function ownerStockSegmentFilter(text: string): OwnerStockSegmentFilter {
+  const value = normalize(text);
+  if (RESUMO_MOTO_PATTERNS.some((re) => re.test(value))) return "moto";
+  if (/\bmotos?\b/.test(value) && !/\bcarros?\b/.test(value)) return "moto";
+  if (/\bcarros?\b/.test(value) && !/\bmotos?\b/.test(value)) return "carro";
+  return null;
+}
+
 export function formatOwnerStockLine(v: VeiculoVitrineRow): string {
   const km = v.km != null ? `${v.km.toLocaleString("pt-BR")} km` : "— km";
   const preco = formatPrecoBrl(v.preco);
   const status = String(v.status || "disponivel");
-  return `${vehicleDisplayTitle(v)} · ${formatAno(v)} · ${km} · ${preco} · ${status}`;
+  const seg = v.segmento === "moto" ? "moto" : "carro";
+  return `${vehicleDisplayTitle(v)} · ${formatAno(v)} · ${km} · ${preco} · ${status} · ${seg}`;
 }
 
 export function formatOwnerStockSummary(
   disponiveis: VeiculoVitrineRow[],
+  label = "Estoque",
 ): string {
   if (!disponiveis.length) {
-    return "Você não tem veículos disponíveis no estoque agora.";
+    return label === "Motos"
+      ? "Você não tem motos disponíveis no estoque agora."
+      : "Você não tem veículos disponíveis no estoque agora.";
   }
   const byMarca = new Map<string, number>();
   let minP: number | null = null;
@@ -162,7 +186,7 @@ export function formatOwnerStockSummary(
     ? `${formatPrecoBrl(minP)} – ${formatPrecoBrl(maxP)}`
     : "sem preços cadastrados";
   return [
-    `📦 Estoque: ${disponiveis.length} disponível(is).`,
+    `📦 ${label}: ${disponiveis.length} disponível(is).`,
     `Marcas: ${marcas}.`,
     `Faixa de preço: ${faixa}.`,
   ].join("\n");
@@ -176,9 +200,9 @@ export function formatOwnerVendidosCount(count: number): string {
 function searchTokens(text: string): string[] {
   const stop = new Set([
     "tenho", "tem", "quanto", "esta", "está", "preco", "preço", "valor",
-    "custa", "disponivel", "disponível", "carro", "carros", "veiculo",
-    "veículo", "modelo", "marca", "o", "a", "os", "as", "um", "uma", "no",
-    "na", "meu", "minha", "estoque",
+    "custa", "disponivel", "disponível", "carro", "carros", "moto", "motos",
+    "veiculo", "veículo", "modelo", "marca", "o", "a", "os", "as", "um", "uma",
+    "no", "na", "meu", "minha", "estoque",
   ]);
   return normalize(text)
     .split(" ")

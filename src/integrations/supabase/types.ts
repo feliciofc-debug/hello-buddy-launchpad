@@ -8879,12 +8879,14 @@ export type Database = {
           blindado: boolean
           cambio: string | null
           caracteristicas: string[]
+          cilindrada_cc: number | null
           codigo_origem: string | null
           combustivel: string | null
           cor: string | null
           created_at: string
           descricao: string | null
           destaque: boolean
+          estilo_moto: string | null
           fotos: string[]
           id: string
           incluir_cta_whatsapp: boolean | null
@@ -8896,8 +8898,11 @@ export type Database = {
           nivel_blindagem: string | null
           opcionais: string[]
           origem: string | null
+          partida: string | null
           portas: number | null
           preco: number | null
+          refrigeracao: string | null
+          segmento: string
           status: string
           updated_at: string
           url_origem: string | null
@@ -8912,6 +8917,7 @@ export type Database = {
           blindado?: boolean
           cambio?: string | null
           caracteristicas?: string[]
+          cilindrada_cc?: number | null
           codigo_origem?: string | null
           combustivel?: string | null
           cor?: string | null
@@ -8919,6 +8925,7 @@ export type Database = {
           descricao?: string | null
           destaque?: boolean
           engajamento_estilos?: string[] | null
+          estilo_moto?: string | null
           fotos?: string[]
           id?: string
           incluir_cta_whatsapp?: boolean | null
@@ -8929,8 +8936,11 @@ export type Database = {
           nivel_blindagem?: string | null
           opcionais?: string[]
           origem?: string | null
+          partida?: string | null
           portas?: number | null
           preco?: number | null
+          refrigeracao?: string | null
+          segmento?: string
           status?: string
           updated_at?: string
           url_origem?: string | null
@@ -8945,6 +8955,7 @@ export type Database = {
           blindado?: boolean
           cambio?: string | null
           caracteristicas?: string[]
+          cilindrada_cc?: number | null
           codigo_origem?: string | null
           combustivel?: string | null
           cor?: string | null
@@ -8952,6 +8963,7 @@ export type Database = {
           descricao?: string | null
           destaque?: boolean
           engajamento_estilos?: string[] | null
+          estilo_moto?: string | null
           fotos?: string[]
           id?: string
           incluir_cta_whatsapp?: boolean | null
@@ -8962,8 +8974,11 @@ export type Database = {
           nivel_blindagem?: string | null
           opcionais?: string[]
           origem?: string | null
+          partida?: string | null
           portas?: number | null
           preco?: number | null
+          refrigeracao?: string | null
+          segmento?: string
           status?: string
           updated_at?: string
           url_origem?: string | null

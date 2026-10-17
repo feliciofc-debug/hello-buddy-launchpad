@@ -84,6 +84,11 @@ function interesseDeps(): {
     loadPrecosDisponiveis: async () => [],
     loadVeiculosByMarca: async () => [],
     loadVeiculosByFaixa: async () => [],
+    loadSegmentoCounts: async () => ({ carros: 1, motos: 0 }),
+    loadEstilosMoto: async () => [],
+    loadPrecosMotosDisponiveis: async () => [],
+    loadVeiculosByEstilo: async () => [],
+    loadVeiculosByFaixaMoto: async () => [],
     loadVeiculoById: async (id) => (id === "v-int" ? vehicle : null),
     sendText: async (text) => {
       messages.push(text);

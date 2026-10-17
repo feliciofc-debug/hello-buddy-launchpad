@@ -18,6 +18,7 @@ import {
   registerVitrineRecadoIdempotency,
   vitrineRecadoJaEnviado,
   buildVitrineRecadoIdempotencyKey,
+  isExplicitMotoShowcaseRequest,
   isExplicitVehicleShowcaseRequest,
   isVitrineInteractiveId,
   marcaToSlug,
@@ -32,6 +33,12 @@ Deno.test("shouldOfferVehicleShowcase — revenda ou demo", () => {
   assert(shouldOfferVehicleShowcase({ segmento: "revenda de veículos", vitrine_veiculos_demo: false }));
   assert(shouldOfferVehicleShowcase({ segmento: "restaurante", vitrine_veiculos_demo: true }));
   assertFalse(shouldOfferVehicleShowcase({ segmento: "restaurante", vitrine_veiculos_demo: false }));
+});
+
+Deno.test("intent explícita de motos", () => {
+  const revenda = { segmento: "revenda de veículos", vitrine_veiculos_demo: false };
+  assert(isExplicitMotoShowcaseRequest("tem moto?", revenda));
+  assert(isExplicitVehicleShowcaseRequest("ver motos", revenda));
 });
 
 Deno.test("intent explícita de estoque", () => {

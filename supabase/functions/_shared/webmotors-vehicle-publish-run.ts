@@ -1,7 +1,14 @@
 import { loadCatalogBundleForVehicle } from "./webmotors-catalog.ts";
+import { loadMotoCatalogBundleForVehicle } from "./webmotors-moto-catalog.ts";
 import { webmotorsHashForUser } from "./webmotors-conta.ts";
 import { wmIncluirCarro, wmIncluirFotoUrl } from "./webmotors-car-api.ts";
+import { wmIncluirFotoMotoBase64, wmIncluirMoto } from "./webmotors-moto-api.ts";
 import { assertWebmotorsPayloadPublicOnly, mapVehicleToWebmotorsCar } from "./webmotors-map-car.ts";
+import {
+  assertWebmotorsMotoPayloadPublicOnly,
+  mapVehicleToWebmotorsMoto,
+} from "./webmotors-map-moto.ts";
+import { fetchPublicImageAsBase64 } from "./webmotors-photo-base64.ts";
 import type { VeiculoEstoqueRow } from "./webmotors-vehicle-types.ts";
 
 const PHOTO_PARTIAL_ERROR =
@@ -39,6 +46,9 @@ export async function runWebmotorsVehiclePublish(
   if (vErr || !vehicle) return { ok: false, error: "Veículo não encontrado" };
   if (vehicle.status === "vendido") {
     return { ok: false, error: "Veículo vendido. Remova manualmente da Webmotors se ainda estiver publicado." };
+  }
+  if (vehicle.segmento === "moto") {
+    return await runWebmotorsMotoPublish(sb, input, vehicle as VeiculoEstoqueRow);
   }
 
   const { data: portal } = await sb.from("veiculos_portais")
@@ -118,6 +128,129 @@ export async function runWebmotorsVehiclePublish(
     for (const url of fotos) {
       try {
         const codigoFoto = await api.incluirFotoUrl(ambiente, hash, created.codigoAnuncio, url);
+        await sb.from("webmotors_foto_vinculo").upsert({
+          user_id: input.userId,
+          veiculo_id: input.veiculoId,
+          url_amz: url,
+          codigo_foto_wm: codigoFoto,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "user_id,veiculo_id,url_amz" });
+      } catch {
+        photoFailed = true;
+      }
+    }
+
+    if (photoFailed) {
+      await sb.from("veiculos_portais").update({
+        status: "published",
+        last_error: PHOTO_PARTIAL_ERROR,
+        updated_at: new Date().toISOString(),
+      }).eq("user_id", input.userId).eq("veiculo_id", input.veiculoId).eq("portal", "webmotors");
+      return { ok: true, external_id, error: PHOTO_PARTIAL_ERROR };
+    }
+
+    return { ok: true, external_id };
+  } catch (e) {
+    await sb.from("veiculos_portais").upsert({
+      user_id: input.userId,
+      veiculo_id: input.veiculoId,
+      portal: "webmotors",
+      status: "error",
+      last_error: (e as Error).message,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "user_id,veiculo_id,portal" });
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+async function runWebmotorsMotoPublish(
+  sb: any,
+  input: { userId: string; veiculoId: string },
+  vehicle: VeiculoEstoqueRow,
+): Promise<{ ok: boolean; external_id?: string; error?: string; blocking?: unknown[] }> {
+  const { data: portal } = await sb.from("veiculos_portais")
+    .select("*")
+    .eq("user_id", input.userId)
+    .eq("veiculo_id", input.veiculoId)
+    .eq("portal", "webmotors")
+    .maybeSingle();
+  if (portal?.external_id && portal.status !== "closed") {
+    return {
+      ok: false,
+      error: "Anúncio já criado na Webmotors. Use Sincronizar para fotos e dados.",
+    };
+  }
+
+  const { data: mapRow } = await sb.from("webmotors_veiculo_map")
+    .select("*")
+    .eq("user_id", input.userId)
+    .eq("veiculo_id", input.veiculoId)
+    .maybeSingle();
+
+  let hash: string;
+  let ambiente: "homolog" | "producao";
+  let defaultModalidade: number | null;
+  try {
+    const auth = await webmotorsHashForUser(sb, input.userId);
+    hash = auth.hash;
+    ambiente = auth.ambiente;
+    defaultModalidade = auth.conta.default_codigo_modalidade;
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+
+  let catalog;
+  try {
+    catalog = await loadMotoCatalogBundleForVehicle(
+      sb,
+      ambiente,
+      hash,
+      vehicle,
+      mapRow,
+    );
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+
+  const mapped = mapVehicleToWebmotorsMoto({
+    vehicle,
+    manualMap: mapRow,
+    catalog,
+    defaultModalidade,
+  });
+  if (!mapped.ok) {
+    return { ok: false, blocking: mapped.blocking, error: "Complete os campos ou ajuste o de/para Webmotors." };
+  }
+  assertWebmotorsMotoPayloadPublicOnly(mapped.payload);
+
+  try {
+    const created = await wmIncluirMoto(ambiente, hash, mapped.payload);
+    const external_id = String(created.codigoAnuncio);
+
+    await sb.from("veiculos_portais").upsert({
+      user_id: input.userId,
+      veiculo_id: input.veiculoId,
+      portal: "webmotors",
+      external_id,
+      permalink: null,
+      category_id: String(mapped.payload.CodigoModalidade),
+      status: "published",
+      last_error: null,
+      last_synced_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "user_id,veiculo_id,portal" });
+
+    const fotos = (vehicle.fotos ?? []).filter(Boolean).slice(0, 20);
+    let photoFailed = false;
+    for (const url of fotos) {
+      try {
+        const b64 = await fetchPublicImageAsBase64(url);
+        const codigoFoto = await wmIncluirFotoMotoBase64(
+          ambiente,
+          hash,
+          created.codigoAnuncio,
+          b64,
+        );
         await sb.from("webmotors_foto_vinculo").upsert({
           user_id: input.userId,
           veiculo_id: input.veiculoId,

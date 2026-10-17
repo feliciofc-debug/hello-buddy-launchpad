@@ -1,4 +1,5 @@
 import {
+  ML_API_BASE,
   ML_DEFAULT_CAR_CATEGORY,
   ML_LISTING_TYPE_SILVER,
   ML_MAX_PICTURES_DEFAULT,
@@ -39,6 +40,7 @@ export function mapStockFieldToMlAttributeId(field: string): string | null {
     cambio: "TRANSMISSION",
     portas: "DOORS",
     cor: "COLOR",
+    cilindrada_cc: "ENGINE_DISPLACEMENT",
   };
   return m[field] ?? null;
 }
@@ -51,7 +53,7 @@ export function buildMlAttributes(
   blocking: Array<{ field: string; attribute_id: string; message: string; allowed?: string[] }>;
 } {
   const blocking: Array<{ field: string; attribute_id: string; message: string; allowed?: string[] }> = [];
-  const stockMap: Record<string, string | number | null> = {
+  const stockMap: Record<string, string | number | null | undefined> = {
     marca: v.marca,
     modelo: v.modelo,
     versao: v.versao,
@@ -61,6 +63,7 @@ export function buildMlAttributes(
     cambio: v.cambio,
     portas: v.portas,
     cor: v.cor,
+    cilindrada_cc: v.cilindrada_cc,
   };
 
   const required = attrs.filter((a) => a.tags?.required || a.tags?.catalog_required);
@@ -165,19 +168,55 @@ export function mapVehicleToMlItem(input: {
   return { ok: true, body, categoryId: input.categoryId };
 }
 
+async function mlCategoryPathLooksLikeMoto(categoryId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${ML_API_BASE}/categories/${categoryId}`);
+    if (!res.ok) return false;
+    const data = await res.json();
+    const path = (data?.path_from_root ?? [])
+      .map((p: { name?: string }) => String(p.name ?? ""))
+      .join(" ")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+    return /\bmotos?\b/.test(path) || /motocicleta/.test(path);
+  } catch {
+    return false;
+  }
+}
+
 export async function resolveMlCategoryId(
   accessToken: string,
   vehicle: VeiculoEstoqueRow,
 ): Promise<string> {
-  const q = encodeURIComponent(vehicleTitle(vehicle));
+  const isMoto = vehicle.segmento === "moto";
+  const title = vehicleTitle(vehicle);
+  const q = encodeURIComponent(
+    isMoto ? `${title} motocicleta` : title,
+  );
   const res = await fetch(
-    `https://api.mercadolibre.com/sites/${ML_SITE_ID}/domain_discovery/search?limit=1&q=${q}`,
+    `${ML_API_BASE}/sites/${ML_SITE_ID}/domain_discovery/search?limit=3&q=${q}`,
     { headers: { Authorization: `Bearer ${accessToken}` } },
   );
   if (res.ok) {
     const arr = await res.json();
-    const cat = arr?.[0]?.category_id;
-    if (cat) return String(cat);
+    for (const hit of arr ?? []) {
+      const cat = hit?.category_id;
+      if (!cat) continue;
+      if (isMoto) {
+        if (await mlCategoryPathLooksLikeMoto(String(cat))) return String(cat);
+      } else {
+        const moto = await mlCategoryPathLooksLikeMoto(String(cat));
+        if (!moto) return String(cat);
+      }
+    }
+    const first = arr?.[0]?.category_id;
+    if (first && !isMoto) return String(first);
+  }
+  if (isMoto) {
+    throw new Error(
+      "Não foi possível identificar a categoria de motos no Mercado Livre. Ajuste marca/modelo e tente de novo.",
+    );
   }
   return ML_DEFAULT_CAR_CATEGORY;
 }

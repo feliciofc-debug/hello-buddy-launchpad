@@ -11,11 +11,15 @@ import {
   buildVitrineRecadoIdempotencyKey,
   confirmacaoComNomeLoja,
   confirmacaoVisitaAgendada,
+  activeFaixasMotoFromCounts,
+  buildMotoShowcaseMenuSections,
+  countMotosByFaixa,
   countVehiclesByFaixa,
   registerVitrineRecadoIdempotency,
   vitrineRecadoJaEnviado,
   extractVitrineInteractiveId,
   FaixaPrecoId,
+  FaixaPrecoMotoId,
   formatCardBody,
   formatFichaElegante,
   isExplicitVehicleShowcaseRequest,
@@ -27,6 +31,7 @@ import {
   pendingFormExpired,
   pendingFormIsActive,
   PendingVitrineEstoque,
+  resolveShowcaseSegmentFromText,
   vitrineFormStepExpectsText,
   vitrineFinanciamentoStepExpectsText,
   normalizeVitrineText,
@@ -36,11 +41,13 @@ import {
   VehicleShowcaseTenantFlags,
   VeiculoVitrineRow,
   vitrineButtonId,
+  vitrineSegmentoFromPending,
   VITRINE_CAROUSEL_PAGE_SIZE,
   VITRINE_CAROUSEL_POST_DELAY_MS,
   VITRINE_ID_PREFIX,
   vehicleDisplayTitle,
   VitrineVisitaTurno,
+  VitrineSegmentoCounts,
 } from "./vehicle-stock-whatsapp.ts";
 import {
   advanceTrocaAfterPhoto,
@@ -118,6 +125,19 @@ export type ShowcaseTurnDeps = {
   ) => Promise<VeiculoVitrineRow[]>;
   loadVeiculosByFaixa: (
     faixa: FaixaPrecoId,
+    offset: number,
+    limit: number,
+  ) => Promise<VeiculoVitrineRow[]>;
+  loadSegmentoCounts: () => Promise<VitrineSegmentoCounts>;
+  loadEstilosMoto: () => Promise<string[]>;
+  loadPrecosMotosDisponiveis: () => Promise<number[]>;
+  loadVeiculosByEstilo: (
+    estilo: string,
+    offset: number,
+    limit: number,
+  ) => Promise<VeiculoVitrineRow[]>;
+  loadVeiculosByFaixaMoto: (
+    faixa: FaixaPrecoMotoId,
     offset: number,
     limit: number,
   ) => Promise<VeiculoVitrineRow[]>;
@@ -199,7 +219,7 @@ export type ShowcaseTurnOutput = {
 };
 
 const VEHICLE_SELECT =
-  "id,marca,modelo,versao,ano_fabricacao,ano_modelo,km,preco,cor,cambio,combustivel,portas,blindado,nivel_blindagem,opcionais,caracteristicas,descricao,fotos,status";
+  "id,segmento,marca,modelo,versao,ano_fabricacao,ano_modelo,km,preco,cor,cambio,combustivel,portas,cilindrada_cc,estilo_moto,partida,refrigeracao,blindado,nivel_blindagem,opcionais,caracteristicas,descricao,fotos,status";
 
 export { VEHICLE_SELECT };
 
@@ -496,20 +516,57 @@ export async function runVehicleStockShowcaseTurn(
   }
 
   if (explicit) {
-    return await openShowcaseMenu(input, 0);
+    return await openShowcaseEntry(input);
   }
 
   return { handled: false };
 }
 
-async function openShowcaseMenu(
+async function openShowcaseEntry(
+  input: ShowcaseTurnInput,
+): Promise<ShowcaseTurnOutput> {
+  const flags = await input.deps.loadTenantFlags();
+  const counts = await input.deps.loadSegmentoCounts();
+  const resolved = resolveShowcaseSegmentFromText({
+    text: input.userText,
+    flags,
+    counts,
+  });
+  if (resolved === null) {
+    await input.deps.sendText(
+      "No momento não temos veículos disponíveis no estoque. Posso ajudar em algo mais?",
+    );
+    await input.deps.savePending(null);
+    return { handled: true, replyPreview: "estoque_vazio" };
+  }
+  if (resolved === "escolher") {
+    await input.deps.savePending({
+      stage: "escolha_segmento",
+      offset: 0,
+      updated_at: new Date().toISOString(),
+    });
+    await input.deps.sendButtons(
+      "Temos carros e motos no estoque. O que você quer ver?",
+      [
+        { id: vitrineButtonId("segmento", "carro"), title: "Carros" },
+        { id: vitrineButtonId("segmento", "moto"), title: "Motos" },
+      ],
+    );
+    return { handled: true, replyPreview: "escolha_segmento" };
+  }
+  return resolved === "moto"
+    ? await openShowcaseMenuMoto(input, 0)
+    : await openShowcaseMenuCar(input, 0);
+}
+
+async function openShowcaseMenuCar(
   input: ShowcaseTurnInput,
   marcaOffset: number,
 ): Promise<ShowcaseTurnOutput> {
   const marcas = await input.deps.loadMarcas();
   if (!marcas.length) {
     await input.deps.sendText(
-      "No momento não temos veículos disponíveis no estoque. Posso ajudar em algo mais?",
+      "No momento não temos carros disponíveis no estoque. Posso ajudar em algo mais?",
     );
     await input.deps.savePending(null);
     return { handled: true, replyPreview: "estoque_vazio" };
@@ -523,16 +580,51 @@ async function openShowcaseMenu(
   });
   await input.deps.savePending({
     stage: "menu",
+    segmento_vitrine: "carro",
     offset: 0,
     marca_offset: marcaOffset,
     updated_at: new Date().toISOString(),
   });
   await input.deps.sendMenu(
-    "Como prefere explorar nosso estoque?",
+    "Como prefere explorar nosso estoque de carros?",
     sections,
     "Ver opções",
   );
-  return { handled: true, replyPreview: "menu" };
+  return { handled: true, replyPreview: "menu_carro" };
+}
+
+async function openShowcaseMenuMoto(
+  input: ShowcaseTurnInput,
+  estiloOffset: number,
+): Promise<ShowcaseTurnOutput> {
+  const estilos = await input.deps.loadEstilosMoto();
+  if (!estilos.length) {
+    await input.deps.sendText(
+      "No momento não temos motos disponíveis no estoque. Posso ajudar em algo mais?",
+    );
+    await input.deps.savePending(null);
+    return { handled: true, replyPreview: "estoque_moto_vazio" };
+  }
+  const precos = await input.deps.loadPrecosMotosDisponiveis();
+  const faixas = activeFaixasMotoFromCounts(countMotosByFaixa(precos));
+  const { sections } = buildMotoShowcaseMenuSections({
+    estilos,
+    estiloOffset,
+    faixasAtivas: faixas,
+  });
+  await input.deps.savePending({
+    stage: "menu",
+    segmento_vitrine: "moto",
+    offset: 0,
+    marca_offset: estiloOffset,
+    updated_at: new Date().toISOString(),
+  });
+  await input.deps.sendMenu(
+    "Como prefere explorar nossas motos?",
+    sections,
+    "Ver opções",
+  );
+  return { handled: true, replyPreview: "menu_moto" };
 }
 
 async function handleVitrineAction(input: ShowcaseTurnInput & {
@@ -566,12 +658,38 @@ async function handleVitrineAction(input: ShowcaseTurnInput & {
     action === "marcas" ||
     (action === "acao" && parts[0] === "inicio")
   ) {
-    return await openShowcaseMenu(input, 0);
+    return await reopenShowcaseMenu(input, 0);
+  }
+
+  if (action === "segmento" && parts[0] === "carro") {
+    return await openShowcaseMenuCar(input, 0);
+  }
+  if (action === "segmento" && parts[0] === "moto") {
+    return await openShowcaseMenuMoto(input, 0);
   }
 
   if (action === "menu_marcas" && parts[0] != null) {
     const offset = Number.parseInt(parts[0], 10) || 0;
-    return await openShowcaseMenu(input, offset);
+    return await reopenShowcaseMenu(input, offset);
+  }
+
+  if (action === "menu_estilos" && parts[0] != null) {
+    const offset = Number.parseInt(parts[0], 10) || 0;
+    return await openShowcaseMenuMoto(input, offset);
+  }
+
+  if (action === "estilo" && parts[0]) {
+    const estilo = parts[0];
+    return await sendEstiloCarousel(input, estilo, 0);
+  }
+
+  if (action === "faixa_moto" && parts[0]) {
+    const faixa = parts[0] as FaixaPrecoMotoId;
+    if (!["ate_50", "50_120", "acima_120"].includes(faixa)) {
+      await input.deps.sendText("Faixa inválida. Escolha outra opção no menu.");
+      return { handled: true };
+    }
+    return await sendFaixaMotoCarousel(input, faixa, 0);
   }
 
   if (action === "faixa" && parts[0]) {
@@ -595,8 +713,15 @@ async function handleVitrineAction(input: ShowcaseTurnInput & {
   if (action === "mais" && parts[0] && parts[1] != null) {
     const slugOrFaixa = parts[0];
     const offset = Number.parseInt(parts[1], 10) || 0;
+    if (["ate_50", "50_120", "acima_120"].includes(slugOrFaixa)) {
+      return await sendFaixaMotoCarousel(input, slugOrFaixa as FaixaPrecoMotoId, offset);
+    }
     if (["ate_300", "300_600", "acima_600"].includes(slugOrFaixa)) {
       return await sendFaixaCarousel(input, slugOrFaixa as FaixaPrecoId, offset);
+    }
+    const pendingSeg = vitrineSegmentoFromPending(input.deps.getPending());
+    if (pendingSeg === "moto") {
+      return await sendEstiloCarousel(input, slugOrFaixa, offset);
     }
     const marca = slugToMarcaCandidates(slugOrFaixa, marcas);
     if (!marca) {
@@ -1773,6 +1898,7 @@ async function sendMarcaCarousel(
     body,
     pending: {
       stage: "carrossel_marca",
+      segmento_vitrine: "carro",
       marca,
       filtro_tipo: "marca",
       offset,
@@ -1781,6 +1907,79 @@ async function sendMarcaCarousel(
     },
     maisIdSuffix: marcaToSlug(marca),
     emptyMessage: `Não há carros disponíveis da ${marca} no momento.`,
+  });
+}
+
+async function reopenShowcaseMenu(
+  input: ShowcaseTurnInput,
+  offset: number,
+): Promise<ShowcaseTurnOutput> {
+  const seg = vitrineSegmentoFromPending(input.deps.getPending());
+  return seg === "moto"
+    ? await openShowcaseMenuMoto(input, offset)
+    : await openShowcaseMenuCar(input, offset);
+}
+
+async function sendEstiloCarousel(
+  input: ShowcaseTurnInput,
+  estilo: string,
+  offset: number,
+): Promise<ShowcaseTurnOutput> {
+  const vehicles = await input.deps.loadVeiculosByEstilo(
+    estilo,
+    offset,
+    VITRINE_CAROUSEL_PAGE_SIZE,
+  );
+  const label = estilo.replace(/_/g, " ");
+  const body = offset > 0
+    ? `Mais motos ${label} (${offset + 1}–${offset + vehicles.length}):`
+    : `Motos ${label} disponíveis:`;
+
+  return deliverVehicleCarousel(input, {
+    vehicles,
+    body,
+    pending: {
+      stage: "carrossel_estilo",
+      segmento_vitrine: "moto",
+      estilo_moto: estilo,
+      filtro_tipo: "estilo",
+      offset,
+      marca_offset: input.deps.getPending()?.marca_offset ?? 0,
+      updated_at: new Date().toISOString(),
+    },
+    maisIdSuffix: estilo,
+    emptyMessage: `Não há motos do estilo ${label} no momento.`,
+  });
+}
+
+async function sendFaixaMotoCarousel(
+  input: ShowcaseTurnInput,
+  faixa: FaixaPrecoMotoId,
+  offset: number,
+): Promise<ShowcaseTurnOutput> {
+  const vehicles = await input.deps.loadVeiculosByFaixaMoto(
+    faixa,
+    offset,
+    VITRINE_CAROUSEL_PAGE_SIZE,
+  );
+  const body = offset > 0
+    ? `Mais motos nesta faixa (${offset + 1}–${offset + vehicles.length}):`
+    : "Motos nesta faixa de preço:";
+
+  return deliverVehicleCarousel(input, {
+    vehicles,
+    body,
+    pending: {
+      stage: "carrossel_faixa_moto",
+      segmento_vitrine: "moto",
+      faixa_moto: faixa,
+      filtro_tipo: "faixa_moto",
+      offset,
+      marca_offset: input.deps.getPending()?.marca_offset ?? 0,
+      updated_at: new Date().toISOString(),
+    },
+    maisIdSuffix: faixa,
+    emptyMessage: "Não há motos disponíveis nesta faixa no momento.",
   });
 }
 
@@ -1803,6 +2002,7 @@ async function sendFaixaCarousel(
     body,
     pending: {
       stage: "carrossel_faixa",
+      segmento_vitrine: "carro",
       faixa,
       filtro_tipo: "faixa",
       offset,

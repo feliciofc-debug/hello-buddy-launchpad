@@ -4,6 +4,7 @@ import {
   formatOwnerStockSearchReply,
   formatOwnerStockSummary,
   formatOwnerVendidosCount,
+  ownerStockSegmentFilter,
   rankOwnerStockMatches,
   shouldDeferOwnerStockShortcut,
 } from "./vehicle-stock-owner-inbound.ts";
@@ -19,7 +20,7 @@ import {
 } from "./vehicle-stock-whatsapp.ts";
 
 export const OWNER_STOCK_SELECT =
-  "id,marca,modelo,versao,ano_fabricacao,ano_modelo,km,preco,cor,cambio,status,descricao";
+  "id,segmento,marca,modelo,versao,ano_fabricacao,ano_modelo,km,preco,cor,cambio,status,descricao";
 
 export async function toolConsultarEstoqueVeiculos(
   query: string,
@@ -41,11 +42,13 @@ export async function toolConsultarEstoqueVeiculos(
     const all = rows ?? [];
     const disponiveis = all.filter((v) => v.status === "disponivel");
     const vendidos = all.filter((v) => v.status === "vendido");
+    const motosDisp = disponiveis.filter((v) => v.segmento === "moto");
 
     if (!q) {
       return JSON.stringify({
         escopo: "veiculos_estoque",
         disponiveis: disponiveis.length,
+        motos_disponiveis: motosDisp.length,
         vendidos: vendidos.length,
         resumo_texto: formatOwnerStockSummary(disponiveis),
       });
@@ -156,9 +159,19 @@ export async function tryProcessOwnerVehicleStockInbound(input: {
   const all = rows ?? [];
 
   let reply = "";
-  if (intent === "resumo") {
+  if (intent === "resumo" || intent === "resumo_moto") {
+    const seg = intent === "resumo_moto"
+      ? "moto"
+      : ownerStockSegmentFilter(input.userText);
+    let disponiveis = all.filter((v) => v.status === "disponivel");
+    if (seg === "moto") {
+      disponiveis = disponiveis.filter((v) => v.segmento === "moto");
+    } else if (seg === "carro") {
+      disponiveis = disponiveis.filter((v) => v.segmento !== "moto");
+    }
     reply = formatOwnerStockSummary(
-      all.filter((v) => v.status === "disponivel"),
+      disponiveis,
+      seg === "moto" ? "Motos" : "Estoque",
     );
   } else if (intent === "vendidos") {
     reply = formatOwnerVendidosCount(
