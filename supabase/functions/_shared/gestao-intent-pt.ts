@@ -17,7 +17,12 @@ export type GestaoIntentKind =
   | "comissao_mes"
   | "meta_bateu"
   | "venda_raiox"
-  | "piores_negocios_mes";
+  | "piores_negocios_mes"
+  | "contas_amanha"
+  | "contas_semana"
+  | "a_receber"
+  | "lucro_loja_mes"
+  | "pacote_contador";
 
 export type GestaoIntent = {
   kind: GestaoIntentKind;
@@ -58,6 +63,26 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
 
   if (/\bdesfaz(er)?(\s+ultim|\s+o\s+ultim|\s+lancamento)?/.test(t)) {
     return { ...empty, kind: "desfazer", vehicleHint };
+  }
+
+  if (/\bquanto\s+a\s+loja\s+lucrou\b|\blucro\s+liquido\s+da\s+loja\b|\bresultado\s+da\s+loja\b/.test(t)) {
+    return { ...empty, kind: "lucro_loja_mes", vehicleHint };
+  }
+
+  if (/\bmanda(r)?\s+o?\s*relatorio\s+do\s+mes\s+(pro|para\s+o)\s+contador\b/.test(t)) {
+    return { ...empty, kind: "pacote_contador", vehicleHint };
+  }
+
+  if (/\bo\s+que\s+vence\s+essa\s+semana\b|\bvence\s+essa\s+semana\b/.test(t)) {
+    return { ...empty, kind: "contas_semana", vehicleHint };
+  }
+
+  if (/\bvence\s+amanha\b|\bcontas?\s+amanha\b/.test(t)) {
+    return { ...empty, kind: "contas_amanha", vehicleHint };
+  }
+
+  if (/\bquanto\s+tenho\s+a\s+receber\b|\ba\s+receber\b/.test(t) && !/\bpagar\b/.test(t)) {
+    return { ...empty, kind: "a_receber", vehicleHint };
   }
 
   if (/\blucro\s+do\s+mes\b|\blucro\s+mensal\b|\bresultado\s+do\s+mes\b/.test(t)) {

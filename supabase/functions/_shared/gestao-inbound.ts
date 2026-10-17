@@ -43,6 +43,17 @@ import {
   rankPioresNegocios,
   type GestaoVendaRaioXRankItem,
 } from "./gestao-venda-raio-x.ts";
+import {
+  buildAReceberReply,
+  buildContadorLinkReply,
+  buildContasSemanaReply,
+  buildContasVencemAmanhaReply,
+  buildLucroLojaMesReply,
+  type GestaoContaInbound,
+} from "./gestao-financeiro-inbound.ts";
+import { contasToDreOperacionalRows } from "./gestao-contador-data.ts";
+import { mintGestaoContadorLink } from "./gestao-contador-link.ts";
+import type { GestaoVendaDreLine } from "./gestao-dre-calc.ts";
 export const GESTAO_PENDING_TTL_MS = 10 * 60 * 1000;
 export const GESTAO_DESFAZER_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -265,6 +276,53 @@ async function fetchDespesasVeiculo(
   const label = formatGestaoVeiculoLabel(veiculo);
   if (!lines.length) return `${label}: nenhuma despesa registrada.`;
   return `${label} — despesas:\n${lines.join("\n")}`;
+}
+
+async function loadContasInbound(sb: unknown, userId: string): Promise<GestaoContaInbound[]> {
+  const client = sb as GestaoDb;
+  const { data } = await client.from("gestao_conta_lancamento").select(
+    "id, tipo, valor, vencimento, pago_em, recebido_em, recorrencia_dia_mes, categoria_operacional, observacao",
+  ).eq("user_id", userId).is("deleted_at", null);
+  return (data ?? []).map((c: Record<string, unknown>) => ({
+    id: String(c.id),
+    tipo: c.tipo as "pagar" | "receber",
+    valor: Number(c.valor),
+    vencimento: String(c.vencimento),
+    pago_em: c.pago_em ? String(c.pago_em) : null,
+    recebido_em: c.recebido_em ? String(c.recebido_em) : null,
+    recorrencia_dia_mes: c.recorrencia_dia_mes != null ? Number(c.recorrencia_dia_mes) : null,
+    categoria: String(c.categoria_operacional),
+    observacao: c.observacao ? String(c.observacao) : null,
+  }));
+}
+
+async function loadVendasDreMes(sb: unknown, userId: string, competencia: string): Promise<GestaoVendaDreLine[]> {
+  const start = `${competencia}-01`;
+  const [y, m] = competencia.split("-").map(Number);
+  const end = new Date(y, m, 0).toISOString().slice(0, 10);
+  const client = sb as GestaoDb;
+  const { data: vendas } = await client.from("veiculo_venda").select("veiculo_id, valor_venda, data_venda")
+    .eq("user_id", userId).gte("data_venda", start).lte("data_venda", end);
+  const lines: GestaoVendaDreLine[] = [];
+  for (const v of vendas ?? []) {
+    const vid = String(v.veiculo_id);
+    const [{ data: compra }, { data: despesas }] = await Promise.all([
+      client.from("veiculo_compra").select("valor_compra").eq("user_id", userId).eq("veiculo_id", vid).maybeSingle(),
+      client.from("veiculo_despesas").select("valor, categoria")
+        .eq("user_id", userId).eq("veiculo_id", vid).is("deleted_at", null),
+    ]);
+    lines.push({
+      veiculoId: vid,
+      dataVenda: String(v.data_venda),
+      valorVenda: Number(v.valor_venda),
+      valorCompra: compra ? Number(compra.valor_compra) : null,
+      despesas: (despesas ?? []).map((d: { valor: number; categoria: string }) => ({
+        valor: Number(d.valor),
+        categoria: d.categoria,
+      })),
+    });
+  }
+  return lines;
 }
 
 async function fetchLucroMes(sb: unknown, userId: string): Promise<string> {
@@ -686,6 +744,40 @@ export async function tryProcessGestaoLucroInbound(input: {
   }
 
   const competencia = competenciaFromDate();
+  const today = new Date().toISOString().slice(0, 10);
+
+  if (intent.kind === "contas_amanha") {
+    const contas = await loadContasInbound(input.sb, input.userId);
+    return { handled: true, reply: buildContasVencemAmanhaReply(contas, today) };
+  }
+  if (intent.kind === "contas_semana") {
+    const contas = await loadContasInbound(input.sb, input.userId);
+    return { handled: true, reply: buildContasSemanaReply(contas, today) };
+  }
+  if (intent.kind === "a_receber") {
+    const contas = await loadContasInbound(input.sb, input.userId);
+    return { handled: true, reply: buildAReceberReply(contas) };
+  }
+  if (intent.kind === "lucro_loja_mes") {
+    const contas = await loadContasInbound(input.sb, input.userId);
+    const vendas = await loadVendasDreMes(input.sb, input.userId, competencia);
+    const ops = contasToDreOperacionalRows(contas.map((c) => ({
+      tipo: c.tipo,
+      categoria_operacional: c.categoria,
+      valor: c.valor,
+      vencimento: c.vencimento,
+      pago_em: c.pago_em,
+    })));
+    return {
+      handled: true,
+      reply: buildLucroLojaMesReply(competencia, vendas, ops),
+    };
+  }
+  if (intent.kind === "pacote_contador") {
+    const site = Deno.env.get("PUBLIC_SITE_URL") ?? Deno.env.get("SITE_URL") ?? "";
+    const { appUrl } = await mintGestaoContadorLink(input.sb as never, input.userId, competencia, site);
+    return { handled: true, reply: buildContadorLinkReply(appUrl, competencia) };
+  }
   if (intent.kind === "ranking_vendedores") {
     const vendedores = await loadVendedores(input.sb, input.userId);
     const comissao = await loadComissaoMesMap(input.sb, input.userId, competencia);
