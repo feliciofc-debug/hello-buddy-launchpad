@@ -158,7 +158,7 @@ export async function conciliarExtrato(
     .maybeSingle();
   if (ocupado) throw new Error("candidato_ja_vinculado");
 
-  const snapshot = await buildLiquidacaoSnapshot(match, dataLiquidacao);
+  const snapshot = await buildLiquidacaoSnapshot(match);
 
   await supabase.from("gestao_extrato_transacao" as "veiculos_estoque").update({
     status: "conciliado",
