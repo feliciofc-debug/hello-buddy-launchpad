@@ -20,6 +20,7 @@ import { mockProducts, type Marketplace } from '@/data/mockData';
 import { useClientMenus } from '@/hooks/useClientMenus';
 import { useFinanciamentoPendingCount } from '@/hooks/useFinanciamentoPendingCount';
 import { isBusinessTenantType } from '@/lib/business-tenant';
+import { GestaoEstoqueHojeSection } from '@/components/gestao/GestaoEstoqueHojeSection';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -35,6 +36,7 @@ const Dashboard = () => {
     isMenuAllowed,
     empresaNome,
     showFinanciamentosMenu,
+    showGestaoLucroMenu,
     showDemoVehicleStockAfterProdutos,
   } = useClientMenus(
     userProfile?.tipo,
@@ -526,6 +528,19 @@ const Dashboard = () => {
               )}
             </a>
           )}
+          {showGestaoLucroMenu && (
+            <a
+              href="/gestao/lucro"
+              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                window.location.pathname.startsWith('/gestao/lucro')
+                  ? 'bg-blue-500 text-white'
+                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              <TrendingUp size={20} />
+              Gestão · Lucro
+            </a>
+          )}
           {isMenuAllowed('buscar-cnpj') && (
             <a
               href="/prospects"
@@ -646,6 +661,15 @@ const Dashboard = () => {
         {/* Content */}
         <main className="flex-1 bg-gray-50 dark:bg-gray-900 overflow-auto">
           <div className="p-6">
+              {showGestaoLucroMenu && user?.id ? (
+                <div className="mb-8">
+                  <GestaoEstoqueHojeSection
+                    userId={user.id}
+                    compact
+                    showDetailLink
+                  />
+                </div>
+              ) : null}
               {/* ═══════════════════════════════════════════════════════════ */}
               {/* DASHBOARD INDÚSTRIA - PLANO PREMIUM */}
               {/* ═══════════════════════════════════════════════════════════ */}

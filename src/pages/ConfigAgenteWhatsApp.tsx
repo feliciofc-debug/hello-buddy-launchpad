@@ -124,6 +124,7 @@ export default function ConfigAgenteWhatsApp() {
   const [improving, setImproving] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [config, setConfig] = useState<AgentConfig>(EMPTY);
+  const [gestaoGestoresPhones, setGestaoGestoresPhones] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -133,11 +134,23 @@ export default function ConfigAgenteWhatsApp() {
         return;
       }
       setUserId(auth.user.id);
-      const { data } = await supabase
-        .from("whatsapp_cloud_agent_config")
-        .select("*")
-        .eq("user_id", auth.user.id)
-        .maybeSingle();
+      const [{ data }, { data: empresa }] = await Promise.all([
+        supabase
+          .from("whatsapp_cloud_agent_config")
+          .select("*")
+          .eq("user_id", auth.user.id)
+          .maybeSingle(),
+        supabase
+          .from("empresa_config")
+          .select("gestao_gestores_json")
+          .eq("user_id", auth.user.id)
+          .maybeSingle(),
+      ]);
+      const gestores = (empresa as { gestao_gestores_json?: string[] } | null)
+        ?.gestao_gestores_json;
+      if (Array.isArray(gestores)) {
+        setGestaoGestoresPhones(gestores.join(", "));
+      }
       if (data) {
         setConfig({
           owner_phone: data.owner_phone ?? "",
@@ -223,6 +236,19 @@ export default function ConfigAgenteWhatsApp() {
       });
       return;
     }
+    const invalidGestor = gestaoGestoresPhones
+      .split(/[,;\n]+/)
+      .map((phone) => phone.trim())
+      .filter(Boolean)
+      .some((phone) => !normalizeOwnerPhone(phone));
+    if (invalidGestor) {
+      toast({
+        title: "Gestor inválido",
+        description: "Informe DDD + número para cada gestor autorizado à gestão.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -250,6 +276,24 @@ export default function ConfigAgenteWhatsApp() {
         .from("whatsapp_cloud_agent_config")
         .upsert(payload, { onConflict: "user_id" });
       if (error) throw error;
+      const gestoresJson = gestaoGestoresPhones
+        .split(/[,;\n]+/)
+        .map((phone) => phone.trim())
+        .filter(Boolean)
+        .map(normalizeOwnerPhone)
+        .filter(Boolean);
+      const { error: empresaError } = await supabase.from("empresa_config").upsert({
+        user_id: userId,
+        gestao_gestores_json: gestoresJson,
+      }, { onConflict: "user_id" });
+      if (empresaError) {
+        toast({
+          title: "Agente salvo",
+          description: "Não foi possível salvar os gestores. Tente novamente em instantes.",
+          variant: "destructive",
+        });
+        return;
+      }
       toast({ title: "Configuração salva ✅", description: "O agente já está usando os novos ajustes." });
     } catch (e: any) {
       toast({ title: "Erro ao salvar", description: e?.message ?? String(e), variant: "destructive" });
@@ -374,6 +418,28 @@ export default function ConfigAgenteWhatsApp() {
               <p className="text-xs text-muted-foreground">
                 No tenant AMZ, esses números continuam como prospects, mas podem repetir a demonstração sem consumir o limite.
               </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-base">Gestão — números autorizados</CardTitle>
+            <CardDescription>
+              Além do responsável e alternativos, estes WhatsApps podem lançar compra, despesa e venda pelo Jarvis
+              (sempre com confirmação SIM).
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <Label htmlFor="gestao_gestores">Gestores (opcional)</Label>
+              <Input
+                id="gestao_gestores"
+                value={gestaoGestoresPhones}
+                onChange={(event) => setGestaoGestoresPhones(event.target.value)}
+                inputMode="tel"
+                placeholder="Separe por vírgula: (21) 98888-8888"
+              />
             </div>
           </CardContent>
         </Card>

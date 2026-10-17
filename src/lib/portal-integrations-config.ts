@@ -21,12 +21,6 @@ export const PLANNED_PORTAL_INTEGRATIONS: PortalIntegrationDefinition[] = [
     status: "em_liberacao",
   },
   {
-    id: "icarros",
-    name: "iCarros",
-    description: "Integração com o portal iCarros.",
-    status: "em_liberacao",
-  },
-  {
     id: "facebook-marketplace",
     name: "Facebook Marketplace",
     description: "Anúncios de veículos no Marketplace do Facebook.",

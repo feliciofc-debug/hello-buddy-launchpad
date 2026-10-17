@@ -145,6 +145,7 @@ export default function DashboardMetricas() {
     isMenuAllowed,
     empresaNome,
     showFinanciamentosMenu,
+    showGestaoLucroMenu,
     vitrineSidebarContext,
   } = useClientMenus(
     userProfile?.tipo,
@@ -361,8 +362,16 @@ export default function DashboardMetricas() {
         label: t('nav.financing'),
         path: '/veiculos/financiamento',
       },
+      gestaoLucroItem: showGestaoLucroMenu
+        ? {
+          id: 'gestao-lucro',
+          icon: TrendingUp,
+          label: 'Gestão · Lucro',
+          path: '/gestao/lucro',
+        }
+        : undefined,
     });
-  }, [isMenuAllowed, showFinanciamentosMenu, t, vitrineSidebarContext]);
+  }, [isMenuAllowed, showFinanciamentosMenu, showGestaoLucroMenu, t, vitrineSidebarContext]);
 
   // Componente de campanhas em andamento
   const CampanhasEmAndamentoSection = ({ navigate }: { navigate: (path: string) => void }) => {
@@ -472,7 +481,9 @@ export default function DashboardMetricas() {
                 ? location.pathname === '/dashboard'
                 : location.pathname === item.path ||
                   (item.path === '/veiculos/financiamento' &&
-                    location.pathname.startsWith('/veiculos/financiamento'));
+                    location.pathname.startsWith('/veiculos/financiamento')) ||
+                  (item.path === '/gestao/lucro' &&
+                    location.pathname.startsWith('/gestao/lucro'));
               const showBadge = item.id === 'financiamentos' && financiamentoBadge;
               return (
               <Link

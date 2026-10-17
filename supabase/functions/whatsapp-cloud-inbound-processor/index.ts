@@ -109,6 +109,11 @@ import {
   tryProcessOwnerVehicleStockInbound,
 } from "../_shared/vehicle-stock-owner-handler.ts";
 import {
+  loadGestaoAuthContext,
+  tryProcessGestaoLucroInbound,
+} from "../_shared/gestao-inbound.ts";
+import { isGestaoAuthorizedPhone } from "../_shared/gestao-auth-phone.ts";
+import {
   extractVitrineInteractiveId,
   formatCarouselVitrineButtonText,
   shouldRunVitrineEarlyCapture,
@@ -22482,6 +22487,79 @@ async function tryProcessOwnerVehicleStockShortcut(input: {
   return { handled: true, preview: ownerStock.preview };
 }
 
+async function tryProcessGestaoLucroShortcut(input: {
+  row: QueueRow;
+  convStateIdentity: ConversationStateIdentity;
+  userId: string;
+  userText: string;
+  convId: string;
+  hasInboundMedia: boolean;
+}): Promise<{ handled: boolean; preview?: string }> {
+  const baseState = migrateVerticalState(
+    await loadAgentState(sb, input.convStateIdentity),
+  ).state as AgentConvState;
+  const auth = await loadGestaoAuthContext(sb, input.userId);
+  const gestao = await tryProcessGestaoLucroInbound({
+    sb,
+    userId: input.userId,
+    fromNumber: input.row.from_number,
+    userText: input.userText,
+    hasInboundMedia: input.hasInboundMedia,
+    auth,
+    agentState: baseState as Record<string, unknown>,
+    saveAgentStatePatch: async (patch, current) => saveAgentState(
+      sb,
+      input.convStateIdentity,
+      patch as AgentConvState,
+      current as AgentConvState,
+    ),
+  });
+  if (!gestao.handled) return { handled: false };
+  if (gestao.reply) {
+    console.log("[gestao-lucro][inbound]", {
+      user_id: input.userId,
+      action: "reply",
+      ok: true,
+    });
+    const { data: outMsg } = await sb
+      .from("whatsapp_cloud_messages")
+      .insert({
+        conversation_id: input.convId,
+        user_id: input.userId,
+        direction: "outbound",
+        sender: "agent",
+        content: gestao.reply,
+        message_type: "text",
+      })
+      .select("id")
+      .single();
+    let sendError: string | null = null;
+    try {
+      const sentId = await sendWhatsApp(
+        input.userId,
+        input.row.from_number,
+        gestao.reply,
+      );
+      if (sentId && outMsg?.id) {
+        await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq(
+          "id",
+          outMsg.id,
+        );
+      }
+    } catch (e) {
+      sendError = String((e as Error).message ?? e);
+    }
+    await sb.from("whatsapp_cloud_conversations").update({
+      last_message_at: new Date().toISOString(),
+    }).eq("id", input.convId);
+    if (sendError) {
+      await failQueue(input.row.id, `send_failed: ${sendError}`);
+      return { handled: true, preview: gestao.reply.slice(0, 120) };
+    }
+  }
+  return { handled: true, preview: gestao.reply?.slice(0, 120) };
+}
+
 async function tryProcessVehicleStockShowcase(input: {
   row: QueueRow;
   convStateIdentity: ConversationStateIdentity;
@@ -22701,6 +22779,39 @@ async function processOne(queueId: string) {
     setTenantOwnerForCtx(userId, ownerNumbers);
     const fromIsOwner = tenantOwnerMatchesPhone(_tenantOwner, row.from_number)
       || (isAmzTenantEarly && isAmzOwnerAltPhone(row.from_number));
+
+    // Gestor (autorizado, não-dono): gestão antes da vitrine cliente.
+    if (
+      !fromIsOwner &&
+      userText.trim() &&
+      (row.message_type === "text" || row.message_type === "interactive")
+    ) {
+      try {
+        const gestaoAuth = await loadGestaoAuthContext(sb, userId);
+        if (isGestaoAuthorizedPhone(row.from_number, gestaoAuth)) {
+          const gestaoGestorEarly = await tryProcessGestaoLucroShortcut({
+            row,
+            convStateIdentity,
+            userId,
+            userText,
+            convId: conv.id,
+            hasInboundMedia: false,
+          });
+          if (gestaoGestorEarly.handled) {
+            stopTypingHeartbeat();
+            await doneQueue(row.id);
+            return {
+              ok: true,
+              gestao_lucro: true,
+              gestao_gestor: true,
+              preview: gestaoGestorEarly.preview,
+            };
+          }
+        }
+      } catch (e) {
+        console.error("[gestao-lucro][gestor-early]", (e as Error).message);
+      }
+    }
 
     // Vitrine estoque (cliente): interativos + cancelar/consultor (+ texto troca no C) ANTES de opt-in/LLM.
     if (!fromIsOwner) {
@@ -23193,6 +23304,23 @@ async function processOne(queueId: string) {
       userText.trim()
     ) {
       try {
+        const gestaoEarly = await tryProcessGestaoLucroShortcut({
+          row,
+          convStateIdentity,
+          userId,
+          userText,
+          convId: conv.id,
+          hasInboundMedia: false,
+        });
+        if (gestaoEarly.handled) {
+          stopTypingHeartbeat();
+          await doneQueue(row.id);
+          return {
+            ok: true,
+            gestao_lucro: true,
+            preview: gestaoEarly.preview,
+          };
+        }
         const ownerStockEarly = await tryProcessOwnerVehicleStockShortcut({
           row,
           convStateIdentity,
@@ -23409,6 +23537,23 @@ async function processOne(queueId: string) {
 
     if (fromIsOwner && audioTranscript?.trim()) {
       try {
+        const gestaoAudio = await tryProcessGestaoLucroShortcut({
+          row,
+          convStateIdentity,
+          userId,
+          userText: audioTranscript,
+          convId: conv.id,
+          hasInboundMedia: false,
+        });
+        if (gestaoAudio.handled) {
+          stopTypingHeartbeat();
+          await doneQueue(row.id);
+          return {
+            ok: true,
+            gestao_lucro: true,
+            preview: gestaoAudio.preview,
+          };
+        }
         const ownerStockAudio = await tryProcessOwnerVehicleStockShortcut({
           row,
           convStateIdentity,
@@ -23429,6 +23574,34 @@ async function processOne(queueId: string) {
         }
       } catch (e) {
         console.error("[owner-vehicle-stock][audio]", (e as Error).message);
+      }
+    }
+
+    if (!fromIsOwner && audioTranscript?.trim()) {
+      try {
+        const gestaoAuthAudio = await loadGestaoAuthContext(sb, userId);
+        if (isGestaoAuthorizedPhone(row.from_number, gestaoAuthAudio)) {
+          const gestaoGestorAudio = await tryProcessGestaoLucroShortcut({
+            row,
+            convStateIdentity,
+            userId,
+            userText: audioTranscript,
+            convId: conv.id,
+            hasInboundMedia: false,
+          });
+          if (gestaoGestorAudio.handled) {
+            stopTypingHeartbeat();
+            await doneQueue(row.id);
+            return {
+              ok: true,
+              gestao_lucro: true,
+              gestao_gestor: true,
+              preview: gestaoGestorAudio.preview,
+            };
+          }
+        }
+      } catch (e) {
+        console.error("[gestao-lucro][gestor-audio]", (e as Error).message);
       }
     }
 
