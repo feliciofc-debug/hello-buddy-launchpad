@@ -18,7 +18,12 @@ import { VENDOR_INTEGRATION_PRICING } from "@/lib/vendor-integration-pricing";
 
 const vendor = VENDOR_INTEGRATION_PRICING.zapsign;
 
-export function ZapSignIntegrationCard() {
+type Props = {
+  embedInGestao?: boolean;
+  onConnectSuccess?: () => void;
+};
+
+export function ZapSignIntegrationCard({ embedInGestao, onConnectSuccess }: Props = {}) {
   const { loading, busy, status, save, testConnection, disconnect } = useGestaoZapsignConnection();
   const [token, setToken] = useState("");
   const [ambiente, setAmbiente] = useState<"sandbox" | "producao">("sandbox");
@@ -45,8 +50,14 @@ export function ZapSignIntegrationCard() {
               <FileSignature className="h-5 w-5" aria-hidden />
             </span>
             <div>
-              <CardTitle className="text-lg">Assinatura digital — ZapSign</CardTitle>
-              <CardDescription className="mt-1">{vendor.description}</CardDescription>
+              <CardTitle className="text-lg">
+                {embedInGestao ? "Contratos com assinatura no celular" : "Assinatura digital — ZapSign"}
+              </CardTitle>
+              <CardDescription className="mt-1">
+                {embedInGestao
+                  ? "O cliente assina pelo celular, sem papel."
+                  : vendor.description}
+              </CardDescription>
             </div>
           </div>
           <Badge variant={connected ? "default" : "secondary"}>
@@ -103,7 +114,12 @@ export function ZapSignIntegrationCard() {
         <div className="flex flex-wrap gap-2">
           <Button
             disabled={busy || token.trim().length < 8}
-            onClick={() => void save(token.trim(), ambiente)}
+            onClick={() => {
+              const wasConnected = connected;
+              void save(token.trim(), ambiente).then((ok) => {
+                if (ok && !wasConnected) onConnectSuccess?.();
+              });
+            }}
           >
             {connected ? "Atualizar token" : "Conectar"}
           </Button>

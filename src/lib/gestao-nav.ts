@@ -88,7 +88,7 @@ export const GESTAO_COMMAND_ACTIONS: GestaoCommandAction[] = [
   { id: "resultado", label: "Resultado da loja (DRE)", keywords: ["resultado", "lucro loja", "dre"], path: gestaoLucroUrl("financeiro", { secao: "dre" }) },
   { id: "estoque", label: "Estoque e registrar venda", keywords: ["estoque", "carro", "registrar venda"], path: gestaoLucroUrl("estoque") },
   { id: "config-fiscal", label: "Configuração fiscal NF-e", keywords: ["cfop", "fiscal", "configuração fiscal"], path: "/gestao/configuracao-fiscal" },
-  { id: "integracoes", label: "Conectar NF-e ou contratos", keywords: ["conectar", "focus", "integração"], path: "/configuracoes/integracoes" },
+  { id: "integracoes", label: "Conectar NF-e ou contratos", keywords: ["conectar", "focus", "integração"], path: "/gestao/lucro?conectar=nfe" },
 ];
 
 export function isGestaoRoute(pathname: string): boolean {

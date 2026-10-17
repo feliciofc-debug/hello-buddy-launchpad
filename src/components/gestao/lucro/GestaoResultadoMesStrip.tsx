@@ -23,6 +23,7 @@ type Props = {
   onNavigateResultado?: () => void;
   onEmitirNota?: () => void;
   onVerVendas?: () => void;
+  onConectarNfe?: () => void;
 };
 
 function DeltaBadge({
@@ -100,6 +101,7 @@ export function GestaoResultadoMesStrip({
   onNavigateResultado,
   onEmitirNota,
   onVerVendas,
+  onConectarNfe,
 }: Props) {
   const { dre } = metrics;
   const prev = prevMetrics.dre;
@@ -109,9 +111,19 @@ export function GestaoResultadoMesStrip({
     <div className="mt-2 space-y-1">
       {focusConnected === false || focusConnected === null ? (
         <p className="text-[11px] text-muted-foreground">
-          <Link to="/configuracoes/integracoes" className="underline hover:text-foreground">
-            Conecte a emissão de NF-e
-          </Link>
+          {onConectarNfe ? (
+            <button
+              type="button"
+              className="underline hover:text-foreground"
+              onClick={onConectarNfe}
+            >
+              Conecte a emissão de NF-e
+            </button>
+          ) : (
+            <Link to="/configuracoes/integracoes?foco=nfe" className="underline hover:text-foreground">
+              Conecte a emissão de NF-e
+            </Link>
+          )}
         </p>
       ) : (
         <p className="text-[11px] text-muted-foreground">

@@ -23,6 +23,11 @@ import { GestaoTabBar } from "@/components/gestao/lucro/GestaoTabBar.tsx";
 import { GestaoActionBar } from "@/components/gestao/lucro/GestaoActionBar.tsx";
 import { GestaoVeiculoPickerDialog } from "@/components/gestao/lucro/GestaoVeiculoPickerDialog.tsx";
 import { GestaoEmitirNfeDialog } from "@/components/gestao/lucro/GestaoEmitirNfeDialog.tsx";
+import {
+  GestaoIntegracaoConnectSheet,
+  type GestaoConnectVendor,
+} from "@/components/gestao/GestaoIntegracaoConnectSheet.tsx";
+import { useSmartBack } from "@/lib/app-back-nav.ts";
 import { useGestaoZapsignConnection } from "@/components/integracoes/useGestaoZapsignConnection";
 import { useGestaoFocusnfeConnection } from "@/components/integracoes/useGestaoFocusnfeConnection";
 import { buildGestaoLucroAlerts } from "@/lib/gestao-lucro-alerts.ts";
@@ -34,9 +39,11 @@ import { useGestaoResultadoStrip } from "@/hooks/useGestaoResultadoStrip";
 import { parseGestaoLucroAba, type GestaoLucroAba } from "@/lib/gestao-nav.ts";
 
 type PickerMode = "venda" | "nota" | "contrato" | null;
+type PendingConnectAction = "emit_nota" | "contrato" | null;
 
 export default function GestaoLucroPage() {
   const navigate = useNavigate();
+  const goBack = useSmartBack("/dashboard");
   const [searchParams, setSearchParams] = useSearchParams();
   const [userId, setUserId] = useState<string | null>(null);
   const [activeAlert, setActiveAlert] = useState<GestaoLucroAlertKind | null>(null);
@@ -49,6 +56,8 @@ export default function GestaoLucroPage() {
   const [nfeVeiculo, setNfeVeiculo] = useState<GestaoVeiculoEnriched | null>(null);
   const [contratoPrefillId, setContratoPrefillId] = useState<string | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
+  const [connectVendor, setConnectVendor] = useState<GestaoConnectVendor | null>(null);
+  const [pendingConnectAction, setPendingConnectAction] = useState<PendingConnectAction>(null);
   const zapsign = useGestaoZapsignConnection();
   const focusnfe = useGestaoFocusnfeConnection();
 
@@ -122,9 +131,43 @@ export default function GestaoLucroPage() {
   const focusConnected = focusnfe.loading ? null : !!focusnfe.status?.connected;
   const zapsignConnected = !!zapsign.status?.connected;
 
+  const openConnect = useCallback(
+    (vendor: GestaoConnectVendor, after?: PendingConnectAction) => {
+      setConnectVendor(vendor);
+      setPendingConnectAction(after ?? null);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const raw = searchParams.get("conectar");
+    if (!raw) return;
+    const vendor: GestaoConnectVendor | null =
+      raw === "nfe" || raw === "focusnfe" ? "focusnfe" : raw === "zapsign" || raw === "contratos" ? "zapsign" : null;
+    if (!vendor) return;
+    setConnectVendor(vendor);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete("conectar");
+      return next;
+    }, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const onIntegracaoConnectSuccess = useCallback(() => {
+    setConnectVendor(null);
+    void focusnfe.refresh();
+    void zapsign.refresh();
+    void reload();
+    setPendingConnectAction((pending) => {
+      if (pending === "emit_nota") setPickerMode("nota");
+      if (pending === "contrato") setPickerMode("contrato");
+      return null;
+    });
+  }, [focusnfe, zapsign, reload]);
+
   const goEmitirNota = () => {
     if (!focusConnected) {
-      setTab("notas");
+      openConnect("focusnfe", "emit_nota");
       return;
     }
     setPickerMode("nota");
@@ -150,10 +193,21 @@ export default function GestaoLucroPage() {
     <div className="min-h-screen bg-background">
       <GestaoCommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
 
+      <GestaoIntegracaoConnectSheet
+        vendor={connectVendor}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConnectVendor(null);
+            setPendingConnectAction(null);
+          }
+        }}
+        onConnectSuccess={onIntegracaoConnectSuccess}
+      />
+
       <header className="border-b bg-background/95">
         <div className="container mx-auto flex flex-wrap items-center justify-between gap-4 px-4 py-4">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard")}>
+            <Button variant="ghost" size="icon" onClick={goBack}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div>
@@ -190,6 +244,8 @@ export default function GestaoLucroPage() {
               zapsignConnected={zapsignConnected}
               onRegistrarVenda={() => setPickerMode("venda")}
               onOpenEstoque={() => setTab("estoque")}
+              onConnectNfe={() => openConnect("focusnfe")}
+              onConnectContratos={() => openConnect("zapsign")}
             />
 
             <GestaoActionBar
@@ -201,7 +257,7 @@ export default function GestaoLucroPage() {
               }}
               onNovoContrato={() => {
                 if (!zapsignConnected) {
-                  setTab("contratos");
+                  openConnect("zapsign", "contrato");
                   return;
                 }
                 setPickerMode("contrato");
@@ -220,6 +276,7 @@ export default function GestaoLucroPage() {
               onNavigateEstoque={() => setTab("estoque")}
               onVerVendas={() => setTab("vendidos")}
               onEmitirNota={goEmitirNota}
+              onConectarNfe={() => openConnect("focusnfe")}
               onNavigateResultado={() => {
                 setTab("financeiro");
                 setFinanceSection("dre");
@@ -286,8 +343,7 @@ export default function GestaoLucroPage() {
               ) : (
                 <GestaoIntegracaoConnectPrompt
                   vendor="zapsign"
-                  title="Contratos com assinatura digital"
-                  description="Envie contratos de compra e venda para o cliente assinar online, sem papel."
+                  onConectar={() => openConnect("zapsign")}
                 />
               )
             ))}
@@ -298,8 +354,7 @@ export default function GestaoLucroPage() {
               ) : (
                 <GestaoIntegracaoConnectPrompt
                   vendor="focusnfe"
-                  title="Notas fiscais (NF-e)"
-                  description="Emita nota de entrada na compra de PF e nota de saída na venda, com homologação para testes."
+                  onConectar={() => openConnect("focusnfe")}
                 />
               )
             ))}
