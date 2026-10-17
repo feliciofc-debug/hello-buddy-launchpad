@@ -101,6 +101,10 @@ import {
 } from "../_shared/silvester-dossie-gate.ts";
 import { loadTenantVehicleStockGate } from "../_shared/vehicle-inventory-tenant.ts";
 import {
+  isVitrineRetomadaOptOutText,
+  setVitrineRetomadaOptOut,
+} from "../_shared/vitrine-crm-schedule.ts";
+import {
   toolConsultarEstoqueVeiculos,
   tryProcessOwnerVehicleStockInbound,
 } from "../_shared/vehicle-stock-owner-handler.ts";
@@ -22700,6 +22704,19 @@ async function processOne(queueId: string) {
 
     // Vitrine estoque (cliente): interativos + cancelar/consultor (+ texto troca no C) ANTES de opt-in/LLM.
     if (!fromIsOwner) {
+      if (
+        (row.message_type === "text" || row.message_type === "audio") &&
+        isVitrineRetomadaOptOutText(userText)
+      ) {
+        try {
+          const crmGate = await loadTenantVehicleStockGate(sb, userId);
+          if (crmGate.usesVehicleStock) {
+            await setVitrineRetomadaOptOut(sb, userId, row.from_number);
+          }
+        } catch (e) {
+          console.warn("[vitrine-crm] opt-out:", (e as Error).message);
+        }
+      }
       const vitrineListId = String(row.payload?.interactive?.list_reply?.id ?? "");
       const vitrineInteractiveEarly = extractVitrineInteractiveId({
         userText,
