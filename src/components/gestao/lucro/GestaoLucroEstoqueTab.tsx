@@ -1,7 +1,23 @@
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  formatGestaoMoneyInputPreview,
+  parseGestaoMoneyBr,
+  parseGestaoMoneyField,
+} from "@/lib/gestao-money.ts";
 import {
   Select,
   SelectContent,
@@ -18,7 +34,6 @@ import {
   gestaoMargemPct,
 } from "@/lib/gestao-format.ts";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
 
 type SortKey = "dias" | "lucro" | "preco" | "marca";
 
@@ -43,6 +58,11 @@ export function GestaoLucroEstoqueTab({
   const [status, setStatus] = useState<string>("all");
   const [sort, setSort] = useState<SortKey>("dias");
   const [editingCompra, setEditingCompra] = useState<Record<string, string>>({});
+  const [editingPreco, setEditingPreco] = useState<Record<string, string>>({});
+  const [precoConfirm, setPrecoConfirm] = useState<{
+    veiculo: GestaoVeiculoEnriched;
+    novo: number;
+  } | null>(null);
 
   const stock = useMemo(() => {
     let list = veiculos.filter(isActiveStock);
@@ -82,8 +102,8 @@ export function GestaoLucroEstoqueTab({
 
   const saveCompraInline = async (v: GestaoVeiculoEnriched) => {
     const raw = editingCompra[v.id] ?? "";
-    const valor = Number(String(raw).replace(",", "."));
-    if (!Number.isFinite(valor) || valor <= 0) {
+    const valor = parseGestaoMoneyField(raw);
+    if (valor == null) {
       toast.error("Valor de compra inválido.");
       return;
     }
@@ -102,16 +122,35 @@ export function GestaoLucroEstoqueTab({
     onRefresh();
   };
 
-  const savePreco = async (v: GestaoVeiculoEnriched, raw: string) => {
-    const preco = Number(String(raw).replace(",", "."));
-    if (!Number.isFinite(preco) || preco < 0) return;
-    const { error } = await supabase.from("veiculos_estoque").update({ preco }).eq("id", v.id);
+  const requestPrecoConfirm = (v: GestaoVeiculoEnriched) => {
+    const raw = editingPreco[v.id] ?? "";
+    const novo = parseGestaoMoneyField(raw, { allowZero: false });
+    if (novo == null) {
+      toast.error("Preço inválido.");
+      return;
+    }
+    if (v.preco != null && novo === v.preco) return;
+    setPrecoConfirm({ veiculo: v, novo });
+  };
+
+  const applyPrecoConfirm = async () => {
+    if (!precoConfirm) return;
+    const { veiculo, novo } = precoConfirm;
+    const { error } = await supabase.from("veiculos_estoque").update({ preco: novo }).eq("id", veiculo.id);
+    setPrecoConfirm(null);
     if (error) {
       toast.error("Erro ao atualizar preço.");
       return;
     }
+    toast.success("Preço anunciado atualizado.");
     onRefresh();
   };
+
+  const precoExtreme =
+    precoConfirm?.veiculo.preco != null &&
+    precoConfirm.veiculo.preco > 0 &&
+    (precoConfirm.novo < precoConfirm.veiculo.preco * 0.5 ||
+      precoConfirm.novo > precoConfirm.veiculo.preco * 2);
 
   if (!stock.length && !veiculos.some(isActiveStock)) {
     return (
@@ -190,9 +229,9 @@ export function GestaoLucroEstoqueTab({
                   </td>
                   <td className="py-2 pr-2 font-medium">{vehicleLabel(v)}</td>
                   <td className="py-2 pr-2">{v.placa ?? "—"}</td>
-                  <td className="py-2 pr-2">
+                  <td className="py-2 pr-2 align-top">
                     <Input
-                      className="h-8 w-28"
+                      className="h-8 w-32"
                       placeholder="Compra"
                       value={editingCompra[v.id] ?? (v.valorCompra != null ? String(v.valorCompra) : "")}
                       onChange={(e) => setEditingCompra({ ...editingCompra, [v.id]: e.target.value })}
@@ -200,6 +239,9 @@ export function GestaoLucroEstoqueTab({
                         if (e.key === "Enter") void saveCompraInline(v);
                       }}
                     />
+                    <p className="max-w-[8rem] truncate text-[10px] text-muted-foreground">
+                      {formatGestaoMoneyInputPreview(parseGestaoMoneyBr(editingCompra[v.id] ?? ""))}
+                    </p>
                   </td>
                   <td className="py-2 pr-2">
                     <button
@@ -210,12 +252,24 @@ export function GestaoLucroEstoqueTab({
                       {formatGestaoMoney(v.lucro.totalDespesas)}
                     </button>
                   </td>
-                  <td className="py-2 pr-2">
+                  <td className="py-2 pr-2 align-top">
                     <Input
-                      className="h-8 w-28"
-                      defaultValue={v.preco ?? ""}
-                      onBlur={(e) => void savePreco(v, e.target.value)}
+                      className="h-8 w-32"
+                      placeholder="Preço"
+                      value={
+                        editingPreco[v.id] ??
+                        (v.preco != null ? String(v.preco) : "")
+                      }
+                      onChange={(e) => setEditingPreco({ ...editingPreco, [v.id]: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") requestPrecoConfirm(v);
+                      }}
                     />
+                    <p className="max-w-[8rem] truncate text-[10px] text-muted-foreground">
+                      {formatGestaoMoneyInputPreview(
+                        parseGestaoMoneyBr(editingPreco[v.id] ?? String(v.preco ?? "")),
+                      )}
+                    </p>
                   </td>
                   <td className="py-2 pr-2">
                     {v.lucro.custoCompraPendente ? (
@@ -274,6 +328,34 @@ export function GestaoLucroEstoqueTab({
           );
         })}
       </div>
+
+      <AlertDialog open={!!precoConfirm} onOpenChange={() => setPrecoConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Alterar preço anunciado?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>
+                  Alterar preço anunciado de{" "}
+                  <strong>{formatGestaoMoney(precoConfirm?.veiculo.preco)}</strong> para{" "}
+                  <strong>{formatGestaoMoney(precoConfirm?.novo ?? null)}</strong>?
+                </p>
+                <p>Isso muda a vitrine e os portais.</p>
+                {precoExtreme && (
+                  <p className="font-medium text-red-600">
+                    Atenção: a variação é maior que 50% em relação ao preço atual. Confirme se
+                    não é erro de digitação.
+                  </p>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void applyPrecoConfirm()}>Confirmar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

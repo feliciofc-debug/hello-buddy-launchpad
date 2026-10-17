@@ -15,6 +15,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { calcGestaoLucro } from "../../../supabase/functions/_shared/gestao-lucro-calc.ts";
 import { GESTAO_DESPESA_CATEGORIAS, gestaoCategoriaLabel } from "@/lib/gestao-lucro-categories.ts";
 import { formatGestaoMoney, formatGestaoPct } from "@/lib/gestao-format.ts";
+import { GestaoMoneyInput } from "@/components/gestao/lucro/GestaoMoneyInput.tsx";
+import { parseGestaoMoneyField } from "@/lib/gestao-money.ts";
 import { supabase } from "@/integrations/supabase/client";
 
 type Props = {
@@ -106,8 +108,8 @@ export function VeiculoGestaoLucroPanel(props: Props) {
 
   const saveCompra = async () => {
     setBusy(true);
-    const valor = Number(String(compra.valor).replace(",", "."));
-    if (!Number.isFinite(valor) || valor <= 0) {
+    const valor = parseGestaoMoneyField(compra.valor);
+    if (valor == null) {
       toast.error("Informe o valor de compra.");
       setBusy(false);
       return;
@@ -132,8 +134,8 @@ export function VeiculoGestaoLucroPanel(props: Props) {
 
   const addDespesa = async () => {
     setBusy(true);
-    const valor = Number(String(despesaForm.valor).replace(",", "."));
-    if (!Number.isFinite(valor) || valor <= 0) {
+    const valor = parseGestaoMoneyField(despesaForm.valor);
+    if (valor == null) {
       toast.error("Informe o valor da despesa.");
       setBusy(false);
       return;
@@ -174,8 +176,8 @@ export function VeiculoGestaoLucroPanel(props: Props) {
 
   const saveVenda = async () => {
     setBusy(true);
-    const valor = Number(String(venda.valor).replace(",", "."));
-    if (!Number.isFinite(valor) || valor <= 0) {
+    const valor = parseGestaoMoneyField(venda.valor);
+    if (valor == null) {
       toast.error("Informe o valor de venda.");
       setBusy(false);
       return;
@@ -242,9 +244,11 @@ export function VeiculoGestaoLucroPanel(props: Props) {
       <section className="space-y-2">
         <h4 className="text-sm font-medium">Compra</h4>
         <div className="grid gap-2 sm:grid-cols-2">
-          <Field label="Valor (R$)">
-            <Input value={compra.valor} onChange={(e) => setCompra({ ...compra, valor: e.target.value })} />
-          </Field>
+          <GestaoMoneyInput
+            label="Valor (R$)"
+            value={compra.valor}
+            onChange={(v) => setCompra({ ...compra, valor: v })}
+          />
           <Field label="Data">
             <Input type="date" value={compra.data} onChange={(e) => setCompra({ ...compra, data: e.target.value })} />
           </Field>
@@ -282,9 +286,11 @@ export function VeiculoGestaoLucroPanel(props: Props) {
           {!despesas.length && <li className="text-muted-foreground">Nenhuma despesa.</li>}
         </ul>
         <div className="grid gap-2 sm:grid-cols-2">
-          <Field label="Valor">
-            <Input value={despesaForm.valor} onChange={(e) => setDespesaForm({ ...despesaForm, valor: e.target.value })} />
-          </Field>
+          <GestaoMoneyInput
+            label="Valor"
+            value={despesaForm.valor}
+            onChange={(v) => setDespesaForm({ ...despesaForm, valor: v })}
+          />
           <Field label="Data">
             <Input type="date" value={despesaForm.data} onChange={(e) => setDespesaForm({ ...despesaForm, data: e.target.value })} />
           </Field>
@@ -308,9 +314,11 @@ export function VeiculoGestaoLucroPanel(props: Props) {
       <section className="space-y-2">
         <h4 className="text-sm font-medium">Venda</h4>
         <div className="grid gap-2 sm:grid-cols-2">
-          <Field label="Valor (R$)">
-            <Input value={venda.valor} onChange={(e) => setVenda({ ...venda, valor: e.target.value })} />
-          </Field>
+          <GestaoMoneyInput
+            label="Valor (R$)"
+            value={venda.valor}
+            onChange={(v) => setVenda({ ...venda, valor: v })}
+          />
           <Field label="Data">
             <Input type="date" value={venda.data} onChange={(e) => setVenda({ ...venda, data: e.target.value })} />
           </Field>

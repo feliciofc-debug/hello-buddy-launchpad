@@ -17,6 +17,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { matchGestaoImportRow } from "../../../../supabase/functions/_shared/gestao-import-match.ts";
+import { parseGestaoMoneyBr, parseGestaoMoneyField } from "@/lib/gestao-money.ts";
+import { formatGestaoMoney } from "@/lib/gestao-format.ts";
 import type { GestaoVeiculoEnriched } from "@/lib/gestao-lucro-types.ts";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -34,6 +36,7 @@ type PreviewRow = {
   categoria?: string;
   error?: string;
   veiculoId?: string;
+  replaceCompraWarn?: string;
 };
 
 type Props = {
@@ -72,6 +75,14 @@ function pick(row: Record<string, unknown>, keys: string[]): string {
   return "";
 }
 
+function pickRaw(row: Record<string, unknown>, keys: string[]): unknown {
+  for (const k of keys) {
+    const v = row[k] ?? row[k.toUpperCase()];
+    if (v != null && v !== "") return v;
+  }
+  return "";
+}
+
 export function GestaoImportPlanilhaDialog({
   open,
   onOpenChange,
@@ -82,6 +93,12 @@ export function GestaoImportPlanilhaDialog({
   const [kind, setKind] = useState<ImportKind>("compra");
   const [preview, setPreview] = useState<PreviewRow[]>([]);
   const [busy, setBusy] = useState(false);
+  const [importReport, setImportReport] = useState<{
+    ok: number;
+    failed: Array<{ line: number; message: string }>;
+  } | null>(null);
+
+  const veiculoById = useMemo(() => new Map(veiculos.map((v) => [v.id, v])), [veiculos]);
 
   const refs = useMemo(
     () => veiculos.map((v) => ({
@@ -97,6 +114,7 @@ export function GestaoImportPlanilhaDialog({
   );
 
   const onFile = async (file: File) => {
+    setImportReport(null);
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, { type: "array" });
     const sheet = wb.Sheets[wb.SheetNames[0]];
@@ -126,19 +144,30 @@ export function GestaoImportPlanilhaDialog({
       }
 
       if (kind === "compra") {
-        const valor = Number(String(pick(row, ["valor_compra", "valor", "Valor"])).replace(",", "."));
+        const rawVal = pickRaw(row, ["valor_compra", "valor", "Valor"]);
+        const valor = typeof rawVal === "number"
+          ? parseGestaoMoneyBr(rawVal)
+          : parseGestaoMoneyField(String(rawVal));
         const data = pick(row, ["data_compra", "data", "Data"]) || new Date().toISOString().slice(0, 10);
-        if (!Number.isFinite(valor) || valor <= 0) {
+        if (valor == null) {
           pr.error = "valor_compra inválido";
         } else {
           pr.valor = valor;
           pr.data = data;
+          const existing = veiculoById.get(match.id);
+          if (existing?.valorCompra != null) {
+            pr.replaceCompraWarn =
+              `Já tem compra ${formatGestaoMoney(existing.valorCompra)} — será substituída`;
+          }
         }
       } else {
-        const valor = Number(String(pick(row, ["valor", "Valor"])).replace(",", "."));
+        const rawVal = pickRaw(row, ["valor", "Valor"]);
+        const valor = typeof rawVal === "number"
+          ? parseGestaoMoneyBr(rawVal)
+          : parseGestaoMoneyField(String(rawVal));
         const data = pick(row, ["data", "Data"]) || new Date().toISOString().slice(0, 10);
         const categoria = pick(row, ["categoria", "Categoria"]) || "outros";
-        if (!Number.isFinite(valor) || valor <= 0) {
+        if (valor == null) {
           pr.error = "valor inválido";
         } else {
           pr.valor = valor;
@@ -160,17 +189,22 @@ export function GestaoImportPlanilhaDialog({
       return;
     }
     setBusy(true);
+    const failed: Array<{ line: number; message: string }> = [];
+    let ok = 0;
+
     for (const r of okRows) {
       if (kind === "compra") {
-        await supabase.from("veiculo_compra" as "veiculos_estoque").upsert({
+        const { error } = await supabase.from("veiculo_compra" as "veiculos_estoque").upsert({
           user_id: userId,
           veiculo_id: r.veiculoId!,
           valor_compra: r.valor!,
           data_compra: r.data!,
           origem: "compra",
         }, { onConflict: "user_id,veiculo_id" });
+        if (error) failed.push({ line: r.line, message: error.message });
+        else ok += 1;
       } else {
-        await supabase.from("veiculo_despesas" as "veiculos_estoque").insert({
+        const { error } = await supabase.from("veiculo_despesas" as "veiculos_estoque").insert({
           user_id: userId,
           veiculo_id: r.veiculoId!,
           valor: r.valor!,
@@ -179,13 +213,27 @@ export function GestaoImportPlanilhaDialog({
           origem_lancamento: "painel",
           lancado_por: "importacao",
         });
+        if (error) failed.push({ line: r.line, message: error.message });
+        else ok += 1;
       }
     }
+
     setBusy(false);
-    toast.success(`${okRows.length} linha(s) importada(s).`);
-    setPreview([]);
-    onSaved();
-    onOpenChange(false);
+    setImportReport({ ok, failed });
+
+    if (ok > 0) {
+      onSaved();
+    }
+
+    if (failed.length === 0 && ok > 0) {
+      toast.success(`${ok} linha(s) importada(s).`);
+      setPreview([]);
+      onOpenChange(false);
+    } else if (ok === 0) {
+      toast.error(`Nenhuma linha importada. ${failed.length} erro(s).`);
+    } else {
+      toast.warning(`${ok} importada(s), ${failed.length} com erro.`);
+    }
   };
 
   return (
@@ -197,7 +245,7 @@ export function GestaoImportPlanilhaDialog({
         <div className="grid gap-3">
           <div>
             <Label>Tipo</Label>
-            <Select value={kind} onValueChange={(v) => { setKind(v as ImportKind); setPreview([]); }}>
+            <Select value={kind} onValueChange={(v) => { setKind(v as ImportKind); setPreview([]); setImportReport(null); }}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="compra">Custos de compra</SelectItem>
@@ -224,7 +272,7 @@ export function GestaoImportPlanilhaDialog({
           {preview.length > 0 && (
             <>
               <p className="text-sm text-muted-foreground">
-                {okRows.length} válida(s), {preview.length - okRows.length} com erro
+                {okRows.length} válida(s), {preview.length - okRows.length} com erro na pré-visualização
               </p>
               <div className="max-h-48 overflow-auto rounded border text-xs">
                 <table className="w-full">
@@ -233,7 +281,7 @@ export function GestaoImportPlanilhaDialog({
                       <th className="p-1 text-left">Linha</th>
                       <th className="p-1 text-left">Veículo</th>
                       <th className="p-1 text-left">Valor</th>
-                      <th className="p-1 text-left">Erro</th>
+                      <th className="p-1 text-left">Status</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -241,8 +289,16 @@ export function GestaoImportPlanilhaDialog({
                       <tr key={r.line} className="border-b">
                         <td className="p-1">{r.line}</td>
                         <td className="p-1">{r.placa || r.marca || "—"}</td>
-                        <td className="p-1">{r.valor ?? "—"}</td>
-                        <td className="p-1 text-red-600">{r.error ?? "OK"}</td>
+                        <td className="p-1">{r.valor != null ? formatGestaoMoney(r.valor) : "—"}</td>
+                        <td className="p-1">
+                          {r.error ? (
+                            <span className="text-red-600">{r.error}</span>
+                          ) : r.replaceCompraWarn ? (
+                            <span className="text-amber-700">{r.replaceCompraWarn}</span>
+                          ) : (
+                            <span className="text-muted-foreground">OK</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -252,6 +308,18 @@ export function GestaoImportPlanilhaDialog({
                 Importar {okRows.length} linha(s)
               </Button>
             </>
+          )}
+          {importReport && importReport.failed.length > 0 && (
+            <div className="rounded-md border border-red-500/40 bg-red-500/5 p-3 text-sm">
+              <p className="font-medium">
+                {importReport.ok} importada(s), {importReport.failed.length} com erro
+              </p>
+              <ul className="mt-2 list-inside list-disc text-red-700">
+                {importReport.failed.map((f) => (
+                  <li key={f.line}>Linha {f.line}: {f.message}</li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
       </DialogContent>

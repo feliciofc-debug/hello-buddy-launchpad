@@ -20,6 +20,8 @@ import type { GestaoVeiculoEnriched } from "@/lib/gestao-lucro-types.ts";
 import { isActiveStock, vehicleLabel } from "@/lib/gestao-lucro-data.ts";
 import { GESTAO_DESPESA_CATEGORIAS } from "@/lib/gestao-lucro-categories.ts";
 import { supabase } from "@/integrations/supabase/client";
+import { GestaoMoneyInput } from "@/components/gestao/lucro/GestaoMoneyInput.tsx";
+import { parseGestaoMoneyField } from "@/lib/gestao-money.ts";
 
 type Props = {
   open: boolean;
@@ -55,8 +57,8 @@ export function GestaoBatchDespesaDialog({
       toast.error("Selecione um veículo.");
       return;
     }
-    const v = Number(String(valor).replace(",", "."));
-    if (!Number.isFinite(v) || v <= 0) {
+    const v = parseGestaoMoneyField(valor);
+    if (v == null) {
       toast.error("Valor inválido.");
       return;
     }
@@ -101,10 +103,7 @@ export function GestaoBatchDespesaDialog({
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <Label>Valor (R$)</Label>
-            <Input value={valor} onChange={(e) => setValor(e.target.value)} />
-          </div>
+          <GestaoMoneyInput label="Valor (R$)" value={valor} onChange={setValor} />
           <div>
             <Label>Data</Label>
             <Input type="date" value={data} onChange={(e) => setData(e.target.value)} />

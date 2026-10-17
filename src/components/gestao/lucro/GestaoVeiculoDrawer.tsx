@@ -37,6 +37,8 @@ import {
   gestaoMargemPct,
 } from "@/lib/gestao-format.ts";
 import { supabase } from "@/integrations/supabase/client";
+import { GestaoMoneyInput } from "@/components/gestao/lucro/GestaoMoneyInput.tsx";
+import { parseGestaoMoneyField } from "@/lib/gestao-money.ts";
 
 type Props = {
   open: boolean;
@@ -88,8 +90,8 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
   const saveCompra = useCallback(async () => {
     if (!veiculo) return;
     setBusy(true);
-    const valor = Number(String(compra.valor).replace(",", "."));
-    if (!Number.isFinite(valor) || valor <= 0) {
+    const valor = parseGestaoMoneyField(compra.valor);
+    if (valor == null) {
       toast.error("Informe o valor de compra.");
       setBusy(false);
       return;
@@ -114,8 +116,8 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
   const addDespesa = async () => {
     if (!veiculo) return;
     setBusy(true);
-    const valor = Number(String(despesaForm.valor).replace(",", "."));
-    if (!Number.isFinite(valor) || valor <= 0) {
+    const valor = parseGestaoMoneyField(despesaForm.valor);
+    if (valor == null) {
       toast.error("Valor inválido.");
       setBusy(false);
       return;
@@ -159,8 +161,8 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
   const saveVenda = async () => {
     if (!veiculo) return;
     setBusy(true);
-    const valor = Number(String(venda.valor).replace(",", "."));
-    if (!Number.isFinite(valor) || valor <= 0) {
+    const valor = parseGestaoMoneyField(venda.valor);
+    if (valor == null) {
       toast.error("Informe o valor de venda.");
       setBusy(false);
       return;
@@ -240,8 +242,11 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
             <section className="space-y-2">
               <h3 className="text-sm font-semibold">Compra</h3>
               <div className="grid gap-2">
-                <Label className="text-xs">Valor (R$)</Label>
-                <Input value={compra.valor} onChange={(e) => setCompra({ ...compra, valor: e.target.value })} />
+                <GestaoMoneyInput
+                  label="Valor (R$)"
+                  value={compra.valor}
+                  onChange={(v) => setCompra({ ...compra, valor: v })}
+                />
                 <Label className="text-xs">Data</Label>
                 <Input type="date" value={compra.data} onChange={(e) => setCompra({ ...compra, data: e.target.value })} />
               </div>
@@ -279,10 +284,10 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
                 )}
               </ul>
               <div className="grid gap-2 border-t pt-2">
-                <Input
-                  placeholder="Valor"
+                <GestaoMoneyInput
                   value={despesaForm.valor}
-                  onChange={(e) => setDespesaForm({ ...despesaForm, valor: e.target.value })}
+                  onChange={(v) => setDespesaForm({ ...despesaForm, valor: v })}
+                  placeholder="Valor"
                 />
                 <Input
                   type="date"
@@ -308,10 +313,10 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
 
             <section className="space-y-2">
               <h3 className="text-sm font-semibold">Venda</h3>
-              <Input
-                placeholder="Valor venda"
+              <GestaoMoneyInput
+                label="Valor venda"
                 value={venda.valor}
-                onChange={(e) => setVenda({ ...venda, valor: e.target.value })}
+                onChange={(v) => setVenda({ ...venda, valor: v })}
               />
               <Input
                 type="date"
