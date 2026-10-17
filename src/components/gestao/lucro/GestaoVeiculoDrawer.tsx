@@ -44,6 +44,8 @@ import { calcGestaoComissao } from "../../../../supabase/functions/_shared/gesta
 import { comissaoLucroBase } from "@/lib/gestao-comissao-lucro.ts";
 import { GestaoVendaRaioXPanel } from "@/components/gestao/lucro/GestaoVendaRaioXPanel.tsx";
 import { syncComissaoAfterVenda } from "@/lib/gestao-comissao-client.ts";
+import { useGestaoFocusnfeConnection } from "@/components/integracoes/useGestaoFocusnfeConnection";
+import { GestaoEmitirNfeDialog } from "@/components/gestao/lucro/GestaoEmitirNfeDialog.tsx";
 
 type Props = {
   open: boolean;
@@ -65,6 +67,8 @@ function origemLabel(o: string): string {
 }
 
 export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }: Props) {
+  const focusnfe = useGestaoFocusnfeConnection();
+  const [nfeOpen, setNfeOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [compra, setCompra] = useState({ valor: "", data: "", origem: "compra", fornecedor: "" });
@@ -420,6 +424,11 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
               <Button size="sm" disabled={busy} onClick={() => void prepareVenda()}>
                 Registrar venda
               </Button>
+              {focusnfe.status?.connected && (
+                <Button size="sm" variant="secondary" disabled={busy} onClick={() => setNfeOpen(true)}>
+                  Emitir nota fiscal
+                </Button>
+              )}
             </section>
           </div>
           {busy && (
@@ -458,6 +467,15 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {veiculo && (
+        <GestaoEmitirNfeDialog
+          open={nfeOpen}
+          onOpenChange={setNfeOpen}
+          veiculo={veiculo}
+          onSuccess={onSaved}
+        />
+      )}
 
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
         <AlertDialogContent>

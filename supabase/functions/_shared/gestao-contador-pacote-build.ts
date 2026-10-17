@@ -19,6 +19,18 @@ export type GestaoContadorPacote = {
     observacao: string | null;
   }>;
   comissoesBonus: Array<{ descricao: string; valor: number }>;
+  notasFiscais: Array<{
+    id: string;
+    tipo_operacao: string;
+    status: string;
+    numero: number | null;
+    serie: number | null;
+    valor_total: number | null;
+    authorized_at: string | null;
+    created_at: string;
+    xml_url: string | null;
+    danfe_url: string | null;
+  }>;
 };
 
 export function buildGestaoContadorPacote(input: {
@@ -28,6 +40,7 @@ export function buildGestaoContadorPacote(input: {
   operacionais: GestaoOperacionalDreLine[];
   contas: GestaoContadorPacote["contas"];
   comissoesBonus: GestaoContadorPacote["comissoesBonus"];
+  notasFiscais?: GestaoContadorPacote["notasFiscais"];
 }): GestaoContadorPacote {
   const dre = calcDreMes(input.competencia, input.vendas, input.operacionais);
   return {
@@ -44,5 +57,9 @@ export function buildGestaoContadorPacote(input: {
       categoriaLabel: gestaoOperacionalCategoriaLabel(c.categoria),
     })),
     comissoesBonus: input.comissoesBonus,
+    notasFiscais: (input.notasFiscais ?? []).filter((n) => {
+      const ref = n.authorized_at ?? n.created_at;
+      return ref.startsWith(input.competencia);
+    }),
   };
 }

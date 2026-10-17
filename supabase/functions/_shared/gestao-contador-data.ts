@@ -26,12 +26,15 @@ export async function loadGestaoContadorPacoteData(
   const [y, m] = competencia.split("-").map(Number);
   const end = new Date(y, m, 0).toISOString().slice(0, 10);
 
-  const [{ data: empresa }, { data: vendas }, { data: contas }] = await Promise.all([
+  const [{ data: empresa }, { data: vendas }, { data: contas }, { data: nfes }] = await Promise.all([
     client.from("empresa_config").select("nome_empresa").eq("user_id", userId).maybeSingle(),
     client.from("veiculo_venda").select("veiculo_id, valor_venda, data_venda")
       .eq("user_id", userId).gte("data_venda", start).lte("data_venda", end),
     client.from("gestao_conta_lancamento").select("*")
       .eq("user_id", userId).is("deleted_at", null),
+    client.from("gestao_nfe").select(
+      "id, tipo_operacao, status, numero, serie, valor_total, authorized_at, created_at, xml_url, danfe_url",
+    ).eq("user_id", userId),
   ]);
 
   const vendasLines: GestaoVendaDreLine[] = [];
@@ -84,5 +87,17 @@ export async function loadGestaoContadorPacoteData(
     comissoesBonus: contasList
       .filter((c) => c.origem === "bonus_g2" && c.vencimento.startsWith(competencia))
       .map((c) => ({ descricao: c.observacao ?? "Bônus", valor: Number(c.valor) })),
+    notasFiscais: (nfes ?? []).map((n: Record<string, unknown>) => ({
+      id: String(n.id),
+      tipo_operacao: String(n.tipo_operacao),
+      status: String(n.status),
+      numero: n.numero != null ? Number(n.numero) : null,
+      serie: n.serie != null ? Number(n.serie) : null,
+      valor_total: n.valor_total != null ? Number(n.valor_total) : null,
+      authorized_at: n.authorized_at ? String(n.authorized_at) : null,
+      created_at: String(n.created_at),
+      xml_url: n.xml_url ? String(n.xml_url) : null,
+      danfe_url: n.danfe_url ? String(n.danfe_url) : null,
+    })),
   });
 }

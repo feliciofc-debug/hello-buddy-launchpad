@@ -29,7 +29,7 @@ export const VENDOR_INTEGRATION_PRICING: Record<string, VendorPricingEntry> = {
   focusnfe: {
     id: "focusnfe",
     name: "Focus NFe",
-    description: "Emissão de notas fiscais eletrônicas (NF-e) — integração prevista em breve.",
+    description: "Emissão de NF-e por loja (Focus NFe). Certificado A1 fica na Focus; homologação por padrão.",
     priceSummary: "A partir de R$ 119,90/mês (até 3 CNPJs).",
     priceDetail: "Ambiente de homologação gratuito.",
     officialPricingUrl: "https://focusnfe.com.br/precos/",
