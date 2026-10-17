@@ -66,7 +66,10 @@ type Vehicle = Database["public"]["Tables"]["veiculos_estoque"]["Row"] & {
 };
 type VehicleStatus = "disponivel" | "reservado" | "vendido";
 
+type VehicleSegmento = "carro" | "moto";
+
 type VehicleForm = {
+  segmento: VehicleSegmento;
   marca: string;
   modelo: string;
   versao: string;
@@ -78,6 +81,10 @@ type VehicleForm = {
   combustivel: string;
   cambio: string;
   portas: string;
+  cilindrada_cc: string;
+  estilo_moto: string;
+  partida: string;
+  refrigeracao: string;
   blindado: boolean;
   nivel_blindagem: string;
   opcionais: string;
@@ -90,6 +97,7 @@ type VehicleForm = {
 };
 
 const EMPTY_FORM: VehicleForm = {
+  segmento: "carro",
   marca: "",
   modelo: "",
   versao: "",
@@ -101,6 +109,10 @@ const EMPTY_FORM: VehicleForm = {
   combustivel: "",
   cambio: "",
   portas: "",
+  cilindrada_cc: "",
+  estilo_moto: "",
+  partida: "",
+  refrigeracao: "",
   blindado: false,
   nivel_blindagem: "",
   opcionais: "",
@@ -111,6 +123,17 @@ const EMPTY_FORM: VehicleForm = {
   destaque: false,
   placa: "",
 };
+
+const MOTO_ESTILO_OPTIONS = [
+  { value: "naked", label: "Naked" },
+  { value: "esportiva", label: "Esportiva" },
+  { value: "custom", label: "Custom" },
+  { value: "trail", label: "Trail / Big trail" },
+  { value: "scooter", label: "Scooter" },
+  { value: "touring", label: "Touring" },
+  { value: "street", label: "Street" },
+  { value: "off_road", label: "Off-road" },
+] as const;
 
 const STATUS_LABELS: Record<VehicleStatus, string> = {
   disponivel: "Disponível",
@@ -132,7 +155,11 @@ function optionalNumber(value: string): number | null {
 }
 
 function vehicleToForm(vehicle: Vehicle): VehicleForm {
+  const segmento = (vehicle as Vehicle & { segmento?: string }).segmento === "moto"
+    ? "moto"
+    : "carro";
   return {
+    segmento,
     marca: vehicle.marca,
     modelo: vehicle.modelo,
     versao: vehicle.versao || "",
@@ -144,6 +171,10 @@ function vehicleToForm(vehicle: Vehicle): VehicleForm {
     combustivel: vehicle.combustivel || "",
     cambio: vehicle.cambio || "",
     portas: vehicle.portas?.toString() || "",
+    cilindrada_cc: (vehicle as Vehicle & { cilindrada_cc?: number | null }).cilindrada_cc?.toString() || "",
+    estilo_moto: (vehicle as Vehicle & { estilo_moto?: string | null }).estilo_moto || "",
+    partida: (vehicle as Vehicle & { partida?: string | null }).partida || "",
+    refrigeracao: (vehicle as Vehicle & { refrigeracao?: string | null }).refrigeracao || "",
     blindado: vehicle.blindado,
     nivel_blindagem: vehicle.nivel_blindagem || "",
     opcionais: vehicle.opcionais.join(", "),
@@ -254,6 +285,7 @@ export default function VehicleInventory() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [brandFilter, setBrandFilter] = useState("todas");
+  const [segmentFilter, setSegmentFilter] = useState<"todos" | VehicleSegmento>("todos");
   const [statusFilter, setStatusFilter] = useState("todos");
   const [armoredOnly, setArmoredOnly] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -368,12 +400,14 @@ export default function VehicleInventory() {
 
   const filteredVehicles = useMemo(
     () =>
-      vehicles.filter((vehicle) =>
-        (brandFilter === "todas" || vehicle.marca === brandFilter) &&
-        (statusFilter === "todos" || vehicle.status === statusFilter) &&
-        (!armoredOnly || vehicle.blindado)
-      ),
-    [armoredOnly, brandFilter, statusFilter, vehicles],
+      vehicles.filter((vehicle) => {
+        const seg = (vehicle as Vehicle & { segmento?: string }).segmento === "moto" ? "moto" : "carro";
+        return (brandFilter === "todas" || vehicle.marca === brandFilter) &&
+          (segmentFilter === "todos" || seg === segmentFilter) &&
+          (statusFilter === "todos" || vehicle.status === statusFilter) &&
+          (!armoredOnly || vehicle.blindado);
+      }),
+    [armoredOnly, brandFilter, segmentFilter, statusFilter, vehicles],
   );
 
   const openCreate = () => {
@@ -415,7 +449,9 @@ export default function VehicleInventory() {
       return;
     }
 
+    const isMoto = form.segmento === "moto";
     const values = {
+      segmento: form.segmento,
       marca: form.marca.trim(),
       modelo: form.modelo.trim(),
       versao: form.versao.trim() || null,
@@ -424,10 +460,14 @@ export default function VehicleInventory() {
       km: optionalNumber(form.km),
       preco: optionalNumber(form.preco),
       cor: form.cor.trim() || null,
-      combustivel: form.combustivel.trim() || null,
-      cambio: form.cambio.trim() || null,
-      portas: optionalNumber(form.portas),
-      blindado: form.blindado,
+      combustivel: isMoto ? null : (form.combustivel.trim() || null),
+      cambio: isMoto ? null : (form.cambio.trim() || null),
+      portas: isMoto ? null : optionalNumber(form.portas),
+      cilindrada_cc: isMoto ? optionalNumber(form.cilindrada_cc) : null,
+      estilo_moto: isMoto && form.estilo_moto ? form.estilo_moto : null,
+      partida: isMoto && form.partida ? form.partida : null,
+      refrigeracao: isMoto && form.refrigeracao ? form.refrigeracao : null,
+      blindado: isMoto ? false : form.blindado,
       nivel_blindagem: form.blindado
         ? form.nivel_blindagem.trim() || null
         : null,
@@ -657,7 +697,21 @@ export default function VehicleInventory() {
       <main className="container mx-auto space-y-6 px-4 py-8">
         <MlInventoryStrip />
         <Card>
-          <CardContent className="grid gap-4 p-4 md:grid-cols-3">
+          <CardContent className="grid gap-4 p-4 md:grid-cols-4">
+            <div>
+              <Label>Segmento</Label>
+              <Select
+                value={segmentFilter}
+                onValueChange={(v) => setSegmentFilter(v as "todos" | VehicleSegmento)}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Carros e motos</SelectItem>
+                  <SelectItem value="carro">Carros</SelectItem>
+                  <SelectItem value="moto">Motos</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div>
               <Label>Marca</Label>
               <Select value={brandFilter} onValueChange={setBrandFilter}>
@@ -738,9 +792,14 @@ export default function VehicleInventory() {
                         <p className="text-sm text-muted-foreground">{vehicle.versao}</p>
                       )}
                     </div>
-                    <Badge variant={vehicle.status === "disponivel" ? "default" : "secondary"}>
-                      {STATUS_LABELS[vehicle.status as VehicleStatus] || vehicle.status}
-                    </Badge>
+                    <div className="flex flex-col items-end gap-1">
+                      <Badge variant={vehicle.status === "disponivel" ? "default" : "secondary"}>
+                        {STATUS_LABELS[vehicle.status as VehicleStatus] || vehicle.status}
+                      </Badge>
+                      {(vehicle as Vehicle & { segmento?: string }).segmento === "moto" && (
+                        <Badge variant="outline">Moto</Badge>
+                      )}
+                    </div>
                   </div>
                   <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
                     {(vehicle.ano_fabricacao || vehicle.ano_modelo) && (
@@ -980,6 +1039,24 @@ export default function VehicleInventory() {
             <DialogTitle>{editing ? "Editar veículo" : "Adicionar veículo"}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Segmento *">
+              <Select
+                value={form.segmento}
+                onValueChange={(segmento: VehicleSegmento) =>
+                  setForm({
+                    ...form,
+                    segmento,
+                    blindado: segmento === "moto" ? false : form.blindado,
+                  })
+                }
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="carro">Carro</SelectItem>
+                  <SelectItem value="moto">Moto</SelectItem>
+                </SelectContent>
+              </Select>
+            </FormField>
             <FormField label="Marca *">
               <Input value={form.marca} onChange={(event) => setForm({ ...form, marca: event.target.value })} />
             </FormField>
@@ -1004,15 +1081,65 @@ export default function VehicleInventory() {
             <FormField label="Preço">
               <Input type="number" min="0" step="0.01" value={form.preco} onChange={(event) => setForm({ ...form, preco: event.target.value })} />
             </FormField>
-            <FormField label="Combustível">
-              <Input value={form.combustivel} onChange={(event) => setForm({ ...form, combustivel: event.target.value })} />
-            </FormField>
-            <FormField label="Câmbio">
-              <Input value={form.cambio} onChange={(event) => setForm({ ...form, cambio: event.target.value })} />
-            </FormField>
-            <FormField label="Portas">
-              <Input type="number" min="1" value={form.portas} onChange={(event) => setForm({ ...form, portas: event.target.value })} />
-            </FormField>
+            {form.segmento === "carro" ? (
+              <>
+                <FormField label="Combustível">
+                  <Input value={form.combustivel} onChange={(event) => setForm({ ...form, combustivel: event.target.value })} />
+                </FormField>
+                <FormField label="Câmbio">
+                  <Input value={form.cambio} onChange={(event) => setForm({ ...form, cambio: event.target.value })} />
+                </FormField>
+                <FormField label="Portas">
+                  <Input type="number" min="1" value={form.portas} onChange={(event) => setForm({ ...form, portas: event.target.value })} />
+                </FormField>
+              </>
+            ) : (
+              <>
+                <FormField label="Cilindrada (cc)">
+                  <Input type="number" min="1" value={form.cilindrada_cc} onChange={(event) => setForm({ ...form, cilindrada_cc: event.target.value })} />
+                </FormField>
+                <FormField label="Estilo">
+                  <Select
+                    value={form.estilo_moto || "none"}
+                    onValueChange={(v) => setForm({ ...form, estilo_moto: v === "none" ? "" : v })}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">—</SelectItem>
+                      {MOTO_ESTILO_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormField>
+                <FormField label="Partida">
+                  <Select
+                    value={form.partida || "none"}
+                    onValueChange={(v) => setForm({ ...form, partida: v === "none" ? "" : v })}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">—</SelectItem>
+                      <SelectItem value="eletrica">Elétrica</SelectItem>
+                      <SelectItem value="pedal">Pedal</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FormField>
+                <FormField label="Refrigeração">
+                  <Select
+                    value={form.refrigeracao || "none"}
+                    onValueChange={(v) => setForm({ ...form, refrigeracao: v === "none" ? "" : v })}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">—</SelectItem>
+                      <SelectItem value="ar">Ar</SelectItem>
+                      <SelectItem value="liquida">Líquida</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FormField>
+              </>
+            )}
             <FormField label="Placa (uso interno)">
               <Input
                 value={form.placa}
@@ -1033,13 +1160,15 @@ export default function VehicleInventory() {
                 </SelectContent>
               </Select>
             </FormField>
-            <label className="flex items-center gap-2 text-sm font-medium">
-              <Checkbox
-                checked={form.blindado}
-                onCheckedChange={(checked) => setForm({ ...form, blindado: checked === true })}
-              />
-              Veículo blindado
-            </label>
+            {form.segmento === "carro" && (
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <Checkbox
+                  checked={form.blindado}
+                  onCheckedChange={(checked) => setForm({ ...form, blindado: checked === true })}
+                />
+                Veículo blindado
+              </label>
+            )}
             <label className="flex items-center gap-2 text-sm font-medium">
               <Checkbox
                 checked={form.destaque}

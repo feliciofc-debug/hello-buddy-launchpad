@@ -18,12 +18,14 @@ import { fetchViaCep } from "./viacep-client.ts";
 import type { FinanciamentoFichaRow } from "./vehicle-stock-financiamento.ts";
 import {
   FaixaPrecoId,
+  FaixaPrecoMotoId,
   isTransientVitrineSendFailure,
   PendingVitrineEstoque,
   VehicleShowcaseTenantFlags,
   VeiculoVitrineRow,
   VITRINE_SEND_RETRY_DELAYS_MS,
 } from "./vehicle-stock-whatsapp.ts";
+import { MOTO_ESTILO_VALUES } from "./vehicle-segment.ts";
 import { safeErrorMessage } from "./pii-log-sanitize.ts";
 import { handleVitrineCrmAfterEvent } from "./vitrine-crm-schedule.ts";
 import type { VitrineEvento } from "./vitrine-eventos.ts";
@@ -115,18 +117,44 @@ function pendingFromState(state: Record<string, unknown>): PendingVitrineEstoque
   return getPendingVitrineEstoque(state);
 }
 
+function withSegmentoCarro(q: any) {
+  return q.eq("segmento", "carro");
+}
+
+function withSegmentoMoto(q: any) {
+  return q.eq("segmento", "moto");
+}
+
 function faixaQuery(sb: any, userId: string, faixa: FaixaPrecoId) {
-  let q = sb.from("veiculos_estoque")
+  let q = withSegmentoCarro(sb.from("veiculos_estoque")
     .select(VEHICLE_SELECT)
     .eq("user_id", userId)
     .eq("status", "disponivel")
-    .not("preco", "is", null);
+    .not("preco", "is", null));
   if (faixa === "ate_300") {
     q = q.lte("preco", 300_000);
   } else if (faixa === "300_600") {
     q = q.gt("preco", 300_000).lte("preco", 600_000);
   } else {
     q = q.gt("preco", 600_000);
+  }
+  return q.order("destaque", { ascending: false })
+    .order("updated_at", { ascending: false })
+    .order("preco", { ascending: true });
+}
+
+function faixaMotoQuery(sb: any, userId: string, faixa: FaixaPrecoMotoId) {
+  let q = withSegmentoMoto(sb.from("veiculos_estoque")
+    .select(VEHICLE_SELECT)
+    .eq("user_id", userId)
+    .eq("status", "disponivel")
+    .not("preco", "is", null));
+  if (faixa === "ate_50") {
+    q = q.lte("preco", 50_000);
+  } else if (faixa === "50_120") {
+    q = q.gt("preco", 50_000).lte("preco", 120_000);
+  } else {
+    q = q.gt("preco", 120_000);
   }
   return q.order("destaque", { ascending: false })
     .order("updated_at", { ascending: false })
@@ -147,9 +175,22 @@ function buildShowcaseDeps(ctx: ShowcaseBridgeContext): ShowcaseTurnDeps {
         nome_empresa: data?.nome_empresa ?? null,
       } satisfies VehicleShowcaseTenantFlags;
     },
-    loadMarcas: async () => {
+    loadSegmentoCounts: async () => {
       const { data } = await ctx.sb.from("veiculos_estoque")
-        .select("marca")
+        .select("segmento")
+        .eq("user_id", ctx.userId)
+        .eq("status", "disponivel");
+      let carros = 0;
+      let motos = 0;
+      for (const row of data ?? []) {
+        if (row.segmento === "moto") motos += 1;
+        else carros += 1;
+      }
+      return { carros, motos };
+    },
+    loadMarcas: async () => {
+      const { data } = await withSegmentoCarro(ctx.sb.from("veiculos_estoque")
+        .select("marca"))
         .eq("user_id", ctx.userId)
         .eq("status", "disponivel");
       const set = new Set<string>();
@@ -159,18 +200,44 @@ function buildShowcaseDeps(ctx: ShowcaseBridgeContext): ShowcaseTurnDeps {
       }
       return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
     },
+    loadEstilosMoto: async () => {
+      const { data } = await withSegmentoMoto(ctx.sb.from("veiculos_estoque")
+        .select("estilo_moto"))
+        .eq("user_id", ctx.userId)
+        .eq("status", "disponivel");
+      const set = new Set<string>();
+      for (const row of data ?? []) {
+        const e = String(row.estilo_moto || "").trim();
+        if (e) set.add(e);
+      }
+      const order = new Map(MOTO_ESTILO_VALUES.map((v, i) => [v, i]));
+      return [...set].sort((a, b) => (order.get(a as never) ?? 99) - (order.get(b as never) ?? 99));
+    },
     loadPrecosDisponiveis: async () => {
-      const { data } = await ctx.sb.from("veiculos_estoque")
-        .select("preco")
+      const { data } = await withSegmentoCarro(ctx.sb.from("veiculos_estoque")
+        .select("preco"))
         .eq("user_id", ctx.userId)
         .eq("status", "disponivel");
       return (data ?? [])
         .map((row: { preco?: number | null }) => row.preco)
-        .filter((p): p is number => p != null && Number.isFinite(Number(p)));
+        .filter((p: number | null | undefined): p is number =>
+          p != null && Number.isFinite(Number(p))
+        );
+    },
+    loadPrecosMotosDisponiveis: async () => {
+      const { data } = await withSegmentoMoto(ctx.sb.from("veiculos_estoque")
+        .select("preco"))
+        .eq("user_id", ctx.userId)
+        .eq("status", "disponivel");
+      return (data ?? [])
+        .map((row: { preco?: number | null }) => row.preco)
+        .filter((p: number | null | undefined): p is number =>
+          p != null && Number.isFinite(Number(p))
+        );
     },
     loadVeiculosByMarca: async (marca, offset, limit) => {
-      const { data } = await ctx.sb.from("veiculos_estoque")
-        .select(VEHICLE_SELECT)
+      const { data } = await withSegmentoCarro(ctx.sb.from("veiculos_estoque")
+        .select(VEHICLE_SELECT))
         .eq("user_id", ctx.userId)
         .eq("status", "disponivel")
         .eq("marca", marca)
@@ -180,8 +247,25 @@ function buildShowcaseDeps(ctx: ShowcaseBridgeContext): ShowcaseTurnDeps {
         .range(offset, offset + limit - 1);
       return (data ?? []) as VeiculoVitrineRow[];
     },
+    loadVeiculosByEstilo: async (estilo, offset, limit) => {
+      const { data } = await withSegmentoMoto(ctx.sb.from("veiculos_estoque")
+        .select(VEHICLE_SELECT))
+        .eq("user_id", ctx.userId)
+        .eq("status", "disponivel")
+        .eq("estilo_moto", estilo)
+        .order("destaque", { ascending: false })
+        .order("updated_at", { ascending: false })
+        .order("preco", { ascending: true })
+        .range(offset, offset + limit - 1);
+      return (data ?? []) as VeiculoVitrineRow[];
+    },
     loadVeiculosByFaixa: async (faixa, offset, limit) => {
       const { data } = await faixaQuery(ctx.sb, ctx.userId, faixa)
+        .range(offset, offset + limit - 1);
+      return (data ?? []) as VeiculoVitrineRow[];
+    },
+    loadVeiculosByFaixaMoto: async (faixa, offset, limit) => {
+      const { data } = await faixaMotoQuery(ctx.sb, ctx.userId, faixa)
         .range(offset, offset + limit - 1);
       return (data ?? []) as VeiculoVitrineRow[];
     },

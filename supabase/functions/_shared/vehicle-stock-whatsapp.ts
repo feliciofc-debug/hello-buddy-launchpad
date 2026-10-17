@@ -1,4 +1,22 @@
 import { isAutomotiveTenant } from "./vertical-router.ts";
+import {
+  activeFaixasMotoFromCounts,
+  countMotosByFaixa,
+  faixaPrecoMotoLabel,
+  motoEstiloLabel,
+  motoCardExtras,
+  partidaMotoLabel,
+  refrigeracaoMotoLabel,
+  type FaixaPrecoMotoId,
+  type VeiculoSegmento,
+} from "./vehicle-segment.ts";
+export type { FaixaPrecoMotoId, VeiculoSegmento };
+export {
+  activeFaixasMotoFromCounts,
+  countMotosByFaixa,
+  faixaPrecoMotoLabel,
+  motoEstiloLabel,
+};
 import type { VitrineRecadoResume } from "./vehicle-stock-cliente-nome.ts";
 import {
   vitrineNomeParaRecado,
@@ -23,13 +41,20 @@ export type PendingVitrineEstoque = {
     | "menu"
     | "carrossel_marca"
     | "carrossel_faixa"
+    | "carrossel_estilo"
+    | "carrossel_faixa_moto"
+    | "escolha_segmento"
     | "detalhe"
     | "handoff"
     | "marcas"
     | "carrossel";
+  /** Navegação vitrine: carros (default) ou motos. */
+  segmento_vitrine?: VeiculoSegmento | null;
   marca?: string | null;
+  estilo_moto?: string | null;
   faixa?: FaixaPrecoId | null;
-  filtro_tipo?: "marca" | "faixa" | null;
+  faixa_moto?: FaixaPrecoMotoId | null;
+  filtro_tipo?: "marca" | "faixa" | "estilo" | "faixa_moto" | null;
   offset: number;
   marca_offset?: number;
   veiculo_id?: string | null;
@@ -278,8 +303,58 @@ export function buildShowcaseMenuSections(input: {
   return { sections, hasMoreMarcas };
 }
 
+/** Menu motos: estilo + faixa de preço (≤10 rows). */
+export function buildMotoShowcaseMenuSections(input: {
+  estilos: string[];
+  estiloOffset?: number;
+  faixasAtivas: FaixaPrecoMotoId[];
+}): {
+  sections: ShowcaseMenuSection[];
+  hasMoreEstilos: boolean;
+} {
+  const estiloOffset = input.estiloOffset ?? 0;
+  const faixaRows: ShowcaseListRow[] = input.faixasAtivas.map((faixa) => ({
+    id: vitrineButtonId("faixa_moto", faixa),
+    title: faixaPrecoMotoLabel(faixa).slice(0, 24),
+    description: "Ver motos nesta faixa",
+  }));
+
+  const maxRows = 10;
+  let slotsForEstilos = Math.max(0, maxRows - faixaRows.length);
+  const remaining = input.estilos.length - estiloOffset;
+  const needsMoreRow = remaining > slotsForEstilos;
+  if (needsMoreRow && slotsForEstilos > 0) slotsForEstilos -= 1;
+
+  const estilosSlice = input.estilos.slice(estiloOffset, estiloOffset + slotsForEstilos);
+  const hasMoreEstilos = estiloOffset + estilosSlice.length < input.estilos.length;
+
+  const estiloRows: ShowcaseListRow[] = estilosSlice.map((estilo) => ({
+    id: vitrineButtonId("estilo", estilo),
+    title: motoEstiloLabel(estilo).slice(0, 24),
+    description: "Ver motos deste estilo",
+  }));
+
+  if (hasMoreEstilos) {
+    estiloRows.push({
+      id: vitrineButtonId("menu_estilos", String(estiloOffset + estilosSlice.length)),
+      title: "Ver mais estilos",
+      description: "Outros estilos disponíveis",
+    });
+  }
+
+  const sections: ShowcaseMenuSection[] = [];
+  if (faixaRows.length) {
+    sections.push({ title: "Por faixa de preço", rows: faixaRows });
+  }
+  if (estiloRows.length) {
+    sections.push({ title: "Por estilo", rows: estiloRows });
+  }
+  return { sections, hasMoreEstilos };
+}
+
 export type VeiculoVitrineRow = {
   id: string;
+  segmento?: VeiculoSegmento | null;
   marca: string;
   modelo: string;
   versao: string | null;
@@ -291,6 +366,10 @@ export type VeiculoVitrineRow = {
   cambio: string | null;
   combustivel: string | null;
   portas: number | null;
+  cilindrada_cc?: number | null;
+  estilo_moto?: string | null;
+  partida?: string | null;
+  refrigeracao?: string | null;
   blindado: boolean;
   nivel_blindagem: string | null;
   opcionais: string[] | null;
@@ -299,6 +378,16 @@ export type VeiculoVitrineRow = {
   fotos: string[] | null;
   status: string;
 };
+
+export function vitrineSegmentoFromPending(
+  pending: PendingVitrineEstoque | null | undefined,
+): VeiculoSegmento {
+  return pending?.segmento_vitrine === "moto" ? "moto" : "carro";
+}
+
+export function isMotoVitrineRow(v: VeiculoVitrineRow): boolean {
+  return v.segmento === "moto";
+}
 
 export function shouldOfferVehicleShowcase(
   flags: VehicleShowcaseTenantFlags,
@@ -363,6 +452,16 @@ const SHOWCASE_TEXT_VEHICLE_SPECIFIC = [
   /\bver\s+veiculos?\b/,
 ];
 
+const SHOWCASE_TEXT_MOTO_SPECIFIC = [
+  /\bver\s+motos?\b/,
+  /\bquero\s+ver\s+(as\s+)?motos?\b/,
+  /\btem\s+moto\b/,
+  /\btem\s+motos\b/,
+  /\bmotos?\s+disponiveis\b/,
+  /\bmostrar?\s+motos?\b/,
+  /\bestoque\s+de\s+motos?\b/,
+];
+
 /** Só tenants automotivos (expo genérica de “loja”/“estoque” não dispara vitrine). */
 const SHOWCASE_TEXT_AUTOMOTIVE_EXTRA = [
   /\bo\s+que\s+tem\s+na\s+loja\b/,
@@ -378,12 +477,35 @@ function normalizedShowcaseText(text: string): string {
     .trim();
 }
 
+export function isExplicitMotoShowcaseRequest(
+  text: string,
+  flags?: VehicleShowcaseTenantFlags,
+): boolean {
+  const value = normalizedShowcaseText(text);
+  if (!value) return false;
+  const automotive = isAutomotiveTenant(flags?.segmento ?? null);
+  const demoOnly = flags?.vitrine_veiculos_demo === true && !automotive;
+  const motoSpecific = SHOWCASE_TEXT_MOTO_SPECIFIC.some((re) => re.test(value));
+  if (demoOnly) return motoSpecific;
+  if (motoSpecific) return true;
+  return false;
+}
+
+export function isExplicitCarOnlyShowcaseRequest(text: string): boolean {
+  const value = normalizedShowcaseText(text);
+  if (!value) return false;
+  return SHOWCASE_TEXT_VEHICLE_SPECIFIC.some((re) => re.test(value)) &&
+    !SHOWCASE_TEXT_MOTO_SPECIFIC.some((re) => re.test(value));
+}
+
 export function isExplicitVehicleShowcaseRequest(
   text: string,
   flags?: VehicleShowcaseTenantFlags,
 ): boolean {
   const value = normalizedShowcaseText(text);
   if (!value) return false;
+
+  if (isExplicitMotoShowcaseRequest(text, flags)) return true;
 
   const automotive = isAutomotiveTenant(flags?.segmento ?? null);
   const demoOnly = flags?.vitrine_veiculos_demo === true && !automotive;
@@ -395,6 +517,22 @@ export function isExplicitVehicleShowcaseRequest(
     ? [...SHOWCASE_TEXT_VEHICLE_SPECIFIC, ...SHOWCASE_TEXT_AUTOMOTIVE_EXTRA]
     : SHOWCASE_TEXT_VEHICLE_SPECIFIC;
   return patterns.some((re) => re.test(value));
+}
+
+export type VitrineSegmentoCounts = { carros: number; motos: number };
+
+export function resolveShowcaseSegmentFromText(input: {
+  text: string;
+  flags?: VehicleShowcaseTenantFlags;
+  counts: VitrineSegmentoCounts;
+}): VeiculoSegmento | "escolher" | null {
+  if (isExplicitMotoShowcaseRequest(input.text, input.flags)) return "moto";
+  if (isExplicitCarOnlyShowcaseRequest(input.text)) return "carro";
+  const { carros, motos } = input.counts;
+  if (motos > 0 && carros === 0) return "moto";
+  if (carros > 0 && motos === 0) return "carro";
+  if (carros > 0 && motos > 0) return "escolher";
+  return carros > 0 ? "carro" : motos > 0 ? "moto" : null;
 }
 
 export function marcaToSlug(marca: string): string {
@@ -494,10 +632,13 @@ export function formatDescricaoVeiculo(text: string): string {
 export function formatCardBody(v: VeiculoVitrineRow): string {
   const titulo = vehicleDisplayTitle(v);
   const km = v.km != null ? `${v.km.toLocaleString("pt-BR")} km` : null;
-  const extras = [formatAno(v), km, v.cambio, v.cor, formatPrecoBrl(v.preco)]
-    .filter(Boolean)
-    .join(" · ");
-  return truncateCardText(`${titulo}\n${extras}`);
+  const motoBits = isMotoVitrineRow(v) ? motoCardExtras(v) : [];
+  const extras = isMotoVitrineRow(v)
+    ? [formatAno(v), km, ...motoBits, v.cor, formatPrecoBrl(v.preco)]
+    : [formatAno(v), km, v.cambio, v.cor, formatPrecoBrl(v.preco)];
+  return truncateCardText(
+    `${titulo}\n${extras.filter(Boolean).join(" · ")}`,
+  );
 }
 
 function truncateCardText(text: string): string {
@@ -521,15 +662,21 @@ export function formatFichaElegante(v: VeiculoVitrineRow): string {
   const specs: string[] = [];
   specs.push(`📅 Ano · ${formatAno(v)}`);
   if (v.km != null) specs.push(`🛣️ Km · ${v.km.toLocaleString("pt-BR")}`);
-  if (v.cambio) specs.push(`⚙️ Câmbio · ${formatVehicleDisplayTitle(v.cambio)}`);
-  if (v.combustivel) {
-    specs.push(`⛽ Combustível · ${formatVehicleDisplayTitle(v.combustivel)}`);
+  if (isMotoVitrineRow(v)) {
+    for (const bit of motoCardExtras(v)) {
+      specs.push(`🏍️ ${bit}`);
+    }
+  } else {
+    if (v.cambio) specs.push(`⚙️ Câmbio · ${formatVehicleDisplayTitle(v.cambio)}`);
+    if (v.combustivel) {
+      specs.push(`⛽ Combustível · ${formatVehicleDisplayTitle(v.combustivel)}`);
+    }
   }
   if (v.preco != null) specs.push(`💰 Preço · ${formatPrecoBrl(v.preco)}`);
   if (specs.length) lines.push(specs.join("\n"));
 
   if (v.cor) lines.push(`Cor · ${formatVehicleDisplayTitle(v.cor)}`);
-  if (v.portas != null) lines.push(`Portas · ${v.portas}`);
+  if (!isMotoVitrineRow(v) && v.portas != null) lines.push(`Portas · ${v.portas}`);
   if (v.blindado) {
     const extra = v.nivel_blindagem
       ? ` · ${formatDescricaoVeiculo(v.nivel_blindagem)}`

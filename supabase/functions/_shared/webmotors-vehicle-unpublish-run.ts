@@ -1,10 +1,17 @@
 import { webmotorsHashForUser } from "./webmotors-conta.ts";
 import { wmExcluirCarro } from "./webmotors-car-api.ts";
+import { wmExcluirMoto } from "./webmotors-moto-api.ts";
 
 export async function runWebmotorsVehicleUnpublish(
   sb: any,
   input: { userId: string; veiculoId: string; motivo?: string },
 ): Promise<{ ok: boolean; error?: string }> {
+  const { data: vehicle } = await sb.from("veiculos_estoque")
+    .select("segmento")
+    .eq("user_id", input.userId)
+    .eq("id", input.veiculoId)
+    .maybeSingle();
+
   const { data: portal } = await sb.from("veiculos_portais")
     .select("*")
     .eq("user_id", input.userId)
@@ -26,12 +33,12 @@ export async function runWebmotorsVehicleUnpublish(
   }
 
   try {
-    await wmExcluirCarro(
-      ambiente,
-      hash,
-      Number(portal.external_id),
-      input.motivo?.trim() || "Removido pelo estoque AMZ",
-    );
+    const motivo = input.motivo?.trim() || "Removido pelo estoque AMZ";
+    if (vehicle?.segmento === "moto") {
+      await wmExcluirMoto(ambiente, hash, Number(portal.external_id), motivo);
+    } else {
+      await wmExcluirCarro(ambiente, hash, Number(portal.external_id), motivo);
+    }
     await sb.from("veiculos_portais").update({
       status: "closed",
       last_error: null,
