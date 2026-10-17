@@ -179,10 +179,4 @@ export function mapVehicleToWebmotorsCar(input: {
 /** Garante que o payload não carrega campos internos além de Observacao saneada. */
 export function assertWebmotorsPayloadPublicOnly(payload: WmAnuncioPayload): void {
   webmotorsPublicObservacao(payload.Observacao);
-  const obs = payload.Observacao.toLowerCase();
-  for (const token of ["fipe", "kbb", "custo", "avaria", "interno"]) {
-    if (obs.includes(token)) {
-      throw new Error(`Observacao contém termo proibido: ${token}`);
-    }
-  }
 }

@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
 
     const password_enc = await encryptWebmotorsSecret(senha);
     const admin = webmotorsAdminClient();
-    await admin.from("webmotors_contas").upsert({
+    const { error: upsertError } = await admin.from("webmotors_contas").upsert({
       user_id: user.id,
       cnpj,
       integration_email: email,
@@ -41,6 +41,10 @@ Deno.serve(async (req) => {
       default_codigo_modalidade: Number.isFinite(defaultModalidade) ? defaultModalidade : null,
       updated_at: new Date().toISOString(),
     }, { onConflict: "user_id" });
+
+    if (upsertError) {
+      throw new Error("Não foi possível salvar as credenciais. Tente novamente.");
+    }
 
     return jsonResponse({ success: true, message: "Credenciais Webmotors salvas." });
   } catch (e) {

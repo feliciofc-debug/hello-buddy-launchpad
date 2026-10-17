@@ -64,10 +64,11 @@ Deno.test("Observacao usa somente descricao publica do veiculo", () => {
   assertWebmotorsPayloadPublicOnly(r.payload);
 });
 
-Deno.test("Observacao rejeita termos internos proibidos", () => {
+Deno.test("Observacao rejeita FIPE com mensagem clara", () => {
   assertThrows(
-    () => webmotorsPublicObservacao("Carro com custo abaixo da FIPE"),
+    () => webmotorsPublicObservacao("Carro abaixo da tabela FIPE"),
     Error,
+    "A descrição contém 'FIPE'",
   );
 });
 

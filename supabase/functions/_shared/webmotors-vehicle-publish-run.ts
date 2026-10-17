@@ -4,10 +4,33 @@ import { wmIncluirCarro, wmIncluirFotoUrl } from "./webmotors-car-api.ts";
 import { assertWebmotorsPayloadPublicOnly, mapVehicleToWebmotorsCar } from "./webmotors-map-car.ts";
 import type { VeiculoEstoqueRow } from "./webmotors-vehicle-types.ts";
 
+const PHOTO_PARTIAL_ERROR =
+  "Algumas fotos não foram enviadas. Use Sincronizar.";
+
+export type WebmotorsPublishApi = {
+  incluirCarro: typeof wmIncluirCarro;
+  incluirFotoUrl: typeof wmIncluirFotoUrl;
+};
+
+export type WebmotorsPublishDeps = {
+  api?: WebmotorsPublishApi;
+  hashForUser?: typeof webmotorsHashForUser;
+  loadCatalog?: typeof loadCatalogBundleForVehicle;
+};
+
+const defaultPublishApi: WebmotorsPublishApi = {
+  incluirCarro: wmIncluirCarro,
+  incluirFotoUrl: wmIncluirFotoUrl,
+};
+
 export async function runWebmotorsVehiclePublish(
   sb: any,
   input: { userId: string; veiculoId: string },
+  deps: WebmotorsPublishDeps = {},
 ): Promise<{ ok: boolean; external_id?: string; error?: string; blocking?: unknown[] }> {
+  const api = deps.api ?? defaultPublishApi;
+  const resolveHash = deps.hashForUser ?? webmotorsHashForUser;
+  const resolveCatalog = deps.loadCatalog ?? loadCatalogBundleForVehicle;
   const { data: vehicle, error: vErr } = await sb.from("veiculos_estoque")
     .select("*")
     .eq("user_id", input.userId)
@@ -24,8 +47,11 @@ export async function runWebmotorsVehiclePublish(
     .eq("veiculo_id", input.veiculoId)
     .eq("portal", "webmotors")
     .maybeSingle();
-  if (portal?.external_id && portal.status === "published") {
-    return { ok: false, error: "Este veículo já está publicado na Webmotors. Use sincronizar." };
+  if (portal?.external_id && portal.status !== "closed") {
+    return {
+      ok: false,
+      error: "Anúncio já criado na Webmotors. Use Sincronizar para fotos e dados.",
+    };
   }
 
   const { data: mapRow } = await sb.from("webmotors_veiculo_map")
@@ -38,7 +64,7 @@ export async function runWebmotorsVehiclePublish(
   let ambiente: "homolog" | "producao";
   let defaultModalidade: number | null;
   try {
-    const auth = await webmotorsHashForUser(sb, input.userId);
+    const auth = await resolveHash(sb, input.userId);
     hash = auth.hash;
     ambiente = auth.ambiente;
     defaultModalidade = auth.conta.default_codigo_modalidade;
@@ -48,7 +74,7 @@ export async function runWebmotorsVehiclePublish(
 
   let catalog;
   try {
-    catalog = await loadCatalogBundleForVehicle(
+    catalog = await resolveCatalog(
       sb,
       ambiente,
       hash,
@@ -71,20 +97,9 @@ export async function runWebmotorsVehiclePublish(
   assertWebmotorsPayloadPublicOnly(mapped.payload);
 
   try {
-    const created = await wmIncluirCarro(ambiente, hash, mapped.payload);
-    const fotos = ((vehicle as VeiculoEstoqueRow).fotos ?? []).filter(Boolean).slice(0, 20);
-    for (const url of fotos) {
-      const codigoFoto = await wmIncluirFotoUrl(ambiente, hash, created.codigoAnuncio, url);
-      await sb.from("webmotors_foto_vinculo").upsert({
-        user_id: input.userId,
-        veiculo_id: input.veiculoId,
-        url_amz: url,
-        codigo_foto_wm: codigoFoto,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "user_id,veiculo_id,url_amz" });
-    }
-
+    const created = await api.incluirCarro(ambiente, hash, mapped.payload);
     const external_id = String(created.codigoAnuncio);
+
     await sb.from("veiculos_portais").upsert({
       user_id: input.userId,
       veiculo_id: input.veiculoId,
@@ -97,6 +112,32 @@ export async function runWebmotorsVehiclePublish(
       last_synced_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }, { onConflict: "user_id,veiculo_id,portal" });
+
+    const fotos = ((vehicle as VeiculoEstoqueRow).fotos ?? []).filter(Boolean).slice(0, 20);
+    let photoFailed = false;
+    for (const url of fotos) {
+      try {
+        const codigoFoto = await api.incluirFotoUrl(ambiente, hash, created.codigoAnuncio, url);
+        await sb.from("webmotors_foto_vinculo").upsert({
+          user_id: input.userId,
+          veiculo_id: input.veiculoId,
+          url_amz: url,
+          codigo_foto_wm: codigoFoto,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "user_id,veiculo_id,url_amz" });
+      } catch {
+        photoFailed = true;
+      }
+    }
+
+    if (photoFailed) {
+      await sb.from("veiculos_portais").update({
+        status: "published",
+        last_error: PHOTO_PARTIAL_ERROR,
+        updated_at: new Date().toISOString(),
+      }).eq("user_id", input.userId).eq("veiculo_id", input.veiculoId).eq("portal", "webmotors");
+      return { ok: true, external_id, error: PHOTO_PARTIAL_ERROR };
+    }
 
     return { ok: true, external_id };
   } catch (e) {
