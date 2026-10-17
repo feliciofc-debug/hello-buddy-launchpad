@@ -26,7 +26,7 @@ export async function loadGestaoLucroBundle(userId: string): Promise<GestaoLucro
         .is("deleted_at", null)
         .order("data", { ascending: false }),
       supabase.from("veiculo_venda" as "veiculos_estoque")
-        .select("veiculo_id, valor_venda, data_venda, vendedor")
+        .select("veiculo_id, valor_venda, data_venda, vendedor, vendedor_id")
         .eq("user_id", userId),
     ]);
 
@@ -57,7 +57,12 @@ export async function loadGestaoLucroBundle(userId: string): Promise<GestaoLucro
   const enriched: GestaoVeiculoEnriched[] = (veiculos ?? []).map((raw) => {
     const v = raw as GestaoVeiculoEnriched & { placa?: string | null };
     const compra = compraBy.get(v.id);
-    const venda = vendaBy.get(v.id);
+    const venda = vendaBy.get(v.id) as {
+      valor_venda: number;
+      data_venda: string;
+      vendedor: string | null;
+      vendedor_id?: string | null;
+    } | undefined;
     const dList = despesasBy.get(v.id) ?? [];
     const lucro = calcGestaoLucro({
       valorCompra: compra ? Number(compra.valor_compra) : null,
@@ -86,6 +91,7 @@ export async function loadGestaoLucroBundle(userId: string): Promise<GestaoLucro
       valorVenda: venda ? Number(venda.valor_venda) : null,
       dataVenda: venda?.data_venda ?? null,
       vendedor: venda?.vendedor ?? null,
+      vendedor_id: venda?.vendedor_id ?? null,
       despesas: dList,
       lucro,
     };

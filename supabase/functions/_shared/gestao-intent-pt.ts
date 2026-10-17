@@ -1,6 +1,7 @@
 import { inferGestaoCategoria } from "./gestao-categoria-pt.ts";
 import { parseGestaoValorPt } from "./gestao-valor-pt.ts";
 import { vehicleHintFromText } from "./gestao-veiculo-match.ts";
+import { vendedorHintFromText } from "./gestao-vendedor-match.ts";
 
 export type GestaoIntentKind =
   | "none"
@@ -10,13 +11,18 @@ export type GestaoIntentKind =
   | "lucro_veiculo"
   | "lucro_mes"
   | "despesas_veiculo"
-  | "desfazer";
+  | "desfazer"
+  | "ranking_vendedores"
+  | "vendedor_mes"
+  | "comissao_mes"
+  | "meta_bateu";
 
 export type GestaoIntent = {
   kind: GestaoIntentKind;
   valor: number | null;
   categoria: string | null;
   vehicleHint: string;
+  vendedorHint: string;
   consignacao: boolean;
 };
 
@@ -38,6 +44,7 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
     valor: null,
     categoria: null,
     vehicleHint: "",
+    vendedorHint: "",
     consignacao: false,
   };
   const t = normalize(text);
@@ -53,6 +60,27 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
 
   if (/\blucro\s+do\s+mes\b|\blucro\s+mensal\b|\bresultado\s+do\s+mes\b/.test(t)) {
     return { ...empty, kind: "lucro_mes", vehicleHint };
+  }
+
+  if (/\branking\s+(dos\s+)?vendedores\b|\branking\s+equipe\b/.test(t)) {
+    return { ...empty, kind: "ranking_vendedores", vehicleHint };
+  }
+
+  if (/\bcomissao\s+do\s+mes\b|\bcomissões\s+do\s+mes\b/.test(t)) {
+    return { ...empty, kind: "comissao_mes", vehicleHint };
+  }
+
+  if (/\bquem\s+bateu\s+a\s+meta\b|\bmeta\s+do\s+mes\b/.test(t)) {
+    return { ...empty, kind: "meta_bateu", vehicleHint };
+  }
+
+  const vendedorHint = vendedorHintFromText(text);
+  if (
+    (/\bquanto\s+(o|a)\s+\w+\s+vendeu\b|\bvendas?\s+do\s+\w+/i.test(text) ||
+      /\bvendeu\s+esse\s+mes\b/i.test(text)) &&
+    vendedorHint.length >= 2
+  ) {
+    return { ...empty, kind: "vendedor_mes", vendedorHint, vehicleHint };
   }
 
   if (
@@ -74,6 +102,7 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
       valor,
       categoria: null,
       vehicleHint,
+      vendedorHint: vendedorHintFromText(text),
       consignacao: false,
     };
   }
@@ -84,6 +113,7 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
       valor,
       categoria: null,
       vehicleHint,
+      vendedorHint: "",
       consignacao,
     };
   }
@@ -98,6 +128,7 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
       valor,
       categoria: inferGestaoCategoria(text),
       vehicleHint,
+      vendedorHint: "",
       consignacao: false,
     };
   }

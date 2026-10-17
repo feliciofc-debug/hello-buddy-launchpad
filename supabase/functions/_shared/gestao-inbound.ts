@@ -19,6 +19,19 @@ import {
   type GestaoVeiculoRow,
 } from "./gestao-veiculo-match.ts";
 import { loadTenantVehicleStockGate } from "./vehicle-inventory-tenant.ts";
+import {
+  calcGestaoComissao,
+  DEFAULT_COMISSAO_REGRA,
+  type GestaoComissaoRegraJson,
+} from "./gestao-comissao-calc.ts";
+import { applyGestaoComissaoSync, estornarComissaoAuto } from "./gestao-comissao-sync.ts";
+import {
+  buildComissaoMesReply,
+  buildGestaoRankingReply,
+  buildGestaoVendedorMesReply,
+} from "./gestao-equipe-inbound.ts";
+import { matchGestaoVendedor, type GestaoVendedorRow } from "./gestao-vendedor-match.ts";
+import { competenciaFromDate } from "./gestao-meta-calc.ts";
 export const GESTAO_PENDING_TTL_MS = 10 * 60 * 1000;
 export const GESTAO_DESFAZER_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -45,6 +58,50 @@ function pendingActive(pending: PendingGestaoConfirm | null | undefined): boolea
 
 function formatBrl(value: number): string {
   return formatGestaoMoney(value);
+}
+
+async function loadVendedores(sb: unknown, userId: string): Promise<GestaoVendedorRow[]> {
+  const client = sb as GestaoDb;
+  const { data } = await client.from("gestao_vendedores").select("id, nome, ativo, is_gerente")
+    .eq("user_id", userId).eq("ativo", true);
+  return (data ?? []) as GestaoVendedorRow[];
+}
+
+async function loadRegraComissao(
+  sb: unknown,
+  userId: string,
+  vendedorId: string | null,
+): Promise<GestaoComissaoRegraJson> {
+  const client = sb as GestaoDb;
+  const q = client.from("gestao_comissao_regra").select("regra_json").eq("user_id", userId);
+  const { data } = vendedorId
+    ? await q.eq("vendedor_id", vendedorId).maybeSingle()
+    : await q.is("vendedor_id", null).maybeSingle();
+  const row = data as { regra_json?: GestaoComissaoRegraJson } | null;
+  return row?.regra_json ?? DEFAULT_COMISSAO_REGRA;
+}
+
+async function loadComissaoMesMap(
+  sb: unknown,
+  userId: string,
+  competencia: string,
+): Promise<Map<string, number>> {
+  const client = sb as GestaoDb;
+  const [y, m] = competencia.split("-").map(Number);
+  const start = `${competencia}-01`;
+  const end = new Date(y, m, 0).toISOString().slice(0, 10);
+  const { data: vendas } = await client.from("veiculo_venda").select("veiculo_id")
+    .eq("user_id", userId).gte("data_venda", start).lte("data_venda", end);
+  const ids = (vendas ?? []).map((v: { veiculo_id: string }) => v.veiculo_id);
+  if (!ids.length) return new Map();
+  const { data: autos } = await client.from("gestao_comissao_auto").select("vendedor_id, valor")
+    .eq("user_id", userId).in("veiculo_id", ids);
+  const map = new Map<string, number>();
+  for (const a of autos ?? []) {
+    const row = a as { vendedor_id: string; valor: number };
+    map.set(row.vendedor_id, (map.get(row.vendedor_id) ?? 0) + Number(row.valor));
+  }
+  return map;
 }
 
 async function loadVehicles(
@@ -162,9 +219,60 @@ function buildConfirmMessage(
     return `Confirmar ${origem} de ${formatBrl(Number(draft.valor))} no ${label}?\nResponda SIM ou NÃO.`;
   }
   if (action === "venda") {
-    return `Confirmar venda de ${formatBrl(Number(draft.valor))} no ${label}?\nResponda SIM ou NÃO.`;
+    const comissao = draft.comissao_preview != null
+      ? formatBrl(Number(draft.comissao_preview))
+      : null;
+    const vend = draft.vendedor_nome ? `\nVendedor: ${draft.vendedor_nome}.` : "";
+    const comTxt = comissao ? `\nComissão estimada: ${comissao} (lançada no carro se confirmar).` : "";
+    return `Confirmar venda de ${formatBrl(Number(draft.valor))} no ${label}?${vend}${comTxt}\nResponda SIM ou NÃO.`;
   }
   return `Confirmar?\nResponda SIM ou NÃO.`;
+}
+
+async function enrichVendaDraft(
+  sb: unknown,
+  userId: string,
+  veiculoId: string,
+  draft: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const vendedores = await loadVendedores(sb, userId);
+  const hint = String(draft.vendedor_hint ?? "");
+  const matched = hint ? matchGestaoVendedor(hint, vendedores) : null;
+  const out = { ...draft, veiculo_id: veiculoId };
+  if (!matched) return out;
+
+  out.vendedor_id = matched.id;
+  out.vendedor_nome = matched.nome;
+
+  const client = sb as GestaoDb;
+  const [{ data: compra }, { data: despesas }] = await Promise.all([
+    client.from("veiculo_compra").select("valor_compra, data_compra")
+      .eq("user_id", userId).eq("veiculo_id", veiculoId).maybeSingle(),
+    client.from("veiculo_despesas").select("valor, categoria")
+      .eq("user_id", userId).eq("veiculo_id", veiculoId).is("deleted_at", null),
+  ]);
+  const dList = (despesas ?? []).map((d: Record<string, unknown>) => ({
+    valor: Number(d.valor),
+  }));
+  const compraVal = compra ? Number(compra.valor_compra) : null;
+  const valorVenda = Number(draft.valor);
+  const investido = compraVal != null
+    ? compraVal + dList.reduce((a, x) => a + x.valor, 0)
+    : null;
+  const lucroLiquido = investido != null ? valorVenda - investido : null;
+  const margemPct = lucroLiquido != null && valorVenda > 0
+    ? (lucroLiquido / valorVenda) * 100
+    : null;
+
+  const regra = await loadRegraComissao(sb, userId, matched.id);
+  const prev = calcGestaoComissao({
+    valorVenda,
+    lucroLiquido,
+    margemPct,
+    regra,
+  });
+  out.comissao_preview = prev.total;
+  return out;
 }
 
 async function recordWhatsappLancamento(
@@ -235,14 +343,65 @@ async function persistDraft(
   }
 
   if (action === "venda") {
+    const vendedorId = draft.vendedor_id ? String(draft.vendedor_id) : null;
+    const vendedorNome = draft.vendedor_nome ? String(draft.vendedor_nome) : null;
     const { error } = await client.from("veiculo_venda").upsert({
       user_id: userId,
       veiculo_id: veiculoId,
       valor_venda: draft.valor,
       data_venda: today,
+      vendedor: vendedorNome,
+      vendedor_id: vendedorId,
       marcou_vendido: false,
     }, { onConflict: "user_id,veiculo_id" });
     if (error) throw new Error(error.message);
+
+    if (vendedorId) {
+      const vendedores = await loadVendedores(sb, userId);
+      const gerente = vendedores.find((v) =>
+        (v as GestaoVendedorRow & { is_gerente?: boolean }).is_gerente
+      );
+      const [{ data: compra }, { data: despesas }] = await Promise.all([
+        client.from("veiculo_compra").select("valor_compra, data_compra")
+          .eq("user_id", userId).eq("veiculo_id", veiculoId).maybeSingle(),
+        client.from("veiculo_despesas").select("valor, categoria")
+          .eq("user_id", userId).eq("veiculo_id", veiculoId).is("deleted_at", null),
+      ]);
+      const dList = (despesas ?? []).map((d: Record<string, unknown>) => ({
+        valor: Number(d.valor),
+      }));
+      const compraVal = compra ? Number(compra.valor_compra) : null;
+      const valorVenda = Number(draft.valor);
+      const investido = compraVal != null
+        ? compraVal + dList.reduce((a, x) => a + x.valor, 0)
+        : null;
+      const lucroLiquido = investido != null ? valorVenda - investido : null;
+      const margemPct = lucroLiquido != null && valorVenda > 0
+        ? (lucroLiquido / valorVenda) * 100
+        : null;
+      const regraVendedor = await loadRegraComissao(sb, userId, vendedorId);
+      const regraGerente = gerente ? await loadRegraComissao(sb, userId, gerente.id) : null;
+      const sync = await applyGestaoComissaoSync(client, {
+        userId,
+        veiculoId,
+        vendedorId,
+        vendedorNome: vendedorNome ?? "Vendedor",
+        gerenteId: gerente?.id ?? null,
+        valorVenda,
+        lucroLiquido,
+        margemPct,
+        regraVendedor,
+        regraGerente,
+        valorComissaoOverride: draft.comissao_override != null
+          ? Number(draft.comissao_override)
+          : null,
+        dataDespesa: today,
+      });
+      await recordWhatsappLancamento(sb, userId, fromNumber, "venda", veiculoId, "veiculo_venda");
+      return `Venda registrada. Comissão ${formatBrl(sync.comissaoTotal)} lançada no carro.`;
+    }
+
+    await estornarComissaoAuto(client, userId, veiculoId);
     await recordWhatsappLancamento(sb, userId, fromNumber, "venda", veiculoId, "veiculo_venda");
     return "Venda registrada.";
   }
@@ -304,6 +463,7 @@ async function executeDesfazer(sb: unknown, userId: string, draft: Record<string
     return "Compra removida.";
   }
   if (tabela === "veiculo_venda" && refId) {
+    await estornarComissaoAuto(client, userId, String(refId));
     const { error } = await client.from("veiculo_venda").delete().eq("user_id", userId).eq(
       "veiculo_id",
       String(refId),
@@ -381,10 +541,14 @@ export async function tryProcessGestaoLucroInbound(input: {
           await input.saveAgentStatePatch({ pending_gestao_confirm: null }, input.agentState);
           return { handled: true, reply: "Veículo não encontrado." };
         }
+        let draft = { ...activePending.draft, veiculo_id: veiculo.id };
+        if (activePending.action === "venda") {
+          draft = await enrichVendaDraft(input.sb, input.userId, veiculo.id, draft);
+        }
         const confirmPending: PendingGestaoConfirm = {
           phase: "confirm",
           action: activePending.action,
-          draft: { ...activePending.draft, veiculo_id: veiculo.id },
+          draft,
           expires_at: new Date(Date.now() + GESTAO_PENDING_TTL_MS).toISOString(),
         };
         await input.saveAgentStatePatch({ pending_gestao_confirm: confirmPending }, input.agentState);
@@ -430,6 +594,42 @@ export async function tryProcessGestaoLucroInbound(input: {
     return { handled: true, reply };
   }
 
+  const competencia = competenciaFromDate();
+  if (intent.kind === "ranking_vendedores") {
+    const vendedores = await loadVendedores(input.sb, input.userId);
+    const comissao = await loadComissaoMesMap(input.sb, input.userId, competencia);
+    const reply = await buildGestaoRankingReply(
+      input.sb as never,
+      input.userId,
+      comissao,
+      vendedores,
+      competencia,
+    );
+    return { handled: true, reply };
+  }
+  if (intent.kind === "comissao_mes") {
+    const vendedores = await loadVendedores(input.sb, input.userId);
+    const comissao = await loadComissaoMesMap(input.sb, input.userId, competencia);
+    return { handled: true, reply: buildComissaoMesReply(comissao, vendedores, competencia) };
+  }
+  if (intent.kind === "vendedor_mes") {
+    const vendedores = await loadVendedores(input.sb, input.userId);
+    const reply = await buildGestaoVendedorMesReply(
+      input.sb as never,
+      input.userId,
+      intent.vendedorHint,
+      vendedores,
+      competencia,
+    );
+    return { handled: true, reply };
+  }
+  if (intent.kind === "meta_bateu") {
+    return {
+      handled: true,
+      reply: `Metas ${competencia}: configure metas em Gestão → Equipe no painel para acompanhar aqui.`,
+    };
+  }
+
   const vehicles = await loadVehicles(input.sb, input.userId);
   const matches = rankGestaoVeiculoMatches(intent.vehicleHint, vehicles);
 
@@ -470,6 +670,7 @@ export async function tryProcessGestaoLucroInbound(input: {
         valor: intent.valor,
         categoria: intent.categoria,
         consignacao: intent.consignacao,
+        vendedor_hint: intent.vendedorHint,
       },
       expires_at: new Date(Date.now() + GESTAO_PENDING_TTL_MS).toISOString(),
       options,
@@ -480,12 +681,16 @@ export async function tryProcessGestaoLucroInbound(input: {
   }
 
   const veiculo = matches[0];
-  const draft = {
+  let draft: Record<string, unknown> = {
     valor: intent.valor,
     categoria: intent.categoria,
     consignacao: intent.consignacao,
     veiculo_id: veiculo.id,
+    vendedor_hint: intent.vendedorHint,
   };
+  if (intent.kind === "venda") {
+    draft = await enrichVendaDraft(input.sb, input.userId, veiculo.id, draft);
+  }
   const confirmPending: PendingGestaoConfirm = {
     phase: "confirm",
     action: intent.kind,
