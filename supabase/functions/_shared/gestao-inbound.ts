@@ -53,6 +53,10 @@ import {
   type GestaoContaInbound,
 } from "./gestao-financeiro-inbound.ts";
 import { buildConciliacaoPendenteReply } from "./gestao-conciliacao-inbound.ts";
+import {
+  buildContratoStatusReply,
+  buildContratosPendentesReply,
+} from "./gestao-contrato-inbound.ts";
 import { contasToDreOperacionalRows } from "./gestao-contador-data.ts";
 import { mintGestaoContadorLink } from "./gestao-contador-link.ts";
 import { syncRecorrenciaLancamentosDb } from "./gestao-recorrencia-db-sync.ts";
@@ -791,6 +795,44 @@ export async function tryProcessGestaoLucroInbound(input: {
     const qtd = rows.length;
     const valor = rows.reduce((a: number, r: { valor: number }) => a + Number(r.valor), 0);
     return { handled: true, reply: buildConciliacaoPendenteReply(qtd, valor) };
+  }
+
+  if (intent.kind === "contratos_pendentes") {
+    const client = input.sb as GestaoDb;
+    const { count } = await client.from("gestao_contrato").select("id", { count: "exact", head: true })
+      .eq("user_id", input.userId)
+      .eq("status", "pendente_assinatura");
+    return { handled: true, reply: buildContratosPendentesReply(count ?? 0) };
+  }
+
+  if (intent.kind === "contrato_status") {
+    const client = input.sb as GestaoDb;
+    const hint = intent.vehicleHint?.trim();
+    if (!hint) {
+      return { handled: true, reply: "Informe o veículo, ex.: status do contrato do X6." };
+    }
+    const { data: veiculos } = await client.from("veiculos_estoque").select(GESTAO_VEHICLE_SELECT)
+      .eq("user_id", input.userId);
+    const ranked = rankGestaoVeiculoMatches(hint, veiculos ?? []);
+    const v = ranked[0];
+    if (!v) return { handled: true, reply: "Veículo não encontrado." };
+    const { data: contrato } = await client.from("gestao_contrato").select("status, zapsign_sign_url")
+      .eq("user_id", input.userId)
+      .eq("veiculo_id", v.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!contrato) {
+      return { handled: true, reply: `Nenhum contrato para ${formatGestaoVeiculoLabel(v)}.` };
+    }
+    return {
+      handled: true,
+      reply: buildContratoStatusReply({
+        veiculoLabel: formatGestaoVeiculoLabel(v),
+        status: String(contrato.status),
+        signUrl: contrato.zapsign_sign_url,
+      }),
+    };
   }
 
   if (intent.kind === "revogar_link_contador") {

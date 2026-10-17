@@ -1,13 +1,13 @@
 /** Decodifica bytes de OFX/CSV conforme cabeçalho ou heurística (bancos BR). */
 export function detectOfxCharset(headerText: string): "utf-8" | "windows-1252" | "iso-8859-1" {
-  const h = headerText.slice(0, 800);
+  const h = headerText.slice(0, 2000);
+  if (/encoding\s*=\s*["']UTF-8["']/i.test(h)) return "utf-8";
   const charset = h.match(/CHARSET\s*:\s*(\d+)/i)?.[1];
-  if (charset === "1252" || charset === "65001") {
-    return charset === "1252" ? "windows-1252" : "utf-8";
-  }
+  if (charset === "1252") return "windows-1252";
+  if (charset === "65001") return "utf-8";
   const enc = h.match(/ENCODING\s*:\s*(\w+)/i)?.[1]?.toUpperCase();
+  if (enc === "UTF-8" || enc === "UTF8") return "utf-8";
   if (enc === "USASCII" || enc === "ASCII") return "iso-8859-1";
-  if (enc === "UTF-8") return "utf-8";
   return "windows-1252";
 }
 

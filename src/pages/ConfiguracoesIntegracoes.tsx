@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { FocusNfeIntegrationCard } from "@/components/integracoes/FocusNfeIntegrationCard";
+import { ZapSignIntegrationCard } from "@/components/integracoes/ZapSignIntegrationCard";
 import { MlIntegrationCard } from "@/components/ml/MlIntegrationCard";
 import { WebmotorsIntegrationCard } from "@/components/webmotors/WebmotorsIntegrationCard";
 import {
@@ -62,8 +64,22 @@ export default function ConfiguracoesIntegracoes() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Integrações</h1>
           <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-            Portais de anúncio e marketplaces conectados à sua revenda.
+            Portais, contratos e serviços conectados à sua revenda.
           </p>
+        </div>
+
+        <div className="space-y-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Contratos e fiscal
+          </h2>
+          <ZapSignIntegrationCard />
+          <FocusNfeIntegrationCard />
+        </div>
+
+        <div className="space-y-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Portais de anúncio
+          </h2>
         </div>
 
         <MlIntegrationCard />

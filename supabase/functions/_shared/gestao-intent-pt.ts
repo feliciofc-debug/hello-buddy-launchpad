@@ -24,7 +24,9 @@ export type GestaoIntentKind =
   | "lucro_loja_mes"
   | "pacote_contador"
   | "revogar_link_contador"
-  | "conciliacao_pendente";
+  | "conciliacao_pendente"
+  | "contratos_pendentes"
+  | "contrato_status";
 
 export type GestaoIntent = {
   kind: GestaoIntentKind;
@@ -81,6 +83,14 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
 
   if (/\bo\s+que\s+falta\s+conciliar\b|\bfalta\s+conciliar\b/.test(t)) {
     return { ...empty, kind: "conciliacao_pendente", vehicleHint };
+  }
+
+  if (/\bcontratos?\s+pendentes?\b|\bpendentes?\s+de\s+assinatura\b/.test(t)) {
+    return { ...empty, kind: "contratos_pendentes", vehicleHint };
+  }
+
+  if (/\bstatus\s+do\s+contrato\b|\bcontrato\s+do\b/.test(t)) {
+    return { ...empty, kind: "contrato_status", vehicleHint };
   }
 
   if (/\bo\s+que\s+vence\s+essa\s+semana\b|\bvence\s+essa\s+semana\b/.test(t)) {

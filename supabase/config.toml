@@ -320,3 +320,24 @@ verify_jwt = true
 
 [functions.meta-ads-campaign-action]
 verify_jwt = true
+
+[functions.gestao-zapsign-status]
+verify_jwt = true
+
+[functions.gestao-zapsign-save]
+verify_jwt = true
+
+[functions.gestao-zapsign-test]
+verify_jwt = true
+
+[functions.gestao-zapsign-disconnect]
+verify_jwt = true
+
+[functions.gestao-zapsign-sign]
+verify_jwt = true
+
+[functions.gestao-zapsign-cancel]
+verify_jwt = true
+
+[functions.gestao-zapsign-webhook]
+verify_jwt = false
