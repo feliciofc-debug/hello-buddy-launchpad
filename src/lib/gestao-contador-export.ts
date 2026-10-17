@@ -99,6 +99,18 @@ export function downloadContadorXlsx(pacote: GestaoContadorPacote, filename: str
 
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pacote.comissoesBonus), "Comissões e bônus");
 
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+    (pacote.notasFiscais ?? []).map((n) => ({
+      tipo: n.tipo_operacao,
+      status: n.status,
+      numero: n.numero,
+      serie: n.serie,
+      valor: n.valor_total,
+      xml_url: n.xml_url,
+      danfe_url: n.danfe_url,
+    })),
+  ), "NF-e");
+
   XLSX.writeFile(wb, filename);
 }
 

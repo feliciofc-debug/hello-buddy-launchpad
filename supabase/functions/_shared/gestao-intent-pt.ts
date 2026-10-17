@@ -26,7 +26,10 @@ export type GestaoIntentKind =
   | "revogar_link_contador"
   | "conciliacao_pendente"
   | "contratos_pendentes"
-  | "contrato_status";
+  | "contrato_status"
+  | "nfe_emit"
+  | "notas_mes"
+  | "nfe_status";
 
 export type GestaoIntent = {
   kind: GestaoIntentKind;
@@ -91,6 +94,22 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
 
   if (/\bstatus\s+do\s+contrato\b|\bcontrato\s+do\b/.test(t)) {
     return { ...empty, kind: "contrato_status", vehicleHint };
+  }
+
+  if (/\bnotas?\s+do\s+mes\b|\bnfe\s+do\s+mes\b|\bnotas?\s+fiscais\s+do\s+mes\b/.test(t)) {
+    return { ...empty, kind: "notas_mes", vehicleHint };
+  }
+
+  if (
+    (/\bemit(e|ir)\s+(a\s+)?nota\b|\bemite\s+(a\s+)?nota\b|\bnota\s+fiscal\s+do\b/.test(t) ||
+      (/\bnfe\s+do\b/.test(t) && !/\bstatus\b/.test(t))) &&
+    vehicleHint.length >= 2
+  ) {
+    return { ...empty, kind: "nfe_emit", vehicleHint };
+  }
+
+  if (/\bstatus\s+da\s+nota\b|\bstatus\s+do\s+nfe\b|\bstatus\s+da\s+nfe\b/.test(t)) {
+    return { ...empty, kind: "nfe_status", vehicleHint };
   }
 
   if (/\bo\s+que\s+vence\s+essa\s+semana\b|\bvence\s+essa\s+semana\b/.test(t)) {

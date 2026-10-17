@@ -341,3 +341,39 @@ verify_jwt = true
 
 [functions.gestao-zapsign-webhook]
 verify_jwt = false
+
+[functions.gestao-focusnfe-status]
+verify_jwt = true
+
+[functions.gestao-focusnfe-save]
+verify_jwt = true
+
+[functions.gestao-focusnfe-test]
+verify_jwt = true
+
+[functions.gestao-focusnfe-disconnect]
+verify_jwt = true
+
+[functions.gestao-nfe-config-get]
+verify_jwt = true
+
+[functions.gestao-nfe-config-save]
+verify_jwt = true
+
+[functions.gestao-nfe-preview]
+verify_jwt = true
+
+[functions.gestao-nfe-emit]
+verify_jwt = true
+
+[functions.gestao-nfe-consult]
+verify_jwt = true
+
+[functions.gestao-nfe-cancel]
+verify_jwt = true
+
+[functions.gestao-nfe-cce]
+verify_jwt = true
+
+[functions.gestao-focusnfe-webhook]
+verify_jwt = false

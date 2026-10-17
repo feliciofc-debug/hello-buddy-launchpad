@@ -32,6 +32,7 @@ import Campanhas from "./pages/Campanhas";
 import MeusProdutos from "./pages/MeusProdutos";
 import VehicleInventory from "./pages/vehicle-inventory";
 import GestaoLucroPage from "./pages/GestaoLucroPage";
+import GestaoNfeConfigPage from "./pages/GestaoNfeConfigPage";
 import GestaoContadorPublicPage from "./pages/GestaoContadorPublicPage";
 import VehicleFinancingFichasPage from "./pages/vehicle-financing-fichas";
 import Midias from "./pages/Midias";
@@ -178,6 +179,7 @@ const App = () => (
           <Route path="/veiculos/financiamento" element={<VehicleFinancingFichasPage />} />
           <Route path="/veiculos/financiamento/:id" element={<VehicleFinancingFichasPage />} />
           <Route path="/gestao/lucro" element={<GestaoLucroPage />} />
+          <Route path="/gestao/configuracao-fiscal" element={<GestaoNfeConfigPage />} />
           <Route path="/contador/:token" element={<GestaoContadorPublicPage />} />
           <Route path="/midias" element={<Midias />} />
             <Route path="/data-deletion" element={<DataDeletion />} />

@@ -57,6 +57,27 @@ import {
   buildContratoStatusReply,
   buildContratosPendentesReply,
 } from "./gestao-contrato-inbound.ts";
+import type { GestaoNfeTomadorInput } from "./gestao-nfe-build.ts";
+import {
+  inferNfeTipoOperacao,
+  loadTomadorForNfe,
+  loadVeiculoNfeFields,
+  resolveNfeValorTotal,
+  tomadorMissingFields,
+} from "./gestao-nfe-context.ts";
+import {
+  buildJarvisNfePreview,
+  buildNfeEmitBlockedMessage,
+  buildNfeEmitSuccessReply,
+  buildNotasMesReply,
+  buildNfeStatusReply,
+} from "./gestao-nfe-inbound.ts";
+import {
+  emitGestaoNfe,
+  loadFocusTokenForUser,
+  loadNfeConfig,
+  operacaoFromConfig,
+} from "./gestao-nfe-service.ts";
 import { contasToDreOperacionalRows } from "./gestao-contador-data.ts";
 import { mintGestaoContadorLink } from "./gestao-contador-link.ts";
 import { syncRecorrenciaLancamentosDb } from "./gestao-recorrencia-db-sync.ts";
@@ -373,6 +394,9 @@ function buildConfirmMessage(
     const origem = draft.consignacao ? "consignação" : "compra";
     return `Confirmar ${origem} de ${formatBrl(Number(draft.valor))} no ${label}?\nResponda SIM ou NÃO.`;
   }
+  if (action === "nfe_emit") {
+    return String(draft.preview_resumo ?? "Confirmar emissão de NF-e?\nResponda SIM ou NÃO.");
+  }
   if (action === "venda") {
     const comissao = draft.comissao_preview != null
       ? formatBrl(Number(draft.comissao_preview))
@@ -498,6 +522,29 @@ async function persistDraft(
     return "Compra registrada.";
   }
 
+  if (action === "nfe_emit") {
+    const tomador = draft.tomador as GestaoNfeTomadorInput;
+    const tipo = String(draft.tipo_operacao) as "entrada_compra_pf" | "saida_venda" | "consignacao";
+    const veiculo = draft.veiculo_nfe as Awaited<ReturnType<typeof loadVeiculoNfeFields>>;
+    const valorTotal = Number(draft.valor_total);
+    const result = await emitGestaoNfe({
+      client,
+      userId,
+      veiculoId,
+      tipo,
+      valorTotal,
+      tomador,
+      veiculo: veiculo!,
+    });
+    await recordWhatsappLancamento(sb, userId, fromNumber, "nfe_emit", result.nfeId, "gestao_nfe");
+    const vehicles = await loadVehicles(sb, userId);
+    const veiculoRow = vehicles.find((v) => v.id === veiculoId);
+    return buildNfeEmitSuccessReply({
+      status: result.status,
+      veiculoLabel: veiculoRow ? formatGestaoVeiculoLabel(veiculoRow) : "veículo",
+    });
+  }
+
   if (action === "venda") {
     const vendedorId = draft.vendedor_id ? String(draft.vendedor_id) : null;
     const vendedorNome = draft.vendedor_nome ? String(draft.vendedor_nome) : null;
@@ -564,6 +611,104 @@ async function persistDraft(
   }
 
   throw new Error("acao_invalida");
+}
+
+async function finalizeNfeEmitConfirm(
+  sb: unknown,
+  userId: string,
+  veiculo: GestaoVeiculoRow,
+  saveAgentStatePatch: (
+    patch: Record<string, unknown>,
+    current: Record<string, unknown>,
+  ) => Promise<boolean>,
+  agentState: Record<string, unknown>,
+): Promise<{ reply: string }> {
+  const client = sb as GestaoDb;
+  const auth = await loadFocusTokenForUser(client, userId);
+  if (!auth) return { reply: "Conecte a Focus NFe em Integrações." };
+  const config = await loadNfeConfig(client, userId);
+  if (!config) return { reply: "Configure os dados fiscais da loja no painel." };
+
+  const tipo = await inferNfeTipoOperacao(client, userId, veiculo.id, null);
+  const veiculoNfe = await loadVeiculoNfeFields(client, userId, veiculo.id);
+  if (!veiculoNfe) return { reply: "Veículo não encontrado." };
+
+  const tomadorPartial = await loadTomadorForNfe(client, userId, veiculo.id, tipo);
+  const missing = tomadorMissingFields(tomadorPartial);
+  if (missing.length) {
+    return { reply: buildNfeEmitBlockedMessage(missing) };
+  }
+
+  let valorTotal: number;
+  try {
+    valorTotal = await resolveNfeValorTotal(client, userId, veiculo.id, tipo, null);
+  } catch (e) {
+    return { reply: (e as Error).message };
+  }
+
+  const op = operacaoFromConfig(config, tipo);
+  const preview = buildJarvisNfePreview(veiculo, {
+    tipo,
+    valor: valorTotal,
+    tomadorNome: String(tomadorPartial.nome ?? ""),
+    cfop: op.cfop,
+    natureza: op.natureza_operacao,
+    ambiente: auth.ambiente,
+  });
+
+  const confirmPending: PendingGestaoConfirm = {
+    phase: "confirm",
+    action: "nfe_emit",
+    draft: {
+      veiculo_id: veiculo.id,
+      tipo_operacao: tipo,
+      valor_total: valorTotal,
+      tomador: tomadorPartial,
+      veiculo_nfe: veiculoNfe,
+      preview_resumo: preview,
+    },
+    expires_at: new Date(Date.now() + GESTAO_PENDING_TTL_MS).toISOString(),
+  };
+  await saveAgentStatePatch({ pending_gestao_confirm: confirmPending }, agentState);
+  return { reply: buildConfirmMessage("nfe_emit", veiculo, confirmPending.draft) };
+}
+
+async function beginNfeEmitInboundFlow(
+  sb: unknown,
+  userId: string,
+  vehicleHint: string,
+  saveAgentStatePatch: (
+    patch: Record<string, unknown>,
+    current: Record<string, unknown>,
+  ) => Promise<boolean>,
+  agentState: Record<string, unknown>,
+): Promise<{ reply: string }> {
+  const hint = vehicleHint?.trim();
+  if (!hint) return { reply: "Informe o veículo, ex.: emite a nota do X6." };
+
+  const vehicles = await loadVehicles(sb, userId);
+  const matches = rankGestaoVeiculoMatches(hint, vehicles);
+  if (!matches.length) return { reply: "Veículo não encontrado." };
+
+  if (matches.length > 1) {
+    const options = matches.slice(0, 5).map((v, i) => ({
+      n: i + 1,
+      veiculo_id: v.id,
+      label: formatGestaoVeiculoLabel(v),
+    }));
+    const pendingDis: PendingGestaoConfirm = {
+      phase: "disambiguation",
+      action: "nfe_emit",
+      draft: {},
+      expires_at: new Date(Date.now() + GESTAO_PENDING_TTL_MS).toISOString(),
+      options,
+    };
+    await saveAgentStatePatch({ pending_gestao_confirm: pendingDis }, agentState);
+    const lines = options.map((o) => `${o.n}. ${o.label}`).join("\n");
+    return { reply: `Qual veículo?\n${lines}\nResponda com o número.` };
+  }
+
+  return finalizeNfeEmitConfirm(sb, userId, matches[0], saveAgentStatePatch, agentState);
 }
 
 async function prepareDesfazer(
@@ -697,6 +842,16 @@ export async function tryProcessGestaoLucroInbound(input: {
         if (!veiculo) {
           await input.saveAgentStatePatch({ pending_gestao_confirm: null }, input.agentState);
           return { handled: true, reply: "Veículo não encontrado." };
+        }
+        if (activePending.action === "nfe_emit") {
+          const fin = await finalizeNfeEmitConfirm(
+            input.sb,
+            input.userId,
+            veiculo,
+            input.saveAgentStatePatch,
+            input.agentState,
+          );
+          return { handled: true, reply: fin.reply };
         }
         let draft = { ...activePending.draft, veiculo_id: veiculo.id };
         if (activePending.action === "venda") {
@@ -833,6 +988,66 @@ export async function tryProcessGestaoLucroInbound(input: {
         signUrl: contrato.zapsign_sign_url,
       }),
     };
+  }
+
+  if (intent.kind === "notas_mes") {
+    const client = input.sb as GestaoDb;
+    const start = `${competencia}-01`;
+    const [y, m] = competencia.split("-").map(Number);
+    const end = new Date(y, m, 0).toISOString().slice(0, 10);
+    const { data } = await client.from("gestao_nfe").select("status, authorized_at, created_at")
+      .eq("user_id", input.userId);
+    const rows = (data ?? []).filter((r: { authorized_at: string | null; created_at: string }) => {
+      const d = (r.authorized_at ?? r.created_at).slice(0, 10);
+      return d >= start && d <= end;
+    });
+    const autorizadas = rows.filter((r: { status: string }) => r.status === "autorizada").length;
+    return {
+      handled: true,
+      reply: buildNotasMesReply({ competencia, total: rows.length, autorizadas }),
+    };
+  }
+
+  if (intent.kind === "nfe_status") {
+    const client = input.sb as GestaoDb;
+    const hint = intent.vehicleHint?.trim();
+    if (!hint) {
+      return { handled: true, reply: "Informe o veículo, ex.: status da nota do X6." };
+    }
+    const { data: veiculos } = await client.from("veiculos_estoque").select(GESTAO_VEHICLE_SELECT)
+      .eq("user_id", input.userId);
+    const ranked = rankGestaoVeiculoMatches(hint, veiculos ?? []);
+    const v = ranked[0];
+    if (!v) return { handled: true, reply: "Veículo não encontrado." };
+    const { data: nfe } = await client.from("gestao_nfe").select("status, numero, serie")
+      .eq("user_id", input.userId)
+      .eq("veiculo_id", v.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!nfe) {
+      return { handled: true, reply: `Nenhuma NF-e para ${formatGestaoVeiculoLabel(v)}.` };
+    }
+    return {
+      handled: true,
+      reply: buildNfeStatusReply({
+        veiculoLabel: formatGestaoVeiculoLabel(v),
+        status: String(nfe.status),
+        numero: nfe.numero != null ? Number(nfe.numero) : null,
+        serie: nfe.serie != null ? Number(nfe.serie) : null,
+      }),
+    };
+  }
+
+  if (intent.kind === "nfe_emit") {
+    const flow = await beginNfeEmitInboundFlow(
+      input.sb,
+      input.userId,
+      intent.vehicleHint,
+      input.saveAgentStatePatch,
+      input.agentState,
+    );
+    return { handled: true, reply: flow.reply };
   }
 
   if (intent.kind === "revogar_link_contador") {

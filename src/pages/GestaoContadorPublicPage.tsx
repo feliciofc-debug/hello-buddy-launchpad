@@ -48,6 +48,22 @@ export default function GestaoContadorPublicPage() {
         <p>Lucro dos carros: {formatGestaoMoney(pacote.dre.lucroCarros)}</p>
         <p>Despesas operacionais: {formatGestaoMoney(pacote.dre.despesasOperacionais)}</p>
       </div>
+      {(pacote.notasFiscais?.length ?? 0) > 0 && (
+        <div className="rounded-lg border p-4 text-sm space-y-2">
+          <p className="font-medium">Notas fiscais do mês (links XML na Focus)</p>
+          <ul className="list-disc space-y-1 pl-5">
+            {pacote.notasFiscais.map((n) => (
+              <li key={n.id}>
+                {n.tipo_operacao} — {n.status}
+                {n.numero != null ? ` nº ${n.numero}` : ""}
+                {n.xml_url ? (
+                  <> · <a className="text-primary underline" href={n.xml_url} target="_blank" rel="noopener noreferrer">XML</a></>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <p className="text-xs text-muted-foreground">{GESTAO_CONTADOR_AVISO}</p>
       <div className="flex flex-wrap gap-2">
         <Button onClick={() => downloadContadorXlsx(pacote, `contador-${pacote.competencia}.xlsx`)}>Baixar XLSX</Button>
