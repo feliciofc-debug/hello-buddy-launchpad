@@ -351,7 +351,16 @@ const SettingsPage = () => {
           <span className="font-medium">{t('settings.back_to_dashboard')}</span>
         </button>
         
-        <h1 className="text-3xl font-bold mb-6 text-gray-900 dark:text-white">{t('settings.api_settings_title')}</h1>
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{t('settings.api_settings_title')}</h1>
+          <button
+            type="button"
+            onClick={() => navigate('/configuracoes/integracoes')}
+            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:hover:bg-gray-700"
+          >
+            Integrações (portais)
+          </button>
+        </div>
 
         {customAuth && (
           <div className="mb-6 p-5 bg-white dark:bg-gray-800 rounded-lg shadow-md">

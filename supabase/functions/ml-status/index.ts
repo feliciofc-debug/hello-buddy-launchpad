@@ -32,12 +32,14 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     const status = conta?.status ?? "revoked";
+    const locJson = cfg?.ml_location_json as { location?: { zip_code?: string } } | null;
     return new Response(JSON.stringify({
       success: true,
       connected: status === "active" || status === "needs_reauth",
       nickname: conta?.nickname ?? null,
       status,
       has_location: hasPublishableMlLocation(cfg?.ml_location_json),
+      store_zip: locJson?.location?.zip_code ?? null,
       updated_at: conta?.updated_at ?? null,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {

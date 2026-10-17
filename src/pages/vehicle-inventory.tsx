@@ -51,7 +51,7 @@ import { snapshotInputFiles } from "@/lib/file-input-snapshot";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import type { PublishableItem } from "@/lib/publishable-item";
-import { MlConnectPanel } from "@/components/ml/MlConnectPanel";
+import { MlInventoryStrip } from "@/components/ml/MlInventoryStrip";
 import { MlQuestionsPanel } from "@/components/ml/MlQuestionsPanel";
 import { MlVehicleActions, type VeiculoPortalMl } from "@/components/ml/MlVehicleActions";
 
@@ -623,7 +623,7 @@ export default function VehicleInventory() {
       </header>
 
       <main className="container mx-auto space-y-6 px-4 py-8">
-        <MlConnectPanel />
+        <MlInventoryStrip />
         <Card>
           <CardContent className="grid gap-4 p-4 md:grid-cols-3">
             <div>
