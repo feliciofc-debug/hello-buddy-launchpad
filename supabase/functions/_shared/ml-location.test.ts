@@ -2,6 +2,7 @@ import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.t
 import {
   formatBrazilCep,
   hasPublishableMlLocation,
+  mlLocationToPersistAfterOAuth,
   normalizeBrazilCep,
   parseMlZipCodeApiResponse,
 } from "./ml-location.ts";
@@ -53,4 +54,20 @@ Deno.test("parseMlZipCodeApiResponse lê neighborhood em extended_attributes", (
 Deno.test("parseMlZipCodeApiResponse retorna null para corpo vazio", () => {
   assertEquals(parseMlZipCodeApiResponse(null), null);
   assertEquals(parseMlZipCodeApiResponse({}), null);
+});
+
+Deno.test("mlLocationToPersistAfterOAuth respeita tenant_override", () => {
+  const profile = {
+    source: "ml_user_profile" as const,
+    updated_at: "2026-01-01T00:00:00.000Z",
+    location: { city: { id: "c1" }, state: { id: "s1" } },
+  };
+  const cepSaved = {
+    source: "tenant_override" as const,
+    updated_at: "2026-01-02T00:00:00.000Z",
+    location: { zip_code: "01310100", city: { id: "c2" }, state: { id: "s2" } },
+  };
+  assertEquals(mlLocationToPersistAfterOAuth(cepSaved, profile), null);
+  assertEquals(mlLocationToPersistAfterOAuth(null, profile), profile);
+  assertEquals(mlLocationToPersistAfterOAuth({ source: "ml_user_profile" }, profile), profile);
 });

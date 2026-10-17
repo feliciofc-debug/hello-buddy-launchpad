@@ -89,7 +89,6 @@ Deno.serve(async (req) => {
     const { error: upsertError } = await admin.from("empresa_config").upsert({
       user_id: user.id,
       ml_location_json: loc,
-      updated_at: new Date().toISOString(),
     }, { onConflict: "user_id" });
     if (upsertError) throw new Error(upsertError.message);
 

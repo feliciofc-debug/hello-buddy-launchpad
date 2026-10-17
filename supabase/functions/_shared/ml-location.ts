@@ -115,6 +115,20 @@ export function parseMlUserLocation(me: Record<string, unknown>): MlLocationJson
   };
 }
 
+export function hasMlLocationTenantOverride(json: unknown): boolean {
+  return (json as MlLocationJson | null)?.source === "tenant_override";
+}
+
+/** OAuth callback: perfil ML só grava se a loja não tiver CEP (tenant_override). */
+export function mlLocationToPersistAfterOAuth(
+  existingMlLocationJson: unknown,
+  profileLocation: MlLocationJson | null,
+): MlLocationJson | null {
+  if (!profileLocation) return null;
+  if (hasMlLocationTenantOverride(existingMlLocationJson)) return null;
+  return profileLocation;
+}
+
 export function hasPublishableMlLocation(json: unknown): boolean {
   const loc = (json as MlLocationJson | null)?.location;
   if (!loc) return false;
