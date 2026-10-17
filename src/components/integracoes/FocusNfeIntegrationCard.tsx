@@ -1,6 +1,6 @@
 import { Receipt, Loader2 } from "lucide-react";
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,11 +26,22 @@ import {
 import { VendorIntegrationPricingBlock } from "@/components/integracoes/VendorIntegrationPricingBlock";
 import { useGestaoFocusnfeConnection } from "@/components/integracoes/useGestaoFocusnfeConnection";
 import { VENDOR_INTEGRATION_PRICING } from "@/lib/vendor-integration-pricing";
+import { withVoltarParam } from "@/lib/app-back-nav.ts";
 
 const vendor = VENDOR_INTEGRATION_PRICING.focusnfe;
 
-export function FocusNfeIntegrationCard() {
+type Props = {
+  embedInGestao?: boolean;
+  onConnectSuccess?: () => void;
+};
+
+export function FocusNfeIntegrationCard({ embedInGestao, onConnectSuccess }: Props = {}) {
+  const location = useLocation();
   const { loading, busy, status, save, testConnection, disconnect } = useGestaoFocusnfeConnection();
+  const fiscalConfigPath = withVoltarParam(
+    "/gestao/configuracao-fiscal",
+    `${location.pathname}${location.search}`,
+  );
   const [token, setToken] = useState("");
   const [ambiente, setAmbiente] = useState<"homolog" | "producao">("homolog");
   const [producaoConfirmOpen, setProducaoConfirmOpen] = useState(false);
@@ -48,12 +59,17 @@ export function FocusNfeIntegrationCard() {
 
   const connected = !!status?.connected;
 
+  const afterSave = async (ok: boolean, wasConnected: boolean) => {
+    if (ok && !wasConnected) onConnectSuccess?.();
+  };
+
   const onConnect = () => {
+    const wasConnected = connected;
     if (ambiente === "producao") {
       setProducaoConfirmOpen(true);
       return;
     }
-    void save(token.trim(), ambiente);
+    void save(token.trim(), ambiente).then((ok) => afterSave(!!ok, wasConnected));
   };
 
   return (
@@ -66,8 +82,14 @@ export function FocusNfeIntegrationCard() {
                 <Receipt className="h-5 w-5" aria-hidden />
               </span>
               <div>
-                <CardTitle className="text-lg">{vendor.name}</CardTitle>
-                <CardDescription className="mt-1">{vendor.description}</CardDescription>
+                <CardTitle className="text-lg">
+                  {embedInGestao ? "Emissão de nota fiscal" : vendor.name}
+                </CardTitle>
+                <CardDescription className="mt-1">
+                  {embedInGestao
+                    ? "Emita a nota da venda com 1 clique (homologação para testes)."
+                    : vendor.description}
+                </CardDescription>
               </div>
             </div>
             <Badge variant={connected ? "default" : "secondary"}>
@@ -95,7 +117,7 @@ export function FocusNfeIntegrationCard() {
                 <strong>{status?.ambiente === "producao" ? "Produção" : "Homologação (teste Sefaz)"}</strong>
               </p>
               <Button asChild variant="secondary" size="sm">
-                <Link to="/gestao/configuracao-fiscal">Configuração fiscal da loja</Link>
+                <Link to={fiscalConfigPath}>Configuração fiscal da loja</Link>
               </Button>
             </>
           )}
@@ -156,7 +178,13 @@ export function FocusNfeIntegrationCard() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => void save(token.trim(), "producao", true).then(() => setProducaoConfirmOpen(false))}
+              onClick={() => {
+                const wasConnected = connected;
+                void save(token.trim(), "producao", true).then((ok) => {
+                  setProducaoConfirmOpen(false);
+                  void afterSave(!!ok, wasConnected);
+                });
+              }}
             >
               Sim, usar produção
             </AlertDialogAction>

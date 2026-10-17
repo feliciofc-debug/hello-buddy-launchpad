@@ -23,6 +23,7 @@ export function GestaoSidebarNav({ onNavigate }: Props) {
             <Link
               key={item.id}
               to={item.path}
+              state={{ from: `${location.pathname}${location.search}` }}
               onClick={onNavigate}
               className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
                 active

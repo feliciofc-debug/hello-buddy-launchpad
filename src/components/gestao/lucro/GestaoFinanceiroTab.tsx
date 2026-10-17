@@ -45,6 +45,7 @@ import {
 } from "@/lib/gestao-contador-export.ts";
 import { supabase } from "@/integrations/supabase/client";
 import { GestaoConciliacaoTab } from "@/components/gestao/lucro/GestaoConciliacaoTab.tsx";
+import { GestaoHelpTip } from "@/components/gestao/GestaoHelpTip.tsx";
 
 type Props = {
   userId: string;
@@ -285,8 +286,14 @@ export function GestaoFinanceiroTab({
         <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5">
           <TabsTrigger value="contas">Contas</TabsTrigger>
           <TabsTrigger value="fluxo">Fluxo de caixa</TabsTrigger>
-          <TabsTrigger value="dre">Resultado</TabsTrigger>
-          <TabsTrigger value="conciliacao">Conciliação</TabsTrigger>
+          <TabsTrigger value="dre" className="gap-1">
+            Resultado
+            <GestaoHelpTip text="DRE — resultado do mês (faturamento menos custos e despesas)." />
+          </TabsTrigger>
+          <TabsTrigger value="conciliacao" className="gap-1">
+            Conciliação
+            <GestaoHelpTip text="Conciliação — conferir o extrato do banco com o que você lançou aqui." />
+          </TabsTrigger>
           <TabsTrigger value="contador">Contador</TabsTrigger>
         </TabsList>
 

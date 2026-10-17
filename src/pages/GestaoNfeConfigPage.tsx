@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import {
   type GestaoNfeOperacaoKey,
 } from "../../supabase/functions/_shared/gestao-nfe-config-default.ts";
 import { fetchGestaoNfeConfig, saveGestaoNfeConfig, type GestaoNfeConfigRow } from "@/lib/gestao-nfe-load.ts";
+import { useSmartBack, withVoltarParam } from "@/lib/app-back-nav.ts";
 
 const OP_KEYS: GestaoNfeOperacaoKey[] = ["entrada_compra_pf", "saida_venda", "consignacao"];
 const OP_TITLES: Record<GestaoNfeOperacaoKey, string> = {
@@ -26,7 +27,9 @@ const OP_TITLES: Record<GestaoNfeOperacaoKey, string> = {
 };
 
 export default function GestaoNfeConfigPage() {
-  const navigate = useNavigate();
+  const location = useLocation();
+  const goBack = useSmartBack("/gestao/lucro");
+  const returnTo = `${location.pathname}${location.search}`;
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [config, setConfig] = useState<GestaoNfeConfigRow | null>(null);
@@ -86,7 +89,7 @@ export default function GestaoNfeConfigPage() {
     <div className="min-h-screen bg-background">
       <header className="border-b px-4 py-4">
         <div className="container mx-auto flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/gestao/lucro")}>
+          <Button variant="ghost" size="icon" onClick={goBack}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
@@ -148,7 +151,9 @@ export default function GestaoNfeConfigPage() {
         <div className="flex flex-wrap gap-2">
           <Button disabled={busy} onClick={() => void save()}>Salvar</Button>
           <Button variant="outline" asChild>
-            <Link to="/configuracoes/integracoes">Integração Focus NFe</Link>
+            <Link to={withVoltarParam("/configuracoes/integracoes?foco=nfe", returnTo)}>
+              Integração Focus NFe
+            </Link>
           </Button>
         </div>
       </main>

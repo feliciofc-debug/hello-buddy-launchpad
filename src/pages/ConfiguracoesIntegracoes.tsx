@@ -1,5 +1,5 @@
 import { ArrowLeft, Plug } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,10 +7,20 @@ import { FocusNfeIntegrationCard } from "@/components/integracoes/FocusNfeIntegr
 import { ZapSignIntegrationCard } from "@/components/integracoes/ZapSignIntegrationCard";
 import { MlIntegrationCard } from "@/components/ml/MlIntegrationCard";
 import { WebmotorsIntegrationCard } from "@/components/webmotors/WebmotorsIntegrationCard";
+import { useSmartBack } from "@/lib/app-back-nav.ts";
 import {
   PLANNED_PORTAL_INTEGRATIONS,
   PORTAL_STATUS_LABEL,
 } from "@/lib/portal-integrations-config";
+
+type Foco = "nfe" | "contratos" | "zapsign" | null;
+
+function parseFoco(raw: string | null): Foco {
+  if (raw === "nfe") return "nfe";
+  if (raw === "contratos") return "contratos";
+  if (raw === "zapsign") return "zapsign";
+  return null;
+}
 
 function PlannedPortalCard({
   name,
@@ -47,18 +57,24 @@ function PlannedPortalCard({
 }
 
 export default function ConfiguracoesIntegracoes() {
-  const navigate = useNavigate();
+  const goBack = useSmartBack("/dashboard");
+  const [searchParams] = useSearchParams();
+  const foco = parseFoco(searchParams.get("foco"));
+  const focusedOnly = foco != null;
+
+  const showZapsign = !focusedOnly || foco === "contratos" || foco === "zapsign";
+  const showFocus = !focusedOnly || foco === "nfe";
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 dark:bg-gray-900">
       <div className="mx-auto max-w-3xl space-y-6">
         <button
           type="button"
-          onClick={() => navigate("/configuracoes")}
+          onClick={goBack}
           className="mb-2 flex items-center gap-2 text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
         >
           <ArrowLeft className="h-5 w-5" />
-          <span className="font-medium">Voltar às configurações</span>
+          <span className="font-medium">Voltar</span>
         </button>
 
         <div>
@@ -66,34 +82,47 @@ export default function ConfiguracoesIntegracoes() {
           <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
             Portais, contratos e serviços conectados à sua revenda.
           </p>
+          {focusedOnly && (
+            <Button variant="link" className="mt-2 h-auto px-0" asChild>
+              <Link to="/configuracoes/integracoes">Ver todas as integrações</Link>
+            </Button>
+          )}
         </div>
 
-        <div className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Contratos e fiscal
-          </h2>
-          <ZapSignIntegrationCard />
-          <FocusNfeIntegrationCard />
-        </div>
+        {(showZapsign || showFocus) && (
+          <div className="space-y-3">
+            {!focusedOnly && (
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                Contratos e fiscal
+              </h2>
+            )}
+            {showZapsign && <ZapSignIntegrationCard />}
+            {showFocus && <FocusNfeIntegrationCard />}
+          </div>
+        )}
 
-        <div className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Portais de anúncio
-          </h2>
-        </div>
+        {!focusedOnly && (
+          <>
+            <div className="space-y-3">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                Portais de anúncio
+              </h2>
+            </div>
 
-        <MlIntegrationCard />
+            <MlIntegrationCard />
 
-        <WebmotorsIntegrationCard />
+            <WebmotorsIntegrationCard />
 
-        {PLANNED_PORTAL_INTEGRATIONS.map((portal) => (
-          <PlannedPortalCard
-            key={portal.id}
-            name={portal.name}
-            description={portal.description}
-            statusLabel={PORTAL_STATUS_LABEL[portal.status]}
-          />
-        ))}
+            {PLANNED_PORTAL_INTEGRATIONS.map((portal) => (
+              <PlannedPortalCard
+                key={portal.id}
+                name={portal.name}
+                description={portal.description}
+                statusLabel={PORTAL_STATUS_LABEL[portal.status]}
+              />
+            ))}
+          </>
+        )}
       </div>
     </div>
   );
