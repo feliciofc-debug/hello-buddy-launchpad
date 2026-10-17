@@ -24,7 +24,7 @@ export function formatBrazilCep(digits: string): string {
   return `${d.slice(0, 5)}-${d.slice(5)}`;
 }
 
-type MlLocRef = { id?: string | null; name?: string | null };
+type MlLocRef = { id?: string; name?: string };
 
 function readLocRef(value: unknown): MlLocRef | undefined {
   if (!value || typeof value !== "object") return undefined;
@@ -72,7 +72,7 @@ export function parseMlZipCodeApiResponse(body: unknown): MlLocationJson | null 
     loc.city = { id: cityId, name: cityName ?? undefined };
   }
   if (neighborhood?.id) {
-    loc.neighborhood = { id: neighborhood.id, name: neighborhood.name };
+    loc.neighborhood = { id: neighborhood.id, name: neighborhood.name ?? undefined };
   }
 
   return {

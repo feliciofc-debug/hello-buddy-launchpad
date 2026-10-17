@@ -137,7 +137,7 @@ export async function getMlAccessTokenForMlUser(
 ): Promise<{ accessToken: string; userId: string }> {
   const { data: row } = await sb.from("ml_contas")
     .select("user_id")
-    .eq("ml_user_id", mlUserId)
+    .eq("ml_user_id", String(mlUserId))
     .maybeSingle();
   if (!row?.user_id) throw new Error("ml_user_unknown");
   const tok = await getMlAccessTokenForUser(sb, row.user_id as string);

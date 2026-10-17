@@ -8,8 +8,13 @@ function keyBytes(): Uint8Array {
   return bin;
 }
 
+function keyMaterialForWebCrypto(): Uint8Array<ArrayBuffer> {
+  const bytes = keyBytes();
+  return new Uint8Array(bytes);
+}
+
 async function importKey(): Promise<CryptoKey> {
-  return crypto.subtle.importKey("raw", keyBytes(), { name: "AES-GCM" }, false, [
+  return crypto.subtle.importKey("raw", keyMaterialForWebCrypto(), { name: "AES-GCM" }, false, [
     "encrypt",
     "decrypt",
   ]);
