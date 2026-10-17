@@ -52,6 +52,7 @@ import {
   buildRevogarContadorLinkReply,
   type GestaoContaInbound,
 } from "./gestao-financeiro-inbound.ts";
+import { buildConciliacaoPendenteReply } from "./gestao-conciliacao-inbound.ts";
 import { contasToDreOperacionalRows } from "./gestao-contador-data.ts";
 import { mintGestaoContadorLink } from "./gestao-contador-link.ts";
 import { syncRecorrenciaLancamentosDb } from "./gestao-recorrencia-db-sync.ts";
@@ -781,6 +782,17 @@ export async function tryProcessGestaoLucroInbound(input: {
     const { appUrl } = await mintGestaoContadorLink(input.sb as never, input.userId, competencia, site);
     return { handled: true, reply: buildContadorLinkReply(appUrl, competencia) };
   }
+  if (intent.kind === "conciliacao_pendente") {
+    const client = input.sb as GestaoDb;
+    const { data } = await client.from("gestao_extrato_transacao").select("valor, status")
+      .eq("user_id", input.userId)
+      .in("status", ["pendente", "confirmar"]);
+    const rows = data ?? [];
+    const qtd = rows.length;
+    const valor = rows.reduce((a: number, r: { valor: number }) => a + Number(r.valor), 0);
+    return { handled: true, reply: buildConciliacaoPendenteReply(qtd, valor) };
+  }
+
   if (intent.kind === "revogar_link_contador") {
     const client = input.sb as GestaoDb;
     const now = new Date().toISOString();

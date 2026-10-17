@@ -44,6 +44,7 @@ import {
   downloadContadorXlsx,
 } from "@/lib/gestao-contador-export.ts";
 import { supabase } from "@/integrations/supabase/client";
+import { GestaoConciliacaoTab } from "@/components/gestao/lucro/GestaoConciliacaoTab.tsx";
 
 type Props = {
   userId: string;
@@ -256,10 +257,11 @@ export function GestaoFinanceiroTab({ userId, veiculos }: Props) {
       </div>
 
       <Tabs defaultValue="contas">
-        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
+        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5">
           <TabsTrigger value="contas">Contas</TabsTrigger>
           <TabsTrigger value="fluxo">Fluxo de caixa</TabsTrigger>
           <TabsTrigger value="dre">Resultado</TabsTrigger>
+          <TabsTrigger value="conciliacao">Conciliação</TabsTrigger>
           <TabsTrigger value="contador">Contador</TabsTrigger>
         </TabsList>
 
@@ -457,6 +459,10 @@ export function GestaoFinanceiroTab({ userId, veiculos }: Props) {
               </li>
             ))}
           </ul>
+        </TabsContent>
+
+        <TabsContent value="conciliacao" className="mt-4">
+          <GestaoConciliacaoTab userId={userId} contas={contas} veiculos={veiculos} />
         </TabsContent>
 
         <TabsContent value="contador" className="mt-4 space-y-4">
