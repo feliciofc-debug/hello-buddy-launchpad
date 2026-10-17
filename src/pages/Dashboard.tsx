@@ -20,7 +20,7 @@ import { mockProducts, type Marketplace } from '@/data/mockData';
 import { useClientMenus } from '@/hooks/useClientMenus';
 import { useFinanciamentoPendingCount } from '@/hooks/useFinanciamentoPendingCount';
 import { isBusinessTenantType } from '@/lib/business-tenant';
-import { GestaoEstoqueHojeSection } from '@/components/gestao/GestaoEstoqueHojeSection';
+import { GestaoDashboardResultadoWidget } from '@/components/gestao/GestaoDashboardResultadoWidget';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -663,11 +663,7 @@ const Dashboard = () => {
           <div className="p-6">
               {showGestaoLucroMenu && user?.id ? (
                 <div className="mb-8">
-                  <GestaoEstoqueHojeSection
-                    userId={user.id}
-                    compact
-                    showDetailLink
-                  />
+                  <GestaoDashboardResultadoWidget />
                 </div>
               ) : null}
               {/* ═══════════════════════════════════════════════════════════ */}

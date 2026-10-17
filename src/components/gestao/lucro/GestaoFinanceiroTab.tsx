@@ -49,6 +49,11 @@ import { GestaoConciliacaoTab } from "@/components/gestao/lucro/GestaoConciliaca
 type Props = {
   userId: string;
   veiculos: GestaoVeiculoEnriched[];
+  /** Aba interna controlada pelo topo da Gestão (ex.: Resultado) */
+  section?: string;
+  onSectionChange?: (section: string) => void;
+  /** Sincroniza competência com o seletor do topo */
+  competenciaSync?: string;
 };
 
 const emptyForm = {
@@ -72,8 +77,28 @@ function last12Competencias(): string[] {
   return out;
 }
 
-export function GestaoFinanceiroTab({ userId, veiculos }: Props) {
-  const [competencia, setCompetencia] = useState(competenciaFromDate());
+export function GestaoFinanceiroTab({
+  userId,
+  veiculos,
+  section: sectionProp,
+  onSectionChange,
+  competenciaSync,
+}: Props) {
+  const [competencia, setCompetencia] = useState(competenciaSync ?? competenciaFromDate());
+  const [section, setSection] = useState(sectionProp ?? "contas");
+
+  useEffect(() => {
+    if (competenciaSync) setCompetencia(competenciaSync);
+  }, [competenciaSync]);
+
+  useEffect(() => {
+    if (sectionProp) setSection(sectionProp);
+  }, [sectionProp]);
+
+  const setSectionBoth = (v: string) => {
+    setSection(v);
+    onSectionChange?.(v);
+  };
   const [contas, setContas] = useState<GestaoContaLancamento[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState(emptyForm);
@@ -256,7 +281,7 @@ export function GestaoFinanceiroTab({ userId, veiculos }: Props) {
         </div>
       </div>
 
-      <Tabs defaultValue="contas">
+      <Tabs value={section} onValueChange={setSectionBoth}>
         <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5">
           <TabsTrigger value="contas">Contas</TabsTrigger>
           <TabsTrigger value="fluxo">Fluxo de caixa</TabsTrigger>

@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, CarFront, Loader2, Plus, TrendingUp, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { GestaoEstoqueHojeSection } from "@/components/gestao/GestaoEstoqueHojeSection.tsx";
-import { GestaoLucroMonthlyKpis } from "@/components/gestao/lucro/GestaoLucroMonthlyKpis.tsx";
+import { GestaoEstoqueHojeCollapsible } from "@/components/gestao/GestaoEstoqueHojeCollapsible.tsx";
+import { GestaoResultadoMesStrip } from "@/components/gestao/lucro/GestaoResultadoMesStrip.tsx";
 import { GestaoLucroAlerts } from "@/components/gestao/lucro/GestaoLucroAlerts.tsx";
 import { GestaoLucroEstoqueTab } from "@/components/gestao/lucro/GestaoLucroEstoqueTab.tsx";
 import { GestaoLucroVendidosTab } from "@/components/gestao/lucro/GestaoLucroVendidosTab.tsx";
@@ -19,54 +19,46 @@ import { GestaoContratosTab } from "@/components/gestao/lucro/GestaoContratosTab
 import { GestaoNotasFiscaisTab } from "@/components/gestao/lucro/GestaoNotasFiscaisTab.tsx";
 import { useGestaoZapsignConnection } from "@/components/integracoes/useGestaoZapsignConnection";
 import { useGestaoFocusnfeConnection } from "@/components/integracoes/useGestaoFocusnfeConnection";
-import { loadGestaoLucroBundle } from "@/lib/gestao-lucro-data.ts";
 import { buildGestaoLucroAlerts } from "@/lib/gestao-lucro-alerts.ts";
 import type { GestaoLucroAlertKind } from "@/lib/gestao-lucro-types.ts";
 import type { GestaoVeiculoEnriched } from "@/lib/gestao-lucro-types.ts";
 import { supabase } from "@/integrations/supabase/client";
-
-function monthBounds(): { start: string; end: string } {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
-  return { start: iso(start), end: iso(end) };
-}
+import { competenciaFromDate } from "../../supabase/functions/_shared/gestao-meta-calc.ts";
+import { useGestaoResultadoStrip } from "@/hooks/useGestaoResultadoStrip";
 
 export default function GestaoLucroPage() {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
-  const [veiculos, setVeiculos] = useState<GestaoVeiculoEnriched[]>([]);
-  const [despesasFlat, setDespesasFlat] = useState<Awaited<ReturnType<typeof loadGestaoLucroBundle>>["despesasFlat"]>([]);
   const [activeAlert, setActiveAlert] = useState<GestaoLucroAlertKind | null>(null);
   const [tab, setTab] = useState("estoque");
+  const [financeSection, setFinanceSection] = useState("contas");
+  const [competencia, setCompetencia] = useState(competenciaFromDate());
   const [drawerVehicle, setDrawerVehicle] = useState<GestaoVeiculoEnriched | null>(null);
   const [despesaOpen, setDespesaOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [despesaPreselect, setDespesaPreselect] = useState<string | null>(null);
-  const { start, end } = monthBounds();
   const zapsign = useGestaoZapsignConnection();
   const focusnfe = useGestaoFocusnfeConnection();
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const { data: session } = await supabase.auth.getSession();
-    const user = session.session?.user;
-    if (!user) {
-      navigate("/login");
-      return;
-    }
-    setUserId(user.id);
-    const bundle = await loadGestaoLucroBundle(user.id);
-    setVeiculos(bundle.veiculos);
-    setDespesasFlat(bundle.despesasFlat);
-    setLoading(false);
+  useEffect(() => {
+    void supabase.auth.getSession().then(({ data: session }) => {
+      const user = session.session?.user;
+      if (!user) {
+        navigate("/login");
+        return;
+      }
+      setUserId(user.id);
+    });
   }, [navigate]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const {
+    veiculos,
+    despesasFlat,
+    metrics,
+    prevMetrics,
+    loading,
+    reload,
+  } = useGestaoResultadoStrip(userId, competencia, !!focusnfe.status?.connected);
 
   const alerts = useMemo(() => buildGestaoLucroAlerts(veiculos), [veiculos]);
 
@@ -76,22 +68,6 @@ export default function GestaoLucroPage() {
     return new Set(a?.veiculoIds ?? []);
   }, [activeAlert, alerts]);
 
-  const kpis = useMemo(() => {
-    let lucroMes = 0;
-    let vendasMes = 0;
-    let despesasMes = 0;
-    for (const v of veiculos) {
-      if (v.dataVenda && v.dataVenda >= start && v.dataVenda <= end) {
-        vendasMes += 1;
-        lucroMes += v.lucro.lucroLiquido ?? 0;
-      }
-    }
-    for (const d of despesasFlat) {
-      if (d.data >= start && d.data <= end) despesasMes += Number(d.valor);
-    }
-    return { lucroMes, vendasMes, despesasMes };
-  }, [veiculos, despesasFlat, start, end]);
-
   const drawerVeiculo = useMemo(() => {
     if (!drawerVehicle) return null;
     return veiculos.find((v) => v.id === drawerVehicle.id) ?? drawerVehicle;
@@ -100,6 +76,10 @@ export default function GestaoLucroPage() {
   const onAlertSelect = (kind: GestaoLucroAlertKind | null) => {
     setActiveAlert(kind);
     if (kind) setTab("estoque");
+  };
+
+  const refreshAll = () => {
+    void reload();
   };
 
   return (
@@ -116,7 +96,7 @@ export default function GestaoLucroPage() {
                 Gestão — Lucro
               </h1>
               <p className="text-sm text-muted-foreground">
-                Estoque, vendas e despesas · {start} a {end}
+                Estoque, vendas e despesas
               </p>
             </div>
           </div>
@@ -148,15 +128,31 @@ export default function GestaoLucroPage() {
       </header>
 
       <main className="container mx-auto space-y-6 px-4 py-8">
-        {userId ? <GestaoEstoqueHojeSection userId={userId} /> : null}
+        {userId && (
+          <GestaoResultadoMesStrip
+            competencia={competencia}
+            onCompetenciaChange={setCompetencia}
+            metrics={metrics}
+            prevMetrics={prevMetrics}
+            focusConnected={focusnfe.loading ? null : !!focusnfe.status?.connected}
+            loading={loading}
+            onNavigateVendidos={() => setTab("vendidos")}
+            onNavigateEstoque={() => setTab("estoque")}
+            onNavigateResultado={() => {
+              setTab("financeiro");
+              setFinanceSection("dre");
+            }}
+          />
+        )}
 
-        {loading ? (
+        {userId ? <GestaoEstoqueHojeCollapsible userId={userId} /> : null}
+
+        {loading && !veiculos.length ? (
           <div className="flex justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : (
           <>
-            <GestaoLucroMonthlyKpis {...kpis} />
             <GestaoLucroAlerts
               alerts={alerts}
               activeKind={activeAlert}
@@ -185,7 +181,7 @@ export default function GestaoLucroPage() {
                     veiculos={veiculos}
                     userId={userId}
                     highlightIds={highlightIds}
-                    onRefresh={() => void load()}
+                    onRefresh={refreshAll}
                     onOpenDrawer={setDrawerVehicle}
                     onQuickDespesa={(v) => {
                       setDespesaPreselect(v.id);
@@ -204,7 +200,15 @@ export default function GestaoLucroPage() {
                 {userId && <GestaoEquipeTab userId={userId} veiculos={veiculos} />}
               </TabsContent>
               <TabsContent value="financeiro" className="mt-4">
-                {userId && <GestaoFinanceiroTab userId={userId} veiculos={veiculos} />}
+                {userId && (
+                  <GestaoFinanceiroTab
+                    userId={userId}
+                    veiculos={veiculos}
+                    section={financeSection}
+                    onSectionChange={setFinanceSection}
+                    competenciaSync={competencia}
+                  />
+                )}
               </TabsContent>
               {zapsign.status?.connected && (
                 <TabsContent value="contratos" className="mt-4">
@@ -231,7 +235,7 @@ export default function GestaoLucroPage() {
             veiculo={drawerVeiculo}
             userId={userId}
             onClose={() => setDrawerVehicle(null)}
-            onSaved={() => void load()}
+            onSaved={refreshAll}
           />
           <GestaoBatchDespesaDialog
             open={despesaOpen}
@@ -239,14 +243,14 @@ export default function GestaoLucroPage() {
             userId={userId}
             veiculos={veiculos}
             preselectedId={despesaPreselect}
-            onSaved={() => void load()}
+            onSaved={refreshAll}
           />
           <GestaoImportPlanilhaDialog
             open={importOpen}
             onOpenChange={setImportOpen}
             userId={userId}
             veiculos={veiculos}
-            onSaved={() => void load()}
+            onSaved={refreshAll}
           />
         </>
       )}
