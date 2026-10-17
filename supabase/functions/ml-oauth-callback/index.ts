@@ -7,6 +7,7 @@ import {
   mlClientSecret,
 } from "../_shared/ml-config.ts";
 import { parseMlUserLocation } from "../_shared/ml-location.ts";
+import { isMlOAuthStateExpired, mlOAuthStateExpiryCutoffIso } from "../_shared/ml-oauth-state.ts";
 import { saveMlContaTokens } from "../_shared/ml-token.ts";
 
 const redirecionar = (params: Record<string, string>) => {
@@ -28,9 +29,15 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+    await admin.from("ml_oauth_states").delete().lt("created_at", mlOAuthStateExpiryCutoffIso());
+
     const { data: stateRow } = await admin.from("ml_oauth_states")
-      .select("user_id").eq("state", state).maybeSingle();
+      .select("user_id, created_at").eq("state", state).maybeSingle();
     if (!stateRow) return redirecionar({ ml: "erro", motivo: "state_invalido" });
+    if (isMlOAuthStateExpired(String(stateRow.created_at))) {
+      await admin.from("ml_oauth_states").delete().eq("state", state);
+      return redirecionar({ ml: "erro", motivo: "state_expirado" });
+    }
     await admin.from("ml_oauth_states").delete().eq("state", state);
 
     const tokenRes = await fetch(`${ML_API_BASE}/oauth/token`, {
@@ -57,6 +64,18 @@ Deno.serve(async (req) => {
     const me = await meRes.json();
     const mlUserId = Number(me.id);
 
+    const { data: mlContaExistente } = await admin.from("ml_contas")
+      .select("user_id, status")
+      .eq("ml_user_id", mlUserId)
+      .maybeSingle();
+    if (
+      mlContaExistente &&
+      mlContaExistente.user_id !== stateRow.user_id &&
+      mlContaExistente.status !== "revoked"
+    ) {
+      return redirecionar({ ml: "erro", motivo: "conta_ml_em_uso" });
+    }
+
     await saveMlContaTokens(admin as never, {
       userId: stateRow.user_id,
       mlUserId,
@@ -78,7 +97,11 @@ Deno.serve(async (req) => {
     }
     return redirecionar({ ml: "conectado" });
   } catch (e) {
-    console.error("[ml-oauth-callback]", (e as Error).message);
+    const msg = (e as Error).message;
+    console.error("[ml-oauth-callback]", msg);
+    if (msg.includes("duplicate") || msg.includes("unique") || msg.includes("ml_contas_ml_user_id")) {
+      return redirecionar({ ml: "erro", motivo: "conta_ml_em_uso" });
+    }
     return redirecionar({ ml: "erro", motivo: "inesperado" });
   }
 });

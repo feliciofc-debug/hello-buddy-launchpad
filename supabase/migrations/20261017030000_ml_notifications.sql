@@ -82,4 +82,6 @@ CREATE TABLE IF NOT EXISTS public.ml_crm_tick_meta (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+ALTER TABLE public.ml_crm_tick_meta ENABLE ROW LEVEL SECURITY;
+
 GRANT ALL ON public.ml_crm_tick_meta TO service_role;

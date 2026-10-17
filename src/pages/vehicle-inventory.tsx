@@ -320,7 +320,13 @@ export default function VehicleInventory() {
     if (!ml) return;
     if (ml === "conectado") toast.success("Mercado Livre conectado.");
     else if (ml === "erro") {
-      toast.error(`Mercado Livre: ${searchParams.get("motivo") ?? "erro"}`);
+      const motivo = searchParams.get("motivo") ?? "erro";
+      const msg = motivo === "conta_ml_em_uso"
+        ? "Esta conta Mercado Livre já está conectada em outra loja AMZ. Desconecte lá ou use outra conta ML."
+        : motivo === "state_expirado"
+        ? "A autorização expirou (10 min). Clique em Conectar Mercado Livre novamente."
+        : `Mercado Livre: ${motivo}`;
+      toast.error(msg);
     }
     searchParams.delete("ml");
     searchParams.delete("motivo");

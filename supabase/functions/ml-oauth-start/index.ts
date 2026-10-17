@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { corsHeaders } from "../_shared/cors.ts";
 import { ML_OAUTH_AUTHORIZE_URL, ML_OAUTH_REDIRECT_URI, mlClientId } from "../_shared/ml-config.ts";
+import { mlOAuthStateExpiryCutoffIso } from "../_shared/ml-oauth-state.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -23,6 +24,7 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+    await admin.from("ml_oauth_states").delete().lt("created_at", mlOAuthStateExpiryCutoffIso());
     const { error } = await admin.from("ml_oauth_states").insert({ state, user_id: user.id });
     if (error) throw new Error(error.message);
 

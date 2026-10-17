@@ -17,6 +17,9 @@ export const ML_LISTING_TYPE_SILVER = "silver";
 
 export const ML_MAX_PICTURES_DEFAULT = 25;
 
+/** OAuth state válido por 10 minutos (redirect ML). */
+export const ML_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+
 export function mlAppUrl(): string {
   return Deno.env.get("APP_URL") || "https://amzofertas.com.br";
 }
