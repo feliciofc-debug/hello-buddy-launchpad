@@ -67,3 +67,8 @@ export function buildContadorLinkReply(linkUrl: string, competencia: string): st
   return `Pacote ${competencia} pronto (leitura só do mês). Encaminhe ao contador:\n${linkUrl}\n` +
     "Documento gerencial — validação fiscal com o contador.";
 }
+
+export function buildRevogarContadorLinkReply(revogados: number): string {
+  if (revogados <= 0) return "Nenhum link ativo do contador para cancelar.";
+  return `Pronto: ${revogados} link(s) do contador cancelado(s). Quem tinha o link não consegue mais abrir.`;
+}

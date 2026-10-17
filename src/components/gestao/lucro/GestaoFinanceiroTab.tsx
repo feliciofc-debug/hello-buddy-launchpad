@@ -18,9 +18,16 @@ import type { GestaoVeiculoEnriched } from "@/lib/gestao-lucro-types.ts";
 import {
   contasToDreOperacional,
   contasToFluxo,
+  createRecorrenciaSerie,
+  encerrarRecorrenciaSerie,
+  loadContadorTokens,
   loadGestaoContas,
+  loadRecorrenciaSeries,
+  revogarContadorToken,
   veiculosToDreVendas,
   type GestaoContaLancamento,
+  type GestaoContaRecorrenciaSerie,
+  type GestaoContadorTokenRow,
 } from "@/lib/gestao-financeiro-load.ts";
 import {
   GESTAO_CATEGORIAS_PAGAR,
@@ -71,14 +78,20 @@ export function GestaoFinanceiroTab({ userId, veiculos }: Props) {
   const [form, setForm] = useState(emptyForm);
   const [nomeEmpresa, setNomeEmpresa] = useState("");
   const [contadorLink, setContadorLink] = useState<string | null>(null);
+  const [series, setSeries] = useState<GestaoContaRecorrenciaSerie[]>([]);
+  const [contadorTokens, setContadorTokens] = useState<GestaoContadorTokenRow[]>([]);
 
   const reload = useCallback(async () => {
     setLoading(true);
-    const [c, emp] = await Promise.all([
+    const [c, emp, ser, tok] = await Promise.all([
       loadGestaoContas(userId),
       supabase.from("empresa_config").select("nome_empresa").eq("user_id", userId).maybeSingle(),
+      loadRecorrenciaSeries(userId),
+      loadContadorTokens(userId),
     ]);
     setContas(c);
+    setSeries(ser);
+    setContadorTokens(tok);
     setNomeEmpresa(String(emp.data?.nome_empresa ?? "Loja"));
     setLoading(false);
   }, [userId]);
@@ -107,11 +120,19 @@ export function GestaoFinanceiroTab({ userId, veiculos }: Props) {
     return calcFluxoDiario(contasToFluxo(contas), start, end);
   }, [contas, competencia]);
 
+  const seriesFluxo = useMemo(() => series.map((s) => ({
+    id: s.id,
+    tipo: s.tipo,
+    valor: s.valor,
+    dia_mes: s.dia_mes,
+    encerrada_a_partir_de: s.encerrada_a_partir_de,
+  })), [series]);
+
   const proj = useMemo(() => ({
-    p30: calcSaldoProjetado(contasToFluxo(contas), 30),
-    p60: calcSaldoProjetado(contasToFluxo(contas), 60),
-    p90: calcSaldoProjetado(contasToFluxo(contas), 90),
-  }), [contas]);
+    p30: calcSaldoProjetado(contasToFluxo(contas), 30, new Date(), seriesFluxo),
+    p60: calcSaldoProjetado(contasToFluxo(contas), 60, new Date(), seriesFluxo),
+    p90: calcSaldoProjetado(contasToFluxo(contas), 90, new Date(), seriesFluxo),
+  }), [contas, seriesFluxo]);
 
   const saveConta = async () => {
     const valor = parseGestaoMoneyField(form.valor);
@@ -119,6 +140,32 @@ export function GestaoFinanceiroTab({ userId, veiculos }: Props) {
       toast.error("Informe o valor.");
       return;
     }
+    if (form.recorrencia_dia_mes) {
+      const dia = Number(form.recorrencia_dia_mes);
+      if (dia < 1 || dia > 31) {
+        toast.error("Dia de recorrência inválido.");
+        return;
+      }
+      try {
+        await createRecorrenciaSerie(userId, {
+          tipo: form.tipo,
+          categoria_operacional: form.categoria,
+          valor,
+          dia_mes: dia,
+          forma_pagamento: form.forma_pagamento || null,
+          observacao: form.observacao || null,
+          veiculo_id: form.veiculo_id || null,
+        });
+      } catch {
+        toast.error("Não foi possível criar a recorrência.");
+        return;
+      }
+      setForm(emptyForm);
+      toast.success("Recorrência criada — lançamentos do mês gerados.");
+      void reload();
+      return;
+    }
+
     const { error } = await supabase.from("gestao_conta_lancamento" as "veiculos_estoque").insert({
       user_id: userId,
       tipo: form.tipo,
@@ -126,7 +173,6 @@ export function GestaoFinanceiroTab({ userId, veiculos }: Props) {
       valor,
       vencimento: form.vencimento,
       forma_pagamento: form.forma_pagamento || null,
-      recorrencia_dia_mes: form.recorrencia_dia_mes ? Number(form.recorrencia_dia_mes) : null,
       observacao: form.observacao || null,
       veiculo_id: form.veiculo_id || null,
       origem: "manual",
@@ -173,6 +219,20 @@ export function GestaoFinanceiroTab({ userId, veiculos }: Props) {
       : `${window.location.origin}${json.path ?? json.appUrl}`;
     setContadorLink(link);
     toast.success("Link gerado — encaminhe ao contador.");
+    void reload();
+  };
+
+  const revogarLink = async (id: string) => {
+    await revogarContadorToken(userId, id);
+    toast.success("Link revogado.");
+    void reload();
+  };
+
+  const encerrarSerie = async (serieId: string) => {
+    const prox = competenciaFromDate(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1));
+    await encerrarRecorrenciaSerie(userId, serieId, prox);
+    toast.success("Recorrência encerrada a partir do próximo mês.");
+    void reload();
   };
 
   const pacote = useMemo(
@@ -236,9 +296,10 @@ export function GestaoFinanceiroTab({ userId, veiculos }: Props) {
               <Input type="date" value={form.vencimento} onChange={(e) => setForm({ ...form, vencimento: e.target.value })} />
             </div>
             <div>
-              <Label>Recorrência (dia do mês, opcional)</Label>
-              <Input type="number" min={1} max={31} placeholder="Ex: 10" value={form.recorrencia_dia_mes}
+              <Label>Recorrência mensal (dia fixo — cria série)</Label>
+              <Input type="number" min={1} max={31} placeholder="Ex: 10 (aluguel)" value={form.recorrencia_dia_mes}
                 onChange={(e) => setForm({ ...form, recorrencia_dia_mes: e.target.value })} />
+              <p className="text-[11px] text-muted-foreground">Com dia preenchido, gera lançamentos reais mês a mês (atual + próximo).</p>
             </div>
             <div>
               <Label>Forma pagamento</Label>
@@ -288,7 +349,7 @@ export function GestaoFinanceiroTab({ userId, veiculos }: Props) {
                     <td className="py-2 pr-2">{gestaoOperacionalCategoriaLabel(c.categoria_operacional)}</td>
                     <td className="py-2 pr-2">{formatGestaoMoney(Number(c.valor))}</td>
                     <td className="py-2 pr-2 text-xs">
-                      {c.origem === "bonus_g2" ? "Bônus G2 · " : ""}
+                      {c.origem === "bonus_g2" ? "Bônus G2 · " : c.origem === "recorrencia" ? `Rec. ${c.competencia ?? ""} · ` : ""}
                       {c.tipo === "pagar"
                         ? (c.pago_em ? `Pago ${c.pago_em}` : "Em aberto")
                         : (c.recebido_em ? `Recebido ${c.recebido_em}` : "Em aberto")}
@@ -305,6 +366,27 @@ export function GestaoFinanceiroTab({ userId, veiculos }: Props) {
               </tbody>
             </table>
           </div>
+
+          {series.length > 0 && (
+            <div className="rounded-lg border p-3 text-sm">
+              <p className="mb-2 font-medium">Séries recorrentes</p>
+              <ul className="space-y-2">
+                {series.map((s) => (
+                  <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
+                    <span>
+                      {gestaoOperacionalCategoriaLabel(s.categoria_operacional)} — dia {s.dia_mes} — {formatGestaoMoney(s.valor)}
+                      {s.encerrada_a_partir_de ? ` (encerra ${s.encerrada_a_partir_de})` : ""}
+                    </span>
+                    {!s.encerrada_a_partir_de && (
+                      <Button size="sm" variant="outline" onClick={() => void encerrarSerie(s.id)}>
+                        Encerrar recorrência
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="fluxo" className="mt-4 space-y-4">
@@ -396,10 +478,47 @@ export function GestaoFinanceiroTab({ userId, veiculos }: Props) {
           </div>
           {contadorLink && (
             <div className="rounded border p-3 text-sm break-all">
-              <p className="font-medium">Link (somente leitura, expira em 14 dias):</p>
+              <p className="font-medium">Último link gerado:</p>
               <a href={contadorLink} className="text-primary underline" target="_blank" rel="noreferrer">{contadorLink}</a>
             </div>
           )}
+          <div className="overflow-x-auto rounded border">
+            <table className="w-full min-w-[560px] text-sm">
+              <thead>
+                <tr className="border-b bg-muted/40 text-left text-muted-foreground">
+                  <th className="p-2">Competência</th>
+                  <th className="p-2">Validade</th>
+                  <th className="p-2">Último acesso</th>
+                  <th className="p-2">Status</th>
+                  <th className="p-2">Ação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {contadorTokens.map((t) => {
+                  const revogado = !!t.revogado_em;
+                  const expirado = new Date(t.expires_at) < new Date();
+                  return (
+                    <tr key={t.id} className="border-b">
+                      <td className="p-2">{t.competencia}</td>
+                      <td className="p-2">{t.expires_at.slice(0, 10)}</td>
+                      <td className="p-2">{t.last_access_at?.slice(0, 10) ?? "—"}</td>
+                      <td className="p-2 text-xs">
+                        {revogado ? "Revogado" : expirado ? "Expirado" : "Ativo"}
+                      </td>
+                      <td className="p-2">
+                        {!revogado && !expirado && (
+                          <Button size="sm" variant="outline" onClick={() => void revogarLink(t.id)}>Revogar</Button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!contadorTokens.length && (
+                  <tr><td colSpan={5} className="p-4 text-center text-muted-foreground">Nenhum link gerado ainda.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

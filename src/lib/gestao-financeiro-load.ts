@@ -1,8 +1,14 @@
 import { supabase } from "@/integrations/supabase/client";
 import { planBonusOperacionalUpserts } from "../../supabase/functions/_shared/gestao-bonus-operacional-sync.ts";
+import {
+  planAtualizacaoLancamentosFuturos,
+  planRecorrenciaLancamentos,
+  type GestaoRecorrenciaSerie,
+} from "../../supabase/functions/_shared/gestao-recorrencia-sync.ts";
 import type { GestaoContaFluxo } from "../../supabase/functions/_shared/gestao-fluxo-calc.ts";
 import type { GestaoOperacionalDreLine, GestaoVendaDreLine } from "../../supabase/functions/_shared/gestao-dre-calc.ts";
 import type { GestaoVeiculoEnriched } from "./gestao-lucro-types.ts";
+import { competenciaFromDate } from "../../supabase/functions/_shared/gestao-meta-calc.ts";
 
 export type GestaoContaLancamento = {
   id: string;
@@ -19,6 +25,21 @@ export type GestaoContaLancamento = {
   origem: string;
   bonus_mensal_id: string | null;
   comprovante_path: string | null;
+  serie_id: string | null;
+  competencia: string | null;
+};
+
+export type GestaoContaRecorrenciaSerie = GestaoRecorrenciaSerie & {
+  created_at?: string;
+};
+
+export type GestaoContadorTokenRow = {
+  id: string;
+  competencia: string;
+  expires_at: string;
+  created_at: string;
+  last_access_at: string | null;
+  revogado_em: string | null;
 };
 
 export async function syncBonusOperacionalContas(userId: string): Promise<void> {
@@ -68,8 +89,145 @@ export async function syncBonusOperacionalContas(userId: string): Promise<void> 
   }
 }
 
+export async function loadRecorrenciaSeries(userId: string): Promise<GestaoContaRecorrenciaSerie[]> {
+  const { data } = await supabase.from("gestao_conta_recorrencia_serie" as "veiculos_estoque")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+  return (data ?? []).map((s) => ({
+    id: String(s.id),
+    tipo: s.tipo as "pagar" | "receber",
+    categoria_operacional: String(s.categoria_operacional),
+    valor: Number(s.valor),
+    dia_mes: Number(s.dia_mes),
+    forma_pagamento: s.forma_pagamento ? String(s.forma_pagamento) : null,
+    observacao: s.observacao ? String(s.observacao) : null,
+    veiculo_id: s.veiculo_id ? String(s.veiculo_id) : null,
+    encerrada_a_partir_de: s.encerrada_a_partir_de ? String(s.encerrada_a_partir_de) : null,
+    created_at: String(s.created_at),
+  }));
+}
+
+export async function syncRecorrenciaLancamentos(userId: string): Promise<void> {
+  const series = await loadRecorrenciaSeries(userId);
+  if (!series.length) return;
+
+  const { data: existingRows } = await supabase.from("gestao_conta_lancamento" as "veiculos_estoque")
+    .select("id, serie_id, competencia, pago_em, recebido_em")
+    .eq("user_id", userId)
+    .eq("origem", "recorrencia")
+    .is("deleted_at", null);
+
+  const existing = (existingRows ?? []).map((r) => ({
+    serie_id: String(r.serie_id),
+    competencia: String(r.competencia),
+    id: String(r.id),
+    pago_em: r.pago_em ? String(r.pago_em) : null,
+    recebido_em: r.recebido_em ? String(r.recebido_em) : null,
+  }));
+
+  const plan = planRecorrenciaLancamentos(series, existing);
+  for (const row of plan) {
+    await supabase.from("gestao_conta_lancamento" as "veiculos_estoque").insert({
+      user_id: userId,
+      tipo: row.tipo,
+      categoria_operacional: row.categoria_operacional,
+      valor: row.valor,
+      vencimento: row.vencimento,
+      forma_pagamento: row.forma_pagamento,
+      observacao: row.observacao,
+      veiculo_id: row.veiculo_id,
+      origem: "recorrencia",
+      serie_id: row.serie_id,
+      competencia: row.competencia,
+    });
+  }
+}
+
+export async function createRecorrenciaSerie(
+  userId: string,
+  input: Omit<GestaoRecorrenciaSerie, "id" | "encerrada_a_partir_de">,
+): Promise<void> {
+  const { error } = await supabase.from("gestao_conta_recorrencia_serie" as "veiculos_estoque").insert({
+    user_id: userId,
+    tipo: input.tipo,
+    categoria_operacional: input.categoria_operacional,
+    valor: input.valor,
+    dia_mes: input.dia_mes,
+    forma_pagamento: input.forma_pagamento,
+    observacao: input.observacao,
+    veiculo_id: input.veiculo_id,
+  });
+  if (error) throw new Error(error.message);
+  await syncRecorrenciaLancamentos(userId);
+}
+
+export async function updateRecorrenciaSerie(
+  userId: string,
+  serieId: string,
+  patch: Partial<GestaoRecorrenciaSerie>,
+): Promise<void> {
+  await supabase.from("gestao_conta_recorrencia_serie" as "veiculos_estoque").update({
+    valor: patch.valor,
+    dia_mes: patch.dia_mes,
+    forma_pagamento: patch.forma_pagamento,
+    observacao: patch.observacao,
+    categoria_operacional: patch.categoria_operacional,
+  }).eq("id", serieId).eq("user_id", userId);
+
+  const series = await loadRecorrenciaSeries(userId);
+  const serie = series.find((s) => s.id === serieId);
+  if (!serie) return;
+
+  const { data: launches } = await supabase.from("gestao_conta_lancamento" as "veiculos_estoque")
+    .select("id, serie_id, competencia, pago_em, recebido_em")
+    .eq("user_id", userId)
+    .eq("serie_id", serieId)
+    .is("deleted_at", null);
+
+  const fromComp = competenciaFromDate();
+  const updates = planAtualizacaoLancamentosFuturos(
+    serie,
+    (launches ?? []).map((l) => ({
+      serie_id: String(l.serie_id),
+      competencia: String(l.competencia),
+      id: String(l.id),
+      pago_em: l.pago_em ? String(l.pago_em) : null,
+      recebido_em: l.recebido_em ? String(l.recebido_em) : null,
+    })),
+    fromComp,
+  );
+
+  for (const u of updates) {
+    await supabase.from("gestao_conta_lancamento" as "veiculos_estoque").update({
+      valor: u.valor,
+      vencimento: u.vencimento,
+      observacao: u.observacao,
+    }).eq("id", u.id).eq("user_id", userId);
+  }
+  await syncRecorrenciaLancamentos(userId);
+}
+
+export async function encerrarRecorrenciaSerie(
+  userId: string,
+  serieId: string,
+  aPartirDeCompetencia: string,
+): Promise<void> {
+  await supabase.from("gestao_conta_recorrencia_serie" as "veiculos_estoque").update({
+    encerrada_a_partir_de: aPartirDeCompetencia,
+  }).eq("id", serieId).eq("user_id", userId);
+
+  await supabase.from("gestao_conta_lancamento" as "veiculos_estoque").update({ deleted_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .eq("serie_id", serieId)
+    .gte("competencia", aPartirDeCompetencia)
+    .is("pago_em", null)
+    .is("recebido_em", null);
+}
+
 export async function loadGestaoContas(userId: string): Promise<GestaoContaLancamento[]> {
   await syncBonusOperacionalContas(userId);
+  await syncRecorrenciaLancamentos(userId);
   const { data } = await supabase.from("gestao_conta_lancamento" as "veiculos_estoque")
     .select("*")
     .eq("user_id", userId)
@@ -86,7 +244,8 @@ export function contasToFluxo(contas: GestaoContaLancamento[]): GestaoContaFluxo
     vencimento: c.vencimento,
     pago_em: c.pago_em,
     recebido_em: c.recebido_em,
-    recorrencia_dia_mes: c.recorrencia_dia_mes,
+    serie_id: c.serie_id,
+    competencia: c.competencia,
   }));
 }
 
@@ -113,22 +272,17 @@ export function contasToDreOperacional(contas: GestaoContaLancamento[]): GestaoO
     }));
 }
 
-export async function createContadorToken(
-  userId: string,
-  competencia: string,
-): Promise<{ token: string; expiresAt: string }> {
-  const { generateGestaoContadorToken, hashGestaoContadorToken, GESTAO_CONTADOR_TOKEN_TTL_DAYS } =
-    await import("../../supabase/functions/_shared/gestao-contador-token.ts");
-  const token = generateGestaoContadorToken();
-  const token_hash = await hashGestaoContadorToken(token);
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + GESTAO_CONTADOR_TOKEN_TTL_DAYS);
-  const { error } = await supabase.from("gestao_contador_token" as "veiculos_estoque").insert({
-    user_id: userId,
-    token_hash,
-    competencia,
-    expires_at: expiresAt.toISOString(),
-  });
+export async function loadContadorTokens(userId: string): Promise<GestaoContadorTokenRow[]> {
+  const { data } = await supabase.from("gestao_contador_token" as "veiculos_estoque")
+    .select("id, competencia, expires_at, created_at, last_access_at, revogado_em")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+  return (data ?? []) as GestaoContadorTokenRow[];
+}
+
+export async function revogarContadorToken(userId: string, tokenId: string): Promise<void> {
+  const { error } = await supabase.from("gestao_contador_token" as "veiculos_estoque").update({
+    revogado_em: new Date().toISOString(),
+  }).eq("id", tokenId).eq("user_id", userId);
   if (error) throw new Error(error.message);
-  return { token, expiresAt: expiresAt.toISOString() };
 }

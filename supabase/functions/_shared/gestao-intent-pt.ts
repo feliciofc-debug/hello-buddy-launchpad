@@ -22,7 +22,8 @@ export type GestaoIntentKind =
   | "contas_semana"
   | "a_receber"
   | "lucro_loja_mes"
-  | "pacote_contador";
+  | "pacote_contador"
+  | "revogar_link_contador";
 
 export type GestaoIntent = {
   kind: GestaoIntentKind;
@@ -71,6 +72,10 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
 
   if (/\bmanda(r)?\s+o?\s*relatorio\s+do\s+mes\s+(pro|para\s+o)\s+contador\b/.test(t)) {
     return { ...empty, kind: "pacote_contador", vehicleHint };
+  }
+
+  if (/\bcancela(r)?\s+o?\s*link\s+do\s+contador\b|\brevoga(r)?\s+link\s+contador\b/.test(t)) {
+    return { ...empty, kind: "revogar_link_contador", vehicleHint };
   }
 
   if (/\bo\s+que\s+vence\s+essa\s+semana\b|\bvence\s+essa\s+semana\b/.test(t)) {

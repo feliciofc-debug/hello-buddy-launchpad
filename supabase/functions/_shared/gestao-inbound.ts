@@ -49,10 +49,12 @@ import {
   buildContasSemanaReply,
   buildContasVencemAmanhaReply,
   buildLucroLojaMesReply,
+  buildRevogarContadorLinkReply,
   type GestaoContaInbound,
 } from "./gestao-financeiro-inbound.ts";
 import { contasToDreOperacionalRows } from "./gestao-contador-data.ts";
 import { mintGestaoContadorLink } from "./gestao-contador-link.ts";
+import { syncRecorrenciaLancamentosDb } from "./gestao-recorrencia-db-sync.ts";
 import type { GestaoVendaDreLine } from "./gestao-dre-calc.ts";
 export const GESTAO_PENDING_TTL_MS = 10 * 60 * 1000;
 export const GESTAO_DESFAZER_TTL_MS = 24 * 60 * 60 * 1000;
@@ -280,6 +282,7 @@ async function fetchDespesasVeiculo(
 
 async function loadContasInbound(sb: unknown, userId: string): Promise<GestaoContaInbound[]> {
   const client = sb as GestaoDb;
+  await syncRecorrenciaLancamentosDb(client, userId);
   const { data } = await client.from("gestao_conta_lancamento").select(
     "id, tipo, valor, vencimento, pago_em, recebido_em, recorrencia_dia_mes, categoria_operacional, observacao",
   ).eq("user_id", userId).is("deleted_at", null);
@@ -777,6 +780,21 @@ export async function tryProcessGestaoLucroInbound(input: {
     const site = Deno.env.get("PUBLIC_SITE_URL") ?? Deno.env.get("SITE_URL") ?? "";
     const { appUrl } = await mintGestaoContadorLink(input.sb as never, input.userId, competencia, site);
     return { handled: true, reply: buildContadorLinkReply(appUrl, competencia) };
+  }
+  if (intent.kind === "revogar_link_contador") {
+    const client = input.sb as GestaoDb;
+    const now = new Date().toISOString();
+    const { data: active } = await client.from("gestao_contador_token").select("id")
+      .eq("user_id", input.userId)
+      .is("revogado_em", null)
+      .gt("expires_at", now);
+    let n = 0;
+    for (const row of active ?? []) {
+      await client.from("gestao_contador_token").update({ revogado_em: now })
+        .eq("id", String(row.id));
+      n += 1;
+    }
+    return { handled: true, reply: buildRevogarContadorLinkReply(n) };
   }
   if (intent.kind === "ranking_vendedores") {
     const vendedores = await loadVendedores(input.sb, input.userId);

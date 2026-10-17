@@ -20,10 +20,10 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
     const { data: row } = await admin.from("gestao_contador_token")
-      .select("user_id, competencia, expires_at")
+      .select("user_id, competencia, expires_at, revogado_em")
       .eq("token_hash", hash)
       .maybeSingle();
-    if (!row || new Date(String(row.expires_at)) < new Date()) {
+    if (!row || row.revogado_em || new Date(String(row.expires_at)) < new Date()) {
       return new Response(JSON.stringify({ error: "invalid_or_expired" }), {
         status: 403,
         headers: { ...cors, "Content-Type": "application/json" },

@@ -10,3 +10,8 @@ Deno.test("intent piores negocios do mes", () => {
   const i = classifyGestaoIntent("piores negocios do mes");
   assertEquals(i.kind, "piores_negocios_mes");
 });
+
+Deno.test("intent revogar link contador", () => {
+  const i = classifyGestaoIntent("cancela o link do contador");
+  assertEquals(i.kind, "revogar_link_contador");
+});
