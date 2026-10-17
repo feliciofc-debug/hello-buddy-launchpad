@@ -17,6 +17,7 @@ import {
   aplicarMarcadoresConfirmar,
   aplicarMatchAutomatico,
   conciliarExtrato,
+  desfazerConciliacao,
   importExtratoLinhas,
   loadContasBancarias,
   loadExtratoTransacoes,
@@ -24,6 +25,7 @@ import {
   saveContaBancaria,
   type GestaoContaBancaria,
 } from "@/lib/gestao-conciliacao-load.ts";
+import { decodeCsvBytes, decodeOfxBytes } from "../../../../supabase/functions/_shared/gestao-ofx-encoding.ts";
 import { parseGestaoOfx } from "../../../../supabase/functions/_shared/gestao-ofx-parse.ts";
 import { parseGestaoExtratoCsv } from "../../../../supabase/functions/_shared/gestao-extrato-csv-parse.ts";
 import {
@@ -66,6 +68,7 @@ export function GestaoConciliacaoTab({ userId, contas, veiculos }: Props) {
   const [csvMap, setCsvMap] = useState({ data: 0, descricao: 1, valor: 2, debitoCredito: 3 });
   const [comissaoRows, setComissaoRows] = useState<Array<{ id: string; competencia: string; valor_comissao: number; pago_em: string | null }>>([]);
   const [criarCategoria, setCriarCategoria] = useState<Record<string, string>>({});
+  const [csvEncoding, setCsvEncoding] = useState<"utf-8" | "windows-1252">("utf-8");
 
   const { start, end } = monthBounds(competencia);
 
@@ -156,8 +159,10 @@ export function GestaoConciliacaoTab({ userId, contas, veiculos }: Props) {
       toast.error("Selecione a conta bancária.");
       return;
     }
-    const text = await file.text();
-    const linhas = file.name.toLowerCase().endsWith(".ofx")
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const isOfx = file.name.toLowerCase().endsWith(".ofx");
+    const text = isOfx ? decodeOfxBytes(bytes) : decodeCsvBytes(bytes, csvEncoding);
+    const linhas = isOfx
       ? parseGestaoOfx(text)
       : parseGestaoExtratoCsv(text, csvMap, text.includes(";") ? ";" : ",").map((l) => ({
         ...l,
@@ -184,14 +189,28 @@ export function GestaoConciliacaoTab({ userId, contas, veiculos }: Props) {
   };
 
   const confirmarMatch = async (extratoId: string, sug: (typeof classificados)[0]["sugestoes"][0]) => {
-    await conciliarExtrato(userId, extratoId, {
-      tipo: sug.candidato.tipo,
-      refId: sug.candidato.refId,
-      score: sug.score,
-      valor: sug.candidato.valor,
-    }, classificados.find((e) => e.id === extratoId)?.data ?? new Date().toISOString().slice(0, 10));
-    toast.success("Conciliado.");
-    void reload();
+    try {
+      await conciliarExtrato(userId, extratoId, {
+        tipo: sug.candidato.tipo,
+        refId: sug.candidato.refId,
+        score: sug.score,
+        valor: sug.candidato.valor,
+      }, classificados.find((e) => e.id === extratoId)?.data ?? new Date().toISOString().slice(0, 10));
+      toast.success("Conciliado.");
+      void reload();
+    } catch {
+      toast.error("Este lançamento já está vinculado a outra transação.");
+    }
+  };
+
+  const desfazer = async (extratoId: string) => {
+    try {
+      await desfazerConciliacao(userId, extratoId);
+      toast.success("Conciliação desfeita.");
+      void reload();
+    } catch {
+      toast.error("Não foi possível desfazer.");
+    }
   };
 
   const criarLancamento = async (e: (typeof semMatch)[0]) => {
@@ -274,6 +293,16 @@ export function GestaoConciliacaoTab({ userId, contas, veiculos }: Props) {
             <Input className="h-7 w-12" type="number" value={csvMap[k]} onChange={(ev) => setCsvMap({ ...csvMap, [k]: Number(ev.target.value) })} />
           </label>
         ))}
+        <label className="flex items-center gap-1">
+          CSV encoding
+          <Select value={csvEncoding} onValueChange={(v) => setCsvEncoding(v as typeof csvEncoding)}>
+            <SelectTrigger className="h-7 w-[120px] text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="utf-8">UTF-8</SelectItem>
+              <SelectItem value="windows-1252">Windows-1252</SelectItem>
+            </SelectContent>
+          </Select>
+        </label>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3 rounded-lg border p-3 text-sm">
@@ -287,8 +316,14 @@ export function GestaoConciliacaoTab({ userId, contas, veiculos }: Props) {
           <h3 className="font-semibold">Conciliadas ({conciliadas.length})</h3>
           <ul className="max-h-64 space-y-2 overflow-y-auto text-xs">
             {conciliadas.map((e) => (
-              <li key={e.id} className="rounded border p-2">
-                {e.data} · {formatGestaoMoney(Number(e.valor))} · {e.descricao.slice(0, 40)}
+              <li key={e.id} className="rounded border p-2 space-y-1">
+                <p>{e.data} · {formatGestaoMoney(Number(e.valor))} · {e.descricao.slice(0, 40)}</p>
+                {e.match_tipo && (
+                  <p className="text-muted-foreground">↔ {e.match_tipo}</p>
+                )}
+                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => void desfazer(e.id)}>
+                  Desfazer conciliação
+                </Button>
               </li>
             ))}
           </ul>

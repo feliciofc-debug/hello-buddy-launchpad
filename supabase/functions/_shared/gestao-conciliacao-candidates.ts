@@ -19,6 +19,7 @@ export function candidatosFromContas(
     valor: Number(c.valor),
     descricao: c.observacao ?? c.categoria_operacional,
     liquidado: !!(c.pago_em ?? c.recebido_em),
+    categoria: c.categoria_operacional,
   }));
 }
 
@@ -32,6 +33,7 @@ export function candidatosFromDespesas(
     valor: Number(d.valor),
     descricao: d.descricao ?? d.categoria,
     liquidado: false,
+    categoria: d.categoria,
   }));
 }
 
