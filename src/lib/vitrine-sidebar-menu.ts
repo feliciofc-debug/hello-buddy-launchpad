@@ -2,6 +2,7 @@ import {
   shouldShowFinanciamentosMenu,
   usesVehicleInventoryMenu,
 } from "./client-menu-routes.ts";
+import { shouldShowGestaoLucroMenu } from "./gestao-lucro-menu.ts";
 
 export type VitrineSidebarTenantContext = {
   clientType: string | null | undefined;
@@ -25,11 +26,18 @@ export function resolveVitrineSidebarFlags(ctx: VitrineSidebarTenantContext) {
   const showDemoVehicleStockAfterProdutos = showFinanciamentosMenu &&
     ctx.vitrineVeiculosDemo &&
     !usesVehicleInventory;
+  const showGestaoLucroMenu = shouldShowGestaoLucroMenu(
+    ctx.clientType,
+    ctx.segment,
+    ctx.businessText,
+    ctx.vitrineVeiculosDemo,
+  );
 
   return {
     usesVehicleInventory,
     showFinanciamentosMenu,
     showDemoVehicleStockAfterProdutos,
+    showGestaoLucroMenu,
   };
 }
 
@@ -39,23 +47,33 @@ export function injectVitrineSidebarMenuItems<T extends { id: string }>(
   ctx: VitrineSidebarTenantContext & {
     vehicleStockItem: T;
     financingItem: T;
+    gestaoLucroItem?: T;
   },
 ): T[] {
-  const { usesVehicleInventory, showFinanciamentosMenu } = resolveVitrineSidebarFlags(ctx);
-  if (!showFinanciamentosMenu) {
+  const flags = resolveVitrineSidebarFlags(ctx);
+  const { usesVehicleInventory, showFinanciamentosMenu, showGestaoLucroMenu } =
+    flags;
+  if (!showFinanciamentosMenu && !showGestaoLucroMenu) {
     return [...items];
   }
 
   const hasId = (id: string) => items.some((item) => item.id === id);
   const out: T[] = [];
 
+  const pushGestaoAfterStock = () => {
+    if (showGestaoLucroMenu && ctx.gestaoLucroItem && !hasId("gestao-lucro")) {
+      out.push(ctx.gestaoLucroItem);
+    }
+  };
+
   for (const item of items) {
     out.push(item);
 
     if (usesVehicleInventory && item.id === "veiculos") {
-      if (!hasId("financiamentos")) {
+      if (showFinanciamentosMenu && !hasId("financiamentos")) {
         out.push(ctx.financingItem);
       }
+      pushGestaoAfterStock();
       continue;
     }
 
@@ -67,9 +85,10 @@ export function injectVitrineSidebarMenuItems<T extends { id: string }>(
       if (!hasId("veiculos")) {
         out.push(ctx.vehicleStockItem);
       }
-      if (!hasId("financiamentos")) {
+      if (showFinanciamentosMenu && !hasId("financiamentos")) {
         out.push(ctx.financingItem);
       }
+      pushGestaoAfterStock();
     }
   }
 

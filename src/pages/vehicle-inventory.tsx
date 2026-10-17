@@ -58,8 +58,12 @@ import {
   WebmotorsVehicleActions,
   type VeiculoPortalWebmotors,
 } from "@/components/webmotors/WebmotorsVehicleActions";
+import { VeiculoGestaoLucroPanel } from "@/components/gestao/VeiculoGestaoLucroPanel";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-type Vehicle = Database["public"]["Tables"]["veiculos_estoque"]["Row"];
+type Vehicle = Database["public"]["Tables"]["veiculos_estoque"]["Row"] & {
+  placa?: string | null;
+};
 type VehicleStatus = "disponivel" | "reservado" | "vendido";
 
 type VehicleForm = {
@@ -82,6 +86,7 @@ type VehicleForm = {
   fotos: string;
   status: VehicleStatus;
   destaque: boolean;
+  placa: string;
 };
 
 const EMPTY_FORM: VehicleForm = {
@@ -104,6 +109,7 @@ const EMPTY_FORM: VehicleForm = {
   fotos: "",
   status: "disponivel",
   destaque: false,
+  placa: "",
 };
 
 const STATUS_LABELS: Record<VehicleStatus, string> = {
@@ -146,7 +152,13 @@ function vehicleToForm(vehicle: Vehicle): VehicleForm {
     fotos: vehicle.fotos.join("\n"),
     status: vehicle.status as VehicleStatus,
     destaque: vehicle.destaque,
+    placa: vehicle.placa ?? "",
   };
+}
+
+function normalizePlaca(value: string): string | null {
+  const p = value.replace(/\W/g, "").toUpperCase();
+  return p.length >= 7 ? p : p.length ? p : null;
 }
 
 function formatPrice(value: number | null): string {
@@ -265,6 +277,7 @@ export default function VehicleInventory() {
   const [mlPortals, setMlPortals] = useState<Record<string, VeiculoPortalMl>>({});
   const [wmConnected, setWmConnected] = useState(false);
   const [wmPortals, setWmPortals] = useState<Record<string, VeiculoPortalWebmotors>>({});
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
 
   const loadPortalMeta = useCallback(async () => {
     const [{ data: stMl }, { data: stWm }] = await Promise.all([
@@ -308,6 +321,7 @@ export default function VehicleInventory() {
       navigate("/login");
       return;
     }
+    setSessionUserId(user.id);
 
     const { data, error } = await supabase
       .from("veiculos_estoque")
@@ -426,6 +440,7 @@ export default function VehicleInventory() {
       vendido_at: form.status === "vendido"
         ? editing?.vendido_at || new Date().toISOString()
         : null,
+      placa: normalizePlaca(form.placa),
     };
 
     const vehicleId = editing?.id || draftVehicleId || crypto.randomUUID();
@@ -627,6 +642,9 @@ export default function VehicleInventory() {
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" onClick={() => navigate("/veiculos/financiamento")}>
               Financiamento
+            </Button>
+            <Button variant="outline" onClick={() => navigate("/gestao/lucro")}>
+              Gestão · Lucro
             </Button>
             <Button onClick={openCreate}>
               <Plus className="mr-2 h-4 w-4" />
@@ -867,6 +885,12 @@ export default function VehicleInventory() {
               <DialogHeader>
                 <DialogTitle>{selected.marca} {selected.modelo} {selected.versao}</DialogTitle>
               </DialogHeader>
+              <Tabs defaultValue="detalhes" className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="detalhes">Detalhes</TabsTrigger>
+                  <TabsTrigger value="gestao">Custos e lucro</TabsTrigger>
+                </TabsList>
+                <TabsContent value="detalhes" className="space-y-4 mt-4">
               {selected.fotos.length > 0 && (
                 <div className="space-y-3">
                   <img
@@ -910,6 +934,7 @@ export default function VehicleInventory() {
                   label="Status"
                   value={STATUS_LABELS[selected.status as VehicleStatus] || selected.status}
                 />
+                <VehicleFact label="Placa (interno)" value={selected.placa ?? undefined} />
               </div>
               {selected.descricao && <p className="text-sm">{selected.descricao}</p>}
               <VehicleTags title="Características" values={selected.caracteristicas} />
@@ -926,6 +951,24 @@ export default function VehicleInventory() {
                   Editar
                 </Button>
               </DialogFooter>
+                </TabsContent>
+                <TabsContent value="gestao" className="mt-4">
+                  {sessionUserId && (
+                    <VeiculoGestaoLucroPanel
+                      veiculoId={selected.id}
+                      userId={sessionUserId}
+                      precoAnunciado={selected.preco}
+                      statusVeiculo={selected.status}
+                      onVendaMarcouVendido={() => {
+                        void loadVehicles();
+                        setSelected((cur) =>
+                          cur ? { ...cur, status: "vendido" } : cur,
+                        );
+                      }}
+                    />
+                  )}
+                </TabsContent>
+              </Tabs>
             </>
           )}
         </DialogContent>
@@ -969,6 +1012,13 @@ export default function VehicleInventory() {
             </FormField>
             <FormField label="Portas">
               <Input type="number" min="1" value={form.portas} onChange={(event) => setForm({ ...form, portas: event.target.value })} />
+            </FormField>
+            <FormField label="Placa (uso interno)">
+              <Input
+                value={form.placa}
+                onChange={(event) => setForm({ ...form, placa: event.target.value })}
+                placeholder="Opcional — não vai para vitrine/portais"
+              />
             </FormField>
             <FormField label="Status">
               <Select

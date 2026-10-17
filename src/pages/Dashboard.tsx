@@ -35,6 +35,7 @@ const Dashboard = () => {
     isMenuAllowed,
     empresaNome,
     showFinanciamentosMenu,
+    showGestaoLucroMenu,
     showDemoVehicleStockAfterProdutos,
   } = useClientMenus(
     userProfile?.tipo,
@@ -524,6 +525,19 @@ const Dashboard = () => {
                   {financiamentoBadge}
                 </span>
               )}
+            </a>
+          )}
+          {showGestaoLucroMenu && (
+            <a
+              href="/gestao/lucro"
+              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                window.location.pathname.startsWith('/gestao/lucro')
+                  ? 'bg-blue-500 text-white'
+                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              <TrendingUp size={20} />
+              Gestão · Lucro
             </a>
           )}
           {isMenuAllowed('buscar-cnpj') && (

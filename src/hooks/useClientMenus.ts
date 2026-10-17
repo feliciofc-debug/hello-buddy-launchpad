@@ -135,6 +135,7 @@ export function useClientMenus(userTipo: string | null | undefined, userNomeFant
     isRouteAllowed,
     empresaNome,
     showFinanciamentosMenu: sidebarFlags.showFinanciamentosMenu,
+    showGestaoLucroMenu: sidebarFlags.showGestaoLucroMenu,
     showDemoVehicleStockAfterProdutos: sidebarFlags.showDemoVehicleStockAfterProdutos,
     usesVehicleInventoryMenu: usesVehicleInventoryMenu(
       userTipo,
