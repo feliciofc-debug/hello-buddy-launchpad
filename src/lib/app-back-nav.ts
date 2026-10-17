@@ -1,15 +1,8 @@
 import { useCallback } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { resolveBackPath } from "../../supabase/functions/_shared/app-back-nav.ts";
 
-export function resolveBackPath(
-  voltarParam: string | null,
-  stateFrom: unknown,
-  fallback: string,
-): string {
-  if (voltarParam?.startsWith("/")) return voltarParam;
-  if (typeof stateFrom === "string" && stateFrom.startsWith("/")) return stateFrom;
-  return fallback;
-}
+export { resolveBackPath };
 
 export function useSmartBack(fallback = "/dashboard") {
   const navigate = useNavigate();

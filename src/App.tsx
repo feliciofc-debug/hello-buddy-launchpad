@@ -113,6 +113,7 @@ import AfiliadoCampanhas from "./pages/afiliado/AfiliadoCampanhas";
 
 import CookieBanner from "./components/CookieBanner";
 import LanguageSwitcher from "./components/LanguageSwitcher";
+import { GestaoJarvisOwnerFab } from "@/components/jarvis/GestaoJarvisOwnerFab.tsx";
 
 // Páginas Billing/Pay
 import PayLogin from "./pages/pay/PayLogin";
@@ -135,6 +136,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <GestaoJarvisOwnerFab />
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
