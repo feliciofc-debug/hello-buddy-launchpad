@@ -53,6 +53,7 @@ import NotificationCenter from '@/components/NotificationCenter';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import DashboardOverview from '@/components/dashboard/DashboardOverview';
+import { GestaoDashboardResultadoWidget } from '@/components/gestao/GestaoDashboardResultadoWidget';
 import { useDashboardMetrics, type DashboardPeriod } from '@/hooks/useDashboardMetrics';
 import { useBillingAccess } from '@/hooks/useBillingAccess';
 import BillingBlockedScreen from '@/components/BillingBlockedScreen';
@@ -589,6 +590,10 @@ export default function DashboardMetricas() {
               </Button>
             </div>
           </div>
+
+          {showGestaoLucroMenu ? (
+            <GestaoDashboardResultadoWidget />
+          ) : null}
 
           {loadingDash && !metricasDash.atualizadoEm ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
