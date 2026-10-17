@@ -54,6 +54,7 @@ import LanguageSwitcher from '@/components/LanguageSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import DashboardOverview from '@/components/dashboard/DashboardOverview';
 import { GestaoDashboardResultadoWidget } from '@/components/gestao/GestaoDashboardResultadoWidget';
+import { GestaoSidebarNav } from '@/components/gestao/GestaoSidebarNav';
 import { useDashboardMetrics, type DashboardPeriod } from '@/hooks/useDashboardMetrics';
 import { useBillingAccess } from '@/hooks/useBillingAccess';
 import BillingBlockedScreen from '@/components/BillingBlockedScreen';
@@ -478,13 +479,14 @@ export default function DashboardMetricas() {
           {/* Menu Items */}
           <nav className="flex-1 p-4 space-y-1">
             {menuItems.map((item) => {
+              if (item.id === 'gestao-lucro') {
+                return <GestaoSidebarNav key="gestao-sidebar" onNavigate={() => setIsMenuOpen(false)} />;
+              }
               const active = item.path === '/dashboard'
                 ? location.pathname === '/dashboard'
                 : location.pathname === item.path ||
                   (item.path === '/veiculos/financiamento' &&
-                    location.pathname.startsWith('/veiculos/financiamento')) ||
-                  (item.path === '/gestao/lucro' &&
-                    location.pathname.startsWith('/gestao/lucro'));
+                    location.pathname.startsWith('/veiculos/financiamento'));
               const showBadge = item.id === 'financiamentos' && financiamentoBadge;
               return (
               <Link

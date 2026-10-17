@@ -33,6 +33,7 @@ import { supabase } from "@/integrations/supabase/client";
 type Props = {
   userId: string;
   veiculos: GestaoVeiculoEnriched[];
+  preselectVeiculoId?: string | null;
 };
 
 type ClienteForm = {
@@ -43,7 +44,7 @@ type ClienteForm = {
   telefone: string;
 };
 
-export function GestaoContratosTab({ userId, veiculos }: Props) {
+export function GestaoContratosTab({ userId, veiculos, preselectVeiculoId }: Props) {
   const [modelos, setModelos] = useState<GestaoContratoModelo[]>([]);
   const [contratos, setContratos] = useState<GestaoContratoRow[]>([]);
   const [filtro, setFiltro] = useState("todos");
@@ -80,6 +81,15 @@ export function GestaoContratosTab({ userId, veiculos }: Props) {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    if (preselectVeiculoId) {
+      setGerarVeiculoId(preselectVeiculoId);
+      requestAnimationFrame(() => {
+        document.getElementById("gestao-contrato-gerar")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  }, [preselectVeiculoId]);
 
   const veiculoSel = useMemo(
     () => veiculos.find((v) => v.id === gerarVeiculoId) ?? null,
@@ -258,7 +268,7 @@ export function GestaoContratosTab({ userId, veiculos }: Props) {
           </ul>
         </TabsContent>
 
-        <TabsContent value="gerar" className="mt-4 grid gap-3 md:grid-cols-2">
+        <TabsContent value="gerar" id="gestao-contrato-gerar" className="mt-4 grid gap-3 md:grid-cols-2">
           <div className="space-y-3">
             <Label>Tipo</Label>
             <Select value={gerarTipo} onValueChange={(v) => setGerarTipo(v as GestaoContratoTipo)}>

@@ -56,5 +56,10 @@ export function useGestaoResultadoStrip(
     [competencia, veiculos, contasCache, nfesCache],
   );
 
-  return { veiculos, despesasFlat, metrics, prevMetrics, loading, reload };
+  const notasPendentes = useMemo(
+    () => nfesCache.filter((n) => n.status === "processando" || n.status === "rejeitada").length,
+    [nfesCache],
+  );
+
+  return { veiculos, despesasFlat, nfes: nfesCache, notasPendentes, metrics, prevMetrics, loading, reload };
 }
