@@ -12,6 +12,11 @@ type Props = {
 export function MlCepField({ busy, onSave }: Props) {
   const [cep, setCep] = useState("");
 
+  const handleSave = async () => {
+    const ok = await onSave(cep);
+    if (ok) setCep("");
+  };
+
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
       <div className="flex-1 space-y-1">
@@ -28,7 +33,7 @@ export function MlCepField({ busy, onSave }: Props) {
       <Button
         type="button"
         disabled={busy || !cep.trim()}
-        onClick={() => void onSave(cep)}
+        onClick={() => void handleSave()}
       >
         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar"}
       </Button>

@@ -129,6 +129,32 @@ export function mlLocationToPersistAfterOAuth(
   return profileLocation;
 }
 
+/** Rótulo curto para UI: "Cidade/UF" (UF quando state.id é BR-XX). */
+export function mlLocationPlaceLabel(json: unknown): string | null {
+  const loc = (json as MlLocationJson | null)?.location;
+  if (!loc) return null;
+  const cityName = String(loc.city?.name ?? "").trim();
+  const stateId = String(loc.state?.id ?? "").trim();
+  const uf = stateId.match(/^BR-([A-Z]{2})$/i)?.[1]?.toUpperCase();
+  const stateLabel = uf ?? String(loc.state?.name ?? "").trim();
+  if (!cityName && !stateLabel) return null;
+  if (cityName && stateLabel) return `${cityName}/${stateLabel}`;
+  return cityName || stateLabel;
+}
+
+export function mlLocationCityName(json: unknown): string | null {
+  const name = String((json as MlLocationJson | null)?.location?.city?.name ?? "").trim();
+  return name || null;
+}
+
+export function mlLocationStateName(json: unknown): string | null {
+  const loc = (json as MlLocationJson | null)?.location;
+  if (!loc?.state) return null;
+  const uf = String(loc.state.id ?? "").trim().match(/^BR-([A-Z]{2})$/i)?.[1]?.toUpperCase();
+  const name = String(loc.state.name ?? "").trim();
+  return (uf ?? name) || null;
+}
+
 export function hasPublishableMlLocation(json: unknown): boolean {
   const loc = (json as MlLocationJson | null)?.location;
   if (!loc) return false;

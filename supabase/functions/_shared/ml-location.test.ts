@@ -2,6 +2,7 @@ import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.t
 import {
   formatBrazilCep,
   hasPublishableMlLocation,
+  mlLocationPlaceLabel,
   mlLocationToPersistAfterOAuth,
   normalizeBrazilCep,
   parseMlZipCodeApiResponse,
@@ -54,6 +55,21 @@ Deno.test("parseMlZipCodeApiResponse lê neighborhood em extended_attributes", (
 Deno.test("parseMlZipCodeApiResponse retorna null para corpo vazio", () => {
   assertEquals(parseMlZipCodeApiResponse(null), null);
   assertEquals(parseMlZipCodeApiResponse({}), null);
+});
+
+Deno.test("mlLocationPlaceLabel monta cidade/UF", () => {
+  assertEquals(
+    mlLocationPlaceLabel({
+      source: "tenant_override",
+      updated_at: "2026-01-01",
+      location: {
+        city: { id: "c1", name: "Rio de Janeiro" },
+        state: { id: "BR-RJ", name: "Rio de Janeiro" },
+        zip_code: "20040020",
+      },
+    }),
+    "Rio de Janeiro/RJ",
+  );
 });
 
 Deno.test("mlLocationToPersistAfterOAuth respeita tenant_override", () => {

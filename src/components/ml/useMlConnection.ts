@@ -9,6 +9,9 @@ export type MlConnectionStatus = {
   status: string;
   has_location: boolean;
   store_zip: string | null;
+  location_place: string | null;
+  location_city_name: string | null;
+  location_state_name: string | null;
 };
 
 export function useMlConnection() {
@@ -31,6 +34,9 @@ export function useMlConnection() {
         status: data.status ?? "revoked",
         has_location: !!data.has_location,
         store_zip: data.store_zip ?? null,
+        location_place: data.location_place ?? null,
+        location_city_name: data.location_city_name ?? null,
+        location_state_name: data.location_state_name ?? null,
       });
     }
     setLoading(false);
