@@ -52,7 +52,7 @@ export function planGestaoComissaoSync(input: GestaoComissaoSyncInput): GestaoCo
       });
 
       if (input.gerenteId && input.regraGerente) {
-        const g = calcComissaoGerente(valor, input.regraGerente);
+        const g = calcComissaoGerente(valor, input.valorVenda, input.regraGerente);
         if (g > 0) {
           lancamentos.push({
             vendedorId: input.gerenteId,

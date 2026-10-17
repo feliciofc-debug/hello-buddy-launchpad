@@ -8,20 +8,25 @@ export type GestaoComissaoRegraJson = {
   pctSobreVenda: number | null;
   pctSobreLucro: number | null;
   fixoPorCarro: number | null;
+  /** Quando true, % lucro fixo é ignorado e valem só as faixas (se houver). */
+  usarFaixasMargem: boolean;
   faixasMargem: GestaoFaixaMargem[];
   gerentePctSobreComissaoEquipe: number | null;
+  gerentePctSobreVenda: number | null;
 };
 
 export const DEFAULT_COMISSAO_REGRA: GestaoComissaoRegraJson = {
   pctSobreVenda: null,
   pctSobreLucro: 1,
   fixoPorCarro: null,
+  usarFaixasMargem: true,
   faixasMargem: [
     { margemMinInclusive: 0, margemMaxExclusive: 5, pctSobreLucro: 0.5 },
     { margemMinInclusive: 5, margemMaxExclusive: 10, pctSobreLucro: 1 },
     { margemMinInclusive: 10, margemMaxExclusive: null, pctSobreLucro: 1.5 },
   ],
   gerentePctSobreComissaoEquipe: null,
+  gerentePctSobreVenda: null,
 };
 
 export type GestaoComissaoCalcInput = {
@@ -41,7 +46,7 @@ export function resolvePctLucroPorMargem(
   margemPct: number | null,
   regra: GestaoComissaoRegraJson,
 ): number | null {
-  if (regra.faixasMargem?.length && margemPct != null) {
+  if (regra.usarFaixasMargem && regra.faixasMargem?.length && margemPct != null) {
     for (const faixa of regra.faixasMargem) {
       const min = faixa.margemMinInclusive;
       const max = faixa.margemMaxExclusive;
@@ -49,6 +54,7 @@ export function resolvePctLucroPorMargem(
         return faixa.pctSobreLucro;
       }
     }
+    return null;
   }
   return regra.pctSobreLucro;
 }
@@ -85,9 +91,27 @@ export function calcGestaoComissao(input: GestaoComissaoCalcInput): GestaoComiss
 
 export function calcComissaoGerente(
   comissaoEquipeTotal: number,
+  valorVenda: number,
   regraGerente: GestaoComissaoRegraJson,
 ): number {
+  const pctVenda = regraGerente.gerentePctSobreVenda;
+  if (pctVenda != null && pctVenda > 0 && valorVenda > 0) {
+    return Math.round((valorVenda * pctVenda) / 100 * 100) / 100;
+  }
   const pct = regraGerente.gerentePctSobreComissaoEquipe;
   if (pct == null || pct <= 0 || comissaoEquipeTotal <= 0) return 0;
   return Math.round((comissaoEquipeTotal * pct) / 100 * 100) / 100;
+}
+
+/** Normaliza JSON legado sem campos novos. */
+export function normalizeComissaoRegra(raw: Partial<GestaoComissaoRegraJson>): GestaoComissaoRegraJson {
+  return {
+    ...DEFAULT_COMISSAO_REGRA,
+    ...raw,
+    faixasMargem: raw.faixasMargem?.length
+      ? raw.faixasMargem
+      : DEFAULT_COMISSAO_REGRA.faixasMargem,
+    usarFaixasMargem: raw.usarFaixasMargem ?? (raw.faixasMargem?.length ? true : DEFAULT_COMISSAO_REGRA.usarFaixasMargem),
+    gerentePctSobreVenda: raw.gerentePctSobreVenda ?? null,
+  };
 }

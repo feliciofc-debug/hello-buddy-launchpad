@@ -1,7 +1,7 @@
 import { applyGestaoComissaoSync, estornarComissaoAuto } from "../../supabase/functions/_shared/gestao-comissao-sync.ts";
 import { loadComissaoRegra, loadGestaoVendedores } from "./gestao-equipe-load.ts";
-import { calcGestaoLucro } from "../../supabase/functions/_shared/gestao-lucro-calc.ts";
 import { supabase } from "@/integrations/supabase/client";
+import { comissaoLucroBase } from "./gestao-comissao-lucro.ts";
 
 export type ApplyComissaoParams = {
   userId: string;
@@ -26,23 +26,25 @@ export async function syncComissaoAfterVenda(params: ApplyComissaoParams): Promi
   const [{ data: compra }, { data: despesas }] = await Promise.all([
     supabase.from("veiculo_compra" as "veiculos_estoque").select("valor_compra, data_compra")
       .eq("user_id", params.userId).eq("veiculo_id", params.veiculoId).maybeSingle(),
-    supabase.from("veiculo_despesas" as "veiculos_estoque").select("valor, categoria")
+    supabase.from("veiculo_despesas" as "veiculos_estoque")
+      .select("valor, categoria, origem_lancamento")
       .eq("user_id", params.userId).eq("veiculo_id", params.veiculoId).is("deleted_at", null),
   ]);
 
-  const dList = (despesas ?? []).map((d: { valor: number; categoria: string }) => ({
+  const dList = (despesas ?? []).map((d: {
+    valor: number;
+    categoria: string;
+    origem_lancamento: string;
+  }) => ({
     valor: Number(d.valor),
     categoria: d.categoria,
+    origem_lancamento: d.origem_lancamento,
   }));
 
-  const lucro = calcGestaoLucro({
+  const { lucroLiquido, margemPct } = comissaoLucroBase({
     valorCompra: compra ? Number(compra.valor_compra) : null,
-    despesas: dList,
     valorVenda: params.valorVenda,
-    precoAnunciado: null,
-    dataCompra: compra?.data_compra ?? null,
-    dataVenda: params.dataVenda,
-    statusVeiculo: params.statusVeiculo,
+    despesas: dList,
   });
 
   const regraVendedor = await loadComissaoRegra(params.userId, params.vendedorId);
@@ -55,8 +57,8 @@ export async function syncComissaoAfterVenda(params: ApplyComissaoParams): Promi
     vendedorNome: vendedor?.nome ?? "Vendedor",
     gerenteId: gerente?.id ?? null,
     valorVenda: params.valorVenda,
-    lucroLiquido: lucro.lucroLiquido,
-    margemPct: lucro.margemPct,
+    lucroLiquido,
+    margemPct,
     regraVendedor,
     regraGerente,
     valorComissaoOverride: params.valorComissaoOverride ?? null,

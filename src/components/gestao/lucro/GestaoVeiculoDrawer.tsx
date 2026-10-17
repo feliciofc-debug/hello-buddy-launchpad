@@ -41,6 +41,7 @@ import { GestaoMoneyInput } from "@/components/gestao/lucro/GestaoMoneyInput.tsx
 import { parseGestaoMoneyField } from "@/lib/gestao-money.ts";
 import { loadGestaoVendedores, loadComissaoRegra, type GestaoVendedor } from "@/lib/gestao-equipe-load.ts";
 import { calcGestaoComissao } from "../../../../supabase/functions/_shared/gestao-comissao-calc.ts";
+import { comissaoLucroBase } from "@/lib/gestao-comissao-lucro.ts";
 import { syncComissaoAfterVenda } from "@/lib/gestao-comissao-client.ts";
 
 type Props = {
@@ -182,10 +183,19 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
     }
     if (vendedorId) {
       const regra = await loadComissaoRegra(userId, vendedorId);
+      const { lucroLiquido, margemPct } = comissaoLucroBase({
+        valorCompra: veiculo.valorCompra,
+        valorVenda: valor,
+        despesas: veiculo.despesas.map((d) => ({
+          valor: Number(d.valor),
+          categoria: d.categoria,
+          origem_lancamento: d.origem_lancamento,
+        })),
+      });
       const prev = calcGestaoComissao({
         valorVenda: valor,
-        lucroLiquido: veiculo.lucro.lucroLiquido ?? veiculo.lucro.lucroProjetado,
-        margemPct: veiculo.lucro.margemPct ?? gestaoMargemPct(veiculo.lucro.lucroProjetado, veiculo.preco),
+        lucroLiquido,
+        margemPct,
         regra,
       });
       setComissaoPreview(prev.total);

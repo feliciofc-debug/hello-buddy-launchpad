@@ -22,8 +22,13 @@ import { loadTenantVehicleStockGate } from "./vehicle-inventory-tenant.ts";
 import {
   calcGestaoComissao,
   DEFAULT_COMISSAO_REGRA,
+  normalizeComissaoRegra,
   type GestaoComissaoRegraJson,
 } from "./gestao-comissao-calc.ts";
+import {
+  lucroLiquidoAntesComissaoAuto,
+  margemPctAntesComissaoAuto,
+} from "./gestao-lucro-comissao-base.ts";
 import { applyGestaoComissaoSync, estornarComissaoAuto } from "./gestao-comissao-sync.ts";
 import {
   buildComissaoMesReply,
@@ -78,7 +83,7 @@ async function loadRegraComissao(
     ? await q.eq("vendedor_id", vendedorId).maybeSingle()
     : await q.is("vendedor_id", null).maybeSingle();
   const row = data as { regra_json?: GestaoComissaoRegraJson } | null;
-  return row?.regra_json ?? DEFAULT_COMISSAO_REGRA;
+  return normalizeComissaoRegra(row?.regra_json ?? DEFAULT_COMISSAO_REGRA);
 }
 
 async function loadComissaoMesMap(
@@ -248,21 +253,22 @@ async function enrichVendaDraft(
   const [{ data: compra }, { data: despesas }] = await Promise.all([
     client.from("veiculo_compra").select("valor_compra, data_compra")
       .eq("user_id", userId).eq("veiculo_id", veiculoId).maybeSingle(),
-    client.from("veiculo_despesas").select("valor, categoria")
+    client.from("veiculo_despesas").select("valor, categoria, origem_lancamento")
       .eq("user_id", userId).eq("veiculo_id", veiculoId).is("deleted_at", null),
   ]);
   const dList = (despesas ?? []).map((d: Record<string, unknown>) => ({
     valor: Number(d.valor),
+    categoria: String(d.categoria ?? ""),
+    origem_lancamento: String(d.origem_lancamento ?? ""),
   }));
   const compraVal = compra ? Number(compra.valor_compra) : null;
   const valorVenda = Number(draft.valor);
-  const investido = compraVal != null
-    ? compraVal + dList.reduce((a, x) => a + x.valor, 0)
-    : null;
-  const lucroLiquido = investido != null ? valorVenda - investido : null;
-  const margemPct = lucroLiquido != null && valorVenda > 0
-    ? (lucroLiquido / valorVenda) * 100
-    : null;
+  const lucroLiquido = lucroLiquidoAntesComissaoAuto({
+    valorCompra: compraVal,
+    valorVenda,
+    despesas: dList,
+  });
+  const margemPct = margemPctAntesComissaoAuto(lucroLiquido, valorVenda);
 
   const regra = await loadRegraComissao(sb, userId, matched.id);
   const prev = calcGestaoComissao({
@@ -364,21 +370,22 @@ async function persistDraft(
       const [{ data: compra }, { data: despesas }] = await Promise.all([
         client.from("veiculo_compra").select("valor_compra, data_compra")
           .eq("user_id", userId).eq("veiculo_id", veiculoId).maybeSingle(),
-        client.from("veiculo_despesas").select("valor, categoria")
+        client.from("veiculo_despesas").select("valor, categoria, origem_lancamento")
           .eq("user_id", userId).eq("veiculo_id", veiculoId).is("deleted_at", null),
       ]);
       const dList = (despesas ?? []).map((d: Record<string, unknown>) => ({
         valor: Number(d.valor),
+        categoria: String(d.categoria ?? ""),
+        origem_lancamento: String(d.origem_lancamento ?? ""),
       }));
       const compraVal = compra ? Number(compra.valor_compra) : null;
       const valorVenda = Number(draft.valor);
-      const investido = compraVal != null
-        ? compraVal + dList.reduce((a, x) => a + x.valor, 0)
-        : null;
-      const lucroLiquido = investido != null ? valorVenda - investido : null;
-      const margemPct = lucroLiquido != null && valorVenda > 0
-        ? (lucroLiquido / valorVenda) * 100
-        : null;
+      const lucroLiquido = lucroLiquidoAntesComissaoAuto({
+        valorCompra: compraVal,
+        valorVenda,
+        despesas: dList,
+      });
+      const margemPct = margemPctAntesComissaoAuto(lucroLiquido, valorVenda);
       const regraVendedor = await loadRegraComissao(sb, userId, vendedorId);
       const regraGerente = gerente ? await loadRegraComissao(sb, userId, gerente.id) : null;
       const sync = await applyGestaoComissaoSync(client, {

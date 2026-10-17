@@ -1,5 +1,5 @@
 import type { GestaoComissaoRegraJson } from "../../supabase/functions/_shared/gestao-comissao-calc.ts";
-import { DEFAULT_COMISSAO_REGRA } from "../../supabase/functions/_shared/gestao-comissao-calc.ts";
+import { DEFAULT_COMISSAO_REGRA, normalizeComissaoRegra } from "../../supabase/functions/_shared/gestao-comissao-calc.ts";
 import type { GestaoMetaConfigJson } from "../../supabase/functions/_shared/gestao-meta-calc.ts";
 import { competenciaFromDate } from "../../supabase/functions/_shared/gestao-meta-calc.ts";
 import { supabase } from "@/integrations/supabase/client";
@@ -31,7 +31,19 @@ export async function loadComissaoRegra(
     ? await q.eq("vendedor_id", vendedorId).maybeSingle()
     : await q.is("vendedor_id", null).maybeSingle();
   const row = data as { regra_json?: GestaoComissaoRegraJson } | null;
-  return row?.regra_json ?? DEFAULT_COMISSAO_REGRA;
+  return normalizeComissaoRegra(row?.regra_json ?? DEFAULT_COMISSAO_REGRA);
+}
+
+export async function vendedorTemRegraPropria(
+  userId: string,
+  vendedorId: string,
+): Promise<boolean> {
+  const { data } = await supabase.from("gestao_comissao_regra" as "veiculos_estoque")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("vendedor_id", vendedorId)
+    .maybeSingle();
+  return !!data?.id;
 }
 
 export async function saveComissaoRegra(

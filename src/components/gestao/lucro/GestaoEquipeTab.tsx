@@ -15,13 +15,16 @@ import {
   loadMetaMensal,
   saveComissaoRegra,
   saveMetaMensal,
+  vendedorTemRegraPropria,
   type GestaoVendedor,
   DEFAULT_COMISSAO_REGRA,
 } from "@/lib/gestao-equipe-load.ts";
+import { GestaoComissaoRegraForm } from "@/components/gestao/lucro/GestaoComissaoRegraForm.tsx";
+import { GestaoMetaForm } from "@/components/gestao/lucro/GestaoMetaForm.tsx";
+import type { GestaoComissaoRegraJson } from "../../../../supabase/functions/_shared/gestao-comissao-calc.ts";
 import { buildRankingVendedores } from "../../../../supabase/functions/_shared/gestao-equipe-stats.ts";
 import { calcMetaProgresso, type GestaoMetaConfigJson } from "../../../../supabase/functions/_shared/gestao-meta-calc.ts";
 import { formatGestaoMoney } from "@/lib/gestao-format.ts";
-import { parseGestaoMoneyField } from "@/lib/gestao-money.ts";
 import { supabase } from "@/integrations/supabase/client";
 
 type Props = {
@@ -45,7 +48,9 @@ export function GestaoEquipeTab({ userId, veiculos }: Props) {
   const [competencia, setCompetencia] = useState(competenciaFromDate());
   const [comissaoMap, setComissaoMap] = useState<Map<string, number>>(new Map());
   const [form, setForm] = useState({ nome: "", whatsapp: "", is_gerente: false });
-  const [regraText, setRegraText] = useState(JSON.stringify(DEFAULT_COMISSAO_REGRA, null, 2));
+  const [regraPadrao, setRegraPadrao] = useState<GestaoComissaoRegraJson>(DEFAULT_COMISSAO_REGRA);
+  const [regrasVendedor, setRegrasVendedor] = useState<Record<string, GestaoComissaoRegraJson>>({});
+  const [regraPropria, setRegraPropria] = useState<Record<string, boolean>>({});
   const [meta, setMeta] = useState<GestaoMetaConfigJson>(defaultMeta);
   const [metaVendedorId, setMetaVendedorId] = useState<string>("");
 
@@ -59,8 +64,18 @@ export function GestaoEquipeTab({ userId, veiculos }: Props) {
     ]);
     setVendedores(v);
     setComissaoMap(cm);
-    setRegraText(JSON.stringify(regra, null, 2));
+    setRegraPadrao(regra);
     setMeta(metaCfg ?? defaultMeta);
+
+    const flags: Record<string, boolean> = {};
+    const porVendedor: Record<string, GestaoComissaoRegraJson> = {};
+    await Promise.all(v.map(async (seller) => {
+      const has = await vendedorTemRegraPropria(userId, seller.id);
+      flags[seller.id] = has;
+      if (has) porVendedor[seller.id] = await loadComissaoRegra(userId, seller.id);
+    }));
+    setRegraPropria(flags);
+    setRegrasVendedor(porVendedor);
     setLoading(false);
   }, [userId, competencia, metaVendedorId]);
 
@@ -117,13 +132,25 @@ export function GestaoEquipeTab({ userId, veiculos }: Props) {
     void reload();
   };
 
-  const saveRegra = async () => {
-    try {
-      const parsed = JSON.parse(regraText) as typeof DEFAULT_COMISSAO_REGRA;
-      await saveComissaoRegra(userId, null, parsed);
-      toast.success("Regra padrão salva.");
-    } catch {
-      toast.error("JSON de regra inválido.");
+  const saveRegraPadrao = async () => {
+    await saveComissaoRegra(userId, null, regraPadrao);
+    toast.success("Regra padrão salva.");
+  };
+
+  const saveRegraVendedor = async (vendedorId: string) => {
+    await saveComissaoRegra(userId, vendedorId, regrasVendedor[vendedorId] ?? DEFAULT_COMISSAO_REGRA);
+    toast.success("Regra do vendedor salva.");
+  };
+
+  const toggleRegraPropria = async (vendedorId: string, enabled: boolean) => {
+    setRegraPropria({ ...regraPropria, [vendedorId]: enabled });
+    if (enabled && !regrasVendedor[vendedorId]) {
+      setRegrasVendedor({ ...regrasVendedor, [vendedorId]: regraPadrao });
+    }
+    if (!enabled) {
+      await supabase.from("gestao_comissao_regra" as "veiculos_estoque").delete()
+        .eq("user_id", userId).eq("vendedor_id", vendedorId);
+      toast.success("Vendedor passou a usar a regra padrão.");
     }
   };
 
@@ -240,13 +267,33 @@ export function GestaoEquipeTab({ userId, veiculos }: Props) {
             É gerente
           </label>
           <Button onClick={() => void addVendedor()}>Adicionar</Button>
-          <ul className="text-sm">
+          <ul className="space-y-3 text-sm">
             {vendedores.map((v) => (
-              <li key={v.id} className="flex justify-between border-b py-1">
-                <span>{v.nome}{v.is_gerente ? " (gerente)" : ""}</span>
-                <span className={v.ativo ? "text-emerald-600" : "text-muted-foreground"}>
-                  {v.ativo ? "ativo" : "inativo"}
-                </span>
+              <li key={v.id} className="rounded border p-2">
+                <div className="flex justify-between gap-2">
+                  <span>{v.nome}{v.is_gerente ? " (gerente)" : ""}</span>
+                  <span className={v.ativo ? "text-emerald-600" : "text-muted-foreground"}>
+                    {v.ativo ? "ativo" : "inativo"}
+                  </span>
+                </div>
+                <label className="mt-2 flex items-center gap-2 text-xs">
+                  <Checkbox
+                    checked={!!regraPropria[v.id]}
+                    onCheckedChange={(c) => void toggleRegraPropria(v.id, !!c)}
+                  />
+                  Usar regra própria
+                </label>
+                {regraPropria[v.id] && (
+                  <div className="mt-2">
+                    <GestaoComissaoRegraForm
+                      title={`Regra — ${v.nome}`}
+                      regra={regrasVendedor[v.id] ?? regraPadrao}
+                      onChange={(r) => setRegrasVendedor({ ...regrasVendedor, [v.id]: r })}
+                      onSave={() => void saveRegraVendedor(v.id)}
+                      saveLabel="Salvar regra do vendedor"
+                    />
+                  </div>
+                )}
               </li>
             ))}
           </ul>
@@ -264,26 +311,7 @@ export function GestaoEquipeTab({ userId, veiculos }: Props) {
               <option key={v.id} value={v.id}>{v.nome}</option>
             ))}
           </select>
-          <Label>Meta (qtd carros)</Label>
-          <Input
-            type="number"
-            value={meta.metaValor}
-            onChange={(e) => setMeta({ ...meta, metaValor: Number(e.target.value) })}
-          />
-          <Label>Bônus 100% (R$)</Label>
-          <Input
-            value={String(meta.bonusEscalonado[0]?.bonus ?? 0)}
-            onChange={(e) => {
-              const b = parseGestaoMoneyField(e.target.value) ?? 0;
-              setMeta({
-                ...meta,
-                bonusEscalonado: [
-                  { pctMeta: 100, bonus: b },
-                  meta.bonusEscalonado[1] ?? { pctMeta: 120, bonus: 2500 },
-                ],
-              });
-            }}
-          />
+          <GestaoMetaForm meta={meta} onChange={setMeta} onSave={() => void saveMeta()} />
           <div>
             <p className="text-sm text-muted-foreground">
               Atingido: {metaProgress.pctAtingido}% · Projeção: {metaProgress.projecaoPct}%
@@ -293,19 +321,15 @@ export function GestaoEquipeTab({ userId, veiculos }: Props) {
               No ritmo atual fecha em {metaProgress.projecaoPct}% da meta.
             </p>
           </div>
-          <Button variant="outline" onClick={() => void saveMeta()}>Salvar meta</Button>
         </div>
       </section>
 
-      <section className="space-y-2 rounded-lg border p-4">
-        <h3 className="font-semibold">Regra de comissão padrão (JSON)</h3>
-        <textarea
-          className="min-h-[160px] w-full rounded-md border bg-background p-2 font-mono text-xs"
-          value={regraText}
-          onChange={(e) => setRegraText(e.target.value)}
-        />
-        <Button variant="outline" onClick={() => void saveRegra()}>Salvar regra</Button>
-      </section>
+      <GestaoComissaoRegraForm
+        title="Regra de comissão padrão da loja"
+        regra={regraPadrao}
+        onChange={setRegraPadrao}
+        onSave={() => void saveRegraPadrao()}
+      />
     </div>
   );
 }
