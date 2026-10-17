@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { calcGestaoLucro } from "../../supabase/functions/_shared/gestao-lucro-calc.ts";
 import { formatGestaoMoney, formatGestaoPct } from "@/lib/gestao-format.ts";
 import { supabase } from "@/integrations/supabase/client";
+import { GestaoEstoqueHojeSection } from "@/components/gestao/GestaoEstoqueHojeSection.tsx";
 
 type VeiculoRow = {
   id: string;
@@ -42,6 +43,7 @@ function escapeCsv(value: string): string {
 export default function GestaoLucroPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
   const [rows, setRows] = useState<RankRow[]>([]);
   const [despesasMes, setDespesasMes] = useState(0);
   const { start, end } = monthBounds();
@@ -54,6 +56,7 @@ export default function GestaoLucroPage() {
       navigate("/login");
       return;
     }
+    setUserId(user.id);
 
     const [{ data: veiculos }, { data: compras }, { data: despesas }, { data: vendas }] =
       await Promise.all([
@@ -210,6 +213,7 @@ export default function GestaoLucroPage() {
       </header>
 
       <main className="container mx-auto space-y-6 px-4 py-8">
+        {userId ? <GestaoEstoqueHojeSection userId={userId} /> : null}
         {loading ? (
           <div className="flex justify-center py-16">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />

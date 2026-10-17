@@ -20,6 +20,7 @@ import { mockProducts, type Marketplace } from '@/data/mockData';
 import { useClientMenus } from '@/hooks/useClientMenus';
 import { useFinanciamentoPendingCount } from '@/hooks/useFinanciamentoPendingCount';
 import { isBusinessTenantType } from '@/lib/business-tenant';
+import { GestaoEstoqueHojeSection } from '@/components/gestao/GestaoEstoqueHojeSection';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -660,6 +661,15 @@ const Dashboard = () => {
         {/* Content */}
         <main className="flex-1 bg-gray-50 dark:bg-gray-900 overflow-auto">
           <div className="p-6">
+              {showGestaoLucroMenu && user?.id ? (
+                <div className="mb-8">
+                  <GestaoEstoqueHojeSection
+                    userId={user.id}
+                    compact
+                    showDetailLink
+                  />
+                </div>
+              ) : null}
               {/* ═══════════════════════════════════════════════════════════ */}
               {/* DASHBOARD INDÚSTRIA - PLANO PREMIUM */}
               {/* ═══════════════════════════════════════════════════════════ */}
