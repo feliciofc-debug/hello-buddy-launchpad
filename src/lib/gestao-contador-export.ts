@@ -34,9 +34,21 @@ export function buildContadorPacoteFromApp(
         liquidadoEm: c.tipo === "pagar" ? c.pago_em : c.recebido_em,
         observacao: c.observacao,
       })),
-    comissoesBonus: contas
-      .filter((c) => c.origem === "bonus_g2" && c.vencimento.startsWith(competencia))
-      .map((c) => ({ descricao: c.observacao ?? "Bônus", valor: Number(c.valor) })),
+    comissoesBonus: [
+      ...veiculos
+        .filter((v) => v.dataVenda?.startsWith(competencia))
+        .flatMap((v) =>
+          v.despesas
+            .filter((d) => d.categoria === "comissao")
+            .map((d) => ({
+              descricao: `Comissão carro ${v.marca} ${v.modelo}`,
+              valor: Number(d.valor),
+            })),
+        ),
+      ...contas
+        .filter((c) => c.origem === "bonus_g2" && c.vencimento.startsWith(competencia))
+        .map((c) => ({ descricao: c.observacao ?? "Bônus", valor: Number(c.valor) })),
+    ],
   });
 }
 
@@ -83,7 +95,7 @@ export function downloadContadorXlsx(pacote: GestaoContadorPacote, filename: str
 
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pacote.operacionais), "Despesas operacionais");
 
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pacote.contas), "Contas");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pacote.contas), "Contas pagas/recebidas");
 
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pacote.comissoesBonus), "Comissões e bônus");
 
