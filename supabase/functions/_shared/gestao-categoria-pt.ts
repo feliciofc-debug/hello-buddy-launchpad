@@ -78,7 +78,8 @@ export function resolveGestaoCategoriaFromUserReply(text: string): string | null
     if (code === "outros") continue;
     if (t === code || t.replace(/_/g, " ") === code.replace(/_/g, " ")) return code;
     const label = normalizeGestaoCategoriaText(LABELS[code] ?? "");
-    if (t === label || label.includes(t) || t.includes(label)) return code;
+    if (t === label) return code;
+    if (t.length >= 4 && (label.includes(t) || t.includes(label))) return code;
   }
 
   const aliases: Array<{ re: RegExp; categoria: string }> = [
@@ -97,5 +98,9 @@ export function resolveGestaoCategoriaFromUserReply(text: string): string | null
 }
 
 function isSimNaoLike(t: string): boolean {
-  return /^(sim|nao|não|cancelar|ok|confirmo|confirma)$/.test(t);
+  const compact = t.replace(/[!.,…]+$/g, "").trim();
+  if (/^(s|ss|sim(\s+pode)?|pode|confirmo|confirma|ok)$/i.test(compact)) return true;
+  if (/^(n|nao|não)(\s+pode)?$/i.test(compact)) return true;
+  if (/^cancelar$/i.test(compact)) return true;
+  return false;
 }

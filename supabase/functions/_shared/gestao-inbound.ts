@@ -879,7 +879,9 @@ export async function tryProcessGestaoLucroInbound(input: {
 
     if (
       activePending.phase === "confirm" &&
-      activePending.action === "despesa"
+      activePending.action === "despesa" &&
+      !isGestaoAffirmative(text) &&
+      !isGestaoNegative(text)
     ) {
       const corrected = resolveGestaoCategoriaFromUserReply(text);
       if (corrected) {

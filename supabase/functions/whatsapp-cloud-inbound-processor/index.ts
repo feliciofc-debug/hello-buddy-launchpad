@@ -112,6 +112,11 @@ import {
   loadGestaoAuthContext,
   tryProcessGestaoLucroInbound,
 } from "../_shared/gestao-inbound.ts";
+import {
+  injectForcedFetchAsSystemContext,
+  stripToolCallsToSystemContext,
+} from "../_shared/jarvis-gemini-message-safety.ts";
+import { detectWebSearchIntent } from "../_shared/jarvis-web-search-intent.ts";
 import { isGestaoAuthorizedPhone } from "../_shared/gestao-auth-phone.ts";
 import {
   extractVitrineInteractiveId,
@@ -1294,39 +1299,6 @@ async function toolPesquisarWeb(query: string, recencia?: string): Promise<strin
     resultados: finalItems,
   });
 }
-
-function detectWebSearchIntent(text: string, opts: { hasMedia?: boolean } = {}): { query: string; recencia?: string } | null {
-  // Turno com mídia (áudio/imagem/vídeo) NUNCA dispara busca: é conteúdo do próprio
-  // usuário, não pergunta ao mundo.
-  if (opts.hasMedia) return null;
-  const raw = typeof text === "string" ? text.trim() : "";
-  if (!raw) return null;
-  const t = normalizePt(raw);
-
-  // Conversa operacional / instrução: nunca pesquisa.
-  const isOperacional = /\b(vou (te )?(enviar|mandar|passar|gravar)|te envio|te mando|segue|segura|aguarda|aguarde|espera|espere|olha (isso|aqui|esse|essa)|ve (isso|aqui)|escuta|ouve|transcreve|transcrever|transcricao|resume|resumir|resumo disso|traduz|traduzir|corrige|corrigir|posta|postar|publica|publicar|salva|salvar|edita|editar|manda pro|encaminha|repassa)\b/.test(t);
-  if (isOperacional) return null;
-
-  const pedidoExplicito = /\b(procura|procurar|busca|buscar|pesquisa|pesquisar|pesquise|busque|procure|google|na internet|na web|acha ai|ve pra mim|consulte|consulta ai)\b/.test(t);
-
-  // Fato externo: precisa de pergunta (interrogação ou pronome interrogativo)
-  // combinada com um assunto de mundo externo.
-  const temPergunta = /\?/.test(raw)
-    || /\b(quanto|quantos|quantas|qual|quais|quando|onde|quem|por que|porque|como esta|como ta|o que (esta|ta|aconteceu|houve|rolou))\b/.test(t);
-  const assuntoExterno = /\b(cotacao|dolar|euro|bitcoin|btc|bolsa|ibovespa|selic|juros|inflacao|ipca|noticia|noticias|manchete|placar|jogo|jogos|campeonato|eleicao|clima|tempo|previsao|transito|trafego|greve|mercado|acao|acoes|preco medio|passagem|voo|hotel|pousada|receita|ingredientes|modo de preparo)\b/.test(t);
-  const fatoAtual = temPergunta && assuntoExterno;
-
-  if (!pedidoExplicito && !fatoAtual) return null;
-
-  let query = cleanSearchQuery(raw);
-
-  if (!query) query = raw;
-  if (/\btransito\b/.test(t)) query = `${query} trânsito agora ${currentMonthYearPt()}`;
-  if (/\b(notícias|noticias|recente|hoje|agora|atual|transito|trafego|greve)\b/i.test(raw)) return { query, recencia: "d" };
-  if (isLodgingQuery(query)) return { query, recencia: "m" };
-  return { query };
-}
-
 
 // Detecta pedidos de cotação e retorna pares a consultar (AwesomeAPI é tempo real).
 function detectQuoteIntent(text: string): string[] {
@@ -17392,7 +17364,7 @@ async function callGemini(
       toolCtx.verticalSegment,
       toolCtx.explicitFipe === true,
     );
-  const messages: any[] = [
+  let messages: any[] = [
     {
       role: "system",
       content: `${timeHeader}\n\n${specialistPrompt}\n\n${systemPrompt}`,
@@ -21448,43 +21420,33 @@ async function callGemini(
     // Texto puro do turno (turno multimodal chega como array de partes).
     const userTextOnly = typeof userContent === "string" ? userContent : "";
 
-    // 1) Cotações em tempo real (AwesomeAPI) — antes de qualquer coisa
+    const forcedContextBlocks: string[] = [];
+
+    // 1) Cotações em tempo real (AwesomeAPI) — contexto em texto, sem tool_calls sintéticos
     const quotePairs = hasMedia ? [] : detectQuoteIntent(userTextOnly);
     if (quotePairs.length > 0) {
       console.log("[pietro][forced_quote]", quotePairs);
       const quotes = await Promise.all(quotePairs.map((p) => toolCotacaoMoeda(p)));
       for (let i = 0; i < quotePairs.length; i++) {
-        const id = `forced_quote_${i + 1}`;
-        messages.push({
-          role: "assistant",
-          content: null,
-          tool_calls: [{
-            id,
-            type: "function",
-            function: { name: "cotacao_moeda", arguments: JSON.stringify({ par: quotePairs[i] }) },
-          }],
-        });
-        messages.push({ role: "tool", tool_call_id: id, content: quotes[i] });
+        forcedContextBlocks.push(`Cotação ${quotePairs[i]}: ${quotes[i]}`);
       }
     }
 
-    // 2) Busca web (Google) só para pedido explícito de pesquisa ou pergunta de fato externo.
-    //    Nunca em turno com mídia, nunca em conversa operacional.
-    const forcedSearch = detectWebSearchIntent(userTextOnly, { hasMedia });
+    // 2) Busca web só para pedido explícito ou fato externo (sem juros/mercado genérico).
+    const forcedSearch = detectWebSearchIntent(userTextOnly, {
+      hasMedia,
+      ownerMessageOver600: senderIsOwner,
+    });
     if (forcedSearch) {
-
       console.log("[pietro][forced_web_search]", forcedSearch);
       const searchResult = await toolPesquisarWeb(forcedSearch.query, forcedSearch.recencia);
-      messages.push({
-        role: "assistant",
-        content: null,
-        tool_calls: [{
-          id: "forced_web_search_1",
-          type: "function",
-          function: { name: "pesquisar_web", arguments: JSON.stringify(forcedSearch) },
-        }],
-      });
-      messages.push({ role: "tool", tool_call_id: "forced_web_search_1", content: searchResult });
+      forcedContextBlocks.push(
+        `Pesquisa web (consulta: ${forcedSearch.query}): ${searchResult}`,
+      );
+    }
+
+    if (forcedContextBlocks.length) {
+      injectForcedFetchAsSystemContext(messages, forcedContextBlocks);
     }
   }
 
@@ -21583,6 +21545,7 @@ async function callGemini(
     : null;
   const requiredTool = requiredMetaAdsTool || requiredCreativeTool;
 
+  let thoughtSigRetried = false;
   for (let step = 0; step < 4; step++) {
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -21608,6 +21571,16 @@ async function callGemini(
 
     if (!res.ok) {
       const t = await res.text();
+      if (
+        !thoughtSigRetried &&
+        res.status === 400 &&
+        t.includes("thought_signature")
+      ) {
+        console.log("[processor][thought_sig_retry]");
+        messages = stripToolCallsToSystemContext(messages) as typeof messages;
+        thoughtSigRetried = true;
+        continue;
+      }
       throw new Error(`gemini ${res.status}: ${t.slice(0, 200)}`);
     }
     const data = await res.json();

@@ -43,4 +43,12 @@ Deno.test("resolveGestaoCategoriaFromUserReply aceita nome", () => {
 
 Deno.test("resolveGestaoCategoriaFromUserReply ignora SIM", () => {
   assertEquals(resolveGestaoCategoriaFromUserReply("sim"), null);
+  assertEquals(resolveGestaoCategoriaFromUserReply("s"), null);
+  assertEquals(resolveGestaoCategoriaFromUserReply("sim!"), null);
+  assertEquals(resolveGestaoCategoriaFromUserReply("sim pode"), null);
+  assertEquals(resolveGestaoCategoriaFromUserReply("pode"), null);
+});
+
+Deno.test("resolveGestaoCategoriaFromUserReply mecanica sem confundir com s", () => {
+  assertEquals(resolveGestaoCategoriaFromUserReply("mecanica"), "mecanica");
 });
