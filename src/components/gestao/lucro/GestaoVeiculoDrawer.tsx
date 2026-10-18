@@ -289,6 +289,8 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
   const comissaoPctLabel = valorVendaDialog != null && valorVendaDialog > 0
     ? formatGestaoPct((comissaoDialogValor / valorVendaDialog) * 100)
     : "—";
+  const vendedorDialog = vendedores.find((x) => x.id === vendedorId);
+  const vendedorDialogNome = vendedorDialog?.nome ?? "Vendedor";
 
   const lucro = veiculo.lucro;
   const margem = lucro.vendido
@@ -469,50 +471,63 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
       <AlertDialog open={comissaoConfirmOpen} onOpenChange={setComissaoConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar comissão</AlertDialogTitle>
+            <AlertDialogTitle>Comissão do vendedor — {vendedorDialogNome}</AlertDialogTitle>
             <AlertDialogDescription asChild>
-              <div className="space-y-2 text-sm">
-                <p>
-                  Comissão calculada: <strong>{formatGestaoMoney(comissaoPreview)}</strong>
-                </p>
-                <p>Será lançada automaticamente como despesa do carro (categoria comissão).</p>
-                <GestaoMoneyInput
-                  label="Comissão do vendedor (R$)"
-                  value={comissaoOverride}
-                  onChange={(v) => {
-                    setComissaoOverride(v);
-                    setComissaoConfirmAlto(false);
-                  }}
-                />
-                <p className="text-muted-foreground">
-                  = {comissaoPctLabel} do valor da venda
-                </p>
-                {!comissaoGuard.ok && comissaoGuard.code === "above_10pct" && (
-                  <div className="space-y-2 rounded-md border border-red-200 bg-red-50 p-2 text-red-700">
-                    <p className="font-medium">{comissaoGuard.message}</p>
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={comissaoConfirmAlto}
-                        onChange={(e) => setComissaoConfirmAlto(e.target.checked)}
-                      />
-                      Confirmo este valor
-                    </label>
-                  </div>
-                )}
-                {!comissaoGuard.ok && comissaoGuard.code === "gte_venda" && (
-                  <p className="font-medium text-red-600">{comissaoGuard.message}</p>
-                )}
+              <div className="space-y-4 text-sm text-foreground">
+                <div className="rounded-lg border bg-muted/40 px-3 py-2">
+                  <p className="font-medium">
+                    Venda: {formatGestaoMoney(valorVendaDialog)} ✓
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Valor da venda já confirmado neste passo — não é a comissão.
+                  </p>
+                </div>
+
+                <div className="space-y-2 border-t pt-4">
+                  <p className="font-medium">
+                    Quanto o {vendedorDialogNome} vai ganhar nesta venda?
+                  </p>
+                  <GestaoMoneyInput
+                    label="Comissão do vendedor (R$)"
+                    value={comissaoOverride}
+                    onChange={(v) => {
+                      setComissaoOverride(v);
+                      setComissaoConfirmAlto(false);
+                    }}
+                  />
+                  <p className="text-muted-foreground">
+                    = {comissaoPctLabel} do valor da venda
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Lançamento automático como despesa do carro (categoria comissão).
+                  </p>
+                  {!comissaoGuard.ok && comissaoGuard.code === "above_10pct" && (
+                    <div className="space-y-2 rounded-md border border-red-200 bg-red-50 p-2 text-red-700">
+                      <p className="font-medium">{comissaoGuard.message}</p>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={comissaoConfirmAlto}
+                          onChange={(e) => setComissaoConfirmAlto(e.target.checked)}
+                        />
+                        Confirmo este valor
+                      </label>
+                    </div>
+                  )}
+                  {!comissaoGuard.ok && comissaoGuard.code === "gte_venda" && (
+                    <p className="font-medium text-red-600">{comissaoGuard.message}</p>
+                  )}
+                </div>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>Voltar e corrigir a venda</AlertDialogCancel>
             <AlertDialogAction
               disabled={!comissaoGuard.ok}
               onClick={() => void commitVenda(parseGestaoMoneyField(comissaoOverride) ?? comissaoPreview)}
             >
-              Confirmar venda
+              Confirmar comissão
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
