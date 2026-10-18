@@ -387,9 +387,10 @@ export default function DashboardMetricas() {
     if (effectiveAmzAutoMode) {
       return buildAmzAutoSidebarItems({
         ...vitrineSidebarContext,
+        clientType: VEHICLE_DEALER_TENANT_TYPE,
         t,
-        showFinanciamentosMenu,
-        showGestaoLucroMenu,
+        showFinanciamentosMenu: true,
+        showGestaoLucroMenu: true,
         vehicleStockItem,
         financingItem,
         gestaoLucroItem,
