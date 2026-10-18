@@ -7,7 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import type { GestaoVeiculoEnriched } from "@/lib/gestao-lucro-types.ts";
-import { hojeSaoPaulo, formatYmdSaoPaulo } from "../../../../supabase/functions/_shared/gestao-date-br.ts";
+import {
+  hojeSaoPaulo,
+  intervaloCompetencia,
+} from "../../../../supabase/functions/_shared/gestao-date-br.ts";
 import {
   competenciaFromDate,
   loadComissaoAutoMes,

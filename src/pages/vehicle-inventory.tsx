@@ -526,7 +526,7 @@ export default function VehicleInventory() {
       await supabase.functions.invoke("ml-vehicle-sync", {
         body: { veiculo_id: editing.id },
       });
-      await loadMlMeta();
+      await loadPortalMeta();
     }
   };
 
