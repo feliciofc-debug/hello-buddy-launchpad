@@ -180,7 +180,6 @@ export default function Login() {
       const email = formData.email.trim().toLowerCase();
       const password = formData.password;
 
-      const { signInWithEmailPassword } = await import('@/lib/auth-sign-in');
       const { error, data } = await signInWithEmailPassword(
         supabase,
         email,

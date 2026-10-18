@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Car, Loader2, RefreshCw } from "lucide-react";
+import { ArrowLeft, Car, Copy, Loader2, RefreshCw } from "lucide-react";
+import { isCustomAuth } from "@/config/runtime-config";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -82,6 +83,10 @@ export default function AdminAmzAutoPage() {
   const [liberarId, setLiberarId] = useState<string | null>(null);
   const [liberando, setLiberando] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [tempSenhaDialog, setTempSenhaDialog] = useState<{
+    email: string;
+    senha: string;
+  } | null>(null);
 
   const loadRows = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -189,11 +194,16 @@ export default function AdminAmzAutoPage() {
       return;
     }
 
-    const redirectTo = `${window.location.origin}/alterar-senha`;
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-      row.email.trim().toLowerCase(),
-      { redirectTo },
-    );
+    const customAuth = isCustomAuth();
+    let resetFailed = false;
+    if (!customAuth) {
+      const redirectTo = `${window.location.origin}/alterar-senha`;
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+        row.email.trim().toLowerCase(),
+        { redirectTo },
+      );
+      resetFailed = !!resetError;
+    }
 
     const { data: { user } } = await supabase.auth.getUser();
     const { error: updError } = await supabase
@@ -219,10 +229,14 @@ export default function AdminAmzAutoPage() {
       return;
     }
 
-    if (resetError) {
+    if (customAuth || resetFailed) {
+      setTempSenhaDialog({
+        email: row.email.trim().toLowerCase(),
+        senha,
+      });
       toast({
         title: "Loja liberada",
-        description: `Conta criada (${userId}). Falha ao enviar e-mail de senha: ${resetError.message}`,
+        description: "Copie a senha temporária e envie ao lojista com segurança.",
       });
     } else {
       toast({
@@ -232,6 +246,19 @@ export default function AdminAmzAutoPage() {
     }
 
     await loadRows();
+  };
+
+  const copyTempSenha = async () => {
+    if (!tempSenhaDialog) return;
+    try {
+      await navigator.clipboard.writeText(tempSenhaDialog.senha);
+      toast({ title: "Senha copiada" });
+    } catch {
+      toast({
+        title: "Não foi possível copiar",
+        variant: "destructive",
+      });
+    }
   };
 
   if (loading) {
@@ -399,10 +426,18 @@ export default function AdminAmzAutoPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Liberar loja?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Será criada uma conta <strong>revenda_veiculos</strong> para{" "}
-              <strong>{liberarRow?.email}</strong> ({liberarRow?.loja_nome}) via{" "}
-              <code>admin_criar_cliente</code>, com e-mail para definir a senha.
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>
+                  O <strong>login</strong> da loja será o e-mail:{" "}
+                  <strong className="text-foreground">{liberarRow?.email}</strong>
+                </p>
+                <p>
+                  Será criada uma conta <strong>revenda_veiculos</strong> para{" "}
+                  <strong>{liberarRow?.loja_nome}</strong> via{" "}
+                  <code>admin_criar_cliente</code>.
+                </p>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -410,6 +445,41 @@ export default function AdminAmzAutoPage() {
             <AlertDialogAction disabled={liberando} onClick={() => void liberarLoja()}>
               {liberando ? "Liberando…" : "Confirmar liberação"}
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!tempSenhaDialog}
+        onOpenChange={(open) => {
+          if (!open) setTempSenhaDialog(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Senha temporária da loja</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  Login: <strong className="text-foreground">{tempSenhaDialog?.email}</strong>
+                </p>
+                <p className="rounded-md border bg-muted/40 p-3 font-mono text-base text-foreground">
+                  {tempSenhaDialog?.senha}
+                </p>
+                <p>
+                  Envie ao lojista pelo WhatsApp e peça para trocar no primeiro acesso.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setTempSenhaDialog(null)}>
+              Fechar
+            </AlertDialogCancel>
+            <Button type="button" className="gap-2" onClick={() => void copyTempSenha()}>
+              <Copy className="h-4 w-4" />
+              Copiar
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

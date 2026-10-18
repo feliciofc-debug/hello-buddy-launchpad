@@ -3,6 +3,12 @@ import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { AmzAutoLogo } from "./AmzAutoLogo";
 import { AmzAutoPageShell } from "./AmzAutoLayout";
+import {
+  AMZ_AUTO_FAIXA_ESTOQUE_OPTIONS,
+  AMZ_AUTO_INTERESSE_OPTIONS,
+  AMZ_AUTO_QTD_LOJAS_OPTIONS,
+  AMZ_AUTO_TIPOS,
+} from "../../../supabase/functions/_shared/amz-auto-cadastro-validate.ts";
 
 export default function AmzAutoCadastroPage() {
   const [submitting, setSubmitting] = useState(false);
@@ -156,36 +162,38 @@ export default function AmzAutoCadastroPage() {
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="tipo_operacao" className="text-sm font-semibold">Tipo de operação</label>
                 <select id="tipo_operacao" name="tipo_operacao" required className="min-h-12 rounded-[10px] border border-[#C9C3B8] px-3 text-base">
-                  <option value="revenda">Revenda de seminovos</option>
-                  <option value="concessionaria">Concessionária</option>
-                  <option value="grupo">Grupo com várias lojas</option>
-                  <option value="motos">Loja de motos</option>
+                  {AMZ_AUTO_TIPOS.map((value) => (
+                    <option key={value} value={value}>
+                      {value === "revenda" && "Revenda de seminovos"}
+                      {value === "concessionaria" && "Concessionária"}
+                      {value === "grupo" && "Grupo com várias lojas"}
+                      {value === "motos" && "Loja de motos"}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="qtd_lojas" className="text-sm font-semibold">Quantas lojas</label>
                 <select id="qtd_lojas" name="qtd_lojas" required className="min-h-12 rounded-[10px] border border-[#C9C3B8] px-3 text-base">
-                  <option>1 loja</option>
-                  <option>2 a 3 lojas</option>
-                  <option>4 ou mais</option>
+                  {AMZ_AUTO_QTD_LOJAS_OPTIONS.map((opt) => (
+                    <option key={opt}>{opt}</option>
+                  ))}
                 </select>
               </div>
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="faixa_estoque" className="text-sm font-semibold">Carros em estoque</label>
                 <select id="faixa_estoque" name="faixa_estoque" required className="min-h-12 rounded-[10px] border border-[#C9C3B8] px-3 text-base">
-                  <option>Até 30</option>
-                  <option>31 a 80</option>
-                  <option>81 a 200</option>
-                  <option>Mais de 200</option>
+                  {AMZ_AUTO_FAIXA_ESTOQUE_OPTIONS.map((opt) => (
+                    <option key={opt}>{opt}</option>
+                  ))}
                 </select>
               </div>
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="interesse" className="text-sm font-semibold">O que mais interessa</label>
                 <select id="interesse" name="interesse" required className="min-h-12 rounded-[10px] border border-[#C9C3B8] px-3 text-base">
-                  <option>Atendimento no WhatsApp</option>
-                  <option>Publicar estoque e gerar mídia</option>
-                  <option>Gestão completa da loja</option>
-                  <option>Tudo</option>
+                  {AMZ_AUTO_INTERESSE_OPTIONS.map((opt) => (
+                    <option key={opt}>{opt}</option>
+                  ))}
                 </select>
               </div>
             </div>

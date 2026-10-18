@@ -3,20 +3,40 @@ import { normalizeOwnerPhone } from "./owner-phone.ts";
 export const AMZ_AUTO_TIPOS = ["revenda", "concessionaria", "grupo", "motos"] as const;
 export type AmzAutoTipoOperacao = (typeof AMZ_AUTO_TIPOS)[number];
 
+export const AMZ_AUTO_QTD_LOJAS_OPTIONS = [
+  "1 loja",
+  "2 a 3 lojas",
+  "4 ou mais",
+] as const;
+
+export const AMZ_AUTO_FAIXA_ESTOQUE_OPTIONS = [
+  "Até 30",
+  "31 a 80",
+  "81 a 200",
+  "Mais de 200",
+] as const;
+
+export const AMZ_AUTO_INTERESSE_OPTIONS = [
+  "Atendimento no WhatsApp",
+  "Publicar estoque e gerar mídia",
+  "Gestão completa da loja",
+  "Tudo",
+] as const;
+
 export type AmzAutoCadastroPayload = {
-  loja_nome?: string;
-  cnpj?: string;
-  responsavel?: string;
-  whatsapp?: string;
-  email?: string;
-  cidade_uf?: string;
-  tipo_operacao?: string;
-  qtd_lojas?: string;
-  faixa_estoque?: string;
-  interesse?: string;
-  aceite_termos?: boolean;
+  loja_nome?: unknown;
+  cnpj?: unknown;
+  responsavel?: unknown;
+  whatsapp?: unknown;
+  email?: unknown;
+  cidade_uf?: unknown;
+  tipo_operacao?: unknown;
+  qtd_lojas?: unknown;
+  faixa_estoque?: unknown;
+  interesse?: unknown;
+  aceite_termos?: unknown;
   /** Honeypot — must be empty */
-  website?: string;
+  website?: unknown;
 };
 
 export type AmzAutoCadastroNormalized = {
@@ -32,6 +52,24 @@ export type AmzAutoCadastroNormalized = {
   interesse: string;
   aceite_termos_at: string;
 };
+
+const MAX_LOJA_NOME = 120;
+const MAX_RESPONSAVEL = 120;
+const MAX_CIDADE_UF = 80;
+const MAX_EMAIL = 254;
+
+function requireString(
+  value: unknown,
+  fieldLabel: string,
+): { ok: true; value: string } | { ok: false; error: string } {
+  if (value === undefined || value === null) {
+    return { ok: true, value: "" };
+  }
+  if (typeof value !== "string") {
+    return { ok: false, error: `${fieldLabel} inválido.` };
+  }
+  return { ok: true, value };
+}
 
 export function cnpjDigitsOnly(value: string): string {
   return value.replace(/\D/g, "");
@@ -60,7 +98,7 @@ export function isValidCnpj(value: string): boolean {
 
 export function isValidEmail(value: string): boolean {
   const email = value.trim().toLowerCase();
-  if (!email || email.includes(" ")) return false;
+  if (!email || email.includes(" ") || email.length > MAX_EMAIL) return false;
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
 }
 
@@ -76,39 +114,77 @@ export function whatsappToE164BR(value: string): string | null {
 export function validateAmzAutoCadastro(
   raw: AmzAutoCadastroPayload,
 ): { ok: true; data: AmzAutoCadastroNormalized } | { ok: false; error: string } {
-  if (raw.website && String(raw.website).trim() !== "") {
+  const website = requireString(raw.website, "website");
+  if (!website.ok) return website;
+  if (website.value.trim() !== "") {
     return { ok: false, error: "Solicitação rejeitada." };
   }
 
-  const loja_nome = (raw.loja_nome ?? "").trim();
-  const responsavel = (raw.responsavel ?? "").trim();
-  const cidade_uf = (raw.cidade_uf ?? "").trim();
-  const qtd_lojas = (raw.qtd_lojas ?? "").trim();
-  const faixa_estoque = (raw.faixa_estoque ?? "").trim();
-  const interesse = (raw.interesse ?? "").trim();
-  const cnpj = cnpjDigitsOnly(raw.cnpj ?? "");
-  const email = (raw.email ?? "").trim().toLowerCase();
+  const fields: Array<[keyof AmzAutoCadastroPayload, string]> = [
+    ["loja_nome", "Nome da loja"],
+    ["cnpj", "CNPJ"],
+    ["responsavel", "Responsável"],
+    ["whatsapp", "WhatsApp"],
+    ["email", "E-mail"],
+    ["cidade_uf", "Cidade / UF"],
+    ["tipo_operacao", "Tipo de operação"],
+    ["qtd_lojas", "Quantas lojas"],
+    ["faixa_estoque", "Faixa de estoque"],
+    ["interesse", "Interesse"],
+  ];
+
+  const parsed: Record<string, string> = {};
+  for (const [key, label] of fields) {
+    const r = requireString(raw[key], label);
+    if (!r.ok) return r;
+    parsed[key] = r.value.trim();
+  }
+
+  const loja_nome = parsed.loja_nome;
+  const responsavel = parsed.responsavel;
+  const cidade_uf = parsed.cidade_uf;
+  const qtd_lojas = parsed.qtd_lojas;
+  const faixa_estoque = parsed.faixa_estoque;
+  const interesse = parsed.interesse;
+  const cnpj = cnpjDigitsOnly(parsed.cnpj);
+  const email = parsed.email.toLowerCase();
 
   if (!loja_nome) return { ok: false, error: "Informe o nome da loja." };
+  if (loja_nome.length > MAX_LOJA_NOME) {
+    return { ok: false, error: "Nome da loja muito longo." };
+  }
   if (!isValidCnpj(cnpj)) return { ok: false, error: "CNPJ inválido." };
   if (!responsavel) return { ok: false, error: "Informe o responsável." };
+  if (responsavel.length > MAX_RESPONSAVEL) {
+    return { ok: false, error: "Nome do responsável muito longo." };
+  }
   if (!isValidEmail(email)) return { ok: false, error: "E-mail inválido." };
   if (!cidade_uf) return { ok: false, error: "Informe cidade e UF." };
-  if (!qtd_lojas) return { ok: false, error: "Informe quantas lojas." };
-  if (!faixa_estoque) return { ok: false, error: "Informe a faixa de estoque." };
-  if (!interesse) return { ok: false, error: "Informe o interesse." };
+  if (cidade_uf.length > MAX_CIDADE_UF) {
+    return { ok: false, error: "Cidade / UF muito longo." };
+  }
 
-  const tipo = (raw.tipo_operacao ?? "").trim() as AmzAutoTipoOperacao;
+  if (!(AMZ_AUTO_QTD_LOJAS_OPTIONS as readonly string[]).includes(qtd_lojas)) {
+    return { ok: false, error: "Opção de lojas inválida." };
+  }
+  if (!(AMZ_AUTO_FAIXA_ESTOQUE_OPTIONS as readonly string[]).includes(faixa_estoque)) {
+    return { ok: false, error: "Faixa de estoque inválida." };
+  }
+  if (!(AMZ_AUTO_INTERESSE_OPTIONS as readonly string[]).includes(interesse)) {
+    return { ok: false, error: "Interesse inválido." };
+  }
+
+  const tipo = parsed.tipo_operacao as AmzAutoTipoOperacao;
   if (!AMZ_AUTO_TIPOS.includes(tipo)) {
     return { ok: false, error: "Tipo de operação inválido." };
   }
 
-  const e164 = whatsappToE164BR(raw.whatsapp ?? "");
+  const e164 = whatsappToE164BR(parsed.whatsapp);
   if (!e164) {
     return { ok: false, error: "WhatsApp inválido. Use DDD + celular." };
   }
 
-  if (!raw.aceite_termos) {
+  if (raw.aceite_termos !== true) {
     return { ok: false, error: "É necessário aceitar os termos." };
   }
 
