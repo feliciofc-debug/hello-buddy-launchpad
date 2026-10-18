@@ -26,6 +26,11 @@ import {
   loadRelatorioVendedoresFacts,
   lojaNomeFromText,
 } from "./gestao-posicao-loja.ts";
+import {
+  formatGestaoDreWhatsApp,
+  loadGestaoDreWhatsappFacts,
+  parseGestaoCompetenciaFromText,
+} from "./gestao-dre-whatsapp.ts";
 
 export type GestaoAssistenteQueryResult = {
   queryKind: string;
@@ -248,6 +253,15 @@ export async function runGestaoAssistenteQuery(
   const lojaNomeCitada = lojaNomeFromText(message);
   const posicaoOpts = { lojaNomeCitada, storeUserId: userId };
 
+  if (intent.kind === "dre_whatsapp") {
+    const competencia = parseGestaoCompetenciaFromText(message, agoraSP);
+    const facts = await loadGestaoDreWhatsappFacts(sb, userId, competencia, agoraSP);
+    return {
+      queryKind: "dre_whatsapp",
+      reply: formatGestaoDreWhatsApp(facts),
+      facts: { competencia, vendas: facts.dre.qtdVendas },
+    };
+  }
   if (intent.kind === "posicao_loja") {
     const facts = await loadPosicaoLojaFacts(sb, userId, agoraSP, posicaoOpts);
     return {

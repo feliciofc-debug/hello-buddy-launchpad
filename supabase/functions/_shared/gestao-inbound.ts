@@ -49,6 +49,11 @@ import {
   loadRelatorioVendedoresFacts,
   lojaNomeFromText,
 } from "./gestao-posicao-loja.ts";
+import {
+  formatGestaoDreWhatsApp,
+  loadGestaoDreWhatsappFacts,
+  parseGestaoCompetenciaFromText,
+} from "./gestao-dre-whatsapp.ts";
 import { competenciaFromDate } from "./gestao-meta-calc.ts";
 import {
   calcVendaRaioX,
@@ -951,6 +956,17 @@ export async function tryProcessGestaoLucroInbound(input: {
   const lojaNomeCitada = lojaNomeFromText(text);
   const posicaoOpts = { lojaNomeCitada, storeUserId: input.userId };
 
+  if (intent.kind === "dre_whatsapp") {
+    const competencia = parseGestaoCompetenciaFromText(text);
+    const facts = await loadGestaoDreWhatsappFacts(
+      input.sb as never,
+      input.userId,
+      competencia,
+      agoraSP,
+    );
+    console.log("[gestao-inbound][dre_whatsapp]", { competencia, vendas: facts.dre.qtdVendas });
+    return { handled: true, reply: formatGestaoDreWhatsApp(facts) };
+  }
   if (intent.kind === "posicao_loja") {
     const facts = await loadPosicaoLojaFacts(input.sb as never, input.userId, agoraSP, posicaoOpts);
     console.log("[gestao-inbound][posicao_loja]", {

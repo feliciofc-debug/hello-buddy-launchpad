@@ -81,7 +81,12 @@ export async function handleGestaoAssistenteMessage(
 
   const query = await runGestaoAssistenteQuery(sb, userId, text);
   if (query) {
-    const deterministicKinds = new Set(["posicao_loja", "relatorio_vendedores", "vendedor_detalhe"]);
+    const deterministicKinds = new Set([
+      "posicao_loja",
+      "relatorio_vendedores",
+      "vendedor_detalhe",
+      "dre_whatsapp",
+    ]);
     const gestaoNav = { label: "Abrir Gestão", path: "/gestao/lucro" };
     if (deterministicKinds.has(query.queryKind)) {
       return {

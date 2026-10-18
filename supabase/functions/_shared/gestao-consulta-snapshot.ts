@@ -20,6 +20,7 @@ import {
 } from "./gestao-date-br.ts";
 import { syncRecorrenciaLancamentosDb } from "./gestao-recorrencia-db-sync.ts";
 import { mesNomePt } from "./gestao-posicao-loja.ts";
+import { dreMargensPct } from "./gestao-dre-whatsapp.ts";
 
 export type GestaoConsultaPeriodoInput =
   | "hoje"
@@ -409,15 +410,15 @@ export async function loadGestaoConsultaSnapshot(
     pago_em: c.pago_em ? String(c.pago_em) : null,
   })));
   const dre = calcDreMes(dreComp, dreLines, ops);
+  const margens = dreMargensPct(dre);
   snap.dre = {
     competencia: dreComp,
     faturamento: roundMoney(dre.faturamento),
     lucro_carros: roundMoney(dre.lucroCarros),
     despesas_loja: roundMoney(dre.despesasOperacionais),
     lucro_liquido: roundMoney(dre.lucroLiquidoLoja),
-    margem_pct: dre.faturamento > 0
-      ? roundMoney((dre.lucroCarros / dre.faturamento) * 100)
-      : null,
+    margem_bruta_pct: margens.margem_bruta_pct,
+    margem_liquida_pct: margens.margem_liquida_pct,
   };
 
   const { data: metaRow } = await sb.from("gestao_meta_mensal").select("config_json")

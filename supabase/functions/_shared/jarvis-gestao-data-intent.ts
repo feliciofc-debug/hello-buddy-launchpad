@@ -14,8 +14,10 @@ export function isGestaoLojaDataQuestion(text: string): boolean {
   if (/\b(procura|pesquisa|pesquisar|google|internet|noticia|clima|dolar|bitcoin)\b/.test(t)) {
     return false;
   }
+  if (/\bdre\b|\bdemonstrativo\b|\bresultado\s+do\s+mes\b/.test(t)) return true;
+
   const gestao =
-    /\b(loja|gestao|gestão|faturamento|lucro|margem|dre|meta|comissao|comissão)\b/.test(t) ||
+    /\b(loja|gestao|gestão|faturamento|lucro|margem|meta|comissao|comissão)\b/.test(t) ||
     /\b(vend(a|as|ido|idos|emos|eu|eu)|vendedor|vendedores|equipe|ranking)\b/.test(t) ||
     /\b(estoque|veiculo|veículo|veiculos|veículos|carro|carros|automoveis|automóveis)\b/.test(t) ||
     /\b(despesa|despesas|gastei|paguei|conta|contas|pagar|receber|venc|concili)\b/.test(t) ||

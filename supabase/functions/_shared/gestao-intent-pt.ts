@@ -2,6 +2,7 @@ import { inferGestaoCategoria } from "./gestao-categoria-pt.ts";
 import { parseGestaoValorPt } from "./gestao-valor-pt.ts";
 import { vehicleHintFromText } from "./gestao-veiculo-match.ts";
 import { vendedorHintFromText } from "./gestao-vendedor-match.ts";
+import { isGestaoDreWhatsAppRequest } from "./gestao-dre-whatsapp.ts";
 
 export type GestaoIntentKind =
   | "none"
@@ -32,7 +33,8 @@ export type GestaoIntentKind =
   | "nfe_status"
   | "posicao_loja"
   | "relatorio_vendedores"
-  | "vendedor_detalhe";
+  | "vendedor_detalhe"
+  | "dre_whatsapp";
 
 export type GestaoIntent = {
   kind: GestaoIntentKind;
@@ -73,6 +75,10 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
 
   if (/\bdesfaz(er)?(\s+ultim|\s+o\s+ultim|\s+lancamento)?/.test(t)) {
     return { ...empty, kind: "desfazer", vehicleHint };
+  }
+
+  if (isGestaoDreWhatsAppRequest(text)) {
+    return { ...empty, kind: "dre_whatsapp", vehicleHint };
   }
 
   if (
