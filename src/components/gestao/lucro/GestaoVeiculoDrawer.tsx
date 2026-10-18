@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { hojeSaoPaulo } from "../../../../supabase/functions/_shared/gestao-date-br.ts";
@@ -47,7 +47,7 @@ import { loadGestaoVendedores, loadComissaoRegra, type GestaoVendedor } from "@/
 import { calcGestaoComissao } from "../../../../supabase/functions/_shared/gestao-comissao-calc.ts";
 import { comissaoLucroBase } from "@/lib/gestao-comissao-lucro.ts";
 import { GestaoVendaRaioXPanel } from "@/components/gestao/lucro/GestaoVendaRaioXPanel.tsx";
-import { syncComissaoAfterVenda } from "@/lib/gestao-comissao-client.ts";
+import { estornarComissaoVeiculo, syncComissaoAfterVenda } from "@/lib/gestao-comissao-client.ts";
 import { useGestaoFocusnfeConnection } from "@/components/integracoes/useGestaoFocusnfeConnection";
 import { GestaoEmitirNfeDialog } from "@/components/gestao/lucro/GestaoEmitirNfeDialog.tsx";
 
@@ -55,6 +55,7 @@ type Props = {
   open: boolean;
   veiculo: GestaoVeiculoEnriched | null;
   userId: string;
+  focusVenda?: boolean;
   onClose: () => void;
   onSaved: () => void;
 };
@@ -70,7 +71,8 @@ function origemLabel(o: string): string {
   return map[o] ?? o;
 }
 
-export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }: Props) {
+export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose, onSaved }: Props) {
+  const vendaSectionRef = useRef<HTMLElement | null>(null);
   const focusnfe = useGestaoFocusnfeConnection();
   const [nfeOpen, setNfeOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -89,11 +91,22 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
   const [comissaoPreview, setComissaoPreview] = useState(0);
   const [comissaoOverride, setComissaoOverride] = useState("");
   const [comissaoConfirmAlto, setComissaoConfirmAlto] = useState(false);
+  const [undoVendaOpen, setUndoVendaOpen] = useState(false);
+
+  const hasVendaRegistrada = veiculo?.valorVenda != null;
 
   useEffect(() => {
     if (!userId) return;
     void loadGestaoVendedores(userId).then(setVendedores);
   }, [userId]);
+
+  useEffect(() => {
+    if (!open || !focusVenda) return;
+    const t = window.setTimeout(() => {
+      vendaSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 150);
+    return () => window.clearTimeout(t);
+  }, [open, focusVenda, veiculo?.id]);
 
   useEffect(() => {
     if (!veiculo) return;
@@ -108,7 +121,7 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
       data: veiculo.dataVenda ?? hojeSaoPaulo(),
       vendedor: veiculo.vendedor ?? "",
       forma: "",
-      marcar: true,
+      marcar: veiculo.status === "vendido" || veiculo.valorVenda != null,
     });
     setVendedorId(veiculo.vendedor_id ?? "");
   }, [veiculo]);
@@ -269,12 +282,39 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
     });
     setBusy(false);
     setComissaoConfirmOpen(false);
+    const wasEdit = veiculo.valorVenda != null;
     toast.success(
       comTotal > 0
-        ? `Venda registrada. Comissão ${formatGestaoMoney(comTotal)} lançada no carro.`
-        : "Venda registrada.",
+        ? wasEdit
+          ? `Venda atualizada. Comissão ${formatGestaoMoney(comTotal)} relançada.`
+          : `Venda registrada. Comissão ${formatGestaoMoney(comTotal)} lançada no carro.`
+        : wasEdit ? "Venda atualizada." : "Venda registrada.",
     );
     onSaved();
+  };
+
+  const confirmUndoVenda = async () => {
+    if (!veiculo) return;
+    setBusy(true);
+    await estornarComissaoVeiculo(userId, veiculo.id);
+    const { error: delErr } = await supabase.from("veiculo_venda" as "veiculos_estoque").delete()
+      .eq("user_id", userId)
+      .eq("veiculo_id", veiculo.id);
+    if (delErr) {
+      setBusy(false);
+      setUndoVendaOpen(false);
+      toast.error("Não foi possível desfazer a venda.");
+      return;
+    }
+    await supabase.from("veiculos_estoque").update({
+      status: "disponivel",
+      vendido_at: null,
+    }).eq("id", veiculo.id);
+    setBusy(false);
+    setUndoVendaOpen(false);
+    toast.success("Venda desfeita. O carro voltou para o estoque.");
+    onSaved();
+    onClose();
   };
 
   if (!veiculo) return null;
@@ -420,7 +460,7 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
               </div>
             </section>
 
-            <section className="space-y-2">
+            <section ref={vendaSectionRef} id="gestao-drawer-venda" className="space-y-2 scroll-mt-4">
               <h3 className="text-sm font-semibold">Venda</h3>
               <GestaoMoneyInput
                 label="Valor venda"
@@ -451,8 +491,13 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
                 Marcar como vendido no estoque
               </label>
               <Button size="sm" disabled={busy} onClick={() => void prepareVenda()}>
-                Registrar venda
+                {hasVendaRegistrada ? "Salvar venda" : "Registrar venda"}
               </Button>
+              {hasVendaRegistrada && (
+                <Button size="sm" variant="destructive" disabled={busy} onClick={() => setUndoVendaOpen(true)}>
+                  Desfazer venda
+                </Button>
+              )}
               {focusnfe.status?.connected && (
                 <Button size="sm" variant="secondary" disabled={busy} onClick={() => setNfeOpen(true)}>
                   Emitir nota fiscal
@@ -541,6 +586,21 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
           onSuccess={onSaved}
         />
       )}
+
+      <AlertDialog open={undoVendaOpen} onOpenChange={setUndoVendaOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Desfazer venda?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O carro volta para o estoque. A venda e a comissão automática serão removidas.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void confirmUndoVenda()}>Desfazer venda</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
         <AlertDialogContent>

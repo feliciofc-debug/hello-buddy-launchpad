@@ -3,7 +3,8 @@ import { Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { hojeSaoPaulo } from "../../../../supabase/functions/_shared/gestao-date-br.ts";
+import { hojeSaoPaulo, intervaloMesAtualSaoPaulo } from "../../../../supabase/functions/_shared/gestao-date-br.ts";
+import { formatGestaoDataBr, isGestaoVeiculoVendido } from "@/lib/gestao-venda-display.ts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,13 +38,16 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 
 type SortKey = "dias" | "lucro" | "preco" | "marca";
+type ListFilter = "estoque" | "vendidos" | "todos";
+
+export type GestaoDrawerOpenOptions = { focusVenda?: boolean };
 
 type Props = {
   veiculos: GestaoVeiculoEnriched[];
   userId: string;
   highlightIds: Set<string>;
   onRefresh: () => void;
-  onOpenDrawer: (v: GestaoVeiculoEnriched) => void;
+  onOpenDrawer: (v: GestaoVeiculoEnriched, options?: GestaoDrawerOpenOptions) => void;
   onQuickDespesa: (v: GestaoVeiculoEnriched) => void;
 };
 
@@ -72,7 +76,7 @@ export function GestaoLucroEstoqueTab({
   onQuickDespesa,
 }: Props) {
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState<string>("all");
+  const [listFilter, setListFilter] = useState<ListFilter>("todos");
   const [sort, setSort] = useState<SortKey>("dias");
   const [editingCompra, setEditingCompra] = useState<Record<string, string>>({});
   const [editingPreco, setEditingPreco] = useState<Record<string, string>>({});
@@ -83,18 +87,19 @@ export function GestaoLucroEstoqueTab({
   const [touchedCompra, setTouchedCompra] = useState<Record<string, boolean>>({});
   const [savingCompra, setSavingCompra] = useState(false);
 
-  const stock = useMemo(() => {
-    let list = veiculos.filter(isActiveStock);
-    if (status !== "all") list = list.filter((v) => v.status === status);
-    if (highlightIds.size) list = list.filter((v) => highlightIds.has(v.id));
-    const term = q.trim().toLowerCase();
-    if (term) {
-      list = list.filter((v) => {
-        const blob = [vehicleLabel(v), v.placa, v.codigo_origem].filter(Boolean).join(" ").toLowerCase();
-        return blob.includes(term);
-      });
-    }
-    list = [...list].sort((a, b) => {
+  const matchesSearch = useCallback((v: GestaoVeiculoEnriched, term: string) => {
+    if (!term) return true;
+    const blob = [vehicleLabel(v), v.placa, v.codigo_origem].filter(Boolean).join(" ").toLowerCase();
+    return blob.includes(term);
+  }, []);
+
+  const sortList = useCallback((list: GestaoVeiculoEnriched[], soldRows: boolean) => {
+    return [...list].sort((a, b) => {
+      if (soldRows) {
+        const da = a.dataVenda ?? "";
+        const db = b.dataVenda ?? "";
+        return db.localeCompare(da);
+      }
       if (sort === "dias") return vehicleDays(b) - vehicleDays(a);
       if (sort === "preco") return (b.preco ?? 0) - (a.preco ?? 0);
       if (sort === "marca") return vehicleLabel(a).localeCompare(vehicleLabel(b));
@@ -102,26 +107,58 @@ export function GestaoLucroEstoqueTab({
       const lb = b.lucro.lucroProjetado ?? -Infinity;
       return lb - la;
     });
-    return list;
-  }, [veiculos, status, q, sort, highlightIds]);
+  }, [sort]);
 
-  const totals = useMemo(() => {
+  const emEstoque = useMemo(() => veiculos.filter(isActiveStock), [veiculos]);
+  const vendidos = useMemo(() => veiculos.filter(isGestaoVeiculoVendido), [veiculos]);
+
+  const tableRows = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    let estoqueRows = emEstoque.filter((v) => matchesSearch(v, term));
+    let vendidoRows = vendidos.filter((v) => matchesSearch(v, term));
+    if (highlightIds.size) {
+      estoqueRows = estoqueRows.filter((v) => highlightIds.has(v.id));
+      vendidoRows = vendidoRows.filter((v) => highlightIds.has(v.id));
+    }
+    estoqueRows = sortList(estoqueRows, false);
+    vendidoRows = sortList(vendidoRows, true);
+
+    if (listFilter === "estoque") return estoqueRows;
+    if (listFilter === "vendidos") return vendidoRows;
+    return [...estoqueRows, ...vendidoRows];
+  }, [emEstoque, vendidos, q, highlightIds, listFilter, matchesSearch, sortList]);
+
+  const totalsEstoque = useMemo(() => {
     let preco = 0;
     let investido = 0;
     let lucro = 0;
-    for (const v of stock) {
+    for (const v of emEstoque) {
       preco += v.preco ?? 0;
       if (!v.lucro.custoCompraPendente && v.lucro.investido != null) {
         investido += v.lucro.investido;
         lucro += v.lucro.lucroProjetado ?? 0;
       }
     }
-    return { preco, investido, lucro, qtd: stock.length };
-  }, [stock]);
+    return { preco, investido, lucro, qtd: emEstoque.length };
+  }, [emEstoque]);
+
+  const vendidosMes = useMemo(() => {
+    const { start, end } = intervaloMesAtualSaoPaulo();
+    let qtd = 0;
+    let faturamento = 0;
+    let lucro = 0;
+    for (const v of vendidos) {
+      if (!v.dataVenda || v.dataVenda < start || v.dataVenda > end) continue;
+      qtd += 1;
+      faturamento += v.valorVenda ?? 0;
+      lucro += v.lucro.lucroLiquido ?? 0;
+    }
+    return { qtd, faturamento, lucro };
+  }, [vendidos]);
 
   const unsavedCompraVeiculos = useMemo(
-    () => stock.filter((v) => isCompraDirty(v, editingCompra)),
-    [stock, editingCompra],
+    () => emEstoque.filter((v) => isCompraDirty(v, editingCompra)),
+    [emEstoque, editingCompra],
   );
 
   useEffect(() => {
@@ -225,10 +262,11 @@ export function GestaoLucroEstoqueTab({
     (precoConfirm.novo < precoConfirm.veiculo.preco * 0.5 ||
       precoConfirm.novo > precoConfirm.veiculo.preco * 2);
 
-  if (!stock.length && !veiculos.some(isActiveStock)) {
+  const hasAnyRow = emEstoque.length > 0 || vendidos.length > 0;
+  if (!hasAnyRow) {
     return (
       <div className="rounded-lg border border-dashed p-12 text-center">
-        <p className="font-medium">Nenhum veículo no estoque ativo</p>
+        <p className="font-medium">Nenhum veículo no estoque</p>
         <p className="mt-1 text-sm text-muted-foreground">
           Cadastre veículos disponíveis ou reservados para acompanhar lucro aqui.
         </p>
@@ -260,14 +298,26 @@ export function GestaoLucroEstoqueTab({
             onChange={(e) => setQ(e.target.value)}
           />
         </div>
-        <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos</SelectItem>
-            <SelectItem value="disponivel">Disponível</SelectItem>
-            <SelectItem value="reservado">Reservado</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex rounded-lg border p-0.5">
+          {(
+            [
+              ["estoque", "Em estoque"],
+              ["vendidos", "Vendidos"],
+              ["todos", "Todos"],
+            ] as const
+          ).map(([key, label]) => (
+            <Button
+              key={key}
+              type="button"
+              size="sm"
+              variant={listFilter === key ? "secondary" : "ghost"}
+              className="h-8"
+              onClick={() => setListFilter(key)}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
         <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
           <SelectTrigger className="w-[160px]"><SelectValue placeholder="Ordenar" /></SelectTrigger>
           <SelectContent>
@@ -290,20 +340,26 @@ export function GestaoLucroEstoqueTab({
               <th className="pb-2 pr-2">Despesas</th>
               <th className="pb-2 pr-2">Preço</th>
               <th className="pb-2 pr-2">Investido</th>
-              <th className="pb-2 pr-2">Lucro proj.</th>
+              <th className="pb-2 pr-2">Lucro</th>
               <th className="pb-2 pr-2">Margem</th>
               <th className="pb-2 pr-2">Dias</th>
               <th className="pb-2">Ações</th>
             </tr>
           </thead>
           <tbody>
-            {stock.map((v) => {
-              const margem = gestaoMargemPct(v.lucro.lucroProjetado, v.preco);
+            {tableRows.map((v) => {
+              const sold = isGestaoVeiculoVendido(v);
+              const margem = sold
+                ? v.lucro.margemPct
+                : gestaoMargemPct(v.lucro.lucroProjetado, v.preco);
+              const lucroCell = sold ? v.lucro.lucroLiquido : v.lucro.lucroProjetado;
               const foto = v.fotos?.[0];
               return (
                 <tr
                   key={v.id}
-                  className={`border-b last:border-0 ${highlightIds.has(v.id) ? "bg-amber-500/5" : ""}`}
+                  className={`border-b last:border-0 ${
+                    sold ? "bg-muted/50" : ""
+                  } ${highlightIds.has(v.id) ? "bg-amber-500/5" : ""}`}
                 >
                   <td className="py-2 pr-2">
                     {foto ? (
@@ -314,7 +370,13 @@ export function GestaoLucroEstoqueTab({
                   </td>
                   <td className="py-2 pr-2 font-medium">
                     <div>{vehicleLabel(v)}</div>
-                    {vendaRegistradaSemVendido(v) && (
+                    {sold && (
+                      <span className="mt-1 inline-block rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-900">
+                        Vendido em {formatGestaoDataBr(v.dataVenda)}
+                        {v.vendedor ? ` — ${v.vendedor}` : ""}
+                      </span>
+                    )}
+                    {!sold && vendaRegistradaSemVendido(v) && (
                       <div className="mt-1 flex flex-wrap items-center gap-1">
                         <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-900">
                           Venda registrada — marcar vendido
@@ -333,38 +395,44 @@ export function GestaoLucroEstoqueTab({
                   </td>
                   <td className="py-2 pr-2">{v.placa ?? "—"}</td>
                   <td className="py-2 pr-2 align-top">
-                    <div className="flex items-start gap-1">
-                      <Input
-                        className={`h-8 w-32 ${
-                          isCompraDirty(v, editingCompra) ? "border-amber-400 ring-1 ring-amber-200" : ""
-                        }`}
-                        placeholder="Compra"
-                        value={compraFieldValue(v, editingCompra)}
-                        onChange={(e) => setEditingCompra({ ...editingCompra, [v.id]: e.target.value })}
-                        onBlur={() => setTouchedCompra((t) => ({ ...t, [v.id]: true }))}
-                      />
-                      {isCompraDirty(v, editingCompra) && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="h-8 shrink-0"
-                          disabled={savingCompra}
-                          onClick={() => void saveCompraInline(v).then((saved) => {
-                            if (saved) {
-                              toast.success("Compra salva.");
-                              onRefresh();
-                            }
-                          })}
-                        >
-                          Salvar
-                        </Button>
-                      )}
-                    </div>
-                    <p className="max-w-[8rem] truncate text-[10px] text-muted-foreground">
-                      {formatGestaoMoneyInputPreview(parseGestaoMoneyBr(compraFieldValue(v, editingCompra)))}
-                    </p>
-                    {touchedCompra[v.id] && isCompraDirty(v, editingCompra) && (
-                      <p className="text-[10px] font-medium text-amber-700">não salvo</p>
+                    {sold ? (
+                      <span>{formatGestaoMoney(v.valorCompra)}</span>
+                    ) : (
+                      <>
+                        <div className="flex items-start gap-1">
+                          <Input
+                            className={`h-8 w-32 ${
+                              isCompraDirty(v, editingCompra) ? "border-amber-400 ring-1 ring-amber-200" : ""
+                            }`}
+                            placeholder="Compra"
+                            value={compraFieldValue(v, editingCompra)}
+                            onChange={(e) => setEditingCompra({ ...editingCompra, [v.id]: e.target.value })}
+                            onBlur={() => setTouchedCompra((t) => ({ ...t, [v.id]: true }))}
+                          />
+                          {isCompraDirty(v, editingCompra) && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-8 shrink-0"
+                              disabled={savingCompra}
+                              onClick={() => void saveCompraInline(v).then((saved) => {
+                                if (saved) {
+                                  toast.success("Compra salva.");
+                                  onRefresh();
+                                }
+                              })}
+                            >
+                              Salvar
+                            </Button>
+                          )}
+                        </div>
+                        <p className="max-w-[8rem] truncate text-[10px] text-muted-foreground">
+                          {formatGestaoMoneyInputPreview(parseGestaoMoneyBr(compraFieldValue(v, editingCompra)))}
+                        </p>
+                        {touchedCompra[v.id] && isCompraDirty(v, editingCompra) && (
+                          <p className="text-[10px] font-medium text-amber-700">não salvo</p>
+                        )}
+                      </>
                     )}
                   </td>
                   <td className="py-2 pr-2">
@@ -377,23 +445,29 @@ export function GestaoLucroEstoqueTab({
                     </button>
                   </td>
                   <td className="py-2 pr-2 align-top">
-                    <Input
-                      className="h-8 w-32"
-                      placeholder="Preço"
-                      value={
-                        editingPreco[v.id] ??
-                        (v.preco != null ? String(v.preco) : "")
-                      }
-                      onChange={(e) => setEditingPreco({ ...editingPreco, [v.id]: e.target.value })}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") requestPrecoConfirm(v);
-                      }}
-                    />
-                    <p className="max-w-[8rem] truncate text-[10px] text-muted-foreground">
-                      {formatGestaoMoneyInputPreview(
-                        parseGestaoMoneyBr(editingPreco[v.id] ?? String(v.preco ?? "")),
-                      )}
-                    </p>
+                    {sold ? (
+                      <span>{formatGestaoMoney(v.preco)}</span>
+                    ) : (
+                      <>
+                        <Input
+                          className="h-8 w-32"
+                          placeholder="Preço"
+                          value={
+                            editingPreco[v.id] ??
+                            (v.preco != null ? String(v.preco) : "")
+                          }
+                          onChange={(e) => setEditingPreco({ ...editingPreco, [v.id]: e.target.value })}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") requestPrecoConfirm(v);
+                          }}
+                        />
+                        <p className="max-w-[8rem] truncate text-[10px] text-muted-foreground">
+                          {formatGestaoMoneyInputPreview(
+                            parseGestaoMoneyBr(editingPreco[v.id] ?? String(v.preco ?? "")),
+                          )}
+                        </p>
+                      </>
+                    )}
                   </td>
                   <td className="py-2 pr-2">
                     {v.lucro.custoCompraPendente ? (
@@ -402,16 +476,40 @@ export function GestaoLucroEstoqueTab({
                       formatGestaoMoney(v.lucro.investido)
                     )}
                   </td>
-                  <td className={`py-2 pr-2 font-medium ${gestaoLucroTone(v.lucro.lucroProjetado)}`}>
-                    {v.lucro.custoCompraPendente ? "—" : formatGestaoMoney(v.lucro.lucroProjetado)}
+                  <td className={`py-2 pr-2 font-medium ${gestaoLucroTone(lucroCell)}`}>
+                    {sold
+                      ? formatGestaoMoney(lucroCell)
+                      : v.lucro.custoCompraPendente
+                        ? "—"
+                        : formatGestaoMoney(lucroCell)}
+                    {sold && (
+                      <span className="block text-[10px] font-normal text-muted-foreground">Lucro final</span>
+                    )}
                   </td>
                   <td className={`py-2 pr-2 ${gestaoLucroTone(margem)}`}>{formatGestaoPct(margem)}</td>
                   <td className="py-2 pr-2">{vehicleDays(v)}</td>
                   <td className="py-2">
                     <div className="flex flex-wrap gap-1">
-                      <Button size="sm" variant="outline" onClick={() => onQuickDespesa(v)}>+ Despesa</Button>
-                      <Button size="sm" variant="outline" onClick={() => onOpenDrawer(v)}>Registrar venda</Button>
-                      <Button size="sm" variant="ghost" onClick={() => onOpenDrawer(v)}>Detalhes</Button>
+                      {sold ? (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onOpenDrawer(v, { focusVenda: true })}
+                          >
+                            Editar venda
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => onOpenDrawer(v)}>Detalhes</Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => onQuickDespesa(v)}>+ Despesa</Button>
+                          <Button size="sm" variant="outline" onClick={() => onOpenDrawer(v, { focusVenda: true })}>
+                            Registrar venda
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => onOpenDrawer(v)}>Detalhes</Button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -420,33 +518,66 @@ export function GestaoLucroEstoqueTab({
           </tbody>
           <tfoot>
             <tr className="border-t font-medium">
-              <td colSpan={5} className="py-2 pr-2">Totais ({totals.qtd})</td>
-              <td className="py-2 pr-2">{formatGestaoMoney(totals.preco)}</td>
-              <td className="py-2 pr-2">{formatGestaoMoney(totals.investido)}</td>
-              <td className={`py-2 pr-2 ${gestaoLucroTone(totals.lucro)}`}>{formatGestaoMoney(totals.lucro)}</td>
+              <td colSpan={5} className="py-2 pr-2">Totais em estoque ({totalsEstoque.qtd})</td>
+              <td className="py-2 pr-2">{formatGestaoMoney(totalsEstoque.preco)}</td>
+              <td className="py-2 pr-2">{formatGestaoMoney(totalsEstoque.investido)}</td>
+              <td className={`py-2 pr-2 ${gestaoLucroTone(totalsEstoque.lucro)}`}>
+                {formatGestaoMoney(totalsEstoque.lucro)}
+              </td>
               <td colSpan={3} />
+            </tr>
+            <tr className="text-sm text-muted-foreground">
+              <td colSpan={11} className="py-2">
+                Vendidos no mês ({vendidosMes.qtd}): faturamento {formatGestaoMoney(vendidosMes.faturamento)}
+                {" · "}
+                lucro{" "}
+                <span className={gestaoLucroTone(vendidosMes.lucro)}>{formatGestaoMoney(vendidosMes.lucro)}</span>
+              </td>
             </tr>
           </tfoot>
         </table>
       </div>
 
       <div className="space-y-3 md:hidden">
-        {stock.map((v) => {
-          const margem = gestaoMargemPct(v.lucro.lucroProjetado, v.preco);
+        {tableRows.map((v) => {
+          const sold = isGestaoVeiculoVendido(v);
+          const margem = sold ? v.lucro.margemPct : gestaoMargemPct(v.lucro.lucroProjetado, v.preco);
+          const lucroVal = sold ? v.lucro.lucroLiquido : v.lucro.lucroProjetado;
           return (
-            <div key={v.id} className="rounded-lg border p-4 space-y-2">
+            <div
+              key={v.id}
+              className={`rounded-lg border p-4 space-y-2 ${sold ? "bg-muted/50" : ""}`}
+            >
               <p className="font-semibold">{vehicleLabel(v)}</p>
+              {sold && (
+                <span className="inline-block rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-900">
+                  Vendido em {formatGestaoDataBr(v.dataVenda)}
+                  {v.vendedor ? ` — ${v.vendedor}` : ""}
+                </span>
+              )}
               <p className="text-xs text-muted-foreground capitalize">{v.status} · {vehicleDays(v)} dias</p>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <span>Preço: {formatGestaoMoney(v.preco)}</span>
-                <span className={gestaoLucroTone(v.lucro.lucroProjetado)}>
-                  Lucro: {v.lucro.custoCompraPendente ? "Pendente" : formatGestaoMoney(v.lucro.lucroProjetado)}
+                <span className={gestaoLucroTone(lucroVal)}>
+                  {sold ? "Lucro final" : "Lucro"}:{" "}
+                  {!sold && v.lucro.custoCompraPendente ? "Pendente" : formatGestaoMoney(lucroVal)}
                 </span>
               </div>
               <p className={`text-sm ${gestaoLucroTone(margem)}`}>Margem {formatGestaoPct(margem)}</p>
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={() => onOpenDrawer(v)}>Detalhes</Button>
-                <Button size="sm" variant="outline" onClick={() => onQuickDespesa(v)}>+ Despesa</Button>
+                {sold ? (
+                  <>
+                    <Button size="sm" variant="outline" onClick={() => onOpenDrawer(v, { focusVenda: true })}>
+                      Editar venda
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => onOpenDrawer(v)}>Detalhes</Button>
+                  </>
+                ) : (
+                  <>
+                    <Button size="sm" variant="outline" onClick={() => onOpenDrawer(v)}>Detalhes</Button>
+                    <Button size="sm" variant="outline" onClick={() => onQuickDespesa(v)}>+ Despesa</Button>
+                  </>
+                )}
               </div>
             </div>
           );

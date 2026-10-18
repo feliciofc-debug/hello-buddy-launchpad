@@ -48,6 +48,7 @@ export default function GestaoLucroPage() {
   const [activeAlert, setActiveAlert] = useState<GestaoLucroAlertKind | null>(null);
   const [competencia, setCompetencia] = useState(competenciaFromDate());
   const [drawerVehicle, setDrawerVehicle] = useState<GestaoVeiculoEnriched | null>(null);
+  const [drawerFocusVenda, setDrawerFocusVenda] = useState(false);
   const [despesaOpen, setDespesaOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [despesaPreselect, setDespesaPreselect] = useState<string | null>(null);
@@ -129,6 +130,19 @@ export default function GestaoLucroPage() {
     setEstoqueHojeRefreshKey((k) => k + 1);
   };
 
+  const openDrawer = useCallback((
+    v: GestaoVeiculoEnriched,
+    options?: { focusVenda?: boolean },
+  ) => {
+    setDrawerVehicle(v);
+    setDrawerFocusVenda(!!options?.focusVenda);
+  }, []);
+
+  const closeDrawer = useCallback(() => {
+    setDrawerVehicle(null);
+    setDrawerFocusVenda(false);
+  }, []);
+
   const focusConnected = focusnfe.loading ? null : !!focusnfe.status?.connected;
   const zapsignConnected = !!zapsign.status?.connected;
 
@@ -176,7 +190,7 @@ export default function GestaoLucroPage() {
 
   const onPickVeiculo = (v: GestaoVeiculoEnriched) => {
     if (pickerMode === "venda") {
-      setDrawerVehicle(v);
+      openDrawer(v);
     } else if (pickerMode === "nota") {
       setNfeVeiculo(v);
     } else if (pickerMode === "contrato") {
@@ -289,6 +303,13 @@ export default function GestaoLucroPage() {
               alerts={alerts}
               activeKind={activeAlert}
               onSelect={onAlertSelect}
+              onCorrigirComissao={(id) => {
+                const v = veiculos.find((x) => x.id === id);
+                if (!v) return;
+                setActiveAlert("lucro_negativo_comissao");
+                setTab("estoque");
+                openDrawer(v, { focusVenda: true });
+              }}
             />
 
             <GestaoTabBar
@@ -304,7 +325,7 @@ export default function GestaoLucroPage() {
                 userId={userId}
                 highlightIds={highlightIds}
                 onRefresh={refreshAll}
-                onOpenDrawer={setDrawerVehicle}
+                onOpenDrawer={openDrawer}
                 onQuickDespesa={(v) => {
                   setDespesaPreselect(v.id);
                   setDespesaOpen(true);
@@ -312,7 +333,12 @@ export default function GestaoLucroPage() {
               />
             ))}
 
-            {tabPanel("vendidos", <GestaoLucroVendidosTab veiculos={veiculos} />)}
+            {tabPanel("vendidos", (
+              <GestaoLucroVendidosTab
+                veiculos={veiculos}
+                onEditVenda={(v) => openDrawer(v, { focusVenda: true })}
+              />
+            ))}
             {tabPanel("despesas", <GestaoLucroDespesasTab despesas={despesasFlat} veiculos={veiculos} />)}
             {tabPanel("equipe", userId && (
               <GestaoEquipeTab userId={userId} veiculos={veiculos} />
@@ -409,7 +435,8 @@ export default function GestaoLucroPage() {
             open={!!drawerVeiculo}
             veiculo={drawerVeiculo}
             userId={userId}
-            onClose={() => setDrawerVehicle(null)}
+            focusVenda={drawerFocusVenda}
+            onClose={closeDrawer}
             onSaved={refreshAll}
           />
           <GestaoBatchDespesaDialog

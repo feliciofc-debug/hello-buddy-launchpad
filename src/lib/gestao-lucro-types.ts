@@ -48,4 +48,5 @@ export type GestaoLucroBundle = {
 export type GestaoLucroAlertKind =
   | "sem_custo_compra"
   | "parado_60"
-  | "margem_baixa";
+  | "margem_baixa"
+  | "lucro_negativo_comissao";
