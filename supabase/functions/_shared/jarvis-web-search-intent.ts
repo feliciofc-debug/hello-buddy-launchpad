@@ -36,6 +36,8 @@ export type DetectWebSearchIntentOpts = {
   ownerMessageOver600?: boolean;
 };
 
+import { isGestaoLojaDataQuestion } from "./jarvis-gestao-data-intent.ts";
+
 export function detectWebSearchIntent(
   text: string,
   opts: DetectWebSearchIntentOpts = {},
@@ -44,6 +46,7 @@ export function detectWebSearchIntent(
   const raw = typeof text === "string" ? text.trim() : "";
   if (!raw) return null;
   if (opts.ownerMessageOver600 && raw.length > 600) return null;
+  if (isGestaoLojaDataQuestion(raw)) return null;
 
   const t = normalizePt(raw);
 

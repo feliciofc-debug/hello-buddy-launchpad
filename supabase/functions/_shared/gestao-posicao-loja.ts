@@ -78,10 +78,18 @@ export function formatPosicaoMoney(value: number): string {
   return formatGestaoMoney(value);
 }
 
-function mesNomePt(competencia: string): string {
-  const [y, m] = competencia.split("-").map(Number);
-  const d = new Date(y, (m ?? 1) - 1, 1);
-  return d.toLocaleString("pt-BR", { month: "long", timeZone: "America/Sao_Paulo" });
+export function mesNomePt(competencia: string): string {
+  const [ys, ms] = competencia.split("-");
+  const y = Number(ys);
+  const m = Number(ms);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return competencia;
+  const d = new Date(Date.UTC(y, m - 1, 15));
+  return d.toLocaleString("pt-BR", { month: "long", timeZone: "UTC" });
+}
+
+export function carrosLabel(qtd: number): string {
+  const n = Math.round(Number(qtd) || 0);
+  return n === 1 ? "1 carro" : `${n} carros`;
 }
 
 function formatGeradoEm(agora: Date): string {
@@ -482,7 +490,7 @@ export function formatPosicaoLojaWhatsApp(facts: PosicaoLojaFacts): string {
   lines.push("");
   lines.push(`💰 MÊS (${facts.mesLabel})`);
   lines.push(
-    `Vendidos: ${facts.mes.qtdVendas} carros · ${formatPosicaoMoney(facts.mes.faturamento)}`,
+    `Vendidos: ${carrosLabel(facts.mes.qtdVendas)} · ${formatPosicaoMoney(facts.mes.faturamento)}`,
   );
   const margemTxt = facts.mes.margemCarrosPct != null
     ? ` (${facts.mes.margemCarrosPct.toFixed(1).replace(".", ",")}%)`
@@ -504,7 +512,7 @@ export function formatPosicaoLojaWhatsApp(facts: PosicaoLojaFacts): string {
     lines.push("👥 VENDEDORES");
     for (const v of facts.vendedoresTop) {
       lines.push(
-        `${v.nome}: ${v.qtd} carros · ${formatPosicaoMoney(v.faturamento)} · comissão ${formatGestaoMoney(v.comissao)}`,
+        `${v.nome}: ${carrosLabel(v.qtd)} · ${formatPosicaoMoney(v.faturamento)} · comissão ${formatGestaoMoney(v.comissao)}`,
       );
     }
   }
@@ -512,7 +520,7 @@ export function formatPosicaoLojaWhatsApp(facts: PosicaoLojaFacts): string {
   lines.push("");
   lines.push("🚗 ESTOQUE");
   lines.push(
-    `${facts.estoque.qtd} carros · ${formatPosicaoMoney(facts.estoque.valorAnunciado)} anunciado · lucro projetado ${formatPosicaoMoney(facts.estoque.lucroProjetado)}`,
+    `${carrosLabel(facts.estoque.qtd)} · ${formatPosicaoMoney(facts.estoque.valorAnunciado)} anunciado · lucro projetado ${formatPosicaoMoney(facts.estoque.lucroProjetado)}`,
   );
   if (facts.estoque.parados90Qtd > 0) {
     lines.push(
@@ -623,7 +631,7 @@ export function formatRelatorioVendedoresWhatsApp(facts: RelatorioVendedoresFact
   facts.ranking.forEach((r, i) => {
     lines.push(`${i + 1}. ${r.nome}`);
     lines.push(
-      `   ${r.qtd} carros · ${formatPosicaoMoney(r.faturamento)} · lucro gerado ${formatPosicaoMoney(r.lucroGerado)}`,
+      `   ${carrosLabel(r.qtd)} · ${formatPosicaoMoney(r.faturamento)} · lucro gerado ${formatPosicaoMoney(r.lucroGerado)}`,
     );
     let comLine = `   Comissão: ${formatGestaoMoney(r.comissao)}`;
     if (r.vendedor_id) {
@@ -643,7 +651,7 @@ export function formatRelatorioVendedoresWhatsApp(facts: RelatorioVendedoresFact
     )[0];
     if (best) destaque = best.nome;
   }
-  lines.push(`Total: ${totalCarros} carros · comissões ${formatGestaoMoney(totalCom)}`);
+  lines.push(`Total: ${carrosLabel(totalCarros)} · comissões ${formatGestaoMoney(totalCom)}`);
   if (destaque) lines.push(`Destaque: ${destaque} (maior lucro por carro)`);
   let text = lines.join("\n");
   if (text.length > 1500) text = `${text.slice(0, 1497)}…`;
@@ -674,7 +682,7 @@ export async function formatVendedorDetalheWhatsApp(
   const metaLine = m
     ? ` Meta: ${Math.round(m.realizado)} de ${m.meta} (${Math.round(m.pct)}%).`
     : "";
-  return `${v.nome} em ${facts.mesLabel}: ${row.qtd} carro(s), faturamento ${formatPosicaoMoney(row.faturamento)}, lucro gerado ${formatPosicaoMoney(row.lucroGerado)}, comissão ${formatGestaoMoney(row.comissao)}.${metaLine}`;
+  return `${v.nome} em ${facts.mesLabel}: ${carrosLabel(row.qtd)}, faturamento ${formatPosicaoMoney(row.faturamento)}, lucro gerado ${formatPosicaoMoney(row.lucroGerado)}, comissão ${formatGestaoMoney(row.comissao)}.${metaLine}`;
 }
 
 /** Painel Jarvis: mesmo conteúdo, sem emojis duplicados no polish (texto já formatado). */

@@ -118,6 +118,14 @@ import {
 } from "../_shared/jarvis-gemini-message-safety.ts";
 import { detectWebSearchIntent } from "../_shared/jarvis-web-search-intent.ts";
 import { isGestaoAuthorizedPhone } from "../_shared/gestao-auth-phone.ts";
+import { isGestaoLojaDataQuestion } from "../_shared/jarvis-gestao-data-intent.ts";
+import {
+  CONSULTAR_DADOS_LOJA_TOOL,
+  filterGestaoConsultaTools,
+  GESTAO_CONSULTA_FALLBACK_TEXT,
+  GESTAO_CONSULTA_SYSTEM_BLOCK,
+  runConsultarDadosLojaTool,
+} from "../_shared/gestao-consulta-tool.ts";
 import {
   extractVitrineInteractiveId,
   formatCarouselVitrineButtonText,
@@ -13170,6 +13178,7 @@ const TOOLS = [
       parameters: { type: "object", properties: {} },
     },
   },
+  CONSULTAR_DADOS_LOJA_TOOL,
   {
     type: "function",
     function: {
@@ -17067,6 +17076,7 @@ async function runTool(
     vertical?: InboundVertical;
     explicitFipe?: boolean;
     verticalSegment?: string | null;
+    gestaoConsultaEnabled?: boolean;
   },
 ): Promise<{
   result: string;
@@ -17074,6 +17084,12 @@ async function runTool(
   interactiveButtons?: WhatsAppInteractiveButtons;
   interactiveList?: WhatsAppInteractiveList;
 }> {
+  if (name === "consultar_dados_loja") {
+    if (!ctx.gestaoConsultaEnabled) {
+      return { result: JSON.stringify({ erro: "nao_autorizado" }) };
+    }
+    return { result: await runConsultarDadosLojaTool(sb, ctx.userId, args ?? {}) };
+  }
   if (OWNER_ONLY_TOOL_NAMES.has(name) && !isOwner(ctx)) {
     return { result: "Essa ferramenta é restrita ao responsável da conta." };
   }
@@ -17302,6 +17318,7 @@ async function callGemini(
     vertical?: InboundVertical;
     explicitFipe?: boolean;
     verticalSegment?: string | null;
+    gestaoConsultaEnabled?: boolean;
   },
 ): Promise<{
   text: string;
@@ -17317,6 +17334,8 @@ async function callGemini(
   let forwardAttempted = false;
   const activeVertical = toolCtx.vertical ?? "geral";
   const senderIsOwner = isOwner(toolCtx);
+  const gestaoConsultaEnabled = toolCtx.gestaoConsultaEnabled === true;
+  let gestaoLojaDataTurn = false;
   const senderIsAmzProspect = !senderIsOwner
     && toolCtx.userId === ADMIN_AMZ_USER_ID;
   const multimodalText = Array.isArray(userContent)
@@ -21419,6 +21438,7 @@ async function callGemini(
 
     // Texto puro do turno (turno multimodal chega como array de partes).
     const userTextOnly = typeof userContent === "string" ? userContent : "";
+    gestaoLojaDataTurn = isGestaoLojaDataQuestion(userTextOnly);
 
     const forcedContextBlocks: string[] = [];
 
@@ -21508,7 +21528,7 @@ async function callGemini(
     ? vehicleSpecialistAllowsTool
     : (toolName: string) =>
       generalSpecialistAllowsTool(toolName, toolCtx.explicitFipe === true);
-  const availableTools = filterToolsForTenant(TOOLS, {
+  let availableTools = filterToolsForTenant(TOOLS, {
     userId: toolCtx.userId,
     isOwner: isOwner(toolCtx),
     adminAmzUserId: ADMIN_AMZ_USER_ID,
@@ -21517,6 +21537,10 @@ async function callGemini(
       !unavailableForRestrictedNonOwner.has(tool?.function?.name)) &&
     verticalAllowsTool(tool?.function?.name)
   );
+  availableTools = filterGestaoConsultaTools(availableTools, gestaoConsultaEnabled);
+  if (gestaoConsultaEnabled) {
+    messages[0].content = `${messages[0].content}\n\n${GESTAO_CONSULTA_SYSTEM_BLOCK}`;
+  }
   const requiredProspectSiteUrl = senderIsAmzProspect
       && typeof userContent === "string"
     ? extractWhatsAppBrandSiteUrl(userContent)
@@ -21971,7 +21995,15 @@ async function callGemini(
   }
   const fallbackModelText = pendingDemoSiteBrandResult
     ? whatsAppDemoResponseWithBrand("", pendingDemoSiteBrandResult)
+    : gestaoLojaDataTurn && gestaoConsultaEnabled
+    ? GESTAO_CONSULTA_FALLBACK_TEXT
     : "Desculpa, não consegui concluir a pesquisa agora.";
+  if (gestaoLojaDataTurn && gestaoConsultaEnabled && !pendingDemoSiteBrandResult) {
+    const safeHint = (typeof userContent === "string" ? userContent : "")
+      .slice(0, 160)
+      .replace(/\d{8,}/g, "****");
+    console.log("[processor][gestao_consulta_fallback]", { hint: safeHint, reason: "empty_model_after_tools" });
+  }
   const fallbackText = appendConfirmCommand(fallbackModelText);
   return {
     text: pendingMediaCodeBlock ? `${fallbackText}<<SPLIT>>${pendingMediaCodeBlock}` : fallbackText,
@@ -25902,7 +25934,8 @@ Regras:
           vehicleStockOwnerBlock =
             "\n\nESTOQUE DE VEÍCULOS (DONO — REGRA FIXA):\n" +
             "- Os automóveis cadastrados ficam em veiculos_estoque (menu Veículos), NÃO na tabela produtos.\n" +
-            "- Para totais, busca por modelo/marca ou vendidos, chame consultar_estoque (retorna veiculos_estoque).\n" +
+            "- Para vendidos, estoque, lucro, despesas e contas da loja, chame consultar_dados_loja (números reais do sistema).\n" +
+            "- consultar_estoque é catálogo produtos legado; veículos usam consultar_dados_loja.\n" +
             "- Nunca responda \"não encontrei veículos no catálogo de produtos\" — produtos e veículos são bases separadas.";
         }
       } catch (e) {
@@ -26687,6 +26720,13 @@ Regras:
         interactiveButtons = metaAdsQuestionarioResult.interactiveButtons;
         metaAdsSummaryDraftId = metaAdsQuestionarioResult.summaryDraftId;
       } else {
+        let gestaoConsultaEnabled = false;
+        try {
+          const gestaoAuthConsulta = await loadGestaoAuthContext(sb, userId);
+          gestaoConsultaEnabled = isGestaoAuthorizedPhone(row.from_number, gestaoAuthConsulta);
+        } catch (e) {
+          console.warn("[gestao-consulta][auth]", (e as Error).message);
+        }
         const aiResult = await callGemini(systemPromptWithDate, history, userContent, media.length > 0, {
           userId,
           fromNumber: row.from_number,
@@ -26696,6 +26736,7 @@ Regras:
           vertical: textVerticalDecision.route,
           explicitFipe: textVerticalDecision.explicitFipe,
           verticalSegment: textVerticalDecision.effectiveSegment,
+          gestaoConsultaEnabled,
           demoTestPhones: Array.isArray((agent as any).demo_test_phones)
             ? (agent as any).demo_test_phones
             : [],
