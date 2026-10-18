@@ -38,16 +38,25 @@ export function candidatosFromDespesas(
 }
 
 export function candidatosFromVendas(
-  vendas: Array<{ veiculo_id: string; data_venda: string; valor_venda: number }>,
+  vendas: Array<{
+    veiculo_id: string;
+    data_venda: string;
+    valor_venda: number;
+    marca?: string | null;
+    modelo?: string | null;
+  }>,
 ): GestaoConciliacaoCandidato[] {
-  return vendas.map((v) => ({
-    tipo: "veiculo_venda",
-    refId: v.veiculo_id,
-    data: v.data_venda,
-    valor: Number(v.valor_venda),
-    descricao: "Venda veículo",
-    liquidado: true,
-  }));
+  return vendas.map((v) => {
+    const label = [v.marca, v.modelo].filter(Boolean).join(" ").trim();
+    return {
+      tipo: "veiculo_venda",
+      refId: v.veiculo_id,
+      data: v.data_venda,
+      valor: Number(v.valor_venda),
+      descricao: label ? `Venda ${label}` : "Venda veículo",
+      liquidado: true,
+    };
+  });
 }
 
 export function candidatosFromComissaoExtrato(

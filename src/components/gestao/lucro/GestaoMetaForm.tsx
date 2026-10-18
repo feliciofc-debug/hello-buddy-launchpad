@@ -71,7 +71,7 @@ export function GestaoMetaForm({ meta, onChange, onSave, metaLabel }: Props) {
       </div>
 
       <div>
-        <Label className="text-xs">Bônus por carro parado +90 dias vendido (R$)</Label>
+        <Label className="text-xs">Bônus por vender carro parado há mais de 90 dias (R$)</Label>
         <GestaoMoneyInput
           value={String(meta.bonusCarroParado90)}
           onChange={(raw) => {

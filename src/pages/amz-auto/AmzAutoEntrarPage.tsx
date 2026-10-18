@@ -62,7 +62,7 @@ export default function AmzAutoEntrarPage() {
     }
 
     writeAmzAutoModePreference(true);
-    navigate("/veiculos");
+    navigate("/dashboard");
   };
 
   const handleSubmit = async (event: FormEvent) => {

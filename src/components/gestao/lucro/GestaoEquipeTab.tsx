@@ -57,6 +57,7 @@ export function GestaoEquipeTab({ userId, veiculos }: Props) {
   const [regrasVendedor, setRegrasVendedor] = useState<Record<string, GestaoComissaoRegraJson>>({});
   const [regraPropria, setRegraPropria] = useState<Record<string, boolean>>({});
   const [meta, setMeta] = useState<GestaoMetaConfigJson>(defaultMeta);
+  const [metaSalva, setMetaSalva] = useState(false);
   const [metaVendedorId, setMetaVendedorId] = useState<string>("");
 
   const reload = useCallback(async () => {
@@ -71,6 +72,7 @@ export function GestaoEquipeTab({ userId, veiculos }: Props) {
     setComissaoMap(cm);
     setRegraPadrao(regra);
     setMeta(metaCfg ?? defaultMeta);
+    setMetaSalva(metaCfg != null);
 
     const flags: Record<string, boolean> = {};
     const porVendedor: Record<string, GestaoComissaoRegraJson> = {};
@@ -159,6 +161,7 @@ export function GestaoEquipeTab({ userId, veiculos }: Props) {
 
   const saveMeta = async () => {
     await saveMetaMensal(userId, competencia, metaVendedorId || null, meta);
+    setMetaSalva(true);
     toast.success("Meta salva.");
   };
 
@@ -280,7 +283,7 @@ export function GestaoEquipeTab({ userId, veiculos }: Props) {
         <div ref={vendedorFormRef} className="space-y-3 rounded-lg border p-4">
           <h3 className="font-semibold">Cadastro de vendedores</h3>
           <Input placeholder="Nome" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
-          <Input placeholder="WhatsApp E.164" value={form.whatsapp} onChange={(e) => setForm({ ...form, whatsapp: e.target.value })} />
+          <Input placeholder="WhatsApp com DDD" value={form.whatsapp} onChange={(e) => setForm({ ...form, whatsapp: e.target.value })} />
           <label className="flex items-center gap-2 text-sm">
             <Checkbox checked={form.is_gerente} onCheckedChange={(c) => setForm({ ...form, is_gerente: !!c })} />
             É gerente
@@ -330,6 +333,11 @@ export function GestaoEquipeTab({ userId, veiculos }: Props) {
               <option key={v.id} value={v.id}>{v.nome}</option>
             ))}
           </select>
+          {!metaSalva && (
+            <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40">
+              Meta sugerida — clique em Salvar para ativar
+            </p>
+          )}
           <GestaoMetaForm meta={meta} onChange={setMeta} onSave={() => void saveMeta()} />
           <div>
             <p className="text-sm text-muted-foreground">

@@ -701,7 +701,11 @@ export default function DashboardMetricas() {
               ))}
             </div>
           ) : (
-            <DashboardOverview metrics={metricasDash} period={periodo} />
+            <DashboardOverview
+              metrics={metricasDash}
+              period={periodo}
+              hideProdutosCatalog={effectiveAmzAutoMode}
+            />
           )}
         </div>
       </main>

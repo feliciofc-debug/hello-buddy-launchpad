@@ -11,6 +11,10 @@ import {
   veiculosToDreVendas,
 } from "./gestao-financeiro-load.ts";
 import type { GestaoVeiculoEnriched } from "./gestao-lucro-types.ts";
+import {
+  downloadRelatorioMesPdf,
+  type GestaoRelatorioConciliacaoResumo,
+} from "./gestao-relatorio-mes-pdf.ts";
 
 export function buildContadorPacoteFromApp(
   competencia: string,
@@ -114,7 +118,28 @@ export function downloadContadorXlsx(pacote: GestaoContadorPacote, filename: str
   XLSX.writeFile(wb, filename);
 }
 
-export function downloadContadorPdf(pacote: GestaoContadorPacote, filename: string) {
+export function downloadContadorPdf(
+  pacote: GestaoContadorPacote,
+  filename: string,
+  opts?: {
+    veiculos?: GestaoVeiculoEnriched[];
+    contas?: GestaoContaLancamento[];
+    conciliacao?: GestaoRelatorioConciliacaoResumo;
+  },
+) {
+  if (opts?.veiculos && opts?.contas) {
+    downloadRelatorioMesPdf(
+      {
+        competencia: pacote.competencia,
+        nomeEmpresa: pacote.nomeEmpresa,
+        veiculos: opts.veiculos,
+        contas: opts.contas,
+        conciliacao: opts.conciliacao,
+      },
+      filename,
+    );
+    return;
+  }
   const doc = new jsPDF();
   doc.setFontSize(16);
   doc.text(pacote.nomeEmpresa || "Gestão", 14, 18);

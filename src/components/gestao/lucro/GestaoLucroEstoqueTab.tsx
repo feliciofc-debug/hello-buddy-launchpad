@@ -501,6 +501,18 @@ export function GestaoLucroEstoqueTab({
                           </Button>
                           <Button size="sm" variant="ghost" onClick={() => onOpenDrawer(v)}>Detalhes</Button>
                         </>
+                      ) : vendaRegistradaSemVendido(v) ? (
+                        <>
+                          <Button
+                            size="default"
+                            className="h-9 px-4 font-semibold"
+                            onClick={() => void markSoldQuick(v)}
+                          >
+                            Marcar vendido
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => onQuickDespesa(v)}>+ Despesa</Button>
+                          <Button size="sm" variant="ghost" onClick={() => onOpenDrawer(v)}>Detalhes</Button>
+                        </>
                       ) : (
                         <>
                           <Button size="sm" variant="outline" onClick={() => onQuickDespesa(v)}>+ Despesa</Button>
@@ -571,6 +583,13 @@ export function GestaoLucroEstoqueTab({
                       Editar venda
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => onOpenDrawer(v)}>Detalhes</Button>
+                  </>
+                ) : vendaRegistradaSemVendido(v) ? (
+                  <>
+                    <Button className="w-full font-semibold" onClick={() => void markSoldQuick(v)}>
+                      Marcar vendido
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => onOpenDrawer(v)}>Detalhes</Button>
                   </>
                 ) : (
                   <>

@@ -1,4 +1,8 @@
-import { gestaoOperacionalCategoriaLabel } from "./gestao-operacional-categorias.ts";
+import {
+  GESTAO_CATEGORIAS_PAGAR,
+  GESTAO_CATEGORIAS_RECEBER,
+  gestaoOperacionalCategoriaLabel,
+} from "./gestao-operacional-categorias.ts";
 
 const HINTS: Record<string, string[]> = {
   aluguel: ["alug", "locac"],
@@ -13,11 +17,24 @@ const HINTS: Record<string, string[]> = {
   impostos: ["imposto", "darf", "gps", "inss", "simples"],
   manutencao_loja: ["manutenc", "predial"],
   bonus_vendedores: ["bonus", "bônus", "comiss"],
+  tarifas_bancarias: ["tarifa", "pacote de servi", "iof", "juros"],
   financiamento_receber: ["financ", "parcela"],
   venda_prazo: ["venda", "receb"],
   outros_recebimento: ["receb"],
   outros: [],
 };
+
+export function suggestCategoriaFromExtrato(
+  descricaoExtrato: string,
+  tipo: "pagar" | "receber",
+): string {
+  const cats = tipo === "pagar" ? GESTAO_CATEGORIAS_PAGAR : GESTAO_CATEGORIAS_RECEBER;
+  for (const cat of cats) {
+    if (cat === "outros" || cat === "outros_recebimento") continue;
+    if (categoriaCompativelComExtrato(descricaoExtrato, cat)) return cat;
+  }
+  return tipo === "pagar" ? "outros" : "outros_recebimento";
+}
 
 export function categoriaCompativelComExtrato(descricaoExtrato: string, categoria?: string): boolean {
   if (!categoria) return false;
