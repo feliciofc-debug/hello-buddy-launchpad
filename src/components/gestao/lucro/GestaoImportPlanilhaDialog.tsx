@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
+import { hojeSaoPaulo, formatYmdSaoPaulo } from "../../../../supabase/functions/_shared/gestao-date-br.ts";
 import {
   Dialog,
   DialogContent,
@@ -148,7 +149,7 @@ export function GestaoImportPlanilhaDialog({
         const valor = typeof rawVal === "number"
           ? parseGestaoMoneyBr(rawVal)
           : parseGestaoMoneyField(String(rawVal));
-        const data = pick(row, ["data_compra", "data", "Data"]) || new Date().toISOString().slice(0, 10);
+        const data = pick(row, ["data_compra", "data", "Data"]) || hojeSaoPaulo();
         if (valor == null) {
           pr.error = "valor_compra inválido";
         } else {
@@ -165,7 +166,7 @@ export function GestaoImportPlanilhaDialog({
         const valor = typeof rawVal === "number"
           ? parseGestaoMoneyBr(rawVal)
           : parseGestaoMoneyField(String(rawVal));
-        const data = pick(row, ["data", "Data"]) || new Date().toISOString().slice(0, 10);
+        const data = pick(row, ["data", "Data"]) || hojeSaoPaulo();
         const categoria = pick(row, ["categoria", "Categoria"]) || "outros";
         if (valor == null) {
           pr.error = "valor inválido";

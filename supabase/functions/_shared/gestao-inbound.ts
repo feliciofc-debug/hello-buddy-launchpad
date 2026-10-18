@@ -1,5 +1,6 @@
 import { calcGestaoLucro } from "./gestao-lucro-calc.ts";
 import { formatGestaoMoney } from "./gestao-format.ts";
+import { hojeSaoPaulo, intervaloCompetencia, intervaloMesAtualSaoPaulo } from "./gestao-date-br.ts";
 import {
   isGestaoAuthorizedPhone,
   loadGestaoAuthContext,
@@ -137,9 +138,7 @@ async function loadComissaoMesMap(
   competencia: string,
 ): Promise<Map<string, number>> {
   const client = sb as GestaoDb;
-  const [y, m] = competencia.split("-").map(Number);
-  const start = `${competencia}-01`;
-  const end = new Date(y, m, 0).toISOString().slice(0, 10);
+  const { start, end } = intervaloCompetencia(competencia);
   const { data: vendas } = await client.from("veiculo_venda").select("veiculo_id")
     .eq("user_id", userId).gte("data_venda", start).lte("data_venda", end);
   const ids = (vendas ?? []).map((v: { veiculo_id: string }) => v.veiculo_id);
@@ -243,8 +242,7 @@ async function fetchVendaRaioxVeiculo(
 
 async function fetchPioresNegociosMes(sb: unknown, userId: string): Promise<string> {
   const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+  const { start, end } = intervaloMesAtualSaoPaulo(now);
   const client = sb as GestaoDb;
   const vehicles = await loadVehicles(sb, userId);
   const byId = new Map(vehicles.map((v) => [v.id, v]));
@@ -326,9 +324,7 @@ async function loadContasInbound(sb: unknown, userId: string): Promise<GestaoCon
 }
 
 async function loadVendasDreMes(sb: unknown, userId: string, competencia: string): Promise<GestaoVendaDreLine[]> {
-  const start = `${competencia}-01`;
-  const [y, m] = competencia.split("-").map(Number);
-  const end = new Date(y, m, 0).toISOString().slice(0, 10);
+  const { start, end } = intervaloCompetencia(competencia);
   const client = sb as GestaoDb;
   const { data: vendas } = await client.from("veiculo_venda").select("veiculo_id, valor_venda, data_venda")
     .eq("user_id", userId).gte("data_venda", start).lte("data_venda", end);
@@ -356,8 +352,7 @@ async function loadVendasDreMes(sb: unknown, userId: string, competencia: string
 
 async function fetchLucroMes(sb: unknown, userId: string): Promise<string> {
   const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+  const { start, end } = intervaloMesAtualSaoPaulo(now);
   const client = sb as GestaoDb;
   const { data: vendas } = await client.from("veiculo_venda").select("veiculo_id, valor_venda")
     .eq("user_id", userId).gte("data_venda", start).lte("data_venda", end);
@@ -483,7 +478,7 @@ async function persistDraft(
   veiculoId: string,
   draft: Record<string, unknown>,
 ): Promise<string> {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = hojeSaoPaulo();
   const client = sb as GestaoDb;
 
   if (action === "despesa") {
@@ -907,7 +902,7 @@ export async function tryProcessGestaoLucroInbound(input: {
   }
 
   const competencia = competenciaFromDate();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = hojeSaoPaulo();
 
   if (intent.kind === "contas_amanha") {
     const contas = await loadContasInbound(input.sb, input.userId);
@@ -992,9 +987,7 @@ export async function tryProcessGestaoLucroInbound(input: {
 
   if (intent.kind === "notas_mes") {
     const client = input.sb as GestaoDb;
-    const start = `${competencia}-01`;
-    const [y, m] = competencia.split("-").map(Number);
-    const end = new Date(y, m, 0).toISOString().slice(0, 10);
+    const { start, end } = intervaloCompetencia(competencia);
     const { data } = await client.from("gestao_nfe").select("status, authorized_at, created_at")
       .eq("user_id", input.userId);
     const rows = (data ?? []).filter((r: { authorized_at: string | null; created_at: string }) => {

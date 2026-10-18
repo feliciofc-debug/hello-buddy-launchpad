@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { hojeSaoPaulo, formatYmdSaoPaulo } from "../../../supabase/functions/_shared/gestao-date-br.ts";
 import {
   Select,
   SelectContent,
@@ -32,19 +33,19 @@ export function VeiculoGestaoLucroPanel(props: Props) {
   const [busy, setBusy] = useState(false);
   const [compra, setCompra] = useState({
     valor: "",
-    data: new Date().toISOString().slice(0, 10),
+    data: hojeSaoPaulo(),
     origem: "compra",
     fornecedor: "",
   });
   const [despesaForm, setDespesaForm] = useState({
     valor: "",
-    data: new Date().toISOString().slice(0, 10),
+    data: hojeSaoPaulo(),
     categoria: "outros",
     descricao: "",
   });
   const [venda, setVenda] = useState({
     valor: "",
-    data: new Date().toISOString().slice(0, 10),
+    data: hojeSaoPaulo(),
     vendedor: "",
     forma: "",
     marcarVendido: false,

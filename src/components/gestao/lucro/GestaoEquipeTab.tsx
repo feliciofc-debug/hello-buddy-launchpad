@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import type { GestaoVeiculoEnriched } from "@/lib/gestao-lucro-types.ts";
+import { hojeSaoPaulo, formatYmdSaoPaulo } from "../../../../supabase/functions/_shared/gestao-date-br.ts";
 import {
   competenciaFromDate,
   loadComissaoAutoMes,
@@ -85,9 +86,7 @@ export function GestaoEquipeTab({ userId, veiculos }: Props) {
   }, [reload]);
 
   const vendasLines = useMemo(() => {
-    const [y, m] = competencia.split("-").map(Number);
-    const start = `${competencia}-01`;
-    const end = new Date(y, m, 0).toISOString().slice(0, 10);
+    const { start, end } = intervaloCompetencia(competencia);
     return veiculos
       .filter((v) => v.dataVenda && v.dataVenda >= start && v.dataVenda <= end)
       .map((v) => ({
@@ -168,7 +167,7 @@ export function GestaoEquipeTab({ userId, veiculos }: Props) {
       competencia,
       valor_comissao: valor,
       valor_pago: valor,
-      pago_em: new Date().toISOString().slice(0, 10),
+      pago_em: hojeSaoPaulo(),
     }, { onConflict: "user_id,vendedor_id,competencia" });
     toast.success("Marcado como pago.");
   };

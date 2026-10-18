@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { hojeSaoPaulo, formatYmdSaoPaulo } from "../../../../supabase/functions/_shared/gestao-date-br.ts";
 import {
   Select,
   SelectContent,
@@ -117,7 +118,7 @@ export function GestaoContratosTab({ userId, veiculos, preselectVeiculoId }: Pro
       km: "",
       valor: formatGestaoMoney(Number(v.valorVenda ?? v.preco ?? 0)),
       forma_pagamento: "",
-      data: new Date().toISOString().slice(0, 10),
+      data: hojeSaoPaulo(),
       cidade: loja.cidade,
     });
     setPreview(text);
@@ -174,7 +175,7 @@ export function GestaoContratosTab({ userId, veiculos, preselectVeiculoId }: Pro
       km: "",
       valor: formatGestaoMoney(Number(v.valorVenda ?? v.preco ?? 0)),
       forma_pagamento: "",
-      data: new Date().toISOString().slice(0, 10),
+      data: hojeSaoPaulo(),
       cidade: loja.cidade,
     });
   };

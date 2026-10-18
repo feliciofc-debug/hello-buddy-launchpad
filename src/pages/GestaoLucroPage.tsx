@@ -57,6 +57,7 @@ export default function GestaoLucroPage() {
   const [commandOpen, setCommandOpen] = useState(false);
   const [connectVendor, setConnectVendor] = useState<GestaoConnectVendor | null>(null);
   const [pendingConnectAction, setPendingConnectAction] = useState<PendingConnectAction>(null);
+  const [estoqueHojeRefreshKey, setEstoqueHojeRefreshKey] = useState(0);
   const zapsign = useGestaoZapsignConnection();
   const focusnfe = useGestaoFocusnfeConnection();
 
@@ -125,6 +126,7 @@ export default function GestaoLucroPage() {
 
   const refreshAll = () => {
     void reload();
+    setEstoqueHojeRefreshKey((k) => k + 1);
   };
 
   const focusConnected = focusnfe.loading ? null : !!focusnfe.status?.connected;
@@ -273,7 +275,9 @@ export default function GestaoLucroPage() {
           </>
         )}
 
-        {userId ? <GestaoEstoqueHojeCollapsible userId={userId} /> : null}
+        {userId ? (
+          <GestaoEstoqueHojeCollapsible userId={userId} refreshKey={estoqueHojeRefreshKey} />
+        ) : null}
 
         {loading && !veiculos.length ? (
           <div className="flex justify-center py-12">

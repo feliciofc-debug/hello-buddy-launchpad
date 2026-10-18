@@ -4,6 +4,7 @@ import {
   type GestaoComissaoRegraJson,
   DEFAULT_COMISSAO_REGRA,
 } from "./gestao-comissao-calc.ts";
+import { validateGestaoComissaoValor } from "./gestao-comissao-guard.ts";
 
 export type GestaoComissaoSyncInput = {
   userId: string;
@@ -43,7 +44,8 @@ export function planGestaoComissaoSync(input: GestaoComissaoSyncInput): GestaoCo
         regra: input.regraVendedor ?? DEFAULT_COMISSAO_REGRA,
       }).total;
     }
-    if (valor > 0) {
+    const guard = validateGestaoComissaoValor(valor, input.valorVenda, { allowAbove10Pct: true });
+    if (valor > 0 && guard.ok) {
       lancamentos.push({
         vendedorId: input.vendedorId,
         papel: "vendedor",

@@ -3,6 +3,7 @@ import { competenciaFromDate } from "./gestao-meta-calc.ts";
 import { formatGestaoMoney } from "./gestao-format.ts";
 import { calcDreMes, type GestaoVendaDreLine } from "./gestao-dre-calc.ts";
 import { contasToDreOperacionalRows } from "./gestao-contador-data.ts";
+import { hojeSaoPaulo, intervaloCompetencia } from "./gestao-date-br.ts";
 import {
   buildAReceberReply,
   buildContasSemanaReply,
@@ -109,9 +110,7 @@ async function buildGestaoAssistenteRankingReply(
   vendedores: GestaoVendedorRow[],
   competencia: string,
 ): Promise<string> {
-  const [y, m] = competencia.split("-").map(Number);
-  const start = `${competencia}-01`;
-  const end = new Date(y, m, 0).toISOString().slice(0, 10);
+  const { start, end } = intervaloCompetencia(competencia);
 
   const { data: vendasRaw } = await sb.from("veiculo_venda").select(
     "veiculo_id, valor_venda, data_venda, vendedor_id",
@@ -156,9 +155,7 @@ function buildComissaoMesReply(
 }
 
 async function loadVendasDreMes(sb: Db, userId: string, competencia: string): Promise<GestaoVendaDreLine[]> {
-  const start = `${competencia}-01`;
-  const [y, m] = competencia.split("-").map(Number);
-  const end = new Date(y, m, 0).toISOString().slice(0, 10);
+  const { start, end } = intervaloCompetencia(competencia);
   const { data: vendas } = await sb.from("veiculo_venda").select("veiculo_id, valor_venda, data_venda")
     .eq("user_id", userId).gte("data_venda", start).lte("data_venda", end);
   const vendaRows = (vendas ?? []) as VendaRow[];
@@ -197,7 +194,7 @@ export async function runGestaoAssistenteQuery(
 ): Promise<GestaoAssistenteQueryResult | null> {
   const t = normalize(message);
   const competencia = competenciaFromDate();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = hojeSaoPaulo();
 
   if (/\bparado|mais tempo|envelhec|dias no estoque\b/.test(t)) {
     const { data: veiculos } = await sb.from("veiculos_estoque").select("id, marca, modelo, versao, status, created_at")
@@ -318,9 +315,7 @@ export async function runGestaoAssistenteQuery(
   }
 
   if (intent.kind === "notas_mes") {
-    const start = `${competencia}-01`;
-    const [y, m] = competencia.split("-").map(Number);
-    const end = new Date(y, m, 0).toISOString().slice(0, 10);
+    const { start, end } = intervaloCompetencia(competencia);
     const { data } = await sb.from("gestao_nfe").select("status, authorized_at, created_at")
       .eq("user_id", userId);
     const allRows = (data ?? []) as NfeRow[];
@@ -375,9 +370,7 @@ export async function runGestaoAssistenteQuery(
 }
 
 async function loadComissaoMesMap(sb: Db, userId: string, competencia: string): Promise<Map<string, number>> {
-  const start = `${competencia}-01`;
-  const [y, m] = competencia.split("-").map(Number);
-  const end = new Date(y, m, 0).toISOString().slice(0, 10);
+  const { start, end } = intervaloCompetencia(competencia);
   const { data: vendas } = await sb.from("veiculo_venda").select("veiculo_id")
     .eq("user_id", userId).gte("data_venda", start).lte("data_venda", end);
   const vendaRows = (vendas ?? []) as VendaVeiculoIdRow[];

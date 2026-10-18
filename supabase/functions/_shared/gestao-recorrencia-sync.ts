@@ -1,3 +1,4 @@
+import { formatYmdSaoPaulo } from "./gestao-date-br.ts";
 import { competenciaFromDate } from "./gestao-meta-calc.ts";
 
 export type GestaoRecorrenciaSerie = {
@@ -111,7 +112,7 @@ export function projectSeriesAposProximoMes(
 ): Array<{ id: string; tipo: "pagar" | "receber"; valor: number; vencimento: string }> {
   const out: Array<{ id: string; tipo: "pagar" | "receber"; valor: number; vencimento: string }> = [];
   const proximoFim = new Date(now.getFullYear(), now.getMonth() + 2, 0);
-  const startAfter = proximoFim.toISOString().slice(0, 10);
+  const startAfter = formatYmdSaoPaulo(proximoFim);
 
   for (const s of series) {
     let cursor = new Date(now.getFullYear(), now.getMonth() + 2, 1);

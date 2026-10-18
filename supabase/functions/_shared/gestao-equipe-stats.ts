@@ -1,4 +1,5 @@
 import { competenciaFromDate } from "./gestao-meta-calc.ts";
+import { intervaloCompetencia } from "./gestao-date-br.ts";
 
 export type VendaEquipeLine = {
   veiculo_id: string;
@@ -21,9 +22,7 @@ export function filterVendasCompetencia(
   vendas: VendaEquipeLine[],
   competencia: string,
 ): VendaEquipeLine[] {
-  const [y, m] = competencia.split("-").map(Number);
-  const start = `${competencia}-01`;
-  const end = new Date(y, m, 0).toISOString().slice(0, 10);
+  const { start, end } = intervaloCompetencia(competencia);
   return vendas.filter((v) => v.data_venda >= start && v.data_venda <= end);
 }
 

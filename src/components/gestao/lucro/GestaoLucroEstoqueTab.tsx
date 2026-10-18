@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { hojeSaoPaulo } from "../../../../supabase/functions/_shared/gestao-date-br.ts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,6 +47,22 @@ type Props = {
   onQuickDespesa: (v: GestaoVeiculoEnriched) => void;
 };
 
+function compraFieldValue(v: GestaoVeiculoEnriched, editing: Record<string, string>): string {
+  return editing[v.id] ?? (v.valorCompra != null ? String(v.valorCompra) : "");
+}
+
+function isCompraDirty(v: GestaoVeiculoEnriched, editing: Record<string, string>): boolean {
+  const raw = compraFieldValue(v, editing);
+  if (!raw.trim()) return v.valorCompra != null;
+  const parsed = parseGestaoMoneyField(raw);
+  if (parsed == null) return true;
+  return v.valorCompra == null || parsed !== v.valorCompra;
+}
+
+function vendaRegistradaSemVendido(v: GestaoVeiculoEnriched): boolean {
+  return v.valorVenda != null && v.status !== "vendido";
+}
+
 export function GestaoLucroEstoqueTab({
   veiculos,
   userId,
@@ -63,6 +80,8 @@ export function GestaoLucroEstoqueTab({
     veiculo: GestaoVeiculoEnriched;
     novo: number;
   } | null>(null);
+  const [touchedCompra, setTouchedCompra] = useState<Record<string, boolean>>({});
+  const [savingCompra, setSavingCompra] = useState(false);
 
   const stock = useMemo(() => {
     let list = veiculos.filter(isActiveStock);
@@ -100,25 +119,79 @@ export function GestaoLucroEstoqueTab({
     return { preco, investido, lucro, qtd: stock.length };
   }, [stock]);
 
-  const saveCompraInline = async (v: GestaoVeiculoEnriched) => {
-    const raw = editingCompra[v.id] ?? "";
+  const unsavedCompraVeiculos = useMemo(
+    () => stock.filter((v) => isCompraDirty(v, editingCompra)),
+    [stock, editingCompra],
+  );
+
+  useEffect(() => {
+    if (!unsavedCompraVeiculos.length) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [unsavedCompraVeiculos.length]);
+
+  const saveCompraInline = useCallback(async (v: GestaoVeiculoEnriched) => {
+    const raw = compraFieldValue(v, editingCompra);
     const valor = parseGestaoMoneyField(raw);
     if (valor == null) {
       toast.error("Valor de compra inválido.");
-      return;
+      return false;
     }
     const { error } = await supabase.from("veiculo_compra" as "veiculos_estoque").upsert({
       user_id: userId,
       veiculo_id: v.id,
       valor_compra: valor,
-      data_compra: v.dataCompra ?? new Date().toISOString().slice(0, 10),
+      data_compra: v.dataCompra ?? hojeSaoPaulo(),
       origem: "compra",
     }, { onConflict: "user_id,veiculo_id" });
     if (error) {
       toast.error("Não foi possível salvar.");
+      return false;
+    }
+    setEditingCompra((prev) => {
+      const next = { ...prev };
+      delete next[v.id];
+      return next;
+    });
+    setTouchedCompra((prev) => {
+      const next = { ...prev };
+      delete next[v.id];
+      return next;
+    });
+    return true;
+  }, [editingCompra, userId]);
+
+  const saveAllCompras = async () => {
+    if (!unsavedCompraVeiculos.length) return;
+    setSavingCompra(true);
+    let ok = 0;
+    for (const v of unsavedCompraVeiculos) {
+      if (await saveCompraInline(v)) ok += 1;
+    }
+    setSavingCompra(false);
+    if (ok > 0) {
+      toast.success(ok === 1 ? "Compra salva." : `${ok} compras salvas.`);
+      onRefresh();
+    }
+  };
+
+  const markSoldQuick = async (v: GestaoVeiculoEnriched) => {
+    const { error: stErr } = await supabase.from("veiculos_estoque").update({
+      status: "vendido",
+      vendido_at: new Date().toISOString(),
+    }).eq("id", v.id);
+    if (stErr) {
+      toast.error("Não foi possível marcar como vendido.");
       return;
     }
-    toast.success("Compra salva.");
+    await supabase.from("veiculo_venda" as "veiculos_estoque").update({ marcou_vendido: true })
+      .eq("user_id", userId)
+      .eq("veiculo_id", v.id);
+    toast.success("Veículo marcado como vendido no estoque.");
     onRefresh();
   };
 
@@ -165,6 +238,18 @@ export function GestaoLucroEstoqueTab({
 
   return (
     <div className="space-y-4">
+      {unsavedCompraVeiculos.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm">
+          <span>
+            {unsavedCompraVeiculos.length} valor
+            {unsavedCompraVeiculos.length === 1 ? "" : "es"} de compra não salvo
+            {unsavedCompraVeiculos.length === 1 ? "" : "s"}
+          </span>
+          <Button size="sm" disabled={savingCompra} onClick={() => void saveAllCompras()}>
+            Salvar todos
+          </Button>
+        </div>
+      )}
       <div className="flex flex-wrap gap-2">
         <div className="relative min-w-[200px] flex-1">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -227,21 +312,60 @@ export function GestaoLucroEstoqueTab({
                       <div className="flex h-10 w-14 items-center justify-center rounded bg-muted text-xs">—</div>
                     )}
                   </td>
-                  <td className="py-2 pr-2 font-medium">{vehicleLabel(v)}</td>
+                  <td className="py-2 pr-2 font-medium">
+                    <div>{vehicleLabel(v)}</div>
+                    {vendaRegistradaSemVendido(v) && (
+                      <div className="mt-1 flex flex-wrap items-center gap-1">
+                        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-900">
+                          Venda registrada — marcar vendido
+                        </span>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-6 px-2 text-[10px]"
+                          onClick={() => void markSoldQuick(v)}
+                        >
+                          Marcar vendido
+                        </Button>
+                      </div>
+                    )}
+                  </td>
                   <td className="py-2 pr-2">{v.placa ?? "—"}</td>
                   <td className="py-2 pr-2 align-top">
-                    <Input
-                      className="h-8 w-32"
-                      placeholder="Compra"
-                      value={editingCompra[v.id] ?? (v.valorCompra != null ? String(v.valorCompra) : "")}
-                      onChange={(e) => setEditingCompra({ ...editingCompra, [v.id]: e.target.value })}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") void saveCompraInline(v);
-                      }}
-                    />
+                    <div className="flex items-start gap-1">
+                      <Input
+                        className={`h-8 w-32 ${
+                          isCompraDirty(v, editingCompra) ? "border-amber-400 ring-1 ring-amber-200" : ""
+                        }`}
+                        placeholder="Compra"
+                        value={compraFieldValue(v, editingCompra)}
+                        onChange={(e) => setEditingCompra({ ...editingCompra, [v.id]: e.target.value })}
+                        onBlur={() => setTouchedCompra((t) => ({ ...t, [v.id]: true }))}
+                      />
+                      {isCompraDirty(v, editingCompra) && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-8 shrink-0"
+                          disabled={savingCompra}
+                          onClick={() => void saveCompraInline(v).then((saved) => {
+                            if (saved) {
+                              toast.success("Compra salva.");
+                              onRefresh();
+                            }
+                          })}
+                        >
+                          Salvar
+                        </Button>
+                      )}
+                    </div>
                     <p className="max-w-[8rem] truncate text-[10px] text-muted-foreground">
-                      {formatGestaoMoneyInputPreview(parseGestaoMoneyBr(editingCompra[v.id] ?? ""))}
+                      {formatGestaoMoneyInputPreview(parseGestaoMoneyBr(compraFieldValue(v, editingCompra)))}
                     </p>
+                    {touchedCompra[v.id] && isCompraDirty(v, editingCompra) && (
+                      <p className="text-[10px] font-medium text-amber-700">não salvo</p>
+                    )}
                   </td>
                   <td className="py-2 pr-2">
                     <button

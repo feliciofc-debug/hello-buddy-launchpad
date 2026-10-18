@@ -1,3 +1,4 @@
+import { hojeSaoPaulo } from "../../../supabase/functions/_shared/gestao-date-br.ts";
 import {
   forwardRef,
   useCallback,
@@ -56,7 +57,7 @@ export const VeiculoCustosInternosForm = forwardRef<VeiculoCustosSaveHandle, Pro
     const [loading, setLoading] = useState(false);
     const [compra, setCompra] = useState({
       valor: "",
-      data: new Date().toISOString().slice(0, 10),
+      data: hojeSaoPaulo(),
       origem: "compra",
       fornecedor: "",
     });
@@ -65,7 +66,7 @@ export const VeiculoCustosInternosForm = forwardRef<VeiculoCustosSaveHandle, Pro
     const [draft, setDraft] = useState<PendingDespesa>({
       tempId: "",
       valor: "",
-      data: new Date().toISOString().slice(0, 10),
+      data: hojeSaoPaulo(),
       categoria: "outros",
       descricao: "",
     });
@@ -78,7 +79,7 @@ export const VeiculoCustosInternosForm = forwardRef<VeiculoCustosSaveHandle, Pro
       if (!vehicleId) {
         setCompra({
           valor: "",
-          data: new Date().toISOString().slice(0, 10),
+          data: hojeSaoPaulo(),
           origem: "compra",
           fornecedor: "",
         });
@@ -101,14 +102,14 @@ export const VeiculoCustosInternosForm = forwardRef<VeiculoCustosSaveHandle, Pro
       if (c) {
         setCompra({
           valor: String(c.valor_compra ?? ""),
-          data: c.data_compra ?? new Date().toISOString().slice(0, 10),
+          data: c.data_compra ?? hojeSaoPaulo(),
           origem: String(c.origem ?? "compra"),
           fornecedor: String(c.fornecedor_obs ?? ""),
         });
       } else {
         setCompra({
           valor: "",
-          data: new Date().toISOString().slice(0, 10),
+          data: hojeSaoPaulo(),
           origem: "compra",
           fornecedor: "",
         });
@@ -148,7 +149,7 @@ export const VeiculoCustosInternosForm = forwardRef<VeiculoCustosSaveHandle, Pro
       setDraft({
         tempId: "",
         valor: "",
-        data: new Date().toISOString().slice(0, 10),
+        data: hojeSaoPaulo(),
         categoria: "outros",
         descricao: "",
       });

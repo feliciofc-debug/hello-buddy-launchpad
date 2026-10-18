@@ -1,3 +1,4 @@
+import { addDiasYmd, formatYmdSaoPaulo } from "./gestao-date-br.ts";
 import type { GestaoSerieProjecao } from "./gestao-recorrencia-sync.ts";
 import { projectSeriesAposProximoMes } from "./gestao-recorrencia-sync.ts";
 
@@ -28,16 +29,6 @@ export type GestaoFluxoProjecao = {
   saidasPrevistas: number;
 };
 
-function iso(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-function addDays(base: Date, n: number): Date {
-  const d = new Date(base);
-  d.setDate(d.getDate() + n);
-  return d;
-}
-
 function isSettled(c: GestaoContaFluxo): boolean {
   return c.tipo === "pagar" ? !!c.pago_em : !!c.recebido_em;
 }
@@ -48,12 +39,10 @@ export function calcFluxoDiario(
   end: string,
 ): GestaoFluxoDia[] {
   const days: GestaoFluxoDia[] = [];
-  let cursor = new Date(start);
-  const endD = new Date(end);
+  let data = start;
   let saldo = 0;
 
-  while (cursor <= endD) {
-    const data = iso(cursor);
+  while (data <= end) {
     let entradas = 0;
     let saidas = 0;
     let previstoEntradas = 0;
@@ -78,7 +67,7 @@ export function calcFluxoDiario(
       previstoEntradas: round2(previstoEntradas),
       previstoSaidas: round2(previstoSaidas),
     });
-    cursor = addDays(cursor, 1);
+    data = addDiasYmd(data, 1);
   }
   return days;
 }
@@ -89,8 +78,8 @@ export function calcSaldoProjetado(
   now = new Date(),
   series: GestaoSerieProjecao[] = [],
 ): GestaoFluxoProjecao {
-  const start = iso(now);
-  const end = iso(addDays(now, dias));
+  const start = formatYmdSaoPaulo(now);
+  const end = addDiasYmd(start, dias);
   let entradasPrevistas = 0;
   let saidasPrevistas = 0;
 

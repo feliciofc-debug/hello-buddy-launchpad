@@ -1,3 +1,4 @@
+import { intervaloCompetencia } from "./gestao-date-br.ts";
 import { formatGestaoMoney } from "./gestao-format.ts";
 import {
   buildRankingVendedores,
@@ -27,9 +28,7 @@ export async function buildGestaoRankingReply(
   vendedores: GestaoVendedorRow[],
   competencia = competenciaFromDate(),
 ): Promise<string> {
-  const [y, m] = competencia.split("-").map(Number);
-  const start = `${competencia}-01`;
-  const end = new Date(y, m, 0).toISOString().slice(0, 10);
+  const { start, end } = intervaloCompetencia(competencia);
 
   const { data: vendasRaw } = await client.from("veiculo_venda").select(
     "veiculo_id, valor_venda, data_venda, vendedor_id",
@@ -69,9 +68,7 @@ export async function buildGestaoVendedorMesReply(
   const v = matchGestaoVendedor(hint, vendedores);
   if (!v) return "Não encontrei esse vendedor. Cadastre em Gestão → Equipe.";
 
-  const [y, m] = competencia.split("-").map(Number);
-  const start = `${competencia}-01`;
-  const end = new Date(y, m, 0).toISOString().slice(0, 10);
+  const { start, end } = intervaloCompetencia(competencia);
 
   const { data } = await client.from("veiculo_venda").select("valor_venda, data_venda")
     .eq("user_id", userId).eq("vendedor_id", v.id).gte("data_venda", start).lte("data_venda", end);

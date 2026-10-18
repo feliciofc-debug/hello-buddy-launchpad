@@ -8,13 +8,10 @@ import {
   gestaoLucroTone,
 } from "@/lib/gestao-format.ts";
 import { GestaoVendaRaioXPanel } from "@/components/gestao/lucro/GestaoVendaRaioXPanel.tsx";
+import { intervaloMesAtualSaoPaulo } from "../../../../supabase/functions/_shared/gestao-date-br.ts";
 
 function monthBounds(): { start: string; end: string } {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
-  return { start: iso(start), end: iso(end) };
+  return intervaloMesAtualSaoPaulo();
 }
 
 type Props = {

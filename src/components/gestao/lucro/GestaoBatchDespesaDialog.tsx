@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { hojeSaoPaulo, formatYmdSaoPaulo } from "../../../../supabase/functions/_shared/gestao-date-br.ts";
 import {
   Dialog,
   DialogContent,
@@ -43,7 +44,7 @@ export function GestaoBatchDespesaDialog({
   const stock = veiculos.filter(isActiveStock);
   const [veiculoId, setVeiculoId] = useState(preselectedId ?? stock[0]?.id ?? "");
   const [valor, setValor] = useState("");
-  const [data, setData] = useState(new Date().toISOString().slice(0, 10));
+  const [data, setData] = useState(hojeSaoPaulo());
   const [categoria, setCategoria] = useState("outros");
   const [descricao, setDescricao] = useState("");
   const [busy, setBusy] = useState(false);

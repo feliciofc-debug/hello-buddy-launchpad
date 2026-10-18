@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { hojeSaoPaulo, intervaloCompetencia } from "../../../../supabase/functions/_shared/gestao-date-br.ts";
 import {
   Select,
   SelectContent,
@@ -61,7 +62,7 @@ const emptyForm = {
   tipo: "pagar" as "pagar" | "receber",
   categoria: "aluguel",
   valor: "",
-  vencimento: new Date().toISOString().slice(0, 10),
+  vencimento: hojeSaoPaulo(),
   forma_pagamento: "",
   recorrencia_dia_mes: "",
   observacao: "",
@@ -141,9 +142,7 @@ export function GestaoFinanceiroTab({
   });
 
   const fluxo = useMemo(() => {
-    const start = `${competencia}-01`;
-    const [y, m] = competencia.split("-").map(Number);
-    const end = new Date(y, m, 0).toISOString().slice(0, 10);
+    const { start, end } = intervaloCompetencia(competencia);
     return calcFluxoDiario(contasToFluxo(contas), start, end);
   }, [contas, competencia]);
 
@@ -214,7 +213,7 @@ export function GestaoFinanceiroTab({
   };
 
   const liquidar = async (c: GestaoContaLancamento) => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = hojeSaoPaulo();
     const patch = c.tipo === "pagar" ? { pago_em: today } : { recebido_em: today };
     await supabase.from("gestao_conta_lancamento" as "veiculos_estoque").update(patch)
       .eq("id", c.id).eq("user_id", userId);

@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { hojeSaoPaulo } from "../../../../supabase/functions/_shared/gestao-date-br.ts";
+import {
+  validateGestaoComissaoValor,
+} from "../../../../supabase/functions/_shared/gestao-comissao-guard.ts";
 import {
   Sheet,
   SheetContent,
@@ -72,10 +76,10 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
   const [busy, setBusy] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [compra, setCompra] = useState({ valor: "", data: "", origem: "compra", fornecedor: "" });
-  const [venda, setVenda] = useState({ valor: "", data: "", vendedor: "", forma: "", marcar: false });
+  const [venda, setVenda] = useState({ valor: "", data: "", vendedor: "", forma: "", marcar: true });
   const [despesaForm, setDespesaForm] = useState({
     valor: "",
-    data: new Date().toISOString().slice(0, 10),
+    data: hojeSaoPaulo(),
     categoria: "outros",
     descricao: "",
   });
@@ -84,6 +88,7 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
   const [comissaoConfirmOpen, setComissaoConfirmOpen] = useState(false);
   const [comissaoPreview, setComissaoPreview] = useState(0);
   const [comissaoOverride, setComissaoOverride] = useState("");
+  const [comissaoConfirmAlto, setComissaoConfirmAlto] = useState(false);
 
   useEffect(() => {
     if (!userId) return;
@@ -94,16 +99,16 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
     if (!veiculo) return;
     setCompra({
       valor: veiculo.valorCompra != null ? String(veiculo.valorCompra) : "",
-      data: veiculo.dataCompra ?? new Date().toISOString().slice(0, 10),
+      data: veiculo.dataCompra ?? hojeSaoPaulo(),
       origem: "compra",
       fornecedor: "",
     });
     setVenda({
       valor: veiculo.valorVenda != null ? String(veiculo.valorVenda) : "",
-      data: veiculo.dataVenda ?? new Date().toISOString().slice(0, 10),
+      data: veiculo.dataVenda ?? hojeSaoPaulo(),
       vendedor: veiculo.vendedor ?? "",
       forma: "",
-      marcar: false,
+      marcar: true,
     });
     setVendedorId(veiculo.vendedor_id ?? "");
   }, [veiculo]);
@@ -205,6 +210,7 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
       });
       setComissaoPreview(prev.total);
       setComissaoOverride(String(prev.total));
+      setComissaoConfirmAlto(false);
       setComissaoConfirmOpen(true);
       return;
     }
@@ -219,6 +225,16 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
       setBusy(false);
       toast.error("Valor inválido.");
       return;
+    }
+    if (overrideComissao != null && vendedorId) {
+      const guard = validateGestaoComissaoValor(overrideComissao, valor, {
+        allowAbove10Pct: comissaoConfirmAlto,
+      });
+      if (!guard.ok) {
+        setBusy(false);
+        toast.error(guard.message);
+        return;
+      }
     }
     const vend = vendedores.find((x) => x.id === vendedorId);
     const { error } = await supabase.from("veiculo_venda" as "veiculos_estoque").upsert({
@@ -262,6 +278,17 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
   };
 
   if (!veiculo) return null;
+
+  const valorVendaDialog = parseGestaoMoneyField(venda.valor);
+  const comissaoDialogValor = parseGestaoMoneyField(comissaoOverride) ?? comissaoPreview;
+  const comissaoGuard = valorVendaDialog != null && comissaoDialogValor > 0
+    ? validateGestaoComissaoValor(comissaoDialogValor, valorVendaDialog, {
+      allowAbove10Pct: comissaoConfirmAlto,
+    })
+    : { ok: true as const, pctVenda: 0 };
+  const comissaoPctLabel = valorVendaDialog != null && valorVendaDialog > 0
+    ? formatGestaoPct((comissaoDialogValor / valorVendaDialog) * 100)
+    : "—";
 
   const lucro = veiculo.lucro;
   const margem = lucro.vendido
@@ -450,16 +477,39 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
                 </p>
                 <p>Será lançada automaticamente como despesa do carro (categoria comissão).</p>
                 <GestaoMoneyInput
-                  label="Ajustar valor (opcional)"
+                  label="Comissão do vendedor (R$)"
                   value={comissaoOverride}
-                  onChange={setComissaoOverride}
+                  onChange={(v) => {
+                    setComissaoOverride(v);
+                    setComissaoConfirmAlto(false);
+                  }}
                 />
+                <p className="text-muted-foreground">
+                  = {comissaoPctLabel} do valor da venda
+                </p>
+                {!comissaoGuard.ok && comissaoGuard.code === "above_10pct" && (
+                  <div className="space-y-2 rounded-md border border-red-200 bg-red-50 p-2 text-red-700">
+                    <p className="font-medium">{comissaoGuard.message}</p>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={comissaoConfirmAlto}
+                        onChange={(e) => setComissaoConfirmAlto(e.target.checked)}
+                      />
+                      Confirmo este valor
+                    </label>
+                  </div>
+                )}
+                {!comissaoGuard.ok && comissaoGuard.code === "gte_venda" && (
+                  <p className="font-medium text-red-600">{comissaoGuard.message}</p>
+                )}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
+              disabled={!comissaoGuard.ok}
               onClick={() => void commitVenda(parseGestaoMoneyField(comissaoOverride) ?? comissaoPreview)}
             >
               Confirmar venda
