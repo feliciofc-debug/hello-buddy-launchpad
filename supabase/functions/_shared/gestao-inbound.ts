@@ -41,6 +41,14 @@ import {
   buildGestaoVendedorMesReply,
 } from "./gestao-equipe-inbound.ts";
 import { matchGestaoVendedor, type GestaoVendedorRow } from "./gestao-vendedor-match.ts";
+import {
+  formatPosicaoLojaWhatsApp,
+  formatRelatorioVendedoresWhatsApp,
+  formatVendedorDetalheWhatsApp,
+  loadPosicaoLojaFacts,
+  loadRelatorioVendedoresFacts,
+  lojaNomeFromText,
+} from "./gestao-posicao-loja.ts";
 import { competenciaFromDate } from "./gestao-meta-calc.ts";
 import {
   calcVendaRaioX,
@@ -936,6 +944,41 @@ export async function tryProcessGestaoLucroInbound(input: {
 
   if (intent.kind === "lucro_mes") {
     const reply = await fetchLucroMes(input.sb, input.userId);
+    return { handled: true, reply };
+  }
+
+  const agoraSP = new Date();
+  const lojaNomeCitada = lojaNomeFromText(text);
+  const posicaoOpts = { lojaNomeCitada, storeUserId: input.userId };
+
+  if (intent.kind === "posicao_loja") {
+    const facts = await loadPosicaoLojaFacts(input.sb as never, input.userId, agoraSP, posicaoOpts);
+    console.log("[gestao-inbound][posicao_loja]", {
+      vendas_mes: facts.mes.qtdVendas,
+      estoque: facts.estoque.qtd,
+      alertas: facts.atencao.contas7DiasQtd + facts.atencao.contasVencidasQtd,
+    });
+    return { handled: true, reply: formatPosicaoLojaWhatsApp(facts) };
+  }
+  if (intent.kind === "relatorio_vendedores") {
+    const facts = await loadRelatorioVendedoresFacts(
+      input.sb as never,
+      input.userId,
+      agoraSP,
+      posicaoOpts,
+    );
+    console.log("[gestao-inbound][relatorio_vendedores]", { vendedores: facts.ranking.length });
+    return { handled: true, reply: formatRelatorioVendedoresWhatsApp(facts) };
+  }
+  if (intent.kind === "vendedor_detalhe") {
+    const reply = await formatVendedorDetalheWhatsApp(
+      input.sb as never,
+      input.userId,
+      intent.vendedorHint,
+      agoraSP,
+      posicaoOpts,
+    );
+    console.log("[gestao-inbound][vendedor_detalhe]", { hint_len: intent.vendedorHint.length });
     return { handled: true, reply };
   }
 

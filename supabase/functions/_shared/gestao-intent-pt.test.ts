@@ -25,3 +25,28 @@ Deno.test("intent notas do mes", () => {
   const i = classifyGestaoIntent("notas do mes");
   assertEquals(i.kind, "notas_mes");
 });
+
+Deno.test("intent posicao loja frases dono", () => {
+  assertEquals(classifyGestaoIntent("como está a loja?").kind, "posicao_loja");
+  assertEquals(classifyGestaoIntent("posição da loja").kind, "posicao_loja");
+  assertEquals(classifyGestaoIntent("resumo do dia").kind, "posicao_loja");
+  assertEquals(classifyGestaoIntent("como estamos").kind, "posicao_loja");
+});
+
+Deno.test("intent posicao loja nao captura preco cliente", () => {
+  assertEquals(classifyGestaoIntent("qual o preço do carro?").kind, "none");
+});
+
+Deno.test("intent relatorio vendedores", () => {
+  assertEquals(classifyGestaoIntent("relatório dos vendedores").kind, "relatorio_vendedores");
+  assertEquals(
+    classifyGestaoIntent("como estão as vendas dos vendedores").kind,
+    "relatorio_vendedores",
+  );
+});
+
+Deno.test("intent vendedor detalhe", () => {
+  const i = classifyGestaoIntent("como está a Ana?");
+  assertEquals(i.kind, "vendedor_detalhe");
+  assertEquals(i.vendedorHint.toLowerCase(), "ana");
+});

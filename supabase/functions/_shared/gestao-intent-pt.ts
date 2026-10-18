@@ -29,7 +29,10 @@ export type GestaoIntentKind =
   | "contrato_status"
   | "nfe_emit"
   | "notas_mes"
-  | "nfe_status";
+  | "nfe_status"
+  | "posicao_loja"
+  | "relatorio_vendedores"
+  | "vendedor_detalhe";
 
 export type GestaoIntent = {
   kind: GestaoIntentKind;
@@ -70,6 +73,48 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
 
   if (/\bdesfaz(er)?(\s+ultim|\s+o\s+ultim|\s+lancamento)?/.test(t)) {
     return { ...empty, kind: "desfazer", vehicleHint };
+  }
+
+  if (
+    /\bposicao\s+da\s+loja\b/.test(t) ||
+    /\bstatus\s+da\s+loja\b/.test(t) ||
+    /\bresumo\s+(da\s+loja|do\s+dia|geral)\b/.test(t) ||
+    (/\bfechamento\b/.test(t) && !/\bcontrato\b/.test(t)) ||
+    /\bcomo\s+(estamos|esta\s+a\s+loja|ta\s+a\s+loja|estao\s+a\s+loja|estão\s+a\s+loja)\b/.test(t)
+  ) {
+    return { ...empty, kind: "posicao_loja", vehicleHint };
+  }
+
+  if (
+    /\brelatorio\s+(dos\s+)?vendedores\b/.test(t) ||
+    /\bcomo\s+(estao|estão|ta)\s+as\s+vendas\s+dos\s+vendedores\b/.test(t) ||
+    /\branking\s+da\s+equipe\b/.test(t) ||
+    /\bcomo\s+(esta|ta|está)\s+a\s+equipe\b/.test(t) ||
+    (/\bcomo\s+(estao|estão|ta)\s+as\s+vendas\b/.test(t) && /\bvendedores?\b/.test(t))
+  ) {
+    return { ...empty, kind: "relatorio_vendedores", vehicleHint };
+  }
+
+  const vendedorDetalheHint = vendedorHintFromText(text);
+  if (
+    vendedorDetalheHint.length >= 2 &&
+    !/\brelatorio\s+(dos\s+)?vendedores\b/.test(t) &&
+    (
+      /\bcomo\s+(esta|ta|está)\s+(a|o)\s+/i.test(text) ||
+      /\bvendas?\s+do(a)?\s+/i.test(text) ||
+      /\brelatorio\s+do(a)?\s+/i.test(text)
+    )
+  ) {
+    return {
+      ...empty,
+      kind: "vendedor_detalhe",
+      vendedorHint: vendedorDetalheHint,
+      vehicleHint,
+    };
+  }
+
+  if (/\bqual\s+(o\s+)?preco\b|\bquanto\s+custa\b|\bvalor\s+do\s+carro\b/.test(t)) {
+    return empty;
   }
 
   if (/\bquanto\s+a\s+loja\s+lucrou\b|\blucro\s+liquido\s+da\s+loja\b|\bresultado\s+da\s+loja\b/.test(t)) {
