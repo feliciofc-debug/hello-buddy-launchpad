@@ -121,7 +121,7 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
       data: veiculo.dataVenda ?? hojeSaoPaulo(),
       vendedor: veiculo.vendedor ?? "",
       forma: "",
-      marcar: veiculo.status === "vendido" || veiculo.valorVenda != null,
+      marcar: true,
     });
     setVendedorId(veiculo.vendedor_id ?? "");
   }, [veiculo]);
