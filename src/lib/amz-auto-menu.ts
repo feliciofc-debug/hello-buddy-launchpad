@@ -1,6 +1,4 @@
 import type { LucideIcon } from "lucide-react";
-import { injectVitrineSidebarMenuItems } from "@/lib/vitrine-sidebar-menu";
-import type { VitrineSidebarTenantContext } from "@/lib/vitrine-sidebar-menu";
 
 export type AppSidebarItem = {
   id: string;
@@ -10,47 +8,60 @@ export type AppSidebarItem = {
   highlight?: boolean;
 };
 
-const AMZ_AUTO_ALLOWED_IDS = new Set([
+const AMZ_AUTO_HIDDEN_IDS = new Set([
+  "produtos",
+  "ebook-presente",
+  "contatos-comerciais",
+]);
+
+/** Ordem do menu no modo AMZ Auto (demais ids ficam no fim, se existirem). */
+const AMZ_AUTO_ORDER = [
+  "dashboard",
   "veiculos",
   "financiamentos",
   "gestao-lucro",
   "whatsapp",
+  "whatsapp-templates",
   "leads",
   "midias",
+  "ia-marketing",
+  "redes-sociais",
+  "anuncios-meta",
   "integracoes-portais",
-]);
+  "clientes-segmentos",
+  "minha-marca",
+  "minha-empresa",
+  "configuracoes",
+  "admin",
+] as const;
 
-export function buildAmzAutoSidebarItems(
-  ctx: VitrineSidebarTenantContext & {
-    t: (key: string, fallback?: string) => string;
-    vehicleStockItem: AppSidebarItem;
-    financingItem: AppSidebarItem;
-    gestaoLucroItem?: AppSidebarItem;
-    whatsappItem: AppSidebarItem;
-    leadsItem: AppSidebarItem;
-    vitrineItem: AppSidebarItem;
-    integracoesItem: AppSidebarItem;
-    showFinanciamentosMenu: boolean;
-    showGestaoLucroMenu: boolean;
+function orderIndex(id: string): number {
+  const idx = AMZ_AUTO_ORDER.indexOf(id as (typeof AMZ_AUTO_ORDER)[number]);
+  return idx === -1 ? AMZ_AUTO_ORDER.length + 1 : idx;
+}
+
+export function applyAmzAutoMenuFilter(
+  fullMenu: readonly AppSidebarItem[],
+  extras?: {
+    leadsItem?: AppSidebarItem;
+    integracoesPortaisItem?: AppSidebarItem;
   },
 ): AppSidebarItem[] {
-  const seed: AppSidebarItem[] = [
-    ctx.vehicleStockItem,
-    ctx.whatsappItem,
-    ctx.leadsItem,
-    ctx.vitrineItem,
-    ctx.integracoesItem,
-  ];
+  const byId = new Map<string, AppSidebarItem>();
+  for (const item of fullMenu) {
+    if (!AMZ_AUTO_HIDDEN_IDS.has(item.id)) {
+      byId.set(item.id, item);
+    }
+  }
 
-  const withVitrine = injectVitrineSidebarMenuItems(seed, {
-    clientType: ctx.clientType,
-    segment: ctx.segment,
-    businessText: ctx.businessText,
-    vitrineVeiculosDemo: ctx.vitrineVeiculosDemo,
-    vehicleStockItem: ctx.vehicleStockItem,
-    financingItem: ctx.financingItem,
-    gestaoLucroItem: ctx.showGestaoLucroMenu ? ctx.gestaoLucroItem : undefined,
-  });
+  if (extras?.leadsItem && !byId.has("leads")) {
+    byId.set("leads", extras.leadsItem);
+  }
+  if (extras?.integracoesPortaisItem && !byId.has("integracoes-portais")) {
+    byId.set("integracoes-portais", extras.integracoesPortaisItem);
+  }
 
-  return withVitrine.filter((item) => AMZ_AUTO_ALLOWED_IDS.has(item.id));
+  return [...byId.values()].sort(
+    (a, b) => orderIndex(a.id) - orderIndex(b.id),
+  );
 }

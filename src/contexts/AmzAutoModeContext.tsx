@@ -85,7 +85,7 @@ export function AmzAutoModeProvider({ children }: { children: ReactNode }) {
     setAdminPreference(false);
   }, []);
 
-  const effective = isEffectiveAmzAutoMode(profileTipo, isAdmin, adminPreference);
+  const effective = isEffectiveAmzAutoMode(adminPreference);
   const toggleAllowed = canToggleAmzAutoMode(profileTipo, isAdmin);
 
   const value = useMemo(

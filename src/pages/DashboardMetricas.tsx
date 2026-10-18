@@ -60,9 +60,8 @@ import { useBillingAccess } from '@/hooks/useBillingAccess';
 import BillingBlockedScreen from '@/components/BillingBlockedScreen';
 import { AmzAutoMark } from '@/components/amz-auto/AmzAutoMark';
 import { useAmzAutoMode } from '@/contexts/AmzAutoModeContext';
-import { buildAmzAutoSidebarItems } from '@/lib/amz-auto-menu';
-import { clearAmzAutoModePreference } from '@/lib/amz-auto-mode';
-import { VEHICLE_DEALER_TENANT_TYPE } from '@/lib/business-tenant';
+import { applyAmzAutoMenuFilter } from '@/lib/amz-auto-menu';
+import { clearAmzAutoModePreference, isRevendaVeiculosProfile } from '@/lib/amz-auto-mode';
 
 import { LeadsQuentes } from '@/components/LeadsQuentes';
 import {
@@ -167,6 +166,8 @@ export default function DashboardMetricas() {
     canToggleAmzAutoMode: canToggleAmzMode,
     enableAmzAutoMode,
     disableAmzAutoMode,
+    profileTipo: amzProfileTipo,
+    isAdmin: isAppAdmin,
   } = useAmzAutoMode();
 
   const carregarPerfil = async () => {
@@ -383,44 +384,7 @@ export default function DashboardMetricas() {
     [showGestaoLucroMenu],
   );
 
-  const menuItems = useMemo(() => {
-    if (effectiveAmzAutoMode) {
-      return buildAmzAutoSidebarItems({
-        ...vitrineSidebarContext,
-        clientType: VEHICLE_DEALER_TENANT_TYPE,
-        t,
-        showFinanciamentosMenu: true,
-        showGestaoLucroMenu: true,
-        vehicleStockItem,
-        financingItem,
-        gestaoLucroItem,
-        whatsappItem: {
-          id: 'whatsapp',
-          icon: MessageCircle,
-          label: t('nav.whatsapp'),
-          path: '/whatsapp-painel',
-        },
-        leadsItem: {
-          id: 'leads',
-          icon: Target,
-          label: 'Leads',
-          path: '/leads-funil',
-        },
-        vitrineItem: {
-          id: 'midias',
-          icon: Images,
-          label: 'Vitrine',
-          path: '/midias',
-        },
-        integracoesItem: {
-          id: 'integracoes-portais',
-          icon: Plug,
-          label: 'Integrações de portais',
-          path: '/configuracoes/integracoes',
-        },
-      });
-    }
-
+  const fullMenuItems = useMemo(() => {
     const filtered = menuItemsAll.filter((item) =>
       item.id === 'admin' ||
       item.id === 'contatos-comerciais' ||
@@ -438,16 +402,32 @@ export default function DashboardMetricas() {
       gestaoLucroItem,
     });
   }, [
-    effectiveAmzAutoMode,
     isMenuAllowed,
-    showFinanciamentosMenu,
-    showGestaoLucroMenu,
-    t,
     vitrineSidebarContext,
     vehicleStockItem,
     financingItem,
     gestaoLucroItem,
+    userEmail,
+    t,
   ]);
+
+  const menuItems = useMemo(() => {
+    if (!effectiveAmzAutoMode) return fullMenuItems;
+    return applyAmzAutoMenuFilter(fullMenuItems, {
+      leadsItem: {
+        id: 'leads',
+        icon: Target,
+        label: 'Leads',
+        path: '/leads-funil',
+      },
+      integracoesPortaisItem: {
+        id: 'integracoes-portais',
+        icon: Plug,
+        label: 'Integrações de portais',
+        path: '/configuracoes/integracoes',
+      },
+    });
+  }, [effectiveAmzAutoMode, fullMenuItems]);
 
   // Componente de campanhas em andamento
   const CampanhasEmAndamentoSection = ({ navigate }: { navigate: (path: string) => void }) => {
@@ -545,7 +525,7 @@ export default function DashboardMetricas() {
            <div className="p-4 border-b flex items-center justify-between">
              {effectiveAmzAutoMode ? (
                <Link
-                 to="/veiculos"
+                 to="/dashboard"
                  className="flex items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                >
                  <AmzAutoMark size={32} decorative />
@@ -658,10 +638,12 @@ export default function DashboardMetricas() {
                     navigate('/dashboard');
                   }}
                 >
-                  Trocar para AMZ Ofertas
+                  {isRevendaVeiculosProfile(amzProfileTipo)
+                    ? 'Ver menu completo'
+                    : 'Trocar para AMZ Ofertas'}
                 </Button>
               ) : null}
-              {canToggleAmzMode && !effectiveAmzAutoMode ? (
+              {isAppAdmin && !effectiveAmzAutoMode ? (
                 <Button
                   type="button"
                   variant="outline"

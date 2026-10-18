@@ -26,19 +26,15 @@ export function isRevendaVeiculosProfile(
   return profileTipo === VEHICLE_DEALER_TENANT_TYPE;
 }
 
-/** Lojista revenda_veiculos sempre; admin só quando opt-in no sessionStorage. */
-export function isEffectiveAmzAutoMode(
-  profileTipo: string | null | undefined,
-  isAdmin: boolean,
-  adminPreference: boolean,
-): boolean {
-  if (isRevendaVeiculosProfile(profileTipo)) return true;
-  return isAdmin && adminPreference;
+/** Só sessionStorage — nunca inferido pelo tipo de perfil. */
+export function isEffectiveAmzAutoMode(modePreference: boolean): boolean {
+  return modePreference;
 }
 
+/** Admin ou loja revenda_veiculos pode sair do modo (e admin pode entrar). */
 export function canToggleAmzAutoMode(
   profileTipo: string | null | undefined,
   isAdmin: boolean,
 ): boolean {
-  return isAdmin && !isRevendaVeiculosProfile(profileTipo);
+  return isAdmin || isRevendaVeiculosProfile(profileTipo);
 }

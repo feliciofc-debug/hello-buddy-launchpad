@@ -3,10 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { signInWithEmailPassword } from "@/lib/auth-sign-in";
-import {
-  businessTenantHomePath,
-  VEHICLE_DEALER_TENANT_TYPE,
-} from "@/lib/business-tenant";
+import { VEHICLE_DEALER_TENANT_TYPE } from "@/lib/business-tenant";
 import { fetchIsAppAdmin } from "@/lib/app-admin";
 import { writeAmzAutoModePreference } from "@/lib/amz-auto-mode";
 import { AmzAutoLogo } from "./AmzAutoLogo";
@@ -65,7 +62,7 @@ export default function AmzAutoEntrarPage() {
     }
 
     writeAmzAutoModePreference(true);
-    navigate(businessTenantHomePath(VEHICLE_DEALER_TENANT_TYPE));
+    navigate("/veiculos");
   };
 
   const handleSubmit = async (event: FormEvent) => {
