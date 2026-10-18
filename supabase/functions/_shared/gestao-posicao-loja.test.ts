@@ -3,9 +3,29 @@ import {
   formatPosicaoLojaWhatsApp,
   formatPosicaoMoney,
   formatRelatorioVendedoresWhatsApp,
+  loadPosicaoLojaFacts,
   type PosicaoLojaFacts,
   type RelatorioVendedoresFacts,
 } from "./gestao-posicao-loja.ts";
+
+function emptyQueryChain(
+  result: { data?: unknown[] | null; count?: number | null } = { data: [], count: 0 },
+): Record<string, unknown> {
+  const chain: Record<string, unknown> = {
+    select: () => chain,
+    eq: () => chain,
+    is: () => chain,
+    gte: () => chain,
+    lte: () => chain,
+    in: () => chain,
+    limit: () => Promise.resolve(result),
+    maybeSingle: () => Promise.resolve({ data: null, error: null }),
+    then(onFulfilled: (v: unknown) => unknown, onRejected?: (e: unknown) => unknown) {
+      return Promise.resolve(result).then(onFulfilled, onRejected);
+    },
+  };
+  return chain;
+}
 
 function baseFacts(over: Partial<PosicaoLojaFacts> = {}): PosicaoLojaFacts {
   return {
@@ -113,6 +133,43 @@ Deno.test("formatPosicaoLojaWhatsApp sem vendas e nada pendente", () => {
   assert(text.includes("Nada pendente ✅"));
   assert(!text.includes("Leads novos"));
   assert(text.length <= 1500);
+});
+
+Deno.test("loadPosicaoLojaFacts vendas hoje usa count em veiculo_id", async () => {
+  let vendasHojeSelectCol = "";
+  const sb = {
+    from(table: string) {
+      if (table === "veiculo_venda") {
+        return {
+          select(cols: string, opts?: { count?: string; head?: boolean }) {
+            if (opts?.count === "exact" && opts?.head) {
+              vendasHojeSelectCol = cols;
+              return {
+                eq: () => ({
+                  eq: () => Promise.resolve({ count: 3, data: null, error: null }),
+                }),
+              };
+            }
+            return emptyQueryChain({ data: [] });
+          },
+        };
+      }
+      return emptyQueryChain();
+    },
+  };
+  const facts = await loadPosicaoLojaFacts(
+    sb as never,
+    "u1",
+    new Date("2026-10-18T17:28:00-03:00"),
+  );
+  assertEquals(vendasHojeSelectCol, "veiculo_id");
+  assertEquals(facts.hoje.vendasQtd, 3);
+  const text = formatPosicaoLojaWhatsApp({ ...facts, vendedoresTop: [], atencao: {
+    ...facts.atencao,
+    contas7DiasQtd: 0,
+    contas7DiasValor: 0,
+  } });
+  assert(text.includes("Vendas registradas hoje: 3"));
 });
 
 Deno.test("formatRelatorioVendedores 0 e 3 vendedores", () => {

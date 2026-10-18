@@ -351,7 +351,10 @@ export async function loadPosicaoLojaFacts(
     0,
   );
 
-  const { count: vendasHojeCount } = await sb.from("veiculo_venda").select("id", { count: "exact", head: true })
+  const { count: vendasHojeCount } = await sb.from("veiculo_venda").select("veiculo_id", {
+    count: "exact",
+    head: true,
+  })
     .eq("user_id", storeUserId).eq("data_venda", today);
 
   let leadsNovos: number | null = null;
