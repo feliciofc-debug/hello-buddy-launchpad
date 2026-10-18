@@ -1,5 +1,6 @@
 import { validPendingVehicleCarousel } from "./vehicle-carousel.ts";
 import { validPendingVehicleIdentification } from "./vehicle-identification.ts";
+import { carrosLabel, formatPosicaoMoney, mesNomePt } from "./gestao-posicao-loja.ts";
 import {
   formatAno,
   formatPrecoBrl,
@@ -8,6 +9,8 @@ import {
   vehicleDisplayTitle,
   type VeiculoVitrineRow,
 } from "./vehicle-stock-whatsapp.ts";
+
+export type OwnerStockRow = VeiculoVitrineRow & { created_at?: string | null };
 
 export type OwnerStockIntent =
   | "vitrine"
@@ -48,15 +51,46 @@ const RESUMO_PATTERNS = [
   /\bquantos carros\b/,
   /\bquantidade de carros\b/,
   /\bestoque de carros\b/,
+  /\bvalor do estoque\b/,
+  /\bvalor total\b.*\bestoque\b/,
+  /\bpre[çc]o de cada\b/,
+  /\bmarcas e modelos\b/,
+  /\bquantos carros tenho no estoque\b/,
 ];
 
 const VENDIDOS_PATTERNS = [
   /\bquantos vendi\b/,
   /\bquantos vendeu\b/,
   /\bveiculos vendidos\b/,
+  /\bveiculos foram vendidos\b/,
   /\bcarros vendidos\b/,
+  /\bcarros foram vendidos\b/,
   /\bvendas do estoque\b/,
+  /\bo que vendemos\b/,
+  /\bo que foi vendido\b/,
 ];
+
+const GESTAO_DEFER_KEYWORDS = [
+  "lucro",
+  "custo",
+  "margem",
+  "despesa",
+  "gasto",
+  "parado",
+  "mais tempo",
+  "comissao",
+  "vendedor",
+  "meta",
+];
+
+function mentionsGestaoDeferTopic(text: string): boolean {
+  const t = normalize(text);
+  if (/\bdias\b/.test(t)) return true;
+  for (const kw of GESTAO_DEFER_KEYWORDS) {
+    if (t.includes(kw)) return true;
+  }
+  return false;
+}
 
 const VITRINE_OWNER_EXTRA = [
   /\bme mostra a vitrine\b/,
@@ -110,7 +144,11 @@ export function shouldDeferOwnerStockShortcut(input: {
   userText: string;
   hasInboundMedia: boolean;
   agentState?: Record<string, unknown> | null;
+  gestaoAuthorized?: boolean;
 }): boolean {
+  if (input.gestaoAuthorized && mentionsGestaoDeferTopic(input.userText)) {
+    return true;
+  }
   if (ownerStockMentionsFipe(input.userText)) return true;
   if (input.hasInboundMedia) return true;
   const s = input.agentState ?? {};
@@ -157,9 +195,23 @@ export function formatOwnerStockLine(v: VeiculoVitrineRow): string {
   return `${vehicleDisplayTitle(v)} · ${formatAno(v)} · ${km} · ${preco} · ${status} · ${seg}`;
 }
 
+function ownerDisponiveisLabel(qtd: number, label: string): string {
+  if (label === "Motos") {
+    return qtd === 1 ? "1 moto disponível" : `${qtd} motos disponíveis`;
+  }
+  return qtd === 1 ? "1 carro disponível" : `${qtd} carros disponíveis`;
+}
+
+function diasNoEstoque(v: OwnerStockRow, nowMs = Date.now()): number | null {
+  const created = Date.parse(String(v.created_at ?? ""));
+  if (!Number.isFinite(created)) return null;
+  return Math.max(0, Math.floor((nowMs - created) / 86400000));
+}
+
 export function formatOwnerStockSummary(
-  disponiveis: VeiculoVitrineRow[],
+  disponiveis: OwnerStockRow[],
   label = "Estoque",
+  nowMs = Date.now(),
 ): string {
   if (!disponiveis.length) {
     return label === "Motos"
@@ -167,29 +219,97 @@ export function formatOwnerStockSummary(
       : "Você não tem veículos disponíveis no estoque agora.";
   }
   const byMarca = new Map<string, number>();
-  let minP: number | null = null;
-  let maxP: number | null = null;
+  let totalAnunciado = 0;
+  let semPreco = 0;
   for (const v of disponiveis) {
     const m = String(v.marca || "Sem marca").trim();
     byMarca.set(m, (byMarca.get(m) ?? 0) + 1);
-    if (v.preco != null && Number.isFinite(Number(v.preco))) {
-      const p = Number(v.preco);
-      minP = minP == null ? p : Math.min(minP, p);
-      maxP = maxP == null ? p : Math.max(maxP, p);
+    if (v.preco != null && Number.isFinite(Number(v.preco)) && Number(v.preco) > 0) {
+      totalAnunciado += Number(v.preco);
+    } else {
+      semPreco += 1;
     }
   }
+  const sorted = [...disponiveis].sort((a, b) => {
+    const pa = a.preco != null ? Number(a.preco) : -1;
+    const pb = b.preco != null ? Number(b.preco) : -1;
+    return pb - pa;
+  });
+  const maxList = 15;
+  const listLines = sorted.slice(0, maxList).map((v, i) => {
+    const preco = v.preco != null && Number(v.preco) > 0
+      ? formatPrecoBrl(Number(v.preco))
+      : "sem preço";
+    const dias = diasNoEstoque(v, nowMs);
+    const diasTxt = dias != null ? `${dias} ${dias === 1 ? "dia" : "dias"}` : "— dias";
+    return `${i + 1}. ${vehicleDisplayTitle(v)} — ${preco} · ${diasTxt}`;
+  });
+  const extra = sorted.length > maxList
+    ? `\n… e mais ${sorted.length - maxList}.`
+    : "";
   const marcas = [...byMarca.entries()]
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "pt-BR"))
     .map(([marca, n]) => `${marca} (${n})`)
     .join(", ");
-  const faixa = minP != null && maxP != null
-    ? `${formatPrecoBrl(minP)} – ${formatPrecoBrl(maxP)}`
-    : "sem preços cadastrados";
-  return [
-    `📦 ${label}: ${disponiveis.length} disponível(is).`,
-    `Marcas: ${marcas}.`,
-    `Faixa de preço: ${faixa}.`,
-  ].join("\n");
+  const lines: string[] = [
+    `📦 *${label}: ${ownerDisponiveisLabel(disponiveis.length, label)}*`,
+    `Valor total anunciado: ${formatPrecoBrl(totalAnunciado)}`,
+    ...listLines,
+  ];
+  if (extra) lines.push(extra.trim());
+  lines.push(`Marcas: ${marcas}.`);
+  if (semPreco > 0) {
+    const aviso = semPreco === 1 ? "1 sem preço" : `${semPreco} sem preço`;
+    lines.push(`(${aviso} — não entram no total anunciado)`);
+  }
+  return lines.join("\n");
+}
+
+export type OwnerVendidosMesSnapshot = {
+  periodo?: { competencia?: string; fim?: string; label?: string };
+  vendas?: {
+    lista?: Array<{
+      data?: string;
+      veiculo?: string;
+      valor_venda?: number;
+      vendedor?: string | null;
+    }>;
+    totais?: { qtd?: number; faturamento?: number };
+  };
+};
+
+function formatVendaDataBr(ymd: string): string {
+  const s = String(ymd).slice(0, 10);
+  if (s.length < 10) return s;
+  return `${s.slice(8, 10)}/${s.slice(5, 7)}`;
+}
+
+export function formatOwnerVendidosMesFromSnapshot(
+  snap: OwnerVendidosMesSnapshot,
+  ateDiaLabel: string,
+): string {
+  const lista = snap.vendas?.lista ?? [];
+  const totais = snap.vendas?.totais;
+  const competencia = snap.periodo?.competencia ?? "";
+  const mes = competencia ? mesNomePt(competencia) : (snap.periodo?.label ?? "mês");
+  const lines: string[] = [`🚗 *Vendidos — ${mes} (até ${ateDiaLabel})*`];
+  if (!lista.length) {
+    lines.push("Nenhuma venda registrada no período.");
+    return lines.join("\n");
+  }
+  lista.forEach((v, i) => {
+    const valor = v.valor_venda != null ? formatPosicaoMoney(Number(v.valor_venda)) : "—";
+    const data = v.data ? formatVendaDataBr(v.data) : "—";
+    const vend = v.vendedor ? ` · ${v.vendedor}` : "";
+    lines.push(`${i + 1}. ${v.veiculo ?? "Veículo"} — ${valor} · ${data}${vend}`);
+  });
+  const qtd = totais?.qtd ?? lista.length;
+  const fat = totais?.faturamento ?? lista.reduce(
+    (a, x) => a + Number(x.valor_venda ?? 0),
+    0,
+  );
+  lines.push(`Total: ${carrosLabel(qtd)} · ${formatPosicaoMoney(fat)}`);
+  return lines.join("\n");
 }
 
 export function formatOwnerVendidosCount(count: number): string {

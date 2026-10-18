@@ -1,9 +1,12 @@
 import { loadTenantVehicleStockGate } from "./vehicle-inventory-tenant.ts";
+import { loadGestaoConsultaSnapshot } from "./gestao-consulta-snapshot.ts";
+import { formatYmdSaoPaulo } from "./gestao-date-br.ts";
 import {
   classifyOwnerStockIntent,
   formatOwnerStockSearchReply,
   formatOwnerStockSummary,
   formatOwnerVendidosCount,
+  formatOwnerVendidosMesFromSnapshot,
   ownerStockSegmentFilter,
   rankOwnerStockMatches,
   shouldDeferOwnerStockShortcut,
@@ -20,7 +23,7 @@ import {
 } from "./vehicle-stock-whatsapp.ts";
 
 export const OWNER_STOCK_SELECT =
-  "id,segmento,marca,modelo,versao,ano_fabricacao,ano_modelo,km,preco,cor,cambio,status,descricao";
+  "id,segmento,marca,modelo,versao,ano_fabricacao,ano_modelo,km,preco,cor,cambio,status,descricao,created_at";
 
 export async function toolConsultarEstoqueVeiculos(
   query: string,
@@ -84,6 +87,7 @@ export async function tryProcessOwnerVehicleStockInbound(input: {
     current: Record<string, unknown>,
   ) => Promise<boolean>;
   encaminharRecado: (recado: string) => Promise<{ ok: boolean; protocolo?: string }>;
+  gestaoAuthorized?: boolean;
 }): Promise<{ handled: boolean; reply?: string; preview?: string }> {
   const sb = input.sb as Parameters<typeof loadTenantVehicleStockGate>[0];
   const gate = await loadTenantVehicleStockGate(sb, input.userId);
@@ -94,6 +98,7 @@ export async function tryProcessOwnerVehicleStockInbound(input: {
       userText: input.userText,
       hasInboundMedia: input.hasInboundMedia,
       agentState: input.agentState,
+      gestaoAuthorized: input.gestaoAuthorized,
     })
   ) {
     return { handled: false };
@@ -174,9 +179,28 @@ export async function tryProcessOwnerVehicleStockInbound(input: {
       seg === "moto" ? "Motos" : "Estoque",
     );
   } else if (intent === "vendidos") {
-    reply = formatOwnerVendidosCount(
-      all.filter((v) => v.status === "vendido").length,
-    );
+    if (input.gestaoAuthorized) {
+      const now = new Date();
+      const snap = await loadGestaoConsultaSnapshot(
+        input.sb as Parameters<typeof loadGestaoConsultaSnapshot>[0],
+        input.userId,
+        "mes",
+        now,
+      );
+      const hoje = formatYmdSaoPaulo(now);
+      const periodo = snap.periodo as { competencia?: string; fim?: string } | undefined;
+      const fim = String(periodo?.fim ?? "").slice(0, 10);
+      const ateDia = periodo?.competencia === hoje.slice(0, 7)
+        ? `${hoje.slice(8, 10)}/${hoje.slice(5, 7)}`
+        : fim.length >= 10
+        ? `${fim.slice(8, 10)}/${fim.slice(5, 7)}`
+        : `${hoje.slice(8, 10)}/${hoje.slice(5, 7)}`;
+      reply = formatOwnerVendidosMesFromSnapshot(snap, ateDia);
+    } else {
+      reply = formatOwnerVendidosCount(
+        all.filter((v) => v.status === "vendido").length,
+      );
+    }
   } else if (intent === "busca") {
     const disponiveis = all.filter((v) => v.status === "disponivel");
     const matches = rankOwnerStockMatches(input.userText, disponiveis);

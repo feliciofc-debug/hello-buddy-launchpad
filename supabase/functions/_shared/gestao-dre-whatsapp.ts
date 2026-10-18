@@ -69,6 +69,7 @@ export type GestaoDreWhatsappFacts = {
   operacionaisPorCategoria: Array<{ label: string; valor: number }>;
   metaRealizado: number | null;
   metaAlvo: number | null;
+  metaTipo: "qtd" | "faturamento" | null;
   despesasEstoque: number;
 };
 
@@ -150,8 +151,10 @@ export async function loadGestaoDreWhatsappFacts(
   const metaCfg = metaRow?.config_json as GestaoMetaConfigJson | undefined;
   let metaRealizado: number | null = null;
   let metaAlvo: number | null = null;
+  let metaTipo: "qtd" | "faturamento" | null = null;
   if (metaCfg) {
     metaAlvo = metaCfg.metaValor;
+    metaTipo = metaCfg.tipo === "faturamento" ? "faturamento" : "qtd";
     metaRealizado = metaCfg.tipo === "qtd" ? dre.qtdVendas : dre.faturamento;
   }
 
@@ -186,6 +189,7 @@ export async function loadGestaoDreWhatsappFacts(
     operacionaisPorCategoria,
     metaRealizado,
     metaAlvo,
+    metaTipo,
     despesasEstoque,
   };
 }
@@ -195,10 +199,29 @@ function pctBr(n: number, fat: number): string {
   return `${(n / fat * 100).toFixed(1).replace(".", ",")}%`;
 }
 
-function lineMoney(label: string, value: number, suffix?: string): string | null {
+function lineMoney(label: string, value: number): string | null {
   if (value === 0) return null;
-  const suf = suffix ? `   ${suffix}` : "";
-  return `${label.padEnd(36, " ")} ${formatGestaoMoney(value)}${suf}`;
+  return `${label}: ${formatGestaoMoney(value)}`;
+}
+
+/** Valida fechamento contábil da DRE WhatsApp (centavos). */
+export function assertGestaoDreWhatsappWaterfall(facts: GestaoDreWhatsappFacts): void {
+  const { dre } = facts;
+  const lucroCarrosCalc = Math.round(
+    (dre.faturamento - dre.custoCarros - facts.despesasCarrosSemComissao - facts.comissaoTotal) * 100,
+  ) / 100;
+  const diffCarros = Math.abs(lucroCarrosCalc - dre.lucroCarros);
+  if (diffCarros > 0.01) {
+    throw new Error(
+      `DRE waterfall: lucro carros ${dre.lucroCarros} != ${lucroCarrosCalc}`,
+    );
+  }
+  const liquidoCalc = Math.round((dre.lucroCarros - dre.despesasOperacionais) * 100) / 100;
+  if (Math.abs(liquidoCalc - dre.lucroLiquidoLoja) > 0.01) {
+    throw new Error(
+      `DRE waterfall: lucro líquido ${dre.lucroLiquidoLoja} != ${liquidoCalc}`,
+    );
+  }
 }
 
 export function formatGestaoDreWhatsApp(facts: GestaoDreWhatsappFacts): string {
@@ -208,7 +231,7 @@ export function formatGestaoDreWhatsApp(facts: GestaoDreWhatsappFacts): string {
   const margemLiquidaPct = fat > 0 ? (dre.lucroLiquidoLoja / fat) * 100 : null;
 
   const lines: string[] = [];
-  lines.push(`📊 DRE — ${facts.tituloMes} (até ${facts.ateDia})`);
+  lines.push(`📊 *DRE — ${facts.tituloMes}* (até ${facts.ateDia})`);
   lines.push("");
 
   if (dre.qtdVendas === 0) {
@@ -230,43 +253,48 @@ export function formatGestaoDreWhatsApp(facts: GestaoDreWhatsappFacts): string {
   if (receita) lines.push(receita);
   const custo = lineMoney("(−) Custo dos carros vendidos", dre.custoCarros);
   if (custo) lines.push(custo);
-  const despCar = lineMoney("(−) Despesas dos carros vendidos", dre.despesasCarros);
-  if (despCar) {
-    lines.push(`${despCar}   (preparação, mecânica, documentação...)`);
-  }
+  const despCar = lineMoney(
+    "(−) Despesas dos carros vendidos",
+    facts.despesasCarrosSemComissao,
+  );
+  if (despCar) lines.push(despCar);
+  const com = lineMoney("(−) Comissões", facts.comissaoTotal);
+  if (com) lines.push(com);
   lines.push(
-    `= Lucro bruto dos veículos${" ".repeat(11)} ${formatGestaoMoney(dre.lucroCarros)}   (${
+    `= *Lucro bruto dos veículos*: ${formatGestaoMoney(dre.lucroCarros)} (${
       margemBrutaPct != null ? pctBr(dre.lucroCarros, fat) : "—"
     } margem bruta)`,
   );
   lines.push("");
 
-  const com = lineMoney("(−) Comissões", facts.comissaoTotal);
-  if (com) lines.push(com);
-
   const opLine = lineMoney("(−) Despesas operacionais", dre.despesasOperacionais);
   if (opLine) {
     lines.push(opLine);
-    if (facts.operacionaisPorCategoria.length) {
-      const bullets = facts.operacionaisPorCategoria
-        .map((c) => `${c.label} ${formatGestaoMoney(c.valor)}`)
-        .join(" • ");
-      lines.push(`     • ${bullets}`);
+    for (const c of facts.operacionaisPorCategoria) {
+      lines.push(`   • ${c.label}: ${formatGestaoMoney(c.valor)}`);
     }
   }
 
   lines.push(
-    `= Lucro líquido${" ".repeat(22)} ${formatGestaoMoney(dre.lucroLiquidoLoja)}   (${
+    `= *Lucro líquido*: ${formatGestaoMoney(dre.lucroLiquidoLoja)} (${
       margemLiquidaPct != null ? pctBr(dre.lucroLiquidoLoja, fat) : "—"
     } margem líquida)`,
   );
 
-  if (facts.metaAlvo != null && facts.metaRealizado != null) {
+  if (facts.metaAlvo != null && facts.metaRealizado != null && facts.metaTipo) {
     const pctMeta = facts.metaAlvo > 0
       ? Math.round((facts.metaRealizado / facts.metaAlvo) * 100)
       : 0;
     lines.push("");
-    lines.push(`Meta: ${Math.round(facts.metaRealizado)} de ${facts.metaAlvo} carros (${pctMeta}%)`);
+    if (facts.metaTipo === "qtd") {
+      const real = Math.round(facts.metaRealizado);
+      const alvo = Math.round(facts.metaAlvo);
+      lines.push(`Meta: ${real} de ${alvo} carros (${pctMeta}%)`);
+    } else {
+      lines.push(
+        `Meta: ${formatGestaoMoney(facts.metaRealizado)} de ${formatGestaoMoney(facts.metaAlvo)} (${pctMeta}%)`,
+      );
+    }
   }
 
   if (facts.despesasEstoque > 0) {

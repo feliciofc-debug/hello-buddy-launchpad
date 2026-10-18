@@ -1,5 +1,6 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  assertGestaoDreWhatsappWaterfall,
   dreMargensPct,
   formatGestaoDreWhatsApp,
   parseGestaoCompetenciaFromText,
@@ -46,13 +47,48 @@ Deno.test("formatGestaoDreWhatsApp rotula margens bruta e líquida", () => {
     operacionaisPorCategoria: [{ label: "Aluguel", valor: 5000 }],
     metaRealizado: 4,
     metaAlvo: 8,
+    metaTipo: "qtd",
     despesasEstoque: 12_000,
   };
+  assertGestaoDreWhatsappWaterfall(facts);
   const text = formatGestaoDreWhatsApp(facts);
   assert(text.includes("margem bruta"));
   assert(text.includes("margem líquida"));
   assert(text.includes("Comissões"));
   assert(text.includes("3.052.800"));
+  const idxCom = text.indexOf("Comissões");
+  const idxBruto = text.indexOf("Lucro bruto");
+  const idxOp = text.indexOf("Despesas operacionais");
+  assert(idxCom > 0 && idxBruto > idxCom && idxOp > idxBruto);
+  assert(text.includes("567.920") || text.includes("567.920,00"));
+  assert(text.includes("4 de 8 carros"));
+});
+
+Deno.test("DRE waterfall fecha em centavos (treino)", () => {
+  const facts: GestaoDreWhatsappFacts = {
+    competencia: "2026-10",
+    tituloMes: "Outubro/2026",
+    ateDia: "18/10",
+    dre: {
+      competencia: "2026-10",
+      faturamento: 3_052_800,
+      custoCarros: 2_000_000,
+      despesasCarros: 598_448,
+      lucroCarros: 454_352,
+      despesasOperacionais: 95_166.9,
+      lucroLiquidoLoja: 359_185.1,
+      margemLiquidaPct: 11.8,
+      qtdVendas: 4,
+    },
+    comissaoTotal: 30_528,
+    despesasCarrosSemComissao: 567_920,
+    operacionaisPorCategoria: [],
+    metaRealizado: null,
+    metaAlvo: null,
+    metaTipo: null,
+    despesasEstoque: 0,
+  };
+  assertGestaoDreWhatsappWaterfall(facts);
 });
 
 Deno.test("dre de setembro → competência 2026-09", () => {

@@ -22422,11 +22422,13 @@ async function tryProcessOwnerVehicleStockShortcut(input: {
   const baseState = migrateVerticalState(
     await loadAgentState(sb, input.convStateIdentity),
   ).state as AgentConvState;
+  const gestaoAuthOwner = await loadGestaoAuthContext(sb, input.userId);
   const ownerStock = await tryProcessOwnerVehicleStockInbound({
     sb,
     userId: input.userId,
     userText: input.userText,
     hasInboundMedia: input.hasInboundMedia,
+    gestaoAuthorized: isGestaoAuthorizedPhone(input.row.from_number, gestaoAuthOwner),
     row: input.row,
     contactName: input.contactName,
     agentState: baseState as Record<string, unknown>,
