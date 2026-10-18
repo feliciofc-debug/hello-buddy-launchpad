@@ -115,6 +115,7 @@ import AfiliadoGruposWhatsApp from "./pages/afiliado/AfiliadoGruposWhatsApp";
 import AfiliadoContatos from "./pages/afiliado/AfiliadoContatos";
 import AfiliadoCampanhas from "./pages/afiliado/AfiliadoCampanhas";
 
+import { AmzAutoModeProvider } from "@/contexts/AmzAutoModeContext";
 import CookieBanner from "./components/CookieBanner";
 import LanguageSwitcher from "./components/LanguageSwitcher";
 import { GestaoJarvisOwnerFab } from "@/components/jarvis/GestaoJarvisOwnerFab.tsx";
@@ -140,6 +141,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <AmzAutoModeProvider>
           <GestaoJarvisOwnerFab />
           <Routes>
             <Route path="/" element={<Landing />} />
@@ -282,8 +284,8 @@ const App = () => (
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
-            
             <CookieBanner />
+          </AmzAutoModeProvider>
           </BrowserRouter>
         </TooltipProvider>
     </ThemeProvider>

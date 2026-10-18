@@ -7,6 +7,8 @@ import {
   businessTenantHomePath,
   VEHICLE_DEALER_TENANT_TYPE,
 } from "@/lib/business-tenant";
+import { fetchIsAppAdmin } from "@/lib/app-admin";
+import { writeAmzAutoModePreference } from "@/lib/amz-auto-mode";
 import { AmzAutoLogo } from "./AmzAutoLogo";
 import { AmzAutoPageShell } from "./AmzAutoLayout";
 
@@ -35,7 +37,7 @@ export default function AmzAutoEntrarPage() {
     };
   }, []);
 
-  const routeVehicleUser = async (userId: string) => {
+  const routeAfterAmzAutoLogin = async (userId: string, userEmail: string) => {
     const { data: profile } = await supabase
       .from("profiles")
       .select("tipo, validade_acesso")
@@ -53,13 +55,17 @@ export default function AmzAutoEntrarPage() {
       return;
     }
 
-    if (profile.tipo !== VEHICLE_DEALER_TENANT_TYPE) {
+    const isRevenda = profile.tipo === VEHICLE_DEALER_TENANT_TYPE;
+    const isAdmin = await fetchIsAppAdmin(userId, userEmail);
+
+    if (!isRevenda && !isAdmin) {
       await supabase.auth.signOut();
       setWrongTenant(true);
       return;
     }
 
-    navigate(businessTenantHomePath(profile.tipo));
+    writeAmzAutoModePreference(true);
+    navigate(businessTenantHomePath(VEHICLE_DEALER_TENANT_TYPE));
   };
 
   const handleSubmit = async (event: FormEvent) => {
@@ -74,7 +80,7 @@ export default function AmzAutoEntrarPage() {
       );
       if (error) throw error;
       toast.success("Login realizado com sucesso");
-      await routeVehicleUser(data.user.id);
+      await routeAfterAmzAutoLogin(data.user.id, email);
     } catch (err: unknown) {
       const msg = String((err as Error)?.message || "Erro ao fazer login");
       if (msg.toLowerCase().includes("invalid login credentials")) {
