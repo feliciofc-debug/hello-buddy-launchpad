@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { classifyGestaoIntent } from "./gestao-intent-pt.ts";
 import {
   closestGestaoAssistenteEntries,
@@ -13,6 +14,8 @@ import {
 } from "./gestao-assistente-queries.ts";
 import { gestaoAssistentePolishReply } from "./gestao-assistente-ai.ts";
 
+export type Db = SupabaseClient;
+
 export type GestaoAssistenteAction = { label: string; path: string };
 
 export type GestaoAssistenteResponse = {
@@ -21,8 +24,6 @@ export type GestaoAssistenteResponse = {
   actions: GestaoAssistenteAction[];
   error?: string;
 };
-
-type Db = { from: (t: string) => Record<string, unknown> };
 
 function navActions(entry: GestaoAssistenteMapEntry): GestaoAssistenteAction[] {
   return [{ label: entry.title, path: entry.path }];

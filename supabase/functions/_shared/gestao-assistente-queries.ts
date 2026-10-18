@@ -13,11 +13,10 @@ import {
 import { buildConciliacaoPendenteReply } from "./gestao-conciliacao-inbound.ts";
 import { buildContratosPendentesReply } from "./gestao-contrato-inbound.ts";
 import { buildNotasMesReply } from "./gestao-nfe-inbound.ts";
-import {
-  buildComissaoMesReply,
-  buildGestaoRankingReply,
-} from "./gestao-equipe-inbound.ts";
-import { formatGestaoVeiculoLabel } from "./gestao-veiculo-match.ts";
+import { buildRankingVendedores, type VendaEquipeLine } from "./gestao-equipe-stats.ts";
+import { formatGestaoVeiculoLabel, type GestaoVeiculoRow } from "./gestao-veiculo-match.ts";
+import type { GestaoVendedorRow } from "./gestao-vendedor-match.ts";
+import type { Db } from "./gestao-assistente-core.ts";
 
 export type GestaoAssistenteQueryResult = {
   queryKind: string;
@@ -25,7 +24,52 @@ export type GestaoAssistenteQueryResult = {
   facts: Record<string, string | number | boolean>;
 };
 
-type Db = { from: (t: string) => Record<string, unknown> };
+type ContaLancamentoRow = {
+  id: string;
+  tipo: "pagar" | "receber";
+  categoria_operacional: string | null;
+  valor: number;
+  vencimento: string;
+  pago_em: string | null;
+  recebido_em: string | null;
+  observacao: string | null;
+};
+
+type VendaRow = {
+  veiculo_id: string;
+  valor_venda: number;
+  data_venda: string;
+};
+
+type CompraValorRow = { valor_compra: number | null };
+
+type DespesaRow = { valor: number; categoria: string };
+
+type VeiculoEstoqueParadoRow = Pick<
+  GestaoVeiculoRow,
+  "id" | "marca" | "modelo" | "versao" | "status"
+> & { created_at?: string | null };
+
+type VeiculoEstoquePrecoRow = { id: string; preco: number | null; status: string };
+
+type ExtratoRow = { valor: number; status: string };
+
+type NfeRow = {
+  status: string | null;
+  authorized_at: string | null;
+  created_at: string | null;
+};
+
+type VendaVeiculoIdRow = { veiculo_id: string };
+
+type ComissaoAutoRow = { vendedor_id: string; valor: number };
+
+type VendaEquipeRawRow = {
+  veiculo_id: string;
+  valor_venda: number;
+  data_venda: string;
+  vendedor_id: string | null;
+};
 
 const MUTATING: Set<GestaoIntentKind> = new Set([
   "despesa",
@@ -43,10 +87,12 @@ export function isGestaoAssistenteMutatingIntent(kind: GestaoIntentKind): boolea
 
 async function loadContas(sb: Db, userId: string): Promise<GestaoContaInbound[]> {
   const { data } = await sb.from("gestao_conta_lancamento").select(
-    "tipo, categoria_operacional, valor, vencimento, pago_em, recebido_em, observacao",
+    "id, tipo, categoria_operacional, valor, vencimento, pago_em, recebido_em, observacao",
   ).eq("user_id", userId).is("deleted_at", null);
-  return (data ?? []).map((c: Record<string, unknown>) => ({
-    tipo: c.tipo as "pagar" | "receber",
+  const rows = (data ?? []) as ContaLancamentoRow[];
+  return rows.map((c) => ({
+    id: String(c.id),
+    tipo: c.tipo,
     categoria: String(c.categoria_operacional ?? ""),
     valor: Number(c.valor),
     vencimento: String(c.vencimento ?? ""),
@@ -56,26 +102,82 @@ async function loadContas(sb: Db, userId: string): Promise<GestaoContaInbound[]>
   }));
 }
 
+async function buildGestaoAssistenteRankingReply(
+  sb: Db,
+  userId: string,
+  comissaoByVendedor: Map<string, number>,
+  vendedores: GestaoVendedorRow[],
+  competencia: string,
+): Promise<string> {
+  const [y, m] = competencia.split("-").map(Number);
+  const start = `${competencia}-01`;
+  const end = new Date(y, m, 0).toISOString().slice(0, 10);
+
+  const { data: vendasRaw } = await sb.from("veiculo_venda").select(
+    "veiculo_id, valor_venda, data_venda, vendedor_id",
+  ).eq("user_id", userId).gte("data_venda", start).lte("data_venda", end);
+
+  const vendas: VendaEquipeLine[] = ((vendasRaw ?? []) as VendaEquipeRawRow[]).map((row) => ({
+    veiculo_id: row.veiculo_id,
+    valor_venda: Number(row.valor_venda),
+    data_venda: String(row.data_venda),
+    vendedor_id: row.vendedor_id,
+    lucro_liquido: null,
+  }));
+
+  const nomeById = new Map(vendedores.map((v) => [v.id, v.nome]));
+  const rank = buildRankingVendedores(vendas, comissaoByVendedor, nomeById, competencia);
+  if (!rank.length) return `Ranking ${competencia}: nenhuma venda registrada.`;
+
+  const lines = rank.slice(0, 8).map((r, i) =>
+    `${i + 1}. ${r.nome}: ${r.qtd} carro(s), ${formatGestaoMoney(r.faturamento)}, comissão ${
+      formatGestaoMoney(r.comissao)
+    }`
+  );
+  return `Ranking vendedores (${competencia}):\n${lines.join("\n")}`;
+}
+
+function buildComissaoMesReply(
+  comissaoByVendedor: Map<string, number>,
+  vendedores: GestaoVendedorRow[],
+  competencia = competenciaFromDate(),
+): string {
+  let total = 0;
+  const lines: string[] = [];
+  for (const v of vendedores) {
+    const c = comissaoByVendedor.get(v.id) ?? 0;
+    if (c > 0) {
+      total += c;
+      lines.push(`${v.nome}: ${formatGestaoMoney(c)}`);
+    }
+  }
+  if (!lines.length) return `Comissões ${competencia}: nenhuma lançada ainda.`;
+  return `Comissões ${competencia} (automáticas):\n${lines.join("\n")}\nTotal: ${formatGestaoMoney(total)}`;
+}
+
 async function loadVendasDreMes(sb: Db, userId: string, competencia: string): Promise<GestaoVendaDreLine[]> {
   const start = `${competencia}-01`;
   const [y, m] = competencia.split("-").map(Number);
   const end = new Date(y, m, 0).toISOString().slice(0, 10);
   const { data: vendas } = await sb.from("veiculo_venda").select("veiculo_id, valor_venda, data_venda")
     .eq("user_id", userId).gte("data_venda", start).lte("data_venda", end);
+  const vendaRows = (vendas ?? []) as VendaRow[];
   const lines: GestaoVendaDreLine[] = [];
-  for (const v of vendas ?? []) {
-    const vid = String((v as Record<string, unknown>).veiculo_id);
+  for (const v of vendaRows) {
+    const vid = v.veiculo_id;
     const [{ data: compra }, { data: despesas }] = await Promise.all([
       sb.from("veiculo_compra").select("valor_compra").eq("user_id", userId).eq("veiculo_id", vid).maybeSingle(),
       sb.from("veiculo_despesas").select("valor, categoria")
         .eq("user_id", userId).eq("veiculo_id", vid).is("deleted_at", null),
     ]);
+    const compraRow = compra as CompraValorRow | null;
+    const despesaRows = (despesas ?? []) as DespesaRow[];
     lines.push({
       veiculoId: vid,
-      dataVenda: String((v as Record<string, unknown>).data_venda),
-      valorVenda: Number((v as Record<string, unknown>).valor_venda),
-      valorCompra: compra ? Number((compra as Record<string, unknown>).valor_compra) : null,
-      despesas: (despesas ?? []).map((d: Record<string, unknown>) => ({
+      dataVenda: String(v.data_venda),
+      valorVenda: Number(v.valor_venda),
+      valorCompra: compraRow?.valor_compra != null ? Number(compraRow.valor_compra) : null,
+      despesas: despesaRows.map((d) => ({
         valor: Number(d.valor),
         categoria: String(d.categoria ?? ""),
       })),
@@ -100,7 +202,7 @@ export async function runGestaoAssistenteQuery(
   if (/\bparado|mais tempo|envelhec|dias no estoque\b/.test(t)) {
     const { data: veiculos } = await sb.from("veiculos_estoque").select("id, marca, modelo, versao, status, created_at")
       .eq("user_id", userId).eq("status", "disponivel");
-    const rows = (veiculos ?? []) as Array<Record<string, unknown>>;
+    const rows = (veiculos ?? []) as VeiculoEstoqueParadoRow[];
     const now = Date.now();
     const ranked = rows
       .map((v) => {
@@ -112,7 +214,7 @@ export async function runGestaoAssistenteQuery(
       .sort((a, b) => b.days - a.days)
       .slice(0, 8);
     const lines = ranked.map(({ v, days }) =>
-      `${formatGestaoVeiculoLabel(v as never)} — ${days} dias`
+      `${formatGestaoVeiculoLabel(v as GestaoVeiculoRow)} — ${days} dias`
     );
     return {
       queryKind: "carros_parados",
@@ -195,9 +297,9 @@ export async function runGestaoAssistenteQuery(
   if (intent.kind === "conciliacao_pendente") {
     const { data } = await sb.from("gestao_extrato_transacao").select("valor, status")
       .eq("user_id", userId).in("status", ["pendente", "confirmar"]);
-    const rows = data ?? [];
+    const rows = (data ?? []) as ExtratoRow[];
     const qtd = rows.length;
-    const valor = (rows as Array<{ valor: number }>).reduce((a, r) => a + Number(r.valor), 0);
+    const valor = rows.reduce((a, r) => a + Number(r.valor), 0);
     return {
       queryKind: "conciliacao_pendente",
       reply: buildConciliacaoPendenteReply(qtd, valor),
@@ -221,11 +323,12 @@ export async function runGestaoAssistenteQuery(
     const end = new Date(y, m, 0).toISOString().slice(0, 10);
     const { data } = await sb.from("gestao_nfe").select("status, authorized_at, created_at")
       .eq("user_id", userId);
-    const filtered = (data ?? []).filter((n: Record<string, unknown>) => {
+    const allRows = (data ?? []) as NfeRow[];
+    const filtered = allRows.filter((n) => {
       const d = String(n.authorized_at ?? n.created_at ?? "").slice(0, 10);
       return d >= start && d <= end;
     });
-    const autorizadas = filtered.filter((n: Record<string, unknown>) =>
+    const autorizadas = filtered.filter((n) =>
       String(n.status ?? "") === "authorized" || String(n.status ?? "") === "autorizada"
     ).length;
     return {
@@ -242,17 +345,24 @@ export async function runGestaoAssistenteQuery(
   if (intent.kind === "ranking_vendedores" || intent.kind === "comissao_mes" || intent.kind === "vendedor_mes") {
     const { data: vendedores } = await sb.from("gestao_vendedores").select("id, nome, ativo")
       .eq("user_id", userId).eq("ativo", true);
+    const vendedorRows = (vendedores ?? []) as GestaoVendedorRow[];
     const comissaoMap = await loadComissaoMesMap(sb, userId, competencia);
     if (intent.kind === "ranking_vendedores") {
       return {
         queryKind: "ranking_vendedores",
-        reply: await buildGestaoRankingReply(sb, userId, comissaoMap, vendedores ?? [], competencia),
+        reply: await buildGestaoAssistenteRankingReply(
+          sb,
+          userId,
+          comissaoMap,
+          vendedorRows,
+          competencia,
+        ),
         facts: { competencia },
       };
     }
     return {
       queryKind: "comissao_mes",
-      reply: buildComissaoMesReply(comissaoMap, vendedores ?? [], competencia),
+      reply: buildComissaoMesReply(comissaoMap, vendedorRows, competencia),
       facts: { competencia },
     };
   }
@@ -270,14 +380,15 @@ async function loadComissaoMesMap(sb: Db, userId: string, competencia: string): 
   const end = new Date(y, m, 0).toISOString().slice(0, 10);
   const { data: vendas } = await sb.from("veiculo_venda").select("veiculo_id")
     .eq("user_id", userId).gte("data_venda", start).lte("data_venda", end);
-  const ids = (vendas ?? []).map((v: { veiculo_id: string }) => v.veiculo_id);
+  const vendaRows = (vendas ?? []) as VendaVeiculoIdRow[];
+  const ids = vendaRows.map((v) => v.veiculo_id);
   if (!ids.length) return new Map();
   const { data: autos } = await sb.from("gestao_comissao_auto").select("vendedor_id, valor")
     .eq("user_id", userId).in("veiculo_id", ids);
+  const autoRows = (autos ?? []) as ComissaoAutoRow[];
   const map = new Map<string, number>();
-  for (const a of autos ?? []) {
-    const row = a as { vendedor_id: string; valor: number };
-    map.set(row.vendedor_id, (map.get(row.vendedor_id) ?? 0) + Number(row.valor));
+  for (const a of autoRows) {
+    map.set(a.vendedor_id, (map.get(a.vendedor_id) ?? 0) + Number(a.valor));
   }
   return map;
 }
@@ -288,19 +399,20 @@ export async function runGestaoAssistenteEstoqueValores(
 ): Promise<GestaoAssistenteQueryResult> {
   const { data: veiculos } = await sb.from("veiculos_estoque").select("id, preco, status")
     .eq("user_id", userId).eq("status", "disponivel");
-  const ids = (veiculos ?? []).map((v: { id: string }) => v.id);
+  const veiculoRows = (veiculos ?? []) as VeiculoEstoquePrecoRow[];
+  const ids = veiculoRows.map((v) => v.id);
   let compraTotal = 0;
   let comCompra = 0;
   for (const id of ids) {
     const { data: compra } = await sb.from("veiculo_compra").select("valor_compra")
       .eq("user_id", userId).eq("veiculo_id", id).maybeSingle();
-    if (compra?.valor_compra != null) {
+    const compraRow = compra as CompraValorRow | null;
+    if (compraRow?.valor_compra != null) {
       comCompra += 1;
-      compraTotal += Number(compra.valor_compra);
+      compraTotal += Number(compraRow.valor_compra);
     }
   }
-  const vitrine = (veiculos ?? []).reduce((a: number, v: { preco: number | null }) =>
-    a + Number(v.preco ?? 0), 0);
+  const vitrine = veiculoRows.reduce((a, v) => a + Number(v.preco ?? 0), 0);
   return {
     queryKind: "estoque_valores",
     reply: `Estoque disponível: ${ids.length} carro(s). ` +
