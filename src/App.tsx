@@ -45,6 +45,10 @@ import DataDeletion from "./pages/DataDeletion";
 import Security from "./pages/Security";
 import Admin from "./pages/Admin";
 import AdminCriarCliente from "./pages/AdminCriarCliente";
+import AdminAmzAutoPage from "./pages/admin/AdminAmzAutoPage";
+import AmzAutoLandingPage from "./pages/amz-auto/AmzAutoLandingPage";
+import AmzAutoCadastroPage from "./pages/amz-auto/AmzAutoCadastroPage";
+import AmzAutoEntrarPage from "./pages/amz-auto/AmzAutoEntrarPage";
 import AdminWuzapiInstancias from "./pages/AdminWuzapiInstancias";
 import ConfigurarICP from "./pages/ConfigurarICP";
 import CampanhasProspeccao from "./pages/CampanhasProspeccao";
@@ -139,6 +143,9 @@ const App = () => (
           <GestaoJarvisOwnerFab />
           <Routes>
             <Route path="/" element={<Landing />} />
+            <Route path="/amz_auto" element={<AmzAutoLandingPage />} />
+            <Route path="/amz_auto/cadastro" element={<AmzAutoCadastroPage />} />
+            <Route path="/amz_auto/entrar" element={<AmzAutoEntrarPage />} />
             <Route path="/login" element={<Login />} />
             <Route path="/reset-password" element={customAuth ? <Navigate to="/login" replace /> : <ResetPassword />} />
             <Route path="/alterar-senha" element={<ResetPassword />} />
@@ -188,6 +195,7 @@ const App = () => (
             <Route path="/security" element={<Security />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/admin/criar-cliente" element={<AdminCriarCliente />} />
+            <Route path="/admin/amz-auto" element={<AdminAmzAutoPage />} />
             <Route path="/admin/importar" element={<AdminImportar />} />
             
             <Route path="/admin/produtos" element={<AdminProdutos />} />

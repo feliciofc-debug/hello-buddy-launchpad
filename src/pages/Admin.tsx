@@ -290,6 +290,23 @@ export default function Admin() {
               </div>
             </CardContent>
           </Card>
+
+          <Card
+            className="cursor-pointer hover:border-primary/50 transition-colors"
+            onClick={() => navigate("/admin/amz-auto")}
+          >
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="p-3 bg-orange-500/10 rounded-lg">
+                <UserPlus className="h-6 w-6 text-orange-500" />
+              </div>
+              <div>
+                <h3 className="font-semibold">AMZ Auto</h3>
+                <p className="text-sm text-muted-foreground">
+                  Cadastros e liberação de lojas
+                </p>
+              </div>
+            </CardContent>
+          </Card>
           
           <Card 
             className="cursor-pointer hover:border-primary/50 transition-colors"

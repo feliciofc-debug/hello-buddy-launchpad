@@ -14,6 +14,78 @@ export type Database = {
   }
   public: {
     Tables: {
+      amz_auto_cadastros: {
+        Row: {
+          aceite_termos_at: string
+          cidade_uf: string
+          client_ip: string | null
+          cnpj: string
+          created_at: string
+          email: string
+          faixa_estoque: string
+          id: string
+          interesse: string
+          liberado_at: string | null
+          liberado_por: string | null
+          loja_nome: string
+          observacao_admin: string | null
+          plano_interno: string | null
+          qtd_lojas: string
+          responsavel: string
+          status: string
+          tipo_operacao: string
+          updated_at: string
+          user_id: string | null
+          whatsapp_e164: string
+        }
+        Insert: {
+          aceite_termos_at: string
+          cidade_uf: string
+          client_ip?: string | null
+          cnpj: string
+          created_at?: string
+          email: string
+          faixa_estoque: string
+          id?: string
+          interesse: string
+          liberado_at?: string | null
+          liberado_por?: string | null
+          loja_nome: string
+          observacao_admin?: string | null
+          plano_interno?: string | null
+          qtd_lojas: string
+          responsavel: string
+          status?: string
+          tipo_operacao: string
+          updated_at?: string
+          user_id?: string | null
+          whatsapp_e164: string
+        }
+        Update: {
+          aceite_termos_at?: string
+          cidade_uf?: string
+          client_ip?: string | null
+          cnpj?: string
+          created_at?: string
+          email?: string
+          faixa_estoque?: string
+          id?: string
+          interesse?: string
+          liberado_at?: string | null
+          liberado_por?: string | null
+          loja_nome?: string
+          observacao_admin?: string | null
+          plano_interno?: string | null
+          qtd_lojas?: string
+          responsavel?: string
+          status?: string
+          tipo_operacao?: string
+          updated_at?: string
+          user_id?: string | null
+          whatsapp_e164?: string
+        }
+        Relationships: []
+      }
       afiliado_analytics_ebooks: {
         Row: {
           categoria: string | null

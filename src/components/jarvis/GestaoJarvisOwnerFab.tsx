@@ -8,6 +8,7 @@ import { VEHICLE_DEALER_TENANT_TYPE } from "@/lib/business-tenant.ts";
 import { GestaoJarvisPanel } from "@/components/jarvis/GestaoJarvisPanel.tsx";
 
 const HIDDEN_PREFIXES = [
+  "/amz_auto",
   "/login",
   "/cadastro",
   "/vendedor-login",

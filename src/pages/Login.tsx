@@ -8,6 +8,7 @@ import {
   businessTenantHomePath,
   isBusinessTenantType,
 } from '@/lib/business-tenant';
+import { signInWithEmailPassword } from '@/lib/auth-sign-in';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -179,10 +180,12 @@ export default function Login() {
       const email = formData.email.trim().toLowerCase();
       const password = formData.password;
 
-      const { error, data } = await supabase.auth.signInWithPassword({
+      const { signInWithEmailPassword } = await import('@/lib/auth-sign-in');
+      const { error, data } = await signInWithEmailPassword(
+        supabase,
         email,
         password,
-      });
+      );
 
       if (error) throw error;
 

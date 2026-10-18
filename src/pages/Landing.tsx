@@ -108,6 +108,21 @@ function Landing() {
 
   return (
     <SiteLayout>
+      <div className="bg-[#0C0E11] text-[#F5F3EE]">
+        <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-4 px-6 py-3 md:flex-row md:items-center">
+          <p className="m-0 text-sm leading-snug md:text-[15px]">
+            AMZ Auto — sistema completo para lojas de veículos: atendimento no WhatsApp 24h, estoque
+            publicado e gestão com lucro por carro.
+          </p>
+          <Button
+            type="button"
+            onClick={() => navigate("/amz_auto")}
+            className="shrink-0 rounded-[10px] bg-[#FF6B1A] font-bold text-[#0C0E11] hover:bg-[#FF6B1A]/90"
+          >
+            Conhecer o AMZ Auto
+          </Button>
+        </div>
+      </div>
       <main className="bg-slate-950 text-slate-50">
         <section className="relative overflow-hidden border-b border-slate-800 px-6 pb-20 pt-28 md:pb-24 md:pt-36">
           <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-orange-500 to-transparent" />
