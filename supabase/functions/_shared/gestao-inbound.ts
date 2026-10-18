@@ -15,6 +15,10 @@ import {
   type GestaoIntent,
 } from "./gestao-intent-pt.ts";
 import {
+  gestaoDespesaCategoriaLabel,
+  resolveGestaoCategoriaFromUserReply,
+} from "./gestao-categoria-pt.ts";
+import {
   formatGestaoVeiculoLabel,
   rankGestaoVeiculoMatches,
   type GestaoVeiculoRow,
@@ -297,7 +301,7 @@ async function fetchDespesasVeiculo(
     .eq("user_id", userId).eq("veiculo_id", veiculoId).is("deleted_at", null)
     .order("data", { ascending: false });
   const lines = (data ?? []).slice(0, 8).map((d: Record<string, unknown>) =>
-    `${d.data}: ${formatBrl(Number(d.valor))} (${d.categoria})`
+    `${d.data}: ${formatBrl(Number(d.valor))} (${gestaoDespesaCategoriaLabel(String(d.categoria ?? ""))})`
   );
   const label = formatGestaoVeiculoLabel(veiculo);
   if (!lines.length) return `${label}: nenhuma despesa registrada.`;
@@ -383,7 +387,12 @@ function buildConfirmMessage(
 ): string {
   const label = formatGestaoVeiculoLabel(veiculo);
   if (action === "despesa") {
-    return `Confirmar despesa de ${formatBrl(Number(draft.valor))} (${draft.categoria}) no ${label}?\nResponda SIM ou NÃO.`;
+    const catCode = String(draft.categoria ?? "outros");
+    const catLabel = gestaoDespesaCategoriaLabel(catCode);
+    const outrosHint = catCode === "outros"
+      ? "\nSe for outra categoria, responda com o nome (ex.: mecânica)."
+      : "";
+    return `Confirmar despesa de ${formatBrl(Number(draft.valor))} (${catLabel}) no ${label}?${outrosHint}\nResponda SIM ou NÃO.`;
   }
   if (action === "compra") {
     const origem = draft.consignacao ? "consignação" : "compra";
@@ -412,7 +421,7 @@ async function enrichVendaDraft(
   const vendedores = await loadVendedores(sb, userId);
   const hint = String(draft.vendedor_hint ?? "");
   const matched = hint ? matchGestaoVendedor(hint, vendedores) : null;
-  const out = { ...draft, veiculo_id: veiculoId };
+  const out: Record<string, unknown> = { ...draft, veiculo_id: veiculoId };
   if (!matched) return out;
 
   out.vendedor_id = matched.id;
@@ -848,7 +857,7 @@ export async function tryProcessGestaoLucroInbound(input: {
           );
           return { handled: true, reply: fin.reply };
         }
-        let draft = { ...activePending.draft, veiculo_id: veiculo.id };
+        let draft: Record<string, unknown> = { ...activePending.draft, veiculo_id: veiculo.id };
         if (activePending.action === "venda") {
           draft = await enrichVendaDraft(input.sb, input.userId, veiculo.id, draft);
         }
@@ -866,6 +875,33 @@ export async function tryProcessGestaoLucroInbound(input: {
       }
       await input.saveAgentStatePatch({ pending_gestao_confirm: null }, input.agentState);
       return { handled: false, clearPending: true };
+    }
+
+    if (
+      activePending.phase === "confirm" &&
+      activePending.action === "despesa"
+    ) {
+      const corrected = resolveGestaoCategoriaFromUserReply(text);
+      if (corrected) {
+        const confirmPending: PendingGestaoConfirm = {
+          ...activePending,
+          draft: { ...activePending.draft, categoria: corrected },
+          expires_at: new Date(Date.now() + GESTAO_PENDING_TTL_MS).toISOString(),
+        };
+        await input.saveAgentStatePatch(
+          { pending_gestao_confirm: confirmPending },
+          input.agentState,
+        );
+        const veiculoId = String(confirmPending.draft.veiculo_id ?? "");
+        const vehicles = await loadVehicles(input.sb, input.userId);
+        const veiculo = vehicles.find((v) => v.id === veiculoId);
+        if (veiculo) {
+          return {
+            handled: true,
+            reply: buildConfirmMessage("despesa", veiculo, confirmPending.draft),
+          };
+        }
+      }
     }
 
     if (isGestaoAffirmative(text)) {

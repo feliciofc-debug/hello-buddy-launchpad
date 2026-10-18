@@ -6,6 +6,7 @@ import type { GestaoContaLancamento } from "./gestao-financeiro-load.ts";
 import { contasToDreOperacional, veiculosToDreVendas } from "./gestao-financeiro-load.ts";
 import type { GestaoVeiculoEnriched } from "./gestao-lucro-types.ts";
 import { isGestaoVeiculoVendido } from "./gestao-venda-display.ts";
+import { gestaoCategoriaLabel } from "./gestao-lucro-categories.ts";
 
 export type GestaoRelatorioConciliacaoResumo = {
   conciliadas: number;
@@ -216,7 +217,7 @@ export function downloadRelatorioMesPdf(input: GestaoRelatorioMesInput, filename
         [
           d.data,
           `${v.marca} ${v.modelo}`.slice(0, 20),
-          d.categoria,
+          gestaoCategoriaLabel(d.categoria),
           (d.descricao ?? "").slice(0, 30),
           formatGestaoMoney(Number(d.valor)),
           origemDespesaLabel(d.origem_lancamento),
