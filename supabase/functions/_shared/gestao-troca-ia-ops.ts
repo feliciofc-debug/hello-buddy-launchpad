@@ -14,10 +14,10 @@ import { insertTrocaEvento } from "./gestao-troca-ops.ts";
 import { listGestaoTrocaIaCustos } from "./gestao-troca-ia-custos.ts";
 import {
   gestaoTrocaIaAlertaKm,
-  gestaoTrocaIaAreaToChecklistKey,
   gestaoTrocaIaAvisoCarroceria,
-  gestaoTrocaIaCategoriaFromAreaTipo,
-  gestaoTrocaIaValorEstimadoItem,
+  gestaoTrocaIaBuildItemRows,
+  gestaoTrocaIaFiltrarItensVision,
+  gestaoTrocaIaLuzesPainelResumo,
 } from "./gestao-troca-ia-rules.ts";
 import type { GestaoTrocaIaGravidade, GestaoTrocaIaTipo } from "./gestao-troca-ia-schema.ts";
 import {
@@ -199,31 +199,17 @@ export async function runGestaoTrocaIaAnaliseBackground(
       etiquetasUsadas,
     );
 
-    const itemRows: Record<string, unknown>[] = [];
-    let total = 0;
-    vision.data.itens.forEach((item, ordem) => {
-      const categoria = gestaoTrocaIaCategoriaFromAreaTipo(item.area, item.tipo);
-      const valor = gestaoTrocaIaValorEstimadoItem({
-        confianca: item.confianca,
-        categoria,
-        gravidade: item.gravidade,
-        tabela,
-      });
-      if (valor != null) total += valor;
-      itemRows.push({
-        analise_id: analiseId,
-        user_id: userId,
-        troca_id: trocaId,
-        ordem,
-        area: item.area,
-        tipo: item.tipo,
-        gravidade: item.gravidade,
-        confianca: item.confianca,
-        descricao: item.descricao,
-        categoria_custo: categoria,
-        valor_estimado: valor,
-        checklist_key: gestaoTrocaIaAreaToChecklistKey(item.area),
-      });
+    const itensFiltrados = gestaoTrocaIaFiltrarItensVision(vision.data.itens);
+    const temFotoPainel = fotos.some((f) => /painel/i.test(f.etiqueta));
+    const luzes_painel = gestaoTrocaIaLuzesPainelResumo(itensFiltrados, temFotoPainel);
+
+    const { rows: itemRows, totalPreparacao: total } = gestaoTrocaIaBuildItemRows({
+      itens: itensFiltrados,
+      fotos,
+      tabela,
+      analiseId,
+      userId,
+      trocaId,
     });
 
     if (itemRows.length) {
@@ -237,11 +223,11 @@ export async function runGestaoTrocaIaAnaliseBackground(
       km_ficha: kmFicha,
       alerta_km,
       aviso_carroceria,
-      luzes_painel: vision.data.luzes_painel,
+      luzes_painel,
       resumo: vision.data.resumo || null,
       qualidade_json: qualidade,
       modelo_ia: "google/gemini-3.6-flash",
-      total_preparacao: Math.round(total * 100) / 100,
+      total_preparacao: total,
       concluida_em: new Date().toISOString(),
     }).eq("id", analiseId);
 
@@ -343,7 +329,11 @@ export async function decidirItemIaGestaoTroca(
     const key = String(item.checklist_key || item.area);
     const gravidade = String(item.gravidade) as GestaoTrocaIaGravidade;
     const tipo = String(item.tipo) as GestaoTrocaIaTipo;
-    const valor = item.valor_estimado != null ? Number(item.valor_estimado) : null;
+    const valor = tipo === "luz_alerta"
+      ? null
+      : item.valor_estimado != null
+      ? Number(item.valor_estimado)
+      : null;
     checklist[key] = {
       condicao: condicaoFromGravidade(gravidade),
       reparo: reparoFromTipo(tipo),

@@ -79,6 +79,8 @@ export type GestaoTrocaIaVisionItem = {
   gravidade: GestaoTrocaIaGravidade;
   confianca: GestaoTrocaIaConfianca;
   descricao: string;
+  /** Índice 1-based da foto enviada ao modelo (mesma ordem do prompt). */
+  foto_indice?: number | null;
 };
 
 export type GestaoTrocaIaVisionResponse = {
@@ -147,7 +149,7 @@ export function validateGestaoTrocaIaVisionResponse(raw: unknown):
   for (let i = 0; i < raw.itens.length; i++) {
     const row = raw.itens[i];
     if (!isPlainObject(row)) return { ok: false, error: `itens[${i}] inválido.` };
-    const itemKeys = new Set(["area", "tipo", "gravidade", "confianca", "descricao"]);
+    const itemKeys = new Set(["area", "tipo", "gravidade", "confianca", "descricao", "foto_indice"]);
     for (const k of Object.keys(row)) {
       if (!itemKeys.has(k)) return { ok: false, error: `itens[${i}].${k} desconhecido.` };
     }
@@ -161,12 +163,18 @@ export function validateGestaoTrocaIaVisionResponse(raw: unknown):
     if (!GRAV_SET.has(gravidade)) return { ok: false, error: `itens[${i}].gravidade inválida.` };
     if (!CONF_SET.has(confianca)) return { ok: false, error: `itens[${i}].confianca inválida.` };
     if (!descricao) return { ok: false, error: `itens[${i}].descricao vazia.` };
+    let foto_indice: number | null = null;
+    if (row.foto_indice != null) {
+      const n = Number(row.foto_indice);
+      if (Number.isFinite(n) && n >= 1 && n <= 32) foto_indice = Math.floor(n);
+    }
     itens.push({
       area: area as GestaoTrocaIaArea,
       tipo: tipo as GestaoTrocaIaTipo,
       gravidade: gravidade as GestaoTrocaIaGravidade,
       confianca: confianca as GestaoTrocaIaConfianca,
       descricao,
+      foto_indice,
     });
   }
 

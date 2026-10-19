@@ -14,6 +14,7 @@ import {
   invokeGestaoTrocaDecidirItemIa,
   invokeGestaoTrocaStatusAnalise,
 } from "@/lib/gestao-troca-ia-api.ts";
+import { humanizeGestaoTrocaIaErro } from "@/lib/gestao-troca-ia-erro.ts";
 import {
   GESTAO_TROCA_IA_DISCLAIMER,
   type GestaoTrocaIaAnalise,
@@ -136,13 +137,23 @@ export function GestaoTrocaLaudoIaPanel({
           if (a.status !== "processando") {
             stopPolling();
             if (a.status === "concluida") toast.success("Laudo IA concluído.");
-            else if (a.status === "erro") toast.error(a.erro ?? "Laudo IA falhou.");
+            else if (a.status === "rejeitada") {
+              toast.error("Análise rejeitada. Revise as fotos e tente novamente.");
+            } else if (a.status === "erro") {
+              toast.error(humanizeGestaoTrocaIaErro(a.erro));
+            }
           }
         })();
       }, POLL_MS);
     },
     [applyLaudo, stopPolling],
   );
+
+  useEffect(() => {
+    if (analise?.status === "processando" && analise.id && !polling) {
+      startPolling(analise.id);
+    }
+  }, [analise?.id, analise?.status, polling, startPolling]);
 
   const iniciarAnalise = async () => {
     setBusy(true);
@@ -174,12 +185,15 @@ export function GestaoTrocaLaudoIaPanel({
 
   const decidir = async (item: GestaoTrocaIaItem, decisao: "confirmado" | "descartado") => {
     let valorFinal: number | null | undefined;
-    if (decisao === "confirmado") {
+    if (decisao === "confirmado" && item.tipo !== "luz_alerta") {
       const raw = valorDraft[item.id] ?? String(item.valor_estimado ?? "");
       valorFinal = parseGestaoMoneyBr(raw);
       if (valorFinal == null && item.valor_estimado != null) {
         valorFinal = item.valor_estimado;
       }
+    }
+    if (decisao === "confirmado" && item.tipo === "luz_alerta") {
+      valorFinal = null;
     }
     setBusy(true);
     const r = await invokeGestaoTrocaDecidirItemIa({
@@ -240,11 +254,22 @@ export function GestaoTrocaLaudoIaPanel({
         )}
       </div>
 
-      {analise?.status === "erro" && (
-        <p className="text-sm text-red-600 dark:text-red-400">{analise.erro ?? "Erro na análise."}</p>
+      {(analise?.status === "erro" || analise?.status === "rejeitada") && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+          {analise.status === "rejeitada"
+            ? "A análise foi rejeitada. Verifique a qualidade das fotos e inicie novamente."
+            : humanizeGestaoTrocaIaErro(analise.erro)}
+        </div>
       )}
 
-      {analise && analise.status !== "processando" && (
+      {analise && analise.status === "processando" && (
+        <div className="flex items-center gap-2 rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Análise em andamento… a lista de itens será atualizada automaticamente.
+        </div>
+      )}
+
+      {analise && analise.status !== "processando" && analise.status !== "rejeitada" && (
         <>
           <div className="rounded-md border bg-muted/30 p-3 text-sm">
             <p className="font-medium">Quilometragem</p>
@@ -319,6 +344,7 @@ export function GestaoTrocaLaudoIaPanel({
                 {itens.map((item) => {
                   const thumb = item.foto_path ? thumbUrls[item.foto_path] : undefined;
                   const valorKey = item.id;
+                  const isLuz = item.tipo === "luz_alerta";
                   const valorStr = valorDraft[valorKey] ?? String(item.valor_estimado ?? "");
                   const decided = item.decisao !== "pendente";
                   return (
@@ -343,7 +369,9 @@ export function GestaoTrocaLaudoIaPanel({
                         </p>
                         <p className="text-xs text-muted-foreground">
                           Confiança: {item.confianca}
-                          {item.valor_estimado != null
+                          {isLuz
+                            ? " · Sem valor — verificar diagnóstico"
+                            : item.valor_estimado != null
                             ? ` · Sugerido: ${formatGestaoMoney(item.valor_estimado)}`
                             : " · Verificar pessoalmente"}
                         </p>
@@ -356,14 +384,16 @@ export function GestaoTrocaLaudoIaPanel({
                         )}
                         {!decided && (
                           <div className="flex flex-wrap items-end gap-2 pt-1">
-                            <div className="min-w-[140px] flex-1">
-                              <GestaoMoneyInput
-                                label="Valor ao confirmar"
-                                value={valorStr}
-                                onChange={(v) =>
-                                  setValorDraft((d) => ({ ...d, [valorKey]: v }))}
-                              />
-                            </div>
+                            {!isLuz && (
+                              <div className="min-w-[140px] flex-1">
+                                <GestaoMoneyInput
+                                  label="Valor ao confirmar"
+                                  value={valorStr}
+                                  onChange={(v) =>
+                                    setValorDraft((d) => ({ ...d, [valorKey]: v }))}
+                                />
+                              </div>
+                            )}
                             <Button
                               size="sm"
                               disabled={disabled || busy}
