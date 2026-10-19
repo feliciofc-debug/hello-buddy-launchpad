@@ -6640,6 +6640,98 @@ export type Database = {
         }
         Relationships: []
       }
+      veiculo_videos: {
+        Row: {
+          criado_em: string | null
+          descricao_ia: string | null
+          duracao_segundos: number | null
+          facebook_post_id: string | null
+          id: string
+          instagram_post_id: string | null
+          legenda: string | null
+          linkedin_post_id: string | null
+          postado_story_em: string | null
+          postado_story_facebook: boolean | null
+          postado_story_instagram: boolean | null
+          publicado_em: string | null
+          publicado_facebook: boolean | null
+          publicado_instagram: boolean | null
+          status: string | null
+          story_facebook_id: string | null
+          story_instagram_id: string | null
+          tamanho_bytes: number | null
+          thumbnail_url: string | null
+          tiktok_publish_id: string | null
+          titulo: string | null
+          user_id: string
+          veiculo_id: string
+          video_url: string
+          whatsapp_link: string | null
+        }
+        Insert: {
+          criado_em?: string | null
+          descricao_ia?: string | null
+          duracao_segundos?: number | null
+          facebook_post_id?: string | null
+          id?: string
+          instagram_post_id?: string | null
+          legenda?: string | null
+          linkedin_post_id?: string | null
+          postado_story_em?: string | null
+          postado_story_facebook?: boolean | null
+          postado_story_instagram?: boolean | null
+          publicado_em?: string | null
+          publicado_facebook?: boolean | null
+          publicado_instagram?: boolean | null
+          status?: string | null
+          story_facebook_id?: string | null
+          story_instagram_id?: string | null
+          tamanho_bytes?: number | null
+          thumbnail_url?: string | null
+          tiktok_publish_id?: string | null
+          titulo?: string | null
+          user_id: string
+          veiculo_id: string
+          video_url: string
+          whatsapp_link?: string | null
+        }
+        Update: {
+          criado_em?: string | null
+          descricao_ia?: string | null
+          duracao_segundos?: number | null
+          facebook_post_id?: string | null
+          id?: string
+          instagram_post_id?: string | null
+          legenda?: string | null
+          linkedin_post_id?: string | null
+          postado_story_em?: string | null
+          postado_story_facebook?: boolean | null
+          postado_story_instagram?: boolean | null
+          publicado_em?: string | null
+          publicado_facebook?: boolean | null
+          publicado_instagram?: boolean | null
+          status?: string | null
+          story_facebook_id?: string | null
+          story_instagram_id?: string | null
+          tamanho_bytes?: number | null
+          thumbnail_url?: string | null
+          tiktok_publish_id?: string | null
+          titulo?: string | null
+          user_id?: string
+          veiculo_id?: string
+          video_url?: string
+          whatsapp_link?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "veiculo_videos_veiculo_id_fkey"
+            columns: ["veiculo_id"]
+            isOneToOne: false
+            referencedRelation: "veiculos_estoque"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       produto_videos: {
         Row: {
           criado_em: string | null

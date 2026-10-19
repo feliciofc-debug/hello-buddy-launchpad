@@ -12,6 +12,16 @@ import { PublicarStoryModal } from '@/components/PublicarStoryModal';
 import { TikTokIcon } from '@/components/tiktok/TikTokIcon';
 import { TikTokShareModal } from '@/components/TikTokShareModal';
 import { PostarLinkedInVideoModal } from '@/components/videos/PostarLinkedInVideoModal';
+import {
+  PRODUTO_REELS_GRID_SELECT,
+  VEICULO_REELS_GRID_SELECT,
+  videoLibraryTable,
+  videoSourceForModal,
+  type VideoLibraryKind,
+} from '@/lib/video-library-source';
+import type { PublishableItem } from '@/lib/publishable-item';
+import { vehicleVideoDisplayTitle } from '@/lib/vehicle-video-source-adapter';
+import { ExternalLink } from 'lucide-react';
 
 
 interface ReelGerado {
@@ -30,14 +40,36 @@ interface ReelGerado {
   postado_story_instagram?: boolean;
   postado_story_em?: string | null;
   produtos: { id?: string; nome: string; imagem_url: string | null; preco?: number | null; link_marketplace?: string | null } | null;
+  veiculos_estoque?: {
+    id?: string;
+    marca: string;
+    modelo: string;
+    versao?: string | null;
+    status?: string | null;
+    fotos?: string[] | null;
+    preco?: number | null;
+  } | null;
 }
+
+export type ReelsGeradosGridProps = {
+  libraryKind?: VideoLibraryKind;
+  filterVeiculoId?: string;
+  publishableFromVeiculo?: PublishableItem | null;
+};
 
 const extrairPath = (url: string): string | null => {
   const match = url.match(/produto-videos\/(.+)$/);
   return match ? match[1] : null;
 };
 
-export const ReelsGeradosGrid = () => {
+export const ReelsGeradosGrid = ({
+  libraryKind = 'produto',
+  filterVeiculoId,
+  publishableFromVeiculo = null,
+}: ReelsGeradosGridProps = {}) => {
+  const isVeiculo = libraryKind === 'veiculo';
+  const table = videoLibraryTable(libraryKind);
+  const videoSource = videoSourceForModal(libraryKind);
   const [reels, setReels] = useState<ReelGerado[]>([]);
   const [loading, setLoading] = useState(true);
   const [playingUrl, setPlayingUrl] = useState<string | null>(null);
@@ -66,14 +98,14 @@ export const ReelsGeradosGrid = () => {
       if (result.instagram.story_id) updates.story_instagram_id = result.instagram.story_id;
     }
     if (result.facebook?.ok || result.instagram?.ok) {
-      await supabase.from('produto_videos' as any).update(updates).eq('id', reelId);
+      await supabase.from(table as any).update(updates).eq('id', reelId);
       loadReels();
     }
   };
 
   useEffect(() => {
     loadReels();
-  }, []);
+  }, [libraryKind, filterVeiculoId]);
 
   const loadReels = async () => {
     try {
@@ -83,11 +115,15 @@ export const ReelsGeradosGrid = () => {
         return;
       }
 
-      const { data, error } = await supabase
-        .from('produto_videos' as any)
-        .select('*, produtos(id, nome, imagem_url, preco, link_marketplace)')
+      let query = supabase
+        .from(table as any)
+        .select(isVeiculo ? VEICULO_REELS_GRID_SELECT : PRODUTO_REELS_GRID_SELECT)
         .eq('user_id', user.id)
         .order('criado_em', { ascending: false });
+      if (isVeiculo && filterVeiculoId) {
+        query = query.eq('veiculo_id', filterVeiculoId);
+      }
+      const { data, error } = await query;
 
       if (error) {
         console.error('[REELS] Erro ao carregar:', error);
@@ -136,7 +172,7 @@ export const ReelsGeradosGrid = () => {
 
     try {
       const { error } = await supabase
-        .from('produto_videos' as any)
+        .from(table as any)
         .update(updates)
         .eq('id', publishingReel.id);
 
@@ -169,7 +205,7 @@ export const ReelsGeradosGrid = () => {
       }
 
       const { error: dbErr } = await supabase
-        .from('produto_videos' as any)
+        .from(table as any)
         .delete()
         .eq('id', reel.id);
 
@@ -188,24 +224,31 @@ export const ReelsGeradosGrid = () => {
   return (
     <div className="space-y-4">
       <h2 className="text-xl font-semibold flex items-center gap-2">
-        <Film className="h-5 w-5" /> Meus Reels Gerados
+        <Film className="h-5 w-5" /> {isVeiculo ? 'Vídeos gerados do veículo' : 'Meus Reels Gerados'}
       </h2>
 
       {reels.length === 0 ? (
         <Card className="border-dashed border-2 border-muted-foreground/30">
           <CardContent className="p-8 text-center text-muted-foreground">
             <Film className="h-12 w-12 mx-auto mb-3 opacity-30" />
-            <p className="font-medium">Você ainda não gerou nenhum Reel.</p>
+            <p className="font-medium">
+              {isVeiculo ? 'Nenhum vídeo gerado para este veículo ainda.' : 'Você ainda não gerou nenhum Reel.'}
+            </p>
             <p className="text-sm mt-1">
-              Volte na aba Produtos, escolha as fotos e clique em 🎬 Gerar Reel
+              {isVeiculo
+                ? 'Use o slideshow ou o vídeo animado acima para criar o primeiro.'
+                : 'Volte na aba Produtos, escolha as fotos e clique em 🎬 Gerar Reel'}
             </p>
           </CardContent>
         </Card>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {reels.map((reel) => {
-            const nomeExibido = reel.titulo || reel.produtos?.nome || 'Reel sem título';
-            const thumb = reel.thumbnail_url || reel.produtos?.imagem_url || null;
+            const veiculoRow = reel.veiculos_estoque;
+            const nomeVeiculo = veiculoRow ? vehicleVideoDisplayTitle(veiculoRow) : null;
+            const nomeExibido = reel.titulo || reel.produtos?.nome || nomeVeiculo || 'Reel sem título';
+            const thumb = reel.thumbnail_url || reel.produtos?.imagem_url || veiculoRow?.fotos?.[0] || null;
+            const vendido = veiculoRow?.status === 'vendido';
             const recente =
               new Date(reel.criado_em).getTime() > Date.now() - 24 * 60 * 60 * 1000;
             const naoPublicado =
@@ -284,48 +327,74 @@ export const ReelsGeradosGrid = () => {
                     >
                       <Download className="mr-1 h-3 w-3" /> Baixar
                     </Button>
-                    <Button
-                      size="sm"
-                      className="text-xs bg-gradient-to-r from-purple-600 to-pink-600 text-white disabled:opacity-50"
-                      onClick={() => handlePublicar(reel)}
-                      disabled={reel.publicado_facebook && reel.publicado_instagram}
-                      title={
-                        reel.publicado_facebook && reel.publicado_instagram
-                          ? 'Já publicado em ambas as redes'
-                          : 'Publicar no Facebook e/ou Instagram'
-                      }
-                    >
-                      <Rocket className="mr-1 h-3 w-3" />
-                      {reel.publicado_facebook && reel.publicado_instagram ? 'Publicado' : 'Publicar'}
-                    </Button>
-                    <Button
-                      size="sm"
-                      className="text-xs bg-gradient-to-r from-orange-500 to-pink-500 text-white disabled:opacity-50"
-                      onClick={() => setStoryReel(reel)}
-                      disabled={!!reel.postado_story_facebook && !!reel.postado_story_instagram}
-                      title="Postar como Story"
-                    >
-                      <BookOpen className="mr-1 h-3 w-3" />
-                      Story
-                    </Button>
-                    <Button
-                      size="sm"
-                      className="text-xs bg-black text-white hover:bg-gray-800"
-                      onClick={() => setTiktokReel(reel)}
-                      title="Publicar no TikTok"
-                    >
-                      <TikTokIcon className="mr-1 h-3 w-3" />
-                      TikTok
-                    </Button>
-                    <Button
-                      size="sm"
-                      className="text-xs bg-[#0A66C2] text-white hover:bg-[#004182]"
-                      onClick={() => setLinkedinReel(reel)}
-                      title="Publicar no LinkedIn"
-                    >
-                      <Linkedin className="mr-1 h-3 w-3" />
-                      LinkedIn
-                    </Button>
+                    {!vendido && (
+                      <>
+                        <Button
+                          size="sm"
+                          className="text-xs bg-gradient-to-r from-purple-600 to-pink-600 text-white disabled:opacity-50"
+                          onClick={() => handlePublicar(reel)}
+                          disabled={reel.publicado_facebook && reel.publicado_instagram}
+                          title={
+                            reel.publicado_facebook && reel.publicado_instagram
+                              ? 'Já publicado em ambas as redes'
+                              : 'Publicar no Facebook e/ou Instagram'
+                          }
+                        >
+                          <Rocket className="mr-1 h-3 w-3" />
+                          {reel.publicado_facebook && reel.publicado_instagram ? 'Publicado' : 'Publicar'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="text-xs bg-gradient-to-r from-orange-500 to-pink-500 text-white disabled:opacity-50"
+                          onClick={() => setStoryReel(reel)}
+                          disabled={!!reel.postado_story_facebook && !!reel.postado_story_instagram}
+                          title="Postar como Story"
+                        >
+                          <BookOpen className="mr-1 h-3 w-3" />
+                          Story
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="text-xs bg-black text-white hover:bg-gray-800"
+                          onClick={() => setTiktokReel(reel)}
+                          title="Publicar no TikTok"
+                        >
+                          <TikTokIcon className="mr-1 h-3 w-3" />
+                          TikTok
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="text-xs bg-[#0A66C2] text-white hover:bg-[#004182]"
+                          onClick={() => setLinkedinReel(reel)}
+                          title="Publicar no LinkedIn"
+                        >
+                          <Linkedin className="mr-1 h-3 w-3" />
+                          LinkedIn
+                        </Button>
+                      </>
+                    )}
+                    {vendido && (
+                      <p className="col-span-2 text-xs text-muted-foreground">
+                        Veículo vendido — vídeo no histórico (publicação desativada).
+                      </p>
+                    )}
+                    {(reel.facebook_post_id || reel.instagram_post_id) && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs col-span-2"
+                        onClick={() => {
+                          const url = reel.instagram_post_id
+                            ? `https://www.instagram.com/reel/${reel.instagram_post_id}/`
+                            : reel.facebook_post_id
+                              ? `https://www.facebook.com/${reel.facebook_post_id}`
+                              : null;
+                          if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                        }}
+                      >
+                        <ExternalLink className="mr-1 h-3 w-3" /> Ver post
+                      </Button>
+                    )}
                     <Button
 
                       size="sm"
@@ -377,16 +446,28 @@ export const ReelsGeradosGrid = () => {
           videoUrl={publishingReel.video_url}
           videoNome={publishingReel.titulo || publishingReel.produtos?.nome || null}
           videoId={publishingReel.id}
+          videoSource={videoSource}
+          agendamentoMetadata={isVeiculo ? { library: 'veiculo', veiculo_id: filterVeiculoId ?? publishingReel.veiculos_estoque?.id } : undefined}
           produto={
-            publishingReel.produtos
+            isVeiculo && publishableFromVeiculo
               ? {
-                  id: publishingReel.produto_id || undefined,
-                  nome: publishingReel.produtos.nome,
-                  preco: publishingReel.produtos.preco ?? null,
-                  link_marketplace: publishingReel.produtos.link_marketplace ?? null,
-                  imagem_url: publishingReel.produtos.imagem_url,
+                  id: publishableFromVeiculo.id,
+                  nome: publishableFromVeiculo.nome,
+                  preco: publishableFromVeiculo.preco ?? null,
+                  imagem_url: publishableFromVeiculo.imagem_url,
+                  item_tipo: 'veiculo',
+                  veiculo: publishableFromVeiculo.veiculo,
+                  descricao: publishableFromVeiculo.descricao,
                 }
-              : null
+              : publishingReel.produtos
+                ? {
+                    id: publishingReel.produto_id || undefined,
+                    nome: publishingReel.produtos.nome,
+                    preco: publishingReel.produtos.preco ?? null,
+                    link_marketplace: publishingReel.produtos.link_marketplace ?? null,
+                    imagem_url: publishingReel.produtos.imagem_url,
+                  }
+                : null
           }
           publicadoFacebook={publishingReel.publicado_facebook}
           publicadoInstagram={publishingReel.publicado_instagram}

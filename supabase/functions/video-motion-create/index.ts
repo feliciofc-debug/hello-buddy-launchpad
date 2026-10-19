@@ -68,6 +68,9 @@ Deno.serve(async (req) => {
        arranjo: typeof body?.arranjo === "number" ? body.arranjo : null,
       duracao: typeof body?.duracao === "string" ? body.duracao : null,
       fundo: body?.fundo === "claro" || body?.fundo === "escuro" ? body.fundo : null,
+      metadataExtra: body?.metadata_extra && typeof body.metadata_extra === "object"
+        ? body.metadata_extra
+        : null,
     });
 
     if (!r.ok) return json({ success: false, error: r.error }, r.status);

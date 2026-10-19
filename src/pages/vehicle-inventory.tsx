@@ -65,6 +65,8 @@ import {
 } from "@/components/webmotors/WebmotorsVehicleActions";
 import { VeiculoGestaoLucroPanel } from "@/components/gestao/VeiculoGestaoLucroPanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { readAmzAutoModePreference, isEffectiveAmzAutoMode } from "@/lib/amz-auto-mode";
+import { VehicleVideosTab } from "@/components/veiculos/VehicleVideosTab";
 
 type Vehicle = Database["public"]["Tables"]["veiculos_estoque"]["Row"] & {
   placa?: string | null;
@@ -286,6 +288,8 @@ async function getVehicleSessionUser() {
 export default function VehicleInventory() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const showVideosTab = isEffectiveAmzAutoMode(readAmzAutoModePreference());
+  const inventoryTab = searchParams.get("tab") === "videos" && showVideosTab ? "videos" : "estoque";
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -754,6 +758,26 @@ export default function VehicleInventory() {
       </header>
 
       <main className="container mx-auto space-y-6 px-4 py-8">
+        {showVideosTab && (
+          <Tabs
+            value={inventoryTab}
+            onValueChange={(v) => {
+              const next = new URLSearchParams(searchParams);
+              if (v === "videos") next.set("tab", "videos");
+              else next.delete("tab");
+              setSearchParams(next, { replace: true });
+            }}
+          >
+            <TabsList>
+              <TabsTrigger value="estoque">Estoque</TabsTrigger>
+              <TabsTrigger value="videos">Vídeos</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
+        {showVideosTab && inventoryTab === "videos" ? (
+          <VehicleVideosTab />
+        ) : (
+        <>
         <MlInventoryStrip />
         <Card>
           <CardContent className="grid gap-4 p-4 md:grid-cols-4">
@@ -1032,6 +1056,8 @@ export default function VehicleInventory() {
         )}
 
         <MlQuestionsPanel />
+        </>
+        )}
       </main>
 
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>

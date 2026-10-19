@@ -140,10 +140,12 @@ Deno.serve(async (req) => {
         formato: ["reels", "story", "feed"].includes(String(body?.formato)) ? String(body.formato) : "reels",
         metadata: {
           origem: "plataforma",
-          tipo: "produto",
+          tipo: typeof body?.veiculo_id === "string" ? "veiculo" : "produto",
           nivel: "padrao",
           recortar_fundo: propsFinal.produto.recortar_fundo === true,
           produto_id: typeof body?.produto_id === "string" ? body.produto_id : null,
+          veiculo_id: typeof body?.veiculo_id === "string" ? body.veiculo_id : null,
+          library: typeof body?.veiculo_id === "string" ? "veiculo" : "produto",
         },
       })
       .select()

@@ -60,6 +60,12 @@ type Job = {
   duracao_segundos: number | null;
   erro_mensagem: string | null;
   created_at: string;
+  metadata?: { tipo?: string; veiculo_id?: string; library?: string } | null;
+};
+
+export type CriarVideoAnimadoProps = {
+  videoScope?: 'produto' | 'veiculo';
+  veiculoId?: string;
 };
 
 
@@ -88,7 +94,21 @@ const STATUS: Record<string, { label: string; cor: string }> = {
   cancelado: { label: 'Cancelado', cor: 'bg-muted text-muted-foreground' },
 };
 
-export const CriarVideoAnimado = () => {
+export const CriarVideoAnimado = ({
+  videoScope = 'produto',
+  veiculoId,
+}: CriarVideoAnimadoProps = {}) => {
+  const isVeiculoScope = videoScope === 'veiculo';
+
+  const filtrarJobsPorEscopo = (lista: Job[]) => {
+    if (isVeiculoScope) {
+      return lista.filter(
+        (j) => j.metadata?.tipo === 'veiculo'
+          && (!veiculoId || j.metadata?.veiculo_id === veiculoId),
+      );
+    }
+    return lista.filter((j) => j.metadata?.tipo !== 'veiculo');
+  };
   const [tema, setTema] = useState('');
   const [gerando, setGerando] = useState(false);
   const [enviando, setEnviando] = useState(false);
@@ -458,18 +478,34 @@ export const CriarVideoAnimado = () => {
       const { data: pub } = supabase.storage.from('produto-videos').getPublicUrl(destPath);
       const videoUrl = pub?.publicUrl || '';
 
-      const { error } = await supabase.from('produto_videos' as any).insert({
-        user_id: user.id,
-        titulo: j.titulo || 'Vídeo animado',
-        legenda: j.legenda_post || '',
-        video_url: videoUrl,
-        duracao_segundos: j.duracao_segundos,
-        tamanho_bytes: blob.size,
-        status: 'pronto',
-      } as any);
-      if (error) throw error;
-
-      toast.success('Vídeo enviado para a área de vídeos. Agora é só publicar ou agendar.');
+      if (isVeiculoScope) {
+        const vid = j.metadata?.veiculo_id || veiculoId;
+        if (!vid) throw new Error('Veículo não identificado para este vídeo.');
+        const { error } = await supabase.from('veiculo_videos' as any).insert({
+          user_id: user.id,
+          veiculo_id: vid,
+          titulo: j.titulo || 'Vídeo animado',
+          legenda: j.legenda_post || '',
+          video_url: videoUrl,
+          duracao_segundos: j.duracao_segundos,
+          tamanho_bytes: blob.size,
+          status: 'pronto',
+        } as any);
+        if (error) throw error;
+        toast.success('Vídeo enviado para a grade do veículo.');
+      } else {
+        const { error } = await supabase.from('produto_videos' as any).insert({
+          user_id: user.id,
+          titulo: j.titulo || 'Vídeo animado',
+          legenda: j.legenda_post || '',
+          video_url: videoUrl,
+          duracao_segundos: j.duracao_segundos,
+          tamanho_bytes: blob.size,
+          status: 'pronto',
+        } as any);
+        if (error) throw error;
+        toast.success('Vídeo enviado para a área de vídeos. Agora é só publicar ou agendar.');
+      }
     } catch (e: any) {
       toast.error(e?.message || 'Não foi possível enviar o vídeo para a área de vídeos.');
     } finally {
@@ -514,11 +550,11 @@ export const CriarVideoAnimado = () => {
     if (!user) return;
     const { data } = await supabase
       .from('video_motion_jobs')
-      .select('id, titulo, status, legenda_post, resultado_bucket, resultado_path, duracao_segundos, erro_mensagem, created_at')
+      .select('id, titulo, status, legenda_post, resultado_bucket, resultado_path, duracao_segundos, erro_mensagem, created_at, metadata')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
-      .limit(8);
-    const lista = (data ?? []) as Job[];
+      .limit(24);
+    const lista = filtrarJobsPorEscopo((data ?? []) as Job[]).slice(0, 8);
     setJobs(lista);
 
     const novas: Record<string, string> = {};
@@ -537,7 +573,7 @@ export const CriarVideoAnimado = () => {
     carregarJobs();
     const t = setInterval(carregarJobs, 15000);
     return () => clearInterval(t);
-  }, []);
+  }, [isVeiculoScope, veiculoId]);
 
   const gerarRoteiro = async () => {
     if (tema.trim().length < 4) {
@@ -606,6 +642,11 @@ export const CriarVideoAnimado = () => {
           trilha_id: semTrilha ? undefined : trilhaId || props.trilha_id || undefined,
           sem_trilha: semTrilha,
           trilha_volume: props.trilha_volume ?? 0.28,
+          ...(isVeiculoScope && veiculoId
+            ? {
+                metadata_extra: { tipo: 'veiculo', veiculo_id: veiculoId, library: 'veiculo' },
+              }
+            : {}),
         },
       });
       if (error) throw error;

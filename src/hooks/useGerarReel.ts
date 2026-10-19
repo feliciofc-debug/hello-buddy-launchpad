@@ -51,6 +51,13 @@ export interface ParametrosReel {
   precoOriginal?: number;
   /** URL da logo personalizada do usuário. Se ausente ou se falhar ao carregar, usa /logo-amz-reel.png */
   logoUrl?: string | null;
+  /** Padrão: biblioteca produto_videos (AMZ tradicional). */
+  destinoBiblioteca?: 'produto' | 'veiculo';
+  veiculoId?: string;
+  aspectRatio?: '9:16' | '1:1';
+  exibirPreco?: boolean;
+  ctaFrameText?: string;
+  minFotos?: number;
 }
 
 // ==============================================================
@@ -165,42 +172,47 @@ function desenharFrame(
   precoOriginal: number | undefined,
   precoAtual: number,
   desconto: string | null,
-  progressoZoom: number
+  progressoZoom: number,
+  frameW: number,
+  frameH: number,
+  exibirPreco: boolean,
+  ctaText: string,
 ) {
   const ctx = canvas.getContext('2d')!;
   ensureRoundRect(ctx);
 
   // Fundo vermelho
   ctx.fillStyle = `rgb(${COR_FUNDO.join(',')})`;
-  ctx.fillRect(0, 0, W, H);
+  ctx.fillRect(0, 0, frameW, frameH);
 
   // Imagem do produto com Ken Burns
+  const scale = frameH / H;
   const zoom = 1 + progressoZoom * (ZOOM_FINAL - 1);
-  const tamZoom = IMG_PRODUTO_SIZE * zoom;
-  const offsetX = (W - tamZoom) / 2;
-  const offsetY = IMG_PRODUTO_Y - (tamZoom - IMG_PRODUTO_SIZE) / 2;
+  const tamZoom = IMG_PRODUTO_SIZE * scale * zoom;
+  const offsetX = (frameW - tamZoom) / 2;
+  const offsetY = IMG_PRODUTO_Y * scale - (tamZoom - IMG_PRODUTO_SIZE * scale) / 2;
   ctx.drawImage(imgProduto, offsetX, offsetY, tamZoom, tamZoom);
 
   // Topo (cobrir vazamento da imagem)
   ctx.fillStyle = `rgb(${COR_FUNDO.join(',')})`;
-  ctx.fillRect(0, 0, W, 510);
+  ctx.fillRect(0, 0, frameW, 510 * scale);
 
   // Logo AMZ centralizada
-  const logoW = 450;
+  const logoW = 450 * scale;
   const logoH = logoAmz.height * (logoW / logoAmz.width);
-  ctx.drawImage(logoAmz, (W - logoW) / 2, 30, logoW, logoH);
+  ctx.drawImage(logoAmz, (frameW - logoW) / 2, 30 * scale, logoW, logoH);
 
   // Tag de desconto
   if (desconto) {
     ctx.fillStyle = 'yellow';
     ctx.beginPath();
-    (ctx as any).roundRect(W - 260, 210, 220, 100, 15);
+    (ctx as any).roundRect(frameW - 260 * scale, 210 * scale, 220 * scale, 100 * scale, 15);
     ctx.fill();
     ctx.fillStyle = 'rgb(200, 30, 30)';
     ctx.font = 'bold 55px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(desconto, W - 150, 260);
+    ctx.fillText(desconto, frameW - 150 * scale, 260 * scale);
   }
 
   // Título (até 3 linhas, fonte adaptativa)
@@ -209,44 +221,46 @@ function desenharFrame(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const lineHeight = fontSizeTitulo * 1.25;
-  let yTit = 380;
+  let yTit = 380 * scale;
   for (const linha of linhasTitulo) {
-    ctx.fillText(linha, W / 2, yTit);
+    ctx.fillText(linha, frameW / 2, yTit);
     yTit += lineHeight;
   }
 
   // Inferior
   ctx.fillStyle = `rgb(${COR_FUNDO.join(',')})`;
-  ctx.fillRect(0, 1490, W, H - 1490);
+  ctx.fillRect(0, 1490 * scale, frameW, frameH - 1490 * scale);
 
   // Preço original riscado
-  if (precoOriginal && precoOriginal > precoAtual) {
+  if (exibirPreco && precoOriginal && precoOriginal > precoAtual) {
     ctx.fillStyle = 'rgb(255, 220, 220)';
     ctx.font = '40px sans-serif';
     const textoOrig = formatarPreco(precoOriginal);
     const wOrig = ctx.measureText(textoOrig).width;
-    ctx.fillText(textoOrig, W / 2, 1555);
+    ctx.fillText(textoOrig, frameW / 2, 1555 * scale);
     ctx.strokeStyle = 'rgb(255, 200, 200)';
     ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.moveTo(W / 2 - wOrig / 2 - 10, 1555);
-    ctx.lineTo(W / 2 + wOrig / 2 + 10, 1555);
+    ctx.moveTo(frameW / 2 - wOrig / 2 - 10, 1555 * scale);
+    ctx.lineTo(frameW / 2 + wOrig / 2 + 10, 1555 * scale);
     ctx.stroke();
   }
 
   // Preço atual GRANDE
-  ctx.fillStyle = 'white';
-  ctx.font = 'bold 120px sans-serif';
-  ctx.fillText(formatarPreco(precoAtual), W / 2, 1680);
+  if (exibirPreco && precoAtual > 0) {
+    ctx.fillStyle = 'white';
+    ctx.font = `bold ${Math.round(120 * scale)}px sans-serif`;
+    ctx.fillText(formatarPreco(precoAtual), frameW / 2, 1680 * scale);
+  }
 
   // Botão CTA amarelo
   ctx.fillStyle = 'yellow';
   ctx.beginPath();
-  (ctx as any).roundRect(W / 2 - 280, 1790, 560, 80, 40);
+  (ctx as any).roundRect(frameW / 2 - 280 * scale, 1790 * scale, 560 * scale, 80 * scale, 40);
   ctx.fill();
   ctx.fillStyle = 'rgb(200, 30, 30)';
-  ctx.font = 'bold 55px sans-serif';
-  ctx.fillText('LINK NA BIO 👇', W / 2, 1830);
+  ctx.font = `bold ${Math.round(55 * scale)}px sans-serif`;
+  ctx.fillText(ctaText, frameW / 2, 1830 * scale);
 }
 
 // ==============================================================
@@ -271,9 +285,10 @@ export function useGerarReel() {
   const gerarReel = useCallback(
     async (params: ParametrosReel): Promise<string | null> => {
       try {
-        if (params.imagensUrls.length < 3) {
-          toast.error('Selecione pelo menos 3 fotos pra gerar o Reel');
-          atualizarProgresso('erro', 0, 'Mínimo de 3 fotos.');
+        const minFotos = params.minFotos ?? 3;
+        if (params.imagensUrls.length < minFotos) {
+          toast.error(`Selecione pelo menos ${minFotos} foto(s) pra gerar o Reel`);
+          atualizarProgresso('erro', 0, `Mínimo de ${minFotos} fotos.`);
           return null;
         }
         const imagensUrls =
@@ -346,12 +361,16 @@ export function useGerarReel() {
 
         // ==== 3. Renderizar frames ====
         atualizarProgresso('renderizando', 25, 'Renderizando frames...');
+        const frameW = params.aspectRatio === '1:1' ? 1080 : W;
+        const frameH = params.aspectRatio === '1:1' ? 1080 : H;
+        const exibirPreco = params.exibirPreco !== false && params.preco > 0;
+        const ctaText = params.ctaFrameText?.trim() || 'LINK NA BIO 👇';
         const canvas = document.createElement('canvas');
-        canvas.width = W;
-        canvas.height = H;
+        canvas.width = frameW;
+        canvas.height = frameH;
         const ctx = canvas.getContext('2d')!;
         const { linhas: linhasTitulo, fontSize: fontSizeTitulo } =
-          quebrarTexto(ctx, params.nomeProduto, W - 80);
+          quebrarTexto(ctx, params.nomeProduto, frameW - 80);
         const desconto = params.precoOriginal
           ? calcularDesconto(params.precoOriginal, params.preco)
           : null;
@@ -373,7 +392,11 @@ export function useGerarReel() {
               params.precoOriginal,
               params.preco,
               desconto,
-              progressoZoom
+              progressoZoom,
+              frameW,
+              frameH,
+              exibirPreco,
+              ctaText,
             );
             const blob = await new Promise<Blob>((r) =>
               canvas.toBlob((b) => r(b!), 'image/jpeg', 0.9)
@@ -396,7 +419,7 @@ export function useGerarReel() {
         await ffmpeg.exec([
           '-framerate', '1',
           '-i', 'frame_%04d.jpg',
-          '-vf', `fps=${FPS},scale=${W}:${H}`,
+          '-vf', `fps=${FPS},scale=${frameW}:${frameH}`,
           '-c:v', 'libx264',
           '-pix_fmt', 'yuv420p',
           '-preset', 'ultrafast',
@@ -438,20 +461,39 @@ export function useGerarReel() {
 
         // ==== 7. INSERT no banco ====
         atualizarProgresso('upload', 95, 'Salvando...');
-        const { error: errInsert } = await supabase
-          .from('produto_videos' as any)
-          .insert({
-            id: videoId,
-            produto_id: params.produtoId,
-            user_id: user.id,
-            video_url: videoUrl,
-            thumbnail_url: thumbUrl,
-            titulo: params.nomeProduto,
-            duracao_segundos: Math.round(duracaoTotal),
-            status: 'pronto',
-            tamanho_bytes: blobMp4.size,
-          });
-        if (errInsert) throw errInsert;
+        const destino = params.destinoBiblioteca === 'veiculo' ? 'veiculo' : 'produto';
+        if (destino === 'veiculo') {
+          if (!params.veiculoId) throw new Error('veiculoId obrigatório para biblioteca de veículos');
+          const { error: errInsert } = await supabase
+            .from('veiculo_videos' as any)
+            .insert({
+              id: videoId,
+              veiculo_id: params.veiculoId,
+              user_id: user.id,
+              video_url: videoUrl,
+              thumbnail_url: thumbUrl,
+              titulo: params.nomeProduto,
+              duracao_segundos: Math.round(duracaoTotal),
+              status: 'pronto',
+              tamanho_bytes: blobMp4.size,
+            });
+          if (errInsert) throw errInsert;
+        } else {
+          const { error: errInsert } = await supabase
+            .from('produto_videos' as any)
+            .insert({
+              id: videoId,
+              produto_id: params.produtoId,
+              user_id: user.id,
+              video_url: videoUrl,
+              thumbnail_url: thumbUrl,
+              titulo: params.nomeProduto,
+              duracao_segundos: Math.round(duracaoTotal),
+              status: 'pronto',
+              tamanho_bytes: blobMp4.size,
+            });
+          if (errInsert) throw errInsert;
+        }
 
         // ==== 8. Limpeza ====
         for (let i = 0; i < frameIdx; i++) {
@@ -464,7 +506,11 @@ export function useGerarReel() {
         } catch {}
 
         atualizarProgresso('pronto', 100, '✅ Reel pronto!');
-        toast.success('Reel gerado com sucesso! Veja na aba Vídeos.');
+        toast.success(
+          destino === 'veiculo'
+            ? 'Vídeo do veículo pronto! Veja na grade abaixo.'
+            : 'Reel gerado com sucesso! Veja na aba Vídeos.',
+        );
         return videoUrl;
       } catch (err: any) {
         const msgErro = err?.message || err?.toString() || 'Erro desconhecido';
