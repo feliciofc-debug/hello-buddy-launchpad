@@ -1,21 +1,68 @@
 const ENC_PREFIX = "proc1:";
 
-function keyBytes(): Uint8Array {
-  const raw = Deno.env.get("PROCEDENCIA_ENC_KEY") || "";
-  if (!raw) throw new Error("PROCEDENCIA_ENC_KEY não configurado");
-  const bin = Uint8Array.from(atob(raw), (c) => c.charCodeAt(0));
+export const PROCEDENCIA_ENC_KEY_CLIENT_ERROR =
+  "Chave de cifragem da procedência não configurada no servidor";
+
+const DEFAULT_KEY_FILE = "/opt/amz-functions/.secrets/procedencia_enc_key";
+
+let cachedKeyBytes: Uint8Array | null = null;
+
+/** Apenas testes — limpa cache entre casos. */
+export function resetProcedenciaEncKeyCache(): void {
+  cachedKeyBytes = null;
+}
+
+function parseKeyBase64(raw: string): Uint8Array {
+  const trimmed = String(raw ?? "").trim();
+  if (!trimmed) {
+    throw new Error("chave vazia");
+  }
+  let bin: Uint8Array;
+  try {
+    bin = Uint8Array.from(atob(trimmed), (c) => c.charCodeAt(0));
+  } catch {
+    throw new Error("base64 inválido");
+  }
   if (bin.length !== 32) {
-    throw new Error("PROCEDENCIA_ENC_KEY deve ser 32 bytes em base64");
+    throw new Error("tamanho deve ser 32 bytes");
   }
   return bin;
 }
 
-function keyMaterialForWebCrypto(): Uint8Array<ArrayBuffer> {
-  return new Uint8Array(keyBytes());
+async function loadKeyBytes(): Promise<Uint8Array> {
+  if (cachedKeyBytes) return cachedKeyBytes;
+
+  const fromEnv = Deno.env.get("PROCEDENCIA_ENC_KEY")?.trim();
+  if (fromEnv) {
+    try {
+      cachedKeyBytes = parseKeyBase64(fromEnv);
+      return cachedKeyBytes;
+    } catch (e) {
+      console.error(
+        "[procedencia-enc] PROCEDENCIA_ENC_KEY inválida:",
+        (e as Error).message,
+      );
+      throw new Error(PROCEDENCIA_ENC_KEY_CLIENT_ERROR);
+    }
+  }
+
+  const path = Deno.env.get("PROCEDENCIA_ENC_KEY_FILE")?.trim() || DEFAULT_KEY_FILE;
+  try {
+    const text = await Deno.readTextFile(path);
+    cachedKeyBytes = parseKeyBase64(text);
+    return cachedKeyBytes;
+  } catch (e) {
+    const msg = (e as Error).message;
+    if (msg === PROCEDENCIA_ENC_KEY_CLIENT_ERROR) throw e;
+    console.error(`[procedencia-enc] Falha ao ler chave (${path}):`, msg);
+    throw new Error(PROCEDENCIA_ENC_KEY_CLIENT_ERROR);
+  }
 }
 
 async function importKey(): Promise<CryptoKey> {
-  return crypto.subtle.importKey("raw", keyMaterialForWebCrypto(), { name: "AES-GCM" }, false, [
+  const bytes = await loadKeyBytes();
+  const material = new Uint8Array(bytes);
+  return crypto.subtle.importKey("raw", material, { name: "AES-GCM" }, false, [
     "encrypt",
     "decrypt",
   ]);
