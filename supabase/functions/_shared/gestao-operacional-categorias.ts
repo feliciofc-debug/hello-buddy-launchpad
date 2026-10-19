@@ -11,6 +11,7 @@ export const GESTAO_CATEGORIAS_PAGAR = [
   "impostos",
   "manutencao_loja",
   "bonus_vendedores",
+  "tarifas_bancarias",
   "outros",
 ] as const;
 
@@ -37,6 +38,7 @@ const LABELS: Record<string, string> = {
   impostos: "Impostos",
   manutencao_loja: "Manutenção da loja",
   bonus_vendedores: "Bônus de vendedores",
+  tarifas_bancarias: "Tarifas bancárias",
   financiamento_receber: "Financiamento a receber",
   venda_prazo: "Venda a prazo",
   outros_recebimento: "Outros recebimentos",

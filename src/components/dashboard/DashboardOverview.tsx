@@ -102,9 +102,12 @@ function VazioAmigavel({ texto, acao, onAcao }: { texto: string; acao?: string; 
 export default function DashboardOverview({
   metrics,
   period,
+  hideProdutosCatalog = false,
 }: {
   metrics: DashboardMetrics;
   period: DashboardPeriod;
+  /** Modo AMZ Auto: esconde atalhos ao catálogo genérico de produtos */
+  hideProdutosCatalog?: boolean;
 }) {
   const navigate = useNavigate();
   const temConversas = metrics.porHora.some((h) => h.conversas > 0);
@@ -296,8 +299,8 @@ export default function DashboardOverview({
           {metrics.campanhas.length === 0 ? (
             <VazioAmigavel
               texto="Nenhum disparo neste período."
-              acao="Criar campanha"
-              onAcao={() => navigate('/meus-produtos')}
+              acao={hideProdutosCatalog ? "Abrir IA Marketing" : "Criar campanha"}
+              onAcao={() => navigate(hideProdutosCatalog ? '/ia-marketing' : '/meus-produtos')}
             />
           ) : (
             <div className="overflow-x-auto">

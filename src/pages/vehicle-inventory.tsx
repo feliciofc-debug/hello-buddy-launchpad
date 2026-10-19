@@ -58,6 +58,7 @@ import {
 import { MlInventoryStrip } from "@/components/ml/MlInventoryStrip";
 import { MlQuestionsPanel } from "@/components/ml/MlQuestionsPanel";
 import { MlVehicleActions, type VeiculoPortalMl } from "@/components/ml/MlVehicleActions";
+import { OlxVehicleActions, type OlxVehicleListing } from "@/components/olx/OlxVehicleActions";
 import {
   WebmotorsVehicleActions,
   type VeiculoPortalWebmotors,
@@ -313,18 +314,22 @@ export default function VehicleInventory() {
   const [mlPortals, setMlPortals] = useState<Record<string, VeiculoPortalMl>>({});
   const [wmConnected, setWmConnected] = useState(false);
   const [wmPortals, setWmPortals] = useState<Record<string, VeiculoPortalWebmotors>>({});
+  const [olxConnected, setOlxConnected] = useState(false);
+  const [olxListings, setOlxListings] = useState<Record<string, OlxVehicleListing>>({});
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [compraVeiculoIds, setCompraVeiculoIds] = useState<Set<string>>(new Set());
   const [custosExpanded, setCustosExpanded] = useState(false);
   const custosRef = useRef<VeiculoCustosSaveHandle>(null);
 
   const loadPortalMeta = useCallback(async () => {
-    const [{ data: stMl }, { data: stWm }] = await Promise.all([
+    const [{ data: stMl }, { data: stWm }, { data: stOlx }] = await Promise.all([
       supabase.functions.invoke("ml-status"),
       supabase.functions.invoke("webmotors-status"),
+      supabase.functions.invoke("olx-status"),
     ]);
     setMlConnected(!!stMl?.connected);
     setWmConnected(!!stWm?.connected);
+    setOlxConnected(!!stOlx?.connected);
     const { data: portals } = await supabase
       .from("veiculos_portais" as "veiculos_estoque")
       .select("veiculo_id, portal, status, permalink, last_error");
@@ -347,6 +352,24 @@ export default function VehicleInventory() {
     }
     setMlPortals(mlMap);
     setWmPortals(wmMap);
+
+    const { data: olxRows } = await supabase
+      .from("olx_vehicle_listing" as "veiculos_estoque")
+      .select("veiculo_id, status, olx_url, last_error");
+    const olxMap: Record<string, OlxVehicleListing> = {};
+    for (const row of (olxRows ?? []) as Array<{
+      veiculo_id: string;
+      status: string;
+      olx_url: string | null;
+      last_error: string | null;
+    }>) {
+      olxMap[row.veiculo_id] = {
+        status: row.status,
+        olx_url: row.olx_url,
+        last_error: row.last_error,
+      };
+    }
+    setOlxListings(olxMap);
   }, []);
 
   const loadVehicles = useCallback(async () => {
@@ -702,6 +725,9 @@ export default function VehicleInventory() {
             <Button variant="outline" onClick={() => navigate("/veiculos/financiamento")}>
               Financiamento
             </Button>
+            <Button variant="outline" onClick={() => navigate("/gestao/trocas")}>
+              Trocas
+            </Button>
             <Button variant="outline" onClick={() => navigate("/gestao/lucro")}>
               Gestão · Lucro
             </Button>
@@ -903,6 +929,12 @@ export default function VehicleInventory() {
                       veiculoId={vehicle.id}
                       portal={wmPortals[vehicle.id] ?? null}
                       wmConnected={wmConnected}
+                      onChanged={() => void loadPortalMeta()}
+                    />
+                    <OlxVehicleActions
+                      veiculoId={vehicle.id}
+                      listing={olxListings[vehicle.id] ?? null}
+                      olxConnected={olxConnected}
                       onChanged={() => void loadPortalMeta()}
                     />
                     <Button

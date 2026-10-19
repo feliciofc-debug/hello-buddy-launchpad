@@ -81,8 +81,22 @@ export async function handleGestaoAssistenteMessage(
 
   const query = await runGestaoAssistenteQuery(sb, userId, text);
   if (query) {
+    const deterministicKinds = new Set([
+      "posicao_loja",
+      "relatorio_vendedores",
+      "vendedor_detalhe",
+      "dre_whatsapp",
+    ]);
+    const gestaoNav = { label: "Abrir Gestão", path: "/gestao/lucro" };
+    if (deterministicKinds.has(query.queryKind)) {
+      return {
+        success: true,
+        reply: query.reply,
+        actions: [gestaoNav],
+      };
+    }
     const nav = matchGestaoAssistenteNavigation(text) ?? closestGestaoAssistenteEntries(text, 1)[0];
-    const actions = nav ? navActions(nav) : [{ label: "Abrir Gestão", path: "/gestao/lucro" }];
+    const actions = nav ? navActions(nav) : [gestaoNav];
     return {
       success: true,
       reply: await gestaoAssistentePolishReply(text, query.reply, actions),

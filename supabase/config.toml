@@ -377,3 +377,30 @@ verify_jwt = true
 
 [functions.gestao-focusnfe-webhook]
 verify_jwt = false
+
+[functions.veiculo-procedencia]
+verify_jwt = true
+
+[functions.gestao-troca]
+verify_jwt = true
+
+[functions.amz-auto-cadastro]
+verify_jwt = false
+
+[functions.olx-oauth-start]
+verify_jwt = true
+
+[functions.olx-oauth-callback]
+verify_jwt = false
+
+[functions.olx-status]
+verify_jwt = true
+
+[functions.olx-oauth-disconnect]
+verify_jwt = true
+
+[functions.olx-vehicle-publish]
+verify_jwt = true
+
+[functions.olx-vehicle-sync]
+verify_jwt = false

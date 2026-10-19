@@ -30,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { WhatsAppSupportButton } from "@/components/WhatsAppSupportButton";
 import { WhatsAppFloatingButton } from "@/components/WhatsAppFloatingButton";
 import SiteLayout from "@/components/site/SiteLayout";
+import { AmzAutoLandingCard } from "@/components/amz-auto/AmzAutoLandingCard";
 
 const contatoUrl =
   "https://wa.me/5521980804901?text=Ol%C3%A1!%20Quero%20conhecer%20a%20solu%C3%A7%C3%A3o%20corporativa%20da%20AMZ%20Ofertas.";
@@ -145,6 +146,8 @@ function Landing() {
                 </Button>
               </div>
 
+              <AmzAutoLandingCard className="mt-6 lg:hidden" />
+
               <div className="mt-10 grid max-w-2xl gap-3 text-sm text-slate-300 sm:grid-cols-3">
                 {["APIs oficiais", "Aprovação antes de publicar", "Painel e WhatsApp no mesmo fluxo"].map((item) => (
                   <div key={item} className="flex items-center gap-2 border-l-2 border-orange-500 pl-3">
@@ -155,7 +158,8 @@ function Landing() {
               </div>
             </div>
 
-            <div className="relative mx-auto w-full max-w-xl" aria-label="Visão da operação integrada em cinco canais">
+            <div className="relative mx-auto flex w-full max-w-xl flex-col gap-4" aria-label="Visão da operação integrada em cinco canais">
+              <AmzAutoLandingCard className="hidden lg:flex" />
               <div className="border border-slate-700 bg-slate-900 shadow-2xl shadow-slate-950/60">
                 <div className="flex items-center justify-between border-b border-slate-700 px-5 py-4">
                   <div>

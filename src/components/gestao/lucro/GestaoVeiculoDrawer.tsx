@@ -50,6 +50,7 @@ import { GestaoVendaRaioXPanel } from "@/components/gestao/lucro/GestaoVendaRaio
 import { estornarComissaoVeiculo, syncComissaoAfterVenda } from "@/lib/gestao-comissao-client.ts";
 import { useGestaoFocusnfeConnection } from "@/components/integracoes/useGestaoFocusnfeConnection";
 import { GestaoEmitirNfeDialog } from "@/components/gestao/lucro/GestaoEmitirNfeDialog.tsx";
+import { GestaoVeiculoProcedenciaPanel } from "@/components/procedencia/GestaoVeiculoProcedenciaPanel.tsx";
 
 type Props = {
   open: boolean;
@@ -178,6 +179,23 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
     }
     toast.success("Despesa lançada.");
     setDespesaForm({ ...despesaForm, valor: "", descricao: "" });
+    onSaved();
+  };
+
+  const despesaCategoriaEditavel = (d: GestaoVeiculoEnriched["despesas"][number]) =>
+    !(d.categoria === "comissao" && d.origem_lancamento === "automatica");
+
+  const saveDespesaCategoria = async (despesaId: string, categoria: string) => {
+    setBusy(true);
+    const { error } = await supabase.from("veiculo_despesas" as "veiculos_estoque").update({
+      categoria,
+    }).eq("id", despesaId);
+    setBusy(false);
+    if (error) {
+      toast.error("Não foi possível alterar a categoria.");
+      return;
+    }
+    toast.success("Categoria atualizada.");
     onSaved();
   };
 
@@ -377,6 +395,12 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
               </div>
             </div>
 
+            <GestaoVeiculoProcedenciaPanel
+              userId={userId}
+              veiculoId={veiculo.id}
+              placa={veiculo.placa}
+            />
+
             {lucro.vendido && (
               <GestaoVendaRaioXPanel
                 valorVenda={veiculo.valorVenda}
@@ -422,6 +446,25 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
                       </Button>
                     </div>
                     {d.descricao && <p className="text-muted-foreground">{d.descricao}</p>}
+                    {despesaCategoriaEditavel(d) ? (
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Label className="text-xs text-muted-foreground">Categoria</Label>
+                        <Select
+                          value={d.categoria}
+                          disabled={busy}
+                          onValueChange={(v) => void saveDespesaCategoria(d.id, v)}
+                        >
+                          <SelectTrigger className="h-8 w-[200px] text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {GESTAO_DESPESA_CATEGORIAS.filter((c) => c.value !== "comissao").map((c) => (
+                              <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">Comissão automática — categoria fixa</p>
+                    )}
                     <p className="text-xs text-muted-foreground">
                       {origemLabel(d.origem_lancamento)}
                       {d.lancado_por ? ` · ${d.lancado_por}` : ""}

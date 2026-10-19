@@ -278,6 +278,26 @@ export async function aplicarMarcadoresConfirmar(
   return n;
 }
 
+export async function loadConciliacaoResumoCompetencia(
+  userId: string,
+  start: string,
+  end: string,
+): Promise<{ conciliadas: number; pendentes: number }> {
+  const { data } = await supabase.from("gestao_extrato_transacao" as "veiculos_estoque")
+    .select("status, data")
+    .eq("user_id", userId)
+    .gte("data", start)
+    .lte("data", end);
+  const rows = data ?? [];
+  let conciliadas = 0;
+  let pendentes = 0;
+  for (const r of rows) {
+    if (r.status === "conciliado") conciliadas += 1;
+    else pendentes += 1;
+  }
+  return { conciliadas, pendentes };
+}
+
 export async function countConciliacaoPendente(userId: string): Promise<{ qtd: number; valor: number }> {
   const { data } = await supabase.from("gestao_extrato_transacao" as "veiculos_estoque")
     .select("valor, status")

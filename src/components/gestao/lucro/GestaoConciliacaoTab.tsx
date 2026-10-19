@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +36,8 @@ import {
   candidatosFromVendas,
 } from "../../../../supabase/functions/_shared/gestao-conciliacao-candidates.ts";
 import { classificarExtrato, saldoExtrato } from "@/lib/gestao-conciliacao-run.ts";
+import { calcSaldoSistemaPeriodo } from "../../../../supabase/functions/_shared/gestao-conciliacao-saldo.ts";
+import { suggestCategoriaFromExtrato } from "../../../../supabase/functions/_shared/gestao-conciliacao-categoria.ts";
 import {
   GESTAO_CATEGORIAS_PAGAR,
   GESTAO_CATEGORIAS_RECEBER,
@@ -47,13 +49,15 @@ type Props = {
   userId: string;
   contas: GestaoContaLancamento[];
   veiculos: GestaoVeiculoEnriched[];
+  onFinanceiroReload?: () => void;
 };
 
 function monthBounds(competencia: string) {
   return intervaloCompetencia(competencia);
 }
 
-export function GestaoConciliacaoTab({ userId, contas, veiculos }: Props) {
+export function GestaoConciliacaoTab({ userId, contas, veiculos, onFinanceiroReload }: Props) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [competencia, setCompetencia] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -102,6 +106,8 @@ export function GestaoConciliacaoTab({ userId, contas, veiculos }: Props) {
         veiculo_id: v.id,
         data_venda: v.dataVenda!,
         valor_venda: v.valorVenda!,
+        marca: v.marca,
+        modelo: v.modelo,
       }));
     const despesas = veiculos.flatMap((v) =>
       v.despesas.map((d) => ({
@@ -131,14 +137,14 @@ export function GestaoConciliacaoTab({ userId, contas, veiculos }: Props) {
   );
 
   const saldoExt = saldoExtrato(extratos);
-  const saldoSistema = useMemo(() => {
-    let s = 0;
-    for (const c of contas) {
-      if (c.tipo === "receber" && c.recebido_em && c.recebido_em >= start && c.recebido_em <= end) s += Number(c.valor);
-      if (c.tipo === "pagar" && c.pago_em && c.pago_em >= start && c.pago_em <= end) s -= Number(c.valor);
-    }
-    return s;
-  }, [contas, start, end]);
+  const saldoSistema = useMemo(
+    () => calcSaldoSistemaPeriodo(contas, extratos, start, end),
+    [contas, extratos, start, end],
+  );
+
+  const refreshFinanceiro = useCallback(() => {
+    onFinanceiroReload?.();
+  }, [onFinanceiroReload]);
 
   const addBanco = async () => {
     try {
@@ -183,6 +189,7 @@ export function GestaoConciliacaoTab({ userId, contas, veiculos }: Props) {
     await aplicarMarcadoresConfirmar(userId, payload);
     await reload();
     toast.success(`Importadas ${inseridas} transações (${ignoradas} duplicadas ignoradas).`);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const confirmarMatch = async (extratoId: string, sug: (typeof classificados)[0]["sugestoes"][0]) => {
@@ -195,6 +202,7 @@ export function GestaoConciliacaoTab({ userId, contas, veiculos }: Props) {
       }, classificados.find((e) => e.id === extratoId)?.data ?? hojeSaoPaulo());
       toast.success("Conciliado.");
       void reload();
+      refreshFinanceiro();
     } catch {
       toast.error("Este lançamento já está vinculado a outra transação.");
     }
@@ -205,6 +213,7 @@ export function GestaoConciliacaoTab({ userId, contas, veiculos }: Props) {
       await desfazerConciliacao(userId, extratoId);
       toast.success("Conciliação desfeita.");
       void reload();
+      refreshFinanceiro();
     } catch {
       toast.error("Não foi possível desfazer.");
     }
@@ -212,8 +221,7 @@ export function GestaoConciliacaoTab({ userId, contas, veiculos }: Props) {
 
   const criarLancamento = async (e: (typeof semMatch)[0]) => {
     const tipo = e.sentido === "debito" ? "pagar" : "receber";
-    const cats = tipo === "pagar" ? GESTAO_CATEGORIAS_PAGAR : GESTAO_CATEGORIAS_RECEBER;
-    const categoria = criarCategoria[e.id] ?? cats[0];
+    const categoria = criarCategoria[e.id] ?? suggestCategoriaFromExtrato(e.descricao, tipo);
     const { data: row, error } = await supabase.from("gestao_conta_lancamento" as "veiculos_estoque").insert({
       user_id: userId,
       tipo,
@@ -235,7 +243,14 @@ export function GestaoConciliacaoTab({ userId, contas, veiculos }: Props) {
     }, e.data);
     toast.success("Lançamento criado e conciliado.");
     void reload();
+    refreshFinanceiro();
   };
+
+  const defaultCategoriaCriar = (e: (typeof semMatch)[0]) =>
+    criarCategoria[e.id] ?? suggestCategoriaFromExtrato(
+      e.descricao,
+      e.sentido === "debito" ? "pagar" : "receber",
+    );
 
   return (
     <div className="space-y-4">
@@ -273,12 +288,24 @@ export function GestaoConciliacaoTab({ userId, contas, veiculos }: Props) {
         </div>
         <div>
           <Label>Importar OFX/CSV</Label>
-          <Input type="file" accept=".ofx,.csv" onChange={(ev) => {
-            const f = ev.target.files?.[0];
-            if (f) void onFile(f);
-          }} />
+          <Input
+            ref={fileInputRef}
+            type="file"
+            accept=".ofx,.csv"
+            disabled={!contaId}
+            onChange={(ev) => {
+              const f = ev.target.files?.[0];
+              if (f) void onFile(f);
+            }}
+          />
         </div>
       </div>
+
+      {!contaId && (
+        <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+          Selecione ou cadastre uma conta bancária antes de importar o extrato.
+        </p>
+      )}
 
       <p className="text-xs text-muted-foreground">
         CSV: colunas 0=data, 1=descrição, 2=valor (ajuste índices abaixo se necessário). Arquivo lido só no navegador.
@@ -351,7 +378,7 @@ export function GestaoConciliacaoTab({ userId, contas, veiculos }: Props) {
                 <p>{e.data} · {formatGestaoMoney(Number(e.valor))}</p>
                 <p className="text-muted-foreground">{e.descricao.slice(0, 48)}</p>
                 <Select
-                  value={criarCategoria[e.id] ?? (e.sentido === "debito" ? GESTAO_CATEGORIAS_PAGAR[0] : GESTAO_CATEGORIAS_RECEBER[0])}
+                  value={defaultCategoriaCriar(e)}
                   onValueChange={(v) => setCriarCategoria({ ...criarCategoria, [e.id]: v })}
                 >
                   <SelectTrigger className="mt-1 h-7 text-xs"><SelectValue /></SelectTrigger>

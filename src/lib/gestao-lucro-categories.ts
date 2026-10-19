@@ -1,6 +1,8 @@
+import { gestaoDespesaCategoriaLabel } from "../../supabase/functions/_shared/gestao-categoria-pt.ts";
+
 export const GESTAO_DESPESA_CATEGORIAS = [
   { value: "mecanica", label: "Mecânica" },
-  { value: "funilaria_pintura", label: "Funilaria / pintura" },
+  { value: "funilaria_pintura", label: "Funilaria e pintura" },
   { value: "pneus", label: "Pneus" },
   { value: "estetica", label: "Estética" },
   { value: "documentacao", label: "Documentação" },
@@ -13,5 +15,5 @@ export const GESTAO_DESPESA_CATEGORIAS = [
 export type GestaoDespesaCategoria = (typeof GESTAO_DESPESA_CATEGORIAS)[number]["value"];
 
 export function gestaoCategoriaLabel(value: string): string {
-  return GESTAO_DESPESA_CATEGORIAS.find((c) => c.value === value)?.label ?? value;
+  return gestaoDespesaCategoriaLabel(value);
 }

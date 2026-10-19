@@ -41,9 +41,10 @@ import { competenciaFromDate } from "../../../../supabase/functions/_shared/gest
 import { GESTAO_CONTADOR_AVISO } from "../../../../supabase/functions/_shared/gestao-contador-token.ts";
 import {
   buildContadorPacoteFromApp,
-  downloadContadorPdf,
   downloadContadorXlsx,
 } from "@/lib/gestao-contador-export.ts";
+import { downloadRelatorioMesPdf } from "@/lib/gestao-relatorio-mes-pdf.ts";
+import { loadConciliacaoResumoCompetencia } from "@/lib/gestao-conciliacao-load.ts";
 import { supabase } from "@/integrations/supabase/client";
 import { GestaoConciliacaoTab } from "@/components/gestao/lucro/GestaoConciliacaoTab.tsx";
 import { GestaoHelpTip } from "@/components/gestao/GestaoHelpTip.tsx";
@@ -140,6 +141,34 @@ export function GestaoFinanceiroTab({
     const prev = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
     return d.competencia === prev;
   });
+
+  const dreLinhasTabela = useMemo(() => {
+    const fat = dreAtual.faturamento;
+    const pct = (v: number) => (fat > 0 ? formatGestaoPct((v / fat) * 100) : "—");
+    const ant = (pick: (d: typeof dreAtual) => number) =>
+      dreAnterior ? formatGestaoMoney(pick(dreAnterior)) : "—";
+    return [
+      { label: "Faturamento", valor: dreAtual.faturamento, pct: fat > 0 ? formatGestaoPct(100) : "—", anterior: ant((d) => d.faturamento) },
+      { label: "Custo carros vendidos", valor: dreAtual.custoCarros, pct: pct(dreAtual.custoCarros), anterior: ant((d) => d.custoCarros) },
+      { label: "Despesas dos carros", valor: dreAtual.despesasCarros, pct: pct(dreAtual.despesasCarros), anterior: ant((d) => d.despesasCarros) },
+      { label: "Lucro dos carros", valor: dreAtual.lucroCarros, pct: pct(dreAtual.lucroCarros), anterior: ant((d) => d.lucroCarros) },
+      { label: "Despesas operacionais", valor: dreAtual.despesasOperacionais, pct: pct(dreAtual.despesasOperacionais), anterior: ant((d) => d.despesasOperacionais) },
+      { label: "Lucro líquido da loja", valor: dreAtual.lucroLiquidoLoja, pct: pct(dreAtual.lucroLiquidoLoja), anterior: ant((d) => d.lucroLiquidoLoja), bold: true },
+    ];
+  }, [dreAtual, dreAnterior]);
+
+  const lucroMedioPorCarro = dreAtual.qtdVendas > 0 ? dreAtual.lucroCarros / dreAtual.qtdVendas : 0;
+  const pontoEquilibrio =
+    lucroMedioPorCarro > 0 ? Math.ceil(dreAtual.despesasOperacionais / lucroMedioPorCarro) : null;
+
+  const baixarRelatorioMesPdf = async () => {
+    const { start, end } = intervaloCompetencia(competencia);
+    const conciliacao = await loadConciliacaoResumoCompetencia(userId, start, end);
+    downloadRelatorioMesPdf(
+      { competencia, nomeEmpresa, veiculos, contas, conciliacao },
+      `relatorio-gestao-${competencia}.pdf`,
+    );
+  };
 
   const fluxo = useMemo(() => {
     const { start, end } = intervaloCompetencia(competencia);
@@ -462,23 +491,53 @@ export function GestaoFinanceiroTab({
         </TabsContent>
 
         <TabsContent value="dre" className="mt-4 space-y-4">
-          <div className="rounded-lg border p-4 text-sm space-y-1">
-            <p className="font-semibold">DRE {competencia}</p>
-            <p>Faturamento: {formatGestaoMoney(dreAtual.faturamento)}</p>
-            <p>− Custo carros vendidos: {formatGestaoMoney(dreAtual.custoCarros)}</p>
-            <p>− Despesas dos carros (comissões incl.): {formatGestaoMoney(dreAtual.despesasCarros)}</p>
-            <p>= Lucro dos carros: {formatGestaoMoney(dreAtual.lucroCarros)}</p>
-            <p>− Despesas operacionais: {formatGestaoMoney(dreAtual.despesasOperacionais)}</p>
-            <p className="text-base font-bold">= Lucro líquido da loja: {formatGestaoMoney(dreAtual.lucroLiquidoLoja)}</p>
-            {dreAtual.margemLiquidaPct != null && (
-              <p className="text-muted-foreground">Margem líquida: {formatGestaoPct(dreAtual.margemLiquidaPct)}</p>
-            )}
-            {dreAnterior && (
-              <p className="text-xs text-muted-foreground">
-                Mês anterior: {formatGestaoMoney(dreAnterior.lucroLiquidoLoja)} (
-                {dreAnterior.lucroLiquidoLoja !== 0
-                  ? `${(((dreAtual.lucroLiquidoLoja - dreAnterior.lucroLiquidoLoja) / Math.abs(dreAnterior.lucroLiquidoLoja)) * 100).toFixed(1)}%`
-                  : "—"})
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={() => void baixarRelatorioMesPdf()}>
+              Baixar relatório do mês (PDF)
+            </Button>
+          </div>
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full min-w-[520px] text-sm">
+              <thead>
+                <tr className="border-b bg-muted/40 text-left text-muted-foreground">
+                  <th className="p-2">Linha</th>
+                  <th className="p-2 text-right">Valor</th>
+                  <th className="p-2 text-right">% faturamento</th>
+                  <th className="p-2 text-right">Mês anterior</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dreLinhasTabela.map((row) => (
+                  <tr key={row.label} className="border-b last:border-0">
+                    <td className={`p-2 ${row.bold ? "font-semibold" : ""}`}>{row.label}</td>
+                    <td className={`p-2 text-right ${row.bold ? "font-semibold" : ""}`}>
+                      {formatGestaoMoney(row.valor)}
+                    </td>
+                    <td className="p-2 text-right">{row.pct}</td>
+                    <td className="p-2 text-right">{row.anterior}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {dreAtual.margemLiquidaPct != null && (
+            <p className="text-sm text-muted-foreground">
+              Margem líquida: {formatGestaoPct(dreAtual.margemLiquidaPct)}
+            </p>
+          )}
+          <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm">
+            <p className="font-semibold">Ponto de equilíbrio</p>
+            {pontoEquilibrio != null ? (
+              <p className="mt-1">
+                Sua loja precisa vender{" "}
+                <strong>{pontoEquilibrio}</strong> carros/mês para pagar a estrutura (despesas
+                operacionais ÷ lucro médio por carro vendido). Vendidos:{" "}
+                <strong>{dreAtual.qtdVendas}</strong>.
+              </p>
+            ) : (
+              <p className="mt-1 text-muted-foreground">
+                Informe vendas com lucro positivo no mês para calcular o ponto de equilíbrio.
+                Vendidos: {dreAtual.qtdVendas}.
               </p>
             )}
           </div>
@@ -493,7 +552,12 @@ export function GestaoFinanceiroTab({
         </TabsContent>
 
         <TabsContent value="conciliacao" className="mt-4">
-          <GestaoConciliacaoTab userId={userId} contas={contas} veiculos={veiculos} />
+          <GestaoConciliacaoTab
+            userId={userId}
+            contas={contas}
+            veiculos={veiculos}
+            onFinanceiroReload={() => void reload()}
+          />
         </TabsContent>
 
         <TabsContent value="contador" className="mt-4 space-y-4">
@@ -509,8 +573,12 @@ export function GestaoFinanceiroTab({
             <Button type="button" variant="outline" onClick={() => downloadContadorXlsx(pacote, `contador-${competencia}.xlsx`)}>
               Baixar XLSX
             </Button>
-            <Button type="button" variant="outline" onClick={() => downloadContadorPdf(pacote, `contador-${competencia}.pdf`)}>
-              Baixar PDF
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void baixarRelatorioMesPdf()}
+            >
+              Baixar relatório do mês (PDF)
             </Button>
           </div>
           {contadorLink && (

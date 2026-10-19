@@ -10,9 +10,11 @@ type Props = {
   value: string;
   onChange: (v: string) => void;
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  onBlur?: () => void;
   placeholder?: string;
   className?: string;
   id?: string;
+  disabled?: boolean;
 };
 
 export function GestaoMoneyInput({
@@ -20,9 +22,11 @@ export function GestaoMoneyInput({
   value,
   onChange,
   onKeyDown,
+  onBlur,
   placeholder,
   className,
   id,
+  disabled,
 }: Props) {
   const preview = formatGestaoMoneyInputPreview(parseGestaoMoneyBr(value));
 
@@ -33,8 +37,10 @@ export function GestaoMoneyInput({
         id={id}
         className={className}
         placeholder={placeholder}
+        disabled={disabled}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={() => onBlur?.()}
         onKeyDown={onKeyDown}
       />
       {preview ? (

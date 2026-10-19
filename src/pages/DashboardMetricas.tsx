@@ -46,6 +46,7 @@ import {
   Gift,
   CarFront,
   FileText,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { useFinanciamentoPendingCount } from '@/hooks/useFinanciamentoPendingCount';
 import { injectVitrineSidebarMenuItems } from '@/lib/vitrine-sidebar-menu';
@@ -58,6 +59,10 @@ import { GestaoSidebarNav } from '@/components/gestao/GestaoSidebarNav';
 import { useDashboardMetrics, type DashboardPeriod } from '@/hooks/useDashboardMetrics';
 import { useBillingAccess } from '@/hooks/useBillingAccess';
 import BillingBlockedScreen from '@/components/BillingBlockedScreen';
+import { AmzAutoMark } from '@/components/amz-auto/AmzAutoMark';
+import { useAmzAutoMode } from '@/contexts/AmzAutoModeContext';
+import { applyAmzAutoMenuFilter } from '@/lib/amz-auto-menu';
+import { clearAmzAutoModePreference, isRevendaVeiculosProfile } from '@/lib/amz-auto-mode';
 
 import { LeadsQuentes } from '@/components/LeadsQuentes';
 import {
@@ -157,6 +162,14 @@ export default function DashboardMetricas() {
     showFinanciamentosMenu,
   );
   const location = useLocation();
+  const {
+    effectiveAmzAutoMode,
+    canToggleAmzAutoMode: canToggleAmzMode,
+    enableAmzAutoMode,
+    disableAmzAutoMode,
+    profileTipo: amzProfileTipo,
+    isAdmin: isAppAdmin,
+  } = useAmzAutoMode();
 
   const carregarPerfil = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -339,7 +352,53 @@ export default function DashboardMetricas() {
       : []),
   ];
 
-  const menuItems = useMemo(() => {
+  const vehicleStockItem = useMemo(
+    () => ({
+      id: 'veiculos',
+      icon: CarFront,
+      label: t('nav.vehicles'),
+      path: '/veiculos',
+    }),
+    [t],
+  );
+
+  const financingItem = useMemo(
+    () => ({
+      id: 'financiamentos',
+      icon: FileText,
+      label: t('nav.financing'),
+      path: '/veiculos/financiamento',
+    }),
+    [t],
+  );
+
+  const gestaoLucroItem = useMemo(
+    () =>
+      showGestaoLucroMenu
+        ? {
+          id: 'gestao-lucro',
+          icon: TrendingUp,
+          label: 'Gestão · Lucro',
+          path: '/gestao/lucro',
+        }
+        : undefined,
+    [showGestaoLucroMenu],
+  );
+
+  const gestaoTrocasItem = useMemo(
+    () =>
+      showGestaoLucroMenu
+        ? {
+          id: 'gestao-trocas',
+          icon: ArrowLeftRight,
+          label: 'Trocas',
+          path: '/gestao/trocas',
+        }
+        : undefined,
+    [showGestaoLucroMenu],
+  );
+
+  const fullMenuItems = useMemo(() => {
     const filtered = menuItemsAll.filter((item) =>
       item.id === 'admin' ||
       item.id === 'contatos-comerciais' ||
@@ -352,28 +411,39 @@ export default function DashboardMetricas() {
     );
     return injectVitrineSidebarMenuItems(filtered, {
       ...vitrineSidebarContext,
-      vehicleStockItem: {
-        id: 'veiculos',
-        icon: CarFront,
-        label: t('nav.vehicles'),
-        path: '/veiculos',
-      },
-      financingItem: {
-        id: 'financiamentos',
-        icon: FileText,
-        label: t('nav.financing'),
-        path: '/veiculos/financiamento',
-      },
-      gestaoLucroItem: showGestaoLucroMenu
-        ? {
-          id: 'gestao-lucro',
-          icon: TrendingUp,
-          label: 'Gestão · Lucro',
-          path: '/gestao/lucro',
-        }
-        : undefined,
+      vehicleStockItem,
+      financingItem,
+      gestaoLucroItem,
+      gestaoTrocasItem,
     });
-  }, [isMenuAllowed, showFinanciamentosMenu, showGestaoLucroMenu, t, vitrineSidebarContext]);
+  }, [
+    isMenuAllowed,
+    vitrineSidebarContext,
+    vehicleStockItem,
+    financingItem,
+    gestaoLucroItem,
+    gestaoTrocasItem,
+    userEmail,
+    t,
+  ]);
+
+  const menuItems = useMemo(() => {
+    if (!effectiveAmzAutoMode) return fullMenuItems;
+    return applyAmzAutoMenuFilter(fullMenuItems, {
+      leadsItem: {
+        id: 'leads',
+        icon: Target,
+        label: 'Leads',
+        path: '/leads-funil',
+      },
+      integracoesPortaisItem: {
+        id: 'integracoes-portais',
+        icon: Plug,
+        label: 'Integrações de portais',
+        path: '/configuracoes/integracoes',
+      },
+    });
+  }, [effectiveAmzAutoMode, fullMenuItems]);
 
   // Componente de campanhas em andamento
   const CampanhasEmAndamentoSection = ({ navigate }: { navigate: (path: string) => void }) => {
@@ -427,6 +497,7 @@ export default function DashboardMetricas() {
   };
 
   const handleLogout = async () => {
+    clearAmzAutoModePreference();
     await supabase.auth.signOut();
     navigate('/login');
   };
@@ -468,9 +539,21 @@ export default function DashboardMetricas() {
         <div className="flex flex-col h-full">
           {/* Logo */}
            <div className="p-4 border-b flex items-center justify-between">
-             <h2 className="text-xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-               {empresaNome}
-             </h2>
+             {effectiveAmzAutoMode ? (
+               <Link
+                 to="/dashboard"
+                 className="flex items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+               >
+                 <AmzAutoMark size={32} decorative />
+                 <span className="font-display text-lg font-extrabold tracking-wide text-foreground">
+                   AMZ AUTO
+                 </span>
+               </Link>
+             ) : (
+               <h2 className="text-xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+                 {empresaNome}
+               </h2>
+             )}
              <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setIsMenuOpen(false)}>
                <X className="w-5 h-5" />
              </Button>
@@ -560,6 +643,36 @@ export default function DashboardMetricas() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {canToggleAmzMode && effectiveAmzAutoMode ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="hidden text-xs sm:inline-flex"
+                  onClick={() => {
+                    disableAmzAutoMode();
+                    navigate('/dashboard');
+                  }}
+                >
+                  {isRevendaVeiculosProfile(amzProfileTipo)
+                    ? 'Ver menu completo'
+                    : 'Trocar para AMZ Ofertas'}
+                </Button>
+              ) : null}
+              {isAppAdmin && !effectiveAmzAutoMode ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="hidden text-xs sm:inline-flex"
+                  onClick={() => {
+                    enableAmzAutoMode();
+                    navigate('/veiculos');
+                  }}
+                >
+                  Abrir AMZ Auto
+                </Button>
+              ) : null}
               <div className="flex rounded-lg border bg-card p-1">
                 {(
                   [
@@ -604,7 +717,11 @@ export default function DashboardMetricas() {
               ))}
             </div>
           ) : (
-            <DashboardOverview metrics={metricasDash} period={periodo} />
+            <DashboardOverview
+              metrics={metricasDash}
+              period={periodo}
+              hideProdutosCatalog={effectiveAmzAutoMode}
+            />
           )}
         </div>
       </main>

@@ -15,11 +15,16 @@ import {
   type GestaoIntent,
 } from "./gestao-intent-pt.ts";
 import {
+  gestaoDespesaCategoriaLabel,
+  resolveGestaoCategoriaFromUserReply,
+} from "./gestao-categoria-pt.ts";
+import {
   formatGestaoVeiculoLabel,
   rankGestaoVeiculoMatches,
   type GestaoVeiculoRow,
 } from "./gestao-veiculo-match.ts";
 import { loadTenantVehicleStockGate } from "./vehicle-inventory-tenant.ts";
+import { tryProcessVeiculoProcedenciaInbound } from "./veiculo-procedencia-inbound.ts";
 import {
   calcGestaoComissao,
   DEFAULT_COMISSAO_REGRA,
@@ -37,6 +42,19 @@ import {
   buildGestaoVendedorMesReply,
 } from "./gestao-equipe-inbound.ts";
 import { matchGestaoVendedor, type GestaoVendedorRow } from "./gestao-vendedor-match.ts";
+import {
+  formatPosicaoLojaWhatsApp,
+  formatRelatorioVendedoresWhatsApp,
+  formatVendedorDetalheWhatsApp,
+  loadPosicaoLojaFacts,
+  loadRelatorioVendedoresFacts,
+  lojaNomeFromText,
+} from "./gestao-posicao-loja.ts";
+import {
+  formatGestaoDreWhatsApp,
+  loadGestaoDreWhatsappFacts,
+  parseGestaoCompetenciaFromText,
+} from "./gestao-dre-whatsapp.ts";
 import { competenciaFromDate } from "./gestao-meta-calc.ts";
 import {
   calcVendaRaioX,
@@ -297,7 +315,7 @@ async function fetchDespesasVeiculo(
     .eq("user_id", userId).eq("veiculo_id", veiculoId).is("deleted_at", null)
     .order("data", { ascending: false });
   const lines = (data ?? []).slice(0, 8).map((d: Record<string, unknown>) =>
-    `${d.data}: ${formatBrl(Number(d.valor))} (${d.categoria})`
+    `${d.data}: ${formatBrl(Number(d.valor))} (${gestaoDespesaCategoriaLabel(String(d.categoria ?? ""))})`
   );
   const label = formatGestaoVeiculoLabel(veiculo);
   if (!lines.length) return `${label}: nenhuma despesa registrada.`;
@@ -383,7 +401,12 @@ function buildConfirmMessage(
 ): string {
   const label = formatGestaoVeiculoLabel(veiculo);
   if (action === "despesa") {
-    return `Confirmar despesa de ${formatBrl(Number(draft.valor))} (${draft.categoria}) no ${label}?\nResponda SIM ou NÃO.`;
+    const catCode = String(draft.categoria ?? "outros");
+    const catLabel = gestaoDespesaCategoriaLabel(catCode);
+    const outrosHint = catCode === "outros"
+      ? "\nSe for outra categoria, responda com o nome (ex.: mecânica)."
+      : "";
+    return `Confirmar despesa de ${formatBrl(Number(draft.valor))} (${catLabel}) no ${label}?${outrosHint}\nResponda SIM ou NÃO.`;
   }
   if (action === "compra") {
     const origem = draft.consignacao ? "consignação" : "compra";
@@ -412,7 +435,7 @@ async function enrichVendaDraft(
   const vendedores = await loadVendedores(sb, userId);
   const hint = String(draft.vendedor_hint ?? "");
   const matched = hint ? matchGestaoVendedor(hint, vendedores) : null;
-  const out = { ...draft, veiculo_id: veiculoId };
+  const out: Record<string, unknown> = { ...draft, veiculo_id: veiculoId };
   if (!matched) return out;
 
   out.vendedor_id = matched.id;
@@ -787,6 +810,18 @@ export async function tryProcessGestaoLucroInbound(input: {
   if (input.hasInboundMedia) return { handled: false };
   if (!isGestaoAuthorizedPhone(input.fromNumber, input.auth)) return { handled: false };
 
+  const procedenciaEarly = await tryProcessVeiculoProcedenciaInbound({
+    sb: input.sb,
+    userId: input.userId,
+    fromNumber: input.fromNumber,
+    userText: input.userText,
+    hasInboundMedia: input.hasInboundMedia,
+    auth: input.auth,
+    agentState: input.agentState,
+    saveAgentStatePatch: input.saveAgentStatePatch,
+  });
+  if (procedenciaEarly.handled) return procedenciaEarly;
+
   const gate = await loadTenantVehicleStockGate(
     input.sb as Parameters<typeof loadTenantVehicleStockGate>[0],
     input.userId,
@@ -848,7 +883,7 @@ export async function tryProcessGestaoLucroInbound(input: {
           );
           return { handled: true, reply: fin.reply };
         }
-        let draft = { ...activePending.draft, veiculo_id: veiculo.id };
+        let draft: Record<string, unknown> = { ...activePending.draft, veiculo_id: veiculo.id };
         if (activePending.action === "venda") {
           draft = await enrichVendaDraft(input.sb, input.userId, veiculo.id, draft);
         }
@@ -866,6 +901,35 @@ export async function tryProcessGestaoLucroInbound(input: {
       }
       await input.saveAgentStatePatch({ pending_gestao_confirm: null }, input.agentState);
       return { handled: false, clearPending: true };
+    }
+
+    if (
+      activePending.phase === "confirm" &&
+      activePending.action === "despesa" &&
+      !isGestaoAffirmative(text) &&
+      !isGestaoNegative(text)
+    ) {
+      const corrected = resolveGestaoCategoriaFromUserReply(text);
+      if (corrected) {
+        const confirmPending: PendingGestaoConfirm = {
+          ...activePending,
+          draft: { ...activePending.draft, categoria: corrected },
+          expires_at: new Date(Date.now() + GESTAO_PENDING_TTL_MS).toISOString(),
+        };
+        await input.saveAgentStatePatch(
+          { pending_gestao_confirm: confirmPending },
+          input.agentState,
+        );
+        const veiculoId = String(confirmPending.draft.veiculo_id ?? "");
+        const vehicles = await loadVehicles(input.sb, input.userId);
+        const veiculo = vehicles.find((v) => v.id === veiculoId);
+        if (veiculo) {
+          return {
+            handled: true,
+            reply: buildConfirmMessage("despesa", veiculo, confirmPending.draft),
+          };
+        }
+      }
     }
 
     if (isGestaoAffirmative(text)) {
@@ -898,6 +962,52 @@ export async function tryProcessGestaoLucroInbound(input: {
 
   if (intent.kind === "lucro_mes") {
     const reply = await fetchLucroMes(input.sb, input.userId);
+    return { handled: true, reply };
+  }
+
+  const agoraSP = new Date();
+  const lojaNomeCitada = lojaNomeFromText(text);
+  const posicaoOpts = { lojaNomeCitada, storeUserId: input.userId };
+
+  if (intent.kind === "dre_whatsapp") {
+    const competencia = parseGestaoCompetenciaFromText(text);
+    const facts = await loadGestaoDreWhatsappFacts(
+      input.sb as never,
+      input.userId,
+      competencia,
+      agoraSP,
+    );
+    console.log("[gestao-inbound][dre_whatsapp]", { competencia, vendas: facts.dre.qtdVendas });
+    return { handled: true, reply: formatGestaoDreWhatsApp(facts) };
+  }
+  if (intent.kind === "posicao_loja") {
+    const facts = await loadPosicaoLojaFacts(input.sb as never, input.userId, agoraSP, posicaoOpts);
+    console.log("[gestao-inbound][posicao_loja]", {
+      vendas_mes: facts.mes.qtdVendas,
+      estoque: facts.estoque.qtd,
+      alertas: facts.atencao.contas7DiasQtd + facts.atencao.contasVencidasQtd,
+    });
+    return { handled: true, reply: formatPosicaoLojaWhatsApp(facts) };
+  }
+  if (intent.kind === "relatorio_vendedores") {
+    const facts = await loadRelatorioVendedoresFacts(
+      input.sb as never,
+      input.userId,
+      agoraSP,
+      posicaoOpts,
+    );
+    console.log("[gestao-inbound][relatorio_vendedores]", { vendedores: facts.ranking.length });
+    return { handled: true, reply: formatRelatorioVendedoresWhatsApp(facts) };
+  }
+  if (intent.kind === "vendedor_detalhe") {
+    const reply = await formatVendedorDetalheWhatsApp(
+      input.sb as never,
+      input.userId,
+      intent.vendedorHint,
+      agoraSP,
+      posicaoOpts,
+    );
+    console.log("[gestao-inbound][vendedor_detalhe]", { hint_len: intent.vendedorHint.length });
     return { handled: true, reply };
   }
 

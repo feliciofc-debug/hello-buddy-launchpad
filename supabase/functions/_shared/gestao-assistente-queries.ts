@@ -18,6 +18,19 @@ import { buildRankingVendedores, type VendaEquipeLine } from "./gestao-equipe-st
 import { formatGestaoVeiculoLabel, type GestaoVeiculoRow } from "./gestao-veiculo-match.ts";
 import type { GestaoVendedorRow } from "./gestao-vendedor-match.ts";
 import type { Db } from "./gestao-assistente-core.ts";
+import {
+  formatPosicaoLojaPainel,
+  formatRelatorioVendedoresWhatsApp,
+  formatVendedorDetalheWhatsApp,
+  loadPosicaoLojaFacts,
+  loadRelatorioVendedoresFacts,
+  lojaNomeFromText,
+} from "./gestao-posicao-loja.ts";
+import {
+  formatGestaoDreWhatsApp,
+  loadGestaoDreWhatsappFacts,
+  parseGestaoCompetenciaFromText,
+} from "./gestao-dre-whatsapp.ts";
 
 export type GestaoAssistenteQueryResult = {
   queryKind: string;
@@ -235,6 +248,54 @@ export async function runGestaoAssistenteQuery(
   const intent = classifyGestaoIntent(message);
   if (intent.kind === "none") return null;
   if (isGestaoAssistenteMutatingIntent(intent.kind)) return null;
+
+  const agoraSP = new Date();
+  const lojaNomeCitada = lojaNomeFromText(message);
+  const posicaoOpts = { lojaNomeCitada, storeUserId: userId };
+
+  if (intent.kind === "dre_whatsapp") {
+    const competencia = parseGestaoCompetenciaFromText(message, agoraSP);
+    const facts = await loadGestaoDreWhatsappFacts(sb, userId, competencia, agoraSP);
+    return {
+      queryKind: "dre_whatsapp",
+      reply: formatGestaoDreWhatsApp(facts),
+      facts: { competencia, vendas: facts.dre.qtdVendas },
+    };
+  }
+  if (intent.kind === "posicao_loja") {
+    const facts = await loadPosicaoLojaFacts(sb, userId, agoraSP, posicaoOpts);
+    return {
+      queryKind: "posicao_loja",
+      reply: formatPosicaoLojaPainel(facts),
+      facts: {
+        vendas_mes: facts.mes.qtdVendas,
+        estoque_qtd: facts.estoque.qtd,
+        competencia: facts.competencia,
+      },
+    };
+  }
+  if (intent.kind === "relatorio_vendedores") {
+    const facts = await loadRelatorioVendedoresFacts(sb, userId, agoraSP, posicaoOpts);
+    return {
+      queryKind: "relatorio_vendedores",
+      reply: formatRelatorioVendedoresWhatsApp(facts),
+      facts: { vendedores: facts.ranking.length, competencia: facts.competencia },
+    };
+  }
+  if (intent.kind === "vendedor_detalhe") {
+    const reply = await formatVendedorDetalheWhatsApp(
+      sb,
+      userId,
+      intent.vendedorHint,
+      agoraSP,
+      posicaoOpts,
+    );
+    return {
+      queryKind: "vendedor_detalhe",
+      reply,
+      facts: { hint_len: intent.vendedorHint.length, competencia: competenciaFromDate(agoraSP) },
+    };
+  }
 
   if (intent.kind === "lucro_mes") {
     const vendas = await loadVendasDreMes(sb, userId, competencia);

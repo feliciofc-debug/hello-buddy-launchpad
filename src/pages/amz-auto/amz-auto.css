@@ -1,0 +1,19 @@
+.amz-auto-root {
+  font-family: Archivo, system-ui, sans-serif;
+  color: #0c0e11;
+  background: #f5f3ee;
+}
+
+.amz-auto-root .font-display {
+  font-family: "Bricolage Grotesque", system-ui, sans-serif;
+  font-weight: 800;
+}
+
+.amz-auto-link {
+  color: #b4410c;
+  text-decoration: none;
+}
+
+.amz-auto-link:hover {
+  color: #7c2d08;
+}
