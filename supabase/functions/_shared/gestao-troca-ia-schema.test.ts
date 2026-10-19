@@ -11,8 +11,8 @@ Deno.test("schema — aceita resposta válida", () => {
     aviso_carroceria: false,
     resumo: "Veículo em bom estado geral.",
     itens: [{
-      area: "lataria",
-      tipo: "arranhao",
+      area: "porta_dianteira_esq",
+      tipo: "risco",
       gravidade: "leve",
       confianca: "media",
       descricao: "Arranhão leve na porta.",

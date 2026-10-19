@@ -87,7 +87,7 @@ export async function invokeGestaoTrocaAnalisarFotos(trocaId: string): Promise<{
 
 export async function invokeGestaoTrocaDecidirItemIa(input: {
   item_id: string;
-  decisao: "aceito" | "ignorado";
+  decisao: "confirmado" | "descartado";
   valor_final?: number | null;
 }): Promise<{ success: boolean; error?: string; preparacao_estimada?: number }> {
   const { data, error } = await supabase.functions.invoke("gestao-troca", {

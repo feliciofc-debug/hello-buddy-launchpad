@@ -156,9 +156,9 @@ async function downloadFotosParaIa(
 }
 
 function reparoFromTipo(tipo: GestaoTrocaIaTipo): ChecklistReparoTipo {
-  if (tipo === "arranhao" || tipo === "amassado") return "funilaria";
-  if (tipo === "desgaste") return "troca";
-  if (tipo === "mancha" || tipo === "oxideracao") return "pintura";
+  if (tipo === "amassado" || tipo === "risco") return "funilaria";
+  if (tipo === "desgaste" || tipo === "peca_faltando") return "troca";
+  if (tipo === "mancha" || tipo === "pintura_divergente" || tipo === "ferrugem") return "pintura";
   return "reparo";
 }
 
@@ -316,9 +316,9 @@ export async function decidirItemIaGestaoTroca(
   sb: Db,
   userId: string,
   itemId: string,
-  decisao: "aceito" | "ignorado",
+  decisao: "confirmado" | "descartado",
 ): Promise<{ checklist_json: GestaoTrocaChecklistJson; preparacao_estimada: number }> {
-  if (decisao !== "aceito" && decisao !== "ignorado") {
+  if (decisao !== "confirmado" && decisao !== "descartado") {
     throw new Error("Decisão inválida.");
   }
 
@@ -339,7 +339,7 @@ export async function decidirItemIaGestaoTroca(
   if (!troca) throw new Error("Troca não encontrada.");
 
   const checklist = normalizeGestaoTrocaChecklist(troca.checklist_json);
-  if (decisao === "aceito") {
+  if (decisao === "confirmado") {
     const key = String(item.checklist_key || item.area);
     const gravidade = String(item.gravidade) as GestaoTrocaIaGravidade;
     const tipo = String(item.tipo) as GestaoTrocaIaTipo;

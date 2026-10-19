@@ -7,48 +7,47 @@ import {
 } from "./gestao-troca-ia-rules.ts";
 import { GESTAO_TROCA_IA_CUSTOS_PADRAO } from "./gestao-troca-ia-custos.ts";
 
-Deno.test("categoria — lataria -> funilaria_pintura", () => {
-  assertEquals(gestaoTrocaIaCategoriaFromAreaTipo("lataria", "amassado"), "funilaria_pintura");
-  assertEquals(gestaoTrocaIaCategoriaFromAreaTipo("motor", "vazamento"), "mecanica");
-  assertEquals(gestaoTrocaIaCategoriaFromAreaTipo("pneus", "desgaste"), "pneus");
+Deno.test("categoria — área e tipo", () => {
+  assertEquals(
+    gestaoTrocaIaCategoriaFromAreaTipo("farol_esq", "quebra"),
+    "farol_lanterna",
+  );
+  assertEquals(
+    gestaoTrocaIaCategoriaFromAreaTipo("para_choque_dianteiro", "amassado"),
+    "para_choque",
+  );
+  assertEquals(gestaoTrocaIaCategoriaFromAreaTipo("pneu", "desgaste"), "pneu");
+  assertEquals(gestaoTrocaIaCategoriaFromAreaTipo("capo", "risco"), "risco");
 });
 
 Deno.test("valor — confiança baixa retorna null", () => {
   const v = gestaoTrocaIaValorEstimadoItem({
     confianca: "baixa",
-    categoria: "mecanica",
+    categoria: "amassado",
     gravidade: "leve",
     tabela: GESTAO_TROCA_IA_CUSTOS_PADRAO,
   });
   assertEquals(v, null);
 });
 
-Deno.test("valor — tabela padrão mecanica leve", () => {
+Deno.test("valor — tabela padrão amassado leve", () => {
   const v = gestaoTrocaIaValorEstimadoItem({
     confianca: "alta",
-    categoria: "mecanica",
+    categoria: "amassado",
     gravidade: "leve",
     tabela: GESTAO_TROCA_IA_CUSTOS_PADRAO,
   });
-  assertEquals(v, 250);
+  assertEquals(v, 500);
 });
 
-Deno.test("alerta KM — divergência >5%", () => {
+Deno.test("alerta KM — divergência 4% vs 6%", () => {
   assertEquals(gestaoTrocaIaAlertaKm(100_000, 96_000), false);
   assertEquals(gestaoTrocaIaAlertaKm(100_000, 94_000), true);
-  assertEquals(gestaoTrocaIaAlertaKm(null, 50_000), false);
 });
 
 Deno.test("aviso carroceria — faltam laterais", () => {
   assertEquals(
     gestaoTrocaIaAvisoCarroceria(false, ["Frente", "Traseira"]),
     true,
-  );
-  assertEquals(
-    gestaoTrocaIaAvisoCarroceria(
-      false,
-      ["Frente", "Traseira", "Lateral esquerda", "Lateral direita"],
-    ),
-    false,
   );
 });

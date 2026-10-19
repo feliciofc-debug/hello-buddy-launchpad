@@ -264,7 +264,7 @@ export default function GestaoTrocaFichaPage() {
     let laudoPdf: GestaoTrocaLaudoPdfSection | null = null;
     const { analise, itens } = await fetchLatestGestaoTrocaLaudo(troca.id);
     if (analise) {
-      const confirmados = itens.filter((i) => i.decisao === "aceito");
+      const confirmados = itens.filter((i) => i.decisao === "confirmado");
       if (confirmados.length) {
         laudoPdf = {
           kmPainel: analise.km_painel_lido,

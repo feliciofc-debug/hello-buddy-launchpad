@@ -1,6 +1,6 @@
 export type GestaoTrocaIaAnaliseStatus = "processando" | "concluida" | "erro";
 
-export type GestaoTrocaIaItemDecisao = "pendente" | "aceito" | "ignorado";
+export type GestaoTrocaIaItemDecisao = "pendente" | "confirmado" | "descartado";
 
 export type GestaoTrocaIaQualidadeFoto = {
   path: string;

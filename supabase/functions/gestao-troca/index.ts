@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
         sb,
         user.id,
         String(body?.item_id ?? ""),
-        String(body?.decisao ?? "") as "aceito" | "ignorado",
+        String(body?.decisao ?? "") as "confirmado" | "descartado",
       );
       return jsonResponse({ success: true, ...r });
     }

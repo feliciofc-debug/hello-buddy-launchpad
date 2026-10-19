@@ -172,9 +172,9 @@ export function GestaoTrocaLaudoIaPanel({
     onLaudoState?.({ alertaKm: analise?.alerta_km === true, kmConferido: true });
   };
 
-  const decidir = async (item: GestaoTrocaIaItem, decisao: "aceito" | "ignorado") => {
+  const decidir = async (item: GestaoTrocaIaItem, decisao: "confirmado" | "descartado") => {
     let valorFinal: number | null | undefined;
-    if (decisao === "aceito") {
+    if (decisao === "confirmado") {
       const raw = valorDraft[item.id] ?? String(item.valor_estimado ?? "");
       valorFinal = parseGestaoMoneyBr(raw);
       if (valorFinal == null && item.valor_estimado != null) {
@@ -348,10 +348,10 @@ export function GestaoTrocaLaudoIaPanel({
                             : " · Verificar pessoalmente"}
                         </p>
                         <p className="text-sm">{item.descricao}</p>
-                        {item.decisao === "aceito" && (
+                        {item.decisao === "confirmado" && (
                           <p className="text-xs text-emerald-700 dark:text-emerald-400">Confirmado</p>
                         )}
-                        {item.decisao === "ignorado" && (
+                        {item.decisao === "descartado" && (
                           <p className="text-xs text-muted-foreground">Descartado</p>
                         )}
                         {!decided && (
@@ -367,7 +367,7 @@ export function GestaoTrocaLaudoIaPanel({
                             <Button
                               size="sm"
                               disabled={disabled || busy}
-                              onClick={() => void decidir(item, "aceito")}
+                              onClick={() => void decidir(item, "confirmado")}
                             >
                               <Check className="mr-1 h-4 w-4" /> Confirmar
                             </Button>
@@ -375,7 +375,7 @@ export function GestaoTrocaLaudoIaPanel({
                               size="sm"
                               variant="ghost"
                               disabled={disabled || busy}
-                              onClick={() => void decidir(item, "ignorado")}
+                              onClick={() => void decidir(item, "descartado")}
                             >
                               <X className="mr-1 h-4 w-4" /> Descartar
                             </Button>

@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS public.gestao_troca_analise_ia (
   troca_id uuid NOT NULL REFERENCES public.gestao_troca(id) ON DELETE CASCADE,
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   status text NOT NULL DEFAULT 'processando'
-    CHECK (status IN ('processando', 'concluida', 'erro')),
+    CHECK (status IN ('processando', 'concluida', 'rejeitada', 'erro')),
   km_painel_lido integer NULL,
   km_ficha integer NULL,
   alerta_km boolean NOT NULL DEFAULT false,
@@ -41,11 +41,12 @@ CREATE TABLE IF NOT EXISTS public.gestao_troca_ia_item (
   descricao text NOT NULL,
   categoria_custo text NULL
     CHECK (categoria_custo IS NULL OR categoria_custo IN (
-      'mecanica', 'funilaria_pintura', 'pneus', 'estetica', 'outros'
+      'risco', 'amassado', 'pintura_divergente', 'para_choque', 'farol_lanterna',
+      'pneu', 'vidro', 'interior', 'outro'
     )),
   valor_estimado numeric(14, 2) NULL,
   decisao text NOT NULL DEFAULT 'pendente'
-    CHECK (decisao IN ('pendente', 'aceito', 'ignorado')),
+    CHECK (decisao IN ('pendente', 'confirmado', 'descartado')),
   checklist_key text NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
@@ -57,7 +58,10 @@ CREATE INDEX IF NOT EXISTS gestao_troca_ia_item_analise_idx
 CREATE TABLE IF NOT EXISTS public.gestao_troca_custo_reparo (
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   categoria text NOT NULL
-    CHECK (categoria IN ('mecanica', 'funilaria_pintura', 'pneus', 'estetica', 'outros')),
+    CHECK (categoria IN (
+      'risco', 'amassado', 'pintura_divergente', 'para_choque', 'farol_lanterna',
+      'pneu', 'vidro', 'interior', 'outro'
+    )),
   gravidade text NOT NULL
     CHECK (gravidade IN ('leve', 'moderada', 'grave')),
   valor numeric(14, 2) NOT NULL CHECK (valor >= 0),
