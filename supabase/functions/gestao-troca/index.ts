@@ -23,7 +23,7 @@ import {
   confirmarKmPainelGestaoTroca,
   decidirItemIaGestaoTroca,
   iniciarGestaoTrocaIaAnalise,
-  loadLatestGestaoTrocaAnalise,
+  statusAnaliseGestaoTroca,
 } from "../_shared/gestao-troca-ia-ops.ts";
 import type { GestaoTrocaIaCustoRow } from "../_shared/gestao-troca-ia-rules.ts";
 import {
@@ -107,9 +107,14 @@ Deno.serve(async (req) => {
     }
 
     if (action === "status_analise") {
-      const trocaId = String(body?.troca_id ?? "");
-      const { analise, itens } = await loadLatestGestaoTrocaAnalise(sb, user.id, trocaId);
-      return jsonResponse({ success: true, analise, itens });
+      const r = await statusAnaliseGestaoTroca(sb, user.id, {
+        analise_id: body?.analise_id != null ? String(body.analise_id) : undefined,
+        troca_id: body?.troca_id != null ? String(body.troca_id) : undefined,
+      });
+      if (!r.ok) {
+        return jsonResponse({ success: false, error: r.error }, r.status);
+      }
+      return jsonResponse({ success: true, analise: r.analise, itens: r.itens });
     }
 
     if (action === "decidir_item_ia") {

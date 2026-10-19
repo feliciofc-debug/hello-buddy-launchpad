@@ -69,12 +69,15 @@ export function GestaoTrocaLaudoIaPanel({
     pollStarted.current = null;
   }, []);
 
+  const [analiseJobId, setAnaliseJobId] = useState<string | null>(null);
+
   const applyLaudo = useCallback(
     (nextAnalise: GestaoTrocaIaAnalise | null, nextItens: GestaoTrocaIaItem[]) => {
+      if (!nextAnalise) return;
       setAnalise(nextAnalise);
       setItens(nextItens);
       onLaudoState?.({
-        alertaKm: nextAnalise?.alerta_km === true,
+        alertaKm: nextAnalise.alerta_km === true,
         kmConferido: kmPainelConferido,
       });
     },
@@ -83,9 +86,16 @@ export function GestaoTrocaLaudoIaPanel({
 
   const refresh = useCallback(async () => {
     const { analise: a, itens: list } = await fetchLatestGestaoTrocaLaudo(trocaId);
-    applyLaudo(a, list);
+    setAnalise(a);
+    setItens(list);
+    if (a) {
+      onLaudoState?.({
+        alertaKm: a.alerta_km === true,
+        kmConferido: kmPainelConferido,
+      });
+    }
     return a;
-  }, [applyLaudo, trocaId]);
+  }, [kmPainelConferido, onLaudoState, trocaId]);
 
   useEffect(() => {
     void refresh();
@@ -131,11 +141,19 @@ export function GestaoTrocaLaudoIaPanel({
             toast.error("Tempo máximo de análise atingido (4 min).");
             return;
           }
-          const { analise: a, itens: list } = await invokeGestaoTrocaStatusAnalise(analiseId);
+          const { analise: a, itens: list, error, notFound } =
+            await invokeGestaoTrocaStatusAnalise(analiseId);
+          if (notFound || error) {
+            stopPolling();
+            setAnaliseJobId(null);
+            toast.error(error ?? "Análise não encontrada.");
+            return;
+          }
           if (!a) return;
           applyLaudo(a, list);
           if (a.status !== "processando") {
             stopPolling();
+            setAnaliseJobId(null);
             if (a.status === "concluida") toast.success("Laudo IA concluído.");
             else if (a.status === "rejeitada") {
               toast.error("Análise rejeitada. Revise as fotos e tente novamente.");
@@ -151,6 +169,7 @@ export function GestaoTrocaLaudoIaPanel({
 
   useEffect(() => {
     if (analise?.status === "processando" && analise.id && !polling) {
+      setAnaliseJobId(analise.id);
       startPolling(analise.id);
     }
   }, [analise?.id, analise?.status, polling, startPolling]);
@@ -164,9 +183,7 @@ export function GestaoTrocaLaudoIaPanel({
       return;
     }
     toast.message("Analisando… pode levar até 2 min.");
-    await invokeGestaoTrocaStatusAnalise(analise_id).then(({ analise: a, itens: list }) => {
-      applyLaudo(a, list);
-    });
+    setAnaliseJobId(analise_id);
     startPolling(analise_id);
   };
 
@@ -227,7 +244,7 @@ export function GestaoTrocaLaudoIaPanel({
   );
 
   const pendentes = itens.filter((i) => i.decisao === "pendente");
-  const analisando = analise?.status === "processando" || polling;
+  const analisando = polling || !!analiseJobId || analise?.status === "processando";
 
   return (
     <div className="space-y-4">
@@ -262,14 +279,14 @@ export function GestaoTrocaLaudoIaPanel({
         </div>
       )}
 
-      {analise && analise.status === "processando" && (
+      {analisando && (
         <div className="flex items-center gap-2 rounded-md border border-dashed p-3 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Análise em andamento… a lista de itens será atualizada automaticamente.
+          Analisando fotos… o laudo será atualizado automaticamente quando terminar.
         </div>
       )}
 
-      {analise && analise.status !== "processando" && analise.status !== "rejeitada" && (
+      {analise && !analisando && analise.status !== "rejeitada" && (
         <>
           <div className="rounded-md border bg-muted/30 p-3 text-sm">
             <p className="font-medium">Quilometragem</p>

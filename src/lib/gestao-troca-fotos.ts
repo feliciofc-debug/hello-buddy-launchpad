@@ -1,4 +1,5 @@
 export {
+  canonicalGestaoTrocaEtiqueta,
   GESTAO_TROCA_FOTO_ETIQUETAS,
   gestaoTrocaFotoPaths,
   normalizeGestaoTrocaFotos,

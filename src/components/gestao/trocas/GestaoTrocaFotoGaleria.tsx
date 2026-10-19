@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  canonicalGestaoTrocaEtiqueta,
   GESTAO_TROCA_FOTO_ETIQUETAS,
   normalizeGestaoTrocaFotos,
   type GestaoTrocaFotoEntry,
@@ -56,8 +57,9 @@ export function GestaoTrocaFotoGaleria({
   }, [fotos, refreshSigned]);
 
   const setEtiqueta = (path: string, etiqueta: string) => {
+    const canon = canonicalGestaoTrocaEtiqueta(etiqueta);
     onFotosChange(
-      fotos.map((f) => (f.path === path ? { ...f, etiqueta } : f)),
+      fotos.map((f) => (f.path === path ? { ...f, etiqueta: canon } : f)),
     );
   };
 

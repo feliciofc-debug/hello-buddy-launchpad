@@ -21,6 +21,31 @@ export const GESTAO_TROCA_FOTO_ETIQUETAS: string[] = [
 
 const ETIQUETA_DOC = "Documento (CRLV)";
 
+/** Corrige etiquetas salvas em minúsculo ou abreviadas (legado / mobile). */
+export function canonicalGestaoTrocaEtiqueta(raw: string): string {
+  const trimmed = String(raw ?? "").trim();
+  if (!trimmed) return "Outra";
+  if (GESTAO_TROCA_FOTO_ETIQUETAS.includes(trimmed)) return trimmed;
+  const key = trimmed.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+  const aliases: Record<string, string> = {
+    traseira: "Traseira",
+    frente: "Frente",
+    painel: "Painel ligado (km)",
+    "painel ligado": "Painel ligado (km)",
+    "painel ligado (km)": "Painel ligado (km)",
+    "lateral esquerda": "Lateral esquerda",
+    "lateral direita": "Lateral direita",
+    "interior dianteiro": "Interior dianteiro",
+    "interior traseiro": "Interior traseiro",
+    motor: "Motor",
+    "porta-malas": "Porta-malas",
+    estepe: "Estepe",
+    "pneus / rodas": "Pneus / rodas",
+    outra: "Outra",
+  };
+  return aliases[key] ?? trimmed;
+}
+
 export function normalizeGestaoTrocaFotos(raw: unknown): GestaoTrocaFotoEntry[] {
   if (!Array.isArray(raw)) return [];
   const out: GestaoTrocaFotoEntry[] = [];
@@ -35,7 +60,7 @@ export function normalizeGestaoTrocaFotos(raw: unknown): GestaoTrocaFotoEntry[] 
       const o = row as Record<string, unknown>;
       const path = String(o.path ?? "").trim();
       if (!path) continue;
-      let etiqueta = String(o.etiqueta ?? "").trim() || "Outra";
+      let etiqueta = canonicalGestaoTrocaEtiqueta(String(o.etiqueta ?? "") || "Outra");
       if (!GESTAO_TROCA_FOTO_ETIQUETAS.includes(etiqueta)) etiqueta = "Outra";
       out.push({ path, etiqueta });
     }

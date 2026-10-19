@@ -52,15 +52,29 @@ async function loadGestaoTrocaAnaliseById(analiseId: string): Promise<{
   };
 }
 
-export async function invokeGestaoTrocaStatusAnalise(analiseId: string): Promise<{
+export async function invokeGestaoTrocaStatusAnalise(
+  analiseId: string,
+): Promise<{
   analise: GestaoTrocaIaAnalise | null;
   itens: GestaoTrocaIaItem[];
   error?: string;
+  notFound?: boolean;
 }> {
   const { data, error } = await supabase.functions.invoke("gestao-troca", {
     body: { action: "status_analise", analise_id: analiseId },
   });
-  if (!error && data?.success) {
+  if (error) {
+    return { analise: null, itens: [], error: error.message };
+  }
+  if (data?.success === false) {
+    return {
+      analise: null,
+      itens: [],
+      error: String(data.error ?? "Falha ao consultar análise."),
+      notFound: /não encontrada/i.test(String(data.error ?? "")),
+    };
+  }
+  if (data?.success) {
     const analise = data.analise
       ? parseGestaoTrocaIaAnaliseRow(data.analise as Record<string, unknown>)
       : null;
@@ -70,6 +84,30 @@ export async function invokeGestaoTrocaStatusAnalise(analiseId: string): Promise
     return { analise, itens };
   }
   return loadGestaoTrocaAnaliseById(analiseId);
+}
+
+export async function invokeGestaoTrocaStatusAnalisePorTroca(trocaId: string): Promise<{
+  analise: GestaoTrocaIaAnalise | null;
+  itens: GestaoTrocaIaItem[];
+  error?: string;
+}> {
+  const { data, error } = await supabase.functions.invoke("gestao-troca", {
+    body: { action: "status_analise", troca_id: trocaId },
+  });
+  if (error || data?.success === false) {
+    return {
+      analise: null,
+      itens: [],
+      error: data?.error ?? error?.message ?? "Falha ao consultar análise.",
+    };
+  }
+  const analise = data.analise
+    ? parseGestaoTrocaIaAnaliseRow(data.analise as Record<string, unknown>)
+    : null;
+  const itens = Array.isArray(data.itens)
+    ? data.itens.map((r: Record<string, unknown>) => parseGestaoTrocaIaItemRow(r))
+    : [];
+  return { analise, itens };
 }
 
 export async function invokeGestaoTrocaAnalisarFotos(trocaId: string): Promise<{

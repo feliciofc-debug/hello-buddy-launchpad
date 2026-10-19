@@ -78,6 +78,49 @@ export async function assertNoGestaoTrocaAnaliseProcessando(
   }
 }
 
+export async function loadGestaoTrocaAnaliseById(
+  sb: Db,
+  userId: string,
+  analiseId: string,
+): Promise<{ analise: Record<string, unknown>; itens: Record<string, unknown>[] } | null> {
+  const { data: analise } = await sb.from("gestao_troca_analise_ia")
+    .select("*")
+    .eq("id", analiseId)
+    .maybeSingle();
+  if (!analise?.id) return null;
+  if (String(analise.user_id) !== userId) return null;
+  const { data: itens } = await sb.from("gestao_troca_ia_item")
+    .select("*")
+    .eq("analise_id", analise.id)
+    .order("ordem", { ascending: true });
+  return { analise, itens: itens ?? [] };
+}
+
+export type GestaoTrocaStatusAnaliseResult =
+  | { ok: true; analise: Record<string, unknown> | null; itens: Record<string, unknown>[] }
+  | { ok: false; status: 422 | 404; error: string };
+
+export async function statusAnaliseGestaoTroca(
+  sb: Db,
+  userId: string,
+  input: { analise_id?: string; troca_id?: string },
+): Promise<GestaoTrocaStatusAnaliseResult> {
+  const analiseId = String(input.analise_id ?? "").trim();
+  const trocaId = String(input.troca_id ?? "").trim();
+  if (!analiseId && !trocaId) {
+    return { ok: false, status: 422, error: "Informe analise_id ou troca_id." };
+  }
+  if (analiseId) {
+    const byId = await loadGestaoTrocaAnaliseById(sb, userId, analiseId);
+    if (!byId) {
+      return { ok: false, status: 404, error: "Análise não encontrada." };
+    }
+    return { ok: true, analise: byId.analise, itens: byId.itens };
+  }
+  const latest = await loadLatestGestaoTrocaAnalise(sb, userId, trocaId);
+  return { ok: true, analise: latest.analise, itens: latest.itens };
+}
+
 export async function loadLatestGestaoTrocaAnalise(
   sb: Db,
   userId: string,
