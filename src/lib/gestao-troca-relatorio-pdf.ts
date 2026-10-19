@@ -5,18 +5,12 @@ import {
   GESTAO_TROCA_CHECKLIST_ITENS,
   normalizeGestaoTrocaChecklist,
 } from "@/lib/gestao-troca-checklist.ts";
-import { GESTAO_TROCA_IA_DISCLAIMER } from "@/lib/gestao-troca-ia-types.ts";
+import type {
+  GestaoTrocaLaudoPdfFinalizacao,
+  GestaoTrocaLaudoPdfSection,
+} from "@/lib/gestao-troca-laudo-pdf-section.ts";
 
-export type GestaoTrocaLaudoPdfSection = {
-  kmPainel: number | null;
-  luzesPainel: boolean | null;
-  itensConfirmados: {
-    area: string;
-    tipo: string;
-    descricao: string;
-    valor: number | null;
-  }[];
-};
+export type { GestaoTrocaLaudoPdfSection, GestaoTrocaLaudoPdfFinalizacao };
 
 const FOOTER = "Referências: KBB (informada pelo avaliador) e FIPE.";
 
@@ -42,11 +36,79 @@ async function loadImageDataUrl(url: string): Promise<{ dataUrl: string; w: numb
   }
 }
 
+function formatLaudoDateTime(iso: string | null): string {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+  } catch {
+    return iso.slice(0, 16).replace("T", " ");
+  }
+}
+
+export function appendGestaoTrocaLaudoPdfLines(
+  line: (t: string, bold?: boolean) => void,
+  laudo: GestaoTrocaLaudoPdfSection,
+): void {
+  line("Pré-análise visual por IA", true);
+  line(laudo.disclaimer);
+  const kmPainel = laudo.kmPainel != null
+    ? `${laudo.kmPainel.toLocaleString("pt-BR")} km`
+    : "—";
+  const kmInfo = laudo.kmInformado != null
+    ? `${laudo.kmInformado.toLocaleString("pt-BR")} km`
+    : "—";
+  line(`Odômetro painel: ${kmPainel} · Informado na ficha: ${kmInfo}`);
+  if (laudo.alertaKm) {
+    line(
+      laudo.kmPainelConferido
+        ? "Alerta: divergência de KM — conferência registrada pelo avaliador."
+        : "Alerta: divergência de KM — aguardando conferência do avaliador.",
+    );
+  }
+  if (laudo.luzesPainel === true) {
+    line("Luzes de alerta no painel: sim (verificar diagnóstico)");
+  } else if (laudo.luzesPainel === false) {
+    line("Luzes de alerta no painel: não identificadas");
+  } else {
+    line("Luzes de alerta no painel: sem foto de painel legível");
+  }
+  if (laudo.angulosFaltando.length) {
+    line(`Ângulos faltando: ${laudo.angulosFaltando.join(" · ")}`);
+  } else {
+    line("Ângulos: cobertura padrão completa");
+  }
+  if (laudo.qualidadeProblemas.length === 0) {
+    line("Qualidade das fotos: todas usadas na análise.");
+  } else {
+    line("Qualidade das fotos:", true);
+    for (const q of laudo.qualidadeProblemas.slice(0, 8)) {
+      const skip = q.motivo_skip ? ` (${q.motivo_skip.replace(/_/g, " ")})` : "";
+      line(`• ${q.etiqueta}${skip}`);
+    }
+  }
+  if (laudo.resumo) {
+    line(`Resumo IA: ${laudo.resumo}`);
+  }
+  line("Itens confirmados pelo avaliador:", true);
+  if (laudo.itensConfirmados.length === 0) {
+    line("Nenhuma avaria relevante identificada.");
+  } else {
+    for (const item of laudo.itensConfirmados) {
+      const loc = `${item.area.replace(/_/g, " ")} · ${item.tipo.replace(/_/g, " ")}`;
+      const val = item.valor != null ? formatGestaoMoney(item.valor) : "—";
+      line(`• ${loc}: ${item.descricao} (${val})`);
+    }
+  }
+  const modelo = laudo.modeloIa ?? "—";
+  line(`Modelo IA: ${modelo} · ${formatLaudoDateTime(laudo.analiseConcluidaEm)}`);
+}
+
 export async function downloadGestaoTrocaRelatorioPdf(
   troca: GestaoTrocaRow,
   eventos: { descricao: string; created_at: string }[],
   thumbUrls: string[] = [],
   laudo?: GestaoTrocaLaudoPdfSection | null,
+  finalizacao?: GestaoTrocaLaudoPdfFinalizacao | null,
 ) {
   const doc = new jsPDF();
   let y = 14;
@@ -61,6 +123,11 @@ export async function downloadGestaoTrocaRelatorioPdf(
     y += 6;
   };
   line("Relatório de avaliação — Troca", true);
+  if (finalizacao) {
+    line(
+      `Laudo nº ${finalizacao.numero} · versão ${finalizacao.versao} · finalizado por ${finalizacao.finalizadoPor} em ${formatLaudoDateTime(finalizacao.finalizadoEm)}`,
+    );
+  }
   line(`${troca.marca} ${troca.modelo} ${troca.ano_modelo ?? ""} · ${troca.placa ?? "—"}`);
   line(`Status: ${troca.status} · Semáforo: ${troca.semaforo ?? "—"}`);
   y += 4;
@@ -85,23 +152,9 @@ export async function downloadGestaoTrocaRelatorioPdf(
   line("Justificativas", true);
   for (const j of troca.justificativas_json ?? []) line(`• ${j}`);
 
-  if (laudo && laudo.itensConfirmados.length > 0) {
+  if (laudo) {
     y += 4;
-    line("Pré-análise visual por IA", true);
-    line(GESTAO_TROCA_IA_DISCLAIMER);
-    if (laudo.kmPainel != null) {
-      line(`Odômetro lido no painel: ${laudo.kmPainel.toLocaleString("pt-BR")} km`);
-    }
-    if (laudo.luzesPainel === true) {
-      line("Luzes de alerta no painel: sim (verificar diagnóstico)");
-    } else if (laudo.luzesPainel === false) {
-      line("Luzes de alerta no painel: não identificadas");
-    }
-    for (const item of laudo.itensConfirmados) {
-      const loc = `${item.area.replace(/_/g, " ")} · ${item.tipo.replace(/_/g, " ")}`;
-      const val = item.valor != null ? formatGestaoMoney(item.valor) : "—";
-      line(`• ${loc}: ${item.descricao} (${val})`);
-    }
+    appendGestaoTrocaLaudoPdfLines(line, laudo);
   }
 
   y += 4;
@@ -140,5 +193,6 @@ export async function downloadGestaoTrocaRelatorioPdf(
 
   doc.setFontSize(8);
   doc.text(FOOTER, 14, 285);
-  doc.save(`troca-${troca.placa ?? troca.id.slice(0, 8)}.pdf`);
+  const suffix = troca.laudo_numero ?? troca.placa ?? troca.id.slice(0, 8);
+  doc.save(`troca-${suffix}.pdf`);
 }

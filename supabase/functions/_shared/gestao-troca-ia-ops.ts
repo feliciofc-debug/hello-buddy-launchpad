@@ -11,6 +11,7 @@ import {
 } from "./gestao-troca-fotos.ts";
 import { addDiasYmd, hojeSaoPaulo } from "./gestao-date-br.ts";
 import { insertTrocaEvento } from "./gestao-troca-ops.ts";
+import { assertGestaoTrocaLaudoNaoFinalizado } from "./gestao-troca-laudo-guard.ts";
 import { listGestaoTrocaIaCustos } from "./gestao-troca-ia-custos.ts";
 import {
   gestaoTrocaIaAlertaKm,
@@ -307,9 +308,10 @@ export async function iniciarGestaoTrocaIaAnalise(
   userId: string,
   trocaId: string,
 ): Promise<{ analise_id: string }> {
-  const { data: troca } = await sb.from("gestao_troca").select("id")
+  const { data: troca } = await sb.from("gestao_troca").select("id, laudo_status")
     .eq("id", trocaId).eq("user_id", userId).maybeSingle();
   if (!troca) throw new Error("Troca não encontrada.");
+  assertGestaoTrocaLaudoNaoFinalizado(troca);
 
   await assertGestaoTrocaIaLimiteDiario(sb, userId);
   await assertNoGestaoTrocaAnaliseProcessando(sb, userId, trocaId);
@@ -330,6 +332,13 @@ export async function confirmarKmPainelGestaoTroca(
   userId: string,
   trocaId: string,
 ): Promise<void> {
+  const { data: troca } = await sb.from("gestao_troca").select("id, laudo_status")
+    .eq("id", trocaId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!troca?.id) throw new Error("Troca não encontrada.");
+  assertGestaoTrocaLaudoNaoFinalizado(troca);
+
   const { data } = await sb.from("gestao_troca").update({
     km_painel_conferido: true,
     updated_at: new Date().toISOString(),
@@ -361,11 +370,12 @@ export async function decidirItemIaGestaoTroca(
 
   const trocaId = String(item.troca_id);
   const { data: troca } = await sb.from("gestao_troca")
-    .select("checklist_json, preparacao_estimada")
+    .select("checklist_json, preparacao_estimada, laudo_status")
     .eq("id", trocaId)
     .eq("user_id", userId)
     .maybeSingle();
   if (!troca) throw new Error("Troca não encontrada.");
+  assertGestaoTrocaLaudoNaoFinalizado(troca);
 
   const checklist = normalizeGestaoTrocaChecklist(troca.checklist_json);
   if (decisao === "confirmado") {

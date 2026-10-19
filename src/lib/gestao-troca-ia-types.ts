@@ -23,6 +23,7 @@ export type GestaoTrocaIaAnalise = {
   qualidade_json: GestaoTrocaIaQualidadeFoto[];
   erro: string | null;
   total_preparacao: number | null;
+  modelo_ia?: string | null;
   created_at: string;
   concluida_em: string | null;
 };
@@ -94,6 +95,7 @@ export function parseGestaoTrocaIaAnaliseRow(raw: Record<string, unknown>): Gest
     qualidade_json: normalizeGestaoTrocaIaQualidade(raw.qualidade_json),
     erro: raw.erro != null ? String(raw.erro) : null,
     total_preparacao: raw.total_preparacao != null ? Number(raw.total_preparacao) : null,
+    modelo_ia: raw.modelo_ia != null ? String(raw.modelo_ia) : null,
     created_at: String(raw.created_at ?? ""),
     concluida_em: raw.concluida_em != null ? String(raw.concluida_em) : null,
   };

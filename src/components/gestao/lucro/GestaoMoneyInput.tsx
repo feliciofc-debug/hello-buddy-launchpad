@@ -14,6 +14,7 @@ type Props = {
   placeholder?: string;
   className?: string;
   id?: string;
+  disabled?: boolean;
 };
 
 export function GestaoMoneyInput({
@@ -25,6 +26,7 @@ export function GestaoMoneyInput({
   placeholder,
   className,
   id,
+  disabled,
 }: Props) {
   const preview = formatGestaoMoneyInputPreview(parseGestaoMoneyBr(value));
 
@@ -35,6 +37,7 @@ export function GestaoMoneyInput({
         id={id}
         className={className}
         placeholder={placeholder}
+        disabled={disabled}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onBlur={() => onBlur?.()}

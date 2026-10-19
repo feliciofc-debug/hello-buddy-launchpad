@@ -37,6 +37,7 @@ type Props = {
   kmFicha: number | null;
   kmPainelConferido: boolean;
   disabled?: boolean;
+  laudoFinalizado?: boolean;
   onKmConferido?: () => void;
   onPreparacaoChange?: (preparacao: number) => void;
   onLaudoState?: (state: { alertaKm: boolean; kmConferido: boolean }) => void;
@@ -47,6 +48,7 @@ export function GestaoTrocaLaudoIaPanel({
   kmFicha,
   kmPainelConferido,
   disabled,
+  laudoFinalizado,
   onKmConferido,
   onPreparacaoChange,
   onLaudoState,
@@ -245,16 +247,22 @@ export function GestaoTrocaLaudoIaPanel({
 
   const pendentes = itens.filter((i) => i.decisao === "pendente");
   const analisando = polling || !!analiseJobId || analise?.status === "processando";
+  const readOnly = disabled || laudoFinalizado;
 
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground">{GESTAO_TROCA_IA_DISCLAIMER}</p>
+      {laudoFinalizado && (
+        <p className="text-xs font-medium text-muted-foreground">
+          Laudo finalizado — itens IA e análise somente leitura.
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <Button
           size="sm"
           onClick={() => void iniciarAnalise()}
-          disabled={disabled || busy || analisando}
+          disabled={readOnly || busy || analisando}
         >
           {analisando ? (
             <>
@@ -300,7 +308,7 @@ export function GestaoTrocaLaudoIaPanel({
                 <AlertTriangle className="h-4 w-4 shrink-0" />
                 <span>KM do painel diverge do informado na ficha.</span>
                 {!kmPainelConferido && (
-                  <Button size="sm" variant="secondary" disabled={busy} onClick={() => void confirmarKm()}>
+                  <Button size="sm" variant="secondary" disabled={readOnly || busy} onClick={() => void confirmarKm()}>
                     Km conferido
                   </Button>
                 )}
@@ -413,7 +421,7 @@ export function GestaoTrocaLaudoIaPanel({
                             )}
                             <Button
                               size="sm"
-                              disabled={disabled || busy}
+                              disabled={readOnly || busy}
                               onClick={() => void decidir(item, "confirmado")}
                             >
                               <Check className="mr-1 h-4 w-4" /> Confirmar
@@ -421,7 +429,7 @@ export function GestaoTrocaLaudoIaPanel({
                             <Button
                               size="sm"
                               variant="ghost"
-                              disabled={disabled || busy}
+                              disabled={readOnly || busy}
                               onClick={() => void decidir(item, "descartado")}
                             >
                               <X className="mr-1 h-4 w-4" /> Descartar

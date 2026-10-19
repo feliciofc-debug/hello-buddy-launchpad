@@ -1,3 +1,5 @@
+export type GestaoTrocaLaudoStatus = "rascunho" | "finalizado";
+
 export type GestaoTrocaStatus =
   | "em_avaliacao"
   | "aguardando_aprovacao"
@@ -49,6 +51,12 @@ export type GestaoTrocaRow = {
   veiculo_id: string | null;
   repasse_comprador: string | null;
   repasse_valor: number | null;
+  laudo_status?: GestaoTrocaLaudoStatus;
+  laudo_numero?: string | null;
+  laudo_versao?: number;
+  laudo_finalizado_por?: string | null;
+  laudo_finalizado_em?: string | null;
+  laudo_reaberto_motivo?: string | null;
   created_at: string;
   updated_at: string;
 };

@@ -27,6 +27,11 @@ import {
 } from "../_shared/gestao-troca-ia-ops.ts";
 import type { GestaoTrocaIaCustoRow } from "../_shared/gestao-troca-ia-rules.ts";
 import {
+  finalizarLaudoGestaoTroca,
+  reabrirLaudoGestaoTroca,
+  assertGestaoTrocaLaudoNaoFinalizado,
+} from "../_shared/gestao-troca-laudo-ops.ts";
+import {
   insertTrocaEvento,
   liberarTrocaParaEstoque,
   loadTrocaHistoricoGrupo,
@@ -62,6 +67,7 @@ Deno.serve(async (req) => {
       const { data: troca } = await sb.from("gestao_troca").select("*")
         .eq("id", trocaId).eq("user_id", user.id).maybeSingle();
       if (!troca) throw new Error("Troca não encontrada.");
+      assertGestaoTrocaLaudoNaoFinalizado(troca);
       const config = await loadConfig(sb, user.id);
       const historico = await loadTrocaHistoricoGrupo(
         sb,
@@ -212,6 +218,27 @@ Deno.serve(async (req) => {
         user.email ?? "painel",
       );
       return jsonResponse({ success: true, ...r });
+    }
+
+    if (action === "finalizar_laudo") {
+      const r = await finalizarLaudoGestaoTroca(
+        sb,
+        user.id,
+        user.email ?? user.id,
+        String(body?.troca_id ?? ""),
+      );
+      return jsonResponse({ success: true, ...r });
+    }
+
+    if (action === "reabrir_laudo") {
+      await reabrirLaudoGestaoTroca(
+        sb,
+        user.id,
+        user.email ?? user.id,
+        String(body?.troca_id ?? ""),
+        String(body?.motivo ?? ""),
+      );
+      return jsonResponse({ success: true });
     }
 
     if (action === "fipe_buscar") {

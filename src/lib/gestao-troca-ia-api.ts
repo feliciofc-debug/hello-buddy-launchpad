@@ -172,6 +172,38 @@ export async function invokeGestaoTrocaCustosListar(): Promise<{
   return { custos };
 }
 
+export async function invokeGestaoTrocaFinalizarLaudo(trocaId: string): Promise<{
+  success: boolean;
+  numero?: string;
+  versao?: number;
+  error?: string;
+}> {
+  const { data, error } = await supabase.functions.invoke("gestao-troca", {
+    body: { action: "finalizar_laudo", troca_id: trocaId },
+  });
+  if (error || !data?.success) {
+    return { success: false, error: data?.error ?? error?.message ?? "Falha ao finalizar laudo." };
+  }
+  return {
+    success: true,
+    numero: data.numero != null ? String(data.numero) : undefined,
+    versao: data.versao != null ? Number(data.versao) : undefined,
+  };
+}
+
+export async function invokeGestaoTrocaReabrirLaudo(
+  trocaId: string,
+  motivo: string,
+): Promise<{ success: boolean; error?: string }> {
+  const { data, error } = await supabase.functions.invoke("gestao-troca", {
+    body: { action: "reabrir_laudo", troca_id: trocaId, motivo },
+  });
+  if (error || !data?.success) {
+    return { success: false, error: data?.error ?? error?.message ?? "Falha ao reabrir laudo." };
+  }
+  return { success: true };
+}
+
 export async function invokeGestaoTrocaCustosSalvar(
   custos: GestaoTrocaIaCustoRow[],
 ): Promise<{ success: boolean; error?: string }> {

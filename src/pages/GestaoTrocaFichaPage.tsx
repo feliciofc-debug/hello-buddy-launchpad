@@ -47,8 +47,14 @@ import {
   normalizeGestaoTrocaFotos,
   type GestaoTrocaFotoEntry,
 } from "@/lib/gestao-troca-fotos.ts";
-import { fetchLatestGestaoTrocaLaudo } from "@/lib/gestao-troca-ia-api.ts";
-import type { GestaoTrocaLaudoPdfSection } from "@/lib/gestao-troca-relatorio-pdf.ts";
+import {
+  fetchLatestGestaoTrocaLaudo,
+  invokeGestaoTrocaFinalizarLaudo,
+  invokeGestaoTrocaReabrirLaudo,
+} from "@/lib/gestao-troca-ia-api.ts";
+import { buildGestaoTrocaLaudoPdfFromAnalise } from "@/lib/gestao-troca-laudo-build.ts";
+import type { GestaoTrocaLaudoPdfSection } from "@/lib/gestao-troca-laudo-pdf-section.ts";
+import { GestaoTrocaLaudoPreviewContent } from "@/components/gestao/trocas/GestaoTrocaLaudoPreviewContent.tsx";
 import {
   buildGestaoTrocaKbbUrl,
   GESTAO_TROCA_KBB_CATEGORIAS,
@@ -82,6 +88,12 @@ export default function GestaoTrocaFichaPage() {
   const [kbbLojaText, setKbbLojaText] = useState("");
   const [preparacaoText, setPreparacaoText] = useState("");
   const [valorPropostoText, setValorPropostoText] = useState("");
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewLaudo, setPreviewLaudo] = useState<GestaoTrocaLaudoPdfSection | null>(null);
+  const [finalizeOpen, setFinalizeOpen] = useState(false);
+  const [reabrirOpen, setReabrirOpen] = useState(false);
+  const [reabrirMotivo, setReabrirMotivo] = useState("");
+  const [finalizadoPorLabel, setFinalizadoPorLabel] = useState<string | null>(null);
 
   const applyTrocaRow = (row: GestaoTrocaRow) => {
     setTroca(row);
@@ -122,8 +134,14 @@ export default function GestaoTrocaFichaPage() {
     void load();
   }, [load]);
 
+  const laudoLocked = troca?.laudo_status === "finalizado";
+
   const savePatch = async (patch: Record<string, unknown>) => {
     if (!id) return;
+    if (laudoLocked) {
+      toast.error("Laudo finalizado — reabra o laudo para editar.");
+      return;
+    }
     setBusy(true);
     const { error } = await supabase.from("gestao_troca" as "veiculos_estoque").update(patch).eq("id", id);
     setBusy(false);
@@ -314,8 +332,14 @@ export default function GestaoTrocaFichaPage() {
     }
   };
 
-  const exportPdf = async () => {
-    if (!troca) return;
+  const loadLaudoPdfSection = async () => {
+    if (!troca) return null;
+    const { analise, itens } = await fetchLatestGestaoTrocaLaudo(troca.id);
+    return buildGestaoTrocaLaudoPdfFromAnalise(troca, analise, itens);
+  };
+
+  const loadPdfThumbUrls = async () => {
+    if (!troca) return [] as string[];
     const fotos = normalizeGestaoTrocaFotos(troca.fotos_json).filter(
       (f) => f.etiqueta !== "Documento (CRLV)",
     );
@@ -325,25 +349,81 @@ export default function GestaoTrocaFichaPage() {
       const { data } = await supabase.storage.from("trocas").createSignedUrl(path, 3600);
       if (data?.signedUrl) urls.push(data.signedUrl);
     }
-    let laudoPdf: GestaoTrocaLaudoPdfSection | null = null;
-    const { analise, itens } = await fetchLatestGestaoTrocaLaudo(troca.id);
-    if (analise) {
-      const confirmados = itens.filter((i) => i.decisao === "confirmado");
-      if (confirmados.length) {
-        laudoPdf = {
-          kmPainel: analise.km_painel_lido,
-          luzesPainel: analise.luzes_painel,
-          itensConfirmados: confirmados.map((i) => ({
-            area: i.area,
-            tipo: i.tipo,
-            descricao: i.descricao,
-            valor: i.valor_estimado,
-          })),
-        };
-      }
-    }
-    await downloadGestaoTrocaRelatorioPdf(troca, eventos, urls, laudoPdf);
+    return urls;
   };
+
+  const exportPdf = async () => {
+    if (!troca) return;
+    setBusy(true);
+    const [urls, laudoPdf] = await Promise.all([loadPdfThumbUrls(), loadLaudoPdfSection()]);
+    const finalizacao = troca.laudo_status === "finalizado" && troca.laudo_numero
+      ? {
+        numero: troca.laudo_numero,
+        versao: troca.laudo_versao ?? 1,
+        finalizadoPor: finalizadoPorLabel ?? userId.slice(0, 8),
+        finalizadoEm: troca.laudo_finalizado_em ?? new Date().toISOString(),
+      }
+      : null;
+    setBusy(false);
+    await downloadGestaoTrocaRelatorioPdf(troca, eventos, urls, laudoPdf, finalizacao);
+  };
+
+  const openPreview = async () => {
+    if (!troca) return;
+    setBusy(true);
+    const laudo = await loadLaudoPdfSection();
+    setPreviewLaudo(laudo);
+    setBusy(false);
+    setPreviewOpen(true);
+  };
+
+  const confirmFinalizarLaudo = async () => {
+    if (!id) return;
+    setBusy(true);
+    const r = await invokeGestaoTrocaFinalizarLaudo(id);
+    setBusy(false);
+    setFinalizeOpen(false);
+    if (!r.success) {
+      toast.error(r.error ?? "Falha ao finalizar.");
+      return;
+    }
+    toast.success(`Laudo nº ${r.numero ?? ""} finalizado (v${r.versao ?? 1}).`);
+    const { data: { user } } = await supabase.auth.getUser();
+    setFinalizadoPorLabel(user?.email ?? user?.id ?? null);
+    void load();
+  };
+
+  const confirmReabrirLaudo = async () => {
+    if (!id) return;
+    if (reabrirMotivo.trim().length < 10) {
+      toast.error("Informe o motivo (mínimo 10 caracteres).");
+      return;
+    }
+    setBusy(true);
+    const r = await invokeGestaoTrocaReabrirLaudo(id, reabrirMotivo.trim());
+    setBusy(false);
+    if (!r.success) {
+      toast.error(r.error ?? "Falha ao reabrir.");
+      return;
+    }
+    toast.success("Laudo reaberto para edição.");
+    setReabrirOpen(false);
+    setReabrirMotivo("");
+    void load();
+  };
+
+  useEffect(() => {
+    if (!troca?.laudo_finalizado_por) {
+      setFinalizadoPorLabel(null);
+      return;
+    }
+    void (async () => {
+      const { data } = await supabase.from("profiles").select("email, full_name")
+        .eq("id", troca.laudo_finalizado_por!)
+        .maybeSingle();
+      setFinalizadoPorLabel(data?.email ?? data?.full_name ?? troca.laudo_finalizado_por!.slice(0, 8));
+    })();
+  }, [troca?.laudo_finalizado_por]);
 
   if (!troca) {
     return (
@@ -378,21 +458,44 @@ export default function GestaoTrocaFichaPage() {
           <h1 className="text-2xl font-bold">
             {troca.marca} {troca.modelo} {troca.ano_modelo ?? ""}
           </h1>
-          <Button variant="outline" size="sm" onClick={() => void exportPdf()} disabled={busy}>
-            Relatório PDF
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => void openPreview()} disabled={busy}>
+              Pré-visualizar laudo
+            </Button>
+            {troca.laudo_status !== "finalizado" ? (
+              <Button size="sm" onClick={() => setFinalizeOpen(true)} disabled={busy}>
+                Finalizar laudo
+              </Button>
+            ) : (
+              <Button size="sm" variant="secondary" onClick={() => setReabrirOpen(true)} disabled={busy}>
+                Reabrir laudo
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={() => void exportPdf()} disabled={busy}>
+              Relatório PDF
+            </Button>
+          </div>
         </div>
+        {troca.laudo_status === "finalizado" && troca.laudo_numero && (
+          <p className="text-sm text-muted-foreground">
+            Laudo nº {troca.laudo_numero} · versão {troca.laudo_versao ?? 1}
+            {troca.laudo_finalizado_em
+              ? ` · finalizado em ${new Date(troca.laudo_finalizado_em).toLocaleString("pt-BR")}`
+              : ""}
+          </p>
+        )}
 
         <section className="space-y-3 rounded-lg border bg-white p-4 dark:bg-gray-950">
           <h2 className="font-semibold">Veículo e cliente</h2>
           <div className="grid gap-2 sm:grid-cols-2">
-            <div><Label>Placa</Label><Input value={troca.placa ?? ""} onChange={(e) => setTroca({ ...troca, placa: e.target.value })} onBlur={() => void savePatch({ placa: troca.placa })} /></div>
-            <div><Label>Marca</Label><Input value={troca.marca} onChange={(e) => setTroca({ ...troca, marca: e.target.value })} onBlur={() => void savePatch({ marca: troca.marca })} /></div>
-            <div><Label>Modelo</Label><Input value={troca.modelo} onChange={(e) => setTroca({ ...troca, modelo: e.target.value })} onBlur={() => void savePatch({ modelo: troca.modelo })} /></div>
+            <div><Label>Placa</Label><Input readOnly={laudoLocked} value={troca.placa ?? ""} onChange={(e) => setTroca({ ...troca, placa: e.target.value })} onBlur={() => void savePatch({ placa: troca.placa })} /></div>
+            <div><Label>Marca</Label><Input readOnly={laudoLocked} value={troca.marca} onChange={(e) => setTroca({ ...troca, marca: e.target.value })} onBlur={() => void savePatch({ marca: troca.marca })} /></div>
+            <div><Label>Modelo</Label><Input readOnly={laudoLocked} value={troca.modelo} onChange={(e) => setTroca({ ...troca, modelo: e.target.value })} onBlur={() => void savePatch({ modelo: troca.modelo })} /></div>
             <div>
               <Label>Categoria (KBB)</Label>
               <Select
                 value={troca.categoria ?? ""}
+                disabled={laudoLocked}
                 onValueChange={(v) => {
                   const cat = v || null;
                   setTroca({ ...troca, categoria: cat });
@@ -407,11 +510,11 @@ export default function GestaoTrocaFichaPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div><Label>Ano modelo</Label><Input type="number" value={troca.ano_modelo ?? ""} onChange={(e) => setTroca({ ...troca, ano_modelo: Number(e.target.value) || null })} onBlur={() => void savePatch({ ano_modelo: troca.ano_modelo })} /></div>
-            <div><Label>KM</Label><Input type="number" value={troca.km ?? ""} onChange={(e) => setTroca({ ...troca, km: Number(e.target.value) || null })} onBlur={() => void savePatch({ km: troca.km })} /></div>
-            <div><Label>Cliente</Label><Input value={troca.cliente_nome ?? ""} onChange={(e) => setTroca({ ...troca, cliente_nome: e.target.value })} onBlur={() => void savePatch({ cliente_nome: troca.cliente_nome })} /></div>
+            <div><Label>Ano modelo</Label><Input readOnly={laudoLocked} type="number" value={troca.ano_modelo ?? ""} onChange={(e) => setTroca({ ...troca, ano_modelo: Number(e.target.value) || null })} onBlur={() => void savePatch({ ano_modelo: troca.ano_modelo })} /></div>
+            <div><Label>KM</Label><Input readOnly={laudoLocked} type="number" value={troca.km ?? ""} onChange={(e) => setTroca({ ...troca, km: Number(e.target.value) || null })} onBlur={() => void savePatch({ km: troca.km })} /></div>
+            <div><Label>Cliente</Label><Input readOnly={laudoLocked} value={troca.cliente_nome ?? ""} onChange={(e) => setTroca({ ...troca, cliente_nome: e.target.value })} onBlur={() => void savePatch({ cliente_nome: troca.cliente_nome })} /></div>
           </div>
-          <Textarea placeholder="Observações" value={troca.observacoes ?? ""} onChange={(e) => setTroca({ ...troca, observacoes: e.target.value })} onBlur={() => void savePatch({ observacoes: troca.observacoes })} />
+          <Textarea readOnly={laudoLocked} placeholder="Observações" value={troca.observacoes ?? ""} onChange={(e) => setTroca({ ...troca, observacoes: e.target.value })} onBlur={() => void savePatch({ observacoes: troca.observacoes })} />
         </section>
 
         <section className="space-y-3 rounded-lg border bg-white p-4 dark:bg-gray-950">
@@ -419,7 +522,7 @@ export default function GestaoTrocaFichaPage() {
           <GestaoTrocaChecklistPanel
             value={troca.checklist_json}
             preparacaoManual={troca.preparacao_estimada}
-            disabled={busy}
+            disabled={busy || laudoLocked}
             onChecklistChange={(checklist, preparacaoSugerida) => {
               void saveChecklist(checklist, preparacaoSugerida);
             }}
@@ -429,7 +532,7 @@ export default function GestaoTrocaFichaPage() {
           <Button
             size="sm"
             variant="secondary"
-            disabled={busy}
+            disabled={busy || laudoLocked}
             onClick={() =>
               void savePatch({ preparacao_estimada: troca.preparacao_estimada }).then(() => recalcular())}
           >
@@ -449,13 +552,14 @@ export default function GestaoTrocaFichaPage() {
             característico.
           </p>
           <div className="grid gap-2 sm:grid-cols-3">
-            <GestaoMoneyInput label="KBB troca" value={kbbTrocaText} onChange={setKbbTrocaText} onBlur={blurKbbTroca} />
-            <GestaoMoneyInput label="KBB loja" value={kbbLojaText} onChange={setKbbLojaText} onBlur={blurKbbLoja} />
-            <div><Label>KM característico KBB</Label><Input type="number" value={troca.kbb_km_caracteristico ?? ""} onChange={(e) => setTroca({ ...troca, kbb_km_caracteristico: Number(e.target.value) || null })} /></div>
+            <GestaoMoneyInput label="KBB troca" value={kbbTrocaText} onChange={setKbbTrocaText} onBlur={blurKbbTroca} disabled={laudoLocked} />
+            <GestaoMoneyInput label="KBB loja" value={kbbLojaText} onChange={setKbbLojaText} onBlur={blurKbbLoja} disabled={laudoLocked} />
+            <div><Label>KM característico KBB</Label><Input readOnly={laudoLocked} type="number" value={troca.kbb_km_caracteristico ?? ""} onChange={(e) => setTroca({ ...troca, kbb_km_caracteristico: Number(e.target.value) || null })} /></div>
           </div>
           <Button
             size="sm"
             variant="secondary"
+            disabled={laudoLocked}
             onClick={() => void savePatch({ kbb_km_caracteristico: troca.kbb_km_caracteristico })}
           >
             Salvar KM KBB
@@ -465,13 +569,13 @@ export default function GestaoTrocaFichaPage() {
         <section className="space-y-3 rounded-lg border bg-white p-4 dark:bg-gray-950">
           <h2 className="font-semibold">FIPE</h2>
           <p className="text-sm">Valor: {formatGestaoMoney(troca.fipe_valor ?? 0)} {troca.fipe_mes_ref ? `(${troca.fipe_mes_ref})` : ""}</p>
-          <Button size="sm" onClick={() => void buscarFipe()} disabled={busy}>Buscar FIPE</Button>
+          <Button size="sm" onClick={() => void buscarFipe()} disabled={busy || laudoLocked}>Buscar FIPE</Button>
         </section>
 
         <section className="space-y-3 rounded-lg border bg-white p-4 dark:bg-gray-950">
           <h2 className="font-semibold">Preço</h2>
-          <GestaoMoneyInput label="Preparação estimada" value={preparacaoText} onChange={setPreparacaoText} onBlur={blurPreparacao} />
-          <GestaoMoneyInput label="Valor proposto (cliente)" value={valorPropostoText} onChange={setValorPropostoText} onBlur={blurValorProposto} />
+          <GestaoMoneyInput label="Preparação estimada" value={preparacaoText} onChange={setPreparacaoText} onBlur={blurPreparacao} disabled={laudoLocked} />
+          <GestaoMoneyInput label="Valor proposto (cliente)" value={valorPropostoText} onChange={setValorPropostoText} onBlur={blurValorProposto} disabled={laudoLocked} />
           <div className="grid gap-1 text-sm">
             <p>Faixa verde: {formatGestaoMoney(troca.faixa_verde_min ?? 0)} – {formatGestaoMoney(troca.faixa_verde_max ?? 0)}</p>
             <p>Sugerido: {formatGestaoMoney(troca.valor_sugerido ?? 0)} · Teto: {formatGestaoMoney(troca.teto ?? 0)}</p>
@@ -492,10 +596,10 @@ export default function GestaoTrocaFichaPage() {
                 await savePatch({ preparacao_estimada: preparacao, valor_proposto });
                 await recalcular();
               })();
-            }} disabled={busy}>
+            }} disabled={busy || laudoLocked}>
               Recalcular preço
             </Button>
-            <Button size="sm" variant="outline" onClick={() => void consultarProcedencia()} disabled={busy}>
+            <Button size="sm" variant="outline" onClick={() => void consultarProcedencia()} disabled={busy || laudoLocked}>
               Consultar procedência
             </Button>
           </div>
@@ -530,7 +634,7 @@ export default function GestaoTrocaFichaPage() {
               userId={userId}
               trocaId={id}
               fotosRaw={troca.fotos_json}
-              disabled={busy}
+              disabled={busy || laudoLocked}
               onFotosChange={(entries: GestaoTrocaFotoEntry[]) => void savePatch({ fotos_json: entries })}
             />
           )}
@@ -544,6 +648,7 @@ export default function GestaoTrocaFichaPage() {
               kmFicha={troca.km}
               kmPainelConferido={troca.km_painel_conferido === true}
               disabled={busy}
+              laudoFinalizado={laudoLocked}
               onKmConferido={() => {
                 setTroca((t) => (t ? { ...t, km_painel_conferido: true } : t));
                 setLaudoKmBloqueio((s) => ({ ...s, kmConferido: true }));
@@ -560,6 +665,9 @@ export default function GestaoTrocaFichaPage() {
 
         <section className="space-y-2 rounded-lg border bg-white p-4 dark:bg-gray-950">
           <h2 className="font-semibold">Ações · {troca.status}</h2>
+          {troca.laudo_status !== "finalizado" && (
+            <p className="text-xs text-amber-700 dark:text-amber-400">Laudo ainda não finalizado.</p>
+          )}
           <div className="flex flex-wrap gap-2">
             {troca.status === "em_avaliacao" && (
               <Button
@@ -632,6 +740,64 @@ export default function GestaoTrocaFichaPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Pré-visualização do laudo</DialogTitle>
+            <DialogDescription>Conteúdo equivalente ao relatório PDF (sem amostra de fotos).</DialogDescription>
+          </DialogHeader>
+          <GestaoTrocaLaudoPreviewContent
+            troca={troca}
+            eventos={eventos}
+            laudo={previewLaudo}
+            finalizadoPor={finalizadoPorLabel}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPreviewOpen(false)}>Fechar</Button>
+            <Button onClick={() => void exportPdf()} disabled={busy}>Baixar PDF</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={finalizeOpen} onOpenChange={setFinalizeOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Finalizar laudo</AlertDialogTitle>
+            <AlertDialogDescription>
+              Gera número do laudo, grava uma versão imutável e trava checklist, preços, fotos e itens IA.
+              Você ainda pode solicitar aprovação comercial depois.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={(e) => { e.preventDefault(); void confirmFinalizarLaudo(); }} disabled={busy}>
+              Finalizar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={reabrirOpen} onOpenChange={setReabrirOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reabrir laudo</DialogTitle>
+            <DialogDescription>
+              Motivo obrigatório (mín. 10 caracteres). Registrado na linha do tempo.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={reabrirMotivo}
+            onChange={(e) => setReabrirMotivo(e.target.value)}
+            placeholder="Descreva por que o laudo precisa ser alterado…"
+            rows={4}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReabrirOpen(false)} disabled={busy}>Cancelar</Button>
+            <Button onClick={() => void confirmReabrirLaudo()} disabled={busy}>Reabrir</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={repasseOpen} onOpenChange={setRepasseOpen}>
         <DialogContent>
