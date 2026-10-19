@@ -15,6 +15,7 @@ import {
   type GestaoTrocaChecklistJson,
 } from "@/lib/gestao-troca-checklist.ts";
 import { formatGestaoMoney } from "@/lib/gestao-format.ts";
+import { parseGestaoMoneyBr } from "@/lib/gestao-money.ts";
 
 type Props = {
   value: GestaoTrocaChecklistJson | Record<string, unknown>;
@@ -102,8 +103,10 @@ export function GestaoTrocaChecklistPanel({
                     label=""
                     className="min-w-[120px]"
                     value={String(item.valor_estimado ?? "")}
-                    onChange={(v) =>
-                      patchItem(id, { valor_estimado: v ? Number(v.replace(/\D/g, "")) : null })}
+                    onChange={(v) => {
+                      const n = parseGestaoMoneyBr(v);
+                      patchItem(id, { valor_estimado: n != null && n > 0 ? n : null });
+                    }}
                   />
                 </>
               ) : (
@@ -118,7 +121,7 @@ export function GestaoTrocaChecklistPanel({
         <GestaoMoneyInput
           label=""
           value={String(preparacaoManual)}
-          onChange={(v) => onPreparacaoChange(Number(v.replace(/\D/g, "")) || 0)}
+          onChange={(v) => onPreparacaoChange(parseGestaoMoneyBr(v) ?? 0)}
         />
       </div>
     </div>

@@ -34,6 +34,19 @@ import { GestaoTrocaFotoGaleria } from "@/components/gestao/trocas/GestaoTrocaFo
 import { pollProcedenciaConsulta } from "@/components/procedencia/useProcedenciaConnection.ts";
 import type { GestaoTrocaChecklistJson } from "@/lib/gestao-troca-checklist.ts";
 import { parseGestaoMoneyBr } from "@/lib/gestao-money.ts";
+import {
+  buildGestaoTrocaKbbUrl,
+  GESTAO_TROCA_KBB_CATEGORIAS,
+  labelGestaoTrocaKbbLink,
+  lojaUfParaKbb,
+} from "@/lib/gestao-troca-kbb-url.ts";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function GestaoTrocaFichaPage() {
   const { id } = useParams<{ id: string }>();
@@ -48,11 +61,23 @@ export default function GestaoTrocaFichaPage() {
   const [repasseComprador, setRepasseComprador] = useState("");
   const [repasseValor, setRepasseValor] = useState("");
   const [repasseData, setRepasseData] = useState(() => new Date().toISOString().slice(0, 10));
+  const [lojaUf, setLojaUf] = useState("sp");
 
   const load = useCallback(async () => {
     if (!id) return;
     const { data: { user } } = await supabase.auth.getUser();
-    if (user) setUserId(user.id);
+    if (user) {
+      setUserId(user.id);
+      const { data: profile } = await supabase.from("profiles").select("endereco").eq("id", user.id)
+        .maybeSingle();
+      let cidadeUf: string | null = null;
+      if (user.email) {
+        const { data: cad } = await supabase.from("amz_auto_cadastros").select("cidade_uf")
+          .eq("email", user.email).order("created_at", { ascending: false }).limit(1).maybeSingle();
+        cidadeUf = cad?.cidade_uf ?? null;
+      }
+      setLojaUf(lojaUfParaKbb({ endereco: profile?.endereco, cidade_uf: cidadeUf }));
+    }
     const { data: t } = await supabase.from("gestao_troca" as "veiculos_estoque").select("*")
       .eq("id", id).maybeSingle();
     if (!t) {
@@ -222,6 +247,19 @@ export default function GestaoTrocaFichaPage() {
   }
 
   const destinoLocked = !!troca.veiculo_id || !!troca.destino;
+  const kbbUrl = buildGestaoTrocaKbbUrl({
+    uf: lojaUf,
+    marca: troca.marca,
+    modelo: troca.modelo,
+    ano_modelo: troca.ano_modelo,
+    categoria: troca.categoria,
+  });
+  const kbbLinkLabel = labelGestaoTrocaKbbLink({
+    marca: troca.marca,
+    modelo: troca.modelo,
+    ano_modelo: troca.ano_modelo,
+    categoria: troca.categoria,
+  });
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 dark:bg-gray-900">
@@ -244,6 +282,24 @@ export default function GestaoTrocaFichaPage() {
             <div><Label>Placa</Label><Input value={troca.placa ?? ""} onChange={(e) => setTroca({ ...troca, placa: e.target.value })} onBlur={() => void savePatch({ placa: troca.placa })} /></div>
             <div><Label>Marca</Label><Input value={troca.marca} onChange={(e) => setTroca({ ...troca, marca: e.target.value })} onBlur={() => void savePatch({ marca: troca.marca })} /></div>
             <div><Label>Modelo</Label><Input value={troca.modelo} onChange={(e) => setTroca({ ...troca, modelo: e.target.value })} onBlur={() => void savePatch({ modelo: troca.modelo })} /></div>
+            <div>
+              <Label>Categoria (KBB)</Label>
+              <Select
+                value={troca.categoria ?? ""}
+                onValueChange={(v) => {
+                  const cat = v || null;
+                  setTroca({ ...troca, categoria: cat });
+                  void savePatch({ categoria: cat });
+                }}
+              >
+                <SelectTrigger><SelectValue placeholder="Selecione…" /></SelectTrigger>
+                <SelectContent>
+                  {GESTAO_TROCA_KBB_CATEGORIAS.map((c) => (
+                    <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div><Label>Ano modelo</Label><Input type="number" value={troca.ano_modelo ?? ""} onChange={(e) => setTroca({ ...troca, ano_modelo: Number(e.target.value) || null })} onBlur={() => void savePatch({ ano_modelo: troca.ano_modelo })} /></div>
             <div><Label>KM</Label><Input type="number" value={troca.km ?? ""} onChange={(e) => setTroca({ ...troca, km: Number(e.target.value) || null })} onBlur={() => void savePatch({ km: troca.km })} /></div>
             <div><Label>Cliente</Label><Input value={troca.cliente_nome ?? ""} onChange={(e) => setTroca({ ...troca, cliente_nome: e.target.value })} onBlur={() => void savePatch({ cliente_nome: troca.cliente_nome })} /></div>
@@ -277,9 +333,13 @@ export default function GestaoTrocaFichaPage() {
         <section className="space-y-3 rounded-lg border bg-white p-4 dark:bg-gray-950">
           <h2 className="font-semibold">KBB (informado pelo avaliador)</h2>
           <p className="text-xs text-muted-foreground">
-            <a href="https://www.kbb.com.br" target="_blank" rel="noopener noreferrer" className="underline">
-              Consultar no kbb.com.br
+            <a href={kbbUrl} target="_blank" rel="noopener noreferrer" className="font-medium underline">
+              {kbbLinkLabel}
             </a>
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Na KBB escolha a versão, ajuste km e condição, e copie Preço de Troca, Preço de Loja e o km
+            característico.
           </p>
           <div className="grid gap-2 sm:grid-cols-3">
             <GestaoMoneyInput label="KBB troca" value={String(troca.kbb_troca ?? "")} onChange={(v) => setTroca({ ...troca, kbb_troca: v ? Number(v.replace(/\D/g, "")) : null })} />

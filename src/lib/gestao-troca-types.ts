@@ -13,6 +13,7 @@ export type GestaoTrocaRow = {
   placa: string | null;
   marca: string;
   modelo: string;
+  categoria: string | null;
   versao: string | null;
   ano_fabricacao: number | null;
   ano_modelo: number | null;
