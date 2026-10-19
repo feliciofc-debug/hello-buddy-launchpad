@@ -5,6 +5,18 @@ import {
   GESTAO_TROCA_CHECKLIST_ITENS,
   normalizeGestaoTrocaChecklist,
 } from "@/lib/gestao-troca-checklist.ts";
+import { GESTAO_TROCA_IA_DISCLAIMER } from "@/lib/gestao-troca-ia-types.ts";
+
+export type GestaoTrocaLaudoPdfSection = {
+  kmPainel: number | null;
+  luzesPainel: boolean | null;
+  itensConfirmados: {
+    area: string;
+    tipo: string;
+    descricao: string;
+    valor: number | null;
+  }[];
+};
 
 const FOOTER = "Referências: KBB (informada pelo avaliador) e FIPE.";
 
@@ -34,6 +46,7 @@ export async function downloadGestaoTrocaRelatorioPdf(
   troca: GestaoTrocaRow,
   eventos: { descricao: string; created_at: string }[],
   thumbUrls: string[] = [],
+  laudo?: GestaoTrocaLaudoPdfSection | null,
 ) {
   const doc = new jsPDF();
   let y = 14;
@@ -71,6 +84,26 @@ export async function downloadGestaoTrocaRelatorioPdf(
   y += 4;
   line("Justificativas", true);
   for (const j of troca.justificativas_json ?? []) line(`• ${j}`);
+
+  if (laudo && laudo.itensConfirmados.length > 0) {
+    y += 4;
+    line("Pré-análise visual por IA", true);
+    line(GESTAO_TROCA_IA_DISCLAIMER);
+    if (laudo.kmPainel != null) {
+      line(`Odômetro lido no painel: ${laudo.kmPainel.toLocaleString("pt-BR")} km`);
+    }
+    if (laudo.luzesPainel === true) {
+      line("Luzes de alerta no painel: sim (verificar diagnóstico)");
+    } else if (laudo.luzesPainel === false) {
+      line("Luzes de alerta no painel: não identificadas");
+    }
+    for (const item of laudo.itensConfirmados) {
+      const loc = `${item.area.replace(/_/g, " ")} · ${item.tipo.replace(/_/g, " ")}`;
+      const val = item.valor != null ? formatGestaoMoney(item.valor) : "—";
+      line(`• ${loc}: ${item.descricao} (${val})`);
+    }
+  }
+
   y += 4;
   line("Linha do tempo", true);
   for (const e of eventos.slice(0, 12)) {

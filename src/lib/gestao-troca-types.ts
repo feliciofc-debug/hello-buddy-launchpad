@@ -18,6 +18,7 @@ export type GestaoTrocaRow = {
   ano_fabricacao: number | null;
   ano_modelo: number | null;
   km: number | null;
+  km_painel_conferido?: boolean;
   cor: string | null;
   cliente_nome: string | null;
   cliente_telefone: string | null;

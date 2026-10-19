@@ -31,6 +31,7 @@ import { downloadGestaoTrocaRelatorioPdf } from "@/lib/gestao-troca-relatorio-pd
 import { GestaoMoneyInput } from "@/components/gestao/lucro/GestaoMoneyInput.tsx";
 import { GestaoTrocaChecklistPanel } from "@/components/gestao/trocas/GestaoTrocaChecklistPanel.tsx";
 import { GestaoTrocaFotoGaleria } from "@/components/gestao/trocas/GestaoTrocaFotoGaleria.tsx";
+import { GestaoTrocaLaudoIaPanel } from "@/components/gestao/trocas/GestaoTrocaLaudoIaPanel.tsx";
 import { pollProcedenciaConsulta } from "@/components/procedencia/useProcedenciaConnection.ts";
 import type { GestaoTrocaChecklistJson } from "@/lib/gestao-troca-checklist.ts";
 import { parseGestaoMoneyBr } from "@/lib/gestao-money.ts";
@@ -39,6 +40,8 @@ import {
   normalizeGestaoTrocaFotos,
   type GestaoTrocaFotoEntry,
 } from "@/lib/gestao-troca-fotos.ts";
+import { fetchLatestGestaoTrocaLaudo } from "@/lib/gestao-troca-ia-api.ts";
+import type { GestaoTrocaLaudoPdfSection } from "@/lib/gestao-troca-relatorio-pdf.ts";
 import {
   buildGestaoTrocaKbbUrl,
   GESTAO_TROCA_KBB_CATEGORIAS,
@@ -67,6 +70,7 @@ export default function GestaoTrocaFichaPage() {
   const [repasseValor, setRepasseValor] = useState("");
   const [repasseData, setRepasseData] = useState(() => new Date().toISOString().slice(0, 10));
   const [lojaUf, setLojaUf] = useState("sp");
+  const [laudoKmBloqueio, setLaudoKmBloqueio] = useState({ alertaKm: false, kmConferido: false });
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -248,13 +252,33 @@ export default function GestaoTrocaFichaPage() {
 
   const exportPdf = async () => {
     if (!troca) return;
-    const paths = gestaoTrocaFotoPaths(normalizeGestaoTrocaFotos(troca.fotos_json));
+    const fotos = normalizeGestaoTrocaFotos(troca.fotos_json).filter(
+      (f) => f.etiqueta !== "Documento (CRLV)",
+    );
+    const paths = gestaoTrocaFotoPaths(fotos);
     const urls: string[] = [];
     for (const path of paths.slice(0, 6)) {
       const { data } = await supabase.storage.from("trocas").createSignedUrl(path, 3600);
       if (data?.signedUrl) urls.push(data.signedUrl);
     }
-    await downloadGestaoTrocaRelatorioPdf(troca, eventos, urls);
+    let laudoPdf: GestaoTrocaLaudoPdfSection | null = null;
+    const { analise, itens } = await fetchLatestGestaoTrocaLaudo(troca.id);
+    if (analise) {
+      const confirmados = itens.filter((i) => i.decisao === "aceito");
+      if (confirmados.length) {
+        laudoPdf = {
+          kmPainel: analise.km_painel_lido,
+          luzesPainel: analise.luzes_painel,
+          itensConfirmados: confirmados.map((i) => ({
+            area: i.area,
+            tipo: i.tipo,
+            descricao: i.descricao,
+            valor: i.valor_estimado,
+          })),
+        };
+      }
+    }
+    await downloadGestaoTrocaRelatorioPdf(troca, eventos, urls, laudoPdf);
   };
 
   if (!troca) {
@@ -433,11 +457,44 @@ export default function GestaoTrocaFichaPage() {
           )}
         </section>
 
+        {id && (
+          <section className="space-y-3 rounded-lg border bg-white p-4 dark:bg-gray-950">
+            <h2 className="font-semibold">Laudo IA (pré-análise visual)</h2>
+            <GestaoTrocaLaudoIaPanel
+              trocaId={id}
+              kmFicha={troca.km}
+              kmPainelConferido={troca.km_painel_conferido === true}
+              disabled={busy}
+              onKmConferido={() => {
+                setTroca((t) => (t ? { ...t, km_painel_conferido: true } : t));
+                setLaudoKmBloqueio((s) => ({ ...s, kmConferido: true }));
+                void load();
+              }}
+              onPreparacaoChange={(preparacao) => {
+                setTroca((t) => (t ? { ...t, preparacao_estimada: preparacao } : t));
+                void recalcular();
+              }}
+              onLaudoState={setLaudoKmBloqueio}
+            />
+          </section>
+        )}
+
         <section className="space-y-2 rounded-lg border bg-white p-4 dark:bg-gray-950">
           <h2 className="font-semibold">Ações · {troca.status}</h2>
           <div className="flex flex-wrap gap-2">
             {troca.status === "em_avaliacao" && (
-              <Button size="sm" onClick={() => void transicao("solicitar_aprovacao")} disabled={busy}>Solicitar aprovação</Button>
+              <Button
+                size="sm"
+                onClick={() => void transicao("solicitar_aprovacao")}
+                disabled={busy || (laudoKmBloqueio.alertaKm && !laudoKmBloqueio.kmConferido && !troca.km_painel_conferido)}
+                title={
+                  laudoKmBloqueio.alertaKm && !laudoKmBloqueio.kmConferido && !troca.km_painel_conferido
+                    ? "Confirme o KM do painel (divergência no laudo IA)"
+                    : undefined
+                }
+              >
+                Solicitar aprovação
+              </Button>
             )}
             {troca.status === "aguardando_aprovacao" && (
               <>
