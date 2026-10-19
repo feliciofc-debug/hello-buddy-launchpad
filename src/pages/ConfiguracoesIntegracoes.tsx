@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import { ArrowLeft, Plug } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,6 +9,7 @@ import { FocusNfeIntegrationCard } from "@/components/integracoes/FocusNfeIntegr
 import { ZapSignIntegrationCard } from "@/components/integracoes/ZapSignIntegrationCard";
 import { MlIntegrationCard } from "@/components/ml/MlIntegrationCard";
 import { ProcedenciaIntegrationCard } from "@/components/procedencia/ProcedenciaIntegrationCard";
+import { OlxIntegrationCard } from "@/components/olx/OlxIntegrationCard";
 import { WebmotorsIntegrationCard } from "@/components/webmotors/WebmotorsIntegrationCard";
 import { useSmartBack } from "@/lib/app-back-nav.ts";
 import {
@@ -59,9 +62,22 @@ function PlannedPortalCard({
 
 export default function ConfiguracoesIntegracoes() {
   const goBack = useSmartBack("/dashboard");
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const foco = parseFoco(searchParams.get("foco"));
   const focusedOnly = foco != null;
+
+  useEffect(() => {
+    const olx = searchParams.get("olx");
+    if (olx === "ok") {
+      toast.success("Conta OLX conectada.");
+      searchParams.delete("olx");
+      setSearchParams(searchParams, { replace: true });
+    } else if (olx === "erro") {
+      toast.error("Não foi possível conectar a OLX. Tente novamente.");
+      searchParams.delete("olx");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const showZapsign = !focusedOnly || foco === "contratos" || foco === "zapsign";
   const showFocus = !focusedOnly || foco === "nfe";
@@ -120,6 +136,8 @@ export default function ConfiguracoesIntegracoes() {
             </div>
 
             <MlIntegrationCard />
+
+            <OlxIntegrationCard />
 
             <WebmotorsIntegrationCard />
 

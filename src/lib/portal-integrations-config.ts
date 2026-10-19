@@ -15,12 +15,6 @@ export const PORTAL_STATUS_LABEL: Record<PortalIntegrationStatus, string> = {
 /** Portais visuais (sem integração) — ordem de exibição na tela Integrações. */
 export const PLANNED_PORTAL_INTEGRATIONS: PortalIntegrationDefinition[] = [
   {
-    id: "olx",
-    name: "OLX",
-    description: "Publique veículos no classificados OLX.",
-    status: "em_liberacao",
-  },
-  {
     id: "facebook-marketplace",
     name: "Facebook Marketplace",
     description: "Anúncios de veículos no Marketplace do Facebook.",
