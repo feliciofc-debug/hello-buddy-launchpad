@@ -2,10 +2,11 @@ import type { GestaoTrocaFotoSlotId } from "./gestao-troca-roteiro.ts";
 import { GESTAO_TROCA_ROTEIRO_SLOTS, gestaoTrocaRoteiroProgress } from "./gestao-troca-roteiro.ts";
 import type { GestaoTrocaFotoEntry } from "./gestao-troca-fotos.ts";
 import type { GestaoTrocaIaFotoAnaliseRow } from "./gestao-troca-ia-foto-schema.ts";
+import { gestaoTrocaAchadoRef, gestaoTrocaIaRowSlotEfetivo } from "./gestao-troca-indicio-recalc.ts";
 import type {
   GestaoTrocaResumoAreaCondicao,
   GestaoTrocaResumoAreaRow,
-} from "./gestao-troca-ia-por-foto.ts";
+} from "./gestao-troca-ia-por-foto-types.ts";
 
 const AREA_SLOTS: Record<GestaoTrocaResumoAreaRow["area"], GestaoTrocaFotoSlotId[]> = {
   externo: GESTAO_TROCA_ROTEIRO_SLOTS.filter((s) => s.grupo === "externo").map((s) => s.id),
@@ -40,6 +41,7 @@ function maxCondicao(
 export function calcResumoPorAreaRegra(input: {
   fotoRows: GestaoTrocaIaFotoAnaliseRow[];
   fotosNorm: GestaoTrocaFotoEntry[];
+  achadosDescartados?: Set<string>;
 }): GestaoTrocaResumoAreaRow[] {
   const prog = gestaoTrocaRoteiroProgress(input.fotosNorm);
   const areas: GestaoTrocaResumoAreaRow["area"][] = [
@@ -64,15 +66,19 @@ export function calcResumoPorAreaRegra(input: {
       };
     }
 
-    const rowsArea = input.fotoRows.filter((r) =>
-      slots.includes(String(r.slot_informado) as GestaoTrocaFotoSlotId)
-    );
+    const rowsArea = input.fotoRows.filter((r) => {
+      const slotEff = gestaoTrocaIaRowSlotEfetivo(r);
+      return slots.includes(slotEff as GestaoTrocaFotoSlotId);
+    });
     const fotos = rowsArea.map((r) => r.indice);
     let cond: GestaoTrocaResumoAreaCondicao = "sem_apontamento";
+    const descartados = input.achadosDescartados ?? new Set<string>();
     for (const row of rowsArea) {
-      for (const ach of row.achados) {
+      row.achados.forEach((ach, idx) => {
+        const ref = gestaoTrocaAchadoRef(row.indice, idx + 1);
+        if (descartados.has(ref)) return;
         cond = maxCondicao(cond, severidadeToCondicao(ach.severidade));
-      }
+      });
     }
     return {
       area,

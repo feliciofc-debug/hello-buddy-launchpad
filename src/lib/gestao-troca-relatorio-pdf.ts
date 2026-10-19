@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import type { GestaoTrocaRow } from "@/lib/gestao-troca-types.ts";
+import { normalizeGestaoTrocaFotos } from "@/lib/gestao-troca-fotos.ts";
 import { formatGestaoMoney } from "@/lib/gestao-format.ts";
 import {
   GESTAO_TROCA_CHECKLIST_ITENS,
@@ -187,6 +188,7 @@ export async function downloadGestaoTrocaRelatorioPdf(
   appendGestaoTrocaFotoAFotoPdfLines(
     line,
     Array.isArray(laudoAnalise?.fotos_json) ? laudoAnalise!.fotos_json as GestaoTrocaIaFotoAnaliseRow[] : null,
+    normalizeGestaoTrocaFotos(troca.fotos_json),
   );
 
   if (descricao && (descricao.externo.length || descricao.interno.length)) {

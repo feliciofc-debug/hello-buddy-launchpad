@@ -9,7 +9,11 @@ import {
   normalizeGestaoTrocaFotos,
   type GestaoTrocaFotoEntry,
 } from "./gestao-troca-fotos.ts";
-import { mergeGestaoTrocaIaSlotsIntoFotos, gestaoTrocaFotosListaParaIa } from "./gestao-troca-foto-slot.ts";
+import {
+  applyGestaoTrocaIaSlotMergeToFotosJson,
+  mergeGestaoTrocaIaSlotsIntoFotos,
+  gestaoTrocaFotosListaParaIa,
+} from "./gestao-troca-foto-slot.ts";
 import { gestaoTrocaRoteiroProgress } from "./gestao-troca-roteiro.ts";
 import {
   analyzeGestaoTrocaFotosPorFoto,
@@ -291,15 +295,21 @@ export async function runGestaoTrocaIaAnaliseBackground(
     }
 
     const fotosPosIa = mergeGestaoTrocaIaSlotsIntoFotos(fotosNorm, porFoto.rows);
+    const { data: trocaFresh } = await sb.from("gestao_troca").select("fotos_json")
+      .eq("id", trocaId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    const fotosAtualDb = normalizeGestaoTrocaFotos(trocaFresh?.fotos_json ?? troca.fotos_json);
+    const fotosToSave = applyGestaoTrocaIaSlotMergeToFotosJson(fotosAtualDb, fotosPosIa);
     await sb.from("gestao_troca").update({
-      fotos_json: fotosPosIa,
+      fotos_json: fotosToSave,
       updated_at: new Date().toISOString(),
     }).eq("id", trocaId).eq("user_id", userId);
 
     const consolidado = await consolidateGestaoTrocaLaudoText({
       apiKey,
       fotoRows: porFoto.rows,
-      fotosNorm: fotosPosIa,
+      fotosNorm: fotosToSave,
     });
 
     const indicio_colisao = recalcIndicioColisaoGestaoTroca({
@@ -314,7 +324,7 @@ export async function runGestaoTrocaIaAnaliseBackground(
     const kmPainel = consolidado.km_painel;
     const alerta_km = gestaoTrocaIaAlertaKm(kmFicha, kmPainel);
     const etiquetasUsadas = manifests.map((f) => f.etiqueta);
-    const roteiroProg = gestaoTrocaRoteiroProgress(fotosPosIa);
+    const roteiroProg = gestaoTrocaRoteiroProgress(fotosToSave);
     const aviso_carroceria = roteiroProg.faltando.some((id) =>
       ["frente", "traseira", "lateral_esq", "lateral_dir"].includes(id)
     ) || gestaoTrocaIaAvisoCarroceria(false, etiquetasUsadas);

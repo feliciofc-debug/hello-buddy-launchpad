@@ -1,3 +1,4 @@
+import { gestaoTrocaIaFiltrarLuzesAlertaPainel } from "./gestao-troca-ia-rules.ts";
 import type { GestaoTrocaFotoSlotId } from "./gestao-troca-roteiro.ts";
 
 export const GESTAO_TROCA_IA_FOTO_QUALIDADES = ["boa", "limitada", "insuficiente"] as const;
@@ -103,9 +104,11 @@ export function parseGestaoTrocaIaFotoAnaliseJson(
     const n = Number(raw.km_painel);
     if (Number.isFinite(n) && n >= 0) km_painel = Math.round(n);
   }
-  const luzes_alerta = Array.isArray(raw.luzes_alerta)
+  const luzesRaw = Array.isArray(raw.luzes_alerta)
     ? raw.luzes_alerta.map((s) => String(s).slice(0, 80)).filter(Boolean)
-    : undefined;
+    : [];
+  const luzesFiltradas = gestaoTrocaIaFiltrarLuzesAlertaPainel(luzesRaw);
+  const luzes_alerta = luzesFiltradas.length ? luzesFiltradas : undefined;
 
   return {
     indice: Math.round(indice),

@@ -14,6 +14,10 @@ function normLuzText(s: string): string {
 }
 
 /** Indicadores normais com carro parado — não entram no laudo. */
+export function gestaoTrocaIaFiltrarLuzesAlertaPainel(luzes: string[]): string[] {
+  return luzes.filter((l) => l && !gestaoTrocaIaIsLuzInformativa(l));
+}
+
 export function gestaoTrocaIaIsLuzInformativa(descricao: string): boolean {
   const d = normLuzText(descricao);
   const patterns = [

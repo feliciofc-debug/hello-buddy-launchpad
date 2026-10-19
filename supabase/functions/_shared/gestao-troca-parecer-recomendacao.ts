@@ -1,5 +1,5 @@
 import type { GestaoTrocaIaDescricaoAreaRow } from "./gestao-troca-ia-descricao-schema.ts";
-import type { GestaoTrocaResumoAreaRow } from "./gestao-troca-ia-por-foto.ts";
+import type { GestaoTrocaResumoAreaRow } from "./gestao-troca-ia-por-foto-types.ts";
 import type { ProcedenciaResumoJson } from "./consultar-placa-parse.ts";
 import type { GestaoTrocaIndicioNivel } from "./gestao-troca-indicio-colisao.ts";
 import { gestaoTrocaIndicioColisaoMaxNivel } from "./gestao-troca-indicio-colisao.ts";

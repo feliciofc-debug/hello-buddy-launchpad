@@ -1,6 +1,7 @@
 import {
   GESTAO_TROCA_FOTO_ETIQUETA_A_CLASSIFICAR,
   GESTAO_TROCA_FOTO_ETIQUETA_CRLV,
+  gestaoTrocaFotoIsCrlv,
   type GestaoTrocaFotoEntry,
   type GestaoTrocaFotoSlotOrigem,
 } from "./gestao-troca-fotos.ts";
@@ -59,6 +60,7 @@ export function gestaoTrocaFotoEntryComEtiquetaUsuario(
     return {
       path: entry.path,
       etiqueta: GESTAO_TROCA_FOTO_ETIQUETA_CRLV,
+      slot_origem: "usuario",
     };
   }
   if (etiqueta === GESTAO_TROCA_FOTO_ETIQUETA_A_CLASSIFICAR) {
@@ -121,11 +123,23 @@ export function gestaoTrocaIaSlotInformado(entry: GestaoTrocaFotoEntry): string 
   return GESTAO_TROCA_IA_SLOT_A_CLASSIFICAR;
 }
 
+/** Linhas foto-a-foto no laudo/PDF: nunca inclui paths marcados como CRLV na ficha. */
+export function gestaoTrocaIaFotoAnaliseRowsParaPdf(
+  rows: GestaoTrocaIaFotoAnaliseRow[] | null | undefined,
+  fotosNorm: GestaoTrocaFotoEntry[],
+): GestaoTrocaIaFotoAnaliseRow[] {
+  if (!rows?.length) return [];
+  const crlvPaths = new Set(
+    fotosNorm.filter((f) => gestaoTrocaFotoIsCrlv(f)).map((f) => f.path),
+  );
+  return rows.filter((r) => !r.path || !crlvPaths.has(String(r.path)));
+}
+
 export function gestaoTrocaFotosListaParaIa(
   fotos: GestaoTrocaFotoEntry[],
   max = 32,
 ): (GestaoTrocaFotoEntry & { slot: string })[] {
-  const filtered = fotos.filter((f) => f.etiqueta !== GESTAO_TROCA_FOTO_ETIQUETA_CRLV);
+  const filtered = fotos.filter((f) => !gestaoTrocaFotoIsCrlv(f));
   const out: (GestaoTrocaFotoEntry & { slot: string })[] = [];
   for (const f of filtered) {
     if (out.length >= max) break;
@@ -146,6 +160,7 @@ export function mergeGestaoTrocaIaSlotsIntoFotos(
   }
 
   return fotos.map((f) => {
+    if (gestaoTrocaFotoIsCrlv(f)) return f;
     if (gestaoTrocaFotoMarcadaPorUsuario(f)) return f;
     const row = byPath.get(f.path);
     if (!row?.slot_identificado || !isGestaoTrocaFotoSlotId(String(row.slot_identificado))) {
@@ -162,6 +177,31 @@ export function mergeGestaoTrocaIaSlotsIntoFotos(
       slot,
       slot_origem: "ia" as GestaoTrocaFotoSlotOrigem,
       etiqueta: def?.label ?? gestaoTrocaSlotLabelLoja(slot),
+    };
+  });
+}
+
+/** Aplica slots da IA só em paths que ainda existem no banco; não remove fotos novas. */
+export function applyGestaoTrocaIaSlotMergeToFotosJson(
+  fotosAtualDb: GestaoTrocaFotoEntry[],
+  mergedFromAnalysis: GestaoTrocaFotoEntry[],
+): GestaoTrocaFotoEntry[] {
+  const patchByPath = new Map<string, GestaoTrocaFotoEntry>();
+  for (const m of mergedFromAnalysis) {
+    if (gestaoTrocaFotoIsCrlv(m)) continue;
+    if (m.slot_origem === "usuario" && gestaoTrocaFotoSlotAtribuido(m)) continue;
+    patchByPath.set(m.path, m);
+  }
+  return fotosAtualDb.map((f) => {
+    if (gestaoTrocaFotoIsCrlv(f)) return f;
+    if (f.slot_origem === "usuario") return f;
+    const p = patchByPath.get(f.path);
+    if (!p) return f;
+    return {
+      ...f,
+      slot: p.slot,
+      slot_origem: p.slot_origem,
+      etiqueta: p.etiqueta,
     };
   });
 }

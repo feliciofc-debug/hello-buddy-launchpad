@@ -2,7 +2,8 @@ import type { ProcedenciaResumoJson } from "./consultar-placa-parse.ts";
 import { normalizeGestaoTrocaFotos, type GestaoTrocaFotoEntry } from "./gestao-troca-fotos.ts";
 import type { GestaoTrocaEspessuraFaixas } from "./gestao-troca-espessura.ts";
 import type { GestaoTrocaIaFotoAnaliseRow } from "./gestao-troca-ia-foto-schema.ts";
-import type { GestaoTrocaResumoAreaRow } from "./gestao-troca-ia-por-foto.ts";
+import { calcResumoPorAreaRegra } from "./gestao-troca-consolidacao-regra.ts";
+import type { GestaoTrocaResumoAreaRow } from "./gestao-troca-ia-por-foto-types.ts";
 import {
   parseGestaoTrocaAnaliseFotoRows,
   recalcIndicioColisaoGestaoTroca,
@@ -69,7 +70,21 @@ export function buildGestaoTrocaLaudo19Computed(input: {
   const fotosNorm = input.fotosNorm ?? normalizeGestaoTrocaFotos([]);
   const roteiro = gestaoTrocaRoteiroProgress(fotosNorm);
   const estrutura = input.estrutura_json ?? null;
-  const resumo_por_area = resumoFromEstrutura(estrutura);
+  const descartados = new Set(
+    (input.itens ?? [])
+      .filter((i) => String(i.decisao) === "descartado" && i.achado_ref)
+      .map((i) => String(i.achado_ref)),
+  );
+  const textosSalvos = resumoFromEstrutura(estrutura);
+  const resumoRecalc = calcResumoPorAreaRegra({
+    fotoRows,
+    fotosNorm,
+    achadosDescartados: descartados,
+  });
+  const resumo_por_area = resumoRecalc.map((r) => ({
+    ...r,
+    texto: textosSalvos.find((t) => t.area === r.area)?.texto ?? r.texto,
+  }));
   const mensagem_parcial = estrutura?.mensagem_parcial != null
     ? String(estrutura.mensagem_parcial)
     : null;

@@ -112,7 +112,7 @@ function nivelRegiao(
 ): GestaoTrocaIndicioNivel {
   if (temSoldaMedia || (score >= 5 && temMassaEspessura)) return "forte";
   if (parafusoFresta || score >= 3) return "moderado";
-  if (score >= 1) return "fraco";
+  if (score >= 1 || (temMassaEspessura && score === 0)) return "fraco";
   return "nenhum";
 }
 

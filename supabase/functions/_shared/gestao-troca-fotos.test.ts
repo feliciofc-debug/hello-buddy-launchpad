@@ -32,6 +32,7 @@ Deno.test("legado por índice vira a classificar + origem ia", () => {
     { path: "d", etiqueta: "Lateral direita" },
     { path: "e", etiqueta: "Painel ligado (km)" },
   ]);
+  assertEquals(f[0].etiqueta, GESTAO_TROCA_FOTO_ETIQUETA_A_CLASSIFICAR);
   assertEquals(f[4].etiqueta, GESTAO_TROCA_FOTO_ETIQUETA_A_CLASSIFICAR);
   assertEquals(f[4].slot_origem, "ia");
 });

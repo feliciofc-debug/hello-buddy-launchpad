@@ -14,12 +14,13 @@ import {
 } from "@/lib/gestao-troca-laudo-19.ts";
 import {
   gestaoTrocaAvisoFotoTrocadaParaRow,
+  gestaoTrocaFotoIsCrlv,
   gestaoTrocaSlotLabelLoja,
   normalizeGestaoTrocaFotos,
   type GestaoTrocaFotoEntry,
 } from "@/lib/gestao-troca-fotos.ts";
 import { resumoAreaIcon } from "@/lib/gestao-troca-laudo-foto-display.ts";
-import type { GestaoTrocaIaFotoAnaliseRow } from "../../supabase/functions/_shared/gestao-troca-ia-foto-schema.ts";
+import type { GestaoTrocaIaFotoAnaliseRow } from "@/lib/gestao-troca-ia-foto-schema.ts";
 
 function espessuraCorClass(cor: "verde" | "amarelo" | "vermelho" | "muted"): string {
   if (cor === "verde") return "text-emerald-700 dark:text-emerald-400";
@@ -177,7 +178,12 @@ export function GestaoTrocaLaudo19Section({
       <div className="space-y-2">
         <p className="font-medium text-sm">Análise foto a foto</p>
         <ul className="space-y-2">
-          {computed.fotoRows.map((row) => (
+          {computed.fotoRows
+            .filter((row) => {
+              const ent = row.path ? fotosByPath.get(row.path) : undefined;
+              return !ent || !gestaoTrocaFotoIsCrlv(ent);
+            })
+            .map((row) => (
             <FotoRowCard
               key={row.indice}
               row={row}

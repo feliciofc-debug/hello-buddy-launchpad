@@ -1,6 +1,8 @@
+import { gestaoTrocaIaFotoAnaliseRowsParaPdf } from "./gestao-troca-foto-slot.ts";
 import type { GestaoTrocaIaFotoAnaliseRow } from "./gestao-troca-ia-foto-schema.ts";
+import type { GestaoTrocaFotoEntry } from "./gestao-troca-fotos.ts";
 import { gestaoTrocaIaDescricaoIcon } from "./gestao-troca-ia-descricao-schema.ts";
-import type { GestaoTrocaConsolidacaoLaudo } from "./gestao-troca-ia-por-foto.ts";
+import type { GestaoTrocaConsolidacaoLaudo } from "./gestao-troca-ia-por-foto-types.ts";
 import {
   GESTAO_TROCA_INDICIO_COLISAO_DISCLAIMER,
   type GestaoTrocaIndicioColisaoResult,
@@ -89,10 +91,12 @@ export function appendGestaoTrocaEspessuraPdfLines(
 export function appendGestaoTrocaFotoAFotoPdfLines(
   line: (t: string, bold?: boolean) => void,
   rows: GestaoTrocaIaFotoAnaliseRow[] | null | undefined,
+  fotosNorm: GestaoTrocaFotoEntry[] = [],
 ): void {
-  if (!rows?.length) return;
+  const safe = gestaoTrocaIaFotoAnaliseRowsParaPdf(rows, fotosNorm);
+  if (!safe.length) return;
   line("Análise foto a foto (IA)", true);
-  for (const r of rows) {
+  for (const r of safe) {
     line(`Foto #${r.indice} · ${String(r.slot_informado).replace(/_/g, " ")}`, true);
     line(r.descricao);
     for (const a of r.achados.slice(0, 6)) {

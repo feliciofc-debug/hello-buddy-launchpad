@@ -26,32 +26,21 @@ import {
   calcResumoPorAreaRegra,
   mergeResumoTextoIa,
 } from "./gestao-troca-consolidacao-regra.ts";
+import type {
+  GestaoTrocaConsolidacaoLaudo,
+  GestaoTrocaResumoAreaRow,
+} from "./gestao-troca-ia-por-foto-types.ts";
+import { gestaoTrocaIaFiltrarLuzesAlertaPainel } from "./gestao-troca-ia-rules.ts";
+
+export type {
+  GestaoTrocaConsolidacaoLaudo,
+  GestaoTrocaResumoAreaCondicao,
+  GestaoTrocaResumoAreaRow,
+} from "./gestao-troca-ia-por-foto-types.ts";
 
 export function gestaoTrocaIaModel(): string {
   return Deno.env.get("GESTAO_TROCA_IA_MODEL")?.trim() || "google/gemini-3.6-flash";
 }
-
-export type GestaoTrocaResumoAreaCondicao =
-  | "sem_apontamento"
-  | "leve"
-  | "atencao"
-  | "grave"
-  | "nao_fotografado";
-
-export type GestaoTrocaResumoAreaRow = {
-  area: "externo" | "estrutura_cofre" | "pneus" | "interno";
-  condicao: GestaoTrocaResumoAreaCondicao;
-  texto: string;
-  fotos: number[];
-};
-
-export type GestaoTrocaConsolidacaoLaudo = {
-  resumo_por_area: GestaoTrocaResumoAreaRow[];
-  conclusao_visual: string;
-  km_painel: number | null;
-  luzes_painel: boolean | null;
-  mensagem_parcial: string | null;
-};
 
 export type GestaoTrocaFotoManifest = {
   indice: number;
@@ -260,7 +249,8 @@ function kmFromPainelRow(rows: GestaoTrocaIaFotoAnaliseRow[]): number | null {
 function luzesFromPainelRow(rows: GestaoTrocaIaFotoAnaliseRow[]): boolean | null {
   const painel = rows.find((r) => String(r.slot_informado) === "painel_ligado");
   if (!painel) return null;
-  if (painel.luzes_alerta?.length) return true;
+  const luzes = gestaoTrocaIaFiltrarLuzesAlertaPainel(painel.luzes_alerta ?? []);
+  if (luzes.length) return true;
   return false;
 }
 

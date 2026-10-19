@@ -1,4 +1,25 @@
+import type { GestaoTrocaFotoSlotId } from "./gestao-troca-roteiro.ts";
+
 export type GestaoTrocaFotoSlotOrigem = "usuario" | "ia";
+
+const ETIQUETA_USUARIO_PARA_SLOT: Record<string, GestaoTrocaFotoSlotId> = {
+  frente: "frente",
+  traseira: "traseira",
+  "lateral esquerda": "lateral_esq",
+  "lateral direita": "lateral_dir",
+  "painel ligado (km)": "painel_ligado",
+  "interior dianteiro": "bancos_dianteiros",
+  "interior traseiro": "bancos_traseiros",
+  motor: "cofre_motor",
+  "porta-malas": "porta_malas_aberto",
+  estepe: "estepe_macaco",
+  "pneus / rodas": "pneu_de",
+};
+
+function slotFromEtiquetaManual(etiqueta: string): GestaoTrocaFotoSlotId | undefined {
+  const key = etiqueta.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+  return ETIQUETA_USUARIO_PARA_SLOT[key];
+}
 
 export type GestaoTrocaFotoEntry = {
   path: string;
@@ -11,6 +32,19 @@ export type GestaoTrocaFotoEntry = {
 
 export const GESTAO_TROCA_FOTO_ETIQUETA_A_CLASSIFICAR = "A classificar";
 export const GESTAO_TROCA_FOTO_ETIQUETA_CRLV = "Documento (CRLV)";
+
+const CRLV_ALIASES = new Set([
+  "documento (crlv)",
+  "crlv",
+  "documento crlv",
+]);
+
+/** CRLV nunca entra na IA nem no PDF do laudo. */
+export function gestaoTrocaFotoIsCrlv(entry: Pick<GestaoTrocaFotoEntry, "etiqueta">): boolean {
+  if (entry.etiqueta === GESTAO_TROCA_FOTO_ETIQUETA_CRLV) return true;
+  const key = String(entry.etiqueta ?? "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
+  return CRLV_ALIASES.has(key);
+}
 
 /** Etiquetas que o avaliador pode escolher na galeria (sem ordem automática). */
 export const GESTAO_TROCA_FOTO_ETIQUETAS: string[] = [
@@ -82,7 +116,15 @@ function migrateLegacyEntry(
   const slot_origem = o.slot_origem === "usuario" || o.slot_origem === "ia"
     ? o.slot_origem
     : undefined;
-  let etiqueta = canonicalGestaoTrocaEtiqueta(String(o.etiqueta ?? ""));
+  const etiqueta = canonicalGestaoTrocaEtiqueta(String(o.etiqueta ?? ""));
+
+  if (gestaoTrocaFotoIsCrlv({ etiqueta })) {
+    return {
+      path,
+      etiqueta: GESTAO_TROCA_FOTO_ETIQUETA_CRLV,
+      slot_origem: "usuario",
+    };
+  }
 
   if (slot_origem === "usuario" || (slot && isExplicitUsuarioSlot(slot, slot_origem))) {
     return {
@@ -109,7 +151,13 @@ function migrateLegacyEntry(
   }
 
   if (!slot && !slot_origem && etiqueta !== GESTAO_TROCA_FOTO_ETIQUETA_A_CLASSIFICAR) {
-    return { path, etiqueta: GESTAO_TROCA_FOTO_ETIQUETA_A_CLASSIFICAR };
+    const slotManual = slotFromEtiquetaManual(etiqueta);
+    return {
+      path,
+      etiqueta,
+      ...(slotManual ? { slot: slotManual } : {}),
+      slot_origem: "usuario",
+    };
   }
 
   return {
@@ -155,5 +203,5 @@ export function gestaoTrocaFotosParaIa(
   fotos: GestaoTrocaFotoEntry[],
   max = 32,
 ): GestaoTrocaFotoEntry[] {
-  return fotos.filter((f) => f.etiqueta !== GESTAO_TROCA_FOTO_ETIQUETA_CRLV).slice(0, max);
+  return fotos.filter((f) => !gestaoTrocaFotoIsCrlv(f)).slice(0, max);
 }

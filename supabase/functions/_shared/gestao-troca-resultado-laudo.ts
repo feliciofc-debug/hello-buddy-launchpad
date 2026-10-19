@@ -1,5 +1,5 @@
 import type { ProcedenciaResumoJson } from "./consultar-placa-parse.ts";
-import type { GestaoTrocaResumoAreaRow } from "./gestao-troca-ia-por-foto.ts";
+import type { GestaoTrocaResumoAreaRow } from "./gestao-troca-ia-por-foto-types.ts";
 import {
   gestaoTrocaIndicioColisaoMaxNivel,
   type GestaoTrocaIndicioColisaoResult,
