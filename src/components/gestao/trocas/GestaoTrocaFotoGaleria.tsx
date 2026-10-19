@@ -1,10 +1,21 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { GESTAO_TROCA_FOTO_SUGESTOES } from "@/lib/gestao-troca-checklist.ts";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  GESTAO_TROCA_FOTO_ETIQUETAS,
+  normalizeGestaoTrocaFotos,
+  type GestaoTrocaFotoEntry,
+} from "@/lib/gestao-troca-fotos.ts";
 
 const MAX_FOTOS = 40;
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -13,25 +24,26 @@ const ACCEPT = ["image/jpeg", "image/png", "image/webp"];
 type Props = {
   userId: string;
   trocaId: string;
-  fotos: string[];
-  onFotosChange: (paths: string[]) => void;
+  fotosRaw: unknown;
+  onFotosChange: (fotos: GestaoTrocaFotoEntry[]) => void;
   disabled?: boolean;
 };
 
 export function GestaoTrocaFotoGaleria({
   userId,
   trocaId,
-  fotos,
+  fotosRaw,
   onFotosChange,
   disabled,
 }: Props) {
+  const fotos = useMemo(() => normalizeGestaoTrocaFotos(fotosRaw), [fotosRaw]);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
 
-  const refreshSigned = useCallback(async (paths: string[]) => {
+  const refreshSigned = useCallback(async (entries: GestaoTrocaFotoEntry[]) => {
     const next: Record<string, string> = {};
     await Promise.all(
-      paths.map(async (path) => {
+      entries.map(async ({ path }) => {
         const { data, error } = await supabase.storage.from("trocas").createSignedUrl(path, 3600);
         if (!error && data?.signedUrl) next[path] = data.signedUrl;
       }),
@@ -43,6 +55,12 @@ export function GestaoTrocaFotoGaleria({
     void refreshSigned(fotos);
   }, [fotos, refreshSigned]);
 
+  const setEtiqueta = (path: string, etiqueta: string) => {
+    onFotosChange(
+      fotos.map((f) => (f.path === path ? { ...f, etiqueta } : f)),
+    );
+  };
+
   const uploadFiles = async (files: FileList | null) => {
     if (!files?.length || disabled) return;
     if (fotos.length >= MAX_FOTOS) {
@@ -50,7 +68,7 @@ export function GestaoTrocaFotoGaleria({
       return;
     }
     setUploading(true);
-    const added: string[] = [];
+    const added: GestaoTrocaFotoEntry[] = [];
     for (const file of Array.from(files)) {
       if (fotos.length + added.length >= MAX_FOTOS) break;
       if (!ACCEPT.includes(file.type)) {
@@ -67,7 +85,9 @@ export function GestaoTrocaFotoGaleria({
         toast.error(`Falha ao enviar ${file.name}.`);
         continue;
       }
-      added.push(path);
+      const idx = fotos.length + added.length;
+      const etiqueta = GESTAO_TROCA_FOTO_ETIQUETAS[idx] ?? "Outra";
+      added.push({ path, etiqueta });
     }
     setUploading(false);
     if (added.length) onFotosChange([...fotos, ...added]);
@@ -76,13 +96,13 @@ export function GestaoTrocaFotoGaleria({
   const removeFoto = async (path: string) => {
     if (disabled) return;
     await supabase.storage.from("trocas").remove([path]);
-    onFotosChange(fotos.filter((p) => p !== path));
+    onFotosChange(fotos.filter((f) => f.path !== path));
   };
 
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
-        Ordem sugerida: {GESTAO_TROCA_FOTO_SUGESTOES.join(" · ")}
+        Etiquetas sugeridas na ordem do upload; ajuste cada foto abaixo.
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <Input
@@ -100,26 +120,39 @@ export function GestaoTrocaFotoGaleria({
           {fotos.length}/{MAX_FOTOS} · até 10 MB cada
         </span>
       </div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-        {fotos.map((path, i) => (
-          <div key={path} className="relative overflow-hidden rounded border bg-muted/30">
-            {urls[path] ? (
-              <img src={urls[path]} alt="" className="aspect-[4/3] w-full object-cover" />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+        {fotos.map((foto) => (
+          <div key={foto.path} className="relative overflow-hidden rounded border bg-muted/30">
+            {urls[foto.path] ? (
+              <img src={urls[foto.path]} alt="" className="aspect-[4/3] w-full object-cover" />
             ) : (
               <div className="flex aspect-[4/3] items-center justify-center text-xs text-muted-foreground">
                 …
               </div>
             )}
-            <p className="truncate px-1 text-[10px] text-muted-foreground">
-              {GESTAO_TROCA_FOTO_SUGESTOES[i] ?? `#${i + 1}`}
-            </p>
+            <div className="space-y-1 p-2">
+              <Select
+                value={foto.etiqueta}
+                onValueChange={(v) => setEtiqueta(foto.path, v)}
+                disabled={disabled}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {GESTAO_TROCA_FOTO_ETIQUETAS.map((e) => (
+                    <SelectItem key={e} value={e}>{e}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <Button
               type="button"
               size="icon"
               variant="destructive"
               className="absolute right-1 top-1 h-7 w-7"
               disabled={disabled}
-              onClick={() => void removeFoto(path)}
+              onClick={() => void removeFoto(foto.path)}
             >
               <Trash2 className="h-3 w-3" />
             </Button>

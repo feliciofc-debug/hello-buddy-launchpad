@@ -35,6 +35,11 @@ import { pollProcedenciaConsulta } from "@/components/procedencia/useProcedencia
 import type { GestaoTrocaChecklistJson } from "@/lib/gestao-troca-checklist.ts";
 import { parseGestaoMoneyBr } from "@/lib/gestao-money.ts";
 import {
+  gestaoTrocaFotoPaths,
+  normalizeGestaoTrocaFotos,
+  type GestaoTrocaFotoEntry,
+} from "@/lib/gestao-troca-fotos.ts";
+import {
   buildGestaoTrocaKbbUrl,
   GESTAO_TROCA_KBB_CATEGORIAS,
   labelGestaoTrocaKbbLink,
@@ -129,8 +134,22 @@ export default function GestaoTrocaFichaPage() {
       toast.error(data?.error ?? "FIPE não encontrada.");
       return;
     }
-    await savePatch({ fipe_valor: data.fipe_valor, fipe_mes_ref: data.fipe_mes_ref });
-    toast.success("FIPE atualizada.");
+    await savePatch({
+      fipe_valor: data.fipe_valor,
+      fipe_mes_ref: data.fipe_mes_ref,
+      kbb_troca: null,
+      kbb_loja: null,
+      kbb_km_caracteristico: null,
+    });
+    setTroca((t) => t ? {
+      ...t,
+      fipe_valor: data.fipe_valor,
+      fipe_mes_ref: data.fipe_mes_ref,
+      kbb_troca: null,
+      kbb_loja: null,
+      kbb_km_caracteristico: null,
+    } : t);
+    toast.success("FIPE atualizada — valores KBB limpos (use a FIPE como referência).");
   };
 
   const consultarProcedencia = async () => {
@@ -229,7 +248,7 @@ export default function GestaoTrocaFichaPage() {
 
   const exportPdf = async () => {
     if (!troca) return;
-    const paths = troca.fotos_json ?? [];
+    const paths = gestaoTrocaFotoPaths(normalizeGestaoTrocaFotos(troca.fotos_json));
     const urls: string[] = [];
     for (const path of paths.slice(0, 6)) {
       const { data } = await supabase.storage.from("trocas").createSignedUrl(path, 3600);
@@ -342,8 +361,8 @@ export default function GestaoTrocaFichaPage() {
             característico.
           </p>
           <div className="grid gap-2 sm:grid-cols-3">
-            <GestaoMoneyInput label="KBB troca" value={String(troca.kbb_troca ?? "")} onChange={(v) => setTroca({ ...troca, kbb_troca: v ? Number(v.replace(/\D/g, "")) : null })} />
-            <GestaoMoneyInput label="KBB loja" value={String(troca.kbb_loja ?? "")} onChange={(v) => setTroca({ ...troca, kbb_loja: v ? Number(v) : null })} />
+            <GestaoMoneyInput label="KBB troca" value={String(troca.kbb_troca ?? "")} onChange={(v) => setTroca({ ...troca, kbb_troca: parseGestaoMoneyBr(v) })} />
+            <GestaoMoneyInput label="KBB loja" value={String(troca.kbb_loja ?? "")} onChange={(v) => setTroca({ ...troca, kbb_loja: parseGestaoMoneyBr(v) })} />
             <div><Label>KM característico KBB</Label><Input type="number" value={troca.kbb_km_caracteristico ?? ""} onChange={(e) => setTroca({ ...troca, kbb_km_caracteristico: Number(e.target.value) || null })} /></div>
           </div>
           <Button size="sm" variant="secondary" onClick={() => void savePatch({ kbb_troca: troca.kbb_troca, kbb_loja: troca.kbb_loja, kbb_km_caracteristico: troca.kbb_km_caracteristico })}>
@@ -359,8 +378,8 @@ export default function GestaoTrocaFichaPage() {
 
         <section className="space-y-3 rounded-lg border bg-white p-4 dark:bg-gray-950">
           <h2 className="font-semibold">Preço</h2>
-          <GestaoMoneyInput label="Preparação estimada" value={String(troca.preparacao_estimada ?? 0)} onChange={(v) => setTroca({ ...troca, preparacao_estimada: Number(v) || 0 })} />
-          <GestaoMoneyInput label="Valor proposto (cliente)" value={String(troca.valor_proposto ?? "")} onChange={(v) => setTroca({ ...troca, valor_proposto: Number(v) || null })} />
+          <GestaoMoneyInput label="Preparação estimada" value={String(troca.preparacao_estimada ?? 0)} onChange={(v) => setTroca({ ...troca, preparacao_estimada: parseGestaoMoneyBr(v) ?? 0 })} />
+          <GestaoMoneyInput label="Valor proposto (cliente)" value={String(troca.valor_proposto ?? "")} onChange={(v) => setTroca({ ...troca, valor_proposto: parseGestaoMoneyBr(v) })} />
           <div className="grid gap-1 text-sm">
             <p>Faixa verde: {formatGestaoMoney(troca.faixa_verde_min ?? 0)} – {formatGestaoMoney(troca.faixa_verde_max ?? 0)}</p>
             <p>Sugerido: {formatGestaoMoney(troca.valor_sugerido ?? 0)} · Teto: {formatGestaoMoney(troca.teto ?? 0)}</p>
@@ -407,9 +426,9 @@ export default function GestaoTrocaFichaPage() {
             <GestaoTrocaFotoGaleria
               userId={userId}
               trocaId={id}
-              fotos={troca.fotos_json ?? []}
+              fotosRaw={troca.fotos_json}
               disabled={busy}
-              onFotosChange={(paths) => void savePatch({ fotos_json: paths })}
+              onFotosChange={(entries: GestaoTrocaFotoEntry[]) => void savePatch({ fotos_json: entries })}
             />
           )}
         </section>

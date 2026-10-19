@@ -30,20 +30,7 @@ export const GESTAO_TROCA_CHECKLIST_ITENS: { id: string; label: string }[] = [
   { id: "manual_chave_reserva", label: "Manual / chave reserva" },
 ];
 
-export const GESTAO_TROCA_FOTO_SUGESTOES: string[] = [
-  "Lateral esquerda",
-  "Frente",
-  "Traseira",
-  "Lateral direita",
-  "Painel ligado (km)",
-  "Interior dianteiro",
-  "Interior traseiro",
-  "Motor",
-  "Porta-malas",
-  "Estepe",
-  "Pneus / rodas",
-  "Documento (CRLV)",
-];
+export { GESTAO_TROCA_FOTO_ETIQUETAS as GESTAO_TROCA_FOTO_SUGESTOES } from "./gestao-troca-fotos.ts";
 
 export function somaPreparacaoChecklist(checklist: GestaoTrocaChecklistJson): number {
   let total = 0;

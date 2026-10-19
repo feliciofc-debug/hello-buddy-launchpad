@@ -28,7 +28,7 @@ export type GestaoTrocaRow = {
   checklist_json: Record<string, unknown>;
   opcionais_json: unknown[];
   observacoes: string | null;
-  fotos_json: string[];
+  fotos_json: unknown;
   kbb_troca: number | null;
   kbb_loja: number | null;
   kbb_km_caracteristico: number | null;
