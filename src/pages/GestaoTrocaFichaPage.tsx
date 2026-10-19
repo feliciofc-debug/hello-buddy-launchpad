@@ -31,6 +31,8 @@ import { downloadGestaoTrocaRelatorioPdf } from "@/lib/gestao-troca-relatorio-pd
 import { GestaoMoneyInput } from "@/components/gestao/lucro/GestaoMoneyInput.tsx";
 import { GestaoTrocaChecklistPanel } from "@/components/gestao/trocas/GestaoTrocaChecklistPanel.tsx";
 import { GestaoTrocaFotoGaleria } from "@/components/gestao/trocas/GestaoTrocaFotoGaleria.tsx";
+import { GestaoTrocaRoteiroFotos } from "@/components/gestao/trocas/GestaoTrocaRoteiroFotos.tsx";
+import { GestaoTrocaEspessuraCard } from "@/components/gestao/trocas/GestaoTrocaEspessuraCard.tsx";
 import { GestaoTrocaLaudoIaPanel } from "@/components/gestao/trocas/GestaoTrocaLaudoIaPanel.tsx";
 import { GestaoTrocaProcedenciaCard } from "@/components/gestao/trocas/GestaoTrocaProcedenciaCard.tsx";
 import type { GestaoTrocaChecklistJson } from "@/lib/gestao-troca-checklist.ts";
@@ -361,6 +363,7 @@ export default function GestaoTrocaFichaPage() {
         laudo: null as GestaoTrocaLaudoPdfSection | null,
         descricao: null as GestaoTrocaLaudoDescricaoPdf | null,
         qualidade: [] as GestaoTrocaIaQualidadeFoto[],
+        analise: null as Awaited<ReturnType<typeof fetchLatestGestaoTrocaLaudo>>["analise"],
       };
     }
     const { analise, itens } = await fetchLatestGestaoTrocaLaudo(troca.id);
@@ -368,6 +371,7 @@ export default function GestaoTrocaFichaPage() {
       laudo: buildGestaoTrocaLaudoPdfFromAnalise(troca, analise, itens),
       descricao: buildGestaoTrocaLaudoDescricaoFromAnalise(analise),
       qualidade: analise?.qualidade_json ?? [],
+      analise,
     };
   };
 
@@ -425,6 +429,16 @@ export default function GestaoTrocaFichaPage() {
       procedenciaPdf,
       bundle.descricao,
       parecerPdf,
+      bundle.analise
+        ? {
+          estrutura_json: bundle.analise.estrutura_json ?? null,
+          fotos_json: Array.isArray(bundle.analise.fotos_json)
+            ? bundle.analise.fotos_json as NonNullable<
+              Parameters<typeof downloadGestaoTrocaRelatorioPdf>[8]
+            >["fotos_json"]
+            : null,
+        }
+        : null,
     );
   };
 
@@ -741,6 +755,25 @@ export default function GestaoTrocaFichaPage() {
             </Button>
           </section>
         )}
+
+        {userId && id && (
+          <GestaoTrocaRoteiroFotos
+            userId={userId}
+            trocaId={id}
+            fotosRaw={troca.fotos_json}
+            disabled={busy || laudoLocked}
+            onFotosChange={(entries) => void savePatch({ fotos_json: entries })}
+          />
+        )}
+
+        <GestaoTrocaEspessuraCard
+          value={troca.espessura_json}
+          disabled={busy || laudoLocked}
+          onChange={(next) => {
+            setTroca((t) => (t ? { ...t, espessura_json: next } : t));
+            void savePatch({ espessura_json: next });
+          }}
+        />
 
         <section className="space-y-2 rounded-lg border bg-white p-4 dark:bg-gray-950">
           <h2 className="font-semibold">Fotos (privadas)</h2>

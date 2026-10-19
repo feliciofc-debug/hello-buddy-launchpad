@@ -17,7 +17,7 @@ export const GESTAO_TROCA_IA_VISION_MODEL = "google/gemini-3.6-flash";
 export const AI_GATEWAY_CHAT_COMPLETIONS_URL =
   "https://ai.gateway.lovable.dev/v1/chat/completions";
 
-const MAX_FOTOS = 16;
+const MAX_FOTOS = 32;
 const MAX_BYTES_FOTO = 4 * 1024 * 1024;
 
 export type GestaoTrocaIaFotoInput = {

@@ -278,8 +278,13 @@ export function GestaoTrocaLaudoIaPanel({
             </>
           )}
         </Button>
-        {analisando && (
-          <span className="text-xs text-muted-foreground">Analisando… pode levar até 2 min</span>
+        {analisando && analise?.progresso_total != null && analise.progresso_total > 0 && (
+          <span className="text-xs text-muted-foreground">
+            Foto {analise.progresso_foto ?? 0}/{analise.progresso_total}
+          </span>
+        )}
+        {analisando && !(analise?.progresso_total != null && analise.progresso_total > 0) && (
+          <span className="text-xs text-muted-foreground">Analisando… pode levar alguns minutos</span>
         )}
       </div>
 

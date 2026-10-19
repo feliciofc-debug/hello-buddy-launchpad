@@ -17,6 +17,14 @@ import {
   appendGestaoTrocaProcedenciaPdfLines,
   type GestaoTrocaProcedenciaLaudo,
 } from "@/lib/gestao-troca-procedencia-display.ts";
+import {
+  appendGestaoTrocaEspessuraPdfLines,
+  appendGestaoTrocaFotoAFotoPdfLines,
+  appendGestaoTrocaIndicioColisaoPdfLines,
+  appendGestaoTrocaResumoAreaPdfLines,
+} from "@/lib/gestao-troca-laudo-foto-display.ts";
+import type { GestaoTrocaIndicioColisaoResult } from "../../supabase/functions/_shared/gestao-troca-indicio-colisao.ts";
+import type { GestaoTrocaIaFotoAnaliseRow } from "../../supabase/functions/_shared/gestao-troca-ia-foto-schema.ts";
 
 export type { GestaoTrocaLaudoPdfSection, GestaoTrocaLaudoPdfFinalizacao };
 
@@ -120,6 +128,10 @@ export async function downloadGestaoTrocaRelatorioPdf(
   procedencia?: GestaoTrocaProcedenciaLaudo | null,
   descricao?: GestaoTrocaLaudoDescricaoPdf | null,
   parecer?: Record<string, unknown> | null,
+  laudoAnalise?: {
+    estrutura_json?: Record<string, unknown> | null;
+    fotos_json?: GestaoTrocaIaFotoAnaliseRow[] | null;
+  } | null,
 ) {
   const doc = new jsPDF();
   let y = 14;
@@ -148,6 +160,30 @@ export async function downloadGestaoTrocaRelatorioPdf(
   line(`Proposto: ${formatGestaoMoney(troca.valor_proposto ?? 0)} · Fechado: ${formatGestaoMoney(troca.valor_fechado ?? 0)}`);
   line(`Preparação estimada: ${formatGestaoMoney(troca.preparacao_estimada ?? 0)}`);
   y += 4;
+  appendGestaoTrocaProcedenciaPdfLines(line, procedencia ?? null);
+
+  const estrutura = laudoAnalise?.estrutura_json ?? null;
+  y += 4;
+  appendGestaoTrocaResumoAreaPdfLines(line, estrutura);
+  y += 4;
+  appendGestaoTrocaIndicioColisaoPdfLines(
+    line,
+    estrutura?.indicio_colisao as GestaoTrocaIndicioColisaoResult | undefined,
+  );
+  y += 4;
+  appendGestaoTrocaEspessuraPdfLines(line, troca.espessura_json);
+  y += 4;
+  appendGestaoTrocaFotoAFotoPdfLines(
+    line,
+    Array.isArray(laudoAnalise?.fotos_json) ? laudoAnalise!.fotos_json as GestaoTrocaIaFotoAnaliseRow[] : null,
+  );
+
+  if (descricao && (descricao.externo.length || descricao.interno.length)) {
+    y += 4;
+    appendGestaoTrocaLaudoDescricaoPdfLines(line, descricao);
+  }
+
+  y += 4;
   line("Checklist", true);
   const checklist = normalizeGestaoTrocaChecklist(troca.checklist_json);
   for (const { id, label } of GESTAO_TROCA_CHECKLIST_ITENS) {
@@ -158,17 +194,6 @@ export async function downloadGestaoTrocaRelatorioPdf(
       item.valor_estimado ? formatGestaoMoney(item.valor_estimado) : "",
     ].filter(Boolean).join(" · ");
     line(`• ${label}: ${item.condicao}${extra ? ` (${extra})` : ""}`);
-  }
-  y += 4;
-  line("Justificativas", true);
-  for (const j of troca.justificativas_json ?? []) line(`• ${j}`);
-
-  y += 4;
-  appendGestaoTrocaProcedenciaPdfLines(line, procedencia ?? null);
-
-  if (descricao) {
-    y += 4;
-    appendGestaoTrocaLaudoDescricaoPdfLines(line, descricao);
   }
 
   if (laudo) {

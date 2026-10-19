@@ -57,6 +57,7 @@ export type GestaoTrocaRow = {
   laudo_finalizado_por?: string | null;
   laudo_finalizado_em?: string | null;
   laudo_reaberto_motivo?: string | null;
+  espessura_json?: Record<string, unknown> | null;
   parecer_json?: Record<string, unknown> | null;
   aprovado_por?: string | null;
   aprovado_em?: string | null;

@@ -1,6 +1,8 @@
 export type GestaoTrocaFotoEntry = {
   path: string;
   etiqueta: string;
+  /** Slot do roteiro TROCA-1.9 (opcional; legado usa só etiqueta). */
+  slot?: string;
 };
 
 export const GESTAO_TROCA_FOTO_ETIQUETAS: string[] = [
@@ -62,7 +64,8 @@ export function normalizeGestaoTrocaFotos(raw: unknown): GestaoTrocaFotoEntry[] 
       if (!path) continue;
       let etiqueta = canonicalGestaoTrocaEtiqueta(String(o.etiqueta ?? "") || "Outra");
       if (!GESTAO_TROCA_FOTO_ETIQUETAS.includes(etiqueta)) etiqueta = "Outra";
-      out.push({ path, etiqueta });
+      const slot = o.slot != null ? String(o.slot).trim() : undefined;
+      out.push({ path, etiqueta, ...(slot ? { slot } : {}) });
     }
   }
   return out;

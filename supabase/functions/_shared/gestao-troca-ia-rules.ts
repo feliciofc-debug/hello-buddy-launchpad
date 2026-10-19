@@ -155,9 +155,11 @@ export function gestaoTrocaIaValorEstimadoItem(input: {
   gravidade: GestaoTrocaIaGravidade;
   tabela: GestaoTrocaIaCustoRow[];
   tipo?: GestaoTrocaIaTipo;
+  descricao?: string;
 }): number | null {
   if (input.tipo === "luz_alerta") return null;
   if (input.confianca === "baixa") return null;
+  if (String(input.descricao ?? "").includes("(Indício visual.)")) return null;
   return gestaoTrocaIaValorFromTabela(input.categoria, input.gravidade, input.tabela);
 }
 
@@ -196,6 +198,7 @@ export function gestaoTrocaIaBuildItemRows(input: {
       gravidade: item.gravidade,
       tabela: input.tabela,
       tipo: item.tipo,
+      descricao: item.descricao,
     });
     if (valor != null) total += valor;
     const foto_path = gestaoTrocaIaResolveFotoPath(input.fotos, item);

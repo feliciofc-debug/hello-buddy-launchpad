@@ -3,6 +3,9 @@ import type { ProcedenciaResumoJson } from "./consultar-placa-parse.ts";
 import { parseProcedenciaResumoJson } from "./gestao-troca-procedencia-display.ts";
 import { parseGestaoTrocaIaDescricaoAreasJson } from "./gestao-troca-ia-descricao-schema.ts";
 import { loadLatestGestaoTrocaAnalise } from "./gestao-troca-ia-ops.ts";
+import { normalizeGestaoTrocaFotos } from "./gestao-troca-fotos.ts";
+import { gestaoTrocaRoteiroProgress } from "./gestao-troca-roteiro.ts";
+import type { GestaoTrocaIndicioColisaoResult } from "./gestao-troca-indicio-colisao.ts";
 import { buildGestaoTrocaLaudoDescricaoPdf } from "./gestao-troca-laudo-descricao-display.ts";
 import {
   calcGestaoTrocaParecerRecomendacao,
@@ -57,6 +60,11 @@ export async function buildGestaoTrocaParecerPreview(
     troca.procedencia_consulta_id ? String(troca.procedencia_consulta_id) : null,
   );
 
+  const fotosNorm = normalizeGestaoTrocaFotos(troca.fotos_json);
+  const roteiro = gestaoTrocaRoteiroProgress(fotosNorm);
+  const estrutura = analise?.estrutura_json as Record<string, unknown> | null | undefined;
+  const indicio_colisao = estrutura?.indicio_colisao as GestaoTrocaIndicioColisaoResult | null;
+
   const recomendacao = calcGestaoTrocaParecerRecomendacao({
     valor_proposto: troca.valor_proposto != null ? Number(troca.valor_proposto) : null,
     valor_sugerido: troca.valor_sugerido != null ? Number(troca.valor_sugerido) : null,
@@ -72,6 +80,8 @@ export async function buildGestaoTrocaParecerPreview(
     luzes_painel: typeof analise?.luzes_painel === "boolean" ? analise.luzes_painel : null,
     descricao_areas: descricaoRows,
     laudo_status: troca.laudo_status != null ? String(troca.laudo_status) : null,
+    roteiro_faltando: roteiro.faltando,
+    indicio_colisao,
   });
 
   const descricao = buildGestaoTrocaLaudoDescricaoPdf(

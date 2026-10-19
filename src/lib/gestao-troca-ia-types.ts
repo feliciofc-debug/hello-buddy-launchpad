@@ -33,6 +33,10 @@ export type GestaoTrocaIaAnalise = {
   concluida_em: string | null;
   descricao_areas_json?: GestaoTrocaIaDescricaoAreaRow[];
   conclusao_visual?: string | null;
+  fotos_json?: unknown;
+  estrutura_json?: Record<string, unknown> | null;
+  progresso_foto?: number | null;
+  progresso_total?: number | null;
 };
 
 export type GestaoTrocaIaItem = {
@@ -107,6 +111,12 @@ export function parseGestaoTrocaIaAnaliseRow(raw: Record<string, unknown>): Gest
     concluida_em: raw.concluida_em != null ? String(raw.concluida_em) : null,
     descricao_areas_json: parseGestaoTrocaIaDescricaoAreasJson(raw.descricao_areas_json),
     conclusao_visual: raw.conclusao_visual != null ? String(raw.conclusao_visual) : null,
+    fotos_json: raw.fotos_json,
+    estrutura_json: raw.estrutura_json != null && typeof raw.estrutura_json === "object"
+      ? raw.estrutura_json as Record<string, unknown>
+      : null,
+    progresso_foto: raw.progresso_foto != null ? Number(raw.progresso_foto) : null,
+    progresso_total: raw.progresso_total != null ? Number(raw.progresso_total) : null,
   };
 }
 

@@ -57,6 +57,7 @@ export const GESTAO_TROCA_LAUDO_COLUNAS_SERVICE_ONLY = [
 export const GESTAO_TROCA_LAUDO_BLOQUEIO_SE_FINALIZADO = [
   "checklist_json",
   "fotos_json",
+  "espessura_json",
   "kbb_troca",
   "kbb_loja",
   "kbb_km_caracteristico",

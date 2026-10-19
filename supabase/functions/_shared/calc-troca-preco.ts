@@ -11,6 +11,8 @@ export type GestaoTrocaConfigCalc = {
   custo_dia_estoque: number;
   dias_giro_padrao: number;
   desconto_leilao_pct: number;
+  espessura_original_max?: number;
+  espessura_repintura_max?: number;
 };
 
 export const DEFAULT_GESTAO_TROCA_CONFIG: GestaoTrocaConfigCalc = {
@@ -24,6 +26,8 @@ export const DEFAULT_GESTAO_TROCA_CONFIG: GestaoTrocaConfigCalc = {
   custo_dia_estoque: 0,
   dias_giro_padrao: 45,
   desconto_leilao_pct: 25,
+  espessura_original_max: 180,
+  espessura_repintura_max: 300,
 };
 
 export type TrocaHistoricoGrupo = {

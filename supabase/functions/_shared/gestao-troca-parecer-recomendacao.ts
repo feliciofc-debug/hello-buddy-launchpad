@@ -1,5 +1,9 @@
 import type { GestaoTrocaIaDescricaoAreaRow } from "./gestao-troca-ia-descricao-schema.ts";
 import type { ProcedenciaResumoJson } from "./consultar-placa-parse.ts";
+import type { GestaoTrocaIndicioNivel } from "./gestao-troca-indicio-colisao.ts";
+import { gestaoTrocaIndicioColisaoMaxNivel } from "./gestao-troca-indicio-colisao.ts";
+import type { GestaoTrocaIndicioColisaoResult } from "./gestao-troca-indicio-colisao.ts";
+import type { GestaoTrocaFotoSlotId } from "./gestao-troca-roteiro.ts";
 
 export type GestaoTrocaParecerNivel = "aceitar" | "negociar" | "nao_aceitar";
 
@@ -16,6 +20,8 @@ export type GestaoTrocaParecerRecomendacaoInput = {
   luzes_painel: boolean | null;
   descricao_areas: GestaoTrocaIaDescricaoAreaRow[];
   laudo_status: string | null;
+  roteiro_faltando?: GestaoTrocaFotoSlotId[];
+  indicio_colisao?: GestaoTrocaIndicioColisaoResult | null;
 };
 
 export type GestaoTrocaParecerRecomendacao = {
@@ -54,7 +60,12 @@ export function calcGestaoTrocaParecerRecomendacao(
   if (proposto > teto) motivos.push("Valor proposto acima do teto");
 
   if (motivos.length) {
-    return { nivel: "nao_aceitar", rotulo: "🔴 NÃO ACEITAR", motivos, pendencias: buildPendencias(input, pendencias) };
+    return {
+      nivel: "nao_aceitar",
+      rotulo: "🔴 NÃO ACEITAR",
+      motivos,
+      pendencias: buildPendencias(input, pendencias, "nenhum"),
+    };
   }
 
   if (proposto > sugerido && proposto <= teto) {
@@ -69,31 +80,47 @@ export function calcGestaoTrocaParecerRecomendacao(
   if (input.descricao_areas.some((a) => a.condicao === "alteracao_grave")) {
     motivos.push("Laudo descritivo com alteração grave");
   }
+  const indicioMax: GestaoTrocaIndicioNivel = input.indicio_colisao
+    ? gestaoTrocaIndicioColisaoMaxNivel(input.indicio_colisao)
+    : "nenhum";
+  if (indicioMax === "moderado") {
+    motivos.push("Indício visual de colisão (moderado)");
+  }
+  if (indicioMax === "forte") {
+    motivos.push("Indício visual de colisão (forte)");
+  }
   if (!input.procedencia_consulta_id) {
     motivos.push("Procedência veicular não consultada");
   }
 
   if (motivos.length) {
-    return { nivel: "negociar", rotulo: "🟡 NEGOCIAR", motivos, pendencias: buildPendencias(input, pendencias) };
+    const nivel = indicioMax === "forte" ? "negociar" : "negociar";
+    return { nivel, rotulo: "🟡 NEGOCIAR", motivos, pendencias: buildPendencias(input, pendencias, indicioMax) };
   }
 
   const naFaixa = proposto >= fvMin && proposto <= fvMax;
   if (!naFaixa) {
     motivos.push("Valor proposto fora da faixa verde");
-    return { nivel: "negociar", rotulo: "🟡 NEGOCIAR", motivos, pendencias: buildPendencias(input, pendencias) };
+    return {
+      nivel: "negociar",
+      rotulo: "🟡 NEGOCIAR",
+      motivos,
+      pendencias: buildPendencias(input, pendencias, indicioMax),
+    };
   }
 
   return {
     nivel: "aceitar",
     rotulo: "🟢 ACEITAR",
     motivos: ["Dentro da faixa verde, procedência sem alertas bloqueantes, sem pendências críticas."],
-    pendencias: buildPendencias(input, pendencias),
+    pendencias: buildPendencias(input, pendencias, indicioMax),
   };
 }
 
 function buildPendencias(
   input: GestaoTrocaParecerRecomendacaoInput,
   base: string[],
+  indicioMax: GestaoTrocaIndicioNivel,
 ): string[] {
   const p = [...base];
   if (input.alerta_km && !input.km_painel_conferido) p.push("Conferir KM do painel");
@@ -105,6 +132,15 @@ function buildPendencias(
     if (area.condicao === "nao_fotografado" && CRITICAS_NAO_FOTO.has(area.area)) {
       p.push(`Fotografar: ${area.area.replace(/_/g, " ")}`);
     }
+  }
+  if (input.roteiro_faltando?.length) {
+    p.push("Completar roteiro de fotos da vistoria");
+  }
+  if (indicioMax === "moderado" || indicioMax === "forte") {
+    p.push("Verificar estrutura (elevador/vistoria cautelar)");
+  }
+  if (indicioMax === "forte") {
+    p.push("Vistoria cautelar antes de aceitar");
   }
   return [...new Set(p)];
 }

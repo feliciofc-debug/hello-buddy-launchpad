@@ -115,6 +115,8 @@ export default function GestaoTrocaConfigPage() {
           {field("custo_dia_estoque", "Custo dia estoque (R$)")}
           {field("dias_giro_padrao", "Dias giro padrão")}
           {field("desconto_leilao_pct", "Desconto leilão/sinistro (%)")}
+          {field("espessura_original_max", "Espessura pintura — original até (µm)")}
+          {field("espessura_repintura_max", "Espessura pintura — repintura até (µm)")}
         </div>
 
         <section className="space-y-3 rounded-lg border bg-white p-4 dark:bg-gray-950">
