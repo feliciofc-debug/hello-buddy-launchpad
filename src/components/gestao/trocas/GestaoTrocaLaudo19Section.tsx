@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { gestaoTrocaIaDescricaoIcon } from "@/lib/gestao-troca-ia-descricao-display.ts";
 import {
   classificarEspessuraMap,
@@ -11,7 +12,12 @@ import {
   GESTAO_TROCA_INDICIO_COLISAO_DISCLAIMER,
   type GestaoTrocaLaudo19Computed,
 } from "@/lib/gestao-troca-laudo-19.ts";
-import { GESTAO_TROCA_ROTEIRO_SLOTS } from "@/lib/gestao-troca-roteiro.ts";
+import {
+  gestaoTrocaAvisoFotoTrocadaParaRow,
+  gestaoTrocaSlotLabelLoja,
+  normalizeGestaoTrocaFotos,
+  type GestaoTrocaFotoEntry,
+} from "@/lib/gestao-troca-fotos.ts";
 import { resumoAreaIcon } from "@/lib/gestao-troca-laudo-foto-display.ts";
 import type { GestaoTrocaIaFotoAnaliseRow } from "../../supabase/functions/_shared/gestao-troca-ia-foto-schema.ts";
 
@@ -27,6 +33,7 @@ type Props = {
   espessuraRaw: unknown;
   faixas?: GestaoTrocaEspessuraFaixas;
   thumbUrls?: Record<string, string>;
+  fotosRaw?: unknown;
 };
 
 function achadoIcon(severidade: string): string {
@@ -35,20 +42,17 @@ function achadoIcon(severidade: string): string {
   return gestaoTrocaIaDescricaoIcon("alteracao_leve");
 }
 
-function slotLabel(slot: string): string {
-  const def = GESTAO_TROCA_ROTEIRO_SLOTS.find((s) => s.id === slot);
-  return def?.label ?? slot.replace(/_/g, " ");
-}
-
 function FotoRowCard({
   row,
   thumb,
+  fotoEntry,
 }: {
   row: GestaoTrocaIaFotoAnaliseRow;
   thumb?: string;
+  fotoEntry?: GestaoTrocaFotoEntry;
 }) {
-  const mismatch = row.slot_identificado &&
-    String(row.slot_identificado) !== String(row.slot_informado);
+  const aviso = gestaoTrocaAvisoFotoTrocadaParaRow({ fotoEntry, row });
+  const anguloTitulo = gestaoTrocaSlotLabelLoja(String(row.slot_identificado ?? row.slot_informado));
   return (
     <li className="flex flex-col gap-2 rounded-md border p-3 sm:flex-row">
       {thumb ? (
@@ -60,13 +64,10 @@ function FotoRowCard({
       )}
       <div className="min-w-0 flex-1 space-y-1 text-sm">
         <p className="font-medium">
-          #{row.indice} · {slotLabel(String(row.slot_informado))} · qualidade {row.qualidade_imagem}
+          #{row.indice} · {anguloTitulo} · qualidade {row.qualidade_imagem}
         </p>
-        {mismatch && (
-          <p className="text-xs text-amber-700 dark:text-amber-400">
-            Foto do slot {slotLabel(String(row.slot_informado))} parece ser{" "}
-            {slotLabel(String(row.slot_identificado))}
-          </p>
+        {aviso && (
+          <p className="text-xs text-amber-700 dark:text-amber-400">{aviso}</p>
         )}
         <p className="text-muted-foreground">{row.descricao}</p>
         {row.achados.length > 0 && (
@@ -89,7 +90,14 @@ export function GestaoTrocaLaudo19Section({
   espessuraRaw,
   faixas = DEFAULT_GESTAO_TROCA_ESPESSURA_FAIXAS,
   thumbUrls = {},
+  fotosRaw,
 }: Props) {
+  const fotosByPath = useMemo(() => {
+    const m = new Map<string, GestaoTrocaFotoEntry>();
+    for (const f of normalizeGestaoTrocaFotos(fotosRaw)) m.set(f.path, f);
+    return m;
+  }, [fotosRaw]);
+
   const esp = parseGestaoTrocaEspessuraJson(espessuraRaw);
   const espCls = classificarEspessuraMap(esp, faixas);
 
@@ -174,6 +182,7 @@ export function GestaoTrocaLaudo19Section({
               key={row.indice}
               row={row}
               thumb={row.path ? thumbUrls[row.path] : undefined}
+              fotoEntry={row.path ? fotosByPath.get(row.path) : undefined}
             />
           ))}
         </ul>

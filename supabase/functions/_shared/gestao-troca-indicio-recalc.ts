@@ -1,6 +1,8 @@
 import type { GestaoTrocaEspessuraFaixas } from "./gestao-troca-espessura.ts";
 import { parseGestaoTrocaEspessuraJson } from "./gestao-troca-espessura.ts";
+import { GESTAO_TROCA_IA_SLOT_A_CLASSIFICAR } from "./gestao-troca-foto-slot.ts";
 import type { GestaoTrocaIaFotoAnaliseRow } from "./gestao-troca-ia-foto-schema.ts";
+import { isGestaoTrocaFotoSlotId } from "./gestao-troca-roteiro.ts";
 import {
   calcIndicioColisao,
   type GestaoTrocaIndicioAchadoInput,
@@ -15,6 +17,17 @@ export function parseGestaoTrocaAnaliseFotoRows(raw: unknown): GestaoTrocaIaFoto
 /** achado_ref formato f7a2 = foto 7, achado índice 2 (1-based no array). */
 export function gestaoTrocaAchadoRef(fotoIndice: number, achadoIndex: number): string {
   return `f${fotoIndice}a${achadoIndex}`;
+}
+
+/** Ângulo efetivo para regras: IA identificado, senão informado (exceto a_classificar). */
+export function gestaoTrocaIaRowSlotEfetivo(row: GestaoTrocaIaFotoAnaliseRow): string {
+  const id = row.slot_identificado;
+  if (id && isGestaoTrocaFotoSlotId(String(id))) return String(id);
+  const inf = String(row.slot_informado ?? "");
+  if (inf && inf !== GESTAO_TROCA_IA_SLOT_A_CLASSIFICAR && isGestaoTrocaFotoSlotId(inf)) {
+    return inf;
+  }
+  return inf;
 }
 
 export function recalcIndicioColisaoGestaoTroca(input: {
@@ -36,7 +49,7 @@ export function recalcIndicioColisaoGestaoTroca(input: {
       achados.push({
         ...a,
         foto: row.indice,
-        slot: String(row.slot_informado),
+        slot: gestaoTrocaIaRowSlotEfetivo(row),
         descartado: descartados.has(ref),
       });
     });

@@ -71,7 +71,7 @@ export function GestaoTrocaRoteiroFotos({
     const rest = fotos.filter((f) => gestaoTrocaResolveFotoSlot(f) !== slot);
     onFotosChange([
       ...rest,
-      { path, etiqueta: def.etiquetaLegado, slot },
+      { path, etiqueta: def.label, slot, slot_origem: "usuario" },
     ]);
     toast.success(`${def.label} enviada.`);
   };

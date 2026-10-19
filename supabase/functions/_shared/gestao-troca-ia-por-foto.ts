@@ -20,6 +20,7 @@ import {
   gestaoTrocaIaMaxFotoBytes,
   type GestaoTrocaIaFotoInput,
 } from "./gestao-troca-ia-vision.ts";
+import { gestaoTrocaSlotLabelLoja } from "./gestao-troca-foto-slot.ts";
 import { buildGestaoTrocaIaFotoPrompt } from "./gestao-troca-ia-foto-prompt.ts";
 import {
   calcResumoPorAreaRegra,
@@ -69,8 +70,7 @@ export async function analyzeOneGestaoTrocaFoto(input: {
   foto: GestaoTrocaIaFotoInput & { indice: number; slot: GestaoTrocaFotoSlotId | string };
   fetchFn?: typeof fetch;
 }): Promise<{ ok: true; row: GestaoTrocaIaFotoAnaliseRow } | { ok: false; error: string }> {
-  const slotDef = GESTAO_TROCA_ROTEIRO_SLOTS.find((s) => s.id === input.foto.slot);
-  const slotLabel = slotDef?.label ?? String(input.foto.slot);
+  const slotLabel = gestaoTrocaSlotLabelLoja(String(input.foto.slot));
   const fetchFn = input.fetchFn ?? fetch;
   const content: Array<
     { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }

@@ -12,8 +12,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  canonicalGestaoTrocaEtiqueta,
+  GESTAO_TROCA_FOTO_ETIQUETA_A_CLASSIFICAR,
   GESTAO_TROCA_FOTO_ETIQUETAS,
+  gestaoTrocaFotoEntryComEtiquetaUsuario,
   normalizeGestaoTrocaFotos,
   type GestaoTrocaFotoEntry,
 } from "@/lib/gestao-troca-fotos.ts";
@@ -57,9 +58,10 @@ export function GestaoTrocaFotoGaleria({
   }, [fotos, refreshSigned]);
 
   const setEtiqueta = (path: string, etiqueta: string) => {
-    const canon = canonicalGestaoTrocaEtiqueta(etiqueta);
     onFotosChange(
-      fotos.map((f) => (f.path === path ? { ...f, etiqueta: canon } : f)),
+      fotos.map((f) =>
+        f.path === path ? gestaoTrocaFotoEntryComEtiquetaUsuario(f, etiqueta) : f
+      ),
     );
   };
 
@@ -87,9 +89,7 @@ export function GestaoTrocaFotoGaleria({
         toast.error(`Falha ao enviar ${file.name}.`);
         continue;
       }
-      const idx = fotos.length + added.length;
-      const etiqueta = GESTAO_TROCA_FOTO_ETIQUETAS[idx] ?? "Outra";
-      added.push({ path, etiqueta });
+      added.push({ path, etiqueta: GESTAO_TROCA_FOTO_ETIQUETA_A_CLASSIFICAR });
     }
     setUploading(false);
     if (added.length) onFotosChange([...fotos, ...added]);
@@ -104,7 +104,8 @@ export function GestaoTrocaFotoGaleria({
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
-        Etiquetas sugeridas na ordem do upload; ajuste cada foto abaixo.
+        Envie na ordem que quiser — cada foto entra como «A classificar». A IA organiza o roteiro na
+        análise. Use o seletor só para CRLV ou se quiser marcar o ângulo manualmente.
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <Input

@@ -397,6 +397,7 @@ export function GestaoTrocaLaudoIaPanel({
               espessuraRaw={espessuraJson}
               faixas={configFaixas}
               thumbUrls={thumbUrls}
+              fotosRaw={fotosRaw}
             />
           )}
           {legacyDescricao && (

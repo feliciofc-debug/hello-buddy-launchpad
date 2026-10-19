@@ -4,7 +4,7 @@ import type { GestaoTrocaFotoEntry } from "./gestao-troca-fotos.ts";
 
 function simUpload(fotos: GestaoTrocaFotoEntry[], slot: string, path: string): GestaoTrocaFotoEntry[] {
   const rest = fotos.filter((f) => gestaoTrocaResolveFotoSlot(f) !== slot);
-  return [...rest, { path, etiqueta: "Outra", slot }];
+  return [...rest, { path, etiqueta: "Outra", slot, slot_origem: "usuario" as const }];
 }
 
 Deno.test("roteiro — 6 slots distintos preservados", () => {

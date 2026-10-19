@@ -1,4 +1,5 @@
 import type { GestaoTrocaFotoEntry } from "./gestao-troca-fotos.ts";
+import { gestaoTrocaFotosListaParaIa } from "./gestao-troca-foto-slot.ts";
 
 export type GestaoTrocaFotoSlotId =
   | "frente"
@@ -75,20 +76,6 @@ export const GESTAO_TROCA_ROTEIRO_OBRIGATORIOS_TOTAL = GESTAO_TROCA_ROTEIRO_SLOT
 
 const SLOT_SET = new Set<string>(GESTAO_TROCA_ROTEIRO_SLOTS.map((s) => s.id));
 
-const LEGACY_ETIQUETA_TO_SLOT: Record<string, GestaoTrocaFotoSlotId> = {
-  frente: "frente",
-  traseira: "traseira",
-  "lateral esquerda": "lateral_esq",
-  "lateral direita": "lateral_dir",
-  "painel ligado (km)": "painel_ligado",
-  "interior dianteiro": "bancos_dianteiros",
-  "interior traseiro": "bancos_traseiros",
-  motor: "cofre_motor",
-  "porta-malas": "porta_malas_aberto",
-  estepe: "estepe_macaco",
-  "pneus / rodas": "pneu_de",
-};
-
 export function isGestaoTrocaFotoSlotId(v: string): v is GestaoTrocaFotoSlotId {
   return SLOT_SET.has(v);
 }
@@ -97,11 +84,11 @@ export function gestaoTrocaSlotDef(id: GestaoTrocaFotoSlotId): GestaoTrocaRoteir
   return GESTAO_TROCA_ROTEIRO_SLOTS.find((s) => s.id === id)!;
 }
 
+/** Slot atribuído no registro (usuário ou IA). Não infere por etiqueta. */
 export function gestaoTrocaResolveFotoSlot(entry: GestaoTrocaFotoEntry & { slot?: string }): GestaoTrocaFotoSlotId | null {
-  const rawSlot = String((entry as { slot?: string }).slot ?? "").trim();
+  const rawSlot = String(entry.slot ?? "").trim();
   if (rawSlot && isGestaoTrocaFotoSlotId(rawSlot)) return rawSlot;
-  const key = entry.etiqueta.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
-  return LEGACY_ETIQUETA_TO_SLOT[key] ?? null;
+  return null;
 }
 
 export function gestaoTrocaRoteiroProgress(fotos: GestaoTrocaFotoEntry[]): {
@@ -123,35 +110,10 @@ export function gestaoTrocaRoteiroProgress(fotos: GestaoTrocaFotoEntry[]): {
   };
 }
 
-/** Ordem estável para índices 1-based na IA (roteiro + extras sem CRLV). */
+/** @deprecated Use gestaoTrocaFotosListaParaIa em gestao-troca-foto-slot.ts */
 export function gestaoTrocaFotosOrdenadasParaIa(
   fotos: GestaoTrocaFotoEntry[],
   max = 32,
 ): (GestaoTrocaFotoEntry & { slot?: GestaoTrocaFotoSlotId | string })[] {
-  const filtered = fotos.filter((f) => f.etiqueta !== "Documento (CRLV)");
-  const bySlot = new Map<GestaoTrocaFotoSlotId, GestaoTrocaFotoEntry>();
-  const extras: GestaoTrocaFotoEntry[] = [];
-  for (const f of filtered) {
-    const slot = gestaoTrocaResolveFotoSlot(f);
-    if (slot && !bySlot.has(slot)) bySlot.set(slot, f);
-    else if (!slot) extras.push(f);
-  }
-  const ordered: (GestaoTrocaFotoEntry & { slot?: GestaoTrocaFotoSlotId | string })[] = [];
-  for (const def of GESTAO_TROCA_ROTEIRO_SLOTS) {
-    const hit = bySlot.get(def.id);
-    if (hit) ordered.push({ ...hit, slot: def.id });
-  }
-  for (const f of extras) {
-    if (!ordered.some((x) => x.path === f.path)) {
-      const sl = gestaoTrocaResolveFotoSlot(f);
-      ordered.push({ ...f, ...(sl ? { slot: sl } : {}) });
-    }
-  }
-  for (const f of filtered) {
-    if (!ordered.some((x) => x.path === f.path)) {
-      const sl = gestaoTrocaResolveFotoSlot(f);
-      ordered.push({ ...f, ...(sl ? { slot: sl } : {}) });
-    }
-  }
-  return ordered.slice(0, max);
+  return gestaoTrocaFotosListaParaIa(fotos, max);
 }

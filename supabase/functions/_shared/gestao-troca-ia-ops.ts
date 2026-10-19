@@ -9,7 +9,8 @@ import {
   normalizeGestaoTrocaFotos,
   type GestaoTrocaFotoEntry,
 } from "./gestao-troca-fotos.ts";
-import { gestaoTrocaFotosOrdenadasParaIa, gestaoTrocaRoteiroProgress } from "./gestao-troca-roteiro.ts";
+import { mergeGestaoTrocaIaSlotsIntoFotos, gestaoTrocaFotosListaParaIa } from "./gestao-troca-foto-slot.ts";
+import { gestaoTrocaRoteiroProgress } from "./gestao-troca-roteiro.ts";
 import {
   analyzeGestaoTrocaFotosPorFoto,
   consolidateGestaoTrocaLaudoText,
@@ -242,12 +243,12 @@ export async function runGestaoTrocaIaAnaliseBackground(
     const faixasEsp = gestaoTrocaEspessuraFaixasFromConfig(cfgRow ?? null);
 
     const fotosNorm = normalizeGestaoTrocaFotos(troca.fotos_json);
-    const ordenadas = gestaoTrocaFotosOrdenadasParaIa(fotosNorm, gestaoTrocaIaMaxFotos());
+    const ordenadas = gestaoTrocaFotosListaParaIa(fotosNorm, gestaoTrocaIaMaxFotos());
     const manifests: GestaoTrocaFotoManifest[] = ordenadas.map((x, i) => ({
       indice: i + 1,
       path: x.path,
       etiqueta: x.etiqueta,
-      slot: String(x.slot ?? x.etiqueta),
+      slot: String(x.slot),
     }));
 
     if (!apiKey) throw new Error("LOVABLE_API_KEY não configurada.");
@@ -289,10 +290,16 @@ export async function runGestaoTrocaIaAnaliseBackground(
       return;
     }
 
+    const fotosPosIa = mergeGestaoTrocaIaSlotsIntoFotos(fotosNorm, porFoto.rows);
+    await sb.from("gestao_troca").update({
+      fotos_json: fotosPosIa,
+      updated_at: new Date().toISOString(),
+    }).eq("id", trocaId).eq("user_id", userId);
+
     const consolidado = await consolidateGestaoTrocaLaudoText({
       apiKey,
       fotoRows: porFoto.rows,
-      fotosNorm,
+      fotosNorm: fotosPosIa,
     });
 
     const indicio_colisao = recalcIndicioColisaoGestaoTroca({
@@ -307,7 +314,7 @@ export async function runGestaoTrocaIaAnaliseBackground(
     const kmPainel = consolidado.km_painel;
     const alerta_km = gestaoTrocaIaAlertaKm(kmFicha, kmPainel);
     const etiquetasUsadas = manifests.map((f) => f.etiqueta);
-    const roteiroProg = gestaoTrocaRoteiroProgress(fotosNorm);
+    const roteiroProg = gestaoTrocaRoteiroProgress(fotosPosIa);
     const aviso_carroceria = roteiroProg.faltando.some((id) =>
       ["frente", "traseira", "lateral_esq", "lateral_dir"].includes(id)
     ) || gestaoTrocaIaAvisoCarroceria(false, etiquetasUsadas);

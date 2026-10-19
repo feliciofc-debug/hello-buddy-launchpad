@@ -1,3 +1,4 @@
+import { GESTAO_TROCA_IA_SLOT_A_CLASSIFICAR } from "./gestao-troca-foto-slot.ts";
 import type { GestaoTrocaFotoSlotId } from "./gestao-troca-roteiro.ts";
 import {
   GESTAO_TROCA_IA_ACHADO_CONFIANCAS,
@@ -45,15 +46,22 @@ export function buildGestaoTrocaIaFotoPrompt(
   slot: string,
   slotLabel: string,
 ): string {
-  const checklist = CHECKLIST[slot]?.join(" ") ?? "Descrever o que se vê com objetividade.";
+  const aClassificar = slot === GESTAO_TROCA_IA_SLOT_A_CLASSIFICAR;
+  const checklist = aClassificar
+    ? "Identifique o ângulo do veículo (frente, traseira, lateral, diagonal, cofre, interior, pneu, etc.)."
+    : (CHECKLIST[slot]?.join(" ") ?? "Descrever o que se vê com objetividade.");
   const painelExtra = slot === "painel_ligado"
     ? '"km_painel": number|null, "luzes_alerta": string[],'
     : "";
   return [
     "Você é perito de avaliação de veículos usados no Brasil.",
-    `Foto índice ${indice}, slot informado: ${slot} (${slotLabel}).`,
-    `Checklist deste slot: ${checklist}`,
-    "Se a imagem não corresponde ao slot, preencha slot_identificado diferente.",
+    aClassificar
+      ? `Foto índice ${indice}: ângulo ainda não informado pelo avaliador (${slotLabel}).`
+      : `Foto índice ${indice}, ângulo informado pelo avaliador: ${slotLabel}.`,
+    `Checklist: ${checklist}`,
+    aClassificar
+      ? "Preencha slot_identificado com o id do ângulo SOMENTE se tiver certeza; se não tiver certeza, use null."
+      : "Descreva só o que se vê na imagem; não mencione o ângulo informado nem compare com outro ângulo.",
     "Regras: subnotificar; chuva/reflexo/sujeira não são avaria; massa_suspeita nunca confiança alta só pela foto;",
     "foto escura/borrada → qualidade insuficiente, achados=[].",
     `qualidade_imagem: ${GESTAO_TROCA_IA_FOTO_QUALIDADES.join("|")}`,

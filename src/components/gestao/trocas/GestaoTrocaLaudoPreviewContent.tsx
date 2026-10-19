@@ -64,6 +64,7 @@ type Props = {
   laudo19?: GestaoTrocaLaudo19Computed | null;
   espessuraJson?: unknown;
   espessuraFaixas?: GestaoTrocaEspessuraFaixas;
+  fotosRaw?: unknown;
   finalizadoPor?: string | null;
 };
 
@@ -79,6 +80,7 @@ export function GestaoTrocaLaudoPreviewContent({
   laudo19 = null,
   espessuraJson,
   espessuraFaixas,
+  fotosRaw,
   finalizadoPor,
 }: Props) {
   const checklist = normalizeGestaoTrocaChecklist(troca.checklist_json);
@@ -131,6 +133,7 @@ export function GestaoTrocaLaudoPreviewContent({
           espessuraRaw={espessuraJson}
           faixas={espessuraFaixas}
           thumbUrls={thumbUrls}
+          fotosRaw={fotosRaw ?? troca.fotos_json}
         />
       )}
       {descricao && (
