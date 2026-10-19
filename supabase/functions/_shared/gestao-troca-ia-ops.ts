@@ -14,10 +14,14 @@ import {
   analyzeGestaoTrocaFotosPorFoto,
   consolidateGestaoTrocaLaudoText,
   gestaoTrocaIaModel,
-  visionItemsFromFotoRows,
+  type GestaoTrocaFotoManifest,
 } from "./gestao-troca-ia-por-foto.ts";
-import { calcIndicioColisao } from "./gestao-troca-indicio-colisao.ts";
-import { parseGestaoTrocaEspessuraJson } from "./gestao-troca-espessura.ts";
+import { recalcIndicioColisaoGestaoTroca } from "./gestao-troca-indicio-recalc.ts";
+import {
+  gestaoTrocaEspessuraFaixasFromConfig,
+  parseGestaoTrocaEspessuraJson,
+} from "./gestao-troca-espessura.ts";
+import { gestaoTrocaIaItemRowsFromFotoAnalise } from "./gestao-troca-ia-foto-items.ts";
 import { addDiasYmd, hojeSaoPaulo } from "./gestao-date-br.ts";
 import { insertTrocaEvento } from "./gestao-troca-ops.ts";
 import { assertGestaoTrocaLaudoNaoFinalizado } from "./gestao-troca-laudo-guard.ts";
@@ -233,26 +237,42 @@ export async function runGestaoTrocaIaAnaliseBackground(
       .maybeSingle();
     if (trocaErr || !troca) throw new Error("Troca não encontrada.");
 
+    const { data: cfgRow } = await sb.from("gestao_troca_config").select("*").eq("user_id", userId)
+      .maybeSingle();
+    const faixasEsp = gestaoTrocaEspessuraFaixasFromConfig(cfgRow ?? null);
+
     const fotosNorm = normalizeGestaoTrocaFotos(troca.fotos_json);
     const ordenadas = gestaoTrocaFotosOrdenadasParaIa(fotosNorm, gestaoTrocaIaMaxFotos());
-    const { fotos: fotosRaw, qualidade } = await downloadFotosParaIa(sb, ordenadas);
-    const fotos = fotosRaw.map((f, i) => ({
-      ...f,
+    const manifests: GestaoTrocaFotoManifest[] = ordenadas.map((x, i) => ({
       indice: i + 1,
-      slot: ordenadas[i]?.slot ?? ordenadas[i]?.etiqueta ?? "outro",
+      path: x.path,
+      etiqueta: x.etiqueta,
+      slot: String(x.slot ?? x.etiqueta),
     }));
 
     if (!apiKey) throw new Error("LOVABLE_API_KEY não configurada.");
 
     await sb.from("gestao_troca_analise_ia").update({
-      progresso_total: fotos.length,
+      progresso_total: manifests.length,
       progresso_foto: 0,
       fotos_json: ordenadas.map((x) => ({ path: x.path, etiqueta: x.etiqueta, slot: x.slot ?? null })),
     }).eq("id", analiseId);
 
     const porFoto = await analyzeGestaoTrocaFotosPorFoto({
       apiKey,
-      fotos,
+      manifests,
+      downloadBase64: async (path) => {
+        const { data, error } = await sb.storage.from("trocas").download(path);
+        if (error || !data) return { ok: false as const, reason: "download_falhou" };
+        const buf = new Uint8Array(await data.arrayBuffer());
+        const bytes = buf.byteLength;
+        return {
+          ok: true as const,
+          mime: mimeFromPath(path),
+          base64: bytesToBase64(buf),
+          bytes,
+        };
+      },
       onProgress: async (done, total) => {
         await sb.from("gestao_troca_analise_ia").update({
           progresso_foto: done,
@@ -275,34 +295,31 @@ export async function runGestaoTrocaIaAnaliseBackground(
       fotosNorm,
     });
 
-    const espessura = parseGestaoTrocaEspessuraJson(troca.espessura_json);
-    const achadosIndicio = porFoto.rows.flatMap((r) =>
-      r.achados.map((a) => ({
-        ...a,
-        foto: r.indice,
-        slot: String(r.slot_informado),
-      }))
-    );
-    const indicio_colisao = calcIndicioColisao(achadosIndicio, espessura);
+    const indicio_colisao = recalcIndicioColisaoGestaoTroca({
+      fotos_json: porFoto.rows,
+      espessura_json: troca.espessura_json,
+      faixas: faixasEsp,
+      itens: [],
+    });
 
     const tabela = await listGestaoTrocaIaCustos(sb, userId);
     const kmFicha = troca.km != null ? Number(troca.km) : null;
     const kmPainel = consolidado.km_painel;
     const alerta_km = gestaoTrocaIaAlertaKm(kmFicha, kmPainel);
-    const etiquetasUsadas = fotos.map((f) => f.etiqueta);
+    const etiquetasUsadas = manifests.map((f) => f.etiqueta);
     const roteiroProg = gestaoTrocaRoteiroProgress(fotosNorm);
     const aviso_carroceria = roteiroProg.faltando.some((id) =>
       ["frente", "traseira", "lateral_esq", "lateral_dir"].includes(id)
     ) || gestaoTrocaIaAvisoCarroceria(false, etiquetasUsadas);
 
-    const visionItens = visionItemsFromFotoRows(porFoto.rows);
-    const itensFiltrados = gestaoTrocaIaFiltrarItensVision(visionItens);
-    const temFotoPainel = fotos.some((f) => String(f.slot) === "painel_ligado" || /painel/i.test(f.etiqueta));
-    const luzes_painel = consolidado.luzes_painel ?? gestaoTrocaIaLuzesPainelResumo(itensFiltrados, temFotoPainel);
+    const temFotoPainel = manifests.some((f) => f.slot === "painel_ligado");
+    const luzes_painel = consolidado.luzes_painel ??
+      (temFotoPainel ? false : null);
 
-    const { rows: itemRows, totalPreparacao: total } = gestaoTrocaIaBuildItemRows({
-      itens: itensFiltrados,
-      fotos,
+    const fotosRef = manifests.map((m) => ({ path: m.path, etiqueta: m.etiqueta }));
+    const { rows: itemRows, totalPreparacao: total } = gestaoTrocaIaItemRowsFromFotoAnalise({
+      rows: porFoto.rows,
+      fotos: fotosRef,
       tabela,
       analiseId,
       userId,
@@ -332,11 +349,11 @@ export async function runGestaoTrocaIaAnaliseBackground(
       descricao_areas_json: [],
       fotos_json: porFoto.rows,
       estrutura_json,
-      qualidade_json: qualidade,
+      qualidade_json: porFoto.qualidade,
       modelo_ia: gestaoTrocaIaModel(),
       total_preparacao: total,
-      progresso_foto: fotos.length,
-      progresso_total: fotos.length,
+      progresso_foto: manifests.length,
+      progresso_total: manifests.length,
       concluida_em: new Date().toISOString(),
     }).eq("id", analiseId);
 

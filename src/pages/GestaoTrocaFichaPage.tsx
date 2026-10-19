@@ -70,6 +70,16 @@ import {
 import type { GestaoTrocaLaudoPdfSection } from "@/lib/gestao-troca-laudo-pdf-section.ts";
 import type { GestaoTrocaProcedenciaLaudo } from "@/lib/gestao-troca-procedencia-display.ts";
 import { fetchGestaoTrocaProcedenciaLaudo } from "@/lib/gestao-troca-procedencia-fetch.ts";
+import {
+  buildGestaoTrocaLaudo19Computed,
+  gestaoTrocaEspessuraFaixasFromConfig,
+  type GestaoTrocaLaudo19Computed,
+} from "@/lib/gestao-troca-laudo-19.ts";
+import {
+  DEFAULT_GESTAO_TROCA_ESPESSURA_FAIXAS,
+  type GestaoTrocaEspessuraFaixas,
+} from "@/lib/gestao-troca-espessura.ts";
+import { parseProcedenciaResumoJson } from "@/lib/gestao-troca-procedencia-display.ts";
 import { GestaoTrocaLaudoPreviewContent } from "@/components/gestao/trocas/GestaoTrocaLaudoPreviewContent.tsx";
 import {
   GestaoTrocaParecerDialog,
@@ -119,6 +129,10 @@ export default function GestaoTrocaFichaPage() {
   const [previewQualidade, setPreviewQualidade] = useState<GestaoTrocaIaQualidadeFoto[]>([]);
   const [previewDescricaoThumbs, setPreviewDescricaoThumbs] = useState<Record<string, string>>({});
   const [previewParecer, setPreviewParecer] = useState<GestaoTrocaParecerPreviewView | null>(null);
+  const [previewLaudo19, setPreviewLaudo19] = useState<GestaoTrocaLaudo19Computed | null>(null);
+  const [espFaixas, setEspFaixas] = useState<GestaoTrocaEspessuraFaixas>(
+    DEFAULT_GESTAO_TROCA_ESPESSURA_FAIXAS,
+  );
   const [parecerOpen, setParecerOpen] = useState(false);
   const [parecerLoading, setParecerLoading] = useState(false);
   const [parecerPreview, setParecerPreview] = useState<GestaoTrocaParecerPreview | null>(null);
@@ -170,6 +184,19 @@ export default function GestaoTrocaFichaPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!userId) return;
+    void (async () => {
+      const { data } = await supabase.from("gestao_troca_config" as "veiculos_estoque")
+        .select("espessura_original_max, espessura_repintura_max")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (data) {
+        setEspFaixas(gestaoTrocaEspessuraFaixasFromConfig(data as Record<string, unknown>));
+      }
+    })();
+  }, [userId]);
 
   const laudoLocked = troca?.laudo_status === "finalizado";
 
@@ -364,6 +391,7 @@ export default function GestaoTrocaFichaPage() {
         descricao: null as GestaoTrocaLaudoDescricaoPdf | null,
         qualidade: [] as GestaoTrocaIaQualidadeFoto[],
         analise: null as Awaited<ReturnType<typeof fetchLatestGestaoTrocaLaudo>>["analise"],
+        itens: [] as Awaited<ReturnType<typeof fetchLatestGestaoTrocaLaudo>>["itens"],
       };
     }
     const { analise, itens } = await fetchLatestGestaoTrocaLaudo(troca.id);
@@ -372,7 +400,24 @@ export default function GestaoTrocaFichaPage() {
       descricao: buildGestaoTrocaLaudoDescricaoFromAnalise(analise),
       qualidade: analise?.qualidade_json ?? [],
       analise,
+      itens,
     };
+  };
+
+  const buildLaudo19ForTroca = async (
+    bundle: Awaited<ReturnType<typeof loadLaudoBundle>>,
+    procedenciaResumoRaw: unknown,
+  ): Promise<GestaoTrocaLaudo19Computed | null> => {
+    if (!troca || !bundle.analise) return null;
+    return buildGestaoTrocaLaudo19Computed({
+      fotos_json: bundle.analise.fotos_json,
+      estrutura_json: bundle.analise.estrutura_json,
+      espessura_json: troca.espessura_json,
+      faixas: espFaixas,
+      itens: bundle.itens,
+      fotosNorm: normalizeGestaoTrocaFotos(troca.fotos_json),
+      procedencia_resumo: parseProcedenciaResumoJson(procedenciaResumoRaw),
+    });
   };
 
   const loadLaudoPdfSection = async () => {
@@ -405,11 +450,18 @@ export default function GestaoTrocaFichaPage() {
   const exportPdf = async () => {
     if (!troca) return;
     setBusy(true);
-    const [urls, bundle, procedenciaPdf] = await Promise.all([
+    const [urls, bundle, procedenciaPdf, procRow] = await Promise.all([
       loadPdfThumbUrls(),
       loadLaudoBundle(),
       loadProcedenciaLaudo(),
+      troca.procedencia_consulta_id
+        ? supabase.from("veiculo_procedencia_consulta" as "veiculos_estoque")
+          .select("resumo_json")
+          .eq("id", troca.procedencia_consulta_id)
+          .maybeSingle()
+        : Promise.resolve({ data: null }),
     ]);
+    const laudo19Pdf = await buildLaudo19ForTroca(bundle, procRow.data?.resumo_json);
     const parecerPdf = troca.parecer_json ?? null;
     const finalizacao = troca.laudo_status === "finalizado" && troca.laudo_numero
       ? {
@@ -439,17 +491,31 @@ export default function GestaoTrocaFichaPage() {
             : null,
         }
         : null,
+      laudo19Pdf,
+      espFaixas,
     );
   };
 
   const openPreview = async () => {
     if (!troca) return;
     setBusy(true);
-    const [bundle, procedencia] = await Promise.all([
+    const [bundle, procedencia, procRow] = await Promise.all([
       loadLaudoBundle(),
       loadProcedenciaLaudo(),
+      troca.procedencia_consulta_id
+        ? supabase.from("veiculo_procedencia_consulta" as "veiculos_estoque")
+          .select("resumo_json")
+          .eq("id", troca.procedencia_consulta_id)
+          .maybeSingle()
+        : Promise.resolve({ data: null }),
     ]);
-    const thumbs = await signGestaoTrocaFotoPaths(thumbPathsFromQualidade(bundle.qualidade));
+    const laudo19 = await buildLaudo19ForTroca(bundle, procRow.data?.resumo_json);
+    const thumbPaths = thumbPathsFromQualidade(bundle.qualidade);
+    for (const row of laudo19?.fotoRows ?? []) {
+      if (row.path) thumbPaths.push(row.path);
+    }
+    const thumbs = await signGestaoTrocaFotoPaths(thumbPaths);
+    setPreviewLaudo19(laudo19);
     setPreviewLaudo(bundle.laudo);
     setPreviewDescricao(bundle.descricao);
     setPreviewQualidade(bundle.qualidade);
@@ -768,6 +834,7 @@ export default function GestaoTrocaFichaPage() {
 
         <GestaoTrocaEspessuraCard
           value={troca.espessura_json}
+          faixas={espFaixas}
           disabled={busy || laudoLocked}
           onChange={(next) => {
             setTroca((t) => (t ? { ...t, espessura_json: next } : t));
@@ -795,6 +862,10 @@ export default function GestaoTrocaFichaPage() {
               trocaId={id}
               kmFicha={troca.km}
               kmPainelConferido={troca.km_painel_conferido === true}
+              fotosRaw={troca.fotos_json}
+              espessuraJson={troca.espessura_json}
+              espessuraFaixas={espFaixas}
+              procedenciaConsultaId={troca.procedencia_consulta_id}
               disabled={busy}
               laudoFinalizado={laudoLocked}
               onKmConferido={() => {
@@ -907,6 +978,9 @@ export default function GestaoTrocaFichaPage() {
             parecer={previewParecer}
             qualidade={previewQualidade}
             thumbUrls={previewDescricaoThumbs}
+            laudo19={previewLaudo19}
+            espessuraJson={troca.espessura_json}
+            espessuraFaixas={espFaixas}
             finalizadoPor={finalizadoPorLabel}
           />
           <DialogFooter>

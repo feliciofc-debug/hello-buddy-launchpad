@@ -1,6 +1,7 @@
 export {
   GESTAO_TROCA_ROTEIRO_OBRIGATORIOS_TOTAL,
   GESTAO_TROCA_ROTEIRO_SLOTS,
+  gestaoTrocaFotosOrdenadasParaIa,
   gestaoTrocaResolveFotoSlot,
   gestaoTrocaRoteiroProgress,
   gestaoTrocaSlotDef,

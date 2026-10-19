@@ -17,8 +17,14 @@ import { gestaoTrocaRoteiroProgress } from "./gestao-troca-roteiro.ts";
 import type { GestaoTrocaFotoEntry } from "./gestao-troca-fotos.ts";
 import {
   AI_GATEWAY_CHAT_COMPLETIONS_URL,
+  gestaoTrocaIaMaxFotoBytes,
   type GestaoTrocaIaFotoInput,
 } from "./gestao-troca-ia-vision.ts";
+import { buildGestaoTrocaIaFotoPrompt } from "./gestao-troca-ia-foto-prompt.ts";
+import {
+  calcResumoPorAreaRegra,
+  mergeResumoTextoIa,
+} from "./gestao-troca-consolidacao-regra.ts";
 
 export function gestaoTrocaIaModel(): string {
   return Deno.env.get("GESTAO_TROCA_IA_MODEL")?.trim() || "google/gemini-3.6-flash";
@@ -46,33 +52,12 @@ export type GestaoTrocaConsolidacaoLaudo = {
   mensagem_parcial: string | null;
 };
 
-function buildPerPhotoPrompt(indice: number, slot: string, slotLabel: string): string {
-  return [
-    "Você é perito de avaliação de veículos usados no Brasil.",
-    `Analise UMA foto (índice global ${indice}, slot informado: ${slot} — ${slotLabel}).`,
-    "Descreva objetivamente o que se vê (2–4 frases).",
-    "Regras: preferir subnotificar; chuva/reflexo/sujeira/poeira são condição da foto, NÃO avaria;",
-    "massa_suspeita só se reflexo reto quebra naquele painel e não nos vizinhos, nunca confiança alta só pela foto;",
-    "imagem escura/borrada → qualidade insuficiente e achados=[];",
-    "não ler documentos; não descrever pessoas; não inventar sulco em mm;",
-    "pneu: marca/DOT só se legível; sulco só aparenta bom/meia-vida/próximo do limite.",
-    `qualidade_imagem: ${GESTAO_TROCA_IA_FOTO_QUALIDADES.join("|")}`,
-    `tipo achado: ${GESTAO_TROCA_IA_ACHADO_TIPOS.join("|")}`,
-    `severidade: ${GESTAO_TROCA_IA_ACHADO_SEVERIDADES.join("|")}`,
-    `confianca: ${GESTAO_TROCA_IA_ACHADO_CONFIANCAS.join("|")}`,
-    "Responda SOMENTE JSON válido:",
-    "{",
-    `"indice": ${indice},`,
-    `"slot_informado": "${slot}",`,
-    '"slot_identificado": string|null,',
-    '"qualidade_imagem": string,',
-    '"motivo_qualidade": string,',
-    '"descricao": string,',
-    '"achados": [{ "tipo", "local", "severidade", "confianca", "evidencia" }],',
-    '"nao_da_para_afirmar": string[]',
-    "}",
-  ].join("\n");
-}
+export type GestaoTrocaFotoManifest = {
+  indice: number;
+  path: string;
+  etiqueta: string;
+  slot: string;
+};
 
 function parseJsonFromModel(raw: string): unknown {
   const t = raw.trim().replace(/^```json?\s*/i, "").replace(/```\s*$/, "").trim();
@@ -90,7 +75,7 @@ export async function analyzeOneGestaoTrocaFoto(input: {
   const content: Array<
     { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }
   > = [
-    { type: "text", text: buildPerPhotoPrompt(input.foto.indice, String(input.foto.slot), slotLabel) },
+    { type: "text", text: buildGestaoTrocaIaFotoPrompt(input.foto.indice, String(input.foto.slot), slotLabel) },
     { type: "image_url", image_url: { url: `data:${input.foto.mime};base64,${input.foto.base64}` } },
   ];
   try {
@@ -142,40 +127,109 @@ async function mapPool<T, R>(
 
 export async function analyzeGestaoTrocaFotosPorFoto(input: {
   apiKey: string;
-  fotos: (GestaoTrocaIaFotoInput & { indice: number; slot: GestaoTrocaFotoSlotId | string })[];
+  manifests: GestaoTrocaFotoManifest[];
+  downloadBase64: (
+    path: string,
+  ) => Promise<
+    | { ok: true; mime: string; base64: string; bytes: number }
+    | { ok: false; reason: string }
+  >;
   onProgress?: (done: number, total: number) => void | Promise<void>;
   fetchFn?: typeof fetch;
 }): Promise<
-  | { ok: true; rows: GestaoTrocaIaFotoAnaliseRow[] }
+  | { ok: true; rows: GestaoTrocaIaFotoAnaliseRow[]; qualidade: import("./gestao-troca-ia-vision.ts").GestaoTrocaIaQualidadeFoto[] }
   | { ok: false; error: string }
 > {
-  if (!input.fotos.length) return { ok: false, error: "Nenhuma foto para analisar." };
-  const total = input.fotos.length;
+  if (!input.manifests.length) return { ok: false, error: "Nenhuma foto para analisar." };
+  const total = input.manifests.length;
+  const maxBytes = gestaoTrocaIaMaxFotoBytes();
   let done = 0;
-  const rows = await mapPool(input.fotos, 4, async (foto) => {
+  const qualidade: import("./gestao-troca-ia-vision.ts").GestaoTrocaIaQualidadeFoto[] = [];
+  const rows = await mapPool(input.manifests, 4, async (manifest) => {
+    const dl = await input.downloadBase64(manifest.path);
+    if (!dl.ok) {
+      qualidade.push({
+        path: manifest.path,
+        etiqueta: manifest.etiqueta,
+        bytes: 0,
+        usada: false,
+        motivo_skip: dl.reason,
+      });
+      done++;
+      await input.onProgress?.(done, total);
+      return {
+        indice: manifest.indice,
+        slot_informado: manifest.slot,
+        slot_identificado: null,
+        qualidade_imagem: "insuficiente" as const,
+        motivo_qualidade: dl.reason,
+        descricao: "Foto não disponível para análise.",
+        achados: [],
+        nao_da_para_afirmar: [],
+        path: manifest.path,
+      };
+    }
+    if (dl.bytes > maxBytes) {
+      qualidade.push({
+        path: manifest.path,
+        etiqueta: manifest.etiqueta,
+        bytes: dl.bytes,
+        usada: false,
+        motivo_skip: "arquivo_maior_4mb",
+      });
+      done++;
+      await input.onProgress?.(done, total);
+      return {
+        indice: manifest.indice,
+        slot_informado: manifest.slot,
+        slot_identificado: null,
+        qualidade_imagem: "insuficiente" as const,
+        motivo_qualidade: "arquivo maior que 4MB",
+        descricao: "Arquivo excede limite para IA.",
+        achados: [],
+        nao_da_para_afirmar: [],
+        path: manifest.path,
+      };
+    }
+    const foto: GestaoTrocaIaFotoInput & { indice: number; slot: string } = {
+      path: manifest.path,
+      etiqueta: manifest.etiqueta,
+      mime: dl.mime,
+      base64: dl.base64,
+      bytes: dl.bytes,
+      indice: manifest.indice,
+      slot: manifest.slot,
+    };
     let last = await analyzeOneGestaoTrocaFoto({ apiKey: input.apiKey, foto, fetchFn: input.fetchFn });
     if (!last.ok) {
       last = await analyzeOneGestaoTrocaFoto({ apiKey: input.apiKey, foto, fetchFn: input.fetchFn });
     }
+    qualidade.push({
+      path: manifest.path,
+      etiqueta: manifest.etiqueta,
+      bytes: dl.bytes,
+      usada: last.ok,
+      motivo_skip: last.ok ? undefined : last.error,
+    });
     done++;
     await input.onProgress?.(done, total);
     if (!last.ok) {
       return {
-        indice: foto.indice,
-        slot_informado: foto.slot,
+        indice: manifest.indice,
+        slot_informado: manifest.slot,
         slot_identificado: null,
         qualidade_imagem: "insuficiente" as const,
         motivo_qualidade: last.error,
         descricao: "Análise não concluída para esta foto.",
         achados: [],
         nao_da_para_afirmar: [],
-        path: foto.path,
+        path: manifest.path,
       };
     }
     return last.row;
   });
   rows.sort((a, b) => a.indice - b.indice);
-  return { ok: true, rows };
+  return { ok: true, rows, qualidade };
 }
 
 export function visionItemsFromFotoRows(
@@ -199,11 +253,15 @@ export function visionItemsFromFotoRows(
 function kmFromPainelRow(rows: GestaoTrocaIaFotoAnaliseRow[]): number | null {
   const painel = rows.find((r) => String(r.slot_informado) === "painel_ligado");
   if (!painel) return null;
-  const m = painel.descricao.replace(/\./g, "").match(/(\d{1,3}[\d.]?\d*)\s*km/i);
-  if (!m) return null;
-  const digits = m[1].replace(/\D/g, "");
-  const n = Number.parseInt(digits, 10);
-  return Number.isFinite(n) ? n : null;
+  if (painel.km_painel != null && Number.isFinite(painel.km_painel)) return painel.km_painel;
+  return null;
+}
+
+function luzesFromPainelRow(rows: GestaoTrocaIaFotoAnaliseRow[]): boolean | null {
+  const painel = rows.find((r) => String(r.slot_informado) === "painel_ligado");
+  if (!painel) return null;
+  if (painel.luzes_alerta?.length) return true;
+  return false;
 }
 
 export async function consolidateGestaoTrocaLaudoText(input: {
@@ -218,29 +276,20 @@ export async function consolidateGestaoTrocaLaudoText(input: {
     ? `Avaliação parcial: ${faltando} ângulos obrigatórios não fotografados.`
     : null;
 
-  const payload = {
-    fotos: input.fotoRows.map((r) => ({
-      indice: r.indice,
-      slot: r.slot_informado,
-      descricao: r.descricao,
-      achados: r.achados,
-      qualidade: r.qualidade_imagem,
-    })),
-    slots_obrigatorios_faltando: prog.faltando,
-  };
+  const regra = calcResumoPorAreaRegra({
+    fotoRows: input.fotoRows,
+    fotosNorm: input.fotosNorm,
+  });
 
   const fetchFn = input.fetchFn ?? fetch;
   const prompt = [
-    "Consolide o laudo de vistoria em português (Brasil) a partir do JSON.",
-    "Produza resumo_por_area para: externo, estrutura_cofre, pneus, interno.",
-    "condicao: sem_apontamento|leve|atencao|grave|nao_fotografado — cite fotos (#n) no texto.",
-    faltando > 0
-      ? `OBRIGATÓRIO incluir conclusao_visual mencionando: "${mensagem_parcial}"`
-      : "Proibido usar 'excelente estado' se faltar slot obrigatório.",
-    "km_painel e luzes_painel só se evidenciados na foto painel_ligado.",
-    "Sem preços. JSON only:",
-    '{ "resumo_por_area": [...], "conclusao_visual": string, "km_painel": number|null, "luzes_painel": true|false|null }',
-    JSON.stringify(payload),
+    "Escreva textos descritivos em português (Brasil) para cada área do laudo.",
+    "NÃO altere condicao (já definida por regra). Retorne JSON:",
+    '{ "textos": { "externo": string, "estrutura_cofre": string, "pneus": string, "interno": string },',
+    '"conclusao_visual": string }',
+    "Cite fotos (#n). Sem preços.",
+    faltando > 0 ? `Mencione: ${mensagem_parcial}` : "",
+    JSON.stringify({ condicoes: regra, fotos: input.fotoRows }),
   ].join("\n");
 
   try {
@@ -261,90 +310,38 @@ export async function consolidateGestaoTrocaLaudoText(input: {
       const body = await response.json();
       const raw = String(body?.choices?.[0]?.message?.content || "");
       const parsed = parseJsonFromModel(raw) as Record<string, unknown>;
-      const areas = Array.isArray(parsed.resumo_por_area) ? parsed.resumo_por_area : [];
-      const resumo: GestaoTrocaResumoAreaRow[] = [];
-      for (const a of areas) {
-        if (!a || typeof a !== "object") continue;
-        const o = a as Record<string, unknown>;
-        const area = String(o.area ?? "");
-        if (!["externo", "estrutura_cofre", "pneus", "interno"].includes(area)) continue;
-        resumo.push({
-          area: area as GestaoTrocaResumoAreaRow["area"],
-          condicao: String(o.condicao ?? "sem_apontamento") as GestaoTrocaResumoAreaCondicao,
-          texto: String(o.texto ?? "").slice(0, 600),
-          fotos: Array.isArray(o.fotos) ? o.fotos.map((n) => Number(n)).filter((n) => n >= 1) : [],
-        });
-      }
-      if (resumo.length) {
-        return {
-          resumo_por_area: resumo,
-          conclusao_visual: String(parsed.conclusao_visual ?? "").slice(0, 800) ||
-            (mensagem_parcial ?? "Laudo consolidado."),
-          km_painel: parsed.km_painel != null ? Number(parsed.km_painel) : kmFromPainelRow(input.fotoRows),
-          luzes_painel: typeof parsed.luzes_painel === "boolean" ? parsed.luzes_painel : null,
-          mensagem_parcial,
-        };
-      }
+      const textos = parsed.textos && typeof parsed.textos === "object"
+        ? parsed.textos as Record<string, string>
+        : {};
+      const resumo = mergeResumoTextoIa(regra, textos);
+      return {
+        resumo_por_area: resumo,
+        conclusao_visual: String(parsed.conclusao_visual ?? "").slice(0, 800) ||
+          (mensagem_parcial ?? "Laudo consolidado."),
+        km_painel: kmFromPainelRow(input.fotoRows),
+        luzes_painel: luzesFromPainelRow(input.fotoRows),
+        mensagem_parcial,
+      };
     }
   } catch {
     /* fallback below */
   }
 
+  const regraFb = calcResumoPorAreaRegra({
+    fotoRows: input.fotoRows,
+    fotosNorm: input.fotosNorm,
+  });
   return {
-    resumo_por_area: fallbackResumo(input.fotoRows, prog.faltando),
+    resumo_por_area: regraFb.map((r) => ({
+      ...r,
+      texto: r.texto || input.fotoRows.filter((fr) => r.fotos.includes(fr.indice)).map((x) => x.descricao).join(" ").slice(0, 400),
+    })),
     conclusao_visual: mensagem_parcial ??
       "Laudo foto a foto concluído; revisar achados pendentes.",
     km_painel: kmFromPainelRow(input.fotoRows),
-    luzes_painel: null,
+    luzes_painel: luzesFromPainelRow(input.fotoRows),
     mensagem_parcial,
   };
-}
-
-function fallbackResumo(
-  rows: GestaoTrocaIaFotoAnaliseRow[],
-  faltando: GestaoTrocaFotoSlotId[],
-): GestaoTrocaResumoAreaRow[] {
-  const grupos: GestaoTrocaResumoAreaRow["area"][] = [
-    "externo",
-    "estrutura_cofre",
-    "pneus",
-    "interno",
-  ];
-  return grupos.map((area) => {
-    const slots = GESTAO_TROCA_ROTEIRO_SLOTS.filter((s) => {
-      if (area === "externo") return s.grupo === "externo";
-      if (area === "estrutura_cofre") return s.grupo === "estrutura";
-      if (area === "pneus") return s.grupo === "pneus";
-      return s.grupo === "interno";
-    }).map((s) => s.id);
-    const missing = slots.filter((id) => faltando.includes(id));
-    if (missing.length === slots.filter((id) =>
-      GESTAO_TROCA_ROTEIRO_SLOTS.find((s) => s.id === id)?.obrigatorio
-    ).length) {
-      return {
-        area,
-        condicao: "nao_fotografado",
-        texto: "⚪ não fotografado — não avaliado",
-        fotos: [],
-      };
-    }
-    const idxs = rows.filter((r) => slots.includes(String(r.slot_informado) as GestaoTrocaFotoSlotId))
-      .map((r) => r.indice);
-    const achados = rows.flatMap((r) => r.achados);
-    const cond = achados.some((a) => a.severidade === "grave")
-      ? "grave"
-      : achados.some((a) => a.severidade === "moderada")
-      ? "atencao"
-      : achados.length
-      ? "leve"
-      : "sem_apontamento";
-    return {
-      area,
-      condicao: cond as GestaoTrocaResumoAreaCondicao,
-      texto: rows.filter((r) => idxs.includes(r.indice)).map((r) => r.descricao).join(" ").slice(0, 400),
-      fotos: idxs,
-    };
-  });
 }
 
 export { GESTAO_TROCA_ROTEIRO_OBRIGATORIOS_TOTAL };

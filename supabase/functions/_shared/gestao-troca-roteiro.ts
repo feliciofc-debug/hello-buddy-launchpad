@@ -24,7 +24,9 @@ export type GestaoTrocaFotoSlotId =
   | "bancos_dianteiros"
   | "bancos_traseiros"
   | "volante_cambio"
-  | "forro_teto";
+  | "forro_teto"
+  | "manual_manutencao"
+  | "opcionais_destaque";
 
 export type GestaoTrocaRoteiroGrupo = "externo" | "estrutura" | "pneus" | "interno";
 
@@ -63,6 +65,8 @@ export const GESTAO_TROCA_ROTEIRO_SLOTS: GestaoTrocaRoteiroSlotDef[] = [
   { id: "bancos_traseiros", label: "Bancos traseiros", grupo: "interno", obrigatorio: true, dica: "Bancos traseiros e acabamento.", etiquetaLegado: "Interior traseiro" },
   { id: "volante_cambio", label: "Volante / câmbio", grupo: "interno", obrigatorio: true, dica: "Volante, console central e alavanca.", etiquetaLegado: "Outra" },
   { id: "forro_teto", label: "Forro de teto", grupo: "interno", obrigatorio: false, dica: "Forro interno do teto.", etiquetaLegado: "Outra" },
+  { id: "manual_manutencao", label: "Manual / revisões", grupo: "interno", obrigatorio: false, dica: "Páginas de revisão visíveis, sem dados pessoais.", etiquetaLegado: "Outra" },
+  { id: "opcionais_destaque", label: "Opcionais destaque", grupo: "interno", obrigatorio: false, dica: "Teto solar, multimídia, etc.", etiquetaLegado: "Outra" },
 ];
 
 export const GESTAO_TROCA_ROTEIRO_OBRIGATORIOS_TOTAL = GESTAO_TROCA_ROTEIRO_SLOTS.filter((s) =>

@@ -22,9 +22,12 @@ import {
   appendGestaoTrocaFotoAFotoPdfLines,
   appendGestaoTrocaIndicioColisaoPdfLines,
   appendGestaoTrocaResumoAreaPdfLines,
+  appendGestaoTrocaResultadoLaudoPdfLines,
 } from "@/lib/gestao-troca-laudo-foto-display.ts";
 import type { GestaoTrocaIndicioColisaoResult } from "../../supabase/functions/_shared/gestao-troca-indicio-colisao.ts";
 import type { GestaoTrocaIaFotoAnaliseRow } from "../../supabase/functions/_shared/gestao-troca-ia-foto-schema.ts";
+import type { GestaoTrocaLaudo19Computed } from "@/lib/gestao-troca-laudo-19.ts";
+import type { GestaoTrocaEspessuraFaixas } from "@/lib/gestao-troca-espessura.ts";
 
 export type { GestaoTrocaLaudoPdfSection, GestaoTrocaLaudoPdfFinalizacao };
 
@@ -132,6 +135,8 @@ export async function downloadGestaoTrocaRelatorioPdf(
     estrutura_json?: Record<string, unknown> | null;
     fotos_json?: GestaoTrocaIaFotoAnaliseRow[] | null;
   } | null,
+  laudo19?: GestaoTrocaLaudo19Computed | null,
+  espessuraFaixas?: GestaoTrocaEspessuraFaixas,
 ) {
   const doc = new jsPDF();
   let y = 14;
@@ -164,14 +169,20 @@ export async function downloadGestaoTrocaRelatorioPdf(
 
   const estrutura = laudoAnalise?.estrutura_json ?? null;
   y += 4;
-  appendGestaoTrocaResumoAreaPdfLines(line, estrutura);
+  appendGestaoTrocaResultadoLaudoPdfLines(line, laudo19?.resultado ?? null);
+  y += 4;
+  appendGestaoTrocaResumoAreaPdfLines(
+    line,
+    laudo19 ? { resumo_por_area: laudo19.resumo_por_area } : estrutura,
+  );
   y += 4;
   appendGestaoTrocaIndicioColisaoPdfLines(
     line,
-    estrutura?.indicio_colisao as GestaoTrocaIndicioColisaoResult | undefined,
+    laudo19?.indicio_colisao ??
+      estrutura?.indicio_colisao as GestaoTrocaIndicioColisaoResult | undefined,
   );
   y += 4;
-  appendGestaoTrocaEspessuraPdfLines(line, troca.espessura_json);
+  appendGestaoTrocaEspessuraPdfLines(line, troca.espessura_json, espessuraFaixas);
   y += 4;
   appendGestaoTrocaFotoAFotoPdfLines(
     line,

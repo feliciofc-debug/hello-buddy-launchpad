@@ -24,9 +24,23 @@ import {
   type GestaoTrocaIaAnalise,
   type GestaoTrocaIaItem,
 } from "@/lib/gestao-troca-ia-types.ts";
+import { normalizeGestaoTrocaFotos } from "@/lib/gestao-troca-fotos.ts";
+import {
+  buildGestaoTrocaLaudo19Computed,
+  gestaoTrocaEspessuraFaixasFromConfig,
+  type GestaoTrocaLaudo19Computed,
+} from "@/lib/gestao-troca-laudo-19.ts";
+import {
+  DEFAULT_GESTAO_TROCA_ESPESSURA_FAIXAS,
+  type GestaoTrocaEspessuraFaixas,
+} from "@/lib/gestao-troca-espessura.ts";
+import { GestaoTrocaLaudo19Section } from "@/components/gestao/trocas/GestaoTrocaLaudo19Section.tsx";
+import { parseGestaoTrocaAnaliseFotoRows } from "@/lib/gestao-troca-laudo-19.ts";
+import { parseProcedenciaResumoJson } from "@/lib/gestao-troca-procedencia-display.ts";
 
 const POLL_MS = 5000;
-const POLL_MAX_MS = 4 * 60 * 1000;
+const POLL_MAX_MS = 12 * 60 * 1000;
+const POLL_STALL_MS = 3 * 60 * 1000;
 
 const ANGULOS_PADRAO = GESTAO_TROCA_FOTO_ETIQUETAS.filter(
   (e) => e !== "Documento (CRLV)" && e !== "Outra",
@@ -40,6 +54,10 @@ type Props = {
   trocaId: string;
   kmFicha: number | null;
   kmPainelConferido: boolean;
+  fotosRaw?: unknown;
+  espessuraJson?: unknown;
+  espessuraFaixas?: GestaoTrocaEspessuraFaixas;
+  procedenciaConsultaId?: string | null;
   disabled?: boolean;
   laudoFinalizado?: boolean;
   onKmConferido?: () => void;
@@ -51,6 +69,10 @@ export function GestaoTrocaLaudoIaPanel({
   trocaId,
   kmFicha,
   kmPainelConferido,
+  fotosRaw,
+  espessuraJson,
+  espessuraFaixas = DEFAULT_GESTAO_TROCA_ESPESSURA_FAIXAS,
+  procedenciaConsultaId = null,
   disabled,
   laudoFinalizado,
   onKmConferido,
@@ -65,6 +87,9 @@ export function GestaoTrocaLaudoIaPanel({
   const [valorDraft, setValorDraft] = useState<Record<string, string>>({});
   const pollStarted = useRef<number | null>(null);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastProgress = useRef<{ foto: number; at: number }>({ foto: 0, at: Date.now() });
+  const [configFaixas, setConfigFaixas] = useState<GestaoTrocaEspessuraFaixas>(espessuraFaixas);
+  const [procedenciaResumo, setProcedenciaResumo] = useState<unknown>(null);
 
   const stopPolling = useCallback(() => {
     if (pollTimer.current) {
@@ -108,6 +133,37 @@ export function GestaoTrocaLaudoIaPanel({
   }, [refresh]);
 
   useEffect(() => {
+    setConfigFaixas(espessuraFaixas);
+  }, [espessuraFaixas]);
+
+  useEffect(() => {
+    if (espessuraFaixas !== DEFAULT_GESTAO_TROCA_ESPESSURA_FAIXAS) return;
+    void (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase.from("gestao_troca_config" as "veiculos_estoque")
+        .select("espessura_original_max, espessura_repintura_max")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (data) setConfigFaixas(gestaoTrocaEspessuraFaixasFromConfig(data as Record<string, unknown>));
+    })();
+  }, [espessuraFaixas]);
+
+  useEffect(() => {
+    if (!procedenciaConsultaId) {
+      setProcedenciaResumo(null);
+      return;
+    }
+    void (async () => {
+      const { data } = await supabase.from("veiculo_procedencia_consulta" as "veiculos_estoque")
+        .select("resumo_json")
+        .eq("id", procedenciaConsultaId)
+        .maybeSingle();
+      setProcedenciaResumo(data?.resumo_json ?? null);
+    })();
+  }, [procedenciaConsultaId]);
+
+  useEffect(() => {
     onLaudoState?.({
       alertaKm: analise?.alerta_km === true,
       kmConferido: kmPainelConferido,
@@ -122,6 +178,9 @@ export function GestaoTrocaLaudoIaPanel({
     for (const q of analise?.qualidade_json ?? []) {
       if (q.path && q.etiqueta !== "Documento (CRLV)") paths.add(q.path);
     }
+    for (const row of parseGestaoTrocaAnaliseFotoRows(analise?.fotos_json)) {
+      if (row.path) paths.add(row.path);
+    }
     if (!paths.size) return;
     void (async () => {
       const next: Record<string, string> = {};
@@ -131,7 +190,7 @@ export function GestaoTrocaLaudoIaPanel({
       }
       setThumbUrls(next);
     })();
-  }, [analise?.qualidade_json, itens]);
+  }, [analise?.fotos_json, analise?.qualidade_json, itens]);
 
   useEffect(() => () => stopPolling(), [stopPolling]);
 
@@ -140,11 +199,17 @@ export function GestaoTrocaLaudoIaPanel({
       stopPolling();
       setPolling(true);
       pollStarted.current = Date.now();
+      lastProgress.current = { foto: 0, at: Date.now() };
       pollTimer.current = setInterval(() => {
         void (async () => {
           if (pollStarted.current && Date.now() - pollStarted.current > POLL_MAX_MS) {
             stopPolling();
-            toast.error("Tempo máximo de análise atingido (4 min).");
+            toast.error("Tempo máximo de análise atingido (12 min).");
+            return;
+          }
+          if (Date.now() - lastProgress.current.at > POLL_STALL_MS) {
+            stopPolling();
+            toast.error("Análise sem progresso há 3 min — tente novamente.");
             return;
           }
           const { analise: a, itens: list, error, notFound } =
@@ -156,6 +221,12 @@ export function GestaoTrocaLaudoIaPanel({
             return;
           }
           if (!a) return;
+          const prog = a.progresso_foto ?? 0;
+          if (a.progresso_total != null && a.progresso_total > 0) {
+            if (prog > lastProgress.current.foto) {
+              lastProgress.current = { foto: prog, at: Date.now() };
+            }
+          }
           applyLaudo(a, list);
           if (a.status !== "processando") {
             stopPolling();
@@ -253,6 +324,21 @@ export function GestaoTrocaLaudoIaPanel({
   const analisando = polling || !!analiseJobId || analise?.status === "processando";
   const readOnly = disabled || laudoFinalizado;
 
+  const laudo19 = useMemo((): GestaoTrocaLaudo19Computed | null => {
+    if (!analise?.fotos_json) return null;
+    return buildGestaoTrocaLaudo19Computed({
+      fotos_json: analise.fotos_json,
+      estrutura_json: analise.estrutura_json,
+      espessura_json: espessuraJson,
+      faixas: configFaixas,
+      itens,
+      fotosNorm: normalizeGestaoTrocaFotos(fotosRaw),
+      procedencia_resumo: parseProcedenciaResumoJson(procedenciaResumo),
+    });
+  }, [analise, configFaixas, espessuraJson, fotosRaw, itens, procedenciaResumo]);
+
+  const legacyDescricao = (analise?.descricao_areas_json?.length ?? 0) > 0;
+
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground">{GESTAO_TROCA_IA_DISCLAIMER}</p>
@@ -305,7 +391,15 @@ export function GestaoTrocaLaudoIaPanel({
 
       {analise && !analisando && analise.status !== "rejeitada" && (
         <>
-          {(analise.descricao_areas_json?.length ?? 0) > 0 && (
+          {laudo19 && (
+            <GestaoTrocaLaudo19Section
+              computed={laudo19}
+              espessuraRaw={espessuraJson}
+              faixas={configFaixas}
+              thumbUrls={thumbUrls}
+            />
+          )}
+          {legacyDescricao && (
             <GestaoTrocaLaudoDescricaoSection
               {...splitDescricaoPorSecao(analise.descricao_areas_json ?? [])}
               conclusao_visual={analise.conclusao_visual ?? null}

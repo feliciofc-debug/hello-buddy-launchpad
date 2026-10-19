@@ -12,6 +12,36 @@ import type { GestaoTrocaParecerPreviewView } from "@/lib/gestao-troca-parecer-d
 import type { GestaoTrocaProcedenciaLaudo } from "@/lib/gestao-troca-procedencia-display.ts";
 import type { GestaoTrocaEvento, GestaoTrocaRow } from "@/lib/gestao-troca-types.ts";
 import { GestaoTrocaProcedenciaResumo } from "@/components/gestao/trocas/GestaoTrocaProcedenciaResumo.tsx";
+import { GestaoTrocaLaudo19Section } from "@/components/gestao/trocas/GestaoTrocaLaudo19Section.tsx";
+import type { GestaoTrocaLaudo19Computed } from "@/lib/gestao-troca-laudo-19.ts";
+import type { GestaoTrocaEspessuraFaixas } from "@/lib/gestao-troca-espessura.ts";
+
+function eventosTimelineAmostra(eventos: GestaoTrocaEvento[]): GestaoTrocaEvento[] {
+  const slice = eventos.slice(0, 12);
+  const out: GestaoTrocaEvento[] = [];
+  let batch = 0;
+  let last: GestaoTrocaEvento | null = null;
+  const flush = () => {
+    if (!last || batch === 0) return;
+    out.push({
+      ...last,
+      descricao: batch > 1 ? `${last.descricao} (${batch} análises)` : last.descricao,
+    });
+    batch = 0;
+    last = null;
+  };
+  for (const e of slice) {
+    if (e.descricao.startsWith("Laudo IA concluído")) {
+      batch += 1;
+      last = e;
+      continue;
+    }
+    flush();
+    out.push(e);
+  }
+  flush();
+  return out;
+}
 
 function formatDt(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -31,6 +61,9 @@ type Props = {
   parecer?: GestaoTrocaParecerPreviewView | null;
   qualidade?: GestaoTrocaIaQualidadeFoto[];
   thumbUrls?: Record<string, string>;
+  laudo19?: GestaoTrocaLaudo19Computed | null;
+  espessuraJson?: unknown;
+  espessuraFaixas?: GestaoTrocaEspessuraFaixas;
   finalizadoPor?: string | null;
 };
 
@@ -43,6 +76,9 @@ export function GestaoTrocaLaudoPreviewContent({
   parecer,
   qualidade = [],
   thumbUrls = {},
+  laudo19 = null,
+  espessuraJson,
+  espessuraFaixas,
   finalizadoPor,
 }: Props) {
   const checklist = normalizeGestaoTrocaChecklist(troca.checklist_json);
@@ -89,6 +125,14 @@ export function GestaoTrocaLaudoPreviewContent({
         <p className="font-semibold">Procedência veicular</p>
         <GestaoTrocaProcedenciaResumo procedencia={procedencia} laudoMode />
       </div>
+      {laudo19 && (
+        <GestaoTrocaLaudo19Section
+          computed={laudo19}
+          espessuraRaw={espessuraJson}
+          faixas={espessuraFaixas}
+          thumbUrls={thumbUrls}
+        />
+      )}
       {descricao && (
         <GestaoTrocaLaudoDescricaoSection
           externo={descricao.externo}
@@ -162,7 +206,7 @@ export function GestaoTrocaLaudoPreviewContent({
       <div>
         <p className="font-semibold">Linha do tempo (amostra)</p>
         <ul className="space-y-1 text-muted-foreground">
-          {eventos.slice(0, 12).map((e) => (
+          {eventosTimelineAmostra(eventos).map((e) => (
             <li key={e.id}>
               {e.created_at.slice(0, 10)} — {e.descricao}
             </li>

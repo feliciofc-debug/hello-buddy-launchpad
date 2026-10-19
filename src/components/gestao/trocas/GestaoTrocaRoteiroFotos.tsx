@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
   GESTAO_TROCA_ROTEIRO_SLOTS,
+  gestaoTrocaResolveFotoSlot,
   gestaoTrocaRoteiroProgress,
   gestaoTrocaSlotDef,
   type GestaoTrocaFotoSlotId,
@@ -36,9 +37,7 @@ export function GestaoTrocaRoteiroFotos({
   const bySlot = useMemo(() => {
     const m = new Map<GestaoTrocaFotoSlotId, GestaoTrocaFotoEntry>();
     for (const f of fotos) {
-      const slot = GESTAO_TROCA_ROTEIRO_SLOTS.find((s) =>
-        f.slot === s.id || f.etiqueta === s.etiquetaLegado
-      )?.id;
+      const slot = gestaoTrocaResolveFotoSlot(f);
       if (slot && !m.has(slot)) m.set(slot, f);
     }
     return m;
@@ -69,12 +68,7 @@ export function GestaoTrocaRoteiroFotos({
       toast.error("Falha no upload.");
       return;
     }
-    const rest = fotos.filter((f) => {
-      const s = GESTAO_TROCA_ROTEIRO_SLOTS.find((x) =>
-        f.slot === x.id || f.etiqueta === x.etiquetaLegado
-      )?.id;
-      return s !== slot;
-    });
+    const rest = fotos.filter((f) => gestaoTrocaResolveFotoSlot(f) !== slot);
     onFotosChange([
       ...rest,
       { path, etiqueta: def.etiquetaLegado, slot },

@@ -35,6 +35,16 @@ export const DEFAULT_GESTAO_TROCA_ESPESSURA_FAIXAS: GestaoTrocaEspessuraFaixas =
   repintura_max: 300,
 };
 
+export function gestaoTrocaEspessuraFaixasFromConfig(row: Record<string, unknown> | null): GestaoTrocaEspessuraFaixas {
+  const o = row ?? {};
+  const original_max = Number(o.espessura_original_max ?? DEFAULT_GESTAO_TROCA_ESPESSURA_FAIXAS.original_max);
+  const repintura_max = Number(o.espessura_repintura_max ?? DEFAULT_GESTAO_TROCA_ESPESSURA_FAIXAS.repintura_max);
+  return {
+    original_max: Number.isFinite(original_max) ? original_max : 180,
+    repintura_max: Number.isFinite(repintura_max) ? repintura_max : 300,
+  };
+}
+
 export type GestaoTrocaEspessuraClassificacao =
   | "original"
   | "repintura"
@@ -65,6 +75,21 @@ export function parseGestaoTrocaEspessuraJson(raw: unknown): Partial<
     if (Number.isFinite(n) && n > 0) out[id] = Math.round(n);
   }
   return out;
+}
+
+export function gestaoTrocaEspessuraClassificacaoLabel(
+  cls: GestaoTrocaEspessuraClassificacao,
+): { rotulo: string; cor: "verde" | "amarelo" | "vermelho" | "muted" } {
+  switch (cls) {
+    case "original":
+      return { rotulo: "Original", cor: "verde" };
+    case "repintura":
+      return { rotulo: "Repintura provável", cor: "amarelo" };
+    case "massa":
+      return { rotulo: "Massa provável", cor: "vermelho" };
+    default:
+      return { rotulo: "Não medido", cor: "muted" };
+  }
 }
 
 export function classificarEspessuraMap(

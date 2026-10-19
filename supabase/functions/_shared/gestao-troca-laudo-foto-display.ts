@@ -7,10 +7,13 @@ import {
 } from "./gestao-troca-indicio-colisao.ts";
 import {
   classificarEspessuraMap,
+  DEFAULT_GESTAO_TROCA_ESPESSURA_FAIXAS,
+  gestaoTrocaEspessuraClassificacaoLabel,
   GESTAO_TROCA_ESPESSURA_PAINEIS,
   parseGestaoTrocaEspessuraJson,
   type GestaoTrocaEspessuraFaixas,
 } from "./gestao-troca-espessura.ts";
+import type { GestaoTrocaResultadoLaudoView } from "./gestao-troca-resultado-laudo.ts";
 
 export function resumoAreaIcon(cond: string): string {
   if (cond === "sem_apontamento") return "✅";
@@ -19,6 +22,16 @@ export function resumoAreaIcon(cond: string): string {
   if (cond === "grave") return "🔴";
   if (cond === "nao_fotografado") return "⚪";
   return "•";
+}
+
+export function appendGestaoTrocaResultadoLaudoPdfLines(
+  line: (t: string, bold?: boolean) => void,
+  resultado: GestaoTrocaResultadoLaudoView | null | undefined,
+): void {
+  if (!resultado) return;
+  line("Resultado do laudo (cautelar)", true);
+  line(resultado.rotulo, true);
+  for (const m of resultado.motivos) line(`• ${m}`);
 }
 
 export function appendGestaoTrocaResumoAreaPdfLines(
@@ -57,14 +70,19 @@ export function appendGestaoTrocaEspessuraPdfLines(
   faixas?: GestaoTrocaEspessuraFaixas,
 ): void {
   const vals = parseGestaoTrocaEspessuraJson(espessuraRaw);
-  const cls = classificarEspessuraMap(vals, faixas);
+  const fx = faixas ?? DEFAULT_GESTAO_TROCA_ESPESSURA_FAIXAS;
+  const cls = classificarEspessuraMap(vals, fx);
   const any = GESTAO_TROCA_ESPESSURA_PAINEIS.some((p) => cls[p.id] !== "nao_medido");
   if (!any) return;
   line("Espessura de pintura (µm)", true);
+  line(
+    `Faixas: Original ≤${fx.original_max} · Repintura provável ≤${fx.repintura_max} · Massa provável >${fx.repintura_max}`,
+  );
   for (const p of GESTAO_TROCA_ESPESSURA_PAINEIS) {
     const v = vals[p.id];
     if (v == null) continue;
-    line(`• ${p.label}: ${v} µm (${cls[p.id]})`);
+    const { rotulo } = gestaoTrocaEspessuraClassificacaoLabel(cls[p.id]);
+    line(`• ${p.label}: ${v} µm — ${rotulo}`);
   }
 }
 

@@ -1,4 +1,5 @@
 import type { GestaoTrocaIaDescricaoAreaRow } from "./gestao-troca-ia-descricao-schema.ts";
+import type { GestaoTrocaResumoAreaRow } from "./gestao-troca-ia-por-foto.ts";
 import type { ProcedenciaResumoJson } from "./consultar-placa-parse.ts";
 import type { GestaoTrocaIndicioNivel } from "./gestao-troca-indicio-colisao.ts";
 import { gestaoTrocaIndicioColisaoMaxNivel } from "./gestao-troca-indicio-colisao.ts";
@@ -19,6 +20,7 @@ export type GestaoTrocaParecerRecomendacaoInput = {
   km_painel_conferido: boolean;
   luzes_painel: boolean | null;
   descricao_areas: GestaoTrocaIaDescricaoAreaRow[];
+  resumo_por_area?: GestaoTrocaResumoAreaRow[];
   laudo_status: string | null;
   roteiro_faltando?: GestaoTrocaFotoSlotId[];
   indicio_colisao?: GestaoTrocaIndicioColisaoResult | null;
@@ -79,6 +81,11 @@ export function calcGestaoTrocaParecerRecomendacao(
   }
   if (input.descricao_areas.some((a) => a.condicao === "alteracao_grave")) {
     motivos.push("Laudo descritivo com alteração grave");
+  }
+  for (const area of input.resumo_por_area ?? []) {
+    if (area.condicao === "grave") {
+      motivos.push(`Laudo foto a foto: ${area.area.replace(/_/g, " ")} com apontamento grave`);
+    }
   }
   const indicioMax: GestaoTrocaIndicioNivel = input.indicio_colisao
     ? gestaoTrocaIndicioColisaoMaxNivel(input.indicio_colisao)

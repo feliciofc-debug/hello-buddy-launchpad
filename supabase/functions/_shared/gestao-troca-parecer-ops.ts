@@ -3,6 +3,8 @@ import type { ProcedenciaResumoJson } from "./consultar-placa-parse.ts";
 import { parseProcedenciaResumoJson } from "./gestao-troca-procedencia-display.ts";
 import { parseGestaoTrocaIaDescricaoAreasJson } from "./gestao-troca-ia-descricao-schema.ts";
 import { loadLatestGestaoTrocaAnalise } from "./gestao-troca-ia-ops.ts";
+import { buildGestaoTrocaLaudo19Computed } from "./gestao-troca-laudo-19-computed.ts";
+import { gestaoTrocaEspessuraFaixasFromConfig } from "./gestao-troca-espessura.ts";
 import { normalizeGestaoTrocaFotos } from "./gestao-troca-fotos.ts";
 import { gestaoTrocaRoteiroProgress } from "./gestao-troca-roteiro.ts";
 import type { GestaoTrocaIndicioColisaoResult } from "./gestao-troca-indicio-colisao.ts";
@@ -50,7 +52,10 @@ export async function buildGestaoTrocaParecerPreview(
     .maybeSingle();
   if (!troca) throw new Error("Troca não encontrada.");
 
-  const { analise } = await loadLatestGestaoTrocaAnalise(sb, userId, trocaId);
+  const { analise, itens } = await loadLatestGestaoTrocaAnalise(sb, userId, trocaId);
+  const { data: cfgRow } = await sb.from("gestao_troca_config").select("*").eq("user_id", userId)
+    .maybeSingle();
+  const faixasEsp = gestaoTrocaEspessuraFaixasFromConfig(cfgRow ?? null);
   const descricaoRows = analise?.descricao_areas_json
     ? parseGestaoTrocaIaDescricaoAreasJson(analise.descricao_areas_json)
     : [];
@@ -62,8 +67,18 @@ export async function buildGestaoTrocaParecerPreview(
 
   const fotosNorm = normalizeGestaoTrocaFotos(troca.fotos_json);
   const roteiro = gestaoTrocaRoteiroProgress(fotosNorm);
-  const estrutura = analise?.estrutura_json as Record<string, unknown> | null | undefined;
-  const indicio_colisao = estrutura?.indicio_colisao as GestaoTrocaIndicioColisaoResult | null;
+  const laudo19 = buildGestaoTrocaLaudo19Computed({
+    fotos_json: analise?.fotos_json,
+    estrutura_json: analise?.estrutura_json as Record<string, unknown> | null,
+    espessura_json: troca.espessura_json,
+    faixas: faixasEsp,
+    itens: itens ?? [],
+    fotosNorm: fotosNorm,
+    procedencia_resumo: procedencia,
+  });
+  const indicio_colisao = laudo19?.indicio_colisao ??
+    (analise?.estrutura_json as Record<string, unknown> | null)?.indicio_colisao as
+      GestaoTrocaIndicioColisaoResult | null;
 
   const recomendacao = calcGestaoTrocaParecerRecomendacao({
     valor_proposto: troca.valor_proposto != null ? Number(troca.valor_proposto) : null,
@@ -79,6 +94,7 @@ export async function buildGestaoTrocaParecerPreview(
     km_painel_conferido: troca.km_painel_conferido === true,
     luzes_painel: typeof analise?.luzes_painel === "boolean" ? analise.luzes_painel : null,
     descricao_areas: descricaoRows,
+    resumo_por_area: laudo19?.resumo_por_area,
     laudo_status: troca.laudo_status != null ? String(troca.laudo_status) : null,
     roteiro_faltando: roteiro.faltando,
     indicio_colisao,
@@ -111,6 +127,13 @@ export async function buildGestaoTrocaParecerPreview(
     km_painel_conferido: troca.km_painel_conferido === true,
     luzes_painel: analise?.luzes_painel ?? null,
     laudo_status: troca.laudo_status,
+    laudo19: laudo19
+      ? {
+        resultado_cautelar: laudo19.resultado,
+        indicio_colisao: laudo19.indicio_colisao,
+        resumo_por_area: laudo19.resumo_por_area,
+      }
+      : null,
   };
 
   const paragrafo_ia = await gerarParecerParagrafoIa(fatos);

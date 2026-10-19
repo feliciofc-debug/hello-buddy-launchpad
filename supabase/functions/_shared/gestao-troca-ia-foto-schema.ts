@@ -50,6 +50,8 @@ export type GestaoTrocaIaFotoAnaliseRow = {
   achados: GestaoTrocaIaFotoAchado[];
   nao_da_para_afirmar: string[];
   path?: string;
+  km_painel?: number | null;
+  luzes_alerta?: string[];
 };
 
 const TIPO_SET = new Set<string>(GESTAO_TROCA_IA_ACHADO_TIPOS);
@@ -96,6 +98,15 @@ export function parseGestaoTrocaIaFotoAnaliseJson(
     ? raw.nao_da_para_afirmar.map((s) => String(s).slice(0, 200)).filter(Boolean)
     : [];
 
+  let km_painel: number | null = null;
+  if (raw.km_painel != null && raw.km_painel !== "") {
+    const n = Number(raw.km_painel);
+    if (Number.isFinite(n) && n >= 0) km_painel = Math.round(n);
+  }
+  const luzes_alerta = Array.isArray(raw.luzes_alerta)
+    ? raw.luzes_alerta.map((s) => String(s).slice(0, 80)).filter(Boolean)
+    : undefined;
+
   return {
     indice: Math.round(indice),
     slot_informado: String(raw.slot_informado ?? ""),
@@ -106,6 +117,8 @@ export function parseGestaoTrocaIaFotoAnaliseJson(
     achados: qualidade === "insuficiente" ? [] : achados,
     nao_da_para_afirmar: nao,
     path: raw.path != null ? String(raw.path) : undefined,
+    km_painel,
+    luzes_alerta,
   };
 }
 

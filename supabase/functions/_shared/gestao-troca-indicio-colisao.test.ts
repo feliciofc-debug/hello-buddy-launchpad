@@ -19,7 +19,7 @@ Deno.test("indício — farol divergente sozinho fraco", () => {
   assertEquals(r.dianteira.nivel, "fraco");
 });
 
-Deno.test("indício — parafuso + fresta moderado", () => {
+Deno.test("indício — parafuso + fresta moderado (não forte)", () => {
   const r = calcIndicioColisao([
     {
       tipo: "parafuso_mexido",
@@ -40,7 +40,52 @@ Deno.test("indício — parafuso + fresta moderado", () => {
       slot: "cofre_motor",
     },
   ]);
-  assertEquals(["moderado", "forte"].includes(r.dianteira.nivel), true);
+  assertEquals(r.dianteira.nivel, "moderado");
+});
+
+Deno.test("indício — falso positivo interior/pneus/risco não pontua", () => {
+  const r = calcIndicioColisao([
+    {
+      tipo: "desgaste_interno",
+      local: "banco",
+      severidade: "moderada",
+      confianca: "alta",
+      evidencia: "banco gasto",
+      foto: 1,
+      slot: "bancos_dianteiros",
+    },
+    {
+      tipo: "risco",
+      local: "parte de cima do para-choque",
+      severidade: "leve",
+      confianca: "media",
+      evidencia: "risquinho",
+      foto: 2,
+      slot: "frente",
+    },
+    {
+      tipo: "mancha_interna",
+      local: "tapete",
+      severidade: "leve",
+      confianca: "media",
+      evidencia: "mancha",
+      foto: 3,
+      slot: "bancos_traseiros",
+    },
+    {
+      tipo: "pneu_sulco_baixo",
+      local: "pneu dd",
+      severidade: "moderada",
+      confianca: "media",
+      evidencia: "meia-vida",
+      foto: 4,
+      slot: "pneu_dd",
+    },
+  ]);
+  assertEquals(r.dianteira.nivel, "nenhum");
+  assertEquals(r.traseira.nivel, "nenhum");
+  assertEquals(r.lateral_esq.nivel, "nenhum");
+  assertEquals(r.lateral_dir.nivel, "nenhum");
 });
 
 Deno.test("indício — solda longarina forte", () => {
