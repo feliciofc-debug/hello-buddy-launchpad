@@ -15,6 +15,18 @@ import {
   type GestaoTrocaAcao,
 } from "../_shared/gestao-troca-status.ts";
 import {
+  listGestaoTrocaIaCustos,
+  saveGestaoTrocaIaCustos,
+} from "../_shared/gestao-troca-ia-custos.ts";
+import {
+  assertPodeSolicitarAprovacaoTroca,
+  confirmarKmPainelGestaoTroca,
+  decidirItemIaGestaoTroca,
+  iniciarGestaoTrocaIaAnalise,
+  loadLatestGestaoTrocaAnalise,
+} from "../_shared/gestao-troca-ia-ops.ts";
+import type { GestaoTrocaIaCustoRow } from "../_shared/gestao-troca-ia-rules.ts";
+import {
   insertTrocaEvento,
   liberarTrocaParaEstoque,
   loadTrocaHistoricoGrupo,
@@ -89,12 +101,63 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: true, calc, historico });
     }
 
+    if (action === "analisar_fotos") {
+      const r = await iniciarGestaoTrocaIaAnalise(sb, user.id, String(body?.troca_id ?? ""));
+      return jsonResponse({ success: true, ...r });
+    }
+
+    if (action === "status_analise") {
+      const trocaId = String(body?.troca_id ?? "");
+      const { analise, itens } = await loadLatestGestaoTrocaAnalise(sb, user.id, trocaId);
+      return jsonResponse({ success: true, analise, itens });
+    }
+
+    if (action === "decidir_item_ia") {
+      const r = await decidirItemIaGestaoTroca(
+        sb,
+        user.id,
+        String(body?.item_id ?? ""),
+        String(body?.decisao ?? "") as "aceito" | "ignorado",
+      );
+      return jsonResponse({ success: true, ...r });
+    }
+
+    if (action === "confirmar_km") {
+      await confirmarKmPainelGestaoTroca(sb, user.id, String(body?.troca_id ?? ""));
+      return jsonResponse({ success: true });
+    }
+
+    if (action === "custos_listar") {
+      const custos = await listGestaoTrocaIaCustos(sb, user.id);
+      return jsonResponse({ success: true, custos });
+    }
+
+    if (action === "custos_salvar") {
+      const raw = body?.custos;
+      if (!Array.isArray(raw)) throw new Error("Informe custos.");
+      const custos = raw.map((row: Record<string, unknown>) => ({
+        categoria: String(row.categoria ?? ""),
+        gravidade: String(row.gravidade ?? ""),
+        valor: Number(row.valor ?? 0),
+      })) as GestaoTrocaIaCustoRow[];
+      await saveGestaoTrocaIaCustos(sb, user.id, custos);
+      return jsonResponse({ success: true });
+    }
+
     if (action === "transicao") {
       const trocaId = String(body?.troca_id ?? "");
       const acao = String(body?.acao ?? "") as GestaoTrocaAcao;
-      const { data: troca } = await sb.from("gestao_troca").select("id, status")
+      const { data: troca } = await sb.from("gestao_troca").select("id, status, km_painel_conferido")
         .eq("id", trocaId).eq("user_id", user.id).maybeSingle();
       if (!troca) throw new Error("Troca não encontrada.");
+      if (acao === "solicitar_aprovacao") {
+        await assertPodeSolicitarAprovacaoTroca(
+          sb,
+          user.id,
+          trocaId,
+          troca.km_painel_conferido === true,
+        );
+      }
       const novoStatus = assertGestaoTrocaTransicao(String(troca.status) as never, acao);
       const patch: Record<string, unknown> = {
         status: novoStatus,
