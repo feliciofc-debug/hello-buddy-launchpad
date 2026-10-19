@@ -155,15 +155,7 @@ CREATE TRIGGER update_gestao_troca_config_updated_at
   BEFORE UPDATE ON public.gestao_troca_config
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
-INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-VALUES (
-  'trocas',
-  'trocas',
-  false,
-  10485760,
-  ARRAY['image/jpeg', 'image/png', 'image/webp']
-)
-ON CONFLICT (id) DO UPDATE SET public = false;
+INSERT INTO storage.buckets (id, name) VALUES ('trocas', 'trocas') ON CONFLICT (id) DO NOTHING;
 
 DROP POLICY IF EXISTS trocas_storage_insert_own ON storage.objects;
 CREATE POLICY trocas_storage_insert_own ON storage.objects
