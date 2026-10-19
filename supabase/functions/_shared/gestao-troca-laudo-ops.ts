@@ -6,6 +6,7 @@ import {
   type GestaoTrocaLaudoPdfSection,
 } from "./gestao-troca-laudo-pdf-section.ts";
 import { loadLatestGestaoTrocaAnalise } from "./gestao-troca-ia-ops.ts";
+import { buildGestaoTrocaProcedenciaLaudo } from "./gestao-troca-procedencia-display.ts";
 
 type Db = SupabaseClient;
 
@@ -75,12 +76,47 @@ function normalizeQualidade(raw: unknown): { etiqueta: string; usada: boolean; m
     });
 }
 
+async function loadGestaoTrocaProcedenciaSnapshot(
+  sb: Db,
+  userId: string,
+  troca: Record<string, unknown>,
+) {
+  const consultaId = troca.procedencia_consulta_id != null
+    ? String(troca.procedencia_consulta_id)
+    : "";
+  if (!consultaId) return null;
+  const { data } = await sb.from("veiculo_procedencia_consulta")
+    .select("placa, status, resumo_json, erro_tipo, created_at, concluida_em")
+    .eq("id", consultaId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  const row = data as Record<string, unknown> | null;
+  return buildGestaoTrocaProcedenciaLaudo({
+    consultaId,
+    consulta: row
+      ? {
+        placa: row.placa != null ? String(row.placa) : null,
+        status: row.status != null ? String(row.status) : null,
+        resumo_json: row.resumo_json,
+        erro_tipo: row.erro_tipo != null ? String(row.erro_tipo) : null,
+        created_at: row.created_at != null ? String(row.created_at) : null,
+        concluida_em: row.concluida_em != null ? String(row.concluida_em) : null,
+      }
+      : null,
+    ficha: {
+      marca: String(troca.marca ?? ""),
+      modelo: String(troca.modelo ?? ""),
+    },
+  });
+}
+
 export async function buildGestaoTrocaLaudoSnapshot(
   sb: Db,
   userId: string,
   troca: Record<string, unknown>,
   eventos: { descricao: string; created_at: string }[],
 ): Promise<Record<string, unknown>> {
+  const procedencia = await loadGestaoTrocaProcedenciaSnapshot(sb, userId, troca);
   const { analise, itens } = await loadLatestGestaoTrocaAnalise(sb, userId, String(troca.id));
   let laudo: GestaoTrocaLaudoPdfSection | null = null;
   if (analise?.id) {
@@ -104,6 +140,7 @@ export async function buildGestaoTrocaLaudoSnapshot(
     troca,
     eventos: eventos.slice(0, 12),
     laudo,
+    procedencia,
     gerado_em: new Date().toISOString(),
   };
 }

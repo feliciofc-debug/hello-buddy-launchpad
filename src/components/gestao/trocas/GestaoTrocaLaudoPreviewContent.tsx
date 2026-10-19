@@ -4,7 +4,9 @@ import {
   normalizeGestaoTrocaChecklist,
 } from "@/lib/gestao-troca-checklist.ts";
 import type { GestaoTrocaLaudoPdfSection } from "@/lib/gestao-troca-laudo-pdf-section.ts";
+import type { GestaoTrocaProcedenciaLaudo } from "@/lib/gestao-troca-procedencia-display.ts";
 import type { GestaoTrocaEvento, GestaoTrocaRow } from "@/lib/gestao-troca-types.ts";
+import { GestaoTrocaProcedenciaResumo } from "@/components/gestao/trocas/GestaoTrocaProcedenciaResumo.tsx";
 
 function formatDt(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -19,6 +21,7 @@ type Props = {
   troca: GestaoTrocaRow;
   eventos: GestaoTrocaEvento[];
   laudo: GestaoTrocaLaudoPdfSection | null;
+  procedencia: GestaoTrocaProcedenciaLaudo | null;
   finalizadoPor?: string | null;
 };
 
@@ -26,6 +29,7 @@ export function GestaoTrocaLaudoPreviewContent({
   troca,
   eventos,
   laudo,
+  procedencia,
   finalizadoPor,
 }: Props) {
   const checklist = normalizeGestaoTrocaChecklist(troca.checklist_json);
@@ -67,6 +71,10 @@ export function GestaoTrocaLaudoPreviewContent({
           Proposto: {formatGestaoMoney(troca.valor_proposto ?? 0)} · Preparação:{" "}
           {formatGestaoMoney(troca.preparacao_estimada ?? 0)}
         </p>
+      </div>
+      <div className="space-y-1">
+        <p className="font-semibold">Procedência veicular</p>
+        <GestaoTrocaProcedenciaResumo procedencia={procedencia} laudoMode />
       </div>
       <div>
         <p className="font-semibold">Checklist (itens com apontamento)</p>

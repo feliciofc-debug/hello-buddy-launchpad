@@ -32,7 +32,7 @@ import { GestaoMoneyInput } from "@/components/gestao/lucro/GestaoMoneyInput.tsx
 import { GestaoTrocaChecklistPanel } from "@/components/gestao/trocas/GestaoTrocaChecklistPanel.tsx";
 import { GestaoTrocaFotoGaleria } from "@/components/gestao/trocas/GestaoTrocaFotoGaleria.tsx";
 import { GestaoTrocaLaudoIaPanel } from "@/components/gestao/trocas/GestaoTrocaLaudoIaPanel.tsx";
-import { pollProcedenciaConsulta } from "@/components/procedencia/useProcedenciaConnection.ts";
+import { GestaoTrocaProcedenciaCard } from "@/components/gestao/trocas/GestaoTrocaProcedenciaCard.tsx";
 import type { GestaoTrocaChecklistJson } from "@/lib/gestao-troca-checklist.ts";
 import { parseGestaoMoneyBr } from "@/lib/gestao-money.ts";
 import {
@@ -54,6 +54,8 @@ import {
 } from "@/lib/gestao-troca-ia-api.ts";
 import { buildGestaoTrocaLaudoPdfFromAnalise } from "@/lib/gestao-troca-laudo-build.ts";
 import type { GestaoTrocaLaudoPdfSection } from "@/lib/gestao-troca-laudo-pdf-section.ts";
+import type { GestaoTrocaProcedenciaLaudo } from "@/lib/gestao-troca-procedencia-display.ts";
+import { fetchGestaoTrocaProcedenciaLaudo } from "@/lib/gestao-troca-procedencia-fetch.ts";
 import { GestaoTrocaLaudoPreviewContent } from "@/components/gestao/trocas/GestaoTrocaLaudoPreviewContent.tsx";
 import {
   buildGestaoTrocaKbbUrl,
@@ -90,6 +92,9 @@ export default function GestaoTrocaFichaPage() {
   const [valorPropostoText, setValorPropostoText] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewLaudo, setPreviewLaudo] = useState<GestaoTrocaLaudoPdfSection | null>(null);
+  const [previewProcedencia, setPreviewProcedencia] = useState<GestaoTrocaProcedenciaLaudo | null>(
+    null,
+  );
   const [finalizeOpen, setFinalizeOpen] = useState(false);
   const [reabrirOpen, setReabrirOpen] = useState(false);
   const [reabrirMotivo, setReabrirMotivo] = useState("");
@@ -238,30 +243,6 @@ export default function GestaoTrocaFichaPage() {
     void savePatch({ valor_proposto: n });
   };
 
-  const consultarProcedencia = async () => {
-    if (!troca?.placa) {
-      toast.error("Informe a placa.");
-      return;
-    }
-    setBusy(true);
-    const { data, error } = await supabase.functions.invoke("veiculo-procedencia", {
-      body: { action: "consultar", placa: troca.placa, confirmado: true },
-    });
-    if (error || !data?.success) {
-      setBusy(false);
-      toast.error(data?.error ?? "Falha na procedência.");
-      return;
-    }
-    const consultaId = String(data.consulta_id ?? "");
-    await savePatch({ procedencia_consulta_id: consultaId });
-    const polled = await pollProcedenciaConsulta(consultaId);
-    setBusy(false);
-    if (polled?.status === "concluida") {
-      toast.success("Procedência concluída.");
-      await recalcular();
-    }
-  };
-
   const transicao = async (acao: string, extra?: Record<string, unknown>) => {
     setBusy(true);
     const { data, error } = await supabase.functions.invoke("gestao-troca", {
@@ -338,6 +319,14 @@ export default function GestaoTrocaFichaPage() {
     return buildGestaoTrocaLaudoPdfFromAnalise(troca, analise, itens);
   };
 
+  const loadProcedenciaLaudo = async () => {
+    if (!troca) return null;
+    return fetchGestaoTrocaProcedenciaLaudo(troca.procedencia_consulta_id, {
+      marca: troca.marca,
+      modelo: troca.modelo,
+    });
+  };
+
   const loadPdfThumbUrls = async () => {
     if (!troca) return [] as string[];
     const fotos = normalizeGestaoTrocaFotos(troca.fotos_json).filter(
@@ -355,7 +344,11 @@ export default function GestaoTrocaFichaPage() {
   const exportPdf = async () => {
     if (!troca) return;
     setBusy(true);
-    const [urls, laudoPdf] = await Promise.all([loadPdfThumbUrls(), loadLaudoPdfSection()]);
+    const [urls, laudoPdf, procedenciaPdf] = await Promise.all([
+      loadPdfThumbUrls(),
+      loadLaudoPdfSection(),
+      loadProcedenciaLaudo(),
+    ]);
     const finalizacao = troca.laudo_status === "finalizado" && troca.laudo_numero
       ? {
         numero: troca.laudo_numero,
@@ -365,14 +358,25 @@ export default function GestaoTrocaFichaPage() {
       }
       : null;
     setBusy(false);
-    await downloadGestaoTrocaRelatorioPdf(troca, eventos, urls, laudoPdf, finalizacao);
+    await downloadGestaoTrocaRelatorioPdf(
+      troca,
+      eventos,
+      urls,
+      laudoPdf,
+      finalizacao,
+      procedenciaPdf,
+    );
   };
 
   const openPreview = async () => {
     if (!troca) return;
     setBusy(true);
-    const laudo = await loadLaudoPdfSection();
+    const [laudo, procedencia] = await Promise.all([
+      loadLaudoPdfSection(),
+      loadProcedenciaLaudo(),
+    ]);
     setPreviewLaudo(laudo);
+    setPreviewProcedencia(procedencia);
     setBusy(false);
     setPreviewOpen(true);
   };
@@ -517,6 +521,17 @@ export default function GestaoTrocaFichaPage() {
           <Textarea readOnly={laudoLocked} placeholder="Observações" value={troca.observacoes ?? ""} onChange={(e) => setTroca({ ...troca, observacoes: e.target.value })} onBlur={() => void savePatch({ observacoes: troca.observacoes })} />
         </section>
 
+        <GestaoTrocaProcedenciaCard
+          troca={troca}
+          busy={busy}
+          laudoLocked={laudoLocked}
+          onConsultaCompleta={async (consultaId) => {
+            setTroca((t) => (t ? { ...t, procedencia_consulta_id: consultaId } : t));
+            await savePatch({ procedencia_consulta_id: consultaId });
+          }}
+          onConsultaConcluida={() => void recalcular()}
+        />
+
         <section className="space-y-3 rounded-lg border bg-white p-4 dark:bg-gray-950">
           <h2 className="font-semibold">Checklist de avaliação</h2>
           <GestaoTrocaChecklistPanel
@@ -598,9 +613,6 @@ export default function GestaoTrocaFichaPage() {
               })();
             }} disabled={busy || laudoLocked}>
               Recalcular preço
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => void consultarProcedencia()} disabled={busy || laudoLocked}>
-              Consultar procedência
             </Button>
           </div>
         </section>
@@ -751,6 +763,7 @@ export default function GestaoTrocaFichaPage() {
             troca={troca}
             eventos={eventos}
             laudo={previewLaudo}
+            procedencia={previewProcedencia}
             finalizadoPor={finalizadoPorLabel}
           />
           <DialogFooter>

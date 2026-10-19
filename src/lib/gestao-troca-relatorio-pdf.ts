@@ -9,6 +9,10 @@ import type {
   GestaoTrocaLaudoPdfFinalizacao,
   GestaoTrocaLaudoPdfSection,
 } from "@/lib/gestao-troca-laudo-pdf-section.ts";
+import {
+  appendGestaoTrocaProcedenciaPdfLines,
+  type GestaoTrocaProcedenciaLaudo,
+} from "@/lib/gestao-troca-procedencia-display.ts";
 
 export type { GestaoTrocaLaudoPdfSection, GestaoTrocaLaudoPdfFinalizacao };
 
@@ -109,6 +113,7 @@ export async function downloadGestaoTrocaRelatorioPdf(
   thumbUrls: string[] = [],
   laudo?: GestaoTrocaLaudoPdfSection | null,
   finalizacao?: GestaoTrocaLaudoPdfFinalizacao | null,
+  procedencia?: GestaoTrocaProcedenciaLaudo | null,
 ) {
   const doc = new jsPDF();
   let y = 14;
@@ -151,6 +156,9 @@ export async function downloadGestaoTrocaRelatorioPdf(
   y += 4;
   line("Justificativas", true);
   for (const j of troca.justificativas_json ?? []) line(`• ${j}`);
+
+  y += 4;
+  appendGestaoTrocaProcedenciaPdfLines(line, procedencia ?? null);
 
   if (laudo) {
     y += 4;
