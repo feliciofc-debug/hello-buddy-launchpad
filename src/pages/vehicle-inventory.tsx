@@ -320,6 +320,7 @@ export default function VehicleInventory() {
     hasCep: false,
     hasPhone: false,
     hasMlPackage: false,
+    mlPackLabel: null as string | null,
     phonePreview: null as string | null,
   });
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
@@ -340,6 +341,7 @@ export default function VehicleInventory() {
       hasCep: !!stMl?.has_location,
       hasPhone: !!stMl?.has_seller_phone,
       hasMlPackage: !!stMl?.ml_has_vehicle_package,
+      mlPackLabel: stMl?.ml_listing_pack_label != null ? String(stMl.ml_listing_pack_label) : null,
       phonePreview: stMl?.seller_phone_preview != null ? String(stMl.seller_phone_preview) : null,
     });
     const { data: portals } = await supabase
@@ -940,6 +942,7 @@ export default function VehicleInventory() {
                         hasCep: portalReadinessBase.hasCep,
                         hasPhone: portalReadinessBase.hasPhone,
                         hasMlPackage: portalReadinessBase.hasMlPackage,
+                        mlPackLabel: portalReadinessBase.mlPackLabel,
                         phonePreview: portalReadinessBase.phonePreview,
                       }}
                       onChanged={() => void loadPortalMeta()}

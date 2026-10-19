@@ -8,10 +8,7 @@ import { mlGetItem } from "./ml-api.ts";
 import { runMlReconcile, runMlVehicleSync } from "./ml-vehicle-sync-run.ts";
 import { getMlAccessTokenForMlUser, getMlAccessTokenForUser } from "./ml-token.ts";
 import { assertMlItemOwnedByAmz } from "./ml-portal-ownership.ts";
-import {
-  mlLeadOrigemFromPortal,
-  shouldNotifyMlLeadOnWhatsApp,
-} from "./ml-lead-notify-policy.ts";
+import { resolveMlVisLeadNotification } from "./ml-lead-notify-policy.ts";
 
 const RECONCILE_KEY = "last_ml_reconcile_at";
 const RECONCILE_MS = 30 * 60 * 1000;
@@ -65,15 +62,15 @@ async function processVisLead(
     .eq("external_id", itemId)
     .maybeSingle();
 
-  const hasAmzPortal = !!portal?.veiculo_id;
-  const origem = mlLeadOrigemFromPortal(hasAmzPortal);
+  // INTEG-1.1: leads — assertMlItemOwnedByAmz só em processItemTopic (alterar anúncio), nunca aqui.
+  const ownedByAmz = !!portal?.veiculo_id;
 
   const { data: cfg } = await sb.from("empresa_config")
     .select("ml_whatsapp_leads_all_ads")
     .eq("user_id", userId)
     .maybeSingle();
-  const notifyWhatsapp = shouldNotifyMlLeadOnWhatsApp({
-    hasAmzPortal,
+  const { origem, notifyWhatsapp } = resolveMlVisLeadNotification({
+    ownedByAmz,
     whatsappLeadsAllAds: cfg?.ml_whatsapp_leads_all_ads === true,
   });
 

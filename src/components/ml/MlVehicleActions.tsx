@@ -97,7 +97,13 @@ export function MlVehicleActions(props: {
         {props.portal?.last_error && (
           <p className="text-xs text-destructive">{props.portal.last_error}</p>
         )}
-        {!published ? (
+      {!published ? (
+        <>
+          {props.readiness.mlPackLabel && props.readiness.hasMlPackage && (
+            <p className="text-xs text-muted-foreground">
+              Será publicado como: <strong>{props.readiness.mlPackLabel}</strong>
+            </p>
+          )}
           <Button
             size="sm"
             variant="outline"
@@ -107,7 +113,8 @@ export function MlVehicleActions(props: {
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Publicar no Mercado Livre"}
           </Button>
-        ) : (
+        </>
+      ) : (
           <>
             {props.portal?.permalink && (
               <Button size="sm" variant="outline" className="w-full gap-2" asChild>

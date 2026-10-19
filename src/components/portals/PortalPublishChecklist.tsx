@@ -5,6 +5,7 @@ export type PortalPublishReadiness = {
   hasCep: boolean;
   hasPhone: boolean;
   hasMlPackage?: boolean;
+  mlPackLabel?: string | null;
   phonePreview?: string | null;
 };
 
@@ -43,7 +44,11 @@ export function PortalPublishChecklist(props: {
           hint={r.phonePreview ? `Anúncio: ${r.phonePreview}` : undefined}
         />
         {props.portal === "mercadolivre" && (
-          <Item ok={!!r.hasMlPackage} label="Pacote ML (Clássico/Destaque)" />
+          <Item
+            ok={!!r.hasMlPackage}
+            label="Pacote ML"
+            hint={r.mlPackLabel ? `Será publicado como: ${r.mlPackLabel}` : undefined}
+          />
         )}
       </ul>
       {(!r.hasCep || !r.hasPhone) && (

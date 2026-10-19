@@ -41,9 +41,21 @@ export async function mlHasSilverPackage(
 
 export type MlListingPackPreference = "destaque_first" | "classic_first";
 
+/** Default: Clássico (silver) antes de Destaque/Premium — não queimar pacote caro do lojista. */
+export const ML_LISTING_PACK_PREFERENCE_DEFAULT: MlListingPackPreference = "classic_first";
+
+export function mlListingPackDisplayLabel(pack: MlListingPackType | string | null | undefined): string {
+  const p = String(pack ?? "");
+  if (p === "silver") return "Clássico";
+  if (p === "gold") return "Destaque";
+  if (p === "gold_premium") return "Premium";
+  return "—";
+}
+
 export function mlListingPackTryOrder(preference: MlListingPackPreference | null | undefined): MlListingPackType[] {
-  if (preference === "classic_first") return ["silver", "gold", "gold_premium"];
-  return ["gold_premium", "gold", "silver"];
+  const pref = preference ?? ML_LISTING_PACK_PREFERENCE_DEFAULT;
+  if (pref === "destaque_first") return ["gold_premium", "gold", "silver"];
+  return ["silver", "gold", "gold_premium"];
 }
 
 export async function mlPickListingPackType(

@@ -23,11 +23,22 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
-    const { error } = await admin.from("empresa_config").upsert({
-      user_id: user.id,
-      ml_whatsapp_leads_all_ads: allAds,
-    }, { onConflict: "user_id" });
-    if (error) throw new Error(error.message);
+    const { data: existing } = await admin.from("empresa_config")
+      .select("user_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (existing?.user_id) {
+      const { error } = await admin.from("empresa_config").update({
+        ml_whatsapp_leads_all_ads: allAds,
+      }).eq("user_id", user.id);
+      if (error) throw new Error(error.message);
+    } else {
+      const { error } = await admin.from("empresa_config").insert({
+        user_id: user.id,
+        ml_whatsapp_leads_all_ads: allAds,
+      });
+      if (error) throw new Error(error.message);
+    }
     return new Response(JSON.stringify({
       success: true,
       ml_whatsapp_leads_all_ads: allAds,

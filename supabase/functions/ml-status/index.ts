@@ -1,7 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { corsHeaders } from "../_shared/cors.ts";
 import { resolveTenantOwner } from "../_shared/amz-context.ts";
-import { mlPickListingPackType, type MlListingPackPreference } from "../_shared/ml-api.ts";
+import {
+  mlListingPackDisplayLabel,
+  mlPickListingPackType,
+  ML_LISTING_PACK_PREFERENCE_DEFAULT,
+  type MlListingPackPreference,
+} from "../_shared/ml-api.ts";
 import { ML_DEFAULT_CAR_CATEGORY } from "../_shared/ml-config.ts";
 import {
   hasPublishableMlLocation,
@@ -66,7 +71,7 @@ Deno.serve(async (req) => {
     if (connected && conta?.ml_user_id) {
       try {
         const { accessToken } = await getMlAccessTokenForUser(admin as never, user.id);
-        const pref = (cfg?.ml_listing_pack_preference ?? "destaque_first") as MlListingPackPreference;
+        const pref = (cfg?.ml_listing_pack_preference ?? ML_LISTING_PACK_PREFERENCE_DEFAULT) as MlListingPackPreference;
         ml_listing_pack_type = await mlPickListingPackType(
           accessToken,
           Number(conta.ml_user_id),
@@ -93,7 +98,8 @@ Deno.serve(async (req) => {
       has_seller_phone: !!sellerPhonePreview,
       ml_has_vehicle_package,
       ml_listing_pack_type,
-      ml_listing_pack_preference: cfg?.ml_listing_pack_preference ?? "destaque_first",
+      ml_listing_pack_preference: cfg?.ml_listing_pack_preference ?? ML_LISTING_PACK_PREFERENCE_DEFAULT,
+      ml_listing_pack_label: mlListingPackDisplayLabel(ml_listing_pack_type),
       ml_whatsapp_leads_all_ads: cfg?.ml_whatsapp_leads_all_ads === true,
       updated_at: conta?.updated_at ?? null,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });

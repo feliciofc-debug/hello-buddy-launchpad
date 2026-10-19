@@ -12,3 +12,17 @@ export function shouldNotifyMlLeadOnWhatsApp(input: {
 }): boolean {
   return input.hasAmzPortal || input.whatsappLeadsAllAds;
 }
+
+/** Leads: ownership (veiculos_portais) classifica origem; opt-in pode notificar outros integradores. */
+export function resolveMlVisLeadNotification(input: {
+  ownedByAmz: boolean;
+  whatsappLeadsAllAds: boolean;
+}): { origem: MlLeadOrigem; notifyWhatsapp: boolean } {
+  return {
+    origem: mlLeadOrigemFromPortal(input.ownedByAmz),
+    notifyWhatsapp: shouldNotifyMlLeadOnWhatsApp({
+      hasAmzPortal: input.ownedByAmz,
+      whatsappLeadsAllAds: input.whatsappLeadsAllAds,
+    }),
+  };
+}

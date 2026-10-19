@@ -3,6 +3,7 @@ import {
   mlFetchCategoryAttributes,
   mlPickListingPackType,
   mlValidateItem,
+  ML_LISTING_PACK_PREFERENCE_DEFAULT,
   type MlListingPackPreference,
 } from "./ml-api.ts";
 import { mapVehicleToMlItem, resolveMlCategoryId } from "./ml-map-vehicle.ts";
@@ -51,7 +52,7 @@ export async function runMlVehiclePublish(
   }
 
   const categoryId = await resolveMlCategoryId(accessToken, vehicle as VeiculoEstoqueRow);
-  const packPref = (cfg?.ml_listing_pack_preference ?? "destaque_first") as MlListingPackPreference;
+  const packPref = (cfg?.ml_listing_pack_preference ?? ML_LISTING_PACK_PREFERENCE_DEFAULT) as MlListingPackPreference;
   const listingTypeId = await mlPickListingPackType(
     accessToken,
     mlUserId,
