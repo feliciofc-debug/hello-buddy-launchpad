@@ -40,6 +40,7 @@ const AMZ_AUTO_ORDER = [
   "veiculos",
   "financiamentos",
   "gestao-lucro",
+  "gestao-trocas",
   "whatsapp",
   "whatsapp-templates",
   "leads",

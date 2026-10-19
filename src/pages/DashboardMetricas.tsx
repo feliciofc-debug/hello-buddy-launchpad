@@ -46,6 +46,7 @@ import {
   Gift,
   CarFront,
   FileText,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { useFinanciamentoPendingCount } from '@/hooks/useFinanciamentoPendingCount';
 import { injectVitrineSidebarMenuItems } from '@/lib/vitrine-sidebar-menu';
@@ -384,6 +385,19 @@ export default function DashboardMetricas() {
     [showGestaoLucroMenu],
   );
 
+  const gestaoTrocasItem = useMemo(
+    () =>
+      showGestaoLucroMenu
+        ? {
+          id: 'gestao-trocas',
+          icon: ArrowLeftRight,
+          label: 'Trocas',
+          path: '/gestao/trocas',
+        }
+        : undefined,
+    [showGestaoLucroMenu],
+  );
+
   const fullMenuItems = useMemo(() => {
     const filtered = menuItemsAll.filter((item) =>
       item.id === 'admin' ||
@@ -400,6 +414,7 @@ export default function DashboardMetricas() {
       vehicleStockItem,
       financingItem,
       gestaoLucroItem,
+      gestaoTrocasItem,
     });
   }, [
     isMenuAllowed,
@@ -407,6 +422,7 @@ export default function DashboardMetricas() {
     vehicleStockItem,
     financingItem,
     gestaoLucroItem,
+    gestaoTrocasItem,
     userEmail,
     t,
   ]);

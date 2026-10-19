@@ -702,6 +702,9 @@ export default function VehicleInventory() {
             <Button variant="outline" onClick={() => navigate("/veiculos/financiamento")}>
               Financiamento
             </Button>
+            <Button variant="outline" onClick={() => navigate("/gestao/trocas")}>
+              Trocas
+            </Button>
             <Button variant="outline" onClick={() => navigate("/gestao/lucro")}>
               Gestão · Lucro
             </Button>

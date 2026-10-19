@@ -32,6 +32,9 @@ import Campanhas from "./pages/Campanhas";
 import MeusProdutos from "./pages/MeusProdutos";
 import VehicleInventory from "./pages/vehicle-inventory";
 import GestaoLucroPage from "./pages/GestaoLucroPage";
+import GestaoTrocasPage from "./pages/GestaoTrocasPage";
+import GestaoTrocaFichaPage from "./pages/GestaoTrocaFichaPage";
+import GestaoTrocaConfigPage from "./pages/GestaoTrocaConfigPage";
 import GestaoNfeConfigPage from "./pages/GestaoNfeConfigPage";
 import GestaoContadorPublicPage from "./pages/GestaoContadorPublicPage";
 import VehicleFinancingFichasPage from "./pages/vehicle-financing-fichas";
@@ -190,6 +193,9 @@ const App = () => (
           <Route path="/veiculos/financiamento" element={<VehicleFinancingFichasPage />} />
           <Route path="/veiculos/financiamento/:id" element={<VehicleFinancingFichasPage />} />
           <Route path="/gestao/lucro" element={<GestaoLucroPage />} />
+          <Route path="/gestao/trocas" element={<GestaoTrocasPage />} />
+          <Route path="/gestao/trocas/config" element={<GestaoTrocaConfigPage />} />
+          <Route path="/gestao/trocas/:id" element={<GestaoTrocaFichaPage />} />
           <Route path="/gestao/configuracao-fiscal" element={<GestaoNfeConfigPage />} />
           <Route path="/contador/:token" element={<GestaoContadorPublicPage />} />
           <Route path="/midias" element={<Midias />} />

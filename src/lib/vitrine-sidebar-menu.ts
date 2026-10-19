@@ -3,6 +3,7 @@ import {
   usesVehicleInventoryMenu,
 } from "./client-menu-routes.ts";
 import { shouldShowGestaoLucroMenu } from "./gestao-lucro-menu.ts";
+import { shouldShowGestaoTrocasMenu } from "./gestao-troca-menu.ts";
 
 export type VitrineSidebarTenantContext = {
   clientType: string | null | undefined;
@@ -32,12 +33,19 @@ export function resolveVitrineSidebarFlags(ctx: VitrineSidebarTenantContext) {
     ctx.businessText,
     ctx.vitrineVeiculosDemo,
   );
+  const showGestaoTrocasMenu = shouldShowGestaoTrocasMenu(
+    ctx.clientType,
+    ctx.segment,
+    ctx.businessText,
+    ctx.vitrineVeiculosDemo,
+  );
 
   return {
     usesVehicleInventory,
     showFinanciamentosMenu,
     showDemoVehicleStockAfterProdutos,
     showGestaoLucroMenu,
+    showGestaoTrocasMenu,
   };
 }
 
@@ -48,12 +56,13 @@ export function injectVitrineSidebarMenuItems<T extends { id: string }>(
     vehicleStockItem: T;
     financingItem: T;
     gestaoLucroItem?: T;
+    gestaoTrocasItem?: T;
   },
 ): T[] {
   const flags = resolveVitrineSidebarFlags(ctx);
-  const { usesVehicleInventory, showFinanciamentosMenu, showGestaoLucroMenu } =
+  const { usesVehicleInventory, showFinanciamentosMenu, showGestaoLucroMenu, showGestaoTrocasMenu } =
     flags;
-  if (!showFinanciamentosMenu && !showGestaoLucroMenu) {
+  if (!showFinanciamentosMenu && !showGestaoLucroMenu && !showGestaoTrocasMenu) {
     return [...items];
   }
 
@@ -63,6 +72,9 @@ export function injectVitrineSidebarMenuItems<T extends { id: string }>(
   const pushGestaoAfterStock = () => {
     if (showGestaoLucroMenu && ctx.gestaoLucroItem && !hasId("gestao-lucro")) {
       out.push(ctx.gestaoLucroItem);
+    }
+    if (showGestaoTrocasMenu && ctx.gestaoTrocasItem && !hasId("gestao-trocas")) {
+      out.push(ctx.gestaoTrocasItem);
     }
   };
 

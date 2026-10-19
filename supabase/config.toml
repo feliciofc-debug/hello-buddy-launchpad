@@ -381,5 +381,8 @@ verify_jwt = false
 [functions.veiculo-procedencia]
 verify_jwt = true
 
+[functions.gestao-troca]
+verify_jwt = true
+
 [functions.amz-auto-cadastro]
 verify_jwt = false
