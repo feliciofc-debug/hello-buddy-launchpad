@@ -7,6 +7,7 @@ import {
 } from "./gestao-troca-laudo-pdf-section.ts";
 import { loadLatestGestaoTrocaAnalise } from "./gestao-troca-ia-ops.ts";
 import { buildGestaoTrocaProcedenciaLaudo } from "./gestao-troca-procedencia-display.ts";
+import { buildGestaoTrocaLaudoDescricaoPdf } from "./gestao-troca-laudo-descricao-display.ts";
 
 type Db = SupabaseClient;
 
@@ -136,11 +137,18 @@ export async function buildGestaoTrocaLaudoSnapshot(
       itensConfirmados: laudoItensConfirmados(itens),
     });
   }
+  const descricao = buildGestaoTrocaLaudoDescricaoPdf(
+    analise?.descricao_areas_json,
+    analise?.conclusao_visual != null ? String(analise.conclusao_visual) : null,
+  );
+
   return {
     troca,
     eventos: eventos.slice(0, 12),
     laudo,
     procedencia,
+    descricao,
+    parecer: troca.parecer_json ?? null,
     gerado_em: new Date().toISOString(),
   };
 }

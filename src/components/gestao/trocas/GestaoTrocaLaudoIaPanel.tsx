@@ -16,6 +16,10 @@ import {
 } from "@/lib/gestao-troca-ia-api.ts";
 import { humanizeGestaoTrocaIaErro } from "@/lib/gestao-troca-ia-erro.ts";
 import {
+  GestaoTrocaLaudoDescricaoSection,
+  splitDescricaoPorSecao,
+} from "@/components/gestao/trocas/GestaoTrocaLaudoDescricaoSection.tsx";
+import {
   GESTAO_TROCA_IA_DISCLAIMER,
   type GestaoTrocaIaAnalise,
   type GestaoTrocaIaItem,
@@ -296,6 +300,14 @@ export function GestaoTrocaLaudoIaPanel({
 
       {analise && !analisando && analise.status !== "rejeitada" && (
         <>
+          {(analise.descricao_areas_json?.length ?? 0) > 0 && (
+            <GestaoTrocaLaudoDescricaoSection
+              {...splitDescricaoPorSecao(analise.descricao_areas_json ?? [])}
+              conclusao_visual={analise.conclusao_visual ?? null}
+              qualidade={analise.qualidade_json}
+              thumbUrls={thumbUrls}
+            />
+          )}
           <div className="rounded-md border bg-muted/30 p-3 text-sm">
             <p className="font-medium">Quilometragem</p>
             <p>

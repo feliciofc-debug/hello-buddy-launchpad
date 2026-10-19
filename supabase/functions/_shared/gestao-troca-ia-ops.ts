@@ -231,7 +231,14 @@ export async function runGestaoTrocaIaAnaliseBackground(
 
     if (!apiKey) throw new Error("LOVABLE_API_KEY não configurada.");
     const vision = await analyzeGestaoTrocaFotosVision({ apiKey, fotos });
-    if (!vision.ok) throw new Error(vision.error);
+    if (!vision.ok) {
+      await sb.from("gestao_troca_analise_ia").update({
+        status: "rejeitada",
+        erro: vision.error.slice(0, 500),
+        concluida_em: new Date().toISOString(),
+      }).eq("id", analiseId);
+      return;
+    }
 
     const tabela = await listGestaoTrocaIaCustos(sb, userId);
     const kmFicha = troca.km != null ? Number(troca.km) : null;
@@ -269,6 +276,8 @@ export async function runGestaoTrocaIaAnaliseBackground(
       aviso_carroceria,
       luzes_painel,
       resumo: vision.data.resumo || null,
+      descricao_areas_json: vision.data.descricao_areas,
+      conclusao_visual: vision.data.conclusao_visual,
       qualidade_json: qualidade,
       modelo_ia: "google/gemini-3.6-flash",
       total_preparacao: total,

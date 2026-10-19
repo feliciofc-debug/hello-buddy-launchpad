@@ -1,6 +1,10 @@
 import type { GestaoTrocaRow } from "@/lib/gestao-troca-types.ts";
 import { buildGestaoTrocaLaudoPdfSection } from "@/lib/gestao-troca-laudo-pdf-section.ts";
 import type { GestaoTrocaLaudoPdfSection } from "@/lib/gestao-troca-laudo-pdf-section.ts";
+import {
+  buildGestaoTrocaLaudoDescricaoPdf,
+  type GestaoTrocaLaudoDescricaoPdf,
+} from "@/lib/gestao-troca-ia-descricao-display.ts";
 import type { GestaoTrocaIaAnalise, GestaoTrocaIaItem } from "@/lib/gestao-troca-ia-types.ts";
 
 export function buildGestaoTrocaLaudoPdfFromAnalise(
@@ -32,4 +36,14 @@ export function buildGestaoTrocaLaudoPdfFromAnalise(
     concluida_em: analise.concluida_em,
     itensConfirmados: confirmados,
   });
+}
+
+export function buildGestaoTrocaLaudoDescricaoFromAnalise(
+  analise: GestaoTrocaIaAnalise | null,
+): GestaoTrocaLaudoDescricaoPdf | null {
+  if (!analise) return null;
+  return buildGestaoTrocaLaudoDescricaoPdf(
+    analise.descricao_areas_json,
+    analise.conclusao_visual ?? null,
+  );
 }

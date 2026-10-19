@@ -32,6 +32,10 @@ import {
   assertGestaoTrocaLaudoNaoFinalizado,
 } from "../_shared/gestao-troca-laudo-ops.ts";
 import {
+  aprovarGestaoTrocaComParecer,
+  buildGestaoTrocaParecerPreview,
+} from "../_shared/gestao-troca-parecer-ops.ts";
+import {
   insertTrocaEvento,
   liberarTrocaParaEstoque,
   loadTrocaHistoricoGrupo,
@@ -218,6 +222,21 @@ Deno.serve(async (req) => {
         user.email ?? "painel",
       );
       return jsonResponse({ success: true, ...r });
+    }
+
+    if (action === "parecer_preview") {
+      const r = await buildGestaoTrocaParecerPreview(sb, user.id, String(body?.troca_id ?? ""));
+      return jsonResponse({ success: true, ...r });
+    }
+
+    if (action === "aprovar_com_parecer") {
+      await aprovarGestaoTrocaComParecer(
+        sb,
+        user.id,
+        user.email ?? user.id,
+        String(body?.troca_id ?? ""),
+      );
+      return jsonResponse({ success: true });
     }
 
     if (action === "finalizar_laudo") {

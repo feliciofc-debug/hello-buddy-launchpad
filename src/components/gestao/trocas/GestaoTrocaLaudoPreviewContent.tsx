@@ -3,7 +3,12 @@ import {
   GESTAO_TROCA_CHECKLIST_ITENS,
   normalizeGestaoTrocaChecklist,
 } from "@/lib/gestao-troca-checklist.ts";
+import { GestaoTrocaLaudoDescricaoSection } from "@/components/gestao/trocas/GestaoTrocaLaudoDescricaoSection.tsx";
+import { GestaoTrocaParecerSection } from "@/components/gestao/trocas/GestaoTrocaParecerSection.tsx";
+import type { GestaoTrocaLaudoDescricaoPdf } from "@/lib/gestao-troca-ia-descricao-display.ts";
+import type { GestaoTrocaIaQualidadeFoto } from "@/lib/gestao-troca-ia-types.ts";
 import type { GestaoTrocaLaudoPdfSection } from "@/lib/gestao-troca-laudo-pdf-section.ts";
+import type { GestaoTrocaParecerPreviewView } from "@/lib/gestao-troca-parecer-display.ts";
 import type { GestaoTrocaProcedenciaLaudo } from "@/lib/gestao-troca-procedencia-display.ts";
 import type { GestaoTrocaEvento, GestaoTrocaRow } from "@/lib/gestao-troca-types.ts";
 import { GestaoTrocaProcedenciaResumo } from "@/components/gestao/trocas/GestaoTrocaProcedenciaResumo.tsx";
@@ -22,6 +27,10 @@ type Props = {
   eventos: GestaoTrocaEvento[];
   laudo: GestaoTrocaLaudoPdfSection | null;
   procedencia: GestaoTrocaProcedenciaLaudo | null;
+  descricao?: GestaoTrocaLaudoDescricaoPdf | null;
+  parecer?: GestaoTrocaParecerPreviewView | null;
+  qualidade?: GestaoTrocaIaQualidadeFoto[];
+  thumbUrls?: Record<string, string>;
   finalizadoPor?: string | null;
 };
 
@@ -30,6 +39,10 @@ export function GestaoTrocaLaudoPreviewContent({
   eventos,
   laudo,
   procedencia,
+  descricao,
+  parecer,
+  qualidade = [],
+  thumbUrls = {},
   finalizadoPor,
 }: Props) {
   const checklist = normalizeGestaoTrocaChecklist(troca.checklist_json);
@@ -76,6 +89,16 @@ export function GestaoTrocaLaudoPreviewContent({
         <p className="font-semibold">Procedência veicular</p>
         <GestaoTrocaProcedenciaResumo procedencia={procedencia} laudoMode />
       </div>
+      {descricao && (
+        <GestaoTrocaLaudoDescricaoSection
+          externo={descricao.externo}
+          interno={descricao.interno}
+          conclusao_visual={descricao.conclusao_visual}
+          qualidade={qualidade}
+          thumbUrls={thumbUrls}
+        />
+      )}
+      <GestaoTrocaParecerSection parecer={parecer ?? null} />
       <div>
         <p className="font-semibold">Checklist (itens com apontamento)</p>
         <ul className="list-disc pl-5 text-muted-foreground">

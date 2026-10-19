@@ -49,14 +49,30 @@ import {
 } from "@/lib/gestao-troca-fotos.ts";
 import {
   fetchLatestGestaoTrocaLaudo,
+  invokeGestaoTrocaAprovarComParecer,
   invokeGestaoTrocaFinalizarLaudo,
+  invokeGestaoTrocaParecerPreview,
   invokeGestaoTrocaReabrirLaudo,
 } from "@/lib/gestao-troca-ia-api.ts";
-import { buildGestaoTrocaLaudoPdfFromAnalise } from "@/lib/gestao-troca-laudo-build.ts";
+import type { GestaoTrocaLaudoDescricaoPdf } from "@/lib/gestao-troca-ia-descricao-display.ts";
+import type { GestaoTrocaIaQualidadeFoto } from "@/lib/gestao-troca-ia-types.ts";
+import {
+  buildGestaoTrocaLaudoDescricaoFromAnalise,
+  buildGestaoTrocaLaudoPdfFromAnalise,
+} from "@/lib/gestao-troca-laudo-build.ts";
+import {
+  mapGestaoTrocaParecerPreviewFromApi,
+  parseGestaoTrocaParecerJson,
+  type GestaoTrocaParecerPreviewView,
+} from "@/lib/gestao-troca-parecer-display.ts";
 import type { GestaoTrocaLaudoPdfSection } from "@/lib/gestao-troca-laudo-pdf-section.ts";
 import type { GestaoTrocaProcedenciaLaudo } from "@/lib/gestao-troca-procedencia-display.ts";
 import { fetchGestaoTrocaProcedenciaLaudo } from "@/lib/gestao-troca-procedencia-fetch.ts";
 import { GestaoTrocaLaudoPreviewContent } from "@/components/gestao/trocas/GestaoTrocaLaudoPreviewContent.tsx";
+import {
+  GestaoTrocaParecerDialog,
+  type GestaoTrocaParecerPreview,
+} from "@/components/gestao/trocas/GestaoTrocaParecerDialog.tsx";
 import {
   buildGestaoTrocaKbbUrl,
   GESTAO_TROCA_KBB_CATEGORIAS,
@@ -95,6 +111,20 @@ export default function GestaoTrocaFichaPage() {
   const [previewProcedencia, setPreviewProcedencia] = useState<GestaoTrocaProcedenciaLaudo | null>(
     null,
   );
+  const [previewDescricao, setPreviewDescricao] = useState<GestaoTrocaLaudoDescricaoPdf | null>(
+    null,
+  );
+  const [previewQualidade, setPreviewQualidade] = useState<GestaoTrocaIaQualidadeFoto[]>([]);
+  const [previewDescricaoThumbs, setPreviewDescricaoThumbs] = useState<Record<string, string>>({});
+  const [previewParecer, setPreviewParecer] = useState<GestaoTrocaParecerPreviewView | null>(null);
+  const [parecerOpen, setParecerOpen] = useState(false);
+  const [parecerLoading, setParecerLoading] = useState(false);
+  const [parecerPreview, setParecerPreview] = useState<GestaoTrocaParecerPreview | null>(null);
+  const [parecerProcedencia, setParecerProcedencia] = useState<GestaoTrocaProcedenciaLaudo | null>(
+    null,
+  );
+  const [parecerQualidade, setParecerQualidade] = useState<GestaoTrocaIaQualidadeFoto[]>([]);
+  const [parecerThumbUrls, setParecerThumbUrls] = useState<Record<string, string>>({});
   const [finalizeOpen, setFinalizeOpen] = useState(false);
   const [reabrirOpen, setReabrirOpen] = useState(false);
   const [reabrirMotivo, setReabrirMotivo] = useState("");
@@ -313,10 +343,37 @@ export default function GestaoTrocaFichaPage() {
     }
   };
 
-  const loadLaudoPdfSection = async () => {
-    if (!troca) return null;
+  const signGestaoTrocaFotoPaths = async (paths: string[]) => {
+    const next: Record<string, string> = {};
+    for (const path of paths) {
+      const { data } = await supabase.storage.from("trocas").createSignedUrl(path, 3600);
+      if (data?.signedUrl) next[path] = data.signedUrl;
+    }
+    return next;
+  };
+
+  const thumbPathsFromQualidade = (qualidade: GestaoTrocaIaQualidadeFoto[]) =>
+    qualidade.filter((q) => q.path && q.etiqueta !== "Documento (CRLV)").map((q) => q.path);
+
+  const loadLaudoBundle = async () => {
+    if (!troca) {
+      return {
+        laudo: null as GestaoTrocaLaudoPdfSection | null,
+        descricao: null as GestaoTrocaLaudoDescricaoPdf | null,
+        qualidade: [] as GestaoTrocaIaQualidadeFoto[],
+      };
+    }
     const { analise, itens } = await fetchLatestGestaoTrocaLaudo(troca.id);
-    return buildGestaoTrocaLaudoPdfFromAnalise(troca, analise, itens);
+    return {
+      laudo: buildGestaoTrocaLaudoPdfFromAnalise(troca, analise, itens),
+      descricao: buildGestaoTrocaLaudoDescricaoFromAnalise(analise),
+      qualidade: analise?.qualidade_json ?? [],
+    };
+  };
+
+  const loadLaudoPdfSection = async () => {
+    const bundle = await loadLaudoBundle();
+    return bundle.laudo;
   };
 
   const loadProcedenciaLaudo = async () => {
@@ -344,11 +401,12 @@ export default function GestaoTrocaFichaPage() {
   const exportPdf = async () => {
     if (!troca) return;
     setBusy(true);
-    const [urls, laudoPdf, procedenciaPdf] = await Promise.all([
+    const [urls, bundle, procedenciaPdf] = await Promise.all([
       loadPdfThumbUrls(),
-      loadLaudoPdfSection(),
+      loadLaudoBundle(),
       loadProcedenciaLaudo(),
     ]);
+    const parecerPdf = troca.parecer_json ?? null;
     const finalizacao = troca.laudo_status === "finalizado" && troca.laudo_numero
       ? {
         numero: troca.laudo_numero,
@@ -362,23 +420,68 @@ export default function GestaoTrocaFichaPage() {
       troca,
       eventos,
       urls,
-      laudoPdf,
+      bundle.laudo,
       finalizacao,
       procedenciaPdf,
+      bundle.descricao,
+      parecerPdf,
     );
   };
 
   const openPreview = async () => {
     if (!troca) return;
     setBusy(true);
-    const [laudo, procedencia] = await Promise.all([
-      loadLaudoPdfSection(),
+    const [bundle, procedencia] = await Promise.all([
+      loadLaudoBundle(),
       loadProcedenciaLaudo(),
     ]);
-    setPreviewLaudo(laudo);
+    const thumbs = await signGestaoTrocaFotoPaths(thumbPathsFromQualidade(bundle.qualidade));
+    setPreviewLaudo(bundle.laudo);
+    setPreviewDescricao(bundle.descricao);
+    setPreviewQualidade(bundle.qualidade);
+    setPreviewDescricaoThumbs(thumbs);
+    setPreviewParecer(parseGestaoTrocaParecerJson(troca.parecer_json));
     setPreviewProcedencia(procedencia);
     setBusy(false);
     setPreviewOpen(true);
+  };
+
+  const openAnalisarAvaliacao = async () => {
+    if (!troca) return;
+    setParecerOpen(true);
+    setParecerLoading(true);
+    setParecerPreview(null);
+    const [r, procedencia, bundle] = await Promise.all([
+      invokeGestaoTrocaParecerPreview(troca.id),
+      loadProcedenciaLaudo(),
+      loadLaudoBundle(),
+    ]);
+    if (!r.success) {
+      setParecerLoading(false);
+      toast.error(r.error ?? "Falha ao gerar parecer.");
+      setParecerOpen(false);
+      return;
+    }
+    setParecerPreview(mapGestaoTrocaParecerPreviewFromApi(r));
+    setParecerProcedencia(procedencia);
+    setParecerQualidade(bundle.qualidade);
+    const thumbs = await signGestaoTrocaFotoPaths(thumbPathsFromQualidade(bundle.qualidade));
+    setParecerThumbUrls(thumbs);
+    setParecerLoading(false);
+  };
+
+  const confirmAprovarComParecer = async () => {
+    if (!troca) return;
+    setBusy(true);
+    const r = await invokeGestaoTrocaAprovarComParecer(troca.id);
+    setBusy(false);
+    if (!r.success) {
+      toast.error(r.error ?? "Falha ao aprovar.");
+      return;
+    }
+    toast.success("Troca aprovada com parecer registrado.");
+    setParecerOpen(false);
+    void load();
   };
 
   const confirmFinalizarLaudo = async () => {
@@ -697,6 +800,9 @@ export default function GestaoTrocaFichaPage() {
             )}
             {troca.status === "aguardando_aprovacao" && (
               <>
+                <Button size="sm" variant="outline" onClick={() => void openAnalisarAvaliacao()} disabled={busy}>
+                  Analisar avaliação
+                </Button>
                 <Button size="sm" onClick={() => void transicao("aprovar", { valor_aprovado: troca.valor_proposto ?? troca.valor_sugerido })} disabled={busy}>Aprovar</Button>
                 <Button size="sm" variant="secondary" onClick={() => void transicao("recusar_aprovacao")} disabled={busy}>Recusar</Button>
               </>
@@ -764,6 +870,10 @@ export default function GestaoTrocaFichaPage() {
             eventos={eventos}
             laudo={previewLaudo}
             procedencia={previewProcedencia}
+            descricao={previewDescricao}
+            parecer={previewParecer}
+            qualidade={previewQualidade}
+            thumbUrls={previewDescricaoThumbs}
             finalizadoPor={finalizadoPorLabel}
           />
           <DialogFooter>
@@ -772,6 +882,18 @@ export default function GestaoTrocaFichaPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <GestaoTrocaParecerDialog
+        open={parecerOpen}
+        onOpenChange={setParecerOpen}
+        loading={parecerLoading}
+        preview={parecerPreview}
+        procedencia={parecerProcedencia}
+        qualidade={parecerQualidade}
+        thumbUrls={parecerThumbUrls}
+        onAprovar={() => void confirmAprovarComParecer()}
+        busy={busy}
+      />
 
       <AlertDialog open={finalizeOpen} onOpenChange={setFinalizeOpen}>
         <AlertDialogContent>

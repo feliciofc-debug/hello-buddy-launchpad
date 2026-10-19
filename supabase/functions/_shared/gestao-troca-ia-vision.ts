@@ -1,4 +1,9 @@
 import {
+  GESTAO_TROCA_IA_DESCRICAO_AREAS,
+  GESTAO_TROCA_IA_DESCRICAO_CONDICOES,
+  GESTAO_TROCA_IA_DESCRICAO_SECOES,
+} from "./gestao-troca-ia-descricao-schema.ts";
+import {
   GESTAO_TROCA_IA_AREAS,
   GESTAO_TROCA_IA_CONFIANCAS,
   GESTAO_TROCA_IA_GRAVIDADES,
@@ -36,7 +41,17 @@ export function buildGestaoTrocaIaVisionPrompt(fotos: { etiqueta: string }[]): s
   return [
     "Você é perito de avaliação de veículos usados no Brasil.",
     "Analise TODAS as imagens anexas (cada uma tem etiqueta indicando o ângulo).",
-    "Liste apenas avarias ou problemas VISÍVEIS com confiança razoável.",
+    "Liste avarias ou problemas VISÍVEIS com confiança razoável em itens.",
+    "",
+    "LAUDO DESCRITIVO (descricao_areas): descreva TODAS as áreas abaixo, inclusive as em bom estado aparente.",
+    "Cada texto factual (1–2 frases) DEVE citar números das fotos entre parênteses, ex.: (1, 3).",
+    "Área sem evidência em foto → condicao 'nao_fotografado', fotos=[] e texto 'não fotografado' — NUNCA diga bom/sem alteração sem foto.",
+    "Gotas de chuva, reflexo, sujeira ou limitação da foto: descreva como condição da foto, não como defeito do veículo.",
+    "Sem preços. Não conclua batida/acidente; descreva tom diferente, desalinhamento, etc.",
+    `secao: ${GESTAO_TROCA_IA_DESCRICAO_SECOES.join("|")}`,
+    `area (uma linha por área, todas obrigatórias): ${GESTAO_TROCA_IA_DESCRICAO_AREAS.join(", ")}`,
+    `condicao: ${GESTAO_TROCA_IA_DESCRICAO_CONDICOES.join("|")}`,
+    "conclusao_visual: 2–3 frases sobre estado aparente e pendências de foto, sem preço.",
     "Não cite FIPE, preço de mercado ou valor de compra/venda.",
     "km_painel: leia odômetro apenas se houver foto de painel ligado legível; senão null.",
     "LUZES DE PAINEL — registre SOMENTE luzes de FALHA (tipo luz_alerta, area painel): injeção/motor (check engine), airbag, ABS, óleo, bateria/carga, temperatura, falha de freio, direção, TPMS/pressão dos pneus, tração/ESP.",
@@ -50,6 +65,16 @@ export function buildGestaoTrocaIaVisionPrompt(fotos: { etiqueta: string }[]): s
     '"luzes_painel": true|false|null,',
     '"aviso_carroceria": true|false,',
     '"resumo": string,',
+    '"conclusao_visual": string,',
+    '"descricao_areas": [',
+    "{",
+    `"secao": ${GESTAO_TROCA_IA_DESCRICAO_SECOES.join("|")},`,
+    `"area": ${GESTAO_TROCA_IA_DESCRICAO_AREAS.join("|")},`,
+    `"condicao": ${GESTAO_TROCA_IA_DESCRICAO_CONDICOES.join("|")},`,
+    '"texto": string,',
+    '"fotos": number[] (índices 1-based das fotos listadas; vazio se nao_fotografado)',
+    "}",
+    "],",
     '"itens": [',
     "{",
     `"area": ${GESTAO_TROCA_IA_AREAS.join("|")},`,
@@ -114,7 +139,7 @@ export async function analyzeGestaoTrocaFotosVision(input: {
     }
     const body = await response.json();
     const raw = String(body?.choices?.[0]?.message?.content || "");
-    const parsed = parseGestaoTrocaIaVisionJson(raw);
+    const parsed = parseGestaoTrocaIaVisionJson(raw, input.fotos.length);
     if (!parsed.ok) return { ok: false, error: parsed.error };
     return { ok: true, data: parsed.data, raw: raw.slice(0, 2000) };
   } catch {

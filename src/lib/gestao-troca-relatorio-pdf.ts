@@ -10,6 +10,10 @@ import type {
   GestaoTrocaLaudoPdfSection,
 } from "@/lib/gestao-troca-laudo-pdf-section.ts";
 import {
+  appendGestaoTrocaLaudoDescricaoPdfLines,
+  type GestaoTrocaLaudoDescricaoPdf,
+} from "@/lib/gestao-troca-ia-descricao-display.ts";
+import {
   appendGestaoTrocaProcedenciaPdfLines,
   type GestaoTrocaProcedenciaLaudo,
 } from "@/lib/gestao-troca-procedencia-display.ts";
@@ -114,6 +118,8 @@ export async function downloadGestaoTrocaRelatorioPdf(
   laudo?: GestaoTrocaLaudoPdfSection | null,
   finalizacao?: GestaoTrocaLaudoPdfFinalizacao | null,
   procedencia?: GestaoTrocaProcedenciaLaudo | null,
+  descricao?: GestaoTrocaLaudoDescricaoPdf | null,
+  parecer?: Record<string, unknown> | null,
 ) {
   const doc = new jsPDF();
   let y = 14;
@@ -160,9 +166,31 @@ export async function downloadGestaoTrocaRelatorioPdf(
   y += 4;
   appendGestaoTrocaProcedenciaPdfLines(line, procedencia ?? null);
 
+  if (descricao) {
+    y += 4;
+    appendGestaoTrocaLaudoDescricaoPdfLines(line, descricao);
+  }
+
   if (laudo) {
     y += 4;
     appendGestaoTrocaLaudoPdfLines(line, laudo);
+  }
+
+  if (parecer && typeof parecer.recomendacao === "object" && parecer.recomendacao) {
+    y += 4;
+    line("Parecer da avaliação", true);
+    const rec = parecer.recomendacao as Record<string, unknown>;
+    line(String(rec.rotulo ?? ""));
+    const motivos = rec.motivos;
+    if (Array.isArray(motivos)) {
+      for (const m of motivos) line(`• ${String(m)}`);
+    }
+    const pendencias = rec.pendencias;
+    if (Array.isArray(pendencias) && pendencias.length) {
+      line("Pendências antes de aprovar:", true);
+      for (const p of pendencias) line(`• ${String(p)}`);
+    }
+    if (parecer.paragrafo_ia) line(String(parecer.paragrafo_ia));
   }
 
   y += 4;

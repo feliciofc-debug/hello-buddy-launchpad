@@ -1,4 +1,9 @@
-export type GestaoTrocaIaAnaliseStatus = "processando" | "concluida" | "erro";
+import {
+  parseGestaoTrocaIaDescricaoAreasJson,
+  type GestaoTrocaIaDescricaoAreaRow,
+} from "@/lib/gestao-troca-ia-descricao-display.ts";
+
+export type GestaoTrocaIaAnaliseStatus = "processando" | "concluida" | "erro" | "rejeitada";
 
 export type GestaoTrocaIaItemDecisao = "pendente" | "confirmado" | "descartado";
 
@@ -26,6 +31,8 @@ export type GestaoTrocaIaAnalise = {
   modelo_ia?: string | null;
   created_at: string;
   concluida_em: string | null;
+  descricao_areas_json?: GestaoTrocaIaDescricaoAreaRow[];
+  conclusao_visual?: string | null;
 };
 
 export type GestaoTrocaIaItem = {
@@ -98,6 +105,8 @@ export function parseGestaoTrocaIaAnaliseRow(raw: Record<string, unknown>): Gest
     modelo_ia: raw.modelo_ia != null ? String(raw.modelo_ia) : null,
     created_at: String(raw.created_at ?? ""),
     concluida_em: raw.concluida_em != null ? String(raw.concluida_em) : null,
+    descricao_areas_json: parseGestaoTrocaIaDescricaoAreasJson(raw.descricao_areas_json),
+    conclusao_visual: raw.conclusao_visual != null ? String(raw.conclusao_visual) : null,
   };
 }
 

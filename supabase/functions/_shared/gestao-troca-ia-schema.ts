@@ -1,3 +1,8 @@
+import {
+  validateGestaoTrocaIaDescricaoAreas,
+  type GestaoTrocaIaDescricaoAreaRow,
+} from "./gestao-troca-ia-descricao-schema.ts";
+
 export const GESTAO_TROCA_IA_AREAS = [
   "para_choque_dianteiro",
   "para_choque_traseiro",
@@ -89,6 +94,8 @@ export type GestaoTrocaIaVisionResponse = {
   aviso_carroceria: boolean;
   resumo: string;
   itens: GestaoTrocaIaVisionItem[];
+  descricao_areas: GestaoTrocaIaDescricaoAreaRow[];
+  conclusao_visual: string;
 };
 
 const AREA_SET = new Set<string>(GESTAO_TROCA_IA_AREAS);
@@ -123,7 +130,10 @@ function parseDescricao(v: unknown): string | null {
   return s.slice(0, 400);
 }
 
-export function validateGestaoTrocaIaVisionResponse(raw: unknown):
+export function validateGestaoTrocaIaVisionResponse(
+  raw: unknown,
+  maxFotoIndice = 32,
+):
   | { ok: true; data: GestaoTrocaIaVisionResponse }
   | { ok: false; error: string } {
   if (!isPlainObject(raw)) return { ok: false, error: "Resposta não é objeto JSON." };
@@ -134,6 +144,8 @@ export function validateGestaoTrocaIaVisionResponse(raw: unknown):
     "aviso_carroceria",
     "resumo",
     "itens",
+    "descricao_areas",
+    "conclusao_visual",
   ]);
   for (const k of Object.keys(raw)) {
     if (!allowedTop.has(k)) return { ok: false, error: `Campo desconhecido: ${k}` };
@@ -178,21 +190,36 @@ export function validateGestaoTrocaIaVisionResponse(raw: unknown):
     });
   }
 
+  const conclusao_visual = String(raw.conclusao_visual ?? "").trim().slice(0, 800);
+  if (!conclusao_visual) return { ok: false, error: "conclusao_visual vazia." };
+
+  const descVal = validateGestaoTrocaIaDescricaoAreas(raw.descricao_areas, maxFotoIndice);
+  if (!descVal.ok) return descVal;
+
   return {
     ok: true,
-    data: { km_painel, luzes_painel, aviso_carroceria, resumo, itens },
+    data: {
+      km_painel,
+      luzes_painel,
+      aviso_carroceria,
+      resumo,
+      itens,
+      descricao_areas: descVal.rows,
+      conclusao_visual,
+    },
   };
 }
 
-export function parseGestaoTrocaIaVisionJson(raw: string): ReturnType<
-  typeof validateGestaoTrocaIaVisionResponse
-> {
+export function parseGestaoTrocaIaVisionJson(
+  raw: string,
+  maxFotoIndice = 32,
+): ReturnType<typeof validateGestaoTrocaIaVisionResponse> {
   try {
     const cleaned = String(raw || "")
       .replace(/```(?:json)?|```/gi, "")
       .trim();
     const parsed = JSON.parse(cleaned);
-    return validateGestaoTrocaIaVisionResponse(parsed);
+    return validateGestaoTrocaIaVisionResponse(parsed, maxFotoIndice);
   } catch {
     return { ok: false, error: "JSON inválido." };
   }

@@ -172,6 +172,42 @@ export async function invokeGestaoTrocaCustosListar(): Promise<{
   return { custos };
 }
 
+export async function invokeGestaoTrocaParecerPreview(trocaId: string): Promise<{
+  success: boolean;
+  recomendacao?: Record<string, unknown>;
+  fatos?: Record<string, unknown>;
+  paragrafo_ia?: string | null;
+  descricao?: Record<string, unknown> | null;
+  error?: string;
+}> {
+  const { data, error } = await supabase.functions.invoke("gestao-troca", {
+    body: { action: "parecer_preview", troca_id: trocaId },
+  });
+  if (error || !data?.success) {
+    return { success: false, error: data?.error ?? error?.message ?? "Falha ao gerar parecer." };
+  }
+  return {
+    success: true,
+    recomendacao: data.recomendacao as Record<string, unknown>,
+    fatos: data.fatos as Record<string, unknown>,
+    paragrafo_ia: data.paragrafo_ia != null ? String(data.paragrafo_ia) : null,
+    descricao: data.descricao as Record<string, unknown> | null,
+  };
+}
+
+export async function invokeGestaoTrocaAprovarComParecer(trocaId: string): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  const { data, error } = await supabase.functions.invoke("gestao-troca", {
+    body: { action: "aprovar_com_parecer", troca_id: trocaId },
+  });
+  if (error || !data?.success) {
+    return { success: false, error: data?.error ?? error?.message ?? "Falha ao aprovar." };
+  }
+  return { success: true };
+}
+
 export async function invokeGestaoTrocaFinalizarLaudo(trocaId: string): Promise<{
   success: boolean;
   numero?: string;
