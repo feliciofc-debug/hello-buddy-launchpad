@@ -70,7 +70,7 @@ export async function runMlVehiclePublish(
     .select("external_id")
     .eq("user_id", input.userId)
     .eq("portal", "mercadolivre");
-  const ownedIds = new Set(
+  const ownedIds = new Set<string>(
     (ownedRows ?? []).map((r: { external_id: string }) => String(r.external_id)),
   );
   const duplicateCandidates = await mlFindPossibleDuplicateListings(
