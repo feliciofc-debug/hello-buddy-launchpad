@@ -126,6 +126,7 @@ Deno.serve(async (req) => {
         user.id,
         String(body?.troca_id ?? ""),
         user.email ?? "painel",
+        Number(body?.preco_venda ?? 0),
       );
       return jsonResponse({ success: true, ...r });
     }

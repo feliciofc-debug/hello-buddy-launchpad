@@ -7,10 +7,33 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { formatGestaoMoney } from "@/lib/gestao-format.ts";
 import type { GestaoTrocaEvento, GestaoTrocaRow } from "@/lib/gestao-troca-types.ts";
 import { downloadGestaoTrocaRelatorioPdf } from "@/lib/gestao-troca-relatorio-pdf.ts";
 import { GestaoMoneyInput } from "@/components/gestao/lucro/GestaoMoneyInput.tsx";
+import { GestaoTrocaChecklistPanel } from "@/components/gestao/trocas/GestaoTrocaChecklistPanel.tsx";
+import { GestaoTrocaFotoGaleria } from "@/components/gestao/trocas/GestaoTrocaFotoGaleria.tsx";
+import { pollProcedenciaConsulta } from "@/components/procedencia/useProcedenciaConnection.ts";
+import type { GestaoTrocaChecklistJson } from "@/lib/gestao-troca-checklist.ts";
+import { parseGestaoMoneyBr } from "@/lib/gestao-money.ts";
 
 export default function GestaoTrocaFichaPage() {
   const { id } = useParams<{ id: string }>();
@@ -18,9 +41,18 @@ export default function GestaoTrocaFichaPage() {
   const [troca, setTroca] = useState<GestaoTrocaRow | null>(null);
   const [eventos, setEventos] = useState<GestaoTrocaEvento[]>([]);
   const [busy, setBusy] = useState(false);
+  const [userId, setUserId] = useState("");
+  const [liberarOpen, setLiberarOpen] = useState(false);
+  const [precoVendaInput, setPrecoVendaInput] = useState("");
+  const [repasseOpen, setRepasseOpen] = useState(false);
+  const [repasseComprador, setRepasseComprador] = useState("");
+  const [repasseValor, setRepasseValor] = useState("");
+  const [repasseData, setRepasseData] = useState(() => new Date().toISOString().slice(0, 10));
 
   const load = useCallback(async () => {
     if (!id) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) setUserId(user.id);
     const { data: t } = await supabase.from("gestao_troca" as "veiculos_estoque").select("*")
       .eq("id", id).maybeSingle();
     if (!t) {
@@ -85,13 +117,19 @@ export default function GestaoTrocaFichaPage() {
     const { data, error } = await supabase.functions.invoke("veiculo-procedencia", {
       body: { action: "consultar", placa: troca.placa, confirmado: true },
     });
-    setBusy(false);
     if (error || !data?.success) {
+      setBusy(false);
       toast.error(data?.error ?? "Falha na procedência.");
       return;
     }
-    await savePatch({ procedencia_consulta_id: data.consulta_id });
-    await recalcular();
+    const consultaId = String(data.consulta_id ?? "");
+    await savePatch({ procedencia_consulta_id: consultaId });
+    const polled = await pollProcedenciaConsulta(consultaId);
+    setBusy(false);
+    if (polled?.status === "concluida") {
+      toast.success("Procedência concluída.");
+      await recalcular();
+    }
   };
 
   const transicao = async (acao: string, extra?: Record<string, unknown>) => {
@@ -104,17 +142,75 @@ export default function GestaoTrocaFichaPage() {
     else void load();
   };
 
-  const uploadFoto = async (file: File) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user || !id) return;
-    const path = `${user.id}/${id}/${Date.now()}-${file.name}`;
-    const { error } = await supabase.storage.from("trocas").upload(path, file);
-    if (error) {
-      toast.error("Falha no upload.");
+  const saveChecklist = async (checklist: GestaoTrocaChecklistJson, preparacao: number) => {
+    setTroca((t) => (t ? { ...t, checklist_json: checklist, preparacao_estimada: preparacao } : t));
+    await savePatch({ checklist_json: checklist, preparacao_estimada: preparacao });
+    await recalcular();
+  };
+
+  const openLiberar = () => {
+    const preco = troca?.kbb_loja ?? troca?.valor_sugerido ?? 0;
+    setPrecoVendaInput(String(preco ?? ""));
+    setLiberarOpen(true);
+  };
+
+  const confirmLiberar = async () => {
+    const precoFinal = parseGestaoMoneyBr(precoVendaInput);
+    if (precoFinal == null || precoFinal <= 0) {
+      toast.error("Informe o preço de venda.");
       return;
     }
-    const fotos = [...(troca?.fotos_json ?? []), path];
-    await savePatch({ fotos_json: fotos });
+    setBusy(true);
+    const { data, error } = await supabase.functions.invoke("gestao-troca", {
+      body: { action: "liberar_estoque", troca_id: id, preco_venda: precoFinal },
+    });
+    setBusy(false);
+    setLiberarOpen(false);
+    if (error || !data?.success) toast.error(data?.error ?? "Falha.");
+    else {
+      toast.success("Liberado para estoque / vitrine.");
+      void load();
+    }
+  };
+
+  const confirmRepasse = async () => {
+    if (!repasseComprador.trim()) {
+      toast.error("Informe o comprador.");
+      return;
+    }
+    const valor = parseGestaoMoneyBr(repasseValor);
+    if (valor == null || valor <= 0) {
+      toast.error("Informe o valor do repasse.");
+      return;
+    }
+    setBusy(true);
+    const { data, error } = await supabase.functions.invoke("gestao-troca", {
+      body: {
+        action: "repasse",
+        troca_id: id,
+        comprador: repasseComprador.trim(),
+        valor,
+        data: repasseData,
+      },
+    });
+    setBusy(false);
+    setRepasseOpen(false);
+    if (error || !data?.success) toast.error(data?.error ?? "Falha.");
+    else {
+      toast.success("Repasse registrado.");
+      void load();
+    }
+  };
+
+  const exportPdf = async () => {
+    if (!troca) return;
+    const paths = troca.fotos_json ?? [];
+    const urls: string[] = [];
+    for (const path of paths.slice(0, 6)) {
+      const { data } = await supabase.storage.from("trocas").createSignedUrl(path, 3600);
+      if (data?.signedUrl) urls.push(data.signedUrl);
+    }
+    await downloadGestaoTrocaRelatorioPdf(troca, eventos, urls);
   };
 
   if (!troca) {
@@ -124,6 +220,8 @@ export default function GestaoTrocaFichaPage() {
       </div>
     );
   }
+
+  const destinoLocked = !!troca.veiculo_id || !!troca.destino;
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 dark:bg-gray-900">
@@ -135,7 +233,7 @@ export default function GestaoTrocaFichaPage() {
           <h1 className="text-2xl font-bold">
             {troca.marca} {troca.modelo} {troca.ano_modelo ?? ""}
           </h1>
-          <Button variant="outline" size="sm" onClick={() => downloadGestaoTrocaRelatorioPdf(troca, eventos)}>
+          <Button variant="outline" size="sm" onClick={() => void exportPdf()} disabled={busy}>
             Relatório PDF
           </Button>
         </div>
@@ -151,6 +249,29 @@ export default function GestaoTrocaFichaPage() {
             <div><Label>Cliente</Label><Input value={troca.cliente_nome ?? ""} onChange={(e) => setTroca({ ...troca, cliente_nome: e.target.value })} onBlur={() => void savePatch({ cliente_nome: troca.cliente_nome })} /></div>
           </div>
           <Textarea placeholder="Observações" value={troca.observacoes ?? ""} onChange={(e) => setTroca({ ...troca, observacoes: e.target.value })} onBlur={() => void savePatch({ observacoes: troca.observacoes })} />
+        </section>
+
+        <section className="space-y-3 rounded-lg border bg-white p-4 dark:bg-gray-950">
+          <h2 className="font-semibold">Checklist de avaliação</h2>
+          <GestaoTrocaChecklistPanel
+            value={troca.checklist_json}
+            preparacaoManual={troca.preparacao_estimada}
+            disabled={busy}
+            onChecklistChange={(checklist, preparacaoSugerida) => {
+              void saveChecklist(checklist, preparacaoSugerida);
+            }}
+            onPreparacaoChange={(preparacao) =>
+              setTroca((t) => (t ? { ...t, preparacao_estimada: preparacao } : t))}
+          />
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={busy}
+            onClick={() =>
+              void savePatch({ preparacao_estimada: troca.preparacao_estimada }).then(() => recalcular())}
+          >
+            Salvar preparação manual
+          </Button>
         </section>
 
         <section className="space-y-3 rounded-lg border bg-white p-4 dark:bg-gray-950">
@@ -222,55 +343,43 @@ export default function GestaoTrocaFichaPage() {
 
         <section className="space-y-2 rounded-lg border bg-white p-4 dark:bg-gray-950">
           <h2 className="font-semibold">Fotos (privadas)</h2>
-          <Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadFoto(f); }} />
-          <p className="text-xs text-muted-foreground">{troca.fotos_json?.length ?? 0} foto(s)</p>
+          {userId && id && (
+            <GestaoTrocaFotoGaleria
+              userId={userId}
+              trocaId={id}
+              fotos={troca.fotos_json ?? []}
+              disabled={busy}
+              onFotosChange={(paths) => void savePatch({ fotos_json: paths })}
+            />
+          )}
         </section>
 
         <section className="space-y-2 rounded-lg border bg-white p-4 dark:bg-gray-950">
           <h2 className="font-semibold">Ações · {troca.status}</h2>
           <div className="flex flex-wrap gap-2">
             {troca.status === "em_avaliacao" && (
-              <Button size="sm" onClick={() => void transicao("solicitar_aprovacao")}>Solicitar aprovação</Button>
+              <Button size="sm" onClick={() => void transicao("solicitar_aprovacao")} disabled={busy}>Solicitar aprovação</Button>
             )}
             {troca.status === "aguardando_aprovacao" && (
               <>
-                <Button size="sm" onClick={() => void transicao("aprovar", { valor_aprovado: troca.valor_proposto ?? troca.valor_sugerido })}>Aprovar</Button>
-                <Button size="sm" variant="secondary" onClick={() => void transicao("recusar_aprovacao")}>Recusar</Button>
+                <Button size="sm" onClick={() => void transicao("aprovar", { valor_aprovado: troca.valor_proposto ?? troca.valor_sugerido })} disabled={busy}>Aprovar</Button>
+                <Button size="sm" variant="secondary" onClick={() => void transicao("recusar_aprovacao")} disabled={busy}>Recusar</Button>
               </>
             )}
             {troca.status === "aprovada" && (
-              <Button size="sm" onClick={() => void transicao("fechar", { valor_fechado: troca.valor_aprovado })}>Fechar troca</Button>
+              <Button size="sm" onClick={() => void transicao("fechar", { valor_fechado: troca.valor_aprovado })} disabled={busy}>Fechar troca</Button>
             )}
             {troca.status === "fechada" && !troca.veiculo_id && (
               <>
-                <Button size="sm" onClick={async () => {
-                  setBusy(true);
-                  const { data, error } = await supabase.functions.invoke("gestao-troca", { body: { action: "liberar_estoque", troca_id: id } });
-                  setBusy(false);
-                  if (error || !data?.success) toast.error(data?.error ?? "Falha.");
-                  else toast.success("Liberado para estoque.");
-                  void load();
-                }}>Liberar para venda</Button>
-                <Button size="sm" variant="secondary" onClick={async () => {
-                  const comprador = prompt("Comprador repasse");
-                  const valor = prompt("Valor repasse");
-                  if (!comprador || !valor) return;
-                  setBusy(true);
-                  const { data, error } = await supabase.functions.invoke("gestao-troca", {
-                    body: { action: "repasse", troca_id: id, comprador, valor: Number(valor), data: new Date().toISOString().slice(0, 10) },
-                  });
-                  setBusy(false);
-                  if (error || !data?.success) toast.error(data?.error ?? "Falha.");
-                  else toast.success("Repasse registrado.");
-                  void load();
-                }}>Registrar repasse</Button>
+                <Button size="sm" onClick={openLiberar} disabled={busy || destinoLocked}>Liberar para venda</Button>
+                <Button size="sm" variant="secondary" onClick={() => setRepasseOpen(true)} disabled={busy || destinoLocked}>Registrar repasse</Button>
               </>
             )}
             {!["fechada", "cancelada", "perdida", "recusada_cliente"].includes(troca.status) && (
               <>
-                <Button size="sm" variant="ghost" onClick={() => void transicao("cliente_recusou")}>Cliente recusou</Button>
-                <Button size="sm" variant="ghost" onClick={() => void transicao("perdida")}>Perdida</Button>
-                <Button size="sm" variant="ghost" onClick={() => void transicao("cancelar")}>Cancelar</Button>
+                <Button size="sm" variant="ghost" onClick={() => void transicao("cliente_recusou")} disabled={busy}>Cliente recusou</Button>
+                <Button size="sm" variant="ghost" onClick={() => void transicao("perdida")} disabled={busy}>Perdida</Button>
+                <Button size="sm" variant="ghost" onClick={() => void transicao("cancelar")} disabled={busy}>Cancelar</Button>
               </>
             )}
           </div>
@@ -285,6 +394,49 @@ export default function GestaoTrocaFichaPage() {
           </ul>
         </section>
       </div>
+
+      <AlertDialog open={liberarOpen} onOpenChange={setLiberarOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Liberar para venda</AlertDialogTitle>
+            <AlertDialogDescription>
+              O carro vai aparecer no estoque e na vitrine. As fotos da avaliação{" "}
+              <strong>não</strong> são copiadas para o anúncio — cadastre fotos no veículo depois.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <GestaoMoneyInput
+            label="Preço de venda"
+            value={precoVendaInput}
+            onChange={setPrecoVendaInput}
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={(e) => { e.preventDefault(); void confirmLiberar(); }} disabled={busy}>
+              Confirmar liberação
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={repasseOpen} onOpenChange={setRepasseOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Registrar repasse</DialogTitle>
+            <DialogDescription>
+              Cria veículo vendido e lança receita no DRE. Só uma ação de destino por troca.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <div><Label>Comprador</Label><Input value={repasseComprador} onChange={(e) => setRepasseComprador(e.target.value)} /></div>
+            <GestaoMoneyInput label="Valor repasse" value={repasseValor} onChange={setRepasseValor} />
+            <div><Label>Data</Label><Input type="date" value={repasseData} onChange={(e) => setRepasseData(e.target.value)} /></div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRepasseOpen(false)} disabled={busy}>Cancelar</Button>
+            <Button onClick={() => void confirmRepasse()} disabled={busy}>Confirmar repasse</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -98,79 +98,126 @@ export async function loadTrocaHistoricoGrupo(
   };
 }
 
+export async function claimGestaoTrocaDestino(
+  sb: Db,
+  userId: string,
+  trocaId: string,
+  destino: "estoque" | "repasse",
+): Promise<boolean> {
+  const { data, error } = await sb.from("gestao_troca").update({
+    destino,
+    updated_at: new Date().toISOString(),
+  })
+    .eq("id", trocaId)
+    .eq("user_id", userId)
+    .is("veiculo_id", null)
+    .is("destino", null)
+    .select("id")
+    .maybeSingle();
+  if (error) throw new Error("Não foi possível reservar destino.");
+  return !!data?.id;
+}
+
+async function releaseGestaoTrocaDestinoLock(
+  sb: Db,
+  userId: string,
+  trocaId: string,
+): Promise<void> {
+  await sb.from("gestao_troca").update({
+    destino: null,
+    updated_at: new Date().toISOString(),
+  })
+    .eq("id", trocaId)
+    .eq("user_id", userId)
+    .is("veiculo_id", null);
+}
+
 export async function liberarTrocaParaEstoque(
   sb: Db,
   userId: string,
   trocaId: string,
   autorLabel: string,
+  precoVenda: number,
 ): Promise<{ veiculo_id: string }> {
+  const preco = Number(precoVenda);
+  if (!Number.isFinite(preco) || preco <= 0) throw new Error("Informe o preço de venda.");
+
   const { data: troca, error } = await sb.from("gestao_troca").select("*")
     .eq("id", trocaId).eq("user_id", userId).maybeSingle();
   if (error || !troca) throw new Error("Troca não encontrada.");
   if (String(troca.status) !== "fechada") throw new Error("Troca precisa estar fechada.");
-  if (troca.veiculo_id) throw new Error("Veículo já liberado.");
+  if (troca.veiculo_id || troca.destino) throw new Error("Destino já registrado.");
   if (troca.valor_fechado == null) throw new Error("Informe valor fechado.");
 
-  const { data: veic, error: vErr } = await sb.from("veiculos_estoque").insert({
-    user_id: userId,
-    marca: troca.marca,
-    modelo: troca.modelo,
-    versao: troca.versao,
-    ano_fabricacao: troca.ano_fabricacao,
-    ano_modelo: troca.ano_modelo,
-    km: troca.km,
-    cor: troca.cor,
-    placa: troca.placa,
-    status: "disponivel",
-    segmento: "carro",
-    preco: troca.kbb_loja ?? troca.fipe_valor,
-  }).select("id").single();
-  if (vErr || !veic?.id) throw new Error("Não foi possível criar veículo no estoque.");
+  const claimed = await claimGestaoTrocaDestino(sb, userId, trocaId, "estoque");
+  if (!claimed) throw new Error("Destino já registrado.");
 
-  const vid = String(veic.id);
-  const dataCompra = troca.fechado_em
-    ? String(troca.fechado_em).slice(0, 10)
-    : hojeSaoPaulo();
+  try {
+    const { data: veic, error: vErr } = await sb.from("veiculos_estoque").insert({
+      user_id: userId,
+      marca: troca.marca,
+      modelo: troca.modelo,
+      versao: troca.versao,
+      ano_fabricacao: troca.ano_fabricacao,
+      ano_modelo: troca.ano_modelo,
+      km: troca.km,
+      cor: troca.cor,
+      placa: troca.placa,
+      status: "disponivel",
+      segmento: "carro",
+      preco: preco,
+      fotos: null,
+    }).select("id").single();
+    if (vErr || !veic?.id) throw new Error("Não foi possível criar veículo no estoque.");
 
-  await sb.from("veiculo_compra").upsert({
-    user_id: userId,
-    veiculo_id: vid,
-    valor_compra: Number(troca.valor_fechado),
-    data_compra: dataCompra,
-    origem: "troca",
-  }, { onConflict: "user_id,veiculo_id" });
+    const vid = String(veic.id);
+    const dataCompra = troca.fechado_em
+      ? String(troca.fechado_em).slice(0, 10)
+      : hojeSaoPaulo();
 
-  const { data: despesas } = await sb.from("gestao_troca_despesa").select("*")
-    .eq("troca_id", trocaId).eq("user_id", userId).is("deleted_at", null);
-
-  for (const d of despesas ?? []) {
-    await sb.from("veiculo_despesas").insert({
+    await sb.from("veiculo_compra").upsert({
       user_id: userId,
       veiculo_id: vid,
-      data: String(d.data ?? dataCompra).slice(0, 10),
-      categoria: String(d.categoria),
-      valor: Number(d.valor),
-      descricao: d.descricao ? String(d.descricao) : "Preparação troca",
-      origem_lancamento: "painel",
-      lancado_por: autorLabel,
+      valor_compra: Number(troca.valor_fechado),
+      data_compra: dataCompra,
+      origem: "troca",
+    }, { onConflict: "user_id,veiculo_id" });
+
+    const { data: despesas } = await sb.from("gestao_troca_despesa").select("*")
+      .eq("troca_id", trocaId).eq("user_id", userId).is("deleted_at", null);
+
+    for (const d of despesas ?? []) {
+      await sb.from("veiculo_despesas").insert({
+        user_id: userId,
+        veiculo_id: vid,
+        data: String(d.data ?? dataCompra).slice(0, 10),
+        categoria: String(d.categoria),
+        valor: Number(d.valor),
+        descricao: d.descricao ? String(d.descricao) : "Preparação troca",
+        origem_lancamento: "painel",
+        lancado_por: autorLabel,
+      });
+    }
+
+    await sb.from("gestao_troca").update({
+      veiculo_id: vid,
+      updated_at: new Date().toISOString(),
+    }).eq("id", trocaId);
+
+    await insertTrocaEvento(sb, {
+      troca_id: trocaId,
+      user_id: userId,
+      tipo: "liberar_estoque",
+      descricao: `Liberado para venda — preço ${preco}`,
+      valor: preco,
+      autor: autorLabel,
     });
+
+    return { veiculo_id: vid };
+  } catch (e) {
+    await releaseGestaoTrocaDestinoLock(sb, userId, trocaId);
+    throw e;
   }
-
-  await sb.from("gestao_troca").update({
-    veiculo_id: vid,
-    destino: "estoque",
-    updated_at: new Date().toISOString(),
-  }).eq("id", trocaId);
-
-  await insertTrocaEvento(sb, {
-    troca_id: trocaId,
-    user_id: userId,
-    tipo: "liberar_estoque",
-    descricao: `Liberado para venda — veículo ${vid.slice(0, 8)}`,
-    autor: autorLabel,
-  });
-
-  return { veiculo_id: vid };
 }
 
 export async function registrarTrocaRepasse(
@@ -184,8 +231,12 @@ export async function registrarTrocaRepasse(
     .eq("id", trocaId).eq("user_id", userId).maybeSingle();
   if (!troca) throw new Error("Troca não encontrada.");
   if (String(troca.status) !== "fechada") throw new Error("Troca precisa estar fechada.");
-  if (troca.veiculo_id) throw new Error("Destino já registrado.");
+  if (troca.veiculo_id || troca.destino) throw new Error("Destino já registrado.");
 
+  const claimed = await claimGestaoTrocaDestino(sb, userId, trocaId, "repasse");
+  if (!claimed) throw new Error("Destino já registrado.");
+
+  try {
   const { data: veic, error: vErr } = await sb.from("veiculos_estoque").insert({
     user_id: userId,
     marca: troca.marca,
@@ -237,7 +288,6 @@ export async function registrarTrocaRepasse(
 
   await sb.from("gestao_troca").update({
     veiculo_id: vid,
-    destino: "repasse",
     repasse_comprador: input.comprador,
     repasse_valor: input.valor,
     repasse_data: input.data.slice(0, 10),
@@ -254,4 +304,8 @@ export async function registrarTrocaRepasse(
   });
 
   return { veiculo_id: vid };
+  } catch (e) {
+    await releaseGestaoTrocaDestinoLock(sb, userId, trocaId);
+    throw e;
+  }
 }

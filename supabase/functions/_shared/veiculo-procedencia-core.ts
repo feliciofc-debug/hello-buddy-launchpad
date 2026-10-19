@@ -20,6 +20,11 @@ import {
 } from "./procedencia-enc-crypto.ts";
 import { maskEmailForDisplay } from "./procedencia-http.ts";
 import { formatGestaoMoney } from "./gestao-format.ts";
+import {
+  addDiasYmd,
+  competenciaFromYmdSaoPaulo,
+  intervaloCompetencia,
+} from "./gestao-date-br.ts";
 
 export type ProcedenciaConfigRow = {
   user_id: string;
@@ -31,6 +36,22 @@ export type ProcedenciaConfigRow = {
 };
 
 type Db = SupabaseClient;
+
+/** Limites UTC para competência em America/Sao_Paulo (UTC−3, sem horário de verão). */
+export function procedenciaCompetenciaUtcBounds(competenciaYm: string): {
+  startIso: string;
+  endExclusiveIso: string;
+} {
+  const { start, end } = intervaloCompetencia(competenciaYm);
+  return {
+    startIso: `${start}T03:00:00.000Z`,
+    endExclusiveIso: `${addDiasYmd(end, 1)}T03:00:00.000Z`,
+  };
+}
+
+export function procedenciaCompetenciaAtual(now = new Date()): string {
+  return competenciaFromYmdSaoPaulo(now);
+}
 
 export async function loadProcedenciaConfig(
   sb: Db,
@@ -102,18 +123,14 @@ export async function countConsultasMes(
   userId: string,
   competenciaYm: string,
 ): Promise<number> {
-  const start = `${competenciaYm}-01T00:00:00.000Z`;
-  const [y, m] = competenciaYm.split("-").map(Number);
-  const nextM = m === 12 ? 1 : m + 1;
-  const nextY = m === 12 ? y + 1 : y;
-  const end = `${nextY}-${String(nextM).padStart(2, "0")}-01T00:00:00.000Z`;
+  const { startIso, endExclusiveIso } = procedenciaCompetenciaUtcBounds(competenciaYm);
   const { count } = await sb.from("veiculo_procedencia_consulta")
     .select("id", { count: "exact", head: true })
     .eq("user_id", userId)
     .neq("placa", CONSULTAR_PLACA_TESTE)
     .in("status", ["processando", "concluida"])
-    .gte("created_at", start)
-    .lt("created_at", end);
+    .gte("created_at", startIso)
+    .lt("created_at", endExclusiveIso);
   return count ?? 0;
 }
 
@@ -122,17 +139,77 @@ export async function assertProcedenciaLimiteMensal(
   userId: string,
   placa: string,
   limite: number,
+  now = new Date(),
 ): Promise<void> {
   if (placa.toUpperCase() === CONSULTAR_PLACA_TESTE) return;
-  const ym = new Date().toISOString().slice(0, 7);
+  const ym = procedenciaCompetenciaAtual(now);
   const used = await countConsultasMes(sb, userId, ym);
   if (used >= limite) {
     throw new Error(`Limite mensal de ${limite} consultas atingido.`);
   }
 }
 
+export async function assertNoProcedenciaProcessandoRecente(
+  sb: Db,
+  userId: string,
+  placa: string,
+  windowMinutes = 10,
+): Promise<void> {
+  const p = normalizePlacaInput(placa);
+  const since = new Date(Date.now() - windowMinutes * 60 * 1000).toISOString();
+  const { data } = await sb.from("veiculo_procedencia_consulta")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("placa", p)
+    .eq("status", "processando")
+    .gte("created_at", since)
+    .limit(1);
+  if (data?.length) {
+    throw new Error(
+      "Já existe consulta em andamento para esta placa. Aguarde ou consulte o status.",
+    );
+  }
+}
+
 export function normalizePlacaInput(placa: string): string {
   return String(placa || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+export async function createProcedenciaConsultaProcessando(
+  sb: Db,
+  userId: string,
+  placaRaw: string,
+  opts: {
+    canal: "painel" | "whatsapp";
+    solicitadoPor: string;
+    veiculoId?: string | null;
+  },
+): Promise<string> {
+  const placa = normalizePlacaInput(placaRaw);
+  if (!isValidBrazilPlaca(placa)) throw new Error("Placa inválida.");
+  const cfg = await loadProcedenciaConfig(sb, userId);
+  if (!cfg?.ativo) throw new Error("Procedência não configurada para esta loja.");
+  await assertProcedenciaLimiteMensal(sb, userId, placa, cfg.limite_mensal ?? 30);
+  await assertNoProcedenciaProcessandoRecente(sb, userId, placa);
+
+  const creds = await credsFromConfig(cfg);
+  const saldoAntes = await consultarPlacaSaldo(creds);
+  if (placa !== CONSULTAR_PLACA_TESTE && saldoAntes.saldo != null &&
+    saldoAntes.saldo < PROCEDENCIA_CUSTO_ESTIMADO_BRL) {
+    throw new Error("Saldo insuficiente na Consultar Placa.");
+  }
+
+  const { data: ins, error } = await sb.from("veiculo_procedencia_consulta").insert({
+    user_id: userId,
+    placa,
+    veiculo_id: opts.veiculoId ?? null,
+    solicitado_por: opts.solicitadoPor,
+    canal: opts.canal,
+    status: "processando",
+    custo_estimado: placa === CONSULTAR_PLACA_TESTE ? 0 : PROCEDENCIA_CUSTO_ESTIMADO_BRL,
+  }).select("id").single();
+  if (error || !ins?.id) throw new Error("Não foi possível registrar a consulta.");
+  return String(ins.id);
 }
 
 export async function runProcedenciaConsulta(
@@ -152,30 +229,12 @@ export async function runProcedenciaConsulta(
   const cfg = await loadProcedenciaConfig(sb, userId);
   if (!cfg?.ativo) throw new Error("Procedência não configurada para esta loja.");
 
-  await assertProcedenciaLimiteMensal(sb, userId, placa, cfg.limite_mensal ?? 30);
-
-  const creds = await credsFromConfig(cfg);
-  const saldoAntes = await consultarPlacaSaldo(creds);
-  if (placa !== CONSULTAR_PLACA_TESTE && saldoAntes.saldo != null &&
-    saldoAntes.saldo < PROCEDENCIA_CUSTO_ESTIMADO_BRL) {
-    throw new Error("Saldo insuficiente na Consultar Placa.");
-  }
-
   let consultaId = opts.consultaId;
   if (!consultaId) {
-    const { data: ins, error } = await sb.from("veiculo_procedencia_consulta").insert({
-      user_id: userId,
-      placa,
-      veiculo_id: opts.veiculoId ?? null,
-      solicitado_por: opts.solicitadoPor,
-      canal: opts.canal,
-      status: "processando",
-      custo_estimado: placa === CONSULTAR_PLACA_TESTE ? 0 : PROCEDENCIA_CUSTO_ESTIMADO_BRL,
-    }).select("id").single();
-    if (error || !ins?.id) throw new Error("Não foi possível registrar a consulta.");
-    consultaId = String(ins.id);
+    consultaId = await createProcedenciaConsultaProcessando(sb, userId, placa, opts);
   }
 
+  const creds = await credsFromConfig(cfg);
   const results = await consultarPlacaPacoteCompleto(creds, placa);
   const erros = Object.values(results).map(parseEndpointErro).filter(Boolean);
   const creditoInsuf = erros.includes("credito_insuficiente") ||
@@ -208,6 +267,32 @@ export async function runProcedenciaConsulta(
   }).eq("id", consultaId);
 
   return { resumo, consultaId, erroTipo };
+}
+
+export function scheduleProcedenciaPainelBackground(
+  sb: Db,
+  userId: string,
+  consultaId: string,
+  placa: string,
+  opts: { solicitadoPor: string; veiculoId?: string | null },
+): void {
+  const work = runProcedenciaConsulta(sb, userId, placa, {
+    canal: "painel",
+    solicitadoPor: opts.solicitadoPor,
+    veiculoId: opts.veiculoId,
+    consultaId,
+  }).catch(async (e) => {
+    await sb.from("veiculo_procedencia_consulta").update({
+      status: "erro",
+      erro_tipo: "erro",
+      concluida_em: new Date().toISOString(),
+    }).eq("id", consultaId);
+    console.error("[procedencia][painel-bg]", (e as Error).message);
+  });
+  const er = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } })
+    .EdgeRuntime;
+  if (er?.waitUntil) er.waitUntil(work);
+  else void work;
 }
 
 export function formatProcedenciaWhatsApp(

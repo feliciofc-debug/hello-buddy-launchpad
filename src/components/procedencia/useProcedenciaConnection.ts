@@ -11,6 +11,62 @@ export type ProcedenciaStatus = {
   custo_estimado: number;
 };
 
+export type ProcedenciaConsultaPollResult = {
+  consulta_id: string;
+  status: string;
+  resumo_json?: Record<string, unknown> | null;
+  erro_tipo?: string | null;
+};
+
+const POLL_MS = 5000;
+const POLL_MAX_MS = 6 * 60 * 1000;
+
+async function fetchStatusConsulta(consultaId: string) {
+  const { data, error } = await supabase.functions.invoke("veiculo-procedencia", {
+    body: { action: "status_consulta", consulta_id: consultaId },
+  });
+  if (error || !data?.success) return null;
+  return data.consulta as {
+    id: string;
+    status: string;
+    resumo_json?: Record<string, unknown> | null;
+    erro_tipo?: string | null;
+  };
+}
+
+export async function pollProcedenciaConsulta(
+  consultaId: string,
+): Promise<ProcedenciaConsultaPollResult | null> {
+  const started = Date.now();
+  while (Date.now() - started < POLL_MAX_MS) {
+    const row = await fetchStatusConsulta(consultaId);
+    if (!row) {
+      toast.error("Consulta não encontrada.");
+      return null;
+    }
+    if (row.status === "concluida") {
+      return {
+        consulta_id: consultaId,
+        status: row.status,
+        resumo_json: row.resumo_json ?? null,
+      };
+    }
+    if (row.status === "erro") {
+      toast.error(row.erro_tipo === "credito_insuficiente"
+        ? "Saldo insuficiente na Consultar Placa."
+        : "Consulta falhou.");
+      return {
+        consulta_id: consultaId,
+        status: row.status,
+        erro_tipo: row.erro_tipo ?? null,
+      };
+    }
+    await new Promise((r) => setTimeout(r, POLL_MS));
+  }
+  toast.error("Consulta ainda em processamento. Atualize a página em instantes.");
+  return { consulta_id: consultaId, status: "processando" };
+}
+
 export function useProcedenciaConnection() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -98,12 +154,22 @@ export function useProcedenciaConnection() {
         confirmado: true,
       },
     });
-    setBusy(false);
     if (error || !data?.success) {
+      setBusy(false);
       toast.error(data?.error ?? "Falha na consulta.");
       return null;
     }
-    return data.resumo as Record<string, unknown>;
+    const consultaId = String(data.consulta_id ?? "");
+    if (!consultaId) {
+      setBusy(false);
+      toast.error("Resposta inválida da consulta.");
+      return null;
+    }
+    const polled = await pollProcedenciaConsulta(consultaId);
+    setBusy(false);
+    void refresh();
+    if (!polled || polled.status !== "concluida") return null;
+    return polled.resumo_json ?? null;
   };
 
   return {
@@ -115,5 +181,6 @@ export function useProcedenciaConnection() {
     testConnection,
     listConsultas,
     consultarPlaca,
+    pollProcedenciaConsulta,
   };
 }
