@@ -36,6 +36,13 @@ import { pollProcedenciaConsulta } from "@/components/procedencia/useProcedencia
 import type { GestaoTrocaChecklistJson } from "@/lib/gestao-troca-checklist.ts";
 import { parseGestaoMoneyBr } from "@/lib/gestao-money.ts";
 import {
+  formatGestaoTrocaMoneyBlurText,
+  gestaoTrocaMergeFipePreservandoKbb,
+  gestaoTrocaMoneyTextFromStored,
+  gestaoTrocaPatchSomenteFipe,
+  gestaoTrocaSnapshotPreservedPricing,
+} from "@/lib/gestao-troca-ficha-money.ts";
+import {
   gestaoTrocaFotoPaths,
   normalizeGestaoTrocaFotos,
   type GestaoTrocaFotoEntry,
@@ -71,6 +78,18 @@ export default function GestaoTrocaFichaPage() {
   const [repasseData, setRepasseData] = useState(() => new Date().toISOString().slice(0, 10));
   const [lojaUf, setLojaUf] = useState("sp");
   const [laudoKmBloqueio, setLaudoKmBloqueio] = useState({ alertaKm: false, kmConferido: false });
+  const [kbbTrocaText, setKbbTrocaText] = useState("");
+  const [kbbLojaText, setKbbLojaText] = useState("");
+  const [preparacaoText, setPreparacaoText] = useState("");
+  const [valorPropostoText, setValorPropostoText] = useState("");
+
+  const applyTrocaRow = (row: GestaoTrocaRow) => {
+    setTroca(row);
+    setKbbTrocaText(gestaoTrocaMoneyTextFromStored(row.kbb_troca));
+    setKbbLojaText(gestaoTrocaMoneyTextFromStored(row.kbb_loja));
+    setPreparacaoText(gestaoTrocaMoneyTextFromStored(row.preparacao_estimada));
+    setValorPropostoText(gestaoTrocaMoneyTextFromStored(row.valor_proposto));
+  };
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -93,7 +112,7 @@ export default function GestaoTrocaFichaPage() {
       navigate("/gestao/trocas");
       return;
     }
-    setTroca(t as unknown as GestaoTrocaRow);
+    applyTrocaRow(t as unknown as GestaoTrocaRow);
     const { data: ev } = await supabase.from("gestao_troca_evento" as "veiculos_estoque")
       .select("*").eq("troca_id", id).order("created_at", { ascending: true });
     setEventos((ev ?? []) as unknown as GestaoTrocaEvento[]);
@@ -124,6 +143,19 @@ export default function GestaoTrocaFichaPage() {
 
   const buscarFipe = async () => {
     if (!troca) return;
+    const preserved = gestaoTrocaSnapshotPreservedPricing({
+      kbb_troca: troca.kbb_troca,
+      kbb_loja: troca.kbb_loja,
+      kbb_km_caracteristico: troca.kbb_km_caracteristico,
+      preparacao_estimada: troca.preparacao_estimada,
+      valor_proposto: troca.valor_proposto,
+      texts: {
+        kbbTroca: kbbTrocaText,
+        kbbLoja: kbbLojaText,
+        preparacao: preparacaoText,
+        valorProposto: valorPropostoText,
+      },
+    });
     setBusy(true);
     const { data, error } = await supabase.functions.invoke("gestao-troca", {
       body: {
@@ -138,22 +170,54 @@ export default function GestaoTrocaFichaPage() {
       toast.error(data?.error ?? "FIPE não encontrada.");
       return;
     }
-    await savePatch({
-      fipe_valor: data.fipe_valor,
-      fipe_mes_ref: data.fipe_mes_ref,
-      kbb_troca: null,
-      kbb_loja: null,
-      kbb_km_caracteristico: null,
-    });
-    setTroca((t) => t ? {
-      ...t,
-      fipe_valor: data.fipe_valor,
-      fipe_mes_ref: data.fipe_mes_ref,
-      kbb_troca: null,
-      kbb_loja: null,
-      kbb_km_caracteristico: null,
-    } : t);
-    toast.success("FIPE atualizada — valores KBB limpos (use a FIPE como referência).");
+    await savePatch(
+      gestaoTrocaPatchSomenteFipe(Number(data.fipe_valor), String(data.fipe_mes_ref)),
+    );
+    setTroca((t) => (t
+      ? gestaoTrocaMergeFipePreservandoKbb(
+        t,
+        Number(data.fipe_valor),
+        String(data.fipe_mes_ref),
+        preserved,
+      )
+      : t));
+    toast.success("FIPE atualizada.");
+  };
+
+  const blurKbbTroca = () => {
+    if (!troca) return;
+    const n = parseGestaoMoneyBr(kbbTrocaText);
+    const text = formatGestaoTrocaMoneyBlurText(kbbTrocaText);
+    setKbbTrocaText(text);
+    setTroca({ ...troca, kbb_troca: n });
+    void savePatch({ kbb_troca: n });
+  };
+
+  const blurKbbLoja = () => {
+    if (!troca) return;
+    const n = parseGestaoMoneyBr(kbbLojaText);
+    const text = formatGestaoTrocaMoneyBlurText(kbbLojaText);
+    setKbbLojaText(text);
+    setTroca({ ...troca, kbb_loja: n });
+    void savePatch({ kbb_loja: n });
+  };
+
+  const blurPreparacao = () => {
+    if (!troca) return;
+    const n = parseGestaoMoneyBr(preparacaoText) ?? 0;
+    const text = formatGestaoTrocaMoneyBlurText(preparacaoText);
+    setPreparacaoText(text);
+    setTroca({ ...troca, preparacao_estimada: n });
+    void savePatch({ preparacao_estimada: n });
+  };
+
+  const blurValorProposto = () => {
+    if (!troca) return;
+    const n = parseGestaoMoneyBr(valorPropostoText);
+    const text = formatGestaoTrocaMoneyBlurText(valorPropostoText);
+    setValorPropostoText(text);
+    setTroca({ ...troca, valor_proposto: n });
+    void savePatch({ valor_proposto: n });
   };
 
   const consultarProcedencia = async () => {
@@ -385,12 +449,16 @@ export default function GestaoTrocaFichaPage() {
             característico.
           </p>
           <div className="grid gap-2 sm:grid-cols-3">
-            <GestaoMoneyInput label="KBB troca" value={String(troca.kbb_troca ?? "")} onChange={(v) => setTroca({ ...troca, kbb_troca: parseGestaoMoneyBr(v) })} />
-            <GestaoMoneyInput label="KBB loja" value={String(troca.kbb_loja ?? "")} onChange={(v) => setTroca({ ...troca, kbb_loja: parseGestaoMoneyBr(v) })} />
+            <GestaoMoneyInput label="KBB troca" value={kbbTrocaText} onChange={setKbbTrocaText} onBlur={blurKbbTroca} />
+            <GestaoMoneyInput label="KBB loja" value={kbbLojaText} onChange={setKbbLojaText} onBlur={blurKbbLoja} />
             <div><Label>KM característico KBB</Label><Input type="number" value={troca.kbb_km_caracteristico ?? ""} onChange={(e) => setTroca({ ...troca, kbb_km_caracteristico: Number(e.target.value) || null })} /></div>
           </div>
-          <Button size="sm" variant="secondary" onClick={() => void savePatch({ kbb_troca: troca.kbb_troca, kbb_loja: troca.kbb_loja, kbb_km_caracteristico: troca.kbb_km_caracteristico })}>
-            Salvar KBB
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void savePatch({ kbb_km_caracteristico: troca.kbb_km_caracteristico })}
+          >
+            Salvar KM KBB
           </Button>
         </section>
 
@@ -402,8 +470,8 @@ export default function GestaoTrocaFichaPage() {
 
         <section className="space-y-3 rounded-lg border bg-white p-4 dark:bg-gray-950">
           <h2 className="font-semibold">Preço</h2>
-          <GestaoMoneyInput label="Preparação estimada" value={String(troca.preparacao_estimada ?? 0)} onChange={(v) => setTroca({ ...troca, preparacao_estimada: parseGestaoMoneyBr(v) ?? 0 })} />
-          <GestaoMoneyInput label="Valor proposto (cliente)" value={String(troca.valor_proposto ?? "")} onChange={(v) => setTroca({ ...troca, valor_proposto: parseGestaoMoneyBr(v) })} />
+          <GestaoMoneyInput label="Preparação estimada" value={preparacaoText} onChange={setPreparacaoText} onBlur={blurPreparacao} />
+          <GestaoMoneyInput label="Valor proposto (cliente)" value={valorPropostoText} onChange={setValorPropostoText} onBlur={blurValorProposto} />
           <div className="grid gap-1 text-sm">
             <p>Faixa verde: {formatGestaoMoney(troca.faixa_verde_min ?? 0)} – {formatGestaoMoney(troca.faixa_verde_max ?? 0)}</p>
             <p>Sugerido: {formatGestaoMoney(troca.valor_sugerido ?? 0)} · Teto: {formatGestaoMoney(troca.teto ?? 0)}</p>
@@ -413,7 +481,18 @@ export default function GestaoTrocaFichaPage() {
             </ul>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" onClick={() => void savePatch({ preparacao_estimada: troca.preparacao_estimada, valor_proposto: troca.valor_proposto }).then(() => recalcular())} disabled={busy}>
+            <Button size="sm" onClick={() => {
+              void (async () => {
+                if (!troca) return;
+                const preparacao = parseGestaoMoneyBr(preparacaoText) ?? troca.preparacao_estimada;
+                const valor_proposto = parseGestaoMoneyBr(valorPropostoText) ?? troca.valor_proposto;
+                setPreparacaoText(formatGestaoTrocaMoneyBlurText(preparacaoText));
+                setValorPropostoText(formatGestaoTrocaMoneyBlurText(valorPropostoText));
+                setTroca({ ...troca, preparacao_estimada: preparacao, valor_proposto });
+                await savePatch({ preparacao_estimada: preparacao, valor_proposto });
+                await recalcular();
+              })();
+            }} disabled={busy}>
               Recalcular preço
             </Button>
             <Button size="sm" variant="outline" onClick={() => void consultarProcedencia()} disabled={busy}>
