@@ -1,3 +1,4 @@
+import { invokeFunctionComCorpo } from "@/lib/invoke-function-com-corpo.ts";
 import { supabase } from "@/integrations/supabase/client";
 import {
   parseGestaoTrocaIaAnaliseRow,
@@ -114,13 +115,13 @@ export async function invokeGestaoTrocaAnalisarFotos(trocaId: string): Promise<{
   analise_id?: string;
   error?: string;
 }> {
-  const { data, error } = await supabase.functions.invoke("gestao-troca", {
+  const r = await invokeFunctionComCorpo("gestao-troca", {
     body: { action: "analisar_fotos", troca_id: trocaId },
   });
-  if (error || !data?.success) {
-    return { error: data?.error ?? error?.message ?? "Não foi possível iniciar a análise." };
+  if (!r.success) {
+    return { error: r.error ?? "Não foi possível iniciar a análise." };
   }
-  return { analise_id: String(data.analise_id ?? "") };
+  return { analise_id: String(r.data?.analise_id ?? "") };
 }
 
 export async function invokeGestaoTrocaDecidirItemIa(input: {

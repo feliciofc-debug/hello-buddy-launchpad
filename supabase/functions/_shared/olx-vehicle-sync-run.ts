@@ -89,6 +89,38 @@ async function deleteSoldVehicleOnOlx(
   }
 }
 
+export async function runOlxVehicleSyncOne(
+  sb: any,
+  userId: string,
+  veiculoId: string,
+): Promise<{ ok: boolean; status?: string; olx_url?: string | null; error?: string }> {
+  const { data: row } = await sb.from("olx_vehicle_listing")
+    .select("user_id, veiculo_id, olx_ad_ref, import_token, status")
+    .eq("user_id", userId)
+    .eq("veiculo_id", veiculoId)
+    .maybeSingle();
+  if (!row?.import_token) {
+    return { ok: false, error: "Nenhuma publicação OLX pendente para este veículo." };
+  }
+  try {
+    const accessToken = await getOlxAccessTokenForUser(sb, userId);
+    await applyImportStatus(sb, row, accessToken);
+    const { data: fresh } = await sb.from("olx_vehicle_listing")
+      .select("status, olx_url, last_error")
+      .eq("user_id", userId)
+      .eq("veiculo_id", veiculoId)
+      .maybeSingle();
+    return {
+      ok: true,
+      status: fresh?.status,
+      olx_url: fresh?.olx_url ?? null,
+      error: fresh?.last_error ?? undefined,
+    };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
 export async function runOlxVehicleSyncBatch(sb: any): Promise<{ processed: number; errors: number }> {
   let processed = 0;
   let errors = 0;

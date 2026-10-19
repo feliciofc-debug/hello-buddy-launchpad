@@ -11,6 +11,7 @@ import { MlIntegrationCard } from "@/components/ml/MlIntegrationCard";
 import { ProcedenciaIntegrationCard } from "@/components/procedencia/ProcedenciaIntegrationCard";
 import { OlxIntegrationCard } from "@/components/olx/OlxIntegrationCard";
 import { WebmotorsIntegrationCard } from "@/components/webmotors/WebmotorsIntegrationCard";
+import { LojaCepIntegracaoField } from "@/components/integracoes/LojaCepIntegracaoField.tsx";
 import { useSmartBack } from "@/lib/app-back-nav.ts";
 import {
   PLANNED_PORTAL_INTEGRATIONS,
@@ -134,6 +135,8 @@ export default function ConfiguracoesIntegracoes() {
                 Portais de anúncio
               </h2>
             </div>
+
+            <LojaCepIntegracaoField />
 
             <MlIntegrationCard />
 

@@ -26,7 +26,11 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
-    const result = await runMlVehiclePublish(admin, { userId: user.id, veiculoId });
+    const result = await runMlVehiclePublish(admin, {
+      userId: user.id,
+      veiculoId,
+      confirm_duplicate: body?.confirm_duplicate === true,
+    });
     return new Response(JSON.stringify({ success: result.ok, ...result }), {
       status: result.ok ? 200 : 422,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

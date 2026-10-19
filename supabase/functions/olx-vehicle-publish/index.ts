@@ -4,7 +4,7 @@ import { runOlxVehiclePublish, type OlxPublishAcao } from "../_shared/olx-vehicl
 
 function parseAcao(raw: unknown): OlxPublishAcao | null {
   const v = String(raw ?? "").toLowerCase();
-  if (v === "publicar" || v === "atualizar" || v === "remover") return v;
+  if (v === "publicar" || v === "atualizar" || v === "remover" || v === "verificar_status") return v;
   return null;
 }
 

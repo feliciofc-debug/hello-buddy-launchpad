@@ -7,6 +7,11 @@ import {
 import { mlGetItem } from "./ml-api.ts";
 import { runMlReconcile, runMlVehicleSync } from "./ml-vehicle-sync-run.ts";
 import { getMlAccessTokenForMlUser, getMlAccessTokenForUser } from "./ml-token.ts";
+import { assertMlItemOwnedByAmz } from "./ml-portal-ownership.ts";
+import {
+  mlLeadOrigemFromPortal,
+  shouldNotifyMlLeadOnWhatsApp,
+} from "./ml-lead-notify-policy.ts";
 
 const RECONCILE_KEY = "last_ml_reconcile_at";
 const RECONCILE_MS = 30 * 60 * 1000;
@@ -60,6 +65,18 @@ async function processVisLead(
     .eq("external_id", itemId)
     .maybeSingle();
 
+  const hasAmzPortal = !!portal?.veiculo_id;
+  const origem = mlLeadOrigemFromPortal(hasAmzPortal);
+
+  const { data: cfg } = await sb.from("empresa_config")
+    .select("ml_whatsapp_leads_all_ads")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const notifyWhatsapp = shouldNotifyMlLeadOnWhatsApp({
+    hasAmzPortal,
+    whatsappLeadsAllAds: cfg?.ml_whatsapp_leads_all_ads === true,
+  });
+
   let vehicleTitle = "veículo";
   if (portal?.veiculo_id) {
     const { data: v } = await sb.from("veiculos_estoque").select("*").eq("id", portal.veiculo_id).maybeSingle();
@@ -90,14 +107,17 @@ async function processVisLead(
     ml_lead_id: mlLeadId,
     item_id: itemId,
     veiculo_id: portal?.veiculo_id ?? null,
+    origem,
     contact_type: String(detail.contact_type ?? contactType),
     buyer_name: detail.name ?? null,
     buyer_phone: detail.phone ?? null,
     buyer_email: detail.email ?? null,
     is_guest: isGuest,
-    permalink: portal?.permalink ?? null,
+    permalink: portal?.permalink ?? detail.permalink ?? null,
     raw: detail,
   }, { onConflict: "user_id,ml_lead_id" });
+
+  if (!notifyWhatsapp) return;
 
   const ok = await sendMlOwnerNotify(sb, {
     supabaseUrl: env.supabaseUrl,
@@ -146,6 +166,7 @@ async function processItemTopic(
   accessToken: string,
   itemId: string,
 ): Promise<void> {
+  if (!(await assertMlItemOwnedByAmz(sb, userId, itemId))) return;
   const item = await mlGetItem(accessToken, itemId);
   if (!item) return;
   const st = String(item.status ?? "active");

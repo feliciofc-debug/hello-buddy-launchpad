@@ -316,6 +316,12 @@ export default function VehicleInventory() {
   const [wmPortals, setWmPortals] = useState<Record<string, VeiculoPortalWebmotors>>({});
   const [olxConnected, setOlxConnected] = useState(false);
   const [olxListings, setOlxListings] = useState<Record<string, OlxVehicleListing>>({});
+  const [portalReadinessBase, setPortalReadinessBase] = useState({
+    hasCep: false,
+    hasPhone: false,
+    hasMlPackage: false,
+    phonePreview: null as string | null,
+  });
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [compraVeiculoIds, setCompraVeiculoIds] = useState<Set<string>>(new Set());
   const [custosExpanded, setCustosExpanded] = useState(false);
@@ -330,6 +336,12 @@ export default function VehicleInventory() {
     setMlConnected(!!stMl?.connected);
     setWmConnected(!!stWm?.connected);
     setOlxConnected(!!stOlx?.connected);
+    setPortalReadinessBase({
+      hasCep: !!stMl?.has_location,
+      hasPhone: !!stMl?.has_seller_phone,
+      hasMlPackage: !!stMl?.ml_has_vehicle_package,
+      phonePreview: stMl?.seller_phone_preview != null ? String(stMl.seller_phone_preview) : null,
+    });
     const { data: portals } = await supabase
       .from("veiculos_portais" as "veiculos_estoque")
       .select("veiculo_id, portal, status, permalink, last_error");
@@ -923,18 +935,37 @@ export default function VehicleInventory() {
                       veiculoId={vehicle.id}
                       portal={mlPortals[vehicle.id] ?? null}
                       mlConnected={mlConnected}
+                      readiness={{
+                        connected: mlConnected,
+                        hasCep: portalReadinessBase.hasCep,
+                        hasPhone: portalReadinessBase.hasPhone,
+                        hasMlPackage: portalReadinessBase.hasMlPackage,
+                        phonePreview: portalReadinessBase.phonePreview,
+                      }}
                       onChanged={() => void loadPortalMeta()}
                     />
                     <WebmotorsVehicleActions
                       veiculoId={vehicle.id}
                       portal={wmPortals[vehicle.id] ?? null}
                       wmConnected={wmConnected}
+                      readiness={{
+                        connected: wmConnected,
+                        hasCep: portalReadinessBase.hasCep,
+                        hasPhone: portalReadinessBase.hasPhone,
+                        phonePreview: portalReadinessBase.phonePreview,
+                      }}
                       onChanged={() => void loadPortalMeta()}
                     />
                     <OlxVehicleActions
                       veiculoId={vehicle.id}
                       listing={olxListings[vehicle.id] ?? null}
                       olxConnected={olxConnected}
+                      readiness={{
+                        connected: olxConnected,
+                        hasCep: portalReadinessBase.hasCep,
+                        hasPhone: portalReadinessBase.hasPhone,
+                        phonePreview: portalReadinessBase.phonePreview,
+                      }}
                       onChanged={() => void loadPortalMeta()}
                     />
                     <Button

@@ -14,6 +14,8 @@ export type MlContaRow = {
 
 const REFRESH_SKEW_MS = 5 * 60 * 1000;
 const LOCK_MS = 45 * 1000;
+const LOCK_WAIT_MS = 10_000;
+const LOCK_POLL_MS = 250;
 
 type AdminSb = {
   from: (t: string) => {
@@ -28,6 +30,19 @@ type AdminSb = {
     upsert: (row: Record<string, unknown>, opts?: { onConflict?: string }) => Promise<{ error?: { message: string } | null }>;
   };
 };
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function loadMlContaRow(sb: AdminSb, userId: string): Promise<MlContaRow | null> {
+  const { data: row, error } = await sb.from("ml_contas")
+    .select("user_id, ml_user_id, nickname, access_token_enc, refresh_token_enc, expires_at, status, refresh_lock_until")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return row;
+}
 
 async function exchangeRefresh(refreshToken: string) {
   const res = await fetch(`${ML_API_BASE}/oauth/token`, {
@@ -83,23 +98,49 @@ export async function resolveMlUserId(sb: AdminSb, userId: string): Promise<numb
   return data.ml_user_id as number;
 }
 
+async function tokenStillFresh(row: MlContaRow): Promise<string | null> {
+  if (Date.parse(row.expires_at) > Date.now() + REFRESH_SKEW_MS) {
+    return await decryptMlSecret(row.access_token_enc);
+  }
+  return null;
+}
+
+async function waitForPeerRefresh(sb: AdminSb, userId: string): Promise<MlContaRow | null> {
+  const deadline = Date.now() + LOCK_WAIT_MS;
+  while (Date.now() < deadline) {
+    const row = await loadMlContaRow(sb, userId);
+    if (!row) return null;
+    const fresh = await tokenStillFresh(row);
+    if (fresh) return row;
+    const lockUntil = row.refresh_lock_until ? Date.parse(row.refresh_lock_until) : 0;
+    if (!lockUntil || lockUntil <= Date.now()) return row;
+    await sleep(LOCK_POLL_MS);
+  }
+  return loadMlContaRow(sb, userId);
+}
+
 export async function getMlAccessTokenForUser(
   sb: AdminSb,
   userId: string,
 ): Promise<{ accessToken: string; mlUserId: number }> {
-  const { data: row, error } = await sb.from("ml_contas")
-    .select("user_id, ml_user_id, nickname, access_token_enc, refresh_token_enc, expires_at, status, refresh_lock_until")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
+  let row = await loadMlContaRow(sb, userId);
   if (!row || row.status === "revoked") throw new Error("ml_not_connected");
   if (row.status === "needs_reauth") throw new Error("ml_needs_reauth");
 
-  if (Date.parse(row.expires_at) > Date.now() + REFRESH_SKEW_MS) {
-    return {
-      accessToken: await decryptMlSecret(row.access_token_enc),
-      mlUserId: row.ml_user_id,
-    };
+  const fresh = await tokenStillFresh(row);
+  if (fresh) {
+    return { accessToken: fresh, mlUserId: row.ml_user_id };
+  }
+
+  const lockUntil = row.refresh_lock_until ? Date.parse(row.refresh_lock_until) : 0;
+  if (lockUntil > Date.now()) {
+    const afterWait = await waitForPeerRefresh(sb, userId);
+    if (!afterWait) throw new Error("ml_not_connected");
+    const peerFresh = await tokenStillFresh(afterWait);
+    if (peerFresh) {
+      return { accessToken: peerFresh, mlUserId: afterWait.ml_user_id };
+    }
+    row = afterWait;
   }
 
   await sb.from("ml_contas").update({
@@ -119,6 +160,13 @@ export async function getMlAccessTokenForUser(
     return { accessToken: refreshed.access_token, mlUserId: row.ml_user_id };
   } catch (e) {
     if ((e as Error & { code?: string }).code === "invalid_grant") {
+      const latest = await loadMlContaRow(sb, userId);
+      if (latest) {
+        const lateFresh = await tokenStillFresh(latest);
+        if (lateFresh) {
+          return { accessToken: lateFresh, mlUserId: latest.ml_user_id };
+        }
+      }
       await sb.from("ml_contas").update({
         status: "needs_reauth",
         updated_at: new Date().toISOString(),

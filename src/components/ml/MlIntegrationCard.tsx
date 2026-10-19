@@ -3,6 +3,8 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { MlCepField } from "@/components/ml/MlCepField";
 import { useMlConnection } from "@/components/ml/useMlConnection";
 
@@ -18,7 +20,7 @@ function locationLine(
 
 export function MlIntegrationCard() {
   const [editingCep, setEditingCep] = useState(false);
-  const { loading, busy, status, formattedStoreZip, connect, disconnect, saveCep } =
+  const { loading, busy, status, formattedStoreZip, connect, disconnect, saveCep, saveWhatsappLeadsAllAds } =
     useMlConnection();
 
   if (loading) {
@@ -113,6 +115,18 @@ export function MlIntegrationCard() {
                 <MlCepField busy={busy} onSave={handleSaveCep} />
               </div>
             )}
+            <div className="flex items-start gap-2 rounded-md border p-3">
+              <Checkbox
+                id="ml-leads-all"
+                checked={status?.ml_whatsapp_leads_all_ads ?? false}
+                disabled={busy}
+                onCheckedChange={(v) => void saveWhatsappLeadsAllAds(v === true)}
+              />
+              <Label htmlFor="ml-leads-all" className="text-sm font-normal leading-snug">
+                Receber no WhatsApp leads de todos os meus anúncios do ML (inclusive de outros
+                sistemas)
+              </Label>
+            </div>
             <div className="flex flex-wrap gap-2">
               {status?.status === "needs_reauth" && (
                 <Button disabled={busy} onClick={() => void connect()}>

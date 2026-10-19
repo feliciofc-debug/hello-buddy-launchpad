@@ -48,13 +48,13 @@ export function mapVehicleToOlxAd(input: {
   if (!zipcode) {
     blocking.push({
       field: "cep",
-      message: "Configure o CEP da loja (Integrações → Mercado Livre) antes de publicar na OLX.",
+      message: "Informe o CEP da loja em Integrações.",
     });
   }
   if (!input.phone) {
     blocking.push({
       field: "whatsapp_loja",
-      message: "Conecte o WhatsApp da loja na AMZ antes de publicar na OLX.",
+      message: "Cadastre o telefone/WhatsApp da loja no perfil.",
     });
   }
   const price = input.vehicle.preco;

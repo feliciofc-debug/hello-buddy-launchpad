@@ -7,7 +7,7 @@ import {
   normalizeBrazilCep,
   parseMlZipCodeApiResponse,
 } from "../_shared/ml-location.ts";
-import { getMlAccessTokenForUser } from "../_shared/ml-token.ts";
+import { getMlZipLookupAccessToken } from "../_shared/ml-zip-lookup-token.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -43,22 +43,7 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    let accessToken: string;
-    try {
-      ({ accessToken } = await getMlAccessTokenForUser(admin as never, user.id));
-    } catch (e) {
-      const msg = (e as Error).message;
-      if (msg === "ml_not_connected" || msg === "ml_needs_reauth") {
-        return new Response(JSON.stringify({
-          success: false,
-          error: "Conecte sua conta do Mercado Livre antes de salvar o CEP da loja.",
-        }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      throw e;
-    }
+    const accessToken = await getMlZipLookupAccessToken(admin as never, user.id);
 
     const zipRes = await fetch(`${ML_API_BASE}/countries/BR/zip_codes/${cep}`, {
       headers: { Authorization: `Bearer ${accessToken}`, accept: "application/json" },

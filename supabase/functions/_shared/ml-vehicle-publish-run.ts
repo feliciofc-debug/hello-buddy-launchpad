@@ -1,18 +1,28 @@
 import {
   mlCreateItem,
   mlFetchCategoryAttributes,
-  mlHasSilverPackage,
+  mlPickListingPackType,
   mlValidateItem,
+  type MlListingPackPreference,
 } from "./ml-api.ts";
 import { mapVehicleToMlItem, resolveMlCategoryId } from "./ml-map-vehicle.ts";
 import { buildMlSellerContact } from "./ml-seller-contact.ts";
 import type { VeiculoEstoqueRow } from "./ml-vehicle-types.ts";
+import { mlFindPossibleDuplicateListings, type MlDuplicateCandidate } from "./ml-duplicate-check.ts";
 import { getMlAccessTokenForUser } from "./ml-token.ts";
 
 export async function runMlVehiclePublish(
   sb: any,
-  input: { userId: string; veiculoId: string },
-): Promise<{ ok: boolean; external_id?: string; permalink?: string; error?: string; blocking?: unknown[] }> {
+  input: { userId: string; veiculoId: string; confirm_duplicate?: boolean },
+): Promise<{
+  ok: boolean;
+  external_id?: string;
+  permalink?: string;
+  error?: string;
+  blocking?: unknown[];
+  duplicate_warning?: boolean;
+  duplicate_candidates?: MlDuplicateCandidate[];
+}> {
   const { data: vehicle, error: vErr } = await sb.from("veiculos_estoque")
     .select("*")
     .eq("user_id", input.userId)
@@ -21,13 +31,13 @@ export async function runMlVehiclePublish(
   if (vErr || !vehicle) return { ok: false, error: "Veículo não encontrado" };
 
   const { data: cfg } = await sb.from("empresa_config")
-    .select("ml_location_json")
+    .select("ml_location_json, ml_listing_pack_preference")
     .eq("user_id", input.userId)
     .maybeSingle();
 
   const sellerContact = await buildMlSellerContact(sb, input.userId);
   if (!sellerContact) {
-    return { ok: false, error: "Conecte o WhatsApp da loja na AMZ antes de publicar no Mercado Livre." };
+    return { ok: false, error: "Cadastre o telefone/WhatsApp da loja no perfil." };
   }
 
   let accessToken: string;
@@ -41,9 +51,41 @@ export async function runMlVehiclePublish(
   }
 
   const categoryId = await resolveMlCategoryId(accessToken, vehicle as VeiculoEstoqueRow);
-  const hasPack = await mlHasSilverPackage(accessToken, mlUserId, categoryId);
-  if (!hasPack) {
-    return { ok: false, error: "Sua conta ML não tem pacote de veículos ativo." };
+  const packPref = (cfg?.ml_listing_pack_preference ?? "destaque_first") as MlListingPackPreference;
+  const listingTypeId = await mlPickListingPackType(
+    accessToken,
+    mlUserId,
+    categoryId,
+    packPref,
+  );
+  if (!listingTypeId) {
+    return {
+      ok: false,
+      error: "Sua conta ML não tem pacote de anúncios de veículos disponível (Clássico/Destaque).",
+    };
+  }
+
+  const { data: ownedRows } = await sb.from("veiculos_portais")
+    .select("external_id")
+    .eq("user_id", input.userId)
+    .eq("portal", "mercadolivre");
+  const ownedIds = new Set(
+    (ownedRows ?? []).map((r: { external_id: string }) => String(r.external_id)),
+  );
+  const duplicateCandidates = await mlFindPossibleDuplicateListings(
+    accessToken,
+    mlUserId,
+    vehicle as VeiculoEstoqueRow,
+    ownedIds,
+  );
+  if (duplicateCandidates.length && !input.confirm_duplicate) {
+    return {
+      ok: false,
+      duplicate_warning: true,
+      duplicate_candidates: duplicateCandidates,
+      error:
+        "Este carro pode já estar anunciado por outro sistema. Confirme para publicar mesmo assim.",
+    };
   }
 
   const categoryAttributes = await mlFetchCategoryAttributes(accessToken, categoryId);
@@ -53,6 +95,7 @@ export async function runMlVehiclePublish(
     categoryAttributes,
     mlLocationJson: cfg?.ml_location_json,
     sellerContact,
+    listingTypeId,
   });
   if (!mapped.ok) {
     return { ok: false, blocking: mapped.blocking, error: "Complete os campos obrigatórios." };

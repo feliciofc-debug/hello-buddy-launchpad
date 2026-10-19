@@ -2,9 +2,10 @@ import { olxAutouploadImport } from "./olx-api.ts";
 import { assertOlxAdPayloadSafe, mapVehicleToOlxAd, stableOlxAdRef } from "./olx-map-vehicle.ts";
 import { buildOlxSellerPhone } from "./olx-seller-contact.ts";
 import { getOlxAccessTokenForUser } from "./olx-token.ts";
+import { runOlxVehicleSyncOne } from "./olx-vehicle-sync-run.ts";
 import type { OlxVeiculoEstoqueRow } from "./olx-vehicle-types.ts";
 
-export type OlxPublishAcao = "publicar" | "atualizar" | "remover";
+export type OlxPublishAcao = "publicar" | "atualizar" | "remover" | "verificar_status";
 
 export async function runOlxVehiclePublish(
   sb: any,
@@ -23,6 +24,10 @@ export async function runOlxVehiclePublish(
   if (vErr || !vehicle) return { ok: false, error: "Veículo não encontrado" };
   if (vehicle.user_id !== input.userId) {
     return { ok: false, error: "Sem permissão para este veículo" };
+  }
+
+  if (input.acao === "verificar_status") {
+    return runOlxVehicleSyncOne(sb, input.userId, input.veiculoId);
   }
 
   const { data: listing } = await sb.from("olx_vehicle_listing")

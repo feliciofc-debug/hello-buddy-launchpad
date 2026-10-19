@@ -2,6 +2,7 @@ import { mlGetItem, mlUpdateItem, mlFetchCategoryAttributes } from "./ml-api.ts"
 import { mapVehicleToMlItem, resolveMlCategoryId } from "./ml-map-vehicle.ts";
 import { buildMlSellerContact } from "./ml-seller-contact.ts";
 import type { VeiculoEstoqueRow } from "./ml-vehicle-types.ts";
+import { assertMlItemOwnedByAmz } from "./ml-portal-ownership.ts";
 import { getMlAccessTokenForUser } from "./ml-token.ts";
 
 export async function runMlVehicleSync(
@@ -15,6 +16,9 @@ export async function runMlVehicleSync(
     .eq("portal", "mercadolivre")
     .maybeSingle();
   if (!portal?.external_id) return { ok: false, error: "Anúncio ML não vinculado" };
+  if (!(await assertMlItemOwnedByAmz(sb, input.userId, String(portal.external_id)))) {
+    return { ok: false, error: "Anúncio ML não vinculado à AMZ" };
+  }
 
   const { data: vehicle } = await sb.from("veiculos_estoque")
     .select("*")

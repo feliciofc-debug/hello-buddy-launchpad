@@ -113,6 +113,7 @@ export function mapVehicleToMlItem(input: {
   categoryAttributes: MlCategoryAttribute[];
   mlLocationJson: unknown;
   sellerContact: Record<string, string>;
+  listingTypeId?: string;
   maxPictures?: number;
 }): MlMapResult {
   const blocking: Array<{ field: string; attribute_id: string; message: string; allowed?: string[] }> = [];
@@ -121,14 +122,14 @@ export function mapVehicleToMlItem(input: {
     blocking.push({
       field: "localizacao",
       attribute_id: "location",
-      message: "Configure a localização ML (city/state id). Reconecte a conta ou ajuste em Configurações.",
+      message: "Informe o CEP da loja em Integrações.",
     });
   }
   if (!input.sellerContact.phone2) {
     blocking.push({
       field: "whatsapp_loja",
       attribute_id: "seller_contact",
-      message: "Conecte o WhatsApp da loja na AMZ antes de publicar no Mercado Livre.",
+      message: "Cadastre o telefone/WhatsApp da loja no perfil.",
     });
   }
   if (!input.vehicle.preco || input.vehicle.preco <= 0) {
@@ -154,7 +155,7 @@ export function mapVehicleToMlItem(input: {
     currency_id: "BRL",
     available_quantity: 1,
     buying_mode: "classified",
-    listing_type_id: ML_LISTING_TYPE_SILVER,
+    listing_type_id: input.listingTypeId ?? ML_LISTING_TYPE_SILVER,
     condition: (input.vehicle.km ?? 0) > 100 ? "used" : "new",
     channels: ["marketplace"],
     location,
