@@ -1,34 +1,8 @@
-import { assertEquals, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   assertNoGestaoTrocaAnaliseProcessando,
   assertPodeSolicitarAprovacaoTroca,
-  GESTAO_TROCA_IA_LIMITE_DIARIO,
 } from "./gestao-troca-ia-ops.ts";
-
-Deno.test("limite diário constante 5", () => {
-  assertEquals(GESTAO_TROCA_IA_LIMITE_DIARIO, 5);
-});
-
-Deno.test("bloqueia segunda analise processando", async () => {
-  const sb = {
-    from: (_t: string) => ({
-      select: () => ({
-        eq: () => ({
-          eq: () => ({
-            eq: () => ({
-              limit: async () => ({ data: [{ id: "a1" }] }),
-            }),
-          }),
-        }),
-      }),
-    }),
-  };
-  await assertRejects(
-    () => assertNoGestaoTrocaAnaliseProcessando(sb as never, "u1", "t1"),
-    Error,
-    "processamento",
-  );
-});
 
 function mockSbComAnalise() {
   return {

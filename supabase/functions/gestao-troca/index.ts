@@ -23,6 +23,7 @@ import {
   confirmarKmPainelGestaoTroca,
   decidirItemIaGestaoTroca,
   iniciarGestaoTrocaIaAnalise,
+  loadGestaoTrocaIaUsoDiario,
   statusAnaliseGestaoTroca,
 } from "../_shared/gestao-troca-ia-ops.ts";
 import type { GestaoTrocaIaCustoRow } from "../_shared/gestao-troca-ia-rules.ts";
@@ -140,6 +141,11 @@ Deno.serve(async (req) => {
     if (action === "confirmar_km") {
       await confirmarKmPainelGestaoTroca(sb, user.id, String(body?.troca_id ?? ""));
       return jsonResponse({ success: true });
+    }
+
+    if (action === "ia_uso_diario") {
+      const uso = await loadGestaoTrocaIaUsoDiario(sb, user.id);
+      return jsonResponse({ success: true, uso });
     }
 
     if (action === "custos_listar") {

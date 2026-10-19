@@ -48,7 +48,10 @@ import {
 
 type Db = SupabaseClient;
 
-export const GESTAO_TROCA_IA_LIMITE_DIARIO = 5;
+export type GestaoTrocaIaUsoDiario = {
+  analises: number;
+  fotos: number;
+};
 
 function diaUtcBoundsSaoPaulo(diaYmd: string): { startIso: string; endExclusiveIso: string } {
   return {
@@ -57,27 +60,33 @@ function diaUtcBoundsSaoPaulo(diaYmd: string): { startIso: string; endExclusiveI
   };
 }
 
-export async function countGestaoTrocaAnalisesHoje(
-  sb: Db,
-  userId: string,
-  now = new Date(),
-): Promise<number> {
+function fotosAnalisadasNaAnalise(row: {
+  progresso_total?: unknown;
+  qualidade_json?: unknown;
+}): number {
+  const total = Number(row.progresso_total);
+  if (Number.isFinite(total) && total > 0) return total;
+  const q = row.qualidade_json;
+  if (!Array.isArray(q)) return 0;
+  return q.filter((x) => x && typeof x === "object" && (x as { usada?: boolean }).usada === true)
+    .length;
+}
+
+/** Contagem informativa (sem bloqueio) — dia civil America/Sao_Paulo, por loja (user_id). */
+export async function loadGestaoTrocaIaUsoDiario(sb: Db, userId: string): Promise<GestaoTrocaIaUsoDiario> {
   const dia = hojeSaoPaulo();
   const { startIso, endExclusiveIso } = diaUtcBoundsSaoPaulo(dia);
-  const { count } = await sb.from("gestao_troca_analise_ia")
-    .select("id", { count: "exact", head: true })
+  const { data } = await sb.from("gestao_troca_analise_ia")
+    .select("status, progresso_total, qualidade_json")
     .eq("user_id", userId)
     .gte("created_at", startIso)
     .lt("created_at", endExclusiveIso)
     .neq("status", "erro");
-  return count ?? 0;
-}
-
-export async function assertGestaoTrocaIaLimiteDiario(sb: Db, userId: string): Promise<void> {
-  const used = await countGestaoTrocaAnalisesHoje(sb, userId);
-  if (used >= GESTAO_TROCA_IA_LIMITE_DIARIO) {
-    throw new Error(`Limite diário de ${GESTAO_TROCA_IA_LIMITE_DIARIO} laudos IA atingido.`);
+  let fotos = 0;
+  for (const row of data ?? []) {
+    fotos += fotosAnalisadasNaAnalise(row);
   }
+  return { analises: data?.length ?? 0, fotos };
 }
 
 export async function assertNoGestaoTrocaAnaliseProcessando(
@@ -92,7 +101,7 @@ export async function assertNoGestaoTrocaAnaliseProcessando(
     .eq("status", "processando")
     .limit(1);
   if (data?.length) {
-    throw new Error("Já existe laudo IA em processamento para esta troca.");
+    throw new Error("Já existe uma análise em andamento nesta troca.");
   }
 }
 
@@ -406,13 +415,13 @@ export async function iniciarGestaoTrocaIaAnalise(
   sb: Db,
   userId: string,
   trocaId: string,
+  opts?: { scheduleBackground?: boolean },
 ): Promise<{ analise_id: string }> {
   const { data: troca } = await sb.from("gestao_troca").select("id, laudo_status")
     .eq("id", trocaId).eq("user_id", userId).maybeSingle();
   if (!troca) throw new Error("Troca não encontrada.");
   assertGestaoTrocaLaudoNaoFinalizado(troca);
 
-  await assertGestaoTrocaIaLimiteDiario(sb, userId);
   await assertNoGestaoTrocaAnaliseProcessando(sb, userId, trocaId);
 
   const { data: ins, error } = await sb.from("gestao_troca_analise_ia").insert({
@@ -422,7 +431,9 @@ export async function iniciarGestaoTrocaIaAnalise(
   }).select("id").single();
   if (error || !ins?.id) throw new Error("Não foi possível iniciar laudo IA.");
 
-  scheduleGestaoTrocaIaAnaliseBackground(sb, String(ins.id), userId, trocaId);
+  if (opts?.scheduleBackground !== false) {
+    scheduleGestaoTrocaIaAnaliseBackground(sb, String(ins.id), userId, trocaId);
+  }
   return { analise_id: String(ins.id) };
 }
 

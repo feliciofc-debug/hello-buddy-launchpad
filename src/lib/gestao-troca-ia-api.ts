@@ -152,6 +152,33 @@ export async function invokeGestaoTrocaConfirmarKm(trocaId: string): Promise<{ s
   return { success: true };
 }
 
+export type GestaoTrocaIaUsoDiario = {
+  analises: number;
+  fotos: number;
+};
+
+export async function invokeGestaoTrocaIaUsoDiario(): Promise<{
+  uso: GestaoTrocaIaUsoDiario;
+  error?: string;
+}> {
+  const { data, error } = await supabase.functions.invoke("gestao-troca", {
+    body: { action: "ia_uso_diario" },
+  });
+  if (error || !data?.success) {
+    return {
+      uso: { analises: 0, fotos: 0 },
+      error: data?.error ?? error?.message ?? "Falha ao carregar uso de IA.",
+    };
+  }
+  const raw = data.uso as Record<string, unknown> | undefined;
+  return {
+    uso: {
+      analises: Number(raw?.analises ?? 0),
+      fotos: Number(raw?.fotos ?? 0),
+    },
+  };
+}
+
 export async function invokeGestaoTrocaCustosListar(): Promise<{
   custos: GestaoTrocaIaCustoRow[];
   error?: string;
