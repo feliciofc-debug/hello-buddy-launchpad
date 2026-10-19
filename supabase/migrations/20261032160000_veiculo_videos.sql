@@ -30,6 +30,9 @@ CREATE TABLE IF NOT EXISTS public.veiculo_videos (
 CREATE INDEX IF NOT EXISTS veiculo_videos_user_id_idx ON public.veiculo_videos (user_id);
 CREATE INDEX IF NOT EXISTS veiculo_videos_veiculo_id_idx ON public.veiculo_videos (veiculo_id);
 
+CREATE UNIQUE INDEX IF NOT EXISTS veiculo_videos_video_url_uidx
+  ON public.veiculo_videos (video_url);
+
 ALTER TABLE public.veiculo_videos ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY veiculo_videos_select_own ON public.veiculo_videos

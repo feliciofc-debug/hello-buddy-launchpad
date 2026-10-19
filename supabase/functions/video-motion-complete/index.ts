@@ -12,7 +12,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { autorizarWorker, renderCors, respJson } from "../_shared/render-auth.ts";
 import { linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
 import { readyMediaActionButtons } from "../_shared/ready-media-actions.ts";
-import { syncProdutoVideoFromMidia } from "../_shared/sync-produto-video.ts";
+import { persistMotionVideoToLibrary } from "../_shared/video-complete-library.ts";
 import { rememberDeliveredMediaInteraction } from "../_shared/whatsapp-last-media-interaction.ts";
 
 const MAX_TENTATIVAS = 3;
@@ -88,17 +88,6 @@ async function registrarVideoNaBiblioteca(supabase: any, job: any, videoUrl: str
   return data.id;
 }
 
-async function sincronizarAreaDeVideos(supabase: any, midiaId: string): Promise<void> {
-  try {
-    await syncProdutoVideoFromMidia(supabase, midiaId);
-  } catch (e) {
-    console.error(
-      "[video-motion-complete] sincronização com produto_videos falhou; mantendo vídeo concluído:",
-      e instanceof Error ? e.message : String(e),
-    );
-  }
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: renderCors });
 
@@ -144,12 +133,18 @@ Deno.serve(async (req) => {
       let codigoMidia = "";
       let bibliotecaErro: string | null = null;
       try {
-        midiaId = await registrarVideoNaBiblioteca(supabase, job, videoUrl, job.duracao_segundos ?? null);
-        codigoMidia = linhaCodigoMidia(midiaId, "video");
-        await sincronizarAreaDeVideos(supabase, midiaId);
+        const lib = await persistMotionVideoToLibrary(
+          supabase,
+          job,
+          videoUrl,
+          job.duracao_segundos ?? null,
+          () => registrarVideoNaBiblioteca(supabase, job, videoUrl, job.duracao_segundos ?? null),
+        );
+        midiaId = lib.midiaId;
+        if (midiaId) codigoMidia = linhaCodigoMidia(midiaId, "video");
       } catch (e) {
         bibliotecaErro = e instanceof Error ? e.message : String(e);
-        console.error("[video-motion-complete] registro em /midias falhou na reentrega; entregando MP4 mesmo assim:", bibliotecaErro);
+        console.error("[video-motion-complete] biblioteca falhou na reentrega; entregando MP4 mesmo assim:", bibliotecaErro);
       }
 
       const plataformas: string[] = Array.isArray(job.plataformas) ? job.plataformas : [];
@@ -288,12 +283,18 @@ Deno.serve(async (req) => {
     let codigoMidia = "";
     let bibliotecaErro: string | null = null;
     try {
-      midiaId = await registrarVideoNaBiblioteca(supabase, job, videoUrl, duracao_segundos ?? null);
-      codigoMidia = linhaCodigoMidia(midiaId, "video");
-      await sincronizarAreaDeVideos(supabase, midiaId);
+      const lib = await persistMotionVideoToLibrary(
+        supabase,
+        job,
+        videoUrl,
+        duracao_segundos ?? null,
+        () => registrarVideoNaBiblioteca(supabase, job, videoUrl, duracao_segundos ?? null),
+      );
+      midiaId = lib.midiaId;
+      if (midiaId) codigoMidia = linhaCodigoMidia(midiaId, "video");
     } catch (e) {
       bibliotecaErro = e instanceof Error ? e.message : String(e);
-      console.error("[video-motion-complete] registro em /midias falhou; entregando MP4 mesmo assim:", bibliotecaErro);
+      console.error("[video-motion-complete] biblioteca falhou; entregando MP4 mesmo assim:", bibliotecaErro);
     }
 
     if (job.origem === "whatsapp" && job.telefone) {

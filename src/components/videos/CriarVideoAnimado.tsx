@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { validarPaleta } from '@/lib/videoPalette';
 import { ImportarDoSiteModal, type IdentidadeImportada } from '@/components/ImportarDoSiteModal';
+import { upsertVeiculoVideoByUrl } from '@/lib/upsert-veiculo-video';
 
 type Mensagem = { de: 'dono' | 'agente'; texto: string };
 
@@ -481,7 +482,7 @@ export const CriarVideoAnimado = ({
       if (isVeiculoScope) {
         const vid = j.metadata?.veiculo_id || veiculoId;
         if (!vid) throw new Error('Veículo não identificado para este vídeo.');
-        const { error } = await supabase.from('veiculo_videos' as any).insert({
+        const { created } = await upsertVeiculoVideoByUrl(supabase, {
           user_id: user.id,
           veiculo_id: vid,
           titulo: j.titulo || 'Vídeo animado',
@@ -490,9 +491,12 @@ export const CriarVideoAnimado = ({
           duracao_segundos: j.duracao_segundos,
           tamanho_bytes: blob.size,
           status: 'pronto',
-        } as any);
-        if (error) throw error;
-        toast.success('Vídeo enviado para a grade do veículo.');
+        });
+        toast.success(
+          created
+            ? 'Vídeo enviado para a grade do veículo.'
+            : 'Vídeo já estava na grade (atualizado).',
+        );
       } else {
         const { error } = await supabase.from('produto_videos' as any).insert({
           user_id: user.id,
@@ -644,7 +648,7 @@ export const CriarVideoAnimado = ({
           trilha_volume: props.trilha_volume ?? 0.28,
           ...(isVeiculoScope && veiculoId
             ? {
-                metadata_extra: { tipo: 'veiculo', veiculo_id: veiculoId, library: 'veiculo' },
+                metadata_extra: { library: 'veiculo', veiculo_id: veiculoId },
               }
             : {}),
         },

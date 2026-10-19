@@ -13,6 +13,7 @@ import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { toBlobURL } from '@ffmpeg/util';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { upsertVeiculoVideoByUrl } from '@/lib/upsert-veiculo-video';
 
 // ==============================================================
 // CONFIGURAÇÕES DO TEMPLATE
@@ -464,20 +465,17 @@ export function useGerarReel() {
         const destino = params.destinoBiblioteca === 'veiculo' ? 'veiculo' : 'produto';
         if (destino === 'veiculo') {
           if (!params.veiculoId) throw new Error('veiculoId obrigatório para biblioteca de veículos');
-          const { error: errInsert } = await supabase
-            .from('veiculo_videos' as any)
-            .insert({
-              id: videoId,
-              veiculo_id: params.veiculoId,
-              user_id: user.id,
-              video_url: videoUrl,
-              thumbnail_url: thumbUrl,
-              titulo: params.nomeProduto,
-              duracao_segundos: Math.round(duracaoTotal),
-              status: 'pronto',
-              tamanho_bytes: blobMp4.size,
-            });
-          if (errInsert) throw errInsert;
+          await upsertVeiculoVideoByUrl(supabase, {
+            id: videoId,
+            veiculo_id: params.veiculoId,
+            user_id: user.id,
+            video_url: videoUrl,
+            thumbnail_url: thumbUrl,
+            titulo: params.nomeProduto,
+            duracao_segundos: Math.round(duracaoTotal),
+            status: 'pronto',
+            tamanho_bytes: blobMp4.size,
+          });
         } else {
           const { error: errInsert } = await supabase
             .from('produto_videos' as any)
