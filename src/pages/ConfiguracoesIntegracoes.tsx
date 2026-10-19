@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { FocusNfeIntegrationCard } from "@/components/integracoes/FocusNfeIntegrationCard";
 import { ZapSignIntegrationCard } from "@/components/integracoes/ZapSignIntegrationCard";
 import { MlIntegrationCard } from "@/components/ml/MlIntegrationCard";
+import { ProcedenciaIntegrationCard } from "@/components/procedencia/ProcedenciaIntegrationCard";
 import { WebmotorsIntegrationCard } from "@/components/webmotors/WebmotorsIntegrationCard";
 import { useSmartBack } from "@/lib/app-back-nav.ts";
 import {
@@ -98,6 +99,15 @@ export default function ConfiguracoesIntegracoes() {
             )}
             {showZapsign && <ZapSignIntegrationCard />}
             {showFocus && <FocusNfeIntegrationCard />}
+          </div>
+        )}
+
+        {!focusedOnly && (
+          <div className="space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Veículos
+            </h2>
+            <ProcedenciaIntegrationCard />
           </div>
         )}
 

@@ -24,6 +24,7 @@ import {
   type GestaoVeiculoRow,
 } from "./gestao-veiculo-match.ts";
 import { loadTenantVehicleStockGate } from "./vehicle-inventory-tenant.ts";
+import { tryProcessVeiculoProcedenciaInbound } from "./veiculo-procedencia-inbound.ts";
 import {
   calcGestaoComissao,
   DEFAULT_COMISSAO_REGRA,
@@ -808,6 +809,18 @@ export async function tryProcessGestaoLucroInbound(input: {
 }): Promise<{ handled: boolean; reply?: string; clearPending?: boolean }> {
   if (input.hasInboundMedia) return { handled: false };
   if (!isGestaoAuthorizedPhone(input.fromNumber, input.auth)) return { handled: false };
+
+  const procedenciaEarly = await tryProcessVeiculoProcedenciaInbound({
+    sb: input.sb,
+    userId: input.userId,
+    fromNumber: input.fromNumber,
+    userText: input.userText,
+    hasInboundMedia: input.hasInboundMedia,
+    auth: input.auth,
+    agentState: input.agentState,
+    saveAgentStatePatch: input.saveAgentStatePatch,
+  });
+  if (procedenciaEarly.handled) return procedenciaEarly;
 
   const gate = await loadTenantVehicleStockGate(
     input.sb as Parameters<typeof loadTenantVehicleStockGate>[0],

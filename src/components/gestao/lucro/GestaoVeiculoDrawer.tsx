@@ -50,6 +50,7 @@ import { GestaoVendaRaioXPanel } from "@/components/gestao/lucro/GestaoVendaRaio
 import { estornarComissaoVeiculo, syncComissaoAfterVenda } from "@/lib/gestao-comissao-client.ts";
 import { useGestaoFocusnfeConnection } from "@/components/integracoes/useGestaoFocusnfeConnection";
 import { GestaoEmitirNfeDialog } from "@/components/gestao/lucro/GestaoEmitirNfeDialog.tsx";
+import { GestaoVeiculoProcedenciaPanel } from "@/components/procedencia/GestaoVeiculoProcedenciaPanel.tsx";
 
 type Props = {
   open: boolean;
@@ -393,6 +394,12 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
                 <p className="font-semibold">{formatGestaoMoney(lucro.totalDespesas)}</p>
               </div>
             </div>
+
+            <GestaoVeiculoProcedenciaPanel
+              userId={userId}
+              veiculoId={veiculo.id}
+              placa={veiculo.placa}
+            />
 
             {lucro.vendido && (
               <GestaoVendaRaioXPanel

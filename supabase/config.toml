@@ -378,5 +378,8 @@ verify_jwt = true
 [functions.gestao-focusnfe-webhook]
 verify_jwt = false
 
+[functions.veiculo-procedencia]
+verify_jwt = true
+
 [functions.amz-auto-cadastro]
 verify_jwt = false
