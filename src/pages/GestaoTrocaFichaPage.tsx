@@ -198,6 +198,28 @@ export default function GestaoTrocaFichaPage() {
           </div>
         </section>
 
+        {troca.status === "fechada" && !troca.veiculo_id && (
+          <section className="space-y-2 rounded-lg border bg-white p-4 dark:bg-gray-950">
+            <h2 className="font-semibold">Preparação (despesas na troca)</h2>
+            <Button size="sm" variant="secondary" onClick={async () => {
+              const { data: { user } } = await supabase.auth.getUser();
+              if (!user) return;
+              const valor = prompt("Valor da despesa (R$)");
+              if (!valor) return;
+              await supabase.from("gestao_troca_despesa" as "veiculos_estoque").insert({
+                troca_id: id,
+                user_id: user.id,
+                categoria: "mecanica",
+                valor: Number(valor),
+                descricao: "Preparação troca",
+              });
+              toast.success("Despesa lançada.");
+            }}>
+              Lançar despesa
+            </Button>
+          </section>
+        )}
+
         <section className="space-y-2 rounded-lg border bg-white p-4 dark:bg-gray-950">
           <h2 className="font-semibold">Fotos (privadas)</h2>
           <Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadFoto(f); }} />
