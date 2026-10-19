@@ -1,7 +1,49 @@
 /** Espelha a regra do trigger gestao_troca_laudo_trava_update (testes Deno). */
 
+export const GESTAO_TROCA_LAUDO_COLUNAS_MSG =
+  "Somente o sistema pode alterar o status do laudo.";
+
 export const GESTAO_TROCA_LAUDO_TRAVA_MSG =
   "Laudo finalizado: reabra o laudo para alterar.";
+
+/** Quatro vias documentadas (qualquer uma = privilegiado, libera tudo). */
+export const GESTAO_TROCA_LAUDO_PRIVILEGIADO_DOCS = [
+  "current_user IN ('service_role','postgres','supabase_admin')",
+  "current_setting('role', true) = 'service_role'",
+  "request.jwt.claims (JSON) ->> 'role' = 'service_role'",
+  "request.jwt.claim.role = 'service_role'",
+] as const;
+
+export type GestaoTrocaLaudoPrivilegiadoCtx = {
+  currentUser?: string;
+  sessionRole?: string;
+  jwtClaimsJson?: string;
+  jwtClaimRole?: string;
+};
+
+export function jwtRoleFromClaimsJson(claimsJson: string | undefined): string {
+  const raw = (claimsJson ?? "").trim();
+  if (!raw) return "";
+  try {
+    const parsed = JSON.parse(raw) as { role?: unknown };
+    return typeof parsed.role === "string" ? parsed.role : "";
+  } catch {
+    return "";
+  }
+}
+
+export function isGestaoTrocaLaudoTravaPrivilegiado(
+  ctx: GestaoTrocaLaudoPrivilegiadoCtx,
+): boolean {
+  const cu = ctx.currentUser ?? "";
+  if (cu === "service_role" || cu === "postgres" || cu === "supabase_admin") {
+    return true;
+  }
+  if ((ctx.sessionRole ?? "") === "service_role") return true;
+  if (jwtRoleFromClaimsJson(ctx.jwtClaimsJson) === "service_role") return true;
+  if ((ctx.jwtClaimRole ?? "") === "service_role") return true;
+  return false;
+}
 
 export const GESTAO_TROCA_LAUDO_COLUNAS_SERVICE_ONLY = [
   "laudo_status",
@@ -49,15 +91,19 @@ function distinct(a: unknown, b: unknown): boolean {
 }
 
 export function assertGestaoTrocaLaudoTravaUpdate(input: {
-  isServiceRole: boolean;
+  ctx?: GestaoTrocaLaudoPrivilegiadoCtx;
+  /** Atalho nos testes quando já se sabe o resultado da detecção. */
+  privilegiado?: boolean;
   oldRow: Record<string, unknown>;
   newRow: Record<string, unknown>;
 }): void {
-  if (input.isServiceRole) return;
+  const privilegiado = input.privilegiado ??
+    (input.ctx ? isGestaoTrocaLaudoTravaPrivilegiado(input.ctx) : false);
+  if (privilegiado) return;
 
   for (const col of GESTAO_TROCA_LAUDO_COLUNAS_SERVICE_ONLY) {
     if (distinct(input.oldRow[col], input.newRow[col])) {
-      throw new Error(GESTAO_TROCA_LAUDO_TRAVA_MSG);
+      throw new Error(GESTAO_TROCA_LAUDO_COLUNAS_MSG);
     }
   }
 

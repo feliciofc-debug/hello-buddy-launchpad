@@ -1,7 +1,11 @@
 import { assertEquals, assertThrows } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   assertGestaoTrocaLaudoTravaUpdate,
+  GESTAO_TROCA_LAUDO_COLUNAS_MSG,
+  GESTAO_TROCA_LAUDO_PRIVILEGIADO_DOCS,
   GESTAO_TROCA_LAUDO_TRAVA_MSG,
+  isGestaoTrocaLaudoTravaPrivilegiado,
+  jwtRoleFromClaimsJson,
 } from "./gestao-troca-laudo-trava-logic.ts";
 
 const baseRow = (): Record<string, unknown> => ({
@@ -42,13 +46,48 @@ const baseRow = (): Record<string, unknown> => ({
   veiculo_id: null,
 });
 
+Deno.test("documentação: quatro condições de privilegiado", () => {
+  assertEquals(GESTAO_TROCA_LAUDO_PRIVILEGIADO_DOCS.length, 4);
+});
+
+Deno.test("privilegiado via current_user service_role", () => {
+  assertEquals(
+    isGestaoTrocaLaudoTravaPrivilegiado({ currentUser: "service_role" }),
+    true,
+  );
+});
+
+Deno.test("privilegiado via session role", () => {
+  assertEquals(
+    isGestaoTrocaLaudoTravaPrivilegiado({ sessionRole: "service_role" }),
+    true,
+  );
+});
+
+Deno.test("privilegiado via request.jwt.claims JSON", () => {
+  assertEquals(
+    isGestaoTrocaLaudoTravaPrivilegiado({
+      jwtClaimsJson: '{"role":"service_role","sub":"x"}',
+    }),
+    true,
+  );
+  assertEquals(jwtRoleFromClaimsJson("{invalid"), "");
+});
+
+Deno.test("privilegiado via request.jwt.claim.role legado", () => {
+  assertEquals(
+    isGestaoTrocaLaudoTravaPrivilegiado({ jwtClaimRole: "service_role" }),
+    true,
+  );
+});
+
 Deno.test("usuário comum não altera laudo_status", () => {
   const oldRow = baseRow();
   const newRow = { ...oldRow, laudo_status: "finalizado" };
   assertThrows(
-    () => assertGestaoTrocaLaudoTravaUpdate({ isServiceRole: false, oldRow, newRow }),
+    () => assertGestaoTrocaLaudoTravaUpdate({ ctx: {}, oldRow, newRow }),
     Error,
-    GESTAO_TROCA_LAUDO_TRAVA_MSG,
+    GESTAO_TROCA_LAUDO_COLUNAS_MSG,
   );
 });
 
@@ -56,13 +95,13 @@ Deno.test("laudo finalizado bloqueia kbb e checklist", () => {
   const oldRow = { ...baseRow(), laudo_status: "finalizado", laudo_numero: "2026-000001" };
   const newRow = { ...oldRow, kbb_troca: 99999 };
   assertThrows(
-    () => assertGestaoTrocaLaudoTravaUpdate({ isServiceRole: false, oldRow, newRow }),
+    () => assertGestaoTrocaLaudoTravaUpdate({ ctx: {}, oldRow, newRow }),
     Error,
     GESTAO_TROCA_LAUDO_TRAVA_MSG,
   );
   const newRow2 = { ...oldRow, checklist_json: { pneus: { condicao: "ruim" } } };
   assertThrows(
-    () => assertGestaoTrocaLaudoTravaUpdate({ isServiceRole: false, oldRow, newRow: newRow2 }),
+    () => assertGestaoTrocaLaudoTravaUpdate({ ctx: {}, oldRow, newRow: newRow2 }),
     Error,
     GESTAO_TROCA_LAUDO_TRAVA_MSG,
   );
@@ -71,7 +110,7 @@ Deno.test("laudo finalizado bloqueia kbb e checklist", () => {
 Deno.test("laudo finalizado permite fluxo comercial (status)", () => {
   const oldRow = { ...baseRow(), laudo_status: "finalizado" };
   const newRow = { ...oldRow, status: "aguardando_aprovacao" };
-  assertGestaoTrocaLaudoTravaUpdate({ isServiceRole: false, oldRow, newRow });
+  assertGestaoTrocaLaudoTravaUpdate({ ctx: {}, oldRow, newRow });
   assertEquals(newRow.status, "aguardando_aprovacao");
 });
 
@@ -84,10 +123,10 @@ Deno.test("laudo finalizado permite valor_aprovado e destino", () => {
     destino: "estoque",
     veiculo_id: "00000000-0000-4000-8000-000000000001",
   };
-  assertGestaoTrocaLaudoTravaUpdate({ isServiceRole: false, oldRow, newRow });
+  assertGestaoTrocaLaudoTravaUpdate({ ctx: {}, oldRow, newRow });
 });
 
-Deno.test("service_role finaliza e reabre laudo", () => {
+Deno.test("privilegiado finaliza e reabre laudo", () => {
   const oldRow = baseRow();
   const finalize = {
     ...oldRow,
@@ -97,18 +136,26 @@ Deno.test("service_role finaliza e reabre laudo", () => {
     laudo_finalizado_por: "00000000-0000-4000-8000-000000000099",
     laudo_finalizado_em: "2026-10-19T15:00:00.000Z",
   };
-  assertGestaoTrocaLaudoTravaUpdate({ isServiceRole: true, oldRow, newRow: finalize });
+  assertGestaoTrocaLaudoTravaUpdate({
+    ctx: { jwtClaimsJson: '{"role":"service_role"}' },
+    oldRow,
+    newRow: finalize,
+  });
 
   const reopen = {
     ...finalize,
     laudo_status: "rascunho",
     laudo_reaberto_motivo: "Correção de item no checklist",
   };
-  assertGestaoTrocaLaudoTravaUpdate({ isServiceRole: true, oldRow: finalize, newRow: reopen });
+  assertGestaoTrocaLaudoTravaUpdate({
+    privilegiado: true,
+    oldRow: finalize,
+    newRow: reopen,
+  });
 });
 
 Deno.test("rascunho permite alterar kbb", () => {
   const oldRow = baseRow();
   const newRow = { ...oldRow, kbb_troca: 15000 };
-  assertGestaoTrocaLaudoTravaUpdate({ isServiceRole: false, oldRow, newRow });
+  assertGestaoTrocaLaudoTravaUpdate({ ctx: {}, oldRow, newRow });
 });
