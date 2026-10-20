@@ -24,6 +24,7 @@ import {
   normalizarPropsProduto,
   validarImagemProduto,
 } from "../_shared/video-produto.ts";
+import { assertVeiculoEstoqueOwnedByUser } from "../_shared/veiculo-estoque-owner.ts";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -82,7 +83,11 @@ Deno.serve(async (req) => {
       return json({ success: false, error: "Informe o nome do produto." }, 400);
     }
 
-    const tema = `Vídeo de produto: ${props.produto.nome}`;
+    const veiculoIdEarly = typeof body?.veiculo_id === "string" ? body.veiculo_id.trim() : "";
+    const isVeiculoJobEarly = !!veiculoIdEarly;
+    const tema = isVeiculoJobEarly
+      ? `Vídeo do veículo: ${props.produto.nome}`
+      : `Vídeo de produto: ${props.produto.nome}`;
 
     // Só devolve a prévia do roteiro, sem ocupar a fila.
     if (body?.apenas_roteiro) {
@@ -125,6 +130,16 @@ Deno.serve(async (req) => {
       ? (body.plataformas as unknown[]).map((p) => String(p).toLowerCase()).filter((p) => PLATAFORMAS_OK.includes(p))
       : [];
 
+    const veiculoIdRaw = veiculoIdEarly;
+    const produtoIdRaw = typeof body?.produto_id === "string" ? body.produto_id.trim() : "";
+    const isVeiculoJob = isVeiculoJobEarly;
+    if (isVeiculoJob) {
+      const owned = await assertVeiculoEstoqueOwnedByUser(sb, user.id, veiculoIdRaw);
+      if (!owned) {
+        return json({ success: false, error: "Veículo não encontrado nesta loja" }, 403);
+      }
+    }
+
     const { data: job, error: insErr } = await sb
       .from("video_motion_jobs")
       .insert({
@@ -140,10 +155,12 @@ Deno.serve(async (req) => {
         formato: ["reels", "story", "feed"].includes(String(body?.formato)) ? String(body.formato) : "reels",
         metadata: {
           origem: "plataforma",
-          tipo: "produto",
+          tipo: isVeiculoJob ? "veiculo" : "produto",
           nivel: "padrao",
           recortar_fundo: propsFinal.produto.recortar_fundo === true,
-          produto_id: typeof body?.produto_id === "string" ? body.produto_id : null,
+          produto_id: isVeiculoJob ? null : (produtoIdRaw || null),
+          veiculo_id: isVeiculoJob ? veiculoIdRaw : null,
+          library: isVeiculoJob ? "veiculo" : "produto",
         },
       })
       .select()

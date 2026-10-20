@@ -23,6 +23,14 @@ import { Loader2, Package, Scissors, Clapperboard, Palette } from 'lucide-react'
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { validarPaleta } from '@/lib/videoPalette';
+import {
+  type VehicleVideoStockRow,
+  publicVehicleStockPhotos,
+  vehicleVideoDisplayTitle,
+  vehicleVideoHighlightBullets,
+  vehicleVideoPriceForOverlay,
+  vehicleVideoSubtitleLine,
+} from '@/lib/vehicle-video-source-adapter';
 
 type ProdutoLite = {
   id: string;
@@ -50,7 +58,20 @@ const PALETAS = {
 
 const brl = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export const CriarVideoProduto = () => {
+export type CriarVideoProdutoProps = {
+  entitySource?: 'produto' | 'veiculo';
+  fixedVeiculoId?: string;
+  lojaNome?: string;
+  onVeiculoJobQueued?: (jobId: string) => void;
+};
+
+export const CriarVideoProduto = ({
+  entitySource = 'produto',
+  fixedVeiculoId,
+  lojaNome = '',
+  onVeiculoJobQueued,
+}: CriarVideoProdutoProps = {}) => {
+  const isVeiculo = entitySource === 'veiculo';
   const [produtos, setProdutos] = useState<ProdutoLite[]>([]);
   const [produtoId, setProdutoId] = useState('');
   const [imagemUrl, setImagemUrl] = useState('');
@@ -69,10 +90,28 @@ export const CriarVideoProduto = () => {
   const [paletaSelecionada, setPaletaSelecionada] = useState<keyof typeof PALETAS>('amz');
   const [cores, setCores] = useState<Record<string, string>>({ ...PALETAS.amz.cores });
   const [enviando, setEnviando] = useState(false);
+  const [veiculos, setVeiculos] = useState<VehicleVideoStockRow[]>([]);
 
   const carregar = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+    if (isVeiculo) {
+      const { data } = await supabase
+        .from('veiculos_estoque')
+        .select(
+          'id, marca, modelo, versao, ano_fabricacao, ano_modelo, km, cambio, cor, combustivel, opcionais, caracteristicas, descricao, preco, fotos, status',
+        )
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false });
+      const lista = ((data ?? []) as VehicleVideoStockRow[]).filter(
+        (v) => publicVehicleStockPhotos(v).length > 0 && v.status !== 'vendido',
+      );
+      setVeiculos(lista);
+      if (fixedVeiculoId && lista.some((v) => v.id === fixedVeiculoId)) {
+        selecionarVeiculo(fixedVeiculoId, lista);
+      }
+      return;
+    }
     const { data } = await supabase
       .from('produtos')
       .select('id, nome, preco, imagem_url, imagens, descricao')
@@ -82,7 +121,29 @@ export const CriarVideoProduto = () => {
     setProdutos((data ?? []) as unknown as ProdutoLite[]);
   };
 
-  useEffect(() => { carregar(); }, []);
+  const selecionarVeiculo = (id: string, lista = veiculos) => {
+    setProdutoId(id);
+    const v = lista.find((item) => item.id === id) || null;
+    const imgs = publicVehicleStockPhotos(v ?? { fotos: [] });
+    setImagemUrl(imgs[0] ?? '');
+    setNome(vehicleVideoDisplayTitle(v ?? { marca: '', modelo: '' }));
+    setSubtitulo(v ? vehicleVideoSubtitleLine(v) : '');
+    setMarca(lojaNome.trim());
+    const bullets = v ? vehicleVideoHighlightBullets(v) : [];
+    setBullets([bullets[0] ?? '', bullets[1] ?? '', bullets[2] ?? '']);
+    const { precoLabel } = v ? vehicleVideoPriceForOverlay(v) : { precoLabel: null };
+    setPreco(precoLabel ? precoLabel.replace(/^R\$\s*/, '') : '');
+    setPrecoDe('');
+    setCtaFrase('Chama no WhatsApp');
+  };
+
+  useEffect(() => { carregar(); }, [isVeiculo, fixedVeiculoId]);
+
+  useEffect(() => {
+    if (isVeiculo && fixedVeiculoId && veiculos.length) {
+      selecionarVeiculo(fixedVeiculoId, veiculos);
+    }
+  }, [fixedVeiculoId, isVeiculo, veiculos]);
 
   const produto = useMemo(() => produtos.find((p) => p.id === produtoId) ?? null, [produtos, produtoId]);
 
@@ -114,11 +175,11 @@ export const CriarVideoProduto = () => {
 
   const enviar = async () => {
     if (!imagemUrl) {
-      toast.error('Escolha um produto com foto.');
+      toast.error(isVeiculo ? 'Escolha um veículo com foto.' : 'Escolha um produto com foto.');
       return;
     }
     if (nome.trim().length < 2) {
-      toast.error('Informe o nome do produto.');
+      toast.error(isVeiculo ? 'Informe marca e modelo do veículo.' : 'Informe o nome do produto.');
       return;
     }
     const erroPaleta = validarPaleta(cores);
@@ -132,7 +193,8 @@ export const CriarVideoProduto = () => {
       const { data, error } = await supabase.functions.invoke('video-produto-create', {
         body: {
           imagem_url: imagemUrl,
-          produto_id: produtoId || undefined,
+          produto_id: isVeiculo ? undefined : (produtoId || undefined),
+          veiculo_id: isVeiculo ? (produtoId || undefined) : undefined,
           marca: marca.trim() || undefined,
           formato: 'reels',
           props: {
@@ -158,47 +220,66 @@ export const CriarVideoProduto = () => {
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Não consegui enfileirar o vídeo');
+      if (isVeiculo && data?.job_id && onVeiculoJobQueued) {
+        onVeiculoJobQueued(String(data.job_id));
+      }
       toast.success(
-        `Vídeo na fila (posição ${data.posicao_fila}). Duração estimada: ${data.duracao_estimada}s. Acompanhe em "Vídeo animado".`,
+        isVeiculo
+          ? `Vídeo na fila (posição ${data.posicao_fila}). Leva cerca de 3 a 5 minutos — acompanhe o card acima.`
+          : `Vídeo na fila (posição ${data.posicao_fila}). Duração estimada: ${data.duracao_estimada}s. Acompanhe em "Vídeo animado".`,
       );
     } catch (e: any) {
-      toast.error(e?.message || 'Erro ao criar o vídeo do produto');
+      toast.error(e?.message || (isVeiculo ? 'Erro ao criar o vídeo do veículo' : 'Erro ao criar o vídeo do produto'));
     } finally {
       setEnviando(false);
     }
   };
 
-  const imagens = imagensDoProduto(produto);
+  const veiculoSel = isVeiculo ? veiculos.find((v) => v.id === produtoId) ?? null : null;
+  const imagens = isVeiculo
+    ? publicVehicleStockPhotos(veiculoSel ?? { fotos: [] })
+    : imagensDoProduto(produto);
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Package className="h-5 w-5 text-primary" />
-          Vídeo de produto
+          {isVeiculo ? 'Vídeo do veículo (foto + recorte)' : 'Vídeo de produto'}
           <Badge variant="secondary" className="ml-1">Custo zero</Badge>
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Uma foto do catálogo vira um vídeo vertical 1080x1920 para Reels, Stories e TikTok.
+          {isVeiculo
+            ? 'Uma foto do estoque vira vídeo vertical com recorte de fundo, textos do carro e logo da loja.'
+            : 'Uma foto do catálogo vira um vídeo vertical 1080x1920 para Reels, Stories e TikTok.'}
         </p>
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label>Produto</Label>
+            <Label>{isVeiculo ? 'Veículo' : 'Produto'}</Label>
             <select
               className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
               value={produtoId}
-              onChange={(e) => selecionarProduto(e.target.value)}
+              onChange={(e) => (isVeiculo ? selecionarVeiculo(e.target.value) : selecionarProduto(e.target.value))}
             >
-              <option value="">Selecione um produto…</option>
-              {produtos.map((p) => (
-                <option key={p.id} value={p.id}>{p.nome}</option>
-              ))}
+              <option value="">{isVeiculo ? 'Selecione um veículo…' : 'Selecione um produto…'}</option>
+              {isVeiculo
+                ? veiculos.map((v) => (
+                  <option key={v.id} value={v.id}>{vehicleVideoDisplayTitle(v)}</option>
+                ))
+                : produtos.map((p) => (
+                  <option key={p.id} value={p.id}>{p.nome}</option>
+                ))}
             </select>
-            {produtos.length === 0 && (
+            {!isVeiculo && produtos.length === 0 && (
               <p className="text-xs text-muted-foreground">
                 Nenhum produto cadastrado ainda. Cadastre um produto com foto na aba Produtos.
+              </p>
+            )}
+            {isVeiculo && veiculos.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                Nenhum veículo com foto pública no estoque.
               </p>
             )}
           </div>
@@ -207,7 +288,9 @@ export const CriarVideoProduto = () => {
             <Label>Foto usada no vídeo</Label>
             <div className="flex gap-2 flex-wrap">
               {imagens.length === 0 && (
-                <span className="text-xs text-muted-foreground">Selecione um produto com foto.</span>
+                <span className="text-xs text-muted-foreground">
+                  {isVeiculo ? 'Escolha um veículo com foto.' : 'Selecione um produto com foto.'}
+                </span>
               )}
               {imagens.map((url) => (
                 <button
@@ -231,11 +314,13 @@ export const CriarVideoProduto = () => {
           />
           <div className="space-y-1">
             <Label htmlFor="recortar-fundo" className="flex items-center gap-2 cursor-pointer">
-              <Scissors className="h-4 w-4" /> Recortar o fundo do produto
+              <Scissors className="h-4 w-4" />
+              {isVeiculo ? 'Recortar o fundo do veículo' : 'Recortar o fundo do produto'}
             </Label>
             <p className="text-xs text-muted-foreground">
-              O produto sai sobre fundo da sua marca, com sombra e reflexo. Se o recorte não funcionar
-              nessa foto, o vídeo continua sendo gerado com a própria foto desfocada ao fundo.
+              {isVeiculo
+                ? 'O carro sai sobre fundo da sua marca, com sombra e reflexo. Se o recorte falhar nesta foto, usamos a foto desfocada ao fundo.'
+                : 'O produto sai sobre fundo da sua marca, com sombra e reflexo. Se o recorte não funcionar nessa foto, o vídeo continua sendo gerado com a própria foto desfocada ao fundo.'}
             </p>
           </div>
         </div>
@@ -339,7 +424,7 @@ export const CriarVideoProduto = () => {
 
         <Button onClick={enviar} disabled={enviando || !imagemUrl} className="w-full">
           {enviando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Clapperboard className="mr-2 h-4 w-4" />}
-          Gerar vídeo do produto
+          {isVeiculo ? 'Gerar vídeo do veículo' : 'Gerar vídeo do produto'}
         </Button>
         <p className="text-xs text-muted-foreground">
           A logo ativa da sua conta é aplicada automaticamente, e a trilha padrão da empresa entra no

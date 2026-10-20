@@ -65,6 +65,8 @@ import {
 } from "@/components/webmotors/WebmotorsVehicleActions";
 import { VeiculoGestaoLucroPanel } from "@/components/gestao/VeiculoGestaoLucroPanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { readAmzAutoModePreference, isEffectiveAmzAutoMode } from "@/lib/amz-auto-mode";
+import { VehicleVideosTab } from "@/components/veiculos/VehicleVideosTab";
 
 type Vehicle = Database["public"]["Tables"]["veiculos_estoque"]["Row"] & {
   placa?: string | null;
@@ -286,6 +288,8 @@ async function getVehicleSessionUser() {
 export default function VehicleInventory() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const showVideosTab = isEffectiveAmzAutoMode(readAmzAutoModePreference());
+  const inventoryTab = searchParams.get("tab") === "videos" && showVideosTab ? "videos" : "estoque";
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -316,6 +320,13 @@ export default function VehicleInventory() {
   const [wmPortals, setWmPortals] = useState<Record<string, VeiculoPortalWebmotors>>({});
   const [olxConnected, setOlxConnected] = useState(false);
   const [olxListings, setOlxListings] = useState<Record<string, OlxVehicleListing>>({});
+  const [portalReadinessBase, setPortalReadinessBase] = useState({
+    hasCep: false,
+    hasPhone: false,
+    hasMlPackage: false,
+    mlPackLabel: null as string | null,
+    phonePreview: null as string | null,
+  });
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [compraVeiculoIds, setCompraVeiculoIds] = useState<Set<string>>(new Set());
   const [custosExpanded, setCustosExpanded] = useState(false);
@@ -330,6 +341,13 @@ export default function VehicleInventory() {
     setMlConnected(!!stMl?.connected);
     setWmConnected(!!stWm?.connected);
     setOlxConnected(!!stOlx?.connected);
+    setPortalReadinessBase({
+      hasCep: !!stMl?.has_location,
+      hasPhone: !!stMl?.has_seller_phone,
+      hasMlPackage: !!stMl?.ml_has_vehicle_package,
+      mlPackLabel: stMl?.ml_listing_pack_label != null ? String(stMl.ml_listing_pack_label) : null,
+      phonePreview: stMl?.seller_phone_preview != null ? String(stMl.seller_phone_preview) : null,
+    });
     const { data: portals } = await supabase
       .from("veiculos_portais" as "veiculos_estoque")
       .select("veiculo_id, portal, status, permalink, last_error");
@@ -740,6 +758,26 @@ export default function VehicleInventory() {
       </header>
 
       <main className="container mx-auto space-y-6 px-4 py-8">
+        {showVideosTab && (
+          <Tabs
+            value={inventoryTab}
+            onValueChange={(v) => {
+              const next = new URLSearchParams(searchParams);
+              if (v === "videos") next.set("tab", "videos");
+              else next.delete("tab");
+              setSearchParams(next, { replace: true });
+            }}
+          >
+            <TabsList>
+              <TabsTrigger value="estoque">Estoque</TabsTrigger>
+              <TabsTrigger value="videos">Vídeos</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
+        {showVideosTab && inventoryTab === "videos" ? (
+          <VehicleVideosTab />
+        ) : (
+        <>
         <MlInventoryStrip />
         <Card>
           <CardContent className="grid gap-4 p-4 md:grid-cols-4">
@@ -923,18 +961,38 @@ export default function VehicleInventory() {
                       veiculoId={vehicle.id}
                       portal={mlPortals[vehicle.id] ?? null}
                       mlConnected={mlConnected}
+                      readiness={{
+                        connected: mlConnected,
+                        hasCep: portalReadinessBase.hasCep,
+                        hasPhone: portalReadinessBase.hasPhone,
+                        hasMlPackage: portalReadinessBase.hasMlPackage,
+                        mlPackLabel: portalReadinessBase.mlPackLabel,
+                        phonePreview: portalReadinessBase.phonePreview,
+                      }}
                       onChanged={() => void loadPortalMeta()}
                     />
                     <WebmotorsVehicleActions
                       veiculoId={vehicle.id}
                       portal={wmPortals[vehicle.id] ?? null}
                       wmConnected={wmConnected}
+                      readiness={{
+                        connected: wmConnected,
+                        hasCep: portalReadinessBase.hasCep,
+                        hasPhone: portalReadinessBase.hasPhone,
+                        phonePreview: portalReadinessBase.phonePreview,
+                      }}
                       onChanged={() => void loadPortalMeta()}
                     />
                     <OlxVehicleActions
                       veiculoId={vehicle.id}
                       listing={olxListings[vehicle.id] ?? null}
                       olxConnected={olxConnected}
+                      readiness={{
+                        connected: olxConnected,
+                        hasCep: portalReadinessBase.hasCep,
+                        hasPhone: portalReadinessBase.hasPhone,
+                        phonePreview: portalReadinessBase.phonePreview,
+                      }}
                       onChanged={() => void loadPortalMeta()}
                     />
                     <Button
@@ -998,6 +1056,8 @@ export default function VehicleInventory() {
         )}
 
         <MlQuestionsPanel />
+        </>
+        )}
       </main>
 
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>

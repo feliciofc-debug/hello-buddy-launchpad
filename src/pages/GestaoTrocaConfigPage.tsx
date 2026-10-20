@@ -10,6 +10,8 @@ import { DEFAULT_GESTAO_TROCA_CONFIG } from "@/lib/calc-troca-preco.ts";
 import {
   invokeGestaoTrocaCustosListar,
   invokeGestaoTrocaCustosSalvar,
+  invokeGestaoTrocaIaUsoDiario,
+  type GestaoTrocaIaUsoDiario,
 } from "@/lib/gestao-troca-ia-api.ts";
 import {
   GESTAO_TROCA_IA_CUSTO_CATEGORIAS,
@@ -22,6 +24,7 @@ export default function GestaoTrocaConfigPage() {
   const [custos, setCustos] = useState<GestaoTrocaIaCustoRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [iaUsoHoje, setIaUsoHoje] = useState<GestaoTrocaIaUsoDiario>({ analises: 0, fotos: 0 });
 
   useEffect(() => {
     void (async () => {
@@ -30,11 +33,16 @@ export default function GestaoTrocaConfigPage() {
       const { data } = await supabase.from("gestao_troca_config" as "veiculos_estoque")
         .select("*").eq("user_id", user.id).maybeSingle();
       if (data) setCfg({ ...DEFAULT_GESTAO_TROCA_CONFIG, ...(data as typeof cfg) });
-      const listed = await invokeGestaoTrocaCustosListar();
+      const [listed, uso] = await Promise.all([
+        invokeGestaoTrocaCustosListar(),
+        invokeGestaoTrocaIaUsoDiario(),
+      ]);
       if (listed.error && listed.custos.length === 0) {
         toast.error(listed.error);
       }
+      if (uso.error) toast.error(uso.error);
       setCustos(listed.custos);
+      setIaUsoHoje(uso.uso);
       setLoading(false);
     })();
   }, []);
@@ -104,6 +112,9 @@ export default function GestaoTrocaConfigPage() {
           <ArrowLeft className="h-4 w-4" /> Trocas
         </Link>
         <h1 className="text-2xl font-bold">Configuração — Trocas</h1>
+        <p className="text-sm text-muted-foreground">
+          Análises hoje: {iaUsoHoje.analises} · fotos: {iaUsoHoje.fotos}
+        </p>
         <div className="grid gap-3 rounded-lg border bg-white p-4 dark:bg-gray-950">
           {field("margem_alvo_pct", "Margem alvo (%)")}
           {field("km_ref_mes_padrao", "KM/mês referência")}

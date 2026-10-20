@@ -16,7 +16,7 @@ import {
 } from "../_shared/render-auth.ts";
 import { linhaCodigoMidia } from "../_shared/publicacao-por-id.ts";
 import { readyMediaActionButtons } from "../_shared/ready-media-actions.ts";
-import { syncProdutoVideoFromMidia } from "../_shared/sync-produto-video.ts";
+import { persistRenderVideoToLibrary } from "../_shared/video-complete-library.ts";
 import { rememberDeliveredMediaInteraction } from "../_shared/whatsapp-last-media-interaction.ts";
 import { whatsappVideoFallbackMessage } from "../_shared/whatsapp-video-delivery.ts";
 import { videoRenderWhatsappDelivery } from "../_shared/video-render-delivery.ts";
@@ -119,20 +119,6 @@ async function registrarVideoLegendado(
     );
   }
   return data.id;
-}
-
-async function sincronizarAreaDeVideos(
-  supabase: any,
-  midiaId: string,
-): Promise<void> {
-  try {
-    await syncProdutoVideoFromMidia(supabase, midiaId);
-  } catch (e) {
-    console.error(
-      "[video-render-complete] sincronização com produto_videos falhou; mantendo vídeo concluído:",
-      e instanceof Error ? e.message : String(e),
-    );
-  }
 }
 
 Deno.serve(async (req) => {
@@ -245,14 +231,21 @@ Deno.serve(async (req) => {
     let codigoMidia = "";
     let bibliotecaErro: string | null = null;
     try {
-      midiaId = await registrarVideoLegendado(
+      const lib = await persistRenderVideoToLibrary(
         supabase,
         job,
         videoUrl,
         duracao_segundos ?? null,
+        () =>
+          registrarVideoLegendado(
+            supabase,
+            job,
+            videoUrl,
+            duracao_segundos ?? null,
+          ),
       );
-      codigoMidia = linhaCodigoMidia(midiaId, "video");
-      await sincronizarAreaDeVideos(supabase, midiaId);
+      midiaId = lib.midiaId;
+      if (midiaId) codigoMidia = linhaCodigoMidia(midiaId, "video");
     } catch (e) {
       bibliotecaErro = e instanceof Error ? e.message : String(e);
       console.error(

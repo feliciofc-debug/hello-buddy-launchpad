@@ -20,6 +20,8 @@ import {
   type LegendaSegmento,
   type ProgressoLegenda,
 } from "@/lib/legendarVideo";
+import { buildGerarPostsInvokeBody } from "@/lib/gerar-posts-invoke";
+import type { PublishableItem } from "@/lib/publishable-item";
 
 /**
  * Detecção simples de celular: largura de viewport + user agent.
@@ -60,7 +62,8 @@ interface PublicarReelsModalProps {
   videoUrl?: string | null;
   videoNome?: string | null;
   videoId?: string | null;
-  videoSource?: "produto_videos" | "videos_produtos";
+  videoSource?: "produto_videos" | "videos_produtos" | "veiculo_videos";
+  agendamentoMetadata?: Record<string, unknown> | null;
   produto?: {
     id?: string;
     nome?: string;
@@ -71,6 +74,8 @@ interface PublicarReelsModalProps {
     link_afiliado?: string;
     link_marketplace?: string | null;
     imagem_url?: string | null;
+    item_tipo?: "produto" | "veiculo";
+    veiculo?: PublishableItem["veiculo"];
   } | null;
   publicadoFacebook?: boolean;
   publicadoInstagram?: boolean;
@@ -84,6 +89,7 @@ export function PublicarReelsModal({
   videoNome,
   videoId,
   videoSource = "produto_videos",
+  agendamentoMetadata = null,
   produto,
   publicadoFacebook = false,
   publicadoInstagram = false,
@@ -438,9 +444,9 @@ export function PublicarReelsModal({
 
       if (profileError) throw profileError;
 
-      if (videoId && videoSource === "produto_videos") {
+      if (videoId && (videoSource === "produto_videos" || videoSource === "veiculo_videos")) {
         const { error: videoError } = await supabase
-          .from("produto_videos" as any)
+          .from(videoSource as any)
           .update({ whatsapp_link: linkTrim || null } as any)
           .eq("id", videoId)
           .eq("user_id", user.id);
@@ -533,13 +539,24 @@ export function PublicarReelsModal({
     try {
       const context = descricaoVideo || videoNome || productName || "vídeo promocional";
 
+      const invokeBody = produto?.item_tipo === "veiculo" && produto.id && produto.veiculo
+        ? buildGerarPostsInvokeBody({
+            id: produto.id,
+            item_tipo: "veiculo",
+            veiculo: produto.veiculo,
+            nome: produto.nome || context,
+            descricao: produto.descricao ?? context,
+            preco: produto.preco ?? null,
+          })
+        : {
+            produto: {
+              nome: context,
+              preco: produto?.preco || 0,
+            },
+          };
+
       const { data, error } = await supabase.functions.invoke("gerar-posts", {
-        body: {
-          produto: {
-            nome: context,
-            preco: produto?.preco || 0,
-          },
-        },
+        body: invokeBody,
       });
 
       if (error) throw error;
@@ -749,13 +766,18 @@ export function PublicarReelsModal({
           tiktok_consented_at: postTikTok ? new Date().toISOString() : null,
           tiktok_creator_nickname: postTikTok ? creatorTikTokAtual?.creator_nickname || null : null,
           tiktok_video_duration_sec: postTikTok ? validacao.duration ?? null : null,
-          metadata: postTikTok
-            ? {
-                tiktok_disable_comment: !tiktokAllowComment,
-                tiktok_disable_duet: !tiktokAllowDuet,
-                tiktok_disable_stitch: !tiktokAllowStitch,
-              }
-            : null,
+          metadata: {
+            ...(agendamentoMetadata && typeof agendamentoMetadata === "object"
+              ? agendamentoMetadata
+              : {}),
+            ...(postTikTok
+              ? {
+                  tiktok_disable_comment: !tiktokAllowComment,
+                  tiktok_disable_duet: !tiktokAllowDuet,
+                  tiktok_disable_stitch: !tiktokAllowStitch,
+                }
+              : {}),
+          },
         });
         if (agErr) throw agErr;
         toast.success(`📅 Reels agendado para ${scheduledFor.toLocaleString("pt-BR")}`);

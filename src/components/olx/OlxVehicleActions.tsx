@@ -12,7 +12,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
+import {
+  PortalPublishChecklist,
+  type PortalPublishReadiness,
+} from "@/components/portals/PortalPublishChecklist.tsx";
+import { formatInvokeErrorToast, invokeFunctionComCorpo } from "@/lib/invoke-function-com-corpo.ts";
+import { PortalVehicleConnectSection } from "@/components/portals/PortalVehicleConnectSection";
 
 export type OlxVehicleListing = {
   status: string;
@@ -24,37 +29,46 @@ export function OlxVehicleActions(props: {
   veiculoId: string;
   listing: OlxVehicleListing | null;
   olxConnected: boolean;
+  readiness: PortalPublishReadiness;
   onChanged: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [confirmPublish, setConfirmPublish] = useState(false);
 
-  if (!props.olxConnected) return null;
+  if (!props.olxConnected) {
+    return (
+      <PortalVehicleConnectSection
+        portal="olx"
+        portalLabel="OLX"
+        connectFoco="olx"
+        readiness={props.readiness}
+      />
+    );
+  }
 
   const published = props.listing?.status === "publicado";
   const pending = props.listing?.status === "pendente";
 
-  const invoke = async (acao: "publicar" | "atualizar" | "remover") => {
+  const invoke = async (acao: "publicar" | "atualizar" | "remover" | "verificar_status") => {
     setBusy(true);
-    const { data, error } = await supabase.functions.invoke("olx-vehicle-publish", {
+    const r = await invokeFunctionComCorpo("olx-vehicle-publish", {
       body: { veiculo_id: props.veiculoId, acao },
     });
     setBusy(false);
-    if (error) {
-      toast.error("Erro ao comunicar com a OLX.");
+    if (!r.success) {
+      toast.error(formatInvokeErrorToast({
+        error: r.error,
+        blocking: r.blocking,
+        fallback: "Operação rejeitada pela OLX.",
+      }));
       props.onChanged();
       return;
     }
-    if (!data?.success) {
-      if (Array.isArray(data?.blocking) && data.blocking.length) {
-        toast.error(data.blocking.map((b: { message: string }) => b.message).join(" · "));
-      } else {
-        toast.error(data?.error ?? "Operação rejeitada.");
-      }
-      props.onChanged();
-      return;
-    }
-    if (acao === "remover") toast.success("Remoção enviada à OLX.");
+    if (acao === "verificar_status") {
+      if (r.data?.status === "publicado") toast.success("Anúncio publicado na OLX.");
+      else if (r.data?.status === "erro") toast.error(String(r.data?.error ?? r.data?.last_error ?? "OLX recusou o anúncio."));
+      else toast.message("Status ainda em processamento na OLX.");
+    } else if (acao === "remover") toast.success("Remoção enviada à OLX.");
     else if (acao === "atualizar") toast.success("Atualização enviada à OLX.");
     else toast.success("Publicação enviada à OLX.");
     props.onChanged();
@@ -64,11 +78,23 @@ export function OlxVehicleActions(props: {
     <>
       <div className="space-y-2 border-t pt-3">
         <p className="text-xs font-medium text-muted-foreground">OLX</p>
+        <PortalPublishChecklist portal="olx" readiness={props.readiness} />
         {props.listing?.last_error && (
           <p className="text-xs text-destructive">{props.listing.last_error}</p>
         )}
         {pending && (
           <p className="text-xs text-muted-foreground">Processando na fila OLX…</p>
+        )}
+        {pending && (
+          <Button
+            size="sm"
+            variant="secondary"
+            className="w-full"
+            disabled={busy}
+            onClick={() => void invoke("verificar_status")}
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verificar status na OLX"}
+          </Button>
         )}
         {!published && !pending ? (
           <Button
@@ -122,7 +148,10 @@ export function OlxVehicleActions(props: {
             <AlertDialogTitle>Publicar na OLX?</AlertDialogTitle>
             <AlertDialogDescription>
               A publicação é manual e usa os dados públicos do veículo (preço, fotos, descrição).
-              Certifique-se de que sua conta OLX tem plano profissional ativo.
+              {props.readiness.phonePreview
+                ? ` Telefone no anúncio: ${props.readiness.phonePreview}.`
+                : ""}
+              {" "}Certifique-se de que sua conta OLX tem plano profissional ativo.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

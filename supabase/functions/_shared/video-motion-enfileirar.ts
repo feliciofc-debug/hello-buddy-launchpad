@@ -84,6 +84,8 @@ export type EnfileirarInput = {
   semLogoTenant?: boolean;
   /** só devolve o roteiro, não enfileira */
   apenasRoteiro?: boolean;
+  /** Campos extras em video_motion_jobs.metadata (ex.: biblioteca veículo). */
+  metadataExtra?: Record<string, unknown> | null;
 };
 
 export type EnfileirarResult =
@@ -746,6 +748,9 @@ export async function enfileirarVideoMotion(input: EnfileirarInput): Promise<Enf
         fundo: props.fundo ?? null,
         duracao_alvo_segundos: props.duracao_alvo_segundos ?? null,
         render_minutos_estimado: minutosRenderEstimado(duracaoEstimada(props)),
+        ...(input.metadataExtra && typeof input.metadataExtra === "object"
+          ? input.metadataExtra
+          : {}),
       },
     })
     .select()

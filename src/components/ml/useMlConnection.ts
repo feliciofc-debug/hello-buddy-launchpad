@@ -12,6 +12,7 @@ export type MlConnectionStatus = {
   location_place: string | null;
   location_city_name: string | null;
   location_state_name: string | null;
+  ml_whatsapp_leads_all_ads: boolean;
 };
 
 export function useMlConnection() {
@@ -37,6 +38,7 @@ export function useMlConnection() {
         location_place: data.location_place ?? null,
         location_city_name: data.location_city_name ?? null,
         location_state_name: data.location_state_name ?? null,
+        ml_whatsapp_leads_all_ads: data.ml_whatsapp_leads_all_ads === true,
       });
     }
     setLoading(false);
@@ -84,6 +86,23 @@ export function useMlConnection() {
     return true;
   };
 
+  const saveWhatsappLeadsAllAds = async (enabled: boolean) => {
+    setBusy(true);
+    const { data, error } = await supabase.functions.invoke("ml-preferences-set", {
+      body: { ml_whatsapp_leads_all_ads: enabled },
+    });
+    setBusy(false);
+    if (error || !data?.success) {
+      toast.error(data?.error ?? "Não foi possível salvar preferência.");
+      return false;
+    }
+    toast.success(enabled
+      ? "Você receberá leads de todos os anúncios ML no WhatsApp."
+      : "WhatsApp só para leads de anúncios publicados pela AMZ.");
+    void refresh();
+    return true;
+  };
+
   const formattedStoreZip = status?.store_zip
     ? formatBrazilCep(status.store_zip)
     : null;
@@ -97,5 +116,6 @@ export function useMlConnection() {
     connect,
     disconnect,
     saveCep,
+    saveWhatsappLeadsAllAds,
   };
 }

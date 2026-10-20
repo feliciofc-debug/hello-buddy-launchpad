@@ -11,14 +11,11 @@ export function humanizeGestaoTrocaIaErro(raw: string | null | undefined): strin
   if (/Nenhuma foto elegível/i.test(msg)) {
     return "Envie fotos da troca (exceto CRLV) antes de analisar.";
   }
-  if (/Limite diário/i.test(msg)) {
-    return msg;
-  }
   if (/JSON inválido|Resposta não é objeto/i.test(msg)) {
     return "A IA retornou resposta inválida. Tente analisar novamente.";
   }
-  if (/processamento/i.test(msg)) {
-    return "Já há uma análise em andamento para esta troca.";
+  if (/análise em andamento|processamento/i.test(msg)) {
+    return "Já existe uma análise em andamento nesta troca.";
   }
   return msg.length > 200 ? `${msg.slice(0, 200)}…` : msg;
 }

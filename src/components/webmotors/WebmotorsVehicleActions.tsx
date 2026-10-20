@@ -2,8 +2,13 @@ import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
 import { WebmotorsDeparaDialog } from "@/components/webmotors/WebmotorsDeparaDialog";
+import {
+  PortalPublishChecklist,
+  type PortalPublishReadiness,
+} from "@/components/portals/PortalPublishChecklist.tsx";
+import { formatInvokeErrorToast, invokeFunctionComCorpo } from "@/lib/invoke-function-com-corpo.ts";
+import { PortalVehicleConnectSection } from "@/components/portals/PortalVehicleConnectSection";
 
 export type VeiculoPortalWebmotors = {
   status: string;
@@ -11,42 +16,50 @@ export type VeiculoPortalWebmotors = {
   last_error: string | null;
 };
 
-function handleBlocking(data: { blocking?: Array<{ message: string }> }, onDepara: () => void) {
-  if (Array.isArray(data?.blocking) && data.blocking.length) {
-    toast.error(data.blocking.map((b) => b.message).join(" · "));
-    onDepara();
-    return true;
-  }
-  return false;
-}
-
 export function WebmotorsVehicleActions(props: {
   veiculoId: string;
   portal: VeiculoPortalWebmotors | null;
   wmConnected: boolean;
+  readiness: PortalPublishReadiness;
   onChanged: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [deparaOpen, setDeparaOpen] = useState(false);
 
-  if (!props.wmConnected) return null;
+  if (!props.wmConnected) {
+    return (
+      <PortalVehicleConnectSection
+        portal="webmotors"
+        portalLabel="Webmotors"
+        connectFoco="webmotors"
+        readiness={props.readiness}
+      />
+    );
+  }
 
   const published = props.portal?.status === "published" || props.portal?.status === "paused";
 
+  const handleFailure = (r: Awaited<ReturnType<typeof invokeFunctionComCorpo>>) => {
+    if (r.blocking?.length) {
+      toast.error(formatInvokeErrorToast({ error: r.error, blocking: r.blocking }));
+      setDeparaOpen(true);
+      return true;
+    }
+    toast.error(formatInvokeErrorToast({
+      error: r.error,
+      fallback: "Operação rejeitada.",
+    }));
+    return false;
+  };
+
   const publish = async () => {
     setBusy(true);
-    const { data, error } = await supabase.functions.invoke("webmotors-vehicle-publish", {
+    const r = await invokeFunctionComCorpo("webmotors-vehicle-publish", {
       body: { veiculo_id: props.veiculoId },
     });
     setBusy(false);
-    if (error) {
-      toast.error("Erro ao publicar na Webmotors.");
-      return;
-    }
-    if (!data?.success) {
-      if (!handleBlocking(data, () => setDeparaOpen(true))) {
-        toast.error(data?.error ?? "Publicação rejeitada.");
-      }
+    if (!r.success) {
+      handleFailure(r);
       props.onChanged();
       return;
     }
@@ -56,16 +69,12 @@ export function WebmotorsVehicleActions(props: {
 
   const sync = async () => {
     setBusy(true);
-    const { data, error } = await supabase.functions.invoke("webmotors-vehicle-sync", {
+    const r = await invokeFunctionComCorpo("webmotors-vehicle-sync", {
       body: { veiculo_id: props.veiculoId },
     });
     setBusy(false);
-    if (error || !data?.success) {
-      if (data && handleBlocking(data, () => setDeparaOpen(true))) {
-        props.onChanged();
-        return;
-      }
-      toast.error(data?.error ?? "Falha ao sincronizar.");
+    if (!r.success) {
+      handleFailure(r);
       props.onChanged();
       return;
     }
@@ -75,12 +84,12 @@ export function WebmotorsVehicleActions(props: {
 
   const unpublish = async () => {
     setBusy(true);
-    const { data, error } = await supabase.functions.invoke("webmotors-vehicle-unpublish", {
+    const r = await invokeFunctionComCorpo("webmotors-vehicle-unpublish", {
       body: { veiculo_id: props.veiculoId },
     });
     setBusy(false);
-    if (error || !data?.success) {
-      toast.error(data?.error ?? "Falha ao remover da Webmotors.");
+    if (!r.success) {
+      toast.error(formatInvokeErrorToast({ error: r.error, fallback: "Falha ao remover da Webmotors." }));
       props.onChanged();
       return;
     }
@@ -92,44 +101,33 @@ export function WebmotorsVehicleActions(props: {
     <>
       <div className="space-y-2 border-t pt-3">
         <p className="text-xs font-medium text-muted-foreground">Webmotors</p>
+        <PortalPublishChecklist portal="webmotors" readiness={props.readiness} />
         {props.portal?.last_error && (
           <p className="text-xs text-destructive">{props.portal.last_error}</p>
         )}
         {!published ? (
-          <Button
-            size="sm"
-            variant="outline"
-            className="w-full"
-            disabled={busy}
-            onClick={() => void publish()}
-          >
+          <Button size="sm" variant="outline" className="w-full" disabled={busy} onClick={() => void publish()}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Publicar na Webmotors"}
           </Button>
         ) : (
           <>
             <Button size="sm" variant="ghost" className="w-full" disabled={busy} onClick={() => void sync()}>
-              Sincronizar preço/fotos
+              Sincronizar
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="w-full text-destructive"
-              disabled={busy}
-              onClick={() => void unpublish()}
-            >
+            <Button size="sm" variant="outline" className="w-full" disabled={busy} onClick={() => void unpublish()}>
               Remover da Webmotors
             </Button>
           </>
         )}
-        <Button size="sm" variant="link" className="h-auto p-0 text-xs" onClick={() => setDeparaOpen(true)}>
-          Ajustar de/para
-        </Button>
       </div>
       <WebmotorsDeparaDialog
         open={deparaOpen}
         veiculoId={props.veiculoId}
         onClose={() => setDeparaOpen(false)}
-        onSaved={() => props.onChanged()}
+        onSaved={() => {
+          setDeparaOpen(false);
+          props.onChanged();
+        }}
       />
     </>
   );

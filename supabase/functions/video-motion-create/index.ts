@@ -14,6 +14,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { corsHeaders } from "../_shared/cors.ts";
 import { enfileirarVideoMotion } from "../_shared/video-motion-enfileirar.ts";
+import { assertVeiculoEstoqueOwnedByUser } from "../_shared/veiculo-estoque-owner.ts";
+import { sanitizeVeiculoMetadataExtra } from "../_shared/veiculo-video-job-metadata.ts";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -44,6 +46,20 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
 
+    const veiculoMeta = sanitizeVeiculoMetadataExtra(body?.metadata_extra);
+    if (body?.metadata_extra != null && veiculoMeta == null) {
+      const raw = body.metadata_extra as Record<string, unknown>;
+      if (raw?.library === "veiculo") {
+        return json({ success: false, error: "metadata_extra inválido para veículo" }, 400);
+      }
+    }
+    if (veiculoMeta) {
+      const owned = await assertVeiculoEstoqueOwnedByUser(sb, user.id, veiculoMeta.veiculo_id);
+      if (!owned) {
+        return json({ success: false, error: "Veículo não encontrado nesta loja" }, 403);
+      }
+    }
+
     const r = await enfileirarVideoMotion({
       sb,
       userId: user.id,
@@ -68,6 +84,7 @@ Deno.serve(async (req) => {
        arranjo: typeof body?.arranjo === "number" ? body.arranjo : null,
       duracao: typeof body?.duracao === "string" ? body.duracao : null,
       fundo: body?.fundo === "claro" || body?.fundo === "escuro" ? body.fundo : null,
+      metadataExtra: veiculoMeta,
     });
 
     if (!r.ok) return json({ success: false, error: r.error }, r.status);

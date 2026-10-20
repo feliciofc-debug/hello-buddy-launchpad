@@ -1,3 +1,4 @@
+import { invokeFunctionComCorpo } from "@/lib/invoke-function-com-corpo.ts";
 import { supabase } from "@/integrations/supabase/client";
 import {
   parseGestaoTrocaIaAnaliseRow,
@@ -114,13 +115,13 @@ export async function invokeGestaoTrocaAnalisarFotos(trocaId: string): Promise<{
   analise_id?: string;
   error?: string;
 }> {
-  const { data, error } = await supabase.functions.invoke("gestao-troca", {
+  const r = await invokeFunctionComCorpo("gestao-troca", {
     body: { action: "analisar_fotos", troca_id: trocaId },
   });
-  if (error || !data?.success) {
-    return { error: data?.error ?? error?.message ?? "Não foi possível iniciar a análise." };
+  if (!r.success) {
+    return { error: r.error ?? "Não foi possível iniciar a análise." };
   }
-  return { analise_id: String(data.analise_id ?? "") };
+  return { analise_id: String(r.data?.analise_id ?? "") };
 }
 
 export async function invokeGestaoTrocaDecidirItemIa(input: {
@@ -150,6 +151,33 @@ export async function invokeGestaoTrocaConfirmarKm(trocaId: string): Promise<{ s
     return { success: false, error: data?.error ?? error?.message ?? "Falha ao confirmar KM." };
   }
   return { success: true };
+}
+
+export type GestaoTrocaIaUsoDiario = {
+  analises: number;
+  fotos: number;
+};
+
+export async function invokeGestaoTrocaIaUsoDiario(): Promise<{
+  uso: GestaoTrocaIaUsoDiario;
+  error?: string;
+}> {
+  const { data, error } = await supabase.functions.invoke("gestao-troca", {
+    body: { action: "ia_uso_diario" },
+  });
+  if (error || !data?.success) {
+    return {
+      uso: { analises: 0, fotos: 0 },
+      error: data?.error ?? error?.message ?? "Falha ao carregar uso de IA.",
+    };
+  }
+  const raw = data.uso as Record<string, unknown> | undefined;
+  return {
+    uso: {
+      analises: Number(raw?.analises ?? 0),
+      fotos: Number(raw?.fotos ?? 0),
+    },
+  };
 }
 
 export async function invokeGestaoTrocaCustosListar(): Promise<{

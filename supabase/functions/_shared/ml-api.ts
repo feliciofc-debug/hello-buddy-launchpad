@@ -13,17 +13,61 @@ export async function mlFetchCategoryAttributes(
   return await res.json();
 }
 
+export const ML_LISTING_PACK_TYPES = ["gold_premium", "gold", "silver"] as const;
+export type MlListingPackType = (typeof ML_LISTING_PACK_TYPES)[number];
+
+export async function mlListingPackAvailable(
+  accessToken: string,
+  mlUserId: number,
+  categoryId: string,
+  packType: MlListingPackType,
+): Promise<boolean> {
+  const url =
+    `${ML_API_BASE}/users/${mlUserId}/classifieds_promotion_packs/${packType}/available?categoryId=${categoryId}`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!res.ok) return false;
+  const j = await res.json();
+  return j?.has_available_listings === true;
+}
+
+/** @deprecated use mlPickListingPackType */
 export async function mlHasSilverPackage(
   accessToken: string,
   mlUserId: number,
   categoryId: string,
 ): Promise<boolean> {
-  const url =
-    `${ML_API_BASE}/users/${mlUserId}/classifieds_promotion_packs/silver/available?categoryId=${categoryId}`;
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-  if (!res.ok) return false;
-  const j = await res.json();
-  return j?.has_available_listings === true;
+  return mlListingPackAvailable(accessToken, mlUserId, categoryId, "silver");
+}
+
+export type MlListingPackPreference = "destaque_first" | "classic_first";
+
+/** Default: Clássico (silver) antes de Destaque/Premium — não queimar pacote caro do lojista. */
+export const ML_LISTING_PACK_PREFERENCE_DEFAULT: MlListingPackPreference = "classic_first";
+
+export function mlListingPackDisplayLabel(pack: MlListingPackType | string | null | undefined): string {
+  const p = String(pack ?? "");
+  if (p === "silver") return "Clássico";
+  if (p === "gold") return "Destaque";
+  if (p === "gold_premium") return "Premium";
+  return "—";
+}
+
+export function mlListingPackTryOrder(preference: MlListingPackPreference | null | undefined): MlListingPackType[] {
+  const pref = preference ?? ML_LISTING_PACK_PREFERENCE_DEFAULT;
+  if (pref === "destaque_first") return ["gold_premium", "gold", "silver"];
+  return ["silver", "gold", "gold_premium"];
+}
+
+export async function mlPickListingPackType(
+  accessToken: string,
+  mlUserId: number,
+  categoryId: string,
+  preference?: MlListingPackPreference | null,
+): Promise<MlListingPackType | null> {
+  for (const pack of mlListingPackTryOrder(preference)) {
+    if (await mlListingPackAvailable(accessToken, mlUserId, categoryId, pack)) return pack;
+  }
+  return null;
 }
 
 export async function mlValidateItem(

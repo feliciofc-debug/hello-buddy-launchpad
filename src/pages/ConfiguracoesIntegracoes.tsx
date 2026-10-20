@@ -1,8 +1,7 @@
 import { useEffect } from "react";
-import { ArrowLeft, Plug } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FocusNfeIntegrationCard } from "@/components/integracoes/FocusNfeIntegrationCard";
@@ -11,53 +10,19 @@ import { MlIntegrationCard } from "@/components/ml/MlIntegrationCard";
 import { ProcedenciaIntegrationCard } from "@/components/procedencia/ProcedenciaIntegrationCard";
 import { OlxIntegrationCard } from "@/components/olx/OlxIntegrationCard";
 import { WebmotorsIntegrationCard } from "@/components/webmotors/WebmotorsIntegrationCard";
+import { LojaCepIntegracaoField } from "@/components/integracoes/LojaCepIntegracaoField.tsx";
 import { useSmartBack } from "@/lib/app-back-nav.ts";
-import {
-  PLANNED_PORTAL_INTEGRATIONS,
-  PORTAL_STATUS_LABEL,
-} from "@/lib/portal-integrations-config";
 
-type Foco = "nfe" | "contratos" | "zapsign" | null;
+type Foco = "nfe" | "contratos" | "zapsign" | "olx" | "ml" | "webmotors" | null;
 
 function parseFoco(raw: string | null): Foco {
   if (raw === "nfe") return "nfe";
   if (raw === "contratos") return "contratos";
   if (raw === "zapsign") return "zapsign";
+  if (raw === "olx") return "olx";
+  if (raw === "ml") return "ml";
+  if (raw === "webmotors") return "webmotors";
   return null;
-}
-
-function PlannedPortalCard({
-  name,
-  description,
-  statusLabel,
-}: {
-  name: string;
-  description: string;
-  statusLabel: string;
-}) {
-  return (
-    <Card className="opacity-90">
-      <CardHeader className="pb-3">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="flex items-start gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-              <Plug className="h-5 w-5" aria-hidden />
-            </span>
-            <div>
-              <CardTitle className="text-lg">{name}</CardTitle>
-              <CardDescription className="mt-1">{description}</CardDescription>
-            </div>
-          </div>
-          <Badge variant="outline">{statusLabel}</Badge>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <Button disabled variant="secondary">
-          Indisponível
-        </Button>
-      </CardContent>
-    </Card>
-  );
 }
 
 export default function ConfiguracoesIntegracoes() {
@@ -65,6 +30,7 @@ export default function ConfiguracoesIntegracoes() {
   const [searchParams, setSearchParams] = useSearchParams();
   const foco = parseFoco(searchParams.get("foco"));
   const focusedOnly = foco != null;
+  const portalFoco = foco === "olx" || foco === "ml" || foco === "webmotors" ? foco : null;
 
   useEffect(() => {
     const olx = searchParams.get("olx");
@@ -79,8 +45,24 @@ export default function ConfiguracoesIntegracoes() {
     }
   }, [searchParams, setSearchParams]);
 
+  useEffect(() => {
+    if (!portalFoco) return;
+    const t = window.setTimeout(() => {
+      document.getElementById(`integracao-${portalFoco}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 200);
+    return () => window.clearTimeout(t);
+  }, [portalFoco]);
+
   const showZapsign = !focusedOnly || foco === "contratos" || foco === "zapsign";
   const showFocus = !focusedOnly || foco === "nfe";
+  const showPortals = !focusedOnly || portalFoco != null;
+  const showMl = !focusedOnly || foco === "ml";
+  const showOlx = !focusedOnly || foco === "olx";
+  const showWebmotors = !focusedOnly || foco === "webmotors";
+  const showLojaCep = !focusedOnly || foco === "olx" || foco === "ml" || foco === "webmotors";
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 dark:bg-gray-900">
@@ -127,28 +109,57 @@ export default function ConfiguracoesIntegracoes() {
           </div>
         )}
 
-        {!focusedOnly && (
+        {showPortals && (
           <>
-            <div className="space-y-3">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                Portais de anúncio
-              </h2>
-            </div>
+            {!focusedOnly && (
+              <div className="space-y-3">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  Portais de anúncio
+                </h2>
+              </div>
+            )}
 
-            <MlIntegrationCard />
+            {showLojaCep && <LojaCepIntegracaoField />}
 
-            <OlxIntegrationCard />
+            {showMl && (
+              <div id="integracao-ml">
+                <MlIntegrationCard />
+              </div>
+            )}
 
-            <WebmotorsIntegrationCard />
+            {showOlx && (
+              <div id="integracao-olx">
+                <OlxIntegrationCard />
+              </div>
+            )}
 
-            {PLANNED_PORTAL_INTEGRATIONS.map((portal) => (
-              <PlannedPortalCard
-                key={portal.id}
-                name={portal.name}
-                description={portal.description}
-                statusLabel={PORTAL_STATUS_LABEL[portal.status]}
-              />
-            ))}
+            {showWebmotors && (
+              <div id="integracao-webmotors">
+                <WebmotorsIntegrationCard />
+              </div>
+            )}
+
+            {!focusedOnly && (
+              <>
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg">TikTok</CardTitle>
+                    <CardDescription>
+                      Conecte sua conta e publique vídeos do estoque e da biblioteca de mídia.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button variant="outline" asChild>
+                      <Link to="/configuracoes/redes-sociais">Abrir Redes sociais (TikTok)</Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <p className="text-center text-sm text-muted-foreground">
+                  Próximos portais: Chaves na Mão, SóCarrão.
+                </p>
+              </>
+            )}
           </>
         )}
       </div>

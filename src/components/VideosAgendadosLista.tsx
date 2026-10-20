@@ -23,7 +23,11 @@ interface VideoAgendado {
   created_at: string;
 }
 
-export function VideosAgendadosLista() {
+export function VideosAgendadosLista({
+  libraryScope = 'produto',
+}: {
+  libraryScope?: 'produto' | 'veiculo';
+} = {}) {
   const [items, setItems] = useState<VideoAgendado[]>([]);
   const [loading, setLoading] = useState(true);
   const [editId, setEditId] = useState<string | null>(null);
@@ -88,14 +92,18 @@ export function VideosAgendadosLista() {
     if (error) {
       toast.error('Erro ao carregar agendamentos');
     } else {
-      setItems((data as any) || []);
+      const rows = (data as any[]) || [];
+      const filtered = libraryScope === 'veiculo'
+        ? rows.filter((r) => r.metadata?.library === 'veiculo')
+        : rows.filter((r) => r.metadata?.library !== 'veiculo');
+      setItems(filtered);
     }
     setLoading(false);
   };
 
   useEffect(() => {
     carregar();
-  }, []);
+  }, [libraryScope]);
 
   const cancelar = async (id: string) => {
     if (!confirm('Cancelar este agendamento?')) return;
