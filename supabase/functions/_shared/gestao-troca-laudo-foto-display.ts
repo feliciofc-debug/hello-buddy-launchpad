@@ -26,6 +26,27 @@ export function resumoAreaIcon(cond: string): string {
   return "•";
 }
 
+function stripResumoAreaTextoEmoji(texto: string): string {
+  return texto.replace(/^[\s✅🟡🟠🔴⚪]+/u, "").trim();
+}
+
+/** Uma linha de resumo por área; nao_fotografado exibe só ⚪ (sem ✅ duplicado no texto). */
+export function formatGestaoTrocaResumoAreaLinha(r: {
+  area: string;
+  condicao: string;
+  texto: string;
+  fotos: number[];
+}): string {
+  const label = r.area.replace(/_/g, " ");
+  if (r.condicao === "nao_fotografado") {
+    const t = stripResumoAreaTextoEmoji(r.texto || "não fotografado — não avaliado");
+    return `${resumoAreaIcon(r.condicao)} ${label}: ${t}`;
+  }
+  const fotos = r.fotos.length ? ` (${r.fotos.map((n) => `#${n}`).join(", ")})` : "";
+  const t = r.texto || r.condicao.replace(/_/g, " ");
+  return `${resumoAreaIcon(r.condicao)} ${label}: ${t}${fotos}`;
+}
+
 export function appendGestaoTrocaResultadoLaudoPdfLines(
   line: (t: string, bold?: boolean) => void,
   resultado: GestaoTrocaResultadoLaudoView | null | undefined,
@@ -44,8 +65,7 @@ export function appendGestaoTrocaResumoAreaPdfLines(
   if (!rows.length) return;
   line("Resumo por área (IA)", true);
   for (const r of rows) {
-    const fotos = r.fotos.length ? ` (${r.fotos.map((n) => `#${n}`).join(", ")})` : "";
-    line(`${resumoAreaIcon(r.condicao)} ${r.area.replace(/_/g, " ")}: ${r.texto}${fotos}`);
+    line(formatGestaoTrocaResumoAreaLinha(r));
   }
 }
 

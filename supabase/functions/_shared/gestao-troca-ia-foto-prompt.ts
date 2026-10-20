@@ -1,4 +1,7 @@
-import { GESTAO_TROCA_IA_SLOT_A_CLASSIFICAR } from "./gestao-troca-foto-slot.ts";
+import {
+  GESTAO_TROCA_IA_SLOT_A_CLASSIFICAR,
+  gestaoTrocaIaSlotIdsPromptLista,
+} from "./gestao-troca-foto-slot.ts";
 import type { GestaoTrocaFotoSlotId } from "./gestao-troca-roteiro.ts";
 import {
   GESTAO_TROCA_IA_ACHADO_CONFIANCAS,
@@ -48,11 +51,10 @@ export function buildGestaoTrocaIaFotoPrompt(
 ): string {
   const aClassificar = slot === GESTAO_TROCA_IA_SLOT_A_CLASSIFICAR;
   const checklist = aClassificar
-    ? "Identifique o ângulo do veículo (frente, traseira, lateral, diagonal, cofre, interior, pneu, etc.)."
+    ? `Ids válidos (slot_identificado): ${gestaoTrocaIaSlotIdsPromptLista()}.`
     : (CHECKLIST[slot]?.join(" ") ?? "Descrever o que se vê com objetividade.");
-  const painelExtra = slot === "painel_ligado"
-    ? '"km_painel": number|null, "luzes_alerta": string[],'
-    : "";
+  const kmLuzesRegra =
+    "Em TODA foto inclua km_painel (inteiro) e luzes_alerta (array) no JSON; preencha só se o painel/odômetro estiver visível, senão null e []. Luzes de falha apenas (não cinto nem freio de estacionamento).";
   return [
     "Você é perito de avaliação de veículos usados no Brasil.",
     aClassificar
@@ -60,8 +62,9 @@ export function buildGestaoTrocaIaFotoPrompt(
       : `Foto índice ${indice}, ângulo informado pelo avaliador: ${slotLabel}.`,
     `Checklist: ${checklist}`,
     aClassificar
-      ? "Preencha slot_identificado com o id do ângulo SOMENTE se tiver certeza; se não tiver certeza, use null."
+      ? "slot_identificado: use SOMENTE um id da lista acima ou null (nunca texto livre)."
       : "Descreva só o que se vê na imagem; não mencione o ângulo informado nem compare com outro ângulo.",
+    kmLuzesRegra,
     "Regras: subnotificar; chuva/reflexo/sujeira não são avaria; massa_suspeita nunca confiança alta só pela foto;",
     "foto escura/borrada → qualidade insuficiente, achados=[].",
     `qualidade_imagem: ${GESTAO_TROCA_IA_FOTO_QUALIDADES.join("|")}`,
@@ -71,7 +74,7 @@ export function buildGestaoTrocaIaFotoPrompt(
     "JSON only:",
     `{ "indice": ${indice}, "slot_informado": "${slot}", "slot_identificado": string|null,`,
     `"qualidade_imagem": string, "motivo_qualidade": string, "descricao": string,`,
-    painelExtra,
+    '"km_painel": number|null, "luzes_alerta": string[],',
     `"achados": [{ "tipo", "local", "severidade", "confianca", "evidencia" }],`,
     `"nao_da_para_afirmar": string[] }`,
   ].join("\n");

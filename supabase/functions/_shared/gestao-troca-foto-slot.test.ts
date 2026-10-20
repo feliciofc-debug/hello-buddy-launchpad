@@ -8,6 +8,8 @@ import {
   gestaoTrocaAvisoFotoTrocadaParaRow,
   gestaoTrocaAvisoFotoMarcadaErrada,
   mergeGestaoTrocaIaSlotsIntoFotos,
+  normalizeGestaoTrocaSlotToken,
+  parseGestaoTrocaIaSlotIdentificado,
 } from "./gestao-troca-foto-slot.ts";
 
 Deno.test("galeria — 12 uploads ficam a classificar, nenhum CRLV", () => {
@@ -42,6 +44,25 @@ Deno.test("IA preenche traseira na 5ª foto sem aviso de troca", () => {
   assertEquals(merged[4].slot_origem, "ia");
   const aviso = gestaoTrocaAvisoFotoTrocadaParaRow({ fotoEntry: merged[4], row: rows[0] });
   assertEquals(aviso, null);
+});
+
+Deno.test("parser slot — ids válidos e normalização", () => {
+  assertEquals(parseGestaoTrocaIaSlotIdentificado("Frente"), "frente");
+  assertEquals(parseGestaoTrocaIaSlotIdentificado("Lateral Esq"), "lateral_esq");
+  assertEquals(normalizeGestaoTrocaSlotToken("  Diag Diant Dir  "), "diag_diant_dir");
+});
+
+Deno.test("parser slot — sinônimos painel", () => {
+  assertEquals(parseGestaoTrocaIaSlotIdentificado("painel"), "painel_ligado");
+  assertEquals(parseGestaoTrocaIaSlotIdentificado("painel_instrumentos"), "painel_ligado");
+  assertEquals(parseGestaoTrocaIaSlotIdentificado("odometro"), "painel_ligado");
+  assertEquals(parseGestaoTrocaIaSlotIdentificado("Odômetro"), "painel_ligado");
+});
+
+Deno.test("parser slot — lixo vira null", () => {
+  assertEquals(parseGestaoTrocaIaSlotIdentificado("selfie"), null);
+  assertEquals(parseGestaoTrocaIaSlotIdentificado(""), null);
+  assertEquals(parseGestaoTrocaIaSlotIdentificado(null), null);
 });
 
 Deno.test("aviso só quando usuário marcou errado", () => {

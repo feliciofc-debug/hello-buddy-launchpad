@@ -16,6 +16,71 @@ import {
 /** Slot enviado à IA quando o avaliador ainda não marcou o ângulo. */
 export const GESTAO_TROCA_IA_SLOT_A_CLASSIFICAR = "a_classificar";
 
+/** Normaliza token de ângulo vindo da IA (minúsculas, sem acento, espaços → _). */
+export function normalizeGestaoTrocaSlotToken(raw: string): string {
+  return String(raw ?? "")
+    .trim()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/\s+/g, "_");
+}
+
+const GESTAO_TROCA_IA_SLOT_SINONIMOS: Record<string, GestaoTrocaFotoSlotId> = {
+  painel: "painel_ligado",
+  painel_instrumentos: "painel_ligado",
+  odometro: "painel_ligado",
+  motor: "cofre_motor",
+  capo_aberto: "cofre_motor",
+  porta_malas: "porta_malas_aberto",
+  estepe: "estepe_macaco",
+};
+
+/** Aceita só id do roteiro ou sinônimo simples; lixo → null. */
+export function parseGestaoTrocaIaSlotIdentificado(raw: unknown): GestaoTrocaFotoSlotId | null {
+  if (raw == null) return null;
+  const token = normalizeGestaoTrocaSlotToken(String(raw));
+  if (!token || token === "null") return null;
+  if (isGestaoTrocaFotoSlotId(token)) return token;
+  return GESTAO_TROCA_IA_SLOT_SINONIMOS[token] ?? null;
+}
+
+const GESTAO_TROCA_IA_SLOT_PROMPT_CURTO: Record<GestaoTrocaFotoSlotId, string> = {
+  frente: "frente do veículo",
+  traseira: "traseira / lanternas",
+  lateral_esq: "lateral esquerda (lado do motorista no Brasil)",
+  lateral_dir: "lateral direita (lado do passageiro)",
+  diag_diant_esq: "três quartos dianteiro esquerdo",
+  diag_diant_dir: "três quartos dianteiro direito",
+  diag_tras_esq: "três quartos traseiro esquerdo",
+  diag_tras_dir: "três quartos traseiro direito",
+  teto: "teto externo",
+  cofre_motor: "cofre do motor aberto",
+  cofre_longarina_esq: "longarina esquerda no cofre",
+  cofre_longarina_dir: "longarina direita no cofre",
+  porta_malas_aberto: "porta-malas aberto",
+  estepe_macaco: "estepe / macaco / chave",
+  vao_porta: "vão de porta / batente",
+  pneu_de: "pneu dianteiro esquerdo",
+  pneu_dd: "pneu dianteiro direito",
+  pneu_te: "pneu traseiro esquerdo",
+  pneu_td: "pneu traseiro direito",
+  painel_ligado: "painel ligado (km e luzes)",
+  bancos_dianteiros: "bancos dianteiros",
+  bancos_traseiros: "bancos traseiros",
+  volante_cambio: "volante e câmbio / console",
+  forro_teto: "forro de teto interno",
+  manual_manutencao: "manual ou revisões visíveis",
+  opcionais_destaque: "opcionais em destaque",
+};
+
+/** Lista para prompt quando slot_informado = a_classificar. */
+export function gestaoTrocaIaSlotIdsPromptLista(): string {
+  return GESTAO_TROCA_ROTEIRO_SLOTS.map(
+    (s) => `${s.id}: ${GESTAO_TROCA_IA_SLOT_PROMPT_CURTO[s.id]}`,
+  ).join("; ");
+}
+
 const LEGACY_ETIQUETA_TO_SLOT: Record<string, GestaoTrocaFotoSlotId> = {
   frente: "frente",
   traseira: "traseira",
