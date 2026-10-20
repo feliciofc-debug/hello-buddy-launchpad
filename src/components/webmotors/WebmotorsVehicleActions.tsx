@@ -8,6 +8,7 @@ import {
   type PortalPublishReadiness,
 } from "@/components/portals/PortalPublishChecklist.tsx";
 import { formatInvokeErrorToast, invokeFunctionComCorpo } from "@/lib/invoke-function-com-corpo.ts";
+import { PortalVehicleConnectSection } from "@/components/portals/PortalVehicleConnectSection";
 
 export type VeiculoPortalWebmotors = {
   status: string;
@@ -25,7 +26,16 @@ export function WebmotorsVehicleActions(props: {
   const [busy, setBusy] = useState(false);
   const [deparaOpen, setDeparaOpen] = useState(false);
 
-  if (!props.wmConnected) return null;
+  if (!props.wmConnected) {
+    return (
+      <PortalVehicleConnectSection
+        portal="webmotors"
+        portalLabel="Webmotors"
+        connectFoco="webmotors"
+        readiness={props.readiness}
+      />
+    );
+  }
 
   const published = props.portal?.status === "published" || props.portal?.status === "paused";
 

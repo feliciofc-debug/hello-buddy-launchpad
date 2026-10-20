@@ -62,12 +62,14 @@ export type CriarVideoProdutoProps = {
   entitySource?: 'produto' | 'veiculo';
   fixedVeiculoId?: string;
   lojaNome?: string;
+  onVeiculoJobQueued?: (jobId: string) => void;
 };
 
 export const CriarVideoProduto = ({
   entitySource = 'produto',
   fixedVeiculoId,
   lojaNome = '',
+  onVeiculoJobQueued,
 }: CriarVideoProdutoProps = {}) => {
   const isVeiculo = entitySource === 'veiculo';
   const [produtos, setProdutos] = useState<ProdutoLite[]>([]);
@@ -173,11 +175,11 @@ export const CriarVideoProduto = ({
 
   const enviar = async () => {
     if (!imagemUrl) {
-      toast.error('Escolha um produto com foto.');
+      toast.error(isVeiculo ? 'Escolha um veículo com foto.' : 'Escolha um produto com foto.');
       return;
     }
     if (nome.trim().length < 2) {
-      toast.error('Informe o nome do produto.');
+      toast.error(isVeiculo ? 'Informe marca e modelo do veículo.' : 'Informe o nome do produto.');
       return;
     }
     const erroPaleta = validarPaleta(cores);
@@ -218,11 +220,16 @@ export const CriarVideoProduto = ({
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Não consegui enfileirar o vídeo');
+      if (isVeiculo && data?.job_id && onVeiculoJobQueued) {
+        onVeiculoJobQueued(String(data.job_id));
+      }
       toast.success(
-        `Vídeo na fila (posição ${data.posicao_fila}). Duração estimada: ${data.duracao_estimada}s. Acompanhe em "Vídeo animado".`,
+        isVeiculo
+          ? `Vídeo na fila (posição ${data.posicao_fila}). Leva cerca de 3 a 5 minutos — acompanhe o card acima.`
+          : `Vídeo na fila (posição ${data.posicao_fila}). Duração estimada: ${data.duracao_estimada}s. Acompanhe em "Vídeo animado".`,
       );
     } catch (e: any) {
-      toast.error(e?.message || 'Erro ao criar o vídeo do produto');
+      toast.error(e?.message || (isVeiculo ? 'Erro ao criar o vídeo do veículo' : 'Erro ao criar o vídeo do produto'));
     } finally {
       setEnviando(false);
     }
@@ -281,7 +288,9 @@ export const CriarVideoProduto = ({
             <Label>Foto usada no vídeo</Label>
             <div className="flex gap-2 flex-wrap">
               {imagens.length === 0 && (
-                <span className="text-xs text-muted-foreground">Selecione um produto com foto.</span>
+                <span className="text-xs text-muted-foreground">
+                  {isVeiculo ? 'Escolha um veículo com foto.' : 'Selecione um produto com foto.'}
+                </span>
               )}
               {imagens.map((url) => (
                 <button
@@ -305,11 +314,13 @@ export const CriarVideoProduto = ({
           />
           <div className="space-y-1">
             <Label htmlFor="recortar-fundo" className="flex items-center gap-2 cursor-pointer">
-              <Scissors className="h-4 w-4" /> Recortar o fundo do produto
+              <Scissors className="h-4 w-4" />
+              {isVeiculo ? 'Recortar o fundo do veículo' : 'Recortar o fundo do produto'}
             </Label>
             <p className="text-xs text-muted-foreground">
-              O produto sai sobre fundo da sua marca, com sombra e reflexo. Se o recorte não funcionar
-              nessa foto, o vídeo continua sendo gerado com a própria foto desfocada ao fundo.
+              {isVeiculo
+                ? 'O carro sai sobre fundo da sua marca, com sombra e reflexo. Se o recorte falhar nesta foto, usamos a foto desfocada ao fundo.'
+                : 'O produto sai sobre fundo da sua marca, com sombra e reflexo. Se o recorte não funcionar nessa foto, o vídeo continua sendo gerado com a própria foto desfocada ao fundo.'}
             </p>
           </div>
         </div>
@@ -413,7 +424,7 @@ export const CriarVideoProduto = ({
 
         <Button onClick={enviar} disabled={enviando || !imagemUrl} className="w-full">
           {enviando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Clapperboard className="mr-2 h-4 w-4" />}
-          Gerar vídeo do produto
+          {isVeiculo ? 'Gerar vídeo do veículo' : 'Gerar vídeo do produto'}
         </Button>
         <p className="text-xs text-muted-foreground">
           A logo ativa da sua conta é aplicada automaticamente, e a trilha padrão da empresa entra no

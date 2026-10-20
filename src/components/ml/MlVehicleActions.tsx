@@ -17,6 +17,7 @@ import {
   type PortalPublishReadiness,
 } from "@/components/portals/PortalPublishChecklist.tsx";
 import { formatInvokeErrorToast, invokeFunctionComCorpo } from "@/lib/invoke-function-com-corpo.ts";
+import { PortalVehicleConnectSection } from "@/components/portals/PortalVehicleConnectSection";
 
 export type VeiculoPortalMl = {
   status: string;
@@ -84,7 +85,16 @@ export function MlVehicleActions(props: {
     props.onChanged();
   };
 
-  if (!props.mlConnected) return null;
+  if (!props.mlConnected) {
+    return (
+      <PortalVehicleConnectSection
+        portal="mercadolivre"
+        portalLabel="Mercado Livre"
+        connectFoco="ml"
+        readiness={props.readiness}
+      />
+    );
+  }
 
   const published = props.portal?.status === "published" || props.portal?.status === "paused";
   const dupLink = dupCandidates[0]?.permalink;

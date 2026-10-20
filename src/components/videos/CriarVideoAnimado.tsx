@@ -67,6 +67,7 @@ type Job = {
 export type CriarVideoAnimadoProps = {
   videoScope?: 'produto' | 'veiculo';
   veiculoId?: string;
+  onVeiculoJobQueued?: (jobId: string) => void;
 };
 
 
@@ -98,6 +99,7 @@ const STATUS: Record<string, { label: string; cor: string }> = {
 export const CriarVideoAnimado = ({
   videoScope = 'produto',
   veiculoId,
+  onVeiculoJobQueued,
 }: CriarVideoAnimadoProps = {}) => {
   const isVeiculoScope = videoScope === 'veiculo';
 
@@ -655,7 +657,14 @@ export const CriarVideoAnimado = ({
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Não consegui enfileirar');
-      toast.success(`🎬 Vídeo na fila (posição ${data.posicao_fila}). Te aviso quando ficar pronto.`);
+      if (isVeiculoScope && data?.job_id && onVeiculoJobQueued) {
+        onVeiculoJobQueued(String(data.job_id));
+      }
+      toast.success(
+        isVeiculoScope
+          ? `🎬 Vídeo na fila (posição ${data.posicao_fila}). Leva ~3 a 5 min — veja o card de produção.`
+          : `🎬 Vídeo na fila (posição ${data.posicao_fila}). Te aviso quando ficar pronto.`,
+      );
       setProps(null);
       setTema('');
       carregarJobs();

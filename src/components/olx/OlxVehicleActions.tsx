@@ -17,6 +17,7 @@ import {
   type PortalPublishReadiness,
 } from "@/components/portals/PortalPublishChecklist.tsx";
 import { formatInvokeErrorToast, invokeFunctionComCorpo } from "@/lib/invoke-function-com-corpo.ts";
+import { PortalVehicleConnectSection } from "@/components/portals/PortalVehicleConnectSection";
 
 export type OlxVehicleListing = {
   status: string;
@@ -34,7 +35,16 @@ export function OlxVehicleActions(props: {
   const [busy, setBusy] = useState(false);
   const [confirmPublish, setConfirmPublish] = useState(false);
 
-  if (!props.olxConnected) return null;
+  if (!props.olxConnected) {
+    return (
+      <PortalVehicleConnectSection
+        portal="olx"
+        portalLabel="OLX"
+        connectFoco="olx"
+        readiness={props.readiness}
+      />
+    );
+  }
 
   const published = props.listing?.status === "publicado";
   const pending = props.listing?.status === "pendente";

@@ -55,6 +55,8 @@ export type ReelsGeradosGridProps = {
   libraryKind?: VideoLibraryKind;
   filterVeiculoId?: string;
   publishableFromVeiculo?: PublishableItem | null;
+  /** Incrementar para recarregar a grade (ex.: vídeo motion concluído). */
+  reloadKey?: number;
 };
 
 const extrairPath = (url: string): string | null => {
@@ -66,6 +68,7 @@ export const ReelsGeradosGrid = ({
   libraryKind = 'produto',
   filterVeiculoId,
   publishableFromVeiculo = null,
+  reloadKey = 0,
 }: ReelsGeradosGridProps = {}) => {
   const isVeiculo = libraryKind === 'veiculo';
   const table = videoLibraryTable(libraryKind);
@@ -105,7 +108,7 @@ export const ReelsGeradosGrid = ({
 
   useEffect(() => {
     loadReels();
-  }, [libraryKind, filterVeiculoId]);
+  }, [libraryKind, filterVeiculoId, reloadKey]);
 
   const loadReels = async () => {
     try {

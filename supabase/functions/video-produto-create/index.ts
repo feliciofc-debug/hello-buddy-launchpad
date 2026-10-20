@@ -83,7 +83,11 @@ Deno.serve(async (req) => {
       return json({ success: false, error: "Informe o nome do produto." }, 400);
     }
 
-    const tema = `Vídeo de produto: ${props.produto.nome}`;
+    const veiculoIdEarly = typeof body?.veiculo_id === "string" ? body.veiculo_id.trim() : "";
+    const isVeiculoJobEarly = !!veiculoIdEarly;
+    const tema = isVeiculoJobEarly
+      ? `Vídeo do veículo: ${props.produto.nome}`
+      : `Vídeo de produto: ${props.produto.nome}`;
 
     // Só devolve a prévia do roteiro, sem ocupar a fila.
     if (body?.apenas_roteiro) {
@@ -126,9 +130,9 @@ Deno.serve(async (req) => {
       ? (body.plataformas as unknown[]).map((p) => String(p).toLowerCase()).filter((p) => PLATAFORMAS_OK.includes(p))
       : [];
 
-    const veiculoIdRaw = typeof body?.veiculo_id === "string" ? body.veiculo_id.trim() : "";
+    const veiculoIdRaw = veiculoIdEarly;
     const produtoIdRaw = typeof body?.produto_id === "string" ? body.produto_id.trim() : "";
-    const isVeiculoJob = !!veiculoIdRaw;
+    const isVeiculoJob = isVeiculoJobEarly;
     if (isVeiculoJob) {
       const owned = await assertVeiculoEstoqueOwnedByUser(sb, user.id, veiculoIdRaw);
       if (!owned) {

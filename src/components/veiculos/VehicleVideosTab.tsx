@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useVeiculoVideoJobPoll } from "@/hooks/useVeiculoVideoJobPoll";
+import { VehicleVideoJobProgressCard } from "@/components/veiculos/VehicleVideoJobProgressCard";
 import { Film, Loader2, Video } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -38,6 +40,23 @@ export function VehicleVideosTab() {
   const { gerarReel, progresso } = useGerarReel();
   const [modalReelAberto, setModalReelAberto] = useState(false);
   const [gerandoSlideshow, setGerandoSlideshow] = useState(false);
+  const [watchJobId, setWatchJobId] = useState<string | null>(null);
+  const [gridReloadKey, setGridReloadKey] = useState(0);
+
+  const onMotionJobFinished = useCallback(() => {
+    setGridReloadKey((k) => k + 1);
+    setWatchJobId(null);
+  }, []);
+
+  const { trackedJob } = useVeiculoVideoJobPoll(
+    veiculoId || undefined,
+    watchJobId,
+    onMotionJobFinished,
+  );
+
+  const onVeiculoJobQueued = useCallback((jobId: string) => {
+    setWatchJobId(jobId);
+  }, []);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -199,14 +218,26 @@ export function VehicleVideosTab() {
         </CardContent>
       </Card>
 
-      <CriarVideoProduto entitySource="veiculo" fixedVeiculoId={veiculoId || undefined} lojaNome={lojaNome} />
+      <VehicleVideoJobProgressCard job={trackedJob} />
 
-      <CriarVideoAnimado videoScope="veiculo" veiculoId={veiculoId || undefined} />
+      <CriarVideoProduto
+        entitySource="veiculo"
+        fixedVeiculoId={veiculoId || undefined}
+        lojaNome={lojaNome}
+        onVeiculoJobQueued={onVeiculoJobQueued}
+      />
+
+      <CriarVideoAnimado
+        videoScope="veiculo"
+        veiculoId={veiculoId || undefined}
+        onVeiculoJobQueued={onVeiculoJobQueued}
+      />
 
       <ReelsGeradosGrid
         libraryKind="veiculo"
         filterVeiculoId={veiculoId || undefined}
         publishableFromVeiculo={veiculo ? vehicleRowToPublishableItem(veiculo) : null}
+        reloadKey={gridReloadKey}
       />
 
       <VideosAgendadosLista libraryScope="veiculo" />
