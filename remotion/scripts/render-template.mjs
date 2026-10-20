@@ -21,6 +21,31 @@ if (!propsPath) {
 
 const inputProps = JSON.parse(fs.readFileSync(propsPath, "utf8"));
 
+async function reportarProgresso(pct, etapa) {
+  const jobId = process.env.MOTION_JOB_ID;
+  const base = process.env.SUPABASE_FUNCTIONS_URL || process.env.MOTION_PROGRESS_URL?.replace(/\/video-motion-progress$/, "");
+  const token = process.env.VPS_RENDER_TOKEN;
+  if (!jobId || !base || !token) return;
+  try {
+    await fetch(`${base}/video-motion-progress`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-render-token": token,
+      },
+      body: JSON.stringify({
+        job_id: jobId,
+        progresso_pct: Math.min(99, Math.max(0, Math.round(pct))),
+        etapa,
+      }),
+    });
+  } catch (e) {
+    console.warn("[render] progresso:", e?.message || e);
+  }
+}
+
+let ultimoDezena = -1;
+
 // Detecta o navegador disponível. Se nada existir, deixa null: o Remotion baixa um.
 function acharChromium() {
   const candidatos = [
@@ -66,6 +91,8 @@ if (alvoFrames && composition.durationInFrames !== alvoFrames) {
   );
 }
 
+await reportarProgresso(0, "renderizando");
+
 await renderMedia({
   composition: compositionFinal,
   serveUrl,
@@ -81,7 +108,17 @@ await renderMedia({
   puppeteerInstance: browser,
   muted: !inputProps?.trilhaUrl,
   concurrency: 1,
+  onProgress: ({ progress }) => {
+    const pct = Math.floor(progress * 100);
+    const dezena = Math.floor(pct / 10) * 10;
+    if (dezena > ultimoDezena) {
+      ultimoDezena = dezena;
+      void reportarProgresso(dezena, "renderizando");
+    }
+  },
 });
+
+await reportarProgresso(99, "renderizando");
 
 await browser.close({ silent: false });
 console.log("ok", compId, "->", outPath, `${compositionFinal.durationInFrames} frames`);

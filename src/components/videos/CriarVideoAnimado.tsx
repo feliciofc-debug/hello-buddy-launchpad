@@ -626,6 +626,10 @@ export const CriarVideoAnimado = ({
 
   const enviarParaFila = async () => {
     if (!props) return;
+    if (isVeiculoScope && !veiculoId) {
+      toast.error('Selecione um veículo no seletor no topo da aba Vídeos.');
+      return;
+    }
     const erroPaleta = validarPaleta(props.cores);
     if (erroPaleta) {
       toast.error(erroPaleta);

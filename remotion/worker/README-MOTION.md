@@ -46,7 +46,13 @@ A composição é renderizada **na VPS**, não nas Edge Functions:
 2. `cd remotion && npm install` (se dependências mudaram).
 3. `pm2 restart amz-motion` — o worker chama `scripts/render-template.mjs`, que faz **bundle** de `remotion/src/index.ts` a cada job (composição `template-veiculo-estudio` registrada em `Root.tsx`).
 
-**Edge Functions** a atualizar no Supabase: `video-produto-create` (escolhe template + normaliza props/logo). Claim/complete **não** precisam de lógica nova — já repassam `props` e `template` do job.
+**Edge Functions** a atualizar no Supabase:
+- `video-produto-create` (template/props/logo)
+- `video-motion-claim` / `video-motion-complete` (etapa ao claim/concluir)
+- **`video-motion-progress`** (worker reporta `progresso_pct` + `etapa` a cada ~10% do Remotion)
+- Migration `progresso_pct`, `etapa`, `progresso_atualizado_em` em `video_motion_jobs`
+
+O render reporta progresso via `render-template.mjs` (`onProgress`) e o worker via `worker-motion.mjs` (preparando/enviando).
 
 **Frontend** (Vite): deploy normal para identidade/logo na aba Vídeos.
 

@@ -31,6 +31,8 @@ import {
 
 type VehicleOption = VehicleVideoStockRow & { status: string };
 
+const TODOS_VEICULOS = "__all__";
+
 export function VehicleVideosTab() {
   const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,11 +44,23 @@ export function VehicleVideosTab() {
   const [gerandoSlideshow, setGerandoSlideshow] = useState(false);
   const [watchJobId, setWatchJobId] = useState<string | null>(null);
   const [gridReloadKey, setGridReloadKey] = useState(0);
+  const [retryingJob, setRetryingJob] = useState(false);
 
-  const onMotionJobFinished = useCallback(() => {
-    setGridReloadKey((k) => k + 1);
-    setWatchJobId(null);
-  }, []);
+  const onMotionJobFinished = useCallback(
+    (info: { jobId: string; veiculoId?: string; titulo?: string | null }) => {
+      setGridReloadKey((k) => k + 1);
+      setWatchJobId(null);
+      if (info.veiculoId && info.veiculoId !== veiculoId) {
+        setVeiculoId(info.veiculoId);
+        const nome = vehicles.find((v) => v.id === info.veiculoId);
+        const label = nome ? vehicleVideoDisplayTitle(nome) : info.titulo || "veículo";
+        toast.success(`Vídeo pronto do ${label} — selecionamos o carro na lista.`);
+      } else {
+        toast.success("Vídeo pronto! Está na grade abaixo.");
+      }
+    },
+    [veiculoId, vehicles],
+  );
 
   const { trackedJob } = useVeiculoVideoJobPoll(
     veiculoId || undefined,
@@ -81,9 +95,8 @@ export function VehicleVideosTab() {
     setVehicles(comFoto);
     const p = profile as { nome?: string; nome_fantasia?: string | null } | null;
     setLojaNome(String(p?.nome_fantasia || p?.nome || "").trim());
-    if (!veiculoId && comFoto.length) setVeiculoId(comFoto[0].id);
     setLoading(false);
-  }, [veiculoId]);
+  }, []);
 
   useEffect(() => {
     carregar();
@@ -160,11 +173,15 @@ export function VehicleVideosTab() {
         <CardContent className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
             <Label>Estoque (com foto pública)</Label>
-            <Select value={veiculoId} onValueChange={setVeiculoId}>
+            <Select
+              value={veiculoId || TODOS_VEICULOS}
+              onValueChange={(v) => setVeiculoId(v === TODOS_VEICULOS ? "" : v)}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Selecione…" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value={TODOS_VEICULOS}>Todos os veículos (grade completa)</SelectItem>
                 {vehicles.map((v) => (
                   <SelectItem key={v.id} value={v.id}>
                     {vehicleVideoDisplayTitle(v)}
@@ -218,11 +235,31 @@ export function VehicleVideosTab() {
         </CardContent>
       </Card>
 
-      <VehicleVideoJobProgressCard job={trackedJob} />
+      <VehicleVideoJobProgressCard
+        job={trackedJob}
+        retrying={retryingJob}
+        onRetry={async (jobId) => {
+          setRetryingJob(true);
+          try {
+            const { data, error } = await supabase.functions.invoke("video-motion-retry", {
+              body: { job_id: jobId },
+            });
+            if (error) throw error;
+            if (!data?.success) throw new Error(data?.error || "Falha ao recriar");
+            setWatchJobId(String(data.job_id));
+            toast.success(`Novo job na fila (posição ${data.posicao_fila ?? "?"}).`);
+          } catch (e: unknown) {
+            toast.error(e instanceof Error ? e.message : "Não foi possível tentar de novo.");
+          } finally {
+            setRetryingJob(false);
+          }
+        }}
+      />
 
       <CriarVideoProduto
         entitySource="veiculo"
         fixedVeiculoId={veiculoId || undefined}
+        veiculoSelectorLocked
         lojaNome={lojaNome}
         onVeiculoJobQueued={onVeiculoJobQueued}
       />

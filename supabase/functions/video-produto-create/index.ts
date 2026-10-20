@@ -186,6 +186,9 @@ Deno.serve(async (req) => {
           veiculo_id: isVeiculoJob ? veiculoIdRaw : null,
           library: isVeiculoJob ? "veiculo" : "produto",
         },
+        etapa: "na_fila",
+        progresso_pct: 0,
+        progresso_atualizado_em: new Date().toISOString(),
       })
       .select()
       .single();

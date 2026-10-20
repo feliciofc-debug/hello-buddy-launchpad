@@ -79,6 +79,8 @@ const brl = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2,
 export type CriarVideoProdutoProps = {
   entitySource?: 'produto' | 'veiculo';
   fixedVeiculoId?: string;
+  /** Quando true (aba Vídeos), o veículo vem só do seletor da aba — sem dropdown duplicado. */
+  veiculoSelectorLocked?: boolean;
   lojaNome?: string;
   onVeiculoJobQueued?: (jobId: string) => void;
 };
@@ -86,6 +88,7 @@ export type CriarVideoProdutoProps = {
 export const CriarVideoProduto = ({
   entitySource = 'produto',
   fixedVeiculoId,
+  veiculoSelectorLocked = false,
   lojaNome = '',
   onVeiculoJobQueued,
 }: CriarVideoProdutoProps = {}) => {
@@ -403,7 +406,19 @@ export const CriarVideoProduto = ({
         </p>
       </CardHeader>
       <CardContent className="space-y-5">
+        {isVeiculo && veiculoSelectorLocked && !fixedVeiculoId && (
+          <p className="rounded-md border border-dashed bg-muted/30 p-3 text-sm text-muted-foreground">
+            Selecione um veículo no seletor <strong>no topo da aba</strong> para gerar o vídeo (foto + recorte).
+            Com &quot;Todos os veículos&quot;, a grade mostra todos os vídeos; escolha um carro para criar novo.
+          </p>
+        )}
+        {isVeiculo && veiculoSelectorLocked && fixedVeiculoId && veiculoSel && (
+          <p className="text-sm text-muted-foreground">
+            Veículo: <strong>{vehicleVideoDisplayTitle(veiculoSel)}</strong> (seletor da aba)
+          </p>
+        )}
         <div className="grid gap-4 md:grid-cols-2">
+          {!(isVeiculo && veiculoSelectorLocked) && (
           <div className="space-y-2">
             <Label>{isVeiculo ? 'Veículo' : 'Produto'}</Label>
             <select
@@ -431,6 +446,7 @@ export const CriarVideoProduto = ({
               </p>
             )}
           </div>
+          )}
 
           <div className="space-y-2">
             <Label>Foto usada no vídeo</Label>
@@ -639,7 +655,11 @@ export const CriarVideoProduto = ({
           )}
         </div>
 
-        <Button onClick={enviar} disabled={enviando || !imagemUrl} className="w-full">
+        <Button
+          onClick={enviar}
+          disabled={enviando || !imagemUrl || (isVeiculo && veiculoSelectorLocked && !fixedVeiculoId)}
+          className="w-full"
+        >
           {enviando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Clapperboard className="mr-2 h-4 w-4" />}
           {isVeiculo ? 'Gerar vídeo do veículo' : 'Gerar vídeo do produto'}
         </Button>
