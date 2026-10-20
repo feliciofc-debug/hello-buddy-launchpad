@@ -30,6 +30,7 @@ import type {
   GestaoTrocaConsolidacaoLaudo,
   GestaoTrocaResumoAreaRow,
 } from "./gestao-troca-ia-por-foto-types.ts";
+import { gestaoTrocaIaRowSlotEfetivo } from "./gestao-troca-indicio-recalc.ts";
 import { gestaoTrocaIaFiltrarLuzesAlertaPainel } from "./gestao-troca-ia-rules.ts";
 
 export type {
@@ -239,19 +240,22 @@ export function visionItemsFromFotoRows(
   return out;
 }
 
-function kmFromPainelRow(rows: GestaoTrocaIaFotoAnaliseRow[]): number | null {
-  const painel = rows.find((r) => String(r.slot_informado) === "painel_ligado");
-  if (!painel) return null;
-  if (painel.km_painel != null && Number.isFinite(painel.km_painel)) return painel.km_painel;
+export function gestaoTrocaKmPainelFromFotoRows(rows: GestaoTrocaIaFotoAnaliseRow[]): number | null {
+  for (const r of rows) {
+    if (gestaoTrocaIaRowSlotEfetivo(r) !== "painel_ligado") continue;
+    if (r.km_painel != null && Number.isFinite(r.km_painel)) return r.km_painel;
+  }
   return null;
 }
 
 function luzesFromPainelRow(rows: GestaoTrocaIaFotoAnaliseRow[]): boolean | null {
-  const painel = rows.find((r) => String(r.slot_informado) === "painel_ligado");
-  if (!painel) return null;
-  const luzes = gestaoTrocaIaFiltrarLuzesAlertaPainel(painel.luzes_alerta ?? []);
-  if (luzes.length) return true;
-  return false;
+  for (const r of rows) {
+    if (gestaoTrocaIaRowSlotEfetivo(r) !== "painel_ligado") continue;
+    const luzes = gestaoTrocaIaFiltrarLuzesAlertaPainel(r.luzes_alerta ?? []);
+    if (luzes.length) return true;
+    return false;
+  }
+  return null;
 }
 
 export async function consolidateGestaoTrocaLaudoText(input: {
@@ -308,7 +312,7 @@ export async function consolidateGestaoTrocaLaudoText(input: {
         resumo_por_area: resumo,
         conclusao_visual: String(parsed.conclusao_visual ?? "").slice(0, 800) ||
           (mensagem_parcial ?? "Laudo consolidado."),
-        km_painel: kmFromPainelRow(input.fotoRows),
+        km_painel: gestaoTrocaKmPainelFromFotoRows(input.fotoRows),
         luzes_painel: luzesFromPainelRow(input.fotoRows),
         mensagem_parcial,
       };
@@ -328,7 +332,7 @@ export async function consolidateGestaoTrocaLaudoText(input: {
     })),
     conclusao_visual: mensagem_parcial ??
       "Laudo foto a foto concluído; revisar achados pendentes.",
-    km_painel: kmFromPainelRow(input.fotoRows),
+    km_painel: gestaoTrocaKmPainelFromFotoRows(input.fotoRows),
     luzes_painel: luzesFromPainelRow(input.fotoRows),
     mensagem_parcial,
   };

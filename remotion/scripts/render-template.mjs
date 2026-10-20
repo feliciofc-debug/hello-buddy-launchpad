@@ -21,6 +21,37 @@ if (!propsPath) {
 
 const inputProps = JSON.parse(fs.readFileSync(propsPath, "utf8"));
 
+/** Fire-and-forget: nunca bloqueia renderMedia (timeout 5s). */
+function reportarProgresso(pct, etapa) {
+  const jobId = process.env.MOTION_JOB_ID;
+  const base = process.env.SUPABASE_FUNCTIONS_URL
+    || process.env.MOTION_PROGRESS_URL?.replace(/\/video-motion-progress$/, "");
+  const token = process.env.VPS_RENDER_TOKEN;
+  if (!jobId || !base || !token) return;
+  fetch(`${base}/video-motion-progress`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-render-token": token,
+    },
+    body: JSON.stringify({
+      job_id: jobId,
+      progresso_pct: Math.min(99, Math.max(0, Math.round(pct))),
+      etapa,
+    }),
+    signal: AbortSignal.timeout(5000),
+  }).catch((e) => {
+    console.warn("[render] progresso:", e?.message || e);
+  });
+}
+
+function pctRenderizando(progress0to1) {
+  const p = Math.min(1, Math.max(0, Number(progress0to1)));
+  return Math.min(90, Math.max(10, Math.round(10 + p * 80)));
+}
+
+let ultimoPctRender = 9;
+
 // Detecta o navegador disponível. Se nada existir, deixa null: o Remotion baixa um.
 function acharChromium() {
   const candidatos = [
@@ -81,7 +112,16 @@ await renderMedia({
   puppeteerInstance: browser,
   muted: !inputProps?.trilhaUrl,
   concurrency: 1,
+  onProgress: ({ progress }) => {
+    const pct = pctRenderizando(progress);
+    if (pct > ultimoPctRender) {
+      ultimoPctRender = pct;
+      reportarProgresso(pct, "renderizando");
+    }
+  },
 });
+
+reportarProgresso(90, "renderizando");
 
 await browser.close({ silent: false });
 console.log("ok", compId, "->", outPath, `${compositionFinal.durationInFrames} frames`);

@@ -211,22 +211,53 @@ async function prepararProps(job) {
   return props;
 }
 
+/** Não bloqueia o pipeline de render (timeout 5s, fire-and-forget). */
+function reportarProgresso(jobId, pct, etapa) {
+  fetch(`${BASE}/video-motion-progress`, {
+    method: "POST",
+    headers: {
+      "x-render-token": TOKEN,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      job_id: jobId,
+      progresso_pct: Math.min(99, Math.max(0, Math.round(pct))),
+      etapa,
+    }),
+    signal: AbortSignal.timeout(5000),
+  }).catch((e) => {
+    console.warn("[motion] progresso:", e.message);
+  });
+}
+
 async function processar(job) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "motion-"));
   const propsPath = path.join(dir, "props.json");
   const outPath = path.join(dir, "out.mp4");
 
   try {
+    reportarProgresso(job.id, 3, "preparando");
     fs.writeFileSync(propsPath, JSON.stringify(await prepararProps(job)));
-
+    reportarProgresso(job.id, 10, "preparando");
 
     await exec(
       process.execPath,
       [path.resolve("scripts/render-template.mjs"), job.template, propsPath, outPath],
-      { maxBuffer: 1024 * 1024 * 32, timeout: 15 * 60 * 1000 },
+      {
+        maxBuffer: 1024 * 1024 * 32,
+        timeout: 15 * 60 * 1000,
+        env: {
+          ...process.env,
+          MOTION_JOB_ID: job.id,
+          SUPABASE_FUNCTIONS_URL: BASE,
+          VPS_RENDER_TOKEN: TOKEN,
+        },
+      },
     );
 
+    reportarProgresso(job.id, 92, "enviando");
     await otimizarVideoParaWhatsApp(outPath, dir);
+    reportarProgresso(job.id, 96, "enviando");
     const bytes = fs.readFileSync(outPath);
     const up = await fetch(job.upload.url, {
       method: "PUT",

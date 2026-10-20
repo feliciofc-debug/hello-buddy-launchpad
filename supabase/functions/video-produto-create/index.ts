@@ -16,6 +16,7 @@ import { corsHeaders } from "../_shared/cors.ts";
 import {
   checarLimitesMotion,
   logoDoTenant,
+  resolverLogoMotion,
   resolverTrilha,
 } from "../_shared/video-motion-enfileirar.ts";
 import { getTenantBusinessContext } from "../_shared/business-context.ts";
@@ -24,6 +25,11 @@ import {
   normalizarPropsProduto,
   validarImagemProduto,
 } from "../_shared/video-produto.ts";
+import {
+  duracaoEstimadaVeiculoEstudio,
+  normalizarPropsProdutoVeiculo,
+  TEMPLATE_VEICULO_ESTUDIO,
+} from "../_shared/video-produto-veiculo.ts";
 import { assertVeiculoEstoqueOwnedByUser } from "../_shared/veiculo-estoque-owner.ts";
 
 const json = (body: unknown, status = 200) =>
@@ -75,16 +81,22 @@ Deno.serve(async (req) => {
       }
     }
 
-    const props = normalizarPropsProduto(body?.props ?? {}, {
+    const veiculoIdEarly = typeof body?.veiculo_id === "string" ? body.veiculo_id.trim() : "";
+    const isVeiculoJobEarly = !!veiculoIdEarly;
+
+    const ctxNorm = {
       marca: marcaFinal || undefined,
       imagemUrl,
-    });
+      telefone: typeof body?.props?.cta?.telefone === "string" ? body.props.cta.telefone : undefined,
+      site: typeof body?.props?.site === "string" ? body.props.site : undefined,
+    };
+
+    const props = isVeiculoJobEarly
+      ? normalizarPropsProdutoVeiculo(body?.props ?? {}, ctxNorm)
+      : normalizarPropsProduto(body?.props ?? {}, ctxNorm);
     if (!props.produto.nome) {
       return json({ success: false, error: "Informe o nome do produto." }, 400);
     }
-
-    const veiculoIdEarly = typeof body?.veiculo_id === "string" ? body.veiculo_id.trim() : "";
-    const isVeiculoJobEarly = !!veiculoIdEarly;
     const tema = isVeiculoJobEarly
       ? `Vídeo do veículo: ${props.produto.nome}`
       : `Vídeo de produto: ${props.produto.nome}`;
@@ -95,7 +107,9 @@ Deno.serve(async (req) => {
         success: true,
         apenas_roteiro: true,
         props,
-        duracao_estimada: duracaoEstimadaProduto(props),
+        duracao_estimada: isVeiculoJobEarly
+          ? duracaoEstimadaVeiculoEstudio(props)
+          : duracaoEstimadaProduto(props),
       });
     }
 
@@ -105,7 +119,17 @@ Deno.serve(async (req) => {
     const requestedBackground = body?.fundo === "claro" || body?.fundo === "escuro"
       ? body.fundo
       : undefined;
-    const logoPath = await logoDoTenant(sb, user.id, requestedBackground);
+    const logoResolvida = isVeiculoJobEarly
+      ? await resolverLogoMotion(sb, user.id, {
+        explicitPath: body?.logo_path,
+        explicitUrl: body?.logo_url,
+        clientIdentity: body?.sem_logo_tenant === true,
+        background: requestedBackground ?? "claro",
+      })
+      : null;
+    const logoPath = isVeiculoJobEarly
+      ? logoResolvida?.path
+      : await logoDoTenant(sb, user.id, requestedBackground);
     const trilha = await resolverTrilha(sb, user.id, {
       sb,
       userId: user.id,
@@ -119,7 +143,7 @@ Deno.serve(async (req) => {
       ...props,
       site: props.site || "",
       logo_path: logoPath,
-      logoUrl: undefined,
+      logoUrl: isVeiculoJobEarly ? logoResolvida?.url : undefined,
       trilha_id: trilha?.id,
       trilha_path: trilha?.path,
       trilha_volume: trilha?.volume ?? 0.28,
@@ -145,7 +169,7 @@ Deno.serve(async (req) => {
       .insert({
         user_id: user.id,
         origem: "plataforma",
-        template: "template-produto",
+        template: isVeiculoJob ? TEMPLATE_VEICULO_ESTUDIO : "template-produto",
         titulo: tema.slice(0, 140),
         props: propsFinal,
         trilha_id: propsFinal.trilha_id ?? null,
@@ -162,6 +186,9 @@ Deno.serve(async (req) => {
           veiculo_id: isVeiculoJob ? veiculoIdRaw : null,
           library: isVeiculoJob ? "veiculo" : "produto",
         },
+        etapa: "na_fila",
+        progresso_pct: 0,
+        progresso_atualizado_em: new Date().toISOString(),
       })
       .select()
       .single();
@@ -174,7 +201,9 @@ Deno.serve(async (req) => {
       success: true,
       job_id: job.id,
       props: propsFinal,
-      duracao_estimada: duracaoEstimadaProduto(props),
+      duracao_estimada: isVeiculoJob
+        ? duracaoEstimadaVeiculoEstudio(props)
+        : duracaoEstimadaProduto(props),
       posicao_fila: pos ?? 1,
     });
   } catch (e) {

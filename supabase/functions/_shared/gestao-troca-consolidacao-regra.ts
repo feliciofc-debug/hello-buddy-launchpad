@@ -61,7 +61,7 @@ export function calcResumoPorAreaRegra(input: {
       return {
         area,
         condicao: "nao_fotografado",
-        texto: "⚪ não fotografado — não avaliado",
+        texto: "não fotografado — não avaliado",
         fotos: [],
       };
     }

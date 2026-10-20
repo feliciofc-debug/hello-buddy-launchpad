@@ -196,6 +196,9 @@ Deno.serve(async (req) => {
           tentativas,
           claimed_at: null,
           erro_mensagem: String(erro || "erro no render"),
+          etapa: "erro",
+          progresso_pct: 0,
+          progresso_atualizado_em: new Date().toISOString(),
         })
         .eq("id", job.id)
         .eq("status", "processando")
@@ -241,6 +244,9 @@ Deno.serve(async (req) => {
           tentativas,
           claimed_at: null,
           erro_mensagem: "arquivo do vídeo não chegou ao armazenamento (upload falhou na VPS)",
+          etapa: "erro",
+          progresso_pct: 0,
+          progresso_atualizado_em: new Date().toISOString(),
         })
         .eq("id", job.id)
         .eq("status", "processando");
@@ -268,6 +274,9 @@ Deno.serve(async (req) => {
         duracao_segundos: duracao_segundos ?? null,
         concluido_at: new Date().toISOString(),
         erro_mensagem: null,
+        etapa: "concluido",
+        progresso_pct: 100,
+        progresso_atualizado_em: new Date().toISOString(),
       })
       .eq("id", job.id)
       .eq("status", "processando")

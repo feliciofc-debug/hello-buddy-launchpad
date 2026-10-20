@@ -94,6 +94,16 @@ Deno.serve(async (req) => {
       .createSignedUploadUrl(nome, { upsert: true });
     if (upErr || !up?.signedUrl) throw upErr || new Error("upload url falhou");
 
+    await supabase
+      .from("video_motion_jobs")
+      .update({
+        etapa: "preparando",
+        progresso_pct: 0,
+        progresso_atualizado_em: new Date().toISOString(),
+      })
+      .eq("id", job.id)
+      .eq("status", "processando");
+
     return respJson({
       success: true,
       job: {

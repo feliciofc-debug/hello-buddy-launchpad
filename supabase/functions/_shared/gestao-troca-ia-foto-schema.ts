@@ -1,3 +1,7 @@
+import {
+  GESTAO_TROCA_IA_SLOT_A_CLASSIFICAR,
+  parseGestaoTrocaIaSlotIdentificado,
+} from "./gestao-troca-foto-slot.ts";
 import { gestaoTrocaIaFiltrarLuzesAlertaPainel } from "./gestao-troca-ia-rules.ts";
 import type { GestaoTrocaFotoSlotId } from "./gestao-troca-roteiro.ts";
 
@@ -99,12 +103,16 @@ export function parseGestaoTrocaIaFotoAnaliseJson(
     ? raw.nao_da_para_afirmar.map((s) => String(s).slice(0, 200)).filter(Boolean)
     : [];
 
+  const slot_identificado = parseGestaoTrocaIaSlotIdentificado(raw.slot_identificado);
+  const slotInformado = String(raw.slot_informado ?? "");
+  const painelVisivel = slotInformado === "painel_ligado" || slot_identificado === "painel_ligado";
+
   let km_painel: number | null = null;
-  if (raw.km_painel != null && raw.km_painel !== "") {
+  if (painelVisivel && raw.km_painel != null && raw.km_painel !== "") {
     const n = Number(raw.km_painel);
     if (Number.isFinite(n) && n >= 0) km_painel = Math.round(n);
   }
-  const luzesRaw = Array.isArray(raw.luzes_alerta)
+  const luzesRaw = painelVisivel && Array.isArray(raw.luzes_alerta)
     ? raw.luzes_alerta.map((s) => String(s).slice(0, 80)).filter(Boolean)
     : [];
   const luzesFiltradas = gestaoTrocaIaFiltrarLuzesAlertaPainel(luzesRaw);
@@ -112,8 +120,8 @@ export function parseGestaoTrocaIaFotoAnaliseJson(
 
   return {
     indice: Math.round(indice),
-    slot_informado: String(raw.slot_informado ?? ""),
-    slot_identificado: raw.slot_identificado != null ? String(raw.slot_identificado) : null,
+    slot_informado: slotInformado || GESTAO_TROCA_IA_SLOT_A_CLASSIFICAR,
+    slot_identificado,
     qualidade_imagem: qualidade as GestaoTrocaIaFotoQualidade,
     motivo_qualidade: String(raw.motivo_qualidade ?? "").slice(0, 300),
     descricao: String(raw.descricao ?? "").slice(0, 800),

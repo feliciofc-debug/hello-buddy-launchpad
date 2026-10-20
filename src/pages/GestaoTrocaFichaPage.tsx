@@ -26,6 +26,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatGestaoMoney } from "@/lib/gestao-format.ts";
+import { formatInvokeErrorToast, invokeFunctionComCorpo } from "@/lib/invoke-function-com-corpo.ts";
 import type { GestaoTrocaEvento, GestaoTrocaRow } from "@/lib/gestao-troca-types.ts";
 import { downloadGestaoTrocaRelatorioPdf } from "@/lib/gestao-troca-relatorio-pdf.ts";
 import { GestaoMoneyInput } from "@/components/gestao/lucro/GestaoMoneyInput.tsx";
@@ -213,13 +214,24 @@ export default function GestaoTrocaFichaPage() {
     else void load();
   };
 
+  const toastGestaoTrocaInvokeError = (
+    r: Awaited<ReturnType<typeof invokeFunctionComCorpo>>,
+    fallback: string,
+  ) => {
+    toast.error(formatInvokeErrorToast({
+      error: r.error,
+      blocking: r.blocking,
+      fallback,
+    }));
+  };
+
   const recalcular = async () => {
     setBusy(true);
-    const { data, error } = await supabase.functions.invoke("gestao-troca", {
+    const r = await invokeFunctionComCorpo("gestao-troca", {
       body: { action: "recalcular", troca_id: id },
     });
     setBusy(false);
-    if (error || !data?.success) toast.error(data?.error ?? "Falha ao recalcular.");
+    if (!r.success) toastGestaoTrocaInvokeError(r, "Falha ao recalcular.");
     else void load();
   };
 
@@ -239,7 +251,7 @@ export default function GestaoTrocaFichaPage() {
       },
     });
     setBusy(true);
-    const { data, error } = await supabase.functions.invoke("gestao-troca", {
+    const r = await invokeFunctionComCorpo("gestao-troca", {
       body: {
         action: "fipe_buscar",
         marca: troca.marca,
@@ -248,10 +260,11 @@ export default function GestaoTrocaFichaPage() {
       },
     });
     setBusy(false);
-    if (error || !data?.success) {
-      toast.error(data?.error ?? "FIPE não encontrada.");
+    if (!r.success || !r.data) {
+      toastGestaoTrocaInvokeError(r, "FIPE não encontrada.");
       return;
     }
+    const data = r.data;
     await savePatch(
       gestaoTrocaPatchSomenteFipe(Number(data.fipe_valor), String(data.fipe_mes_ref)),
     );
@@ -304,11 +317,11 @@ export default function GestaoTrocaFichaPage() {
 
   const transicao = async (acao: string, extra?: Record<string, unknown>) => {
     setBusy(true);
-    const { data, error } = await supabase.functions.invoke("gestao-troca", {
+    const r = await invokeFunctionComCorpo("gestao-troca", {
       body: { action: "transicao", troca_id: id, acao, ...extra },
     });
     setBusy(false);
-    if (error || !data?.success) toast.error(data?.error ?? "Ação não permitida.");
+    if (!r.success) toastGestaoTrocaInvokeError(r, "Ação não permitida.");
     else void load();
   };
 
@@ -331,12 +344,12 @@ export default function GestaoTrocaFichaPage() {
       return;
     }
     setBusy(true);
-    const { data, error } = await supabase.functions.invoke("gestao-troca", {
+    const r = await invokeFunctionComCorpo("gestao-troca", {
       body: { action: "liberar_estoque", troca_id: id, preco_venda: precoFinal },
     });
     setBusy(false);
     setLiberarOpen(false);
-    if (error || !data?.success) toast.error(data?.error ?? "Falha.");
+    if (!r.success) toastGestaoTrocaInvokeError(r, "Falha.");
     else {
       toast.success("Liberado para estoque / vitrine.");
       void load();
@@ -354,7 +367,7 @@ export default function GestaoTrocaFichaPage() {
       return;
     }
     setBusy(true);
-    const { data, error } = await supabase.functions.invoke("gestao-troca", {
+    const r = await invokeFunctionComCorpo("gestao-troca", {
       body: {
         action: "repasse",
         troca_id: id,
@@ -365,7 +378,7 @@ export default function GestaoTrocaFichaPage() {
     });
     setBusy(false);
     setRepasseOpen(false);
-    if (error || !data?.success) toast.error(data?.error ?? "Falha.");
+    if (!r.success) toastGestaoTrocaInvokeError(r, "Falha.");
     else {
       toast.success("Repasse registrado.");
       void load();

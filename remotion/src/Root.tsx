@@ -18,6 +18,12 @@ import {
   type TemplateProdutoProps,
 } from "./templates/produto/Template";
 import {
+  TemplateVeiculoEstudio,
+  PROPS_VEICULO_ESTUDIO_EXEMPLO,
+  framesTemplateVeiculoEstudio,
+  type TemplateVeiculoEstudioProps,
+} from "./templates/veiculo-estudio/Template";
+import {
   TemplateInstitucional,
   PROPS_INSTITUCIONAL_EXEMPLO,
   framesTemplateInstitucional,
@@ -62,6 +68,17 @@ export const RemotionRoot = () => (
       defaultProps={PROPS_PRODUTO_EXEMPLO}
       calculateMetadata={({ props }) => ({
         durationInFrames: framesTemplateProduto(props as TemplateProdutoProps),
+      })}
+      {...base}
+    />
+
+    <Composition
+      id="template-veiculo-estudio"
+      component={TemplateVeiculoEstudio}
+      durationInFrames={framesTemplateVeiculoEstudio(PROPS_VEICULO_ESTUDIO_EXEMPLO)}
+      defaultProps={PROPS_VEICULO_ESTUDIO_EXEMPLO}
+      calculateMetadata={({ props }) => ({
+        durationInFrames: framesTemplateVeiculoEstudio(props as TemplateVeiculoEstudioProps),
       })}
       {...base}
     />

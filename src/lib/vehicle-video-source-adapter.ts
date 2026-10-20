@@ -74,6 +74,30 @@ export function vehicleVideoDisplayTitle(vehicle: VehicleVideoStockRow): string 
   return [vehicle.marca, vehicle.modelo, vehicle.versao].filter(Boolean).join(" ").trim();
 }
 
+/** Título principal do template estúdio (marca + modelo, sem versão). */
+export function vehicleVideoStudioTitle(vehicle: VehicleVideoStockRow): {
+  nome: string;
+  subtitulo: string;
+} {
+  const nome = [vehicle.marca, vehicle.modelo].filter(Boolean).join(" ").trim();
+  const subtParts = [vehicle.versao?.trim(), vehicle.combustivel?.trim()].filter(Boolean);
+  return {
+    nome,
+    subtitulo: subtParts.join(" · ").slice(0, 72),
+  };
+}
+
+/** Chips abaixo do carro: km, câmbio, ano. */
+export function vehicleVideoStudioChips(vehicle: VehicleVideoStockRow): string[] {
+  const chips: string[] = [];
+  const km = formatKm(vehicle.km);
+  if (km) chips.push(km);
+  if (vehicle.cambio?.trim()) chips.push(vehicle.cambio.trim());
+  const ano = formatAno(vehicle.ano_fabricacao, vehicle.ano_modelo);
+  if (ano) chips.push(ano);
+  return chips.slice(0, 4);
+}
+
 export function vehicleVideoSubtitleLine(vehicle: VehicleVideoStockRow): string {
   const parts = [
     formatAno(vehicle.ano_fabricacao, vehicle.ano_modelo),

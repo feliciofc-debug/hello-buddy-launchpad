@@ -294,6 +294,12 @@ verify_jwt = false
 [functions.video-motion-complete]
 verify_jwt = false
 
+[functions.video-motion-progress]
+verify_jwt = false
+
+[functions.video-motion-retry]
+verify_jwt = true
+
 [functions.site-render-claim]
 verify_jwt = false
 

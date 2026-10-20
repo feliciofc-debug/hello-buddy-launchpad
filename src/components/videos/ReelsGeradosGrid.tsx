@@ -227,7 +227,10 @@ export const ReelsGeradosGrid = ({
   return (
     <div className="space-y-4">
       <h2 className="text-xl font-semibold flex items-center gap-2">
-        <Film className="h-5 w-5" /> {isVeiculo ? 'Vídeos gerados do veículo' : 'Meus Reels Gerados'}
+        <Film className="h-5 w-5" />{' '}
+        {isVeiculo
+          ? (filterVeiculoId ? 'Vídeos gerados do veículo' : 'Vídeos gerados (todos os veículos)')
+          : 'Meus Reels Gerados'}
       </h2>
 
       {reels.length === 0 ? (
@@ -235,7 +238,11 @@ export const ReelsGeradosGrid = ({
           <CardContent className="p-8 text-center text-muted-foreground">
             <Film className="h-12 w-12 mx-auto mb-3 opacity-30" />
             <p className="font-medium">
-              {isVeiculo ? 'Nenhum vídeo gerado para este veículo ainda.' : 'Você ainda não gerou nenhum Reel.'}
+              {isVeiculo
+                ? (filterVeiculoId
+                  ? 'Nenhum vídeo gerado para este veículo ainda.'
+                  : 'Nenhum vídeo de veículo na biblioteca ainda.')
+                : 'Você ainda não gerou nenhum Reel.'}
             </p>
             <p className="text-sm mt-1">
               {isVeiculo
@@ -282,6 +289,9 @@ export const ReelsGeradosGrid = ({
                   <p className="font-medium text-sm truncate" title={nomeExibido}>
                     {nomeExibido}
                   </p>
+                  {isVeiculo && !filterVeiculoId && nomeVeiculo && (
+                    <p className="text-xs font-medium text-primary truncate">{nomeVeiculo}</p>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     {formatDistanceToNow(new Date(reel.criado_em), {
                       addSuffix: true,

@@ -19,7 +19,7 @@ import {
   normalizeGestaoTrocaFotos,
   type GestaoTrocaFotoEntry,
 } from "@/lib/gestao-troca-fotos.ts";
-import { resumoAreaIcon } from "@/lib/gestao-troca-laudo-foto-display.ts";
+import { formatGestaoTrocaResumoAreaLinha } from "@/lib/gestao-troca-laudo-foto-display.ts";
 import type { GestaoTrocaIaFotoAnaliseRow } from "@/lib/gestao-troca-ia-foto-schema.ts";
 
 function espessuraCorClass(cor: "verde" | "amarelo" | "vermelho" | "muted"): string {
@@ -118,15 +118,9 @@ export function GestaoTrocaLaudo19Section({
         <div className="space-y-2">
           <p className="font-medium text-sm">Resumo por área</p>
           <ul className="space-y-1 text-sm">
-            {computed.resumo_por_area.map((r) => {
-              const fotos = r.fotos.length ? ` · fotos ${r.fotos.map((n) => `#${n}`).join(", ")}` : "";
-              return (
-                <li key={r.area}>
-                  {resumoAreaIcon(r.condicao)} {r.area.replace(/_/g, " ")}: {r.texto || r.condicao}
-                  {fotos}
-                </li>
-              );
-            })}
+            {computed.resumo_por_area.map((r) => (
+              <li key={r.area}>{formatGestaoTrocaResumoAreaLinha(r)}</li>
+            ))}
           </ul>
         </div>
       )}
