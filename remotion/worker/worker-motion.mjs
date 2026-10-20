@@ -211,16 +211,23 @@ async function prepararProps(job) {
   return props;
 }
 
-async function reportarProgresso(jobId, pct, etapa) {
-  try {
-    await chamar("video-motion-progress", {
+/** Não bloqueia o pipeline de render (timeout 5s, fire-and-forget). */
+function reportarProgresso(jobId, pct, etapa) {
+  fetch(`${BASE}/video-motion-progress`, {
+    method: "POST",
+    headers: {
+      "x-render-token": TOKEN,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
       job_id: jobId,
-      progresso_pct: Math.min(100, Math.max(0, Math.round(pct))),
+      progresso_pct: Math.min(99, Math.max(0, Math.round(pct))),
       etapa,
-    });
-  } catch (e) {
+    }),
+    signal: AbortSignal.timeout(5000),
+  }).catch((e) => {
     console.warn("[motion] progresso:", e.message);
-  }
+  });
 }
 
 async function processar(job) {
@@ -229,9 +236,9 @@ async function processar(job) {
   const outPath = path.join(dir, "out.mp4");
 
   try {
-    await reportarProgresso(job.id, 2, "preparando");
+    reportarProgresso(job.id, 3, "preparando");
     fs.writeFileSync(propsPath, JSON.stringify(await prepararProps(job)));
-    await reportarProgresso(job.id, 8, "preparando");
+    reportarProgresso(job.id, 10, "preparando");
 
     await exec(
       process.execPath,
@@ -248,9 +255,9 @@ async function processar(job) {
       },
     );
 
-    await reportarProgresso(job.id, 92, "enviando");
+    reportarProgresso(job.id, 92, "enviando");
     await otimizarVideoParaWhatsApp(outPath, dir);
-    await reportarProgresso(job.id, 96, "enviando");
+    reportarProgresso(job.id, 96, "enviando");
     const bytes = fs.readFileSync(outPath);
     const up = await fetch(job.upload.url, {
       method: "PUT",

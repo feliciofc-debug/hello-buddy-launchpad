@@ -2,12 +2,18 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { corsHeaders } from "../_shared/cors.ts";
+import {
+  jobPermiteRetry,
+  jobAindaAtivo,
+} from "../_shared/video-motion-retry-eligibility.ts";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+
+const MSG_SUBSTITUIDO = "substituído por nova tentativa";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -37,7 +43,7 @@ Deno.serve(async (req) => {
     const { data: old, error: loadErr } = await sb
       .from("video_motion_jobs")
       .select(
-        "id, user_id, template, titulo, props, metadata, trilha_id, trilha_volume, legenda_post, plataformas, formato, origem, telefone",
+        "id, user_id, status, claimed_at, progresso_atualizado_em, created_at, template, titulo, props, metadata, trilha_id, trilha_volume, legenda_post, plataformas, formato, origem, telefone",
       )
       .eq("id", jobId)
       .eq("user_id", user.id)
@@ -45,6 +51,37 @@ Deno.serve(async (req) => {
 
     if (loadErr) throw loadErr;
     if (!old) return json({ success: false, error: "Job não encontrado" }, 404);
+
+    if (!jobPermiteRetry(old)) {
+      if (jobAindaAtivo(old)) {
+        return json({ success: false, error: "O vídeo ainda está sendo feito" }, 409);
+      }
+      return json({ success: false, error: "Este job não pode ser recriado" }, 409);
+    }
+
+    const st = String(old.status ?? "").toLowerCase();
+    if (st === "pendente" || st === "processando") {
+      const agora = new Date().toISOString();
+      const { data: marcado, error: markErr } = await sb
+        .from("video_motion_jobs")
+        .update({
+          status: "falha",
+          etapa: "erro",
+          erro_mensagem: MSG_SUBSTITUIDO,
+          claimed_at: null,
+          progresso_atualizado_em: agora,
+        })
+        .eq("id", jobId)
+        .eq("user_id", user.id)
+        .in("status", ["pendente", "processando"])
+        .select("id")
+        .maybeSingle();
+
+      if (markErr) throw markErr;
+      if (!marcado) {
+        return json({ success: false, error: "O vídeo ainda está sendo feito" }, 409);
+      }
+    }
 
     const { data: novo, error: insErr } = await sb
       .from("video_motion_jobs")

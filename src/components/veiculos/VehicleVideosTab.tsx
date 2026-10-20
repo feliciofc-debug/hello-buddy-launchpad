@@ -245,7 +245,9 @@ export function VehicleVideosTab() {
               body: { job_id: jobId },
             });
             if (error) throw error;
-            if (!data?.success) throw new Error(data?.error || "Falha ao recriar");
+            if (!data?.success) {
+              throw new Error(data?.error || "Falha ao recriar");
+            }
             setWatchJobId(String(data.job_id));
             toast.success(`Novo job na fila (posição ${data.posicao_fila ?? "?"}).`);
           } catch (e: unknown) {

@@ -37,12 +37,17 @@ Deno.serve(async (req) => {
       })
       .eq("id", jobId)
       .in("status", ["pendente", "processando"])
+      .lte("progresso_pct", progresso_pct)
       .select("id")
       .maybeSingle();
 
     if (error) throw error;
     if (!data) {
-      return respJson({ success: true, ignored: true, reason: "job não está ativo" });
+      return respJson({
+        success: true,
+        ignored: true,
+        reason: "job inativo ou progresso regressivo",
+      });
     }
 
     return respJson({ success: true });
