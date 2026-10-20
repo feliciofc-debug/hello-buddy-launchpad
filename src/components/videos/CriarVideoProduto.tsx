@@ -19,7 +19,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, Package, Scissors, Clapperboard, Palette } from 'lucide-react';
+import { Loader2, Package, Scissors, Clapperboard, Palette, Globe } from 'lucide-react';
+import { ImportarDoSiteModal, type IdentidadeImportada } from '@/components/ImportarDoSiteModal';
+import { readAmzAutoModePreference } from '@/lib/amz-auto-mode';
+import { formatTelefoneBR } from '@/lib/vehicle-video-format';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { validarPaleta } from '@/lib/videoPalette';
@@ -27,9 +30,9 @@ import {
   type VehicleVideoStockRow,
   publicVehicleStockPhotos,
   vehicleVideoDisplayTitle,
-  vehicleVideoHighlightBullets,
   vehicleVideoPriceForOverlay,
-  vehicleVideoSubtitleLine,
+  vehicleVideoStudioChips,
+  vehicleVideoStudioTitle,
 } from '@/lib/vehicle-video-source-adapter';
 
 type ProdutoLite = {
@@ -41,7 +44,22 @@ type ProdutoLite = {
   descricao: string | null;
 };
 
+const PALETA_ESTUDIO_VEICULO = {
+  bg: '#F8F9FA',
+  bg2: '#EEF0F2',
+  panel: '#FFFFFF',
+  line: '#D8DCE0',
+  destaque: '#F26B1D',
+  destaqueSoft: '#FF8F4D',
+  texto: '#111111',
+  suave: '#4B5563',
+} as const;
+
 const PALETAS = {
+  estudio: {
+    label: 'Estúdio',
+    cores: { ...PALETA_ESTUDIO_VEICULO },
+  },
   amz: {
     label: 'AMZ',
     cores: { bg: '#0f1720', bg2: '#1a2332', panel: '#16202c', line: '#26313f', destaque: '#FF7A1A', destaqueSoft: '#ff9e56', texto: '#f4f7fb', suave: '#93a4b8' },
@@ -87,10 +105,19 @@ export const CriarVideoProduto = ({
   const [telefone, setTelefone] = useState('');
   const [marca, setMarca] = useState('');
   const [recortarFundo, setRecortarFundo] = useState(true);
-  const [paletaSelecionada, setPaletaSelecionada] = useState<keyof typeof PALETAS>('amz');
-  const [cores, setCores] = useState<Record<string, string>>({ ...PALETAS.amz.cores });
+  const [paletaSelecionada, setPaletaSelecionada] = useState<keyof typeof PALETAS>(
+    isVeiculo ? 'estudio' : 'amz',
+  );
+  const [cores, setCores] = useState<Record<string, string>>(
+    isVeiculo ? { ...PALETAS.estudio.cores } : { ...PALETAS.amz.cores },
+  );
   const [enviando, setEnviando] = useState(false);
   const [veiculos, setVeiculos] = useState<VehicleVideoStockRow[]>([]);
+  const [logoPath, setLogoPath] = useState<string | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [identidadeCliente, setIdentidadeCliente] = useState(false);
+  const [importarAberto, setImportarAberto] = useState(false);
+  const [subindoLogo, setSubindoLogo] = useState(false);
 
   const carregar = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -126,18 +153,137 @@ export const CriarVideoProduto = ({
     const v = lista.find((item) => item.id === id) || null;
     const imgs = publicVehicleStockPhotos(v ?? { fotos: [] });
     setImagemUrl(imgs[0] ?? '');
-    setNome(vehicleVideoDisplayTitle(v ?? { marca: '', modelo: '' }));
-    setSubtitulo(v ? vehicleVideoSubtitleLine(v) : '');
+    if (v) {
+      const { nome, subtitulo: sub } = vehicleVideoStudioTitle(v);
+      setNome(nome);
+      setSubtitulo(sub);
+      const chips = vehicleVideoStudioChips(v);
+      setBullets([chips[0] ?? '', chips[1] ?? '', chips[2] ?? '', chips[3] ?? '']);
+    } else {
+      setNome('');
+      setSubtitulo('');
+      setBullets(['', '', '']);
+    }
     setMarca(lojaNome.trim());
-    const bullets = v ? vehicleVideoHighlightBullets(v) : [];
-    setBullets([bullets[0] ?? '', bullets[1] ?? '', bullets[2] ?? '']);
     const { precoLabel } = v ? vehicleVideoPriceForOverlay(v) : { precoLabel: null };
     setPreco(precoLabel ? precoLabel.replace(/^R\$\s*/, '') : '');
     setPrecoDe('');
     setCtaFrase('Chama no WhatsApp');
   };
 
+  const handleLogo = async (file: File, opcoes?: { definirComoMarca?: boolean }) => {
+    const definirComoMarca = opcoes?.definirComoMarca !== false;
+    if (!file.type.startsWith('image/') || file.size > 5 * 1024 * 1024) {
+      toast.error('Use uma imagem PNG, JPEG ou WEBP de até 5MB.');
+      return;
+    }
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    setSubindoLogo(true);
+    try {
+      const nomeArq = file.name.replace(/[^a-zA-Z0-9._-]/g, '-').slice(-80);
+      const novoPath = definirComoMarca
+        ? `${user.id}/incoming/${Date.now()}-${nomeArq}`
+        : `${user.id}/video-site/${Date.now()}-${nomeArq}`;
+      const { error: uploadError } = await supabase.storage.from('tenant-logos').upload(novoPath, file, { contentType: file.type });
+      if (uploadError) throw uploadError;
+
+      let selectedPath = novoPath;
+      if (definirComoMarca) {
+        const { data: managed, error: manageError } = await supabase.functions.invoke('manage-tenant-logo', {
+          body: {
+            action: 'set',
+            storage_path: novoPath,
+            file_name: file.name,
+            mime_type: file.type,
+            variant: 'default',
+          },
+        });
+        if (manageError || !managed?.ok) {
+          await supabase.storage.from('tenant-logos').remove([novoPath]);
+          throw manageError || new Error(managed?.error || 'Falha ao processar a logo');
+        }
+        const videoLogo = managed.logos?.find((item: { variant?: string }) => item.variant === 'video');
+        const defaultLogo = managed.logos?.find((item: { variant?: string }) => item.variant === 'default');
+        selectedPath = videoLogo?.storage_path || defaultLogo?.storage_path;
+        if (!selectedPath) throw new Error('Logo processada sem arquivo');
+      }
+
+      const { data: signed } = await supabase.storage.from('tenant-logos').createSignedUrl(selectedPath, 3600);
+      setLogoPath(selectedPath);
+      setLogoUrl(signed?.signedUrl ?? null);
+      toast.success(definirComoMarca ? 'Logo da loja anexada.' : 'Logo aplicada a este vídeo.');
+    } catch (e: any) {
+      toast.error(e?.message || 'Não foi possível anexar a logo.');
+    } finally {
+      setSubindoLogo(false);
+    }
+  };
+
+  const aplicarIdentidadeDoSite = async (d: IdentidadeImportada) => {
+    setIdentidadeCliente(true);
+    const novas = { ...PALETA_ESTUDIO_VEICULO, ...d.paleta };
+    setPaletaSelecionada('estudio');
+    setCores(novas);
+    if (d.nome_empresa) setMarca(d.nome_empresa);
+    const fonte = d.logo_data_url || null;
+    if (fonte) {
+      try {
+        const resp = await fetch(fonte);
+        const blob = await resp.blob();
+        const tipo = blob.type || 'image/png';
+        const ext = tipo.split('/')[1]?.replace('svg+xml', 'svg') || 'png';
+        await handleLogo(new File([blob], `logo-site.${ext}`, { type: tipo }), { definirComoMarca: false });
+      } catch {
+        toast.info('Não consegui aplicar a logo do site. Anexe o arquivo manualmente.');
+      }
+    }
+    toast.success('Identidade do site aplicada ao vídeo do veículo.');
+  };
+
+  const carregarContatoLoja = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const [{ data: profile }, { data: empresa }] = await Promise.all([
+      supabase.from('profiles').select('whatsapp, nome_fantasia, nome').eq('id', user.id).maybeSingle(),
+      supabase.from('empresa_config').select('site_url, identidade_site').eq('user_id', user.id).maybeSingle(),
+    ]);
+    const p = profile as { whatsapp?: string; nome_fantasia?: string; nome?: string } | null;
+    if (p?.whatsapp && !telefone.trim()) {
+      setTelefone(formatTelefoneBR(String(p.whatsapp)));
+    }
+    if (isVeiculo && !marca.trim()) {
+      setMarca(String(p?.nome_fantasia || p?.nome || lojaNome || '').trim());
+    }
+    const site = (empresa as { site_url?: string } | null)?.site_url;
+    if (site && isVeiculo) {
+      // site fica disponível para próximos envios via props se necessário
+    }
+  };
+
   useEffect(() => { carregar(); }, [isVeiculo, fixedVeiculoId]);
+
+  useEffect(() => {
+    if (isVeiculo) void carregarContatoLoja();
+  }, [isVeiculo]);
+
+  useEffect(() => {
+    if (!isVeiculo || !readAmzAutoModePreference() || logoPath) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const resp = await fetch('/amz-auto-mark-512.png');
+        if (!resp.ok || cancelled) return;
+        const blob = await resp.blob();
+        await handleLogo(new File([blob], 'amz-auto-mark-512.png', { type: blob.type || 'image/png' }), {
+          definirComoMarca: false,
+        });
+      } catch {
+        /* opcional */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isVeiculo]);
 
   useEffect(() => {
     if (isVeiculo && fixedVeiculoId && veiculos.length) {
@@ -197,6 +343,8 @@ export const CriarVideoProduto = ({
           veiculo_id: isVeiculo ? (produtoId || undefined) : undefined,
           marca: marca.trim() || undefined,
           formato: 'reels',
+          logo_path: isVeiculo ? logoPath : undefined,
+          sem_logo_tenant: isVeiculo ? identidadeCliente : undefined,
           props: {
             marca: marca.trim() || undefined,
             cores,
@@ -319,7 +467,7 @@ export const CriarVideoProduto = ({
             </Label>
             <p className="text-xs text-muted-foreground">
               {isVeiculo
-                ? 'O carro sai sobre fundo da sua marca, com sombra e reflexo. Se o recorte falhar nesta foto, usamos a foto desfocada ao fundo.'
+                ? 'Fundo cinza-claro de estúdio, cor real do carro preservada (sem brilho laranja). Sombra e reflexo neutros sob o veículo.'
                 : 'O produto sai sobre fundo da sua marca, com sombra e reflexo. Se o recorte não funcionar nessa foto, o vídeo continua sendo gerado com a própria foto desfocada ao fundo.'}
             </p>
           </div>
@@ -328,7 +476,12 @@ export const CriarVideoProduto = ({
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
             <Label>Nome que aparece no vídeo</Label>
-            <Input value={nome} onChange={(e) => setNome(e.target.value)} maxLength={46} placeholder="Ex.: Honda Civic 2022" />
+            <Input
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              maxLength={isVeiculo ? 56 : 46}
+              placeholder={isVeiculo ? 'Ex.: Range Rover Evoque' : 'Ex.: Honda Civic 2022'}
+            />
           </div>
           <div className="space-y-2">
             <Label>Linha de apoio (opcional)</Label>
@@ -386,40 +539,104 @@ export const CriarVideoProduto = ({
         </div>
 
         <div className="space-y-3">
-          <Label className="flex items-center gap-2"><Palette className="h-4 w-4" /> Cores e marca</Label>
-          <div className="flex gap-2 flex-wrap">
-            {(Object.keys(PALETAS) as (keyof typeof PALETAS)[]).map((chave) => (
-              <Button
-                key={chave}
-                type="button"
-                size="sm"
-                variant={paletaSelecionada === chave ? 'default' : 'outline'}
-                onClick={() => selecionarPaleta(chave)}
-              >
-                {PALETAS[chave].label}
-              </Button>
-            ))}
-            <Input
-              className="w-48"
-              value={marca}
-              onChange={(e) => setMarca(e.target.value)}
-              placeholder="Marca (sigla no CTA)"
-              maxLength={18}
-            />
-          </div>
-          <div className="flex gap-3 flex-wrap">
-            {['bg', 'bg2', 'destaque', 'texto'].map((chave) => (
-              <label key={chave} className="flex items-center gap-2 text-xs text-muted-foreground">
-                {chave}
-                <input
-                  type="color"
-                  value={cores[chave]}
-                  onChange={(e) => setCor(chave, e.target.value)}
-                  className="h-8 w-10 rounded border"
+          <Label className="flex items-center gap-2"><Palette className="h-4 w-4" /> {isVeiculo ? 'Identidade da loja' : 'Cores e marca'}</Label>
+          {isVeiculo && (
+            <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={paletaSelecionada === 'estudio' ? 'default' : 'outline'}
+                  onClick={() => selecionarPaleta('estudio')}
+                >
+                  Estúdio (padrão)
+                </Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => setImportarAberto(true)}>
+                  <Globe className="mr-2 h-4 w-4" />
+                  Buscar identidade pelo site
+                </Button>
+              </div>
+              <ImportarDoSiteModal
+                aberto={importarAberto}
+                onFechar={() => setImportarAberto(false)}
+                modo="video"
+                onConfirmar={aplicarIdentidadeDoSite}
+              />
+              <div className="flex flex-wrap items-center gap-3">
+                <Input
+                  className="max-w-xs"
+                  value={marca}
+                  onChange={(e) => setMarca(e.target.value)}
+                  placeholder="Nome da loja no vídeo"
+                  maxLength={40}
                 />
-              </label>
-            ))}
-          </div>
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  Cor da marca
+                  <input
+                    type="color"
+                    value={cores.destaque}
+                    onChange={(e) => setCor('destaque', e.target.value)}
+                    className="h-8 w-10 rounded border"
+                    aria-label="Cor principal"
+                  />
+                </label>
+                {logoUrl ? (
+                  <img src={logoUrl} alt="Logo da loja" className="h-10 max-w-[120px] object-contain rounded border bg-white p-1" />
+                ) : null}
+                <Button type="button" size="sm" variant="outline" disabled={subindoLogo} asChild>
+                  <label className="cursor-pointer">
+                    {subindoLogo ? 'Enviando…' : 'Anexar logo'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="sr-only"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) void handleLogo(f, { definirComoMarca: !identidadeCliente });
+                      }}
+                    />
+                  </label>
+                </Button>
+              </div>
+            </div>
+          )}
+          {!isVeiculo && (
+            <>
+              <div className="flex gap-2 flex-wrap">
+                {(Object.keys(PALETAS) as (keyof typeof PALETAS)[]).filter((k) => k !== 'estudio').map((chave) => (
+                  <Button
+                    key={chave}
+                    type="button"
+                    size="sm"
+                    variant={paletaSelecionada === chave ? 'default' : 'outline'}
+                    onClick={() => selecionarPaleta(chave)}
+                  >
+                    {PALETAS[chave].label}
+                  </Button>
+                ))}
+                <Input
+                  className="w-48"
+                  value={marca}
+                  onChange={(e) => setMarca(e.target.value)}
+                  placeholder="Marca (sigla no CTA)"
+                  maxLength={18}
+                />
+              </div>
+              <div className="flex gap-3 flex-wrap">
+                {['bg', 'bg2', 'destaque', 'texto'].map((chave) => (
+                  <label key={chave} className="flex items-center gap-2 text-xs text-muted-foreground">
+                    {chave}
+                    <input
+                      type="color"
+                      value={cores[chave]}
+                      onChange={(e) => setCor(chave, e.target.value)}
+                      className="h-8 w-10 rounded border"
+                    />
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
         <Button onClick={enviar} disabled={enviando || !imagemUrl} className="w-full">
@@ -427,8 +644,9 @@ export const CriarVideoProduto = ({
           {isVeiculo ? 'Gerar vídeo do veículo' : 'Gerar vídeo do produto'}
         </Button>
         <p className="text-xs text-muted-foreground">
-          A logo ativa da sua conta é aplicada automaticamente, e a trilha padrão da empresa entra no
-          áudio quando existir. O render leva de 1 a 4 minutos na fila.
+          {isVeiculo
+            ? 'Template estúdio (fundo claro). Logo da loja no topo e no final; trilha padrão quando existir. Render ~3–5 min.'
+            : 'A logo ativa da sua conta é aplicada automaticamente, e a trilha padrão da empresa entra no áudio quando existir. O render leva de 1 a 4 minutos na fila.'}
         </p>
       </CardContent>
     </Card>
