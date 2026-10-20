@@ -139,6 +139,7 @@ Deno.serve(async (req) => {
           videoUrl,
           job.duracao_segundos ?? null,
           () => registrarVideoNaBiblioteca(supabase, job, videoUrl, job.duracao_segundos ?? null),
+          "video-motion-complete",
         );
         midiaId = lib.midiaId;
         if (midiaId) codigoMidia = linhaCodigoMidia(midiaId, "video");
@@ -289,6 +290,7 @@ Deno.serve(async (req) => {
         videoUrl,
         duracao_segundos ?? null,
         () => registrarVideoNaBiblioteca(supabase, job, videoUrl, duracao_segundos ?? null),
+        "video-motion-complete",
       );
       midiaId = lib.midiaId;
       if (midiaId) codigoMidia = linhaCodigoMidia(midiaId, "video");

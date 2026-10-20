@@ -12,16 +12,45 @@ type JobLike = {
   metadata?: unknown;
 };
 
+export type PersistVideoLibraryDeps = {
+  syncProdutoFromMidia?: typeof syncProdutoVideoFromMidia;
+};
+
+async function syncProdutoVideoFromMidiaResiliente(
+  supabase: any,
+  midiaId: string,
+  syncErrorLogTag: string,
+  syncFn: typeof syncProdutoVideoFromMidia,
+): Promise<void> {
+  try {
+    await syncFn(supabase, midiaId);
+  } catch (e) {
+    console.error(
+      `[${syncErrorLogTag}] sincronização com produto_videos falhou; mantendo vídeo concluído:`,
+      e instanceof Error ? e.message : String(e),
+    );
+  }
+}
+
 export async function persistMotionVideoToLibrary(
   supabase: any,
   job: JobLike,
   videoUrl: string,
   duracaoSegundos: number | null,
   registrarMidiasProduto: () => Promise<string>,
+  syncErrorLogTag = "video-complete",
+  deps?: PersistVideoLibraryDeps,
 ): Promise<{ midiaId: string | null; veiculoVideoId: string | null }> {
+  const syncFn = deps?.syncProdutoFromMidia ?? syncProdutoVideoFromMidia;
+
   if (!isVeiculoVideoJobMetadata(job.metadata)) {
     const midiaId = await registrarMidiasProduto();
-    await syncProdutoVideoFromMidia(supabase, midiaId);
+    await syncProdutoVideoFromMidiaResiliente(
+      supabase,
+      midiaId,
+      syncErrorLogTag,
+      syncFn,
+    );
     return { midiaId, veiculoVideoId: null };
   }
 
@@ -47,6 +76,7 @@ export async function persistRenderVideoToLibrary(
   videoUrl: string,
   duracaoSegundos: number | null,
   registrarMidiasProduto: () => Promise<string>,
+  deps?: PersistVideoLibraryDeps,
 ): Promise<{ midiaId: string | null; veiculoVideoId: string | null }> {
   return persistMotionVideoToLibrary(
     supabase,
@@ -54,5 +84,7 @@ export async function persistRenderVideoToLibrary(
     videoUrl,
     duracaoSegundos,
     registrarMidiasProduto,
+    "video-render-complete",
+    deps,
   );
 }
