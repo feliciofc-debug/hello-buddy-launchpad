@@ -78,7 +78,13 @@ export function MediaPicker({
           "id, caption, copy_escolhida, resultado_bucket, resultado_path, status, created_at",
         )
         .eq("user_id", auth.user.id)
-        .eq("status", "concluido")
+        .in("status", [
+          "concluido",
+          "aprovado",
+          "publicado_parcial",
+          "erro_publicacao",
+          "publicado",
+        ])
         .order("created_at", { ascending: false })
         .limit(500),
       supabase

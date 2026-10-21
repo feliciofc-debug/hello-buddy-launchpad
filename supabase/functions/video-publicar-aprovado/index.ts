@@ -21,6 +21,8 @@ import {
   readJobPublishedPosts,
   resolveVideoPublisher,
   sanitizePublishApiDetail,
+  shouldAttemptPublish,
+  skipPublishMessage,
   uniqueVideoPublishPlatforms,
 } from "../_shared/video-publish-platforms.ts";
 
@@ -37,16 +39,22 @@ function resp(body: unknown, status = 200) {
   });
 }
 
-function isConnected(
-  connected: Awaited<ReturnType<typeof loadConnectedPublishPlatforms>>,
-  platform: string,
-): boolean {
-  const p = platform.toLowerCase();
-  if (p === "facebook") return connected.facebook;
-  if (p === "instagram") return connected.instagram;
-  if (p === "linkedin") return connected.linkedin;
-  if (p === "tiktok") return connected.tiktok;
-  return false;
+function pushPublishError(
+  erros: string[],
+  erroLogs: string[],
+  plataforma: string,
+  error: unknown,
+) {
+  if (typeof error === "string" && /^[^:]+:\s/.test(error)) {
+    erros.push(error);
+    const detail = sanitizePublishApiDetail(error);
+    erroLogs.push(formatPublishErrorLogEntry(plataforma, error, detail));
+    return;
+  }
+  const detail = sanitizePublishApiDetail(error);
+  const friendly = friendlyMetaVideoPublishError(plataforma, detail.message);
+  erros.push(friendly);
+  erroLogs.push(formatPublishErrorLogEntry(plataforma, friendly, detail));
 }
 
 Deno.serve(async (req) => {
@@ -200,13 +208,6 @@ Deno.serve(async (req) => {
       }
     };
 
-    const recordFailure = (plataforma: string, error: unknown) => {
-      const detail = sanitizePublishApiDetail(error);
-      const friendly = friendlyMetaVideoPublishError(plataforma, detail.message);
-      erros.push(friendly);
-      erroLogs.push(formatPublishErrorLogEntry(plataforma, friendly, detail));
-    };
-
     if (ehStory) {
       const targets = plataformas.filter((p) => {
         const prior = publishedPosts[String(p).toLowerCase()];
@@ -219,14 +220,19 @@ Deno.serve(async (req) => {
             body: {
               video_url: videoUrl,
               user_id: job.user_id,
-              canais: targets.filter((p) => isConnected(connected, p)),
+              canais: targets.filter((p) => shouldAttemptPublish(connected, p)),
             },
           },
         );
         if (sErr) throw sErr;
         for (const plataforma of targets) {
-          if (!isConnected(connected, plataforma)) {
-            recordFailure(plataforma, notConnectedPublishMessage(plataforma));
+          if (!shouldAttemptPublish(connected, plataforma)) {
+            pushPublishError(
+              erros,
+              erroLogs,
+              plataforma,
+              notConnectedPublishMessage(plataforma),
+            );
             continue;
           }
           const r = res?.[plataforma];
@@ -236,11 +242,16 @@ Deno.serve(async (req) => {
               post_id: r?.post_id,
             });
           } else {
-            recordFailure(plataforma, r?.error || res?.error || "falhou");
+            pushPublishError(
+              erros,
+              erroLogs,
+              plataforma,
+              r?.error || res?.error || "falhou",
+            );
           }
         }
       } catch (e) {
-        erros.push(friendlyMetaVideoPublishError("story", e));
+        pushPublishError(erros, erroLogs, "story", e);
       }
     } else {
       for (const plataforma of plataformas) {
@@ -252,13 +263,23 @@ Deno.serve(async (req) => {
           }
           continue;
         }
-        if (!isConnected(connected, plataforma)) {
-          recordFailure(plataforma, notConnectedPublishMessage(plataforma));
+        if (!shouldAttemptPublish(connected, plataforma)) {
+          pushPublishError(
+            erros,
+            erroLogs,
+            plataforma,
+            notConnectedPublishMessage(plataforma),
+          );
           continue;
         }
         const route = resolveVideoPublisher(plataforma, formato);
         if (route.kind === "skip") {
-          recordFailure(plataforma, route.reason || "ignorado");
+          pushPublishError(
+            erros,
+            erroLogs,
+            plataforma,
+            skipPublishMessage(plataforma, route.reason || "ignorado"),
+          );
           continue;
         }
         try {
@@ -272,7 +293,15 @@ Deno.serve(async (req) => {
               user_id: job.user_id,
               preserve_caption: true,
             };
-          } else if (route.kind === "meta-instagram" || route.kind === "meta-reels") {
+          } else if (route.kind === "meta-instagram") {
+            functionName = "meta-publish-instagram";
+            body = {
+              caption,
+              video_url: videoUrl,
+              user_id: job.user_id,
+              preserve_caption: true,
+            };
+          } else if (route.kind === "meta-reels") {
             functionName = "meta-publish-reels";
             body = {
               platform: plataforma,
@@ -312,10 +341,10 @@ Deno.serve(async (req) => {
               post_urn: res?.post_urn,
             });
           } else {
-            recordFailure(plataforma, res?.error || "falhou");
+            pushPublishError(erros, erroLogs, plataforma, res?.error || "falhou");
           }
         } catch (e) {
-          recordFailure(plataforma, e);
+          pushPublishError(erros, erroLogs, plataforma, e);
         }
       }
     }

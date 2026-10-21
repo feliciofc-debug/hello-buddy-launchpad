@@ -11,6 +11,16 @@ export type PublishedPlatformRecord = {
   post_urn?: string;
 };
 
+/** true = conectado; false = consulta ok e desconectado; null = consulta falhou — tentar publicar como antes */
+export type PlatformConnectionState = boolean | null;
+
+export type ConnectedPublishPlatforms = {
+  facebook: PlatformConnectionState;
+  instagram: PlatformConnectionState;
+  linkedin: PlatformConnectionState;
+  tiktok: PlatformConnectionState;
+};
+
 const PLATFORM_LABELS: Record<string, string> = {
   facebook: "Facebook",
   instagram: "Instagram",
@@ -102,65 +112,126 @@ export function formatPublishErrorLogEntry(
   return `${label}: ${friendly} | api=${code}${detail.message}`;
 }
 
-export type ConnectedPublishPlatforms = {
-  facebook: boolean;
-  instagram: boolean;
-  linkedin: boolean;
-  tiktok: boolean;
+type QueryChain = {
+  eq: (col: string, val: unknown) => QueryChain;
+  limit: (n: number) => Promise<{ data: unknown; error: unknown }>;
 };
+
+function connectionQuery(
+  sb: {
+    from: (table: string) => {
+      select: (cols: string) => { eq: (col: string, val: unknown) => QueryChain };
+    };
+  },
+  table: string,
+  cols: string,
+  filters: Array<[string, unknown]>,
+): Promise<{ row: Record<string, unknown> | null; error: unknown }> {
+  let query = sb.from(table).select(cols).eq(filters[0][0], filters[0][1]);
+  for (let i = 1; i < filters.length; i++) {
+    query = query.eq(filters[i][0], filters[i][1]);
+  }
+  return firstRow(query.limit(1));
+}
+
+async function firstRow(
+  promise: Promise<{ data: unknown; error: unknown }>,
+): Promise<{ row: Record<string, unknown> | null; error: unknown }> {
+  try {
+    const { data, error } = await promise;
+    if (error) return { row: null, error };
+    if (Array.isArray(data)) {
+      return { row: (data[0] as Record<string, unknown>) ?? null, error: null };
+    }
+    return { row: (data as Record<string, unknown>) ?? null, error: null };
+  } catch (error) {
+    return { row: null, error };
+  }
+}
 
 export async function loadConnectedPublishPlatforms(
   sb: {
     from: (table: string) => {
       select: (cols: string) => {
-        eq: (col: string, val: unknown) => {
-          eq?: (col: string, val: unknown) => {
-            maybeSingle: () => Promise<{ data: unknown; error: unknown }>;
-          };
-          maybeSingle: () => Promise<{ data: unknown; error: unknown }>;
-        };
+        eq: (col: string, val: unknown) => QueryChain;
       };
     };
   },
   userId: string,
 ): Promise<ConnectedPublishPlatforms> {
-  const [
-    { data: meta, error: metaError },
-    { data: linkedin, error: linkedinError },
-    { data: tiktok, error: tiktokError },
-  ] = await Promise.all([
-    sb.from("meta_connections")
-      .select("page_id, ig_account_id")
-      .eq("user_id", userId)
-      .eq("is_active", true)
-      .maybeSingle(),
-    sb.from("linkedin_connections")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("is_active", true)
-      .maybeSingle(),
-    sb.from("integrations")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("platform", "tiktok")
-      .eq("is_active", true)
-      .maybeSingle(),
+  const metaProbe = connectionQuery(sb, "meta_connections", "page_id, ig_account_id", [
+    ["user_id", userId],
+    ["is_active", true],
   ]);
-  if (metaError || linkedinError || tiktokError) {
-    throw new Error("nao_consegui_consultar_redes_conectadas");
-  }
-  const metaRow = meta as { page_id?: string; ig_account_id?: string } | null;
+  const linkedinProbe = connectionQuery(sb, "linkedin_connections", "id", [
+    ["user_id", userId],
+    ["is_active", true],
+  ]);
+  const tiktokProbe = connectionQuery(sb, "integrations", "id", [
+    ["user_id", userId],
+    ["platform", "tiktok"],
+    ["is_active", true],
+  ]);
+
+  const [meta, linkedin, tiktok] = await Promise.all([
+    metaProbe,
+    linkedinProbe,
+    tiktokProbe,
+  ]);
+
+  const metaRow = meta.error ? null : meta.row;
   return {
-    facebook: !!metaRow?.page_id,
-    instagram: !!metaRow?.ig_account_id,
-    linkedin: !!(linkedin as { id?: string } | null)?.id,
-    tiktok: !!(tiktok as { id?: string } | null)?.id,
+    facebook: meta.error
+      ? null
+      : metaRow
+      ? !!String(metaRow.page_id || "").trim()
+      : false,
+    instagram: meta.error
+      ? null
+      : metaRow
+      ? !!String(metaRow.ig_account_id || "").trim()
+      : false,
+    linkedin: linkedin.error
+      ? null
+      : linkedin.row
+      ? !!String(linkedin.row.id || "").trim()
+      : false,
+    tiktok: tiktok.error
+      ? null
+      : tiktok.row
+      ? !!String(tiktok.row.id || "").trim()
+      : false,
   };
+}
+
+export function platformConnectionState(
+  connected: ConnectedPublishPlatforms,
+  platform: string,
+): PlatformConnectionState {
+  const p = platform.toLowerCase();
+  if (p === "facebook") return connected.facebook;
+  if (p === "instagram") return connected.instagram;
+  if (p === "linkedin") return connected.linkedin;
+  if (p === "tiktok") return connected.tiktok;
+  return null;
+}
+
+/** false = bloquear; true/null = tentar publicar */
+export function shouldAttemptPublish(
+  connected: ConnectedPublishPlatforms,
+  platform: string,
+): boolean {
+  return platformConnectionState(connected, platform) !== false;
 }
 
 export function notConnectedPublishMessage(platform: string): string {
   const label = metaVideoPlatformLabel(platform);
-  return `${label} não conectado — conecte em Configurações.`;
+  return `${label}: não conectado — conecte em Configurações.`;
+}
+
+export function skipPublishMessage(platform: string, reason: string): string {
+  const label = metaVideoPlatformLabel(platform);
+  return `${label}: ${reason}`;
 }
 
 export function resolveVideoPublisher(
@@ -170,7 +241,7 @@ export function resolveVideoPublisher(
   const p = platform.toLowerCase();
   if (formato === "story") {
     if (p === "tiktok") {
-      return { kind: "skip", reason: "TikTok não tem formato story — ignorado" };
+      return { kind: "skip", reason: "não tem formato story — ignorado" };
     }
     return { kind: "meta-story" };
   }
@@ -181,18 +252,18 @@ export function resolveVideoPublisher(
   }
   if (p === "instagram") {
     return formato === "feed"
-      ? { kind: "meta-reels" }
+      ? { kind: "meta-instagram" }
       : { kind: "meta-reels" };
   }
   if (p === "linkedin") {
     return formato === "feed" || formato === "reels"
       ? { kind: "linkedin" }
-      : { kind: "skip", reason: "LinkedIn não publica story de vídeo" };
+      : { kind: "skip", reason: "não publica story de vídeo" };
   }
   if (p === "tiktok") {
     return formato === "reels" || formato === "feed"
       ? { kind: "tiktok" }
-      : { kind: "skip", reason: "TikTok não tem formato story — ignorado" };
+      : { kind: "skip", reason: "não tem formato story — ignorado" };
   }
   return { kind: "skip", reason: "rede desconhecida" };
 }
