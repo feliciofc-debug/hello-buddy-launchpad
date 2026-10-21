@@ -18,6 +18,7 @@ export function isPendingAnuncioDataCancellation(text: unknown): boolean {
 
 export function anuncioArgsFromOwnerData(
   text: unknown,
+  defaultTitle?: string | null,
 ): Record<string, unknown> | null {
   const raw = String(text || "").replace(
     /<<INTERACTIVE_ID:[^>]+>>/gi,
@@ -45,8 +46,14 @@ export function anuncioArgsFromOwnerData(
   );
   const conditions = parts.filter((_, index) => conditionIndexes.has(index));
 
+  const defaultTitleClean = String(defaultTitle || "").trim().slice(0, 120);
+  const firstLooksLikePrice = /^(?:r\$\s*)?\d[\d.]*,\d{2}\b/i.test(parts[0]);
+  const titulo = firstLooksLikePrice && defaultTitleClean
+    ? defaultTitleClean
+    : parts[0].slice(0, 120);
+
   return {
-    titulo: parts[0].slice(0, 120),
+    titulo,
     ...(priceIndex >= 0 ? { preco: parts[priceIndex] } : {}),
     ...(itemParts.length ? { itens: itemParts } : {}),
     ...(conditions.length ? { condicoes: conditions } : {}),

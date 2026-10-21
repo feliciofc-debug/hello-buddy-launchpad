@@ -24,6 +24,8 @@ export type VerticalNamespacedState = Record<string, unknown> & {
     pending_choice?: {
       media_id?: string;
       media_url?: string;
+      vision_description?: string;
+      awaiting_correction?: boolean;
       created_at: string;
     } | null;
     last_route?: InboundVertical;

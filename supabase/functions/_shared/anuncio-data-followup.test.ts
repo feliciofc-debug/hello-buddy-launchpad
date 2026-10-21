@@ -20,6 +20,17 @@ Deno.test("dados após botão Anúncio viram argumentos determinísticos", () =>
   });
 });
 
+Deno.test("título confirmado preenche anúncio quando a mensagem começa com preço", () => {
+  assertEquals(
+    anuncioArgsFromOwnerData("R$ 49,90 / Pix à vista", "Tapetes automotivos"),
+    {
+      titulo: "Tapetes automotivos",
+      preco: "R$ 49,90",
+      condicoes: ["Pix à vista"],
+    },
+  );
+});
+
 Deno.test("estado de dados do anúncio dura 30 minutos e aceita cancelar", () => {
   const now = Date.parse("2026-10-10T12:00:00.000Z");
   assertEquals(
