@@ -17743,6 +17743,91 @@ async function callGemini(
       }
       pendingVehicleIdentification = null;
     }
+    const vehicleDataFromText = (text: string): VehicleCarouselData => {
+      const data = parseVehicleCarouselData(text);
+      const explicitPrice = explicitVehiclePriceChoice(text);
+      return explicitPrice ? { ...data, preco: explicitPrice } : data;
+    };
+    const saveVehicleIdentification = async (
+      next: typeof pendingVehicleIdentification,
+    ) => {
+      if (!toolCtx.convId) return;
+      await saveAgentState(sb, {
+        id: toolCtx.convId,
+        userId: toolCtx.userId,
+        contactNumber: toolCtx.fromNumber,
+      }, { pending_vehicle_identification: next }, toolCtx.agentState ?? {});
+      if (toolCtx.agentState) {
+        toolCtx.agentState.pending_vehicle_identification = next;
+      }
+      pendingVehicleIdentification = next;
+    };
+    const confirmVehicleIdentification = async (
+      correctedTitle?: string,
+      suppliedData: VehicleCarouselData = {},
+    ) => {
+      if (!pendingVehicleIdentification) {
+        return { text: "Não encontrei uma identificação de veículo pendente." };
+      }
+      const identity = pendingVehicleIdentification.identification;
+      const confirmedTitle = String(
+        correctedTitle ||
+          `${identity.marca || ""} ${identity.modelo || ""}`,
+      ).trim();
+      if (
+        !(correctedTitle
+          ? looksLikeVehicleMakeModel(confirmedTitle)
+          : hasSpecificVehicleModel(identity)) ||
+        isGenericVehicleTitle(confirmedTitle)
+      ) {
+        return {
+          text:
+            "Preciso da marca e do modelo exatos, por exemplo: Fiat Grand Siena. Qual é?",
+        };
+      }
+      const mergedData: VehicleCarouselData = {
+        ...(pendingVehicleIdentification.data ?? {}),
+        ...suppliedData,
+        titulo: confirmedTitle,
+        ...(identity.cor && !suppliedData.cor ? { cor: identity.cor } : {}),
+      };
+      const missing = [
+        !mergedData.ano ? "ano" : "",
+        !mergedData.quilometragem ? "quilometragem" : "",
+        !mergedData.preco ? "preço" : "",
+      ].filter(Boolean);
+      if (
+        pendingVehicleIdentification.target === "carousel" &&
+        pendingVehicleCarousel
+      ) {
+        await persistVehicleCarousel(toolCtx, {
+          ...pendingVehicleCarousel,
+          stage: "awaiting_data" as const,
+          data: {
+            ...(pendingVehicleCarousel.data ?? {}),
+            ...mergedData,
+          },
+          created_at: new Date().toISOString(),
+        });
+        await saveVehicleIdentification(null);
+      } else {
+        await saveVehicleIdentification({
+          ...pendingVehicleIdentification,
+          confirmed: true,
+          confirmed_title: confirmedTitle,
+          awaiting_correction: false,
+          data: mergedData,
+          created_at: new Date().toISOString(),
+        });
+      }
+      return {
+        text: missing.length
+          ? `Confirmado: ${confirmedTitle}. Falta informar: ${
+            missing.join(", ")
+          }.`
+          : `Confirmado: ${confirmedTitle}. Guardei ano, quilometragem e preço.`,
+      };
+    };
     const pendingSinglePhoto = remetenteEhDono ? toolCtx.agentState?.pending_single_photo : null;
     let pendingImageEdit = remetenteEhDono
       ? toolCtx.agentState?.pending_image_edit
@@ -18280,7 +18365,7 @@ async function callGemini(
             ano: data.ano,
             versao: data.versao,
             quilometragem: data.quilometragem,
-            itens: data.itens,
+            itens: data.opcionais,
             cor: data.cor,
           } as any, toolCtx);
           try {
@@ -18360,7 +18445,7 @@ async function callGemini(
           ano: data.ano,
           versao: data.versao,
           quilometragem: data.quilometragem,
-          itens: data.itens,
+          itens: data.opcionais,
           cor: data.cor,
         } as any, toolCtx);
         try {
@@ -18950,92 +19035,6 @@ async function callGemini(
     if (videoMotionRedo) {
       return { text: await refazerVideoMotion(toolCtx, userContent) };
     }
-
-    const vehicleDataFromText = (text: string): VehicleCarouselData => {
-      const data = parseVehicleCarouselData(text);
-      const explicitPrice = explicitVehiclePriceChoice(text);
-      return explicitPrice ? { ...data, preco: explicitPrice } : data;
-    };
-    const saveVehicleIdentification = async (
-      next: typeof pendingVehicleIdentification,
-    ) => {
-      if (!toolCtx.convId) return;
-      await saveAgentState(sb, {
-        id: toolCtx.convId,
-        userId: toolCtx.userId,
-        contactNumber: toolCtx.fromNumber,
-      }, { pending_vehicle_identification: next }, toolCtx.agentState ?? {});
-      if (toolCtx.agentState) {
-        toolCtx.agentState.pending_vehicle_identification = next;
-      }
-      pendingVehicleIdentification = next;
-    };
-    const confirmVehicleIdentification = async (
-      correctedTitle?: string,
-      suppliedData: VehicleCarouselData = {},
-    ) => {
-      if (!pendingVehicleIdentification) {
-        return { text: "Não encontrei uma identificação de veículo pendente." };
-      }
-      const identity = pendingVehicleIdentification.identification;
-      const confirmedTitle = String(
-        correctedTitle ||
-          `${identity.marca || ""} ${identity.modelo || ""}`,
-      ).trim();
-      if (
-        !(correctedTitle
-          ? looksLikeVehicleMakeModel(confirmedTitle)
-          : hasSpecificVehicleModel(identity)) ||
-        isGenericVehicleTitle(confirmedTitle)
-      ) {
-        return {
-          text:
-            "Preciso da marca e do modelo exatos, por exemplo: Fiat Grand Siena. Qual é?",
-        };
-      }
-      const mergedData: VehicleCarouselData = {
-        ...(pendingVehicleIdentification.data ?? {}),
-        ...suppliedData,
-        titulo: confirmedTitle,
-        ...(identity.cor && !suppliedData.cor ? { cor: identity.cor } : {}),
-      };
-      const missing = [
-        !mergedData.ano ? "ano" : "",
-        !mergedData.quilometragem ? "quilometragem" : "",
-        !mergedData.preco ? "preço" : "",
-      ].filter(Boolean);
-      if (
-        pendingVehicleIdentification.target === "carousel" &&
-        pendingVehicleCarousel
-      ) {
-        await persistVehicleCarousel(toolCtx, {
-          ...pendingVehicleCarousel,
-          stage: "awaiting_data" as const,
-          data: {
-            ...(pendingVehicleCarousel.data ?? {}),
-            ...mergedData,
-          },
-          created_at: new Date().toISOString(),
-        });
-        await saveVehicleIdentification(null);
-      } else {
-        await saveVehicleIdentification({
-          ...pendingVehicleIdentification,
-          confirmed: true,
-          confirmed_title: confirmedTitle,
-          awaiting_correction: false,
-          data: mergedData,
-          created_at: new Date().toISOString(),
-        });
-      }
-      return {
-        text: missing.length
-          ? `Confirmado: ${confirmedTitle}. Falta informar: ${
-            missing.join(", ")
-          }.`
-          : `Confirmado: ${confirmedTitle}. Guardei ano, quilometragem e preço.`,
-      };
-    };
 
     if (
       remetenteEhDono &&
@@ -24691,7 +24690,7 @@ async function processOne(queueId: string) {
           vertical_router: rawFreshAgentState.vertical_router,
         }, rawFreshAgentState);
       }
-      const freshAgentState = fromIsOwner
+      let freshAgentState = fromIsOwner
         ? await scopedConversationState(
           stateConversation,
           rawFreshAgentState,
