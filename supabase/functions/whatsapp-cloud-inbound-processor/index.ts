@@ -467,9 +467,7 @@ import {
 } from "../_shared/vehicle-post-fipe-menu.ts";
 import {
   parseVehiclePhotoActionId,
-  vehiclePhotoAppearsMessage,
   vehiclePhotoDirectActionList,
-  vehiclePhotoRepeatedAppearsMessage,
 } from "../_shared/vehicle-photo-direct-menu.ts";
 import {
   generalSpecialistAllowsTool,
@@ -27530,12 +27528,19 @@ Regras:
     }
 
     migratedAgentState.vertical_router = routerStateForTurn;
+    const textDemoActive = !!isAdminTenant &&
+      !!routerStateForTurn.demo_segment?.segment &&
+      new Date(routerStateForTurn.demo_segment.expires_at).getTime() >
+        Date.now();
+    const textAutomotiveEffectiveSegment = textDemoActive
+      ? routerStateForTurn.demo_segment!.segment
+      : tenantSegment;
     const automotiveOwnerAccount = fromIsOwner &&
       ownerMediaAutomotiveContext({
         tenantSegment,
-        effectiveSegment: textVerticalDecision.effectiveSegment,
+        effectiveSegment: textAutomotiveEffectiveSegment,
         isAdmin: isAdminTenant,
-        demoMode: textVerticalDecision.demoMode,
+        demoMode: textDemoActive,
       });
     const selectedVertical = verticalChoiceId === "vehicle" ||
         (automotiveOwnerAccount &&
