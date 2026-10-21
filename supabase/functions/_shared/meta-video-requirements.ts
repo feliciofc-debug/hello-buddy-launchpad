@@ -1,3 +1,5 @@
+import { metaVideoPlatformLabel } from "./video-publish-platforms.ts";
+
 export type MetaVideoOutput = {
   width?: unknown;
   height?: unknown;
@@ -118,10 +120,13 @@ export function friendlyMetaVideoPublishError(
   platform: string,
   error: unknown,
 ): string {
-  const network = platform === "instagram" ? "Instagram" : "Facebook";
+  const network = metaVideoPlatformLabel(platform);
   const message = error instanceof Error ? error.message : String(error || "");
   if (/processamento ainda não terminou|timeout/i.test(message)) {
     return `${network}: o vídeo ainda está processando. Vou manter para tentar novamente.`;
+  }
+  if (/n[aã]o conectad|not_connected|reconect/i.test(message)) {
+    return `${network} não conectado — conecte em Configurações.`;
   }
   return `${network}: não consegui publicar o vídeo. Tente novamente.`;
 }

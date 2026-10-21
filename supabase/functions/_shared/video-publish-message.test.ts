@@ -26,6 +26,14 @@ Deno.test("confirmação de vídeo recupera visual anterior e mantém links", ()
   assertStringIncludes(message, "https://www.instagram.com/reel/456");
 });
 
+Deno.test("publicação parcial usa cabeçalho dedicado", () => {
+  const message = formatVideoPublishMessage({
+    published: ["facebook"],
+    errors: ["Instagram: não consegui publicar o vídeo. Tente novamente."],
+  });
+  assertStringIncludes(message, "PUBLICADO EM PARTE");
+});
+
 Deno.test("falha de uma rede aparece uma vez com motivo curto", () => {
   const message = formatVideoPublishMessage({
     published: ["facebook"],

@@ -408,7 +408,7 @@ export function resolveVertical(input: {
       };
     }
     return {
-      route: automotive ? "veiculo" : "geral",
+      route: input.vision.route,
       confidence,
       reason: "visao_baixa_confianca",
       needsConfirmation: true,
@@ -418,10 +418,10 @@ export function resolveVertical(input: {
     };
   }
   return {
-    route: "veiculo",
-    confidence: 0.8,
-    reason: demoActive ? "ramo_demo_revenda" : "ramo_revenda",
-    needsConfirmation: false,
+    route: "geral",
+    confidence: 0,
+    reason: demoActive ? "ramo_demo_sem_visao" : "ramo_sem_visao",
+    needsConfirmation: true,
     explicitFipe,
     effectiveSegment,
     demoMode: demoActive,

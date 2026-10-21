@@ -3,13 +3,10 @@ type VideoPublishLink = {
   url: string;
 };
 
-const NETWORK_LABELS: Record<string, string> = {
-  facebook: "FACEBOOK",
-  instagram: "INSTAGRAM",
-};
+import { metaVideoPlatformLabel } from "./video-publish-platforms.ts";
 
 function networkLabel(network: string): string {
-  return NETWORK_LABELS[network.toLowerCase()] || network.toUpperCase();
+  return metaVideoPlatformLabel(network).toUpperCase();
 }
 
 export function formatVideoPublishMessage(input: {
@@ -31,14 +28,21 @@ export function formatVideoPublishMessage(input: {
     );
   }
 
+  const publishedKeys = new Set(
+    published.map((network) => network.toLowerCase()),
+  );
   for (const error of errors) {
     const match = String(error).match(/^([^:]+):\s*(.+)$/);
     const network = match?.[1] || "publicação";
+    if (publishedKeys.has(network.toLowerCase())) continue;
     const reason = match?.[2] || String(error);
     blocks.push(`❌ *${networkLabel(network)}* — ${reason}`);
   }
 
-  const header = published.length
+  const hasErrors = blocks.some((block) => block.startsWith("❌"));
+  const header = published.length && hasErrors
+    ? "⚠️ *PUBLICADO EM PARTE*"
+    : published.length
     ? "🎉 *POSTAGEM REALIZADA COM SUCESSO!* 🎉"
     : "⚠️ *POSTAGEM NÃO CONCLUÍDA*";
   return [header, ...blocks].join("\n\n");

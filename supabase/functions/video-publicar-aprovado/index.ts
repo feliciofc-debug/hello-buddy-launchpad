@@ -13,6 +13,16 @@ import {
 } from "../_shared/meta-video-requirements.ts";
 import { readyVideoRerenderButtons } from "../_shared/ready-media-actions.ts";
 import { formatVideoPublishMessage } from "../_shared/video-publish-message.ts";
+import {
+  formatPublishErrorLogEntry,
+  loadConnectedPublishPlatforms,
+  mergePublishedPosts,
+  notConnectedPublishMessage,
+  readJobPublishedPosts,
+  resolveVideoPublisher,
+  sanitizePublishApiDetail,
+  uniqueVideoPublishPlatforms,
+} from "../_shared/video-publish-platforms.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -25,6 +35,18 @@ function resp(body: unknown, status = 200) {
     status,
     headers: { ...cors, "Content-Type": "application/json" },
   });
+}
+
+function isConnected(
+  connected: Awaited<ReturnType<typeof loadConnectedPublishPlatforms>>,
+  platform: string,
+): boolean {
+  const p = platform.toLowerCase();
+  if (p === "facebook") return connected.facebook;
+  if (p === "instagram") return connected.instagram;
+  if (p === "linkedin") return connected.linkedin;
+  if (p === "tiktok") return connected.tiktok;
+  return false;
 }
 
 Deno.serve(async (req) => {
@@ -46,15 +68,13 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (!job) throw new Error("job não encontrado");
     if (
-      !["aguardando_aprovacao", "aprovado", "erro_publicacao"].includes(
+      !["aguardando_aprovacao", "aprovado", "erro_publicacao", "publicado_parcial"].includes(
         job.status,
       )
     ) {
       throw new Error(`job em status inválido para publicar: ${job.status}`);
     }
 
-    // 🚫 NUNCA publicar o vídeo de entrada (video_bucket/video_path).
-    // Só o resultado do encode (com legenda queimada) pode ir ao ar.
     if (!job.resultado_path || !job.resultado_bucket) {
       await supabase
         .from("video_render_jobs")
@@ -82,15 +102,16 @@ Deno.serve(async (req) => {
       `[video-publicar-aprovado] publicando LEGENDADO ${bucket}/${job.resultado_path}`,
     );
 
-    // Destino resolvido: só publica onde foi pedido.
     const pedidas: string[] = Array.isArray(job.metadata?.plataformas_pedidas)
       ? job.metadata.plataformas_pedidas
       : [];
-    const plataformas: string[] = pedidas.length
-      ? pedidas
-      : (Array.isArray(job.plataformas) && job.plataformas.length
-        ? job.plataformas
-        : ["instagram", "facebook"]);
+    const plataformas = uniqueVideoPublishPlatforms(
+      pedidas.length
+        ? pedidas
+        : (Array.isArray(job.plataformas) && job.plataformas.length
+          ? job.plataformas
+          : ["instagram", "facebook"]),
+    );
 
     const formato = renderedMetaVideoFormat(
       job.formato,
@@ -156,12 +177,41 @@ Deno.serve(async (req) => {
       });
     }
 
+    const connected = await loadConnectedPublishPlatforms(supabase, job.user_id);
+    let publishedPosts = readJobPublishedPosts(job.metadata);
     const publicados: string[] = [];
     const erros: string[] = [];
+    const erroLogs: string[] = [];
     const links: Array<{ plataforma: string; url: string }> = [];
+    const caption = job.copy_escolhida || job.caption || " ";
+
+    const recordSuccess = (
+      plataforma: string,
+      res: { post_url?: string; post_id?: string; post_urn?: string },
+    ) => {
+      publicados.push(plataforma);
+      publishedPosts = mergePublishedPosts(publishedPosts, plataforma, {
+        post_id: res.post_id,
+        post_url: res.post_url,
+        post_urn: res.post_urn,
+      });
+      if (typeof res.post_url === "string" && res.post_url) {
+        links.push({ plataforma, url: res.post_url });
+      }
+    };
+
+    const recordFailure = (plataforma: string, error: unknown) => {
+      const detail = sanitizePublishApiDetail(error);
+      const friendly = friendlyMetaVideoPublishError(plataforma, detail.message);
+      erros.push(friendly);
+      erroLogs.push(formatPublishErrorLogEntry(plataforma, friendly, detail));
+    };
 
     if (ehStory) {
-      // STORY: função dedicada, aceita os dois canais de uma vez.
+      const targets = plataformas.filter((p) => {
+        const prior = publishedPosts[String(p).toLowerCase()];
+        return !(prior?.post_id || prior?.post_url || prior?.post_urn);
+      });
       try {
         const { data: res, error: sErr } = await supabase.functions.invoke(
           "meta-publish-story",
@@ -169,21 +219,24 @@ Deno.serve(async (req) => {
             body: {
               video_url: videoUrl,
               user_id: job.user_id,
-              canais: plataformas,
+              canais: targets.filter((p) => isConnected(connected, p)),
             },
           },
         );
         if (sErr) throw sErr;
-        for (const plataforma of plataformas) {
+        for (const plataforma of targets) {
+          if (!isConnected(connected, plataforma)) {
+            recordFailure(plataforma, notConnectedPublishMessage(plataforma));
+            continue;
+          }
           const r = res?.[plataforma];
-          if (r?.ok) publicados.push(plataforma);
-          else {
-            erros.push(
-              friendlyMetaVideoPublishError(
-                plataforma,
-                r?.error || res?.error || "falhou",
-              ),
-            );
+          if (r?.ok) {
+            recordSuccess(plataforma, {
+              post_url: r?.post_url,
+              post_id: r?.post_id,
+            });
+          } else {
+            recordFailure(plataforma, r?.error || res?.error || "falhou");
           }
         }
       } catch (e) {
@@ -191,64 +244,98 @@ Deno.serve(async (req) => {
       }
     } else {
       for (const plataforma of plataformas) {
+        const prior = publishedPosts[plataforma.toLowerCase()];
+        if (prior?.post_id || prior?.post_url || prior?.post_urn) {
+          publicados.push(plataforma);
+          if (prior.post_url) {
+            links.push({ plataforma, url: prior.post_url });
+          }
+          continue;
+        }
+        if (!isConnected(connected, plataforma)) {
+          recordFailure(plataforma, notConnectedPublishMessage(plataforma));
+          continue;
+        }
+        const route = resolveVideoPublisher(plataforma, formato);
+        if (route.kind === "skip") {
+          recordFailure(plataforma, route.reason || "ignorado");
+          continue;
+        }
         try {
-          const functionName = formato === "feed"
-            ? plataforma === "facebook"
-              ? "meta-publish-post"
-              : "meta-publish-instagram"
-            : "meta-publish-reels";
-          const body = formato === "feed"
-            ? plataforma === "facebook"
-              ? {
-                message: job.copy_escolhida || job.caption || " ",
-                video_url: videoUrl,
-                user_id: job.user_id,
-                preserve_caption: true,
-              }
-              : {
-                caption: job.copy_escolhida || job.caption || " ",
-                video_url: videoUrl,
-                user_id: job.user_id,
-                preserve_caption: true,
-              }
-            : {
-              platform: plataforma,
+          let functionName = "meta-publish-reels";
+          let body: Record<string, unknown> = {};
+          if (route.kind === "meta-post") {
+            functionName = "meta-publish-post";
+            body = {
+              message: caption,
               video_url: videoUrl,
-              caption: job.copy_escolhida || job.caption || " ",
               user_id: job.user_id,
               preserve_caption: true,
             };
+          } else if (route.kind === "meta-instagram" || route.kind === "meta-reels") {
+            functionName = "meta-publish-reels";
+            body = {
+              platform: plataforma,
+              video_url: videoUrl,
+              caption,
+              user_id: job.user_id,
+              preserve_caption: true,
+            };
+          } else if (route.kind === "linkedin") {
+            functionName = "linkedin-publish";
+            body = {
+              user_id: job.user_id,
+              texto: caption,
+              video_url: videoUrl,
+            };
+          } else if (route.kind === "tiktok") {
+            functionName = "tiktok-post-content";
+            body = {
+              user_id: job.user_id,
+              content_type: "video",
+              content_url: videoUrl,
+              title: caption.slice(0, 2200),
+              post_mode: "direct",
+              privacy_level: "PUBLIC_TO_EVERYONE",
+            };
+          }
           const { data: res, error: pErr } = await supabase.functions.invoke(
             functionName,
             { body },
           );
           if (pErr) throw pErr;
-          if (res?.success) {
-            publicados.push(plataforma);
-            if (typeof res?.post_url === "string" && res.post_url) {
-              links.push({ plataforma, url: res.post_url });
-            }
+          const ok = res?.success === true || /^urn:li:/i.test(String(res?.post_urn || ""));
+          if (ok) {
+            recordSuccess(plataforma, {
+              post_url: res?.post_url,
+              post_id: res?.post_id,
+              post_urn: res?.post_urn,
+            });
           } else {
-            erros.push(
-              friendlyMetaVideoPublishError(
-                plataforma,
-                res?.error || "falhou",
-              ),
-            );
+            recordFailure(plataforma, res?.error || "falhou");
           }
         } catch (e) {
-          erros.push(friendlyMetaVideoPublishError(plataforma, e));
+          recordFailure(plataforma, e);
         }
       }
     }
 
+    const attempted = plataformas.length;
+    const successCount = new Set(publicados.map((p) => p.toLowerCase())).size;
+    const status = successCount === 0
+      ? "erro_publicacao"
+      : erros.length > 0 || successCount < attempted
+      ? "publicado_parcial"
+      : "publicado";
     await supabase
       .from("video_render_jobs")
       .update({
-        status: erros.length === 0 && publicados.length === plataformas.length
-          ? "publicado"
-          : "erro_publicacao",
-        erro_mensagem: erros.length ? erros.join(" | ") : null,
+        status,
+        erro_mensagem: erroLogs.length ? erroLogs.join(" | ") : null,
+        metadata: {
+          ...(job.metadata || {}),
+          publicados: publishedPosts,
+        },
       })
       .eq("id", job.id);
 
@@ -268,7 +355,8 @@ Deno.serve(async (req) => {
     }
 
     return resp({
-      success: erros.length === 0 && publicados.length === plataformas.length,
+      success: status === "publicado",
+      partial: status === "publicado_parcial",
       plataformas: publicados,
       erros,
       links,

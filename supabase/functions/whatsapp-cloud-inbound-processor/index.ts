@@ -426,6 +426,15 @@ import {
   type VerticalDecision,
 } from "../_shared/vertical-router.ts";
 import {
+  parseVehiclePostFipeInteractiveId,
+  shouldOfferVehiclePostFipeMenu,
+  vehiclePostFipeEstoqueGuide,
+  vehiclePostFipeMenuList,
+  vehiclePostFipeMetaTriggerText,
+  vehiclePostFipeTrocaGuide,
+  vehiclePostFipeVideoTheme,
+} from "../_shared/vehicle-post-fipe-menu.ts";
+import {
   generalSpecialistAllowsTool,
   generalSpecialistPhotoButtons,
   generalSpecialistPrompt,
@@ -901,7 +910,7 @@ function extractText(payload: any): string {
   if (payload.interactive?.list_reply?.title) {
     const title = String(payload.interactive.list_reply.title);
     const id = String(payload.interactive.list_reply.id || "");
-    return /^(?:video_|fipe_|anuncio_post:|carrossel_(?:estilo|cor)_|tiktok_(?:privacy|disclosure):|meta_ads_q:|veiculo_vitrine:)/i.test(id)
+    return /^(?:video_|fipe_|anuncio_post:|carrossel_(?:estilo|cor)_|tiktok_(?:privacy|disclosure):|meta_ads_q:|veiculo_vitrine:|vehicle_post_fipe:)/i.test(id)
       ? `${title}\n<<INTERACTIVE_ID:${id}>>`
       : title;
   }
@@ -15415,7 +15424,11 @@ async function finishFipeLookup(
     created_at: new Date().toISOString(),
   };
   await persistFipeState(ctx, null, last);
-  return { result: formatFipeResult(result) };
+  const response: FipeToolResponse = { result: formatFipeResult(result) };
+  if (shouldOfferVehiclePostFipeMenu(ctx.agentState)) {
+    response.interactiveList = vehiclePostFipeMenuList();
+  }
+  return response;
 }
 
 async function continueFipeWithModel(
@@ -17813,6 +17826,84 @@ async function callGemini(
         toolCtx,
       );
       if (response) return response;
+    }
+    const vehiclePostFipeAction = remetenteEhDono
+      ? parseVehiclePostFipeInteractiveId(userContent)
+      : null;
+    if (remetenteEhDono && vehiclePostFipeAction) {
+      const pendingId = toolCtx.agentState?.pending_vehicle_identification;
+      if (vehiclePostFipeAction === "ad") {
+        const mediaId = String(
+          toolCtx.agentState?.last_media_interaction?.media_id || "",
+        ).trim();
+        const data = pendingId?.data ?? {};
+        const titulo = String(
+          pendingId?.confirmed_title || data.titulo || "",
+        ).trim();
+        if (!mediaId || !titulo) {
+          return {
+            text:
+              "Preciso da foto e do modelo confirmados antes de gerar a arte. Envie a foto de novo ou confirme o veículo.",
+          };
+        }
+        const raw = await toolCriarAnuncio({
+          titulo,
+          preco: data.preco,
+          ano: data.ano,
+          versao: data.versao,
+          quilometragem: data.quilometragem,
+          itens: data.itens,
+          cor: data.cor,
+        } as any, toolCtx);
+        try {
+          const parsed = JSON.parse(raw);
+          return {
+            text: String(parsed?.mensagem || parsed?.erro || raw),
+            imageUrl: parsed?.image_url,
+            interactiveButtons: parsed?.interactive_buttons,
+          };
+        } catch {
+          return { text: raw };
+        }
+      }
+      if (vehiclePostFipeAction === "meta") {
+        if (!toolCtx.convId) {
+          return { text: "Não consegui iniciar a campanha agora. Tente novamente." };
+        }
+        const meta = await processMetaAdsQuestionario({
+          userId: toolCtx.userId,
+          fromNumber: toolCtx.fromNumber,
+          conversationId: toolCtx.convId,
+          text: vehiclePostFipeMetaTriggerText(),
+          owner: true,
+        });
+        if (!meta.handled) {
+          return {
+            text:
+              "Não consegui abrir o questionário de anúncio pago. Verifique a conexão com Meta Ads em Configurações.",
+          };
+        }
+        return {
+          text: meta.text || "Vamos montar a campanha paga.",
+          interactiveButtons: meta.interactiveButtons,
+          interactiveList: meta.interactiveList,
+          metaAdsSummaryDraftId: meta.summaryDraftId,
+        };
+      }
+      if (vehiclePostFipeAction === "video") {
+        const reply = await startVideoSetup(
+          toolCtx,
+          vehiclePostFipeVideoTheme(toolCtx.agentState),
+          { tema: vehiclePostFipeVideoTheme(toolCtx.agentState) },
+        );
+        return { text: reply };
+      }
+      if (vehiclePostFipeAction === "estoque") {
+        return { text: vehiclePostFipeEstoqueGuide() };
+      }
+      if (vehiclePostFipeAction === "troca") {
+        return { text: vehiclePostFipeTrocaGuide() };
+      }
     }
     if (remetenteEhDono && isExplicitFipeRequest(userContent)) {
       let input = fipeInputFromTextAndBrands(

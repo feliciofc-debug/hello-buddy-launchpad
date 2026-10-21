@@ -99,16 +99,46 @@ Deno.test("pendente ativo retoma a vertical certa sem sequestrar pedido explíci
   );
 });
 
-Deno.test("perfil da revenda é viés de veículo; hospital e loja são gerais", () => {
+Deno.test("perfil da revenda exige classificação; hospital e loja são gerais", () => {
   assert(isAutomotiveTenant("Revenda de veículos seminovos"));
-  assertEquals(
-    resolveVertical({ tenantSegment: "Revenda de veículos" }).route,
-    "veiculo",
-  );
+  const semVisao = resolveVertical({ tenantSegment: "Revenda de veículos" });
+  assertEquals(semVisao.route, "geral");
+  assertEquals(semVisao.needsConfirmation, true);
   assertEquals(resolveVertical({ tenantSegment: "Hospital" }).route, "geral");
   assertEquals(
     resolveVertical({ tenantSegment: "Loja de presentes" }).route,
     "geral",
+  );
+});
+
+Deno.test("revenda classifica tapete como produto e carro como veículo", () => {
+  assertEquals(
+    resolveVertical({
+      tenantSegment: "Revenda de veículos",
+      vision: { route: "geral", confidence: 0.99, reason: "tapete" },
+    }).route,
+    "geral",
+  );
+  assertEquals(
+    resolveVertical({
+      tenantSegment: "Revenda de veículos",
+      vision: { route: "veiculo", confidence: 0.98 },
+    }).route,
+    "veiculo",
+  );
+});
+
+Deno.test("revenda sem visão ou visão incerta pede botões", () => {
+  assertEquals(
+    resolveVertical({ tenantSegment: "Revenda de veículos" }).needsConfirmation,
+    true,
+  );
+  assertEquals(
+    resolveVertical({
+      tenantSegment: "Revenda de veículos",
+      vision: { route: "veiculo", confidence: 0.4 },
+    }).needsConfirmation,
+    true,
   );
 });
 
