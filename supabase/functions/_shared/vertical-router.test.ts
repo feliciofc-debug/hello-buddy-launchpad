@@ -17,6 +17,7 @@ import {
   scopedVerticalState,
   verticalAdDetailsPrompt,
   verticalChoiceButtons,
+  verticalVisionPrompt,
   withDemoModeLabel,
 } from "./vertical-router.ts";
 import {
