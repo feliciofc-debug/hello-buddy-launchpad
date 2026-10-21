@@ -9,9 +9,14 @@ import {
   generateVehicleAdCaptions as routeVehicleCaptions,
 } from "./anuncio-social-flow.ts";
 import {
+  looksLikeVehicleKmPrecoReply,
+  shouldUseVehicleSocialLibraryCaption,
   vehicleCaptionDataFromSources,
   vehicleCaptionMissingKmOrPreco,
+  vehicleSocialCopyCancelRequest,
+  vehicleSocialCopyPendingExpired,
 } from "./vehicle-social-caption.ts";
+import { mergeOwnerMediaRoute } from "./owner-media-route.ts";
 
 const fullVehicle = {
   titulo: "JEEP RENEGADE Longitude T270 1.3 Flex",
@@ -90,4 +95,60 @@ Deno.test("COPY-VEICULO — gate km/preço", () => {
   );
   assertEquals(missing.includes("km"), true);
   assertEquals(missing.includes("preco"), true);
+});
+
+Deno.test("COPY-VEICULO-1.1 — tapete confirmado geral ignora palavra carro na descrição", () => {
+  const router = {
+    media_routes: mergeOwnerMediaRoute({}, "midia-tapete", {
+      route: "geral",
+      origin: "botao_dono",
+      vision_description: "tapete para carro",
+      confirmed: true,
+    }),
+  };
+  assertEquals(
+    shouldUseVehicleSocialLibraryCaption({
+      mediaId: "midia-tapete",
+      verticalRouter: router,
+      verticalScope: "veiculo",
+      fallbackContext: {
+        nome: "Tapete automotivo",
+        descricaoVisual: "tapete para carro em borracha",
+        briefing: "",
+      },
+    }),
+    false,
+  );
+  assertEquals(
+    vehicleCaptionMissingKmOrPreco(
+      vehicleCaptionDataFromSources({
+        nome: "Tapete",
+        descricao: "tapete para carro",
+      }),
+    ).length > 0,
+    true,
+  );
+});
+
+Deno.test("COPY-VEICULO-1.1 — pendente expira em 30 minutos", () => {
+  const old = new Date(Date.now() - 31 * 60 * 1000).toISOString();
+  assertEquals(vehicleSocialCopyPendingExpired(old), true);
+  assertEquals(
+    vehicleSocialCopyPendingExpired(new Date().toISOString()),
+    false,
+  );
+});
+
+Deno.test("COPY-VEICULO-1.1 — cancelar limpa intenção de km/preço", () => {
+  assertEquals(vehicleSocialCopyCancelRequest("cancelar"), true);
+  assertEquals(vehicleSocialCopyCancelRequest("deixa"), true);
+  assertEquals(looksLikeVehicleKmPrecoReply("cancelar"), false);
+});
+
+Deno.test("COPY-VEICULO-1.1 — outro pedido não é tratado como km/preço", () => {
+  assertEquals(
+    looksLikeVehicleKmPrecoReply("cria um vídeo do Renegade"),
+    false,
+  );
+  assertEquals(looksLikeVehicleKmPrecoReply("45 mil km e R$ 118.900"), true);
 });

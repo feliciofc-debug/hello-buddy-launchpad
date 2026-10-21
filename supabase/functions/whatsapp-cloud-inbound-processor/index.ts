@@ -75,10 +75,13 @@ import {
 } from "../_shared/vehicle-carousel.ts";
 import {
   generateVehicleSocialPostVariants,
-  isVehicleSocialLibraryContext,
+  looksLikeVehicleKmPrecoReply,
+  shouldUseVehicleSocialLibraryCaption,
   vehicleCaptionDataFromSources,
   vehicleCaptionMissingKmOrPreco,
   vehicleSocialCaptionGateButtons,
+  vehicleSocialCopyCancelRequest,
+  vehicleSocialCopyPendingExpired,
 } from "../_shared/vehicle-social-caption.ts";
 import {
   explicitVehiclePriceChoice,
@@ -10884,13 +10887,41 @@ async function toolPostarMidiaBiblioteca(
       midia_tipo: isVideo ? ("video" as const) : ("foto" as const),
     };
 
-    const vehicleSocialPost = contentNicheForContext(ctx) === "veiculo" &&
-      isVehicleSocialLibraryContext({
-        nome,
-        descricaoVisual,
-        briefing: `${briefing} ${legendaDono}`.trim(),
+    const verticalScope = (ctx.agentState as Record<string, unknown> | undefined)
+      ?.__vertical_scope as InboundVertical | undefined;
+    const vehicleSocialPost = !isVideo &&
+      shouldUseVehicleSocialLibraryCaption({
+        mediaId: midia.id,
+        verticalRouter: ctx.agentState?.vertical_router,
+        verticalScope,
+        fallbackContext: {
+          nome,
+          descricaoVisual,
+          briefing: `${briefing} ${legendaDono}`.trim(),
+        },
       });
-    const pendingVehicleCopy = ctx.agentState?.pending_vehicle_social_copy;
+    let pendingVehicleCopy = ctx.agentState?.pending_vehicle_social_copy;
+    if (
+      pendingVehicleCopy &&
+      vehicleSocialCopyPendingExpired(pendingVehicleCopy.created_at)
+    ) {
+      pendingVehicleCopy = null;
+      if (ctx.convId) {
+        const conversation = {
+          id: ctx.convId,
+          userId: ctx.userId,
+          contactNumber: ctx.fromNumber,
+        };
+        const current = ctx.agentState ??
+          await loadAgentState(sb, conversation);
+        const saved = await saveAgentState(sb, conversation, {
+          pending_vehicle_social_copy: null,
+        }, current);
+        if (saved && ctx.agentState) {
+          ctx.agentState.pending_vehicle_social_copy = null;
+        }
+      }
+    }
     const vehicleCopySkipMissing = !!(
       pendingVehicleCopy?.skip_missing_fields &&
       pendingVehicleCopy.midia_id === midia.id
@@ -17776,8 +17807,46 @@ async function callGemini(
     const vehicleSocialCopyInteractiveId = userContent.match(
       /<<INTERACTIVE_ID:(vehicle_social_copy:[^>]+)>>/i,
     )?.[1]?.toLowerCase() || "";
-    const pendingVehicleSocialCopy = toolCtx.agentState
+    let pendingVehicleSocialCopy = toolCtx.agentState
       ?.pending_vehicle_social_copy;
+    if (
+      pendingVehicleSocialCopy &&
+      vehicleSocialCopyPendingExpired(pendingVehicleSocialCopy.created_at)
+    ) {
+      pendingVehicleSocialCopy = null;
+      if (toolCtx.convId) {
+        const conversation = {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        };
+        const current = toolCtx.agentState ??
+          await loadAgentState(sb, conversation);
+        const saved = await saveAgentState(sb, conversation, {
+          pending_vehicle_social_copy: null,
+        }, current);
+        if (saved && toolCtx.agentState) {
+          toolCtx.agentState.pending_vehicle_social_copy = null;
+        }
+      }
+    }
+    const clearPendingVehicleSocialCopy = async () => {
+      if (!toolCtx.convId) return;
+      const conversation = {
+        id: toolCtx.convId,
+        userId: toolCtx.userId,
+        contactNumber: toolCtx.fromNumber,
+      };
+      const current = toolCtx.agentState ??
+        await loadAgentState(sb, conversation);
+      const saved = await saveAgentState(sb, conversation, {
+        pending_vehicle_social_copy: null,
+      }, current);
+      if (saved && toolCtx.agentState) {
+        toolCtx.agentState.pending_vehicle_social_copy = null;
+      }
+      pendingVehicleSocialCopy = null;
+    };
     const singlePhotoInteractiveId = userContent.match(
       /<<INTERACTIVE_ID:(single_photo:[^>]+)>>/i,
     )?.[1]?.toLowerCase() || "";
@@ -18955,34 +19024,42 @@ async function callGemini(
       userContent.trim() &&
       !/<<INTERACTIVE_ID:/i.test(userContent)
     ) {
-      const resumeArgs = {
-        ...(pendingVehicleSocialCopy.tool_args || {}),
-      } as Parameters<typeof toolPostarMidiaBiblioteca>[0];
-      if (toolCtx.convId) {
-        const conversation = {
-          id: toolCtx.convId,
-          userId: toolCtx.userId,
-          contactNumber: toolCtx.fromNumber,
-        };
-        const current = toolCtx.agentState ??
-          await loadAgentState(sb, conversation);
-        const next = {
-          ...pendingVehicleSocialCopy,
-          tool_args: {
-            ...pendingVehicleSocialCopy.tool_args,
-            fields_text: userContent.trim(),
-          },
-        };
-        const saved = await saveAgentState(sb, conversation, {
-          pending_vehicle_social_copy: next,
-        }, current);
-        if (saved && toolCtx.agentState) {
-          toolCtx.agentState.pending_vehicle_social_copy = next;
-        }
+      if (vehicleSocialCopyCancelRequest(userContent)) {
+        await clearPendingVehicleSocialCopy();
+        return { text: "Ok, cancelei a legenda." };
       }
-      return {
-        text: await toolPostarMidiaBiblioteca(resumeArgs, toolCtx),
-      };
+      if (!looksLikeVehicleKmPrecoReply(userContent)) {
+        await clearPendingVehicleSocialCopy();
+      } else {
+        const resumeArgs = {
+          ...(pendingVehicleSocialCopy.tool_args || {}),
+        } as Parameters<typeof toolPostarMidiaBiblioteca>[0];
+        if (toolCtx.convId) {
+          const conversation = {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          };
+          const current = toolCtx.agentState ??
+            await loadAgentState(sb, conversation);
+          const next = {
+            ...pendingVehicleSocialCopy,
+            tool_args: {
+              ...pendingVehicleSocialCopy.tool_args,
+              fields_text: userContent.trim(),
+            },
+          };
+          const saved = await saveAgentState(sb, conversation, {
+            pending_vehicle_social_copy: next,
+          }, current);
+          if (saved && toolCtx.agentState) {
+            toolCtx.agentState.pending_vehicle_social_copy = next;
+          }
+        }
+        return {
+          text: await toolPostarMidiaBiblioteca(resumeArgs, toolCtx),
+        };
+      }
     }
     if (
       remetenteEhDono &&
