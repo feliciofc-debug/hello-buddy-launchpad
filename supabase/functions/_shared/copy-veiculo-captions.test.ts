@@ -145,10 +145,57 @@ Deno.test("COPY-VEICULO-1.1 — cancelar limpa intenção de km/preço", () => {
   assertEquals(looksLikeVehicleKmPrecoReply("cancelar"), false);
 });
 
-Deno.test("COPY-VEICULO-1.1 — outro pedido não é tratado como km/preço", () => {
-  assertEquals(
-    looksLikeVehicleKmPrecoReply("cria um vídeo do Renegade"),
-    false,
-  );
+Deno.test("COPY-VEICULO-1.2 — reconhece respostas só de preço (normalizado minúsculo)", () => {
+  const truePrice = [
+    "R$ 89.900",
+    "r$ 89.900,00",
+    "89.900",
+    "89900",
+    "89 mil",
+    "89k",
+    "preço 89.900",
+    "valor: 89 mil",
+  ];
+  for (const sample of truePrice) {
+    assertEquals(
+      looksLikeVehicleKmPrecoReply(sample),
+      true,
+      `deveria aceitar preço: ${sample}`,
+    );
+  }
+});
+
+Deno.test("COPY-VEICULO-1.2 — reconhece respostas de km", () => {
+  const trueKm = [
+    "45.000 km",
+    "45 mil km",
+    "45mil",
+    "km 45000",
+  ];
+  for (const sample of trueKm) {
+    assertEquals(
+      looksLikeVehicleKmPrecoReply(sample),
+      true,
+      `deveria aceitar km: ${sample}`,
+    );
+  }
+});
+
+Deno.test("COPY-VEICULO-1.2 — km + preço e outros assuntos", () => {
   assertEquals(looksLikeVehicleKmPrecoReply("45 mil km e R$ 118.900"), true);
+  const falseSamples = [
+    "cancelar",
+    "deixa",
+    "cria um vídeo do Renegade",
+    "faz um carrossel",
+    "bom dia",
+    "cria um vídeo do Renegade 2022",
+  ];
+  for (const sample of falseSamples) {
+    assertEquals(
+      looksLikeVehicleKmPrecoReply(sample),
+      false,
+      `não deveria aceitar: ${sample}`,
+    );
+  }
 });

@@ -135,18 +135,38 @@ export function vehicleSocialCopyCancelRequest(text: string): boolean {
     /\b(cancelar|deixa pra l[aá]|esquece isso)\b/.test(n);
 }
 
+function vehicleKmPrecoSignals(normalized: string): boolean {
+  const n = normalized;
+  const hasKm = /\bquilometragem\b/.test(n) ||
+    /\bkm\s*[:=]?\s*\d+/.test(n) ||
+    /\b\d+[.\d]*\s*km\b/.test(n) ||
+    /\b\d+\s*mil\s*km\b/.test(n) ||
+    /\b\d+mil\s*km\b/.test(n) ||
+    /\b\d+mil\b/.test(n);
+  const hasPrice = /\br\$\s*[\d.,]+/.test(n) ||
+    (/\bpre[cç]o\b/.test(n) && /\d/.test(n)) ||
+    (/\bvalor\b/.test(n) && /\d/.test(n)) ||
+    /\b\d{1,3}(?:\.\d{3})+(?:,\d{2})?\b/.test(n) ||
+    /\b\d{5,6}\b/.test(n) ||
+    (/\b\d+\s*mil\b/.test(n) && !/\bmil\s*km\b/.test(n)) ||
+    /\b\d+k\b/.test(n);
+  return hasKm || hasPrice;
+}
+
 export function looksLikeVehicleKmPrecoReply(text: string): boolean {
   const raw = String(text || "").trim();
   if (!raw || vehicleSocialCopyCancelRequest(raw)) return false;
   const n = normalizePendingText(raw);
+  if (!n) return false;
+  if (/^(bom dia|boa tarde|boa noite|oi|ola)$/.test(n)) return false;
+  if (/\bfaz\s+um\s+carrossel\b/.test(n)) return false;
   if (
     /\b(cria|criar|faz|fazer|monta|montar|gera|gerar|postar|publicar)\b.*\b(v[ií]deo|an[uú]ncio|carrossel|post|story|reels)\b/
       .test(n)
   ) {
     return false;
   }
-  return /\bR\$\s*\d|\b\d{1,3}(?:[.\s]\d{3})+\s*(?:km|mil)\b|\b\d+\s*(?:km|mil\s*km)\b|\bkm\s*[:=-]|\bquilometragem\b|\bpre[cç]o\b|\bvalor\b|\bmil\s*km\b/
-    .test(n);
+  return vehicleKmPrecoSignals(n);
 }
 
 export function mergeVehicleCarouselIntoCaptionData(
