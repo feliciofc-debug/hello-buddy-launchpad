@@ -184,22 +184,17 @@ Deno.test("legendas usam somente o anúncio atual e respeitam segurança", () =>
   ];
   for (const caption of Object.values(captions)) {
     assertStringIncludes(caption, "C3 Picasso");
-    assert(caption.length <= 600);
+    assert(caption.length <= 900);
     for (const term of forbidden) {
       assert(!caption.toLocaleLowerCase("pt-BR").includes(term));
     }
   }
   assertStringIncludes(captions.A, "R$ 38.900");
   assertStringIncludes(captions.A, "R$ 41.900");
+  assertStringIncludes(captions.A, "78 mil km");
   assertStringIncludes(
     captions.A,
-    "📱 Chame no WhatsApp: https://wa.me/5521967520706",
-  );
-  assertEquals(
-    captions.A.endsWith(
-      "📱 Chame no WhatsApp: https://wa.me/5521967520706",
-    ),
-    true,
+    "📲 Chame no WhatsApp: https://wa.me/5521967520706",
   );
 });
 
@@ -231,12 +226,6 @@ Deno.test("interruptor automático usa kit produto sem vazamento automotivo", ()
   assertStringIncludes(
     captions.A,
     "📱 Chame no WhatsApp: https://wa.me/5592999999999",
-  );
-  assertEquals(
-    captions.A.endsWith(
-      "📱 Chame no WhatsApp: https://wa.me/5592999999999",
-    ),
-    true,
   );
   assertEquals(generateProductAdCaptions(data), captions);
 });

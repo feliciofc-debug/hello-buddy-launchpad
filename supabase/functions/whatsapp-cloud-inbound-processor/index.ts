@@ -74,6 +74,13 @@ import {
   type VehiclePhotoView,
 } from "../_shared/vehicle-carousel.ts";
 import {
+  generateVehicleSocialPostVariants,
+  isVehicleSocialLibraryContext,
+  vehicleCaptionDataFromSources,
+  vehicleCaptionMissingKmOrPreco,
+  vehicleSocialCaptionGateButtons,
+} from "../_shared/vehicle-social-caption.ts";
+import {
   explicitVehiclePriceChoice,
   hasSpecificVehicleModel,
   isVehicleIdentificationAbandonRequest,
@@ -3287,6 +3294,13 @@ type AgentConvState = {
     confirmed_title?: string;
     awaiting_correction?: boolean;
     data?: VehicleCarouselData;
+    created_at: string;
+  } | null;
+  pending_vehicle_social_copy?: {
+    stage: "awaiting_km_preco" | "awaiting_fields_text";
+    midia_id: string;
+    tool_args: Record<string, unknown>;
+    skip_missing_fields?: boolean;
     created_at: string;
   } | null;
   pending_video_setup?: PendingVideoSetupState | null;
@@ -10870,6 +10884,70 @@ async function toolPostarMidiaBiblioteca(
       midia_tipo: isVideo ? ("video" as const) : ("foto" as const),
     };
 
+    const vehicleSocialPost = contentNicheForContext(ctx) === "veiculo" &&
+      isVehicleSocialLibraryContext({
+        nome,
+        descricaoVisual,
+        briefing: `${briefing} ${legendaDono}`.trim(),
+      });
+    const pendingVehicleCopy = ctx.agentState?.pending_vehicle_social_copy;
+    const vehicleCopySkipMissing = !!(
+      pendingVehicleCopy?.skip_missing_fields &&
+      pendingVehicleCopy.midia_id === midia.id
+    );
+    if (vehicleSocialPost && !isVideo) {
+      const telLoja = await buscarTelefoneAgenteTenant(ctx.userId);
+      const captionData = vehicleCaptionDataFromSources({
+        nome,
+        descricao: descricaoFinal,
+        briefing,
+        precoNum: precoNum && !isNaN(precoNum) ? precoNum : null,
+        telefone: telLoja || undefined,
+      });
+      const missingFields = vehicleCaptionMissingKmOrPreco(captionData);
+      if (
+        missingFields.length &&
+        !vehicleCopySkipMissing &&
+        pendingVehicleCopy?.stage !== "awaiting_fields_text"
+      ) {
+        if (ctx.convId) {
+          const conversation = {
+            id: ctx.convId,
+            userId: ctx.userId,
+            contactNumber: ctx.fromNumber,
+          };
+          const current = ctx.agentState ??
+            await loadAgentState(sb, conversation);
+          const saved = await saveAgentState(sb, conversation, {
+            pending_vehicle_social_copy: {
+              stage: "awaiting_km_preco",
+              midia_id: midia.id,
+              tool_args: { ...args, midia_id: midia.id },
+              created_at: new Date().toISOString(),
+            },
+          }, current);
+          if (saved && ctx.agentState) {
+            ctx.agentState.pending_vehicle_social_copy = {
+              stage: "awaiting_km_preco",
+              midia_id: midia.id,
+              tool_args: { ...args, midia_id: midia.id },
+              created_at: new Date().toISOString(),
+            };
+          }
+        }
+        const faltando = missingFields.map((field) =>
+          field === "km" ? "quilometragem" : "preço"
+        ).join(" e ");
+        return JSON.stringify({
+          status: "vehicle_social_copy_gate",
+          missing: missingFields,
+          mensagem:
+            `Para montar a legenda do veículo, ainda faltam ${faltando}. Informe agora ou gere sem esses dados.`,
+          botoes: vehicleSocialCaptionGateButtons(),
+        });
+      }
+    }
+
     // Detecta mídia INSTITUCIONAL da marca AMZ (arte/logo, sem produto concreto).
     // Só injeta o pitch da plataforma quando NÃO existe descrição visual de produto —
     // senão a copy virava propaganda da AMZ em cima da foto de um produto do cliente.
@@ -10918,6 +10996,24 @@ async function toolPostarMidiaBiblioteca(
     // profissionais e sem emojis.
     const redeBase: "facebook" | "instagram" = redes.includes("instagram") ? "instagram" : "facebook";
     const gerarOpcoes = async (redeGeracao: "facebook" | "instagram" | "linkedin") => {
+      if (vehicleSocialPost && !isVideo) {
+        const telLoja = await buscarTelefoneAgenteTenant(ctx.userId);
+        let mergedBriefing = briefing;
+        if (pendingVehicleCopy?.stage === "awaiting_fields_text") {
+          mergedBriefing = [
+            briefing,
+            String(pendingVehicleCopy.tool_args?.fields_text || ""),
+          ].filter(Boolean).join("\n");
+        }
+        const captionData = vehicleCaptionDataFromSources({
+          nome,
+          descricao: descricaoFinal,
+          briefing: mergedBriefing,
+          precoNum: precoNum && !isNaN(precoNum) ? precoNum : null,
+          telefone: telLoja || undefined,
+        });
+        return generateVehicleSocialPostVariants(captionData, redeGeracao, 0);
+      }
       let options = await gerarTresOpcoesRedeSocial(
         produtoLike,
         tom,
@@ -11013,7 +11109,7 @@ async function toolPostarMidiaBiblioteca(
     // Feature A: CTA de WhatsApp (opt-in, número dinâmico do tenant).
     const incluirCta = !!args?.incluir_cta_whatsapp;
     let ctaNota: string | undefined;
-    if (incluirCta) {
+    if (incluirCta && !vehicleSocialPost) {
       const telAgente = await buscarTelefoneAgenteTenant(ctx.userId);
       if (telAgente) {
         for (const [network, options] of Object.entries(variantes)) {
@@ -11033,6 +11129,21 @@ async function toolPostarMidiaBiblioteca(
         ctaNota = `CTA de WhatsApp incluído (wa.me/${telAgente}).`;
       } else {
         ctaNota = "Não achei o número do agente pra montar o CTA — post sai sem CTA.";
+      }
+    }
+
+    if (vehicleSocialPost && ctx.convId) {
+      const conversation = {
+        id: ctx.convId,
+        userId: ctx.userId,
+        contactNumber: ctx.fromNumber,
+      };
+      const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+      const saved = await saveAgentState(sb, conversation, {
+        pending_vehicle_social_copy: null,
+      }, current);
+      if (saved && ctx.agentState) {
+        ctx.agentState.pending_vehicle_social_copy = null;
       }
     }
 
@@ -17662,6 +17773,11 @@ async function callGemini(
     const vehicleIdentificationInteractiveId = userContent.match(
       /<<INTERACTIVE_ID:(vehicle_identification:[^>]+)>>/i,
     )?.[1]?.toLowerCase() || "";
+    const vehicleSocialCopyInteractiveId = userContent.match(
+      /<<INTERACTIVE_ID:(vehicle_social_copy:[^>]+)>>/i,
+    )?.[1]?.toLowerCase() || "";
+    const pendingVehicleSocialCopy = toolCtx.agentState
+      ?.pending_vehicle_social_copy;
     const singlePhotoInteractiveId = userContent.match(
       /<<INTERACTIVE_ID:(single_photo:[^>]+)>>/i,
     )?.[1]?.toLowerCase() || "";
@@ -18768,6 +18884,104 @@ async function callGemini(
             )
             ? vehicleIdentificationButtons()
             : undefined,
+      };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleSocialCopy &&
+      vehicleSocialCopyInteractiveId === "vehicle_social_copy:skip"
+    ) {
+      const resumeArgs = {
+        ...(pendingVehicleSocialCopy.tool_args || {}),
+      } as Parameters<typeof toolPostarMidiaBiblioteca>[0];
+      if (toolCtx.convId) {
+        const conversation = {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        };
+        const current = toolCtx.agentState ??
+          await loadAgentState(sb, conversation);
+        const saved = await saveAgentState(sb, conversation, {
+          pending_vehicle_social_copy: {
+            ...pendingVehicleSocialCopy,
+            skip_missing_fields: true,
+          },
+        }, current);
+        if (saved && toolCtx.agentState) {
+          toolCtx.agentState.pending_vehicle_social_copy = {
+            ...pendingVehicleSocialCopy,
+            skip_missing_fields: true,
+          };
+        }
+      }
+      return {
+        text: await toolPostarMidiaBiblioteca(resumeArgs, toolCtx),
+      };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleSocialCopy &&
+      vehicleSocialCopyInteractiveId === "vehicle_social_copy:inform"
+    ) {
+      if (toolCtx.convId) {
+        const conversation = {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        };
+        const current = toolCtx.agentState ??
+          await loadAgentState(sb, conversation);
+        const next = {
+          ...pendingVehicleSocialCopy,
+          stage: "awaiting_fields_text" as const,
+        };
+        const saved = await saveAgentState(sb, conversation, {
+          pending_vehicle_social_copy: next,
+        }, current);
+        if (saved && toolCtx.agentState) {
+          toolCtx.agentState.pending_vehicle_social_copy = next;
+        }
+      }
+      return {
+        text:
+          "Me mande em uma mensagem a quilometragem e o preço de venda (ou só o que tiver). O que não informar não entra na legenda.",
+      };
+    }
+    if (
+      remetenteEhDono &&
+      pendingVehicleSocialCopy?.stage === "awaiting_fields_text" &&
+      !vehicleSocialCopyInteractiveId &&
+      userContent.trim() &&
+      !/<<INTERACTIVE_ID:/i.test(userContent)
+    ) {
+      const resumeArgs = {
+        ...(pendingVehicleSocialCopy.tool_args || {}),
+      } as Parameters<typeof toolPostarMidiaBiblioteca>[0];
+      if (toolCtx.convId) {
+        const conversation = {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        };
+        const current = toolCtx.agentState ??
+          await loadAgentState(sb, conversation);
+        const next = {
+          ...pendingVehicleSocialCopy,
+          tool_args: {
+            ...pendingVehicleSocialCopy.tool_args,
+            fields_text: userContent.trim(),
+          },
+        };
+        const saved = await saveAgentState(sb, conversation, {
+          pending_vehicle_social_copy: next,
+        }, current);
+        if (saved && toolCtx.agentState) {
+          toolCtx.agentState.pending_vehicle_social_copy = next;
+        }
+      }
+      return {
+        text: await toolPostarMidiaBiblioteca(resumeArgs, toolCtx),
       };
     }
     if (

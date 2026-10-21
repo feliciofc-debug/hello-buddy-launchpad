@@ -1,36 +1,38 @@
 import {
-  captionContactLine,
   captionValues,
   clipCaption,
+  normalizeBrazilianWhatsappNumber,
   normalizeCaptionText,
 } from "./anuncio-caption-common.ts";
 
-function hashtags(title: string): string {
-  const clean = normalizeCaptionText(title).replace(/[^a-z0-9 ]/g, " ");
-  const tags = ["seminovos"];
-  if (/\bcitroen\b/.test(clean)) tags.push("citroen");
-  if (/\bc3\s+picasso\b/.test(clean)) tags.push("c3picasso");
-  if (/\bonix\b/.test(clean)) tags.push("onix");
-  tags.push("carrosusados");
-  return [...new Set(tags)].slice(0, 6).map((tag) => `#${tag}`).join(" ");
+const VEHICLE_CAPTION_LIMIT = 900;
+
+const FORBIDDEN_INFERENCE =
+  /\b(u[nú]nico\s+dono|revisad[oa]|garantia|laudo|sem\s+detalhes|baixa\s+km|impec[aá]vel|zero\s+defeitos)\b/i;
+
+function clipVehicleCaption(value: string): string {
+  const compact = value.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return compact.length <= VEHICLE_CAPTION_LIMIT
+    ? compact
+    : compact.slice(0, VEHICLE_CAPTION_LIMIT - 3).replace(/\s+\S*$/, "") +
+      "...";
 }
 
-function priceLine(data: Record<string, unknown>): string {
-  const price = String(data.preco || "").trim();
-  const reference = String(data.fipe || data.preco_referencia || "").trim();
-  const referenceLabel = String(
-    data.preco_referencia_label || (data.fipe ? "FIPE" : ""),
-  ).trim();
-  const labeledReference = reference
-    ? `${reference}${referenceLabel ? ` (${referenceLabel})` : ""}`
+function vehicleContactLine(data: Record<string, unknown>): string {
+  const phone = normalizeBrazilianWhatsappNumber(
+    data.telefone || data.contato || data.link_whatsapp,
+  );
+  const link = String(data.link_loja || data.link_post || "").trim();
+  const wa = phone
+    ? `https://wa.me/${phone}`
+    : /^https?:\/\//i.test(link)
+    ? link
     : "";
-  if (price && labeledReference) return `De ${labeledReference} por ${price}.`;
-  if (price) return `Por ${price}.`;
-  if (labeledReference) return `Referência informada: ${labeledReference}.`;
-  return "";
+  return wa ? `📲 Chame no WhatsApp: ${wa}` : "";
 }
 
-function modelLine(data: Record<string, unknown>): string {
+function headline(data: Record<string, unknown>): string {
   const parts: string[] = [];
   for (const value of [data.titulo, data.versao, data.ano]) {
     const part = String(value || "").trim();
@@ -38,96 +40,146 @@ function modelLine(data: Record<string, unknown>): string {
     const existing = normalizeCaptionText(parts.join(" "));
     if (!existing.includes(normalizeCaptionText(part))) parts.push(part);
   }
-  const result = parts.join(" ");
-  return result || "Veículo anunciado";
+  return parts.join(" ") || String(data.titulo || "Veículo").trim();
 }
 
-function factualHighlights(data: Record<string, unknown>): string[] {
+function fichaLine(data: Record<string, unknown>): string {
+  const bits: string[] = [];
+  const ano = String(data.ano || "").trim();
+  const km = String(
+    data.quilometragem || data.km || "",
+  ).trim();
+  const cambio = String(data.cambio || "").trim();
+  const combustivel = String(
+    data.combustivel || data.motor || "",
+  ).trim();
+  const cor = String(data.cor || "").trim();
+  if (ano) bits.push(`📅 ${ano}`);
+  if (km) bits.push(`🛣️ ${km}`);
+  if (cambio) bits.push(`⚙️ ${cambio}`);
+  if (combustivel) bits.push(`⛽ ${combustivel}`);
+  if (cor) bits.push(`🎨 ${cor}`);
+  return bits.join(" · ");
+}
+
+function priceBlock(data: Record<string, unknown>): string {
+  const price = String(data.preco || "").trim();
+  const fipe = String(data.fipe || data.preco_referencia || "").trim();
+  const fipeLabel = String(
+    data.preco_referencia_label || (data.fipe ? "FIPE" : ""),
+  ).trim();
+  const lines: string[] = [];
+  if (price) lines.push(`💰 ${price}`);
+  if (fipe) {
+    lines.push(
+      fipeLabel ? `📊 ${fipeLabel}: ${fipe}` : `📊 Referência FIPE: ${fipe}`,
+    );
+  }
+  return lines.join("\n");
+}
+
+function informedItems(data: Record<string, unknown>): string[] {
   return [
     ...new Set([
-      ...captionValues(data.cambio),
-      ...captionValues(data.motor),
-      ...captionValues(data.quilometragem),
-      ...captionValues(data.km),
-      ...captionValues(data.donos),
-      ...captionValues(data.documentacao),
-      ...captionValues(data.revisoes),
-      ...captionValues(data.pneus),
       ...captionValues(data.opcionais),
-      ...captionValues(data.condicoes),
       ...captionValues(data.itens),
+      ...captionValues(data.condicoes),
+      ...captionValues(data.documentacao),
+      ...captionValues(data.pneus),
       ...captionValues(data.ficha),
-    ]),
+    ].filter((item) => item && !FORBIDDEN_INFERENCE.test(item))),
   ];
 }
 
-function benefitSentences(data: Record<string, unknown>): string[] {
-  const source = factualHighlights(data);
-  const normalized = normalizeCaptionText(source.join(" "));
-  const benefits: string[] = [];
-  if (/\bautomatic/.test(normalized)) {
-    benefits.push("Câmbio automático para mais conforto no trânsito.");
+function buildHashtags(data: Record<string, unknown>): string {
+  const title = normalizeCaptionText(headline(data)).replace(
+    /[^a-z0-9 ]/g,
+    " ",
+  );
+  const tags = new Set<string>(["seminovos", "carros"]);
+  for (const word of title.split(/\s+/).filter((w) => w.length >= 3).slice(0, 4)) {
+    tags.add(word);
   }
-  if (/\bipva\b.*\bpago\b/.test(normalized)) {
-    benefits.push("IPVA pago: sem esse gasto extra agora.");
+  const cidade = String(data.cidade || data.cidade_loja || "").trim();
+  if (cidade) {
+    const cityTag = normalizeCaptionText(cidade).replace(/[^a-z0-9]/g, "");
+    if (cityTag.length >= 3) tags.add(cityTag);
   }
-  if (/\brevis/.test(normalized)) {
-    benefits.push("Revisões informadas ajudam a acompanhar a manutenção.");
+  return [...tags].slice(0, 8).map((tag) => `#${tag}`).join(" ");
+}
+
+function benefitParagraph(data: Record<string, unknown>): string {
+  const items = informedItems(data);
+  if (!items.length) {
+    const versao = String(data.versao || "").trim();
+    if (versao) {
+      return `Versão ${versao} com o pacote informado pelo anunciante.`;
+    }
+    return "";
   }
-  if (
-    /\bc3\s+picasso\b/.test(
-      normalizeCaptionText(String(data.titulo || "")),
-    )
-  ) {
-    benefits.push("Espaço interno de minivan para a rotina da família.");
+  const picked = items.slice(0, 3);
+  if (picked.length === 1) {
+    return `${picked[0]}.`;
   }
-  return benefits;
+  if (picked.length === 2) {
+    return `${picked[0]}. ${picked[1]}.`;
+  }
+  return `${picked[0]}. ${picked[1]}. ${picked[2]}.`;
+}
+
+function assemble(blocks: string[]): string {
+  return clipVehicleCaption(
+    blocks.filter(Boolean).join("\n\n"),
+  );
 }
 
 export function generateVehicleAdCaptions(
   data: Record<string, unknown>,
   variation = 0,
 ): { A: string; B: string; C: string } {
-  const model = modelLine(data);
-  const allFacts = factualHighlights(data);
-  const offset = allFacts.length ? Math.abs(variation) % allFacts.length : 0;
-  const facts = [...allFacts.slice(offset), ...allFacts.slice(0, offset)];
-  const three = facts.slice(0, 3).join(", ");
-  const price = priceLine(data);
-  const contact = captionContactLine(data);
-  const tags = hashtags(String(data.titulo || ""));
-  const benefits = benefitSentences(data);
-  const a = clipCaption(
-    [
-      `🚗 ${model}.`,
-      three ? `${three}.` : "",
-      price,
-      tags,
-      contact,
-    ].filter(Boolean).join(" "),
-  );
-  const b = clipCaption(
-    [
-      variation % 2 === 0
-        ? `Para a rotina: ${model}.`
-        : `Conforto e praticidade no dia a dia: ${model}.`,
-      benefits.join(" "),
-      facts.slice(0, 5).length ? `${facts.slice(0, 5).join(", ")}.` : "",
-      price,
-      tags,
-      contact,
-    ].filter(Boolean).join(" "),
-  );
-  const c = clipCaption(
-    [
-      variation % 2 === 0
-        ? `O ${model} combina com a sua rotina?`
-        : `Que tal conhecer o ${model}?`,
-      facts.slice(0, 4).length ? `${facts.slice(0, 4).join(", ")}.` : "",
-      price,
-      tags,
-      contact,
-    ].filter(Boolean).join(" "),
-  );
+  const title = headline(data);
+  const ficha = fichaLine(data);
+  const price = priceBlock(data);
+  const contact = vehicleContactLine(data);
+  const tags = buildHashtags(data);
+  const items = informedItems(data);
+  const offset = items.length ? Math.abs(variation) % items.length : 0;
+  const rotated = [...items.slice(offset), ...items.slice(0, offset)];
+  const extras = rotated.slice(0, 4).join(", ");
+
+  const a = assemble([
+    `🚗 ${title}`,
+    ficha,
+    price,
+    extras ? extras + "." : "",
+    contact,
+    tags,
+  ]);
+
+  const benefits = benefitParagraph(data);
+  const b = assemble([
+    `🚗 ${title}`,
+    benefits,
+    ficha,
+    price,
+    contact,
+    tags,
+  ]);
+
+  const invite = variation % 2 === 0
+    ? `Oportunidade para conhecer o ${title} de perto.`
+    : `Venha conhecer o ${title} na loja.`;
+  const c = assemble([
+    invite,
+    ficha,
+    extras ? extras + "." : "",
+    price,
+    contact,
+    tags,
+  ]);
+
   return { A: a, B: b, C: c };
 }
+
+/** @deprecated product path uses clipCaption limit — kept for tests importing clip behavior */
+export { clipCaption };
