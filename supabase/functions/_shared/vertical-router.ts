@@ -28,6 +28,16 @@ export type VerticalNamespacedState = Record<string, unknown> & {
       awaiting_correction?: boolean;
       created_at: string;
     } | null;
+    media_routes?: Record<
+      string,
+      {
+        route: "veiculo" | "geral" | "incerto";
+        origin: "visao" | "botao_dono";
+        vision_description?: string;
+        confirmed?: boolean;
+        updated_at: string;
+      }
+    > | null;
     last_route?: InboundVertical;
     updated_at?: string;
     pending_segment_choice?: boolean;
@@ -247,9 +257,11 @@ export function parseVerticalVisionResult(
 export function verticalVisionPrompt(): string {
   return [
     "Responda somente JSON puro.",
-    "A imagem é de um veículo (carro, moto, caminhão ou parte claramente automotiva) ou de outro produto/serviço?",
+    "Classifique a foto para uma revenda de veículos:",
+    '- "veiculo": carro, moto ou caminhonete INTEIRO(A) visível, ou a carroceria completa é claramente o assunto principal da foto.',
+    '- "geral": produto, acessório ou peça avulsa (tapetes, capas de banco, rodas soltas, som/automotivo de loja, peças, ferramentas, loja, comida, etc.), mesmo em contexto automotivo.',
     'Formato: {"route":"veiculo"|"geral","confidence":0.0,"reason":"até 5 palavras"}.',
-    "Não descreva marca, estado, preço nem itens. Não invente.",
+    "Não descreva marca, preço, medida nem ano. Não invente.",
   ].join("\n");
 }
 

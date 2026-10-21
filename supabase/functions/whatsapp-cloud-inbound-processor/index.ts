@@ -417,6 +417,7 @@ import {
   resolveVertical,
   scopedVerticalState,
   isVerticalStateKey,
+  isAutomotiveTenant,
   verticalChoiceButtons,
   verticalAdDetailsPrompt,
   verticalVisionPrompt,
@@ -424,6 +425,19 @@ import {
   type InboundVertical,
   type VerticalDecision,
 } from "../_shared/vertical-router.ts";
+import {
+  effectiveOwnerMediaRoute,
+  getOwnerMediaRoute,
+  mergeOwnerMediaRoute,
+  ownerMediaRouteFromDecision,
+  ownerMediaRoutesFromRouter,
+  resolveVehiclePhotoBatchAdAction,
+  resolveVehiclePhotoBatchCarouselAction,
+} from "../_shared/owner-media-route.ts";
+import {
+  ownerProductAdDataReply,
+  ownerProductPhotoPendingFromRoute,
+} from "../_shared/owner-media-route-flow.ts";
 import {
   parseVehiclePostFipeInteractiveId,
   shouldOfferVehiclePostFipeMenu,
@@ -3617,6 +3631,55 @@ async function identifyVehiclePhoto(
     );
     return null;
   }
+}
+
+async function persistOwnerMediaRoutes(
+  conversation: ConversationStateIdentity,
+  agentState: AgentConvState,
+  input: {
+    mediaIds: string[];
+    verticalDecision: VerticalDecision;
+    verticalVision: ReturnType<typeof parseVerticalVisionResult>;
+    descriptions: Record<string, string>;
+    automotiveTenant: boolean;
+    origin?: "visao" | "botao_dono";
+    confirmed?: boolean;
+    routeOverride?: import("../_shared/owner-media-route.ts").OwnerMediaVerticalRoute;
+  },
+): Promise<AgentConvState> {
+  if (!input.automotiveTenant || input.mediaIds.length === 0) {
+    return agentState;
+  }
+  let routes = ownerMediaRoutesFromRouter(agentState.vertical_router);
+  const route = input.routeOverride ?? ownerMediaRouteFromDecision({
+    decision: input.verticalDecision,
+    vision: input.verticalVision,
+  });
+  const origin = input.origin ?? "visao";
+  for (const mediaId of input.mediaIds) {
+    const existing = routes[mediaId];
+    if (existing?.confirmed && origin === "visao") continue;
+    routes = mergeOwnerMediaRoute(routes, mediaId, {
+      route: input.routeOverride ?? existing?.route ?? route,
+      origin,
+      vision_description: input.descriptions[mediaId] ?? existing?.vision_description,
+      confirmed: input.confirmed ?? existing?.confirmed,
+    });
+  }
+  const vertical_router = {
+    ...(agentState.vertical_router ?? {}),
+    media_routes: routes,
+    updated_at: new Date().toISOString(),
+  };
+  const saved = await saveAgentState(
+    sb,
+    conversation,
+    { vertical_router },
+    agentState,
+  );
+  if (!saved) throw new Error("owner_media_route_nao_persistida");
+  agentState.vertical_router = vertical_router;
+  return agentState;
 }
 
 async function beginVehicleIdentification(
@@ -16047,20 +16110,33 @@ async function toolCriarAnuncio(
 
     const verticalScope = (ctx.agentState as Record<string, unknown> | undefined)
       ?.__vertical_scope as InboundVertical | undefined;
+    const anuncioMediaId = String(
+      ctx.agentState?.pending_single_photo?.media_id ||
+        ctx.agentState?.last_media_interaction?.media_id ||
+        "",
+    );
+    const anuncioMediaRoute = getOwnerMediaRoute(
+      ctx.agentState?.vertical_router,
+      anuncioMediaId,
+    );
+    const forceProductAnuncio = anuncioMediaRoute?.route === "geral";
+    const effectiveVerticalScope: InboundVertical | undefined = forceProductAnuncio
+      ? "geral"
+      : verticalScope;
     const contentNiche = resolveNichoDoConteudo(
       ctx.userId === ADMIN_AMZ_USER_ID
         ? "amz"
-        : verticalScope === "veiculo"
+        : effectiveVerticalScope === "veiculo"
         ? "automotivo"
         : "geral",
-      verticalScope === "veiculo" ? "veiculo" : "produto",
+      effectiveVerticalScope === "veiculo" ? "veiculo" : "produto",
     );
     const anuncioVertical: "veiculo" | "geral" =
-      verticalScope === "veiculo" ? "veiculo" : "geral";
+      effectiveVerticalScope === "veiculo" ? "veiculo" : "geral";
     const pendingVehicleIdentification =
       ctx.agentState?.pending_vehicle_identification;
     if (
-      verticalScope === "veiculo" &&
+      effectiveVerticalScope === "veiculo" &&
       pendingVehicleIdentification?.confirmed &&
       pendingVehicleIdentification.data
     ) {
@@ -16080,7 +16156,7 @@ async function toolCriarAnuncio(
         }
       }
     }
-    const titleResolution = verticalScope === "veiculo"
+    const titleResolution = effectiveVerticalScope === "veiculo"
       ? resolveVehicleAdTitle({
         requestedTitle: args?.titulo,
         identification: pendingVehicleIdentification,
@@ -16103,7 +16179,14 @@ async function toolCriarAnuncio(
         mensagem: "Qual é o produto ou modelo que deve aparecer no anúncio?",
       });
     }
-    const vehiclePrice = verticalScope === "veiculo"
+    if (
+      forceProductAnuncio &&
+      !String(args?.titulo || "").trim() &&
+      ctx.agentState?.pending_single_photo?.confirmed_product_title
+    ) {
+      args.titulo = ctx.agentState.pending_single_photo.confirmed_product_title;
+    }
+    const vehiclePrice = effectiveVerticalScope === "veiculo"
       ? resolveVehiclePrice(args.preco)
       : null;
     if (vehiclePrice && !vehiclePrice.ok) {
@@ -18711,6 +18794,49 @@ async function callGemini(
       pendingVehiclePhotoBatch &&
       vehiclePhotoBatchInteractiveId === "vehicle_photo_batch:carousel"
     ) {
+      const firstPhoto = pendingVehiclePhotoBatch.photos[0];
+      const storedRoute = getOwnerMediaRoute(
+        toolCtx.agentState?.vertical_router,
+        firstPhoto?.id || "",
+      );
+      const carouselAction = resolveVehiclePhotoBatchCarouselAction(
+        storedRoute?.route,
+      );
+      if (carouselAction === "product_actions" && firstPhoto && toolCtx.convId) {
+        const now = new Date().toISOString();
+        const pending = ownerProductPhotoPendingFromRoute({
+          mediaId: firstPhoto.id,
+          visionDescription: storedRoute?.vision_description,
+          stage: "actions",
+          confirmed: true,
+          nowIso: now,
+        });
+        await saveAgentState(sb, {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        }, {
+          pending_vehicle_photo_batch: null,
+          pending_single_photo: pending,
+          last_media_interaction: { media_id: firstPhoto.id, at: now },
+        }, toolCtx.agentState ?? {});
+        if (toolCtx.agentState) {
+          toolCtx.agentState.pending_vehicle_photo_batch = null;
+          toolCtx.agentState.pending_single_photo = pending;
+        }
+        return {
+          text: "Para produto, use Anúncio ou Post nas redes nesta foto.",
+          interactiveButtons: generalSpecialistPhotoButtons(),
+        };
+      }
+      if (carouselAction === "uncertain_confirm") {
+        return {
+          text: ownerUncertainVisionConfirmMessage(
+            storedRoute?.vision_description || "",
+          ),
+          interactiveButtons: ownerPhotoConfirmButtons(),
+        };
+      }
       const state = await startVehicleCarouselFlow(
         toolCtx,
         pendingVehiclePhotoBatch.photos,
@@ -18732,22 +18858,76 @@ async function callGemini(
       vehiclePhotoBatchInteractiveId === "vehicle_photo_batch:ad"
     ) {
       const firstPhoto = pendingVehiclePhotoBatch.photos[0];
-      if (toolCtx.convId) {
+      const mediaId = firstPhoto?.id || "";
+      const storedRoute = getOwnerMediaRoute(
+        toolCtx.agentState?.vertical_router,
+        mediaId,
+      );
+      const adAction = resolveVehiclePhotoBatchAdAction(storedRoute?.route);
+      const now = new Date().toISOString();
+      if (toolCtx.convId && firstPhoto) {
         const conversation = {
           id: toolCtx.convId,
           userId: toolCtx.userId,
           contactNumber: toolCtx.fromNumber,
         };
         const current = toolCtx.agentState!;
-        const interaction = firstPhoto
-          ? { media_id: firstPhoto.id, at: new Date().toISOString() }
-          : undefined;
+        const interaction = { media_id: firstPhoto.id, at: now };
+        if (adAction === "product_ad") {
+          const pending = ownerProductPhotoPendingFromRoute({
+            mediaId: firstPhoto.id,
+            visionDescription: storedRoute?.vision_description,
+            stage: "ad_data",
+            confirmed: true,
+            nowIso: now,
+          });
+          const routes = mergeOwnerMediaRoute(
+            ownerMediaRoutesFromRouter(current.vertical_router),
+            firstPhoto.id,
+            {
+              route: "geral",
+              origin: "botao_dono",
+              vision_description: storedRoute?.vision_description,
+              confirmed: true,
+            },
+            now,
+          );
+          await saveAgentState(sb, conversation, {
+            pending_vehicle_photo_batch: null,
+            pending_single_photo: pending,
+            last_media_interaction: interaction,
+            vertical_router: {
+              ...(current.vertical_router ?? {}),
+              media_routes: routes,
+              last_route: "geral",
+              updated_at: now,
+            },
+          }, current);
+          current.pending_vehicle_photo_batch = null;
+          current.pending_single_photo = pending;
+          current.last_media_interaction = interaction;
+          return { text: ownerProductAdDataReply(pending) };
+        }
+        if (adAction === "uncertain_confirm") {
+          await saveAgentState(sb, conversation, {
+            pending_vehicle_photo_batch: null,
+            last_media_interaction: interaction,
+          }, current);
+          current.pending_vehicle_photo_batch = null;
+          current.last_media_interaction = interaction;
+          return {
+            text: ownerUncertainVisionConfirmMessage(
+              storedRoute?.vision_description || "",
+            ),
+            interactiveButtons: ownerPhotoConfirmButtons(),
+          };
+        }
         await saveAgentState(sb, conversation, {
           pending_vehicle_photo_batch: null,
-          ...(interaction ? { last_media_interaction: interaction } : {}),
+          last_media_interaction: interaction,
         }, current);
         current.pending_vehicle_photo_batch = null;
-        if (interaction) current.last_media_interaction = interaction;
+        current.last_media_interaction = interaction;
       }
       return await beginVehicleIdentification(toolCtx, {
         photos: pendingVehiclePhotoBatch.photos,
@@ -18822,6 +19002,29 @@ async function callGemini(
           awaiting_correction: false,
           created_at: new Date().toISOString(),
         };
+        if (toolCtx.convId) {
+          toolCtx.agentState = await persistOwnerMediaRoutes(
+            {
+              id: toolCtx.convId,
+              userId: toolCtx.userId,
+              contactNumber: toolCtx.fromNumber,
+            },
+            toolCtx.agentState ?? {},
+            {
+              mediaIds: [pendingSinglePhoto.media_id],
+              verticalDecision: {
+                route: "geral",
+                needsConfirmation: false,
+              },
+              verticalVision: null,
+              descriptions: { [pendingSinglePhoto.media_id]: vision },
+              automotiveTenant: true,
+              origin: "botao_dono",
+              confirmed: true,
+              routeOverride: "geral",
+            },
+          );
+        }
         await persistSinglePhoto(next);
         return {
           text: "Perfeito. O que quer fazer com esta foto?",
@@ -18831,6 +19034,27 @@ async function callGemini(
       if (ownerPhotoConfirmChoice === "confirm_vehicle") {
         const mediaId = pendingSinglePhoto.media_id;
         if (toolCtx.convId) {
+          toolCtx.agentState = await persistOwnerMediaRoutes(
+            {
+              id: toolCtx.convId,
+              userId: toolCtx.userId,
+              contactNumber: toolCtx.fromNumber,
+            },
+            toolCtx.agentState ?? {},
+            {
+              mediaIds: [mediaId],
+              verticalDecision: {
+                route: "veiculo",
+                needsConfirmation: false,
+              },
+              verticalVision: null,
+              descriptions: {},
+              automotiveTenant: true,
+              origin: "botao_dono",
+              confirmed: true,
+              routeOverride: "veiculo",
+            },
+          );
           await saveAgentState(
             sb,
             {
@@ -24454,6 +24678,23 @@ async function processOne(queueId: string) {
         if (!saved) throw new Error("ultima_midia_nao_persistida");
         freshAgentState.last_media_interaction = interaction;
       }
+      const automotiveTenant = fromIsOwner &&
+        isAutomotiveTenant(
+          verticalDecision.effectiveSegment ?? verticalSegment,
+        );
+      const primaryIncomingPhoto = incomingPhotos.at(-1);
+      const storedOwnerMediaRoute = primaryIncomingPhoto
+        ? getOwnerMediaRoute(
+          freshAgentState.vertical_router,
+          primaryIncomingPhoto.id,
+        )
+        : null;
+      const ownerMediaRoute = effectiveOwnerMediaRoute({
+        stored: storedOwnerMediaRoute,
+        decision: verticalDecision,
+        vision: verticalVision,
+        automotiveTenant: !!automotiveTenant,
+      });
       if (
         fromIsOwner &&
         incomingPhotos.length > 0 &&
@@ -24506,6 +24747,18 @@ async function processOne(queueId: string) {
             (error as Error).message,
           );
         }
+        freshAgentState = await persistOwnerMediaRoutes(
+          stateConversation,
+          freshAgentState,
+          {
+            mediaIds: [latest.id],
+            verticalDecision,
+            verticalVision,
+            descriptions: { [latest.id]: visionDescription },
+            automotiveTenant: !!automotiveTenant,
+            routeOverride: "incerto",
+          },
+        );
         const routerState = {
           ...(freshAgentState.vertical_router ?? {}),
           pending_choice: {
@@ -24535,13 +24788,19 @@ async function processOne(queueId: string) {
         await doneQueue(row.id);
         return { ok: true, vertical_confirmation: true };
       }
-      const immediateGeneralPhoto = shouldOfferSinglePhotoActions({
+      const offerGeneralSinglePhoto = shouldOfferSinglePhotoActions({
         isOwner: fromIsOwner,
         verticalRoute: verticalDecision.route,
         incomingPhotoCount: incomingPhotos.length,
         context: contexto,
-      });
-      if (immediateGeneralPhoto) {
+      }) || (
+        fromIsOwner &&
+        !!automotiveTenant &&
+        incomingPhotos.length > 0 &&
+        !contexto &&
+        ownerMediaRoute === "geral"
+      );
+      if (offerGeneralSinglePhoto) {
         let description = "";
         try {
           description = await descreverFotosSalvas(
@@ -24581,6 +24840,18 @@ async function processOne(queueId: string) {
         freshAgentState.pending_image_edit = null;
         freshAgentState.pending_image_adjustment = null;
         freshAgentState.last_media_interaction = interaction;
+        freshAgentState = await persistOwnerMediaRoutes(
+          stateConversation,
+          freshAgentState,
+          {
+            mediaIds: [latest.id],
+            verticalDecision,
+            verticalVision,
+            descriptions: { [latest.id]: description },
+            automotiveTenant: !!automotiveTenant,
+            routeOverride: "geral",
+          },
+        );
         const confirmText = repeated
           ? ownerRepeatedVisionConfirmMessage(description, "produto")
           : ownerProductVisionConfirmMessage(description);
@@ -24724,6 +24995,7 @@ async function processOne(queueId: string) {
       if (
         fromIsOwner &&
         verticalDecision.route === "veiculo" &&
+        ownerMediaRoute === "veiculo" &&
         incomingPhotos.length > 0 &&
         !contexto
       ) {
@@ -24781,6 +25053,7 @@ async function processOne(queueId: string) {
               batch.photos.length === 1 &&
               plannedBatch.currentPhotoIsLatest
             ) {
+              const singlePhoto = batch.photos[0]!;
               const repeated = (batch.reused_photo_ids?.length ?? 0) > 0;
               let repeatedVision = "";
               if (repeated) {
@@ -24802,30 +25075,112 @@ async function processOne(queueId: string) {
                   } catch { /* noop */ }
                 }
               }
-              const identification = await beginVehicleIdentification(
-                vehicleFlowCtx,
+              const storedBatchRoute = getOwnerMediaRoute(
+                refreshedState.vertical_router,
+                singlePhoto.id,
+              );
+              const batchMediaRoute = effectiveOwnerMediaRoute({
+                stored: storedBatchRoute,
+                decision: verticalDecision,
+                vision: verticalVision,
+                automotiveTenant: !!automotiveTenant,
+              });
+              vehicleFlowCtx.agentState = await persistOwnerMediaRoutes(
+                stateConversation,
+                vehicleFlowCtx.agentState ?? refreshedState,
                 {
-                  photos: batch.photos,
-                  target: "single_ad",
-                  originalMedia: freshLibraryMedia.find((item) =>
-                    item.kind === "image"
-                  ),
+                  mediaIds: [singlePhoto.id],
+                  verticalDecision,
+                  verticalVision,
+                  descriptions: {
+                    [singlePhoto.id]: repeatedVision ||
+                      storedBatchRoute?.vision_description || "",
+                  },
+                  automotiveTenant: !!automotiveTenant,
+                  routeOverride: batchMediaRoute,
                 },
               );
-              const identificationText = repeated
-                ? ownerRepeatedVisionConfirmMessage(repeatedVision, "veiculo")
-                : identification.text;
-              await sendVehicleFlowReply({
-                conversationId: conv.id,
-                userId,
-                to: row.from_number,
-                text: withDemoModeLabel(
-                  identificationText ||
-                    "Não consegui identificar o modelo com segurança. Qual é a marca, o modelo e o ano?",
-                  verticalDecision,
-                ),
-                buttons: identification.interactiveButtons,
-              });
+              if (batchMediaRoute === "geral") {
+                const description = repeatedVision ||
+                  storedBatchRoute?.vision_description || "";
+                const alreadyConfirmed = storedBatchRoute?.confirmed === true;
+                const now = new Date().toISOString();
+                const pending = ownerProductPhotoPendingFromRoute({
+                  mediaId: singlePhoto.id,
+                  visionDescription: description,
+                  stage: alreadyConfirmed ? "actions" : "confirm_vision",
+                  confirmed: alreadyConfirmed,
+                  nowIso: now,
+                });
+                await saveAgentState(
+                  sb,
+                  stateConversation,
+                  {
+                    pending_single_photo: pending,
+                    pending_vehicle_photo_batch: null,
+                    last_media_interaction: {
+                      media_id: singlePhoto.id,
+                      at: now,
+                    },
+                  },
+                  vehicleFlowCtx.agentState ?? refreshedState,
+                );
+                const confirmText = repeated || alreadyConfirmed
+                  ? ownerRepeatedVisionConfirmMessage(description, "produto")
+                  : ownerProductVisionConfirmMessage(description);
+                await sendVehicleFlowReply({
+                  conversationId: conv.id,
+                  userId,
+                  to: row.from_number,
+                  text: withDemoModeLabel(
+                    alreadyConfirmed
+                      ? "Perfeito. O que quer fazer com esta foto?"
+                      : confirmText,
+                    verticalDecision,
+                  ),
+                  buttons: alreadyConfirmed
+                    ? generalSpecialistPhotoButtons()
+                    : ownerPhotoConfirmButtons(),
+                });
+              } else if (batchMediaRoute === "incerto") {
+                const description = repeatedVision ||
+                  storedBatchRoute?.vision_description || "";
+                await sendVehicleFlowReply({
+                  conversationId: conv.id,
+                  userId,
+                  to: row.from_number,
+                  text: withDemoModeLabel(
+                    ownerUncertainVisionConfirmMessage(description),
+                    verticalDecision,
+                  ),
+                  buttons: ownerPhotoConfirmButtons(),
+                });
+              } else {
+                const identification = await beginVehicleIdentification(
+                  vehicleFlowCtx,
+                  {
+                    photos: batch.photos,
+                    target: "single_ad",
+                    originalMedia: freshLibraryMedia.find((item) =>
+                      item.kind === "image"
+                    ),
+                  },
+                );
+                const identificationText = repeated
+                  ? ownerRepeatedVisionConfirmMessage(repeatedVision, "veiculo")
+                  : identification.text;
+                await sendVehicleFlowReply({
+                  conversationId: conv.id,
+                  userId,
+                  to: row.from_number,
+                  text: withDemoModeLabel(
+                    identificationText ||
+                      "Não consegui identificar o modelo com segurança. Qual é a marca, o modelo e o ano?",
+                    verticalDecision,
+                  ),
+                  buttons: identification.interactiveButtons,
+                });
+              }
             }
             const awaitingMore = !queueBatch.shouldOffer;
             console.log(
@@ -26753,8 +27108,22 @@ Regras:
       const pendingVision = pendingVerticalChoice.vision_description || "";
       if (textVerticalDecision.route === "geral") {
         const confirmedTitle = ownerPhotoConfirmedProductTitle(pendingVision);
+        const routes = mergeOwnerMediaRoute(
+          ownerMediaRoutesFromRouter(agentState.vertical_router),
+          pendingVerticalChoice.media_id,
+          {
+            route: "geral",
+            origin: "botao_dono",
+            vision_description: pendingVision,
+            confirmed: true,
+          },
+          now,
+        );
         await saveAgentState(sb, convStateIdentity, {
-          vertical_router: routerState,
+          vertical_router: {
+            ...routerState,
+            media_routes: routes,
+          },
           pending_single_photo: {
             media_id: pendingVerticalChoice.media_id,
             stage: "actions",
@@ -26768,6 +27137,17 @@ Regras:
           buttons: generalSpecialistPhotoButtons(),
         };
       } else {
+        const routes = mergeOwnerMediaRoute(
+          ownerMediaRoutesFromRouter(agentState.vertical_router),
+          pendingVerticalChoice.media_id,
+          {
+            route: "veiculo",
+            origin: "botao_dono",
+            vision_description: pendingVision,
+            confirmed: true,
+          },
+          now,
+        );
         const identification = await beginVehicleIdentification({
           userId,
           fromNumber: row.from_number,
@@ -26781,7 +27161,10 @@ Regras:
           target: "single_ad",
         });
         await saveAgentState(sb, convStateIdentity, {
-          vertical_router: routerState,
+          vertical_router: {
+            ...routerState,
+            media_routes: routes,
+          },
         }, agentState);
         verticalChoiceResolution = {
           text: `${prefix}${identification.text}`,

@@ -112,6 +112,9 @@ Deno.test("perfil da revenda exige classificação; hospital e loja são gerais"
 });
 
 Deno.test("revenda classifica tapete como produto e carro como veículo", () => {
+  assert(
+    verticalVisionPrompt().includes("tapetes"),
+  );
   assertEquals(
     resolveVertical({
       tenantSegment: "Revenda de veículos",
