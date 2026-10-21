@@ -3762,9 +3762,10 @@ async function beginVehicleIdentification(
     ctx.agentState = current;
   }
   if (vehicleIdentificationUsesDirectActionMenu(identification)) {
+    const interactiveList = vehiclePhotoDirectActionList(identification);
     return {
-      text: vehiclePhotoAppearsMessage(identification),
-      interactiveList: vehiclePhotoDirectActionList(),
+      text: interactiveList.body,
+      interactiveList,
     };
   }
   return {
@@ -19159,11 +19160,12 @@ async function callGemini(
           pendingVehicleIdentification.identification,
         )
       ) {
+        const menuList = vehiclePhotoDirectActionList(
+          pendingVehicleIdentification.identification,
+        );
         return {
-          text: vehiclePhotoAppearsMessage(
-            pendingVehicleIdentification.identification,
-          ),
-          interactiveList: vehiclePhotoDirectActionList(),
+          text: menuList.body,
+          interactiveList: menuList,
         };
       }
       return {
@@ -25734,20 +25736,22 @@ async function processOne(queueId: string) {
                 );
                 const idAfterStart = vehicleFlowCtx.agentState
                   ?.pending_vehicle_identification?.identification ?? null;
-                const identificationText = repeated && idAfterStart
-                  ? vehiclePhotoRepeatedAppearsMessage(repeatedVision, idAfterStart)
-                  : identification.text;
+                const menuList = idAfterStart
+                  ? vehiclePhotoDirectActionList(idAfterStart, { repeated })
+                  : identification.interactiveList;
+                const identificationText = menuList?.body ||
+                  identification.text ||
+                  "Não consegui identificar o modelo com segurança. Qual é a marca, o modelo e o ano?";
                 await sendVehicleFlowReply({
                   conversationId: conv.id,
                   userId,
                   to: row.from_number,
                   text: withDemoModeLabel(
-                    identificationText ||
-                      "Não consegui identificar o modelo com segurança. Qual é a marca, o modelo e o ano?",
+                    identificationText,
                     verticalDecision,
                   ),
                   buttons: identification.interactiveButtons,
-                  interactiveList: identification.interactiveList,
+                  interactiveList: menuList,
                 });
               }
             }
@@ -27608,6 +27612,7 @@ Regras:
     let verticalChoiceResolution: {
       text: string;
       buttons?: WhatsAppInteractiveButtons;
+      interactiveList?: WhatsAppInteractiveList;
     } | null = verticalControlResolution;
     if (fromIsOwner && verticalControlResolution) {
       await saveAgentState(sb, convStateIdentity, {
@@ -28011,6 +28016,7 @@ Regras:
       if (verticalChoiceResolution) {
         reply = verticalChoiceResolution.text;
         interactiveButtons = verticalChoiceResolution.buttons;
+        interactiveList = verticalChoiceResolution.interactiveList;
       } else if (metaAdsQuestionarioResult.handled) {
         reply = metaAdsQuestionarioResult.text ??
           "Vamos continuar sua campanha.";

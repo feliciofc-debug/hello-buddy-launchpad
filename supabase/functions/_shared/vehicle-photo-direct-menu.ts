@@ -1,9 +1,14 @@
 import type { VehicleIdentification } from "./vehicle-identification.ts";
 import { hasSpecificVehicleModel } from "./vehicle-identification.ts";
-import { normalizeOwnerPhotoDescription } from "./owner-photo-confirm.ts";
 import { vehiclePostFipeInteractiveId } from "./vehicle-post-fipe-menu.ts";
 
 export const VEHICLE_PHOTO_ACTION_PREFIX = "vehicle_photo_action:";
+export const VEHICLE_PHOTO_LIST_BODY_LIMIT = 1024;
+
+const MENU_INSTRUCTION = "Escolha o que fazer com este veículo.";
+
+const FORBIDDEN_VISIBLE_DETAIL =
+  /\b(pre[cç]o|R\$|fipe|vers[aã]o|quilometragem|\bkm\b|motor\s*\d|\d{4}\b|\b20\d{2}\b|\b19\d{2}\b)\b/i;
 
 export function vehiclePhotoActionId(action: string): string {
   return `${VEHICLE_PHOTO_ACTION_PREFIX}${action}`;
@@ -16,38 +21,109 @@ export function parseVehiclePhotoActionId(text: string): string | null {
   return match?.[1]?.trim().toLowerCase() || null;
 }
 
-export function vehiclePhotoAppearsMessage(
+function clipListBody(value: string): string {
+  const compact = value.replace(/\n{3,}/g, "\n\n").trim();
+  if (compact.length <= VEHICLE_PHOTO_LIST_BODY_LIMIT) return compact;
+  return compact.slice(0, VEHICLE_PHOTO_LIST_BODY_LIMIT - 3).replace(
+    /\s+\S*$/,
+    "",
+  ) + "...";
+}
+
+function normalizeDetail(value: string): string {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, 48);
+}
+
+function visibleDetailSnippets(
+  identification: VehicleIdentification,
+): string[] {
+  const details: string[] = [];
+  const seen = new Set<string>();
+  const add = (raw: string) => {
+    const clean = normalizeDetail(raw);
+    const key = clean.toLowerCase();
+    if (!clean || seen.has(key) || FORBIDDEN_VISIBLE_DETAIL.test(clean)) {
+      return;
+    }
+    seen.add(key);
+    details.push(clean);
+  };
+  if (identification.carroceria) add(identification.carroceria);
+  for (const hint of identification.pistas_visuais || []) {
+    if (details.length >= 2) break;
+    add(hint);
+  }
+  return details.slice(0, 2);
+}
+
+/** Linha "Pela foto parece um …" com marca, modelo, faixa, cor e detalhes visíveis. */
+export function vehiclePhotoIdentificationLine(
   identification: VehicleIdentification | null,
-): string {
+): string | null {
   if (
     !identification ||
     identification.confianca === "baixa" ||
     !hasSpecificVehicleModel(identification)
   ) {
-    return "Não consegui identificar o modelo com segurança. Qual é a marca, o modelo e o ano?";
+    return null;
   }
-  const vehicle = `${identification.marca} ${identification.modelo}`.trim();
-  const range = identification.geracao_ou_faixa_de_anos
-    ? ` ${identification.geracao_ou_faixa_de_anos}`
-    : "";
-  const color = identification.cor ? ` ${identification.cor}` : "";
-  return `Pela foto parece um ${vehicle}${range}${color}.`.replace(/\s+\./g, ".")
+  const chunks: string[] = [];
+  const title = `${identification.marca || ""} ${identification.modelo || ""}`
+    .trim();
+  if (title) chunks.push(title);
+  if (identification.cor) chunks.push(String(identification.cor).trim());
+  if (identification.geracao_ou_faixa_de_anos) {
+    chunks.push(String(identification.geracao_ou_faixa_de_anos).trim());
+  }
+  for (const detail of visibleDetailSnippets(identification)) {
+    chunks.push(detail);
+  }
+  const description = chunks.join(", ");
+  return `Pela foto parece um ${description}.`.replace(/\s+,/g, ",")
     .replace(/\s{2,}/g, " ");
 }
 
-export function vehiclePhotoRepeatedAppearsMessage(
-  description: string,
+export function vehiclePhotoAppearsMessage(
   identification: VehicleIdentification | null,
 ): string {
-  const seen = normalizeOwnerPhotoDescription(description);
-  const base = vehiclePhotoAppearsMessage(identification);
-  if (!seen || base.startsWith("Não consegui")) return base;
-  return `Essa foto você já tinha me mandado. ${base}`;
+  return vehiclePhotoIdentificationLine(identification) ??
+    "Não consegui identificar o modelo com segurança. Qual é a marca, o modelo e o ano?";
 }
 
-export function vehiclePhotoDirectActionList() {
+export function vehiclePhotoRepeatedAppearsMessage(
+  _description: string,
+  identification: VehicleIdentification | null,
+): string {
+  const line = vehiclePhotoIdentificationLine(identification);
+  if (!line) return vehiclePhotoAppearsMessage(identification);
+  return `Essa foto você já tinha me mandado. ${line}`;
+}
+
+export function vehiclePhotoDirectMenuBody(input: {
+  identification: VehicleIdentification | null;
+  repeated?: boolean;
+}): string {
+  const line = vehiclePhotoIdentificationLine(input.identification);
+  if (!line) {
+    return clipListBody(
+      `${vehiclePhotoAppearsMessage(input.identification)}\n${MENU_INSTRUCTION}`,
+    );
+  }
+  const lead = input.repeated
+    ? `Essa foto você já tinha me mandado. ${line}`
+    : line;
+  return clipListBody(`${lead}\n${MENU_INSTRUCTION}`);
+}
+
+export function vehiclePhotoDirectActionList(
+  identification: VehicleIdentification | null,
+  options?: { repeated?: boolean },
+) {
   return {
-    body: "Escolha o que fazer com este veículo.",
+    body: vehiclePhotoDirectMenuBody({
+      identification,
+      repeated: options?.repeated,
+    }),
     button: "Ver opções",
     section_title: "Ações",
     rows: [
