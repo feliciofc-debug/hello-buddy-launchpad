@@ -10,6 +10,7 @@ import {
   demoSegmentConfirmationButtons,
   explicitVerticalIntent,
   isAutomotiveTenant,
+  ownerMediaAutomotiveContext,
   migrateVerticalState,
   parseDemoSegmentCommand,
   parseVerticalVisionResult,
@@ -356,6 +357,42 @@ Deno.test("admin sem ramo permanece automático pela visão", () => {
       vision: { route: "geral", confidence: 0.98 },
     }).route,
     "geral",
+  );
+});
+
+Deno.test("FIX-VEIC-2 — admin automático tem contexto automotivo para rotas de mídia", () => {
+  assertEquals(
+    ownerMediaAutomotiveContext({
+      tenantSegment: "Produtos digitais",
+      isAdmin: true,
+      demoMode: false,
+    }),
+    true,
+  );
+  assertEquals(
+    ownerMediaAutomotiveContext({
+      tenantSegment: "Revenda de veículos",
+      isAdmin: false,
+      demoMode: false,
+    }),
+    true,
+  );
+  assertEquals(
+    ownerMediaAutomotiveContext({
+      tenantSegment: "Loja de roupas",
+      isAdmin: false,
+      demoMode: false,
+    }),
+    false,
+  );
+  assertEquals(
+    ownerMediaAutomotiveContext({
+      tenantSegment: "consórcio",
+      effectiveSegment: "consórcio",
+      isAdmin: true,
+      demoMode: true,
+    }),
+    false,
   );
 });
 

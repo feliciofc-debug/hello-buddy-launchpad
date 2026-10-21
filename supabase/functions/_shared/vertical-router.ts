@@ -110,6 +110,21 @@ function normalize(value: string): string {
     .toLowerCase();
 }
 
+/** Mesmo critério de “contexto automotivo” para rotas de mídia e confirmação de foto. */
+export function ownerMediaAutomotiveContext(input: {
+  tenantSegment?: string | null;
+  effectiveSegment?: string | null;
+  isAdmin?: boolean;
+  demoMode?: boolean;
+}): boolean {
+  const segment = input.demoMode
+    ? (input.effectiveSegment ?? null)
+    : (input.effectiveSegment ?? input.tenantSegment ?? null);
+  if (isAutomotiveTenant(segment)) return true;
+  if (input.isAdmin && !input.demoMode) return true;
+  return false;
+}
+
 export function isAutomotiveTenant(segment?: string | null): boolean {
   const value = normalize(segment || "");
   if (

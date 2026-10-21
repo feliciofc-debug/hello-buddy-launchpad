@@ -97,6 +97,7 @@ import {
   vehicleIdentificationButtons,
   vehicleIdentificationPrompt,
   vehicleIdentificationQuestion,
+  vehicleIdentificationUsesDirectActionMenu,
   type VehicleIdentification,
 } from "../_shared/vehicle-identification.ts";
 import {
@@ -428,6 +429,7 @@ import {
   scopedVerticalState,
   isVerticalStateKey,
   isAutomotiveTenant,
+  ownerMediaAutomotiveContext,
   verticalChoiceButtons,
   verticalAdDetailsPrompt,
   verticalVisionPrompt,
@@ -463,6 +465,12 @@ import {
   vehiclePostFipeTrocaGuide,
   vehiclePostFipeVideoTheme,
 } from "../_shared/vehicle-post-fipe-menu.ts";
+import {
+  parseVehiclePhotoActionId,
+  vehiclePhotoAppearsMessage,
+  vehiclePhotoDirectActionList,
+  vehiclePhotoRepeatedAppearsMessage,
+} from "../_shared/vehicle-photo-direct-menu.ts";
 import {
   generalSpecialistAllowsTool,
   generalSpecialistPhotoButtons,
@@ -949,7 +957,7 @@ function extractText(payload: any): string {
   if (payload.interactive?.list_reply?.title) {
     const title = String(payload.interactive.list_reply.title);
     const id = String(payload.interactive.list_reply.id || "");
-    return /^(?:video_|fipe_|anuncio_post:|carrossel_(?:estilo|cor)_|tiktok_(?:privacy|disclosure):|meta_ads_q:|veiculo_vitrine:|vehicle_post_fipe:)/i.test(id)
+    return /^(?:video_|fipe_|anuncio_post:|carrossel_(?:estilo|cor)_|tiktok_(?:privacy|disclosure):|meta_ads_q:|veiculo_vitrine:|vehicle_post_fipe:|vehicle_photo_action:)/i.test(id)
       ? `${title}\n<<INTERACTIVE_ID:${id}>>`
       : title;
   }
@@ -3720,6 +3728,7 @@ async function beginVehicleIdentification(
 ): Promise<{
   text: string;
   interactiveButtons?: WhatsAppInteractiveButtons;
+  interactiveList?: WhatsAppInteractiveList;
 }> {
   const first = params.photos[0];
   const identification = await identifyVehiclePhoto(
@@ -3752,13 +3761,15 @@ async function beginVehicleIdentification(
     current.pending_vehicle_identification = pending;
     ctx.agentState = current;
   }
-  const canConfirm = identification.confianca !== "baixa" &&
-    hasSpecificVehicleModel(identification);
+  if (vehicleIdentificationUsesDirectActionMenu(identification)) {
+    return {
+      text: vehiclePhotoAppearsMessage(identification),
+      interactiveList: vehiclePhotoDirectActionList(),
+    };
+  }
   return {
     text: vehicleIdentificationQuestion(identification),
-    interactiveButtons: canConfirm
-      ? vehicleIdentificationButtons()
-      : undefined,
+    interactiveButtons: undefined,
   };
 }
 
@@ -14215,21 +14226,23 @@ async function sendVehicleFlowReply(input: {
   to: string;
   text: string;
   buttons?: WhatsAppInteractiveButtons;
+  interactiveList?: WhatsAppInteractiveList;
 }): Promise<void> {
+  const isInteractive = !!(input.buttons || input.interactiveList);
   const { data: outMsg } = await sb.from("whatsapp_cloud_messages").insert({
     conversation_id: input.conversationId,
     user_id: input.userId,
     direction: "outbound",
     sender: "agent",
     content: input.text,
-    message_type: input.buttons ? "interactive" : "text",
+    message_type: isInteractive ? "interactive" : "text",
   }).select("id").single();
   const sentId = await sendWhatsApp(
     input.userId,
     input.to,
     input.text,
     undefined,
-    undefined,
+    input.interactiveList,
     input.buttons,
   );
   if (sentId && outMsg?.id) {
@@ -18125,6 +18138,204 @@ async function callGemini(
       );
       if (response) return response;
     }
+    const vehiclePhotoAction = remetenteEhDono
+      ? parseVehiclePhotoActionId(userContent)
+      : null;
+    if (
+      remetenteEhDono &&
+      vehiclePhotoAction &&
+      pendingVehicleIdentification
+    ) {
+      if (vehiclePhotoAction === "correct") {
+        if (toolCtx.convId) {
+          const next = {
+            ...pendingVehicleIdentification,
+            awaiting_correction: true,
+            created_at: new Date().toISOString(),
+          };
+          await saveAgentState(sb, {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          }, { pending_vehicle_identification: next }, toolCtx.agentState ?? {});
+          if (toolCtx.agentState) {
+            toolCtx.agentState.pending_vehicle_identification = next;
+          }
+        }
+        return {
+          text:
+            "Qual é a marca, o modelo, a versão e o ano? Vou usar exatamente o que você informar.",
+        };
+      }
+      const confirmOutcome = await confirmVehicleIdentification();
+      if (
+        confirmOutcome.text.includes("Preciso da marca") ||
+        confirmOutcome.text.includes("Não encontrei uma identificação")
+      ) {
+        return confirmOutcome;
+      }
+      const pendingAfter = toolCtx.agentState?.pending_vehicle_identification ??
+        pendingVehicleIdentification;
+      if (vehiclePhotoAction === "post") {
+        const mediaId = String(
+          pendingAfter.media_ids?.[0] ||
+            toolCtx.agentState?.last_media_interaction?.media_id ||
+            "",
+        ).trim();
+        if (!mediaId) {
+          return { text: "Não encontrei a foto deste veículo. Envie a imagem novamente." };
+        }
+        if (toolCtx.convId) {
+          const nextSingle = {
+            media_id: mediaId,
+            stage: "destination" as const,
+            created_at: new Date().toISOString(),
+          };
+          await saveAgentState(sb, {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          }, { pending_single_photo: nextSingle }, toolCtx.agentState ?? {});
+          if (toolCtx.agentState) {
+            toolCtx.agentState.pending_single_photo = nextSingle;
+          }
+        }
+        const connected = await connectedAnuncioNetworks(toolCtx.userId);
+        if (!connected.length) {
+          return { text: "Não encontrei Facebook nem Instagram conectados nessa conta." };
+        }
+        const destinationList = anuncioPostDestinationList({
+          mediaType: "foto",
+          connected,
+        });
+        return {
+          text: "Onde você quer publicar?",
+          interactiveList: {
+            ...destinationList,
+            rows: destinationList.rows
+              .filter((row) =>
+                !row.id.endsWith("photo_feed_story") &&
+                !row.id.endsWith("schedule")
+              )
+              .map((row) => ({
+                ...row,
+                id: row.id.replace(
+                  "anuncio_post:destination:",
+                  "single_photo:destination:",
+                ),
+              })),
+          },
+        };
+      }
+      if (vehiclePhotoAction === "fipe") {
+        let brands: Awaited<ReturnType<typeof listarMarcas>> = [];
+        try {
+          brands = await listarMarcas();
+        } catch (error) {
+          console.warn("[fipe][marcas]", (error as Error).message);
+        }
+        const input = fipeInputFromTextAndBrands(
+          "consultar fipe",
+          pendingAfter,
+          brands,
+        );
+        const response = await toolConsultarFipe(input, toolCtx);
+        return {
+          text: response.result,
+          interactiveList: response.interactiveList,
+          interactiveButtons: response.interactiveButtons,
+        };
+      }
+      const syntheticPostFipe = vehiclePhotoAction === "ad"
+        ? "ad"
+        : vehiclePhotoAction === "meta"
+        ? "meta"
+        : vehiclePhotoAction === "video"
+        ? "video"
+        : vehiclePhotoAction === "estoque"
+        ? "estoque"
+        : vehiclePhotoAction === "troca"
+        ? "troca"
+        : null;
+      if (syntheticPostFipe) {
+        const pendingId = pendingAfter;
+        if (syntheticPostFipe === "ad") {
+          const mediaId = String(
+            toolCtx.agentState?.last_media_interaction?.media_id ||
+              pendingId.media_ids?.[0] ||
+              "",
+          ).trim();
+          const data = pendingId?.data ?? {};
+          const titulo = String(
+            pendingId?.confirmed_title || data.titulo || "",
+          ).trim();
+          if (!mediaId || !titulo) {
+            return {
+              text:
+                "Preciso da foto e do modelo confirmados antes de gerar a arte. Envie a foto de novo ou confirme o veículo.",
+            };
+          }
+          const raw = await toolCriarAnuncio({
+            titulo,
+            preco: data.preco,
+            ano: data.ano,
+            versao: data.versao,
+            quilometragem: data.quilometragem,
+            itens: data.itens,
+            cor: data.cor,
+          } as any, toolCtx);
+          try {
+            const parsed = JSON.parse(raw);
+            return {
+              text: String(parsed?.mensagem || parsed?.erro || raw),
+              imageUrl: parsed?.image_url,
+              interactiveButtons: parsed?.interactive_buttons,
+            };
+          } catch {
+            return { text: raw };
+          }
+        }
+        if (syntheticPostFipe === "meta") {
+          if (!toolCtx.convId) {
+            return { text: "Não consegui iniciar a campanha agora. Tente novamente." };
+          }
+          const meta = await processMetaAdsQuestionario({
+            userId: toolCtx.userId,
+            fromNumber: toolCtx.fromNumber,
+            conversationId: toolCtx.convId,
+            text: vehiclePostFipeMetaTriggerText(),
+            owner: true,
+          });
+          if (!meta.handled) {
+            return {
+              text:
+                "Não consegui abrir o questionário de anúncio pago. Verifique a conexão com Meta Ads em Configurações.",
+            };
+          }
+          return {
+            text: meta.text || "Vamos montar a campanha paga.",
+            interactiveButtons: meta.interactiveButtons,
+            interactiveList: meta.interactiveList,
+            metaAdsSummaryDraftId: meta.summaryDraftId,
+          };
+        }
+        if (syntheticPostFipe === "video") {
+          const reply = await startVideoSetup(
+            toolCtx,
+            vehiclePostFipeVideoTheme(toolCtx.agentState),
+            { tema: vehiclePostFipeVideoTheme(toolCtx.agentState) },
+          );
+          return { text: reply };
+        }
+        if (syntheticPostFipe === "estoque") {
+          return { text: vehiclePostFipeEstoqueGuide() };
+        }
+        if (syntheticPostFipe === "troca") {
+          return { text: vehiclePostFipeTrocaGuide() };
+        }
+      }
+      return confirmOutcome;
+    }
     const vehiclePostFipeAction = remetenteEhDono
       ? parseVehiclePostFipeInteractiveId(userContent)
       : null;
@@ -18940,19 +19151,25 @@ async function callGemini(
       remetenteEhDono &&
       pendingVehicleIdentification &&
       !pendingVehicleIdentification.confirmed &&
-      !vehicleIdentificationInteractiveId
+      !vehicleIdentificationInteractiveId &&
+      !vehiclePhotoAction
     ) {
+      if (
+        vehicleIdentificationUsesDirectActionMenu(
+          pendingVehicleIdentification.identification,
+        )
+      ) {
+        return {
+          text: vehiclePhotoAppearsMessage(
+            pendingVehicleIdentification.identification,
+          ),
+          interactiveList: vehiclePhotoDirectActionList(),
+        };
+      }
       return {
         text: vehicleIdentificationQuestion(
           pendingVehicleIdentification.identification,
         ),
-        interactiveButtons:
-          pendingVehicleIdentification.identification.confianca !== "baixa" &&
-            hasSpecificVehicleModel(
-              pendingVehicleIdentification.identification,
-            )
-            ? vehicleIdentificationButtons()
-            : undefined,
       };
     }
     if (
@@ -19147,6 +19364,7 @@ async function callGemini(
         text:
           `Carrossel com ${vehiclePhotoCountLabel(state.photos.length)}.\n\n${identification.text}`,
         interactiveButtons: identification.interactiveButtons,
+        interactiveList: identification.interactiveList,
       };
     }
     if (
@@ -19226,10 +19444,15 @@ async function callGemini(
         current.pending_vehicle_photo_batch = null;
         current.last_media_interaction = interaction;
       }
-      return await beginVehicleIdentification(toolCtx, {
+      const started = await beginVehicleIdentification(toolCtx, {
         photos: pendingVehiclePhotoBatch.photos,
         target: "single_ad",
       });
+      return {
+        text: started.text,
+        interactiveButtons: started.interactiveButtons,
+        interactiveList: started.interactiveList,
+      };
     }
     if (
       remetenteEhDono &&
@@ -19366,10 +19589,15 @@ async function callGemini(
             toolCtx.agentState.pending_single_photo = null;
           }
         }
-        return await beginVehicleIdentification(toolCtx, {
+        const startedAd = await beginVehicleIdentification(toolCtx, {
           photos: [{ id: mediaId, url: "" }],
           target: "single_ad",
         });
+        return {
+          text: startedAd.text,
+          interactiveButtons: startedAd.interactiveButtons,
+          interactiveList: startedAd.interactiveList,
+        };
       }
       if (!ownerPhotoConfirmChoice) {
         return {
@@ -19605,10 +19833,15 @@ async function callGemini(
           interactiveButtons: needMore,
         };
       }
-      return await beginVehicleIdentification(toolCtx, {
+      const startedCarousel = await beginVehicleIdentification(toolCtx, {
         photos: pendingVehicleCarousel.photos,
         target: "carousel",
       });
+      return {
+        text: startedCarousel.text,
+        interactiveButtons: startedCarousel.interactiveButtons,
+        interactiveList: startedCarousel.interactiveList,
+      };
     }
     if (
       remetenteEhDono &&
@@ -24976,9 +25209,12 @@ async function processOne(queueId: string) {
         freshAgentState.last_media_interaction = interaction;
       }
       const automotiveTenant = fromIsOwner &&
-        isAutomotiveTenant(
-          verticalDecision.effectiveSegment ?? verticalSegment,
-        );
+        ownerMediaAutomotiveContext({
+          tenantSegment: verticalSegment,
+          effectiveSegment: verticalDecision.effectiveSegment,
+          isAdmin: userId === ADMIN_AMZ_USER_ID,
+          demoMode: verticalDecision.demoMode,
+        });
       const primaryIncomingPhoto = incomingPhotos.at(-1);
       const storedOwnerMediaRoute = primaryIncomingPhoto
         ? getOwnerMediaRoute(
@@ -25496,8 +25732,10 @@ async function processOne(queueId: string) {
                     ),
                   },
                 );
-                const identificationText = repeated
-                  ? ownerRepeatedVisionConfirmMessage(repeatedVision, "veiculo")
+                const idAfterStart = vehicleFlowCtx.agentState
+                  ?.pending_vehicle_identification?.identification ?? null;
+                const identificationText = repeated && idAfterStart
+                  ? vehiclePhotoRepeatedAppearsMessage(repeatedVision, idAfterStart)
                   : identification.text;
                 await sendVehicleFlowReply({
                   conversationId: conv.id,
@@ -25509,6 +25747,7 @@ async function processOne(queueId: string) {
                     verticalDecision,
                   ),
                   buttons: identification.interactiveButtons,
+                  interactiveList: identification.interactiveList,
                 });
               }
             }
@@ -27288,7 +27527,12 @@ Regras:
 
     migratedAgentState.vertical_router = routerStateForTurn;
     const automotiveOwnerAccount = fromIsOwner &&
-      isAutomotiveTenant(tenantSegment);
+      ownerMediaAutomotiveContext({
+        tenantSegment,
+        effectiveSegment: textVerticalDecision.effectiveSegment,
+        isAdmin: isAdminTenant,
+        demoMode: textVerticalDecision.demoMode,
+      });
     const selectedVertical = verticalChoiceId === "vehicle" ||
         (automotiveOwnerAccount &&
           ownerPhotoConfirmChoice === "confirm_vehicle")
@@ -27522,6 +27766,7 @@ Regras:
         verticalChoiceResolution = {
           text: `${prefix}${identification.text}`,
           buttons: identification.interactiveButtons,
+          interactiveList: identification.interactiveList,
         };
       }
     } else if (

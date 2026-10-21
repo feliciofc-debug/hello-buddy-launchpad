@@ -211,6 +211,14 @@ export function vehicleIdentificationQuestion(
   return `Pela foto parece um ${vehicle}${range}${color}. Confirma?\n\nTambém me mande ano, km, preço e os outros dados reais que quiser mostrar.`;
 }
 
+export function vehicleIdentificationUsesDirectActionMenu(
+  identification: VehicleIdentification | null,
+): boolean {
+  return !!identification &&
+    identification.confianca !== "baixa" &&
+    hasSpecificVehicleModel(identification);
+}
+
 export function vehicleIdentificationButtons() {
   return {
     body: "A identificação visual é apenas uma sugestão.",

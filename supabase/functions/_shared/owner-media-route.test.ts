@@ -6,6 +6,7 @@ import {
   ownerMediaRouteFromDecision,
   resolveVehiclePhotoBatchAdAction,
 } from "./owner-media-route.ts";
+import { ownerMediaAutomotiveContext } from "./vertical-router.ts";
 
 Deno.test("revenda + visão tapete → rota geral", () => {
   assertEquals(
@@ -67,6 +68,24 @@ Deno.test("foto repetida reaproveita rota salva confirmada", () => {
       automotiveTenant: true,
     }),
     "geral",
+  );
+});
+
+Deno.test("admin automático + visão veículo → rota veículo na mídia", () => {
+  const automotive = ownerMediaAutomotiveContext({
+    tenantSegment: "AMZ Ofertas",
+    isAdmin: true,
+    demoMode: false,
+  });
+  assertEquals(automotive, true);
+  assertEquals(
+    effectiveOwnerMediaRoute({
+      stored: null,
+      decision: { route: "veiculo", needsConfirmation: false },
+      vision: { route: "veiculo", confidence: 0.99, reason: "carro inteiro" },
+      automotiveTenant: automotive,
+    }),
+    "veiculo",
   );
 });
 
