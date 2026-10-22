@@ -1,5 +1,6 @@
 import type { WebmotorsAmbiente } from "./webmotors-endpoints.ts";
 import {
+  type WmCatalogItem,
   wmObterCambio,
   wmObterCombustivel,
   wmObterCores,
@@ -9,11 +10,15 @@ import {
   wmObterNumeroPortas,
   wmObterOpcionais,
   wmObterVersao,
-  type WmCatalogItem,
 } from "./webmotors-car-api.ts";
 import type { WmCatalogBundle } from "./webmotors-map-car.ts";
+import { normalizeCatalogLabel } from "./webmotors-text.ts";
 
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function scopedWebmotorsCatalogKey(scope: string, key: string): string {
+  return `tenant:${scope}:${key}`;
+}
 
 export async function readCatalogCache(
   sb: any,
@@ -50,20 +55,29 @@ export async function loadCatalogBundleForVehicle(
   ambiente: WebmotorsAmbiente,
   hash: string,
   vehicle: { marca: string; modelo: string },
-  manualMap: { codigo_marca?: number | null; codigo_modelo?: number | null } | null,
+  manualMap:
+    | { codigo_marca?: number | null; codigo_modelo?: number | null }
+    | null,
+  cacheScope: string,
 ): Promise<WmCatalogBundle> {
-  let marcas = await readCatalogCache(sb, ambiente, "marcas") as WmCatalogItem[] | null;
+  const key = (value: string) => scopedWebmotorsCatalogKey(cacheScope, value);
+  let marcas = await readCatalogCache(sb, ambiente, key("marcas")) as
+    | WmCatalogItem[]
+    | null;
   if (!marcas) {
     marcas = await wmObterMarca(ambiente, hash);
-    await writeCatalogCache(sb, ambiente, "marcas", marcas);
+    await writeCatalogCache(sb, ambiente, key("marcas"), marcas);
   }
 
   const marcaCod = manualMap?.codigo_marca ??
-    marcas.find((m) => m.nome.toLowerCase() === vehicle.marca.toLowerCase())?.codigo ??
-    marcas[0]?.codigo;
+    marcas.find((m) =>
+      normalizeCatalogLabel(m.nome) === normalizeCatalogLabel(vehicle.marca)
+    )?.codigo;
 
-  const modelosKey = `modelos:${marcaCod ?? 0}`;
-  let modelos = await readCatalogCache(sb, ambiente, modelosKey) as WmCatalogItem[] | null;
+  const modelosKey = key(`modelos:${marcaCod ?? 0}`);
+  let modelos = await readCatalogCache(sb, ambiente, modelosKey) as
+    | WmCatalogItem[]
+    | null;
   if (!modelos && marcaCod) {
     modelos = await wmObterModelo(ambiente, hash, marcaCod);
     await writeCatalogCache(sb, ambiente, modelosKey, modelos);
@@ -71,18 +85,24 @@ export async function loadCatalogBundleForVehicle(
   modelos = modelos ?? [];
 
   const modeloCod = manualMap?.codigo_modelo ??
-    modelos.find((m) => m.nome.toLowerCase() === vehicle.modelo.toLowerCase())?.codigo ??
-    modelos[0]?.codigo;
+    modelos.find((m) =>
+      normalizeCatalogLabel(m.nome) === normalizeCatalogLabel(vehicle.modelo)
+    )?.codigo;
 
-  const versoesKey = `versoes:${modeloCod ?? 0}`;
-  let versoes = await readCatalogCache(sb, ambiente, versoesKey) as WmCatalogItem[] | null;
+  const versoesKey = key(`versoes:${modeloCod ?? 0}`);
+  let versoes = await readCatalogCache(sb, ambiente, versoesKey) as
+    | WmCatalogItem[]
+    | null;
   if (!versoes && modeloCod) {
     versoes = await wmObterVersao(ambiente, hash, modeloCod);
     await writeCatalogCache(sb, ambiente, versoesKey, versoes);
   }
   versoes = versoes ?? [];
 
-  async function listCached(key: string, loader: () => Promise<WmCatalogItem[] | number[]>): Promise<any> {
+  async function listCached(
+    key: string,
+    loader: () => Promise<WmCatalogItem[] | number[]>,
+  ): Promise<any> {
     let cached = await readCatalogCache(sb, ambiente, key);
     if (!cached) {
       cached = await loader();
@@ -91,14 +111,15 @@ export async function loadCatalogBundleForVehicle(
     return cached;
   }
 
-  const [cores, combustiveis, cambios, portas, modalidades, opcionais] = await Promise.all([
-    listCached("cores", () => wmObterCores(ambiente, hash)),
-    listCached("combustiveis", () => wmObterCombustivel(ambiente, hash)),
-    listCached("cambios", () => wmObterCambio(ambiente, hash)),
-    listCached("portas", () => wmObterNumeroPortas(ambiente, hash)),
-    listCached("modalidades", () => wmObterModalidade(ambiente, hash)),
-    listCached("opcionais", () => wmObterOpcionais(ambiente, hash)),
-  ]);
+  const [cores, combustiveis, cambios, portas, modalidades, opcionais] =
+    await Promise.all([
+      listCached(key("cores"), () => wmObterCores(ambiente, hash)),
+      listCached(key("combustiveis"), () => wmObterCombustivel(ambiente, hash)),
+      listCached(key("cambios"), () => wmObterCambio(ambiente, hash)),
+      listCached(key("portas"), () => wmObterNumeroPortas(ambiente, hash)),
+      listCached(key("modalidades"), () => wmObterModalidade(ambiente, hash)),
+      listCached(key("opcionais"), () => wmObterOpcionais(ambiente, hash)),
+    ]);
 
   return {
     marcas,

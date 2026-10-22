@@ -35,7 +35,10 @@ export type WmMapResult =
   | { ok: false; blocking: WmBlockingItem[] };
 
 export type WmMotoMapResult =
-  | { ok: true; payload: import("./webmotors-moto-api.ts").WmMotoAnuncioPayload }
+  | {
+    ok: true;
+    payload: import("./webmotors-moto-api.ts").WmMotoAnuncioPayload;
+  }
   | { ok: false; blocking: WmBlockingItem[] };
 
 export type WebmotorsVeiculoMapRow = {

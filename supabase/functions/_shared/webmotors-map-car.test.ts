@@ -1,4 +1,7 @@
-import { assertEquals, assertThrows } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assertEquals,
+  assertThrows,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   assertWebmotorsPayloadPublicOnly,
   mapVehicleToWebmotorsCar,
@@ -75,4 +78,21 @@ Deno.test("Observacao rejeita FIPE com mensagem clara", () => {
 Deno.test("PrecoVenda vem do estoque AMZ", () => {
   const p = webmotorsPricesFromEstoque(99990.5);
   assertEquals(p?.precoVenda, 99990.5);
+});
+
+Deno.test("catálogo não aceita correspondência parcial nem escolhe opção arbitrária", () => {
+  const result = mapVehicleToWebmotorsCar({
+    vehicle: {
+      ...baseVehicle,
+      versao: "XEi",
+      portas: null,
+    },
+    manualMap: null,
+    catalog,
+    defaultModalidade: 7,
+  });
+  assertEquals(result.ok, false);
+  if (result.ok) throw new Error("resultado deveria bloquear de/para inexato");
+  assertEquals(result.blocking.some((item) => item.field === "versao"), true);
+  assertEquals(result.blocking.some((item) => item.field === "portas"), true);
 });

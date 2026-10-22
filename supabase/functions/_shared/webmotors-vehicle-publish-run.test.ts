@@ -42,8 +42,12 @@ function mockSb(portalStore: Record<string, unknown>) {
         select: () => chain,
         eq: () => chain,
         maybeSingle: async () => {
-          if (table === "veiculos_estoque") return { data: vehicleRow, error: null };
-          if (table === "webmotors_veiculo_map") return { data: null, error: null };
+          if (table === "veiculos_estoque") {
+            return { data: vehicleRow, error: null };
+          }
+          if (table === "webmotors_veiculo_map") {
+            return { data: null, error: null };
+          }
           if (table === "veiculos_portais") {
             return { data: portalStore["u1:v1"] ?? null, error: null };
           }
@@ -51,7 +55,10 @@ function mockSb(portalStore: Record<string, unknown>) {
         },
         upsert: (row: Record<string, unknown>) => {
           if (table === "veiculos_portais") {
-            portalStore["u1:v1"] = { ...(portalStore["u1:v1"] as object ?? {}), ...row };
+            portalStore["u1:v1"] = {
+              ...(portalStore["u1:v1"] as object ?? {}),
+              ...row,
+            };
           }
           return chain;
         },
@@ -59,7 +66,10 @@ function mockSb(portalStore: Record<string, unknown>) {
           eq: () => ({
             eq: () => ({
               eq: async () => {
-                portalStore["u1:v1"] = { ...(portalStore["u1:v1"] as object ?? {}), ...patch };
+                portalStore["u1:v1"] = {
+                  ...(portalStore["u1:v1"] as object ?? {}),
+                  ...patch,
+                };
                 return { error: null };
               },
             }),
@@ -100,15 +110,17 @@ Deno.test("IncluirCarro ok + foto falha: external_id salvo; segunda publicação
     {
       hashForUser: authStub,
       loadCatalog: catalogLoader,
+      fetchImageBase64: async () => "aW1hZ2U=",
       api: {
         incluirCarro: async () => {
           incluirCalls++;
           return { codigoAnuncio: 5555, codigoRetorno: "0" };
         },
-        incluirFotoUrl: async () => {
-          portalUpsertsBeforeFoto = (portalStore["u1:v1"] as { external_id?: string })?.external_id
-            ? 1
-            : 0;
+        incluirFotoBase64: async () => {
+          portalUpsertsBeforeFoto =
+            (portalStore["u1:v1"] as { external_id?: string })?.external_id
+              ? 1
+              : 0;
           throw new Error("foto fail");
         },
       },
@@ -118,8 +130,15 @@ Deno.test("IncluirCarro ok + foto falha: external_id salvo; segunda publicação
   assertEquals(first.ok, true);
   assertEquals(first.external_id, "5555");
   assertEquals(portalUpsertsBeforeFoto, 1);
-  assertEquals((portalStore["u1:v1"] as { external_id?: string; status?: string }).external_id, "5555");
-  assertEquals((portalStore["u1:v1"] as { status?: string }).status, "published");
+  assertEquals(
+    (portalStore["u1:v1"] as { external_id?: string; status?: string })
+      .external_id,
+    "5555",
+  );
+  assertEquals(
+    (portalStore["u1:v1"] as { status?: string }).status,
+    "published",
+  );
   assertEquals(incluirCalls, 1);
 
   incluirCalls = 0;
@@ -129,12 +148,13 @@ Deno.test("IncluirCarro ok + foto falha: external_id salvo; segunda publicação
     {
       hashForUser: authStub,
       loadCatalog: catalogLoader,
+      fetchImageBase64: async () => "aW1hZ2U=",
       api: {
         incluirCarro: async () => {
           incluirCalls++;
           return { codigoAnuncio: 9999, codigoRetorno: "0" };
         },
-        incluirFotoUrl: async () => 1,
+        incluirFotoBase64: async () => 1,
       },
     },
   );

@@ -1,20 +1,28 @@
 import {
-  WM_ESTOQUE_NS,
-  webmotorsEndpoint,
   type WebmotorsAmbiente,
+  webmotorsEndpoint,
+  WM_ESTOQUE_NS,
 } from "./webmotors-endpoints.ts";
 import {
   escapeXml,
+  parseSoapFault,
   soapPost,
   xmlAllBlocks,
   xmlFirstText,
-  parseSoapFault,
 } from "./webmotors-soap-client.ts";
-import { isWebmotorsSuccess, webmotorsCodigoRetornoMessage } from "./webmotors-errors.ts";
+import {
+  isWebmotorsSuccess,
+  webmotorsCodigoRetornoMessage,
+} from "./webmotors-errors.ts";
 
 export type WmCatalogItem = { codigo: number; nome: string };
 
-function parseCatalogItems(xml: string, blockTag: string, codigoTag: string, nomeTag: string): WmCatalogItem[] {
+function parseCatalogItems(
+  xml: string,
+  blockTag: string,
+  codigoTag: string,
+  nomeTag: string,
+): WmCatalogItem[] {
   const blocks = xmlAllBlocks(xml, blockTag);
   const out: WmCatalogItem[] = [];
   for (const b of blocks) {
@@ -47,8 +55,7 @@ async function estoqueCall(
   innerParams: string,
 ): Promise<string> {
   const url = webmotorsEndpoint(ambiente, "estoque_carros");
-  const body =
-    `<${operation} xmlns="${WM_ESTOQUE_NS}">` +
+  const body = `<${operation} xmlns="${WM_ESTOQUE_NS}">` +
     `<pHashAutenticacao>${escapeXml(hash)}</pHashAutenticacao>` +
     innerParams +
     `</${operation}>`;
@@ -59,7 +66,10 @@ async function estoqueCall(
   });
 }
 
-export async function wmObterMarca(ambiente: WebmotorsAmbiente, hash: string): Promise<WmCatalogItem[]> {
+export async function wmObterMarca(
+  ambiente: WebmotorsAmbiente,
+  hash: string,
+): Promise<WmCatalogItem[]> {
   const xml = await estoqueCall(ambiente, hash, "ObterMarca", "");
   assertSoapOk(xml, "ObterMarcaResult");
   return parseCatalogItems(xml, "MarcaWM", "CodigoMarca", "NomeMarca");
@@ -99,22 +109,39 @@ export async function wmObterVersao(
   return parseCatalogItems(xml, "Versao", "CodigoVersao", "NomeVersao");
 }
 
-export async function wmObterCores(ambiente: WebmotorsAmbiente, hash: string): Promise<WmCatalogItem[]> {
+export async function wmObterCores(
+  ambiente: WebmotorsAmbiente,
+  hash: string,
+): Promise<WmCatalogItem[]> {
   const xml = await estoqueCall(ambiente, hash, "ObterCores", "");
   return parseCatalogItems(xml, "CorWM", "CodigoCor", "Descricao");
 }
 
-export async function wmObterCombustivel(ambiente: WebmotorsAmbiente, hash: string): Promise<WmCatalogItem[]> {
+export async function wmObterCombustivel(
+  ambiente: WebmotorsAmbiente,
+  hash: string,
+): Promise<WmCatalogItem[]> {
   const xml = await estoqueCall(ambiente, hash, "ObterCombustivel", "");
-  return parseCatalogItems(xml, "CombustivelWM", "CodigoCombustivel", "Descricao");
+  return parseCatalogItems(
+    xml,
+    "CombustivelWM",
+    "CodigoCombustivel",
+    "Descricao",
+  );
 }
 
-export async function wmObterCambio(ambiente: WebmotorsAmbiente, hash: string): Promise<WmCatalogItem[]> {
+export async function wmObterCambio(
+  ambiente: WebmotorsAmbiente,
+  hash: string,
+): Promise<WmCatalogItem[]> {
   const xml = await estoqueCall(ambiente, hash, "ObterCambio", "");
   return parseCatalogItems(xml, "TipoCambioWM", "CodigoCambio", "Descricao");
 }
 
-export async function wmObterNumeroPortas(ambiente: WebmotorsAmbiente, hash: string): Promise<number[]> {
+export async function wmObterNumeroPortas(
+  ambiente: WebmotorsAmbiente,
+  hash: string,
+): Promise<number[]> {
   const xml = await estoqueCall(ambiente, hash, "ObterNumeroPortas", "");
   const blocks = xmlAllBlocks(xml, "NumeroPortasWM");
   const nums: number[] = [];
@@ -128,12 +155,23 @@ export async function wmObterNumeroPortas(ambiente: WebmotorsAmbiente, hash: str
   return nums.filter((n) => Number.isFinite(n) && n > 0);
 }
 
-export async function wmObterModalidade(ambiente: WebmotorsAmbiente, hash: string): Promise<WmCatalogItem[]> {
+export async function wmObterModalidade(
+  ambiente: WebmotorsAmbiente,
+  hash: string,
+): Promise<WmCatalogItem[]> {
   const xml = await estoqueCall(ambiente, hash, "ObterModalidade", "");
-  return parseCatalogItems(xml, "ModalidadeWM", "CodigoModalidade", "Descricao");
+  return parseCatalogItems(
+    xml,
+    "ModalidadeWM",
+    "CodigoModalidade",
+    "Descricao",
+  );
 }
 
-export async function wmObterOpcionais(ambiente: WebmotorsAmbiente, hash: string): Promise<WmCatalogItem[]> {
+export async function wmObterOpcionais(
+  ambiente: WebmotorsAmbiente,
+  hash: string,
+): Promise<WmCatalogItem[]> {
   const xml = await estoqueCall(ambiente, hash, "ObterOpcionais", "");
   return parseCatalogItems(xml, "OpcionalWM", "CodigoOpcional", "Descricao");
 }
@@ -190,7 +228,12 @@ export async function wmIncluirCarro(
   hash: string,
   anuncio: WmAnuncioPayload,
 ): Promise<{ codigoAnuncio: number; codigoRetorno: string | null }> {
-  const xml = await estoqueCall(ambiente, hash, "IncluirCarro", buildAnuncioXml(anuncio));
+  const xml = await estoqueCall(
+    ambiente,
+    hash,
+    "IncluirCarro",
+    buildAnuncioXml(anuncio),
+  );
   const codigoRetorno = xmlFirstText(xml, "CodigoRetorno");
   const codigoAnuncioRaw = xmlFirstText(xml, "CodigoAnuncio");
   if (!isWebmotorsSuccess(codigoRetorno)) {
@@ -208,11 +251,27 @@ export async function wmAlterarCarro(
   hash: string,
   anuncio: WmAnuncioPayload,
 ): Promise<void> {
-  const xml = await estoqueCall(ambiente, hash, "AlterarCarro", buildAnuncioXml(anuncio));
+  const xml = await estoqueCall(
+    ambiente,
+    hash,
+    "AlterarCarro",
+    buildAnuncioXml(anuncio),
+  );
   const codigoRetorno = xmlFirstText(xml, "CodigoRetorno");
   if (!isWebmotorsSuccess(codigoRetorno)) {
     throw new Error(webmotorsCodigoRetornoMessage(codigoRetorno));
   }
+}
+
+export async function wmObterEstoqueAtual(
+  ambiente: WebmotorsAmbiente,
+  hash: string,
+): Promise<number[]> {
+  const xml = await estoqueCall(ambiente, hash, "ObterEstoqueAtual", "");
+  assertSoapOk(xml, "ObterEstoqueAtualResult");
+  return xmlAllBlocks(xml, "AnuncioWM")
+    .map((block) => Number(xmlFirstText(block, "CodigoAnuncio") ?? "0"))
+    .filter((codigo) => Number.isFinite(codigo) && codigo > 0);
 }
 
 export async function wmExcluirCarro(
@@ -234,25 +293,29 @@ export async function wmExcluirCarro(
   }
 }
 
-export async function wmIncluirFotoUrl(
+export async function wmIncluirFotoBase64(
   ambiente: WebmotorsAmbiente,
   hash: string,
   codigoAnuncio: number,
-  url: string,
+  base64: string,
 ): Promise<number> {
   const xml = await estoqueCall(
     ambiente,
     hash,
-    "IncluirFotoUrl",
-    `<oUrlImagem>${escapeXml(url)}</oUrlImagem>` +
+    "IncluirFoto",
+    `<pByteImage>${escapeXml(base64)}</pByteImage>` +
       `<pCodigoAnuncio>${codigoAnuncio}</pCodigoAnuncio>`,
   );
   const codigoRetorno = xmlFirstText(xml, "CodigoRetorno");
   if (!isWebmotorsSuccess(codigoRetorno)) {
     throw new Error(webmotorsCodigoRetornoMessage(codigoRetorno));
   }
-  const foto = Number(xmlFirstText(xml, "CodigoFotoAnuncio") ?? xmlFirstText(xml, "CodigoFoto"));
-  if (!Number.isFinite(foto)) throw new Error("Falha ao enviar foto para a Webmotors.");
+  const foto = Number(
+    xmlFirstText(xml, "CodigoFotoAnuncio") ?? xmlFirstText(xml, "CodigoFoto"),
+  );
+  if (!Number.isFinite(foto)) {
+    throw new Error("Falha ao enviar foto para a Webmotors.");
+  }
   return foto;
 }
 
@@ -285,7 +348,7 @@ export async function wmExcluirFoto(
     hash,
     "ExcluirFoto",
     `<pCodigoAnuncio>${codigoAnuncio}</pCodigoAnuncio>` +
-      `<pCodigoFotoAnuncio>${codigoFoto}</pCodigoFotoAnuncio>`,
+      `<pCodigoFoto>${codigoFoto}</pCodigoFoto>`,
   );
   const codigoRetorno = xmlFirstText(xml, "CodigoRetorno");
   if (!isWebmotorsSuccess(codigoRetorno)) {

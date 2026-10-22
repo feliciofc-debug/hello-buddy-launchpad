@@ -1,6 +1,10 @@
 import { decryptWebmotorsSecret } from "./webmotors-token-crypto.ts";
 import { webmotorsAutenticar } from "./webmotors-auth.ts";
 import type { WebmotorsAmbiente } from "./webmotors-endpoints.ts";
+import {
+  loadWebmotorsHomologCredentials,
+  webmotorsServerEnvironment,
+} from "./webmotors-config.ts";
 
 export type WebmotorsContaRow = {
   user_id: string;
@@ -13,7 +17,10 @@ export type WebmotorsContaRow = {
   updated_at?: string;
 };
 
-export async function loadWebmotorsConta(sb: any, userId: string): Promise<WebmotorsContaRow | null> {
+export async function loadWebmotorsConta(
+  sb: any,
+  userId: string,
+): Promise<WebmotorsContaRow | null> {
   const { data } = await sb.from("webmotors_contas")
     .select("*")
     .eq("user_id", userId)
@@ -26,18 +33,39 @@ export async function webmotorsHashForUser(sb: any, userId: string): Promise<{
   ambiente: WebmotorsAmbiente;
   conta: WebmotorsContaRow;
 }> {
+  if (webmotorsServerEnvironment() === "homologacao") {
+    const credentials = loadWebmotorsHomologCredentials();
+    const hash = await webmotorsAutenticar({
+      ambiente: "homolog",
+      ...credentials,
+    });
+    return {
+      hash,
+      ambiente: "homolog",
+      conta: {
+        user_id: userId,
+        cnpj: credentials.cnpj,
+        integration_email: credentials.email,
+        password_enc: "",
+        ambiente: "homolog",
+        status: "active",
+        default_codigo_modalidade: null,
+      },
+    };
+  }
+
   const conta = await loadWebmotorsConta(sb, userId);
   if (!conta || conta.status === "disconnected") {
     throw new Error("Conecte a Webmotors em Configurações → Integrações.");
   }
   const senha = await decryptWebmotorsSecret(conta.password_enc);
   const hash = await webmotorsAutenticar({
-    ambiente: conta.ambiente,
+    ambiente: "producao",
     cnpj: conta.cnpj,
     email: conta.integration_email,
     senha,
   });
-  return { hash, ambiente: conta.ambiente, conta };
+  return { hash, ambiente: "producao", conta };
 }
 
 export function maskCnpj(cnpj: string): string {
