@@ -76,6 +76,12 @@ export function vehiclePhotoEditInstruction(
   return stripAudioTranscriptPrefix(String(text ?? "")).trim();
 }
 
+export function vehiclePhotoEditShortcutExecutesDirectly(
+  shortcut: string | null | undefined,
+): boolean {
+  return shortcut === "studio" || shortcut === "enhance";
+}
+
 export function vehiclePhotoEditIsCreativeScene(instruction: string): boolean {
   return /\b(fundo|est[uú]dio|rua|estrada|cidade|cen[aá]rio|ambiente|showroom|praia|campo|montanhas?|p[oô]r do sol|noite)\b/i
     .test(instruction);

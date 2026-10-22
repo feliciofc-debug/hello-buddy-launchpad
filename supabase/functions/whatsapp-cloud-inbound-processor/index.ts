@@ -492,6 +492,7 @@ import {
   vehiclePhotoEditMenuResponse,
   vehiclePhotoEditRenderTexts,
   vehiclePhotoEditSafetyPlan,
+  vehiclePhotoEditShortcutExecutesDirectly,
   vehiclePhotoFollowUpLooksLikeEdit,
   vehiclePhotoRequestsPaintEnhancement,
   vehiclePhotoRequestsOriginalAppearance,
@@ -18352,37 +18353,16 @@ async function callGemini(
     const pendingVehicleEditShortcut = remetenteEhDono
       ? parseVehiclePhotoEditInteractiveId(userContent)
       : null;
-    if (
-      remetenteEhDono &&
-      pendingVehiclePhotoEdit &&
-      (
-        pendingVehicleEditShortcut ||
-        !/<<INTERACTIVE_ID:/i.test(userContent)
-      )
-    ) {
-      if (isVehiclePhotoEditCancel(userContent)) {
-        await clearPendingVehiclePhotoEdit();
-        return { text: "Edição cancelada." };
-      }
-      const requestedInstruction = vehiclePhotoEditInstruction(
-        userContent,
-        pendingVehicleEditShortcut,
-      );
-      if (!requestedInstruction) {
-        return {
-          text:
-            "Me diga por texto ou áudio como você quer a foto. Se preferir, diga “cancelar”.",
-        };
-      }
+    const executeVehiclePhotoEdit = async (
+      mediaId: string,
+      requestedInstruction: string,
+    ) => {
       const safety = vehiclePhotoEditSafetyPlan(requestedInstruction);
       const instruction = safety.safeInstruction;
-      if (safety.refused && !instruction) {
-        return { text: VEHICLE_STATE_REFUSAL };
-      }
       const creativeScene = vehiclePhotoEditIsCreativeScene(instruction);
       const resolvedVehicleSource = await resolverMidiaBibliotecaPorId(
         toolCtx.userId,
-        pendingVehiclePhotoEdit.media_id,
+        mediaId,
       );
       const vehicleRoot = await resolveMediaEditChainRoot(
         resolvedVehicleSource.midia,
@@ -18396,10 +18376,7 @@ async function callGemini(
       );
       const vehicleScenePlan = planVehiclePhotoSceneAdjustment({
         adjustment: instruction,
-        currentMediaId: String(
-          resolvedVehicleSource.midia?.id ||
-            pendingVehiclePhotoEdit.media_id,
-        ),
+        currentMediaId: String(resolvedVehicleSource.midia?.id || mediaId),
         currentUrl: String(resolvedVehicleSource.midia?.midia_url || ""),
         rootMediaId: vehicleRoot?.id,
         rootUrl: vehicleRoot?.midia_url,
@@ -18443,8 +18420,8 @@ async function callGemini(
           await rememberLastMediaInteraction(toolCtx, editedMediaId);
         }
         const completedText = creativeScene
-            ? "Pronto — editei a foto com o cenário que você pediu, sem texto, preço, km ou logo."
-            : "Pronto — editei a foto sem adicionar texto, preço, km ou logo.";
+          ? "Pronto — editei a foto com o cenário que você pediu, sem texto, preço, km ou logo."
+          : "Pronto — editei a foto sem adicionar texto, preço, km ou logo.";
         return {
           text: safety.refused
             ? `${VEHICLE_STATE_REFUSAL}\n\n${completedText}`
@@ -18459,6 +18436,33 @@ async function callGemini(
         text:
           "Não consegui editar agora. Sua instrução continua salva; tente novamente ou diga “cancelar”.",
       };
+    };
+    if (
+      remetenteEhDono &&
+      pendingVehiclePhotoEdit &&
+      (
+        pendingVehicleEditShortcut ||
+        !/<<INTERACTIVE_ID:/i.test(userContent)
+      )
+    ) {
+      if (isVehiclePhotoEditCancel(userContent)) {
+        await clearPendingVehiclePhotoEdit();
+        return { text: "Edição cancelada." };
+      }
+      const requestedInstruction = vehiclePhotoEditInstruction(
+        userContent,
+        pendingVehicleEditShortcut,
+      );
+      if (!requestedInstruction) {
+        return {
+          text:
+            "Me diga por texto ou áudio como você quer a foto. Se preferir, diga “cancelar”.",
+        };
+      }
+      return await executeVehiclePhotoEdit(
+        pendingVehiclePhotoEdit.media_id,
+        requestedInstruction,
+      );
     }
     const clearPendingImageEdit = async () => {
       if (toolCtx.convId) {
@@ -18849,6 +18853,12 @@ async function callGemini(
       }
       if (toolCtx.agentState) {
         toolCtx.agentState.pending_vehicle_photo_edit = pendingEdit;
+      }
+      if (vehiclePhotoEditShortcutExecutesDirectly(vehiclePhotoEditAction)) {
+        return await executeVehiclePhotoEdit(
+          mediaId,
+          vehiclePhotoEditInstruction(userContent, vehiclePhotoEditAction),
+        );
       }
       return vehiclePhotoEditMenuResponse();
     }

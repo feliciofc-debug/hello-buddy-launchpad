@@ -29,6 +29,7 @@ import {
   vehiclePhotoEditMenuResponse,
   vehiclePhotoEditRenderTexts,
   vehiclePhotoEditSafetyPlan,
+  vehiclePhotoEditShortcutExecutesDirectly,
   vehiclePhotoEditToolMode,
   vehiclePhotoEditUserPrompt,
   vehiclePhotoFollowUpLooksLikeEdit,
@@ -225,6 +226,12 @@ Deno.test("FIX-VEIC-3.3 — pergunta de edição sai uma vez no corpo interativo
     response.interactiveButtons.body.match(/Como você quer a foto/g)?.length,
     1,
   );
+});
+
+Deno.test("FIX-VEIC-3.3 — atalho sem pending executa direto e não reabre menu", () => {
+  assertEquals(vehiclePhotoEditShortcutExecutesDirectly("studio"), true);
+  assertEquals(vehiclePhotoEditShortcutExecutesDirectly("enhance"), true);
+  assertEquals(vehiclePhotoEditShortcutExecutesDirectly(null), false);
 });
 
 Deno.test("FIX-VEIC-3.1 — edição não herda preço/km/logo", () => {
