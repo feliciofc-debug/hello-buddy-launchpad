@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
   normalizeOwnerPhone,
   ownerPhoneVariants,
@@ -41,15 +42,7 @@ export function maskGestaoPhone(fromNumber: string): string {
 }
 
 export async function loadGestaoAuthContext(
-  sb: {
-    from: (t: string) => {
-      select: (c: string) => {
-        eq: (col: string, val: string) => {
-          maybeSingle: () => Promise<{ data: Record<string, unknown> | null }>;
-        };
-      };
-    };
-  },
+  sb: SupabaseClient,
   userId: string,
 ): Promise<GestaoAuthContext> {
   const [{ data: agent }, { data: empresa }] = await Promise.all([
