@@ -494,22 +494,15 @@ import {
   vehiclePhotoEditSafetyPlan,
   vehiclePhotoEditShortcutExecutesDirectly,
   vehiclePhotoFollowUpLooksLikeEdit,
-  vehiclePhotoRequestsPaintEnhancement,
   vehiclePhotoRequestsOriginalAppearance,
   vehiclePhotoEditToolMode,
   vehiclePhotoEditUserPrompt,
+  VEHICLE_PHOTO_EDIT_MAX_PAID_CALLS,
   VEHICLE_STATE_REFUSAL,
   planVehiclePhotoSceneAdjustment,
   type PendingVehiclePhotoEdit,
 } from "../_shared/vehicle-photo-edit-wa.ts";
 import { resolveMediaEditChainRoot } from "../_shared/media-edit-chain.ts";
-import {
-  compositeVehicleOriginalPixels,
-  enhanceVehiclePaintPreservingDetails,
-  validateVehicleMeanColor,
-  vehicleBackgroundOnlyPrompt,
-  vehicleSegmentationMaskPrompt,
-} from "../_shared/vehicle-scene-compositor.ts";
 import {
   parseVehicleBrandPosition,
   vehicleBrandPositionList,
@@ -2191,18 +2184,6 @@ async function checkInteriorRoomStructure(
 }
 
 // ---- editar_imagem: edita/melhora foto enviada (turno atual ou última foto recente da biblioteca) ----
-async function imageReferenceBytes(reference: string): Promise<Uint8Array> {
-  const dataMatch = String(reference || "").match(
-    /^data:image\/[\w.+-]+;base64,(.+)$/s,
-  );
-  if (dataMatch) return base64Decode(dataMatch[1]);
-  const response = await fetch(reference, {
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!response.ok) throw new Error(`image_download_failed:${response.status}`);
-  return new Uint8Array(await response.arrayBuffer());
-}
-
 async function toolEditarImagem(
   prompt: string,
   ctx: {
@@ -2217,9 +2198,7 @@ async function toolEditarImagem(
     sourceMediaId?: string;
     originalSourceMediaId?: string;
     libraryContext?: string;
-    preserveVehiclePixels?: boolean;
-    validateVehicleColor?: boolean;
-    preserveVehicleCondition?: boolean;
+    vehicleEdit?: boolean;
   },
 ): Promise<string> {
   if (!isOwner({ userId: ctx.userId, fromNumber: ctx.fromNumber || "" })) {
@@ -2227,6 +2206,16 @@ async function toolEditarImagem(
   }
   const clean = (prompt || "").trim();
   if (!clean) return JSON.stringify({ erro: "prompt vazio" });
+  const vehicleEditStartedAt = Date.now();
+  let paidCalls = 0;
+  const logVehicleEditMetrics = (outcome: string) => {
+    if (!ctx.vehicleEdit) return;
+    console.log(
+      `[vehicle_image_edit] duration_ms=${
+        Date.now() - vehicleEditStartedAt
+      } paid_calls=${paidCalls} cutout=unavailable fallback=single_ai outcome=${outcome}`,
+    );
+  };
 
   // A foto do turno atual sempre vence. O ID explícito vem em seguida e a
   // janela de 30 minutos continua sendo apenas o último recurso.
@@ -2389,92 +2378,18 @@ ${isCreativeScene ? productSceneScaleDirective() : ""}`
           : blocoFormatoSocial(clean + " " + modo)
       }\n\nResultado fotorealista de alta qualidade, pronto para publicação.`;
     let r: ImagemGatewayOk | ImagemGatewayErr;
-    if (ctx.preserveVehiclePixels && isCreativeScene) {
-      const [background, mask, originalBytes] = await Promise.all([
-        chamarGatewayImagem(
-          imageRequest(vehicleBackgroundOnlyPrompt(clean)),
-          "editar_imagem_fundo_veiculo",
-          100000,
-          imageModelsForRequest(clean),
-        ),
-        chamarGatewayImagem(
-          imageRequest(vehicleSegmentationMaskPrompt()),
-          "editar_imagem_mascara_veiculo",
-          100000,
-          imageModelsForRequest(clean),
-        ),
-        imageReferenceBytes(dataUrlInput),
-      ]);
-      if (!background.ok) {
-        return JSON.stringify({
-          erro: background.erro,
-          detalhe: background.detalhe,
-          motivo: background.motivo,
-        });
-      }
-      if (!mask.ok) {
-        return JSON.stringify({
-          erro: mask.erro,
-          detalhe: mask.detalhe,
-          motivo: mask.motivo,
-        });
-      }
-      try {
-        const composite = await compositeVehicleOriginalPixels(
-          originalBytes,
-          await imageReferenceBytes(background.dataUrl),
-          await imageReferenceBytes(mask.dataUrl),
-        );
-        const compositeDataUrl =
-          `data:image/png;base64,${
-            base64Encode(composite.bytes.slice().buffer as ArrayBuffer)
-          }`;
-        console.log(
-          `[vehicle_scene_composite] coverage=${composite.vehicleCoverage.toFixed(3)} mean_color_delta=${composite.meanColorDelta.toFixed(2)}`,
-        );
-        r = {
-          ok: true,
-          dataUrl: compositeDataUrl,
-          model: `${background.model}+mask:${mask.model}`,
-        };
-      } catch (error) {
-        console.warn("[vehicle_scene_composite] validação falhou", error);
-        return JSON.stringify({
-          erro: "vehicle_composite_validation_failed",
-          mensagem:
-            "Não consegui preservar o veículo original com segurança. Não entreguei uma imagem que pudesse mudar a cor ou os detalhes do carro.",
-        });
-      }
-    } else if (ctx.preserveVehicleCondition && !isCreativeScene) {
-      const mask = await chamarGatewayImagem(
-        imageRequest(vehicleSegmentationMaskPrompt()),
-        "realce_seguro_veiculo",
-        100000,
-        imageModelsForRequest(clean),
-      );
-      if (!mask.ok) {
-        return JSON.stringify({
-          erro: mask.erro,
-          detalhe: mask.detalhe,
-          motivo: mask.motivo,
-        });
-      }
-      const enhanced = await enhanceVehiclePaintPreservingDetails(
-        await imageReferenceBytes(dataUrlInput),
-        await imageReferenceBytes(mask.dataUrl),
-      );
-      r = {
-        ok: true,
-        dataUrl: `data:image/png;base64,${
-          base64Encode(enhanced.slice().buffer as ArrayBuffer)
-        }`,
-        model: `pixel-safe+mask:${mask.model}`,
-      };
-    } else if (isInteriorProject) {
+    if (isInteriorProject) {
       let selectedInteriorModel: string | null = null;
       const workflow = await runInteriorEditValidation<ImagemGatewayOk>({
         ownerRequest: clean,
         generate: async (promptText) => {
+          paidCalls++;
+          if (
+            ctx.vehicleEdit &&
+            paidCalls > VEHICLE_PHOTO_EDIT_MAX_PAID_CALLS
+          ) {
+            throw new Error("vehicle_edit_paid_call_budget_exceeded");
+          }
           const generated = await chamarGatewayImagem(
             imageRequest(promptText),
             "editar_imagem",
@@ -2517,6 +2432,10 @@ ${isCreativeScene ? productSceneScaleDirective() : ""}`
       }
       r = workflow.value;
     } else {
+      paidCalls++;
+      if (ctx.vehicleEdit && paidCalls > VEHICLE_PHOTO_EDIT_MAX_PAID_CALLS) {
+        throw new Error("vehicle_edit_paid_call_budget_exceeded");
+      }
       r = await chamarGatewayImagem(
         imageRequest(standardPrompt),
         "editar_imagem",
@@ -2525,6 +2444,7 @@ ${isCreativeScene ? productSceneScaleDirective() : ""}`
       );
     }
     if (!r.ok) {
+      logVehicleEditMetrics("gateway_error");
       return JSON.stringify({
         erro: r.erro,
         detalhe: r.detalhe,
@@ -2537,36 +2457,6 @@ ${isCreativeScene ? productSceneScaleDirective() : ""}`
           estimatedProductSceneCostUsd(r.model, logoDataUrl ? 2 : 1)
         } creative_scene=${isCreativeScene}`,
       );
-    }
-    if (ctx.validateVehicleColor && !ctx.preserveVehiclePixels) {
-      const mask = await chamarGatewayImagem(
-        imageRequest(vehicleSegmentationMaskPrompt()),
-        "validar_cor_veiculo",
-        100000,
-        imageModelsForRequest(clean),
-      );
-      if (!mask.ok) {
-        return JSON.stringify({
-          erro: "vehicle_color_validation_unavailable",
-          mensagem:
-            "Não consegui validar a cor do veículo com segurança. Não entreguei a alteração.",
-        });
-      }
-      const validation = await validateVehicleMeanColor(
-        await imageReferenceBytes(dataUrlInput),
-        await imageReferenceBytes(r.dataUrl),
-        await imageReferenceBytes(mask.dataUrl),
-      );
-      console.log(
-        `[vehicle_color_validation] valid=${validation.valid} coverage=${validation.vehicleCoverage.toFixed(3)} mean_delta=${validation.meanColorDelta.toFixed(2)}`,
-      );
-      if (!validation.valid) {
-        return JSON.stringify({
-          erro: "vehicle_color_changed",
-          mensagem:
-            "A edição alterou a cor média do veículo além do limite seguro. Não entreguei essa versão.",
-        });
-      }
     }
     const dataUrl = r.dataUrl;
 
@@ -2621,6 +2511,7 @@ ${isCreativeScene ? productSceneScaleDirective() : ""}`
       }
     }
 
+    logVehicleEditMetrics("success");
     return JSON.stringify({
       ok: true,
       image_url: pub.publicUrl,
@@ -2632,6 +2523,7 @@ ${isCreativeScene ? productSceneScaleDirective() : ""}`
         : "A imagem tratada foi enviada ao usuário. Se ele pedir pra publicar, use a versão tratada (não a foto original).",
     });
   } catch (e) {
+    logVehicleEditMetrics("exception");
     return JSON.stringify({ erro: String((e as Error).message) });
   }
 }
@@ -18396,13 +18288,7 @@ async function callGemini(
             vehicleScenePlan.sourceMediaId,
           registrarNaBiblioteca: true,
           libraryContext: vehicleScenePlan.instruction,
-          preserveVehiclePixels: vehicleScenePlan.fromOriginal,
-          validateVehicleColor: true,
-          preserveVehicleCondition:
-            !vehicleScenePlan.fromOriginal &&
-            vehiclePhotoRequestsPaintEnhancement(
-              vehicleScenePlan.instruction,
-            ),
+          vehicleEdit: true,
         },
       );
       let parsed: Record<string, unknown> = {};
@@ -19452,8 +19338,7 @@ async function callGemini(
         toolCtx.agentState.pending_image_adjustment = pending;
       }
       return {
-        text:
-          "O que você quer ajustar nesta imagem? Pode me mandar em texto ou áudio.",
+        text: "Me manda o seu prompt, por texto ou áudio.",
       };
     }
     if (
@@ -19661,15 +19546,7 @@ async function callGemini(
             resolved.midia.midia_pai_id ||
             resolved.midia.id,
           libraryContext: cumulativeInstruction,
-          preserveVehiclePixels: Boolean(vehicleScenePlan?.fromOriginal),
-          validateVehicleColor: Boolean(vehicleScenePlan),
-          preserveVehicleCondition: Boolean(
-            vehicleScenePlan &&
-              !vehicleScenePlan.fromOriginal &&
-              vehiclePhotoRequestsPaintEnhancement(
-                vehicleScenePlan.instruction,
-              ),
-          ),
+          vehicleEdit: Boolean(vehicleScenePlan),
         });
       let parsed: any = {};
       try {

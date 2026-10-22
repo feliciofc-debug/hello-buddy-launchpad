@@ -29,3 +29,12 @@ Deno.test("whatsapp-send-message mantém ordem dos ramos existentes antes do car
   assert(videoIdx < documentIdx);
   assert(documentIdx < imageIdx);
 });
+
+Deno.test("FIX-VEIC-3.4 — sender separa imagem e lista nessa ordem", async () => {
+  const source = await Deno.readTextFile(SOURCE);
+  assertStringIncludes(source, "mediaThenInteractivePayloads({");
+  assertStringIncludes(
+    source,
+    "mediaButtonPayloads ?? mediaListPayloads ??",
+  );
+});

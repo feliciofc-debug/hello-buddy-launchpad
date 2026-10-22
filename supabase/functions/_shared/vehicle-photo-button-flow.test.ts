@@ -22,8 +22,10 @@ import {
   parseVehiclePhotoEditInteractiveId,
   pendingVehiclePhotoEditIsActive,
   planVehiclePhotoSceneAdjustment,
+  VEHICLE_PHOTO_EDIT_MAX_PAID_CALLS,
   VEHICLE_STATE_REFUSAL,
   vehiclePhotoEditInstruction,
+  vehiclePhotoEditEnginePlan,
   vehiclePhotoEditIsCreativeScene,
   vehiclePhotoEditMenuButtons,
   vehiclePhotoEditMenuResponse,
@@ -112,7 +114,7 @@ Deno.test("FIX-VEIC-3 B2 — bloqueia gerar_imagem com foto pendente", () => {
 
 Deno.test("FIX-VEIC-3 B7 — menu editar foto e modos", () => {
   const menu = vehiclePhotoEditMenuButtons();
-  assertEquals(menu.buttons.length, 2);
+  assertEquals(menu.buttons.length, 0);
   assertEquals(
     parseVehiclePhotoEditInteractiveId(
       `<<INTERACTIVE_ID:vehicle_photo_edit:studio>>`,
@@ -156,7 +158,10 @@ for (const [action, nextStep] of photoMenuButtons) {
       action,
     );
     if (action === "edit") {
-      assert(vehiclePhotoEditMenuButtons().body.includes("Como você quer"));
+      assertEquals(
+        vehiclePhotoEditMenuButtons().body,
+        "Me manda o seu prompt, por texto ou áudio.",
+      );
     }
     if (action === "correct") {
       assert(vehicleModelCorrectionStartResponse(sampleId).interactiveButtons);
@@ -205,11 +210,8 @@ Deno.test("FIX-VEIC-3.1 — toque sem contexto pede foto e não segue ao LLM", (
 
 Deno.test("FIX-VEIC-3.1 — Editar foto pede descrição e áudio vira instrução", () => {
   const menu = vehiclePhotoEditMenuButtons();
-  assert(menu.body.includes("texto ou áudio"));
-  assertEquals(menu.buttons.map((b) => b.title), [
-    "Fundo de estúdio",
-    "Melhorar luz",
-  ]);
+  assertEquals(menu.body, "Me manda o seu prompt, por texto ou áudio.");
+  assertEquals(menu.buttons, []);
   assertEquals(
     vehiclePhotoEditInstruction(
       "🎙️ Áudio transcrito: rua à noite com luzes da cidade",
@@ -219,13 +221,22 @@ Deno.test("FIX-VEIC-3.1 — Editar foto pede descrição e áudio vira instruç�
   assert(vehiclePhotoEditIsCreativeScene("rua à noite com luzes da cidade"));
 });
 
-Deno.test("FIX-VEIC-3.3 — pergunta de edição sai uma vez no corpo interativo", () => {
+Deno.test("FIX-VEIC-3.4 — Editar foto pede somente um prompt", () => {
   const response = vehiclePhotoEditMenuResponse();
-  assertEquals(response.text, "");
-  assertEquals(
-    response.interactiveButtons.body.match(/Como você quer a foto/g)?.length,
-    1,
-  );
+  assertEquals(response, {
+    text: "Me manda o seu prompt, por texto ou áudio.",
+  });
+  assertEquals(VEHICLE_PHOTO_EDIT_MAX_PAID_CALLS, 1);
+});
+
+Deno.test("FIX-VEIC-3.4 — fallback sem recorte local usa uma chamada paga", () => {
+  assertEquals(vehiclePhotoEditEnginePlan(false), {
+    strategy: "single_ai_edit_fallback",
+    maxPaidCalls: 1,
+    usesPaidMask: false,
+    usesPaidColorValidation: false,
+  });
+  assertEquals(vehiclePhotoEditEnginePlan(true).maxPaidCalls, 1);
 });
 
 Deno.test("FIX-VEIC-3.3 — atalho sem pending executa direto e não reabre menu", () => {

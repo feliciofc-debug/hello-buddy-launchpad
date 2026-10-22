@@ -10,6 +10,50 @@ type InteractiveButtons = {
   buttons: Array<{ id?: string; title?: string }>;
 };
 
+function mediaPayload(input: {
+  to: string;
+  message?: string;
+  videoUrl?: string;
+  imageUrl?: string;
+}): Record<string, unknown> | null {
+  const to = input.to.replace(/\D/g, "");
+  if (input.videoUrl) {
+    return {
+      messaging_product: "whatsapp",
+      to,
+      type: "video",
+      video: {
+        link: input.videoUrl,
+        caption: truncateCodePoints(input.message || "", 1024),
+      },
+    };
+  }
+  if (input.imageUrl) {
+    return {
+      messaging_product: "whatsapp",
+      to,
+      type: "image",
+      image: {
+        link: input.imageUrl,
+        caption: truncateCodePoints(input.message || "", 1024),
+      },
+    };
+  }
+  return null;
+}
+
+export function mediaThenInteractivePayloads(input: {
+  to: string;
+  message?: string;
+  videoUrl?: string;
+  imageUrl?: string;
+  interactivePayload?: Record<string, unknown> | null;
+}): Record<string, unknown>[] | null {
+  if (!input.interactivePayload) return null;
+  const media = mediaPayload(input);
+  return media ? [media, input.interactivePayload] : null;
+}
+
 export function mediaThenButtonPayloads(input: {
   to: string;
   message?: string;
@@ -26,25 +70,7 @@ export function mediaThenButtonPayloads(input: {
   }
 
   const to = input.to.replace(/\D/g, "");
-  const mediaPayload = input.videoUrl
-    ? {
-      messaging_product: "whatsapp",
-      to,
-      type: "video",
-      video: {
-        link: input.videoUrl,
-        caption: truncateCodePoints(input.message || "", 1024),
-      },
-    }
-    : {
-      messaging_product: "whatsapp",
-      to,
-      type: "image",
-      image: {
-        link: input.imageUrl,
-        caption: truncateCodePoints(input.message || "", 1024),
-      },
-    };
+  const media = mediaPayload(input)!;
   const buttons = buttonsInput.buttons.slice(0, 3).map((button, index) => ({
     type: "reply",
     reply: {
@@ -85,5 +111,5 @@ export function mediaThenButtonPayloads(input: {
       action: { buttons },
     },
   };
-  return [mediaPayload, buttonPayload];
+  return [media, buttonPayload];
 }

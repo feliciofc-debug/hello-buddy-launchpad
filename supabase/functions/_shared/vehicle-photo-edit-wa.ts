@@ -2,6 +2,18 @@ import { stripAudioTranscriptPrefix } from "./vitrine-inbound-text.ts";
 
 export const VEHICLE_PHOTO_EDIT_PREFIX = "vehicle_photo_edit:";
 export const VEHICLE_PHOTO_EDIT_TTL_MS = 30 * 60 * 1000;
+export const VEHICLE_PHOTO_EDIT_MAX_PAID_CALLS = 1;
+
+export function vehiclePhotoEditEnginePlan(localCutoutAvailable: boolean) {
+  return {
+    strategy: localCutoutAvailable
+      ? "local_cutout_background"
+      : "single_ai_edit_fallback",
+    maxPaidCalls: VEHICLE_PHOTO_EDIT_MAX_PAID_CALLS,
+    usesPaidMask: false,
+    usesPaidColorValidation: false,
+  } as const;
+}
 
 export function vehiclePhotoEditInteractiveId(action: string): string {
   return `${VEHICLE_PHOTO_EDIT_PREFIX}${action}`;
@@ -18,25 +30,14 @@ export function parseVehiclePhotoEditInteractiveId(
 
 export function vehiclePhotoEditMenuButtons() {
   return {
-    body:
-      "Como você quer a foto? Me diga por texto ou áudio (ex.: “fundo de estúdio”, “rua à noite com luzes da cidade”, “melhorar a luz”).",
-    buttons: [
-      {
-        id: vehiclePhotoEditInteractiveId("studio"),
-        title: "Fundo de estúdio",
-      },
-      {
-        id: vehiclePhotoEditInteractiveId("enhance"),
-        title: "Melhorar luz",
-      },
-    ],
+    body: "Me manda o seu prompt, por texto ou áudio.",
+    buttons: [],
   };
 }
 
 export function vehiclePhotoEditMenuResponse() {
   return {
-    text: "",
-    interactiveButtons: vehiclePhotoEditMenuButtons(),
+    text: vehiclePhotoEditMenuButtons().body,
   };
 }
 
@@ -129,6 +130,7 @@ export function vehiclePhotoEditUserPrompt(instruction: string): string {
     `INSTRUÇÃO ATUAL DO DONO: ${instruction}`,
     "REGRAS FIXAS DESTA EDIÇÃO:",
     "- Preserve o veículo exatamente como na foto: mesmo modelo, cor, rodas, acessórios, avarias, placa, proporções e ângulo.",
+    "- Faça uma única edição. Nunca redesenhe, repinte ou substitua o veículo; altere somente o fundo ou a luz pedidos.",
     "- Não use nem reaproveite preço, quilometragem, “único dono”, opcionais ou qualquer dado de anúncio/arte anterior.",
     "- Não adicione texto, preço, km ou logo, salvo se a INSTRUÇÃO ATUAL acima pedir isso explicitamente.",
     "- Altere somente luz/cor ou o cenário solicitado; resultado fotorealista.",

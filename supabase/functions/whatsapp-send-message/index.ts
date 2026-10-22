@@ -8,7 +8,10 @@ import {
   singleLineInteractiveText,
   truncateCodePoints,
 } from '../_shared/whatsapp-interactive-safe.ts'
-import { mediaThenButtonPayloads } from '../_shared/whatsapp-media-buttons.ts'
+import {
+  mediaThenButtonPayloads,
+  mediaThenInteractivePayloads,
+} from '../_shared/whatsapp-media-buttons.ts'
 import { buildInteractiveCarouselPayload } from '../_shared/whatsapp-interactive-carousel.ts'
 import { stripInternalWhatsAppSplit } from '../_shared/whatsapp-internal-split.ts'
 import { textThenInteractivePayloads } from '../_shared/whatsapp-text-interactive.ts'
@@ -287,7 +290,18 @@ serve(async (req) => {
     console.log('📱 Enviando WhatsApp para:', maskPhoneForLog(to))
 
     const results: any[] = []
+    const mediaListPayloads = !mediaButtonPayloads &&
+        interactive_list?.rows?.length
+      ? mediaThenInteractivePayloads({
+        to,
+        message: safeMessage,
+        videoUrl: safeVideoUrl,
+        imageUrl: buttonImageUrl,
+        interactivePayload: messagePayload,
+      })
+      : null
     const textInteractivePayloads = !mediaButtonPayloads &&
+        !mediaListPayloads &&
         (interactive_buttons?.buttons?.length || interactive_list?.rows?.length)
       ? textThenInteractivePayloads({
         to,
@@ -296,7 +310,10 @@ serve(async (req) => {
         sendTextFirst: send_text_first === true,
       })
       : [messagePayload]
-    for (const payload of mediaButtonPayloads ?? textInteractivePayloads) {
+    for (
+      const payload of mediaButtonPayloads ?? mediaListPayloads ??
+        textInteractivePayloads
+    ) {
       const response = await fetch(API_URL, {
         method: 'POST',
         headers: {

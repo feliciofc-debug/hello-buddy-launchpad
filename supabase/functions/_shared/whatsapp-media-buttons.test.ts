@@ -1,7 +1,10 @@
 import {
   assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { mediaThenButtonPayloads } from "./whatsapp-media-buttons.ts";
+import {
+  mediaThenButtonPayloads,
+  mediaThenInteractivePayloads,
+} from "./whatsapp-media-buttons.ts";
 
 Deno.test("vídeo com botões gera dois envios e mantém o vídeo primeiro", () => {
   const payloads = mediaThenButtonPayloads({
@@ -45,4 +48,24 @@ Deno.test("imagem com botões também envia a imagem antes das ações", () => {
     "image",
     "interactive",
   ]);
+});
+
+Deno.test("FIX-VEIC-3.4 — imagem é enviada antes da lista Ver opções", () => {
+  const listPayload = {
+    messaging_product: "whatsapp",
+    to: "5511999990000",
+    type: "interactive",
+    interactive: { type: "list" },
+  };
+  const payloads = mediaThenInteractivePayloads({
+    to: "5511999990000",
+    message: "Imagem pronta.",
+    imageUrl: "https://cdn.example/editada.jpg",
+    interactivePayload: listPayload,
+  });
+  assertEquals(payloads?.map((payload) => payload.type), [
+    "image",
+    "interactive",
+  ]);
+  assertEquals(payloads?.[1], listPayload);
 });
