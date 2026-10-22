@@ -28,16 +28,28 @@ export type VerticalNamespacedState = Record<string, unknown> & {
       awaiting_correction?: boolean;
       created_at: string;
     } | null;
-    media_routes?: Record<
-      string,
-      {
-        route: "veiculo" | "geral" | "incerto";
-        origin: "visao" | "botao_dono";
-        vision_description?: string;
-        confirmed?: boolean;
-        updated_at: string;
-      }
-    > | null;
+    media_routes?:
+      | Record<
+        string,
+        {
+          route: "veiculo" | "geral" | "incerto";
+          origin: "visao" | "botao_dono";
+          vision_description?: string;
+          vehicle_identification?: {
+            marca: string | null;
+            modelo: string | null;
+            geracao_ou_faixa_de_anos: string | null;
+            cor: string | null;
+            carroceria: string | null;
+            confianca: "alta" | "media" | "baixa";
+            pistas_visuais: string[];
+          };
+          vehicle_media_ids?: string[];
+          confirmed?: boolean;
+          updated_at: string;
+        }
+      >
+      | null;
     last_route?: InboundVertical;
     updated_at?: string;
     pending_segment_choice?: boolean;
@@ -56,6 +68,8 @@ export const VEHICLE_STATE_KEYS = new Set([
   "pending_carrossel_veiculo",
   "pending_vehicle_photo_batch",
   "pending_vehicle_identification",
+  "last_vehicle_photo_context",
+  "pending_vehicle_photo_edit",
   "pending_vitrine_estoque",
   "pending_fipe",
   "last_fipe",

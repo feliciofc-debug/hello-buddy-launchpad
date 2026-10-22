@@ -16,12 +16,14 @@ import {
   isMetaAdsQuestionarioTrigger,
   metaAdsBudgetRecoveryButtons,
   metaAdsCommandText,
+  metaAdsDraftShouldOfferResume,
   metaAdsLimitProposalButtons,
   metaAdsMaximoDiarioParaSeteDias,
   metaAdsQuestionarioAmbiguityButtons,
   metaAdsQuestionarioBudget,
   metaAdsQuestionarioContinuarButtons,
   metaAdsQuestionarioExpirado,
+  metaAdsQuestionarioRowExpirado,
   novoMetaAdsQuestionario,
   questionarioAtivo,
   questionarioButtons,
@@ -93,6 +95,35 @@ Deno.test("questionário expira em 24 horas e ignora rascunho expirado", () => {
     ], now)?.id,
     "active",
   );
+});
+
+Deno.test("FIX-VEIC-3.1 — rascunho legado sem marca não lembra campanha", () => {
+  assertEquals(metaAdsDraftShouldOfferResume({}), false);
+  assertEquals(
+    metaAdsDraftShouldOfferResume({
+      meta_ads_resume_offer_enviado: true,
+    }),
+    false,
+  );
+  assertEquals(
+    metaAdsDraftShouldOfferResume({
+      meta_ads_resume_offer_enviado: false,
+    }),
+    true,
+  );
+});
+
+Deno.test("FIX-VEIC-3.1 — rascunho com mais de 24h é descartável", () => {
+  const now = new Date("2026-10-22T12:00:00.000Z");
+  const expired = novoMetaAdsQuestionario(
+    new Date("2026-10-21T11:59:59.000Z"),
+  );
+  assert(metaAdsQuestionarioRowExpirado({
+    id: "old",
+    status: "rascunho",
+    rascunho: { questionario: expired },
+  }, now));
+  assert(isMetaAdsQuestionarioCancel("cancelar campanha"));
 });
 
 Deno.test("mudança de assunto não avança e botão retoma questionário", () => {

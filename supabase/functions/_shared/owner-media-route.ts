@@ -3,6 +3,7 @@ import type {
   VerticalDecision,
   VerticalVisionResult,
 } from "./vertical-router.ts";
+import type { VehicleIdentification } from "./vehicle-identification.ts";
 
 export type OwnerMediaVerticalRoute = "veiculo" | "geral" | "incerto";
 export type OwnerMediaRouteOrigin = "visao" | "botao_dono";
@@ -11,6 +12,8 @@ export type OwnerMediaRouteEntry = {
   route: OwnerMediaVerticalRoute;
   origin: OwnerMediaRouteOrigin;
   vision_description?: string;
+  vehicle_identification?: VehicleIdentification;
+  vehicle_media_ids?: string[];
   confirmed?: boolean;
   updated_at: string;
 };
@@ -87,6 +90,8 @@ export function mergeOwnerMediaRoute(
     route: OwnerMediaVerticalRoute;
     origin: OwnerMediaRouteOrigin;
     vision_description?: string;
+    vehicle_identification?: VehicleIdentification;
+    vehicle_media_ids?: string[];
     confirmed?: boolean;
   },
   nowIso = new Date().toISOString(),
@@ -100,6 +105,10 @@ export function mergeOwnerMediaRoute(
       origin: patch.origin,
       vision_description: patch.vision_description ??
         current[id]?.vision_description,
+      vehicle_identification: patch.vehicle_identification ??
+        current[id]?.vehicle_identification,
+      vehicle_media_ids: patch.vehicle_media_ids ??
+        current[id]?.vehicle_media_ids,
       confirmed: patch.confirmed ?? current[id]?.confirmed,
       updated_at: nowIso,
     },

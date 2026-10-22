@@ -56,6 +56,25 @@ export type QuestionarioRow = {
   rascunho?: Record<string, unknown> | null;
 };
 
+export function metaAdsDraftShouldOfferResume(
+  rascunho: Record<string, unknown> | null | undefined,
+): boolean {
+  // Rascunhos legados não têm a marca: tratá-los como já lembrados.
+  return rascunho?.meta_ads_resume_offer_enviado === false;
+}
+
+export function metaAdsQuestionarioRowExpirado(
+  row: QuestionarioRow,
+  now = new Date(),
+): boolean {
+  const questionario = row.rascunho?.questionario as
+    | MetaAdsQuestionario
+    | undefined;
+  return row.status === "rascunho" &&
+    Boolean(questionario) &&
+    metaAdsQuestionarioExpirado(questionario, now);
+}
+
 export type QuestionarioList = {
   body: string;
   button: string;

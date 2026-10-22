@@ -316,12 +316,14 @@ import {
   isMetaAdsLimitChangeRequest,
   metaAdsBudgetRecoveryButtons,
   metaAdsDraftDoQuestionario,
+  metaAdsDraftShouldOfferResume,
   metaAdsLimitProposalButtons,
   metaAdsMaximoDiarioParaSeteDias,
   metaAdsQuestionarioAmbiguityButtons,
   metaAdsQuestionarioBudget,
   metaAdsQuestionarioContinuarButtons,
   metaAdsQuestionarioExpirado,
+  metaAdsQuestionarioRowExpirado,
   metaAdsQuestionarioResumo,
   metaAdsQuestionarioResumoHash,
   novoMetaAdsQuestionario,
@@ -451,6 +453,7 @@ import {
   ownerMediaRoutesFromRouter,
   resolveVehiclePhotoBatchAdAction,
   resolveVehiclePhotoBatchCarouselAction,
+  type OwnerMediaRoutesMap,
   type OwnerMediaVerticalRoute,
 } from "../_shared/owner-media-route.ts";
 import {
@@ -479,11 +482,22 @@ import {
   vehiclePhotoAdMediaId,
 } from "../_shared/vehicle-photo-ad-wa.ts";
 import {
+  isVehiclePhotoEditCancel,
   parseVehiclePhotoEditInteractiveId,
+  pendingVehiclePhotoEditIsActive,
+  vehiclePhotoEditInstruction,
+  vehiclePhotoEditIsCreativeScene,
   vehiclePhotoEditMenuButtons,
+  vehiclePhotoEditRenderTexts,
   vehiclePhotoEditToolMode,
   vehiclePhotoEditUserPrompt,
+  type PendingVehiclePhotoEdit,
 } from "../_shared/vehicle-photo-edit-wa.ts";
+import {
+  resolveVehiclePhotoActionContext,
+  vehicleInteractiveMissingPhotoReply,
+  type VehiclePhotoActionContext,
+} from "../_shared/vehicle-photo-action-context.ts";
 import {
   mergeVehicleModelFixIdentification,
   runVehicleModelFixTurn,
@@ -3269,8 +3283,11 @@ type AgentConvState = {
     pending_choice?: {
       media_id?: string;
       media_url?: string;
+      vision_description?: string;
+      awaiting_correction?: boolean;
       created_at: string;
     } | null;
+    media_routes?: OwnerMediaRoutesMap | null;
     last_route?: InboundVertical;
     updated_at?: string;
     pending_segment_choice?: boolean;
@@ -3326,6 +3343,8 @@ type AgentConvState = {
     data?: VehicleCarouselData;
     created_at: string;
   } | null;
+  last_vehicle_photo_context?: VehiclePhotoActionContext | null;
+  pending_vehicle_photo_edit?: PendingVehiclePhotoEdit | null;
   pending_vehicle_social_copy?: {
     stage: "awaiting_km_preco" | "awaiting_fields_text";
     midia_id: string;
@@ -3774,10 +3793,31 @@ async function beginVehicleIdentification(
       contactNumber: ctx.fromNumber,
     };
     const current = ctx.agentState ?? await loadAgentState(sb, conversation);
+    let mediaRoutes = ownerMediaRoutesFromRouter(current.vertical_router);
+    for (const mediaId of pending.media_ids) {
+      const existing = mediaRoutes[mediaId];
+      mediaRoutes = mergeOwnerMediaRoute(mediaRoutes, mediaId, {
+        route: "veiculo",
+        origin: existing?.origin ?? "visao",
+        vision_description: existing?.vision_description,
+        vehicle_identification: identification,
+        vehicle_media_ids: pending.media_ids,
+        confirmed: existing?.confirmed,
+      });
+    }
+    const vertical_router = {
+      ...(current.vertical_router ?? {}),
+      media_routes: mediaRoutes,
+      updated_at: new Date().toISOString(),
+    };
     await saveAgentState(sb, conversation, {
       pending_vehicle_identification: pending,
+      last_vehicle_photo_context: pending,
+      vertical_router,
     }, current);
     current.pending_vehicle_identification = pending;
+    current.last_vehicle_photo_context = pending;
+    current.vertical_router = vertical_router;
     ctx.agentState = current;
   }
   if (vehicleIdentificationUsesDirectActionMenu(identification)) {
@@ -5387,9 +5427,27 @@ async function processMetaAdsQuestionario(input: {
     .eq("status", "rascunho")
     .order("criado_em", { ascending: false })
     .limit(20);
-  let row = questionarioAtivo(rows ?? []);
+  const expiredIds = (rows ?? [])
+    .filter((candidate) => metaAdsQuestionarioRowExpirado(candidate))
+    .map((candidate) => candidate.id);
+  if (expiredIds.length) {
+    await sb.from("meta_ads_campanhas").delete()
+      .eq("user_id", input.userId)
+      .eq("status", "rascunho")
+      .in("id", expiredIds);
+  }
+  let row = questionarioAtivo(
+    (rows ?? []).filter((candidate) => !expiredIds.includes(candidate.id)),
+  );
   const trigger = isMetaAdsQuestionarioTrigger(input.text);
   const ambiguous = isMetaAdsQuestionarioAmbiguousRequest(input.text);
+  if (
+    !row &&
+    expiredIds.length > 0 &&
+    isMetaAdsQuestionarioCancel(input.text)
+  ) {
+    return { handled: true, text: "Campanha cancelada. Nada foi publicado." };
+  }
   if (!row && !trigger && !ambiguous) return { handled: false };
   if (!input.owner) {
     return trigger
@@ -5420,6 +5478,7 @@ async function processMetaAdsQuestionario(input: {
         questionario,
         conversation_id: input.conversationId,
         solicitante_telefone: input.fromNumber,
+        meta_ads_resume_offer_enviado: false,
       },
     }).select("id,status,rascunho,criado_em").single();
     if (error || !created) {
@@ -5475,8 +5534,10 @@ async function processMetaAdsQuestionario(input: {
   }
   if (!respostaPertenceAoQuestionario(input.text, questionario.etapa)) {
     const rascunho = (row.rascunho ?? {}) as Record<string, unknown>;
-    const jaOfereceu = rascunho.meta_ads_resume_offer_enviado === true;
-    if (!jaOfereceu && !isMetaAdsQuestionarioCancel(input.text)) {
+    if (
+      metaAdsDraftShouldOfferResume(rascunho) &&
+      !isMetaAdsQuestionarioCancel(input.text)
+    ) {
       await sb.from("meta_ads_campanhas").update({
         rascunho: {
           ...rascunho,
@@ -17815,13 +17876,42 @@ async function callGemini(
       next: typeof pendingVehicleIdentification,
     ) => {
       if (!toolCtx.convId) return;
+      const patch: AgentConvState = {
+        pending_vehicle_identification: next,
+        ...(next ? { last_vehicle_photo_context: next } : {}),
+      };
+      if (next && toolCtx.agentState) {
+        let routes = ownerMediaRoutesFromRouter(
+          toolCtx.agentState.vertical_router,
+        );
+        for (const mediaId of next.media_ids) {
+          const existing = routes[mediaId];
+          routes = mergeOwnerMediaRoute(routes, mediaId, {
+            route: "veiculo",
+            origin: existing?.origin ?? "visao",
+            vision_description: existing?.vision_description,
+            vehicle_identification: next.identification,
+            vehicle_media_ids: next.media_ids,
+            confirmed: next.confirmed ?? existing?.confirmed,
+          });
+        }
+        patch.vertical_router = {
+          ...(toolCtx.agentState.vertical_router ?? {}),
+          media_routes: routes,
+          updated_at: new Date().toISOString(),
+        };
+      }
       await saveAgentState(sb, {
         id: toolCtx.convId,
         userId: toolCtx.userId,
         contactNumber: toolCtx.fromNumber,
-      }, { pending_vehicle_identification: next }, toolCtx.agentState ?? {});
+      }, patch, toolCtx.agentState ?? {});
       if (toolCtx.agentState) {
         toolCtx.agentState.pending_vehicle_identification = next;
+        if (next) toolCtx.agentState.last_vehicle_photo_context = next;
+        if (patch.vertical_router) {
+          toolCtx.agentState.vertical_router = patch.vertical_router;
+        }
       }
       pendingVehicleIdentification = next;
     };
@@ -17894,6 +17984,9 @@ async function callGemini(
     const pendingSinglePhoto = remetenteEhDono ? toolCtx.agentState?.pending_single_photo : null;
     let pendingImageEdit = remetenteEhDono
       ? toolCtx.agentState?.pending_image_edit
+      : null;
+    let pendingVehiclePhotoEdit = remetenteEhDono
+      ? toolCtx.agentState?.pending_vehicle_photo_edit
       : null;
     const pendingImageAdjustment = remetenteEhDono
       ? toolCtx.agentState?.pending_image_adjustment
@@ -18013,6 +18106,90 @@ async function callGemini(
     const ownerPhotoConfirmChoice = parseOwnerPhotoConfirmInteractiveId(
       userContent,
     );
+    const clearPendingVehiclePhotoEdit = async () => {
+      if (toolCtx.convId) {
+        await saveAgentState(sb, {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        }, { pending_vehicle_photo_edit: null }, toolCtx.agentState ?? {});
+      }
+      if (toolCtx.agentState) {
+        toolCtx.agentState.pending_vehicle_photo_edit = null;
+      }
+      pendingVehiclePhotoEdit = null;
+    };
+    if (
+      remetenteEhDono &&
+      pendingVehiclePhotoEdit &&
+      !pendingVehiclePhotoEditIsActive(pendingVehiclePhotoEdit)
+    ) {
+      await clearPendingVehiclePhotoEdit();
+    }
+    const pendingVehicleEditShortcut = remetenteEhDono
+      ? parseVehiclePhotoEditInteractiveId(userContent)
+      : null;
+    if (
+      remetenteEhDono &&
+      pendingVehiclePhotoEdit &&
+      (
+        pendingVehicleEditShortcut ||
+        !/<<INTERACTIVE_ID:/i.test(userContent)
+      )
+    ) {
+      if (isVehiclePhotoEditCancel(userContent)) {
+        await clearPendingVehiclePhotoEdit();
+        return { text: "Edição cancelada." };
+      }
+      const instruction = vehiclePhotoEditInstruction(
+        userContent,
+        pendingVehicleEditShortcut,
+      );
+      if (!instruction) {
+        return {
+          text:
+            "Me diga por texto ou áudio como você quer a foto. Se preferir, diga “cancelar”.",
+        };
+      }
+      const creativeScene = vehiclePhotoEditIsCreativeScene(instruction);
+      const raw = await toolEditarImagem(
+        vehiclePhotoEditUserPrompt(instruction),
+        {
+          userId: toolCtx.userId,
+          fromNumber: toolCtx.fromNumber,
+          media: [],
+          textos: vehiclePhotoEditRenderTexts(instruction),
+          modo: vehiclePhotoEditToolMode(instruction),
+          preservarAmbiente: !creativeScene,
+          sourceMediaId: pendingVehiclePhotoEdit.media_id,
+          originalSourceMediaId: pendingVehiclePhotoEdit.media_id,
+          registrarNaBiblioteca: true,
+          libraryContext: instruction,
+        },
+      );
+      let parsed: Record<string, unknown> = {};
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        parsed = { erro: "resposta_invalida" };
+      }
+      if (typeof parsed.image_url === "string") {
+        await clearPendingVehiclePhotoEdit();
+        if (typeof parsed.midia_id === "string") {
+          await rememberLastMediaInteraction(toolCtx, parsed.midia_id);
+        }
+        return {
+          text: creativeScene
+            ? "Pronto — editei a foto e marquei o cenário como imagem ilustrativa."
+            : "Pronto — editei a foto sem adicionar texto, preço, km ou logo.",
+          imageUrl: parsed.image_url,
+        };
+      }
+      return {
+        text:
+          "Não consegui editar agora. Sua instrução continua salva; tente novamente ou diga “cancelar”.",
+      };
+    }
     const clearPendingImageEdit = async () => {
       if (toolCtx.convId) {
         await saveAgentState(sb, {
@@ -18288,6 +18465,68 @@ async function callGemini(
     const vehicleModelFixAction = remetenteEhDono
       ? parseVehicleModelFixInteractiveId(userContent)
       : null;
+    const vehiclePhotoEditAction = remetenteEhDono
+      ? parseVehiclePhotoEditInteractiveId(userContent)
+      : null;
+    const vehiclePhotoAction = remetenteEhDono
+      ? parseVehiclePhotoActionId(userContent)
+      : null;
+    const vehiclePostFipeAction = remetenteEhDono
+      ? parseVehiclePostFipeInteractiveId(userContent)
+      : null;
+    const hasVehicleInteractiveAction = Boolean(
+      vehicleModelFixAction ||
+        vehiclePhotoEditAction ||
+        vehiclePhotoAction ||
+        vehiclePostFipeAction,
+    );
+    if (remetenteEhDono && hasVehicleInteractiveAction) {
+      let context = resolveVehiclePhotoActionContext({
+        pending: pendingVehicleIdentification as VehiclePhotoActionContext | null,
+        saved: toolCtx.agentState?.last_vehicle_photo_context,
+        lastMediaId: toolCtx.agentState?.last_media_interaction?.media_id,
+        mediaRoutes: ownerMediaRoutesFromRouter(
+          toolCtx.agentState?.vertical_router,
+        ),
+      });
+      if (!context) {
+        const lastMediaId = String(
+          toolCtx.agentState?.last_media_interaction?.media_id || "",
+        ).trim();
+        const lastRoute = getOwnerMediaRoute(
+          toolCtx.agentState?.vertical_router,
+          lastMediaId,
+        );
+        if (lastMediaId && lastRoute?.route === "veiculo") {
+          const resolved = await resolverMidiaBibliotecaPorId(
+            toolCtx.userId,
+            lastMediaId,
+          );
+          const identification = resolved.midia?.midia_url
+            ? await identifyVehiclePhoto(String(resolved.midia.midia_url))
+            : null;
+          if (identification) {
+            context = {
+              identification,
+              media_ids: [lastMediaId],
+              target: "single_ad",
+              created_at: new Date().toISOString(),
+            };
+          }
+        }
+      }
+      if (!context) {
+        return { text: vehicleInteractiveMissingPhotoReply() };
+      }
+      if (!pendingVehicleIdentification) {
+        pendingVehicleIdentification = {
+          ...context,
+          data: context.data as VehicleCarouselData | undefined,
+          created_at: new Date().toISOString(),
+        };
+        await saveVehicleIdentification(pendingVehicleIdentification);
+      }
+    }
     if (
       remetenteEhDono &&
       vehicleModelFixAction &&
@@ -18318,47 +18557,35 @@ async function callGemini(
         interactiveList: fixResult.interactiveList,
       };
     }
-    const vehiclePhotoEditAction = remetenteEhDono
-      ? parseVehiclePhotoEditInteractiveId(userContent)
-      : null;
     if (
       remetenteEhDono &&
       vehiclePhotoEditAction &&
       pendingVehicleIdentification
     ) {
-      const mediaId = vehiclePhotoAdMediaId(toolCtx.agentState);
-      if (!mediaId) {
-        return {
-          text: "Não encontrei a foto deste veículo. Envie a imagem novamente.",
-        };
-      }
-      const raw = await toolEditarImagem(
-        vehiclePhotoEditUserPrompt(vehiclePhotoEditAction),
-        {
+      const mediaId = String(
+        pendingVehicleIdentification.media_ids?.[0] || "",
+      ).trim();
+      if (!mediaId) return { text: vehicleInteractiveMissingPhotoReply() };
+      const pendingEdit: PendingVehiclePhotoEdit = {
+        media_id: mediaId,
+        created_at: new Date().toISOString(),
+      };
+      if (toolCtx.convId) {
+        await saveAgentState(sb, {
+          id: toolCtx.convId,
           userId: toolCtx.userId,
-          fromNumber: toolCtx.fromNumber,
-          sourceMediaId: mediaId,
-          modo: vehiclePhotoEditToolMode(vehiclePhotoEditAction),
-          preservarAmbiente: true,
-          registrarNaBiblioteca: true,
-        },
-      );
-      let parsed: Record<string, unknown> = {};
-      try {
-        parsed = JSON.parse(raw);
-      } catch {
-        return { text: raw };
+          contactNumber: toolCtx.fromNumber,
+        }, { pending_vehicle_photo_edit: pendingEdit }, toolCtx.agentState ?? {});
       }
+      if (toolCtx.agentState) {
+        toolCtx.agentState.pending_vehicle_photo_edit = pendingEdit;
+      }
+      const editMenu = vehiclePhotoEditMenuButtons();
       return {
-        text: String(parsed?.mensagem || parsed?.erro || "Foto editada."),
-        imageUrl: typeof parsed?.image_url === "string"
-          ? parsed.image_url
-          : undefined,
+        text: editMenu.body,
+        interactiveButtons: editMenu,
       };
     }
-    const vehiclePhotoAction = remetenteEhDono
-      ? parseVehiclePhotoActionId(userContent)
-      : null;
     if (
       remetenteEhDono &&
       vehiclePhotoAction &&
@@ -18379,6 +18606,24 @@ async function callGemini(
         };
       }
       if (vehiclePhotoAction === "edit") {
+        const mediaId = String(
+          pendingVehicleIdentification.media_ids?.[0] || "",
+        ).trim();
+        if (!mediaId) return { text: vehicleInteractiveMissingPhotoReply() };
+        const pendingEdit: PendingVehiclePhotoEdit = {
+          media_id: mediaId,
+          created_at: new Date().toISOString(),
+        };
+        if (toolCtx.convId) {
+          await saveAgentState(sb, {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          }, { pending_vehicle_photo_edit: pendingEdit }, toolCtx.agentState ?? {});
+        }
+        if (toolCtx.agentState) {
+          toolCtx.agentState.pending_vehicle_photo_edit = pendingEdit;
+        }
         const editMenu = vehiclePhotoEditMenuButtons();
         return {
           text: editMenu.body,
@@ -18395,7 +18640,10 @@ async function callGemini(
       const pendingAfter = toolCtx.agentState?.pending_vehicle_identification ??
         pendingVehicleIdentification;
       if (vehiclePhotoAction === "post") {
-        const mediaId = vehiclePhotoAdMediaId(toolCtx.agentState);
+        const mediaId = String(
+          pendingAfter.media_ids?.[0] ||
+            vehiclePhotoAdMediaId(toolCtx.agentState),
+        ).trim();
         if (!mediaId) {
           return { text: "Não encontrei a foto deste veículo. Envie a imagem novamente." };
         }
@@ -18474,7 +18722,10 @@ async function callGemini(
       if (syntheticPostFipe) {
         const pendingId = pendingAfter;
         if (syntheticPostFipe === "ad") {
-          const mediaId = vehiclePhotoAdMediaId(toolCtx.agentState);
+          const mediaId = String(
+            pendingId.media_ids?.[0] ||
+              vehiclePhotoAdMediaId(toolCtx.agentState),
+          ).trim();
           const data = pendingId?.data ?? {};
           const titulo = String(
             pendingId?.confirmed_title || data.titulo || "",
@@ -18550,11 +18801,8 @@ async function callGemini(
       }
       return confirmOutcome;
     }
-    const vehiclePostFipeAction = remetenteEhDono
-      ? parseVehiclePostFipeInteractiveId(userContent)
-      : null;
     if (remetenteEhDono && vehiclePostFipeAction) {
-      const pendingId = toolCtx.agentState?.pending_vehicle_identification;
+      const pendingId = pendingVehicleIdentification;
       if (vehiclePostFipeAction === "correct" && pendingId) {
         const start = vehicleModelCorrectionStartResponse(
           pendingId.identification,
@@ -18570,6 +18818,22 @@ async function callGemini(
         };
       }
       if (vehiclePostFipeAction === "edit") {
+        const mediaId = String(pendingId?.media_ids?.[0] || "").trim();
+        if (!mediaId) return { text: vehicleInteractiveMissingPhotoReply() };
+        const pendingEdit: PendingVehiclePhotoEdit = {
+          media_id: mediaId,
+          created_at: new Date().toISOString(),
+        };
+        if (toolCtx.convId) {
+          await saveAgentState(sb, {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          }, { pending_vehicle_photo_edit: pendingEdit }, toolCtx.agentState ?? {});
+        }
+        if (toolCtx.agentState) {
+          toolCtx.agentState.pending_vehicle_photo_edit = pendingEdit;
+        }
         const editMenu = vehiclePhotoEditMenuButtons();
         return {
           text: editMenu.body,
@@ -18577,7 +18841,10 @@ async function callGemini(
         };
       }
       if (vehiclePostFipeAction === "post") {
-        const mediaId = vehiclePhotoAdMediaId(toolCtx.agentState);
+        const mediaId = String(
+          pendingId?.media_ids?.[0] ||
+            vehiclePhotoAdMediaId(toolCtx.agentState),
+        ).trim();
         if (!mediaId) {
           return {
             text: "Não encontrei a foto deste veículo. Envie a imagem novamente.",
@@ -18628,7 +18895,10 @@ async function callGemini(
         };
       }
       if (vehiclePostFipeAction === "ad") {
-        const mediaId = vehiclePhotoAdMediaId(toolCtx.agentState);
+        const mediaId = String(
+          pendingId?.media_ids?.[0] ||
+            vehiclePhotoAdMediaId(toolCtx.agentState),
+        ).trim();
         const data = pendingId?.data ?? {};
         const titulo = String(
           pendingId?.confirmed_title ||
@@ -18705,6 +18975,10 @@ async function callGemini(
           interactiveButtons: trocaMenu,
         };
       }
+      return {
+        text:
+          "Essa opção não está mais disponível. Envie a foto novamente para abrir o menu atualizado.",
+      };
     }
     if (remetenteEhDono && isExplicitFipeRequest(userContent)) {
       let input = fipeInputFromTextAndBrands(
