@@ -24,10 +24,13 @@ export function parseVehiclePhotoActionId(text: string): string | null {
 function clipListBody(value: string): string {
   const compact = value.replace(/\n{3,}/g, "\n\n").trim();
   if (compact.length <= VEHICLE_PHOTO_LIST_BODY_LIMIT) return compact;
-  return compact.slice(0, VEHICLE_PHOTO_LIST_BODY_LIMIT - 3).replace(
-    /\s+\S*$/,
-    "",
-  ) + "...";
+  const slice = compact.slice(0, VEHICLE_PHOTO_LIST_BODY_LIMIT);
+  const atWord = slice.replace(/\s+\S*$/, "").trim();
+  const atSentence = atWord.replace(/[^.!?…]*$/, "").trim();
+  const clipped = (atSentence.length >= 40 ? atSentence : atWord).trim();
+  return clipped.endsWith("…") || clipped.endsWith("...")
+    ? clipped
+    : `${clipped}…`;
 }
 
 function normalizeDetail(value: string): string {

@@ -128,6 +128,11 @@ import {
 } from "../_shared/jarvis-gemini-message-safety.ts";
 import { detectWebSearchIntent } from "../_shared/jarvis-web-search-intent.ts";
 import { isGestaoAuthorizedPhone } from "../_shared/gestao-auth-phone.ts";
+import {
+  tryProcessGestaoTrocaWhatsAppInbound,
+  vehiclePhotoTrocaMenuButtons,
+  type GestaoTrocaWaDelivery,
+} from "../_shared/gestao-troca-whatsapp.ts";
 import { isGestaoLojaDataQuestion } from "../_shared/jarvis-gestao-data-intent.ts";
 import {
   CONSULTAR_DADOS_LOJA_TOOL,
@@ -462,7 +467,6 @@ import {
   vehiclePostFipeEstoqueGuide,
   vehiclePostFipeMenuList,
   vehiclePostFipeMetaTriggerText,
-  vehiclePostFipeTrocaGuide,
   vehiclePostFipeVideoTheme,
 } from "../_shared/vehicle-post-fipe-menu.ts";
 import {
@@ -955,7 +959,7 @@ function extractText(payload: any): string {
   if (payload.interactive?.list_reply?.title) {
     const title = String(payload.interactive.list_reply.title);
     const id = String(payload.interactive.list_reply.id || "");
-    return /^(?:video_|fipe_|anuncio_post:|carrossel_(?:estilo|cor)_|tiktok_(?:privacy|disclosure):|meta_ads_q:|veiculo_vitrine:|vehicle_post_fipe:|vehicle_photo_action:)/i.test(id)
+    return /^(?:video_|fipe_|anuncio_post:|carrossel_(?:estilo|cor)_|tiktok_(?:privacy|disclosure):|meta_ads_q:|veiculo_vitrine:|vehicle_post_fipe:|vehicle_photo_action:|gestao_troca_wa:)/i.test(id)
       ? `${title}\n<<INTERACTIVE_ID:${id}>>`
       : title;
   }
@@ -18415,7 +18419,11 @@ async function callGemini(
           return { text: vehiclePostFipeEstoqueGuide() };
         }
         if (syntheticPostFipe === "troca") {
-          return { text: vehiclePostFipeTrocaGuide() };
+          const trocaMenu = vehiclePhotoTrocaMenuButtons();
+          return {
+            text: trocaMenu!.body,
+            interactiveButtons: trocaMenu,
+          };
         }
       }
       return confirmOutcome;
@@ -18495,7 +18503,11 @@ async function callGemini(
         return { text: vehiclePostFipeEstoqueGuide() };
       }
       if (vehiclePostFipeAction === "troca") {
-        return { text: vehiclePostFipeTrocaGuide() };
+        const trocaMenu = vehiclePhotoTrocaMenuButtons();
+        return {
+          text: trocaMenu!.body,
+          interactiveButtons: trocaMenu,
+        };
       }
     }
     if (remetenteEhDono && isExplicitFipeRequest(userContent)) {
@@ -23074,6 +23086,70 @@ async function sendWhatsApp(
   return firstMessageId;
 }
 
+async function sendWhatsAppDocument(
+  user_id: string,
+  to: string,
+  message: string,
+  documentUrl: string,
+  filename: string,
+): Promise<string | null> {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-send-message`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${SERVICE_KEY}`,
+      "apikey": SERVICE_KEY,
+    },
+    body: JSON.stringify({
+      user_id,
+      to,
+      message,
+      document_url: documentUrl,
+      document_filename: filename,
+    }),
+  });
+  const txt = await res.text();
+  if (!res.ok) throw new Error(`send doc ${res.status}: ${txt.slice(0, 200)}`);
+  try {
+    const j = JSON.parse(txt);
+    return j?.message_id ?? j?.wamid ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function deliverGestaoTrocaWhatsAppMessages(input: {
+  userId: string;
+  to: string;
+  convId: string;
+  deliveries: GestaoTrocaWaDelivery[];
+}): Promise<void> {
+  for (const item of input.deliveries) {
+    if (item.kind === "text") {
+      await sendWhatsApp(input.userId, input.to, item.text);
+      continue;
+    }
+    if (item.kind === "document") {
+      await sendWhatsAppDocument(
+        input.userId,
+        input.to,
+        item.caption || "Laudo da troca",
+        item.url,
+        item.filename,
+      );
+      continue;
+    }
+    if (item.kind === "image") {
+      await sendWhatsApp(
+        input.userId,
+        input.to,
+        item.caption || "Foto da troca",
+        item.url,
+      );
+    }
+  }
+}
+
 // Avisa o dono do tenant no WhatsApp quando um cliente ACEITA o opt-in.
 // Manda nome + telefone (clicável via wa.me) para ele poder chamar direto.
 async function notificarDonoOptinAceito(
@@ -23536,6 +23612,56 @@ async function tryProcessGestaoLucroShortcut(input: {
   return { handled: true, preview: gestao.reply?.slice(0, 120) };
 }
 
+async function tryProcessGestaoTrocaWhatsAppShortcut(input: {
+  row: QueueRow;
+  userId: string;
+  userText: string;
+  convId: string;
+  fromIsOwner: boolean;
+}): Promise<{ handled: boolean; preview?: string }> {
+  const troca = await tryProcessGestaoTrocaWhatsAppInbound({
+    sb,
+    userId: input.userId,
+    fromNumber: input.row.from_number,
+    userText: input.userText,
+    fromIsOwner: input.fromIsOwner,
+  });
+  if (!troca.handled) return { handled: false };
+
+  let preview = troca.reply?.slice(0, 120) ?? "";
+  try {
+    if (troca.deliveries?.length) {
+      await deliverGestaoTrocaWhatsAppMessages({
+        userId: input.userId,
+        to: input.row.from_number,
+        convId: input.convId,
+        deliveries: troca.deliveries,
+      });
+      preview = troca.deliveries[0]?.kind === "text"
+        ? troca.deliveries[0].text.slice(0, 120)
+        : preview;
+    } else if (troca.reply || troca.interactiveList || troca.interactiveButtons) {
+      await sendWhatsApp(
+        input.userId,
+        input.row.from_number,
+        troca.reply || troca.interactiveList?.body || troca.interactiveButtons?.body || "",
+        undefined,
+        troca.interactiveList,
+        troca.interactiveButtons,
+      );
+    }
+  } catch (e) {
+    await failQueue(input.row.id, `send_failed: ${(e as Error).message}`);
+    return { handled: true, preview: preview || "troca_wa" };
+  }
+
+  await sb.from("whatsapp_cloud_conversations").update({
+    last_message_at: new Date().toISOString(),
+  }).eq("id", input.convId);
+
+  return { handled: true, preview: preview || "troca_wa" };
+}
+
 async function tryProcessVehicleStockShowcase(input: {
   row: QueueRow;
   convStateIdentity: ConversationStateIdentity;
@@ -23781,6 +23907,22 @@ async function processOne(queueId: string) {
               gestao_lucro: true,
               gestao_gestor: true,
               preview: gestaoGestorEarly.preview,
+            };
+          }
+          const trocaGestorEarly = await tryProcessGestaoTrocaWhatsAppShortcut({
+            row,
+            userId,
+            userText,
+            convId: conv.id,
+            fromIsOwner: false,
+          });
+          if (trocaGestorEarly.handled) {
+            stopTypingHeartbeat();
+            await doneQueue(row.id);
+            return {
+              ok: true,
+              gestao_troca_wa: true,
+              preview: trocaGestorEarly.preview,
             };
           }
         }
@@ -24295,6 +24437,22 @@ async function processOne(queueId: string) {
             ok: true,
             gestao_lucro: true,
             preview: gestaoEarly.preview,
+          };
+        }
+        const trocaEarly = await tryProcessGestaoTrocaWhatsAppShortcut({
+          row,
+          userId,
+          userText,
+          convId: conv.id,
+          fromIsOwner: true,
+        });
+        if (trocaEarly.handled) {
+          stopTypingHeartbeat();
+          await doneQueue(row.id);
+          return {
+            ok: true,
+            gestao_troca_wa: true,
+            preview: trocaEarly.preview,
           };
         }
         const ownerStockEarly = await tryProcessOwnerVehicleStockShortcut({
