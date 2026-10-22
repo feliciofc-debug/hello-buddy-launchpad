@@ -44,6 +44,28 @@ export function getOwnerMediaRoute(
   return entry && entry.route ? entry : null;
 }
 
+/** Mídia de veículo (rota ou foto raiz listada em vehicle_media_ids). */
+export function ownerMediaRouteIsVehicle(
+  router: VerticalRouterMediaState | null | undefined,
+  ...mediaIds: Array<string | null | undefined>
+): boolean {
+  const ids = mediaIds
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+  for (const id of ids) {
+    if (getOwnerMediaRoute(router, id)?.route === "veiculo") return true;
+  }
+  const routes = ownerMediaRoutesFromRouter(router);
+  for (const entry of Object.values(routes)) {
+    if (entry.route !== "veiculo") continue;
+    const vehicleIds = (entry.vehicle_media_ids ?? [])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean);
+    if (ids.some((id) => vehicleIds.includes(id))) return true;
+  }
+  return false;
+}
+
 function visionOwnerRoute(
   vision?: VerticalVisionResult | null,
 ): OwnerMediaVerticalRoute | null {

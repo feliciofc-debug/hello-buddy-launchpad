@@ -450,6 +450,7 @@ import {
   getOwnerMediaRoute,
   mergeOwnerMediaRoute,
   ownerMediaRouteFromDecision,
+  ownerMediaRouteIsVehicle,
   ownerMediaRoutesFromRouter,
   resolveVehiclePhotoBatchAdAction,
   resolveVehiclePhotoBatchCarouselAction,
@@ -491,8 +492,10 @@ import {
   vehiclePhotoEditRenderTexts,
   vehiclePhotoEditToolMode,
   vehiclePhotoEditUserPrompt,
+  planVehiclePhotoSceneAdjustment,
   type PendingVehiclePhotoEdit,
 } from "../_shared/vehicle-photo-edit-wa.ts";
+import { resolveMediaEditChainRoot } from "../_shared/media-edit-chain.ts";
 import {
   resolveVehiclePhotoActionContext,
   vehicleInteractiveMissingPhotoReply,
@@ -18152,19 +18155,45 @@ async function callGemini(
         };
       }
       const creativeScene = vehiclePhotoEditIsCreativeScene(instruction);
+      const resolvedVehicleSource = await resolverMidiaBibliotecaPorId(
+        toolCtx.userId,
+        pendingVehiclePhotoEdit.media_id,
+      );
+      const vehicleRoot = await resolveMediaEditChainRoot(
+        resolvedVehicleSource.midia,
+        async (parentId) => {
+          const parent = await resolverMidiaBibliotecaPorId(
+            toolCtx.userId,
+            parentId,
+          );
+          return parent.midia;
+        },
+      );
+      const vehicleScenePlan = planVehiclePhotoSceneAdjustment({
+        adjustment: instruction,
+        currentMediaId: String(
+          resolvedVehicleSource.midia?.id ||
+            pendingVehiclePhotoEdit.media_id,
+        ),
+        currentUrl: String(resolvedVehicleSource.midia?.midia_url || ""),
+        rootMediaId: vehicleRoot?.id,
+        rootUrl: vehicleRoot?.midia_url,
+      });
       const raw = await toolEditarImagem(
-        vehiclePhotoEditUserPrompt(instruction),
+        vehiclePhotoEditUserPrompt(vehicleScenePlan.instruction),
         {
           userId: toolCtx.userId,
           fromNumber: toolCtx.fromNumber,
           media: [],
           textos: vehiclePhotoEditRenderTexts(instruction),
-          modo: vehiclePhotoEditToolMode(instruction),
-          preservarAmbiente: !creativeScene,
-          sourceMediaId: pendingVehiclePhotoEdit.media_id,
-          originalSourceMediaId: pendingVehiclePhotoEdit.media_id,
+          modo: vehicleScenePlan.modo,
+          preservarAmbiente: vehicleScenePlan.preservarAmbiente,
+          imageInputUrl: vehicleScenePlan.sourceUrl,
+          sourceMediaId: vehicleScenePlan.sourceMediaId,
+          originalSourceMediaId: vehicleRoot?.id ||
+            vehicleScenePlan.sourceMediaId,
           registrarNaBiblioteca: true,
-          libraryContext: instruction,
+          libraryContext: vehicleScenePlan.instruction,
         },
       );
       let parsed: Record<string, unknown> = {};
@@ -18180,7 +18209,7 @@ async function callGemini(
         }
         return {
           text: creativeScene
-            ? "Pronto — editei a foto e marquei o cenário como imagem ilustrativa."
+            ? "Pronto — editei a foto com o cenário que você pediu, sem texto, preço, km ou logo."
             : "Pronto — editei a foto sem adicionar texto, preço, km ou logo.",
           imageUrl: parsed.image_url,
         };
@@ -19215,21 +19244,22 @@ async function callGemini(
             "Não encontrei essa foto para ajustar. Envie a imagem novamente.",
         };
       }
-      const originalMediaId = String(
-        resolved.midia.midia_pai_id || "",
-      ).trim();
-      let originalResolved = originalMediaId &&
-          originalMediaId !== resolved.midia.id
-        ? await resolverMidiaBibliotecaPorId(
-          toolCtx.userId,
-          originalMediaId,
-        )
-        : { midia: null };
+      const chainRoot = await resolveMediaEditChainRoot(
+        resolved.midia,
+        async (parentId) => {
+          const parent = await resolverMidiaBibliotecaPorId(
+            toolCtx.userId,
+            parentId,
+          );
+          return parent.midia;
+        },
+      );
+      let originalRoot = chainRoot ?? resolved.midia;
       if (
-        !originalResolved.midia &&
         ["ia_edicao", "ia_composicao"].includes(
-          String(resolved.midia.origem || ""),
-        )
+          String(originalRoot.origem || ""),
+        ) &&
+        !String(originalRoot.midia_pai_id || "").trim()
       ) {
         const cutoff = new Date(
           new Date(resolved.midia.created_at).getTime() - 2 * 60 * 60 * 1000,
@@ -19248,47 +19278,83 @@ async function callGemini(
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
-        originalResolved = { midia: legacyOriginal ?? null };
+        if (legacyOriginal?.id) originalRoot = legacyOriginal;
       }
-      const scenePlan = planProductSceneAdjustment({
-        adjustment: adjustmentPrompt,
-        previousRequest: resolved.midia.contexto_original,
-        currentMediaId: String(resolved.midia.id),
-        currentUrl: String(resolved.midia.midia_url || ""),
-        originalMediaId: originalResolved.midia?.id,
-        originalUrl: originalResolved.midia?.midia_url,
-      });
-      const cumulativeInstruction = combineSceneInstructions(
-        String(resolved.midia.contexto_original || ""),
-        adjustmentPrompt,
+      const isVehicleMedia = ownerMediaRouteIsVehicle(
+        toolCtx.agentState?.vertical_router,
+        resolved.midia.id,
+        originalRoot.id,
       );
+      const vehicleScenePlan = isVehicleMedia
+        ? planVehiclePhotoSceneAdjustment({
+          adjustment: adjustmentPrompt,
+          currentMediaId: String(resolved.midia.id),
+          currentUrl: String(resolved.midia.midia_url || ""),
+          rootMediaId: originalRoot.id,
+          rootUrl: String(originalRoot.midia_url || ""),
+        })
+        : null;
+      const scenePlan = vehicleScenePlan
+        ? {
+          regenerate: vehicleScenePlan.fromOriginal,
+          sourceMediaId: vehicleScenePlan.sourceMediaId,
+          sourceUrl: vehicleScenePlan.sourceUrl,
+          instruction: vehicleScenePlan.instruction,
+        }
+        : planProductSceneAdjustment({
+          adjustment: adjustmentPrompt,
+          previousRequest: resolved.midia.contexto_original,
+          currentMediaId: String(resolved.midia.id),
+          currentUrl: String(resolved.midia.midia_url || ""),
+          originalMediaId: originalRoot.id,
+          originalUrl: String(originalRoot.midia_url || ""),
+        });
+      const cumulativeInstruction = vehicleScenePlan
+        ? vehicleScenePlan.instruction
+        : combineSceneInstructions(
+          String(resolved.midia.contexto_original || ""),
+          adjustmentPrompt,
+        );
       await rememberLastMediaInteraction(
         toolCtx,
         scenePlan.sourceMediaId,
       );
       const editPlan = logoImageEditPlan(scenePlan.instruction);
       const mode = editPlan.toolMode ??
-        (scenePlan.regenerate ||
-            hasExplicitSceneDescription(scenePlan.instruction)
-          ? "cena_produto"
-          : "melhoria");
+        (vehicleScenePlan
+          ? vehicleScenePlan.modo
+          : scenePlan.regenerate ||
+              hasExplicitSceneDescription(scenePlan.instruction)
+            ? "cena_produto"
+            : "melhoria");
+      const preservarAmbiente = vehicleScenePlan
+        ? (mode === "cena_produto" || mode === "aplicar_logo_cenario"
+          ? false
+          : vehicleScenePlan.preservarAmbiente)
+        : (mode === "cena_produto" ? false : undefined);
+      const editPrompt = vehicleScenePlan
+        ? vehiclePhotoEditUserPrompt(vehicleScenePlan.instruction)
+        : scenePlan.instruction;
+      const editTextos = vehicleScenePlan
+        ? vehiclePhotoEditRenderTexts(vehicleScenePlan.instruction)
+        : [];
       console.log(
         `[processor][pending_image_adjustment] pedido_chars=${scenePlan.instruction.length} modo=${mode} source=${
           scenePlan.regenerate ? "original" : "resultado_anterior"
-        }`,
+        } veiculo=${isVehicleMedia}`,
       );
       const raw = editPlan.strategy === "overlay"
         ? await toolApplyTenantLogoOverlay(scenePlan.instruction, toolCtx)
-        : await toolEditarImagem(scenePlan.instruction, {
+        : await toolEditarImagem(editPrompt, {
           userId: toolCtx.userId,
           fromNumber: toolCtx.fromNumber,
           media: [],
-          textos: [],
+          textos: editTextos,
           modo: mode,
-          preservarAmbiente: mode === "cena_produto" ? false : undefined,
+          preservarAmbiente,
           imageInputUrl: scenePlan.sourceUrl,
           sourceMediaId: scenePlan.sourceMediaId,
-          originalSourceMediaId: originalResolved.midia?.id ||
+          originalSourceMediaId: originalRoot.id ||
             resolved.midia.midia_pai_id ||
             resolved.midia.id,
           libraryContext: cumulativeInstruction,

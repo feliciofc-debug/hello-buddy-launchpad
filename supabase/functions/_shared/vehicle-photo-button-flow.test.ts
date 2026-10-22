@@ -27,7 +27,9 @@ import {
   vehiclePhotoEditRenderTexts,
   vehiclePhotoEditToolMode,
   vehiclePhotoEditUserPrompt,
+  planVehiclePhotoSceneAdjustment,
 } from "./vehicle-photo-edit-wa.ts";
+import { ownerMediaRouteIsVehicle } from "./owner-media-route.ts";
 import {
   parseVehicleModelFixInteractiveId,
   vehicleModelCorrectionButtons,
@@ -212,7 +214,7 @@ Deno.test("FIX-VEIC-3.1 — Editar foto pede descrição e áudio vira instruç�
   assert(vehiclePhotoEditIsCreativeScene("rua à noite com luzes da cidade"));
 });
 
-Deno.test("FIX-VEIC-3.1 — edição não herda preço/km/logo e cena leva selo", () => {
+Deno.test("FIX-VEIC-3.1 — edição não herda preço/km/logo", () => {
   const prompt = vehiclePhotoEditUserPrompt("fundo de estúdio");
   assert(prompt.includes("Não use nem reaproveite preço"));
   assert(prompt.includes("quilometragem"));
@@ -221,9 +223,62 @@ Deno.test("FIX-VEIC-3.1 — edição não herda preço/km/logo e cena leva selo"
   assert(!prompt.includes("80.000"));
   assertEquals(vehiclePhotoEditIsCreativeScene("fundo de estúdio"), true);
   assertEquals(vehiclePhotoEditRenderTexts("melhorar a luz"), []);
-  assertEquals(vehiclePhotoEditRenderTexts("fundo de estúdio"), [
-    "Imagem ilustrativa",
-  ]);
+  assertEquals(vehiclePhotoEditRenderTexts("fundo de estúdio"), []);
+  assert(!prompt.includes("Imagem ilustrativa"));
+});
+
+Deno.test("FIX-VEIC-3.2 — cenário novo parte da original; melhoria do resultado", () => {
+  const base = {
+    currentMediaId: "edit-estudio",
+    currentUrl: "estudio.jpg",
+    rootMediaId: "foto-original",
+    rootUrl: "original.jpg",
+  };
+  const showroom = planVehiclePhotoSceneAdjustment({
+    ...base,
+    adjustment: "showroom com piso brilhante e paredes de vidro",
+  });
+  assertEquals(showroom.fromOriginal, true);
+  assertEquals(showroom.sourceMediaId, "foto-original");
+  assertEquals(showroom.modo, "cena_produto");
+  assertEquals(showroom.preservarAmbiente, false);
+  assertEquals(showroom.instruction, "showroom com piso brilhante e paredes de vidro");
+
+  const studio = planVehiclePhotoSceneAdjustment({
+    ...base,
+    adjustment: "fundo de estúdio neutro",
+  });
+  assertEquals(studio.fromOriginal, true);
+  assertEquals(studio.sourceMediaId, "foto-original");
+
+  const light = planVehiclePhotoSceneAdjustment({
+    ...base,
+    adjustment: "melhorar a luz e nitidez",
+  });
+  assertEquals(light.fromOriginal, false);
+  assertEquals(light.sourceMediaId, "edit-estudio");
+  assertEquals(light.modo, "melhoria");
+  assertEquals(light.preservarAmbiente, true);
+});
+
+Deno.test("FIX-VEIC-3.2 — rota veículo reconhece foto raiz em vehicle_media_ids", () => {
+  assertEquals(
+    ownerMediaRouteIsVehicle(
+      {
+        media_routes: {
+          "arte-1": {
+            route: "veiculo",
+            origin: "botao_dono",
+            vehicle_media_ids: ["foto-honda"],
+            updated_at: "2026-10-22T12:00:00.000Z",
+          },
+        },
+      },
+      "edit-estudio",
+      "foto-honda",
+    ),
+    true,
+  );
 });
 
 Deno.test("FIX-VEIC-3.1 — edição pendente expira em 30 min e cancela", () => {

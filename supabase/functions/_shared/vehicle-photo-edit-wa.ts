@@ -108,12 +108,7 @@ export function vehiclePhotoEditExplicitTexts(instruction: string): string[] {
 }
 
 export function vehiclePhotoEditRenderTexts(instruction: string): string[] {
-  return [
-    ...vehiclePhotoEditExplicitTexts(instruction),
-    ...(vehiclePhotoEditIsCreativeScene(instruction)
-      ? ["Imagem ilustrativa"]
-      : []),
-  ];
+  return vehiclePhotoEditExplicitTexts(instruction);
 }
 
 export function vehiclePhotoEditUserPrompt(instruction: string): string {
@@ -125,10 +120,54 @@ export function vehiclePhotoEditUserPrompt(instruction: string): string {
     "- Não adicione texto, preço, km ou logo, salvo se a INSTRUÇÃO ATUAL acima pedir isso explicitamente.",
     "- Altere somente luz/cor ou o cenário solicitado; resultado fotorealista.",
   ];
-  if (vehiclePhotoEditIsCreativeScene(instruction)) {
-    lines.push(
-      "- Como o cenário será criado por IA, inclua apenas um selo pequeno e discreto “Imagem ilustrativa”.",
-    );
-  }
   return lines.join("\n");
+}
+
+export function vehiclePhotoEditPreservarAmbiente(
+  instruction: string,
+): boolean | undefined {
+  return vehiclePhotoEditIsCreativeScene(instruction) ? false : true;
+}
+
+export type VehiclePhotoSceneAdjustmentPlan = {
+  fromOriginal: boolean;
+  sourceMediaId: string;
+  sourceUrl: string;
+  instruction: string;
+  modo: ReturnType<typeof vehiclePhotoEditToolMode>;
+  preservarAmbiente: boolean | undefined;
+};
+
+/** Cenário novo parte da foto raiz; melhorias partem do resultado atual. */
+export function planVehiclePhotoSceneAdjustment(input: {
+  adjustment: string;
+  currentMediaId: string;
+  currentUrl: string;
+  rootMediaId?: string | null;
+  rootUrl?: string | null;
+}): VehiclePhotoSceneAdjustmentPlan {
+  const adjustment = String(input.adjustment || "").trim();
+  const modo = vehiclePhotoEditToolMode(adjustment);
+  const rootId = String(input.rootMediaId || "").trim();
+  const rootUrl = String(input.rootUrl || "").trim();
+  if (
+    vehiclePhotoEditIsCreativeScene(adjustment) && rootId && rootUrl
+  ) {
+    return {
+      fromOriginal: true,
+      sourceMediaId: rootId,
+      sourceUrl: rootUrl,
+      instruction: adjustment,
+      modo: modo === "melhoria" ? "cena_produto" : modo,
+      preservarAmbiente: false,
+    };
+  }
+  return {
+    fromOriginal: false,
+    sourceMediaId: input.currentMediaId,
+    sourceUrl: input.currentUrl,
+    instruction: adjustment,
+    modo,
+    preservarAmbiente: vehiclePhotoEditPreservarAmbiente(adjustment),
+  };
 }
