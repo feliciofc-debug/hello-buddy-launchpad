@@ -1,5 +1,10 @@
 export type ReadyMediaType = "foto" | "video";
-export type ReadyMediaAction = "publish" | "schedule" | "caption" | "edit";
+export type ReadyMediaAction =
+  | "publish"
+  | "schedule"
+  | "caption"
+  | "edit"
+  | "brand";
 
 export type ReadyMediaButtonAction = {
   action: ReadyMediaAction;
@@ -33,10 +38,40 @@ export function readyMediaActionButtons(
         title: "🗓️ Agendar",
       },
       {
-        id: `ready_media:${mediaType === "foto" ? "edit" : "caption"}:${mediaType}:${mediaId}`,
-        title: mediaType === "foto"
-          ? "🎨 Ajustar imagem"
-          : "✏️ Trocar legenda",
+        id: `ready_media:${
+          mediaType === "foto" ? "edit" : "caption"
+        }:${mediaType}:${mediaId}`,
+        title: mediaType === "foto" ? "🎨 Ajustar imagem" : "✏️ Trocar legenda",
+      },
+    ],
+  };
+}
+
+export function readyVehiclePhotoActionList(mediaId: string) {
+  return {
+    body: "O que você quer fazer agora?",
+    button: "Ver opções",
+    section_title: "Imagem do veículo",
+    rows: [
+      {
+        id: `ready_media:publish:foto:${mediaId}`,
+        title: "Publicar agora",
+        description: "Publicar esta imagem nas redes",
+      },
+      {
+        id: `ready_media:schedule:foto:${mediaId}`,
+        title: "Agendar",
+        description: "Escolher data e horário",
+      },
+      {
+        id: `ready_media:edit:foto:${mediaId}`,
+        title: "Ajustar imagem",
+        description: "Luz, reflexo ou cenário",
+      },
+      {
+        id: `ready_media:brand:foto:${mediaId}`,
+        title: "Incluir minha marca",
+        description: "Aplicar somente a logo da loja",
       },
     ],
   };
@@ -161,7 +196,12 @@ export function scheduleSlotSaoPauloText(
     }).formatToParts(now).map((part) => [part.type, part.value]),
   );
   const localMiddayUtc = new Date(
-    Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), 12),
+    Date.UTC(
+      Number(parts.year),
+      Number(parts.month) - 1,
+      Number(parts.day),
+      12,
+    ),
   );
   if (slot.startsWith("tomorrow")) {
     localMiddayUtc.setUTCDate(localMiddayUtc.getUTCDate() + 1);
@@ -240,7 +280,7 @@ export function parseReadyMediaAction(
   text: string,
 ): ReadyMediaButtonAction | null {
   const match = String(text || "").match(
-    /<<INTERACTIVE_ID:ready_media:(publish|schedule|caption|edit):(foto|video):([0-9a-f-]+)>>/i,
+    /<<INTERACTIVE_ID:ready_media:(publish|schedule|caption|edit|brand):(foto|video):([0-9a-f-]+)>>/i,
   );
   if (!match || !MEDIA_ID_RE.test(match[3])) return null;
   return {

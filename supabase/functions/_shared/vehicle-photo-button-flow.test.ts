@@ -21,13 +21,17 @@ import {
   isVehiclePhotoEditCancel,
   parseVehiclePhotoEditInteractiveId,
   pendingVehiclePhotoEditIsActive,
+  planVehiclePhotoSceneAdjustment,
+  VEHICLE_STATE_REFUSAL,
   vehiclePhotoEditInstruction,
   vehiclePhotoEditIsCreativeScene,
   vehiclePhotoEditMenuButtons,
+  vehiclePhotoEditMenuResponse,
   vehiclePhotoEditRenderTexts,
+  vehiclePhotoEditSafetyPlan,
   vehiclePhotoEditToolMode,
   vehiclePhotoEditUserPrompt,
-  planVehiclePhotoSceneAdjustment,
+  vehiclePhotoFollowUpLooksLikeEdit,
 } from "./vehicle-photo-edit-wa.ts";
 import { ownerMediaRouteIsVehicle } from "./owner-media-route.ts";
 import {
@@ -214,6 +218,15 @@ Deno.test("FIX-VEIC-3.1 — Editar foto pede descrição e áudio vira instruç�
   assert(vehiclePhotoEditIsCreativeScene("rua à noite com luzes da cidade"));
 });
 
+Deno.test("FIX-VEIC-3.3 — pergunta de edição sai uma vez no corpo interativo", () => {
+  const response = vehiclePhotoEditMenuResponse();
+  assertEquals(response.text, "");
+  assertEquals(
+    response.interactiveButtons.body.match(/Como você quer a foto/g)?.length,
+    1,
+  );
+});
+
 Deno.test("FIX-VEIC-3.1 — edição não herda preço/km/logo", () => {
   const prompt = vehiclePhotoEditUserPrompt("fundo de estúdio");
   assert(prompt.includes("Não use nem reaproveite preço"));
@@ -242,7 +255,10 @@ Deno.test("FIX-VEIC-3.2 — cenário novo parte da original; melhoria do resulta
   assertEquals(showroom.sourceMediaId, "foto-original");
   assertEquals(showroom.modo, "cena_produto");
   assertEquals(showroom.preservarAmbiente, false);
-  assertEquals(showroom.instruction, "showroom com piso brilhante e paredes de vidro");
+  assertEquals(
+    showroom.instruction,
+    "showroom com piso brilhante e paredes de vidro",
+  );
 
   const studio = planVehiclePhotoSceneAdjustment({
     ...base,
@@ -278,6 +294,48 @@ Deno.test("FIX-VEIC-3.2 — rota veículo reconhece foto raiz em vehicle_media_i
       "foto-honda",
     ),
     true,
+  );
+});
+
+Deno.test("FIX-VEIC-3.3 — pintura pode ser realçada sem autorizar alteração de estado", () => {
+  const allowed = vehiclePhotoEditSafetyPlan(
+    "deixar a pintura mais nova e brilhante, com reflexos",
+  );
+  assertEquals(allowed.refused, false);
+  assertEquals(
+    allowed.safeInstruction,
+    "deixar a pintura mais nova e brilhante, com reflexos",
+  );
+  const prompt = vehiclePhotoEditUserPrompt(allowed.safeInstruction);
+  assert(prompt.includes("aspecto encerado/polido"));
+  assert(prompt.includes("preserve rigorosamente o tom/cor original"));
+});
+
+Deno.test("FIX-VEIC-3.3 — avarias e troca de cor são removidas do pedido", () => {
+  const mixed = vehiclePhotoEditSafetyPlan(
+    "melhorar a luz e tirar os riscos da porta",
+  );
+  assertEquals(mixed.refused, true);
+  assertEquals(mixed.safeInstruction, "melhorar a luz");
+  assertEquals(
+    VEHICLE_STATE_REFUSAL,
+    "Realcei a pintura e o brilho. Não removo avarias nem mudo a cor para não enganar o comprador.",
+  );
+  const forbidden = vehiclePhotoEditSafetyPlan("trocar a cor e as rodas");
+  assertEquals(forbidden.refused, true);
+  assertEquals(
+    forbidden.safeInstruction,
+    "realçar a pintura e o brilho sem mudar a cor, mantendo todas as avarias visíveis",
+  );
+});
+
+Deno.test("FIX-VEIC-3.3 — texto imediato de imagem vira ajuste", () => {
+  assert(vehiclePhotoFollowUpLooksLikeEdit(
+    "manter a cor original nessa última foto e melhorar o reflexo",
+  ));
+  assertEquals(
+    vehiclePhotoFollowUpLooksLikeEdit("qual o preço do carro?"),
+    false,
   );
 });
 

@@ -382,6 +382,7 @@ import {
   readyMediaButtonsAllowed,
   readyMediaActionButtons,
   readyMediaScheduleList,
+  readyVehiclePhotoActionList,
   readyVideoPublishPlan,
   readyVideoRerenderButtons,
   replyTextFromInteractiveId,
@@ -488,14 +489,31 @@ import {
   pendingVehiclePhotoEditIsActive,
   vehiclePhotoEditInstruction,
   vehiclePhotoEditIsCreativeScene,
-  vehiclePhotoEditMenuButtons,
+  vehiclePhotoEditMenuResponse,
   vehiclePhotoEditRenderTexts,
+  vehiclePhotoEditSafetyPlan,
+  vehiclePhotoFollowUpLooksLikeEdit,
+  vehiclePhotoRequestsPaintEnhancement,
+  vehiclePhotoRequestsOriginalAppearance,
   vehiclePhotoEditToolMode,
   vehiclePhotoEditUserPrompt,
+  VEHICLE_STATE_REFUSAL,
   planVehiclePhotoSceneAdjustment,
   type PendingVehiclePhotoEdit,
 } from "../_shared/vehicle-photo-edit-wa.ts";
 import { resolveMediaEditChainRoot } from "../_shared/media-edit-chain.ts";
+import {
+  compositeVehicleOriginalPixels,
+  enhanceVehiclePaintPreservingDetails,
+  validateVehicleMeanColor,
+  vehicleBackgroundOnlyPrompt,
+  vehicleSegmentationMaskPrompt,
+} from "../_shared/vehicle-scene-compositor.ts";
+import {
+  parseVehicleBrandPosition,
+  vehicleBrandPositionList,
+  type VehicleBrandPosition,
+} from "../_shared/vehicle-brand-actions.ts";
 import {
   resolveVehiclePhotoActionContext,
   vehicleInteractiveMissingPhotoReply,
@@ -2172,6 +2190,18 @@ async function checkInteriorRoomStructure(
 }
 
 // ---- editar_imagem: edita/melhora foto enviada (turno atual ou última foto recente da biblioteca) ----
+async function imageReferenceBytes(reference: string): Promise<Uint8Array> {
+  const dataMatch = String(reference || "").match(
+    /^data:image\/[\w.+-]+;base64,(.+)$/s,
+  );
+  if (dataMatch) return base64Decode(dataMatch[1]);
+  const response = await fetch(reference, {
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) throw new Error(`image_download_failed:${response.status}`);
+  return new Uint8Array(await response.arrayBuffer());
+}
+
 async function toolEditarImagem(
   prompt: string,
   ctx: {
@@ -2186,6 +2216,9 @@ async function toolEditarImagem(
     sourceMediaId?: string;
     originalSourceMediaId?: string;
     libraryContext?: string;
+    preserveVehiclePixels?: boolean;
+    validateVehicleColor?: boolean;
+    preserveVehicleCondition?: boolean;
   },
 ): Promise<string> {
   if (!isOwner({ userId: ctx.userId, fromNumber: ctx.fromNumber || "" })) {
@@ -2355,7 +2388,88 @@ ${isCreativeScene ? productSceneScaleDirective() : ""}`
           : blocoFormatoSocial(clean + " " + modo)
       }\n\nResultado fotorealista de alta qualidade, pronto para publicação.`;
     let r: ImagemGatewayOk | ImagemGatewayErr;
-    if (isInteriorProject) {
+    if (ctx.preserveVehiclePixels && isCreativeScene) {
+      const [background, mask, originalBytes] = await Promise.all([
+        chamarGatewayImagem(
+          imageRequest(vehicleBackgroundOnlyPrompt(clean)),
+          "editar_imagem_fundo_veiculo",
+          100000,
+          imageModelsForRequest(clean),
+        ),
+        chamarGatewayImagem(
+          imageRequest(vehicleSegmentationMaskPrompt()),
+          "editar_imagem_mascara_veiculo",
+          100000,
+          imageModelsForRequest(clean),
+        ),
+        imageReferenceBytes(dataUrlInput),
+      ]);
+      if (!background.ok) {
+        return JSON.stringify({
+          erro: background.erro,
+          detalhe: background.detalhe,
+          motivo: background.motivo,
+        });
+      }
+      if (!mask.ok) {
+        return JSON.stringify({
+          erro: mask.erro,
+          detalhe: mask.detalhe,
+          motivo: mask.motivo,
+        });
+      }
+      try {
+        const composite = await compositeVehicleOriginalPixels(
+          originalBytes,
+          await imageReferenceBytes(background.dataUrl),
+          await imageReferenceBytes(mask.dataUrl),
+        );
+        const compositeDataUrl =
+          `data:image/png;base64,${
+            base64Encode(composite.bytes.slice().buffer as ArrayBuffer)
+          }`;
+        console.log(
+          `[vehicle_scene_composite] coverage=${composite.vehicleCoverage.toFixed(3)} mean_color_delta=${composite.meanColorDelta.toFixed(2)}`,
+        );
+        r = {
+          ok: true,
+          dataUrl: compositeDataUrl,
+          model: `${background.model}+mask:${mask.model}`,
+        };
+      } catch (error) {
+        console.warn("[vehicle_scene_composite] validação falhou", error);
+        return JSON.stringify({
+          erro: "vehicle_composite_validation_failed",
+          mensagem:
+            "Não consegui preservar o veículo original com segurança. Não entreguei uma imagem que pudesse mudar a cor ou os detalhes do carro.",
+        });
+      }
+    } else if (ctx.preserveVehicleCondition && !isCreativeScene) {
+      const mask = await chamarGatewayImagem(
+        imageRequest(vehicleSegmentationMaskPrompt()),
+        "realce_seguro_veiculo",
+        100000,
+        imageModelsForRequest(clean),
+      );
+      if (!mask.ok) {
+        return JSON.stringify({
+          erro: mask.erro,
+          detalhe: mask.detalhe,
+          motivo: mask.motivo,
+        });
+      }
+      const enhanced = await enhanceVehiclePaintPreservingDetails(
+        await imageReferenceBytes(dataUrlInput),
+        await imageReferenceBytes(mask.dataUrl),
+      );
+      r = {
+        ok: true,
+        dataUrl: `data:image/png;base64,${
+          base64Encode(enhanced.slice().buffer as ArrayBuffer)
+        }`,
+        model: `pixel-safe+mask:${mask.model}`,
+      };
+    } else if (isInteriorProject) {
       let selectedInteriorModel: string | null = null;
       const workflow = await runInteriorEditValidation<ImagemGatewayOk>({
         ownerRequest: clean,
@@ -2422,6 +2536,36 @@ ${isCreativeScene ? productSceneScaleDirective() : ""}`
           estimatedProductSceneCostUsd(r.model, logoDataUrl ? 2 : 1)
         } creative_scene=${isCreativeScene}`,
       );
+    }
+    if (ctx.validateVehicleColor && !ctx.preserveVehiclePixels) {
+      const mask = await chamarGatewayImagem(
+        imageRequest(vehicleSegmentationMaskPrompt()),
+        "validar_cor_veiculo",
+        100000,
+        imageModelsForRequest(clean),
+      );
+      if (!mask.ok) {
+        return JSON.stringify({
+          erro: "vehicle_color_validation_unavailable",
+          mensagem:
+            "Não consegui validar a cor do veículo com segurança. Não entreguei a alteração.",
+        });
+      }
+      const validation = await validateVehicleMeanColor(
+        await imageReferenceBytes(dataUrlInput),
+        await imageReferenceBytes(r.dataUrl),
+        await imageReferenceBytes(mask.dataUrl),
+      );
+      console.log(
+        `[vehicle_color_validation] valid=${validation.valid} coverage=${validation.vehicleCoverage.toFixed(3)} mean_delta=${validation.meanColorDelta.toFixed(2)}`,
+      );
+      if (!validation.valid) {
+        return JSON.stringify({
+          erro: "vehicle_color_changed",
+          mensagem:
+            "A edição alterou a cor média do veículo além do limite seguro. Não entreguei essa versão.",
+        });
+      }
     }
     const dataUrl = r.dataUrl;
 
@@ -2498,6 +2642,8 @@ async function toolApplyTenantLogoOverlay(
     fromNumber: string;
     media?: MediaExtract[];
     agentState?: AgentConvState;
+    sourceMediaId?: string;
+    logoPosition?: VehicleBrandPosition;
   },
 ): Promise<string> {
   if (!isOwner(ctx)) {
@@ -2511,7 +2657,8 @@ async function toolApplyTenantLogoOverlay(
     sourceBytes = base64Decode(current.base64);
   } else {
     const interactionId = String(
-      ctx.agentState?.last_media_interaction?.media_id || "",
+      ctx.sourceMediaId ||
+        ctx.agentState?.last_media_interaction?.media_id || "",
     ).trim();
     let query = sb.from("midias_whatsapp")
       .select("id, midia_url, created_at")
@@ -2556,7 +2703,7 @@ async function toolApplyTenantLogoOverlay(
   );
   try {
     const branded = await applyBrandLogo(sourceBytes, defaultLogo.bytes, {
-      fixedTopLeft: true,
+      fixedPosition: ctx.logoPosition ?? "top-left",
       logoForLightBackgroundBytes: lightLogo?.bytes,
       logoForDarkBackgroundBytes: darkLogo?.bytes,
     });
@@ -2595,6 +2742,7 @@ async function toolApplyTenantLogoOverlay(
         tamanho_bytes: branded.bytes.length,
         contexto_original: prompt.slice(0, 1500),
         status: "pendente",
+        midia_pai_id: ctx.sourceMediaId || null,
       })
       .select("id")
       .single();
@@ -3348,6 +3496,12 @@ type AgentConvState = {
   } | null;
   last_vehicle_photo_context?: VehiclePhotoActionContext | null;
   pending_vehicle_photo_edit?: PendingVehiclePhotoEdit | null;
+  pending_vehicle_brand?: {
+    media_id: string;
+    position?: VehicleBrandPosition;
+    stage: "awaiting_position" | "awaiting_logo";
+    created_at: string;
+  } | null;
   pending_vehicle_social_copy?: {
     stage: "awaiting_km_preco" | "awaiting_fields_text";
     midia_id: string;
@@ -11590,7 +11744,11 @@ async function loadTenantVideoIdentity(userId: string): Promise<{
 async function uploadClientLogoData(
   userId: string,
   dataUrl: string | null | undefined,
-  folder: "video-site" | "client-brands" | "brand-image-temp",
+  folder:
+    | "video-site"
+    | "client-brands"
+    | "brand-image-temp"
+    | "vehicle-brand",
 ): Promise<string | undefined> {
   const match = String(dataUrl ?? "").match(/^data:(image\/(?:png|jpeg|webp|svg\+xml));base64,([\s\S]+)$/i);
   if (!match) return undefined;
@@ -17991,7 +18149,7 @@ async function callGemini(
     let pendingVehiclePhotoEdit = remetenteEhDono
       ? toolCtx.agentState?.pending_vehicle_photo_edit
       : null;
-    const pendingImageAdjustment = remetenteEhDono
+    let pendingImageAdjustment = remetenteEhDono
       ? toolCtx.agentState?.pending_image_adjustment
       : null;
     const pendingVideoSetup = remetenteEhDono ? toolCtx.agentState?.pending_video_setup : null;
@@ -18040,6 +18198,7 @@ async function callGemini(
     const brandInteractiveId = userContent.match(/<<INTERACTIVE_ID:(brand_[^>]+)>>/i)?.[1]?.toLowerCase() || "";
     const socialInteractiveId = userContent.match(/<<INTERACTIVE_ID:(social_[^>]+)>>/i)?.[1] || "";
     const readyMediaAction = parseReadyMediaAction(userContent);
+    const vehicleBrandPositionAction = parseVehicleBrandPosition(userContent);
     const imageEditRetryAction = isImageEditRetryAction(userContent);
     const readyMediaScheduleChoice = parseReadyMediaScheduleChoice(userContent);
     const readyVideoRerenderAction = parseReadyVideoRerenderAction(userContent);
@@ -18109,6 +18268,67 @@ async function callGemini(
     const ownerPhotoConfirmChoice = parseOwnerPhotoConfirmInteractiveId(
       userContent,
     );
+    if (remetenteEhDono && vehicleBrandPositionAction) {
+      const mediaId = vehicleBrandPositionAction.mediaId;
+      const logo = await getTenantLogoDataUrl(sb, toolCtx.userId);
+      if (!logo) {
+        const pending = {
+          media_id: mediaId,
+          position: vehicleBrandPositionAction.position,
+          stage: "awaiting_logo" as const,
+          created_at: new Date().toISOString(),
+        };
+        if (toolCtx.convId) {
+          await saveAgentState(sb, {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          }, { pending_vehicle_brand: pending }, toolCtx.agentState ?? {});
+        }
+        if (toolCtx.agentState) {
+          toolCtx.agentState.pending_vehicle_brand = pending;
+        }
+        return { text: "Me envie a imagem da sua logo" };
+      }
+      const raw = await toolApplyTenantLogoOverlay("Incluir minha marca", {
+        ...toolCtx,
+        media: [],
+        sourceMediaId: mediaId,
+        logoPosition: vehicleBrandPositionAction.position,
+      });
+      let parsed: Record<string, unknown> = {};
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        parsed = { erro: "resposta_invalida" };
+      }
+      if (typeof parsed.image_url !== "string") {
+        return { text: mensagemErroEdicaoImagem(parsed) };
+      }
+      const brandedMediaId = typeof parsed.midia_id === "string"
+        ? parsed.midia_id
+        : null;
+      if (brandedMediaId) {
+        await rememberLastMediaInteraction(toolCtx, brandedMediaId);
+      }
+      if (toolCtx.convId) {
+        await saveAgentState(sb, {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        }, { pending_vehicle_brand: null }, toolCtx.agentState ?? {});
+      }
+      if (toolCtx.agentState) {
+        toolCtx.agentState.pending_vehicle_brand = null;
+      }
+      return {
+        text: "Pronto — apliquei somente a logo cadastrada da sua loja.",
+        imageUrl: parsed.image_url,
+        interactiveList: brandedMediaId
+          ? readyVehiclePhotoActionList(brandedMediaId)
+          : undefined,
+      };
+    }
     const clearPendingVehiclePhotoEdit = async () => {
       if (toolCtx.convId) {
         await saveAgentState(sb, {
@@ -18144,15 +18364,20 @@ async function callGemini(
         await clearPendingVehiclePhotoEdit();
         return { text: "Edição cancelada." };
       }
-      const instruction = vehiclePhotoEditInstruction(
+      const requestedInstruction = vehiclePhotoEditInstruction(
         userContent,
         pendingVehicleEditShortcut,
       );
-      if (!instruction) {
+      if (!requestedInstruction) {
         return {
           text:
             "Me diga por texto ou áudio como você quer a foto. Se preferir, diga “cancelar”.",
         };
+      }
+      const safety = vehiclePhotoEditSafetyPlan(requestedInstruction);
+      const instruction = safety.safeInstruction;
+      if (safety.refused && !instruction) {
+        return { text: VEHICLE_STATE_REFUSAL };
       }
       const creativeScene = vehiclePhotoEditIsCreativeScene(instruction);
       const resolvedVehicleSource = await resolverMidiaBibliotecaPorId(
@@ -18194,6 +18419,13 @@ async function callGemini(
             vehicleScenePlan.sourceMediaId,
           registrarNaBiblioteca: true,
           libraryContext: vehicleScenePlan.instruction,
+          preserveVehiclePixels: vehicleScenePlan.fromOriginal,
+          validateVehicleColor: true,
+          preserveVehicleCondition:
+            !vehicleScenePlan.fromOriginal &&
+            vehiclePhotoRequestsPaintEnhancement(
+              vehicleScenePlan.instruction,
+            ),
         },
       );
       let parsed: Record<string, unknown> = {};
@@ -18204,14 +18436,23 @@ async function callGemini(
       }
       if (typeof parsed.image_url === "string") {
         await clearPendingVehiclePhotoEdit();
-        if (typeof parsed.midia_id === "string") {
-          await rememberLastMediaInteraction(toolCtx, parsed.midia_id);
+        const editedMediaId = typeof parsed.midia_id === "string"
+          ? parsed.midia_id
+          : null;
+        if (editedMediaId) {
+          await rememberLastMediaInteraction(toolCtx, editedMediaId);
         }
-        return {
-          text: creativeScene
+        const completedText = creativeScene
             ? "Pronto — editei a foto com o cenário que você pediu, sem texto, preço, km ou logo."
-            : "Pronto — editei a foto sem adicionar texto, preço, km ou logo.",
+            : "Pronto — editei a foto sem adicionar texto, preço, km ou logo.";
+        return {
+          text: safety.refused
+            ? `${VEHICLE_STATE_REFUSAL}\n\n${completedText}`
+            : completedText,
           imageUrl: parsed.image_url,
+          interactiveList: editedMediaId
+            ? readyVehiclePhotoActionList(editedMediaId)
+            : undefined,
         };
       }
       return {
@@ -18609,11 +18850,7 @@ async function callGemini(
       if (toolCtx.agentState) {
         toolCtx.agentState.pending_vehicle_photo_edit = pendingEdit;
       }
-      const editMenu = vehiclePhotoEditMenuButtons();
-      return {
-        text: editMenu.body,
-        interactiveButtons: editMenu,
-      };
+      return vehiclePhotoEditMenuResponse();
     }
     if (
       remetenteEhDono &&
@@ -18653,11 +18890,7 @@ async function callGemini(
         if (toolCtx.agentState) {
           toolCtx.agentState.pending_vehicle_photo_edit = pendingEdit;
         }
-        const editMenu = vehiclePhotoEditMenuButtons();
-        return {
-          text: editMenu.body,
-          interactiveButtons: editMenu,
-        };
+        return vehiclePhotoEditMenuResponse();
       }
       const confirmOutcome = await confirmVehicleIdentification();
       if (
@@ -18863,11 +19096,7 @@ async function callGemini(
         if (toolCtx.agentState) {
           toolCtx.agentState.pending_vehicle_photo_edit = pendingEdit;
         }
-        const editMenu = vehiclePhotoEditMenuButtons();
-        return {
-          text: editMenu.body,
-          interactiveButtons: editMenu,
-        };
+        return vehiclePhotoEditMenuResponse();
       }
       if (vehiclePostFipeAction === "post") {
         const mediaId = String(
@@ -19217,11 +19446,61 @@ async function callGemini(
           "O que você quer ajustar nesta imagem? Pode me mandar em texto ou áudio.",
       };
     }
+    if (
+      remetenteEhDono &&
+      !pendingImageAdjustment &&
+      !hasMedia &&
+      !/<<INTERACTIVE_ID:/i.test(userContent) &&
+      vehiclePhotoFollowUpLooksLikeEdit(userContent)
+    ) {
+      const interaction = toolCtx.agentState?.last_media_interaction;
+      const interactionAge = Date.now() -
+        new Date(interaction?.at || "").getTime();
+      const lastMediaId = String(interaction?.media_id || "").trim();
+      if (
+        lastMediaId &&
+        Number.isFinite(interactionAge) &&
+        interactionAge >= 0 &&
+        interactionAge <= 30 * 60 * 1000
+      ) {
+        const lastResolved = await resolverMidiaBibliotecaPorId(
+          toolCtx.userId,
+          lastMediaId,
+        );
+        const lastRoot = await resolveMediaEditChainRoot(
+          lastResolved.midia,
+          async (parentId) => {
+            const parent = await resolverMidiaBibliotecaPorId(
+              toolCtx.userId,
+              parentId,
+            );
+            return parent.midia;
+          },
+        );
+        if (
+          lastResolved.midia?.tipo === "foto" &&
+          ownerMediaRouteIsVehicle(
+            toolCtx.agentState?.vertical_router,
+            lastMediaId,
+            lastRoot?.id,
+          )
+        ) {
+          pendingImageAdjustment = {
+            media_id: lastMediaId,
+            created_at: new Date().toISOString(),
+          };
+          console.log(
+            `[processor][vehicle_edit_followup] media_id=${lastMediaId}`,
+          );
+        }
+      }
+    }
     const pendingImageAdjustmentIsActive = pendingImageAdjustment &&
       Date.now() - new Date(pendingImageAdjustment.created_at).getTime() <=
         30 * 60 * 1000;
     if (
       remetenteEhDono &&
+      pendingImageAdjustment &&
       pendingImageAdjustmentIsActive &&
       (imageEditRetryAction || !/<<INTERACTIVE_ID:/i.test(userContent))
     ) {
@@ -19285,9 +19564,23 @@ async function callGemini(
         resolved.midia.id,
         originalRoot.id,
       );
+      const vehicleSafety = isVehicleMedia
+        ? vehiclePhotoEditSafetyPlan(adjustmentPrompt)
+        : { refused: false, safeInstruction: adjustmentPrompt };
+      if (vehicleSafety.refused && !vehicleSafety.safeInstruction) {
+        return { text: VEHICLE_STATE_REFUSAL };
+      }
+      const previousVehicleInstruction = String(
+        resolved.midia.contexto_original || "",
+      ).trim();
+      const vehicleInstruction =
+        vehiclePhotoRequestsOriginalAppearance(vehicleSafety.safeInstruction) &&
+          vehiclePhotoEditIsCreativeScene(previousVehicleInstruction)
+          ? previousVehicleInstruction
+          : vehicleSafety.safeInstruction;
       const vehicleScenePlan = isVehicleMedia
         ? planVehiclePhotoSceneAdjustment({
-          adjustment: adjustmentPrompt,
+          adjustment: vehicleInstruction,
           currentMediaId: String(resolved.midia.id),
           currentUrl: String(resolved.midia.midia_url || ""),
           rootMediaId: originalRoot.id,
@@ -19358,6 +19651,15 @@ async function callGemini(
             resolved.midia.midia_pai_id ||
             resolved.midia.id,
           libraryContext: cumulativeInstruction,
+          preserveVehiclePixels: Boolean(vehicleScenePlan?.fromOriginal),
+          validateVehicleColor: Boolean(vehicleScenePlan),
+          preserveVehicleCondition: Boolean(
+            vehicleScenePlan &&
+              !vehicleScenePlan.fromOriginal &&
+              vehiclePhotoRequestsPaintEnhancement(
+                vehicleScenePlan.instruction,
+              ),
+          ),
         });
       let parsed: any = {};
       try {
@@ -19383,9 +19685,14 @@ async function callGemini(
           ? ` ${LOGO_PRODUCT_SIMULATION_NOTICE}`
           : "";
         return {
-          text: `Pronto — ajustei a imagem conforme o seu pedido.${notice}`,
+          text: vehicleSafety.refused
+            ? `${VEHICLE_STATE_REFUSAL}\n\nPronto — ajustei somente a parte permitida do pedido.${notice}`
+            : `Pronto — ajustei a imagem conforme o seu pedido.${notice}`,
           imageUrl: parsed.image_url,
-          interactiveButtons: parsed?.midia_id
+          interactiveList: parsed?.midia_id && isVehicleMedia
+            ? readyVehiclePhotoActionList(parsed.midia_id)
+            : undefined,
+          interactiveButtons: parsed?.midia_id && !isVehicleMedia
             ? readyMediaActionButtons(parsed.midia_id, "foto")
             : undefined,
         };
@@ -19413,6 +19720,30 @@ async function callGemini(
       };
     }
     if (remetenteEhDono && readyMediaAction) {
+      if (
+        readyMediaAction.action === "brand" &&
+        readyMediaAction.mediaType === "foto"
+      ) {
+        const pending = {
+          media_id: readyMediaAction.mediaId,
+          stage: "awaiting_position" as const,
+          created_at: new Date().toISOString(),
+        };
+        if (toolCtx.convId) {
+          await saveAgentState(sb, {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          }, { pending_vehicle_brand: pending }, toolCtx.agentState ?? {});
+        }
+        if (toolCtx.agentState) {
+          toolCtx.agentState.pending_vehicle_brand = pending;
+        }
+        return {
+          text: "",
+          interactiveList: vehicleBrandPositionList(readyMediaAction.mediaId),
+        };
+      }
       const isVideo = readyMediaAction.mediaType === "video";
       const readyLegendVideo = isVideo
         ? await resolveReadyLegendVideo(
@@ -23566,9 +23897,17 @@ async function sendWhatsApp(
     console.log("[processor][automatic_reply_dedup] suprimida_em_30s");
     return automaticClaim.receipt;
   }
-  const chunks = splitInternalWhatsAppMessage(dedupedMessage).flatMap((part) =>
+  let chunks = splitInternalWhatsAppMessage(dedupedMessage).flatMap((part) =>
     splitWhatsAppText(part)
   );
+  if (
+    chunks.length === 0 &&
+    (interactiveList?.rows?.length || interactiveButtons?.buttons?.length)
+  ) {
+    // Permite enviar somente a pergunta interativa, sem um balão de texto
+    // duplicado antes dela.
+    chunks = [""];
+  }
   if (chunks.length > 1) {
     console.warn(`[processor][meta_text_split] chars=${message.length} chunks=${chunks.length}`);
   }
@@ -25463,6 +25802,113 @@ async function processOne(queueId: string) {
         ? rawPendingVideoIdentity
         : null;
       const incomingLogo = freshLibraryMedia.find((item) => item.kind === "image");
+      const pendingVehicleBrandUpload = fromIsOwner &&
+          freshAgentState.pending_vehicle_brand?.stage === "awaiting_logo"
+        ? freshAgentState.pending_vehicle_brand
+        : null;
+      if (pendingVehicleBrandUpload && incomingLogo) {
+        const age = Date.now() -
+          new Date(pendingVehicleBrandUpload.created_at).getTime();
+        if (Number.isFinite(age) && age <= 10 * 60 * 1000) {
+          const logoPath = await uploadClientLogoData(
+            userId,
+            `data:${incomingLogo.mime};base64,${incomingLogo.base64}`,
+            "vehicle-brand",
+          );
+          let reply =
+            "Não consegui salvar essa logo. Envie em PNG, JPEG ou WEBP com até 5 MB.";
+          let imageUrl: string | undefined;
+          let actionList: ReturnType<typeof readyVehiclePhotoActionList> | undefined;
+          if (logoPath) {
+            const extension = logoPath.split(".").pop() || "png";
+            const logoMime = extension === "jpg" || extension === "jpeg"
+              ? "image/jpeg"
+              : extension === "webp"
+              ? "image/webp"
+              : "image/png";
+            const savedLogo = await setTenantLogo(sb, userId, {
+              storagePath: logoPath,
+              fileName: `logo-whatsapp.${extension}`,
+              mimeType: logoMime,
+              variant: "default",
+            });
+            if (savedLogo) {
+              await saveAgentState(sb, stateConversation, {
+                pending_vehicle_brand: null,
+              }, freshAgentState);
+              freshAgentState.pending_vehicle_brand = null;
+              const raw = await toolApplyTenantLogoOverlay(
+                "Incluir minha marca",
+                {
+                  userId,
+                  fromNumber: row.from_number,
+                  media: [],
+                  agentState: freshAgentState,
+                  sourceMediaId: pendingVehicleBrandUpload.media_id,
+                  logoPosition: pendingVehicleBrandUpload.position ??
+                    "bottom-right",
+                },
+              );
+              try {
+                const parsed = JSON.parse(raw);
+                if (parsed?.image_url) {
+                  imageUrl = parsed.image_url;
+                  reply =
+                    "Logo salva para as próximas imagens e aplicada sem alterar o carro nem o cenário.";
+                  if (parsed?.midia_id) {
+                    actionList = readyVehiclePhotoActionList(parsed.midia_id);
+                    await saveAgentState(sb, stateConversation, {
+                      pending_vehicle_brand: null,
+                      last_media_interaction: {
+                        media_id: parsed.midia_id,
+                        at: new Date().toISOString(),
+                      },
+                    }, freshAgentState);
+                  }
+                } else {
+                  reply = mensagemErroEdicaoImagem(parsed);
+                }
+              } catch {
+                reply = "Logo salva, mas não consegui aplicá-la nesta imagem.";
+              }
+            }
+          }
+          const { data: outMsg } = await sb
+            .from("whatsapp_cloud_messages")
+            .insert({
+              conversation_id: conv.id,
+              user_id: userId,
+              direction: "outbound",
+              sender: "agent",
+              content: reply,
+              message_type: imageUrl ? "image" : "text",
+            })
+            .select("id")
+            .single();
+          try {
+            const sentId = await sendWhatsApp(
+              userId,
+              row.from_number,
+              reply,
+              imageUrl,
+              actionList,
+            );
+            if (sentId && outMsg?.id) {
+              await sb.from("whatsapp_cloud_messages").update({
+                wamid: sentId,
+              }).eq("id", outMsg.id);
+            }
+          } catch (error) {
+            const sendError = error instanceof Error
+              ? error.message
+              : String(error);
+            await failQueue(row.id, `send_failed: ${sendError}`);
+            return { ok: false, reason: "send_failed", error: sendError };
+          }
+          await doneQueue(row.id);
+          return { ok: true, vehicle_brand_logo_saved: Boolean(imageUrl) };
+        }
+      }
       const pendingBrandUpload = fromIsOwner
         && !pendingVideoIdentity
         && freshAgentState.pending_brand_generation?.stage === "awaiting_logo_upload"

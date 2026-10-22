@@ -33,6 +33,13 @@ export function vehiclePhotoEditMenuButtons() {
   };
 }
 
+export function vehiclePhotoEditMenuResponse() {
+  return {
+    text: "",
+    interactiveButtons: vehiclePhotoEditMenuButtons(),
+  };
+}
+
 export type PendingVehiclePhotoEdit = {
   media_id: string;
   created_at: string;
@@ -70,7 +77,7 @@ export function vehiclePhotoEditInstruction(
 }
 
 export function vehiclePhotoEditIsCreativeScene(instruction: string): boolean {
-  return /\b(fundo|est[uú]dio|rua|cidade|cen[aá]rio|ambiente|showroom|praia|campo|noite)\b/i
+  return /\b(fundo|est[uú]dio|rua|estrada|cidade|cen[aá]rio|ambiente|showroom|praia|campo|montanhas?|p[oô]r do sol|noite)\b/i
     .test(instruction);
 }
 
@@ -119,6 +126,8 @@ export function vehiclePhotoEditUserPrompt(instruction: string): string {
     "- Não use nem reaproveite preço, quilometragem, “único dono”, opcionais ou qualquer dado de anúncio/arte anterior.",
     "- Não adicione texto, preço, km ou logo, salvo se a INSTRUÇÃO ATUAL acima pedir isso explicitamente.",
     "- Altere somente luz/cor ou o cenário solicitado; resultado fotorealista.",
+    "- Pode realçar brilho, reflexos, contraste, nitidez e aspecto encerado/polido, mas preserve rigorosamente o tom/cor original.",
+    "- Nunca apague nem esconda riscos, amassados, ferrugem, desgaste ou avarias; nunca troque rodas, peças ou acessórios.",
   ];
   return lines.join("\n");
 }
@@ -127,6 +136,63 @@ export function vehiclePhotoEditPreservarAmbiente(
   instruction: string,
 ): boolean | undefined {
   return vehiclePhotoEditIsCreativeScene(instruction) ? false : true;
+}
+
+export const VEHICLE_STATE_REFUSAL =
+  "Realcei a pintura e o brilho. Não removo avarias nem mudo a cor para não enganar o comprador.";
+
+export function vehiclePhotoEditSafetyPlan(instruction: string): {
+  refused: boolean;
+  safeInstruction: string;
+} {
+  const original = String(instruction || "").trim();
+  const forbidden = [
+    /\b(?:remov(?:er|a)|tir(?:ar|e)|apag(?:ar|ue)|escond(?:er|a))\s+(?:os?\s+|as?\s+)?(?:riscos?|arranh(?:ões|oes)|amassados?|ferrugem|avarias?|desgaste)\b(?:\s+(?:da|do|das|dos)\s+\w+)?/gi,
+    /\b(?:troc(?:ar|que)|mud(?:e|ar)|pint(?:e|ar))\s+(?:a\s+)?cor\b/gi,
+    /\b(?:troc(?:ar|que)|mud(?:e|ar)|substitu(?:a|ir))\s+(?:as?\s+|os?\s+)?(?:rodas?|pneus?|pe[cç]as?|far[oó]is?|para-choque)\b/gi,
+  ];
+  let safeInstruction = original;
+  let refused = false;
+  for (const pattern of forbidden) {
+    if (pattern.test(safeInstruction)) refused = true;
+    pattern.lastIndex = 0;
+    safeInstruction = safeInstruction.replace(pattern, " ");
+  }
+  if (refused) {
+    safeInstruction = safeInstruction.replace(
+      /\b(?:e\s+)?(?:as?\s+|os?\s+)?(?:rodas?|pneus?|pe[cç]as?|far[oó]is?|para-choque|riscos?|arranh(?:ões|oes)|amassados?|ferrugem|avarias?)\b/gi,
+      " ",
+    );
+  }
+  safeInstruction = safeInstruction
+    .replace(/\s+(?:e|com)\s*(?=$|[,.])/gi, " ")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[\s,.;:-]+|[\s,.;:-]+$/g, "")
+    .trim();
+  if (refused && !safeInstruction) {
+    safeInstruction =
+      "realçar a pintura e o brilho sem mudar a cor, mantendo todas as avarias visíveis";
+  }
+  return { refused, safeInstruction };
+}
+
+export function vehiclePhotoFollowUpLooksLikeEdit(value: string): boolean {
+  const text = String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  return /\b(manter|melhorar|ajustar|corrigir|clarear|escurecer|luz|cor|nitidez|reflexo|recorte|fundo|cenario|ambiente|estudio|showroom|rua|estrada|montanha|praia|lataria|risco|amassado|ferrugem|roda|peca)\b/
+    .test(text);
+}
+
+export function vehiclePhotoRequestsOriginalAppearance(value: string): boolean {
+  return /\b(?:manter|preservar|voltar|restaurar)\b.{0,35}\b(?:cor|apar[eê]ncia|carro|ve[ií]culo)\b.{0,35}\boriginal\b|\bcor original\b/i
+    .test(String(value || ""));
+}
+
+export function vehiclePhotoRequestsPaintEnhancement(value: string): boolean {
+  return /\b(pintura|lataria|brilho|brilhante|reflexos?|encerad[oa]|polid[oa]|contraste|nitidez|luz|ilumina[cç][aã]o|cor original)\b/i
+    .test(String(value || ""));
 }
 
 export type VehiclePhotoSceneAdjustmentPlan = {

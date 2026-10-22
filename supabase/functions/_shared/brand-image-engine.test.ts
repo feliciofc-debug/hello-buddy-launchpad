@@ -6,6 +6,7 @@ import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
 import {
   applyBrandLogo,
   buildBrandGenerationGuidance,
+  calculateFixedLogoPlacement,
   calculateFixedTopLeftLogoPlacement,
   calculateLogoPlacement,
   detectLogoCardBackground,
@@ -48,6 +49,29 @@ Deno.test("sobreposição explícita fixa a logo em 22% com margem de 4%", () =>
   assertEquals(placement.x, 40);
   assertEquals(placement.y, 40);
   assertEquals(placement.width, 220);
+});
+
+Deno.test("FIX-VEIC-3.3 — logo aceita canto inferior e centro embaixo", () => {
+  const right = calculateFixedLogoPlacement(
+    1000,
+    800,
+    500,
+    100,
+    "bottom-right",
+  );
+  assertEquals(right.corner, "bottom-right");
+  assertEquals(right.x, 740);
+  assertEquals(right.y, 716);
+  const center = calculateFixedLogoPlacement(
+    1000,
+    800,
+    500,
+    100,
+    "bottom-center",
+  );
+  assertEquals(center.corner, "bottom-center");
+  assertEquals(center.x, 390);
+  assertEquals(center.y, 716);
 });
 
 Deno.test("remove fundo sólido conectado às bordas sem apagar a marca", () => {

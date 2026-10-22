@@ -70,6 +70,7 @@ export const VEHICLE_STATE_KEYS = new Set([
   "pending_vehicle_identification",
   "last_vehicle_photo_context",
   "pending_vehicle_photo_edit",
+  "pending_vehicle_brand",
   "pending_vitrine_estoque",
   "pending_fipe",
   "last_fipe",

@@ -9,7 +9,8 @@ export type LogoCorner =
   | "top-left"
   | "top-right"
   | "bottom-left"
-  | "bottom-right";
+  | "bottom-right"
+  | "bottom-center";
 
 export type LogoPlacement = {
   x: number;
@@ -116,6 +117,38 @@ export function calculateFixedTopLeftLogoPlacement(
     height = maxHeight;
   }
   return { x: margin, y: margin, width, height, margin, corner: "top-left" };
+}
+
+export function calculateFixedLogoPlacement(
+  imageWidth: number,
+  imageHeight: number,
+  logoWidth: number,
+  logoHeight: number,
+  position: "top-left" | "bottom-right" | "bottom-center",
+): LogoPlacement {
+  const base = calculateFixedTopLeftLogoPlacement(
+    imageWidth,
+    imageHeight,
+    logoWidth,
+    logoHeight,
+  );
+  if (position === "bottom-right") {
+    return {
+      ...base,
+      x: imageWidth - base.margin - base.width,
+      y: imageHeight - base.margin - base.height,
+      corner: "bottom-right",
+    };
+  }
+  if (position === "bottom-center") {
+    return {
+      ...base,
+      x: Math.round((imageWidth - base.width) / 2),
+      y: imageHeight - base.margin - base.height,
+      corner: "bottom-center",
+    };
+  }
+  return base;
 }
 
 function luminanceAt(
@@ -824,18 +857,22 @@ export async function applyBrandLogo(
     logoForLightBackgroundBytes?: Uint8Array | null;
     logoForDarkBackgroundBytes?: Uint8Array | null;
     fixedTopLeft?: boolean;
+    fixedPosition?: "top-left" | "bottom-right" | "bottom-center";
   } = {},
 ): Promise<BrandImageResult> {
   let base = await Image.decode(baseBytes);
   base = fitBaseImage(base, options.format ?? "original");
   let logo = await decodeLogo(logoBytes);
   let card = detectLogoCardBackground(logo.bitmap, logo.width, logo.height);
-  const initialPlacement = options.fixedTopLeft
-    ? calculateFixedTopLeftLogoPlacement(
+  const requestedFixedPosition = options.fixedPosition ??
+    (options.fixedTopLeft ? "top-left" : null);
+  const initialPlacement = requestedFixedPosition
+    ? calculateFixedLogoPlacement(
       base.width,
       base.height,
       logo.width,
       logo.height,
+      requestedFixedPosition,
     )
     : null;
   let decision = initialPlacement
@@ -867,12 +904,13 @@ export async function applyBrandLogo(
   if (selectedBytes && selectedBytes !== logoBytes) {
     logo = await decodeLogo(selectedBytes);
     card = detectLogoCardBackground(logo.bitmap, logo.width, logo.height);
-    const variantPlacement = options.fixedTopLeft
-      ? calculateFixedTopLeftLogoPlacement(
+    const variantPlacement = requestedFixedPosition
+      ? calculateFixedLogoPlacement(
         base.width,
         base.height,
         logo.width,
         logo.height,
+        requestedFixedPosition,
       )
       : null;
     decision = variantPlacement
@@ -897,7 +935,7 @@ export async function applyBrandLogo(
         card.color,
       );
   }
-  const cleaned = card.detected && !options.fixedTopLeft
+  const cleaned = card.detected && !requestedFixedPosition
     ? {
       bitmap: new Uint8ClampedArray(logo.bitmap),
       removed: false,
@@ -908,13 +946,13 @@ export async function applyBrandLogo(
   // flood-fill it. The remover remains only as a fallback for opaque,
   // non-card legacy assets.
   if (
-    options.fixedTopLeft && card.detected && !cleaned.alreadyTransparent &&
+    requestedFixedPosition && card.detected && !cleaned.alreadyTransparent &&
     !cleaned.removed
   ) {
     throw new Error("logo_com_fundo_opaco_nao_removivel");
   }
   const backgroundRemoved = Boolean(
-    (!card.detected || options.fixedTopLeft) &&
+    (!card.detected || requestedFixedPosition) &&
       !cleaned.alreadyTransparent && cleaned.removed,
   );
   if (!cleaned.alreadyTransparent) logo.bitmap.set(cleaned.bitmap);
@@ -923,7 +961,7 @@ export async function applyBrandLogo(
   resizeLogoHighQuality(logo, placement.width, placement.height);
   placement.width = logo.width;
   placement.height = logo.height;
-  if (options.fixedTopLeft) {
+  if (requestedFixedPosition) {
     // A variante já traz sombra/brilho. Não altere nenhum pixel fora da caixa
     // da logo e nunca desenhe cartão, tarja ou vinheta.
   } else if (card.detected && card.color) {
@@ -970,7 +1008,7 @@ export async function applyBrandLogo(
     placement,
     backgroundRemoved,
     panelUsed: false,
-    vignetteUsed: options.fixedTopLeft
+    vignetteUsed: requestedFixedPosition
       ? false
       : card.detected
       ? (decision.targetColorDistance ?? 0) > 30

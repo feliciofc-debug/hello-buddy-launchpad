@@ -15,10 +15,11 @@ import {
   parseReadyMediaScheduleChoice,
   parseReadyVideoRerenderAction,
   parseVideoCaptionChoice,
+  readyMediaActionButtons,
   readyMediaActionRoute,
   readyMediaButtonsAllowed,
-  readyMediaActionButtons,
   readyMediaScheduleList,
+  readyVehiclePhotoActionList,
   readyVideoPublishPlan,
   readyVideoRerenderButtons,
   replyTextFromInteractiveId,
@@ -33,15 +34,19 @@ const CAROUSEL_ID = "87654321-4321-4321-8321-cba987654321";
 
 Deno.test("vídeo entregue encerra carrossel antigo e vence a publicação seguinte", () => {
   const deliveredAt = "2026-10-09T15:30:00.000Z";
-  const result = deliveredMediaState({
-    general: {
-      pending_carousel: {
-        media_id: CAROUSEL_ID,
-        token: "deadbeef",
-        stage: "awaiting_confirmation",
+  const result = deliveredMediaState(
+    {
+      general: {
+        pending_carousel: {
+          media_id: CAROUSEL_ID,
+          token: "deadbeef",
+          stage: "awaiting_confirmation",
+        },
       },
     },
-  }, VIDEO_ID, deliveredAt);
+    VIDEO_ID,
+    deliveredAt,
+  );
 
   assertEquals(
     (result.state.general as Record<string, unknown>).pending_carousel,
@@ -99,6 +104,23 @@ Deno.test("foto oferece Ajustar imagem e vídeo mantém Trocar legenda", () => {
       mediaType: "foto",
       mediaId: VIDEO_ID,
     },
+  );
+});
+
+Deno.test("FIX-VEIC-3.3 — imagem de veículo oferece quatro ações em Ver opções", () => {
+  const list = readyVehiclePhotoActionList(VIDEO_ID);
+  assertEquals(list.button, "Ver opções");
+  assertEquals(list.rows.map((row) => row.title), [
+    "Publicar agora",
+    "Agendar",
+    "Ajustar imagem",
+    "Incluir minha marca",
+  ]);
+  assertEquals(
+    parseReadyMediaAction(
+      `<<INTERACTIVE_ID:${list.rows[3].id}>>`,
+    ),
+    { action: "brand", mediaType: "foto", mediaId: VIDEO_ID },
   );
 });
 
@@ -247,7 +269,9 @@ Deno.test("sequência vídeo B publica direto em cinco etapas lógicas", () => {
   );
   const chosen = options[["A", "B", "C"].indexOf(typedChoice)];
   const publishAction = parseReadyMediaAction(
-    `<<INTERACTIVE_ID:${readyMediaActionButtons(VIDEO_ID, "video").buttons[0].id}>>`,
+    `<<INTERACTIVE_ID:${
+      readyMediaActionButtons(VIDEO_ID, "video").buttons[0].id
+    }>>`,
   );
   const plan = readyVideoPublishPlan(chosen);
 
