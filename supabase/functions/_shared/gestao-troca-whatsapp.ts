@@ -322,27 +322,43 @@ function topApontamentos(itens: Record<string, unknown>[]): string[] {
     .filter(Boolean);
 }
 
-function pdfLinesFromTroca(
+function trocaPdfMoneyLine(label: string, value: unknown): string | null {
+  if (value == null) return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return `${label}: ${formatGestaoMoney(n)}`;
+}
+
+/** Linhas do PDF WhatsApp (exportado para testes — somente leitura). */
+export function pdfLinesFromTroca(
   troca: TrocaRow,
   apontamentos: string[],
   laudoNumero: string | null,
 ): string[] {
-  const lines: string[] = [
-    "Laudo de troca — uso interno",
-    laudoNumero ? `Número: ${laudoNumero}` : "",
-    `${String(troca.marca ?? "")} ${String(troca.modelo ?? "")}`.trim(),
-    `Placa: ${String(troca.placa ?? "—")}`,
-    `Ano: ${troca.ano_modelo ?? troca.ano_fabricacao ?? "—"}`,
-    `KM: ${troca.km != null ? Number(troca.km).toLocaleString("pt-BR") : "—"}`,
-    `Cor: ${String(troca.cor ?? "—")}`,
-    `Resultado: ${semaforoRotulo(troca.semaforo)}`,
-    `Valor sugerido: ${formatGestaoMoney(Number(troca.valor_sugerido))}`,
-    `Teto: ${formatGestaoMoney(Number(troca.teto))}`,
-    "",
-    "Principais apontamentos:",
+  const lines: string[] = ["Laudo de troca — uso interno"];
+  if (laudoNumero) lines.push(`Número: ${laudoNumero}`);
+  const titulo = `${String(troca.marca ?? "")} ${String(troca.modelo ?? "")}`.trim();
+  if (titulo) lines.push(titulo);
+  const placa = String(troca.placa ?? "").trim();
+  if (placa) lines.push(`Placa: ${placa}`);
+  const ano = troca.ano_modelo ?? troca.ano_fabricacao;
+  if (ano != null && String(ano).trim()) lines.push(`Ano: ${String(ano).trim()}`);
+  if (troca.km != null && Number.isFinite(Number(troca.km))) {
+    lines.push(`KM: ${Number(troca.km).toLocaleString("pt-BR")}`);
+  }
+  const cor = String(troca.cor ?? "").trim();
+  if (cor) lines.push(`Cor: ${cor}`);
+  lines.push(`Resultado: ${semaforoRotulo(troca.semaforo)}`);
+  const sugerido = trocaPdfMoneyLine("Valor sugerido", troca.valor_sugerido);
+  if (sugerido) lines.push(sugerido);
+  const teto = trocaPdfMoneyLine("Teto", troca.teto);
+  if (teto) lines.push(teto);
+  lines.push("");
+  lines.push("Principais apontamentos:");
+  lines.push(
     ...(apontamentos.length ? apontamentos : ["Nenhum item confirmado no laudo."]),
-  ];
-  return lines.filter((l) => l !== "");
+  );
+  return lines;
 }
 
 async function uploadLaudoPdf(

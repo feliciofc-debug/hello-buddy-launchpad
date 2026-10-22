@@ -8,6 +8,7 @@ import {
   gestaoTrocaWaInteractiveId,
   gestaoTrocaWaNeutralReply,
   parseGestaoTrocaWaInteractiveId,
+  pdfLinesFromTroca,
 } from "./gestao-troca-whatsapp.ts";
 import {
   gestaoTrocaFotoIsCrlv,
@@ -59,6 +60,20 @@ Deno.test("TROCA-WPP-1 — CRLV nunca entra nas fotos para WhatsApp", () => {
   ]);
   const picked = fotos.filter((f) => !gestaoTrocaFotoIsCrlv(f));
   assertEquals(picked.some((f) => f.path === "crlv.jpg"), false);
+});
+
+Deno.test("TROCA-WPP-1.1 — PDF sem valor_sugerido/teto não mostra R$ 0,00", () => {
+  const lines = pdfLinesFromTroca({
+    marca: "Ford",
+    modelo: "Ka",
+    semaforo: "verde",
+    valor_sugerido: null,
+    teto: null,
+  }, [], null);
+  const blob = lines.join("\n");
+  assert(!blob.includes("R$ 0,00"));
+  assert(!blob.includes("Valor sugerido"));
+  assert(!blob.includes("Teto:"));
 });
 
 Deno.test("TROCA-WPP-1 — descrição da foto não corta palavra no meio", () => {
