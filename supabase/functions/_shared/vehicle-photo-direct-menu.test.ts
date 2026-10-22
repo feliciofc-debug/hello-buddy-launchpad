@@ -61,7 +61,7 @@ Deno.test("FIX-VEIC-2.1 — foto repetida no corpo da lista", () => {
   assert(body.includes("Escolha o que fazer com este veículo."));
 });
 
-Deno.test("menu direto — lista com ações esperadas", () => {
+Deno.test("FIX-VEIC-3-A — menu direto só FIPE, Meta e Vistoria/Troca", () => {
   const id = parseVehicleIdentification(JSON.stringify({
     marca: "Chevrolet",
     modelo: "Spin",
@@ -72,9 +72,11 @@ Deno.test("menu direto — lista com ações esperadas", () => {
   const list = vehiclePhotoDirectActionList(id);
   assertEquals(list.button, "Ver opções");
   const titles = list.rows.map((row) => row.title);
-  assertEquals(titles.includes("Criar arte de anúncio"), true);
-  assertEquals(titles.includes("Postar nas redes"), true);
-  assertEquals(titles.includes("Corrigir modelo"), true);
+  assertEquals(titles, [
+    "Consultar FIPE",
+    "Anúncio pago (Meta)",
+    "Vistoria / Troca",
+  ]);
   assertEquals(
     parseVehiclePhotoActionId(
       `<<INTERACTIVE_ID:${vehiclePhotoActionId("fipe")}>>`,

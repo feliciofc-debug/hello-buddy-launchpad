@@ -9,6 +9,12 @@ type VehiclePostFipeMenuList = {
 
 export const VEHICLE_POST_FIPE_PREFIX = "vehicle_post_fipe:";
 
+/** FIX-VEIC-3 Parte A: itens visíveis no menu pós-FIPE até Parte B. */
+export const VEHICLE_POST_FIPE_MENU_VISIBLE_ACTIONS = new Set([
+  "meta",
+  "troca",
+]);
+
 export function vehiclePostFipeInteractiveId(action: string): string {
   return `${VEHICLE_POST_FIPE_PREFIX}${action}`;
 }
@@ -38,31 +44,20 @@ export function vehiclePostFipeMenuList(): VehiclePostFipeMenuList {
     section_title: "Próximo passo",
     rows: [
       {
-        id: vehiclePostFipeInteractiveId("ad"),
-        title: "Arte de anúncio",
-        description: "Gerar arte com a foto atual",
-      },
-      {
         id: vehiclePostFipeInteractiveId("meta"),
         title: "Anúncio pago (Meta)",
         description: "Campanha paga no Meta Ads",
-      },
-      {
-        id: vehiclePostFipeInteractiveId("video"),
-        title: "Vídeo",
-        description: "Roteiro e vídeo animado",
-      },
-      {
-        id: vehiclePostFipeInteractiveId("estoque"),
-        title: "Cadastrar no estoque",
-        description: "Estoque vitrine no painel",
       },
       {
         id: vehiclePostFipeInteractiveId("troca"),
         title: "Avaliar como troca",
         description: "Ficha de avaliação de troca",
       },
-    ],
+    ].filter((row) =>
+      VEHICLE_POST_FIPE_MENU_VISIBLE_ACTIONS.has(
+        row.id.replace(VEHICLE_POST_FIPE_PREFIX, ""),
+      )
+    ),
   };
 }
 

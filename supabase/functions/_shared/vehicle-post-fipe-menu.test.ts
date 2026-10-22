@@ -16,16 +16,13 @@ Deno.test("menu pós-FIPE só aparece com identificação confirmada", () => {
   );
 });
 
-Deno.test("lista pós-FIPE traz cinco ações pedidas", () => {
+Deno.test("FIX-VEIC-3-A — lista pós-FIPE só Meta e troca", () => {
   const list = vehiclePostFipeMenuList();
-  assertEquals(list.rows.length, 5);
+  assertEquals(list.rows.length, 2);
   assertEquals(
     list.rows.map((row) => row.title),
     [
-      "Arte de anúncio",
       "Anúncio pago (Meta)",
-      "Vídeo",
-      "Cadastrar no estoque",
       "Avaliar como troca",
     ],
   );

@@ -5,6 +5,13 @@ import { vehiclePostFipeInteractiveId } from "./vehicle-post-fipe-menu.ts";
 export const VEHICLE_PHOTO_ACTION_PREFIX = "vehicle_photo_action:";
 export const VEHICLE_PHOTO_LIST_BODY_LIMIT = 1024;
 
+/** FIX-VEIC-3 Parte A: ações visíveis até correção completa (Parte B). */
+export const VEHICLE_PHOTO_MENU_VISIBLE_ACTIONS = new Set([
+  "fipe",
+  "meta",
+  "troca",
+]);
+
 const MENU_INSTRUCTION = "Escolha o que fazer com este veículo.";
 
 const FORBIDDEN_VISIBLE_DETAIL =
@@ -131,14 +138,9 @@ export function vehiclePhotoDirectActionList(
     section_title: "Ações",
     rows: [
       {
-        id: vehiclePhotoActionId("ad"),
-        title: "Criar arte de anúncio",
-        description: "Montar arte com a foto atual",
-      },
-      {
-        id: vehiclePhotoActionId("post"),
-        title: "Postar nas redes",
-        description: "Feed, story ou TikTok",
+        id: vehiclePhotoActionId("fipe"),
+        title: "Consultar FIPE",
+        description: "Tabela FIPE deste modelo",
       },
       {
         id: vehiclePhotoActionId("meta"),
@@ -146,31 +148,15 @@ export function vehiclePhotoDirectActionList(
         description: "Campanha no Meta Ads",
       },
       {
-        id: vehiclePhotoActionId("video"),
-        title: "Criar vídeo",
-        description: "Roteiro e vídeo animado",
-      },
-      {
-        id: vehiclePhotoActionId("fipe"),
-        title: "Consultar FIPE",
-        description: "Tabela FIPE deste modelo",
-      },
-      {
-        id: vehiclePhotoActionId("estoque"),
-        title: "Cadastrar no estoque",
-        description: "Estoque vitrine no painel",
-      },
-      {
         id: vehiclePhotoActionId("troca"),
         title: "Vistoria / Troca",
         description: "Guia de avaliação de troca",
       },
-      {
-        id: vehiclePhotoActionId("correct"),
-        title: "Corrigir modelo",
-        description: "Informar marca e modelo corretos",
-      },
-    ],
+    ].filter((row) =>
+      VEHICLE_PHOTO_MENU_VISIBLE_ACTIONS.has(
+        row.id.replace(VEHICLE_PHOTO_ACTION_PREFIX, ""),
+      )
+    ),
   };
 }
 
