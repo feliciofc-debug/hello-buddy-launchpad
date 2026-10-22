@@ -1,16 +1,10 @@
 import type { VehicleIdentification } from "./vehicle-identification.ts";
 import { hasSpecificVehicleModel } from "./vehicle-identification.ts";
 import { vehiclePostFipeInteractiveId } from "./vehicle-post-fipe-menu.ts";
+import { VEHICLE_PHOTO_MENU_VISIBLE_ACTIONS } from "./vehicle-photo-menu-config.ts";
 
 export const VEHICLE_PHOTO_ACTION_PREFIX = "vehicle_photo_action:";
 export const VEHICLE_PHOTO_LIST_BODY_LIMIT = 1024;
-
-/** FIX-VEIC-3 Parte A: ações visíveis até correção completa (Parte B). */
-export const VEHICLE_PHOTO_MENU_VISIBLE_ACTIONS = new Set([
-  "fipe",
-  "meta",
-  "troca",
-]);
 
 const MENU_INSTRUCTION = "Escolha o que fazer com este veículo.";
 
@@ -125,6 +119,44 @@ export function vehiclePhotoDirectMenuBody(input: {
   return clipListBody(`${lead}\n${MENU_INSTRUCTION}`);
 }
 
+const VEHICLE_PHOTO_DIRECT_ROWS = [
+  {
+    id: vehiclePhotoActionId("ad"),
+    title: "Criar arte de anúncio",
+    description: "Montar arte com a foto atual",
+  },
+  {
+    id: vehiclePhotoActionId("post"),
+    title: "Postar nas redes",
+    description: "Feed ou story (sem TikTok)",
+  },
+  {
+    id: vehiclePhotoActionId("meta"),
+    title: "Anúncio pago (Meta)",
+    description: "Campanha no Meta Ads",
+  },
+  {
+    id: vehiclePhotoActionId("fipe"),
+    title: "Consultar FIPE",
+    description: "Tabela FIPE deste modelo",
+  },
+  {
+    id: vehiclePhotoActionId("troca"),
+    title: "Vistoria / Troca",
+    description: "Guia de avaliação de troca",
+  },
+  {
+    id: vehiclePhotoActionId("correct"),
+    title: "Corrigir modelo",
+    description: "Escolher marca/modelo na FIPE",
+  },
+  {
+    id: vehiclePhotoActionId("edit"),
+    title: "Editar foto",
+    description: "Luz, fundo ou recorte",
+  },
+];
+
 export function vehiclePhotoDirectActionList(
   identification: VehicleIdentification | null,
   options?: { repeated?: boolean },
@@ -136,23 +168,7 @@ export function vehiclePhotoDirectActionList(
     }),
     button: "Ver opções",
     section_title: "Ações",
-    rows: [
-      {
-        id: vehiclePhotoActionId("fipe"),
-        title: "Consultar FIPE",
-        description: "Tabela FIPE deste modelo",
-      },
-      {
-        id: vehiclePhotoActionId("meta"),
-        title: "Anúncio pago (Meta)",
-        description: "Campanha no Meta Ads",
-      },
-      {
-        id: vehiclePhotoActionId("troca"),
-        title: "Vistoria / Troca",
-        description: "Guia de avaliação de troca",
-      },
-    ].filter((row) =>
+    rows: VEHICLE_PHOTO_DIRECT_ROWS.filter((row) =>
       VEHICLE_PHOTO_MENU_VISIBLE_ACTIONS.has(
         row.id.replace(VEHICLE_PHOTO_ACTION_PREFIX, ""),
       )
@@ -164,9 +180,12 @@ export function vehiclePhotoDirectActionList(
 export function vehiclePhotoActionToPostFipe(action: string): string | null {
   if (action === "ad") return "ad";
   if (action === "meta") return "meta";
+  if (action === "post") return "post";
+  if (action === "troca") return "troca";
+  if (action === "correct") return "correct";
+  if (action === "edit") return "edit";
   if (action === "video") return "video";
   if (action === "estoque") return "estoque";
-  if (action === "troca") return "troca";
   return null;
 }
 

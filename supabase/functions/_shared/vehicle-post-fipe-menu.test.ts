@@ -6,7 +6,7 @@ import {
   vehiclePostFipeMetaTriggerText,
 } from "./vehicle-post-fipe-menu.ts";
 
-Deno.test("menu pós-FIPE só aparece com identificação confirmada", () => {
+Deno.test("FIX-VEIC-3-B5 — menu pós-FIPE com identificação confirmada ou alta", () => {
   assertEquals(shouldOfferVehiclePostFipeMenu({}), false);
   assertEquals(
     shouldOfferVehiclePostFipeMenu({
@@ -16,15 +16,12 @@ Deno.test("menu pós-FIPE só aparece com identificação confirmada", () => {
   );
 });
 
-Deno.test("FIX-VEIC-3-A — lista pós-FIPE só Meta e troca", () => {
+Deno.test("FIX-VEIC-3-B9 — lista pós-FIPE completa filtrada", () => {
   const list = vehiclePostFipeMenuList();
-  assertEquals(list.rows.length, 2);
+  assertEquals(list.rows.length, 6);
   assertEquals(
-    list.rows.map((row) => row.title),
-    [
-      "Anúncio pago (Meta)",
-      "Avaliar como troca",
-    ],
+    list.rows.map((row) => row.id.replace("vehicle_post_fipe:", "")),
+    ["ad", "post", "meta", "troca", "correct", "edit"],
   );
 });
 

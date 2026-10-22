@@ -284,7 +284,6 @@ Deno.test("destino curto mostra só redes conectadas", () => {
     "📤 Face + Insta (Feed)",
     "📤 Face + Insta",
     "📱 Só Story",
-    "🎵 TikTok",
     "🗓️ Agendar",
   ]);
   const video = anuncioPostDestinationList({
@@ -309,7 +308,6 @@ Deno.test("lista pós-publicação contém só redes restantes e nunca agenda", 
   assertEquals(remaining?.send_text_first, true);
   assertEquals(remaining?.rows.map((row) => row.title), [
     "💼 LinkedIn",
-    "🎵 TikTok",
   ]);
   assertEquals(
     anuncioRemainingDestinationsList({

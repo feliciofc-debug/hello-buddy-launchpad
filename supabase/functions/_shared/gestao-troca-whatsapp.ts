@@ -13,6 +13,7 @@ import {
 import { ownerPhoneVariants } from "./owner-phone.ts";
 import { buildGestaoTrocaLaudoWhatsappPdfBytes } from "./gestao-troca-laudo-whatsapp-pdf.ts";
 import { loadLatestGestaoTrocaAnalise } from "./gestao-troca-ia-ops.ts";
+import { buildGestaoTrocaFichaPanelUrl } from "./gestao-troca-panel-url.ts";
 import { vehiclePostFipeTrocaGuide } from "./vehicle-post-fipe-menu.ts";
 
 export const GESTAO_TROCA_WA_PREFIX = "gestao_troca_wa:";
@@ -168,6 +169,14 @@ function semaforoRotulo(semaforo: unknown): string {
   return "⚪ Sem semáforo";
 }
 
+/** Rótulo sem emoji — PDF Helvetica (WinAnsi). */
+export function semaforoRotuloPdf(semaforo: unknown): string {
+  if (semaforo === "verde") return "Verde";
+  if (semaforo === "amarelo") return "Amarelo";
+  if (semaforo === "vermelho") return "Vermelho";
+  return "Sem semaforo";
+}
+
 function formatTrocaData(iso: unknown): string {
   const s = String(iso ?? "");
   if (!s) return "—";
@@ -263,17 +272,6 @@ export function buildGestaoTrocaWaListInteractive(
   };
 }
 
-function appBaseUrl(): string {
-  return (Deno.env.get("APP_URL") ||
-    Deno.env.get("PUBLIC_SITE_URL") ||
-    Deno.env.get("SITE_URL") ||
-    "https://hello-buddy-launchpad.lovable.app").replace(/\/$/, "");
-}
-
-function panelTrocaUrl(trocaId: string): string {
-  return `${appBaseUrl()}/gestao/trocas/${trocaId}`;
-}
-
 function selectWhatsappPhotos(fotos: GestaoTrocaFotoEntry[]): GestaoTrocaFotoEntry[] {
   const safe = fotos.filter((f) => !gestaoTrocaFotoIsCrlv(f));
   const picked: GestaoTrocaFotoEntry[] = [];
@@ -334,8 +332,11 @@ export function pdfLinesFromTroca(
   troca: TrocaRow,
   apontamentos: string[],
   laudoNumero: string | null,
+  options?: { preview?: boolean },
 ): string[] {
-  const lines: string[] = ["Laudo de troca — uso interno"];
+  const lines: string[] = options?.preview
+    ? ["PRÉVIA — laudo não finalizado"]
+    : ["Laudo de troca — uso interno"];
   if (laudoNumero) lines.push(`Número: ${laudoNumero}`);
   const titulo = `${String(troca.marca ?? "")} ${String(troca.modelo ?? "")}`.trim();
   if (titulo) lines.push(titulo);
@@ -348,7 +349,7 @@ export function pdfLinesFromTroca(
   }
   const cor = String(troca.cor ?? "").trim();
   if (cor) lines.push(`Cor: ${cor}`);
-  lines.push(`Resultado: ${semaforoRotulo(troca.semaforo)}`);
+  lines.push(`Resultado: ${semaforoRotuloPdf(troca.semaforo)}`);
   const sugerido = trocaPdfMoneyLine("Valor sugerido", troca.valor_sugerido);
   if (sugerido) lines.push(sugerido);
   const teto = trocaPdfMoneyLine("Teto", troca.teto);
@@ -358,6 +359,33 @@ export function pdfLinesFromTroca(
   lines.push(
     ...(apontamentos.length ? apontamentos : ["Nenhum item confirmado no laudo."]),
   );
+  return lines;
+}
+
+/** Resumo WhatsApp — omite campos vazios (mesma regra do PDF). */
+export function whatsappSummaryLinesFromTroca(
+  row: TrocaRow,
+  apontamentos: string[],
+  panelUrl?: string,
+): string[] {
+  const lines: string[] = [`*${trocaTitulo(row)}*`];
+  const placa = String(row.placa ?? "").trim();
+  if (placa) lines.push(`Placa: ${placa}`);
+  if (row.km != null && Number.isFinite(Number(row.km))) {
+    lines.push(`KM: ${Number(row.km).toLocaleString("pt-BR")}`);
+  }
+  const cor = String(row.cor ?? "").trim();
+  if (cor) lines.push(`Cor: ${cor}`);
+  lines.push(`Resultado: ${semaforoRotulo(row.semaforo)}`);
+  const sugerido = trocaPdfMoneyLine("Valor sugerido", row.valor_sugerido);
+  if (sugerido) lines.push(sugerido);
+  const teto = trocaPdfMoneyLine("Teto", row.teto);
+  if (teto) lines.push(teto);
+  if (apontamentos.length) {
+    lines.push(`Apontamentos:\n${apontamentos.map((a) => `• ${a}`).join("\n")}`);
+  }
+  const url = String(panelUrl ?? "").trim();
+  if (url) lines.push(`Ficha no painel:\n${url}`);
   return lines;
 }
 
@@ -394,49 +422,20 @@ export async function buildGestaoTrocaWaPickDeliveries(
   const { analise, itens } = await loadLatestGestaoTrocaAnalise(sb, userId, trocaId);
   const apontamentos = topApontamentos(itens);
   const laudoFinal = String(row.laudo_status ?? "") === "finalizado";
-  const fichaUrl = panelTrocaUrl(trocaId);
-
-  const summaryLines = [
-    `*${trocaTitulo(row)}*`,
-    `Placa: ${String(row.placa ?? "—")}`,
-    `KM: ${row.km != null ? Number(row.km).toLocaleString("pt-BR") : "—"}`,
-    `Cor: ${String(row.cor ?? "—")}`,
-    `Resultado: ${semaforoRotulo(row.semaforo)}`,
-    apontamentos.length
-      ? `Apontamentos:\n${apontamentos.map((a) => `• ${a}`).join("\n")}`
-      : "",
-    row.valor_sugerido != null
-      ? `Valor sugerido: ${formatGestaoMoney(Number(row.valor_sugerido))}`
-      : "",
-    row.teto != null ? `Teto: ${formatGestaoMoney(Number(row.teto))}` : "",
-  ].filter(Boolean);
+  const fichaUrl = buildGestaoTrocaFichaPanelUrl(trocaId);
 
   const deliveries: GestaoTrocaWaDelivery[] = [{
     kind: "text",
-    text: summaryLines.join("\n"),
+    text: whatsappSummaryLinesFromTroca(row, apontamentos, fichaUrl).join(
+      "\n",
+    ),
   }];
-
-  if (!laudoFinal && !analise) {
-    deliveries.push({
-      kind: "text",
-      text:
-        `Avaliação sem laudo gerado. Abra a ficha no painel:\n${fichaUrl}`,
-    });
-    return { handled: true, deliveries };
-  }
-
-  if (!laudoFinal) {
-    deliveries.push({
-      kind: "text",
-      text:
-        `Avaliação sem laudo finalizado. Veja a ficha no painel:\n${fichaUrl}`,
-    });
-  }
 
   const pdfLines = pdfLinesFromTroca(
     row,
     apontamentos,
     row.laudo_numero != null ? String(row.laudo_numero) : null,
+    { preview: !laudoFinal },
   );
   if (analise?.resumo_laudo && typeof analise.resumo_laudo === "string") {
     pdfLines.push("", String(analise.resumo_laudo).slice(0, 2000));
@@ -450,11 +449,17 @@ export async function buildGestaoTrocaWaPickDeliveries(
         kind: "document",
         url: docUrl,
         filename: `laudo-troca-${String(row.placa ?? trocaId).slice(0, 12)}.pdf`,
-        caption: laudoFinal ? "Laudo da troca (PDF)" : "Pré-laudo / resumo (PDF)",
+        caption: laudoFinal
+          ? "Laudo da troca (PDF)"
+          : "PRÉVIA — laudo não finalizado (PDF)",
       });
     }
   } catch {
-    /* PDF opcional — resumo textual já foi enviado */
+    deliveries.push({
+      kind: "text",
+      text:
+        "Não consegui gerar o PDF agora. Use o link da ficha no painel acima.",
+    });
   }
 
   const fotos = selectWhatsappPhotos(normalizeGestaoTrocaFotos(row.fotos_json));

@@ -1,4 +1,7 @@
 import { GESTAO_ASSISTENTE_MAP } from "./gestao-assistente-map.ts";
+import type { VehicleIdentification } from "./vehicle-identification.ts";
+import { vehicleIdentificationUsesDirectActionMenu } from "./vehicle-identification.ts";
+import { VEHICLE_POST_FIPE_MENU_VISIBLE_ACTIONS } from "./vehicle-photo-menu-config.ts";
 
 type VehiclePostFipeMenuList = {
   body: string;
@@ -8,12 +11,6 @@ type VehiclePostFipeMenuList = {
 };
 
 export const VEHICLE_POST_FIPE_PREFIX = "vehicle_post_fipe:";
-
-/** FIX-VEIC-3 Parte A: itens visíveis no menu pós-FIPE até Parte B. */
-export const VEHICLE_POST_FIPE_MENU_VISIBLE_ACTIONS = new Set([
-  "meta",
-  "troca",
-]);
 
 export function vehiclePostFipeInteractiveId(action: string): string {
   return `${VEHICLE_POST_FIPE_PREFIX}${action}`;
@@ -28,32 +25,62 @@ export function parseVehiclePostFipeInteractiveId(
   return match?.[1]?.trim().toLowerCase() || null;
 }
 
+/** FIX-VEIC-3 B5: menu após FIPE sempre que há identificação útil pela foto. */
 export function shouldOfferVehiclePostFipeMenu(
   agentState?: Record<string, unknown> | null,
 ): boolean {
   const pending = agentState?.pending_vehicle_identification as
-    | { confirmed?: boolean }
+    | {
+      confirmed?: boolean;
+      identification?: VehicleIdentification;
+    }
     | undefined;
-  return pending?.confirmed === true;
+  if (!pending) return false;
+  if (pending.confirmed === true) return true;
+  return vehicleIdentificationUsesDirectActionMenu(
+    pending.identification ?? null,
+  );
 }
+
+const VEHICLE_POST_FIPE_ROWS = [
+  {
+    id: vehiclePostFipeInteractiveId("ad"),
+    title: "Arte de anúncio",
+    description: "Gerar arte com a foto atual",
+  },
+  {
+    id: vehiclePostFipeInteractiveId("post"),
+    title: "Postar nas redes",
+    description: "Feed ou story",
+  },
+  {
+    id: vehiclePostFipeInteractiveId("meta"),
+    title: "Anúncio pago (Meta)",
+    description: "Campanha paga no Meta Ads",
+  },
+  {
+    id: vehiclePostFipeInteractiveId("troca"),
+    title: "Avaliar como troca",
+    description: "Ficha de avaliação de troca",
+  },
+  {
+    id: vehiclePostFipeInteractiveId("correct"),
+    title: "Corrigir modelo",
+    description: "Marca e modelo na FIPE",
+  },
+  {
+    id: vehiclePostFipeInteractiveId("edit"),
+    title: "Editar foto",
+    description: "Luz, fundo ou recorte",
+  },
+];
 
 export function vehiclePostFipeMenuList(): VehiclePostFipeMenuList {
   return {
     body: "O que você quer fazer com este veículo?",
     button: "Escolher ação",
     section_title: "Próximo passo",
-    rows: [
-      {
-        id: vehiclePostFipeInteractiveId("meta"),
-        title: "Anúncio pago (Meta)",
-        description: "Campanha paga no Meta Ads",
-      },
-      {
-        id: vehiclePostFipeInteractiveId("troca"),
-        title: "Avaliar como troca",
-        description: "Ficha de avaliação de troca",
-      },
-    ].filter((row) =>
+    rows: VEHICLE_POST_FIPE_ROWS.filter((row) =>
       VEHICLE_POST_FIPE_MENU_VISIBLE_ACTIONS.has(
         row.id.replace(VEHICLE_POST_FIPE_PREFIX, ""),
       )

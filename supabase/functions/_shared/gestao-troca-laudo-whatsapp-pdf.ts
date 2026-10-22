@@ -13,7 +13,13 @@ export async function buildGestaoTrocaLaudoWhatsappPdfBytes(
   const maxChars = 92;
 
   const writeLine = (raw: string) => {
-    const text = raw.replace(/\s+/g, " ").trim().slice(0, maxChars) || " ";
+    const text = raw
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^\x20-\x7E]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, maxChars) || " ";
     if (y < margin + lineHeight) {
       page = pdf.addPage();
       y = page.getHeight() - margin;

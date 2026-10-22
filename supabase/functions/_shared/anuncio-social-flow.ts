@@ -265,12 +265,7 @@ export function anuncioPostDestinationList(input: {
         title: "💼 LinkedIn",
       });
     }
-    if (connected.includes("tiktok")) {
-      rows.push({
-        id: "anuncio_post:destination:photo_tiktok",
-        title: "🎵 TikTok",
-      });
-    }
+    // FIX-VEIC-3 B3: TikTok só para vídeo — foto nunca oferece TikTok.
   }
   rows.push({
     id: "anuncio_post:destination:schedule",

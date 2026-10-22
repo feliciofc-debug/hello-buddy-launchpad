@@ -375,9 +375,18 @@ export function resolveMetaAdsLimitValueInput(input: {
 export function isMetaAdsQuestionarioCancel(text: unknown): boolean {
   const value = normalizar(text).replace(/<<interactive_id:[^>]+>>/g, "")
     .trim();
-  return /^(?:cancelar|cancela|desistir|parar|sair|nao e isso|meta_ads_q:cancelar)[.!?]?$/
+  return /^(?:cancelar(?:\s+a?\s*campanha)?|cancela|desistir|parar|sair|nao e isso|meta_ads_q:cancelar)[.!?]?$/
     .test(value) ||
     interactiveId(text) === `${META_ADS_QUESTIONARIO_PREFIX}cancelar`;
+}
+
+/** Pausar campanha publicada exige confirmação explícita — nunca inferir do questionário. */
+export function metaAdsPauseCampanhaExplicitamenteConfirmado(
+  text: unknown,
+): boolean {
+  const value = normalizar(text);
+  return /\b(?:sim|confirmo|pode pausar)\b/.test(value) &&
+    /\bpausar\b/.test(value);
 }
 
 export function isMetaAdsQuestionarioResume(text: unknown): boolean {
