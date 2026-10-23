@@ -22,3 +22,15 @@ export function emptyWebmotorsAnuncioSnForm(): WebmotorsAnuncioSnForm {
     WEBMOTORS_ANUNCIO_SN_FIELDS.map(({ key }) => [key, false]),
   ) as WebmotorsAnuncioSnForm;
 }
+
+export function webmotorsAnuncioSnFormFromStored(
+  stored: unknown,
+): WebmotorsAnuncioSnForm {
+  const form = emptyWebmotorsAnuncioSnForm();
+  if (!stored || typeof stored !== "object") return form;
+  const obj = stored as Record<string, unknown>;
+  for (const { key } of WEBMOTORS_ANUNCIO_SN_FIELDS) {
+    if (obj[key] === "S") form[key] = true;
+  }
+  return form;
+}

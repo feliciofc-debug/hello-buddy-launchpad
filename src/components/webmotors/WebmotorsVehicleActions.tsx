@@ -4,7 +4,10 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { WebmotorsDeparaDialog } from "@/components/webmotors/WebmotorsDeparaDialog";
 import { WebmotorsPublishDialog } from "@/components/webmotors/WebmotorsPublishDialog";
-import type { WebmotorsAnuncioSnForm } from "@/components/webmotors/webmotorsAnuncioSnFields";
+import {
+  webmotorsAnuncioSnFormFromStored,
+  type WebmotorsAnuncioSnForm,
+} from "@/components/webmotors/webmotorsAnuncioSnFields";
 import {
   PortalPublishChecklist,
   type PortalPublishReadiness,
@@ -16,6 +19,7 @@ export type VeiculoPortalWebmotors = {
   status: string;
   permalink: string | null;
   last_error: string | null;
+  anuncio_sn?: Record<string, string> | null;
 };
 
 export function WebmotorsVehicleActions(props: {
@@ -28,6 +32,8 @@ export function WebmotorsVehicleActions(props: {
   const [busy, setBusy] = useState(false);
   const [deparaOpen, setDeparaOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<"publish" | "sync">("publish");
+  const savedSnForm = webmotorsAnuncioSnFormFromStored(props.portal?.anuncio_sn);
 
   if (!props.wmConnected) {
     return (
@@ -71,12 +77,16 @@ export function WebmotorsVehicleActions(props: {
     props.onChanged();
   };
 
-  const sync = async () => {
+  const sync = async (anuncioSn?: WebmotorsAnuncioSnForm) => {
     setBusy(true);
     const r = await invokeFunctionComCorpo("webmotors-vehicle-sync", {
-      body: { veiculo_id: props.veiculoId },
+      body: {
+        veiculo_id: props.veiculoId,
+        ...(anuncioSn ? { anuncio_sn: anuncioSn } : {}),
+      },
     });
     setBusy(false);
+    setPublishOpen(false);
     if (!r.success) {
       handleFailure(r);
       props.onChanged();
@@ -115,7 +125,10 @@ export function WebmotorsVehicleActions(props: {
             variant="outline"
             className="w-full"
             disabled={busy}
-            onClick={() => setPublishOpen(true)}
+            onClick={() => {
+              setDialogMode("publish");
+              setPublishOpen(true);
+            }}
           >
             Publicar na Webmotors
           </Button>
@@ -123,6 +136,18 @@ export function WebmotorsVehicleActions(props: {
           <>
             <Button size="sm" variant="ghost" className="w-full" disabled={busy} onClick={() => void sync()}>
               Sincronizar
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full"
+              disabled={busy}
+              onClick={() => {
+                setDialogMode("sync");
+                setPublishOpen(true);
+              }}
+            >
+              Informações Sim/Não
             </Button>
             <Button size="sm" variant="outline" className="w-full" disabled={busy} onClick={() => void unpublish()}>
               Remover da Webmotors
@@ -142,8 +167,11 @@ export function WebmotorsVehicleActions(props: {
       <WebmotorsPublishDialog
         open={publishOpen}
         busy={busy}
+        mode={dialogMode}
+        initialSn={dialogMode === "sync" ? savedSnForm : undefined}
         onClose={() => setPublishOpen(false)}
-        onConfirm={(anuncioSn) => void publish(anuncioSn)}
+        onConfirm={(anuncioSn) =>
+          void (dialogMode === "publish" ? publish(anuncioSn) : sync(anuncioSn))}
       />
     </>
   );

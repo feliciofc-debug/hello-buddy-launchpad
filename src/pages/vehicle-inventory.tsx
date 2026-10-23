@@ -350,7 +350,7 @@ export default function VehicleInventory() {
     });
     const { data: portals } = await supabase
       .from("veiculos_portais" as "veiculos_estoque")
-      .select("veiculo_id, portal, status, permalink, last_error");
+      .select("veiculo_id, portal, status, permalink, last_error, anuncio_sn");
     const mlMap: Record<string, VeiculoPortalMl> = {};
     const wmMap: Record<string, VeiculoPortalWebmotors> = {};
     for (const row of (portals ?? []) as Array<{
@@ -359,11 +359,13 @@ export default function VehicleInventory() {
       status: string;
       permalink: string | null;
       last_error: string | null;
+      anuncio_sn: Record<string, string> | null;
     }>) {
       const entry = {
         status: row.status,
         permalink: row.permalink,
         last_error: row.last_error,
+        anuncio_sn: row.anuncio_sn,
       };
       if (row.portal === "mercadolivre") mlMap[row.veiculo_id] = entry;
       if (row.portal === "webmotors") wmMap[row.veiculo_id] = entry;

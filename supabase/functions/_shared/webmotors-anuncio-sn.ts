@@ -48,11 +48,83 @@ export function webmotorsAnuncioSnFromBooleans(
 export function parseWebmotorsAnuncioSnBody(
   raw: unknown,
 ): WebmotorsAnuncioSnBooleans | undefined {
-  if (!raw || typeof raw !== "object") return undefined;
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== "object") return undefined;
   const obj = raw as Record<string, unknown>;
   const out: WebmotorsAnuncioSnBooleans = {};
   for (const field of WEBMOTORS_ANUNCIO_SN_FIELDS) {
     if (field in obj) out[field] = obj[field] === true;
   }
   return Object.keys(out).length ? out : undefined;
+}
+
+/** Lê jsonb salvo em veiculos_portais.anuncio_sn. */
+export function parseStoredWebmotorsAnuncioSnValues(
+  raw: unknown,
+): WebmotorsAnuncioSnValues | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  let hasAny = false;
+  const out = {} as WebmotorsAnuncioSnValues;
+  for (const field of WEBMOTORS_ANUNCIO_SN_FIELDS) {
+    const v = obj[field];
+    if (v === "S" || v === "N") {
+      out[field] = v;
+      hasAny = true;
+    } else {
+      out[field] = "N";
+    }
+  }
+  return hasAny ? out : null;
+}
+
+export function webmotorsAnuncioSnBooleansFromValues(
+  values: WebmotorsAnuncioSnValues,
+): WebmotorsAnuncioSnBooleans {
+  const out: WebmotorsAnuncioSnBooleans = {};
+  for (const field of WEBMOTORS_ANUNCIO_SN_FIELDS) {
+    out[field] = values[field] === "S";
+  }
+  return out;
+}
+
+/**
+ * Request explícito → usar e persistir. Sem request → valores salvos. Sem salvo → tudo N.
+ */
+export function resolveWebmotorsAnuncioSnForVehicle(input: {
+  request?: WebmotorsAnuncioSnBooleans;
+  stored?: unknown;
+}): {
+  booleans: WebmotorsAnuncioSnBooleans;
+  values: WebmotorsAnuncioSnValues;
+  shouldPersist: boolean;
+} {
+  if (input.request !== undefined) {
+    const values = webmotorsAnuncioSnFromBooleans(input.request);
+    return {
+      booleans: input.request,
+      values,
+      shouldPersist: true,
+    };
+  }
+  const storedValues = parseStoredWebmotorsAnuncioSnValues(input.stored);
+  if (storedValues) {
+    return {
+      booleans: webmotorsAnuncioSnBooleansFromValues(storedValues),
+      values: storedValues,
+      shouldPersist: false,
+    };
+  }
+  const values = webmotorsAnuncioSnFromBooleans({});
+  return { booleans: {}, values, shouldPersist: false };
+}
+
+export function webmotorsAnuncioSnValuesFromPayload(
+  payload: Record<WebmotorsAnuncioSnField, string>,
+): WebmotorsAnuncioSnValues {
+  const out = {} as WebmotorsAnuncioSnValues;
+  for (const field of WEBMOTORS_ANUNCIO_SN_FIELDS) {
+    out[field] = payload[field] === "S" ? "S" : "N";
+  }
+  return out;
 }

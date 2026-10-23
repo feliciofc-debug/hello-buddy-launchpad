@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -20,10 +20,18 @@ import {
 export function WebmotorsPublishDialog(props: {
   open: boolean;
   busy: boolean;
+  mode: "publish" | "sync";
+  initialSn?: WebmotorsAnuncioSnForm;
   onClose: () => void;
   onConfirm: (anuncioSn: WebmotorsAnuncioSnForm) => void;
 }) {
   const [sn, setSn] = useState<WebmotorsAnuncioSnForm>(emptyWebmotorsAnuncioSnForm);
+
+  useEffect(() => {
+    if (props.open) {
+      setSn(props.initialSn ?? emptyWebmotorsAnuncioSnForm());
+    }
+  }, [props.open, props.initialSn]);
 
   const resetAndClose = () => {
     setSn(emptyWebmotorsAnuncioSnForm());
@@ -34,7 +42,11 @@ export function WebmotorsPublishDialog(props: {
     <Dialog open={props.open} onOpenChange={(open) => !open && resetAndClose()}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Publicar na Webmotors</DialogTitle>
+          <DialogTitle>
+            {props.mode === "publish"
+              ? "Publicar na Webmotors"
+              : "Informações Sim/Não na Webmotors"}
+          </DialogTitle>
           <DialogDescription>
             Marque apenas o que for verdade sobre o veículo. Itens desmarcados serão enviados como
             &quot;Não&quot;. A placa cadastrada no estoque é usada só para conferência na Webmotors.
@@ -61,7 +73,11 @@ export function WebmotorsPublishDialog(props: {
             Cancelar
           </Button>
           <Button type="button" disabled={props.busy} onClick={() => props.onConfirm(sn)}>
-            {props.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Publicar"}
+            {props.busy
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : props.mode === "publish"
+              ? "Publicar"
+              : "Salvar e sincronizar"}
           </Button>
         </DialogFooter>
       </DialogContent>

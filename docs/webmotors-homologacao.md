@@ -44,6 +44,7 @@ Operações usadas: `autenticar`, `ObterMarca`, `ObterModelo`, `ObterVersao`,
 | `preco` | `PrecoVenda` |
 | preço promocional “de” (se existir e for maior) | `PrecoReal` (senão `0`) |
 | checkboxes na publicação | dez campos Sim/Não após `Blindado` |
+| `veiculos_portais.anuncio_sn` | jsonb com respostas S/N persistidas (sync não reseta) |
 | `descricao` | `Observacao` |
 | `opcionais` | `Opcional/CodigoOpcional` |
 | `fotos[]` | chamadas `IncluirFoto`, na ordem do estoque |

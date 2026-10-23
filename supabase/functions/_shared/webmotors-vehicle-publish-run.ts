@@ -21,7 +21,11 @@ import {
   mapVehicleToWebmotorsMoto,
 } from "./webmotors-map-moto.ts";
 import { fetchPublicImageAsBase64 } from "./webmotors-photo-base64.ts";
-import type { WebmotorsAnuncioSnBooleans } from "./webmotors-anuncio-sn.ts";
+import {
+  resolveWebmotorsAnuncioSnForVehicle,
+  webmotorsAnuncioSnValuesFromPayload,
+  type WebmotorsAnuncioSnBooleans,
+} from "./webmotors-anuncio-sn.ts";
 import type { VeiculoEstoqueRow } from "./webmotors-vehicle-types.ts";
 
 const PHOTO_PARTIAL_ERROR =
@@ -126,12 +130,17 @@ export async function runWebmotorsVehiclePublish(
     return { ok: false, error: (e as Error).message };
   }
 
+  const snResolved = resolveWebmotorsAnuncioSnForVehicle({
+    request: input.anuncioSn ?? {},
+    stored: undefined,
+  });
+
   const mapped = mapVehicleToWebmotorsCar({
     vehicle: vehicle as VeiculoEstoqueRow,
     manualMap: mapRow,
     catalog,
     defaultModalidade,
-    anuncioSn: input.anuncioSn,
+    anuncioSn: snResolved.booleans,
   });
   if (!mapped.ok) {
     return {
@@ -145,6 +154,7 @@ export async function runWebmotorsVehiclePublish(
   try {
     const created = await api.incluirCarro(ambiente, hash, mapped.payload);
     const external_id = String(created.codigoAnuncio);
+    const anuncioSnSaved = webmotorsAnuncioSnValuesFromPayload(mapped.payload);
 
     const { error: portalSaveError } = await sb.from("veiculos_portais").upsert({
       user_id: input.userId,
@@ -155,6 +165,7 @@ export async function runWebmotorsVehiclePublish(
       category_id: String(mapped.payload.CodigoModalidade),
       managed_by_platform: true,
       status: "published",
+      anuncio_sn: anuncioSnSaved,
       last_error: null,
       last_synced_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),

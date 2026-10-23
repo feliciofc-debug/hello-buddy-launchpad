@@ -19,8 +19,17 @@ import {
   mapVehicleToWebmotorsMoto,
 } from "./webmotors-map-moto.ts";
 import { fetchPublicImageAsBase64 } from "./webmotors-photo-base64.ts";
-import type { WebmotorsAnuncioSnBooleans } from "./webmotors-anuncio-sn.ts";
+import {
+  resolveWebmotorsAnuncioSnForVehicle,
+  type WebmotorsAnuncioSnBooleans,
+} from "./webmotors-anuncio-sn.ts";
 import type { VeiculoEstoqueRow } from "./webmotors-vehicle-types.ts";
+
+export type WebmotorsSyncDeps = {
+  alterarCarro?: typeof wmAlterarCarro;
+  hashForUser?: typeof webmotorsHashForUser;
+  loadCatalog?: typeof loadCatalogBundleForVehicle;
+};
 
 export function webmotorsPhotoOrderChanged(
   desiredUrls: string[],
@@ -42,7 +51,11 @@ export async function runWebmotorsVehicleSync(
     veiculoId: string;
     anuncioSn?: WebmotorsAnuncioSnBooleans;
   },
+  deps: WebmotorsSyncDeps = {},
 ): Promise<{ ok: boolean; error?: string; blocking?: unknown[] }> {
+  const alterarCarro = deps.alterarCarro ?? wmAlterarCarro;
+  const resolveHash = deps.hashForUser ?? webmotorsHashForUser;
+  const resolveCatalog = deps.loadCatalog ?? loadCatalogBundleForVehicle;
   const { data: vehicle } = await sb.from("veiculos_estoque")
     .select("*")
     .eq("user_id", input.userId)
@@ -80,7 +93,7 @@ export async function runWebmotorsVehicleSync(
   let ambiente: "homolog" | "producao";
   let defaultModalidade: number | null;
   try {
-    const auth = await webmotorsHashForUser(sb, input.userId);
+    const auth = await resolveHash(sb, input.userId);
     hash = auth.hash;
     ambiente = auth.ambiente;
     defaultModalidade = auth.conta.default_codigo_modalidade;
@@ -91,7 +104,7 @@ export async function runWebmotorsVehicleSync(
   const codigoAnuncio = Number(portal.external_id);
   let catalog;
   try {
-    catalog = await loadCatalogBundleForVehicle(
+    catalog = await resolveCatalog(
       sb,
       ambiente,
       hash,
@@ -103,13 +116,18 @@ export async function runWebmotorsVehicleSync(
     return { ok: false, error: (e as Error).message };
   }
 
+  const snResolved = resolveWebmotorsAnuncioSnForVehicle({
+    request: input.anuncioSn,
+    stored: portal.anuncio_sn,
+  });
+
   const mapped = mapVehicleToWebmotorsCar({
     vehicle: vehicle as VeiculoEstoqueRow,
     manualMap: mapRow,
     catalog,
     defaultModalidade,
     existingCodigoAnuncio: codigoAnuncio,
-    anuncioSn: input.anuncioSn,
+    anuncioSn: snResolved.booleans,
   });
   if (!mapped.ok) {
     return {
@@ -121,7 +139,7 @@ export async function runWebmotorsVehicleSync(
   assertWebmotorsPayloadPublicOnly(mapped.payload);
 
   try {
-    await wmAlterarCarro(ambiente, hash, mapped.payload);
+    await alterarCarro(ambiente, hash, mapped.payload);
 
     const fotos = ((vehicle as VeiculoEstoqueRow).fotos ?? []).filter(Boolean);
     const { data: vinculos, error: linksError } = await sb.from("webmotors_foto_vinculo")
@@ -197,6 +215,7 @@ export async function runWebmotorsVehicleSync(
       last_error: null,
       last_synced_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+      ...(snResolved.shouldPersist ? { anuncio_sn: snResolved.values } : {}),
     }).eq("user_id", input.userId).eq("veiculo_id", input.veiculoId).eq(
       "portal",
       "webmotors",
