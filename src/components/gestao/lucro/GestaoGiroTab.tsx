@@ -63,6 +63,8 @@ const emptyConfig = (): GestaoGiroConfigRow => ({
   uf: null,
   ipva_aliquota_pct: null,
   ipva_loja_paga_virada: false,
+  resumo_diario_ativo: false,
+  resumo_diario_hora: "18:00:00",
 });
 
 function optionalNumber(value: string): number | null {
@@ -123,6 +125,8 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
     uf: "",
     ipva: "",
     pagaVirada: false,
+    resumoDiario: false,
+    resumoHora: "18:00",
   }));
 
   const load = useCallback(async () => {
@@ -155,6 +159,8 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
       uf: c.uf ?? "",
       ipva: c.ipva_aliquota_pct == null ? "" : String(c.ipva_aliquota_pct),
       pagaVirada: c.ipva_loja_paga_virada,
+      resumoDiario: c.resumo_diario_ativo ?? false,
+      resumoHora: (c.resumo_diario_hora ?? "18:00:00").slice(0, 5),
     });
     setConfigOpen(true);
   };
@@ -170,6 +176,8 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
       uf: form.uf.trim() ? form.uf.trim().toUpperCase() : null,
       ipva_aliquota_pct: optionalNumber(form.ipva),
       ipva_loja_paga_virada: form.pagaVirada,
+      resumo_diario_ativo: form.resumoDiario,
+      resumo_diario_hora: form.resumoHora,
     };
     if (
       !Number.isInteger(next.faixa_atencao_dias) ||
@@ -418,6 +426,31 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
               <div>
                 <Label htmlFor="giro-virada">Loja paga IPVA na virada</Label>
                 <p className="text-xs text-muted-foreground">De outubro mostra o IPVA na virada; entra na projeção de 30 dias quando a virada estiver próxima.</p>
+              </div>
+            </div>
+            <div className="col-span-full border-t pt-4">
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  id="giro-resumo-diario"
+                  checked={form.resumoDiario}
+                  onCheckedChange={(v) => setForm((f) => ({ ...f, resumoDiario: v === true }))}
+                />
+                <div className="flex-1 space-y-2">
+                  <Label htmlFor="giro-resumo-diario">Receber resumo diário no WhatsApp</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Envia ao dono e gestores (Jarvis), somente texto e link do painel. Fora da janela de 24h da Meta, usa template aprovado se existir.
+                  </p>
+                  <div className="flex max-w-[10rem] items-center gap-2">
+                    <Label htmlFor="giro-resumo-hora" className="text-xs whitespace-nowrap">Horário</Label>
+                    <Input
+                      id="giro-resumo-hora"
+                      type="time"
+                      value={form.resumoHora}
+                      disabled={!form.resumoDiario}
+                      onChange={(e) => setForm((f) => ({ ...f, resumoHora: e.target.value }))}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </div>

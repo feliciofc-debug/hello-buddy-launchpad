@@ -20,6 +20,8 @@ export type GestaoGiroConfigRow = {
   uf: string | null;
   ipva_aliquota_pct: number | null;
   ipva_loja_paga_virada: boolean;
+  resumo_diario_ativo?: boolean;
+  resumo_diario_hora?: string;
 };
 
 export type GestaoGiroItem = {
@@ -133,8 +135,15 @@ export async function saveGestaoGiroConfig(
   userId: string,
   config: GestaoGiroConfigRow,
 ): Promise<void> {
+  const payload = {
+    user_id: userId,
+    ...config,
+    resumo_diario_hora: config.resumo_diario_hora
+      ? `${config.resumo_diario_hora.slice(0, 5)}:00`
+      : "18:00:00",
+  };
   const { error } = await supabase.from("gestao_giro_config" as "veiculos_estoque")
-    .upsert({ user_id: userId, ...config }, { onConflict: "user_id" });
+    .upsert(payload, { onConflict: "user_id" });
   if (error) throw error;
 }
 

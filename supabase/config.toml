@@ -393,6 +393,9 @@ verify_jwt = true
 [functions.giro-fipe-refresh]
 verify_jwt = true
 
+[functions.giro-resumo-diario]
+verify_jwt = false
+
 [functions.amz-auto-cadastro]
 verify_jwt = false
 
