@@ -9,6 +9,8 @@ import {
   soapPost,
   xmlAllBlocks,
   xmlFirstText,
+  xmlPrincipalCodigoRetorno,
+  xmlPrincipalFirstText,
 } from "./webmotors-soap-client.ts";
 import {
   isWebmotorsSuccess,
@@ -36,10 +38,17 @@ function parseCatalogItems(
   return out;
 }
 
+function wmOperationCodigoRetorno(
+  xml: string,
+  operation: string,
+): string | null {
+  return xmlPrincipalCodigoRetorno(xml, `${operation}Result`);
+}
+
 function assertSoapOk(xml: string, resultTag: string): void {
   const fault = parseSoapFault(xml);
   if (fault) throw new Error("Erro ao consultar a Webmotors. Tente novamente.");
-  const codigo = xmlFirstText(xml, "CodigoRetorno");
+  const codigo = xmlPrincipalCodigoRetorno(xml, resultTag);
   if (codigo && !isWebmotorsSuccess(codigo)) {
     throw new Error(webmotorsCodigoRetornoMessage(codigo));
   }
@@ -256,13 +265,24 @@ export async function wmIncluirCarro(
     "IncluirCarro",
     buildAnuncioXml(anuncio),
   );
-  const codigoRetorno = xmlFirstText(xml, "CodigoRetorno");
-  const codigoAnuncioRaw = xmlFirstText(xml, "CodigoAnuncio");
+  const codigoRetorno = wmOperationCodigoRetorno(xml, "IncluirCarro");
+  const codigoAnuncioRaw = xmlPrincipalFirstText(
+    xml,
+    "IncluirCarroResult",
+    "CodigoAnuncio",
+  ) ?? xmlFirstText(xml, "CodigoAnuncio");
+  const codigoAnuncio = Number(codigoAnuncioRaw);
+  const created = Number.isFinite(codigoAnuncio) && codigoAnuncio > 0;
   if (!isWebmotorsSuccess(codigoRetorno)) {
+    if (created) {
+      return {
+        codigoAnuncio,
+        codigoRetorno: codigoRetorno ?? "500",
+      };
+    }
     throw new Error(webmotorsCodigoRetornoMessage(codigoRetorno));
   }
-  const codigoAnuncio = Number(codigoAnuncioRaw);
-  if (!Number.isFinite(codigoAnuncio) || codigoAnuncio <= 0) {
+  if (!created) {
     throw new Error("A Webmotors não retornou o código do anúncio.");
   }
   return { codigoAnuncio, codigoRetorno };
@@ -279,7 +299,7 @@ export async function wmAlterarCarro(
     "AlterarCarro",
     buildAnuncioXml(anuncio),
   );
-  const codigoRetorno = xmlFirstText(xml, "CodigoRetorno");
+  const codigoRetorno = wmOperationCodigoRetorno(xml, "AlterarCarro");
   if (!isWebmotorsSuccess(codigoRetorno)) {
     throw new Error(webmotorsCodigoRetornoMessage(codigoRetorno));
   }
@@ -309,7 +329,7 @@ export async function wmExcluirCarro(
     `<pCodigoAnuncio>${codigoAnuncio}</pCodigoAnuncio>` +
       `<pMotivoExclusao>${escapeXml(motivo)}</pMotivoExclusao>`,
   );
-  const codigoRetorno = xmlFirstText(xml, "CodigoRetorno");
+  const codigoRetorno = wmOperationCodigoRetorno(xml, "ExcluirCarro");
   if (!isWebmotorsSuccess(codigoRetorno)) {
     throw new Error(webmotorsCodigoRetornoMessage(codigoRetorno));
   }
@@ -328,12 +348,15 @@ export async function wmIncluirFotoBase64(
     `<pByteImage>${escapeXml(base64)}</pByteImage>` +
       `<pCodigoAnuncio>${codigoAnuncio}</pCodigoAnuncio>`,
   );
-  const codigoRetorno = xmlFirstText(xml, "CodigoRetorno");
+  const codigoRetorno = wmOperationCodigoRetorno(xml, "IncluirFoto");
   if (!isWebmotorsSuccess(codigoRetorno)) {
     throw new Error(webmotorsCodigoRetornoMessage(codigoRetorno));
   }
   const foto = Number(
-    xmlFirstText(xml, "CodigoFotoAnuncio") ?? xmlFirstText(xml, "CodigoFoto"),
+    xmlPrincipalFirstText(xml, "IncluirFotoResult", "CodigoFotoAnuncio") ??
+      xmlPrincipalFirstText(xml, "IncluirFotoResult", "CodigoFoto") ??
+      xmlFirstText(xml, "CodigoFotoAnuncio") ??
+      xmlFirstText(xml, "CodigoFoto"),
   );
   if (!Number.isFinite(foto)) {
     throw new Error("Falha ao enviar foto para a Webmotors.");
@@ -372,7 +395,7 @@ export async function wmExcluirFoto(
     `<pCodigoAnuncio>${codigoAnuncio}</pCodigoAnuncio>` +
       `<pCodigoFoto>${codigoFoto}</pCodigoFoto>`,
   );
-  const codigoRetorno = xmlFirstText(xml, "CodigoRetorno");
+  const codigoRetorno = wmOperationCodigoRetorno(xml, "ExcluirFoto");
   if (!isWebmotorsSuccess(codigoRetorno)) {
     throw new Error(webmotorsCodigoRetornoMessage(codigoRetorno));
   }
