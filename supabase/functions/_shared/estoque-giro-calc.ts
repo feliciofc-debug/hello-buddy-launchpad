@@ -2,6 +2,10 @@ import {
   calcGestaoComissao,
   type GestaoComissaoRegraJson,
 } from "./gestao-comissao-calc.ts";
+import {
+  resolverIpvaVeiculo,
+  type GiroIpvaVeiculoAjuste,
+} from "./estoque-giro-ipva.ts";
 
 export type EstoqueGiroFaixa = "saudavel" | "atencao" | "risco" | "decisao";
 export type EstoqueGiroFonte = "fipe" | "manual" | "molicar_b2c" | "molicar_b2b" | "molicar_c2b";
@@ -15,6 +19,8 @@ export type EstoqueGiroConfig = {
   repasseDescontoFipePct: number | null;
   uf: string | null;
   ipvaAliquotaPct: number | null;
+  ipvaAliquotaHibridoPct: number | null;
+  ipvaAliquotaEletricoPct: number | null;
   ipvaLojaPagaVirada: boolean;
 };
 
@@ -27,6 +33,8 @@ export const DEFAULT_ESTOQUE_GIRO_CONFIG: EstoqueGiroConfig = {
   repasseDescontoFipePct: null,
   uf: null,
   ipvaAliquotaPct: null,
+  ipvaAliquotaHibridoPct: null,
+  ipvaAliquotaEletricoPct: null,
   ipvaLojaPagaVirada: false,
 };
 
@@ -47,6 +55,10 @@ export type EstoqueGiroInput = {
   config: EstoqueGiroConfig;
   regraComissao: GestaoComissaoRegraJson;
   leadsUltimos30Dias?: number | null;
+  combustivel?: string | null;
+  versao?: string | null;
+  modelo?: string | null;
+  ipvaAjuste?: GiroIpvaVeiculoAjuste | null;
 };
 
 export type EstoqueGiroResultado = {
@@ -66,6 +78,9 @@ export type EstoqueGiroResultado = {
   ipvaViradaValor: number | null;
   ipvaViradaDiasRestantes: number | null;
   ipvaBaseFonte: "fipe" | "preco_anunciado" | null;
+  ipvaAliquotaEfetivaPct: number | null;
+  ipvaAliquotaRotulo: string | null;
+  ipvaConferirDocumento: boolean;
   custoDeEsperar30d: number | null;
   indiceRisco: number;
   indiceSemDado: string[];
@@ -196,14 +211,16 @@ function calcIpvaVirada(
   hoje: string | Date,
   config: EstoqueGiroConfig,
   baseIpva: number | null,
+  aliquotaPct: number | null,
 ): { valor: number | null; diasRestantes: number | null } {
-  if (!config.ipvaLojaPagaVirada || config.ipvaAliquotaPct == null || baseIpva == null) {
+  if (!config.ipvaLojaPagaVirada || aliquotaPct == null || baseIpva == null) {
     return { valor: null, diasRestantes: null };
   }
+  if (aliquotaPct <= 0) return { valor: null, diasRestantes: null };
   if (!isTemporadaIpvaVirada(hoje)) return { valor: null, diasRestantes: null };
   const diasRestantes = diasAteViradaAno(hoje);
   return {
-    valor: roundMoney(baseIpva * config.ipvaAliquotaPct / 100),
+    valor: roundMoney(baseIpva * aliquotaPct / 100),
     diasRestantes,
   };
 }
@@ -290,12 +307,21 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
   const hojeYmd = typeof input.hoje === "string" ? input.hoje : ymdFromDate(hoje);
   const ipvaBase = baseIpvaEstoqueGiro(input.referencias, input.precoAnunciado);
   const baseIpva = ipvaBase.valor;
-  const ipvaVirada = calcIpvaVirada(hojeYmd, config, baseIpva);
+  const ipvaResolvido = resolverIpvaVeiculo({
+    ajuste: input.ipvaAjuste,
+    combustivel: input.combustivel ?? null,
+    versao: input.versao ?? null,
+    modelo: input.modelo ?? null,
+    config,
+  });
+  const aliquotaIpva = ipvaResolvido.aliquotaPct;
+  const ipvaVirada = calcIpvaVirada(hojeYmd, config, baseIpva, aliquotaIpva);
   const ipvaProjetado = config.ipvaLojaPagaVirada &&
-      config.ipvaAliquotaPct != null &&
+      aliquotaIpva != null &&
+      aliquotaIpva > 0 &&
       baseIpva != null &&
       crossesNewYear(hoje)
-    ? roundMoney(baseIpva * config.ipvaAliquotaPct / 100)
+    ? roundMoney(baseIpva * aliquotaIpva / 100)
     : 0;
   const custo30 = custoAtual != null
     ? custoAtual + custoFinanceiro30 + ipvaProjetado
@@ -325,7 +351,9 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
   const semDado: string[] = [];
   if (config.desvalorizacaoMensalPct == null) semDado.push("desvalorização");
   if (input.leadsUltimos30Dias == null) semDado.push("procura/leads");
-  if (config.ipvaAliquotaPct == null || !config.uf) semDado.push("IPVA/UF");
+  if ((config.ipvaAliquotaPct == null && aliquotaIpva == null) || !config.uf) {
+    semDado.push("IPVA/UF");
+  }
   const compression = margemVarejoHoje != null && custoDeEsperar30d != null
     ? custoDeEsperar30d / Math.max(1, Math.abs(margemVarejoHoje))
     : 0;
@@ -350,7 +378,7 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
         ipvaProjetado,
       ),
       weight: 10,
-      available: config.ipvaAliquotaPct != null && !!config.uf && baseIpva != null,
+      available: aliquotaIpva != null && !!config.uf && baseIpva != null && aliquotaIpva > 0,
     },
   ]);
 
@@ -434,6 +462,9 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
     ipvaViradaValor: ipvaVirada.valor,
     ipvaViradaDiasRestantes: ipvaVirada.diasRestantes,
     ipvaBaseFonte: ipvaBase.fonte,
+    ipvaAliquotaEfetivaPct: aliquotaIpva,
+    ipvaAliquotaRotulo: ipvaResolvido.rotulo,
+    ipvaConferirDocumento: ipvaResolvido.conferirDocumento,
     custoDeEsperar30d,
     indiceRisco: risco,
     indiceSemDado: semDado,
@@ -456,7 +487,13 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
           ? "Base: preço anunciado (sem FIPE) × alíquota"
           : "Sem base para IPVA",
       },
-      { rotulo: "IPVA na virada (exibição)", valor: ipvaVirada.valor, formula: "Base IPVA × alíquota, visível de outubro até a virada" },
+      {
+        rotulo: "IPVA na virada (exibição)",
+        valor: ipvaVirada.valor,
+        formula: aliquotaIpva != null
+          ? `Base IPVA × alíquota ${ipvaResolvido.rotulo} (${aliquotaIpva}%), visível de outubro até a virada`
+          : "Base IPVA × alíquota, visível de outubro até a virada",
+      },
       { rotulo: "IPVA projetado (30 dias)", valor: roundMoney(ipvaProjetado), formula: "Entra no custo futuro só se a virada ocorrer em 30 dias" },
       { rotulo: "Margem varejo em 30 dias", valor: margemVarejo30d, formula: "Preço desvalorizado − custo futuro − comissão" },
       { rotulo: "Custo de esperar 30 dias", valor: custoDeEsperar30d, formula: "Margem hoje − margem projetada" },

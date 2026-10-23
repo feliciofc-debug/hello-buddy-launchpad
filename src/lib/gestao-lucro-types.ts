@@ -24,6 +24,7 @@ export type GestaoVeiculoBase = {
   codigo_origem: string | null;
   ano_modelo: number | null;
   ano_fabricacao: number | null;
+  combustivel: string | null;
   created_at: string;
 };
 

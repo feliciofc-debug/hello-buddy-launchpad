@@ -24,16 +24,27 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { classificarIpvaCombustivelAuto } from "../../../../supabase/functions/_shared/estoque-giro-ipva.ts";
 import type { GestaoVeiculoEnriched } from "@/lib/gestao-lucro-types.ts";
 import { vehicleLabel } from "@/lib/gestao-lucro-data.ts";
 import {
   formatResumoDiarioUltimoLabel,
   loadGestaoGiro,
   refreshGestaoGiroFipeCompleto,
+  formatIpvaPctBr,
   saveGestaoGiroConfig,
   saveGestaoGiroReferenciaManual,
+  saveVeiculoGiroIpvaAjuste,
   type GestaoGiroConfigRow,
   type GestaoGiroItem,
+  type VeiculoGiroIpvaAjusteRow,
 } from "@/lib/estoque-giro-data.ts";
 
 type Props = {
@@ -63,6 +74,8 @@ const emptyConfig = (): GestaoGiroConfigRow => ({
   repasse_desconto_fipe_pct: null,
   uf: null,
   ipva_aliquota_pct: null,
+  ipva_aliquota_hibrido_pct: null,
+  ipva_aliquota_eletrico_pct: null,
   ipva_loja_paga_virada: false,
   resumo_diario_ativo: false,
   resumo_diario_hora: "18:00:00",
@@ -116,6 +129,10 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
   const [manualItem, setManualItem] = useState<GestaoGiroItem | null>(null);
   const [manualValor, setManualValor] = useState("");
   const [manualSaving, setManualSaving] = useState(false);
+  const [ipvaItem, setIpvaItem] = useState<GestaoGiroItem | null>(null);
+  const [ipvaTipo, setIpvaTipo] = useState<VeiculoGiroIpvaAjusteRow["ipva_tipo"]>("auto");
+  const [ipvaManualPct, setIpvaManualPct] = useState("");
+  const [ipvaSaving, setIpvaSaving] = useState(false);
   const [form, setForm] = useState(() => ({
     atencao: "30",
     risco: "60",
@@ -125,6 +142,8 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
     repasse: "",
     uf: "",
     ipva: "",
+    ipvaHibrido: "",
+    ipvaEletrico: "",
     pagaVirada: false,
     resumoDiario: false,
     resumoHora: "18:00",
@@ -159,6 +178,8 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
       repasse: c.repasse_desconto_fipe_pct == null ? "" : String(c.repasse_desconto_fipe_pct),
       uf: c.uf ?? "",
       ipva: c.ipva_aliquota_pct == null ? "" : String(c.ipva_aliquota_pct),
+      ipvaHibrido: c.ipva_aliquota_hibrido_pct == null ? "" : String(c.ipva_aliquota_hibrido_pct),
+      ipvaEletrico: c.ipva_aliquota_eletrico_pct == null ? "" : String(c.ipva_aliquota_eletrico_pct),
       pagaVirada: c.ipva_loja_paga_virada,
       resumoDiario: c.resumo_diario_ativo ?? false,
       resumoHora: (c.resumo_diario_hora ?? "18:00:00").slice(0, 5),
@@ -176,6 +197,8 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
       repasse_desconto_fipe_pct: optionalNumber(form.repasse),
       uf: form.uf.trim() ? form.uf.trim().toUpperCase() : null,
       ipva_aliquota_pct: optionalNumber(form.ipva),
+      ipva_aliquota_hibrido_pct: optionalNumber(form.ipvaHibrido),
+      ipva_aliquota_eletrico_pct: optionalNumber(form.ipvaEletrico),
       ipva_loja_paga_virada: form.pagaVirada,
       resumo_diario_ativo: form.resumoDiario,
       resumo_diario_hora: form.resumoHora,
@@ -226,6 +249,14 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
     config.desvalorizacao_mensal_pct == null ||
     config.repasse_desconto_fipe_pct == null;
   const resumoUltimoLabel = formatResumoDiarioUltimoLabel(config);
+  const ipvaAutoDetect = useMemo(() => {
+    if (!ipvaItem) return null;
+    return classificarIpvaCombustivelAuto({
+      combustivel: ipvaItem.veiculo.combustivel,
+      versao: ipvaItem.veiculo.versao,
+      modelo: ipvaItem.veiculo.modelo,
+    });
+  }, [ipvaItem]);
 
   if (loading && !items.length) {
     return <div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -365,8 +396,13 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
                   </div>
                   {r.ipvaViradaValor != null && r.ipvaViradaDiasRestantes != null && (
                     <p className="text-xs text-amber-800">
-                      IPVA na virada: {money(r.ipvaViradaValor)} (faltam {r.ipvaViradaDiasRestantes} dias)
+                      IPVA na virada: {money(r.ipvaViradaValor)}
+                      {r.ipvaAliquotaRotulo && r.ipvaAliquotaEfetivaPct != null
+                        ? ` (${r.ipvaAliquotaRotulo} ${formatIpvaPctBr(r.ipvaAliquotaEfetivaPct)})`
+                        : ""}
+                      {" · "}faltam {r.ipvaViradaDiasRestantes} dias
                       {r.ipvaBaseFonte === "preco_anunciado" ? " · base: preço anunciado" : ""}
+                      {r.ipvaConferirDocumento ? " · confira no documento" : ""}
                     </p>
                   )}
                   <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-muted/50 p-3">
@@ -380,6 +416,21 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
                       )}
                     </div>
                     <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setIpvaItem(item);
+                          setIpvaTipo(item.ipvaAjuste.ipva_tipo);
+                          setIpvaManualPct(
+                            item.ipvaAjuste.ipva_aliquota_manual_pct == null
+                              ? ""
+                              : String(item.ipvaAjuste.ipva_aliquota_manual_pct),
+                          );
+                        }}
+                      >
+                        Ajustar IPVA
+                      </Button>
                       <Button
                         size="sm"
                         variant="outline"
@@ -422,7 +473,9 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
               <Input id="giro-uf" maxLength={2} value={form.uf} placeholder="Ex.: SP" onChange={(e) => setForm((f) => ({ ...f, uf: e.target.value }))} />
               <p className="text-xs text-muted-foreground">Usada apenas na projeção de obrigações.</p>
             </div>
-            <ConfigField id="giro-ipva" label="Alíquota de IPVA (%)" description="Informe a alíquota aplicável à loja/veículo." value={form.ipva} onChange={(ipva) => setForm((f) => ({ ...f, ipva }))} />
+            <ConfigField id="giro-ipva" label="Alíquota de IPVA geral (%)" description="Gasolina, flex, diesel e padrão quando não houver tipo específico." value={form.ipva} onChange={(ipva) => setForm((f) => ({ ...f, ipva }))} />
+            <ConfigField id="giro-ipva-hibrido" label="IPVA híbrido (%)" description="Ex. RJ: geral 4%, híbrido 1,5%, elétrico 0,5% — confira a lei do seu estado." value={form.ipvaHibrido} placeholder="Ex.: 1,5" onChange={(ipvaHibrido) => setForm((f) => ({ ...f, ipvaHibrido }))} />
+            <ConfigField id="giro-ipva-eletrico" label="IPVA elétrico (%)" description="Deixe vazio para usar a alíquota geral." value={form.ipvaEletrico} placeholder="Ex.: 0,5" onChange={(ipvaEletrico) => setForm((f) => ({ ...f, ipvaEletrico }))} />
             <div className="flex items-start gap-2 pt-7">
               <Checkbox id="giro-virada" checked={form.pagaVirada} onCheckedChange={(v) => setForm((f) => ({ ...f, pagaVirada: v === true }))} />
               <div>
@@ -493,6 +546,91 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
           )}
           <DialogFooter>
             <Button onClick={() => setFipeSummaryOpen(false)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!ipvaItem} onOpenChange={(open) => !open && setIpvaItem(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Ajustar IPVA do veículo</DialogTitle>
+            <DialogDescription>
+              {ipvaItem ? vehicleLabel(ipvaItem.veiculo) : ""}
+              {ipvaItem?.veiculo.combustivel
+                ? ` · combustível cadastrado: ${ipvaItem.veiculo.combustivel}`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label>Tipo de IPVA</Label>
+              <Select
+                value={ipvaTipo}
+                onValueChange={(v) => setIpvaTipo(v as VeiculoGiroIpvaAjusteRow["ipva_tipo"])}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">Automático (sistema decide)</SelectItem>
+                  <SelectItem value="geral">Geral</SelectItem>
+                  <SelectItem value="hibrido">Híbrido</SelectItem>
+                  <SelectItem value="eletrico">Elétrico</SelectItem>
+                  <SelectItem value="isento">Isento</SelectItem>
+                  <SelectItem value="manual">Alíquota manual (%)</SelectItem>
+                </SelectContent>
+              </Select>
+              {ipvaTipo === "auto" && ipvaAutoDetect && (
+                <p className="text-xs text-muted-foreground">
+                  Detectado: {ipvaAutoDetect.categoria === "geral" ? "geral" : ipvaAutoDetect.categoria === "hibrido" ? "híbrido" : "elétrico"}
+                  {ipvaAutoDetect.conferirDocumento ? " · confira no documento" : ""}
+                </p>
+              )}
+            </div>
+            {ipvaTipo === "manual" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="giro-ipva-manual">Alíquota manual (%)</Label>
+                <Input
+                  id="giro-ipva-manual"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={ipvaManualPct}
+                  placeholder="Ex.: 2"
+                  onChange={(e) => setIpvaManualPct(e.target.value)}
+                />
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIpvaItem(null)}>Cancelar</Button>
+            <Button
+              disabled={ipvaSaving}
+              onClick={() => void (async () => {
+                if (!ipvaItem) return;
+                const manualPct = ipvaTipo === "manual"
+                  ? Number(ipvaManualPct.replace(",", "."))
+                  : null;
+                setIpvaSaving(true);
+                try {
+                  await saveVeiculoGiroIpvaAjuste(userId, ipvaItem.veiculo.id, {
+                    ipva_tipo: ipvaTipo,
+                    ipva_aliquota_manual_pct: manualPct,
+                  });
+                  toast.success("IPVA do veículo atualizado.");
+                  setIpvaItem(null);
+                  await load();
+                } catch (error) {
+                  console.error("gestao_giro_ipva_ajuste", error);
+                  toast.error(error instanceof Error ? error.message : "Não foi possível salvar o IPVA.");
+                } finally {
+                  setIpvaSaving(false);
+                }
+              })()}
+            >
+              {ipvaSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

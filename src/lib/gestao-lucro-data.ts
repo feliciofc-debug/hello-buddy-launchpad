@@ -12,7 +12,7 @@ export async function loadGestaoLucroBundle(userId: string): Promise<GestaoLucro
     await Promise.all([
       supabase.from("veiculos_estoque")
         .select(
-          "id, marca, modelo, versao, preco, status, placa, fotos, codigo_origem, ano_modelo, ano_fabricacao, created_at",
+          "id, marca, modelo, versao, preco, status, placa, fotos, codigo_origem, ano_modelo, ano_fabricacao, combustivel, created_at",
         )
         .eq("user_id", userId),
       supabase.from("veiculo_compra" as "veiculos_estoque")
@@ -85,6 +85,7 @@ export async function loadGestaoLucroBundle(userId: string): Promise<GestaoLucro
       codigo_origem: v.codigo_origem,
       ano_modelo: v.ano_modelo,
       ano_fabricacao: v.ano_fabricacao,
+      combustivel: (v as { combustivel?: string | null }).combustivel ?? null,
       created_at: v.created_at,
       valorCompra: compra ? Number(compra.valor_compra) : null,
       dataCompra: compra?.data_compra ?? null,

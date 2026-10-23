@@ -19,6 +19,8 @@ export type GestaoGiroConfigRow = {
   repasse_desconto_fipe_pct: number | null;
   uf: string | null;
   ipva_aliquota_pct: number | null;
+  ipva_aliquota_hibrido_pct: number | null;
+  ipva_aliquota_eletrico_pct: number | null;
   ipva_loja_paga_virada: boolean;
   resumo_diario_ativo?: boolean;
   resumo_diario_hora?: string;
@@ -46,10 +48,21 @@ export function formatResumoDiarioUltimoLabel(
   }
 }
 
+export type VeiculoGiroIpvaAjusteRow = {
+  ipva_tipo: "auto" | "geral" | "hibrido" | "eletrico" | "isento" | "manual";
+  ipva_aliquota_manual_pct: number | null;
+};
+
 export type GestaoGiroItem = {
   veiculo: GestaoVeiculoEnriched;
   resultado: EstoqueGiroResultado;
+  ipvaAjuste: VeiculoGiroIpvaAjusteRow;
 };
+
+export function formatIpvaPctBr(value: number | null): string {
+  if (value == null) return "—";
+  return `${value.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
+}
 
 export function configRowToCalc(row: GestaoGiroConfigRow | null): EstoqueGiroConfig {
   if (!row) return DEFAULT_ESTOQUE_GIRO_CONFIG;
@@ -68,6 +81,12 @@ export function configRowToCalc(row: GestaoGiroConfigRow | null): EstoqueGiroCon
       : Number(row.repasse_desconto_fipe_pct),
     uf: row.uf,
     ipvaAliquotaPct: row.ipva_aliquota_pct == null ? null : Number(row.ipva_aliquota_pct),
+    ipvaAliquotaHibridoPct: row.ipva_aliquota_hibrido_pct == null
+      ? null
+      : Number(row.ipva_aliquota_hibrido_pct),
+    ipvaAliquotaEletricoPct: row.ipva_aliquota_eletrico_pct == null
+      ? null
+      : Number(row.ipva_aliquota_eletrico_pct),
     ipvaLojaPagaVirada: row.ipva_loja_paga_virada,
   };
 }
@@ -76,12 +95,15 @@ export async function loadGestaoGiro(
   userId: string,
   veiculos: GestaoVeiculoEnriched[],
 ): Promise<{ config: GestaoGiroConfigRow | null; items: GestaoGiroItem[] }> {
-  const [{ data: configData }, { data: refsData }, { data: trocasData }, regraComissao] =
+  const [{ data: configData }, { data: ajustesData }, { data: refsData }, { data: trocasData }, regraComissao] =
     await Promise.all([
       supabase.from("gestao_giro_config" as "veiculos_estoque")
         .select("*")
         .eq("user_id", userId)
         .maybeSingle(),
+      supabase.from("veiculo_giro_ajuste" as "veiculos_estoque")
+        .select("veiculo_id, ipva_tipo, ipva_aliquota_manual_pct")
+        .eq("user_id", userId),
       supabase.from("veiculo_preco_referencia" as "veiculos_estoque")
         .select("veiculo_id, fonte, valor, capturado_em")
         .eq("user_id", userId)
@@ -129,25 +151,56 @@ export async function loadGestaoGiro(
     }
   }
 
+  const ajusteByVeiculo = new Map<string, VeiculoGiroIpvaAjusteRow>();
+  for (const raw of ajustesData ?? []) {
+    const row = raw as {
+      veiculo_id: string;
+      ipva_tipo: VeiculoGiroIpvaAjusteRow["ipva_tipo"];
+      ipva_aliquota_manual_pct: number | null;
+    };
+    ajusteByVeiculo.set(row.veiculo_id, {
+      ipva_tipo: row.ipva_tipo,
+      ipva_aliquota_manual_pct: row.ipva_aliquota_manual_pct == null
+        ? null
+        : Number(row.ipva_aliquota_manual_pct),
+    });
+  }
+
+  const defaultAjuste = (): VeiculoGiroIpvaAjusteRow => ({
+    ipva_tipo: "auto",
+    ipva_aliquota_manual_pct: null,
+  });
+
   const config = (configData ?? null) as unknown as GestaoGiroConfigRow | null;
   const calcConfig = configRowToCalc(config);
   const items = veiculos
     .filter((v) => v.status === "disponivel" || v.status === "reservado")
-    .map((veiculo) => ({
-      veiculo,
-      resultado: calcularEstoqueGiro({
-        hoje: hojeSaoPaulo(),
-        dataCompra: veiculo.dataCompra,
-        createdAt: veiculo.created_at,
-        valorCompra: veiculo.valorCompra,
-        despesas: veiculo.despesas.map((d) => Number(d.valor)),
-        precoAnunciado: veiculo.preco,
-        referencias: byVehicle.get(veiculo.id) ?? [],
-        config: calcConfig,
-        regraComissao,
-        leadsUltimos30Dias: null,
-      }),
-    }))
+    .map((veiculo) => {
+      const ipvaAjuste = ajusteByVeiculo.get(veiculo.id) ?? defaultAjuste();
+      return {
+        veiculo,
+        ipvaAjuste,
+        resultado: calcularEstoqueGiro({
+          hoje: hojeSaoPaulo(),
+          dataCompra: veiculo.dataCompra,
+          createdAt: veiculo.created_at,
+          valorCompra: veiculo.valorCompra,
+          despesas: veiculo.despesas.map((d) => Number(d.valor)),
+          precoAnunciado: veiculo.preco,
+          referencias: byVehicle.get(veiculo.id) ?? [],
+          config: calcConfig,
+          regraComissao,
+          leadsUltimos30Dias: null,
+          combustivel: veiculo.combustivel,
+          versao: veiculo.versao,
+          modelo: veiculo.modelo,
+          ipvaAjuste: {
+            ipvaTipo: ipvaAjuste.ipva_tipo,
+            ipvaAliquotaManualPct: ipvaAjuste.ipva_aliquota_manual_pct,
+          },
+        }),
+      };
+    })
     .sort((a, b) => b.resultado.indiceRisco - a.resultado.indiceRisco);
 
   return { config, items };
@@ -248,5 +301,28 @@ export async function saveGestaoGiroReferenciaManual(
       fonte: "manual",
       valor: Math.round(valor * 100) / 100,
     });
+  if (error) throw error;
+}
+
+export async function saveVeiculoGiroIpvaAjuste(
+  userId: string,
+  veiculoId: string,
+  ajuste: VeiculoGiroIpvaAjusteRow,
+): Promise<void> {
+  if (ajuste.ipva_tipo === "manual") {
+    const pct = ajuste.ipva_aliquota_manual_pct;
+    if (pct == null || !Number.isFinite(pct) || pct < 0 || pct > 100) {
+      throw new Error("Informe a alíquota manual entre 0 e 100.");
+    }
+  }
+  const { error } = await supabase.from("veiculo_giro_ajuste" as "veiculos_estoque")
+    .upsert({
+      user_id: userId,
+      veiculo_id: veiculoId,
+      ipva_tipo: ajuste.ipva_tipo,
+      ipva_aliquota_manual_pct: ajuste.ipva_tipo === "manual"
+        ? ajuste.ipva_aliquota_manual_pct
+        : null,
+    }, { onConflict: "user_id,veiculo_id" });
   if (error) throw error;
 }

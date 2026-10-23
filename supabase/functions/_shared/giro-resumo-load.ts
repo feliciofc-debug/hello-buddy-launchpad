@@ -22,6 +22,8 @@ export type GestaoGiroConfigDbRow = {
   repasse_desconto_fipe_pct: number | null;
   uf: string | null;
   ipva_aliquota_pct: number | null;
+  ipva_aliquota_hibrido_pct: number | null;
+  ipva_aliquota_eletrico_pct: number | null;
   ipva_loja_paga_virada: boolean;
   resumo_diario_ativo?: boolean;
   resumo_diario_hora?: string;
@@ -46,6 +48,12 @@ function configRowToCalc(row: GestaoGiroConfigDbRow | null): EstoqueGiroConfig {
       : Number(row.repasse_desconto_fipe_pct),
     uf: row.uf,
     ipvaAliquotaPct: row.ipva_aliquota_pct == null ? null : Number(row.ipva_aliquota_pct),
+    ipvaAliquotaHibridoPct: row.ipva_aliquota_hibrido_pct == null
+      ? null
+      : Number(row.ipva_aliquota_hibrido_pct),
+    ipvaAliquotaEletricoPct: row.ipva_aliquota_eletrico_pct == null
+      ? null
+      : Number(row.ipva_aliquota_eletrico_pct),
     ipvaLojaPagaVirada: row.ipva_loja_paga_virada,
   };
 }
@@ -83,11 +91,12 @@ export async function loadGiroResumoItens(
     { data: despesas },
     { data: refsData },
     { data: trocasData },
+    { data: ajustesData },
     regraComissao,
   ] = await Promise.all([
     sb.from("gestao_giro_config").select("*").eq("user_id", userId).maybeSingle(),
     sb.from("veiculos_estoque")
-      .select("id, marca, modelo, versao, preco, status, created_at")
+      .select("id, marca, modelo, versao, preco, status, created_at, combustivel")
       .eq("user_id", userId)
       .in("status", ["disponivel", "reservado"]),
     sb.from("veiculo_compra").select("veiculo_id, valor_compra, data_compra").eq("user_id", userId),
@@ -101,6 +110,9 @@ export async function loadGiroResumoItens(
       .eq("user_id", userId)
       .not("veiculo_id", "is", null)
       .not("fipe_valor", "is", null),
+    sb.from("veiculo_giro_ajuste")
+      .select("veiculo_id, ipva_tipo, ipva_aliquota_manual_pct")
+      .eq("user_id", userId),
     loadComissaoRegra(sb, userId),
   ]);
 
@@ -152,6 +164,24 @@ export async function loadGiroResumoItens(
     }
   }
 
+  const ajusteByVeiculo = new Map<
+    string,
+    { ipva_tipo: string; ipva_aliquota_manual_pct: number | null }
+  >();
+  for (const raw of ajustesData ?? []) {
+    const row = raw as {
+      veiculo_id: string;
+      ipva_tipo: string;
+      ipva_aliquota_manual_pct: number | null;
+    };
+    ajusteByVeiculo.set(row.veiculo_id, {
+      ipva_tipo: row.ipva_tipo,
+      ipva_aliquota_manual_pct: row.ipva_aliquota_manual_pct == null
+        ? null
+        : Number(row.ipva_aliquota_manual_pct),
+    });
+  }
+
   const config = (configData ?? null) as GestaoGiroConfigDbRow | null;
   const calcConfig = configRowToCalc(config);
 
@@ -163,9 +193,11 @@ export async function loadGiroResumoItens(
       versao: string | null;
       preco: number | null;
       created_at: string;
+      combustivel: string | null;
     };
     const compra = compraBy.get(v.id);
     const valorCompra = compra ? Number(compra.valor_compra) : null;
+    const ajuste = ajusteByVeiculo.get(v.id);
     const resultado = calcularEstoqueGiro({
       hoje: hojeYmd,
       dataCompra: compra?.data_compra ?? null,
@@ -177,6 +209,15 @@ export async function loadGiroResumoItens(
       config: calcConfig,
       regraComissao,
       leadsUltimos30Dias: null,
+      combustivel: v.combustivel,
+      versao: v.versao,
+      modelo: v.modelo,
+      ipvaAjuste: ajuste
+        ? {
+          ipvaTipo: ajuste.ipva_tipo as "auto" | "geral" | "hibrido" | "eletrico" | "isento" | "manual",
+          ipvaAliquotaManualPct: ajuste.ipva_aliquota_manual_pct,
+        }
+        : { ipvaTipo: "auto", ipvaAliquotaManualPct: null },
     });
     let custoFinanceiroDiario: number | null = null;
     if (
