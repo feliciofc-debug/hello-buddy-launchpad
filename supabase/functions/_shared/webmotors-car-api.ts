@@ -8,6 +8,7 @@ import {
   parseSoapFault,
   soapPost,
   xmlAllBlocks,
+  xmlAllBlocksPrefer,
   xmlFirstText,
   xmlPrincipalCodigoRetorno,
   xmlPrincipalFirstText,
@@ -311,7 +312,7 @@ export async function wmObterEstoqueAtual(
 ): Promise<number[]> {
   const xml = await estoqueCall(ambiente, hash, "ObterEstoqueAtual", "");
   assertSoapOk(xml, "ObterEstoqueAtualResult");
-  return xmlAllBlocks(xml, "AnuncioWM")
+  return xmlAllBlocksPrefer(xml, "Anuncio", "AnuncioWM")
     .map((block) => Number(xmlFirstText(block, "CodigoAnuncio") ?? "0"))
     .filter((codigo) => Number.isFinite(codigo) && codigo > 0);
 }
@@ -375,7 +376,7 @@ export async function wmObterFotosCarro(
     "ObterFotosCarro",
     `<pCodigoAnuncio>${codigoAnuncio}</pCodigoAnuncio>`,
   );
-  const blocks = xmlAllBlocks(xml, "FotoAnuncioWM");
+  const blocks = xmlAllBlocksPrefer(xml, "FotoAnuncio", "FotoAnuncioWM");
   return blocks.map((b) => ({
     codigo: Number(xmlFirstText(b, "CodigoFotoAnuncio") ?? "0"),
     url: xmlFirstText(b, "UrlImagem") ?? undefined,

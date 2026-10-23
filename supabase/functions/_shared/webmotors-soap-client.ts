@@ -64,7 +64,8 @@ function isSelfClosingTag(openTag: string): boolean {
 }
 
 function localTagPattern(localName: string): string {
-  return `(?:[\\w.-]+:)?${localName}`;
+  /** Evita casar CodigoAnuncio ao buscar Anuncio, etc. */
+  return `(?:[\\w.-]+:)?${localName}(?![\\w.-])`;
 }
 
 /** Itera elementos (ignora namespace). Self-closing → inner null. Texto com "<" → null. */
@@ -112,6 +113,18 @@ export function xmlLastText(xml: string, localName: string): string | null {
     if (text !== null) last = text;
   });
   return last;
+}
+
+/** Tenta cada tag em ordem; usa a primeira que retornar blocos. */
+export function xmlAllBlocksPrefer(
+  xml: string,
+  ...localNames: string[]
+): string[] {
+  for (const name of localNames) {
+    const blocks = xmlAllBlocks(xml, name);
+    if (blocks.length > 0) return blocks;
+  }
+  return [];
 }
 
 export function xmlAllBlocks(xml: string, localName: string): string[] {
