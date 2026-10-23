@@ -39,7 +39,17 @@ export function classificarIpvaCombustivelAuto(input: {
   if (comb.includes("hibrid")) {
     return { categoria: "hibrido", conferirDocumento: false };
   }
-  if (comb.includes("eletric")) {
+  const combTemEletric = comb.includes("eletric");
+  const combTemCombustivelConvencional =
+    comb.includes("gasolina") ||
+    comb.includes("alcool") ||
+    comb.includes("etanol") ||
+    comb.includes("flex") ||
+    comb.includes("diesel");
+  if (combTemEletric && combTemCombustivelConvencional) {
+    return { categoria: "hibrido", conferirDocumento: false };
+  }
+  if (combTemEletric) {
     return { categoria: "eletrico", conferirDocumento: false };
   }
 

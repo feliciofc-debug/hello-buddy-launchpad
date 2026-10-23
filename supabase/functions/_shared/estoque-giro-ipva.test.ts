@@ -43,6 +43,25 @@ Deno.test("G90-2.2 — combustível Elétrico → elétrico", () => {
   assertEquals(c.categoria, "eletrico");
 });
 
+Deno.test("G90-2.3 — GASOLINA/ELETRICO no CRLV → híbrido", () => {
+  const c = classificarIpvaCombustivelAuto({
+    combustivel: "GASOLINA/ELETRICO",
+    versao: null,
+    modelo: "Cayenne E-Hybrid",
+  });
+  assertEquals(c.categoria, "hibrido");
+  assertEquals(c.conferirDocumento, false);
+});
+
+Deno.test("G90-2.3 — Flex/Elétrico → híbrido", () => {
+  const c = classificarIpvaCombustivelAuto({
+    combustivel: "Flex/Elétrico",
+    versao: null,
+    modelo: "Corolla",
+  });
+  assertEquals(c.categoria, "hibrido");
+});
+
 Deno.test("G90-2.2 — flex → geral", () => {
   const c = classificarIpvaCombustivelAuto({
     combustivel: "Flex",
