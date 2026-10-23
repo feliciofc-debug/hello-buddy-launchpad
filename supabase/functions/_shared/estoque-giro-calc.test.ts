@@ -1,6 +1,7 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { DEFAULT_COMISSAO_REGRA } from "./gestao-comissao-calc.ts";
 import {
+  baseIpvaEstoqueGiro,
   calcularEstoqueGiro,
   DEFAULT_ESTOQUE_GIRO_CONFIG,
   diasEmEstoque,
@@ -163,6 +164,53 @@ Deno.test("G90-1.1 — preço sugerido respeita piso custo + comissão", () => {
   if (r.precoSugerido7d != null && r.custoAtual != null && r.comissaoEstimada != null) {
     assert(r.precoSugerido7d >= r.custoAtual + r.comissaoEstimada - 0.01);
   }
+});
+
+Deno.test("G90-1.2 — repasse pior que esperar não é priorizado", () => {
+  const r = calcularEstoqueGiro({
+    hoje: "2026-10-23",
+    dataCompra: "2026-08-24",
+    createdAt: "2026-08-24",
+    valorCompra: 95_000,
+    despesas: [],
+    precoAnunciado: 100_000,
+    referencias: [
+      { fonte: "fipe", valor: 100_000 },
+      { fonte: "manual", valor: 96_000 },
+    ],
+    config,
+    regraComissao: DEFAULT_COMISSAO_REGRA,
+  });
+  assertEquals(r.faixa, "risco");
+  assert(!r.recomendacao.includes("Priorizar repasse"));
+  assertEquals(r.recomendacao, "Decidir com o dono");
+  assert(r.porque.includes("Repasse hoje:"));
+});
+
+Deno.test("G90-1.2 — IPVA usa FIPE mesmo com repasse manual", () => {
+  assertEquals(
+    baseIpvaEstoqueGiro([
+      { fonte: "manual", valor: 70_000 },
+      { fonte: "fipe", valor: 100_000 },
+    ], 95_000).valor,
+    100_000,
+  );
+  const r = calcularEstoqueGiro({
+    hoje: "2026-10-15",
+    dataCompra: "2026-08-01",
+    createdAt: "2026-08-01",
+    valorCompra: 80_000,
+    despesas: [],
+    precoAnunciado: 95_000,
+    referencias: [
+      { fonte: "manual", valor: 70_000 },
+      { fonte: "fipe", valor: 100_000 },
+    ],
+    config: { ...config, ipvaLojaPagaVirada: true },
+    regraComissao: DEFAULT_COMISSAO_REGRA,
+  });
+  assertEquals(r.ipvaBaseFonte, "fipe");
+  assertEquals(r.ipvaViradaValor, 4_000);
 });
 
 Deno.test("G90-1 — dados faltantes bloqueiam recomendação financeira", () => {

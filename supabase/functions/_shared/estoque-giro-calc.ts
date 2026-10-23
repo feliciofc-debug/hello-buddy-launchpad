@@ -65,6 +65,7 @@ export type EstoqueGiroResultado = {
   ipvaProjetado: number | null;
   ipvaViradaValor: number | null;
   ipvaViradaDiasRestantes: number | null;
+  ipvaBaseFonte: "fipe" | "preco_anunciado" | null;
   custoDeEsperar30d: number | null;
   indiceRisco: number;
   indiceSemDado: string[];
@@ -113,6 +114,42 @@ export function escolherReferenciaRepasse(
       .filter((r) => r.fonte === fonte && r.valor > 0)
       .sort((a, b) => String(b.capturadoEm ?? "").localeCompare(String(a.capturadoEm ?? "")))[0] ?? null;
   return latest("molicar_b2b") ?? latest("manual") ?? latest("fipe");
+}
+
+export function baseIpvaEstoqueGiro(
+  referencias: EstoqueGiroReferencia[],
+  precoAnunciado: number | null,
+): { valor: number | null; fonte: "fipe" | "preco_anunciado" | null } {
+  const fipe = referencias
+    .filter((r) => r.fonte === "fipe" && r.valor > 0)
+    .sort((a, b) => String(b.capturadoEm ?? "").localeCompare(String(a.capturadoEm ?? "")))[0] ?? null;
+  if (fipe) return { valor: fipe.valor, fonte: "fipe" };
+  if (precoAnunciado != null && precoAnunciado > 0) {
+    return { valor: precoAnunciado, fonte: "preco_anunciado" };
+  }
+  return { valor: null, fonte: null };
+}
+
+function repasseMelhorQueEsperar(
+  margemRepasseHoje: number | null,
+  margemVarejo30d: number | null,
+): boolean {
+  return margemRepasseHoje != null &&
+    margemVarejo30d != null &&
+    margemRepasseHoje > margemVarejo30d;
+}
+
+function formatMargensRepasseVsEsperar(
+  margemRepasseHoje: number | null,
+  margemVarejo30d: number | null,
+): string {
+  const repasse = margemRepasseHoje == null
+    ? "—"
+    : margemRepasseHoje.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const esperar = margemVarejo30d == null
+    ? "—"
+    : margemVarejo30d.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return `Repasse hoje: ${repasse} | Esperar 30 dias: ${esperar}`;
 }
 
 function crossesNewYear(hoje: Date): boolean {
@@ -251,7 +288,8 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
     : 1;
   const hoje = parseDateOnly(input.hoje);
   const hojeYmd = typeof input.hoje === "string" ? input.hoje : ymdFromDate(hoje);
-  const baseIpva = referencia?.valor ?? input.precoAnunciado;
+  const ipvaBase = baseIpvaEstoqueGiro(input.referencias, input.precoAnunciado);
+  const baseIpva = ipvaBase.valor;
   const ipvaVirada = calcIpvaVirada(hojeYmd, config, baseIpva);
   const ipvaProjetado = config.ipvaLojaPagaVirada &&
       config.ipvaAliquotaPct != null &&
@@ -339,8 +377,12 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
   let recomendacao = "Manter e acompanhar";
   if (faixa === "atencao") recomendacao = "Revisar preço e anúncio";
   if (faixa === "risco") {
-    if (precoSugeridoAbaixoPiso && valorRepasseHoje != null) {
-      recomendacao = "Priorizar repasse";
+    if (precoSugeridoAbaixoPiso) {
+      if (repasseMelhorQueEsperar(margemRepasseHoje, margemVarejo30d)) {
+        recomendacao = "Priorizar repasse";
+      } else {
+        recomendacao = "Decidir com o dono";
+      }
     } else if (precoSugerido7d != null) {
       recomendacao = `Reduzir para R$ ${precoSugerido7d.toLocaleString("pt-BR")} por 7 dias`;
     } else {
@@ -348,13 +390,8 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
     }
   }
   if (faixa === "decisao") recomendacao = "Priorizar decisão de repasse";
-  if (
-    faixaPermiteRepasse &&
-    !precoSugeridoAbaixoPiso &&
-    margemRepasseHoje != null &&
-    margemVarejo30d != null &&
-    margemRepasseHoje > margemVarejo30d
-  ) {
+  if (faixaPermiteRepasse && !precoSugeridoAbaixoPiso &&
+    repasseMelhorQueEsperar(margemRepasseHoje, margemVarejo30d)) {
     recomendacao = "Priorizar repasse";
   }
   if (incompletos.length) recomendacao = "Completar dados antes de decidir";
@@ -370,8 +407,11 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
     pisoPreco != null
   ) {
     const tentativa = roundDownTo100(input.precoAnunciado - custoDeEsperar30d);
-    porque =
-      `Preço atual R$ ${input.precoAnunciado.toLocaleString("pt-BR")} − custo de esperar R$ ${custoDeEsperar30d.toLocaleString("pt-BR")} = R$ ${tentativa.toLocaleString("pt-BR")}, abaixo do piso de custo + comissão (R$ ${pisoPreco.toLocaleString("pt-BR")}). Repasse preserva mais margem.`;
+    const pisoTxt =
+      `Preço atual R$ ${input.precoAnunciado.toLocaleString("pt-BR")} − custo de esperar R$ ${custoDeEsperar30d.toLocaleString("pt-BR")} = R$ ${tentativa.toLocaleString("pt-BR")}, abaixo do piso de custo + comissão (R$ ${pisoPreco.toLocaleString("pt-BR")}).`;
+    porque = repasseMelhorQueEsperar(margemRepasseHoje, margemVarejo30d)
+      ? `${pisoTxt} Repasse hoje supera a margem projetada em 30 dias.`
+      : `${pisoTxt} ${formatMargensRepasseVsEsperar(margemRepasseHoje, margemVarejo30d)}.`;
   } else if (!incompletos.length && precoSugerido7d != null && input.precoAnunciado != null && custoDeEsperar30d != null) {
     porque =
       `Preço R$ ${input.precoAnunciado.toLocaleString("pt-BR")} − custo de esperar 30d R$ ${custoDeEsperar30d.toLocaleString("pt-BR")}, arredondado para baixo em R$ 100 → R$ ${precoSugerido7d.toLocaleString("pt-BR")}.`;
@@ -393,6 +433,7 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
     ipvaProjetado: roundMoney(ipvaProjetado),
     ipvaViradaValor: ipvaVirada.valor,
     ipvaViradaDiasRestantes: ipvaVirada.diasRestantes,
+    ipvaBaseFonte: ipvaBase.fonte,
     custoDeEsperar30d,
     indiceRisco: risco,
     indiceSemDado: semDado,
@@ -406,7 +447,16 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
       { rotulo: "Custo atual", valor: custoAtual, formula: "Compra + despesas + custo financeiro" },
       { rotulo: "Comissão estimada", valor: comissao, formula: "Regra de comissão da loja" },
       { rotulo: "Margem varejo hoje", valor: margemVarejoHoje, formula: "Preço − custo atual − comissão" },
-      { rotulo: "IPVA na virada (exibição)", valor: ipvaVirada.valor, formula: "Referência × alíquota, visível de outubro até a virada" },
+      {
+        rotulo: "Base IPVA",
+        valor: baseIpva,
+        formula: ipvaBase.fonte === "fipe"
+          ? "Snapshot FIPE mais recente × alíquota"
+          : ipvaBase.fonte === "preco_anunciado"
+          ? "Base: preço anunciado (sem FIPE) × alíquota"
+          : "Sem base para IPVA",
+      },
+      { rotulo: "IPVA na virada (exibição)", valor: ipvaVirada.valor, formula: "Base IPVA × alíquota, visível de outubro até a virada" },
       { rotulo: "IPVA projetado (30 dias)", valor: roundMoney(ipvaProjetado), formula: "Entra no custo futuro só se a virada ocorrer em 30 dias" },
       { rotulo: "Margem varejo em 30 dias", valor: margemVarejo30d, formula: "Preço desvalorizado − custo futuro − comissão" },
       { rotulo: "Custo de esperar 30 dias", valor: custoDeEsperar30d, formula: "Margem hoje − margem projetada" },

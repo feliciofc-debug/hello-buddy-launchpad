@@ -1,6 +1,11 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { competenciaFromYmdSaoPaulo, hojeSaoPaulo } from "../_shared/gestao-date-br.ts";
 import {
+  listarPendentesFipeOrdenados,
+  selecionarLotePendentesFipe,
+  type GiroFipeVeiculoRef,
+} from "../_shared/giro-fipe-batch.ts";
+import {
   gestaoTrocaAdminClient,
   gestaoTrocaAuthedUser,
   jsonResponse,
@@ -113,33 +118,30 @@ async function consultarFipeVeiculo(input: {
   };
 }
 
-async function veiculosSemFipeMes(
-  sb: SupabaseClient,
-  userId: string,
-  referenciaMes: string,
-  limit: number,
-) {
-  const { data: veiculos, error } = await sb.from("veiculos_estoque")
-    .select("id, marca, modelo, versao, ano_modelo, status")
-    .eq("user_id", userId)
-    .in("status", ["disponivel", "reservado"]);
-  if (error) throw error;
-
-  const { data: refs, error: refsError } = await sb.from("veiculo_preco_referencia")
-    .select("veiculo_id, fonte, referencia_mes")
+async function loadRefsFipe(sb: SupabaseClient, userId: string): Promise<GiroFipeVeiculoRef[]> {
+  const { data, error } = await sb.from("veiculo_preco_referencia")
+    .select("veiculo_id, fonte, capturado_em, referencia_mes")
     .eq("user_id", userId)
     .eq("fonte", "fipe");
-  if (refsError) throw refsError;
+  if (error) throw error;
+  return (data ?? []) as GiroFipeVeiculoRef[];
+}
 
-  const comFipeMes = new Set(
-    (refs ?? [])
-      .filter((r) => String(r.referencia_mes ?? "") === referenciaMes)
-      .map((r) => String(r.veiculo_id)),
-  );
-
-  return (veiculos ?? [])
-    .filter((v) => !comFipeMes.has(String(v.id)))
-    .slice(0, limit);
+async function jaExisteFipeMesRef(
+  sb: SupabaseClient,
+  userId: string,
+  veiculoId: string,
+  referenciaMes: string,
+): Promise<boolean> {
+  const { data, error } = await sb.from("veiculo_preco_referencia")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("veiculo_id", veiculoId)
+    .eq("fonte", "fipe")
+    .eq("referencia_mes", referenciaMes)
+    .limit(1);
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
 }
 
 Deno.serve(async (req) => {
@@ -153,9 +155,31 @@ Deno.serve(async (req) => {
       DEFAULT_LIMIT,
       Math.max(1, Number(body?.limit ?? DEFAULT_LIMIT) || DEFAULT_LIMIT),
     );
-    const referenciaMes = String(body?.referencia_mes ?? competenciaFromYmdSaoPaulo());
+    const competenciaAtual = competenciaFromYmdSaoPaulo();
+    const skipIds = Array.isArray(body?.skip_ids)
+      ? body.skip_ids.map((id: unknown) => String(id))
+      : [];
     const sb = gestaoTrocaAdminClient();
-    const pendentes = await veiculosSemFipeMes(sb, user.id, referenciaMes, limit);
+
+    const { data: veiculos, error } = await sb.from("veiculos_estoque")
+      .select("id, marca, modelo, versao, ano_modelo, status")
+      .eq("user_id", user.id)
+      .in("status", ["disponivel", "reservado"]);
+    if (error) throw error;
+
+    const refs = await loadRefsFipe(sb, user.id);
+    const veiculoIds = (veiculos ?? []).map((v) => String(v.id));
+    const { lote: idsLote, pendentesRestantes } = selecionarLotePendentesFipe({
+      veiculoIds,
+      refs,
+      competenciaAtual,
+      skipIds,
+      limit,
+    });
+    const veiculoById = new Map(
+      (veiculos ?? []).map((v) => [String(v.id), v]),
+    );
+    const pendentes = idsLote.map((id) => veiculoById.get(id)).filter(Boolean);
 
     const resultados: Array<{
       veiculo_id: string;
@@ -167,6 +191,7 @@ Deno.serve(async (req) => {
     }> = [];
 
     for (const veiculo of pendentes) {
+      if (!veiculo) continue;
       const consulta = await consultarFipeVeiculo({
         marca: String(veiculo.marca ?? ""),
         modelo: String(veiculo.modelo ?? ""),
@@ -181,14 +206,22 @@ Deno.serve(async (req) => {
         });
         continue;
       }
-      const { error: insertError } = await sb.from("veiculo_preco_referencia").insert({
-        user_id: user.id,
-        veiculo_id: veiculo.id,
-        fonte: "fipe",
-        valor: consulta.valor,
-        referencia_mes: consulta.referenciaMes,
-      });
-      if (insertError) throw insertError;
+      const duplicado = await jaExisteFipeMesRef(
+        sb,
+        user.id,
+        String(veiculo.id),
+        consulta.referenciaMes,
+      );
+      if (!duplicado) {
+        const { error: insertError } = await sb.from("veiculo_preco_referencia").insert({
+          user_id: user.id,
+          veiculo_id: veiculo.id,
+          fonte: "fipe",
+          valor: consulta.valor,
+          referencia_mes: consulta.referenciaMes,
+        });
+        if (insertError) throw insertError;
+      }
       resultados.push({
         veiculo_id: String(veiculo.id),
         status: "gravado",
@@ -198,12 +231,21 @@ Deno.serve(async (req) => {
       });
     }
 
+    const pendentesAposSkip = listarPendentesFipeOrdenados(
+      veiculoIds,
+      refs,
+      competenciaAtual,
+      skipIds,
+    ).length;
+
     return jsonResponse({
       success: true,
-      referencia_mes: referenciaMes,
+      competencia_atual: competenciaAtual,
       processados: resultados.length,
       gravados: resultados.filter((r) => r.status === "gravado").length,
       nao_encontrados: resultados.filter((r) => r.status === "nao_encontrada").length,
+      pendentes_restantes: pendentesRestantes,
+      pendentes_total: pendentesAposSkip,
       resultados,
     });
   } catch (e) {

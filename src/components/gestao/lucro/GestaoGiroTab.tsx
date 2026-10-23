@@ -28,7 +28,7 @@ import type { GestaoVeiculoEnriched } from "@/lib/gestao-lucro-types.ts";
 import { vehicleLabel } from "@/lib/gestao-lucro-data.ts";
 import {
   loadGestaoGiro,
-  refreshGestaoGiroFipe,
+  refreshGestaoGiroFipeCompleto,
   saveGestaoGiroConfig,
   saveGestaoGiroReferenciaManual,
   type GestaoGiroConfigRow,
@@ -104,6 +104,12 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
   const [saving, setSaving] = useState(false);
   const [detail, setDetail] = useState<GestaoGiroItem | null>(null);
   const [fipeRefreshing, setFipeRefreshing] = useState(false);
+  const [fipeProgress, setFipeProgress] = useState<string | null>(null);
+  const [fipeSummaryOpen, setFipeSummaryOpen] = useState(false);
+  const [fipeSummary, setFipeSummary] = useState<{
+    gravados: number;
+    semFipe: Array<{ veiculo_id: string; motivo: string; label: string }>;
+  } | null>(null);
   const [manualItem, setManualItem] = useState<GestaoGiroItem | null>(null);
   const [manualValor, setManualValor] = useState("");
   const [manualSaving, setManualSaving] = useState(false);
@@ -230,24 +236,31 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
             disabled={fipeRefreshing}
             onClick={() => void (async () => {
               setFipeRefreshing(true);
+              setFipeProgress("Iniciando consulta FIPE…");
               try {
-                const r = await refreshGestaoGiroFipe(20);
-                if (!r.success) throw new Error(r.error ?? "Falha ao atualizar FIPE");
-                const ok = r.gravados ?? 0;
-                const miss = r.nao_encontrados ?? 0;
-                toast.success(
-                  ok
-                    ? `FIPE atualizada em ${ok} veículo(s)${miss ? `; ${miss} sem correspondência segura` : ""}.`
-                    : miss
-                    ? `Nenhuma FIPE gravada (${miss} sem correspondência segura).`
-                    : "Nenhum veículo pendente de FIPE neste lote.",
-                );
+                const labelById = new Map(veiculos.map((v) => [v.id, vehicleLabel(v)]));
+                const r = await refreshGestaoGiroFipeCompleto(({ rodada, processados }) => {
+                  setFipeProgress(
+                    processados > 0
+                      ? `Consultando lote ${rodada} (${processados} veículo(s) nesta rodada)…`
+                      : `Finalizando (lote ${rodada})…`,
+                  );
+                });
+                setFipeSummary({
+                  gravados: r.gravados,
+                  semFipe: r.semFipe.map((row) => ({
+                    ...row,
+                    label: labelById.get(row.veiculo_id) ?? row.veiculo_id.slice(0, 8),
+                  })),
+                });
+                setFipeSummaryOpen(true);
                 await load();
               } catch (error) {
                 console.error("gestao_giro_fipe_refresh", error);
                 toast.error("Não foi possível atualizar a FIPE.");
               } finally {
                 setFipeRefreshing(false);
+                setFipeProgress(null);
               }
             })()}
           >
@@ -256,6 +269,9 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
               : <RefreshCw className="mr-2 h-4 w-4" />}
             Atualizar FIPE
           </Button>
+          {fipeProgress && (
+            <p className="w-full text-xs text-muted-foreground sm:w-auto">{fipeProgress}</p>
+          )}
           <Button variant="outline" onClick={openConfig}>
             <Settings2 className="mr-2 h-4 w-4" />
             Configurar regras
@@ -340,6 +356,7 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
                   {r.ipvaViradaValor != null && r.ipvaViradaDiasRestantes != null && (
                     <p className="text-xs text-amber-800">
                       IPVA na virada: {money(r.ipvaViradaValor)} (faltam {r.ipvaViradaDiasRestantes} dias)
+                      {r.ipvaBaseFonte === "preco_anunciado" ? " · base: preço anunciado" : ""}
                     </p>
                   )}
                   <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-muted/50 p-3">
@@ -409,6 +426,35 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
             <Button disabled={saving} onClick={() => void saveConfig()}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar regras"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={fipeSummaryOpen} onOpenChange={setFipeSummaryOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Atualização FIPE concluída</DialogTitle>
+            <DialogDescription>
+              {fipeSummary
+                ? `${fipeSummary.gravados} atualizado(s), ${fipeSummary.semFipe.length} sem FIPE`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          {!!fipeSummary?.semFipe.length && (
+            <ul className="max-h-64 space-y-2 overflow-y-auto text-sm">
+              {fipeSummary.semFipe.map((row) => (
+                <li key={row.veiculo_id} className="rounded-md border p-2">
+                  <p className="font-medium">{row.label}</p>
+                  <p className="text-xs text-muted-foreground">{row.motivo}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+          {!fipeSummary?.semFipe.length && fipeSummary && (
+            <p className="text-sm text-muted-foreground">Todos os veículos pendentes receberam FIPE nesta execução.</p>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setFipeSummaryOpen(false)}>Fechar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

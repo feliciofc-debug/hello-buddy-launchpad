@@ -143,6 +143,7 @@ export type GiroFipeRefreshResult = {
   gravados?: number;
   nao_encontrados?: number;
   processados?: number;
+  pendentes_restantes?: number;
   resultados?: Array<{
     veiculo_id: string;
     status: "gravado" | "nao_encontrada";
@@ -151,12 +152,54 @@ export type GiroFipeRefreshResult = {
   error?: string;
 };
 
-export async function refreshGestaoGiroFipe(limit = 20): Promise<GiroFipeRefreshResult> {
+export type GiroFipeRefreshCompleto = {
+  gravados: number;
+  semFipe: Array<{ veiculo_id: string; motivo: string }>;
+  rodadas: number;
+};
+
+export async function refreshGestaoGiroFipe(
+  limit = 20,
+  skipIds: string[] = [],
+): Promise<GiroFipeRefreshResult> {
   const { data, error } = await supabase.functions.invoke("giro-fipe-refresh", {
-    body: { limit },
+    body: { limit, skip_ids: skipIds },
   });
   if (error) throw error;
   return data as GiroFipeRefreshResult;
+}
+
+export async function refreshGestaoGiroFipeCompleto(
+  onProgress?: (info: { rodada: number; processados: number }) => void,
+): Promise<GiroFipeRefreshCompleto> {
+  const skipIds: string[] = [];
+  const semFipeMap = new Map<string, string>();
+  let gravados = 0;
+  let rodadas = 0;
+
+  while (true) {
+    rodadas += 1;
+    const r = await refreshGestaoGiroFipe(20, skipIds);
+    if (!r.success) throw new Error(r.error ?? "Falha ao atualizar FIPE");
+    gravados += r.gravados ?? 0;
+    for (const item of r.resultados ?? []) {
+      if (item.status === "nao_encontrada") {
+        if (!skipIds.includes(item.veiculo_id)) skipIds.push(item.veiculo_id);
+        semFipeMap.set(item.veiculo_id, item.motivo ?? "FIPE não encontrada");
+      }
+    }
+    onProgress?.({ rodada: rodadas, processados: r.processados ?? 0 });
+    if ((r.processados ?? 0) === 0) break;
+  }
+
+  return {
+    gravados,
+    semFipe: [...semFipeMap.entries()].map(([veiculo_id, motivo]) => ({
+      veiculo_id,
+      motivo,
+    })),
+    rodadas,
+  };
 }
 
 export async function saveGestaoGiroReferenciaManual(
