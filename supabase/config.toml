@@ -390,6 +390,9 @@ verify_jwt = true
 [functions.gestao-troca]
 verify_jwt = true
 
+[functions.giro-fipe-refresh]
+verify_jwt = true
+
 [functions.amz-auto-cadastro]
 verify_jwt = false
 

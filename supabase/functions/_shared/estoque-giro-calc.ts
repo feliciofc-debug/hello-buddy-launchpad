@@ -63,6 +63,8 @@ export type EstoqueGiroResultado = {
   margemVarejo30d: number | null;
   margemRepasse30d: number | null;
   ipvaProjetado: number | null;
+  ipvaViradaValor: number | null;
+  ipvaViradaDiasRestantes: number | null;
   custoDeEsperar30d: number | null;
   indiceRisco: number;
   indiceSemDado: string[];
@@ -74,6 +76,7 @@ export type EstoqueGiroResultado = {
 
 const roundMoney = (n: number) => Math.round(n * 100) / 100;
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+const roundDownTo100 = (n: number) => Math.floor(n / 100) * 100;
 
 function parseDateOnly(value: string | Date): Date {
   if (value instanceof Date) return new Date(value.getTime());
@@ -109,13 +112,38 @@ export function escolherReferenciaRepasse(
     referencias
       .filter((r) => r.fonte === fonte && r.valor > 0)
       .sort((a, b) => String(b.capturadoEm ?? "").localeCompare(String(a.capturadoEm ?? "")))[0] ?? null;
-  return latest("molicar_b2b") ?? latest("fipe") ?? null;
+  return latest("molicar_b2b") ?? latest("manual") ?? latest("fipe");
 }
 
 function crossesNewYear(hoje: Date): boolean {
   const future = new Date(hoje.getTime());
   future.setUTCDate(future.getUTCDate() + 30);
   return future.getUTCFullYear() > hoje.getUTCFullYear();
+}
+
+function ymdToParts(ymd: string): { y: number; m: number; d: number } {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return { y, m, d };
+}
+
+export function isTemporadaIpvaVirada(hoje: string | Date): boolean {
+  const ymd = typeof hoje === "string" ? hoje : ymdFromDate(hoje);
+  return ymdToParts(ymd).m >= 10;
+}
+
+function ymdFromDate(date: Date): string {
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(date.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+export function diasAteViradaAno(hoje: string | Date): number {
+  const ymd = typeof hoje === "string" ? hoje : ymdFromDate(hoje);
+  const { y } = ymdToParts(ymd);
+  const virada = parseDateOnly(`${y + 1}-01-01`);
+  const start = parseDateOnly(ymd);
+  return Math.max(0, Math.floor((virada.getTime() - start.getTime()) / 86_400_000));
 }
 
 function weightedRisk(parts: Array<{ score: number; weight: number; available: boolean }>): number {
@@ -127,6 +155,41 @@ function weightedRisk(parts: Array<{ score: number; weight: number; available: b
   );
 }
 
+function calcIpvaVirada(
+  hoje: string | Date,
+  config: EstoqueGiroConfig,
+  baseIpva: number | null,
+): { valor: number | null; diasRestantes: number | null } {
+  if (!config.ipvaLojaPagaVirada || config.ipvaAliquotaPct == null || baseIpva == null) {
+    return { valor: null, diasRestantes: null };
+  }
+  if (!isTemporadaIpvaVirada(hoje)) return { valor: null, diasRestantes: null };
+  const diasRestantes = diasAteViradaAno(hoje);
+  return {
+    valor: roundMoney(baseIpva * config.ipvaAliquotaPct / 100),
+    diasRestantes,
+  };
+}
+
+function ipvaRiscoScore(
+  hoje: string | Date,
+  ipvaVirada: number,
+  baseIpva: number,
+  ipvaProjetado30d: number,
+): number {
+  if (baseIpva <= 0) return 0;
+  if (isTemporadaIpvaVirada(hoje)) {
+    const ymd = typeof hoje === "string" ? hoje : ymdFromDate(hoje);
+    const { y } = ymdToParts(ymd);
+    const diasTotal = diasAteViradaAno(`${y}-10-01`);
+    const diasRestantes = diasAteViradaAno(hoje);
+    const progress = diasTotal > 0 ? 1 - diasRestantes / diasTotal : 1;
+    return clamp01(ipvaVirada / baseIpva * 10 * progress);
+  }
+  if (ipvaProjetado30d > 0) return clamp01(ipvaProjetado30d / baseIpva * 10);
+  return 0;
+}
+
 export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResultado {
   const { config } = input;
   const dias = diasEmEstoque(input.hoje, input.dataCompra, input.createdAt);
@@ -136,7 +199,6 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
   if (input.precoAnunciado == null || input.precoAnunciado <= 0) incompletos.push("preço anunciado");
 
   const referencia = escolherReferenciaRepasse(input.referencias);
-  if (!referencia) incompletos.push("FIPE/Molicar B2B");
 
   const despesas = input.despesas.reduce(
     (sum, valor) => sum + (Number.isFinite(valor) ? Math.max(0, valor) : 0),
@@ -169,9 +231,9 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
     : null;
 
   let valorRepasseHoje: number | null = null;
-  if (referencia?.fonte === "molicar_b2b") {
+  if (referencia?.fonte === "molicar_b2b" || referencia?.fonte === "manual") {
     valorRepasseHoje = roundMoney(referencia.valor);
-  } else if (referencia && config.repasseDescontoFipePct != null) {
+  } else if (referencia?.fonte === "fipe" && config.repasseDescontoFipePct != null) {
     valorRepasseHoje = roundMoney(
       referencia.valor * (1 - config.repasseDescontoFipePct / 100),
     );
@@ -188,7 +250,9 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
     ? 1 - config.desvalorizacaoMensalPct / 100
     : 1;
   const hoje = parseDateOnly(input.hoje);
+  const hojeYmd = typeof input.hoje === "string" ? input.hoje : ymdFromDate(hoje);
   const baseIpva = referencia?.valor ?? input.precoAnunciado;
+  const ipvaVirada = calcIpvaVirada(hojeYmd, config, baseIpva);
   const ipvaProjetado = config.ipvaLojaPagaVirada &&
       config.ipvaAliquotaPct != null &&
       baseIpva != null &&
@@ -241,28 +305,77 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
       available: input.leadsUltimos30Dias != null,
     },
     {
-      score: ipvaProjetado > 0 && baseIpva ? ipvaProjetado / baseIpva * 10 : 0,
+      score: ipvaRiscoScore(
+        hojeYmd,
+        ipvaVirada.valor ?? 0,
+        baseIpva ?? 0,
+        ipvaProjetado,
+      ),
       weight: 10,
-      available: config.ipvaAliquotaPct != null && !!config.uf,
+      available: config.ipvaAliquotaPct != null && !!config.uf && baseIpva != null,
     },
   ]);
 
-  const precoSugerido7d = input.precoAnunciado != null && config.desvalorizacaoMensalPct != null
-    ? roundMoney(input.precoAnunciado * (1 - config.desvalorizacaoMensalPct / 100))
+  const pisoPreco = custoAtual != null && comissao != null
+    ? roundMoney(custoAtual + comissao)
     : null;
+  let precoSugerido7d: number | null = null;
+  let precoSugeridoAbaixoPiso = false;
+  if (
+    faixa === "risco" &&
+    input.precoAnunciado != null &&
+    custoDeEsperar30d != null
+  ) {
+    const bruto = input.precoAnunciado - custoDeEsperar30d;
+    const arredondado = roundDownTo100(bruto);
+    if (pisoPreco != null && arredondado < pisoPreco) {
+      precoSugeridoAbaixoPiso = true;
+    } else {
+      precoSugerido7d = roundMoney(arredondado);
+    }
+  }
+
+  const faixaPermiteRepasse = faixa === "risco" || faixa === "decisao";
   let recomendacao = "Manter e acompanhar";
   if (faixa === "atencao") recomendacao = "Revisar preço e anúncio";
-  if (faixa === "risco") recomendacao = precoSugerido7d != null
-    ? `Reduzir para R$ ${precoSugerido7d.toLocaleString("pt-BR")} por 7 dias`
-    : "Revisar preço por 7 dias";
+  if (faixa === "risco") {
+    if (precoSugeridoAbaixoPiso && valorRepasseHoje != null) {
+      recomendacao = "Priorizar repasse";
+    } else if (precoSugerido7d != null) {
+      recomendacao = `Reduzir para R$ ${precoSugerido7d.toLocaleString("pt-BR")} por 7 dias`;
+    } else {
+      recomendacao = "Revisar preço por 7 dias";
+    }
+  }
   if (faixa === "decisao") recomendacao = "Priorizar decisão de repasse";
-  if (margemRepasseHoje != null && margemVarejo30d != null && margemRepasseHoje > margemVarejo30d) {
+  if (
+    faixaPermiteRepasse &&
+    !precoSugeridoAbaixoPiso &&
+    margemRepasseHoje != null &&
+    margemVarejo30d != null &&
+    margemRepasseHoje > margemVarejo30d
+  ) {
     recomendacao = "Priorizar repasse";
   }
   if (incompletos.length) recomendacao = "Completar dados antes de decidir";
-  const porque = incompletos.length
+
+  let porque = incompletos.length
     ? `Faltam ${incompletos.join(", ")}; não é seguro projetar sem esses valores.`
     : `Hoje a margem estimada é R$ ${(margemVarejoHoje ?? 0).toLocaleString("pt-BR")} e esperar 30 dias pode consumir R$ ${(custoDeEsperar30d ?? 0).toLocaleString("pt-BR")}.`;
+  if (
+    !incompletos.length &&
+    precoSugeridoAbaixoPiso &&
+    input.precoAnunciado != null &&
+    custoDeEsperar30d != null &&
+    pisoPreco != null
+  ) {
+    const tentativa = roundDownTo100(input.precoAnunciado - custoDeEsperar30d);
+    porque =
+      `Preço atual R$ ${input.precoAnunciado.toLocaleString("pt-BR")} − custo de esperar R$ ${custoDeEsperar30d.toLocaleString("pt-BR")} = R$ ${tentativa.toLocaleString("pt-BR")}, abaixo do piso de custo + comissão (R$ ${pisoPreco.toLocaleString("pt-BR")}). Repasse preserva mais margem.`;
+  } else if (!incompletos.length && precoSugerido7d != null && input.precoAnunciado != null && custoDeEsperar30d != null) {
+    porque =
+      `Preço R$ ${input.precoAnunciado.toLocaleString("pt-BR")} − custo de esperar 30d R$ ${custoDeEsperar30d.toLocaleString("pt-BR")}, arredondado para baixo em R$ 100 → R$ ${precoSugerido7d.toLocaleString("pt-BR")}.`;
+  }
 
   return {
     diasEmEstoque: dias,
@@ -278,6 +391,8 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
     margemVarejo30d,
     margemRepasse30d,
     ipvaProjetado: roundMoney(ipvaProjetado),
+    ipvaViradaValor: ipvaVirada.valor,
+    ipvaViradaDiasRestantes: ipvaVirada.diasRestantes,
     custoDeEsperar30d,
     indiceRisco: risco,
     indiceSemDado: semDado,
@@ -291,9 +406,11 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
       { rotulo: "Custo atual", valor: custoAtual, formula: "Compra + despesas + custo financeiro" },
       { rotulo: "Comissão estimada", valor: comissao, formula: "Regra de comissão da loja" },
       { rotulo: "Margem varejo hoje", valor: margemVarejoHoje, formula: "Preço − custo atual − comissão" },
-      { rotulo: "IPVA projetado", valor: roundMoney(ipvaProjetado), formula: "Referência × alíquota, somente se a virada ocorrer em 30 dias" },
+      { rotulo: "IPVA na virada (exibição)", valor: ipvaVirada.valor, formula: "Referência × alíquota, visível de outubro até a virada" },
+      { rotulo: "IPVA projetado (30 dias)", valor: roundMoney(ipvaProjetado), formula: "Entra no custo futuro só se a virada ocorrer em 30 dias" },
       { rotulo: "Margem varejo em 30 dias", valor: margemVarejo30d, formula: "Preço desvalorizado − custo futuro − comissão" },
       { rotulo: "Custo de esperar 30 dias", valor: custoDeEsperar30d, formula: "Margem hoje − margem projetada" },
+      { rotulo: "Preço sugerido (7 dias)", valor: precoSugerido7d, formula: "Preço − custo de esperar 30d, piso = custo + comissão" },
     ],
   };
 }

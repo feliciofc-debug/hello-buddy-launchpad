@@ -4,8 +4,10 @@ import {
   Calculator,
   CarFront,
   Loader2,
+  RefreshCw,
   Settings2,
   TrendingDown,
+  Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -26,7 +28,9 @@ import type { GestaoVeiculoEnriched } from "@/lib/gestao-lucro-types.ts";
 import { vehicleLabel } from "@/lib/gestao-lucro-data.ts";
 import {
   loadGestaoGiro,
+  refreshGestaoGiroFipe,
   saveGestaoGiroConfig,
+  saveGestaoGiroReferenciaManual,
   type GestaoGiroConfigRow,
   type GestaoGiroItem,
 } from "@/lib/estoque-giro-data.ts";
@@ -99,6 +103,10 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
   const [configOpen, setConfigOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [detail, setDetail] = useState<GestaoGiroItem | null>(null);
+  const [fipeRefreshing, setFipeRefreshing] = useState(false);
+  const [manualItem, setManualItem] = useState<GestaoGiroItem | null>(null);
+  const [manualValor, setManualValor] = useState("");
+  const [manualSaving, setManualSaving] = useState(false);
   const [form, setForm] = useState(() => ({
     atencao: "30",
     risco: "60",
@@ -194,6 +202,10 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
     (sum, i) => sum + Math.max(0, i.resultado.custoDeEsperar30d ?? 0),
     0,
   );
+  const ipvaViradaTotal = items.reduce(
+    (sum, i) => sum + Math.max(0, i.resultado.ipvaViradaValor ?? 0),
+    0,
+  );
   const needsConfig = !config ||
     config.custo_financeiro_mensal_pct == null ||
     config.desvalorizacao_mensal_pct == null ||
@@ -212,10 +224,43 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
             Quanto custa esperar e qual decisão preserva mais margem. Uso interno da Gestão.
           </p>
         </div>
-        <Button variant="outline" onClick={openConfig}>
-          <Settings2 className="mr-2 h-4 w-4" />
-          Configurar regras
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            disabled={fipeRefreshing}
+            onClick={() => void (async () => {
+              setFipeRefreshing(true);
+              try {
+                const r = await refreshGestaoGiroFipe(20);
+                if (!r.success) throw new Error(r.error ?? "Falha ao atualizar FIPE");
+                const ok = r.gravados ?? 0;
+                const miss = r.nao_encontrados ?? 0;
+                toast.success(
+                  ok
+                    ? `FIPE atualizada em ${ok} veículo(s)${miss ? `; ${miss} sem correspondência segura` : ""}.`
+                    : miss
+                    ? `Nenhuma FIPE gravada (${miss} sem correspondência segura).`
+                    : "Nenhum veículo pendente de FIPE neste lote.",
+                );
+                await load();
+              } catch (error) {
+                console.error("gestao_giro_fipe_refresh", error);
+                toast.error("Não foi possível atualizar a FIPE.");
+              } finally {
+                setFipeRefreshing(false);
+              }
+            })()}
+          >
+            {fipeRefreshing
+              ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              : <RefreshCw className="mr-2 h-4 w-4" />}
+            Atualizar FIPE
+          </Button>
+          <Button variant="outline" onClick={openConfig}>
+            <Settings2 className="mr-2 h-4 w-4" />
+            Configurar regras
+          </Button>
+        </div>
       </div>
 
       {needsConfig && (
@@ -227,7 +272,7 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
         </div>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {(["saudavel", "atencao", "risco", "decisao"] as const).map((faixa) => (
           <Card key={faixa}>
             <CardContent className="p-4">
@@ -242,6 +287,14 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
             <p className="mt-1 text-xl font-bold text-destructive">{money(riscoTotal)}</p>
           </CardContent>
         </Card>
+        {ipvaViradaTotal > 0 && (
+          <Card className="border-amber-500/40">
+            <CardContent className="p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">IPVA projetado do estoque</p>
+              <p className="mt-1 text-xl font-bold text-amber-800">{money(ipvaViradaTotal)}</p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {!items.length ? (
@@ -276,9 +329,19 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
                     <div><p className="text-xs text-muted-foreground">Custo atual</p><p className="font-medium">{money(r.custoAtual)}</p></div>
                     <div><p className="text-xs text-muted-foreground">Margem hoje</p><p className="font-medium">{money(r.margemVarejoHoje)}</p></div>
                     <div><p className="text-xs text-muted-foreground">Margem em 30 dias</p><p className="font-medium">{money(r.margemVarejo30d)}</p></div>
-                    <div><p className="text-xs text-muted-foreground">Repasse hoje</p><p className="font-medium">{money(r.valorRepasseHoje)}</p></div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Repasse hoje</p>
+                      <p className="font-medium">
+                        {r.valorRepasseHoje == null ? "Sem referência" : money(r.valorRepasseHoje)}
+                      </p>
+                    </div>
                     <div><p className="text-xs text-muted-foreground">Custo de esperar</p><p className="font-medium text-destructive">{money(r.custoDeEsperar30d)}</p></div>
                   </div>
+                  {r.ipvaViradaValor != null && r.ipvaViradaDiasRestantes != null && (
+                    <p className="text-xs text-amber-800">
+                      IPVA na virada: {money(r.ipvaViradaValor)} (faltam {r.ipvaViradaDiasRestantes} dias)
+                    </p>
+                  )}
                   <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-muted/50 p-3">
                     <div>
                       <p className="font-medium">{r.recomendacao}</p>
@@ -289,9 +352,21 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
                         </p>
                       )}
                     </div>
-                    <Button size="sm" variant="outline" onClick={() => setDetail(item)}>
-                      <Calculator className="mr-2 h-4 w-4" /> Ver cálculo
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setManualItem(item);
+                          setManualValor("");
+                        }}
+                      >
+                        <Wallet className="mr-2 h-4 w-4" /> Informar repasse
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setDetail(item)}>
+                        <Calculator className="mr-2 h-4 w-4" /> Ver cálculo
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -325,7 +400,7 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
               <Checkbox id="giro-virada" checked={form.pagaVirada} onCheckedChange={(v) => setForm((f) => ({ ...f, pagaVirada: v === true }))} />
               <div>
                 <Label htmlFor="giro-virada">Loja paga IPVA na virada</Label>
-                <p className="text-xs text-muted-foreground">Só projeta se o ano virar nos próximos 30 dias.</p>
+                <p className="text-xs text-muted-foreground">De outubro mostra o IPVA na virada; entra na projeção de 30 dias quando a virada estiver próxima.</p>
               </div>
             </div>
           </div>
@@ -333,6 +408,57 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
             <Button variant="outline" onClick={() => setConfigOpen(false)}>Cancelar</Button>
             <Button disabled={saving} onClick={() => void saveConfig()}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar regras"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!manualItem} onOpenChange={(open) => !open && setManualItem(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Informar valor de repasse</DialogTitle>
+            <DialogDescription>
+              Valor direto de B2B ou contato de repasse. Fica salvo como referência manual (prioridade abaixo da Molicar B2B).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="giro-manual-valor">Valor de repasse (R$)</Label>
+            <Input
+              id="giro-manual-valor"
+              type="number"
+              min="0"
+              step="0.01"
+              value={manualValor}
+              placeholder="Ex.: 85000"
+              onChange={(e) => setManualValor(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setManualItem(null)}>Cancelar</Button>
+            <Button
+              disabled={manualSaving}
+              onClick={() => void (async () => {
+                if (!manualItem) return;
+                const valor = Number(manualValor.replace(",", "."));
+                if (!Number.isFinite(valor) || valor <= 0) {
+                  toast.error("Informe um valor válido.");
+                  return;
+                }
+                setManualSaving(true);
+                try {
+                  await saveGestaoGiroReferenciaManual(userId, manualItem.veiculo.id, valor);
+                  toast.success("Referência de repasse salva.");
+                  setManualItem(null);
+                  await load();
+                } catch (error) {
+                  console.error("gestao_giro_manual_repasse", error);
+                  toast.error("Não foi possível salvar o repasse.");
+                } finally {
+                  setManualSaving(false);
+                }
+              })()}
+            >
+              {manualSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar"}
             </Button>
           </DialogFooter>
         </DialogContent>

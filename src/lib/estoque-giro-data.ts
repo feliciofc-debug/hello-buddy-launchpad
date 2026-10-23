@@ -137,3 +137,42 @@ export async function saveGestaoGiroConfig(
     .upsert({ user_id: userId, ...config }, { onConflict: "user_id" });
   if (error) throw error;
 }
+
+export type GiroFipeRefreshResult = {
+  success: boolean;
+  gravados?: number;
+  nao_encontrados?: number;
+  processados?: number;
+  resultados?: Array<{
+    veiculo_id: string;
+    status: "gravado" | "nao_encontrada";
+    motivo?: string;
+  }>;
+  error?: string;
+};
+
+export async function refreshGestaoGiroFipe(limit = 20): Promise<GiroFipeRefreshResult> {
+  const { data, error } = await supabase.functions.invoke("giro-fipe-refresh", {
+    body: { limit },
+  });
+  if (error) throw error;
+  return data as GiroFipeRefreshResult;
+}
+
+export async function saveGestaoGiroReferenciaManual(
+  userId: string,
+  veiculoId: string,
+  valor: number,
+): Promise<void> {
+  if (!Number.isFinite(valor) || valor <= 0) {
+    throw new Error("Informe um valor de repasse maior que zero.");
+  }
+  const { error } = await supabase.from("veiculo_preco_referencia" as "veiculos_estoque")
+    .insert({
+      user_id: userId,
+      veiculo_id: veiculoId,
+      fonte: "manual",
+      valor: Math.round(valor * 100) / 100,
+    });
+  if (error) throw error;
+}

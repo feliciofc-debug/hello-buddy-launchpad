@@ -6,6 +6,7 @@ import {
   diasEmEstoque,
   escolherReferenciaRepasse,
   faixaEstoqueGiro,
+  isTemporadaIpvaVirada,
 } from "./estoque-giro-calc.ts";
 
 const config = {
@@ -36,6 +37,23 @@ Deno.test("G90-1 — Molicar B2B tem prioridade sobre FIPE", () => {
       { fonte: "molicar_b2b", valor: 88_000 },
     ])?.valor,
     88_000,
+  );
+});
+
+Deno.test("G90-1.1 — manual fica entre Molicar B2B e FIPE", () => {
+  assertEquals(
+    escolherReferenciaRepasse([
+      { fonte: "fipe", valor: 100_000 },
+      { fonte: "manual", valor: 92_000 },
+    ])?.fonte,
+    "manual",
+  );
+  assertEquals(
+    escolherReferenciaRepasse([
+      { fonte: "manual", valor: 92_000 },
+      { fonte: "molicar_b2b", valor: 88_000 },
+    ])?.fonte,
+    "molicar_b2b",
   );
 });
 
@@ -76,6 +94,77 @@ Deno.test("G90-1 — IPVA só entra se virada cair nos próximos 30 dias", () =>
   assertEquals(r.ipvaProjetado, 4_000);
 });
 
+Deno.test("G90-1.1 — IPVA na virada visível a partir de outubro", () => {
+  assert(isTemporadaIpvaVirada("2026-09-30") === false);
+  assert(isTemporadaIpvaVirada("2026-10-01"));
+  const r = calcularEstoqueGiro({
+    hoje: "2026-10-15",
+    dataCompra: "2026-08-01",
+    createdAt: "2026-08-01",
+    valorCompra: 80_000,
+    despesas: [],
+    precoAnunciado: 100_000,
+    referencias: [{ fonte: "fipe", valor: 100_000 }],
+    config: { ...config, ipvaLojaPagaVirada: true },
+    regraComissao: DEFAULT_COMISSAO_REGRA,
+  });
+  assertEquals(r.ipvaViradaValor, 4_000);
+  assert(r.ipvaViradaDiasRestantes != null && r.ipvaViradaDiasRestantes > 0);
+  assertEquals(r.ipvaProjetado, 0);
+});
+
+Deno.test("G90-1.1 — sem FIPE ainda calcula varejo e não bloqueia", () => {
+  const r = calcularEstoqueGiro({
+    hoje: "2026-10-23",
+    dataCompra: "2026-09-01",
+    createdAt: "2026-09-01",
+    valorCompra: 70_000,
+    despesas: [],
+    precoAnunciado: 95_000,
+    referencias: [],
+    config,
+    regraComissao: DEFAULT_COMISSAO_REGRA,
+  });
+  assertEquals(r.dadosIncompletos, []);
+  assert(r.margemVarejoHoje != null);
+  assertEquals(r.valorRepasseHoje, null);
+  assert(r.recomendacao !== "Completar dados antes de decidir");
+});
+
+Deno.test("G90-1.1 — carro saudável nunca recebe priorizar repasse", () => {
+  const r = calcularEstoqueGiro({
+    hoje: "2026-10-23",
+    dataCompra: "2026-10-17",
+    createdAt: "2026-10-17",
+    valorCompra: 80_000,
+    despesas: [],
+    precoAnunciado: 100_000,
+    referencias: [{ fonte: "fipe", valor: 100_000 }],
+    config,
+    regraComissao: DEFAULT_COMISSAO_REGRA,
+  });
+  assertEquals(r.faixa, "saudavel");
+  assert(!r.recomendacao.toLowerCase().includes("repasse"));
+});
+
+Deno.test("G90-1.1 — preço sugerido respeita piso custo + comissão", () => {
+  const r = calcularEstoqueGiro({
+    hoje: "2026-10-23",
+    dataCompra: "2026-08-24",
+    createdAt: "2026-08-24",
+    valorCompra: 95_000,
+    despesas: [],
+    precoAnunciado: 100_000,
+    referencias: [{ fonte: "fipe", valor: 100_000 }],
+    config,
+    regraComissao: DEFAULT_COMISSAO_REGRA,
+  });
+  assertEquals(r.faixa, "risco");
+  if (r.precoSugerido7d != null && r.custoAtual != null && r.comissaoEstimada != null) {
+    assert(r.precoSugerido7d >= r.custoAtual + r.comissaoEstimada - 0.01);
+  }
+});
+
 Deno.test("G90-1 — dados faltantes bloqueiam recomendação financeira", () => {
   const r = calcularEstoqueGiro({
     hoje: "2026-10-23",
@@ -89,6 +178,6 @@ Deno.test("G90-1 — dados faltantes bloqueiam recomendação financeira", () =>
     regraComissao: DEFAULT_COMISSAO_REGRA,
   });
   assert(r.dadosIncompletos.includes("custo de compra"));
-  assert(r.dadosIncompletos.includes("FIPE/Molicar B2B"));
+  assert(!r.dadosIncompletos.some((d) => d.includes("FIPE")));
   assertEquals(r.recomendacao, "Completar dados antes de decidir");
 });
