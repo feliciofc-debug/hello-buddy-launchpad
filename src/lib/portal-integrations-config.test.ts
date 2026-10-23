@@ -1,3 +1,5 @@
+// @ts-nocheck — teste Deno; não entra no typecheck do app Vite.
+// @ts-nocheck
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { PLANNED_PORTAL_INTEGRATIONS } from "./portal-integrations-config.ts";
 

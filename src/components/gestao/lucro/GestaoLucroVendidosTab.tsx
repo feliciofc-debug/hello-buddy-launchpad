@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { GestaoVeiculoEnriched } from "@/lib/gestao-lucro-types.ts";
 import { vehicleDays, vehicleLabel } from "@/lib/gestao-lucro-data.ts";
@@ -8,22 +9,20 @@ import {
   gestaoLucroTone,
 } from "@/lib/gestao-format.ts";
 import { GestaoVendaRaioXPanel } from "@/components/gestao/lucro/GestaoVendaRaioXPanel.tsx";
+import { intervaloMesAtualSaoPaulo } from "../../../../supabase/functions/_shared/gestao-date-br.ts";
 
 function monthBounds(): { start: string; end: string } {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
-  return { start: iso(start), end: iso(end) };
+  return intervaloMesAtualSaoPaulo();
 }
 
 type Props = {
   veiculos: GestaoVeiculoEnriched[];
   periodStart?: string;
   periodEnd?: string;
+  onEditVenda?: (v: GestaoVeiculoEnriched) => void;
 };
 
-export function GestaoLucroVendidosTab({ veiculos, periodStart, periodEnd }: Props) {
+export function GestaoLucroVendidosTab({ veiculos, periodStart, periodEnd, onEditVenda }: Props) {
   const defaults = monthBounds();
   const [start, setStart] = useState(periodStart ?? defaults.start);
   const [end, setEnd] = useState(periodEnd ?? defaults.end);
@@ -75,7 +74,8 @@ export function GestaoLucroVendidosTab({ veiculos, periodStart, periodEnd }: Pro
               <th className="pb-2 pr-3">Lucro</th>
               <th className="pb-2 pr-3">Margem</th>
               <th className="pb-2 pr-3">Dias estoque</th>
-              <th className="pb-2">Vendedor</th>
+              <th className="pb-2 pr-3">Vendedor</th>
+              {onEditVenda ? <th className="pb-2">Ações</th> : null}
             </tr>
           </thead>
           <tbody>
@@ -92,10 +92,17 @@ export function GestaoLucroVendidosTab({ veiculos, periodStart, periodEnd }: Pro
                     {formatGestaoPct(v.lucro.margemPct)}
                   </td>
                   <td className="py-2 pr-3">{v.lucro.diasEstoque ?? vehicleDays(v)}</td>
-                  <td className="py-2">{v.vendedor ?? "—"}</td>
+                  <td className="py-2 pr-3">{v.vendedor ?? "—"}</td>
+                  {onEditVenda ? (
+                    <td className="py-2">
+                      <Button size="sm" variant="outline" onClick={() => onEditVenda(v)}>
+                        Editar venda
+                      </Button>
+                    </td>
+                  ) : null}
                 </tr>
                 <tr className="border-b bg-muted/20">
-                  <td colSpan={7} className="p-3">
+                  <td colSpan={onEditVenda ? 8 : 7} className="p-3">
                     <GestaoVendaRaioXPanel
                       compact
                       valorVenda={v.valorVenda}

@@ -1,3 +1,4 @@
+import { hojeSaoPaulo } from "./gestao-date-br.ts";
 export type GestaoExtratoLinha = {
   data: string;
   descricao: string;
@@ -8,7 +9,7 @@ export type GestaoExtratoLinha = {
 
 function parseOfxDate(raw: string): string {
   const digits = raw.replace(/\D/g, "").slice(0, 8);
-  if (digits.length < 8) return new Date().toISOString().slice(0, 10);
+  if (digits.length < 8) return hojeSaoPaulo();
   return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
 }
 

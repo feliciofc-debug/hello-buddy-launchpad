@@ -22,7 +22,18 @@ export function buildGestaoLucroAlerts(veiculos: GestaoVeiculoEnriched[]): Gesta
     return m != null && m < 5;
   });
 
+  const lucroNegComissao = veiculos.filter((v) => {
+    if (v.lucro.lucroLiquido == null || v.lucro.lucroLiquido >= 0) return false;
+    if (!v.lucro.vendido && v.status !== "vendido" && v.valorVenda == null) return false;
+    return v.despesas.some((d) => d.categoria === "comissao");
+  });
+
   return [
+    {
+      kind: "lucro_negativo_comissao",
+      count: lucroNegComissao.length,
+      veiculoIds: lucroNegComissao.map((v) => v.id),
+    },
     {
       kind: "sem_custo_compra",
       count: semCusto.length,
@@ -43,6 +54,8 @@ export function buildGestaoLucroAlerts(veiculos: GestaoVeiculoEnriched[]): Gesta
 
 export function alertLabel(kind: GestaoLucroAlertKind): string {
   switch (kind) {
+    case "lucro_negativo_comissao":
+      return "Lucro negativo (comissão)";
     case "sem_custo_compra":
       return "Sem custo de compra";
     case "parado_60":

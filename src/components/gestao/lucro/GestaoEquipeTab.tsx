@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { jsPDF } from "jspdf";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import type { GestaoVeiculoEnriched } from "@/lib/gestao-lucro-types.ts";
+import {
+  hojeSaoPaulo,
+  intervaloCompetencia,
+} from "../../../../supabase/functions/_shared/gestao-date-br.ts";
 import {
   competenciaFromDate,
   loadComissaoAutoMes,
@@ -43,6 +47,7 @@ const defaultMeta: GestaoMetaConfigJson = {
 };
 
 export function GestaoEquipeTab({ userId, veiculos }: Props) {
+  const vendedorFormRef = useRef<HTMLDivElement>(null);
   const [vendedores, setVendedores] = useState<GestaoVendedor[]>([]);
   const [loading, setLoading] = useState(true);
   const [competencia, setCompetencia] = useState(competenciaFromDate());
@@ -84,9 +89,7 @@ export function GestaoEquipeTab({ userId, veiculos }: Props) {
   }, [reload]);
 
   const vendasLines = useMemo(() => {
-    const [y, m] = competencia.split("-").map(Number);
-    const start = `${competencia}-01`;
-    const end = new Date(y, m, 0).toISOString().slice(0, 10);
+    const { start, end } = intervaloCompetencia(competencia);
     return veiculos
       .filter((v) => v.dataVenda && v.dataVenda >= start && v.dataVenda <= end)
       .map((v) => ({
@@ -167,7 +170,7 @@ export function GestaoEquipeTab({ userId, veiculos }: Props) {
       competencia,
       valor_comissao: valor,
       valor_pago: valor,
-      pago_em: new Date().toISOString().slice(0, 10),
+      pago_em: hojeSaoPaulo(),
     }, { onConflict: "user_id,vendedor_id,competencia" });
     toast.success("Marcado como pago.");
   };
@@ -205,14 +208,30 @@ export function GestaoEquipeTab({ userId, veiculos }: Props) {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-end gap-3">
-        <div>
-          <Label>Competência</Label>
-          <Input type="month" value={competencia} onChange={(e) => setCompetencia(e.target.value)} />
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <Label>Competência</Label>
+            <Input type="month" value={competencia} onChange={(e) => setCompetencia(e.target.value)} />
+          </div>
+          <Button variant="outline" onClick={exportCsv}>CSV</Button>
+          <Button variant="outline" onClick={exportPdf}>PDF</Button>
         </div>
-        <Button variant="outline" onClick={exportCsv}>CSV</Button>
-        <Button variant="outline" onClick={exportPdf}>PDF</Button>
+        <Button
+          onClick={() => {
+            vendedorFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }}
+        >
+          + Adicionar vendedor
+        </Button>
       </div>
+
+      <GestaoComissaoRegraForm
+        title="Regra de comissão padrão da loja"
+        regra={regraPadrao}
+        onChange={setRegraPadrao}
+        onSave={() => void saveRegraPadrao()}
+      />
 
       <section className="space-y-3 rounded-lg border p-4">
         <h3 className="font-semibold">Ranking do mês</h3>
@@ -258,7 +277,7 @@ export function GestaoEquipeTab({ userId, veiculos }: Props) {
       </section>
 
       <section className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-3 rounded-lg border p-4">
+        <div ref={vendedorFormRef} className="space-y-3 rounded-lg border p-4">
           <h3 className="font-semibold">Cadastro de vendedores</h3>
           <Input placeholder="Nome" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
           <Input placeholder="WhatsApp E.164" value={form.whatsapp} onChange={(e) => setForm({ ...form, whatsapp: e.target.value })} />
@@ -266,7 +285,7 @@ export function GestaoEquipeTab({ userId, veiculos }: Props) {
             <Checkbox checked={form.is_gerente} onCheckedChange={(c) => setForm({ ...form, is_gerente: !!c })} />
             É gerente
           </label>
-          <Button onClick={() => void addVendedor()}>Adicionar</Button>
+          <Button onClick={() => void addVendedor()}>Salvar vendedor</Button>
           <ul className="space-y-3 text-sm">
             {vendedores.map((v) => (
               <li key={v.id} className="rounded border p-2">
@@ -323,13 +342,6 @@ export function GestaoEquipeTab({ userId, veiculos }: Props) {
           </div>
         </div>
       </section>
-
-      <GestaoComissaoRegraForm
-        title="Regra de comissão padrão da loja"
-        regra={regraPadrao}
-        onChange={setRegraPadrao}
-        onSave={() => void saveRegraPadrao()}
-      />
     </div>
   );
 }

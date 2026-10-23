@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -51,6 +51,10 @@ import { snapshotInputFiles } from "@/lib/file-input-snapshot";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import type { PublishableItem } from "@/lib/publishable-item";
+import {
+  VeiculoCustosInternosForm,
+  type VeiculoCustosSaveHandle,
+} from "@/components/veiculos/VeiculoCustosInternosForm.tsx";
 import { MlInventoryStrip } from "@/components/ml/MlInventoryStrip";
 import { MlQuestionsPanel } from "@/components/ml/MlQuestionsPanel";
 import { MlVehicleActions, type VeiculoPortalMl } from "@/components/ml/MlVehicleActions";
@@ -310,6 +314,9 @@ export default function VehicleInventory() {
   const [wmConnected, setWmConnected] = useState(false);
   const [wmPortals, setWmPortals] = useState<Record<string, VeiculoPortalWebmotors>>({});
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+  const [compraVeiculoIds, setCompraVeiculoIds] = useState<Set<string>>(new Set());
+  const [custosExpanded, setCustosExpanded] = useState(false);
+  const custosRef = useRef<VeiculoCustosSaveHandle>(null);
 
   const loadPortalMeta = useCallback(async () => {
     const [{ data: stMl }, { data: stWm }] = await Promise.all([
@@ -367,6 +374,11 @@ export default function VehicleInventory() {
     } else {
       setVehicles(data || []);
     }
+    const { data: compras } = await supabase
+      .from("veiculo_compra" as "veiculos_estoque")
+      .select("veiculo_id")
+      .eq("user_id", user.id);
+    setCompraVeiculoIds(new Set((compras ?? []).map((c: { veiculo_id: string }) => c.veiculo_id)));
     await loadPortalMeta();
     setLoading(false);
   }, [loadPortalMeta, navigate]);
@@ -414,13 +426,15 @@ export default function VehicleInventory() {
     setEditing(null);
     setDraftVehicleId(crypto.randomUUID());
     setForm(EMPTY_FORM);
+    setCustosExpanded(false);
     setFormOpen(true);
   };
 
-  const openEdit = (vehicle: Vehicle) => {
+  const openEdit = (vehicle: Vehicle, opts?: { focusCustos?: boolean }) => {
     setEditing(vehicle);
     setDraftVehicleId(null);
     setForm(vehicleToForm(vehicle));
+    setCustosExpanded(!!opts?.focusCustos);
     setDetailsOpen(false);
     setFormOpen(true);
   };
@@ -500,6 +514,11 @@ export default function VehicleInventory() {
       return;
     }
 
+    const custosOk = await custosRef.current?.save(user.id, vehicleId);
+    if (custosOk === false) {
+      return;
+    }
+
     toast.success(editing ? "Veículo atualizado." : "Veículo adicionado.");
     setFormOpen(false);
     await loadVehicles();
@@ -507,7 +526,7 @@ export default function VehicleInventory() {
       await supabase.functions.invoke("ml-vehicle-sync", {
         body: { veiculo_id: editing.id },
       });
-      await loadMlMeta();
+      await loadPortalMeta();
     }
   };
 
@@ -793,6 +812,18 @@ export default function VehicleInventory() {
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-1">
+                      {!compraVeiculoIds.has(vehicle.id) && vehicle.status !== "vendido" && (
+                        <Badge
+                          variant="outline"
+                          className="cursor-pointer border-amber-500/60 text-amber-800 dark:text-amber-400"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEdit(vehicle, { focusCustos: true });
+                          }}
+                        >
+                          Custo pendente
+                        </Badge>
+                      )}
                       <Badge variant={vehicle.status === "disponivel" ? "default" : "secondary"}>
                         {STATUS_LABELS[vehicle.status as VehicleStatus] || vehicle.status}
                       </Badge>
@@ -1222,6 +1253,11 @@ export default function VehicleInventory() {
             <FormField label="Descrição" className="sm:col-span-2">
               <Textarea rows={4} value={form.descricao} onChange={(event) => setForm({ ...form, descricao: event.target.value })} />
             </FormField>
+            <VeiculoCustosInternosForm
+              ref={custosRef}
+              vehicleId={editing?.id ?? draftVehicleId}
+              defaultExpanded={custosExpanded}
+            />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setFormOpen(false)}>Cancelar</Button>

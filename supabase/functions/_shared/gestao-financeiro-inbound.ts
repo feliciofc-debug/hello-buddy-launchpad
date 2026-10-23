@@ -1,3 +1,4 @@
+import { addDiasYmd } from "./gestao-date-br.ts";
 import { formatGestaoMoney } from "./gestao-format.ts";
 import { calcDreMes, type GestaoOperacionalDreLine, type GestaoVendaDreLine } from "./gestao-dre-calc.ts";
 import type { GestaoContaFluxo } from "./gestao-fluxo-calc.ts";
@@ -9,9 +10,7 @@ export type GestaoContaInbound = GestaoContaFluxo & {
 };
 
 function addDaysIso(iso: string, days: number): string {
-  const d = new Date(iso);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return addDiasYmd(iso, days);
 }
 
 function weekEnd(from: string): string {

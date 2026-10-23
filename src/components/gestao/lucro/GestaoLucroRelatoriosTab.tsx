@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { GestaoVeiculoEnriched } from "@/lib/gestao-lucro-types.ts";
 import { gestaoCategoriaLabel } from "@/lib/gestao-lucro-categories.ts";
 import { formatGestaoMoney, formatGestaoPct } from "@/lib/gestao-format.ts";
+import { intervaloCompetencia } from "../../../../supabase/functions/_shared/gestao-date-br.ts";
 import {
   calcVendaRaioX,
   rankPioresNegocios,
@@ -48,9 +49,7 @@ export function GestaoLucroRelatoriosTab({ veiculos }: Props) {
 
   const lucroPorMes = useMemo(() => {
     return months.map((ym) => {
-      const [y, m] = ym.split("-").map(Number);
-      const start = `${ym}-01`;
-      const end = new Date(y, m, 0).toISOString().slice(0, 10);
+      const { start, end } = intervaloCompetencia(ym);
       let lucro = 0;
       for (const v of veiculos) {
         if (!v.dataVenda || v.dataVenda < start || v.dataVenda > end) continue;
@@ -62,9 +61,7 @@ export function GestaoLucroRelatoriosTab({ veiculos }: Props) {
 
   const margemComissaoPorMes = useMemo(() => {
     return months.map((ym) => {
-      const [y, m] = ym.split("-").map(Number);
-      const start = `${ym}-01`;
-      const end = new Date(y, m, 0).toISOString().slice(0, 10);
+      const { start, end } = intervaloCompetencia(ym);
       let n = 0;
       let somaBruta = 0;
       let somaFinal = 0;

@@ -1,6 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { hojeSaoPaulo } from "../../../../supabase/functions/_shared/gestao-date-br.ts";
+import {
+  validateGestaoComissaoValor,
+} from "../../../../supabase/functions/_shared/gestao-comissao-guard.ts";
 import {
   Sheet,
   SheetContent,
@@ -43,7 +47,7 @@ import { loadGestaoVendedores, loadComissaoRegra, type GestaoVendedor } from "@/
 import { calcGestaoComissao } from "../../../../supabase/functions/_shared/gestao-comissao-calc.ts";
 import { comissaoLucroBase } from "@/lib/gestao-comissao-lucro.ts";
 import { GestaoVendaRaioXPanel } from "@/components/gestao/lucro/GestaoVendaRaioXPanel.tsx";
-import { syncComissaoAfterVenda } from "@/lib/gestao-comissao-client.ts";
+import { estornarComissaoVeiculo, syncComissaoAfterVenda } from "@/lib/gestao-comissao-client.ts";
 import { useGestaoFocusnfeConnection } from "@/components/integracoes/useGestaoFocusnfeConnection";
 import { GestaoEmitirNfeDialog } from "@/components/gestao/lucro/GestaoEmitirNfeDialog.tsx";
 
@@ -51,6 +55,7 @@ type Props = {
   open: boolean;
   veiculo: GestaoVeiculoEnriched | null;
   userId: string;
+  focusVenda?: boolean;
   onClose: () => void;
   onSaved: () => void;
 };
@@ -66,16 +71,17 @@ function origemLabel(o: string): string {
   return map[o] ?? o;
 }
 
-export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }: Props) {
+export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose, onSaved }: Props) {
+  const vendaSectionRef = useRef<HTMLElement | null>(null);
   const focusnfe = useGestaoFocusnfeConnection();
   const [nfeOpen, setNfeOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [compra, setCompra] = useState({ valor: "", data: "", origem: "compra", fornecedor: "" });
-  const [venda, setVenda] = useState({ valor: "", data: "", vendedor: "", forma: "", marcar: false });
+  const [venda, setVenda] = useState({ valor: "", data: "", vendedor: "", forma: "", marcar: true });
   const [despesaForm, setDespesaForm] = useState({
     valor: "",
-    data: new Date().toISOString().slice(0, 10),
+    data: hojeSaoPaulo(),
     categoria: "outros",
     descricao: "",
   });
@@ -84,6 +90,10 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
   const [comissaoConfirmOpen, setComissaoConfirmOpen] = useState(false);
   const [comissaoPreview, setComissaoPreview] = useState(0);
   const [comissaoOverride, setComissaoOverride] = useState("");
+  const [comissaoConfirmAlto, setComissaoConfirmAlto] = useState(false);
+  const [undoVendaOpen, setUndoVendaOpen] = useState(false);
+
+  const hasVendaRegistrada = veiculo?.valorVenda != null;
 
   useEffect(() => {
     if (!userId) return;
@@ -91,19 +101,27 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
   }, [userId]);
 
   useEffect(() => {
+    if (!open || !focusVenda) return;
+    const t = window.setTimeout(() => {
+      vendaSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 150);
+    return () => window.clearTimeout(t);
+  }, [open, focusVenda, veiculo?.id]);
+
+  useEffect(() => {
     if (!veiculo) return;
     setCompra({
       valor: veiculo.valorCompra != null ? String(veiculo.valorCompra) : "",
-      data: veiculo.dataCompra ?? new Date().toISOString().slice(0, 10),
+      data: veiculo.dataCompra ?? hojeSaoPaulo(),
       origem: "compra",
       fornecedor: "",
     });
     setVenda({
       valor: veiculo.valorVenda != null ? String(veiculo.valorVenda) : "",
-      data: veiculo.dataVenda ?? new Date().toISOString().slice(0, 10),
+      data: veiculo.dataVenda ?? hojeSaoPaulo(),
       vendedor: veiculo.vendedor ?? "",
       forma: "",
-      marcar: false,
+      marcar: true,
     });
     setVendedorId(veiculo.vendedor_id ?? "");
   }, [veiculo]);
@@ -205,6 +223,7 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
       });
       setComissaoPreview(prev.total);
       setComissaoOverride(String(prev.total));
+      setComissaoConfirmAlto(false);
       setComissaoConfirmOpen(true);
       return;
     }
@@ -219,6 +238,16 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
       setBusy(false);
       toast.error("Valor inválido.");
       return;
+    }
+    if (overrideComissao != null && vendedorId) {
+      const guard = validateGestaoComissaoValor(overrideComissao, valor, {
+        allowAbove10Pct: comissaoConfirmAlto,
+      });
+      if (!guard.ok) {
+        setBusy(false);
+        toast.error(guard.message);
+        return;
+      }
     }
     const vend = vendedores.find((x) => x.id === vendedorId);
     const { error } = await supabase.from("veiculo_venda" as "veiculos_estoque").upsert({
@@ -253,15 +282,55 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
     });
     setBusy(false);
     setComissaoConfirmOpen(false);
+    const wasEdit = veiculo.valorVenda != null;
     toast.success(
       comTotal > 0
-        ? `Venda registrada. Comissão ${formatGestaoMoney(comTotal)} lançada no carro.`
-        : "Venda registrada.",
+        ? wasEdit
+          ? `Venda atualizada. Comissão ${formatGestaoMoney(comTotal)} relançada.`
+          : `Venda registrada. Comissão ${formatGestaoMoney(comTotal)} lançada no carro.`
+        : wasEdit ? "Venda atualizada." : "Venda registrada.",
     );
     onSaved();
   };
 
+  const confirmUndoVenda = async () => {
+    if (!veiculo) return;
+    setBusy(true);
+    await estornarComissaoVeiculo(userId, veiculo.id);
+    const { error: delErr } = await supabase.from("veiculo_venda" as "veiculos_estoque").delete()
+      .eq("user_id", userId)
+      .eq("veiculo_id", veiculo.id);
+    if (delErr) {
+      setBusy(false);
+      setUndoVendaOpen(false);
+      toast.error("Não foi possível desfazer a venda.");
+      return;
+    }
+    await supabase.from("veiculos_estoque").update({
+      status: "disponivel",
+      vendido_at: null,
+    }).eq("id", veiculo.id);
+    setBusy(false);
+    setUndoVendaOpen(false);
+    toast.success("Venda desfeita. O carro voltou para o estoque.");
+    onSaved();
+    onClose();
+  };
+
   if (!veiculo) return null;
+
+  const valorVendaDialog = parseGestaoMoneyField(venda.valor);
+  const comissaoDialogValor = parseGestaoMoneyField(comissaoOverride) ?? comissaoPreview;
+  const comissaoGuard = valorVendaDialog != null && comissaoDialogValor > 0
+    ? validateGestaoComissaoValor(comissaoDialogValor, valorVendaDialog, {
+      allowAbove10Pct: comissaoConfirmAlto,
+    })
+    : { ok: true as const, pctVenda: 0 };
+  const comissaoPctLabel = valorVendaDialog != null && valorVendaDialog > 0
+    ? formatGestaoPct((comissaoDialogValor / valorVendaDialog) * 100)
+    : "—";
+  const vendedorDialog = vendedores.find((x) => x.id === vendedorId);
+  const vendedorDialogNome = vendedorDialog?.nome ?? "Vendedor";
 
   const lucro = veiculo.lucro;
   const margem = lucro.vendido
@@ -391,7 +460,7 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
               </div>
             </section>
 
-            <section className="space-y-2">
+            <section ref={vendaSectionRef} id="gestao-drawer-venda" className="space-y-2 scroll-mt-4">
               <h3 className="text-sm font-semibold">Venda</h3>
               <GestaoMoneyInput
                 label="Valor venda"
@@ -422,8 +491,13 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
                 Marcar como vendido no estoque
               </label>
               <Button size="sm" disabled={busy} onClick={() => void prepareVenda()}>
-                Registrar venda
+                {hasVendaRegistrada ? "Salvar venda" : "Registrar venda"}
               </Button>
+              {hasVendaRegistrada && (
+                <Button size="sm" variant="destructive" disabled={busy} onClick={() => setUndoVendaOpen(true)}>
+                  Desfazer venda
+                </Button>
+              )}
               {focusnfe.status?.connected && (
                 <Button size="sm" variant="secondary" disabled={busy} onClick={() => setNfeOpen(true)}>
                   Emitir nota fiscal
@@ -442,27 +516,63 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
       <AlertDialog open={comissaoConfirmOpen} onOpenChange={setComissaoConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar comissão</AlertDialogTitle>
+            <AlertDialogTitle>Comissão do vendedor — {vendedorDialogNome}</AlertDialogTitle>
             <AlertDialogDescription asChild>
-              <div className="space-y-2 text-sm">
-                <p>
-                  Comissão calculada: <strong>{formatGestaoMoney(comissaoPreview)}</strong>
-                </p>
-                <p>Será lançada automaticamente como despesa do carro (categoria comissão).</p>
-                <GestaoMoneyInput
-                  label="Ajustar valor (opcional)"
-                  value={comissaoOverride}
-                  onChange={setComissaoOverride}
-                />
+              <div className="space-y-4 text-sm text-foreground">
+                <div className="rounded-lg border bg-muted/40 px-3 py-2">
+                  <p className="font-medium">
+                    Venda: {formatGestaoMoney(valorVendaDialog)} ✓
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Valor da venda já confirmado neste passo — não é a comissão.
+                  </p>
+                </div>
+
+                <div className="space-y-2 border-t pt-4">
+                  <p className="font-medium">
+                    Quanto o {vendedorDialogNome} vai ganhar nesta venda?
+                  </p>
+                  <GestaoMoneyInput
+                    label="Comissão do vendedor (R$)"
+                    value={comissaoOverride}
+                    onChange={(v) => {
+                      setComissaoOverride(v);
+                      setComissaoConfirmAlto(false);
+                    }}
+                  />
+                  <p className="text-muted-foreground">
+                    = {comissaoPctLabel} do valor da venda
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Lançamento automático como despesa do carro (categoria comissão).
+                  </p>
+                  {!comissaoGuard.ok && comissaoGuard.code === "above_10pct" && (
+                    <div className="space-y-2 rounded-md border border-red-200 bg-red-50 p-2 text-red-700">
+                      <p className="font-medium">{comissaoGuard.message}</p>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={comissaoConfirmAlto}
+                          onChange={(e) => setComissaoConfirmAlto(e.target.checked)}
+                        />
+                        Confirmo este valor
+                      </label>
+                    </div>
+                  )}
+                  {!comissaoGuard.ok && comissaoGuard.code === "gte_venda" && (
+                    <p className="font-medium text-red-600">{comissaoGuard.message}</p>
+                  )}
+                </div>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>Voltar e corrigir a venda</AlertDialogCancel>
             <AlertDialogAction
+              disabled={!comissaoGuard.ok}
               onClick={() => void commitVenda(parseGestaoMoneyField(comissaoOverride) ?? comissaoPreview)}
             >
-              Confirmar venda
+              Confirmar comissão
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -476,6 +586,21 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, onClose, onSaved }:
           onSuccess={onSaved}
         />
       )}
+
+      <AlertDialog open={undoVendaOpen} onOpenChange={setUndoVendaOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Desfazer venda?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O carro volta para o estoque. A venda e a comissão automática serão removidas.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void confirmUndoVenda()}>Desfazer venda</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
         <AlertDialogContent>

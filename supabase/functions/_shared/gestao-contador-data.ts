@@ -1,4 +1,5 @@
 import { buildGestaoContadorPacote } from "./gestao-contador-pacote-build.ts";
+import { intervaloCompetencia } from "./gestao-date-br.ts";
 import type { GestaoOperacionalDreLine, GestaoVendaDreLine } from "./gestao-dre-calc.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -22,9 +23,7 @@ export async function loadGestaoContadorPacoteData(
   userId: string,
   competencia: string,
 ) {
-  const start = `${competencia}-01`;
-  const [y, m] = competencia.split("-").map(Number);
-  const end = new Date(y, m, 0).toISOString().slice(0, 10);
+  const { start, end } = intervaloCompetencia(competencia);
 
   const [{ data: empresa }, { data: vendas }, { data: contas }, { data: nfes }] = await Promise.all([
     client.from("empresa_config").select("nome_empresa").eq("user_id", userId).maybeSingle(),

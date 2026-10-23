@@ -17,6 +17,7 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { AMZ_KNOWLEDGE } from "./agent-soul.ts";
 import { AMZ_TENANT_ID as ADMIN_AMZ_USER_ID } from "./amz-tenant.ts";
+import { hojeSaoPaulo } from "./gestao-date-br.ts";
 import {
   normalizeOwnerPhone,
   ownerPhonesEquivalent,
@@ -331,7 +332,7 @@ async function collectOwnerStats(sb: SupabaseClient): Promise<string> {
 
     const { count: posts } = await sb
       .from("scheduled_posts").select("id", { count: "exact", head: true })
-      .gte("data", new Date().toISOString().slice(0, 10));
+      .gte("data", hojeSaoPaulo());
     parts.push(`• Posts agendados (hoje/futuro): ${posts ?? 0}`);
 
     const { data: bloqueados } = await sb
@@ -398,7 +399,7 @@ async function collectClientContext(sb: SupabaseClient, phone: string): Promise<
         .eq("user_id", ownContact.user_id).gte("created_at", seteDias);
       const { count: agendados } = await sb
         .from("scheduled_posts").select("id", { count: "exact", head: true })
-        .eq("user_id", ownContact.user_id).gte("data", new Date().toISOString().slice(0, 10));
+        .eq("user_id", ownContact.user_id).gte("data", hojeSaoPaulo());
 
       out.push("REDES SOCIAIS (7 dias):");
       out.push(`• Publicados: ${publicados ?? 0}`);

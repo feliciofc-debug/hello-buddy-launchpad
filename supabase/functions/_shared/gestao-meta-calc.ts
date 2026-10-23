@@ -1,3 +1,5 @@
+import { formatYmdSaoPaulo } from "./gestao-date-br.ts";
+
 export type GestaoMetaTipo = "qtd" | "faturamento" | "lucro";
 
 export type GestaoBonusEscalonado = {
@@ -21,7 +23,7 @@ export type GestaoMetaProgresso = {
 };
 
 export function competenciaFromDate(d = new Date()): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  return formatYmdSaoPaulo(d).slice(0, 7);
 }
 
 export function calcMetaProgresso(

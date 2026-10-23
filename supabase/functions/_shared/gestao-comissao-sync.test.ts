@@ -109,3 +109,21 @@ Deno.test("applyGestaoComissaoSync 3x mantém mesmo valor e uma despesa ativa", 
   assertEquals(r2.comissaoTotal, r3.comissaoTotal);
   assertEquals(autos.length, 1);
 });
+
+Deno.test("planGestaoComissaoSync não lança comissão >= valor da venda", () => {
+  const plan = planGestaoComissaoSync({
+    userId: "u",
+    veiculoId: "v",
+    vendedorId: "s1",
+    vendedorNome: "João",
+    gerenteId: null,
+    valorVenda: 1_099_000,
+    lucroLiquido: 50_000,
+    margemPct: 5,
+    regraVendedor: DEFAULT_COMISSAO_REGRA,
+    regraGerente: null,
+    valorComissaoOverride: 1_099_000,
+    dataDespesa: "2026-10-17",
+  });
+  assertEquals(plan.lancamentos.length, 0);
+});

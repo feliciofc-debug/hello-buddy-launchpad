@@ -10,9 +10,11 @@ const STORAGE_KEY = "gestao_estoque_hoje_expanded";
 type Props = {
   userId: string;
   showDetailLink?: boolean;
+  /** Incrementar após salvar compra, venda ou despesa para recarregar o snapshot. */
+  refreshKey?: number;
 };
 
-export function GestaoEstoqueHojeCollapsible({ userId, showDetailLink }: Props) {
+export function GestaoEstoqueHojeCollapsible({ userId, showDetailLink, refreshKey = 0 }: Props) {
   const [loading, setLoading] = useState(true);
   const [snapshot, setSnapshot] = useState<GestaoEstoqueSnapshot | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -39,7 +41,7 @@ export function GestaoEstoqueHojeCollapsible({ userId, showDetailLink }: Props) 
     return () => {
       cancelled = true;
     };
-  }, [userId]);
+  }, [userId, refreshKey]);
 
   const toggle = () => {
     const next = !expanded;

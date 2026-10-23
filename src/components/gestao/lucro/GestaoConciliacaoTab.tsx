@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { hojeSaoPaulo, intervaloCompetencia } from "../../../../supabase/functions/_shared/gestao-date-br.ts";
 import {
   Select,
   SelectContent,
@@ -49,11 +50,7 @@ type Props = {
 };
 
 function monthBounds(competencia: string) {
-  const [y, m] = competencia.split("-").map(Number);
-  return {
-    start: `${competencia}-01`,
-    end: new Date(y, m, 0).toISOString().slice(0, 10),
-  };
+  return intervaloCompetencia(competencia);
 }
 
 export function GestaoConciliacaoTab({ userId, contas, veiculos }: Props) {
@@ -195,7 +192,7 @@ export function GestaoConciliacaoTab({ userId, contas, veiculos }: Props) {
         refId: sug.candidato.refId,
         score: sug.score,
         valor: sug.candidato.valor,
-      }, classificados.find((e) => e.id === extratoId)?.data ?? new Date().toISOString().slice(0, 10));
+      }, classificados.find((e) => e.id === extratoId)?.data ?? hojeSaoPaulo());
       toast.success("Conciliado.");
       void reload();
     } catch {

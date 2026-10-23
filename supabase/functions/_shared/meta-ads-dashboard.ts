@@ -1,3 +1,4 @@
+import { formatYmdSaoPaulo } from "./gestao-date-br.ts";
 import {
   META_ADS_INSIGHT_FIELDS,
   META_ADS_PERIODS,
@@ -222,8 +223,7 @@ export function metaAdsDashboardPeriodParams(
   if (period !== "7_dias") {
     return { date_preset: META_ADS_PERIODS[period].preset };
   }
-  const date = (timestamp: number) =>
-    new Date(timestamp).toISOString().slice(0, 10);
+  const date = (timestamp: number) => formatYmdSaoPaulo(new Date(timestamp));
   return {
     time_range: JSON.stringify({
       since: date(now - 6 * 86_400_000),

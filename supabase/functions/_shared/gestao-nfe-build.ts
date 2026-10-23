@@ -1,4 +1,5 @@
 import type { GestaoNfeOperacaoConfig, GestaoNfeOperacaoKey } from "./gestao-nfe-config-default.ts";
+import { hojeSaoPaulo } from "./gestao-date-br.ts";
 
 export type GestaoNfeEmitenteConfig = {
   cnpj: string;
@@ -85,8 +86,8 @@ export function buildFocusNfePayload(input: {
 
   const payload: Record<string, unknown> = {
     natureza_operacao: op.natureza_operacao.slice(0, 60),
-    data_emissao: input.dataEmissao ?? new Date().toISOString().slice(0, 10),
-    data_entrada_saida: input.dataEmissao ?? new Date().toISOString().slice(0, 10),
+    data_emissao: input.dataEmissao ?? hojeSaoPaulo(),
+    data_entrada_saida: input.dataEmissao ?? hojeSaoPaulo(),
     tipo_documento: input.tipo === "entrada_compra_pf" ? "0" : "1",
     finalidade_emissao: "1",
     cnpj_emitente: cnpjEmit,

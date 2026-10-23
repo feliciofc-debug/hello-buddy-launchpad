@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { hojeSaoPaulo, formatYmdSaoPaulo } from "../../supabase/functions/_shared/gestao-date-br.ts";
 
 export type DashboardPeriod = 'hoje' | '7d' | '30d';
 
@@ -229,7 +230,7 @@ export function useDashboardMetrics(period: DashboardPeriod) {
       const envios = (enviosRes.data || []).filter((e) => dentro(e.timestamp));
       const grupos = new Map<string, { enviados: number; falhas: number; respostas: number; quando: string }>();
       envios.forEach((e) => {
-        const key = e.campanha_id || `sem-campanha-${new Date(e.timestamp).toISOString().slice(0, 10)}`;
+        const key = e.campanha_id || `sem-campanha-${formatYmdSaoPaulo(new Date(e.timestamp))}`;
         const g =
           grupos.get(key) || { enviados: 0, falhas: 0, respostas: 0, quando: e.timestamp as string };
         if (e.sucesso) g.enviados += 1;

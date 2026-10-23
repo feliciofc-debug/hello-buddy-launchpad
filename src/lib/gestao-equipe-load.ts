@@ -3,6 +3,7 @@ import { DEFAULT_COMISSAO_REGRA, normalizeComissaoRegra } from "../../supabase/f
 import type { GestaoMetaConfigJson } from "../../supabase/functions/_shared/gestao-meta-calc.ts";
 import { competenciaFromDate } from "../../supabase/functions/_shared/gestao-meta-calc.ts";
 import { supabase } from "@/integrations/supabase/client";
+import { intervaloCompetencia } from "../../supabase/functions/_shared/gestao-date-br.ts";
 
 export type GestaoVendedor = {
   id: string;
@@ -112,9 +113,7 @@ export async function loadComissaoAutoMes(
   userId: string,
   competencia: string,
 ): Promise<Map<string, number>> {
-  const [y, m] = competencia.split("-").map(Number);
-  const start = `${competencia}-01`;
-  const end = new Date(y, m, 0).toISOString().slice(0, 10);
+  const { start, end } = intervaloCompetencia(competencia);
   const { data: vendas } = await supabase.from("veiculo_venda" as "veiculos_estoque")
     .select("veiculo_id, data_venda")
     .eq("user_id", userId)

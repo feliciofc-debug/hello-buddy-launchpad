@@ -1,3 +1,4 @@
+import { hojeSaoPaulo } from "./gestao-date-br.ts";
 export type GestaoDespesaLine = { valor: number; categoria?: string };
 
 export type GestaoLucroInput = {
@@ -60,7 +61,7 @@ export function calcGestaoLucro(input: GestaoLucroInput): GestaoLucroResult {
     lucroProjetado = input.precoAnunciado - (investido as number);
   }
 
-  const endDate = input.dataVenda ?? new Date().toISOString().slice(0, 10);
+  const endDate = input.dataVenda ?? hojeSaoPaulo();
   const diasEstoque = input.dataCompra
     ? daysBetween(input.dataCompra, endDate)
     : null;
