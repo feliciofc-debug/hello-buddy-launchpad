@@ -133,6 +133,15 @@ async function jaExisteFipeMesRef(
   return (data?.length ?? 0) > 0;
 }
 
+export type GiroFipeRefreshResultadoItem = {
+  veiculo_id: string;
+  status: "gravado" | "nao_encontrada";
+  valor?: number;
+  referencia_mes?: string;
+  motivo?: string;
+  label?: string;
+};
+
 export async function runGiroFipeRefreshBatch(
   sb: SupabaseClient,
   userId: string,
@@ -142,7 +151,9 @@ export async function runGiroFipeRefreshBatch(
   gravados: number;
   nao_encontrados: number;
   pendentes_restantes: number;
+  pendentes_total: number;
   falhas_ids: string[];
+  resultados: GiroFipeRefreshResultadoItem[];
 }> {
   const limit = Math.min(DEFAULT_LIMIT, Math.max(1, options.limit ?? DEFAULT_LIMIT));
   const competenciaAtual = competenciaFromYmdSaoPaulo();
@@ -168,6 +179,7 @@ export async function runGiroFipeRefreshBatch(
   let gravados = 0;
   let naoEncontrados = 0;
   const falhas_ids: string[] = [];
+  const resultados: GiroFipeRefreshResultadoItem[] = [];
 
   for (const id of idsLote) {
     const veiculo = veiculoById.get(id);
@@ -181,6 +193,11 @@ export async function runGiroFipeRefreshBatch(
     if (consulta.status !== "ok") {
       naoEncontrados += 1;
       falhas_ids.push(String(veiculo.id));
+      resultados.push({
+        veiculo_id: String(veiculo.id),
+        status: "nao_encontrada",
+        motivo: consulta.motivo,
+      });
       continue;
     }
     const duplicado = await jaExisteFipeMesRef(sb, userId, String(veiculo.id), consulta.referenciaMes);
@@ -204,14 +221,30 @@ export async function runGiroFipeRefreshBatch(
       ];
     }
     gravados += 1;
+    resultados.push({
+      veiculo_id: String(veiculo.id),
+      status: "gravado",
+      valor: consulta.valor,
+      referencia_mes: consulta.referenciaMes,
+      label: consulta.label,
+    });
   }
 
+  const pendentes_total = listarPendentesFipeOrdenados(
+    veiculoIds,
+    refs,
+    competenciaAtual,
+    skipIds,
+  ).length;
+
   return {
-    processados: idsLote.length,
+    processados: resultados.length,
     gravados,
     nao_encontrados: naoEncontrados,
     pendentes_restantes: pendentesRestantes,
+    pendentes_total,
     falhas_ids,
+    resultados,
   };
 }
 

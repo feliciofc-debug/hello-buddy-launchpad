@@ -37,6 +37,38 @@ export function formatDataResumoBr(ymd: string): string {
   return `${d}/${m}/${y.slice(2)}`;
 }
 
+/** Variável de template Meta: uma linha, sem \\n \\t nem 4+ espaços. */
+export function sanitizarVariavelTemplateMeta(value: string): string {
+  return value
+    .replace(/[\n\r\t]+/g, " ")
+    .replace(/ {2,}/g, " ")
+    .trim();
+}
+
+export function formatNumeroTemplate(value: number | null): string {
+  if (value == null) return "—";
+  return sanitizarVariavelTemplateMeta(
+    value.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 }),
+  );
+}
+
+export function montarVariaveisTemplateGiroResumo(
+  agregado: GiroResumoAgregado,
+  hojeYmd: string,
+): [string, string, string, string, string] {
+  const atencao = agregado.faixas.atencao + agregado.faixas.risco + agregado.faixas.decisao;
+  return [
+    sanitizarVariavelTemplateMeta(formatDataResumoBr(hojeYmd)),
+    sanitizarVariavelTemplateMeta(String(agregado.total)),
+    sanitizarVariavelTemplateMeta(String(atencao)),
+    formatNumeroTemplate(agregado.custoFinanceiroHoje),
+    formatNumeroTemplate(agregado.riscoProjetado30d),
+  ];
+}
+
+export const GESTAO_GIRO_RESUMO_TEMPLATE_CORPO =
+  "📊 Resumo do estoque de {{1}}: {{2}} carros, {{3}} exigem atenção. O estoque parado custou R$ {{4}} hoje e o risco projetado em 30 dias é de R$ {{5}}. Veja os detalhes no painel da Gestão.";
+
 export function agregarGiroResumo(
   items: GiroResumoVeiculoLinha[],
   hojeYmd: string,

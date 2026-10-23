@@ -1,9 +1,12 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   agregarGiroResumo,
+  GESTAO_GIRO_RESUMO_TEMPLATE_CORPO,
   horaResumoAtingida,
   montarMensagemGiroResumo,
+  montarVariaveisTemplateGiroResumo,
   resumoJaEnviadoHoje,
+  sanitizarVariavelTemplateMeta,
 } from "./giro-resumo-mensagem.ts";
 import { decidirModoEnvioResumo } from "./giro-resumo-whatsapp.ts";
 import type { EstoqueGiroResultado } from "./estoque-giro-calc.ts";
@@ -175,4 +178,29 @@ Deno.test("G90-2 — horário configurável 18h SP", () => {
   const after = new Date("2026-10-23T21:00:00Z"); // 18:00 SP
   assertEquals(horaResumoAtingida("18:00:00", before), false);
   assertEquals(horaResumoAtingida("18:00:00", after), true);
+});
+
+Deno.test("G90-2.1 — variáveis do template Meta sem quebra de linha", () => {
+  const dirty = sanitizarVariavelTemplateMeta("linha1\nlinha2\t tab    spaces");
+  assert(!dirty.includes("\n"));
+  assert(!dirty.includes("\t"));
+  assert(!dirty.includes("    "));
+
+  const ag = agregarGiroResumo([
+    {
+      label: "Corolla",
+      dias: 40,
+      faixa: "atencao",
+      resultado: resultado({ faixa: "atencao", custoDeEsperar30d: 18_400 }),
+      custoFinanceiroDiario: 124,
+    },
+  ], "2026-10-23");
+  const vars = montarVariaveisTemplateGiroResumo(ag, "2026-10-23");
+  assertEquals(vars.length, 5);
+  for (const v of vars) {
+    assert(!/[\n\r\t]/.test(v));
+    assert(!/ {4,}/.test(v));
+  }
+  assert(GESTAO_GIRO_RESUMO_TEMPLATE_CORPO.includes("{{1}}"));
+  assert(GESTAO_GIRO_RESUMO_TEMPLATE_CORPO.includes("{{5}}"));
 });

@@ -22,7 +22,29 @@ export type GestaoGiroConfigRow = {
   ipva_loja_paga_virada: boolean;
   resumo_diario_ativo?: boolean;
   resumo_diario_hora?: string;
+  resumo_ultimo_envio?: string | null;
+  resumo_ultimo_status?: "enviado" | "parcial" | "bloqueado_24h" | "falha" | null;
 };
+
+export function formatResumoDiarioUltimoLabel(
+  config: Pick<GestaoGiroConfigRow, "resumo_ultimo_envio" | "resumo_ultimo_status"> | null,
+): string | null {
+  if (!config?.resumo_ultimo_envio) return null;
+  const [y, m, d] = String(config.resumo_ultimo_envio).slice(0, 10).split("-");
+  const dataBr = d && m && y ? `${d}/${m}/${y}` : config.resumo_ultimo_envio;
+  switch (config.resumo_ultimo_status) {
+    case "enviado":
+      return `Último resumo: enviado em ${dataBr}.`;
+    case "parcial":
+      return `Último resumo: parcial em ${dataBr} — nem todos receberam (ex.: fora da janela 24h).`;
+    case "bloqueado_24h":
+      return "Último resumo: não enviado — o dono não falou com o Jarvis nas últimas 24h.";
+    case "falha":
+      return `Último resumo: falha técnica em ${dataBr}; o sistema pode tentar de novo no mesmo dia.`;
+    default:
+      return `Último resumo: tentativa em ${dataBr}.`;
+  }
+}
 
 export type GestaoGiroItem = {
   veiculo: GestaoVeiculoEnriched;

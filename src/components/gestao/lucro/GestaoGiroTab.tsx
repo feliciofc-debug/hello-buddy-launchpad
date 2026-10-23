@@ -27,6 +27,7 @@ import { Label } from "@/components/ui/label";
 import type { GestaoVeiculoEnriched } from "@/lib/gestao-lucro-types.ts";
 import { vehicleLabel } from "@/lib/gestao-lucro-data.ts";
 import {
+  formatResumoDiarioUltimoLabel,
   loadGestaoGiro,
   refreshGestaoGiroFipeCompleto,
   saveGestaoGiroConfig,
@@ -224,6 +225,7 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
     config.custo_financeiro_mensal_pct == null ||
     config.desvalorizacao_mensal_pct == null ||
     config.repasse_desconto_fipe_pct == null;
+  const resumoUltimoLabel = formatResumoDiarioUltimoLabel(config);
 
   if (loading && !items.length) {
     return <div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -450,6 +452,9 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
                       onChange={(e) => setForm((f) => ({ ...f, resumoHora: e.target.value }))}
                     />
                   </div>
+                  {resumoUltimoLabel ? (
+                    <p className="text-xs text-muted-foreground">{resumoUltimoLabel}</p>
+                  ) : null}
                 </div>
               </div>
             </div>

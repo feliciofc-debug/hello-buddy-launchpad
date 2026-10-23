@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { loadGestaoAuthContext } from "./gestao-auth-phone.ts";
+import {
+  montarVariaveisTemplateGiroResumo,
+  type GiroResumoAgregado,
+} from "./giro-resumo-mensagem.ts";
 import { normalizeOwnerPhone } from "./owner-phone.ts";
 import { isInsideWhatsAppWindow } from "./whatsapp-marketing-campaign.ts";
 
@@ -89,6 +93,8 @@ export async function enviarGiroResumoWhatsApp(
     userId: string;
     phone: string;
     message: string;
+    agregado?: GiroResumoAgregado;
+    hojeYmd?: string;
   },
 ): Promise<GiroResumoSendResult> {
   const phone = normalizeOwnerPhone(input.phone);
@@ -144,7 +150,9 @@ export async function enviarGiroResumoWhatsApp(
       user_id: input.userId,
       to: phone,
       template_id: tpl!.id,
-      variaveis: [input.message.slice(0, 900)],
+      variaveis: input.agregado && input.hojeYmd
+        ? [...montarVariaveisTemplateGiroResumo(input.agregado, input.hojeYmd)]
+        : [input.message.slice(0, 900)],
       tipo: "gestao_giro_resumo",
       registrar: true,
     }),

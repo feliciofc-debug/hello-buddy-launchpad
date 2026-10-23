@@ -19,15 +19,18 @@ Sem header válido → **401**.
 ## Frequência sugerida
 
 - **A cada 15 minutos** (cron no servidor).
-- Cada loja só envia **uma vez por dia** (campo `resumo_ultimo_envio`), após o horário configurado em `resumo_diario_hora` (padrão **18:00** America/Sao_Paulo).
+- Cada loja faz **no máximo uma tentativa por dia** (campo `resumo_ultimo_envio` gravado na **primeira** tentativa, qualquer resultado), após o horário configurado em `resumo_diario_hora` (padrão **18:00** America/Sao_Paulo).
+- **Exceção:** se **todos** os destinatários falharem por erro técnico (HTTP/5xx, timeout), até **2 novas tentativas** no mesmo dia (`resumo_tentativas_tecnico`), **sem reenviar** a quem já recebeu (`resumo_phones_ok`).
+- Status persistido em `resumo_ultimo_status`: `enviado` | `parcial` | `bloqueado_24h` | `falha` (visível em Configurar regras).
 
 ## WhatsApp (janela 24h)
 
 - Dentro da janela: texto livre via `whatsapp-send-message`.
 - Fora da janela: template transacional aprovado, se existir.
   - Nome preferido: variável de ambiente `GESTAO_GIRO_RESUMO_TEMPLATE_NOME` (padrão `gestao_giro_resumo_v1`).
+  - Corpo fixo + 5 variáveis curtas (sem quebra de linha): ver [gestao-giro-resumo-template-meta.md](./gestao-giro-resumo-template-meta.md).
   - Fallback: template `transacional` com `nome_meta` contendo `giro` e `resumo`.
-- Se estiver fora da janela **e** não houver template → **não envia** (resposta `falha_envio`, motivo `fora da janela 24h`); `resumo_ultimo_envio` **não** é atualizado.
+- Se estiver fora da janela **e** não houver template → destinatário bloqueado; o dia ainda é marcado (`resumo_ultimo_status` pode ser `bloqueado_24h` ou `parcial` se outros receberam).
 
 ## FIPE automática
 
