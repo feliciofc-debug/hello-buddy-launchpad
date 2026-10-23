@@ -40,7 +40,10 @@ Operações usadas: `autenticar`, `ObterMarca`, `ObterModelo`, `ObterVersao`,
 | `cor` | `CodigoCor` |
 | `combustivel` | `CodigoCombustivel` |
 | `blindado` | `Blindado` |
-| `preco` | `PrecoVenda` e `PrecoReal` |
+| `placa` (cadastro interno) | `Placa` (obrigatória na API; não aparece no anúncio) |
+| `preco` | `PrecoVenda` |
+| preço promocional “de” (se existir e for maior) | `PrecoReal` (senão `0`) |
+| checkboxes na publicação | dez campos Sim/Não após `Blindado` |
 | `descricao` | `Observacao` |
 | `opcionais` | `Opcional/CodigoOpcional` |
 | `fotos[]` | chamadas `IncluirFoto`, na ordem do estoque |
@@ -50,11 +53,17 @@ automaticamente por nome normalizado **exato**. Sem correspondência exata, a
 publicação é bloqueada e o usuário escolhe o de/para. Portas e modalidade não
 recebem valor arbitrário.
 
-O tipo `AnuncioWM` e o guia prático do manual divergem sobre a obrigatoriedade
-da placa: o primeiro marca como obrigatória; o segundo a trata como opcional.
-A integração não inventa placa nem qualquer outro dado ausente. A placa interna
-do estoque também não é enviada, pois o schema a classifica como dado não
-exponível em vitrines ou portais.
+Em homologação (PTS-1463), a placa é **obrigatória** (`43|74`). A integração
+envia a placa cadastrada no estoque (normalizada, sem hífen) somente para
+conferência na Webmotors — ela não é exibida no anúncio público. Sem placa no
+cadastro, a publicação é bloqueada com mensagem amigável.
+
+Os dez campos Sim/Não (`43|46`…`43|54`) são sempre enviados. O sistema **não**
+marca “Sim” automaticamente: na publicação, a loja marca o que for verdade;
+itens desmarcados vão como “Não”.
+
+`PrecoReal` deve ser `0` ou um preço “de” promocional **maior** que
+`PrecoVenda`. Enviar os dois iguais gera `22|78`.
 
 `Observacao` aceita no máximo 500 caracteres. Cada foto aceita no máximo 500
 Kbytes. O manual retorna erro quando a quantidade de fotos é excedida, mas não
@@ -104,7 +113,7 @@ WEBMOTORS_CRED_KEY=
 Somente para o script manual:
 
 ```text
-WEBMOTORS_HML_TEST_VEHICLE_JSON={"CodigoModalidade":7,"CodigoMarca":1,"CodigoModelo":2,"CodigoVersao":3,"AnoDoModelo":2024,"AnoFabricacao":2023,"Km":1000,"CodigoCambio":4,"NrPortas":4,"CodigoCor":5,"CodigoCombustivel":6,"Blindado":"N","PrecoReal":100000,"PrecoVenda":100000,"Observacao":"Veiculo de teste","OpcionalCodigos":[]}
+WEBMOTORS_HML_TEST_VEHICLE_JSON={"CodigoModalidade":7,"CodigoMarca":1,"CodigoModelo":2,"CodigoVersao":3,"AnoDoModelo":2024,"AnoFabricacao":2023,"Km":1000,"Placa":"ABC1D23","CodigoCambio":4,"NrPortas":4,"CodigoCor":5,"CodigoCombustivel":6,"Blindado":"N","UnicoDono":"N","PrecoReal":0,"PrecoVenda":100000,"Observacao":"Veiculo de teste","OpcionalCodigos":[]}
 ```
 
 Os códigos acima são apenas um exemplo de formato. Devem ser substituídos pelos

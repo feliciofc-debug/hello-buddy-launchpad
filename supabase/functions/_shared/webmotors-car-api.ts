@@ -186,18 +186,29 @@ export type WmAnuncioPayload = {
   AnoDoModelo: number;
   AnoFabricacao: number;
   Km: number;
+  Placa: string;
   CodigoCambio: number;
   NrPortas: number;
   CodigoCor: number;
   CodigoCombustivel: number;
   Blindado: string;
+  AdaptadoDeficientesFisicos: string;
+  UnicoDono: string;
+  Alienado: string;
+  IpvaPago: string;
+  NaoAceitaTroca: string;
+  RevisadoOficinaAgendaDoCarro: string;
+  RevisoesEmConcessionaria: string;
+  GarantiaDeFabrica: string;
+  Licenciado: string;
+  Leilao: string;
   PrecoReal: number;
   PrecoVenda: number;
   Observacao: string;
   OpcionalCodigos: number[];
 };
 
-function buildAnuncioXml(p: WmAnuncioPayload): string {
+export function buildAnuncioXml(p: WmAnuncioPayload): string {
   const opcionais = p.OpcionalCodigos.map((c) =>
     `<OpcionalWM><CodigoOpcional>${c}</CodigoOpcional></OpcionalWM>`
   ).join("");
@@ -211,11 +222,22 @@ function buildAnuncioXml(p: WmAnuncioPayload): string {
     `<AnoDoModelo>${p.AnoDoModelo}</AnoDoModelo>` +
     `<AnoFabricacao>${p.AnoFabricacao}</AnoFabricacao>` +
     `<Km>${p.Km}</Km>` +
+    `<Placa>${escapeXml(p.Placa)}</Placa>` +
     `<CodigoCambio>${p.CodigoCambio}</CodigoCambio>` +
     `<NrPortas>${p.NrPortas}</NrPortas>` +
     `<CodigoCor>${p.CodigoCor}</CodigoCor>` +
     `<CodigoCombustivel>${p.CodigoCombustivel}</CodigoCombustivel>` +
     `<Blindado>${escapeXml(p.Blindado)}</Blindado>` +
+    `<AdaptadoDeficientesFisicos>${escapeXml(p.AdaptadoDeficientesFisicos)}</AdaptadoDeficientesFisicos>` +
+    `<UnicoDono>${escapeXml(p.UnicoDono)}</UnicoDono>` +
+    `<Alienado>${escapeXml(p.Alienado)}</Alienado>` +
+    `<IpvaPago>${escapeXml(p.IpvaPago)}</IpvaPago>` +
+    `<NaoAceitaTroca>${escapeXml(p.NaoAceitaTroca)}</NaoAceitaTroca>` +
+    `<RevisadoOficinaAgendaDoCarro>${escapeXml(p.RevisadoOficinaAgendaDoCarro)}</RevisadoOficinaAgendaDoCarro>` +
+    `<RevisoesEmConcessionaria>${escapeXml(p.RevisoesEmConcessionaria)}</RevisoesEmConcessionaria>` +
+    `<GarantiaDeFabrica>${escapeXml(p.GarantiaDeFabrica)}</GarantiaDeFabrica>` +
+    `<Licenciado>${escapeXml(p.Licenciado)}</Licenciado>` +
+    `<Leilao>${escapeXml(p.Leilao)}</Leilao>` +
     `<PrecoReal>${p.PrecoReal}</PrecoReal>` +
     `<PrecoVenda>${p.PrecoVenda}</PrecoVenda>` +
     `<Observacao>${escapeXml(p.Observacao)}</Observacao>` +

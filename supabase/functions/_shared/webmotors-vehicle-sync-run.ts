@@ -19,6 +19,7 @@ import {
   mapVehicleToWebmotorsMoto,
 } from "./webmotors-map-moto.ts";
 import { fetchPublicImageAsBase64 } from "./webmotors-photo-base64.ts";
+import type { WebmotorsAnuncioSnBooleans } from "./webmotors-anuncio-sn.ts";
 import type { VeiculoEstoqueRow } from "./webmotors-vehicle-types.ts";
 
 export function webmotorsPhotoOrderChanged(
@@ -36,7 +37,11 @@ export function webmotorsPhotoOrderChanged(
 
 export async function runWebmotorsVehicleSync(
   sb: any,
-  input: { userId: string; veiculoId: string },
+  input: {
+    userId: string;
+    veiculoId: string;
+    anuncioSn?: WebmotorsAnuncioSnBooleans;
+  },
 ): Promise<{ ok: boolean; error?: string; blocking?: unknown[] }> {
   const { data: vehicle } = await sb.from("veiculos_estoque")
     .select("*")
@@ -104,6 +109,7 @@ export async function runWebmotorsVehicleSync(
     catalog,
     defaultModalidade,
     existingCodigoAnuncio: codigoAnuncio,
+    anuncioSn: input.anuncioSn,
   });
   if (!mapped.ok) {
     return {

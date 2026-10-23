@@ -21,6 +21,7 @@ import {
   mapVehicleToWebmotorsMoto,
 } from "./webmotors-map-moto.ts";
 import { fetchPublicImageAsBase64 } from "./webmotors-photo-base64.ts";
+import type { WebmotorsAnuncioSnBooleans } from "./webmotors-anuncio-sn.ts";
 import type { VeiculoEstoqueRow } from "./webmotors-vehicle-types.ts";
 
 const PHOTO_PARTIAL_ERROR =
@@ -45,7 +46,11 @@ const defaultPublishApi: WebmotorsPublishApi = {
 
 export async function runWebmotorsVehiclePublish(
   sb: any,
-  input: { userId: string; veiculoId: string },
+  input: {
+    userId: string;
+    veiculoId: string;
+    anuncioSn?: WebmotorsAnuncioSnBooleans;
+  },
   deps: WebmotorsPublishDeps = {},
 ): Promise<
   { ok: boolean; external_id?: string; error?: string; blocking?: unknown[] }
@@ -126,6 +131,7 @@ export async function runWebmotorsVehiclePublish(
     manualMap: mapRow,
     catalog,
     defaultModalidade,
+    anuncioSn: input.anuncioSn,
   });
   if (!mapped.ok) {
     return {

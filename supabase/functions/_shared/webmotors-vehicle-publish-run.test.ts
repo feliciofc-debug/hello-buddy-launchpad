@@ -17,6 +17,7 @@ const catalogStub: WmCatalogBundle = {
 const vehicleRow = {
   id: "v1",
   user_id: "u1",
+  placa: "ABC1D23",
   marca: "Toyota",
   modelo: "Corolla",
   versao: "X",

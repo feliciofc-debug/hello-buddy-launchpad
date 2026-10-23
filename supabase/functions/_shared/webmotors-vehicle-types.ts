@@ -1,7 +1,9 @@
 export type VeiculoEstoqueRow = {
   id: string;
   user_id: string;
+  placa?: string | null;
   segmento?: string | null;
+  preco_de?: number | null;
   marca: string;
   modelo: string;
   versao: string | null;

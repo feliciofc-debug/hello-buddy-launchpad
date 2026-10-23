@@ -3,6 +3,8 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { WebmotorsDeparaDialog } from "@/components/webmotors/WebmotorsDeparaDialog";
+import { WebmotorsPublishDialog } from "@/components/webmotors/WebmotorsPublishDialog";
+import type { WebmotorsAnuncioSnForm } from "@/components/webmotors/webmotorsAnuncioSnFields";
 import {
   PortalPublishChecklist,
   type PortalPublishReadiness,
@@ -25,6 +27,7 @@ export function WebmotorsVehicleActions(props: {
 }) {
   const [busy, setBusy] = useState(false);
   const [deparaOpen, setDeparaOpen] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
 
   if (!props.wmConnected) {
     return (
@@ -52,12 +55,13 @@ export function WebmotorsVehicleActions(props: {
     return false;
   };
 
-  const publish = async () => {
+  const publish = async (anuncioSn: WebmotorsAnuncioSnForm) => {
     setBusy(true);
     const r = await invokeFunctionComCorpo("webmotors-vehicle-publish", {
-      body: { veiculo_id: props.veiculoId },
+      body: { veiculo_id: props.veiculoId, anuncio_sn: anuncioSn },
     });
     setBusy(false);
+    setPublishOpen(false);
     if (!r.success) {
       handleFailure(r);
       props.onChanged();
@@ -106,8 +110,14 @@ export function WebmotorsVehicleActions(props: {
           <p className="text-xs text-destructive">{props.portal.last_error}</p>
         )}
         {!published ? (
-          <Button size="sm" variant="outline" className="w-full" disabled={busy} onClick={() => void publish()}>
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Publicar na Webmotors"}
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full"
+            disabled={busy}
+            onClick={() => setPublishOpen(true)}
+          >
+            Publicar na Webmotors
           </Button>
         ) : (
           <>
@@ -128,6 +138,12 @@ export function WebmotorsVehicleActions(props: {
           setDeparaOpen(false);
           props.onChanged();
         }}
+      />
+      <WebmotorsPublishDialog
+        open={publishOpen}
+        busy={busy}
+        onClose={() => setPublishOpen(false)}
+        onConfirm={(anuncioSn) => void publish(anuncioSn)}
       />
     </>
   );

@@ -5,12 +5,17 @@ import {
   loadWebmotorsHomologCredentials,
 } from "../supabase/functions/_shared/webmotors-config.ts";
 import {
+  WEBMOTORS_ANUNCIO_SN_FIELDS,
+  webmotorsAnuncioSnFromBooleans,
+} from "../supabase/functions/_shared/webmotors-anuncio-sn.ts";
+import {
   wmAlterarCarro,
   type WmAnuncioPayload,
   wmExcluirCarro,
   wmIncluirCarro,
   wmObterEstoqueAtual,
 } from "../supabase/functions/_shared/webmotors-car-api.ts";
+import { normalizeWebmotorsPlaca } from "../supabase/functions/_shared/webmotors-map-car.ts";
 
 const execute = Deno.args.includes("--execute");
 const rawVehicle = Deno.env.get("WEBMOTORS_HML_TEST_VEHICLE_JSON") ?? "";
@@ -38,7 +43,6 @@ function loadTestVehicle(): WmAnuncioPayload {
     "NrPortas",
     "CodigoCor",
     "CodigoCombustivel",
-    "PrecoReal",
     "PrecoVenda",
   ];
   const missing = numericFields.filter((field) =>
@@ -51,11 +55,34 @@ function loadTestVehicle(): WmAnuncioPayload {
       }.`,
     );
   }
+  const placa = normalizeWebmotorsPlaca(String(parsed.Placa ?? ""));
+  if (!placa) {
+    throw new Error("WEBMOTORS_HML_TEST_VEHICLE_JSON deve incluir Placa válida.");
+  }
+  const precoReal = Number.isFinite(Number(parsed.PrecoReal))
+    ? Number(parsed.PrecoReal)
+    : 0;
+  const precoVenda = Number(parsed.PrecoVenda);
+  if (precoReal !== 0 && precoReal <= precoVenda) {
+    throw new Error(
+      "PrecoReal deve ser 0 ou maior que PrecoVenda no veículo de teste.",
+    );
+  }
+  const snBooleans: Record<string, boolean> = {};
+  for (const field of WEBMOTORS_ANUNCIO_SN_FIELDS) {
+    const v = (parsed as Record<string, unknown>)[field];
+    if (v === true || v === "S" || v === "s") snBooleans[field] = true;
+  }
+  const sn = webmotorsAnuncioSnFromBooleans(snBooleans);
   return {
     CodigoAnuncio: 0,
     TipoAnuncio: "U",
     Km: Number(parsed.Km ?? 0),
+    Placa: placa,
     Blindado: parsed.Blindado === "S" ? "S" : "N",
+    ...sn,
+    PrecoReal: precoReal,
+    PrecoVenda: precoVenda,
     Observacao: String(parsed.Observacao ?? "Veículo de teste de homologação"),
     OpcionalCodigos: Array.isArray(parsed.OpcionalCodigos)
       ? parsed.OpcionalCodigos.map(Number).filter(Number.isFinite)
@@ -96,7 +123,6 @@ async function main() {
     await wmAlterarCarro("homolog", hash, {
       ...vehicle,
       CodigoAnuncio: codigoAnuncio,
-      PrecoReal: novoPreco,
       PrecoVenda: novoPreco,
     });
     console.log("Preço do anúncio de teste alterado.");

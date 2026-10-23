@@ -1,3 +1,5 @@
+import type { WebmotorsAnuncioSnBooleans } from "./webmotors-anuncio-sn.ts";
+import { webmotorsAnuncioSnFromBooleans } from "./webmotors-anuncio-sn.ts";
 import type { WmAnuncioPayload, WmCatalogItem } from "./webmotors-car-api.ts";
 import {
   normalizeCatalogLabel,
@@ -64,19 +66,32 @@ export type WmCatalogBundle = {
   opcionais: WmCatalogItem[];
 };
 
+/** Placa para conferência Webmotors (não exibida no anúncio). */
+export function normalizeWebmotorsPlaca(
+  raw: string | null | undefined,
+): string | null {
+  const n = String(raw ?? "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  return n.length >= 7 ? n : null;
+}
+
 /**
  * PrecoVenda = preço anunciado (estoque AMZ).
- * PrecoReal: manual §5 indisponível aqui; convenção de integradores trata como preço interno/custo.
- * AMZ não envia custo — enviamos o mesmo preço público para satisfazer o WSDL (ambos obrigatórios).
+ * PrecoReal = 0 ou preço promocional "de" (maior que PrecoVenda). Igual ao de venda é recusado (22|78).
  */
 export function webmotorsPricesFromEstoque(
   preco: number | null,
+  precoDe?: number | null,
 ): { precoVenda: number; precoReal: number } | null {
   if (preco == null || !Number.isFinite(Number(preco)) || Number(preco) <= 0) {
     return null;
   }
-  const v = Math.round(Number(preco) * 100) / 100;
-  return { precoVenda: v, precoReal: v };
+  const precoVenda = Math.round(Number(preco) * 100) / 100;
+  let precoReal = 0;
+  if (precoDe != null && Number.isFinite(Number(precoDe))) {
+    const de = Math.round(Number(precoDe) * 100) / 100;
+    if (de > precoVenda) precoReal = de;
+  }
+  return { precoVenda, precoReal };
 }
 
 export function mapVehicleToWebmotorsCar(input: {
@@ -85,6 +100,7 @@ export function mapVehicleToWebmotorsCar(input: {
   catalog: WmCatalogBundle;
   defaultModalidade: number | null;
   existingCodigoAnuncio?: number;
+  anuncioSn?: WebmotorsAnuncioSnBooleans;
 }): WmMapResult {
   const blocking: WmBlockingItem[] = [];
   const v = input.vehicle;
@@ -124,7 +140,16 @@ export function mapVehicleToWebmotorsCar(input: {
     });
   }
 
-  const prices = webmotorsPricesFromEstoque(v.preco);
+  const placa = normalizeWebmotorsPlaca(v.placa);
+  if (!placa) {
+    blocking.push({
+      field: "placa",
+      message:
+        "Cadastre a placa do veículo para publicar na Webmotors.",
+    });
+  }
+
+  const prices = webmotorsPricesFromEstoque(v.preco, v.preco_de);
   if (!prices) {
     blocking.push({ field: "preco", message: "Informe o preço do veículo." });
   }
@@ -164,11 +189,14 @@ export function mapVehicleToWebmotorsCar(input: {
     portas == null ||
     modalidade == null ||
     !prices ||
+    !placa ||
     !anoFab ||
     !anoMod
   ) {
     return { ok: false, blocking };
   }
+
+  const sn = webmotorsAnuncioSnFromBooleans(input.anuncioSn);
 
   const opcionais: number[] = m?.opcionais?.length
     ? m.opcionais
@@ -190,11 +218,22 @@ export function mapVehicleToWebmotorsCar(input: {
     AnoDoModelo: anoMod,
     AnoFabricacao: anoFab,
     Km: v.km ?? 0,
+    Placa: placa,
     CodigoCambio: cambCod,
     NrPortas: portas,
     CodigoCor: corCod,
     CodigoCombustivel: combCod,
     Blindado: v.blindado ? "S" : "N",
+    AdaptadoDeficientesFisicos: sn.AdaptadoDeficientesFisicos,
+    UnicoDono: sn.UnicoDono,
+    Alienado: sn.Alienado,
+    IpvaPago: sn.IpvaPago,
+    NaoAceitaTroca: sn.NaoAceitaTroca,
+    RevisadoOficinaAgendaDoCarro: sn.RevisadoOficinaAgendaDoCarro,
+    RevisoesEmConcessionaria: sn.RevisoesEmConcessionaria,
+    GarantiaDeFabrica: sn.GarantiaDeFabrica,
+    Licenciado: sn.Licenciado,
+    Leilao: sn.Leilao,
     PrecoReal: prices.precoReal,
     PrecoVenda: prices.precoVenda,
     Observacao: observacao,
