@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
+  Gauge,
   FileSignature,
   LayoutDashboard,
   Receipt,
@@ -13,6 +14,7 @@ import {
 
 export type GestaoLucroAba =
   | "estoque"
+  | "giro"
   | "vendidos"
   | "despesas"
   | "equipe"
@@ -25,6 +27,7 @@ export const GESTAO_ABA_DEFAULT: GestaoLucroAba = "estoque";
 
 const VALID_ABAS = new Set<string>([
   "estoque",
+  "giro",
   "vendidos",
   "despesas",
   "equipe",
@@ -60,6 +63,7 @@ export type GestaoSidebarItem = {
 
 export const GESTAO_SIDEBAR_ITEMS: GestaoSidebarItem[] = [
   { id: "gestao-visao", label: "Visão geral", path: "/gestao/lucro", icon: LayoutDashboard, matchAba: "estoque" },
+  { id: "gestao-giro", label: "Giro 30-60-90", path: gestaoLucroUrl("giro"), icon: Gauge, matchAba: "giro" },
   { id: "gestao-vendas", label: "Vendas e faturamento", path: gestaoLucroUrl("vendidos"), icon: ShoppingCart, matchAba: "vendidos" },
   { id: "gestao-notas", label: "Notas fiscais", path: gestaoLucroUrl("notas"), icon: Receipt, matchAba: "notas" },
   { id: "gestao-contratos", label: "Contratos", path: gestaoLucroUrl("contratos"), icon: FileSignature, matchAba: "contratos" },
@@ -77,6 +81,7 @@ export type GestaoCommandAction = {
 };
 
 export const GESTAO_COMMAND_ACTIONS: GestaoCommandAction[] = [
+  { id: "giro", label: "Giro 30-60-90", keywords: ["giro", "estoque parado", "repasse", "margem", "90 dias"], path: gestaoLucroUrl("giro") },
   { id: "nota", label: "Notas fiscais", keywords: ["nota", "nfe", "fiscal", "faturar", "emitir"], path: gestaoLucroUrl("notas") },
   { id: "vendas", label: "Vendas e faturamento", keywords: ["venda", "vendidos", "faturamento", "faturar"], path: gestaoLucroUrl("vendidos") },
   { id: "contrato", label: "Contratos", keywords: ["contrato", "assinatura", "zapsign"], path: gestaoLucroUrl("contratos") },

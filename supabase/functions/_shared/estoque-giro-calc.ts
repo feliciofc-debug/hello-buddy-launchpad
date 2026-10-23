@@ -1,0 +1,299 @@
+import {
+  calcGestaoComissao,
+  type GestaoComissaoRegraJson,
+} from "./gestao-comissao-calc.ts";
+
+export type EstoqueGiroFaixa = "saudavel" | "atencao" | "risco" | "decisao";
+export type EstoqueGiroFonte = "fipe" | "manual" | "molicar_b2c" | "molicar_b2b" | "molicar_c2b";
+
+export type EstoqueGiroConfig = {
+  faixaAtencaoDias: number;
+  faixaRiscoDias: number;
+  faixaDecisaoDias: number;
+  custoFinanceiroMensalPct: number | null;
+  desvalorizacaoMensalPct: number | null;
+  repasseDescontoFipePct: number | null;
+  uf: string | null;
+  ipvaAliquotaPct: number | null;
+  ipvaLojaPagaVirada: boolean;
+};
+
+export const DEFAULT_ESTOQUE_GIRO_CONFIG: EstoqueGiroConfig = {
+  faixaAtencaoDias: 30,
+  faixaRiscoDias: 60,
+  faixaDecisaoDias: 90,
+  custoFinanceiroMensalPct: null,
+  desvalorizacaoMensalPct: null,
+  repasseDescontoFipePct: null,
+  uf: null,
+  ipvaAliquotaPct: null,
+  ipvaLojaPagaVirada: false,
+};
+
+export type EstoqueGiroReferencia = {
+  fonte: EstoqueGiroFonte;
+  valor: number;
+  capturadoEm?: string | null;
+};
+
+export type EstoqueGiroInput = {
+  hoje: string | Date;
+  dataCompra: string | null;
+  createdAt: string;
+  valorCompra: number | null;
+  despesas: number[];
+  precoAnunciado: number | null;
+  referencias: EstoqueGiroReferencia[];
+  config: EstoqueGiroConfig;
+  regraComissao: GestaoComissaoRegraJson;
+  leadsUltimos30Dias?: number | null;
+};
+
+export type EstoqueGiroResultado = {
+  diasEmEstoque: number;
+  faixa: EstoqueGiroFaixa;
+  dadosIncompletos: string[];
+  custoAtual: number | null;
+  custoFinanceiroAcumulado: number | null;
+  comissaoEstimada: number | null;
+  margemVarejoHoje: number | null;
+  referenciaRepasse: EstoqueGiroReferencia | null;
+  valorRepasseHoje: number | null;
+  margemRepasseHoje: number | null;
+  margemVarejo30d: number | null;
+  margemRepasse30d: number | null;
+  ipvaProjetado: number | null;
+  custoDeEsperar30d: number | null;
+  indiceRisco: number;
+  indiceSemDado: string[];
+  recomendacao: string;
+  porque: string;
+  precoSugerido7d: number | null;
+  passos: Array<{ rotulo: string; valor: number | null; formula: string }>;
+};
+
+const roundMoney = (n: number) => Math.round(n * 100) / 100;
+const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+
+function parseDateOnly(value: string | Date): Date {
+  if (value instanceof Date) return new Date(value.getTime());
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T12:00:00Z` : value;
+  return new Date(normalized);
+}
+
+export function diasEmEstoque(
+  hoje: string | Date,
+  dataCompra: string | null,
+  createdAt: string,
+): number {
+  const end = parseDateOnly(hoje);
+  const start = parseDateOnly(dataCompra || createdAt);
+  if (!Number.isFinite(end.getTime()) || !Number.isFinite(start.getTime())) return 0;
+  return Math.max(0, Math.floor((end.getTime() - start.getTime()) / 86_400_000));
+}
+
+export function faixaEstoqueGiro(
+  dias: number,
+  config: EstoqueGiroConfig,
+): EstoqueGiroFaixa {
+  if (dias < config.faixaAtencaoDias) return "saudavel";
+  if (dias < config.faixaRiscoDias) return "atencao";
+  if (dias < config.faixaDecisaoDias) return "risco";
+  return "decisao";
+}
+
+export function escolherReferenciaRepasse(
+  referencias: EstoqueGiroReferencia[],
+): EstoqueGiroReferencia | null {
+  const latest = (fonte: EstoqueGiroFonte) =>
+    referencias
+      .filter((r) => r.fonte === fonte && r.valor > 0)
+      .sort((a, b) => String(b.capturadoEm ?? "").localeCompare(String(a.capturadoEm ?? "")))[0] ?? null;
+  return latest("molicar_b2b") ?? latest("fipe") ?? null;
+}
+
+function crossesNewYear(hoje: Date): boolean {
+  const future = new Date(hoje.getTime());
+  future.setUTCDate(future.getUTCDate() + 30);
+  return future.getUTCFullYear() > hoje.getUTCFullYear();
+}
+
+function weightedRisk(parts: Array<{ score: number; weight: number; available: boolean }>): number {
+  const available = parts.filter((p) => p.available);
+  const weight = available.reduce((sum, p) => sum + p.weight, 0);
+  if (weight <= 0) return 0;
+  return Math.round(
+    available.reduce((sum, p) => sum + clamp01(p.score) * p.weight, 0) / weight * 100,
+  );
+}
+
+export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResultado {
+  const { config } = input;
+  const dias = diasEmEstoque(input.hoje, input.dataCompra, input.createdAt);
+  const faixa = faixaEstoqueGiro(dias, config);
+  const incompletos: string[] = [];
+  if (input.valorCompra == null || input.valorCompra <= 0) incompletos.push("custo de compra");
+  if (input.precoAnunciado == null || input.precoAnunciado <= 0) incompletos.push("preço anunciado");
+
+  const referencia = escolherReferenciaRepasse(input.referencias);
+  if (!referencia) incompletos.push("FIPE/Molicar B2B");
+
+  const despesas = input.despesas.reduce(
+    (sum, valor) => sum + (Number.isFinite(valor) ? Math.max(0, valor) : 0),
+    0,
+  );
+  const custoFinanceiroAcumulado = input.valorCompra != null &&
+      config.custoFinanceiroMensalPct != null
+    ? input.valorCompra * config.custoFinanceiroMensalPct / 100 * dias / 30
+    : null;
+  const custoAtual = input.valorCompra != null
+    ? roundMoney(input.valorCompra + despesas + (custoFinanceiroAcumulado ?? 0))
+    : null;
+
+  const lucroAntesComissao = custoAtual != null && input.precoAnunciado != null
+    ? input.precoAnunciado - custoAtual
+    : null;
+  const margemAntesComissao = lucroAntesComissao != null && input.precoAnunciado! > 0
+    ? lucroAntesComissao / input.precoAnunciado! * 100
+    : null;
+  const comissao = input.precoAnunciado != null && input.precoAnunciado > 0
+    ? calcGestaoComissao({
+      valorVenda: input.precoAnunciado,
+      lucroLiquido: lucroAntesComissao,
+      margemPct: margemAntesComissao,
+      regra: input.regraComissao,
+    }).total
+    : null;
+  const margemVarejoHoje = custoAtual != null && input.precoAnunciado != null
+    ? roundMoney(input.precoAnunciado - custoAtual - (comissao ?? 0))
+    : null;
+
+  let valorRepasseHoje: number | null = null;
+  if (referencia?.fonte === "molicar_b2b") {
+    valorRepasseHoje = roundMoney(referencia.valor);
+  } else if (referencia && config.repasseDescontoFipePct != null) {
+    valorRepasseHoje = roundMoney(
+      referencia.valor * (1 - config.repasseDescontoFipePct / 100),
+    );
+  }
+  const margemRepasseHoje = valorRepasseHoje != null && custoAtual != null
+    ? roundMoney(valorRepasseHoje - custoAtual)
+    : null;
+
+  const custoFinanceiro30 = input.valorCompra != null &&
+      config.custoFinanceiroMensalPct != null
+    ? input.valorCompra * config.custoFinanceiroMensalPct / 100
+    : 0;
+  const fatorDesvalorizacao = config.desvalorizacaoMensalPct != null
+    ? 1 - config.desvalorizacaoMensalPct / 100
+    : 1;
+  const hoje = parseDateOnly(input.hoje);
+  const baseIpva = referencia?.valor ?? input.precoAnunciado;
+  const ipvaProjetado = config.ipvaLojaPagaVirada &&
+      config.ipvaAliquotaPct != null &&
+      baseIpva != null &&
+      crossesNewYear(hoje)
+    ? roundMoney(baseIpva * config.ipvaAliquotaPct / 100)
+    : 0;
+  const custo30 = custoAtual != null
+    ? custoAtual + custoFinanceiro30 + ipvaProjetado
+    : null;
+  const preco30 = input.precoAnunciado != null
+    ? input.precoAnunciado * fatorDesvalorizacao
+    : null;
+  const comissao30 = preco30 != null
+    ? calcGestaoComissao({
+      valorVenda: preco30,
+      lucroLiquido: custo30 != null ? preco30 - custo30 : null,
+      margemPct: custo30 != null && preco30 > 0 ? (preco30 - custo30) / preco30 * 100 : null,
+      regra: input.regraComissao,
+    }).total
+    : null;
+  const margemVarejo30d = custo30 != null && preco30 != null
+    ? roundMoney(preco30 - custo30 - (comissao30 ?? 0))
+    : null;
+  const repasse30 = valorRepasseHoje != null ? valorRepasseHoje * fatorDesvalorizacao : null;
+  const margemRepasse30d = custo30 != null && repasse30 != null
+    ? roundMoney(repasse30 - custo30)
+    : null;
+  const custoDeEsperar30d = margemVarejoHoje != null && margemVarejo30d != null
+    ? roundMoney(margemVarejoHoje - margemVarejo30d)
+    : null;
+
+  const semDado: string[] = [];
+  if (config.desvalorizacaoMensalPct == null) semDado.push("desvalorização");
+  if (input.leadsUltimos30Dias == null) semDado.push("procura/leads");
+  if (config.ipvaAliquotaPct == null || !config.uf) semDado.push("IPVA/UF");
+  const compression = margemVarejoHoje != null && custoDeEsperar30d != null
+    ? custoDeEsperar30d / Math.max(1, Math.abs(margemVarejoHoje))
+    : 0;
+  const risco = weightedRisk([
+    { score: dias / Math.max(1, config.faixaDecisaoDias), weight: 30, available: true },
+    { score: compression, weight: 25, available: margemVarejoHoje != null && custoDeEsperar30d != null },
+    {
+      score: (config.desvalorizacaoMensalPct ?? 0) / 3,
+      weight: 20,
+      available: config.desvalorizacaoMensalPct != null,
+    },
+    {
+      score: input.leadsUltimos30Dias === 0 ? 1 : input.leadsUltimos30Dias != null ? 1 / (1 + input.leadsUltimos30Dias) : 0,
+      weight: 15,
+      available: input.leadsUltimos30Dias != null,
+    },
+    {
+      score: ipvaProjetado > 0 && baseIpva ? ipvaProjetado / baseIpva * 10 : 0,
+      weight: 10,
+      available: config.ipvaAliquotaPct != null && !!config.uf,
+    },
+  ]);
+
+  const precoSugerido7d = input.precoAnunciado != null && config.desvalorizacaoMensalPct != null
+    ? roundMoney(input.precoAnunciado * (1 - config.desvalorizacaoMensalPct / 100))
+    : null;
+  let recomendacao = "Manter e acompanhar";
+  if (faixa === "atencao") recomendacao = "Revisar preço e anúncio";
+  if (faixa === "risco") recomendacao = precoSugerido7d != null
+    ? `Reduzir para R$ ${precoSugerido7d.toLocaleString("pt-BR")} por 7 dias`
+    : "Revisar preço por 7 dias";
+  if (faixa === "decisao") recomendacao = "Priorizar decisão de repasse";
+  if (margemRepasseHoje != null && margemVarejo30d != null && margemRepasseHoje > margemVarejo30d) {
+    recomendacao = "Priorizar repasse";
+  }
+  if (incompletos.length) recomendacao = "Completar dados antes de decidir";
+  const porque = incompletos.length
+    ? `Faltam ${incompletos.join(", ")}; não é seguro projetar sem esses valores.`
+    : `Hoje a margem estimada é R$ ${(margemVarejoHoje ?? 0).toLocaleString("pt-BR")} e esperar 30 dias pode consumir R$ ${(custoDeEsperar30d ?? 0).toLocaleString("pt-BR")}.`;
+
+  return {
+    diasEmEstoque: dias,
+    faixa,
+    dadosIncompletos: incompletos,
+    custoAtual,
+    custoFinanceiroAcumulado: custoFinanceiroAcumulado == null ? null : roundMoney(custoFinanceiroAcumulado),
+    comissaoEstimada: comissao,
+    margemVarejoHoje,
+    referenciaRepasse: referencia,
+    valorRepasseHoje,
+    margemRepasseHoje,
+    margemVarejo30d,
+    margemRepasse30d,
+    ipvaProjetado: roundMoney(ipvaProjetado),
+    custoDeEsperar30d,
+    indiceRisco: risco,
+    indiceSemDado: semDado,
+    recomendacao,
+    porque,
+    precoSugerido7d,
+    passos: [
+      { rotulo: "Compra", valor: input.valorCompra, formula: "Valor registrado em veiculo_compra" },
+      { rotulo: "Despesas", valor: roundMoney(despesas), formula: "Soma das despesas ativas" },
+      { rotulo: "Custo financeiro acumulado", valor: custoFinanceiroAcumulado == null ? null : roundMoney(custoFinanceiroAcumulado), formula: "Compra × taxa mensal × dias ÷ 30" },
+      { rotulo: "Custo atual", valor: custoAtual, formula: "Compra + despesas + custo financeiro" },
+      { rotulo: "Comissão estimada", valor: comissao, formula: "Regra de comissão da loja" },
+      { rotulo: "Margem varejo hoje", valor: margemVarejoHoje, formula: "Preço − custo atual − comissão" },
+      { rotulo: "IPVA projetado", valor: roundMoney(ipvaProjetado), formula: "Referência × alíquota, somente se a virada ocorrer em 30 dias" },
+      { rotulo: "Margem varejo em 30 dias", valor: margemVarejo30d, formula: "Preço desvalorizado − custo futuro − comissão" },
+      { rotulo: "Custo de esperar 30 dias", valor: custoDeEsperar30d, formula: "Margem hoje − margem projetada" },
+    ],
+  };
+}

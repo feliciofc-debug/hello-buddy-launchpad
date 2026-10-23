@@ -1,6 +1,7 @@
 import {
   BarChart3,
   FileSignature,
+  Gauge,
   Package,
   Receipt,
   ShoppingCart,
@@ -35,6 +36,7 @@ export function buildGestaoTabs(vendidosCount?: number, notasPendentes?: number)
 
   return [
     { id: "estoque", label: "Estoque", icon: Package },
+    { id: "giro", label: "Giro 30-60-90", icon: Gauge },
     { id: "vendidos", label: vendidosLabel, icon: ShoppingCart },
     { id: "notas", label: notasLabel, icon: Receipt, badge: notasPendentes || null },
     { id: "contratos", label: "Contratos", icon: FileSignature },

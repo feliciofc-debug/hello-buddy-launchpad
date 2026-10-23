@@ -8,6 +8,7 @@ import { GestaoIntegracaoConnectPrompt } from "@/components/gestao/GestaoIntegra
 import { GestaoResultadoMesStrip } from "@/components/gestao/lucro/GestaoResultadoMesStrip.tsx";
 import { GestaoLucroAlerts } from "@/components/gestao/lucro/GestaoLucroAlerts.tsx";
 import { GestaoLucroEstoqueTab } from "@/components/gestao/lucro/GestaoLucroEstoqueTab.tsx";
+import { GestaoGiroTab } from "@/components/gestao/lucro/GestaoGiroTab.tsx";
 import { GestaoLucroVendidosTab } from "@/components/gestao/lucro/GestaoLucroVendidosTab.tsx";
 import { GestaoLucroDespesasTab } from "@/components/gestao/lucro/GestaoLucroDespesasTab.tsx";
 import { GestaoLucroRelatoriosTab } from "@/components/gestao/lucro/GestaoLucroRelatoriosTab.tsx";
@@ -330,6 +331,14 @@ export default function GestaoLucroPage() {
                   setDespesaPreselect(v.id);
                   setDespesaOpen(true);
                 }}
+              />
+            ))}
+
+            {tabPanel("giro", userId && (
+              <GestaoGiroTab
+                userId={userId}
+                veiculos={veiculos}
+                refreshKey={estoqueHojeRefreshKey}
               />
             ))}
 
