@@ -37,7 +37,7 @@ export async function loadGestaoLucroBundle(userId: string): Promise<GestaoLucro
         .eq("user_id", userId),
       supabase.from("veiculo_consignacao" as "veiculos_estoque")
         .select(
-          "veiculo_id, consignante_nome, valor_garantido_dono, pct_loja_excedente, piso_loja, preco_minimo_autorizado, data_inicio, prazo_dias, status, observacao",
+          "veiculo_id, consignante_nome, valor_garantido_dono, pct_loja_excedente, piso_loja, preco_minimo_autorizado, data_inicio, prazo_dias, status, observacao, repasse_calculado, repasse_aviso",
         )
         .eq("user_id", userId),
     ]);
@@ -95,6 +95,8 @@ export async function loadGestaoLucroBundle(userId: string): Promise<GestaoLucro
         prazo_dias: number;
         status: "ativo" | "vendido" | "devolvido";
         observacao: string | null;
+        repasse_calculado: number | null;
+        repasse_aviso: string | null;
       }
       | undefined;
     const isConsignado = compra?.origem === "consignacao" && !!consignacaoRaw;
@@ -126,7 +128,12 @@ export async function loadGestaoLucroBundle(userId: string): Promise<GestaoLucro
           })),
         comissaoVendedor: comissao,
       });
-      consignacaoResultado = calc;
+      consignacaoResultado = {
+        ...calc,
+        repasseDonoLiquido: consignacaoRaw.repasse_calculado == null
+          ? calc.repasseDonoLiquido
+          : Number(consignacaoRaw.repasse_calculado),
+      };
       const custosLoja = calc.despesasNaoDescontaveis + comissao;
       lucro = {
         ...lucro,
@@ -171,6 +178,10 @@ export async function loadGestaoLucroBundle(userId: string): Promise<GestaoLucro
           preco_minimo_autorizado: consignacaoRaw.preco_minimo_autorizado == null
             ? null
             : Number(consignacaoRaw.preco_minimo_autorizado),
+          repasse_calculado: consignacaoRaw.repasse_calculado == null
+            ? null
+            : Number(consignacaoRaw.repasse_calculado),
+          repasse_aviso: consignacaoRaw.repasse_aviso,
         }
         : null,
       consignacaoResultado,

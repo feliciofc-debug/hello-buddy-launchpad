@@ -23,6 +23,8 @@ export type GestaoConsignacaoRow = {
   prazo_dias: number;
   status: "ativo" | "vendido" | "devolvido";
   observacao: string | null;
+  repasse_calculado: number | null;
+  repasse_aviso: string | null;
 };
 
 export type GestaoVeiculoBase = {

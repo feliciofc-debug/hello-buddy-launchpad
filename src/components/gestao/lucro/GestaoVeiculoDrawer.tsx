@@ -384,26 +384,6 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
         return;
       }
     }
-    const consignacaoVenda = veiculo.consignacao?.status === "ativo"
-      ? calcularConsignacao({
-        preco: valor,
-        valorGarantidoDono: veiculo.consignacao.valor_garantido_dono,
-        pctLojaExcedente: veiculo.consignacao.pct_loja_excedente,
-        pisoLoja: veiculo.consignacao.piso_loja,
-        despesas: veiculo.despesas
-          .filter((d) => d.categoria !== "comissao")
-          .map((d) => ({
-            valor: Number(d.valor),
-            descontarDoConsignante: Boolean(d.descontar_do_consignante),
-          })),
-        comissaoVendedor: overrideComissao ?? 0,
-      })
-      : null;
-    if (consignacaoVenda?.abaixoDoGarantido) {
-      setBusy(false);
-      toast.error("Venda abaixo do valor garantido. Registre a autorização do dono ajustando o mínimo/garantido antes de vender.");
-      return;
-    }
     const vend = vendedores.find((x) => x.id === vendedorId);
     const { error } = await supabase.from("veiculo_venda" as "veiculos_estoque").upsert({
       user_id: userId,
@@ -435,43 +415,6 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
       valorComissaoOverride: overrideComissao,
       statusVeiculo: venda.marcar ? "vendido" : veiculo.status,
     });
-    if (consignacaoVenda) {
-      const marker = `Repasse consignante · veículo ${veiculo.id}`;
-      const vencimento = new Date(`${venda.data}T12:00:00`);
-      vencimento.setDate(vencimento.getDate() + 2);
-      const vencimentoYmd = vencimento.toISOString().slice(0, 10);
-      const { data: existente } = await supabase
-        .from("gestao_conta_lancamento" as "veiculos_estoque")
-        .select("id")
-        .eq("user_id", userId)
-        .eq("veiculo_id", veiculo.id)
-        .eq("tipo", "pagar")
-        .eq("observacao", marker)
-        .is("deleted_at", null)
-        .maybeSingle();
-      const payload = {
-        user_id: userId,
-        veiculo_id: veiculo.id,
-        tipo: "pagar",
-        categoria_operacional: "outros",
-        valor: consignacaoVenda.repasseDonoLiquido,
-        vencimento: vencimentoYmd,
-        origem: "manual",
-        observacao: marker,
-      };
-      if (existente?.id) {
-        await supabase.from("gestao_conta_lancamento" as "veiculos_estoque")
-          .update(payload)
-          .eq("id", existente.id);
-      } else {
-        await supabase.from("gestao_conta_lancamento" as "veiculos_estoque")
-          .insert(payload);
-      }
-      await supabase.from("veiculo_consignacao" as "veiculos_estoque")
-        .update({ status: "vendido" })
-        .eq("user_id", userId)
-        .eq("veiculo_id", veiculo.id);
-    }
     setBusy(false);
     setComissaoConfirmOpen(false);
     const wasEdit = veiculo.valorVenda != null;
@@ -502,17 +445,6 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
       status: "disponivel",
       vendido_at: null,
     }).eq("id", veiculo.id);
-    if (veiculo.consignacao) {
-      await supabase.from("veiculo_consignacao" as "veiculos_estoque")
-        .update({ status: "ativo" })
-        .eq("user_id", userId)
-        .eq("veiculo_id", veiculo.id);
-      await supabase.from("gestao_conta_lancamento" as "veiculos_estoque")
-        .update({ deleted_at: new Date().toISOString() })
-        .eq("user_id", userId)
-        .eq("veiculo_id", veiculo.id)
-        .eq("observacao", `Repasse consignante · veículo ${veiculo.id}`);
-    }
     setBusy(false);
     setUndoVendaOpen(false);
     toast.success("Venda desfeita. O carro voltou para o estoque.");
@@ -585,9 +517,11 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
             {veiculo.consignacaoResultado && (
               <p className="rounded-md bg-blue-50 p-2 text-sm text-blue-800">
                 Dono recebe {formatGestaoMoney(veiculo.consignacaoResultado.repasseDonoLiquido)}
-                {veiculo.consignacaoResultado.abaixoDoGarantido
-                  ? " · abaixo do garantido — exige autorização"
-                  : ""}
+              </p>
+            )}
+            {veiculo.consignacao?.repasse_aviso && (
+              <p className="rounded-md border border-red-300 bg-red-50 p-2 text-sm font-medium text-red-700">
+                {veiculo.consignacao.repasse_aviso}
               </p>
             )}
 

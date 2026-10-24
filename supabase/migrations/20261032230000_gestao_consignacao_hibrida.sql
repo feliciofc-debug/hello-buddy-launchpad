@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS public.veiculo_consignacao (
   prazo_dias integer NOT NULL DEFAULT 90 CHECK (prazo_dias > 0),
   status text NOT NULL DEFAULT 'ativo' CHECK (status IN ('ativo', 'vendido', 'devolvido')),
   observacao text NULL,
+  repasse_calculado numeric(14, 2) NULL,
+  repasse_aviso text NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, veiculo_id)
@@ -89,11 +91,14 @@ DECLARE
   despesas_dono numeric(14, 2);
   repasse numeric(14, 2);
   marker text;
-  conta_id uuid;
+  conta public.gestao_conta_lancamento%ROWTYPE;
+  aviso text;
+  abaixo_garantido boolean;
 BEGIN
   IF TG_OP = 'DELETE' THEN
     UPDATE public.veiculo_consignacao
-       SET status = 'ativo'
+       SET status = 'ativo',
+           repasse_aviso = NULL
      WHERE user_id = OLD.user_id
        AND veiculo_id = OLD.veiculo_id
        AND status = 'vendido';
@@ -102,9 +107,18 @@ BEGIN
        SET deleted_at = now()
      WHERE user_id = OLD.user_id
        AND veiculo_id = OLD.veiculo_id
-       AND observacao = marker
-       AND deleted_at IS NULL;
+       AND observacao LIKE marker || '%'
+       AND deleted_at IS NULL
+       AND pago_em IS NULL
+       AND recebido_em IS NULL;
     RETURN OLD;
+  END IF;
+
+  -- Alterações fora de valor/data (ex.: comissão) nunca tocam no repasse.
+  IF TG_OP = 'UPDATE'
+     AND NEW.valor_venda IS NOT DISTINCT FROM OLD.valor_venda
+     AND NEW.data_venda IS NOT DISTINCT FROM OLD.data_venda THEN
+    RETURN NEW;
   END IF;
 
   SELECT *
@@ -121,9 +135,9 @@ BEGIN
     coalesce(c.piso_loja, 0)
   ), 2);
   parte_dono := round(NEW.valor_venda - parte_loja, 2);
-  IF parte_dono < c.valor_garantido_dono THEN
-    RAISE EXCEPTION
-      'Venda abaixo do valor garantido; registre a autorização ajustando o garantido antes de vender';
+  abaixo_garantido := parte_dono < c.valor_garantido_dono;
+  IF abaixo_garantido THEN
+    aviso := 'Venda abaixo do garantido — confirme com o dono e ajuste a conta a pagar se ele aceitou menos';
   END IF;
 
   SELECT coalesce(sum(valor), 0)
@@ -134,37 +148,64 @@ BEGIN
      AND descontar_do_consignante = true
      AND deleted_at IS NULL;
 
-  repasse := round(parte_dono - despesas_dono, 2);
+  -- Protege o dono sem bloquear a venda. A loja pode ajustar a conta depois.
+  repasse := round(greatest(parte_dono, c.valor_garantido_dono) - despesas_dono, 2);
   marker := 'Repasse consignante · veículo ' || NEW.veiculo_id::text;
 
-  UPDATE public.gestao_conta_lancamento
-     SET valor = repasse,
-         vencimento = NEW.data_venda + 2,
-         deleted_at = NULL
-   WHERE id = (
-     SELECT id
-       FROM public.gestao_conta_lancamento
-      WHERE user_id = NEW.user_id
-        AND veiculo_id = NEW.veiculo_id
-        AND tipo = 'pagar'
-        AND observacao = marker
-      ORDER BY created_at DESC
-      LIMIT 1
-   )
-  RETURNING id INTO conta_id;
+  SELECT *
+    INTO conta
+    FROM public.gestao_conta_lancamento
+   WHERE user_id = NEW.user_id
+     AND veiculo_id = NEW.veiculo_id
+     AND tipo = 'pagar'
+     AND observacao LIKE marker || '%'
+   ORDER BY created_at DESC
+   LIMIT 1;
 
-  IF conta_id IS NULL THEN
+  IF NOT FOUND THEN
     INSERT INTO public.gestao_conta_lancamento (
       user_id, tipo, categoria_operacional, valor, vencimento,
       observacao, veiculo_id, origem
     ) VALUES (
       NEW.user_id, 'pagar', 'outros', repasse, NEW.data_venda + 2,
-      marker, NEW.veiculo_id, 'manual'
+      marker || CASE WHEN aviso IS NULL THEN '' ELSE ' · ' || aviso END,
+      NEW.veiculo_id, 'manual'
     );
+  ELSIF conta.deleted_at IS NOT NULL THEN
+    aviso := concat_ws(
+      ' · ',
+      aviso,
+      'repasse recalculado: R$ ' || to_char(repasse, 'FM999999990D00') ||
+        ' — conta a pagar foi apagada manualmente, revise'
+    );
+  ELSIF conta.pago_em IS NOT NULL OR conta.recebido_em IS NOT NULL THEN
+    aviso := concat_ws(
+      ' · ',
+      aviso,
+      'repasse recalculado: R$ ' || to_char(repasse, 'FM999999990D00') ||
+        ' — conta a pagar já foi paga/baixada, revise'
+    );
+  ELSIF c.repasse_calculado IS NOT NULL
+        AND conta.valor IS DISTINCT FROM c.repasse_calculado THEN
+    aviso := concat_ws(
+      ' · ',
+      aviso,
+      'repasse recalculado: R$ ' || to_char(repasse, 'FM999999990D00') ||
+        ' — conta a pagar foi editada manualmente, revise'
+    );
+  ELSE
+    UPDATE public.gestao_conta_lancamento
+       SET valor = repasse,
+           vencimento = NEW.data_venda + 2,
+           observacao = marker ||
+             CASE WHEN aviso IS NULL THEN '' ELSE ' · ' || aviso END
+     WHERE id = conta.id;
   END IF;
 
   UPDATE public.veiculo_consignacao
-     SET status = 'vendido'
+     SET status = 'vendido',
+         repasse_calculado = repasse,
+         repasse_aviso = aviso
    WHERE user_id = NEW.user_id
      AND veiculo_id = NEW.veiculo_id;
   RETURN NEW;

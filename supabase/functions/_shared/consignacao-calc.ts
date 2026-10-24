@@ -18,9 +18,49 @@ export type ConsignacaoCalcResult = {
   despesasDescontaveisDono: number;
   despesasNaoDescontaveis: number;
   repasseDonoLiquido: number;
+  repasseDonoProtegido: number;
   lucroLoja: number;
   abaixoDoGarantido: boolean;
 };
+
+export type RepasseSyncAction = "criar" | "atualizar" | "manter";
+
+export function decidirSincronizacaoRepasse(input: {
+  operacao: "insert" | "update";
+  camposVendaMudaram: boolean;
+  contaExiste: boolean;
+  contaApagada: boolean;
+  contaPaga: boolean;
+  valorAtualConta: number | null;
+  ultimoCalculado: number | null;
+}): { action: RepasseSyncAction; aviso: string | null } {
+  if (input.operacao === "update" && !input.camposVendaMudaram) {
+    return { action: "manter", aviso: null };
+  }
+  if (!input.contaExiste) return { action: "criar", aviso: null };
+  if (input.contaApagada) {
+    return {
+      action: "manter",
+      aviso: "conta a pagar foi apagada manualmente, revise",
+    };
+  }
+  if (input.contaPaga) {
+    return {
+      action: "manter",
+      aviso: "conta a pagar já foi paga/baixada, revise",
+    };
+  }
+  if (
+    input.ultimoCalculado != null &&
+    input.valorAtualConta !== input.ultimoCalculado
+  ) {
+    return {
+      action: "manter",
+      aviso: "conta a pagar foi editada manualmente, revise",
+    };
+  }
+  return { action: "atualizar", aviso: null };
+}
 
 const money = (value: number): number => Math.round(value * 100) / 100;
 const nonNegative = (value: number): number =>
@@ -56,6 +96,9 @@ export function calcularConsignacao(
     despesasDescontaveisDono,
     despesasNaoDescontaveis,
     repasseDonoLiquido: money(parteDono - despesasDescontaveisDono),
+    repasseDonoProtegido: money(
+      Math.max(parteDono, garantido) - despesasDescontaveisDono,
+    ),
     lucroLoja: money(
       parteLoja - despesasNaoDescontaveis -
         nonNegative(input.comissaoVendedor),

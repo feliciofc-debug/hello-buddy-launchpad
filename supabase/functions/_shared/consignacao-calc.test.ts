@@ -1,5 +1,8 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { calcularConsignacao } from "./consignacao-calc.ts";
+import {
+  calcularConsignacao,
+  decidirSincronizacaoRepasse,
+} from "./consignacao-calc.ts";
 
 Deno.test("CONSIG-1 — valor fixo: excedente integral fica com a loja", () => {
   const r = calcularConsignacao({
@@ -49,6 +52,19 @@ Deno.test("CONSIG-1 — venda abaixo do garantido exige autorização", () => {
     comissaoVendedor: 0,
   });
   assertEquals(r.abaixoDoGarantido, true);
+  assertEquals(r.repasseDonoProtegido, 100_000);
+  assertEquals(
+    decidirSincronizacaoRepasse({
+      operacao: "insert",
+      camposVendaMudaram: true,
+      contaExiste: false,
+      contaApagada: false,
+      contaPaga: false,
+      valorAtualConta: null,
+      ultimoCalculado: null,
+    }).action,
+    "criar",
+  );
 });
 
 Deno.test("CONSIG-1 — despesas descontáveis reduzem só o repasse", () => {
@@ -65,4 +81,74 @@ Deno.test("CONSIG-1 — despesas descontáveis reduzem só o repasse", () => {
   });
   assertEquals(r.repasseDonoLiquido, 109_000);
   assertEquals(r.lucroLoja, 9_000);
+});
+
+Deno.test("CONSIG-1.1 — editar comissão não atualiza repasse", () => {
+  assertEquals(
+    decidirSincronizacaoRepasse({
+      operacao: "update",
+      camposVendaMudaram: false,
+      contaExiste: true,
+      contaApagada: false,
+      contaPaga: false,
+      valorAtualConta: 100_000,
+      ultimoCalculado: 100_000,
+    }).action,
+    "manter",
+  );
+});
+
+Deno.test("CONSIG-1.1 — conta paga nunca muda", () => {
+  const r = decidirSincronizacaoRepasse({
+    operacao: "update",
+    camposVendaMudaram: true,
+    contaExiste: true,
+    contaApagada: false,
+    contaPaga: true,
+    valorAtualConta: 100_000,
+    ultimoCalculado: 100_000,
+  });
+  assertEquals(r.action, "manter");
+  assertEquals(r.aviso, "conta a pagar já foi paga/baixada, revise");
+});
+
+Deno.test("CONSIG-1.1 — conta apagada não volta", () => {
+  const r = decidirSincronizacaoRepasse({
+    operacao: "update",
+    camposVendaMudaram: true,
+    contaExiste: true,
+    contaApagada: true,
+    contaPaga: false,
+    valorAtualConta: 100_000,
+    ultimoCalculado: 100_000,
+  });
+  assertEquals(r.action, "manter");
+});
+
+Deno.test("CONSIG-1.1 — mudança da venda atualiza conta automática aberta", () => {
+  const r = decidirSincronizacaoRepasse({
+    operacao: "update",
+    camposVendaMudaram: true,
+    contaExiste: true,
+    contaApagada: false,
+    contaPaga: false,
+    valorAtualConta: 100_000,
+    ultimoCalculado: 100_000,
+  });
+  assertEquals(r.action, "atualizar");
+  assertEquals(r.aviso, null);
+});
+
+Deno.test("CONSIG-1.1 — conta editada manualmente só gera aviso", () => {
+  const r = decidirSincronizacaoRepasse({
+    operacao: "update",
+    camposVendaMudaram: true,
+    contaExiste: true,
+    contaApagada: false,
+    contaPaga: false,
+    valorAtualConta: 95_000,
+    ultimoCalculado: 100_000,
+  });
+  assertEquals(r.action, "manter");
+  assertEquals(r.aviso, "conta a pagar foi editada manualmente, revise");
 });
