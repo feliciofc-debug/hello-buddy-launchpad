@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +36,7 @@ import {
   gestaoMargemPct,
 } from "@/lib/gestao-format.ts";
 import { supabase } from "@/integrations/supabase/client";
+import { GestaoEntradaVeiculoDialog } from "@/components/gestao/lucro/GestaoEntradaVeiculoDialog.tsx";
 
 type SortKey = "dias" | "lucro" | "preco" | "marca";
 type ListFilter = "estoque" | "vendidos" | "todos";
@@ -86,6 +87,7 @@ export function GestaoLucroEstoqueTab({
   } | null>(null);
   const [touchedCompra, setTouchedCompra] = useState<Record<string, boolean>>({});
   const [savingCompra, setSavingCompra] = useState(false);
+  const [entradaOpen, setEntradaOpen] = useState(false);
 
   const matchesSearch = useCallback((v: GestaoVeiculoEnriched, term: string) => {
     if (!term) return true;
@@ -298,6 +300,9 @@ export function GestaoLucroEstoqueTab({
             onChange={(e) => setQ(e.target.value)}
           />
         </div>
+        <Button onClick={() => setEntradaOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" /> Entrada de veículo
+        </Button>
         <div className="flex rounded-lg border p-0.5">
           {(
             [
@@ -328,6 +333,12 @@ export function GestaoLucroEstoqueTab({
           </SelectContent>
         </Select>
       </div>
+      <GestaoEntradaVeiculoDialog
+        open={entradaOpen}
+        userId={userId}
+        onOpenChange={setEntradaOpen}
+        onSaved={onRefresh}
+      />
 
       <div className="hidden overflow-x-auto md:block">
         <table className="w-full min-w-[960px] text-sm">

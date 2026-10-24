@@ -52,6 +52,12 @@ import { estornarComissaoVeiculo, syncComissaoAfterVenda } from "@/lib/gestao-co
 import { useGestaoFocusnfeConnection } from "@/components/integracoes/useGestaoFocusnfeConnection";
 import { GestaoEmitirNfeDialog } from "@/components/gestao/lucro/GestaoEmitirNfeDialog.tsx";
 import { GestaoVeiculoProcedenciaPanel } from "@/components/procedencia/GestaoVeiculoProcedenciaPanel.tsx";
+import { ConsignacaoTermosFields } from "@/components/gestao/ConsignacaoTermosFields.tsx";
+import {
+  emptyConsignacaoForm,
+  saveConsignacaoTermos,
+  type ConsignacaoFormValue,
+} from "@/lib/consignacao-form.ts";
 
 type Props = {
   open: boolean;
@@ -88,16 +94,9 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
     descricao: "",
     descontarDoConsignante: false,
   });
-  const [consignacao, setConsignacao] = useState({
-    consignanteNome: "",
-    valorGarantido: "",
-    pctLoja: "100",
-    pisoLoja: "",
-    precoMinimo: "",
-    dataInicio: hojeSaoPaulo(),
-    prazoDias: "90",
-    observacao: "",
-  });
+  const [consignacao, setConsignacao] = useState<ConsignacaoFormValue>(
+    emptyConsignacaoForm,
+  );
   const [vendedores, setVendedores] = useState<GestaoVendedor[]>([]);
   const [vendedorId, setVendedorId] = useState<string>("");
   const [comissaoConfirmOpen, setComissaoConfirmOpen] = useState(false);
@@ -126,7 +125,7 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
     setCompra({
       valor: veiculo.valorCompra != null ? String(veiculo.valorCompra) : "",
       data: veiculo.dataCompra ?? hojeSaoPaulo(),
-      origem: "compra",
+      origem: veiculo.compraOrigem ?? "compra",
       fornecedor: "",
     });
     setVenda({
@@ -152,42 +151,21 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
 
   const saveConsignacao = async () => {
     if (!veiculo) return;
-    const valorGarantido = parseGestaoMoneyField(consignacao.valorGarantido) ?? 0;
-    const pctLoja = Number(consignacao.pctLoja.replace(",", "."));
-    const prazoDias = Number(consignacao.prazoDias);
-    if (!Number.isFinite(pctLoja) || pctLoja < 0 || pctLoja > 100 || !Number.isInteger(prazoDias) || prazoDias <= 0) {
-      toast.error("Confira o percentual da loja e o prazo.");
-      return;
-    }
     setBusy(true);
-    const { error } = await supabase.from("veiculo_consignacao" as "veiculos_estoque").upsert({
-      user_id: userId,
-      veiculo_id: veiculo.id,
-      consignante_nome: consignacao.consignanteNome.trim() || null,
-      valor_garantido_dono: valorGarantido,
-      pct_loja_excedente: pctLoja,
-      piso_loja: parseGestaoMoneyField(consignacao.pisoLoja),
-      preco_minimo_autorizado: parseGestaoMoneyField(consignacao.precoMinimo),
-      data_inicio: consignacao.dataInicio,
-      prazo_dias: prazoDias,
-      status: "ativo",
-      observacao: consignacao.observacao.trim() || null,
-    }, { onConflict: "user_id,veiculo_id" });
-    if (!error) {
-      await supabase.from("veiculo_compra" as "veiculos_estoque").upsert({
-        user_id: userId,
-        veiculo_id: veiculo.id,
-        valor_compra: valorGarantido,
-        data_compra: consignacao.dataInicio,
-        origem: "consignacao",
-        fornecedor_obs: consignacao.consignanteNome.trim() || null,
-      }, { onConflict: "user_id,veiculo_id" });
-    }
-    setBusy(false);
-    if (error) toast.error("Não foi possível salvar a consignação.");
-    else {
+    try {
+      await saveConsignacaoTermos(userId, veiculo.id, consignacao, {
+        syncCompra: true,
+      });
       toast.success("Consignação salva.");
       onSaved();
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível salvar a consignação.",
+      );
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -542,28 +520,12 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
               />
             )}
 
-            <section className="space-y-3 rounded-lg border border-blue-200 p-3">
-              <div>
-                <h3 className="text-sm font-semibold">Consignação</h3>
-                <p className="text-xs text-muted-foreground">
-                  O valor garantido não entra como capital, juros ou IPVA da loja.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" size="sm" variant="outline" onClick={() => setConsignacao((c) => ({ ...c, pctLoja: "100", pisoLoja: "" }))}>Valor fixo</Button>
-                <Button type="button" size="sm" variant="outline" onClick={() => setConsignacao((c) => ({ ...c, valorGarantido: "0", pctLoja: "8", pisoLoja: "5000" }))}>Comissão</Button>
-                <Button type="button" size="sm" variant="outline" onClick={() => setConsignacao((c) => ({ ...c, pctLoja: "50", pisoLoja: "" }))}>Híbrido</Button>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <div><Label>Nome do consignante</Label><Input value={consignacao.consignanteNome} onChange={(e) => setConsignacao({ ...consignacao, consignanteNome: e.target.value })} /></div>
-                <GestaoMoneyInput label="Valor garantido ao dono" value={consignacao.valorGarantido} onChange={(v) => setConsignacao({ ...consignacao, valorGarantido: v })} />
-                <div><Label>Percentual da loja no excedente (%)</Label><Input type="number" min="0" max="100" step="0.01" value={consignacao.pctLoja} onChange={(e) => setConsignacao({ ...consignacao, pctLoja: e.target.value })} /></div>
-                <GestaoMoneyInput label="Piso da loja" value={consignacao.pisoLoja} onChange={(v) => setConsignacao({ ...consignacao, pisoLoja: v })} />
-                <GestaoMoneyInput label="Preço mínimo autorizado" value={consignacao.precoMinimo} onChange={(v) => setConsignacao({ ...consignacao, precoMinimo: v })} />
-                <div><Label>Início</Label><Input type="date" value={consignacao.dataInicio} onChange={(e) => setConsignacao({ ...consignacao, dataInicio: e.target.value })} /></div>
-                <div><Label>Prazo (dias)</Label><Input type="number" min="1" value={consignacao.prazoDias} onChange={(e) => setConsignacao({ ...consignacao, prazoDias: e.target.value })} /></div>
-                <div><Label>Observação</Label><Input value={consignacao.observacao} onChange={(e) => setConsignacao({ ...consignacao, observacao: e.target.value })} /></div>
-              </div>
+            <section className="space-y-3">
+              <ConsignacaoTermosFields
+                value={consignacao}
+                onChange={setConsignacao}
+                disabled={busy}
+              />
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" disabled={busy} onClick={() => void saveConsignacao()}>Salvar consignação</Button>
                 {veiculo.consignacao && (
