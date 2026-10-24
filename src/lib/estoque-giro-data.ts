@@ -22,6 +22,7 @@ export type GestaoGiroConfigRow = {
   ipva_aliquota_hibrido_pct: number | null;
   ipva_aliquota_eletrico_pct: number | null;
   ipva_loja_paga_virada: boolean;
+  custo_vaga_dia: number | null;
   resumo_diario_ativo?: boolean;
   resumo_diario_hora?: string;
   resumo_ultimo_envio?: string | null;
@@ -88,6 +89,7 @@ export function configRowToCalc(row: GestaoGiroConfigRow | null): EstoqueGiroCon
       ? null
       : Number(row.ipva_aliquota_eletrico_pct),
     ipvaLojaPagaVirada: row.ipva_loja_paga_virada,
+    custoVagaDia: row.custo_vaga_dia == null ? null : Number(row.custo_vaga_dia),
   };
 }
 
@@ -95,7 +97,14 @@ export async function loadGestaoGiro(
   userId: string,
   veiculos: GestaoVeiculoEnriched[],
 ): Promise<{ config: GestaoGiroConfigRow | null; items: GestaoGiroItem[] }> {
-  const [{ data: configData }, { data: ajustesData }, { data: refsData }, { data: trocasData }, regraComissao] =
+  const [
+    { data: configData },
+    { data: ajustesData },
+    { data: consignacoesData },
+    { data: refsData },
+    { data: trocasData },
+    regraComissao,
+  ] =
     await Promise.all([
       supabase.from("gestao_giro_config" as "veiculos_estoque")
         .select("*")
@@ -104,6 +113,10 @@ export async function loadGestaoGiro(
       supabase.from("veiculo_giro_ajuste" as "veiculos_estoque")
         .select("veiculo_id, ipva_tipo, ipva_aliquota_manual_pct")
         .eq("user_id", userId),
+      supabase.from("veiculo_consignacao" as "veiculos_estoque")
+        .select("veiculo_id, data_inicio, prazo_dias, preco_minimo_autorizado, status")
+        .eq("user_id", userId)
+        .eq("status", "ativo"),
       supabase.from("veiculo_preco_referencia" as "veiculos_estoque")
         .select("veiculo_id, fonte, valor, capturado_em")
         .eq("user_id", userId)
@@ -165,6 +178,9 @@ export async function loadGestaoGiro(
         : Number(row.ipva_aliquota_manual_pct),
     });
   }
+  const consignacaoByVeiculo = new Map(
+    (consignacoesData ?? []).map((row) => [String(row.veiculo_id), row]),
+  );
 
   const defaultAjuste = (): VeiculoGiroIpvaAjusteRow => ({
     ipva_tipo: "auto",
@@ -177,6 +193,13 @@ export async function loadGestaoGiro(
     .filter((v) => v.status === "disponivel" || v.status === "reservado")
     .map((veiculo) => {
       const ipvaAjuste = ajusteByVeiculo.get(veiculo.id) ?? defaultAjuste();
+      const consignacao = consignacaoByVeiculo.get(veiculo.id) as
+        | {
+          data_inicio: string;
+          prazo_dias: number;
+          preco_minimo_autorizado: number | null;
+        }
+        | undefined;
       return {
         veiculo,
         ipvaAjuste,
@@ -185,7 +208,9 @@ export async function loadGestaoGiro(
           dataCompra: veiculo.dataCompra,
           createdAt: veiculo.created_at,
           valorCompra: veiculo.valorCompra,
-          despesas: veiculo.despesas.map((d) => Number(d.valor)),
+          despesas: veiculo.despesas
+            .filter((d) => !consignacao || !d.descontar_do_consignante)
+            .map((d) => Number(d.valor)),
           precoAnunciado: veiculo.preco,
           referencias: byVehicle.get(veiculo.id) ?? [],
           config: calcConfig,
@@ -198,6 +223,15 @@ export async function loadGestaoGiro(
             ipvaTipo: ipvaAjuste.ipva_tipo,
             ipvaAliquotaManualPct: ipvaAjuste.ipva_aliquota_manual_pct,
           },
+          consignacao: consignacao
+            ? {
+              dataInicio: consignacao.data_inicio,
+              prazoDias: Number(consignacao.prazo_dias),
+              precoMinimoAutorizado: consignacao.preco_minimo_autorizado == null
+                ? null
+                : Number(consignacao.preco_minimo_autorizado),
+            }
+            : null,
         }),
       };
     })

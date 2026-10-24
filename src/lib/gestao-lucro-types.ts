@@ -10,6 +10,21 @@ export type GestaoDespesaRow = {
   origem_lancamento: string;
   lancado_por: string | null;
   comprovante_path: string | null;
+  descontar_do_consignante?: boolean;
+};
+
+export type GestaoConsignacaoRow = {
+  consignante_nome: string | null;
+  valor_garantido_dono: number;
+  pct_loja_excedente: number;
+  piso_loja: number | null;
+  preco_minimo_autorizado: number | null;
+  data_inicio: string;
+  prazo_dias: number;
+  status: "ativo" | "vendido" | "devolvido";
+  observacao: string | null;
+  repasse_calculado: number | null;
+  repasse_aviso: string | null;
 };
 
 export type GestaoVeiculoBase = {
@@ -39,6 +54,15 @@ export type GestaoVeiculoEnriched = GestaoVeiculoBase & {
   vendedor_id: string | null;
   despesas: GestaoDespesaRow[];
   lucro: GestaoLucroComputed;
+  compraOrigem: "compra" | "troca" | "consignacao" | null;
+  consignacao: GestaoConsignacaoRow | null;
+  consignacaoResultado: {
+    parteLoja: number;
+    parteDono: number;
+    repasseDonoLiquido: number;
+    lucroLoja: number;
+    abaixoDoGarantido: boolean;
+  } | null;
 };
 
 export type GestaoLucroBundle = {

@@ -77,6 +77,7 @@ const emptyConfig = (): GestaoGiroConfigRow => ({
   ipva_aliquota_hibrido_pct: null,
   ipva_aliquota_eletrico_pct: null,
   ipva_loja_paga_virada: false,
+  custo_vaga_dia: null,
   resumo_diario_ativo: false,
   resumo_diario_hora: "18:00:00",
 });
@@ -144,6 +145,7 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
     ipva: "",
     ipvaHibrido: "",
     ipvaEletrico: "",
+    custoVagaDia: "",
     pagaVirada: false,
     resumoDiario: false,
     resumoHora: "18:00",
@@ -180,6 +182,7 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
       ipva: c.ipva_aliquota_pct == null ? "" : String(c.ipva_aliquota_pct),
       ipvaHibrido: c.ipva_aliquota_hibrido_pct == null ? "" : String(c.ipva_aliquota_hibrido_pct),
       ipvaEletrico: c.ipva_aliquota_eletrico_pct == null ? "" : String(c.ipva_aliquota_eletrico_pct),
+      custoVagaDia: c.custo_vaga_dia == null ? "" : String(c.custo_vaga_dia),
       pagaVirada: c.ipva_loja_paga_virada,
       resumoDiario: c.resumo_diario_ativo ?? false,
       resumoHora: (c.resumo_diario_hora ?? "18:00:00").slice(0, 5),
@@ -199,6 +202,7 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
       ipva_aliquota_pct: optionalNumber(form.ipva),
       ipva_aliquota_hibrido_pct: optionalNumber(form.ipvaHibrido),
       ipva_aliquota_eletrico_pct: optionalNumber(form.ipvaEletrico),
+      custo_vaga_dia: optionalNumber(form.custoVagaDia),
       ipva_loja_paga_virada: form.pagaVirada,
       resumo_diario_ativo: form.resumoDiario,
       resumo_diario_hora: form.resumoHora,
@@ -374,6 +378,7 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
+                      {r.consignado && <Badge variant="outline">Consignado</Badge>}
                       <Badge variant={r.faixa === "decisao" || r.faixa === "risco" ? "destructive" : "secondary"}>
                         {faixaLabel[r.faixa]}
                       </Badge>
@@ -476,6 +481,7 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
             <ConfigField id="giro-ipva" label="Alíquota de IPVA geral (%)" description="Gasolina, flex, diesel e padrão quando não houver tipo específico." value={form.ipva} onChange={(ipva) => setForm((f) => ({ ...f, ipva }))} />
             <ConfigField id="giro-ipva-hibrido" label="IPVA híbrido (%)" description="Ex. RJ: geral 4%, híbrido 1,5%, elétrico 0,5% — confira a lei do seu estado." value={form.ipvaHibrido} placeholder="Ex.: 1,5" onChange={(ipvaHibrido) => setForm((f) => ({ ...f, ipvaHibrido }))} />
             <ConfigField id="giro-ipva-eletrico" label="IPVA elétrico (%)" description="Deixe vazio para usar a alíquota geral." value={form.ipvaEletrico} placeholder="Ex.: 0,5" onChange={(ipvaEletrico) => setForm((f) => ({ ...f, ipvaEletrico }))} />
+            <ConfigField id="giro-custo-vaga" label="Custo da vaga por dia (R$)" description="Entra no custo de espera dos consignados. Vazio = não considerar." value={form.custoVagaDia} placeholder="Ex.: 35" onChange={(custoVagaDia) => setForm((f) => ({ ...f, custoVagaDia }))} />
             <div className="flex items-start gap-2 pt-7">
               <Checkbox id="giro-virada" checked={form.pagaVirada} onCheckedChange={(v) => setForm((f) => ({ ...f, pagaVirada: v === true }))} />
               <div>

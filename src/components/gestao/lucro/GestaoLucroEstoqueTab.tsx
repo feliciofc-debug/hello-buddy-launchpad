@@ -370,6 +370,16 @@ export function GestaoLucroEstoqueTab({
                   </td>
                   <td className="py-2 pr-2 font-medium">
                     <div>{vehicleLabel(v)}</div>
+                    {v.consignacao?.status === "ativo" && (
+                      <span className="mt-1 inline-block rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-900">
+                        Consignado
+                      </span>
+                    )}
+                    {v.consignacao?.repasse_aviso && (
+                      <span className="ml-1 mt-1 inline-block rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-900">
+                        Revisar repasse
+                      </span>
+                    )}
                     {sold && (
                       <span className="mt-1 inline-block rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-900">
                         Vendido em {formatGestaoDataBr(v.dataVenda)}
@@ -561,6 +571,16 @@ export function GestaoLucroEstoqueTab({
               className={`rounded-lg border p-4 space-y-2 ${sold ? "bg-muted/50" : ""}`}
             >
               <p className="font-semibold">{vehicleLabel(v)}</p>
+              {v.consignacao?.status === "ativo" && (
+                <span className="inline-block rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-900">
+                  Consignado · dono recebe {formatGestaoMoney(v.consignacaoResultado?.repasseDonoLiquido)}
+                </span>
+              )}
+              {v.consignacao?.repasse_aviso && (
+                <span className="inline-block rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-900">
+                  Revisar repasse · {v.consignacao.repasse_aviso}
+                </span>
+              )}
               {sold && (
                 <span className="inline-block rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-900">
                   Vendido em {formatGestaoDataBr(v.dataVenda)}

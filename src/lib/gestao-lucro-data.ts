@@ -1,4 +1,5 @@
 import { calcGestaoLucro } from "../../supabase/functions/_shared/gestao-lucro-calc.ts";
+import { calcularConsignacao } from "../../supabase/functions/_shared/consignacao-calc.ts";
 import { daysInStock } from "../../supabase/functions/_shared/gestao-estoque-snapshot.ts";
 import { supabase } from "@/integrations/supabase/client";
 import type {
@@ -8,7 +9,13 @@ import type {
 } from "./gestao-lucro-types.ts";
 
 export async function loadGestaoLucroBundle(userId: string): Promise<GestaoLucroBundle> {
-  const [{ data: veiculos }, { data: compras }, { data: despesas }, { data: vendas }] =
+  const [
+    { data: veiculos },
+    { data: compras },
+    { data: despesas },
+    { data: vendas },
+    { data: consignacoes },
+  ] =
     await Promise.all([
       supabase.from("veiculos_estoque")
         .select(
@@ -16,11 +23,11 @@ export async function loadGestaoLucroBundle(userId: string): Promise<GestaoLucro
         )
         .eq("user_id", userId),
       supabase.from("veiculo_compra" as "veiculos_estoque")
-        .select("veiculo_id, valor_compra, data_compra")
+        .select("veiculo_id, valor_compra, data_compra, origem")
         .eq("user_id", userId),
       supabase.from("veiculo_despesas" as "veiculos_estoque")
         .select(
-          "id, veiculo_id, data, categoria, valor, descricao, origem_lancamento, lancado_por, comprovante_path",
+          "id, veiculo_id, data, categoria, valor, descricao, origem_lancamento, lancado_por, comprovante_path, descontar_do_consignante",
         )
         .eq("user_id", userId)
         .is("deleted_at", null)
@@ -28,13 +35,26 @@ export async function loadGestaoLucroBundle(userId: string): Promise<GestaoLucro
       supabase.from("veiculo_venda" as "veiculos_estoque")
         .select("veiculo_id, valor_venda, data_venda, vendedor, vendedor_id")
         .eq("user_id", userId),
+      supabase.from("veiculo_consignacao" as "veiculos_estoque")
+        .select(
+          "veiculo_id, consignante_nome, valor_garantido_dono, pct_loja_excedente, piso_loja, preco_minimo_autorizado, data_inicio, prazo_dias, status, observacao, repasse_calculado, repasse_aviso",
+        )
+        .eq("user_id", userId),
     ]);
 
   const compraBy = new Map(
-    (compras ?? []).map((c: { veiculo_id: string; valor_compra: number; data_compra: string }) => [
+    (compras ?? []).map((c: {
+      veiculo_id: string;
+      valor_compra: number;
+      data_compra: string;
+      origem: "compra" | "troca" | "consignacao";
+    }) => [
       c.veiculo_id,
       c,
     ]),
+  );
+  const consignacaoBy = new Map(
+    (consignacoes ?? []).map((c) => [String(c.veiculo_id), c]),
   );
   const vendaBy = new Map(
     (vendas ?? []).map((v: {
@@ -64,8 +84,24 @@ export async function loadGestaoLucroBundle(userId: string): Promise<GestaoLucro
       vendedor_id?: string | null;
     } | undefined;
     const dList = despesasBy.get(v.id) ?? [];
-    const lucro = calcGestaoLucro({
-      valorCompra: compra ? Number(compra.valor_compra) : null,
+    const consignacaoRaw = consignacaoBy.get(v.id) as
+      | {
+        consignante_nome: string | null;
+        valor_garantido_dono: number;
+        pct_loja_excedente: number;
+        piso_loja: number | null;
+        preco_minimo_autorizado: number | null;
+        data_inicio: string;
+        prazo_dias: number;
+        status: "ativo" | "vendido" | "devolvido";
+        observacao: string | null;
+        repasse_calculado: number | null;
+        repasse_aviso: string | null;
+      }
+      | undefined;
+    const isConsignado = compra?.origem === "consignacao" && !!consignacaoRaw;
+    let lucro = calcGestaoLucro({
+      valorCompra: isConsignado ? 0 : compra ? Number(compra.valor_compra) : null,
       despesas: dList.map((x) => ({ valor: Number(x.valor), categoria: x.categoria })),
       valorVenda: venda ? Number(venda.valor_venda) : null,
       precoAnunciado: v.preco,
@@ -73,6 +109,43 @@ export async function loadGestaoLucroBundle(userId: string): Promise<GestaoLucro
       dataVenda: venda?.data_venda ?? null,
       statusVeiculo: v.status,
     });
+    let consignacaoResultado = null;
+    if (isConsignado && consignacaoRaw) {
+      const preco = venda ? Number(venda.valor_venda) : Number(v.preco ?? 0);
+      const comissao = dList
+        .filter((d) => d.categoria === "comissao")
+        .reduce((sum, d) => sum + Number(d.valor), 0);
+      const calc = calcularConsignacao({
+        preco,
+        valorGarantidoDono: Number(consignacaoRaw.valor_garantido_dono),
+        pctLojaExcedente: Number(consignacaoRaw.pct_loja_excedente),
+        pisoLoja: consignacaoRaw.piso_loja == null ? null : Number(consignacaoRaw.piso_loja),
+        despesas: dList
+          .filter((d) => d.categoria !== "comissao")
+          .map((d) => ({
+            valor: Number(d.valor),
+            descontarDoConsignante: Boolean(d.descontar_do_consignante),
+          })),
+        comissaoVendedor: comissao,
+      });
+      consignacaoResultado = {
+        ...calc,
+        repasseDonoLiquido: consignacaoRaw.repasse_calculado == null
+          ? calc.repasseDonoLiquido
+          : Number(consignacaoRaw.repasse_calculado),
+      };
+      const custosLoja = calc.despesasNaoDescontaveis + comissao;
+      lucro = {
+        ...lucro,
+        totalDespesas: custosLoja,
+        investido: custosLoja,
+        lucroBruto: venda ? calc.parteLoja : null,
+        lucroLiquido: venda ? calc.lucroLoja : null,
+        lucroProjetado: venda ? null : calc.lucroLoja,
+        margemPct: preco > 0 ? calc.lucroLoja / preco * 100 : null,
+        custoCompraPendente: false,
+      };
+    }
     return {
       id: v.id,
       marca: v.marca,
@@ -95,6 +168,23 @@ export async function loadGestaoLucroBundle(userId: string): Promise<GestaoLucro
       vendedor_id: venda?.vendedor_id ?? null,
       despesas: dList,
       lucro,
+      compraOrigem: compra?.origem ?? null,
+      consignacao: consignacaoRaw
+        ? {
+          ...consignacaoRaw,
+          valor_garantido_dono: Number(consignacaoRaw.valor_garantido_dono),
+          pct_loja_excedente: Number(consignacaoRaw.pct_loja_excedente),
+          piso_loja: consignacaoRaw.piso_loja == null ? null : Number(consignacaoRaw.piso_loja),
+          preco_minimo_autorizado: consignacaoRaw.preco_minimo_autorizado == null
+            ? null
+            : Number(consignacaoRaw.preco_minimo_autorizado),
+          repasse_calculado: consignacaoRaw.repasse_calculado == null
+            ? null
+            : Number(consignacaoRaw.repasse_calculado),
+          repasse_aviso: consignacaoRaw.repasse_aviso,
+        }
+        : null,
+      consignacaoResultado,
     };
   });
 

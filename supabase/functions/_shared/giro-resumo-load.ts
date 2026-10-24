@@ -25,6 +25,7 @@ export type GestaoGiroConfigDbRow = {
   ipva_aliquota_hibrido_pct: number | null;
   ipva_aliquota_eletrico_pct: number | null;
   ipva_loja_paga_virada: boolean;
+  custo_vaga_dia: number | null;
   resumo_diario_ativo?: boolean;
   resumo_diario_hora?: string;
   resumo_ultimo_envio?: string | null;
@@ -55,6 +56,7 @@ function configRowToCalc(row: GestaoGiroConfigDbRow | null): EstoqueGiroConfig {
       ? null
       : Number(row.ipva_aliquota_eletrico_pct),
     ipvaLojaPagaVirada: row.ipva_loja_paga_virada,
+    custoVagaDia: row.custo_vaga_dia == null ? null : Number(row.custo_vaga_dia),
   };
 }
 
@@ -92,6 +94,7 @@ export async function loadGiroResumoItens(
     { data: refsData },
     { data: trocasData },
     { data: ajustesData },
+    { data: consignacoesData },
     regraComissao,
   ] = await Promise.all([
     sb.from("gestao_giro_config").select("*").eq("user_id", userId).maybeSingle(),
@@ -100,7 +103,10 @@ export async function loadGiroResumoItens(
       .eq("user_id", userId)
       .in("status", ["disponivel", "reservado"]),
     sb.from("veiculo_compra").select("veiculo_id, valor_compra, data_compra").eq("user_id", userId),
-    sb.from("veiculo_despesas").select("veiculo_id, valor").eq("user_id", userId).is("deleted_at", null),
+    sb.from("veiculo_despesas")
+      .select("veiculo_id, valor, descontar_do_consignante")
+      .eq("user_id", userId)
+      .is("deleted_at", null),
     sb.from("veiculo_preco_referencia")
       .select("veiculo_id, fonte, valor, capturado_em")
       .eq("user_id", userId)
@@ -113,6 +119,10 @@ export async function loadGiroResumoItens(
     sb.from("veiculo_giro_ajuste")
       .select("veiculo_id, ipva_tipo, ipva_aliquota_manual_pct")
       .eq("user_id", userId),
+    sb.from("veiculo_consignacao")
+      .select("veiculo_id, data_inicio, prazo_dias, preco_minimo_autorizado, status")
+      .eq("user_id", userId)
+      .eq("status", "ativo"),
     loadComissaoRegra(sb, userId),
   ]);
 
@@ -122,11 +132,21 @@ export async function loadGiroResumoItens(
       c,
     ]),
   );
-  const despesasBy = new Map<string, number[]>();
+  const despesasBy = new Map<
+    string,
+    Array<{ valor: number; descontar_do_consignante: boolean }>
+  >();
   for (const d of despesas ?? []) {
-    const row = d as { veiculo_id: string; valor: number };
+    const row = d as {
+      veiculo_id: string;
+      valor: number;
+      descontar_do_consignante: boolean;
+    };
     const list = despesasBy.get(row.veiculo_id) ?? [];
-    list.push(Number(row.valor));
+    list.push({
+      valor: Number(row.valor),
+      descontar_do_consignante: Boolean(row.descontar_do_consignante),
+    });
     despesasBy.set(row.veiculo_id, list);
   }
 
@@ -184,6 +204,9 @@ export async function loadGiroResumoItens(
 
   const config = (configData ?? null) as GestaoGiroConfigDbRow | null;
   const calcConfig = configRowToCalc(config);
+  const consignacaoBy = new Map(
+    (consignacoesData ?? []).map((row) => [String(row.veiculo_id), row]),
+  );
 
   const items: GiroResumoVeiculoLinha[] = (veiculos ?? []).map((raw) => {
     const v = raw as {
@@ -196,6 +219,13 @@ export async function loadGiroResumoItens(
       combustivel: string | null;
     };
     const compra = compraBy.get(v.id);
+    const consignacao = consignacaoBy.get(v.id) as
+      | {
+        data_inicio: string;
+        prazo_dias: number;
+        preco_minimo_autorizado: number | null;
+      }
+      | undefined;
     const valorCompra = compra ? Number(compra.valor_compra) : null;
     const ajuste = ajusteByVeiculo.get(v.id);
     const resultado = calcularEstoqueGiro({
@@ -203,7 +233,9 @@ export async function loadGiroResumoItens(
       dataCompra: compra?.data_compra ?? null,
       createdAt: v.created_at,
       valorCompra,
-      despesas: despesasBy.get(v.id) ?? [],
+      despesas: (despesasBy.get(v.id) ?? [])
+        .filter((d) => !consignacao || !d.descontar_do_consignante)
+        .map((d) => d.valor),
       precoAnunciado: v.preco == null ? null : Number(v.preco),
       referencias: byVehicle.get(v.id) ?? [],
       config: calcConfig,
@@ -218,9 +250,19 @@ export async function loadGiroResumoItens(
           ipvaAliquotaManualPct: ajuste.ipva_aliquota_manual_pct,
         }
         : { ipvaTipo: "auto", ipvaAliquotaManualPct: null },
+      consignacao: consignacao
+        ? {
+          dataInicio: consignacao.data_inicio,
+          prazoDias: Number(consignacao.prazo_dias),
+          precoMinimoAutorizado: consignacao.preco_minimo_autorizado == null
+            ? null
+            : Number(consignacao.preco_minimo_autorizado),
+        }
+        : null,
     });
     let custoFinanceiroDiario: number | null = null;
     if (
+      !resultado.consignado &&
       valorCompra != null &&
       valorCompra > 0 &&
       calcConfig.custoFinanceiroMensalPct != null
