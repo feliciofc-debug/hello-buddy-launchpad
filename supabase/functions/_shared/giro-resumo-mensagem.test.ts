@@ -207,3 +207,30 @@ Deno.test("G90-2.1 — variáveis do template Meta sem quebra de linha", () => {
   assert(GESTAO_GIRO_RESUMO_TEMPLATE_CORPO.includes("{{1}}"));
   assert(GESTAO_GIRO_RESUMO_TEMPLATE_CORPO.includes("{{5}}"));
 });
+
+Deno.test("CONSIG-1 — resumo separa consignados e contratos vencendo", () => {
+  const ag = agregarGiroResumo([
+    {
+      label: "Próprio",
+      dias: 20,
+      faixa: "saudavel",
+      resultado: resultado({ faixa: "saudavel" }),
+      custoFinanceiroDiario: 100,
+    },
+    {
+      label: "Consignado",
+      dias: 80,
+      faixa: "risco",
+      resultado: resultado({
+        faixa: "risco",
+        consignado: true,
+        contratoDiasRestantes: 10,
+      }),
+      custoFinanceiroDiario: null,
+    },
+  ], "2026-10-23");
+  const msg = montarMensagemGiroResumo(ag, "2026-10-23");
+  assert(msg.includes("Dinheiro próprio parado"));
+  assert(msg.includes("Consignados: 1 carros, 1 com contrato vencendo em 15 dias"));
+  assertEquals(ag.custoFinanceiroHoje, 100);
+});

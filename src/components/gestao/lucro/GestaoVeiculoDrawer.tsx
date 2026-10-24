@@ -45,6 +45,7 @@ import { GestaoMoneyInput } from "@/components/gestao/lucro/GestaoMoneyInput.tsx
 import { parseGestaoMoneyField } from "@/lib/gestao-money.ts";
 import { loadGestaoVendedores, loadComissaoRegra, type GestaoVendedor } from "@/lib/gestao-equipe-load.ts";
 import { calcGestaoComissao } from "../../../../supabase/functions/_shared/gestao-comissao-calc.ts";
+import { calcularConsignacao } from "../../../../supabase/functions/_shared/consignacao-calc.ts";
 import { comissaoLucroBase } from "@/lib/gestao-comissao-lucro.ts";
 import { GestaoVendaRaioXPanel } from "@/components/gestao/lucro/GestaoVendaRaioXPanel.tsx";
 import { estornarComissaoVeiculo, syncComissaoAfterVenda } from "@/lib/gestao-comissao-client.ts";
@@ -85,6 +86,17 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
     data: hojeSaoPaulo(),
     categoria: "outros",
     descricao: "",
+    descontarDoConsignante: false,
+  });
+  const [consignacao, setConsignacao] = useState({
+    consignanteNome: "",
+    valorGarantido: "",
+    pctLoja: "100",
+    pisoLoja: "",
+    precoMinimo: "",
+    dataInicio: hojeSaoPaulo(),
+    prazoDias: "90",
+    observacao: "",
   });
   const [vendedores, setVendedores] = useState<GestaoVendedor[]>([]);
   const [vendedorId, setVendedorId] = useState<string>("");
@@ -125,7 +137,77 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
       marcar: true,
     });
     setVendedorId(veiculo.vendedor_id ?? "");
+    const c = veiculo.consignacao;
+    setConsignacao({
+      consignanteNome: c?.consignante_nome ?? "",
+      valorGarantido: c ? String(c.valor_garantido_dono) : "",
+      pctLoja: c ? String(c.pct_loja_excedente) : "100",
+      pisoLoja: c?.piso_loja == null ? "" : String(c.piso_loja),
+      precoMinimo: c?.preco_minimo_autorizado == null ? "" : String(c.preco_minimo_autorizado),
+      dataInicio: c?.data_inicio ?? hojeSaoPaulo(),
+      prazoDias: c ? String(c.prazo_dias) : "90",
+      observacao: c?.observacao ?? "",
+    });
   }, [veiculo]);
+
+  const saveConsignacao = async () => {
+    if (!veiculo) return;
+    const valorGarantido = parseGestaoMoneyField(consignacao.valorGarantido) ?? 0;
+    const pctLoja = Number(consignacao.pctLoja.replace(",", "."));
+    const prazoDias = Number(consignacao.prazoDias);
+    if (!Number.isFinite(pctLoja) || pctLoja < 0 || pctLoja > 100 || !Number.isInteger(prazoDias) || prazoDias <= 0) {
+      toast.error("Confira o percentual da loja e o prazo.");
+      return;
+    }
+    setBusy(true);
+    const { error } = await supabase.from("veiculo_consignacao" as "veiculos_estoque").upsert({
+      user_id: userId,
+      veiculo_id: veiculo.id,
+      consignante_nome: consignacao.consignanteNome.trim() || null,
+      valor_garantido_dono: valorGarantido,
+      pct_loja_excedente: pctLoja,
+      piso_loja: parseGestaoMoneyField(consignacao.pisoLoja),
+      preco_minimo_autorizado: parseGestaoMoneyField(consignacao.precoMinimo),
+      data_inicio: consignacao.dataInicio,
+      prazo_dias: prazoDias,
+      status: "ativo",
+      observacao: consignacao.observacao.trim() || null,
+    }, { onConflict: "user_id,veiculo_id" });
+    if (!error) {
+      await supabase.from("veiculo_compra" as "veiculos_estoque").upsert({
+        user_id: userId,
+        veiculo_id: veiculo.id,
+        valor_compra: valorGarantido,
+        data_compra: consignacao.dataInicio,
+        origem: "consignacao",
+        fornecedor_obs: consignacao.consignanteNome.trim() || null,
+      }, { onConflict: "user_id,veiculo_id" });
+    }
+    setBusy(false);
+    if (error) toast.error("Não foi possível salvar a consignação.");
+    else {
+      toast.success("Consignação salva.");
+      onSaved();
+    }
+  };
+
+  const setConsignacaoStatus = async (status: "ativo" | "devolvido", renovar = false) => {
+    if (!veiculo?.consignacao) return;
+    setBusy(true);
+    const update = renovar
+      ? { data_inicio: hojeSaoPaulo(), prazo_dias: 90, status: "ativo" }
+      : { status };
+    const { error } = await supabase.from("veiculo_consignacao" as "veiculos_estoque")
+      .update(update)
+      .eq("user_id", userId)
+      .eq("veiculo_id", veiculo.id);
+    setBusy(false);
+    if (error) toast.error("Não foi possível atualizar a consignação.");
+    else {
+      toast.success(renovar ? "Contrato renovado por 90 dias." : "Veículo devolvido ao consignante.");
+      onSaved();
+    }
+  };
 
   const saveCompra = useCallback(async () => {
     if (!veiculo) return;
@@ -169,6 +251,7 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
       data: despesaForm.data,
       categoria: despesaForm.categoria,
       descricao: despesaForm.descricao.trim() || null,
+      descontar_do_consignante: despesaForm.descontarDoConsignante,
       origem_lancamento: "painel",
       lancado_por: "painel",
     });
@@ -178,7 +261,7 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
       return;
     }
     toast.success("Despesa lançada.");
-    setDespesaForm({ ...despesaForm, valor: "", descricao: "" });
+    setDespesaForm({ ...despesaForm, valor: "", descricao: "", descontarDoConsignante: false });
     onSaved();
   };
 
@@ -197,6 +280,19 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
     }
     toast.success("Categoria atualizada.");
     onSaved();
+  };
+
+  const saveDespesaDescontoConsignante = async (
+    despesaId: string,
+    descontar: boolean,
+  ) => {
+    setBusy(true);
+    const { error } = await supabase.from("veiculo_despesas" as "veiculos_estoque")
+      .update({ descontar_do_consignante: descontar })
+      .eq("id", despesaId);
+    setBusy(false);
+    if (error) toast.error("Não foi possível alterar o desconto do dono.");
+    else onSaved();
   };
 
   const confirmDeleteDespesa = async () => {
@@ -224,15 +320,36 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
     }
     if (vendedorId) {
       const regra = await loadComissaoRegra(userId, vendedorId);
-      const { lucroLiquido, margemPct } = comissaoLucroBase({
-        valorCompra: veiculo.valorCompra,
-        valorVenda: valor,
-        despesas: veiculo.despesas.map((d) => ({
-          valor: Number(d.valor),
-          categoria: d.categoria,
-          origem_lancamento: d.origem_lancamento,
-        })),
-      });
+      const baseComissao = veiculo.consignacao?.status === "ativo"
+        ? calcularConsignacao({
+          preco: valor,
+          valorGarantidoDono: veiculo.consignacao.valor_garantido_dono,
+          pctLojaExcedente: veiculo.consignacao.pct_loja_excedente,
+          pisoLoja: veiculo.consignacao.piso_loja,
+          despesas: veiculo.despesas
+            .filter((d) => d.categoria !== "comissao")
+            .map((d) => ({
+              valor: Number(d.valor),
+              descontarDoConsignante: Boolean(d.descontar_do_consignante),
+            })),
+          comissaoVendedor: 0,
+        })
+        : null;
+      const proprio = baseComissao
+        ? null
+        : comissaoLucroBase({
+          valorCompra: veiculo.valorCompra,
+          valorVenda: valor,
+          despesas: veiculo.despesas.map((d) => ({
+            valor: Number(d.valor),
+            categoria: d.categoria,
+            origem_lancamento: d.origem_lancamento,
+          })),
+        });
+      const lucroLiquido = baseComissao?.lucroLoja ?? proprio?.lucroLiquido ?? null;
+      const margemPct = baseComissao
+        ? (valor > 0 ? baseComissao.lucroLoja / valor * 100 : null)
+        : proprio?.margemPct ?? null;
       const prev = calcGestaoComissao({
         valorVenda: valor,
         lucroLiquido,
@@ -267,6 +384,26 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
         return;
       }
     }
+    const consignacaoVenda = veiculo.consignacao?.status === "ativo"
+      ? calcularConsignacao({
+        preco: valor,
+        valorGarantidoDono: veiculo.consignacao.valor_garantido_dono,
+        pctLojaExcedente: veiculo.consignacao.pct_loja_excedente,
+        pisoLoja: veiculo.consignacao.piso_loja,
+        despesas: veiculo.despesas
+          .filter((d) => d.categoria !== "comissao")
+          .map((d) => ({
+            valor: Number(d.valor),
+            descontarDoConsignante: Boolean(d.descontar_do_consignante),
+          })),
+        comissaoVendedor: overrideComissao ?? 0,
+      })
+      : null;
+    if (consignacaoVenda?.abaixoDoGarantido) {
+      setBusy(false);
+      toast.error("Venda abaixo do valor garantido. Registre a autorização do dono ajustando o mínimo/garantido antes de vender.");
+      return;
+    }
     const vend = vendedores.find((x) => x.id === vendedorId);
     const { error } = await supabase.from("veiculo_venda" as "veiculos_estoque").upsert({
       user_id: userId,
@@ -298,6 +435,43 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
       valorComissaoOverride: overrideComissao,
       statusVeiculo: venda.marcar ? "vendido" : veiculo.status,
     });
+    if (consignacaoVenda) {
+      const marker = `Repasse consignante · veículo ${veiculo.id}`;
+      const vencimento = new Date(`${venda.data}T12:00:00`);
+      vencimento.setDate(vencimento.getDate() + 2);
+      const vencimentoYmd = vencimento.toISOString().slice(0, 10);
+      const { data: existente } = await supabase
+        .from("gestao_conta_lancamento" as "veiculos_estoque")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("veiculo_id", veiculo.id)
+        .eq("tipo", "pagar")
+        .eq("observacao", marker)
+        .is("deleted_at", null)
+        .maybeSingle();
+      const payload = {
+        user_id: userId,
+        veiculo_id: veiculo.id,
+        tipo: "pagar",
+        categoria_operacional: "outros",
+        valor: consignacaoVenda.repasseDonoLiquido,
+        vencimento: vencimentoYmd,
+        origem: "manual",
+        observacao: marker,
+      };
+      if (existente?.id) {
+        await supabase.from("gestao_conta_lancamento" as "veiculos_estoque")
+          .update(payload)
+          .eq("id", existente.id);
+      } else {
+        await supabase.from("gestao_conta_lancamento" as "veiculos_estoque")
+          .insert(payload);
+      }
+      await supabase.from("veiculo_consignacao" as "veiculos_estoque")
+        .update({ status: "vendido" })
+        .eq("user_id", userId)
+        .eq("veiculo_id", veiculo.id);
+    }
     setBusy(false);
     setComissaoConfirmOpen(false);
     const wasEdit = veiculo.valorVenda != null;
@@ -328,6 +502,17 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
       status: "disponivel",
       vendido_at: null,
     }).eq("id", veiculo.id);
+    if (veiculo.consignacao) {
+      await supabase.from("veiculo_consignacao" as "veiculos_estoque")
+        .update({ status: "ativo" })
+        .eq("user_id", userId)
+        .eq("veiculo_id", veiculo.id);
+      await supabase.from("gestao_conta_lancamento" as "veiculos_estoque")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("user_id", userId)
+        .eq("veiculo_id", veiculo.id)
+        .eq("observacao", `Repasse consignante · veículo ${veiculo.id}`);
+    }
     setBusy(false);
     setUndoVendaOpen(false);
     toast.success("Venda desfeita. O carro voltou para o estoque.");
@@ -362,7 +547,10 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
         <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
           <SheetHeader>
             <SheetTitle>{vehicleLabel(veiculo)}</SheetTitle>
-            <p className="text-sm text-muted-foreground capitalize">{veiculo.status}</p>
+            <p className="text-sm text-muted-foreground capitalize">
+              {veiculo.status}
+              {veiculo.consignacao?.status === "ativo" ? " · Consignado" : ""}
+            </p>
           </SheetHeader>
 
           <div className="mt-6 space-y-6">
@@ -394,6 +582,14 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
                 <p className="font-semibold">{formatGestaoMoney(lucro.totalDespesas)}</p>
               </div>
             </div>
+            {veiculo.consignacaoResultado && (
+              <p className="rounded-md bg-blue-50 p-2 text-sm text-blue-800">
+                Dono recebe {formatGestaoMoney(veiculo.consignacaoResultado.repasseDonoLiquido)}
+                {veiculo.consignacaoResultado.abaixoDoGarantido
+                  ? " · abaixo do garantido — exige autorização"
+                  : ""}
+              </p>
+            )}
 
             <GestaoVeiculoProcedenciaPanel
               userId={userId}
@@ -411,6 +607,39 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
                 }))}
               />
             )}
+
+            <section className="space-y-3 rounded-lg border border-blue-200 p-3">
+              <div>
+                <h3 className="text-sm font-semibold">Consignação</h3>
+                <p className="text-xs text-muted-foreground">
+                  O valor garantido não entra como capital, juros ou IPVA da loja.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={() => setConsignacao((c) => ({ ...c, pctLoja: "100", pisoLoja: "" }))}>Valor fixo</Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => setConsignacao((c) => ({ ...c, valorGarantido: "0", pctLoja: "8", pisoLoja: "5000" }))}>Comissão</Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => setConsignacao((c) => ({ ...c, pctLoja: "50", pisoLoja: "" }))}>Híbrido</Button>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div><Label>Nome do consignante</Label><Input value={consignacao.consignanteNome} onChange={(e) => setConsignacao({ ...consignacao, consignanteNome: e.target.value })} /></div>
+                <GestaoMoneyInput label="Valor garantido ao dono" value={consignacao.valorGarantido} onChange={(v) => setConsignacao({ ...consignacao, valorGarantido: v })} />
+                <div><Label>Percentual da loja no excedente (%)</Label><Input type="number" min="0" max="100" step="0.01" value={consignacao.pctLoja} onChange={(e) => setConsignacao({ ...consignacao, pctLoja: e.target.value })} /></div>
+                <GestaoMoneyInput label="Piso da loja" value={consignacao.pisoLoja} onChange={(v) => setConsignacao({ ...consignacao, pisoLoja: v })} />
+                <GestaoMoneyInput label="Preço mínimo autorizado" value={consignacao.precoMinimo} onChange={(v) => setConsignacao({ ...consignacao, precoMinimo: v })} />
+                <div><Label>Início</Label><Input type="date" value={consignacao.dataInicio} onChange={(e) => setConsignacao({ ...consignacao, dataInicio: e.target.value })} /></div>
+                <div><Label>Prazo (dias)</Label><Input type="number" min="1" value={consignacao.prazoDias} onChange={(e) => setConsignacao({ ...consignacao, prazoDias: e.target.value })} /></div>
+                <div><Label>Observação</Label><Input value={consignacao.observacao} onChange={(e) => setConsignacao({ ...consignacao, observacao: e.target.value })} /></div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" disabled={busy} onClick={() => void saveConsignacao()}>Salvar consignação</Button>
+                {veiculo.consignacao && (
+                  <>
+                    <Button size="sm" variant="outline" disabled={busy} onClick={() => void setConsignacaoStatus("ativo", true)}>Renovar +90 dias</Button>
+                    <Button size="sm" variant="destructive" disabled={busy} onClick={() => void setConsignacaoStatus("devolvido")}>Devolver</Button>
+                  </>
+                )}
+              </div>
+            </section>
 
             <section className="space-y-2">
               <h3 className="text-sm font-semibold">Compra</h3>
@@ -446,6 +675,17 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
                       </Button>
                     </div>
                     {d.descricao && <p className="text-muted-foreground">{d.descricao}</p>}
+                    {veiculo.consignacao && d.categoria !== "comissao" && (
+                      <label className="mt-1 flex items-center gap-2 text-xs text-blue-700">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(d.descontar_do_consignante)}
+                          disabled={busy}
+                          onChange={(e) => void saveDespesaDescontoConsignante(d.id, e.target.checked)}
+                        />
+                        Descontar do dono
+                      </label>
+                    )}
                     {despesaCategoriaEditavel(d) ? (
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <Label className="text-xs text-muted-foreground">Categoria</Label>
@@ -497,6 +737,19 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
                     ))}
                   </SelectContent>
                 </Select>
+                {veiculo.consignacao?.status === "ativo" && (
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={despesaForm.descontarDoConsignante}
+                      onChange={(e) => setDespesaForm({
+                        ...despesaForm,
+                        descontarDoConsignante: e.target.checked,
+                      })}
+                    />
+                    Descontar do dono
+                  </label>
+                )}
                 <Button size="sm" variant="outline" disabled={busy} onClick={() => void addDespesa()}>
                   + Despesa
                 </Button>

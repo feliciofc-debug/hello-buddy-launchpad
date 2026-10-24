@@ -229,3 +229,49 @@ Deno.test("G90-1 — dados faltantes bloqueiam recomendação financeira", () =>
   assert(!r.dadosIncompletos.some((d) => d.includes("FIPE")));
   assertEquals(r.recomendacao, "Completar dados antes de decidir");
 });
+
+Deno.test("CONSIG-1 — consignado não imobiliza valor, não tem IPVA nem desvalorização", () => {
+  const r = calcularEstoqueGiro({
+    hoje: "2026-10-23",
+    dataCompra: "2026-08-24",
+    createdAt: "2026-08-24",
+    valorCompra: 105_000,
+    despesas: [1_000],
+    precoAnunciado: 120_000,
+    referencias: [{ fonte: "fipe", valor: 110_000 }],
+    config: {
+      ...config,
+      ipvaLojaPagaVirada: true,
+      custoVagaDia: 30,
+    },
+    regraComissao: DEFAULT_COMISSAO_REGRA,
+    consignacao: {
+      dataInicio: "2026-08-24",
+      prazoDias: 70,
+      precoMinimoAutorizado: 115_000,
+    },
+  });
+  assertEquals(r.consignado, true);
+  assertEquals(r.custoAtual, 1_030); // despesa + juros só sobre a despesa por 60 dias
+  assertEquals(r.ipvaViradaValor, null);
+  assertEquals(r.ipvaProjetado, 0);
+  assertEquals(r.custoDeEsperar30d, 915); // vaga 900 + juros da despesa 15
+  assert(r.recomendacao.startsWith("Contrato vence em"));
+});
+
+Deno.test("CONSIG-1 — regressão: carro próprio mantém cálculo exato", () => {
+  const r = calcularEstoqueGiro({
+    hoje: "2026-10-23",
+    dataCompra: "2026-08-24",
+    createdAt: "2026-08-24",
+    valorCompra: 80_000,
+    despesas: [1_000, 500],
+    precoAnunciado: 100_000,
+    referencias: [{ fonte: "fipe", valor: 100_000 }],
+    config,
+    regraComissao: DEFAULT_COMISSAO_REGRA,
+  });
+  assertEquals(r.consignado, false);
+  assertEquals(r.custoAtual, 83_900);
+  assertEquals(r.ipvaAliquotaEfetivaPct, 4);
+});

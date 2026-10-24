@@ -22,6 +22,7 @@ export type EstoqueGiroConfig = {
   ipvaAliquotaHibridoPct: number | null;
   ipvaAliquotaEletricoPct: number | null;
   ipvaLojaPagaVirada: boolean;
+  custoVagaDia: number | null;
 };
 
 export const DEFAULT_ESTOQUE_GIRO_CONFIG: EstoqueGiroConfig = {
@@ -36,6 +37,7 @@ export const DEFAULT_ESTOQUE_GIRO_CONFIG: EstoqueGiroConfig = {
   ipvaAliquotaHibridoPct: null,
   ipvaAliquotaEletricoPct: null,
   ipvaLojaPagaVirada: false,
+  custoVagaDia: null,
 };
 
 export type EstoqueGiroReferencia = {
@@ -59,6 +61,11 @@ export type EstoqueGiroInput = {
   versao?: string | null;
   modelo?: string | null;
   ipvaAjuste?: GiroIpvaVeiculoAjuste | null;
+  consignacao?: {
+    dataInicio: string;
+    prazoDias: number;
+    precoMinimoAutorizado: number | null;
+  } | null;
 };
 
 export type EstoqueGiroResultado = {
@@ -81,6 +88,8 @@ export type EstoqueGiroResultado = {
   ipvaAliquotaEfetivaPct: number | null;
   ipvaAliquotaRotulo: string | null;
   ipvaConferirDocumento: boolean;
+  consignado?: boolean;
+  contratoDiasRestantes?: number | null;
   custoDeEsperar30d: number | null;
   indiceRisco: number;
   indiceSemDado: string[];
@@ -246,6 +255,7 @@ function ipvaRiscoScore(
 
 export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResultado {
   const { config } = input;
+  const consignado = !!input.consignacao;
   const dias = diasEmEstoque(input.hoje, input.dataCompra, input.createdAt);
   const faixa = faixaEstoqueGiro(dias, config);
   const incompletos: string[] = [];
@@ -258,11 +268,14 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
     (sum, valor) => sum + (Number.isFinite(valor) ? Math.max(0, valor) : 0),
     0,
   );
-  const custoFinanceiroAcumulado = input.valorCompra != null &&
+  const capitalJuros = consignado ? despesas : input.valorCompra;
+  const custoFinanceiroAcumulado = capitalJuros != null &&
       config.custoFinanceiroMensalPct != null
-    ? input.valorCompra * config.custoFinanceiroMensalPct / 100 * dias / 30
+    ? capitalJuros * config.custoFinanceiroMensalPct / 100 * dias / 30
     : null;
-  const custoAtual = input.valorCompra != null
+  const custoAtual = consignado
+    ? roundMoney(despesas + (custoFinanceiroAcumulado ?? 0))
+    : input.valorCompra != null
     ? roundMoney(input.valorCompra + despesas + (custoFinanceiroAcumulado ?? 0))
     : null;
 
@@ -296,11 +309,11 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
     ? roundMoney(valorRepasseHoje - custoAtual)
     : null;
 
-  const custoFinanceiro30 = input.valorCompra != null &&
+  const custoFinanceiro30 = capitalJuros != null &&
       config.custoFinanceiroMensalPct != null
-    ? input.valorCompra * config.custoFinanceiroMensalPct / 100
+    ? capitalJuros * config.custoFinanceiroMensalPct / 100
     : 0;
-  const fatorDesvalorizacao = config.desvalorizacaoMensalPct != null
+  const fatorDesvalorizacao = !consignado && config.desvalorizacaoMensalPct != null
     ? 1 - config.desvalorizacaoMensalPct / 100
     : 1;
   const hoje = parseDateOnly(input.hoje);
@@ -314,7 +327,7 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
     modelo: input.modelo ?? null,
     config,
   });
-  const aliquotaIpva = ipvaResolvido.aliquotaPct;
+  const aliquotaIpva = consignado ? 0 : ipvaResolvido.aliquotaPct;
   const ipvaVirada = calcIpvaVirada(hojeYmd, config, baseIpva, aliquotaIpva);
   const ipvaProjetado = config.ipvaLojaPagaVirada &&
       aliquotaIpva != null &&
@@ -323,8 +336,9 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
       crossesNewYear(hoje)
     ? roundMoney(baseIpva * aliquotaIpva / 100)
     : 0;
+  const custoVaga30 = consignado ? (config.custoVagaDia ?? 0) * 30 : 0;
   const custo30 = custoAtual != null
-    ? custoAtual + custoFinanceiro30 + ipvaProjetado
+    ? custoAtual + custoFinanceiro30 + ipvaProjetado + custoVaga30
     : null;
   const preco30 = input.precoAnunciado != null
     ? input.precoAnunciado * fatorDesvalorizacao
@@ -344,14 +358,16 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
   const margemRepasse30d = custo30 != null && repasse30 != null
     ? roundMoney(repasse30 - custo30)
     : null;
-  const custoDeEsperar30d = margemVarejoHoje != null && margemVarejo30d != null
+  const custoDeEsperar30d = consignado
+    ? roundMoney(custoFinanceiro30 + custoVaga30)
+    : margemVarejoHoje != null && margemVarejo30d != null
     ? roundMoney(margemVarejoHoje - margemVarejo30d)
     : null;
 
   const semDado: string[] = [];
-  if (config.desvalorizacaoMensalPct == null) semDado.push("desvalorização");
+  if (!consignado && config.desvalorizacaoMensalPct == null) semDado.push("desvalorização");
   if (input.leadsUltimos30Dias == null) semDado.push("procura/leads");
-  if ((config.ipvaAliquotaPct == null && aliquotaIpva == null) || !config.uf) {
+  if (!consignado && ((config.ipvaAliquotaPct == null && aliquotaIpva == null) || !config.uf)) {
     semDado.push("IPVA/UF");
   }
   const compression = margemVarejoHoje != null && custoDeEsperar30d != null
@@ -422,7 +438,24 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
     repasseMelhorQueEsperar(margemRepasseHoje, margemVarejo30d)) {
     recomendacao = "Priorizar repasse";
   }
-  if (incompletos.length) recomendacao = "Completar dados antes de decidir";
+  let contratoDiasRestantes: number | null = null;
+  if (consignado && input.consignacao) {
+    const inicio = parseDateOnly(input.consignacao.dataInicio);
+    const fim = new Date(inicio.getTime() + input.consignacao.prazoDias * 86_400_000);
+    contratoDiasRestantes = Math.ceil((fim.getTime() - hoje.getTime()) / 86_400_000);
+    const minimo = input.consignacao.precoMinimoAutorizado;
+    if (minimo != null && input.precoAnunciado != null) {
+      recomendacao = input.precoAnunciado > minimo
+        ? `Pode baixar até R$ ${minimo.toLocaleString("pt-BR")} (mínimo autorizado)`
+        : "Negociar com o dono ou devolver";
+    }
+    if (contratoDiasRestantes <= 15) {
+      recomendacao =
+        `Contrato vence em ${Math.max(0, contratoDiasRestantes)} dias: renovar, renegociar ou devolver`;
+    }
+  } else if (incompletos.length) {
+    recomendacao = "Completar dados antes de decidir";
+  }
 
   let porque = incompletos.length
     ? `Faltam ${incompletos.join(", ")}; não é seguro projetar sem esses valores.`
@@ -465,6 +498,8 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
     ipvaAliquotaEfetivaPct: aliquotaIpva,
     ipvaAliquotaRotulo: ipvaResolvido.rotulo,
     ipvaConferirDocumento: ipvaResolvido.conferirDocumento,
+    consignado,
+    contratoDiasRestantes,
     custoDeEsperar30d,
     indiceRisco: risco,
     indiceSemDado: semDado,

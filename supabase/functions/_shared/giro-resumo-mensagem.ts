@@ -18,6 +18,8 @@ export type GiroResumoAgregado = {
   ipvaDiasRestantes: number | null;
   semCustoCompra: number;
   semPrecoAnunciado: number;
+  consignados: number;
+  consignadosVencendo15d: number;
   destaques: GiroResumoVeiculoLinha[];
 };
 
@@ -88,10 +90,19 @@ export function agregarGiroResumo(
   let ipvaDiasRestantes: number | null = null;
   let semCustoCompra = 0;
   let semPrecoAnunciado = 0;
+  let consignados = 0;
+  let consignadosVencendo15d = 0;
 
   for (const item of items) {
     faixas[item.faixa] += 1;
     const r = item.resultado;
+    if (r.consignado) {
+      consignados += 1;
+      if (
+        r.contratoDiasRestantes != null &&
+        r.contratoDiasRestantes <= 15
+      ) consignadosVencendo15d += 1;
+    }
     if (r.dadosIncompletos.includes("custo de compra")) semCustoCompra += 1;
     if (r.dadosIncompletos.includes("preço anunciado")) semPrecoAnunciado += 1;
     if (item.custoFinanceiroDiario != null && item.custoFinanceiroDiario > 0) {
@@ -127,6 +138,8 @@ export function agregarGiroResumo(
     ipvaDiasRestantes,
     semCustoCompra,
     semPrecoAnunciado,
+    consignados,
+    consignadosVencendo15d,
     destaques,
   };
 }
@@ -142,7 +155,7 @@ export function montarMensagemGiroResumo(
     `${agregado.total} carros · 🟢 ${agregado.faixas.saudavel} · 🟡 ${agregado.faixas.atencao} · 🟠 ${agregado.faixas.risco} · 🔴 ${agregado.faixas.decisao}`,
   );
   if (agregado.custoFinanceiroHoje != null) {
-    linhas.push(`💸 O estoque parado custou ${formatMoneyBr(agregado.custoFinanceiroHoje)} hoje (juros)`);
+    linhas.push(`💸 Dinheiro próprio parado custou ${formatMoneyBr(agregado.custoFinanceiroHoje)} hoje (juros)`);
   }
   if (agregado.riscoProjetado30d != null) {
     linhas.push(`⚠️ Risco projetado em 30 dias: ${formatMoneyBr(agregado.riscoProjetado30d)}`);
@@ -150,6 +163,11 @@ export function montarMensagemGiroResumo(
   if (agregado.ipvaViradaEstoque != null) {
     const dias = agregado.ipvaDiasRestantes ?? "—";
     linhas.push(`🧾 IPVA da virada: ${formatMoneyBr(agregado.ipvaViradaEstoque)} (faltam ${dias} dias)`);
+  }
+  if (agregado.consignados > 0) {
+    linhas.push(
+      `🤝 Consignados: ${agregado.consignados} carros, ${agregado.consignadosVencendo15d} com contrato vencendo em 15 dias`,
+    );
   }
   if (agregado.destaques.length) {
     linhas.push("");

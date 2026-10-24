@@ -120,6 +120,11 @@ export function GestaoContratosTab({ userId, veiculos, preselectVeiculoId }: Pro
       forma_pagamento: "",
       data: hojeSaoPaulo(),
       cidade: loja.cidade,
+      valor_garantido_dono: formatGestaoMoney(v.consignacao?.valor_garantido_dono ?? 0),
+      pct_loja_excedente: `${v.consignacao?.pct_loja_excedente ?? 0}%`,
+      piso_loja: formatGestaoMoney(v.consignacao?.piso_loja ?? 0),
+      prazo_dias: String(v.consignacao?.prazo_dias ?? 90),
+      preco_minimo_autorizado: formatGestaoMoney(v.consignacao?.preco_minimo_autorizado ?? 0),
     });
     setPreview(text);
   };
@@ -177,6 +182,11 @@ export function GestaoContratosTab({ userId, veiculos, preselectVeiculoId }: Pro
       forma_pagamento: "",
       data: hojeSaoPaulo(),
       cidade: loja.cidade,
+      valor_garantido_dono: formatGestaoMoney(v.consignacao?.valor_garantido_dono ?? 0),
+      pct_loja_excedente: `${v.consignacao?.pct_loja_excedente ?? 0}%`,
+      piso_loja: formatGestaoMoney(v.consignacao?.piso_loja ?? 0),
+      prazo_dias: String(v.consignacao?.prazo_dias ?? 90),
+      preco_minimo_autorizado: formatGestaoMoney(v.consignacao?.preco_minimo_autorizado ?? 0),
     });
   };
 

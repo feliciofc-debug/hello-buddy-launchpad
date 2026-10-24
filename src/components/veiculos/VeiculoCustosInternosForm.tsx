@@ -36,6 +36,7 @@ type DespesaRow = {
   categoria: string;
   descricao: string | null;
   persisted: boolean;
+  descontarDoConsignante: boolean;
 };
 
 type PendingDespesa = {
@@ -44,6 +45,7 @@ type PendingDespesa = {
   data: string;
   categoria: string;
   descricao: string;
+  descontarDoConsignante: boolean;
 };
 
 type Props = {
@@ -69,6 +71,7 @@ export const VeiculoCustosInternosForm = forwardRef<VeiculoCustosSaveHandle, Pro
       data: hojeSaoPaulo(),
       categoria: "outros",
       descricao: "",
+      descontarDoConsignante: false,
     });
 
     useEffect(() => {
@@ -94,7 +97,7 @@ export const VeiculoCustosInternosForm = forwardRef<VeiculoCustosSaveHandle, Pro
           .eq("veiculo_id", vehicleId)
           .maybeSingle(),
         supabase.from("veiculo_despesas" as "veiculos_estoque")
-          .select("id, valor, data, categoria, descricao")
+          .select("id, valor, data, categoria, descricao, descontar_do_consignante")
           .eq("veiculo_id", vehicleId)
           .is("deleted_at", null)
           .order("data", { ascending: false }),
@@ -122,6 +125,7 @@ export const VeiculoCustosInternosForm = forwardRef<VeiculoCustosSaveHandle, Pro
           categoria: String(row.categoria),
           descricao: row.descricao ? String(row.descricao) : null,
           persisted: true,
+          descontarDoConsignante: Boolean(row.descontar_do_consignante),
         })),
       );
       setPending([]);
@@ -152,6 +156,7 @@ export const VeiculoCustosInternosForm = forwardRef<VeiculoCustosSaveHandle, Pro
         data: hojeSaoPaulo(),
         categoria: "outros",
         descricao: "",
+        descontarDoConsignante: false,
       });
     };
 
@@ -199,6 +204,7 @@ export const VeiculoCustosInternosForm = forwardRef<VeiculoCustosSaveHandle, Pro
           descricao: p.descricao.trim() || null,
           origem_lancamento: "painel",
           lancado_por: "painel",
+          descontar_do_consignante: p.descontarDoConsignante,
         });
         if (error) {
           toast.error("Erro ao salvar uma despesa.");
@@ -288,6 +294,7 @@ export const VeiculoCustosInternosForm = forwardRef<VeiculoCustosSaveHandle, Pro
                         <span>
                           {formatGestaoMoney(d.valor)} · {gestaoCategoriaLabel(d.categoria)} · {d.data}
                           {d.descricao ? ` — ${d.descricao}` : ""}
+                          {d.descontarDoConsignante ? " · descontar do dono" : ""}
                         </span>
                         <Button type="button" size="icon" variant="ghost" onClick={() => void softDeleteDespesa(d.id)}>
                           <Trash2 className="h-4 w-4" />
@@ -299,6 +306,7 @@ export const VeiculoCustosInternosForm = forwardRef<VeiculoCustosSaveHandle, Pro
                         <span>
                           {formatGestaoMoney(Number(p.valor))} · {gestaoCategoriaLabel(p.categoria)} · {p.data}
                           {p.descricao ? ` — ${p.descricao}` : ""}
+                          {p.descontarDoConsignante ? " · descontar do dono" : ""}
                           <span className="ml-1 text-xs text-muted-foreground">(nova)</span>
                         </span>
                         <Button type="button" size="icon" variant="ghost" onClick={() => removePending(p.tempId)}>
@@ -334,6 +342,19 @@ export const VeiculoCustosInternosForm = forwardRef<VeiculoCustosSaveHandle, Pro
                       <Label>Descrição</Label>
                       <Input value={draft.descricao} onChange={(e) => setDraft({ ...draft, descricao: e.target.value })} />
                     </div>
+                    {compra.origem === "consignacao" && (
+                      <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                        <input
+                          type="checkbox"
+                          checked={draft.descontarDoConsignante}
+                          onChange={(e) => setDraft({
+                            ...draft,
+                            descontarDoConsignante: e.target.checked,
+                          })}
+                        />
+                        Descontar do dono
+                      </label>
+                    )}
                     <div className="sm:col-span-2">
                       <Button type="button" variant="secondary" size="sm" onClick={addPendingDespesa}>
                         + Adicionar despesa
