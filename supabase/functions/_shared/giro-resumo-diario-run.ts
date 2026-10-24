@@ -134,8 +134,8 @@ export async function processarGiroResumoLoja(
     ? await maybeRunFipeAuto(sb, userId, cfg.fipe_auto_ultima_competencia ?? null)
     : null;
 
-  const { items } = await loadGiroResumoItens(sb, userId, hojeSaoPaulo());
-  const agregado = agregarGiroResumo(items, hojeYmd);
+  const { items, trocasHoje } = await loadGiroResumoItens(sb, userId, hojeSaoPaulo());
+  const agregado = agregarGiroResumo(items, hojeYmd, trocasHoje);
   const message = montarMensagemGiroResumo(agregado, hojeYmd);
 
   const phonesAll = await listarDestinatariosGiroResumo(sb, userId);

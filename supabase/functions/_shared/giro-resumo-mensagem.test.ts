@@ -234,3 +234,14 @@ Deno.test("CONSIG-1 — resumo separa consignados e contratos vencendo", () => {
   assert(msg.includes("Consignados: 1 carros, 1 com contrato vencendo em 15 dias"));
   assertEquals(ag.custoFinanceiroHoje, 100);
 });
+
+Deno.test("TROCA-VENDA-1 — resumo mostra trocas e troco pago no dia", () => {
+  const ag = agregarGiroResumo([], "2026-10-23", {
+    quantidade: 2,
+    trocoPago: 20_000,
+  });
+  const msg = montarMensagemGiroResumo(ag, "2026-10-23");
+  assert(msg.includes("Trocas hoje: 2"));
+  assert(msg.includes("troco pago"));
+  assert(msg.includes("20.000,00"));
+});

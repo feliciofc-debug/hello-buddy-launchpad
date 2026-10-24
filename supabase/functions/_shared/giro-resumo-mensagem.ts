@@ -20,6 +20,8 @@ export type GiroResumoAgregado = {
   semPrecoAnunciado: number;
   consignados: number;
   consignadosVencendo15d: number;
+  trocasHoje: number;
+  trocoPagoHoje: number;
   destaques: GiroResumoVeiculoLinha[];
 };
 
@@ -74,6 +76,7 @@ export const GESTAO_GIRO_RESUMO_TEMPLATE_CORPO =
 export function agregarGiroResumo(
   items: GiroResumoVeiculoLinha[],
   hojeYmd: string,
+  trocasHoje: { quantidade: number; trocoPago: number } = { quantidade: 0, trocoPago: 0 },
 ): GiroResumoAgregado {
   const faixas: Record<EstoqueGiroFaixa, number> = {
     saudavel: 0,
@@ -140,6 +143,8 @@ export function agregarGiroResumo(
     semPrecoAnunciado,
     consignados,
     consignadosVencendo15d,
+    trocasHoje: trocasHoje.quantidade,
+    trocoPagoHoje: trocasHoje.trocoPago,
     destaques,
   };
 }
@@ -167,6 +172,11 @@ export function montarMensagemGiroResumo(
   if (agregado.consignados > 0) {
     linhas.push(
       `🤝 Consignados: ${agregado.consignados} carros, ${agregado.consignadosVencendo15d} com contrato vencendo em 15 dias`,
+    );
+  }
+  if (agregado.trocasHoje > 0) {
+    linhas.push(
+      `🔄 Trocas hoje: ${agregado.trocasHoje} (troco pago ${formatMoneyBr(agregado.trocoPagoHoje)})`,
     );
   }
   if (agregado.destaques.length) {
