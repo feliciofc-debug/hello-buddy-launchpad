@@ -85,7 +85,11 @@ export async function loadGiroResumoItens(
   sb: SupabaseClient,
   userId: string,
   hojeYmd = hojeSaoPaulo(),
-): Promise<{ config: GestaoGiroConfigDbRow | null; items: GiroResumoVeiculoLinha[] }> {
+): Promise<{
+  config: GestaoGiroConfigDbRow | null;
+  items: GiroResumoVeiculoLinha[];
+  trocasHoje: { quantidade: number; trocoPago: number };
+}> {
   const [
     { data: configData },
     { data: veiculos },
@@ -95,6 +99,7 @@ export async function loadGiroResumoItens(
     { data: trocasData },
     { data: ajustesData },
     { data: consignacoesData },
+    { data: vendasTrocaHoje },
     regraComissao,
   ] = await Promise.all([
     sb.from("gestao_giro_config").select("*").eq("user_id", userId).maybeSingle(),
@@ -123,6 +128,11 @@ export async function loadGiroResumoItens(
       .select("veiculo_id, data_inicio, prazo_dias, preco_minimo_autorizado, status")
       .eq("user_id", userId)
       .eq("status", "ativo"),
+    sb.from("veiculo_venda")
+      .select("troca_id, pagamento_json")
+      .eq("user_id", userId)
+      .eq("data_venda", hojeYmd)
+      .not("troca_id", "is", null),
     loadComissaoRegra(sb, userId),
   ]);
 
@@ -280,5 +290,14 @@ export async function loadGiroResumoItens(
     };
   });
 
-  return { config, items };
+  const trocasHoje = {
+    quantidade: (vendasTrocaHoje ?? []).length,
+    trocoPago: Math.round((vendasTrocaHoje ?? []).reduce((sum, raw) => {
+      const pagamento = (raw as { pagamento_json?: { saldo?: number } | null }).pagamento_json;
+      const saldo = Number(pagamento?.saldo ?? 0);
+      return sum + (saldo < 0 ? Math.abs(saldo) : 0);
+    }, 0) * 100) / 100,
+  };
+
+  return { config, items, trocasHoje };
 }

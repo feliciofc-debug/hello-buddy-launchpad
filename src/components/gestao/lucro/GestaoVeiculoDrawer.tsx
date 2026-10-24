@@ -58,6 +58,33 @@ import {
   saveConsignacaoTermos,
   type ConsignacaoFormValue,
 } from "@/lib/consignacao-form.ts";
+import {
+  calcularComposicaoTrocaVenda,
+  calcularSobreAvaliacaoTroca,
+} from "../../../../supabase/functions/_shared/troca-venda-calc.ts";
+
+type TrocaDisponivel = {
+  id: string;
+  marca: string;
+  modelo: string;
+  versao: string | null;
+  ano_modelo: number | null;
+  placa: string | null;
+  status: string;
+  destino: "estoque" | "repasse" | null;
+  valor_proposto: number | null;
+  valor_aprovado: number | null;
+  valor_fechado: number | null;
+  valor_sugerido: number | null;
+  teto: number | null;
+};
+
+type VendaComTrocaRpc = {
+  rpc: (
+    name: string,
+    params: Record<string, unknown>,
+  ) => Promise<{ error: { message?: string } | null }>;
+};
 
 type Props = {
   open: boolean;
@@ -87,6 +114,23 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [compra, setCompra] = useState({ valor: "", data: "", origem: "compra", fornecedor: "" });
   const [venda, setVenda] = useState({ valor: "", data: "", vendedor: "", forma: "", marcar: true });
+  const [pagamento, setPagamento] = useState({
+    entrada: "",
+    financiamentoBanco: "",
+    financiamentoValor: "",
+    trocaModo: "nenhuma" as "nenhuma" | "existente" | "rapida",
+    trocaId: "",
+    trocaValor: "",
+    vencimento: hojeSaoPaulo(),
+  });
+  const [trocas, setTrocas] = useState<TrocaDisponivel[]>([]);
+  const [trocaRapida, setTrocaRapida] = useState({
+    marca: "",
+    modelo: "",
+    anoModelo: "",
+    placa: "",
+    destino: "estoque" as "estoque" | "repasse",
+  });
   const [despesaForm, setDespesaForm] = useState({
     valor: "",
     data: hojeSaoPaulo(),
@@ -113,6 +157,18 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
   }, [userId]);
 
   useEffect(() => {
+    if (!open || !userId) return;
+    void supabase.from("gestao_troca" as "veiculos_estoque")
+      .select("id, marca, modelo, versao, ano_modelo, placa, status, destino, valor_proposto, valor_aprovado, valor_fechado, valor_sugerido, teto")
+      .eq("user_id", userId)
+      .in("status", ["aprovada", "em_avaliacao", "fechada"])
+      .then(({ data }) => {
+        const rows = (data ?? []) as unknown as TrocaDisponivel[];
+        setTrocas(rows.filter((t) => t.status !== "fechada" || t.id === veiculo?.troca_id));
+      });
+  }, [open, userId, veiculo?.troca_id]);
+
+  useEffect(() => {
     if (!open || !focusVenda) return;
     const t = window.setTimeout(() => {
       vendaSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -136,6 +192,16 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
       marcar: true,
     });
     setVendedorId(veiculo.vendedor_id ?? "");
+    const p = veiculo.pagamento;
+    setPagamento({
+      entrada: p?.entrada == null ? "" : String(p.entrada),
+      financiamentoBanco: p?.financiamento?.banco ?? "",
+      financiamentoValor: p?.financiamento?.valor == null ? "" : String(p.financiamento.valor),
+      trocaModo: veiculo.troca_id ? "existente" : "nenhuma",
+      trocaId: veiculo.troca_id ?? "",
+      trocaValor: p?.troca?.valor == null ? "" : String(p.troca.valor),
+      vencimento: veiculo.dataVenda ?? hojeSaoPaulo(),
+    });
     const c = veiculo.consignacao;
     setConsignacao({
       consignanteNome: c?.consignante_nome ?? "",
@@ -363,22 +429,99 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
       }
     }
     const vend = vendedores.find((x) => x.id === vendedorId);
-    const { error } = await supabase.from("veiculo_venda" as "veiculos_estoque").upsert({
-      user_id: userId,
-      veiculo_id: veiculo.id,
-      valor_venda: valor,
-      data_venda: venda.data,
-      vendedor: vend?.nome ?? (venda.vendedor.trim() || null),
-      vendedor_id: vendedorId || null,
-      forma_pagamento: venda.forma.trim() || null,
-      marcou_vendido: venda.marcar,
-    }, { onConflict: "user_id,veiculo_id" });
-    if (error) {
+    const temTroca = pagamento.trocaModo !== "nenhuma";
+    const entrada = parseGestaoMoneyField(pagamento.entrada) ?? 0;
+    const financiamentoValor = parseGestaoMoneyField(pagamento.financiamentoValor) ?? 0;
+    const trocaValor = parseGestaoMoneyField(pagamento.trocaValor);
+    if (temTroca && (trocaValor == null || trocaValor <= 0)) {
       setBusy(false);
-      toast.error("Erro ao salvar venda.");
+      toast.error("Informe o valor do carro recebido na troca.");
       return;
     }
-    if (venda.marcar) {
+    if (pagamento.trocaModo === "existente" && !pagamento.trocaId) {
+      setBusy(false);
+      toast.error("Selecione a avaliação do carro recebido.");
+      return;
+    }
+    if (pagamento.trocaModo === "rapida") {
+      if (!trocaRapida.marca.trim() || !trocaRapida.modelo.trim()) {
+        setBusy(false);
+        toast.error("Informe marca e modelo da troca rápida.");
+        return;
+      }
+      if (trocaRapida.placa.trim() && trocaRapida.placa.trim().length !== 7) {
+        setBusy(false);
+        toast.error("A placa da troca deve ter 7 caracteres.");
+        return;
+      }
+    }
+
+    let error: { message?: string } | null;
+    if (temTroca) {
+      const selecionada = trocas.find((t) => t.id === pagamento.trocaId);
+      const composicao = calcularComposicaoTrocaVenda({
+        precoVenda: valor,
+        entrada,
+        financiamentoValor,
+        trocaValor: trocaValor ?? 0,
+      });
+      const rpcResult = await (supabase as unknown as VendaComTrocaRpc).rpc(
+        "registrar_venda_com_troca",
+        {
+          p_veiculo_id: veiculo.id,
+          p_valor_venda: valor,
+          p_data_venda: venda.data,
+          p_vendedor: vend?.nome ?? (venda.vendedor.trim() || null),
+          p_vendedor_id: vendedorId || null,
+          p_forma_pagamento: venda.forma.trim() || null,
+          p_marcar_vendido: venda.marcar,
+          p_pagamento: {
+            entrada,
+            financiamento: {
+              banco: pagamento.financiamentoBanco.trim() || null,
+              valor: financiamentoValor,
+            },
+            troca: {
+              troca_id: pagamento.trocaModo === "existente" ? pagamento.trocaId : null,
+              valor: trocaValor,
+              teto: selecionada?.teto ?? null,
+            },
+            saldo: composicao.saldo,
+          },
+          p_troca_id: pagamento.trocaModo === "existente" ? pagamento.trocaId : null,
+          p_troca_rapida: pagamento.trocaModo === "rapida"
+            ? {
+              marca: trocaRapida.marca.trim(),
+              modelo: trocaRapida.modelo.trim(),
+              ano_modelo: trocaRapida.anoModelo || null,
+              placa: trocaRapida.placa.trim().toUpperCase() || null,
+              valor: trocaValor,
+              destino: trocaRapida.destino,
+            }
+            : null,
+          p_financeiro_vencimento: pagamento.vencimento || venda.data,
+        },
+      );
+      error = rpcResult.error;
+    } else {
+      const result = await supabase.from("veiculo_venda" as "veiculos_estoque").upsert({
+        user_id: userId,
+        veiculo_id: veiculo.id,
+        valor_venda: valor,
+        data_venda: venda.data,
+        vendedor: vend?.nome ?? (venda.vendedor.trim() || null),
+        vendedor_id: vendedorId || null,
+        forma_pagamento: venda.forma.trim() || null,
+        marcou_vendido: venda.marcar,
+      }, { onConflict: "user_id,veiculo_id" });
+      error = result.error;
+    }
+    if (error) {
+      setBusy(false);
+      toast.error(error.message || "Erro ao salvar venda.");
+      return;
+    }
+    if (venda.marcar && !temTroca) {
       await supabase.from("veiculos_estoque").update({
         status: "vendido",
         vendido_at: new Date().toISOString(),
@@ -450,6 +593,19 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
     ? lucro.margemPct
     : gestaoMargemPct(lucro.lucroProjetado, veiculo.preco);
   const lucroVal = lucro.vendido ? lucro.lucroLiquido : lucro.lucroProjetado;
+  const trocaSelecionada = trocas.find((t) => t.id === pagamento.trocaId);
+  const trocaValorPreview = parseGestaoMoneyField(pagamento.trocaValor) ?? 0;
+  const composicaoPreview = calcularComposicaoTrocaVenda({
+    precoVenda: parseGestaoMoneyField(venda.valor) ?? 0,
+    entrada: parseGestaoMoneyField(pagamento.entrada) ?? 0,
+    financiamentoValor: parseGestaoMoneyField(pagamento.financiamentoValor) ?? 0,
+    trocaValor: pagamento.trocaModo === "nenhuma" ? 0 : trocaValorPreview,
+  });
+  const sobreAvaliacao = calcularSobreAvaliacaoTroca({
+    valorTroca: trocaValorPreview,
+    teto: trocaSelecionada?.teto ?? veiculo.pagamento?.troca?.teto ?? null,
+    lucroContabil: lucroVal,
+  });
 
   return (
     <>
@@ -501,6 +657,26 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
               <p className="rounded-md border border-red-300 bg-red-50 p-2 text-sm font-medium text-red-700">
                 {veiculo.consignacao.repasse_aviso}
               </p>
+            )}
+            {veiculo.pagamento && (
+              <div className="space-y-1 rounded-md border bg-muted/30 p-3 text-sm">
+                <p className="font-medium">
+                  Efeito no caixa hoje: {formatGestaoMoney(
+                    calcularComposicaoTrocaVenda({
+                      precoVenda: veiculo.valorVenda ?? 0,
+                      entrada: Number(veiculo.pagamento.entrada ?? 0),
+                      financiamentoValor: Number(veiculo.pagamento.financiamento?.valor ?? 0),
+                      trocaValor: Number(veiculo.pagamento.troca?.valor ?? 0),
+                    }).efeitoCaixaHoje,
+                  )}
+                </p>
+                {veiculo.pagamento.financeiro_aviso && (
+                  <p className="text-amber-700">{veiculo.pagamento.financeiro_aviso}</p>
+                )}
+                {sobreAvaliacao.aviso && (
+                  <p className="font-medium text-red-700">{sobreAvaliacao.aviso}</p>
+                )}
+              </div>
             )}
 
             <GestaoVeiculoProcedenciaPanel
@@ -674,6 +850,118 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
                   ))}
                 </SelectContent>
               </Select>
+              <div className="space-y-3 rounded-lg border p-3">
+                <h4 className="text-sm font-semibold">Pagamento</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <GestaoMoneyInput
+                    label="Entrada à vista (R$)"
+                    value={pagamento.entrada}
+                    onChange={(entrada) => setPagamento({ ...pagamento, entrada })}
+                  />
+                  <GestaoMoneyInput
+                    label="Financiamento (R$)"
+                    value={pagamento.financiamentoValor}
+                    onChange={(financiamentoValor) => setPagamento({ ...pagamento, financiamentoValor })}
+                  />
+                </div>
+                <Input
+                  placeholder="Banco do financiamento"
+                  value={pagamento.financiamentoBanco}
+                  onChange={(e) => setPagamento({ ...pagamento, financiamentoBanco: e.target.value })}
+                />
+                <Label className="text-xs">Carro na troca</Label>
+                <Select
+                  value={pagamento.trocaModo}
+                  disabled={Boolean(veiculo.troca_id)}
+                  onValueChange={(trocaModo: "nenhuma" | "existente" | "rapida") =>
+                    setPagamento({ ...pagamento, trocaModo, trocaId: "", trocaValor: "" })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="nenhuma">Sem carro na troca</SelectItem>
+                    <SelectItem value="existente">Selecionar avaliação</SelectItem>
+                    <SelectItem value="rapida">Troca rápida</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {pagamento.trocaModo === "existente" && (
+                  <>
+                    <Select
+                      value={pagamento.trocaId}
+                      disabled={Boolean(veiculo.troca_id)}
+                      onValueChange={(trocaId) => {
+                        const t = trocas.find((item) => item.id === trocaId);
+                        const valor = t?.valor_fechado ?? t?.valor_aprovado ??
+                          t?.valor_proposto ?? t?.valor_sugerido;
+                        setPagamento({
+                          ...pagamento,
+                          trocaId,
+                          trocaValor: valor == null ? "" : String(valor),
+                        });
+                      }}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Escolha uma avaliação" /></SelectTrigger>
+                      <SelectContent>
+                        {trocas.map((t) => (
+                          <SelectItem key={t.id} value={t.id}>
+                            {t.marca} {t.modelo}
+                            {t.ano_modelo ? ` ${t.ano_modelo}` : ""}
+                            {t.teto != null ? ` · teto ${formatGestaoMoney(Number(t.teto))}` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {!trocas.length && (
+                      <p className="text-xs text-muted-foreground">Nenhuma avaliação disponível.</p>
+                    )}
+                  </>
+                )}
+
+                {pagamento.trocaModo === "rapida" && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input placeholder="Marca*" value={trocaRapida.marca} onChange={(e) => setTrocaRapida({ ...trocaRapida, marca: e.target.value })} />
+                    <Input placeholder="Modelo*" value={trocaRapida.modelo} onChange={(e) => setTrocaRapida({ ...trocaRapida, modelo: e.target.value })} />
+                    <Input type="number" placeholder="Ano modelo" value={trocaRapida.anoModelo} onChange={(e) => setTrocaRapida({ ...trocaRapida, anoModelo: e.target.value })} />
+                    <Input maxLength={7} placeholder="Placa" value={trocaRapida.placa} onChange={(e) => setTrocaRapida({ ...trocaRapida, placa: e.target.value.toUpperCase() })} />
+                    <Select value={trocaRapida.destino} onValueChange={(destino: "estoque" | "repasse") => setTrocaRapida({ ...trocaRapida, destino })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="estoque">Destino: estoque</SelectItem>
+                        <SelectItem value="repasse">Destino: repasse</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {pagamento.trocaModo !== "nenhuma" && (
+                  <>
+                    <GestaoMoneyInput
+                      label="Valor do carro na troca (R$)"
+                      value={pagamento.trocaValor}
+                      onChange={(trocaValor) => setPagamento({ ...pagamento, trocaValor })}
+                    />
+                    <div className="rounded bg-muted px-3 py-2 text-sm">
+                      {composicaoPreview.tipoFinanceiro === "receber" && (
+                        <p>Cliente ainda deve <strong>{formatGestaoMoney(composicaoPreview.valorFinanceiro)}</strong></p>
+                      )}
+                      {composicaoPreview.tipoFinanceiro === "pagar" && (
+                        <p>Troco ao cliente <strong>{formatGestaoMoney(composicaoPreview.valorFinanceiro)}</strong></p>
+                      )}
+                      {composicaoPreview.tipoFinanceiro === "quitado" && <p>Pagamento quitado.</p>}
+                      <p className="text-xs text-muted-foreground">
+                        Efeito no caixa hoje: {formatGestaoMoney(composicaoPreview.efeitoCaixaHoje)}
+                      </p>
+                    </div>
+                    <Label className="text-xs">Vencimento do saldo/troco</Label>
+                    <Input type="date" value={pagamento.vencimento} onChange={(e) => setPagamento({ ...pagamento, vencimento: e.target.value })} />
+                    {sobreAvaliacao.aviso && (
+                      <p className="rounded border border-red-300 bg-red-50 p-2 text-sm font-medium text-red-700">
+                        {sobreAvaliacao.aviso}
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
