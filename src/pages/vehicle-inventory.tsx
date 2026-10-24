@@ -480,6 +480,17 @@ export default function VehicleInventory() {
     setFormOpen(true);
   };
 
+  useEffect(() => {
+    const editId = searchParams.get("edit");
+    if (!editId || !vehicles.length) return;
+    const vehicle = vehicles.find((v) => v.id === editId);
+    if (!vehicle) return;
+    openEdit(vehicle);
+    const next = new URLSearchParams(searchParams);
+    next.delete("edit");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, vehicles]);
+
   const openDetails = (vehicle: Vehicle) => {
     setSelected(vehicle);
     setSelectedPhoto(0);
@@ -489,6 +500,11 @@ export default function VehicleInventory() {
   const saveVehicle = async () => {
     if (!form.marca.trim() || !form.modelo.trim()) {
       toast.error("Informe marca e modelo.");
+      return;
+    }
+    const placaNormalizada = normalizePlaca(form.placa);
+    if (placaNormalizada && placaNormalizada.length !== 7) {
+      toast.error("A placa deve ter 7 caracteres.");
       return;
     }
 
@@ -535,7 +551,7 @@ export default function VehicleInventory() {
       vendido_at: form.status === "vendido"
         ? editing?.vendido_at || new Date().toISOString()
         : null,
-      placa: normalizePlaca(form.placa),
+      placa: placaNormalizada,
     };
 
     const vehicleId = editing?.id || draftVehicleId || crypto.randomUUID();
@@ -1264,11 +1280,16 @@ export default function VehicleInventory() {
               </>
             )}
             <FormField label="Placa (uso interno)">
-              <Input
-                value={form.placa}
-                onChange={(event) => setForm({ ...form, placa: event.target.value })}
-                placeholder="Opcional — não vai para vitrine/portais"
-              />
+              <div className="space-y-1">
+                <Input
+                  value={form.placa}
+                  onChange={(event) => setForm({ ...form, placa: event.target.value })}
+                  placeholder="Ex.: ABC1D23 — não aparece no anúncio"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Obrigatória para publicar na Webmotors. Não é exibida para o comprador.
+                </p>
+              </div>
             </FormField>
             <FormField label="Status">
               <Select

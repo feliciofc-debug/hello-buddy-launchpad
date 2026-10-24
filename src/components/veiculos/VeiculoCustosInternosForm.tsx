@@ -24,6 +24,12 @@ import { formatGestaoMoney } from "@/lib/gestao-format.ts";
 import { GESTAO_DESPESA_CATEGORIAS, gestaoCategoriaLabel } from "@/lib/gestao-lucro-categories.ts";
 import { parseGestaoMoneyField } from "@/lib/gestao-money.ts";
 import { supabase } from "@/integrations/supabase/client";
+import { ConsignacaoTermosFields } from "@/components/gestao/ConsignacaoTermosFields.tsx";
+import {
+  emptyConsignacaoForm,
+  saveConsignacaoTermos,
+  type ConsignacaoFormValue,
+} from "@/lib/consignacao-form.ts";
 
 export type VeiculoCustosSaveHandle = {
   save: (userId: string, vehicleId: string) => Promise<boolean>;
@@ -65,6 +71,9 @@ export const VeiculoCustosInternosForm = forwardRef<VeiculoCustosSaveHandle, Pro
     });
     const [despesas, setDespesas] = useState<DespesaRow[]>([]);
     const [pending, setPending] = useState<PendingDespesa[]>([]);
+    const [consignacao, setConsignacao] = useState<ConsignacaoFormValue>(
+      emptyConsignacaoForm,
+    );
     const [draft, setDraft] = useState<PendingDespesa>({
       tempId: "",
       valor: "",
@@ -88,10 +97,11 @@ export const VeiculoCustosInternosForm = forwardRef<VeiculoCustosSaveHandle, Pro
         });
         setDespesas([]);
         setPending([]);
+        setConsignacao(emptyConsignacaoForm());
         return;
       }
       setLoading(true);
-      const [{ data: c }, { data: d }] = await Promise.all([
+      const [{ data: c }, { data: d }, { data: cons }] = await Promise.all([
         supabase.from("veiculo_compra" as "veiculos_estoque")
           .select("valor_compra, data_compra, origem, fornecedor_obs")
           .eq("veiculo_id", vehicleId)
@@ -101,6 +111,12 @@ export const VeiculoCustosInternosForm = forwardRef<VeiculoCustosSaveHandle, Pro
           .eq("veiculo_id", vehicleId)
           .is("deleted_at", null)
           .order("data", { ascending: false }),
+        supabase.from("veiculo_consignacao" as "veiculos_estoque")
+          .select(
+            "consignante_nome, valor_garantido_dono, pct_loja_excedente, piso_loja, preco_minimo_autorizado, data_inicio, prazo_dias, observacao",
+          )
+          .eq("veiculo_id", vehicleId)
+          .maybeSingle(),
       ]);
       if (c) {
         setCompra({
@@ -128,6 +144,20 @@ export const VeiculoCustosInternosForm = forwardRef<VeiculoCustosSaveHandle, Pro
           descontarDoConsignante: Boolean(row.descontar_do_consignante),
         })),
       );
+      setConsignacao(cons
+        ? {
+          consignanteNome: String(cons.consignante_nome ?? ""),
+          valorGarantido: String(cons.valor_garantido_dono ?? ""),
+          pctLoja: String(cons.pct_loja_excedente ?? "100"),
+          pisoLoja: cons.piso_loja == null ? "" : String(cons.piso_loja),
+          precoMinimo: cons.preco_minimo_autorizado == null
+            ? ""
+            : String(cons.preco_minimo_autorizado),
+          dataInicio: String(cons.data_inicio ?? hojeSaoPaulo()),
+          prazoDias: String(cons.prazo_dias ?? 90),
+          observacao: String(cons.observacao ?? ""),
+        }
+        : emptyConsignacaoForm());
       setPending([]);
       setLoading(false);
     }, [vehicleId]);
@@ -178,7 +208,16 @@ export const VeiculoCustosInternosForm = forwardRef<VeiculoCustosSaveHandle, Pro
 
     const save = useCallback(async (userId: string, vid: string): Promise<boolean> => {
       const valorCompra = parseGestaoMoneyField(compra.valor);
-      if (valorCompra != null && valorCompra > 0) {
+      if (compra.origem === "consignacao") {
+        try {
+          await saveConsignacaoTermos(userId, vid, consignacao, {
+            syncCompra: true,
+          });
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "Erro ao salvar a consignação.");
+          return false;
+        }
+      } else if (valorCompra != null && valorCompra > 0) {
         const { error } = await supabase.from("veiculo_compra" as "veiculos_estoque").upsert({
           user_id: userId,
           veiculo_id: vid,
@@ -214,7 +253,7 @@ export const VeiculoCustosInternosForm = forwardRef<VeiculoCustosSaveHandle, Pro
       if (pending.length) setPending([]);
       await load();
       return true;
-    }, [compra, pending, load]);
+    }, [compra, consignacao, pending, load]);
 
     useImperativeHandle(ref, () => ({ save }), [save]);
 
@@ -285,6 +324,14 @@ export const VeiculoCustosInternosForm = forwardRef<VeiculoCustosSaveHandle, Pro
                     />
                   </div>
                 </div>
+
+                {compra.origem === "consignacao" && (
+                  <ConsignacaoTermosFields
+                    value={consignacao}
+                    onChange={setConsignacao}
+                    disabled={loading}
+                  />
+                )}
 
                 <div className="space-y-3">
                   <p className="text-sm font-medium">Despesas deste carro</p>
