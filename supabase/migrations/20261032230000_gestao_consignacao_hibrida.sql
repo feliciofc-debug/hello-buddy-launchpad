@@ -73,3 +73,105 @@ Assinaturas:',
   true
 FROM public.veiculos_estoque v
 ON CONFLICT (user_id, tipo, titulo) DO NOTHING;
+
+-- Garante o repasse em qualquer canal que registre/desfaça veiculo_venda
+-- (painel, atalho ou WhatsApp), sem depender da tela que iniciou a venda.
+CREATE OR REPLACE FUNCTION public.sync_consignacao_venda()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  c public.veiculo_consignacao%ROWTYPE;
+  parte_loja numeric(14, 2);
+  parte_dono numeric(14, 2);
+  despesas_dono numeric(14, 2);
+  repasse numeric(14, 2);
+  marker text;
+  conta_id uuid;
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    UPDATE public.veiculo_consignacao
+       SET status = 'ativo'
+     WHERE user_id = OLD.user_id
+       AND veiculo_id = OLD.veiculo_id
+       AND status = 'vendido';
+    marker := 'Repasse consignante · veículo ' || OLD.veiculo_id::text;
+    UPDATE public.gestao_conta_lancamento
+       SET deleted_at = now()
+     WHERE user_id = OLD.user_id
+       AND veiculo_id = OLD.veiculo_id
+       AND observacao = marker
+       AND deleted_at IS NULL;
+    RETURN OLD;
+  END IF;
+
+  SELECT *
+    INTO c
+    FROM public.veiculo_consignacao
+   WHERE user_id = NEW.user_id
+     AND veiculo_id = NEW.veiculo_id
+     AND status <> 'devolvido';
+
+  IF NOT FOUND THEN RETURN NEW; END IF;
+
+  parte_loja := round(greatest(
+    (NEW.valor_venda - c.valor_garantido_dono) * c.pct_loja_excedente / 100,
+    coalesce(c.piso_loja, 0)
+  ), 2);
+  parte_dono := round(NEW.valor_venda - parte_loja, 2);
+  IF parte_dono < c.valor_garantido_dono THEN
+    RAISE EXCEPTION
+      'Venda abaixo do valor garantido; registre a autorização ajustando o garantido antes de vender';
+  END IF;
+
+  SELECT coalesce(sum(valor), 0)
+    INTO despesas_dono
+    FROM public.veiculo_despesas
+   WHERE user_id = NEW.user_id
+     AND veiculo_id = NEW.veiculo_id
+     AND descontar_do_consignante = true
+     AND deleted_at IS NULL;
+
+  repasse := round(parte_dono - despesas_dono, 2);
+  marker := 'Repasse consignante · veículo ' || NEW.veiculo_id::text;
+
+  UPDATE public.gestao_conta_lancamento
+     SET valor = repasse,
+         vencimento = NEW.data_venda + 2,
+         deleted_at = NULL
+   WHERE id = (
+     SELECT id
+       FROM public.gestao_conta_lancamento
+      WHERE user_id = NEW.user_id
+        AND veiculo_id = NEW.veiculo_id
+        AND tipo = 'pagar'
+        AND observacao = marker
+      ORDER BY created_at DESC
+      LIMIT 1
+   )
+  RETURNING id INTO conta_id;
+
+  IF conta_id IS NULL THEN
+    INSERT INTO public.gestao_conta_lancamento (
+      user_id, tipo, categoria_operacional, valor, vencimento,
+      observacao, veiculo_id, origem
+    ) VALUES (
+      NEW.user_id, 'pagar', 'outros', repasse, NEW.data_venda + 2,
+      marker, NEW.veiculo_id, 'manual'
+    );
+  END IF;
+
+  UPDATE public.veiculo_consignacao
+     SET status = 'vendido'
+   WHERE user_id = NEW.user_id
+     AND veiculo_id = NEW.veiculo_id;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS sync_consignacao_venda_trigger ON public.veiculo_venda;
+CREATE TRIGGER sync_consignacao_venda_trigger
+  AFTER INSERT OR UPDATE OR DELETE ON public.veiculo_venda
+  FOR EACH ROW EXECUTE FUNCTION public.sync_consignacao_venda();
