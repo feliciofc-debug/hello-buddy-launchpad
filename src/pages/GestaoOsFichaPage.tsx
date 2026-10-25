@@ -25,7 +25,11 @@ import {
   validarArquivoDocumentoOs,
   type GestaoOsStatus,
 } from "../../supabase/functions/_shared/gestao-os-domain.ts";
-import type { GestaoOsFotoRefRow } from "../../supabase/functions/_shared/gestao-os-fotos.ts";
+import {
+  gestaoOsFotosParaPdf,
+  type GestaoOsFotoRefRow,
+} from "../../supabase/functions/_shared/gestao-os-fotos.ts";
+import { normalizeGestaoTrocaFotos } from "@/lib/gestao-troca-fotos.ts";
 import {
   GESTAO_OS_STATUS_LABEL,
   GESTAO_OS_TIPO_LABEL,
@@ -128,9 +132,10 @@ export default function GestaoOsFichaPage() {
   }, [id]);
   useEffect(() => void load(), [load]);
 
+  const trocaFotos = useMemo(() => normalizeGestaoTrocaFotos(trocaFotosRaw), [trocaFotosRaw]);
   const fotosSelecionadas = useMemo(
-    () => fotoRefs.filter((f) => f.selecionada),
-    [fotoRefs],
+    () => gestaoOsFotosParaPdf(fotoRefs, trocaFotos),
+    [fotoRefs, trocaFotos],
   );
 
   useEffect(() => {

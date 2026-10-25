@@ -7,7 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatGestaoMoney } from "@/lib/gestao-format.ts";
-import { buildGestaoOsCotacaoPdfBlob } from "@/lib/gestao-os-cotacao-pdf.ts";
+import {
+  buildGestaoOsCotacaoPdfBlob,
+  podeEscolherCotacaoOs,
+} from "@/lib/gestao-os-cotacao-pdf.ts";
 import type { GestaoOsCotacaoPdfInput } from "@/lib/gestao-os-cotacao-pdf.ts";
 import type { GestaoOsCotacaoRow, GestaoOsItemRow, GestaoOsRow, GestaoParceiroRow } from "@/lib/gestao-os-types.ts";
 import type { GestaoOsFotoRefRow } from "../../../../supabase/functions/_shared/gestao-os-fotos.ts";
@@ -115,7 +118,7 @@ export function GestaoOsCotacaoPanel({
     };
     const fotoUrls = fotosSelecionadas
       .map((f) => fotoSignedUrls[f.storage_path])
-      .filter(Boolean);
+      .filter((url): url is string => Boolean(url));
     return buildGestaoOsCotacaoPdfBlob(input, {
       logoDataUrl: loja.logoDataUrl,
       fotoUrls,
@@ -171,6 +174,8 @@ export function GestaoOsCotacaoPanel({
   };
 
   const escolher = async (cotacaoId: string) => {
+    const gate = podeEscolherCotacaoOs(os.status);
+    if (!gate.ok) return toast.error(gate.mensagem);
     setBusy(true);
     try {
       const { data, error } = await (supabase as unknown as {
@@ -210,6 +215,7 @@ export function GestaoOsCotacaoPanel({
     );
   };
 
+  const podeEscolher = podeEscolherCotacaoOs(os.status).ok;
   const cotacoesAtivas = cotacoes.filter((c) => c.status !== "descartada" || c.status === "escolhida");
 
   return (
@@ -263,7 +269,7 @@ export function GestaoOsCotacaoPanel({
                     <Button size="sm" variant="ghost" onClick={() => void baixarPdf(c.parceiro_id)}>
                       <Download className="h-4 w-4" />
                     </Button>
-                    {c.status === "recebida" && !disabled && (
+                    {c.status === "recebida" && !disabled && podeEscolher && (
                       <Button size="sm" variant="outline" disabled={busy} onClick={() => void escolher(c.id)}>
                         <Star className="mr-1 h-3 w-3" /> Escolher
                       </Button>

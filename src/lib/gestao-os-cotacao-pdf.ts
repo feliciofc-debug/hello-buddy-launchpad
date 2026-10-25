@@ -5,7 +5,11 @@ import {
 } from "../../supabase/functions/_shared/gestao-os-cotacao-pdf.ts";
 
 export type { GestaoOsCotacaoPdfInput };
-export { buildGestaoOsCotacaoPdfLines, gestaoOsPdfContemCustosInternos } from "../../supabase/functions/_shared/gestao-os-cotacao-pdf.ts";
+export {
+  buildGestaoOsCotacaoPdfLines,
+  gestaoOsPdfContemCustosInternos,
+  podeEscolherCotacaoOs,
+} from "../../supabase/functions/_shared/gestao-os-cotacao-pdf.ts";
 
 async function loadImageDataUrl(url: string): Promise<{ dataUrl: string; w: number; h: number } | null> {
   try {

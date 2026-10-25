@@ -56,13 +56,23 @@ CREATE INDEX IF NOT EXISTS gestao_os_foto_ref_os_idx
 ALTER TABLE public.gestao_os_cotacao ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.gestao_os_foto_ref ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY gestao_os_cotacao_owner ON public.gestao_os_cotacao
-  FOR ALL TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-CREATE POLICY gestao_os_foto_ref_owner ON public.gestao_os_foto_ref
-  FOR ALL TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY gestao_os_cotacao_select_owner ON public.gestao_os_cotacao
+  FOR SELECT TO authenticated USING (auth.uid() = user_id);
+CREATE POLICY gestao_os_cotacao_update_observacao ON public.gestao_os_cotacao
+  FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY gestao_os_foto_ref_select_owner ON public.gestao_os_foto_ref
+  FOR SELECT TO authenticated USING (auth.uid() = user_id);
+CREATE POLICY gestao_os_foto_ref_update_selecao ON public.gestao_os_foto_ref
+  FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.gestao_os_cotacao TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.gestao_os_foto_ref TO authenticated;
+REVOKE ALL ON public.gestao_os_cotacao FROM PUBLIC, authenticated;
+GRANT SELECT ON public.gestao_os_cotacao TO authenticated;
+GRANT UPDATE (observacao) ON public.gestao_os_cotacao TO authenticated;
+
+REVOKE ALL ON public.gestao_os_foto_ref FROM PUBLIC, authenticated;
+GRANT SELECT ON public.gestao_os_foto_ref TO authenticated;
+GRANT UPDATE (selecionada, ordem) ON public.gestao_os_foto_ref TO authenticated;
+
 GRANT ALL ON public.gestao_os_cotacao, public.gestao_os_foto_ref TO service_role;
 
 CREATE TRIGGER update_gestao_os_cotacao_updated_at
@@ -86,6 +96,75 @@ AS $$
     'documento (crlv)', 'crlv', 'documento crlv'
   );
 $$;
+
+CREATE OR REPLACE FUNCTION public.gestao_os_foto_ref_etiqueta_troca(
+  p_user_id uuid,
+  p_troca_id uuid,
+  p_storage_path text
+)
+RETURNS text
+LANGUAGE sql
+STABLE
+SET search_path = public
+AS $$
+  SELECT foto->>'etiqueta'
+  FROM public.gestao_troca t,
+       jsonb_array_elements(coalesce(t.fotos_json, '[]'::jsonb)) AS foto
+  WHERE t.user_id = p_user_id
+    AND t.id = p_troca_id
+    AND foto->>'path' = p_storage_path
+  LIMIT 1;
+$$;
+
+CREATE OR REPLACE FUNCTION public.gestao_os_foto_ref_bloqueia_crlv()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+DECLARE
+  etiqueta text;
+BEGIN
+  etiqueta := public.gestao_os_foto_ref_etiqueta_troca(
+    NEW.user_id, NEW.troca_id, NEW.storage_path
+  );
+  IF public.gestao_os_foto_ref_crlv(etiqueta) THEN
+    RAISE EXCEPTION 'Documento (CRLV) não pode ser vinculado à OS nem enviado ao parceiro';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER gestao_os_foto_ref_sem_crlv
+  BEFORE INSERT ON public.gestao_os_foto_ref
+  FOR EACH ROW EXECUTE FUNCTION public.gestao_os_foto_ref_bloqueia_crlv();
+
+CREATE OR REPLACE FUNCTION public.gestao_os_cotacao_bloqueia_update_direto()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  IF current_user IN ('postgres', 'supabase_admin') THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'UPDATE' AND (
+    NEW.status IS DISTINCT FROM OLD.status OR
+    NEW.valor IS DISTINCT FROM OLD.valor OR
+    NEW.prazo_dias IS DISTINCT FROM OLD.prazo_dias OR
+    NEW.recebida_em IS DISTINCT FROM OLD.recebida_em OR
+    NEW.solicitada_em IS DISTINCT FROM OLD.solicitada_em OR
+    NEW.parceiro_id IS DISTINCT FROM OLD.parceiro_id OR
+    NEW.os_id IS DISTINCT FROM OLD.os_id
+  ) THEN
+    RAISE EXCEPTION 'Status e valores da cotação só podem ser alterados pelas ações do sistema';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER gestao_os_cotacao_guard_update
+  BEFORE UPDATE ON public.gestao_os_cotacao
+  FOR EACH ROW EXECUTE FUNCTION public.gestao_os_cotacao_bloqueia_update_direto();
 
 CREATE OR REPLACE FUNCTION public.gestao_os_fotos_sincronizar_troca(p_os_id uuid)
 RETURNS integer
@@ -125,6 +204,9 @@ BEGIN
     AND item.troca_id = troca.id
     AND item.foto_path IS NOT NULL
     AND item.foto_path LIKE uid::text || '/' || troca.id::text || '/%'
+    AND NOT public.gestao_os_foto_ref_crlv(
+      public.gestao_os_foto_ref_etiqueta_troca(uid, troca.id, item.foto_path)
+    )
     AND item.analise_id = (
       SELECT a.id FROM public.gestao_troca_analise_ia a
       WHERE a.user_id = uid AND a.troca_id = troca.id AND a.status = 'concluida'
@@ -388,6 +470,10 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'OS não encontrada'; END IF;
   IF ordem.status IN ('concluida', 'cancelada') THEN
     RAISE EXCEPTION 'OS encerrada';
+  END IF;
+  IF ordem.status NOT IN ('rascunho', 'orcamento', 'aguardando_aprovacao') THEN
+    RAISE EXCEPTION
+      'A OS já foi aprovada; para trocar de fornecedor, cancele e abra nova OS';
   END IF;
 
   UPDATE public.gestao_os_cotacao SET

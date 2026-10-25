@@ -115,11 +115,15 @@ export function simularEscolhaCotacao(
   cotacoes: GestaoOsCotacaoRow[],
   escolhidaId: string,
   osId: string,
+  osStatus = "orcamento",
 ): {
   parceiroId: string | null;
   valorAprovado: number | null;
   cotacoes: GestaoOsCotacaoRow[];
 } {
+  const gate = podeEscolherCotacaoOs(osStatus);
+  if (!gate.ok) throw new Error(gate.mensagem);
+
   const escolhida = cotacoes.find((c) => c.id === escolhidaId);
   if (!escolhida || escolhida.os_id !== osId) {
     throw new Error("Cotação não pertence a esta OS");
@@ -142,4 +146,21 @@ export function simularEscolhaCotacao(
 
 export function podeAbrirOsGestao(parceirosAtivos: number): boolean {
   return parceirosAtivos > 0;
+}
+
+const STATUS_PODE_ESCOLHER_COTACAO = new Set([
+  "rascunho",
+  "orcamento",
+  "aguardando_aprovacao",
+]);
+
+export function podeEscolherCotacaoOs(
+  osStatus: string,
+): { ok: true } | { ok: false; mensagem: string } {
+  if (STATUS_PODE_ESCOLHER_COTACAO.has(osStatus)) return { ok: true };
+  return {
+    ok: false,
+    mensagem:
+      "A OS já foi aprovada; para trocar de fornecedor, cancele e abra nova OS",
+  };
 }

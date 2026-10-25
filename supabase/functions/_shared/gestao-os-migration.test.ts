@@ -95,6 +95,8 @@ Deno.test("OS-1.3 — cotação e fotos por referência", () => {
   assertStringIncludes(cotacao, "gestao_os_cotacao_escolher");
   assertStringIncludes(cotacao, "pedido_cotacao");
   assertEquals(cotacao.includes("preparacao_estimada"), false);
+  assertStringIncludes(cotacao, "gestao_os_foto_ref_sem_crlv");
+  assertStringIncludes(cotacao, "gestao_os_cotacao_guard_update");
 });
 
 Deno.test("OS-1 — liberação exige foto, preço e nenhuma OS aberta", () => {

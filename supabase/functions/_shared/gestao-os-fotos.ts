@@ -26,6 +26,17 @@ export function gestaoOsFotosVisiveis(
 }
 
 /** Defeitos do laudo (com item IA) primeiro; depois selecionadas. */
+/** Fotos selecionadas para PDF, sem CRLV/documento. */
+export function gestaoOsFotosParaPdf(
+  refs: GestaoOsFotoRefRow[],
+  trocaFotos: GestaoTrocaFotoEntry[],
+): GestaoOsFotoRefRow[] {
+  return gestaoOsFotosVisiveis(
+    refs.filter((r) => r.selecionada),
+    trocaFotos,
+  );
+}
+
 export function gestaoOsOrdenarFotosDefeitoPrimeiro(
   refs: GestaoOsFotoRefRow[],
 ): GestaoOsFotoRefRow[] {
