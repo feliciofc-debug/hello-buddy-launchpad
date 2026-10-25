@@ -51,7 +51,7 @@ serve(async (req) => {
         sb.from("veiculos_estoque").select("marca,modelo,ano_modelo,cor,km").eq("id", os.veiculo_id).maybeSingle(),
         sb.from("empresa_config").select("nome_empresa").eq("user_id", user.id).maybeSingle(),
         sb.from("gestao_os_item").select("descricao").eq("os_id", os.id).order("created_at"),
-        sb.from("gestao_os_foto_ref").select("id,storage_path,selecionada,ordem,troca_ia_item_id").eq("os_id", os.id),
+        sb.from("gestao_os_foto_ref").select("id,storage_path,selecionada,ordem,troca_ia_item_id,origem").eq("os_id", os.id),
         os.troca_id
           ? sb.from("gestao_troca").select("fotos_json").eq("id", os.troca_id).maybeSingle()
           : Promise.resolve({ data: null }),

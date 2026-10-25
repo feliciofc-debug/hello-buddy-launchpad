@@ -29,6 +29,7 @@ import {
   gestaoOsFotosParaPdf,
   type GestaoOsFotoRefRow,
 } from "../../supabase/functions/_shared/gestao-os-fotos.ts";
+import { resolveGestaoOsFotoSignedUrl } from "@/lib/gestao-os-foto-url.ts";
 import { normalizeGestaoTrocaFotos } from "@/lib/gestao-troca-fotos.ts";
 import {
   GESTAO_OS_STATUS_LABEL,
@@ -92,7 +93,7 @@ export default function GestaoOsFichaPage() {
       supabase.from("gestao_os_documento" as "veiculos_estoque").select("id,tipo,storage_path,created_at").eq("user_id", user.id).eq("os_id", id).is("deleted_at", null).order("created_at", { ascending: false }),
       supabase.from("gestao_parceiro" as "veiculos_estoque").select("*").eq("user_id", user.id).eq("ativo", true).order("nome"),
       supabase.from("gestao_os_cotacao" as "veiculos_estoque").select("*").eq("user_id", user.id).eq("os_id", id).order("solicitada_em", { ascending: false }),
-      supabase.from("gestao_os_foto_ref" as "veiculos_estoque").select("id,storage_path,selecionada,ordem,troca_ia_item_id").eq("user_id", user.id).eq("os_id", id).order("ordem"),
+      supabase.from("gestao_os_foto_ref" as "veiculos_estoque").select("id,storage_path,selecionada,ordem,troca_ia_item_id,origem").eq("user_id", user.id).eq("os_id", id).order("ordem"),
     ]);
     if (osRes.error) return toast.error(osRes.error.message);
     const ordem = osRes.data as unknown as GestaoOsRow;
@@ -142,9 +143,9 @@ export default function GestaoOsFichaPage() {
     void (async () => {
       const next: Record<string, string> = {};
       await Promise.all(
-        fotosSelecionadas.map(async ({ storage_path }) => {
-          const { data } = await supabase.storage.from("trocas").createSignedUrl(storage_path, 600);
-          if (data?.signedUrl) next[storage_path] = data.signedUrl;
+        fotosSelecionadas.map(async (ref) => {
+          const signed = await resolveGestaoOsFotoSignedUrl(ref);
+          if (signed) next[ref.storage_path] = signed;
         }),
       );
       setFotoSignedUrls(next);
@@ -308,7 +309,7 @@ export default function GestaoOsFichaPage() {
       </section>
 
       <section className="rounded-lg border bg-background p-4">
-        <h2 className="mb-3 font-semibold">Fotos da avaliação (troca)</h2>
+        <h2 className="mb-3 font-semibold">Fotos para cotação (anúncio, troca e OS)</h2>
         <GestaoOsFotosPanel
           userId={userId}
           osId={os.id}

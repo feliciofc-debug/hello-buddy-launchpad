@@ -88,7 +88,7 @@ Deno.test("OS-1.2 — bucket gestao-os-documentos adapta-se ao schema do storage
   assertEquals(schema.includes("INSERT INTO storage.buckets (id, name, public"), true);
 });
 
-Deno.test("OS-1.3 — cotação e fotos por referência", () => {
+Deno.test("OS-1.3 — cotação e fotos por referência", async () => {
   assertStringIncludes(cotacao, "CREATE TABLE IF NOT EXISTS public.gestao_os_cotacao");
   assertStringIncludes(cotacao, "CREATE TABLE IF NOT EXISTS public.gestao_os_foto_ref");
   assertStringIncludes(cotacao, "gestao_os_cotacao_solicitar");
@@ -96,6 +96,13 @@ Deno.test("OS-1.3 — cotação e fotos por referência", () => {
   assertStringIncludes(cotacao, "pedido_cotacao");
   assertEquals(cotacao.includes("preparacao_estimada"), false);
   assertStringIncludes(cotacao, "gestao_os_foto_ref_sem_crlv");
+
+  const fotoOrigens = await Deno.readTextFile(new URL(
+    "../../migrations/20261032265000_gestao_os_foto_ref_origens.sql",
+    import.meta.url,
+  ));
+  assertStringIncludes(fotoOrigens, "gestao_os_foto_ref_valida_origem");
+  assertStringIncludes(fotoOrigens, "'anuncio'");
   assertStringIncludes(cotacao, "gestao_os_cotacao_guard_update");
 });
 
