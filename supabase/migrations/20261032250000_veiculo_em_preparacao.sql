@@ -70,14 +70,16 @@ BEGIN
     RAISE EXCEPTION 'A venda com troca não retornou o veículo recebido';
   END IF;
 
-  UPDATE public.veiculos_estoque
-     SET status = 'em_preparacao',
-         vendido_at = NULL
-   WHERE id = veiculo_entrada_id
-     AND user_id = uid;
+  IF coalesce((resultado->>'veiculo_entrada_criado')::boolean, false) THEN
+    UPDATE public.veiculos_estoque
+       SET status = 'em_preparacao',
+           vendido_at = NULL
+     WHERE id = veiculo_entrada_id
+       AND user_id = uid;
 
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Veículo recebido na troca não encontrado';
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'Veículo recebido na troca não encontrado';
+    END IF;
   END IF;
 
   RETURN resultado;
@@ -94,4 +96,4 @@ GRANT EXECUTE ON FUNCTION public.registrar_venda_com_troca(
 COMMENT ON FUNCTION public.registrar_venda_com_troca(
   uuid, numeric, date, text, uuid, text, boolean, jsonb, uuid, jsonb, date
 ) IS
-  'Registra venda/troca atomicamente; valida vendedor do tenant e mantém o veículo recebido em preparação.';
+  'Registra venda/troca atomicamente; valida vendedor do tenant e coloca em preparação apenas o veículo criado nesta chamada.';

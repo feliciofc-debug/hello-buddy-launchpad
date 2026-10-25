@@ -48,6 +48,7 @@ DECLARE
   financeiro_aviso text;
   marker text;
   novo_veiculo_id uuid;
+  veiculo_entrada_criado boolean := false;
   pagamento_final jsonb;
 BEGIN
   IF uid IS NULL THEN
@@ -141,6 +142,7 @@ BEGIN
       '{}'::text[], 'disponivel', 'troca'
     )
     RETURNING id INTO novo_veiculo_id;
+    veiculo_entrada_criado := true;
 
     INSERT INTO public.veiculo_compra (
       user_id, veiculo_id, valor_compra, data_compra, origem, fornecedor_obs
@@ -249,6 +251,7 @@ BEGIN
     'venda_veiculo_id', p_veiculo_id,
     'troca_id', p_troca_id,
     'veiculo_entrada_id', novo_veiculo_id,
+    'veiculo_entrada_criado', veiculo_entrada_criado,
     'saldo', saldo,
     'financeiro_tipo', financeiro_tipo,
     'financeiro_valor', financeiro_valor,

@@ -12,9 +12,15 @@ Deno.test("TROCA-VENDA-1.1 — migration inclui o novo status sem remover os atu
   }
 });
 
-Deno.test("TROCA-VENDA-1.1 — carro recebido sempre termina em preparação", () => {
+Deno.test("TROCA-VENDA-1.2 — em preparação só quando o carro da troca foi criado na chamada", () => {
   assert(sql.includes("SET status = 'em_preparacao'"));
   assert(sql.includes("veiculo_entrada_id"));
+  assert(sql.includes("veiculo_entrada_criado"));
+  assert(
+    /IF coalesce\(\(resultado->>'veiculo_entrada_criado'\)::boolean, false\) THEN/.test(
+      sql,
+    ),
+  );
 });
 
 Deno.test("TROCA-VENDA-1.1 — vendedor precisa pertencer ao tenant autenticado", () => {
