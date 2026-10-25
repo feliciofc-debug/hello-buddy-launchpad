@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, FileUp, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -21,6 +21,8 @@ import { formatGestaoMoney } from "@/lib/gestao-format.ts";
 import { GESTAO_DESPESA_CATEGORIAS, gestaoCategoriaLabel } from "@/lib/gestao-lucro-categories.ts";
 import {
   GESTAO_OS_DOCUMENTO_MIME_TYPES,
+  GESTAO_OS_EXCLUIR_DICA_APROVADA,
+  podeExcluirOs,
   proximosStatusOs,
   validarArquivoDocumentoOs,
   type GestaoOsStatus,
@@ -61,6 +63,7 @@ type Veiculo = {
 
 export default function GestaoOsFichaPage() {
   const { id = "" } = useParams();
+  const navigate = useNavigate();
   const goBack = useSmartBack("/gestao/operacoes");
   const [userId, setUserId] = useState("");
   const [os, setOs] = useState<GestaoOsRow | null>(null);
@@ -153,6 +156,23 @@ export default function GestaoOsFichaPage() {
   }, [fotosSelecionadas]);
 
   const encerrada = os ? ["concluida", "cancelada"].includes(os.status) : false;
+  const podeExcluir = os ? podeExcluirOs(os) : false;
+
+  const excluirOs = async () => {
+    if (!os || !podeExcluir) return;
+    const ok = window.confirm(
+      `Excluir a OS #${os.numero}? Essa ação não pode ser desfeita.`,
+    );
+    if (!ok) return;
+    setBusy(true);
+    const { error } = await (supabase as unknown as {
+      rpc: (name: string, args: Record<string, unknown>) => Promise<{ error: { message: string } | null }>;
+    }).rpc("gestao_os_excluir", { p_os_id: os.id });
+    setBusy(false);
+    if (error) return toast.error(error.message);
+    toast.success(`OS #${os.numero} excluída.`);
+    navigate("/gestao/operacoes");
+  };
 
   const adicionarItem = async () => {
     if (!item.descricao.trim()) return toast.error("Informe o serviço.");
@@ -336,6 +356,20 @@ export default function GestaoOsFichaPage() {
         </div>
         <div className="rounded-lg border bg-background p-4">
           <h2 className="mb-3 font-semibold">Ações do dono</h2>
+          {podeExcluir && !encerrada && (
+            <Button
+              variant="destructive"
+              className="mb-3 w-full sm:w-auto"
+              disabled={busy}
+              onClick={() => void excluirOs()}
+            >
+              Excluir OS
+            </Button>
+          )}
+          {!podeExcluir && !encerrada &&
+            !["rascunho", "orcamento"].includes(os.status) && (
+            <p className="mb-3 text-xs text-muted-foreground">{GESTAO_OS_EXCLUIR_DICA_APROVADA}</p>
+          )}
           {proximos.includes("aprovada") && <>
             <Label>Valor aprovado (se ainda não veio da cotação)</Label><Input type="number" value={transicao.aprovado} onChange={(e) => setTransicao((t) => ({ ...t, aprovado: e.target.value }))} placeholder={os.valor_aprovado != null ? String(os.valor_aprovado) : ""} />
             {consignado && <div className="mt-2"><Label>Descontar do dono?</Label><Select value={transicao.descontar} onValueChange={(descontar) => setTransicao((t) => ({ ...t, descontar }))}><SelectTrigger><SelectValue placeholder="Escolha obrigatória" /></SelectTrigger><SelectContent><SelectItem value="sim">Sim</SelectItem><SelectItem value="nao">Não</SelectItem></SelectContent></Select></div>}

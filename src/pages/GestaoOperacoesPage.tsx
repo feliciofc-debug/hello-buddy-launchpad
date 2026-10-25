@@ -19,6 +19,7 @@ import { formatGestaoMoney } from "@/lib/gestao-format.ts";
 import {
   alertasGestaoOs,
   GESTAO_OS_STATUS,
+  podeExcluirOs,
   type GestaoOsStatus,
 } from "../../supabase/functions/_shared/gestao-os-domain.ts";
 import {
@@ -112,6 +113,20 @@ export default function GestaoOperacoesPage() {
     };
   }), config), [rows, veiculoMap, config]);
   const visiveis = filtro === "todas" ? rows : rows.filter((r) => r.status === filtro);
+
+  const excluirOs = async (os: GestaoOsRow) => {
+    if (!podeExcluirOs(os)) return;
+    const ok = window.confirm(
+      `Excluir a OS #${os.numero}? Essa ação não pode ser desfeita.`,
+    );
+    if (!ok) return;
+    const { error } = await (supabase as unknown as {
+      rpc: (name: string, args: Record<string, unknown>) => Promise<{ error: { message: string } | null }>;
+    }).rpc("gestao_os_excluir", { p_os_id: os.id });
+    if (error) return toast.error(error.message);
+    toast.success(`OS #${os.numero} excluída.`);
+    await load();
+  };
 
   const criar = async () => {
     if (!podeAbrirOsGestao(parceiros.length)) {
@@ -233,10 +248,11 @@ export default function GestaoOperacoesPage() {
               <thead><tr className="border-b text-left text-muted-foreground">
                 <th className="p-3">OS</th><th className="p-3">Veículo</th>
                 <th className="p-3">Tipo</th><th className="p-3">Fornecedor</th>
-                <th className="p-3">Prazo</th><th className="p-3">Valores</th><th className="p-3">Status</th>
+                <th className="p-3">Prazo</th>                <th className="p-3">Valores</th><th className="p-3">Status</th><th className="p-3">Ações</th>
               </tr></thead>
               <tbody>{visiveis.map((os) => {
                 const v = veiculoMap.get(os.veiculo_id);
+                const excluir = podeExcluirOs(os);
                 return <tr key={os.id} className="border-b hover:bg-muted/40">
                   <td className="p-3"><Link className="font-semibold text-primary underline" to={`/gestao/operacoes/${os.id}`}>#{os.numero}</Link></td>
                   <td className="p-3">{v ? `${v.marca} ${v.modelo} · ${v.placa ?? "sem placa"}` : "—"}</td>
@@ -245,6 +261,22 @@ export default function GestaoOperacoesPage() {
                   <td className="p-3">{os.data_prevista ?? "—"}</td>
                   <td className="p-3">{os.valor_aprovado == null ? "—" : formatGestaoMoney(os.valor_aprovado)} / {os.valor_real == null ? "—" : formatGestaoMoney(os.valor_real)}</td>
                   <td className="p-3"><Badge variant={os.status === "cancelada" ? "destructive" : "outline"}>{GESTAO_OS_STATUS_LABEL[os.status]}</Badge></td>
+                  <td className="p-3">
+                    <div className="flex flex-wrap gap-2">
+                      <Button asChild size="sm" variant="outline">
+                        <Link to={`/gestao/operacoes/${os.id}`}>Abrir</Link>
+                      </Button>
+                      {excluir ? (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => void excluirOs(os)}
+                        >
+                          Excluir OS
+                        </Button>
+                      ) : null}
+                    </div>
+                  </td>
                 </tr>;
               })}</tbody>
             </table>

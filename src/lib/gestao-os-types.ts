@@ -25,6 +25,8 @@ export type GestaoOsRow = {
   ultima_movimentacao_em: string;
   created_at: string;
   concluida_em: string | null;
+  despesa_id?: string | null;
+  conta_lancamento_id?: string | null;
 };
 
 export type GestaoOsItemRow = {
