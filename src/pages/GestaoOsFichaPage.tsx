@@ -18,7 +18,9 @@ import { useSmartBack } from "@/lib/app-back-nav.ts";
 import { formatGestaoMoney } from "@/lib/gestao-format.ts";
 import { GESTAO_DESPESA_CATEGORIAS, gestaoCategoriaLabel } from "@/lib/gestao-lucro-categories.ts";
 import {
+  GESTAO_OS_DOCUMENTO_MIME_TYPES,
   proximosStatusOs,
+  validarArquivoDocumentoOs,
   type GestaoOsStatus,
 } from "../../supabase/functions/_shared/gestao-os-domain.ts";
 import {
@@ -177,6 +179,11 @@ export default function GestaoOsFichaPage() {
 
   const upload = async (file: File | null) => {
     if (!file || !os) return;
+    const validacao = validarArquivoDocumentoOs(file);
+    if (!validacao.ok) {
+      toast.error(validacao.mensagem);
+      return;
+    }
     const tipo = documentoTipo;
     const path = `${userId}/os/${os.id}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
     const { error } = await supabase.storage.from("gestao-os-documentos").upload(path, file);
@@ -237,7 +244,7 @@ export default function GestaoOsFichaPage() {
             <Input placeholder='Checklist JSON (ex.: {"combustivel":"1/2"})' value={vistoria.checklist} onChange={(e) => setVistoria((v) => ({ ...v, checklist: e.target.value }))} />
             <Button variant="outline" onClick={() => void registrarVistoria()}>Registrar vistoria</Button>
             <Select value={documentoTipo} onValueChange={setDocumentoTipo}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="foto_checkin">Foto de check-in</SelectItem><SelectItem value="foto_checkout">Foto de check-out</SelectItem><SelectItem value="orcamento">Orçamento</SelectItem><SelectItem value="nota">Nota fiscal</SelectItem><SelectItem value="comprovante">Comprovante</SelectItem><SelectItem value="outro">Outro</SelectItem></SelectContent></Select>
-            <Label className="mt-2 cursor-pointer rounded border border-dashed p-3 text-center"><FileUp className="mr-2 inline h-4 w-4" />Enviar arquivo privado<input className="hidden" type="file" accept="image/*,application/pdf" onChange={(e) => void upload(e.target.files?.[0] ?? null)} /></Label>
+            <Label className="mt-2 cursor-pointer rounded border border-dashed p-3 text-center"><FileUp className="mr-2 inline h-4 w-4" />Enviar arquivo privado (até 15 MB)<input className="hidden" type="file" accept={GESTAO_OS_DOCUMENTO_MIME_TYPES.join(",")} onChange={(e) => void upload(e.target.files?.[0] ?? null)} /></Label>
           </div>
           <div className="mt-3 space-y-1">{documentos.map((d) => <button className="block text-sm text-primary underline" key={d.id} onClick={() => void abrirDocumento(d.storage_path)}>{d.tipo} · {new Date(d.created_at).toLocaleString("pt-BR")}</button>)}</div>
         </div>

@@ -6,9 +6,38 @@ import {
   alertasGestaoOs,
   decidirSincronizacaoOs,
   exigeDecisaoConsignante,
+  GESTAO_OS_DOCUMENTO_MAX_BYTES,
   podeTransicionarOs,
+  validarArquivoDocumentoOs,
   validarLiberacaoComOs,
 } from "./gestao-os-domain.ts";
+
+Deno.test("OS-1.2 — documento da OS respeita tamanho e MIME antes do upload", () => {
+  assertEquals(validarArquivoDocumentoOs({
+    name: "orcamento.pdf",
+    type: "application/pdf",
+    size: 1024,
+  }), { ok: true });
+  assertEquals(validarArquivoDocumentoOs({
+    name: "foto.jpg",
+    type: "image/jpeg",
+    size: GESTAO_OS_DOCUMENTO_MAX_BYTES,
+  }), { ok: true });
+  const grande = validarArquivoDocumentoOs({
+    name: "grande.pdf",
+    type: "application/pdf",
+    size: GESTAO_OS_DOCUMENTO_MAX_BYTES + 1,
+  });
+  assertEquals(grande.ok, false);
+  if (!grande.ok) assertStringIncludes(grande.mensagem, "15 MB");
+  const tipoInvalido = validarArquivoDocumentoOs({
+    name: "virus.exe",
+    type: "application/x-msdownload",
+    size: 100,
+  });
+  assertEquals(tipoInvalido.ok, false);
+  if (!tipoInvalido.ok) assertStringIncludes(tipoInvalido.mensagem, "JPG");
+});
 
 Deno.test("OS-1 — máquina de estados não pula aprovação ou check-out", () => {
   assertEquals(podeTransicionarOs("rascunho", "orcamento"), true);

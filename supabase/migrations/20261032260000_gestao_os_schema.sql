@@ -420,12 +420,28 @@ CREATE TRIGGER update_gestao_garantia_ocorrencia_updated_at
   BEFORE UPDATE ON public.gestao_garantia_ocorrencia
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
-INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-VALUES (
-  'gestao-os-documentos', 'gestao-os-documentos', false, 15728640,
-  ARRAY['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
-)
-ON CONFLICT (id) DO UPDATE SET public = false;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'storage'
+      AND table_name = 'buckets'
+      AND column_name = 'public'
+  ) THEN
+    INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+    VALUES (
+      'gestao-os-documentos', 'gestao-os-documentos', false, 15728640,
+      ARRAY['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
+    )
+    ON CONFLICT (id) DO UPDATE SET public = false;
+  ELSE
+    INSERT INTO storage.buckets (id, name)
+    VALUES ('gestao-os-documentos', 'gestao-os-documentos')
+    ON CONFLICT (id) DO NOTHING;
+  END IF;
+END;
+$$;
 
 CREATE POLICY gestao_os_documentos_insert_owner ON storage.objects
   FOR INSERT TO authenticated WITH CHECK (

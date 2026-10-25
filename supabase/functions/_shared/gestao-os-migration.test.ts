@@ -72,6 +72,18 @@ Deno.test("OS-1.1 — authenticated não atualiza campos protegidos da OS", () =
   assertStringIncludes(domain, "'os_auto', 'custo_veiculo'");
 });
 
+Deno.test("OS-1.2 — bucket gestao-os-documentos adapta-se ao schema do storage", () => {
+  assertStringIncludes(schema, "information_schema.columns");
+  assertStringIncludes(schema, "AND column_name = 'public'");
+  assertStringIncludes(schema, "file_size_limit, allowed_mime_types");
+  assertStringIncludes(schema, "15728640");
+  assertStringIncludes(schema, "ON CONFLICT (id) DO UPDATE SET public = false");
+  assertStringIncludes(schema, "INSERT INTO storage.buckets (id, name)");
+  assertStringIncludes(schema, "ON CONFLICT (id) DO NOTHING");
+  assertStringIncludes(schema, "storage.foldername(name))[1]");
+  assertEquals(schema.includes("INSERT INTO storage.buckets (id, name, public"), true);
+});
+
 Deno.test("OS-1 — liberação exige foto, preço e nenhuma OS aberta", () => {
   assertStringIncludes(domain, "array_length(NEW.fotos, 1)");
   assertStringIncludes(domain, "NEW.preco IS NULL OR NEW.preco <= 0");

@@ -111,6 +111,33 @@ export type RegistroFinanceiroOs = {
   valor: number;
 };
 
+export const GESTAO_OS_DOCUMENTO_MAX_BYTES = 15 * 1024 * 1024;
+
+export const GESTAO_OS_DOCUMENTO_MIME_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "application/pdf",
+] as const;
+
+export function validarArquivoDocumentoOs(
+  file: Pick<File, "name" | "size" | "type">,
+): { ok: true } | { ok: false; mensagem: string } {
+  if (!(GESTAO_OS_DOCUMENTO_MIME_TYPES as readonly string[]).includes(file.type)) {
+    return {
+      ok: false,
+      mensagem: `${file.name}: envie JPG, PNG, WebP ou PDF.`,
+    };
+  }
+  if (file.size > GESTAO_OS_DOCUMENTO_MAX_BYTES) {
+    return {
+      ok: false,
+      mensagem: `${file.name}: o arquivo pode ter no máximo 15 MB.`,
+    };
+  }
+  return { ok: true };
+}
+
 export function decidirSincronizacaoOs(input: {
   registro?: RegistroFinanceiroOs | null;
   ultimoValorSincronizado?: number | null;
