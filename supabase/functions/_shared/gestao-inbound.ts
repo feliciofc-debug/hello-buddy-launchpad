@@ -326,11 +326,12 @@ async function loadContasInbound(sb: unknown, userId: string): Promise<GestaoCon
   const client = sb as GestaoDb;
   await syncRecorrenciaLancamentosDb(client, userId);
   const { data } = await client.from("gestao_conta_lancamento").select(
-    "id, tipo, valor, vencimento, pago_em, recebido_em, recorrencia_dia_mes, categoria_operacional, observacao",
+    "id, tipo, natureza, valor, vencimento, pago_em, recebido_em, recorrencia_dia_mes, categoria_operacional, observacao",
   ).eq("user_id", userId).is("deleted_at", null);
   return (data ?? []).map((c: Record<string, unknown>) => ({
     id: String(c.id),
     tipo: c.tipo as "pagar" | "receber",
+    natureza: c.natureza ? String(c.natureza) : "operacional",
     valor: Number(c.valor),
     vencimento: String(c.vencimento),
     pago_em: c.pago_em ? String(c.pago_em) : null,
@@ -1031,6 +1032,7 @@ export async function tryProcessGestaoLucroInbound(input: {
     const vendas = await loadVendasDreMes(input.sb, input.userId, competencia);
     const ops = contasToDreOperacionalRows(contas.map((c) => ({
       tipo: c.tipo,
+      natureza: c.natureza,
       categoria_operacional: c.categoria,
       valor: c.valor,
       vencimento: c.vencimento,

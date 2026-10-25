@@ -383,9 +383,14 @@ REVOKE ALL ON public.gestao_os_config, public.gestao_parceiro,
   public.gestao_os_evento, public.gestao_garantia,
   public.gestao_garantia_ocorrencia FROM anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.gestao_os_config,
-  public.gestao_parceiro, public.gestao_parceiro_servico, public.gestao_os,
+  public.gestao_parceiro, public.gestao_parceiro_servico,
   public.gestao_os_item, public.gestao_os_vistoria, public.gestao_os_documento,
   public.gestao_garantia, public.gestao_garantia_ocorrencia TO authenticated;
+REVOKE INSERT, UPDATE, DELETE ON public.gestao_os FROM authenticated;
+GRANT SELECT ON public.gestao_os TO authenticated;
+GRANT UPDATE (
+  parceiro_id, data_prevista, observacao, conta_vencimento, valor_estimado
+) ON public.gestao_os TO authenticated;
 GRANT SELECT, INSERT ON public.gestao_os_evento TO authenticated;
 GRANT ALL ON public.gestao_os_config, public.gestao_parceiro,
   public.gestao_parceiro_servico, public.gestao_os_sequencia, public.gestao_os,

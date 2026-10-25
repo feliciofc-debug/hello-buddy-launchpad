@@ -9,10 +9,15 @@ import type { GestaoContaFluxo } from "../../supabase/functions/_shared/gestao-f
 import type { GestaoOperacionalDreLine, GestaoVendaDreLine } from "../../supabase/functions/_shared/gestao-dre-calc.ts";
 import type { GestaoVeiculoEnriched } from "./gestao-lucro-types.ts";
 import { competenciaFromDate } from "../../supabase/functions/_shared/gestao-meta-calc.ts";
+import {
+  isContaDespesaOperacional,
+  type GestaoContaNatureza,
+} from "../../supabase/functions/_shared/gestao-conta-natureza.ts";
 
 export type GestaoContaLancamento = {
   id: string;
   tipo: "pagar" | "receber";
+  natureza: GestaoContaNatureza;
   categoria_operacional: string;
   valor: number;
   vencimento: string;
@@ -98,6 +103,7 @@ export async function loadRecorrenciaSeries(userId: string): Promise<GestaoConta
     id: String(s.id),
     tipo: s.tipo as "pagar" | "receber",
     categoria_operacional: String(s.categoria_operacional),
+    natureza: (s.natureza ?? "operacional") as GestaoContaNatureza,
     valor: Number(s.valor),
     dia_mes: Number(s.dia_mes),
     forma_pagamento: s.forma_pagamento ? String(s.forma_pagamento) : null,
@@ -132,6 +138,7 @@ export async function syncRecorrenciaLancamentos(userId: string): Promise<void> 
       user_id: userId,
       tipo: row.tipo,
       categoria_operacional: row.categoria_operacional,
+      natureza: row.natureza,
       valor: row.valor,
       vencimento: row.vencimento,
       forma_pagamento: row.forma_pagamento,
@@ -152,6 +159,7 @@ export async function createRecorrenciaSerie(
     user_id: userId,
     tipo: input.tipo,
     categoria_operacional: input.categoria_operacional,
+    natureza: input.natureza ?? "operacional",
     valor: input.valor,
     dia_mes: input.dia_mes,
     forma_pagamento: input.forma_pagamento,
@@ -263,7 +271,7 @@ export function veiculosToDreVendas(veiculos: GestaoVeiculoEnriched[]): GestaoVe
 
 export function contasToDreOperacional(contas: GestaoContaLancamento[]): GestaoOperacionalDreLine[] {
   return contas
-    .filter((c) => c.tipo === "pagar")
+    .filter(isContaDespesaOperacional)
     .map((c) => ({
       categoria: c.categoria_operacional,
       valor: Number(c.valor),

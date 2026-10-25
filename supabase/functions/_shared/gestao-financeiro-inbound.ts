@@ -6,6 +6,7 @@ import { gestaoOperacionalCategoriaLabel } from "./gestao-operacional-categorias
 
 export type GestaoContaInbound = GestaoContaFluxo & {
   categoria: string;
+  natureza?: string;
   observacao: string | null;
 };
 

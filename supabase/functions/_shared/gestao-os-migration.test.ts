@@ -61,6 +61,17 @@ Deno.test("OS-1 — owner-only e eventos append-only", () => {
   assertStringIncludes(domain, "Veículo não pertence a esta loja");
 });
 
+Deno.test("OS-1.1 — authenticated não atualiza campos protegidos da OS", () => {
+  assertStringIncludes(schema, "GRANT SELECT ON public.gestao_os TO authenticated");
+  assertStringIncludes(schema, "REVOKE INSERT, UPDATE, DELETE ON public.gestao_os FROM authenticated");
+  assertStringIncludes(schema, "GRANT UPDATE (\n  parceiro_id, data_prevista, observacao, conta_vencimento, valor_estimado");
+  assertEquals(
+    schema.includes("public.gestao_parceiro_servico, public.gestao_os,"),
+    false,
+  );
+  assertStringIncludes(domain, "'os_auto', 'custo_veiculo'");
+});
+
 Deno.test("OS-1 — liberação exige foto, preço e nenhuma OS aberta", () => {
   assertStringIncludes(domain, "array_length(NEW.fotos, 1)");
   assertStringIncludes(domain, "NEW.preco IS NULL OR NEW.preco <= 0");

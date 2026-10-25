@@ -108,7 +108,7 @@ export default function GestaoOsFichaPage() {
 
   const salvarFornecedor = async (parceiroId: string) => {
     const { error } = await supabase.from("gestao_os" as "veiculos_estoque")
-      .update({ parceiro_id: parceiroId, ultima_movimentacao_em: new Date().toISOString() } as never)
+      .update({ parceiro_id: parceiroId } as never)
       .eq("user_id", userId).eq("id", id);
     if (error) toast.error(error.message);
     else await load();

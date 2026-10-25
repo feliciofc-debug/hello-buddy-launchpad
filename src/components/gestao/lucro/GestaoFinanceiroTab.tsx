@@ -48,6 +48,11 @@ import { loadConciliacaoResumoCompetencia } from "@/lib/gestao-conciliacao-load.
 import { supabase } from "@/integrations/supabase/client";
 import { GestaoConciliacaoTab } from "@/components/gestao/lucro/GestaoConciliacaoTab.tsx";
 import { GestaoHelpTip } from "@/components/gestao/GestaoHelpTip.tsx";
+import {
+  GESTAO_CONTA_NATUREZAS,
+  gestaoContaNaturezaLabel,
+  type GestaoContaNatureza,
+} from "../../../../supabase/functions/_shared/gestao-conta-natureza.ts";
 
 type Props = {
   userId: string;
@@ -61,6 +66,7 @@ type Props = {
 
 const emptyForm = {
   tipo: "pagar" as "pagar" | "receber",
+  natureza: "operacional" as GestaoContaNatureza,
   categoria: "aluguel",
   valor: "",
   vencimento: hojeSaoPaulo(),
@@ -205,6 +211,7 @@ export function GestaoFinanceiroTab({
         await createRecorrenciaSerie(userId, {
           tipo: form.tipo,
           categoria_operacional: form.categoria,
+          natureza: form.natureza,
           valor,
           dia_mes: dia,
           forma_pagamento: form.forma_pagamento || null,
@@ -225,6 +232,7 @@ export function GestaoFinanceiroTab({
       user_id: userId,
       tipo: form.tipo,
       categoria_operacional: form.categoria,
+      natureza: form.natureza,
       valor,
       vencimento: form.vencimento,
       forma_pagamento: form.forma_pagamento || null,
@@ -352,6 +360,25 @@ export function GestaoFinanceiroTab({
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label>Natureza</Label>
+              <Select value={form.natureza} onValueChange={(v) => setForm({
+                ...form,
+                natureza: v as GestaoContaNatureza,
+              })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {GESTAO_CONTA_NATUREZAS.map((natureza) => (
+                    <SelectItem key={natureza} value={natureza}>
+                      {gestaoContaNaturezaLabel(natureza)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                Só “Operacional” entra nas despesas da DRE.
+              </p>
+            </div>
             <GestaoMoneyInput label="Valor (R$)" value={form.valor} onChange={(v) => setForm({ ...form, valor: v })} />
             <div>
               <Label>Vencimento</Label>
@@ -398,6 +425,7 @@ export function GestaoFinanceiroTab({
                   <th className="pb-2 pr-2">Venc.</th>
                   <th className="pb-2 pr-2">Tipo</th>
                   <th className="pb-2 pr-2">Categoria</th>
+                  <th className="pb-2 pr-2">Natureza</th>
                   <th className="pb-2 pr-2">Valor</th>
                   <th className="pb-2 pr-2">Status</th>
                   <th className="pb-2">Ação</th>
@@ -409,6 +437,7 @@ export function GestaoFinanceiroTab({
                     <td className="py-2 pr-2">{c.vencimento}</td>
                     <td className="py-2 pr-2">{c.tipo === "pagar" ? "Pagar" : "Receber"}</td>
                     <td className="py-2 pr-2">{gestaoOperacionalCategoriaLabel(c.categoria_operacional)}</td>
+                    <td className="py-2 pr-2 text-xs">{gestaoContaNaturezaLabel(c.natureza)}</td>
                     <td className="py-2 pr-2">{formatGestaoMoney(Number(c.valor))}</td>
                     <td className="py-2 pr-2 text-xs">
                       {c.origem === "bonus_g2" ? "Bônus G2 · " : c.origem === "recorrencia" ? `Rec. ${c.competencia ?? ""} · ` : ""}

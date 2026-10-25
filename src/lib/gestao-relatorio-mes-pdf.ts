@@ -231,7 +231,7 @@ export function downloadRelatorioMesPdf(input: GestaoRelatorioMesInput, filename
   pdf.title("Despesas operacionais (item a item)");
   pdf.tableHeader(["Venc.", "Categoria", "Descrição", "Valor", "Pago em"], [22, 36, 50, 24, 24]);
   const opsMes = contas.filter((c) => {
-    if (c.tipo !== "pagar") return false;
+    if (c.tipo !== "pagar" || c.natureza !== "operacional") return false;
     const ref = c.pago_em ?? c.vencimento;
     return ref.startsWith(competencia);
   });

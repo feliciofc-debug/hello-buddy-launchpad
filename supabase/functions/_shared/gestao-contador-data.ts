@@ -1,15 +1,16 @@
 import { buildGestaoContadorPacote } from "./gestao-contador-pacote-build.ts";
 import { intervaloCompetencia } from "./gestao-date-br.ts";
 import type { GestaoOperacionalDreLine, GestaoVendaDreLine } from "./gestao-dre-calc.ts";
+import { isContaDespesaOperacional } from "./gestao-conta-natureza.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Db = { from: (t: string) => any };
 
 export function contasToDreOperacionalRows(
-  contas: Array<{ tipo: string; categoria_operacional: string; valor: number; vencimento: string; pago_em: string | null }>,
+  contas: Array<{ tipo: string; natureza?: string | null; categoria_operacional: string; valor: number; vencimento: string; pago_em: string | null }>,
 ): GestaoOperacionalDreLine[] {
   return contas
-    .filter((c) => c.tipo === "pagar")
+    .filter(isContaDespesaOperacional)
     .map((c) => ({
       categoria: c.categoria_operacional,
       valor: Number(c.valor),
@@ -65,6 +66,7 @@ export async function loadGestaoContadorPacoteData(
     recebido_em: string | null;
     observacao: string | null;
     origem: string;
+    natureza: string;
   }>;
 
   return buildGestaoContadorPacote({

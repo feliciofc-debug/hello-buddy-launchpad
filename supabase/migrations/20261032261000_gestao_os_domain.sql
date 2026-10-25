@@ -234,12 +234,12 @@ BEGIN
     SELECT * INTO config FROM public.gestao_os_config WHERE user_id = uid;
     INSERT INTO public.gestao_conta_lancamento (
       user_id, tipo, categoria_operacional, valor, vencimento, observacao,
-      veiculo_id, parceiro_id, origem
+      veiculo_id, parceiro_id, origem, natureza
     ) VALUES (
       uid, 'pagar', 'manutencao_loja', ordem.valor_real,
       coalesce(ordem.conta_vencimento, current_date + config.conta_pagar_vencimento_dias),
       'OS ' || ordem.numero::text || ' · fornecedor ' || coalesce(ordem.parceiro_id::text, 'não informado'),
-      ordem.veiculo_id, ordem.parceiro_id, 'os_auto'
+      ordem.veiculo_id, ordem.parceiro_id, 'os_auto', 'custo_veiculo'
     )
     RETURNING * INTO conta;
     ordem.conta_lancamento_id := conta.id;

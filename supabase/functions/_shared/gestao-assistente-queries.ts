@@ -42,6 +42,7 @@ export type GestaoAssistenteQueryResult = {
 type ContaLancamentoRow = {
   id: string;
   tipo: "pagar" | "receber";
+  natureza: string;
   categoria_operacional: string | null;
   valor: number;
   vencimento: string;
@@ -102,12 +103,13 @@ export function isGestaoAssistenteMutatingIntent(kind: GestaoIntentKind): boolea
 
 async function loadContas(sb: Db, userId: string): Promise<GestaoContaInbound[]> {
   const { data } = await sb.from("gestao_conta_lancamento").select(
-    "id, tipo, categoria_operacional, valor, vencimento, pago_em, recebido_em, observacao",
+    "id, tipo, natureza, categoria_operacional, valor, vencimento, pago_em, recebido_em, observacao",
   ).eq("user_id", userId).is("deleted_at", null);
   const rows = (data ?? []) as ContaLancamentoRow[];
   return rows.map((c) => ({
     id: String(c.id),
     tipo: c.tipo,
+    natureza: c.natureza ?? "operacional",
     categoria: String(c.categoria_operacional ?? ""),
     valor: Number(c.valor),
     vencimento: String(c.vencimento ?? ""),
@@ -313,6 +315,7 @@ export async function runGestaoAssistenteQuery(
     const vendas = await loadVendasDreMes(sb, userId, competencia);
     const ops = contasToDreOperacionalRows(contas.map((c) => ({
       tipo: c.tipo,
+      natureza: c.natureza,
       categoria_operacional: c.categoria,
       valor: c.valor,
       vencimento: c.vencimento,
