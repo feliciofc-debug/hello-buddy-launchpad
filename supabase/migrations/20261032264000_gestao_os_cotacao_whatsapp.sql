@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS public.gestao_os_cotacao_wa_sessao (
   cotacao_id uuid NULL,
   fase text NOT NULL,
   draft_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  dica_enviada_em timestamptz NULL,
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT gestao_os_cotacao_wa_sessao_parceiro_fk
     FOREIGN KEY (user_id, parceiro_id)

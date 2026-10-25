@@ -15,6 +15,13 @@ import {
 import { gestaoOsPdfContemCustosInternos, buildGestaoOsCotacaoPdfLines } from "./gestao-os-cotacao-pdf.ts";
 import { gestaoOsFotosParaPdf } from "./gestao-os-fotos.ts";
 import { GESTAO_TROCA_FOTO_ETIQUETA_CRLV } from "./gestao-troca-fotos.ts";
+import {
+  OS_COTACAO_SESSAO_TTL_MS,
+  deveCapturarMensagemCotacao,
+  sessaoCotacaoEstaAtiva,
+  textoCancelaSessaoCotacao,
+  textoPareceOrcamentoForte,
+} from "./os-parceiro-gate.ts";
 
 Deno.test("COTACAO-WPP-1 — roteamento: dono/gestor ignoram fluxo parceiro", () => {
   const auth = {
@@ -53,6 +60,68 @@ Deno.test("COTACAO-WPP-1 — parser texto livre valor e prazo", () => {
   assertEquals(audio.prazoDias, 7);
 });
 
+Deno.test("COTACAO-WPP-1.1 — conversa comum do parceiro não entra na cotação", () => {
+  assertEquals(textoPareceOrcamentoForte("bom dia"), false);
+  assertEquals(textoPareceOrcamentoForte("tem Onix 2020?"), false);
+  assertEquals(deveCapturarMensagemCotacao({
+    interactive: false,
+    sessaoAtiva: false,
+    texto: "bom dia",
+    documentoOuImagem: false,
+  }), false);
+  assertEquals(deveCapturarMensagemCotacao({
+    interactive: false,
+    sessaoAtiva: false,
+    texto: "tem Onix 2020?",
+    documentoOuImagem: false,
+  }), false);
+});
+
+Deno.test("COTACAO-WPP-1.1 — só padrões fortes iniciam orçamento por texto", () => {
+  assertEquals(textoPareceOrcamentoForte("1950, 7 dias"), true);
+  assertEquals(textoPareceOrcamentoForte("R$ 1.950"), true);
+  assertEquals(textoPareceOrcamentoForte("fica 1950 reais"), true);
+  assertEquals(textoPareceOrcamentoForte("2020"), false);
+  assertEquals(deveCapturarMensagemCotacao({
+    interactive: false,
+    sessaoAtiva: false,
+    texto: "1950, 7 dias",
+    documentoOuImagem: false,
+  }), true);
+});
+
+Deno.test("COTACAO-WPP-1.1 — sessão expira em duas horas e pode ser cancelada", () => {
+  const now = Date.parse("2026-10-25T20:00:00Z");
+  assertEquals(
+    sessaoCotacaoEstaAtiva({
+      fase: "valor",
+      updated_at: new Date(now - OS_COTACAO_SESSAO_TTL_MS + 1).toISOString(),
+    }, now),
+    true,
+  );
+  assertEquals(
+    sessaoCotacaoEstaAtiva({
+      fase: "prazo",
+      updated_at: new Date(now - 3 * 60 * 60 * 1000).toISOString(),
+    }, now),
+    false,
+  );
+  assertEquals(textoCancelaSessaoCotacao("cancelar"), true);
+  assertEquals(textoCancelaSessaoCotacao("sair"), true);
+  assertEquals(deveCapturarMensagemCotacao({
+    interactive: true,
+    sessaoAtiva: false,
+    texto: "",
+    documentoOuImagem: false,
+  }), true);
+  assertEquals(deveCapturarMensagemCotacao({
+    interactive: false,
+    sessaoAtiva: false,
+    texto: "",
+    documentoOuImagem: true,
+  }), true);
+});
+
 Deno.test("COTACAO-WPP-1 — IDs interativos os_cot_wa", () => {
   assertEquals(OS_COT_WA_BTN_ENVIAR, "os_cot_wa:enviar_orcamento");
   assertEquals(
@@ -60,6 +129,17 @@ Deno.test("COTACAO-WPP-1 — IDs interativos os_cot_wa", () => {
     "enviar_orcamento",
   );
   assertEquals(osCotacaoWaInteractiveId("confirmar_sim"), "os_cot_wa:confirmar_sim");
+});
+
+Deno.test("COTACAO-WPP-1.1 — mídia exige Sim ou Não, outro assunto", async () => {
+  const inbound = await Deno.readTextFile(new URL(
+    "./os-parceiro-inbound.ts",
+    import.meta.url,
+  ));
+  assertStringIncludes(inbound, 'fase: "confirmar_midia"');
+  assertStringIncludes(inbound, "Isso é o orçamento da OS #");
+  assertStringIncludes(inbound, "OS_COT_WA_BTN_OUTRO_ASSUNTO");
+  assertStringIncludes(inbound, "confirmarOrcamentoParceiroDocumento");
 });
 
 Deno.test("COTACAO-WPP-1 — PDF pedido sem custos internos e sem CRLV", () => {
@@ -88,6 +168,7 @@ Deno.test("COTACAO-WPP-1 — migration whatsapp e status recusada", async () => 
   assertStringIncludes(sql, "'recusada'");
   assertStringIncludes(sql, "whatsapp_parceiro");
   assertStringIncludes(sql, "gestao_os_cotacao_wa_sessao");
+  assertStringIncludes(sql, "dica_enviada_em");
 });
 
 Deno.test("COTACAO-WPP-1 — módulo mídia orçamento parceiro", async () => {

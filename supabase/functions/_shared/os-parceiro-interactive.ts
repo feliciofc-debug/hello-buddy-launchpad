@@ -23,3 +23,5 @@ export const OS_COT_WA_BTN_ENVIAR = osCotacaoWaInteractiveId("enviar_orcamento")
 export const OS_COT_WA_BTN_SEM_AGENDA = osCotacaoWaInteractiveId("sem_agenda");
 export const OS_COT_WA_BTN_CONFIRMAR = osCotacaoWaInteractiveId("confirmar_sim");
 export const OS_COT_WA_BTN_CORRIGIR = osCotacaoWaInteractiveId("confirmar_corrigir");
+export const OS_COT_WA_BTN_MIDIA_SIM = osCotacaoWaInteractiveId("midia_sim");
+export const OS_COT_WA_BTN_OUTRO_ASSUNTO = osCotacaoWaInteractiveId("outro_assunto");

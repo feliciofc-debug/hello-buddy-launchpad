@@ -10,6 +10,8 @@ import {
   OS_COT_WA_BTN_CONFIRMAR,
   OS_COT_WA_BTN_CORRIGIR,
   OS_COT_WA_BTN_ENVIAR,
+  OS_COT_WA_BTN_MIDIA_SIM,
+  OS_COT_WA_BTN_OUTRO_ASSUNTO,
   OS_COT_WA_BTN_SEM_AGENDA,
   parseOsCotacaoWaInteractiveId,
 } from "./os-parceiro-interactive.ts";
@@ -17,11 +19,19 @@ import { parseOrcamentoParceiroTexto } from "./os-parceiro-parser.ts";
 import { notificarDonoRespostaCotacao } from "./os-parceiro-notify-owner.ts";
 import type { MediaExtract } from "./whatsapp-media.ts";
 import {
+  confirmarOrcamentoParceiroDocumento,
+  descartarOrcamentoParceiroPreparado,
   parseOrcamentoFromExtractedText,
+  prepararOrcamentoParceiroDocumento,
   salvarAudioParceiroDocumento,
-  salvarOrcamentoParceiroDocumento,
   textoDeOrcamentoParceiroMedia,
 } from "./os-parceiro-orcamento-media.ts";
+import {
+  deveCapturarMensagemCotacao,
+  sessaoCotacaoEstaAtiva,
+  textoCancelaSessaoCotacao,
+  textoPareceOrcamentoForte,
+} from "./os-parceiro-gate.ts";
 
 export type OsParceiroWaResult = {
   handled: boolean;
@@ -45,6 +55,8 @@ type Sessao = {
   cotacao_id: string | null;
   fase: string;
   draft_json: Record<string, unknown>;
+  dica_enviada_em: string | null;
+  updated_at: string;
 };
 
 type CotacaoRow = {
@@ -109,9 +121,37 @@ async function saveSessao(
 
 async function clearSessao(sb: SupabaseClient, userId: string, parceiroId: string): Promise<void> {
   await sb.from("gestao_os_cotacao_wa_sessao")
-    .delete()
+    .update({
+      cotacao_id: null,
+      fase: "idle",
+      draft_json: {},
+      updated_at: new Date().toISOString(),
+    })
     .eq("user_id", userId)
     .eq("parceiro_id", parceiroId);
+}
+
+async function dicaOrcamentoUmaVezAoDia(
+  sb: SupabaseClient,
+  sessao: Sessao | null,
+  userId: string,
+  parceiroId: string,
+): Promise<string> {
+  const lastMs = Date.parse(String(sessao?.dica_enviada_em ?? ""));
+  if (Number.isFinite(lastMs) && Date.now() - lastMs < 24 * 60 * 60 * 1000) {
+    return "Não consegui identificar o valor do orçamento.";
+  }
+  const now = new Date().toISOString();
+  await sb.from("gestao_os_cotacao_wa_sessao").upsert({
+    user_id: userId,
+    parceiro_id: parceiroId,
+    cotacao_id: null,
+    fase: "idle",
+    draft_json: {},
+    dica_enviada_em: now,
+    updated_at: now,
+  }, { onConflict: "user_id,parceiro_id" });
+  return "Não consegui identificar o valor. Para responder à cotação, envie por exemplo: *R$ 1.950, 7 dias*.";
 }
 
 async function resolveCotacaoUnica(
@@ -219,6 +259,34 @@ function confirmButtons(body: string) {
   };
 }
 
+function mediaConfirmButtons(body: string) {
+  return {
+    body,
+    buttons: [
+      { id: OS_COT_WA_BTN_MIDIA_SIM, title: "Sim" },
+      { id: OS_COT_WA_BTN_OUTRO_ASSUNTO, title: "Não, outro assunto" },
+    ],
+  };
+}
+
+async function osLabel(
+  sb: SupabaseClient,
+  cot: CotacaoRow,
+): Promise<{ numero: number; carro: string }> {
+  const { data: os } = await sb.from("gestao_os")
+    .select("numero,veiculo_id")
+    .eq("id", cot.os_id)
+    .maybeSingle();
+  const { data: veiculo } = await sb.from("veiculos_estoque")
+    .select("marca,modelo")
+    .eq("id", os?.veiculo_id)
+    .maybeSingle();
+  return {
+    numero: Number(os?.numero ?? 0),
+    carro: veiculo ? `${veiculo.marca} ${veiculo.modelo}` : "veículo",
+  };
+}
+
 export async function tryProcessOsParceiroCotacaoWhatsAppInbound(input: {
   sb: SupabaseClient;
   supabaseUrl: string;
@@ -233,16 +301,17 @@ export async function tryProcessOsParceiroCotacaoWhatsAppInbound(input: {
   media?: MediaExtract[];
   audioMedia?: MediaExtract;
 }): Promise<OsParceiroWaResult> {
+  // Consulta barata primeiro: números que não são parceiros saem sem carregar gestão.
+  const parceiro = await findParceiro(input.sb, input.userId, input.fromNumber);
+  if (!parceiro) return { handled: false };
+
   const auth = await loadGestaoAuthContext(input.sb, input.userId);
   if (deveIgnorarFluxoParceiro(input.fromNumber, auth, input.fromIsOwner)) {
     return { handled: false };
   }
 
-  const parceiro = await findParceiro(input.sb, input.userId, input.fromNumber);
-  if (!parceiro) return { handled: false };
-
   const abertas = await cotacoesAbertas(input.sb, input.userId, parceiro.id);
-  const sessao = await loadSessao(input.sb, input.userId, parceiro.id);
+  let sessao = await loadSessao(input.sb, input.userId, parceiro.id);
   const buttonId = extractOsCotacaoWaButtonId(input.payload ?? undefined);
   const listId = String(
     (input.payload as { interactive?: { list_reply?: { id?: string } } } | undefined)
@@ -254,7 +323,109 @@ export async function tryProcessOsParceiroCotacaoWhatsAppInbound(input: {
     listId.startsWith("os_cot_wa:") ? listId.replace("os_cot_wa:", "") : null
   );
 
-  if (!abertas.length && !sessao) return { handled: false };
+  const text = input.userText
+    .replace(/<<INTERACTIVE_ID:[^>]+>>/gi, "")
+    .trim();
+  const sessionWasActive = sessaoCotacaoEstaAtiva(sessao);
+  if (sessao && sessao.fase !== "idle" && !sessionWasActive) {
+    await descartarOrcamentoParceiroPreparado(
+      input.sb,
+      String(sessao.draft_json?.storage_path ?? "") || null,
+    );
+    await clearSessao(input.sb, input.userId, parceiro.id);
+    sessao = null;
+  }
+
+  const isCotacaoInteractive = Boolean(interactiveAction) ||
+    buttonId.startsWith("os_cot_wa:") ||
+    listId.startsWith("os_cot_wa:");
+  const strongText = textoPareceOrcamentoForte(text);
+  const hasMedia = Boolean(
+    input.media?.some((m) => m.kind === "document" || m.kind === "image"),
+  );
+
+  if (!abertas.length) {
+    if (sessao?.fase !== "idle") {
+      await descartarOrcamentoParceiroPreparado(
+        input.sb,
+        String(sessao?.draft_json?.storage_path ?? "") || null,
+      );
+      await clearSessao(input.sb, input.userId, parceiro.id);
+    }
+    return isCotacaoInteractive
+      ? { handled: true, reply: "Não há cotação aberta para você no momento." }
+      : { handled: false };
+  }
+
+  if (sessao && textoCancelaSessaoCotacao(text)) {
+    await descartarOrcamentoParceiroPreparado(
+      input.sb,
+      String(sessao.draft_json?.storage_path ?? "") || null,
+    );
+    await clearSessao(input.sb, input.userId, parceiro.id);
+    return { handled: true, reply: "Certo, saí do fluxo da cotação." };
+  }
+
+  if (interactiveAction === "outro_assunto" || buttonId === OS_COT_WA_BTN_OUTRO_ASSUNTO) {
+    await descartarOrcamentoParceiroPreparado(
+      input.sb,
+      String(sessao?.draft_json?.storage_path ?? "") || null,
+    );
+    await clearSessao(input.sb, input.userId, parceiro.id);
+    return { handled: true, reply: "Certo, vou tratar como outro assunto." };
+  }
+
+  if (interactiveAction === "midia_sim" || buttonId === OS_COT_WA_BTN_MIDIA_SIM) {
+    if (!sessao?.cotacao_id || sessao.fase !== "confirmar_midia") {
+      return { handled: true, reply: "Esse arquivo não está mais aguardando confirmação." };
+    }
+    const draft = sessao.draft_json;
+    await confirmarOrcamentoParceiroDocumento(input.sb, {
+      userId: input.userId,
+      osId: String(draft.os_id),
+      storagePath: String(draft.storage_path),
+      mimeType: String(draft.mime_type),
+      tamanhoBytes: Number(draft.tamanho_bytes),
+    });
+    const valor = draft.valor == null ? null : Number(draft.valor);
+    const prazo = draft.prazo_dias == null ? null : Number(draft.prazo_dias);
+    if (valor == null) {
+      await saveSessao(input.sb, {
+        user_id: input.userId,
+        parceiro_id: parceiro.id,
+        cotacao_id: sessao.cotacao_id,
+        fase: "valor",
+        draft_json: { observacao: draft.observacao },
+      });
+      return { handled: true, reply: "Qual o valor do orçamento (R$)?" };
+    }
+    if (prazo == null) {
+      await saveSessao(input.sb, {
+        user_id: input.userId,
+        parceiro_id: parceiro.id,
+        cotacao_id: sessao.cotacao_id,
+        fase: "prazo",
+        draft_json: { valor, observacao: draft.observacao },
+      });
+      return { handled: true, reply: `Valor R$ ${valor}. Qual o prazo em dias?` };
+    }
+    await saveSessao(input.sb, {
+      user_id: input.userId,
+      parceiro_id: parceiro.id,
+      cotacao_id: sessao.cotacao_id,
+      fase: "confirmar",
+      draft_json: {
+        valor,
+        prazo_dias: prazo,
+        observacao: draft.observacao,
+      },
+    });
+    return {
+      handled: true,
+      reply: `Confirma R$ ${valor} · ${prazo} dias?`,
+      interactiveButtons: confirmButtons("Confirma este orçamento?"),
+    };
+  }
 
   // --- Recusa explícita ---
   if (interactiveAction === "sem_agenda" || buttonId === OS_COT_WA_BTN_SEM_AGENDA) {
@@ -362,44 +533,49 @@ export async function tryProcessOsParceiroCotacaoWhatsAppInbound(input: {
     if (!cot) cot = abertas[0] ?? null;
     if (!cot) return { handled: true, reply: "Não há cotação aberta." };
 
-    const { data: osRow } = await input.sb.from("gestao_os")
-      .select("id")
-      .eq("id", cot.os_id)
-      .maybeSingle();
-    if (osRow?.id) {
-      await salvarOrcamentoParceiroDocumento(input.sb, {
-        userId: input.userId,
-        osId: osRow.id,
-        media: doc,
-      });
-    }
-
     const texto = await textoDeOrcamentoParceiroMedia(doc);
     const parsed = parseOrcamentoFromExtractedText(texto);
-    if (parsed.valor == null) {
-      return { handled: true, reply: "Recebi o arquivo, mas não achei o valor. Informe: R$ e prazo em dias." };
+    const prepared = await prepararOrcamentoParceiroDocumento(input.sb, {
+      userId: input.userId,
+      osId: cot.os_id,
+      media: doc,
+    });
+    if (!prepared) {
+      return { handled: true, reply: "Não consegui guardar o arquivo agora. Pode reenviar?" };
     }
+    const label = await osLabel(input.sb, cot);
     await saveSessao(input.sb, {
       user_id: input.userId,
       parceiro_id: parceiro.id,
       cotacao_id: cot.id,
-      fase: "confirmar",
+      fase: "confirmar_midia",
       draft_json: {
         valor: parsed.valor,
         prazo_dias: parsed.prazoDias,
         observacao: texto.slice(0, 500),
+        os_id: cot.os_id,
+        ...prepared,
       },
     });
     return {
       handled: true,
-      reply: `Entendi: R$ ${parsed.valor}${parsed.prazoDias ? ` · ${parsed.prazoDias} dias` : ""}. Confirmo?`,
-      interactiveButtons: confirmButtons("Confirma este orçamento?"),
+      reply: `Isso é o orçamento da OS #${label.numero} (${label.carro})?`,
+      interactiveButtons: mediaConfirmButtons(
+        `Isso é o orçamento da OS #${label.numero} (${label.carro})?`,
+      ),
     };
   }
 
-  const text = input.userText
-    .replace(/<<INTERACTIVE_ID:[^>]+>>/gi, "")
-    .trim();
+  // Fora de uma sessão recente, só texto com sinal forte entra no fluxo.
+  // Isso impede "bom dia" e "tem Onix 2020?" de virarem orçamento.
+  if (!deveCapturarMensagemCotacao({
+    interactive: isCotacaoInteractive,
+    sessaoAtiva: sessionWasActive,
+    texto: text,
+    documentoOuImagem: hasMedia,
+  })) {
+    return { handled: false };
+  }
   if (!text && !sessao) return { handled: false };
 
   const active = sessao ?? {
@@ -479,6 +655,13 @@ export async function tryProcessOsParceiroCotacaoWhatsAppInbound(input: {
   const parsed = parseOrcamentoParceiroTexto(text);
   if (parsed.valor != null) {
     let cot = await resolveCotacaoUnica(input.sb, input.userId, parceiro.id, active.cotacao_id);
+    if (!cot && abertas.length > 1) {
+      return {
+        handled: true,
+        reply: "Você tem mais de uma cotação aberta. Qual destas?",
+        interactiveList: await buildPickList(input.sb, input.userId, parceiro.id, abertas),
+      };
+    }
     if (!cot) cot = abertas[0] ?? null;
     if (!cot) return { handled: true, reply: "Não há cotação aberta." };
     if (parsed.ambiguo || parsed.prazoDias == null) {
@@ -514,10 +697,15 @@ export async function tryProcessOsParceiroCotacaoWhatsAppInbound(input: {
     };
   }
 
-  if (abertas.length) {
+  if (strongText) {
     return {
       handled: true,
-      reply: "Para responder à cotação, toque em *Enviar orçamento* ou envie valor e prazo (ex.: R$ 1.950, 7 dias).",
+      reply: await dicaOrcamentoUmaVezAoDia(
+        input.sb,
+        sessao,
+        input.userId,
+        parceiro.id,
+      ),
     };
   }
 

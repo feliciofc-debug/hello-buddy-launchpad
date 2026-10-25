@@ -106,6 +106,62 @@ export async function salvarOrcamentoParceiroDocumento(
   return path;
 }
 
+export async function prepararOrcamentoParceiroDocumento(
+  sb: SupabaseClient,
+  input: {
+    userId: string;
+    osId: string;
+    media: MediaExtract;
+  },
+): Promise<{
+  storage_path: string;
+  mime_type: string;
+  tamanho_bytes: number;
+} | null> {
+  const bytes = base64Decode(input.media.base64);
+  const ext = input.media.filename?.split(".").pop()
+    || (input.media.kind === "image" ? "jpg" : "pdf");
+  const path = `${input.userId}/os/${input.osId}/${crypto.randomUUID()}-orcamento-parceiro.${ext}`;
+  const { error } = await sb.storage.from("gestao-os-documentos").upload(path, bytes, {
+    contentType: input.media.mime,
+    upsert: false,
+  });
+  if (error) return null;
+  return {
+    storage_path: path,
+    mime_type: input.media.mime,
+    tamanho_bytes: bytes.byteLength,
+  };
+}
+
+export async function confirmarOrcamentoParceiroDocumento(
+  sb: SupabaseClient,
+  input: {
+    userId: string;
+    osId: string;
+    storagePath: string;
+    mimeType: string;
+    tamanhoBytes: number;
+  },
+): Promise<void> {
+  await sb.from("gestao_os_documento").insert({
+    user_id: input.userId,
+    os_id: input.osId,
+    tipo: "orcamento",
+    storage_path: input.storagePath,
+    mime_type: input.mimeType,
+    tamanho_bytes: input.tamanhoBytes,
+  });
+}
+
+export async function descartarOrcamentoParceiroPreparado(
+  sb: SupabaseClient,
+  storagePath: string | null | undefined,
+): Promise<void> {
+  if (!storagePath) return;
+  await sb.storage.from("gestao-os-documentos").remove([storagePath]);
+}
+
 export async function salvarAudioParceiroDocumento(
   sb: SupabaseClient,
   input: {
