@@ -12,6 +12,10 @@ const domain = await Deno.readTextFile(new URL(
   "../../migrations/20261032261000_gestao_os_domain.sql",
   import.meta.url,
 ));
+const cotacao = await Deno.readTextFile(new URL(
+  "../../migrations/20261032263000_gestao_os_cotacao.sql",
+  import.meta.url,
+));
 
 Deno.test("OS-1 — migration cria entidades, RLS e bucket privado", () => {
   for (const table of [
@@ -82,6 +86,15 @@ Deno.test("OS-1.2 — bucket gestao-os-documentos adapta-se ao schema do storage
   assertStringIncludes(schema, "ON CONFLICT (id) DO NOTHING");
   assertStringIncludes(schema, "storage.foldername(name))[1]");
   assertEquals(schema.includes("INSERT INTO storage.buckets (id, name, public"), true);
+});
+
+Deno.test("OS-1.3 — cotação e fotos por referência", () => {
+  assertStringIncludes(cotacao, "CREATE TABLE IF NOT EXISTS public.gestao_os_cotacao");
+  assertStringIncludes(cotacao, "CREATE TABLE IF NOT EXISTS public.gestao_os_foto_ref");
+  assertStringIncludes(cotacao, "gestao_os_cotacao_solicitar");
+  assertStringIncludes(cotacao, "gestao_os_cotacao_escolher");
+  assertStringIncludes(cotacao, "pedido_cotacao");
+  assertEquals(cotacao.includes("preparacao_estimada"), false);
 });
 
 Deno.test("OS-1 — liberação exige foto, preço e nenhuma OS aberta", () => {

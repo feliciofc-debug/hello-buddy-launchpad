@@ -14,6 +14,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { GestaoOsCotacaoPanel } from "@/components/gestao/operacoes/GestaoOsCotacaoPanel.tsx";
+import { GestaoOsFotosPanel } from "@/components/gestao/operacoes/GestaoOsFotosPanel.tsx";
 import { useSmartBack } from "@/lib/app-back-nav.ts";
 import { formatGestaoMoney } from "@/lib/gestao-format.ts";
 import { GESTAO_DESPESA_CATEGORIAS, gestaoCategoriaLabel } from "@/lib/gestao-lucro-categories.ts";
@@ -23,9 +25,11 @@ import {
   validarArquivoDocumentoOs,
   type GestaoOsStatus,
 } from "../../supabase/functions/_shared/gestao-os-domain.ts";
+import type { GestaoOsFotoRefRow } from "../../supabase/functions/_shared/gestao-os-fotos.ts";
 import {
   GESTAO_OS_STATUS_LABEL,
   GESTAO_OS_TIPO_LABEL,
+  type GestaoOsCotacaoRow,
   type GestaoOsItemRow,
   type GestaoOsRow,
   type GestaoParceiroRow,
@@ -40,7 +44,15 @@ type Evento = {
   created_at: string;
 };
 type Documento = { id: string; tipo: string; storage_path: string; created_at: string };
-type Veiculo = { marca: string; modelo: string; placa: string | null; status: string };
+type Veiculo = {
+  marca: string;
+  modelo: string;
+  placa: string | null;
+  status: string;
+  ano_modelo: number | null;
+  cor: string | null;
+  km: number | null;
+};
 
 export default function GestaoOsFichaPage() {
   const { id = "" } = useParams();
@@ -49,27 +61,34 @@ export default function GestaoOsFichaPage() {
   const [os, setOs] = useState<GestaoOsRow | null>(null);
   const [veiculo, setVeiculo] = useState<Veiculo | null>(null);
   const [itens, setItens] = useState<GestaoOsItemRow[]>([]);
+  const [cotacoes, setCotacoes] = useState<GestaoOsCotacaoRow[]>([]);
+  const [fotoRefs, setFotoRefs] = useState<GestaoOsFotoRefRow[]>([]);
+  const [trocaFotosRaw, setTrocaFotosRaw] = useState<unknown>([]);
+  const [lojaPdf, setLojaPdf] = useState({ nome: "Minha loja", contato: "", site: "", logoDataUrl: null as string | null });
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [documentos, setDocumentos] = useState<Documento[]>([]);
   const [parceiros, setParceiros] = useState<GestaoParceiroRow[]>([]);
   const [consignado, setConsignado] = useState(false);
-  const [item, setItem] = useState({ descricao: "", categoria: "mecanica", estimado: "" });
+  const [item, setItem] = useState({ descricao: "", categoria: "mecanica" });
   const [transicao, setTransicao] = useState({ aprovado: "", real: "", vencimento: "", descontar: "" });
   const [vistoria, setVistoria] = useState({ tipo: "checkin", km: "", checklist: "" });
   const [documentoTipo, setDocumentoTipo] = useState("foto_checkin");
   const [busy, setBusy] = useState(false);
+  const [fotoSignedUrls, setFotoSignedUrls] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     if (!id) return;
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     setUserId(user.id);
-    const [osRes, itensRes, eventosRes, docsRes, parceirosRes] = await Promise.all([
+    const [osRes, itensRes, eventosRes, docsRes, parceirosRes, cotRes, fotosRes] = await Promise.all([
       supabase.from("gestao_os" as "veiculos_estoque").select("*").eq("user_id", user.id).eq("id", id).single(),
       supabase.from("gestao_os_item" as "veiculos_estoque").select("*").eq("user_id", user.id).eq("os_id", id).order("created_at"),
       supabase.from("gestao_os_evento" as "veiculos_estoque").select("*").eq("user_id", user.id).eq("os_id", id).order("created_at", { ascending: false }),
       supabase.from("gestao_os_documento" as "veiculos_estoque").select("id,tipo,storage_path,created_at").eq("user_id", user.id).eq("os_id", id).is("deleted_at", null).order("created_at", { ascending: false }),
       supabase.from("gestao_parceiro" as "veiculos_estoque").select("*").eq("user_id", user.id).eq("ativo", true).order("nome"),
+      supabase.from("gestao_os_cotacao" as "veiculos_estoque").select("*").eq("user_id", user.id).eq("os_id", id).order("solicitada_em", { ascending: false }),
+      supabase.from("gestao_os_foto_ref" as "veiculos_estoque").select("id,storage_path,selecionada,ordem,troca_ia_item_id").eq("user_id", user.id).eq("os_id", id).order("ordem"),
     ]);
     if (osRes.error) return toast.error(osRes.error.message);
     const ordem = osRes.data as unknown as GestaoOsRow;
@@ -78,20 +97,56 @@ export default function GestaoOsFichaPage() {
     setEventos((eventosRes.data ?? []) as unknown as Evento[]);
     setDocumentos((docsRes.data ?? []) as unknown as Documento[]);
     setParceiros((parceirosRes.data ?? []) as unknown as GestaoParceiroRow[]);
-    const [veiculoRes, consigRes] = await Promise.all([
-      supabase.from("veiculos_estoque").select("marca,modelo,placa,status").eq("user_id", user.id).eq("id", ordem.veiculo_id).single(),
+    setCotacoes((cotRes.data ?? []) as unknown as GestaoOsCotacaoRow[]);
+    setFotoRefs((fotosRes.data ?? []) as unknown as GestaoOsFotoRefRow[]);
+
+    const [veiculoRes, consigRes, empresaRes, profileRes, brandRes] = await Promise.all([
+      supabase.from("veiculos_estoque").select("marca,modelo,status,ano_modelo,cor,km").eq("user_id", user.id).eq("id", ordem.veiculo_id).single(),
       supabase.from("veiculo_consignacao" as "veiculos_estoque").select("status").eq("user_id", user.id).eq("veiculo_id", ordem.veiculo_id).eq("status", "ativo").maybeSingle(),
+      supabase.from("empresa_config").select("nome_empresa,site").eq("user_id", user.id).maybeSingle(),
+      supabase.from("profiles").select("full_name,email").eq("id", user.id).maybeSingle(),
+      supabase.functions.invoke("analisar-produto", { body: { action: "brand_assets" } }),
     ]);
     setVeiculo(veiculoRes.data as unknown as Veiculo);
     setConsignado(Boolean(consigRes.data));
+    const emp = empresaRes.data as { nome_empresa?: string; site?: string } | null;
+    const prof = profileRes.data as { full_name?: string; email?: string } | null;
+    setLojaPdf({
+      nome: emp?.nome_empresa || prof?.full_name || "Minha loja",
+      contato: prof?.email ?? "",
+      site: emp?.site ?? "",
+      logoDataUrl: (brandRes.data as { logo_preview?: string } | null)?.logo_preview ?? null,
+    });
+
+    if (ordem.troca_id) {
+      const { data: troca } = await supabase.from("gestao_troca" as "veiculos_estoque")
+        .select("fotos_json").eq("user_id", user.id).eq("id", ordem.troca_id).maybeSingle();
+      setTrocaFotosRaw((troca as { fotos_json?: unknown } | null)?.fotos_json ?? []);
+    } else {
+      setTrocaFotosRaw([]);
+    }
   }, [id]);
   useEffect(() => void load(), [load]);
 
-  const totais = useMemo(() => ({
-    estimado: itens.reduce((s, x) => s + Number(x.valor_estimado || 0) * Number(x.quantidade || 1), 0),
-    aprovado: itens.reduce((s, x) => s + Number(x.valor_aprovado ?? 0) * Number(x.quantidade || 1), 0),
-    real: itens.reduce((s, x) => s + Number(x.valor_real ?? 0) * Number(x.quantidade || 1), 0),
-  }), [itens]);
+  const fotosSelecionadas = useMemo(
+    () => fotoRefs.filter((f) => f.selecionada),
+    [fotoRefs],
+  );
+
+  useEffect(() => {
+    void (async () => {
+      const next: Record<string, string> = {};
+      await Promise.all(
+        fotosSelecionadas.map(async ({ storage_path }) => {
+          const { data } = await supabase.storage.from("trocas").createSignedUrl(storage_path, 600);
+          if (data?.signedUrl) next[storage_path] = data.signedUrl;
+        }),
+      );
+      setFotoSignedUrls(next);
+    })();
+  }, [fotosSelecionadas]);
+
+  const encerrada = os ? ["concluida", "cancelada"].includes(os.status) : false;
 
   const adicionarItem = async () => {
     if (!item.descricao.trim()) return toast.error("Informe o serviço.");
@@ -100,11 +155,11 @@ export default function GestaoOsFichaPage() {
       os_id: id,
       descricao: item.descricao.trim(),
       categoria_despesa: item.categoria,
-      valor_estimado: Number(item.estimado || 0),
+      valor_estimado: 0,
       origem: "manual",
     } as never);
     if (error) return toast.error(error.message);
-    setItem({ descricao: "", categoria: "mecanica", estimado: "" });
+    setItem({ descricao: "", categoria: "mecanica" });
     await load();
   };
 
@@ -114,25 +169,6 @@ export default function GestaoOsFichaPage() {
       .eq("user_id", userId).eq("id", id);
     if (error) toast.error(error.message);
     else await load();
-  };
-
-  const atualizarItem = async (itemAtual: GestaoOsItemRow, status: "aprovado" | "executado" | "recusado") => {
-    const campo = status === "executado" ? "valor_real" : "valor_aprovado";
-    const sugerido = status === "executado"
-      ? itemAtual.valor_real ?? itemAtual.valor_aprovado ?? itemAtual.valor_estimado
-      : itemAtual.valor_aprovado ?? itemAtual.valor_estimado;
-    const raw = status === "recusado"
-      ? null
-      : window.prompt(`Valor ${status === "executado" ? "real" : "aprovado"}:`, String(sugerido));
-    if (status !== "recusado" && raw === null) return;
-    const { error } = await supabase.from("gestao_os_item" as "veiculos_estoque")
-      .update({
-        status,
-        ...(raw == null ? {} : { [campo]: Number(raw) }),
-      } as never)
-      .eq("user_id", userId).eq("id", itemAtual.id).eq("os_id", id);
-    if (error) return toast.error(error.message);
-    await load();
   };
 
   const registrarVistoria = async () => {
@@ -158,14 +194,18 @@ export default function GestaoOsFichaPage() {
     if (destino === "aprovada" && consignado && transicao.descontar === "") {
       return toast.error('Escolha explicitamente "Descontar do dono?".');
     }
+    const valorAprovado = os.valor_aprovado ?? (transicao.aprovado ? Number(transicao.aprovado) : null);
+    if (destino === "aprovada" && (valorAprovado == null || valorAprovado < 0)) {
+      return toast.error("Escolha uma cotação ou informe o valor aprovado.");
+    }
     setBusy(true);
     const { error } = await (supabase as unknown as {
       rpc: (name: string, args: Record<string, unknown>) => Promise<{ error: { message: string } | null }>;
     }).rpc("gestao_os_transicionar", {
       p_os_id: os.id,
       p_status: destino,
-      p_valor_aprovado: destino === "aprovada" ? Number(transicao.aprovado || totais.estimado) : null,
-      p_valor_real: destino === "concluida" ? Number(transicao.real || totais.real) : null,
+      p_valor_aprovado: destino === "aprovada" ? valorAprovado : null,
+      p_valor_real: destino === "concluida" ? Number(transicao.real || os.valor_real || 0) : null,
       p_descontar_do_consignante: destino === "aprovada"
         ? (consignado ? transicao.descontar === "sim" : false)
         : null,
@@ -217,22 +257,62 @@ export default function GestaoOsFichaPage() {
       )}
       {os.sync_aviso && <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{os.sync_aviso}</div>}
 
-      <section className="grid gap-4 rounded-lg border bg-background p-4 md:grid-cols-4">
-        <div><Label>Fornecedor</Label><Select value={os.parceiro_id ?? ""} onValueChange={(v) => void salvarFornecedor(v)}><SelectTrigger><SelectValue placeholder="Escolha" /></SelectTrigger><SelectContent>{parceiros.map((p) => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}</SelectContent></Select></div>
-        <div><Label>Estimado (laudo/itens)</Label><div className="pt-2 font-semibold">{formatGestaoMoney(os.valor_estimado || totais.estimado)}</div></div>
-        <div><Label>Aprovado</Label><div className="pt-2 font-semibold">{os.valor_aprovado == null ? formatGestaoMoney(totais.aprovado) : formatGestaoMoney(os.valor_aprovado)}</div></div>
-        <div><Label>Real</Label><div className="pt-2 font-semibold">{os.valor_real == null ? formatGestaoMoney(totais.real) : formatGestaoMoney(os.valor_real)}</div></div>
+      <section className="grid gap-4 rounded-lg border bg-background p-4 md:grid-cols-3">
+        <div>
+          <Label>Fornecedor (cotação escolhida)</Label>
+          <Select value={os.parceiro_id ?? ""} onValueChange={(v) => void salvarFornecedor(v)} disabled={encerrada}>
+            <SelectTrigger><SelectValue placeholder="Após escolher cotação" /></SelectTrigger>
+            <SelectContent>{parceiros.map((p) => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <div><Label>Valor aprovado (cotação)</Label><div className="pt-2 font-semibold">{os.valor_aprovado == null ? "—" : formatGestaoMoney(os.valor_aprovado)}</div></div>
+        <div><Label>Valor real (pago)</Label><div className="pt-2 font-semibold">{os.valor_real == null ? "—" : formatGestaoMoney(os.valor_real)}</div></div>
       </section>
 
       <section className="rounded-lg border bg-background p-4">
-        <h2 className="mb-3 font-semibold">Itens e orçamento</h2>
-        <div className="mb-3 grid gap-2 md:grid-cols-4">
-          <Input placeholder="Serviço/peça" value={item.descricao} onChange={(e) => setItem((x) => ({ ...x, descricao: e.target.value }))} />
-          <select className="rounded-md border bg-background px-2" value={item.categoria} onChange={(e) => setItem((x) => ({ ...x, categoria: e.target.value }))}>{GESTAO_DESPESA_CATEGORIAS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}</select>
-          <Input type="number" placeholder="Valor estimado" value={item.estimado} onChange={(e) => setItem((x) => ({ ...x, estimado: e.target.value }))} />
-          <Button onClick={() => void adicionarItem()}><Plus className="mr-2 h-4 w-4" />Adicionar</Button>
-        </div>
-        <div className="divide-y rounded border">{itens.map((x) => <div key={x.id} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm"><span>{x.descricao} · {gestaoCategoriaLabel(x.categoria_despesa)} {x.origem === "laudo" && <Badge variant="secondary">Laudo</Badge>}</span><div className="flex items-center gap-2"><span>{formatGestaoMoney(x.valor_estimado)} estimado · {x.status}</span>{!["concluida", "cancelada"].includes(os.status) && <><Button size="sm" variant="outline" onClick={() => void atualizarItem(x, "aprovado")}>Aprovar</Button><Button size="sm" variant="outline" onClick={() => void atualizarItem(x, "executado")}>Executar</Button><Button size="sm" variant="ghost" onClick={() => void atualizarItem(x, "recusado")}>Recusar</Button></>}</div></div>)}</div>
+        <h2 className="mb-3 font-semibold">Itens solicitados (sem valor estimado)</h2>
+        {!encerrada && (
+          <div className="mb-3 grid gap-2 md:grid-cols-3">
+            <Input placeholder="Serviço/peça — ex.: amassado porta traseira" value={item.descricao} onChange={(e) => setItem((x) => ({ ...x, descricao: e.target.value }))} />
+            <select className="rounded-md border bg-background px-2" value={item.categoria} onChange={(e) => setItem((x) => ({ ...x, categoria: e.target.value }))}>{GESTAO_DESPESA_CATEGORIAS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}</select>
+            <Button onClick={() => void adicionarItem()}><Plus className="mr-2 h-4 w-4" />Adicionar</Button>
+          </div>
+        )}
+        <div className="divide-y rounded border">{itens.map((x) => <div key={x.id} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm"><span>{x.descricao} · {gestaoCategoriaLabel(x.categoria_despesa)} {x.origem === "laudo" && <Badge variant="secondary">Laudo</Badge>}</span><span className="text-muted-foreground">{x.status}</span></div>)}</div>
+      </section>
+
+      <section className="rounded-lg border bg-background p-4">
+        <h2 className="mb-3 font-semibold">Cotação com parceiros</h2>
+        {parceiros.length === 0 ? (
+          <p className="text-sm text-amber-800">Cadastre um parceiro em <Link className="underline" to="/gestao/parceiros">Parceiros</Link> para solicitar cotação.</p>
+        ) : (
+          <GestaoOsCotacaoPanel
+            userId={userId}
+            os={os}
+            itens={itens}
+            cotacoes={cotacoes}
+            parceiros={parceiros}
+            veiculo={veiculo}
+            loja={lojaPdf}
+            fotosSelecionadas={fotosSelecionadas}
+            fotoSignedUrls={fotoSignedUrls}
+            onReload={load}
+            disabled={encerrada}
+          />
+        )}
+      </section>
+
+      <section className="rounded-lg border bg-background p-4">
+        <h2 className="mb-3 font-semibold">Fotos da avaliação (troca)</h2>
+        <GestaoOsFotosPanel
+          userId={userId}
+          osId={os.id}
+          trocaId={os.troca_id}
+          trocaFotosRaw={trocaFotosRaw}
+          fotosRef={fotoRefs}
+          onReload={load}
+          disabled={encerrada}
+        />
       </section>
 
       <section className="grid gap-4 md:grid-cols-2">
@@ -246,12 +326,12 @@ export default function GestaoOsFichaPage() {
             <Select value={documentoTipo} onValueChange={setDocumentoTipo}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="foto_checkin">Foto de check-in</SelectItem><SelectItem value="foto_checkout">Foto de check-out</SelectItem><SelectItem value="orcamento">Orçamento</SelectItem><SelectItem value="nota">Nota fiscal</SelectItem><SelectItem value="comprovante">Comprovante</SelectItem><SelectItem value="outro">Outro</SelectItem></SelectContent></Select>
             <Label className="mt-2 cursor-pointer rounded border border-dashed p-3 text-center"><FileUp className="mr-2 inline h-4 w-4" />Enviar arquivo privado (até 15 MB)<input className="hidden" type="file" accept={GESTAO_OS_DOCUMENTO_MIME_TYPES.join(",")} onChange={(e) => void upload(e.target.files?.[0] ?? null)} /></Label>
           </div>
-          <div className="mt-3 space-y-1">{documentos.map((d) => <button className="block text-sm text-primary underline" key={d.id} onClick={() => void abrirDocumento(d.storage_path)}>{d.tipo} · {new Date(d.created_at).toLocaleString("pt-BR")}</button>)}</div>
+          <div className="mt-3 space-y-1">{documentos.map((d) => <button type="button" className="block text-sm text-primary underline" key={d.id} onClick={() => void abrirDocumento(d.storage_path)}>{d.tipo} · {new Date(d.created_at).toLocaleString("pt-BR")}</button>)}</div>
         </div>
         <div className="rounded-lg border bg-background p-4">
           <h2 className="mb-3 font-semibold">Ações do dono</h2>
           {proximos.includes("aprovada") && <>
-            <Label>Valor aprovado</Label><Input type="number" value={transicao.aprovado} onChange={(e) => setTransicao((t) => ({ ...t, aprovado: e.target.value }))} />
+            <Label>Valor aprovado (se ainda não veio da cotação)</Label><Input type="number" value={transicao.aprovado} onChange={(e) => setTransicao((t) => ({ ...t, aprovado: e.target.value }))} placeholder={os.valor_aprovado != null ? String(os.valor_aprovado) : ""} />
             {consignado && <div className="mt-2"><Label>Descontar do dono?</Label><Select value={transicao.descontar} onValueChange={(descontar) => setTransicao((t) => ({ ...t, descontar }))}><SelectTrigger><SelectValue placeholder="Escolha obrigatória" /></SelectTrigger><SelectContent><SelectItem value="sim">Sim</SelectItem><SelectItem value="nao">Não</SelectItem></SelectContent></Select></div>}
           </>}
           {proximos.includes("concluida") && <><Label className="mt-2">Valor real</Label><Input type="number" value={transicao.real} onChange={(e) => setTransicao((t) => ({ ...t, real: e.target.value }))} /><Label className="mt-2">Vencimento fornecedor</Label><Input type="date" value={transicao.vencimento} onChange={(e) => setTransicao((t) => ({ ...t, vencimento: e.target.value }))} /></>}

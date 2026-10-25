@@ -41,6 +41,19 @@ export type GestaoOsItemRow = {
   origem: "manual" | "laudo";
 };
 
+export type GestaoOsCotacaoRow = {
+  id: string;
+  user_id: string;
+  os_id: string;
+  parceiro_id: string;
+  valor: number | null;
+  prazo_dias: number | null;
+  observacao: string | null;
+  status: "solicitada" | "recebida" | "escolhida" | "descartada";
+  solicitada_em: string;
+  recebida_em: string | null;
+};
+
 export type GestaoParceiroRow = {
   id: string;
   user_id: string;
@@ -57,7 +70,7 @@ export type GestaoParceiroRow = {
 
 export const GESTAO_OS_STATUS_LABEL: Record<GestaoOsStatus, string> = {
   rascunho: "Rascunho",
-  orcamento: "Orçamento",
+  orcamento: "Em cotação",
   aguardando_aprovacao: "Aguardando aprovação",
   aprovada: "Aprovada",
   checkin: "Check-in",

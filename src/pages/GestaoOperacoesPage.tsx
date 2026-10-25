@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { podeAbrirOsGestao } from "../../supabase/functions/_shared/gestao-os-cotacao-pdf.ts";
 import { AlertTriangle, ArrowLeft, Plus, Settings2, UsersRound } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -113,8 +114,12 @@ export default function GestaoOperacoesPage() {
   const visiveis = filtro === "todas" ? rows : rows.filter((r) => r.status === filtro);
 
   const criar = async () => {
-    if (!form.veiculoId || !form.parceiroId) {
-      toast.error("Escolha o veículo e o fornecedor.");
+    if (!podeAbrirOsGestao(parceiros.length)) {
+      toast.error("Cadastre um parceiro primeiro.");
+      return;
+    }
+    if (!form.veiculoId) {
+      toast.error("Escolha o veículo.");
       return;
     }
     setCriando(true);
@@ -126,7 +131,7 @@ export default function GestaoOperacoesPage() {
     }).rpc("gestao_os_criar", {
       p_veiculo_id: form.veiculoId,
       p_tipo: form.tipo,
-      p_parceiro_id: form.parceiroId,
+      p_parceiro_id: form.parceiroId || null,
       p_origem: "manual",
       p_data_prevista: form.dataPrevista || null,
     });
@@ -162,15 +167,27 @@ export default function GestaoOperacoesPage() {
           </div>
         )}
 
+        {parceiros.length === 0 && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+            Cadastre um parceiro primeiro para abrir OS ou solicitar cotação.{" "}
+            <Button variant="link" className="h-auto p-0" asChild>
+              <Link to="/gestao/parceiros">Ir para Parceiros</Link>
+            </Button>
+          </div>
+        )}
+
         <section className="rounded-lg border bg-background p-4">
           <h2 className="mb-3 font-semibold">Abrir ordem de serviço</h2>
+          <p className="mb-3 text-sm text-muted-foreground">
+            Fornecedor é opcional na abertura — você pode cotar com vários parceiros na ficha.
+          </p>
           <div className="grid gap-3 md:grid-cols-5">
             <Select value={form.veiculoId} onValueChange={(veiculoId) => setForm((f) => ({ ...f, veiculoId }))}>
               <SelectTrigger><SelectValue placeholder="Veículo" /></SelectTrigger>
               <SelectContent>{veiculos.map((v) => <SelectItem key={v.id} value={v.id}>{v.marca} {v.modelo} · {v.placa ?? "sem placa"}</SelectItem>)}</SelectContent>
             </Select>
             <Select value={form.parceiroId} onValueChange={(parceiroId) => setForm((f) => ({ ...f, parceiroId }))}>
-              <SelectTrigger><SelectValue placeholder="Fornecedor" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Fornecedor direto (opcional)" /></SelectTrigger>
               <SelectContent>{parceiros.map((p) => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}</SelectContent>
             </Select>
             <Select value={form.tipo} onValueChange={(tipo) => setForm((f) => ({ ...f, tipo: tipo as GestaoOsTipo }))}>
@@ -178,7 +195,7 @@ export default function GestaoOperacoesPage() {
               <SelectContent>{TIPOS.map((tipo) => <SelectItem key={tipo} value={tipo}>{GESTAO_OS_TIPO_LABEL[tipo]}</SelectItem>)}</SelectContent>
             </Select>
             <Input type="date" value={form.dataPrevista} onChange={(e) => setForm((f) => ({ ...f, dataPrevista: e.target.value }))} />
-            <Button disabled={criando} onClick={() => void criar()}><Plus className="mr-2 h-4 w-4" />Abrir OS</Button>
+            <Button disabled={criando || parceiros.length === 0} onClick={() => void criar()}><Plus className="mr-2 h-4 w-4" />Abrir OS</Button>
           </div>
         </section>
 
@@ -226,7 +243,7 @@ export default function GestaoOperacoesPage() {
                   <td className="p-3">{GESTAO_OS_TIPO_LABEL[os.tipo]}</td>
                   <td className="p-3">{parceiroMap.get(os.parceiro_id ?? "")?.nome ?? "—"}</td>
                   <td className="p-3">{os.data_prevista ?? "—"}</td>
-                  <td className="p-3">{formatGestaoMoney(os.valor_estimado)} / {os.valor_real == null ? "—" : formatGestaoMoney(os.valor_real)}</td>
+                  <td className="p-3">{os.valor_aprovado == null ? "—" : formatGestaoMoney(os.valor_aprovado)} / {os.valor_real == null ? "—" : formatGestaoMoney(os.valor_real)}</td>
                   <td className="p-3"><Badge variant={os.status === "cancelada" ? "destructive" : "outline"}>{GESTAO_OS_STATUS_LABEL[os.status]}</Badge></td>
                 </tr>;
               })}</tbody>
