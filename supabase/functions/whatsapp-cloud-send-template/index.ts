@@ -108,6 +108,8 @@ Deno.serve(async (req) => {
       registrar = true,
       // Frente 3 — template MARKETING com HEADER: IMAGE + BOTÃO URL dinâmico
       imagem_url = null,   // foto do produto (vai no header)
+      document_url = null, // PDF no header (ex.: pedido de cotação OS)
+      document_filename = null,
       link_sufixo = null,  // parte dinâmica do botão URL (ex: caminho/ID do produto)
     } = body ?? {};
 
@@ -169,7 +171,18 @@ Deno.serve(async (req) => {
     const components: any[] = [];
 
     // HEADER: IMAGE — sempre convertida para JPEG (a Meta não entrega AVIF).
-    if (imagem_url) {
+    if (document_url) {
+      components.push({
+        type: "header",
+        parameters: [{
+          type: "document",
+          document: {
+            link: String(document_url),
+            filename: String(document_filename || "documento.pdf"),
+          },
+        }],
+      });
+    } else if (imagem_url) {
       components.push({
         type: "header",
         parameters: [{ type: "image", image: { link: toMetaSafeImageUrl(String(imagem_url)) } }],
