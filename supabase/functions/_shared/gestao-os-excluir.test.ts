@@ -18,6 +18,15 @@ Deno.test("OS-1.6 — migration gestao_os_excluir", async () => {
   assertStringIncludes(sql, "auth.uid()");
 });
 
+Deno.test("OS-1.7 — gestao_os_excluir corrigido na migration de sync", async () => {
+  const sql = await Deno.readTextFile(new URL(
+    "../../migrations/20261032267000_gestao_os_fotos_sync_fix.sql",
+    import.meta.url,
+  ));
+  assertStringIncludes(sql, "v_os public.gestao_os%ROWTYPE");
+  assertEquals(sql.includes("ordem public.gestao_os%ROWTYPE"), false);
+});
+
 Deno.test("OS-1.6 — UI gate: exclui em rascunho e cotação", () => {
   assertEquals(podeExcluirOs({ status: "rascunho" }), true);
   assertEquals(podeExcluirOs({ status: "orcamento" }), true);
