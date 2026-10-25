@@ -225,6 +225,7 @@ export function GestaoConciliacaoTab({ userId, contas, veiculos, onFinanceiroRel
     const { data: row, error } = await supabase.from("gestao_conta_lancamento" as "veiculos_estoque").insert({
       user_id: userId,
       tipo,
+      natureza: "operacional",
       categoria_operacional: categoria,
       valor: e.valor,
       vencimento: e.data,

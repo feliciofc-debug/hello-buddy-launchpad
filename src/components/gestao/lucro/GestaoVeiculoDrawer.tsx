@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { hojeSaoPaulo } from "../../../../supabase/functions/_shared/gestao-date-br.ts";
 import {
@@ -101,12 +102,13 @@ function origemLabel(o: string): string {
     whatsapp_texto: "WhatsApp (texto)",
     whatsapp_audio: "WhatsApp (áudio)",
     whatsapp_foto: "WhatsApp (foto)",
-    automatica: "Automática (comissão)",
+    automatica: "Automática (comissão/OS)",
   };
   return map[o] ?? o;
 }
 
 export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose, onSaved }: Props) {
+  const navigate = useNavigate();
   const vendaSectionRef = useRef<HTMLElement | null>(null);
   const focusnfe = useGestaoFocusnfeConnection();
   const [nfeOpen, setNfeOpen] = useState(false);
@@ -150,6 +152,33 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
   const [undoVendaOpen, setUndoVendaOpen] = useState(false);
 
   const hasVendaRegistrada = veiculo?.valorVenda != null;
+
+  const ativarGarantia = async () => {
+    if (!veiculo) return;
+    setBusy(true);
+    const { error } = await (supabase as unknown as VendaComTrocaRpc).rpc(
+      "gestao_garantia_ativar",
+      { p_veiculo_id: veiculo.id },
+    );
+    setBusy(false);
+    if (error) return toast.error(error.message ?? "Falha ao ativar garantia.");
+    toast.success("Garantia ativada a partir da data da venda.");
+  };
+
+  const abrirOcorrenciaGarantia = async () => {
+    if (!veiculo) return;
+    const relato = window.prompt("Descreva a ocorrência de garantia:");
+    if (!relato?.trim()) return;
+    setBusy(true);
+    const { error } = await (supabase as unknown as VendaComTrocaRpc).rpc(
+      "gestao_garantia_abrir_ocorrencia",
+      { p_veiculo_id: veiculo.id, p_relato: relato.trim() },
+    );
+    setBusy(false);
+    if (error) return toast.error(error.message ?? "Falha ao abrir ocorrência.");
+    toast.success("Ocorrência e OS de garantia abertas.");
+    navigate("/gestao/operacoes");
+  };
 
   useEffect(() => {
     if (!userId) return;
@@ -987,6 +1016,23 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
                 <Button size="sm" variant="secondary" disabled={busy} onClick={() => setNfeOpen(true)}>
                   Emitir nota fiscal
                 </Button>
+              )}
+            </section>
+            <section className="space-y-2 border-t pt-4">
+              <h3 className="text-sm font-semibold">Ordens de serviço</h3>
+              <p className="text-xs text-muted-foreground">Preparação, revisão, avulsa e garantia deste veículo.</p>
+              <Button size="sm" variant="outline" onClick={() => navigate(`/gestao/operacoes?veiculo=${veiculo.id}`)}>
+                Ver / abrir OS
+              </Button>
+              {hasVendaRegistrada && (
+                <>
+                  <Button size="sm" variant="outline" disabled={busy} onClick={() => void ativarGarantia()}>
+                    Ativar garantia
+                  </Button>
+                  <Button size="sm" variant="outline" disabled={busy} onClick={() => void abrirOcorrenciaGarantia()}>
+                    Abrir ocorrência
+                  </Button>
+                </>
               )}
             </section>
           </div>

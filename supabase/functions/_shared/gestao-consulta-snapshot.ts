@@ -326,11 +326,12 @@ export async function loadGestaoConsultaSnapshot(
   };
 
   const { data: contasRaw } = await sb.from("gestao_conta_lancamento").select(
-    "tipo, valor, vencimento, pago_em, recebido_em, categoria_operacional",
+    "tipo, natureza, valor, vencimento, pago_em, recebido_em, categoria_operacional",
   ).eq("user_id", storeUserId).is("deleted_at", null);
 
   type ContaRow = {
     tipo: string;
+    natureza: string;
     valor: number;
     vencimento: string;
     pago_em: string | null;
@@ -404,6 +405,7 @@ export async function loadGestaoConsultaSnapshot(
   }
   const ops = contasToDreOperacionalRows(contas.map((c) => ({
     tipo: c.tipo as "pagar" | "receber",
+    natureza: c.natureza ?? "operacional",
     categoria_operacional: String(c.categoria_operacional ?? ""),
     valor: Number(c.valor),
     vencimento: String(c.vencimento ?? ""),

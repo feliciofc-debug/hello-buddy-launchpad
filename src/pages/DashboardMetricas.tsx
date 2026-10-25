@@ -47,6 +47,7 @@ import {
   CarFront,
   FileText,
   ArrowLeftRight,
+  Wrench,
 } from 'lucide-react';
 import { useFinanciamentoPendingCount } from '@/hooks/useFinanciamentoPendingCount';
 import { injectVitrineSidebarMenuItems } from '@/lib/vitrine-sidebar-menu';
@@ -398,6 +399,19 @@ export default function DashboardMetricas() {
     [showGestaoLucroMenu],
   );
 
+  const gestaoOperacoesItem = useMemo(
+    () =>
+      showGestaoLucroMenu
+        ? {
+          id: 'gestao-operacoes',
+          icon: Wrench,
+          label: 'Operações',
+          path: '/gestao/operacoes',
+        }
+        : undefined,
+    [showGestaoLucroMenu],
+  );
+
   const fullMenuItems = useMemo(() => {
     const filtered = menuItemsAll.filter((item) =>
       item.id === 'admin' ||
@@ -415,6 +429,7 @@ export default function DashboardMetricas() {
       financingItem,
       gestaoLucroItem,
       gestaoTrocasItem,
+      gestaoOperacoesItem,
     });
   }, [
     isMenuAllowed,
@@ -423,6 +438,7 @@ export default function DashboardMetricas() {
     financingItem,
     gestaoLucroItem,
     gestaoTrocasItem,
+    gestaoOperacoesItem,
     userEmail,
     t,
   ]);

@@ -1,10 +1,12 @@
 import { formatYmdSaoPaulo } from "./gestao-date-br.ts";
 import { competenciaFromDate } from "./gestao-meta-calc.ts";
+import type { GestaoContaNatureza } from "./gestao-conta-natureza.ts";
 
 export type GestaoRecorrenciaSerie = {
   id: string;
   tipo: "pagar" | "receber";
   categoria_operacional: string;
+  natureza?: GestaoContaNatureza;
   valor: number;
   dia_mes: number;
   forma_pagamento: string | null;
@@ -49,6 +51,7 @@ export function planRecorrenciaLancamentos(
   vencimento: string;
   tipo: "pagar" | "receber";
   categoria_operacional: string;
+  natureza: GestaoContaNatureza;
   valor: number;
   forma_pagamento: string | null;
   observacao: string | null;
@@ -68,6 +71,7 @@ export function planRecorrenciaLancamentos(
         vencimento: vencimentoFromCompetenciaDia(comp, s.dia_mes),
         tipo: s.tipo,
         categoria_operacional: s.categoria_operacional,
+        natureza: s.natureza ?? "operacional",
         valor: s.valor,
         forma_pagamento: s.forma_pagamento,
         observacao: s.observacao,

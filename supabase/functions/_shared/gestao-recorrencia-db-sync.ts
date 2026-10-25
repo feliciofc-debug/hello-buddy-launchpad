@@ -8,7 +8,7 @@ type Db = { from: (t: string) => any };
 
 export async function syncRecorrenciaLancamentosDb(client: Db, userId: string): Promise<void> {
   const { data: seriesRows } = await client.from("gestao_conta_recorrencia_serie")
-    .select("id, tipo, categoria_operacional, valor, dia_mes, forma_pagamento, observacao, veiculo_id, encerrada_a_partir_de")
+    .select("id, tipo, categoria_operacional, natureza, valor, dia_mes, forma_pagamento, observacao, veiculo_id, encerrada_a_partir_de")
     .eq("user_id", userId);
   const series = (seriesRows ?? []) as GestaoRecorrenciaSerie[];
   if (!series.length) return;
@@ -33,6 +33,7 @@ export async function syncRecorrenciaLancamentosDb(client: Db, userId: string): 
       user_id: userId,
       tipo: row.tipo,
       categoria_operacional: row.categoria_operacional,
+      natureza: row.natureza,
       valor: row.valor,
       vencimento: row.vencimento,
       forma_pagamento: row.forma_pagamento,

@@ -114,10 +114,11 @@ export async function loadGestaoDreWhatsappFacts(
   await syncRecorrenciaLancamentosDb(sb as never, userId);
   const vendas = await loadVendasDreCompetencia(sb, userId, competencia);
   const { data: contasRaw } = await sb.from("gestao_conta_lancamento").select(
-    "tipo, categoria_operacional, valor, vencimento, pago_em",
+    "tipo, natureza, categoria_operacional, valor, vencimento, pago_em",
   ).eq("user_id", userId).is("deleted_at", null);
   const ops = contasToDreOperacionalRows((contasRaw ?? []).map((c: Record<string, unknown>) => ({
     tipo: c.tipo as string,
+    natureza: c.natureza ? String(c.natureza) : "operacional",
     categoria_operacional: String(c.categoria_operacional ?? ""),
     valor: Number(c.valor),
     vencimento: String(c.vencimento ?? ""),
