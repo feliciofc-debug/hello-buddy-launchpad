@@ -58,12 +58,14 @@ Os blocos propostos são:
 3. **Garantia**: vigência iniciada pela venda e OS do tipo garantia vinculada à
    ocorrência, sem duplicar a venda ou o contrato.
 4. **Processo documental**: processo por veículo, checklist, documentos privados,
-   prazos, custos e portal temporário do despachante.
+   prazos, custos e portal temporário do despachante; **pasta digital do veículo**
+   (repositório único por carro, reaproveitado por OS, despachante, DOC-1 e
+   entrada via WhatsApp).
 5. **Automação e consulta**: eventos de venda/compra/troca abrem tarefas idempotentes;
    o resumo diário e, em fase posterior, o Jarvis expõem pendências sem enviar
    documentos à IA.
-6. **Segurança documental**: cofre por loja, criptografia de PII, OCR local,
-   retenção e direitos LGPD.
+6. **Segurança documental**: cofre por loja, pasta digital por veículo,
+   criptografia de PII, OCR local, retenção por tipo de documento e direitos LGPD.
 7. **Entrada assistida pelo WhatsApp**: documento identificado localmente inicia a
    entrada transacional, vincula fotos e prepara o anúncio sem publicar sozinho.
 
@@ -322,10 +324,11 @@ Uma linha por check-in/check-out:
 #### `gestao_os_documento`
 
 - `id`, `user_id`, `os_id`, `vistoria_id` opcional;
+- `documento_seguro_id` FK obrigatória após SEG-DOC (pasta canônica);
 - `tipo`: foto_checkin, foto_checkout, orçamento, nota, comprovante, outro;
-- `storage_path`, MIME, tamanho, hash;
 - classificação de sensibilidade;
 - timestamps e soft delete.
+- PDFs gerados da OS usam `tipo_pasta = ordem_servico` na pasta do veículo.
 
 #### `gestao_os_evento`
 
@@ -358,36 +361,108 @@ canal), OS-1 adiciona `origem_operacional` opcional (`os_preparacao`,
 `os_garantia`, `despachante`) e `origem_operacional_id`. O CHECK atual de
 `origem_lancamento` permanece com painel/WhatsApp/automática.
 
-### 3.4 Cofre e leitura local de documentos
+### 3.4 Cofre, pasta digital do veículo e leitura local
+
+A fase **SEG-DOC** entrega o cofre privado e a **pasta digital do veículo**: um
+repositório único por `veiculo_id`, reutilizado por **OS-1**, **DESP-1**, **DOC-1** e
+**ENTRADA-WPP**. Processos de despachante, OS, contratos ZapSign e uploads do painel
+ou Jarvis apontam para o mesmo bucket e as mesmas políticas; entidades operacionais
+(`gestao_os_documento`, `gestao_despachante_documento`) guardam FK para o registro
+canônico na pasta, em vez de paths soltos.
 
 #### `gestao_documento_seguro`
 
-- `id`, `user_id`, veículo/processo relacionado;
-- tipo: CRLV, CRLV-e, CNH ou outro tipo explicitamente permitido;
+Registro canônico de cada arquivo na pasta (e no cofre quando houver PII).
+
+- `id`, `user_id`, `veiculo_id` obrigatório para itens da pasta;
+- `tipo_pasta`: `documento_veiculo`, `laudo_vistoria`, `contrato`, `nota_fiscal`,
+  `ordem_servico`, `despachante`, `garantia`, `outros` (CHECK fechado);
+- subtipo opcional para DOC-1: CRLV, CRLV-e, CNH, comprovante_residencia etc.;
+- `origem`: `plataforma` (gerado automaticamente), `painel`, `jarvis`, `portal_despachante`;
+- `autor_user_id` ou `autor_membro_id` (após EQUIPE-1), `autor_rotulo` para portal/Jarvis;
+- `registrado_em`;
+- vínculos opcionais: `os_id`, `despachante_processo_id`, `contrato_id`,
+  `garantia_ocorrencia_id`, `checklist_item_id`;
 - `storage_path`, MIME, tamanho, hash e versão;
-- origem painel, portal ou WhatsApp;
-- `pii_enc` com os campos pessoais criptografados;
-- `veiculo_dados_json` somente com marca/modelo/ano/placa/chassi/Renavam e demais
-  dados veiculares estritamente necessários;
-- método: texto_pdf ou OCR_local;
-- status: recebido, processado, aguardando_confirmacao, confirmado, rejeitado,
+- `pii_enc` com campos pessoais criptografados quando aplicável;
+- `veiculo_dados_json` somente com dados veiculares estritamente necessários;
+- `metodo_leitura`: nenhum, texto_pdf ou OCR_local;
+- `status`: recebido, processado, aguardando_confirmacao, confirmado, rejeitado,
   expurgado;
-- `confirmado_por`, `confirmado_em`, `retencao_ate`;
+- `confirmado_por`, `confirmado_em`;
+- `classe_retencao`: `negocio` ou `pessoal_cliente` (define política de expurgo);
+- `retencao_ate` calculado pela política da loja;
+- `hold_legal_ate` opcional, impedindo expurgo antes do prazo;
 - timestamps e soft delete.
+
+Índices: `(user_id, veiculo_id, registrado_em desc)`, `(user_id, tipo_pasta, status)`,
+unicidade lógica por `(origem_operacional, origem_operacional_id, tipo_pasta)` quando
+o documento é gerado pela plataforma (evita duplicar PDF de OS/contrato na reexecução
+de automação).
 
 #### `gestao_documento_acesso`
 
-Log append-only sem PII:
+Histórico de acesso append-only, sem PII:
 
-- documento/processo, ação visualizar/baixar/exportar/apagar;
-- ator e papel;
+- `documento_id`, ação visualizar/baixar/exportar/apagar/gerar_link;
+- ator (user/membro/token escopo), papel;
 - IP truncado, user-agent reduzido, data/hora e resultado;
+- `link_ttl_segundos` quando a ação for entrega via URL assinada;
 - marcador de acesso em massa para alerta.
+
+Consultas Jarvis e portal registram a mesma trilha que o painel.
 
 #### `gestao_documento_titular_solicitacao`
 
 - tipo exportar/apagar, documento/titular em referência cifrada;
 - status, solicitante, datas e trilha da execução.
+
+#### `gestao_documento_config` (por loja)
+
+- `retencao_negocio_anos` default 5 (NF, contratos, laudos, OS, ordem de processo);
+- `retencao_pessoal_dias_apos_conclusao` default 90 (CNH, comprovante etc.);
+- `link_jarvis_ttl_segundos` default curto (ex.: 15 minutos), configurável;
+- flags de aviso LGPD e hold legal.
+
+#### Pasta digital — ingestão automática
+
+Tudo que a plataforma gera entra na pasta do veículo **sem upload manual**:
+
+| Artefato | `tipo_pasta` | `origem` |
+|---|---|---|
+| Contrato/termo ZapSign (PDF assinado ou rascunho arquivado) | `contrato` | `plataforma` |
+| Laudo de troca exportado/arquivado para o carro | `laudo_vistoria` | `plataforma` |
+| PDF da Ordem de Processo (DESP-1) | `despachante` | `plataforma` |
+| OS impressa/exportada (check-in, check-out, entrega) | `ordem_servico` | `plataforma` |
+| NF/comprovante vinculado à OS ou despesa do carro | `nota_fiscal` | `painel` ou `plataforma` |
+
+A gravação ocorre na mesma transação ou runner idempotente que produziu o artefato;
+falha de arquivo **não** reverte a venda/OS, mas gera aviso operacional.
+
+#### Pasta digital — Jarvis e WhatsApp (ENTRADA-WPP / JARVIS-OPS)
+
+- **Upload**: mídia/documento recebido no Jarvis com **placa** no texto ou metadado
+  local associa ao `veiculo_id` correto; sem placa, listar carros em preparação/
+  recentes e pedir confirmação antes de gravar.
+- **Tipo**: sugerir `tipo_pasta`/`subtipo` por heurística local (nome de arquivo,
+  palavras-chave, resultado DOC-1); **confirmar** com dono/gestor antes de persistir
+  quando a confiança for baixa.
+- **Consulta** (“me manda o CRLV do Corolla”): resolver veículo + documento por
+  tipo/subtipo; responder **somente** com link seguro temporário (TTL da config);
+  nunca anexar bytes no WhatsApp nem enviar URL permanente de bucket.
+- **Defesa**: bytes e texto extraído de documentos **nunca** entram em snapshot,
+  prompt ou serviço de IA externo; OCR/extração permanecem no pipeline DOC-1 local.
+
+#### Retenção por classe
+
+- **`negocio`**: NF, contratos, laudos, OS, ordem de processo, despachante — mantidos
+  por prazo legal configurável (default **5 anos**), salvo hold legal.
+- **`pessoal_cliente`**: CNH, comprovante de residência e equivalentes — expurgo
+  **N dias** após conclusão do processo/venda/OS relacionada (default **90**), salvo
+  hold ou solicitação LGPD pendente.
+- Mesmas regras de cofre, criptografia, permissões (matriz EQUIPE-1) e auditoria de
+  `gestao_documento_acesso`; expurgo job remove objeto do bucket e marca
+  `expurgado`, preservando log agregado sem PII.
 
 O pipeline de DOC-1:
 
@@ -450,10 +525,12 @@ loja e pode ser editado no processo.
 #### `gestao_despachante_documento`
 
 - processo, checklist item opcional;
-- tipo, `storage_path`, MIME, tamanho e hash;
-- origem loja/despachante;
+- `documento_seguro_id` FK obrigatória após SEG-DOC;
+- tipo operacional do checklist;
+- origem loja/despachante/portal;
 - sensibilidade e timestamps;
-- nunca contém URL permanente.
+- nunca contém URL permanente; download sempre via edge com log em
+  `gestao_documento_acesso`.
 
 #### `gestao_despachante_evento`
 
@@ -686,6 +763,15 @@ prefixo de observação.
   estimado × real.
 - Em estoque: selo “Em preparação”; ao concluir, CTA “Completar anúncio”.
 
+### SEG-DOC (pasta digital)
+
+- Na ficha do veículo: aba **Documentos** (pasta digital) com filtros por
+  `tipo_pasta`, origem, autor e data;
+- preview autorizado, download via URL assinada curta e trilha de acesso;
+- indicadores de retenção/expurgo e hold legal;
+- upload manual classificado (tipo + classe de retenção);
+- sem expor PII em listagens; campos sensíveis mascarados.
+
 ### DESP-1
 
 - Aba **Despachante**: processos por prazo/status e filtros.
@@ -731,7 +817,7 @@ capital e vitrine/portais não anunciam.
 **Entregas:**
 
 - parceiro/serviços;
-- OS, itens, vistorias, documentos e eventos;
+- OS, itens, vistorias, documentos (via pasta SEG-DOC) e eventos;
 - estados/aprovação;
 - sugestão a partir do laudo;
 - estimado × aprovado × real;
@@ -782,40 +868,56 @@ consignação e comissão.
 - somente owner opera nesta fase;
 - ZapSign/webhook idempotente.
 
-## SEG-DOC — cofre, LGPD e defesa de dados
+## SEG-DOC — cofre, pasta digital do veículo, LGPD e defesa de dados
 
 **Entregas:**
 
 - cofre privado por loja;
+- **pasta digital do veículo**: repositório único por carro com `tipo_pasta`,
+  origem (`plataforma`, `painel`, `jarvis`, portal), autor, data e histórico em
+  `gestao_documento_acesso`;
+- ingestão automática na pasta de contratos, laudos arquivados, PDF da Ordem de
+  Processo, OS exportada e demais artefatos gerados pela plataforma;
+- hooks para OS-1, DESP-1, DOC-1 e ENTRADA-WPP gravarem/consultarem via
+  `gestao_documento_seguro`, sem paths paralelos;
 - criptografia de PII em coluna, rotação de chave e mascaramento na UI;
-- URLs assinadas curtas;
+- URLs assinadas curtas; consulta Jarvis devolve **link temporário**, nunca arquivo
+  solto no chat;
 - matriz de acesso por papel pronta para ser ligada por EQUIPE-1;
 - log sem PII, IP truncado e alerta de acesso em massa;
-- retenção configurável, padrão 90 dias após conclusão;
+- retenção **por classe**: documentos de negócio default **5 anos**; documentos
+  pessoais de cliente default **90 dias** após conclusão do processo relacionado;
 - aviso LGPD de finalidade exibido e registrado;
-- exportação e apagamento de dados do titular.
+- exportação e apagamento de dados do titular;
+- **zero** envio de bytes ou texto de documento a IA/serviço externo.
 
 **Arquivos novos prováveis:**
 
-- migrations de documento, acesso, solicitação LGPD e bucket;
-- `_shared/gestao-documento-{crypto,policy,retention}.ts`;
-- edges autenticadas de upload/download/exportação/expurgo;
-- componentes de cofre e auditoria.
+- migrations de documento, pasta, acesso, config de retenção, solicitação LGPD e
+  bucket;
+- `_shared/gestao-documento-{crypto,policy,retention,pasta,link}.ts`;
+- edges autenticadas de upload/download/exportação/expurgo e emissão de link Jarvis;
+- componentes de cofre, pasta do veículo e auditoria.
 
 **Arquivos existentes afetados:** helpers de criptografia da Gestão como referência,
-`gestao-comprovante-url`, configuração da Gestão e jobs de retenção.
+`gestao-comprovante-url`, `GestaoVeiculoDrawer`/ficha de estoque, configuração da
+Gestão e jobs de retenção/expurgo.
 
-**Migrations:** somente novas; tabelas, RLS, índices, bucket privado e agenda/outbox
-de expurgo.
+**Migrations:** somente novas; tabelas, RLS, índices, bucket privado, FKs de
+`gestao_os_documento`/`gestao_despachante_documento` → pasta e agenda/outbox de
+expurgo.
 
 **Riscos:** chave exposta, URL reutilizada, log com PII, deleção antes do prazo,
-download em massa.
+download em massa, documento no veículo errado via Jarvis, anexo de arquivo no
+WhatsApp em vez de link.
 
-**Não muda:** processor, IA, documentos de troca existentes e financeiro.
+**Não muda:** processor (nesta fase), classificador de vertical, documentos de troca
+históricos no bucket `trocas` até migração opcional, financeiro.
 
 **Testes:** isolamento entre lojas, criptografia/rotação, mascaramento, expiração de
-URL, download com autorização, alerta de massa, exportação, expurgo após 90 dias e
-preservação por hold legal.
+URL, download com autorização, alerta de massa, exportação, ingestão idempotente de
+PDFs gerados, resolução veículo por placa/lista, link Jarvis expira, expurgo
+pessoal após 90 dias, preservação de negócio por 5 anos/hold legal.
 
 ## DESP-1 — despachantes + processos + link seguro + abertura automática
 
@@ -826,7 +928,8 @@ preservação por hold legal.
 - prazo por UF, RENAVE configurável e alerta;
 - portal por token e atualização manual da loja;
 - link de 7 dias, renovável/revogável, visualização e download com marca d'água;
-- Ordem de Processo em PDF com identidade da loja, protocolo e QR code;
+- Ordem de Processo em PDF com identidade da loja, protocolo e QR code; PDF salvo
+  automaticamente na pasta digital do veículo;
 - venda/compra/troca abrem processos idempotentes;
 - custo → despesa + conta a pagar;
 - taxa opcional → conta a receber.
@@ -880,6 +983,8 @@ venda pelo WhatsApp.
 - foto por OCR local na infraestrutura controlada;
 - extração somente dos dados do veículo;
 - confirmação obrigatória antes de atualizar cadastro;
+- persistência na pasta digital do veículo (SEG-DOC) com `tipo_pasta`/`subtipo`
+  adequados;
 - defesa técnica que impede envio a IA/classificador/API externa.
 
 **Arquivos novos prováveis:** worker/serviço local de OCR, adapter de extração,
@@ -934,7 +1039,8 @@ cross-tenant, payload sem custo e compatibilidade do owner.
 estáveis.
 
 **Entregas:** abrir OS, mandar ao despachante, consultar status, consultar gasto por
-carro e “traz o carro X”.
+carro, “traz o carro X”, **enviar documento para a pasta** (placa + tipo confirmados)
+e **consultar documento** (“me manda o CRLV do Corolla”) via link seguro temporário.
 
 **Arquivos afetados:**
 
@@ -951,8 +1057,9 @@ EQUIPE-1 e estados de conversa não são duplicados em tabela de domínio.
 **Riscos:** colisão com vitrine/LLM, vendedor ganhar acesso a custo, mutação sem
 confirmação, duplicidade por repetição da mensagem.
 
-**Não muda:** atendimento de cliente, fluxo de garantia do cliente, documentos,
-ordem de roteamento da vitrine.
+**Não muda:** atendimento de cliente, fluxo de garantia do cliente, ordem de
+roteamento da vitrine; documentos continuam fora de LLM — apenas metadados autorizados
+entram no roteamento OPS.
 
 **Testes:**
 
@@ -973,7 +1080,8 @@ confirmação explícita do dono antes do envio ao despachante.
 
 **Entregas:**
 
-- detectar localmente CRLV/CRLV-e/CNH antes do classificador de vertical;
+- detectar localmente CRLV/CRLV-e/CNH antes do classificador de vertical; gravar na
+  pasta digital do veículo (SEG-DOC) com tipo sugerido e confirmação quando necessário;
 - botões `Comprei`, `Entrou na troca`, `Consignado`, `Só consultar`;
 - coletar valores/termos necessários e chamar a mesma operação transacional de
   “Entrada de veículo”;
@@ -1226,18 +1334,26 @@ Todos os padrões abaixo nascem configuráveis, sem bloquear a primeira entrega.
 
 ### Segurança e LGPD
 
-24. Documentos são eliminados 90 dias após a conclusão, salvo hold legal explícito.
-25. Aviso LGPD de finalidade é exibido e registrado; não há checkbox de aceite
+24. **Pasta digital**: um repositório por veículo; tipos `documento_veiculo`,
+    `laudo_vistoria`, `contrato`, `nota_fiscal`, `ordem_servico`, `despachante`,
+    `garantia`, `outros`; origem, autor, data e histórico de acesso obrigatórios.
+25. Retenção por classe: documentos de **negócio** (NF, contratos, laudos, OS,
+    despachante) por prazo legal configurável, default **5 anos**; documentos
+    **pessoais de cliente** expurgados **N dias** após conclusão do processo,
+    default **90**, salvo hold legal explícito.
+26. Jarvis consulta documento só via link seguro temporário; nunca anexo de arquivo
+    no WhatsApp; nenhum documento vai para IA externa.
+27. Aviso LGPD de finalidade é exibido e registrado; não há checkbox de aceite
     formal nesta fase.
-26. IP de auditoria é truncado e eliminado após 90 dias.
-27. Exportação/apagamento do titular passa por solicitação auditada.
+28. IP de auditoria é truncado e eliminado após 90 dias.
+29. Exportação/apagamento do titular passa por solicitação auditada.
 
 ### Indicadores
 
-28. Mostrar média e mediana.
-29. Só comparar fornecedor, modelo ou vendedor a partir de 3 casos.
-30. OS canceladas são excluídas.
-31. Serviço refeito conta como retrabalho; cortesia aparece separadamente e não
+30. Mostrar média e mediana.
+31. Só comparar fornecedor, modelo ou vendedor a partir de 3 casos.
+32. OS canceladas são excluídas.
+33. Serviço refeito conta como retrabalho; cortesia aparece separadamente e não
     distorce o custo contratado.
 
 ---
