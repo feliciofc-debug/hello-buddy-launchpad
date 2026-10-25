@@ -21,6 +21,7 @@ import {
   pendingIsActive,
   type VeiculoVitrineRow,
 } from "./vehicle-stock-whatsapp.ts";
+import { isVeiculoEstoqueAtivoInterno } from "./veiculo-estoque-status.ts";
 
 export const OWNER_STOCK_SELECT =
   "id,segmento,marca,modelo,versao,ano_fabricacao,ano_modelo,km,preco,cor,cambio,status,descricao,created_at";
@@ -43,17 +44,19 @@ export async function toolConsultarEstoqueVeiculos(
       OWNER_STOCK_SELECT,
     ).eq("user_id", userId);
     const all = rows ?? [];
+    const ativos = all.filter((v) => isVeiculoEstoqueAtivoInterno(v.status));
     const disponiveis = all.filter((v) => v.status === "disponivel");
     const vendidos = all.filter((v) => v.status === "vendido");
-    const motosDisp = disponiveis.filter((v) => v.segmento === "moto");
+    const motosAtivas = ativos.filter((v) => v.segmento === "moto");
 
     if (!q) {
       return JSON.stringify({
         escopo: "veiculos_estoque",
+        ativos_internos: ativos.length,
         disponiveis: disponiveis.length,
-        motos_disponiveis: motosDisp.length,
+        motos_ativas: motosAtivas.length,
         vendidos: vendidos.length,
-        resumo_texto: formatOwnerStockSummary(disponiveis),
+        resumo_texto: formatOwnerStockSummary(ativos),
       });
     }
 
@@ -168,14 +171,14 @@ export async function tryProcessOwnerVehicleStockInbound(input: {
     const seg = intent === "resumo_moto"
       ? "moto"
       : ownerStockSegmentFilter(input.userText);
-    let disponiveis = all.filter((v) => v.status === "disponivel");
+    let ativos = all.filter((v) => isVeiculoEstoqueAtivoInterno(v.status));
     if (seg === "moto") {
-      disponiveis = disponiveis.filter((v) => v.segmento === "moto");
+      ativos = ativos.filter((v) => v.segmento === "moto");
     } else if (seg === "carro") {
-      disponiveis = disponiveis.filter((v) => v.segmento !== "moto");
+      ativos = ativos.filter((v) => v.segmento !== "moto");
     }
     reply = formatOwnerStockSummary(
-      disponiveis,
+      ativos,
       seg === "moto" ? "Motos" : "Estoque",
     );
   } else if (intent === "vendidos") {
@@ -202,7 +205,7 @@ export async function tryProcessOwnerVehicleStockInbound(input: {
       );
     }
   } else if (intent === "busca") {
-    const disponiveis = all.filter((v) => v.status === "disponivel");
+    const disponiveis = all.filter((v) => isVeiculoEstoqueAtivoInterno(v.status));
     const matches = rankOwnerStockMatches(input.userText, disponiveis);
     if (!matches.length) return { handled: false };
     reply = formatOwnerStockSearchReply(input.userText, all);

@@ -34,7 +34,7 @@ export function EstoqueHojeCard({ snapshot, showDetailLink, compact }: Props) {
             Estoque hoje
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Disponível e reservado — uso interno da loja
+            Disponível, reservado e em preparação — uso interno da loja
           </p>
         </div>
         {showDetailLink && (
@@ -78,9 +78,10 @@ export function EstoqueHojeCard({ snapshot, showDetailLink, compact }: Props) {
           <>
             <div>
               <h4 className="mb-2 text-sm font-medium">Por status</h4>
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-2 sm:grid-cols-3">
                 <StatusBlock title="Disponível" data={porStatus.disponivel} />
                 <StatusBlock title="Reservado" data={porStatus.reservado} />
+                <StatusBlock title="Em preparação" data={porStatus.em_preparacao} />
               </div>
             </div>
 

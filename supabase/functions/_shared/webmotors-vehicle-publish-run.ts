@@ -47,6 +47,12 @@ export async function runWebmotorsVehiclePublish(
   if (vehicle.status === "vendido") {
     return { ok: false, error: "Veículo vendido. Remova manualmente da Webmotors se ainda estiver publicado." };
   }
+  if (vehicle.status === "em_preparacao") {
+    return {
+      ok: false,
+      error: "Veículo em preparação. Complete foto e preço e libere na vitrine antes de publicar na Webmotors.",
+    };
+  }
   if (vehicle.segmento === "moto") {
     return await runWebmotorsMotoPublish(sb, input, vehicle as VeiculoEstoqueRow);
   }

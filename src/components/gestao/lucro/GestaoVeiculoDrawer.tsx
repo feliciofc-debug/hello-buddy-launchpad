@@ -614,9 +614,14 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
           <SheetHeader>
             <SheetTitle>{vehicleLabel(veiculo)}</SheetTitle>
             <p className="text-sm text-muted-foreground capitalize">
-              {veiculo.status}
+              {veiculo.status === "em_preparacao" ? "Em preparação" : veiculo.status}
               {veiculo.consignacao?.status === "ativo" ? " · Consignado" : ""}
             </p>
+            {veiculo.status === "em_preparacao" && (
+              <p className="text-sm font-medium text-amber-700">
+                Complete o anúncio para liberar na vitrine.
+              </p>
+            )}
           </SheetHeader>
 
           <div className="mt-6 space-y-6">

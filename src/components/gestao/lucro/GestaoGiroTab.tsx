@@ -361,7 +361,7 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
       {!items.length ? (
         <Card><CardContent className="flex flex-col items-center gap-2 py-12 text-center">
           <CarFront className="h-8 w-8 text-muted-foreground" />
-          <p className="font-medium">Nenhum veículo disponível ou reservado.</p>
+          <p className="font-medium">Nenhum veículo disponível, reservado ou em preparação.</p>
         </CardContent></Card>
       ) : (
         <div className="space-y-3">

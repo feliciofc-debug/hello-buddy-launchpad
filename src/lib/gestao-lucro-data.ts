@@ -1,6 +1,7 @@
 import { calcGestaoLucro } from "../../supabase/functions/_shared/gestao-lucro-calc.ts";
 import { calcularConsignacao } from "../../supabase/functions/_shared/consignacao-calc.ts";
 import { daysInStock } from "../../supabase/functions/_shared/gestao-estoque-snapshot.ts";
+import { isVeiculoEstoqueAtivoInterno } from "../../supabase/functions/_shared/veiculo-estoque-status.ts";
 import { supabase } from "@/integrations/supabase/client";
 import type {
   GestaoDespesaRow,
@@ -196,7 +197,7 @@ export async function loadGestaoLucroBundle(userId: string): Promise<GestaoLucro
 }
 
 export function isActiveStock(v: GestaoVeiculoEnriched): boolean {
-  return v.status === "disponivel" || v.status === "reservado";
+  return isVeiculoEstoqueAtivoInterno(v.status);
 }
 
 export function vehicleLabel(v: GestaoVeiculoEnriched): string {

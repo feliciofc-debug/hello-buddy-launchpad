@@ -82,6 +82,15 @@ Deno.test("guarda de publicação aceita disponível e bloqueia vendido, removid
     "Veículo vendido",
   );
   await assertRejects(
+    () =>
+      assertVehicleCanPublish(
+        clientFor({ id: VEHICLE_ID, user_id: "tenant-a", status: "em_preparacao" }),
+        reference,
+      ),
+    Error,
+    "Veículo em preparação",
+  );
+  await assertRejects(
     () => assertVehicleCanPublish(clientFor(null), reference),
     Error,
     "Veículo removido",

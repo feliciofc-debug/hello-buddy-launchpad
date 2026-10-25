@@ -4,6 +4,7 @@ import { formatGestaoMoney } from "./gestao-format.ts";
 import { calcDreMes, type GestaoVendaDreLine } from "./gestao-dre-calc.ts";
 import { contasToDreOperacionalRows } from "./gestao-contador-data.ts";
 import { hojeSaoPaulo, intervaloCompetencia } from "./gestao-date-br.ts";
+import { VEICULO_STATUS_ATIVOS_INTERNOS } from "./veiculo-estoque-status.ts";
 import {
   buildAReceberReply,
   buildContasSemanaReply,
@@ -211,7 +212,7 @@ export async function runGestaoAssistenteQuery(
 
   if (/\bparado|mais tempo|envelhec|dias no estoque\b/.test(t)) {
     const { data: veiculos } = await sb.from("veiculos_estoque").select("id, marca, modelo, versao, status, created_at")
-      .eq("user_id", userId).eq("status", "disponivel");
+      .eq("user_id", userId).in("status", [...VEICULO_STATUS_ATIVOS_INTERNOS]);
     const rows = (veiculos ?? []) as VeiculoEstoqueParadoRow[];
     const now = Date.now();
     const ranked = rows
@@ -230,7 +231,7 @@ export async function runGestaoAssistenteQuery(
       queryKind: "carros_parados",
       reply: lines.length
         ? `Carros há mais tempo no estoque:\n${lines.join("\n")}`
-        : "Nenhum carro disponível com mais de 30 dias — ótimo giro!",
+        : "Nenhum carro ativo com mais de 30 dias — ótimo giro!",
       facts: { qtd: ranked.length, competencia },
     };
   }
@@ -452,7 +453,7 @@ export async function runGestaoAssistenteEstoqueValores(
   userId: string,
 ): Promise<GestaoAssistenteQueryResult> {
   const { data: veiculos } = await sb.from("veiculos_estoque").select("id, preco, status")
-    .eq("user_id", userId).eq("status", "disponivel");
+    .eq("user_id", userId).in("status", [...VEICULO_STATUS_ATIVOS_INTERNOS]);
   const veiculoRows = (veiculos ?? []) as VeiculoEstoquePrecoRow[];
   const ids = veiculoRows.map((v) => v.id);
   let compraTotal = 0;
@@ -469,7 +470,7 @@ export async function runGestaoAssistenteEstoqueValores(
   const vitrine = veiculoRows.reduce((a, v) => a + Number(v.preco ?? 0), 0);
   return {
     queryKind: "estoque_valores",
-    reply: `Estoque disponível: ${ids.length} carro(s). ` +
+    reply: `Estoque interno ativo: ${ids.length} carro(s). ` +
       `${comCompra} com valor de compra (${formatGestaoMoney(compraTotal)}). ` +
       `Soma preços de vitrine: ${formatGestaoMoney(vitrine)}.`,
     facts: { qtd: ids.length, com_compra: comCompra, compra_total: compraTotal, vitrine_total: vitrine },

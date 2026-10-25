@@ -67,11 +67,12 @@ import { VeiculoGestaoLucroPanel } from "@/components/gestao/VeiculoGestaoLucroP
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { readAmzAutoModePreference, isEffectiveAmzAutoMode } from "@/lib/amz-auto-mode";
 import { VehicleVideosTab } from "@/components/veiculos/VehicleVideosTab";
+import { validarLiberacaoVitrine } from "../../supabase/functions/_shared/veiculo-estoque-status.ts";
 
 type Vehicle = Database["public"]["Tables"]["veiculos_estoque"]["Row"] & {
   placa?: string | null;
 };
-type VehicleStatus = "disponivel" | "reservado" | "vendido";
+type VehicleStatus = "disponivel" | "reservado" | "vendido" | "em_preparacao";
 
 type VehicleSegmento = "carro" | "moto";
 
@@ -146,6 +147,7 @@ const STATUS_LABELS: Record<VehicleStatus, string> = {
   disponivel: "Disponível",
   reservado: "Reservado",
   vendido: "Vendido",
+  em_preparacao: "Em preparação",
 };
 
 function listFromText(value: string): string[] {
@@ -507,6 +509,18 @@ export default function VehicleInventory() {
       toast.error("A placa deve ter 7 caracteres.");
       return;
     }
+    if (form.status === "disponivel" && editing?.status === "em_preparacao") {
+      const liberacao = validarLiberacaoVitrine({
+        fotos: listFromText(form.fotos),
+        preco: optionalNumber(form.preco),
+      });
+      if (!liberacao.ok) {
+        toast.error(
+          `Para liberar na vitrine, informe ${liberacao.faltantes.join(" e ")}.`,
+        );
+        return;
+      }
+    }
 
     setSaving(true);
     const { user, reason } = await getVehicleSessionUser();
@@ -660,6 +674,36 @@ export default function VehicleInventory() {
       return;
     }
     toast.success("Veículo marcado como vendido.");
+    setDetailsOpen(false);
+    await loadVehicles();
+  };
+
+  const liberarNaVitrine = async (vehicle: Vehicle) => {
+    const liberacao = validarLiberacaoVitrine({
+      fotos: vehicle.fotos ?? [],
+      preco: vehicle.preco == null ? null : Number(vehicle.preco),
+    });
+    if (!liberacao.ok) {
+      toast.error(
+        `Complete ${liberacao.faltantes.join(" e ")} antes de liberar na vitrine.`,
+      );
+      return;
+    }
+    const { user } = await getVehicleSessionUser();
+    if (!user) {
+      toast.error("Sua sessão expirou. Entre novamente.");
+      navigate("/login");
+      return;
+    }
+    const { error } = await supabase.from("veiculos_estoque")
+      .update({ status: "disponivel" })
+      .eq("id", vehicle.id)
+      .eq("user_id", user.id);
+    if (error) {
+      toast.error("Não foi possível liberar o veículo na vitrine.");
+      return;
+    }
+    toast.success("Veículo liberado na vitrine.");
     setDetailsOpen(false);
     await loadVehicles();
   };
@@ -831,6 +875,7 @@ export default function VehicleInventory() {
                   <SelectItem value="todos">Todos</SelectItem>
                   <SelectItem value="disponivel">Disponível</SelectItem>
                   <SelectItem value="reservado">Reservado</SelectItem>
+                  <SelectItem value="em_preparacao">Em preparação</SelectItem>
                   <SelectItem value="vendido">Vendido</SelectItem>
                 </SelectContent>
               </Select>
@@ -907,6 +952,11 @@ export default function VehicleInventory() {
                       <Badge variant={vehicle.status === "disponivel" ? "default" : "secondary"}>
                         {STATUS_LABELS[vehicle.status as VehicleStatus] || vehicle.status}
                       </Badge>
+                      {vehicle.status === "em_preparacao" && (
+                        <span className="max-w-48 text-right text-[10px] font-medium text-amber-700">
+                          Complete o anúncio para liberar na vitrine
+                        </span>
+                      )}
                       {(vehicle as Vehicle & { segmento?: string }).segmento === "moto" && (
                         <Badge variant="outline">Moto</Badge>
                       )}
@@ -973,6 +1023,22 @@ export default function VehicleInventory() {
                         Instagram
                       </Button>
                     </div>
+                    {vehicle.status === "em_preparacao" && (
+                      <>
+                        <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
+                          Em preparação — complete foto e preço antes de publicar nos portais.
+                        </p>
+                        <Button
+                          size="sm"
+                          className="w-full"
+                          onClick={() => void liberarNaVitrine(vehicle)}
+                        >
+                          Liberar na vitrine
+                        </Button>
+                      </>
+                    )}
+                    {vehicle.status !== "em_preparacao" && (
+                      <>
                     <MlVehicleActions
                       veiculoId={vehicle.id}
                       portal={mlPortals[vehicle.id] ?? null}
@@ -999,6 +1065,8 @@ export default function VehicleInventory() {
                       }}
                       onChanged={() => void loadPortalMeta()}
                     />
+                      </>
+                    )}
                     <OlxVehicleActions
                       veiculoId={vehicle.id}
                       listing={olxListings[vehicle.id] ?? null}
@@ -1134,6 +1202,20 @@ export default function VehicleInventory() {
                 />
                 <VehicleFact label="Placa (interno)" value={selected.placa ?? undefined} />
               </div>
+              {selected.status === "em_preparacao" && (
+                <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+                  <p className="font-medium">
+                    Em preparação — complete o anúncio para liberar na vitrine
+                  </p>
+                  <Button
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => void liberarNaVitrine(selected)}
+                  >
+                    Liberar na vitrine
+                  </Button>
+                </div>
+              )}
               {selected.descricao && <p className="text-sm">{selected.descricao}</p>}
               <VehicleTags title="Características" values={selected.caracteristicas} />
               <VehicleTags title="Opcionais" values={selected.opcionais} />
@@ -1300,6 +1382,7 @@ export default function VehicleInventory() {
                 <SelectContent>
                   <SelectItem value="disponivel">Disponível</SelectItem>
                   <SelectItem value="reservado">Reservado</SelectItem>
+                  <SelectItem value="em_preparacao">Em preparação</SelectItem>
                   <SelectItem value="vendido">Vendido</SelectItem>
                 </SelectContent>
               </Select>

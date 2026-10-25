@@ -30,6 +30,12 @@ export async function runMlVehiclePublish(
     .eq("id", input.veiculoId)
     .maybeSingle();
   if (vErr || !vehicle) return { ok: false, error: "Veículo não encontrado" };
+  if (vehicle.status === "em_preparacao") {
+    return {
+      ok: false,
+      error: "Veículo em preparação. Complete foto e preço e libere na vitrine antes de publicar no Mercado Livre.",
+    };
+  }
 
   const { data: cfg } = await sb.from("empresa_config")
     .select("ml_location_json, ml_listing_pack_preference")

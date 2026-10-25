@@ -1,3 +1,5 @@
+import { isVeiculoEstoqueAtivoInterno } from "./veiculo-estoque-status.ts";
+
 export type GestaoEstoqueVeiculoInput = {
   id: string;
   marca: string;
@@ -33,6 +35,7 @@ export type GestaoEstoqueSnapshot = {
   porStatus: {
     disponivel: GestaoEstoqueStatusSlice;
     reservado: GestaoEstoqueStatusSlice;
+    em_preparacao: GestaoEstoqueStatusSlice;
   };
   porIdade: Array<{
     faixa: GestaoEstoqueIdadeFaixa;
@@ -54,10 +57,6 @@ const EMPTY_SLICE: GestaoEstoqueStatusSlice = {
   valorVenda: 0,
   valorCusto: 0,
 };
-
-function isActiveStockStatus(status: string): boolean {
-  return status === "disponivel" || status === "reservado";
-}
 
 export function daysInStock(
   dataCompra: string | null,
@@ -96,11 +95,12 @@ export function buildGestaoEstoqueSnapshot(
   vehicles: GestaoEstoqueVeiculoInput[],
   nowMs = Date.now(),
 ): GestaoEstoqueSnapshot {
-  const active = vehicles.filter((v) => isActiveStockStatus(v.status));
+  const active = vehicles.filter((v) => isVeiculoEstoqueAtivoInterno(v.status));
 
   const porStatus = {
     disponivel: { ...EMPTY_SLICE },
     reservado: { ...EMPTY_SLICE },
+    em_preparacao: { ...EMPTY_SLICE },
   };
 
   const idadeMap = new Map<GestaoEstoqueIdadeFaixa, GestaoEstoqueStatusSlice>();
@@ -126,7 +126,11 @@ export function buildGestaoEstoqueSnapshot(
     totalVenda += vv;
     if (!pending) totalCusto += cc;
 
-    const statusKey = v.status === "reservado" ? "reservado" : "disponivel";
+    const statusKey = v.status === "reservado"
+      ? "reservado"
+      : v.status === "em_preparacao"
+      ? "em_preparacao"
+      : "disponivel";
     const st = porStatus[statusKey];
     st.quantidade += 1;
     st.valorVenda += vv;

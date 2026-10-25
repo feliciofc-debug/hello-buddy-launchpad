@@ -78,4 +78,9 @@ export async function assertVehicleCanPublish(
   if (vehicle.status === "vendido") {
     throw new Error("Veículo vendido; publicação cancelada");
   }
+  if (vehicle.status === "em_preparacao") {
+    throw new Error(
+      "Veículo em preparação; complete foto e preço e libere na vitrine antes de publicar",
+    );
+  }
 }

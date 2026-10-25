@@ -9,6 +9,7 @@ import {
   vehicleDisplayTitle,
   type VeiculoVitrineRow,
 } from "./vehicle-stock-whatsapp.ts";
+import { isVeiculoEstoqueAtivoInterno } from "./veiculo-estoque-status.ts";
 
 export type OwnerStockRow = VeiculoVitrineRow & { created_at?: string | null };
 
@@ -357,10 +358,10 @@ export function formatOwnerStockSearchReply(
   text: string,
   all: VeiculoVitrineRow[],
 ): string {
-  const disponiveis = all.filter((v) => v.status === "disponivel");
-  const matches = rankOwnerStockMatches(text, disponiveis);
+  const ativos = all.filter((v) => isVeiculoEstoqueAtivoInterno(v.status));
+  const matches = rankOwnerStockMatches(text, ativos);
   if (!matches.length) {
-    return "Não encontrei esse veículo no estoque disponível.";
+    return "Não encontrei esse veículo no estoque ativo.";
   }
   const lines = matches.slice(0, 6).map(formatOwnerStockLine);
   const extra = matches.length > 6

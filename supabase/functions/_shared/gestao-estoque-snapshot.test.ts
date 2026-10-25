@@ -11,7 +11,7 @@ Deno.test("idade do estoque usa data_compra quando existe", () => {
   assertEquals(gestaoEstoqueIdadeFaixa(17), "0-30");
 });
 
-Deno.test("snapshot separa disponível e reservado e lucro projetado", () => {
+Deno.test("snapshot separa disponível, reservado e em preparação", () => {
   const snap = buildGestaoEstoqueSnapshot([
     {
       id: "1",
@@ -33,6 +33,15 @@ Deno.test("snapshot separa disponível e reservado e lucro projetado", () => {
     },
     {
       id: "3",
+      marca: "Jeep",
+      preco: null,
+      status: "em_preparacao",
+      dataCompra: "2026-01-20",
+      valorCompra: 70_000,
+      despesasTotal: 1_000,
+    },
+    {
+      id: "4",
       marca: "Fiat",
       preco: 50_000,
       status: "vendido",
@@ -42,12 +51,14 @@ Deno.test("snapshot separa disponível e reservado e lucro projetado", () => {
     },
   ], Date.parse("2026-02-01"));
 
-  assertEquals(snap.totais.quantidade, 2);
+  assertEquals(snap.totais.quantidade, 3);
   assertEquals(snap.totais.valorVenda, 300_000);
-  assertEquals(snap.totais.valorCusto, 237_000);
-  assertEquals(snap.totais.lucroProjetado, 63_000);
+  assertEquals(snap.totais.valorCusto, 308_000);
+  assertEquals(snap.totais.lucroProjetado, -8_000);
   assertEquals(snap.porStatus.disponivel.quantidade, 1);
   assertEquals(snap.porStatus.reservado.valorVenda, 100_000);
+  assertEquals(snap.porStatus.em_preparacao.quantidade, 1);
+  assertEquals(snap.porStatus.em_preparacao.valorCusto, 71_000);
   assertEquals(snap.porMarca[0].marca, "BMW");
 });
 

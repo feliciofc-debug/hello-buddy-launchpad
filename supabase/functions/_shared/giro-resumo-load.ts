@@ -12,6 +12,7 @@ import {
 } from "./estoque-giro-calc.ts";
 import { hojeSaoPaulo } from "./gestao-date-br.ts";
 import type { GiroResumoVeiculoLinha } from "./giro-resumo-mensagem.ts";
+import { VEICULO_STATUS_ATIVOS_INTERNOS } from "./veiculo-estoque-status.ts";
 
 export type GestaoGiroConfigDbRow = {
   faixa_atencao_dias: number;
@@ -106,7 +107,7 @@ export async function loadGiroResumoItens(
     sb.from("veiculos_estoque")
       .select("id, marca, modelo, versao, preco, status, created_at, combustivel")
       .eq("user_id", userId)
-      .in("status", ["disponivel", "reservado"]),
+      .in("status", [...VEICULO_STATUS_ATIVOS_INTERNOS]),
     sb.from("veiculo_compra").select("veiculo_id, valor_compra, data_compra").eq("user_id", userId),
     sb.from("veiculo_despesas")
       .select("veiculo_id, valor, descontar_do_consignante")
