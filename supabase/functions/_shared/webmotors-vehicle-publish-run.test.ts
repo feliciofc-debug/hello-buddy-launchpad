@@ -142,3 +142,19 @@ Deno.test("IncluirCarro ok + foto falha: external_id salvo; segunda publicação
   assertEquals(second.ok, false);
   assertEquals(incluirCalls, 0);
 });
+
+Deno.test("TROCA-VENDA-1.1 — Webmotors bloqueia veículo em preparação", async () => {
+  const previous = vehicleRow.status;
+  vehicleRow.status = "em_preparacao";
+  try {
+    const result = await runWebmotorsVehiclePublish(
+      mockSb({}),
+      { userId: "u1", veiculoId: "v1" },
+      { hashForUser: authStub, loadCatalog: catalogLoader },
+    );
+    assertEquals(result.ok, false);
+    assertEquals(result.error?.includes("em preparação"), true);
+  } finally {
+    vehicleRow.status = previous;
+  }
+});

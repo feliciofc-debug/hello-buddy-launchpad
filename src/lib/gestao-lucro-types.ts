@@ -52,6 +52,16 @@ export type GestaoVeiculoEnriched = GestaoVeiculoBase & {
   dataVenda: string | null;
   vendedor: string | null;
   vendedor_id: string | null;
+  troca_id: string | null;
+  pagamento: {
+    entrada?: number;
+    financiamento?: { banco?: string | null; valor?: number };
+    troca?: { troca_id?: string; valor?: number; teto?: number | null };
+    saldo?: number;
+    financeiro_tipo?: "receber" | "pagar" | "quitado";
+    financeiro_calculado?: number;
+    financeiro_aviso?: string | null;
+  } | null;
   despesas: GestaoDespesaRow[];
   lucro: GestaoLucroComputed;
   compraOrigem: "compra" | "troca" | "consignacao" | null;

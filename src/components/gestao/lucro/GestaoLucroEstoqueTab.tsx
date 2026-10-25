@@ -270,7 +270,7 @@ export function GestaoLucroEstoqueTab({
       <div className="rounded-lg border border-dashed p-12 text-center">
         <p className="font-medium">Nenhum veículo no estoque</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Cadastre veículos disponíveis ou reservados para acompanhar lucro aqui.
+          Cadastre veículos disponíveis, reservados ou em preparação para acompanhar lucro aqui.
         </p>
       </div>
     );
@@ -384,6 +384,11 @@ export function GestaoLucroEstoqueTab({
                     {v.consignacao?.status === "ativo" && (
                       <span className="mt-1 inline-block rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-900">
                         Consignado
+                      </span>
+                    )}
+                    {v.status === "em_preparacao" && (
+                      <span className="ml-1 mt-1 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-900">
+                        Em preparação — complete o anúncio para liberar na vitrine
                       </span>
                     )}
                     {v.consignacao?.repasse_aviso && (
@@ -587,6 +592,11 @@ export function GestaoLucroEstoqueTab({
                   Consignado · dono recebe {formatGestaoMoney(v.consignacaoResultado?.repasseDonoLiquido)}
                 </span>
               )}
+              {v.status === "em_preparacao" && (
+                <span className="inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-900">
+                  Em preparação — complete o anúncio para liberar na vitrine
+                </span>
+              )}
               {v.consignacao?.repasse_aviso && (
                 <span className="inline-block rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-900">
                   Revisar repasse · {v.consignacao.repasse_aviso}
@@ -598,7 +608,9 @@ export function GestaoLucroEstoqueTab({
                   {v.vendedor ? ` — ${v.vendedor}` : ""}
                 </span>
               )}
-              <p className="text-xs text-muted-foreground capitalize">{v.status} · {vehicleDays(v)} dias</p>
+              <p className="text-xs text-muted-foreground">
+                {v.status === "em_preparacao" ? "Em preparação" : v.status} · {vehicleDays(v)} dias
+              </p>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <span>Preço: {formatGestaoMoney(v.preco)}</span>
                 <span className={gestaoLucroTone(lucroVal)}>

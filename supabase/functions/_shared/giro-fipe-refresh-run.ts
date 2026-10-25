@@ -17,6 +17,7 @@ import {
   type FipeListItem,
 } from "./fipe.ts";
 import { fipeYearAvailabilityDecision } from "./fipe-routing.ts";
+import { VEICULO_STATUS_ATIVOS_INTERNOS } from "./veiculo-estoque-status.ts";
 
 const DEFAULT_LIMIT = 20;
 
@@ -162,7 +163,7 @@ export async function runGiroFipeRefreshBatch(
   const { data: veiculos, error } = await sb.from("veiculos_estoque")
     .select("id, marca, modelo, versao, ano_modelo, status")
     .eq("user_id", userId)
-    .in("status", ["disponivel", "reservado"]);
+    .in("status", [...VEICULO_STATUS_ATIVOS_INTERNOS]);
   if (error) throw error;
 
   let refs = await loadRefsFipe(sb, userId);

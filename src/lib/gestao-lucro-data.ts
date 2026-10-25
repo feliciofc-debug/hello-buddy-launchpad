@@ -1,6 +1,7 @@
 import { calcGestaoLucro } from "../../supabase/functions/_shared/gestao-lucro-calc.ts";
 import { calcularConsignacao } from "../../supabase/functions/_shared/consignacao-calc.ts";
 import { daysInStock } from "../../supabase/functions/_shared/gestao-estoque-snapshot.ts";
+import { isVeiculoEstoqueAtivoInterno } from "../../supabase/functions/_shared/veiculo-estoque-status.ts";
 import { supabase } from "@/integrations/supabase/client";
 import type {
   GestaoDespesaRow,
@@ -33,7 +34,7 @@ export async function loadGestaoLucroBundle(userId: string): Promise<GestaoLucro
         .is("deleted_at", null)
         .order("data", { ascending: false }),
       supabase.from("veiculo_venda" as "veiculos_estoque")
-        .select("veiculo_id, valor_venda, data_venda, vendedor, vendedor_id")
+        .select("veiculo_id, valor_venda, data_venda, vendedor, vendedor_id, troca_id, pagamento_json")
         .eq("user_id", userId),
       supabase.from("veiculo_consignacao" as "veiculos_estoque")
         .select(
@@ -82,6 +83,8 @@ export async function loadGestaoLucroBundle(userId: string): Promise<GestaoLucro
       data_venda: string;
       vendedor: string | null;
       vendedor_id?: string | null;
+      troca_id?: string | null;
+      pagamento_json?: GestaoVeiculoEnriched["pagamento"];
     } | undefined;
     const dList = despesasBy.get(v.id) ?? [];
     const consignacaoRaw = consignacaoBy.get(v.id) as
@@ -166,6 +169,8 @@ export async function loadGestaoLucroBundle(userId: string): Promise<GestaoLucro
       dataVenda: venda?.data_venda ?? null,
       vendedor: venda?.vendedor ?? null,
       vendedor_id: venda?.vendedor_id ?? null,
+      troca_id: venda?.troca_id ?? null,
+      pagamento: venda?.pagamento_json ?? null,
       despesas: dList,
       lucro,
       compraOrigem: compra?.origem ?? null,
@@ -192,7 +197,7 @@ export async function loadGestaoLucroBundle(userId: string): Promise<GestaoLucro
 }
 
 export function isActiveStock(v: GestaoVeiculoEnriched): boolean {
-  return v.status === "disponivel" || v.status === "reservado";
+  return isVeiculoEstoqueAtivoInterno(v.status);
 }
 
 export function vehicleLabel(v: GestaoVeiculoEnriched): string {

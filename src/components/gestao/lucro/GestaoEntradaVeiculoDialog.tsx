@@ -30,6 +30,7 @@ import {
 import { GESTAO_DESPESA_CATEGORIAS } from "@/lib/gestao-lucro-categories.ts";
 import { parseGestaoMoneyField } from "@/lib/gestao-money.ts";
 import { hojeSaoPaulo } from "../../../../supabase/functions/_shared/gestao-date-br.ts";
+import { statusInicialEntradaVeiculo } from "../../../../supabase/functions/_shared/veiculo-estoque-status.ts";
 import { supabase } from "@/integrations/supabase/client";
 
 type Origem = "compra" | "troca" | "consignacao";
@@ -147,6 +148,9 @@ export function GestaoEntradaVeiculoDialog({
     }
 
     const vehicleId = crypto.randomUUID();
+    const fotos = photoList(vehicle.fotos);
+    const preco = parseGestaoMoneyField(vehicle.preco);
+    const status = statusInicialEntradaVeiculo({ fotos, preco });
     setSaving(true);
     try {
       const { error: veiculoError } = await supabase.from("veiculos_estoque").insert({
@@ -164,10 +168,10 @@ export function GestaoEntradaVeiculoDialog({
         cambio: vehicle.cambio.trim() || null,
         portas: optionalNumber(vehicle.portas),
         placa: placa || null,
-        preco: parseGestaoMoneyField(vehicle.preco),
+        preco,
         descricao: vehicle.descricao.trim() || null,
-        fotos: photoList(vehicle.fotos),
-        status: "disponivel",
+        fotos,
+        status,
       } as never);
       if (veiculoError) throw veiculoError;
 
@@ -204,7 +208,11 @@ export function GestaoEntradaVeiculoDialog({
       }
 
       setSavedId(vehicleId);
-      toast.success("Veículo adicionado ao estoque e ao Giro.");
+      toast.success(
+        status === "disponivel"
+          ? "Veículo adicionado ao estoque e liberado na vitrine."
+          : "Veículo adicionado em preparação. Complete foto e preço para liberar.",
+      );
       onSaved();
     } catch (error) {
       await supabase.from("veiculos_estoque").delete()

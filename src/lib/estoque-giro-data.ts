@@ -9,6 +9,7 @@ import {
   type EstoqueGiroReferencia,
   type EstoqueGiroResultado,
 } from "../../supabase/functions/_shared/estoque-giro-calc.ts";
+import { isVeiculoEstoqueAtivoInterno } from "../../supabase/functions/_shared/veiculo-estoque-status.ts";
 
 export type GestaoGiroConfigRow = {
   faixa_atencao_dias: number;
@@ -190,7 +191,7 @@ export async function loadGestaoGiro(
   const config = (configData ?? null) as unknown as GestaoGiroConfigRow | null;
   const calcConfig = configRowToCalc(config);
   const items = veiculos
-    .filter((v) => v.status === "disponivel" || v.status === "reservado")
+    .filter((v) => isVeiculoEstoqueAtivoInterno(v.status))
     .map((veiculo) => {
       const ipvaAjuste = ajusteByVeiculo.get(veiculo.id) ?? defaultAjuste();
       const consignacao = consignacaoByVeiculo.get(veiculo.id) as

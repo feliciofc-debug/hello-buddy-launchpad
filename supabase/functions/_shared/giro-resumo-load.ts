@@ -12,6 +12,7 @@ import {
 } from "./estoque-giro-calc.ts";
 import { hojeSaoPaulo } from "./gestao-date-br.ts";
 import type { GiroResumoVeiculoLinha } from "./giro-resumo-mensagem.ts";
+import { VEICULO_STATUS_ATIVOS_INTERNOS } from "./veiculo-estoque-status.ts";
 
 export type GestaoGiroConfigDbRow = {
   faixa_atencao_dias: number;
@@ -85,7 +86,11 @@ export async function loadGiroResumoItens(
   sb: SupabaseClient,
   userId: string,
   hojeYmd = hojeSaoPaulo(),
-): Promise<{ config: GestaoGiroConfigDbRow | null; items: GiroResumoVeiculoLinha[] }> {
+): Promise<{
+  config: GestaoGiroConfigDbRow | null;
+  items: GiroResumoVeiculoLinha[];
+  trocasHoje: { quantidade: number; trocoPago: number };
+}> {
   const [
     { data: configData },
     { data: veiculos },
@@ -95,13 +100,14 @@ export async function loadGiroResumoItens(
     { data: trocasData },
     { data: ajustesData },
     { data: consignacoesData },
+    { data: vendasTrocaHoje },
     regraComissao,
   ] = await Promise.all([
     sb.from("gestao_giro_config").select("*").eq("user_id", userId).maybeSingle(),
     sb.from("veiculos_estoque")
       .select("id, marca, modelo, versao, preco, status, created_at, combustivel")
       .eq("user_id", userId)
-      .in("status", ["disponivel", "reservado"]),
+      .in("status", [...VEICULO_STATUS_ATIVOS_INTERNOS]),
     sb.from("veiculo_compra").select("veiculo_id, valor_compra, data_compra").eq("user_id", userId),
     sb.from("veiculo_despesas")
       .select("veiculo_id, valor, descontar_do_consignante")
@@ -123,6 +129,11 @@ export async function loadGiroResumoItens(
       .select("veiculo_id, data_inicio, prazo_dias, preco_minimo_autorizado, status")
       .eq("user_id", userId)
       .eq("status", "ativo"),
+    sb.from("veiculo_venda")
+      .select("troca_id, pagamento_json")
+      .eq("user_id", userId)
+      .eq("data_venda", hojeYmd)
+      .not("troca_id", "is", null),
     loadComissaoRegra(sb, userId),
   ]);
 
@@ -280,5 +291,14 @@ export async function loadGiroResumoItens(
     };
   });
 
-  return { config, items };
+  const trocasHoje = {
+    quantidade: (vendasTrocaHoje ?? []).length,
+    trocoPago: Math.round((vendasTrocaHoje ?? []).reduce((sum, raw) => {
+      const pagamento = (raw as { pagamento_json?: { saldo?: number } | null }).pagamento_json;
+      const saldo = Number(pagamento?.saldo ?? 0);
+      return sum + (saldo < 0 ? Math.abs(saldo) : 0);
+    }, 0) * 100) / 100,
+  };
+
+  return { config, items, trocasHoje };
 }
