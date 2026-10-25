@@ -533,6 +533,29 @@ export default function VehicleInventory() {
       navigate("/login");
       return;
     }
+    if (form.status === "disponivel" && editing?.status === "em_preparacao") {
+      const { data: osPreparacao, error: osError } = await supabase
+        .from("gestao_os" as "veiculos_estoque")
+        .select("status")
+        .eq("user_id", user.id)
+        .eq("veiculo_id", editing.id)
+        .eq("tipo", "preparacao");
+      if (osError) {
+        setSaving(false);
+        toast.error("Não foi possível validar as ordens de serviço.");
+        return;
+      }
+      const aberta = (osPreparacao ?? []).some((item) =>
+        !["concluida", "cancelada"].includes(
+          String((item as unknown as { status: string }).status),
+        )
+      );
+      if (aberta) {
+        setSaving(false);
+        toast.error("Conclua ou cancele todas as OS de preparação antes de liberar.");
+        return;
+      }
+    }
 
     const isMoto = form.segmento === "moto";
     const values = {

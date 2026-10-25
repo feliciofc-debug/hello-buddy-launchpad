@@ -118,6 +118,23 @@ export default function GestaoTrocaFichaPage() {
   const [kbbTrocaText, setKbbTrocaText] = useState("");
   const [kbbLojaText, setKbbLojaText] = useState("");
   const [preparacaoText, setPreparacaoText] = useState("");
+  const criarOsPreparacao = async () => {
+    if (!troca?.veiculo_id || !id) {
+      toast.error("Libere o veículo para o estoque antes de criar a OS.");
+      return;
+    }
+    setBusy(true);
+    const { data, error } = await (supabase as unknown as {
+      rpc: (name: string, args: Record<string, unknown>) => Promise<{
+        data: { id?: string } | null;
+        error: { message: string } | null;
+      }>;
+    }).rpc("gestao_os_criar_da_troca", { p_troca_id: id });
+    setBusy(false);
+    if (error) return toast.error(error.message);
+    if (data?.id) navigate(`/gestao/operacoes/${data.id}`);
+  };
+
   const [valorPropostoText, setValorPropostoText] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewLaudo, setPreviewLaudo] = useState<GestaoTrocaLaudoPdfSection | null>(null);
@@ -811,6 +828,11 @@ export default function GestaoTrocaFichaPage() {
               Recalcular preço
             </Button>
           </div>
+          {troca.veiculo_id && (
+            <Button size="sm" variant="outline" onClick={() => void criarOsPreparacao()} disabled={busy}>
+              Criar OS de preparação
+            </Button>
+          )}
         </section>
 
         {troca.status === "fechada" && !troca.veiculo_id && (

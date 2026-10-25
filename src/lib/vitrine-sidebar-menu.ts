@@ -57,6 +57,7 @@ export function injectVitrineSidebarMenuItems<T extends { id: string }>(
     financingItem: T;
     gestaoLucroItem?: T;
     gestaoTrocasItem?: T;
+    gestaoOperacoesItem?: T;
   },
 ): T[] {
   const flags = resolveVitrineSidebarFlags(ctx);
@@ -75,6 +76,9 @@ export function injectVitrineSidebarMenuItems<T extends { id: string }>(
     }
     if (showGestaoTrocasMenu && ctx.gestaoTrocasItem && !hasId("gestao-trocas")) {
       out.push(ctx.gestaoTrocasItem);
+    }
+    if (showGestaoLucroMenu && ctx.gestaoOperacoesItem && !hasId("gestao-operacoes")) {
+      out.push(ctx.gestaoOperacoesItem);
     }
   };
 

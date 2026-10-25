@@ -35,6 +35,10 @@ import GestaoLucroPage from "./pages/GestaoLucroPage";
 import GestaoTrocasPage from "./pages/GestaoTrocasPage";
 import GestaoTrocaFichaPage from "./pages/GestaoTrocaFichaPage";
 import GestaoTrocaConfigPage from "./pages/GestaoTrocaConfigPage";
+import GestaoOperacoesPage from "./pages/GestaoOperacoesPage";
+import GestaoOsFichaPage from "./pages/GestaoOsFichaPage";
+import GestaoOsConfigPage from "./pages/GestaoOsConfigPage";
+import GestaoParceirosPage from "./pages/GestaoParceirosPage";
 import GestaoNfeConfigPage from "./pages/GestaoNfeConfigPage";
 import GestaoContadorPublicPage from "./pages/GestaoContadorPublicPage";
 import VehicleFinancingFichasPage from "./pages/vehicle-financing-fichas";
@@ -196,6 +200,10 @@ const App = () => (
           <Route path="/gestao/trocas" element={<GestaoTrocasPage />} />
           <Route path="/gestao/trocas/config" element={<GestaoTrocaConfigPage />} />
           <Route path="/gestao/trocas/:id" element={<GestaoTrocaFichaPage />} />
+          <Route path="/gestao/operacoes" element={<GestaoOperacoesPage />} />
+          <Route path="/gestao/operacoes/config" element={<GestaoOsConfigPage />} />
+          <Route path="/gestao/operacoes/:id" element={<GestaoOsFichaPage />} />
+          <Route path="/gestao/parceiros" element={<GestaoParceirosPage />} />
           <Route path="/gestao/configuracao-fiscal" element={<GestaoNfeConfigPage />} />
           <Route path="/contador/:token" element={<GestaoContadorPublicPage />} />
           <Route path="/midias" element={<Midias />} />

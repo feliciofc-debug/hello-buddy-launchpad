@@ -10,6 +10,7 @@ import {
   TrendingUp,
   Users,
   Wallet,
+  Wrench,
 } from "lucide-react";
 
 export type GestaoLucroAba =
@@ -59,10 +60,12 @@ export type GestaoSidebarItem = {
   path: string;
   icon: LucideIcon;
   matchAba?: GestaoLucroAba | null;
+  matchPrefix?: string;
 };
 
 export const GESTAO_SIDEBAR_ITEMS: GestaoSidebarItem[] = [
   { id: "gestao-visao", label: "Visão geral", path: "/gestao/lucro", icon: LayoutDashboard, matchAba: "estoque" },
+  { id: "gestao-operacoes", label: "Operações / OS", path: "/gestao/operacoes", icon: Wrench, matchPrefix: "/gestao/operacoes" },
   { id: "gestao-giro", label: "Giro 30-60-90", path: gestaoLucroUrl("giro"), icon: Gauge, matchAba: "giro" },
   { id: "gestao-vendas", label: "Vendas e faturamento", path: gestaoLucroUrl("vendidos"), icon: ShoppingCart, matchAba: "vendidos" },
   { id: "gestao-notas", label: "Notas fiscais", path: gestaoLucroUrl("notas"), icon: Receipt, matchAba: "notas" },
@@ -81,6 +84,8 @@ export type GestaoCommandAction = {
 };
 
 export const GESTAO_COMMAND_ACTIONS: GestaoCommandAction[] = [
+  { id: "operacoes", label: "Operações e ordens de serviço", keywords: ["os", "ordem de serviço", "oficina", "preparação", "garantia"], path: "/gestao/operacoes" },
+  { id: "parceiros", label: "Parceiros e fornecedores", keywords: ["parceiro", "fornecedor", "oficina", "serviço"], path: "/gestao/parceiros" },
   { id: "giro", label: "Giro 30-60-90", keywords: ["giro", "estoque parado", "repasse", "margem", "90 dias"], path: gestaoLucroUrl("giro") },
   { id: "nota", label: "Notas fiscais", keywords: ["nota", "nfe", "fiscal", "faturar", "emitir"], path: gestaoLucroUrl("notas") },
   { id: "vendas", label: "Vendas e faturamento", keywords: ["venda", "vendidos", "faturamento", "faturar"], path: gestaoLucroUrl("vendidos") },
@@ -105,6 +110,7 @@ export function gestaoSidebarActive(
   search: string,
   item: GestaoSidebarItem,
 ): boolean {
+  if (item.matchPrefix) return pathname.startsWith(item.matchPrefix);
   if (item.path === "/gestao/configuracao-fiscal") {
     return pathname === item.path;
   }
