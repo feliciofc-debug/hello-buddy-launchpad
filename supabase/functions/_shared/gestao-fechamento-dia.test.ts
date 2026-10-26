@@ -3,7 +3,9 @@ import {
   assertEquals,
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
+  contarConversasClientesNoDia,
   contatoInternoFechamento,
   formatarCabecalhoFechamento,
   formatarGestaoFechamentoDia,
@@ -202,4 +204,69 @@ Deno.test("RESUMO-2.1 — textos cabeçalho e labels corrigidos", () => {
   });
   assertStringIncludes(semVenda, "🚗 *VENDAS*");
   assertStringIncludes(semVenda, "Hoje: nenhuma venda");
+});
+
+Deno.test("RESUMO-2.2 — conversas: mensagens do dia primeiro, sem listar todas", async () => {
+  const internos = new Set(["5521999990001"]);
+  const conversations = Array.from({ length: 1100 }, (_, i) => ({
+    id: `conv-${i}`,
+    contact_number: i === 0
+      ? "5521999990001"
+      : `5521${800000000 + i}`,
+  }));
+  const messages = Array.from({ length: 1200 }, (_, i) => ({
+    conversation_id: `conv-${i % 1100}`,
+    sender: "client",
+    created_at: "2026-10-26T15:00:00-03:00",
+  }));
+  let maxInChunk = 0;
+  let loadedAllConversations = false;
+
+  const sb = {
+    from(table: string) {
+      if (table === "whatsapp_cloud_messages") {
+        const state = { offset: 0 };
+        const chain = {
+          select: () => chain,
+          eq: () => chain,
+          gte: () => chain,
+          lte: () => chain,
+          neq: () => chain,
+          range: (from: number, to: number) =>
+            Promise.resolve({
+              data: messages.slice(from, Math.min(to + 1, messages.length)),
+            }),
+        };
+        return chain;
+      }
+      if (table === "whatsapp_cloud_conversations") {
+        return {
+          select: () => ({
+            eq: () => ({
+              in: (_col: string, ids: string[]) => {
+                maxInChunk = Math.max(maxInChunk, ids.length);
+                if (ids.length > 150) loadedAllConversations = true;
+                return Promise.resolve({
+                  data: conversations.filter((c) => ids.includes(c.id)),
+                });
+              },
+            }),
+          }),
+        };
+      }
+      throw new Error(`tabela inesperada: ${table}`);
+    },
+  } as unknown as SupabaseClient;
+
+  const count = await contarConversasClientesNoDia(
+    sb,
+    "user-1",
+    "2026-10-26",
+    "2026-10-26T00:00:00-03:00",
+    "2026-10-26T23:59:59-03:00",
+    internos,
+  );
+  assertEquals(count, 1099);
+  assertEquals(loadedAllConversations, false);
+  assert(maxInChunk <= 150);
 });

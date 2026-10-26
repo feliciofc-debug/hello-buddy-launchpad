@@ -73,6 +73,8 @@ const money = (value: number) =>
 const pct = (value: number) =>
   `${value.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 const round = (value: number) => Math.round(value * 100) / 100;
+const CHUNK_IN = 150;
+const PAGE_SIZE = 1000;
 
 /** Comparação de dia civil em America/Sao_Paulo (timestamps) ou YYYY-MM-DD (date). */
 export function isEventoNoDiaSp(val: unknown, dia: string): boolean {
@@ -340,7 +342,8 @@ async function loadTelefonesInternos(
   return internos;
 }
 
-async function contarConversasClientesNoDia(
+/** Mensagens do dia primeiro; conversas só pelos ids distintos (evita scan >1000). */
+export async function contarConversasClientesNoDia(
   sb: SupabaseClient,
   userId: string,
   dia: string,
@@ -348,38 +351,62 @@ async function contarConversasClientesNoDia(
   dayEnd: string,
   internos: Set<string>,
 ): Promise<number> {
-  const { data: convs } = await sb.from("whatsapp_cloud_conversations")
-    .select("id, contact_number")
-    .eq("user_id", userId);
-  const clientIds = (convs ?? [])
-    .filter((c) => !contatoInternoFechamento(String(c.contact_number ?? ""), internos))
-    .map((c) => String(c.id));
-  if (!clientIds.length) return 0;
+  const convIdsComMensagem = new Set<string>();
+  let offset = 0;
+  while (true) {
+    const { data: msgs } = await sb.from("whatsapp_cloud_messages")
+      .select("conversation_id, sender, created_at")
+      .eq("user_id", userId)
+      .gte("created_at", dayStart)
+      .lte("created_at", dayEnd)
+      .neq("sender", "campanha")
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (!msgs?.length) break;
+    for (const m of msgs) {
+      if (String(m.sender ?? "") === "campanha") continue;
+      if (!m.conversation_id || !isEventoNoDiaSp(m.created_at, dia)) continue;
+      convIdsComMensagem.add(String(m.conversation_id));
+    }
+    if (msgs.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+  if (!convIdsComMensagem.size) return 0;
 
-  const counted = new Set<string>();
-  const chunkSize = 150;
-  for (let i = 0; i < clientIds.length; i += chunkSize) {
-    const chunk = clientIds.slice(i, i + chunkSize);
-    let offset = 0;
-    while (true) {
-      const { data: msgs } = await sb.from("whatsapp_cloud_messages")
-        .select("conversation_id, sender, created_at")
-        .eq("user_id", userId)
-        .in("conversation_id", chunk)
-        .gte("created_at", dayStart)
-        .lte("created_at", dayEnd)
-        .range(offset, offset + 999);
-      if (!msgs?.length) break;
-      for (const m of msgs) {
-        if (String(m.sender ?? "") === "campanha") continue;
-        if (!isEventoNoDiaSp(m.created_at, dia)) continue;
-        counted.add(String(m.conversation_id));
+  const clientes = new Set<string>();
+  const ids = [...convIdsComMensagem];
+  for (let i = 0; i < ids.length; i += CHUNK_IN) {
+    const chunk = ids.slice(i, i + CHUNK_IN);
+    const { data: convs } = await sb.from("whatsapp_cloud_conversations")
+      .select("id, contact_number")
+      .eq("user_id", userId)
+      .in("id", chunk);
+    for (const c of convs ?? []) {
+      const id = String(c.id);
+      if (!convIdsComMensagem.has(id)) continue;
+      if (contatoInternoFechamento(String(c.contact_number ?? ""), internos)) {
+        continue;
       }
-      if (msgs.length < 1000) break;
-      offset += 1000;
+      clientes.add(id);
     }
   }
-  return counted.size;
+  return clientes.size;
+}
+
+async function fetchComprasAtivosEmLotes(
+  sb: SupabaseClient,
+  userId: string,
+  activeIds: string[],
+): Promise<Array<{ veiculo_id: string; valor_compra: number | null }>> {
+  const out: Array<{ veiculo_id: string; valor_compra: number | null }> = [];
+  for (let i = 0; i < activeIds.length; i += CHUNK_IN) {
+    const chunk = activeIds.slice(i, i + CHUNK_IN);
+    const { data } = await sb.from("veiculo_compra")
+      .select("veiculo_id,valor_compra")
+      .eq("user_id", userId)
+      .in("veiculo_id", chunk);
+    if (data?.length) out.push(...data);
+  }
+  return out;
 }
 
 async function resumoVendas(
@@ -552,14 +579,9 @@ export async function buildGestaoFechamentoDia(
   const ativos = veiculosRaw ?? [];
   const activeIds = ativos.map((v) => String(v.id));
 
-  let comprasAtivosRaw: Array<{ veiculo_id: string; valor_compra: number | null }> = [];
-  if (activeIds.length) {
-    const { data } = await sb.from("veiculo_compra")
-      .select("veiculo_id,valor_compra")
-      .eq("user_id", userId)
-      .in("veiculo_id", activeIds);
-    comprasAtivosRaw = data ?? [];
-  }
+  const comprasAtivosRaw = activeIds.length
+    ? await fetchComprasAtivosEmLotes(sb, userId, activeIds)
+    : [];
 
   const vendasMesRows = (vendasMesRaw ?? []) as VendaRow[];
   const vendasHojeRows = vendasMesRows.filter((x) =>
