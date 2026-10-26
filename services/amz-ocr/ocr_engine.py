@@ -238,14 +238,16 @@ def _paddle_engine():
             from paddleocr import PaddleOCR
 
             _PADDLE = PaddleOCR(
-                lang=os.environ.get("AMZ_OCR_PADDLE_LANG", "latin"),
                 device="cpu",
+                # O PP-OCRv6 small usa o reconhecedor multilíngue que cobre
+                # português e demais idiomas latinos.
                 text_detection_model_name="PP-OCRv6_small_det",
                 text_recognition_model_name="PP-OCRv6_small_rec",
                 use_doc_orientation_classify=True,
                 use_doc_unwarping=False,
                 use_textline_orientation=True,
-                enable_mkldnn=True,
+                # Paddle 3.3.1 falha em alguns CPUs com atributos PIR/oneDNN.
+                enable_mkldnn=False,
                 cpu_threads=max(1, int(os.environ.get("AMZ_OCR_CPU_THREADS", "4"))),
             )
     return _PADDLE
