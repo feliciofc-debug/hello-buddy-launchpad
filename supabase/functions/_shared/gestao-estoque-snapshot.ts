@@ -91,6 +91,14 @@ function venda(v: GestaoEstoqueVeiculoInput): number {
   return v.preco ?? 0;
 }
 
+/** Soma compra + despesas nos veículos com compra informada (card Estoque hoje). */
+export function gestaoEstoqueValorCustoTotal(
+  vehicles: GestaoEstoqueVeiculoInput[],
+  nowMs = Date.now(),
+): number {
+  return buildGestaoEstoqueSnapshot(vehicles, nowMs).totais.valorCusto;
+}
+
 export function buildGestaoEstoqueSnapshot(
   vehicles: GestaoEstoqueVeiculoInput[],
   nowMs = Date.now(),

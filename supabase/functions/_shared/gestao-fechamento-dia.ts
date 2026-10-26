@@ -4,6 +4,10 @@ import { loadGestaoAuthContext } from "./gestao-auth-phone.ts";
 import { loadGiroResumoItens } from "./giro-resumo-load.ts";
 import type { GiroResumoVeiculoLinha } from "./giro-resumo-mensagem.ts";
 import { normalizeOwnerPhone, ownerPhoneVariants } from "./owner-phone.ts";
+import {
+  gestaoEstoqueValorCustoTotal,
+  type GestaoEstoqueVeiculoInput,
+} from "./gestao-estoque-snapshot.ts";
 import { VEICULO_STATUS_ATIVOS_INTERNOS } from "./veiculo-estoque-status.ts";
 import { dateKeySaoPaulo } from "./vitrine-crm-time.ts";
 
@@ -158,7 +162,7 @@ export function formatarGestaoFechamentoDia(
   }
   if (f.vendasMes.qtd > 0) {
     vendas.push(
-      `Mês: ${f.vendasMes.qtd} · ${money(f.vendasMes.faturamento)} · lucro ${
+      `Mês: ${f.vendasMes.qtd} · ${money(f.vendasMes.faturamento)} · lucro bruto ${
         money(f.vendasMes.lucro)
       }` +
         (f.vendasMes.ticketMedio == null
@@ -181,7 +185,7 @@ export function formatarGestaoFechamentoDia(
     `${f.estoque.total} carros` +
       (f.estoque.valorImobilizado == null
         ? ""
-        : ` · ${money(f.estoque.valorImobilizado)} imobilizado`) +
+        : ` · ${money(f.estoque.valorImobilizado)} investido`) +
       ` · entradas ${f.estoque.entradasHoje} · saídas ${f.estoque.saidasHoje}`,
   );
   if (f.estoque.emPreparacao > 0) {
@@ -409,6 +413,114 @@ async function fetchComprasAtivosEmLotes(
   return out;
 }
 
+async function fetchDespesasAtivosEmLotes(
+  sb: SupabaseClient,
+  userId: string,
+  activeIds: string[],
+): Promise<Array<{ veiculo_id: string; valor: number }>> {
+  const out: Array<{ veiculo_id: string; valor: number }> = [];
+  for (let i = 0; i < activeIds.length; i += CHUNK_IN) {
+    const chunk = activeIds.slice(i, i + CHUNK_IN);
+    const { data } = await sb.from("veiculo_despesas")
+      .select("veiculo_id,valor")
+      .eq("user_id", userId)
+      .in("veiculo_id", chunk)
+      .is("deleted_at", null);
+    if (data?.length) {
+      out.push(
+        ...(data as Array<{ veiculo_id: string; valor: number }>),
+      );
+    }
+  }
+  return out;
+}
+
+/** Mesma regra do card Estoque hoje (compra + despesas), sem consignados. */
+export function estoqueValorCustoInvestidoFechamento(
+  ativos: Array<{
+    id: string;
+    marca: string;
+    status: string;
+    created_at?: string | null;
+  }>,
+  compras: Array<{ veiculo_id: string; valor_compra: number | null }>,
+  despesas: Array<{ veiculo_id: string; valor: number }>,
+  consignados: Set<string>,
+): number | null {
+  const compraBy = new Map(
+    compras.map((c) => [String(c.veiculo_id), c.valor_compra]),
+  );
+  const despesasBy = new Map<string, number>();
+  for (const d of despesas) {
+    const vid = String(d.veiculo_id);
+    despesasBy.set(vid, (despesasBy.get(vid) ?? 0) + Number(d.valor ?? 0));
+  }
+  const inputs: GestaoEstoqueVeiculoInput[] = [];
+  for (const v of ativos) {
+    if (consignados.has(String(v.id))) continue;
+    const valorCompra = compraBy.get(String(v.id)) ?? null;
+    inputs.push({
+      id: String(v.id),
+      marca: String(v.marca ?? ""),
+      preco: null,
+      status: String(v.status),
+      created_at: v.created_at,
+      dataCompra: null,
+      valorCompra: valorCompra == null ? null : Number(valorCompra),
+      despesasTotal: despesasBy.get(String(v.id)) ?? 0,
+    });
+  }
+  if (!inputs.some((x) => x.valorCompra != null)) return null;
+  return round(gestaoEstoqueValorCustoTotal(inputs));
+}
+
+export function montarGestaoFechamentoAcoes(input: {
+  dia: string;
+  giroItems: GiroResumoVeiculoLinha[];
+  recebidasHojeCount: number;
+  cotacaoOsNumero: number | null;
+  financeiro: GestaoFechamentoDia["financeiro"];
+  contas: Array<{
+    tipo: string;
+    pago_em: string | null;
+    vencimento: string;
+  }>;
+  leadsQuentes: number;
+}): string[] {
+  const acoes: string[] = [];
+  const carro90 =
+    input.giroItems.filter((x) => x.dias >= 90).sort((a, b) => b.dias - a.dias)[0];
+  if (carro90) {
+    acoes.push(
+      `Avaliar preço ou repasse do ${carro90.label} (${carro90.dias} dias)`,
+    );
+  }
+  if (input.financeiro && input.financeiro.pagarVencido > 0) {
+    acoes.push(
+      `Pagar ou reagendar contas vencidas (${money(input.financeiro.pagarVencido)})`,
+    );
+  }
+  if (input.recebidasHojeCount > 0) {
+    acoes.push(
+      input.cotacaoOsNumero != null
+        ? `Escolher cotação da OS #${input.cotacaoOsNumero}`
+        : "Escolher cotação recebida hoje",
+    );
+  }
+  const amanha = addDays(input.dia, 1);
+  if (
+    input.contas.some((c) =>
+      c.tipo === "pagar" && !c.pago_em && String(c.vencimento) === amanha
+    )
+  ) {
+    acoes.push("Revisar conta que vence amanhã");
+  }
+  if (input.leadsQuentes > 0) {
+    acoes.push(`Retornar ${input.leadsQuentes} lead(s) quente(s) sem resposta`);
+  }
+  return acoes.slice(0, 3);
+}
+
 async function resumoVendas(
   sb: SupabaseClient,
   userId: string,
@@ -579,9 +691,12 @@ export async function buildGestaoFechamentoDia(
   const ativos = veiculosRaw ?? [];
   const activeIds = ativos.map((v) => String(v.id));
 
-  const comprasAtivosRaw = activeIds.length
-    ? await fetchComprasAtivosEmLotes(sb, userId, activeIds)
-    : [];
+  const [comprasAtivosRaw, despesasAtivosRaw] = activeIds.length
+    ? await Promise.all([
+      fetchComprasAtivosEmLotes(sb, userId, activeIds),
+      fetchDespesasAtivosEmLotes(sb, userId, activeIds),
+    ])
+    : [[], []];
 
   const vendasMesRows = (vendasMesRaw ?? []) as VendaRow[];
   const vendasHojeRows = vendasMesRows.filter((x) =>
@@ -602,18 +717,17 @@ export async function buildGestaoFechamentoDia(
   const consignados = new Set(
     (consignacoesRaw ?? []).map((x) => String(x.veiculo_id)),
   );
-  const valorImobilizadoRows = comprasAtivosRaw.filter((c) =>
-    !consignados.has(String(c.veiculo_id))
+  const valorImobilizado = estoqueValorCustoInvestidoFechamento(
+    ativos.map((v) => ({
+      id: String(v.id),
+      marca: String(v.marca ?? ""),
+      status: String(v.status),
+      created_at: v.created_at,
+    })),
+    comprasAtivosRaw,
+    despesasAtivosRaw,
+    consignados,
   );
-  const valorImobilizado =
-    valorImobilizadoRows.some((c) => c.valor_compra != null)
-      ? round(
-        valorImobilizadoRows.reduce(
-          (s, c) => s + Number(c.valor_compra ?? 0),
-          0,
-        ),
-      )
-      : null;
 
   const giroItems = opts.giroItems ??
     (await loadGiroResumoItens(sb, userId, dia)).items;
@@ -686,31 +800,21 @@ export async function buildGestaoFechamentoDia(
     internos,
   );
 
-  const acoes: string[] = [];
-  const carro90 =
-    giroItems.filter((x) => x.dias >= 90).sort((a, b) => b.dias - a.dias)[0];
-  if (carro90) {
-    acoes.push(
-      `Avaliar preço ou repasse do ${carro90.label} (${carro90.dias} dias)`,
-    );
-  }
-  if (recebidasHoje.length) {
-    acoes.push(
-      primeiraCotacaoOs?.numero
-        ? `Escolher cotação da OS #${primeiraCotacaoOs.numero}`
-        : "Escolher cotação recebida hoje",
-    );
-  }
-  const amanha = addDays(dia, 1);
-  if (
-    financeiro &&
-    (contasRaw ?? []).some((c) =>
-      c.tipo === "pagar" && !c.pago_em && String(c.vencimento) === amanha
-    )
-  ) acoes.push("Revisar conta que vence amanhã");
-  if ((leadsQuentes ?? 0) > 0) {
-    acoes.push(`Retornar ${leadsQuentes} lead(s) quente(s) sem resposta`);
-  }
+  const acoes = montarGestaoFechamentoAcoes({
+    dia,
+    giroItems,
+    recebidasHojeCount: recebidasHoje.length,
+    cotacaoOsNumero: primeiraCotacaoOs?.numero == null
+      ? null
+      : Number(primeiraCotacaoOs.numero),
+    financeiro,
+    contas: (contasRaw ?? []) as Array<{
+      tipo: string;
+      pago_em: string | null;
+      vencimento: string;
+    }>,
+    leadsQuentes: leadsQuentes ?? 0,
+  });
 
   const dados: GestaoFechamentoDia = {
     dia,
