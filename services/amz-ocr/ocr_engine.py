@@ -257,7 +257,18 @@ def preload_paddle() -> None:
     _paddle_engine()
 
 
+def _paddle_input(image: np.ndarray) -> np.ndarray:
+    if image.ndim == 2:
+        image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    elif image.ndim == 3 and image.shape[2] == 4:
+        image = cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
+    if image.dtype != np.uint8:
+        image = np.clip(image, 0, 255).astype(np.uint8)
+    return image
+
+
 def _paddle_reader(image: np.ndarray) -> tuple[str, float]:
+    image = _paddle_input(image)
     texts: list[str] = []
     scores: list[float] = []
     for result in _paddle_engine().predict(image):
@@ -294,7 +305,10 @@ def _run_variants(
     for name, image in variants:
         if time.monotonic() >= deadline:
             break
-        text, confidence = reader(image)
+        try:
+            text, confidence = reader(image)
+        except Exception:
+            continue
         valid = len(valid_crlv_fields(text))
         # O parser decide primeiro. Confiança do motor só desempata; tamanho do
         # texto nunca participa da escolha.
@@ -321,10 +335,7 @@ def recognize_crlv_image(
     paddle = paddle_reader or _paddle_reader
     fallback = tesseract_reader or _tesseract_reader
     engine = "paddleocr"
-    try:
-        text, variant, fields, _ = _run_variants(variants, paddle, deadline)
-    except Exception:
-        text, variant, fields = "", variants[0][0], 0
+    text, variant, fields, _ = _run_variants(variants, paddle, deadline)
     if fields == 0 and time.monotonic() < deadline:
         engine = "tesseract"
         text, variant, fields, _ = _run_variants(variants, fallback, deadline)

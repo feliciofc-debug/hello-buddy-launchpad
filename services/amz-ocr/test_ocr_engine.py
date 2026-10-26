@@ -4,13 +4,21 @@ import io
 import os
 import time
 import unittest
+import unittest.mock
 
 try:
     import cv2
     import numpy as np
     from PIL import Image, ImageDraw, ImageFont
 
-    from ocr_engine import recognize_crlv_image, valid_crlv_fields
+    from ocr_engine import (
+        _paddle_input,
+        _paddle_reader,
+        _run_variants,
+        preprocessing_variants,
+        recognize_crlv_image,
+        valid_crlv_fields,
+    )
 
     OCR_RUNTIME_AVAILABLE = True
 except ModuleNotFoundError:
@@ -110,6 +118,53 @@ class OcrEngineTest(unittest.TestCase):
         self.assertEqual(result.metrics.n_campos_validos, 2)
         self.assertLess(result.metrics.tempo_ms, 5_000)
 
+    def test_run_variants_continues_after_single_variant_failure(self) -> None:
+        image = synthetic_old_crlv()
+        variants = preprocessing_variants(image)
+        calls: list[str] = []
+
+        def reader(arr: np.ndarray) -> tuple[str, float]:
+            name = variants[len(calls)][0] if len(calls) < len(variants) else "x"
+            calls.append(name)
+            if len(calls) == 1:
+                raise ValueError("simulated paddle failure on gray variant")
+            return ("PLACA\nABC1D23\nCHASSI\n9BWZZZ377VT004251", 0.8)
+
+        text, variant, fields, _ = _run_variants(
+            variants,
+            reader,
+            time.monotonic() + 5,
+        )
+        self.assertGreater(len(calls), 1)
+        self.assertIn("placa", valid_crlv_fields(text))
+        self.assertIn("chassi", valid_crlv_fields(text))
+        self.assertGreaterEqual(fields, 2)
+
+    def test_paddle_reader_accepts_gray_2d_array(self) -> None:
+        gray = np.zeros((120, 200), dtype=np.uint8)
+        bgr = _paddle_input(gray)
+        self.assertEqual(bgr.ndim, 3)
+        self.assertEqual(bgr.shape[2], 3)
+
+        captured: list[tuple] = []
+
+        class FakeOcr:
+            def predict(self, image: np.ndarray):
+                captured.append(image.shape)
+                return [{"rec_texts": ["ABC1D23"], "rec_scores": [0.9]}]
+
+        import ocr_engine as engine_mod
+
+        with unittest.mock.patch.object(
+            engine_mod,
+            "_paddle_engine",
+            return_value=FakeOcr(),
+        ):
+            text, confidence = engine_mod._paddle_reader(gray)
+        self.assertEqual(captured[0], bgr.shape)
+        self.assertIn("ABC1D23", text)
+        self.assertGreater(confidence, 0)
+
     @unittest.skipUnless(
         os.environ.get("AMZ_OCR_REAL_TESTS") == "1",
         "teste real roda na imagem Docker com os modelos locais",
@@ -128,6 +183,11 @@ class OcrEngineTest(unittest.TestCase):
                 fields = valid_crlv_fields(result.text)
                 self.assertIn("placa", fields)
                 self.assertIn("chassi", fields)
+                self.assertEqual(
+                    result.metrics.motor,
+                    "paddleocr",
+                    "variantes em cinza não podem derrubar o Paddle inteiro",
+                )
                 self.assertLess(time.monotonic() - started, 25)
                 measurements.append(result.metrics.tempo_ms)
                 engines.add(result.metrics.motor)
