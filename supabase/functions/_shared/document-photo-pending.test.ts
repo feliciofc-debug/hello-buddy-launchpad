@@ -119,3 +119,24 @@ Deno.test("DOC-0.3 — mensagem alheia repete confirmação no máximo uma vez",
   const second = nextPhotoConfirmationReprompt(first.pending!);
   assertEquals(second, { pending: null, reprompt: false });
 });
+
+Deno.test("DOC-0.3 — processor limpa antes de re-perguntar e antes de tratar documento", async () => {
+  const source = await Deno.readTextFile(
+    new URL("../whatsapp-cloud-inbound-processor/index.ts", import.meta.url),
+  );
+  const earlyCleanup = source.indexOf(
+    "// DOC-0.3 — limpa foto presa antes de qualquer atalho ou re-pergunta.",
+  );
+  const confirmation = source.indexOf(
+    'pendingSinglePhoto?.stage === "confirm_vision"',
+  );
+  assertEquals(earlyCleanup >= 0, true);
+  assertEquals(earlyCleanup < confirmation, true);
+  assertEquals(source.includes('const reply = "Ok, cancelado."'), true);
+  assertEquals(
+    source.includes(
+      "if (fromIsOwner && (detectedDocument || possibleDocument))",
+    ),
+    true,
+  );
+});
