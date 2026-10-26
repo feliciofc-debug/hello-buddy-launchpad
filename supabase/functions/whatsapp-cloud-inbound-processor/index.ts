@@ -24735,7 +24735,7 @@ async function processOne(queueId: string) {
               releasedPossibleDocument = {
                 kind: "image",
                 mime: String(pendingDoc.mime || "image/jpeg"),
-                base64: base64Encode(bytes),
+                base64: base64Encode(Uint8Array.from(bytes).buffer),
               };
               userText = "Não é documento";
               await sb.storage.from("gestao-cofre").remove([
