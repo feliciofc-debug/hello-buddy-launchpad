@@ -187,7 +187,10 @@ Deno.test("DOC-0 — serviço separa detecção rápida da leitura completa", as
   const source = await Deno.readTextFile(
     new URL("../../../services/amz-ocr/app.py", import.meta.url),
   );
-  assertEquals(source.includes("_resize(image, 2400)"), true);
+  const fullOcr = await Deno.readTextFile(
+    new URL("../../../services/amz-ocr/ocr_engine.py", import.meta.url),
+  );
+  assertEquals(fullOcr.includes("_resize_max(rgb, 2400)"), true);
   assertEquals(source.includes("_resize(image, 1400)"), true);
   assertEquals(source.includes('config="--oem 1 --psm 11"'), true);
   assertEquals(source.includes("DETECT_TIMEOUT_SECONDS = 8"), true);

@@ -254,7 +254,7 @@ export function GestaoCrlvConferencia({
           onChange={(event) =>
             setValues({ ...values, [key]: event.target.value })}
         />
-        {veiculoId && (
+        {(veiculoId || trocaId) && (
           <label className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
             <input
               type="checkbox"
