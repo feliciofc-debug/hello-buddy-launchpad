@@ -4,13 +4,19 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  contatoInternoFechamento,
+  formatarCabecalhoFechamento,
   formatarGestaoFechamentoDia,
+  isEventoNoDiaSp,
+  montarFiltroContasFechamento,
   type GestaoFechamentoDia,
 } from "./gestao-fechamento-dia.ts";
+import { VEICULO_STATUS_ATIVOS_INTERNOS } from "./veiculo-estoque-status.ts";
 
 function fixture(): GestaoFechamentoDia {
   return {
     dia: "2026-10-26",
+    lojaNome: "Auto Center SP",
     vendasHoje: {
       qtd: 2,
       faturamento: 145000,
@@ -128,4 +134,72 @@ Deno.test("RESUMO-2 — exemplo fictício completo", () => {
   assert(text.length <= 3500);
   assertStringIncludes(text, "Despesa operacional hoje");
   assertStringIncludes(text, "À parte: repasse");
+});
+
+Deno.test("RESUMO-2.1 — filtro contas e estoque ativo no builder", async () => {
+  const source = await Deno.readTextFile(new URL(
+    "./gestao-fechamento-dia.ts",
+    import.meta.url,
+  ));
+  assertStringIncludes(source, '.in("status", statusAtivos)');
+  assertStringIncludes(source, "VEICULO_STATUS_ATIVOS_INTERNOS");
+  assertStringIncludes(source, "montarFiltroContasFechamento(dia)");
+  assertStringIncludes(source, '.in("veiculo_id", ids)');
+  assertEquals(
+    montarFiltroContasFechamento("2026-10-26").includes("pago_em.eq.2026-10-26"),
+    true,
+  );
+  assertEquals(statusAtivosIncludes(), true);
+});
+
+function statusAtivosIncludes(): boolean {
+  return VEICULO_STATUS_ATIVOS_INTERNOS.includes("disponivel");
+}
+
+Deno.test("RESUMO-2.1 — fuso SP em timestamp (21h+ no mesmo dia civil)", () => {
+  // 2026-10-27 00:30 UTC = 26/10 21:30 em São Paulo
+  assertEquals(
+    isEventoNoDiaSp("2026-10-27T00:30:00.000Z", "2026-10-26"),
+    true,
+  );
+  assertEquals(
+    isEventoNoDiaSp("2026-10-27T02:59:59.000Z", "2026-10-26"),
+    true,
+  );
+  assertEquals(
+    isEventoNoDiaSp("2026-10-27T03:00:00.000Z", "2026-10-26"),
+    false,
+  );
+  assertEquals(isEventoNoDiaSp("2026-10-26", "2026-10-26"), true);
+});
+
+Deno.test("RESUMO-2.1 — atendimento exclui dono e parceiro", () => {
+  const internos = new Set(["5521999990001", "5521888880002"]);
+  assertEquals(contatoInternoFechamento("5521999990001", internos), true);
+  assertEquals(contatoInternoFechamento("5521888880002", internos), true);
+  assertEquals(contatoInternoFechamento("5511977773333", internos), false);
+});
+
+Deno.test("RESUMO-2.1 — textos cabeçalho e labels corrigidos", () => {
+  const cab = formatarCabecalhoFechamento("Auto Center SP", "2026-10-26");
+  assertStringIncludes(cab, "FECHAMENTO DO DIA — Auto Center SP · 26/10");
+  const text = formatarGestaoFechamentoDia(fixture());
+  assertStringIncludes(text, cab);
+  assertStringIncludes(
+    text,
+    "Mês vs. mesmo período do mês anterior (faturamento): +8,4%",
+  );
+  assertStringIncludes(text, "Acumulado do mês (carros em estoque):");
+  const semVenda = formatarGestaoFechamentoDia({
+    ...fixture(),
+    vendasHoje: {
+      qtd: 0,
+      faturamento: 0,
+      lucro: 0,
+      margemPct: null,
+      ticketMedio: null,
+    },
+  });
+  assertStringIncludes(semVenda, "🚗 *VENDAS*");
+  assertStringIncludes(semVenda, "Hoje: nenhuma venda");
 });

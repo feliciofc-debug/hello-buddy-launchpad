@@ -1,7 +1,11 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { calcGestaoLucro } from "./gestao-lucro-calc.ts";
+import { loadGestaoAuthContext } from "./gestao-auth-phone.ts";
 import { loadGiroResumoItens } from "./giro-resumo-load.ts";
 import type { GiroResumoVeiculoLinha } from "./giro-resumo-mensagem.ts";
+import { normalizeOwnerPhone, ownerPhoneVariants } from "./owner-phone.ts";
+import { VEICULO_STATUS_ATIVOS_INTERNOS } from "./veiculo-estoque-status.ts";
+import { dateKeySaoPaulo } from "./vitrine-crm-time.ts";
 
 export type FechamentoVenda = {
   qtd: number;
@@ -13,6 +17,7 @@ export type FechamentoVenda = {
 
 export type GestaoFechamentoDia = {
   dia: string;
+  lojaNome: string;
   vendasHoje: FechamentoVenda;
   vendasMes: FechamentoVenda;
   comparacaoMesAnteriorPct: number | null;
@@ -69,6 +74,52 @@ const pct = (value: number) =>
   `${value.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 const round = (value: number) => Math.round(value * 100) / 100;
 
+/** Comparação de dia civil em America/Sao_Paulo (timestamps) ou YYYY-MM-DD (date). */
+export function isEventoNoDiaSp(val: unknown, dia: string): boolean {
+  if (val == null || val === "") return false;
+  const s = String(val).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s === dia;
+  const parsed = Date.parse(s);
+  if (!Number.isFinite(parsed)) return s.slice(0, 10) === dia;
+  return dateKeySaoPaulo(new Date(parsed)) === dia;
+}
+
+/** PostgREST: contas em aberto ou liquidadas no dia (evita scan completo). */
+export function montarFiltroContasFechamento(dia: string): string {
+  return [
+    "and(tipo.eq.pagar,pago_em.is.null)",
+    "and(tipo.eq.receber,recebido_em.is.null)",
+    `pago_em.eq.${dia}`,
+    `recebido_em.eq.${dia}`,
+  ].join(",");
+}
+
+export function formatarCabecalhoFechamento(lojaNome: string, dia: string): string {
+  const [ys, ms, ds] = dia.split("-");
+  const y = Number(ys);
+  const m = Number(ms);
+  const d = Number(ds);
+  const weekday = new Date(Date.UTC(y, m - 1, d, 15)).toLocaleDateString("pt-BR", {
+    weekday: "short",
+    timeZone: "America/Sao_Paulo",
+  });
+  const nome = lojaNome.trim() || "Minha loja";
+  return `📊 *FECHAMENTO DO DIA — ${nome} · ${ds}/${ms} (${weekday})*`;
+}
+
+/** Conversa de cliente: exclui dono, gestores e parceiros. */
+export function contatoInternoFechamento(
+  contactNumber: string,
+  internos: Set<string>,
+): boolean {
+  const normalized = normalizeOwnerPhone(contactNumber);
+  if (!normalized) return true;
+  for (const v of ownerPhoneVariants(contactNumber)) {
+    if (internos.has(v)) return true;
+  }
+  return false;
+}
+
 function venda(
   qtd: number,
   faturamento: number,
@@ -87,9 +138,10 @@ export function formatarGestaoFechamentoDia(
   f: GestaoFechamentoDia,
   limite = 3500,
 ): string {
-  const [y, m, d] = f.dia.split("-");
   const sections: string[][] = [];
-  const vendas = [`🚗 *VENDAS — ${d}/${m}/${y}*`];
+  sections.push([formatarCabecalhoFechamento(f.lojaNome, f.dia)]);
+
+  const vendas = ["🚗 *VENDAS*"];
   if (f.vendasHoje.qtd > 0) {
     vendas.push(
       `Hoje: ${f.vendasHoje.qtd} · ${
@@ -115,7 +167,7 @@ export function formatarGestaoFechamentoDia(
   if (f.comparacaoMesAnteriorPct != null) {
     const sinal = f.comparacaoMesAnteriorPct > 0 ? "+" : "";
     vendas.push(
-      `Vs. mesmo dia do mês anterior: ${sinal}${
+      `Mês vs. mesmo período do mês anterior (faturamento): ${sinal}${
         pct(f.comparacaoMesAnteriorPct)
       }`,
     );
@@ -143,7 +195,9 @@ export function formatarGestaoFechamentoDia(
     custo.push(`Hoje: ${money(f.custoEstoque.hoje)}`);
   }
   if (f.custoEstoque.mes != null) {
-    custo.push(`Acumulado do mês: ${money(f.custoEstoque.mes)}`);
+    custo.push(
+      `Acumulado do mês (carros em estoque): ${money(f.custoEstoque.mes)}`,
+    );
   }
   custo.push(
     `Faixas: 30 dias ${f.custoEstoque.dias30} · 60 dias ${f.custoEstoque.dias60} · 90+ dias ${f.custoEstoque.dias90Mais}`,
@@ -239,7 +293,6 @@ export function formatarGestaoFechamentoDia(
   let text = sections.map((s) => s.join("\n")).join("\n\n");
   if (text.length <= limite) return text;
 
-  // Primeiro corte: detalhes do top 3, preservando totais e decisões.
   const semTop = { ...f, custoEstoque: { ...f.custoEstoque, top3: [] } };
   text = formatarGestaoFechamentoDia(semTop, Number.MAX_SAFE_INTEGER);
   if (text.length <= limite) return text;
@@ -266,32 +319,107 @@ function previousMonthSameDay(ymd: string): string {
   }`;
 }
 
+async function loadTelefonesInternos(
+  sb: SupabaseClient,
+  userId: string,
+): Promise<Set<string>> {
+  const ctx = await loadGestaoAuthContext(sb, userId);
+  const { data: parceiros } = await sb.from("gestao_parceiro")
+    .select("whatsapp_e164")
+    .eq("user_id", userId)
+    .eq("ativo", true);
+  const internos = new Set<string>();
+  for (const raw of [ctx.ownerPhone, ...ctx.ownerAltPhones, ...ctx.gestores]) {
+    for (const v of ownerPhoneVariants(raw)) internos.add(v);
+  }
+  for (const row of parceiros ?? []) {
+    for (const v of ownerPhoneVariants(String(row.whatsapp_e164 ?? ""))) {
+      if (v) internos.add(v);
+    }
+  }
+  return internos;
+}
+
+async function contarConversasClientesNoDia(
+  sb: SupabaseClient,
+  userId: string,
+  dia: string,
+  dayStart: string,
+  dayEnd: string,
+  internos: Set<string>,
+): Promise<number> {
+  const { data: convs } = await sb.from("whatsapp_cloud_conversations")
+    .select("id, contact_number")
+    .eq("user_id", userId);
+  const clientIds = (convs ?? [])
+    .filter((c) => !contatoInternoFechamento(String(c.contact_number ?? ""), internos))
+    .map((c) => String(c.id));
+  if (!clientIds.length) return 0;
+
+  const counted = new Set<string>();
+  const chunkSize = 150;
+  for (let i = 0; i < clientIds.length; i += chunkSize) {
+    const chunk = clientIds.slice(i, i + chunkSize);
+    let offset = 0;
+    while (true) {
+      const { data: msgs } = await sb.from("whatsapp_cloud_messages")
+        .select("conversation_id, sender, created_at")
+        .eq("user_id", userId)
+        .in("conversation_id", chunk)
+        .gte("created_at", dayStart)
+        .lte("created_at", dayEnd)
+        .range(offset, offset + 999);
+      if (!msgs?.length) break;
+      for (const m of msgs) {
+        if (String(m.sender ?? "") === "campanha") continue;
+        if (!isEventoNoDiaSp(m.created_at, dia)) continue;
+        counted.add(String(m.conversation_id));
+      }
+      if (msgs.length < 1000) break;
+      offset += 1000;
+    }
+  }
+  return counted.size;
+}
+
 async function resumoVendas(
   sb: SupabaseClient,
   userId: string,
   rows: VendaRow[],
 ): Promise<FechamentoVenda> {
+  if (!rows.length) return venda(0, 0, 0);
+  const ids = [...new Set(rows.map((r) => r.veiculo_id))];
+  const [{ data: compras }, { data: despesas }] = await Promise.all([
+    sb.from("veiculo_compra").select("veiculo_id, valor_compra, data_compra")
+      .eq("user_id", userId).in("veiculo_id", ids),
+    sb.from("veiculo_despesas").select("veiculo_id, valor, categoria")
+      .eq("user_id", userId).in("veiculo_id", ids).is("deleted_at", null),
+  ]);
+  const compraBy = new Map(
+    (compras ?? []).map((c: { veiculo_id: string; valor_compra: number; data_compra: string }) => [
+      String(c.veiculo_id),
+      c,
+    ]),
+  );
+  const despBy = new Map<string, Array<{ valor: number; categoria: string }>>();
+  for (const d of despesas ?? []) {
+    const vid = String((d as { veiculo_id: string }).veiculo_id);
+    const list = despBy.get(vid) ?? [];
+    list.push({
+      valor: Number((d as { valor: number }).valor),
+      categoria: String((d as { categoria: string }).categoria ?? ""),
+    });
+    despBy.set(vid, list);
+  }
+
   let lucro = 0;
   for (const row of rows) {
-    const [{ data: compra }, { data: despesas }] = await Promise.all([
-      sb.from("veiculo_compra").select("valor_compra,data_compra")
-        .eq("user_id", userId).eq("veiculo_id", row.veiculo_id).maybeSingle(),
-      sb.from("veiculo_despesas").select("valor,categoria")
-        .eq("user_id", userId).eq("veiculo_id", row.veiculo_id).is(
-          "deleted_at",
-          null,
-        ),
-    ]);
+    const compra = compraBy.get(String(row.veiculo_id));
     const calc = calcGestaoLucro({
       valorCompra: compra?.valor_compra == null
         ? null
         : Number(compra.valor_compra),
-      despesas: (despesas ?? []).map((
-        x: { valor: number; categoria: string },
-      ) => ({
-        valor: Number(x.valor),
-        categoria: x.categoria,
-      })),
+      despesas: despBy.get(String(row.veiculo_id)) ?? [],
       valorVenda: Number(row.valor_venda),
       precoAnunciado: null,
       dataCompra: compra?.data_compra ?? null,
@@ -364,39 +492,32 @@ export async function buildGestaoFechamentoDia(
   const dayStart = `${dia}T00:00:00-03:00`;
   const dayEnd = `${dia}T23:59:59-03:00`;
   const cutoff24h = `${addDays(dia, -1)}T23:59:59-03:00`;
+  const statusAtivos = [...VEICULO_STATUS_ATIVOS_INTERNOS];
 
   const [
     { data: vendasMesRaw },
     { data: vendasPrevRaw },
     { data: veiculosRaw },
-    { data: comprasRaw },
     { data: consignacoesRaw },
     { data: osRaw },
     { data: cotacoesRaw },
     { data: osConfig },
+    { data: empresa },
     { data: contasRaw },
     { count: leadsNovos },
     { count: leadsQuentes },
-    { data: mensagensRaw },
+    { data: comprasEntradaRaw },
+    internos,
   ] = await Promise.all([
     sb.from("veiculo_venda").select("veiculo_id,valor_venda,data_venda")
-      .eq("user_id", userId).gte("data_venda", inicioMes).lte(
-        "data_venda",
-        dia,
-      ),
+      .eq("user_id", userId).gte("data_venda", inicioMes).lte("data_venda", dia),
     sb.from("veiculo_venda").select("veiculo_id,valor_venda,data_venda")
-      .eq("user_id", userId).gte("data_venda", prevStart).lte(
-        "data_venda",
-        prevEnd,
-      ),
+      .eq("user_id", userId).gte("data_venda", prevStart).lte("data_venda", prevEnd),
     sb.from("veiculos_estoque").select(
       "id,marca,modelo,ano_modelo,status,created_at,updated_at",
     )
-      .eq("user_id", userId),
-    sb.from("veiculo_compra").select("veiculo_id,valor_compra,data_compra").eq(
-      "user_id",
-      userId,
-    ),
+      .eq("user_id", userId)
+      .in("status", statusAtivos),
     sb.from("veiculo_consignacao").select("veiculo_id,status").eq(
       "user_id",
       userId,
@@ -409,25 +530,36 @@ export async function buildGestaoFechamentoDia(
       "alerta_os_parada_dias,alerta_preparacao_parada_dias",
     )
       .eq("user_id", userId).maybeSingle(),
+    sb.from("empresa_config").select("nome_empresa").eq("user_id", userId).maybeSingle(),
     sb.from("gestao_conta_lancamento")
       .select("tipo,natureza,valor,vencimento,pago_em,recebido_em,created_at")
-      .eq("user_id", userId).is("deleted_at", null),
+      .eq("user_id", userId)
+      .is("deleted_at", null)
+      .or(montarFiltroContasFechamento(dia)),
     sb.from("jarvis_leads").select("id", { count: "exact", head: true })
-      .eq("user_id", userId).gte("created_at", dayStart).lte(
-        "created_at",
-        dayEnd,
-      ),
+      .eq("user_id", userId).gte("created_at", dayStart).lte("created_at", dayEnd),
     sb.from("lead_notifications").select("id", { count: "exact", head: true })
       .eq("user_id", userId).eq("status", "quente").eq("visualizado", false).lt(
         "created_at",
         cutoff24h,
       ),
-    sb.from("whatsapp_cloud_messages").select("conversation_id,sender")
-      .eq("user_id", userId).gte("created_at", dayStart).lte(
-        "created_at",
-        dayEnd,
-      ).limit(3000),
+    sb.from("veiculo_compra").select("veiculo_id")
+      .eq("user_id", userId).eq("data_compra", dia),
+    loadTelefonesInternos(sb, userId),
   ]);
+
+  const lojaNome = String(empresa?.nome_empresa ?? "").trim() || "Minha loja";
+  const ativos = veiculosRaw ?? [];
+  const activeIds = ativos.map((v) => String(v.id));
+
+  let comprasAtivosRaw: Array<{ veiculo_id: string; valor_compra: number | null }> = [];
+  if (activeIds.length) {
+    const { data } = await sb.from("veiculo_compra")
+      .select("veiculo_id,valor_compra")
+      .eq("user_id", userId)
+      .in("veiculo_id", activeIds);
+    comprasAtivosRaw = data ?? [];
+  }
 
   const vendasMesRows = (vendasMesRaw ?? []) as VendaRow[];
   const vendasHojeRows = vendasMesRows.filter((x) =>
@@ -445,14 +577,10 @@ export async function buildGestaoFechamentoDia(
     )
     : null;
 
-  const veiculos = veiculosRaw ?? [];
-  const ativos = veiculos.filter((v) => String(v.status) !== "vendido");
   const consignados = new Set(
     (consignacoesRaw ?? []).map((x) => String(x.veiculo_id)),
   );
-  const compras = comprasRaw ?? [];
-  const valorImobilizadoRows = compras.filter((c) =>
-    ativos.some((v) => String(v.id) === String(c.veiculo_id)) &&
+  const valorImobilizadoRows = comprasAtivosRaw.filter((c) =>
     !consignados.has(String(c.veiculo_id))
   );
   const valorImobilizado =
@@ -473,19 +601,17 @@ export async function buildGestaoFechamentoDia(
   const cotacoes = cotacoesRaw ?? [];
   const osAlerta = Number(osConfig?.alerta_os_parada_dias ?? 7);
   const prepAlerta = Number(osConfig?.alerta_preparacao_parada_dias ?? 15);
-  const osParadas =
-    os.filter((x) =>
-      Date.parse(String(x.ultima_movimentacao_em)) <
-        Date.parse(`${addDays(dia, -osAlerta)}T00:00:00-03:00`)
-    ).length;
-  const preparacaoParada =
-    ativos.filter((x) =>
-      String(x.status) === "em_preparacao" &&
-      Date.parse(String(x.updated_at ?? x.created_at)) <
-        Date.parse(`${addDays(dia, -prepAlerta)}T00:00:00-03:00`)
-    ).length;
+  const limiteOs = Date.parse(`${addDays(dia, -osAlerta)}T00:00:00-03:00`);
+  const limitePrep = Date.parse(`${addDays(dia, -prepAlerta)}T00:00:00-03:00`);
+  const osParadas = os.filter((x) =>
+    Date.parse(String(x.ultima_movimentacao_em)) < limiteOs
+  ).length;
+  const preparacaoParada = ativos.filter((x) =>
+    String(x.status) === "em_preparacao" &&
+    Date.parse(String(x.updated_at ?? x.created_at)) < limitePrep
+  ).length;
   const recebidasHoje = cotacoes.filter((x) =>
-    String(x.recebida_em ?? "").slice(0, 10) === dia
+    isEventoNoDiaSp(x.recebida_em, dia)
   );
   const primeiraCotacaoOs = os.find((x) =>
     recebidasHoje.some((c) => String(c.os_id) === String(x.id))
@@ -499,8 +625,8 @@ export async function buildGestaoFechamentoDia(
       round(contas.filter(pred).reduce((s, c) => s + Number(c.valor ?? 0), 0));
     const emAberto = (c: Record<string, unknown>) =>
       String(c.tipo) === "pagar" ? !c.pago_em : !c.recebido_em;
-    const pagoHoje = (c: Record<string, unknown>) =>
-      String(c.pago_em ?? c.recebido_em ?? "").slice(0, 10) === dia;
+    const pagoNoDia = (c: Record<string, unknown>) =>
+      isEventoNoDiaSp(c.pago_em ?? c.recebido_em, dia);
     financeiro = {
       pagar7Dias: soma((c) =>
         c.tipo === "pagar" && emAberto(c) && String(c.vencimento) >= dia &&
@@ -517,24 +643,26 @@ export async function buildGestaoFechamentoDia(
         c.tipo === "receber" && emAberto(c) && String(c.vencimento) < dia
       ),
       despesaOperacionalHoje: soma((c) =>
-        c.tipo === "pagar" && c.natureza === "operacional" && pagoHoje(c)
+        c.tipo === "pagar" && c.natureza === "operacional" && pagoNoDia(c)
       ),
       repasseHoje: soma((c) =>
-        c.natureza === "repasse_terceiro" && pagoHoje(c)
+        c.natureza === "repasse_terceiro" && pagoNoDia(c)
       ),
-      trocoHoje: soma((c) => c.natureza === "troco_cliente" && pagoHoje(c)),
+      trocoHoje: soma((c) => c.natureza === "troco_cliente" && pagoNoDia(c)),
       custoVeiculoHoje: soma((c) =>
-        c.natureza === "custo_veiculo" && pagoHoje(c)
+        c.natureza === "custo_veiculo" && pagoNoDia(c)
       ),
     };
   }
 
-  const convs = new Set<string>();
-  for (const m of mensagensRaw ?? []) {
-    if (String(m.sender ?? "") !== "campanha" && m.conversation_id) {
-      convs.add(String(m.conversation_id));
-    }
-  }
+  const conversasHoje = await contarConversasClientesNoDia(
+    sb,
+    userId,
+    dia,
+    dayStart,
+    dayEnd,
+    internos,
+  );
 
   const acoes: string[] = [];
   const carro90 =
@@ -564,15 +692,14 @@ export async function buildGestaoFechamentoDia(
 
   const dados: GestaoFechamentoDia = {
     dia,
+    lojaNome,
     vendasHoje,
     vendasMes,
     comparacaoMesAnteriorPct,
     estoque: {
       total: ativos.length,
       valorImobilizado,
-      entradasHoje:
-        compras.filter((x) => String(x.data_compra).slice(0, 10) === dia)
-          .length,
+      entradasHoje: (comprasEntradaRaw ?? []).length,
       saidasHoje: vendasHoje.qtd,
       emPreparacao:
         ativos.filter((x) => String(x.status) === "em_preparacao").length,
@@ -591,7 +718,7 @@ export async function buildGestaoFechamentoDia(
     },
     financeiro,
     atendimento: {
-      conversasHoje: convs.size,
+      conversasHoje,
       leadsNovos: leadsNovos ?? 0,
       leadsQuentesSemRetorno24h: leadsQuentes ?? 0,
     },
