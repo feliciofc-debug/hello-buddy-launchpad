@@ -232,6 +232,7 @@ export function GestaoOsCotacaoPanel({
   };
 
   const verPdf = async (cotacaoId: string) => {
+    const w = window.open("", "_blank");
     try {
       const { data, error } = await supabase.functions.invoke(
         "gestao-os-cotacao-whatsapp-send",
@@ -246,8 +247,10 @@ export function GestaoOsCotacaoPanel({
       if (error) throw new Error(error.message);
       const url = data?.results?.[0]?.pdfUrl;
       if (!url) throw new Error(data?.results?.[0]?.error ?? "Prévia indisponível");
-      window.open(url, "_blank", "noopener,noreferrer");
+      if (w) w.location.href = url;
+      else window.open(url, "_blank", "noopener,noreferrer");
     } catch (e) {
+      w?.close();
       toast.error(e instanceof Error ? e.message : "Falha ao gerar PDF");
     }
   };

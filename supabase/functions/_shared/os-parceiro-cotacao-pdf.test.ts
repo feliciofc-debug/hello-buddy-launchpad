@@ -8,6 +8,7 @@ import {
 import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
 import {
   buildGestaoOsCotacaoWhatsappPdfBytes,
+  compositeImageOnWhiteBackground,
   normalizeTextoPdfPortugues,
 } from "./os-parceiro-cotacao-pdf.ts";
 
@@ -100,6 +101,40 @@ Deno.test("COTACAO-WPP-1.3 — acentos portugueses são preservados", () => {
     normalizeTextoPdfPortugues("Pedido de cotação — higienização"),
     "Pedido de cotação — higienização",
   );
+});
+
+Deno.test("COTACAO-WPP-1.4 — PNG transparente composto fica branco no canto", () => {
+  const logo = new Image(4, 4);
+  logo.fill(0x00000000);
+  logo.setPixelAt(2, 2, 0xff0000ff);
+  const flat = compositeImageOnWhiteBackground(logo);
+  const idx = (0 * flat.width + 0) * 4;
+  assertEquals(flat.bitmap[idx], 255);
+  assertEquals(flat.bitmap[idx + 1], 255);
+  assertEquals(flat.bitmap[idx + 2], 255);
+});
+
+Deno.test("COTACAO-WPP-1.4 — empresa_config select sem cnpj/cidade", async () => {
+  const source = await Deno.readTextFile(new URL(
+    "../gestao-os-cotacao-whatsapp-send/index.ts",
+    import.meta.url,
+  ));
+  assertStringIncludes(source, '.select("nome_empresa,site,identidade_site")');
+  assertEquals(source.includes("nome_empresa,cnpj,cidade"), false);
+});
+
+Deno.test("COTACAO-WPP-1.4 — preview não grava gestao_os_documento", async () => {
+  const source = await Deno.readTextFile(new URL(
+    "./os-parceiro-whatsapp-envio.ts",
+    import.meta.url,
+  ));
+  assertStringIncludes(source, "/previa/");
+  const previewBlock = source.slice(
+    source.indexOf("const preview = input.previewOnly"),
+    source.indexOf("if (input.previewOnly) {"),
+  );
+  assertStringIncludes(previewBlock, "if (!preview)");
+  assertStringIncludes(previewBlock, 'from("gestao_os_documento").insert');
 });
 
 Deno.test("COTACAO-WPP-1.3 — fotos avulsas precedem mensagem final", async () => {

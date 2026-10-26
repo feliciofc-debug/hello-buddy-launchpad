@@ -168,7 +168,10 @@ export async function enviarPedidoCotacaoParceiroWhatsApp(
     fotos: fotosComUrl,
     log: (warning) => console.warn("[os-cotacao-pdf]", warning),
   });
-  const path = `${input.userId}/os/${input.osId}/${crypto.randomUUID()}-pedido-cotacao-${input.osNumero}.pdf`;
+  const preview = input.previewOnly === true;
+  const path = preview
+    ? `${input.userId}/os/${input.osId}/previa/${crypto.randomUUID()}-pedido-cotacao-${input.osNumero}.pdf`
+    : `${input.userId}/os/${input.osId}/${crypto.randomUUID()}-pedido-cotacao-${input.osNumero}.pdf`;
   const { error: upErr } = await sb.storage.from("gestao-os-documentos").upload(path, pdfBytes, {
     contentType: "application/pdf",
     upsert: false,
@@ -177,17 +180,20 @@ export async function enviarPedidoCotacaoParceiroWhatsApp(
     return { cotacaoId: input.cotacaoId, ok: false, mode: "falhou", error: upErr.message };
   }
 
-  await sb.from("gestao_os_documento").insert({
-    user_id: input.userId,
-    os_id: input.osId,
-    tipo: "pedido_cotacao",
-    storage_path: path,
-    mime_type: "application/pdf",
-    tamanho_bytes: pdfBytes.byteLength,
-  });
+  if (!preview) {
+    await sb.from("gestao_os_documento").insert({
+      user_id: input.userId,
+      os_id: input.osId,
+      tipo: "pedido_cotacao",
+      storage_path: path,
+      mime_type: "application/pdf",
+      tamanho_bytes: pdfBytes.byteLength,
+    });
+  }
 
+  const signedTtl = preview ? 600 : 3600;
   const { data: signed } = await sb.storage.from("gestao-os-documentos")
-    .createSignedUrl(path, 3600);
+    .createSignedUrl(path, signedTtl);
   const docUrl = signed?.signedUrl;
   if (!docUrl) {
     return { cotacaoId: input.cotacaoId, ok: false, mode: "falhou", error: "URL do PDF indisponível" };

@@ -8,6 +8,14 @@ import { toMetaSafeImageUrl } from "./meta-media.ts";
 
 export type GestaoOsPdfFoto = { url: string; legenda: string };
 
+/** PNG transparente vira preto no JPEG; compor sobre branco antes de codificar. */
+export function compositeImageOnWhiteBackground(decoded: Image): Image {
+  const canvas = new Image(decoded.width, decoded.height);
+  canvas.fill(0xffffffff);
+  canvas.composite(decoded, 0, 0);
+  return canvas;
+}
+
 export function normalizeTextoPdfPortugues(raw: string): string {
   return raw
     .replace(/[^\S\r\n]+/g, " ")
@@ -80,7 +88,11 @@ export async function buildGestaoOsCotacaoWhatsappPdfBytes(
     }
   };
 
-  async function normalizedJpeg(url: string, label: string): Promise<{
+  async function normalizedJpeg(
+    url: string,
+    label: string,
+    whiteBackground = false,
+  ): Promise<{
     bytes: Uint8Array;
     width: number;
     height: number;
@@ -89,7 +101,10 @@ export async function buildGestaoOsCotacaoWhatsappPdfBytes(
       const safeUrl = toMetaSafeImageUrl(url) ?? url;
       const response = await fetch(safeUrl);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const decoded = await Image.decode(new Uint8Array(await response.arrayBuffer()));
+      let decoded = await Image.decode(new Uint8Array(await response.arrayBuffer()));
+      if (whiteBackground) {
+        decoded = compositeImageOnWhiteBackground(decoded);
+      }
       const ratio = Math.min(1, 1600 / Math.max(decoded.width, decoded.height));
       if (ratio < 1) {
         decoded.resize(
@@ -121,7 +136,7 @@ export async function buildGestaoOsCotacaoWhatsappPdfBytes(
   }
 
   if (assets.logoUrl) {
-    const logo = await normalizedJpeg(assets.logoUrl, "logo");
+    const logo = await normalizedJpeg(assets.logoUrl, "logo", true);
     if (logo) {
       const embedded = await pdf.embedJpg(logo.bytes);
       const scale = Math.min(110 / logo.width, 55 / logo.height, 1);

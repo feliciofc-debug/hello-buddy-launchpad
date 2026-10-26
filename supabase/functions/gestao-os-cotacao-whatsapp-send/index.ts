@@ -6,6 +6,10 @@ import {
   gestaoOsFotosParaPdf,
   type GestaoOsFotoRefRow,
 } from "../_shared/gestao-os-fotos.ts";
+import {
+  getTenantLogoForBackground,
+  getTenantLogoSignedUrl,
+} from "../_shared/tenant-logo.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -58,17 +62,62 @@ serve(async (req) => {
     const { data: cotacoes } = await cotQuery;
     if (!cotacoes?.length) throw new Error("Nenhuma cotação para enviar");
 
-    const [{ data: veiculo }, { data: empresa }, { data: profile }, { data: itens }, { data: fotos }, { data: troca }] =
-      await Promise.all([
-        sb.from("veiculos_estoque").select("marca,modelo,ano_modelo,cor,km,placa").eq("id", os.veiculo_id).maybeSingle(),
-        sb.from("empresa_config").select("nome_empresa,cnpj,cidade,site,identidade_site").eq("user_id", userId).maybeSingle(),
-        sb.from("profiles").select("email,phone").eq("id", userId).maybeSingle(),
-        sb.from("gestao_os_item").select("descricao,observacao,troca_ia_item_id").eq("os_id", os.id).order("created_at"),
-        sb.from("gestao_os_foto_ref").select("id,storage_path,selecionada,ordem,troca_ia_item_id,origem").eq("os_id", os.id),
-        os.troca_id
-          ? sb.from("gestao_troca").select("fotos_json").eq("id", os.troca_id).maybeSingle()
-          : Promise.resolve({ data: null }),
-      ]);
+    const [
+      veiculoRes,
+      empresaRes,
+      profileRes,
+      itensRes,
+      fotosRes,
+      trocaRes,
+    ] = await Promise.all([
+      sb.from("veiculos_estoque").select("marca,modelo,ano_modelo,cor,km,placa").eq("id", os.veiculo_id).maybeSingle(),
+      sb.from("empresa_config").select("nome_empresa,site,identidade_site").eq("user_id", userId).maybeSingle(),
+      sb.from("profiles").select("email,phone").eq("id", userId).maybeSingle(),
+      sb.from("gestao_os_item").select("descricao,observacao,troca_ia_item_id").eq("os_id", os.id).order("created_at"),
+      sb.from("gestao_os_foto_ref").select("id,storage_path,selecionada,ordem,troca_ia_item_id,origem").eq("os_id", os.id),
+      os.troca_id
+        ? sb.from("gestao_troca").select("fotos_json").eq("id", os.troca_id).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+    ]);
+    const warnQuery = (table: string, error: { message: string } | null) => {
+      if (error) console.warn(`[gestao-os-cotacao-wa] ${table}:`, error.message);
+    };
+    warnQuery("veiculos_estoque", veiculoRes.error);
+    warnQuery("empresa_config", empresaRes.error);
+    warnQuery("profile", profileRes.error);
+    warnQuery("gestao_os_item", itensRes.error);
+    warnQuery("gestao_os_foto_ref", fotosRes.error);
+    if (os.troca_id) warnQuery("gestao_troca", trocaRes.error);
+
+    const veiculo = veiculoRes.data;
+    const empresa = empresaRes.data;
+    const profile = profileRes.data;
+    const itens = itensRes.data;
+    const fotos = fotosRes.data;
+    const troca = trocaRes.data;
+
+    const identidade = empresa?.identidade_site as Record<string, unknown> | null;
+    const LOGO_TTL_SEC = 60 * 10;
+    let logoUrl: string | null = null;
+    const logoForLight = await getTenantLogoForBackground(sb, userId, "light");
+    if (logoForLight?.storage_path) {
+      const { data: logoSigned, error: logoSignErr } = await sb.storage
+        .from("tenant-logos")
+        .createSignedUrl(logoForLight.storage_path, LOGO_TTL_SEC);
+      if (logoSignErr) {
+        console.warn("[gestao-os-cotacao-wa] tenant-logos signed url:", logoSignErr.message);
+      } else if (logoSigned?.signedUrl) {
+        logoUrl = logoSigned.signedUrl;
+      }
+    }
+    if (!logoUrl) {
+      logoUrl = await getTenantLogoSignedUrl(sb, userId, LOGO_TTL_SEC);
+    }
+    if (!logoUrl) {
+      logoUrl = String(
+        identidade?.logo_url ?? identidade?.logo ?? identidade?.logoUrl ?? "",
+      ).trim() || null;
+    }
 
     const results = [];
     for (const cot of cotacoes) {
@@ -95,8 +144,6 @@ serve(async (req) => {
           cor: veiculo?.cor,
           km: veiculo?.km,
         },
-        lojaCnpj: empresa?.cnpj ?? null,
-        lojaCidade: empresa?.cidade ?? null,
         lojaContato: profile?.phone || profile?.email || null,
         lojaSite: empresa?.site ?? null,
         itens: (itens ?? []).map((i: { descricao: string; observacao?: string | null }) => ({
@@ -106,10 +153,6 @@ serve(async (req) => {
         prazoDesejado: os.data_prevista ?? undefined,
         comoResponder: "Responda pelo WhatsApp com valor e prazo, texto, PDF/foto ou áudio.",
       };
-      const identidade = empresa?.identidade_site as Record<string, unknown> | null;
-      const logoUrl = String(
-        identidade?.logo_url ?? identidade?.logo ?? identidade?.logoUrl ?? "",
-      ) || null;
       const r = await enviarPedidoCotacaoParceiroWhatsApp(sb, {
         supabaseUrl: SUPABASE_URL,
         serviceKey: SERVICE_KEY,
