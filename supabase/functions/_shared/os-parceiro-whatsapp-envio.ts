@@ -15,12 +15,14 @@ import {
   gestaoTrocaFotoIsCrlv,
   normalizeGestaoTrocaFotos,
 } from "./gestao-troca-fotos.ts";
+import { toMetaSafeImageUrl } from "./meta-media.ts";
 
 export type OsCotacaoEnvioResult = {
   cotacaoId: string;
   ok: boolean;
-  mode: "documento_janela" | "convite" | "pendente_modelo" | "falhou";
+  mode: "documento_janela" | "convite" | "preview" | "pendente_modelo" | "falhou";
   error?: string;
+  pdfUrl?: string;
 };
 
 async function lastInboundAt(
@@ -116,6 +118,8 @@ export async function enviarPedidoCotacaoParceiroWhatsApp(
     fotoRefs?: GestaoOsFotoRefRow[];
     trocaFotosRaw?: unknown;
     forceDirect?: boolean;
+    previewOnly?: boolean;
+    logoUrl?: string | null;
   },
 ): Promise<OsCotacaoEnvioResult> {
   const phone = normalizeOwnerPhone(input.parceiroPhone);
@@ -132,7 +136,38 @@ export async function enviarPedidoCotacaoParceiroWhatsApp(
     }
   }
 
-  const pdfBytes = await buildGestaoOsCotacaoWhatsappPdfBytes(input.pdfInput);
+  const fotosComUrl: { url: string; legenda: string }[] = [];
+  for (const [index, foto] of fotosPdf.slice(0, 12).entries()) {
+    const origem = foto.origem ?? "troca";
+    let url = foto.storage_path;
+    if (!/^https?:\/\//i.test(url)) {
+      const bucket = origem === "os"
+        ? "gestao-os-documentos"
+        : origem === "anuncio"
+        ? "produtos"
+        : "trocas";
+      const { data } = await sb.storage.from(bucket).createSignedUrl(url, 3600);
+      if (!data?.signedUrl) continue;
+      url = data.signedUrl;
+    }
+    const etiquetaTroca = trocaFotos.find((x) => x.path === foto.storage_path)?.etiqueta;
+    fotosComUrl.push({
+      url,
+      legenda: foto.troca_ia_item_id
+        ? (foto.legenda || etiquetaTroca || `Item do laudo ${index + 1}`)
+        : origem === "anuncio"
+        ? `Foto do anúncio ${index + 1}`
+        : origem === "os"
+        ? `Foto da OS ${index + 1}`
+        : (etiquetaTroca || `Foto da avaliação ${index + 1}`),
+    });
+  }
+
+  const pdfBytes = await buildGestaoOsCotacaoWhatsappPdfBytes(input.pdfInput, {
+    logoUrl: input.logoUrl,
+    fotos: fotosComUrl,
+    log: (warning) => console.warn("[os-cotacao-pdf]", warning),
+  });
   const path = `${input.userId}/os/${input.osId}/${crypto.randomUUID()}-pedido-cotacao-${input.osNumero}.pdf`;
   const { error: upErr } = await sb.storage.from("gestao-os-documentos").upload(path, pdfBytes, {
     contentType: "application/pdf",
@@ -156,6 +191,15 @@ export async function enviarPedidoCotacaoParceiroWhatsApp(
   const docUrl = signed?.signedUrl;
   if (!docUrl) {
     return { cotacaoId: input.cotacaoId, ok: false, mode: "falhou", error: "URL do PDF indisponível" };
+  }
+
+  if (input.previewOnly) {
+    return {
+      cotacaoId: input.cotacaoId,
+      ok: true,
+      mode: "preview",
+      pdfUrl: docUrl,
+    };
   }
 
   const inbound = await lastInboundAt(sb, input.userId, phone);
@@ -185,6 +229,17 @@ export async function enviarPedidoCotacaoParceiroWhatsApp(
       return { cotacaoId: input.cotacaoId, ok: false, mode: "falhou", error: docSend.error };
     }
     messageId = docSend.messageId;
+    for (const foto of fotosComUrl.slice(0, 10)) {
+      const imageSend = await sendWhatsAppPayload(input.supabaseUrl, input.serviceKey, {
+        user_id: input.userId,
+        to: phone,
+        message: foto.legenda.slice(0, 120),
+        image_url: toMetaSafeImageUrl(foto.url) ?? foto.url,
+      });
+      if (!imageSend.ok) {
+        console.warn("[os-cotacao-wa] foto avulsa falhou:", imageSend.error);
+      }
+    }
     const btn = await sendWhatsAppPayload(input.supabaseUrl, input.serviceKey, {
       user_id: input.userId,
       to: phone,

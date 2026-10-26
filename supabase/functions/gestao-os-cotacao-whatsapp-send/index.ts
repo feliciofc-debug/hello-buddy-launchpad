@@ -27,6 +27,7 @@ serve(async (req) => {
       cotacao_ids?: string[];
       user_id?: string;
       force_direct?: boolean;
+      preview_only?: boolean;
     };
     let userId = body.user_id ?? "";
     if (!isServiceCall) {
@@ -57,11 +58,12 @@ serve(async (req) => {
     const { data: cotacoes } = await cotQuery;
     if (!cotacoes?.length) throw new Error("Nenhuma cotação para enviar");
 
-    const [{ data: veiculo }, { data: empresa }, { data: itens }, { data: fotos }, { data: troca }] =
+    const [{ data: veiculo }, { data: empresa }, { data: profile }, { data: itens }, { data: fotos }, { data: troca }] =
       await Promise.all([
-        sb.from("veiculos_estoque").select("marca,modelo,ano_modelo,cor,km").eq("id", os.veiculo_id).maybeSingle(),
-        sb.from("empresa_config").select("nome_empresa").eq("user_id", userId).maybeSingle(),
-        sb.from("gestao_os_item").select("descricao").eq("os_id", os.id).order("created_at"),
+        sb.from("veiculos_estoque").select("marca,modelo,ano_modelo,cor,km,placa").eq("id", os.veiculo_id).maybeSingle(),
+        sb.from("empresa_config").select("nome_empresa,cnpj,cidade,site,identidade_site").eq("user_id", userId).maybeSingle(),
+        sb.from("profiles").select("email,phone").eq("id", userId).maybeSingle(),
+        sb.from("gestao_os_item").select("descricao,observacao,troca_ia_item_id").eq("os_id", os.id).order("created_at"),
         sb.from("gestao_os_foto_ref").select("id,storage_path,selecionada,ordem,troca_ia_item_id,origem").eq("os_id", os.id),
         os.troca_id
           ? sb.from("gestao_troca").select("fotos_json").eq("id", os.troca_id).maybeSingle()
@@ -89,12 +91,25 @@ serve(async (req) => {
           marca: veiculo?.marca ?? "—",
           modelo: veiculo?.modelo ?? "—",
           ano: veiculo?.ano_modelo,
+          placa: veiculo?.placa,
           cor: veiculo?.cor,
           km: veiculo?.km,
         },
-        itens: (itens ?? []).map((i: { descricao: string }) => ({ descricao: i.descricao })),
+        lojaCnpj: empresa?.cnpj ?? null,
+        lojaCidade: empresa?.cidade ?? null,
+        lojaContato: profile?.phone || profile?.email || null,
+        lojaSite: empresa?.site ?? null,
+        itens: (itens ?? []).map((i: { descricao: string; observacao?: string | null }) => ({
+          descricao: i.descricao,
+          observacao: i.observacao ?? null,
+        })),
         prazoDesejado: os.data_prevista ?? undefined,
+        comoResponder: "Responda pelo WhatsApp com valor e prazo, texto, PDF/foto ou áudio.",
       };
+      const identidade = empresa?.identidade_site as Record<string, unknown> | null;
+      const logoUrl = String(
+        identidade?.logo_url ?? identidade?.logo ?? identidade?.logoUrl ?? "",
+      ) || null;
       const r = await enviarPedidoCotacaoParceiroWhatsApp(sb, {
         supabaseUrl: SUPABASE_URL,
         serviceKey: SERVICE_KEY,
@@ -107,9 +122,16 @@ serve(async (req) => {
         osNumero: os.numero,
         veiculoLabel: `${veiculo?.marca ?? ""} ${veiculo?.modelo ?? ""}`.trim(),
         lojaNome: empresa?.nome_empresa ?? "Minha loja",
-        fotoRefs: (fotos ?? []) as GestaoOsFotoRefRow[],
+        fotoRefs: ((fotos ?? []) as GestaoOsFotoRefRow[]).map((foto) => ({
+          ...foto,
+          legenda: (itens ?? []).find((
+            item: { troca_ia_item_id?: string | null; descricao: string },
+          ) => item.troca_ia_item_id === foto.troca_ia_item_id)?.descricao ?? null,
+        })),
         trocaFotosRaw: troca?.fotos_json,
         forceDirect: body.force_direct === true,
+        previewOnly: body.preview_only === true,
+        logoUrl,
       });
       results.push(r);
     }

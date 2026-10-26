@@ -12,6 +12,7 @@ export type GestaoOsFotoRefRow = {
   ordem: number;
   troca_ia_item_id: string | null;
   origem?: GestaoOsFotoOrigem;
+  legenda?: string | null;
 };
 
 export function gestaoOsFotosVisiveis(

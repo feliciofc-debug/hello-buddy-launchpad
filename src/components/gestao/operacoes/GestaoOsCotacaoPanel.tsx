@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Download, Star } from "lucide-react";
+import { Eye, Star } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -231,10 +231,21 @@ export function GestaoOsCotacaoPanel({
     }
   };
 
-  const baixarPdf = async (parceiroId: string) => {
+  const verPdf = async (cotacaoId: string) => {
     try {
-      const blob = await gerarPdfParceiro(parceiroId, "pedido_cotacao");
-      const url = URL.createObjectURL(blob);
+      const { data, error } = await supabase.functions.invoke(
+        "gestao-os-cotacao-whatsapp-send",
+        {
+          body: {
+            os_id: os.id,
+            cotacao_ids: [cotacaoId],
+            preview_only: true,
+          },
+        },
+      );
+      if (error) throw new Error(error.message);
+      const url = data?.results?.[0]?.pdfUrl;
+      if (!url) throw new Error(data?.results?.[0]?.error ?? "Prévia indisponível");
       window.open(url, "_blank", "noopener,noreferrer");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao gerar PDF");
@@ -315,8 +326,8 @@ export function GestaoOsCotacaoPanel({
                     <Button size="sm" variant="outline" disabled={busy} onClick={() => void reenviarWhatsApp(c.id)}>
                       Reenviar
                     </Button>
-                    <Button size="sm" variant="ghost" onClick={() => void baixarPdf(c.parceiro_id)}>
-                      <Download className="h-4 w-4" />
+                    <Button size="sm" variant="ghost" onClick={() => void verPdf(c.id)}>
+                      <Eye className="mr-1 h-4 w-4" /> Ver PDF
                     </Button>
                     {c.status === "recebida" && !disabled && podeEscolher && (
                       <Button size="sm" variant="outline" disabled={busy} onClick={() => void escolher(c.id)}>
