@@ -2,7 +2,7 @@ import {
   assertEquals,
   assertRejects,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { lerCrlvLocal } from "./crlv-leitura.ts";
+import { detectarDocumentoLocal, lerCrlvLocal } from "./crlv-leitura.ts";
 
 const OCR_SINTETICO = `
 PLACA: ABC1D23
@@ -101,4 +101,42 @@ Deno.test("DOC-1 — PDF tenta texto interno antes do OCR", async () => {
     flow.indexOf("extractDocumentText(") < flow.indexOf("ocrLocal("),
     true,
   );
+});
+
+Deno.test({
+  name: "DOC-0 — portão rápido usa /detectar e não recebe texto",
+  permissions: { env: true },
+  fn: async () => {
+    const oldUrl = Deno.env.get("AMZ_OCR_URL");
+    const oldToken = Deno.env.get("AMZ_OCR_TOKEN");
+    Deno.env.set("AMZ_OCR_URL", "http://127.0.0.1:3011/ocr");
+    Deno.env.set("AMZ_OCR_TOKEN", "token-sintetico");
+    const fetchMock = ((input: string | URL | Request, init?: RequestInit) => {
+      assertEquals(String(input), "http://127.0.0.1:3011/detectar");
+      assertEquals(
+        new Headers(init?.headers).get("X-OCR-Token"),
+        "token-sintetico",
+      );
+      return Promise.resolve(
+        new Response(JSON.stringify({ documento: true, tipo: "crlv" }), {
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }) as typeof fetch;
+    try {
+      assertEquals(
+        await detectarDocumentoLocal(
+          new Uint8Array([1]),
+          "image/jpeg",
+          fetchMock,
+        ),
+        { documento: true, tipo: "crlv" },
+      );
+    } finally {
+      if (oldUrl == null) Deno.env.delete("AMZ_OCR_URL");
+      else Deno.env.set("AMZ_OCR_URL", oldUrl);
+      if (oldToken == null) Deno.env.delete("AMZ_OCR_TOKEN");
+      else Deno.env.set("AMZ_OCR_TOKEN", oldToken);
+    }
+  },
 });

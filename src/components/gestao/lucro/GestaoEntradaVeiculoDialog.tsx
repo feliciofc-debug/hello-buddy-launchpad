@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FileText, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -51,6 +51,7 @@ type Despesa = {
 type Props = {
   open: boolean;
   userId: string;
+  initialDocumentId?: string | null;
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
 };
@@ -88,11 +89,13 @@ const photoList = (value: string) =>
 export function GestaoEntradaVeiculoDialog({
   open,
   userId,
+  initialDocumentId,
   onOpenChange,
   onSaved,
 }: Props) {
   const navigate = useNavigate();
   const crlvInputRef = useRef<HTMLInputElement>(null);
+  const initialDocumentAttemptRef = useRef<string | null>(null);
   const [vehicle, setVehicle] = useState(initialVehicle);
   const [origem, setOrigem] = useState<Origem>("compra");
   const [valorCompra, setValorCompra] = useState("");
@@ -122,6 +125,45 @@ export function GestaoEntradaVeiculoDialog({
     } | null
   >(null);
 
+  useEffect(() => {
+    if (
+      !open || !initialDocumentId ||
+      pendingDocumentId === initialDocumentId ||
+      initialDocumentAttemptRef.current === initialDocumentId || readingCrlv
+    ) return;
+    initialDocumentAttemptRef.current = initialDocumentId;
+    let cancelled = false;
+    setReadingCrlv(true);
+    void supabase.functions.invoke("gestao-cofre", {
+      body: {
+        action: "leitura_documento",
+        documento_id: initialDocumentId,
+      },
+    }).then(({ data, error }) => {
+      if (cancelled) return;
+      if (error || data?.error || !data?.leitura) {
+        throw new Error(data?.error ?? error?.message);
+      }
+      setPendingDocumentId(initialDocumentId);
+      setCrlvReview({
+        documentoId: initialDocumentId,
+        leitura: data.leitura,
+      });
+    }).catch(() => {
+      if (!cancelled) toast.error("Não foi possível carregar o CRLV do cofre.");
+    }).finally(() => {
+      if (!cancelled) setReadingCrlv(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    initialDocumentId,
+    open,
+    pendingDocumentId,
+    readingCrlv,
+  ]);
+
   const reset = () => {
     setVehicle(initialVehicle());
     setOrigem("compra");
@@ -132,6 +174,7 @@ export function GestaoEntradaVeiculoDialog({
     setSavedId(null);
     setPendingDocumentId(null);
     setCrlvReview(null);
+    initialDocumentAttemptRef.current = null;
   };
 
   const uploadCrlv = async (file: File | null) => {

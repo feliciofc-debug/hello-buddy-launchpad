@@ -1,7 +1,10 @@
 # AMZ OCR local
 
-OCR privado para documentos. O serviço não persiste arquivos, não registra o texto
-extraído e só aceita chamadas autenticadas por `X-OCR-Token`.
+OCR privado para documentos. O serviço não persiste arquivos, não registra o
+texto extraído e só aceita chamadas autenticadas por `X-OCR-Token`.
+
+- `POST /detectar`: portão rápido; devolve somente se é documento e o tipo.
+- `POST /ocr`: leitura completa; devolve o texto para o parser local do CRLV.
 
 ## Build
 
@@ -38,3 +41,8 @@ curl --fail --max-time 30 \
 ```
 
 Formatos: PDF, JPEG, PNG, WebP, HEIC e HEIF; limite de 15 MB.
+
+O detector reduz a imagem para 1400 px, faz uma única leitura e nunca devolve o
+texto. A leitura completa limita o maior lado a 2400 px e usa a orientação
+detectada pelo Tesseract; os quatro giros só são testados quando essa orientação
+falha.

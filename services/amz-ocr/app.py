@@ -11,8 +11,11 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from PIL import Image, ImageOps
 from pillow_heif import register_heif_opener
 
+from detector import classify_document
+
 MAX_BYTES = 15 * 1024 * 1024
 OCR_TIMEOUT_SECONDS = 30
+DETECT_TIMEOUT_SECONDS = 8
 register_heif_opener()
 
 app = FastAPI(
@@ -58,6 +61,17 @@ def _deskew(gray: np.ndarray) -> np.ndarray:
     )
 
 
+def _resize(image: Image.Image, max_side: int) -> Image.Image:
+    longest = max(image.size)
+    if longest <= max_side:
+        return image
+    ratio = max_side / longest
+    return image.resize(
+        (max(1, round(image.width * ratio)), max(1, round(image.height * ratio))),
+        Image.Resampling.LANCZOS,
+    )
+
+
 def _preprocess(image: Image.Image) -> np.ndarray:
     rgb = np.array(image)
     gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
@@ -76,7 +90,29 @@ def _score(text: str) -> int:
     return sum(char.isalnum() for char in text)
 
 
+def _osd_rotate(image: Image.Image) -> Image.Image | None:
+    try:
+        osd = pytesseract.image_to_osd(
+            np.array(image),
+            config="--psm 0",
+            output_type=pytesseract.Output.DICT,
+        )
+        angle = int(osd.get("rotate", 0)) % 360
+        return image if angle == 0 else image.rotate(angle, expand=True)
+    except Exception:
+        return None
+
+
 def _ocr_image(image: Image.Image) -> str:
+    image = _resize(image, 2400)
+    oriented = _osd_rotate(image)
+    if oriented is not None:
+        return pytesseract.image_to_string(
+            _preprocess(oriented),
+            lang="por",
+            config="--oem 1 --psm 6",
+        ).strip()
+
     candidates: list[str] = []
     for angle in (0, 90, 180, 270):
         rotated = image if angle == 0 else image.rotate(angle, expand=True)
@@ -91,6 +127,17 @@ def _ocr_image(image: Image.Image) -> str:
     return max(candidates, key=_score, default="")
 
 
+def _detect_image(image: Image.Image) -> tuple[bool, str | None]:
+    image = _resize(image, 1400)
+    oriented = _osd_rotate(image) or image
+    text = pytesseract.image_to_string(
+        _preprocess(oriented),
+        lang="por",
+        config="--oem 1 --psm 11",
+    )
+    return classify_document(text)
+
+
 def _ocr(raw: bytes, content_type: str) -> str:
     # Tudo fica em memória; nenhum arquivo temporário é criado.
     return "\n\n".join(
@@ -99,11 +146,16 @@ def _ocr(raw: bytes, content_type: str) -> str:
     )
 
 
-@app.post("/ocr")
-async def ocr(
+def _detect(raw: bytes, content_type: str) -> tuple[bool, str | None]:
+    images = _pil_images(raw, content_type)
+    # A primeira página basta para o portão e mantém o endpoint previsível.
+    return _detect_image(images[0])
+
+
+async def _read_request(
     request: Request,
-    x_ocr_token: Annotated[str | None, Header()] = None,
-) -> dict[str, str]:
+    x_ocr_token: str | None,
+) -> tuple[bytes, str]:
     if not _authorized(x_ocr_token):
         raise HTTPException(status_code=401, detail="não autorizado")
     content_length = int(request.headers.get("content-length", "0") or "0")
@@ -112,7 +164,15 @@ async def ocr(
     raw = await request.body()
     if not raw or len(raw) > MAX_BYTES:
         raise HTTPException(status_code=413, detail="arquivo inválido ou excede 15 MB")
-    content_type = request.headers.get("content-type", "application/octet-stream")
+    return raw, request.headers.get("content-type", "application/octet-stream")
+
+
+@app.post("/ocr")
+async def ocr(
+    request: Request,
+    x_ocr_token: Annotated[str | None, Header()] = None,
+) -> dict[str, str]:
+    raw, content_type = await _read_request(request, x_ocr_token)
     try:
         text = await asyncio.wait_for(
             asyncio.to_thread(_ocr, raw, content_type),
@@ -124,3 +184,21 @@ async def ocr(
         # Não incluir conteúdo, metadados pessoais nem detalhes do decoder.
         raise HTTPException(status_code=422, detail="não foi possível ler o arquivo") from exc
     return {"text": text}
+
+
+@app.post("/detectar")
+async def detectar(
+    request: Request,
+    x_ocr_token: Annotated[str | None, Header()] = None,
+) -> dict[str, bool | str | None]:
+    raw, content_type = await _read_request(request, x_ocr_token)
+    try:
+        documento, tipo = await asyncio.wait_for(
+            asyncio.to_thread(_detect, raw, content_type),
+            timeout=DETECT_TIMEOUT_SECONDS,
+        )
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="detecção excedeu 8 segundos") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail="não foi possível verificar o arquivo") from exc
+    return {"documento": documento, "tipo": tipo}

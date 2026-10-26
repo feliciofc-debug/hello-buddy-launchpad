@@ -1,7 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
-  cifrarCofreBytes,
-  cifrarDadosPessoais,
   decifrarCofreBytes,
   decodeBase64Cofre,
   sha256Hex,
@@ -11,14 +9,13 @@ import {
   jsonResponse,
   optionsResponse,
 } from "../_shared/gestao-troca-http.ts";
-import { lerCrlvLocal } from "../_shared/crlv-leitura.ts";
-import type { CrlvParserResultado } from "../_shared/crlv-parser.ts";
 import {
   buildCrlvVehiclePatch,
   CRLV_STOCK_FIELDS,
   safeCrlvReading,
   sanitizeCrlvVehicleValues,
 } from "../_shared/crlv-cofre.ts";
+import { gestaoCofreUpload } from "../_shared/gestao-cofre-upload.ts";
 
 const BUCKET = "gestao-cofre";
 const MAX_BYTES = 15 * 1024 * 1024;
@@ -81,16 +78,6 @@ function adminClient(): Admin {
   );
 }
 
-function addYears(date: string, years: number): string {
-  const value = new Date(`${date.slice(0, 10)}T12:00:00Z`);
-  value.setUTCFullYear(value.getUTCFullYear() + years);
-  return value.toISOString().slice(0, 10);
-}
-
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
   for (let i = 0; i < bytes.length; i += 8192) {
@@ -133,22 +120,6 @@ async function ownedDocument(sb: Admin, userId: string, documentoId: string) {
   return data && !data.deleted_at ? data as OwnedDocument : null;
 }
 
-async function retentionDate(
-  sb: Admin,
-  userId: string,
-  veiculoId: string | null,
-): Promise<string> {
-  const { data: config } = await sb.from("gestao_documento_config")
-    .select("retencao_anos").eq("user_id", userId).maybeSingle();
-  const years = Math.max(1, Math.min(10, Number(config?.retencao_anos ?? 5)));
-  if (veiculoId) {
-    const { data: sale } = await sb.from("veiculo_venda").select("data_venda")
-      .eq("user_id", userId).eq("veiculo_id", veiculoId).maybeSingle();
-    if (sale?.data_venda) return addYears(String(sale.data_venda), years);
-  }
-  return addYears(today(), years);
-}
-
 async function upload(
   sb: Admin,
   userId: string,
@@ -170,17 +141,6 @@ async function upload(
   if (!bytes.byteLength || bytes.byteLength > MAX_BYTES) {
     return jsonResponse({ error: "Arquivo deve ter até 15 MB" }, 400);
   }
-  const sha256 = await sha256Hex(bytes);
-  const { data: duplicate } = await sb.from("gestao_documento").select("id")
-    .eq("user_id", userId).eq("sha256", sha256).is("deleted_at", null)
-    .maybeSingle();
-  if (duplicate) {
-    return jsonResponse({
-      error: "Documento já enviado",
-      documento_id: duplicate.id,
-    }, 409);
-  }
-
   const campos = body.campos_veiculo && typeof body.campos_veiculo === "object"
     ? body.campos_veiculo as Record<string, unknown>
     : {};
@@ -189,86 +149,36 @@ async function upload(
       error: "Dados pessoais devem ser enviados no campo protegido",
     }, 400);
   }
-  let leitura: CrlvParserResultado | null = null;
-  let leituraErro: string | null = null;
-  if (tipo === "crlv" || tipo === "crlv_e") {
-    try {
-      leitura = (await lerCrlvLocal(
-        bytes,
-        mime,
-        String(body.filename ?? ""),
-      )).parser;
-    } catch {
-      leituraErro =
-        "Não consegui ler bem. Tire outra foto de cima, documento aberto, com boa luz";
-    }
-  }
-  const camposLidos = leitura
-    ? {
-      veiculo: leitura.veiculo,
-      documento: leitura.documento,
-      observacoes: leitura.observacoes,
-    }
-    : campos;
-  const pessoaisLidos = leitura
-    ? {
-      nome: leitura.proprietario.nome.valor,
-      cpf_cnpj: leitura.proprietario.cpf_cnpj.valor,
-    }
-    : body.dados_pessoais;
-  const pessoais = pessoaisLidos && typeof pessoaisLidos === "object"
-    ? await cifrarDadosPessoais(
-      pessoaisLidos as Record<string, unknown>,
-    )
-    : null;
-  const encrypted = await cifrarCofreBytes(bytes);
-  const documentoId = crypto.randomUUID();
-  const path = `${userId}/documentos/${documentoId}.cofre`;
-  const uploaded = await sb.storage.from(BUCKET).upload(path, encrypted, {
-    contentType: "application/octet-stream",
-    upsert: false,
-  });
-  if (uploaded.error) throw new Error("Falha ao armazenar documento");
-
-  const veiculoId = body.veiculo_id ? String(body.veiculo_id) : null;
-  const row = {
-    id: documentoId,
-    user_id: userId,
-    veiculo_id: veiculoId,
-    troca_id: body.troca_id ? String(body.troca_id) : null,
-    venda_id: body.venda_id ? String(body.venda_id) : null,
-    tipo,
-    origem,
-    storage_path: path,
+  const result = await gestaoCofreUpload({
+    sb,
+    userId,
+    bytes,
     mime,
-    tamanho: bytes.byteLength,
-    sha256,
-    cifrado: true,
-    status: "recebido",
-    campos_veiculo: camposLidos,
-    dados_pessoais_cifrados: pessoais,
-    retencao_ate: await retentionDate(sb, userId, veiculoId),
-    created_by: userId,
-  };
-  const inserted = await sb.from("gestao_documento").insert(row);
-  if (inserted.error) {
-    await sb.storage.from(BUCKET).remove([path]);
-    if (inserted.error.code === "23505") {
-      return jsonResponse({ error: "Documento já enviado" }, 409);
-    }
-    throw new Error("Falha ao registrar documento");
-  }
-  await audit(sb, documentoId, userId, "upload", {
-    origem,
     tipo,
-    tamanho: bytes.byteLength,
+    origem: origem as "painel" | "troca" | "whatsapp",
+    filename: String(body.filename ?? ""),
+    veiculoId: body.veiculo_id ? String(body.veiculo_id) : null,
+    trocaId: body.troca_id ? String(body.troca_id) : null,
+    vendaId: body.venda_id ? String(body.venda_id) : null,
+    camposVeiculo: campos,
+    dadosPessoais: body.dados_pessoais &&
+        typeof body.dados_pessoais === "object"
+      ? body.dados_pessoais as Record<string, unknown>
+      : null,
+    lerCrlv: tipo === "crlv" || tipo === "crlv_e",
   });
+  if (result.duplicate) {
+    return jsonResponse({
+      error: "Documento já enviado",
+      documento_id: result.documentoId,
+    }, 409);
+  }
   return jsonResponse({
     success: true,
-    documento_id: documentoId,
-    sha256,
-    leitura: leitura ? safeCrlvReading(leitura) : null,
-    leitura_erro: leituraErro,
+    documento_id: result.documentoId,
+    sha256: result.sha256,
+    leitura: result.leitura ? safeCrlvReading(result.leitura) : null,
+    leitura_erro: result.leituraErro,
   });
 }
 
@@ -367,6 +277,45 @@ async function history(sb: Admin, userId: string, documentoId: string) {
     .eq("user_id", userId).order("created_at", { ascending: false });
   if (error) throw new Error("Falha ao carregar histórico");
   return jsonResponse({ success: true, historico: data ?? [] });
+}
+
+async function documentReading(
+  sb: Admin,
+  userId: string,
+  documentoId: string,
+) {
+  const doc = await ownedDocument(sb, userId, documentoId);
+  if (!doc || !["crlv", "crlv_e"].includes(doc.tipo)) {
+    return jsonResponse({ error: "CRLV não encontrado" }, 404);
+  }
+  const fields = doc.campos_veiculo ?? {};
+  const vehicle = fields.veiculo && typeof fields.veiculo === "object"
+    ? fields.veiculo as Record<string, unknown>
+    : {};
+  const coreFound = ["placa", "renavam", "chassi", "marca_modelo_versao"]
+    .filter((key) => {
+      const field = vehicle[key] as { valor?: unknown } | undefined;
+      return field?.valor != null;
+    }).length;
+  return jsonResponse({
+    success: true,
+    leitura: {
+      veiculo: vehicle,
+      documento: fields.documento ?? {},
+      observacoes: fields.observacoes ?? {
+        texto: { valor: null, confianca: "baixa" },
+        alienacao_fiduciaria: { valor: false, confianca: "baixa" },
+        financeira: { valor: null, confianca: "baixa" },
+        restricoes: { valor: [], confianca: "baixa" },
+      },
+      proprietario: {
+        primeiro_nome: null,
+        cpf_cnpj_mascarado: null,
+      },
+      fonte: doc.mime === "application/pdf" ? "pdf_texto" : "ocr",
+      leitura_fraca: coreFound < 3,
+    },
+  });
 }
 
 async function confirmCrlv(
@@ -477,6 +426,13 @@ Deno.serve(async (req) => {
     }
     if (action === "historico") {
       return await history(sb, user.id, String(body.documento_id ?? ""));
+    }
+    if (action === "leitura_documento") {
+      return await documentReading(
+        sb,
+        user.id,
+        String(body.documento_id ?? ""),
+      );
     }
     if (action === "confirmar_crlv") {
       return await confirmCrlv(sb, user.id, body);

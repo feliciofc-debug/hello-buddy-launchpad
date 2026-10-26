@@ -36,6 +36,46 @@ async function ocrLocal(
   return typeof payload.text === "string" ? payload.text.trim() : "";
 }
 
+export type DocumentoDetectado = {
+  documento: boolean;
+  tipo: "crlv" | "cnh" | "rg" | "outro" | null;
+};
+
+export async function detectarDocumentoLocal(
+  bytes: Uint8Array,
+  mime: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<DocumentoDetectado> {
+  if (!bytes.byteLength || bytes.byteLength > MAX_BYTES) {
+    throw new Error("Documento deve ter até 15 MB");
+  }
+  const baseUrl = Deno.env.get("AMZ_OCR_URL")?.trim();
+  const token = Deno.env.get("AMZ_OCR_TOKEN")?.trim();
+  if (!baseUrl || !token) throw new Error("Detector local não configurado");
+  const url = new URL(baseUrl);
+  url.pathname = `${url.pathname.replace(/\/ocr\/?$/, "")}/detectar`;
+  const response = await fetchImpl(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": mime,
+      "X-OCR-Token": token,
+    },
+    body: new Uint8Array(bytes),
+    signal: AbortSignal.timeout(8_000),
+  });
+  if (!response.ok) {
+    throw new Error(`Detector local indisponível (${response.status})`);
+  }
+  const payload = await response.json().catch(() => ({})) as {
+    documento?: unknown;
+    tipo?: unknown;
+  };
+  const tipo = ["crlv", "cnh", "rg", "outro"].includes(String(payload.tipo))
+    ? payload.tipo as DocumentoDetectado["tipo"]
+    : null;
+  return { documento: payload.documento === true, tipo };
+}
+
 export type CrlvLeituraResultado = {
   texto: string;
   parser: CrlvParserResultado;

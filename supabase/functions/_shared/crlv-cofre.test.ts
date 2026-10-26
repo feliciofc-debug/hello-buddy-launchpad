@@ -56,11 +56,14 @@ Deno.test("DOC-1 — confirmação só sobrescreve campos marcados", () => {
 
 Deno.test("DOC-1 — fluxo guarda arquivo cifrado antes dos metadados", async () => {
   const source = await Deno.readTextFile(
+    new URL("./gestao-cofre-upload.ts", import.meta.url),
+  );
+  const encrypt = source.indexOf("cifrarCofreBytes(input.bytes)");
+  const upload = source.indexOf(".upload(path, encrypted");
+  const insert = source.indexOf('.from("gestao_documento").insert({');
+  assertEquals(encrypt >= 0 && upload > encrypt && insert > upload, true);
+  const endpoint = await Deno.readTextFile(
     new URL("../gestao-cofre/index.ts", import.meta.url),
   );
-  const encrypt = source.indexOf("cifrarCofreBytes(bytes)");
-  const upload = source.indexOf(".upload(path, encrypted");
-  const insert = source.indexOf('.from("gestao_documento").insert(row)');
-  assertEquals(encrypt >= 0 && upload > encrypt && insert > upload, true);
-  assertStringIncludes(source, "safeCrlvReading(leitura)");
+  assertStringIncludes(endpoint, "safeCrlvReading(result.leitura)");
 });
