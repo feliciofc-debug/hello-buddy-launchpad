@@ -402,6 +402,9 @@ verify_jwt = true
 [functions.giro-resumo-diario]
 verify_jwt = false
 
+[functions.gestao-fechamento-dia]
+verify_jwt = true
+
 [functions.amz-auto-cadastro]
 verify_jwt = false
 

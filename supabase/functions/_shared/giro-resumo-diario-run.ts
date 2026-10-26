@@ -5,15 +5,14 @@ import {
   classificarStatusResumo,
   deveProcessarResumoHoje,
   filtrarPhonesSemEnvio,
+  type GiroResumoUltimoStatus,
   mergePhonesOk,
   todosFalharamTecnico,
-  type GiroResumoUltimoStatus,
 } from "./giro-resumo-diario-policy.ts";
 import { loadGiroResumoItens } from "./giro-resumo-load.ts";
 import {
   agregarGiroResumo,
   horaResumoAtingida,
-  montarMensagemGiroResumo,
 } from "./giro-resumo-mensagem.ts";
 import { resolveTenantOwner, tenantOwnerMatchesPhone } from "./amz-context.ts";
 import {
@@ -21,6 +20,7 @@ import {
   listarDestinatariosGiroResumo,
 } from "./giro-resumo-whatsapp.ts";
 import { dateKeySaoPaulo } from "./vitrine-crm-time.ts";
+import { buildGestaoFechamentoDia } from "./gestao-fechamento-dia.ts";
 
 export type GiroResumoDiarioEnv = {
   supabaseUrl: string;
@@ -29,10 +29,24 @@ export type GiroResumoDiarioEnv = {
 
 export type GiroResumoLojaResult = {
   user_id: string;
-  status: "ignorado" | "aguardando_hora" | "ja_enviado" | "sem_destinatario" | "enviado" | "falha_envio";
+  status:
+    | "ignorado"
+    | "aguardando_hora"
+    | "ja_enviado"
+    | "sem_destinatario"
+    | "enviado"
+    | "falha_envio";
   resumo_status?: GiroResumoUltimoStatus;
   preview?: string;
-  envios?: Array<{ phone: string; ok: boolean; mode: string; templateNome?: string; error?: string }>;
+  envios?: Array<
+    {
+      phone: string;
+      ok: boolean;
+      mode: string;
+      templateNome?: string;
+      error?: string;
+    }
+  >;
   fipe_auto?: { rodadas: number; gravados: number };
   motivo?: string;
 };
@@ -131,12 +145,28 @@ export async function processarGiroResumoLoja(
   }
 
   const fipeAuto = primeiraDoDia
-    ? await maybeRunFipeAuto(sb, userId, cfg.fipe_auto_ultima_competencia ?? null)
+    ? await maybeRunFipeAuto(
+      sb,
+      userId,
+      cfg.fipe_auto_ultima_competencia ?? null,
+    )
     : null;
 
-  const { items, trocasHoje } = await loadGiroResumoItens(sb, userId, hojeSaoPaulo());
+  const { items, trocasHoje } = await loadGiroResumoItens(
+    sb,
+    userId,
+    hojeSaoPaulo(),
+  );
   const agregado = agregarGiroResumo(items, hojeYmd, trocasHoje);
-  const message = montarMensagemGiroResumo(agregado, hojeYmd);
+  const { texto: message } = await buildGestaoFechamentoDia(
+    sb,
+    userId,
+    hojeYmd,
+    {
+      financeiroPermitido: true,
+      giroItems: items,
+    },
+  );
 
   const phonesAll = await listarDestinatariosGiroResumo(sb, userId);
   const phones = filtrarPhonesSemEnvio(phonesAll, phonesOkAnteriores);
@@ -157,7 +187,11 @@ export async function processarGiroResumoLoja(
         primeiraDoDia: true,
       });
     }
-    return { user_id: userId, status: "sem_destinatario", preview: message.slice(0, 200) };
+    return {
+      user_id: userId,
+      status: "sem_destinatario",
+      preview: message.slice(0, 200),
+    };
   }
 
   const owner = await resolveTenantOwner(sb, userId);
@@ -183,8 +217,10 @@ export async function processarGiroResumoLoja(
       error: r.error,
     });
     if (r.ok && tenantOwnerMatchesPhone(owner, r.phone)) ownerOk = true;
-    if (!r.ok && tenantOwnerMatchesPhone(owner, r.phone) &&
-      String(r.error ?? "").includes("janela 24h")) {
+    if (
+      !r.ok && tenantOwnerMatchesPhone(owner, r.phone) &&
+      String(r.error ?? "").includes("janela 24h")
+    ) {
       ownerBlocked24h = true;
     }
   }
@@ -192,9 +228,14 @@ export async function processarGiroResumoLoja(
   const novosOk = envios.filter((e) => e.ok).map((e) => e.phone);
   const phonesOk = mergePhonesOk(phonesOkAnteriores, novosOk);
   const algumOk = phonesOk.length > 0;
-  const resumoStatus = classificarStatusResumo({ ownerOk, ownerBlocked24h, algumOk });
+  const resumoStatus = classificarStatusResumo({
+    ownerOk,
+    ownerBlocked24h,
+    algumOk,
+  });
 
-  const falhaTecnicaTotal = envios.length > 0 && todosFalharamTecnico(envios) && !algumOk;
+  const falhaTecnicaTotal = envios.length > 0 && todosFalharamTecnico(envios) &&
+    !algumOk;
   let tentativasFinal = tentativasTecnico;
   if (falhaTecnicaTotal) {
     tentativasFinal = primeiraDoDia ? 0 : tentativasTecnico;
@@ -221,7 +262,9 @@ export async function processarGiroResumoLoja(
     preview: message,
     envios,
     fipe_auto: fipeAuto ?? undefined,
-    motivo: ownerOk ? undefined : (ownerBlocked24h ? "fora da janela 24h" : "falha no envio ao dono"),
+    motivo: ownerOk
+      ? undefined
+      : (ownerBlocked24h ? "fora da janela 24h" : "falha no envio ao dono"),
   };
 }
 
@@ -236,7 +279,9 @@ export async function runGiroResumoDiario(
   const results: GiroResumoLojaResult[] = [];
   for (const row of lojas ?? []) {
     try {
-      results.push(await processarGiroResumoLoja(sb, env, String(row.user_id), now));
+      results.push(
+        await processarGiroResumoLoja(sb, env, String(row.user_id), now),
+      );
     } catch (e) {
       results.push({
         user_id: String(row.user_id),
