@@ -5,7 +5,6 @@ import {
 } from "../_shared/molicar-http.ts";
 import {
   classifyMolicarProcedencia,
-  constantTimeSecretEqual,
   type MolicarProcedenciaService,
   molicarProviderStatus,
   pollMolicarProcedencia,
@@ -20,19 +19,11 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") {
     return molicarJson({ success: false, error: "Método não permitido" }, 405);
   }
-  const db = molicarAdminClient();
-  let authorized = isMolicarServiceRequest(req);
-  if (!authorized) {
-    const supplied = req.headers.get("x-cron-secret") || "";
-    const { data } = await db.from("internal_cron_keys").select("chave")
-      .eq("nome", "molicar-procedencia-poll").maybeSingle();
-    authorized = !!data?.chave &&
-      constantTimeSecretEqual(supplied, String(data.chave));
-  }
-  if (!authorized) {
+  if (!isMolicarServiceRequest(req)) {
     return molicarJson({ success: false, error: "Não autorizado" }, 401);
   }
 
+  const db = molicarAdminClient();
   try {
     const body = await req.json().catch(() => ({}));
     const limit = Math.min(Math.max(Number(body?.limit) || 20, 1), 100);

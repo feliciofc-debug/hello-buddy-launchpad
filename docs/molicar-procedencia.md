@@ -123,10 +123,21 @@ entregar `422 UNPROCESSABLE_ENTITY`.
 
 Na implementação, `MOLICAR_PROCEDENCIA_WEBHOOK_URL` define a URL HTTPS e
 `MOLICAR_PROCEDENCIA_WEBHOOK_SECRET` é registrado como `X-Molicar-Webhook-Key`.
-O endpoint compara esse segredo antes de ler o body. Um cron mantém polling com
-backoff de 30 segundos até 30 minutos para consultas por placa, como recuperação
-caso o callback não chegue. Consultas por chassi dependem do webhook porque a
-rota oficial de polling com `JobId` não foi publicada.
+O endpoint compara esse segredo antes de ler o body. O webhook fica implementado,
+mas desligado até ser cadastrado na Molicar: sem
+`MOLICAR_PROCEDENCIA_WEBHOOK_SECRET`, a function recusa todos os callbacks.
+
+O polling não é agendado pelo banco. O cron do VPS deve chamar, a cada minuto:
+
+```text
+POST http://127.0.0.1:3003/molicar-procedencia-poll
+x-cron-secret: <MOLICAR_CRON_SECRET>
+```
+
+A function também aceita a service key no bearer. O polling aplica backoff de 30
+segundos até 30 minutos para consultas por placa, como recuperação caso o
+callback não chegue. Consultas por chassi dependem do webhook porque a rota
+oficial de polling com `JobId` não foi publicada.
 
 ## Cobrança
 

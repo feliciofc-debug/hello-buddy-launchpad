@@ -99,7 +99,7 @@ Deno.test("MOLICAR-2 segredo de webhook usa comparação completa", () => {
   assertEquals(constantTimeSecretEqual("curto", "muito-maior"), false);
 });
 
-Deno.test("MOLICAR-2 quota/refund idempotente e permissões são estáticos", async () => {
+Deno.test("MOLICAR-2 quota/refund, permissões e cron externo são estáticos", async () => {
   const migration = await Deno.readTextFile(
     new URL(
       "../../migrations/20261032281000_molicar_procedencia_async.sql",
@@ -128,8 +128,30 @@ Deno.test("MOLICAR-2 quota/refund idempotente e permissões são estáticos", as
       "GRANT EXECUTE ON FUNCTION public.molicar_procedencia_finalizar",
     ),
   );
-  assert(migration.includes("'molicar-procedencia-poll',"));
-  assert(migration.includes("'x-cron-secret', v_key"));
+  for (
+    const forbidden of [
+      "cron.",
+      "net.",
+      "internal_cron_keys",
+      "supabase.co",
+    ]
+  ) {
+    assert(
+      !migration.includes(forbidden),
+      `migração não pode referenciar ${forbidden}`,
+    );
+  }
+
+  const poll = await Deno.readTextFile(
+    new URL("../molicar-procedencia-poll/index.ts", import.meta.url),
+  );
+  const http = await Deno.readTextFile(
+    new URL("molicar-http.ts", import.meta.url),
+  );
+  assert(poll.includes("isMolicarServiceRequest(req)"));
+  assert(!poll.includes("internal_cron_keys"));
+  assert(http.includes('Deno.env.get("MOLICAR_CRON_SECRET")'));
+  assert(http.includes('req.headers.get("x-cron-secret")'));
 });
 
 Deno.test("MOLICAR-2 autentica webhook antes de processar o body", async () => {
