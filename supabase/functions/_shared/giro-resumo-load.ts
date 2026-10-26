@@ -1,8 +1,8 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
   DEFAULT_COMISSAO_REGRA,
-  normalizeComissaoRegra,
   type GestaoComissaoRegraJson,
+  normalizeComissaoRegra,
 } from "./gestao-comissao-calc.ts";
 import {
   calcularEstoqueGiro,
@@ -49,7 +49,9 @@ function configRowToCalc(row: GestaoGiroConfigDbRow | null): EstoqueGiroConfig {
       ? null
       : Number(row.repasse_desconto_fipe_pct),
     uf: row.uf,
-    ipvaAliquotaPct: row.ipva_aliquota_pct == null ? null : Number(row.ipva_aliquota_pct),
+    ipvaAliquotaPct: row.ipva_aliquota_pct == null
+      ? null
+      : Number(row.ipva_aliquota_pct),
     ipvaAliquotaHibridoPct: row.ipva_aliquota_hibrido_pct == null
       ? null
       : Number(row.ipva_aliquota_hibrido_pct),
@@ -57,7 +59,9 @@ function configRowToCalc(row: GestaoGiroConfigDbRow | null): EstoqueGiroConfig {
       ? null
       : Number(row.ipva_aliquota_eletrico_pct),
     ipvaLojaPagaVirada: row.ipva_loja_paga_virada,
-    custoVagaDia: row.custo_vaga_dia == null ? null : Number(row.custo_vaga_dia),
+    custoVagaDia: row.custo_vaga_dia == null
+      ? null
+      : Number(row.custo_vaga_dia),
   };
 }
 
@@ -78,8 +82,9 @@ function vehicleShortLabel(v: {
   marca: string;
   modelo: string;
   versao?: string | null;
+  ano_modelo?: number | null;
 }): string {
-  return [v.marca, v.modelo].filter(Boolean).join(" ");
+  return [v.marca, v.modelo, v.ano_modelo].filter(Boolean).join(" ");
 }
 
 export async function loadGiroResumoItens(
@@ -103,12 +108,16 @@ export async function loadGiroResumoItens(
     { data: vendasTrocaHoje },
     regraComissao,
   ] = await Promise.all([
-    sb.from("gestao_giro_config").select("*").eq("user_id", userId).maybeSingle(),
+    sb.from("gestao_giro_config").select("*").eq("user_id", userId)
+      .maybeSingle(),
     sb.from("veiculos_estoque")
-      .select("id, marca, modelo, versao, preco, status, created_at, combustivel")
+      .select(
+        "id, marca, modelo, versao, ano_modelo, preco, status, created_at, combustivel",
+      )
       .eq("user_id", userId)
       .in("status", [...VEICULO_STATUS_ATIVOS_INTERNOS]),
-    sb.from("veiculo_compra").select("veiculo_id, valor_compra, data_compra").eq("user_id", userId),
+    sb.from("veiculo_compra").select("veiculo_id, valor_compra, data_compra")
+      .eq("user_id", userId),
     sb.from("veiculo_despesas")
       .select("veiculo_id, valor, descontar_do_consignante")
       .eq("user_id", userId)
@@ -126,7 +135,9 @@ export async function loadGiroResumoItens(
       .select("veiculo_id, ipva_tipo, ipva_aliquota_manual_pct")
       .eq("user_id", userId),
     sb.from("veiculo_consignacao")
-      .select("veiculo_id, data_inicio, prazo_dias, preco_minimo_autorizado, status")
+      .select(
+        "veiculo_id, data_inicio, prazo_dias, preco_minimo_autorizado, status",
+      )
       .eq("user_id", userId)
       .eq("status", "ativo"),
     sb.from("veiculo_venda")
@@ -138,7 +149,9 @@ export async function loadGiroResumoItens(
   ]);
 
   const compraBy = new Map(
-    (compras ?? []).map((c: { veiculo_id: string; valor_compra: number; data_compra: string }) => [
+    (compras ?? []).map((
+      c: { veiculo_id: string; valor_compra: number; data_compra: string },
+    ) => [
       c.veiculo_id,
       c,
     ]),
@@ -225,6 +238,7 @@ export async function loadGiroResumoItens(
       marca: string;
       modelo: string;
       versao: string | null;
+      ano_modelo: number | null;
       preco: number | null;
       created_at: string;
       combustivel: string | null;
@@ -257,7 +271,13 @@ export async function loadGiroResumoItens(
       modelo: v.modelo,
       ipvaAjuste: ajuste
         ? {
-          ipvaTipo: ajuste.ipva_tipo as "auto" | "geral" | "hibrido" | "eletrico" | "isento" | "manual",
+          ipvaTipo: ajuste.ipva_tipo as
+            | "auto"
+            | "geral"
+            | "hibrido"
+            | "eletrico"
+            | "isento"
+            | "manual",
           ipvaAliquotaManualPct: ajuste.ipva_aliquota_manual_pct,
         }
         : { ipvaTipo: "auto", ipvaAliquotaManualPct: null },
@@ -293,11 +313,15 @@ export async function loadGiroResumoItens(
 
   const trocasHoje = {
     quantidade: (vendasTrocaHoje ?? []).length,
-    trocoPago: Math.round((vendasTrocaHoje ?? []).reduce((sum, raw) => {
-      const pagamento = (raw as { pagamento_json?: { saldo?: number } | null }).pagamento_json;
-      const saldo = Number(pagamento?.saldo ?? 0);
-      return sum + (saldo < 0 ? Math.abs(saldo) : 0);
-    }, 0) * 100) / 100,
+    trocoPago: Math.round(
+      (vendasTrocaHoje ?? []).reduce((sum, raw) => {
+        const pagamento =
+          (raw as { pagamento_json?: { saldo?: number } | null })
+            .pagamento_json;
+        const saldo = Number(pagamento?.saldo ?? 0);
+        return sum + (saldo < 0 ? Math.abs(saldo) : 0);
+      }, 0) * 100,
+    ) / 100,
   };
 
   return { config, items, trocasHoje };

@@ -1,9 +1,19 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, CarFront, Loader2, Search, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GestaoEstoqueHojeCollapsible } from "@/components/gestao/GestaoEstoqueHojeCollapsible.tsx";
-import { GestaoCommandPalette, useGestaoCommandShortcut } from "@/components/gestao/GestaoCommandPalette.tsx";
+import { GestaoFechamentoDiaCard } from "@/components/gestao/GestaoFechamentoDiaCard.tsx";
+import {
+  GestaoCommandPalette,
+  useGestaoCommandShortcut,
+} from "@/components/gestao/GestaoCommandPalette.tsx";
 import { GestaoIntegracaoConnectPrompt } from "@/components/gestao/GestaoIntegracaoConnectPrompt.tsx";
 import { GestaoResultadoMesStrip } from "@/components/gestao/lucro/GestaoResultadoMesStrip.tsx";
 import { GestaoLucroAlerts } from "@/components/gestao/lucro/GestaoLucroAlerts.tsx";
@@ -24,8 +34,8 @@ import { GestaoActionBar } from "@/components/gestao/lucro/GestaoActionBar.tsx";
 import { GestaoVeiculoPickerDialog } from "@/components/gestao/lucro/GestaoVeiculoPickerDialog.tsx";
 import { GestaoEmitirNfeDialog } from "@/components/gestao/lucro/GestaoEmitirNfeDialog.tsx";
 import {
-  GestaoIntegracaoConnectSheet,
   type GestaoConnectVendor,
+  GestaoIntegracaoConnectSheet,
 } from "@/components/gestao/GestaoIntegracaoConnectSheet.tsx";
 import { useSmartBack } from "@/lib/app-back-nav.ts";
 import { useGestaoZapsignConnection } from "@/components/integracoes/useGestaoZapsignConnection";
@@ -36,7 +46,7 @@ import type { GestaoVeiculoEnriched } from "@/lib/gestao-lucro-types.ts";
 import { supabase } from "@/integrations/supabase/client";
 import { competenciaFromDate } from "../../supabase/functions/_shared/gestao-meta-calc.ts";
 import { useGestaoResultadoStrip } from "@/hooks/useGestaoResultadoStrip";
-import { parseGestaoLucroAba, type GestaoLucroAba } from "@/lib/gestao-nav.ts";
+import { type GestaoLucroAba, parseGestaoLucroAba } from "@/lib/gestao-nav.ts";
 
 type PickerMode = "venda" | "nota" | "contrato" | null;
 type PendingConnectAction = "emit_nota" | "contrato" | null;
@@ -46,19 +56,31 @@ export default function GestaoLucroPage() {
   const goBack = useSmartBack("/dashboard");
   const [searchParams, setSearchParams] = useSearchParams();
   const [userId, setUserId] = useState<string | null>(null);
-  const [activeAlert, setActiveAlert] = useState<GestaoLucroAlertKind | null>(null);
+  const [activeAlert, setActiveAlert] = useState<GestaoLucroAlertKind | null>(
+    null,
+  );
   const [competencia, setCompetencia] = useState(competenciaFromDate());
-  const [drawerVehicle, setDrawerVehicle] = useState<GestaoVeiculoEnriched | null>(null);
+  const [drawerVehicle, setDrawerVehicle] = useState<
+    GestaoVeiculoEnriched | null
+  >(null);
   const [drawerFocusVenda, setDrawerFocusVenda] = useState(false);
   const [despesaOpen, setDespesaOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [despesaPreselect, setDespesaPreselect] = useState<string | null>(null);
   const [pickerMode, setPickerMode] = useState<PickerMode>(null);
-  const [nfeVeiculo, setNfeVeiculo] = useState<GestaoVeiculoEnriched | null>(null);
-  const [contratoPrefillId, setContratoPrefillId] = useState<string | null>(null);
+  const [nfeVeiculo, setNfeVeiculo] = useState<GestaoVeiculoEnriched | null>(
+    null,
+  );
+  const [contratoPrefillId, setContratoPrefillId] = useState<string | null>(
+    null,
+  );
   const [commandOpen, setCommandOpen] = useState(false);
-  const [connectVendor, setConnectVendor] = useState<GestaoConnectVendor | null>(null);
-  const [pendingConnectAction, setPendingConnectAction] = useState<PendingConnectAction>(null);
+  const [connectVendor, setConnectVendor] = useState<
+    GestaoConnectVendor | null
+  >(null);
+  const [pendingConnectAction, setPendingConnectAction] = useState<
+    PendingConnectAction
+  >(null);
   const [estoqueHojeRefreshKey, setEstoqueHojeRefreshKey] = useState(0);
   const zapsign = useGestaoZapsignConnection();
   const focusnfe = useGestaoFocusnfeConnection();
@@ -106,7 +128,11 @@ export default function GestaoLucroPage() {
     prevMetrics,
     loading,
     reload,
-  } = useGestaoResultadoStrip(userId, competencia, !!focusnfe.status?.connected);
+  } = useGestaoResultadoStrip(
+    userId,
+    competencia,
+    !!focusnfe.status?.connected,
+  );
 
   const alerts = useMemo(() => buildGestaoLucroAlerts(veiculos), [veiculos]);
 
@@ -159,7 +185,11 @@ export default function GestaoLucroPage() {
     const raw = searchParams.get("conectar");
     if (!raw) return;
     const vendor: GestaoConnectVendor | null =
-      raw === "nfe" || raw === "focusnfe" ? "focusnfe" : raw === "zapsign" || raw === "contratos" ? "zapsign" : null;
+      raw === "nfe" || raw === "focusnfe"
+        ? "focusnfe"
+        : raw === "zapsign" || raw === "contratos"
+        ? "zapsign"
+        : null;
     if (!vendor) return;
     setConnectVendor(vendor);
     setSearchParams((prev) => {
@@ -237,10 +267,16 @@ export default function GestaoLucroPage() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => setCommandOpen(true)}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCommandOpen(true)}
+            >
               <Search className="mr-2 h-4 w-4" />
               Busca rápida
-              <kbd className="ml-2 hidden rounded border bg-muted px-1.5 text-[10px] sm:inline">Ctrl+K</kbd>
+              <kbd className="ml-2 hidden rounded border bg-muted px-1.5 text-[10px] sm:inline">
+                Ctrl+K
+              </kbd>
             </Button>
             <Button variant="outline" onClick={() => navigate("/veiculos")}>
               <CarFront className="mr-2 h-4 w-4" />
@@ -290,129 +326,181 @@ export default function GestaoLucroPage() {
           </>
         )}
 
-        {userId ? (
-          <GestaoEstoqueHojeCollapsible userId={userId} refreshKey={estoqueHojeRefreshKey} />
-        ) : null}
+        {userId
+          ? <GestaoFechamentoDiaCard refreshKey={estoqueHojeRefreshKey} />
+          : null}
 
-        {loading && !veiculos.length ? (
-          <div className="flex justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        ) : (
-          <>
-            <GestaoLucroAlerts
-              alerts={alerts}
-              activeKind={activeAlert}
-              onSelect={onAlertSelect}
-              onCorrigirComissao={(id) => {
-                const v = veiculos.find((x) => x.id === id);
-                if (!v) return;
-                setActiveAlert("lucro_negativo_comissao");
-                setTab("estoque");
-                openDrawer(v, { focusVenda: true });
-              }}
+        {userId
+          ? (
+            <GestaoEstoqueHojeCollapsible
+              userId={userId}
+              refreshKey={estoqueHojeRefreshKey}
             />
+          )
+          : null}
 
-            <GestaoTabBar
-              value={tab}
-              onChange={setTab}
-              vendidosCount={metrics.dre.qtdVendas}
-              notasPendentes={notasPendentes}
-            />
-
-            {tabPanel("estoque", userId && (
-              <GestaoLucroEstoqueTab
-                veiculos={veiculos}
-                userId={userId}
-                highlightIds={highlightIds}
-                onRefresh={refreshAll}
-                onOpenDrawer={openDrawer}
-                onQuickDespesa={(v) => {
-                  setDespesaPreselect(v.id);
-                  setDespesaOpen(true);
+        {loading && !veiculos.length
+          ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          )
+          : (
+            <>
+              <GestaoLucroAlerts
+                alerts={alerts}
+                activeKind={activeAlert}
+                onSelect={onAlertSelect}
+                onCorrigirComissao={(id) => {
+                  const v = veiculos.find((x) => x.id === id);
+                  if (!v) return;
+                  setActiveAlert("lucro_negativo_comissao");
+                  setTab("estoque");
+                  openDrawer(v, { focusVenda: true });
                 }}
               />
-            ))}
 
-            {tabPanel("giro", userId && (
-              <GestaoGiroTab
-                userId={userId}
-                veiculos={veiculos}
-                refreshKey={estoqueHojeRefreshKey}
+              <GestaoTabBar
+                value={tab}
+                onChange={setTab}
+                vendidosCount={metrics.dre.qtdVendas}
+                notasPendentes={notasPendentes}
               />
-            ))}
 
-            {tabPanel("vendidos", (
-              <GestaoLucroVendidosTab
-                veiculos={veiculos}
-                onEditVenda={(v) => openDrawer(v, { focusVenda: true })}
-              />
-            ))}
-            {tabPanel("despesas", <GestaoLucroDespesasTab despesas={despesasFlat} veiculos={veiculos} />)}
-            {tabPanel("equipe", userId && (
-              <GestaoEquipeTab userId={userId} veiculos={veiculos} />
-            ))}
-            {tabPanel("financeiro", userId && (
-              <GestaoFinanceiroTab
-                userId={userId}
-                veiculos={veiculos}
-                section={financeSection}
-                onSectionChange={setFinanceSection}
-                competenciaSync={competencia}
-              />
-            ))}
+              {tabPanel(
+                "estoque",
+                userId && (
+                  <GestaoLucroEstoqueTab
+                    veiculos={veiculos}
+                    userId={userId}
+                    highlightIds={highlightIds}
+                    onRefresh={refreshAll}
+                    onOpenDrawer={openDrawer}
+                    onQuickDespesa={(v) => {
+                      setDespesaPreselect(v.id);
+                      setDespesaOpen(true);
+                    }}
+                  />
+                ),
+              )}
 
-            {tabPanel("contratos", userId && (
-              <div className="space-y-4">
-                <div className="flex flex-wrap justify-end gap-2">
-                  {zapsignConnected ? (
-                    <Button onClick={() => setPickerMode("contrato")}>Novo contrato</Button>
-                  ) : (
-                    <Button onClick={() => openConnect("zapsign")}>
-                      Ativar contratos com assinatura no celular
-                    </Button>
-                  )}
-                </div>
-                {zapsignConnected ? (
-                  <GestaoContratosTab
+              {tabPanel(
+                "giro",
+                userId && (
+                  <GestaoGiroTab
                     userId={userId}
                     veiculos={veiculos}
-                    preselectVeiculoId={contratoPrefillId}
+                    refreshKey={estoqueHojeRefreshKey}
                   />
-                ) : (
-                  <GestaoIntegracaoConnectPrompt
-                    vendor="zapsign"
-                    onConectar={() => openConnect("zapsign")}
-                  />
-                )}
-              </div>
-            ))}
+                ),
+              )}
 
-            {tabPanel("notas", userId && (
-              <div className="space-y-4">
-                <div className="flex flex-wrap justify-end gap-2">
-                  {focusConnected ? (
-                    <Button onClick={goEmitirNota}>Emitir nota</Button>
-                  ) : (
-                    <Button onClick={() => openConnect("focusnfe")}>
-                      Ativar emissão de nota fiscal
-                    </Button>
-                  )}
-                </div>
-                {focusConnected ? (
-                  <GestaoNotasFiscaisTab userId={userId} veiculos={veiculos} />
-                ) : (
-                  <GestaoIntegracaoConnectPrompt
-                    vendor="focusnfe"
-                    onConectar={() => openConnect("focusnfe")}
+              {tabPanel(
+                "vendidos",
+                (
+                  <GestaoLucroVendidosTab
+                    veiculos={veiculos}
+                    onEditVenda={(v) => openDrawer(v, { focusVenda: true })}
                   />
-                )}
-              </div>
-            ))}
+                ),
+              )}
+              {tabPanel(
+                "despesas",
+                <GestaoLucroDespesasTab
+                  despesas={despesasFlat}
+                  veiculos={veiculos}
+                />,
+              )}
+              {tabPanel(
+                "equipe",
+                userId && (
+                  <GestaoEquipeTab userId={userId} veiculos={veiculos} />
+                ),
+              )}
+              {tabPanel(
+                "financeiro",
+                userId && (
+                  <GestaoFinanceiroTab
+                    userId={userId}
+                    veiculos={veiculos}
+                    section={financeSection}
+                    onSectionChange={setFinanceSection}
+                    competenciaSync={competencia}
+                  />
+                ),
+              )}
 
-            {tabPanel("relatorios", <GestaoLucroRelatoriosTab veiculos={veiculos} />)}
-          </>
-        )}
+              {tabPanel(
+                "contratos",
+                userId && (
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {zapsignConnected
+                        ? (
+                          <Button onClick={() => setPickerMode("contrato")}>
+                            Novo contrato
+                          </Button>
+                        )
+                        : (
+                          <Button onClick={() => openConnect("zapsign")}>
+                            Ativar contratos com assinatura no celular
+                          </Button>
+                        )}
+                    </div>
+                    {zapsignConnected
+                      ? (
+                        <GestaoContratosTab
+                          userId={userId}
+                          veiculos={veiculos}
+                          preselectVeiculoId={contratoPrefillId}
+                        />
+                      )
+                      : (
+                        <GestaoIntegracaoConnectPrompt
+                          vendor="zapsign"
+                          onConectar={() => openConnect("zapsign")}
+                        />
+                      )}
+                  </div>
+                ),
+              )}
+
+              {tabPanel(
+                "notas",
+                userId && (
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {focusConnected
+                        ? <Button onClick={goEmitirNota}>Emitir nota</Button>
+                        : (
+                          <Button onClick={() => openConnect("focusnfe")}>
+                            Ativar emissão de nota fiscal
+                          </Button>
+                        )}
+                    </div>
+                    {focusConnected
+                      ? (
+                        <GestaoNotasFiscaisTab
+                          userId={userId}
+                          veiculos={veiculos}
+                        />
+                      )
+                      : (
+                        <GestaoIntegracaoConnectPrompt
+                          vendor="focusnfe"
+                          onConectar={() => openConnect("focusnfe")}
+                        />
+                      )}
+                  </div>
+                ),
+              )}
+
+              {tabPanel(
+                "relatorios",
+                <GestaoLucroRelatoriosTab veiculos={veiculos} />,
+              )}
+            </>
+          )}
       </main>
 
       {userId && (
@@ -420,13 +508,11 @@ export default function GestaoLucroPage() {
           <GestaoVeiculoPickerDialog
             open={pickerMode != null}
             onOpenChange={(o) => !o && setPickerMode(null)}
-            title={
-              pickerMode === "nota"
-                ? "Emitir nota — escolha o veículo"
-                : pickerMode === "contrato"
-                  ? "Novo contrato — escolha o veículo"
-                  : "Registrar venda — escolha o veículo"
-            }
+            title={pickerMode === "nota"
+              ? "Emitir nota — escolha o veículo"
+              : pickerMode === "contrato"
+              ? "Novo contrato — escolha o veículo"
+              : "Registrar venda — escolha o veículo"}
             veiculos={veiculos}
             onPick={onPickVeiculo}
           />
