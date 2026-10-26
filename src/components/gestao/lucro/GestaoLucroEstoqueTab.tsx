@@ -4,14 +4,8 @@ import { Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  hojeSaoPaulo,
-  intervaloMesAtualSaoPaulo,
-} from "../../../../supabase/functions/_shared/gestao-date-br.ts";
-import {
-  formatGestaoDataBr,
-  isGestaoVeiculoVendido,
-} from "@/lib/gestao-venda-display.ts";
+import { hojeSaoPaulo, intervaloMesAtualSaoPaulo } from "../../../../supabase/functions/_shared/gestao-date-br.ts";
+import { formatGestaoDataBr, isGestaoVeiculoVendido } from "@/lib/gestao-venda-display.ts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,11 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { GestaoVeiculoEnriched } from "@/lib/gestao-lucro-types.ts";
-import {
-  isActiveStock,
-  vehicleDays,
-  vehicleLabel,
-} from "@/lib/gestao-lucro-data.ts";
+import { isActiveStock, vehicleDays, vehicleLabel } from "@/lib/gestao-lucro-data.ts";
 import {
   formatGestaoMoney,
   formatGestaoPct,
@@ -59,24 +49,15 @@ type Props = {
   userId: string;
   highlightIds: Set<string>;
   onRefresh: () => void;
-  onOpenDrawer: (
-    v: GestaoVeiculoEnriched,
-    options?: GestaoDrawerOpenOptions,
-  ) => void;
+  onOpenDrawer: (v: GestaoVeiculoEnriched, options?: GestaoDrawerOpenOptions) => void;
   onQuickDespesa: (v: GestaoVeiculoEnriched) => void;
 };
 
-function compraFieldValue(
-  v: GestaoVeiculoEnriched,
-  editing: Record<string, string>,
-): string {
+function compraFieldValue(v: GestaoVeiculoEnriched, editing: Record<string, string>): string {
   return editing[v.id] ?? (v.valorCompra != null ? String(v.valorCompra) : "");
 }
 
-function isCompraDirty(
-  v: GestaoVeiculoEnriched,
-  editing: Record<string, string>,
-): boolean {
+function isCompraDirty(v: GestaoVeiculoEnriched, editing: Record<string, string>): boolean {
   const raw = compraFieldValue(v, editing);
   if (!raw.trim()) return v.valorCompra != null;
   const parsed = parseGestaoMoneyField(raw);
@@ -100,19 +81,13 @@ export function GestaoLucroEstoqueTab({
   const [q, setQ] = useState("");
   const [listFilter, setListFilter] = useState<ListFilter>("todos");
   const [sort, setSort] = useState<SortKey>("dias");
-  const [editingCompra, setEditingCompra] = useState<Record<string, string>>(
-    {},
-  );
+  const [editingCompra, setEditingCompra] = useState<Record<string, string>>({});
   const [editingPreco, setEditingPreco] = useState<Record<string, string>>({});
-  const [precoConfirm, setPrecoConfirm] = useState<
-    {
-      veiculo: GestaoVeiculoEnriched;
-      novo: number;
-    } | null
-  >(null);
-  const [touchedCompra, setTouchedCompra] = useState<Record<string, boolean>>(
-    {},
-  );
+  const [precoConfirm, setPrecoConfirm] = useState<{
+    veiculo: GestaoVeiculoEnriched;
+    novo: number;
+  } | null>(null);
+  const [touchedCompra, setTouchedCompra] = useState<Record<string, boolean>>({});
   const [savingCompra, setSavingCompra] = useState(false);
   const [entradaOpen, setEntradaOpen] = useState(false);
   const initialDocumentId = searchParams.get("entrada_documento");
@@ -130,41 +105,30 @@ export function GestaoLucroEstoqueTab({
     }
   };
 
-  const matchesSearch = useCallback(
-    (v: GestaoVeiculoEnriched, term: string) => {
-      if (!term) return true;
-      const blob = [vehicleLabel(v), v.placa, v.codigo_origem].filter(Boolean)
-        .join(" ").toLowerCase();
-      return blob.includes(term);
-    },
-    [],
-  );
+  const matchesSearch = useCallback((v: GestaoVeiculoEnriched, term: string) => {
+    if (!term) return true;
+    const blob = [vehicleLabel(v), v.placa, v.codigo_origem].filter(Boolean).join(" ").toLowerCase();
+    return blob.includes(term);
+  }, []);
 
-  const sortList = useCallback(
-    (list: GestaoVeiculoEnriched[], soldRows: boolean) => {
-      return [...list].sort((a, b) => {
-        if (soldRows) {
-          const da = a.dataVenda ?? "";
-          const db = b.dataVenda ?? "";
-          return db.localeCompare(da);
-        }
-        if (sort === "dias") return vehicleDays(b) - vehicleDays(a);
-        if (sort === "preco") return (b.preco ?? 0) - (a.preco ?? 0);
-        if (sort === "marca") {
-          return vehicleLabel(a).localeCompare(vehicleLabel(b));
-        }
-        const la = a.lucro.lucroProjetado ?? -Infinity;
-        const lb = b.lucro.lucroProjetado ?? -Infinity;
-        return lb - la;
-      });
-    },
-    [sort],
-  );
+  const sortList = useCallback((list: GestaoVeiculoEnriched[], soldRows: boolean) => {
+    return [...list].sort((a, b) => {
+      if (soldRows) {
+        const da = a.dataVenda ?? "";
+        const db = b.dataVenda ?? "";
+        return db.localeCompare(da);
+      }
+      if (sort === "dias") return vehicleDays(b) - vehicleDays(a);
+      if (sort === "preco") return (b.preco ?? 0) - (a.preco ?? 0);
+      if (sort === "marca") return vehicleLabel(a).localeCompare(vehicleLabel(b));
+      const la = a.lucro.lucroProjetado ?? -Infinity;
+      const lb = b.lucro.lucroProjetado ?? -Infinity;
+      return lb - la;
+    });
+  }, [sort]);
 
   const emEstoque = useMemo(() => veiculos.filter(isActiveStock), [veiculos]);
-  const vendidos = useMemo(() => veiculos.filter(isGestaoVeiculoVendido), [
-    veiculos,
-  ]);
+  const vendidos = useMemo(() => veiculos.filter(isGestaoVeiculoVendido), [veiculos]);
 
   const tableRows = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -180,15 +144,7 @@ export function GestaoLucroEstoqueTab({
     if (listFilter === "estoque") return estoqueRows;
     if (listFilter === "vendidos") return vendidoRows;
     return [...estoqueRows, ...vendidoRows];
-  }, [
-    emEstoque,
-    vendidos,
-    q,
-    highlightIds,
-    listFilter,
-    matchesSearch,
-    sortList,
-  ]);
+  }, [emEstoque, vendidos, q, highlightIds, listFilter, matchesSearch, sortList]);
 
   const totalsEstoque = useMemo(() => {
     let preco = 0;
@@ -240,9 +196,7 @@ export function GestaoLucroEstoqueTab({
       toast.error("Valor de compra inválido.");
       return false;
     }
-    const { error } = await supabase.from(
-      "veiculo_compra" as "veiculos_estoque",
-    ).upsert({
+    const { error } = await supabase.from("veiculo_compra" as "veiculos_estoque").upsert({
       user_id: userId,
       veiculo_id: v.id,
       valor_compra: valor,
@@ -289,9 +243,7 @@ export function GestaoLucroEstoqueTab({
       toast.error("Não foi possível marcar como vendido.");
       return;
     }
-    await supabase.from("veiculo_venda" as "veiculos_estoque").update({
-      marcou_vendido: true,
-    })
+    await supabase.from("veiculo_venda" as "veiculos_estoque").update({ marcou_vendido: true })
       .eq("user_id", userId)
       .eq("veiculo_id", v.id);
     toast.success("Veículo marcado como vendido no estoque.");
@@ -312,9 +264,7 @@ export function GestaoLucroEstoqueTab({
   const applyPrecoConfirm = async () => {
     if (!precoConfirm) return;
     const { veiculo, novo } = precoConfirm;
-    const { error } = await supabase.from("veiculos_estoque").update({
-      preco: novo,
-    }).eq("id", veiculo.id);
+    const { error } = await supabase.from("veiculos_estoque").update({ preco: novo }).eq("id", veiculo.id);
     setPrecoConfirm(null);
     if (error) {
       toast.error("Erro ao atualizar preço.");
@@ -324,7 +274,8 @@ export function GestaoLucroEstoqueTab({
     onRefresh();
   };
 
-  const precoExtreme = precoConfirm?.veiculo.preco != null &&
+  const precoExtreme =
+    precoConfirm?.veiculo.preco != null &&
     precoConfirm.veiculo.preco > 0 &&
     (precoConfirm.novo < precoConfirm.veiculo.preco * 0.5 ||
       precoConfirm.novo > precoConfirm.veiculo.preco * 2);
@@ -336,8 +287,7 @@ export function GestaoLucroEstoqueTab({
         <div className="rounded-lg border border-dashed p-12 text-center">
           <p className="font-medium">Nenhum veículo no estoque</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Cadastre veículos disponíveis, reservados ou em preparação para
-            acompanhar lucro aqui.
+            Cadastre veículos disponíveis, reservados ou em preparação para acompanhar lucro aqui.
           </p>
           <Button className="mt-4" onClick={() => setEntradaOpen(true)}>
             <Plus className="mr-2 h-4 w-4" /> Entrada de veículo
@@ -363,11 +313,7 @@ export function GestaoLucroEstoqueTab({
             {unsavedCompraVeiculos.length === 1 ? "" : "es"} de compra não salvo
             {unsavedCompraVeiculos.length === 1 ? "" : "s"}
           </span>
-          <Button
-            size="sm"
-            disabled={savingCompra}
-            onClick={() => void saveAllCompras()}
-          >
+          <Button size="sm" disabled={savingCompra} onClick={() => void saveAllCompras()}>
             Salvar todos
           </Button>
         </div>
@@ -406,9 +352,7 @@ export function GestaoLucroEstoqueTab({
           ))}
         </div>
         <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue placeholder="Ordenar" />
-          </SelectTrigger>
+          <SelectTrigger className="w-[160px]"><SelectValue placeholder="Ordenar" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="dias">Dias (maior)</SelectItem>
             <SelectItem value="lucro">Lucro projetado</SelectItem>
@@ -448,9 +392,7 @@ export function GestaoLucroEstoqueTab({
               const margem = sold
                 ? v.lucro.margemPct
                 : gestaoMargemPct(v.lucro.lucroProjetado, v.preco);
-              const lucroCell = sold
-                ? v.lucro.lucroLiquido
-                : v.lucro.lucroProjetado;
+              const lucroCell = sold ? v.lucro.lucroLiquido : v.lucro.lucroProjetado;
               const foto = v.fotos?.[0];
               return (
                 <tr
@@ -460,19 +402,11 @@ export function GestaoLucroEstoqueTab({
                   } ${highlightIds.has(v.id) ? "bg-amber-500/5" : ""}`}
                 >
                   <td className="py-2 pr-2">
-                    {foto
-                      ? (
-                        <img
-                          src={foto}
-                          alt=""
-                          className="h-10 w-14 rounded object-cover"
-                        />
-                      )
-                      : (
-                        <div className="flex h-10 w-14 items-center justify-center rounded bg-muted text-xs">
-                          —
-                        </div>
-                      )}
+                    {foto ? (
+                      <img src={foto} alt="" className="h-10 w-14 rounded object-cover" />
+                    ) : (
+                      <div className="flex h-10 w-14 items-center justify-center rounded bg-muted text-xs">—</div>
+                    )}
                   </td>
                   <td className="py-2 pr-2 font-medium">
                     <div>{vehicleLabel(v)}</div>
@@ -483,8 +417,7 @@ export function GestaoLucroEstoqueTab({
                     )}
                     {v.status === "em_preparacao" && (
                       <span className="ml-1 mt-1 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-900">
-                        Em preparação — complete o anúncio para liberar na
-                        vitrine
+                        Em preparação — complete o anúncio para liberar na vitrine
                       </span>
                     )}
                     {v.consignacao?.repasse_aviso && (
@@ -517,24 +450,19 @@ export function GestaoLucroEstoqueTab({
                   </td>
                   <td className="py-2 pr-2">{v.placa ?? "—"}</td>
                   <td className="py-2 pr-2 align-top">
-                    {sold ? <span>{formatGestaoMoney(v.valorCompra)}</span> : (
+                    {sold ? (
+                      <span>{formatGestaoMoney(v.valorCompra)}</span>
+                    ) : (
                       <>
                         <div className="flex items-start gap-1">
                           <Input
                             className={`h-8 w-32 ${
-                              isCompraDirty(v, editingCompra)
-                                ? "border-amber-400 ring-1 ring-amber-200"
-                                : ""
+                              isCompraDirty(v, editingCompra) ? "border-amber-400 ring-1 ring-amber-200" : ""
                             }`}
                             placeholder="Compra"
                             value={compraFieldValue(v, editingCompra)}
-                            onChange={(e) =>
-                              setEditingCompra({
-                                ...editingCompra,
-                                [v.id]: e.target.value,
-                              })}
-                            onBlur={() =>
-                              setTouchedCompra((t) => ({ ...t, [v.id]: true }))}
+                            onChange={(e) => setEditingCompra({ ...editingCompra, [v.id]: e.target.value })}
+                            onBlur={() => setTouchedCompra((t) => ({ ...t, [v.id]: true }))}
                           />
                           {isCompraDirty(v, editingCompra) && (
                             <Button
@@ -542,30 +470,22 @@ export function GestaoLucroEstoqueTab({
                               size="sm"
                               className="h-8 shrink-0"
                               disabled={savingCompra}
-                              onClick={() =>
-                                void saveCompraInline(v).then((saved) => {
-                                  if (saved) {
-                                    toast.success("Compra salva.");
-                                    onRefresh();
-                                  }
-                                })}
+                              onClick={() => void saveCompraInline(v).then((saved) => {
+                                if (saved) {
+                                  toast.success("Compra salva.");
+                                  onRefresh();
+                                }
+                              })}
                             >
                               Salvar
                             </Button>
                           )}
                         </div>
                         <p className="max-w-[8rem] truncate text-[10px] text-muted-foreground">
-                          {formatGestaoMoneyInputPreview(
-                            parseGestaoMoneyBr(
-                              compraFieldValue(v, editingCompra),
-                            ),
-                          )}
+                          {formatGestaoMoneyInputPreview(parseGestaoMoneyBr(compraFieldValue(v, editingCompra)))}
                         </p>
-                        {touchedCompra[v.id] &&
-                          isCompraDirty(v, editingCompra) && (
-                          <p className="text-[10px] font-medium text-amber-700">
-                            não salvo
-                          </p>
+                        {touchedCompra[v.id] && isCompraDirty(v, editingCompra) && (
+                          <p className="text-[10px] font-medium text-amber-700">não salvo</p>
                         )}
                       </>
                     )}
@@ -580,133 +500,83 @@ export function GestaoLucroEstoqueTab({
                     </button>
                   </td>
                   <td className="py-2 pr-2 align-top">
-                    {sold ? <span>{formatGestaoMoney(v.preco)}</span> : (
+                    {sold ? (
+                      <span>{formatGestaoMoney(v.preco)}</span>
+                    ) : (
                       <>
                         <Input
                           className="h-8 w-32"
                           placeholder="Preço"
-                          value={editingPreco[v.id] ??
-                            (v.preco != null ? String(v.preco) : "")}
-                          onChange={(e) =>
-                            setEditingPreco({
-                              ...editingPreco,
-                              [v.id]: e.target.value,
-                            })}
+                          value={
+                            editingPreco[v.id] ??
+                            (v.preco != null ? String(v.preco) : "")
+                          }
+                          onChange={(e) => setEditingPreco({ ...editingPreco, [v.id]: e.target.value })}
                           onKeyDown={(e) => {
                             if (e.key === "Enter") requestPrecoConfirm(v);
                           }}
                         />
                         <p className="max-w-[8rem] truncate text-[10px] text-muted-foreground">
                           {formatGestaoMoneyInputPreview(
-                            parseGestaoMoneyBr(
-                              editingPreco[v.id] ?? String(v.preco ?? ""),
-                            ),
+                            parseGestaoMoneyBr(editingPreco[v.id] ?? String(v.preco ?? "")),
                           )}
                         </p>
                       </>
                     )}
                   </td>
                   <td className="py-2 pr-2">
-                    {v.lucro.custoCompraPendente
-                      ? <span className="text-amber-600">Pendente</span>
-                      : (
-                        formatGestaoMoney(v.lucro.investido)
-                      )}
+                    {v.lucro.custoCompraPendente ? (
+                      <span className="text-amber-600">Pendente</span>
+                    ) : (
+                      formatGestaoMoney(v.lucro.investido)
+                    )}
                   </td>
-                  <td
-                    className={`py-2 pr-2 font-medium ${
-                      gestaoLucroTone(lucroCell)
-                    }`}
-                  >
+                  <td className={`py-2 pr-2 font-medium ${gestaoLucroTone(lucroCell)}`}>
                     {sold
                       ? formatGestaoMoney(lucroCell)
                       : v.lucro.custoCompraPendente
-                      ? "—"
-                      : formatGestaoMoney(lucroCell)}
+                        ? "—"
+                        : formatGestaoMoney(lucroCell)}
                     {sold && (
-                      <span className="block text-[10px] font-normal text-muted-foreground">
-                        Lucro final
-                      </span>
+                      <span className="block text-[10px] font-normal text-muted-foreground">Lucro final</span>
                     )}
                   </td>
-                  <td className={`py-2 pr-2 ${gestaoLucroTone(margem)}`}>
-                    {formatGestaoPct(margem)}
-                  </td>
+                  <td className={`py-2 pr-2 ${gestaoLucroTone(margem)}`}>{formatGestaoPct(margem)}</td>
                   <td className="py-2 pr-2">{vehicleDays(v)}</td>
                   <td className="py-2">
                     <div className="flex flex-wrap gap-1">
-                      {sold
-                        ? (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() =>
-                                onOpenDrawer(v, { focusVenda: true })}
-                            >
-                              Editar venda
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => onOpenDrawer(v)}
-                            >
-                              Detalhes
-                            </Button>
-                          </>
-                        )
-                        : vendaRegistradaSemVendido(v)
-                        ? (
-                          <>
-                            <Button
-                              size="default"
-                              className="h-9 px-4 font-semibold"
-                              onClick={() => void markSoldQuick(v)}
-                            >
-                              Marcar vendido
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => onQuickDespesa(v)}
-                            >
-                              + Despesa
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => onOpenDrawer(v)}
-                            >
-                              Detalhes
-                            </Button>
-                          </>
-                        )
-                        : (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => onQuickDespesa(v)}
-                            >
-                              + Despesa
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() =>
-                                onOpenDrawer(v, { focusVenda: true })}
-                            >
-                              Registrar venda
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => onOpenDrawer(v)}
-                            >
-                              Detalhes
-                            </Button>
-                          </>
-                        )}
+                      {sold ? (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onOpenDrawer(v, { focusVenda: true })}
+                          >
+                            Editar venda
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => onOpenDrawer(v)}>Detalhes</Button>
+                        </>
+                      ) : vendaRegistradaSemVendido(v) ? (
+                        <>
+                          <Button
+                            size="default"
+                            className="h-9 px-4 font-semibold"
+                            onClick={() => void markSoldQuick(v)}
+                          >
+                            Marcar vendido
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => onQuickDespesa(v)}>+ Despesa</Button>
+                          <Button size="sm" variant="ghost" onClick={() => onOpenDrawer(v)}>Detalhes</Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => onQuickDespesa(v)}>+ Despesa</Button>
+                          <Button size="sm" variant="outline" onClick={() => onOpenDrawer(v, { focusVenda: true })}>
+                            Registrar venda
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => onOpenDrawer(v)}>Detalhes</Button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -715,31 +585,20 @@ export function GestaoLucroEstoqueTab({
           </tbody>
           <tfoot>
             <tr className="border-t font-medium">
-              <td colSpan={5} className="py-2 pr-2">
-                Totais em estoque ({totalsEstoque.qtd})
-              </td>
-              <td className="py-2 pr-2">
-                {formatGestaoMoney(totalsEstoque.preco)}
-              </td>
-              <td className="py-2 pr-2">
-                {formatGestaoMoney(totalsEstoque.investido)}
-              </td>
-              <td
-                className={`py-2 pr-2 ${gestaoLucroTone(totalsEstoque.lucro)}`}
-              >
+              <td colSpan={5} className="py-2 pr-2">Totais em estoque ({totalsEstoque.qtd})</td>
+              <td className="py-2 pr-2">{formatGestaoMoney(totalsEstoque.preco)}</td>
+              <td className="py-2 pr-2">{formatGestaoMoney(totalsEstoque.investido)}</td>
+              <td className={`py-2 pr-2 ${gestaoLucroTone(totalsEstoque.lucro)}`}>
                 {formatGestaoMoney(totalsEstoque.lucro)}
               </td>
               <td colSpan={3} />
             </tr>
             <tr className="text-sm text-muted-foreground">
               <td colSpan={11} className="py-2">
-                Vendidos no mês ({vendidosMes.qtd}): faturamento{" "}
-                {formatGestaoMoney(vendidosMes.faturamento)}
+                Vendidos no mês ({vendidosMes.qtd}): faturamento {formatGestaoMoney(vendidosMes.faturamento)}
                 {" · "}
                 lucro{" "}
-                <span className={gestaoLucroTone(vendidosMes.lucro)}>
-                  {formatGestaoMoney(vendidosMes.lucro)}
-                </span>
+                <span className={gestaoLucroTone(vendidosMes.lucro)}>{formatGestaoMoney(vendidosMes.lucro)}</span>
               </td>
             </tr>
           </tfoot>
@@ -749,23 +608,17 @@ export function GestaoLucroEstoqueTab({
       <div className="space-y-3 md:hidden">
         {tableRows.map((v) => {
           const sold = isGestaoVeiculoVendido(v);
-          const margem = sold
-            ? v.lucro.margemPct
-            : gestaoMargemPct(v.lucro.lucroProjetado, v.preco);
+          const margem = sold ? v.lucro.margemPct : gestaoMargemPct(v.lucro.lucroProjetado, v.preco);
           const lucroVal = sold ? v.lucro.lucroLiquido : v.lucro.lucroProjetado;
           return (
             <div
               key={v.id}
-              className={`rounded-lg border p-4 space-y-2 ${
-                sold ? "bg-muted/50" : ""
-              }`}
+              className={`rounded-lg border p-4 space-y-2 ${sold ? "bg-muted/50" : ""}`}
             >
               <p className="font-semibold">{vehicleLabel(v)}</p>
               {v.consignacao?.status === "ativo" && (
                 <span className="inline-block rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-900">
-                  Consignado · dono recebe {formatGestaoMoney(
-                    v.consignacaoResultado?.repasseDonoLiquido,
-                  )}
+                  Consignado · dono recebe {formatGestaoMoney(v.consignacaoResultado?.repasseDonoLiquido)}
                 </span>
               )}
               {v.status === "em_preparacao" && (
@@ -785,88 +638,44 @@ export function GestaoLucroEstoqueTab({
                 </span>
               )}
               <p className="text-xs text-muted-foreground">
-                {v.status === "em_preparacao" ? "Em preparação" : v.status} ·
-                {" "}
-                {vehicleDays(v)} dias
+                {v.status === "em_preparacao" ? "Em preparação" : v.status} · {vehicleDays(v)} dias
               </p>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <span>Preço: {formatGestaoMoney(v.preco)}</span>
                 <span className={gestaoLucroTone(lucroVal)}>
                   {sold ? "Lucro final" : "Lucro"}:{" "}
-                  {!sold && v.lucro.custoCompraPendente
-                    ? "Pendente"
-                    : formatGestaoMoney(lucroVal)}
+                  {!sold && v.lucro.custoCompraPendente ? "Pendente" : formatGestaoMoney(lucroVal)}
                 </span>
               </div>
-              <p className={`text-sm ${gestaoLucroTone(margem)}`}>
-                Margem {formatGestaoPct(margem)}
-              </p>
+              <p className={`text-sm ${gestaoLucroTone(margem)}`}>Margem {formatGestaoPct(margem)}</p>
               <div className="flex flex-wrap gap-2">
-                {sold
-                  ? (
-                    <>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => onOpenDrawer(v, { focusVenda: true })}
-                      >
-                        Editar venda
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => onOpenDrawer(v)}
-                      >
-                        Detalhes
-                      </Button>
-                    </>
-                  )
-                  : vendaRegistradaSemVendido(v)
-                  ? (
-                    <>
-                      <Button
-                        className="w-full font-semibold"
-                        onClick={() => void markSoldQuick(v)}
-                      >
-                        Marcar vendido
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => onOpenDrawer(v)}
-                      >
-                        Detalhes
-                      </Button>
-                    </>
-                  )
-                  : (
-                    <>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => onOpenDrawer(v)}
-                      >
-                        Detalhes
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => onQuickDespesa(v)}
-                      >
-                        + Despesa
-                      </Button>
-                    </>
-                  )}
+                {sold ? (
+                  <>
+                    <Button size="sm" variant="outline" onClick={() => onOpenDrawer(v, { focusVenda: true })}>
+                      Editar venda
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => onOpenDrawer(v)}>Detalhes</Button>
+                  </>
+                ) : vendaRegistradaSemVendido(v) ? (
+                  <>
+                    <Button className="w-full font-semibold" onClick={() => void markSoldQuick(v)}>
+                      Marcar vendido
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => onOpenDrawer(v)}>Detalhes</Button>
+                  </>
+                ) : (
+                  <>
+                    <Button size="sm" variant="outline" onClick={() => onOpenDrawer(v)}>Detalhes</Button>
+                    <Button size="sm" variant="outline" onClick={() => onQuickDespesa(v)}>+ Despesa</Button>
+                  </>
+                )}
               </div>
             </div>
           );
         })}
       </div>
 
-      <AlertDialog
-        open={!!precoConfirm}
-        onOpenChange={() => setPrecoConfirm(null)}
-      >
+      <AlertDialog open={!!precoConfirm} onOpenChange={() => setPrecoConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Alterar preço anunciado?</AlertDialogTitle>
@@ -874,19 +683,14 @@ export function GestaoLucroEstoqueTab({
               <div className="space-y-2 text-sm text-muted-foreground">
                 <p>
                   Alterar preço anunciado de{" "}
-                  <strong>
-                    {formatGestaoMoney(precoConfirm?.veiculo.preco)}
-                  </strong>{" "}
-                  para{" "}
-                  <strong>
-                    {formatGestaoMoney(precoConfirm?.novo ?? null)}
-                  </strong>?
+                  <strong>{formatGestaoMoney(precoConfirm?.veiculo.preco)}</strong> para{" "}
+                  <strong>{formatGestaoMoney(precoConfirm?.novo ?? null)}</strong>?
                 </p>
                 <p>Isso muda a vitrine e os portais.</p>
                 {precoExtreme && (
                   <p className="font-medium text-red-600">
-                    Atenção: a variação é maior que 50% em relação ao preço
-                    atual. Confirme se não é erro de digitação.
+                    Atenção: a variação é maior que 50% em relação ao preço atual. Confirme se
+                    não é erro de digitação.
                   </p>
                 )}
               </div>
@@ -894,9 +698,7 @@ export function GestaoLucroEstoqueTab({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void applyPrecoConfirm()}>
-              Confirmar
-            </AlertDialogAction>
+            <AlertDialogAction onClick={() => void applyPrecoConfirm()}>Confirmar</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

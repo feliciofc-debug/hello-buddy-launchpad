@@ -98,7 +98,7 @@ def _osd_rotate(image: Image.Image) -> Image.Image | None:
             output_type=pytesseract.Output.DICT,
         )
         angle = int(osd.get("rotate", 0)) % 360
-        return image if angle == 0 else image.rotate(angle, expand=True)
+        return image if angle == 0 else image.rotate(-angle, expand=True)
     except Exception:
         return None
 

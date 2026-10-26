@@ -8,6 +8,24 @@ import { lerCrlvLocal } from "./crlv-leitura.ts";
 import type { CrlvParserResultado } from "./crlv-parser.ts";
 
 const BUCKET = "gestao-cofre";
+const MAX_BYTES = 15 * 1024 * 1024;
+const ALLOWED_MIME = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+]);
+const ALLOWED_TIPO = new Set([
+  "crlv",
+  "crlv_e",
+  "cnh",
+  "atpv_e",
+  "procuracao",
+  "comprovante_endereco",
+  "outro",
+]);
 const PII_KEYS = new Set([
   "proprietario",
   "proprietario_nome",
@@ -98,6 +116,15 @@ export type GestaoCofreUploadResult = {
 export async function gestaoCofreUpload(
   input: GestaoCofreUploadInput,
 ): Promise<GestaoCofreUploadResult> {
+  if (!input.bytes.byteLength || input.bytes.byteLength > MAX_BYTES) {
+    throw new Error("Arquivo deve ter até 15 MB");
+  }
+  if (!ALLOWED_MIME.has(input.mime.toLowerCase())) {
+    throw new Error("Tipo de arquivo não permitido");
+  }
+  if (!ALLOWED_TIPO.has(input.tipo)) {
+    throw new Error("Tipo de documento inválido");
+  }
   const sha256 = await sha256Hex(input.bytes);
   const { data: duplicate } = await input.sb.from("gestao_documento")
     .select("id").eq("user_id", input.userId).eq("sha256", sha256)

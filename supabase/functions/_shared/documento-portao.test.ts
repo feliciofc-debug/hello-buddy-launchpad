@@ -110,3 +110,21 @@ Deno.test("DOC-0 — processor executa portão antes de qualquer rota de visão"
     true,
   );
 });
+
+Deno.test("DOC-0 — serviço separa detecção rápida da leitura completa", async () => {
+  const source = await Deno.readTextFile(
+    new URL("../../../services/amz-ocr/app.py", import.meta.url),
+  );
+  assertEquals(source.includes("_resize(image, 2400)"), true);
+  assertEquals(source.includes("_resize(image, 1400)"), true);
+  assertEquals(source.includes('config="--oem 1 --psm 11"'), true);
+  assertEquals(source.includes("DETECT_TIMEOUT_SECONDS = 8"), true);
+  assertEquals(source.includes("image_to_osd"), true);
+  const endpoint = source.slice(source.indexOf('@app.post("/detectar")'));
+  assertEquals(endpoint.includes('return {"documento": documento, "tipo": tipo}'), true);
+  assertEquals(endpoint.includes('return {"text":'), false);
+  const dockerfile = await Deno.readTextFile(
+    new URL("../../../services/amz-ocr/Dockerfile", import.meta.url),
+  );
+  assertEquals(dockerfile.includes("COPY app.py detector.py ./"), true);
+});
