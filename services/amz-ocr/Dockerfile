@@ -5,7 +5,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PORT=3011 \
     HOME=/opt/amz-ocr \
     TMPDIR=/dev/shm \
-    PADDLE_PDX_MODEL_SOURCE=BOS
+    PADDLE_PDX_MODEL_SOURCE=BOS \
+    PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
