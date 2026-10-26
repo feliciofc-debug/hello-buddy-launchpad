@@ -24743,7 +24743,8 @@ async function processOne(queueId: string) {
     // COTACAO-WPP-1: parceiro (não-dono/gestor) com cotação solicitada — antes do fluxo cliente.
     if (
       !fromIsOwner &&
-      (row.message_type === "text" || row.message_type === "interactive")
+      (row.message_type === "text" || row.message_type === "interactive" ||
+        row.message_type === "button")
     ) {
       try {
         const osParceiroEarly = await tryProcessOsParceiroCotacaoWhatsAppShortcut({

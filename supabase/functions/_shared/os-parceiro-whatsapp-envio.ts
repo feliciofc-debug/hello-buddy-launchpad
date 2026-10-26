@@ -19,7 +19,7 @@ import {
 export type OsCotacaoEnvioResult = {
   cotacaoId: string;
   ok: boolean;
-  mode: "documento_janela" | "template" | "pendente_modelo" | "falhou";
+  mode: "documento_janela" | "convite" | "pendente_modelo" | "falhou";
   error?: string;
 };
 
@@ -44,12 +44,12 @@ async function lastInboundAt(
   return inbound?.created_at ?? null;
 }
 
-async function resolveCotacaoTemplate(
+async function resolveCotacaoConviteTemplate(
   sb: SupabaseClient,
   userId: string,
 ): Promise<{ id: string; nome_meta: string } | null> {
-  const preferred = Deno.env.get("OS_COTACAO_TEMPLATE_NOME")?.trim()
-    || "os_cotacao_pedido_v1";
+  const preferred = Deno.env.get("OS_COTACAO_CONVITE_TEMPLATE_NOME")?.trim()
+    || "os_cotacao_convite_v1";
   const { data: exact } = await sb.from("whatsapp_templates")
     .select("id, nome_meta")
     .eq("user_id", userId)
@@ -57,14 +57,7 @@ async function resolveCotacaoTemplate(
     .eq("status_meta", "aprovado")
     .maybeSingle();
   if (exact?.id) return exact as { id: string; nome_meta: string };
-  const { data: fallback } = await sb.from("whatsapp_templates")
-    .select("id, nome_meta")
-    .eq("user_id", userId)
-    .eq("status_meta", "aprovado")
-    .ilike("nome_meta", "%os_cotacao%")
-    .limit(1)
-    .maybeSingle();
-  return fallback?.id ? fallback as { id: string; nome_meta: string } : null;
+  return null;
 }
 
 export function montarVariaveisTemplateCotacao(input: {
@@ -122,6 +115,7 @@ export async function enviarPedidoCotacaoParceiroWhatsApp(
     lojaNome: string;
     fotoRefs?: GestaoOsFotoRefRow[];
     trocaFotosRaw?: unknown;
+    forceDirect?: boolean;
   },
 ): Promise<OsCotacaoEnvioResult> {
   const phone = normalizeOwnerPhone(input.parceiroPhone);
@@ -165,8 +159,8 @@ export async function enviarPedidoCotacaoParceiroWhatsApp(
   }
 
   const inbound = await lastInboundAt(sb, input.userId, phone);
-  const tpl = await resolveCotacaoTemplate(sb, input.userId);
-  const inWindow = isInsideWhatsAppWindow(inbound);
+  const tpl = await resolveCotacaoConviteTemplate(sb, input.userId);
+  const inWindow = input.forceDirect === true || isInsideWhatsAppWindow(inbound);
 
   const instrucoes =
     "Como responder:\n" +
@@ -220,16 +214,17 @@ export async function enviarPedidoCotacaoParceiroWhatsApp(
         user_id: input.userId,
         to: phone,
         template_id: tpl.id,
-        variaveis: montarVariaveisTemplateCotacao({
-          lojaNome: input.lojaNome,
-          osNumero: input.osNumero,
-          veiculoLabel: input.veiculoLabel,
-          parceiroNome: input.parceiroNome,
-        }),
-        tipo: "os_cotacao_pedido",
+        variaveis: [
+          input.parceiroNome.replace(/\s+/g, " ").slice(0, 40),
+          input.lojaNome.replace(/\s+/g, " ").slice(0, 60),
+          input.veiculoLabel.replace(/\s+/g, " ").slice(0, 60),
+        ],
+        quick_reply_payloads: [
+          `os_cot_wa:aceite:${input.cotacaoId}`,
+          `os_cot_wa:sem_agenda:${input.cotacaoId}`,
+        ],
+        tipo: "os_cotacao_convite",
         registrar: true,
-        document_url: docUrl,
-        document_filename: `pedido-os-${input.osNumero}.pdf`,
       }),
     });
     const j = await tplSend.json().catch(() => ({}));
@@ -241,19 +236,32 @@ export async function enviarPedidoCotacaoParceiroWhatsApp(
         error: String(j?.motivo ?? j?.error ?? "template falhou"),
       };
     }
-    mode = "template";
-  } else {
+    messageId = String(j?.message_id ?? "") || undefined;
     await sb.rpc("gestao_os_cotacao_marcar_envio_whatsapp", {
       p_cotacao_id: input.cotacaoId,
-      p_status: "pendente_modelo",
-      p_pendente_motivo: "envio pendente: modelo não aprovado",
+      p_status: "convite_enviado",
+      p_message_id: messageId ?? null,
     });
     await sb.from("gestao_os_evento").insert({
       user_id: input.userId,
       os_id: input.osId,
       tipo: "cotacao",
       origem: "whatsapp_parceiro",
-      mensagem: `Pedido para ${input.parceiroNome}: PDF gerado; envio WhatsApp pendente (modelo Meta não aprovado).`,
+      mensagem: `Convite de cotação enviado via WhatsApp para ${input.parceiroNome}.`,
+    });
+    return { cotacaoId: input.cotacaoId, ok: true, mode: "convite" };
+  } else {
+    await sb.rpc("gestao_os_cotacao_marcar_envio_whatsapp", {
+      p_cotacao_id: input.cotacaoId,
+      p_status: "pendente_modelo",
+      p_pendente_motivo: "Ative o convite de cotação em Operações → Configurar",
+    });
+    await sb.from("gestao_os_evento").insert({
+      user_id: input.userId,
+      os_id: input.osId,
+      tipo: "cotacao",
+      origem: "whatsapp_parceiro",
+      mensagem: `Pedido para ${input.parceiroNome}: envio pendente; ative o convite de cotação em Operações → Configurar.`,
     });
     return { cotacaoId: input.cotacaoId, ok: false, mode: "pendente_modelo" };
   }

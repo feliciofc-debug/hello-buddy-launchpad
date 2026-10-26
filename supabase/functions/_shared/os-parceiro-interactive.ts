@@ -19,6 +19,21 @@ export function extractOsCotacaoWaButtonId(payload: Record<string, unknown> | nu
   );
 }
 
+export function parseOsCotacaoConvitePayload(value: string): {
+  action: "aceite" | "sem_agenda";
+  cotacaoId: string;
+} | null {
+  const match = String(value || "").match(
+    /^os_cot_wa:(aceite|sem_agenda):([0-9a-f-]{36})$/i,
+  );
+  return match
+    ? {
+      action: match[1].toLowerCase() as "aceite" | "sem_agenda",
+      cotacaoId: match[2],
+    }
+    : null;
+}
+
 export const OS_COT_WA_BTN_ENVIAR = osCotacaoWaInteractiveId("enviar_orcamento");
 export const OS_COT_WA_BTN_SEM_AGENDA = osCotacaoWaInteractiveId("sem_agenda");
 export const OS_COT_WA_BTN_CONFIRMAR = osCotacaoWaInteractiveId("confirmar_sim");

@@ -110,6 +110,7 @@ Deno.serve(async (req) => {
       imagem_url = null,   // foto do produto (vai no header)
       document_url = null, // PDF no header (ex.: pedido de cotação OS)
       document_filename = null,
+      quick_reply_payloads = [],
       link_sufixo = null,  // parte dinâmica do botão URL (ex: caminho/ID do produto)
     } = body ?? {};
 
@@ -193,6 +194,20 @@ Deno.serve(async (req) => {
       components.push({
         type: "body",
         parameters: variaveis.map((v: unknown) => ({ type: "text", text: String(v ?? "") })),
+      });
+    }
+
+    // Payloads por envio para botões QUICK_REPLY de templates transacionais.
+    // Ausente nos fluxos existentes (campanha/opt-in), que permanecem idênticos.
+    if (tpl.tipo_uso === "transacional" && Array.isArray(quick_reply_payloads)) {
+      quick_reply_payloads.slice(0, 3).forEach((payload: unknown, index: number) => {
+        if (!String(payload ?? "").trim()) return;
+        components.push({
+          type: "button",
+          sub_type: "quick_reply",
+          index: String(index),
+          parameters: [{ type: "payload", payload: String(payload) }],
+        });
       });
     }
 

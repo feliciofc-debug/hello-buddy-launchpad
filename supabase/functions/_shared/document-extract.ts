@@ -36,7 +36,12 @@ async function extractPdf(bytes: Uint8Array): Promise<string> {
   const { getDocumentProxy, extractText } = await import("https://esm.sh/unpdf@0.12.1");
   const pdf = await getDocumentProxy(bytes);
   const { text } = await extractText(pdf, { mergePages: true });
-  return typeof text === "string" ? text : Array.isArray(text) ? text.join("\n\n") : "";
+  const extracted: unknown = text;
+  return typeof extracted === "string"
+    ? extracted
+    : Array.isArray(extracted)
+    ? extracted.map(String).join("\n\n")
+    : "";
 }
 
 export async function extractDocumentText(

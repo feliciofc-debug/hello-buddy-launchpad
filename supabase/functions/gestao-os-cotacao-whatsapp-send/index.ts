@@ -19,27 +19,38 @@ serve(async (req) => {
     const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) throw new Error("Não autenticado");
+    const bearer = authHeader.replace(/^Bearer\s+/i, "");
+    const isServiceCall = bearer === SERVICE_KEY;
 
-    const anon = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: { user } } = await anon.auth.getUser();
-    if (!user) throw new Error("Não autenticado");
-
-    const body = await req.json() as { os_id?: string; cotacao_ids?: string[] };
+    const body = await req.json() as {
+      os_id?: string;
+      cotacao_ids?: string[];
+      user_id?: string;
+      force_direct?: boolean;
+    };
+    let userId = body.user_id ?? "";
+    if (!isServiceCall) {
+      const anon = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user } } = await anon.auth.getUser();
+      if (!user) throw new Error("Não autenticado");
+      userId = user.id;
+    }
+    if (!userId) throw new Error("user_id obrigatório");
     if (!body.os_id) throw new Error("os_id obrigatório");
 
     const sb = createClient(SUPABASE_URL, SERVICE_KEY);
     const { data: os } = await sb.from("gestao_os")
       .select("id,numero,veiculo_id,troca_id,data_prevista,user_id")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .eq("id", body.os_id)
       .single();
     if (!os) throw new Error("OS não encontrada");
 
     let cotQuery = sb.from("gestao_os_cotacao")
       .select("id,parceiro_id,status")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .eq("os_id", os.id)
       .in("status", ["solicitada", "recebida"]);
     if (body.cotacao_ids?.length) cotQuery = cotQuery.in("id", body.cotacao_ids);
@@ -49,7 +60,7 @@ serve(async (req) => {
     const [{ data: veiculo }, { data: empresa }, { data: itens }, { data: fotos }, { data: troca }] =
       await Promise.all([
         sb.from("veiculos_estoque").select("marca,modelo,ano_modelo,cor,km").eq("id", os.veiculo_id).maybeSingle(),
-        sb.from("empresa_config").select("nome_empresa").eq("user_id", user.id).maybeSingle(),
+        sb.from("empresa_config").select("nome_empresa").eq("user_id", userId).maybeSingle(),
         sb.from("gestao_os_item").select("descricao").eq("os_id", os.id).order("created_at"),
         sb.from("gestao_os_foto_ref").select("id,storage_path,selecionada,ordem,troca_ia_item_id,origem").eq("os_id", os.id),
         os.troca_id
@@ -61,7 +72,7 @@ serve(async (req) => {
     for (const cot of cotacoes) {
       const { data: parceiro } = await sb.from("gestao_parceiro")
         .select("nome,whatsapp_e164")
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .eq("id", cot.parceiro_id)
         .single();
       if (!parceiro?.whatsapp_e164) {
@@ -87,7 +98,7 @@ serve(async (req) => {
       const r = await enviarPedidoCotacaoParceiroWhatsApp(sb, {
         supabaseUrl: SUPABASE_URL,
         serviceKey: SERVICE_KEY,
-        userId: user.id,
+        userId,
         cotacaoId: cot.id,
         pdfInput,
         parceiroPhone: parceiro.whatsapp_e164,
@@ -98,6 +109,7 @@ serve(async (req) => {
         lojaNome: empresa?.nome_empresa ?? "Minha loja",
         fotoRefs: (fotos ?? []) as GestaoOsFotoRefRow[],
         trocaFotosRaw: troca?.fotos_json,
+        forceDirect: body.force_direct === true,
       });
       results.push(r);
     }

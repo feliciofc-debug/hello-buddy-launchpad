@@ -1,4 +1,31 @@
-# Modelo Meta — Pedido de cotação OS (`os_cotacao_pedido_v1`)
+# Modelos Meta — Cotação OS
+
+## Recomendado: convite (`os_cotacao_convite_v1`)
+
+Ative por loja em **Gestão → Operações → Configurar → Ativar convite de cotação
+no WhatsApp**. A plataforma cria e envia o template à Meta.
+
+- Categoria: **UTILITY**
+- Idioma: **pt_BR**
+- Sem cabeçalho
+- Corpo:
+
+```
+Olá, {{1}}! A {{2}} tem um pedido de cotação de serviço para o veículo {{3}}. Podemos enviar os detalhes e as fotos por aqui?
+```
+
+Exemplos: `Funilaria do Zé`, `Loja AMZ Auto`, `MINI Cooper 2021`.
+
+Botões QUICK_REPLY:
+
+- `Sim, pode enviar`
+- `Não tenho agenda`
+
+Depois do **Sim**, já dentro da janela de atendimento, a plataforma envia o PDF,
+as instruções e os botões do orçamento. Variável opcional:
+`OS_COTACAO_CONVITE_TEMPLATE_NOME` (padrão `os_cotacao_convite_v1`).
+
+## Alternativa antiga: pedido com documento (`os_cotacao_pedido_v1`)
 
 Cadastre na Meta Business Manager como template **UTILITY**, nome interno sugerido: `os_cotacao_pedido_v1` (ou defina `OS_COTACAO_TEMPLATE_NOME` no ambiente).
 
@@ -28,10 +55,10 @@ Se a política do template permitir, inclua:
 
 > Dentro da janela de 24h a plataforma envia botões interativos nativos; fora da janela depende do template aprovado.
 
-## Comportamento fora da janela 24h
-
-- Com template **aprovado**: envio UTILITY + documento.
-- **Sem** template aprovado: a cotação fica com `envio_whatsapp_status = pendente_modelo` e motivo `envio pendente: modelo não aprovado`; o PDF fica salvo em `gestao_os_documento` para envio manual.
+Este modelo com documento fica documentado como alternativa legada. O fluxo
+automático fora da janela usa o **convite** acima e só envia o PDF depois do
+aceite. Sem convite aprovado, a cotação fica `pendente_modelo` com orientação
+para ativá-lo em Operações → Configurar.
 
 ## Variável de ambiente
 

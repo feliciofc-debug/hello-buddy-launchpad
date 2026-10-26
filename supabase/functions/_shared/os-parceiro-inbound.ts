@@ -13,6 +13,7 @@ import {
   OS_COT_WA_BTN_MIDIA_SIM,
   OS_COT_WA_BTN_OUTRO_ASSUNTO,
   OS_COT_WA_BTN_SEM_AGENDA,
+  parseOsCotacaoConvitePayload,
   parseOsCotacaoWaInteractiveId,
 } from "./os-parceiro-interactive.ts";
 import { parseOrcamentoParceiroTexto } from "./os-parceiro-parser.ts";
@@ -65,6 +66,7 @@ type CotacaoRow = {
   status: string;
   valor: number | null;
   prazo_dias: number | null;
+  envio_whatsapp_status: string | null;
 };
 
 async function findParceiro(
@@ -88,12 +90,43 @@ async function cotacoesAbertas(
   parceiroId: string,
 ): Promise<CotacaoRow[]> {
   const { data } = await sb.from("gestao_os_cotacao")
-    .select("id,os_id,status,valor,prazo_dias")
+    .select("id,os_id,status,valor,prazo_dias,envio_whatsapp_status")
     .eq("user_id", userId)
     .eq("parceiro_id", parceiroId)
     .eq("status", "solicitada")
     .order("solicitada_em", { ascending: false });
   return (data ?? []) as CotacaoRow[];
+}
+
+async function enviarPedidoAposAceite(
+  input: {
+    supabaseUrl: string;
+    serviceKey: string;
+    userId: string;
+    cotacao: CotacaoRow;
+  },
+): Promise<void> {
+  const response = await fetch(
+    `${input.supabaseUrl}/functions/v1/gestao-os-cotacao-whatsapp-send`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${input.serviceKey}`,
+        apikey: input.serviceKey,
+      },
+      body: JSON.stringify({
+        user_id: input.userId,
+        os_id: input.cotacao.os_id,
+        cotacao_ids: [input.cotacao.id],
+        force_direct: true,
+      }),
+    },
+  );
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || body?.success !== true || body?.results?.[0]?.ok !== true) {
+    throw new Error(String(body?.error ?? body?.results?.[0]?.error ?? "Falha ao enviar pedido"));
+  }
 }
 
 async function loadSessao(
@@ -322,10 +355,25 @@ export async function tryProcessOsParceiroCotacaoWhatsAppInbound(input: {
   ) ?? (
     listId.startsWith("os_cot_wa:") ? listId.replace("os_cot_wa:", "") : null
   );
+  const convitePayload = parseOsCotacaoConvitePayload(buttonId) ??
+    parseOsCotacaoConvitePayload(
+      interactiveAction ? `os_cot_wa:${interactiveAction}` : "",
+    );
+  const cotacaoConvite = convitePayload?.cotacaoId
+    ? abertas.find((c) =>
+      c.id === convitePayload.cotacaoId &&
+      c.envio_whatsapp_status === "convite_enviado"
+    )
+    : abertas.find((c) => c.envio_whatsapp_status === "convite_enviado");
 
   const text = input.userText
     .replace(/<<INTERACTIVE_ID:[^>]+>>/gi, "")
     .trim();
+  const conviteTextAction = /^n[aã]o tenho agenda$/i.test(text)
+    ? "sem_agenda"
+    : /^sim(?:, pode enviar)?$/i.test(text)
+    ? "aceite"
+    : null;
   const sessionWasActive = sessaoCotacaoEstaAtiva(sessao);
   if (sessao && sessao.fase !== "idle" && !sessionWasActive) {
     await descartarOrcamentoParceiroPreparado(
@@ -355,6 +403,35 @@ export async function tryProcessOsParceiroCotacaoWhatsAppInbound(input: {
     return isCotacaoInteractive
       ? { handled: true, reply: "Não há cotação aberta para você no momento." }
       : { handled: false };
+  }
+
+  // Resposta ao convite Meta. O payload identifica a cotação; como fallback,
+  // qualquer mensagem do parceiro após convite abre a janela e aceita o envio.
+  if (
+    cotacaoConvite &&
+    (
+      convitePayload?.action === "aceite" ||
+      conviteTextAction === "aceite" ||
+      (!isCotacaoInteractive && !hasMedia && conviteTextAction !== "sem_agenda")
+    )
+  ) {
+    await enviarPedidoAposAceite({
+      supabaseUrl: input.supabaseUrl,
+      serviceKey: input.serviceKey,
+      userId: input.userId,
+      cotacao: cotacaoConvite,
+    });
+    await input.sb.from("gestao_os_evento").insert({
+      user_id: input.userId,
+      os_id: cotacaoConvite.os_id,
+      tipo: "cotacao",
+      origem: "whatsapp_parceiro",
+      mensagem: `${parceiro.nome} aceitou receber o pedido via WhatsApp.`,
+    });
+    return {
+      handled: true,
+      reply: "Perfeito! Enviei o pedido com o PDF e as formas de resposta.",
+    };
   }
 
   if (sessao && textoCancelaSessaoCotacao(text)) {
@@ -428,8 +505,18 @@ export async function tryProcessOsParceiroCotacaoWhatsAppInbound(input: {
   }
 
   // --- Recusa explícita ---
-  if (interactiveAction === "sem_agenda" || buttonId === OS_COT_WA_BTN_SEM_AGENDA) {
-    const cot = await resolveCotacaoUnica(input.sb, input.userId, parceiro.id, sessao?.cotacao_id);
+  if (
+    interactiveAction === "sem_agenda" ||
+    convitePayload?.action === "sem_agenda" ||
+    conviteTextAction === "sem_agenda" ||
+    buttonId === OS_COT_WA_BTN_SEM_AGENDA
+  ) {
+    const cot = await resolveCotacaoUnica(
+      input.sb,
+      input.userId,
+      parceiro.id,
+      convitePayload?.cotacaoId ?? sessao?.cotacao_id,
+    );
     if (!cot) {
       return {
         handled: true,
