@@ -208,5 +208,8 @@ Deno.test("DOC-0 — serviço separa detecção rápida da leitura completa", as
   const dockerfile = await Deno.readTextFile(
     new URL("../../../services/amz-ocr/Dockerfile", import.meta.url),
   );
-  assertEquals(dockerfile.includes("COPY app.py detector.py ./"), true);
+  assertEquals(
+    dockerfile.includes("COPY app.py detector.py ocr_engine.py"),
+    true,
+  );
 });
