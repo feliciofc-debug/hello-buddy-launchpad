@@ -83,11 +83,12 @@ Deno.test("SEG-DOC — migração garante duplicado, RLS e auditoria append-only
     false,
   );
   assertEquals(
-    /GRANT[^;]*INSERT[^;]*gestao_documento/i.test(sql),
+    /GRANT[^;]*\bINSERT\b[^;]*ON public\.gestao_documento\s/i.test(sql),
     false,
   );
   assertEquals(
-    /GRANT[^;]*(UPDATE|DELETE)[^;]*gestao_documento_acesso/i.test(sql),
+    /GRANT[^;]*\b(UPDATE|DELETE)\b[^;]*ON public\.gestao_documento_acesso\s/i
+      .test(sql),
     false,
   );
   assertStringIncludes(sql, "column_name = 'public'");

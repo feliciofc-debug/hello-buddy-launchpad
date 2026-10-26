@@ -401,7 +401,7 @@ async function confirmCrlv(
       .eq("id", vehicleId).eq("user_id", userId).maybeSingle();
     if (!vehicle) return jsonResponse({ error: "Veículo não encontrado" }, 404);
     const patch = buildCrlvVehiclePatch(
-      vehicle as Record<string, unknown>,
+      vehicle as unknown as Record<string, unknown>,
       sanitized,
       replace,
     );
