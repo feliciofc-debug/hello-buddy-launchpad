@@ -3,6 +3,8 @@ import { detectarDocumentoLocal } from "./crlv-leitura.ts";
 import type { CrlvParserResultado } from "./crlv-parser.ts";
 import { decodeBase64Cofre } from "./gestao-cofre-crypto.ts";
 import type { MediaExtract } from "./whatsapp-media.ts";
+import { extractDocumentText } from "./document-extract.ts";
+import { classificarDocumentoIdentidade } from "./documento-detector.ts";
 
 export type DocumentoPortaoResultado = {
   media: MediaExtract;
@@ -20,8 +22,30 @@ export function isDocumentoGateCandidate(media: MediaExtract): boolean {
 export async function verificarDocumentoNoPortao(
   media: MediaExtract,
   detector = detectarDocumentoLocal,
+  extractor = extractDocumentText,
 ): Promise<DocumentoPortaoResultado> {
   const bytes = decodeBase64Cofre(media.base64);
+  if (
+    media.mime === "application/pdf" ||
+    media.filename?.toLowerCase().endsWith(".pdf")
+  ) {
+    try {
+      const extracted = await extractor(
+        media.base64,
+        media.mime,
+        media.filename,
+      );
+      if (extracted.text.trim()) {
+        return {
+          media,
+          bytes,
+          ...classificarDocumentoIdentidade(extracted.text),
+        };
+      }
+    } catch {
+      // PDF sem texto útil segue para /detectar, que renderiza só a 1ª página.
+    }
+  }
   const result = await detector(bytes, media.mime);
   return { media, bytes, ...result };
 }

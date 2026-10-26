@@ -24397,7 +24397,8 @@ async function tryProcessOsParceiroCotacaoWhatsAppShortcut(input: {
   fromIsOwner: boolean;
   media?: MediaExtract[];
   audioMedia?: MediaExtract;
-}): Promise<{ handled: boolean; preview?: string }> {
+  isProtectedDocument?: (media: MediaExtract) => Promise<boolean>;
+}): Promise<{ handled: boolean; preview?: string; protectedDocument?: boolean }> {
   const parceiro = await tryProcessOsParceiroCotacaoWhatsAppInbound({
     sb,
     supabaseUrl: SUPABASE_URL,
@@ -24411,7 +24412,11 @@ async function tryProcessOsParceiroCotacaoWhatsAppShortcut(input: {
     messageId: input.row.wamid,
     media: input.media,
     audioMedia: input.audioMedia,
+    isProtectedDocument: input.isProtectedDocument,
   });
+  if (parceiro.protectedDocument) {
+    return { handled: false, protectedDocument: true };
+  }
   if (!parceiro.handled) return { handled: false };
   const preview = parceiro.reply?.slice(0, 120) ?? "os_cotacao_wa";
   try {
@@ -25572,14 +25577,54 @@ async function processOne(queueId: string) {
       return { ok: true, reason: "media_download_failed" };
     }
 
-    // DOC-0 — portão local ANTES de qualquer visão/LLM. O endpoint rápido
-    // nunca devolve texto. Se ele falhar, fechamos o fluxo para que uma foto
-    // de documento jamais escape para IA externa.
+    // DOC-0.1 — parceiro com cotação ativa tem prioridade. A própria pré-rota
+    // usa o detector estrito antes de ler a mídia; documentos protegidos
+    // voltam para o cofre, enquanto orçamento/NF/boleto seguem para a cotação.
     const gateCandidates = media.filter(isDocumentoGateCandidate);
-    let detectedDocument:
+    let partnerChecked:
       | Awaited<ReturnType<typeof verificarDocumentoNoPortao>>
       | null = null;
+    if (
+      !fromIsOwner &&
+      ["document", "image"].includes(row.message_type ?? "") &&
+      media.length > 0
+    ) {
+      try {
+        const osParceiroMedia = await tryProcessOsParceiroCotacaoWhatsAppShortcut({
+          row,
+          userId,
+          userText: userText || inboundContent,
+          convId: conv.id,
+          fromIsOwner: false,
+          media,
+          isProtectedDocument: async (candidate) => {
+            partnerChecked = await verificarDocumentoNoPortao(candidate);
+            return partnerChecked.documento;
+          },
+        });
+        if (osParceiroMedia.handled) {
+          stopTypingHeartbeat();
+          await doneQueue(row.id);
+          return {
+            ok: true,
+            os_cotacao_parceiro_wa: true,
+            preview: osParceiroMedia.preview,
+          };
+        }
+      } catch (e) {
+        console.error("[os-cotacao-wa][media]", (e as Error).message);
+      }
+    }
+
+    // DOC-0 — portão local ANTES das demais rotas de visão/LLM. O endpoint rápido
+    // nunca devolve texto. Se ele falhar, fechamos o fluxo para que uma foto
+    // de documento jamais escape para IA externa.
+    let detectedDocument:
+      | Awaited<ReturnType<typeof verificarDocumentoNoPortao>>
+      | null = partnerChecked?.documento ? partnerChecked : null;
     for (const candidate of gateCandidates) {
+      if (detectedDocument) break;
+      if (partnerChecked?.media === candidate && !partnerChecked.documento) continue;
       try {
         const checked = await verificarDocumentoNoPortao(candidate);
         if (checked.documento) {
@@ -25587,6 +25632,53 @@ async function processOne(queueId: string) {
           break;
         }
       } catch {
+        const gestaoAuth = await loadGestaoAuthContext(sb, userId);
+        const senderIsGestao = fromIsOwner ||
+          isGestaoAuthorizedPhone(row.from_number, gestaoAuth);
+        if (!senderIsGestao) {
+          const fallback = candidate.kind === "image"
+            ? "Recebi sua foto, vou passar para a equipe."
+            : "Recebi seu arquivo, vou passar para a equipe.";
+          try {
+            await gestaoCofreUpload({
+              sb,
+              userId,
+              bytes: base64Decode(candidate.base64),
+              mime: candidate.mime,
+              tipo: "outro",
+              origem: "whatsapp",
+              filename: candidate.filename,
+              lerCrlv: false,
+            });
+          } catch {
+            // A mídia continua bloqueada para IA mesmo se o cofre estiver indisponível.
+          }
+          await sb.from("whatsapp_cloud_messages").update({
+            content: "[mídia recebida sem análise]",
+          }).eq("conversation_id", conv.id).eq("wamid", row.wamid);
+          if (tenantOwnerPhone) {
+            const ownerNotice =
+              "📎 Recebi uma foto/arquivo de cliente enquanto o verificador local estava indisponível. Não enviei a mídia para IA externa.";
+            try {
+              const ownerWamid = await sendWhatsApp(userId, tenantOwnerPhone, ownerNotice);
+              await logOwnerHeadsup(userId, ownerNotice, ownerWamid);
+            } catch {
+              // Não expõe a mídia nem libera o fluxo externo.
+            }
+          }
+          const sentId = await sendWhatsApp(userId, row.from_number, fallback);
+          await sb.from("whatsapp_cloud_messages").insert({
+            conversation_id: conv.id,
+            user_id: userId,
+            direction: "outbound",
+            sender: "agent",
+            content: fallback,
+            message_type: "text",
+            wamid: sentId,
+          });
+          await doneQueue(row.id);
+          return { ok: true, reason: "document_detector_unavailable_client" };
+        }
         const sentId = await sendWhatsApp(
           userId,
           row.from_number,
@@ -25702,34 +25794,6 @@ async function processOne(queueId: string) {
         });
         await doneQueue(row.id);
         return { ok: true, reason: "document_secure_store_failed" };
-      }
-    }
-
-    if (
-      !fromIsOwner &&
-      ["document", "image"].includes(row.message_type ?? "") &&
-      media.length > 0
-    ) {
-      try {
-        const osParceiroMedia = await tryProcessOsParceiroCotacaoWhatsAppShortcut({
-          row,
-          userId,
-          userText: userText || inboundContent,
-          convId: conv.id,
-          fromIsOwner: false,
-          media,
-        });
-        if (osParceiroMedia.handled) {
-          stopTypingHeartbeat();
-          await doneQueue(row.id);
-          return {
-            ok: true,
-            os_cotacao_parceiro_wa: true,
-            preview: osParceiroMedia.preview,
-          };
-        }
-      } catch (e) {
-        console.error("[os-cotacao-wa][media]", (e as Error).message);
       }
     }
 

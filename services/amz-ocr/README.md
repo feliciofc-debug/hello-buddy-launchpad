@@ -46,3 +46,8 @@ O detector reduz a imagem para 1400 px, faz uma única leitura e nunca devolve o
 texto. A leitura completa limita o maior lado a 2400 px e usa a orientação
 detectada pelo Tesseract; os quatro giros só são testados quando essa orientação
 falha.
+
+O portão reconhece somente títulos oficiais de CRLV/CRLV-e, CNH, RG, ATPV-e e
+procuração de veículo, ou uma combinação institucional forte com padrão válido.
+Orçamentos, DANFE/NF-e, boletos, folhetos, anúncios e pedidos de identidade
+visual não são classificados como documentos protegidos.

@@ -36,6 +36,7 @@ import {
 
 export type OsParceiroWaResult = {
   handled: boolean;
+  protectedDocument?: boolean;
   reply?: string;
   interactiveButtons?: {
     body: string;
@@ -333,6 +334,7 @@ export async function tryProcessOsParceiroCotacaoWhatsAppInbound(input: {
   messageId?: string;
   media?: MediaExtract[];
   audioMedia?: MediaExtract;
+  isProtectedDocument?: (media: MediaExtract) => Promise<boolean>;
 }): Promise<OsParceiroWaResult> {
   // Consulta barata primeiro: números que não são parceiros saem sem carregar gestão.
   const parceiro = await findParceiro(input.sb, input.userId, input.fromNumber);
@@ -620,6 +622,9 @@ export async function tryProcessOsParceiroCotacaoWhatsAppInbound(input: {
     if (!cot) cot = abertas[0] ?? null;
     if (!cot) return { handled: true, reply: "Não há cotação aberta." };
 
+    if (input.isProtectedDocument && await input.isProtectedDocument(doc)) {
+      return { handled: false, protectedDocument: true };
+    }
     const texto = await textoDeOrcamentoParceiroMedia(doc);
     const parsed = parseOrcamentoFromExtractedText(texto);
     const prepared = await prepararOrcamentoParceiroDocumento(input.sb, {

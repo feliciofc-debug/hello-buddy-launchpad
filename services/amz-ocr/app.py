@@ -31,12 +31,17 @@ def _authorized(received: str | None) -> bool:
     return bool(expected) and bool(received) and received == expected
 
 
-def _pil_images(raw: bytes, content_type: str) -> list[Image.Image]:
+def _pil_images(
+    raw: bytes,
+    content_type: str,
+    first_page_only: bool = False,
+) -> list[Image.Image]:
     if content_type == "application/pdf" or raw.startswith(b"%PDF-"):
         document = pdfium.PdfDocument(raw)
+        pages = range(min(len(document), 1)) if first_page_only else range(len(document))
         return [
-            page.render(scale=2.5).to_pil().convert("RGB")
-            for page in document
+            document[index].render(scale=2.5).to_pil().convert("RGB")
+            for index in pages
         ]
     return [ImageOps.exif_transpose(Image.open(io.BytesIO(raw))).convert("RGB")]
 
@@ -147,7 +152,7 @@ def _ocr(raw: bytes, content_type: str) -> str:
 
 
 def _detect(raw: bytes, content_type: str) -> tuple[bool, str | None]:
-    images = _pil_images(raw, content_type)
+    images = _pil_images(raw, content_type, first_page_only=True)
     # A primeira página basta para o portão e mantém o endpoint previsível.
     return _detect_image(images[0])
 
