@@ -37,6 +37,9 @@ import {
   crlvValuesForStock,
   GestaoCrlvConferencia,
 } from "@/components/gestao/GestaoCrlvConferencia.tsx";
+import { MolicarPriceCard } from "@/components/gestao/MolicarPriceCard.tsx";
+import { useMolicarConsulta } from "@/components/gestao/useMolicarConsulta.ts";
+import type { GestaoMolicarSnapshot } from "@/lib/gestao-troca-types.ts";
 
 type Origem = "compra" | "troca" | "consignacao";
 type Despesa = {
@@ -86,6 +89,28 @@ const optionalNumber = (value: string): number | null => {
 const photoList = (value: string) =>
   value.split(/[\n,]/).map((x) => x.trim()).filter(Boolean);
 
+export function completarEntradaSomenteCamposVazios(
+  atual: ReturnType<typeof initialVehicle>,
+  snapshot: GestaoMolicarSnapshot,
+): ReturnType<typeof initialVehicle> {
+  const dados = snapshot.dados ?? {};
+  const fill = (current: string, incoming: unknown) =>
+    current.trim() || incoming == null ? current : String(incoming);
+  return {
+    ...atual,
+    marca: fill(atual.marca, dados.marca),
+    modelo: fill(atual.modelo, dados.modelo),
+    versao: fill(atual.versao, dados.versao),
+    anoFabricacao: fill(atual.anoFabricacao, dados.anoFabricacao),
+    anoModelo: fill(atual.anoModelo, dados.anoModelo),
+    cor: fill(atual.cor, dados.cor),
+    combustivel: fill(atual.combustivel, dados.combustivel),
+    cambio: fill(atual.cambio, dados.cambio),
+    portas: fill(atual.portas, dados.portas),
+    cilindradaCc: fill(atual.cilindradaCc, dados.cilindradaCc),
+  };
+}
+
 export function GestaoEntradaVeiculoDialog({
   open,
   userId,
@@ -124,6 +149,12 @@ export function GestaoEntradaVeiculoDialog({
       leitura: CrlvLeituraView;
     } | null
   >(null);
+  const molicar = useMolicarConsulta({
+    userId,
+    placa: vehicle.placa,
+    origem: "entrada",
+    enabled: open,
+  });
 
   useEffect(() => {
     if (
@@ -358,6 +389,25 @@ export function GestaoEntradaVeiculoDialog({
         }
       }
 
+      if (molicar.snapshot && placa) {
+        const { data, error } = await supabase.functions.invoke(
+          "molicar-consulta",
+          {
+            body: {
+              placa,
+              origem: "entrada",
+              veiculo_id: vehicleId,
+              force: false,
+            },
+          },
+        );
+        if (error || data?.error) {
+          toast.warning(
+            "O veículo foi salvo, mas a referência Molicar não pôde ser vinculada.",
+          );
+        }
+      }
+
       setSavedId(vehicleId);
       toast.success(
         status === "disponivel"
@@ -492,6 +542,24 @@ export function GestaoEntradaVeiculoDialog({
                   onChange={(preco) => setVehicle({ ...vehicle, preco })}
                 />
               </div>
+
+              <MolicarPriceCard
+                snapshot={molicar.snapshot}
+                loading={molicar.loading}
+                consulting={molicar.consulting}
+                error={molicar.error}
+                disabled={vehicle.placa.replace(/\W/g, "").length !== 7}
+                onUpdate={() =>
+                  void molicar.consultar().then((snapshot) => {
+                    if (!snapshot) return;
+                    setVehicle((current) =>
+                      completarEntradaSomenteCamposVazios(current, snapshot)
+                    );
+                    toast.success(
+                      "Dados Molicar aplicados somente aos campos que estavam vazios.",
+                    );
+                  })}
+              />
 
               <div className="space-y-3 border-t pt-4">
                 <Label>Origem</Label>

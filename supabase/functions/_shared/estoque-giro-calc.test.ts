@@ -2,12 +2,14 @@ import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.t
 import { DEFAULT_COMISSAO_REGRA } from "./gestao-comissao-calc.ts";
 import {
   baseIpvaEstoqueGiro,
+  calcularDesvalorizacaoMensalMolicar,
   calcularEstoqueGiro,
   DEFAULT_ESTOQUE_GIRO_CONFIG,
   diasEmEstoque,
   escolherReferenciaRepasse,
   faixaEstoqueGiro,
   isTemporadaIpvaVirada,
+  resolverDesvalorizacaoMensal,
 } from "./estoque-giro-calc.ts";
 
 const config = {
@@ -56,6 +58,62 @@ Deno.test("G90-1.1 — manual fica entre Molicar B2B e FIPE", () => {
     ])?.fonte,
     "molicar_b2b",
   );
+});
+
+Deno.test("MOLICAR-1 — desvalorização mensal usa snapshots B2C separados por 25+ dias", () => {
+  const referencias = [
+    { fonte: "molicar_b2c" as const, valor: 100_000, capturadoEm: "2026-08-01T12:00:00Z" },
+    { fonte: "molicar_b2c" as const, valor: 99_000, capturadoEm: "2026-08-20T12:00:00Z" },
+    { fonte: "molicar_b2c" as const, valor: 97_000, capturadoEm: "2026-09-01T12:00:00Z" },
+  ];
+  assertEquals(calcularDesvalorizacaoMensalMolicar(referencias), 2.9);
+  assertEquals(resolverDesvalorizacaoMensal(referencias, 1), {
+    pct: 2.9,
+    fonte: "molicar_b2c_snapshots",
+  });
+});
+
+Deno.test("MOLICAR-1 — histórico curto mantém fallback FIPE configurado e informa a fonte", () => {
+  const referencias = [
+    { fonte: "molicar_b2c" as const, valor: 100_000, capturadoEm: "2026-08-01T12:00:00Z" },
+    { fonte: "molicar_b2c" as const, valor: 99_000, capturadoEm: "2026-08-20T12:00:00Z" },
+  ];
+  assertEquals(calcularDesvalorizacaoMensalMolicar(referencias), null);
+  assertEquals(resolverDesvalorizacaoMensal(referencias, 1.25), {
+    pct: 1.25,
+    fonte: "fipe_configurada",
+  });
+});
+
+Deno.test("MOLICAR-1.1 — usa referência Molicar sem B2C e nunca mistura as fontes", () => {
+  const referencias = [
+    { fonte: "molicar_b2c" as const, valor: 110_000, capturadoEm: "2026-09-20T12:00:00Z" },
+    { fonte: "molicar_ref" as const, valor: 100_000, capturadoEm: "2026-08-01T12:00:00Z" },
+    { fonte: "molicar_ref" as const, valor: 97_000, capturadoEm: "2026-09-01T12:00:00Z" },
+  ];
+  assertEquals(resolverDesvalorizacaoMensal(referencias, 1), {
+    pct: 2.9,
+    fonte: "molicar_ref_snapshots",
+  });
+});
+
+Deno.test("MOLICAR-1 — projeção usa histórico Molicar no lugar do fallback FIPE", () => {
+  const r = calcularEstoqueGiro({
+    hoje: "2026-10-23",
+    dataCompra: "2026-09-01",
+    createdAt: "2026-09-01",
+    valorCompra: 70_000,
+    despesas: [],
+    precoAnunciado: 100_000,
+    referencias: [
+      { fonte: "molicar_b2c", valor: 100_000, capturadoEm: "2026-08-01" },
+      { fonte: "molicar_b2c", valor: 95_000, capturadoEm: "2026-09-01" },
+    ],
+    config: { ...config, desvalorizacaoMensalPct: 1 },
+    regraComissao: DEFAULT_COMISSAO_REGRA,
+  });
+  assertEquals(r.desvalorizacaoMensalPct, 4.84);
+  assertEquals(r.desvalorizacaoFonte, "molicar_b2c_snapshots");
 });
 
 Deno.test("G90-1 — calcula custo, comissão, projeção e risco sem inventar leads", () => {

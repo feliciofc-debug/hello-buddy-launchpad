@@ -101,6 +101,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { MolicarPriceCard } from "@/components/gestao/MolicarPriceCard.tsx";
+import { useMolicarConsulta } from "@/components/gestao/useMolicarConsulta.ts";
+import { MolicarProcedenciaCard } from "@/components/gestao/MolicarProcedenciaCard.tsx";
+import { useMolicarProcedencia } from "@/components/gestao/useMolicarProcedencia.ts";
+import { useGestaoMolicarConnection } from "@/components/integracoes/useGestaoMolicarConnection.ts";
 
 export default function GestaoTrocaFichaPage() {
   const { id } = useParams<{ id: string }>();
@@ -165,6 +170,19 @@ export default function GestaoTrocaFichaPage() {
   const [reabrirOpen, setReabrirOpen] = useState(false);
   const [reabrirMotivo, setReabrirMotivo] = useState("");
   const [finalizadoPorLabel, setFinalizadoPorLabel] = useState<string | null>(null);
+  const molicar = useMolicarConsulta({
+    userId,
+    placa: troca?.placa,
+    trocaId: id,
+    origem: "troca",
+    enabled: !!troca && !!userId,
+  });
+  const molicarConnection = useGestaoMolicarConnection();
+  const molicarProcedencia = useMolicarProcedencia({
+    placa: troca?.placa,
+    trocaId: id,
+    enabled: !!troca,
+  });
 
   const applyTrocaRow = (row: GestaoTrocaRow) => {
     setTroca(row);
@@ -525,6 +543,8 @@ export default function GestaoTrocaFichaPage() {
         : null,
       laudo19Pdf,
       espFaixas,
+      molicar.snapshot,
+      molicarProcedencia.rows,
     );
   };
 
@@ -807,6 +827,27 @@ export default function GestaoTrocaFichaPage() {
           <p className="text-sm">Valor: {formatGestaoMoney(troca.fipe_valor ?? 0)} {troca.fipe_mes_ref ? `(${troca.fipe_mes_ref})` : ""}</p>
           <Button size="sm" onClick={() => void buscarFipe()} disabled={busy || laudoLocked}>Buscar FIPE</Button>
         </section>
+
+        <MolicarPriceCard
+          snapshot={molicar.snapshot}
+          loading={molicar.loading}
+          consulting={molicar.consulting}
+          error={molicar.error}
+          title="Referências Molicar da troca"
+          disabled={busy || !troca.placa}
+          onUpdate={() => void molicar.consultar()}
+        />
+
+        <MolicarProcedenciaCard
+          placa={troca.placa}
+          trocaId={id}
+          c2b={molicar.snapshot?.c2b}
+          enabled
+          automatic={
+            molicarConnection.status?.procedencia_automatica_troca === true
+          }
+          controller={molicarProcedencia}
+        />
 
         <section className="space-y-3 rounded-lg border bg-white p-4 dark:bg-gray-950">
           <h2 className="font-semibold">Preço</h2>

@@ -3,7 +3,7 @@ import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   fillOnlyEmptyCrlvValues,
   normalizeCrlvMolicarResponse,
-} from "./crlv-molicar.ts";
+} from "../src/lib/crlv-molicar.ts";
 
 Deno.test("DOC-1.2 — Molicar completa somente campos vazios do CRLV", () => {
   const result = normalizeCrlvMolicarResponse({
