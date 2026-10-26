@@ -25581,9 +25581,9 @@ async function processOne(queueId: string) {
     // usa o detector estrito antes de ler a mídia; documentos protegidos
     // voltam para o cofre, enquanto orçamento/NF/boleto seguem para a cotação.
     const gateCandidates = media.filter(isDocumentoGateCandidate);
-    let partnerChecked:
-      | Awaited<ReturnType<typeof verificarDocumentoNoPortao>>
-      | null = null;
+    const partnerChecks: Awaited<
+      ReturnType<typeof verificarDocumentoNoPortao>
+    >[] = [];
     if (
       !fromIsOwner &&
       ["document", "image"].includes(row.message_type ?? "") &&
@@ -25598,8 +25598,9 @@ async function processOne(queueId: string) {
           fromIsOwner: false,
           media,
           isProtectedDocument: async (candidate) => {
-            partnerChecked = await verificarDocumentoNoPortao(candidate);
-            return partnerChecked.documento;
+            const checked = await verificarDocumentoNoPortao(candidate);
+            partnerChecks[0] = checked;
+            return checked.documento;
           },
         });
         if (osParceiroMedia.handled) {
@@ -25615,6 +25616,7 @@ async function processOne(queueId: string) {
         console.error("[os-cotacao-wa][media]", (e as Error).message);
       }
     }
+    const partnerChecked = partnerChecks[0] ?? null;
 
     // DOC-0 — portão local ANTES das demais rotas de visão/LLM. O endpoint rápido
     // nunca devolve texto. Se ele falhar, fechamos o fluxo para que uma foto
