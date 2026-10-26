@@ -86,6 +86,7 @@ function sanitizeOcrMetrics(value: unknown): CrlvOcrMetricas | null {
 
 export type DocumentoDetectado = {
   documento: boolean;
+  possivel_documento: boolean;
   tipo: "crlv" | "cnh" | "rg" | "outro" | null;
 };
 
@@ -116,12 +117,17 @@ export async function detectarDocumentoLocal(
   }
   const payload = await response.json().catch(() => ({})) as {
     documento?: unknown;
+    possivel_documento?: unknown;
     tipo?: unknown;
   };
   const tipo = ["crlv", "cnh", "rg", "outro"].includes(String(payload.tipo))
     ? payload.tipo as DocumentoDetectado["tipo"]
     : null;
-  return { documento: payload.documento === true, tipo };
+  return {
+    documento: payload.documento === true,
+    possivel_documento: payload.possivel_documento === true,
+    tipo,
+  };
 }
 
 export type CrlvLeituraResultado = {

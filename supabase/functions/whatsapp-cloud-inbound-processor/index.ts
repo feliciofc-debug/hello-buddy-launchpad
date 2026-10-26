@@ -189,6 +189,7 @@ import {
   auditGestaoDocumento,
   gestaoCofreUpload,
 } from "../_shared/gestao-cofre-upload.ts";
+import { decifrarCofreBytes } from "../_shared/gestao-cofre-crypto.ts";
 import {
   getTenantLogoDataUrl,
   getTenantLogoStorageLocation,
@@ -24654,7 +24655,7 @@ async function processOne(queueId: string) {
       contactNumber: row.from_number,
     };
 
-    const userText = replyTextFromInteractiveId(extractText(row.payload));
+    let userText = replyTextFromInteractiveId(extractText(row.payload));
     let commercialContactForOwner: any = null;
     let inboundContent = userText || `(${row.message_type ?? "mídia"} sem legenda)`;
     const directNearbySearch = row.message_type === "text" ? detectNearbySearch(userText) : null;
@@ -24707,6 +24708,79 @@ async function processOne(queueId: string) {
     setTenantOwnerForCtx(userId, ownerNumbers);
     const fromIsOwner = tenantOwnerMatchesPhone(_tenantOwner, row.from_number)
       || (isAmzTenantEarly && isAmzOwnerAltPhone(row.from_number));
+    let releasedPossibleDocument: MediaExtract | null = null;
+
+    // DOC-0.2 — a mídia suspeita fica cifrada enquanto aguarda a decisão.
+    // Somente "Não é documento" a libera para as rotas de IA abaixo.
+    const possibleAction = userText.match(
+      /^cofre_possivel_(guardar|liberar):([0-9a-f-]{36})$/i,
+    );
+    if (possibleAction) {
+      const gestaoAuth = await loadGestaoAuthContext(sb, userId);
+      if (fromIsOwner || isGestaoAuthorizedPhone(row.from_number, gestaoAuth)) {
+        const [, action, documentoId] = possibleAction;
+        const { data: pendingDoc } = await sb.from("gestao_documento")
+          .select("id,storage_path,mime")
+          .eq("id", documentoId).eq("user_id", userId)
+          .is("deleted_at", null).maybeSingle();
+        if (pendingDoc) {
+          const downloaded = await sb.storage.from("gestao-cofre")
+            .download(pendingDoc.storage_path);
+          if (!downloaded.error && downloaded.data) {
+            const encrypted = new Uint8Array(
+              await downloaded.data.arrayBuffer(),
+            );
+            const bytes = await decifrarCofreBytes(encrypted);
+            if (action === "liberar") {
+              releasedPossibleDocument = {
+                kind: "image",
+                mime: String(pendingDoc.mime || "image/jpeg"),
+                base64: base64Encode(bytes),
+              };
+              userText = "Não é documento";
+              await sb.storage.from("gestao-cofre").remove([
+                pendingDoc.storage_path,
+              ]);
+              await sb.from("gestao_documento").update({
+                deleted_at: new Date().toISOString(),
+                status: "descartado",
+              }).eq("id", documentoId).eq("user_id", userId);
+            } else {
+              const stored = await gestaoCofreUpload({
+                sb,
+                userId,
+                bytes,
+                mime: String(pendingDoc.mime || "image/jpeg"),
+                tipo: "crlv",
+                origem: "whatsapp",
+                lerCrlv: true,
+              });
+              let reply =
+                "Documento mantido com segurança no cofre. Refiz a leitura.";
+              if (stored.leitura) {
+                reply += `\n${respostaCrlvWhatsApp(stored.leitura)}`;
+              }
+              const sentId = await sendWhatsApp(
+                userId,
+                row.from_number,
+                reply,
+              );
+              await sb.from("whatsapp_cloud_messages").insert({
+                conversation_id: conv.id,
+                user_id: userId,
+                direction: "outbound",
+                sender: "agent",
+                content: reply,
+                message_type: "text",
+                wamid: sentId,
+              });
+              await doneQueue(row.id);
+              return { ok: true, possible_document_saved: true };
+            }
+          }
+        }
+      }
+    }
 
     // DOC-0 — ações dos botões enviados após guardar um CRLV no cofre.
     if (/^cofre_doc_(?:cadastrar|vincular|guardar|link):/i.test(userText)) {
@@ -25526,6 +25600,10 @@ async function processOne(queueId: string) {
       mediaRejections = dl.rejections;
       console.log(`[processor] media baixadas: ${media.length} | recusadas: ${mediaRejections.length}`);
     }
+    if (releasedPossibleDocument) {
+      media = [releasedPossibleDocument];
+      mediaRejections = [];
+    }
 
     // Rejeição por tamanho NUNCA é silenciosa: avisa o remetente e encerra o turno.
     const tooLarge = mediaRejections.filter((r) => r.reason === "too_large");
@@ -25580,7 +25658,9 @@ async function processOne(queueId: string) {
     // DOC-0.1 — parceiro com cotação ativa tem prioridade. A própria pré-rota
     // usa o detector estrito antes de ler a mídia; documentos protegidos
     // voltam para o cofre, enquanto orçamento/NF/boleto seguem para a cotação.
-    const gateCandidates = media.filter(isDocumentoGateCandidate);
+    const gateCandidates = releasedPossibleDocument
+      ? []
+      : media.filter(isDocumentoGateCandidate);
     const partnerChecks: Awaited<
       ReturnType<typeof verificarDocumentoNoPortao>
     >[] = [];
@@ -25600,7 +25680,7 @@ async function processOne(queueId: string) {
           isProtectedDocument: async (candidate) => {
             const checked = await verificarDocumentoNoPortao(candidate);
             partnerChecks[0] = checked;
-            return checked.documento;
+            return checked.documento || checked.possivel_documento;
           },
         });
         if (osParceiroMedia.handled) {
@@ -25624,13 +25704,24 @@ async function processOne(queueId: string) {
     let detectedDocument:
       | Awaited<ReturnType<typeof verificarDocumentoNoPortao>>
       | null = partnerChecked?.documento ? partnerChecked : null;
+    let possibleDocument:
+      | Awaited<ReturnType<typeof verificarDocumentoNoPortao>>
+      | null = partnerChecked?.possivel_documento ? partnerChecked : null;
     for (const candidate of gateCandidates) {
-      if (detectedDocument) break;
-      if (partnerChecked?.media === candidate && !partnerChecked.documento) continue;
+      if (detectedDocument || possibleDocument) break;
+      if (
+        partnerChecked?.media === candidate &&
+        !partnerChecked.documento &&
+        !partnerChecked.possivel_documento
+      ) continue;
       try {
         const checked = await verificarDocumentoNoPortao(candidate);
         if (checked.documento) {
           detectedDocument = checked;
+          break;
+        }
+        if (checked.possivel_documento) {
+          possibleDocument = checked;
           break;
         }
       } catch {
@@ -25700,6 +25791,94 @@ async function processOne(queueId: string) {
       }
     }
 
+    if (possibleDocument) {
+      const gestaoAuth = await loadGestaoAuthContext(sb, userId);
+      const senderIsGestao = fromIsOwner ||
+        isGestaoAuthorizedPhone(row.from_number, gestaoAuth);
+      try {
+        const stored = await gestaoCofreUpload({
+          sb,
+          userId,
+          bytes: possibleDocument.bytes,
+          mime: possibleDocument.media.mime,
+          tipo: "outro",
+          origem: "whatsapp",
+          filename: possibleDocument.media.filename,
+          lerCrlv: false,
+        });
+        await sb.from("whatsapp_cloud_messages").update({
+          content: "[possível documento recebido sem análise externa]",
+        }).eq("conversation_id", conv.id).eq("wamid", row.wamid);
+
+        let reply =
+          "Recebi seu documento, guardei no cofre e avisei a equipe com segurança.";
+        let buttons: WhatsAppInteractiveButtons | undefined;
+        if (senderIsGestao) {
+          reply = "Parece um documento. Quer que eu guarde no cofre e tente ler?";
+          buttons = {
+            body: reply,
+            buttons: [
+              {
+                id: `cofre_possivel_guardar:${stored.documentoId}`,
+                title: "Guardar e ler",
+              },
+              {
+                id: `cofre_possivel_liberar:${stored.documentoId}`,
+                title: "Não é documento",
+              },
+            ],
+          };
+        } else if (tenantOwnerPhone) {
+          const ownerNotice =
+            "📄 Um cliente enviou uma imagem que parece documento. Guardei no cofre e não enviei para IA externa.";
+          try {
+            const ownerWamid = await sendWhatsApp(
+              userId,
+              tenantOwnerPhone,
+              ownerNotice,
+            );
+            await logOwnerHeadsup(userId, ownerNotice, ownerWamid);
+          } catch {
+            // O documento continua protegido mesmo se o aviso falhar.
+          }
+        }
+        const sentId = await sendWhatsApp(
+          userId,
+          row.from_number,
+          reply,
+          undefined,
+          undefined,
+          buttons,
+        );
+        await sb.from("whatsapp_cloud_messages").insert({
+          conversation_id: conv.id,
+          user_id: userId,
+          direction: "outbound",
+          sender: "agent",
+          content: reply,
+          message_type: buttons ? "interactive" : "text",
+          wamid: sentId,
+        });
+        await doneQueue(row.id);
+        return { ok: true, possible_document_secured: true };
+      } catch {
+        const failure =
+          "Parece um documento, mas não consegui guardá-lo com segurança agora. Tente de novo em instantes.";
+        const sentId = await sendWhatsApp(userId, row.from_number, failure);
+        await sb.from("whatsapp_cloud_messages").insert({
+          conversation_id: conv.id,
+          user_id: userId,
+          direction: "outbound",
+          sender: "agent",
+          content: failure,
+          message_type: "text",
+          wamid: sentId,
+        });
+        await doneQueue(row.id);
+        return { ok: true, reason: "possible_document_store_failed" };
+      }
+    }
+
     if (detectedDocument) {
       const gestaoAuth = await loadGestaoAuthContext(sb, userId);
       const senderIsGestao = fromIsOwner ||
@@ -25724,7 +25903,14 @@ async function processOne(queueId: string) {
         });
         if (senderIsGestao) {
           if (stored.leitura) {
-            reply = respostaCrlvWhatsApp(stored.leitura);
+            const summary = respostaCrlvWhatsApp(stored.leitura);
+            reply = stored.duplicate
+              ? `Esse documento já estava no cofre. Refiz a leitura.\n${summary}`
+              : summary;
+            if (stored.leitura.leitura_fraca) {
+              reply +=
+                "\nNão consegui ler esta foto. Tire outra de cima, documento aberto, com boa luz — ou digite a placa e use Completar pela Molicar.";
+            }
           } else if (stored.leituraErro) {
             reply = `📄 Documento guardado com segurança.\n${stored.leituraErro}`;
           } else {

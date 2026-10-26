@@ -13,10 +13,11 @@ from PIL import Image, ImageOps
 from pillow_heif import register_heif_opener
 
 from detector import classify_document
-from ocr_engine import OcrMetrics, preload_paddle, recognize_crlv_image
+from ocr_engine import OcrMetrics, OcrResult, preload_paddle, recognize_crlv_image
 
 MAX_BYTES = 15 * 1024 * 1024
 OCR_TIMEOUT_SECONDS = 25
+OCR_INTERNAL_DEADLINE_SECONDS = 18
 DETECT_TIMEOUT_SECONDS = 8
 register_heif_opener()
 
@@ -106,7 +107,16 @@ def _osd_rotate(image: Image.Image) -> Image.Image | None:
         return None
 
 
-def _detect_image(image: Image.Image) -> tuple[bool, str | None]:
+def _possible_document_background(image: Image.Image) -> bool:
+    sample = np.array(_resize(image.convert("RGB"), 500))
+    hsv = cv2.cvtColor(sample, cv2.COLOR_RGB2HSV)
+    hue, saturation, value = cv2.split(hsv)
+    light_colored = (saturation >= 18) & (value >= 135)
+    green_or_blue = ((hue >= 35) & (hue <= 130)) & light_colored
+    return float(np.count_nonzero(green_or_blue)) / green_or_blue.size >= 0.35
+
+
+def _detect_image(image: Image.Image) -> tuple[bool, str | None, bool]:
     image = _resize(image, 1400)
     oriented = _osd_rotate(image) or image
     text = pytesseract.image_to_string(
@@ -114,21 +124,42 @@ def _detect_image(image: Image.Image) -> tuple[bool, str | None]:
         lang="por",
         config="--oem 1 --psm 11",
     )
-    return classify_document(text)
+    documento, tipo = classify_document(text)
+    text_lines = [line for line in text.splitlines() if line.strip()]
+    possivel = (
+        not documento and
+        (len(text_lines) >= 25 or _possible_document_background(oriented))
+    )
+    return documento, tipo, possivel
 
 
-def _ocr(raw: bytes, content_type: str) -> tuple[str, OcrMetrics]:
+def _ocr(
+    raw: bytes,
+    content_type: str,
+    progress: list[OcrResult] | None = None,
+) -> tuple[str, OcrMetrics]:
     # Tudo fica em memória; nenhum arquivo temporário é criado.
     started = time.monotonic()
     texts: list[str] = []
     metrics: list[OcrMetrics] = []
     for image in _pil_images(raw, content_type):
-        remaining = max(0.1, OCR_TIMEOUT_SECONDS - (time.monotonic() - started))
-        result = recognize_crlv_image(image, timeout_seconds=remaining)
+        remaining = max(
+            0.1,
+            OCR_INTERNAL_DEADLINE_SECONDS - (time.monotonic() - started),
+        )
+        result = recognize_crlv_image(
+            image,
+            timeout_seconds=remaining,
+            progress_callback=(
+                (lambda partial: progress.__setitem__(slice(None), [partial]))
+                if progress is not None
+                else None
+            ),
+        )
         if result.text:
             texts.append(result.text)
         metrics.append(result.metrics)
-        if time.monotonic() - started >= OCR_TIMEOUT_SECONDS:
+        if time.monotonic() - started >= OCR_INTERNAL_DEADLINE_SECONDS:
             break
     winner = max(metrics, key=lambda value: value.n_campos_validos)
     return "\n\n".join(texts), OcrMetrics(
@@ -139,7 +170,7 @@ def _ocr(raw: bytes, content_type: str) -> tuple[str, OcrMetrics]:
     )
 
 
-def _detect(raw: bytes, content_type: str) -> tuple[bool, str | None]:
+def _detect(raw: bytes, content_type: str) -> tuple[bool, str | None, bool]:
     images = _pil_images(raw, content_type, first_page_only=True)
     # A primeira página basta para o portão e mantém o endpoint previsível.
     return _detect_image(images[0])
@@ -175,12 +206,18 @@ async def ocr(
     x_ocr_token: Annotated[str | None, Header()] = None,
 ) -> dict[str, str | int | dict[str, str | int]]:
     raw, content_type = await _read_request(request, x_ocr_token)
+    partial: list[OcrResult] = []
     try:
         text, metrics = await asyncio.wait_for(
-            asyncio.to_thread(_ocr, raw, content_type),
+            asyncio.to_thread(_ocr, raw, content_type, partial),
             timeout=OCR_TIMEOUT_SECONDS,
         )
     except TimeoutError as exc:
+        if partial and partial[0].text:
+            return {
+                "text": partial[0].text,
+                "metrics": partial[0].metrics.public(),
+            }
         raise HTTPException(status_code=504, detail="OCR excedeu 25 segundos") from exc
     except Exception as exc:
         # Não incluir conteúdo, metadados pessoais nem detalhes do decoder.
@@ -195,7 +232,7 @@ async def detectar(
 ) -> dict[str, bool | str | None]:
     raw, content_type = await _read_request(request, x_ocr_token)
     try:
-        documento, tipo = await asyncio.wait_for(
+        documento, tipo, possivel = await asyncio.wait_for(
             asyncio.to_thread(_detect, raw, content_type),
             timeout=DETECT_TIMEOUT_SECONDS,
         )
@@ -203,4 +240,8 @@ async def detectar(
         raise HTTPException(status_code=504, detail="detecção excedeu 8 segundos") from exc
     except Exception as exc:
         raise HTTPException(status_code=422, detail="não foi possível verificar o arquivo") from exc
-    return {"documento": documento, "tipo": tipo}
+    return {
+        "documento": documento,
+        "tipo": tipo,
+        "possivel_documento": possivel,
+    }

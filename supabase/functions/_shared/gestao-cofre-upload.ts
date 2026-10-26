@@ -6,7 +6,10 @@ import {
 } from "./gestao-cofre-crypto.ts";
 import { lerCrlvLocal } from "./crlv-leitura.ts";
 import type { CrlvOcrMetricas } from "./crlv-leitura.ts";
-import type { CrlvParserResultado } from "./crlv-parser.ts";
+import {
+  type CrlvParserResultado,
+  parseCrlvText,
+} from "./crlv-parser.ts";
 
 const BUCKET = "gestao-cofre";
 const MAX_BYTES = 15 * 1024 * 1024;
@@ -36,6 +39,9 @@ const PII_KEYS = new Set([
   "cpf_cnpj",
   "documento_proprietario",
 ]);
+
+export const CRLV_LEITURA_FRACA_MENSAGEM =
+  "Não consegui ler esta foto. Tire outra de cima, documento aberto, com boa luz — ou digite a placa e use Completar pela Molicar";
 
 type CofreClient = SupabaseClient<any, "public", any>;
 
@@ -115,6 +121,42 @@ export type GestaoCofreUploadResult = {
   duplicate: boolean;
 };
 
+async function readCrlv(
+  input: GestaoCofreUploadInput,
+): Promise<{
+  leitura: CrlvParserResultado | null;
+  leituraErro: string | null;
+  metricasOcr: CrlvOcrMetricas | null;
+}> {
+  if (
+    !input.lerCrlv ||
+    (input.tipo !== "crlv" && input.tipo !== "crlv_e")
+  ) {
+    return { leitura: null, leituraErro: null, metricasOcr: null };
+  }
+  try {
+    const result = await lerCrlvLocal(
+      input.bytes,
+      input.mime,
+      input.filename,
+    );
+    return {
+      leitura: result.parser,
+      leituraErro: result.parser.leitura_fraca
+        ? CRLV_LEITURA_FRACA_MENSAGEM
+        : null,
+      metricasOcr: result.metricas_ocr,
+    };
+  } catch {
+    // Falha do OCR não impede o cofre nem a conferência manual.
+    return {
+      leitura: parseCrlvText("", "ocr"),
+      leituraErro: CRLV_LEITURA_FRACA_MENSAGEM,
+      metricasOcr: null,
+    };
+  }
+}
+
 export async function gestaoCofreUpload(
   input: GestaoCofreUploadInput,
 ): Promise<GestaoCofreUploadResult> {
@@ -132,12 +174,40 @@ export async function gestaoCofreUpload(
     .select("id").eq("user_id", input.userId).eq("sha256", sha256)
     .is("deleted_at", null).maybeSingle();
   if (duplicate) {
+    const reread = await readCrlv(input);
+    const patch: Record<string, unknown> = {
+      origem: input.origem,
+      tipo: input.tipo,
+      status: reread.leitura ? "lido" : "recebido",
+    };
+    if (input.veiculoId) patch.veiculo_id = input.veiculoId;
+    if (input.trocaId) patch.troca_id = input.trocaId;
+    if (input.vendaId) patch.venda_id = input.vendaId;
+    if (reread.leitura) {
+      patch.campos_veiculo = {
+        veiculo: reread.leitura.veiculo,
+        documento: reread.leitura.documento,
+        observacoes: reread.leitura.observacoes,
+      };
+      patch.dados_pessoais_cifrados = await cifrarDadosPessoais({
+        nome: reread.leitura.proprietario.nome.valor,
+        cpf_cnpj: reread.leitura.proprietario.cpf_cnpj.valor,
+      });
+    }
+    const { error } = await input.sb.from("gestao_documento").update(patch)
+      .eq("id", duplicate.id).eq("user_id", input.userId);
+    if (error) throw new Error("Falha ao reaproveitar documento");
+    await auditGestaoDocumento(
+      input.sb,
+      String(duplicate.id),
+      input.userId,
+      "ler",
+      { ...(reread.metricasOcr ?? {}), reaproveitado: true },
+    );
     return {
       documentoId: String(duplicate.id),
       sha256,
-      leitura: null,
-      leituraErro: null,
-      metricasOcr: null,
+      ...reread,
       duplicate: true,
     };
   }
@@ -147,26 +217,7 @@ export async function gestaoCofreUpload(
     throw new Error("Dados pessoais devem ser enviados no campo protegido");
   }
 
-  let leitura: CrlvParserResultado | null = null;
-  let leituraErro: string | null = null;
-  let metricasOcr: CrlvOcrMetricas | null = null;
-  if (
-    input.lerCrlv &&
-    (input.tipo === "crlv" || input.tipo === "crlv_e")
-  ) {
-    try {
-      const result = await lerCrlvLocal(
-        input.bytes,
-        input.mime,
-        input.filename,
-      );
-      leitura = result.parser;
-      metricasOcr = result.metricas_ocr;
-    } catch {
-      leituraErro =
-        "Não consegui ler bem. Tire outra foto de cima, documento aberto, com boa luz";
-    }
-  }
+  const { leitura, leituraErro, metricasOcr } = await readCrlv(input);
 
   const camposLidos = leitura
     ? {

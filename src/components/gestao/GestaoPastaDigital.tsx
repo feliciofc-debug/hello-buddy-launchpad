@@ -10,11 +10,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { supabase } from "@/integrations/supabase/client";
 import {
   type CrlvLeituraView,
   GestaoCrlvConferencia,
 } from "@/components/gestao/GestaoCrlvConferencia";
+import { invokeFunctionComCorpo } from "@/lib/invoke-function-com-corpo";
 
 const MAX_BYTES = 15 * 1024 * 1024;
 const MIME = new Set([
@@ -96,11 +96,15 @@ export function GestaoPastaDigital({
   >(null);
 
   const invoke = useCallback(async (body: Record<string, unknown>) => {
-    const { data, error } = await supabase.functions.invoke("gestao-cofre", {
+    const result = await invokeFunctionComCorpo("gestao-cofre", {
       body,
     });
-    if (error || data?.error) throw new Error(data?.error ?? error?.message);
-    return data;
+    if (!result.success || result.data?.error) {
+      throw new Error(
+        result.error || String(result.data?.error || "Falha ao processar documento."),
+      );
+    }
+    return result.data;
   }, []);
 
   const load = useCallback(async () => {
@@ -144,7 +148,11 @@ export function GestaoPastaDigital({
         veiculo_id: veiculoId,
         troca_id: trocaId,
       });
-      toast.success("Documento guardado no cofre.");
+      toast.success(
+        data.reaproveitado
+          ? "Documento reaproveitado do cofre e lido novamente."
+          : "Documento guardado no cofre.",
+      );
       if (data.leitura) {
         setCrlvReview({
           documentoId: data.documento_id,

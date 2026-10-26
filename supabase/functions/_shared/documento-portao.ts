@@ -10,6 +10,7 @@ export type DocumentoPortaoResultado = {
   media: MediaExtract;
   bytes: Uint8Array;
   documento: boolean;
+  possivel_documento: boolean;
   tipo: "crlv" | "cnh" | "rg" | "outro" | null;
 };
 
@@ -40,6 +41,7 @@ export async function verificarDocumentoNoPortao(
           media,
           bytes,
           ...classificarDocumentoIdentidade(extracted.text),
+          possivel_documento: false,
         };
       }
     } catch {

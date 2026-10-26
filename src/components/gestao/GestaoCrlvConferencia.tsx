@@ -305,9 +305,8 @@ export function GestaoCrlvConferencia({
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Leitura com baixa confiança</AlertTitle>
             <AlertDescription>
-              Não consegui ler bem. Tire outra foto de cima, documento aberto,
-              com boa luz. Você pode conferir e aproveitar os campos já
-              encontrados.
+              Não consegui ler esta foto. Tire outra de cima, documento aberto,
+              com boa luz — ou digite a placa e use Completar pela Molicar.
             </AlertDescription>
           </Alert>
         )}

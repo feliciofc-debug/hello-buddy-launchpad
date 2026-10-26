@@ -218,7 +218,7 @@ Deno.test({
           "image/jpeg",
           fetchMock,
         ),
-        { documento: true, tipo: "crlv" },
+        { documento: true, possivel_documento: false, tipo: "crlv" },
       );
     } finally {
       if (oldUrl == null) Deno.env.delete("AMZ_OCR_URL");

@@ -170,18 +170,13 @@ async function upload(
       : null,
     lerCrlv: tipo === "crlv" || tipo === "crlv_e",
   });
-  if (result.duplicate) {
-    return jsonResponse({
-      error: "Documento já enviado",
-      documento_id: result.documentoId,
-    }, 409);
-  }
   return jsonResponse({
     success: true,
     documento_id: result.documentoId,
     sha256: result.sha256,
     leitura: result.leitura ? safeCrlvReading(result.leitura) : null,
     leitura_erro: result.leituraErro,
+    reaproveitado: result.duplicate,
   });
 }
 
@@ -469,10 +464,17 @@ Deno.serve(async (req) => {
     }
     return jsonResponse({ error: "Ação inválida" }, 400);
   } catch (error) {
+    const message = error instanceof Error ? error.message : "";
     console.warn(
       "[gestao-cofre]",
-      error instanceof Error ? error.message : "erro",
+      message || "erro",
     );
+    if (message.includes("DOC_COFRE_KEY não configurada")) {
+      return jsonResponse({
+        error:
+          "O cofre ainda não está configurado. Peça ao administrador para configurar a chave de segurança.",
+      }, 503);
+    }
     return jsonResponse(
       { error: "Não foi possível processar o documento" },
       400,

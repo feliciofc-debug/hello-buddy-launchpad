@@ -59,7 +59,11 @@ Deno.test("DOC-0.1 — PDF com texto é classificado localmente sem OCR", async 
   let detectorCalls = 0;
   const detector = () => {
     detectorCalls++;
-    return Promise.resolve({ documento: true, tipo: "crlv" as const });
+    return Promise.resolve({
+      documento: true,
+      possivel_documento: false,
+      tipo: "crlv" as const,
+    });
   };
   const extracted = (text: string) => () =>
     Promise.resolve({
@@ -100,7 +104,11 @@ Deno.test("DOC-0.1 — PDF sem texto usa detector visual uma vez", async () => {
     pdf,
     () => {
       detectorCalls++;
-      return Promise.resolve({ documento: false, tipo: null });
+      return Promise.resolve({
+        documento: false,
+        possivel_documento: false,
+        tipo: null,
+      });
     },
     () =>
       Promise.resolve({
@@ -111,7 +119,22 @@ Deno.test("DOC-0.1 — PDF sem texto usa detector visual uma vez", async () => {
       }),
   );
   assertEquals(result.documento, false);
+  assertEquals(result.possivel_documento, false);
   assertEquals(detectorCalls, 1);
+});
+
+Deno.test("DOC-0.2 — possível documento permanece bloqueado para IA", async () => {
+  const result = await verificarDocumentoNoPortao(
+    image,
+    () =>
+      Promise.resolve({
+        documento: false,
+        possivel_documento: true,
+        tipo: null,
+      }),
+  );
+  assertEquals(result.documento, false);
+  assertEquals(result.possivel_documento, true);
 });
 
 Deno.test("DOC-0 — resposta do CRLV nunca contém nome ou CPF completos", () => {
@@ -190,7 +213,7 @@ Deno.test("DOC-0 — serviço separa detecção rápida da leitura completa", as
   const fullOcr = await Deno.readTextFile(
     new URL("../../../services/amz-ocr/ocr_engine.py", import.meta.url),
   );
-  assertEquals(fullOcr.includes("_resize_max(rgb, 2400)"), true);
+  assertEquals(fullOcr.includes("_resize_max(rgb, 1600)"), true);
   assertEquals(source.includes("_resize(image, 1400)"), true);
   assertEquals(source.includes('config="--oem 1 --psm 11"'), true);
   assertEquals(source.includes("DETECT_TIMEOUT_SECONDS = 8"), true);
@@ -201,7 +224,7 @@ Deno.test("DOC-0 — serviço separa detecção rápida da leitura completa", as
   );
   const endpoint = source.slice(source.indexOf('@app.post("/detectar")'));
   assertEquals(
-    endpoint.includes('return {"documento": documento, "tipo": tipo}'),
+    endpoint.includes('"possivel_documento": possivel'),
     true,
   );
   assertEquals(endpoint.includes('return {"text":'), false);
@@ -212,4 +235,18 @@ Deno.test("DOC-0 — serviço separa detecção rápida da leitura completa", as
     dockerfile.includes("COPY app.py detector.py ocr_engine.py"),
     true,
   );
+});
+
+Deno.test("DOC-0.2 — portão pede confirmação e só libera no botão negativo", async () => {
+  const source = await Deno.readTextFile(
+    new URL("../whatsapp-cloud-inbound-processor/index.ts", import.meta.url),
+  );
+  const flow = source.slice(source.indexOf("// PASSO 6.7 — Baixa mídias"));
+  const possibleGate = flow.indexOf("if (possibleDocument)");
+  const externalAi = flow.indexOf('fetch("https://ai.gateway.lovable.dev');
+  assertEquals(possibleGate >= 0, true);
+  assertEquals(possibleGate < externalAi, true);
+  assertEquals(source.includes("Guardar e ler"), true);
+  assertEquals(source.includes("Não é documento"), true);
+  assertEquals(source.includes("releasedPossibleDocument"), true);
 });

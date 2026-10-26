@@ -56,6 +56,33 @@ Deno.test("SEG-DOC — SHA-256 é estável para detectar duplicado", async () =>
   assertEquals(a.length, 64);
 });
 
+Deno.test("DOC-1.2d — repetido é relido, vinculado e responde 200", async () => {
+  const upload = await Deno.readTextFile(
+    new URL("./gestao-cofre-upload.ts", import.meta.url),
+  );
+  const endpoint = await Deno.readTextFile(
+    new URL("../gestao-cofre/index.ts", import.meta.url),
+  );
+  const duplicateFlow = upload.slice(upload.indexOf("if (duplicate)"));
+  assertStringIncludes(duplicateFlow, "await readCrlv(input)");
+  assertStringIncludes(duplicateFlow, "veiculo_id");
+  assertStringIncludes(duplicateFlow, "troca_id");
+  assertStringIncludes(duplicateFlow, "reaproveitado: true");
+  assertEquals(endpoint.includes('"Documento já enviado"'), false);
+  assertStringIncludes(endpoint, "reaproveitado: result.duplicate");
+});
+
+Deno.test("DOC-1.2d — OCR indisponível produz leitura fraca para conferência", async () => {
+  const upload = await Deno.readTextFile(
+    new URL("./gestao-cofre-upload.ts", import.meta.url),
+  );
+  assertStringIncludes(upload, 'parseCrlvText("", "ocr")');
+  assertStringIncludes(
+    upload,
+    "Não consegui ler esta foto. Tire outra de cima, documento aberto, com boa luz — ou digite a placa e use Completar pela Molicar",
+  );
+});
+
 Deno.test("SEG-DOC — migração garante duplicado, RLS e auditoria append-only", async () => {
   const sql = await Deno.readTextFile(
     new URL(

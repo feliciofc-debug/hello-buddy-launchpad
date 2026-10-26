@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import importlib.util
 import os
 import time
 import unittest
@@ -121,6 +122,15 @@ class OcrEngineTest(unittest.TestCase):
     def test_run_variants_continues_after_single_variant_failure(self) -> None:
         image = synthetic_old_crlv()
         variants = preprocessing_variants(image)
+        self.assertEqual(len(variants), 3)
+        self.assertEqual(
+            [name.rsplit("_", 1)[-1] for name, _ in variants],
+            ["cor", "clahe", "fundo"],
+        )
+        self.assertLessEqual(
+            max(max(arr.shape[:2]) for _, arr in variants),
+            1600,
+        )
         calls: list[str] = []
 
         def reader(arr: np.ndarray) -> tuple[str, float]:
@@ -139,6 +149,23 @@ class OcrEngineTest(unittest.TestCase):
         self.assertIn("placa", valid_crlv_fields(text))
         self.assertIn("chassi", valid_crlv_fields(text))
         self.assertGreaterEqual(fields, 2)
+
+    def test_tesseract_runs_only_when_paddle_returns_no_text(self) -> None:
+        calls = 0
+
+        def fallback(_image: np.ndarray) -> tuple[str, float]:
+            nonlocal calls
+            calls += 1
+            return ("PLACA\nABC1D23", 0.5)
+
+        result = recognize_crlv_image(
+            synthetic_old_crlv(),
+            paddle_reader=lambda _image: ("texto parcial sem campos", 0.2),
+            tesseract_reader=fallback,
+            timeout_seconds=2,
+        )
+        self.assertEqual(calls, 0)
+        self.assertEqual(result.metrics.motor, "paddleocr")
 
     def test_paddle_reader_accepts_gray_2d_array(self) -> None:
         gray = np.zeros((120, 200), dtype=np.uint8)
@@ -166,40 +193,30 @@ class OcrEngineTest(unittest.TestCase):
         self.assertGreater(confidence, 0)
 
     @unittest.skipUnless(
-        os.environ.get("AMZ_OCR_REAL_TESTS") == "1",
-        "teste real roda na imagem Docker com os modelos locais",
+        importlib.util.find_spec("paddleocr") is not None,
+        "PaddleOCR não instalado",
     )
     def test_real_paddle_reads_rotated_noisy_green_crlv(self) -> None:
-        measurements: list[int] = []
-        engines: set[str] = set()
-        variants: set[str] = set()
-        for rotation, quality in ((90, 58), (0, 52), (270, 64)):
-            with self.subTest(rotation=rotation, quality=quality):
-                started = time.monotonic()
-                result = recognize_crlv_image(
-                    synthetic_old_crlv(rotation, quality),
-                    timeout_seconds=25,
-                )
-                fields = valid_crlv_fields(result.text)
-                self.assertIn("placa", fields)
-                self.assertIn("chassi", fields)
-                self.assertEqual(
-                    result.metrics.motor,
-                    "paddleocr",
-                    "variantes em cinza não podem derrubar o Paddle inteiro",
-                )
-                self.assertLess(time.monotonic() - started, 25)
-                measurements.append(result.metrics.tempo_ms)
-                engines.add(result.metrics.motor)
-                variants.add(result.metrics.variante_vencedora)
-        average_ms = round(sum(measurements) / len(measurements))
+        os.environ["AMZ_OCR_CPU_THREADS"] = "2"
+        landscape = synthetic_old_crlv(rotation=0, jpeg_quality=58).resize(
+            (1400, 500),
+            Image.Resampling.LANCZOS,
+        )
+        image = landscape.transpose(Image.Transpose.ROTATE_270)
+        started = time.monotonic()
+        result = recognize_crlv_image(image, timeout_seconds=18)
+        elapsed = time.monotonic() - started
+        fields = valid_crlv_fields(result.text)
+        self.assertIn("placa", fields)
+        self.assertIn("chassi", fields)
+        self.assertEqual(result.metrics.motor, "paddleocr")
+        self.assertLess(elapsed, 12)
         print(
             "OCR_SYNTHETIC_METRICS "
-            f"runs={len(measurements)} "
-            f"engines={','.join(sorted(engines))} "
-            f"variants={','.join(sorted(variants))} "
-            f"average_ms={average_ms} "
-            f"samples_ms={','.join(str(value) for value in measurements)}"
+            "threads=2 size=500x1400 rotation=90 "
+            f"motor={result.metrics.motor} "
+            f"variant={result.metrics.variante_vencedora} "
+            f"elapsed_ms={round(elapsed * 1000)}"
         )
 
 

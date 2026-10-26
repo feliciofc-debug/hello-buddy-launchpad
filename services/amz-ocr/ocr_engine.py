@@ -11,6 +11,7 @@ import pytesseract
 from PIL import Image
 
 Reader = Callable[[np.ndarray], tuple[str, float]]
+Progress = Callable[[str, str, int], None]
 
 _PADDLE = None
 _PADDLE_LOCK = threading.Lock()
@@ -196,10 +197,12 @@ def _osd_oriented(image: np.ndarray) -> np.ndarray:
 def preprocessing_variants(image: Image.Image) -> list[tuple[str, np.ndarray]]:
     rgb = cv2.cvtColor(np.array(image.convert("RGB")), cv2.COLOR_RGB2BGR)
     rgb = cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB)
-    rgb = _resize_max(rgb, 2400)
+    rgb = _resize_max(rgb, 1600)
     rgb = _osd_oriented(rgb)
     cropped, perspective = crop_document(rgb)
-    base = _upscale_small(cropped)
+    # O Paddle recebe no máximo 1600 px. O OSD/corte pode alterar as dimensões,
+    # então a trava é aplicada novamente imediatamente antes das variantes.
+    base = _resize_max(cropped, 1600)
     prefix = "perspectiva" if perspective else "pagina"
 
     gray = cv2.cvtColor(base, cv2.COLOR_RGB2GRAY)
@@ -213,19 +216,10 @@ def preprocessing_variants(image: Image.Image) -> list[tuple[str, np.ndarray]]:
         clipLimit=2.6,
         tileGridSize=(8, 8),
     ).apply(neutralized)
-    adaptive = cv2.adaptiveThreshold(
-        clahe,
-        255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY,
-        41,
-        9,
-    )
     return [
         (f"{prefix}_cor", base),
         (f"{prefix}_clahe", clahe),
         (f"{prefix}_sem_fundo", neutralized),
-        (f"{prefix}_adaptativa", adaptive),
     ]
 
 
@@ -243,9 +237,9 @@ def _paddle_engine():
                 # português e demais idiomas latinos.
                 text_detection_model_name="PP-OCRv6_small_det",
                 text_recognition_model_name="PP-OCRv6_small_rec",
-                use_doc_orientation_classify=True,
+                use_doc_orientation_classify=False,
                 use_doc_unwarping=False,
-                use_textline_orientation=True,
+                use_textline_orientation=False,
                 # Paddle 3.3.1 falha em alguns CPUs com atributos PIR/oneDNN.
                 enable_mkldnn=False,
                 cpu_threads=max(1, int(os.environ.get("AMZ_OCR_CPU_THREADS", "4"))),
@@ -297,6 +291,7 @@ def _run_variants(
     variants: list[tuple[str, np.ndarray]],
     reader: Reader,
     deadline: float,
+    progress: Progress | None = None,
 ) -> tuple[str, str, int, float]:
     best_text = ""
     best_variant = variants[0][0] if variants else "nenhuma"
@@ -317,7 +312,12 @@ def _run_variants(
             best_variant = name
             best_fields = valid
             best_confidence = confidence
-        if valid == 3:
+            if best_text and progress:
+                progress(best_text, best_variant, max(best_fields, 0))
+        valid_fields = valid_crlv_fields(text)
+        if "placa" in valid_fields and (
+            "chassi" in valid_fields or "renavam" in valid_fields
+        ):
             break
     return best_text, best_variant, max(best_fields, 0), best_confidence
 
@@ -327,7 +327,8 @@ def recognize_crlv_image(
     *,
     paddle_reader: Reader | None = None,
     tesseract_reader: Reader | None = None,
-    timeout_seconds: float = 25,
+    timeout_seconds: float = 18,
+    progress_callback: Callable[[OcrResult], None] | None = None,
 ) -> OcrResult:
     started = time.monotonic()
     deadline = started + timeout_seconds
@@ -335,10 +336,34 @@ def recognize_crlv_image(
     paddle = paddle_reader or _paddle_reader
     fallback = tesseract_reader or _tesseract_reader
     engine = "paddleocr"
-    text, variant, fields, _ = _run_variants(variants, paddle, deadline)
-    if fields == 0 and time.monotonic() < deadline:
+    def progress(text: str, variant: str, fields: int) -> None:
+        if progress_callback:
+            progress_callback(OcrResult(
+                text=text,
+                metrics=OcrMetrics(
+                    motor=engine,
+                    variante_vencedora=variant,
+                    tempo_ms=round((time.monotonic() - started) * 1000),
+                    n_campos_validos=fields,
+                ),
+            ))
+
+    text, variant, fields, _ = _run_variants(
+        variants,
+        paddle,
+        deadline,
+        progress,
+    )
+    # Tesseract é reserva somente quando o Paddle não devolveu texto algum.
+    # Campo não reconhecido ainda é resultado parcial útil para conferência.
+    if not text.strip() and time.monotonic() < deadline:
         engine = "tesseract"
-        text, variant, fields, _ = _run_variants(variants, fallback, deadline)
+        text, variant, fields, _ = _run_variants(
+            variants,
+            fallback,
+            deadline,
+            progress,
+        )
     return OcrResult(
         text=text,
         metrics=OcrMetrics(
