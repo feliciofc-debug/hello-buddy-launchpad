@@ -108,7 +108,8 @@ export function cleanupDocumentPhotoPending(
   }
   if (
     pendingChoice &&
-    (clearAll || expired(pendingChoice, nowMs) || removedDocument(pendingChoice))
+    (clearAll || expired(pendingChoice, nowMs) ||
+      removedDocument(pendingChoice))
   ) {
     mediaIds(pendingChoice).forEach((id) => removedMediaIds.add(id));
     router.pending_choice = null;
