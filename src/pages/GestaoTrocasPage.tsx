@@ -1,9 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, FileText, Loader2, Plus } from "lucide-react";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  type CrlvLeituraView,
+  GestaoCrlvConferencia,
+} from "@/components/gestao/GestaoCrlvConferencia";
 import { formatGestaoMoney } from "@/lib/gestao-format.ts";
 import type { GestaoTrocaRow, GestaoTrocaStatus } from "@/lib/gestao-troca-types.ts";
 import { useSmartBack } from "@/lib/app-back-nav.ts";
@@ -28,9 +33,17 @@ function semaforoBadge(s: GestaoTrocaRow["semaforo"]) {
 export default function GestaoTrocasPage() {
   const goBack = useSmartBack("/gestao/lucro");
   const navigate = useNavigate();
+  const documentInputRef = useRef<HTMLInputElement>(null);
+  const documentConfirmedRef = useRef(false);
   const [rows, setRows] = useState<GestaoTrocaRow[]>([]);
   const [filtro, setFiltro] = useState<GestaoTrocaStatus | "">("");
   const [loading, setLoading] = useState(true);
+  const [readingDocument, setReadingDocument] = useState(false);
+  const [documentReview, setDocumentReview] = useState<{
+    trocaId: string;
+    documentoId: string;
+    leitura: CrlvLeituraView;
+  } | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -50,16 +63,16 @@ export default function GestaoTrocasPage() {
     void load();
   }, [filtro]);
 
-  const nova = async () => {
+  const criarTroca = async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) throw new Error("Usuário não autenticado");
     const { data, error } = await supabase.from("gestao_troca" as "veiculos_estoque").insert({
       user_id: user.id,
       marca: "—",
       modelo: "—",
       status: "em_avaliacao",
     }).select("id").single();
-    if (error || !data?.id) return;
+    if (error || !data?.id) throw new Error("Não foi possível criar a avaliação");
     await supabase.from("gestao_troca_evento" as "veiculos_estoque").insert({
       troca_id: data.id,
       user_id: user.id,
@@ -67,7 +80,84 @@ export default function GestaoTrocasPage() {
       descricao: "Ficha de troca criada",
       autor: "painel",
     });
-    navigate(`/gestao/trocas/${data.id}`);
+    return String(data.id);
+  };
+
+  const nova = async () => {
+    try {
+      navigate(`/gestao/trocas/${await criarTroca()}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível criar a avaliação");
+    }
+  };
+
+  const comecarPeloDocumento = async (file: File | null) => {
+    if (!file) return;
+    const allowed = [
+      "application/pdf",
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/heic",
+      "image/heif",
+    ];
+    if (!allowed.includes(file.type)) {
+      toast.error("Envie PDF, JPG, PNG, WebP ou HEIC.");
+      return;
+    }
+    if (!file.size || file.size > 15 * 1024 * 1024) {
+      toast.error("O arquivo deve ter até 15 MB.");
+      return;
+    }
+
+    setReadingDocument(true);
+    let trocaId: string | null = null;
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("Falha ao ler arquivo"));
+        reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+        reader.readAsDataURL(file);
+      });
+      trocaId = await criarTroca();
+      const { data, error } = await supabase.functions.invoke("gestao-cofre", {
+        body: {
+          action: "upload",
+          base64,
+          tipo: file.type === "application/pdf" ? "crlv_e" : "crlv",
+          origem: "troca",
+          mime: file.type,
+          filename: file.name,
+          troca_id: trocaId,
+        },
+      });
+      if (error || data?.error) throw new Error(data?.error ?? error?.message);
+      if (data.leitura) {
+        documentConfirmedRef.current = false;
+        setDocumentReview({
+          trocaId,
+          documentoId: data.documento_id,
+          leitura: data.leitura,
+        });
+      } else {
+        toast.warning(
+          data.leitura_erro ??
+            "Não consegui ler bem. Confira o documento na pasta digital.",
+        );
+        navigate(`/gestao/trocas/${trocaId}?tab=documentos`);
+      }
+    } catch (error) {
+      if (trocaId) {
+        await supabase.from("gestao_troca" as "veiculos_estoque").delete()
+          .eq("id", trocaId);
+      }
+      toast.error(
+        error instanceof Error ? error.message : "Não foi possível ler o CRLV.",
+      );
+    } finally {
+      setReadingDocument(false);
+      if (documentInputRef.current) documentInputRef.current.value = "";
+    }
   };
 
   return (
@@ -81,6 +171,24 @@ export default function GestaoTrocasPage() {
           <div className="flex gap-2">
             <Button variant="outline" asChild>
               <Link to="/gestao/trocas/config">Configuração</Link>
+            </Button>
+            <input
+              ref={documentInputRef}
+              type="file"
+              className="hidden"
+              accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif"
+              onChange={(event) =>
+                void comecarPeloDocumento(event.target.files?.[0] ?? null)}
+            />
+            <Button
+              variant="outline"
+              disabled={readingDocument}
+              onClick={() => documentInputRef.current?.click()}
+            >
+              {readingDocument
+                ? <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                : <FileText className="mr-1 h-4 w-4" />}
+              {readingDocument ? "Lendo documento…" : "Começar pelo documento"}
             </Button>
             <Button onClick={() => void nova()}>
               <Plus className="mr-1 h-4 w-4" /> Nova avaliação
@@ -134,6 +242,28 @@ export default function GestaoTrocasPage() {
           </div>
         )}
       </div>
+      {documentReview && (
+        <GestaoCrlvConferencia
+          open
+          onOpenChange={(open) => {
+            if (!open) {
+              if (!documentConfirmedRef.current) {
+                navigate(`/gestao/trocas/${documentReview.trocaId}?tab=documentos`);
+              }
+              documentConfirmedRef.current = false;
+              setDocumentReview(null);
+            }
+          }}
+          documentoId={documentReview.documentoId}
+          leitura={documentReview.leitura}
+          trocaId={documentReview.trocaId}
+          onConfirmed={() => {
+            documentConfirmedRef.current = true;
+            navigate(`/gestao/trocas/${documentReview.trocaId}`);
+            setDocumentReview(null);
+          }}
+        />
+      )}
     </div>
   );
 }

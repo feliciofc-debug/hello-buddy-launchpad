@@ -14,6 +14,16 @@ export const CRLV_STOCK_FIELDS = new Set([
   "cilindrada_cc",
 ]);
 
+export const CRLV_TROCA_FIELDS = new Set([
+  "placa",
+  "marca",
+  "modelo",
+  "versao",
+  "ano_fabricacao",
+  "ano_modelo",
+  "cor",
+]);
+
 export function maskOwnerDocument(value: string | null): string | null {
   const digits = String(value ?? "").replace(/\D/g, "");
   if (digits.length === 11) {
@@ -84,6 +94,24 @@ export function buildCrlvVehiclePatch(
   return Object.fromEntries(
     Object.entries(values).filter(([key]) =>
       current[key] == null || current[key] === "" || replace.has(key)
+    ),
+  );
+}
+
+export function buildCrlvTrocaPatch(
+  current: Record<string, unknown>,
+  values: Record<string, string | number>,
+  replace: Set<string>,
+): Record<string, string | number> {
+  return Object.fromEntries(
+    Object.entries(values).filter(([key]) =>
+      CRLV_TROCA_FIELDS.has(key) &&
+      (
+        current[key] == null ||
+        current[key] === "" ||
+        current[key] === "—" ||
+        replace.has(key)
+      )
     ),
   );
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -110,12 +110,16 @@ import { useGestaoMolicarConnection } from "@/components/integracoes/useGestaoMo
 export default function GestaoTrocaFichaPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [troca, setTroca] = useState<GestaoTrocaRow | null>(null);
   const [eventos, setEventos] = useState<GestaoTrocaEvento[]>([]);
   const [busy, setBusy] = useState(false);
   const [userId, setUserId] = useState("");
   const [liberarOpen, setLiberarOpen] = useState(false);
   const [precoVendaInput, setPrecoVendaInput] = useState("");
+  const [activeTab, setActiveTab] = useState(
+    searchParams.get("tab") === "documentos" ? "documentos" : "avaliacao",
+  );
   const [repasseOpen, setRepasseOpen] = useState(false);
   const [repasseComprador, setRepasseComprador] = useState("");
   const [repasseValor, setRepasseValor] = useState("");
@@ -724,7 +728,7 @@ export default function GestaoTrocaFichaPage() {
           </p>
         )}
 
-        <Tabs defaultValue="avaliacao" className="space-y-4">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="avaliacao">Avaliação</TabsTrigger>
             <TabsTrigger value="documentos">Documentos</TabsTrigger>

@@ -10,8 +10,10 @@ import {
   optionsResponse,
 } from "../_shared/gestao-troca-http.ts";
 import {
+  buildCrlvTrocaPatch,
   buildCrlvVehiclePatch,
   CRLV_STOCK_FIELDS,
+  CRLV_TROCA_FIELDS,
   safeCrlvReading,
   sanitizeCrlvVehicleValues,
 } from "../_shared/crlv-cofre.ts";
@@ -67,6 +69,7 @@ type OwnedDocument = {
   created_at: string;
   deleted_at: string | null;
   veiculo_id?: string | null;
+  troca_id?: string | null;
   campos_veiculo?: Record<string, unknown>;
 };
 
@@ -114,7 +117,7 @@ async function audit(
 async function ownedDocument(sb: Admin, userId: string, documentoId: string) {
   const { data } = await sb.from("gestao_documento")
     .select(
-      "id,user_id,storage_path,mime,tamanho,tipo,status,created_at,deleted_at,veiculo_id,campos_veiculo",
+      "id,user_id,storage_path,mime,tamanho,tipo,status,created_at,deleted_at,veiculo_id,troca_id,campos_veiculo",
     )
     .eq("id", documentoId).eq("user_id", userId).maybeSingle();
   return data && !data.deleted_at ? data as OwnedDocument : null;
@@ -329,6 +332,7 @@ async function confirmCrlv(
     return jsonResponse({ error: "CRLV não encontrado" }, 404);
   }
   const vehicleId = String(body.veiculo_id ?? doc.veiculo_id ?? "") || null;
+  const trocaId = String(body.troca_id ?? doc.troca_id ?? "") || null;
   const values = body.valores && typeof body.valores === "object"
     ? body.valores as Record<string, unknown>
     : {};
@@ -361,19 +365,37 @@ async function confirmCrlv(
       if (error) throw new Error("Falha ao atualizar veículo");
     }
   }
+  if (trocaId) {
+    const select = [...CRLV_TROCA_FIELDS].join(",");
+    const { data: troca } = await sb.from("gestao_troca").select(select)
+      .eq("id", trocaId).eq("user_id", userId).maybeSingle();
+    if (!troca) return jsonResponse({ error: "Troca não encontrada" }, 404);
+    const patch = buildCrlvTrocaPatch(
+      troca as unknown as Record<string, unknown>,
+      sanitized,
+      replace,
+    );
+    updatedFields.push(...Object.keys(patch));
+    if (Object.keys(patch).length) {
+      const { error } = await sb.from("gestao_troca").update(patch)
+        .eq("id", trocaId).eq("user_id", userId);
+      if (error) throw new Error("Falha ao atualizar troca");
+    }
+  }
   const confirmedFields = {
     ...(doc.campos_veiculo ?? {}),
     confirmados: sanitized,
   };
   const { error } = await sb.from("gestao_documento").update({
     veiculo_id: vehicleId,
+    troca_id: trocaId,
     status: "confirmado",
     campos_veiculo: confirmedFields,
   }).eq("id", documentoId).eq("user_id", userId);
   if (error) throw new Error("Falha ao confirmar documento");
   await audit(sb, documentoId, userId, "confirmar", {
     campos_atualizados: updatedFields,
-    vinculado: Boolean(vehicleId),
+    vinculado: Boolean(vehicleId || trocaId),
   });
   return jsonResponse({ success: true, campos_atualizados: updatedFields });
 }
