@@ -8,6 +8,8 @@ export type GestaoOsCotacaoPdfInput = {
   lojaNome: string;
   lojaContato?: string | null;
   lojaSite?: string | null;
+  lojaCnpj?: string | null;
+  lojaCidade?: string | null;
   parceiroNome: string;
   osNumero: number;
   dataIso: string;
@@ -23,6 +25,7 @@ export type GestaoOsCotacaoPdfInput = {
   prazoDesejado?: string | null;
   valorCombinado?: number | null;
   fotoLegendas?: string[];
+  comoResponder?: string | null;
 };
 
 const PROIBIDO_PDF_OS = [
@@ -61,6 +64,8 @@ export function buildGestaoOsCotacaoPdfLines(input: GestaoOsCotacaoPdfInput): st
     : "Pedido de cotação / Ordem de Serviço";
   lines.push(titulo);
   lines.push(input.lojaNome);
+  if (input.lojaCnpj) lines.push(`CNPJ: ${input.lojaCnpj}`);
+  if (input.lojaCidade) lines.push(`Cidade: ${input.lojaCidade}`);
   if (input.lojaContato) lines.push(`Contato: ${input.lojaContato}`);
   if (input.lojaSite) lines.push(`Site: ${input.lojaSite}`);
   lines.push(`OS nº ${input.osNumero} · ${formatData(input.dataIso)}`);
@@ -92,6 +97,10 @@ export function buildGestaoOsCotacaoPdfLines(input: GestaoOsCotacaoPdfInput): st
     for (const leg of input.fotoLegendas.slice(0, 12)) {
       lines.push(`  - ${leg}`);
     }
+  }
+  if (input.comoResponder) {
+    lines.push("");
+    lines.push(`Como responder: ${input.comoResponder}`);
   }
   if (input.titulo === "os_aprovada" && input.valorCombinado != null) {
     lines.push("");

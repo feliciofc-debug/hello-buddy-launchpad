@@ -71,7 +71,7 @@ async function uploadHeaderHandle(token: string, imageUrl: string): Promise<stri
   }
 }
 
-function buildComponents(tpl: any, headerHandle?: string | null): any[] {
+export function buildTemplateSubmitComponents(tpl: any, headerHandle?: string | null): any[] {
   const components: any[] = [];
 
   // HEADER opcional
@@ -221,7 +221,7 @@ Deno.serve(async (req) => {
     name: tpl.nome_meta,
     language: tpl.idioma,
     category: tpl.categoria_meta,
-    components: buildComponents(tpl, headerHandle),
+    components: buildTemplateSubmitComponents(tpl, headerHandle),
   };
 
 

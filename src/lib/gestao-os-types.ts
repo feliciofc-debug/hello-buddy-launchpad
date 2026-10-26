@@ -25,6 +25,8 @@ export type GestaoOsRow = {
   ultima_movimentacao_em: string;
   created_at: string;
   concluida_em: string | null;
+  despesa_id?: string | null;
+  conta_lancamento_id?: string | null;
 };
 
 export type GestaoOsItemRow = {
@@ -49,9 +51,15 @@ export type GestaoOsCotacaoRow = {
   valor: number | null;
   prazo_dias: number | null;
   observacao: string | null;
-  status: "solicitada" | "recebida" | "escolhida" | "descartada";
+  status: "solicitada" | "recebida" | "escolhida" | "descartada" | "recusada";
   solicitada_em: string;
   recebida_em: string | null;
+  canal?: "painel" | "whatsapp";
+  envio_whatsapp_status?: "enviado" | "convite_enviado" | "pendente_modelo" | "falhou" | "nao_aplicavel" | null;
+  envio_whatsapp_erro?: string | null;
+  envio_pendente_motivo?: string | null;
+  transcricao_audio?: string | null;
+  recusada_em?: string | null;
 };
 
 export type GestaoParceiroRow = {

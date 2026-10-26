@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Download, Star } from "lucide-react";
+import { Eye, Star } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -125,25 +125,57 @@ export function GestaoOsCotacaoPanel({
     });
   };
 
+  const reenviarWhatsApp = async (cotacaoId: string) => {
+    setBusy(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("gestao-os-cotacao-whatsapp-send", {
+        body: { os_id: os.id, cotacao_ids: [cotacaoId] },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.success !== true) throw new Error(String(data?.error ?? "Falha no reenvio"));
+      toast.success("Pedido reenviado.");
+      await onReload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha no reenvio");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const solicitar = async () => {
     if (parceirosSolicitar.length === 0) {
       return toast.error("Escolha ao menos um parceiro.");
     }
     setBusy(true);
     try {
-      const { error } = await (supabase as unknown as {
-        rpc: (name: string, args: Record<string, unknown>) => Promise<{ error: { message: string } | null }>;
+      const { data: cotRows, error } = await (supabase as unknown as {
+        rpc: (name: string, args: Record<string, unknown>) => Promise<{
+          data: { id: string }[] | null;
+          error: { message: string } | null;
+        }>;
       }).rpc("gestao_os_cotacao_solicitar", {
         p_os_id: os.id,
         p_parceiro_ids: parceirosSolicitar,
       });
       if (error) throw new Error(error.message);
-      for (const pid of parceirosSolicitar) {
-        const blob = await gerarPdfParceiro(pid, "pedido_cotacao");
-        const parceiro = parceiroMap.get(pid);
-        await salvarPdf(blob, `pedido-cotacao-${parceiro?.nome ?? pid}.pdf`, "pedido_cotacao");
+      const idsEnvio = (cotRows ?? []).map((c) => c.id);
+      const { data: sendData, error: sendErr } = await supabase.functions.invoke(
+        "gestao-os-cotacao-whatsapp-send",
+        { body: { os_id: os.id, cotacao_ids: idsEnvio } },
+      );
+      if (sendErr) throw new Error(sendErr.message);
+      if (sendData?.success !== true) {
+        throw new Error(String(sendData?.error ?? "Falha ao enviar WhatsApp"));
       }
-      toast.success("Cotação solicitada — PDFs gerados por parceiro.");
+      const falhas = (sendData.results as { ok: boolean; mode?: string }[] | undefined)
+        ?.filter((r) => !r.ok) ?? [];
+      if (falhas.length) {
+        toast.warning(
+          `Cotação criada; ${falhas.length} envio(s) pendente(s) (modelo WhatsApp ou telefone). PDF salvo para envio manual.`,
+        );
+      } else {
+        toast.success("Pedido enviado ao parceiro via WhatsApp (PDF + instruções).");
+      }
       setParceirosSolicitar([]);
       await onReload();
     } catch (e) {
@@ -199,12 +231,26 @@ export function GestaoOsCotacaoPanel({
     }
   };
 
-  const baixarPdf = async (parceiroId: string) => {
+  const verPdf = async (cotacaoId: string) => {
+    const w = window.open("", "_blank");
     try {
-      const blob = await gerarPdfParceiro(parceiroId, "pedido_cotacao");
-      const url = URL.createObjectURL(blob);
-      window.open(url, "_blank", "noopener,noreferrer");
+      const { data, error } = await supabase.functions.invoke(
+        "gestao-os-cotacao-whatsapp-send",
+        {
+          body: {
+            os_id: os.id,
+            cotacao_ids: [cotacaoId],
+            preview_only: true,
+          },
+        },
+      );
+      if (error) throw new Error(error.message);
+      const url = data?.results?.[0]?.pdfUrl;
+      if (!url) throw new Error(data?.results?.[0]?.error ?? "Prévia indisponível");
+      if (w) w.location.href = url;
+      else window.open(url, "_blank", "noopener,noreferrer");
     } catch (e) {
+      w?.close();
       toast.error(e instanceof Error ? e.message : "Falha ao gerar PDF");
     }
   };
@@ -239,7 +285,7 @@ export function GestaoOsCotacaoPanel({
             ))}
           </div>
           <Button disabled={busy} onClick={() => void solicitar()}>
-            Solicitar cotação e gerar PDFs
+            Solicitar cotação (WhatsApp + PDF)
           </Button>
         </div>
       )}
@@ -251,23 +297,40 @@ export function GestaoOsCotacaoPanel({
               <th className="p-2">Parceiro</th>
               <th className="p-2">Valor</th>
               <th className="p-2">Prazo</th>
+              <th className="p-2">Canal</th>
+              <th className="p-2">Envio WA</th>
               <th className="p-2">Status</th>
               <th className="p-2">Ações</th>
             </tr>
           </thead>
           <tbody>
             {cotacoesAtivas.length === 0 ? (
-              <tr><td className="p-3 text-muted-foreground" colSpan={5}>Nenhuma cotação ainda.</td></tr>
+              <tr><td className="p-3 text-muted-foreground" colSpan={7}>Nenhuma cotação ainda.</td></tr>
             ) : cotacoesAtivas.map((c) => (
               <tr key={c.id} className="border-b">
                 <td className="p-2">{parceiroMap.get(c.parceiro_id)?.nome ?? "—"}</td>
                 <td className="p-2">{c.valor == null ? "—" : formatGestaoMoney(c.valor)}</td>
                 <td className="p-2">{c.prazo_dias == null ? "—" : `${c.prazo_dias} dias`}</td>
-                <td className="p-2 capitalize">{c.status.replace("_", " ")}</td>
+                <td className="p-2 capitalize">{c.canal ?? "painel"}</td>
+                <td className="p-2 text-xs">
+                  {c.envio_whatsapp_status ?? "—"}
+                  {c.envio_pendente_motivo ? ` · ${c.envio_pendente_motivo}` : ""}
+                </td>
+                <td className="p-2 capitalize">
+                  {c.status.replace("_", " ")}
+                  {c.transcricao_audio ? (
+                    <p className="mt-1 text-xs text-muted-foreground" title={c.transcricao_audio}>
+                      Áudio: {c.transcricao_audio.slice(0, 60)}{c.transcricao_audio.length > 60 ? "…" : ""}
+                    </p>
+                  ) : null}
+                </td>
                 <td className="p-2">
                   <div className="flex flex-wrap gap-1">
-                    <Button size="sm" variant="ghost" onClick={() => void baixarPdf(c.parceiro_id)}>
-                      <Download className="h-4 w-4" />
+                    <Button size="sm" variant="outline" disabled={busy} onClick={() => void reenviarWhatsApp(c.id)}>
+                      Reenviar
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => void verPdf(c.id)}>
+                      <Eye className="mr-1 h-4 w-4" /> Ver PDF
                     </Button>
                     {c.status === "recebida" && !disabled && podeEscolher && (
                       <Button size="sm" variant="outline" disabled={busy} onClick={() => void escolher(c.id)}>

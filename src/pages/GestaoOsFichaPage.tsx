@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, FileUp, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -21,6 +21,8 @@ import { formatGestaoMoney } from "@/lib/gestao-format.ts";
 import { GESTAO_DESPESA_CATEGORIAS, gestaoCategoriaLabel } from "@/lib/gestao-lucro-categories.ts";
 import {
   GESTAO_OS_DOCUMENTO_MIME_TYPES,
+  GESTAO_OS_EXCLUIR_DICA_APROVADA,
+  podeExcluirOs,
   proximosStatusOs,
   validarArquivoDocumentoOs,
   type GestaoOsStatus,
@@ -29,6 +31,7 @@ import {
   gestaoOsFotosParaPdf,
   type GestaoOsFotoRefRow,
 } from "../../supabase/functions/_shared/gestao-os-fotos.ts";
+import { resolveGestaoOsFotoSignedUrl } from "@/lib/gestao-os-foto-url.ts";
 import { normalizeGestaoTrocaFotos } from "@/lib/gestao-troca-fotos.ts";
 import {
   GESTAO_OS_STATUS_LABEL,
@@ -60,6 +63,7 @@ type Veiculo = {
 
 export default function GestaoOsFichaPage() {
   const { id = "" } = useParams();
+  const navigate = useNavigate();
   const goBack = useSmartBack("/gestao/operacoes");
   const [userId, setUserId] = useState("");
   const [os, setOs] = useState<GestaoOsRow | null>(null);
@@ -92,7 +96,7 @@ export default function GestaoOsFichaPage() {
       supabase.from("gestao_os_documento" as "veiculos_estoque").select("id,tipo,storage_path,created_at").eq("user_id", user.id).eq("os_id", id).is("deleted_at", null).order("created_at", { ascending: false }),
       supabase.from("gestao_parceiro" as "veiculos_estoque").select("*").eq("user_id", user.id).eq("ativo", true).order("nome"),
       supabase.from("gestao_os_cotacao" as "veiculos_estoque").select("*").eq("user_id", user.id).eq("os_id", id).order("solicitada_em", { ascending: false }),
-      supabase.from("gestao_os_foto_ref" as "veiculos_estoque").select("id,storage_path,selecionada,ordem,troca_ia_item_id").eq("user_id", user.id).eq("os_id", id).order("ordem"),
+      supabase.from("gestao_os_foto_ref" as "veiculos_estoque").select("id,storage_path,selecionada,ordem,troca_ia_item_id,origem").eq("user_id", user.id).eq("os_id", id).order("ordem"),
     ]);
     if (osRes.error) return toast.error(osRes.error.message);
     const ordem = osRes.data as unknown as GestaoOsRow;
@@ -142,9 +146,9 @@ export default function GestaoOsFichaPage() {
     void (async () => {
       const next: Record<string, string> = {};
       await Promise.all(
-        fotosSelecionadas.map(async ({ storage_path }) => {
-          const { data } = await supabase.storage.from("trocas").createSignedUrl(storage_path, 600);
-          if (data?.signedUrl) next[storage_path] = data.signedUrl;
+        fotosSelecionadas.map(async (ref) => {
+          const signed = await resolveGestaoOsFotoSignedUrl(ref);
+          if (signed) next[ref.storage_path] = signed;
         }),
       );
       setFotoSignedUrls(next);
@@ -152,6 +156,23 @@ export default function GestaoOsFichaPage() {
   }, [fotosSelecionadas]);
 
   const encerrada = os ? ["concluida", "cancelada"].includes(os.status) : false;
+  const podeExcluir = os ? podeExcluirOs(os) : false;
+
+  const excluirOs = async () => {
+    if (!os || !podeExcluir) return;
+    const ok = window.confirm(
+      `Excluir a OS #${os.numero}? Essa ação não pode ser desfeita.`,
+    );
+    if (!ok) return;
+    setBusy(true);
+    const { error } = await (supabase as unknown as {
+      rpc: (name: string, args: Record<string, unknown>) => Promise<{ error: { message: string } | null }>;
+    }).rpc("gestao_os_excluir", { p_os_id: os.id });
+    setBusy(false);
+    if (error) return toast.error(error.message);
+    toast.success(`OS #${os.numero} excluída.`);
+    navigate("/gestao/operacoes");
+  };
 
   const adicionarItem = async () => {
     if (!item.descricao.trim()) return toast.error("Informe o serviço.");
@@ -308,7 +329,7 @@ export default function GestaoOsFichaPage() {
       </section>
 
       <section className="rounded-lg border bg-background p-4">
-        <h2 className="mb-3 font-semibold">Fotos da avaliação (troca)</h2>
+        <h2 className="mb-3 font-semibold">Fotos para cotação (anúncio, troca e OS)</h2>
         <GestaoOsFotosPanel
           userId={userId}
           osId={os.id}
@@ -335,6 +356,20 @@ export default function GestaoOsFichaPage() {
         </div>
         <div className="rounded-lg border bg-background p-4">
           <h2 className="mb-3 font-semibold">Ações do dono</h2>
+          {podeExcluir && !encerrada && (
+            <Button
+              variant="destructive"
+              className="mb-3 w-full sm:w-auto"
+              disabled={busy}
+              onClick={() => void excluirOs()}
+            >
+              Excluir OS
+            </Button>
+          )}
+          {!podeExcluir && !encerrada &&
+            !["rascunho", "orcamento"].includes(os.status) && (
+            <p className="mb-3 text-xs text-muted-foreground">{GESTAO_OS_EXCLUIR_DICA_APROVADA}</p>
+          )}
           {proximos.includes("aprovada") && <>
             <Label>Valor aprovado (se ainda não veio da cotação)</Label><Input type="number" value={transicao.aprovado} onChange={(e) => setTransicao((t) => ({ ...t, aprovado: e.target.value }))} placeholder={os.valor_aprovado != null ? String(os.valor_aprovado) : ""} />
             {consignado && <div className="mt-2"><Label>Descontar do dono?</Label><Select value={transicao.descontar} onValueChange={(descontar) => setTransicao((t) => ({ ...t, descontar }))}><SelectTrigger><SelectValue placeholder="Escolha obrigatória" /></SelectTrigger><SelectContent><SelectItem value="sim">Sim</SelectItem><SelectItem value="nao">Não</SelectItem></SelectContent></Select></div>}

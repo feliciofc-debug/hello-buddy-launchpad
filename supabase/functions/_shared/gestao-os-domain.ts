@@ -35,6 +35,23 @@ export function proximosStatusOs(atual: GestaoOsStatus): GestaoOsStatus[] {
   return [...(NEXT[atual] ?? [])];
 }
 
+export type GestaoOsExcluirGateInput = {
+  status: GestaoOsStatus;
+  despesa_id?: string | null;
+  conta_lancamento_id?: string | null;
+};
+
+/** Exclusão física só em rascunho/cotação sem financeiro (RPC valida cotação escolhida). */
+export function podeExcluirOs(input: GestaoOsExcluirGateInput): boolean {
+  if (!["rascunho", "orcamento"].includes(input.status)) return false;
+  if (input.despesa_id) return false;
+  if (input.conta_lancamento_id) return false;
+  return true;
+}
+
+export const GESTAO_OS_EXCLUIR_DICA_APROVADA =
+  "OS aprovada não pode ser excluída, apenas cancelada.";
+
 export type GestaoOsAlertaInput = {
   status: GestaoOsStatus;
   ultimaMovimentacaoEm: string;

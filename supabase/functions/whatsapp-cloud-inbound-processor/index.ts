@@ -133,6 +133,7 @@ import {
   vehiclePhotoTrocaMenuButtons,
   type GestaoTrocaWaDelivery,
 } from "../_shared/gestao-troca-whatsapp.ts";
+import { tryProcessOsParceiroCotacaoWhatsAppInbound } from "../_shared/os-parceiro-inbound.ts";
 import { shouldSkipOwnerMediaTextHeuristics } from "../_shared/vehicle-flow-interactive-guard.ts";
 import { isGestaoLojaDataQuestion } from "../_shared/jarvis-gestao-data-intent.ts";
 import {
@@ -24375,6 +24376,51 @@ async function tryProcessGestaoLucroShortcut(input: {
   return { handled: true, preview: gestao.reply?.slice(0, 120) };
 }
 
+/** COTACAO-WPP-1: gancho pequeno — parceiro com cotação aberta (após gestor, antes do cliente). */
+async function tryProcessOsParceiroCotacaoWhatsAppShortcut(input: {
+  row: QueueRow;
+  userId: string;
+  userText: string;
+  convId: string;
+  fromIsOwner: boolean;
+  media?: MediaExtract[];
+  audioMedia?: MediaExtract;
+}): Promise<{ handled: boolean; preview?: string }> {
+  const parceiro = await tryProcessOsParceiroCotacaoWhatsAppInbound({
+    sb,
+    supabaseUrl: SUPABASE_URL,
+    serviceKey: SERVICE_KEY,
+    userId: input.userId,
+    fromNumber: input.row.from_number,
+    userText: input.userText,
+    payload: input.row.payload as Record<string, unknown>,
+    fromIsOwner: input.fromIsOwner,
+    convId: input.convId,
+    messageId: input.row.wamid,
+    media: input.media,
+    audioMedia: input.audioMedia,
+  });
+  if (!parceiro.handled) return { handled: false };
+  const preview = parceiro.reply?.slice(0, 120) ?? "os_cotacao_wa";
+  try {
+    await sendWhatsApp(
+      input.userId,
+      input.row.from_number,
+      parceiro.reply || parceiro.interactiveList?.body || parceiro.interactiveButtons?.body || "",
+      undefined,
+      parceiro.interactiveList,
+      parceiro.interactiveButtons,
+    );
+  } catch (e) {
+    await failQueue(input.row.id, `send_failed: ${(e as Error).message}`);
+    return { handled: true, preview };
+  }
+  await sb.from("whatsapp_cloud_conversations").update({
+    last_message_at: new Date().toISOString(),
+  }).eq("id", input.convId);
+  return { handled: true, preview };
+}
+
 async function tryProcessGestaoTrocaWhatsAppShortcut(input: {
   row: QueueRow;
   userId: string;
@@ -24691,6 +24737,34 @@ async function processOne(queueId: string) {
         }
       } catch (e) {
         console.error("[gestao-lucro][gestor-early]", (e as Error).message);
+      }
+    }
+
+    // COTACAO-WPP-1: parceiro (não-dono/gestor) com cotação solicitada — antes do fluxo cliente.
+    if (
+      !fromIsOwner &&
+      (row.message_type === "text" || row.message_type === "interactive" ||
+        row.message_type === "button")
+    ) {
+      try {
+        const osParceiroEarly = await tryProcessOsParceiroCotacaoWhatsAppShortcut({
+          row,
+          userId,
+          userText,
+          convId: conv.id,
+          fromIsOwner: false,
+        });
+        if (osParceiroEarly.handled) {
+          stopTypingHeartbeat();
+          await doneQueue(row.id);
+          return {
+            ok: true,
+            os_cotacao_parceiro_wa: true,
+            preview: osParceiroEarly.preview,
+          };
+        }
+      } catch (e) {
+        console.error("[os-cotacao-wa][early]", (e as Error).message);
       }
     }
 
@@ -25412,6 +25486,34 @@ async function processOne(queueId: string) {
       return { ok: true, reason: "media_download_failed" };
     }
 
+    if (
+      !fromIsOwner &&
+      ["document", "image"].includes(row.message_type ?? "") &&
+      media.length > 0
+    ) {
+      try {
+        const osParceiroMedia = await tryProcessOsParceiroCotacaoWhatsAppShortcut({
+          row,
+          userId,
+          userText: userText || inboundContent,
+          convId: conv.id,
+          fromIsOwner: false,
+          media,
+        });
+        if (osParceiroMedia.handled) {
+          stopTypingHeartbeat();
+          await doneQueue(row.id);
+          return {
+            ok: true,
+            os_cotacao_parceiro_wa: true,
+            preview: osParceiroMedia.preview,
+          };
+        }
+      } catch (e) {
+        console.error("[os-cotacao-wa][media]", (e as Error).message);
+      }
+    }
+
     // REGRA FIXA: todo áudio recebido é transcrito por STT dedicado (determinístico).
     // O agente NUNCA pode dizer que "não transcreve áudio" — o texto já chega pronto.
     let audioTranscript = "";
@@ -25499,6 +25601,30 @@ async function processOne(queueId: string) {
         }
       } catch (e) {
         console.error("[gestao-lucro][gestor-audio]", (e as Error).message);
+      }
+    }
+
+    if (!fromIsOwner && audioTranscript?.trim()) {
+      try {
+        const osParceiroAudio = await tryProcessOsParceiroCotacaoWhatsAppShortcut({
+          row,
+          userId,
+          userText: audioTranscript,
+          convId: conv.id,
+          fromIsOwner: false,
+          audioMedia: media.find((m) => m.kind === "audio"),
+        });
+        if (osParceiroAudio.handled) {
+          stopTypingHeartbeat();
+          await doneQueue(row.id);
+          return {
+            ok: true,
+            os_cotacao_parceiro_wa: true,
+            preview: osParceiroAudio.preview,
+          };
+        }
+      } catch (e) {
+        console.error("[os-cotacao-wa][audio]", (e as Error).message);
       }
     }
 

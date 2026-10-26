@@ -1,0 +1,42 @@
+export const OS_COT_WA_PREFIX = "os_cot_wa:";
+
+export function osCotacaoWaInteractiveId(action: string): string {
+  return `${OS_COT_WA_PREFIX}${action}`;
+}
+
+export function parseOsCotacaoWaInteractiveId(text: string): string | null {
+  const m = String(text || "").match(/<<INTERACTIVE_ID:os_cot_wa:([^>]+)>>/i);
+  return m?.[1]?.trim() || null;
+}
+
+export function extractOsCotacaoWaButtonId(payload: Record<string, unknown> | null | undefined): string {
+  const p = payload as {
+    interactive?: { button_reply?: { id?: string } };
+    button?: { payload?: string };
+  } | undefined;
+  return String(
+    p?.interactive?.button_reply?.id ?? p?.button?.payload ?? "",
+  );
+}
+
+export function parseOsCotacaoConvitePayload(value: string): {
+  action: "aceite" | "sem_agenda";
+  cotacaoId: string;
+} | null {
+  const match = String(value || "").match(
+    /^os_cot_wa:(aceite|sem_agenda):([0-9a-f-]{36})$/i,
+  );
+  return match
+    ? {
+      action: match[1].toLowerCase() as "aceite" | "sem_agenda",
+      cotacaoId: match[2],
+    }
+    : null;
+}
+
+export const OS_COT_WA_BTN_ENVIAR = osCotacaoWaInteractiveId("enviar_orcamento");
+export const OS_COT_WA_BTN_SEM_AGENDA = osCotacaoWaInteractiveId("sem_agenda");
+export const OS_COT_WA_BTN_CONFIRMAR = osCotacaoWaInteractiveId("confirmar_sim");
+export const OS_COT_WA_BTN_CORRIGIR = osCotacaoWaInteractiveId("confirmar_corrigir");
+export const OS_COT_WA_BTN_MIDIA_SIM = osCotacaoWaInteractiveId("midia_sim");
+export const OS_COT_WA_BTN_OUTRO_ASSUNTO = osCotacaoWaInteractiveId("outro_assunto");
