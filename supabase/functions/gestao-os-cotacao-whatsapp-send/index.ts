@@ -10,6 +10,7 @@ import {
   getTenantLogoForBackground,
   getTenantLogoSignedUrl,
 } from "../_shared/tenant-logo.ts";
+import { resolveLojaContatoParaPdf } from "../_shared/gestao-os-cotacao-contato.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -65,14 +66,12 @@ serve(async (req) => {
     const [
       veiculoRes,
       empresaRes,
-      profileRes,
       itensRes,
       fotosRes,
       trocaRes,
     ] = await Promise.all([
       sb.from("veiculos_estoque").select("marca,modelo,ano_modelo,cor,km,placa").eq("id", os.veiculo_id).maybeSingle(),
       sb.from("empresa_config").select("nome_empresa,site,identidade_site").eq("user_id", userId).maybeSingle(),
-      sb.from("profiles").select("email,phone").eq("id", userId).maybeSingle(),
       sb.from("gestao_os_item").select("descricao,observacao,troca_ia_item_id").eq("os_id", os.id).order("created_at"),
       sb.from("gestao_os_foto_ref").select("id,storage_path,selecionada,ordem,troca_ia_item_id,origem").eq("os_id", os.id),
       os.troca_id
@@ -84,17 +83,16 @@ serve(async (req) => {
     };
     warnQuery("veiculos_estoque", veiculoRes.error);
     warnQuery("empresa_config", empresaRes.error);
-    warnQuery("profile", profileRes.error);
     warnQuery("gestao_os_item", itensRes.error);
     warnQuery("gestao_os_foto_ref", fotosRes.error);
     if (os.troca_id) warnQuery("gestao_troca", trocaRes.error);
 
     const veiculo = veiculoRes.data;
     const empresa = empresaRes.data;
-    const profile = profileRes.data;
     const itens = itensRes.data;
     const fotos = fotosRes.data;
     const troca = trocaRes.data;
+    const lojaContato = await resolveLojaContatoParaPdf(sb, userId);
 
     const identidade = empresa?.identidade_site as Record<string, unknown> | null;
     const LOGO_TTL_SEC = 60 * 10;
@@ -144,7 +142,7 @@ serve(async (req) => {
           cor: veiculo?.cor,
           km: veiculo?.km,
         },
-        lojaContato: profile?.phone || profile?.email || null,
+        lojaContato,
         lojaSite: empresa?.site ?? null,
         itens: (itens ?? []).map((i: { descricao: string; observacao?: string | null }) => ({
           descricao: i.descricao,

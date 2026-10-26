@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSmartBack } from "@/lib/app-back-nav.ts";
+import { deveExibirMotivoRejeicaoMetaTemplate } from "../../supabase/functions/_shared/gestao-os-cotacao-contato.ts";
 
 export default function GestaoOsConfigPage() {
   const goBack = useSmartBack("/gestao/operacoes");
@@ -112,8 +113,11 @@ export default function GestaoOsConfigPage() {
         </p>
       </div>
       <p className="text-sm">Status: <strong>{templateStatus}</strong></p>
-      {template?.motivo_rejeicao_meta && (
-        <p className="text-sm text-destructive">{template.motivo_rejeicao_meta}</p>
+      {deveExibirMotivoRejeicaoMetaTemplate(
+        template?.status_meta,
+        template?.motivo_rejeicao_meta,
+      ) && (
+        <p className="text-sm text-destructive">{template!.motivo_rejeicao_meta}</p>
       )}
       <div className="flex flex-wrap gap-2">
         {(!template || template.status_meta === "rascunho") && (
