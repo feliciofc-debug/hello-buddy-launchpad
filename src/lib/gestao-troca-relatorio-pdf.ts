@@ -1,5 +1,8 @@
 import { jsPDF } from "jspdf";
-import type { GestaoTrocaRow } from "@/lib/gestao-troca-types.ts";
+import type {
+  GestaoMolicarSnapshot,
+  GestaoTrocaRow,
+} from "@/lib/gestao-troca-types.ts";
 import { normalizeGestaoTrocaFotos } from "@/lib/gestao-troca-fotos.ts";
 import { formatGestaoMoney } from "@/lib/gestao-format.ts";
 import {
@@ -29,6 +32,11 @@ import type { GestaoTrocaIndicioColisaoResult } from "../../supabase/functions/_
 import type { GestaoTrocaIaFotoAnaliseRow } from "../../supabase/functions/_shared/gestao-troca-ia-foto-schema.ts";
 import type { GestaoTrocaLaudo19Computed } from "@/lib/gestao-troca-laudo-19.ts";
 import type { GestaoTrocaEspessuraFaixas } from "@/lib/gestao-troca-espessura.ts";
+import {
+  molicarDebtTotal,
+  molicarProcedenciaResult,
+  type MolicarProcedenciaRow,
+} from "@/lib/molicar-procedencia.ts";
 
 export type { GestaoTrocaLaudoPdfSection, GestaoTrocaLaudoPdfFinalizacao };
 
@@ -123,6 +131,104 @@ export function appendGestaoTrocaLaudoPdfLines(
   line(`Modelo IA: ${modelo} · ${formatLaudoDateTime(laudo.analiseConcluidaEm)}`);
 }
 
+export function appendGestaoTrocaMolicarPdfLines(
+  line: (t: string, bold?: boolean) => void,
+  molicar: GestaoMolicarSnapshot,
+): void {
+  const value = (n: number | null) => n == null ? "—" : formatGestaoMoney(n);
+  line("Referências Molicar", true);
+  line(
+    `Referência: ${value(molicar.referencia)} · B2C: ${value(molicar.b2c)} · B2B: ${
+      value(molicar.b2b)
+    }`,
+  );
+  line(
+    `C2C: ${value(molicar.c2c)} · C2B: ${value(molicar.c2b)} · Novo: ${
+      value(molicar.novo)
+    }`,
+  );
+  line(
+    `Data: ${molicar.dataReferencia ?? "—"} · Atualização: ${
+      molicar.atualizadoEm ?? molicar.consultadoEm ?? "—"
+    }`,
+  );
+  line(`Fonte: ${molicar.proveniencia}`);
+  if (!molicar.procedencia) {
+    line("Procedência: serviço não contratado.");
+  } else if (molicar.alertasProcedencia.length) {
+    line(`ALERTA DE PROCEDÊNCIA: ${molicar.alertasProcedencia.join(" · ")}`, true);
+  } else {
+    line("Procedência consultada: nenhum alerta retornado.");
+  }
+}
+
+export function appendGestaoTrocaMolicarProcedenciaPdfLines(
+  line: (t: string, bold?: boolean) => void,
+  rows: MolicarProcedenciaRow[],
+  c2b?: number | null,
+): void {
+  line("Procedência (Molicar)", true);
+  if (!rows.length) {
+    line("Nenhuma consulta de procedência realizada.");
+    return;
+  }
+  const asRecord = (value: unknown): Record<string, unknown> =>
+    value && typeof value === "object" && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : {};
+  for (const row of rows) {
+    const label = row.servico === "debts"
+      ? "Débitos e restrições"
+      : row.servico === "gravame"
+      ? "Gravame"
+      : "Renajud";
+    line(`${label}: ${row.status}${row.erro ? ` — ${row.erro}` : ""}`);
+    if (!row.resultado) continue;
+    const result = molicarProcedenciaResult(row.resultado);
+    if (row.servico === "gravame") {
+      const items = result.Gravame ?? result.gravame;
+      const count = Array.isArray(items) ? items.length : 0;
+      line(
+        count
+          ? `ALERTA: ${count} gravame(s) encontrado(s).`
+          : "Sem gravame retornado.",
+        count > 0,
+      );
+    }
+    if (row.servico === "renajud") {
+      const items = result.Renajud ?? result.renajud;
+      const count = Array.isArray(items) ? items.length : 0;
+      line(
+        count
+          ? `ALERTA: ${count} restrição(ões) Renajud.`
+          : "Sem Renajud retornado.",
+        count > 0,
+      );
+    }
+    if (row.servico === "debts") {
+      const restrictions = asRecord(result.Restrictions ?? result.restrictions);
+      const active = Object.entries(restrictions)
+        .filter(([, value]) =>
+          value === true ||
+          (typeof value === "string" &&
+            !/^(?:false|não|nao|sem|0)?$/i.test(value.trim()))
+        )
+        .map(([key]) => key.replace(/([a-z])([A-Z])/g, "$1 $2"));
+      if (active.length) line(`ALERTA: ${active.join(" · ")}`, true);
+    }
+  }
+  const total = molicarDebtTotal(rows);
+  if (total != null) line(`Total de débitos: ${formatGestaoMoney(total)}`, true);
+  if (total != null && c2b != null) {
+    line(
+      `Valor de troca sugerido = C2B − débitos: ${
+        formatGestaoMoney(c2b - total)
+      }`,
+      true,
+    );
+  }
+}
+
 export async function downloadGestaoTrocaRelatorioPdf(
   troca: GestaoTrocaRow,
   eventos: { descricao: string; created_at: string }[],
@@ -138,6 +244,8 @@ export async function downloadGestaoTrocaRelatorioPdf(
   } | null,
   laudo19?: GestaoTrocaLaudo19Computed | null,
   espessuraFaixas?: GestaoTrocaEspessuraFaixas,
+  molicar?: GestaoMolicarSnapshot | null,
+  molicarProcedencia: MolicarProcedenciaRow[] = [],
 ) {
   const doc = new jsPDF();
   let y = 14;
@@ -165,6 +273,16 @@ export async function downloadGestaoTrocaRelatorioPdf(
   line(`Sugerido: ${formatGestaoMoney(troca.valor_sugerido ?? 0)} · Teto: ${formatGestaoMoney(troca.teto ?? 0)}`);
   line(`Proposto: ${formatGestaoMoney(troca.valor_proposto ?? 0)} · Fechado: ${formatGestaoMoney(troca.valor_fechado ?? 0)}`);
   line(`Preparação estimada: ${formatGestaoMoney(troca.preparacao_estimada ?? 0)}`);
+  if (molicar) {
+    y += 4;
+    appendGestaoTrocaMolicarPdfLines(line, molicar);
+  }
+  y += 4;
+  appendGestaoTrocaMolicarProcedenciaPdfLines(
+    line,
+    molicarProcedencia,
+    molicar?.c2b,
+  );
   y += 4;
   appendGestaoTrocaProcedenciaPdfLines(line, procedencia ?? null);
 

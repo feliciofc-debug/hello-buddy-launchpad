@@ -24,6 +24,9 @@ export type VeiculoEstoqueRow = {
   status: string;
 };
 
+export const WEBMOTORS_PUBLIC_VEHICLE_SELECT =
+  "id,user_id,segmento,marca,modelo,versao,ano_fabricacao,ano_modelo,km,preco,cor,combustivel,cambio,portas,cilindrada_cc,estilo_moto,partida,refrigeracao,blindado,opcionais,descricao,fotos,status";
+
 export type WmBlockingItem = {
   field: string;
   message: string;

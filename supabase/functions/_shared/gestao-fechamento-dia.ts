@@ -491,9 +491,20 @@ export function montarGestaoFechamentoAcoes(input: {
   const carro90 =
     input.giroItems.filter((x) => x.dias >= 90).sort((a, b) => b.dias - a.dias)[0];
   if (carro90) {
-    acoes.push(
-      `Avaliar preço ou repasse do ${carro90.label} (${carro90.dias} dias)`,
-    );
+    if (
+      carro90.resultado.referenciaRepasse?.fonte === "molicar_b2b" &&
+      carro90.resultado.valorRepasseHoje != null
+    ) {
+      acoes.push(
+        `Avaliar repasse do ${carro90.label} — B2B Molicar ${
+          money(carro90.resultado.valorRepasseHoje)
+        }`,
+      );
+    } else {
+      acoes.push(
+        `Avaliar preço ou repasse do ${carro90.label} (${carro90.dias} dias)`,
+      );
+    }
   }
   if (input.financeiro && input.financeiro.pagarVencido > 0) {
     acoes.push(

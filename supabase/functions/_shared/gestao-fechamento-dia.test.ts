@@ -344,3 +344,28 @@ Deno.test("RESUMO-2.3 — DECIDA HOJE prioriza contas vencidas antes de cotaçã
   assertStringIncludes(acoes[1], "12.600");
   assertStringIncludes(acoes[2], "OS #47");
 });
+
+Deno.test("MOLICAR-1 — ação de carro 90+ inclui referência B2B disponível", () => {
+  const giro: GiroResumoVeiculoLinha[] = [{
+    label: "Jeep Compass 2022",
+    dias: 104,
+    resultado: {
+      referenciaRepasse: { fonte: "molicar_b2b", valor: 88_500 },
+      valorRepasseHoje: 88_500,
+      custoDeEsperar30d: 3000,
+      margemVarejoHoje: 10000,
+    },
+  } as GiroResumoVeiculoLinha];
+  const [acao] = montarGestaoFechamentoAcoes({
+    dia: "2026-10-26",
+    giroItems: giro,
+    recebidasHojeCount: 0,
+    cotacaoOsNumero: null,
+    financeiro: null,
+    contas: [],
+    leadsQuentes: 0,
+  });
+  assertStringIncludes(acao, "Avaliar repasse do Jeep Compass 2022");
+  assertStringIncludes(acao, "B2B Molicar");
+  assertStringIncludes(acao, "88.500,00");
+});

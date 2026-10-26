@@ -178,6 +178,18 @@ function getTenantOwnersForCtx(userId: string): string[] {
 import { downloadAllMediaDetailed, type MediaExtract, type MediaRejection } from "../_shared/whatsapp-media.ts";
 import { extractDocumentText } from "../_shared/document-extract.ts";
 import {
+  DOCUMENTO_CLIENTE_RESPOSTA,
+  DOCUMENTO_DETECTOR_INDISPONIVEL,
+  isDocumentoGateCandidate,
+  respostaCrlvWhatsApp,
+  tipoDocumentoCofre,
+  verificarDocumentoNoPortao,
+} from "../_shared/documento-portao.ts";
+import {
+  auditGestaoDocumento,
+  gestaoCofreUpload,
+} from "../_shared/gestao-cofre-upload.ts";
+import {
   getTenantLogoDataUrl,
   getTenantLogoStorageLocation,
 } from "../_shared/tenant-logo.ts";
@@ -24385,7 +24397,8 @@ async function tryProcessOsParceiroCotacaoWhatsAppShortcut(input: {
   fromIsOwner: boolean;
   media?: MediaExtract[];
   audioMedia?: MediaExtract;
-}): Promise<{ handled: boolean; preview?: string }> {
+  isProtectedDocument?: (media: MediaExtract) => Promise<boolean>;
+}): Promise<{ handled: boolean; preview?: string; protectedDocument?: boolean }> {
   const parceiro = await tryProcessOsParceiroCotacaoWhatsAppInbound({
     sb,
     supabaseUrl: SUPABASE_URL,
@@ -24399,7 +24412,11 @@ async function tryProcessOsParceiroCotacaoWhatsAppShortcut(input: {
     messageId: input.row.wamid,
     media: input.media,
     audioMedia: input.audioMedia,
+    isProtectedDocument: input.isProtectedDocument,
   });
+  if (parceiro.protectedDocument) {
+    return { handled: false, protectedDocument: true };
+  }
   if (!parceiro.handled) return { handled: false };
   const preview = parceiro.reply?.slice(0, 120) ?? "os_cotacao_wa";
   try {
@@ -24690,6 +24707,80 @@ async function processOne(queueId: string) {
     setTenantOwnerForCtx(userId, ownerNumbers);
     const fromIsOwner = tenantOwnerMatchesPhone(_tenantOwner, row.from_number)
       || (isAmzTenantEarly && isAmzOwnerAltPhone(row.from_number));
+
+    // DOC-0 — ações dos botões enviados após guardar um CRLV no cofre.
+    if (/^cofre_doc_(?:cadastrar|vincular|guardar|link):/i.test(userText)) {
+      const gestaoAuth = await loadGestaoAuthContext(sb, userId);
+      if (fromIsOwner || isGestaoAuthorizedPhone(row.from_number, gestaoAuth)) {
+        const [, action, documentoId, veiculoId] = userText.match(
+          /^cofre_doc_(cadastrar|vincular|guardar|link):([0-9a-f-]{36})(?::([0-9a-f-]{36}))?$/i,
+        ) ?? [];
+        let reply = "Documento mantido com segurança no cofre.";
+        let interactiveList: WhatsAppInteractiveList | undefined;
+        if (action === "cadastrar") {
+          const appUrl = (Deno.env.get("PUBLIC_APP_URL") ||
+            Deno.env.get("SITE_URL") || "").replace(/\/$/, "");
+          reply = appUrl
+            ? `Abra a entrada já preparada pelo documento:\n${appUrl}/gestao?aba=estoque&entrada_documento=${documentoId}`
+            : "Documento guardado. Abra Gestão → Estoque → Entrada de veículo para continuar.";
+        } else if (action === "vincular") {
+          const { data: vehicles } = await sb.from("veiculos_estoque")
+            .select("id,marca,modelo,placa")
+            .eq("user_id", userId).is("deleted_at", null)
+            .order("created_at", { ascending: false }).limit(10);
+          const rows = (vehicles ?? []).map((vehicle: any) => ({
+            id: `cofre_doc_link:${documentoId}:${vehicle.id}`,
+            title: `${vehicle.marca || ""} ${vehicle.modelo || ""}`.trim()
+              .slice(0, 24) || "Veículo",
+            description: vehicle.placa ? `Placa ${vehicle.placa}` : undefined,
+          }));
+          if (rows.length) {
+            reply = "Escolha o veículo do estoque:";
+            interactiveList = { body: reply, button: "Escolher veículo", rows };
+          } else {
+            reply = "Não encontrei veículo ativo no estoque para vincular.";
+          }
+        } else if (action === "link" && veiculoId) {
+          const { data: vehicle } = await sb.from("veiculos_estoque")
+            .select("id,marca,modelo").eq("id", veiculoId)
+            .eq("user_id", userId).maybeSingle();
+          const { data: document } = await sb.from("gestao_documento")
+            .select("id").eq("id", documentoId).eq("user_id", userId)
+            .is("deleted_at", null).maybeSingle();
+          if (vehicle && document) {
+            const { error } = await sb.from("gestao_documento")
+              .update({ veiculo_id: veiculoId, status: "confirmado" })
+              .eq("id", documentoId).eq("user_id", userId);
+            if (error) throw error;
+            await auditGestaoDocumento(sb, documentoId, userId, "confirmar", {
+              vinculado: true,
+              origem: "whatsapp",
+            });
+            reply = `Documento vinculado a ${vehicle.marca || ""} ${vehicle.modelo || ""}.`.trim();
+          } else {
+            reply = "Não consegui localizar o documento ou o veículo.";
+          }
+        }
+        const sentId = await sendWhatsApp(
+          userId,
+          row.from_number,
+          reply,
+          undefined,
+          interactiveList,
+        );
+        await sb.from("whatsapp_cloud_messages").insert({
+          conversation_id: conv.id,
+          user_id: userId,
+          direction: "outbound",
+          sender: "agent",
+          content: reply,
+          message_type: interactiveList ? "interactive" : "text",
+          wamid: sentId,
+        });
+        await doneQueue(row.id);
+        return { ok: true, gestao_documento_action: action };
+      }
+    }
 
     // Gestor (autorizado, não-dono): gestão antes da vitrine cliente.
     if (
@@ -25486,6 +25577,13 @@ async function processOne(queueId: string) {
       return { ok: true, reason: "media_download_failed" };
     }
 
+    // DOC-0.1 — parceiro com cotação ativa tem prioridade. A própria pré-rota
+    // usa o detector estrito antes de ler a mídia; documentos protegidos
+    // voltam para o cofre, enquanto orçamento/NF/boleto seguem para a cotação.
+    const gateCandidates = media.filter(isDocumentoGateCandidate);
+    const partnerChecks: Awaited<
+      ReturnType<typeof verificarDocumentoNoPortao>
+    >[] = [];
     if (
       !fromIsOwner &&
       ["document", "image"].includes(row.message_type ?? "") &&
@@ -25499,6 +25597,11 @@ async function processOne(queueId: string) {
           convId: conv.id,
           fromIsOwner: false,
           media,
+          isProtectedDocument: async (candidate) => {
+            const checked = await verificarDocumentoNoPortao(candidate);
+            partnerChecks[0] = checked;
+            return checked.documento;
+          },
         });
         if (osParceiroMedia.handled) {
           stopTypingHeartbeat();
@@ -25511,6 +25614,188 @@ async function processOne(queueId: string) {
         }
       } catch (e) {
         console.error("[os-cotacao-wa][media]", (e as Error).message);
+      }
+    }
+    const partnerChecked = partnerChecks[0] ?? null;
+
+    // DOC-0 — portão local ANTES das demais rotas de visão/LLM. O endpoint rápido
+    // nunca devolve texto. Se ele falhar, fechamos o fluxo para que uma foto
+    // de documento jamais escape para IA externa.
+    let detectedDocument:
+      | Awaited<ReturnType<typeof verificarDocumentoNoPortao>>
+      | null = partnerChecked?.documento ? partnerChecked : null;
+    for (const candidate of gateCandidates) {
+      if (detectedDocument) break;
+      if (partnerChecked?.media === candidate && !partnerChecked.documento) continue;
+      try {
+        const checked = await verificarDocumentoNoPortao(candidate);
+        if (checked.documento) {
+          detectedDocument = checked;
+          break;
+        }
+      } catch {
+        const gestaoAuth = await loadGestaoAuthContext(sb, userId);
+        const senderIsGestao = fromIsOwner ||
+          isGestaoAuthorizedPhone(row.from_number, gestaoAuth);
+        if (!senderIsGestao) {
+          const fallback = candidate.kind === "image"
+            ? "Recebi sua foto, vou passar para a equipe."
+            : "Recebi seu arquivo, vou passar para a equipe.";
+          try {
+            await gestaoCofreUpload({
+              sb,
+              userId,
+              bytes: base64Decode(candidate.base64),
+              mime: candidate.mime,
+              tipo: "outro",
+              origem: "whatsapp",
+              filename: candidate.filename,
+              lerCrlv: false,
+            });
+          } catch {
+            // A mídia continua bloqueada para IA mesmo se o cofre estiver indisponível.
+          }
+          await sb.from("whatsapp_cloud_messages").update({
+            content: "[mídia recebida sem análise]",
+          }).eq("conversation_id", conv.id).eq("wamid", row.wamid);
+          if (tenantOwnerPhone) {
+            const ownerNotice =
+              "📎 Recebi uma foto/arquivo de cliente enquanto o verificador local estava indisponível. Não enviei a mídia para IA externa.";
+            try {
+              const ownerWamid = await sendWhatsApp(userId, tenantOwnerPhone, ownerNotice);
+              await logOwnerHeadsup(userId, ownerNotice, ownerWamid);
+            } catch {
+              // Não expõe a mídia nem libera o fluxo externo.
+            }
+          }
+          const sentId = await sendWhatsApp(userId, row.from_number, fallback);
+          await sb.from("whatsapp_cloud_messages").insert({
+            conversation_id: conv.id,
+            user_id: userId,
+            direction: "outbound",
+            sender: "agent",
+            content: fallback,
+            message_type: "text",
+            wamid: sentId,
+          });
+          await doneQueue(row.id);
+          return { ok: true, reason: "document_detector_unavailable_client" };
+        }
+        const sentId = await sendWhatsApp(
+          userId,
+          row.from_number,
+          DOCUMENTO_DETECTOR_INDISPONIVEL,
+        );
+        await sb.from("whatsapp_cloud_messages").insert({
+          conversation_id: conv.id,
+          user_id: userId,
+          direction: "outbound",
+          sender: "agent",
+          content: DOCUMENTO_DETECTOR_INDISPONIVEL,
+          message_type: "text",
+          wamid: sentId,
+        });
+        await doneQueue(row.id);
+        return { ok: true, reason: "document_detector_unavailable" };
+      }
+    }
+
+    if (detectedDocument) {
+      const gestaoAuth = await loadGestaoAuthContext(sb, userId);
+      const senderIsGestao = fromIsOwner ||
+        isGestaoAuthorizedPhone(row.from_number, gestaoAuth);
+      const tipo = tipoDocumentoCofre(
+        detectedDocument.tipo,
+        detectedDocument.media.mime,
+      );
+      let reply = DOCUMENTO_CLIENTE_RESPOSTA;
+      let buttons: WhatsAppInteractiveButtons | undefined;
+      try {
+        const stored = await gestaoCofreUpload({
+          sb,
+          userId,
+          bytes: detectedDocument.bytes,
+          mime: detectedDocument.media.mime,
+          tipo,
+          origem: "whatsapp",
+          filename: detectedDocument.media.filename,
+          lerCrlv: senderIsGestao &&
+            (tipo === "crlv" || tipo === "crlv_e"),
+        });
+        if (senderIsGestao) {
+          if (stored.leitura) {
+            reply = respostaCrlvWhatsApp(stored.leitura);
+          } else if (stored.leituraErro) {
+            reply = `📄 Documento guardado com segurança.\n${stored.leituraErro}`;
+          } else {
+            reply = stored.duplicate
+              ? "📄 Este documento já estava guardado com segurança no cofre."
+              : "📄 Documento guardado com segurança no cofre.";
+          }
+          if (tipo === "crlv" || tipo === "crlv_e") {
+            buttons = {
+              body: "O que você quer fazer com este CRLV?",
+              buttons: [
+                { id: `cofre_doc_cadastrar:${stored.documentoId}`, title: "Cadastrar veículo" },
+                { id: `cofre_doc_vincular:${stored.documentoId}`, title: "Vincular ao estoque" },
+                { id: `cofre_doc_guardar:${stored.documentoId}`, title: "Só guardar" },
+              ],
+            };
+          }
+        } else if (tenantOwnerPhone) {
+          const ownerNotice =
+            "📄 Um cliente enviou um documento. Guardei no cofre com segurança e não enviei o conteúdo para IA externa.";
+          try {
+            const ownerWamid = await sendWhatsApp(userId, tenantOwnerPhone, ownerNotice);
+            await logOwnerHeadsup(userId, ownerNotice, ownerWamid);
+          } catch {
+            // A falha do aviso não expõe nem impede o armazenamento seguro.
+          }
+        }
+
+        await sb.from("whatsapp_cloud_messages").update({
+          content: "[documento recebido com segurança]",
+        }).eq("conversation_id", conv.id).eq("wamid", row.wamid);
+
+        const sentId = await sendWhatsApp(
+          userId,
+          row.from_number,
+          reply,
+          undefined,
+          undefined,
+          buttons,
+        );
+        await sb.from("whatsapp_cloud_messages").insert({
+          conversation_id: conv.id,
+          user_id: userId,
+          direction: "outbound",
+          sender: "agent",
+          content: reply,
+          message_type: buttons ? "interactive" : "text",
+          wamid: sentId,
+        });
+        await doneQueue(row.id);
+        return {
+          ok: true,
+          document_secured: true,
+          tipo,
+          owner_or_manager: senderIsGestao,
+        };
+      } catch {
+        const failure =
+          "Recebi o documento, mas não consegui guardá-lo com segurança agora. Tente de novo em instantes.";
+        const sentId = await sendWhatsApp(userId, row.from_number, failure);
+        await sb.from("whatsapp_cloud_messages").insert({
+          conversation_id: conv.id,
+          user_id: userId,
+          direction: "outbound",
+          sender: "agent",
+          content: failure,
+          message_type: "text",
+          wamid: sentId,
+        });
+        await doneQueue(row.id);
+        return { ok: true, reason: "document_secure_store_failed" };
       }
     }
 

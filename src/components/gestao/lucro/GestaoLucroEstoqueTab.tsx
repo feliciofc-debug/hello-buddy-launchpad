@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -76,6 +77,7 @@ export function GestaoLucroEstoqueTab({
   onOpenDrawer,
   onQuickDespesa,
 }: Props) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [q, setQ] = useState("");
   const [listFilter, setListFilter] = useState<ListFilter>("todos");
   const [sort, setSort] = useState<SortKey>("dias");
@@ -88,6 +90,20 @@ export function GestaoLucroEstoqueTab({
   const [touchedCompra, setTouchedCompra] = useState<Record<string, boolean>>({});
   const [savingCompra, setSavingCompra] = useState(false);
   const [entradaOpen, setEntradaOpen] = useState(false);
+  const initialDocumentId = searchParams.get("entrada_documento");
+
+  useEffect(() => {
+    if (initialDocumentId) setEntradaOpen(true);
+  }, [initialDocumentId]);
+
+  const setEntradaDialogOpen = (open: boolean) => {
+    setEntradaOpen(open);
+    if (!open && initialDocumentId) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("entrada_documento");
+      setSearchParams(next, { replace: true });
+    }
+  };
 
   const matchesSearch = useCallback((v: GestaoVeiculoEnriched, term: string) => {
     if (!term) return true;
@@ -267,12 +283,24 @@ export function GestaoLucroEstoqueTab({
   const hasAnyRow = emEstoque.length > 0 || vendidos.length > 0;
   if (!hasAnyRow) {
     return (
-      <div className="rounded-lg border border-dashed p-12 text-center">
-        <p className="font-medium">Nenhum veículo no estoque</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Cadastre veículos disponíveis, reservados ou em preparação para acompanhar lucro aqui.
-        </p>
-      </div>
+      <>
+        <div className="rounded-lg border border-dashed p-12 text-center">
+          <p className="font-medium">Nenhum veículo no estoque</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Cadastre veículos disponíveis, reservados ou em preparação para acompanhar lucro aqui.
+          </p>
+          <Button className="mt-4" onClick={() => setEntradaOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" /> Entrada de veículo
+          </Button>
+        </div>
+        <GestaoEntradaVeiculoDialog
+          open={entradaOpen}
+          userId={userId}
+          initialDocumentId={initialDocumentId}
+          onOpenChange={setEntradaDialogOpen}
+          onSaved={onRefresh}
+        />
+      </>
     );
   }
 
@@ -336,7 +364,8 @@ export function GestaoLucroEstoqueTab({
       <GestaoEntradaVeiculoDialog
         open={entradaOpen}
         userId={userId}
-        onOpenChange={setEntradaOpen}
+        initialDocumentId={initialDocumentId}
+        onOpenChange={setEntradaDialogOpen}
         onSaved={onRefresh}
       />
 

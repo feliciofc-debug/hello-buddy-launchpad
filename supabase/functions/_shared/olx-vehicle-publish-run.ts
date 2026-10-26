@@ -3,7 +3,10 @@ import { assertOlxAdPayloadSafe, mapVehicleToOlxAd, stableOlxAdRef } from "./olx
 import { buildOlxSellerPhone } from "./olx-seller-contact.ts";
 import { getOlxAccessTokenForUser } from "./olx-token.ts";
 import { runOlxVehicleSyncOne } from "./olx-vehicle-sync-run.ts";
-import type { OlxVeiculoEstoqueRow } from "./olx-vehicle-types.ts";
+import {
+  OLX_PUBLIC_VEHICLE_SELECT,
+  type OlxVeiculoEstoqueRow,
+} from "./olx-vehicle-types.ts";
 
 export type OlxPublishAcao = "publicar" | "atualizar" | "remover" | "verificar_status";
 
@@ -18,7 +21,7 @@ export async function runOlxVehiclePublish(
   blocking?: Array<{ field: string; message: string }>;
 }> {
   const { data: vehicle, error: vErr } = await sb.from("veiculos_estoque")
-    .select("*")
+    .select(OLX_PUBLIC_VEHICLE_SELECT)
     .eq("id", input.veiculoId)
     .maybeSingle();
   if (vErr || !vehicle) return { ok: false, error: "Veículo não encontrado" };

@@ -22,6 +22,7 @@ import {
   textoCancelaSessaoCotacao,
   textoPareceOrcamentoForte,
 } from "./os-parceiro-gate.ts";
+import { classificarDocumentoIdentidade } from "./documento-detector.ts";
 
 Deno.test("COTACAO-WPP-1 — roteamento: dono/gestor ignoram fluxo parceiro", () => {
   const auth = {
@@ -140,6 +141,26 @@ Deno.test("COTACAO-WPP-1.1 — mídia exige Sim ou Não, outro assunto", async (
   assertStringIncludes(inbound, "Isso é o orçamento da OS #");
   assertStringIncludes(inbound, "OS_COT_WA_BTN_OUTRO_ASSUNTO");
   assertStringIncludes(inbound, "confirmarOrcamentoParceiroDocumento");
+});
+
+Deno.test("DOC-0.1 — orçamento de parceiro não cai no cofre antes da cotação", async () => {
+  const budget =
+    "ORCAMENTO FUNILARIA DO ZE CNPJ 04.252.011/0001-10 TELEFONE 11 98765-4321 TOTAL R$ 3.800,00";
+  assertEquals(classificarDocumentoIdentidade(budget), {
+    documento: false,
+    tipo: null,
+  });
+  const inbound = await Deno.readTextFile(new URL(
+    "./os-parceiro-inbound.ts",
+    import.meta.url,
+  ));
+  assertEquals(
+    inbound.indexOf("isProtectedDocument") <
+      inbound.indexOf("textoDeOrcamentoParceiroMedia(doc)"),
+    true,
+  );
+  assertStringIncludes(inbound, "Isso é o orçamento da OS #");
+  assertStringIncludes(inbound, "mediaConfirmButtons");
 });
 
 Deno.test("COTACAO-WPP-1 — PDF pedido sem custos internos e sem CRLV", () => {

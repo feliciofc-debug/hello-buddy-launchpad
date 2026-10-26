@@ -8,7 +8,10 @@ import {
 } from "./ml-api.ts";
 import { mapVehicleToMlItem, resolveMlCategoryId } from "./ml-map-vehicle.ts";
 import { buildMlSellerContact } from "./ml-seller-contact.ts";
-import type { VeiculoEstoqueRow } from "./ml-vehicle-types.ts";
+import {
+  ML_PUBLIC_VEHICLE_SELECT,
+  type VeiculoEstoqueRow,
+} from "./ml-vehicle-types.ts";
 import { mlFindPossibleDuplicateListings, type MlDuplicateCandidate } from "./ml-duplicate-check.ts";
 import { getMlAccessTokenForUser } from "./ml-token.ts";
 
@@ -25,7 +28,7 @@ export async function runMlVehiclePublish(
   duplicate_candidates?: MlDuplicateCandidate[];
 }> {
   const { data: vehicle, error: vErr } = await sb.from("veiculos_estoque")
-    .select("*")
+    .select(ML_PUBLIC_VEHICLE_SELECT)
     .eq("user_id", input.userId)
     .eq("id", input.veiculoId)
     .maybeSingle();

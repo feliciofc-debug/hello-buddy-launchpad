@@ -8,7 +8,18 @@ import {
 } from "./estoque-giro-ipva.ts";
 
 export type EstoqueGiroFaixa = "saudavel" | "atencao" | "risco" | "decisao";
-export type EstoqueGiroFonte = "fipe" | "manual" | "molicar_b2c" | "molicar_b2b" | "molicar_c2b";
+export type EstoqueGiroFonte =
+  | "fipe"
+  | "manual"
+  | "molicar_ref"
+  | "molicar_b2c"
+  | "molicar_b2b"
+  | "molicar_c2b";
+export type EstoqueGiroDesvalorizacaoFonte =
+  | "molicar_b2c_snapshots"
+  | "molicar_ref_snapshots"
+  | "fipe_configurada"
+  | null;
 
 export type EstoqueGiroConfig = {
   faixaAtencaoDias: number;
@@ -81,6 +92,8 @@ export type EstoqueGiroResultado = {
   margemRepasseHoje: number | null;
   margemVarejo30d: number | null;
   margemRepasse30d: number | null;
+  desvalorizacaoMensalPct: number | null;
+  desvalorizacaoFonte: EstoqueGiroDesvalorizacaoFonte;
   ipvaProjetado: number | null;
   ipvaViradaValor: number | null;
   ipvaViradaDiasRestantes: number | null;
@@ -138,6 +151,61 @@ export function escolherReferenciaRepasse(
       .filter((r) => r.fonte === fonte && r.valor > 0)
       .sort((a, b) => String(b.capturadoEm ?? "").localeCompare(String(a.capturadoEm ?? "")))[0] ?? null;
   return latest("molicar_b2b") ?? latest("manual") ?? latest("fipe");
+}
+
+function calcularDesvalorizacaoMensalPorFonte(
+  referencias: EstoqueGiroReferencia[],
+  fonte: "molicar_b2c" | "molicar_ref",
+): number | null {
+  const snapshots = referencias
+    .filter((r) =>
+      r.fonte === fonte && r.valor > 0 && r.capturadoEm &&
+      Number.isFinite(Date.parse(r.capturadoEm))
+    )
+    .sort((a, b) =>
+      Date.parse(String(b.capturadoEm)) - Date.parse(String(a.capturadoEm))
+    );
+  const atual = snapshots[0];
+  if (!atual) return null;
+  const anterior = snapshots.find((snapshot) =>
+    (Date.parse(String(atual.capturadoEm)) -
+      Date.parse(String(snapshot.capturadoEm))) / 86_400_000 >= 25
+  );
+  if (!anterior) return null;
+  const dias = (Date.parse(String(atual.capturadoEm)) -
+    Date.parse(String(anterior.capturadoEm))) / 86_400_000;
+  const variacaoMensal = (anterior.valor - atual.valor) / anterior.valor *
+    (30 / dias) * 100;
+  return Math.round(Math.max(0, Math.min(100, variacaoMensal)) * 100) / 100;
+}
+
+export function calcularDesvalorizacaoMensalMolicar(
+  referencias: EstoqueGiroReferencia[],
+): number | null {
+  return calcularDesvalorizacaoMensalPorFonte(referencias, "molicar_b2c");
+}
+
+export function resolverDesvalorizacaoMensal(
+  referencias: EstoqueGiroReferencia[],
+  configuradaPct: number | null,
+): {
+  pct: number | null;
+  fonte: EstoqueGiroDesvalorizacaoFonte;
+} {
+  const molicar = calcularDesvalorizacaoMensalMolicar(referencias);
+  if (molicar != null) {
+    return { pct: molicar, fonte: "molicar_b2c_snapshots" };
+  }
+  const referencia = calcularDesvalorizacaoMensalPorFonte(
+    referencias,
+    "molicar_ref",
+  );
+  if (referencia != null) {
+    return { pct: referencia, fonte: "molicar_ref_snapshots" };
+  }
+  return configuradaPct == null
+    ? { pct: null, fonte: null }
+    : { pct: configuradaPct, fonte: "fipe_configurada" };
 }
 
 export function baseIpvaEstoqueGiro(
@@ -263,6 +331,10 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
   if (input.precoAnunciado == null || input.precoAnunciado <= 0) incompletos.push("preço anunciado");
 
   const referencia = escolherReferenciaRepasse(input.referencias);
+  const desvalorizacao = resolverDesvalorizacaoMensal(
+    input.referencias,
+    config.desvalorizacaoMensalPct,
+  );
 
   const despesas = input.despesas.reduce(
     (sum, valor) => sum + (Number.isFinite(valor) ? Math.max(0, valor) : 0),
@@ -313,8 +385,8 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
       config.custoFinanceiroMensalPct != null
     ? capitalJuros * config.custoFinanceiroMensalPct / 100
     : 0;
-  const fatorDesvalorizacao = !consignado && config.desvalorizacaoMensalPct != null
-    ? 1 - config.desvalorizacaoMensalPct / 100
+  const fatorDesvalorizacao = !consignado && desvalorizacao.pct != null
+    ? 1 - desvalorizacao.pct / 100
     : 1;
   const hoje = parseDateOnly(input.hoje);
   const hojeYmd = typeof input.hoje === "string" ? input.hoje : ymdFromDate(hoje);
@@ -365,7 +437,7 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
     : null;
 
   const semDado: string[] = [];
-  if (!consignado && config.desvalorizacaoMensalPct == null) semDado.push("desvalorização");
+  if (!consignado && desvalorizacao.pct == null) semDado.push("desvalorização");
   if (input.leadsUltimos30Dias == null) semDado.push("procura/leads");
   if (!consignado && ((config.ipvaAliquotaPct == null && aliquotaIpva == null) || !config.uf)) {
     semDado.push("IPVA/UF");
@@ -377,9 +449,9 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
     { score: dias / Math.max(1, config.faixaDecisaoDias), weight: 30, available: true },
     { score: compression, weight: 25, available: margemVarejoHoje != null && custoDeEsperar30d != null },
     {
-      score: (config.desvalorizacaoMensalPct ?? 0) / 3,
+      score: (desvalorizacao.pct ?? 0) / 3,
       weight: 20,
-      available: config.desvalorizacaoMensalPct != null,
+      available: desvalorizacao.pct != null,
     },
     {
       score: input.leadsUltimos30Dias === 0 ? 1 : input.leadsUltimos30Dias != null ? 1 / (1 + input.leadsUltimos30Dias) : 0,
@@ -491,6 +563,8 @@ export function calcularEstoqueGiro(input: EstoqueGiroInput): EstoqueGiroResulta
     margemRepasseHoje,
     margemVarejo30d,
     margemRepasse30d,
+    desvalorizacaoMensalPct: desvalorizacao.pct,
+    desvalorizacaoFonte: desvalorizacao.fonte,
     ipvaProjetado: roundMoney(ipvaProjetado),
     ipvaViradaValor: ipvaVirada.valor,
     ipvaViradaDiasRestantes: ipvaVirada.diasRestantes,

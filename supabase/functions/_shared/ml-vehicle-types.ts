@@ -20,6 +20,9 @@ export type VeiculoEstoqueRow = {
   status: string;
 };
 
+export const ML_PUBLIC_VEHICLE_SELECT =
+  "id,user_id,segmento,marca,modelo,versao,ano_fabricacao,ano_modelo,km,preco,combustivel,cambio,portas,cilindrada_cc,estilo_moto,cor,descricao,fotos,status";
+
 export type MlCategoryAttribute = {
   id: string;
   name: string;

@@ -64,6 +64,7 @@ import {
   type VeiculoPortalWebmotors,
 } from "@/components/webmotors/WebmotorsVehicleActions";
 import { VeiculoGestaoLucroPanel } from "@/components/gestao/VeiculoGestaoLucroPanel";
+import { GestaoPastaDigital } from "@/components/gestao/GestaoPastaDigital";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { readAmzAutoModePreference, isEffectiveAmzAutoMode } from "@/lib/amz-auto-mode";
 import { VehicleVideosTab } from "@/components/veiculos/VehicleVideosTab";
@@ -1175,8 +1176,9 @@ export default function VehicleInventory() {
                 <DialogTitle>{selected.marca} {selected.modelo} {selected.versao}</DialogTitle>
               </DialogHeader>
               <Tabs defaultValue="detalhes" className="w-full">
-                <TabsList className="grid w-full grid-cols-2">
+                <TabsList className="grid w-full grid-cols-3">
                   <TabsTrigger value="detalhes">Detalhes</TabsTrigger>
+                  <TabsTrigger value="documentos">Documentos</TabsTrigger>
                   <TabsTrigger value="gestao">Custos e lucro</TabsTrigger>
                 </TabsList>
                 <TabsContent value="detalhes" className="space-y-4 mt-4">
@@ -1254,6 +1256,14 @@ export default function VehicleInventory() {
                   Editar
                 </Button>
               </DialogFooter>
+                </TabsContent>
+                <TabsContent value="documentos" className="mt-4">
+                  {sessionUserId && (
+                    <GestaoPastaDigital
+                      userId={sessionUserId}
+                      veiculoId={selected.id}
+                    />
+                  )}
                 </TabsContent>
                 <TabsContent value="gestao" className="mt-4">
                   {sessionUserId && (

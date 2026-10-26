@@ -9,7 +9,10 @@ import {
   mapVehicleToWebmotorsMoto,
 } from "./webmotors-map-moto.ts";
 import { fetchPublicImageAsBase64 } from "./webmotors-photo-base64.ts";
-import type { VeiculoEstoqueRow } from "./webmotors-vehicle-types.ts";
+import {
+  type VeiculoEstoqueRow,
+  WEBMOTORS_PUBLIC_VEHICLE_SELECT,
+} from "./webmotors-vehicle-types.ts";
 
 const PHOTO_PARTIAL_ERROR =
   "Algumas fotos não foram enviadas. Use Sincronizar.";
@@ -39,7 +42,7 @@ export async function runWebmotorsVehiclePublish(
   const resolveHash = deps.hashForUser ?? webmotorsHashForUser;
   const resolveCatalog = deps.loadCatalog ?? loadCatalogBundleForVehicle;
   const { data: vehicle, error: vErr } = await sb.from("veiculos_estoque")
-    .select("*")
+    .select(WEBMOTORS_PUBLIC_VEHICLE_SELECT)
     .eq("user_id", input.userId)
     .eq("id", input.veiculoId)
     .maybeSingle();
