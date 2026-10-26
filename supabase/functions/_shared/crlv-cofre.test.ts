@@ -67,3 +67,15 @@ Deno.test("DOC-1 — fluxo guarda arquivo cifrado antes dos metadados", async ()
   );
   assertStringIncludes(endpoint, "safeCrlvReading(result.leitura)");
 });
+
+Deno.test("DOC-1.2 — auditoria recebe somente métricas do OCR", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./gestao-cofre-upload.ts", import.meta.url),
+  );
+  assertStringIncludes(source, 'metricasOcr ?? {}');
+  assertStringIncludes(source, '"ler"');
+  assertEquals(
+    /auditGestaoDocumento\([\s\S]{0,250}(texto|leitura\.texto)/i.test(source),
+    false,
+  );
+});

@@ -16,7 +16,7 @@ async function ocrLocal(
   bytes: Uint8Array,
   mime: string,
   fetchImpl: typeof fetch,
-): Promise<string> {
+): Promise<{ texto: string; metricas: CrlvOcrMetricas | null }> {
   const url = Deno.env.get("AMZ_OCR_URL")?.trim();
   const token = Deno.env.get("AMZ_OCR_TOKEN")?.trim();
   if (!url || !token) throw new Error("OCR local não configurado");
@@ -32,8 +32,45 @@ async function ocrLocal(
   if (!response.ok) {
     throw new Error(`OCR local indisponível (${response.status})`);
   }
-  const payload = await response.json().catch(() => ({})) as { text?: unknown };
-  return typeof payload.text === "string" ? payload.text.trim() : "";
+  const payload = await response.json().catch(() => ({})) as {
+    text?: unknown;
+    metrics?: unknown;
+  };
+  return {
+    texto: typeof payload.text === "string" ? payload.text.trim() : "",
+    metricas: sanitizeOcrMetrics(payload.metrics),
+  };
+}
+
+export type CrlvOcrMetricas = {
+  motor: "paddleocr" | "tesseract";
+  variante_vencedora: string;
+  tempo_ms: number;
+  n_campos_validos: number;
+};
+
+function sanitizeOcrMetrics(value: unknown): CrlvOcrMetricas | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const motor = raw.motor === "paddleocr" || raw.motor === "tesseract"
+    ? raw.motor
+    : null;
+  const variante = String(raw.variante_vencedora ?? "").slice(0, 80);
+  const tempo = Math.max(0, Math.min(25_000, Math.round(Number(raw.tempo_ms))));
+  const fields = Math.max(
+    0,
+    Math.min(3, Math.round(Number(raw.n_campos_validos))),
+  );
+  if (
+    !motor || !variante || !Number.isFinite(tempo) ||
+    !Number.isFinite(fields)
+  ) return null;
+  return {
+    motor,
+    variante_vencedora: variante,
+    tempo_ms: tempo,
+    n_campos_validos: fields,
+  };
 }
 
 export type DocumentoDetectado = {
@@ -80,6 +117,7 @@ export type CrlvLeituraResultado = {
   texto: string;
   parser: CrlvParserResultado;
   metodo: "pdf_texto" | "ocr_local";
+  metricas_ocr: CrlvOcrMetricas | null;
 };
 
 export async function lerCrlvLocal(
@@ -108,14 +146,15 @@ export async function lerCrlvLocal(
         texto: extracted.text,
         parser: parseCrlvText(extracted.text, "pdf_texto"),
         metodo: "pdf_texto",
+        metricas_ocr: null,
       };
     }
   }
-  const text = await ocrLocal(bytes, normalizedMime, fetchImpl);
-  if (!text) throw new Error("OCR local não conseguiu ler o documento");
+  const ocr = await ocrLocal(bytes, normalizedMime, fetchImpl);
   return {
-    texto: text,
-    parser: parseCrlvText(text, "ocr"),
+    texto: ocr.texto,
+    parser: parseCrlvText(ocr.texto, "ocr"),
     metodo: "ocr_local",
+    metricas_ocr: ocr.metricas,
   };
 }

@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, Database, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  type CrlvMolicarPrices,
+  fillOnlyEmptyCrlvValues,
+  normalizeCrlvMolicarResponse,
+} from "@/lib/crlv-molicar";
 
 type Confidence = "alta" | "media" | "baixa";
 type Field<T = string | number | boolean | string[]> = {
@@ -121,6 +126,7 @@ export function GestaoCrlvConferencia({
   documentoId,
   leitura,
   veiculoId,
+  trocaId,
   onConfirmed,
 }: {
   open: boolean;
@@ -128,6 +134,7 @@ export function GestaoCrlvConferencia({
   documentoId: string;
   leitura: CrlvLeituraView;
   veiculoId?: string | null;
+  trocaId?: string | null;
   onConfirmed?: (values: Record<string, string | number>) => void;
 }) {
   const initial = useMemo(() => crlvValuesForStock(leitura), [leitura]);
@@ -136,7 +143,73 @@ export function GestaoCrlvConferencia({
   );
   const [replace, setReplace] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
+  const [completing, setCompleting] = useState(false);
+  const [molicarPrices, setMolicarPrices] = useState<CrlvMolicarPrices | null>(
+    null,
+  );
+  const plateInputRef = useRef<HTMLInputElement>(null);
   const restrictions = leitura.observacoes.restricoes.valor ?? [];
+  const normalizedPlate = String(values.placa ?? "").replace(
+    /[^A-Za-z0-9]/g,
+    "",
+  ).toUpperCase();
+  const normalizedVin = String(values.chassi ?? "").replace(
+    /[^A-Za-z0-9]/g,
+    "",
+  ).toUpperCase();
+  const canCompleteMolicar = /^[A-Z]{3}(?:\d{4}|\d[A-Z]\d{2})$/.test(
+    normalizedPlate,
+  ) || /^[A-HJ-NPR-Z0-9]{17}$/.test(normalizedVin);
+
+  useEffect(() => {
+    if (open && !normalizedPlate && !normalizedVin) {
+      window.setTimeout(() => plateInputRef.current?.focus(), 50);
+    }
+  }, [normalizedPlate, normalizedVin, open]);
+
+  const completeWithMolicar = async () => {
+    if (!canCompleteMolicar) return;
+    setCompleting(true);
+    try {
+      const usePlate = /^[A-Z]{3}(?:\d{4}|\d[A-Z]\d{2})$/.test(
+        normalizedPlate,
+      );
+      const { data, error } = await supabase.functions.invoke(
+        "molicar-consulta",
+        {
+          body: {
+            ...(usePlate
+              ? { placa: normalizedPlate }
+              : { vin: normalizedVin }),
+            origem: veiculoId ? "estoque" : trocaId ? "troca" : "entrada",
+            veiculo_id: veiculoId ?? null,
+            troca_id: trocaId ?? null,
+          },
+        },
+      );
+      if (error || data?.error) {
+        throw new Error(data?.error ?? error?.message);
+      }
+      const result = normalizeCrlvMolicarResponse(data);
+      setValues((current) =>
+        fillOnlyEmptyCrlvValues(current, {
+          placa: normalizedPlate,
+          chassi: normalizedVin,
+          ...result.completion,
+        })
+      );
+      setMolicarPrices(result.prices);
+      toast.success("Campos vazios completados pela Molicar.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível consultar a Molicar.",
+      );
+    } finally {
+      setCompleting(false);
+    }
+  };
 
   const confirm = async () => {
     setSaving(true);
@@ -176,6 +249,7 @@ export function GestaoCrlvConferencia({
       >
         <Label>{label}{low ? " · baixa confiança" : ""}</Label>
         <Input
+          ref={key === "placa" ? plateInputRef : undefined}
           value={values[key] ?? ""}
           onChange={(event) =>
             setValues({ ...values, [key]: event.target.value })}
@@ -236,6 +310,53 @@ export function GestaoCrlvConferencia({
               encontrados.
             </AlertDescription>
           </Alert>
+        )}
+
+        {!normalizedPlate && !normalizedVin && (
+          <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+            Digite a placa e complete pela Molicar.
+          </p>
+        )}
+
+        <div className="flex flex-wrap items-center gap-3 rounded-md border p-3">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!canCompleteMolicar || completing}
+            onClick={() => void completeWithMolicar()}
+          >
+            {completing
+              ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              : <Database className="mr-2 h-4 w-4" />}
+            Completar pela Molicar
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            Usa a placa ou o chassi e preenche somente campos vazios.
+          </p>
+        </div>
+
+        {molicarPrices && (
+          <div className="grid gap-2 rounded-md bg-muted p-3 text-sm sm:grid-cols-3">
+            {Object.entries({
+              Referência: molicarPrices.referencia,
+              "Varejo (B2C)": molicarPrices.b2c,
+              "Repasse (B2B)": molicarPrices.b2b,
+              "Particular (C2C)": molicarPrices.c2c,
+              "Troca (C2B)": molicarPrices.c2b,
+            }).map(([label, value]) => (
+              <p key={label}>
+                <span className="text-muted-foreground">{label}: </span>
+                <strong>
+                  {value == null
+                    ? "—"
+                    : value.toLocaleString("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                    })}
+                </strong>
+              </p>
+            ))}
+          </div>
         )}
 
         {(leitura.observacoes.alienacao_fiduciaria.valor ||

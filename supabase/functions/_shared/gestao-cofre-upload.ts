@@ -5,6 +5,7 @@ import {
   sha256Hex,
 } from "./gestao-cofre-crypto.ts";
 import { lerCrlvLocal } from "./crlv-leitura.ts";
+import type { CrlvOcrMetricas } from "./crlv-leitura.ts";
 import type { CrlvParserResultado } from "./crlv-parser.ts";
 
 const BUCKET = "gestao-cofre";
@@ -110,6 +111,7 @@ export type GestaoCofreUploadResult = {
   sha256: string;
   leitura: CrlvParserResultado | null;
   leituraErro: string | null;
+  metricasOcr: CrlvOcrMetricas | null;
   duplicate: boolean;
 };
 
@@ -135,6 +137,7 @@ export async function gestaoCofreUpload(
       sha256,
       leitura: null,
       leituraErro: null,
+      metricasOcr: null,
       duplicate: true,
     };
   }
@@ -146,16 +149,19 @@ export async function gestaoCofreUpload(
 
   let leitura: CrlvParserResultado | null = null;
   let leituraErro: string | null = null;
+  let metricasOcr: CrlvOcrMetricas | null = null;
   if (
     input.lerCrlv &&
     (input.tipo === "crlv" || input.tipo === "crlv_e")
   ) {
     try {
-      leitura = (await lerCrlvLocal(
+      const result = await lerCrlvLocal(
         input.bytes,
         input.mime,
         input.filename,
-      )).parser;
+      );
+      leitura = result.parser;
+      metricasOcr = result.metricas_ocr;
     } catch {
       leituraErro =
         "Não consegui ler bem. Tire outra foto de cima, documento aberto, com boa luz";
@@ -219,6 +225,7 @@ export async function gestaoCofreUpload(
           sha256,
           leitura: null,
           leituraErro: null,
+          metricasOcr: null,
           duplicate: true,
         };
       }
@@ -242,7 +249,7 @@ export async function gestaoCofreUpload(
       documentoId,
       input.userId,
       "ler",
-      { origem: input.origem, tipo: input.tipo },
+      metricasOcr ?? {},
     );
   }
   return {
@@ -250,6 +257,7 @@ export async function gestaoCofreUpload(
     sha256,
     leitura,
     leituraErro,
+    metricasOcr,
     duplicate: false,
   };
 }

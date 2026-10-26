@@ -1,6 +1,7 @@
 import asyncio
 import io
 import os
+import time
 from typing import Annotated
 
 import cv2
@@ -12,9 +13,10 @@ from PIL import Image, ImageOps
 from pillow_heif import register_heif_opener
 
 from detector import classify_document
+from ocr_engine import OcrMetrics, preload_paddle, recognize_crlv_image
 
 MAX_BYTES = 15 * 1024 * 1024
-OCR_TIMEOUT_SECONDS = 30
+OCR_TIMEOUT_SECONDS = 25
 DETECT_TIMEOUT_SECONDS = 8
 register_heif_opener()
 
@@ -91,10 +93,6 @@ def _preprocess(image: Image.Image) -> np.ndarray:
     )
 
 
-def _score(text: str) -> int:
-    return sum(char.isalnum() for char in text)
-
-
 def _osd_rotate(image: Image.Image) -> Image.Image | None:
     try:
         osd = pytesseract.image_to_osd(
@@ -108,30 +106,6 @@ def _osd_rotate(image: Image.Image) -> Image.Image | None:
         return None
 
 
-def _ocr_image(image: Image.Image) -> str:
-    image = _resize(image, 2400)
-    oriented = _osd_rotate(image)
-    if oriented is not None:
-        return pytesseract.image_to_string(
-            _preprocess(oriented),
-            lang="por",
-            config="--oem 1 --psm 6",
-        ).strip()
-
-    candidates: list[str] = []
-    for angle in (0, 90, 180, 270):
-        rotated = image if angle == 0 else image.rotate(angle, expand=True)
-        processed = _preprocess(rotated)
-        candidates.append(
-            pytesseract.image_to_string(
-                processed,
-                lang="por",
-                config="--oem 1 --psm 6",
-            ).strip()
-        )
-    return max(candidates, key=_score, default="")
-
-
 def _detect_image(image: Image.Image) -> tuple[bool, str | None]:
     image = _resize(image, 1400)
     oriented = _osd_rotate(image) or image
@@ -143,11 +117,25 @@ def _detect_image(image: Image.Image) -> tuple[bool, str | None]:
     return classify_document(text)
 
 
-def _ocr(raw: bytes, content_type: str) -> str:
+def _ocr(raw: bytes, content_type: str) -> tuple[str, OcrMetrics]:
     # Tudo fica em memória; nenhum arquivo temporário é criado.
-    return "\n\n".join(
-        text for text in (_ocr_image(image) for image in _pil_images(raw, content_type))
-        if text
+    started = time.monotonic()
+    texts: list[str] = []
+    metrics: list[OcrMetrics] = []
+    for image in _pil_images(raw, content_type):
+        remaining = max(0.1, OCR_TIMEOUT_SECONDS - (time.monotonic() - started))
+        result = recognize_crlv_image(image, timeout_seconds=remaining)
+        if result.text:
+            texts.append(result.text)
+        metrics.append(result.metrics)
+        if time.monotonic() - started >= OCR_TIMEOUT_SECONDS:
+            break
+    winner = max(metrics, key=lambda value: value.n_campos_validos)
+    return "\n\n".join(texts), OcrMetrics(
+        motor=winner.motor,
+        variante_vencedora=winner.variante_vencedora,
+        tempo_ms=round((time.monotonic() - started) * 1000),
+        n_campos_validos=winner.n_campos_validos,
     )
 
 
@@ -172,23 +160,32 @@ async def _read_request(
     return raw, request.headers.get("content-type", "application/octet-stream")
 
 
+@app.on_event("startup")
+async def warm_local_models() -> None:
+    try:
+        await asyncio.to_thread(preload_paddle)
+    except Exception:
+        # A reserva Tesseract continua disponível; não revelar detalhes do motor.
+        pass
+
+
 @app.post("/ocr")
 async def ocr(
     request: Request,
     x_ocr_token: Annotated[str | None, Header()] = None,
-) -> dict[str, str]:
+) -> dict[str, str | int | dict[str, str | int]]:
     raw, content_type = await _read_request(request, x_ocr_token)
     try:
-        text = await asyncio.wait_for(
+        text, metrics = await asyncio.wait_for(
             asyncio.to_thread(_ocr, raw, content_type),
             timeout=OCR_TIMEOUT_SECONDS,
         )
     except TimeoutError as exc:
-        raise HTTPException(status_code=504, detail="OCR excedeu 30 segundos") from exc
+        raise HTTPException(status_code=504, detail="OCR excedeu 25 segundos") from exc
     except Exception as exc:
         # Não incluir conteúdo, metadados pessoais nem detalhes do decoder.
         raise HTTPException(status_code=422, detail="não foi possível ler o arquivo") from exc
-    return {"text": text}
+    return {"text": text, "metrics": metrics.public()}
 
 
 @app.post("/detectar")

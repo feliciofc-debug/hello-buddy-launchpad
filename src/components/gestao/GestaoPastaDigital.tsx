@@ -328,6 +328,7 @@ export function GestaoPastaDigital({
             documentoId={crlvReview.documentoId}
             leitura={crlvReview.leitura}
             veiculoId={veiculoId}
+            trocaId={trocaId}
             onConfirmed={() => {
               setCrlvReview(null);
               void load();
