@@ -169,7 +169,7 @@ export function MolicarProcedenciaCard(props: Props) {
       props.placa ? ["debts", "gravame", "renajud"] : ["debts", "gravame"],
       true,
     );
-  }, [identity, model, props.automatic]);
+  }, [identity, model, props.automatic, props.placa]);
 
   const latest = useMemo(() =>
     Object.values(model.rows.reduce(
@@ -180,7 +180,7 @@ export function MolicarProcedenciaCard(props: Props) {
       {} as Partial<
         Record<MolicarProcedenciaServico, typeof model.rows[number]>
       >,
-    )), [model.rows]);
+    )), [model]);
 
   return (
     <Card>
