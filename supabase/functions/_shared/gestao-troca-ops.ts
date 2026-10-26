@@ -132,6 +132,27 @@ async function releaseGestaoTrocaDestinoLock(
     .is("veiculo_id", null);
 }
 
+export function gestaoTrocaCrlvIdentifiers(
+  camposVeiculo: unknown,
+): { placa: string | null; renavam: string | null; chassi: string | null } {
+  const root = camposVeiculo && typeof camposVeiculo === "object"
+    ? camposVeiculo as Record<string, unknown>
+    : {};
+  const values = root.confirmados && typeof root.confirmados === "object"
+    ? root.confirmados as Record<string, unknown>
+    : {};
+  const normalized = (key: string) =>
+    String(values[key] ?? "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  const placa = normalized("placa");
+  const renavam = normalized("renavam");
+  const chassi = normalized("chassi");
+  return {
+    placa: /^[A-Z]{3}(?:\d{4}|\d[A-Z]\d{2})$/.test(placa) ? placa : null,
+    renavam: /^\d{11}$/.test(renavam) ? renavam : null,
+    chassi: /^[A-HJ-NPR-Z0-9]{17}$/.test(chassi) ? chassi : null,
+  };
+}
+
 export async function liberarTrocaParaEstoque(
   sb: Db,
   userId: string,
@@ -153,6 +174,18 @@ export async function liberarTrocaParaEstoque(
   if (!claimed) throw new Error("Destino já registrado.");
 
   try {
+    const { data: crlvDoc } = await sb.from("gestao_documento")
+      .select("id,campos_veiculo")
+      .eq("user_id", userId)
+      .eq("troca_id", trocaId)
+      .in("tipo", ["crlv", "crlv_e"])
+      .eq("status", "confirmado")
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const crlv = gestaoTrocaCrlvIdentifiers(crlvDoc?.campos_veiculo);
+
     const { data: veic, error: vErr } = await sb.from("veiculos_estoque").insert({
       user_id: userId,
       marca: troca.marca,
@@ -162,7 +195,9 @@ export async function liberarTrocaParaEstoque(
       ano_modelo: troca.ano_modelo,
       km: troca.km,
       cor: troca.cor,
-      placa: troca.placa,
+      placa: crlv.placa ?? troca.placa,
+      renavam: crlv.renavam,
+      chassi: crlv.chassi,
       status: "disponivel",
       segmento: "carro",
       preco: preco,
@@ -171,6 +206,20 @@ export async function liberarTrocaParaEstoque(
     if (vErr || !veic?.id) throw new Error("Não foi possível criar veículo no estoque.");
 
     const vid = String(veic.id);
+    if (crlvDoc?.id) {
+      const { error: linkError } = await sb.from("gestao_documento").update({
+        veiculo_id: vid,
+      }).eq("id", crlvDoc.id).eq("user_id", userId);
+      if (linkError) throw new Error("Não foi possível vincular o CRLV ao veículo.");
+      const { error: auditError } = await sb.from("gestao_documento_acesso").insert({
+        documento_id: crlvDoc.id,
+        user_id: userId,
+        ator_id: userId,
+        acao: "confirmar",
+        detalhe: { origem: "troca" },
+      });
+      if (auditError) throw new Error("Não foi possível auditar o vínculo do CRLV.");
+    }
     const dataCompra = troca.fechado_em
       ? String(troca.fechado_em).slice(0, 10)
       : hojeSaoPaulo();

@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import {
   GESTAO_TROCA_FOTO_ETIQUETA_A_CLASSIFICAR,
+  GESTAO_TROCA_FOTO_ETIQUETA_CRLV,
   GESTAO_TROCA_FOTO_ETIQUETAS,
   gestaoTrocaFotoEntryComEtiquetaUsuario,
   normalizeGestaoTrocaFotos,
@@ -22,6 +23,9 @@ import {
 const MAX_FOTOS = 40;
 const MAX_BYTES = 10 * 1024 * 1024;
 const ACCEPT = ["image/jpeg", "image/png", "image/webp"];
+const ETIQUETAS_DE_FOTO = GESTAO_TROCA_FOTO_ETIQUETAS.filter(
+  (etiqueta) => etiqueta !== GESTAO_TROCA_FOTO_ETIQUETA_CRLV,
+);
 
 type Props = {
   userId: string;
@@ -58,6 +62,10 @@ export function GestaoTrocaFotoGaleria({
   }, [fotos, refreshSigned]);
 
   const setEtiqueta = (path: string, etiqueta: string) => {
+    if (etiqueta === GESTAO_TROCA_FOTO_ETIQUETA_CRLV) {
+      toast.error("Envie o CRLV pelo espaço protegido do roteiro.");
+      return;
+    }
     onFotosChange(
       fotos.map((f) =>
         f.path === path ? gestaoTrocaFotoEntryComEtiquetaUsuario(f, etiqueta) : f
@@ -105,7 +113,7 @@ export function GestaoTrocaFotoGaleria({
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
         Envie na ordem que quiser — cada foto entra como «A classificar». A IA organiza o roteiro na
-        análise. Use o seletor só para CRLV ou se quiser marcar o ângulo manualmente.
+        análise. Use o seletor se quiser marcar o ângulo manualmente.
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <Input
@@ -143,7 +151,7 @@ export function GestaoTrocaFotoGaleria({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {GESTAO_TROCA_FOTO_ETIQUETAS.map((e) => (
+                  {ETIQUETAS_DE_FOTO.map((e) => (
                     <SelectItem key={e} value={e}>{e}</SelectItem>
                   ))}
                 </SelectContent>

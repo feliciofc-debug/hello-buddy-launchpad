@@ -1,5 +1,11 @@
-import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { liberarTrocaParaEstoque } from "./gestao-troca-ops.ts";
+import {
+  assertEquals,
+  assertStringIncludes,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  gestaoTrocaCrlvIdentifiers,
+  liberarTrocaParaEstoque,
+} from "./gestao-troca-ops.ts";
 
 Deno.test("liberar para estoque usa preço informado no insert", async () => {
   let insertedPreco: number | null = null;
@@ -68,6 +74,17 @@ Deno.test("liberar para estoque usa preço informado no insert", async () => {
       if (table === "veiculo_compra") {
         return { upsert: async () => ({}) };
       }
+      if (table === "gestao_documento") {
+        const query = {
+          eq: () => query,
+          in: () => query,
+          is: () => query,
+          order: () => query,
+          limit: () => query,
+          maybeSingle: async () => ({ data: null, error: null }),
+        };
+        return { select: () => query };
+      }
       if (table === "gestao_troca_despesa") {
         return {
           select: () => ({
@@ -91,4 +108,43 @@ Deno.test("liberar para estoque usa preço informado no insert", async () => {
 
   await liberarTrocaParaEstoque(sb as never, "u1", "t1", "test", 78990.5);
   assertEquals(insertedPreco, 78990.5);
+});
+
+Deno.test("DOC-1.1b — identificadores confirmados do CRLV são defensivos", () => {
+  assertEquals(
+    gestaoTrocaCrlvIdentifiers({
+      confirmados: {
+        placa: "abc-1d23",
+        renavam: "12345678901",
+        chassi: "9BWZZZ377VT004251",
+      },
+    }),
+    {
+      placa: "ABC1D23",
+      renavam: "12345678901",
+      chassi: "9BWZZZ377VT004251",
+    },
+  );
+  assertEquals(
+    gestaoTrocaCrlvIdentifiers({
+      confirmados: {
+        placa: "inválida",
+        renavam: "telefone",
+        chassi: "9BWZZZI77VT004251",
+      },
+    }),
+    { placa: null, renavam: null, chassi: null },
+  );
+});
+
+Deno.test("DOC-1.1b — liberação liga CRLV ao estoque e audita origem troca", async () => {
+  const source = await Deno.readTextFile(
+    new URL("gestao-troca-ops.ts", import.meta.url),
+  );
+  assertStringIncludes(source, "placa: crlv.placa ?? troca.placa");
+  assertStringIncludes(source, "renavam: crlv.renavam");
+  assertStringIncludes(source, "chassi: crlv.chassi");
+  assertStringIncludes(source, "veiculo_id: vid");
+  assertStringIncludes(source, 'acao: "confirmar"');
+  assertStringIncludes(source, 'detalhe: { origem: "troca" }');
 });
