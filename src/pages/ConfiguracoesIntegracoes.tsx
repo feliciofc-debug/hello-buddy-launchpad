@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FocusNfeIntegrationCard } from "@/components/integracoes/FocusNfeIntegrationCard";
+import { MolicarIntegrationCard } from "@/components/integracoes/MolicarIntegrationCard";
 import { ZapSignIntegrationCard } from "@/components/integracoes/ZapSignIntegrationCard";
 import { MlIntegrationCard } from "@/components/ml/MlIntegrationCard";
 import { ProcedenciaIntegrationCard } from "@/components/procedencia/ProcedenciaIntegrationCard";
@@ -13,12 +14,13 @@ import { WebmotorsIntegrationCard } from "@/components/webmotors/WebmotorsIntegr
 import { LojaCepIntegracaoField } from "@/components/integracoes/LojaCepIntegracaoField.tsx";
 import { useSmartBack } from "@/lib/app-back-nav.ts";
 
-type Foco = "nfe" | "contratos" | "zapsign" | "olx" | "ml" | "webmotors" | null;
+type Foco = "nfe" | "contratos" | "zapsign" | "molicar" | "olx" | "ml" | "webmotors" | null;
 
 function parseFoco(raw: string | null): Foco {
   if (raw === "nfe") return "nfe";
   if (raw === "contratos") return "contratos";
   if (raw === "zapsign") return "zapsign";
+  if (raw === "molicar") return "molicar";
   if (raw === "olx") return "olx";
   if (raw === "ml") return "ml";
   if (raw === "webmotors") return "webmotors";
@@ -58,6 +60,8 @@ export default function ConfiguracoesIntegracoes() {
 
   const showZapsign = !focusedOnly || foco === "contratos" || foco === "zapsign";
   const showFocus = !focusedOnly || foco === "nfe";
+  const showVehicles = !focusedOnly || foco === "molicar";
+  const showMolicar = !focusedOnly || foco === "molicar";
   const showPortals = !focusedOnly || portalFoco != null;
   const showMl = !focusedOnly || foco === "ml";
   const showOlx = !focusedOnly || foco === "olx";
@@ -100,12 +104,17 @@ export default function ConfiguracoesIntegracoes() {
           </div>
         )}
 
-        {!focusedOnly && (
+        {showVehicles && (
           <div className="space-y-3">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Veículos
             </h2>
-            <ProcedenciaIntegrationCard />
+            {!focusedOnly && <ProcedenciaIntegrationCard />}
+            {showMolicar && (
+              <div id="integracao-molicar">
+                <MolicarIntegrationCard />
+              </div>
+            )}
           </div>
         )}
 

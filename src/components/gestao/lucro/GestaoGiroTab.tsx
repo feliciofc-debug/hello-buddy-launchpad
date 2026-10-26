@@ -410,6 +410,17 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
                       {r.ipvaConferirDocumento ? " · confira no documento" : ""}
                     </p>
                   )}
+                  {r.desvalorizacaoMensalPct != null && (
+                    <p className="text-xs text-muted-foreground">
+                      Desvalorização projetada:{" "}
+                      {r.desvalorizacaoMensalPct.toLocaleString("pt-BR", {
+                        maximumFractionDigits: 2,
+                      })}% ao mês · fonte:{" "}
+                      {r.desvalorizacaoFonte === "molicar_b2c_snapshots"
+                        ? "histórico Molicar B2C (snapshots com 25+ dias)"
+                        : "fallback FIPE configurado"}
+                    </p>
+                  )}
                   <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-muted/50 p-3">
                     <div>
                       <p className="font-medium">{r.recomendacao}</p>

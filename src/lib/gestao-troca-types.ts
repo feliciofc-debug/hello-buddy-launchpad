@@ -9,6 +9,36 @@ export type GestaoTrocaStatus =
   | "perdida"
   | "cancelada";
 
+export type GestaoMolicarSnapshot = {
+  id?: string | null;
+  placa?: string | null;
+  molicarId?: string | null;
+  referencia: number | null;
+  b2c: number | null;
+  b2b: number | null;
+  c2c: number | null;
+  c2b: number | null;
+  novo: number | null;
+  dataReferencia: string | null;
+  atualizadoEm: string | null;
+  consultadoEm: string | null;
+  proveniencia: string;
+  procedencia: Record<string, unknown> | null;
+  alertasProcedencia: string[];
+  dados?: {
+    marca?: string | null;
+    modelo?: string | null;
+    versao?: string | null;
+    anoFabricacao?: number | null;
+    anoModelo?: number | null;
+    cor?: string | null;
+    combustivel?: string | null;
+    cambio?: string | null;
+    portas?: number | null;
+    cilindradaCc?: number | null;
+  };
+};
+
 export type GestaoTrocaRow = {
   id: string;
   user_id: string;

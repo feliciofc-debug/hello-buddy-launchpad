@@ -101,6 +101,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { MolicarPriceCard } from "@/components/gestao/MolicarPriceCard.tsx";
+import { useMolicarConsulta } from "@/components/gestao/useMolicarConsulta.ts";
 
 export default function GestaoTrocaFichaPage() {
   const { id } = useParams<{ id: string }>();
@@ -165,6 +167,13 @@ export default function GestaoTrocaFichaPage() {
   const [reabrirOpen, setReabrirOpen] = useState(false);
   const [reabrirMotivo, setReabrirMotivo] = useState("");
   const [finalizadoPorLabel, setFinalizadoPorLabel] = useState<string | null>(null);
+  const molicar = useMolicarConsulta({
+    userId,
+    placa: troca?.placa,
+    trocaId: id,
+    origem: "troca",
+    enabled: !!troca && !!userId,
+  });
 
   const applyTrocaRow = (row: GestaoTrocaRow) => {
     setTroca(row);
@@ -525,6 +534,7 @@ export default function GestaoTrocaFichaPage() {
         : null,
       laudo19Pdf,
       espFaixas,
+      molicar.snapshot,
     );
   };
 
@@ -807,6 +817,16 @@ export default function GestaoTrocaFichaPage() {
           <p className="text-sm">Valor: {formatGestaoMoney(troca.fipe_valor ?? 0)} {troca.fipe_mes_ref ? `(${troca.fipe_mes_ref})` : ""}</p>
           <Button size="sm" onClick={() => void buscarFipe()} disabled={busy || laudoLocked}>Buscar FIPE</Button>
         </section>
+
+        <MolicarPriceCard
+          snapshot={molicar.snapshot}
+          loading={molicar.loading}
+          consulting={molicar.consulting}
+          error={molicar.error}
+          title="Referências Molicar da troca"
+          disabled={busy || !troca.placa}
+          onUpdate={() => void molicar.consultar()}
+        />
 
         <section className="space-y-3 rounded-lg border bg-white p-4 dark:bg-gray-950">
           <h2 className="font-semibold">Preço</h2>

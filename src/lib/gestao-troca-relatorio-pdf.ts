@@ -1,5 +1,8 @@
 import { jsPDF } from "jspdf";
-import type { GestaoTrocaRow } from "@/lib/gestao-troca-types.ts";
+import type {
+  GestaoMolicarSnapshot,
+  GestaoTrocaRow,
+} from "@/lib/gestao-troca-types.ts";
 import { normalizeGestaoTrocaFotos } from "@/lib/gestao-troca-fotos.ts";
 import { formatGestaoMoney } from "@/lib/gestao-format.ts";
 import {
@@ -123,6 +126,37 @@ export function appendGestaoTrocaLaudoPdfLines(
   line(`Modelo IA: ${modelo} · ${formatLaudoDateTime(laudo.analiseConcluidaEm)}`);
 }
 
+export function appendGestaoTrocaMolicarPdfLines(
+  line: (t: string, bold?: boolean) => void,
+  molicar: GestaoMolicarSnapshot,
+): void {
+  const value = (n: number | null) => n == null ? "—" : formatGestaoMoney(n);
+  line("Referências Molicar", true);
+  line(
+    `Referência: ${value(molicar.referencia)} · B2C: ${value(molicar.b2c)} · B2B: ${
+      value(molicar.b2b)
+    }`,
+  );
+  line(
+    `C2C: ${value(molicar.c2c)} · C2B: ${value(molicar.c2b)} · Novo: ${
+      value(molicar.novo)
+    }`,
+  );
+  line(
+    `Data: ${molicar.dataReferencia ?? "—"} · Atualização: ${
+      molicar.atualizadoEm ?? molicar.consultadoEm ?? "—"
+    }`,
+  );
+  line(`Fonte: ${molicar.proveniencia}`);
+  if (!molicar.procedencia) {
+    line("Procedência: serviço não contratado.");
+  } else if (molicar.alertasProcedencia.length) {
+    line(`ALERTA DE PROCEDÊNCIA: ${molicar.alertasProcedencia.join(" · ")}`, true);
+  } else {
+    line("Procedência consultada: nenhum alerta retornado.");
+  }
+}
+
 export async function downloadGestaoTrocaRelatorioPdf(
   troca: GestaoTrocaRow,
   eventos: { descricao: string; created_at: string }[],
@@ -138,6 +172,7 @@ export async function downloadGestaoTrocaRelatorioPdf(
   } | null,
   laudo19?: GestaoTrocaLaudo19Computed | null,
   espessuraFaixas?: GestaoTrocaEspessuraFaixas,
+  molicar?: GestaoMolicarSnapshot | null,
 ) {
   const doc = new jsPDF();
   let y = 14;
@@ -165,6 +200,10 @@ export async function downloadGestaoTrocaRelatorioPdf(
   line(`Sugerido: ${formatGestaoMoney(troca.valor_sugerido ?? 0)} · Teto: ${formatGestaoMoney(troca.teto ?? 0)}`);
   line(`Proposto: ${formatGestaoMoney(troca.valor_proposto ?? 0)} · Fechado: ${formatGestaoMoney(troca.valor_fechado ?? 0)}`);
   line(`Preparação estimada: ${formatGestaoMoney(troca.preparacao_estimada ?? 0)}`);
+  if (molicar) {
+    y += 4;
+    appendGestaoTrocaMolicarPdfLines(line, molicar);
+  }
   y += 4;
   appendGestaoTrocaProcedenciaPdfLines(line, procedencia ?? null);
 

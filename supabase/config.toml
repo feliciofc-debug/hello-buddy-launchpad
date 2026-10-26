@@ -411,6 +411,24 @@ verify_jwt = true
 [functions.gestao-cofre-retencao]
 verify_jwt = false
 
+[functions.molicar-consulta]
+verify_jwt = true
+
+[functions.molicar-refresh]
+verify_jwt = false
+
+[functions.gestao-molicar-status]
+verify_jwt = true
+
+[functions.gestao-molicar-save]
+verify_jwt = true
+
+[functions.gestao-molicar-test]
+verify_jwt = true
+
+[functions.gestao-molicar-disconnect]
+verify_jwt = true
+
 [functions.amz-auto-cadastro]
 verify_jwt = false
 

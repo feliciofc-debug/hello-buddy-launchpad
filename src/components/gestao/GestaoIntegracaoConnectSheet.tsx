@@ -6,14 +6,19 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { FocusNfeIntegrationCard } from "@/components/integracoes/FocusNfeIntegrationCard";
+import { MolicarIntegrationCard } from "@/components/integracoes/MolicarIntegrationCard";
 import { ZapSignIntegrationCard } from "@/components/integracoes/ZapSignIntegrationCard";
 
-export type GestaoConnectVendor = "focusnfe" | "zapsign";
+export type GestaoConnectVendor = "focusnfe" | "molicar" | "zapsign";
 
 const TITLES: Record<GestaoConnectVendor, { title: string; description: string }> = {
   focusnfe: {
     title: "Ativar emissão de nota fiscal",
     description: "Emita a nota da venda com 1 clique. O certificado digital fica na conta do emissor (Focus NFe).",
+  },
+  molicar: {
+    title: "Ativar consulta e preços Molicar",
+    description: "Conecte a conta da loja para consultar veículos e atualizar referências de preço.",
   },
   zapsign: {
     title: "Ativar contratos com assinatura no celular",
@@ -42,6 +47,9 @@ export function GestaoIntegracaoConnectSheet({ vendor, onOpenChange, onConnectSu
         <div className="mt-6">
           {vendor === "focusnfe" && (
             <FocusNfeIntegrationCard embedInGestao onConnectSuccess={onConnectSuccess} />
+          )}
+          {vendor === "molicar" && (
+            <MolicarIntegrationCard embedInGestao onConnectSuccess={onConnectSuccess} />
           )}
           {vendor === "zapsign" && (
             <ZapSignIntegrationCard embedInGestao onConnectSuccess={onConnectSuccess} />
