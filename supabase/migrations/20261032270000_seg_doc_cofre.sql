@@ -121,10 +121,6 @@ DROP POLICY IF EXISTS gestao_documento_owner_select ON public.gestao_documento;
 CREATE POLICY gestao_documento_owner_select ON public.gestao_documento
   FOR SELECT TO authenticated USING (user_id = auth.uid());
 DROP POLICY IF EXISTS gestao_documento_owner_insert ON public.gestao_documento;
-CREATE POLICY gestao_documento_owner_insert ON public.gestao_documento
-  FOR INSERT TO authenticated WITH CHECK (
-    user_id = auth.uid() AND created_by = auth.uid()
-  );
 
 DROP POLICY IF EXISTS gestao_documento_acesso_owner_select
   ON public.gestao_documento_acesso;
@@ -133,16 +129,11 @@ CREATE POLICY gestao_documento_acesso_owner_select
   FOR SELECT TO authenticated USING (user_id = auth.uid());
 DROP POLICY IF EXISTS gestao_documento_acesso_owner_insert
   ON public.gestao_documento_acesso;
-CREATE POLICY gestao_documento_acesso_owner_insert
-  ON public.gestao_documento_acesso
-  FOR INSERT TO authenticated WITH CHECK (
-    user_id = auth.uid() AND ator_id = auth.uid()
-  );
 
 REVOKE ALL ON public.gestao_documento FROM authenticated;
-GRANT SELECT, INSERT ON public.gestao_documento TO authenticated;
+GRANT SELECT ON public.gestao_documento TO authenticated;
 REVOKE ALL ON public.gestao_documento_acesso FROM authenticated;
-GRANT SELECT, INSERT ON public.gestao_documento_acesso TO authenticated;
+GRANT SELECT ON public.gestao_documento_acesso TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON public.gestao_documento_config TO authenticated;
 REVOKE ALL ON public.gestao_documento_token FROM authenticated, anon;
 
@@ -172,26 +163,8 @@ END;
 $$;
 
 DROP POLICY IF EXISTS gestao_cofre_insert_owner ON storage.objects;
-CREATE POLICY gestao_cofre_insert_owner ON storage.objects
-  FOR INSERT TO authenticated WITH CHECK (
-    bucket_id = 'gestao-cofre'
-    AND auth.uid()::text = (storage.foldername(name))[1]
-    AND (storage.foldername(name))[2] = 'documentos'
-  );
 DROP POLICY IF EXISTS gestao_cofre_select_owner ON storage.objects;
-CREATE POLICY gestao_cofre_select_owner ON storage.objects
-  FOR SELECT TO authenticated USING (
-    bucket_id = 'gestao-cofre'
-    AND auth.uid()::text = (storage.foldername(name))[1]
-    AND (storage.foldername(name))[2] = 'documentos'
-  );
 DROP POLICY IF EXISTS gestao_cofre_delete_owner ON storage.objects;
-CREATE POLICY gestao_cofre_delete_owner ON storage.objects
-  FOR DELETE TO authenticated USING (
-    bucket_id = 'gestao-cofre'
-    AND auth.uid()::text = (storage.foldername(name))[1]
-    AND (storage.foldername(name))[2] = 'documentos'
-  );
 
 COMMENT ON TABLE public.gestao_documento IS
   'Metadados do cofre. O objeto no Storage e dados pessoais ficam sempre cifrados.';

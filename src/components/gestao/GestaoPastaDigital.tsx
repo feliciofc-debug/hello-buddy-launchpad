@@ -11,6 +11,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  type CrlvLeituraView,
+  GestaoCrlvConferencia,
+} from "@/components/gestao/GestaoCrlvConferencia";
 
 const MAX_BYTES = 15 * 1024 * 1024;
 const MIME = new Set([
@@ -84,6 +88,12 @@ export function GestaoPastaDigital({
   const [docs, setDocs] = useState<Documento[]>([]);
   const [busy, setBusy] = useState(false);
   const [historico, setHistorico] = useState<Historico[] | null>(null);
+  const [crlvReview, setCrlvReview] = useState<
+    {
+      documentoId: string;
+      leitura: CrlvLeituraView;
+    } | null
+  >(null);
 
   const invoke = useCallback(async (body: Record<string, unknown>) => {
     const { data, error } = await supabase.functions.invoke("gestao-cofre", {
@@ -124,16 +134,25 @@ export function GestaoPastaDigital({
     setBusy(true);
     try {
       const base64 = await base64FromFile(file);
-      await invoke({
+      const data = await invoke({
         action: "upload",
         base64,
         tipo,
         origem,
         mime: file.type,
+        filename: file.name,
         veiculo_id: veiculoId,
         troca_id: trocaId,
       });
       toast.success("Documento guardado no cofre.");
+      if (data.leitura) {
+        setCrlvReview({
+          documentoId: data.documento_id,
+          leitura: data.leitura,
+        });
+      } else if (data.leitura_erro) {
+        toast.warning(data.leitura_erro);
+      }
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha no upload.");
@@ -231,7 +250,11 @@ export function GestaoPastaDigital({
             {busy
               ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               : <Upload className="mr-2 h-4 w-4" />}
-            Enviar
+            {busy && (tipo === "crlv" || tipo === "crlv_e")
+              ? "Lendo documento…"
+              : tipo === "crlv" || tipo === "crlv_e"
+              ? "Enviar CRLV"
+              : "Enviar"}
           </Button>
         </div>
 
@@ -295,6 +318,21 @@ export function GestaoPastaDigital({
                 </p>
               ))}
           </div>
+        )}
+        {crlvReview && (
+          <GestaoCrlvConferencia
+            open
+            onOpenChange={(open) => {
+              if (!open) setCrlvReview(null);
+            }}
+            documentoId={crlvReview.documentoId}
+            leitura={crlvReview.leitura}
+            veiculoId={veiculoId}
+            onConfirmed={() => {
+              setCrlvReview(null);
+              void load();
+            }}
+          />
         )}
       </CardContent>
     </Card>

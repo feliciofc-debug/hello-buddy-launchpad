@@ -68,7 +68,23 @@ Deno.test("SEG-DOC — migração garante duplicado, RLS e auditoria append-only
   assertStringIncludes(sql, "REVOKE ALL ON public.gestao_documento_acesso");
   assertStringIncludes(
     sql,
-    "GRANT SELECT, INSERT ON public.gestao_documento_acesso",
+    "GRANT SELECT ON public.gestao_documento TO authenticated",
+  );
+  assertStringIncludes(
+    sql,
+    "GRANT SELECT ON public.gestao_documento_acesso TO authenticated",
+  );
+  assertEquals(
+    /CREATE POLICY gestao_documento_(?:acesso_)?owner_insert/i.test(sql),
+    false,
+  );
+  assertEquals(
+    /CREATE POLICY gestao_cofre_(?:insert|select|delete)_owner/i.test(sql),
+    false,
+  );
+  assertEquals(
+    /GRANT[^;]*INSERT[^;]*gestao_documento/i.test(sql),
+    false,
   );
   assertEquals(
     /GRANT[^;]*(UPDATE|DELETE)[^;]*gestao_documento_acesso/i.test(sql),

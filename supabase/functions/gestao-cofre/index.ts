@@ -11,6 +11,14 @@ import {
   jsonResponse,
   optionsResponse,
 } from "../_shared/gestao-troca-http.ts";
+import { lerCrlvLocal } from "../_shared/crlv-leitura.ts";
+import type { CrlvParserResultado } from "../_shared/crlv-parser.ts";
+import {
+  buildCrlvVehiclePatch,
+  CRLV_STOCK_FIELDS,
+  safeCrlvReading,
+  sanitizeCrlvVehicleValues,
+} from "../_shared/crlv-cofre.ts";
 
 const BUCKET = "gestao-cofre";
 const MAX_BYTES = 15 * 1024 * 1024;
@@ -61,6 +69,8 @@ type OwnedDocument = {
   status: string;
   created_at: string;
   deleted_at: string | null;
+  veiculo_id?: string | null;
+  campos_veiculo?: Record<string, unknown>;
 };
 
 function adminClient(): Admin {
@@ -117,7 +127,7 @@ async function audit(
 async function ownedDocument(sb: Admin, userId: string, documentoId: string) {
   const { data } = await sb.from("gestao_documento")
     .select(
-      "id,user_id,storage_path,mime,tamanho,tipo,status,created_at,deleted_at",
+      "id,user_id,storage_path,mime,tamanho,tipo,status,created_at,deleted_at,veiculo_id,campos_veiculo",
     )
     .eq("id", documentoId).eq("user_id", userId).maybeSingle();
   return data && !data.deleted_at ? data as OwnedDocument : null;
@@ -179,12 +189,38 @@ async function upload(
       error: "Dados pessoais devem ser enviados no campo protegido",
     }, 400);
   }
-  const pessoais =
-    body.dados_pessoais && typeof body.dados_pessoais === "object"
-      ? await cifrarDadosPessoais(
-        body.dados_pessoais as Record<string, unknown>,
-      )
-      : null;
+  let leitura: CrlvParserResultado | null = null;
+  let leituraErro: string | null = null;
+  if (tipo === "crlv" || tipo === "crlv_e") {
+    try {
+      leitura = (await lerCrlvLocal(
+        bytes,
+        mime,
+        String(body.filename ?? ""),
+      )).parser;
+    } catch {
+      leituraErro =
+        "Não consegui ler bem. Tire outra foto de cima, documento aberto, com boa luz";
+    }
+  }
+  const camposLidos = leitura
+    ? {
+      veiculo: leitura.veiculo,
+      documento: leitura.documento,
+      observacoes: leitura.observacoes,
+    }
+    : campos;
+  const pessoaisLidos = leitura
+    ? {
+      nome: leitura.proprietario.nome.valor,
+      cpf_cnpj: leitura.proprietario.cpf_cnpj.valor,
+    }
+    : body.dados_pessoais;
+  const pessoais = pessoaisLidos && typeof pessoaisLidos === "object"
+    ? await cifrarDadosPessoais(
+      pessoaisLidos as Record<string, unknown>,
+    )
+    : null;
   const encrypted = await cifrarCofreBytes(bytes);
   const documentoId = crypto.randomUUID();
   const path = `${userId}/documentos/${documentoId}.cofre`;
@@ -209,7 +245,7 @@ async function upload(
     sha256,
     cifrado: true,
     status: "recebido",
-    campos_veiculo: campos,
+    campos_veiculo: camposLidos,
     dados_pessoais_cifrados: pessoais,
     retencao_ate: await retentionDate(sb, userId, veiculoId),
     created_by: userId,
@@ -227,7 +263,13 @@ async function upload(
     tipo,
     tamanho: bytes.byteLength,
   });
-  return jsonResponse({ success: true, documento_id: documentoId, sha256 });
+  return jsonResponse({
+    success: true,
+    documento_id: documentoId,
+    sha256,
+    leitura: leitura ? safeCrlvReading(leitura) : null,
+    leitura_erro: leituraErro,
+  });
 }
 
 async function list(sb: Admin, userId: string, body: Record<string, unknown>) {
@@ -327,6 +369,89 @@ async function history(sb: Admin, userId: string, documentoId: string) {
   return jsonResponse({ success: true, historico: data ?? [] });
 }
 
+async function confirmCrlv(
+  sb: Admin,
+  userId: string,
+  body: Record<string, unknown>,
+) {
+  const documentoId = String(body.documento_id ?? "");
+  const doc = await ownedDocument(sb, userId, documentoId);
+  if (!doc || !["crlv", "crlv_e"].includes(doc.tipo)) {
+    return jsonResponse({ error: "CRLV não encontrado" }, 404);
+  }
+  const vehicleId = String(body.veiculo_id ?? doc.veiculo_id ?? "") || null;
+  const values = body.valores && typeof body.valores === "object"
+    ? body.valores as Record<string, unknown>
+    : {};
+  if (containsPiiKey(values)) {
+    return jsonResponse({
+      error: "Dados pessoais não podem ser confirmados em campo aberto",
+    }, 400);
+  }
+  const replace = new Set(
+    Array.isArray(body.substituir)
+      ? body.substituir.map(String).filter((key) => CRLV_STOCK_FIELDS.has(key))
+      : [],
+  );
+  const sanitized = sanitizeCrlvVehicleValues(values);
+  const updatedFields: string[] = [];
+  if (vehicleId) {
+    const select = [...CRLV_STOCK_FIELDS].join(",");
+    const { data: vehicle } = await sb.from("veiculos_estoque").select(select)
+      .eq("id", vehicleId).eq("user_id", userId).maybeSingle();
+    if (!vehicle) return jsonResponse({ error: "Veículo não encontrado" }, 404);
+    const patch = buildCrlvVehiclePatch(
+      vehicle as Record<string, unknown>,
+      sanitized,
+      replace,
+    );
+    updatedFields.push(...Object.keys(patch));
+    if (Object.keys(patch).length) {
+      const { error } = await sb.from("veiculos_estoque").update(patch)
+        .eq("id", vehicleId).eq("user_id", userId);
+      if (error) throw new Error("Falha ao atualizar veículo");
+    }
+  }
+  const confirmedFields = {
+    ...(doc.campos_veiculo ?? {}),
+    confirmados: sanitized,
+  };
+  const { error } = await sb.from("gestao_documento").update({
+    veiculo_id: vehicleId,
+    status: "confirmado",
+    campos_veiculo: confirmedFields,
+  }).eq("id", documentoId).eq("user_id", userId);
+  if (error) throw new Error("Falha ao confirmar documento");
+  await audit(sb, documentoId, userId, "confirmar", {
+    campos_atualizados: updatedFields,
+    vinculado: Boolean(vehicleId),
+  });
+  return jsonResponse({ success: true, campos_atualizados: updatedFields });
+}
+
+async function linkDocument(
+  sb: Admin,
+  userId: string,
+  documentoId: string,
+  vehicleId: string,
+) {
+  if (!await ownedDocument(sb, userId, documentoId)) {
+    return jsonResponse({ error: "Documento não encontrado" }, 404);
+  }
+  const { data: vehicle } = await sb.from("veiculos_estoque").select("id")
+    .eq("id", vehicleId).eq("user_id", userId).maybeSingle();
+  if (!vehicle) return jsonResponse({ error: "Veículo não encontrado" }, 404);
+  const { error } = await sb.from("gestao_documento").update({
+    veiculo_id: vehicleId,
+  }).eq("id", documentoId).eq("user_id", userId);
+  if (error) throw new Error("Falha ao vincular documento");
+  await audit(sb, documentoId, userId, "confirmar", {
+    vinculado: true,
+    campos_atualizados: [],
+  });
+  return jsonResponse({ success: true });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse();
   try {
@@ -352,6 +477,17 @@ Deno.serve(async (req) => {
     }
     if (action === "historico") {
       return await history(sb, user.id, String(body.documento_id ?? ""));
+    }
+    if (action === "confirmar_crlv") {
+      return await confirmCrlv(sb, user.id, body);
+    }
+    if (action === "vincular") {
+      return await linkDocument(
+        sb,
+        user.id,
+        String(body.documento_id ?? ""),
+        String(body.veiculo_id ?? ""),
+      );
     }
     return jsonResponse({ error: "Ação inválida" }, 400);
   } catch (error) {
