@@ -1,13 +1,14 @@
+from __future__ import annotations
+
 import io
 import os
 import time
 import unittest
 
-import numpy as np
-from PIL import Image, ImageDraw, ImageFont
-
 try:
     import cv2
+    import numpy as np
+    from PIL import Image, ImageDraw, ImageFont
 
     from ocr_engine import recognize_crlv_image, valid_crlv_fields
 
