@@ -1,6 +1,7 @@
 import { webmotorsHashForUser } from "./webmotors-conta.ts";
 import { wmExcluirCarro } from "./webmotors-car-api.ts";
 import { wmExcluirMoto } from "./webmotors-moto-api.ts";
+import { recordWebmotorsPortalHistory } from "./webmotors-portal-history.ts";
 
 export async function runWebmotorsVehicleUnpublish(
   sb: any,
@@ -19,7 +20,17 @@ export async function runWebmotorsVehicleUnpublish(
     .eq("portal", "webmotors")
     .maybeSingle();
   if (!portal?.external_id) {
-    return { ok: false, error: "Não há anúncio Webmotors vinculado a este veículo." };
+    return {
+      ok: false,
+      error: "Não há anúncio Webmotors vinculado a este veículo.",
+    };
+  }
+  if (portal.managed_by_platform !== true) {
+    return {
+      ok: false,
+      error:
+        "Este anúncio não foi criado pela plataforma e não pode ser excluído.",
+    };
   }
 
   let hash: string;
@@ -33,7 +44,10 @@ export async function runWebmotorsVehicleUnpublish(
   }
 
   try {
-    const motivo = input.motivo?.trim() || "Removido pelo estoque AMZ";
+    const requestedReason = input.motivo?.trim() ?? "";
+    const motivo = ["1", "2", "3"].includes(requestedReason)
+      ? requestedReason
+      : "3";
     if (vehicle?.segmento === "moto") {
       await wmExcluirMoto(ambiente, hash, Number(portal.external_id), motivo);
     } else {
@@ -41,10 +55,22 @@ export async function runWebmotorsVehicleUnpublish(
     }
     await sb.from("veiculos_portais").update({
       status: "closed",
+      external_id: null,
+      anuncio_sn: null,
       last_error: null,
       last_synced_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-    }).eq("user_id", input.userId).eq("veiculo_id", input.veiculoId).eq("portal", "webmotors");
+    }).eq("user_id", input.userId).eq("veiculo_id", input.veiculoId).eq(
+      "portal",
+      "webmotors",
+    );
+
+    await recordWebmotorsPortalHistory(sb, {
+      userId: input.userId,
+      veiculoId: input.veiculoId,
+      acao: "tirar_do_ar",
+      externalId: portal.external_id,
+    });
 
     await sb.from("webmotors_foto_vinculo").delete()
       .eq("user_id", input.userId)
@@ -55,7 +81,10 @@ export async function runWebmotorsVehicleUnpublish(
     await sb.from("veiculos_portais").update({
       last_error: (e as Error).message,
       updated_at: new Date().toISOString(),
-    }).eq("user_id", input.userId).eq("veiculo_id", input.veiculoId).eq("portal", "webmotors");
+    }).eq("user_id", input.userId).eq("veiculo_id", input.veiculoId).eq(
+      "portal",
+      "webmotors",
+    );
     return { ok: false, error: (e as Error).message };
   }
 }

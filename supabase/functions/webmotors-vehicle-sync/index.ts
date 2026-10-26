@@ -1,3 +1,4 @@
+import { parseWebmotorsAnuncioSnBody } from "../_shared/webmotors-anuncio-sn.ts";
 import { runWebmotorsVehicleSync } from "../_shared/webmotors-vehicle-sync-run.ts";
 import {
   jsonResponse,
@@ -15,7 +16,11 @@ Deno.serve(async (req) => {
     const veiculoId = String(body?.veiculo_id ?? "");
     if (!veiculoId) throw new Error("veiculo_id obrigatório");
     const admin = webmotorsAdminClient();
-    const result = await runWebmotorsVehicleSync(admin, { userId: user.id, veiculoId });
+    const result = await runWebmotorsVehicleSync(admin, {
+      userId: user.id,
+      veiculoId,
+      anuncioSn: parseWebmotorsAnuncioSnBody(body?.anuncio_sn),
+    });
     return jsonResponse({ success: result.ok, ...result }, result.ok ? 200 : 422);
   } catch (e) {
     return jsonResponse({ success: false, error: (e as Error).message }, 500);

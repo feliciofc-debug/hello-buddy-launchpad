@@ -1,20 +1,32 @@
 import {
+  type WebmotorsAmbiente,
+  webmotorsEndpoint,
   WM_CODIGOS_MOTOS_NS,
   WM_ESTOQUE_MOTOS_NS,
-  webmotorsEndpoint,
-  type WebmotorsAmbiente,
 } from "./webmotors-endpoints.ts";
 import {
   escapeXml,
+  parseSoapFault,
   soapPost,
   xmlAllBlocks,
   xmlFirstText,
-  parseSoapFault,
+  stripWebmotorsNestedOpcionalXml,
+  xmlLastText,
+  xmlPrincipalCodigoRetorno,
+  xmlPrincipalFirstText,
 } from "./webmotors-soap-client.ts";
-import { isWebmotorsSuccess, webmotorsCodigoRetornoMessage } from "./webmotors-errors.ts";
+import {
+  isWebmotorsSuccess,
+  webmotorsCodigoRetornoMessage,
+} from "./webmotors-errors.ts";
 import type { WmCatalogItem } from "./webmotors-car-api.ts";
 
-function parseCatalogItems(xml: string, blockTag: string, codigoTag: string, nomeTag: string): WmCatalogItem[] {
+function parseCatalogItems(
+  xml: string,
+  blockTag: string,
+  codigoTag: string,
+  nomeTag: string,
+): WmCatalogItem[] {
   const blocks = xmlAllBlocks(xml, blockTag);
   const out: WmCatalogItem[] = [];
   for (const b of blocks) {
@@ -28,10 +40,19 @@ function parseCatalogItems(xml: string, blockTag: string, codigoTag: string, nom
   return out;
 }
 
-function assertSoapOk(xml: string): void {
+function wmMotoOperationCodigoRetorno(
+  xml: string,
+  operation: string,
+): string | null {
+  return xmlPrincipalCodigoRetorno(xml, `${operation}Result`);
+}
+
+function assertSoapOk(xml: string, resultTag?: string): void {
   const fault = parseSoapFault(xml);
   if (fault) throw new Error("Erro ao consultar a Webmotors. Tente novamente.");
-  const codigo = xmlFirstText(xml, "CodigoRetorno");
+  const codigo = resultTag
+    ? xmlPrincipalCodigoRetorno(xml, resultTag)
+    : xmlLastText(stripWebmotorsNestedOpcionalXml(xml), "CodigoRetorno");
   if (codigo && !isWebmotorsSuccess(codigo)) {
     throw new Error(webmotorsCodigoRetornoMessage(codigo));
   }
@@ -44,8 +65,7 @@ async function codigosCall(
   innerParams: string,
 ): Promise<string> {
   const url = webmotorsEndpoint(ambiente, "codigos_motos");
-  const body =
-    `<${operation} xmlns="${WM_CODIGOS_MOTOS_NS}">` +
+  const body = `<${operation} xmlns="${WM_CODIGOS_MOTOS_NS}">` +
     `<hashAutenticacao>${escapeXml(hash)}</hashAutenticacao>` +
     innerParams +
     `</${operation}>`;
@@ -63,8 +83,7 @@ async function estoqueMotosCall(
   innerParams: string,
 ): Promise<string> {
   const url = webmotorsEndpoint(ambiente, "estoque_motos");
-  const body =
-    `<${operation} xmlns="${WM_ESTOQUE_MOTOS_NS}">` +
+  const body = `<${operation} xmlns="${WM_ESTOQUE_MOTOS_NS}">` +
     `<hashAutenticacao>${escapeXml(hash)}</hashAutenticacao>` +
     innerParams +
     `</${operation}>`;
@@ -88,7 +107,9 @@ export async function wmObterModeloMotos(
   ambiente: WebmotorsAmbiente,
   hash: string,
   codigoMarca: number,
-): Promise<Array<WmCatalogItem & { estilo?: string | null; anosXml?: string }>> {
+): Promise<
+  Array<WmCatalogItem & { estilo?: string | null; anosXml?: string }>
+> {
   const end = new Date();
   const start = new Date("2000-01-01T00:00:00");
   const xml = await codigosCall(
@@ -122,9 +143,19 @@ export async function wmObterModalidadesMotosUsadas(
   ambiente: WebmotorsAmbiente,
   hash: string,
 ): Promise<WmCatalogItem[]> {
-  const xml = await codigosCall(ambiente, hash, "obterModalidadesMotosUsadas", "");
+  const xml = await codigosCall(
+    ambiente,
+    hash,
+    "obterModalidadesMotosUsadas",
+    "",
+  );
   assertSoapOk(xml);
-  return parseCatalogItems(xml, "ModalidadeMotoWM", "CodigoModalidade", "Descricao");
+  return parseCatalogItems(
+    xml,
+    "ModalidadeMotoWM",
+    "CodigoModalidade",
+    "Descricao",
+  );
 }
 
 export type WmMotoAnuncioPayload = {
@@ -177,7 +208,9 @@ function buildMotoAnuncioXml(p: WmMotoAnuncioPayload): string {
     `<TipoAnuncio>${escapeXml(p.TipoAnuncio || "U")}</TipoAnuncio>` +
     `<CodigoSMS>${p.CodigoSMS}</CodigoSMS>` +
     `<TipoConsistencia>${p.TipoConsistencia}</TipoConsistencia>` +
-    (p.EstiloMoto ? `<EstiloMoto>${escapeXml(p.EstiloMoto)}</EstiloMoto>` : "") +
+    (p.EstiloMoto
+      ? `<EstiloMoto>${escapeXml(p.EstiloMoto)}</EstiloMoto>`
+      : "") +
     `</anuncioWM>`;
 }
 
@@ -186,14 +219,30 @@ export async function wmIncluirMoto(
   hash: string,
   anuncio: WmMotoAnuncioPayload,
 ): Promise<{ codigoAnuncio: number; codigoRetorno: string | null }> {
-  const xml = await estoqueMotosCall(ambiente, hash, "incluirMoto", buildMotoAnuncioXml(anuncio));
-  const codigoRetorno = xmlFirstText(xml, "CodigoRetorno");
-  const codigoAnuncioRaw = xmlFirstText(xml, "CodigoAnuncio");
+  const xml = await estoqueMotosCall(
+    ambiente,
+    hash,
+    "incluirMoto",
+    buildMotoAnuncioXml(anuncio),
+  );
+  const codigoRetorno = wmMotoOperationCodigoRetorno(xml, "incluirMoto");
+  const codigoAnuncioRaw = xmlPrincipalFirstText(
+    xml,
+    "incluirMotoResult",
+    "CodigoAnuncio",
+  ) ?? xmlFirstText(xml, "CodigoAnuncio");
+  const codigoAnuncio = Number(codigoAnuncioRaw);
+  const created = Number.isFinite(codigoAnuncio) && codigoAnuncio > 0;
   if (!isWebmotorsSuccess(codigoRetorno)) {
+    if (created) {
+      return {
+        codigoAnuncio,
+        codigoRetorno: codigoRetorno ?? "500",
+      };
+    }
     throw new Error(webmotorsCodigoRetornoMessage(codigoRetorno));
   }
-  const codigoAnuncio = Number(codigoAnuncioRaw);
-  if (!Number.isFinite(codigoAnuncio) || codigoAnuncio <= 0) {
+  if (!created) {
     throw new Error("A Webmotors não retornou o código do anúncio de moto.");
   }
   return { codigoAnuncio, codigoRetorno };
@@ -204,8 +253,13 @@ export async function wmAlterarMoto(
   hash: string,
   anuncio: WmMotoAnuncioPayload,
 ): Promise<void> {
-  const xml = await estoqueMotosCall(ambiente, hash, "alterarMoto", buildMotoAnuncioXml(anuncio));
-  const codigoRetorno = xmlFirstText(xml, "CodigoRetorno");
+  const xml = await estoqueMotosCall(
+    ambiente,
+    hash,
+    "alterarMoto",
+    buildMotoAnuncioXml(anuncio),
+  );
+  const codigoRetorno = wmMotoOperationCodigoRetorno(xml, "alterarMoto");
   if (!isWebmotorsSuccess(codigoRetorno)) {
     throw new Error(webmotorsCodigoRetornoMessage(codigoRetorno));
   }
@@ -224,7 +278,7 @@ export async function wmExcluirMoto(
     `<CodigoAnuncio>${codigoAnuncio}</CodigoAnuncio>` +
       `<MotivoExclusao>${escapeXml(motivo)}</MotivoExclusao>`,
   );
-  const codigoRetorno = xmlFirstText(xml, "CodigoRetorno");
+  const codigoRetorno = wmMotoOperationCodigoRetorno(xml, "excluirMoto");
   if (!isWebmotorsSuccess(codigoRetorno)) {
     throw new Error(webmotorsCodigoRetornoMessage(codigoRetorno));
   }
@@ -243,11 +297,15 @@ export async function wmIncluirFotoMotoBase64(
     `<image>${imageBase64}</image>` +
       `<CodigoAnuncio>${codigoAnuncio}</CodigoAnuncio>`,
   );
-  const codigoRetorno = xmlFirstText(xml, "CodigoRetorno");
+  const codigoRetorno = wmMotoOperationCodigoRetorno(xml, "incluirFotoMoto");
   if (!isWebmotorsSuccess(codigoRetorno)) {
     throw new Error(webmotorsCodigoRetornoMessage(codigoRetorno));
   }
-  const foto = Number(xmlFirstText(xml, "CodigoFoto") ?? "0");
+  const foto = Number(
+    xmlPrincipalFirstText(xml, "incluirFotoMotoResult", "CodigoFoto") ??
+      xmlFirstText(xml, "CodigoFoto") ??
+      "0",
+  );
   if (!Number.isFinite(foto) || foto <= 0) {
     throw new Error("Falha ao enviar foto de moto para a Webmotors.");
   }
@@ -278,14 +336,5 @@ export function parseAnoMotoFromModeloBlock(
       TipoFreio: Number(xmlFirstText(a, "TipoFreio") ?? "0"),
     };
   }
-  const first = anos[0];
-  if (!first) return null;
-  return {
-    NumeroMarchas: Number(xmlFirstText(first, "NumeroMarchas") ?? "0"),
-    TipoRefrigeracao: Number(xmlFirstText(first, "TipoRefrigeracao") ?? "0"),
-    TipoAlimentacao: Number(xmlFirstText(first, "TipoAlimentacao") ?? "0"),
-    TipoMotor: Number(xmlFirstText(first, "TipoMotor") ?? "0"),
-    TipoPartida: Number(xmlFirstText(first, "TipoPartida") ?? "0"),
-    TipoFreio: Number(xmlFirstText(first, "TipoFreio") ?? "0"),
-  };
+  return null;
 }

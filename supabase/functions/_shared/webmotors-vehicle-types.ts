@@ -2,6 +2,7 @@ export type VeiculoEstoqueRow = {
   id: string;
   user_id: string;
   segmento?: string | null;
+  placa?: string | null;
   marca: string;
   modelo: string;
   versao: string | null;
@@ -9,6 +10,7 @@ export type VeiculoEstoqueRow = {
   ano_modelo: number | null;
   km: number | null;
   preco: number | null;
+  preco_de?: number | null;
   cor: string | null;
   combustivel: string | null;
   cambio: string | null;
@@ -24,8 +26,9 @@ export type VeiculoEstoqueRow = {
   status: string;
 };
 
+/** Campos públicos do estoque usados na integração Webmotors (sem chassi/renavam). */
 export const WEBMOTORS_PUBLIC_VEHICLE_SELECT =
-  "id,user_id,segmento,marca,modelo,versao,ano_fabricacao,ano_modelo,km,preco,cor,combustivel,cambio,portas,cilindrada_cc,estilo_moto,partida,refrigeracao,blindado,opcionais,descricao,fotos,status";
+  "id,user_id,segmento,placa,marca,modelo,versao,ano_fabricacao,ano_modelo,km,preco,preco_de,cor,combustivel,cambio,portas,cilindrada_cc,estilo_moto,partida,refrigeracao,blindado,opcionais,descricao,fotos,status";
 
 export type WmBlockingItem = {
   field: string;

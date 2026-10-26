@@ -3,7 +3,13 @@ import {
   webmotorsEndpoint,
   type WebmotorsAmbiente,
 } from "./webmotors-endpoints.ts";
-import { escapeXml, soapPost, xmlFirstText, parseSoapFault } from "./webmotors-soap-client.ts";
+import {
+  escapeXml,
+  parseSoapFault,
+  soapPost,
+  xmlFirstText,
+  xmlPrincipalCodigoRetorno,
+} from "./webmotors-soap-client.ts";
 import { isWebmotorsSuccess, webmotorsCodigoRetornoMessage } from "./webmotors-errors.ts";
 
 export type WebmotorsAuthInput = {
@@ -30,7 +36,7 @@ export async function webmotorsAutenticar(input: WebmotorsAuthInput): Promise<st
   const fault = parseSoapFault(xml);
   if (fault) throw new Error("Falha na autenticação Webmotors. Verifique os dados da loja.");
   const hash = xmlFirstText(xml, "HashAutenticacao");
-  const codigo = xmlFirstText(xml, "CodigoRetorno");
+  const codigo = xmlPrincipalCodigoRetorno(xml, "autenticarResult");
   if (!hash) {
     throw new Error(webmotorsCodigoRetornoMessage(codigo));
   }

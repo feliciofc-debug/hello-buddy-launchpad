@@ -23,16 +23,18 @@ Deno.serve(async (req) => {
   try {
     const { user } = await webmotorsAuthedUser(req);
     if (!user) return jsonResponse({ success: false, error: "Não autenticado" }, 401);
+    const userId = user.id;
     const body = await req.json();
     const kind = String(body?.kind ?? "");
     const admin = webmotorsAdminClient();
-    const { hash, ambiente } = await webmotorsHashForUser(admin, user.id);
+    const { hash, ambiente } = await webmotorsHashForUser(admin, userId);
 
     async function cachedList(key: string, loader: () => Promise<unknown>) {
-      let data = await readCatalogCache(admin, ambiente, key);
+      const scopedKey = `tenant:${userId}:${key}`;
+      let data = await readCatalogCache(admin, ambiente, scopedKey);
       if (!data) {
         data = await loader();
-        await writeCatalogCache(admin, ambiente, key, data);
+        await writeCatalogCache(admin, ambiente, scopedKey, data);
       }
       return data;
     }

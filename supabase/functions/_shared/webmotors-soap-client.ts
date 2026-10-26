@@ -55,20 +55,141 @@ export async function soapPost(options: SoapCallOptions): Promise<string> {
   }
 }
 
+function decodeXmlText(raw: string): string {
+  return raw.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim();
+}
+
+function isSelfClosingTag(openTag: string): boolean {
+  return /\/>\s*$/.test(openTag.trim());
+}
+
+function localTagPattern(localName: string): string {
+  /** Evita casar CodigoAnuncio ao buscar Anuncio, etc. */
+  return `(?:[\\w.-]+:)?${localName}(?![\\w.-])`;
+}
+
+/** Itera elementos (ignora namespace). Self-closing → inner null. Texto com "<" → null. */
+export function xmlEachElementText(
+  xml: string,
+  localName: string,
+  fn: (text: string | null) => void,
+): void {
+  const tag = localTagPattern(localName);
+  const openRe = new RegExp(`<${tag}(\\s[^>]*)?>`, "gi");
+  let m: RegExpExecArray | null;
+  while ((m = openRe.exec(xml)) !== null) {
+    const openTag = m[0];
+    if (isSelfClosingTag(openTag)) {
+      fn(null);
+      continue;
+    }
+    const contentStart = m.index + openTag.length;
+    const closeRe = new RegExp(`<\\/${tag}>`, "i");
+    const slice = xml.slice(contentStart);
+    const closeM = slice.match(closeRe);
+    if (!closeM || closeM.index === undefined) continue;
+    const inner = slice.slice(0, closeM.index);
+    const text = decodeXmlText(inner);
+    if (!text || text.includes("<")) {
+      fn(null);
+      continue;
+    }
+    fn(text);
+  }
+}
+
 /** Extrai texto do primeiro elemento com tag local (ignora namespace). */
 export function xmlFirstText(xml: string, localName: string): string | null {
-  const re = new RegExp(`<(?:[\\w.-]+:)?${localName}[^>]*>([\\s\\S]*?)<\\/(?:[\\w.-]+:)?${localName}>`, "i");
-  const m = xml.match(re);
-  if (!m) return null;
-  return m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim();
+  let first: string | null = null;
+  xmlEachElementText(xml, localName, (text) => {
+    if (first === null && text !== null) first = text;
+  });
+  return first;
+}
+
+export function xmlLastText(xml: string, localName: string): string | null {
+  let last: string | null = null;
+  xmlEachElementText(xml, localName, (text) => {
+    if (text !== null) last = text;
+  });
+  return last;
+}
+
+/** Tenta cada tag em ordem; usa a primeira que retornar blocos. */
+export function xmlAllBlocksPrefer(
+  xml: string,
+  ...localNames: string[]
+): string[] {
+  for (const name of localNames) {
+    const blocks = xmlAllBlocks(xml, name);
+    if (blocks.length > 0) return blocks;
+  }
+  return [];
 }
 
 export function xmlAllBlocks(xml: string, localName: string): string[] {
-  const re = new RegExp(`<(?:[\\w.-]+:)?${localName}[^>]*>([\\s\\S]*?)<\\/(?:[\\w.-]+:)?${localName}>`, "gi");
+  const tag = localTagPattern(localName);
+  const openRe = new RegExp(`<${tag}(\\s[^>]*)?>`, "gi");
   const out: string[] = [];
   let m: RegExpExecArray | null;
-  while ((m = re.exec(xml)) !== null) out.push(m[0]);
+  while ((m = openRe.exec(xml)) !== null) {
+    if (isSelfClosingTag(m[0])) continue;
+    const contentStart = m.index + m[0].length;
+    const closeRe = new RegExp(`<\\/${tag}>`, "i");
+    const slice = xml.slice(contentStart);
+    const closeM = slice.match(closeRe);
+    if (!closeM || closeM.index === undefined) continue;
+    out.push(
+      xml.slice(m.index, contentStart + closeM.index + closeM[0].length),
+    );
+  }
   return out;
+}
+
+export function xmlResultInnerXml(
+  xml: string,
+  resultLocalName: string,
+): string | null {
+  const tag = localTagPattern(resultLocalName);
+  const m = xml.match(
+    new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"),
+  );
+  return m?.[1] ?? null;
+}
+
+/** Remove blocos de opcionais antes de ler CodigoRetorno do Result. */
+export function stripWebmotorsNestedOpcionalXml(xml: string): string {
+  return xml
+    .replace(/<Opcional>[\s\S]*?<\/Opcional>/gi, "")
+    .replace(/<(?:[\w.-]+:)?OpcionalWM\b[^>]*\/>/gi, "")
+    .replace(
+      /<(?:[\w.-]+:)?OpcionalWM\b[^>]*>[\s\S]*?<\/(?:[\w.-]+:)?OpcionalWM>/gi,
+      "",
+    );
+}
+
+/** CodigoRetorno do envelope *Result (ignora vazio/aninhado em OpcionalWM). */
+export function xmlPrincipalCodigoRetorno(
+  xml: string,
+  resultLocalName: string,
+): string | null {
+  const inner = xmlResultInnerXml(xml, resultLocalName);
+  const scope = inner
+    ? stripWebmotorsNestedOpcionalXml(inner)
+    : stripWebmotorsNestedOpcionalXml(xml);
+  return xmlLastText(scope, "CodigoRetorno");
+}
+
+export function xmlPrincipalFirstText(
+  xml: string,
+  resultLocalName: string,
+  fieldLocalName: string,
+): string | null {
+  const inner = xmlResultInnerXml(xml, resultLocalName);
+  const scope = inner
+    ? stripWebmotorsNestedOpcionalXml(inner)
+    : stripWebmotorsNestedOpcionalXml(xml);
+  return xmlFirstText(scope, fieldLocalName);
 }
 
 export function parseSoapFault(xml: string): string | null {

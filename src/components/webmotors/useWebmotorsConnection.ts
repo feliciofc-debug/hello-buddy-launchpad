@@ -6,6 +6,7 @@ export type WebmotorsConnectionStatus = {
   connected: boolean;
   status: string;
   ambiente: "homolog" | "producao";
+  server_environment: "homologacao" | "producao";
   cnpj_masked: string | null;
   integration_email: string | null;
   default_codigo_modalidade: number | null;
@@ -29,6 +30,9 @@ export function useWebmotorsConnection() {
         connected: !!data.connected,
         status: data.status ?? "disconnected",
         ambiente: data.ambiente === "producao" ? "producao" : "homolog",
+        server_environment: data.server_environment === "producao"
+          ? "producao"
+          : "homologacao",
         cnpj_masked: data.cnpj_masked ?? null,
         integration_email: data.integration_email ?? null,
         default_codigo_modalidade: data.default_codigo_modalidade ?? null,
@@ -45,12 +49,14 @@ export function useWebmotorsConnection() {
     cnpj: string;
     integration_email: string;
     password: string;
-    ambiente: "homolog" | "producao";
   }) => {
     setBusy(true);
-    const { data, error } = await supabase.functions.invoke("webmotors-credentials-save", {
-      body: input,
-    });
+    const { data, error } = await supabase.functions.invoke(
+      "webmotors-credentials-save",
+      {
+        body: input,
+      },
+    );
     setBusy(false);
     if (error || !data?.success) {
       toast.error(data?.error ?? "Falha ao salvar credenciais.");
@@ -61,11 +67,11 @@ export function useWebmotorsConnection() {
     return true;
   };
 
-  const testConnection = async (password?: string) => {
+  const testConnection = async () => {
     setBusy(true);
-    const { data, error } = await supabase.functions.invoke("webmotors-test-connection", {
-      body: password ? { password } : {},
-    });
+    const { data, error } = await supabase.functions.invoke(
+      "webmotors-test-connection",
+    );
     setBusy(false);
     if (error || !data?.success) {
       toast.error(data?.error ?? "Falha no teste de conexão.");
@@ -78,7 +84,9 @@ export function useWebmotorsConnection() {
 
   const disconnect = async () => {
     setBusy(true);
-    const { data, error } = await supabase.functions.invoke("webmotors-disconnect");
+    const { data, error } = await supabase.functions.invoke(
+      "webmotors-disconnect",
+    );
     setBusy(false);
     if (error || !data?.success) {
       toast.error(data?.error ?? "Falha ao desconectar.");
@@ -88,5 +96,13 @@ export function useWebmotorsConnection() {
     void refresh();
   };
 
-  return { loading, busy, status, refresh, saveCredentials, testConnection, disconnect };
+  return {
+    loading,
+    busy,
+    status,
+    refresh,
+    saveCredentials,
+    testConnection,
+    disconnect,
+  };
 }

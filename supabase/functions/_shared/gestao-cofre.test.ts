@@ -123,6 +123,7 @@ Deno.test("SEG-DOC — saídas públicas não selecionam renavam ou chassi", asy
     assertEquals(select.includes("renavam"), false);
     assertEquals(select.includes("chassi"), false);
   }
+  assertEquals(WEBMOTORS_PUBLIC_VEHICLE_SELECT.includes("placa"), true);
   const files = [
     "./ml-vehicle-publish-run.ts",
     "./ml-vehicle-sync-run.ts",
