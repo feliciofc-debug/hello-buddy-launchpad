@@ -30,6 +30,12 @@ Deno.test("DOC-0.3 — cancelar limpa todas as pendências da foto", () => {
       photos: [{ id: "vehicle" }],
       created_at: "2026-10-26T22:50:00.000Z",
     },
+    vehicle: {
+      pending_vehicle_photo_batch: {
+        photos: [{ id: "vehicle-namespaced" }],
+        created_at: "2026-10-26T22:50:00.000Z",
+      },
+    },
     general: {
       pending_single_photo: {
         media_id: "general",
@@ -46,6 +52,7 @@ Deno.test("DOC-0.3 — cancelar limpa todas as pendências da foto", () => {
         root: { route: "geral" },
         general: { route: "geral" },
         vehicle: { route: "veiculo" },
+        "vehicle-namespaced": { route: "veiculo" },
         choice: { route: "incerto" },
         keep: { route: "geral" },
       },
@@ -56,6 +63,7 @@ Deno.test("DOC-0.3 — cancelar limpa todas as pendências da foto", () => {
   assertEquals(result.state.pending_single_photo, null);
   assertEquals(result.state.general?.pending_single_photo, null);
   assertEquals(result.state.pending_vehicle_photo_batch, null);
+  assertEquals(result.state.vehicle?.pending_vehicle_photo_batch, null);
   assertEquals(result.state.vertical_router?.pending_choice, null);
   assertEquals(result.state.vertical_router?.media_routes, {
     keep: { route: "geral" },
@@ -110,6 +118,11 @@ Deno.test("DOC-0.3 — descrição removida ou portão de documento nunca reapar
 
 Deno.test("DOC-0.3 — mensagem alheia repete confirmação no máximo uma vez", () => {
   assertEquals(isUnrelatedPhotoConfirmationMessage("Boa noite"), true);
+  assertEquals(
+    isUnrelatedPhotoConfirmationMessage("Quero consultar outro assunto"),
+    true,
+  );
+  assertEquals(isUnrelatedPhotoConfirmationMessage("   "), false);
   const first = nextPhotoConfirmationReprompt({
     media_id: "photo",
     stage: "confirm_vision",

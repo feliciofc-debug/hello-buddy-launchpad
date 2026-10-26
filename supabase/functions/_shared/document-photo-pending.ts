@@ -23,8 +23,7 @@ export function isDocumentPhotoCancellation(text: string): boolean {
 }
 
 export function isUnrelatedPhotoConfirmationMessage(text: string): boolean {
-  return /^(?:oi|ola|bom dia|boa tarde|boa noite|obrigad[oa]|valeu|tudo bem)(?:\s.*)?$/
-    .test(normalize(text));
+  return normalize(text).length > 0;
 }
 
 function record(value: unknown): Record<string, unknown> | null {

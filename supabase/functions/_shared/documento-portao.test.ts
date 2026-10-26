@@ -3,6 +3,7 @@ import {
   assertRejects,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  deveBloquearDocumentoParceiro,
   DOCUMENTO_CLIENTE_RESPOSTA,
   isDocumentoGateCandidate,
   respostaCrlvWhatsApp,
@@ -167,6 +168,20 @@ Deno.test("DOC-0 — tipos do detector mapeiam para o cofre", () => {
 });
 
 Deno.test("DOC-0.1 — parceiro roda antes do portão geral e continua protegido", async () => {
+  assertEquals(
+    deveBloquearDocumentoParceiro({
+      documento: false,
+      possivel_documento: true,
+    }),
+    false,
+  );
+  assertEquals(
+    deveBloquearDocumentoParceiro({
+      documento: true,
+      possivel_documento: false,
+    }),
+    true,
+  );
   const source = await Deno.readTextFile(
     new URL("../whatsapp-cloud-inbound-processor/index.ts", import.meta.url),
   );
@@ -178,6 +193,20 @@ Deno.test("DOC-0.1 — parceiro roda antes do portão geral e continua protegido
   assertEquals(
     flow.indexOf("isProtectedDocument: async") > partner,
     true,
+  );
+  assertEquals(
+    flow.indexOf("deveBloquearDocumentoParceiro(checked)") > partner,
+    true,
+  );
+  assertEquals(
+    flow.includes("checked.documento || checked.possivel_documento"),
+    false,
+  );
+  assertEquals(
+    flow.includes(
+      "partnerChecked?.possivel_documento ? partnerChecked : null",
+    ),
+    false,
   );
   const generalGate = flow.indexOf(
     "// DOC-0 — portão local ANTES das demais rotas",

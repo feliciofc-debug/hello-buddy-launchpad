@@ -14,6 +14,14 @@ export type DocumentoPortaoResultado = {
   tipo: "crlv" | "cnh" | "rg" | "outro" | null;
 };
 
+export function deveBloquearDocumentoParceiro(
+  resultado: Pick<DocumentoPortaoResultado, "documento" | "possivel_documento">,
+): boolean {
+  // Com cotação ativa, mídia apenas suspeita ainda precisa chegar ao fluxo de
+  // orçamento. Somente um documento oficialmente reconhecido fica bloqueado.
+  return resultado.documento;
+}
+
 export function isDocumentoGateCandidate(media: MediaExtract): boolean {
   return media.kind === "image" ||
     (media.kind === "document" &&

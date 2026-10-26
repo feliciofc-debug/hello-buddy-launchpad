@@ -128,7 +128,13 @@ def _detect_image(image: Image.Image) -> tuple[bool, str | None, bool]:
     text_lines = [line for line in text.splitlines() if line.strip()]
     possivel = (
         not documento and
-        (len(text_lines) >= 25 or _possible_document_background(oriented))
+        (
+            len(text_lines) >= 25 or
+            (
+                len(text_lines) >= 8 and
+                _possible_document_background(oriented)
+            )
+        )
     )
     return documento, tipo, possivel
 

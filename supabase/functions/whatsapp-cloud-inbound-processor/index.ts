@@ -178,6 +178,7 @@ function getTenantOwnersForCtx(userId: string): string[] {
 import { downloadAllMediaDetailed, type MediaExtract, type MediaRejection } from "../_shared/whatsapp-media.ts";
 import { extractDocumentText } from "../_shared/document-extract.ts";
 import {
+  deveBloquearDocumentoParceiro,
   DOCUMENTO_CLIENTE_RESPOSTA,
   DOCUMENTO_DETECTOR_INDISPONIVEL,
   isDocumentoGateCandidate,
@@ -20281,8 +20282,8 @@ async function callGemini(
     if (
       remetenteEhDono &&
       pendingSinglePhoto?.stage === "confirm_vision" &&
+      !pendingSinglePhoto.awaiting_correction &&
       !ownerPhotoConfirmChoice &&
-      !/<<INTERACTIVE_ID:/i.test(userContent) &&
       isUnrelatedPhotoConfirmationMessage(userContent)
     ) {
       const decision = nextPhotoConfirmationReprompt(
@@ -25791,7 +25792,7 @@ async function processOne(queueId: string) {
           isProtectedDocument: async (candidate) => {
             const checked = await verificarDocumentoNoPortao(candidate);
             partnerChecks[0] = checked;
-            return checked.documento || checked.possivel_documento;
+            return deveBloquearDocumentoParceiro(checked);
           },
         });
         if (osParceiroMedia.handled) {
@@ -25817,14 +25818,13 @@ async function processOne(queueId: string) {
       | null = partnerChecked?.documento ? partnerChecked : null;
     let possibleDocument:
       | Awaited<ReturnType<typeof verificarDocumentoNoPortao>>
-      | null = partnerChecked?.possivel_documento ? partnerChecked : null;
+      | null = null;
     for (const candidate of gateCandidates) {
       if (detectedDocument || possibleDocument) break;
-      if (
-        partnerChecked?.media === candidate &&
-        !partnerChecked.documento &&
-        !partnerChecked.possivel_documento
-      ) continue;
+      // O callback do parceiro só roda quando há cotação ativa. Se a mídia não
+      // foi reconhecida, inclusive quando ficou apenas "possível", ela pertence
+      // ao fluxo de orçamento e não passa novamente pela trava geral.
+      if (partnerChecked?.media === candidate) continue;
       try {
         const checked = await verificarDocumentoNoPortao(candidate);
         if (checked.documento) {
