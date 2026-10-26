@@ -17,7 +17,10 @@ except ModuleNotFoundError:
     OCR_RUNTIME_AVAILABLE = False
 
 
-def synthetic_old_crlv() -> Image.Image:
+def synthetic_old_crlv(
+    rotation: int = 90,
+    jpeg_quality: int = 58,
+) -> Image.Image:
     width, height = 1280, 820
     image = Image.new("RGB", (width, height), "#bad5b1")
     draw = ImageDraw.Draw(image)
@@ -56,9 +59,19 @@ def synthetic_old_crlv() -> Image.Image:
     noise = np.random.default_rng(42).normal(0, 7, array.shape).astype(np.int16)
     array = np.clip(array.astype(np.int16) + noise, 0, 255).astype(np.uint8)
     low = cv2.resize(array, (704, 451), interpolation=cv2.INTER_AREA)
-    rotated = cv2.rotate(low, cv2.ROTATE_90_CLOCKWISE)
+    rotations = {
+        0: low,
+        90: cv2.rotate(low, cv2.ROTATE_90_CLOCKWISE),
+        180: cv2.rotate(low, cv2.ROTATE_180),
+        270: cv2.rotate(low, cv2.ROTATE_90_COUNTERCLOCKWISE),
+    }
+    rotated = rotations[rotation]
     encoded = io.BytesIO()
-    Image.fromarray(rotated).save(encoded, format="JPEG", quality=58)
+    Image.fromarray(rotated).save(
+        encoded,
+        format="JPEG",
+        quality=jpeg_quality,
+    )
     return Image.open(io.BytesIO(encoded.getvalue())).convert("RGB")
 
 
@@ -102,21 +115,31 @@ class OcrEngineTest(unittest.TestCase):
         "teste real roda na imagem Docker com os modelos locais",
     )
     def test_real_paddle_reads_rotated_noisy_green_crlv(self) -> None:
-        started = time.monotonic()
-        result = recognize_crlv_image(
-            synthetic_old_crlv(),
-            timeout_seconds=25,
-        )
-        fields = valid_crlv_fields(result.text)
-        self.assertIn("placa", fields)
-        self.assertIn("chassi", fields)
-        self.assertLess(time.monotonic() - started, 25)
+        measurements: list[int] = []
+        engines: set[str] = set()
+        variants: set[str] = set()
+        for rotation, quality in ((90, 58), (0, 52), (270, 64)):
+            with self.subTest(rotation=rotation, quality=quality):
+                started = time.monotonic()
+                result = recognize_crlv_image(
+                    synthetic_old_crlv(rotation, quality),
+                    timeout_seconds=25,
+                )
+                fields = valid_crlv_fields(result.text)
+                self.assertIn("placa", fields)
+                self.assertIn("chassi", fields)
+                self.assertLess(time.monotonic() - started, 25)
+                measurements.append(result.metrics.tempo_ms)
+                engines.add(result.metrics.motor)
+                variants.add(result.metrics.variante_vencedora)
+        average_ms = round(sum(measurements) / len(measurements))
         print(
             "OCR_SYNTHETIC_METRICS "
-            f"engine={result.metrics.motor} "
-            f"variant={result.metrics.variante_vencedora} "
-            f"elapsed_ms={result.metrics.tempo_ms} "
-            f"valid_fields={result.metrics.n_campos_validos}"
+            f"runs={len(measurements)} "
+            f"engines={','.join(sorted(engines))} "
+            f"variants={','.join(sorted(variants))} "
+            f"average_ms={average_ms} "
+            f"samples_ms={','.join(str(value) for value in measurements)}"
         )
 
 
