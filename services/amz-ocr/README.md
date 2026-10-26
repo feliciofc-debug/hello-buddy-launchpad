@@ -94,3 +94,7 @@ O portão reconhece somente títulos oficiais de CRLV/CRLV-e, CNH, RG, ATPV-e e
 procuração de veículo, ou uma combinação institucional forte com padrão válido.
 Orçamentos, DANFE/NF-e, boletos, folhetos, anúncios e pedidos de identidade
 visual não são classificados como documentos protegidos.
+
+O botão **Completar pela Molicar** da tela de conferência depende da implantação
+da Edge Function `molicar-consulta` do MOLICAR-1. Sem uma conta Molicar ativa
+para a loja, a leitura local e a digitação manual continuam funcionando.

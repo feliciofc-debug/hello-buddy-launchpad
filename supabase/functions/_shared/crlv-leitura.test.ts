@@ -76,6 +76,42 @@ Deno.test({
 });
 
 Deno.test({
+  name: "DOC-1.2 — métricas recusam variante livre antes da auditoria",
+  permissions: { env: true },
+  fn: async () => {
+    const oldUrl = Deno.env.get("AMZ_OCR_URL");
+    const oldToken = Deno.env.get("AMZ_OCR_TOKEN");
+    Deno.env.set("AMZ_OCR_URL", "http://127.0.0.1:3011/ocr");
+    Deno.env.set("AMZ_OCR_TOKEN", "token-sintetico");
+    try {
+      const result = await lerCrlvLocal(
+        new Uint8Array([1]),
+        "image/jpeg",
+        "metrica-sintetica.jpg",
+        (() =>
+          Promise.resolve(
+            new Response(JSON.stringify({
+              text: OCR_SINTETICO,
+              metrics: {
+                motor: "paddleocr",
+                variante_vencedora: "PLACA ABC1D23",
+                tempo_ms: 10,
+                n_campos_validos: 3,
+              },
+            })),
+          )) as typeof fetch,
+      );
+      assertEquals(result.metricas_ocr, null);
+    } finally {
+      if (oldUrl == null) Deno.env.delete("AMZ_OCR_URL");
+      else Deno.env.set("AMZ_OCR_URL", oldUrl);
+      if (oldToken == null) Deno.env.delete("AMZ_OCR_TOKEN");
+      else Deno.env.set("AMZ_OCR_TOKEN", oldToken);
+    }
+  },
+});
+
+Deno.test({
   name: "DOC-1.2 — OCR vazio abre conferência para digitação manual",
   permissions: { env: true },
   fn: async () => {

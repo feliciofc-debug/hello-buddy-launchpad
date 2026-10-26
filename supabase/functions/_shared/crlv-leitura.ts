@@ -49,20 +49,31 @@ export type CrlvOcrMetricas = {
   n_campos_validos: number;
 };
 
+const OCR_VARIANTS = new Set([
+  "pagina_cor",
+  "pagina_clahe",
+  "pagina_sem_fundo",
+  "pagina_adaptativa",
+  "perspectiva_cor",
+  "perspectiva_clahe",
+  "perspectiva_sem_fundo",
+  "perspectiva_adaptativa",
+]);
+
 function sanitizeOcrMetrics(value: unknown): CrlvOcrMetricas | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const raw = value as Record<string, unknown>;
   const motor = raw.motor === "paddleocr" || raw.motor === "tesseract"
     ? raw.motor
     : null;
-  const variante = String(raw.variante_vencedora ?? "").slice(0, 80);
+  const variante = String(raw.variante_vencedora ?? "");
   const tempo = Math.max(0, Math.min(25_000, Math.round(Number(raw.tempo_ms))));
   const fields = Math.max(
     0,
     Math.min(3, Math.round(Number(raw.n_campos_validos))),
   );
   if (
-    !motor || !variante || !Number.isFinite(tempo) ||
+    !motor || !OCR_VARIANTS.has(variante) || !Number.isFinite(tempo) ||
     !Number.isFinite(fields)
   ) return null;
   return {
