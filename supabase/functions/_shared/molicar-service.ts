@@ -18,31 +18,32 @@ import {
 
 type Db = SupabaseClient<any, "public", any>;
 
-type Conta = {
+export type MolicarConta = {
   client_id: string;
   client_secret_enc: string;
   status: string;
   limite_mensal: number;
   atualizar_preco_dias: number;
+  procedencia_automatica_troca?: boolean;
   access_token_enc: string | null;
   token_expires_at: string | null;
 };
 
-async function loadConta(db: Db, userId: string): Promise<Conta | null> {
+async function loadConta(db: Db, userId: string): Promise<MolicarConta | null> {
   const { data, error } = await db.from("gestao_molicar_conta")
     .select(
-      "client_id, client_secret_enc, status, limite_mensal, atualizar_preco_dias, access_token_enc, token_expires_at",
+      "client_id, client_secret_enc, status, limite_mensal, atualizar_preco_dias, procedencia_automatica_troca, access_token_enc, token_expires_at",
     )
     .eq("user_id", userId)
     .maybeSingle();
   if (error) throw error;
-  return data as Conta | null;
+  return data as MolicarConta | null;
 }
 
-async function resolveConta(
+export async function resolveMolicarConta(
   db: Db,
   userId: string,
-): Promise<{ conta: Conta; credentials: MolicarCredentials }> {
+): Promise<{ conta: MolicarConta; credentials: MolicarCredentials }> {
   let conta = await loadConta(db, userId);
   if (conta?.status === "active") {
     return {
@@ -73,7 +74,7 @@ async function resolveConta(
   return { conta, credentials: fallback };
 }
 
-async function persistedToken(conta: Conta): Promise<MolicarToken | null> {
+async function persistedToken(conta: MolicarConta): Promise<MolicarToken | null> {
   if (!conta.access_token_enc || !conta.token_expires_at) return null;
   try {
     return {
@@ -85,10 +86,10 @@ async function persistedToken(conta: Conta): Promise<MolicarToken | null> {
   }
 }
 
-async function tokenProvider(
+export async function molicarTokenProvider(
   db: Db,
   userId: string,
-  conta: Conta,
+  conta: MolicarConta,
   credentials: MolicarCredentials,
 ) {
   return async (forceRefresh: boolean) =>
@@ -233,7 +234,7 @@ export async function runMolicarConsulta(db: Db, userId: string, input: {
   force?: unknown;
 }) {
   const identity = normalizeMolicarIdentity(input);
-  const { conta, credentials } = await resolveConta(db, userId);
+  const { conta, credentials } = await resolveMolicarConta(db, userId);
   const cached = await findCache(db, userId, identity);
   if (
     cached && input.force !== true &&
@@ -269,7 +270,7 @@ export async function runMolicarConsulta(db: Db, userId: string, input: {
   try {
     result = await molicarVehicleQuery({
       ...identity,
-      getToken: await tokenProvider(db, userId, conta, credentials),
+      getToken: await molicarTokenProvider(db, userId, conta, credentials),
     });
   } catch (error) {
     if (shouldRefundMolicarQuota(error)) {

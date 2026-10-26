@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { useGestaoMolicarConnection } from "@/components/integracoes/useGestaoMolicarConnection";
 
 type Props = {
@@ -19,12 +20,14 @@ export function MolicarIntegrationCard({ embedInGestao, onConnectSuccess }: Prop
   const [clientSecret, setClientSecret] = useState("");
   const [limiteMensal, setLimiteMensal] = useState("50");
   const [atualizarPrecoDias, setAtualizarPrecoDias] = useState("7");
+  const [procedenciaAutomatica, setProcedenciaAutomatica] = useState(false);
 
   useEffect(() => {
     if (!status) return;
     setClientId(status.client_id ?? "");
     setLimiteMensal(String(status.limite_mensal));
     setAtualizarPrecoDias(String(status.atualizar_preco_dias));
+    setProcedenciaAutomatica(status.procedencia_automatica_troca);
   }, [status]);
 
   if (loading) {
@@ -64,11 +67,18 @@ export function MolicarIntegrationCard({ embedInGestao, onConnectSuccess }: Prop
       ...credentials,
       limite_mensal: monthlyLimit,
       atualizar_preco_dias: refreshDays,
+      procedencia_automatica_troca: procedenciaAutomatica,
     });
     if (!saved) return;
 
     setClientSecret("");
     if (!wasConnected) onConnectSuccess?.();
+  };
+
+  const handleAutomaticChange = async (checked: boolean) => {
+    setProcedenciaAutomatica(checked);
+    const saved = await save({ procedencia_automatica_troca: checked });
+    if (!saved) setProcedenciaAutomatica(!checked);
   };
 
   return (
@@ -95,6 +105,24 @@ export function MolicarIntegrationCard({ embedInGestao, onConnectSuccess }: Prop
       </CardHeader>
 
       <CardContent className="space-y-4">
+        <div className="flex items-center justify-between gap-4 rounded-md border p-3">
+          <div>
+            <Label htmlFor="molicar-procedencia-automatica">
+              Consultar procedência ao abrir uma troca
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              Desligado por padrão. Quando ativo, dispara os três serviços somente se ainda
+              não houver consulta.
+            </p>
+          </div>
+          <Switch
+            id="molicar-procedencia-automatica"
+            checked={procedenciaAutomatica}
+            onCheckedChange={(checked) => void handleAutomaticChange(checked)}
+            disabled={busy || !connected}
+          />
+        </div>
+
         <div className="rounded-md border p-3 text-sm">
           <span className="text-muted-foreground">Consumo no mês atual: </span>
           <strong>

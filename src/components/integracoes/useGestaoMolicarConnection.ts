@@ -8,6 +8,7 @@ export type GestaoMolicarStatus = {
   limite_mensal: number;
   atualizar_preco_dias: number;
   consultas_mes: number;
+  procedencia_automatica_troca: boolean;
 };
 
 export type GestaoMolicarCredentials = {
@@ -15,9 +16,10 @@ export type GestaoMolicarCredentials = {
   client_secret: string;
 };
 
-export type GestaoMolicarSettings = GestaoMolicarCredentials & {
-  limite_mensal: number;
-  atualizar_preco_dias: number;
+export type GestaoMolicarSettings = Partial<GestaoMolicarCredentials> & {
+  limite_mensal?: number;
+  atualizar_preco_dias?: number;
+  procedencia_automatica_troca?: boolean;
 };
 
 export function useGestaoMolicarConnection() {
@@ -45,6 +47,8 @@ export function useGestaoMolicarConnection() {
         data.usado_mes ?? data.consultas_mes ?? data.consumo_mes_atual ??
           data.consumo_mes ?? 0,
       ),
+      procedencia_automatica_troca:
+        data.procedencia_automatica_troca === true,
     });
     setLoading(false);
   }, []);

@@ -15,7 +15,7 @@ Deno.serve(async (req) => {
     const db = molicarAdminClient();
     const { data: conta, error } = await db.from("gestao_molicar_conta")
       .select(
-        "client_id, client_secret_ultimos4, status, limite_mensal, atualizar_preco_dias, last_test_ok_at, updated_at",
+        "client_id, client_secret_ultimos4, status, limite_mensal, atualizar_preco_dias, procedencia_automatica_troca, last_test_ok_at, updated_at",
       )
       .eq("user_id", user.id)
       .maybeSingle();
@@ -37,6 +37,8 @@ Deno.serve(async (req) => {
       limite_mensal: conta?.limite_mensal ?? null,
       usado_mes: quota?.usado ?? 0,
       atualizar_preco_dias: conta?.atualizar_preco_dias ?? null,
+      procedencia_automatica_troca:
+        conta?.procedencia_automatica_troca ?? false,
       last_test_ok_at: conta?.last_test_ok_at ?? null,
       updated_at: conta?.updated_at ?? null,
     });

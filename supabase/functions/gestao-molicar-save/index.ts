@@ -18,6 +18,28 @@ Deno.serve(async (req) => {
     const clientSecret = String(body?.client_secret || "");
     const limite = Math.floor(Number(body?.limite_mensal ?? 50));
     const staleDays = Math.floor(Number(body?.atualizar_preco_dias ?? 7));
+    const automaticProcedence = body?.procedencia_automatica_troca === true;
+    const db = molicarAdminClient();
+    if (
+      !body?.client_id && !body?.client_secret &&
+      body?.procedencia_automatica_troca !== undefined
+    ) {
+      const { data, error } = await db.from("gestao_molicar_conta").update({
+        procedencia_automatica_troca: automaticProcedence,
+        updated_at: new Date().toISOString(),
+      }).eq("user_id", user.id).select("user_id").maybeSingle();
+      if (error || !data) {
+        throw new Error(
+          "Conecte a Molicar antes de alterar esta configuração.",
+        );
+      }
+      return molicarJson({
+        success: true,
+        message: automaticProcedence
+          ? "Consulta automática de procedência ativada."
+          : "Consulta automática de procedência desativada.",
+      });
+    }
     if (clientId.length < 3) throw new Error("Informe o client_id da Molicar.");
     if (clientSecret.length < 8) {
       throw new Error("Informe o client_secret da Molicar.");
@@ -29,7 +51,6 @@ Deno.serve(async (req) => {
       throw new Error("Prazo de atualização inválido.");
     }
 
-    const db = molicarAdminClient();
     const { error } = await db.from("gestao_molicar_conta").upsert({
       user_id: user.id,
       client_id: clientId,
@@ -38,6 +59,7 @@ Deno.serve(async (req) => {
       status: "active",
       limite_mensal: limite,
       atualizar_preco_dias: staleDays,
+      procedencia_automatica_troca: automaticProcedence,
       access_token_enc: null,
       token_expires_at: null,
       updated_at: new Date().toISOString(),

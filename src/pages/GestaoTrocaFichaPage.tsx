@@ -103,6 +103,9 @@ import {
 } from "@/components/ui/select";
 import { MolicarPriceCard } from "@/components/gestao/MolicarPriceCard.tsx";
 import { useMolicarConsulta } from "@/components/gestao/useMolicarConsulta.ts";
+import { MolicarProcedenciaCard } from "@/components/gestao/MolicarProcedenciaCard.tsx";
+import { useMolicarProcedencia } from "@/components/gestao/useMolicarProcedencia.ts";
+import { useGestaoMolicarConnection } from "@/components/integracoes/useGestaoMolicarConnection.ts";
 
 export default function GestaoTrocaFichaPage() {
   const { id } = useParams<{ id: string }>();
@@ -173,6 +176,12 @@ export default function GestaoTrocaFichaPage() {
     trocaId: id,
     origem: "troca",
     enabled: !!troca && !!userId,
+  });
+  const molicarConnection = useGestaoMolicarConnection();
+  const molicarProcedencia = useMolicarProcedencia({
+    placa: troca?.placa,
+    trocaId: id,
+    enabled: !!troca,
   });
 
   const applyTrocaRow = (row: GestaoTrocaRow) => {
@@ -535,6 +544,7 @@ export default function GestaoTrocaFichaPage() {
       laudo19Pdf,
       espFaixas,
       molicar.snapshot,
+      molicarProcedencia.rows,
     );
   };
 
@@ -826,6 +836,17 @@ export default function GestaoTrocaFichaPage() {
           title="Referências Molicar da troca"
           disabled={busy || !troca.placa}
           onUpdate={() => void molicar.consultar()}
+        />
+
+        <MolicarProcedenciaCard
+          placa={troca.placa}
+          trocaId={id}
+          c2b={molicar.snapshot?.c2b}
+          enabled
+          automatic={
+            molicarConnection.status?.procedencia_automatica_troca === true
+          }
+          controller={molicarProcedencia}
         />
 
         <section className="space-y-3 rounded-lg border bg-white p-4 dark:bg-gray-950">

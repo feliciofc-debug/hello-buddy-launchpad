@@ -65,6 +65,7 @@ import {
 } from "../../../../supabase/functions/_shared/troca-venda-calc.ts";
 import { MolicarPriceCard } from "@/components/gestao/MolicarPriceCard.tsx";
 import { useMolicarConsulta } from "@/components/gestao/useMolicarConsulta.ts";
+import { MolicarProcedenciaCard } from "@/components/gestao/MolicarProcedenciaCard.tsx";
 
 type TrocaDisponivel = {
   id: string;
@@ -729,6 +730,13 @@ export function GestaoVeiculoDrawer({ open, veiculo, userId, focusVenda, onClose
               error={molicar.error}
               disabled={!veiculo.placa}
               onUpdate={() => void molicar.consultar()}
+            />
+
+            <MolicarProcedenciaCard
+              placa={veiculo.placa}
+              veiculoId={veiculo.id}
+              c2b={molicar.snapshot?.c2b}
+              enabled={open}
             />
 
             <GestaoVeiculoProcedenciaPanel

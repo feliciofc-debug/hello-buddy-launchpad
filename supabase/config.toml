@@ -417,6 +417,15 @@ verify_jwt = true
 [functions.molicar-refresh]
 verify_jwt = false
 
+[functions.molicar-procedencia]
+verify_jwt = true
+
+[functions.molicar-procedencia-webhook]
+verify_jwt = false
+
+[functions.molicar-procedencia-poll]
+verify_jwt = false
+
 [functions.gestao-molicar-status]
 verify_jwt = true
 
