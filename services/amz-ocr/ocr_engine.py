@@ -190,7 +190,12 @@ def _osd_oriented(image: np.ndarray) -> np.ndarray:
         if angle == 270:
             return cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
     except Exception:
-        pass
+        # Fotos de CRLV antigo são paisagem. Quando o OSD não reúne confiança
+        # suficiente (comum em JPEG pequeno), o formato vertical denuncia a
+        # rotação de 90° usada no teste e em fotos de celular sem EXIF.
+        height, width = image.shape[:2]
+        if height > width * 1.15:
+            return cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
     return image
 
 

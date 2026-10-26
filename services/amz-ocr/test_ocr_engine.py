@@ -16,6 +16,7 @@ try:
         _paddle_input,
         _paddle_reader,
         _run_variants,
+        _osd_oriented,
         preprocessing_variants,
         recognize_crlv_image,
         valid_crlv_fields,
@@ -89,6 +90,15 @@ def synthetic_old_crlv(
     "dependências OCR são instaladas na imagem Docker",
 )
 class OcrEngineTest(unittest.TestCase):
+    def test_osd_fallback_rotates_portrait_document(self) -> None:
+        portrait = np.zeros((1400, 500, 3), dtype=np.uint8)
+        with unittest.mock.patch(
+            "ocr_engine.pytesseract.image_to_osd",
+            side_effect=RuntimeError("sem confiança"),
+        ):
+            oriented = _osd_oriented(portrait)
+        self.assertEqual(oriented.shape[:2], (500, 1400))
+
     def test_parser_selects_valid_fields_instead_of_longest_text(self) -> None:
         image = synthetic_old_crlv()
         responses = iter(
