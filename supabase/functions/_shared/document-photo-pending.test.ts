@@ -127,11 +127,11 @@ Deno.test("DOC-0.3 — processor limpa antes de re-perguntar e antes de tratar d
   const earlyCleanup = source.indexOf(
     "// DOC-0.3 — limpa foto presa antes de qualquer atalho ou re-pergunta.",
   );
-  const confirmation = source.indexOf(
-    'pendingSinglePhoto?.stage === "confirm_vision"',
+  const agentCall = source.lastIndexOf(
+    "const aiResult = await callGemini(",
   );
   assertEquals(earlyCleanup >= 0, true);
-  assertEquals(earlyCleanup < confirmation, true);
+  assertEquals(earlyCleanup < agentCall, true);
   assertEquals(source.includes('const reply = "Ok, cancelado."'), true);
   assertEquals(
     source.includes(
