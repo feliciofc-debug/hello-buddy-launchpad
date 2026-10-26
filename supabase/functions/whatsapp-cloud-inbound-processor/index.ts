@@ -186,6 +186,11 @@ import {
   verificarDocumentoNoPortao,
 } from "../_shared/documento-portao.ts";
 import {
+  cleanupDocumentPhotoPending,
+  isUnrelatedPhotoConfirmationMessage,
+  nextPhotoConfirmationReprompt,
+} from "../_shared/document-photo-pending.ts";
+import {
   auditGestaoDocumento,
   gestaoCofreUpload,
 } from "../_shared/gestao-cofre-upload.ts";
@@ -3374,6 +3379,7 @@ type AgentConvState = {
     vision_description?: string;
     confirmed_product_title?: string;
     awaiting_correction?: boolean;
+    reprompt_count?: number;
     networks?: AnuncioPostNetwork[];
     created_at: string;
   } | null;
@@ -3553,6 +3559,42 @@ async function loadAgentState(sb: any, conversation: ConversationStateIdentity):
     });
     return {};
   }
+}
+
+async function sanitizeDocumentPhotoPending(
+  sb: any,
+  conversation: ConversationStateIdentity,
+  options: {
+    text?: string;
+    documentDetected?: boolean;
+    nowMs?: number;
+  },
+) {
+  const raw = await loadAgentState(sb, conversation);
+  const rootCleanup = cleanupDocumentPhotoPending(
+    raw as Record<string, unknown>,
+    options,
+  );
+  const migrated = migrateVerticalState(rootCleanup.state).state as AgentConvState;
+  const result = cleanupDocumentPhotoPending(
+    migrated as Record<string, unknown>,
+    options,
+  );
+  const changed = rootCleanup.changed || result.changed;
+  const combined = {
+    ...result,
+    changed,
+    hadPending: rootCleanup.hadPending || result.hadPending,
+    cancelled: rootCleanup.cancelled || result.cancelled,
+  };
+  if (!changed) return combined;
+  const { error } = await sb.from("whatsapp_cloud_conversations")
+    .update({ agent_state: result.state })
+    .eq("id", conversation.id)
+    .eq("user_id", conversation.userId)
+    .eq("contact_number", conversation.contactNumber);
+  if (error) throw new Error(`document_photo_pending_cleanup_failed:${error.message}`);
+  return combined;
 }
 
 async function saveAgentState(
@@ -18049,7 +18091,9 @@ async function callGemini(
           : `Confirmado: ${confirmedTitle}. Guardei ano, quilometragem e preço.`,
       };
     };
-    const pendingSinglePhoto = remetenteEhDono ? toolCtx.agentState?.pending_single_photo : null;
+    let pendingSinglePhoto = remetenteEhDono
+      ? toolCtx.agentState?.pending_single_photo
+      : null;
     let pendingImageEdit = remetenteEhDono
       ? toolCtx.agentState?.pending_image_edit
       : null;
@@ -20233,6 +20277,49 @@ async function callGemini(
     ) {
       await persistVehiclePhotoBatch(toolCtx, null);
       return { text: "Certo. As fotos ficaram salvas na biblioteca." };
+    }
+    if (
+      remetenteEhDono &&
+      pendingSinglePhoto?.stage === "confirm_vision" &&
+      !ownerPhotoConfirmChoice &&
+      !/<<INTERACTIVE_ID:/i.test(userContent) &&
+      isUnrelatedPhotoConfirmationMessage(userContent)
+    ) {
+      const decision = nextPhotoConfirmationReprompt(
+        pendingSinglePhoto as unknown as Record<string, unknown>,
+      );
+      if (toolCtx.convId) {
+        await saveAgentState(
+          sb,
+          {
+            id: toolCtx.convId,
+            userId: toolCtx.userId,
+            contactNumber: toolCtx.fromNumber,
+          },
+          {
+            pending_single_photo: decision.pending
+              ? {
+                ...pendingSinglePhoto,
+                reprompt_count: Number(decision.pending.reprompt_count),
+              }
+              : null,
+          },
+          toolCtx.agentState ?? {},
+        );
+      }
+      if (decision.reprompt) {
+        if (toolCtx.agentState?.pending_single_photo) {
+          toolCtx.agentState.pending_single_photo.reprompt_count = 1;
+        }
+        return {
+          text: ownerProductVisionConfirmMessage(
+            pendingSinglePhoto.vision_description || "",
+          ),
+          interactiveButtons: ownerPhotoConfirmButtons(),
+        };
+      }
+      pendingSinglePhoto = null;
+      if (toolCtx.agentState) toolCtx.agentState.pending_single_photo = null;
     }
     if (
       remetenteEhDono &&
@@ -24710,6 +24797,30 @@ async function processOne(queueId: string) {
       || (isAmzTenantEarly && isAmzOwnerAltPhone(row.from_number));
     let releasedPossibleDocument: MediaExtract | null = null;
 
+    // DOC-0.3 — limpa foto presa antes de qualquer atalho ou re-pergunta.
+    if (fromIsOwner) {
+      const cleanup = await sanitizeDocumentPhotoPending(
+        sb,
+        convStateIdentity,
+        { text: userText },
+      );
+      if (cleanup.cancelled && cleanup.hadPending) {
+        const reply = "Ok, cancelado.";
+        const sentId = await sendWhatsApp(userId, row.from_number, reply);
+        await sb.from("whatsapp_cloud_messages").insert({
+          conversation_id: conv.id,
+          user_id: userId,
+          direction: "outbound",
+          sender: "agent",
+          content: reply,
+          message_type: "text",
+          wamid: sentId,
+        });
+        await doneQueue(row.id);
+        return { ok: true, document_photo_pending_cancelled: true };
+      }
+    }
+
     // DOC-0.2 — a mídia suspeita fica cifrada enquanto aguarda a decisão.
     // Somente "Não é documento" a libera para as rotas de IA abaixo.
     const possibleAction = userText.match(
@@ -25789,6 +25900,12 @@ async function processOne(queueId: string) {
         await doneQueue(row.id);
         return { ok: true, reason: "document_detector_unavailable" };
       }
+    }
+
+    if (fromIsOwner && (detectedDocument || possibleDocument)) {
+      await sanitizeDocumentPhotoPending(sb, convStateIdentity, {
+        documentDetected: true,
+      });
     }
 
     if (possibleDocument) {
