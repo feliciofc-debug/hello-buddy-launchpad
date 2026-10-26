@@ -17,6 +17,9 @@ export type OlxVeiculoEstoqueRow = {
   status: string;
 };
 
+export const OLX_PUBLIC_VEHICLE_SELECT =
+  "id,user_id,segmento,marca,modelo,versao,ano_fabricacao,ano_modelo,km,preco,combustivel,cambio,cor,descricao,fotos,status";
+
 export type OlxMapBlocking = { field: string; message: string };
 
 export type OlxMapResult =

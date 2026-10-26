@@ -76,7 +76,10 @@ async function processVisLead(
 
   let vehicleTitle = "veículo";
   if (portal?.veiculo_id) {
-    const { data: v } = await sb.from("veiculos_estoque").select("*").eq("id", portal.veiculo_id).maybeSingle();
+    const { data: v } = await sb.from("veiculos_estoque")
+      .select("marca,modelo,versao")
+      .eq("id", portal.veiculo_id)
+      .maybeSingle();
     if (v) vehicleTitle = vehicleTitleFromRow(v);
   }
 

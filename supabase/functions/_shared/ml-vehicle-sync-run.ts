@@ -1,7 +1,10 @@
 import { mlGetItem, mlUpdateItem, mlFetchCategoryAttributes } from "./ml-api.ts";
 import { mapVehicleToMlItem, resolveMlCategoryId } from "./ml-map-vehicle.ts";
 import { buildMlSellerContact } from "./ml-seller-contact.ts";
-import type { VeiculoEstoqueRow } from "./ml-vehicle-types.ts";
+import {
+  ML_PUBLIC_VEHICLE_SELECT,
+  type VeiculoEstoqueRow,
+} from "./ml-vehicle-types.ts";
 import { assertMlItemOwnedByAmz } from "./ml-portal-ownership.ts";
 import { getMlAccessTokenForUser } from "./ml-token.ts";
 
@@ -21,7 +24,7 @@ export async function runMlVehicleSync(
   }
 
   const { data: vehicle } = await sb.from("veiculos_estoque")
-    .select("*")
+    .select(ML_PUBLIC_VEHICLE_SELECT)
     .eq("user_id", input.userId)
     .eq("id", input.veiculoId)
     .maybeSingle();

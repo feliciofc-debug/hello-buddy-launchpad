@@ -405,6 +405,12 @@ verify_jwt = false
 [functions.gestao-fechamento-dia]
 verify_jwt = true
 
+[functions.gestao-cofre]
+verify_jwt = true
+
+[functions.gestao-cofre-retencao]
+verify_jwt = false
+
 [functions.amz-auto-cadastro]
 verify_jwt = false
 

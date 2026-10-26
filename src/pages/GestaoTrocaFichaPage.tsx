@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,6 +37,7 @@ import { GestaoTrocaRoteiroFotos } from "@/components/gestao/trocas/GestaoTrocaR
 import { GestaoTrocaEspessuraCard } from "@/components/gestao/trocas/GestaoTrocaEspessuraCard.tsx";
 import { GestaoTrocaLaudoIaPanel } from "@/components/gestao/trocas/GestaoTrocaLaudoIaPanel.tsx";
 import { GestaoTrocaProcedenciaCard } from "@/components/gestao/trocas/GestaoTrocaProcedenciaCard.tsx";
+import { GestaoPastaDigital } from "@/components/gestao/GestaoPastaDigital.tsx";
 import type { GestaoTrocaChecklistJson } from "@/lib/gestao-troca-checklist.ts";
 import { parseGestaoMoneyBr } from "@/lib/gestao-money.ts";
 import {
@@ -702,6 +704,12 @@ export default function GestaoTrocaFichaPage() {
           </p>
         )}
 
+        <Tabs defaultValue="avaliacao" className="space-y-4">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="avaliacao">Avaliação</TabsTrigger>
+            <TabsTrigger value="documentos">Documentos</TabsTrigger>
+          </TabsList>
+          <TabsContent value="avaliacao" className="space-y-6">
         <section className="space-y-3 rounded-lg border bg-white p-4 dark:bg-gray-950">
           <h2 className="font-semibold">Veículo e cliente</h2>
           <div className="grid gap-2 sm:grid-cols-2">
@@ -973,6 +981,17 @@ export default function GestaoTrocaFichaPage() {
             ))}
           </ul>
         </section>
+          </TabsContent>
+          <TabsContent value="documentos">
+            {userId && id && (
+              <GestaoPastaDigital
+                userId={userId}
+                trocaId={id}
+                origem="troca"
+              />
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
 
       <AlertDialog open={liberarOpen} onOpenChange={setLiberarOpen}>
