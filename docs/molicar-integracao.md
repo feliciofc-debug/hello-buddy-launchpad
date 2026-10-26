@@ -40,7 +40,10 @@ devolvido pela function.
   cache não consome cota.
 - HTTP 429 não é repetido. HTTP 401 renova o token uma única vez.
 - O Giro usa B2B Molicar quando disponível. A desvalorização usa dois snapshots
-  B2C separados por pelo menos 25 dias; sem esse histórico, mantém a taxa/FIPE
-  já configurada.
+  B2C separados por pelo menos 25 dias; sem dois B2C, usa dois snapshots do
+  preço de referência Molicar sem misturar as fontes. Sem nenhum dos
+  históricos, mantém a taxa/FIPE já configurada.
+- Falhas 400, 401, 403, 429, 5xx e timeout devolvem a unidade reservada no teto
+  mensal. Respostas 200 e 404 permanecem contabilizadas.
 - Ausência de `Pricing` ou de blocos de procedência não invalida a consulta.
   No painel, a ausência é mostrada como “Procedência: serviço não contratado”.

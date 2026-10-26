@@ -131,6 +131,51 @@ export function assertMolicarQuota(
   );
 }
 
+export function shouldRefundMolicarQuota(error: unknown): boolean {
+  const status = Number((error as { status?: unknown })?.status);
+  if ([400, 401, 403, 429].includes(status) || status >= 500) return true;
+  const message = String((error as { message?: unknown })?.message ?? "");
+  return /tempo esgotado|timeout|timed out|aborterror/i.test(message);
+}
+
+async function refundQuota(db: Db, userId: string): Promise<void> {
+  const { error } = await db.rpc("molicar_devolver_quota", {
+    p_user_id: userId,
+  });
+  if (error) throw error;
+}
+
+async function savePriceReferences(
+  db: Db,
+  userId: string,
+  vehicleId: string,
+  prices: Record<string, unknown>,
+  capturedAt?: unknown,
+): Promise<void> {
+  const values = [
+    ["molicar_ref", prices.referencia],
+    ["molicar_b2c", prices.b2c],
+    ["molicar_b2b", prices.b2b],
+    ["molicar_c2b", prices.c2b],
+  ] as const;
+  const capturedDate = typeof capturedAt === "string"
+    ? new Date(capturedAt)
+    : new Date();
+  const rows = values
+    .filter(([, value]) => typeof value === "number" && value > 0)
+    .map(([fonte, value]) => ({
+      user_id: userId,
+      veiculo_id: vehicleId,
+      fonte,
+      valor: value,
+      referencia_mes: capturedDate.toISOString().slice(0, 7),
+      ...(typeof capturedAt === "string" ? { capturado_em: capturedAt } : {}),
+    }));
+  if (!rows.length) return;
+  const { error } = await db.from("veiculo_preco_referencia").insert(rows);
+  if (error) throw error;
+}
+
 function publicSnapshot(row: Record<string, unknown>, cache: boolean) {
   return {
     id: row.id,
@@ -206,15 +251,32 @@ export async function runMolicarConsulta(db: Db, userId: string, input: {
         .eq("id", String(cached.id)).eq("user_id", userId);
       if (error) throw error;
       Object.assign(cached, links);
+      if (links.veiculo_id) {
+        await savePriceReferences(
+          db,
+          userId,
+          links.veiculo_id,
+          (cached.precos ?? {}) as Record<string, unknown>,
+          cached.consultado_em,
+        );
+      }
     }
     return { ...publicSnapshot(cached, true), quota: null };
   }
 
   const quota = await consumeQuota(db, userId);
-  const result = await molicarVehicleQuery({
-    ...identity,
-    getToken: await tokenProvider(db, userId, conta, credentials),
-  });
+  let result: Awaited<ReturnType<typeof molicarVehicleQuery>>;
+  try {
+    result = await molicarVehicleQuery({
+      ...identity,
+      getToken: await tokenProvider(db, userId, conta, credentials),
+    });
+  } catch (error) {
+    if (shouldRefundMolicarQuota(error)) {
+      await refundQuota(db, userId);
+    }
+    throw error;
+  }
   const parsed = parseMolicarResponse(result.body);
   const placa = identity.placa ?? parsed.placa;
   const vin = identity.vin ?? parsed.vin;
@@ -248,21 +310,12 @@ export async function runMolicarConsulta(db: Db, userId: string, input: {
   if (error) throw error;
 
   if (snapshot.veiculo_id) {
-    const referenceMonth = new Date().toISOString().slice(0, 7);
-    const rows = (["b2c", "b2b", "c2b"] as const)
-      .filter((kind) => parsed.precos[kind] != null)
-      .map((kind) => ({
-        user_id: userId,
-        veiculo_id: snapshot.veiculo_id,
-        fonte: `molicar_${kind}`,
-        valor: parsed.precos[kind],
-        referencia_mes: referenceMonth,
-      }));
-    if (rows.length) {
-      const { error: refsError } = await db.from("veiculo_preco_referencia")
-        .insert(rows);
-      if (refsError) throw refsError;
-    }
+    await savePriceReferences(
+      db,
+      userId,
+      snapshot.veiculo_id,
+      parsed.precos,
+    );
   }
   return { ...publicSnapshot(saved, false), quota };
 }

@@ -1,5 +1,19 @@
 -- MOLICAR-1 — credenciais por loja, consultas/cache e snapshots de preço.
 
+ALTER TABLE public.veiculo_preco_referencia
+  DROP CONSTRAINT IF EXISTS veiculo_preco_referencia_fonte_check;
+ALTER TABLE public.veiculo_preco_referencia
+  ADD CONSTRAINT veiculo_preco_referencia_fonte_check CHECK (
+    fonte IN (
+      'fipe',
+      'manual',
+      'molicar_ref',
+      'molicar_b2c',
+      'molicar_b2b',
+      'molicar_c2b'
+    )
+  );
+
 CREATE TABLE public.gestao_molicar_conta (
   user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   client_id text NOT NULL,
@@ -147,6 +161,31 @@ $$;
 
 REVOKE ALL ON FUNCTION public.molicar_consumir_quota(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.molicar_consumir_quota(uuid) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.molicar_devolver_quota(p_user_id uuid)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_competencia date := date_trunc('month', now() AT TIME ZONE 'UTC')::date;
+  v_usado integer;
+BEGIN
+  UPDATE public.molicar_quota_mensal q
+  SET usado = greatest(q.usado - 1, 0),
+      updated_at = now()
+  WHERE q.user_id = p_user_id
+    AND q.competencia = v_competencia
+  RETURNING q.usado INTO v_usado;
+
+  RETURN coalesce(v_usado, 0);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.molicar_devolver_quota(uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.molicar_devolver_quota(uuid) TO service_role;
 
 CREATE TRIGGER update_gestao_molicar_conta_updated_at
   BEFORE UPDATE ON public.gestao_molicar_conta

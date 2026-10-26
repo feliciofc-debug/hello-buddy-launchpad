@@ -417,8 +417,10 @@ export function GestaoGiroTab({ userId, veiculos, refreshKey = 0 }: Props) {
                         maximumFractionDigits: 2,
                       })}% ao mês · fonte:{" "}
                       {r.desvalorizacaoFonte === "molicar_b2c_snapshots"
-                        ? "histórico Molicar B2C (snapshots com 25+ dias)"
-                        : "fallback FIPE configurado"}
+                        ? "Molicar (B2C)"
+                        : r.desvalorizacaoFonte === "molicar_ref_snapshots"
+                        ? "Molicar (referência)"
+                        : "FIPE"}
                     </p>
                   )}
                   <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-muted/50 p-3">

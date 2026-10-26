@@ -85,6 +85,18 @@ Deno.test("MOLICAR-1 — histórico curto mantém fallback FIPE configurado e in
   });
 });
 
+Deno.test("MOLICAR-1.1 — usa referência Molicar sem B2C e nunca mistura as fontes", () => {
+  const referencias = [
+    { fonte: "molicar_b2c" as const, valor: 110_000, capturadoEm: "2026-09-20T12:00:00Z" },
+    { fonte: "molicar_ref" as const, valor: 100_000, capturadoEm: "2026-08-01T12:00:00Z" },
+    { fonte: "molicar_ref" as const, valor: 97_000, capturadoEm: "2026-09-01T12:00:00Z" },
+  ];
+  assertEquals(resolverDesvalorizacaoMensal(referencias, 1), {
+    pct: 2.9,
+    fonte: "molicar_ref_snapshots",
+  });
+});
+
 Deno.test("MOLICAR-1 — projeção usa histórico Molicar no lugar do fallback FIPE", () => {
   const r = calcularEstoqueGiro({
     hoje: "2026-10-23",

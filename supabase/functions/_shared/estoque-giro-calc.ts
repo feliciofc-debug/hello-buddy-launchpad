@@ -8,9 +8,16 @@ import {
 } from "./estoque-giro-ipva.ts";
 
 export type EstoqueGiroFaixa = "saudavel" | "atencao" | "risco" | "decisao";
-export type EstoqueGiroFonte = "fipe" | "manual" | "molicar_b2c" | "molicar_b2b" | "molicar_c2b";
+export type EstoqueGiroFonte =
+  | "fipe"
+  | "manual"
+  | "molicar_ref"
+  | "molicar_b2c"
+  | "molicar_b2b"
+  | "molicar_c2b";
 export type EstoqueGiroDesvalorizacaoFonte =
   | "molicar_b2c_snapshots"
+  | "molicar_ref_snapshots"
   | "fipe_configurada"
   | null;
 
@@ -146,12 +153,13 @@ export function escolherReferenciaRepasse(
   return latest("molicar_b2b") ?? latest("manual") ?? latest("fipe");
 }
 
-export function calcularDesvalorizacaoMensalMolicar(
+function calcularDesvalorizacaoMensalPorFonte(
   referencias: EstoqueGiroReferencia[],
+  fonte: "molicar_b2c" | "molicar_ref",
 ): number | null {
   const snapshots = referencias
     .filter((r) =>
-      r.fonte === "molicar_b2c" && r.valor > 0 && r.capturadoEm &&
+      r.fonte === fonte && r.valor > 0 && r.capturadoEm &&
       Number.isFinite(Date.parse(r.capturadoEm))
     )
     .sort((a, b) =>
@@ -171,6 +179,12 @@ export function calcularDesvalorizacaoMensalMolicar(
   return Math.round(Math.max(0, Math.min(100, variacaoMensal)) * 100) / 100;
 }
 
+export function calcularDesvalorizacaoMensalMolicar(
+  referencias: EstoqueGiroReferencia[],
+): number | null {
+  return calcularDesvalorizacaoMensalPorFonte(referencias, "molicar_b2c");
+}
+
 export function resolverDesvalorizacaoMensal(
   referencias: EstoqueGiroReferencia[],
   configuradaPct: number | null,
@@ -181,6 +195,13 @@ export function resolverDesvalorizacaoMensal(
   const molicar = calcularDesvalorizacaoMensalMolicar(referencias);
   if (molicar != null) {
     return { pct: molicar, fonte: "molicar_b2c_snapshots" };
+  }
+  const referencia = calcularDesvalorizacaoMensalPorFonte(
+    referencias,
+    "molicar_ref",
+  );
+  if (referencia != null) {
+    return { pct: referencia, fonte: "molicar_ref_snapshots" };
   }
   return configuradaPct == null
     ? { pct: null, fonte: null }
