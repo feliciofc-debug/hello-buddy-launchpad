@@ -1,4 +1,7 @@
-import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { inferGestaoCategoria } from "./gestao-categoria-pt.ts";
 import {
   classifyGestaoIntent,
@@ -9,9 +12,7 @@ import { isGestaoAuthorizedPhone } from "./gestao-auth-phone.ts";
 import { tryProcessGestaoLucroInbound } from "./gestao-inbound.ts";
 import { parseGestaoValorPt } from "./gestao-valor-pt.ts";
 import { rankGestaoVeiculoMatches } from "./gestao-veiculo-match.ts";
-import {
-  parseGestaoDisambiguationPick,
-} from "./gestao-intent-pt.ts";
+import { parseGestaoDisambiguationPick } from "./gestao-intent-pt.ts";
 
 Deno.test("parseGestaoValorPt casos obrigatórios", () => {
   assertEquals(parseGestaoValorPt("850"), 850);
@@ -75,6 +76,40 @@ Deno.test("gestor ver carros não aciona intent gestão", () => {
   assertEquals(classifyGestaoIntent("ver carros").kind, "none");
 });
 
+Deno.test("AJUDA-1 — cliente e parceiro nunca recebem ajuda de gestão", async () => {
+  let dbTouched = false;
+  const result = await tryProcessGestaoLucroInbound({
+    sb: {
+      from: () => {
+        dbTouched = true;
+        throw new Error("não deveria consultar");
+      },
+    },
+    userId: "u1",
+    fromNumber: "5511999999999",
+    userText: "cartilha",
+    hasInboundMedia: false,
+    auth: {
+      ownerPhone: "5521888776655",
+      ownerAltPhones: [],
+      gestores: ["5521777666555"],
+    },
+    agentState: {},
+    saveAgentStatePatch: async () => true,
+  });
+  assertEquals(result.handled, false);
+  assertEquals(dbTouched, false);
+});
+
+Deno.test("AJUDA-1 — fechamento inbound usa builder novo", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./gestao-inbound.ts", import.meta.url),
+  );
+  assert(source.includes('intent.kind === "fechamento_dia"'));
+  assert(source.includes("buildGestaoFechamentoDia("));
+  assert(source.includes("financeiroPermitido: true"));
+});
+
 Deno.test("desambiguação: 2 → confirmação; sim → persiste", async () => {
   const vehicles = [
     {
@@ -121,14 +156,20 @@ Deno.test("desambiguação: 2 → confirmação; sim → persiste", async () => 
       api.eq = (col: string, _val: string) => {
         if (table === "profiles" && col === "id") {
           return {
-            maybeSingle: () => Promise.resolve({ data: { tipo: "revenda_veiculos" } }),
+            maybeSingle: () =>
+              Promise.resolve({ data: { tipo: "revenda_veiculos" } }),
           };
         }
         if (table === "empresa_config" && col === "user_id") {
           return {
-            maybeSingle: () => Promise.resolve({
-              data: { segmento: null, sobre_negocio: null, vitrine_veiculos_demo: false },
-            }),
+            maybeSingle: () =>
+              Promise.resolve({
+                data: {
+                  segmento: null,
+                  sobre_negocio: null,
+                  vitrine_veiculos_demo: false,
+                },
+              }),
           };
         }
         if (table === "veiculos_estoque" && col === "user_id") {
@@ -144,7 +185,10 @@ Deno.test("desambiguação: 2 → confirmação; sim → persiste", async () => 
     ownerAltPhones: [] as string[],
     gestores: [] as string[],
   };
-  const save = async (patch: Record<string, unknown>, current: Record<string, unknown>) => {
+  const save = async (
+    patch: Record<string, unknown>,
+    current: Record<string, unknown>,
+  ) => {
     Object.assign(state, patch);
     Object.assign(current, patch);
     return true;
@@ -199,13 +243,21 @@ Deno.test("confirmação despesa mostra label e aceita correção de categoria",
       const api: Record<string, unknown> = { select: (_cols: string) => api };
       api.eq = (col: string, _val: string) => {
         if (table === "profiles" && col === "id") {
-          return { maybeSingle: () => Promise.resolve({ data: { tipo: "revenda_veiculos" } }) };
+          return {
+            maybeSingle: () =>
+              Promise.resolve({ data: { tipo: "revenda_veiculos" } }),
+          };
         }
         if (table === "empresa_config" && col === "user_id") {
           return {
-            maybeSingle: () => Promise.resolve({
-              data: { segmento: null, sobre_negocio: null, vitrine_veiculos_demo: false },
-            }),
+            maybeSingle: () =>
+              Promise.resolve({
+                data: {
+                  segmento: null,
+                  sobre_negocio: null,
+                  vitrine_veiculos_demo: false,
+                },
+              }),
           };
         }
         if (table === "veiculos_estoque" && col === "user_id") {
@@ -216,8 +268,15 @@ Deno.test("confirmação despesa mostra label e aceita correção de categoria",
       return api;
     },
   };
-  const auth = { ownerPhone: "5521888776655", ownerAltPhones: [] as string[], gestores: [] as string[] };
-  const save = async (patch: Record<string, unknown>, current: Record<string, unknown>) => {
+  const auth = {
+    ownerPhone: "5521888776655",
+    ownerAltPhones: [] as string[],
+    gestores: [] as string[],
+  };
+  const save = async (
+    patch: Record<string, unknown>,
+    current: Record<string, unknown>,
+  ) => {
     Object.assign(state, patch);
     Object.assign(current, patch);
     return true;
@@ -234,6 +293,8 @@ Deno.test("confirmação despesa mostra label e aceita correção de categoria",
   });
   assertEquals(fix.handled, true);
   assert(String(fix.reply).includes("Mecânica"));
-  const pending = state.pending_gestao_confirm as { draft: { categoria: string } };
+  const pending = state.pending_gestao_confirm as {
+    draft: { categoria: string };
+  };
   assertEquals(pending.draft.categoria, "mecanica");
 });
