@@ -405,6 +405,9 @@ verify_jwt = false
 [functions.gestao-fechamento-dia]
 verify_jwt = true
 
+[functions.jarvis-cartilha-pdf]
+verify_jwt = true
+
 [functions.amz-auto-cadastro]
 verify_jwt = false
 
