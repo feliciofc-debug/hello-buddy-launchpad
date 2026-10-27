@@ -24842,12 +24842,10 @@ async function processOne(queueId: string) {
       userText = rawJarvisMenuInteractiveId;
     }
     let commercialContactForOwner: any = null;
-    let inboundContent = stripWhatsAppInteractiveMarkers(
-      jarvisMenuFallbackText,
-    ) ||
+    let inboundContent = jarvisMenuFallbackText ||
       `(${row.message_type ?? "mídia"} sem legenda)`;
     const directNearbySearch = row.message_type === "text"
-      ? detectNearbySearch(stripWhatsAppInteractiveMarkers(userText))
+      ? detectNearbySearch(userText)
       : null;
 
     // Captura localização compartilhada
@@ -29763,18 +29761,14 @@ async function processOne(queueId: string) {
       .filter((m) => m.content && !isStaleToolFailureMessage(m.content as string))
       .map((m) => ({
         role: m.direction === "inbound" ? "user" : "assistant",
-        content: stripWhatsAppInteractiveMarkers(m.content),
+        content: m.content as string,
       }));
 
     // PASSO 9 — IA (multimodal)
     const userTextComAudio = metaAdsJarvisOriginalText ??
       (audioTranscript
-        ? `${
-          stripWhatsAppInteractiveMarkers(userText)
-            ? `${stripWhatsAppInteractiveMarkers(userText)}\n\n`
-            : ""
-        }🎙️ TRANSCRIÇÃO DO ÁUDIO QUE O USUÁRIO ENVIOU (já transcrito pelo sistema — use como se ele tivesse digitado; se ele pediu a transcrição, devolva este texto): "${audioTranscript}"`
-        : stripWhatsAppInteractiveMarkers(userText));
+        ? `${userText ? `${userText}\n\n` : ""}🎙️ TRANSCRIÇÃO DO ÁUDIO QUE O USUÁRIO ENVIOU (já transcrito pelo sistema — use como se ele tivesse digitado; se ele pediu a transcrição, devolva este texto): "${audioTranscript}"`
+        : userText);
     const externalAiMedia = media.filter((item) =>
       !isProtectedDocumentMedia(item)
     );
