@@ -24667,6 +24667,7 @@ async function tryProcessVehicleStockShowcase(input: {
   userId: string;
   userText: string;
   contactName: string | null;
+  interactiveId?: string | null;
   earlyInteractiveOnly: boolean;
   allowEarlyFormCapture?: boolean;
   agentStateSeed?: AgentConvState;
