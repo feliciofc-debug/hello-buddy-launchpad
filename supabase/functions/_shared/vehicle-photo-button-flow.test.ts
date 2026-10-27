@@ -98,15 +98,22 @@ Deno.test("FIX-VEIC-3 B5 — pós-FIPE com identificação alta (sem confirmar)"
 });
 
 Deno.test("FIX-VEIC-3 B2 — bloqueia gerar_imagem com foto pendente", () => {
+  const recent = new Date().toISOString();
   assertEquals(
     blockGerarImagemForVehiclePhotoFlow({
-      pending_vehicle_identification: { media_ids: ["mid-1"] },
+      pending_vehicle_identification: {
+        media_ids: ["mid-1"],
+        created_at: recent,
+      },
     }),
     true,
   );
   assertEquals(
     vehiclePhotoAdMediaId({
-      pending_vehicle_identification: { media_ids: ["mid-abc"] },
+      pending_vehicle_identification: {
+        media_ids: ["mid-abc"],
+        created_at: recent,
+      },
     }),
     "mid-abc",
   );
@@ -186,8 +193,15 @@ Deno.test("FIX-VEIC-3.1 — arte limpa pending, mas contexto salvo recupera bot�
   };
   const afterArt = resolveVehiclePhotoActionContext({
     pending: null,
-    saved,
+    saved: {
+      ...saved,
+      created_at: new Date().toISOString(),
+    },
     lastMediaId: "arte-gerada",
+    lastMediaInteraction: {
+      media_id: "foto-honda-city",
+      at: new Date().toISOString(),
+    },
     mediaRoutes: {},
   });
   assertEquals(afterArt?.media_ids, ["foto-honda-city"]);

@@ -1,4 +1,8 @@
 import type { VehicleIdentification } from "./vehicle-identification.ts";
+import {
+  freshVehiclePhotoActionContext,
+  isRecentMediaContext,
+} from "./anuncio-media-context.ts";
 
 export type VehiclePhotoActionContext = {
   identification: VehicleIdentification;
@@ -35,13 +39,22 @@ export function resolveVehiclePhotoActionContext(input: {
   pending?: VehiclePhotoActionContext | null;
   saved?: VehiclePhotoActionContext | null;
   lastMediaId?: string | null;
+  lastMediaInteraction?: { at?: string; media_id?: string } | null;
   mediaRoutes?: Record<string, MediaRouteWithIdentification> | null;
+  nowMs?: number;
 }): VehiclePhotoActionContext | null {
-  if (validVehiclePhotoActionContext(input.pending)) return input.pending;
-  if (validVehiclePhotoActionContext(input.saved)) return input.saved;
+  const nowMs = input.nowMs ?? Date.now();
+  const pending = freshVehiclePhotoActionContext(input.pending, nowMs);
+  const saved = freshVehiclePhotoActionContext(input.saved, nowMs);
+  if (pending) return pending;
+  if (saved) return saved;
 
   const lastMediaId = String(input.lastMediaId || "").trim();
-  const route = lastMediaId ? input.mediaRoutes?.[lastMediaId] : null;
+  const lastInteractionRecent = !input.lastMediaInteraction ||
+    isRecentMediaContext(input.lastMediaInteraction, nowMs);
+  const route = lastMediaId && lastInteractionRecent
+    ? input.mediaRoutes?.[lastMediaId]
+    : null;
   if (
     route?.route === "veiculo" &&
     route.vehicle_identification &&

@@ -505,7 +505,16 @@ import {
   vehiclePostFipeVideoTheme,
 } from "../_shared/vehicle-post-fipe-menu.ts";
 import {
+  ANUNCIO_MEDIA_TTL_MS,
+  bindAnuncioMediaToArgs,
+  anuncioPhotoContextConflict,
+  resolveAnuncioMediaId,
+  staleVehicleMediaContextPatch,
+  vehicleIdentificationBundleForMedia,
+} from "../_shared/anuncio-media-context.ts";
+import {
   parseVehiclePhotoActionId,
+  parseVehiclePhotoActionInteractive,
   vehiclePhotoDirectActionList,
 } from "../_shared/vehicle-photo-direct-menu.ts";
 import {
@@ -3445,6 +3454,7 @@ type AgentConvState = {
   pending_creative_media_ambiguity?: { original_request: string; created_at: string } | null;
   pending_anuncio_cliente?: {
     args: Record<string, unknown>;
+    media_id?: string;
     created_at: string;
     awaiting_store_details?: boolean;
     store_name?: string;
@@ -3464,10 +3474,12 @@ type AgentConvState = {
   } | null;
   pending_anuncio_photo?: {
     stage: "choice" | "preference_confirmation" | "treatment_retry";
+    media_id?: string;
     args?: Record<string, unknown>;
     preference?: AnuncioPhotoPreference;
     created_at: string;
   } | null;
+  pending_anuncio_photo_mismatch?: { asked_at: string } | null;
   last_anuncio?: LastAnuncio | null;
   pending_anuncio_post?: PendingAnuncioPost | null;
   pending_client_logo?: {
@@ -3928,18 +3940,26 @@ async function beginVehicleIdentification(
       media_routes: mediaRoutes,
       updated_at: new Date().toISOString(),
     };
+    const lastMediaInteraction = {
+      media_id: first.id,
+      at: pending.created_at,
+    };
     await saveAgentState(sb, conversation, {
       pending_vehicle_identification: pending,
       last_vehicle_photo_context: pending,
+      last_media_interaction: lastMediaInteraction,
       vertical_router,
     }, current);
     current.pending_vehicle_identification = pending;
     current.last_vehicle_photo_context = pending;
+    current.last_media_interaction = lastMediaInteraction;
     current.vertical_router = vertical_router;
     ctx.agentState = current;
   }
   if (vehicleIdentificationUsesDirectActionMenu(identification)) {
-    const interactiveList = vehiclePhotoDirectActionList(identification);
+    const interactiveList = vehiclePhotoDirectActionList(identification, {
+      mediaId: first.id,
+    });
     return {
       text: interactiveList.body,
       interactiveList,
@@ -10640,6 +10660,7 @@ async function resolverMidiaParaPublicacao(
   const interactionId = selectPublicationMediaId({
     lastInteraction,
     nowMs,
+    maxInteractionAgeMs: ANUNCIO_MEDIA_TTL_MS,
   });
   let interactedMedia: any | null = null;
   if (interactionId) {
@@ -10689,6 +10710,7 @@ async function resolverMidiaParaPublicacao(
       : null,
     recentGenerated: generated ?? null,
     nowMs,
+    maxInteractionAgeMs: ANUNCIO_MEDIA_TTL_MS,
   });
   if (selectedId === interactedMedia?.id) return { midia: interactedMedia };
   if (selectedId === generated?.id) return { midia: generated };
@@ -16485,14 +16507,63 @@ async function toolCriarAnuncio(
       });
     }
 
+    const staleMediaPatch = staleVehicleMediaContextPatch(ctx.agentState);
+    if (Object.keys(staleMediaPatch).length && ctx.convId) {
+      const conversation = {
+        id: ctx.convId,
+        userId: ctx.userId,
+        contactNumber: ctx.fromNumber,
+      };
+      const current = ctx.agentState ??
+        await loadAgentState(sb, conversation);
+      await saveAgentState(sb, conversation, staleMediaPatch, current);
+      for (const [key, value] of Object.entries(staleMediaPatch)) {
+        (current as Record<string, unknown>)[key] = value;
+      }
+      ctx.agentState = current;
+    }
+
+    const explicitAnuncioMediaId = String(
+      (args as Record<string, unknown>)?._anuncio_media_id || "",
+    ).trim();
+    const anuncioMediaId = resolveAnuncioMediaId({
+      agentState: ctx.agentState,
+      explicitMediaId: explicitAnuncioMediaId,
+    });
+    if (
+      anuncioMediaId &&
+      anuncioPhotoContextConflict({
+        agentState: ctx.agentState,
+        mediaId: anuncioMediaId,
+      })
+    ) {
+      if (!ctx.agentState?.pending_anuncio_photo_mismatch && ctx.convId) {
+        const conversation = {
+          id: ctx.convId,
+          userId: ctx.userId,
+          contactNumber: ctx.fromNumber,
+        };
+        const current = ctx.agentState ??
+          await loadAgentState(sb, conversation);
+        await saveAgentState(sb, conversation, {
+          pending_anuncio_photo_mismatch: {
+            asked_at: new Date().toISOString(),
+          },
+        }, current);
+        current.pending_anuncio_photo_mismatch = {
+          asked_at: new Date().toISOString(),
+        };
+        ctx.agentState = current;
+      }
+      return JSON.stringify({
+        erro: "foto_identificacao_diferente",
+        mensagem:
+          "A identificação que tenho não bate com a foto deste anúncio. Qual foto você quer usar? Envie a imagem de novo ou toque a ação no menu da foto certa.",
+      });
+    }
+
     const verticalScope = (ctx.agentState as Record<string, unknown> | undefined)
       ?.__vertical_scope as InboundVertical | undefined;
-    const anuncioMediaId = String(
-      vehiclePhotoAdMediaId(ctx.agentState) ||
-        ctx.agentState?.pending_single_photo?.media_id ||
-        ctx.agentState?.last_media_interaction?.media_id ||
-        "",
-    );
     const anuncioMediaRoute = getOwnerMediaRoute(
       ctx.agentState?.vertical_router,
       anuncioMediaId,
@@ -16511,12 +16582,34 @@ async function toolCriarAnuncio(
     );
     const anuncioVertical: "veiculo" | "geral" =
       effectiveVerticalScope === "veiculo" ? "veiculo" : "geral";
+    const identificationBundle = anuncioMediaId
+      ? vehicleIdentificationBundleForMedia({
+        agentState: ctx.agentState,
+        mediaId: anuncioMediaId,
+      })
+      : null;
     const pendingVehicleIdentification =
-      ctx.agentState?.pending_vehicle_identification;
+      identificationBundle &&
+        ctx.agentState?.pending_vehicle_identification?.media_ids
+          ?.includes(anuncioMediaId)
+        ? ctx.agentState.pending_vehicle_identification
+        : identificationBundle
+        ? {
+          identification: identificationBundle.identification,
+          media_ids: identificationBundle.media_ids,
+          target: "single_ad" as const,
+          confirmed: identificationBundle.confirmed,
+          confirmed_title: identificationBundle.confirmed_title,
+          data: identificationBundle.data,
+          created_at: new Date().toISOString(),
+        }
+        : ctx.agentState?.pending_vehicle_identification;
     if (
       effectiveVerticalScope === "veiculo" &&
       pendingVehicleIdentification?.confirmed &&
-      pendingVehicleIdentification.data
+      pendingVehicleIdentification.data &&
+      (!anuncioMediaId ||
+        pendingVehicleIdentification.media_ids?.includes(anuncioMediaId))
     ) {
       for (
         const [key, value] of Object.entries(
@@ -16652,7 +16745,8 @@ async function toolCriarAnuncio(
         };
         const current = ctx.agentState ?? await loadAgentState(sb, conversation);
         const pending = {
-          args: { ...args },
+          args: bindAnuncioMediaToArgs({ ...args }, anuncioMediaId),
+          media_id: anuncioMediaId || undefined,
           created_at: new Date().toISOString(),
         };
         await saveAgentState(
@@ -16687,7 +16781,8 @@ async function toolCriarAnuncio(
         };
         const current = ctx.agentState ?? await loadAgentState(sb, conversation);
         const pending = {
-          args: { ...args },
+          args: bindAnuncioMediaToArgs({ ...args }, anuncioMediaId),
+          media_id: anuncioMediaId || undefined,
           created_at: new Date().toISOString(),
         };
         await saveAgentState(
@@ -16789,7 +16884,11 @@ async function toolCriarAnuncio(
       const current = ctx.agentState ?? await loadAgentState(sb, conversation);
       const pendingPhoto = {
         stage: "choice" as const,
-        args: { ...args, _foto_url_original: fotoUrl },
+        media_id: anuncioMediaId || undefined,
+        args: bindAnuncioMediaToArgs(
+          { ...args, _foto_url_original: fotoUrl },
+          anuncioMediaId,
+        ),
         created_at: new Date().toISOString(),
       };
       const saved = await saveAgentState(sb, conversation, {
@@ -17963,6 +18062,19 @@ async function callGemini(
         )
       ? toolCtx.agentState!.pending_vehicle_photo_batch!
       : null;
+    if (remetenteEhDono && toolCtx.agentState) {
+      const staleMediaPatch = staleVehicleMediaContextPatch(toolCtx.agentState);
+      if (Object.keys(staleMediaPatch).length && toolCtx.convId) {
+        await saveAgentState(sb, {
+          id: toolCtx.convId,
+          userId: toolCtx.userId,
+          contactNumber: toolCtx.fromNumber,
+        }, staleMediaPatch, toolCtx.agentState);
+        for (const [key, value] of Object.entries(staleMediaPatch)) {
+          (toolCtx.agentState as Record<string, unknown>)[key] = value;
+        }
+      }
+    }
     let pendingVehicleIdentification = remetenteEhDono
       ? toolCtx.agentState?.pending_vehicle_identification
       : null;
@@ -17994,6 +18106,14 @@ async function callGemini(
       const patch: AgentConvState = {
         pending_vehicle_identification: next,
         ...(next ? { last_vehicle_photo_context: next } : {}),
+        ...(next?.media_ids?.[0]
+          ? {
+            last_media_interaction: {
+              media_id: next.media_ids[0],
+              at: next.created_at,
+            },
+          }
+          : {}),
       };
       if (next && toolCtx.agentState) {
         let routes = ownerMediaRoutesFromRouter(
@@ -18691,9 +18811,11 @@ async function callGemini(
     const vehiclePhotoEditAction = remetenteEhDono
       ? parseVehiclePhotoEditInteractiveId(userContent)
       : null;
-    const vehiclePhotoAction = remetenteEhDono
-      ? parseVehiclePhotoActionId(userContent)
+    const vehiclePhotoInteractive = remetenteEhDono
+      ? parseVehiclePhotoActionInteractive(userContent)
       : null;
+    const vehiclePhotoAction = vehiclePhotoInteractive?.action ?? null;
+    const vehiclePhotoActionMediaId = vehiclePhotoInteractive?.mediaId ?? null;
     const vehiclePostFipeAction = remetenteEhDono
       ? parseVehiclePostFipeInteractiveId(userContent)
       : null;
@@ -18708,10 +18830,31 @@ async function callGemini(
         pending: pendingVehicleIdentification as VehiclePhotoActionContext | null,
         saved: toolCtx.agentState?.last_vehicle_photo_context,
         lastMediaId: toolCtx.agentState?.last_media_interaction?.media_id,
+        lastMediaInteraction: toolCtx.agentState?.last_media_interaction,
         mediaRoutes: ownerMediaRoutesFromRouter(
           toolCtx.agentState?.vertical_router,
         ),
       });
+      if (vehiclePhotoActionMediaId) {
+        const route = ownerMediaRoutesFromRouter(
+          toolCtx.agentState?.vertical_router,
+        )[vehiclePhotoActionMediaId];
+        if (route?.vehicle_identification) {
+          context = {
+            identification: route.vehicle_identification,
+            media_ids: [vehiclePhotoActionMediaId],
+            target: "single_ad",
+            created_at: new Date().toISOString(),
+            confirmed: route.confirmed,
+          };
+        } else if (context) {
+          context = {
+            ...context,
+            media_ids: [vehiclePhotoActionMediaId],
+            created_at: new Date().toISOString(),
+          };
+        }
+      }
       if (!context) {
         const lastMediaId = String(
           toolCtx.agentState?.last_media_interaction?.media_id || "",
@@ -18741,7 +18884,13 @@ async function callGemini(
       if (!context) {
         return { text: vehicleInteractiveMissingPhotoReply() };
       }
-      if (!pendingVehicleIdentification) {
+      if (
+        !pendingVehicleIdentification ||
+        vehiclePhotoActionMediaId ||
+        !pendingVehicleIdentification.media_ids?.includes(
+          context.media_ids[0] || "",
+        )
+      ) {
         pendingVehicleIdentification = {
           ...context,
           data: context.data as VehicleCarouselData | undefined,
@@ -18944,8 +19093,9 @@ async function callGemini(
         const pendingId = pendingAfter;
         if (syntheticPostFipe === "ad") {
           const mediaId = String(
-            pendingId.media_ids?.[0] ||
-              vehiclePhotoAdMediaId(toolCtx.agentState),
+            vehiclePhotoActionMediaId ||
+              pendingId.media_ids?.[0] ||
+              resolveAnuncioMediaId({ agentState: toolCtx.agentState }),
           ).trim();
           const data = pendingId?.data ?? {};
           const titulo = String(
@@ -18957,15 +19107,18 @@ async function callGemini(
                 "Preciso da foto e do modelo confirmados antes de gerar a arte. Envie a foto de novo ou confirme o veículo.",
             };
           }
-          const raw = await toolCriarAnuncio({
-            titulo,
-            preco: data.preco,
-            ano: data.ano,
-            versao: data.versao,
-            quilometragem: data.quilometragem,
-            itens: data.opcionais,
-            cor: data.cor,
-          } as any, toolCtx);
+          const raw = await toolCriarAnuncio(
+            bindAnuncioMediaToArgs({
+              titulo,
+              preco: data.preco,
+              ano: data.ano,
+              versao: data.versao,
+              quilometragem: data.quilometragem,
+              itens: data.opcionais,
+              cor: data.cor,
+            }, mediaId) as any,
+            toolCtx,
+          );
           try {
             const parsed = JSON.parse(raw);
             return {
@@ -19981,6 +20134,9 @@ async function callGemini(
       ) {
         const menuList = vehiclePhotoDirectActionList(
           pendingVehicleIdentification.identification,
+          {
+            mediaId: pendingVehicleIdentification.media_ids?.[0],
+          },
         );
         return {
           text: menuList.body,
@@ -21657,7 +21813,12 @@ async function callGemini(
           );
           if (toolCtx.agentState) toolCtx.agentState.pending_anuncio_cliente = null;
         }
-        const mergedArgs = {
+        const resumeMediaId = String(
+          pendingAnuncioCliente.media_id ||
+            pendingAnuncioCliente.args?._anuncio_media_id ||
+            "",
+        ).trim();
+        const mergedArgs = bindAnuncioMediaToArgs({
           ...pendingAnuncioCliente.args,
           ...(interactiveId === "anuncio_use_amz"
             ? {
@@ -21673,7 +21834,7 @@ async function callGemini(
               _usar_apenas_nome_cliente: true,
             }
             : {}),
-        };
+        }, resumeMediaId);
         const result = await toolCriarAnuncio(mergedArgs as any, {
           ...toolCtx,
           media: [],
@@ -27672,7 +27833,10 @@ async function processOne(queueId: string) {
                 const idAfterStart = vehicleFlowCtx.agentState
                   ?.pending_vehicle_identification?.identification ?? null;
                 const menuList = idAfterStart
-                  ? vehiclePhotoDirectActionList(idAfterStart, { repeated })
+                  ? vehiclePhotoDirectActionList(idAfterStart, {
+                    repeated,
+                    mediaId: singlePhoto.id,
+                  })
                   : identification.interactiveList;
                 const identificationText = menuList?.body ||
                   identification.text ||
