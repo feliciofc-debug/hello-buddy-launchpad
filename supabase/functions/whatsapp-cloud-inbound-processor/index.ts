@@ -25869,6 +25869,7 @@ async function processOne(queueId: string) {
     const partnerChecks: Awaited<
       ReturnType<typeof verificarDocumentoNoPortao>
     >[] = [];
+    let partnerOcrProtected = false;
     if (
       !fromIsOwner &&
       ["document", "image"].includes(row.message_type ?? "") &&
@@ -25888,6 +25889,7 @@ async function processOne(queueId: string) {
             return deveBloquearDocumentoParceiro(checked);
           },
         });
+        partnerOcrProtected = osParceiroMedia.protectedDocument === true;
         if (osParceiroMedia.handled) {
           stopTypingHeartbeat();
           await doneQueue(row.id);
@@ -25908,10 +25910,12 @@ async function processOne(queueId: string) {
     // de documento jamais escape para IA externa.
     let detectedDocument:
       | Awaited<ReturnType<typeof verificarDocumentoNoPortao>>
-      | null = partnerChecked?.documento ? partnerChecked : null;
+      | null = partnerChecked?.documento || partnerOcrProtected
+        ? partnerChecked
+        : null;
     let possibleDocument:
       | Awaited<ReturnType<typeof verificarDocumentoNoPortao>>
-      | null = partnerChecked?.possivel_documento ? partnerChecked : null;
+      | null = null;
     for (const candidate of gateCandidates) {
       if (detectedDocument || possibleDocument) break;
       // O callback do parceiro só roda quando há cotação ativa. Se a mídia não

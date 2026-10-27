@@ -173,7 +173,7 @@ Deno.test("DOC-0.1 — parceiro roda antes do portão geral e continua protegido
       documento: false,
       possivel_documento: true,
     }),
-    true,
+    false,
   );
   assertEquals(
     deveBloquearDocumentoParceiro({
@@ -199,9 +199,11 @@ Deno.test("DOC-0.1 — parceiro roda antes do portão geral e continua protegido
     true,
   );
   assertEquals(
-    flow.includes(
-      "partnerChecked?.possivel_documento ? partnerChecked : null",
-    ),
+    flow.includes("partnerChecked?.possivel_documento ? partnerChecked : null"),
+    false,
+  );
+  assertEquals(
+    flow.includes("partnerChecked?.documento || partnerOcrProtected"),
     true,
   );
   const generalGate = flow.indexOf(

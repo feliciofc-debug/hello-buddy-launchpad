@@ -6,9 +6,20 @@ export type OsParceiroParsedOrcamento = {
 };
 
 function parseValorPtBr(raw: string): number | null {
-  const m = raw.match(
-    /(?:r\$?\s*)?(\d{1,3}(?:\.\d{3})*(?:,\d{2})|\d+(?:,\d{2})?)/i,
-  );
+  const amount = String.raw`(\d{1,3}(?:\.\d{3})*(?:,\d{2})|\d+(?:,\d{2})?)`;
+  const patterns = [
+    new RegExp(
+      String.raw`\b(?:valor\s+)?total(?:\s+do\s+or[cç]amento)?\b[^\d]{0,16}(?:r\$\s*)?${amount}`,
+      "i",
+    ),
+    new RegExp(String.raw`\br\$\s*${amount}`, "i"),
+    new RegExp(
+      String.raw`\bvalor(?:\s+do\s+or[cç]amento)?\b[^\d]{0,16}${amount}`,
+      "i",
+    ),
+    new RegExp(amount, "i"),
+  ];
+  const m = patterns.map((pattern) => raw.match(pattern)).find(Boolean);
   if (!m?.[1]) return null;
   const n = Number(m[1].replace(/\./g, "").replace(",", "."));
   return Number.isFinite(n) && n >= 0 ? n : null;

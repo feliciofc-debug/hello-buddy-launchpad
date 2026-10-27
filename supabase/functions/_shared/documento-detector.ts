@@ -88,6 +88,43 @@ export function classificarDocumentoIdentidade(
   return { documento: false, tipo: null };
 }
 
+export function classificarTextoDocumentoProtegido(
+  rawText: string,
+): { documento: boolean; tipo: DocumentoIdentidadeTipo } {
+  const identity = classificarDocumentoIdentidade(rawText);
+  if (identity.documento) return identity;
+
+  const text = normalize(rawText);
+  const formattedCpfs = text.match(/\b\d{3}[.\s]\d{3}[.\s]\d{3}[-\s]\d{2}\b/g) ??
+    [];
+  const labelledCpf = text.match(/\bCPF\b[^\d]{0,12}[\d.\s-]{11,20}/g) ?? [];
+  if (
+    [...formattedCpfs, ...labelledCpf].some((value) =>
+      cpfValid(value.replace(/\D/g, "").slice(-11))
+    )
+  ) {
+    return { documento: true, tipo: "outro" };
+  }
+
+  const rg = text.match(
+    /\b(?:RG|REGISTRO GERAL)\b[^\dX]{0,12}([0-9X][0-9X.\s-]{5,15})/,
+  )?.[1];
+  const rgDigits = rg?.replace(/[^0-9X]/g, "") ?? "";
+  if (rgDigits.length >= 7 && rgDigits.length <= 12) {
+    return { documento: true, tipo: "rg" };
+  }
+
+  const cnh = text.match(
+    /\b(?:CNH|NUMERO DA CNH|REGISTRO CNH)\b[^\d]{0,15}(\d[\d.\s-]{8,16})/,
+  )?.[1];
+  const cnhDigits = cnh?.replace(/\D/g, "") ?? "";
+  if (cnhDigits.length >= 9 && cnhDigits.length <= 12) {
+    return { documento: true, tipo: "cnh" };
+  }
+
+  return { documento: false, tipo: null };
+}
+
 export const documentoDetectorInternals = {
   cpfValid,
   cnpjValid,

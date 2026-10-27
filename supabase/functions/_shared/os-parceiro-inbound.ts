@@ -22,6 +22,7 @@ import type { MediaExtract } from "./whatsapp-media.ts";
 import {
   confirmarOrcamentoParceiroDocumento,
   descartarOrcamentoParceiroPreparado,
+  ORCAMENTO_MEDIA_VALOR_NAO_LIDO,
   parseOrcamentoFromExtractedText,
   prepararOrcamentoParceiroDocumento,
   salvarAudioParceiroDocumento,
@@ -335,6 +336,7 @@ export async function tryProcessOsParceiroCotacaoWhatsAppInbound(input: {
   media?: MediaExtract[];
   audioMedia?: MediaExtract;
   isProtectedDocument?: (media: MediaExtract) => Promise<boolean>;
+  fetchImpl?: typeof fetch;
 }): Promise<OsParceiroWaResult> {
   // Consulta barata primeiro: números que não são parceiros saem sem carregar gestão.
   const parceiro = await findParceiro(input.sb, input.userId, input.fromNumber);
@@ -625,8 +627,14 @@ export async function tryProcessOsParceiroCotacaoWhatsAppInbound(input: {
     if (input.isProtectedDocument && await input.isProtectedDocument(doc)) {
       return { handled: false, protectedDocument: true };
     }
-    const texto = await textoDeOrcamentoParceiroMedia(doc);
-    const parsed = parseOrcamentoFromExtractedText(texto);
+    const leitura = await textoDeOrcamentoParceiroMedia(
+      doc,
+      input.fetchImpl ?? fetch,
+    );
+    if (leitura.documentoProtegido) {
+      return { handled: false, protectedDocument: true };
+    }
+    const parsed = parseOrcamentoFromExtractedText(leitura.texto);
     const prepared = await prepararOrcamentoParceiroDocumento(input.sb, {
       userId: input.userId,
       osId: cot.os_id,
@@ -634,6 +642,23 @@ export async function tryProcessOsParceiroCotacaoWhatsAppInbound(input: {
     });
     if (!prepared) {
       return { handled: true, reply: "Não consegui guardar o arquivo agora. Pode reenviar?" };
+    }
+    if (parsed.valor == null) {
+      await confirmarOrcamentoParceiroDocumento(input.sb, {
+        userId: input.userId,
+        osId: cot.os_id,
+        storagePath: prepared.storage_path,
+        mimeType: prepared.mime_type,
+        tamanhoBytes: prepared.tamanho_bytes,
+      });
+      await saveSessao(input.sb, {
+        user_id: input.userId,
+        parceiro_id: parceiro.id,
+        cotacao_id: cot.id,
+        fase: "valor",
+        draft_json: {},
+      });
+      return { handled: true, reply: ORCAMENTO_MEDIA_VALOR_NAO_LIDO };
     }
     const label = await osLabel(input.sb, cot);
     await saveSessao(input.sb, {
@@ -644,7 +669,7 @@ export async function tryProcessOsParceiroCotacaoWhatsAppInbound(input: {
       draft_json: {
         valor: parsed.valor,
         prazo_dias: parsed.prazoDias,
-        observacao: texto.slice(0, 500),
+        observacao: leitura.texto.slice(0, 500),
         os_id: cot.os_id,
         ...prepared,
       },
@@ -682,6 +707,24 @@ export async function tryProcessOsParceiroCotacaoWhatsAppInbound(input: {
     const parsed = parseOrcamentoParceiroTexto(text);
     if (parsed.valor == null) {
       return { handled: true, reply: "Informe o valor em reais (ex.: 1950 ou R$ 1.950,00)." };
+    }
+    if (parsed.prazoDias != null) {
+      await saveSessao(input.sb, {
+        user_id: input.userId,
+        parceiro_id: parceiro.id,
+        cotacao_id: active.cotacao_id,
+        fase: "confirmar",
+        draft_json: {
+          ...active.draft_json,
+          valor: parsed.valor,
+          prazo_dias: parsed.prazoDias,
+        },
+      });
+      return {
+        handled: true,
+        reply: `Confirma R$ ${parsed.valor} · ${parsed.prazoDias} dias?`,
+        interactiveButtons: confirmButtons("Confirma este orçamento?"),
+      };
     }
     await saveSessao(input.sb, {
       user_id: input.userId,

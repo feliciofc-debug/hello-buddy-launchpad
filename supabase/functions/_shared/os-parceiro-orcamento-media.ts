@@ -1,25 +1,61 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { decode as base64Decode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
+import { extrairTextoOcrLocal } from "./crlv-leitura.ts";
 import { extractDocumentText } from "./document-extract.ts";
-import { isProtectedDocumentMedia } from "./documento-portao.ts";
+import {
+  classificarTextoDocumentoProtegido,
+} from "./documento-detector.ts";
+import { markProtectedDocumentMedia } from "./documento-portao.ts";
 import type { MediaExtract } from "./whatsapp-media.ts";
 import { parseOrcamentoParceiroTexto } from "./os-parceiro-parser.ts";
 
+export const ORCAMENTO_MEDIA_VALOR_NAO_LIDO =
+  "Não consegui ler o valor. Pode me mandar o valor total e o prazo por texto ou áudio?";
+
+export type TextoOrcamentoParceiroMediaResultado = {
+  texto: string;
+  documentoProtegido: boolean;
+  ocrFalhou: boolean;
+};
+
 export async function textoDeOrcamentoParceiroMedia(
   media: MediaExtract,
-): Promise<string> {
-  if (isProtectedDocumentMedia(media)) return "";
+  fetchImpl: typeof fetch = fetch,
+): Promise<TextoOrcamentoParceiroMediaResultado> {
+  let texto = "";
   if (media.kind === "document" || media.mime.includes("pdf")) {
     const extracted = await extractDocumentText(
       media.base64,
       media.mime,
       media.filename,
     );
-    if (extracted.text?.trim()) return extracted.text;
+    texto = extracted.text?.trim() ?? "";
   }
-  // Imagem/PDF digitalizado sem camada de texto fica para conferência humana.
-  // Bytes de arquivo recebido no WhatsApp nunca são enviados a visão externa.
-  return "";
+
+  if (!texto) {
+    const aceitaOcr = media.kind === "image" ||
+      media.mime.startsWith("image/") ||
+      media.mime.includes("pdf");
+    if (!aceitaOcr) {
+      return { texto: "", documentoProtegido: false, ocrFalhou: true };
+    }
+    try {
+      texto = await extrairTextoOcrLocal(
+        base64Decode(media.base64),
+        media.mime,
+        fetchImpl,
+      );
+    } catch {
+      return { texto: "", documentoProtegido: false, ocrFalhou: true };
+    }
+  }
+
+  const protectedDocument = classificarTextoDocumentoProtegido(texto);
+  if (protectedDocument.documento) {
+    markProtectedDocumentMedia(media);
+    return { texto: "", documentoProtegido: true, ocrFalhou: false };
+  }
+  return { texto, documentoProtegido: false, ocrFalhou: false };
 }
 
 export async function salvarOrcamentoParceiroDocumento(

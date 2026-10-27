@@ -17,7 +17,7 @@ export type DocumentoPortaoResultado = {
 export function deveBloquearDocumentoParceiro(
   resultado: Pick<DocumentoPortaoResultado, "documento" | "possivel_documento">,
 ): boolean {
-  return resultado.documento || resultado.possivel_documento;
+  return resultado.documento;
 }
 
 export function isDocumentoGateCandidate(media: MediaExtract): boolean {

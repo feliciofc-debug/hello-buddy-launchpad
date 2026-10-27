@@ -42,6 +42,22 @@ async function ocrLocal(
   };
 }
 
+export async function extrairTextoOcrLocal(
+  bytes: Uint8Array,
+  mime: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  if (!bytes.byteLength || bytes.byteLength > MAX_BYTES) {
+    throw new Error("Documento deve ter até 15 MB");
+  }
+  const result = await ocrLocal(
+    bytes,
+    String(mime || "application/octet-stream").toLowerCase(),
+    fetchImpl,
+  );
+  return result.texto;
+}
+
 export type CrlvOcrMetricas = {
   motor: "paddleocr" | "tesseract";
   variante_vencedora: string;
