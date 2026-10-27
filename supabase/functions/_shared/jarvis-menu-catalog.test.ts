@@ -320,7 +320,7 @@ Deno.test("MENU-B2 — fixtures provam troca, procedência, CRLV e Meta Ads", as
     source: "./gestao-troca-whatsapp.ts",
   });
   assert(
-    classifyGestaoTrocaWhatsAppIntent("Quais trocas foram avaliadas?").matches,
+    classifyGestaoTrocaWhatsAppIntent("Quais trocas avaliadas?").matches,
   );
   assert(
     isProcedenciaWhatsAppRequest(

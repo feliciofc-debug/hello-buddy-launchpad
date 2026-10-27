@@ -2146,7 +2146,7 @@ export const JARVIS_AJUDA_CATALOGO: readonly JarvisAjudaItem[] = [
     secao: "Vistoria e troca",
     titulo: "Ver trocas e laudos",
     comoPedir: [
-      "Quais trocas foram avaliadas?",
+      "Quais trocas avaliadas?",
       "Mostre o laudo do Civic.",
     ],
     oQueAcontece: "Lista avaliadas e entrega resumo, fotos e laudo em PDF.",
@@ -2313,6 +2313,7 @@ export function buscarJarvisAjudaCatalogo(
   ]);
   const termos = normalizarBusca(pergunta).filter((x) => !ignorar.has(x));
   if (!termos.length) return null;
+  const minimoPontos = termos.length >= 3 ? 2 : 1;
   let melhor: { item: JarvisAjudaItem; pontos: number } | null = null;
   for (
     const item of JARVIS_AJUDA_CATALOGO.filter((item) =>
@@ -2332,7 +2333,7 @@ export function buscarJarvisAjudaCatalogo(
         total + (alvo.some((x) => x === termo || x.startsWith(termo)) ? 1 : 0),
       0,
     );
-    if (pontos > 0 && (!melhor || pontos > melhor.pontos)) {
+    if (pontos >= minimoPontos && (!melhor || pontos > melhor.pontos)) {
       melhor = { item, pontos };
     }
   }

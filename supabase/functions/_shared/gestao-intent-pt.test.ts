@@ -4,6 +4,10 @@ import { classifyGestaoIntent } from "./gestao-intent-pt.ts";
 Deno.test("intent venda raio-x", () => {
   const i = classifyGestaoIntent("Como foi a venda do X6?");
   assertEquals(i.kind, "venda_raiox");
+  assertEquals(
+    classifyGestaoIntent("Como foi a venda do Civic?").kind,
+    "venda_raiox",
+  );
 });
 
 Deno.test("intent piores negocios do mes", () => {
@@ -68,7 +72,10 @@ Deno.test("intent posicao loja nao captura preco cliente", () => {
 });
 
 Deno.test("intent relatorio vendedores", () => {
-  assertEquals(classifyGestaoIntent("relatório dos vendedores").kind, "relatorio_vendedores");
+  assertEquals(
+    classifyGestaoIntent("relatório dos vendedores").kind,
+    "relatorio_vendedores",
+  );
   assertEquals(
     classifyGestaoIntent("como estão as vendas dos vendedores").kind,
     "relatorio_vendedores",

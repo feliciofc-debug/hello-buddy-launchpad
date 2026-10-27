@@ -102,7 +102,8 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
     /\bposicao\s+da\s+loja\b/.test(t) ||
     /\bstatus\s+da\s+loja\b/.test(t) ||
     /\bresumo\s+(da\s+loja|geral)\b/.test(t) ||
-    /\bcomo\s+(estamos|esta\s+a\s+loja|ta\s+a\s+loja|estao\s+a\s+loja|estão\s+a\s+loja)\b/.test(t)
+    /\bcomo\s+(estamos|esta\s+a\s+loja|ta\s+a\s+loja|estao\s+a\s+loja|estão\s+a\s+loja)\b/
+      .test(t)
   ) {
     return { ...empty, kind: "posicao_loja", vehicleHint };
   }
@@ -112,7 +113,8 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
     /\bcomo\s+(estao|estão|ta)\s+as\s+vendas\s+dos\s+vendedores\b/.test(t) ||
     /\branking\s+da\s+equipe\b/.test(t) ||
     /\bcomo\s+(esta|ta|está)\s+a\s+equipe\b/.test(t) ||
-    (/\bcomo\s+(estao|estão|ta)\s+as\s+vendas\b/.test(t) && /\bvendedores?\b/.test(t))
+    (/\bcomo\s+(estao|estão|ta)\s+as\s+vendas\b/.test(t) &&
+      /\bvendedores?\b/.test(t))
   ) {
     return { ...empty, kind: "relatorio_vendedores", vehicleHint };
   }
@@ -121,6 +123,7 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
   if (
     vendedorDetalheHint.length >= 2 &&
     !/\brelatorio\s+(dos\s+)?vendedores\b/.test(t) &&
+    !/\bcomo\s+foi\s+a\s+venda\b/.test(t) &&
     (
       /\bcomo\s+(esta|ta|está)\s+(a|o)\s+/i.test(text) ||
       /\bvendas?\s+do(a)?\s+/i.test(text) ||
@@ -135,19 +138,30 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
     };
   }
 
-  if (/\bqual\s+(o\s+)?preco\b|\bquanto\s+custa\b|\bvalor\s+do\s+carro\b/.test(t)) {
+  if (
+    /\bqual\s+(o\s+)?preco\b|\bquanto\s+custa\b|\bvalor\s+do\s+carro\b/.test(t)
+  ) {
     return empty;
   }
 
-  if (/\bquanto\s+a\s+loja\s+lucrou\b|\blucro\s+liquido\s+da\s+loja\b|\bresultado\s+da\s+loja\b/.test(t)) {
+  if (
+    /\bquanto\s+a\s+loja\s+lucrou\b|\blucro\s+liquido\s+da\s+loja\b|\bresultado\s+da\s+loja\b/
+      .test(t)
+  ) {
     return { ...empty, kind: "lucro_loja_mes", vehicleHint };
   }
 
-  if (/\bmanda(r)?\s+o?\s*relatorio\s+do\s+mes\s+(pro|para\s+o)\s+contador\b/.test(t)) {
+  if (
+    /\bmanda(r)?\s+o?\s*relatorio\s+do\s+mes\s+(pro|para\s+o)\s+contador\b/
+      .test(t)
+  ) {
     return { ...empty, kind: "pacote_contador", vehicleHint };
   }
 
-  if (/\bcancela(r)?\s+o?\s*link\s+do\s+contador\b|\brevoga(r)?\s+link\s+contador\b/.test(t)) {
+  if (
+    /\bcancela(r)?\s+o?\s*link\s+do\s+contador\b|\brevoga(r)?\s+link\s+contador\b/
+      .test(t)
+  ) {
     return { ...empty, kind: "revogar_link_contador", vehicleHint };
   }
 
@@ -163,19 +177,25 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
     return { ...empty, kind: "contrato_status", vehicleHint };
   }
 
-  if (/\bnotas?\s+do\s+mes\b|\bnfe\s+do\s+mes\b|\bnotas?\s+fiscais\s+do\s+mes\b/.test(t)) {
+  if (
+    /\bnotas?\s+do\s+mes\b|\bnfe\s+do\s+mes\b|\bnotas?\s+fiscais\s+do\s+mes\b/
+      .test(t)
+  ) {
     return { ...empty, kind: "notas_mes", vehicleHint };
   }
 
   if (
-    (/\bemit(e|ir)\s+(a\s+)?nota\b|\bemite\s+(a\s+)?nota\b|\bnota\s+fiscal\s+do\b/.test(t) ||
+    (/\bemit(e|ir)\s+(a\s+)?nota\b|\bemite\s+(a\s+)?nota\b|\bnota\s+fiscal\s+do\b/
+      .test(t) ||
       (/\bnfe\s+do\b/.test(t) && !/\bstatus\b/.test(t))) &&
     vehicleHint.length >= 2
   ) {
     return { ...empty, kind: "nfe_emit", vehicleHint };
   }
 
-  if (/\bstatus\s+da\s+nota\b|\bstatus\s+do\s+nfe\b|\bstatus\s+da\s+nfe\b/.test(t)) {
+  if (
+    /\bstatus\s+da\s+nota\b|\bstatus\s+do\s+nfe\b|\bstatus\s+da\s+nfe\b/.test(t)
+  ) {
     return { ...empty, kind: "nfe_status", vehicleHint };
   }
 
@@ -187,11 +207,16 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
     return { ...empty, kind: "contas_amanha", vehicleHint };
   }
 
-  if (/\bquanto\s+tenho\s+a\s+receber\b|\ba\s+receber\b/.test(t) && !/\bpagar\b/.test(t)) {
+  if (
+    /\bquanto\s+tenho\s+a\s+receber\b|\ba\s+receber\b/.test(t) &&
+    !/\bpagar\b/.test(t)
+  ) {
     return { ...empty, kind: "a_receber", vehicleHint };
   }
 
-  if (/\blucro\s+do\s+mes\b|\blucro\s+mensal\b|\bresultado\s+do\s+mes\b/.test(t)) {
+  if (
+    /\blucro\s+do\s+mes\b|\blucro\s+mensal\b|\bresultado\s+do\s+mes\b/.test(t)
+  ) {
     return { ...empty, kind: "lucro_mes", vehicleHint };
   }
 
@@ -260,7 +285,8 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
   }
 
   if (
-    (/\bgastei\b|\bpaguei\b|\bdespesa\b/.test(t) || inferGestaoCategoria(text) !== "outros") &&
+    (/\bgastei\b|\bpaguei\b|\bdespesa\b/.test(t) ||
+      inferGestaoCategoria(text) !== "outros") &&
     valor != null &&
     vehicleHint.length >= 2
   ) {
