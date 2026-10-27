@@ -119,11 +119,14 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
     return { ...empty, kind: "relatorio_vendedores", vehicleHint };
   }
 
+  if (/\bcomo\s+foi\s+a\s+venda\b/.test(t) && vehicleHint.length >= 2) {
+    return { ...empty, kind: "venda_raiox", vehicleHint };
+  }
+
   const vendedorDetalheHint = vendedorHintFromText(text);
   if (
     vendedorDetalheHint.length >= 2 &&
     !/\brelatorio\s+(dos\s+)?vendedores\b/.test(t) &&
-    !/\bcomo\s+foi\s+a\s+venda\b/.test(t) &&
     (
       /\bcomo\s+(esta|ta|está)\s+(a|o)\s+/i.test(text) ||
       /\bvendas?\s+do(a)?\s+/i.test(text) ||
@@ -243,10 +246,6 @@ export function classifyGestaoIntent(text: string): GestaoIntent {
     vendedorHint.length >= 2
   ) {
     return { ...empty, kind: "vendedor_mes", vendedorHint, vehicleHint };
-  }
-
-  if (/\bcomo\s+foi\s+a\s+venda\b/.test(t) && vehicleHint.length >= 2) {
-    return { ...empty, kind: "venda_raiox", vehicleHint };
   }
 
   if (
