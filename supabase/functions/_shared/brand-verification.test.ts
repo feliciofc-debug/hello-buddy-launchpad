@@ -47,11 +47,11 @@ Deno.test("verification requires every flag and minimum confidence", () => {
   );
 });
 
-Deno.test("Ademicon aprova texto da logo oficial compatível, mas nunca logo divergente", () => {
+Deno.test("Autovia aprova texto da logo oficial compatível, mas nunca logo divergente", () => {
   const firstAttempt = {
     brand_visible: true,
     text_exact: true,
-    text_found: "Ademicon Consórcio",
+    text_found: "Autovia Veículos",
     logo_matches: false,
     invented_brands: [],
     confidence: 0.98,
@@ -59,21 +59,21 @@ Deno.test("Ademicon aprova texto da logo oficial compatível, mas nunca logo div
   const officialLogoAttempt = {
     brand_visible: true,
     text_exact: false,
-    text_found: "ADEMICON consórcio e investimento",
+    text_found: "AUTOVIA veículos e seminovos",
     logo_matches: true,
     invented_brands: [],
     confidence: 0.98,
   };
   assert(
-    !isBrandVerificationApproved(firstAttempt, "Ademicon Consórcio"),
+    !isBrandVerificationApproved(firstAttempt, "Autovia Veículos"),
     "logo_matches false must always reject",
   );
   assert(
-    isBrandVerificationApproved(officialLogoAttempt, "Ademicon Consórcio"),
+    isBrandVerificationApproved(officialLogoAttempt, "Autovia Veículos"),
     "official logo text containing the significant name must pass",
   );
   assert(
-    isBrandNameCompatible("Ademícon: Consórcio", "ADEMICON consórcio e investimento"),
+    isBrandNameCompatible("Autovía: Veículos", "AUTOVIA veículos e seminovos"),
     "compatibility must ignore accents, punctuation and case",
   );
 });

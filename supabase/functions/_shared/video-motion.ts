@@ -382,7 +382,7 @@ export function marcaCurta(nome: string, max = 18): string {
 
 // ---- Proteção do nome da marca -------------------------------------------
 // A IA às vezes erra a grafia do nome do cliente ("ADOMICON" em vez de
-// "ADEMICON"). Aqui reescrevemos qualquer palavra parecida com um nome
+// "AUTOVIA"). Aqui reescrevemos qualquer palavra parecida com um nome
 // oficial do tenant pela grafia correta.
 
 const semAcento = (s: string) =>
@@ -429,7 +429,7 @@ function corrigirTexto(texto: string, nomes: string[]): string {
       const ref = semAcento(nome);
       if (alvo === ref) return palavra;
       if (distancia(alvo, ref) <= 2) {
-        // preserva o caixa-alta usado pela IA (ex.: "ADOMICON" -> "ADEMICON")
+        // preserva o caixa-alta usado pela IA (ex.: "AUTOVÍA" -> "AUTOVIA")
         return palavra === palavra.toUpperCase() ? nome.toUpperCase() : nome;
       }
     }

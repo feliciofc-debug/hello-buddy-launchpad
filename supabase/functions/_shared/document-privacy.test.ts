@@ -173,7 +173,6 @@ Deno.test("PRIV-1 — processor guarda documento de cliente e retorna antes de I
   assertStringIncludes(clientFlow, "client_document_secured");
   assertEquals(clientFlow.includes("ai.gateway.lovable.dev"), false);
   assertEquals(clientFlow.includes("MODEL_DEEP"), false);
-  assertEquals(clientFlow.includes("silvester_documentos"), false);
 
   const ownerFlow = source.slice(
     end,

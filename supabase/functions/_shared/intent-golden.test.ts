@@ -192,9 +192,9 @@ const cases: GoldenCase[] = [
     expected: "vehicle",
   },
   {
-    name: "anúncio de caneca em consórcio usa vertical geral",
+    name: "anúncio de caneca em varejo usa vertical geral",
     text: "anúncio",
-    tenantSegment: "Consórcio",
+    tenantSegment: "Loja de presentes",
     vision: "general",
     expected: "general",
   },

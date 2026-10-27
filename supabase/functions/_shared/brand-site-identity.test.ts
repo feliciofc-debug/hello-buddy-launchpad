@@ -152,11 +152,11 @@ Deno.test("extrai nome da marca declarado pelo site", () => {
     "https://amz.example/produto",
   );
   assertEquals(identity.brand_name, "AMZ Ofertas");
-  assertEquals(cleanSiteBrandName("Ademicon | Consórcio de imóveis"), "Ademicon");
-  assertEquals(cleanSiteBrandName("Ademicon - Consórcio de imóveis"), "Ademicon");
-  assertEquals(cleanSiteBrandName("Ademicon – Consórcio"), "Ademicon");
-  assertEquals(cleanSiteBrandName("Ademicon — Investimentos"), "Ademicon");
-  assertEquals(cleanSiteBrandName("Ademicon: Consórcio"), "Ademicon");
+  assertEquals(cleanSiteBrandName("Autovia | Seminovos premium"), "Autovia");
+  assertEquals(cleanSiteBrandName("Autovia - Seminovos premium"), "Autovia");
+  assertEquals(cleanSiteBrandName("Autovia – Veículos"), "Autovia");
+  assertEquals(cleanSiteBrandName("Autovia — Automóveis"), "Autovia");
+  assertEquals(cleanSiteBrandName("Autovia: Seminovos"), "Autovia");
 });
 
 Deno.test("HTML acima do limite preserva identidade encontrada no início", async () => {

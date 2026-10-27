@@ -105,10 +105,6 @@ import {
   getPendingVitrineEstoque,
   processVitrineTrocaInboundPhoto,
 } from "../_shared/vehicle-stock-showcase-bridge.ts";
-import {
-  shouldFireSilvesterExtractHook,
-  silvesterDossieEnabledForTenant,
-} from "../_shared/silvester-dossie-gate.ts";
 import { loadTenantVehicleStockGate } from "../_shared/vehicle-inventory-tenant.ts";
 import {
   isVitrineRetomadaOptOutText,
@@ -4203,7 +4199,7 @@ function enforceForwardTruth(
 function pedeAtencaoDoDono(text: string): boolean {
   const low = normalizeContactLookupText(text);
   if (!low) return false;
-  return /(orcamento|simulacao|simular|simule|proposta|valores|valor da|quanto custa|quanto fica|preco|desconto|negociar|negociacao|parcela|financiamento|carta de credito)/.test(low);
+  return /(orcamento|simulacao|simular|simule|proposta|valores|valor da|quanto custa|quanto fica|preco|desconto|negociar|negociacao|parcela|financiamento)/.test(low);
 }
 
 // Cliente encerrou o atendimento / optou por esperar o dono?
@@ -4256,7 +4252,7 @@ function isExplicitOwnerForwardIntent(raw: string, ownerName?: string | null): b
     ownerFirst,
   ].filter(Boolean).join("|")})\\b`, "i").test(low);
   const hasForwardVerb = /\b(manda|mandar|mande|mandei|envia|enviar|envie|encaminha|encaminhar|encaminhe|passa|passe|repassa|repassar|avisa|avisar|avise|pede|pedir|peca|solicita|solicitar|chama|chamar|falar|contato|retorno|retornar)\b/i.test(low);
-  const hasBusinessAsk = /\b(foto|imagem|recado|mensagem|duvida|plano|orcamento|proposta|simulacao|consorcio|carta|credito|parcela|prazo)\b/i.test(low);
+  const hasBusinessAsk = /\b(foto|imagem|recado|mensagem|duvida|plano|orcamento|proposta|simulacao|credito|parcela|prazo)\b/i.test(low);
   const teamShouldReply = /\b(equipe|consultor|gerente|responsavel|atendente)\b.*\b(me\s+(enviar|enviarem|mandar|mandarem|retornar|retornarem|chamar|chamarem)|entrar em contato|falar comigo)\b/i.test(low);
   return (hasRecipient && (hasForwardVerb || hasBusinessAsk)) || teamShouldReply;
 }
@@ -4264,7 +4260,7 @@ function isExplicitOwnerForwardIntent(raw: string, ownerName?: string | null): b
 function isOwnerHandoffQuestion(raw: string): boolean {
   const low = normalizeContactLookupText(raw);
   if (!low) return false;
-  const commercialTopic = /\b(consorcio|plano|carta|credito|parcela|parcelamento|prazo|meses|taxa|simulacao|proposta|orcamento|contemplacao|ademicon)\b/i.test(low);
+  const commercialTopic = /\b(plano|credito|parcela|parcelamento|prazo|meses|taxa|simulacao|proposta|orcamento)\b/i.test(low);
   const asksForDecision = /\b(consigo|consegue|pode|posso|tem|existe|quanto|qual|como|fazer|faz|da pra|da para|quero|preciso|me passa|me envia|me manda)\b/i.test(low) || /\?/.test(raw);
   const needsHuman = /\b(\d+\s*meses|100\s*meses|plano|proposta|orcamento|simulacao|equipe|consultor|responsavel)\b/i.test(low);
   return commercialTopic && asksForDecision && needsHuman;
@@ -4334,7 +4330,7 @@ async function inferContatoComercialFromText(text: string, userId: string): Prom
     if (haystack.includes(` ${nome} `)) score += 30;
     if (firstName.length >= 4 && haystack.includes(` ${firstName} `)) score += 10;
 
-    // Mensagens compostas pelo Jarvis costumam começar com "Oi Marcelo..." e também
+    // Mensagens compostas pelo Jarvis costumam começar com uma saudação nominal e também
     // citar "assistente do Felício". O alvo é o nome saudado no começo, não Felício.
     if (firstName.length >= 4) {
       const greeting = new RegExp(`^(oi|ola|olá|bom dia|boa tarde|boa noite)\\s+${firstName}\\b`, "i");
@@ -4427,7 +4423,7 @@ async function toolEnviarMensagemContatoComercial(
   }
 
   // Fallback extra: se o modelo ainda inventar UUID e não mandar nome_busca,
-  // tenta inferir pelo nome-alvo no texto composto (ex: "Oi Marcelo...").
+  // tenta inferir pelo nome-alvo no texto composto (ex: "Oi Renata...").
   if (!contato) {
     contato = await inferContatoComercialFromText(mensagem, ctx.userId);
   }
@@ -6794,13 +6790,7 @@ async function gerarTresOpcoesRedeSocial(
 - Opção B — STORYTELLING: começa com uma cena, dor, curiosidade ou história real do contexto; termina no CTA suave.
 - Opção C — INTERATIVA/EDUCATIVA: pergunta que engaja OU mini-ensinamento sobre o tema (dica, mito x verdade, "sabia que…"), com CTA leve no fim.`;
 
-  const descLower = `${produto.nome} ${produto.descricao || ""} ${produto.categoria || ""}`.toLowerCase();
-  const ehConsorcio = /consorci|consórci|carta\s+de\s+cr[eé]dito/.test(descLower);
-  const regraConsorcio = ehConsorcio
-    ? `\n⚠️ ESTE PRODUTO É CONSÓRCIO. PROIBIDO: "estoque limitado", "últimas unidades", "peças", "pronta-entrega". PERMITIDO: carta de crédito, contemplação, parcelas, planejamento, sonho realizado.`
-    : "";
-
-  const ehVeiculo = !ehConsorcio && niche === "veiculo"
+  const ehVeiculo = niche === "veiculo"
     ? `
 ========================================
 🚗 ESTE POST É DE VEÍCULO — REGRAS ESPECIAIS (PRIORIDADE ALTA):
@@ -6831,7 +6821,7 @@ COMO USAR:
     : "";
 
   const prompt = `Você é copywriter sênior de redes sociais. Crie 3 VARIAÇÕES CURTAS de post para ${rede.toUpperCase()} sobre o produto/tema abaixo.
-${guiaTom}${regraConsorcio}${ehVeiculo}
+${guiaTom}${ehVeiculo}
 ${blocoBriefing}
 DADOS:
 - Nome/tema: ${produto.nome}
@@ -8696,7 +8686,6 @@ function detectSocialPostConfirmation(text: string): { token: string; cancelar?:
 const CATEGORIAS_ASSUNTO: Array<{ nome: string; re: RegExp }> = [
   { nome: "veiculo", re: /\b(ve[ií]culo|carro|autom[oó]vel|seminovo|semi-novo|0km|zero\s*km|hatch|sedan|sed[aã]|suv|picape|caminhonete|moto(cicleta)?|c[aâ]mbio|flex|turbo|km\s*rodados?|honda|toyota|hyundai|chevrolet|volkswagen|fiat|ford|renault|nissan|jeep|bmw|mercedes|audi|peugeot|citro[eë]n|civic|corolla|creta|onix|hb20|compass|tracker|hilux|ranger)\b/i },
   { nome: "imovel", re: /\b(im[oó]vel|apartamento|casa\s+(?:à|a)\s+venda|terreno|lote|condom[ií]nio|metros\s+quadrados|m²|quartos?|su[ií]tes?)\b/i },
-  { nome: "consorcio", re: /\b(cons[oó]rcio|carta\s+de\s+cr[eé]dito|ademicon|parcelas?\s+mensais|lance)\b/i },
 ];
 
 function categoriaAssunto(texto: string): string | null {
@@ -8708,7 +8697,7 @@ function categoriaConflitante(descricaoVisual: string, briefing: string): boolea
   const catBrief = categoriaAssunto(briefing);
   if (!catBrief) return false;
   const catVisual = categoriaAssunto(descricaoVisual);
-  // Briefing fala de veículo/imóvel/consórcio e a imagem NÃO é disso → conflito.
+  // Briefing fala de veículo/imóvel e a imagem NÃO é disso → conflito.
   return catVisual !== catBrief;
 }
 
@@ -13272,7 +13261,7 @@ const TOOLS = [
       parameters: {
         type: "object",
         properties: {
-          titulo: { type: "string", description: "Assunto curto do lembrete, ex: 'Reunião com Marcelo Martins'" },
+          titulo: { type: "string", description: "Assunto curto do lembrete, ex: 'Reunião com Renata Lima'" },
           data_hora_sp: { type: "string", description: "Data/hora absoluta em horário de São Paulo no formato 'YYYY-MM-DD HH:MM'. Ex: '2026-07-03 15:00'." },
           minutos_a_partir_de_agora: { type: "number", description: "Alternativa: minutos até o evento a partir de agora. Ex: 20." },
         },
@@ -13284,11 +13273,11 @@ const TOOLS = [
     type: "function",
     function: {
       name: "listar_contatos_comerciais",
-      description: "Lista os CONTATOS COMERCIAIS do dono (clientes, parceiros, prospects próximos com quem ele tem relação direta — Marcelo Martins, Renata, etc). Use ANTES de enviar mensagem quando o dono citar alguém pelo primeiro nome e você precisar confirmar quem é / achar o ID / ver o contexto do relacionamento. Também use pra responder 'quais são meus contatos comerciais', 'me lembra do Marcelo', 'qual o whats da Renata'.",
+      description: "Lista os CONTATOS COMERCIAIS do dono (clientes, parceiros e prospects próximos com quem ele tem relação direta). Use ANTES de enviar mensagem quando o dono citar alguém pelo primeiro nome e você precisar confirmar quem é, achar o ID ou ver o contexto do relacionamento. Também use pra responder 'quais são meus contatos comerciais', 'me lembra da Renata', 'qual o WhatsApp do Carlos'.",
       parameters: {
         type: "object",
         properties: {
-          busca: { type: "string", description: "Filtro opcional por nome ou empresa. Ex: 'marcelo', 'ademicon'. Vazio = lista tudo." },
+          busca: { type: "string", description: "Filtro opcional por nome ou empresa. Ex: 'renata', 'oficina centro'. Vazio = lista tudo." },
         },
       },
     },
@@ -13297,14 +13286,14 @@ const TOOLS = [
     type: "function",
     function: {
       name: "enviar_mensagem_contato_comercial",
-      description: "Envia uma MENSAGEM DE WHATSAPP TEXTO humanizada para um contato comercial (tabela contatos_comerciais), agora ou agendada. NUNCA faz ligação de voz — Jarvis só envia texto. Use quando o dono mandar comandos tipo 'manda mensagem pro Marcelo confirmando nossa reunião amanhã 10:30', 'avisa a Renata que...', 'faz follow-up com o cliente X'.\n\nVOCÊ (Jarvis) COMPÕE o texto da mensagem no parâmetro 'mensagem' — em nome do dono, gentil, humanizado, se apresentando como 'aqui é o Jarvis, assistente do Felício'.\n\n⚠️ REGRA CRÍTICA DE IDENTIFICAÇÃO DO CONTATO (leia antes de chamar):\n• NUNCA INVENTE contato_id. Só passe contato_id se veio EXATAMENTE do retorno de listar_contatos_comerciais nesta mesma conversa.\n• Se você não tem certeza absoluta do UUID, NÃO mande contato_id. Mande APENAS 'nome_busca' com o primeiro nome (ex: 'Marcelo') OU 'whatsapp' com o número que o dono forneceu.\n• Se o dono já te deu o número de telefone (ex: '5521964641312' ou '(21) 96464-1312'), passe em 'whatsapp' — o sistema faz o match automático.\n• Sempre passe 'nome_busca' junto quando não tiver certeza do contato_id — é redundância que salva.\n\nAgendamento: use 'data_hora_sp' (YYYY-MM-DD HH:MM em SP) pra momento futuro; omita ambos os campos de tempo pra enviar AGORA.",
+      description: "Envia uma MENSAGEM DE WHATSAPP TEXTO humanizada para um contato comercial (tabela contatos_comerciais), agora ou agendada. NUNCA faz ligação de voz — Jarvis só envia texto. Use quando o dono mandar comandos tipo 'manda mensagem pra Renata confirmando nossa reunião amanhã 10:30', 'avisa o Carlos que...', 'faz follow-up com o cliente X'.\n\nVOCÊ (Jarvis) COMPÕE o texto da mensagem no parâmetro 'mensagem' — em nome do dono, gentil, humanizado, se apresentando como assistente dele.\n\n⚠️ REGRA CRÍTICA DE IDENTIFICAÇÃO DO CONTATO (leia antes de chamar):\n• NUNCA INVENTE contato_id. Só passe contato_id se veio EXATAMENTE do retorno de listar_contatos_comerciais nesta mesma conversa.\n• Se você não tem certeza absoluta do UUID, NÃO mande contato_id. Mande APENAS 'nome_busca' com o primeiro nome (ex: 'Renata') OU 'whatsapp' com o número que o dono forneceu.\n• Se o dono já te deu o número de telefone (ex: '5511999999999'), passe em 'whatsapp' — o sistema faz o match automático.\n• Sempre passe 'nome_busca' junto quando não tiver certeza do contato_id — é redundância que salva.\n\nAgendamento: use 'data_hora_sp' (YYYY-MM-DD HH:MM em SP) pra momento futuro; omita ambos os campos de tempo pra enviar AGORA.",
       parameters: {
         type: "object",
         properties: {
           contato_id: { type: "string", description: "UUID EXATO retornado por listar_contatos_comerciais nesta conversa. NUNCA invente. Se em dúvida, deixe vazio e use nome_busca/whatsapp." },
-          nome_busca: { type: "string", description: "Primeiro nome ou parte do nome (ex: 'Marcelo'). Use sempre que não tiver 100% de certeza do contato_id." },
+          nome_busca: { type: "string", description: "Primeiro nome ou parte do nome (ex: 'Renata'). Use sempre que não tiver 100% de certeza do contato_id." },
           whatsapp: { type: "string", description: "Número de WhatsApp do contato, se o dono forneceu (com ou sem DDD/formatação). Match automático pelos últimos 8-10 dígitos." },
-          mensagem: { type: "string", description: "Texto COMPLETO da mensagem WhatsApp já humanizado, em nome do dono. Mín 20 chars. SEMPRE inclua o primeiro nome do contato no início (ex: 'Oi Marcelo, tudo bem? Aqui é o Jarvis, assistente do Felício...')." },
+          mensagem: { type: "string", description: "Texto COMPLETO da mensagem WhatsApp já humanizado, em nome do dono. Mín 20 chars. SEMPRE inclua o primeiro nome do contato no início (ex: 'Oi Renata, tudo bem? Aqui é o Jarvis, assistente da loja...')." },
           data_hora_sp: { type: "string", description: "Opcional. Envio agendado em horário SP no formato 'YYYY-MM-DD HH:MM'. Omita pra enviar agora." },
           minutos_a_partir_de_agora: { type: "number", description: "Opcional. Alternativa a data_hora_sp: minutos até o envio." },
           tipo_acao: { type: "string", enum: ["confirmar_reuniao", "followup_proposta", "resposta_comercial", "checkin_relacionamento", "mensagem_livre"], description: "Categoria da ação pra log/analytics. Padrão: mensagem_livre." },
@@ -13823,7 +13812,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "encaminhar_recado_ao_dono",
-      description: "📨 USE quando o cliente/contato pedir explicitamente pra você MANDAR RECADO, AVISO, MENSAGEM ou FOTO pro DONO do agente (ex: 'manda pro Marcelo', 'passa isso pro chefe', 'avisa o dono', 'encaminha essa foto pra ele'). Envia o recado (texto + a última foto que o cliente mandou, se houver) pro WhatsApp do dono do tenant automaticamente — você NÃO precisa saber o número dele. Só use quando o pedido for CLARO; não use pra conversas normais. Sempre confirme pro cliente que já mandou.",
+      description: "📨 USE quando o cliente/contato pedir explicitamente pra você MANDAR RECADO, AVISO, MENSAGEM ou FOTO pro DONO do agente (ex: 'manda pro responsável', 'passa isso pro chefe', 'avisa o dono', 'encaminha essa foto pra ele'). Envia o recado (texto + a última foto que o cliente mandou, se houver) pro WhatsApp do dono do tenant automaticamente — você NÃO precisa saber o número dele. Só use quando o pedido for CLARO; não use pra conversas normais. Sempre confirme pro cliente que já mandou.",
       parameters: {
         type: "object",
         properties: {
@@ -13913,7 +13902,7 @@ const TOOLS = [
       parameters: {
         type: "object",
         properties: {
-          tema: { type: "string", description: "Tema e objetivo do vídeo, preservando a ideia do responsável. Ex: 'mostrar como a Ademicon agenda posts e publica nas redes'." },
+          tema: { type: "string", description: "Tema e objetivo do vídeo, preservando a ideia do responsável. Ex: 'mostrar como a loja agenda posts e publica nas redes'." },
           cores: { type: "string", description: "Trecho LITERAL do pedido que menciona cores, com rótulos e hex se houver. Ex: 'fundo #ffffff, fundo 2 #fff5f5, destaque #E30613, apoio #ff4d57' ou 'vermelho e branco'. Deixe vazio se ele não citou cor nenhuma." },
           duracao: { type: "string", enum: ["curto", "medio", "longo"], description: "Duração SE ele pediu: 'curto' (~25s, padrão para redes), 'medio' (~45s), 'longo' (~75s, apresentação comercial). Vídeo mais longo tem MAIS conteúdo e demora mais para renderizar. Omita quando ele não pedir." },
           estilo: { type: "string", enum: ["auto", "conversa", "institucional", "lista"], description: "Formato do vídeo SE ele pediu: 'conversa' (celular com balões de WhatsApp), 'institucional' (tipografia grande, argumentos, selo/dado), 'lista' (itens numerados, '3 motivos', 'passo a passo'). Use 'auto' quando ele não pedir formato — a plataforma escolhe pelo tema." },
@@ -25201,7 +25190,7 @@ async function processOne(queueId: string) {
 
     // =====================================================================
     // OPT-IN GATE (Fase 1 — Meta oficial)
-    // Roda ANTES de qualquer fluxo do Silvester/Jarvis/AMZ.
+    // Roda ANTES de qualquer fluxo do Jarvis/AMZ.
     // Responsabilidades:
     //   1) STOP/opt-out UNIVERSAL — sempre respeita PARE/SAIR/STOP/DESCADASTRAR,
     //      independente do status atual (exigência Meta + LGPD).
@@ -25544,7 +25533,7 @@ async function processOne(queueId: string) {
               await doneQueue(row.id);
               return { ok: true, opt_in_gate: "recusado_convite" };
             }
-            // Se não classificou SIM/NÃO, NÃO consome — deixa o Silvester/Jarvis
+            // Se não classificou SIM/NÃO, NÃO consome — deixa o Jarvis
             // responder normalmente e mantém convite_enviado (dentro da janela).
           }
         }
@@ -25744,7 +25733,7 @@ async function processOne(queueId: string) {
     // A regra da Meta: o negócio pode responder livremente por 24h APÓS a última
     // mensagem do usuário. Qualquer inbound recém-chegado RESETA a janela — então
     // referenciamos o inbound ATUAL (row.created_at), não o anterior. O dono do
-    // agente é sempre exempto: responder pro próprio Marcelo não pode ser bloqueado.
+    // agente é sempre exempto: responder para o próprio dono não pode ser bloqueado.
     if (!fromIsOwner) {
       const currentInboundTs = (row as any).created_at ? new Date((row as any).created_at).getTime() : Date.now();
       const ageMs = Date.now() - currentInboundTs;
@@ -28365,9 +28354,9 @@ async function processOne(queueId: string) {
     }
 
 
-    // Atalho determinístico: quando cliente pede equipe/responsável/Marcelo ou faz
+    // Atalho determinístico: quando cliente pede equipe/responsável ou faz
     // pergunta comercial que exige retorno humano, NÃO deixa a IA procurar contato.
-    // Encaminha direto para owner_phone do tenant (Marcelo: número diferente do agente).
+    // Encaminha direto para owner_phone do tenant.
     if (!fromIsOwner && row.message_type === "text" && userText.trim() && tenantOwnerPhone) {
       const explicitForward = isExplicitOwnerForwardIntent(userText, _tenantOwner?.name);
       const humanNeeded = isOwnerHandoffQuestion(userText);
@@ -28722,7 +28711,7 @@ async function processOne(queueId: string) {
           console.log(`[processor][contact-memory] hit for ${row.from_number} -> ${match.nome}`);
 
           // 🔔 HEADS-UP AO DONO: contato comercial respondeu — Jarvis reporta ao Felício.
-          // Assim, quando Marcelo/Renata/etc respondem (ex: confirmando reunião),
+          // Assim, quando contatos comerciais respondem (ex: confirmando reunião),
           // o dono recebe um resumo imediato no WhatsApp dele.
           try {
             if (!fromIsOwner && userText && userText.trim().length > 0) {
@@ -28793,7 +28782,7 @@ async function processOne(queueId: string) {
     let mediaBlock = media.length > 0
       ? inboundFromOwner
         ? `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- O DONO/RESPONSÁVEL ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Foto/vídeo/áudio recebido é MÍDIA LIVRE da biblioteca — NÃO é um produto do catálogo.\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE. Passe em "contexto" o que ele falou (ou "sem contexto" se só mandou o arquivo).\n- É PROIBIDO chamar postar_redes_sociais quando há mídia nova enviada nesta mensagem — aquela tool é SÓ pra produtos do catálogo, nunca pra mídia recém-enviada.\n- 🏷️ ANÚNCIO: se ele pedir arte/anúncio de produto (veículo, imóvel, máquina, item de loja) e passar dados (modelo, ano, km, preço, garantia), chame criar_anuncio DEPOIS de salvar, NESTA MESMA RESPOSTA — 'titulo' = modelo, 'subtitulo' = ano/câmbio, cada dado citado em 'itens' exatamente como ele escreveu, 'preco' com o valor dito. Nunca invente dado.\n- 🎨 EDIÇÃO: se ele pedir para MELHORAR a foto, escrever dados na imagem (km, ano/modelo, "único dono", preço) ou trocar roupa/fantasia mantendo o ambiente, chame editar_imagem DEPOIS de salvar. Coloque cada dado citado por ele em "textos" (exatamente como ele escreveu) e escolha modo='ficha_tecnica' (produto/veículo — TROCA o ambiente por estúdio/showroom limpo, tirando fios, TV, móveis e bagunça da foto) ou modo='figurino' (troca de roupa mantendo rosto e cenário). Se ele pedir 'ambiente bonito', 'fundo profissional' ou 'ambiente para anúncio', use modo='ficha_tecnica' e NÃO passe preservar_ambiente.\n- ⛔ REGRA DE PUBLICAÇÃO PÓS-EDIÇÃO: se você chamou editar_imagem (ou criar_anuncio) e ele pedir pra POSTAR, a mídia a publicar é SEMPRE a versão TRATADA — chame postar_midia_biblioteca passando o midia_id retornado por aquela tool. É PROIBIDO publicar a foto original enviada por ele.\n- Depois de salvar, responda curto. Só fale de publicar/reusar porque o remetente é o responsável da conta.`
-        : `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- Um CLIENTE/CONTATO ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Esse remetente NÃO é o dono/responsável da conta — trate como cliente, NUNCA como "chefe"/"dono".\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE para arquivar a mídia (uso interno, não comente com o cliente).\n- DEPOIS: OLHE a foto/vídeo, IDENTIFIQUE o teor (o que aparece — produto, documento, print, situação, etc.) e responda naturalmente comentando o que viu. Se o cliente fez uma pergunta ou pedido junto (ex: "esse produto tem?", "quanto custa?", "vocês fazem isso?"), TIRE A DÚVIDA dele com base no que dá pra ver + contexto do negócio.\n- É PROIBIDO perguntar onde postar, oferecer preparar legenda/post, publicar/reusar em redes ou pedir confirmação de rede/formato.\n- Só DEPOIS de comentar a foto e responder a dúvida, PERGUNTE se ele quer que você encaminhe essa foto/recado pro responsável (Marcelo). Só chame encaminhar_recado_ao_dono se ele CONFIRMAR que quer encaminhar (ou já pediu explicitamente na mesma mensagem).`
+        : `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- Um CLIENTE/CONTATO ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Esse remetente NÃO é o dono/responsável da conta — trate como cliente, NUNCA como "chefe"/"dono".\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE para arquivar a mídia (uso interno, não comente com o cliente).\n- DEPOIS: OLHE a foto/vídeo, IDENTIFIQUE o teor (o que aparece — produto, documento, print, situação, etc.) e responda naturalmente comentando o que viu. Se o cliente fez uma pergunta ou pedido junto (ex: "esse produto tem?", "quanto custa?", "vocês fazem isso?"), TIRE A DÚVIDA dele com base no que dá pra ver + contexto do negócio.\n- É PROIBIDO perguntar onde postar, oferecer preparar legenda/post, publicar/reusar em redes ou pedir confirmação de rede/formato.\n- Só DEPOIS de comentar a foto e responder a dúvida, PERGUNTE se ele quer que você encaminhe essa foto/recado pro responsável. Só chame encaminhar_recado_ao_dono se ele CONFIRMAR que quer encaminhar (ou já pediu explicitamente na mesma mensagem).`
       : "";
     if (media.length > 0 && inboundFromOwner) {
       mediaBlock += `\n- PUBLICAÇÃO SEM ID: chame postar_midia_biblioteca sem midia_id. O sistema usará a última foto ou vídeo deste fio de conversa e informará qual mídia escolheu antes das copies.`;
@@ -28816,7 +28805,7 @@ async function processOne(queueId: string) {
       if (m0 && media.length === 0) {
           recentMediaBlock = inboundFromOwner
             ? `\n\nMÍDIA RECENTE NA BIBLIOTECA /midias (últimos 15 min):\n- Tipo: ${m0.tipo}. Contexto salvo: "${m0.contexto_original ?? "sem contexto"}".\n- Se o dono pedir pra POSTAR/DIVULGAR agora em QUALQUER formato (feed, story, stories, reels), a mídia a publicar é ESTA que ele acabou de enviar — chame IMEDIATAMENTE postar_midia_biblioteca passando legenda/nome/preço do texto atual e formato='story' se ele citar story/stories (senão 'feed').\n- 🏷️ ANÚNCIO/ARTE: se ele pedir "cria a imagem para anúncio", "monta a arte", "faz um anúncio" e passar dados do produto (modelo, ano, km, preço, chaves, câmbio, "único dono"), chame IMEDIATAMENTE criar_anuncio NESTA MESMA RESPOSTA usando ESTA foto recente. Monte 'titulo' com o modelo citado, 'subtitulo' com ano/câmbio, coloque cada dado citado em 'itens' EXATAMENTE como ele escreveu e 'preco' com o valor dito. NÃO invente dados e NÃO pergunte nada se ele já deu o modelo.\n- ⛔ NUNCA chame postar_redes_sociais nesse caso — aquela tool busca PRODUTO no CATÁLOGO e vai devolver item ERRADO.\n- 🎨 EDIÇÃO/CENÁRIO: se ele pedir pra MELHORAR a foto, "deixar bonita", "colocar um cenário bonito", "fundo profissional", "ambiente para divulgar no Face/Insta", escrever dados na imagem (km, ano, preço, "único dono") ou trocar roupa/fantasia, chame IMEDIATAMENTE editar_imagem NESTA MESMA RESPOSTA — a ferramenta já pega ESTA foto recente sozinha. Se ele pedir pra COLOCAR/INCLUIR a LOGO ou a MARCA em algum ponto da foto (xícara, camisa, parede, carro), use OBRIGATORIAMENTE modo='aplicar_logo' — a foto dele é mantida igual e só a marca é aplicada; é PROIBIDO gerar outra foto. Use modo='ficha_tecnica' para cenário/estúdio/anúncio de produto e modo='figurino' para troca de roupa. Coloque em "textos" só os dados que ele escreveu.\n- ⛔ NUNCA responda que não consegue editar/gerar imagem, que "não tem essa função" ou que precisa reenviar a foto: a foto está aqui e a ferramenta existe. Chame a tool.\n- ⛔ NÃO chame buscar_estoque/consultar_estoque nesse caso.`
-            : `\n\nMÍDIA RECENTE NA BIBLIOTECA /midias (últimos 15 min):\n- Tipo: ${m0.tipo}. Foi enviada por CLIENTE/CONTATO, não pelo responsável.\n- NÃO ofereça postar/divulgar, NÃO pergunte rede/formato e NÃO chame ferramentas de publicação.\n- Se ele acabou de confirmar ("pode mandar", "sim manda pro Marcelo", "encaminha") depois de você ter oferecido, chame encaminhar_recado_ao_dono com incluir_ultima_foto=true.`;
+            : `\n\nMÍDIA RECENTE NA BIBLIOTECA /midias (últimos 15 min):\n- Tipo: ${m0.tipo}. Foi enviada por CLIENTE/CONTATO, não pelo responsável.\n- NÃO ofereça postar/divulgar, NÃO pergunte rede/formato e NÃO chame ferramentas de publicação.\n- Se ele acabou de confirmar ("pode mandar", "sim, manda pro responsável", "encaminha") depois de você ter oferecido, chame encaminhar_recado_ao_dono com incluir_ultima_foto=true.`;
         if (inboundFromOwner) {
           recentMediaBlock = recentMediaBlock.replace(
             /- Se o dono pedir pra POSTAR\/DIVULGAR[\s\S]*?(?=\n- 🏷️ ANÚNCIO\/ARTE:)/,
@@ -28922,61 +28911,13 @@ async function processOne(queueId: string) {
     }
 
     // Bloco de identidade do RESPONSÁVEL (dono do tenant) — injeta quando quem fala é CLIENTE/CONTATO (não o dono).
-    // Sem isso, o agente não sabe quem é "Marcelo/Felício/chefe" e cai em respostas do tipo "não sei qual Marcelo".
+    // Sem isso, o agente pode não reconhecer referências ao dono/chefe configurado.
     let ownerHintBlock = "";
     const _fromNumForPrompt = String(row.from_number || "");
-    const _tenantNichoTxt = `${(agent as any)?.persona || ""} ${(agent as any)?.knowledge_base || ""} ${(agent as any)?.greeting || ""}`;
-    const _tenantConsorcio = /cons[oó]rcio|ademicon|carta\s+de\s+cr[eé]dito/i.test(_tenantNichoTxt);
     if (!inboundFromOwner && _tenantOwner?.name) {
       const nomeCompleto = _tenantOwner.name.trim();
       const primeiroNome = nomeCompleto.split(/\s+/)[0] || nomeCompleto;
       ownerHintBlock = `\n\n=== RESPONSÁVEL DESTE ATENDIMENTO (LEIA ANTES DE RESPONDER) ===\n- O DONO/CHEFE/RESPONSÁVEL deste agente é **${nomeCompleto}** (chamado geralmente de "${primeiroNome}").\n- Quando o cliente disser "manda pro ${primeiroNome}", "passa pro chefe", "avisa o dono", "encaminha pra ele", "passe para a equipe", "passa pro gerente", "pede pra equipe/consultor me mandar", "pede um orçamento/plano", ou QUALQUER pedido pra que alguém DA CASA responda/envie algo — chame IMEDIATAMENTE \`encaminhar_recado_ao_dono\` com um recado humanizado (incluindo nome/telefone do cliente e o que ele quer). NÃO chame \`enviar_mensagem_contato_comercial\`, NÃO chame listar_contatos_comerciais, NÃO tente "identificar qual ${primeiroNome}", NÃO peça sobrenome — o responsável já está configurado no sistema e a ferramenta sabe pra quem mandar.\n- É PROIBIDO responder ao cliente coisas como "não consegui identificar qual ${primeiroNome}", "tem vários com esse nome", "me confirma o nome completo dele" — isso é falha grave de atendimento. Se o cliente pediu pra passar algo pra dentro da casa, você JÁ SABE pra quem: é ${primeiroNome}.\n\n=== REGRA DE OURO DO ENCAMINHAMENTO (NUNCA VIOLE) ===\n- Quando o cliente pedir algo que você não pode resolver (orçamento, simulação, valores, negociação) ou pedir falar com alguém da casa, chame \`encaminhar_recado_ao_dono\` IMEDIATAMENTE, SEM ANUNCIAR ANTES. Não escreva nada sobre envio antes da ferramenta rodar.\n- Só DEPOIS de a ferramenta retornar \`ok: true\`, confirme ao cliente que o recado foi enviado — e a confirmação DEVE terminar com o comprovante (protocolo) devolvido pela ferramenta.\n- É PROIBIDO dizer que encaminhou, que vai encaminhar, que passou o recado, ou que o dono/${primeiroNome} vai retornar, sem que a ferramenta tenha retornado \`ok: true\`.\n- Se a ferramenta falhar (\`ok\` diferente de true ou \`erro\`), diga ao cliente que houve um problema no envio e peça o nome e o telefone dele para retorno. NUNCA invente entrega.\n- Confirmação modelo (só com ok: true), 1 linha curta:\n   1) "Prontinho, acabei de mandar seu recado aqui pro ${primeiroNome} — assim que ele puder, te retorna. <protocolo>"\n- PROIBIDO terminar mensagem com convite ou pergunta de cortesia ("é só me chamar", "qualquer dúvida", "fico à disposição", "posso te ajudar em mais algo?"). A resposta termina no raciocínio.\n- O sistema pergunta o nome do cliente automaticamente DEPOIS do encaminhamento — você NUNCA pede o nome antes de encaminhar.\n- Se o cliente responder que quer ir adiantando com você, ATENDA NORMALMENTE. Se preferir aguardar o ${primeiroNome}, respeite e se coloque à disposição.\n- Nunca recite o texto do recado nem o telefone de ninguém.\n\n=== COLETA NATURAL DE DADOS DO CLIENTE (LEVE, SEM INSISTIR) ===\n- Logo no início da conversa, de forma leve e humanizada, pergunte UMA VEZ: nome do cliente e o que ele precisa. O telefone padrão já é o próprio WhatsApp dele (${_fromNumForPrompt}) — só peça outro se ele oferecer.\n- Se o cliente NÃO responder, **NÃO repita a pergunta, NÃO insista, NÃO trave o atendimento**. Siga ajudando normalmente com o que ele quiser falar.\n- Guarde mentalmente o que ele informar espontaneamente.\n- SEMPRE que chamar \`encaminhar_recado_ao_dono\`, inclua no topo do \`recado\`:\n    Nome: <nome informado, ou "não informado">\n    Telefone: <telefone informado pelo cliente; se não informou, use ${_fromNumForPrompt}>\n  Depois, 1-3 linhas do que o cliente quer.`;
-      if (_tenantConsorcio) {
-        ownerHintBlock += `\n\n=== PRÉ-ATENDIMENTO DE CONSÓRCIO — OFERECER UMA VEZ, RESPEITAR RESPOSTA ===\n- Quando o cliente demonstrar INTERESSE em consórcio (ex: "quero contratar", "tenho interesse", "como funciona", "quero uma proposta", "quero falar sobre consórcio"), você DEVE oferecer UMA VEZ o pré-atendimento antes de encaminhar pro ${primeiroNome}. Assim o ${primeiroNome} já recebe o cliente com tudo pronto.\n- Ofereça de forma natural, em UMA mensagem só, algo como:\n  "Que ótimo! Pra já adiantar e o ${primeiroNome} te retornar com a proposta na mão, posso te fazer umas perguntinhas rápidas e recolher uns documentos (RG/CNH, comprovante de residência e de renda)? Assim ele já monta tudo antes de te ligar. Se preferir falar direto com ele, também tudo bem — é só me avisar."\n- Se o cliente ACEITAR: colete um item por vez, com ritmo de conversa (bem/valor da carta/prazo → nome completo/CPF → RG ou CNH → comprovante de residência → comprovante de renda → IR se tiver). Cada documento/dado recebido, agradeça leve e siga pro próximo. Se ele parar de responder ou pular etapa, DEIXE PRA LÁ e siga pro handoff.\n- Se o cliente RECUSAR ou preferir falar direto: respeite, NÃO insista, e faça o handoff automático pro ${primeiroNome}.\n- Se o cliente IGNORAR a oferta e responder outra coisa: siga o rumo dele, não repita a oferta.\n- REGRA DE OURO: **oferecer o pré-atendimento é OBRIGATÓRIO uma vez em conversas com interesse em consórcio, mas insistir é PROIBIDO.**\n\n=== HANDOFF AUTOMÁTICO AO FINAL DO ATENDIMENTO (OBRIGATÓRIO) ===\n- Assim que você PERCEBER que o atendimento chegou ao fim naturalmente, chame \`encaminhar_recado_ao_dono\` AUTOMATICAMENTE — SEM esperar o cliente pedir. O ${primeiroNome} PRECISA receber o resumo de todo cliente que passou por você.\n- Sinais de que o atendimento acabou (dispare o handoff assim que UM deles ocorrer):\n  • Cliente se despediu ("valeu", "obrigado", "tá bom então", "depois eu vejo", "vou pensar", "qualquer coisa te falo", 👍/🙏).\n  • Cliente demonstrou interesse concreto E você já concluiu (ou ele recusou) o pré-atendimento — hora de passar pro ${primeiroNome}.\n  • Cliente mandou documento(s) e não continuou a conversa em ~1-2 mensagens.\n  • Você já respondeu a dúvida principal e o cliente ficou em silêncio por várias trocas / mandou só "ok".\n- **AVISE O CLIENTE** antes/depois do handoff automático: "Perfeito, vou passar tudo isso pro ${primeiroNome} agora — ele te retorna em breve com a proposta." Não é surpresa: o cliente precisa saber que o próximo contato será do ${primeiroNome}.\n- REGRA ANTI-DUPLICATA: chame \`encaminhar_recado_ao_dono\` **UMA VEZ POR ATENDIMENTO**. Se já encaminhou nesta conversa e o cliente voltou a falar depois, só encaminhe de novo se surgiu FATO NOVO relevante (novo documento, mudou de ideia, quer fechar agora, etc.).\n- O recado deve conter:\n    Nome: <nome do cliente ou "não informado">\n    Telefone: <telefone do cliente; se não informou, ${_fromNumForPrompt}>\n    Status: <"Interessado — quer proposta" | "Só tirou dúvida" | "Mandou documentos" | "Vai pensar" | resumo curto do estágio>\n    Dados coletados: <bem, valor da carta, prazo, CPF, renda, etc. — só o que foi informado>\n    Documentos recebidos: <lista, ou "nenhum">\n    Resumo (2-4 linhas): o que o cliente quer, o que você já explicou, o que ${primeiroNome} precisa fazer ao retornar.`;
-      }
-    }
-
-    // === SILVESTER DOSSIÊ — fire-and-forget, somente texto ===
-    // Mídia nunca integra o payload, inclusive quando já existe na biblioteca.
-    const silvesterEnabled = await silvesterDossieEnabledForTenant(sb, userId);
-    if (
-      shouldFireSilvesterExtractHook({
-        inboundFromOwner,
-        tenantOwnerPhone,
-        silvesterEnabled,
-      })
-    ) {
-      try {
-        // Coleta últimas mensagens de texto do cliente (para extração de dados)
-        const { data: recentTexts } = await sb
-          .from("whatsapp_cloud_messages")
-          .select("content, direction, created_at")
-          .eq("conversation_id", conv.id)
-          .eq("direction", "inbound")
-          .order("created_at", { ascending: false })
-          .limit(8);
-        const textoConversa = (recentTexts ?? []).reverse().map((m: any) => m.content).filter(Boolean).join("\n");
-
-        const payload = {
-          user_id: userId,
-          telefone_cliente: row.from_number,
-          nome_cliente: contactName || null,
-          owner_phone: tenantOwnerPhone,
-          media: [],
-          texto_conversa: textoConversa,
-        };
-        // fire-and-forget
-        fetch(`${SUPABASE_URL}/functions/v1/silvester-extract-document`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${SERVICE_KEY}`,
-          },
-          body: JSON.stringify(payload),
-        }).then((r) => console.log(`[silvester-hook] fired status=${r.status}`)).catch((e) => console.warn("[silvester-hook] err", (e as Error).message));
-      } catch (e) {
-        console.warn("[silvester-hook] setup falhou:", (e as Error).message);
-      }
     }
 
     // EBOOK DE PRESENTE (multi-tenant): só entra no prompt se o tenant configurou

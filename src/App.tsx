@@ -106,7 +106,6 @@ import AtendimentoCloud from "./pages/AtendimentoCloud";
 import RedesSociaisPainel from "./pages/RedesSociaisPainel";
 import WhatsAppPainel from "./pages/WhatsAppPainel";
 import RecadosResponsavel from "./pages/RecadosResponsavel";
-import Dossies from "./pages/Dossies";
 import GuiaContasComerciais from "./pages/GuiaContasComerciais";
 // import Integracoes from "./pages/Integracoes"; // Oculto - reativar removendo o comentário
 
@@ -248,10 +247,7 @@ const App = () => (
             <Route path="/atendimento-cloud" element={<AtendimentoCloud />} />
             <Route path="/redes-sociais" element={<RedesSociaisPainel />} />
             <Route path="/whatsapp-painel" element={<WhatsAppPainel />} />
-            <Route path="/recados-marcelo" element={<RecadosResponsavel />} />
             <Route path="/recados-responsavel" element={<RecadosResponsavel />} />
-            <Route path="/dossies" element={<Dossies />} />
-            <Route path="/silvester-dossies" element={<Dossies />} />
 
             {/* LinkedIn */}
             <Route path="/linkedin" element={<LinkedInPainel />} />

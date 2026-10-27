@@ -76,7 +76,7 @@ Deno.test("leitura nova por mensagem reconhece o dono logo após salvar", async 
 
   row = {
     owner_phone: "(21) 96752-0706",
-    owner_name: "Marcelo",
+    owner_name: "Renata",
     owner_alt_phones: [],
   };
   const after = await resolveTenantOwner(sb as never, "tenant-atualizado", {

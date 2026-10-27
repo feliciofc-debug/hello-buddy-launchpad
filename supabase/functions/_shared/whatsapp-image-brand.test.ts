@@ -86,8 +86,8 @@ Deno.test("somente link explicitamente usado como identidade pula a escolha", ()
   );
   assert(
     extractExplicitWhatsAppBrandSiteUrl(
-      "use as cores do meu site ademicon.com.br",
-    ) === "https://ademicon.com.br/",
+      "use as cores do meu site autovia.com.br",
+    ) === "https://autovia.com.br/",
     "explicit brand domain without protocol should be normalized",
   );
   assert(extractWhatsAppBrandSiteUrl("gere sem marca") === null, "request without URL stays unset");
@@ -265,7 +265,7 @@ Deno.test("upload manual mantém confirmação explícita", () => {
 Deno.test("site URL stage only intercepts a URL", () => {
   const withUrl = classifyPendingBrandReply({
     stage: "awaiting_site_url",
-    text: "é ademicon.com.br",
+    text: "é autovia.com.br",
     createdAt: new Date().toISOString(),
   });
   const otherSubject = classifyPendingBrandReply({
@@ -274,7 +274,7 @@ Deno.test("site URL stage only intercepts a URL", () => {
     createdAt: new Date().toISOString(),
   });
   assert(
-    withUrl.action === "site_url" && withUrl.url === "https://ademicon.com.br/",
+    withUrl.action === "site_url" && withUrl.url === "https://autovia.com.br/",
     "domain without protocol must be normalized",
   );
   assert(otherSubject.action === "continue_conversation", "other subject must not be intercepted");

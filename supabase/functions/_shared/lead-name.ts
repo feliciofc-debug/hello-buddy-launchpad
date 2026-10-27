@@ -1,6 +1,6 @@
 const NAME_STOPWORDS = new Set([
   "sim", "nao", "não", "ok", "okay", "obrigado", "obrigada", "valeu", "bom", "boa",
-  "dia", "tarde", "noite", "oi", "ola", "olá", "consorcio", "consórcio", "orcamento",
+  "dia", "tarde", "noite", "oi", "ola", "olá", "orcamento",
   "orçamento", "quanto", "quero", "preciso", "aguardo", "espero", "certo", "beleza",
   "tudo", "bem", "pode", "ser", "claro", "talvez", "depois", "agora", "isso", "nada",
   "ainda", "legal", "perfeito", "entendi", "de", "do", "da", "dos", "das", "um", "uma",

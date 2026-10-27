@@ -135,8 +135,6 @@ serve(async (req) => {
       }
     }
 
-    const ehConsorcio = /consorci|consórci/i.test(tema + ' ' + blocoProduto);
-
     const prompt = `${copyStyle.promptBlock}
 Escreva posts para o LinkedIn sobre o tema abaixo.
 
@@ -150,7 +148,7 @@ ${blocoProduto}
 - PROIBIDO emoji.
 - PROIBIDO inventar número, percentual, prêmio, depoimento, quantidade de clientes ou qualquer dado que não esteja no tema/briefing.
 - PROIBIDO urgência e escassez: "só hoje", "últimas vagas", "corre".
-${ehConsorcio ? '- CONSÓRCIO: é PROIBIDO tratar consórcio como crédito, empréstimo, financiamento ou investimento, inclusive por comparação. Consórcio não tem juros. Vocabulário permitido: carta de crédito, assembleia, contemplação, lance, parcela, planejamento, poder de compra.\n' : ''}- Hashtags: exatamente 2 ou 3, no fim, sem emoji. PROIBIDAS: #JurosBaixos, #Investimento, #Renda, #DinheiroRapido, #Oportunidade.
+- Hashtags: exatamente 2 ou 3, no fim, sem emoji. PROIBIDAS: #JurosBaixos, #Investimento, #Renda, #DinheiroRapido, #Oportunidade.
 - Tamanho de cada variação: entre 700 e 1300 caracteres.
 
 === 3 VARIAÇÕES COM ABORDAGENS DIFERENTES ===

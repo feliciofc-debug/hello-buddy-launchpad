@@ -180,7 +180,7 @@ NUNCA:
 
 // Bloco NEUTRO — vale para QUALQUER negócio. Nada aqui pode citar nicho,
 // produto, marca ou hashtag de outro cliente. Regras específicas de nicho
-// (consórcio, saúde, etc.) chegam SOMENTE por empresa_config.regras_copy
+// Regras de segmentos regulados chegam SOMENTE por empresa_config.regras_copy
 // do próprio tenant (style.promptBlock).
 const BLOCO_GENERICO = `=== A COPY ACOMPANHA A FALA, MAS NÃO A TRANSCREVE ===
 1. Identifique o assunto real tratado na fala.

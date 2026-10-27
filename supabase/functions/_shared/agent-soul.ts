@@ -375,7 +375,7 @@ export function renderSegmentPromptTemplate(
 const SEGMENT_FAILSAFE_BLOCK = `
 ⚠️ MODO SEGURO ATIVADO — BASE DE CONHECIMENTO REGULADA INDISPONÍVEL:
 
-Este consultor opera em segmento regulado (ex: consórcio, seguros, financeiro),
+Este consultor opera em segmento regulado (ex: seguros ou serviços financeiros),
 mas a base de conhecimento com as REGRAS DE COMPLIANCE não pôde ser carregada
 agora. Por segurança jurídica, você NÃO PODE responder perguntas técnicas sobre
 o produto/serviço sem essas regras carregadas.
@@ -501,7 +501,7 @@ export function resolveAgentMode(
 // a partir da config do tenant + catálogo de produtos dele.
 //
 // Se o segmento vinculado tiver prompt_template (template COMPARTILHADO da
-// rede, ex: ademicon-consultor), ele SUBSTITUI persona/tom/saudação/base do
+// rede), ele SUBSTITUI persona/tom/saudação/base do
 // tenant: o corpo do prompt é único e só as variáveis mudam por consultor.
 // ----------------------------------------------------------------------------
 export async function buildTenantContext(
@@ -511,7 +511,7 @@ export async function buildTenantContext(
 ): Promise<{ text: string; templateApplied: boolean }> {
   const businessName = cfg.agent_name?.trim() || "atendente do negócio";
 
-  // 🔒 BASE DE CONHECIMENTO REGULADA (segmento compartilhado, ex: Ademicon).
+  // 🔒 BASE DE CONHECIMENTO REGULADA (segmento compartilhado).
   // FAIL-SAFE: se cfg tem segment_id mas não conseguimos carregar as travas,
   // entra em MODO SEGURO — recusa falar do domínio regulado.
   let seg: Awaited<ReturnType<typeof loadKnowledgeSegment>> = null;
@@ -726,7 +726,7 @@ FERRAMENTAS DISPONÍVEIS (use quando fizer sentido, sem pedir permissão):
 - remarcar_agendamento_post(token?, data_hora_sp): remarca post social futuro quando o dono disser "muda o horário", "remarca" ou "adia". Se houver vários e faltar código, mostre as opções retornadas. Só confirme se ok=true.
 - registrar_lead_novo(nome, ramo, empresa?, interesse?, dor_marketing?, demonstracao?, proximo_passo?): registra um LEAD NOVO e avisa o responsável no WhatsApp. Chame UMA VEZ, somente depois de já saber NOME e RAMO. No modo de venda AMZ, siga a instrução da ferramenta e avise que um consultor da AMZ entrará em contato; nos demais modos, não comente o registro.
 
-- listar_contatos_comerciais(busca?): lista os contatos comerciais próximos do dono (Marcelo, Renata, etc). Use ANTES de disparar mensagem pra achar o contato_id.
+- listar_contatos_comerciais(busca?): lista os contatos comerciais próximos do dono. Use ANTES de disparar mensagem pra achar o contato_id.
 - enviar_mensagem_contato_comercial(contato_id|nome_busca, mensagem, data_hora_sp?, tipo_acao?): dispara WhatsApp TEXTO humanizado pra um contato comercial, agora ou agendado. NUNCA liga por voz — só texto. VOCÊ compõe o texto humanizado ("aqui é o Jarvis, assistente do Felício..."), usando o campo 'contexto' do contato pra dar naturalidade. Use pra confirmar reuniões, followups, respostas comerciais e check-ins que o dono pedir.
 - registrar_logo_cliente(cliente): cadastra DE VERDADE a última foto desta conversa como logo do cliente informado. Use quando o dono disser "guarde/salve/registre/cadastre/use essa como logo do cliente X", mesmo que a foto tenha vindo na mensagem anterior. NUNCA diga que salvou/cadastrou/guardou uma logo sem chamar esta ferramenta e receber ok=true.
 - salvar_midia_biblioteca / listar_midias_biblioteca: gerencia mídias do WhatsApp na biblioteca /midias.

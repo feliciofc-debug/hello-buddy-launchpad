@@ -9,5 +9,5 @@ Deno.test("matriz única de decisão separa produto e veículo", () => {
   );
   assertEquals(resolveNichoDoConteudo("amz", "produto"), "produto");
   assertEquals(resolveNichoDoConteudo("amz", "veiculo"), "veiculo");
-  assertEquals(resolveNichoDoConteudo("consorcio", "veiculo"), "produto");
+  assertEquals(resolveNichoDoConteudo("servicos", "veiculo"), "produto");
 });

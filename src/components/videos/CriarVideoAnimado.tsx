@@ -76,10 +76,6 @@ const PALETAS = {
     label: 'AMZ',
     cores: { bg: '#0f1720', bg2: '#1a2332', panel: '#16202c', line: '#26313f', destaque: '#FF7A1A', destaqueSoft: '#ff9e56', texto: '#f4f7fb', suave: '#93a4b8' },
   },
-  ademicon: {
-    label: 'Ademicon',
-    cores: { bg: '#ffffff', bg2: '#fff7f8', panel: '#ffffff', line: '#ead9dc', destaque: '#c8102e', destaqueSoft: '#ed5368', texto: '#241b1d', suave: '#75666a' },
-  },
   personalizada: {
     label: 'Personalizada',
     cores: { bg: '#ffffff', bg2: '#f5f5f5', panel: '#ffffff', line: '#dedede', destaque: '#c8102e', destaqueSoft: '#ed5368', texto: '#241b1d', suave: '#75666a' },
@@ -756,7 +752,7 @@ export const CriarVideoAnimado = ({
                 setIdentidadeCliente(Boolean(e.target.value.trim()));
                 setProps((p) => (p ? { ...p, marca: e.target.value } : p));
               }}
-              placeholder="Ex.: Ademicon"
+              placeholder="Ex.: AMZ Veículos"
               maxLength={18}
             />
             <p className="text-xs text-muted-foreground">É esse nome que aparece no vídeo quando não há logo anexada.</p>
@@ -977,7 +973,7 @@ export const CriarVideoAnimado = ({
                 <Input
                   value={props.site || ''}
                   onChange={(e) => setProps((p) => (p ? { ...p, site: e.target.value || undefined } : p))}
-                  placeholder="ex.: www.ademicon.com.br"
+                  placeholder="ex.: www.autovia.com.br"
                   maxLength={40}
                 />
               </div>
@@ -986,7 +982,7 @@ export const CriarVideoAnimado = ({
                 <Input
                   value={props.cta.consultor || ''}
                   onChange={(e) => setProps((p) => (p ? { ...p, cta: { ...p.cta, consultor: e.target.value || undefined } } : p))}
-                  placeholder="Ex.: Marcelo Silva"
+                  placeholder="Ex.: Renata Silva"
                   maxLength={40}
                 />
               </div>
