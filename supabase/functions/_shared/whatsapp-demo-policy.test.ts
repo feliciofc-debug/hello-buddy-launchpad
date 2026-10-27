@@ -261,7 +261,7 @@ Deno.test("encaminhamento direto anonimiza somente o tenant AMZ", () => {
 Deno.test("rede final de não-dono AMZ remove nome configurado e Felicio", () => {
   assertEquals(
     finalizeAmzNonOwnerText(
-      "O Felicio falou com Renata Silva. Vou confirmar com a Renata.",
+      "O Felicio falou com Renata Silva. Vou confirmar com Renata.",
       "Renata Silva",
     ),
     "um consultor da AMZ falou com um consultor da AMZ. Vou confirmar com um consultor da AMZ.",
