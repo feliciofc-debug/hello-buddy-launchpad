@@ -212,7 +212,7 @@ Deno.test("DOC-0.1 — parceiro roda antes do portão geral e continua protegido
     const externalRoute of [
       "classifyPhotoVertical",
       "processVitrineTrocaInboundPhoto",
-      'fetch("https://ai.gateway.lovable.dev',
+      "const aiResult = await callGemini(",
     ]
   ) {
     assertEquals(
@@ -268,7 +268,7 @@ Deno.test("DOC-0.2 — portão pede confirmação e só libera no botão negativ
   );
   const flow = source.slice(source.indexOf("// PASSO 6.7 — Baixa mídias"));
   const possibleGate = flow.indexOf("if (possibleDocument)");
-  const externalAi = flow.indexOf('fetch("https://ai.gateway.lovable.dev');
+  const externalAi = flow.indexOf("const aiResult = await callGemini(");
   assertEquals(possibleGate >= 0, true);
   assertEquals(possibleGate < externalAi, true);
   assertEquals(source.includes("Guardar e ler"), true);
