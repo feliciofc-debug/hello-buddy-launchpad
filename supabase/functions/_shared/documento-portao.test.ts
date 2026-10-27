@@ -316,9 +316,7 @@ Deno.test("ESTAB-1 — botões do cofre usam o ID bruto e Guardar e ler não cai
   assertEquals(possibleStart >= 0, true);
   assertEquals(possibleFlow.includes("relerCrlvDocumentoCofre"), true);
   assertEquals(
-    possibleFlow.includes(
-      "Não consegui ler este documento. Tire outra foto reta, de cima, com boa luz e sem reflexo.",
-    ),
+    possibleFlow.includes("CRLV_NAO_LIDO_MENSAGEM"),
     true,
   );
   assertEquals(possibleFlow.includes("await doneQueue(row.id)"), true);
