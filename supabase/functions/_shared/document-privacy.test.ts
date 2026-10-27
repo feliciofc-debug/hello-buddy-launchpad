@@ -185,12 +185,14 @@ Deno.test("PRIV-1 — processor guarda documento de cliente e retorna antes de I
   assertEquals(ownerFlow.includes("image_url"), false);
 });
 
-Deno.test("PRIV-1 — orçamento de parceiro não tem fallback visual externo", async () => {
+Deno.test("PRIV-1.1 — orçamento de parceiro usa OCR local sem fallback externo", async () => {
   const source = await Deno.readTextFile(
     new URL("./os-parceiro-orcamento-media.ts", import.meta.url),
   );
   assertStringIncludes(source, "extractDocumentText");
-  assertStringIncludes(source, "isProtectedDocumentMedia");
+  assertStringIncludes(source, "extrairTextoOcrLocal");
+  assertStringIncludes(source, "classificarTextoDocumentoProtegido");
+  assertStringIncludes(source, "documentoProtegido: true");
   assertEquals(source.includes("ai.gateway.lovable.dev"), false);
   assertEquals(source.includes("image_url"), false);
   assertEquals(source.includes("file_data"), false);
