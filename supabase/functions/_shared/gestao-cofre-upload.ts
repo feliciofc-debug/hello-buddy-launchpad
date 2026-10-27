@@ -47,8 +47,15 @@ const PII_KEYS = new Set([
   "documento_proprietario",
 ]);
 
-export const CRLV_LEITURA_FRACA_MENSAGEM =
+export const CRLV_NAO_LIDO_MENSAGEM =
   "Não consegui ler este documento. Tire outra foto reta, de cima, com boa luz e sem reflexo.";
+export const CRLV_LEITURA_FRACA_MENSAGEM = CRLV_NAO_LIDO_MENSAGEM;
+
+export type CrlvLeituraReason =
+  | "ocr_unreadable"
+  | "ocr_timeout"
+  | "ocr_not_configured"
+  | "ocr_failed";
 
 type CofreClient = SupabaseClient<any, "public", any>;
 
@@ -124,49 +131,132 @@ export type GestaoCofreUploadResult = {
   sha256: string;
   leitura: CrlvParserResultado | null;
   leituraErro: string | null;
+  leituraReason: CrlvLeituraReason | null;
   metricasOcr: CrlvOcrMetricas | null;
   duplicate: boolean;
 };
 
+function crlvFailureReason(error: unknown): CrlvLeituraReason {
+  const message = String((error as Error)?.message ?? "");
+  if (
+    (error as Error)?.name === "TimeoutError" ||
+    /tempo esgotado|timeout|timed out|abort/i.test(message)
+  ) return "ocr_timeout";
+  if (/n[aã]o configurado|ausente/i.test(message)) return "ocr_not_configured";
+  return "ocr_failed";
+}
+
 async function readCrlv(
   input: GestaoCofreUploadInput,
+  fetchImpl: typeof fetch = fetch,
 ): Promise<{
   leitura: CrlvParserResultado | null;
   leituraErro: string | null;
+  leituraReason: CrlvLeituraReason | null;
   metricasOcr: CrlvOcrMetricas | null;
 }> {
   if (
     !input.lerCrlv ||
     (input.tipo !== "crlv" && input.tipo !== "crlv_e")
   ) {
-    return { leitura: null, leituraErro: null, metricasOcr: null };
+    return {
+      leitura: null,
+      leituraErro: null,
+      leituraReason: null,
+      metricasOcr: null,
+    };
   }
   try {
     const result = await lerCrlvLocal(
       input.bytes,
       input.mime,
       input.filename,
+      fetchImpl,
     );
     if (result.parser.leitura_fraca) {
       return {
         leitura: null,
-        leituraErro: CRLV_LEITURA_FRACA_MENSAGEM,
+        leituraErro: CRLV_NAO_LIDO_MENSAGEM,
+        leituraReason: "ocr_unreadable",
         metricasOcr: result.metricas_ocr,
       };
     }
     return {
       leitura: result.parser,
       leituraErro: null,
+      leituraReason: null,
       metricasOcr: result.metricas_ocr,
     };
-  } catch {
+  } catch (error) {
     // Falha do OCR não impede o cofre nem a conferência manual.
     return {
       leitura: null,
-      leituraErro: CRLV_LEITURA_FRACA_MENSAGEM,
+      leituraErro: CRLV_NAO_LIDO_MENSAGEM,
+      leituraReason: crlvFailureReason(error),
       metricasOcr: null,
     };
   }
+}
+
+export async function relerCrlvDocumentoCofre(input: {
+  sb: CofreClient;
+  userId: string;
+  documentoId: string;
+  bytes: Uint8Array;
+  mime: string;
+  filename?: string;
+  fetchImpl?: typeof fetch;
+}): Promise<
+  Pick<
+    GestaoCofreUploadResult,
+    "leitura" | "leituraErro" | "leituraReason" | "metricasOcr"
+  >
+> {
+  const result = await readCrlv({
+    sb: input.sb,
+    userId: input.userId,
+    bytes: input.bytes,
+    mime: input.mime,
+    tipo: input.mime.toLowerCase() === "application/pdf" ? "crlv_e" : "crlv",
+    origem: "whatsapp",
+    filename: input.filename,
+    lerCrlv: true,
+  }, input.fetchImpl);
+  if (!result.leitura) {
+    await auditGestaoDocumento(
+      input.sb,
+      input.documentoId,
+      input.userId,
+      "ler_falha",
+      {
+        reason: result.leituraReason ?? "ocr_failed",
+        ...(result.metricasOcr ?? {}),
+      },
+    );
+    return result;
+  }
+  const { error } = await input.sb.from("gestao_documento").update({
+    tipo: input.mime.toLowerCase() === "application/pdf" ? "crlv_e" : "crlv",
+    status: "lido",
+    campos_veiculo: {
+      veiculo: result.leitura.veiculo,
+      documento: result.leitura.documento,
+      observacoes: result.leitura.observacoes,
+    },
+    dados_pessoais_cifrados: await cifrarDadosPessoais({
+      nome: result.leitura.proprietario.nome.valor,
+      cpf_cnpj: result.leitura.proprietario.cpf_cnpj.valor,
+    }),
+  }).eq("id", input.documentoId).eq("user_id", input.userId);
+  if (error) throw new Error("Falha ao registrar leitura do CRLV");
+  await auditGestaoDocumento(
+    input.sb,
+    input.documentoId,
+    input.userId,
+    "ler",
+    result.metricasOcr ?? {},
+  );
+  return result;
 }
 
 export async function gestaoCofreUpload(
@@ -187,15 +277,15 @@ export async function gestaoCofreUpload(
   }
   const sha256 = await sha256Hex(input.bytes);
   const { data: duplicate } = await input.sb.from("gestao_documento")
-    .select("id").eq("user_id", input.userId).eq("sha256", sha256)
+    .select("id,tipo,status").eq("user_id", input.userId).eq("sha256", sha256)
     .is("deleted_at", null).maybeSingle();
   if (duplicate) {
     const reread = await readCrlv(input);
     const patch: Record<string, unknown> = {
       origem: input.origem,
-      tipo: input.tipo,
-      status: reread.leitura ? "lido" : "recebido",
+      status: reread.leitura ? "lido" : (duplicate.status || "recebido"),
     };
+    if (reread.leitura) patch.tipo = input.tipo;
     if (input.veiculoId) patch.veiculo_id = input.veiculoId;
     if (input.trocaId) patch.troca_id = input.trocaId;
     if (input.vendaId) patch.venda_id = input.vendaId;
@@ -217,8 +307,12 @@ export async function gestaoCofreUpload(
       input.sb,
       String(duplicate.id),
       input.userId,
-      "ler",
-      { ...(reread.metricasOcr ?? {}), reaproveitado: true },
+      reread.leitura ? "ler" : "ler_falha",
+      {
+        ...(reread.metricasOcr ?? {}),
+        ...(reread.leituraReason ? { reason: reread.leituraReason } : {}),
+        reaproveitado: true,
+      },
     );
     return {
       documentoId: String(duplicate.id),
@@ -233,7 +327,9 @@ export async function gestaoCofreUpload(
     throw new Error("Dados pessoais devem ser enviados no campo protegido");
   }
 
-  const { leitura, leituraErro, metricasOcr } = await readCrlv(input);
+  const { leitura, leituraErro, leituraReason, metricasOcr } = await readCrlv(
+    input,
+  );
 
   const camposLidos = leitura
     ? {
@@ -292,6 +388,7 @@ export async function gestaoCofreUpload(
           sha256,
           leitura: null,
           leituraErro: null,
+          leituraReason: null,
           metricasOcr: null,
           duplicate: true,
         };
@@ -318,12 +415,21 @@ export async function gestaoCofreUpload(
       "ler",
       metricasOcr ?? {},
     );
+  } else if (leituraReason) {
+    await auditGestaoDocumento(
+      input.sb,
+      documentoId,
+      input.userId,
+      "ler_falha",
+      { reason: leituraReason, ...(metricasOcr ?? {}) },
+    );
   }
   return {
     documentoId,
     sha256,
     leitura,
     leituraErro,
+    leituraReason,
     metricasOcr,
     duplicate: false,
   };

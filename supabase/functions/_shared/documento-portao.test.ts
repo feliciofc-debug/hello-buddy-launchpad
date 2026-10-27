@@ -138,7 +138,7 @@ Deno.test("DOC-0.2 — possível documento permanece bloqueado para IA", async (
   assertEquals(result.possivel_documento, true);
 });
 
-Deno.test("DOC-0 — resposta do CRLV nunca contém nome ou CPF completos", () => {
+Deno.test("VEIC-WPP-1 — resposta completa do CRLV mascara somente CPF/CNPJ", () => {
   const parsed = parseCrlvText(`
 PLACA: ABC1D23
 RENAVAM: 12345678900
@@ -150,10 +150,28 @@ CPF/CNPJ: 529.982.247-25
 OBSERVACOES: ALIENACAO FIDUCIARIA: BANCO SINTETICO
 `);
   const reply = respostaCrlvWhatsApp(parsed);
-  assertEquals(reply.includes("PESSOA SINTETICA COMPLETA"), false);
+  assertEquals(
+    reply.startsWith("✅ CRLV lido e guardado na plataforma."),
+    true,
+  );
+  assertEquals(reply.includes("PESSOA SINTETICA COMPLETA"), true);
   assertEquals(reply.includes("529.982.247-25"), false);
-  assertEquals(reply.includes("Pessoa"), true);
-  assertEquals(reply.includes("***.***.247-**"), true);
+  assertEquals(reply.includes("***.982.247-**"), true);
+  for (
+    const label of [
+      "Placa:",
+      "Renavam:",
+      "Chassi:",
+      "Marca/modelo/versão:",
+      "Ano fabricação/modelo:",
+      "Cor:",
+      "Combustível:",
+      "Categoria:",
+      "Município/UF:",
+      "Proprietário:",
+      "CPF/CNPJ:",
+    ]
+  ) assertEquals(reply.includes(`\n${label}`), true);
 });
 
 Deno.test("DOC-0 — tipos do detector mapeiam para o cofre", () => {
@@ -296,9 +314,7 @@ Deno.test("ESTAB-1 — botões do cofre usam o ID bruto e Guardar e ler não cai
   );
   const possibleFlow = source.slice(possibleStart, documentActions);
   assertEquals(possibleStart >= 0, true);
-  assertEquals(possibleFlow.includes("await gestaoCofreUpload({"), true);
-  assertEquals(possibleFlow.includes('tipo: "crlv"'), true);
-  assertEquals(possibleFlow.includes("lerCrlv: true"), true);
+  assertEquals(possibleFlow.includes("relerCrlvDocumentoCofre"), true);
   assertEquals(
     possibleFlow.includes(
       "Não consegui ler este documento. Tire outra foto reta, de cima, com boa luz e sem reflexo.",
@@ -309,10 +325,24 @@ Deno.test("ESTAB-1 — botões do cofre usam o ID bruto e Guardar e ler não cai
   assertEquals(possibleFlow.includes("callGemini("), false);
   assertEquals(
     source.includes(
-      '/^cofre_doc_(?:cadastrar|vincular|guardar|link):/i.test(\n        String(interactiveId ?? ""),',
+      '/^cofre_doc_(?:cadastrar|vincular|guardar|link|troca|desvincular):/i',
     ),
     true,
   );
+});
+
+Deno.test("VEIC-WPP-1 — Guardar e ler encerra o turno sem cair na IA genérica", async () => {
+  const source = await Deno.readTextFile(
+    new URL("../whatsapp-cloud-inbound-processor/index.ts", import.meta.url),
+  );
+  const action = source.slice(
+    source.indexOf("const possibleAction"),
+    source.indexOf("// DOC-0 — ações dos botões"),
+  );
+  assertEquals(action.includes("relerCrlvDocumentoCofre"), true);
+  assertEquals(action.includes("CRLV_NAO_LIDO_MENSAGEM"), true);
+  assertEquals(action.includes("callGemini"), false);
+  assertEquals(action.includes("crlv_read: false"), true);
 });
 
 Deno.test("PRIV-1 — documento certo ou possível recebe marca de proteção", async () => {
@@ -343,7 +373,7 @@ Deno.test("PRIV-1 — mídia protegida tem barreiras antes de toda visão tardia
   );
   assertEquals(
     source.includes(
-      "!isProtectedDocumentMedia(m) &&\n      (m.kind === \"image\" || m.kind === \"video\")",
+      '!isProtectedDocumentMedia(m) &&\n      (m.kind === "image" || m.kind === "video")',
     ),
     true,
   );

@@ -107,6 +107,39 @@ Deno.test("DOC-1 — campos inválidos ficam vazios", () => {
   assertEquals(validarRenavam("12345678901"), false);
 });
 
+Deno.test("VEIC-WPP-1 — parser reconhece CRLV antigo em papel", () => {
+  const result = parseCrlvText(
+    `
+CERTIFICADO DE REGISTRO E LICENCIAMENTO DE VEICULO
+PLACA: LMC-5764
+RENAVAM: 12345678900
+CHASSI: 9BWZZZ377VT004251
+MARCA / MODELO: VOLKSWAGEN GOL CL 1.6
+ANO FAB / ANO MOD: 1998 1999
+COR: VERDE
+COMBUSTIVEL: GASOLINA
+ESPECIE / TIPO: PASSAGEIRO AUTOMOVEL
+CATEGORIA: PARTICULAR
+MUNICIPIO: RIO DE JANEIRO
+UF: RJ
+NOME: PESSOA SINTETICA COMPLETA
+CPF/CNPJ: 529.982.247-25
+`,
+    "ocr",
+  );
+  assertEquals(result.veiculo.placa.valor, "LMC5764");
+  assertEquals(
+    result.veiculo.marca_modelo_versao.valor,
+    "VOLKSWAGEN GOL CL 1.6",
+  );
+  assertEquals(result.veiculo.ano_fabricacao.valor, 1998);
+  assertEquals(result.veiculo.ano_modelo.valor, 1999);
+  assertEquals(result.documento.municipio.valor, "RIO DE JANEIRO");
+  assertEquals(result.documento.uf.valor, "RJ");
+  assertEquals(result.proprietario.nome.valor, "PESSOA SINTETICA COMPLETA");
+  assertEquals(result.leitura_fraca, false);
+});
+
 Deno.test("DOC-1 — leitura e parser não importam IA externa", async () => {
   const parser = await Deno.readTextFile(
     new URL("./crlv-parser.ts", import.meta.url),

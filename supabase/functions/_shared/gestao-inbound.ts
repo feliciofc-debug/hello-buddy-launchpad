@@ -1,18 +1,22 @@
 import { calcGestaoLucro } from "./gestao-lucro-calc.ts";
 import { formatGestaoMoney } from "./gestao-format.ts";
-import { hojeSaoPaulo, intervaloCompetencia, intervaloMesAtualSaoPaulo } from "./gestao-date-br.ts";
 import {
+  hojeSaoPaulo,
+  intervaloCompetencia,
+  intervaloMesAtualSaoPaulo,
+} from "./gestao-date-br.ts";
+import {
+  type GestaoAuthContext,
   isGestaoAuthorizedPhone,
   loadGestaoAuthContext,
   maskGestaoPhone,
-  type GestaoAuthContext,
 } from "./gestao-auth-phone.ts";
 import {
   classifyGestaoIntent,
+  type GestaoIntent,
   isGestaoAffirmative,
   isGestaoNegative,
   parseGestaoDisambiguationPick,
-  type GestaoIntent,
 } from "./gestao-intent-pt.ts";
 import {
   gestaoDespesaCategoriaLabel,
@@ -20,28 +24,35 @@ import {
 } from "./gestao-categoria-pt.ts";
 import {
   formatGestaoVeiculoLabel,
-  rankGestaoVeiculoMatches,
   type GestaoVeiculoRow,
+  rankGestaoVeiculoMatches,
 } from "./gestao-veiculo-match.ts";
 import { loadTenantVehicleStockGate } from "./vehicle-inventory-tenant.ts";
 import { tryProcessVeiculoProcedenciaInbound } from "./veiculo-procedencia-inbound.ts";
+import type { VeiculoProcedenciaInteractiveButtons } from "./veiculo-procedencia-inbound.ts";
 import {
   calcGestaoComissao,
   DEFAULT_COMISSAO_REGRA,
-  normalizeComissaoRegra,
   type GestaoComissaoRegraJson,
+  normalizeComissaoRegra,
 } from "./gestao-comissao-calc.ts";
 import {
   lucroLiquidoAntesComissaoAuto,
   margemPctAntesComissaoAuto,
 } from "./gestao-lucro-comissao-base.ts";
-import { applyGestaoComissaoSync, estornarComissaoAuto } from "./gestao-comissao-sync.ts";
+import {
+  applyGestaoComissaoSync,
+  estornarComissaoAuto,
+} from "./gestao-comissao-sync.ts";
 import {
   buildComissaoMesReply,
   buildGestaoRankingReply,
   buildGestaoVendedorMesReply,
 } from "./gestao-equipe-inbound.ts";
-import { matchGestaoVendedor, type GestaoVendedorRow } from "./gestao-vendedor-match.ts";
+import {
+  type GestaoVendedorRow,
+  matchGestaoVendedor,
+} from "./gestao-vendedor-match.ts";
 import {
   formatPosicaoLojaWhatsApp,
   formatRelatorioVendedoresWhatsApp,
@@ -59,8 +70,8 @@ import { competenciaFromDate } from "./gestao-meta-calc.ts";
 import {
   calcVendaRaioX,
   formatRaioXWhatsApp,
-  rankPioresNegocios,
   type GestaoVendaRaioXRankItem,
+  rankPioresNegocios,
 } from "./gestao-venda-raio-x.ts";
 import {
   buildAReceberReply,
@@ -73,8 +84,8 @@ import {
 } from "./gestao-financeiro-inbound.ts";
 import { buildConciliacaoPendenteReply } from "./gestao-conciliacao-inbound.ts";
 import {
-  buildContratoStatusReply,
   buildContratosPendentesReply,
+  buildContratoStatusReply,
 } from "./gestao-contrato-inbound.ts";
 import type { GestaoNfeTomadorInput } from "./gestao-nfe-build.ts";
 import {
@@ -88,8 +99,8 @@ import {
   buildJarvisNfePreview,
   buildNfeEmitBlockedMessage,
   buildNfeEmitSuccessReply,
-  buildNotasMesReply,
   buildNfeStatusReply,
+  buildNotasMesReply,
 } from "./gestao-nfe-inbound.ts";
 import {
   emitGestaoNfe,
@@ -194,7 +205,9 @@ async function enviarCartilhaJarvisWhatsApp(input: {
   }
 }
 
-function pendingActive(pending: PendingGestaoConfirm | null | undefined): boolean {
+function pendingActive(
+  pending: PendingGestaoConfirm | null | undefined,
+): boolean {
   if (!pending?.expires_at) return false;
   const exp = Date.parse(pending.expires_at);
   return Number.isFinite(exp) && Date.now() < exp;
@@ -204,9 +217,14 @@ function formatBrl(value: number): string {
   return formatGestaoMoney(value);
 }
 
-async function loadVendedores(sb: unknown, userId: string): Promise<GestaoVendedorRow[]> {
+async function loadVendedores(
+  sb: unknown,
+  userId: string,
+): Promise<GestaoVendedorRow[]> {
   const client = sb as GestaoDb;
-  const { data } = await client.from("gestao_vendedores").select("id, nome, ativo, is_gerente")
+  const { data } = await client.from("gestao_vendedores").select(
+    "id, nome, ativo, is_gerente",
+  )
     .eq("user_id", userId).eq("ativo", true);
   return (data ?? []) as GestaoVendedorRow[];
 }
@@ -217,7 +235,10 @@ async function loadRegraComissao(
   vendedorId: string | null,
 ): Promise<GestaoComissaoRegraJson> {
   const client = sb as GestaoDb;
-  const q = client.from("gestao_comissao_regra").select("regra_json").eq("user_id", userId);
+  const q = client.from("gestao_comissao_regra").select("regra_json").eq(
+    "user_id",
+    userId,
+  );
   const { data } = vendedorId
     ? await q.eq("vendedor_id", vendedorId).maybeSingle()
     : await q.is("vendedor_id", null).maybeSingle();
@@ -232,16 +253,23 @@ async function loadComissaoMesMap(
 ): Promise<Map<string, number>> {
   const client = sb as GestaoDb;
   const { start, end } = intervaloCompetencia(competencia);
-  const { data: vendas } = await client.from("veiculo_venda").select("veiculo_id")
+  const { data: vendas } = await client.from("veiculo_venda").select(
+    "veiculo_id",
+  )
     .eq("user_id", userId).gte("data_venda", start).lte("data_venda", end);
   const ids = (vendas ?? []).map((v: { veiculo_id: string }) => v.veiculo_id);
   if (!ids.length) return new Map();
-  const { data: autos } = await client.from("gestao_comissao_auto").select("vendedor_id, valor")
+  const { data: autos } = await client.from("gestao_comissao_auto").select(
+    "vendedor_id, valor",
+  )
     .eq("user_id", userId).in("veiculo_id", ids);
   const map = new Map<string, number>();
   for (const a of autos ?? []) {
     const row = a as { vendedor_id: string; valor: number };
-    map.set(row.vendedor_id, (map.get(row.vendedor_id) ?? 0) + Number(row.valor));
+    map.set(
+      row.vendedor_id,
+      (map.get(row.vendedor_id) ?? 0) + Number(row.valor),
+    );
   }
   return map;
 }
@@ -253,11 +281,16 @@ async function loadVehicles(
   const client = sb as {
     from: (t: string) => {
       select: (c: string) => {
-        eq: (col: string, val: string) => Promise<{ data: GestaoVeiculoRow[] | null }>;
+        eq: (
+          col: string,
+          val: string,
+        ) => Promise<{ data: GestaoVeiculoRow[] | null }>;
       };
     };
   };
-  const { data } = await client.from("veiculos_estoque").select(GESTAO_VEHICLE_SELECT)
+  const { data } = await client.from("veiculos_estoque").select(
+    GESTAO_VEHICLE_SELECT,
+  )
     .eq("user_id", userId);
   return data ?? [];
 }
@@ -269,14 +302,18 @@ async function fetchLucroVeiculo(
   veiculo: GestaoVeiculoRow,
 ): Promise<string> {
   const client = sb as GestaoDb;
-  const [{ data: compra }, { data: despesas }, { data: venda }] = await Promise.all([
-    client.from("veiculo_compra").select("valor_compra, data_compra")
-      .eq("user_id", userId).eq("veiculo_id", veiculoId).maybeSingle(),
-    client.from("veiculo_despesas").select("valor, categoria")
-      .eq("user_id", userId).eq("veiculo_id", veiculoId).is("deleted_at", null),
-    client.from("veiculo_venda").select("valor_venda, data_venda")
-      .eq("user_id", userId).eq("veiculo_id", veiculoId).maybeSingle(),
-  ]);
+  const [{ data: compra }, { data: despesas }, { data: venda }] = await Promise
+    .all([
+      client.from("veiculo_compra").select("valor_compra, data_compra")
+        .eq("user_id", userId).eq("veiculo_id", veiculoId).maybeSingle(),
+      client.from("veiculo_despesas").select("valor, categoria")
+        .eq("user_id", userId).eq("veiculo_id", veiculoId).is(
+          "deleted_at",
+          null,
+        ),
+      client.from("veiculo_venda").select("valor_venda, data_venda")
+        .eq("user_id", userId).eq("veiculo_id", veiculoId).maybeSingle(),
+    ]);
   const dList = (despesas ?? []).map((d: Record<string, unknown>) => ({
     valor: Number(d.valor),
     categoria: String(d.categoria ?? ""),
@@ -299,7 +336,9 @@ async function fetchLucroVeiculo(
   const investidoTxt = lucro.investido != null
     ? formatBrl(lucro.investido)
     : "custo pendente";
-  return `${label}: lucro projetado ${formatGestaoMoney(lucro.lucroProjetado)} (investido ${investidoTxt}).`;
+  return `${label}: lucro projetado ${
+    formatGestaoMoney(lucro.lucroProjetado)
+  } (investido ${investidoTxt}).`;
 }
 
 async function fetchVendaRaioxVeiculo(
@@ -309,16 +348,22 @@ async function fetchVendaRaioxVeiculo(
   veiculo: GestaoVeiculoRow,
 ): Promise<string> {
   const client = sb as GestaoDb;
-  const [{ data: compra }, { data: despesas }, { data: venda }] = await Promise.all([
-    client.from("veiculo_compra").select("valor_compra")
-      .eq("user_id", userId).eq("veiculo_id", veiculoId).maybeSingle(),
-    client.from("veiculo_despesas").select("valor, categoria")
-      .eq("user_id", userId).eq("veiculo_id", veiculoId).is("deleted_at", null),
-    client.from("veiculo_venda").select("valor_venda")
-      .eq("user_id", userId).eq("veiculo_id", veiculoId).maybeSingle(),
-  ]);
+  const [{ data: compra }, { data: despesas }, { data: venda }] = await Promise
+    .all([
+      client.from("veiculo_compra").select("valor_compra")
+        .eq("user_id", userId).eq("veiculo_id", veiculoId).maybeSingle(),
+      client.from("veiculo_despesas").select("valor, categoria")
+        .eq("user_id", userId).eq("veiculo_id", veiculoId).is(
+          "deleted_at",
+          null,
+        ),
+      client.from("veiculo_venda").select("valor_venda")
+        .eq("user_id", userId).eq("veiculo_id", veiculoId).maybeSingle(),
+    ]);
   if (!venda) {
-    return `${formatGestaoVeiculoLabel(veiculo)} ainda não tem venda registrada.`;
+    return `${
+      formatGestaoVeiculoLabel(veiculo)
+    } ainda não tem venda registrada.`;
   }
   const dList = (despesas ?? []).map((d: Record<string, unknown>) => ({
     valor: Number(d.valor),
@@ -333,13 +378,18 @@ async function fetchVendaRaioxVeiculo(
   return formatRaioXWhatsApp(formatGestaoVeiculoLabel(veiculo), raio);
 }
 
-async function fetchPioresNegociosMes(sb: unknown, userId: string): Promise<string> {
+async function fetchPioresNegociosMes(
+  sb: unknown,
+  userId: string,
+): Promise<string> {
   const now = new Date();
   const { start, end } = intervaloMesAtualSaoPaulo(now);
   const client = sb as GestaoDb;
   const vehicles = await loadVehicles(sb, userId);
   const byId = new Map(vehicles.map((v) => [v.id, v]));
-  const { data: vendas } = await client.from("veiculo_venda").select("veiculo_id, valor_venda, data_venda")
+  const { data: vendas } = await client.from("veiculo_venda").select(
+    "veiculo_id, valor_venda, data_venda",
+  )
     .eq("user_id", userId).gte("data_venda", start).lte("data_venda", end);
   const items: GestaoVendaRaioXRankItem[] = [];
   for (const v of vendas ?? []) {
@@ -374,7 +424,9 @@ async function fetchPioresNegociosMes(sb: unknown, userId: string): Promise<stri
   if (!worst.length) return "Nenhuma venda no mês com lucro calculável.";
   const lines = worst.map((w, i) => {
     const motivo = w.motivoProvavel ? ` — ${w.motivoProvavel}` : "";
-    return `${i + 1}. ${w.label}: lucro final ${formatBrl(w.lucroFinal ?? 0)} (comissão ${formatBrl(w.comissao)})${motivo}`;
+    return `${i + 1}. ${w.label}: lucro final ${
+      formatBrl(w.lucroFinal ?? 0)
+    } (comissão ${formatBrl(w.comissao)})${motivo}`;
   });
   return `Piores negócios do mês:\n${lines.join("\n")}`;
 }
@@ -386,18 +438,25 @@ async function fetchDespesasVeiculo(
   veiculo: GestaoVeiculoRow,
 ): Promise<string> {
   const client = sb as GestaoDb;
-  const { data } = await client.from("veiculo_despesas").select("data, categoria, valor, descricao")
+  const { data } = await client.from("veiculo_despesas").select(
+    "data, categoria, valor, descricao",
+  )
     .eq("user_id", userId).eq("veiculo_id", veiculoId).is("deleted_at", null)
     .order("data", { ascending: false });
   const lines = (data ?? []).slice(0, 8).map((d: Record<string, unknown>) =>
-    `${d.data}: ${formatBrl(Number(d.valor))} (${gestaoDespesaCategoriaLabel(String(d.categoria ?? ""))})`
+    `${d.data}: ${formatBrl(Number(d.valor))} (${
+      gestaoDespesaCategoriaLabel(String(d.categoria ?? ""))
+    })`
   );
   const label = formatGestaoVeiculoLabel(veiculo);
   if (!lines.length) return `${label}: nenhuma despesa registrada.`;
   return `${label} — despesas:\n${lines.join("\n")}`;
 }
 
-async function loadContasInbound(sb: unknown, userId: string): Promise<GestaoContaInbound[]> {
+async function loadContasInbound(
+  sb: unknown,
+  userId: string,
+): Promise<GestaoContaInbound[]> {
   const client = sb as GestaoDb;
   await syncRecorrenciaLancamentosDb(client, userId);
   const { data } = await client.from("gestao_conta_lancamento").select(
@@ -411,22 +470,31 @@ async function loadContasInbound(sb: unknown, userId: string): Promise<GestaoCon
     vencimento: String(c.vencimento),
     pago_em: c.pago_em ? String(c.pago_em) : null,
     recebido_em: c.recebido_em ? String(c.recebido_em) : null,
-    recorrencia_dia_mes: c.recorrencia_dia_mes != null ? Number(c.recorrencia_dia_mes) : null,
+    recorrencia_dia_mes: c.recorrencia_dia_mes != null
+      ? Number(c.recorrencia_dia_mes)
+      : null,
     categoria: String(c.categoria_operacional),
     observacao: c.observacao ? String(c.observacao) : null,
   }));
 }
 
-async function loadVendasDreMes(sb: unknown, userId: string, competencia: string): Promise<GestaoVendaDreLine[]> {
+async function loadVendasDreMes(
+  sb: unknown,
+  userId: string,
+  competencia: string,
+): Promise<GestaoVendaDreLine[]> {
   const { start, end } = intervaloCompetencia(competencia);
   const client = sb as GestaoDb;
-  const { data: vendas } = await client.from("veiculo_venda").select("veiculo_id, valor_venda, data_venda")
+  const { data: vendas } = await client.from("veiculo_venda").select(
+    "veiculo_id, valor_venda, data_venda",
+  )
     .eq("user_id", userId).gte("data_venda", start).lte("data_venda", end);
   const lines: GestaoVendaDreLine[] = [];
   for (const v of vendas ?? []) {
     const vid = String(v.veiculo_id);
     const [{ data: compra }, { data: despesas }] = await Promise.all([
-      client.from("veiculo_compra").select("valor_compra").eq("user_id", userId).eq("veiculo_id", vid).maybeSingle(),
+      client.from("veiculo_compra").select("valor_compra").eq("user_id", userId)
+        .eq("veiculo_id", vid).maybeSingle(),
       client.from("veiculo_despesas").select("valor, categoria")
         .eq("user_id", userId).eq("veiculo_id", vid).is("deleted_at", null),
     ]);
@@ -435,7 +503,9 @@ async function loadVendasDreMes(sb: unknown, userId: string, competencia: string
       dataVenda: String(v.data_venda),
       valorVenda: Number(v.valor_venda),
       valorCompra: compra ? Number(compra.valor_compra) : null,
-      despesas: (despesas ?? []).map((d: { valor: number; categoria: string }) => ({
+      despesas: (despesas ?? []).map((
+        d: { valor: number; categoria: string },
+      ) => ({
         valor: Number(d.valor),
         categoria: d.categoria,
       })),
@@ -448,7 +518,9 @@ async function fetchLucroMes(sb: unknown, userId: string): Promise<string> {
   const now = new Date();
   const { start, end } = intervaloMesAtualSaoPaulo(now);
   const client = sb as GestaoDb;
-  const { data: vendas } = await client.from("veiculo_venda").select("veiculo_id, valor_venda")
+  const { data: vendas } = await client.from("veiculo_venda").select(
+    "veiculo_id, valor_venda",
+  )
     .eq("user_id", userId).gte("data_venda", start).lte("data_venda", end);
   let lucro = 0;
   for (const v of vendas ?? []) {
@@ -482,22 +554,35 @@ function buildConfirmMessage(
     const outrosHint = catCode === "outros"
       ? "\nSe for outra categoria, responda com o nome (ex.: mecânica)."
       : "";
-    return `Confirmar despesa de ${formatBrl(Number(draft.valor))} (${catLabel}) no ${label}?${outrosHint}\nResponda SIM ou NÃO.`;
+    return `Confirmar despesa de ${
+      formatBrl(Number(draft.valor))
+    } (${catLabel}) no ${label}?${outrosHint}\nResponda SIM ou NÃO.`;
   }
   if (action === "compra") {
     const origem = draft.consignacao ? "consignação" : "compra";
-    return `Confirmar ${origem} de ${formatBrl(Number(draft.valor))} no ${label}?\nResponda SIM ou NÃO.`;
+    return `Confirmar ${origem} de ${
+      formatBrl(Number(draft.valor))
+    } no ${label}?\nResponda SIM ou NÃO.`;
   }
   if (action === "nfe_emit") {
-    return String(draft.preview_resumo ?? "Confirmar emissão de NF-e?\nResponda SIM ou NÃO.");
+    return String(
+      draft.preview_resumo ??
+        "Confirmar emissão de NF-e?\nResponda SIM ou NÃO.",
+    );
   }
   if (action === "venda") {
     const comissao = draft.comissao_preview != null
       ? formatBrl(Number(draft.comissao_preview))
       : null;
-    const vend = draft.vendedor_nome ? `\nVendedor: ${draft.vendedor_nome}.` : "";
-    const comTxt = comissao ? `\nComissão estimada: ${comissao} (lançada no carro se confirmar).` : "";
-    return `Confirmar venda de ${formatBrl(Number(draft.valor))} no ${label}?${vend}${comTxt}\nResponda SIM ou NÃO.`;
+    const vend = draft.vendedor_nome
+      ? `\nVendedor: ${draft.vendedor_nome}.`
+      : "";
+    const comTxt = comissao
+      ? `\nComissão estimada: ${comissao} (lançada no carro se confirmar).`
+      : "";
+    return `Confirmar venda de ${
+      formatBrl(Number(draft.valor))
+    } no ${label}?${vend}${comTxt}\nResponda SIM ou NÃO.`;
   }
   return `Confirmar?\nResponda SIM ou NÃO.`;
 }
@@ -521,7 +606,9 @@ async function enrichVendaDraft(
   const [{ data: compra }, { data: despesas }] = await Promise.all([
     client.from("veiculo_compra").select("valor_compra, data_compra")
       .eq("user_id", userId).eq("veiculo_id", veiculoId).maybeSingle(),
-    client.from("veiculo_despesas").select("valor, categoria, origem_lancamento")
+    client.from("veiculo_despesas").select(
+      "valor, categoria, origem_lancamento",
+    )
       .eq("user_id", userId).eq("veiculo_id", veiculoId).is("deleted_at", null),
   ]);
   const dList = (despesas ?? []).map((d: Record<string, unknown>) => ({
@@ -558,7 +645,9 @@ async function recordWhatsappLancamento(
   referenciaTabela: string | null,
 ) {
   const client = sb as {
-    from: (t: string) => { insert: (row: Record<string, unknown>) => Promise<unknown> };
+    from: (
+      t: string,
+    ) => { insert: (row: Record<string, unknown>) => Promise<unknown> };
   };
   await client.from("gestao_lancamentos_whatsapp").insert({
     user_id: userId,
@@ -612,14 +701,26 @@ async function persistDraft(
       origem: draft.consignacao ? "consignacao" : "compra",
     }, { onConflict: "user_id,veiculo_id" });
     if (error) throw new Error(error.message);
-    await recordWhatsappLancamento(sb, userId, fromNumber, "compra", veiculoId, "veiculo_compra");
+    await recordWhatsappLancamento(
+      sb,
+      userId,
+      fromNumber,
+      "compra",
+      veiculoId,
+      "veiculo_compra",
+    );
     return "Compra registrada.";
   }
 
   if (action === "nfe_emit") {
     const tomador = draft.tomador as GestaoNfeTomadorInput;
-    const tipo = String(draft.tipo_operacao) as "entrada_compra_pf" | "saida_venda" | "consignacao";
-    const veiculo = draft.veiculo_nfe as Awaited<ReturnType<typeof loadVeiculoNfeFields>>;
+    const tipo = String(draft.tipo_operacao) as
+      | "entrada_compra_pf"
+      | "saida_venda"
+      | "consignacao";
+    const veiculo = draft.veiculo_nfe as Awaited<
+      ReturnType<typeof loadVeiculoNfeFields>
+    >;
     const valorTotal = Number(draft.valor_total);
     const result = await emitGestaoNfe({
       client,
@@ -630,18 +731,29 @@ async function persistDraft(
       tomador,
       veiculo: veiculo!,
     });
-    await recordWhatsappLancamento(sb, userId, fromNumber, "nfe_emit", result.nfeId, "gestao_nfe");
+    await recordWhatsappLancamento(
+      sb,
+      userId,
+      fromNumber,
+      "nfe_emit",
+      result.nfeId,
+      "gestao_nfe",
+    );
     const vehicles = await loadVehicles(sb, userId);
     const veiculoRow = vehicles.find((v) => v.id === veiculoId);
     return buildNfeEmitSuccessReply({
       status: result.status,
-      veiculoLabel: veiculoRow ? formatGestaoVeiculoLabel(veiculoRow) : "veículo",
+      veiculoLabel: veiculoRow
+        ? formatGestaoVeiculoLabel(veiculoRow)
+        : "veículo",
     });
   }
 
   if (action === "venda") {
     const vendedorId = draft.vendedor_id ? String(draft.vendedor_id) : null;
-    const vendedorNome = draft.vendedor_nome ? String(draft.vendedor_nome) : null;
+    const vendedorNome = draft.vendedor_nome
+      ? String(draft.vendedor_nome)
+      : null;
     const { error } = await client.from("veiculo_venda").upsert({
       user_id: userId,
       veiculo_id: veiculoId,
@@ -661,8 +773,13 @@ async function persistDraft(
       const [{ data: compra }, { data: despesas }] = await Promise.all([
         client.from("veiculo_compra").select("valor_compra, data_compra")
           .eq("user_id", userId).eq("veiculo_id", veiculoId).maybeSingle(),
-        client.from("veiculo_despesas").select("valor, categoria, origem_lancamento")
-          .eq("user_id", userId).eq("veiculo_id", veiculoId).is("deleted_at", null),
+        client.from("veiculo_despesas").select(
+          "valor, categoria, origem_lancamento",
+        )
+          .eq("user_id", userId).eq("veiculo_id", veiculoId).is(
+            "deleted_at",
+            null,
+          ),
       ]);
       const dList = (despesas ?? []).map((d: Record<string, unknown>) => ({
         valor: Number(d.valor),
@@ -678,7 +795,9 @@ async function persistDraft(
       });
       const margemPct = margemPctAntesComissaoAuto(lucroLiquido, valorVenda);
       const regraVendedor = await loadRegraComissao(sb, userId, vendedorId);
-      const regraGerente = gerente ? await loadRegraComissao(sb, userId, gerente.id) : null;
+      const regraGerente = gerente
+        ? await loadRegraComissao(sb, userId, gerente.id)
+        : null;
       const sync = await applyGestaoComissaoSync(client, {
         userId,
         veiculoId,
@@ -695,12 +814,28 @@ async function persistDraft(
           : null,
         dataDespesa: today,
       });
-      await recordWhatsappLancamento(sb, userId, fromNumber, "venda", veiculoId, "veiculo_venda");
-      return `Venda registrada. Comissão ${formatBrl(sync.comissaoTotal)} lançada no carro.`;
+      await recordWhatsappLancamento(
+        sb,
+        userId,
+        fromNumber,
+        "venda",
+        veiculoId,
+        "veiculo_venda",
+      );
+      return `Venda registrada. Comissão ${
+        formatBrl(sync.comissaoTotal)
+      } lançada no carro.`;
     }
 
     await estornarComissaoAuto(client, userId, veiculoId);
-    await recordWhatsappLancamento(sb, userId, fromNumber, "venda", veiculoId, "veiculo_venda");
+    await recordWhatsappLancamento(
+      sb,
+      userId,
+      fromNumber,
+      "venda",
+      veiculoId,
+      "veiculo_venda",
+    );
     return "Venda registrada.";
   }
 
@@ -721,13 +856,20 @@ async function finalizeNfeEmitConfirm(
   const auth = await loadFocusTokenForUser(client, userId);
   if (!auth) return { reply: "Conecte a Focus NFe em Integrações." };
   const config = await loadNfeConfig(client, userId);
-  if (!config) return { reply: "Configure os dados fiscais da loja no painel." };
+  if (!config) {
+    return { reply: "Configure os dados fiscais da loja no painel." };
+  }
 
   const tipo = await inferNfeTipoOperacao(client, userId, veiculo.id, null);
   const veiculoNfe = await loadVeiculoNfeFields(client, userId, veiculo.id);
   if (!veiculoNfe) return { reply: "Veículo não encontrado." };
 
-  const tomadorPartial = await loadTomadorForNfe(client, userId, veiculo.id, tipo);
+  const tomadorPartial = await loadTomadorForNfe(
+    client,
+    userId,
+    veiculo.id,
+    tipo,
+  );
   const missing = tomadorMissingFields(tomadorPartial);
   if (missing.length) {
     return { reply: buildNfeEmitBlockedMessage(missing) };
@@ -735,7 +877,13 @@ async function finalizeNfeEmitConfirm(
 
   let valorTotal: number;
   try {
-    valorTotal = await resolveNfeValorTotal(client, userId, veiculo.id, tipo, null);
+    valorTotal = await resolveNfeValorTotal(
+      client,
+      userId,
+      veiculo.id,
+      tipo,
+      null,
+    );
   } catch (e) {
     return { reply: (e as Error).message };
   }
@@ -763,8 +911,13 @@ async function finalizeNfeEmitConfirm(
     },
     expires_at: new Date(Date.now() + GESTAO_PENDING_TTL_MS).toISOString(),
   };
-  await saveAgentStatePatch({ pending_gestao_confirm: confirmPending }, agentState);
-  return { reply: buildConfirmMessage("nfe_emit", veiculo, confirmPending.draft) };
+  await saveAgentStatePatch(
+    { pending_gestao_confirm: confirmPending },
+    agentState,
+  );
+  return {
+    reply: buildConfirmMessage("nfe_emit", veiculo, confirmPending.draft),
+  };
 }
 
 async function beginNfeEmitInboundFlow(
@@ -797,28 +950,44 @@ async function beginNfeEmitInboundFlow(
       expires_at: new Date(Date.now() + GESTAO_PENDING_TTL_MS).toISOString(),
       options,
     };
-    await saveAgentStatePatch({ pending_gestao_confirm: pendingDis }, agentState);
+    await saveAgentStatePatch(
+      { pending_gestao_confirm: pendingDis },
+      agentState,
+    );
     const lines = options.map((o) => `${o.n}. ${o.label}`).join("\n");
     return { reply: `Qual veículo?\n${lines}\nResponda com o número.` };
   }
 
-  return finalizeNfeEmitConfirm(sb, userId, matches[0], saveAgentStatePatch, agentState);
+  return finalizeNfeEmitConfirm(
+    sb,
+    userId,
+    matches[0],
+    saveAgentStatePatch,
+    agentState,
+  );
 }
 
 async function prepareDesfazer(
   sb: unknown,
   userId: string,
   fromNumber: string,
-): Promise<{ reply: string; pending: PendingGestaoConfirm } | { reply: string }> {
+): Promise<
+  { reply: string; pending: PendingGestaoConfirm } | { reply: string }
+> {
   const mask = maskGestaoPhone(fromNumber);
   const cutoff = new Date(Date.now() - GESTAO_DESFAZER_TTL_MS).toISOString();
   const client = sb as GestaoDb;
   const { data: last } = await client.from("gestao_lancamentos_whatsapp")
     .select("id, tipo, referencia_id, referencia_tabela, created_at")
-    .eq("user_id", userId).eq("telefone_mascarado", mask).gte("created_at", cutoff)
+    .eq("user_id", userId).eq("telefone_mascarado", mask).gte(
+      "created_at",
+      cutoff,
+    )
     .order("created_at", { ascending: false }).limit(1).maybeSingle();
   if (!last) {
-    return { reply: "Não encontrei lançamento recente seu para desfazer (24h)." };
+    return {
+      reply: "Não encontrei lançamento recente seu para desfazer (24h).",
+    };
   }
   const pending: PendingGestaoConfirm = {
     phase: "desfazer_confirm",
@@ -832,13 +1001,16 @@ async function prepareDesfazer(
     expires_at: new Date(Date.now() + GESTAO_PENDING_TTL_MS).toISOString(),
   };
   return {
-    reply:
-      `Desfazer último lançamento (${last.tipo})?\nResponda SIM ou NÃO.`,
+    reply: `Desfazer último lançamento (${last.tipo})?\nResponda SIM ou NÃO.`,
     pending,
   };
 }
 
-async function executeDesfazer(sb: unknown, userId: string, draft: Record<string, unknown>): Promise<string> {
+async function executeDesfazer(
+  sb: unknown,
+  userId: string,
+  draft: Record<string, unknown>,
+): Promise<string> {
   const tabela = String(draft.referencia_tabela ?? "");
   const refId = draft.referencia_id;
   const client = sb as GestaoDb;
@@ -851,7 +1023,10 @@ async function executeDesfazer(sb: unknown, userId: string, draft: Record<string
     return "Último lançamento desfeito.";
   }
   if (tabela === "veiculo_compra" && refId) {
-    const { error } = await client.from("veiculo_compra").delete().eq("user_id", userId).eq(
+    const { error } = await client.from("veiculo_compra").delete().eq(
+      "user_id",
+      userId,
+    ).eq(
       "veiculo_id",
       String(refId),
     );
@@ -860,7 +1035,10 @@ async function executeDesfazer(sb: unknown, userId: string, draft: Record<string
   }
   if (tabela === "veiculo_venda" && refId) {
     await estornarComissaoAuto(client, userId, String(refId));
-    const { error } = await client.from("veiculo_venda").delete().eq("user_id", userId).eq(
+    const { error } = await client.from("veiculo_venda").delete().eq(
+      "user_id",
+      userId,
+    ).eq(
       "veiculo_id",
       String(refId),
     );
@@ -883,9 +1061,16 @@ export async function tryProcessGestaoLucroInbound(input: {
     patch: Record<string, unknown>,
     current: Record<string, unknown>,
   ) => Promise<boolean>;
-}): Promise<{ handled: boolean; reply?: string; clearPending?: boolean }> {
+}): Promise<{
+  handled: boolean;
+  reply?: string;
+  clearPending?: boolean;
+  interactiveButtons?: VeiculoProcedenciaInteractiveButtons;
+}> {
   if (input.hasInboundMedia) return { handled: false };
-  if (!isGestaoAuthorizedPhone(input.fromNumber, input.auth)) return { handled: false };
+  if (!isGestaoAuthorizedPhone(input.fromNumber, input.auth)) {
+    return { handled: false };
+  }
   if (input.interactiveId && !isGestaoInteractiveId(input.interactiveId)) {
     return { handled: false };
   }
@@ -910,10 +1095,15 @@ export async function tryProcessGestaoLucroInbound(input: {
   );
   if (!gate.usesVehicleStock) return { handled: false };
 
-  const pending = input.agentState.pending_gestao_confirm as PendingGestaoConfirm | undefined;
+  const pending = input.agentState.pending_gestao_confirm as
+    | PendingGestaoConfirm
+    | undefined;
 
   if (pending && !pendingActive(pending)) {
-    await input.saveAgentStatePatch({ pending_gestao_confirm: null }, input.agentState);
+    await input.saveAgentStatePatch(
+      { pending_gestao_confirm: null },
+      input.agentState,
+    );
     input.agentState.pending_gestao_confirm = null;
   }
 
@@ -921,7 +1111,10 @@ export async function tryProcessGestaoLucroInbound(input: {
 
   if (activePending) {
     if (isGestaoNegative(text)) {
-      await input.saveAgentStatePatch({ pending_gestao_confirm: null }, input.agentState);
+      await input.saveAgentStatePatch(
+        { pending_gestao_confirm: null },
+        input.agentState,
+      );
       return { handled: true, reply: "Ok, cancelado." };
     }
 
@@ -934,22 +1127,35 @@ export async function tryProcessGestaoLucroInbound(input: {
             const retried: PendingGestaoConfirm = {
               ...activePending,
               disambiguation_warned: true,
-              expires_at: new Date(Date.now() + GESTAO_PENDING_TTL_MS).toISOString(),
+              expires_at: new Date(Date.now() + GESTAO_PENDING_TTL_MS)
+                .toISOString(),
             };
-            await input.saveAgentStatePatch({ pending_gestao_confirm: retried }, input.agentState);
-            const lines = activePending.options?.map((o) => `${o.n}. ${o.label}`).join("\n") ?? "";
+            await input.saveAgentStatePatch(
+              { pending_gestao_confirm: retried },
+              input.agentState,
+            );
+            const lines = activePending.options?.map((o) =>
+              `${o.n}. ${o.label}`
+            ).join("\n") ?? "";
             return {
               handled: true,
-              reply: `Número inválido. Escolha:\n${lines}\nResponda com o número.`,
+              reply:
+                `Número inválido. Escolha:\n${lines}\nResponda com o número.`,
             };
           }
-          await input.saveAgentStatePatch({ pending_gestao_confirm: null }, input.agentState);
+          await input.saveAgentStatePatch(
+            { pending_gestao_confirm: null },
+            input.agentState,
+          );
           return { handled: false, clearPending: true };
         }
         const vehicles = await loadVehicles(input.sb, input.userId);
         const veiculo = vehicles.find((v) => v.id === opt.veiculo_id);
         if (!veiculo) {
-          await input.saveAgentStatePatch({ pending_gestao_confirm: null }, input.agentState);
+          await input.saveAgentStatePatch(
+            { pending_gestao_confirm: null },
+            input.agentState,
+          );
           return { handled: true, reply: "Veículo não encontrado." };
         }
         if (activePending.action === "nfe_emit") {
@@ -962,23 +1168,41 @@ export async function tryProcessGestaoLucroInbound(input: {
           );
           return { handled: true, reply: fin.reply };
         }
-        let draft: Record<string, unknown> = { ...activePending.draft, veiculo_id: veiculo.id };
+        let draft: Record<string, unknown> = {
+          ...activePending.draft,
+          veiculo_id: veiculo.id,
+        };
         if (activePending.action === "venda") {
-          draft = await enrichVendaDraft(input.sb, input.userId, veiculo.id, draft);
+          draft = await enrichVendaDraft(
+            input.sb,
+            input.userId,
+            veiculo.id,
+            draft,
+          );
         }
         const confirmPending: PendingGestaoConfirm = {
           phase: "confirm",
           action: activePending.action,
           draft,
-          expires_at: new Date(Date.now() + GESTAO_PENDING_TTL_MS).toISOString(),
+          expires_at: new Date(Date.now() + GESTAO_PENDING_TTL_MS)
+            .toISOString(),
         };
-        await input.saveAgentStatePatch({ pending_gestao_confirm: confirmPending }, input.agentState);
+        await input.saveAgentStatePatch({
+          pending_gestao_confirm: confirmPending,
+        }, input.agentState);
         return {
           handled: true,
-          reply: buildConfirmMessage(activePending.action, veiculo, confirmPending.draft),
+          reply: buildConfirmMessage(
+            activePending.action,
+            veiculo,
+            confirmPending.draft,
+          ),
         };
       }
-      await input.saveAgentStatePatch({ pending_gestao_confirm: null }, input.agentState);
+      await input.saveAgentStatePatch(
+        { pending_gestao_confirm: null },
+        input.agentState,
+      );
       return { handled: false, clearPending: true };
     }
 
@@ -993,7 +1217,8 @@ export async function tryProcessGestaoLucroInbound(input: {
         const confirmPending: PendingGestaoConfirm = {
           ...activePending,
           draft: { ...activePending.draft, categoria: corrected },
-          expires_at: new Date(Date.now() + GESTAO_PENDING_TTL_MS).toISOString(),
+          expires_at: new Date(Date.now() + GESTAO_PENDING_TTL_MS)
+            .toISOString(),
         };
         await input.saveAgentStatePatch(
           { pending_gestao_confirm: confirmPending },
@@ -1005,7 +1230,11 @@ export async function tryProcessGestaoLucroInbound(input: {
         if (veiculo) {
           return {
             handled: true,
-            reply: buildConfirmMessage("despesa", veiculo, confirmPending.draft),
+            reply: buildConfirmMessage(
+              "despesa",
+              veiculo,
+              confirmPending.draft,
+            ),
           };
         }
       }
@@ -1013,8 +1242,15 @@ export async function tryProcessGestaoLucroInbound(input: {
 
     if (isGestaoAffirmative(text)) {
       if (activePending.phase === "desfazer_confirm") {
-        const msg = await executeDesfazer(input.sb, input.userId, activePending.draft);
-        await input.saveAgentStatePatch({ pending_gestao_confirm: null }, input.agentState);
+        const msg = await executeDesfazer(
+          input.sb,
+          input.userId,
+          activePending.draft,
+        );
+        await input.saveAgentStatePatch(
+          { pending_gestao_confirm: null },
+          input.agentState,
+        );
         return { handled: true, reply: msg };
       }
       if (activePending.phase === "confirm") {
@@ -1027,12 +1263,18 @@ export async function tryProcessGestaoLucroInbound(input: {
           veiculoId,
           activePending.draft,
         );
-        await input.saveAgentStatePatch({ pending_gestao_confirm: null }, input.agentState);
+        await input.saveAgentStatePatch(
+          { pending_gestao_confirm: null },
+          input.agentState,
+        );
         return { handled: true, reply: msg };
       }
     }
 
-    await input.saveAgentStatePatch({ pending_gestao_confirm: null }, input.agentState);
+    await input.saveAgentStatePatch(
+      { pending_gestao_confirm: null },
+      input.agentState,
+    );
     return { handled: false, clearPending: true };
   }
 
@@ -1061,8 +1303,9 @@ export async function tryProcessGestaoLucroInbound(input: {
       };
     }
 
-    const pedidoEspecifico =
-      /\bcomo\s+(faco\s+(para|pra)|eu\s+peco)\b/.test(textoNormalizado);
+    const pedidoEspecifico = /\bcomo\s+(faco\s+(para|pra)|eu\s+peco)\b/.test(
+      textoNormalizado,
+    );
     const item = pedidoEspecifico
       ? buscarJarvisAjudaCatalogo(text, audiencia)
       : null;
@@ -1071,10 +1314,9 @@ export async function tryProcessGestaoLucroInbound(input: {
     }
     return {
       handled: true,
-      reply:
-        `${
-          formatarMenuJarvisAjuda(audiencia)
-        }\n\nQuer a cartilha completa? Responda *cartilha*.`,
+      reply: `${
+        formatarMenuJarvisAjuda(audiencia)
+      }\n\nQuer a cartilha completa? Responda *cartilha*.`,
     };
   }
 
@@ -1105,11 +1347,19 @@ export async function tryProcessGestaoLucroInbound(input: {
       competencia,
       agoraSP,
     );
-    console.log("[gestao-inbound][dre_whatsapp]", { competencia, vendas: facts.dre.qtdVendas });
+    console.log("[gestao-inbound][dre_whatsapp]", {
+      competencia,
+      vendas: facts.dre.qtdVendas,
+    });
     return { handled: true, reply: formatGestaoDreWhatsApp(facts) };
   }
   if (intent.kind === "posicao_loja") {
-    const facts = await loadPosicaoLojaFacts(input.sb as never, input.userId, agoraSP, posicaoOpts);
+    const facts = await loadPosicaoLojaFacts(
+      input.sb as never,
+      input.userId,
+      agoraSP,
+      posicaoOpts,
+    );
     console.log("[gestao-inbound][posicao_loja]", {
       vendas_mes: facts.mes.qtdVendas,
       estoque: facts.estoque.qtd,
@@ -1124,7 +1374,9 @@ export async function tryProcessGestaoLucroInbound(input: {
       agoraSP,
       posicaoOpts,
     );
-    console.log("[gestao-inbound][relatorio_vendedores]", { vendedores: facts.ranking.length });
+    console.log("[gestao-inbound][relatorio_vendedores]", {
+      vendedores: facts.ranking.length,
+    });
     return { handled: true, reply: formatRelatorioVendedoresWhatsApp(facts) };
   }
   if (intent.kind === "vendedor_detalhe") {
@@ -1135,7 +1387,9 @@ export async function tryProcessGestaoLucroInbound(input: {
       agoraSP,
       posicaoOpts,
     );
-    console.log("[gestao-inbound][vendedor_detalhe]", { hint_len: intent.vendedorHint.length });
+    console.log("[gestao-inbound][vendedor_detalhe]", {
+      hint_len: intent.vendedorHint.length,
+    });
     return { handled: true, reply };
   }
 
@@ -1144,7 +1398,10 @@ export async function tryProcessGestaoLucroInbound(input: {
 
   if (intent.kind === "contas_amanha") {
     const contas = await loadContasInbound(input.sb, input.userId);
-    return { handled: true, reply: buildContasVencemAmanhaReply(contas, today) };
+    return {
+      handled: true,
+      reply: buildContasVencemAmanhaReply(contas, today),
+    };
   }
   if (intent.kind === "contas_semana") {
     const contas = await loadContasInbound(input.sb, input.userId);
@@ -1171,24 +1428,41 @@ export async function tryProcessGestaoLucroInbound(input: {
     };
   }
   if (intent.kind === "pacote_contador") {
-    const site = Deno.env.get("PUBLIC_SITE_URL") ?? Deno.env.get("SITE_URL") ?? "";
-    const { appUrl } = await mintGestaoContadorLink(input.sb as never, input.userId, competencia, site);
-    return { handled: true, reply: buildContadorLinkReply(appUrl, competencia) };
+    const site = Deno.env.get("PUBLIC_SITE_URL") ?? Deno.env.get("SITE_URL") ??
+      "";
+    const { appUrl } = await mintGestaoContadorLink(
+      input.sb as never,
+      input.userId,
+      competencia,
+      site,
+    );
+    return {
+      handled: true,
+      reply: buildContadorLinkReply(appUrl, competencia),
+    };
   }
   if (intent.kind === "conciliacao_pendente") {
     const client = input.sb as GestaoDb;
-    const { data } = await client.from("gestao_extrato_transacao").select("valor, status")
+    const { data } = await client.from("gestao_extrato_transacao").select(
+      "valor, status",
+    )
       .eq("user_id", input.userId)
       .in("status", ["pendente", "confirmar"]);
     const rows = data ?? [];
     const qtd = rows.length;
-    const valor = rows.reduce((a: number, r: { valor: number }) => a + Number(r.valor), 0);
+    const valor = rows.reduce(
+      (a: number, r: { valor: number }) => a + Number(r.valor),
+      0,
+    );
     return { handled: true, reply: buildConciliacaoPendenteReply(qtd, valor) };
   }
 
   if (intent.kind === "contratos_pendentes") {
     const client = input.sb as GestaoDb;
-    const { count } = await client.from("gestao_contrato").select("id", { count: "exact", head: true })
+    const { count } = await client.from("gestao_contrato").select("id", {
+      count: "exact",
+      head: true,
+    })
       .eq("user_id", input.userId)
       .eq("status", "pendente_assinatura");
     return { handled: true, reply: buildContratosPendentesReply(count ?? 0) };
@@ -1198,21 +1472,31 @@ export async function tryProcessGestaoLucroInbound(input: {
     const client = input.sb as GestaoDb;
     const hint = intent.vehicleHint?.trim();
     if (!hint) {
-      return { handled: true, reply: "Informe o veículo, ex.: status do contrato do X6." };
+      return {
+        handled: true,
+        reply: "Informe o veículo, ex.: status do contrato do X6.",
+      };
     }
-    const { data: veiculos } = await client.from("veiculos_estoque").select(GESTAO_VEHICLE_SELECT)
+    const { data: veiculos } = await client.from("veiculos_estoque").select(
+      GESTAO_VEHICLE_SELECT,
+    )
       .eq("user_id", input.userId);
     const ranked = rankGestaoVeiculoMatches(hint, veiculos ?? []);
     const v = ranked[0];
     if (!v) return { handled: true, reply: "Veículo não encontrado." };
-    const { data: contrato } = await client.from("gestao_contrato").select("status, zapsign_sign_url")
+    const { data: contrato } = await client.from("gestao_contrato").select(
+      "status, zapsign_sign_url",
+    )
       .eq("user_id", input.userId)
       .eq("veiculo_id", v.id)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
     if (!contrato) {
-      return { handled: true, reply: `Nenhum contrato para ${formatGestaoVeiculoLabel(v)}.` };
+      return {
+        handled: true,
+        reply: `Nenhum contrato para ${formatGestaoVeiculoLabel(v)}.`,
+      };
     }
     return {
       handled: true,
@@ -1227,16 +1511,26 @@ export async function tryProcessGestaoLucroInbound(input: {
   if (intent.kind === "notas_mes") {
     const client = input.sb as GestaoDb;
     const { start, end } = intervaloCompetencia(competencia);
-    const { data } = await client.from("gestao_nfe").select("status, authorized_at, created_at")
+    const { data } = await client.from("gestao_nfe").select(
+      "status, authorized_at, created_at",
+    )
       .eq("user_id", input.userId);
-    const rows = (data ?? []).filter((r: { authorized_at: string | null; created_at: string }) => {
-      const d = (r.authorized_at ?? r.created_at).slice(0, 10);
-      return d >= start && d <= end;
-    });
-    const autorizadas = rows.filter((r: { status: string }) => r.status === "autorizada").length;
+    const rows = (data ?? []).filter(
+      (r: { authorized_at: string | null; created_at: string }) => {
+        const d = (r.authorized_at ?? r.created_at).slice(0, 10);
+        return d >= start && d <= end;
+      },
+    );
+    const autorizadas = rows.filter((r: { status: string }) =>
+      r.status === "autorizada"
+    ).length;
     return {
       handled: true,
-      reply: buildNotasMesReply({ competencia, total: rows.length, autorizadas }),
+      reply: buildNotasMesReply({
+        competencia,
+        total: rows.length,
+        autorizadas,
+      }),
     };
   }
 
@@ -1244,21 +1538,31 @@ export async function tryProcessGestaoLucroInbound(input: {
     const client = input.sb as GestaoDb;
     const hint = intent.vehicleHint?.trim();
     if (!hint) {
-      return { handled: true, reply: "Informe o veículo, ex.: status da nota do X6." };
+      return {
+        handled: true,
+        reply: "Informe o veículo, ex.: status da nota do X6.",
+      };
     }
-    const { data: veiculos } = await client.from("veiculos_estoque").select(GESTAO_VEHICLE_SELECT)
+    const { data: veiculos } = await client.from("veiculos_estoque").select(
+      GESTAO_VEHICLE_SELECT,
+    )
       .eq("user_id", input.userId);
     const ranked = rankGestaoVeiculoMatches(hint, veiculos ?? []);
     const v = ranked[0];
     if (!v) return { handled: true, reply: "Veículo não encontrado." };
-    const { data: nfe } = await client.from("gestao_nfe").select("status, numero, serie")
+    const { data: nfe } = await client.from("gestao_nfe").select(
+      "status, numero, serie",
+    )
       .eq("user_id", input.userId)
       .eq("veiculo_id", v.id)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
     if (!nfe) {
-      return { handled: true, reply: `Nenhuma NF-e para ${formatGestaoVeiculoLabel(v)}.` };
+      return {
+        handled: true,
+        reply: `Nenhuma NF-e para ${formatGestaoVeiculoLabel(v)}.`,
+      };
     }
     return {
       handled: true,
@@ -1285,7 +1589,9 @@ export async function tryProcessGestaoLucroInbound(input: {
   if (intent.kind === "revogar_link_contador") {
     const client = input.sb as GestaoDb;
     const now = new Date().toISOString();
-    const { data: active } = await client.from("gestao_contador_token").select("id")
+    const { data: active } = await client.from("gestao_contador_token").select(
+      "id",
+    )
       .eq("user_id", input.userId)
       .is("revogado_em", null)
       .gt("expires_at", now);
@@ -1299,7 +1605,11 @@ export async function tryProcessGestaoLucroInbound(input: {
   }
   if (intent.kind === "ranking_vendedores") {
     const vendedores = await loadVendedores(input.sb, input.userId);
-    const comissao = await loadComissaoMesMap(input.sb, input.userId, competencia);
+    const comissao = await loadComissaoMesMap(
+      input.sb,
+      input.userId,
+      competencia,
+    );
     const reply = await buildGestaoRankingReply(
       input.sb as never,
       input.userId,
@@ -1311,8 +1621,15 @@ export async function tryProcessGestaoLucroInbound(input: {
   }
   if (intent.kind === "comissao_mes") {
     const vendedores = await loadVendedores(input.sb, input.userId);
-    const comissao = await loadComissaoMesMap(input.sb, input.userId, competencia);
-    return { handled: true, reply: buildComissaoMesReply(comissao, vendedores, competencia) };
+    const comissao = await loadComissaoMesMap(
+      input.sb,
+      input.userId,
+      competencia,
+    );
+    return {
+      handled: true,
+      reply: buildComissaoMesReply(comissao, vendedores, competencia),
+    };
   }
   if (intent.kind === "vendedor_mes") {
     const vendedores = await loadVendedores(input.sb, input.userId);
@@ -1328,7 +1645,8 @@ export async function tryProcessGestaoLucroInbound(input: {
   if (intent.kind === "meta_bateu") {
     return {
       handled: true,
-      reply: `Metas ${competencia}: configure metas em Gestão → Equipe no painel para acompanhar aqui.`,
+      reply:
+        `Metas ${competencia}: configure metas em Gestão → Equipe no painel para acompanhar aqui.`,
     };
   }
 
@@ -1341,27 +1659,55 @@ export async function tryProcessGestaoLucroInbound(input: {
   const matches = rankGestaoVeiculoMatches(intent.vehicleHint, vehicles);
 
   if (intent.kind === "venda_raiox") {
-    if (!matches[0]) return { handled: true, reply: "Não achei esse veículo no estoque." };
-    const reply = await fetchVendaRaioxVeiculo(input.sb, input.userId, matches[0].id, matches[0]);
+    if (!matches[0]) {
+      return { handled: true, reply: "Não achei esse veículo no estoque." };
+    }
+    const reply = await fetchVendaRaioxVeiculo(
+      input.sb,
+      input.userId,
+      matches[0].id,
+      matches[0],
+    );
     return { handled: true, reply };
   }
 
   if (intent.kind === "lucro_veiculo") {
-    if (!matches[0]) return { handled: true, reply: "Não achei esse veículo no estoque." };
-    const reply = await fetchLucroVeiculo(input.sb, input.userId, matches[0].id, matches[0]);
+    if (!matches[0]) {
+      return { handled: true, reply: "Não achei esse veículo no estoque." };
+    }
+    const reply = await fetchLucroVeiculo(
+      input.sb,
+      input.userId,
+      matches[0].id,
+      matches[0],
+    );
     return { handled: true, reply };
   }
 
   if (intent.kind === "despesas_veiculo") {
-    if (!matches[0]) return { handled: true, reply: "Não achei esse veículo no estoque." };
-    const reply = await fetchDespesasVeiculo(input.sb, input.userId, matches[0].id, matches[0]);
+    if (!matches[0]) {
+      return { handled: true, reply: "Não achei esse veículo no estoque." };
+    }
+    const reply = await fetchDespesasVeiculo(
+      input.sb,
+      input.userId,
+      matches[0].id,
+      matches[0],
+    );
     return { handled: true, reply };
   }
 
   if (intent.kind === "desfazer") {
-    const prep = await prepareDesfazer(input.sb, input.userId, input.fromNumber);
+    const prep = await prepareDesfazer(
+      input.sb,
+      input.userId,
+      input.fromNumber,
+    );
     if ("pending" in prep) {
-      await input.saveAgentStatePatch({ pending_gestao_confirm: prep.pending }, input.agentState);
+      await input.saveAgentStatePatch(
+        { pending_gestao_confirm: prep.pending },
+        input.agentState,
+      );
     }
     return { handled: true, reply: prep.reply };
   }
@@ -1388,9 +1734,15 @@ export async function tryProcessGestaoLucroInbound(input: {
       expires_at: new Date(Date.now() + GESTAO_PENDING_TTL_MS).toISOString(),
       options,
     };
-    await input.saveAgentStatePatch({ pending_gestao_confirm: pendingDis }, input.agentState);
+    await input.saveAgentStatePatch(
+      { pending_gestao_confirm: pendingDis },
+      input.agentState,
+    );
     const lines = options.map((o) => `${o.n}. ${o.label}`).join("\n");
-    return { handled: true, reply: `Qual veículo?\n${lines}\nResponda com o número.` };
+    return {
+      handled: true,
+      reply: `Qual veículo?\n${lines}\nResponda com o número.`,
+    };
   }
 
   const veiculo = matches[0];
@@ -1410,7 +1762,10 @@ export async function tryProcessGestaoLucroInbound(input: {
     draft,
     expires_at: new Date(Date.now() + GESTAO_PENDING_TTL_MS).toISOString(),
   };
-  await input.saveAgentStatePatch({ pending_gestao_confirm: confirmPending }, input.agentState);
+  await input.saveAgentStatePatch(
+    { pending_gestao_confirm: confirmPending },
+    input.agentState,
+  );
   return {
     handled: true,
     reply: buildConfirmMessage(intent.kind, veiculo, draft),

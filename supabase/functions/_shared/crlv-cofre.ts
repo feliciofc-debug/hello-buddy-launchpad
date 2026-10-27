@@ -27,10 +27,12 @@ export const CRLV_TROCA_FIELDS = new Set([
 export function maskOwnerDocument(value: string | null): string | null {
   const digits = String(value ?? "").replace(/\D/g, "");
   if (digits.length === 11) {
-    return `***.***.${digits.slice(6, 9)}-**`;
+    return `***.${digits.slice(3, 6)}.${digits.slice(6, 9)}-**`;
   }
   if (digits.length === 14) {
-    return `**.***.***/****-${digits.slice(-2)}`;
+    return `**.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${
+      digits.slice(8, 12)
+    }-**`;
   }
   return null;
 }

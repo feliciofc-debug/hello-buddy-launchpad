@@ -281,15 +281,28 @@ function municipalityFields(
   text: string,
   source: CrlvFonte,
 ): { municipio: CrlvCampo<string>; uf: CrlvCampo<string> } {
-  const raw = afterLabel(text, ["MUNICIPIO/UF", "MUNICIPIO UF"]);
-  if (!raw) return { municipio: vazio(), uf: vazio() };
-  const match = raw.match(/^(.+?)[\s/-]+([A-Z]{2})$/);
-  return match
-    ? {
-      municipio: { valor: match[1].trim(), confianca: confidence(source) },
-      uf: { valor: match[2], confianca: confidence(source) },
-    }
-    : { municipio: { valor: raw, confianca: "baixa" }, uf: vazio() };
+  const raw = afterLabel(text, [
+    "MUNICIPIO/UF",
+    "MUNICIPIO UF",
+    "LOCAL",
+  ]);
+  if (raw) {
+    const match = raw.match(/^(.+?)[\s/-]+([A-Z]{2})$/);
+    return match
+      ? {
+        municipio: { valor: match[1].trim(), confianca: confidence(source) },
+        uf: { valor: match[2], confianca: confidence(source) },
+      }
+      : { municipio: { valor: raw, confianca: "baixa" }, uf: vazio() };
+  }
+  const municipio = afterLabel(text, ["MUNICIPIO"]);
+  const uf = afterLabel(text, ["UF"])?.match(/\b[A-Z]{2}\b/)?.[0] ?? null;
+  return {
+    municipio: municipio
+      ? { valor: municipio, confianca: confidence(source) }
+      : vazio(),
+    uf: uf ? { valor: uf, confianca: confidence(source) } : vazio(),
+  };
 }
 
 function observations(text: string, source: CrlvFonte) {
@@ -352,6 +365,28 @@ export function parseCrlvText(
   const [capacidade, lotacao] = numberPair(capacidadeLotacao);
   const [pbt, cmt] = numberPair(pbtCmt);
   const obs = observations(text, fonte);
+  const combinedYears = numberPair(afterLabel(text, [
+    "ANO FAB/ANO MOD",
+    "ANO FAB / ANO MOD",
+    "ANO FABRICACAO/ANO MODELO",
+    "ANO FABRICACAO / ANO MODELO",
+  ])).filter((value) =>
+    value >= 1900 && value <= new Date().getUTCFullYear() + 2
+  );
+  const anoFabricacao = yearField(
+    text,
+    ["ANO FABRICACAO", "ANO FAB"],
+    fonte,
+  );
+  const anoModelo = yearField(text, ["ANO MODELO", "ANO MOD"], fonte);
+  if (anoFabricacao.valor == null && combinedYears[0]) {
+    anoFabricacao.valor = combinedYears[0];
+    anoFabricacao.confianca = confidence(fonte);
+  }
+  if (anoModelo.valor == null && combinedYears[1]) {
+    anoModelo.valor = combinedYears[1];
+    anoModelo.confianca = confidence(fonte);
+  }
 
   const result: CrlvParserResultado = {
     veiculo: {
@@ -365,11 +400,17 @@ export function parseCrlvText(
       ),
       marca_modelo_versao: fieldString(
         text,
-        ["MARCA/MODELO/VERSAO", "MARCA MODELO VERSAO", "MARCA/MODELO"],
+        [
+          "MARCA/MODELO/VERSAO",
+          "MARCA / MODELO / VERSAO",
+          "MARCA MODELO VERSAO",
+          "MARCA/MODELO",
+          "MARCA / MODELO",
+        ],
         fonte,
       ),
-      ano_fabricacao: yearField(text, ["ANO FABRICACAO", "ANO FAB"], fonte),
-      ano_modelo: yearField(text, ["ANO MODELO", "ANO MOD"], fonte),
+      ano_fabricacao: anoFabricacao,
+      ano_modelo: anoModelo,
       cor: fieldString(text, ["COR PREDOMINANTE", "COR"], fonte),
       combustivel: fuelField(text, fonte),
       especie_tipo: fieldString(text, ["ESPECIE/TIPO", "ESPECIE TIPO"], fonte),
@@ -413,7 +454,7 @@ export function parseCrlvText(
     proprietario: {
       nome: fieldString(
         text,
-        ["NOME DO PROPRIETARIO", "PROPRIETARIO"],
+        ["NOME DO PROPRIETARIO", "PROPRIETARIO", "NOME"],
         fonte,
       ),
       cpf_cnpj: ownerDocumentField(text, fonte),

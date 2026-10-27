@@ -14,6 +14,7 @@ import {
   molicarTokenProvider,
   resolveMolicarConta,
 } from "../_shared/molicar-service.ts";
+import { maybeNotifyMolicarProcedenciaOwner } from "../_shared/molicar-procedencia-notify.ts";
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") {
@@ -70,20 +71,36 @@ Deno.serve(async (req) => {
         const transientHttp = [401, 403, 429].includes(response.status) ||
           response.status >= 500;
         if (state !== "pending" && !transientHttp) {
-          const { error } = await db.rpc("molicar_procedencia_finalizar", {
-            p_id: row.id,
-            p_status: state === "completed"
-              ? "concluida"
-              : state === "expired"
-              ? "expirada"
-              : "erro",
-            p_provider_status: providerStatus,
-            p_resultado: sanitizeMolicarProcedencia(response.body),
-            p_erro: state === "completed"
-              ? null
-              : "A Molicar informou erro terminal no polling.",
-          });
+          const { data: changed, error } = await db.rpc(
+            "molicar_procedencia_finalizar",
+            {
+              p_id: row.id,
+              p_status: state === "completed"
+                ? "concluida"
+                : state === "expired"
+                ? "expirada"
+                : "erro",
+              p_provider_status: providerStatus,
+              p_resultado: sanitizeMolicarProcedencia(response.body),
+              p_erro: state === "completed"
+                ? null
+                : "A Molicar informou erro terminal no polling.",
+            },
+          );
           if (error) throw error;
+          if (changed && row.solicitacao_id && row.notificar_whatsapp) {
+            try {
+              await maybeNotifyMolicarProcedenciaOwner(
+                db,
+                row.user_id,
+                row.solicitacao_id,
+              );
+            } catch {
+              console.warn("[molicar-procedencia] notify_skip", {
+                reason: "whatsapp_notify_failed",
+              });
+            }
+          }
           state === "completed" ? completed++ : failed++;
         } else {
           const { error } = await db.from("molicar_procedencia").update({
