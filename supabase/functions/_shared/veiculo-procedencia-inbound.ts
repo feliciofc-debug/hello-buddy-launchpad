@@ -280,7 +280,7 @@ export async function tryProcessVeiculoProcedenciaInbound(input: {
           placa: active.placa,
           services: ["debts", "gravame", "renajud"],
           canal: "whatsapp",
-        });
+        }) as Record<string, unknown>[];
         const requestId = String(rows[0]?.solicitacao_id ?? "");
         if (
           requestId &&
